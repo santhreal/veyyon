@@ -38,7 +38,7 @@ interface ModeVariant {
 	bashMode?: boolean;
 	pythonMode?: boolean;
 	planMode?: boolean;
-	focusedSubagent?: boolean;
+	focusedAgent?: boolean;
 	sessionAccentAnsi?: string;
 	thinkingLevel: ThinkingLevel;
 }
@@ -76,7 +76,7 @@ describe("renderer composer defect oracle sweep", () => {
 		{ name: "bash-mode", bashMode: true, thinkingLevel: ThinkingLevel.Off },
 		{ name: "python-mode", pythonMode: true, thinkingLevel: ThinkingLevel.Off },
 		{ name: "plan-mode", planMode: true, thinkingLevel: ThinkingLevel.Off },
-		{ name: "focused-subagent", focusedSubagent: true, thinkingLevel: ThinkingLevel.Off },
+		{ name: "focused-agent", focusedAgent: true, thinkingLevel: ThinkingLevel.Off },
 		{ name: "session-accent", sessionAccentAnsi: "\x1b[38;2;255;100;50m", thinkingLevel: ThinkingLevel.Off },
 	];
 

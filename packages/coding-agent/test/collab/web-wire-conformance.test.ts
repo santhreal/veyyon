@@ -288,7 +288,7 @@ describe("the constants both sides read", () => {
 	});
 
 	it("names the protocol version the guest client expects", () => {
-		expect(COLLAB_PROTO).toBe(3);
+		expect(COLLAB_PROTO).toBe(4);
 		expect(COLLAB_PROMPT_MESSAGE_TYPE).toBe("collab-prompt");
 	});
 });

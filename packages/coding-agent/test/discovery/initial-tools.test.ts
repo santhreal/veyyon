@@ -46,7 +46,7 @@ const toolSession: ToolSession = {
 	getSelectedDiscoveredToolNames: () => [],
 	activateDiscoveredTools: async names => names,
 	// Argot tools only construct when a session codec exists (enabled alone is not
-	// enough — a subagent under argot.subagents:off has enabled settings but no codec).
+	// enough — an agent under argot.agents:off has enabled settings but no codec).
 	getArgotSession: () => ({ loaded: false }) as never,
 };
 
@@ -84,7 +84,7 @@ describe("BUILTIN_TOOLS public factory map", () => {
 
 	it("keeps argot tools always-active (not discoverable) when enabled AND a codec is exposed", async () => {
 		// Factories gate on argot.enabled AND getArgotSession?.() !== undefined: a
-		// subagent under argot.subagents:"off" (or any stub without a codec) gets neither
+		// agent under argot.agents:"off" (or any stub without a codec) gets neither
 		// tool even when the setting is on. This fixture exposes a codec, so both appear
 		// as always-active built-ins (no loadMode), never discoverable.
 		const metadata = await getToolMetadata();
@@ -97,7 +97,7 @@ describe("BUILTIN_TOOLS public factory map", () => {
 
 	it("omits argot tools when enabled but the session exposes no codec", async () => {
 		// Dual-gate negative: settings say enabled, but getArgotSession is absent —
-		// the same shape as a subagent with argot.subagents:"off". Neither tool constructs.
+		// the same shape as an agent with argot.agents:"off". Neither tool constructs.
 		const { getArgotSession: _drop, ...noCodec } = toolSession;
 		void _drop;
 		const tools = await createTools(noCodec as ToolSession, Object.keys(BUILTIN_TOOLS));

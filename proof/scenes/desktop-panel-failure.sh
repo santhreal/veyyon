@@ -125,8 +125,8 @@ echo "scene: the panel reads ${PANEL_GEOM}, its strip ${TABS_H}px and its rows $
 #
 # Sets RUNS, BAND_PX, BAND_OFFSET and NEXT_PX.
 read_band() { # <png>
-	local dump="${SCENE_RUNTIME_DIR}/frame-compare/panel-pixels.txt"
-	mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+	local dump="${TMPDIR}/frame-compare/panel-pixels.txt"
+	mkdir -p "${TMPDIR}/frame-compare"
 	magick "$1" -crop "${PANEL_GEOM}" +repage txt:- >"${dump}"
 	read -r RUNS BAND_PX BAND_OFFSET NEXT_PX < <(
 		python3 - "${TABS_H}" "${dump}" <<'PY'
@@ -215,9 +215,9 @@ pause 1.0
 
 # The panel is drawn when two probes a moment apart agree over it: the answer
 # arrives from the host rather than on the key press.
-PANEL_A="${SCENE_RUNTIME_DIR}/frame-compare/panel-a.png"
-PANEL_B="${SCENE_RUNTIME_DIR}/frame-compare/panel-b.png"
-mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+PANEL_A="${TMPDIR}/frame-compare/panel-a.png"
+PANEL_B="${TMPDIR}/frame-compare/panel-b.png"
+mkdir -p "${TMPDIR}/frame-compare"
 SETTLED=0
 for _ in $(seq 1 30); do
 	probe_frame "${PANEL_A}"

@@ -14,13 +14,12 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { StatusLineSettings } from "@veyyon/coding-agent/modes/terminal/components/status-line/index";
-import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { GitRefHead } from "@veyyon/coding-agent/utils/git";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { getProjectDir, setProjectDir } from "@veyyon/utils";
 import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
-import { makeStatusLineSession } from "./helpers/status-line-session";
+import { makeStatusLineProducer } from "./helpers/status-line-session";
 
 const originalProjectDir = getProjectDir();
 
@@ -48,10 +47,10 @@ const gitSegmentSettings: StatusLineSettings = {
 	transparent: false,
 };
 
-function makeSession(): AgentSession {
+function makeSession() {
 	// No model resolved yet: these cases are about the PR lookup's abort plumbing,
 	// which runs whatever the model segment can print.
-	return makeStatusLineSession({ contextUsage: undefined, sessionName: "pr-lookup-timeout test" });
+	return makeStatusLineProducer({ contextUsage: undefined, sessionName: "pr-lookup-timeout test" });
 }
 
 beforeAll(async () => {

@@ -10,9 +10,9 @@ Source of truth in code:
 - Capability providers (the editor configs Veyyon also reads): `packages/coding-agent/src/discovery/`
 - Schema: `packages/coding-agent/src/config/mcp-schema.json`
 
-## Where MCP config lives
+## MCP configuration location
 
-Veyyon-native MCP config lives in exactly one file, the active profile's agent directory:
+Veyyon-native MCP config is defined in one file, in the active profile's agent directory:
 
 - `~/.veyyon/profiles/default/agent/mcp.json`
 - `~/.veyyon/profiles/<name>/agent/mcp.json` when a named profile is active (see [Profiles](#profiles))

@@ -127,17 +127,9 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 		reason:
 			"beforeSpawn runs the session gate, then adoptPid joins the child; custom tools, commands and extensions pass both",
 	},
-	"packages/coding-agent/src/eval/py/kernel.ts": {
+	"packages/coding-agent/src/eval/kernel-base.ts": {
 		wired: true,
-		reason: "kernel subprocess adopted via KernelStartOptions.adoptPid",
-	},
-	"packages/coding-agent/src/eval/rb/kernel.ts": {
-		wired: true,
-		reason: "kernel subprocess adopted via KernelStartOptions.adoptPid",
-	},
-	"packages/coding-agent/src/eval/jl/kernel.ts": {
-		wired: true,
-		reason: "kernel subprocess adopted via KernelStartOptions.adoptPid",
+		reason: "kernel subprocess adopted via KernelStartOptions.adoptPid; the per-language kernels share this spawn",
 	},
 
 	// Wired to the ROOT session: process-wide singletons every session shares.
@@ -244,6 +236,11 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 	"packages/coding-agent/src/cli/shell-cli.ts": {
 		wired: false,
 		reason: "the operator's own interactive shell (veyyon shell), typed at by a human, not agent-spawned compute",
+	},
+	"packages/coding-agent/src/cli/profile-seed-smoke.ts": {
+		wired: false,
+		reason:
+			"`veyyon --smoke-test` runs `profile new --json` once in a throwaway profile to prove the worker entry boots; a CI probe, before any session exists",
 	},
 	"packages/coding-agent/src/config/model-registry.ts": {
 		wired: false,

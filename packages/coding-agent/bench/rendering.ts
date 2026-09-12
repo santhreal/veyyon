@@ -1,9 +1,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AssistantMessage } from "@veyyon/ai";
 import { Editor } from "@veyyon/tui";
 import { makeBench } from "@veyyon/utils/bench-harness";
+import type { AssistantMessageView } from "@veyyon/wire/presentation";
 import { Settings } from "../src/config/settings";
 import { WelcomeComponent } from "../src/modes/terminal/components/dialogs/welcome";
 import { AssistantMessageComponent } from "../src/modes/terminal/components/transcript/assistant-message";
@@ -78,22 +78,11 @@ function makeMarkdownCorpus(targetGraphemes: number): string {
 	return out.slice(0, targetGraphemes);
 }
 
-function makeTextMessage(text: string): AssistantMessage {
+function makeTextMessage(text: string): AssistantMessageView {
 	return {
-		role: "assistant",
-		content: [{ type: "text", text }],
-		api: "anthropic-messages",
-		provider: "anthropic",
+		segments: [{ kind: "text", text }],
 		model: "bench",
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
-		stopReason: "stop",
+		stopReason: "complete",
 		timestamp: 0,
 	};
 }
@@ -160,13 +149,15 @@ try {
 // Multi-block variant: a finalized thinking block (stable) precedes the growing
 // text block — the shape C2 targets. Current code re-lexes BOTH every tick;
 // after C2 the finalized thinking block stays L1-cached and only the tail re-lexes.
-function makeThinkingPlusText(thinking: string, text: string): AssistantMessage {
+function makeThinkingPlusText(thinking: string, text: string): AssistantMessageView {
 	return {
-		...makeTextMessage(text),
-		content: [
-			{ type: "thinking", thinking },
-			{ type: "text", text },
+		segments: [
+			{ kind: "thinking", text: thinking, redacted: false },
+			{ kind: "text", text },
 		],
+		model: "bench",
+		stopReason: "complete",
+		timestamp: 0,
 	};
 }
 console.log("\nstreamingRevealMultiBlock (C2: finalized thinking block + growing text):");

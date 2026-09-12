@@ -28,7 +28,10 @@ Run two phases in order. Phase 1 is cheap and always happens; Phase 2 is the rea
 # Phase 0 — orient
 
 1. **Read the premise.** Call `fetch_pr` for the title, body, and any linked issue
-   (`Fixes #N`). Understand what the PR *claims* to do before judging whether it does it.
+   (`Refs #N`, `Fixes #N`). Understand what the PR *claims* to do before judging whether it does
+   it. A bug fix may have no issue. Anything else — feature, refactor, dependency, migration —
+   needs one: with no issue behind it the scope was never agreed, so say that first and rank it
+   **P3**. Review the diff anyway, briefly; the code may be good and the scope still wrong.
 2. **Read the diff.** Prefer `git diff origin/{{pr.base_ref}}...HEAD` for the full changed-file set. If
    `origin/{{pr.base_ref}}` is not present locally, fall back to `fetch_pr`'s file list plus
    targeted `read`/`search` on the changed files. Note size, number of files, and whether the
@@ -57,8 +60,8 @@ and tighter scope rank up; sprawl and sloppiness rank down.
   default behaviour without fixing a break. Don't treat "small" as "safe".
   *(e.g. flips a default, adds a setting, or changes an existing contract.)*
 - **P3** — deprioritize. Badly scoped (grab-bag of unrelated edits), carries irrelevant
-  changes, a large implementation with no confirmed maintainer intent, broken/off-spec,
-  or already resolved/superseded.
+  changes, a large implementation with no confirmed maintainer intent, anything but a bug fix with
+  no issue behind it, broken/off-spec, or already resolved/superseded.
   *(e.g. a 200-file PR standing up a mechanism the repo already has.)*
 
 ## Categories
@@ -120,10 +123,14 @@ submit_pr_review(body="<summary>", event="COMMENT")
 
 Adherence is a first-class ranking signal. Flag violations as findings:
 
+- An issue behind anything that is not a bug fix, and `Refs #N` in the body. Never a closing
+  keyword (`Fixes` / `Closes` / `Resolves`): that closes the reporter's issue on merge.
 - `CHANGELOG.md` entry under `## [Unreleased]` in each touched package.
 - No prompts built in code — prompts live in `.md` files, dynamic content via Handlebars.
 - No dynamic / inline `import()`; top-level imports only.
-- Bun APIs over `node:*` where Bun covers it; never shell out for things with an API.
+- Portable spelling first: the language, then `node:*`, then POSIX tooling, then Bun. A Bun API
+  only where no portable equivalent exists, named in a comment. Existing Bun code stays as it is.
+  Never shell out for something with an API.
 - TUI text sanitized (tabs→spaces, truncate, shorten paths) on EVERY render path, errors included.
 - `#private` fields; no TS access keywords on members; no `any`; no `ReturnType<>`; star barrel exports.
 - Tests assert observable contracts, never `mock.module()`, full-suite-safe.

@@ -31,7 +31,7 @@ export type ServiceTierAnthropicSettingValue = (typeof SERVICE_TIER_ANTHROPIC_VA
 export type ServiceTierGoogleSettingValue = (typeof SERVICE_TIER_GOOGLE_VALUES)[number];
 
 /**
- * Inherit-capable single value for the subagent/advisor tiers. The chosen tier
+ * Inherit-capable single value for the spawned agent and advisor tiers. The chosen tier
  * is broadcast across families and applied to whichever family the spawned
  * model belongs to (clamped to what that family realizes); `"inherit"` defers
  * to the main agent's live per-family selection.
@@ -103,7 +103,7 @@ export function buildServiceTierByFamily(openai: string, anthropic: string, goog
 /**
  * Broadcast a single chosen tier across families, clamped to what each family
  * realizes: OpenAI takes any tier, Anthropic only `priority`, Google only
- * `flex`/`priority`. Used by the subagent/advisor single-value settings and the
+ * `flex`/`priority`. Used by the agent/advisor single-value settings and the
  * `veyyon bench --service-tier` flag, which apply one tier to whatever family the
  * target model belongs to.
  */
@@ -116,7 +116,7 @@ export function serviceTierForAllFamilies(tier: ServiceTier | undefined): Servic
 }
 
 /**
- * Resolve a subagent/advisor service-tier setting to a per-family map.
+ * Resolve an agent/advisor service-tier setting to a per-family map.
  *
  * - A concrete tier is broadcast across families (see
  *   {@link serviceTierForAllFamilies}).
@@ -124,7 +124,7 @@ export function serviceTierForAllFamilies(tier: ServiceTier | undefined): Servic
  * - `"inherit"` defers to `inherited` — the parent's live per-family tiers when
  *   a live session supplied them, else the empty map.
  */
-export function resolveSubagentServiceTier(setting: string, inherited: ServiceTierByFamily): ServiceTierByFamily {
+export function resolveAgentServiceTier(setting: string, inherited: ServiceTierByFamily): ServiceTierByFamily {
 	if (setting === "inherit") return inherited;
 	return serviceTierForAllFamilies(serviceTierSettingToTier(setting));
 }

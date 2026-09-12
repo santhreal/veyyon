@@ -12,35 +12,21 @@
  *     bun scripts/demos/render-cache-settings.ts --block on --width 92 --height 18
  */
 import { Settings } from "../../packages/coding-agent/src/config/settings";
-import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/settings-selector";
-import { flag, initRender, renderWidth } from "./render-args";
+import { renderDemo } from "./render-args";
+import { createTestSettingsSelector } from "./render-settings-helper";
 
-const themeName = flag("theme", "titanium");
-const width = renderWidth();
-const height = Number(flag("height", "18"));
-const block = flag("block", "off") === "on";
-
-Object.defineProperty(process.stdout, "rows", { configurable: true, value: height });
-await initRender(themeName, { settings: true });
-// Seeded through the real settings store rather than by pressing the toggle, so
-// the capture cannot pass while the keybinding is broken and cannot depend on
-// where the cursor happens to land.
-Settings.instance.set("cache.reportRejection", true);
-Settings.instance.set("cache.blockOnRejection", block);
-
-const selector = new SettingsSelectorComponent(
-	{
-		availableThinkingLevels: [],
-		thinkingLevel: undefined,
-		availableThemes: [themeName, "light"],
-		availablePersonalities: ["default"],
-		providers: ["anthropic"],
-		cwd: process.cwd(),
+await renderDemo(
+	({ width, flag, theme }) => {
+		// Seeded through the real settings store rather than by pressing the toggle, so
+		// the capture cannot pass while the keybinding is broken and cannot depend on
+		// where the cursor happens to land.
+		Settings.instance.set("cache.reportRejection", true);
+		Settings.instance.set("cache.blockOnRejection", flag("block", "off") === "on");
+		const selector = createTestSettingsSelector(theme);
+		// Type-to-search narrows to the two rows, which keeps the frame stable as
+		// unrelated settings are added above them.
+		for (const character of "cache rejection") selector.handleInput(character);
+		return selector.render(width);
 	},
-	{ onChange: () => {}, onCancel: () => {} },
+	{ settings: true, defaultHeight: 18 },
 );
-
-// Type-to-search narrows to the two rows, which keeps the frame stable as
-// unrelated settings are added above them.
-for (const character of "cache rejection") selector.handleInput(character);
-process.stdout.write(`${selector.render(width).join("\n")}\n`);

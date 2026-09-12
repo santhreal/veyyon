@@ -947,32 +947,37 @@ function emitTelemetryWarning(telemetry: AgentTelemetry | undefined, warning: Ag
 	}
 }
 
-function safeOnSpanStart(telemetry: AgentTelemetry | undefined, ctx: TelemetryHookContext): void {
-	const hook = telemetry?.config.onSpanStart;
+/** Run one caller-supplied span hook; a throw is reported as a telemetry warning and swallowed. */
+function safeSpanHook(
+	telemetry: AgentTelemetry | undefined,
+	hook: ((ctx: TelemetryHookContext) => void) | undefined,
+	failure: Pick<AgentTelemetryWarning, "code" | "message">,
+	ctx: TelemetryHookContext,
+): void {
 	if (!hook) return;
 	try {
 		hook(ctx);
 	} catch (err) {
-		emitTelemetryWarning(telemetry, {
-			code: "on_span_start_failed",
-			message: "onSpanStart threw; swallowing telemetry hook failure",
-			error: err,
-		});
+		emitTelemetryWarning(telemetry, { ...failure, error: err });
 	}
 }
 
+const ON_SPAN_START_FAILED = {
+	code: "on_span_start_failed",
+	message: "onSpanStart threw; swallowing telemetry hook failure",
+} as const;
+
+const ON_SPAN_END_FAILED = {
+	code: "on_span_end_failed",
+	message: "onSpanEnd threw; swallowing telemetry hook failure",
+} as const;
+
+function safeOnSpanStart(telemetry: AgentTelemetry | undefined, ctx: TelemetryHookContext): void {
+	safeSpanHook(telemetry, telemetry?.config.onSpanStart, ON_SPAN_START_FAILED, ctx);
+}
+
 function safeOnSpanEnd(telemetry: AgentTelemetry | undefined, ctx: TelemetryHookContext): void {
-	const hook = telemetry?.config.onSpanEnd;
-	if (!hook) return;
-	try {
-		hook(ctx);
-	} catch (err) {
-		emitTelemetryWarning(telemetry, {
-			code: "on_span_end_failed",
-			message: "onSpanEnd threw; swallowing telemetry hook failure",
-			error: err,
-		});
-	}
+	safeSpanHook(telemetry, telemetry?.config.onSpanEnd, ON_SPAN_END_FAILED, ctx);
 }
 
 /**
@@ -1429,22 +1434,18 @@ function stringifyJsonAttribute(value: unknown): string | undefined {
 	return serialized === undefined ? undefined : serialized;
 }
 
-function serializeToolCallArgumentsForTelemetry(telemetry: AgentTelemetry, args: unknown): string | undefined {
-	const serializer = telemetry.config.contentSerializer?.toolCallArguments;
+/** A tool call's arguments or result: the caller's serializer, else full JSON, else the capped summary. */
+function serializeToolCallValueForTelemetry(
+	telemetry: AgentTelemetry,
+	name: "toolCallArguments" | "toolCallResult",
+	value: unknown,
+): string | undefined {
+	const serializer = telemetry.config.contentSerializer?.[name];
 	return serializer
-		? callContentSerializer(telemetry, "toolCallArguments", () => serializer(args))
+		? callContentSerializer(telemetry, name, () => serializer(value))
 		: telemetry.contentCapture === "full"
-			? safeJson(args)
-			: stringifyJsonAttribute(summarizeTelemetryValue(args));
-}
-
-function serializeToolCallResultForTelemetry(telemetry: AgentTelemetry, result: unknown): string | undefined {
-	const serializer = telemetry.config.contentSerializer?.toolCallResult;
-	return serializer
-		? callContentSerializer(telemetry, "toolCallResult", () => serializer(result))
-		: telemetry.contentCapture === "full"
-			? safeJson(result)
-			: stringifyJsonAttribute(summarizeTelemetryValue(result));
+			? safeJson(value)
+			: stringifyJsonAttribute(summarizeTelemetryValue(value));
 }
 
 /**
@@ -1476,12 +1477,6 @@ export async function finishChatSpan(
 			usage: message.usage,
 			applied: cost,
 			headers: options.responseHeaders,
-		}).catch(err => {
-			emitTelemetryWarning(telemetry, {
-				code: "on_chat_usage_failed",
-				message: "onChatUsage rejected; swallowing telemetry callback failure",
-				error: err,
-			});
 		});
 	}
 	if (telemetry && telemetry.contentCapture !== "none") {
@@ -1777,6 +1772,7 @@ function emitCostDelta(telemetry: AgentTelemetry, delta: CostDelta): void {
 	}
 }
 
+/** Deliver one `onChatUsage` event; a throw or rejection anywhere in it is reported as a warning and swallowed. */
 async function emitChatUsage(
 	telemetry: AgentTelemetry,
 	span: Span,
@@ -1792,24 +1788,23 @@ async function emitChatUsage(
 ): Promise<void> {
 	const hook = telemetry.config.onChatUsage;
 	if (!hook || !input.usage) return;
-	const event: ChatUsageEvent = {
-		span,
-		agent: normalizedTelemetryAgent(telemetry),
-		conversationId: telemetry.conversationId,
-		stepNumber: input.stepNumber,
-		model: input.model,
-		provider: normalizeProviderName(telemetry, input.provider),
-		serviceTier: input.serviceTier,
-		usage: buildUsageSnapshot(input.usage),
-		cost: costEstimateFromApplied(input.applied),
-		attributes: resolveDynamicAttributes(
-			telemetry,
-			buildTelemetryAttributeContext(telemetry, "chat", { stepNumber: input.stepNumber }),
-		),
-		headers: input.headers,
-	};
 	try {
-		await hook(event);
+		await hook({
+			span,
+			agent: normalizedTelemetryAgent(telemetry),
+			conversationId: telemetry.conversationId,
+			stepNumber: input.stepNumber,
+			model: input.model,
+			provider: normalizeProviderName(telemetry, input.provider),
+			serviceTier: input.serviceTier,
+			usage: buildUsageSnapshot(input.usage),
+			cost: costEstimateFromApplied(input.applied),
+			attributes: resolveDynamicAttributes(
+				telemetry,
+				buildTelemetryAttributeContext(telemetry, "chat", { stepNumber: input.stepNumber }),
+			),
+			headers: input.headers,
+		});
 	} catch (err) {
 		emitTelemetryWarning(telemetry, {
 			code: "on_chat_usage_failed",
@@ -1922,12 +1917,6 @@ export async function recordManualChatTelemetry(
 			usage: options.usage,
 			applied,
 			headers: options.responseHeaders,
-		}).catch(err => {
-			emitTelemetryWarning(telemetry, {
-				code: "on_chat_usage_failed",
-				message: "onChatUsage rejected; swallowing telemetry callback failure",
-				error: err,
-			});
 		});
 	}
 	if (options.responseText) {
@@ -1989,7 +1978,7 @@ export function startExecuteToolSpan(
 	if (span) {
 		telemetry?.collector.beginTool(span, { toolCallId: options.toolCallId, toolName: options.toolName });
 		if (telemetry && telemetry.contentCapture !== "none") {
-			const args = serializeToolCallArgumentsForTelemetry(telemetry, options.args);
+			const args = serializeToolCallValueForTelemetry(telemetry, "toolCallArguments", options.args);
 			if (args) span.setAttribute(GenAIAttr.ToolCallArguments, args);
 		}
 	}
@@ -2018,7 +2007,7 @@ export function finishExecuteToolSpan(
 ): void {
 	if (!span) return;
 	if (telemetry && telemetry.contentCapture !== "none" && options.result !== undefined) {
-		const result = serializeToolCallResultForTelemetry(telemetry, options.result);
+		const result = serializeToolCallValueForTelemetry(telemetry, "toolCallResult", options.result);
 		if (result) span.setAttribute(GenAIAttr.ToolCallResult, result);
 	}
 	safeOnSpanEnd(telemetry, {

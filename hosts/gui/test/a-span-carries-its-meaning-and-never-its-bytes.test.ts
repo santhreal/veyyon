@@ -121,6 +121,10 @@ describe("a span carries its meaning and never its bytes", () => {
 		expect(withIcons).toContain('data-symbol="priority.high"');
 		expect(without).toContain("!");
 	});
+	it.each(["constructor", "__proto__", "toString"])("uses fallback text for inherited symbol %s", symbol => {
+		const drawn = drawSpan({ text: "fallback label", symbol }, { symbols: {} });
+		expect(drawn).toContain(">fallback label</span>");
+	});
 
 	it("names the file and the line a run points at, and the line only with the file", () => {
 		const withLine = drawSpan({ text: "app.ts", file: "/repo/src/app.ts", fileLine: 42 });

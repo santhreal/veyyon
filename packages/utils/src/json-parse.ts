@@ -255,21 +255,7 @@ class RelaxedJson {
 		this.#i++; // consume {
 		const out: Record<string, unknown> = {};
 		for (;;) {
-			this.#ws();
-			if (this.#i >= this.#n) {
-				if (this.#partial) return out;
-				throw new SyntaxError("Unterminated object");
-			}
-			const c = this.#s[this.#i];
-			if (c === "}") {
-				this.#i++;
-				return out;
-			}
-			if (c === ",") {
-				// Tolerate leading / doubled / trailing commas.
-				this.#i++;
-				continue;
-			}
+			if (!this.#containerHasElement("}", "Unterminated object")) return out;
 			const key = this.#key();
 			this.#ws();
 			if (this.#i < this.#n && this.#s[this.#i] === ":") {
@@ -291,18 +277,7 @@ class RelaxedJson {
 			// or be dropped. This relaxed parser runs on malformed/truncated input
 			// (e.g. a truncated streaming tool-call buffer) where such a key can appear.
 			setSafeProperty(out, key, value);
-			this.#ws();
-			const d = this.#i < this.#n ? this.#s[this.#i] : "";
-			if (d === ",") {
-				this.#i++;
-				continue;
-			}
-			if (d === "}") {
-				this.#i++;
-				return out;
-			}
-			if (this.#partial) return out;
-			throw new SyntaxError("Expected ',' or '}' in object");
+			if (!this.#containerContinues("}", "Expected ',' or '}' in object")) return out;
 		}
 	}
 
@@ -310,36 +285,58 @@ class RelaxedJson {
 		this.#i++; // consume [
 		const out: unknown[] = [];
 		for (;;) {
+			if (!this.#containerHasElement("]", "Unterminated array")) return out;
+			const value = this.#value(true);
+			if (value === INCOMPLETE) return out;
+			out.push(value);
+			if (!this.#containerContinues("]", "Expected ',' or ']' in array")) return out;
+		}
+	}
+
+	/**
+	 * Positions the cursor on the next element of an object or array, skipping
+	 * whitespace and leading, doubled or trailing commas. Returns false once
+	 * `closer` (consumed) or, in partial mode, end of input ends the container;
+	 * in strict mode end of input throws `unterminated`.
+	 */
+	#containerHasElement(closer: string, unterminated: string): boolean {
+		for (;;) {
 			this.#ws();
 			if (this.#i >= this.#n) {
-				if (this.#partial) return out;
-				throw new SyntaxError("Unterminated array");
+				if (this.#partial) return false;
+				throw new SyntaxError(unterminated);
 			}
 			const c = this.#s[this.#i];
-			if (c === "]") {
+			if (c === closer) {
 				this.#i++;
-				return out;
+				return false;
 			}
 			if (c === ",") {
 				this.#i++;
 				continue;
 			}
-			const value = this.#value(true);
-			if (value === INCOMPLETE) return out;
-			out.push(value);
-			this.#ws();
-			const d = this.#i < this.#n ? this.#s[this.#i] : "";
-			if (d === ",") {
-				this.#i++;
-				continue;
-			}
-			if (d === "]") {
-				this.#i++;
-				return out;
-			}
-			if (this.#partial) return out;
-			throw new SyntaxError("Expected ',' or ']' in array");
+			return true;
 		}
+	}
+
+	/**
+	 * Consumes what follows an element. Returns true after a comma, false once
+	 * `closer` (consumed) or, in partial mode, anything else ends the container;
+	 * in strict mode anything else throws `expected`.
+	 */
+	#containerContinues(closer: string, expected: string): boolean {
+		this.#ws();
+		const d = this.#i < this.#n ? this.#s[this.#i] : "";
+		if (d === ",") {
+			this.#i++;
+			return true;
+		}
+		if (d === closer) {
+			this.#i++;
+			return false;
+		}
+		if (this.#partial) return false;
+		throw new SyntaxError(expected);
 	}
 
 	#key(): string {

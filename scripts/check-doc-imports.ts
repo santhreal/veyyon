@@ -23,8 +23,13 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { existingOnly, readIfPresent } from "./check-doc-links";
-import { typeScriptMembersOf, typeScriptRootDirectoriesOf } from "./workspace-layout";
+import {
+	existingOnly,
+	packageDirectories,
+	readIfPresent,
+	typeScriptMembersOf,
+	typeScriptRootDirectoriesOf,
+} from "./workspace-layout";
 
 export interface BadImport {
 	file: string;
@@ -144,26 +149,6 @@ export function lineAt(text: string, offset: number): number {
 }
 
 /**
- * Package directory for each declared TypeScript workspace member whose `package.json` declares
- * `name`.
- *
- * The members are read from the checkout's own `package.json` rather than named here. This gate read
- * `packages/` literally, then member globs, so a member declared as a literal path was invisible to it.
- * The member list is resolved, so a member at any depth is in it.
- */
-function packageDirs(repoRoot: string, members: readonly string[]): Map<string, string> {
-	const map = new Map<string, string>();
-	for (const member of members) {
-		const memberDir = path.join(repoRoot, member);
-		const manifest = path.join(memberDir, "package.json");
-		if (!fs.existsSync(manifest)) continue;
-		const name: unknown = JSON.parse(fs.readFileSync(manifest, "utf8")).name;
-		if (typeof name === "string") map.set(name, memberDir);
-	}
-	return map;
-}
-
-/**
  * Every `export`ed type/interface/class name in a package's sources, following
  * `export * from "@veyyon/<other>"` into the packages it re-exports.
  *
@@ -277,7 +262,7 @@ export async function checkDocImports(repoRoot: string, files?: readonly string[
 	const memberTrees = [
 		...new Set([...typeScriptRootDirectoriesOf(repoRoot), ...members.map(member => member.split("/")[0] ?? "")]),
 	].sort();
-	const dirs = packageDirs(repoRoot, members);
+	const dirs = packageDirectories(repoRoot);
 	const typeCache = new Map<string, Set<string>>();
 	const runtimeCache = new Map<string, { names: Set<string> } | { loadError: string }>();
 	const result: ImportCheckResult = {

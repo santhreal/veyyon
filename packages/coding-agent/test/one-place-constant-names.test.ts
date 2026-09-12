@@ -11,7 +11,7 @@
  *                        ROTATES). Neither number is wrong; the shared name
  *                        made them look like a disagreement about one policy.
  *   `MAX_OUTPUT_BYTES`   128 KB in dap/session (an in-memory ring) vs 500 KB in
- *                        task/types (what a subagent may return, user-tunable
+ *                        task/types (what an agent may return, user-tunable
  *                        via an env var the name has to match).
  *   `STARTUP_TIMEOUT_MS` 250 ms in mcp/manager vs 10 s in the eval kernels. The
  *                        worst of the set: the MCP one is not a timeout at all

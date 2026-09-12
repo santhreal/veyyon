@@ -12,6 +12,7 @@ import type { SessionTitleUpdate } from "./session-title-slot";
  * correct DDL / upsert / concat / byte-slice syntax for the underlying engine.
  */
 export type SqlSessionStorageAdapter = "postgres" | "mysql" | "sqlite";
+export const SQL_SESSION_STORAGE_ADAPTERS = ["postgres", "mysql", "sqlite"] as const;
 
 /**
  * Minimal subset of the `Bun.SQL` instance surface used by
@@ -111,84 +112,47 @@ function detectAdapter(client: SqlSessionStorageClient): SqlSessionStorageAdapte
 }
 
 function buildQueries(adapter: SqlSessionStorageAdapter, table: string): DialectQueries {
-	const placeholder = adapter === "postgres" ? (n: number): string => `$${n}` : (_n: number): string => "?";
-
-	if (adapter === "mysql") {
-		return {
-			createTable:
-				`CREATE TABLE IF NOT EXISTS ${table} (` +
-				`path VARCHAR(512) NOT NULL PRIMARY KEY, ` +
-				`content LONGTEXT NOT NULL, ` +
-				`mtime_ms BIGINT NOT NULL, ` +
-				`title TEXT NULL, ` +
-				`title_source VARCHAR(16) NULL, ` +
-				`title_updated_at VARCHAR(64) NULL` +
-				`) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin`,
-			addTitleColumns: [
-				`ALTER TABLE ${table} ADD COLUMN title TEXT NULL`,
-				`ALTER TABLE ${table} ADD COLUMN title_source VARCHAR(16) NULL`,
-				`ALTER TABLE ${table} ADD COLUMN title_updated_at VARCHAR(64) NULL`,
-			],
-			upsertReplace:
-				`INSERT INTO ${table} (path, content, mtime_ms, title, title_source, title_updated_at) VALUES (?, ?, ?, ?, ?, ?) ` +
-				`ON DUPLICATE KEY UPDATE content = VALUES(content), mtime_ms = VALUES(mtime_ms), title = VALUES(title), title_source = VALUES(title_source), title_updated_at = VALUES(title_updated_at)`,
-			upsertAppend:
-				`INSERT INTO ${table} (path, content, mtime_ms) VALUES (?, ?, ?) ` +
-				`ON DUPLICATE KEY UPDATE content = CONCAT(content, VALUES(content)), mtime_ms = VALUES(mtime_ms)`,
-			updateTitle: `UPDATE ${table} SET title = ?, title_source = ?, title_updated_at = ?, mtime_ms = ? WHERE path = ?`,
-			delete: `DELETE FROM ${table} WHERE path = ?`,
-			rename: `UPDATE ${table} SET path = ?, mtime_ms = ? WHERE path = ?`,
-			loadIndex: `SELECT path, mtime_ms, length(content) AS byte_len, title, title_source, title_updated_at FROM ${table}`,
-			readFull: `SELECT content AS content FROM ${table} WHERE path = ?`,
-			readSlices:
-				`SELECT substring(cast(content AS binary), 1, ?) AS head, ` +
+	const isPg = adapter === "postgres";
+	const isMySql = adapter === "mysql";
+	const p = isPg ? (n: number): string => `$${n}` : (_n: number): string => "?";
+	const mtimeType = isPg || isMySql ? "BIGINT" : "INTEGER";
+	const byteLen = isPg ? "octet_length(content)" : isMySql ? "length(content)" : "length(cast(content AS blob))";
+	const upsertReplaceSuffix = isMySql
+		? "ON DUPLICATE KEY UPDATE content = VALUES(content), mtime_ms = VALUES(mtime_ms), title = VALUES(title), title_source = VALUES(title_source), title_updated_at = VALUES(title_updated_at)"
+		: "ON CONFLICT (path) DO UPDATE SET content = excluded.content, mtime_ms = excluded.mtime_ms, title = excluded.title, title_source = excluded.title_source, title_updated_at = excluded.title_updated_at";
+	const upsertAppendSuffix = isMySql
+		? "ON DUPLICATE KEY UPDATE content = CONCAT(content, VALUES(content)), mtime_ms = VALUES(mtime_ms)"
+		: `ON CONFLICT (path) DO UPDATE SET content = ${table}.content || excluded.content, mtime_ms = excluded.mtime_ms`;
+	const readSlices = isPg
+		? `SELECT substring(convert_to(content, 'UTF8') from 1 for ${p(1)}) AS head, ` +
+			`CASE WHEN ${p(2)} <= 0 THEN ''::bytea ` +
+			`ELSE substring(convert_to(content, 'UTF8') from greatest(1, octet_length(content) - ${p(2)} + 1)) END AS tail ` +
+			`FROM ${table} WHERE path = ${p(3)}`
+		: isMySql
+			? `SELECT substring(cast(content AS binary), 1, ?) AS head, ` +
 				`CASE WHEN ? <= 0 THEN cast('' AS binary) ` +
 				`ELSE substring(cast(content AS binary), greatest(1, length(content) - ? + 1)) END AS tail ` +
-				`FROM ${table} WHERE path = ?`,
-		};
-	}
-
-	const mtimeType = adapter === "postgres" ? "BIGINT" : "INTEGER";
-	const tableQualifier = `${table}.content`;
-	const byteLengthExpr = adapter === "postgres" ? "octet_length(content)" : "length(cast(content AS blob))";
-	const readSlices =
-		adapter === "postgres"
-			? `SELECT substring(convert_to(content, 'UTF8') from 1 for ${placeholder(1)}) AS head, ` +
-				`CASE WHEN ${placeholder(2)} <= 0 THEN ''::bytea ` +
-				`ELSE substring(convert_to(content, 'UTF8') from greatest(1, octet_length(content) - ${placeholder(2)} + 1)) END AS tail ` +
-				`FROM ${table} WHERE path = ${placeholder(3)}`
+				`FROM ${table} WHERE path = ?`
 			: `SELECT substr(cast(content AS blob), 1, ?) AS head, ` +
 				`CASE WHEN ? <= 0 THEN x'' ELSE substr(cast(content AS blob), -?) END AS tail ` +
 				`FROM ${table} WHERE path = ?`;
 
 	return {
-		createTable:
-			`CREATE TABLE IF NOT EXISTS ${table} (` +
-			`path TEXT PRIMARY KEY, ` +
-			`content TEXT NOT NULL, ` +
-			`mtime_ms ${mtimeType} NOT NULL, ` +
-			`title TEXT, ` +
-			`title_source TEXT, ` +
-			`title_updated_at TEXT` +
-			`)`,
+		createTable: isMySql
+			? `CREATE TABLE IF NOT EXISTS ${table} (path VARCHAR(512) NOT NULL PRIMARY KEY, content LONGTEXT NOT NULL, mtime_ms BIGINT NOT NULL, title TEXT NULL, title_source VARCHAR(16) NULL, title_updated_at VARCHAR(64) NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin`
+			: `CREATE TABLE IF NOT EXISTS ${table} (path TEXT PRIMARY KEY, content TEXT NOT NULL, mtime_ms ${mtimeType} NOT NULL, title TEXT, title_source TEXT, title_updated_at TEXT)`,
 		addTitleColumns: [
-			`ALTER TABLE ${table} ADD COLUMN title TEXT`,
-			`ALTER TABLE ${table} ADD COLUMN title_source TEXT`,
-			`ALTER TABLE ${table} ADD COLUMN title_updated_at TEXT`,
+			`ALTER TABLE ${table} ADD COLUMN title TEXT${isMySql ? " NULL" : ""}`,
+			`ALTER TABLE ${table} ADD COLUMN title_source VARCHAR(16)${isMySql ? " NULL" : ""}`,
+			`ALTER TABLE ${table} ADD COLUMN title_updated_at VARCHAR(64)${isMySql ? " NULL" : ""}`,
 		],
-		upsertReplace:
-			`INSERT INTO ${table} (path, content, mtime_ms, title, title_source, title_updated_at) ` +
-			`VALUES (${placeholder(1)}, ${placeholder(2)}, ${placeholder(3)}, ${placeholder(4)}, ${placeholder(5)}, ${placeholder(6)}) ` +
-			`ON CONFLICT (path) DO UPDATE SET content = excluded.content, mtime_ms = excluded.mtime_ms, title = excluded.title, title_source = excluded.title_source, title_updated_at = excluded.title_updated_at`,
-		upsertAppend:
-			`INSERT INTO ${table} (path, content, mtime_ms) ` +
-			`VALUES (${placeholder(1)}, ${placeholder(2)}, ${placeholder(3)}) ` +
-			`ON CONFLICT (path) DO UPDATE SET content = ${tableQualifier} || excluded.content, mtime_ms = excluded.mtime_ms`,
-		updateTitle: `UPDATE ${table} SET title = ${placeholder(1)}, title_source = ${placeholder(2)}, title_updated_at = ${placeholder(3)}, mtime_ms = ${placeholder(4)} WHERE path = ${placeholder(5)}`,
-		delete: `DELETE FROM ${table} WHERE path = ${placeholder(1)}`,
-		rename: `UPDATE ${table} SET path = ${placeholder(1)}, mtime_ms = ${placeholder(2)} WHERE path = ${placeholder(3)}`,
-		loadIndex: `SELECT path, mtime_ms, ${byteLengthExpr} AS byte_len, title, title_source, title_updated_at FROM ${table}`,
-		readFull: `SELECT content AS content FROM ${table} WHERE path = ${placeholder(1)}`,
+		upsertReplace: `INSERT INTO ${table} (path, content, mtime_ms, title, title_source, title_updated_at) VALUES (${p(1)}, ${p(2)}, ${p(3)}, ${p(4)}, ${p(5)}, ${p(6)}) ${upsertReplaceSuffix}`,
+		upsertAppend: `INSERT INTO ${table} (path, content, mtime_ms) VALUES (${p(1)}, ${p(2)}, ${p(3)}) ${upsertAppendSuffix}`,
+		updateTitle: `UPDATE ${table} SET title = ${p(1)}, title_source = ${p(2)}, title_updated_at = ${p(3)}, mtime_ms = ${p(4)} WHERE path = ${p(5)}`,
+		delete: `DELETE FROM ${table} WHERE path = ${p(1)}`,
+		rename: `UPDATE ${table} SET path = ${p(1)}, mtime_ms = ${p(2)} WHERE path = ${p(3)}`,
+		loadIndex: `SELECT path, mtime_ms, ${byteLen} AS byte_len, title, title_source, title_updated_at FROM ${table}`,
+		readFull: `SELECT content AS content FROM ${table} WHERE path = ${p(1)}`,
 		readSlices,
 	};
 }

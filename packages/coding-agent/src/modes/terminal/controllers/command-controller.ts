@@ -41,10 +41,12 @@ import {
 	seedAlreadyExists,
 	summarizeMentalModel,
 } from "../../../memory/hindsight";
+import { compactionActionLabel, resolveCompactionKind } from "../../../presentation/summary-builder";
 import { formatProviderName } from "../../../session/account-format";
 import type { AgentSession } from "../../../session/agent-session";
 import type { AsyncJobSnapshotItem } from "../../../session/agent-session-types";
 import { computeContextBreakdown } from "../../../session/context-usage";
+import type { OutputSummary } from "../../../session/streaming-output";
 import { limitMatchesActiveAccount } from "../../../slash-commands/helpers/active-oauth-account";
 import { interactiveSecretPort, runSecretCommandForSurface } from "../../../slash-commands/helpers/secret";
 import { getMarkdownTheme } from "../../../theme/markdown-theme";
@@ -59,7 +61,6 @@ import { COMPOSER_INSET_COLS } from "../components/composer/composer-chrome";
 import { ComposerLoader } from "../components/composer/composer-loader";
 import { MoveOverlay, type MoveOverlayResult } from "../components/selectors/move-overlay";
 import { BashExecutionComponent } from "../components/transcript/bash-execution";
-import { compactionActionLabel, resolveCompactionKind } from "../components/transcript/compaction-summary-message";
 import { EvalExecutionComponent } from "../components/transcript/eval-execution";
 import { mountTranscriptBlock, transcriptBlockText } from "../components/transcript/transcript-block-chrome";
 import { TranscriptBlock } from "../components/transcript/transcript-container";
@@ -67,7 +68,7 @@ import type { InteractiveModeContext } from "../types";
 import { renderContextUsage } from "../utils/context-usage";
 import { buildHotkeysMarkdown } from "../utils/hotkeys-markdown";
 import { buildToolsMarkdown } from "../utils/tools-markdown";
-
+import { showMarkdownPanel } from "./command-controller-shared";
 /**
  * The slice of the interactive context this controller uses: 33 members of the
  * 215 `InteractiveModeContext` requires. See `CollabHostContext` for why the
@@ -113,15 +114,6 @@ export type CommandControllerContext = Pick<
 	| "ui"
 	| "updateEditorBorderColor"
 >;
-
-function showMarkdownPanel(ctx: CommandControllerContext, title: string, markdown: string): void {
-	const block = new TranscriptBlock();
-	mountTranscriptBlock(block, {
-		header: theme.bold(theme.fg("accent", title)),
-		body: new Markdown(markdown.trim(), COMPOSER_INSET_COLS, 0, getMarkdownTheme()),
-	});
-	ctx.present(block);
-}
 
 export class CommandController {
 	constructor(private readonly ctx: CommandControllerContext) {}
@@ -1116,85 +1108,67 @@ export class CommandController {
 	}
 
 	async handleBashCommand(command: string, excludeFromContext = false): Promise<void> {
-		const isDeferred = this.ctx.session.isStreaming;
 		this.ctx.bashComponent = new BashExecutionComponent(command, this.ctx.ui, excludeFromContext);
-
-		if (isDeferred) {
-			this.ctx.pendingMessagesContainer.addChild(this.ctx.bashComponent);
-			this.ctx.pendingBashComponents.push(this.ctx.bashComponent);
-		} else {
-			this.ctx.present(this.ctx.bashComponent);
-		}
-		this.ctx.ui.requestRender();
-
-		try {
-			const result = await this.ctx.session.executeBash(
-				command,
-				chunk => {
-					if (this.ctx.bashComponent) {
-						this.ctx.bashComponent.appendOutput(chunk);
-					}
-				},
-				{ excludeFromContext, useUserShell: true },
-			);
-
-			if (this.ctx.bashComponent) {
-				const meta = outputMeta().truncationFromSummary(result, { direction: "tail" }).get();
-				this.ctx.bashComponent.setComplete(result.exitCode, result.cancelled, {
-					output: result.output,
-					truncation: meta?.truncation,
-				});
-			}
-		} catch (error) {
-			if (this.ctx.bashComponent) {
-				this.ctx.bashComponent.setComplete(undefined, false);
-			}
-			this.ctx.showError(`Bash command failed: ${error instanceof Error ? error.message : "Unknown error"}`);
-		}
-
+		await this.#runShortcutExecution(
+			this.ctx.bashComponent,
+			"bashComponent",
+			this.ctx.pendingBashComponents,
+			onChunk => this.ctx.session.executeBash(command, onChunk, { excludeFromContext, useUserShell: true }),
+			"Bash command failed",
+		);
 		this.ctx.bashComponent = undefined;
 		this.ctx.ui.requestRender();
 	}
 
 	async handlePythonCommand(code: string, excludeFromContext = false): Promise<void> {
-		const isDeferred = this.ctx.session.isStreaming;
 		this.ctx.pythonComponent = new EvalExecutionComponent(code, this.ctx.ui, excludeFromContext);
+		await this.#runShortcutExecution(
+			this.ctx.pythonComponent,
+			"pythonComponent",
+			this.ctx.pendingPythonComponents,
+			onChunk => this.ctx.session.executePython(code, onChunk, { excludeFromContext }),
+			"Python execution failed",
+		);
+		this.ctx.pythonComponent = undefined;
+		this.ctx.ui.requestRender();
+	}
 
-		if (isDeferred) {
-			this.ctx.pendingMessagesContainer.addChild(this.ctx.pythonComponent);
-			this.ctx.pendingPythonComponents.push(this.ctx.pythonComponent);
+	/**
+	 * One `!`/`%` shortcut execution: present `component` (deferred behind a streaming turn into
+	 * `pending`), stream chunks into whichever block holds `slot` at the time, and settle that block
+	 * with the result or, on a thrown failure, with an error notice prefixed by `failure`.
+	 */
+	async #runShortcutExecution<C extends BashExecutionComponent | EvalExecutionComponent>(
+		component: C,
+		slot: "bashComponent" | "pythonComponent",
+		pending: C[],
+		execute: (
+			onChunk: (chunk: string) => void,
+		) => Promise<OutputSummary & { exitCode: number | undefined; cancelled: boolean }>,
+		failure: string,
+	): Promise<void> {
+		if (this.ctx.session.isStreaming) {
+			this.ctx.pendingMessagesContainer.addChild(component);
+			pending.push(component);
 		} else {
-			this.ctx.present(this.ctx.pythonComponent);
+			this.ctx.present(component);
 		}
 		this.ctx.ui.requestRender();
 
 		try {
-			const result = await this.ctx.session.executePython(
-				code,
-				chunk => {
-					if (this.ctx.pythonComponent) {
-						this.ctx.pythonComponent.appendOutput(chunk);
-					}
-				},
-				{ excludeFromContext },
-			);
-
-			if (this.ctx.pythonComponent) {
+			const result = await execute(chunk => this.ctx[slot]?.appendOutput(chunk));
+			const live = this.ctx[slot];
+			if (live) {
 				const meta = outputMeta().truncationFromSummary(result, { direction: "tail" }).get();
-				this.ctx.pythonComponent.setComplete(result.exitCode, result.cancelled, {
+				live.setComplete(result.exitCode, result.cancelled, {
 					output: result.output,
 					truncation: meta?.truncation,
 				});
 			}
 		} catch (error) {
-			if (this.ctx.pythonComponent) {
-				this.ctx.pythonComponent.setComplete(undefined, false);
-			}
-			this.ctx.showError(`Python execution failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+			this.ctx[slot]?.setComplete(undefined, false);
+			this.ctx.showError(`${failure}: ${error instanceof Error ? error.message : "Unknown error"}`);
 		}
-
-		this.ctx.pythonComponent = undefined;
-		this.ctx.ui.requestRender();
 	}
 
 	async handleCompactCommand(

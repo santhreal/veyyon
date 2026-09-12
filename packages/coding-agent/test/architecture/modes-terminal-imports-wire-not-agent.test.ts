@@ -6,8 +6,8 @@
  * for one field the view-model does not carry yet — after which the contract
  * exists on paper and the coupling is back.
  *
- * The view-model layer this decoupling created — `driver.ts`, `block-rows.ts`,
- * `chrome-rows.ts`, `theme-ansi.ts` — reads the runtime nowhere, pinned by
+ * The view-model layer this decoupling created — `driver.ts` —
+ * reads the runtime nowhere, pinned by
  * exact equality. The rest of the terminal tree predates the contract and still
  * reads sessions directly; every such module is recorded below by name, so a
  * module that starts reading the runtime turns this red, and the list can only
@@ -32,7 +32,7 @@ import {
 const TERMINAL = repoPath("packages/coding-agent/src/modes/terminal");
 
 /** The modules written against `PresentationContext`. They see no runtime. */
-const VIEW_MODEL_LAYER: readonly string[] = ["driver.ts", "block-rows.ts", "chrome-rows.ts", "theme-ansi.ts"];
+const VIEW_MODEL_LAYER: readonly string[] = ["driver.ts"];
 
 /**
  * Terminal modules that still read a session directly, relative to
@@ -61,20 +61,9 @@ const LEGACY_RUNTIME_READERS: readonly string[] = [
 	"components/selectors/settings-selector.ts",
 	"components/selectors/thinking-selector.ts",
 	"components/selectors/tree-selector.ts",
-	"components/status-line/component.ts",
-	"components/status-line/segments.ts",
-	"components/status-line/session-facts.ts",
-	"components/transcript/assistant-message.ts",
-	"components/transcript/background-tan-message.ts",
 	"components/transcript/cache-invalidation-marker.ts",
 	"components/transcript/chat-transcript-builder.ts",
-	"components/transcript/collab-prompt-message.ts",
 	"components/transcript/compaction-summary-message.ts",
-	"components/transcript/custom-message.ts",
-	"components/transcript/hook-message.ts",
-	"components/transcript/message-frame.ts",
-	"components/transcript/read-tool-group.ts",
-	"components/transcript/skill-message.ts",
 	"components/transcript/tool-execution.ts",
 	"components/transcript/usage-row.ts",
 	"controllers/btw-controller.ts",
@@ -86,7 +75,6 @@ const LEGACY_RUNTIME_READERS: readonly string[] = [
 	"controllers/omfg-rule.ts",
 	"controllers/selector-controller.ts",
 	"controllers/session-focus-controller.ts",
-	"controllers/streaming-reveal.ts",
 	"controllers/tan-command-controller.ts",
 	"controllers/transcript-composer.ts",
 	"image-references.ts",
@@ -96,7 +84,6 @@ const LEGACY_RUNTIME_READERS: readonly string[] = [
 	"types.ts",
 	"utils/context-usage.ts",
 	"utils/copy-targets.ts",
-	"utils/interactive-context-helpers.ts",
 	"utils/transcript-render-helpers.ts",
 	"utils/ui-helpers.ts",
 ];

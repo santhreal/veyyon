@@ -47,8 +47,8 @@ function observersReporting(id: string, resolvedModel: string, fellBackFrom?: st
 	observers.getSessions = () => [
 		{
 			id,
-			kind: "subagent",
-			label: "Subagent",
+			kind: "spawn",
+			label: "Agent",
 			status: "active",
 			lastUpdate: Date.now(),
 			// Keep a complete progress record; only the model fields vary between cases.
@@ -149,7 +149,7 @@ describe("Model badge sources", () => {
 
 	/**
 	 * An agent that fell back to a later entry in its model chain is marked, the
-	 * same way the Subagents HUD block marks it. Without the mark the roster shows
+	 * same way the Agents HUD block marks it. Without the mark the roster shows
 	 * a model that reads as a deliberate choice, so an agent quietly demoted by a
 	 * provider error is indistinguishable from one you pinned there yourself.
 	 */
@@ -248,7 +248,7 @@ describe("Model badge sources", () => {
 
 describe("The showResolvedModelBadge gate", () => {
 	/**
-	 * The badge is a setting (`subagent.showResolvedModelBadge`), and the card
+	 * The badge is a setting (`agent.showResolvedModelBadge`), and the card
 	 * honours it rather than deciding for itself. An operator who turned the badge
 	 * off in the transcript did so to stop reading model ids, and a second surface
 	 * that showed them anyway would make the setting a lie.

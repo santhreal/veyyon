@@ -45,18 +45,32 @@ function emptyInstalledPluginsRegistry(): InstalledPluginsRegistry {
 	return { version: 2, plugins: {} };
 }
 
+/**
+ * Parse installed_plugins.json content without filesystem access.
+ * Accepts any numeric version and returns null for malformed shapes.
+ */
+export function parseInstalledPluginsRegistry(
+	content: string,
+): { version: number; plugins: Record<string, InstalledPluginEntry[]> } | null {
+	const data = tryParseJson<{ version: number; plugins: Record<string, InstalledPluginEntry[]> }>(content);
+	if (
+		!data ||
+		typeof data !== "object" ||
+		typeof data.version !== "number" ||
+		!data.plugins ||
+		typeof data.plugins !== "object" ||
+		Array.isArray(data.plugins)
+	) {
+		return null;
+	}
+	return data;
+}
+
 export async function readInstalledPluginsRegistry(filePath: string): Promise<InstalledPluginsRegistry> {
 	try {
 		const content = await Bun.file(filePath).text();
-		const data = tryParseJson<InstalledPluginsRegistry>(content);
-		if (
-			!data ||
-			typeof data !== "object" ||
-			typeof data.version !== "number" ||
-			!data.plugins ||
-			typeof data.plugins !== "object" ||
-			Array.isArray(data.plugins)
-		) {
+		const data = parseInstalledPluginsRegistry(content);
+		if (!data) {
 			logger.warn("Invalid installed plugins registry, returning empty", { path: filePath });
 			return emptyInstalledPluginsRegistry();
 		}

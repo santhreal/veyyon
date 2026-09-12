@@ -243,3 +243,9 @@ scratch-settings-probes/
 # packages/coding-agent/test/composer-defect-sweep.test.ts is the gate, and it covers every
 # state a replayed case would have covered.
 /packages/coding-agent/test/corpus/renderer-defect-oracle/
+
+# Historical renderer oracles, derived on demand from a pinned baseline commit and cached per
+# commit under test/oracles/.cache/. The generator rewrites them from git history, so nothing here
+# is authored, reviewed, or tracked; leaving it visible also charged ~93k generated lines to the
+# untracked-source accounting and to Biome's organize-imports rule.
+/packages/coding-agent/test/oracles/.cache/

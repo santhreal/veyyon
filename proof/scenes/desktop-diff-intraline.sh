@@ -169,7 +169,7 @@ echo "scene: the pane reads ${PANE_W}x${ROWS_H} at +${PANEL_LEFT}+${ROWS_TOP}, r
 # script on stdin, so a crop piped into it is read by nothing and the reader
 # it never had leaves magick writing into a closed pipe.
 read_highlights() { # <png>
-	local dump="${SCENE_RUNTIME_DIR}/frame-compare/pane-pixels.txt"
+	local dump="${TMPDIR}/frame-compare/pane-pixels.txt"
 	magick "$1" -crop "${PANE_W}x${ROWS_H}+${PANEL_LEFT}+${ROWS_TOP}" +repage txt:- >"${dump}"
 	ROW_READING="$(
 		python3 - "${ROW_H}" "${CHANGED_LINES}" "${dump}" <<'PY'
@@ -281,10 +281,10 @@ pause 0.8
 # The pane is drawn when two probes a moment apart are the same over it: the
 # rows arrive on a host answer rather than on the key press, and a frame taken
 # between the two shows the tab's empty state.
-mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+mkdir -p "${TMPDIR}/frame-compare"
 PANE_GEOM="${PANE_W}x${ROWS_H}+${PANEL_LEFT}+${ROWS_TOP}"
-PANE_A="${SCENE_RUNTIME_DIR}/frame-compare/pane-a.png"
-PANE_B="${SCENE_RUNTIME_DIR}/frame-compare/pane-b.png"
+PANE_A="${TMPDIR}/frame-compare/pane-a.png"
+PANE_B="${TMPDIR}/frame-compare/pane-b.png"
 SETTLED=0
 for _ in $(seq 1 30); do
 	probe_frame "${PANE_A}"

@@ -7,7 +7,7 @@ import { magicKeywordRegex } from "./magic-keyword-boundary";
  * Typing the standalone word in the input editor paints it with a warm
  * amber→green gradient ({@link highlightWorkflow}); submitting a message that
  * mentions it appends a hidden workflow notice that steers the model to author
- * a deterministic multi-subagent workflow through the active task schema.
+ * a deterministic multi-agent workflow through the active task schema.
  * Matching is prose-delimited and case-sensitive (lowercase only) —
  * "workflowz" triggers, but "workflowzed", "Workflowz", and "workflowz.ts"
  * never do.

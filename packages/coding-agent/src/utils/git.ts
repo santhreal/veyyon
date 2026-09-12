@@ -608,24 +608,27 @@ async function isReftableRepo(repository: GitRepository): Promise<boolean> {
 	return repository.isReftable;
 }
 
+/**
+ * A read-only git query whose failure is a `null` answer: a missing ref, a repository git rejects.
+ * An abort is not an answer and is rethrown.
+ */
+async function queryGitOrNull(
+	repoRoot: string,
+	args: readonly string[],
+	signal: AbortSignal | undefined,
+): Promise<GitCommandResult | null> {
+	throwIfAborted(signal);
+	return git(repoRoot, args, { readOnly: true, signal }).catch(err => {
+		if (signal?.aborted || isAbortError(err)) {
+			throw err;
+		}
+		return null;
+	});
+}
+
 async function resolveHeadStateReftable(repository: GitRepository, signal?: AbortSignal): Promise<GitHeadState | null> {
-	throwIfAborted(signal);
-	const symResult = await git(repository.repoRoot, ["symbolic-ref", "HEAD"], { readOnly: true, signal }).catch(err => {
-		if (signal?.aborted || isAbortError(err)) {
-			throw err;
-		}
-		return null;
-	});
-	throwIfAborted(signal);
-	const revResult = await git(repository.repoRoot, ["rev-parse", "--verify", "HEAD"], {
-		readOnly: true,
-		signal,
-	}).catch(err => {
-		if (signal?.aborted || isAbortError(err)) {
-			throw err;
-		}
-		return null;
-	});
+	const symResult = await queryGitOrNull(repository.repoRoot, ["symbolic-ref", "HEAD"], signal);
+	const revResult = await queryGitOrNull(repository.repoRoot, ["rev-parse", "--verify", "HEAD"], signal);
 	const commit = revResult && revResult.exitCode === 0 ? revResult.stdout.trim() || null : null;
 
 	if (symResult && symResult.exitCode === 0) {
@@ -693,28 +696,11 @@ function resolveHeadStateReftableSync(repository: GitRepository): GitHeadState |
 
 async function readRef(repository: GitRepository, targetRef: string, signal?: AbortSignal): Promise<string | null> {
 	if (await isReftableRepo(repository)) {
-		throwIfAborted(signal);
-		const symResult = await git(repository.repoRoot, ["symbolic-ref", targetRef], { readOnly: true, signal }).catch(
-			err => {
-				if (signal?.aborted || isAbortError(err)) {
-					throw err;
-				}
-				return null;
-			},
-		);
+		const symResult = await queryGitOrNull(repository.repoRoot, ["symbolic-ref", targetRef], signal);
 		if (symResult && symResult.exitCode === 0) {
 			return `${HEAD_REF_PREFIX} ${symResult.stdout.trim()}`;
 		}
-		throwIfAborted(signal);
-		const revResult = await git(repository.repoRoot, ["rev-parse", "--verify", targetRef], {
-			readOnly: true,
-			signal,
-		}).catch(err => {
-			if (signal?.aborted || isAbortError(err)) {
-				throw err;
-			}
-			return null;
-		});
+		const revResult = await queryGitOrNull(repository.repoRoot, ["rev-parse", "--verify", targetRef], signal);
 		if (revResult && revResult.exitCode === 0) {
 			return revResult.stdout.trim() || null;
 		}

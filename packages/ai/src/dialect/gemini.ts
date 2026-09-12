@@ -1,6 +1,6 @@
 import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
-import { mintToolCallId, partialSuffixOverlapAny, setToolArg } from "./coercion";
+import { mintToolCallId, scanOutsideText, setToolArg, ThinkingSection } from "./coercion";
 import { FencedThinkingScanner } from "./fenced-thinking";
 import {
 	assistantTranscriptParts,
@@ -49,7 +49,7 @@ interface ParsedCall {
 class GeminiInbandScanner implements InbandScanner {
 	#buffer = "";
 	#state: State = "outside";
-	#thinking = "";
+	readonly #thinking = new ThinkingSection();
 	/** Fence-aware close-matcher while {@link #state} is "thinking"; undefined otherwise. */
 	#fenced: FencedThinkingScanner | undefined;
 	readonly #parseThinking: boolean;
@@ -91,55 +91,28 @@ class GeminiInbandScanner implements InbandScanner {
 	}
 
 	#consumeOutside(final: boolean, events: InbandScanEvent[]): void {
-		const code = this.#buffer.indexOf(CODE_OPEN);
-		const think = this.#parseThinking ? this.#buffer.indexOf(GEMINI_THINK_FENCE_OPEN) : -1;
-		let start = code;
-		let isThink = false;
-		if (think !== -1 && (start === -1 || think < start)) {
-			start = think;
-			isThink = true;
-		}
-		if (start === -1) {
-			const tags = this.#parseThinking ? OPEN_TAGS_THINK : OPEN_TAGS;
-			const hold = final ? 0 : partialSuffixOverlapAny(this.#buffer, tags);
-			const emit = this.#buffer.slice(0, this.#buffer.length - hold);
-			if (emit.length > 0) events.push({ type: "text", text: emit });
-			this.#buffer = this.#buffer.slice(this.#buffer.length - hold);
-			return;
-		}
-		if (start > 0) events.push({ type: "text", text: this.#buffer.slice(0, start) });
-		if (isThink) {
-			this.#buffer = this.#buffer.slice(start + GEMINI_THINK_FENCE_OPEN.length);
-			this.#thinking = "";
+		const tags = this.#parseThinking ? OPEN_TAGS_THINK : OPEN_TAGS;
+		const { buffer, tag } = scanOutsideText(this.#buffer, tags, final, events);
+		this.#buffer = buffer;
+		if (tag === null) return;
+		if (tag === GEMINI_THINK_FENCE_OPEN) {
 			this.#fenced = new FencedThinkingScanner();
-			events.push({ type: "thinkingStart" });
+			this.#thinking.start(events);
 			this.#state = "thinking";
 			return;
 		}
-		this.#buffer = this.#buffer.slice(start + CODE_OPEN.length);
 		this.#state = "tool";
 	}
 
 	#consumeThinking(final: boolean, events: InbandScanEvent[]): void {
 		const result = this.#fenced!.feed(this.#buffer, final);
 		this.#buffer = result.closed ? result.rest : "";
-		this.#emitThinking(result.thinking, events);
+		this.#thinking.delta(result.thinking, events);
 		if (result.closed || final) {
-			this.#endThinking(events);
+			this.#thinking.end(events);
+			this.#state = "outside";
 			this.#fenced = undefined;
 		}
-	}
-
-	#emitThinking(delta: string, events: InbandScanEvent[]): void {
-		if (delta.length === 0) return;
-		this.#thinking += delta;
-		events.push({ type: "thinkingDelta", delta });
-	}
-
-	#endThinking(events: InbandScanEvent[]): void {
-		events.push({ type: "thinkingEnd", thinking: this.#thinking });
-		this.#thinking = "";
-		this.#state = "outside";
 	}
 
 	#consumeTool(final: boolean, events: InbandScanEvent[]): void {

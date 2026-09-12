@@ -114,7 +114,7 @@ describe("the generated mupdf asset module", () => {
 	});
 
 	/**
-	 * The committed placeholder is the state a source checkout, `bun test` and the npm bundle see, and
+	 * The committed placeholder is the state a source checkout, `bun test` and the bundle see, and
 	 * it must import no assets at all: mupdf stays external there and is loaded from node_modules.
 	 * A placeholder that imported the copies would fail to resolve in every tree that has not run
 	 * `--generate`, which is nearly all of them.

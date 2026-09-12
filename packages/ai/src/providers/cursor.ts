@@ -105,7 +105,7 @@ import {
 	WriteShellStdinResultSchema,
 	WriteSuccessSchema,
 } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
-import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
+import { calculateCost } from "@veyyon/catalog/models";
 import { CURSOR_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { logger } from "@veyyon/utils";
 import { $env } from "@veyyon/utils/env";
@@ -150,6 +150,7 @@ import { AssistantMessageEventStream } from "../utils/event-stream";
 import { connectProxiedSocket, getProxyForProvider, shouldBypassProxy } from "../utils/proxy";
 import { createRequestDebugSession, isRequestDebugEnabled, type RequestDebugResponseLog } from "../utils/request-debug";
 import { toolWireSchema } from "../utils/schema/wire";
+import { createInitialResponsesAssistantMessage } from "./initial-message";
 import { NON_VIDEO_MODEL_PLACEHOLDER } from "./vision-content";
 
 /**
@@ -417,16 +418,11 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 		const startTime = performance.now();
 		let firstTokenTime: number | undefined;
 
-		const output: AssistantMessage = {
-			role: "assistant",
-			content: [],
-			api: "cursor-agent" as Api,
-			provider: model.provider,
-			model: model.id,
-			usage: emptyUsage(),
-			stopReason: "stop",
-			timestamp: Date.now(),
-		};
+		const output: AssistantMessage = createInitialResponsesAssistantMessage(
+			"cursor-agent" as Api,
+			model.provider,
+			model.id,
+		);
 
 		const usageAccount = createCursorUsageAccount(model, output);
 
@@ -863,10 +859,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			stream.end();
 		} catch (error) {
 			const result = await AIError.finalize(error, { api: model.api, signal: options?.signal });
-			output.stopReason = result.stopReason;
-			output.errorStatus = result.status;
-			output.errorId = result.id;
-			output.errorMessage = result.message;
+			AIError.applyFinalizeResult(output, result);
 			output.duration = performance.now() - startTime;
 			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
 			stream.push({ type: "error", reason: output.stopReason, error: output });
@@ -954,7 +947,7 @@ export type ToolCallState = ToolCall & {
  * `TokenDeltaUpdate.tokens` is an increment of THIS turn's completion.
  * `ConversationTokenDetails` is a gauge of the WHOLE conversation against the
  * model's window: `used_tokens` counts the system prompt, the tool schemas, the
- * rules, the skills, the subagent definitions and the conversation, and it is
+ * rules, the skills, the agent definitions and the conversation, and it is
  * sampled after this turn's reply was appended, so it already contains the
  * completion. Nothing on the wire reports a prompt-cache breakdown, which is
  * why `cacheRead` and `cacheWrite` stay zero: Cursor does not say.
@@ -1214,6 +1207,60 @@ function sanitizeShellExecResult(execResult: ShellResult): ShellResult {
 	}
 }
 
+/** A trailing escape prefix that a later chunk may complete. */
+const INCOMPLETE_ESCAPE = /\x1b(|\[|\[\d*|\[\?|\[\?\d*|\]\d*;?)$/;
+
+/**
+ * One shell output stream (stdout or stderr) buffered for the exec stream: held text is sent on a
+ * newline, past 4 KiB, or 100 ms after it arrived, minus an incomplete ANSI escape at the tail,
+ * which waits for its rest.
+ */
+class ShellOutputChannel {
+	#buffer = "";
+	#timer: NodeJS.Timeout | null = null;
+	readonly #send: (data: string) => void;
+
+	constructor(send: (data: string) => void) {
+		this.#send = send;
+	}
+
+	push(data: string): void {
+		this.#buffer += data;
+		if (this.#buffer.includes("\n") || this.#buffer.length > 4096) {
+			this.#cancelTimer();
+			this.flush();
+		} else if (!this.#timer) {
+			this.#timer = setTimeout(() => {
+				this.#timer = null;
+				this.flush();
+			}, 100);
+		}
+	}
+
+	/** Drop the pending timer and send everything held, before the exit event. */
+	close(): void {
+		this.#cancelTimer();
+		this.flush();
+	}
+
+	flush(): void {
+		if (!this.#buffer) return;
+		let safeEnd = this.#buffer.length;
+		const match = this.#buffer.match(INCOMPLETE_ESCAPE);
+		if (match && match[0].length > 0) safeEnd -= match[0].length;
+		const toSend = this.#buffer.slice(0, safeEnd);
+		const remaining = this.#buffer.slice(safeEnd);
+		if (toSend) this.#send(sanitizeText(toSend));
+		this.#buffer = remaining;
+	}
+
+	#cancelTimer(): void {
+		if (!this.#timer) return;
+		clearTimeout(this.#timer);
+		this.#timer = null;
+	}
+}
+
 async function handleShellStreamArgs(
 	args: ShellArgs,
 	execMsg: ExecServerMessage,
@@ -1235,96 +1282,15 @@ async function handleShellStreamArgs(
 
 	sendShellStreamEvent(h2Request, execMsg, { case: "start", value: create(ShellStreamStartSchema, {}) });
 
-	// Buffer for incomplete ANSI sequences across chunks
-	let stdoutBuffer = "";
-	let stderrBuffer = "";
-
-	const incompleteEscapeRegex = /\x1b(|\[|\[\d*|\[\?|\[\?\d*|\]\d*;?)$/;
-
-	const flushStdout = () => {
-		if (stdoutBuffer) {
-			let safeEnd = stdoutBuffer.length;
-			const match = stdoutBuffer.match(incompleteEscapeRegex);
-			if (match && match[0].length > 0) {
-				safeEnd = stdoutBuffer.length - match[0].length;
-			}
-			const toSend = stdoutBuffer.slice(0, safeEnd);
-			const remaining = stdoutBuffer.slice(safeEnd);
-			if (toSend) {
-				sendShellStreamEvent(h2Request, execMsg, {
-					case: "stdout",
-					value: create(ShellStreamStdoutSchema, { data: sanitizeText(toSend) }),
-				});
-			}
-			stdoutBuffer = remaining;
-		}
-	};
-
-	const flushStderr = () => {
-		if (stderrBuffer) {
-			let safeEnd = stderrBuffer.length;
-			const match = stderrBuffer.match(incompleteEscapeRegex);
-			if (match && match[0].length > 0) {
-				safeEnd = stderrBuffer.length - match[0].length;
-			}
-			const toSend = stderrBuffer.slice(0, safeEnd);
-			const remaining = stderrBuffer.slice(safeEnd);
-			if (toSend) {
-				sendShellStreamEvent(h2Request, execMsg, {
-					case: "stderr",
-					value: create(ShellStreamStderrSchema, { data: sanitizeText(toSend) }),
-				});
-			}
-			stderrBuffer = remaining;
-		}
-	};
-
-	let stdoutFlushTimer: NodeJS.Timeout | null = null;
-	let stderrFlushTimer: NodeJS.Timeout | null = null;
-
-	const scheduleStdoutFlush = () => {
-		if (!stdoutFlushTimer) {
-			stdoutFlushTimer = setTimeout(() => {
-				stdoutFlushTimer = null;
-				flushStdout();
-			}, 100);
-		}
-	};
-
-	const scheduleStderrFlush = () => {
-		if (!stderrFlushTimer) {
-			stderrFlushTimer = setTimeout(() => {
-				stderrFlushTimer = null;
-				flushStderr();
-			}, 100);
-		}
-	};
-
+	const stdout = new ShellOutputChannel(data => {
+		sendShellStreamEvent(h2Request, execMsg, { case: "stdout", value: create(ShellStreamStdoutSchema, { data }) });
+	});
+	const stderr = new ShellOutputChannel(data => {
+		sendShellStreamEvent(h2Request, execMsg, { case: "stderr", value: create(ShellStreamStderrSchema, { data }) });
+	});
 	const streamCallbacks: CursorShellStreamCallbacks = {
-		onStdout(data: string) {
-			stdoutBuffer += data;
-			if (stdoutBuffer.includes("\n") || stdoutBuffer.length > 4096) {
-				if (stdoutFlushTimer) {
-					clearTimeout(stdoutFlushTimer);
-					stdoutFlushTimer = null;
-				}
-				flushStdout();
-			} else {
-				scheduleStdoutFlush();
-			}
-		},
-		onStderr(data: string) {
-			stderrBuffer += data;
-			if (stderrBuffer.includes("\n") || stderrBuffer.length > 4096) {
-				if (stderrFlushTimer) {
-					clearTimeout(stderrFlushTimer);
-					stderrFlushTimer = null;
-				}
-				flushStderr();
-			} else {
-				scheduleStderrFlush();
-			}
-		},
+		onStdout: data => stdout.push(data),
+		onStderr: data => stderr.push(data),
 	};
 
 	// Prefer the streaming handler — it forwards output chunks in real time.
@@ -1348,10 +1314,8 @@ async function handleShellStreamArgs(
 	const sanitizedExecResult = sanitizeShellExecResult(execResult);
 
 	// Flush any remaining buffered output before sending results
-	if (stdoutFlushTimer) clearTimeout(stdoutFlushTimer);
-	if (stderrFlushTimer) clearTimeout(stderrFlushTimer);
-	flushStdout();
-	flushStderr();
+	stdout.close();
+	stderr.close();
 
 	sendShellStreamExitFromResult(h2Request, execMsg, sanitizedExecResult, sendBufferedOutput);
 	// Cursor can keep the turn pending when it receives only stream deltas.
@@ -2577,7 +2541,7 @@ function buildMcpErrorResult(error: string) {
  * can omit oversized parameters entirely and can downgrade a structured value
  * to its raw string fallback when `decodeMcpArgValue` cannot parse it as
  * JSON. Overwriting the streamed args wholesale therefore loses data (e.g.
- * the task tool's `tasks` array on multi-subagent dispatches, issue #2615).
+ * the task tool's `tasks` array on multi-agent dispatches, issue #2615).
  *
  * Rules per key:
  * - completion key absent  → keep the streamed value.

@@ -38,4 +38,27 @@ describe("ollama cloud login", () => {
 	it("requires onPrompt callback", async () => {
 		await expect(loginOllamaCloud({})).rejects.toThrow("Interactive prompt is required for Ollama Cloud login");
 	});
+
+	it("aborts before onAuth or onPrompt callbacks when signal is already aborted", async () => {
+		const controller = new AbortController();
+		controller.abort();
+		let onAuthCalled = false;
+		let onPromptCalled = false;
+
+		await expect(
+			loginOllamaCloud({
+				signal: controller.signal,
+				onAuth: () => {
+					onAuthCalled = true;
+				},
+				onPrompt: async () => {
+					onPromptCalled = true;
+					return "sk-key";
+				},
+			}),
+		).rejects.toThrow("Login cancelled");
+
+		expect(onAuthCalled).toBe(false);
+		expect(onPromptCalled).toBe(false);
+	});
 });

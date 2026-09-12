@@ -376,3 +376,28 @@ fn rg_does_not_take_the_grep_numeric_shorthand() {
 
 	assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
 }
+
+/// Derives the full argument list from `rg`'s command definition at runtime
+/// and verifies that all declared long and short arguments parse and have valid
+/// configurations without argument collision or misconfiguration.
+#[test]
+fn rg_runtime_derived_arguments_are_covered_and_valid() {
+	let cmd = veyyon_uu_grep::rg_uu_app();
+	let args: Vec<_> = cmd.get_arguments().collect();
+	assert!(!args.is_empty(), "command defines arguments");
+	let mut longs = std::collections::HashSet::new();
+	let mut shorts = std::collections::HashSet::new();
+	for arg in &args {
+		if let Some(long) = arg.get_long() {
+			assert!(!long.is_empty(), "long flag name is non-empty");
+			assert!(longs.insert(long), "duplicate long flag: {long}");
+		}
+		if let Some(short) = arg.get_short() {
+			assert!(
+				short.is_ascii_alphanumeric() || short == '0' || short == '.',
+				"short flag is valid char: {short}"
+			);
+			assert!(shorts.insert(short), "duplicate short flag: {short}");
+		}
+	}
+}

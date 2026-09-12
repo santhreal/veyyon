@@ -4,11 +4,10 @@ import { $env } from "@veyyon/utils";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../../provider-boundary";
 import type { SearchCitation, SearchResponse, SearchSource, SearchUsage } from "../types";
-import { SearchProviderError } from "../types";
 import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { classifyProviderHttpError } from "./utils";
+import { handleProviderHttpError } from "./utils";
 
 const XAI_RESPONSES_URL = "https://api.x.ai/v1/responses";
 const XAI_WEB_SEARCH_MODEL = "grok-4.3";
@@ -91,22 +90,13 @@ async function postXAIResponses(
 		signal,
 	});
 }
-
-function throwXAIResponsesError(status: number, errorText: string): never {
-	const classified = classifyProviderHttpError("xai", status, errorText);
-	if (classified) throw classified;
-	throw new SearchProviderError("xai", `xAI Responses API error (${status}).`, status);
-}
-
 async function callXAIResponses(apiKey: string, params: SearchParams): Promise<XAIResponsesResponse> {
 	const requestBody = buildRequestBody(params);
 	return withHardTimeout(params.signal, async hardSignal => {
 		const response = await postXAIResponses(apiKey, params, requestBody, hardSignal);
-
 		if (!response.ok) {
-			throwXAIResponsesError(response.status, await response.text());
+			await handleProviderHttpError("xai", response, `xAI Responses API error (${response.status}).`);
 		}
-
 		return (await response.json()) as XAIResponsesResponse;
 	});
 }

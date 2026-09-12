@@ -13,6 +13,7 @@ import type { PlanReviewOverlay } from "@veyyon/coding-agent/modes/terminal/comp
 import type { HookSelectorSlider } from "@veyyon/coding-agent/modes/terminal/components/selectors/hook-selector";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
+import { toAssistantMessageView } from "@veyyon/coding-agent/presentation/transcript-builder";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SILENT_ABORT_MARKER, USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
@@ -1763,7 +1764,7 @@ describe("InteractiveMode plan review rendering", () => {
 	// ==========================================================================
 
 	function renderAssistant(message: AssistantMessage, width = 120): string {
-		const component = new AssistantMessageComponent(message);
+		const component = new AssistantMessageComponent(toAssistantMessageView(message));
 		return Bun.stripANSI(component.render(width).join("\n"));
 	}
 

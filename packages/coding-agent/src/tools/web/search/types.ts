@@ -89,6 +89,11 @@ export const SEARCH_PROVIDER_LABELS = Object.fromEntries(
 	SEARCH_PROVIDER_OPTIONS.flatMap(option => (option.value === "auto" ? [] : [[option.value, option.label] as const])),
 ) as Record<SearchProviderId, string>;
 
+/** Display label of a provider id; an unknown id is shown as itself. Never loads a provider. */
+export function getSearchProviderLabel(id: SearchProviderId): string {
+	return SEARCH_PROVIDER_LABELS[id] ?? id;
+}
+
 export function isSearchProviderId(value: string): value is SearchProviderId {
 	return SEARCH_PROVIDER_ORDER.includes(value as SearchProviderId);
 }

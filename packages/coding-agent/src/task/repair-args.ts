@@ -13,7 +13,7 @@
  *     # Role\nYou are a judge … \"describe this\" … return \u2014
  *
  * i.e. every newline, quote, and unicode character is still backslash-escaped.
- * The subagent then receives that garbled prompt, and the call preview renders
+ * The agent then receives that garbled prompt, and the call preview renders
  * one long blob with visible `\n` / `\"` / `\uXXXX`.
  *
  * The *whole-arguments* form of this quirk (the entire `arguments` blob is a

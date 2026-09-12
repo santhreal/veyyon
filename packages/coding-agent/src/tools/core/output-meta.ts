@@ -56,6 +56,8 @@ export interface TruncationOptions {
 	direction: "head" | "tail" | "middle";
 	startLine?: number;
 	totalFileLines?: number;
+	/** The scan stopped after the shown window; `result.totalLines` is a lower bound, not the file length. */
+	totalLinesUnknown?: boolean;
 	artifactId?: string;
 }
 
@@ -91,7 +93,7 @@ export class OutputMetaBuilder {
 	truncation(result: TruncationResult, options: TruncationOptions): this {
 		if (!result.truncated) return this;
 
-		const { direction, startLine = 1, totalFileLines, artifactId } = options;
+		const { direction, startLine = 1, totalFileLines, totalLinesUnknown, artifactId } = options;
 		const outputLines = result.outputLines ?? result.totalLines;
 		const outputBytes = result.outputBytes ?? result.totalBytes;
 		const isMiddle = direction === "middle" || result.truncatedBy === "middle";
@@ -150,6 +152,7 @@ export class OutputMetaBuilder {
 			shownRange: { start: shownStart, end: shownEnd },
 			artifactId,
 			nextOffset: direction === "head" ? shownEnd + 1 : undefined,
+			...(totalLinesUnknown ? { totalLinesUnknown } : {}),
 		};
 
 		return this;
@@ -284,8 +287,13 @@ export class OutputMetaBuilder {
 
 	/** Add match limit notice. No-op if reached <= 0. */
 	matchLimit(reached: number, suggestion = reached * 2): this {
+		return this.#reachedLimit("matchLimit", reached, suggestion);
+	}
+
+	/** Record the `reached`/`suggestion` limit under `kind`. No-op if reached <= 0. */
+	#reachedLimit(kind: "matchLimit" | "resultLimit" | "headLimit", reached: number, suggestion: number): this {
 		if (reached <= 0) return this;
-		this.#meta.limits = { ...this.#meta.limits, matchLimit: { reached, suggestion } };
+		this.#meta.limits = { ...this.#meta.limits, [kind]: { reached, suggestion } };
 		return this;
 	}
 
@@ -308,16 +316,12 @@ export class OutputMetaBuilder {
 
 	/** Add result limit notice. No-op if reached <= 0. */
 	resultLimit(reached: number, suggestion = reached * 2): this {
-		if (reached <= 0) return this;
-		this.#meta.limits = { ...this.#meta.limits, resultLimit: { reached, suggestion } };
-		return this;
+		return this.#reachedLimit("resultLimit", reached, suggestion);
 	}
 
 	/** Add limit notice for head truncation. No-op if reached <= 0. */
 	headLimit(reached: number, suggestion = reached * 2): this {
-		if (reached <= 0) return this;
-		this.#meta.limits = { ...this.#meta.limits, headLimit: { reached, suggestion } };
-		return this;
+		return this.#reachedLimit("headLimit", reached, suggestion);
 	}
 
 	/** Add column truncation notice. No-op if maxColumn <= 0. */

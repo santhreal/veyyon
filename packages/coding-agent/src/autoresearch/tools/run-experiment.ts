@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, formatBytes } from "@veyyon/utils";
-import { replaceTabs } from "@veyyon/utils/wrap";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import type { ViewSpan } from "@veyyon/view";
 import { type } from "arktype";
 import { executeBash } from "../../exec/bash-executor";
@@ -11,7 +11,6 @@ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TailBuffer, truncateTail } from "
 // browser-side owner in `@veyyon/tool-render` cannot do. The module binds no runtime value from
 // `@veyyon/tui`, so taking a string helper from it leaves this tool host-agnostic.
 import { shortenPath } from "../../tools/core/render-utils";
-import * as git from "../../utils/git";
 import { parseWorkDirDirtyPaths } from "../git";
 import {
 	EXPERIMENT_MAX_BYTES,
@@ -22,9 +21,9 @@ import {
 	gitWorkDirPrefix,
 	parseAsiLines,
 	parseMetricLines,
+	resolveActiveBranchSession,
 } from "../helpers";
 import { buildExperimentState } from "../state";
-import { openAutoresearchStorageIfExists } from "../storage";
 import type {
 	AutoresearchToolFactoryOptions,
 	RunDetails,
@@ -64,19 +63,9 @@ export function createRunExperimentTool(
 		parameters: runExperimentSchema,
 		defaultInactive: true,
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
-			const storage = await openAutoresearchStorageIfExists(ctx.cwd);
-			const currentBranch = (await git.branch.current(ctx.cwd)) ?? null;
-			const session = storage?.getActiveSessionForBranch(currentBranch) ?? null;
-			if (!storage || !session) {
-				return {
-					content: [
-						{
-							type: "text",
-							text: "Error: no active autoresearch session for the current branch. Call init_experiment first.",
-						},
-					],
-				};
-			}
+			const sessionResult = await resolveActiveBranchSession(ctx.cwd);
+			if (!sessionResult.ok) return sessionResult.result;
+			const { storage, session } = sessionResult;
 
 			const runtime = options.getRuntime(ctx);
 
@@ -115,8 +104,7 @@ export function createRunExperimentTool(
 			// rather than at log time, when a certified round has moved on to the
 			// last arm's model.
 			const currentModel = ctx.models?.current();
-			const activeArm = runtime.activeArm?.arm ?? null;
-			const measuredArm = params.arm?.trim() || activeArm;
+			const measuredArm = params.arm?.trim() || undefined;
 			const insertedRun = storage.insertRun({
 				sessionId: session.id,
 				segment: session.currentSegment,
@@ -257,26 +245,36 @@ export function createRunExperimentTool(
 			options.dashboard.update(ctx, runtime);
 			options.dashboard.requestRender();
 
-			const text = buildRunText(resultDetails, llmTruncation.content, runtime.state.bestMetric);
-			const lines = [text];
+			const headerLines: string[] = [];
+			if (abandonedPriorRun !== null) {
+				headerLines.push(`Note: abandoned prior pending run #${abandonedPriorRun} before starting this run.`);
+			}
 			// A per-arm model only takes effect through `start_arm`. Measuring an arm
 			// that was never started, or measuring one arm while another is in
 			// flight, means the diff was written by the wrong model, and the row
 			// records which one. Silence here would leave the comparison looking
-			// like it ran on the configured models.
-			if (session.breadth > 1 && session.armModels.length > 0) {
-				if (params.arm && !activeArm) {
-					lines.push(
-						`Warning: ${params.arm} was measured without calling \`start_arm\` first — it ran on ${currentModel ? `${currentModel.provider}/${currentModel.id}` : "the session model"}, not its configured model.`,
+			// like a contest between models it never ran on.
+			if (measuredArm !== undefined && session.armModels.some(spec => spec.length > 0)) {
+				const inFlight = runtime.activeArm?.arm;
+				const builtOn = currentModel ? `${currentModel.provider}/${currentModel.id}` : "the session model";
+				if (inFlight === undefined) {
+					headerLines.push(
+						`Warning: measured as ${measuredArm} with no arm in flight, so it was built on ${builtOn} rather than the model configured for ${measuredArm}. Call start_arm before the first edit of an arm.`,
 					);
-				} else if (params.arm && activeArm && params.arm !== activeArm) {
-					lines.push(
-						`Warning: ${params.arm} was measured while ${activeArm} was in flight on ${runtime.activeArm?.modelLabel}.`,
+				} else if (inFlight !== measuredArm) {
+					headerLines.push(
+						`Warning: measured as ${measuredArm} while ${inFlight} was in flight, so it was built on ${builtOn}, which is ${inFlight}'s model.`,
 					);
 				}
 			}
+			const warningPrefix = headerLines.length > 0 ? `${headerLines.join("\n")}\n\n` : "";
 			return {
-				content: [{ type: "text", text: lines.join("\n\n") }],
+				content: [
+					{
+						type: "text",
+						text: warningPrefix + buildRunText(resultDetails, llmTruncation.content, runtime.state.bestMetric),
+					},
+				],
 				details: resultDetails,
 			};
 		},

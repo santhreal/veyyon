@@ -35,8 +35,6 @@ import { getTabBarTheme } from "../../shared";
 import { matchesAppInterrupt } from "../../utils/keybinding-matchers";
 import {
 	computeModalDims,
-	consumeModalChipHover,
-	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	planModalChrome,
@@ -44,6 +42,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "../chrome/modal-shell";
+import { routeModalChrome } from "../selectors/select-list-mouse-routing";
 import { ExtensionList } from "./extension-list";
 import { InspectorPanel } from "./inspector-panel";
 
@@ -245,31 +244,23 @@ export class ExtensionDashboard implements Component {
 		const event = parseSgrMouse(data);
 		if (!event) return;
 
-		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-			motion: event.motion,
-			leftClick: event.leftClick,
-		});
-		if (
-			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+		const consumed = routeModalChrome({
+			shellGeometry: this.#shellGeometry,
+			event,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			onHoverShortcut: id => {
 				this.#hoveredShortcutId = id;
 				this.onRequestRender?.();
-			})
-		) {
-			return;
-		}
-		if (
-			chrome.kind === "close" ||
-			chrome.kind === "outside" ||
-			(chrome.kind === "shortcut" && chrome.id === "close")
-		) {
-			this.onClose?.();
-			return;
-		}
-		if (chrome.kind === "shortcut" && chrome.id === "toggle") {
-			this.#mainList.handleInput(" ");
-			this.onRequestRender?.();
-			return;
-		}
+			},
+			onCancel: () => this.onClose?.(),
+			onShortcut: id => {
+				if (id !== "toggle") return false;
+				this.#mainList.handleInput(" ");
+				this.onRequestRender?.();
+				return true;
+			},
+		});
+		if (consumed) return;
 
 		// row() insets content by the border column plus a space; frame may be centered.
 		const contentColInset = 2 + this.#frameLeft;

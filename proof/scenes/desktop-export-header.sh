@@ -125,7 +125,7 @@ OFFERED_MIN_STRENGTH=85
 # abandons the take instead of reopening a menu forever.
 OFFER_ATTEMPTS=4
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 # ─── What Is Read Out Of A Frame ─────────────────────────────────────────────

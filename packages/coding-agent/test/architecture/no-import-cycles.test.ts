@@ -31,7 +31,7 @@
  * them, which is why importing `agent-session` cost 91 MB. It was closed by
  * `eval/agent-bridge` naming `task/executor` statically, for the `agent()` helper
  * an eval cell can call. Those imports are deferred to the call now, so the task
- * layer loads when something actually spawns a subagent.
+ * layer loads when something actually spawns an agent.
  *
  * Cutting the three moved the same numbers: `path-utils` 51.7 to 7.8 MB per file,
  * `config/settings` 51.4 to 15.6, `theme/theme` 51.2 to 16.1, `discovery`

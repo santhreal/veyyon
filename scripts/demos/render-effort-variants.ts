@@ -1,31 +1,19 @@
 /**
- * Render the effort picker for both shapes of ladder.
+ * Render reasoning effort picker step interfaces for different model effort ladders.
  *
- * A two-tier Google model offers low and high, a five-step OpenAI model offers
- * minimal through xhigh, and the step control has to read correctly at both
- * extremes. Both pickers go into one render, stacked with a gap, so the pair is
- * comparable in a single image.
+ * Constructs mock models for a two-tier effort ladder and a five-tier effort ladder.
+ * Renders the effort picker step container for Gemini and GPT models side by side or
+ * individually, and prints the rendered components as ANSI text.
  *
- * Flags: `--width`, plus `--two-tier-only` or `--wide-only` to drop the other
- * model when you want one ladder alone.
- *
- * Run:
- *     env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-effort-variants.ts --width 100 |
- *       bun scripts/demos/render-proof.ts --out /tmp/effort-variants --width 100 --scale 2
- *
- * The output is a debugging aid and not a proof: it never enters `assets/`, a
- * README, or a handbook page. See docs/handbook/src/foundations/verification.md.
+ * Usage:
+ *   bun scripts/demos/render-effort-variants.ts [--wide-only] [--two-tier-only] [--width 100] [--theme titanium]
  */
+
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
 import { Container, Spacer } from "@veyyon/tui";
 import { renderEffortStep } from "../../packages/coding-agent/src/modes/terminal/components/selectors/effort-picker";
-import { initTheme } from "../../packages/coding-agent/src/theme/theme";
-import { renderWidth } from "./render-args";
-
-const args = process.argv.slice(2);
-const width = renderWidth(args);
-await initTheme();
+import { renderDemo } from "./render-args";
 
 const gemini = buildModel({
 	id: "gemini-two-tier",
@@ -57,31 +45,32 @@ const openai = buildModel({
 	maxTokens: 128_000,
 });
 
-const root = new Container();
-const showGemini = !args.includes("--wide-only");
-const showOpenAi = !args.includes("--two-tier-only");
-if (showGemini) {
-	const geminiPicker = new Container();
-	renderEffortStep(
-		geminiPicker,
-		"google/gemini-two-tier",
-		gemini,
-		() => {},
-		() => {},
-	);
-	root.addChild(geminiPicker);
-}
-if (showGemini && showOpenAi) root.addChild(new Spacer(2));
-if (showOpenAi) {
-	const openaiPicker = new Container();
-	renderEffortStep(
-		openaiPicker,
-		"openai/gpt-wide-ladder",
-		openai,
-		() => {},
-		() => {},
-	);
-	root.addChild(openaiPicker);
-}
-
-process.stdout.write(`${root.render(width).join("\n")}\n`);
+await renderDemo(({ width, hasFlag }) => {
+	const root = new Container();
+	const showGemini = !hasFlag("wide-only");
+	const showOpenAi = !hasFlag("two-tier-only");
+	if (showGemini) {
+		const geminiPicker = new Container();
+		renderEffortStep(
+			geminiPicker,
+			"google/gemini-two-tier",
+			gemini,
+			() => {},
+			() => {},
+		);
+		root.addChild(geminiPicker);
+	}
+	if (showGemini && showOpenAi) root.addChild(new Spacer(2));
+	if (showOpenAi) {
+		const openaiPicker = new Container();
+		renderEffortStep(
+			openaiPicker,
+			"openai/gpt-wide-ladder",
+			openai,
+			() => {},
+			() => {},
+		);
+		root.addChild(openaiPicker);
+	}
+	return root.render(width);
+});

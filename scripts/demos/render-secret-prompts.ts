@@ -1,20 +1,14 @@
 /**
- * Print the two fields a bare `/secret` opens, in order.
+ * Render interactive input prompts for the secret command.
  *
- * Storing a credential in a terminal is now a two-field conversation: a masked field for the
- * value, then a visible optional field for the name. Both are `HookInputComponent`, whose entire
- * guidance is ONE title line, and whose `placeholder` argument is discarded (`_placeholder`). So
- * whether an operator staring at an empty box knows what to type is decided by that one string
- * and nothing else, and that is a thing you look at rather than assert.
+ * Constructs hook input components representing the masked secret value prompt, a masked
+ * prompt with pasted credentials, and the trailing unmasked secret name prompt. Prints
+ * each rendered prompt section with labels as ANSI text.
  *
- * Run:
- *     bun scripts/demos/render-secret-prompts.ts --width 100 |
- *       bun scripts/demos/render-proof.ts --out /tmp/secret-prompts --width 100 --scale 3
- *
- * The components are the real ones, constructed the way `builtin-registry.ts` constructs them,
- * with the titles taken from the real `maskedPromptTitle()` / `namePromptTitle()` rather than
- * retyped here: a proof of copy that quotes its own copy proves nothing.
+ * Usage:
+ *   bun scripts/demos/render-secret-prompts.ts [--width 100] [--theme titanium]
  */
+
 import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
 import { HookInputComponent } from "../../packages/coding-agent/src/modes/terminal/components/dialogs/hook-input";
 import {
@@ -24,57 +18,51 @@ import {
 	namePromptTitle,
 } from "../../packages/coding-agent/src/slash-commands/helpers/secret";
 import { theme } from "../../packages/coding-agent/src/theme/theme";
-import { flag, initRender, renderWidth } from "./render-args";
+import { renderDemo } from "./render-args";
 
-const themeName = flag("theme", "titanium");
-const width = renderWidth();
-await initRender(themeName, { settings: true });
+await renderDemo(
+	({ width }) => {
+		const lines: string[] = [];
+		function section(caption: string, component: HookInputComponent, typed?: string): void {
+			if (typed !== undefined) for (const char of typed) component.handleInput(char);
+			lines.push(theme.fg("dim", `── ${caption}`), "", ...component.render(width), "");
+		}
 
-const lines: string[] = [];
+		section(
+			"bare /secret, the masked value field, untouched:",
+			new HookInputComponent(
+				maskedPromptTitle(),
+				undefined,
+				() => {},
+				() => {},
+				{ mask: DEFAULT_MASK_CHAR, hint: maskedPromptHint() },
+			),
+		);
 
-function section(caption: string, component: HookInputComponent, typed?: string): void {
-	if (typed !== undefined) for (const char of typed) component.handleInput(char);
-	lines.push(theme.fg("dim", `── ${caption}`), "", ...component.render(width), "");
-}
+		section(
+			"the masked field with a credential pasted in:",
+			new HookInputComponent(
+				maskedPromptTitle(),
+				undefined,
+				() => {},
+				() => {},
+				{ mask: DEFAULT_MASK_CHAR, hint: maskedPromptHint() },
+			),
+			"ghp_liveLookingCredential0001",
+		);
 
-// What a bare `/secret` opens first. Empty, because that is the moment the operator has to decide
-// what this box wants: the whole question is whether the title answers it before they type.
-section(
-	"bare /secret, the masked value field, untouched:",
-	new HookInputComponent(
-		maskedPromptTitle(),
-		undefined,
-		() => {},
-		() => {},
-		{ mask: DEFAULT_MASK_CHAR, hint: maskedPromptHint() },
-	),
+		section(
+			"the name field that follows, unmasked and optional:",
+			new HookInputComponent(
+				namePromptTitle(),
+				undefined,
+				() => {},
+				() => {},
+				{ hint: namePromptHint() },
+			),
+		);
+
+		return lines;
+	},
+	{ settings: true },
 );
-
-// The same field mid-paste. Rendered because masking is the feature: if the echo is not obviously
-// hidden here, an operator pastes a live credential into a visible field and never notices.
-section(
-	"the masked field with a credential pasted in:",
-	new HookInputComponent(
-		maskedPromptTitle(),
-		undefined,
-		() => {},
-		() => {},
-		{ mask: DEFAULT_MASK_CHAR, hint: maskedPromptHint() },
-	),
-	"ghp_liveLookingCredential0001",
-);
-
-// The second field, which only exists once a value is held. Unmasked on purpose: seeing this one
-// echo is what tells the operator the hidden question is over and a different one has started.
-section(
-	"the name field that follows, unmasked and optional:",
-	new HookInputComponent(
-		namePromptTitle(),
-		undefined,
-		() => {},
-		() => {},
-		{ hint: namePromptHint() },
-	),
-);
-
-process.stdout.write(`${lines.join("\n")}\n`);

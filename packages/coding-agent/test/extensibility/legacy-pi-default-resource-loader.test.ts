@@ -13,13 +13,13 @@ import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "@veyyo
 import { removeWithRetries } from "@veyyon/utils";
 
 // Issue #4567: every published version of pi-schedule-prompt (and every pi
-// extension spawning subagents) imports `DefaultResourceLoader` at module
+// extension spawning agents) imports `DefaultResourceLoader` at module
 // scope from `@earendil-works/pi-coding-agent` and hands it to
 // `createAgentSession({ resourceLoader })`. Before the fix the shim never
 // exported the class, so those extensions failed to parse; even once exported,
 // the shim's `createAgentSession` MUST translate the loader's captured state
 // into the SDK's native option surface — otherwise `noExtensions: true` would
-// be silently ignored, re-running discovery inside the subagent and reloading
+// be silently ignored, re-running discovery inside the agent and reloading
 // the very extension the caller passed the loader to prevent recursion for.
 // These tests pin both contracts through the public package specifier.
 
@@ -219,7 +219,7 @@ describe("createAgentSession({ resourceLoader }) (issue #4567)", () => {
 		// The reload's already-loaded extension snapshot is routed through
 		// the SDK's `preloadedExtensions` seam. Skipping this branch is
 		// exactly the bug the shim exists to prevent — the SDK would re-run
-		// its own discovery inside the subagent and re-load the caller.
+		// its own discovery inside the agent and re-load the caller.
 		expect(forwarded.preloadedExtensions).toBeDefined();
 		expect(forwarded.preloadedExtensions?.extensions).toEqual([]);
 

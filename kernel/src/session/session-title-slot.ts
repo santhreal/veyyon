@@ -5,8 +5,6 @@ import {
 	type SessionTitleSource,
 } from "./session-entries";
 
-const utf8Encoder = new TextEncoder();
-
 /** Semantic title update persisted by session storage backends. */
 export interface SessionTitleUpdate {
 	title?: string;
@@ -15,9 +13,8 @@ export interface SessionTitleUpdate {
 }
 
 function byteLength(value: string): number {
-	return utf8Encoder.encode(value).byteLength;
+	return Buffer.byteLength(value, "utf-8");
 }
-
 function titleSlotLine(title: string, source: SessionTitleSource | undefined, updatedAt: string, pad: string): string {
 	const slot: SessionTitleSlotEntry = source
 		? {
@@ -126,9 +123,18 @@ export function serializeTitleSlot(options: SessionTitleUpdate): string {
 
 /** Replace the physical fixed-width title slot in a full session body. */
 export function overlayTitleSlotContent(content: string, update: SessionTitleUpdate): string {
-	const slot = Buffer.from(serializeTitleSlot(update), "utf-8");
+	const slotLine = serializeTitleSlot(update);
+	const newlineIndex = content.indexOf("\n");
+	if (
+		newlineIndex >= 0 &&
+		newlineIndex < SESSION_TITLE_SLOT_BYTES &&
+		Buffer.byteLength(content.slice(0, newlineIndex + 1), "utf-8") === SESSION_TITLE_SLOT_BYTES
+	) {
+		return `${slotLine}${content.slice(newlineIndex + 1).toWellFormed()}`;
+	}
+	const slot = Buffer.from(slotLine, "utf-8");
 	const existing = Buffer.from(content, "utf-8");
-	if (existing.length <= slot.length) return slot.toString("utf-8");
+	if (existing.length <= slot.length) return slotLine;
 	return Buffer.concat([slot, existing.subarray(slot.length)]).toString("utf-8");
 }
 

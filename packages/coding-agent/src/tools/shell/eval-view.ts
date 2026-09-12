@@ -2,7 +2,7 @@
  * What an eval card shows, for any host.
  *
  * One card per call, whatever the call ran: a head row naming the kernel, then one group per cell
- * carrying its source, its output, the helper calls the cell made and the subagents it spawned, and
+ * carrying its source, its output, the helper calls the cell made and the agents it spawned, and
  * a closing group for the values it displayed and any notice about them. A cell is a GROUP rather
  * than a card of its own, which is the one shape change this conversion makes: a view is one card,
  * and a terminal drew three cells as three railed boxes.
@@ -21,7 +21,6 @@ import type {
 	ToolView,
 	ToolViewContext,
 	ToolViewRenderer,
-	ViewHiddenCount,
 	ViewLine,
 	ViewSection,
 	ViewSpan,
@@ -40,19 +39,20 @@ import {
 	JSON_TREE_SCALAR_LEN_EXPANDED,
 	jsonTreeViewLines,
 } from "../core/json-tree-view";
-import { stripOutputNotice } from "../core/output-meta";
-// The words a truncation is named by, from the leaf that owns them rather than from the styled
-// helper beside it: a view states the sentence and never the colour it is drawn in.
-import { formatTruncationMetaNotice } from "../core/output-notice";
+import { extractResultText, formatTruncationMetaNotice, stripOutputNotice } from "../core/output-notice";
 import {
+	collapsedProgressViewLines,
 	collapseProgressRuns,
 	Ellipsis,
 	formatDuration,
+	heldBack,
+	LINE_NOUN,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	shortenPath,
+	type ToolViewResult,
 	truncateToWidth,
 } from "../core/render-utils";
-
 /** The rows a collapsed cell's output may spend, which a host may narrow to its own window. */
 export const EVAL_DEFAULT_PREVIEW_LINES = 10;
 
@@ -64,7 +64,7 @@ const EXPANDED_MAX_LINES = 200;
 
 /** The columns one status-event detail row may spend. */
 const DETAIL_MAX_WIDTH = 80;
-/** The columns a subagent's preview, tool argument or intent may spend. */
+/** The columns an agent's preview, tool argument or intent may spend. */
 const AGENT_DETAIL_MAX_WIDTH = 48;
 /** The columns a resolved model name may spend. */
 const MODEL_MAX_WIDTH = 30;
@@ -96,11 +96,7 @@ export interface EvalRenderArgs {
 }
 
 /** The result an eval card reads: the text the tool returned, and the cells it carries. */
-export interface EvalViewResult {
-	content?: Array<{ type: string; text?: string }>;
-	details?: EvalToolDetails;
-	isError?: boolean;
-}
+export interface EvalViewResult extends Partial<ToolViewResult<EvalToolDetails>> {}
 
 /** The cell of a call, normalized. */
 interface EvalViewCell {
@@ -149,14 +145,8 @@ function callCells(args: EvalRenderArgs | undefined): EvalViewCell[] {
 function textRows(text: string): string[] {
 	return text.split(/\r?\n/).map(line => {
 		const at = line.lastIndexOf("\r");
-		return replaceTabs(at < 0 ? line : line.slice(at + 1));
+		return replaceTabs(shortenEmbeddedPaths(at < 0 ? line : line.slice(at + 1)));
 	});
-}
-
-/** What a card kept back, or nothing when it kept back nothing. */
-function heldBack(count: number, one: string, many: string): ViewHiddenCount | undefined {
-	if (count <= 0) return undefined;
-	return { count, noun: { one, many }, revealable: true };
 }
 
 /**
@@ -182,7 +172,7 @@ function cellStatus(status: EvalCellResult["status"]): ViewStatus {
 /** The cell states a card reports, worst first, so the header states the worst of them. */
 const WORST_FIRST: readonly EvalCellResult["status"][] = ["error", "running", "pending"];
 
-/** The state a subagent reports, as the mark a host draws for it. */
+/** The state an agent reports, as the mark a host draws for it. */
 function agentStatus(value: unknown): ViewStatus {
 	switch (value) {
 		case "completed":
@@ -226,7 +216,7 @@ function codeSection(cell: EvalViewCell | EvalCellResult, label: string | undefi
 		};
 	}
 	const shown = rows.slice(0, EXPANDED_MAX_LINES);
-	const hidden = heldBack(rows.length - shown.length, "line", "lines");
+	const hidden = heldBack(rows.length - shown.length, LINE_NOUN);
 	return {
 		...(label === undefined ? {} : { label }),
 		lines: shown.map(row => [{ text: row }]),
@@ -260,21 +250,14 @@ function outputSection(cell: EvalCellResult, expanded: boolean): ViewSection | u
 	if (expanded) {
 		const rows = textRows(cell.output);
 		const shown = rows.slice(0, EXPANDED_MAX_LINES);
-		const hidden = heldBack(rows.length - shown.length, "line", "lines");
+		const hidden = heldBack(rows.length - shown.length, LINE_NOUN);
 		return {
 			label,
 			lines: shown.map(row => [{ text: row, tone }]),
 			...(hidden === undefined ? {} : { hidden }),
 		};
 	}
-	const lines = collapseProgressRuns(textRows(cell.output)).map(row =>
-		row.hidden === 0
-			? [{ text: row.text, tone }]
-			: [
-					{ text: row.text, tone },
-					{ text: ` … +${row.hidden} earlier`, tone: "dim" as ViewTone },
-				],
-	);
+	const lines = collapsedProgressViewLines(collapseProgressRuns(textRows(cell.output)), tone);
 	return { label, lines, tail: { max: EVAL_DEFAULT_PREVIEW_LINES } };
 }
 
@@ -478,7 +461,7 @@ function statusSection(events: readonly EvalStatusEvent[], expanded: boolean): V
 		return { label: "Status", lines: events.flatMap(event => [eventLine(event), ...eventDetailLines(event)]) };
 	}
 	const shown = events.slice(Math.max(0, events.length - STATUS_EVENTS_COLLAPSED));
-	const hidden = heldBack(events.length - shown.length, "call", "calls");
+	const hidden = heldBack(events.length - shown.length, { one: "call", many: "calls" });
 	return {
 		label: "Status",
 		lines: shown.map(event => eventLine(event)),
@@ -487,7 +470,7 @@ function statusSection(events: readonly EvalStatusEvent[], expanded: boolean): V
 	};
 }
 
-/** The facts a subagent's row carries after its id: how much it has done, and what it cost. */
+/** The facts an agent's row carries after its id: how much it has done, and what it cost. */
 function agentFacts(event: EvalStatusEvent): ViewSpan[] {
 	const spans: ViewSpan[] = [];
 	const toolCount = eventCount(event.toolCount);
@@ -499,7 +482,7 @@ function agentFacts(event: EvalStatusEvent): ViewSpan[] {
 	const cost = eventCount(event.cost);
 	if (cost > 0) spans.push({ text: `$${cost.toFixed(2)}`, tone: "info" });
 	const model = eventText(event.model);
-	if (model !== undefined && settings.get("subagent.showResolvedModelBadge")) {
+	if (model !== undefined && settings.get("agent.showResolvedModelBadge")) {
 		spans.push({ text: truncateToWidth(replaceTabs(model), MODEL_MAX_WIDTH, Ellipsis.Unicode), tone: "dim" });
 	}
 	const status = agentStatus(event.status);
@@ -511,7 +494,7 @@ function agentFacts(event: EvalStatusEvent): ViewSpan[] {
 }
 
 /**
- * The subagents a cell spawned, as a list of what each one is doing.
+ * The agents a cell spawned, as a list of what each one is doing.
  *
  * A running agent's row is followed by the tool it is in and the intent it stated, which is the one
  * thing a reader watching a spawned run wants; a settled agent's row is what it cost.
@@ -562,7 +545,7 @@ function agentSection(events: readonly EvalStatusEvent[]): ViewSection | undefin
 			]);
 		}
 	}
-	// A subagent tree is one row per agent plus what it is doing, so it is not a list the host marks:
+	// An agent tree is one row per agent plus what it is doing, so it is not a list the host marks:
 	// an item here is two lines and a list states one.
 	return { label: "Agents", lines };
 }
@@ -683,24 +666,14 @@ export const evalToolView: Required<ToolViewRenderer<EvalRenderArgs, EvalViewRes
 
 		// No cell ran, so there is no card to head: what the tool returned is the whole of it, which
 		// is what a kernel that failed before it started, and a replayed transcript, both carry.
-		const text = stripOutputNotice(
-			(result.content?.find(part => part.type === "text")?.text ?? "").trimEnd(),
-			details?.meta,
-		).trimEnd();
+		const text = stripOutputNotice(extractResultText(result.content).trimEnd(), details?.meta).trimEnd();
 		const lines: ViewLine[] = [];
 		if (text !== "") {
 			// A run of same-shape progress lines is condensed before the host measures its window, for
 			// the reason a cell's output is: a wall of `Compiling …` must not spend the whole window.
 			const rows = expanded
 				? textRows(text).map(row => [{ text: row, tone: "output" as ViewTone }])
-				: collapseProgressRuns(textRows(text)).map(row =>
-						row.hidden === 0
-							? [{ text: row.text, tone: "output" as ViewTone }]
-							: [
-									{ text: row.text, tone: "output" as ViewTone },
-									{ text: ` … +${row.hidden} earlier`, tone: "dim" as ViewTone },
-								],
-					);
+				: collapsedProgressViewLines(collapseProgressRuns(textRows(text)), "output");
 			lines.push(...rows);
 		}
 		const events = details?.statusEvents ?? [];

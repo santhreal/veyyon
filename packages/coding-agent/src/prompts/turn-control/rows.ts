@@ -46,7 +46,7 @@ export const turnControlPrompts = definePromptRows({
 	},
 	"turn-control/eager-task": {
 		text: turnControlEagerTask,
-		purpose: "the delegation block telling the agent subagents are the default",
+		purpose: "the delegation block telling the driving agent that spawned agents are the default",
 	},
 	"turn-control/eager-todo": { text: turnControlEagerTodo, purpose: "requires a phased todo before substantive work" },
 	"turn-control/empty-stop-retry": {

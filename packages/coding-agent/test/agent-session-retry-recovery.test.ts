@@ -9,7 +9,7 @@ import * as aiStream from "@veyyon/ai/stream";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { resolveAssistantErrorPresentation } from "@veyyon/coding-agent/modes/terminal/utils/transcript-render-helpers";
+import { resolveAssistantErrorPresentation } from "@veyyon/coding-agent/presentation/transcript-builder";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { SILENT_ABORT_MARKER } from "@veyyon/coding-agent/session/messages";

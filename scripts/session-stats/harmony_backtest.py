@@ -28,8 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-DB_PATH = Path.home() / ".veyyon" / "stats.db"
-
+from common import DB_PATH, commas, open_ro
 MARKER_RE = re.compile(r"\bto=functions\.[A-Za-z_][A-Za-z0-9_]*")
 HARMONY_RE = re.compile(r"<\|(start|end|channel|message|call|return)\|>")
 CHANNEL_WORD_RE = re.compile(
@@ -186,18 +185,6 @@ class TextBacktest:
     signal_offsets: list[int]
     text_len: int
     context_preview: str
-
-
-def open_ro(path: Path) -> sqlite3.Connection:
-    if not path.exists():
-        sys.exit(f"db not found: {path}. Run scripts/session-stats/sync.py first.")
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def commas(n: int) -> str:
-    return f"{n:,}"
 
 
 def one_line(text: str, limit: int = 180) -> str:

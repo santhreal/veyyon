@@ -4,7 +4,8 @@
  * to the icon join, so an empty icon must not indent either label by one cell.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import type { ExtensionRow } from "@veyyon/coding-agent/extensibility/extension-state/types";
+import { stripVTControlCharacters } from "node:util";
+import type { ExtensionKind, ExtensionRow } from "@veyyon/coding-agent/extensibility/extension-state/types";
 import { ExtensionList } from "@veyyon/coding-agent/modes/terminal/components/extensions/extension-list";
 import type { ThemeJson } from "@veyyon/coding-agent/theme/color";
 import { getDefaultThemes } from "@veyyon/coding-agent/theme/defaults";
@@ -48,4 +49,27 @@ describe("ExtensionList empty Unicode icons", () => {
 		expect(master).toMatch(/^\S+ Enable Acme {2}\(Master Switch\)$/);
 		expect(master).not.toContain("  Enable Acme");
 	});
+
+	// Every kind must retain its list label when display names are shared with the
+	// sidebar; Commands and Context intentionally use shorter labels in the list.
+	// The record requires a label decision when ExtensionKind gains a member.
+	const labels: Record<ExtensionKind, string> = {
+		"extension-module": "Extension Modules",
+		skill: "Skills",
+		rule: "Rules",
+		tool: "Tools",
+		mcp: "MCP Servers",
+		prompt: "Prompts",
+		instruction: "Instructions",
+		"context-file": "Context",
+		hook: "Hooks",
+		"slash-command": "Commands",
+	};
+	for (const [kind, label] of Object.entries(labels)) {
+		it(`preserves the ${kind} group label`, () => {
+			const grouped = new ExtensionList([{ ...extension, kind: kind as ExtensionKind }]);
+			const rows = grouped.render(80).map(stripVTControlCharacters);
+			expect(rows.filter(row => row.replace(/^[^A-Za-z]*/, "") === `${label} (1)`)).toHaveLength(1);
+		});
+	}
 });

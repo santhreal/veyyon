@@ -191,13 +191,19 @@ jobs:
             echo "::error::mdbook v0.5.2 build failed to generate docs/handbook/book/index.html"
             exit 1
           fi
+          # A page references its assets relative to its own directory, so a nested page
+          # writes `../css/chrome-<hash>.css` for the file at `book/css/chrome-<hash>.css`.
+          # Strip the climb and resolve against the book root; the basename alone would
+          # miss every asset that lives in a subdirectory.
+          shopt -s globstar nullglob
           refs=$(mktemp "$book/asset-refs.XXXXXX")
-          grep -ohE '"[^"]*-[0-9a-f]{8}\.(js|css)"' "$book"/*.html "$book"/**/*.html 2>/dev/null | tr -d '"' | sort -u >"$refs" || true
+          grep -ohE '"[^"]*-[0-9a-f]{8}\.(js|css)"' "$book"/**/*.html 2>/dev/null | tr -d '"' | sort -u >"$refs" || true
           absent=""
           while read -r asset; do
             [ -z "$asset" ] && continue
-            base="${asset##*/}"
-            if [ ! -e "$book/$asset" ] && [ ! -e "$book/$base" ]; then
+            rel="$asset"
+            while [ "${rel#../}" != "$rel" ]; do rel="${rel#../}"; done
+            if [ ! -e "$book/$rel" ]; then
               absent="$absent $asset"
             fi
           done <"$refs"

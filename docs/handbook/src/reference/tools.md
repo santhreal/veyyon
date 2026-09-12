@@ -26,6 +26,20 @@ Hashline flow: `read`/`search` mint `[path#TAG]` anchors → model copies tags i
 `@veyyon/hashline` applies ops. See [Edit engine](../edit/engine.md) and
 [`docs/tools/edit.md`](../../../tools/edit.md).
 
+### Late diagnostics
+
+Late diagnostics are grouped by file, with errors before warnings and informational
+messages. Paths under the home directory use `~`. Collapsed messages show a held-back
+count; the tool-output expansion key (`Ctrl+O` by default) displays the remaining messages.
+
+Record the collapsed and expanded states with:
+
+```sh
+proof/record.sh --width 960 proof/scenes/late-diagnostics.sh
+proof/record.sh --width 1200 proof/scenes/late-diagnostics.sh
+proof/record.sh --width 1440 proof/scenes/late-diagnostics.sh
+```
+
 ## Read and search
 
 | Tool | Purpose |
@@ -51,13 +65,13 @@ Two settings decide when a foreground `bash` call is moved to a background job. 
 
 **Bash Auto-Background** caps how long a command holds the model in the foreground. Once a call runs longer than "Auto-Background After" (`bash.autoBackground.thresholdMs`, default 5 minutes), it moves to the background and the model keeps working. This fires on elapsed time even while the command is still printing: a test suite that takes forty minutes should not hold the model, and a long foreground command would otherwise outlast the prompt cache. Set the value to "Immediately" to background every command up front, or turn **Bash Auto-Background** off to let a command hold the foreground until it finishes or times out.
 
-Turn on **Bash Stall Detection** to catch a command that has gone quiet. When a call produces no new output for "Stall After" (`bash.stallDetection.stallMs`, default 30 seconds), it is backgrounded and the model is told it may be stuck, along with the exact `job` cancel to run. This measures idle output, not total run time, so a command that keeps printing never trips it. The model decides: if the quiet was expected (a slow compile, a network wait), it lets the job finish; if the command is genuinely hung, it cancels it. The setting recommends, it never force-kills.
+Turn on **Bash Stall Detection** to catch a command that has gone quiet. When a call produces no new output for "Stall After" (`bash.stallDetection.stallMs`, default 30 seconds), it is backgrounded and the model is notified that the command may be stuck, along with the exact `job` cancel to run. This measures idle output, not total run time, so a command that keeps printing never trips it. The model evaluates whether the quiet was expected (such as a slow compile or network wait) and lets the job finish, or cancels the command if hung. The setting recommends, it never force-kills.
 
 ## Agent coordination
 
 | Tool | Purpose |
 | --- | --- |
-| `task` | Spawn subagents |
+| `task` | Spawn agents |
 | `irc` | Inter-agent messaging |
 | `todo` | Structured task lists |
 | `goal` | Goal card updates (with goal mode) |

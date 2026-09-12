@@ -41,6 +41,7 @@
  */
 
 import { clampLow, logger } from "@veyyon/utils";
+import { cancellationError, isTimeoutError } from "@veyyon/utils/abortable";
 import { readSseJson } from "@veyyon/utils/stream";
 import { isRecord } from "@veyyon/utils/type-guards";
 
@@ -168,6 +169,19 @@ export async function collectCodexCompactionV2Stream(
 	}
 
 	if (!sawCompleted) {
+		// `readSseEvents` ends the stream on an aborted signal instead of throwing,
+		// so the reason is read here. A deadline is a timeout the caller's retry
+		// ladder classifies as one; a cancellation propagates as itself. Reporting
+		// either as "closed before response.completed" made a 180 s deadline on a
+		// 234k-token span look like a backend fault on every codex compaction.
+		if (signal?.aborted) {
+			if (isTimeoutError(signal.reason)) {
+				throw new Error(
+					"Codex compaction timed out before response.completed. The history was NOT compacted; the caller falls back to local compaction.",
+				);
+			}
+			throw cancellationError("Codex compaction was aborted before response.completed");
+		}
 		throw new Error(
 			"Codex compaction stream closed before response.completed. The history was NOT compacted; the caller falls back to local compaction.",
 		);

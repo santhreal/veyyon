@@ -106,25 +106,9 @@ const STOP_WORDS = CORE_QUERY_STOP_WORDS;
 
 const FACT_QUERY_FILLER_WORDS = new Set([
 	...QUERY_STOP_WORDS,
-	"active",
-	"current",
-	"currently",
-	"d",
-	"know",
-	"latest",
-	"ll",
-	"m",
-	"please",
-	"present",
-	"re",
-	"recent",
-	"remind",
-	"remember",
-	"s",
-	"t",
-	"tell",
-	"today",
-	"ve",
+	..."active current currently d know latest ll m please present re recent remind remember s t tell today ve".split(
+		" ",
+	),
 ]);
 
 const FACT_CLITIC_FRAGMENTS = new Set(["d", "ll", "m", "re", "s", "t", "ve"]);
@@ -379,21 +363,16 @@ function buildWhere(
 				"a topic.",
 		);
 	}
-	if (options.veracity) {
-		clauses.push(`${prefix}veracity = ?`);
-		params.push(options.veracity);
-	}
-	if (options.memoryType) {
-		clauses.push(`${prefix}memory_type = ?`);
-		params.push(options.memoryType);
-	}
-	if (authorId !== null) {
-		clauses.push(`${prefix}author_id = ?`);
-		params.push(authorId);
-	}
-	if (authorType !== null) {
-		clauses.push(`${prefix}author_type = ?`);
-		params.push(authorType);
+	for (const [val, col] of [
+		[options.veracity, "veracity"],
+		[options.memoryType, "memory_type"],
+		[authorId, "author_id"],
+		[authorType, "author_type"],
+	] as const) {
+		if (val !== null && val !== undefined) {
+			clauses.push(`${prefix}${col} = ?`);
+			params.push(val);
+		}
 	}
 	if (channelId !== null && channelId !== "") {
 		clauses.push(`${prefix}channel_id = ?`);

@@ -14,7 +14,7 @@
 
 import { HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_MOVE_KEYWORD, HL_REM_KEYWORD } from "@veyyon/hashline";
 import { errorMessage, sanitizeText } from "@veyyon/utils";
-import { replaceTabs } from "@veyyon/utils/wrap";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import type {
 	FramedBlockView,
 	StatusRowView,
@@ -27,10 +27,15 @@ import type {
 } from "@veyyon/view";
 import { diagnosticsSection } from "../tools/core/diagnostics";
 import {
+	diffStatsMetaLines,
+	extractResultText,
 	getDiffStats,
+	heldBack,
+	LINE_NOUN,
 	PREVIEW_LIMITS,
 	shortenEmbeddedPaths,
 	shortenPath,
+	type ToolViewResult,
 	truncateDiffByHunk,
 } from "../tools/core/render-utils";
 import type { EditMode } from "../utils/edit-mode";
@@ -54,9 +59,6 @@ const EDIT_STREAMING_HEADROOM = 4;
 
 /** Lines of replacement text a call card shows before it says how many it kept back. */
 const CALL_TEXT_PREVIEW_LINES = 6;
-
-/** The unit a held-back count is in, which the host words. */
-const LINE_NOUN = { one: "line", many: "lines" } as const;
 
 /** What the card is titled for each operation. */
 function operationTitle(op: Operation | undefined): string {
@@ -103,11 +105,7 @@ export interface EditViewArgs {
 }
 
 /** The result the card reads, which is the tool's own result shape narrowed to what a card shows. */
-export interface EditViewResult {
-	content: Array<{ type: string; text?: string }>;
-	details?: EditToolDetails;
-	isError?: boolean;
-}
+export interface EditViewResult extends ToolViewResult<EditToolDetails> {}
 
 /** A path off an edit entry, which is a path only when the model sent a string. */
 function entryPath(value: unknown): string | undefined {
@@ -320,10 +318,9 @@ function textPreviewSection(text: string, expanded: boolean): ViewSection | unde
 	const lines = sanitizeText(text).split("\n");
 	if (lines.length === 0) return undefined;
 	const kept = expanded ? lines : lines.slice(0, CALL_TEXT_PREVIEW_LINES);
-	const held = lines.length - kept.length;
 	return {
 		lines: kept.map(line => [{ text: replaceTabs(line), tone: "output" as const }]),
-		...(held > 0 ? { hidden: { count: held, noun: LINE_NOUN, revealable: true } } : {}),
+		hidden: heldBack(lines.length - kept.length, LINE_NOUN),
 	};
 }
 
@@ -347,10 +344,9 @@ function errorSection(
 	sanitized = shortenEmbeddedPaths(sanitized);
 	const lines = sanitized.split("\n");
 	const kept = expanded ? lines : lines.slice(0, PREVIEW_LIMITS.DIFF_COLLAPSED_LINES);
-	const held = lines.length - kept.length;
 	return {
 		lines: kept.map(line => [{ text: replaceTabs(line), tone: "error" as const }]),
-		...(held > 0 ? { hidden: { count: held, noun: LINE_NOUN, revealable: true } } : {}),
+		hidden: heldBack(lines.length - kept.length, LINE_NOUN),
 	};
 }
 
@@ -358,10 +354,7 @@ function errorSection(
 function statsMeta(diff: string | undefined): ViewLine[] {
 	if (!diff) return [];
 	const { added, removed } = getDiffStats(diff);
-	const meta: ViewLine[] = [];
-	if (added > 0) meta.push([{ text: `+${added}`, tone: "diffAdded" }]);
-	if (removed > 0) meta.push([{ text: `-${removed}`, tone: "diffRemoved" }]);
-	return meta;
+	return diffStatsMetaLines(added, removed);
 }
 
 /**
@@ -528,11 +521,7 @@ function resultSections(
 
 /** What one file's result says, as the card a single-file edit is and a section of a multi-file one. */
 function singleFileResult(
-	result: {
-		content?: Array<{ type: string; text?: string }>;
-		details?: EditToolDetails | EditToolPerFileResult;
-		isError?: boolean;
-	},
+	result: ToolViewResult<EditToolDetails | EditToolPerFileResult>,
 	context: ToolViewContext,
 	args: EditViewArgs | undefined,
 ): ToolView {
@@ -561,7 +550,7 @@ function singleFileResult(
 	const errorText = isError
 		? displayErrorText ||
 			(details && "errorText" in details ? (details.errorText ?? "") : "") ||
-			(result.content?.find(part => part.type === "text")?.text ?? "")
+			extractResultText(result.content)
 		: "";
 	const linkPath = details && "path" in details ? details.path : undefined;
 
@@ -708,9 +697,10 @@ export const editToolView: Required<ToolViewRenderer<EditViewArgs, EditViewResul
 			});
 		}
 
-		const meta: ViewLine[] = [[{ text: `${perFileResults.length} file${perFileResults.length === 1 ? "" : "s"}` }]];
-		if (added > 0) meta.push([{ text: `+${added}`, tone: "diffAdded" }]);
-		if (removed > 0) meta.push([{ text: `-${removed}`, tone: "diffRemoved" }]);
+		const meta: ViewLine[] = [
+			[{ text: `${perFileResults.length} file${perFileResults.length === 1 ? "" : "s"}` }],
+			...diffStatsMetaLines(added, removed),
+		];
 		return {
 			kind: "framedBlock",
 			gutter: true,

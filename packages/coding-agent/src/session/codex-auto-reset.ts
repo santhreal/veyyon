@@ -179,7 +179,7 @@ export function evaluateCodexAutoRedeem(input: CodexAutoRedeemInput): CodexAutoR
 }
 
 /**
- * Process-wide (NOT per-session) coordinator state. Parallel subagent sessions
+ * Process-wide (NOT per-session) coordinator state. Parallel agent sessions
  * share the same Codex accounts and must not race a double-spend, so this is a
  * single shared container, not a per-session field.
  *

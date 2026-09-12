@@ -94,6 +94,9 @@ export interface OverlayOptions {
 	/** Margin from terminal edges. Number applies to all sides. */
 	margin?: OverlayMargin | number;
 
+	/** Whether the overlay receives input and takes focus. Defaults to true. */
+	interactive?: boolean;
+
 	// === Visibility ===
 	/**
 	 * Control overlay visibility based on terminal dimensions.
@@ -221,99 +224,43 @@ export function resolveOverlayLayout(
 	// availHeight above), so the overlay is unconditionally clamped to fit.
 	const effectiveHeight = Math.min(overlayHeight, maxHeight);
 
-	// === Resolve position ===
-	let row: number;
-	let col: number;
+	const anchor = opt.anchor ?? "center";
+	const row = resolvePos(opt.row, anchor, effectiveHeight, availHeight, marginTop, true) + (opt.offsetY ?? 0);
+	const col = resolvePos(opt.col, anchor, width, availWidth, marginLeft, false) + (opt.offsetX ?? 0);
 
-	if (opt.row !== undefined) {
-		if (typeof opt.row === "string") {
-			// Percentage: 0% = top, 100% = bottom (overlay stays within bounds)
-			const match = opt.row.match(/^(\d+(?:\.\d+)?)%$/);
-			if (match) {
-				const maxRow = Math.max(0, availHeight - effectiveHeight);
-				const percent = parseFloat(match[1]) / 100;
-				row = marginTop + Math.floor(maxRow * percent);
-			} else {
-				// Invalid format, fall back to center
-				row = resolveAnchorRow("center", effectiveHeight, availHeight, marginTop);
-			}
-		} else {
-			// Absolute row position
-			row = opt.row;
-		}
-	} else {
-		// Anchor-based (default: center)
-		const anchor = opt.anchor ?? "center";
-		row = resolveAnchorRow(anchor, effectiveHeight, availHeight, marginTop);
-	}
-
-	if (opt.col !== undefined) {
-		if (typeof opt.col === "string") {
-			// Percentage: 0% = left, 100% = right (overlay stays within bounds)
-			const match = opt.col.match(/^(\d+(?:\.\d+)?)%$/);
-			if (match) {
-				const maxCol = Math.max(0, availWidth - width);
-				const percent = parseFloat(match[1]) / 100;
-				col = marginLeft + Math.floor(maxCol * percent);
-			} else {
-				// Invalid format, fall back to center
-				col = resolveAnchorCol("center", width, availWidth, marginLeft);
-			}
-		} else {
-			// Absolute column position
-			col = opt.col;
-		}
-	} else {
-		// Anchor-based (default: center)
-		const anchor = opt.anchor ?? "center";
-		col = resolveAnchorCol(anchor, width, availWidth, marginLeft);
-	}
-
-	// Apply offsets
-	if (opt.offsetY !== undefined) row += opt.offsetY;
-	if (opt.offsetX !== undefined) col += opt.offsetX;
-
-	// Clamp to terminal bounds (respecting margins)
-	row = clampLow(row, marginTop, termHeight - marginBottom - effectiveHeight);
-	col = clampLow(col, marginLeft, termWidth - marginRight - width);
-
-	return { width, row, col, maxHeight };
+	return {
+		width,
+		row: clampLow(row, marginTop, termHeight - marginBottom - effectiveHeight),
+		col: clampLow(col, marginLeft, termWidth - marginRight - width),
+		maxHeight,
+	};
 }
 
-function resolveAnchorRow(anchor: OverlayAnchor, height: number, availHeight: number, marginTop: number): number {
-	switch (anchor) {
-		case "top-left":
-		case "top-center":
-		case "top-right":
-			return marginTop;
-		case "bottom-left":
-		case "bottom-center":
-		case "bottom-right":
-			return marginTop + availHeight - height;
-		case "left-center":
-		case "center":
-		case "right-center":
-			return marginTop + Math.floor((availHeight - height) / 2);
-	}
+function resolvePos(
+	value: SizeValue | undefined,
+	anchor: OverlayAnchor,
+	size: number,
+	avail: number,
+	margin: number,
+	isRow: boolean,
+): number {
+	if (typeof value === "number") return value;
+	const maxOffset = Math.max(0, avail - size);
+	const parsed = typeof value === "string" ? parseSizeValue(value, maxOffset) : undefined;
+	if (parsed !== undefined) return margin + parsed;
+	const factor = isRow
+		? anchor.startsWith("top")
+			? 0
+			: anchor.startsWith("bottom")
+				? 1
+				: 0.5
+		: anchor.endsWith("left")
+			? 0
+			: anchor.endsWith("right")
+				? 1
+				: 0.5;
+	return margin + Math.floor(maxOffset * factor);
 }
-
-function resolveAnchorCol(anchor: OverlayAnchor, width: number, availWidth: number, marginLeft: number): number {
-	switch (anchor) {
-		case "top-left":
-		case "left-center":
-		case "bottom-left":
-			return marginLeft;
-		case "top-right":
-		case "right-center":
-		case "bottom-right":
-			return marginLeft + availWidth - width;
-		case "top-center":
-		case "center":
-		case "bottom-center":
-			return marginLeft + Math.floor((availWidth - width) / 2);
-	}
-}
-
 /** Splice overlay content into a base line at a specific column. Single-pass optimized. */
 export function compositeLineAt(
 	baseLine: string,
@@ -460,7 +407,7 @@ export class OverlayStack {
 	 * keyboard, the mouse and `hasInteractive()` are concerned.
 	 */
 	isInteractive(entry: OverlayEntry): boolean {
-		return !entry.exiting && this.isVisible(entry);
+		return entry.options?.interactive !== false && !entry.exiting && this.isVisible(entry);
 	}
 
 	/** Whether any overlay can still take input. */
@@ -470,18 +417,12 @@ export class OverlayStack {
 
 	/** The topmost overlay that is PAINTED, including one that is playing itself out. */
 	topmostVisible(): OverlayEntry | undefined {
-		for (let i = this.#entries.length - 1; i >= 0; i--) {
-			if (this.isVisible(this.#entries[i]!)) return this.#entries[i];
-		}
-		return undefined;
+		return this.#entries.findLast(entry => this.isVisible(entry));
 	}
 
 	/** The topmost overlay that can hold focus, which an exiting card cannot. */
 	topmostInteractive(): OverlayEntry | undefined {
-		for (let i = this.#entries.length - 1; i >= 0; i--) {
-			if (this.isInteractive(this.#entries[i]!)) return this.#entries[i];
-		}
-		return undefined;
+		return this.#entries.findLast(entry => this.isInteractive(entry));
 	}
 
 	clearFrames(): void {

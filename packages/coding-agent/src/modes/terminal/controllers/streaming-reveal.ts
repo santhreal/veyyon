@@ -1,6 +1,6 @@
-import type { AssistantMessage } from "@veyyon/ai";
 import type { Component } from "@veyyon/tui";
 import { getSegmenter } from "@veyyon/utils/width";
+import type { AssistantMessageView, AssistantSegment } from "@veyyon/wire/presentation";
 import { LRUCache } from "lru-cache/raw";
 import { formatThinkingForDisplay, hasDisplayableThinking } from "../../../utils/thinking-display";
 import type { AssistantMessageComponent } from "../components/transcript/assistant-message";
@@ -9,8 +9,6 @@ export const STREAMING_REVEAL_FRAME_MS = 1000 / 30;
 export const MIN_STEP = 3;
 export const CATCHUP_FRAMES = 8;
 
-type AssistantContentBlock = AssistantMessage["content"][number];
-type DisplayThinkingContentBlock = Extract<AssistantContentBlock, { type: "thinking" }> & { rawThinking?: string };
 /** The concrete streaming-reveal target is an {@link AssistantMessageComponent}; the
  *  Component intersection is what lets the reveal request component-scoped renders
  *  through {@link TUI.requestComponentRender} instead of forcing a full-tree walk. */
@@ -134,14 +132,15 @@ function sliceGraphemes(text: string, units: number): string {
 	return text;
 }
 
-export function visibleUnits(message: AssistantMessage, hideThinking: boolean, proseOnly = true): number {
+export function visibleUnits(message: AssistantMessageView, hideThinking: boolean, proseOnly = true): number {
 	let total = 0;
-	for (const block of message.content) {
-		if (block.type === "text") {
-			total += countGraphemes(block.text);
-		} else if (block.type === "thinking" && !hideThinking) {
-			const formatted = formatThinkingForDisplay(block.thinking, proseOnly);
-			if (hasDisplayableThinking(block.thinking, formatted)) {
+	for (const segment of message.segments) {
+		if (segment.kind === "text") {
+			total += countGraphemes(segment.text);
+		} else if (segment.kind === "thinking" && !hideThinking && !segment.redacted) {
+			const rawThinking = segment.rawThinking ?? segment.text;
+			const formatted = formatThinkingForDisplay(rawThinking, proseOnly);
+			if (hasDisplayableThinking(rawThinking, formatted)) {
 				total += countGraphemes(formatted);
 			}
 		}
@@ -149,65 +148,54 @@ export function visibleUnits(message: AssistantMessage, hideThinking: boolean, p
 	return total;
 }
 
-function revealTextBlock(
-	block: Extract<AssistantContentBlock, { type: "text" }>,
+function revealSegment<S extends Extract<AssistantSegment, { text: string }>>(
+	segment: S,
 	remaining: number,
 	units: number,
 	index: number,
 	sliceOf: GraphemeSlicer,
-): AssistantContentBlock {
-	if (remaining <= 0) return block.text.length === 0 ? block : { ...block, text: "" };
-	if (remaining >= units) return block;
-	return { ...block, text: sliceOf(index, block.text, remaining) };
-}
-
-function revealThinkingBlock(
-	block: Extract<AssistantContentBlock, { type: "thinking" }>,
-	remaining: number,
-	units: number,
-	index: number,
-	sliceOf: GraphemeSlicer,
-): AssistantContentBlock {
-	if (remaining <= 0) return block.thinking.length === 0 ? block : { ...block, thinking: "" };
-	if (remaining >= units) return block;
-	return { ...block, thinking: sliceOf(index, block.thinking, remaining) };
+): S {
+	if (remaining <= 0) return segment.text.length === 0 ? segment : { ...segment, text: "" };
+	if (remaining >= units) return segment;
+	return { ...segment, text: sliceOf(index, segment.text, remaining) };
 }
 
 export function buildDisplayMessage(
-	target: AssistantMessage,
+	target: AssistantMessageView,
 	revealed: number,
 	hideThinking: boolean,
 	proseOnly = true,
 	countOf: (index: number, text: string) => number = (_index, text) => countGraphemes(text),
 	sliceOf: GraphemeSlicer = (_index, text, units) => sliceGraphemes(text, units),
-): AssistantMessage {
+): AssistantMessageView {
 	let remaining = Math.max(0, Math.floor(revealed));
-	const content: AssistantContentBlock[] = [];
-	for (let i = 0; i < target.content.length; i++) {
-		const block = target.content[i]!;
-		if (block.type === "text") {
-			const units = countOf(i, block.text);
-			content.push(revealTextBlock(block, remaining, units, i, sliceOf));
+	const segments: AssistantSegment[] = [];
+	for (let i = 0; i < target.segments.length; i++) {
+		const segment = target.segments[i]!;
+		if (segment.kind === "text") {
+			const units = countOf(i, segment.text);
+			segments.push(revealSegment(segment, remaining, units, i, sliceOf));
 			remaining = Math.max(0, remaining - units);
-		} else if (block.type === "thinking" && !hideThinking) {
-			const formatted = formatThinkingForDisplay(block.thinking, proseOnly);
-			if (hasDisplayableThinking(block.thinking, formatted)) {
+		} else if (segment.kind === "thinking" && !hideThinking && !segment.redacted) {
+			const rawThinking = segment.rawThinking ?? segment.text;
+			const formatted = formatThinkingForDisplay(rawThinking, proseOnly);
+			if (hasDisplayableThinking(rawThinking, formatted)) {
 				const units = countOf(i, formatted);
-				const displayBlock: DisplayThinkingContentBlock = {
-					...block,
-					thinking: formatted,
-					rawThinking: block.thinking,
+				const displaySegment: Extract<AssistantSegment, { kind: "thinking" }> = {
+					...segment,
+					text: formatted,
+					rawThinking,
 				};
-				content.push(revealThinkingBlock(displayBlock, remaining, units, i, sliceOf));
+				segments.push(revealSegment(displaySegment, remaining, units, i, sliceOf));
 				remaining = Math.max(0, remaining - units);
 			} else {
-				content.push(block);
+				segments.push(segment);
 			}
 		} else {
-			content.push(block);
+			segments.push(segment);
 		}
 	}
-	return { ...target, content };
+	return { ...target, segments };
 }
 
 export function nextStep(backlog: number): number {
@@ -219,7 +207,7 @@ export class StreamingRevealController {
 	readonly #getHideThinkingBlock: () => boolean;
 	readonly #getProseOnlyThinking: () => boolean;
 	readonly #requestRender: (component: Component) => void;
-	#target: AssistantMessage | undefined;
+	#target: AssistantMessageView | undefined;
 	#component: StreamingRevealComponent | undefined;
 	#timer: NodeJS.Timeout | undefined;
 	#revealed = 0;
@@ -237,7 +225,7 @@ export class StreamingRevealController {
 		this.#getProseOnlyThinking = options.getProseOnlyThinking;
 		this.#requestRender = options.requestRender;
 	}
-	#build(target: AssistantMessage, revealed: number): AssistantMessage {
+	#build(target: AssistantMessageView, revealed: number): AssistantMessageView {
 		return buildDisplayMessage(
 			target,
 			revealed,
@@ -248,7 +236,7 @@ export class StreamingRevealController {
 		);
 	}
 
-	begin(component: StreamingRevealComponent, message: AssistantMessage): void {
+	begin(component: StreamingRevealComponent, message: AssistantMessageView): void {
 		this.stop();
 		this.#component = component;
 		this.#target = message;
@@ -262,7 +250,7 @@ export class StreamingRevealController {
 			return;
 		}
 		const total = this.#visibleUnits(message);
-		if (message.content.some(block => block.type === "toolCall")) {
+		if (message.segments.some(block => block.kind === "tool-call")) {
 			// A tool call is a transcript-order boundary: finish any leading
 			// assistant text before EventController renders the separate tool card.
 			this.#revealed = total;
@@ -275,7 +263,7 @@ export class StreamingRevealController {
 		this.#syncTimer(total);
 	}
 
-	setTarget(message: AssistantMessage): void {
+	setTarget(message: AssistantMessageView): void {
 		this.#target = message;
 		this.#hideThinkingBlock = this.#getHideThinkingBlock();
 		this.#proseOnlyThinking = this.#getProseOnlyThinking();
@@ -287,7 +275,7 @@ export class StreamingRevealController {
 			return;
 		}
 		const total = this.#visibleUnits(message);
-		if (message.content.some(block => block.type === "toolCall")) {
+		if (message.segments.some(block => block.kind === "tool-call")) {
 			// A tool call is a transcript-order boundary: finish any leading
 			// assistant text before EventController renders the separate tool card.
 			this.#revealed = total;
@@ -330,15 +318,16 @@ export class StreamingRevealController {
 	}
 
 	/** Total reveal units of `message`, memoized per block across ticks. */
-	#visibleUnits(message: AssistantMessage): number {
+	#visibleUnits(message: AssistantMessageView): number {
 		let total = 0;
-		for (let i = 0; i < message.content.length; i++) {
-			const block = message.content[i]!;
-			if (block.type === "text") {
-				total += this.#unitCounter.count(i, block.text);
-			} else if (block.type === "thinking" && !this.#hideThinkingBlock) {
-				const formatted = formatThinkingForDisplay(block.thinking, this.#proseOnlyThinking);
-				if (hasDisplayableThinking(block.thinking, formatted)) {
+		for (let i = 0; i < message.segments.length; i++) {
+			const segment = message.segments[i]!;
+			if (segment.kind === "text") {
+				total += this.#unitCounter.count(i, segment.text);
+			} else if (segment.kind === "thinking" && !this.#hideThinkingBlock && !segment.redacted) {
+				const rawThinking = segment.rawThinking ?? segment.text;
+				const formatted = formatThinkingForDisplay(rawThinking, this.#proseOnlyThinking);
+				if (hasDisplayableThinking(rawThinking, formatted)) {
 					total += this.#unitCounter.count(i, formatted);
 				}
 			}

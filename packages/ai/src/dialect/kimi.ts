@@ -1,6 +1,12 @@
 import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
-import { normalizeKimiFunctionName, parseToolArgsText, partialSuffixOverlapAny } from "./coercion";
+import {
+	normalizeKimiFunctionName,
+	parseToolArgsText,
+	partialSuffixOverlapAny,
+	scanThinkingText,
+	ThinkingSection,
+} from "./coercion";
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
@@ -44,7 +50,7 @@ export class KimiInbandScanner implements InbandScanner {
 	#id = "";
 	#name = "";
 	#rawBlock = "";
-	#thinking = "";
+	readonly #thinking = new ThinkingSection();
 	readonly #parseThinking: boolean;
 
 	constructor(options: InbandScannerOptions = {}) {
@@ -108,8 +114,7 @@ export class KimiInbandScanner implements InbandScanner {
 		this.#buffer = this.#buffer.slice(start);
 		if (this.#parseThinking && this.#buffer.startsWith(THINK_OPEN)) {
 			this.#buffer = this.#buffer.slice(THINK_OPEN.length);
-			this.#thinking = "";
-			events.push({ type: "thinkingStart" });
+			this.#thinking.start(events);
 			this.#state = "thinking";
 			return true;
 		}
@@ -122,33 +127,14 @@ export class KimiInbandScanner implements InbandScanner {
 	}
 
 	#consumeThinking(final: boolean, events: InbandScanEvent[]): boolean {
-		const close = this.#buffer.indexOf(THINK_CLOSE);
-		if (close === -1) {
-			const hold = final ? 0 : partialSuffixOverlapAny(this.#buffer, [THINK_CLOSE]);
-			this.#emitThinking(this.#buffer.slice(0, this.#buffer.length - hold), events);
-			this.#buffer = this.#buffer.slice(this.#buffer.length - hold);
-			if (final) {
-				this.#endThinking(events);
-				this.#state = "outside";
-			}
-			return false;
-		}
-		this.#emitThinking(this.#buffer.slice(0, close), events);
-		this.#buffer = this.#buffer.slice(close + THINK_CLOSE.length);
-		this.#endThinking(events);
-		this.#state = "outside";
-		return true;
-	}
-
-	#emitThinking(delta: string, events: InbandScanEvent[]): void {
-		if (delta.length === 0) return;
-		this.#thinking += delta;
-		events.push({ type: "thinkingDelta", delta });
+		const { buffer, closed } = scanThinkingText(this.#buffer, THINK_CLOSE, final, this.#thinking, events);
+		this.#buffer = buffer;
+		if (closed) this.#state = "outside";
+		return closed;
 	}
 
 	#endThinking(events: InbandScanEvent[]): void {
-		events.push({ type: "thinkingEnd", thinking: this.#thinking });
-		this.#thinking = "";
+		this.#thinking.end(events);
 		this.#state = "outside";
 	}
 

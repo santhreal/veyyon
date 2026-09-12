@@ -68,10 +68,11 @@ export * from "./extensibility/extensions";
 // Named rather than `export type *`: the hook API deliberately mirrors the
 // extension API, so eleven event-result type names are declared in both modules
 // and a star re-export is ambiguous. These two are what a hook file needs.
-export type { HookAPI, HookContext } from "./extensibility/hooks/types";
+export type { HookAPI, HookContext } from "./extensibility/hooks";
 // Skills
 export * from "./extensibility/skills";
 export * from "./goals";
+export * from "./goals/goal-view";
 export type * from "./lsp";
 export * from "./lsp";
 // Main entry point
@@ -132,10 +133,13 @@ export * from "./tools/agent/review";
 export * from "./tools/agent/todo";
 export * from "./tools/agent/vibe";
 export * from "./tools/agent/yield";
+export * from "./tools/core/path-utils";
 export * from "./tools/fs/checkpoint";
 export * from "./tools/fs/inspect-image";
 export * from "./tools/fs/read";
+export * from "./tools/fs/read-view";
 export * from "./tools/fs/write";
+export * from "./tools/fs/write-view";
 export * from "./tools/search/ast-edit";
 export * from "./tools/search/search";
 export * from "./tools/search/search-tool-bm25";

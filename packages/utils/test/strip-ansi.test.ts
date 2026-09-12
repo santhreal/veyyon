@@ -13,7 +13,7 @@
  * read them; the Rust half is `natives/shell/tests/ansi_strip_contract.rs`.
  */
 import { describe, expect, it } from "bun:test";
-import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import { stripAnsi, stripAnsiExceptSgr } from "@veyyon/utils/strip-ansi";
 import { collectPackageSources } from "./support/package-sources";
 
 describe("stripAnsi", () => {
@@ -119,6 +119,46 @@ describe("stripAnsi", () => {
 	/** Line endings are a different primitive's decision and are passed through. */
 	it("preserves line endings verbatim", () => {
 		expect(stripAnsi("\x1b[32mok\x1b[0m\r\nnext\n")).toBe("ok\r\nnext\n");
+	});
+});
+
+/**
+ * Styled stripping canonicalizes C1 while preserving only SGR. Exercise the
+ * entire C1 range, including non-introducers, rather than only colored CSI.
+ * This checks string processing, not terminal decoding or streaming fragments.
+ */
+describe("styled ANSI stripping", () => {
+	it("normalizes every C1 introducer without removing surrounding styles", () => {
+		const style = "\x1b[31m";
+		const reset = "\x1b[0m";
+		for (let code = 0x80; code <= 0x9f; code++) {
+			const control = String.fromCharCode(code);
+			const stringIntroducer = code === 0x90 || code === 0x98 || code === 0x9d || code === 0x9e || code === 0x9f;
+			for (const terminator of ["\x07", "\x1b\\", "\x9c"]) {
+				const sequence = stringIntroducer
+					? `${control}payload${terminator}`
+					: code === 0x9b
+						? `${control}1m`
+						: control;
+				const expected = stringIntroducer || code === 0x9c ? "" : code === 0x9b ? "\x1b[1m" : control;
+				expect(stripAnsiExceptSgr(`${style}before${sequence}after${reset}`)).toBe(
+					`${style}before${expected}after${reset}`,
+				);
+			}
+		}
+	});
+
+	it("preserves SGR but removes cursor and intermediate-byte CSI in both encodings", () => {
+		for (const introducer of ["\x1b[", "\x9b"]) {
+			for (const parameters of ["", "31", "38:2:255:0:0"]) {
+				expect(stripAnsiExceptSgr(`${introducer}${parameters}mtext${introducer}0m`)).toBe(
+					`\x1b[${parameters}mtext\x1b[0m`,
+				);
+			}
+			for (const command of ["2K", "?25l", "1 q", "31 m"]) {
+				expect(stripAnsiExceptSgr(`${introducer}${command}text`)).toBe("text");
+			}
+		}
 	});
 });
 

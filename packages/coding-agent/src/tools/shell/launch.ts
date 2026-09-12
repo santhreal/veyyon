@@ -28,6 +28,7 @@ import { resolveToCwd } from "../core/path-utils";
 import { formatDuration, previewLine, replaceTabs, shortenPath, TRUNCATE_LENGTHS } from "../core/render-utils";
 import { ToolError } from "../core/tool-errors";
 import { releaseLaunchExitWatch, watchLaunchedProcessExit } from "./launch-exit-watch";
+import { readyPendingSummary } from "./launch-view";
 
 const launchSchema = type({
 	op: type("'start' | 'list' | 'logs' | 'wait' | 'send' | 'stop' | 'restart' | 'describe'").describe(
@@ -234,27 +235,6 @@ function completionLabel(record: DaemonCompletionRecord): string {
 	return `${record.name}: ${outcome} terminated-by=${record.terminatedBy} after ${formatDuration(
 		record.exitedAt - record.startedAt,
 	)}${reason}${tail}`;
-}
-
-/**
- * Human sentences for the readiness conditions still unmet, e.g.
- * `port 5173 on 127.0.0.1 never accepted connections`. `ready` (from the start
- * params) adds the concrete pattern/port; absent it falls back to generic labels.
- */
-export function readyPendingSummary(daemon: DaemonSnapshot, ready?: LaunchParams["ready"]): string[] {
-	const parts: string[] = [];
-	for (const condition of daemon.readyPending ?? []) {
-		if (condition === "log") {
-			parts.push(ready?.log ? `log pattern /${ready.log}/ never matched` : "the log pattern never matched");
-		} else {
-			parts.push(
-				ready?.port !== undefined
-					? `port ${ready.port} on ${ready.host ?? "127.0.0.1"} never accepted connections`
-					: "the port never accepted connections",
-			);
-		}
-	}
-	return parts;
 }
 
 export function toolContent(result: DaemonRpcResult, params: LaunchParams): string {
@@ -481,23 +461,3 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 
 /** Args shape visible to the renderer, possibly mid-stream (every field optional). */
 export type LaunchRenderArgs = Partial<LaunchParams>;
-
-/** Op-specific call context (log filters, wait condition, send payload). */
-export function callMeta(args: LaunchRenderArgs): string[] {
-	const meta: string[] = [];
-	switch (args.op) {
-		case "logs":
-			if (args.follow) meta.push("follow");
-			if (args.grep) meta.push(`grep /${args.grep}/`);
-			break;
-		case "wait":
-			meta.push(args.pattern ? `for /${args.pattern}/` : `for ${args.for ?? "exit"}`);
-			break;
-		case "send":
-			if (args.signal) meta.push(args.signal);
-			else if (args.text) meta.push(args.text);
-			if (args.keys?.length) meta.push(args.keys.join(" "));
-			break;
-	}
-	return meta.map(entry => previewLine(replaceTabs(entry), TRUNCATE_LENGTHS.SHORT));
-}

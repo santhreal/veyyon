@@ -15,6 +15,7 @@ import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/c
 import { ErrorBannerComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/error-banner";
 import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { toAssistantMessageView } from "@veyyon/coding-agent/presentation/transcript-builder";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
@@ -384,8 +385,8 @@ describe("EventController working loader reconciliation", () => {
 		expect(ctx.ensureLoadingAnimation).toHaveBeenCalledTimes(1);
 	});
 
-	it("self-heals missing working loader when a task subagent finishes mid-turn (#3858)", async () => {
-		// `task` subagents run inside the parent's streaming turn. While the task is
+	it("self-heals missing working loader when a task agent finishes mid-turn (#3858)", async () => {
+		// `task` agents run inside the parent's streaming turn. While the task is
 		// running a transient overlay (auto-compaction / auto-retry) can drop the
 		// working loader by clearing the status container, and the overlay's end
 		// handler is the only restorer keyed off the missing loader. If the task
@@ -465,7 +466,7 @@ describe("AssistantMessageComponent error pinning", () => {
 			stopReason: "error",
 			errorMessage: "400 invalid reasoning value",
 		});
-		const component = new AssistantMessageComponent(message);
+		const component = new AssistantMessageComponent(toAssistantMessageView(message));
 
 		expect(Bun.stripANSI(component.render(120).join("\n"))).toContain("Error: 400 invalid reasoning value");
 

@@ -15,6 +15,7 @@ import {
 	zLoadSessionResponse,
 	zNewSessionResponse,
 	zPromptResponse,
+	zResumeSessionResponse,
 	zSessionNotification,
 } from "@agentclientprotocol/sdk/dist/schema/zod.gen.js";
 import type { Model } from "@veyyon/ai";
@@ -1039,6 +1040,37 @@ describe("ACP agent", () => {
 				update => typeof getChunkMessageId(update) === "string" && getChunkMessageId(update)!.length > 0,
 			),
 		).toBe(true);
+
+		harness.abortController.abort();
+		await Bun.sleep(0);
+	});
+
+	it("resumes a stored session without replaying it, and refuses a missing id or a foreign cwd", async () => {
+		const harness = await createHarness();
+		const stored = new FakeAgentSession(harness.cwdA);
+		harness.sessions.push(stored);
+		stored.sessionManager.appendMessage({ role: "user", content: "hello", timestamp: Date.now() });
+		stored.sessionManager.appendMessage(makeAssistantMessage("reply", "reasoning"));
+		await stored.sessionManager.ensureOnDisk();
+		await stored.sessionManager.flush();
+
+		const resumed = await harness.agent.resumeSession({ sessionId: stored.sessionId, cwd: harness.cwdA });
+		expectAcpStructure(zResumeSessionResponse, resumed);
+		expect(
+			harness.updates.filter(
+				update =>
+					update.sessionId === stored.sessionId &&
+					(update.update.sessionUpdate === "user_message_chunk" ||
+						update.update.sessionUpdate === "agent_message_chunk"),
+			),
+		).toEqual([]);
+
+		await expect(harness.agent.resumeSession({ sessionId: stored.sessionId, cwd: harness.cwdB })).rejects.toThrow(
+			`ACP session ${stored.sessionId} is already loaded for`,
+		);
+		await expect(harness.agent.resumeSession({ sessionId: "no-such-session", cwd: harness.cwdA })).rejects.toThrow(
+			"ACP session not found: no-such-session",
+		);
 
 		harness.abortController.abort();
 		await Bun.sleep(0);

@@ -33,12 +33,12 @@ function makeJsonlSessionFile(dirPath: string, entries: object[]): string {
 	return filePath;
 }
 
-function makeSubagentRegistry(sessions: ObservableSession[]) {
+function makeAgentRegistry(sessions: ObservableSession[]) {
 	return {
 		getSessions: () => sessions,
 		onChange: () => () => {},
 		setMainSession: () => {},
-		getActiveSubagentCount: () => sessions.filter(s => s.status === "active").length,
+		getActiveAgentCount: () => sessions.filter(s => s.status === "active").length,
 	} as unknown as SessionObserverRegistry;
 }
 
@@ -57,7 +57,7 @@ function makeViewer(sessionFile: string, observed: ObservableSession[]): AgentTr
 	return new AgentTranscriptViewer({
 		agentId: SESSION_ID,
 		registry: agents,
-		observers: makeSubagentRegistry(observed),
+		observers: makeAgentRegistry(observed),
 		ui,
 		cwd: path.dirname(sessionFile),
 		expandKeys: ["ctrl+o"],
@@ -125,8 +125,8 @@ describe("Agent hub silent-abort regression", () => {
 		const viewer = makeViewer(sessionFile, [
 			{
 				id: SESSION_ID,
-				kind: "subagent",
-				label: "Test Subagent",
+				kind: "spawn",
+				label: "Test Agent",
 				status: "active",
 				sessionFile,
 				lastUpdate: Date.now(),
@@ -182,8 +182,8 @@ describe("Agent hub silent-abort regression", () => {
 		const viewer = makeViewer(sessionFile, [
 			{
 				id: SESSION_ID,
-				kind: "subagent",
-				label: "Test Subagent",
+				kind: "spawn",
+				label: "Test Agent",
 				status: "active",
 				sessionFile,
 				lastUpdate: Date.now(),
@@ -234,8 +234,8 @@ describe("Agent hub silent-abort regression", () => {
 		const viewer = makeViewer(sessionFile, [
 			{
 				id: SESSION_ID,
-				kind: "subagent",
-				label: "Test Subagent",
+				kind: "spawn",
+				label: "Test Agent",
 				status: "failed",
 				sessionFile,
 				lastUpdate: Date.now(),

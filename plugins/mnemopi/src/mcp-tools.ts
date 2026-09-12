@@ -7,11 +7,9 @@ import { BankManager } from "./core/banks";
 import { BeamMemory, type RecallOptions } from "./core/beam";
 import { addTriple, queryTriples } from "./core/triples";
 import { clampVeracity, VERACITY_DESCRIPTION, VERACITY_VALUES } from "./core/veracity";
-
-// The third copy of JSON in this package, now the same declaration as the other two.
-export type { JsonPrimitive, JsonValue } from "./types";
-
 import type { JsonValue } from "./types";
+
+export type { JsonPrimitive, JsonValue } from "./types";
 export type ToolArguments = Record<string, unknown>;
 export type ToolResult = Record<string, unknown>;
 
@@ -39,27 +37,10 @@ export const REMEMBER_SCHEMA = {
 			default: "session",
 		},
 		valid_until: { type: "string", description: "Optional expiry date or timestamp." },
-		extract_entities: {
-			type: "boolean",
-			description: "Extract named entities for fuzzy recall.",
-			default: false,
-		},
-		extract: {
-			type: "boolean",
-			description: "Extract structured facts from content.",
-			default: false,
-		},
+		extract_entities: { type: "boolean", description: "Extract named entities for fuzzy recall.", default: false },
+		extract: { type: "boolean", description: "Extract structured facts from content.", default: false },
 		metadata: { type: "object", description: "Optional key-value metadata.", default: {} },
-		veracity: {
-			type: "string",
-			// The list comes from the vocabulary rather than being written out here, and it is
-			// given to the model at all because the schema used to say only "Confidence label",
-			// leaving a caller to guess a word. A guess outside the eight is clamped to
-			// `unknown`, so an invented label quietly cost the memory its weight.
-			enum: VERACITY_VALUES,
-			description: VERACITY_DESCRIPTION,
-			default: "unknown",
-		},
+		veracity: { enum: VERACITY_VALUES, description: VERACITY_DESCRIPTION, default: "unknown" },
 		author_id: { type: "string", description: "Author identifier for this MCP call." },
 		author_type: { type: "string", description: "Author type: human, agent, or system." },
 		channel_id: { type: "string", description: "Channel or group this memory belongs to." },
@@ -80,15 +61,8 @@ export const RECALL_SCHEMA = {
 			description: "Temporal boost weight. 0.0 disables recency boost.",
 			default: 0.0,
 		},
-		query_time: {
-			type: "string",
-			description: "ISO timestamp to treat as now for temporal scoring.",
-		},
-		temporal_halflife: {
-			type: "number",
-			description: "Temporal decay half-life in hours.",
-			default: 24,
-		},
+		query_time: { type: "string", description: "ISO timestamp to treat as now for temporal scoring." },
+		temporal_halflife: { type: "number", description: "Temporal decay half-life in hours.", default: 24 },
 		vec_weight: { type: "number", description: "Vector similarity weight." },
 		fts_weight: { type: "number", description: "Full-text search weight." },
 		importance_weight: { type: "number", description: "Importance score weight." },
@@ -103,18 +77,9 @@ export const SHARED_REMEMBER_SCHEMA = {
 	type: "object",
 	properties: {
 		content: { type: "string", description: "Surface memory content to store." },
-		kind: {
-			type: "string",
-			description: "meta | preference | correction | identity",
-			default: "meta",
-		},
+		kind: { type: "string", description: "meta | preference | correction | identity", default: "meta" },
 		importance: { type: "number", description: "Importance score from 0.0 to 1.0.", default: 0.8 },
-		veracity: {
-			type: "string",
-			enum: VERACITY_VALUES,
-			description: VERACITY_DESCRIPTION,
-			default: "unknown",
-		},
+		veracity: { enum: VERACITY_VALUES, description: VERACITY_DESCRIPTION, default: "unknown" },
 		metadata: { type: "object", description: "Optional metadata object.", default: {} },
 	},
 	required: ["content"],
@@ -138,16 +103,8 @@ export const SHARED_FORGET_SCHEMA = {
 export const SLEEP_SCHEMA = {
 	type: "object",
 	properties: {
-		dry_run: {
-			type: "boolean",
-			description: "Preview consolidation without writes.",
-			default: false,
-		},
-		all_sessions: {
-			type: "boolean",
-			description: "Consolidate all eligible sessions.",
-			default: false,
-		},
+		dry_run: { type: "boolean", description: "Preview consolidation without writes.", default: false },
+		all_sessions: { type: "boolean", description: "Consolidate all eligible sessions.", default: false },
 		bank: { type: "string", description: "Memory bank to consolidate.", default: "default" },
 	},
 } as const;
@@ -261,11 +218,7 @@ export const IMPORT_SCHEMA = {
 	type: "object",
 	properties: {
 		input_path: { type: "string", description: "File path to read the export JSON from." },
-		force: {
-			type: "boolean",
-			description: "Overwrite existing records instead of skipping.",
-			default: false,
-		},
+		force: { type: "boolean", description: "Overwrite existing records instead of skipping.", default: false },
 		bank: { type: "string", default: "default" },
 	},
 	required: ["input_path"],
@@ -296,16 +249,8 @@ export const GRAPH_LINK_SCHEMA = {
 } as const;
 
 export const TOOLS: readonly ToolDefinition[] = [
-	{
-		name: "mnemopi_remember",
-		description: "Store a durable memory in Mnemopi.",
-		inputSchema: REMEMBER_SCHEMA,
-	},
-	{
-		name: "mnemopi_recall",
-		description: "Search memories with hybrid scoring.",
-		inputSchema: RECALL_SCHEMA,
-	},
+	{ name: "mnemopi_remember", description: "Store a durable memory in Mnemopi.", inputSchema: REMEMBER_SCHEMA },
+	{ name: "mnemopi_recall", description: "Search memories with hybrid scoring.", inputSchema: RECALL_SCHEMA },
 	{
 		name: "mnemopi_shared_remember",
 		description: "Store compact cross-agent surface memory.",
@@ -326,16 +271,8 @@ export const TOOLS: readonly ToolDefinition[] = [
 		description: "Return shared surface DB path and counts.",
 		inputSchema: EMPTY_SCHEMA,
 	},
-	{
-		name: "mnemopi_sleep",
-		description: "Run the consolidation sleep cycle.",
-		inputSchema: SLEEP_SCHEMA,
-	},
-	{
-		name: "mnemopi_stats",
-		description: "Return Mnemopi memory statistics.",
-		inputSchema: EMPTY_SCHEMA,
-	},
+	{ name: "mnemopi_sleep", description: "Run the consolidation sleep cycle.", inputSchema: SLEEP_SCHEMA },
+	{ name: "mnemopi_stats", description: "Return Mnemopi memory statistics.", inputSchema: EMPTY_SCHEMA },
 	{
 		name: "mnemopi_invalidate",
 		description: "Mark a memory as expired or superseded.",
@@ -347,51 +284,23 @@ export const TOOLS: readonly ToolDefinition[] = [
 		inputSchema: VALIDATE_SCHEMA,
 	},
 	{ name: "mnemopi_get", description: "Retrieve one memory by ID.", inputSchema: GET_SCHEMA },
-	{
-		name: "mnemopi_triple_add",
-		description: "Add a temporal fact triple.",
-		inputSchema: TRIPLE_ADD_SCHEMA,
-	},
-	{
-		name: "mnemopi_triple_query",
-		description: "Query temporal fact triples.",
-		inputSchema: TRIPLE_QUERY_SCHEMA,
-	},
+	{ name: "mnemopi_triple_add", description: "Add a temporal fact triple.", inputSchema: TRIPLE_ADD_SCHEMA },
+	{ name: "mnemopi_triple_query", description: "Query temporal fact triples.", inputSchema: TRIPLE_QUERY_SCHEMA },
 	{
 		name: "mnemopi_scratchpad_write",
 		description: "Write a temporary scratchpad note.",
 		inputSchema: SCRATCHPAD_WRITE_SCHEMA,
 	},
-	{
-		name: "mnemopi_scratchpad_read",
-		description: "Read scratchpad entries.",
-		inputSchema: SCRATCHPAD_READ_SCHEMA,
-	},
-	{
-		name: "mnemopi_scratchpad_clear",
-		description: "Clear scratchpad entries.",
-		inputSchema: SCRATCHPAD_CLEAR_SCHEMA,
-	},
-	{
-		name: "mnemopi_export",
-		description: "Export Mnemopi memories to a JSON file.",
-		inputSchema: EXPORT_SCHEMA,
-	},
+	{ name: "mnemopi_scratchpad_read", description: "Read scratchpad entries.", inputSchema: SCRATCHPAD_READ_SCHEMA },
+	{ name: "mnemopi_scratchpad_clear", description: "Clear scratchpad entries.", inputSchema: SCRATCHPAD_CLEAR_SCHEMA },
+	{ name: "mnemopi_export", description: "Export Mnemopi memories to a JSON file.", inputSchema: EXPORT_SCHEMA },
 	{
 		name: "mnemopi_update",
 		description: "Update the content or importance of an existing memory.",
 		inputSchema: UPDATE_SCHEMA,
 	},
-	{
-		name: "mnemopi_forget",
-		description: "Permanently delete a memory by ID.",
-		inputSchema: FORGET_SCHEMA,
-	},
-	{
-		name: "mnemopi_import",
-		description: "Import Mnemopi memories from a JSON file.",
-		inputSchema: IMPORT_SCHEMA,
-	},
+	{ name: "mnemopi_forget", description: "Permanently delete a memory by ID.", inputSchema: FORGET_SCHEMA },
+	{ name: "mnemopi_import", description: "Import Mnemopi memories from a JSON file.", inputSchema: IMPORT_SCHEMA },
 	{
 		name: "mnemopi_diagnose",
 		description: "Run PII-safe diagnostics on the active Mnemopi database.",
@@ -465,22 +374,20 @@ async function withBeam<T>(args: ToolArguments, fn: (beam: BeamMemory, bank: str
 	const beam = createBeam(args, bank);
 	try {
 		const result = await fn(beam, bank);
-		// Drain background fact-extraction and embedding tasks before close so
-		// the SQLite handle stays open until in-flight `embed()` writes commit;
-		// otherwise the short-lived MCP `remember`/`update`/`sleep` paths race
-		// the close and silently drop the new dense-recall rows.
 		await beam.flushExtractions();
 		return result;
 	} finally {
 		beam.close();
 	}
 }
+
 function serialize(value: unknown): unknown {
 	if (value instanceof Date) return value.toISOString();
 	if (Array.isArray(value)) return value.map(serialize);
 	if (value !== null && typeof value === "object") {
 		const out: Record<string, unknown> = {};
-		for (const key in value) out[key] = serialize((value as Record<string, unknown>)[key]);
+		const record = value as Record<string, unknown>;
+		for (const key of Object.keys(record)) out[key] = serialize(record[key]);
 		return out;
 	}
 	return value;
@@ -519,219 +426,6 @@ function required(args: ToolArguments, key: string): string | ToolResult {
 	return value.length > 0 ? value : { error: `${key} is required` };
 }
 
-async function handleRemember(args: ToolArguments): Promise<ToolResult> {
-	const content = required(args, "content");
-	if (typeof content !== "string") return content;
-	return withBeam(args, (beam, bank) => {
-		const memoryId = beam.remember(content, {
-			source: stringArg(args, "source", "mcp"),
-			importance: numberArg(args, "importance", 0.5),
-			metadata: metadataArg(args),
-			extractEntities: booleanArg(args, "extract_entities"),
-			extract: booleanArg(args, "extract"),
-			// Clamped here as well as declared in the schema: an MCP client is free to send a
-			// value the schema forbids, and this is the boundary that decides what to do with it.
-			veracity: clampVeracity(stringArg(args, "veracity", "unknown"), "mcp remember"),
-			scope: stringArg(args, "scope", "session"),
-		});
-		return { status: "stored", memory_id: memoryId, bank, content_preview: content.slice(0, 100) };
-	});
-}
-
-async function handleRecall(args: ToolArguments): Promise<ToolResult> {
-	const query = required(args, "query");
-	if (typeof query !== "string") return query;
-	return withBeam(args, async (beam, bank) => {
-		const topK = Math.trunc(numberArg(args, "top_k", numberArg(args, "limit", 5)));
-		const options: RecallOptions & Record<string, unknown> = {
-			temporalWeight: numberArg(args, "temporal_weight", 0.0),
-			queryTime: optionalStringArg(args, "query_time"),
-			temporalHalflife: numberArg(args, "temporal_halflife", 24),
-			authorId: optionalStringArg(args, "author_id"),
-			authorType: optionalStringArg(args, "author_type"),
-			channelId: optionalStringArg(args, "channel_id"),
-		};
-		for (const key of ["vec_weight", "fts_weight", "importance_weight"] as const) {
-			if (key in args) options[key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())] = args[key];
-		}
-		const results = (await beam.recall(query, topK, options)).map(row => ({ ...row, bank }));
-		return { status: "ok", query, count: results.length, results: serialize(results), bank };
-	});
-}
-
-async function handleSleep(args: ToolArguments): Promise<ToolResult> {
-	return withBeam(args, (beam, bank) => {
-		const dryRun = booleanArg(args, "dry_run");
-		const allSessions = booleanArg(args, "all_sessions");
-		const result = allSessions ? beam.sleepAllSessions(dryRun) : beam.sleep(dryRun);
-		return {
-			status: "ok",
-			dry_run: dryRun,
-			all_sessions: allSessions,
-			result: serialize(result),
-			working: serialize(beam.getWorkingStats()),
-			episodic: serialize(beam.getEpisodicStats()),
-			bank,
-		};
-	});
-}
-
-async function handleStats(args: ToolArguments): Promise<ToolResult> {
-	return withBeam(args, (beam, bank) => ({
-		status: "ok",
-		provider: "mnemopi",
-		bank,
-		working: serialize(beam.getWorkingStats()),
-		episodic: serialize(beam.getEpisodicStats()),
-		memoria: serialize(beam.getMemoriaStats()),
-		stats: {
-			working: serialize(beam.getWorkingStats()),
-			episodic: serialize(beam.getEpisodicStats()),
-			memoria: serialize(beam.getMemoriaStats()),
-		},
-	}));
-}
-
-async function handleScratchpadWrite(args: ToolArguments): Promise<ToolResult> {
-	const content = required(args, "content");
-	if (typeof content !== "string") return content;
-	return withBeam(args, (beam, bank) => {
-		const entryId = beam.scratchpadWrite(content);
-		return { status: "written", id: entryId, entry_id: entryId, bank };
-	});
-}
-
-async function handleScratchpadRead(args: ToolArguments): Promise<ToolResult> {
-	return withBeam(args, (beam, bank) => {
-		const entries = beam.scratchpadRead();
-		return {
-			status: "ok",
-			entries_count: entries.length,
-			count: entries.length,
-			entries: serialize(entries),
-			bank,
-		};
-	});
-}
-
-async function handleScratchpadClear(args: ToolArguments): Promise<ToolResult> {
-	return withBeam(args, (beam, bank) => {
-		beam.scratchpadClear();
-		return { status: "cleared", bank };
-	});
-}
-
-async function handleInvalidate(args: ToolArguments): Promise<ToolResult> {
-	const memoryId = required(args, "memory_id");
-	if (typeof memoryId !== "string") return memoryId;
-	return withBeam(args, (beam, bank) => ({
-		status: beam.invalidate(memoryId, optionalStringArg(args, "replacement_id")) ? "invalidated" : "not_found",
-		memory_id: memoryId,
-		bank,
-	}));
-}
-
-async function handleGet(args: ToolArguments): Promise<ToolResult> {
-	const memoryId = required(args, "memory_id");
-	if (typeof memoryId !== "string") return memoryId;
-	return withBeam(args, (beam, bank) => {
-		const memory = beam.get(memoryId);
-		return memory === null
-			? { status: "not_found", memory_id: memoryId, bank }
-			: { status: "ok", memory: serialize(memory), bank };
-	});
-}
-
-async function handleUpdate(args: ToolArguments): Promise<ToolResult> {
-	const memoryId = required(args, "memory_id");
-	if (typeof memoryId !== "string") return memoryId;
-	return withBeam(args, (beam, bank) => {
-		if (!("content" in args) && !("importance" in args)) return { error: "content or importance is required" };
-		const content = "content" in args ? stringArg(args, "content") : null;
-		if (content !== null && content.trim().length === 0) return { error: "content is required" };
-		const importance = "importance" in args ? numberArg(args, "importance", Number.NaN) : null;
-		const ok = beam.updateWorking(
-			memoryId,
-			content,
-			importance !== null && Number.isFinite(importance) ? importance : null,
-		);
-		return { status: ok ? "updated" : "not_found", memory_id: memoryId, bank };
-	});
-}
-
-async function handleForget(args: ToolArguments): Promise<ToolResult> {
-	const memoryId = required(args, "memory_id");
-	if (typeof memoryId !== "string") return memoryId;
-	return withBeam(args, (beam, bank) => ({
-		status: beam.forgetWorking(memoryId) ? "deleted" : "not_found",
-		memory_id: memoryId,
-		bank,
-	}));
-}
-
-async function handleTripleAdd(args: ToolArguments): Promise<ToolResult> {
-	const subject = required(args, "subject");
-	if (typeof subject !== "string") return subject;
-	const predicate = required(args, "predicate");
-	if (typeof predicate !== "string") return predicate;
-	const object = required(args, "object");
-	if (typeof object !== "string") return object;
-	const bank = resolveBank(args);
-	const tripleId = addTriple(subject, predicate, object, {
-		dbPath: bankDbPath(bank),
-		validFrom: optionalStringArg(args, "valid_from"),
-		source: stringArg(args, "source", "conversation"),
-		confidence: numberArg(args, "confidence", 1.0),
-	});
-	return { status: "stored", triple_id: tripleId, store: "triples", bank };
-}
-
-async function handleTripleQuery(args: ToolArguments): Promise<ToolResult> {
-	const bank = resolveBank(args);
-	const results = queryTriples({
-		dbPath: bankDbPath(bank),
-		subject: optionalStringArg(args, "subject"),
-		predicate: optionalStringArg(args, "predicate"),
-		object: optionalStringArg(args, "object"),
-		asOf: optionalStringArg(args, "as_of"),
-	});
-	return {
-		count: results.length,
-		results: serialize(results),
-		results_count: results.length,
-		store: "triples",
-		bank,
-	};
-}
-
-async function handleExport(args: ToolArguments): Promise<ToolResult> {
-	const outputPath = required(args, "output_path");
-	if (typeof outputPath !== "string") return outputPath;
-	return withBeam(args, (beam, bank) => {
-		mkdirSync(dirname(outputPath), { recursive: true });
-		const data = beam.exportToDict();
-		writeFileSync(outputPath, JSON.stringify(data, null, 2));
-		return {
-			status: "exported",
-			output_path: outputPath,
-			bank,
-			stats: serialize(beam.getWorkingStats()),
-		};
-	});
-}
-
-async function handleImport(args: ToolArguments): Promise<ToolResult> {
-	const inputPath = required(args, "input_path");
-	if (typeof inputPath !== "string") return { error: "Either input_path (for file import) is required" };
-	if (!existsSync(inputPath)) return { error: `input_path does not exist: ${inputPath}` };
-	return withBeam(args, (beam, bank) => {
-		const parsed = JSON.parse(readFileSync(inputPath, "utf8")) as Record<string, unknown>;
-		const routed = routeImportToBeamSession(parsed, beam);
-		const stats = beam.importFromDict(routed, booleanArg(args, "force"));
-		return { status: "imported", stats: serialize(stats), bank };
-	});
-}
-
 function surfaceLabel(content: string, kind: string): string {
 	const lower = content.toLowerCase();
 	if (
@@ -739,8 +433,9 @@ function surfaceLabel(content: string, kind: string): string {
 		lower.startsWith("surface preference:") ||
 		lower.startsWith("surface correction:") ||
 		lower.startsWith("surface identity:")
-	)
+	) {
 		return content;
+	}
 	const label =
 		kind === "preference"
 			? "Surface preference"
@@ -763,218 +458,402 @@ async function withSharedBeam<T>(fn: (beam: BeamMemory) => T | Promise<T>): Prom
 	}
 }
 
-async function handleSharedRemember(args: ToolArguments): Promise<ToolResult> {
-	const content = required(args, "content");
-	if (typeof content !== "string") return content;
-	const kind = stringArg(args, "kind", "meta").trim().toLowerCase();
-	if (!["meta", "preference", "correction", "identity"].includes(kind))
-		return { error: "kind must be one of: meta, preference, correction, identity" };
-	return withSharedBeam(beam => {
-		const labelled = surfaceLabel(content, kind);
-		const memoryId = beam.remember(labelled, {
-			source: "surface_manual",
-			importance: clampLow(numberArg(args, "importance", 0.8), 0, 1),
-			metadata: { ...(metadataArg(args) ?? {}), shared_memory: true, surface_kind: kind },
-			// Clamped here as well as declared in the schema: an MCP client is free to send a
-			// value the schema forbids, and this is the boundary that decides what to do with it.
-			veracity: clampVeracity(stringArg(args, "veracity", "unknown"), "mcp remember"),
-			scope: "global",
-		});
-		return {
-			status: "stored_shared",
-			memory_id: memoryId,
-			kind,
-			content_preview: labelled.slice(0, 120),
-		};
-	});
-}
-
-async function handleSharedRecall(args: ToolArguments): Promise<ToolResult> {
-	const query = required(args, "query");
-	if (typeof query !== "string") return query;
-	return withSharedBeam(async beam => {
-		const results = (await beam.recall(query, Math.trunc(numberArg(args, "limit", 5)))).map(row => ({
-			...row,
-			bank: "surface",
-			shared_surface: true,
-		}));
-		return { query, count: results.length, results: serialize(results) };
-	});
-}
-
-async function handleSharedForget(args: ToolArguments): Promise<ToolResult> {
-	const memoryId = required(args, "memory_id");
-	if (typeof memoryId !== "string") return memoryId;
-	return withSharedBeam(beam => ({
-		status: beam.forgetWorking(memoryId) ? "deleted" : "not_found",
-		memory_id: memoryId,
-	}));
-}
-
-async function handleSharedStats(): Promise<ToolResult> {
-	return withSharedBeam(beam => ({
-		provider: "mnemopi_shared",
-		working: serialize(beam.getWorkingStats()),
-		episodic: serialize(beam.getEpisodicStats()),
-	}));
-}
-
-async function handleValidate(args: ToolArguments): Promise<ToolResult> {
-	const memoryId = required(args, "memory_id");
-	if (typeof memoryId !== "string") return memoryId;
-	const action = stringArg(args, "action");
-	if (!["attest", "update", "invalidate", "delete"].includes(action)) return { error: `unknown action: ${action}` };
-	if (action === "update" && !optionalStringArg(args, "new_content"))
-		return { error: "new_content is required for action='update'" };
-	return withBeam(args, (beam, bank) => {
-		const existing = beam.get(memoryId) as { content?: string; author_id?: string | null } | null;
-		if (existing === null) return { error: "memory_not_found", memory_id: memoryId, bank };
-		let status: string;
-		if (action === "delete") status = beam.forgetWorking(memoryId) ? "validation_delete" : "not_found";
-		else if (action === "update")
-			status = beam.updateWorking(memoryId, stringArg(args, "new_content"), null)
-				? "validation_update"
-				: "not_found";
-		else if (action === "invalidate") status = beam.invalidate(memoryId) ? "validation_invalidate" : "not_found";
-		else status = "validation_attest";
-		return {
-			status,
-			memory_id: memoryId,
-			bank,
-			validator: stringArg(args, "validator", "unknown"),
-			author_id: existing.author_id ?? null,
-			previous_content: existing.content?.slice(0, 200) ?? null,
-		};
-	});
-}
-
-async function handleDiagnose(args: ToolArguments): Promise<ToolResult> {
-	return withBeam(args, (beam, bank) => ({
-		status: "ok",
-		bank,
-		db_path: beam.dbPath ?? null,
-		working: serialize(beam.getWorkingStats()),
-		episodic: serialize(beam.getEpisodicStats()),
-		memoria: serialize(beam.getMemoriaStats()),
-	}));
-}
-
-interface GraphEdgeInput {
-	readonly source: string;
-	readonly target: string;
-	readonly edgeType: string;
-	readonly weight: number;
-	readonly timestamp: string;
-}
-
 interface GraphQueryApi {
 	findRelatedMemories(memoryId: string, depth?: number, edgeType?: string, minWeight?: number): readonly unknown[];
 }
 
 interface GraphLinkApi {
-	addEdge(edge: GraphEdgeInput): void;
+	addEdge(edge: { source: string; target: string; edgeType: string; weight: number; timestamp: string }): void;
 }
 
 function graphQueryApi(beam: BeamMemory): GraphQueryApi | null {
 	const graph = beam.episodicGraph;
-	if (graph === null || typeof graph !== "object") return null;
-	const candidate = graph as { findRelatedMemories?: unknown };
-	return typeof candidate.findRelatedMemories === "function" ? (candidate as GraphQueryApi) : null;
+	if (
+		graph !== null &&
+		typeof graph === "object" &&
+		"findRelatedMemories" in graph &&
+		typeof graph.findRelatedMemories === "function"
+	) {
+		return graph as GraphQueryApi;
+	}
+	return null;
 }
 
 function graphLinkApi(beam: BeamMemory): GraphLinkApi | null {
 	const graph = beam.episodicGraph;
-	if (graph === null || typeof graph !== "object") return null;
-	const candidate = graph as { addEdge?: unknown };
-	return typeof candidate.addEdge === "function" ? (candidate as GraphLinkApi) : null;
-}
-
-async function handleGraphQuery(args: ToolArguments): Promise<ToolResult> {
-	const seedId = required(args, "seed_memory_id");
-	if (typeof seedId !== "string") return seedId;
-	const maxHops = Math.max(0, Math.trunc(numberArg(args, "max_hops", 2)));
-	const edgeType = stringArg(args, "edge_type");
-	const minWeight = numberArg(args, "min_weight", 0);
-	return withBeam(args, (beam, bank) => {
-		const graph = graphQueryApi(beam);
-		if (graph === null) return { error: "Episodic graph not available", seed_memory_id: seedId, bank };
-		const related = graph.findRelatedMemories(seedId, maxHops, edgeType, minWeight);
-		return {
-			status: "ok",
-			seed_memory_id: seedId,
-			count: related.length,
-			results_count: related.length,
-			results: serialize(related),
-			related_memories: serialize(related),
-			bank,
-		};
-	});
-}
-
-async function handleGraphLink(args: ToolArguments): Promise<ToolResult> {
-	const sourceId = required(args, "source_id");
-	if (typeof sourceId !== "string") return sourceId;
-	const targetId = required(args, "target_id");
-	if (typeof targetId !== "string") return targetId;
-	const relationship = required(args, "relationship");
-	if (typeof relationship !== "string") return relationship;
-	return withBeam(args, (beam, bank) => {
-		const graph = graphLinkApi(beam);
-		if (graph === null)
-			return {
-				error: "Episodic graph not available",
-				source_id: sourceId,
-				target_id: targetId,
-				relationship,
-				bank,
-			};
-		const weight = numberArg(args, "weight", 0.5);
-		graph.addEdge({
-			source: sourceId,
-			target: targetId,
-			edgeType: relationship,
-			weight,
-			timestamp: new Date().toISOString(),
-		});
-		return {
-			status: "linked",
-			source_id: sourceId,
-			target_id: targetId,
-			relationship,
-			edge_type: relationship,
-			weight,
-			bank,
-		};
-	});
+	if (graph !== null && typeof graph === "object" && "addEdge" in graph && typeof graph.addEdge === "function") {
+		return graph as GraphLinkApi;
+	}
+	return null;
 }
 
 type Handler = (args: ToolArguments) => ToolResult | Promise<ToolResult>;
 
 const TOOL_HANDLERS: Record<string, Handler> = {
-	mnemopi_remember: handleRemember,
-	mnemopi_recall: handleRecall,
-	mnemopi_shared_remember: handleSharedRemember,
-	mnemopi_shared_recall: handleSharedRecall,
-	mnemopi_shared_forget: handleSharedForget,
-	mnemopi_shared_stats: () => handleSharedStats(),
-	mnemopi_sleep: handleSleep,
-	mnemopi_stats: handleStats,
-	mnemopi_get_stats: handleStats,
-	mnemopi_invalidate: handleInvalidate,
-	mnemopi_validate: handleValidate,
-	mnemopi_get: handleGet,
-	mnemopi_triple_add: handleTripleAdd,
-	mnemopi_triple_query: handleTripleQuery,
-	mnemopi_scratchpad_write: handleScratchpadWrite,
-	mnemopi_scratchpad_read: handleScratchpadRead,
-	mnemopi_scratchpad_clear: handleScratchpadClear,
-	mnemopi_export: handleExport,
-	mnemopi_update: handleUpdate,
-	mnemopi_forget: handleForget,
-	mnemopi_import: handleImport,
-	mnemopi_diagnose: handleDiagnose,
-	mnemopi_graph_query: handleGraphQuery,
-	mnemopi_graph_link: handleGraphLink,
+	mnemopi_remember: async args => {
+		const content = required(args, "content");
+		if (typeof content !== "string") return content;
+		return withBeam(args, (beam, bank) => {
+			const memoryId = beam.remember(content, {
+				source: stringArg(args, "source", "mcp"),
+				importance: numberArg(args, "importance", 0.5),
+				metadata: metadataArg(args),
+				extractEntities: booleanArg(args, "extract_entities"),
+				extract: booleanArg(args, "extract"),
+				veracity: clampVeracity(stringArg(args, "veracity", "unknown"), "mcp remember"),
+				scope: stringArg(args, "scope", "session"),
+			});
+			return { status: "stored", memory_id: memoryId, bank, content_preview: content.slice(0, 100) };
+		});
+	},
+
+	mnemopi_recall: async args => {
+		const query = required(args, "query");
+		if (typeof query !== "string") return query;
+		return withBeam(args, async (beam, bank) => {
+			const topK = Math.trunc(numberArg(args, "top_k", numberArg(args, "limit", 5)));
+			const options: RecallOptions & Record<string, unknown> = {
+				temporalWeight: numberArg(args, "temporal_weight", 0.0),
+				queryTime: optionalStringArg(args, "query_time"),
+				temporalHalflife: numberArg(args, "temporal_halflife", 24),
+				authorId: optionalStringArg(args, "author_id"),
+				authorType: optionalStringArg(args, "author_type"),
+				channelId: optionalStringArg(args, "channel_id"),
+			};
+			for (const key of ["vec_weight", "fts_weight", "importance_weight"] as const) {
+				if (key in args) options[key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())] = args[key];
+			}
+			const results = (await beam.recall(query, topK, options)).map(row => ({ ...row, bank }));
+			return { status: "ok", query, count: results.length, results: serialize(results), bank };
+		});
+	},
+
+	mnemopi_shared_remember: async args => {
+		const content = required(args, "content");
+		if (typeof content !== "string") return content;
+		const kind = stringArg(args, "kind", "meta").trim().toLowerCase();
+		if (!["meta", "preference", "correction", "identity"].includes(kind)) {
+			return { error: "kind must be one of: meta, preference, correction, identity" };
+		}
+		return withSharedBeam(beam => {
+			const labelled = surfaceLabel(content, kind);
+			const memoryId = beam.remember(labelled, {
+				source: "surface_manual",
+				importance: clampLow(numberArg(args, "importance", 0.8), 0, 1),
+				metadata: { ...(metadataArg(args) ?? {}), shared_memory: true, surface_kind: kind },
+				veracity: clampVeracity(stringArg(args, "veracity", "unknown"), "mcp remember"),
+				scope: "global",
+			});
+			return { status: "stored_shared", memory_id: memoryId, kind, content_preview: labelled.slice(0, 120) };
+		});
+	},
+
+	mnemopi_shared_recall: async args => {
+		const query = required(args, "query");
+		if (typeof query !== "string") return query;
+		return withSharedBeam(async beam => {
+			const results = (await beam.recall(query, Math.trunc(numberArg(args, "limit", 5)))).map(row => ({
+				...row,
+				bank: "surface",
+				shared_surface: true,
+			}));
+			return { query, count: results.length, results: serialize(results) };
+		});
+	},
+
+	mnemopi_shared_forget: async args => {
+		const memoryId = required(args, "memory_id");
+		if (typeof memoryId !== "string") return memoryId;
+		return withSharedBeam(beam => ({
+			status: beam.forgetWorking(memoryId) ? "deleted" : "not_found",
+			memory_id: memoryId,
+		}));
+	},
+
+	mnemopi_shared_stats: async () => {
+		return withSharedBeam(beam => ({
+			provider: "mnemopi_shared",
+			working: serialize(beam.getWorkingStats()),
+			episodic: serialize(beam.getEpisodicStats()),
+		}));
+	},
+
+	mnemopi_sleep: async args => {
+		return withBeam(args, (beam, bank) => {
+			const dryRun = booleanArg(args, "dry_run");
+			const allSessions = booleanArg(args, "all_sessions");
+			const result = allSessions ? beam.sleepAllSessions(dryRun) : beam.sleep(dryRun);
+			return {
+				status: "ok",
+				dry_run: dryRun,
+				all_sessions: allSessions,
+				result: serialize(result),
+				working: serialize(beam.getWorkingStats()),
+				episodic: serialize(beam.getEpisodicStats()),
+				bank,
+			};
+		});
+	},
+
+	mnemopi_stats: async args => {
+		return withBeam(args, (beam, bank) => ({
+			status: "ok",
+			provider: "mnemopi",
+			bank,
+			working: serialize(beam.getWorkingStats()),
+			episodic: serialize(beam.getEpisodicStats()),
+			memoria: serialize(beam.getMemoriaStats()),
+			stats: {
+				working: serialize(beam.getWorkingStats()),
+				episodic: serialize(beam.getEpisodicStats()),
+				memoria: serialize(beam.getMemoriaStats()),
+			},
+		}));
+	},
+
+	mnemopi_get_stats: async args => TOOL_HANDLERS.mnemopi_stats(args),
+
+	mnemopi_invalidate: async args => {
+		const memoryId = required(args, "memory_id");
+		if (typeof memoryId !== "string") return memoryId;
+		return withBeam(args, (beam, bank) => ({
+			status: beam.invalidate(memoryId, optionalStringArg(args, "replacement_id")) ? "invalidated" : "not_found",
+			memory_id: memoryId,
+			bank,
+		}));
+	},
+
+	mnemopi_validate: async args => {
+		const memoryId = required(args, "memory_id");
+		if (typeof memoryId !== "string") return memoryId;
+		const action = stringArg(args, "action");
+		if (!["attest", "update", "invalidate", "delete"].includes(action)) return { error: `unknown action: ${action}` };
+		if (action === "update" && !optionalStringArg(args, "new_content")) {
+			return { error: "new_content is required for action='update'" };
+		}
+		return withBeam(args, (beam, bank) => {
+			const existing = beam.get(memoryId);
+			if (existing === null) return { error: "memory_not_found", memory_id: memoryId, bank };
+			let status: string;
+			if (action === "delete") status = beam.forgetWorking(memoryId) ? "validation_delete" : "not_found";
+			else if (action === "update") {
+				status = beam.updateWorking(memoryId, stringArg(args, "new_content"), null)
+					? "validation_update"
+					: "not_found";
+			} else if (action === "invalidate") {
+				status = beam.invalidate(memoryId) ? "validation_invalidate" : "not_found";
+			} else {
+				status = "validation_attest";
+			}
+			const row: Record<string, unknown> = isRecord(existing) ? existing : {};
+			const authorId = typeof row.author_id === "string" ? row.author_id : null;
+			const previousContent = typeof row.content === "string" ? row.content.slice(0, 200) : null;
+			return {
+				status,
+				memory_id: memoryId,
+				bank,
+				validator: stringArg(args, "validator", "unknown"),
+				author_id: authorId,
+				previous_content: previousContent,
+			};
+		});
+	},
+
+	mnemopi_get: async args => {
+		const memoryId = required(args, "memory_id");
+		if (typeof memoryId !== "string") return memoryId;
+		return withBeam(args, (beam, bank) => {
+			const memory = beam.get(memoryId);
+			return memory === null
+				? { status: "not_found", memory_id: memoryId, bank }
+				: { status: "ok", memory: serialize(memory), bank };
+		});
+	},
+
+	mnemopi_triple_add: async args => {
+		const subject = required(args, "subject");
+		if (typeof subject !== "string") return subject;
+		const predicate = required(args, "predicate");
+		if (typeof predicate !== "string") return predicate;
+		const object = required(args, "object");
+		if (typeof object !== "string") return object;
+		const bank = resolveBank(args);
+		const tripleId = addTriple(subject, predicate, object, {
+			dbPath: bankDbPath(bank),
+			validFrom: optionalStringArg(args, "valid_from"),
+			source: stringArg(args, "source", "conversation"),
+			confidence: numberArg(args, "confidence", 1.0),
+		});
+		return { status: "stored", triple_id: tripleId, store: "triples", bank };
+	},
+
+	mnemopi_triple_query: async args => {
+		const bank = resolveBank(args);
+		const results = queryTriples({
+			dbPath: bankDbPath(bank),
+			subject: optionalStringArg(args, "subject"),
+			predicate: optionalStringArg(args, "predicate"),
+			object: optionalStringArg(args, "object"),
+			asOf: optionalStringArg(args, "as_of"),
+		});
+		return {
+			count: results.length,
+			results: serialize(results),
+			results_count: results.length,
+			store: "triples",
+			bank,
+		};
+	},
+
+	mnemopi_scratchpad_write: async args => {
+		const content = required(args, "content");
+		if (typeof content !== "string") return content;
+		return withBeam(args, (beam, bank) => {
+			const entryId = beam.scratchpadWrite(content);
+			return { status: "written", id: entryId, entry_id: entryId, bank };
+		});
+	},
+
+	mnemopi_scratchpad_read: async args => {
+		return withBeam(args, (beam, bank) => {
+			const entries = beam.scratchpadRead();
+			return {
+				status: "ok",
+				entries_count: entries.length,
+				count: entries.length,
+				entries: serialize(entries),
+				bank,
+			};
+		});
+	},
+
+	mnemopi_scratchpad_clear: async args => {
+		return withBeam(args, (beam, bank) => {
+			beam.scratchpadClear();
+			return { status: "cleared", bank };
+		});
+	},
+
+	mnemopi_export: async args => {
+		const outputPath = required(args, "output_path");
+		if (typeof outputPath !== "string") return outputPath;
+		return withBeam(args, (beam, bank) => {
+			mkdirSync(dirname(outputPath), { recursive: true });
+			const data = beam.exportToDict();
+			writeFileSync(outputPath, JSON.stringify(data, null, 2));
+			return { status: "exported", output_path: outputPath, bank, stats: serialize(beam.getWorkingStats()) };
+		});
+	},
+
+	mnemopi_update: async args => {
+		const memoryId = required(args, "memory_id");
+		if (typeof memoryId !== "string") return memoryId;
+		return withBeam(args, (beam, bank) => {
+			if (!("content" in args) && !("importance" in args)) return { error: "content or importance is required" };
+			const content = "content" in args ? stringArg(args, "content") : null;
+			if (content !== null && content.trim().length === 0) return { error: "content is required" };
+			const importance = "importance" in args ? numberArg(args, "importance", Number.NaN) : null;
+			const ok = beam.updateWorking(
+				memoryId,
+				content,
+				importance !== null && Number.isFinite(importance) ? importance : null,
+			);
+			return { status: ok ? "updated" : "not_found", memory_id: memoryId, bank };
+		});
+	},
+
+	mnemopi_forget: async args => {
+		const memoryId = required(args, "memory_id");
+		if (typeof memoryId !== "string") return memoryId;
+		return withBeam(args, (beam, bank) => ({
+			status: beam.forgetWorking(memoryId) ? "deleted" : "not_found",
+			memory_id: memoryId,
+			bank,
+		}));
+	},
+
+	mnemopi_import: async args => {
+		const inputPath = required(args, "input_path");
+		if (typeof inputPath !== "string") return { error: "Either input_path (for file import) is required" };
+		if (!existsSync(inputPath)) return { error: `input_path does not exist: ${inputPath}` };
+		return withBeam(args, (beam, bank) => {
+			const parsed = JSON.parse(readFileSync(inputPath, "utf8")) as Record<string, unknown>;
+			const routed = routeImportToBeamSession(parsed, beam);
+			const stats = beam.importFromDict(routed, booleanArg(args, "force"));
+			return { status: "imported", stats: serialize(stats), bank };
+		});
+	},
+
+	mnemopi_diagnose: async args => {
+		return withBeam(args, (beam, bank) => ({
+			status: "ok",
+			bank,
+			db_path: beam.dbPath ?? null,
+			working: serialize(beam.getWorkingStats()),
+			episodic: serialize(beam.getEpisodicStats()),
+			memoria: serialize(beam.getMemoriaStats()),
+		}));
+	},
+
+	mnemopi_graph_query: async args => {
+		const seedId = required(args, "seed_memory_id");
+		if (typeof seedId !== "string") return seedId;
+		const maxHops = Math.max(0, Math.trunc(numberArg(args, "max_hops", 2)));
+		const edgeType = stringArg(args, "edge_type");
+		const minWeight = numberArg(args, "min_weight", 0);
+		return withBeam(args, (beam, bank) => {
+			const graph = graphQueryApi(beam);
+			if (graph === null) return { error: "Episodic graph not available", seed_memory_id: seedId, bank };
+			const related = graph.findRelatedMemories(seedId, maxHops, edgeType, minWeight);
+			return {
+				status: "ok",
+				seed_memory_id: seedId,
+				count: related.length,
+				results_count: related.length,
+				results: serialize(related),
+				related_memories: serialize(related),
+				bank,
+			};
+		});
+	},
+
+	mnemopi_graph_link: async args => {
+		const sourceId = required(args, "source_id");
+		if (typeof sourceId !== "string") return sourceId;
+		const targetId = required(args, "target_id");
+		if (typeof targetId !== "string") return targetId;
+		const relationship = required(args, "relationship");
+		if (typeof relationship !== "string") return relationship;
+		return withBeam(args, (beam, bank) => {
+			const graph = graphLinkApi(beam);
+			if (graph === null) {
+				return {
+					error: "Episodic graph not available",
+					source_id: sourceId,
+					target_id: targetId,
+					relationship,
+					bank,
+				};
+			}
+			const weight = numberArg(args, "weight", 0.5);
+			graph.addEdge({
+				source: sourceId,
+				target: targetId,
+				edgeType: relationship,
+				weight,
+				timestamp: new Date().toISOString(),
+			});
+			return {
+				status: "linked",
+				source_id: sourceId,
+				target_id: targetId,
+				relationship,
+				edge_type: relationship,
+				weight,
+				bank,
+			};
+		});
+	},
 };
 
 export async function handleToolCall(name: string, args: ToolArguments = {}): Promise<ToolResult> {
@@ -982,6 +861,7 @@ export async function handleToolCall(name: string, args: ToolArguments = {}): Pr
 	if (handler === undefined) throw new Error(`Unknown tool: ${name}`);
 	return handler(args);
 }
+
 export function getToolDefinitions(): readonly ToolDefinition[] {
 	return TOOLS;
 }

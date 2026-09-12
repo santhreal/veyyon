@@ -1,8 +1,9 @@
-import { parseJsonWithRepair } from "@veyyon/utils/json-parse";
+import { parseJsonWithRepair, parseStreamingJson } from "@veyyon/utils/json-parse";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage, getOwnProperty, isRecord, setSafeProperty } from "@veyyon/utils/type-guards";
+import type { ToolCall } from "../types";
 import { toolWireSchema } from "../utils/schema";
-import type { InbandTool } from "./types";
+import type { InbandScanEvent, InbandTool } from "./types";
 
 export interface ToolArgShape {
 	stringArgs: Set<string>;
@@ -127,6 +128,99 @@ export function partialSuffixOverlapAny(text: string, tags: readonly string[]): 
 	return best;
 }
 
+/** The earliest occurrence of any of `tags` in `text`; on a tie, the tag listed first. */
+export interface TagMatch {
+	index: number;
+	tag: string;
+}
+
+export function findFirstTag(text: string, tags: readonly string[]): TagMatch | null {
+	let best: TagMatch | null = null;
+	for (const tag of tags) {
+		const index = text.indexOf(tag);
+		if (index === -1) continue;
+		if (!best || index < best.index) best = { index, tag };
+	}
+	return best;
+}
+
+/**
+ * One step of a scanner's outside-of-any-block state: the text before the first
+ * of `tags` is emitted as a text event and the buffer advances past the tag.
+ * With no tag present the whole buffer is emitted, except a suffix that could be
+ * the start of a tag, which stays held until more text arrives or `final`
+ * is set. Every in-band scanner opens its blocks this way; the differences
+ * between dialects begin at the tag it returns.
+ */
+export function scanOutsideText(
+	buffer: string,
+	tags: readonly string[],
+	final: boolean,
+	events: InbandScanEvent[],
+): { buffer: string; tag: string | null } {
+	const match = findFirstTag(buffer, tags);
+	if (!match) {
+		const hold = final ? 0 : partialSuffixOverlapAny(buffer, tags);
+		const emitEnd = buffer.length - hold;
+		if (emitEnd > 0) events.push({ type: "text", text: buffer.slice(0, emitEnd) });
+		return { buffer: buffer.slice(emitEnd), tag: null };
+	}
+	if (match.index > 0) events.push({ type: "text", text: buffer.slice(0, match.index) });
+	return { buffer: buffer.slice(match.index + match.tag.length), tag: match.tag };
+}
+
+/**
+ * The reasoning a scanner has streamed since its `thinkingStart`: each delta is
+ * pushed as it arrives and the joined text rides on the `thinkingEnd`. The
+ * scanner keeps the section as a field and moves its own state around it.
+ */
+export class ThinkingSection {
+	#text = "";
+
+	start(events: InbandScanEvent[]): void {
+		this.#text = "";
+		events.push({ type: "thinkingStart" });
+	}
+
+	delta(delta: string, events: InbandScanEvent[]): void {
+		if (delta.length === 0) return;
+		this.#text += delta;
+		events.push({ type: "thinkingDelta", delta });
+	}
+
+	end(events: InbandScanEvent[]): void {
+		events.push({ type: "thinkingEnd", thinking: this.#text });
+		this.#text = "";
+	}
+}
+
+/**
+ * One step of a scanner's inside-a-thinking-section state for a section closed
+ * by one literal tag: the text before `closeTag` is streamed into `section`,
+ * except a suffix that could be the start of the tag, which stays held until
+ * more text arrives or `final` is set. The section ends when the tag arrives or
+ * the stream does; `closed` is true on either, and the caller then leaves its
+ * thinking state.
+ */
+export function scanThinkingText(
+	buffer: string,
+	closeTag: string,
+	final: boolean,
+	section: ThinkingSection,
+	events: InbandScanEvent[],
+): { buffer: string; closed: boolean } {
+	const close = buffer.indexOf(closeTag);
+	if (close === -1) {
+		const hold = final ? 0 : partialSuffixOverlap(buffer, closeTag);
+		section.delta(buffer.slice(0, buffer.length - hold), events);
+		if (final) section.end(events);
+		return { buffer: buffer.slice(buffer.length - hold), closed: final };
+	}
+	section.delta(buffer.slice(0, close), events);
+	section.end(events);
+	return { buffer: buffer.slice(close + closeTag.length), closed: true };
+}
+
 export function normalizeKimiFunctionName(rawId: string): string {
 	const beforeIndex = rawId.split(":", 1)[0] ?? rawId;
 	const parts = beforeIndex.split(".");
@@ -142,6 +236,22 @@ export function normalizeKimiFunctionName(rawId: string): string {
  */
 export function recordOrEmpty(value: unknown): Record<string, unknown> {
 	return isRecord(value) ? value : {};
+}
+
+/** Decode a named call, including stringified arguments; malformed bodies use the scanner's partial-call recovery. */
+export function parseNamedToolCall(body: string): Pick<ToolCall, "name" | "arguments"> | undefined {
+	try {
+		const parsed = parseJsonWithRepair<{ name?: unknown; arguments?: unknown }>(body.trim());
+		if (typeof parsed.name !== "string" || parsed.name.length === 0) return undefined;
+		let args = parsed.arguments;
+		if (typeof args === "string") {
+			args = parseJsonWithRepair<unknown>(args);
+		}
+		return { name: parsed.name, arguments: recordOrEmpty(args) };
+	} catch {
+		// The caller balances an announced toolStart with a best-effort toolEnd and retains the raw block.
+		return undefined;
+	}
 }
 
 /** Enough of a tool payload to recognize its shape in a log, without putting the whole thing there. */
@@ -213,4 +323,50 @@ export function setToolArg(args: Record<string, unknown>, key: string, value: un
  */
 export function getOwnArg(args: Record<string, unknown>, key: string): unknown {
 	return getOwnProperty(args, key);
+}
+
+/** Complete an announced call with arguments recovered from a truncated or malformed body. */
+export function emitBestEffortToolEnd(
+	started: boolean,
+	id: string,
+	name: string,
+	body: string,
+	rawBlock: string,
+	events: InbandScanEvent[],
+): void {
+	if (!started) return;
+	// `name` was captured early from a PARTIAL body (it may be a prefix like "r" of "read");
+	// re-derive the fuller name from the current body when possible.
+	let args: unknown;
+	try {
+		const partial = parseStreamingJson<{ name?: unknown; arguments?: unknown }>(body);
+		if (typeof partial.name === "string" && partial.name.length > name.length) name = partial.name;
+		args = partial.arguments;
+	} catch {
+		args = undefined;
+	}
+	events.push({ type: "toolEnd", id, name, arguments: recordOrEmpty(args), rawBlock });
+}
+
+/**
+ * Complete a `<tool_call>` block whose closing tag arrived. A body that parses
+ * ends the call it names, announcing it first when the streamed prefix never
+ * did; a body that does not parse ends an announced call best-effort rather
+ * than stranding it half open with the `{}` arguments seeded on `toolStart`.
+ */
+export function emitClosedToolCall(
+	started: boolean,
+	id: string,
+	name: string,
+	body: string,
+	rawBlock: string,
+	events: InbandScanEvent[],
+): void {
+	const parsed = parseNamedToolCall(body);
+	if (!parsed) {
+		emitBestEffortToolEnd(started, id, name, body, rawBlock, events);
+		return;
+	}
+	if (!started) events.push({ type: "toolStart", id, name: parsed.name });
+	events.push({ type: "toolEnd", id, name: parsed.name, arguments: parsed.arguments, rawBlock });
 }

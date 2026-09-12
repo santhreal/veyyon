@@ -7,61 +7,12 @@
 //! is no mount or kernel state to undo, so [`stop`](IsolationBackend::stop) is
 //! a recursive remove.
 
-use std::path::Path;
-
-use async_trait::async_trait;
-
-#[cfg(not(target_os = "linux"))]
-use crate::IsoError;
-use crate::{BackendKind, IsoResult, IsolationBackend, ProbeResult};
-
-pub struct LinuxReflinkBackend;
-
-pub fn backend() -> &'static dyn IsolationBackend {
-	&LinuxReflinkBackend
-}
-
-#[async_trait]
-impl IsolationBackend for LinuxReflinkBackend {
-	fn kind(&self) -> BackendKind {
-		BackendKind::LinuxReflink
-	}
-
-	fn probe(&self) -> ProbeResult {
-		#[cfg(target_os = "linux")]
-		{
-			ProbeResult::available()
-		}
-		#[cfg(not(target_os = "linux"))]
-		{
-			ProbeResult::unavailable("Linux FICLONE reflink isolation is only available on Linux")
-		}
-	}
-
-	fn start(&self, lower: &Path, merged: &Path) -> IsoResult<()> {
-		#[cfg(target_os = "linux")]
-		{
-			imp::start(lower, merged)
-		}
-		#[cfg(not(target_os = "linux"))]
-		{
-			let _ = (lower, merged);
-			Err(IsoError::unavailable("Linux FICLONE reflink isolation is only available on Linux"))
-		}
-	}
-
-	fn stop(&self, merged: &Path) -> IsoResult<()> {
-		#[cfg(target_os = "linux")]
-		{
-			imp::stop(merged)
-		}
-		#[cfg(not(target_os = "linux"))]
-		{
-			let _ = merged;
-			Ok(())
-		}
-	}
-}
+declare_backend!(
+	LinuxReflinkBackend,
+	LinuxReflink,
+	"Linux FICLONE reflink isolation is only available on Linux",
+	target_os = "linux"
+);
 
 #[cfg(target_os = "linux")]
 mod imp {
@@ -75,15 +26,19 @@ mod imp {
 				fs::{MetadataExt, PermissionsExt},
 			},
 		},
-		path::{Path, PathBuf},
+		path::Path,
 	};
 
-	use crate::{IsoError, IsoResult};
+	use crate::{IsoError, IsoResult, ProbeResult, canonical_existing_dir};
 
 	const FICLONE: libc::c_ulong = 0x4004_9409;
 
+	pub const fn probe() -> ProbeResult {
+		ProbeResult::available()
+	}
+
 	pub fn start(lower: &Path, merged: &Path) -> IsoResult<()> {
-		let lower = canonical_existing_dir(lower)?;
+		let lower = canonical_existing_dir(lower, "reflink")?;
 		prepare_destination(merged)?;
 
 		let result = recursive_reflink(&lower, merged);
@@ -102,24 +57,6 @@ mod imp {
 				merged.display()
 			))),
 		}
-	}
-
-	fn canonical_existing_dir(path: &Path) -> IsoResult<PathBuf> {
-		let resolved = if path.is_absolute() {
-			path.to_path_buf()
-		} else {
-			std::env::current_dir().map_or_else(|_| path.to_path_buf(), |cwd| cwd.join(path))
-		};
-		let meta = fs::metadata(&resolved).map_err(|err| {
-			IsoError::other(format!("invalid reflink source {}: {err}", resolved.display()))
-		})?;
-		if !meta.is_dir() {
-			return Err(IsoError::other(format!(
-				"reflink source {} is not a directory",
-				resolved.display()
-			)));
-		}
-		Ok(fs::canonicalize(&resolved).unwrap_or(resolved))
 	}
 
 	fn prepare_destination(merged: &Path) -> IsoResult<()> {

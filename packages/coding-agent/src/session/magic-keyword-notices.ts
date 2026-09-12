@@ -6,7 +6,7 @@
  * `../modes/orchestrate` and `../modes/workflow`. This file is the third half of
  * that family, and it is the only one that reads the prompt registry.
  *
- * WHY IT IS ITS OWN FILE. A notice body is `prompts/subagent/rows` and
+ * WHY IT IS ITS OWN FILE. A notice body is `prompts/agent/rows` and
  * `prompts/turn-control/rows`, which load and index every markdown prompt in
  * those directories. The composer highlights these keywords as you type and asks
  * whether the buffer holds one, so the editor's import graph reached the whole
@@ -24,18 +24,18 @@
  */
 
 import * as prompt from "@veyyon/utils/prompt";
-import { subagentPrompts } from "../prompts/subagent/rows";
+import { agentPrompts } from "../prompts/agent/rows";
 import { turnControlPrompts } from "../prompts/turn-control/rows";
 
 /** Hidden system notice appended after a user message that mentions "ultrathink". */
 export const ULTRATHINK_NOTICE: string = turnControlPrompts["turn-control/ultrathink-notice"].text.trim();
 
 /** Hidden system notice appended after a user message that mentions "orchestratez". */
-export const ORCHESTRATE_NOTICE: string = subagentPrompts["subagent/orchestrate-notice"].text.trim();
+export const ORCHESTRATE_NOTICE: string = agentPrompts["agent/orchestrate-notice"].text.trim();
 
 /** renderWorkflowNotice renders the workflow notice for the active task schema. */
 export function renderWorkflowNotice({ taskBatch }: { taskBatch: boolean }): string {
-	return prompt.render(subagentPrompts["subagent/workflow-notice"].text, { taskBatch }).trim();
+	return prompt.render(agentPrompts["agent/workflow-notice"].text, { taskBatch }).trim();
 }
 
 /** WORKFLOW_NOTICE is the default hidden notice for sessions with batched task calls enabled. */

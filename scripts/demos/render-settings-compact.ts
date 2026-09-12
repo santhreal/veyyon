@@ -5,28 +5,15 @@
  *
  *     bun scripts/demos/render-settings-compact.ts --width 70 --height 14 --down 10
  */
-import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/settings-selector";
-import { flag, initRender, renderWidth } from "./render-args";
+import { renderDemo } from "./render-args";
+import { createTestSettingsSelector } from "./render-settings-helper";
 
-const themeName = flag("theme", "titanium");
-const width = renderWidth();
-const height = Number(flag("height", "14"));
-const downCount = Number(flag("down", "10"));
-
-Object.defineProperty(process.stdout, "rows", { configurable: true, value: height });
-await initRender(themeName, { settings: true });
-
-const selector = new SettingsSelectorComponent(
-	{
-		availableThinkingLevels: [],
-		thinkingLevel: undefined,
-		availableThemes: [themeName, "light"],
-		availablePersonalities: ["default"],
-		providers: ["anthropic"],
-		cwd: process.cwd(),
+await renderDemo(
+	({ width, flag, theme }) => {
+		const downCount = Number(flag("down", "10"));
+		const selector = createTestSettingsSelector(theme);
+		for (let step = 0; step < downCount; step++) selector.handleInput("\x1b[B");
+		return selector.render(width);
 	},
-	{ onChange: () => {}, onCancel: () => {} },
+	{ settings: true, defaultHeight: 14 },
 );
-
-for (let step = 0; step < downCount; step++) selector.handleInput("\x1b[B");
-process.stdout.write(`${selector.render(width).join("\n")}\n`);

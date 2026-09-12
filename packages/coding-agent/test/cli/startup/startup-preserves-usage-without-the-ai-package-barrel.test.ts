@@ -1,7 +1,9 @@
 /**
  * WHY: startup imported the AI barrel for streaming helpers, evaluating provider
  * implementations that already have lazy execution dispatch. Fresh processes
- * load the session, SDK, and all warmup stages, rejecting barrel imports at any depth.
+ * load the session, SDK, warmup stages, default tools, search providers, and
+ * configured Mnemopi backend, rejecting barrel imports at any depth. Tool and
+ * search-provider construction enumerate their production registries.
  * Usage and credential-ranking contributions must still be registered, with
  * expected membership derived from their declarations. This covers bootstrap
  * registration, not network quota responses or provider execution correctness.
@@ -14,7 +16,7 @@ import { DEFAULT_RANKING_STRATEGIES, DEFAULT_USAGE_PROVIDERS } from "@veyyon/ai/
 import { hermeticSpawnEnv } from "../../helpers/hermetic-spawn-env";
 
 const run = promisify(execFile);
-it.each(["session", "sdk", "warmup"])(
+it.each(["session", "sdk", "warmup", "tools", "memory"])(
 	"%s preserves usage without the AI package barrel",
 	async entry => {
 		const { env, cleanup } = hermeticSpawnEnv();

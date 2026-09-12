@@ -1,16 +1,17 @@
 import { Ellipsis } from "@veyyon/natives";
 import { fuzzyFilter, matchPositions } from "@veyyon/utils/fuzzy";
 import { getKeybindings } from "@veyyon/utils/keybindings";
-import { extractPrintableText } from "@veyyon/utils/keys";
 import { popLoopPhase, pushLoopPhase } from "@veyyon/utils/loop-phase";
 import { clamp, clampLow } from "@veyyon/utils/math";
-import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
+import type { HoverFadeOptions } from "@veyyon/utils/motion";
 import { type MouseRoutable, routeSelectListMouse, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import type { SymbolTheme } from "@veyyon/utils/symbols";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { sanitizeSingleLine, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type { Component } from "../tui";
+import { HoverController } from "../utils/hover-controller";
+import { handleSearchKeyInput } from "../utils/search-filter";
 import { ScrollView } from "./scroll-view";
 
 const DEFAULT_PRIMARY_COLUMN_WIDTH = 32;
@@ -156,13 +157,7 @@ export class SelectList implements Component, MouseRoutable {
 	 */
 	#filterTypedByUser = false;
 	#selectedIndex: number = 0;
-	#hoveredIndex: number | null = null;
-	/**
-	 * The cross-fade, once a host has offered a way to repaint between mouse
-	 * reports ({@link setHoverMotion}). Absent, the band is switched: exactly the
-	 * behavior every existing host has.
-	 */
-	#hoverFade?: HoverFade;
+	#hover = new HoverController<number>();
 	/** Per-render map of 0-based output line → filtered-item index. */
 	#hitRows: (number | undefined)[] = [];
 	/**
@@ -254,8 +249,7 @@ export class SelectList implements Component, MouseRoutable {
 		// active filter rebuilds it.
 		this.#searchable = undefined;
 		// The pointer band belongs to a row under the mouse in the OLD list.
-		this.#hoveredIndex = null;
-		this.#hoverFade?.set(null);
+		this.#hover.set(null);
 		this.#setFilter(this.#filterQuery, false, this.#filterTypedByUser);
 		const index = previous === undefined ? -1 : this.#filteredItems.findIndex(item => item.value === previous);
 		this.#selectedIndex = clampLow(index, 0, this.#filteredItems.length - 1);
@@ -302,8 +296,7 @@ export class SelectList implements Component, MouseRoutable {
 	 * unreachable with the pointer and made the card feel dead exactly where the eye already was.
 	 */
 	setHoverIndex(index: number | null): void {
-		this.#hoveredIndex = index;
-		this.#hoverFade?.set(index);
+		this.#hover.set(index);
 	}
 
 	/**
@@ -318,9 +311,7 @@ export class SelectList implements Component, MouseRoutable {
 	 * terminal and `display.transitions: off` get.
 	 */
 	setHoverMotion(options: HoverFadeOptions): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade(options);
-		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+		this.#hover.setMotion(options);
 	}
 
 	/**
@@ -330,9 +321,7 @@ export class SelectList implements Component, MouseRoutable {
 	 * out rather than taking it away.
 	 */
 	disposeHoverMotion(): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = undefined;
-		this.#hoveredIndex = null;
+		this.#hover.dispose();
 	}
 
 	/**
@@ -343,8 +332,7 @@ export class SelectList implements Component, MouseRoutable {
 	 * selection moves onto keeps playing out the fade it was already in.
 	 */
 	#hoverStrength(index: number): number {
-		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
-		return index === this.#hoveredIndex ? 1 : 0;
+		return this.#hover.strength(index);
 	}
 
 	/** Move the selection one step for a wheel notch. */
@@ -802,7 +790,7 @@ export class SelectList implements Component, MouseRoutable {
 	 * The status row IS the search's only user interface: it is where the query
 	 * appears. A budget too small to afford that row therefore also cannot afford
 	 * the search, and accepting keystrokes there filtered the list with nothing
-	 * on screen saying why the rows had changed. The subagents step at a short
+	 * on screen saying why the rows had changed. The agents step at a short
 	 * terminal is the case: one item row for six roles, where typing silently
 	 * narrowed them with no visible cause and no visible way back.
 	 */
@@ -827,27 +815,9 @@ export class SelectList implements Component, MouseRoutable {
 	}
 
 	#handleSearchInput(keyData: string): boolean {
-		const kb = getKeybindings();
-		if (kb.matches(keyData, "tui.editor.deleteCharBackward")) {
-			if (!this.#canClearFilter()) return false;
-			const q = this.#filterQuery;
-			const len = q.length;
-			// Drop one code point: a low surrogate takes its high half with it, a lone one goes alone.
-			const cut =
-				len >= 2 && (q.charCodeAt(len - 1) & 0xfc00) === 0xdc00 && (q.charCodeAt(len - 2) & 0xfc00) === 0xd800
-					? 2
-					: 1;
-			this.#setFilter(q.slice(0, len - cut), true, true);
-			return true;
-		}
-
-		if (!this.#canEditSearch()) return false;
-
-		const printableText = extractPrintableText(keyData);
-		if (printableText === undefined) return false;
-		if (this.#filterQuery.length === 0 && printableText.trim().length === 0) return false;
-
-		this.#setFilter(this.#filterQuery + printableText, true, true);
+		const next = handleSearchKeyInput(keyData, this.#filterQuery, this.#canEditSearch(), this.#canClearFilter());
+		if (next === null) return false;
+		this.#setFilter(next, true, true);
 		return true;
 	}
 
@@ -898,6 +868,16 @@ export class SelectList implements Component, MouseRoutable {
 		if (selectedItem && this.onSelectionChange) {
 			this.onSelectionChange(selectedItem);
 		}
+	}
+
+	/** Rows in the same filtered order used by selection and rendering. */
+	getFilteredItems(): readonly SelectItem[] {
+		return this.#filteredItems;
+	}
+
+	/** Index of the selected row within the filtered items. */
+	getSelectedIndex(): number {
+		return this.#selectedIndex;
 	}
 
 	getSelectedItem(): SelectItem | null {

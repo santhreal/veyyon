@@ -1,20 +1,28 @@
 # @veyyon/tool-render
 
-Shared React components for rendering tool calls in transcripts. Consumed by:
+React tool-call components and a host-independent view interpreter for HTML transcripts. Consumed by:
 
 - `packages/coding-agent` HTML session exports (`<vey-tool-view>` web component)
 - `clients/web` live web transcript
+- `hosts/gui` HTML view adapter
+
+`ToolView` accepts a projected `ToolExecutionDisplay` from `@veyyon/wire/presentation`.
+Calls without a projection retain the raw `Summary` and `Body` renderer API.
+The React and GUI HTML adapters use `@veyyon/tool-render/view-core` to interpret `ToolView`
+structure; each adapter supplies its output elements and symbol glyphs.
+Compact card headers omit repeated complete tool labels and retain operation suffixes.
 
 ## Writing a renderer
 
-A renderer lives in `src/tools/` and exports `Summary` and an optional `Body` React component:
+A descriptor in `src/descriptors/` specifies a tool name, `Summary`, and an optional `Body` React component:
 
 ```tsx
-import type { ToolRenderer } from "../types";
+import type { ToolDescriptor } from "../types";
 import { PathText, ResultText } from "../parts";
 import { str } from "../util";
 
-export const myToolRenderer: ToolRenderer = {
+export const myToolDescriptor: ToolDescriptor = {
+	name: "my_tool",
 	Summary: ({ args }) => <PathText path={str(args.path) ?? ""} />,
 	Body: ({ result }) => <ResultText result={result} />,
 };
@@ -23,7 +31,7 @@ export const myToolRenderer: ToolRenderer = {
 - `Summary`: Single-line header rendered in card title bar. Block elements are not permitted.
 - `Body`: Collapsible detail component. Omit if summary displays all relevant information.
 
-Register renderers in `RENDERERS` in `registry.ts` under their wire tool names. `resolveToolRenderer(name)` resolves registered renderers, falling back to `genericRenderer` for unknown tool names.
+Add the descriptor to its domain array in `src/descriptors/`. `registry.ts` registers those arrays and their aliases. `resolveToolRenderer(name)` returns the registered renderer or `genericRenderer` for an unknown tool name.
 
 ## Aliases
 

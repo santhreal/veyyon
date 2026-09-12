@@ -29,7 +29,7 @@ import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/the
 import { previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils";
 import { BASH_DEFAULT_PREVIEW_LINES } from "@veyyon/coding-agent/tools/shell/bash";
 import { type BashViewArgs, type BashViewResult, bashToolView } from "@veyyon/coding-agent/tools/shell/bash-view";
-import { ImageProtocol, TERMINAL } from "@veyyon/tui";
+import { type AnsiPolicy, getAnsiPolicy, ImageProtocol, setAnsiPolicy, TERMINAL } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
 import type { FramedBlockView, ToolView, ToolViewContext } from "@veyyon/view";
 
@@ -41,6 +41,7 @@ const terminal = TERMINAL as unknown as MutableTerminalInfo;
 
 const COLLAPSED: ToolViewContext = { expanded: false, partial: false };
 const EXPANDED: ToolViewContext = { expanded: true, partial: false };
+const ANSI_POLICIES: Record<AnsiPolicy, AnsiPolicy> = { full: "full", noColor: "noColor", plain: "plain" };
 
 /** The framed card a bash view states, so a cell may read the sections under it. */
 function framed(view: ToolView): FramedBlockView {
@@ -438,25 +439,28 @@ describe("the bash card", () => {
 		expect(text(settled)).toContain("failed");
 	});
 
-	it("measures the collapsed window in the rows the output occupies, not the lines it has", async () => {
-		// Every line here is wider than the card, so each one costs two rows. A window counted in
-		// lines would draw twice its bound and push the rows above it off the screen.
-		const width = 60;
-		const line = "x".repeat(width + 20);
-		const output = Array.from({ length: 12 }, (_, i) => `${i}: ${line}`).join("\n");
-		const rendered = await resultRows(
-			{ content: [{ type: "text", text: output }], details: { wallTimeMs: 10 }, isError: false },
-			{ command: "cat wide.txt" },
-			COLLAPSED,
-			width,
-		);
-		const bodyRows = rendered.filter(row => /\bx{5}/.test(row));
-		expect(bodyRows.length).toBeGreaterThan(0);
-		// The bound is a row count, and each of these lines costs two of them, so a window counted in
-		// lines would draw twice this.
-		expect(bodyRows.length).toBeLessThanOrEqual(Math.min(BASH_DEFAULT_PREVIEW_LINES, previewWindowRows()));
-		// The newest line is the one kept, and it is kept whole.
-		expect(sanitizeText(rendered.join("\n"))).toContain("11: ");
+	it.each(Object.values(ANSI_POLICIES))("bounds collapsed output by visible rows under %s styling", async policy => {
+		const previousPolicy = getAnsiPolicy();
+		setAnsiPolicy(policy);
+		try {
+			// Each logical line occupies two rows. Count displayed text, not SGR bytes:
+			// an SGR terminator `m` before `xxxxx` otherwise defeats the word boundary.
+			const width = 60;
+			const line = "x".repeat(width + 20);
+			const output = Array.from({ length: 12 }, (_, i) => `${i}: ${line}`).join("\n");
+			const rendered = await resultRows(
+				{ content: [{ type: "text", text: output }], details: { wallTimeMs: 10 }, isError: false },
+				{ command: "cat wide.txt" },
+				COLLAPSED,
+				width,
+			);
+			const bodyRows = rendered.map(row => sanitizeText(row)).filter(row => /\bx{5}/.test(row));
+			expect(bodyRows.length).toBeGreaterThan(0);
+			expect(bodyRows.length).toBeLessThanOrEqual(Math.min(BASH_DEFAULT_PREVIEW_LINES, previewWindowRows()));
+			expect(sanitizeText(rendered.join("\n"))).toContain("11: ");
+		} finally {
+			setAnsiPolicy(previousPolicy);
+		}
 	});
 
 	it("shrinks the collapsed window to a short terminal rather than to its own bound", async () => {

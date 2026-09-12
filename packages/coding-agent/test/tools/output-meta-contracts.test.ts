@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { applyListLimit } from "@veyyon/coding-agent/tools/core/list-limit";
+import { outputMeta } from "@veyyon/coding-agent/tools/core/output-meta";
 
 /**
  * Residual tool-matrix depth for truncation meta used by glob/grep/search
@@ -38,5 +39,18 @@ describe("tool output limit meta contracts", () => {
 		const result = applyListLimit([obj, { id: 2 }], { limit: 1 });
 		expect(result.items[0]).toBe(obj);
 		expect(result.items[0]).toEqual({ id: 1 });
+	});
+
+	it("records match, result and head limits under their own keys, and skips a limit that did not fire", () => {
+		expect(outputMeta().limits({ matchLimit: 3, resultLimit: 5, headLimit: 7 }).get()).toEqual({
+			limits: {
+				matchLimit: { reached: 3, suggestion: 6 },
+				resultLimit: { reached: 5, suggestion: 10 },
+				headLimit: { reached: 7, suggestion: 14 },
+			},
+		});
+		expect(outputMeta().resultLimit(4, 9).headLimit(0).matchLimit(-1).get()).toEqual({
+			limits: { resultLimit: { reached: 4, suggestion: 9 } },
+		});
 	});
 });

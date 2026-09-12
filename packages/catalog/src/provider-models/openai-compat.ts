@@ -1,6 +1,6 @@
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
-import type { DiscoveryFailure, DiscoveryHooks } from "../discovery/failure";
+import { type DiscoveryFailure, type DiscoveryHooks, readDiscoveryJson } from "../discovery/failure";
 import {
 	fetchOpenAICompatibleModels,
 	type OpenAICompatibleModelMapperContext,
@@ -172,11 +172,7 @@ export function mapModelsDevReasoningOptions(
 }
 
 function toModelName(value: unknown, fallback: string): string {
-	if (typeof value !== "string") {
-		return fallback;
-	}
-	const trimmed = value.trim();
-	return trimmed.length > 0 ? trimmed : fallback;
+	return toNonEmptyString(value) ?? fallback;
 }
 
 export function toInputCapabilities(value: unknown): ("text" | "image" | "video")[] {
@@ -453,19 +449,12 @@ async function fetchOllamaNativeModels(
 		report("request", errorMessage(error));
 		return null;
 	}
-	if (!response.ok) {
-		report("status", `HTTP ${response.status} ${response.statusText}`.trim());
-		return null;
-	}
-	let payload: { models?: Array<{ name?: string; model?: string }> };
-	try {
-		payload = (await response.json()) as { models?: Array<{ name?: string; model?: string }> };
-	} catch (error) {
-		// Previously this threw out of the whole fetcher rather than answering `null`, so a captive portal or
-		// an HTML proxy page turned one provider's discovery into an `unhandled` stage blamed on this reader.
-		report("body", errorMessage(error));
-		return null;
-	}
+	// A captive portal or an HTML proxy page is a `body` failure answered with `null`, not an `unhandled`
+	// stage thrown out of the whole fetcher and blamed on this reader.
+	const payload = (await readDiscoveryJson(response, report)) as
+		| { models?: Array<{ name?: string; model?: string }> }
+		| undefined;
+	if (payload === undefined) return null;
 	const entries = payload.models ?? [];
 	const resolved = await Promise.all(
 		entries.map(async (entry): Promise<ModelSpec<"openai-responses"> | null> => {
@@ -582,17 +571,10 @@ async function fetchOllamaShowMetadata(
 		report("request", errorMessage(error));
 		return undefined;
 	}
-	if (!response.ok) {
-		report("status", `HTTP ${response.status} ${response.statusText}`.trim());
-		return undefined;
-	}
-	let payload: { capabilities?: unknown; model_info?: Record<string, unknown> };
-	try {
-		payload = (await response.json()) as { capabilities?: unknown; model_info?: Record<string, unknown> };
-	} catch (error) {
-		report("body", errorMessage(error));
-		return undefined;
-	}
+	const payload = (await readDiscoveryJson(response, report)) as
+		| { capabilities?: unknown; model_info?: Record<string, unknown> }
+		| undefined;
+	if (payload === undefined) return undefined;
 	const capabilities = getOllamaCapabilities(payload.capabilities);
 	const contextWindow = getOllamaContextWindow(payload.model_info);
 	return {

@@ -9,9 +9,8 @@
 
 import type { Effort } from "@veyyon/catalog/effort";
 import { mapEffortToAnthropicAdaptiveEffort, requireSupportedEffort } from "@veyyon/catalog/model-thinking";
-import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
+import { calculateCost } from "@veyyon/catalog/models";
 import { $env, $flag } from "@veyyon/utils/env";
-
 import { parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils/json-parse";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
@@ -52,6 +51,7 @@ import { invalidateAwsCredentialCache, resolveAwsCredentials } from "./aws-crede
 import { decodeEventStream } from "./aws-eventstream";
 import { signRequest } from "./aws-sigv4";
 import { supportsBedrockPromptCaching } from "./bedrock-prompt-cache";
+import { createInitialResponsesAssistantMessage } from "./initial-message";
 import { transformMessages } from "./transform-messages";
 import { NON_VIDEO_MODEL_PLACEHOLDER } from "./vision-content";
 export type BedrockThinkingDisplay = "summarized" | "omitted";
@@ -294,16 +294,11 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 		const startTime = performance.now();
 		let firstTokenTime: number | undefined;
 
-		const output: AssistantMessage = {
-			role: "assistant",
-			content: [],
-			api: "bedrock-converse-stream" as Api,
-			provider: model.provider,
-			model: model.id,
-			usage: emptyUsage(),
-			stopReason: "stop",
-			timestamp: Date.now(),
-		};
+		const output: AssistantMessage = createInitialResponsesAssistantMessage(
+			"bedrock-converse-stream" as Api,
+			model.provider,
+			model.id,
+		);
 
 		const blocks = output.content as Block[];
 		let rawRequestDump: RawHttpRequestDump | undefined;
@@ -599,10 +594,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 				signal: options.signal,
 				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
 			});
-			output.stopReason = result.stopReason;
-			output.errorStatus = result.status;
-			output.errorId = result.id;
-			output.errorMessage = result.message + diagnostics;
+			AIError.applyFinalizeResult(output, result, result.message + diagnostics);
 			output.duration = performance.now() - startTime;
 			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
 			stream.push({ type: "error", reason: output.stopReason, error: output });
@@ -775,7 +767,7 @@ function supportsThinkingSignature(model: Model<"bedrock-converse-stream">): boo
  * A single trailing `cachePoint` caches a prefix that ENDS at the last system
  * block, so any edit to a later block invalidates the whole system prompt and
  * the next turn re-reads and re-writes all of it. That is the normal shape
- * here: the first block is the harness shared across parent and subagent
+ * here: the first block is the harness shared across parent and agent
  * prompts, and project context, the assignment and the handle table are
  * appended after it and change constantly. The Anthropic provider anchors its
  * own first block for exactly this reason (`applyPromptCaching`); Bedrock did

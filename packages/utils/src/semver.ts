@@ -117,7 +117,7 @@ const RELEASE_VERSION_PATTERN = new RegExp(`^${RELEASE_VERSION_BODY}$`);
  * Whether `value` is a version this project is willing to RELEASE.
  *
  * Stricter than {@link isValidSemver}, which accepts `1.2.3-rc.1` and
- * `1.2.3+build`. A release here cuts a git tag, publishes npm packages and
+ * `1.2.3+build`. A release here cuts a git tag and
  * creates a GitHub release, and none of those paths handle a prerelease or
  * build suffix, so accepting one produces artifacts that do not match the tag.
  *

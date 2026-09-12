@@ -7,11 +7,10 @@ import { normalizeDetails } from "../../utils";
 import type { CommitAgentState } from "../state";
 import {
 	capDetails,
-	MAX_DETAIL_ITEMS,
 	normalizeSummary,
-	SUMMARY_MAX_CHARS,
 	validateSummaryRules,
 	validateTypeConsistency,
+	verdictWithLimits,
 } from "../validation";
 import { commitTypeSchema, detailSchema } from "./schemas.js";
 
@@ -88,17 +87,7 @@ export function createProposeCommitTool(cwd: string, state: CommitAgentState): C
 				};
 			}
 
-			const text = JSON.stringify(
-				{
-					...response,
-					constraints: {
-						maxSummaryChars: SUMMARY_MAX_CHARS,
-						maxDetailItems: MAX_DETAIL_ITEMS,
-					},
-				},
-				null,
-				2,
-			);
+			const text = verdictWithLimits(response);
 
 			return {
 				content: [{ type: "text", text }],

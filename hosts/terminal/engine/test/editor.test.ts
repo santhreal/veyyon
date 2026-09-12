@@ -2602,3 +2602,121 @@ describe("Placeholder ghost text", () => {
 		expect(cleared.some(line => line.includes("ask anything  ·  / for commands"))).toBe(true);
 	});
 });
+
+describe("Direct cursor positioning", () => {
+	it("setCursor sets position directly and clamps within line and buffer bounds", () => {
+		const editor = new Editor(defaultEditorTheme);
+		editor.setText("line1\nsecond line\nthree");
+
+		editor.setCursor({ line: 1, col: 7 });
+		expect(editor.getCursor()).toEqual({ line: 1, col: 7 });
+
+		editor.setCursor({ line: 0, col: 2 });
+		expect(editor.getCursor()).toEqual({ line: 0, col: 2 });
+
+		// Clamps column past line length
+		editor.setCursor({ line: 0, col: 99 });
+		expect(editor.getCursor()).toEqual({ line: 0, col: 5 });
+
+		// Clamps negative values
+		editor.setCursor({ line: -2, col: -5 });
+		expect(editor.getCursor()).toEqual({ line: 0, col: 0 });
+
+		// Clamps line past end
+		editor.setCursor({ line: 99, col: 2 });
+		expect(editor.getCursor()).toEqual({ line: 2, col: 2 });
+
+		editor.setCursor({ line: 1.9, col: 3.9 });
+		expect(editor.getCursor()).toEqual({ line: 1, col: 3 });
+	});
+
+	// Direct positioning must preserve the same indivisible boundaries as keyboard navigation.
+	// The corpus exercises UTF-16, combining, flag and joined graphemes; it does not test terminal width.
+	it.each(["A🙂B", "Ae\u0301B", "A🇮🇳B", "A👩🏽‍💻B"])("keeps editing at grapheme boundaries for %s", text => {
+		const starts = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text)].map(
+			part => part.index,
+		);
+		starts.push(text.length);
+		const editor = new Editor(defaultEditorTheme);
+		for (let offset = 0; offset <= text.length; offset++) {
+			editor.setText(text);
+			editor.setCursor({ line: 0, col: offset });
+			const expected = starts.findLast(index => index <= offset)!;
+			expect(editor.getCursor()).toEqual({ line: 0, col: expected });
+			editor.handleInput("x");
+			expect(editor.getText()).toBe(`${text.slice(0, expected)}x${text.slice(expected)}`);
+			editor.handleInput("\x7f");
+			expect(editor.getText()).toBe(text);
+		}
+	});
+
+	it("keeps an atomic token intact when a restored cursor points inside it", () => {
+		const editor = new Editor(defaultEditorTheme);
+		const text = "a[Image #1]b";
+		editor.atomicTokenPattern = /\[Image #\d+\]/;
+		for (let offset = 1; offset < text.length - 1; offset++) {
+			editor.setText(text);
+			editor.setCursor({ line: 0, col: offset });
+			expect(editor.getCursor()).toEqual({ line: 0, col: 1 });
+			editor.handleInput("x");
+			expect(editor.getText()).toBe("ax[Image #1]b");
+		}
+	});
+
+	it.each([NaN, Infinity, -Infinity])("rejects non-finite coordinates without changing the draft: %s", value => {
+		const editor = new Editor(defaultEditorTheme);
+		editor.setText("first\nsecond");
+		editor.setCursor({ line: 1, col: 2 });
+		for (const cursor of [
+			{ line: value, col: 0 },
+			{ line: 0, col: value },
+		]) {
+			expect(() => editor.setCursor(cursor)).toThrow("Cursor line and column must be finite numbers");
+			expect(editor.getCursor()).toEqual({ line: 1, col: 2 });
+			expect(editor.getText()).toBe("first\nsecond");
+		}
+	});
+
+	it("discards the old completion before editing at a restored cursor", () => {
+		const editor = new Editor(defaultEditorTheme);
+		editor.setText("/m\n/m");
+		editor.setAutocompleteSuggestions({
+			prefix: "/m",
+			items: [{ value: "model", label: "model" }],
+		});
+		editor.setCursor({ line: 0, col: 2 });
+		expect(editor.isShowingAutocomplete()).toBe(false);
+		editor.handleInput("x");
+		expect(editor.getText()).toBe("/mx\n/m");
+	});
+});
+
+describe("Explicit autocomplete suggestions API", () => {
+	it("shows, navigates, and clears explicit autocomplete suggestions", () => {
+		const editor = new Editor(defaultEditorTheme);
+		editor.setAutocompleteSuggestions({
+			prefix: "/m",
+			items: [
+				{ value: "/model", label: "/model", description: "Select model" },
+				{ value: "/mode", label: "/mode", description: "Switch mode" },
+			],
+			selectedIndex: 0,
+		});
+
+		expect(editor.isShowingAutocomplete()).toBe(true);
+		const state = editor.getAutocompleteState();
+		expect(state).toBeDefined();
+		expect(state?.prefix).toBe("/m");
+		expect(state?.items.length).toBe(2);
+		expect(state?.selectedIndex).toBe(0);
+
+		// Down arrow navigates to second item
+		editor.handleInput("\x1b[B");
+		expect(editor.getAutocompleteState()?.selectedIndex).toBe(1);
+
+		// Clearing cancels autocomplete
+		editor.setAutocompleteSuggestions(undefined);
+		expect(editor.isShowingAutocomplete()).toBe(false);
+		expect(editor.getAutocompleteState()).toBeUndefined();
+	});
+});

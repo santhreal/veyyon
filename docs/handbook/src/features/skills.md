@@ -63,7 +63,7 @@ Veyyon's own instructions load in four layers, and only these four:
    `.veyyon/AGENTS.md` (only from the nearest non-empty `.veyyon/`), then
    `AGENTS.md`, then `CLAUDE.md`, and the first one with content wins. The rest of
    that directory's candidates are not read, so a `CLAUDE.md` sitting beside an
-   `AGENTS.md` is deliberately not loaded and the same rules are never inlined
+   `AGENTS.md` is not loaded and the same rules are never inlined
    twice. The choice is made per directory, so a repository root using `AGENTS.md`
    and a package using `CLAUDE.md` both load.
 4. The active profile's `AGENTS.md`

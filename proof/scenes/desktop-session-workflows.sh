@@ -5,7 +5,7 @@
 set -euo pipefail
 source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 
-WORKFLOW_DIR="${SCENE_RUNTIME_DIR}/session-workflows"
+WORKFLOW_DIR="${TMPDIR}/session-workflows"
 mkdir -p "${WORKFLOW_DIR}"
 export WORKFLOW_DIR
 WORKFLOW_DRAFT="Review the attached project notes before sending."
@@ -44,7 +44,7 @@ import time
 
 mode = sys.argv[1]
 root = Path(os.environ['WORKFLOW_DIR'])
-state = Path(os.environ['SCENE_RUNTIME_DIR']) / 'desktop-state'
+state = Path(os.environ['TMPDIR']) / 'desktop-state'
 deadline = time.monotonic() + 15
 last = 'documents not written'
 while time.monotonic() < deadline:
@@ -118,7 +118,7 @@ import json
 import os
 from pathlib import Path
 
-runtime = Path(os.environ['SCENE_RUNTIME_DIR'])
+runtime = Path(os.environ['TMPDIR'])
 created = json.loads((runtime / 'created-session.json').read_text())
 sessions = Path.home() / '.veyyon' / 'profiles' / (os.environ.get('VEYYON_PROFILE') or 'default') / 'agent' / 'sessions'
 paths = list(sessions.rglob(f'*_{created}.jsonl'))
@@ -293,7 +293,7 @@ if xwininfo -id "${SCENE_WINDOW}" >/dev/null 2>&1; then
 	abandon_take "native-window-quit" "the Quit action left the original window open"
 fi
 wait "${KITTY_PID}"
-"${SCENE_RUNTIME_DIR}/bootstrap.sh" >"${SCENE_RUNTIME_DIR}/term-relaunch.log" 2>&1 &
+"${TMPDIR}/bootstrap.sh" >"${TMPDIR}/term-relaunch.log" 2>&1 &
 KITTY_PID=$!
 REOPENED=""
 for _ in $(seq 1 60); do

@@ -2,7 +2,7 @@
 # A real session of the operator's, resumed, scrolled, and continued.
 #
 # The session is millions of tokens: tens of thousands of messages, tool calls,
-# diffs, subagent transcripts, and eighty-seven earlier compactions. Two things
+# diffs, agent transcripts, and eighty-seven earlier compactions. Two things
 # are on trial. The first is the LOAD: how long the terminal sits there before
 # the transcript is on screen. The second is the STREAM: whether an answer
 # arriving token by token at the tail of a transcript that large costs more per

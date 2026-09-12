@@ -9,6 +9,7 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent } from "@veyyon/ai";
 import { logger, sanitizeText } from "@veyyon/utils";
 import { EXIT_FAILURE, EXIT_INTERRUPTED } from "../cli/exit-codes";
+import { awaitStdoutDrain } from "../cli/stdout-drain";
 import { transformProviderPayload } from "../provider-boundary";
 import { SECRET_SPEND_NOTICE_SOURCE } from "../secrets/notices";
 import type { AgentSession } from "../session/agent-session";
@@ -240,46 +241,53 @@ export async function runPrintMode(session: PrintModeSession, options: PrintMode
 		await logger.time("print:prompt:next", () => dispatchPromptOrCommand(message));
 	}
 
-	// In text mode, output final response
-	if (mode === "text" && promptedModel) {
+	// An errored or aborted turn is a failed command in either output mode:
+	// `--mode json` streams the error event and still exits non-zero, so a
+	// script cannot read a failure as success (exit-codes.md).
+	const finalAssistant = ((): AssistantMessage | undefined => {
+		if (!promptedModel) return undefined;
 		const state = session.state;
 		const lastMessage = state.messages[state.messages.length - 1];
+		return lastMessage?.role === "assistant" ? (lastMessage as AssistantMessage) : undefined;
+	})();
 
-		if (lastMessage?.role === "assistant") {
-			const assistantMsg = lastMessage as AssistantMessage;
-
-			// Check for error/aborted — skip silent-abort (plan-mode compaction transition)
-			if (
-				(assistantMsg.stopReason === "error" || assistantMsg.stopReason === "aborted") &&
-				!isSilentAbort(assistantMsg)
-			) {
-				const errorLine = sanitizeText(assistantMsg.errorMessage || `Request ${assistantMsg.stopReason}`);
-				// Flush before this hard exit — it bypasses the awaited postmortem.quit()
-				// in main(), and the postmortem `exit` handler can't await, so the error
-				// spans would otherwise stay buffered in the batch processor and drop.
-				await flushTelemetryExport();
-				const exitCode = assistantMsg.stopReason === "aborted" ? EXIT_INTERRUPTED : EXIT_FAILURE;
-				const flushed = process.stderr.write(`${errorLine}\n`);
-				if (flushed) {
-					process.exit(exitCode);
-				} else {
-					process.stderr.once("drain", () => process.exit(exitCode));
-				}
+	if (finalAssistant) {
+		// Check for error/aborted — skip silent-abort (plan-mode compaction transition)
+		if (
+			(finalAssistant.stopReason === "error" || finalAssistant.stopReason === "aborted") &&
+			!isSilentAbort(finalAssistant)
+		) {
+			const errorLine = sanitizeText(finalAssistant.errorMessage || `Request ${finalAssistant.stopReason}`);
+			// Flush before this hard exit — it bypasses the awaited postmortem.quit()
+			// in main(), and the postmortem `exit` handler can't await, so the error
+			// spans would otherwise stay buffered in the batch processor and drop.
+			await flushTelemetryExport();
+			const exitCode = finalAssistant.stopReason === "aborted" ? EXIT_INTERRUPTED : EXIT_FAILURE;
+			// Drain stdout first so the last streamed JSON event reaches a piped
+			// reader before the exit; the reason goes to stderr in both modes.
+			await awaitStdoutDrain();
+			const flushed = process.stderr.write(`${errorLine}\n`);
+			if (flushed) {
+				process.exit(exitCode);
+			} else {
+				process.stderr.once("drain", () => process.exit(exitCode));
 			}
+		}
 
+		if (mode === "text") {
 			if (
-				assistantMsg.errorMessage &&
-				assistantMsg.stopReason !== "error" &&
-				assistantMsg.stopReason !== "aborted"
+				finalAssistant.errorMessage &&
+				finalAssistant.stopReason !== "error" &&
+				finalAssistant.stopReason !== "aborted"
 			) {
-				process.stderr.write(`${sanitizeText(assistantMsg.errorMessage)}\n`);
+				process.stderr.write(`${sanitizeText(finalAssistant.errorMessage)}\n`);
 			}
 
 			// Output text content. The stored message keeps obfuscated secret
 			// placeholders and cheap argot handles; route it through the session's
 			// display seam so headless output shows real values, never a `#HASH#`
 			// token or a bare `§handle`.
-			for (const content of session.displayAssistantContent(assistantMsg.content)) {
+			for (const content of session.displayAssistantContent(finalAssistant.content)) {
 				if (content.type === "text") {
 					process.stdout.write(`${sanitizeText(content.text)}\n`);
 				} else if (printThoughts && content.type === "thinking" && content.thinking.trim().length > 0) {
@@ -291,12 +299,7 @@ export async function runPrintMode(session: PrintModeSession, options: PrintMode
 
 	// Ensure stdout is fully flushed before returning
 	// This prevents race conditions where the process exits before all output is written
-	await new Promise<void>((resolve, reject) => {
-		process.stdout.write("", err => {
-			if (err) reject(err);
-			else resolve();
-		});
-	});
+	await awaitStdoutDrain();
 
 	await session.dispose();
 }

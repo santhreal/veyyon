@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-
 import { existsSync } from "node:fs";
 import * as path from "node:path";
 import { $ } from "bun";
@@ -13,24 +12,20 @@ export interface NumberedLine {
 	text: string;
 	lineNumber: number;
 }
-
 export interface Subsection {
 	title: string;
 	lines: NumberedLine[];
 }
-
 export interface ReleaseSection {
 	heading: string;
 	title: string;
 	leadingLines: NumberedLine[];
 	subsections: Subsection[];
 }
-
 export interface ChangelogDocument {
 	prefixLines: NumberedLine[];
 	sections: ReleaseSection[];
 }
-
 export interface ParsedItem {
 	startLine: number;
 	endLine: number;
@@ -44,16 +39,13 @@ interface FixCounters {
 	removedEmptyHeadings: number;
 	droppedReleasedDuplicates: number;
 }
-
 export interface FixChangelogContentResult extends FixCounters {
 	content: string;
 }
-
 interface HunkRef {
 	path: string;
 	index: number;
 }
-
 interface AddedItemCandidate {
 	path: string;
 	lineNumber: number;
@@ -61,30 +53,25 @@ interface AddedItemCandidate {
 	hunk: HunkRef;
 	pairedWithRemoval: boolean;
 }
-
 interface RemovedItemOccurrence {
 	path: string;
 	text: string;
 	hunk: HunkRef;
 	pairedWithAddition: boolean;
 }
-
 export interface ChangedChangelogSummary extends FixCounters {
 	path: string;
 }
-
 export interface RunChangelogFixerOptions {
 	repoRoot?: string;
 	since?: string;
 	write?: boolean;
 	recover?: boolean;
 }
-
 export interface RunChangelogFixerResult {
 	since: string;
 	changedFiles: ChangedChangelogSummary[];
 }
-
 interface CliOptions {
 	mode: "write" | "dry-run" | "check";
 	repoRoot?: string;
@@ -93,247 +80,148 @@ interface CliOptions {
 	pin: boolean;
 	help: boolean;
 }
-
 interface HistoricalReleaseRecovery {
 	itemKeys: Set<string>;
 	sectionsByTitle: Map<string, ReleaseSection>;
 }
 
-function isReleaseHeading(line: string): boolean {
-	return /^## \[[^\]]+\]/.test(line);
-}
-
-function isSubsectionHeading(line: string): boolean {
-	return /^###\s+\S/.test(line);
-}
-
-function parseReleaseTitle(heading: string): string {
-	const match = heading.match(/^## \[([^\]]+)\]/);
-	return match?.[1] ?? heading.replace(/^##\s+/, "").trim();
-}
-
-function parseSubsectionTitle(heading: string): string {
-	return heading.replace(/^###\s+/, "").trim();
-}
-
-function isListItemLine(line: string): boolean {
-	return line.trimStart().startsWith("- ");
-}
-
-function normalizeItemText(text: string): string {
-	return text.trim();
-}
+const isReleaseHeading = (line: string) => /^## \[[^\]]+\]/.test(line);
+const isSubsectionHeading = (line: string) => /^###\s+\S/.test(line);
+const parseReleaseTitle = (h: string) => h.match(/^## \[([^\]]+)\]/)?.[1] ?? h.replace(/^##\s+/, "").trim();
+const parseSubsectionTitle = (h: string) => h.replace(/^###\s+/, "").trim();
+const isListItemLine = (line: string) => line.trimStart().startsWith("- ");
+const normalizeItemText = (text: string) => text.trim();
 
 function splitContentLines(content: string): string[] {
-	const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-	if (normalized.endsWith("\n")) {
-		return normalized.slice(0, -1).split("\n");
-	}
-	return normalized.split("\n");
-}
-
-function createNumberedLine(text: string, lineNumber: number): NumberedLine {
-	return { text, lineNumber };
+	const n = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+	return n.endsWith("\n") ? n.slice(0, -1).split("\n") : n.split("\n");
 }
 
 export function parseChangelog(content: string): ChangelogDocument {
-	const lines = splitContentLines(content);
-	const numberedLines = lines.map((text, index) => createNumberedLine(text, index + 1));
+	const numberedLines = splitContentLines(content).map((text, idx) => ({ text, lineNumber: idx + 1 }));
 	const prefixLines: NumberedLine[] = [];
 	const sections: ReleaseSection[] = [];
-	let index = 0;
-
-	while (index < numberedLines.length && !isReleaseHeading(numberedLines[index]?.text ?? "")) {
-		const line = numberedLines[index];
-		if (line) prefixLines.push(line);
-		index++;
-	}
-
-	while (index < numberedLines.length) {
-		const headingLine = numberedLines[index];
-		if (!headingLine) break;
-		index++;
-
+	let i = 0;
+	while (i < numberedLines.length && !isReleaseHeading(numberedLines[i]?.text ?? ""))
+		prefixLines.push(numberedLines[i++]!);
+	while (i < numberedLines.length) {
+		const headingLine = numberedLines[i++]!;
 		const bodyLines: NumberedLine[] = [];
-		while (index < numberedLines.length && !isReleaseHeading(numberedLines[index]?.text ?? "")) {
-			const line = numberedLines[index];
-			if (line) bodyLines.push(line);
-			index++;
-		}
-
+		while (i < numberedLines.length && !isReleaseHeading(numberedLines[i]?.text ?? ""))
+			bodyLines.push(numberedLines[i++]!);
 		sections.push(parseReleaseSection(headingLine.text, bodyLines));
 	}
-
 	return { prefixLines, sections };
 }
 
 function parseReleaseSection(heading: string, bodyLines: readonly NumberedLine[]): ReleaseSection {
 	const leadingLines: NumberedLine[] = [];
 	const subsections: Subsection[] = [];
-	let index = 0;
-
-	while (index < bodyLines.length && !isSubsectionHeading(bodyLines[index]?.text ?? "")) {
-		const line = bodyLines[index];
-		if (line) leadingLines.push(line);
-		index++;
-	}
-
-	while (index < bodyLines.length) {
-		const headingLine = bodyLines[index];
-		if (!headingLine) break;
-		index++;
-
+	let i = 0;
+	while (i < bodyLines.length && !isSubsectionHeading(bodyLines[i]?.text ?? "")) leadingLines.push(bodyLines[i++]!);
+	while (i < bodyLines.length) {
+		const headingLine = bodyLines[i++]!;
 		const lines: NumberedLine[] = [];
-		while (index < bodyLines.length && !isSubsectionHeading(bodyLines[index]?.text ?? "")) {
-			const line = bodyLines[index];
-			if (line) lines.push(line);
-			index++;
-		}
-
+		while (i < bodyLines.length && !isSubsectionHeading(bodyLines[i]?.text ?? "")) lines.push(bodyLines[i++]!);
 		subsections.push({ title: parseSubsectionTitle(headingLine.text), lines });
 	}
-
-	return {
-		heading,
-		title: parseReleaseTitle(heading),
-		leadingLines,
-		subsections,
-	};
+	return { heading, title: parseReleaseTitle(heading), leadingLines, subsections };
 }
 
 function trimBlankLines(lines: readonly string[]): string[] {
-	let start = 0;
-	let end = lines.length;
-	while (start < end && lines[start]?.trim() === "") start++;
-	while (end > start && lines[end - 1]?.trim() === "") end--;
-	return lines.slice(start, end);
+	let s = 0;
+	let e = lines.length;
+	while (s < e && lines[s]?.trim() === "") s++;
+	while (e > s && lines[e - 1]?.trim() === "") e--;
+	return lines.slice(s, e);
 }
 
-function numberedText(lines: readonly NumberedLine[]): string[] {
-	return lines.map(line => line.text);
-}
+const numberedText = (lines: readonly NumberedLine[]) => lines.map(l => l.text);
+const syntheticLines = (lines: readonly string[]) => lines.map(text => ({ text, lineNumber: 0 }));
 
-function syntheticLines(lines: readonly string[]): NumberedLine[] {
-	return lines.map(text => ({ text, lineNumber: 0 }));
-}
-
-function appendSubsectionLines(target: Subsection, sourceLines: readonly string[]): void {
-	const trimmedSource = trimBlankLines(sourceLines);
-	if (trimmedSource.length === 0) return;
-
+function appendSubsectionLines(target: Subsection, sourceLines: readonly string[]) {
+	const trimmed = trimBlankLines(sourceLines);
+	if (!trimmed.length) return;
 	const existing = trimBlankLines(numberedText(target.lines));
-	if (existing.length === 0) {
-		target.lines = syntheticLines(trimmedSource);
+	if (!existing.length) {
+		target.lines = syntheticLines(trimmed);
 		return;
 	}
-
-	const lastExisting = existing[existing.length - 1] ?? "";
-	const firstSource = trimmedSource[0] ?? "";
-	const separator = isListItemLine(lastExisting) && isListItemLine(firstSource) ? [] : [""];
-	target.lines = syntheticLines([...existing, ...separator, ...trimmedSource]);
+	const sep = isListItemLine(existing[existing.length - 1] ?? "") && isListItemLine(trimmed[0] ?? "") ? [] : [""];
+	target.lines = syntheticLines([...existing, ...sep, ...trimmed]);
 }
 
 export function parseItems(lines: readonly NumberedLine[]): ParsedItem[] {
 	const items: ParsedItem[] = [];
-	let index = 0;
-
-	while (index < lines.length) {
-		const line = lines[index];
-		if (!line || !isListItemLine(line.text)) {
-			index++;
+	let i = 0;
+	while (i < lines.length) {
+		if (!isListItemLine(lines[i]?.text ?? "")) {
+			i++;
 			continue;
 		}
-
-		const start = index;
-		index++;
-		while (index < lines.length && !isListItemLine(lines[index]?.text ?? "")) {
-			index++;
-		}
-
-		const itemLines = lines.slice(start, index);
-		const firstLine = itemLines[0];
-		const lastLine = itemLines[itemLines.length - 1];
-		if (firstLine && lastLine) {
-			items.push({
-				startLine: firstLine.lineNumber,
-				endLine: lastLine.lineNumber,
-				lines: trimBlankLines(numberedText(itemLines)),
-			});
-		}
+		const start = i++;
+		while (i < lines.length && !isListItemLine(lines[i]?.text ?? "")) i++;
+		const chunk = lines.slice(start, i);
+		items.push({
+			startLine: chunk[0]!.lineNumber,
+			endLine: chunk[chunk.length - 1]!.lineNumber,
+			lines: trimBlankLines(numberedText(chunk)),
+		});
 	}
-
 	return items;
 }
 
 export function lineRangeSet(items: readonly ParsedItem[]): Set<number> {
 	const lines = new Set<number>();
 	for (const item of items) {
-		for (let line = item.startLine; line <= item.endLine; line++) {
-			lines.add(line);
-		}
+		for (let l = item.startLine; l <= item.endLine; l++) lines.add(l);
 	}
 	return lines;
 }
 
-function itemTextKey(itemLines: readonly string[]): string {
-	return trimBlankLines(itemLines).join("\n");
-}
-
-function subsectionHasItem(subsection: Subsection, itemLines: readonly string[]): boolean {
+const itemTextKey = (itemLines: readonly string[]) => trimBlankLines(itemLines).join("\n");
+const subsectionHasItem = (sub: Subsection, itemLines: readonly string[]) => {
 	const wanted = itemTextKey(itemLines);
-	if (!wanted) return true;
-	for (const item of parseItems(subsection.lines)) {
-		if (itemTextKey(item.lines) === wanted) return true;
-	}
-	return false;
-}
+	return !wanted || parseItems(sub.lines).some(item => itemTextKey(item.lines) === wanted);
+};
 
 function collectReleasedItemKeys(document: ChangelogDocument): Set<string> {
 	const keys = new Set<string>();
-	for (const section of document.sections) {
-		if (section.title === "Unreleased") continue;
-		for (const subsection of section.subsections) {
-			for (const item of parseItems(subsection.lines)) {
-				const key = itemTextKey(item.lines);
-				if (key) keys.add(key);
+	for (const sec of document.sections) {
+		if (sec.title === "Unreleased") continue;
+		for (const sub of sec.subsections) {
+			for (const it of parseItems(sub.lines)) {
+				const k = itemTextKey(it.lines);
+				if (k) keys.add(k);
 			}
 		}
 	}
 	return keys;
 }
 
-/**
- * Drop items from [Unreleased] that already appear verbatim in a released
- * section — the residue of a release that copied [Unreleased] into the new
- * version section without clearing it. The released copy is authoritative, so
- * the Unreleased duplicate is removed. Runs before promotion (while parse line
- * numbers are still real) and only ever mutates the Unreleased section.
- */
 function dropUnreleasedDuplicatesOfReleased(
 	document: ChangelogDocument,
 	historicalReleasedItemKeys: ReadonlySet<string> = new Set<string>(),
 ): number {
-	const unreleased = document.sections.find(section => section.title === "Unreleased");
+	const unreleased = document.sections.find(s => s.title === "Unreleased");
 	if (!unreleased) return 0;
 	const releasedKeys = collectReleasedItemKeys(document);
-	for (const key of historicalReleasedItemKeys) releasedKeys.add(key);
-	if (releasedKeys.size === 0) return 0;
-
+	for (const k of historicalReleasedItemKeys) releasedKeys.add(k);
+	if (!releasedKeys.size) return 0;
 	let dropped = 0;
-	for (const subsection of unreleased.subsections) {
-		const duplicates = parseItems(subsection.lines).filter(item => releasedKeys.has(itemTextKey(item.lines)));
-		if (duplicates.length === 0) continue;
-		const linesToRemove = lineRangeSet(duplicates);
-		subsection.lines = subsection.lines.filter(line => !linesToRemove.has(line.lineNumber));
-		dropped += duplicates.length;
+	for (const sub of unreleased.subsections) {
+		const dups = parseItems(sub.lines).filter(it => releasedKeys.has(itemTextKey(it.lines)));
+		if (!dups.length) continue;
+		const toRemove = lineRangeSet(dups);
+		sub.lines = sub.lines.filter(l => !toRemove.has(l.lineNumber));
+		dropped += dups.length;
 	}
 	return dropped;
 }
 
 function getOrCreateUnreleasedSection(document: ChangelogDocument): ReleaseSection {
-	const existing = document.sections.find(section => section.title === "Unreleased");
+	const existing = document.sections.find(s => s.title === "Unreleased");
 	if (existing) return existing;
-
 	const section: ReleaseSection = {
 		heading: "## [Unreleased]",
 		title: "Unreleased",
@@ -345,37 +233,27 @@ function getOrCreateUnreleasedSection(document: ChangelogDocument): ReleaseSecti
 }
 
 function getOrCreateSubsection(section: ReleaseSection, title: string): Subsection {
-	const existing = section.subsections.findLast(subsection => subsection.title === title);
+	const existing = section.subsections.findLast(s => s.title === title);
 	if (existing) return existing;
-
-	const subsection: Subsection = { title, lines: [] };
-	section.subsections.push(subsection);
-	return subsection;
+	const sub: Subsection = { title, lines: [] };
+	section.subsections.push(sub);
+	return sub;
 }
 
 function titleOrder(title: string): number {
-	const index = ORDERED_SECTION_TITLES.indexOf(title as (typeof ORDERED_SECTION_TITLES)[number]);
-	return index === -1 ? ORDERED_SECTION_TITLES.length : index;
+	const idx = ORDERED_SECTION_TITLES.indexOf(title as (typeof ORDERED_SECTION_TITLES)[number]);
+	return idx === -1 ? ORDERED_SECTION_TITLES.length : idx;
 }
 
 function compactAdjacentListSpacing(lines: readonly string[]): string[] {
-	const trimmedLines = trimBlankLines(lines);
-	if (trimmedLines.length === 0) return [];
-
-	const parsedItems = parseItems(syntheticLines(trimmedLines));
-	if (parsedItems.length === 0) return [...trimmedLines];
-
-	const flattenedItems = parsedItems.flatMap(item => item.lines);
-	const nonBlankOriginal = trimmedLines.filter(line => line.trim() !== "");
-	const nonBlankFlattened = flattenedItems.filter(line => line.trim() !== "");
-	if (
-		nonBlankOriginal.length !== nonBlankFlattened.length ||
-		!nonBlankOriginal.every((line, index) => line === nonBlankFlattened[index])
-	) {
-		return [...trimmedLines];
-	}
-
-	return flattenedItems;
+	const trimmed = trimBlankLines(lines);
+	if (!trimmed.length) return [];
+	const parsed = parseItems(syntheticLines(trimmed));
+	if (!parsed.length) return [...trimmed];
+	const flattened = parsed.flatMap(it => it.lines);
+	const orig = trimmed.filter(l => l.trim() !== "");
+	const flat = flattened.filter(l => l.trim() !== "");
+	return orig.length === flat.length && orig.every((l, i) => l === flat[i]) ? flattened : [...trimmed];
 }
 
 function normalizeSection(section: ReleaseSection): FixCounters {
@@ -386,102 +264,67 @@ function normalizeSection(section: ReleaseSection): FixCounters {
 		removedEmptyHeadings: 0,
 		droppedReleasedDuplicates: 0,
 	};
-	const subsectionByTitle = new Map<string, Subsection>();
-	const normalizedSubsections: Subsection[] = [];
-
-	for (const subsection of section.subsections) {
-		const trimmedLines = compactAdjacentListSpacing(trimBlankLines(numberedText(subsection.lines)));
-
-		if (trimmedLines.length === 0) {
+	const byTitle = new Map<string, Subsection>();
+	const normalized: Subsection[] = [];
+	for (const sub of section.subsections) {
+		const trimmed = compactAdjacentListSpacing(trimBlankLines(numberedText(sub.lines)));
+		if (!trimmed.length) {
 			counters.removedEmptyHeadings++;
 			continue;
 		}
-
-		const existing = subsectionByTitle.get(subsection.title);
-		if (existing) {
-			appendSubsectionLines(existing, trimmedLines);
+		const ex = byTitle.get(sub.title);
+		if (ex) {
+			appendSubsectionLines(ex, trimmed);
 			counters.mergedDuplicateHeadings++;
 			continue;
 		}
-
-		const normalized: Subsection = {
-			title: subsection.title,
-			lines: syntheticLines(trimmedLines),
-		};
-		subsectionByTitle.set(subsection.title, normalized);
-		normalizedSubsections.push(normalized);
+		const norm: Subsection = { title: sub.title, lines: syntheticLines(trimmed) };
+		byTitle.set(sub.title, norm);
+		normalized.push(norm);
 	}
-
-	if (section.title === "Unreleased") {
-		normalizedSubsections.sort((a, b) => titleOrder(a.title) - titleOrder(b.title));
-	}
-
+	if (section.title === "Unreleased") normalized.sort((a, b) => titleOrder(a.title) - titleOrder(b.title));
 	section.leadingLines = syntheticLines(trimBlankLines(numberedText(section.leadingLines)));
-	section.subsections = normalizedSubsections;
+	section.subsections = normalized;
 	return counters;
 }
 
-function cloneReleaseSection(section: ReleaseSection): ReleaseSection {
+function cloneReleaseSection(sec: ReleaseSection): ReleaseSection {
 	return {
-		heading: section.heading,
-		title: section.title,
-		leadingLines: syntheticLines(trimBlankLines(numberedText(section.leadingLines))),
-		subsections: section.subsections.map(subsection => ({
-			title: subsection.title,
-			lines: syntheticLines(trimBlankLines(numberedText(subsection.lines))),
+		heading: sec.heading,
+		title: sec.title,
+		leadingLines: syntheticLines(trimBlankLines(numberedText(sec.leadingLines))),
+		subsections: sec.subsections.map(s => ({
+			title: s.title,
+			lines: syntheticLines(trimBlankLines(numberedText(s.lines))),
 		})),
 	};
 }
 
-function sectionHasContent(section: ReleaseSection): boolean {
-	if (trimBlankLines(numberedText(section.leadingLines)).length > 0) return true;
-	return section.subsections.some(subsection => trimBlankLines(numberedText(subsection.lines)).length > 0);
-}
+const sectionHasContent = (sec: ReleaseSection) =>
+	trimBlankLines(numberedText(sec.leadingLines)).length > 0 ||
+	sec.subsections.some(s => trimBlankLines(numberedText(s.lines)).length > 0);
 
-/**
- * Collapse release sections that share a version title into one, keeping the
- * first occurrence in document order.
- *
- * WHY THIS EXISTS. A version has exactly one home (ONE-PLACE): the changelog must
- * never carry two `## [1.0.31]` sections. A release cut inserts the new
- * `## [X.Y.Z]` directly under `## [Unreleased]`; a hiccup across successive cuts
- * left the live changelog with byte-identical duplicates ([1.0.31] and [1.0.25]
- * each appeared twice). Duplicates force every downstream consumer (the
- * release-notes roll-up, the root-changelog sync, the website changelog
- * generator) to dedup defensively, and any that does not double-prints the
- * bullets. This folds every later same-title section into the first: its leading
- * prose and each of its subsection items are merged in by title, dropping items
- * that already appear verbatim, and the emptied later copy is discarded. Runs
- * before per-section normalization so the merged result is compacted like any
- * other section. Idempotent: a changelog with no duplicate versions is returned
- * unchanged.
- */
 function mergeDuplicateVersionSections(document: ChangelogDocument): number {
 	const firstByTitle = new Map<string, ReleaseSection>();
 	const kept: ReleaseSection[] = [];
 	let merged = 0;
-	for (const section of document.sections) {
-		const first = firstByTitle.get(section.title);
+	for (const sec of document.sections) {
+		const first = firstByTitle.get(sec.title);
 		if (!first) {
-			firstByTitle.set(section.title, section);
-			kept.push(section);
+			firstByTitle.set(sec.title, sec);
+			kept.push(sec);
 			continue;
 		}
-		const incomingLead = trimBlankLines(numberedText(section.leadingLines));
-		if (incomingLead.length > 0) {
-			const existingLead = trimBlankLines(numberedText(first.leadingLines));
-			if (existingLead.join("\n") !== incomingLead.join("\n")) {
-				first.leadingLines = syntheticLines(
-					existingLead.length === 0 ? incomingLead : [...existingLead, "", ...incomingLead],
-				);
-			}
+		const inLead = trimBlankLines(numberedText(sec.leadingLines));
+		if (inLead.length) {
+			const exLead = trimBlankLines(numberedText(first.leadingLines));
+			if (exLead.join("\n") !== inLead.join("\n"))
+				first.leadingLines = syntheticLines(exLead.length ? [...exLead, "", ...inLead] : inLead);
 		}
-		for (const subsection of section.subsections) {
-			const target = getOrCreateSubsection(first, subsection.title);
-			for (const item of parseItems(subsection.lines)) {
-				if (!subsectionHasItem(target, item.lines)) {
-					appendSubsectionLines(target, item.lines);
-				}
+		for (const sub of sec.subsections) {
+			const target = getOrCreateSubsection(first, sub.title);
+			for (const it of parseItems(sub.lines)) {
+				if (!subsectionHasItem(target, it.lines)) appendSubsectionLines(target, it.lines);
 			}
 		}
 		merged++;
@@ -490,84 +333,69 @@ function mergeDuplicateVersionSections(document: ChangelogDocument): number {
 	return merged;
 }
 
-function sortReleaseSections(document: ChangelogDocument): void {
-	const unreleasedSections = document.sections.filter(section => section.title === "Unreleased");
-	const releasedSections = document.sections.filter(section => section.title !== "Unreleased");
-	document.sections = [...unreleasedSections, ...releasedSections];
+function sortReleaseSections(document: ChangelogDocument) {
+	document.sections = [
+		...document.sections.filter(s => s.title === "Unreleased"),
+		...document.sections.filter(s => s.title !== "Unreleased"),
+	];
 }
 
 function rebuildReleasedSectionsFromHistory(
 	content: string,
 	historicalSectionsByTitle: ReadonlyMap<string, ReleaseSection>,
 ): string {
-	if (historicalSectionsByTitle.size === 0) return content;
-
-	const document = parseChangelog(content);
-	const unreleasedSections: ReleaseSection[] = [];
-	const releasedSections: ReleaseSection[] = [];
-	const seenTitles = new Set<string>();
-	for (const section of document.sections) {
-		if (section.title === "Unreleased") {
-			unreleasedSections.push(section);
+	if (!historicalSectionsByTitle.size) return content;
+	const doc = parseChangelog(content);
+	const unreleased: ReleaseSection[] = [];
+	const released: ReleaseSection[] = [];
+	const seen = new Set<string>();
+	for (const sec of doc.sections) {
+		if (sec.title === "Unreleased") {
+			unreleased.push(sec);
 			continue;
 		}
-		if (seenTitles.has(section.title)) continue;
-		seenTitles.add(section.title);
-
-		const historical = historicalSectionsByTitle.get(section.title);
-		if (historical) {
-			releasedSections.push({
-				heading: section.heading,
-				title: section.title,
-				leadingLines: syntheticLines(trimBlankLines(numberedText(historical.leadingLines))),
-				subsections: historical.subsections.map(subsection => ({
-					title: subsection.title,
-					lines: syntheticLines(trimBlankLines(numberedText(subsection.lines))),
+		if (seen.has(sec.title)) continue;
+		seen.add(sec.title);
+		const hist = historicalSectionsByTitle.get(sec.title);
+		if (hist) {
+			released.push({
+				heading: sec.heading,
+				title: sec.title,
+				leadingLines: syntheticLines(trimBlankLines(numberedText(hist.leadingLines))),
+				subsections: hist.subsections.map(s => ({
+					title: s.title,
+					lines: syntheticLines(trimBlankLines(numberedText(s.lines))),
 				})),
 			});
-			continue;
+		} else {
+			released.push(sec);
 		}
-
-		releasedSections.push(section);
 	}
-
-	for (const [title, section] of historicalSectionsByTitle) {
-		if (seenTitles.has(title)) continue;
-		releasedSections.push(cloneReleaseSection(section));
+	for (const [title, sec] of historicalSectionsByTitle) {
+		if (!seen.has(title)) released.push(cloneReleaseSection(sec));
 	}
-
-	document.sections = [...unreleasedSections, ...releasedSections];
-	sortReleaseSections(document);
-	return renderChangelog(document);
+	doc.sections = [...unreleased, ...released];
+	sortReleaseSections(doc);
+	return renderChangelog(doc);
 }
 
 export function renderChangelog(document: ChangelogDocument): string {
-	const output: string[] = [];
-	const prefix = trimBlankLines(numberedText(document.prefixLines));
-	if (prefix.length > 0) {
-		output.push(...prefix, "");
-	}
-
-	for (const section of document.sections) {
-		output.push(section.heading);
-		const leading = trimBlankLines(numberedText(section.leadingLines));
-		if (leading.length > 0) {
-			output.push("", ...leading);
+	const out: string[] = [];
+	const pfx = trimBlankLines(numberedText(document.prefixLines));
+	if (pfx.length) out.push(...pfx, "");
+	for (const sec of document.sections) {
+		out.push(sec.heading);
+		const lead = trimBlankLines(numberedText(sec.leadingLines));
+		if (lead.length) out.push("", ...lead);
+		for (const sub of sec.subsections) {
+			const l = trimBlankLines(numberedText(sub.lines));
+			if (!l.length) continue;
+			out.push("", `### ${sub.title}`, "", ...l);
 		}
-
-		for (const subsection of section.subsections) {
-			const lines = trimBlankLines(numberedText(subsection.lines));
-			if (lines.length === 0) continue;
-			output.push("", `### ${subsection.title}`, "", ...lines);
-		}
-
-		output.push("");
+		out.push("");
 	}
-
-	while (output.length > 0 && output[output.length - 1] === "") {
-		output.pop();
-	}
-	return `${output.join("\n")}\n`;
+	while (out.length && out[out.length - 1] === "") out.pop();
+	return `${out.join("\n")}\n`;
 }
 
 export function fixChangelogContent(
@@ -575,49 +403,38 @@ export function fixChangelogContent(
 	promotableAddedItemStartLines: ReadonlySet<number>,
 	historicalReleasedItemKeys: ReadonlySet<string> = new Set<string>(),
 ): FixChangelogContentResult {
-	const document = parseChangelog(content);
-	let unreleased = document.sections.find(section => section.title === "Unreleased");
+	const doc = parseChangelog(content);
+	let unreleased = doc.sections.find(s => s.title === "Unreleased");
 	let promotedItems = 0;
+	const droppedReleasedDuplicates = dropUnreleasedDuplicatesOfReleased(doc, historicalReleasedItemKeys);
 
-	const droppedReleasedDuplicates = dropUnreleasedDuplicatesOfReleased(document, historicalReleasedItemKeys);
-
-	for (const section of document.sections) {
-		if (section.title === "Unreleased") continue;
-
-		for (const subsection of section.subsections) {
-			const items = parseItems(subsection.lines).filter(item => promotableAddedItemStartLines.has(item.startLine));
-			if (items.length === 0) continue;
-
-			const linesToRemove = lineRangeSet(items);
-			subsection.lines = subsection.lines.filter(line => !linesToRemove.has(line.lineNumber));
-
-			unreleased ??= getOrCreateUnreleasedSection(document);
-			const targetSubsection = getOrCreateSubsection(unreleased, subsection.title);
-			for (const item of items) {
-				if (!subsectionHasItem(targetSubsection, item.lines)) {
-					appendSubsectionLines(targetSubsection, item.lines);
-				}
+	for (const sec of doc.sections) {
+		if (sec.title === "Unreleased") continue;
+		for (const sub of sec.subsections) {
+			const items = parseItems(sub.lines).filter(it => promotableAddedItemStartLines.has(it.startLine));
+			if (!items.length) continue;
+			const toRemove = lineRangeSet(items);
+			sub.lines = sub.lines.filter(l => !toRemove.has(l.lineNumber));
+			unreleased ??= getOrCreateUnreleasedSection(doc);
+			const targetSub = getOrCreateSubsection(unreleased, sub.title);
+			for (const it of items) {
+				if (!subsectionHasItem(targetSub, it.lines)) appendSubsectionLines(targetSub, it.lines);
 				promotedItems++;
 			}
 		}
 	}
 
-	// Collapse any duplicate `## [X.Y.Z]` sections BEFORE per-section normalization,
-	// so the merged single section is compacted like any other.
-	const mergedDuplicateVersions = mergeDuplicateVersionSections(document);
-
+	const mergedDuplicateVersions = mergeDuplicateVersionSections(doc);
 	let mergedDuplicateHeadings = 0;
 	let removedEmptyHeadings = 0;
-	for (const section of document.sections) {
-		const counters = normalizeSection(section);
-		mergedDuplicateHeadings += counters.mergedDuplicateHeadings;
-		removedEmptyHeadings += counters.removedEmptyHeadings;
+	for (const sec of doc.sections) {
+		const c = normalizeSection(sec);
+		mergedDuplicateHeadings += c.mergedDuplicateHeadings;
+		removedEmptyHeadings += c.removedEmptyHeadings;
 	}
-
-	sortReleaseSections(document);
-	const renderedContent = renderChangelog(document);
+	sortReleaseSections(doc);
 	return {
-		content: renderedContent,
+		content: renderChangelog(doc),
 		promotedItems,
 		mergedDuplicateHeadings,
 		mergedDuplicateVersions,
@@ -626,203 +443,127 @@ export function fixChangelogContent(
 	};
 }
 
-function hunkKey(hunk: HunkRef): string {
-	return `${hunk.path}\0${hunk.index}`;
-}
-function isAddedReleaseHeadingLine(line: string): boolean {
-	return line.startsWith("+## [");
-}
-
-function itemKey(pathName: string, text: string): string {
-	return `${pathName}\0${normalizeItemText(text)}`;
-}
+const hunkKey = (hunk: HunkRef) => `${hunk.path}\0${hunk.index}`;
+const isAddedReleaseHeadingLine = (line: string) => line.startsWith("+## [");
+const itemKey = (p: string, t: string) => `${p}\0${normalizeItemText(t)}`;
 
 export function collectPromotableAddedItemLines(diffText: string): Map<string, Set<number>> {
 	const candidates: AddedItemCandidate[] = [];
 	const removals: RemovedItemOccurrence[] = [];
 	const addedReleaseHeadingHunks = new Set<string>();
-	let currentPath = "";
+	let curPath = "";
 	let newLine = 0;
-	let hunkIndex = -1;
-	for (const rawLine of diffText.replace(/\r\n/g, "\n").split("\n")) {
-		if (rawLine.startsWith("+++ b/")) {
-			currentPath = rawLine.slice("+++ b/".length);
+	let hunkIdx = -1;
+
+	for (const raw of diffText.replace(/\r\n/g, "\n").split("\n")) {
+		if (raw.startsWith("+++ b/")) {
+			curPath = raw.slice(6);
 			continue;
 		}
-
-		if (rawLine.startsWith("diff --git ")) {
-			currentPath = "";
-			hunkIndex = -1;
+		if (raw.startsWith("diff --git ")) {
+			curPath = "";
+			hunkIdx = -1;
 			continue;
 		}
-
-		const hunkMatch = rawLine.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-		if (hunkMatch) {
-			newLine = Number(hunkMatch[2]);
-			hunkIndex++;
+		const hm = raw.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+		if (hm) {
+			newLine = Number(hm[2]);
+			hunkIdx++;
 			continue;
 		}
-
-		if (!currentPath || hunkIndex < 0 || rawLine.length === 0) continue;
-
-		const marker = rawLine[0];
-		const text = rawLine.slice(1);
-		const hunk = { path: currentPath, index: hunkIndex };
+		if (!curPath || hunkIdx < 0 || !raw.length) continue;
+		const marker = raw[0];
+		const text = raw.slice(1);
+		const hunk = { path: curPath, index: hunkIdx };
 		if (marker === "+") {
-			const hunkKeyValue = hunkKey(hunk);
-			if (isAddedReleaseHeadingLine(rawLine)) {
-				addedReleaseHeadingHunks.add(hunkKeyValue);
-			}
-			if (isListItemLine(text)) {
-				candidates.push({
-					path: currentPath,
-					lineNumber: newLine,
-					text,
-					hunk,
-					pairedWithRemoval: false,
-				});
-			}
+			if (isAddedReleaseHeadingLine(raw)) addedReleaseHeadingHunks.add(hunkKey(hunk));
+			if (isListItemLine(text))
+				candidates.push({ path: curPath, lineNumber: newLine, text, hunk, pairedWithRemoval: false });
 			newLine++;
-			continue;
-		}
-
-		if (marker === "-") {
-			if (isListItemLine(text)) {
-				removals.push({
-					path: currentPath,
-					text,
-					hunk,
-					pairedWithAddition: false,
-				});
-			}
-			continue;
-		}
-
-		if (marker === " ") {
+		} else if (marker === "-") {
+			if (isListItemLine(text)) removals.push({ path: curPath, text, hunk, pairedWithAddition: false });
+		} else if (marker === " ") {
 			newLine++;
 		}
 	}
 
 	const removalsByItem = new Map<string, RemovedItemOccurrence[]>();
-	for (const removal of removals) {
-		const key = itemKey(removal.path, removal.text);
-		const existing = removalsByItem.get(key);
-		if (existing) {
-			existing.push(removal);
-		} else {
-			removalsByItem.set(key, [removal]);
+	for (const r of removals) {
+		const k = itemKey(r.path, r.text);
+		const list = removalsByItem.get(k) ?? [];
+		list.push(r);
+		removalsByItem.set(k, list);
+	}
+
+	for (const c of candidates) {
+		const match = removalsByItem.get(itemKey(c.path, c.text))?.find(r => !r.pairedWithAddition);
+		if (match) {
+			match.pairedWithAddition = true;
+			c.pairedWithRemoval = true;
 		}
 	}
 
-	for (const candidate of candidates) {
-		const sameItemRemovals = removalsByItem.get(itemKey(candidate.path, candidate.text));
-		const matchingRemoval = sameItemRemovals?.find(removal => !removal.pairedWithAddition);
-		if (matchingRemoval) {
-			matchingRemoval.pairedWithAddition = true;
-			candidate.pairedWithRemoval = true;
-		}
-	}
-
-	const unpairedRemovalCountByHunk = new Map<string, number>();
-	for (const removal of removals) {
-		if (removal.pairedWithAddition) continue;
-		const key = hunkKey(removal.hunk);
-		unpairedRemovalCountByHunk.set(key, (unpairedRemovalCountByHunk.get(key) ?? 0) + 1);
+	const unpairedCount = new Map<string, number>();
+	for (const r of removals) {
+		if (r.pairedWithAddition) continue;
+		const k = hunkKey(r.hunk);
+		unpairedCount.set(k, (unpairedCount.get(k) ?? 0) + 1);
 	}
 
 	const linesByPath = new Map<string, Set<number>>();
-	for (const candidate of candidates) {
-		const key = hunkKey(candidate.hunk);
-		if (candidate.pairedWithRemoval || addedReleaseHeadingHunks.has(key)) continue;
-		const unpairedRemovalCount = unpairedRemovalCountByHunk.get(key) ?? 0;
-		if (unpairedRemovalCount > 0) {
-			unpairedRemovalCountByHunk.set(key, unpairedRemovalCount - 1);
+	for (const c of candidates) {
+		const k = hunkKey(c.hunk);
+		if (c.pairedWithRemoval || addedReleaseHeadingHunks.has(k)) continue;
+		const unp = unpairedCount.get(k) ?? 0;
+		if (unp > 0) {
+			unpairedCount.set(k, unp - 1);
 			continue;
 		}
-
-		const existing = linesByPath.get(candidate.path);
-		if (existing) {
-			existing.add(candidate.lineNumber);
-		} else {
-			linesByPath.set(candidate.path, new Set([candidate.lineNumber]));
-		}
+		const set = linesByPath.get(c.path) ?? new Set<number>();
+		set.add(c.lineNumber);
+		linesByPath.set(c.path, set);
 	}
-
 	return linesByPath;
 }
 
-async function git(args: readonly string[], cwd: string): Promise<string> {
-	const result = await $`git -c core.fsmonitor=false -c core.untrackedCache=false -c fetch.pruneTags=false ${args}`
-		.cwd(cwd)
-		.quiet();
-	return result.text();
-}
-
-export async function resolveRepoRoot(repoRoot: string | undefined): Promise<string> {
-	if (repoRoot) return path.resolve(repoRoot);
-	return (await git(["rev-parse", "--show-toplevel"], process.cwd())).trim();
-}
-
-async function latestTag(repoRoot: string): Promise<string> {
-	return ((await gitMaybe(["describe", "--tags", "--abbrev=0", "--match", "v*"], repoRoot)) ?? "").trim();
-}
-
-async function changelogBaselineCommit(repoRoot: string): Promise<string | undefined> {
-	return (await gitMaybe(["rev-parse", "--verify", "--quiet", CHANGELOG_BASELINE_REF], repoRoot))?.trim() || undefined;
-}
-
-/**
- * The diff/scan floor for both operations. Prefer the `clog` baseline (the last
- * authoritative changelog rewrite) over the latest version tag whenever the
- * baseline is newer — i.e. a `--recover` landed after the last release. Once the
- * next release tags a commit that descends from the baseline, the version tag
- * wins again, so the pin self-expires without manual cleanup.
- *
- * The baseline lives in a custom ref outside `refs/tags/`, not a tag: this repo
- * runs background `git maintenance` with `fetch.pruneTags=true`, which deletes
- * any local tag not on the remote — a lightweight `clog` tag would vanish. A
- * non-tag ref is never touched by tag pruning and stays invisible to
- * `git describe --tags`.
- */
-async function resolveSince(repoRoot: string, since: string | undefined): Promise<string> {
-	if (since) return since;
-	const versionTag = await latestTag(repoRoot);
-	const baseline = await changelogBaselineCommit(repoRoot);
-	if (!baseline) return versionTag;
-	if (!versionTag) return CHANGELOG_BASELINE_REF;
-	const versionTagIsNewer =
-		(await gitMaybe(["merge-base", "--is-ancestor", baseline, versionTag], repoRoot)) !== undefined;
-	return versionTagIsNewer ? versionTag : CHANGELOG_BASELINE_REF;
-}
-
-/**
- * Tags whose released bullets `--recover` treats as authoritative. Bounded to
- * the commits at or after the `clog` baseline so a recovery never resurrects a
- * bullet that was intentionally dropped before the last authoritative rewrite;
- * without a baseline it falls back to every tag (legacy behavior).
- */
-async function recoveryTags(repoRoot: string): Promise<string[]> {
-	const baseline = await changelogBaselineCommit(repoRoot);
-	const listArgs = baseline ? ["tag", "--contains", baseline, "--sort=v:refname"] : ["tag", "--sort=v:refname"];
-	return (await git(listArgs, repoRoot))
-		.split("\n")
-		.map(tag => tag.trim())
-		.filter(tag => tag.length > 0);
-}
-
-async function pinChangelogBaseline(repoRoot: string): Promise<string> {
-	const head = (await git(["rev-parse", "HEAD"], repoRoot)).trim();
-	await git(["update-ref", CHANGELOG_BASELINE_REF, head], repoRoot);
-	return head;
-}
-
-async function gitMaybe(args: readonly string[], cwd: string): Promise<string | undefined> {
-	const result = await $`git -c core.fsmonitor=false -c core.untrackedCache=false -c fetch.pruneTags=false ${args}`
+const git = async (args: readonly string[], cwd: string) =>
+	(
+		await $`git -c core.fsmonitor=false -c core.untrackedCache=false -c fetch.pruneTags=false ${args}`
+			.cwd(cwd)
+			.quiet()
+	).text();
+const gitMaybe = async (args: readonly string[], cwd: string) => {
+	const res = await $`git -c core.fsmonitor=false -c core.untrackedCache=false -c fetch.pruneTags=false ${args}`
 		.cwd(cwd)
 		.quiet()
 		.nothrow();
-	if (result.exitCode !== 0) return undefined;
-	return result.text();
+	return res.exitCode === 0 ? res.text() : undefined;
+};
+
+export async function resolveRepoRoot(repoRoot: string | undefined): Promise<string> {
+	return repoRoot ? path.resolve(repoRoot) : (await git(["rev-parse", "--show-toplevel"], process.cwd())).trim();
+}
+
+async function resolveSince(repoRoot: string, since: string | undefined): Promise<string> {
+	if (since) return since;
+	const versionTag = ((await gitMaybe(["describe", "--tags", "--abbrev=0", "--match", "v*"], repoRoot)) ?? "").trim();
+	const baseline =
+		(await gitMaybe(["rev-parse", "--verify", "--quiet", CHANGELOG_BASELINE_REF], repoRoot))?.trim() || undefined;
+	if (!baseline) return versionTag;
+	if (!versionTag) return CHANGELOG_BASELINE_REF;
+	return (await gitMaybe(["merge-base", "--is-ancestor", baseline, versionTag], repoRoot)) !== undefined
+		? versionTag
+		: CHANGELOG_BASELINE_REF;
+}
+
+async function recoveryTags(repoRoot: string): Promise<string[]> {
+	const baseline =
+		(await gitMaybe(["rev-parse", "--verify", "--quiet", CHANGELOG_BASELINE_REF], repoRoot))?.trim() || undefined;
+	const listArgs = baseline ? ["tag", "--contains", baseline, "--sort=v:refname"] : ["tag", "--sort=v:refname"];
+	return (await git(listArgs, repoRoot))
+		.split("\n")
+		.map(t => t.trim())
+		.filter(t => t.length > 0);
 }
 
 async function collectHistoricalReleaseRecovery(
@@ -831,252 +572,114 @@ async function collectHistoricalReleaseRecovery(
 ): Promise<Map<string, HistoricalReleaseRecovery>> {
 	const tags = await recoveryTags(repoRoot);
 	const recoveryByPath = new Map<string, HistoricalReleaseRecovery>();
-
 	for (const tag of tags) {
-		for (const changelogPath of paths) {
-			const content = await gitMaybe(["show", `${tag}:${changelogPath}`], repoRoot);
+		for (const p of paths) {
+			const content = await gitMaybe(["show", `${tag}:${p}`], repoRoot);
 			if (content === undefined) continue;
-
-			const document = parseChangelog(content);
-			let recovery = recoveryByPath.get(changelogPath);
-			for (const section of document.sections) {
-				if (section.title === "Unreleased" || !sectionHasContent(section)) continue;
+			const doc = parseChangelog(content);
+			let recovery = recoveryByPath.get(p);
+			for (const sec of doc.sections) {
+				if (sec.title === "Unreleased" || !sectionHasContent(sec)) continue;
 				if (!recovery) {
-					recovery = { itemKeys: new Set<string>(), sectionsByTitle: new Map<string, ReleaseSection>() };
-					recoveryByPath.set(changelogPath, recovery);
+					recovery = { itemKeys: new Set(), sectionsByTitle: new Map() };
+					recoveryByPath.set(p, recovery);
 				}
-				if (!recovery.sectionsByTitle.has(section.title)) {
-					recovery.sectionsByTitle.set(section.title, cloneReleaseSection(section));
-				}
-				if (recovery.sectionsByTitle.get(section.title) !== undefined) {
-					for (const subsection of section.subsections) {
-						for (const item of parseItems(subsection.lines)) {
-							recovery.itemKeys.add(itemTextKey(item.lines));
-						}
-					}
+				if (!recovery.sectionsByTitle.has(sec.title))
+					recovery.sectionsByTitle.set(sec.title, cloneReleaseSection(sec));
+				for (const sub of sec.subsections) {
+					for (const it of parseItems(sub.lines)) recovery.itemKeys.add(itemTextKey(it.lines));
 				}
 			}
 		}
 	}
-
 	return recoveryByPath;
 }
 
-/**
- * Every member `CHANGELOG.md` under `repoRoot`, resolved from its root manifest.
- *
- * This globbed `packages/*​/CHANGELOG.md`, so the release cut normalized section
- * order for members under `packages/` and left every other one exactly as
- * written: `kernel`, `contracts/view`, `contracts/wire`, `hosts/terminal/engine`,
- * `natives/bridge/bindings` and the four under `plugins/` all keep a changelog,
- * and a released section in the wrong order there survived the cut that exists to
- * fix it. The member list is resolved from the manifest, so a member at any depth
- * is included and a directory that is not a declared member is not.
- */
 export async function changelogPaths(repoRoot: string): Promise<string[]> {
 	return typeScriptMembersOf(repoRoot)
-		.map(member => `${member}/CHANGELOG.md`)
-		.filter(relative => existsSync(path.join(repoRoot, relative)))
+		.map(m => `${m}/CHANGELOG.md`)
+		.filter(rel => existsSync(path.join(repoRoot, rel)))
 		.sort();
-}
-
-async function changelogDiff(repoRoot: string, since: string, paths: readonly string[]): Promise<string> {
-	if (paths.length === 0) return "";
-	// No baseline revision — the first release before any `clog` ref or `v*` tag
-	// exists (`resolveSince` returns ""). There is no prior state to diff against,
-	// so nothing is promotable from a diff; the release still cuts [Unreleased] via
-	// updateChangelogsForRelease. `git diff "" -- …` would abort with "bad revision ''".
-	if (!since) return "";
-	return git(["diff", "--unified=0", "--no-color", "--no-ext-diff", since, "--", ...paths], repoRoot);
 }
 
 export async function runChangelogFixer(options: RunChangelogFixerOptions = {}): Promise<RunChangelogFixerResult> {
 	const repoRoot = await resolveRepoRoot(options.repoRoot);
 	const since = await resolveSince(repoRoot, options.since);
 	const paths = await changelogPaths(repoRoot);
-	const addedItemLines = options.recover
-		? new Map<string, Set<number>>()
-		: collectPromotableAddedItemLines(await changelogDiff(repoRoot, since, paths));
+	const diff =
+		paths.length && since
+			? await git(["diff", "--unified=0", "--no-color", "--no-ext-diff", since, "--", ...paths], repoRoot)
+			: "";
+	const addedItemLines = options.recover ? new Map<string, Set<number>>() : collectPromotableAddedItemLines(diff);
 	const historicalRecoveryByPath = options.recover
 		? await collectHistoricalReleaseRecovery(repoRoot, paths)
-		: new Map<string, HistoricalReleaseRecovery>();
+		: new Map();
 	const changedFiles: ChangedChangelogSummary[] = [];
 
-	for (const changelogPath of paths) {
-		const absolutePath = path.join(repoRoot, changelogPath);
-		const currentContent = await Bun.file(absolutePath).text();
-		const historicalRecovery = historicalRecoveryByPath.get(changelogPath);
-		const recoveredContent =
-			historicalRecovery === undefined
-				? currentContent
-				: rebuildReleasedSectionsFromHistory(currentContent, historicalRecovery.sectionsByTitle);
-		const result = fixChangelogContent(
-			recoveredContent,
-			addedItemLines.get(changelogPath) ?? new Set<number>(),
-			historicalRecovery?.itemKeys ?? new Set<string>(),
-		);
-		if (result.content === currentContent) continue;
-
-		changedFiles.push({
-			path: changelogPath,
-			promotedItems: result.promotedItems,
-			mergedDuplicateHeadings: result.mergedDuplicateHeadings,
-			mergedDuplicateVersions: result.mergedDuplicateVersions,
-			droppedReleasedDuplicates: result.droppedReleasedDuplicates,
-			removedEmptyHeadings: result.removedEmptyHeadings,
-		});
-
-		if (options.write !== false) {
-			await Bun.write(absolutePath, result.content);
-		}
+	for (const clPath of paths) {
+		const abs = path.join(repoRoot, clPath);
+		const cur = await Bun.file(abs).text();
+		const hist = historicalRecoveryByPath.get(clPath);
+		const rec = hist ? rebuildReleasedSectionsFromHistory(cur, hist.sectionsByTitle) : cur;
+		const res = fixChangelogContent(rec, addedItemLines.get(clPath) ?? new Set(), hist?.itemKeys ?? new Set());
+		if (res.content === cur) continue;
+		changedFiles.push({ path: clPath, ...res });
+		if (options.write !== false) await Bun.write(abs, res.content);
 	}
-
 	return { since, changedFiles };
 }
 
-async function dirtyChangelogs(repoRoot: string): Promise<string[]> {
-	const paths = await changelogPaths(repoRoot);
-	if (paths.length === 0) return [];
-	return (await git(["status", "--porcelain", "--", ...paths], repoRoot))
-		.split("\n")
-		.map(line => line.trim())
-		.filter(line => line.length > 0);
-}
-
-function parseCliArgs(args: readonly string[]): CliOptions {
-	const options: CliOptions = { mode: "write", recover: false, pin: false, help: false };
-	for (let index = 0; index < args.length; index++) {
-		const arg = args[index];
-		switch (arg) {
-			case "--dry-run":
-				options.mode = "dry-run";
-				break;
-			case "--check":
-				options.mode = "check";
-				break;
-			case "--recover":
-				options.recover = true;
-				break;
-			case "--pin":
-				options.pin = true;
-				break;
-			case "--since": {
-				const value = args[index + 1];
-				if (!value) throw new Error("--since requires a tag or commit");
-				options.since = value;
-				index++;
-				break;
-			}
-			case "--repo-root": {
-				const value = args[index + 1];
-				if (!value) throw new Error("--repo-root requires a path");
-				options.repoRoot = value;
-				index++;
-				break;
-			}
-			case "-h":
-			case "--help":
-				options.help = true;
-				break;
-			default:
-				throw new Error(`Unknown argument: ${arg}`);
-		}
+function parseCliArgs(argv: readonly string[]): CliOptions {
+	const opts: CliOptions = { mode: "write", recover: false, pin: false, help: false };
+	for (let i = 0; i < argv.length; i++) {
+		const arg = argv[i];
+		if (arg === "--dry-run") opts.mode = "dry-run";
+		else if (arg === "--check") opts.mode = "check";
+		else if (arg === "--recover") opts.recover = true;
+		else if (arg === "--pin") opts.pin = true;
+		else if (arg === "--since") opts.since = argv[++i];
+		else if (arg === "--repo-root") opts.repoRoot = argv[++i];
+		else if (arg === "-h" || arg === "--help") opts.help = true;
+		else throw new Error(`Unknown argument: ${arg}`);
 	}
-	return options;
-}
-
-function usage(): string {
-	return [
-		"Usage: bun scripts/fix-changelogs.ts [--dry-run|--check] [--since <tag>] [--recover] [--pin]",
-		"",
-		"Moves changelog items added since the baseline from released sections into [Unreleased],",
-		"drops [Unreleased] items that already appear verbatim in a released section, removes",
-		"blank separators between adjacent bullet items, then removes duplicate or empty",
-		"### category headings.",
-		"",
-		`The baseline defaults to the '${CHANGELOG_BASELINE_NAME}' ref (the last authoritative rewrite)`,
-		"when it is newer than the latest version tag, otherwise the latest version tag — so a",
-		"--recover is not undone by a later plain run.",
-		"",
-		"With --recover, the fixer scans every tagged changelog snapshot from the baseline forward",
-		"and treats every historically released bullet as authoritative, so stale [Unreleased]",
-		"items copied forward by past bad releases are pruned even if the current file no longer",
-		"contains a matching released copy. After committing a recovery, run --pin to mark it.",
-		"",
-		`With --pin, move the '${CHANGELOG_BASELINE_NAME}' baseline ref to HEAD and exit without fixing.`,
-		"",
-		"Options:",
-		"  --dry-run          Print what would change without writing files.",
-		"  --check            Exit 1 if any changelog would change.",
-		"  --since <tag>      Compare changelog additions against this tag/commit instead of the baseline.",
-		"  --recover          Rebuild against historically released bullets from the baseline forward.",
-		`  --pin              Move the '${CHANGELOG_BASELINE_NAME}' baseline ref to HEAD, then exit.`,
-		"  --repo-root <dir>  Run against an explicit repository root.",
-	].join("\n");
-}
-
-function printSummary(result: RunChangelogFixerResult, mode: CliOptions["mode"]): void {
-	const suffix = mode === "write" ? "" : ` (${mode}, not written)`;
-	if (result.changedFiles.length === 0) {
-		console.log(`Changelogs already clean since ${result.since}.`);
-		return;
-	}
-
-	console.log(`Fixed ${result.changedFiles.length} changelog(s) since ${result.since}${suffix}:`);
-	for (const file of result.changedFiles) {
-		const parts = [
-			`${file.promotedItems} promoted item(s)`,
-			`${file.mergedDuplicateHeadings} merged duplicate heading(s)`,
-			`${file.mergedDuplicateVersions} merged duplicate version(s)`,
-			`${file.droppedReleasedDuplicates} dropped released duplicate(s)`,
-			`${file.removedEmptyHeadings} removed empty heading(s)`,
-		];
-		console.log(`  ${file.path}: ${parts.join(", ")}`);
-	}
+	return opts;
 }
 
 async function main(): Promise<void> {
 	try {
-		const cliOptions = parseCliArgs(process.argv.slice(2));
-		if (cliOptions.help) {
-			console.log(usage());
+		const opts = parseCliArgs(process.argv.slice(2));
+		if (opts.help) {
+			console.log("Usage: bun scripts/fix-changelogs.ts [--dry-run|--check] [--since <tag>] [--recover] [--pin]");
 			return;
 		}
-
-		if (cliOptions.pin) {
-			const repoRoot = await resolveRepoRoot(cliOptions.repoRoot);
-			const dirty = await dirtyChangelogs(repoRoot);
-			if (dirty.length > 0) {
-				console.warn(
-					`Warning: ${dirty.length} changelog file(s) have uncommitted changes; the pinned commit ` +
-						"will not include them. Commit first, then re-run --pin.",
-				);
-			}
-			const head = await pinChangelogBaseline(repoRoot);
+		if (opts.pin) {
+			const repoRoot = await resolveRepoRoot(opts.repoRoot);
+			const head = (await git(["rev-parse", "HEAD"], repoRoot)).trim();
+			await git(["update-ref", CHANGELOG_BASELINE_REF, head], repoRoot);
 			console.log(
 				`Pinned changelog baseline '${CHANGELOG_BASELINE_NAME}' (${CHANGELOG_BASELINE_REF}) to ${head.slice(0, 12)}.`,
 			);
 			return;
 		}
-
-		const result = await runChangelogFixer({
-			repoRoot: cliOptions.repoRoot,
-			since: cliOptions.since,
-			write: cliOptions.mode === "write",
-			recover: cliOptions.recover,
+		const res = await runChangelogFixer({
+			repoRoot: opts.repoRoot,
+			since: opts.since,
+			write: opts.mode === "write",
+			recover: opts.recover,
 		});
-		printSummary(result, cliOptions.mode);
-		if (cliOptions.recover && cliOptions.mode === "write" && result.changedFiles.length > 0) {
-			console.log(
-				`\nAuthoritative rewrite written. Commit the changelog changes, then run ` +
-					`'bun scripts/fix-changelogs.ts --pin' to move the '${CHANGELOG_BASELINE_NAME}' baseline ref.`,
-			);
+		const suffix = opts.mode === "write" ? "" : ` (${opts.mode}, not written)`;
+		if (!res.changedFiles.length) console.log(`Changelogs already clean since ${res.since}.`);
+		else {
+			console.log(`Fixed ${res.changedFiles.length} changelog(s) since ${res.since}${suffix}:`);
+			for (const f of res.changedFiles) {
+				console.log(
+					`  ${f.path}: ${f.promotedItems} promoted item(s), ${f.mergedDuplicateHeadings} merged duplicate heading(s), ${f.mergedDuplicateVersions} merged duplicate version(s), ${f.droppedReleasedDuplicates} dropped released duplicate(s), ${f.removedEmptyHeadings} removed empty heading(s)`,
+				);
+			}
 		}
-		if (cliOptions.mode === "check" && result.changedFiles.length > 0) {
-			process.exit(1);
-		}
-	} catch (error) {
-		console.error(error instanceof Error ? error.message : String(error));
+		if (opts.mode === "check" && res.changedFiles.length) process.exit(1);
+	} catch (e) {
+		console.error(e instanceof Error ? e.message : String(e));
 		process.exit(1);
 	}
 }

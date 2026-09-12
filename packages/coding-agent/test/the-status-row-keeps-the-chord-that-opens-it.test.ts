@@ -206,25 +206,35 @@ describe("the status row keeps the chord that opens it", () => {
 	});
 
 	it("never counts runs since a best it is not showing", () => {
-		// The count and the metric come from one scan, so the gap always belongs to
-		// the run whose metric is beside it. Two best-finders, one admitting the
-		// placeholder zero a run that never measured is logged with and one not,
-		// disagree about which run leads and put a gap of the wrong length on the
-		// row. Where lower is better that zero is the best value there is, so it is
-		// the case that diverges.
+		// WHY: `measuredMetric` reads a crash's number as the placeholder the log call
+		// requires of a run that measured nothing, and every other status as the number
+		// it logged on purpose, whatever its sign. The count and the metric come from
+		// that one scan, so the gap always belongs to the run whose metric is beside it.
+		// A bare `metric > 0` test used to hide a kept zero from Best, which put a gap
+		// of the wrong length on the row.
 		const runtime = loudestRuntime();
 		runtime.state.results = [
 			result({ runNumber: 1, metric: 120 }),
 			result({ runNumber: 2, metric: 90 }),
-			result({ runNumber: 3, metric: 0, measuredPrimary: null }),
+			// A crash logs the placeholder zero and measured nothing, so it never leads.
+			result({ runNumber: 3, metric: 0, measuredPrimary: null, status: "crash" }),
 			result({ runNumber: 4, metric: 110 }),
 		];
-		// Run 2 holds the best measurement, and runs 3 and 4 followed it. Admitting
-		// run 3's zero would make it the leader and the gap 1 run long.
+		// Run 2 holds the best measurement, and runs 3 and 4 were both logged after it.
 		expect(segmentsOf(runtime, 400)).toContain("2 since best");
 
+		// A kept run that measured zero is measuring, not failing to. Where lower is
+		// better it takes the lead, and the gap retires with it.
+		runtime.state.results = [
+			result({ runNumber: 1, metric: 120 }),
+			result({ runNumber: 2, metric: 0, measuredPrimary: 0 }),
+		];
+		const zeroLeads = segmentsOf(runtime, 400);
+		expect(zeroLeads.some(segment => segment.startsWith("best 0"))).toBe(true);
+		expect(zeroLeads.some(segment => segment.includes("since best"))).toBe(false);
+
 		// With no measured run at all there is no best, so there is no gap either.
-		runtime.state.results = [result({ runNumber: 1, metric: 0, measuredPrimary: null })];
+		runtime.state.results = [result({ runNumber: 1, metric: 0, measuredPrimary: null, status: "crash" })];
 		const unmeasured = segmentsOf(runtime, 400);
 		expect(unmeasured.some(segment => segment.startsWith("best "))).toBe(false);
 		expect(unmeasured.some(segment => segment.includes("since best"))).toBe(false);

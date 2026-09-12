@@ -35,7 +35,8 @@ type ModelsEndpointValidation = {
 	headers?: Record<string, string> | (() => Record<string, string> | undefined);
 };
 
-export type ApiKeyLoginConfig = {
+/** The paste half of a key login: where to get the key, how to ask for it, and what an empty answer is called. */
+export type ApiKeyPasteConfig = {
 	/** Display name used in error messages, e.g. "Cerebras", "NanoGPT". */
 	providerLabel: string;
 	/** URL opened in browser for the user to grab their key. */
@@ -46,42 +47,63 @@ export type ApiKeyLoginConfig = {
 	promptMessage: string;
 	/** Placeholder string for the prompt (e.g. "sk-...", "csk-..."). */
 	placeholder: string;
+	/** Custom error factory when onPrompt is missing. */
+	onPromptError?: (providerLabel: string) => Error;
+	/** Custom error message when pasted key is empty. */
+	emptyKeyMessage?: string;
+};
+
+export type ApiKeyLoginConfig = ApiKeyPasteConfig & {
 	/** Validation strategy, or `null` to skip validation. */
 	validation: ChatCompletionsValidation | AnthropicMessagesValidation | ModelsEndpointValidation | null;
+	/** Custom progress message during validation. */
+	progressMessage?: string;
 };
+
+/**
+ * Open the dashboard, take the masked paste, honour an abort, and reject an empty key.
+ * Returns the trimmed key; validating it is the caller's step.
+ */
+export async function promptApiKey(options: OAuthController, config: ApiKeyPasteConfig): Promise<string> {
+	if (!options.onPrompt) {
+		if (config.onPromptError) {
+			throw config.onPromptError(config.providerLabel);
+		}
+		throw new AIError.OnPromptRequiredError(config.providerLabel);
+	}
+
+	// The dashboard where a key is obtained, not a page the flow waits on. The
+	// row's `credential: "api-key"` is what stops a UI from launching it.
+	options.onAuth?.({
+		url: config.authUrl,
+		instructions: config.instructions,
+	});
+
+	const apiKey = await options.onPrompt({
+		message: config.promptMessage,
+		placeholder: config.placeholder,
+		// An API key is a bearer credential. The UI masks it and takes the paste
+		// byte for byte rather than echoing it into the transcript.
+		secret: true,
+	});
+
+	if (options.signal?.aborted) {
+		throw new AIError.LoginCancelledError();
+	}
+
+	const trimmed = apiKey.trim();
+	if (!trimmed) {
+		throw new AIError.ApiKeyRequiredError(config.emptyKeyMessage);
+	}
+	return trimmed;
+}
 
 export function createApiKeyLogin(config: ApiKeyLoginConfig): (options: OAuthController) => Promise<string> {
 	return async function login(options: OAuthController): Promise<string> {
-		if (!options.onPrompt) {
-			throw new AIError.OnPromptRequiredError(config.providerLabel);
-		}
-
-		// The dashboard where a key is obtained, not a page the flow waits on. The
-		// row's `credential: "api-key"` is what stops a UI from launching it.
-		options.onAuth?.({
-			url: config.authUrl,
-			instructions: config.instructions,
-		});
-
-		const apiKey = await options.onPrompt({
-			message: config.promptMessage,
-			placeholder: config.placeholder,
-			// An API key is a bearer credential. The UI masks it and takes the paste
-			// byte for byte rather than echoing it into the transcript.
-			secret: true,
-		});
-
-		if (options.signal?.aborted) {
-			throw new AIError.LoginCancelledError();
-		}
-
-		const trimmed = apiKey.trim();
-		if (!trimmed) {
-			throw new AIError.ApiKeyRequiredError();
-		}
+		const trimmed = await promptApiKey(options, config);
 
 		if (config.validation) {
-			options.onProgress?.("Validating API key...");
+			options.onProgress?.(config.progressMessage ?? "Validating API key...");
 			if (config.validation.kind === "chat-completions") {
 				await validateOpenAICompatibleApiKey({
 					provider: config.validation.provider,

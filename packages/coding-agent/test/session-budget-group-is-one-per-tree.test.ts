@@ -1,17 +1,17 @@
 /**
  * ONE budget group per session TREE, not one per agent.
  *
- * The defect this closes: a subagent opens its own `SessionManager`, so its
+ * The defect this closes: an agent opens its own `SessionManager`, so its
  * `AgentSession` used to register a SEPARATE budget group under its own
  * session id. The operator's one limit was then multiplied by the number of
- * live subagents, which is the opposite of a limit. The fix is an inherited
- * budget-group id pinned around subagent session creation and read inside
+ * live agents, which is the opposite of a limit. The fix is an inherited
+ * budget-group id pinned around agent session creation and read inside
  * `initSessionCpuLimit`, so a child registers as an ALIAS of the root group.
  *
  * These tests drive the real registry through `initSessionCpuLimit` and the
  * real owned-resource disposer, against a tmpdir cgroup tree. They defend the
  * whole class rather than the reported case: the alias must survive depth,
- * must not be torn down when one subagent finishes, must move with the root
+ * must not be torn down when one agent finishes, must move with the root
  * on `/new`, and must never be mistaken for a group owner. What they do NOT
  * prove is that the kernel enforces the shared quota; that lives in
  * cpu-limit-real-cgroup.test.ts.
@@ -69,10 +69,10 @@ function registerRoot(tree: Tree, sessionId: string, cores = 1): Promise<Session
 }
 
 /**
- * Register a session the way the task executor does for a subagent: inside a
+ * Register a session the way the task executor does for an agent: inside a
  * scope pinned to the spawner's session id.
  */
-function registerSubagent(tree: Tree, parentSessionId: string, sessionId: string, cores = 1): Promise<SessionCpuLimit> {
+function registerAgent(tree: Tree, parentSessionId: string, sessionId: string, cores = 1): Promise<SessionCpuLimit> {
 	return withInheritedBudgetGroup(parentSessionId, () =>
 		initSessionCpuLimit({
 			sessionId,
@@ -90,17 +90,17 @@ async function budgetDirs(parent: string): Promise<string[]> {
 	return entries.filter(name => name.startsWith("veyyon-cpu-")).sort();
 }
 
-describe("a subagent joins the session tree's budget group", () => {
-	it("resolves every subagent to the root limiter and creates exactly one group", async () => {
+describe("an agent joins the session tree's budget group", () => {
+	it("resolves every agent to the root limiter and creates exactly one group", async () => {
 		const tree = await makeTree();
 		const root = await registerRoot(tree, "root");
 		await root.ensureGroup();
 
 		for (const child of ["sub-a", "sub-b", "sub-c"]) {
-			const limiter = await registerSubagent(tree, "root", child);
+			const limiter = await registerAgent(tree, "root", child);
 			expect(limiter).toBe(root);
 			expect(sessionCpuLimit(child)).toBe(root);
-			// A spawn from the subagent goes through its own limiter lookup, which
+			// A spawn from the agent goes through its own limiter lookup, which
 			// must land in the root's group rather than minting a second one.
 			await sessionCpuLimit(child)?.ensureGroup();
 		}
@@ -108,14 +108,14 @@ describe("a subagent joins the session tree's budget group", () => {
 		expect(await budgetDirs(tree.parent)).toEqual([sessionCpuBudgetName("root")]);
 	});
 
-	it("keeps depth-2 subagents in the ROOT group, not in their parent's copy of it", async () => {
+	it("keeps depth-2 agents in the ROOT group, not in their parent's copy of it", async () => {
 		const tree = await makeTree();
 		const root = await registerRoot(tree, "root");
-		await registerSubagent(tree, "root", "child");
+		await registerAgent(tree, "root", "child");
 		// The depth-2 spawn pins the id it knows: its own session, which is
 		// itself an alias. Resolving through the alias chain is what keeps the
 		// group single at any depth.
-		const grandchild = await registerSubagent(tree, "child", "grandchild");
+		const grandchild = await registerAgent(tree, "child", "grandchild");
 
 		expect(grandchild).toBe(root);
 		expect(sessionCpuLimit("grandchild")).toBe(root);
@@ -123,10 +123,10 @@ describe("a subagent joins the session tree's budget group", () => {
 		expect(await budgetDirs(tree.parent)).toEqual([sessionCpuBudgetName("root")]);
 	});
 
-	it("does not let a subagent's own settings override the budget the operator set for the tree", async () => {
+	it("does not let an agent's own settings override the budget the operator set for the tree", async () => {
 		const tree = await makeTree();
 		const root = await registerRoot(tree, "root", 1);
-		const child = await registerSubagent(tree, "root", "child", 8);
+		const child = await registerAgent(tree, "root", "child", 8);
 
 		expect(child).toBe(root);
 		expect(root.cores).toBe(1);
@@ -153,19 +153,19 @@ describe("a subagent joins the session tree's budget group", () => {
 
 	it("ignores a pin naming a session that owns no live group", async () => {
 		const tree = await makeTree();
-		const limiter = await registerSubagent(tree, "no-such-session", "orphan");
+		const limiter = await registerAgent(tree, "no-such-session", "orphan");
 
 		expect(sessionCpuLimit("orphan")).toBe(limiter);
 		expect(limiter.budgetName).toBe(sessionCpuBudgetName("orphan"));
 	});
 });
 
-describe("the tree's group outlives one subagent", () => {
-	it("drops only the alias when a subagent finishes", async () => {
+describe("the tree's group outlives one agent", () => {
+	it("drops only the alias when an agent finishes", async () => {
 		const tree = await makeTree();
 		const root = await registerRoot(tree, "root");
-		await registerSubagent(tree, "root", "child-a");
-		await registerSubagent(tree, "root", "child-b");
+		await registerAgent(tree, "root", "child-a");
+		await registerAgent(tree, "root", "child-b");
 		await root.ensureGroup();
 		const dir = path.join(tree.parent, sessionCpuBudgetName("root"));
 
@@ -181,8 +181,8 @@ describe("the tree's group outlives one subagent", () => {
 	it("retires every borrower when the owner's session ends", async () => {
 		const tree = await makeTree();
 		const root = await registerRoot(tree, "root");
-		await registerSubagent(tree, "root", "child");
-		await registerSubagent(tree, "child", "grandchild");
+		await registerAgent(tree, "root", "child");
+		await registerAgent(tree, "child", "grandchild");
 		await root.ensureGroup();
 		const dir = path.join(tree.parent, sessionCpuBudgetName("root"));
 
@@ -197,15 +197,15 @@ describe("the tree's group outlives one subagent", () => {
 });
 
 describe("an alias is never an owner", () => {
-	it("keeps the root session as the owner of shared spawns while subagents come and go", async () => {
+	it("keeps the root session as the owner of shared spawns while agents come and go", async () => {
 		const tree = await makeTree();
 		const root = await registerRoot(tree, "root");
-		await registerSubagent(tree, "root", "child");
+		await registerAgent(tree, "root", "child");
 
 		expect(rootBudgetGroupOwnerId()).toBe("root");
 		expect(primarySessionCpuLimit()).toBe(root);
 
-		// The root's session ends while a subagent alias is still registered: no
+		// The root's session ends while an agent alias is still registered: no
 		// owner remains, so nothing may answer as one.
 		await disposeOwnedResources("session", "root");
 		expect(rootBudgetGroupOwnerId()).toBeUndefined();
@@ -215,7 +215,7 @@ describe("an alias is never an owner", () => {
 	it("carries the aliases when the root session's id changes", async () => {
 		const tree = await makeTree();
 		const root = await registerRoot(tree, "root");
-		await registerSubagent(tree, "root", "child");
+		await registerAgent(tree, "root", "child");
 		await root.ensureGroup();
 
 		expect(rekeySessionCpuLimit("root", "root-2")).toBe(root);
@@ -230,7 +230,7 @@ describe("an alias is never an owner", () => {
 	it("moves an alias rather than the group when a BORROWER's id changes", async () => {
 		const tree = await makeTree();
 		const root = await registerRoot(tree, "root");
-		await registerSubagent(tree, "root", "child");
+		await registerAgent(tree, "root", "child");
 		await root.ensureGroup();
 
 		expect(rekeySessionCpuLimit("child", "child-2")).toBe(root);
@@ -252,7 +252,7 @@ describe("an alias is never an owner", () => {
 			onNotice: text => tree.notices.push(text),
 			env: tree.host.env,
 		});
-		await registerSubagent(tree, "root", "contested");
+		await registerAgent(tree, "root", "contested");
 
 		expect(rekeySessionCpuLimit("other", "contested")).toBe(other);
 

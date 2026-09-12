@@ -16,6 +16,7 @@ import {
 	type PatchSection as HashlineInputSection,
 	Patch as HashlinePatch,
 	type SnapshotStore,
+	stripApplyPatchPathNoise,
 } from "@veyyon/hashline";
 import { errorMessage } from "@veyyon/utils";
 import { type EditMode, resolveEditMode } from "../utils/edit-mode";
@@ -237,17 +238,6 @@ function extractHashlineHeaderPaths(input: string): string[] {
 	return paths;
 }
 
-/**
- * Strip the `*** Add/Update/Delete File:` / `*** Move to:` noise that the
- * model sometimes pastes into a hashline header (the hashline tokenizer does
- * the same in its recovery path).
- */
-function stripApplyPatchPathNoise(value: string): string {
-	return value
-		.replace(/^\s*\*{3}\s*(?:Add|Update|Delete)\s+File\s*:\s*/i, "")
-		.replace(/^\s*\*{3}\s*Move\s+to\s*:\s*/i, "");
-}
-
 /** Extract `*** Add/Update/Delete File:` paths from a (possibly partial) apply_patch envelope. */
 function extractApplyPatchEnvelopePaths(input: string): string[] {
 	const paths: string[] = [];
@@ -332,6 +322,17 @@ interface ReplaceArgs {
 	__partialJson?: string;
 }
 
+/** `list` when it holds at least one item, else `undefined` so the caller falls back. */
+function nonEmpty<T>(list: readonly T[]): readonly T[] | undefined {
+	return list.length > 0 ? list : undefined;
+}
+
+/** One matcher entry for a single-path edit, once both its path and its digest are known. */
+function singlePathEntries(path: unknown, digest: string | undefined): readonly EditMatcherEntry[] | undefined {
+	if (typeof path !== "string" || path.length === 0 || digest === undefined) return undefined;
+	return [{ path, digest }];
+}
+
 const replaceStrategy: EditStreamingStrategy<ReplaceArgs> = {
 	extractCompleteEdits(args, partialJson) {
 		if (!args?.edits) return args;
@@ -365,10 +366,7 @@ const replaceStrategy: EditStreamingStrategy<ReplaceArgs> = {
 		return typeof args?.path === "string" && args.path.length > 0 ? [args.path] : undefined;
 	},
 	matcherEntries(args) {
-		const path = args?.path;
-		if (typeof path !== "string" || path.length === 0) return undefined;
-		const digest = replaceStrategy.matcherDigest(args);
-		return digest === undefined ? undefined : [{ path, digest }];
+		return singlePathEntries(args?.path, replaceStrategy.matcherDigest(args));
 	},
 };
 
@@ -415,10 +413,7 @@ const patchStrategy: EditStreamingStrategy<PatchArgs> = {
 		return typeof args?.path === "string" && args.path.length > 0 ? [args.path] : undefined;
 	},
 	matcherEntries(args) {
-		const path = args?.path;
-		if (typeof path !== "string" || path.length === 0) return undefined;
-		const digest = patchStrategy.matcherDigest(args);
-		return digest === undefined ? undefined : [{ path, digest }];
+		return singlePathEntries(args?.path, patchStrategy.matcherDigest(args));
 	},
 };
 
@@ -583,15 +578,11 @@ const hashlineStrategy: EditStreamingStrategy<HashlineArgs> = {
 	},
 	matcherPaths(args) {
 		const input = hashlineEditText(args);
-		if (typeof input !== "string" || input.length === 0) return undefined;
-		const paths = extractHashlineHeaderPaths(input);
-		return paths.length > 0 ? paths : undefined;
+		return input ? nonEmpty(extractHashlineHeaderPaths(input)) : undefined;
 	},
 	matcherEntries(args) {
 		const input = hashlineEditText(args);
-		if (typeof input !== "string" || input.length === 0) return undefined;
-		const entries = splitHashlinePerFile(input);
-		return entries.length > 0 ? entries : undefined;
+		return input ? nonEmpty(splitHashlinePerFile(input)) : undefined;
 	},
 };
 
@@ -650,15 +641,11 @@ const applyPatchStrategy: EditStreamingStrategy<ApplyPatchArgs> = {
 	},
 	matcherPaths(args) {
 		const input = args?.input;
-		if (typeof input !== "string" || input.length === 0) return undefined;
-		const paths = extractApplyPatchEnvelopePaths(input);
-		return paths.length > 0 ? paths : undefined;
+		return input ? nonEmpty(extractApplyPatchEnvelopePaths(input)) : undefined;
 	},
 	matcherEntries(args) {
 		const input = args?.input;
-		if (typeof input !== "string" || input.length === 0) return undefined;
-		const entries = splitApplyPatchPerFile(input);
-		return entries.length > 0 ? entries : undefined;
+		return input ? nonEmpty(splitApplyPatchPerFile(input)) : undefined;
 	},
 };
 export const EDIT_MODE_STRATEGIES: Record<EditMode, EditStreamingStrategy<unknown>> = {

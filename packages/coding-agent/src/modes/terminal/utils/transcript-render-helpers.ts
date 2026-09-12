@@ -7,22 +7,16 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import { TOOL_BATCH_LEDGER_HEADLINE_PREFIX } from "@veyyon/agent-core/tool-batch-ledger";
 import { type Component, Text } from "@veyyon/tui";
-import { collapseWhitespace, formatBytes, formatDuration } from "@veyyon/utils";
-import type { AsyncJobType } from "../../../async";
-import {
-	type CustomMessage,
-	type FileMentionMessage,
-	resolveAbortLabel,
-	shouldRenderAbortReason,
-} from "../../../session/messages";
+import { formatBytes, formatDuration, sanitizeText } from "@veyyon/utils";
+import type { AsyncResultCustomDisplay, Attachment, IrcMessageCustomDisplay } from "@veyyon/wire/presentation";
+import type { FileMentionMessage } from "../../../session/messages";
 import { theme } from "../../../theme/theme";
-import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/core/render-utils";
+import { shortenPath } from "../../../tools/core/render-utils";
 import { canonicalizeMessage } from "../../../utils/thinking-display";
 import { COMPOSER_INSET_COLS } from "../components/composer/composer-chrome";
 import { createIrcMessageCard } from "../components/transcript/irc-message";
 import { TranscriptBlock } from "../components/transcript/transcript-container";
 
-type CustomOrHookMessage = Extract<AgentMessage, { role: "custom" | "hookMessage" }>;
 type AssistantAgentMessage = Extract<AgentMessage, { role: "assistant" }>;
 
 /**
@@ -30,29 +24,9 @@ type AssistantAgentMessage = Extract<AgentMessage, { role: "assistant" }>;
  * or a batch of them) as a transcript block of one "Background job completed"
  * row per job.
  */
-export function buildAsyncResultBlock(message: CustomOrHookMessage): TranscriptBlock {
-	const details = (
-		message as CustomMessage<{
-			jobId?: string;
-			type?: AsyncJobType;
-			label?: string;
-			durationMs?: number;
-			jobs?: Array<{ jobId?: string; type?: AsyncJobType; label?: string; durationMs?: number }>;
-		}>
-	).details;
-	const jobs =
-		details?.jobs && details.jobs.length > 0
-			? details.jobs
-			: [
-					{
-						jobId: details?.jobId,
-						type: details?.type,
-						label: details?.label,
-						durationMs: details?.durationMs,
-					},
-				];
+export function buildAsyncResultBlock(display: AsyncResultCustomDisplay): TranscriptBlock {
 	const block = new TranscriptBlock();
-	for (const job of jobs) {
+	for (const job of display.jobs) {
 		const jobId = job.jobId ?? "unknown";
 		const typeLabel = job.type ? `[${job.type}]` : "[job]";
 		const duration = typeof job.durationMs === "number" ? formatDuration(job.durationMs) : undefined;
@@ -74,28 +48,59 @@ export function buildAsyncResultBlock(message: CustomOrHookMessage): TranscriptB
  * `irc:relay`) as a transcript card. `getExpanded` supplies the live
  * expanded-state getter for the cached card.
  */
-export function buildIrcMessageCard(message: CustomOrHookMessage, getExpanded: () => boolean): Component {
-	const details = (
-		message as CustomMessage<{ from?: string; to?: string; message?: string; body?: string; replyTo?: string }>
-	).details;
-	const kind =
-		message.customType === "irc:incoming"
-			? ("incoming" as const)
-			: message.customType === "irc:autoreply"
-				? ("autoreply" as const)
-				: ("relay" as const);
-	return createIrcMessageCard(
-		{
-			kind,
-			from: details?.from,
-			to: details?.to,
-			body: kind === "incoming" ? details?.message : details?.body,
-			replyTo: details?.replyTo,
-			timestamp: message.timestamp,
-		},
-		getExpanded,
-		theme,
-	);
+export function buildIrcMessageCard(display: IrcMessageCustomDisplay, getExpanded: () => boolean): Component {
+	return createIrcMessageCard(display, getExpanded, theme);
+}
+/**
+ * Renderable file attachment or mention item.
+ */
+export type RenderableAttachment = Attachment | FileMentionMessage["files"][number];
+
+/**
+ * Render a single file attachment row with sanitized and shortened path.
+ */
+export function renderAttachmentRow(file: RenderableAttachment, indent = 1): Text {
+	const rawPath = "path" in file ? file.path : file.name;
+	const cleanPath = shortenPath(sanitizeText(rawPath));
+	const isImage = "image" in file ? Boolean(file.image) : "kind" in file && file.kind === "image";
+	const skipped =
+		"skippedReason" in file
+			? file.skippedReason === "tooLarge"
+				? "tooLarge"
+				: file.skippedReason === "binary"
+					? "binary"
+					: undefined
+			: "omittedReason" in file
+				? file.omittedReason === "too-large"
+					? "tooLarge"
+					: file.omittedReason === "binary"
+						? "binary"
+						: undefined
+				: undefined;
+
+	let suffix: string;
+	if (skipped === "tooLarge" || skipped === "binary") {
+		const size = typeof file.byteSize === "number" ? formatBytes(file.byteSize) : "unknown size";
+		suffix = skipped === "binary" ? `(skipped: binary, ${size})` : `(skipped: ${size})`;
+	} else if (
+		("omittedReason" in file && file.omittedReason === "not-replicated") ||
+		("contentNotReplicated" in file && file.contentNotReplicated)
+	) {
+		suffix = "(not replicated)";
+	} else {
+		suffix = isImage
+			? "(image)"
+			: file.lineCount === undefined
+				? typeof file.byteSize === "number"
+					? `(${formatBytes(file.byteSize)})`
+					: "(unknown lines)"
+				: `(${file.lineCount} lines)`;
+	}
+	const text = `${theme.fg("dim", `${theme.tree.last} `)}${theme.fg("muted", "Read")} ${theme.fg(
+		"accent",
+		cleanPath,
+	)} ${theme.fg("dim", suffix)}`;
+	return new Text(text, indent, 0);
 }
 
 /**
@@ -104,25 +109,10 @@ export function buildIrcMessageCard(message: CustomOrHookMessage, getExpanded: (
  * (0), the transcript viewer renders body rows without one so rows own their pad
  * (1).
  */
-export function buildFileMentionBlock(files: FileMentionMessage["files"], indent: number): TranscriptBlock {
+export function buildFileMentionBlock(files: readonly RenderableAttachment[], indent: number): TranscriptBlock {
 	const block = new TranscriptBlock();
 	for (const file of files) {
-		let suffix: string;
-		if (file.skippedReason === "tooLarge" || file.skippedReason === "binary") {
-			const size = typeof file.byteSize === "number" ? formatBytes(file.byteSize) : "unknown size";
-			suffix = file.skippedReason === "binary" ? `(skipped: binary, ${size})` : `(skipped: ${size})`;
-		} else {
-			suffix = file.image
-				? "(image)"
-				: file.lineCount === undefined
-					? "(unknown lines)"
-					: `(${file.lineCount} lines)`;
-		}
-		const text = `${theme.fg("dim", `${theme.tree.last} `)}${theme.fg("muted", "Read")} ${theme.fg(
-			"accent",
-			file.path,
-		)} ${theme.fg("dim", suffix)}`;
-		block.addChild(new Text(text, indent, 0));
+		block.addChild(renderAttachmentRow(file, indent));
 	}
 	return block;
 }
@@ -205,45 +195,6 @@ export function splitAssistantMessageToolTimeline(message: AssistantAgentMessage
  */
 export function normalizeToolArgs(args: unknown): Record<string, unknown> {
 	return args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {};
-}
-
-export type AssistantErrorPresentation =
-	| { kind: "none" }
-	| { kind: "full"; text: string; isError: true }
-	| { kind: "compact-recovered"; text: string; isError: false };
-
-function sanitizeRecoveredRetryNote(note: string): string {
-	const normalized = collapseWhitespace(replaceTabs(note));
-	return truncateToWidth(normalized || "retried", TRUNCATE_LENGTHS.CONTENT);
-}
-
-/**
- * Resolve the turn-ending assistant error presentation, if any.
- * Silent and user-interrupt aborts yield no label. Recovered auto-retry errors
- * collapse to a single non-error note; terminal errors keep the full red presentation.
- */
-export function resolveAssistantErrorPresentation(
-	message: AssistantAgentMessage,
-	retryAttempt = 0,
-): AssistantErrorPresentation {
-	if (message.retryRecovery?.status === "recovered") {
-		return {
-			kind: "compact-recovered",
-			text: sanitizeRecoveredRetryNote(message.retryRecovery.note),
-			isError: false,
-		};
-	}
-	if (message.stopReason === "aborted") {
-		if (!shouldRenderAbortReason(message)) return { kind: "none" };
-		return { kind: "full", text: resolveAbortLabel(message, retryAttempt), isError: true };
-	}
-	if (message.stopReason === "error") {
-		return { kind: "full", text: message.errorMessage || "Error", isError: true };
-	}
-	if (message.errorMessage && shouldRenderAbortReason(message)) {
-		return { kind: "full", text: message.errorMessage, isError: true };
-	}
-	return { kind: "none" };
 }
 
 /**

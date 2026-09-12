@@ -26,13 +26,19 @@ import { getProjectDir, sanitizeText, signalName } from "@veyyon/utils";
 import type { FramedBlockView, ToolViewRenderer, ViewLine, ViewSection, ViewSpan, ViewStatus } from "@veyyon/view";
 import { formatExitCodeNotice } from "../../exec/exit-notice";
 import { getSixelLineMask, sanitizeWithOptionalSixelPassthrough } from "../../utils/sixel";
-import { stripOutputNotice, stripRawOutputArtifactNotice } from "../core/output-meta";
-// The words a truncation is named by, from the leaf that owns them rather than from the styled
-// helper beside it: a view states the sentence and never the colour it is drawn in.
-import { formatTruncationMetaNotice } from "../core/output-notice";
-import { collapseProgressRuns, formatToolWorkingDirectory, replaceTabs } from "../core/render-utils";
+import { formatTruncationMetaNotice, stripOutputNotice, stripRawOutputArtifactNotice } from "../core/output-notice";
+import {
+	collapsedProgressViewLines,
+	collapseProgressRuns,
+	DEFAULT_TERMINAL_PREVIEW_LINES,
+	formatToolWorkingDirectory,
+	replaceTabs,
+	shortenEmbeddedPaths,
+	type ToolViewResult,
+} from "../core/render-utils";
 import { clampTimeout } from "../core/tool-timeouts";
-import { BASH_DEFAULT_PREVIEW_LINES, type BashToolDetails, formatBackgroundNotice } from "./bash";
+import type { BashToolDetails } from "./bash";
+import { formatBackgroundNotice } from "./execution-messages";
 
 /** The arguments the card reads off a bash call, which is any subset the model has sent so far. */
 export interface BashViewArgs {
@@ -45,11 +51,7 @@ export interface BashViewArgs {
 }
 
 /** The result the card reads, which is the tool's own result shape narrowed to what a card shows. */
-export interface BashViewResult {
-	content: Array<{ type: string; text?: string }>;
-	details?: BashToolDetails;
-	isError?: boolean;
-}
+export interface BashViewResult extends ToolViewResult<BashToolDetails> {}
 
 /** The prompt the first line of a command is read under. */
 const PROMPT = "$";
@@ -139,12 +141,74 @@ function unescapePartialJsonString(value: string): string {
 	return out;
 }
 
+/**
+ * The inside of the top-level `env` object, as far as it has arrived: from its opening brace to its
+ * closing brace, or to the end of the buffer while the object is still open. Nothing while no
+ * top-level `env` key has arrived, or while its value has not opened as an object.
+ *
+ * Walked as JSON rather than matched as text, tracking string state, escapes and depth. `"env"`
+ * inside a command's own string is a word and not a key; a `}` inside a value is a character and not
+ * the close; and every key after the object -- `cwd`, `timeout`, the intent -- lies outside the
+ * slice, so its value is never read as an assignment. The schema orders `command, env, timeout, cwd`,
+ * so a call with both `env` and `cwd` reaches that case on every stream.
+ */
+function partialEnvObjectBody(partialJson: string): string | undefined {
+	let depth = 0;
+	let inString = false;
+	let escaped = false;
+	let stringStart = 0;
+	// A string closed at the top level that spelled `env`, until the next byte says whether it was a
+	// key (a colon follows) or a value (anything else).
+	let envKeyClosed = false;
+	// The colon after the `env` key was read, so the next value opens the object or is not one.
+	let envValueNext = false;
+	let envBodyStart: number | undefined;
+	for (let index = 0; index < partialJson.length; index++) {
+		const char = partialJson[index];
+		if (inString) {
+			if (escaped) escaped = false;
+			else if (char === "\\") escaped = true;
+			else if (char === '"') {
+				inString = false;
+				if (depth === 1 && envBodyStart === undefined && partialJson.slice(stringStart, index) === "env") {
+					envKeyClosed = true;
+				}
+			}
+			continue;
+		}
+		if (char === " " || char === "\t" || char === "\n" || char === "\r") continue;
+		if (envKeyClosed) {
+			envKeyClosed = false;
+			if (char === ":") {
+				envValueNext = true;
+				continue;
+			}
+		}
+		if (envValueNext) {
+			if (char !== "{") return undefined;
+			envValueNext = false;
+			envBodyStart = index + 1;
+			depth++;
+			continue;
+		}
+		if (char === '"') {
+			inString = true;
+			stringStart = index + 1;
+		} else if (char === "{" || char === "[") {
+			depth++;
+		} else if (char === "}" || char === "]") {
+			depth--;
+			if (envBodyStart !== undefined && depth === 1) return partialJson.slice(envBodyStart, index);
+		}
+	}
+	return envBodyStart === undefined ? undefined : partialJson.slice(envBodyStart);
+}
+
 /** The `env` object of a call whose argument JSON is still arriving, as far as it has arrived. */
 function extractPartialBashEnv(partialJson: string | undefined): Record<string, string> | undefined {
 	if (!partialJson) return undefined;
-	const envKey = /"env"\s*:\s*\{/.exec(partialJson);
-	if (!envKey) return undefined;
-	const body = partialJson.slice(envKey.index + envKey[0].length);
+	const body = partialEnvObjectBody(partialJson);
+	if (body === undefined) return undefined;
 	const entries: Record<string, string> = {};
 	const pair = /"((?:[^"\\]|\\.)*)"\s*:\s*"((?:[^"\\]|\\.)*)"?/g;
 	let match = pair.exec(body);
@@ -183,7 +247,7 @@ export function bashEnvForDisplay(args: BashViewArgs): Record<string, string> | 
  * a prompt over a command nobody has is a row that says nothing.
  */
 function commandSection(args: BashViewArgs | undefined, expanded: boolean): ViewSection {
-	const command = replaceTabs(args?.command || "…");
+	const command = replaceTabs(shortenEmbeddedPaths(args?.command || "…"));
 	const workdir = formatToolWorkingDirectory(args?.cwd, getProjectDir());
 	const assignments = formatBashEnvAssignments(args === undefined ? undefined : bashEnvForDisplay(args));
 	const prefix = [PROMPT, ...(workdir ? [`cd ${workdir} &&`] : []), ...(assignments ? [assignments] : [])].join(" ");
@@ -248,7 +312,10 @@ function programOutput(result: BashViewResult): { text: string; artifactId?: str
 	const withoutOutputNotice = stripOutputNotice(withoutBackground, details?.meta);
 	const withoutExit = stripExitCodeNotice(withoutOutputNotice, details?.exitCode, details?.signal);
 	const artifact = stripRawOutputArtifactNotice(stripWallTimeNotice(withoutExit, details?.wallTimeMs));
-	return { text: artifact.text.trimEnd(), ...(artifact.artifactId ? { artifactId: artifact.artifactId } : {}) };
+	return {
+		text: shortenEmbeddedPaths(artifact.text).trimEnd(),
+		...(artifact.artifactId ? { artifactId: artifact.artifactId } : {}),
+	};
 }
 
 /**
@@ -327,14 +394,19 @@ function outputSections(
 		// An image is as tall as it is: condensing or windowing the rows it occupies would cut the
 		// payload in half, so the whole capture is stated and no window is asked for.
 		for (const [index, row] of rows.entries()) {
-			lines.push(imageMask[index] === true ? [{ text: row }] : [{ text: replaceTabs(row), tone: "output" }]);
+			lines.push(
+				imageMask[index] === true
+					? [{ text: row }]
+					: [{ text: replaceTabs(shortenEmbeddedPaths(row)), tone: "output" }],
+			);
 		}
 	} else if (expanded) {
-		for (const row of rows) lines.push([{ text: replaceTabs(row), tone: "output" }]);
+		for (const row of rows) lines.push([{ text: replaceTabs(shortenEmbeddedPaths(row)), tone: "output" }]);
 	} else {
-		for (const run of collapseProgressRuns(rows)) {
-			const body: ViewSpan = { text: replaceTabs(run.text), tone: "output" };
-			lines.push(run.hidden === 0 ? [body] : [body, { text: ` … +${run.hidden} earlier`, tone: "dim" }]);
+		for (const line of collapsedProgressViewLines(collapseProgressRuns(rows), "output", text =>
+			replaceTabs(shortenEmbeddedPaths(text)),
+		)) {
+			lines.push(line);
 		}
 	}
 	// While the output is still arriving the newest row is the live edge, which the host may animate.
@@ -354,7 +426,7 @@ function outputSections(
 		{
 			label: "Output",
 			lines,
-			...(expanded || carriesImage ? {} : { tail: { max: BASH_DEFAULT_PREVIEW_LINES, viewport: true } }),
+			...(expanded || carriesImage ? {} : { tail: { max: DEFAULT_TERMINAL_PREVIEW_LINES, viewport: true } }),
 		},
 		...(notices.length > 0 ? [{ lines: notices }] : []),
 	];

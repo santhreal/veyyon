@@ -1,147 +1,59 @@
 #!/usr/bin/env bun
-
-/**
- * Generate aggregated release notes from per-package CHANGELOG.md files.
- *
- * Walks the version range `(latest-published-release, target]` so changelog
- * sections finalized under intervening *silent* tags (a `vX.Y.Z` tag that
- * exists on the remote but has no GitHub Release — most often because a CI
- * concurrency-cancel killed the publish job, #2596 / #2564) are rolled into
- * the next published release body. Sections are grouped by `package.json`
- * `name`, then merged per `### <category>` bullet bucket. Bullet lines are
- * deduplicated by exact trimmed text so post-release changelog flattening
- * (`fix-changelogs`) does not surface the same entry twice. Sections without
- * entries are skipped.
- *
- * Usage:
- *   bun scripts/ci-release-notes.ts                     # writes release-notes.md
- *   bun scripts/ci-release-notes.ts v15.4.3             # explicit tag/version
- *   bun scripts/ci-release-notes.ts 15.4.3 notes.md     # custom output path
- *
- * The lower bound is resolved by `gh release list`. Set
- * `VEYYON_RELEASE_NOTES_FLOOR=v15.12.4` to override (empty string forces
- * single-version mode, matching the pre-#2596 behavior). `VEYYON_REPO`
- * / `GITHUB_REPOSITORY` control the queried repo.
- *
- * Intended for the `release_github` CI job: the output is the complete release
- * body. The generator includes a grouped summary of every commit itself, so the
- * workflow does not ask GitHub to append a second, duplicate generated list.
- */
-
 import { existsSync } from "node:fs";
 import { $ } from "bun";
 import { versionHeadings } from "./changelog-unreleased";
 import { typeScriptMembersOf } from "./workspace-layout";
 
-/**
- * Every member `CHANGELOG.md`, resolved from the root manifest's member list.
- *
- * This was `new Glob("packages/*​/CHANGELOG.md")`, which is the one shape that
- * cannot see a member outside `packages/`. Nine of them keep a changelog today --
- * `kernel`, `contracts/view`, `contracts/wire`, `hosts/terminal/engine`,
- * `natives/bridge/bindings` and the four under `plugins/` -- so a release body
- * silently omitted every entry those packages wrote, including the terminal
- * engine's, which used to be `packages/tui`. The member list is resolved, so a
- * member at any depth and one declared as a literal path are both in it.
- *
- * Members are resolved against the WORKING DIRECTORY, not the directory this
- * script sits in: the release job runs it at the root of the checkout being
- * released, and the suite runs it against a fixture repository. Reading the
- * member list from the script's own location would describe this checkout while
- * the changelogs came from another.
- *
- * `workspace-layout` imports only node builtins, which the relative
- * `compareSemver` import above explains is the constraint here: the release job
- * checks out the repo without `bun install`, so a workspace specifier would not
- * resolve.
- */
 function memberChangelogPaths(): string[] {
 	return typeScriptMembersOf(process.cwd())
-		.map(member => `${member}/CHANGELOG.md`)
+		.map(m => `${m}/CHANGELOG.md`)
 		.filter(existsSync)
 		.sort();
 }
 
 const REPO = process.env.VEYYON_REPO ?? process.env.GITHUB_REPOSITORY ?? "santhreal/veyyon";
-
-/**
- * GitHub rejects release bodies above 125,000 characters with HTTP 422.
- *
- * Keep headroom for the omission notice and API-side normalization. The full
- * notes remain in the tagged package changelogs and commit range linked by that
- * notice; truncation never cuts through a bullet.
- */
 export const RELEASE_NOTES_BODY_LIMIT = 120_000;
-
-// Canonical ordering used by `fix-changelogs`; unknown categories sort
-// alphabetically after these.
 const CATEGORY_ORDER = ["Breaking Changes", "Added", "Changed", "Fixed", "Removed"] as const;
 
 export interface ChangelogVersionSpan {
 	version: string;
-	/** 0-indexed line of the `## [X.Y.Z]` heading. */
 	start: number;
-	/** 0-indexed line just past the last line of this version's body (exclusive). */
 	end: number;
 }
 
-/**
- * Locate every `## [X.Y.Z]` heading in a changelog and compute the line span
- * up to (but not including) the next `## [` heading. `## [Unreleased]` and
- * other non-semver `## [...]` headings are ignored, but they still act as
- * span boundaries for the preceding version.
- */
 export function enumerateChangelogVersions(content: string): ChangelogVersionSpan[] {
 	const lines = content.split("\n");
-	const spans: ChangelogVersionSpan[] = [];
-	// Indexes of *any* `## [` heading (including Unreleased) so a version's
-	// span ends at the next heading of any kind.
 	const headingIdx: number[] = [];
 	for (let i = 0; i < lines.length; i++) {
 		if (lines[i].startsWith("## [")) headingIdx.push(i);
 	}
-	const versions = new Map(versionHeadings(content).map(heading => [heading.line - 1, heading.version]));
+	const versions = new Map(versionHeadings(content).map(h => [h.line - 1, h.version]));
+	const spans: ChangelogVersionSpan[] = [];
 	for (const idx of headingIdx) {
 		const version = versions.get(idx);
 		if (version === undefined) continue;
-		const nextIdx = headingIdx.find(j => j > idx) ?? lines.length;
-		spans.push({ version, start: idx, end: nextIdx });
+		spans.push({ version, start: idx, end: headingIdx.find(j => j > idx) ?? lines.length });
 	}
 	return spans;
 }
 
-/**
- * Merge the version sections in `versionsInRange` from a single package's
- * changelog into one combined body, grouped by `### <category>`.
- *
- * `versionsInRange` is the publication window `resolvePublishedFloorTag`
- * computes: the target first, then every silent tag published after the floor,
- * newest first. Iterating newest → oldest means newer phrasing wins when a
- * bullet was flattened forward by `fix-changelogs` and ends up in both
- * sections. A version with no section in this changelog contributes nothing.
- * Returns "" when no in-range version contributes any bullet.
- */
 export function mergePackageSection(content: string, versionsInRange: readonly string[]): string {
 	if (versionsInRange.length === 0) return "";
-
-	const allSpans = enumerateChangelogVersions(content);
-	const spansByVersion = new Map(allSpans.map(s => [s.version, s]));
-	const selectedSpans: ChangelogVersionSpan[] = [];
-	for (const v of versionsInRange) {
-		const span = spansByVersion.get(v.replace(/^v/, "").trim());
-		if (span) selectedSpans.push(span);
-	}
-
+	const spansByVersion = new Map(enumerateChangelogVersions(content).map(s => [s.version, s]));
+	const selectedSpans = versionsInRange
+		.map(v => spansByVersion.get(v.replace(/^v/, "").trim()))
+		.filter((s): s is ChangelogVersionSpan => s !== undefined);
 	if (selectedSpans.length === 0) return "";
+
 	const lines = content.split("\n");
-	const seenCategories: string[] = []; // first-seen order
+	const seenCategories: string[] = [];
 	const buckets = new Map<string, string[]>();
 	const seenLines = new Set<string>();
 
 	for (const span of selectedSpans) {
 		let currentCat: string | null = null;
 		let buf: string[] = [];
-		const flushCurrent = () => {
+		const flush = () => {
 			if (currentCat === null || buf.length === 0) return;
 			const categoryLines = buckets.get(currentCat) ?? [];
 			for (const line of buf) {
@@ -157,29 +69,24 @@ export function mergePackageSection(content: string, versionsInRange: readonly s
 		for (let i = span.start + 1; i < span.end; i++) {
 			const line = lines[i]!;
 			if (line.startsWith("### ")) {
-				flushCurrent();
+				flush();
 				currentCat = line.slice(4).trim();
 				if (!seenCategories.includes(currentCat)) seenCategories.push(currentCat);
-				continue;
-			}
-			if (currentCat !== null) {
+			} else if (currentCat !== null) {
 				buf.push(line);
 			}
 		}
-		flushCurrent();
+		flush();
 	}
 
 	const known = CATEGORY_ORDER.filter(cat => buckets.has(cat));
 	const unknown = seenCategories
 		.filter(cat => !CATEGORY_ORDER.includes(cat as (typeof CATEGORY_ORDER)[number]))
 		.sort();
-	const sortedCategories = [...known, ...unknown];
-
 	const out: string[] = [];
-	for (const cat of sortedCategories) {
+	for (const cat of [...known, ...unknown]) {
 		const raw = (buckets.get(cat) ?? []).join("\n").trimEnd();
-		if (raw.length === 0) continue;
-		out.push(`### ${cat}\n\n${raw}`);
+		if (raw.length > 0) out.push(`### ${cat}\n\n${raw}`);
 	}
 	return out.join("\n\n");
 }
@@ -190,14 +97,6 @@ export interface ReleaseNotesBoundOptions {
 	maxChars?: number;
 }
 
-/**
- * Bound a release body without emitting a partial changelog entry.
- *
- * The prefix ends immediately before the bullet that crosses the budget. Any
- * category or package headings left with no bullet are removed. The notice then
- * links the immutable tag and compare range, so omitted detail is discoverable
- * rather than silently lost.
- */
 export function boundReleaseNotesBody(body: string, options: ReleaseNotesBoundOptions): string {
 	const maxChars = options.maxChars ?? RELEASE_NOTES_BODY_LIMIT;
 	if (!Number.isSafeInteger(maxChars) || maxChars <= 0) {
@@ -206,24 +105,20 @@ export function boundReleaseNotesBody(body: string, options: ReleaseNotesBoundOp
 	if (body.length <= maxChars) return body;
 
 	const tag = `v${options.version.replace(/^v/, "")}`;
-	const packageUrl = `https://github.com/${REPO}/tree/${tag}/packages`;
 	const rangeUrl = options.floor
 		? `https://github.com/${REPO}/compare/v${options.floor.replace(/^v/, "")}...${tag}`
 		: `https://github.com/${REPO}/commits/${tag}`;
-	const notice =
-		`_Release notes were shortened from ${body.length.toLocaleString("en-US")} characters to fit GitHub's ` +
-		`125,000-character body limit. Read the [complete package changelogs](${packageUrl}) and ` +
-		`[full commit range](${rangeUrl})._`;
+	const notice = `_Release notes were shortened from ${body.length.toLocaleString("en-US")} characters to fit GitHub's 125,000-character body limit. Read the [complete changelog](https://github.com/${REPO}/blob/${tag}/CHANGELOG.md) and [full commit range](${rangeUrl})._`;
 	const prefixBudget = maxChars - notice.length - 2;
-	if (prefixBudget <= 0) {
+	if (prefixBudget <= 0)
 		throw new Error(`Release-notes maxChars ${maxChars} is too small for the ${notice.length}-character notice.`);
-	}
 
 	const bulletStarts = [...body.matchAll(/(?:^|\n)- /g)]
-		.map(match => (match.index ?? 0) + (match[0].startsWith("\n") ? 1 : 0))
-		.filter(index => index <= prefixBudget);
-	let prefix = bulletStarts.length > 0 ? body.slice(0, bulletStarts[bulletStarts.length - 1]) : "";
-	const lines = prefix.trimEnd().split("\n");
+		.map(m => (m.index ?? 0) + (m[0].startsWith("\n") ? 1 : 0))
+		.filter(i => i <= prefixBudget);
+	const lines = (bulletStarts.length > 0 ? body.slice(0, bulletStarts[bulletStarts.length - 1]) : "")
+		.trimEnd()
+		.split("\n");
 	while (lines.length > 0) {
 		while (lines.at(-1)?.trim() === "") lines.pop();
 		if (lines.at(-1)?.match(/^#{2,3} /)) {
@@ -232,29 +127,12 @@ export function boundReleaseNotesBody(body: string, options: ReleaseNotesBoundOp
 		}
 		break;
 	}
-	prefix = lines.join("\n").trimEnd();
-	const bounded = prefix ? `${prefix}\n\n${notice}\n` : `${notice}\n`;
-	if (bounded.length > maxChars) {
+	const bounded = lines.length ? `${lines.join("\n").trimEnd()}\n\n${notice}\n` : `${notice}\n`;
+	if (bounded.length > maxChars)
 		throw new Error(`Bounded release notes are ${bounded.length} characters, above the ${maxChars} limit.`);
-	}
 	return bounded;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Commit-history summary
-// ═══════════════════════════════════════════════════════════════════════════
-//
-// The curated per-package CHANGELOG sections above are high-signal but sparse:
-// only bullets a PR author hand-wrote appear, and this repo pushes straight to
-// main, so `action-gh-release`'s PR-based `generate_release_notes` list is also
-// near-empty. The result was releases whose whole body was one bullet even when
-// dozens of real commits landed ("400 commits says nothing"). This section
-// closes that gap: it groups every non-merge commit in the release range by its
-// conventional-commit type so each release reflects its actual work with no
-// manual curation. It is derived, additive context — never a replacement for the
-// curated sections, which stay first.
-
-/** Conventional-commit type prefix → release-notes heading. First match wins. */
 const COMMIT_TYPE_HEADINGS: ReadonlyArray<readonly [RegExp, string]> = [
 	[/^feat$/, "Features"],
 	[/^fix$/, "Fixes"],
@@ -264,114 +142,73 @@ const COMMIT_TYPE_HEADINGS: ReadonlyArray<readonly [RegExp, string]> = [
 	[/^docs$/, "Documentation"],
 	[/^test$/, "Tests"],
 	[/^(build|ci)$/, "Build & CI"],
-	[/^(chore|style)$/, "Chores"],
+	[/^chore|style$/, "Chores"],
 ];
 const BREAKING_HEADING = "Breaking Changes";
 const OTHER_HEADING = "Other changes";
-// Display order for the grouped sections. Breaking changes lead; unmatched
-// commits ("Other changes") trail. Everything else follows the type table.
-const HEADING_ORDER: readonly string[] = [
-	BREAKING_HEADING,
-	...COMMIT_TYPE_HEADINGS.map(([, heading]) => heading),
-	OTHER_HEADING,
-];
-
-function headingForCommitType(type: string): string | null {
-	for (const [pattern, heading] of COMMIT_TYPE_HEADINGS) {
-		if (pattern.test(type)) return heading;
-	}
-	return null;
-}
+const HEADING_ORDER = [BREAKING_HEADING, ...COMMIT_TYPE_HEADINGS.map(([, h]) => h), OTHER_HEADING] as const;
 
 export interface GroupedCommitSection {
 	heading: string;
 	subjects: string[];
 }
 
-/**
- * Bucket commit subject lines by conventional-commit type, preserving the full
- * `type(scope): description` subject for display and deduplicating identical
- * subjects (a cherry-pick or a forward-merge can repeat one). A subject with a
- * `!` breaking marker (`feat!:` / `fix(x)!:`) goes to {@link BREAKING_HEADING}
- * regardless of its base type; a subject with no recognizable conventional
- * prefix goes to {@link OTHER_HEADING} so nothing is dropped. Sections come back
- * in {@link HEADING_ORDER}; empty buckets are omitted.
- */
 export function groupCommitsByType(subjects: readonly string[]): GroupedCommitSection[] {
 	const buckets = new Map<string, string[]>();
 	const seen = new Set<string>();
 	for (const raw of subjects) {
 		const subject = raw.trim();
-		if (subject.length === 0) continue;
-		if (seen.has(subject)) continue;
+		if (!subject || seen.has(subject)) continue;
 		seen.add(subject);
 		const match = subject.match(/^(\w+)(?:\([^)]*\))?(!)?:\s*.+$/);
-		let heading: string;
-		if (!match) {
-			heading = OTHER_HEADING;
-		} else if (match[2] === "!") {
-			heading = BREAKING_HEADING;
-		} else {
-			heading = headingForCommitType(match[1].toLowerCase()) ?? OTHER_HEADING;
-		}
-		const bucket = buckets.get(heading);
-		if (bucket) bucket.push(subject);
-		else buckets.set(heading, [subject]);
+		const heading = !match
+			? OTHER_HEADING
+			: match[2] === "!"
+				? BREAKING_HEADING
+				: (COMMIT_TYPE_HEADINGS.find(([p]) => p.test(match[1].toLowerCase()))?.[1] ?? OTHER_HEADING);
+		const bucket = buckets.get(heading) ?? [];
+		bucket.push(subject);
+		buckets.set(heading, bucket);
 	}
-	const sections: GroupedCommitSection[] = [];
-	for (const heading of HEADING_ORDER) {
-		const bucket = buckets.get(heading);
-		if (bucket && bucket.length > 0) sections.push({ heading, subjects: bucket });
-	}
-	return sections;
+	return HEADING_ORDER.filter(h => (buckets.get(h) ?? []).length > 0).map(heading => ({
+		heading,
+		subjects: buckets.get(heading)!,
+	}));
 }
 
-/**
- * Render the grouped commit summary as a markdown section, or "" when there are
- * no commits. `floorLabel` is the previous published version (unprefixed) used
- * for the "N commits since vX" line, or null for the first-ever release.
- */
 export function formatCommitSummary(subjects: readonly string[], floorLabel: string | null): string {
 	const sections = groupCommitsByType(subjects);
 	const total = sections.reduce((n, s) => n + s.subjects.length, 0);
 	if (total === 0) return "";
-	const since = floorLabel ? ` since v${floorLabel}` : "";
-	const out: string[] = ["## What changed", "", `_${total} commit${total === 1 ? "" : "s"}${since}._`, ""];
-	for (const section of sections) {
-		out.push(`### ${section.heading}`, "");
-		for (const subject of section.subjects) out.push(`- ${subject}`);
-		out.push("");
+	const out: string[] = [
+		"## What changed",
+		"",
+		`_${total} commit${total === 1 ? "" : "s"}${floorLabel ? ` since v${floorLabel}` : ""}._`,
+		"",
+	];
+	for (const s of sections) {
+		out.push(`### ${s.heading}`, "", ...s.subjects.map(sub => `- ${sub}`), "");
 	}
 	while (out.length > 0 && out[out.length - 1] === "") out.pop();
 	return out.join("\n");
 }
 
-/**
- * Read the non-merge commit subjects in `(floor, target]` and render the grouped
- * summary. `floor`/`version` are unprefixed; the tags are `v<floor>`/`v<version>`.
- *
- * A `git log` failure (shallow checkout with the range refs missing, no git)
- * is LOUD — a warning naming the range and the `fetch-depth: 0` fix — and yields
- * "" so the curated sections still publish. This is an additive summary, not a
- * primary mechanism, so degrading it loudly (never silently) is correct; the
- * release body is still produced from the curated CHANGELOG sections.
- */
 async function summarizeCommitRange(floor: string | null, version: string): Promise<string> {
 	const range = floor ? `v${floor}..v${version}` : `v${version}`;
 	const res = await $`git log --no-merges --pretty=format:%s ${range}`.quiet().nothrow();
 	if (res.exitCode !== 0) {
 		console.warn(
-			`Skipping the commit summary: \`git log ${range}\` exited ${res.exitCode}.\n` +
-				`stderr: ${res.stderr.toString().trim() || "(empty)"}\n` +
-				`Hint: the release_github checkout needs full history and tags (fetch-depth: 0) for the range to resolve.`,
+			`Skipping the commit summary: \`git log ${range}\` exited ${res.exitCode}.\nstderr: ${res.stderr.toString().trim() || "(empty)"}\nHint: fetch-depth: 0 needed.`,
 		);
 		return "";
 	}
-	const subjects = res.stdout
-		.toString()
-		.split("\n")
-		.filter(line => line.trim().length > 0);
-	return formatCommitSummary(subjects, floor);
+	return formatCommitSummary(
+		res.stdout
+			.toString()
+			.split("\n")
+			.filter(l => l.trim().length > 0),
+		floor,
+	);
 }
 
 async function loadPackageName(pkgDir: string): Promise<string> {
@@ -383,68 +220,39 @@ async function loadPackageName(pkgDir: string): Promise<string> {
 	}
 }
 
-/**
- * Stable sort: order releases by publication date descending.
- * Entries without a date keep the API's order.
- */
-function orderReleasesByPublication<T extends { publishedAt?: unknown }>(releases: readonly T[]): T[] {
-	return [...releases].sort((a, b) => {
-		const dateA = typeof a.publishedAt === "string" ? a.publishedAt : "";
-		const dateB = typeof b.publishedAt === "string" ? b.publishedAt : "";
-		if (dateA && dateB && dateA !== dateB) {
-			return dateB.localeCompare(dateA);
-		}
-		return 0;
-	});
-}
-
 export function resolvePublishedFloorFromList(
 	rawReleases: readonly { tagName?: unknown; isDraft?: unknown; isPrerelease?: unknown; publishedAt?: unknown }[],
 	targetVersion: string,
 ): { floor: string | null; versionsInRange: string[] } {
 	const target = targetVersion.replace(/^v/, "").trim();
-	const candidates = rawReleases
-		.filter(t => t.isDraft !== true && t.isPrerelease !== true)
-		.filter(t => typeof t.tagName === "string" && /^v\d+\.\d+\.\d+$/.test(t.tagName))
+	const ordered = rawReleases
+		.filter(
+			t =>
+				t.isDraft !== true &&
+				t.isPrerelease !== true &&
+				typeof t.tagName === "string" &&
+				/^v\d+\.\d+\.\d+$/.test(t.tagName),
+		)
 		.map(t => ({
-			tagName: t.tagName as string,
 			version: (t.tagName as string).replace(/^v/, "").trim(),
-			publishedAt: typeof t.publishedAt === "string" ? t.publishedAt : undefined,
-		}));
+			publishedAt: typeof t.publishedAt === "string" ? t.publishedAt : "",
+		}))
+		.sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
 
-	const ordered = orderReleasesByPublication(candidates);
 	const floorIdx = ordered.findIndex(r => r.version !== target);
-	if (floorIdx === -1) {
-		return { floor: null, versionsInRange: [target] };
-	}
-
-	const publishedAfterFloor = ordered
-		.slice(0, floorIdx)
-		.map(r => r.version)
-		.filter(v => v !== target);
-
-	return { floor: ordered[floorIdx]!.version, versionsInRange: [target, ...publishedAfterFloor] };
+	if (floorIdx === -1) return { floor: null, versionsInRange: [target] };
+	return {
+		floor: ordered[floorIdx]!.version,
+		versionsInRange: [
+			target,
+			...ordered
+				.slice(0, floorIdx)
+				.map(r => r.version)
+				.filter(v => v !== target),
+		],
+	};
 }
 
-/**
- * Resolve the release published most recently before `targetVersion` via
- * `gh release list`, and the window of versions whose changelog sections the
- * notes cover: the target plus every tag published after that floor. Order is
- * publication order; a version number is a label, so `0.0.1` cut after `1.4.0`
- * has floor `1.4.0`.
- *
- * Failure semantics:
- *   - `VEYYON_RELEASE_NOTES_FLOOR` set → honored verbatim (`""` forces null),
- *     and the window is the target alone.
- *   - `gh` succeeded, no other published release → `null` (legitimate
- *     first-ever publish; single-version output is correct).
- *   - `gh` itself failed (missing binary, missing `GH_TOKEN` in Actions,
- *     network/auth error) → throws. Letting this degrade to single-version
- *     output silently re-strands silent-tag entries (#2596 review); the CI
- *     step must die loudly so the release is rebuilt with the token wired.
- *     Local runs without `gh` should set `VEYYON_RELEASE_NOTES_FLOOR=` to opt
- *     into single-version mode explicitly.
- */
 export async function resolvePublishedFloorTag(
 	targetVersion: string,
 ): Promise<{ floor: string | null; versionsInRange: string[] }> {
@@ -453,32 +261,18 @@ export async function resolvePublishedFloorTag(
 	if (override !== undefined) {
 		const stripped = override.replace(/^v/, "").trim();
 		const floor = stripped.length === 0 ? null : stripped;
-		if (floor !== null && floor === target) {
-			return { floor, versionsInRange: [] };
-		}
-		return { floor, versionsInRange: [target] };
+		return { floor, versionsInRange: floor !== null && floor === target ? [] : [target] };
 	}
 	const res =
 		await $`gh release list --repo ${REPO} --limit 200 --exclude-drafts --exclude-pre-releases --json tagName,isDraft,isPrerelease,publishedAt`
 			.quiet()
 			.nothrow();
-	if (res.exitCode !== 0) {
-		const stderr = res.stderr.toString().trim();
+	if (res.exitCode !== 0)
 		throw new Error(
-			`gh release list exited ${res.exitCode}.\nstderr: ${stderr || "(empty)"}\n` +
-				`Hint: in GitHub Actions, pass GH_TOKEN: \${{ secrets.GITHUB_TOKEN }} to this step. ` +
-				`Locally without gh, set VEYYON_RELEASE_NOTES_FLOOR= to fall back to single-version notes.`,
+			`gh release list exited ${res.exitCode}.\nstderr: ${res.stderr.toString().trim() || "(empty)"}\nHint: pass GH_TOKEN.`,
 		);
-	}
-	let raw: unknown;
-	try {
-		raw = JSON.parse(res.stdout.toString());
-	} catch (err) {
-		throw new Error(`gh release list returned non-JSON output: ${(err as Error).message}`);
-	}
-	if (!Array.isArray(raw)) {
-		throw new Error(`gh release list returned a non-array payload: ${typeof raw}`);
-	}
+	const raw = JSON.parse(res.stdout.toString());
+	if (!Array.isArray(raw)) throw new Error(`gh release list returned a non-array payload: ${typeof raw}`);
 	return resolvePublishedFloorFromList(raw, target);
 }
 
@@ -491,29 +285,20 @@ async function main(): Promise<void> {
 	const version = tagInput.replace(/^v/, "").trim();
 	const outputPath = process.argv[3] ?? "release-notes.md";
 	const { floor, versionsInRange } = await resolvePublishedFloorTag(version);
-	if (floor) {
-		console.log(`Aggregating CHANGELOG sections for [${versionsInRange.join(", ")}] (floor: ${floor}).`);
-	} else {
-		console.log(`No prior published release resolved; emitting only ## [${version}] sections.`);
-	}
+	console.log(
+		floor
+			? `Aggregating CHANGELOG sections for [${versionsInRange.join(", ")}] (floor: ${floor}).`
+			: `No prior published release resolved; emitting only ## [${version}] sections.`,
+	);
 
 	const sections: string[] = [];
-	const changelogPaths = memberChangelogPaths();
-	for (const changelogPath of changelogPaths) {
-		const content = await Bun.file(changelogPath).text();
-		const merged = mergePackageSection(content, versionsInRange);
-		if (merged === "") continue;
-		const pkgDir = changelogPath.replace(/\/CHANGELOG\.md$/, "");
-		const name = await loadPackageName(pkgDir);
-		sections.push(`## ${name}\n\n${merged}`);
+	for (const changelogPath of memberChangelogPaths()) {
+		const merged = mergePackageSection(await Bun.file(changelogPath).text(), versionsInRange);
+		if (merged)
+			sections.push(`## ${await loadPackageName(changelogPath.replace(/\/CHANGELOG\.md$/, ""))}\n\n${merged}`);
 	}
 
-	// Derived commit-history overview for the release range. Additive: it follows
-	// the curated per-package sections, and it carries the body on its own when a
-	// release has no hand-written CHANGELOG bullets (the "400 commits says nothing"
-	// case) so no release ever ships an empty body when real commits landed.
 	const commitSummary = await summarizeCommitRange(floor, version);
-
 	if (sections.length === 0 && commitSummary === "") {
 		console.warn(
 			`No CHANGELOG entries or commits found for version ${version}; writing empty release notes to ${outputPath}.`,
@@ -523,19 +308,17 @@ async function main(): Promise<void> {
 	}
 
 	const parts = [...sections];
-	if (commitSummary !== "") parts.push(commitSummary);
+	if (commitSummary) parts.push(commitSummary);
 	const unboundedBody = `${parts.join("\n\n")}\n`;
 	const body = boundReleaseNotesBody(unboundedBody, { version, floor });
 	if (body.length < unboundedBody.length) {
 		console.warn(
-			`Release notes exceeded GitHub's body limit: shortened ${unboundedBody.length.toLocaleString("en-US")} ` +
-				`characters to ${body.length.toLocaleString("en-US")} at a complete bullet boundary.`,
+			`Release notes exceeded GitHub's body limit: shortened ${unboundedBody.length.toLocaleString("en-US")} characters to ${body.length.toLocaleString("en-US")} at a complete bullet boundary.`,
 		);
 	}
 	await Bun.write(outputPath, body);
 	console.log(
-		`Wrote ${sections.length} package section(s)${commitSummary ? " + commit summary" : ""} to ${outputPath} ` +
-			`(version ${version}${floor ? `, floor ${floor}` : ""}, ${body.length.toLocaleString("en-US")} characters).`,
+		`Wrote ${sections.length} package section(s)${commitSummary ? " + commit summary" : ""} to ${outputPath} (version ${version}${floor ? `, floor ${floor}` : ""}, ${body.length.toLocaleString("en-US")} characters).`,
 	);
 }
 

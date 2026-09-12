@@ -331,77 +331,58 @@ export function classifyBatch(contents: readonly string[]): TypeMatch[] {
 	return contents.map(content => classifyMemory(content));
 }
 
+const TYPE_PRIORITIES: Record<string, number> = {
+	[MemoryType.INSTRUCTION]: 10,
+	[MemoryType.COMMITMENT]: 9,
+	[MemoryType.ERROR]: 8,
+	[MemoryType.GOAL]: 7,
+	[MemoryType.DECISION]: 6,
+	[MemoryType.PREFERENCE]: 5,
+	[MemoryType.FACT]: 4,
+	[MemoryType.RELATIONSHIP]: 4,
+	[MemoryType.LEARNING]: 3,
+	[MemoryType.OBSERVATION]: 3,
+	[MemoryType.EVENT]: 2,
+	[MemoryType.CONTEXT]: 2,
+	[MemoryType.ARTIFACT]: 1,
+};
+
 export function getTypePriority(memoryType: MemoryType | string): number {
-	switch (memoryType) {
-		case MemoryType.INSTRUCTION:
-			return 10;
-		case MemoryType.COMMITMENT:
-			return 9;
-		case MemoryType.ERROR:
-			return 8;
-		case MemoryType.GOAL:
-			return 7;
-		case MemoryType.DECISION:
-			return 6;
-		case MemoryType.PREFERENCE:
-			return 5;
-		case MemoryType.FACT:
-		case MemoryType.RELATIONSHIP:
-			return 4;
-		case MemoryType.LEARNING:
-		case MemoryType.OBSERVATION:
-			return 3;
-		case MemoryType.EVENT:
-		case MemoryType.CONTEXT:
-			return 2;
-		case MemoryType.ARTIFACT:
-			return 1;
-		default:
-			return 0;
-	}
+	return TYPE_PRIORITIES[memoryType] ?? 0;
 }
 
-const CONSOLIDATABLE_MEMORY_TYPES: ReadonlySet<string> = new Set<string>([
-	MemoryType.FACT,
-	MemoryType.PREFERENCE,
-	MemoryType.DECISION,
-	MemoryType.GOAL,
-	MemoryType.LEARNING,
-	MemoryType.OBSERVATION,
-	MemoryType.RELATIONSHIP,
-	MemoryType.INSTRUCTION,
-]);
+const CONSOLIDATABLE_MEMORY_TYPES: Record<string, true> = {
+	[MemoryType.FACT]: true,
+	[MemoryType.PREFERENCE]: true,
+	[MemoryType.DECISION]: true,
+	[MemoryType.GOAL]: true,
+	[MemoryType.LEARNING]: true,
+	[MemoryType.OBSERVATION]: true,
+	[MemoryType.RELATIONSHIP]: true,
+	[MemoryType.INSTRUCTION]: true,
+};
 
 export function shouldConsolidate(memoryType: MemoryType | string): boolean {
-	return CONSOLIDATABLE_MEMORY_TYPES.has(memoryType);
+	return CONSOLIDATABLE_MEMORY_TYPES[memoryType] === true;
 }
 
+const DECAY_RATES: Record<string, number> = {
+	[MemoryType.CONTEXT]: 0.9,
+	[MemoryType.EVENT]: 0.7,
+	[MemoryType.OBSERVATION]: 0.5,
+	[MemoryType.UNKNOWN]: 0.5,
+	[MemoryType.COMMITMENT]: 0.5,
+	[MemoryType.GOAL]: 0.4,
+	[MemoryType.LEARNING]: 0.3,
+	[MemoryType.DECISION]: 0.3,
+	[MemoryType.PREFERENCE]: 0.2,
+	[MemoryType.FACT]: 0.1,
+	[MemoryType.RELATIONSHIP]: 0.1,
+	[MemoryType.ARTIFACT]: 0.1,
+	[MemoryType.INSTRUCTION]: 0.05,
+	[MemoryType.ERROR]: 0.05,
+};
+
 export function getDecayRate(memoryType: MemoryType | string): number {
-	switch (memoryType) {
-		case MemoryType.CONTEXT:
-			return 0.9;
-		case MemoryType.EVENT:
-			return 0.7;
-		case MemoryType.OBSERVATION:
-		case MemoryType.UNKNOWN:
-			return 0.5;
-		case MemoryType.GOAL:
-			return 0.4;
-		case MemoryType.LEARNING:
-		case MemoryType.DECISION:
-			return 0.3;
-		case MemoryType.PREFERENCE:
-			return 0.2;
-		case MemoryType.FACT:
-		case MemoryType.RELATIONSHIP:
-		case MemoryType.ARTIFACT:
-			return 0.1;
-		case MemoryType.INSTRUCTION:
-		case MemoryType.ERROR:
-			return 0.05;
-		case MemoryType.COMMITMENT:
-			return 0.5;
-		default:
-			return 0.3;
-	}
+	return DECAY_RATES[memoryType] ?? 0.3;
 }

@@ -1,8 +1,13 @@
+export interface PKCEPair {
+	verifier: string;
+	challenge: string;
+}
+
 /**
  * Generate PKCE code verifier and challenge.
  * Uses Web Crypto API for cross-platform compatibility.
  */
-export async function generatePKCE(): Promise<{ verifier: string; challenge: string }> {
+export async function generatePKCE(): Promise<PKCEPair> {
 	// Generate random verifier
 	const verifierBytes = new Uint8Array(96);
 	crypto.getRandomValues(verifierBytes);

@@ -155,6 +155,76 @@ describe("read tool column truncation vs hashline snapshot", () => {
 		expect(snapshot?.text.split("\n")[5]).toBe(longLine);
 	});
 
+	it("records each clipped line of every range, keeps them out of seenLines, and reports the column cap", async () => {
+		const filePath = path.join(tmpDir, "wide-multi-seen.txt");
+		const longLine = "q".repeat(LONG_LINE_LEN);
+		await fs.writeFile(filePath, ["a", longLine, "c", "d", "e", longLine, "g"].join("\n"));
+
+		const session = createSession(tmpDir);
+		const result = await new ReadTool(session).execute("call-multi-seen", { path: `${filePath}:1-2,6-7` });
+		const { tag } = extractHeader(textOutput(result));
+		const snapshot = getFileSnapshotStore(session).byHash(canonicalSnapshotKey(filePath), tag);
+
+		expect([...(snapshot?.clippedLines ?? [])].sort((a, b) => a - b)).toEqual([2, 6]);
+		expect([1, 7].map(line => snapshot?.seenLines?.has(line))).toEqual([true, true]);
+		expect([2, 6].map(line => snapshot?.seenLines?.has(line))).toEqual([false, false]);
+		expect(result.details?.meta?.limits?.columnTruncated).toEqual({ maxColumn: COLUMN_CAP });
+	});
+
+	it("reports the column cap for a single-range read and nothing for a read that clipped nothing", async () => {
+		const widePath = path.join(tmpDir, "wide-single.txt");
+		const longLine = "r".repeat(LONG_LINE_LEN);
+		await fs.writeFile(widePath, `head\n${longLine}\ntail\n`);
+		const narrowPath = path.join(tmpDir, "narrow.txt");
+		await fs.writeFile(narrowPath, "head\nshort\ntail\n");
+
+		const session = createSession(tmpDir);
+		const tool = new ReadTool(session);
+		const wide = await tool.execute("call-wide", { path: `${widePath}:1-3` });
+		const wideSnapshot = getFileSnapshotStore(session).byHash(
+			canonicalSnapshotKey(widePath),
+			extractHeader(textOutput(wide)).tag,
+		);
+		expect([...(wideSnapshot?.clippedLines ?? [])]).toEqual([2]);
+		expect(wideSnapshot?.seenLines?.has(2)).toBe(false);
+		expect(wide.details?.meta?.limits?.columnTruncated).toEqual({ maxColumn: COLUMN_CAP });
+
+		const narrow = await tool.execute("call-narrow", { path: `${narrowPath}:1-3` });
+		const narrowSnapshot = getFileSnapshotStore(session).byHash(
+			canonicalSnapshotKey(narrowPath),
+			extractHeader(textOutput(narrow)).tag,
+		);
+		expect(narrowSnapshot?.clippedLines?.size ?? 0).toBe(0);
+		expect(narrow.details?.meta?.limits?.columnTruncated).toBeUndefined();
+	});
+
+	it("clips a long block-context line outside the window and keeps it out of seenLines", async () => {
+		// The window is lines 7-8, which the read pads by one line before and
+		// three after; the enclosing function header on line 1 is beyond that
+		// padding and reaches the output only as block context. It is wider than
+		// the cap, so it must be clipped in the display, recorded as clipped, and
+		// withheld from seenLines exactly like a windowed line would be.
+		const filePath = path.join(tmpDir, "context-wide.ts");
+		const longName = "p".repeat(LONG_LINE_LEN);
+		const header = `function wide(${longName}: number) {`;
+		const filler = Array.from({ length: 5 }, (_, i) => `\tconst f${i} = ${i};`);
+		await fs.writeFile(filePath, [header, ...filler, "\tconst a = 1;", "\treturn a;", "}", ""].join("\n"));
+
+		const session = createSession(tmpDir);
+		const result = await new ReadTool(session).execute("call-context", { path: `${filePath}:7-8` });
+		const text = textOutput(result);
+		expect(text).not.toContain(longName);
+		expect(text).toContain("function wide(");
+		expect(text).toContain("…");
+
+		const { tag } = extractHeader(text);
+		const snapshot = getFileSnapshotStore(session).byHash(canonicalSnapshotKey(filePath), tag);
+		expect(snapshot?.clippedLines?.has(1)).toBe(true);
+		expect(snapshot?.seenLines?.has(1)).toBe(false);
+		expect([7, 8].map(line => snapshot?.seenLines?.has(line))).toEqual([true, true]);
+		expect(result.details?.meta?.limits?.columnTruncated).toEqual({ maxColumn: COLUMN_CAP });
+	});
+
 	it("edit can apply against a file with long lines without re-reading", async () => {
 		// The bug: after reading a file with column-truncated lines, ANY follow-up
 		// hashline edit failed with "current file hashes to #XYZ" because the

@@ -15,9 +15,8 @@
  *     -> createLazyStream/forwardStream (idle watchdog, abort tracker, limits)
  *     -> the scripted module installed here
  *
- * Builtin lazy provider modules expose module overrides for tests (e.g.
- * `setBedrockProviderModule`, `setAnthropicProviderModule`,
- * `setOpenAICompletionsProviderModule`, `setGoogleProviderModule`, etc.),
+ * Builtin lazy provider modules expose module overrides for tests via
+ * `setProviderModuleOverrideForTest`,
  * which route through the real production streaming pipeline and lazy
  * watchdogs without making external network calls.
  * Determinism rules this file exists to enforce:
@@ -44,20 +43,7 @@ import type {
 	ToolChoice,
 } from "@veyyon/ai";
 import { AuthStorage } from "@veyyon/ai/auth-storage";
-import {
-	setAnthropicProviderModule,
-	setAzureOpenAIResponsesProviderModule,
-	setBedrockProviderModule,
-	setCursorProviderModule,
-	setDevinProviderModule,
-	setGoogleGeminiCliProviderModule,
-	setGoogleProviderModule,
-	setGoogleVertexProviderModule,
-	setOllamaProviderModule,
-	setOpenAICodexResponsesProviderModule,
-	setOpenAICompletionsProviderModule,
-	setOpenAIResponsesProviderModule,
-} from "@veyyon/ai/providers/register-builtins";
+import { setProviderModuleOverrideForTest } from "@veyyon/ai/providers/register-builtins";
 import { type CursorExecResolvedCarrier, kCursorExecResolved } from "@veyyon/ai/utils/block-symbols";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { ThinkingLoopDetector } from "@veyyon/ai/utils/thinking-loop";
@@ -247,18 +233,18 @@ function createSimulatedStream<TApi extends Api>(
 // Installed once at module load. The overrides are stable dispatchers across
 // all builtin lazy providers: tests swap the script, never the module, so nothing
 // races the lazy loader's cache.
-setBedrockProviderModule({ streamBedrock: (m, c, o) => createSimulatedStream(m, c, o) });
-setAnthropicProviderModule({ streamAnthropic: (m, c, o) => createSimulatedStream(m, c, o) });
-setOpenAICompletionsProviderModule({ streamOpenAICompletions: (m, c, o) => createSimulatedStream(m, c, o) });
-setOpenAIResponsesProviderModule({ streamOpenAIResponses: (m, c, o) => createSimulatedStream(m, c, o) });
-setGoogleProviderModule({ streamGoogle: (m, c, o) => createSimulatedStream(m, c, o) });
-setGoogleGeminiCliProviderModule({ streamGoogleGeminiCli: (m, c, o) => createSimulatedStream(m, c, o) });
-setGoogleVertexProviderModule({ streamGoogleVertex: (m, c, o) => createSimulatedStream(m, c, o) });
-setOllamaProviderModule({ streamOllama: (m, c, o) => createSimulatedStream(m, c, o) });
-setCursorProviderModule({ streamCursor: (m, c, o) => createSimulatedStream(m, c, o) });
-setDevinProviderModule({ streamDevin: (m, c, o) => createSimulatedStream(m, c, o) });
-setAzureOpenAIResponsesProviderModule({ streamAzureOpenAIResponses: (m, c, o) => createSimulatedStream(m, c, o) });
-setOpenAICodexResponsesProviderModule({ streamOpenAICodexResponses: (m, c, o) => createSimulatedStream(m, c, o) });
+setProviderModuleOverrideForTest("bedrock-converse-stream", { stream: (m, c, o) => createSimulatedStream(m, c, o) });
+setProviderModuleOverrideForTest("anthropic-messages", { stream: (m, c, o) => createSimulatedStream(m, c, o) });
+setProviderModuleOverrideForTest("openai-completions", { stream: (m, c, o) => createSimulatedStream(m, c, o) });
+setProviderModuleOverrideForTest("openai-responses", { stream: (m, c, o) => createSimulatedStream(m, c, o) });
+setProviderModuleOverrideForTest("google-generative-ai", { stream: (m, c, o) => createSimulatedStream(m, c, o) });
+setProviderModuleOverrideForTest("google-gemini-cli", { stream: (m, c, o) => createSimulatedStream(m, c, o) });
+setProviderModuleOverrideForTest("google-vertex", { stream: (m, c, o) => createSimulatedStream(m, c, o) });
+setProviderModuleOverrideForTest("ollama-chat", { stream: (m, c, o) => createSimulatedStream(m, c, o) });
+setProviderModuleOverrideForTest("cursor-agent", { stream: (m, c, o) => createSimulatedStream(m, c, o) });
+setProviderModuleOverrideForTest("devin-agent", { stream: (m, c, o) => createSimulatedStream(m, c, o) });
+setProviderModuleOverrideForTest("azure-openai-responses", { stream: (m, c, o) => createSimulatedStream(m, c, o) });
+setProviderModuleOverrideForTest("openai-codex-responses", { stream: (m, c, o) => createSimulatedStream(m, c, o) });
 
 /**
  * The shipped output-loop guard sits between this harness and `AgentSession`

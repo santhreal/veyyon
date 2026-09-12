@@ -1,8 +1,7 @@
-import type { TextContent } from "@veyyon/ai";
 import type { Component } from "@veyyon/tui";
 import { Box, Container, Markdown, Spacer, Text } from "@veyyon/tui";
 import { collapseWhitespace } from "@veyyon/utils";
-import type { CustomMessage, SkillPromptDetails } from "../../../../session/messages";
+import type { SkillPromptCustomDisplay } from "@veyyon/wire/presentation";
 import { withIcon } from "../../../../theme/icon-label";
 import { getMarkdownTheme } from "../../../../theme/markdown-theme";
 import { theme } from "../../../../theme/theme";
@@ -15,14 +14,13 @@ export class SkillMessageComponent extends Container {
 	#contentComponent?: Component;
 	#expanded = false;
 
-	constructor(private readonly message: CustomMessage<SkillPromptDetails>) {
+	constructor(private readonly message: SkillPromptCustomDisplay) {
 		super();
 
 		this.#box = new Box(1, 1);
 		this.#box.setIgnoreTight(true);
 		this.#rebuild();
 	}
-
 	setExpanded(expanded: boolean): void {
 		if (this.#expanded !== expanded) {
 			this.#expanded = expanded;
@@ -50,10 +48,10 @@ export class SkillMessageComponent extends Container {
 		// as a wall (defect: boxes always full width regardless of content).
 		this.#box.setHugContent(true);
 
-		const details = this.message.details;
-		const name = details?.name?.trim() || "unknown";
+		const name = this.message.name;
+		const rawArgs = this.message.args;
 		// Collapse args to one line: a stray newline/tab in user-supplied args would split the header.
-		const args = collapseWhitespace(details?.args);
+		const args = collapseWhitespace(rawArgs);
 
 		// Header: icon-tag + skill name, with the invocation args trailing dimmed.
 		const tag = theme.fg("customMessageLabel", theme.bold(withIcon(theme.icon.extensionSkill, "skill")));
@@ -63,16 +61,15 @@ export class SkillMessageComponent extends Container {
 		}
 		this.#box.addChild(new Text(header, 0, 0));
 
-		const meta = this.#metaLine(details);
+		const meta = this.#metaLine();
 		if (meta) {
 			this.#box.addChild(new Text(meta, 0, 0));
 		}
-
 		if (!this.#expanded) {
 			return;
 		}
 
-		const text = this.#extractText();
+		const text = this.message.text;
 		if (!text) {
 			return;
 		}
@@ -88,30 +85,21 @@ export class SkillMessageComponent extends Container {
 	}
 
 	/** Sub-line under the header: home-shortened (clickable) accent path · muted prompt size. */
-	#metaLine(details: SkillPromptDetails | undefined): string | undefined {
+	#metaLine(): string | undefined {
 		const parts: string[] = [];
 
-		const filePath = details?.path;
+		const filePath = this.message.path;
 		if (filePath) {
 			parts.push(fileHyperlink(filePath, theme.fg("accent", shortenPath(filePath)), { line: 1 }));
 		}
-		if (typeof details?.lineCount === "number") {
-			parts.push(theme.fg("muted", `${details.lineCount} ${details.lineCount === 1 ? "line" : "lines"}`));
+		const lineCount = this.message.lineCount;
+		if (typeof lineCount === "number") {
+			parts.push(theme.fg("muted", `${lineCount} ${lineCount === 1 ? "line" : "lines"}`));
 		}
 
 		if (parts.length === 0) {
 			return undefined;
 		}
 		return `  ${parts.join(theme.fg("muted", theme.sep.dot))}`;
-	}
-
-	#extractText(): string {
-		if (typeof this.message.content === "string") {
-			return this.message.content;
-		}
-		return this.message.content
-			.filter((c): c is TextContent => c.type === "text")
-			.map(c => c.text)
-			.join("\n");
 	}
 }

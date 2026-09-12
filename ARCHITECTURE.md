@@ -96,8 +96,10 @@ These are enforced conventions, documented in [`AGENTS.md`](AGENTS.md):
 - **Layering** — domain logic never imports CLI/transport/UI. Catalog *values* come
   from `@veyyon/catalog`, not the `@veyyon/ai` barrel.
 - **No silent fallbacks** — a control that can't do its job fails loudly, not quietly.
-- **Bun first** — Bun APIs (`Bun.file`, Bun Shell, `bun:sqlite`, single-file
-  `--compile`, the worker-reentry model) over `node:*` where they fit.
+- **Portable first** — in new code the language, then `node:*`, then POSIX tooling, then
+  Bun; a Bun API only where no portable equivalent exists. `bun:sqlite`, `Bun.stringWidth`,
+  single-file `--compile` and the worker-reentry model have none and stay, as do existing
+  Bun call sites.
 - **One home per value** — constants, parsers, and predicates have a single owner.
 - **One home per dependency version** — third-party versions live in `workspaces.catalog`
   in the root `package.json`, and packages write `"react": "catalog:"` rather than a range.

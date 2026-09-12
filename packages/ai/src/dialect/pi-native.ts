@@ -11,7 +11,9 @@ import {
 	isStringOnlySchema,
 	mintToolCallId,
 	partialSuffixOverlapAny,
+	scanThinkingText,
 	setToolArg,
+	ThinkingSection,
 	type ToolArgShape,
 } from "./coercion";
 import { chatMlTranscriptRenderer, renderThinkTags, renderToolResponseResults, stringifyJson } from "./rendering";
@@ -57,7 +59,7 @@ class PiNativeInbandScanner implements InbandScanner {
 	#buffer = "";
 	#state: State = "outside";
 	#call: OpenCall | null = null;
-	#thinking = "";
+	readonly #thinking = new ThinkingSection();
 	#parseThinking: boolean;
 	#shapes: Map<string, ToolArgShape>;
 
@@ -111,8 +113,7 @@ class PiNativeInbandScanner implements InbandScanner {
 		if (start > 0) events.push({ type: "text", text: this.#buffer.slice(0, start) });
 		if (start === think) {
 			this.#buffer = this.#buffer.slice(start + THINK_OPEN.length);
-			this.#thinking = "";
-			events.push({ type: "thinkingStart" });
+			this.#thinking.start(events);
 			this.#state = "thinking";
 			return true;
 		}
@@ -122,30 +123,14 @@ class PiNativeInbandScanner implements InbandScanner {
 	}
 
 	#consumeThinking(final: boolean, events: InbandScanEvent[]): boolean {
-		const close = this.#buffer.indexOf(THINK_CLOSE);
-		if (close === -1) {
-			const hold = final ? 0 : partialSuffixOverlapAny(this.#buffer, [THINK_CLOSE]);
-			const delta = this.#buffer.slice(0, this.#buffer.length - hold);
-			if (delta.length > 0) {
-				this.#thinking += delta;
-				events.push({ type: "thinkingDelta", delta });
-			}
-			this.#buffer = this.#buffer.slice(this.#buffer.length - hold);
-			return false;
-		}
-		const delta = this.#buffer.slice(0, close);
-		if (delta.length > 0) {
-			this.#thinking += delta;
-			events.push({ type: "thinkingDelta", delta });
-		}
-		this.#buffer = this.#buffer.slice(close + THINK_CLOSE.length);
-		this.#endThinking(events);
-		return true;
+		const { buffer, closed } = scanThinkingText(this.#buffer, THINK_CLOSE, final, this.#thinking, events);
+		this.#buffer = buffer;
+		if (closed) this.#state = "outside";
+		return closed;
 	}
 
 	#endThinking(events: InbandScanEvent[]): void {
-		events.push({ type: "thinkingEnd", thinking: this.#thinking });
-		this.#thinking = "";
+		this.#thinking.end(events);
 		this.#state = "outside";
 	}
 

@@ -4,18 +4,21 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
+import { StatusPresentationProducer } from "../src/presentation/status-producer";
 import { statusLineSessionParts } from "./helpers/status-line-session";
 
 async function flushMicrotasks(): Promise<void> {
-	await Promise.resolve();
-	await Promise.resolve();
+	for (let i = 0; i < 10; i++) {
+		await Promise.resolve();
+	}
 }
 
-function makeSession(fetchUsageReports: (signal?: AbortSignal) => Promise<unknown>): AgentSession {
-	return {
+function makeSession(fetchUsageReports: (signal?: AbortSignal) => Promise<unknown>) {
+	const session = {
 		...statusLineSessionParts({ contextWindow: 200_000, contextUsage: undefined, sessionName: "test" }),
 		fetchUsageReports,
 	} as unknown as AgentSession;
+	return new StatusPresentationProducer(session);
 }
 
 function usageReport(percent: number): unknown[] {
@@ -152,25 +155,27 @@ describe("StatusLineComponent usage refresh", () => {
 	it("re-fetches usage immediately when the session rotates to another org under the same email", async () => {
 		let calls = 0;
 		let orgId = "org-team";
-		const base = makeSession(async () => {
-			calls++;
-			return usageReport(10);
-		}) as unknown as Record<string, unknown>;
-		// Same provider + email + account throughout — only the org rotates.
-		base.state = {
-			messages: [],
-			model: { contextWindow: 200_000, provider: "anthropic" },
-		};
-		base.modelRegistry = {
-			authStorage: {
-				getOAuthAccountIdentity: () => ({
-					email: "shared@example.com",
-					accountId: "account-shared",
-					orgId,
-				}),
+		const base = {
+			...statusLineSessionParts({ contextWindow: 200_000, contextUsage: undefined, sessionName: "test" }),
+			fetchUsageReports: async () => {
+				calls++;
+				return usageReport(10);
 			},
-		};
-		const component = new StatusLineComponent(base as unknown as AgentSession);
+			state: {
+				messages: [],
+				model: { contextWindow: 200_000, provider: "anthropic" },
+			},
+			modelRegistry: {
+				authStorage: {
+					getOAuthAccountIdentity: () => ({
+						email: "shared@example.com",
+						accountId: "account-shared",
+						orgId,
+					}),
+				},
+			},
+		} as unknown as AgentSession;
+		const component = new StatusLineComponent(new StatusPresentationProducer(base));
 
 		component.refreshUsageInBackground();
 		vi.advanceTimersByTime(0);
@@ -189,5 +194,104 @@ describe("StatusLineComponent usage refresh", () => {
 		vi.advanceTimersByTime(0);
 		await flushMicrotasks();
 		expect(calls).toBe(2);
+	});
+
+	it("does not allow a late response from a prior session to overwrite the new session when retargeting the same producer", async () => {
+		const oldDeferred = Promise.withResolvers<unknown>();
+		const newDeferred = Promise.withResolvers<unknown>();
+
+		const oldSession = {
+			...statusLineSessionParts({ contextWindow: 200_000, contextUsage: undefined, sessionName: "old-session" }),
+			fetchUsageReports: () => oldDeferred.promise,
+			sessionId: "session-old",
+		} as unknown as AgentSession;
+
+		const newSession = {
+			...statusLineSessionParts({ contextWindow: 200_000, contextUsage: undefined, sessionName: "new-session" }),
+			fetchUsageReports: () => newDeferred.promise,
+			sessionId: "session-new",
+		} as unknown as AgentSession;
+
+		const producer = new StatusPresentationProducer(oldSession);
+		const component = new StatusLineComponent(producer);
+		component.updateSettings({
+			preset: "custom",
+			leftSegments: ["usage"],
+			rightSegments: [],
+		});
+
+		component.refreshUsageInBackground();
+		vi.advanceTimersByTime(0);
+		await flushMicrotasks();
+
+		// Switch session on the SAME producer
+		producer.setSession(newSession);
+		component.refreshUsageInBackground();
+		vi.advanceTimersByTime(0);
+		await flushMicrotasks();
+
+		// Old deferred resolves with 88%
+		oldDeferred.resolve(usageReport(88));
+		await flushMicrotasks();
+
+		// New session's status line must NOT be overwritten with old session's 88%
+		expect(plain(component.renderQuietLine(80) ?? "")).not.toContain("5h 88%");
+
+		// New deferred resolves with 22%
+		newDeferred.resolve(usageReport(22));
+		await flushMicrotasks();
+
+		expect(plain(component.renderQuietLine(80) ?? "")).toContain("5h 22%");
+	});
+
+	it("does not allow a post-timeout late response from a prior session to overwrite new session data", async () => {
+		const oldDeferred = Promise.withResolvers<unknown>();
+		const newDeferred = Promise.withResolvers<unknown>();
+
+		const oldSession = {
+			...statusLineSessionParts({ contextWindow: 200_000, contextUsage: undefined, sessionName: "old-session" }),
+			fetchUsageReports: () => oldDeferred.promise,
+			sessionId: "session-old",
+		} as unknown as AgentSession;
+
+		const newSession = {
+			...statusLineSessionParts({ contextWindow: 200_000, contextUsage: undefined, sessionName: "new-session" }),
+			fetchUsageReports: () => newDeferred.promise,
+			sessionId: "session-new",
+		} as unknown as AgentSession;
+
+		const producer = new StatusPresentationProducer(oldSession);
+		const component = new StatusLineComponent(producer);
+		component.updateSettings({
+			preset: "custom",
+			leftSegments: ["usage"],
+			rightSegments: [],
+		});
+
+		component.refreshUsageInBackground();
+		vi.advanceTimersByTime(0);
+		await flushMicrotasks();
+
+		// Timeout the old request
+		vi.advanceTimersByTime(2_000);
+		await flushMicrotasks();
+
+		// Switch to new session on the SAME producer
+		producer.setSession(newSession);
+		component.refreshUsageInBackground();
+		vi.advanceTimersByTime(0);
+		await flushMicrotasks();
+
+		// Old request resolves very late after its timeout
+		oldDeferred.resolve(usageReport(95));
+		await flushMicrotasks();
+
+		expect(plain(component.renderQuietLine(80) ?? "")).not.toContain("5h 95%");
+
+		// New request resolves
+		newDeferred.resolve(usageReport(15));
+		await flushMicrotasks();
+
+		expect(plain(component.renderQuietLine(80) ?? "")).toContain("5h 15%");
 	});
 });

@@ -18,65 +18,33 @@
  * read off the image directly instead of estimated.
  */
 
-import type { TUI } from "../../hosts/terminal/engine/src/index";
 import {
 	COMPOSER_INSET_COLS,
+	PRISTINE_COMPOSER_ACCENT_STATE,
 	resolveComposerAccents,
 } from "../../packages/coding-agent/src/modes/terminal/components/composer/composer-chrome";
 import { BashExecutionComponent } from "../../packages/coding-agent/src/modes/terminal/components/transcript/bash-execution";
 import { ToolExecutionComponent } from "../../packages/coding-agent/src/modes/terminal/components/transcript/tool-execution";
-import { initTheme, theme } from "../../packages/coding-agent/src/theme/theme";
-import { flag, hasFlag, renderWidth } from "./render-args";
+import { mockTui, renderDemo, renderRuler } from "./render-args";
 
-const themeName = flag("theme", "titanium");
-const width = renderWidth();
-await initTheme(false, "unicode", false, themeName, themeName);
-
-const ui = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
-const lines: string[] = [];
-
-if (hasFlag("ruler")) {
-	// Tens on one row, units on the next, so a block's start column is readable.
-	let tens = "";
-	let units = "";
-	for (let col = 0; col < width; col++) {
-		tens += col % 10 === 0 ? String(Math.floor(col / 10) % 10) : " ";
-		units += String(col % 10);
+await renderDemo(({ width, hasFlag }) => {
+	const ui = mockTui();
+	const lines: string[] = [];
+	if (hasFlag("ruler")) {
+		lines.push(...renderRuler(width));
 	}
-	lines.push(theme.fg("dim", tens), theme.fg("dim", units));
-}
-
-// A user turn, as the transcript writes it: the prompt glyph on the rail.
-const accents = resolveComposerAccents({
-	bypass: false,
-	bashMode: false,
-	pythonMode: false,
-	planMode: false,
-	focusedSubagent: false,
-	sessionAccentAnsi: undefined,
-	thinkingLevel: "off",
+	const accents = resolveComposerAccents(PRISTINE_COMPOSER_ACCENT_STATE);
+	lines.push(`${accents.promptGutter}run the failing test and tell me why it fails`, "");
+	lines.push(`${" ".repeat(COMPOSER_INSET_COLS)}The parser rejects an empty focus string, so the run aborts.`, "");
+	const bash = new BashExecutionComponent("bun test test/parser.test.ts", ui);
+	bash.appendOutput("1 pass\n1 fail\n");
+	bash.setComplete(1, false);
+	lines.push(...bash.render(width), "");
+	const tool = new ToolExecutionComponent("read", { path: "src/parser.ts" }, {}, undefined, ui);
+	tool.updateResult(
+		{ content: [{ type: "text", text: "export function parse() {}" }], isError: false } as never,
+		false,
+	);
+	lines.push(...tool.render(width), "", `${accents.promptGutter}`);
+	return lines;
 });
-lines.push(`${accents.promptGutter}run the failing test and tell me why it fails`);
-lines.push("");
-
-// An assistant paragraph. Plain text on the rail, which is the thing every other
-// block is supposed to line up with.
-lines.push(`${" ".repeat(COMPOSER_INSET_COLS)}The parser rejects an empty focus string, so the run aborts.`);
-lines.push("");
-
-const bash = new BashExecutionComponent("bun test test/parser.test.ts", ui);
-bash.appendOutput("1 pass\n1 fail\n");
-bash.setComplete(1, false);
-lines.push(...bash.render(width));
-lines.push("");
-
-const tool = new ToolExecutionComponent("read", { path: "src/parser.ts" }, {}, undefined, ui);
-tool.updateResult({ content: [{ type: "text", text: "export function parse() {}" }], isError: false } as never, false);
-lines.push(...tool.render(width));
-lines.push("");
-
-// The composer's own gutter, last, because it is the rail everything else is
-// measured against.
-lines.push(`${accents.promptGutter}`);
-
-process.stdout.write(`${lines.join("\n")}\n`);

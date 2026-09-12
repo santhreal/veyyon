@@ -571,109 +571,22 @@ async function syncDirectory(pin: KeyRootPin): Promise<void> {
 }
 
 /**
- * Find the single trusted stage link left by a crash after publication, unlink it, and persist
- * the now-single-link final key. No unbounded readdir allocation is permitted on this path.
+ * The staging entries under the key root, each with its lstat, in directory order. The scan is
+ * bounded by MAX_KEY_STAGE_SCAN_ENTRIES and throws `overflowMessage` past it; an entry that
+ * vanishes between readdir and lstat is skipped. No unbounded readdir allocation is permitted
+ * on this path.
  */
-async function recoverPublishedKey(pin: KeyRootPin, keyPath: string, publishedStat: Stats): Promise<boolean> {
-	if (!publishedStat.isFile() || publishedStat.nlink !== 2 || publishedStat.size !== KEY_BYTES) return false;
-	assertKeyPathSafe(keyPath, publishedStat, true, true);
-	assertKeyNotExposed(keyPath, publishedStat);
-	await verifyOwnerOnlyWindowsAcl(keyPath);
+async function* stagedKeyEntries(
+	pin: KeyRootPin,
+	overflowMessage: string,
+): AsyncGenerator<{ path: string; stat: Stats }, void, undefined> {
 	let seen = 0;
 	const directory = await fs.opendir(pin.ioRoot);
 	try {
 		for await (const entry of directory) {
 			if (!entry.isFile() || !KEY_STAGE_RE.test(entry.name)) continue;
 			if (++seen > MAX_KEY_STAGE_SCAN_ENTRIES) {
-				throw new Error("Too many vault key staging entries exist to recover one safely.");
-			}
-			const candidatePath = path.join(pin.ioRoot, entry.name);
-			let candidate: Stats;
-			try {
-				candidate = await fs.lstat(candidatePath);
-			} catch (error) {
-				if (isMissingPath(error)) continue;
-				throw error;
-			}
-			if (
-				!candidate.isFile() ||
-				candidate.isSymbolicLink() ||
-				candidate.nlink !== 2 ||
-				candidate.size !== KEY_BYTES ||
-				!sameInode(candidate, publishedStat)
-			) {
-				continue;
-			}
-			assertKeyNotExposed(candidatePath, candidate);
-			await verifyOwnerOnlyWindowsAcl(candidatePath);
-			await verifyKeyRootPin(pin);
-			const finalNow = await fs.lstat(keyPath);
-			assertKeyPathSafe(keyPath, finalNow, true, true);
-			assertKeyNotExposed(keyPath, finalNow);
-			if (!sameInode(finalNow, publishedStat)) {
-				throw new Error("The published vault key changed during orphan recovery.");
-			}
-			// A lockless reader has TWO legal states to find here, not one. Two links means the
-			// recovery is still outstanding; ONE link means a peer reader already completed it, which
-			// is the outcome this function exists to produce and therefore success, not tampering.
-			// Only a third link is suspicious, and `assertKeyPathSafe` above already refuses that.
-			if (finalNow.nlink === 1) return true;
-			await syncDirectory(pin);
-			if (!(await removePathIfSameInode(candidatePath, candidate))) {
-				// `removePathIfSameInode` returns false for two different facts: the path is already
-				// GONE, or it now holds SOMETHING ELSE. Only the second is suspicious, and conflating
-				// them is what lost the race. Removal is a CAS in two steps — rename the path to a
-				// quarantine name, re-verify the inode, unlink — so a peer holds the staging path
-				// absent while the inode still has BOTH links for the width of that window. A reader
-				// landing there and demanding `nlink === 1` was asserting a fact the winner had not
-				// published yet, and read a peer's progress as an attack.
-				if (await pathPresent(candidatePath)) {
-					const progressed = await fs.lstat(keyPath);
-					if (!sameInode(progressed, publishedStat) || progressed.nlink !== 1) {
-						throw new Error("The published vault key staging link changed during orphan recovery.");
-					}
-				} else {
-					// The staging path went away under a peer that is still mid-CAS, so the link count
-					// that peer will publish IS NOT OBSERVABLE YET and asserting it here is the race
-					// itself. Identity and exposure are observable, so this reader checks those and
-					// leaves the single-link guarantee to the reader that performs the unlink — the one
-					// that can actually keep it.
-					const watched = await fs.lstat(keyPath);
-					assertKeyNotExposed(keyPath, watched);
-					if (!sameInode(watched, publishedStat)) {
-						throw new Error("The published vault key changed during orphan recovery.");
-					}
-					return true;
-				}
-			}
-			const recovered = await fs.lstat(keyPath);
-			assertKeyPathSafe(keyPath, recovered, true);
-			assertKeyNotExposed(keyPath, recovered);
-			if (!sameInode(recovered, publishedStat)) {
-				throw new Error("The published vault key changed after orphan recovery.");
-			}
-			await syncDirectory(pin);
-			return true;
-		}
-	} finally {
-		try {
-			await directory.close();
-		} catch {
-			// `for await` closes the directory on normal completion.
-		}
-	}
-	return false;
-}
-
-async function cleanupUnpublishedStages(pin: KeyRootPin): Promise<void> {
-	let candidates = 0;
-	let changed = false;
-	const directory = await fs.opendir(pin.ioRoot);
-	try {
-		for await (const entry of directory) {
-			if (!entry.isFile() || !KEY_STAGE_RE.test(entry.name)) continue;
-			if (++candidates > MAX_KEY_STAGE_SCAN_ENTRIES) {
-				throw new Error("Too many vault key staging entries exist to clean safely.");
+				throw new Error(overflowMessage);
 			}
 			const candidatePath = path.join(pin.ioRoot, entry.name);
 			let stat: Stats;
@@ -683,28 +596,110 @@ async function cleanupUnpublishedStages(pin: KeyRootPin): Promise<void> {
 				if (isMissingPath(error)) continue;
 				throw error;
 			}
-			if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) continue;
-			assertKeyNotExposed(candidatePath, stat);
-			await verifyOwnerOnlyWindowsAcl(candidatePath);
-			if (stat.size > 0) {
-				const handle = await fs.open(candidatePath, fsConstants.O_RDWR | fsConstants.O_NOFOLLOW);
-				try {
-					const opened = await handle.stat();
-					if (!sameKeySnapshot(keySnapshot(stat), opened)) continue;
-					await handle.truncate(0);
-					await handle.sync();
-				} finally {
-					await handle.close();
-				}
-			}
-			changed = (await removePathIfSameInode(candidatePath, stat)) || changed;
+			yield { path: candidatePath, stat };
 		}
 	} finally {
 		try {
 			await directory.close();
 		} catch {
-			// `for await` closes the descriptor after normal completion.
+			// `for await` closes the directory on normal completion.
 		}
+	}
+}
+
+/**
+ * Find the single trusted stage link left by a crash after publication, unlink it, and persist
+ * the now-single-link final key. No unbounded readdir allocation is permitted on this path.
+ */
+async function recoverPublishedKey(pin: KeyRootPin, keyPath: string, publishedStat: Stats): Promise<boolean> {
+	if (!publishedStat.isFile() || publishedStat.nlink !== 2 || publishedStat.size !== KEY_BYTES) return false;
+	assertKeyPathSafe(keyPath, publishedStat, true, true);
+	assertKeyNotExposed(keyPath, publishedStat);
+	await verifyOwnerOnlyWindowsAcl(keyPath);
+	const stages = stagedKeyEntries(pin, "Too many vault key staging entries exist to recover one safely.");
+	for await (const { path: candidatePath, stat: candidate } of stages) {
+		if (
+			!candidate.isFile() ||
+			candidate.isSymbolicLink() ||
+			candidate.nlink !== 2 ||
+			candidate.size !== KEY_BYTES ||
+			!sameInode(candidate, publishedStat)
+		) {
+			continue;
+		}
+		assertKeyNotExposed(candidatePath, candidate);
+		await verifyOwnerOnlyWindowsAcl(candidatePath);
+		await verifyKeyRootPin(pin);
+		const finalNow = await fs.lstat(keyPath);
+		assertKeyPathSafe(keyPath, finalNow, true, true);
+		assertKeyNotExposed(keyPath, finalNow);
+		if (!sameInode(finalNow, publishedStat)) {
+			throw new Error("The published vault key changed during orphan recovery.");
+		}
+		// A lockless reader has TWO legal states to find here, not one. Two links means the
+		// recovery is still outstanding; ONE link means a peer reader already completed it, which
+		// is the outcome this function exists to produce and therefore success, not tampering.
+		// Only a third link is suspicious, and `assertKeyPathSafe` above already refuses that.
+		if (finalNow.nlink === 1) return true;
+		await syncDirectory(pin);
+		if (!(await removePathIfSameInode(candidatePath, candidate))) {
+			// `removePathIfSameInode` returns false for two different facts: the path is already
+			// GONE, or it now holds SOMETHING ELSE. Only the second is suspicious, and conflating
+			// them is what lost the race. Removal is a CAS in two steps — rename the path to a
+			// quarantine name, re-verify the inode, unlink — so a peer holds the staging path
+			// absent while the inode still has BOTH links for the width of that window. A reader
+			// landing there and demanding `nlink === 1` was asserting a fact the winner had not
+			// published yet, and read a peer's progress as an attack.
+			if (await pathPresent(candidatePath)) {
+				const progressed = await fs.lstat(keyPath);
+				if (!sameInode(progressed, publishedStat) || progressed.nlink !== 1) {
+					throw new Error("The published vault key staging link changed during orphan recovery.");
+				}
+			} else {
+				// The staging path went away under a peer that is still mid-CAS, so the link count
+				// that peer will publish IS NOT OBSERVABLE YET and asserting it here is the race
+				// itself. Identity and exposure are observable, so this reader checks those and
+				// leaves the single-link guarantee to the reader that performs the unlink — the one
+				// that can actually keep it.
+				const watched = await fs.lstat(keyPath);
+				assertKeyNotExposed(keyPath, watched);
+				if (!sameInode(watched, publishedStat)) {
+					throw new Error("The published vault key changed during orphan recovery.");
+				}
+				return true;
+			}
+		}
+		const recovered = await fs.lstat(keyPath);
+		assertKeyPathSafe(keyPath, recovered, true);
+		assertKeyNotExposed(keyPath, recovered);
+		if (!sameInode(recovered, publishedStat)) {
+			throw new Error("The published vault key changed after orphan recovery.");
+		}
+		await syncDirectory(pin);
+		return true;
+	}
+	return false;
+}
+
+async function cleanupUnpublishedStages(pin: KeyRootPin): Promise<void> {
+	let changed = false;
+	const stages = stagedKeyEntries(pin, "Too many vault key staging entries exist to clean safely.");
+	for await (const { path: candidatePath, stat } of stages) {
+		if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) continue;
+		assertKeyNotExposed(candidatePath, stat);
+		await verifyOwnerOnlyWindowsAcl(candidatePath);
+		if (stat.size > 0) {
+			const handle = await fs.open(candidatePath, fsConstants.O_RDWR | fsConstants.O_NOFOLLOW);
+			try {
+				const opened = await handle.stat();
+				if (!sameKeySnapshot(keySnapshot(stat), opened)) continue;
+				await handle.truncate(0);
+				await handle.sync();
+			} finally {
+				await handle.close();
+			}
+		}
+		changed = (await removePathIfSameInode(candidatePath, stat)) || changed;
 	}
 	if (changed) await syncDirectory(pin);
 }

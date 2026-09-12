@@ -45,7 +45,7 @@ describe("AsyncJobManager", () => {
 			"task",
 			"agent task",
 			async ({ reportProgress }) => {
-				await reportProgress("subagent started");
+				await reportProgress("agent started");
 				return "task done";
 			},
 			{
@@ -429,7 +429,7 @@ describe("AsyncJobManager", () => {
 		const mainDeliveryReleased = new Promise<void>(resolve => {
 			releaseMainDelivery = resolve;
 		});
-		const subagentCompletions: Array<{ jobId: string; text: string }> = [];
+		const agentCompletions: Array<{ jobId: string; text: string }> = [];
 		const manager = new AsyncJobManager({
 			retentionMs: 0,
 			onJobComplete: async (jobId, text) => {
@@ -438,12 +438,12 @@ describe("AsyncJobManager", () => {
 					await mainDeliveryReleased;
 					return;
 				}
-				subagentCompletions.push({ jobId, text });
+				agentCompletions.push({ jobId, text });
 			},
 		});
 
 		mainJobId = manager.register("task", "main job", async () => "main result", { ownerId: "0-Main" });
-		const targetJobId = manager.register("task", "subagent job", async () => "subagent result", {
+		const targetJobId = manager.register("task", "agent job", async () => "agent result", {
 			ownerId: "3-AuthLoader",
 		});
 		await manager.waitForAll();
@@ -453,7 +453,7 @@ describe("AsyncJobManager", () => {
 		const drained = await manager.drainDeliveries({ timeoutMs: 50, filter: { ownerId: "3-AuthLoader" } });
 
 		expect(drained).toBe(true);
-		expect(subagentCompletions).toEqual([{ jobId: targetJobId, text: "subagent result" }]);
+		expect(agentCompletions).toEqual([{ jobId: targetJobId, text: "agent result" }]);
 		expect(manager.hasPendingDeliveries({ ownerId: "3-AuthLoader" })).toBe(false);
 
 		expect(manager.acknowledgeDeliveries([mainJobId])).toBe(0);
@@ -498,7 +498,7 @@ describe("AsyncJobManager", () => {
 		});
 
 		mainJobId = manager.register("task", "main job", async () => "main result", { ownerId: "0-Main" });
-		targetJobId = manager.register("task", "subagent job", async () => "subagent result", {
+		targetJobId = manager.register("task", "agent job", async () => "agent result", {
 			ownerId: "3-AuthLoader",
 		});
 		await manager.waitForAll();
@@ -539,12 +539,12 @@ describe("AsyncJobManager", () => {
 			},
 			{ ownerId: "0-Main" },
 		);
-		const subagentJobId = manager.register(
+		const agentJobId = manager.register(
 			"bash",
-			"subagent-job",
+			"agent-job",
 			async ({ signal }) => {
 				await hold(signal);
-				return "subagent-cancelled";
+				return "agent-cancelled";
 			},
 			{ ownerId: "3-AuthLoader" },
 		);
@@ -552,7 +552,7 @@ describe("AsyncJobManager", () => {
 		manager.cancelAll({ ownerId: "3-AuthLoader" });
 
 		expect(manager.getJob(parentJobId)?.status).toBe("running");
-		expect(manager.getJob(subagentJobId)?.status).toBe("cancelled");
+		expect(manager.getJob(agentJobId)?.status).toBe("cancelled");
 
 		// Filtered query mirrors filtered cancel.
 		expect(manager.getRunningJobs({ ownerId: "0-Main" }).map(j => j.id)).toEqual([parentJobId]);
@@ -634,7 +634,7 @@ describe("AsyncJobManager watch windows", () => {
 	 * inside the window had no delivery anywhere. `unwatchJobs` only forgot the
 	 * watch, and `resumeDeliveries` could not see one, so the child's report existed
 	 * only inside the return value of whatever installed the watch. Any path that
-	 * dropped that value dropped the subagent's entire output, permanently, with
+	 * dropped that value dropped the agent's entire output, permanently, with
 	 * nothing left to recover it from.
 	 *
 	 * If this regresses: `completions` stays empty and the queue stays at 0.

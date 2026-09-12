@@ -26,7 +26,7 @@ const DEFAULT_MIN_TOOL_CALLS = 5;
  * Driven by tool presence rather than live settings: the `learn`/`manage_skill`
  * registry is built ONCE at session start (and only for top-level sessions), so
  * keying the guidance on `autolearn.enabled` would let a mid-session enable — or
- * a subagent that filtered the tools out — inject guidance pointing at tools the
+ * an agent that filtered the tools out — inject guidance pointing at tools the
  * session never built. The `learn` addendum is included only when the `learn`
  * tool is present (it requires a memory backend).
  */

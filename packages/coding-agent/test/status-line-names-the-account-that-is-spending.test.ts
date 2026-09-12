@@ -47,6 +47,7 @@ import type { StatusLinePreset } from "@veyyon/coding-agent/modes/terminal/compo
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
+import { StatusPresentationProducer } from "../src/presentation/status-producer";
 import { statusLineSessionParts } from "./helpers/status-line-session";
 
 const SESSION_ID = "session-serving-account";
@@ -153,7 +154,7 @@ function accountOnly(providers?: { live?: string; configured?: string }): {
 	component: StatusLineComponent;
 	line: () => string;
 } {
-	const component = new StatusLineComponent(makeSession(providers));
+	const component = new StatusLineComponent(new StatusPresentationProducer(makeSession(providers)));
 	component.updateSettings({ preset: "custom", leftSegments: ["account"], rightSegments: [], sessionAccent: false });
 	return { component, line: () => stripVTControlCharacters(component.renderQuietLine(120) ?? "") };
 }
@@ -166,7 +167,7 @@ describe("the footline names the account that is spending", () => {
 	it("says nothing when the provider stores one credential", async () => {
 		await storeAccounts("only@example.com");
 
-		// The line is never literally empty — it carries the persistent subagent count — so what is
+		// The line is never literally empty — it carries the persistent agent count — so what is
 		// asserted is that the account contributed nothing to it.
 		expect(accountOnly().line()).not.toContain("only@example.com");
 		expect(accountOnly().line()).not.toContain("as ");
@@ -287,7 +288,7 @@ describe("the footline names the account that is spending", () => {
 	it("reaches the footline on the default preset", async () => {
 		const ids = await storeAccounts("preset@example.com", "preset.other@example.com");
 		authStorage?.selectProviderCredential("anthropic", ids[0]!, { sessionId: SESSION_ID });
-		const component = new StatusLineComponent(makeSession());
+		const component = new StatusLineComponent(new StatusPresentationProducer(makeSession()));
 		component.updateSettings({ preset: "default", sessionAccent: false });
 
 		expect(stripVTControlCharacters(component.renderQuietLine(200) ?? "")).toContain("as preset@example.com");

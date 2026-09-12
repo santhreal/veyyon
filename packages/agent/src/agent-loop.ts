@@ -1300,7 +1300,7 @@ async function runLoopBody(
 					}
 				}
 
-				// A tool hook may mark its completed result as terminal (e.g. subagent yield).
+				// A tool hook may mark its completed result as terminal (e.g. agent yield).
 				// Stop before the next provider call without changing external/user abort semantics.
 				if (signal?.reason === TERMINAL_TOOL_RESULT_ABORT_REASON) {
 					hasMoreToolCalls = false;
@@ -1603,6 +1603,26 @@ async function streamAssistantResponse(
 			let partialMessage: AssistantMessage | null = null;
 			let addedPartial = false;
 			const completedToolCallIds = new Set<string>();
+			// Both stream endings, the `done`/`error` event and a stream that ends
+			// without one, reject a Harmony leak the same way: discard the committed
+			// partial, then interrupt the turn with what was recovered from the leak.
+			const rejectHarmonyLeak = (message: AssistantMessage): void => {
+				if (!harmonyMitigationEnabled) return;
+				const detection = detectHarmonyLeakInAssistantMessage(message);
+				if (!detection) return;
+				const recovered = recoverHarmonyToolCall(message, detection);
+				const removed = recovered?.removed ?? extractHarmonyRemoved(message, detection);
+				if (addedPartial) {
+					emitDiscardedHarmonyPartial(
+						partialMessage,
+						stream,
+						`Discarded after GPT-5 Harmony protocol leakage (${signalListLabel(detection.signals)})`,
+					);
+					context.messages.pop();
+					addedPartial = false;
+				}
+				throw new HarmonyLeakInterruption(detection, removed, recovered);
+			};
 
 			const responseIterator = response[Symbol.asyncIterator]();
 			const finishAbortedStream = async (): Promise<AssistantMessage> => {
@@ -1692,23 +1712,7 @@ async function streamAssistantResponse(
 							),
 							storedToolCallIds(context.messages, addedPartial),
 						);
-						if (harmonyMitigationEnabled) {
-							const detection = detectHarmonyLeakInAssistantMessage(finalMessage);
-							if (detection) {
-								const recovered = recoverHarmonyToolCall(finalMessage, detection);
-								const removed = recovered?.removed ?? extractHarmonyRemoved(finalMessage, detection);
-								if (addedPartial) {
-									emitDiscardedHarmonyPartial(
-										partialMessage,
-										stream,
-										`Discarded after GPT-5 Harmony protocol leakage (${signalListLabel(detection.signals)})`,
-									);
-									context.messages.pop();
-									addedPartial = false;
-								}
-								throw new HarmonyLeakInterruption(detection, removed, recovered);
-							}
-						}
+						rejectHarmonyLeak(finalMessage);
 						finalMessage = snapshotAssistantMessage(finalMessage);
 						if (turnInstrumentation !== "off") {
 							const status: AssistantTurnStatus =
@@ -1821,23 +1825,7 @@ async function streamAssistantResponse(
 			}
 
 			let trailing = await response.result();
-			if (harmonyMitigationEnabled) {
-				const detection = detectHarmonyLeakInAssistantMessage(trailing);
-				if (detection) {
-					const recovered = recoverHarmonyToolCall(trailing, detection);
-					const removed = recovered?.removed ?? extractHarmonyRemoved(trailing, detection);
-					if (addedPartial) {
-						emitDiscardedHarmonyPartial(
-							partialMessage,
-							stream,
-							`Discarded after GPT-5 Harmony protocol leakage (${signalListLabel(detection.signals)})`,
-						);
-						context.messages.pop();
-						addedPartial = false;
-					}
-					throw new HarmonyLeakInterruption(detection, removed, recovered);
-				}
-			}
+			rejectHarmonyLeak(trailing);
 			trailing = snapshotAssistantMessage(trailing);
 			if (addedPartial) {
 				context.messages[context.messages.length - 1] = trailing;

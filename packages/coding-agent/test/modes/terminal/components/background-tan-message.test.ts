@@ -1,7 +1,9 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { createBackgroundTanDispatchBlock } from "@veyyon/coding-agent/modes/terminal/components/transcript/background-tan-message";
+import { toTranscriptBlock } from "@veyyon/coding-agent/presentation/transcript-builder";
 import { BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE, type CustomMessage } from "@veyyon/coding-agent/session/messages";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import type { BackgroundTanDispatchCustomDisplay } from "@veyyon/wire/presentation";
 
 function dispatchMessage(details: { jobId: string; work: string; sessionFile: string }): CustomMessage<unknown> {
 	return {
@@ -17,6 +19,14 @@ function dispatchMessage(details: { jobId: string; work: string; sessionFile: st
 	} as CustomMessage<unknown>;
 }
 
+function project(message: CustomMessage<unknown>): BackgroundTanDispatchCustomDisplay {
+	const block = toTranscriptBlock(message, { index: 0 });
+	if (block.kind !== "custom" || block.display?.variant !== "background-tan") {
+		throw new Error(`Expected background-tan display, got ${block.kind}`);
+	}
+	return block.display;
+}
+
 describe("createBackgroundTanDispatchBlock", () => {
 	beforeAll(async () => {
 		await initTheme(false);
@@ -24,7 +34,13 @@ describe("createBackgroundTanDispatchBlock", () => {
 
 	it("renders one compact line with the job id and work preview, not the raw notice", () => {
 		const block = createBackgroundTanDispatchBlock(
-			dispatchMessage({ jobId: "job-42", work: "investigate the cache reuse path", sessionFile: "/x/Tan-1.jsonl" }),
+			project(
+				dispatchMessage({
+					jobId: "job-42",
+					work: "investigate the cache reuse path",
+					sessionFile: "/x/Tan-1.jsonl",
+				}),
+			),
 		);
 
 		const lines = block.render(120).filter(line => line.trim().length > 0);
@@ -37,7 +53,7 @@ describe("createBackgroundTanDispatchBlock", () => {
 
 	it("truncates an overlong work preview so the line stays a single pill", () => {
 		const block = createBackgroundTanDispatchBlock(
-			dispatchMessage({ jobId: "job-7", work: "x".repeat(200), sessionFile: "/x/Tan-2.jsonl" }),
+			project(dispatchMessage({ jobId: "job-7", work: "x".repeat(200), sessionFile: "/x/Tan-2.jsonl" })),
 		);
 
 		const line = block.render(120).find(rendered => rendered.includes("job-7")) ?? "";

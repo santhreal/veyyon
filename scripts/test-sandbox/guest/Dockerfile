@@ -91,7 +91,8 @@ RUN set -eux; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         git ca-certificates util-linux kmod procps xz-utils cpio iproute2 \
-        ripgrep openssh-client openssh-server python3 curl ffmpeg imagemagick; \
+        ripgrep openssh-client openssh-server python3 curl ffmpeg imagemagick \
+        clang mold build-essential; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*; \
     git --version; \
@@ -109,11 +110,12 @@ RUN set -eux; \
 # it comes with the bun base image.
 ARG GH_VERSION=2.45.0
 RUN set -eux; \
-    curl -fsSL -o /tmp/gh.tgz \
+    mkdir -p /var/cache/gh; \
+    curl -fsSL -o /var/cache/gh/gh.tgz \
         "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"; \
-    tar -xzf /tmp/gh.tgz -C /tmp; \
-    install -m 0755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh; \
-    rm -rf /tmp/gh.tgz "/tmp/gh_${GH_VERSION}_linux_amd64"; \
+    tar -xzf /var/cache/gh/gh.tgz -C /var/cache/gh; \
+    install -m 0755 "/var/cache/gh/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh; \
+    rm -rf /var/cache/gh; \
     gh --version
 
 # mdbook is pinned to v0.5.2 across docs.yml, site.yml, ci.yml, and deployment.md.

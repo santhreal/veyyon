@@ -4,6 +4,7 @@ import { type } from "arktype";
 import { formatCurrentTime, formatMemories } from "../../memory/hindsight/content";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
+import { requireMnemopiSessionState } from "./memory-session";
 import { recallToolView } from "./memory-view";
 
 const memoryRecallSchema = type({
@@ -35,10 +36,7 @@ export class MemoryRecallTool implements AgentTool<typeof memoryRecallSchema> {
 		return untilAborted(signal, async () => {
 			const backend = this.session.settings.get("memory.backend");
 			if (backend === "mnemopi") {
-				const state = this.session.getMnemopiSessionState?.();
-				if (!state) {
-					throw new Error("Mnemopi backend is not initialised for this session.");
-				}
+				const state = requireMnemopiSessionState(this.session);
 				try {
 					const results = await state.recallResultsScoped(params.query);
 					if (results.length === 0) {

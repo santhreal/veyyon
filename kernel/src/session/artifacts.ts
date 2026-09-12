@@ -32,9 +32,9 @@ function sanitizeToolType(toolType: string): string {
  * Artifacts are stored with sequential IDs in the session's artifact directory.
  * The directory is created lazily on first write.
  *
- * Subagents do not own their own `ArtifactManager`. The parent's instance is
+ * Agents do not own their own `ArtifactManager`. The parent's instance is
  * adopted via `SessionManager.adoptArtifactManager`, so the whole parent +
- * subagent tree shares one ID space and one directory.
+ * agent tree shares one ID space and one directory.
  */
 export class ArtifactManager {
 	#nextId = 0;

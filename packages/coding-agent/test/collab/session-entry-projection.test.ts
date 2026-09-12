@@ -208,7 +208,16 @@ describe("projecting a tool-result message entry", () => {
 		const wire = toWireSessionEntry(toolResultEntry());
 		const message = (wire as unknown as { message: unknown }).message;
 
-		expect(keysOf(message)).toEqual(["content", "details", "isError", "role", "timestamp", "toolCallId", "toolName"]);
+		expect(keysOf(message)).toEqual([
+			"content",
+			"details",
+			"display",
+			"isError",
+			"role",
+			"timestamp",
+			"toolCallId",
+			"toolName",
+		]);
 	});
 });
 

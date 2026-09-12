@@ -1,10 +1,10 @@
 /**
- * The JTD-to-TypeScript renderer, which produces the type a subagent is told to
+ * The JTD-to-TypeScript renderer, which produces the type an agent is told to
  * return.
  *
  * This output goes straight into a system prompt, so it is not decoration: it
  * is the only description the model gets of the shape it must submit, and
- * anything wrong or missing here shows up as a subagent failing output
+ * anything wrong or missing here shows up as an agent failing output
  * validation in a loop.
  *
  * The renderer had no tests. It also could not render a self-referential

@@ -34,35 +34,13 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { runnerSources } from "./runner-references";
-import { REPO_ROOT, typeScriptMembers } from "./workspace-layout";
-
-interface WorkspacePackage {
-	/** Repo-relative directory, so a failure names the root as well as the member. */
-	readonly dir: string;
-	readonly name: string;
-	readonly scripts: Record<string, string>;
-}
-
-function readWorkspacePackages(): WorkspacePackage[] {
-	const out: WorkspacePackage[] = [];
-	for (const member of typeScriptMembers()) {
-		const manifest = join(REPO_ROOT, member, "package.json");
-		try {
-			if (!statSync(manifest).isFile()) continue;
-		} catch {
-			continue;
-		}
-		const parsed = JSON.parse(readFileSync(manifest, "utf8"));
-		out.push({ dir: member, name: parsed.name ?? member, scripts: parsed.scripts ?? {} });
-	}
-	return out;
-}
+import { REPO_ROOT, workspacePackages } from "./workspace-layout";
 
 describe("the workspace typecheck covers every package", () => {
 	/** The suite is only meaningful if it found the packages at all; an empty
 	 * listing would make every assertion below vacuously true. */
 	it("finds the workspace packages under every declared root", () => {
-		const packages = readWorkspacePackages();
+		const packages = workspacePackages();
 		expect(packages.length).toBeGreaterThan(10);
 		// A member outside `packages/`. The literal enumeration could not see one, so a contract was
 		// free to ship with no `check:types` while this suite reported full coverage.
@@ -76,7 +54,7 @@ describe("the workspace typecheck covers every package", () => {
 	 * script exists.
 	 */
 	it("gives every package a check:types script", () => {
-		const missing = readWorkspacePackages()
+		const missing = workspacePackages()
 			.filter(pkg => !pkg.scripts["check:types"])
 			.map(pkg => `${pkg.dir} (${pkg.name})`);
 		expect(
@@ -92,7 +70,7 @@ describe("the workspace typecheck covers every package", () => {
 	 * the script name.
 	 */
 	it("points every check:types at the type checker", () => {
-		const bogus = readWorkspacePackages()
+		const bogus = workspacePackages()
 			.filter(pkg => {
 				const script = pkg.scripts["check:types"];
 				return script !== undefined && !script.includes("tsgo") && !script.includes("tsc");

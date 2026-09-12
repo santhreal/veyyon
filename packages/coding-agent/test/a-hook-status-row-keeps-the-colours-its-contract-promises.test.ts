@@ -30,7 +30,7 @@ import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/compone
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import { removeSyncWithRetries, setProjectDir, stripAnsi } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
-import { makeStatusLineSession } from "./helpers/status-line-session";
+import { makeStatusLineProducer } from "./helpers/status-line-session";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
 
 let settingsState: SettingsTestState | undefined;
@@ -94,7 +94,7 @@ function paintedRuntime(): AutoresearchRuntime {
 
 function footer(): StatusLineComponent {
 	const component = new StatusLineComponent(
-		makeStatusLineSession({
+		makeStatusLineProducer({
 			modelId: "test-model",
 			modelName: "Test Model",
 			contextWindow: 100_000,

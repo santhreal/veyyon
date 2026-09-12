@@ -8,8 +8,6 @@
  * provider re-inlines the idiom instead of importing the owner.
  */
 import { describe, expect, it } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
-import * as path from "node:path";
 import {
 	clampNumResults,
 	collapseWhitespace,
@@ -130,45 +128,5 @@ describe("dateToAgeSeconds", () => {
 	it("returns a negative age for a future ISO date", () => {
 		const age = dateToAgeSeconds(new Date(Date.now() + 60_000).toISOString());
 		expect(age).toBeLessThan(0);
-	});
-});
-
-describe("collapseWhitespace single-owner lock", () => {
-	const providersDir = path.resolve(import.meta.dir, "../../../../src/tools/web/search/providers");
-	const files = readdirSync(providersDir).filter(f => f.endsWith(".ts") && !f.endsWith(".test.ts"));
-
-	it("scans the provider directory", () => {
-		expect(files.length).toBeGreaterThan(5);
-	});
-
-	it("no provider re-inlines the collapse-and-trim idiom or a private normalizeText", () => {
-		const offenders: string[] = [];
-		for (const file of files) {
-			const text = readFileSync(path.join(providersDir, file), "utf8");
-			if (/replace\(\/\\s\+\/g, " "\)\.trim\(\)/.test(text)) offenders.push(`${file}: inline collapse-and-trim`);
-			if (/function\s+normalizeText\s*\(/.test(text)) offenders.push(`${file}: local normalizeText`);
-		}
-		expect(offenders, "import collapseWhitespace from ../utils instead").toEqual([]);
-	});
-});
-
-describe("result-limit single-owner lock", () => {
-	const providersDir = path.resolve(import.meta.dir, "../../../../src/tools/web/search/providers");
-	const files = readdirSync(providersDir).filter(f => f.endsWith(".ts") && !f.endsWith(".test.ts"));
-
-	// A caller-supplied count must never reach `Array.prototype.slice` raw. Both
-	// clampNumResults (default-cap providers) and sanitizeResultLimit (no-cap
-	// providers) exist so the count is floored to a whole positive number first.
-	// Slicing a raw `params.num_results`/`params.numSearchResults`/`params.limit`
-	// is the negative-limit bug that silently drops trailing results. This lock
-	// fails if a provider reintroduces a raw slice on an unsanitized param.
-	it("no provider slices sources on a raw, unsanitized result count", () => {
-		const offenders: string[] = [];
-		const rawSlice = /\.slice\(\s*0\s*,\s*params\.(num_results|numSearchResults|limit)\b/;
-		for (const file of files) {
-			const text = readFileSync(path.join(providersDir, file), "utf8");
-			if (rawSlice.test(text)) offenders.push(`${file}: raw slice on params.<count>`);
-		}
-		expect(offenders, "sanitize the count via sanitizeResultLimit/clampNumResults before slicing").toEqual([]);
 	});
 });

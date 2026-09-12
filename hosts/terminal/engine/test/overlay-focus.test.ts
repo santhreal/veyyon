@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { type Component, Container, type Focusable, type OverlayFocusOwner, TUI } from "@veyyon/tui";
+import { Editor } from "@veyyon/tui/components/editor";
 import type { Terminal, TerminalAppearance } from "@veyyon/tui/terminal";
+import { settleFrames } from "./helpers/settle-frames";
+import { defaultEditorTheme } from "./test-themes";
 
 class MinimalTerminal implements Terminal {
 	columns = 80;
@@ -96,6 +99,78 @@ class OwningOverlay extends FocusRecorder implements OverlayFocusOwner {
 }
 
 describe("TUI overlay focus", () => {
+	it.each([false, true])(
+		"keeps a displayed passive overlay out of the input path, modal underneath: %s",
+		async modal => {
+			const terminal = new MinimalTerminal();
+			const tui = new TUI(terminal);
+			const editor = new Editor(defaultEditorTheme);
+			const modalEditor = new Editor(defaultEditorTheme);
+			const passive = new Editor(defaultEditorTheme);
+			passive.setText("READONLY");
+			tui.addChild(editor);
+			tui.setFocus(editor);
+
+			try {
+				tui.start();
+				const modalHandle = modal ? tui.showOverlay(modalEditor) : undefined;
+				const active = modal ? modalEditor : editor;
+				const handle = tui.showOverlay(passive, { interactive: false });
+				expect(tui.getFocused()).toBe(active);
+				expect(tui.hasOverlay()).toBe(modal);
+				await settleFrames(terminal, tui);
+				expect(terminal.output).toContain("READONLY");
+				terminal.sendInput("a");
+
+				handle.setHidden(true);
+				handle.setHidden(false);
+				expect(tui.getFocused()).toBe(active);
+				terminal.sendInput("b");
+				modalHandle?.hide();
+				expect(tui.getFocused()).toBe(editor);
+				terminal.sendInput("c");
+				handle.hide();
+				terminal.sendInput("d");
+
+				expect(editor.getText()).toBe(modal ? "cd" : "abcd");
+				expect(modalEditor.getText()).toBe(modal ? "ab" : "");
+				expect(passive.getText()).toBe("READONLY");
+			} finally {
+				tui.stop();
+			}
+		},
+	);
+
+	it("routes input to the topmost interactive overlay, skipping a passive one above it and a lower one beneath", () => {
+		const terminal = new MinimalTerminal();
+		const tui = new TUI(terminal);
+		const editor = new FocusRecorder("editor");
+		const lower = new FocusRecorder("lower");
+		const upper = new FocusRecorder("upper");
+		const passive = new FocusRecorder("passive");
+
+		tui.addChild(editor);
+		tui.setFocus(editor);
+
+		try {
+			tui.start();
+			tui.showOverlay(lower);
+			const upperHandle = tui.showOverlay(upper);
+			tui.showOverlay(passive, { interactive: false });
+
+			terminal.sendInput("1");
+			expect(tui.getFocused()).toBe(upper);
+
+			upperHandle.hide();
+			terminal.sendInput("2");
+			expect(tui.getFocused()).toBe(lower);
+
+			expect([upper.inputs, lower.inputs, passive.inputs, editor.inputs]).toEqual([["1"], ["2"], [], []]);
+		} finally {
+			tui.stop();
+		}
+	});
+
 	it("keeps keyboard focus on the visible overlay when a hidden surface requests focus", () => {
 		const terminal = new MinimalTerminal();
 		const tui = new TUI(terminal);

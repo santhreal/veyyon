@@ -30,8 +30,8 @@ The tool returns a single text result plus structured details:
 The returned tool result is not the final rewind. `AgentSession` waits until `turn_end`, then applies the rewind side effects asynchronously.
 
 ## Flow
-1. `RewindTool.createIf()` in `packages/coding-agent/src/tools/fs/checkpoint.ts` hides the tool from subagents.
-2. `RewindTool.execute()` rejects subagent calls with `ToolError("Checkpoint not available in subagents.")`.
+1. `RewindTool.createIf()` in `packages/coding-agent/src/tools/fs/checkpoint.ts` hides the tool from agents.
+2. `RewindTool.execute()` rejects agent calls with `ToolError("Checkpoint not available in agents.")`.
 3. With no active checkpoint, it throws `ToolError("Checkpoint already completed; continue from the retained rewind report instead of calling rewind again.")` when a completed rewind report exists for the branch, otherwise `ToolError("No active checkpoint. Create a checkpoint before calling rewind.")`.
 4. It trims `params.report`; if empty, it throws `ToolError("Report cannot be empty.")`.
 5. It returns a `toolResult()` with `details.report` and `details.rewound = true`.
@@ -73,7 +73,7 @@ The returned tool result is not the final rewind. `AgentSession` waits until `tu
 - Persisted report/summary content is still subject to the global session persistence cap `MAX_PERSIST_CHARS = 500_000` in `kernel/src/session/session-persistence.ts`.
 
 ## Errors
-- `ToolError("Checkpoint not available in subagents.")`: thrown for subagent sessions.
+- `ToolError("Checkpoint not available in agents.")`: thrown for agent sessions.
 - `ToolError("Checkpoint already completed; continue from the retained rewind report instead of calling rewind again.")`: thrown when the branch's most recent checkpoint was already rewound.
 - `ToolError("No active checkpoint. Create a checkpoint before calling rewind.")`: thrown when no checkpoint state is present.
 - `ToolError("Report cannot be empty.")`: thrown when the trimmed report is empty.

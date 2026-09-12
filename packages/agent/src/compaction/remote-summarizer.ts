@@ -38,6 +38,18 @@ export * from "./legacy-provider-native";
 export const REMOTE_COMPACTION_TIMEOUT_MS = 180_000;
 
 /**
+ * Hard ceiling on a provider's server-side compaction of the session's own
+ * history. It is a separate number from {@link REMOTE_COMPACTION_TIMEOUT_MS}
+ * because the work is not comparable: a remote summarizer answers a prompt the
+ * operator sized, while a server-side compaction re-reads the whole window.
+ * Measured 2026-09-09 on a 234k-token `openai-codex` span: every server
+ * compaction was cut at the 180 s summarizer deadline, and the local summary
+ * of the same span that then ran completed in four minutes. Ten minutes covers
+ * that span with the same margin the summarizer deadline gives its prompt.
+ */
+export const SERVER_COMPACTION_TIMEOUT_MS = 600_000;
+
+/**
  * Bound the non-2xx body written into the log line below.
  *
  * `compaction.remoteEndpoint` points at whatever the operator configured, and a

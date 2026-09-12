@@ -24,15 +24,29 @@
 
 ### Changed
 
+- Legacy hook messages reuse custom-message fields without changing their public type signatures.
+- The turn loop rejects a Harmony leak through one `rejectHarmonyLeak` whether the stream ends with a `done` event or without one; no behavior change.
 - `AgentToolResult`, `AgentToolUpdateCallback`, `ToolTier`, `ToolApprovalDecision` and `ToolApproval` are defined in `@veyyon/tool` as `ToolResult`, `ToolUpdateCallback` and the same approval names; `@veyyon/agent` exports every name it exported before, so no caller changes.
 - The session-entry vocabulary (`SessionEntry` and every member), `AgentMessage` and the `CustomAgentMessages` and `CustomCompactionSessionEntries` hooks are defined in `@veyyon/session`; `@veyyon/agent-core` and `@veyyon/agent-core/compaction/entries` export every name they exported before, and an augmentation now names `@veyyon/session`.
 - Typed tuple and Set copies use spreads rather than `.concat()` or `.slice()`, which those types do not define. No user-visible behavior changes.
 - A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
+- Doc comments refer to a child run as an agent rather than a subagent. No behavior change.
+- `onSpanStart` and `onSpanEnd` run through one guarded call that reports a throw as the same `on_span_start_failed` / `on_span_end_failed` warning, with the thrown error attached; no behavior change.
+- The steering and follow-up queues drain through one step that takes the first message in `one-at-a-time` mode and every message in `all` mode; delivery order and turn count are unchanged.
+- A tool call's arguments and result serialize through one telemetry path keyed by the `contentSerializer` field, and an `onChatUsage` throw or rejection is reported as `on_chat_usage_failed` from one place on both the agent-loop and the manual-record path; no behavior change.
+
+### Fixed
+
+- `AgentTool.renderResult` accepts the optional call arguments already supported by custom and extension tool renderers.
+- A history summary whose single request times out, or does not fit the summarizing model's context window, is produced in stages: the span is summarized as consecutive segments of up to 32k tokens, four at a time, and the segment summaries are merged in rounds into one summary, so a 234k-token session on a model that never begins a whole-span answer still compacts; `compact()` reports the segment count in `summaryStages` and takes `summaryStaging: "staged"` to start staged.
+- A provider's server-side compaction runs under its own ten-minute deadline instead of the three-minute remote-summarizer deadline that cut every codex compaction of a large span.
+- The staged-summary segment budget and worker count clamp through the shared `clampLow`, and the engine classifies a summary timeout through the error-flag leaf modules rather than the error barrel; no behavior change.
+
+## [1.4.1] - 2026-09-08
 
 ### Fixed
 
 - A compaction, branch-summary or turn-prefix transcript leaves out a user or developer message that carries prior reasoning as prose (`demotedReasoningSource`), the message a user-interrupted turn leaves behind, instead of quoting that reasoning back at the endpoint inside the summary request.
-
 
 ## [1.4.0] - 2026-09-04
 

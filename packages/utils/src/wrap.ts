@@ -8,9 +8,11 @@
 
 import { wrapTextWithAnsi as nativeWrapTextWithAnsi } from "@veyyon/natives";
 import { collapseWhitespace } from "./collapse-whitespace";
-import { DEFAULT_TAB_WIDTH } from "./tab-spacing";
+import { DEFAULT_TAB_WIDTH, replaceTabs } from "./tab-width";
 
-const TAB_SPACES = " ".repeat(DEFAULT_TAB_WIDTH);
+// `replaceTabs` is `./tab-width`'s; it stays on this subpath because callers pinned at earlier
+// commits (the historical renderer oracles the differential suites load from Git) import it here.
+export { replaceTabs } from "./tab-width";
 
 /**
  * Normalize CR and CRLF to LF for wrapping. The native wrapper breaks only
@@ -31,16 +33,9 @@ export function wrapTextWithAnsi(text: string, width: number): string[] {
 	return nativeWrapTextWithAnsi(normalizeWrapInput(text), width, DEFAULT_TAB_WIDTH);
 }
 
-/*
- * Replace tabs with the fixed display tab width for consistent rendering.
- */
-export function replaceTabs(text: string): string {
-	return text.replaceAll("\t", TAB_SPACES);
-}
-
 /**
- * Flatten text to a single trimmed line: expand tabs, collapse every run of
- * whitespace (including newlines) to one space. Used by list components that
+ * Flatten text to a single trimmed line: expand tabs (`replaceTabs` in `./tab-width`), collapse
+ * every run of whitespace (including newlines) to one space. Used by list components that
  * render one row per item and must never let an embedded newline break the row.
  *
  * The collapse itself belongs to `collapseWhitespace` in `@veyyon/utils`, the

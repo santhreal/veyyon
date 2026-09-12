@@ -38,16 +38,43 @@ describe("parseRateLimitReason", () => {
 		).toBe("QUOTA_EXHAUSTED");
 	});
 
-	// "Resource has been exhausted (e.g. check quota)" is a quota/daily-limit error — long wait.
-	// Only the literal phrase "resource exhausted" (gRPC status name) is MODEL_CAPACITY.
-	it("classifies 'Resource has been exhausted (e.g. check quota)' as QUOTA_EXHAUSTED", () => {
+	/**
+	 * Google's generic limiter body is the per-minute throttle, served with no ErrorInfo detail and
+	 * no retry hint, and served unchanged while the daily quota is full; the daily wall on
+	 * Antigravity is the "exhausted your capacity … quota will reset" sentence pinned above.
+	 * Read as a daily wall, this body cost a 30-minute backoff that exceeded `retry.maxDelayMs`
+	 * and ended the turn on the first 429 of a throttle that clears in seconds.
+	 */
+	it("classifies 'Resource has been exhausted (e.g. check quota)' as MODEL_CAPACITY_EXHAUSTED", () => {
 		expect(
 			parseRateLimitReason("Cloud Code Assist API error (429): Resource has been exhausted (e.g. check quota)."),
+		).toBe("MODEL_CAPACITY_EXHAUSTED");
+	});
+
+	// Backtest: the body as Cloud Code Assist serves it, JSON with the status token beside the
+	// message. The token alone used to read as "exhausted" and the message as "quota".
+	it("classifies the Cloud Code Assist RESOURCE_EXHAUSTED body as MODEL_CAPACITY_EXHAUSTED", () => {
+		const body =
+			'Cloud Code Assist API error (429): {"error":{"code":429,"message":"Resource has been exhausted (e.g. check quota).","status":"RESOURCE_EXHAUSTED"}}';
+		expect(parseRateLimitReason(body)).toBe("MODEL_CAPACITY_EXHAUSTED");
+	});
+
+	// The status token is stripped before the text rules run: a body that states a quota beside
+	// it keeps the long wait, so the transient reading is bounded to bodies that state nothing.
+	it("keeps a RESOURCE_EXHAUSTED body that states a quota as QUOTA_EXHAUSTED", () => {
+		const body =
+			'{"error":{"code":429,"message":"Quota exceeded for quota metric \'Generate requests\'","status":"RESOURCE_EXHAUSTED"}}';
+		expect(parseRateLimitReason(body)).toBe("QUOTA_EXHAUSTED");
+		expect(
+			parseRateLimitReason(
+				'{"error":{"message":"You have exhausted your capacity on this model. Your quota will reset after 4h12m.","status":"RESOURCE_EXHAUSTED"}}',
+			),
 		).toBe("QUOTA_EXHAUSTED");
 	});
 
-	it("classifies 'resource exhausted' (exact gRPC phrase) as MODEL_CAPACITY_EXHAUSTED", () => {
+	it("classifies a bare 'resource exhausted' or 'resource_exhausted' status as MODEL_CAPACITY_EXHAUSTED", () => {
 		expect(parseRateLimitReason("resource exhausted")).toBe("MODEL_CAPACITY_EXHAUSTED");
+		expect(parseRateLimitReason("rpc error: code = resource_exhausted")).toBe("MODEL_CAPACITY_EXHAUSTED");
 	});
 
 	it("classifies Too many requests as RATE_LIMIT_EXCEEDED", () => {

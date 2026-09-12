@@ -25,6 +25,7 @@ import type { SourceMeta } from "../../discovery/capability/types";
 import { readDisabledServers, readEnabledServers } from "../../mcp/config-writer";
 import type {
 	DashboardState,
+	DisabledReason,
 	ExtensionKind,
 	ExtensionRow,
 	ExtensionState,
@@ -42,6 +43,44 @@ export interface ExtensionSettingsManager {
 	setDisabledExtensions(ids: string[]): void;
 }
 
+interface ExtensionStateOutcome {
+	readonly state: ExtensionState;
+	readonly disabledReason?: DisabledReason;
+}
+
+const STATE_ITEM_DISABLED: ExtensionStateOutcome = Object.freeze({
+	state: "disabled",
+	disabledReason: "item-disabled",
+});
+const STATE_SHADOWED: ExtensionStateOutcome = Object.freeze({
+	state: "shadowed",
+	disabledReason: "shadowed",
+});
+const STATE_PROVIDER_DISABLED: ExtensionStateOutcome = Object.freeze({
+	state: "disabled",
+	disabledReason: "provider-disabled",
+});
+const STATE_ACTIVE: ExtensionStateOutcome = Object.freeze({
+	state: "active",
+});
+
+function resolveExtensionState(
+	isDisabled: boolean,
+	isShadowed: boolean | undefined,
+	providerEnabled: boolean,
+): ExtensionStateOutcome {
+	if (isDisabled) {
+		return STATE_ITEM_DISABLED;
+	}
+	if (isShadowed) {
+		return STATE_SHADOWED;
+	}
+	if (!providerEnabled) {
+		return STATE_PROVIDER_DISABLED;
+	}
+	return STATE_ACTIVE;
+}
+
 /**
  * Load all extensions from all capabilities.
  */
@@ -50,7 +89,7 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 	const disabledExtensions = new Set<string>(disabledIds ?? []);
 
 	// Helper to convert capability items to extensions
-	function addItems<T extends { name: string; path: string; _source: SourceMeta }>(
+	function addItems<T extends { name: string; path: string; _source: SourceMeta; _shadowed?: boolean }>(
 		items: T[],
 		kind: ExtensionKind,
 		opts?: {
@@ -62,25 +101,9 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 		for (const item of items) {
 			const id = makeExtensionId(kind, item.name);
 			const isDisabled = disabledExtensions.has(id);
-			const isShadowed = (item as { _shadowed?: boolean })._shadowed;
+			const isShadowed = item._shadowed;
 			const providerEnabled = isProviderEnabled(item._source.provider);
-
-			let state: ExtensionState;
-			let disabledReason: "shadowed" | "provider-disabled" | "item-disabled" | undefined;
-
-			// Item-disabled takes precedence over shadowed
-			if (isDisabled) {
-				state = "disabled";
-				disabledReason = "item-disabled";
-			} else if (isShadowed) {
-				state = "shadowed";
-				disabledReason = "shadowed";
-			} else if (!providerEnabled) {
-				state = "disabled";
-				disabledReason = "provider-disabled";
-			} else {
-				state = "active";
-			}
+			const outcome = resolveExtensionState(isDisabled, isShadowed, providerEnabled);
 
 			extensions.push({
 				id,
@@ -91,8 +114,8 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 				trigger: opts?.getTrigger?.(item),
 				path: item.path,
 				source: sourceFromMeta(item._source),
-				state,
-				disabledReason,
+				state: outcome.state,
+				disabledReason: outcome.disabledReason,
 				shadowedBy: opts?.getShadowedBy?.(item),
 				raw: item,
 			});
@@ -168,24 +191,9 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 			const forced = mcpForcedEnabled.has(server.name);
 			const sourceSaysDisabled = server.enabled === false && !forced;
 			const isDisabled = mcpDisabledNames.has(server.name) || disabledExtensions.has(id) || sourceSaysDisabled;
-			const isShadowed = (server as { _shadowed?: boolean })._shadowed;
+			const isShadowed = server._shadowed;
 			const providerEnabled = isProviderEnabled(server._source.provider);
-
-			let state: ExtensionState;
-			let disabledReason: "shadowed" | "provider-disabled" | "item-disabled" | undefined;
-
-			if (isDisabled) {
-				state = "disabled";
-				disabledReason = "item-disabled";
-			} else if (isShadowed) {
-				state = "shadowed";
-				disabledReason = "shadowed";
-			} else if (!providerEnabled) {
-				state = "disabled";
-				disabledReason = "provider-disabled";
-			} else {
-				state = "active";
-			}
+			const outcome = resolveExtensionState(isDisabled, isShadowed, providerEnabled);
 
 			extensions.push({
 				id,
@@ -196,8 +204,8 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 				trigger: server.transport || "stdio",
 				path: server._source.path,
 				source: sourceFromMeta(server._source),
-				state,
-				disabledReason,
+				state: outcome.state,
+				disabledReason: outcome.disabledReason,
 				raw: server,
 			});
 		}
@@ -233,24 +241,9 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 		for (const hook of hooks.all) {
 			const id = makeExtensionId("hook", `${hook.type}:${hook.tool}:${hook.name}`);
 			const isDisabled = disabledExtensions.has(id);
-			const isShadowed = (hook as { _shadowed?: boolean })._shadowed;
+			const isShadowed = hook._shadowed;
 			const providerEnabled = isProviderEnabled(hook._source.provider);
-
-			let state: ExtensionState;
-			let disabledReason: "shadowed" | "provider-disabled" | "item-disabled" | undefined;
-
-			if (isDisabled) {
-				state = "disabled";
-				disabledReason = "item-disabled";
-			} else if (isShadowed) {
-				state = "shadowed";
-				disabledReason = "shadowed";
-			} else if (!providerEnabled) {
-				state = "disabled";
-				disabledReason = "provider-disabled";
-			} else {
-				state = "active";
-			}
+			const outcome = resolveExtensionState(isDisabled, isShadowed, providerEnabled);
 
 			extensions.push({
 				id,
@@ -261,8 +254,8 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 				trigger: `${hook.type}:${hook.tool}`,
 				path: hook.path,
 				source: sourceFromMeta(hook._source),
-				state,
-				disabledReason,
+				state: outcome.state,
+				disabledReason: outcome.disabledReason,
 				raw: hook,
 			});
 		}
@@ -278,24 +271,9 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 			const name = path.basename(file.path);
 			const id = makeExtensionId("context-file", `${file.level}:${name}`);
 			const isDisabled = disabledExtensions.has(id);
-			const isShadowed = (file as { _shadowed?: boolean })._shadowed;
+			const isShadowed = file._shadowed;
 			const providerEnabled = isProviderEnabled(file._source.provider);
-
-			let state: ExtensionState;
-			let disabledReason: "shadowed" | "provider-disabled" | "item-disabled" | undefined;
-
-			if (isDisabled) {
-				state = "disabled";
-				disabledReason = "item-disabled";
-			} else if (isShadowed) {
-				state = "shadowed";
-				disabledReason = "shadowed";
-			} else if (!providerEnabled) {
-				state = "disabled";
-				disabledReason = "provider-disabled";
-			} else {
-				state = "active";
-			}
+			const outcome = resolveExtensionState(isDisabled, isShadowed, providerEnabled);
 
 			extensions.push({
 				id,
@@ -306,8 +284,8 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 				trigger: file.level,
 				path: file.path,
 				source: sourceFromMeta(file._source),
-				state,
-				disabledReason,
+				state: outcome.state,
+				disabledReason: outcome.disabledReason,
 				raw: file,
 			});
 		}
@@ -435,7 +413,7 @@ export function applyFilter(extensions: ExtensionRow[], query: string): Extensio
 /**
  * Get display name for extension kind.
  */
-function getKindDisplayName(kind: ExtensionKind): string {
+export function getKindDisplayName(kind: ExtensionKind): string {
 	switch (kind) {
 		case "extension-module":
 			return "Extension Modules";
@@ -531,7 +509,11 @@ export function filterByProvider(extensions: ExtensionRow[], providerId: string)
 
 function isShadowedExtension(ext: ExtensionRow): boolean {
 	if (ext.shadowedBy) return true;
-	return Boolean((ext.raw as { _shadowed?: boolean } | null | undefined)?._shadowed);
+	const raw = ext.raw;
+	if ((typeof raw === "object" || typeof raw === "function") && raw !== null && "_shadowed" in raw) {
+		return Boolean(raw._shadowed);
+	}
+	return false;
 }
 
 /**
@@ -560,7 +542,6 @@ export function applyDisabledExtensionsToState(state: DashboardState, disabledId
 		delete enabled.disabledReason;
 		return enabled;
 	};
-
 	return {
 		...state,
 		extensions: state.extensions.map(updateExtension),

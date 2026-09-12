@@ -596,47 +596,11 @@ function looksLikeSourceCode(line: string): boolean {
  * source code, never a shell command, so it is never captured as a whole handle.
  * This is a language-heuristic constant, not extensible domain data.
  */
-const SOURCE_KEYWORDS = new Set([
-	"if",
-	"else",
-	"for",
-	"while",
-	"switch",
-	"case",
-	"default",
-	"const",
-	"let",
-	"var",
-	"return",
-	"function",
-	"class",
-	"type",
-	"interface",
-	"import",
-	"export",
-	"await",
-	"async",
-	"new",
-	"throw",
-	"try",
-	"catch",
-	"finally",
-	"do",
-	"break",
-	"continue",
-	"enum",
-	"namespace",
-	"declare",
-	"public",
-	"private",
-	"protected",
-	"static",
-	"yield",
-	"extends",
-	"implements",
-	"super",
-	"this",
-]);
+const SOURCE_KEYWORDS = new Set(
+	"if else for while switch case default const let var return function class type interface import export await async new throw try catch finally do break continue enum namespace declare public private protected static yield extends implements super this".split(
+		" ",
+	),
+);
 
 /** True when a line opens with a comment marker (line/block/doc comment, markdown heading or bullet). */
 function isCommentLine(line: string): boolean {

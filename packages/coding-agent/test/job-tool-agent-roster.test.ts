@@ -1,10 +1,10 @@
 /**
  * The `job` tool's snapshot contract: `list` and empty-poll results must never
- * come back as empty text, and they must surface running subagents that have
+ * come back as empty text, and they must surface running agents that have
  * no backing job (irc-woken/revived agents, spawns owned by another agent) so
  * the tool's picture matches the UI's running-agent count. Regression for the
  * QA report "job list returned no status output despite known running
- * background jobs and subagents".
+ * background jobs and agents".
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { AsyncJobManager } from "@veyyon/coding-agent/async";
@@ -66,7 +66,7 @@ describe("job list snapshot", () => {
 		expect(result.details?.jobs).toEqual([]);
 	});
 
-	test("list surfaces running subagents that have no backing job", async () => {
+	test("list surfaces running agents that have no backing job", async () => {
 		const registry = new AgentRegistry();
 		registerRunningSub(registry, "Worker");
 		registerRunningSub(registry, "Idler");
@@ -103,6 +103,50 @@ describe("job list snapshot", () => {
 		expect(result.details?.agents?.map(agent => agent.id)).toEqual(["Loner"]);
 		manager.cancel("AgentA");
 		manager.cancel("vibe-1-t1");
+	});
+
+	/**
+	 * A queued job (registered with `queued: true`, parked behind the spawn
+	 * semaphore) has done no work. The list stated it as up-and-running with the
+	 * same words as a job at work, so a batch of 20 past a ceiling of 4 read as
+	 * 20 running agents. The snapshot carries the flag until `markRunning`
+	 * clears it, and the text says queued, not up.
+	 */
+	test("a queued job is listed as queued until it starts, then as running", async () => {
+		const manager = createManager();
+		const { promise: started, resolve: start } = Promise.withResolvers<void>();
+		manager.register(
+			"task",
+			"Parser",
+			async ({ markRunning }) => {
+				await started;
+				markRunning();
+				await neverResolves();
+				return "";
+			},
+			{ id: "Parser", agentId: "Parser", ownerId: "Main", queued: true },
+		);
+		manager.register("task", "AuthLoader", neverResolves, {
+			id: "AuthLoader",
+			agentId: "AuthLoader",
+			ownerId: "Main",
+		});
+		const tool = new JobTool(createToolSession({ manager, agentId: "Main" }));
+
+		const queued = await tool.execute("call", { list: true });
+		const queuedRows = Object.fromEntries((queued.details?.jobs ?? []).map(job => [job.id, job]));
+		expect(queuedRows.Parser?.queued).toBe(true);
+		expect(queuedRows.AuthLoader?.queued).toBeUndefined();
+		expect(resultText(queued)).toMatch(/`Parser` \[task\] — Parser \(queued \S+, waiting for a concurrency slot\)/);
+		expect(resultText(queued)).toMatch(/`AuthLoader` \[task\] — AuthLoader \(up \S+\)/);
+
+		start();
+		await Promise.resolve();
+		const running = await tool.execute("call", { list: true });
+		expect(running.details?.jobs.find(job => job.id === "Parser")?.queued).toBeUndefined();
+		expect(resultText(running)).toMatch(/`Parser` \[task\] — Parser \(up \S+\)/);
+		manager.cancel("Parser");
+		manager.cancel("AuthLoader");
 	});
 
 	test("a settled job in retention does not hide its re-woken agent", async () => {

@@ -67,6 +67,26 @@ describe("dialect transcript rendering", () => {
 		expect(out).toContain("<|im_start|>user\n<tool_response>\nresult\n</tool_response><|im_end|>\n");
 		expect(out).not.toContain("[User]:");
 	});
+	it("renders hermes ChatML turns with tool calls and tool result turns", () => {
+		const hermes = getDialectDefinition("hermes");
+		const out = hermes.renderTranscript(messages);
+
+		expect(out).toContain("<|im_start|>assistant\n<think>\nI should search.\n</think>");
+		expect(out).toContain('<tool_call>\n{"name":"search","arguments":{"query":"pi"}}\n</tool_call>');
+		expect(out).toContain("<|im_start|>tool\n<tool_response>\nresult\n</tool_response><|im_end|>\n");
+	});
+
+	it("renders json tool calls consistently for hermes and qwen3", () => {
+		const call = { type: "toolCall" as const, id: "call-1", name: "test_tool", arguments: { foo: "bar" } };
+		const hermes = getDialectDefinition("hermes");
+		const qwen3 = getDialectDefinition("qwen3");
+
+		expect(hermes.renderToolCall(call)).toBe(
+			'<tool_call>\n{"name":"test_tool","arguments":{"foo":"bar"}}\n</tool_call>',
+		);
+		expect(qwen3.renderToolCall(call)).toBe(hermes.renderToolCall(call));
+		expect(hermes.renderAssistantToolCalls([call])).toBe(qwen3.renderAssistantToolCalls([call]));
+	});
 
 	it("renders GLM turns with BOS and observation result turns", () => {
 		const out = getDialectDefinition("glm").renderTranscript(messages);

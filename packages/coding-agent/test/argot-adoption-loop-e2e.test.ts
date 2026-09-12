@@ -160,7 +160,7 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 		const settings = Settings.isolated({
 			"argot.enabled": true,
 			"argot.encode.models": [MODEL_ID],
-			"argot.subagents": "off",
+			"argot.agents": "off",
 			"compaction.enabled": false,
 			"todo.enabled": false,
 			"async.enabled": false,
@@ -171,7 +171,7 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 		// The REAL session factory: enabled, top-level, so it returns a codec that
 		// has NEVER been armed — agent-driven loading means nothing is loaded until
 		// the model calls argot_load.
-		const codec = createArgotSession({ enabled: true, isSubagent: false, subagentMode: "off" });
+		const codec = createArgotSession({ enabled: true, isSpawned: false, agentMode: "off" });
 		if (codec === undefined) throw new Error("expected a codec for an enabled top-level session");
 		argot = codec;
 

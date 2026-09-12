@@ -10,8 +10,17 @@
  * terminal), and wait/list draw the "TV wall" — one live screen per worker,
  * stacked, each showing its tool calls and streamed text as it works.
  */
-import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+
+import type {
+	AgentTool,
+	AgentToolContext,
+	AgentToolResult,
+	AgentToolUpdateCallback,
+	ToolTier,
+} from "@veyyon/agent-core";
+import type { Static } from "@veyyon/ai";
 import { formatCount, prompt } from "@veyyon/utils";
+import type { ToolViewRenderer } from "@veyyon/view";
 import { type } from "arktype";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import { MAIN_AGENT_ID } from "../../registry/agent-registry";
@@ -79,17 +88,46 @@ function textResult(text: string, details: VibeToolDetails): AgentToolResult<Vib
 	return { content: [{ type: "text", text }], details };
 }
 
-export class VibeSpawnTool implements AgentTool<typeof vibeSpawnSchema, VibeToolDetails> {
-	readonly name = "vibe_spawn";
-	readonly approval = "exec" as const;
-	readonly label = "Vibe Spawn";
-	readonly summary = "Start a persistent fast/good worker session";
-	readonly description: string;
-	readonly parameters = vibeSpawnSchema;
+abstract class BaseVibeTool<TSchema extends type.Any> implements AgentTool<TSchema, VibeToolDetails> {
 	readonly strict = true;
-	readonly view = createVibeToolView("spawn");
-	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(toolsPrompts["tools/vibe-spawn"].text);
+	readonly description: string;
+	readonly view: ToolViewRenderer<Static<TSchema>, AgentToolResult<VibeToolDetails, TSchema>>;
+
+	constructor(
+		readonly session: ToolSession,
+		readonly name: string,
+		readonly label: string,
+		readonly summary: string,
+		readonly approval: ToolTier,
+		readonly parameters: TSchema,
+		op: VibeOp,
+		promptKey: keyof typeof toolsPrompts,
+	) {
+		this.description = prompt.render(toolsPrompts[promptKey].text);
+		this.view = createVibeToolView(op);
+	}
+
+	abstract execute(
+		toolCallId: string,
+		params: Static<TSchema>,
+		signal?: AbortSignal,
+		onUpdate?: AgentToolUpdateCallback<VibeToolDetails, TSchema>,
+		context?: AgentToolContext,
+	): Promise<AgentToolResult<VibeToolDetails, TSchema>>;
+}
+
+export class VibeSpawnTool extends BaseVibeTool<typeof vibeSpawnSchema> {
+	constructor(session: ToolSession) {
+		super(
+			session,
+			"vibe_spawn",
+			"Vibe Spawn",
+			"Start a persistent fast/good worker session",
+			"exec",
+			vibeSpawnSchema,
+			"spawn",
+			"tools/vibe-spawn",
+		);
 	}
 
 	async execute(_toolCallId: string, params: typeof vibeSpawnSchema.infer): Promise<AgentToolResult<VibeToolDetails>> {
@@ -101,17 +139,18 @@ export class VibeSpawnTool implements AgentTool<typeof vibeSpawnSchema, VibeTool
 	}
 }
 
-export class VibeSendTool implements AgentTool<typeof vibeSendSchema, VibeToolDetails> {
-	readonly name = "vibe_send";
-	readonly approval = "exec" as const;
-	readonly label = "Vibe Send";
-	readonly summary = "Message a worker session (steer or next turn)";
-	readonly description: string;
-	readonly parameters = vibeSendSchema;
-	readonly strict = true;
-	readonly view = createVibeToolView("send");
-	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(toolsPrompts["tools/vibe-send"].text);
+export class VibeSendTool extends BaseVibeTool<typeof vibeSendSchema> {
+	constructor(session: ToolSession) {
+		super(
+			session,
+			"vibe_send",
+			"Vibe Send",
+			"Message a worker session (steer or next turn)",
+			"exec",
+			vibeSendSchema,
+			"send",
+			"tools/vibe-send",
+		);
 	}
 
 	async execute(_toolCallId: string, params: typeof vibeSendSchema.infer): Promise<AgentToolResult<VibeToolDetails>> {
@@ -128,18 +167,20 @@ export class VibeSendTool implements AgentTool<typeof vibeSendSchema, VibeToolDe
 
 const WAIT_PROGRESS_INTERVAL_MS = 500;
 
-export class VibeWaitTool implements AgentTool<typeof vibeWaitSchema, VibeToolDetails> {
-	readonly name = "vibe_wait";
-	readonly approval = "read" as const;
-	readonly label = "Vibe Wait";
-	readonly summary = "Block until a worker session finishes its turn";
-	readonly description: string;
-	readonly parameters = vibeWaitSchema;
-	readonly strict = true;
+export class VibeWaitTool extends BaseVibeTool<typeof vibeWaitSchema> {
 	readonly interruptible = true;
-	readonly view = createVibeToolView("wait");
-	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(toolsPrompts["tools/vibe-wait"].text);
+
+	constructor(session: ToolSession) {
+		super(
+			session,
+			"vibe_wait",
+			"Vibe Wait",
+			"Block until a worker session finishes its turn",
+			"read",
+			vibeWaitSchema,
+			"wait",
+			"tools/vibe-wait",
+		);
 	}
 
 	async execute(
@@ -149,8 +190,6 @@ export class VibeWaitTool implements AgentTool<typeof vibeWaitSchema, VibeToolDe
 		onUpdate?: AgentToolUpdateCallback<VibeToolDetails>,
 	): Promise<AgentToolResult<VibeToolDetails>> {
 		const registry = VibeSessionRegistry.global();
-		// Live TV-wall frames while the wait blocks: each tick re-snapshots the
-		// watched workers so their tool calls and streamed text play in place.
 		const emitProgress = (): void => {
 			onUpdate?.({
 				content: [{ type: "text", text: "" }],
@@ -196,22 +235,22 @@ export class VibeWaitTool implements AgentTool<typeof vibeWaitSchema, VibeToolDe
 			lines.push("Wait window elapsed before any turn settled — re-issue vibe_wait to keep waiting.");
 		}
 		const result = textResult(lines.join("\n").trimEnd(), details);
-		// A pure "still waiting" frame is noise once a newer wait exists.
 		return outcome.settled.length === 0 ? { ...result, useless: true } : result;
 	}
 }
 
-export class VibeKillTool implements AgentTool<typeof vibeKillSchema, VibeToolDetails> {
-	readonly name = "vibe_kill";
-	readonly approval = "read" as const;
-	readonly label = "Vibe Kill";
-	readonly summary = "Terminate a worker session";
-	readonly description: string;
-	readonly parameters = vibeKillSchema;
-	readonly strict = true;
-	readonly view = createVibeToolView("kill");
-	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(toolsPrompts["tools/vibe-kill"].text);
+export class VibeKillTool extends BaseVibeTool<typeof vibeKillSchema> {
+	constructor(session: ToolSession) {
+		super(
+			session,
+			"vibe_kill",
+			"Vibe Kill",
+			"Terminate a worker session",
+			"read",
+			vibeKillSchema,
+			"kill",
+			"tools/vibe-kill",
+		);
 	}
 
 	async execute(_toolCallId: string, params: typeof vibeKillSchema.infer): Promise<AgentToolResult<VibeToolDetails>> {
@@ -228,17 +267,18 @@ export class VibeKillTool implements AgentTool<typeof vibeKillSchema, VibeToolDe
 	}
 }
 
-export class VibeListTool implements AgentTool<typeof vibeListSchema, VibeToolDetails> {
-	readonly name = "vibe_list";
-	readonly approval = "read" as const;
-	readonly label = "Vibe List";
-	readonly summary = "List worker sessions and their states";
-	readonly description: string;
-	readonly parameters = vibeListSchema;
-	readonly strict = true;
-	readonly view = createVibeToolView("list");
-	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(toolsPrompts["tools/vibe-list"].text);
+export class VibeListTool extends BaseVibeTool<typeof vibeListSchema> {
+	constructor(session: ToolSession) {
+		super(
+			session,
+			"vibe_list",
+			"Vibe List",
+			"List worker sessions and their states",
+			"read",
+			vibeListSchema,
+			"list",
+			"tools/vibe-list",
+		);
 	}
 
 	async execute(): Promise<AgentToolResult<VibeToolDetails>> {

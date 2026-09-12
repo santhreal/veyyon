@@ -37,8 +37,8 @@ from veybot.github_client import (
     RepoInfo,
     ReviewCommentInfo,
     WorkflowRunInfo,
-    is_transient_retryable,
 )
+from veyyon_rpc import TRANSIENT_RETRY_DELAYS, is_transient_retryable
 from veybot.proxy_hmac import HEADER_SIGNATURE, HEADER_TIMESTAMP, sign
 
 log = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ class GitHubProxyClient:
             timeout=self._timeout,
         )
 
-    _TRANSIENT_RETRY_DELAYS = (1.0, 3.0, 10.0)
+    _TRANSIENT_RETRY_DELAYS = TRANSIENT_RETRY_DELAYS
 
     async def _request(
         self,
@@ -493,160 +493,70 @@ class ProxyGitTransport:
 # ---------- payload helpers ----------
 
 
-def _repo_from(data: Any) -> RepoInfo:
+def _require_dict(data: Any, name: str) -> dict[str, Any]:
     if not isinstance(data, dict):
-        raise GitHubError(500, "proxy returned malformed repo payload")
-    return RepoInfo(
-        full_name=str(data["full_name"]),
-        default_branch=str(data["default_branch"]),
-        clone_url=str(data["clone_url"]),
-        private=bool(data.get("private", False)),
-    )
+        raise GitHubError(500, f"proxy returned malformed {name} payload")
+    return data
+
+
+def _repo_from(data: Any) -> RepoInfo:
+    d = _require_dict(data, "repo")
+    return RepoInfo(str(d["full_name"]), str(d["default_branch"]), str(d["clone_url"]), bool(d.get("private", False)))
 
 
 def _issue_from(data: Any) -> IssueInfo:
-    if not isinstance(data, dict):
-        raise GitHubError(500, "proxy returned malformed issue payload")
-    labels = data.get("labels") or []
-    return IssueInfo(
-        repo=str(data["repo"]),
-        number=int(data["number"]),
-        title=str(data.get("title") or ""),
-        body=str(data.get("body") or ""),
-        state=str(data.get("state") or "open"),
-        author=str(data.get("author") or ""),
-        labels=tuple(str(x) for x in labels),
-        is_pull_request=bool(data.get("is_pull_request", False)),
-    )
+    d = _require_dict(data, "issue")
+    return IssueInfo(str(d["repo"]), int(d["number"]), str(d.get("title") or ""), str(d.get("body") or ""), str(d.get("state") or "open"), str(d.get("author") or ""), tuple(str(x) for x in (d.get("labels") or ())), bool(d.get("is_pull_request", False)))
 
 
 def _issue_summary_from(data: Any) -> IssueSummary:
-    if not isinstance(data, dict):
-        raise GitHubError(500, "proxy returned malformed issue summary payload")
-    return IssueSummary(
-        repo=str(data["repo"]),
-        number=int(data["number"]),
-        title=str(data.get("title") or ""),
-        state=str(data.get("state") or ""),
-        author=str(data.get("author") or ""),
-        labels=tuple(str(x) for x in (data.get("labels") or [])),
-        comments=int(data.get("comments") or 0),
-        updated_at=str(data.get("updated_at") or ""),
-        created_at=str(data.get("created_at") or ""),
-        html_url=str(data.get("html_url") or ""),
-    )
+    d = _require_dict(data, "issue summary")
+    return IssueSummary(str(d["repo"]), int(d["number"]), str(d.get("title") or ""), str(d.get("state") or ""), str(d.get("author") or ""), tuple(str(x) for x in (d.get("labels") or ())), int(d.get("comments") or 0), str(d.get("updated_at") or ""), str(d.get("created_at") or ""), str(d.get("html_url") or ""))
 
 
 def _comment_from(data: Any) -> CommentInfo:
-    if not isinstance(data, dict):
-        raise GitHubError(500, "proxy returned malformed comment payload")
-    return CommentInfo(
-        id=int(data["id"]),
-        author=str(data.get("author") or ""),
-        body=str(data.get("body") or ""),
-        created_at=str(data.get("created_at") or ""),
-    )
+    d = _require_dict(data, "comment")
+    return CommentInfo(int(d["id"]), str(d.get("author") or ""), str(d.get("body") or ""), str(d.get("created_at") or ""))
 
 
 def _reaction_from(data: Any) -> ReactionInfo:
-    if not isinstance(data, dict):
-        raise GitHubError(500, "proxy returned malformed reaction payload")
-    return ReactionInfo(
-        content=str(data.get("content") or ""),
-        user_login=str(data.get("user_login") or ""),
-        user_type=str(data.get("user_type") or ""),
-    )
+    d = _require_dict(data, "reaction")
+    return ReactionInfo(str(d.get("content") or ""), str(d.get("user_login") or ""), str(d.get("user_type") or ""))
 
 
 def _review_comment_from(data: Any) -> ReviewCommentInfo:
-    if not isinstance(data, dict):
-        raise GitHubError(500, "proxy returned malformed review_comment payload")
-    line = data.get("line")
-    return ReviewCommentInfo(
-        id=int(data.get("id") or 0),
-        author=str(data.get("author") or ""),
-        body=str(data.get("body") or ""),
-        path=str(data.get("path") or ""),
-        line=line if isinstance(line, int) else None,
-        created_at=str(data.get("created_at") or ""),
-    )
+    d = _require_dict(data, "review_comment")
+    line = d.get("line")
+    return ReviewCommentInfo(int(d.get("id") or 0), str(d.get("author") or ""), str(d.get("body") or ""), str(d.get("path") or ""), line if isinstance(line, int) else None, str(d.get("created_at") or ""))
 
 
 def _pr_review_from(data: Any) -> PullRequestReviewInfo:
-    if not isinstance(data, dict):
-        raise GitHubError(500, "proxy returned malformed pr_review payload")
-    return PullRequestReviewInfo(
-        id=int(data.get("id") or 0),
-        author=str(data.get("author") or ""),
-        body=str(data.get("body") or ""),
-        state=str(data.get("state") or ""),
-        submitted_at=str(data.get("submitted_at") or ""),
-    )
+    d = _require_dict(data, "pr_review")
+    return PullRequestReviewInfo(int(d.get("id") or 0), str(d.get("author") or ""), str(d.get("body") or ""), str(d.get("state") or ""), str(d.get("submitted_at") or ""))
 
 
 def _pr_file_from(data: Any) -> PullRequestFileInfo:
-    if not isinstance(data, dict):
-        raise GitHubError(500, "proxy returned malformed pr_file payload")
-    return PullRequestFileInfo(
-        path=str(data.get("path") or ""),
-        status=str(data.get("status") or ""),
-        additions=int(data.get("additions") or 0),
-        deletions=int(data.get("deletions") or 0),
-    )
+    d = _require_dict(data, "pr_file")
+    return PullRequestFileInfo(str(d.get("path") or ""), str(d.get("status") or ""), int(d.get("additions") or 0), int(d.get("deletions") or 0))
 
 
 def _pr_from(data: Any) -> PullRequestInfo:
-    if not isinstance(data, dict):
-        raise GitHubError(500, "proxy returned malformed pr payload")
-    return PullRequestInfo(
-        repo=str(data["repo"]),
-        number=int(data["number"]),
-        html_url=str(data["html_url"]),
-        head_ref=str(data.get("head_ref") or ""),
-        base_ref=str(data.get("base_ref") or ""),
-        state=str(data.get("state") or "open"),
-        author=str(data.get("author") or ""),
-        head_repo=str(data.get("head_repo") or ""),
-        title=str(data.get("title") or ""),
-        body=str(data.get("body") or ""),
-    )
+    d = _require_dict(data, "pr")
+    return PullRequestInfo(str(d["repo"]), int(d["number"]), str(d["html_url"]), str(d.get("head_ref") or ""), str(d.get("base_ref") or ""), str(d.get("state") or "open"), str(d.get("author") or ""), str(d.get("head_repo") or ""), str(d.get("title") or ""), str(d.get("body") or ""))
 
 
 def _check_run_from(data: Any) -> CheckRunInfo:
-    if not isinstance(data, dict):
-        raise GitHubError(500, "proxy returned malformed check_run payload")
-    conclusion = data.get("conclusion")
-    started_at = data.get("started_at")
-    details_url = data.get("details_url")
-    return CheckRunInfo(
-        name=str(data.get("name") or ""),
-        status=str(data.get("status") or ""),
-        conclusion=str(conclusion) if conclusion is not None else None,
-        started_at=str(started_at) if started_at is not None else None,
-        id=int(data.get("id") or 0),
-        details_url=str(details_url) if details_url is not None else None,
-    )
+    d = _require_dict(data, "check_run")
+    return CheckRunInfo(str(d.get("name") or ""), str(d.get("status") or ""), str(d["conclusion"]) if d.get("conclusion") is not None else None, str(d["started_at"]) if d.get("started_at") is not None else None, int(d.get("id") or 0), str(d["details_url"]) if d.get("details_url") is not None else None)
 
 
 def _commit_status_from(data: Any) -> CommitStatusInfo:
-    if not isinstance(data, dict):
-        raise GitHubError(500, "proxy returned malformed commit_status payload")
-    return CommitStatusInfo(
-        context=str(data.get("context") or ""),
-        state=str(data.get("state") or ""),
-    )
+    d = _require_dict(data, "commit_status")
+    return CommitStatusInfo(str(d.get("context") or ""), str(d.get("state") or ""))
 
 
 def _workflow_run_from(data: Any) -> WorkflowRunInfo:
-    if not isinstance(data, dict):
-        raise GitHubError(500, "proxy returned malformed workflow_run payload")
-    conclusion = data.get("conclusion")
-    return WorkflowRunInfo(
-        id=int(data.get("id") or 0),
-        name=str(data.get("name") or ""),
-        status=str(data.get("status") or ""),
-        conclusion=str(conclusion) if conclusion is not None else None,
-    )
-
+    d = _require_dict(data, "workflow_run")
+    return WorkflowRunInfo(int(d.get("id") or 0), str(d.get("name") or ""), str(d.get("status") or ""), str(d["conclusion"]) if d.get("conclusion") is not None else None)
 
 __all__ = ["GitHubProxyClient", "ProxyGitTransport"]

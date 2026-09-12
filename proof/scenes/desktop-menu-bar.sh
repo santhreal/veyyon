@@ -81,7 +81,7 @@ QUIET_MAX_PIXELS=400
 # separates that from nothing having moved.
 WALK_MIN_PIXELS=2000
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 # ─── 1. Leave A Draft In The Composer ────────────────────────────────────────

@@ -1,12 +1,18 @@
 import * as path from "node:path";
-import { toolResultNeverRan } from "@veyyon/agent-core";
 import { type Component, Container, Text } from "@veyyon/tui";
 
 import { formatCount, hasUrlScheme } from "@veyyon/utils";
+import type { ReadEntryView as ReadEntry } from "@veyyon/wire/presentation/transcript";
 import { InternalUrlRouter } from "../../../../internal-urls";
 import { tryResolveInternalUrlSync } from "../../../../internal-urls/resolve-sync";
+import { readArgsTarget, updateReadEntryResult } from "../../../../presentation/read-group";
 import { getLanguageFromPath, theme } from "../../../../theme/theme";
-import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../../../tools/core/path-utils";
+import {
+	findTopLevelPathDelimiter,
+	parseLineRanges,
+	selectorLineRanges,
+	splitPathAndSel,
+} from "../../../../tools/core/path-utils";
 import { PREVIEW_LIMITS, shortenPath } from "../../../../tools/core/render-utils";
 import type { ReadRenderArgs } from "../../../../tools/fs/read";
 import { renderCodeCell } from "../../draw/code-cell";
@@ -19,15 +25,6 @@ import type { ToolExecutionHandle } from "./tool-execution";
  * resolved content is visible. `path` is the canonical arg; `file_path` is the
  * legacy alias still tolerated by the read tool schema.
  */
-function readArgsTarget(args: unknown): string | undefined {
-	if (!args || typeof args !== "object" || Array.isArray(args)) return undefined;
-	const record = args as Record<string, unknown>;
-	return typeof record.path === "string"
-		? record.path
-		: typeof record.file_path === "string"
-			? record.file_path
-			: undefined;
-}
 
 export function readArgsHaveTarget(args: unknown): args is ReadRenderArgs {
 	return readArgsTarget(args) !== undefined;
@@ -39,54 +36,8 @@ export function readArgsTargetInternalUrl(args: unknown): boolean {
 	return InternalUrlRouter.instance().canHandle(target);
 }
 
-type ReadToolSuffixResolution = {
-	from: string;
-	to: string;
-};
-
-type ReadToolResultDetails = {
-	resolvedPath?: string;
-	suffixResolution?: {
-		from?: string;
-		to?: string;
-	};
-	conflictCount?: number;
-	displayReadTargets?: unknown;
-	displayContent?: {
-		text?: string;
-		startLine?: number;
-		lineNumbers?: Array<number | null>;
-	};
-	meta?: {
-		source?: {
-			type?: string;
-			value?: string;
-		};
-	};
-};
-
 type ReadToolGroupOptions = {
 	showContentPreview?: boolean;
-};
-
-function getSuffixResolution(details: ReadToolResultDetails | undefined): ReadToolSuffixResolution | undefined {
-	if (typeof details?.suffixResolution?.from !== "string" || typeof details.suffixResolution.to !== "string") {
-		return undefined;
-	}
-	return { from: details.suffixResolution.from, to: details.suffixResolution.to };
-}
-
-type ReadEntry = {
-	toolCallId: string;
-	path: string;
-	displayPaths?: string[];
-	linkPath?: string;
-	status: "pending" | "success" | "warning" | "notExecuted" | "error";
-	correctedFrom?: string;
-	contentText?: string;
-	conflictCount?: number;
-	codeStartLine?: number;
-	codeLineNumbers?: Array<number | null>;
 };
 
 /** Number of code lines to show in collapsed preview mode */
@@ -115,30 +66,6 @@ const READ_STATUS_RANK: Record<ReadEntry["status"], number> = {
 	warning: 3,
 	error: 4,
 };
-
-function getDisplayReadTargets(details: ReadToolResultDetails | undefined): string[] | undefined {
-	if (!Array.isArray(details?.displayReadTargets)) return undefined;
-	const targets = details.displayReadTargets
-		.filter((target): target is string => typeof target === "string")
-		.map(target => target.trim())
-		.filter(target => target.length > 0);
-	return targets.length > 0 ? targets : undefined;
-}
-
-function displayPathWithSuffixResolution(currentPath: string, suffixResolution: ReadToolSuffixResolution): string {
-	const currentSelector = splitPathAndSel(currentPath).sel;
-	if (!currentSelector || splitPathAndSel(suffixResolution.to).sel) return suffixResolution.to;
-	return `${suffixResolution.to}:${currentSelector}`;
-}
-
-function readSourceFsPath(details: ReadToolResultDetails | undefined): string | undefined {
-	const source = details?.meta?.source;
-	return source?.type === "path" && typeof source.value === "string" ? source.value : undefined;
-}
-
-function readResultLinkPath(details: ReadToolResultDetails | undefined): string | undefined {
-	return typeof details?.resolvedPath === "string" ? details.resolvedPath : readSourceFsPath(details);
-}
 
 function readTargetLinkPath(basePath: string, entryLinkPath: string | undefined): string | undefined {
 	if (entryLinkPath) return entryLinkPath;
@@ -187,26 +114,8 @@ function selectorChunkIsLineRangeList(chunk: string): boolean {
 }
 
 function nextTopLevelToken(input: string, start: number): string {
-	let braceDepth = 0;
-	for (let i = start; i < input.length; i++) {
-		const ch = input[i];
-		if (ch === "\\" && i + 1 < input.length) {
-			i++;
-			continue;
-		}
-		if (ch === "{") {
-			braceDepth++;
-			continue;
-		}
-		if (ch === "}") {
-			if (braceDepth > 0) braceDepth--;
-			continue;
-		}
-		if (braceDepth === 0 && (ch === "," || ch === ";")) {
-			return input.slice(start, i);
-		}
-	}
-	return input.slice(start);
+	const delimiter = findTopLevelPathDelimiter(input, start, "punctuation");
+	return delimiter === -1 ? input.slice(start) : input.slice(start, delimiter);
 }
 
 function commaContinuesLineRangeSelector(input: string, partStart: number, commaIndex: number): boolean {
@@ -220,26 +129,15 @@ function splitReadDisplayPathSpecs(rawPath: string): string[] {
 	if (!normalized || hasUrlScheme(normalized)) return [rawPath];
 
 	const parts: string[] = [];
-	let braceDepth = 0;
 	let partStart = 0;
-	for (let i = 0; i < normalized.length; i++) {
-		const ch = normalized[i];
-		if (ch === "\\" && i + 1 < normalized.length) {
-			i++;
-			continue;
-		}
-		if (ch === "{") {
-			braceDepth++;
-			continue;
-		}
-		if (ch === "}") {
-			if (braceDepth > 0) braceDepth--;
-			continue;
-		}
-		if (braceDepth !== 0 || (ch !== "," && ch !== ";")) continue;
-		if (ch === "," && commaContinuesLineRangeSelector(normalized, partStart, i)) continue;
-		parts.push(normalized.slice(partStart, i).trim());
-		partStart = i + 1;
+	let scanStart = 0;
+	for (;;) {
+		const delimiter = findTopLevelPathDelimiter(normalized, scanStart, "punctuation");
+		if (delimiter === -1) break;
+		scanStart = delimiter + 1;
+		if (normalized[delimiter] === "," && commaContinuesLineRangeSelector(normalized, partStart, delimiter)) continue;
+		parts.push(normalized.slice(partStart, delimiter).trim());
+		partStart = scanStart;
 	}
 	parts.push(normalized.slice(partStart).trim());
 
@@ -362,45 +260,21 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		isPartial = false,
 		toolCallId?: string,
 	): void {
-		if (!toolCallId) return;
+		if (!toolCallId || isPartial) return;
 		const entry = this.#entries.get(toolCallId);
 		if (!entry) return;
-		if (isPartial) return;
-		if (toolResultNeverRan(result.details)) {
-			// The placeholder's text is written for the MODEL and names the provider
-			// fault, not the file. Showing it as this row's content would read as the
-			// read having failed on that path, and the row has no content because
-			// nothing was read.
-			entry.status = "notExecuted";
-			this.#updateDisplay();
-			return;
-		}
-		const details = result.details as ReadToolResultDetails | undefined;
-		const suffixResolution = getSuffixResolution(details);
-		const displayPaths = getDisplayReadTargets(details);
-		entry.linkPath = readResultLinkPath(details);
-		if (suffixResolution) {
-			entry.path = displayPathWithSuffixResolution(entry.path, suffixResolution);
-			entry.correctedFrom = suffixResolution.from;
-			entry.displayPaths = undefined;
-		} else {
-			entry.correctedFrom = undefined;
-			entry.displayPaths = displayPaths;
-		}
-		const conflictCount =
-			typeof details?.conflictCount === "number" && details.conflictCount > 0 ? details.conflictCount : undefined;
-		entry.conflictCount = conflictCount;
-		entry.status = result.isError ? "error" : suffixResolution ? "warning" : "success";
-		// Store clean display content for preview/expanded display when the read
-		// tool provides it; fall back to model-facing text for legacy results.
-		const displayContent = details?.displayContent;
-		const textContent = result.content?.find(c => c.type === "text")?.text;
-		if (displayContent !== undefined || textContent !== undefined) {
-			entry.contentText = displayContent?.text ?? textContent;
-			entry.codeStartLine = displayContent?.startLine;
-			entry.codeLineNumbers = displayContent?.lineNumbers;
-		}
+		updateReadEntryResult(entry, result);
 		this.#updateDisplay();
+	}
+
+	updateEntry(entry: ReadEntry): void {
+		this.#entries.set(entry.toolCallId, { ...entry });
+		this.#updateDisplay();
+	}
+
+	removeEntry(toolCallId: string): number {
+		if (this.#entries.delete(toolCallId)) this.#updateDisplay();
+		return this.#entries.size;
 	}
 
 	setArgsComplete(_toolCallId?: string): void {

@@ -19,11 +19,7 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 		(v, failures)
 	};
 	let applied = contract::apply(&verdict, &text);
-	if applied == input {
-		MinimizerOutput::passthrough(input)
-	} else {
-		MinimizerOutput::transformed(applied, input.len())
-	}
+	MinimizerOutput::maybe_transformed(input, applied)
 }
 
 fn test_subject<'a>(ctx: &'a MinimizerCtx<'_>) -> &'a str {

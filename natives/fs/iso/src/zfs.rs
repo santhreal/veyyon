@@ -5,62 +5,7 @@
 //! matches a mounted ZFS dataset mountpoint, snapshots that dataset, and clones
 //! it to a sibling dataset mounted at `merged`.
 
-use std::path::Path;
-
-use async_trait::async_trait;
-
-#[cfg(not(unix))]
-use crate::IsoError;
-use crate::{BackendKind, IsoResult, IsolationBackend, ProbeResult};
-
-pub struct ZfsBackend;
-
-pub fn backend() -> &'static dyn IsolationBackend {
-	&ZfsBackend
-}
-
-#[async_trait]
-impl IsolationBackend for ZfsBackend {
-	fn kind(&self) -> BackendKind {
-		BackendKind::Zfs
-	}
-
-	fn probe(&self) -> ProbeResult {
-		#[cfg(unix)]
-		{
-			imp::probe()
-		}
-		#[cfg(not(unix))]
-		{
-			ProbeResult::unavailable("ZFS clone isolation is only available on Unix platforms")
-		}
-	}
-
-	fn start(&self, lower: &Path, merged: &Path) -> IsoResult<()> {
-		#[cfg(unix)]
-		{
-			imp::start(lower, merged)
-		}
-		#[cfg(not(unix))]
-		{
-			let _ = (lower, merged);
-			Err(IsoError::unavailable("ZFS clone isolation is only available on Unix platforms"))
-		}
-	}
-
-	fn stop(&self, merged: &Path) -> IsoResult<()> {
-		#[cfg(unix)]
-		{
-			imp::stop(merged)
-		}
-		#[cfg(not(unix))]
-		{
-			let _ = merged;
-			Ok(())
-		}
-	}
-}
-
+declare_backend!(ZfsBackend, Zfs, "ZFS clone isolation is only available on Unix platforms", unix);
 #[cfg(unix)]
 mod imp {
 	use std::{

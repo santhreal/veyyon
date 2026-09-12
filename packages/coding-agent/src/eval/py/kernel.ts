@@ -7,22 +7,19 @@
  * code. Shutdown writes `{"type":"exit"}` and escalates to SIGTERM/SIGKILL on
  * timeout.
  */
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { $flag, errorMessage, isBunTestRuntime, logger, Snowflake } from "@veyyon/utils";
+import { $flag } from "@veyyon/utils";
 import { $ } from "bun";
-import { Settings } from "../../config/settings";
 import {
+	assembleSpawnEnv,
 	BaseKernel,
+	createLanguageAvailabilityChecker,
+	createRunnerScriptPublisher,
 	DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
-	getRemainingTimeMs,
 	KERNEL_INTERRUPT_ESCALATION_MS,
 	KERNEL_SHUTDOWN_GRACE_MS,
 	type KernelStartOptions,
 	kernelIpcTraceEnvVar,
-	kernelRunnerCacheDir,
-	releaseKernel,
+	launchKernelSubprocess,
 } from "../kernel-base";
 import { PYTHON_PRELUDE } from "./prelude";
 import RUNNER_SCRIPT from "./runner.py" with { type: "text" };
@@ -33,7 +30,6 @@ import {
 	resolveExplicitPythonRuntime,
 	resolvePythonRuntime,
 } from "./runtime";
-import { hostHasInheritableConsole, shouldDetachKernel, shouldHideKernelWindow } from "./spawn-options";
 
 export type {
 	KernelExecuteOptions,
@@ -48,22 +44,7 @@ export { renderKernelDisplay } from "./display";
 
 const TRACE_IPC = $flag(kernelIpcTraceEnvVar("PYTHON"));
 
-// Cache the runner script on disk so the subprocess loads it normally. Cached
-// per script hash so installs don't race across versions.
-const RUNNER_CACHE_DIR = kernelRunnerCacheDir(os.tmpdir(), "python");
-let RUNNER_SCRIPT_PATH: string | null = null;
-
-async function ensureRunnerScript(): Promise<string> {
-	if (RUNNER_SCRIPT_PATH) return RUNNER_SCRIPT_PATH;
-	await fs.promises.mkdir(RUNNER_CACHE_DIR, { recursive: true });
-	const hash = Bun.hash(RUNNER_SCRIPT).toString(36);
-	const target = path.join(RUNNER_CACHE_DIR, `runner-${hash}.py`);
-	if (!fs.existsSync(target)) {
-		await Bun.write(target, RUNNER_SCRIPT);
-	}
-	RUNNER_SCRIPT_PATH = target;
-	return target;
-}
+const ensureRunnerScript = createRunnerScriptPublisher("python", RUNNER_SCRIPT, "py");
 
 const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS;
 // How long to wait after SIGINT for the runner to emit `done`. If the cell is
@@ -82,156 +63,61 @@ export interface PythonKernelAvailability {
 	runtime?: PythonRuntime;
 }
 
-// Cache successful probes per resolved cwd + explicit interpreter: every cell
-// otherwise pays one (or two — backend.isAvailable + ensureKernelAvailable)
-// interpreter spawns even when the kernel is already hot. Failures are not
-// cached so installing a Python mid-session is picked up on the next attempt.
-const availabilityCache = new Map<string, Promise<PythonKernelAvailability>>();
-
-export async function checkPythonKernelAvailability(
-	cwd: string,
-	interpreter?: string,
-): Promise<PythonKernelAvailability> {
-	if (isBunTestRuntime() || $flag("VEYYON_PYTHON_SKIP_CHECK")) {
-		return { ok: true };
-	}
-	const resolvedCwd = path.resolve(cwd);
-	const key = `${resolvedCwd}\0${interpreter ?? ""}`;
-	const cached = availabilityCache.get(key);
-	if (cached) return await cached;
-	const probe = probePythonKernelAvailability(resolvedCwd, interpreter);
-	availabilityCache.set(key, probe);
-	const result = await probe;
-	if (!result.ok && availabilityCache.get(key) === probe) {
-		availabilityCache.delete(key);
-	}
-	return result;
-}
-
-async function probePythonKernelAvailability(cwd: string, interpreter?: string): Promise<PythonKernelAvailability> {
-	try {
-		const settings = await Settings.init();
-		const { env } = settings.getShellConfig();
-		const baseEnv = filterEnv(env);
-		const runtimes = interpreter
-			? [resolveExplicitPythonRuntime(interpreter, cwd, baseEnv)]
-			: enumeratePythonRuntimes(cwd, baseEnv);
-		if (runtimes.length === 0) {
-			return { ok: false, reason: "Python executable not found on PATH" };
-		}
-		// Probe each candidate in priority order and use the first that actually
-		// runs. A managed env left behind by a removed `uv` install can exist on
-		// disk yet fail to execute; falling through to the next candidate lets a
-		// working system Python take over instead of failing the whole session.
-		const failures: string[] = [];
-		for (const runtime of runtimes) {
-			try {
-				const probe = await $`${runtime.pythonPath} -c "import sys;sys.exit(0)"`
-					.quiet()
-					.nothrow()
-					.cwd(cwd)
-					.env(runtime.env);
-				if (probe.exitCode === 0) {
-					return { ok: true, pythonPath: runtime.pythonPath, runtime };
-				}
-				failures.push(`${runtime.pythonPath} (exit code ${probe.exitCode})`);
-			} catch (err) {
-				failures.push(`${runtime.pythonPath} (${errorMessage(err)})`);
-			}
-		}
-		// No `pythonPath` on failure. Every candidate here has already been probed and
-		// none of them ran, so handing one back invites a caller that reads the path
-		// without checking `ok` to launch an interpreter this function just proved is
-		// broken. The reason names every candidate that was tried, which is what a
-		// diagnostic actually needs.
-		return {
-			ok: false,
-			reason: `No working Python interpreter found. Tried: ${failures.join("; ")}`,
-		};
-	} catch (err) {
-		return { ok: false, reason: errorMessage(err) };
-	}
-}
+export const checkPythonKernelAvailability = createLanguageAvailabilityChecker<PythonRuntime, "pythonPath">(
+	{
+		skipFlag: "VEYYON_PYTHON_SKIP_CHECK",
+		filterEnv,
+		enumerateRuntimes: (cwd, baseEnv, interpreter) =>
+			interpreter
+				? [resolveExplicitPythonRuntime(interpreter, cwd, baseEnv)]
+				: enumeratePythonRuntimes(cwd, baseEnv),
+		missingReason: "Python executable not found on PATH",
+		probeRuntime: (runtime, cwd) =>
+			$`${runtime.pythonPath} -c "import sys;sys.exit(0)"`.quiet().nothrow().cwd(cwd).env(runtime.env),
+		getExecutablePath: runtime => runtime.pythonPath,
+		includeFailedExecutablePath: false,
+		formatFailureReason: failures => `No working Python interpreter found. Tried: ${failures.join("; ")}`,
+	},
+	"pythonPath",
+);
 
 export class PythonKernel extends BaseKernel {
 	private constructor(id: string) {
 		super(id, {
 			languageName: "Python",
 			traceIpc: TRACE_IPC,
-			exitPayload: JSON.stringify({ type: "exit" }),
 			interruptEscalationMs: KERNEL_INTERRUPT_ESCALATION_MS,
 			shutdownGraceMs: KERNEL_SHUTDOWN_GRACE_MS,
-			buildPayload: (code, msgId, opts) =>
-				JSON.stringify({
-					id: msgId,
-					code,
-					cwd: opts?.cwd,
-					env: opts?.env,
-					silent: opts?.silent ?? false,
-					storeHistory: opts?.storeHistory ?? !(opts?.silent ?? false),
-				}),
 		});
 	}
 
 	static async start(options: KernelStartOptions): Promise<PythonKernel> {
-		const availability = await logger.time(
-			"PythonKernel.start:availabilityCheck",
-			checkPythonKernelAvailability,
-			options.cwd,
-			options.interpreter,
-		);
-		if (!availability.ok) {
-			throw new Error(availability.reason ?? "Python kernel unavailable");
-		}
-
-		let runtime = availability.runtime;
-		if (!runtime) {
-			const { env: shellEnv } = (await Settings.init()).getShellConfig();
-			runtime = options.interpreter
-				? resolveExplicitPythonRuntime(options.interpreter, options.cwd, filterEnv(shellEnv))
-				: resolvePythonRuntime(options.cwd, filterEnv(shellEnv));
-		}
-		const spawnEnv: Record<string, string> = {};
-		for (const [key, value] of Object.entries(runtime.env)) {
-			if (typeof value === "string") spawnEnv[key] = value;
-		}
-		for (const [key, value] of Object.entries(options.env ?? {})) {
-			if (typeof value === "string") spawnEnv[key] = value;
-		}
-		spawnEnv.PYTHONUNBUFFERED = "1";
-		spawnEnv.PYTHONIOENCODING = "utf-8";
-
-		const scriptPath = await ensureRunnerScript();
-		const kernel = new PythonKernel(Snowflake.next());
-
-		const proc = Bun.spawn([runtime.pythonPath, "-u", scriptPath], {
-			cwd: options.cwd,
-			detached: shouldDetachKernel(process.platform),
-			env: spawnEnv,
-			stdin: "pipe",
-			stdout: "pipe",
-			stderr: "pipe",
-			windowsHide: shouldHideKernelWindow({
-				platform: process.platform,
-				hostHasInheritableConsole: hostHasInheritableConsole(),
-			}),
+		return await launchKernelSubprocess({
+			languageName: "Python",
+			options,
+			checkAvailability: checkPythonKernelAvailability,
+			resolveRuntimeFallback: (cwd, interpreter, shellEnv) =>
+				interpreter
+					? resolveExplicitPythonRuntime(interpreter, cwd, filterEnv(shellEnv))
+					: resolvePythonRuntime(cwd, filterEnv(shellEnv)),
+			ensureRunnerScript,
+			createKernel: id => new PythonKernel(id),
+			getExecutableCommand: (runtime, scriptPath) => [runtime.pythonPath, "-u", scriptPath],
+			getSpawnEnv: (runtime, optionsEnv) =>
+				assembleSpawnEnv(
+					runtime.env,
+					optionsEnv,
+					{
+						PYTHONUNBUFFERED: "1",
+						PYTHONIOENCODING: "utf-8",
+					},
+					{ ownPropertiesOnly: true },
+				),
+			startupTimeoutMs: STARTUP_TIMEOUT_MS,
+			initScript: buildInitScript(options.cwd, options.env),
+			preludeScript: PYTHON_PRELUDE,
+			releaseReason: "python-kernel-startup-failed",
 		});
-
-		options.adoptPid?.(proc.pid);
-		kernel.setProcess(proc);
-
-		const startup = { signal: options.signal, deadlineMs: options.deadlineMs };
-		const startupBudget = Math.min(getRemainingTimeMs(startup.deadlineMs) ?? STARTUP_TIMEOUT_MS, STARTUP_TIMEOUT_MS);
-
-		try {
-			const initScript = buildInitScript(options.cwd, options.env);
-			await kernel.executeWithBudget(initScript, startup.signal, startupBudget, "Python kernel init");
-			await kernel.executeWithBudget(PYTHON_PRELUDE, startup.signal, startupBudget, "Python kernel prelude");
-			return kernel;
-		} catch (err) {
-			await releaseKernel(kernel, "python-kernel-startup-failed", { timeoutMs: KERNEL_SHUTDOWN_GRACE_MS });
-			throw err;
-		}
 	}
 }
 function buildInitScript(cwd: string, env?: Record<string, string | undefined>): string {

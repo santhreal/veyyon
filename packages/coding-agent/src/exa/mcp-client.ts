@@ -20,7 +20,7 @@ export interface ProviderMcpCallOptions extends CallMcpOptions {
 	resolveProviderTextTransform?: ProviderTextTransformResolver;
 }
 
-/** Find EXA_API_KEY from Bun.env or .env files */
+/** Find EXA_API_KEY from process.env or .env files */
 export function findApiKey(): string | null {
 	return $env.EXA_API_KEY;
 }
@@ -33,7 +33,7 @@ export function findApiKey(): string | null {
  * - structured payload under result.structuredContent / result.data / result.result
  * - JSON payload embedded as text in result.content[]
  */
-function normalizeMcpToolPayload(payload: unknown): unknown {
+export function normalizeMcpToolPayload(payload: unknown): unknown {
 	const candidates: unknown[] = [];
 	const root = asRecord(payload);
 
@@ -94,6 +94,28 @@ export async function fetchWebsetsTools(apiKey: string): Promise<MCPTool[]> {
 	return response.result?.tools ?? [];
 }
 
+/** One `tools/call` against an Exa-family MCP endpoint; `stage` names the endpoint in transform and error text. */
+async function callMcpTool(
+	url: string,
+	stage: "Exa MCP tools/call" | "Websets MCP tools/call",
+	toolName: string,
+	args: Record<string, unknown>,
+	options: ProviderMcpCallOptions | undefined,
+): Promise<unknown> {
+	const transform = resolveProviderTextTransform(options?.resolveProviderTextTransform, stage);
+	const outboundArgs = transformProviderPayload(args, transform, stage) as Record<string, unknown>;
+	const response = (await callMCP(
+		url,
+		"tools/call",
+		{ name: toolName, arguments: outboundArgs },
+		options,
+	)) as MCPCallResponse;
+	if (response.error) {
+		throw new Error(`${stage} failed.`);
+	}
+	return normalizeMcpToolPayload(response.result);
+}
+
 /** Call a tool on Exa MCP (simplified: toolName as first arg for easier use) */
 export async function callExaTool(
 	toolName: string,
@@ -104,24 +126,7 @@ export async function callExaTool(
 	const params = new URLSearchParams();
 	if (apiKey) params.set("exaApiKey", apiKey);
 	params.set("tools", toolName);
-	const url = `https://mcp.exa.ai/mcp?${params.toString()}`;
-	const transform = resolveProviderTextTransform(options?.resolveProviderTextTransform, "Exa MCP tools/call");
-	const outboundArgs = transformProviderPayload(args, transform, "Exa MCP tools/call") as Record<string, unknown>;
-	const response = (await callMCP(
-		url,
-		"tools/call",
-		{
-			name: toolName,
-			arguments: outboundArgs,
-		},
-		options,
-	)) as MCPCallResponse;
-
-	if (response.error) {
-		throw new Error("Exa MCP tools/call failed.");
-	}
-
-	return normalizeMcpToolPayload(response.result);
+	return callMcpTool(`https://mcp.exa.ai/mcp?${params.toString()}`, "Exa MCP tools/call", toolName, args, options);
 }
 
 /** Call a tool on Websets MCP */
@@ -132,23 +137,7 @@ export async function callWebsetsTool(
 	options?: ProviderMcpCallOptions,
 ): Promise<unknown> {
 	const url = `https://websetsmcp.exa.ai/mcp?exaApiKey=${encodeURIComponent(apiKey)}`;
-	const transform = resolveProviderTextTransform(options?.resolveProviderTextTransform, "Websets MCP tools/call");
-	const outboundArgs = transformProviderPayload(args, transform, "Websets MCP tools/call") as Record<string, unknown>;
-	const response = (await callMCP(
-		url,
-		"tools/call",
-		{
-			name: toolName,
-			arguments: outboundArgs,
-		},
-		options,
-	)) as MCPCallResponse;
-
-	if (response.error) {
-		throw new Error("Websets MCP tools/call failed.");
-	}
-
-	return normalizeMcpToolPayload(response.result);
+	return callMcpTool(url, "Websets MCP tools/call", toolName, args, options);
 }
 
 /** Format search results for LLM */

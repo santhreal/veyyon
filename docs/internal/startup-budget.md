@@ -5,9 +5,10 @@ Startup latency is the interval from process launch to a visually settled, edita
 Mode-specific Vibe tools load through the agent tool manifest on `/vibe` activation, not during runtime warmup. Activation awaits tool construction before changing the registry or active toolset. A failed load leaves both unchanged; first-use measurements include this deferred work.
 
 Session initialization and runtime warmup import streaming helpers from `@veyyon/ai/stream`
-and register usage backends through `@veyyon/ai/usage/defaults`. They do not evaluate the
-`@veyyon/ai` package barrel. Usage providers and credential-ranking strategies remain
-available to direct session construction, the SDK and terminal startup.
+and register usage backends through `@veyyon/ai/usage/defaults`. Image inspection,
+Mnemopi initialization and search-provider loading also use AI subpath imports rather
+than evaluating the `@veyyon/ai` package barrel. Usage providers and credential-ranking
+strategies remain available when these entry points load independently.
 
 Interactive startup starts background model discovery after terminal initialization
 and an event-loop yield. Initial model resolution still completes before session
@@ -18,6 +19,32 @@ The launch and session composer footlines use the same filesystem-derived reposi
 and linked-worktree location context and draft-token estimate. Typing before session
 initialization updates the estimate on the launch card; mounting the session does not
 replace the location format or add an estimate that was previously absent.
+
+The launch and live status rows use `statusLineSettingsFromConfig`. Launch redraws
+read segment options and compaction flags directly from their declared paths,
+without constructing complete settings groups.
+Group reads reuse declaration-path membership and read current values from the
+requesting settings instance. Prefixes without declared members are not retained.
+
+First-frame replay persistence uses asynchronous filesystem operations. Terminal
+output capture ends before persistence starts. Recording bytes and screen geometry
+are snapshotted before the first filesystem await, so later input and repainting
+do not change the recording. Startup awaits publication before runtime warmup.
+
+First-frame input requests an immediate differential render with `preserveViewport`.
+Pending full-viewport repaint and scrollback replacement requests retain precedence.
+Filesystem card views import selector parsing from `tools/core/path-utils` without
+evaluating filesystem tool implementations.
+
+Record typing from the first launch frame through initialization with:
+
+```sh
+SCENE_COMMAND='env STARTUP_EXECUTABLE=/repo/path/to/binary bash -l' \
+  proof/record.sh proof/scenes/startup-immediate-input.sh
+```
+
+The scene checks the complete retained draft and initialized model name. Use the
+same dimensions, configuration and input timing for each compiled target.
 
 Record linked-worktree startup and typing through session initialization with:
 
@@ -74,7 +101,7 @@ does not allocate a normalized URL and does not fold punctuation or control char
 ## Measure it
 
 ```sh
-bun scripts/bench-startup.ts --runs 5                          # bun source, warm agent home
+bun scripts/bench-startup.ts --runs 5                          # bun source; caches retained between runs
 bun scripts/bench-startup.ts --runs 5 --bin ~/.local/bin/veyyon # the shipped binary
 bun scripts/bench-startup.ts --runs 5 --cold                    # the first launch after an install
 ```
@@ -88,6 +115,10 @@ With `--seed`, cold arms also replace the copied configuration before each launc
 Warm arms copy it once and retain subsequent configuration and cache changes.
 The source seed is never modified. Each PTY arm terminates its process tree before
 the next arm starts, and `--cwd` applies to native extraction and measured launches.
+
+Every invocation replaces the scratch directory. The first iteration initializes
+application caches even without `--cold`. Warm-only comparisons exclude that
+iteration and use later iterations from the same invocation.
 
 Extraction belongs to the seed because every install path performs it: `install.sh` runs
 `doctor_natives`, `install.ps1` runs its mirror, and the self-updater runs the same search probe. A
@@ -168,9 +199,10 @@ last change to rendered text, cell styles or cursor position during the observat
 The final screen must still contain the resolved metadata and retained input.
 Nonvisual terminal queries do not restart the interval.
 
-`--observe-ms` defaults to 5000. `--stable-ms` requires at least 1000 milliseconds
-without a final screen change. Missing metadata, lost input, early exit or an
-insufficient stable interval fails the arm. `--columns` and `--rows` change the PTY
+`--observe-ms` defaults to 5000. `--stable-ms` sets the required unchanged
+interval and defaults to 1000 milliseconds without a final screen change.
+Missing metadata, lost input, early exit or an insufficient stable interval
+fails the arm. `--columns` and `--rows` change the PTY
 and parser dimensions together. Each run writes a timestamped screen trace under
 the scratch directory, including failed runs. Process-tree termination is awaited.
 
@@ -339,5 +371,4 @@ The binary meets the first target at 84ms warm and 79ms cold, medians of 5 on an
 It is still a target and not a gate. Wiring it to CI needs a runner whose timings are stable enough
 that a red build means a regression, and a first-frame median here moves by more than 50% between
 repetitions, and by more than that when a type check shares the machine.
-
-*Verified against `9c904aa2db` on 2026-09-05.*
+*Verified against `46980a2485` on 2026-09-11.*

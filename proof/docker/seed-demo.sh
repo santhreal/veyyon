@@ -548,9 +548,12 @@ SCENE_NAME="$(basename "${2:-}" .sh)"
 case "${SCENE_NAME}" in
 autoresearch-serial-*) SEED_KIND=serial ;;
 autoresearch-* | autoswarm-run-*) SEED_KIND=swarm ;;
+late-diagnostics*) SEED_KIND=late-diagnostics ;;
 *) SEED_KIND="" ;;
 esac
-if [ -n "${SEED_KIND}" ]; then
+if [ "${SEED_KIND}" = "late-diagnostics" ]; then
+	(cd /repo && bun proof/docker/seed-late-diagnostics.ts "${DEMO}")
+elif [ -n "${SEED_KIND}" ]; then
 	(cd /repo && bun proof/docker/seed-autoresearch.ts "${DEMO}" "${SEED_KIND}")
 fi
 

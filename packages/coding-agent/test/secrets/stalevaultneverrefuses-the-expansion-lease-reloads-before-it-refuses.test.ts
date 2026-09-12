@@ -33,7 +33,7 @@ import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
-import { setProjectDir, TempDir } from "@veyyon/utils";
+import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 import { useSpyTeardown } from "../helpers/spy-teardown";
 
@@ -66,9 +66,12 @@ interface LeaseFixture {
 	vaultA: SecretVault;
 	settings: Settings;
 	session: AgentSession;
+	/** Where the process stood before the session moved it; put back before `root` goes. */
+	originalProjectDir: string;
 }
 
 async function createLeaseFixture(): Promise<LeaseFixture> {
+	const originalProjectDir = getProjectDir();
 	const root = TempDir.createSync("stale-lease-fixture-");
 	const projectA = path.resolve(root.join("project-a"));
 	const projectB = path.resolve(root.join("project-b"));
@@ -100,7 +103,19 @@ async function createLeaseFixture(): Promise<LeaseFixture> {
 		enableLsp: false,
 		skipPythonPreflight: true,
 	});
-	return { root, projectA, projectB, vaultA, settings, session };
+	return { root, projectA, projectB, vaultA, settings, session, originalProjectDir };
+}
+
+/**
+ * `setCwd` re-scopes the PROCESS, since this session owns it, so a row that moved to project B
+ * left the process standing in a directory this removes. Put it back first: a later suite that
+ * restores its own state fails with ENOENT on a directory it never created, and the leak tracer
+ * cannot even take its after-test snapshot.
+ */
+async function disposeLeaseFixture(fixture: LeaseFixture): Promise<void> {
+	await fixture.session.dispose();
+	setProjectDir(fixture.originalProjectDir);
+	await fixture.root.remove();
 }
 
 // The rows below install `SecretVault.prototype` spies, and one deliberately PARKS a load and holds
@@ -154,8 +169,7 @@ describe("a lease whose captured vault revision has been overtaken", () => {
 		} finally {
 			loadSpy.mockRestore();
 			revision.restore();
-			await fixture.session.dispose();
-			await fixture.root.remove();
+			await disposeLeaseFixture(fixture);
 		}
 	});
 
@@ -186,8 +200,7 @@ describe("a lease whose captured vault revision has been overtaken", () => {
 			expect(reloaded.expansionObfuscator?.deobfuscate("#A_TOKEN#")).toBe(A_TOKEN_ROTATED);
 		} finally {
 			revision.restore();
-			await fixture.session.dispose();
-			await fixture.root.remove();
+			await disposeLeaseFixture(fixture);
 		}
 	});
 
@@ -217,8 +230,7 @@ describe("a lease whose captured vault revision has been overtaken", () => {
 		} finally {
 			loadSpy.mockRestore();
 			revision.restore();
-			await fixture.session.dispose();
-			await fixture.root.remove();
+			await disposeLeaseFixture(fixture);
 		}
 	});
 
@@ -254,8 +266,7 @@ describe("a lease whose captured vault revision has been overtaken", () => {
 			}
 		} finally {
 			revision.restore();
-			await fixture.session.dispose();
-			await fixture.root.remove();
+			await disposeLeaseFixture(fixture);
 		}
 	});
 
@@ -286,8 +297,7 @@ describe("a lease whose captured vault revision has been overtaken", () => {
 			}
 		} finally {
 			revision.restore();
-			await fixture.session.dispose();
-			await fixture.root.remove();
+			await disposeLeaseFixture(fixture);
 		}
 	});
 
@@ -300,12 +310,6 @@ describe("a lease whose captured vault revision has been overtaken", () => {
 	 * "always refresh on stale" trampling a cwd transition.
 	 */
 	it("never schedules a reload for a directory the session has already left", async () => {
-		// The move below chdirs the PROCESS: the session cwd authority calls `setProjectDir`,
-		// which calls `process.chdir`. The destination is inside the fixture tree this row
-		// removes, so without the restore in `finally` the process is left inside a deleted
-		// directory and `process.cwd()` throws ENOENT — not here, but in whichever file runs
-		// next, and in the leak tracer that snapshots the cwd after every row.
-		const enteredFrom = process.cwd();
 		const fixture = await createLeaseFixture();
 		const sourceLease = await fixture.session.leaseSecretRuntime();
 		// Only now, so the source lease captured a real fingerprint the live one disagrees with.
@@ -348,9 +352,7 @@ describe("a lease whose captured vault revision has been overtaken", () => {
 			releaseDestinationLoad.open();
 			loadSpy.mockRestore();
 			revision.restore();
-			await fixture.session.dispose();
-			setProjectDir(enteredFrom);
-			await fixture.root.remove();
+			await disposeLeaseFixture(fixture);
 		}
 	});
 });

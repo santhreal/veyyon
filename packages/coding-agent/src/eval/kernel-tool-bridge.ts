@@ -40,7 +40,7 @@ let serverPromise: Promise<BridgeServer> | null = null;
  *
  * A kernel invokes this bridge with blocking requests from worker threads (each
  * `agent()` / `tool.*` call). The base executor defers the registered signal
- * while a bridge call is already paused so in-flight subagents can finish and
+ * while a bridge call is already paused so in-flight spawned agents can finish and
  * persist output instead of being orphaned. Once an abort has been requested,
  * later bridge calls are rejected before starting; once the shielded signal
  * finally aborts, this handler still resolves the HTTP request promptly so the
@@ -74,7 +74,7 @@ async function callSessionToolPromptOnAbort(
 		return await Promise.race([call, aborted]);
 	} finally {
 		signal.removeEventListener("abort", onAbort);
-		// `call` may still be settling (subagent teardown after its own abort);
+		// `call` may still be settling (spawned agent teardown after its own abort);
 		// swallow its outcome so an abort-won race can't surface as unhandled.
 		void call.catch(() => {});
 	}

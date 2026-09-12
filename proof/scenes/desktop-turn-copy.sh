@@ -130,7 +130,7 @@ EDITOR_MAX_PIXELS=120
 # already carries.
 SAME_WORDS_MAX_PIXELS=200
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 MEASURE="${BASH_SOURCE[0]%/*}/measure-frame.py"

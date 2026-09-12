@@ -25,7 +25,7 @@ export const agentTools = {
 	learn: async s => (await import("./learn")).LearnTool.createIf(s),
 	manage_skill: async s => (await import("./manage-skill")).ManageSkillTool.createIf(s),
 	// The two Argot folder tools exist only when the session holds a codec; with
-	// the feature off, or for a subagent under `argot.subagents: off`, there is no
+	// the feature off, or for a spawned agent under `argot.agents: off`, there is no
 	// session to load into, so the factory returns null and the tool is absent.
 	[ARGOT_LOAD_TOOL]: async s =>
 		s.settings.get("argot.enabled") && s.getArgotSession?.() !== undefined

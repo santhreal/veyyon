@@ -28,7 +28,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
-import { Text } from "@veyyon/tui";
+import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, Text } from "@veyyon/tui";
 import {
 	beginSettingsTest,
 	restoreSettingsTestState,
@@ -60,6 +60,10 @@ const CARDS_WITHOUT_A_TITLE_ROW: Record<string, { shape: "section" | "plate"; wh
 	bash: {
 		shape: "section",
 		why: "the `$ command` row says what a title would repeat, so the shell card draws no title",
+	},
+	resolve: {
+		shape: "plate",
+		why: "the settled resolution fills a notice whose blank top inset precedes the decision headline",
 	},
 };
 
@@ -93,14 +97,22 @@ const RENDERERS_THAT_DRAW_A_TREE: Record<string, string> = {
 const BOX_GLYPH = /[│┌┐└┘├┤┬┴┼─╭╮╰╯╷╵]/u;
 
 let settingsState: SettingsTestState | undefined;
+let ansiPolicy: AnsiPolicy;
 
 beforeAll(async () => {
 	settingsState = beginSettingsTest();
 	await Settings.init({ inMemory: true });
 	await initTheme(false);
+	// The shapes are read off the terminal's own policy. A plate's top inset is an inverse-painted
+	// blank row: under `plain` (a `TERM=dumb` sandbox) it is bare spaces, the block skips it as a
+	// leading blank, and the notice opens on its headline as if it were a title. Pinned so the
+	// recorded shapes are the ones a colour terminal draws, wherever the suite runs.
+	ansiPolicy = getAnsiPolicy();
+	setAnsiPolicy("full");
 });
 
 afterAll(() => {
+	setAnsiPolicy(ansiPolicy);
 	restoreSettingsTestState(settingsState);
 	settingsState = undefined;
 });

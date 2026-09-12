@@ -11,11 +11,11 @@
 import type { EvalStatusEvent } from "./types";
 
 /**
- * Record a status event, replacing the previous event for the same subagent instead of appending a second one.
+ * Record a status event, replacing the previous event for the same agent instead of appending a second one.
  *
- * Agent events are the one kind that SUPERSEDE rather than accumulate: a subagent reports pending, then running,
+ * Agent events are the one kind that SUPERSEDE rather than accumulate: an agent reports pending, then running,
  * then completed under one `id`, and the reader wants its current state, not its history. Appending each would
- * make one subagent look like three, and the count is what the status line shows. Every other op is a distinct
+ * make one agent look like three, and the count is what the status line shows. Every other op is a distinct
  * thing that happened, so it is appended.
  */
 export function upsertStatusEvent(events: EvalStatusEvent[], event: EvalStatusEvent): void {

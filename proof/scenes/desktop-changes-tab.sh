@@ -108,8 +108,8 @@ echo "scene: the strip reads ${PANE_W}x${TABS_H} at +${PANEL_LEFT}+${PANEL_TOP},
 #
 # Sets PILL_PX and BLOCKS.
 read_panel() { # <png>
-	local dump="${SCENE_RUNTIME_DIR}/frame-compare/panel-pixels.txt"
-	mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+	local dump="${TMPDIR}/frame-compare/panel-pixels.txt"
+	mkdir -p "${TMPDIR}/frame-compare"
 	magick "$1" -crop "${PANE_W}x$(( TABS_H + ROWS_H ))+${PANEL_LEFT}+${PANEL_TOP}" +repage txt:- >"${dump}"
 	read -r PILL_PX BLOCKS < <(
 		python3 - "${ROW_H}" "${TABS_H}" "${CHANGED_LINES}" "${dump}" <<'PY'
@@ -187,9 +187,9 @@ pause 1.0
 # The panel is drawn when two probes a moment apart are the same over it: the
 # rows arrive on a host answer rather than on the key press.
 PANEL_GEOM="${PANE_W}x$(( TABS_H + ROWS_H ))+${PANEL_LEFT}+${PANEL_TOP}"
-PANEL_A="${SCENE_RUNTIME_DIR}/frame-compare/panel-a.png"
-PANEL_B="${SCENE_RUNTIME_DIR}/frame-compare/panel-b.png"
-mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+PANEL_A="${TMPDIR}/frame-compare/panel-a.png"
+PANEL_B="${TMPDIR}/frame-compare/panel-b.png"
+mkdir -p "${TMPDIR}/frame-compare"
 SETTLED=0
 for _ in $(seq 1 30); do
 	probe_frame "${PANEL_A}"

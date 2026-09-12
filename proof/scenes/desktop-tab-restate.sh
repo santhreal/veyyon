@@ -134,7 +134,7 @@ use_crop "${PANEL_LEFT}" "${PANE_TOP}" "${PANE_W}" "${PANE_H}"
 
 echo "scene: the pane reads ${PANE_GEOM}" >&2
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 # The pane is drawn when two probes a moment apart are the same over it: its

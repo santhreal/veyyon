@@ -26,6 +26,10 @@ import type {
 	ToolCall,
 	Usage,
 } from "@veyyon/model";
+import { ROOM_KEY_BYTES, WRITE_TOKEN_BYTES } from "./collab-link";
+import type { ToolExecutionDisplay } from "./presentation/transcript";
+
+export type { ToolExecutionDisplay };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Content blocks
@@ -42,7 +46,9 @@ export type ThinkingContent = Pick<ModelThinkingContent, "type" | "thinking">;
 
 export type RedactedThinkingContent = Pick<ModelRedactedThinkingContent, "type" | "data">;
 
-export type ToolCallContent = Pick<ToolCall, "type" | "id" | "name" | "arguments" | "intent">;
+export type ToolCallContent = Pick<ToolCall, "type" | "id" | "name" | "arguments" | "intent"> & {
+	display?: ToolExecutionDisplay;
+};
 
 /**
  * Anthropic server-side-fallback boundary marker, persisted on an assistant turn whose request opted
@@ -145,6 +151,7 @@ export interface WireToolResultMessage {
 	details?: unknown;
 	isError: boolean;
 	timestamp: number;
+	display?: ToolExecutionDisplay;
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -313,7 +320,7 @@ export type {
 //
 // This is the SUBSET a guest can render, not the session's own entry union.
 // The host's is `SessionEntry` in `@veyyon/agent-core/compaction/entries`, and
-// it carries a dozen more variants (mode changes, subagent spawns, settings
+// it carries a dozen more variants (mode changes, agent spawns, settings
 // snapshots) that no guest draws. Both were spelled `SessionEntry`, so
 // `host.ts` had to import one of them under an alias to say which it meant,
 // and an editor's auto-import decided the question everywhere else.
@@ -429,9 +436,30 @@ export type AgentEvent =
 	/** Carries the FULL accumulating partial message — no delta tracking needed. */
 	| { type: "message_update"; message: WireMessage }
 	| { type: "message_end"; message: WireMessage }
-	| { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown; intent?: string }
-	| { type: "tool_execution_update"; toolCallId: string; toolName: string; args: unknown; partialResult: unknown }
-	| { type: "tool_execution_end"; toolCallId: string; toolName: string; result: unknown; isError?: boolean }
+	| {
+			type: "tool_execution_start";
+			toolCallId: string;
+			toolName: string;
+			args: unknown;
+			intent?: string;
+			display?: ToolExecutionDisplay;
+	  }
+	| {
+			type: "tool_execution_update";
+			toolCallId: string;
+			toolName: string;
+			args: unknown;
+			partialResult: unknown;
+			display?: ToolExecutionDisplay;
+	  }
+	| {
+			type: "tool_execution_end";
+			toolCallId: string;
+			toolName: string;
+			result: unknown;
+			isError?: boolean;
+			display?: ToolExecutionDisplay;
+	  }
 	| { type: "notice"; level: "info" | "warning" | "error"; message: string; source?: string }
 	| { type: "auto_compaction_start"; reason: string; action: string }
 	| { type: "auto_compaction_end"; aborted: boolean; willRetry: boolean; errorMessage?: string; skipped?: boolean }
@@ -535,7 +563,7 @@ export interface AgentSnapshot {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Bus payloads (task subagent lifecycle/progress channels)
+// Bus payloads (task agent lifecycle/progress channels)
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface AgentProgress {
@@ -561,7 +589,7 @@ export interface AgentProgress {
 	resolvedModel?: string;
 }
 
-export interface SubagentProgressPayload {
+export interface AgentProgressPayload {
 	index: number;
 	agent: string;
 	task: string;
@@ -571,7 +599,7 @@ export interface SubagentProgressPayload {
 	sessionFile?: string;
 }
 
-export interface SubagentLifecyclePayload {
+export interface AgentLifecyclePayload {
 	id: string;
 	agent: string;
 	description?: string;
@@ -580,6 +608,10 @@ export interface SubagentLifecyclePayload {
 	parentToolCallId?: string;
 	index: number;
 }
+
+/** The names the `task:subagent:*` bus payloads were published under; both stay exported so a guest built against them still compiles. */
+export type SubagentProgressPayload = AgentProgressPayload;
+export type SubagentLifecyclePayload = AgentLifecyclePayload;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Frames (JSON inside the AES-GCM seal)
@@ -626,7 +658,7 @@ export type GuestFrame =
 	| { t: "agent-cmd"; cmd: "chat" | "kill" | "revive"; agentId: string; text?: string }
 	| { t: "fetch-transcript"; reqId: number; agentId: string; fromByte: number };
 
-/** EventBus channels mirrored to guests (task subagent traffic only). */
+/** EventBus channels mirrored to guests (task agent traffic only). The spellings are frozen wire vocabulary. */
 export type BusChannel = "task:subagent:progress" | "task:subagent:lifecycle";
 
 export type HostFrame =
@@ -656,7 +688,7 @@ export type HostFrame =
 	| { t: "entry"; entry: WireSessionEntry }
 	| { t: "event"; event: AgentEvent }
 	| { t: "state"; state: SessionState }
-	/** Mirrored EventBus traffic (task subagent lifecycle/progress channels only). */
+	/** Mirrored EventBus traffic (task agent lifecycle/progress channels only). */
 	| { t: "bus"; channel: BusChannel; data: unknown }
 	| { t: "agents"; agents: AgentSnapshot[] }
 	| { t: "ui-request"; request: CollabUiRequest }
@@ -677,11 +709,12 @@ export type WireFrame = GuestFrame | HostFrame;
  *   sessions are not gated on a single welcome frame fitting under the
  *   guest's first-welcome timeout.
  * - `3`: host asks guests through `ui-request`/`ui-request-end` host frames
- *   answered by the `ui-response` guest frame. Guests that predate the
- *   grammar would silently drop `ui-request` (asks hang forever on the
- *   host), so they must be rejected at hello.
+ *   answered by the `ui-response` guest frame.
+ * - `4`: tool execution displays are projected on tool calls, results, and
+ *   live events (`display?: ToolExecutionDisplay`), preserving complete raw
+ *   data for full output/inspection while carrying canonical visual presentation.
  */
-export const COLLAB_PROTO = 3;
+export const COLLAB_PROTO = 4;
 
 /** Parameter key used for intent tracing (e.g. prompt explanation/reasoning) */
 export const INTENT_FIELD = "i";
@@ -740,17 +773,11 @@ export function rewriteEnvelopePeer(data: Uint8Array, peerId: number): void {
 	new DataView(data.buffer, data.byteOffset, ENVELOPE_HEADER_LENGTH).setUint32(0, peerId, false);
 }
 
-export const ROOM_ID_BYTES = 16;
-
-/** AES-256-GCM room key; the seal key for every collab frame. */
-export const ROOM_KEY_BYTES = 32;
-
-/**
- * Random write token appended to the room key in full links
- * (`base64url(key ∥ token)`); view links carry the bare key. Possession
- * proves prompt/abort/agent-cmd capability to the host.
- */
-export const WRITE_TOKEN_BYTES = 16;
+// The link grammar (room id, key and token sizes, default relay, base64url codec, link
+// formatting and parsing) is owned by `./collab-link`, which imports nothing, so the host,
+// the browser guest and the relay read one definition. Re-exported here so anything that
+// already took it from `@veyyon/wire` is unchanged.
+export * from "./collab-link";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Frame sealing (AES-256-GCM)
@@ -778,16 +805,12 @@ const SEAL_TEXT_DECODER = new TextDecoder();
 
 /** A fresh random room key. The key never leaves the link fragment; the relay sees only ciphertext. */
 export function generateRoomKey(): Uint8Array {
-	const key = new Uint8Array(ROOM_KEY_BYTES);
-	crypto.getRandomValues(key);
-	return key;
+	return crypto.getRandomValues(new Uint8Array(ROOM_KEY_BYTES));
 }
 
 /** A fresh random write token, which is what proves prompt/abort capability to the host. */
 export function generateWriteToken(): Uint8Array {
-	const token = new Uint8Array(WRITE_TOKEN_BYTES);
-	crypto.getRandomValues(token);
-	return token;
+	return crypto.getRandomValues(new Uint8Array(WRITE_TOKEN_BYTES));
 }
 
 /**
@@ -898,16 +921,6 @@ export const SNAPSHOT_PROGRESS_TIMEOUT_MS = 30_000;
 export const TRANSCRIPT_TIMEOUT_MS = 20_000;
 
 /**
- * Default public relay; bare `<roomId>.<key>` links resolve against it.
- *
- * Points at the Veyyon-owned relay host. As of this writing `veyyon.dev` has
- * no live DNS/relay deployed yet — `/collab` against the default (no
- * `--relay` override) will fail to connect until that infra ships. Repoint
- * or override via `collab.relayUrl` once a real relay is standing.
- */
-export const DEFAULT_RELAY_URL = "wss://share.veyyon.dev";
-
-/**
  * Default share viewer/upload base; `/share` links resolve against
  * `<base>/<id>#<key>`.
  *
@@ -917,15 +930,6 @@ export const DEFAULT_RELAY_URL = "wss://share.veyyon.dev";
  * an unintended upstream server.
  */
 export const DEFAULT_SHARE_URL = "https://share.veyyon.dev/s";
-
-export interface ParsedCollabLink {
-	/** wss://host[:port]/r/<roomId> — no query, no fragment. */
-	wsUrl: string;
-	roomId: string;
-	key: Uint8Array;
-	/** Write token from a full link; absent for read-only (view) links. */
-	writeToken?: Uint8Array;
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Relay protocol (TEXT JSON control messages, fatal close codes, send bound)

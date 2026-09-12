@@ -90,8 +90,14 @@ const PRUNING_CEILING = 195;
  * `ai/utils/block-symbols.ts`, which were already here and now re-export them. A contract imports nothing
  * in this repository, so the growth is file count and no subtree; the barrel edge is still asserted by
  * specifier below.
+ *
+ * RE-MEASURED 2026-09-11: engine 317, remote summarizer 220. The three new modules on the engine's closure
+ * are `compaction/staged-summary.ts` and the two prompt bodies it imports as text,
+ * `prompts/compaction/compaction-staged-segment.md` and `prompts/compaction/compaction-staged-merge.md` --
+ * the staged summarization the engine falls back to when one request times out or cannot fit. The stager
+ * imports only what the engine already reached, so the growth is those three files and no subtree.
  */
-const COMPACTION_ENGINE_CEILING = 314;
+const COMPACTION_ENGINE_CEILING = 317;
 const REMOTE_SUMMARIZER_CEILING = 221;
 
 describe("the estimator is a leaf", () => {

@@ -21,7 +21,7 @@
  * FAIL CLOSED, AND NEVER SILENTLY. `evaluate` answers `untrusted` for anything it has no
  * record of, and this module has no UI and no prompt: it cannot ask, so it cannot be talked
  * into a default of yes. A caller with an interactive terminal asks and then calls
- * {@link ProjectTrust.trust}; a caller without one (print mode, ACP, RPC, a subagent, CI)
+ * {@link ProjectTrust.trust}; a caller without one (print mode, ACP, RPC, a spawned agent, CI)
  * loads nothing and says which file and which source it refused, because a refusal nobody can
  * see is indistinguishable from a feature that does not work.
  *

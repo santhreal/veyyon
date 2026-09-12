@@ -14,61 +14,12 @@
 //! [`stop`](IsolationBackend::stop) dispatches to the correct teardown path
 //! (`umount2` vs `fusermount[3] -u`).
 
-use std::path::Path;
-
-use async_trait::async_trait;
-
-#[cfg(not(target_os = "linux"))]
-use crate::IsoError;
-use crate::{BackendKind, IsoResult, IsolationBackend, ProbeResult};
-
-pub struct OverlayfsBackend;
-
-pub fn backend() -> &'static dyn IsolationBackend {
-	&OverlayfsBackend
-}
-
-#[async_trait]
-impl IsolationBackend for OverlayfsBackend {
-	fn kind(&self) -> BackendKind {
-		BackendKind::Overlayfs
-	}
-
-	fn probe(&self) -> ProbeResult {
-		#[cfg(target_os = "linux")]
-		{
-			imp::probe()
-		}
-		#[cfg(not(target_os = "linux"))]
-		{
-			ProbeResult::unavailable("overlayfs isolation is only available on Linux")
-		}
-	}
-
-	fn start(&self, lower: &Path, merged: &Path) -> IsoResult<()> {
-		#[cfg(target_os = "linux")]
-		{
-			imp::start(lower, merged)
-		}
-		#[cfg(not(target_os = "linux"))]
-		{
-			let _ = (lower, merged);
-			Err(IsoError::unavailable("overlayfs isolation is only available on Linux"))
-		}
-	}
-
-	fn stop(&self, merged: &Path) -> IsoResult<()> {
-		#[cfg(target_os = "linux")]
-		{
-			imp::stop(merged)
-		}
-		#[cfg(not(target_os = "linux"))]
-		{
-			let _ = merged;
-			Ok(())
-		}
-	}
-}
+declare_backend!(
+	OverlayfsBackend,
+	Overlayfs,
+	"overlayfs isolation is only available on Linux",
+	target_os = "linux"
+);
 
 #[cfg(target_os = "linux")]
 mod imp {
@@ -84,7 +35,7 @@ mod imp {
 
 	use parking_lot::Mutex;
 
-	use crate::{IsoError, IsoResult, ProbeResult, command_failed};
+	use crate::{IsoError, IsoResult, ProbeResult, canonical_existing_dir, command_failed};
 
 	#[derive(Clone, Copy)]
 	enum MountFlavor {
@@ -109,7 +60,7 @@ mod imp {
 	}
 
 	pub fn start(lower: &Path, merged: &Path) -> IsoResult<()> {
-		let lower = canonical_existing_dir(lower)?;
+		let lower = canonical_existing_dir(lower, "overlay lower")?;
 		let merged = absolutize(merged);
 		let base = merged.parent().ok_or_else(|| {
 			IsoError::other(format!("merged path has no parent: {}", merged.display()))
@@ -136,18 +87,30 @@ mod imp {
 			work.display()
 		);
 
-		match kernel_mount(&merged, &opts) {
+		let res = match kernel_mount(&merged, &opts) {
 			Ok(()) => {
-				ACTIVE_MOUNTS.lock().insert(merged, MountFlavor::Kernel);
+				ACTIVE_MOUNTS
+					.lock()
+					.insert(merged.clone(), MountFlavor::Kernel);
 				Ok(())
 			},
-			Err(err) if err.is_unavailable() => {
-				fuse_mount(&lower, &upper, &work, &merged)?;
-				ACTIVE_MOUNTS.lock().insert(merged, MountFlavor::Fuse);
-				Ok(())
+			Err(err) if err.is_unavailable() => match fuse_mount(&lower, &upper, &work, &merged) {
+				Ok(()) => {
+					ACTIVE_MOUNTS
+						.lock()
+						.insert(merged.clone(), MountFlavor::Fuse);
+					Ok(())
+				},
+				Err(fuse_err) => Err(fuse_err),
 			},
 			Err(err) => Err(err),
+		};
+		if res.is_err() {
+			let _ = remove_dir_if_exists(&upper, "overlay upper");
+			let _ = remove_dir_if_exists(&work, "overlay work");
+			let _ = remove_dir_if_exists(&merged, "overlay merged");
 		}
+		res
 	}
 
 	pub fn stop(merged: &Path) -> IsoResult<()> {
@@ -303,20 +266,6 @@ mod imp {
 			.stderr(Stdio::null())
 			.status()
 			.is_ok()
-	}
-
-	fn canonical_existing_dir(path: &Path) -> IsoResult<PathBuf> {
-		let resolved = absolutize(path);
-		let meta = fs::metadata(&resolved).map_err(|err| {
-			IsoError::other(format!("invalid overlay lower {}: {err}", resolved.display()))
-		})?;
-		if !meta.is_dir() {
-			return Err(IsoError::other(format!(
-				"overlay lower {} is not a directory",
-				resolved.display()
-			)));
-		}
-		Ok(fs::canonicalize(&resolved).unwrap_or(resolved))
 	}
 
 	fn absolutize(path: &Path) -> PathBuf {

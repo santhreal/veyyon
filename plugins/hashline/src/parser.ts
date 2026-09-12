@@ -4,17 +4,8 @@
  * applier.
  */
 import { HL_PAYLOAD_REPLACE, HL_RANGE_SEP } from "./format";
-import {
-	BARE_BODY_AUTO_PIPED_WARNING,
-	DELETE_BLOCK_TAKES_NO_BODY,
-	DELETE_TAKES_NO_BODY,
-	EMPTY_BLOCK,
-	EMPTY_INSERT,
-	EMPTY_REPLACE,
-	MINUS_ROW_REJECTED,
-	MOVE_TAKES_NO_BODY,
-	REM_TAKES_NO_BODY,
-} from "./messages";
+import { BARE_BODY_AUTO_PIPED_WARNING, MINUS_ROW_REJECTED, MOVE_TAKES_NO_BODY, REM_TAKES_NO_BODY } from "./messages";
+import { PATCH_OPERATIONS } from "./operations";
 import { stripOneLeadingHashlinePrefix } from "./prefixes";
 import { type BlockTarget, cloneCursor, type ParsedRange, type Token, Tokenizer } from "./tokenizer";
 import type { Anchor, Cursor, Edit, FileOp } from "./types";
@@ -25,12 +16,6 @@ function validateRangeOrder(range: ParsedRange, lineNum: number): void {
 			`line ${lineNum}: range ${range.start.line}${HL_RANGE_SEP}${range.end.line} ends before it starts.`,
 		);
 	}
-}
-
-function expandRange(range: ParsedRange): Anchor[] {
-	const anchors: Anchor[] = [];
-	for (let line = range.start.line; line <= range.end.line; line++) anchors.push({ line });
-	return anchors;
 }
 
 function isSkippableCommentLine(line: string): boolean {
@@ -167,9 +152,6 @@ export class Executor {
 				return;
 			case "op-block":
 				this.#discardPendingSkippableComments();
-				if (token.target.kind === "replace" || token.target.kind === "delete") {
-					validateRangeOrder(token.target.range, token.lineNum);
-				}
 				if (token.target.kind === "rem") {
 					this.#flushPending();
 					this.#setFileOp({ kind: "rem" }, token.lineNum);
@@ -180,12 +162,14 @@ export class Executor {
 					this.#setFileOp({ kind: "move", dest: token.target.dest }, token.lineNum);
 					return;
 				}
+				if (token.target.kind === "replace" || token.target.kind === "delete") {
+					validateRangeOrder(token.target.range, token.lineNum);
+				}
 				this.#flushPending();
 				this.#pending = { target: token.target, lineNum: token.lineNum, payloads: [], deferredBlanks: [] };
 				return;
 		}
 	}
-
 	end(): { edits: Edit[]; fileOp?: FileOp; warnings: string[] } {
 		this.#consumePendingSkippableComments();
 		this.#flushPending();
@@ -201,8 +185,7 @@ export class Executor {
 	endStreaming(): { edits: Edit[]; fileOp?: FileOp; warnings: string[] } {
 		this.#consumePendingSkippableComments();
 		if (this.#pending && this.#pending.payloads.length > 0) this.#flushPending();
-		else if (this.#pending?.target.kind === "delete" || this.#pending?.target.kind === "delete_block")
-			this.#flushPending();
+		else if (this.#pending && !PATCH_OPERATIONS[this.#pending.target.kind].takesBody) this.#flushPending();
 		else this.#pending = undefined;
 		this.#validateFileOp();
 		this.#validateNoOverlappingDeletes();
@@ -272,8 +255,8 @@ export class Executor {
 					`Got ${JSON.stringify(`${HL_PAYLOAD_REPLACE}${text}`)}.`,
 			);
 		}
-		if (pending.target.kind === "delete") throw new Error(`line ${lineNum}: ${DELETE_TAKES_NO_BODY}`);
-		if (pending.target.kind === "delete_block") throw new Error(`line ${lineNum}: ${DELETE_BLOCK_TAKES_NO_BODY}`);
+		const spec = PATCH_OPERATIONS[pending.target.kind];
+		if (!spec.takesBody && spec.forbiddenBodyError) throw new Error(`line ${lineNum}: ${spec.forbiddenBodyError}`);
 		this.#commitDeferredBlanks(pending);
 		pending.payloads.push({ kind: "literal", text, lineNum });
 	}
@@ -287,9 +270,8 @@ export class Executor {
 				this.#handleBlank(text, lineNum);
 				return;
 			}
-			if (this.#pending.target.kind === "delete") throw new Error(`line ${lineNum}: ${DELETE_TAKES_NO_BODY}`);
-			if (this.#pending.target.kind === "delete_block")
-				throw new Error(`line ${lineNum}: ${DELETE_BLOCK_TAKES_NO_BODY}`);
+			const spec = PATCH_OPERATIONS[this.#pending.target.kind];
+			if (!spec.takesBody && spec.forbiddenBodyError) throw new Error(`line ${lineNum}: ${spec.forbiddenBodyError}`);
 			if (text.trimStart().charCodeAt(0) === 45 /* - */) throw new Error(`line ${lineNum}: ${MINUS_ROW_REJECTED}`);
 			if (!this.#warnings.includes(BARE_BODY_AUTO_PIPED_WARNING)) this.#warnings.push(BARE_BODY_AUTO_PIPED_WARNING);
 			this.#commitDeferredBlanks(this.#pending);
@@ -360,7 +342,7 @@ export class Executor {
 		}
 	}
 
-	#pushInsert(cursor: Cursor, text: string, lineNum: number, mode?: "replacement"): void {
+	pushInsert(cursor: Cursor, text: string, lineNum: number, mode?: "replacement"): void {
 		this.#edits.push({
 			kind: "insert",
 			cursor: cloneCursor(cursor),
@@ -371,23 +353,19 @@ export class Executor {
 		});
 	}
 
-	#pushDelete(anchor: Anchor, lineNum: number): void {
+	pushDelete(anchor: Anchor, lineNum: number): void {
 		this.#edits.push({ kind: "delete", anchor: { ...anchor }, lineNum, index: this.#editIndex++ });
 	}
 
-	#pushBlock(anchor: Anchor, payloads: readonly PayloadRow[], lineNum: number, mode?: "insert_after"): void {
+	pushBlock(anchor: Anchor, payloads: readonly string[], lineNum: number, mode?: "insert_after"): void {
 		this.#edits.push({
 			kind: "block",
 			anchor: { ...anchor },
-			payloads: payloads.map(payload => payload.text),
+			payloads: [...payloads],
 			...(mode === undefined ? {} : { mode }),
 			lineNum,
 			index: this.#editIndex++,
 		});
-	}
-
-	#emitPayloadRows(cursor: Cursor, payloads: readonly PayloadRow[], lineNum: number, mode?: "replacement"): void {
-		for (const payload of payloads) this.#pushInsert(cursor, payload.text, lineNum, mode);
 	}
 
 	#flushPending(): void {
@@ -396,48 +374,38 @@ export class Executor {
 		const { target, lineNum, payloads } = pending;
 		this.#stripBarePrefixesIfUniform(payloads);
 		this.#pending = undefined;
-		if (target.kind === "delete") {
-			for (const anchor of expandRange(target.range)) this.#pushDelete(anchor, lineNum);
-			return;
+		const spec = PATCH_OPERATIONS[target.kind];
+		if (spec.takesBody && payloads.length === 0) {
+			throw new Error(`line ${lineNum}: ${spec.emptyBodyError ?? "empty payload"}`);
 		}
-		if (target.kind === "delete_block") {
-			// A block edit with no payloads resolves to a pure block deletion.
-			this.#pushBlock(target.anchor, [], lineNum);
-			return;
-		}
-		if (target.kind === "block") {
-			if (payloads.length === 0) throw new Error(`line ${lineNum}: ${EMPTY_BLOCK}`);
-			this.#pushBlock(target.anchor, payloads, lineNum);
-			return;
-		}
-		if (target.kind === "insert_after_block") {
-			if (payloads.length === 0) throw new Error(`line ${lineNum}: ${EMPTY_INSERT}`);
-			this.#pushBlock(target.anchor, payloads, lineNum, "insert_after");
-			return;
-		}
-		if (payloads.length === 0) {
-			// A bodyless SWAP is rejected, never treated as a delete: the body is
-			// the final content, so its absence usually means a truncated stream,
-			// and silently deleting the range would be silent data loss.
-			if (target.kind === "replace") throw new Error(`line ${lineNum}: ${EMPTY_REPLACE}`);
-			throw new Error(`line ${lineNum}: ${EMPTY_INSERT}`);
-		}
+		const texts = payloads.map(payload => payload.text);
 		if (target.kind === "replace") {
 			const cursor: Cursor = { kind: "before_anchor", anchor: { ...target.range.start } };
-			this.#emitPayloadRows(cursor, payloads, lineNum, "replacement");
-			for (const anchor of expandRange(target.range)) this.#pushDelete(anchor, lineNum);
-			return;
+			for (const text of texts) this.pushInsert(cursor, text, lineNum, "replacement");
+			for (let line = target.range.start.line; line <= target.range.end.line; line++)
+				this.pushDelete({ line }, lineNum);
+		} else if (target.kind === "delete") {
+			for (let line = target.range.start.line; line <= target.range.end.line; line++)
+				this.pushDelete({ line }, lineNum);
+		} else if (target.kind === "block") {
+			this.pushBlock(target.anchor, texts, lineNum);
+		} else if (target.kind === "delete_block") {
+			this.pushBlock(target.anchor, [], lineNum);
+		} else if (target.kind === "insert_after_block") {
+			this.pushBlock(target.anchor, texts, lineNum, "insert_after");
+		} else if (target.kind === "insert_before") {
+			const cursor: Cursor = { kind: "before_anchor", anchor: { ...target.anchor } };
+			for (const text of texts) this.pushInsert(cursor, text, lineNum);
+		} else if (target.kind === "insert_after") {
+			const cursor: Cursor = { kind: "after_anchor", anchor: { ...target.anchor } };
+			for (const text of texts) this.pushInsert(cursor, text, lineNum);
+		} else if (target.kind === "bof") {
+			const cursor: Cursor = { kind: "bof" };
+			for (const text of texts) this.pushInsert(cursor, text, lineNum);
+		} else if (target.kind === "eof") {
+			const cursor: Cursor = { kind: "eof" };
+			for (const text of texts) this.pushInsert(cursor, text, lineNum);
 		}
-		if (target.kind === "insert_before") {
-			this.#emitPayloadRows({ kind: "before_anchor", anchor: { ...target.anchor } }, payloads, lineNum);
-			return;
-		}
-		if (target.kind === "insert_after") {
-			this.#emitPayloadRows({ kind: "after_anchor", anchor: { ...target.anchor } }, payloads, lineNum);
-			return;
-		}
-		const cursor: Cursor = target.kind === "bof" ? { kind: "bof" } : { kind: "eof" };
-		this.#emitPayloadRows(cursor, payloads, lineNum);
 	}
 }
 

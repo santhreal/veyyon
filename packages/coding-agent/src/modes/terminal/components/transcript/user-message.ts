@@ -1,6 +1,7 @@
 import { Container, Markdown } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
 import { SGR_FG_RESET } from "@veyyon/utils/ansi";
+import type { UserMessageView } from "@veyyon/wire/presentation";
 import { getMarkdownTheme } from "../../../../theme/markdown-theme";
 import { theme } from "../../../../theme/theme";
 import { highlightMagicKeywords } from "../../../keywords/magic-keywords";
@@ -45,7 +46,7 @@ export class UserMessageComponent extends Container {
 		return this.#version;
 	}
 
-	constructor(text: string, synthetic = false, imageLinks?: readonly (string | undefined)[]) {
+	constructor({ text, synthetic = false, imageLinks }: UserMessageView) {
 		super();
 		// Paint the magic keywords ("ultrathink"/"orchestratez"/"workflowz") inside the rendered
 		// bubble too — matching the live editor glow. The Markdown component routes code spans and

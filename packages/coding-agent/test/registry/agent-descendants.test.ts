@@ -3,7 +3,7 @@
  *
  * WHY THIS SUITE EXISTS: the registry has always recorded `parentId`, and nothing
  * used it to answer "what did this agent spawn". Teardown paths therefore scoped
- * themselves to a single `ownerId`, so a subagent that had itself delegated left a
+ * themselves to a single `ownerId`, so an agent that had itself delegated left a
  * grandchild running background work after the session that could collect it was
  * gone — an agent spending tokens for a delivery address that no longer exists
  * (BACKLOG SUB-2). The walk lives here, once, because every caller that needs it is

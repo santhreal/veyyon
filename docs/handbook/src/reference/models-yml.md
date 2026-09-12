@@ -170,7 +170,7 @@ providers:
 A variable named in cases 2 or 3 that is unset, or set to an empty string, resolves to nothing: the
 key is not installed, no request contains it, and a warning states the variable and the setting.
 Earlier versions used the variable's own name as the value, so `apiKey: DEEPSEK_API_KEY` was sent to
-the provider as the key. A key that is genuinely upper case text rather than a variable name is
+the provider as the key. A key that is uppercase text rather than a variable name is
 written `literal:MY_KEY`.
 
 ## Merge and override order
@@ -450,11 +450,26 @@ Resolution precedence for exact selectors:
 3. exact bare concrete id still works
 4. fuzzy and glob matching run after the exact paths
 
+A selector that matches nothing is reported by cause, not as a bare "not found", in this
+order: the registry failed to load; the registry is empty; the registry has models but none
+has a usable credential; the id names a model whose provider is unauthenticated; the id
+matches nothing, with up to five near matches. The same sentence is produced whether the
+selector is bare (`sonnet`), suffixed (`sonnet:high`), provider-qualified (`openai/sonnet`) or
+split across `--provider` and `--model`. A selector with an empty id (`openai/`, `openai/*`,
+`--provider openai --model *`) is a selector error that states the provider's default model;
+it never substring-matches the empty string against the provider's first model.
+
+A `@role` selector expands through `modelRoles` and may chain (`@smol` set to `@slow` set to
+`openai/gpt-4o`). The nearest `:level` suffix in the chain wins. Three failures are reported by
+role rather than as an authentication or unknown-id failure: the role is unset, the role is
+unknown, or the chain refers back to itself. A chain whose first entries fail continues to the
+next entry; only a chain with no usable entry fails.
+
 ### Initial model selection priority
 
 `buildSessionOptions(...)` in `main.ts` sets the model a session starts on, in this order:
 
-1. an explicit `--model` (or the legacy `--provider` pair). A pattern that matches nothing is fatal, except for a bare id with no provider and no `:` suffix, which is carried as `options.modelPattern` and resolved again after extensions load, since an extension may register the provider it names.
+1. an explicit `--model` (or the legacy `--provider` pair). A selector that resolves to nothing is fatal before the session starts, except a bare id with no provider and no `:` suffix, which is carried as `options.modelPattern` and resolved again after extensions load, since an extension may register the provider it names. A `@role` selector never defers: an unset, unknown or self-referencing role is a settings fact no extension changes, so it exits at once.
 2. the scoped set from `--models`, when this is not a `--continue` or `--resume`. Inside that set the remembered `modelRoles.default` wins if it is there; if it is configured but unavailable, `fallbackForUnavailableDefault` substitutes and prints the reason; otherwise the first scoped model is used.
 3. otherwise nothing is pinned here, and the session resolves `modelRoles.default` through `resolveModelRoleValue` against the models that have a usable credential.
 
@@ -478,7 +493,7 @@ Built-in role ids (see `model-roles.ts`):
 | `tiny` | Yes | Lightweight background (titles, classifiers); else `@smol` |
 | `advisor` | Yes | Advisor runtime |
 
-There is no `task` model role. Profile-wide and per-agent subagent model policy lives under `subagent` instead of the role table.
+There is no `task` model role. Profile-wide and per-agent model policy lives under `agent` instead of the role table.
 
 `cycleOrder` defaults to `["smol","slow"]`; the entry `default` is stripped on load. Role aliases like `@smol` expand through `settings.modelRoles`; `*` selects `@default` (interactive). Quote `@` aliases in YAML values (`fable: "@slow"`). Each role value can append a thinking selector (`:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`).
 

@@ -8,8 +8,9 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Node, Project, SyntaxKind } from "ts-morph";
-import { existingOnly } from "./check-doc-links";
-import { typeScriptMemberTopLevels } from "./workspace-layout";
+import { listTrackedFiles } from "./git-baseline";
+import { resolveModuleSpecifierOnDisk } from "./ledger-schema";
+import { existingOnly, typeScriptMemberTopLevels } from "./workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const BASELINE_FILE = path.join(REPO_ROOT, "scripts", "data", "dynamic-import-boundaries.txt");
@@ -39,13 +40,7 @@ function scannedRoots(): string[] {
 }
 
 function trackedSourceFiles(): string[] {
-	const listed = Bun.spawnSync(["git", "ls-files", "-z", "--", ...scannedRoots()], {
-		cwd: REPO_ROOT,
-	});
-	if (!listed.success) {
-		throw new Error(`git ls-files failed: ${new TextDecoder().decode(listed.stderr)}`);
-	}
-	const raw = new TextDecoder().decode(listed.stdout).split("\0").filter(Boolean);
+	const raw = listTrackedFiles(REPO_ROOT, scannedRoots());
 	return existingOnly(
 		REPO_ROOT,
 		raw.filter(f => (f.endsWith(".ts") || f.endsWith(".tsx")) && !f.endsWith(".d.ts")),
@@ -71,20 +66,7 @@ interface ScanResult {
  */
 function resolveRelativeSpecifier(fromFile: string, specifier: string): string | undefined {
 	if (!specifier.startsWith(".")) return undefined;
-	const base = path.join(REPO_ROOT, fromFile, "..", specifier);
-	const candidates = [`${base}.ts`, `${base}.tsx`, path.join(base, "index.ts"), path.join(base, "index.tsx"), base];
-	if (specifier.endsWith(".js")) {
-		const withoutJs = base.slice(0, -3);
-		candidates.unshift(`${withoutJs}.ts`, `${withoutJs}.tsx`, path.join(withoutJs, "index.ts"));
-	}
-	for (const candidate of candidates) {
-		try {
-			if (fs.statSync(candidate).isFile()) return candidate;
-		} catch {
-			// Next candidate.
-		}
-	}
-	return undefined;
+	return resolveModuleSpecifierOnDisk(path.join(REPO_ROOT, fromFile), specifier) ?? undefined;
 }
 
 function sweepTrackedImports(): ScanResult {

@@ -11,11 +11,9 @@ describe("resolveMemoryBackend", () => {
 		resetSettingsForTest();
 	});
 
-	it("returns the hindsight backend when memory.backend is hindsight, regardless of legacy memories.enabled", async () => {
-		const a = Settings.isolated({ "memory.backend": "hindsight", "memories.enabled": false });
-		const b = Settings.isolated({ "memory.backend": "hindsight", "memories.enabled": true });
-		expect((await resolveMemoryBackend(a)).id).toBe("hindsight");
-		expect((await resolveMemoryBackend(b)).id).toBe("hindsight");
+	it("returns the hindsight backend when memory.backend is hindsight", async () => {
+		const settings = Settings.isolated({ "memory.backend": "hindsight" });
+		expect((await resolveMemoryBackend(settings)).id).toBe("hindsight");
 	});
 
 	it("exposes inactive status when no session is available", async () => {

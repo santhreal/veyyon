@@ -6,7 +6,7 @@ Drives real Chromium tab; full puppeteer access via JS.
   - `open` — acquire/reuse named tab (`name` defaults `"main"`). Optional `url` (navigate once ready), `viewport`, `dialogs: "accept" | "dismiss"` (auto-handle `alert`/`confirm`/`beforeunload`; else page hangs till you wire `page.on('dialog', …)`).
   - `close` — release tab by `name`, or all with `all: true`. `kill: true` also kills spawned-app process trees.
   - `run` — execute JS in existing tab. `code` = async function body; `page`, `browser`, `tab`, `display`, `assert`, `wait` in scope. Return value JSON-stringified into result; `display(value)` accumulates text/images. `wait(ms)` sleeps; `wait(fn, { timeout?, interval? })` polls `fn` (sync or async) until truthy and resolves with that value (default 100ms interval; deadline min(30s, cell budget − 1s), named error on timeout) — use it instead of in-page polling Promises inside `tab.evaluate`.
-- Tabs survive `run` calls and in-process subagents — open once, reuse.
+- Tabs survive `run` calls and in-process spawned agents — open once, reuse.
 - Browser kinds (`app` on `open`):
   - default (no `app`) → headless Chromium with stealth patches.
   - `app.path` → spawn absolute binary (Electron/CDP). No stealth patches — NEVER tamper with a real desktop app.

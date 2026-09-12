@@ -47,7 +47,7 @@ beforeEach(() => {
 	registry = AgentRegistry.global();
 });
 
-/** Register one conversation: a driving root plus one subagent that inherits its scope. */
+/** Register one conversation: a driving root plus one agent that inherits its scope. */
 function conversation(scope: string, rootId: string, subId: string, relays: string[]): void {
 	registry.register({
 		id: rootId,

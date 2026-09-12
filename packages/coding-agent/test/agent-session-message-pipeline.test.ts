@@ -758,9 +758,9 @@ describe("AgentSession message pipeline", () => {
 		expect(memoryCopiesInMessages(contexts[1]!, injected)).toBe(1);
 	});
 
-	it("preserves append-only prefixes in subagent sessions when context handlers rewrite prior turns", async () => {
-		using tempDir = TempDir.createSync("@pi-subagent-append-only-");
-		const api = "test-subagent-append-only-cache";
+	it("preserves append-only prefixes in agent sessions when context handlers rewrite prior turns", async () => {
+		using tempDir = TempDir.createSync("@pi-agent-append-only-");
+		const api = "test-agent-append-only-cache";
 		const contexts: Context[] = [];
 		registerCustomApi(api, (_model, context) => {
 			contexts.push(context);
@@ -773,8 +773,8 @@ describe("AgentSession message pipeline", () => {
 			return stream;
 		});
 		const model = buildModel({
-			id: "local-subagent-model",
-			name: "Local Subagent Model",
+			id: "local-agent-model",
+			name: "Local Agent Model",
 			api,
 			provider: "llama.cpp",
 			baseUrl: "http://127.0.0.1:8080/v1",
@@ -825,7 +825,7 @@ describe("AgentSession message pipeline", () => {
 			enableLsp: false,
 			skipPythonPreflight: true,
 			taskDepth: 1,
-			agentId: "SubAgent",
+			agentId: "Agent",
 		});
 		try {
 			expect(session.agent.appendOnlyContext).toBeDefined();

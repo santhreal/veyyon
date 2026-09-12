@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Before-and-after visual proof for settings UX vision:
-# 1. Subagent roster layout with bounded list, wrapped authoring hint and navigation footer.
+# 1. Agent roster layout with bounded list, wrapped authoring hint and navigation footer.
 # 2. Settings search displaying dimmed '(unset)' for optional text settings and reserved scrollbar gutter.
 # 3. Status line preview on Appearance tab adapting cleanly to pane width.
 
@@ -11,7 +11,7 @@ submit "/settings"
 expect_screen "Settings" 60 settings-open
 settle 2
 
-# 1. Subagent Roster: filter for Roster and open the roster submenu
+# 1. Agent Roster: filter for Roster and open the roster submenu
 t "roster"
 settle 2
 expect_screen "Roster" 30 roster-search
@@ -20,7 +20,7 @@ settle 1
 k Return
 expect_screen "designer" 30 roster-open
 settle 2
-shot subagent-roster
+shot agent-roster
 
 # Return from roster submenu to search list, then exit search mode
 k Escape

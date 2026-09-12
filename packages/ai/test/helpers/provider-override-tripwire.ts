@@ -1,7 +1,7 @@
 /**
  * The tripwire that stops one suite's provider stub from answering another suite's request.
  *
- * `setBedrockProviderModule` and its eleven siblings replace a provider for the whole PROCESS, and
+ * `setProviderModuleOverrideForTest` replaces a provider for the whole PROCESS, and
  * `bun test` runs a bucket's files in one process. A suite that installs an override and never
  * restores it therefore replaces that provider for every file after it, and the failure lands on the
  * innocent one: `a-credential-handshake-cannot-outlive-the-declared-budget.test.ts` terminated a
@@ -23,7 +23,7 @@
  * exists: `tests/simulations/src/turn-sim/harness.ts` replaces all twelve apis at module scope on
  * purpose and holds them for the life of the process. In a process that loads a simulation and an
  * `ai` suite together, every `ai` test inherits those twelve, and each one that restores its own stub
- * with `setCursorProviderModule()` is doing the right thing — under an empty-set rule all 27 of them
+ * with `setProviderModuleOverrideForTest("cursor-agent")` is doing the right thing — under an empty-set rule all 27 of them
  * were red.
  *
  * ## What it does not catch
@@ -68,7 +68,7 @@ afterEach(() => {
 	throw new Error(
 		`This test left a provider module override installed for ${installed.sort().join(", ")}. ` +
 			"An override is process-wide, so it answers every later test file in this bucket and the failure " +
-			"surfaces there instead of here. Restore it in the test that set it: call the setter with no " +
-			"argument in a finally or an afterEach.",
+			"surfaces there instead of here. Restore it in the test that set it: call setProviderModuleOverrideForTest(api) " +
+			"in a finally or an afterEach.",
 	);
 });

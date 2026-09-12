@@ -14,13 +14,10 @@ import {
 	transformProviderPayload,
 } from "../../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../types";
-import { SearchProviderError } from "../types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { classifyProviderHttpError } from "./utils";
-
-type SearchParamsWithFetch = SearchParams & { fetch?: FetchImpl };
+import { handleProviderHttpError } from "./utils";
 
 const KIMI_SEARCH_URL = "https://api.kimi.com/coding/v1/search";
 
@@ -121,10 +118,7 @@ async function callKimiSearch(
 		});
 
 		if (!response.ok) {
-			const errorText = await response.text();
-			const classified = classifyProviderHttpError("kimi", response.status, errorText);
-			if (classified) throw classified;
-			throw new SearchProviderError("kimi", `Kimi search API error (${response.status}).`, response.status);
+			await handleProviderHttpError("kimi", response, `Kimi search API error (${response.status}).`);
 		}
 
 		const data = (await response.json()) as KimiSearchResponse;
@@ -157,7 +151,6 @@ export async function searchKimi(params: KimiSearchParams): Promise<SearchRespon
 		{ signal: params.signal },
 	);
 	const sources: SearchSource[] = [];
-
 	for (const result of response.search_results ?? []) {
 		if (!result.url) continue;
 		const publishedDate = asTrimmed(result.date);
@@ -186,23 +179,21 @@ export class KimiProvider extends SearchProvider {
 
 	isAvailable(authStorage: AuthStorage): boolean {
 		return (
-			!!asTrimmed($env.MOONSHOT_SEARCH_API_KEY) ||
-			!!asTrimmed($env.KIMI_SEARCH_API_KEY) ||
+			Boolean(asTrimmed($env.MOONSHOT_SEARCH_API_KEY)) ||
+			Boolean(asTrimmed($env.KIMI_SEARCH_API_KEY)) ||
 			authStorage.hasAuth("moonshot") ||
 			authStorage.hasAuth("kimi-code")
 		);
 	}
 
-	search(params: SearchParamsWithFetch): Promise<SearchResponse> {
-		const fetchImpl = params.fetch;
-
+	search(params: SearchParams & { fetch?: FetchImpl }): Promise<SearchResponse> {
 		return searchKimi({
 			query: params.query,
 			num_results: params.numSearchResults ?? params.limit,
 			signal: params.signal,
 			authStorage: params.authStorage,
 			sessionId: params.sessionId,
-			fetch: fetchImpl,
+			fetch: params.fetch,
 			resolveProviderTextTransform: params.resolveProviderTextTransform,
 		});
 	}

@@ -7,11 +7,10 @@ import type { CommitAgentState, SplitCommitGroup, SplitCommitPlan } from "../sta
 import { computeDependencyOrder } from "../topo-sort";
 import {
 	capDetails,
-	MAX_DETAIL_ITEMS,
 	normalizeSummary,
-	SUMMARY_MAX_CHARS,
 	validateSummaryRules,
 	validateTypeConsistency,
+	verdictWithLimits,
 } from "../validation";
 import { commitTypeSchema, detailSchema } from "./schemas.js";
 
@@ -166,17 +165,7 @@ export function createSplitCommitTool(
 				state.splitProposal = response.proposal;
 			}
 
-			const text = JSON.stringify(
-				{
-					...response,
-					constraints: {
-						maxSummaryChars: SUMMARY_MAX_CHARS,
-						maxDetailItems: MAX_DETAIL_ITEMS,
-					},
-				},
-				null,
-				2,
-			);
+			const text = verdictWithLimits(response);
 
 			return {
 				content: [{ type: "text", text }],

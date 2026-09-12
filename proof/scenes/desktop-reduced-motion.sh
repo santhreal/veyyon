@@ -146,7 +146,7 @@ COLLAPSE_MIN_PIXELS=1500
 SWITCH_MIN_PIXELS=100
 TYPED_MIN_PIXELS=500
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 # ─── 1. Two Sessions, One Of Them Holding A Draft ────────────────────────────

@@ -46,8 +46,8 @@ Two line formats are read back from its output:
 | `METRIC name=value` | A number the loop compares between runs. |
 | `ASI key=value` | Free-form metadata attached to the run. |
 
-The primary metric decides whether a change is kept. Secondary metrics are
-recorded and shown but do not decide anything.
+The primary metric determines whether a change is kept. Secondary metrics are
+recorded and shown but do not determine changes.
 
 Autoresearch commits `autoresearch.sh` on a dedicated `autoresearch/*` branch
 before the first iteration, and that commit is the baseline every later run is
@@ -203,7 +203,7 @@ The stored goal typed back is a resume with nothing to add: no notice, and the
 model is not told the goal a second time.
 
 `/autoresearch clear` resets the worktree to the segment baseline, deletes
-untracked files and closes the session. It asks first, naming the commit it
+untracked files and closes the session. It prompts first, naming the commit it
 resets to and how many files hold uncommitted changes; a decline resets nothing
 and leaves the session open. The reset restores `autoresearch.sh` as committed
 on the branch. Off an `autoresearch/*` branch, `clear` closes the session and

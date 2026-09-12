@@ -35,7 +35,7 @@ const argot = new ArgotSession();
 ```
 
 Create exactly one `ArgotSession` per agent (the top-level agent, and one per
-subagent, see [Subagents](#subagents)). The session owns all state: which
+agent, see [Agents](#agents)). The session owns all state: which
 vocabularies are loaded, what the model is taught, and how to decode. It starts
 inert, so every call below is safe to run before any dictionary exists. A project
 with no dictionary behaves byte-for-byte as it did before you added Argot.
@@ -177,8 +177,8 @@ all the seams; there are no others.
 | 2 | **Assistant content shown to the user** (the finished message) | `argot.expand(text)` |
 | 3 | **The streaming token preview** shown live as the model types | a `StreamDecoder`, see below |
 | 4 | **The persisted transcript / export / resume file** | `argot.expand(text)` |
-| 5 | **A prompt handed to a spawned subagent** | `argot.expand(prompt)` |
-| 6 | **A result a subagent returns to its parent** | `argot.expand(result)` |
+| 5 | **A prompt handed to a spawned agent** | `argot.expand(prompt)` |
+| 6 | **A result an agent returns to its parent** | `argot.expand(result)` |
 
 Seams 1, 2, 4, 5, and 6 are the same call: run `argot.expand` on the string (or
 on each string field of a structured value) before it crosses. `expand` is
@@ -217,9 +217,9 @@ Do not try to hand-roll seam 3 with `expand` on a growing buffer, and do not
 library exists to prevent. The finished message (seam 2) and the live preview
 (seam 3) are two different seams and both must decode.
 
-## Subagents
+## Agents
 
-Each subagent is its own agent with its own `ArgotSession`, and the six seams
+Each agent is its own agent with its own `ArgotSession`, and the six seams
 apply to it exactly as to the parent. Two of those seams are the parent/child
 wire: seam 5 (the prompt the parent hands the child) and seam 6 (the result the
 child hands back). Because each side expands its own output at its own boundary, a
@@ -249,7 +249,7 @@ the parent wrote), but the safe default is to expand it like any other seam. The
 return boundary (seam 6) always expands, because the child may have loaded a
 project the parent never had.
 
-See the SPEC's [Subagents](./SPEC.md#subagents) section for the full model.
+See the SPEC's [Agents](./SPEC.md#agents) section for the full model.
 
 ## Step 4: verify (the checklist)
 
@@ -271,9 +271,9 @@ write against your harness, not a judgment call.
       this test covers that your renderer reads `push`/`flush` and nothing else.)
 - [ ] **Seam 4**: save and reload a transcript that used handles; assert the saved
       bytes hold the expansions, not the handles, and a reload shows full text.
-- [ ] **Seam 5**: spawn a subagent from a parent that used handles; assert the
+- [ ] **Seam 5**: spawn an agent from a parent that used handles; assert the
       child's prompt holds full strings.
-- [ ] **Seam 6**: have a subagent return a handle it wrote; assert the parent
+- [ ] **Seam 6**: have an agent return a handle it wrote; assert the parent
       receives the expansion, not the raw handle. Prove the wiring by reverting the
       expand call and watching this test fail.
 - [ ] **Inert path**: with Argot disabled (no vocabulary armed), every seam above
@@ -290,6 +290,6 @@ it with `shouldEncode` if you want); the model arms vocabularies itself through
 the tools (cache flow: the tool feeds `resolveProjectVocab` + `load`, supplying
 only git `io` and a cache dir), or you arm with `observe` (load-on-read). Then
 call `argot.expand` at seams 1, 2, 4, 5, and 6, and
-use `argot.streamDecoder()` at seam 3. Subagents are their own sessions; pick
+use `argot.streamDecoder()` at seam 3. Agents are their own sessions; pick
 `off`, `fresh` (unarmed; the child loads its own project), or `fork` for
 `inherit`. Run the checklist. That is the entire integration.

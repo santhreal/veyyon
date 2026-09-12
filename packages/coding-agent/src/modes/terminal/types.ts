@@ -26,6 +26,7 @@ import type { CompactOptions } from "../../extensibility/extensions/types";
 import type { Skill } from "../../extensibility/skills";
 import type { MCPManager } from "../../mcp";
 import type { PlanApprovalDetails } from "../../plan-mode/approved-plan";
+import type { StatusPresentationProducer } from "../../presentation/status-producer";
 import type { AgentSession } from "../../session/agent-session";
 import type { InteractiveSessionFactory, KeptSession } from "../../session/background-sessions";
 import type { SubcommandDef } from "../../slash-commands/types";
@@ -99,7 +100,7 @@ export interface InteractiveModeContext {
 	pendingMessagesContainer: Container;
 	statusContainer: Container;
 	todoContainer: Container;
-	subagentContainer: Container;
+	agentContainer: Container;
 	btwContainer: Container;
 	omfgContainer: Container;
 	errorBannerContainer: Container;
@@ -109,6 +110,7 @@ export interface InteractiveModeContext {
 	hookWidgetContainerAbove: Container;
 	hookWidgetContainerBelow: Container;
 	statusLine: StatusLineComponent;
+	statusProducer: StatusPresentationProducer;
 
 	// Session access
 	session: AgentSession;
@@ -360,8 +362,8 @@ export interface InteractiveModeContext {
 	getUserMessageText(message: Message): string;
 	findLastAssistantMessage(): AssistantMessage | undefined;
 	extractAssistantText(message: AssistantMessage): string;
-	/** Refresh the running-subagents status badge from the active local or collab registry. */
-	syncRunningSubagentBadge(): void;
+	/** Refresh the running-agents status badge from the active local or collab registry. */
+	syncRunningAgentBadge(): void;
 	updateEditorBorderColor(): void;
 	rebuildChatFromMessages(): void;
 	setTodos(todos: TodoItem[] | TodoPhase[]): void;

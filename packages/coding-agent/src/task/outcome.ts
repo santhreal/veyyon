@@ -1,7 +1,7 @@
 import type { SingleResult } from "./types";
 
 /**
- * The one place a settled subagent run is classified as succeeded or failed.
+ * The one place a settled agent run is classified as succeeded or failed.
  *
  * WHY THIS EXISTS. "Did this child fail?" was spelled out inline in six places
  * across `index.ts` and `render.ts`, and they did not agree: some treated an
@@ -12,15 +12,15 @@ import type { SingleResult } from "./types";
  *
  * The more serious consequence was that none of them set `isError` on the tool
  * result. `agent-loop` reads that field to surface a tool call as a failure on
- * the wire, and `render.ts` reads it to colour the row, so a subagent that
+ * the wire, and `render.ts` reads it to colour the row, so an agent that
  * crashed reached the parent model as a STRUCTURALLY SUCCESSFUL tool result
  * whose text happened to contain the word "failed". A model scanning results
  * for errors would find none, and a crashed child would read as a child that
  * had nothing to report.
  */
 
-/** What actually happened to a settled subagent run. */
-export type SubagentOutcomeKind =
+/** What actually happened to a settled agent run. */
+export type AgentOutcomeKind =
 	/** Ran to completion and produced its result. */
 	| "completed"
 	/** Produced a result, but delivering it (the isolation merge) failed. */
@@ -30,8 +30,8 @@ export type SubagentOutcomeKind =
 	/** Did not finish: cancelled by the parent, out of budget, or self-aborted. */
 	| "aborted";
 
-export interface SubagentOutcome {
-	kind: SubagentOutcomeKind;
+export interface AgentOutcome {
+	kind: AgentOutcomeKind;
 	/**
 	 * Whether the parent's tool result must carry `isError`.
 	 *
@@ -55,7 +55,7 @@ export interface SubagentOutcome {
  * outranks a merge failure, because a child that never produced a result cannot
  * have failed to merge one.
  */
-export function classifySubagentOutcome(result: Pick<SingleResult, "aborted" | "exitCode" | "error">): SubagentOutcome {
+export function classifyAgentOutcome(result: Pick<SingleResult, "aborted" | "exitCode" | "error">): AgentOutcome {
 	if (result.aborted) return { kind: "aborted", isError: true, label: "cancelled" };
 	if (result.exitCode !== 0) {
 		return { kind: "failed", isError: true, label: `failed (exit ${result.exitCode})` };
@@ -68,8 +68,8 @@ export function classifySubagentOutcome(result: Pick<SingleResult, "aborted" | "
 	return { kind: "completed", isError: false, label: "completed" };
 }
 
-/** What a batch of subagent runs amounts to, counted by outcome. */
-export interface SubagentBatchSummary {
+/** What a batch of agent runs amounts to, counted by outcome. */
+export interface AgentBatchSummary {
 	/** Ran to completion and delivered. */
 	completed: number;
 	/** Did not finish: cancelled by the parent, out of budget, or self-aborted. */
@@ -86,12 +86,12 @@ export interface SubagentBatchSummary {
 	 * re-run work the operator had just stopped, and the three transcripts it did
 	 * get were buried under a claim that something had gone wrong.
 	 *
-	 * This does NOT contradict {@link SubagentOutcome.isError}, which is true for
+	 * This does NOT contradict {@link AgentOutcome.isError}, which is true for
 	 * a single aborted run. One run that was cancelled delivered nothing, so the
 	 * call it belongs to failed. A batch is a different question: the completed
 	 * children's work is real and is being returned, and the stop was the
 	 * parent's own instruction. What the batch owes the reader is the truth about
-	 * which children finished, which is {@link describeSubagentBatch}, not a
+	 * which children finished, which is {@link describeAgentBatch}, not a
 	 * failure flag standing in for it.
 	 */
 	isError: boolean;
@@ -105,14 +105,14 @@ export interface SubagentBatchSummary {
  * fan-out from a failed one. Both merged multi-spawn results read it, so the
  * blocking-only path and the mixed async/sync path cannot drift apart.
  */
-export function summarizeSubagentBatch(
+export function summarizeAgentBatch(
 	results: readonly Pick<SingleResult, "aborted" | "exitCode" | "error">[],
-): SubagentBatchSummary {
+): AgentBatchSummary {
 	let completed = 0;
 	let cancelled = 0;
 	let failed = 0;
 	for (const result of results) {
-		const kind = classifySubagentOutcome(result).kind;
+		const kind = classifyAgentOutcome(result).kind;
 		if (kind === "aborted") cancelled++;
 		else if (kind === "completed") completed++;
 		else failed++;
@@ -125,10 +125,10 @@ export function summarizeSubagentBatch(
  * completed and there is nothing to explain.
  *
  * Returned rather than pushed, so the caller decides where it goes. It leads the
- * merged content because a reader who scrolls a wall of subagent transcripts
+ * merged content because a reader who scrolls a wall of agent transcripts
  * needs to know up front that some of them are missing and why.
  */
-export function describeSubagentBatch(summary: SubagentBatchSummary): string | undefined {
+export function describeAgentBatch(summary: AgentBatchSummary): string | undefined {
 	if (summary.cancelled === 0 && summary.failed === 0) return undefined;
 	const total = summary.completed + summary.cancelled + summary.failed;
 	const parts = [`${summary.completed} of ${total} agents completed`];

@@ -22,7 +22,7 @@ export interface CorpusCaseState {
 		bashMode?: boolean;
 		pythonMode?: boolean;
 		planMode?: boolean;
-		focusedSubagent?: boolean;
+		focusedAgent?: boolean;
 		sessionAccentAnsi?: string;
 		thinkingLevel?: string;
 	};

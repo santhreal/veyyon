@@ -1,14 +1,12 @@
 import type { SelectItem } from "@veyyon/tui";
-import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 import { getSelectListTheme } from "../../../../theme/theme";
 import { ModalSelectListComponent } from "./modal-select-list";
+import { ModalSelectWrapper } from "./select-list-mouse-routing";
 
 /**
  * Theme picker — floating ModalShell medium card (replaces DynamicBorder sandwich).
  */
-export class ThemeSelectorComponent {
-	#inner: ModalSelectListComponent;
-
+export class ThemeSelectorComponent extends ModalSelectWrapper {
 	constructor(
 		currentTheme: string,
 		themes: string[],
@@ -22,45 +20,22 @@ export class ThemeSelectorComponent {
 			description: name === currentTheme ? "(current)" : undefined,
 		}));
 		const currentIndex = themes.indexOf(currentTheme);
-		this.#inner = new ModalSelectListComponent(
-			{
-				title: "Theme",
-				items: themeItems,
-				theme: getSelectListTheme(),
-				selectedIndex: currentIndex,
-				maxVisible: 10,
-				tipCandidates: ["Tip · Themes apply live as you move", "Tip · Esc cancel"],
-			},
-			{
-				onSelect: item => onSelect(item.value),
-				onCancel,
-				onSelectionChange: item => onPreview(item.value),
-			},
+		super(
+			new ModalSelectListComponent(
+				{
+					title: "Theme",
+					items: themeItems,
+					theme: getSelectListTheme(),
+					selectedIndex: currentIndex,
+					maxVisible: 10,
+					tipCandidates: ["Tip · Themes apply live as you move", "Tip · Esc cancel"],
+				},
+				{
+					onSelect: item => onSelect(item.value),
+					onCancel,
+					onSelectionChange: item => onPreview(item.value),
+				},
+			),
 		);
-	}
-
-	setOnRequestRender(cb: () => void): void {
-		this.#inner.setOnRequestRender(cb);
-	}
-
-	getSelectList() {
-		return this.#inner.getSelectList();
-	}
-
-	/** @deprecated Prefer fullscreen ModalShell mouse; kept for editor-slot hosts. */
-	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
-		this.#inner.getSelectList().routeMouse(event, line - 1, col);
-	}
-
-	handleInput(data: string): void {
-		this.#inner.handleInput(data);
-	}
-
-	render(width: number): string[] {
-		return this.#inner.render(width);
-	}
-
-	invalidate(): void {
-		this.#inner.invalidate();
 	}
 }

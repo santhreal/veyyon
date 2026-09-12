@@ -4,7 +4,7 @@ import type { Api, AssistantMessage, Context, Model, SimpleStreamOptions } from 
  * The transport a SIDE request runs on: a request the session makes for itself
  * rather than for the conversation. A compaction summary, a handoff, a tree
  * navigation summary, the title a session gives itself, the label for a spawned
- * subagent, and the two classifiers that read a turn after it ends are all side
+ * agent, and the two classifiers that read a turn after it ends are all side
  * requests.
  *
  * Every one of them defaults to a bare `completeSimple`, which reads no operator

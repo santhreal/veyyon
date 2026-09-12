@@ -82,8 +82,15 @@ const reachable = moduleReach(BARREL);
  * imports `ESC` from it, which retires the `ESC_CHAR = "\x1b"` copy that only existed because utils
  * could not import upward into tui. A subpath cannot move it off the graph. It is a zero-import leaf:
  * `moduleReach("ansi.ts")` is 1, so the barrel pays one module for one declaration of the byte.
+ *
+ * RE-MEASURED 2026-09-11 at 87. The new module is `tab-width.ts`, the owner of `DEFAULT_TAB_WIDTH`
+ * and `replaceTabs`, split out of `tab-spacing.ts` so the browser bundles (`@veyyon/tool-render`,
+ * the web client) share the one tab width without the `.editorconfig` reader that touches the
+ * filesystem. `tab-spacing.ts` re-exports `DEFAULT_TAB_WIDTH` from it and is exported from the
+ * barrel, so a subpath cannot move it off the graph without dropping a root export main published.
+ * It is a zero-import leaf: `moduleReach("tab-width.ts")` is 1.
  */
-const BARREL_CEILING = 86;
+const BARREL_CEILING = 87;
 
 describe("the @veyyon/utils barrel", () => {
 	/** The number that multiplies by six hundred realms. */

@@ -1,8 +1,8 @@
 import type { SelectItem } from "@veyyon/tui";
-import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 import type { SubcommandDef } from "../../../../slash-commands/types";
 import { getSelectListTheme } from "../../../../theme/theme";
 import { ModalSelectListComponent } from "./modal-select-list";
+import { ModalSelectWrapper } from "./select-list-mouse-routing";
 
 /**
  * The card a bare `/cmd` opens when the command has subcommands.
@@ -16,9 +16,7 @@ import { ModalSelectListComponent } from "./modal-select-list";
  * subcommand through the ordinary command path, so the picker is a way in and not a second
  * implementation of eight handlers.
  */
-export class SubcommandPickerComponent {
-	#inner: ModalSelectListComponent;
-
+export class SubcommandPickerComponent extends ModalSelectWrapper {
 	constructor(
 		commandName: string,
 		subcommands: readonly SubcommandDef[],
@@ -33,51 +31,25 @@ export class SubcommandPickerComponent {
 			label: sub.usage ? `${sub.name} ${sub.usage}` : sub.name,
 			description: sub.description,
 		}));
-		this.#inner = new ModalSelectListComponent(
-			{
-				title: `/${commandName}`,
-				items,
-				theme: getSelectListTheme(),
-				// The name column is sized to the names. Left at its default it took a third of the
-				// card for a six-letter verb and truncated the description that says what the verb
-				// does, which is the same dead end as not listing the subcommand at all.
-				layout: { maxPrimaryColumnWidth: 22 },
-			},
-			{
-				onSelect: item => {
-					const chosen = subcommands.find(sub => sub.name === item.value);
-					if (chosen) onSelect(chosen);
+		super(
+			new ModalSelectListComponent(
+				{
+					title: `/${commandName}`,
+					items,
+					theme: getSelectListTheme(),
+					// The name column is sized to the names. Left at its default it took a third of the
+					// card for a six-letter verb and truncated the description that says what the verb
+					// does, which is the same dead end as not listing the subcommand at all.
+					layout: { maxPrimaryColumnWidth: 22 },
 				},
-				onCancel,
-			},
+				{
+					onSelect: item => {
+						const chosen = subcommands.find(sub => sub.name === item.value);
+						if (chosen) onSelect(chosen);
+					},
+					onCancel,
+				},
+			),
 		);
-	}
-
-	setOnRequestRender(cb: () => void): void {
-		this.#inner.setOnRequestRender(cb);
-	}
-
-	getSelectList() {
-		return this.#inner.getSelectList();
-	}
-
-	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
-		this.#inner.getSelectList().routeMouse(event, line - 1, col);
-	}
-
-	handleInput(data: string): void {
-		this.#inner.handleInput(data);
-	}
-
-	render(width: number): string[] {
-		return this.#inner.render(width);
-	}
-
-	invalidate(): void {
-		this.#inner.invalidate();
-	}
-
-	dispose(): void {
-		this.#inner.dispose();
 	}
 }

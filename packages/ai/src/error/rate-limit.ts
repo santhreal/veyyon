@@ -19,6 +19,20 @@ const SERVER_ERROR_BACKOFF_MS = 20 * 1000; // 20s
 const ACCOUNT_RATE_LIMIT_PATTERN =
 	/\baccount(?:'s)?\b[^\n]{0,80}\brate.?limit\b|\brate.?limit\b[^\n]{0,80}\baccount\b/i;
 const INSUFFICIENT_BALANCE_PATTERN = /insufficient.?balance/i;
+// Google's generic rate limiter, on every Gemini surface (Cloud Code Assist, Gemini CLI, Vertex):
+// `"message": "Resource has been exhausted (e.g. check quota).", "status": "RESOURCE_EXHAUSTED"`
+// with no ErrorInfo detail and no retry hint. It is the per-minute throttle, and the same body
+// is served while the account's daily quota is full, so it says nothing about the day. The
+// daily wall on Antigravity is a different sentence, "You have exhausted your capacity on this
+// model. Your quota will reset after …", matched first below. Read as a daily wall, this body
+// cost a 30-minute backoff, which exceeds `retry.maxDelayMs` and ended the turn on an error
+// that a 45-second retry clears.
+const GOOGLE_GENERIC_LIMITER_PATTERN = /resource has been exhausted \(e\.g\.,? check quota\)/i;
+// gRPC/Connect end-streams carry the status as its name (`resource_exhausted`) and HTTP bodies
+// as the phrase ("resource exhausted"). The token is stripped before the text rules run, so a
+// body that also states a quota or a rate limit keeps that classification, and a body that
+// states nothing else is transient model capacity.
+const RESOURCE_EXHAUSTED_STATUS_PATTERN = /resource.?exhausted/gi;
 // A status code named in prose is a whole number. `lower.includes("503")` also
 // fired inside `5030 credits remaining` and inside a request id, which routed an
 // exhausted balance to a 45-second capacity backoff instead of rotating the
@@ -35,14 +49,18 @@ const SERVER_ERROR_STATUS_PATTERN = /(?<!\d)(?:500|502|504)(?!\d)/;
 
 /**
  * Classify a rate-limit error message into a reason category.
- * Priority order: QUOTA (Antigravity "quota will reset") > MODEL_CAPACITY > QUOTA (account) >
- * RATE_LIMIT > QUOTA (generic) > SERVER_ERROR > UNKNOWN.
+ * Priority order: QUOTA (Antigravity "quota will reset") > Google's generic limiter body >
+ * MODEL_CAPACITY > QUOTA (account) > RATE_LIMIT > QUOTA (generic) > SERVER_ERROR > bare
+ * resource-exhausted status > UNKNOWN.
  *
- * "resource exhausted" maps to MODEL_CAPACITY (transient, short wait)
- * "quota exceeded" / "quota will reset" maps to QUOTA_EXHAUSTED (long wait, switch account)
+ * A bare "resource exhausted" / "resource_exhausted" status, and Google's "Resource has been
+ * exhausted (e.g. check quota)" body, map to MODEL_CAPACITY (transient, short wait).
+ * "quota exceeded" / "quota will reset" map to QUOTA_EXHAUSTED (long wait, switch account).
  */
 export function parseRateLimitReason(errorMessage: string): RateLimitReason {
-	const lower = errorMessage.toLowerCase();
+	const lowerWithStatus = errorMessage.toLowerCase();
+	const lower = lowerWithStatus.replace(RESOURCE_EXHAUSTED_STATUS_PATTERN, "");
+	const hasResourceExhaustedStatus = lower !== lowerWithStatus;
 
 	// Antigravity / Cloud Code Assist surface multi-hour daily-quota exhaustion as
 	// "You have exhausted your capacity on this model. Your quota will reset after …".
@@ -53,12 +71,11 @@ export function parseRateLimitReason(errorMessage: string): RateLimitReason {
 		return "QUOTA_EXHAUSTED";
 	}
 
-	if (
-		lower.includes("capacity") ||
-		lower.includes("overloaded") ||
-		CAPACITY_STATUS_PATTERN.test(lower) ||
-		lower.includes("resource exhausted")
-	) {
+	if (GOOGLE_GENERIC_LIMITER_PATTERN.test(errorMessage)) {
+		return "MODEL_CAPACITY_EXHAUSTED";
+	}
+
+	if (lower.includes("capacity") || lower.includes("overloaded") || CAPACITY_STATUS_PATTERN.test(lower)) {
 		return "MODEL_CAPACITY_EXHAUSTED";
 	}
 
@@ -96,6 +113,10 @@ export function parseRateLimitReason(errorMessage: string): RateLimitReason {
 		lower.includes("internal server error")
 	) {
 		return "SERVER_ERROR";
+	}
+
+	if (hasResourceExhaustedStatus) {
+		return "MODEL_CAPACITY_EXHAUSTED";
 	}
 
 	return "UNKNOWN";

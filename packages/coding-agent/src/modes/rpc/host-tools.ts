@@ -25,16 +25,23 @@ function isAgentToolResult(value: unknown): value is AgentToolResult<unknown> {
 	return Array.isArray(content);
 }
 
-export function isRpcHostToolResult(value: unknown): value is RpcHostToolResult {
+/** A host-tool frame of `type` whose `id` is a string and whose `payloadKey` holds a tool result. */
+function isRpcHostToolFrame<T extends { type: string }>(
+	value: unknown,
+	type: T["type"],
+	payloadKey: keyof T & string,
+): value is T {
 	if (!value || typeof value !== "object") return false;
-	const frame = value as { type?: unknown; id?: unknown; result?: unknown };
-	return frame.type === "host_tool_result" && typeof frame.id === "string" && isAgentToolResult(frame.result);
+	const frame = value as { type?: unknown; id?: unknown } & Record<string, unknown>;
+	return frame.type === type && typeof frame.id === "string" && isAgentToolResult(frame[payloadKey]);
+}
+
+export function isRpcHostToolResult(value: unknown): value is RpcHostToolResult {
+	return isRpcHostToolFrame<RpcHostToolResult>(value, "host_tool_result", "result");
 }
 
 export function isRpcHostToolUpdate(value: unknown): value is RpcHostToolUpdate {
-	if (!value || typeof value !== "object") return false;
-	const frame = value as { type?: unknown; id?: unknown; partialResult?: unknown };
-	return frame.type === "host_tool_update" && typeof frame.id === "string" && isAgentToolResult(frame.partialResult);
+	return isRpcHostToolFrame<RpcHostToolUpdate>(value, "host_tool_update", "partialResult");
 }
 
 class RpcHostToolAdapter<TParams extends TSchema = TSchema, TTheme extends Theme = Theme>

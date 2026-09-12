@@ -78,6 +78,7 @@ export class ImageBudget {
 	// re-registering an id (a width change) drops its previous line.
 	#directPlacements = new Map<string, KittyDirectPlacement>();
 	#directPlacementLineById = new Map<number, string>();
+
 	constructor(cap: number = DEFAULT_MAX_INLINE_IMAGES, requestRender: () => void = () => {}) {
 		this.#cap = normalizeCap(cap);
 		this.#requestRender = requestRender;

@@ -46,12 +46,10 @@ half a megabyte.
 from __future__ import annotations
 
 import argparse
-import re
 import subprocess
-import sys
 from pathlib import Path
 
-PTS_TIME = re.compile(r"pts_time:([0-9.]+)")
+from tighten import PTS_TIME, duration, run
 
 # A change big enough to be the screen doing something, rather than a spinner
 # frame or one more streamed word.
@@ -86,30 +84,6 @@ MARK_LEAD_MAX = MARK_LEAD
 # 480px scale the detector works on, so a stretch with nothing above it is a
 # screen nobody is doing anything to.
 NOISE_SCORE = 0.0005
-
-
-def run(cmd: list[str]) -> str:
-	proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-	return proc.stdout + proc.stderr
-
-
-def duration(path: Path) -> float:
-	out = run(
-		[
-			"ffprobe",
-			"-v",
-			"error",
-			"-show_entries",
-			"format=duration",
-			"-of",
-			"csv=p=0",
-			str(path),
-		]
-	)
-	try:
-		return float(out.strip().splitlines()[0])
-	except (IndexError, ValueError):
-		return 0.0
 
 
 def events(path: Path, *, score: float, min_frames: int = MIN_FRAMES) -> list[tuple[float, float, int]]:

@@ -1,4 +1,5 @@
 import { parseArgs as nodeParseArgs } from "node:util";
+import { CliUsageError } from "./cli-usage-error";
 import { clampLow } from "./math";
 import { startupMarker } from "./startup-marker";
 import { errorMessage } from "./type-guards";
@@ -86,19 +87,11 @@ function maskNegativeNumbers(argv: readonly string[]): {
 export const CLI_EXIT_USAGE = 2;
 
 /**
- * A user-facing argument/flag validation failure. Thrown by {@link Command.parse}
- * for missing/invalid positionals and flags. The top-level {@link run} handler
- * prints its message plus the command usage line to stderr and exits
- * {@link CLI_EXIT_USAGE}, instead of letting it bubble to the process-level catch,
- * which would dump a minified `dist/cli.js` code frame over a plain argument
- * mistake (issue #5369).
+ * {@link Command.parse} throws a {@link CliUsageError} for a missing or invalid positional or
+ * flag; the top-level {@link run} handler exits {@link CLI_EXIT_USAGE} on one. The class is
+ * `./cli-usage-error`, a leaf a CLI entry catches without loading this module.
  */
-export class CliUsageError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "CliUsageError";
-	}
-}
+export { CliUsageError } from "./cli-usage-error";
 
 // ---------------------------------------------------------------------------
 // Flag & Arg descriptors

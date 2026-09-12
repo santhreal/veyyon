@@ -1,5 +1,4 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import type { AssistantMessage } from "@veyyon/ai";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
@@ -9,6 +8,7 @@ import { previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils"
 import { evalToolView } from "@veyyon/coding-agent/tools/shell/eval-view";
 import { type Component, TUI } from "@veyyon/tui";
 import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
+import type { AssistantMessageView, AssistantSegment } from "@veyyon/wire/presentation";
 import { settleFrames } from "../../../hosts/terminal/engine/test/helpers/settle-frames";
 import { VirtualTerminal } from "../../../hosts/terminal/engine/test/virtual-terminal";
 import { createToolExecution } from "./helpers/tool-execution";
@@ -99,23 +99,24 @@ function stubStdoutRows(rows: number): void {
 	Object.defineProperty(process.stdout, "rows", { configurable: true, value: rows });
 }
 
-function makeAssistantMessage(content: AssistantMessage["content"], output = 0): AssistantMessage {
+type ContentInput = Array<{ type: "text"; text: string } | { type: "thinking"; thinking: string }>;
+
+function makeAssistantMessage(content: ContentInput, output = 0): AssistantMessageView {
+	const segments: AssistantSegment[] = [];
+	for (const block of content) {
+		if (block.type === "text") segments.push({ kind: "text", text: block.text });
+		else if (block.type === "thinking") segments.push({ kind: "thinking", text: block.thinking, redacted: false });
+	}
 	return {
-		role: "assistant",
-		content,
-		api: "anthropic-messages",
-		provider: "anthropic",
+		segments,
 		model: "claude-sonnet-4-5",
 		usage: {
 			input: 0,
 			output,
 			cacheRead: 0,
 			cacheWrite: 0,
-			totalTokens: output,
-			reasoningTokens: output,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		},
-		stopReason: "stop",
+		stopReason: "complete",
 		timestamp: Date.now(),
 	};
 }
@@ -255,7 +256,7 @@ describe("streaming tool output never sprays duplicate scrollback banners", () =
 			{ length: 10 },
 			(_, i) => `Answer paragraph ${i} with enough content to occupy a full row or two.`,
 		).join("\n\n");
-		const fullContent: AssistantMessage["content"] = [
+		const fullContent: ContentInput = [
 			{ type: "thinking", thinking },
 			{ type: "text", text },
 		];

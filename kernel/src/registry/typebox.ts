@@ -303,63 +303,43 @@ function createFormatStringValidator(format: string): (data: unknown) => unknown
 	return (data: unknown) => {
 		if (typeof data !== "string") return validationFailure("Expected string");
 		switch (format) {
-			case "email": {
-				const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-				return emailRegex.test(data) ? data : validationFailure("Invalid email format");
-			}
+			case "email":
+				return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data) ? data : validationFailure("Invalid email format");
 			case "url":
-			case "uri":
+			case "uri": {
 				try {
 					new URL(data);
 					return data;
 				} catch {
 					return validationFailure("Invalid URL format");
 				}
-			case "uuid": {
-				return isUuid(data) ? data : validationFailure("Invalid UUID format");
 			}
+			case "uuid":
+				return isUuid(data) ? data : validationFailure("Invalid UUID format");
 			case "date": {
 				if (!isDateOnly(data)) return validationFailure("Invalid date format (YYYY-MM-DD)");
-				const date = new Date(data);
-				return Number.isNaN(date.getTime()) ? validationFailure("Invalid date") : data;
+				return Number.isNaN(new Date(data).getTime()) ? validationFailure("Invalid date") : data;
 			}
 			case "date-time": {
-				// RFC 3339 date-time is a full-date, a `T` separator, and a full-time
-				// with an optional fraction and offset. `new Date()` alone was far too
-				// lenient: it accepted a bare year ("2024"), an English phrase
-				// ("January 1, 2024"), and a date with no time ("2024-01-01", which is
-				// a `date`, not a `date-time`). Gate on the RFC 3339 shape first, then
-				// use Date to reject impossible calendar values (month 13, day 32).
-				const dateTimeShape = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/;
-				if (!dateTimeShape.test(data)) return validationFailure("Invalid date-time format");
-				const dateTime = new Date(data);
-				return Number.isNaN(dateTime.getTime()) ? validationFailure("Invalid date-time") : data;
+				if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/.test(data))
+					return validationFailure("Invalid date-time format");
+				return Number.isNaN(new Date(data).getTime()) ? validationFailure("Invalid date-time") : data;
 			}
 			case "time": {
-				// The fractional-seconds separator is a literal dot, so it must be
-				// escaped: an unescaped `.` matched any character, wrongly accepting a
-				// value like "12:00:00X123". RFC 3339 defines `time-secfrac` as a dot
-				// followed by ONE OR MORE digits, so match `\d+`, not a fixed `\d{3}`
-				// (which rejected valid times such as "12:00:00.5" and
-				// "12:00:00.123456"). A lone dot with no digits still fails.
-				//
-				// The components are range-bounded (hour 00-23, minute 00-59, second
-				// 00-60 to allow a leap second, and the same bounds on the offset):
-				// with plain `\d{2}` groups a nonsense value like "45:99:99" passed.
-				// Unlike `date-time`, `time` has no Date backstop, so the bounds must
-				// live in the regex.
 				const timeRegex = /^([01]\d|2[0-3]):[0-5]\d:([0-5]\d|60)(\.\d+)?([+-]([01]\d|2[0-3]):[0-5]\d|Z)?$/;
 				return timeRegex.test(data) ? data : validationFailure("Invalid time format");
 			}
 			case "ipv4": {
-				const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
-				if (!ipv4Regex.test(data)) return validationFailure("Invalid IPv4 format");
-				const parts = data.split(".").map(Number);
-				return parts.some(part => part > 255) ? validationFailure("Invalid IPv4 address") : data;
+				if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(data)) return validationFailure("Invalid IPv4 format");
+				return data
+					.split(".")
+					.map(Number)
+					.some(part => part > 255)
+					? validationFailure("Invalid IPv4 address")
+					: data;
 			}
-			case "ipv6": {
+			case "ipv6":
 				return isFormatIpv6(data) ? data : validationFailure("Invalid IPv6 format");
-			}
 			default:
 				return data;
 		}
@@ -605,39 +585,44 @@ function tString(opts?: StringOpts): ArkSchema {
 	return applyMeta(createArkSchema(validator, { type: "string" }), opts);
 }
 
+function createNumericSchema(type: "number" | "integer", opts?: NumberOpts): ArkSchema {
+	const validator = createConstrainedNumberValidator(createNumberValidator(type === "integer"), opts);
+	return applyMeta(createArkSchema(validator, { type }), opts);
+}
+
 function tNumber(opts?: NumberOpts): ArkSchema {
-	const validator = createConstrainedNumberValidator(createNumberValidator(false), opts);
-	return applyMeta(createArkSchema(validator, { type: "number" }), opts);
+	return createNumericSchema("number", opts);
 }
 
 function tInteger(opts?: NumberOpts): ArkSchema {
-	const validator = createConstrainedNumberValidator(createNumberValidator(true), opts);
-	return applyMeta(createArkSchema(validator, { type: "integer" }), opts);
+	return createNumericSchema("integer", opts);
 }
 
 function tBoolean(opts?: Meta): ArkSchema {
-	const validator = (data: unknown) => (typeof data === "boolean" ? data : validationFailure("Expected boolean"));
-	return applyMeta(createArkSchema(validator, { type: "boolean" }), opts);
+	return applyMeta(
+		createArkSchema((d: unknown) => (typeof d === "boolean" ? d : validationFailure("Expected boolean")), {
+			type: "boolean",
+		}),
+		opts,
+	);
 }
 
 function tNull(opts?: Meta): ArkSchema {
-	const validator = (data: unknown) => (data === null ? data : validationFailure("Expected null"));
-	return applyMeta(createArkSchema(validator, { type: "null" }), opts);
+	return applyMeta(
+		createArkSchema((d: unknown) => (d === null ? d : validationFailure("Expected null")), { type: "null" }),
+		opts,
+	);
 }
 
 function tAny(opts?: Meta): ArkSchema {
 	return applyMeta(
-		createArkSchema((data: unknown) => data, {}),
+		createArkSchema((d: unknown) => d, {}),
 		opts,
 	);
 }
 
-function tUnknown(opts?: Meta): ArkSchema {
-	return applyMeta(
-		createArkSchema((data: unknown) => data, {}),
-		opts,
-	);
-}
+/** `Unknown` accepts every value, as `Any` does; the two names stay for callers that pick one. */
+const tUnknown = tAny;
 
 function tNever(opts?: Meta): ArkSchema {
 	return applyMeta(
@@ -823,93 +808,65 @@ function tRequired<_P extends Record<string, ArkSchema>>(obj: ArkSchema): ArkSch
 	return createArkSchema(obj.__validator, metadata);
 }
 
-function tPick<P extends Record<string, ArkSchema>, K extends keyof P>(obj: ArkSchema, keys: readonly K[]): ArkSchema {
+function selectProperties(obj: ArkSchema, keys: readonly (string | number | symbol)[], pick: boolean): ArkSchema {
 	const keySet = new Set(Array.from(keys).map(String));
-	if (obj.__properties) {
+	const match = (k: string) => (pick ? keySet.has(k) : !keySet.has(k));
+	const source = obj.__properties;
+	if (source) {
 		const properties: Record<string, ArkSchema> = {};
-		for (const key of keySet) {
-			const schema = obj.__properties[key];
-			if (schema) properties[key] = schema;
+		if (pick) {
+			// Iterate the requested keys, not the declared ones: Pick's property
+			// order follows the caller's key list, and a requested key absent from
+			// the source is skipped rather than emitted as undefined.
+			for (const key of keySet) {
+				const schema = source[key];
+				if (schema) properties[key] = schema;
+			}
+		} else {
+			for (const key in source) {
+				if (!keySet.has(key)) properties[key] = source[key];
+			}
 		}
 		return tObject(properties, { additionalProperties: obj.__additionalProperties });
 	}
 	const validator = (data: unknown) => {
-		if (!data || typeof data !== "object") {
-			return validationFailure("Expected object");
-		}
-
+		if (!data || typeof data !== "object") return validationFailure("Expected object");
 		const result: Record<string, unknown> = {};
 		const obj_data = data as Record<string, unknown>;
-
-		for (const key of keySet) {
-			if (key in obj_data) {
-				result[key] = obj_data[key];
+		if (pick) {
+			// `key in obj_data`, not a `for...in` filter: Pick keeps a requested key
+			// that is own-but-non-enumerable, and emits keys in requested order.
+			for (const key of keySet) {
+				if (key in obj_data) result[key] = obj_data[key];
+			}
+		} else {
+			for (const key in obj_data) {
+				if (!keySet.has(key)) result[key] = obj_data[key];
 			}
 		}
-
 		return result;
 	};
-
 	const metadata = jsonSchemaOf(obj);
 	if (isRecord(metadata.properties)) {
 		const properties = metadata.properties as Record<string, unknown>;
 		const filteredProps: Record<string, unknown> = {};
 		for (const key in properties) {
-			if (keySet.has(key)) {
-				filteredProps[key] = properties[key];
-			}
+			if (match(key)) filteredProps[key] = properties[key];
 		}
 		metadata.properties = filteredProps;
 	}
 	if (Array.isArray(metadata.required)) {
-		metadata.required = metadata.required.filter(key => typeof key === "string" && keySet.has(key));
+		metadata.required = metadata.required.filter(key => typeof key === "string" && match(key));
 	}
 	return createArkSchema(validator, metadata);
 }
 
+function tPick<P extends Record<string, ArkSchema>, K extends keyof P>(obj: ArkSchema, keys: readonly K[]): ArkSchema {
+	return selectProperties(obj, keys as readonly (string | number | symbol)[], true);
+}
+
 function tOmit<P extends Record<string, ArkSchema>, K extends keyof P>(obj: ArkSchema, keys: readonly K[]): ArkSchema {
-	const keySet = new Set(Array.from(keys).map(String));
-	if (obj.__properties) {
-		const properties: Record<string, ArkSchema> = {};
-		for (const key in obj.__properties) {
-			if (!keySet.has(key)) {
-				properties[key] = obj.__properties[key];
-			}
-		}
-		return tObject(properties, { additionalProperties: obj.__additionalProperties });
-	}
-	const validator = (data: unknown) => {
-		if (!data || typeof data !== "object") {
-			return validationFailure("Expected object");
-		}
-
-		const result: Record<string, unknown> = {};
-		const obj_data = data as Record<string, unknown>;
-
-		for (const key in obj_data) {
-			if (!keySet.has(key)) {
-				result[key] = obj_data[key];
-			}
-		}
-
-		return result;
-	};
-
-	const metadata = jsonSchemaOf(obj);
-	if (isRecord(metadata.properties)) {
-		const properties = metadata.properties as Record<string, unknown>;
-		const filteredProps: Record<string, unknown> = {};
-		for (const key in properties) {
-			if (!keySet.has(key)) {
-				filteredProps[key] = properties[key];
-			}
-		}
-		metadata.properties = filteredProps;
-	}
-	if (Array.isArray(metadata.required)) {
-		metadata.required = metadata.required.filter(key => typeof key === "string" && !keySet.has(key));
-	}
-	return createArkSchema(validator, metadata);
+	return selectProperties(obj, keys as readonly (string | number | symbol)[], false);
 }
 
 function tComposite(objects: readonly ArkSchema[], opts?: Meta): ArkSchema {

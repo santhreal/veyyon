@@ -1592,8 +1592,23 @@ describe("kimi model detection via detectCompat", () => {
 	// reasoning_content override must back off on the same path or the
 	// thinking-disabled payload reintroduces the #1071 `Extra inputs are not
 	// permitted` failure.
-	it("omits reasoning_content on kimi opencode-go forced-tool turns even when reasoning is requested", async () => {
-		const model = kimiOpenCodeModel("kimi-k2.6");
+	//
+	// The OpenCode gateways no longer send a forced choice at all (they accept
+	// only `"auto"`), so this coupling is unreachable through them and the
+	// `supportsToolChoice` override below stands in for a host that does take
+	// one. Keeping it on this code path is the point: the pairing of a stripped
+	// thinking signal with a suppressed `reasoning_content` is what #1071 was,
+	// and it has to stay asserted somewhere.
+	it("omits reasoning_content on a kimi forced-tool turn wherever a forced choice reaches the wire", async () => {
+		const model: Model<"openai-completions"> = buildModel({
+			...gpt4oMiniSpec,
+			api: "openai-completions",
+			provider: "opencode-go",
+			baseUrl: "https://opencode.ai/zen/go/v1",
+			id: "kimi-k2.6",
+			reasoning: true,
+			compat: { supportsToolChoice: true },
+		} as ModelSpec<"openai-completions">);
 		const priorAssistant: AssistantMessage = {
 			role: "assistant",
 			content: [
@@ -1766,7 +1781,11 @@ describe("kimi model detection via detectCompat", () => {
 		expect(assistant).toBeDefined();
 		expect(assistant?.reasoning_content).toBe("Plan first, then call the tool.");
 		expect(payload.reasoning_effort).toBe("high");
-		expect(payload.tool_choice).toBe("auto");
+		// Omitted rather than `"auto"`: the gateway accepts only `"auto"`, and an
+		// absent field is that same request, so the downgrade drops it outright.
+		// What this test is really holding is the second half — that downgrading a
+		// choice the host cannot take never costs the turn its thinking signal.
+		expect(payload.tool_choice).toBeUndefined();
 	});
 
 	// #1484 follow-up: DeepSeek V4 on opencode-go exhibits the same gateway

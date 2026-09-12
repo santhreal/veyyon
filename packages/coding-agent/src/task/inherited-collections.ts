@@ -14,7 +14,7 @@ export type InheritedCollectionKind = "skills" | "promptTemplates" | "rules";
  * and skips discovery entirely for anything that arrived, empty arrays included. So `[]` does not
  * mean "the child should also find nothing", it means "the child must not look", and a spawn site
  * that produced `[]` because the parent had nothing resolved yet silently disables the operator's
- * skills, prompt templates, or rules for every subagent, with green tests and no warning. That is
+ * skills, prompt templates, or rules for every spawned agent, with green tests and no warning. That is
  * the same defect that cost every `AGENTS.md` in every spawned agent; `context-inheritance.ts`
  * carries the context-file half of the story.
  *
@@ -63,7 +63,7 @@ export function inheritResolvedCollection<T>(args: InheritResolvedCollectionArgs
 	const { items, kind, parentCwd, spawnCwd, agentName } = args;
 
 	if (path.resolve(parentCwd) !== path.resolve(spawnCwd)) {
-		logger.debug("Subagent re-discovers layer: spawn cwd differs from parent", {
+		logger.debug("Spawned agent re-discovers layer: spawn cwd differs from parent", {
 			agent: agentName,
 			kind,
 			parentCwd,
@@ -73,11 +73,11 @@ export function inheritResolvedCollection<T>(args: InheritResolvedCollectionArgs
 	}
 
 	if (items === undefined) {
-		logger.debug("Subagent resolves its own layer: parent has none resolved", { agent: agentName, kind });
+		logger.debug("Spawned agent resolves its own layer: parent has none resolved", { agent: agentName, kind });
 		return undefined;
 	}
 	if (items.length === 0) {
-		logger.debug("Subagent resolves its own layer: parent resolved zero items", { agent: agentName, kind });
+		logger.debug("Spawned agent resolves its own layer: parent resolved zero items", { agent: agentName, kind });
 		return undefined;
 	}
 	return items.slice();
@@ -144,7 +144,7 @@ export function resolveAutoloadSkills<T extends { name: string }>(
 ): AutoloadSkillPlan<T> {
 	if (!requested || requested.length === 0) return { kind: "resolved", skills: [] };
 	if (available === undefined) {
-		logger.debug("Subagent resolves its own autoloadSkills: spawner holds no authoritative skill set", {
+		logger.debug("Spawned agent resolves its own autoloadSkills: spawner holds no authoritative skill set", {
 			agent: agentName,
 			requested: requested.slice(),
 		});

@@ -309,25 +309,15 @@ class Settings(BaseSettings):
             return value.strip().lower()
         return value
 
-    @field_validator("replay_token", mode="before")
+    @field_validator("replay_token", "github_token", mode="before")
     @classmethod
-    def _blank_replay_disables(cls, value: object) -> object:
-        # Treat empty/whitespace strings as 'disabled'. Without this, an empty
-        # VEYBOT_REPLAY_TOKEN becomes SecretStr("") which the server would
-        # happily compare against an empty X-Veybot-Replay-Token header.
-        if isinstance(value, str) and not value.strip():
-            return None
-        if hasattr(value, "get_secret_value"):
-            inner = value.get_secret_value()  # type: ignore[attr-defined]
-            if isinstance(inner, str) and not inner.strip():
-                return None
-        return value
+    def _blank_secret_disables(cls, value: object) -> object:
+        """Treat an empty/whitespace secret as 'unset'.
 
-    @field_validator("github_token", mode="before")
-    @classmethod
-    def _blank_token_disables(cls, value: object) -> object:
-        """Treat empty/whitespace `GITHUB_TOKEN` as 'unset' so proxy-only
-        deployments don't have to remove the env var."""
+        Without this, an empty VEYBOT_REPLAY_TOKEN becomes SecretStr("") which
+        the server would happily compare against an empty
+        X-Veybot-Replay-Token header, and proxy-only deployments would have to
+        remove an empty `GITHUB_TOKEN` env var."""
         if isinstance(value, str) and not value.strip():
             return None
         if hasattr(value, "get_secret_value"):
@@ -396,9 +386,15 @@ class Settings(BaseSettings):
             raise ValueError("VEYBOT_TRIAGE_LABEL must not be empty when VEYBOT_TRIAGE_TRIGGER=label")
         return self
 
-    @field_validator("repo_allowlist_raw", mode="before")
+    @field_validator(
+        "repo_allowlist_raw",
+        "rate_limit_unlimited_raw",
+        "maintainer_logins_raw",
+        "reviewer_bots_raw",
+        mode="before",
+    )
     @classmethod
-    def _coerce_allowlist(cls, v: object) -> str:
+    def _coerce_csv(cls, v: object) -> str:
         if v is None:
             return ""
         if isinstance(v, str):
@@ -412,43 +408,10 @@ class Settings(BaseSettings):
         items = [piece.strip().lower() for piece in self.repo_allowlist_raw.split(",")]
         return frozenset(item for item in items if item)
 
-    @field_validator("rate_limit_unlimited_raw", mode="before")
-    @classmethod
-    def _coerce_unlimited(cls, v: object) -> str:
-        if v is None:
-            return ""
-        if isinstance(v, str):
-            return v
-        if isinstance(v, (list, tuple)):
-            return ",".join(str(item) for item in v)
-        return str(v)
-
     @property
     def rate_limit_unlimited(self) -> frozenset[str]:
         items = [piece.strip().lstrip("@").lower() for piece in self.rate_limit_unlimited_raw.split(",")]
         return frozenset(item for item in items if item)
-
-    @field_validator("maintainer_logins_raw", mode="before")
-    @classmethod
-    def _coerce_maintainers(cls, v: object) -> str:
-        if v is None:
-            return ""
-        if isinstance(v, str):
-            return v
-        if isinstance(v, (list, tuple)):
-            return ",".join(str(item) for item in v)
-        return str(v)
-
-    @field_validator("reviewer_bots_raw", mode="before")
-    @classmethod
-    def _coerce_reviewer_bots(cls, v: object) -> str:
-        if v is None:
-            return ""
-        if isinstance(v, str):
-            return v
-        if isinstance(v, (list, tuple)):
-            return ",".join(str(item) for item in v)
-        return str(v)
 
     @property
     def reviewer_bots(self) -> frozenset[str]:

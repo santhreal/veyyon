@@ -1,3 +1,5 @@
+import { errorMessage } from "@veyyon/utils/type-guards";
+
 /**
  * Why a discovery reader answered "no catalog".
  *
@@ -48,4 +50,25 @@ export interface DiscoveryFailure {
  */
 export interface DiscoveryHooks {
 	onFailure?: (failure: DiscoveryFailure) => void;
+}
+
+/** A reader's per-request sink: the stage and detail of one failure, the URL already bound. */
+export type DiscoveryReport = (stage: DiscoveryFailureStage, detail: string) => void;
+
+/**
+ * Reads a discovery response as JSON, reporting a non-ok status as `status` and a body that does not
+ * parse as `body`. Returns `undefined` after a report; JSON never decodes to `undefined`, so a caller
+ * that compares against it tells a reported failure from a body of `null`.
+ */
+export async function readDiscoveryJson(response: Response, report: DiscoveryReport): Promise<unknown> {
+	if (!response.ok) {
+		report("status", `HTTP ${response.status} ${response.statusText}`.trim());
+		return undefined;
+	}
+	try {
+		return await response.json();
+	} catch (error) {
+		report("body", `response is not JSON: ${errorMessage(error)}`);
+		return undefined;
+	}
 }

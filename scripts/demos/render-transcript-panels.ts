@@ -16,60 +16,36 @@
  *       bun scripts/demos/render-proof.ts --out /tmp/panels --width 100 --scale 2
  */
 
-import type { TUI } from "../../hosts/terminal/engine/src/index";
 import {
 	COMPOSER_INSET_COLS,
+	PRISTINE_COMPOSER_ACCENT_STATE,
 	resolveComposerAccents,
 } from "../../packages/coding-agent/src/modes/terminal/components/composer/composer-chrome";
 import { BtwPanelComponent } from "../../packages/coding-agent/src/modes/terminal/components/dialogs/btw-panel";
 import { OmfgPanelComponent } from "../../packages/coding-agent/src/modes/terminal/components/dialogs/omfg-panel";
-import { initTheme, theme } from "../../packages/coding-agent/src/theme/theme";
-import { flag, hasFlag, renderWidth } from "./render-args";
+import { mockTui, renderDemo, renderRuler } from "./render-args";
 
-const themeName = flag("theme", "titanium");
-const width = renderWidth();
-await initTheme(false, "unicode", false, themeName, themeName);
-
-const ui = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
-const lines: string[] = [];
-
-if (hasFlag("ruler")) {
-	let tens = "";
-	let units = "";
-	for (let col = 0; col < width; col++) {
-		tens += col % 10 === 0 ? String(Math.floor(col / 10) % 10) : " ";
-		units += String(col % 10);
+await renderDemo(({ width, hasFlag }) => {
+	const ui = mockTui();
+	const lines: string[] = [];
+	if (hasFlag("ruler")) {
+		lines.push(...renderRuler(width));
 	}
-	lines.push(theme.fg("dim", tens), theme.fg("dim", units));
-}
-
-const accents = resolveComposerAccents({
-	bypass: false,
-	bashMode: false,
-	pythonMode: false,
-	planMode: false,
-	focusedSubagent: false,
-	sessionAccentAnsi: undefined,
-	thinkingLevel: "off",
+	const accents = resolveComposerAccents(PRISTINE_COMPOSER_ACCENT_STATE);
+	lines.push(`${accents.promptGutter}why does the parser reject an empty focus string?`, "");
+	lines.push(
+		`${" ".repeat(COMPOSER_INSET_COLS)}It validates before it trims, so the empty case never reaches the trim.`,
+		"",
+	);
+	const btw = new BtwPanelComponent({ question: "what is a focus string?", tui: ui });
+	btw.appendText(
+		"A **focus string** names the subset of tests a run executes.\n\nIt is matched against the test name, not the file path.",
+	);
+	btw.markComplete();
+	lines.push(...btw.render(width), "");
+	const omfg = new OmfgPanelComponent({ complaint: "stop reformatting my imports", tui: ui });
+	omfg.setRule("## Imports\n\nNever reorder an import block that the change does not otherwise touch.");
+	omfg.setStatus("confirming", "Save this rule? y/n");
+	lines.push(...omfg.render(width), "", `${accents.promptGutter}`);
+	return lines;
 });
-lines.push(`${accents.promptGutter}why does the parser reject an empty focus string?`);
-lines.push("");
-lines.push(`${" ".repeat(COMPOSER_INSET_COLS)}It validates before it trims, so the empty case never reaches the trim.`);
-lines.push("");
-const btw = new BtwPanelComponent({ question: "what is a focus string?", tui: ui });
-btw.appendText(
-	"A **focus string** names the subset of tests a run executes.\n\nIt is matched against the test name, not the file path.",
-);
-btw.markComplete();
-lines.push(...btw.render(width));
-lines.push("");
-
-const omfg = new OmfgPanelComponent({ complaint: "stop reformatting my imports", tui: ui });
-omfg.setRule("## Imports\n\nNever reorder an import block that the change does not otherwise touch.");
-omfg.setStatus("confirming", "Save this rule? y/n");
-lines.push(...omfg.render(width));
-lines.push("");
-
-lines.push(`${accents.promptGutter}`);
-
-process.stdout.write(`${lines.join("\n")}\n`);

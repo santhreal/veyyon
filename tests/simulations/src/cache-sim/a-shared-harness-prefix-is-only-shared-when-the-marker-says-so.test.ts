@@ -1,5 +1,5 @@
 /**
- * The shipped anchor on the first system block is there so a subagent can read
+ * The shipped anchor on the first system block is there so an agent can read
  * the harness its parent already cached. Two sessions sharing one modelled cache
  * are what price that, and the first thing they show is that the sharing does not
  * happen: an entry is keyed by session unless the marker asks otherwise, and
@@ -10,13 +10,13 @@
  * re-read forever — and then refuses to recommend moving the marker, because the
  * justification for its depth is cross-session sharing that a single-session
  * simulation cannot see. This file is that missing half. It answers the only
- * question that decides the patch: how many subagent sessions must share a parent's
+ * question that decides the patch: how many agent sessions must share a parent's
  * harness before the shallow anchor pays for the parent's loss?
  *
  * The answer turns out to depend on a field that is not set. `scope: "global"` is
  * the prompt-caching-scope beta; this repo sends the beta header on both Anthropic
  * layouts and the field is first-class on the wire type, but no code path assigns
- * it. So today every breakpoint is session-scoped, a subagent reads nothing its
+ * it. So today every breakpoint is session-scoped, an agent reads nothing its
  * parent wrote, and the depth of the anchor buys exactly zero of what it was
  * chosen for. The fleet is run both ways, and the crossover only exists in the arm
  * where the flag is set.
@@ -27,7 +27,7 @@
  *     sessions"), not derived from traffic: a provider that shared everything by
  *     default would make the session-keyed rows here pessimistic, and nothing in
  *     the file would notice.
- *   - Real subagent fan-out. The crossover is reported as a count, and which side
+ *   - Real agent fan-out. The crossover is reported as a count, and which side
  *     of it a given workload sits on is a question about that workload. Nothing
  *     here claims a typical fan-out.
  *   - The write the parent pays to publish a shared prefix is modelled as the same
@@ -39,7 +39,7 @@
  *   - the global-scope decorator made a no-op (marker returned unchanged): the
  *     sharing row reds, which is what says the row is about the field and not
  *     about the two sessions sending identical harness bytes.
- *   - the subagent's project block made identical to the parent's: the crossover
+ *   - the agent's project block made identical to the parent's: the crossover
  *     row reds, since a deeper anchor then shares too and the trade disappears.
  *   - the modelled cache made to ignore which session owns an entry: the
  *     session-scoped row reds, so that row is about the key and not about the
@@ -54,14 +54,14 @@
  *     before the decorator was narrowed to the anchor.
  *
  * MEASURED, one six-turn parent with a changing system tail plus N three-turn
- * subagents that share its harness block and differ from block 1 on, in
+ * agents that share its harness block and differ from block 1 on, in
  * base-input-price equivalents. Session-scoped, as the product ships: the shipped
  * anchor costs 24472 against 13892 at N=0 and 111882 against 75897 at N=6, so the
- * gap WIDENS by about 4234 per subagent and the shallow anchor never breaks even.
- * With `scope: "global"` on the anchor, a subagent's first request reads the
+ * gap WIDENS by about 4234 per agent and the shallow anchor never breaks even.
+ * With `scope: "global"` on the anchor, an agent's first request reads the
  * 4811-token harness prefix its parent wrote thirty seconds earlier, the gap
- * NARROWS by 1298 per subagent (10580 at N=0, 2790 at N=6, 193 at N=8, −1105 at
- * N=9), so the crossover is at nine simultaneously sharing subagents. Below it the
+ * NARROWS by 1298 per agent (10580 at N=0, 2790 at N=6, 193 at N=8, −1105 at
+ * N=9), so the crossover is at nine simultaneously sharing agents. Below it the
  * deeper anchor is cheaper even with sharing switched on.
  *
  * The switch itself, at N=1: 39040 unshared, 33508 shared, and 37116 shared under
@@ -87,10 +87,10 @@ import {
 } from "./harness";
 
 const PARENT_TURNS = 6;
-const SUBAGENT_TURNS = 3;
+const AGENT_TURNS = 3;
 const GAP_MS = 20_000;
-/** The parent is already running when a subagent starts; that is what sharing means. */
-const SUBAGENT_START_MS = 30_000;
+/** The parent is already running when an agent starts; that is what sharing means. */
+const AGENT_START_MS = 30_000;
 
 /** A system prompt sharing the harness block and differing from block 1 onward. */
 function systemFor(project: string, volatileSuffix: string): string[] {
@@ -114,25 +114,25 @@ function parentSession(): Step[] {
 	return steps;
 }
 
-/** A subagent: its own project block, its own short history, starting mid-parent. */
-function subagentSession(id: number): Step[] {
+/** An agent: its own project block, its own short history, starting mid-parent. */
+function agentSession(id: number): Step[] {
 	const steps: Step[] = [];
-	for (let turn = 1; turn <= SUBAGENT_TURNS; turn++) {
+	for (let turn = 1; turn <= AGENT_TURNS; turn++) {
 		steps.push({
 			context: {
-				systemPrompt: systemFor(`subagent-${id}`, `handle table revision ${turn}`),
+				systemPrompt: systemFor(`agent-${id}`, `handle table revision ${turn}`),
 				messages: conversationAfter(turn),
 			},
-			gapMs: turn === 1 ? SUBAGENT_START_MS : GAP_MS,
+			gapMs: turn === 1 ? AGENT_START_MS : GAP_MS,
 		});
 	}
 	return steps;
 }
 
-/** A fleet of one parent and `fanOut` subagents. */
+/** A fleet of one parent and `fanOut` agents. */
 function fleetOf(fanOut: number): Record<string, Step[]> {
 	const fleet: Record<string, Step[]> = { parent: parentSession() };
-	for (let id = 1; id <= fanOut; id++) fleet[`subagent-${id}`] = subagentSession(id);
+	for (let id = 1; id <= fanOut; id++) fleet[`agent-${id}`] = agentSession(id);
 	return fleet;
 }
 
@@ -156,19 +156,19 @@ async function deltasAcrossFanOut(shipped: Arm, deeper: Arm): Promise<number[]> 
 	return deltas;
 }
 
-describe("a harness prefix shared between a parent and its subagents", () => {
+describe("a harness prefix shared between a parent and its agents", () => {
 	it("is not shared at all while the marker leaves the scope unset", async () => {
 		const sessionScoped = await runFleet(PRODUCTION, fleetOf(1));
 		const globallyScoped = await runFleet(sharedGlobally(PRODUCTION), fleetOf(1));
 
-		// The subagent's first request carries a harness prefix the parent cached
+		// The agent's first request carries a harness prefix the parent cached
 		// thirty seconds earlier, byte for byte. Session-keyed, it reads none of it.
-		expect(sessionScoped.sessions["subagent-1"].turns[0].read).toBe(0);
-		expect(globallyScoped.sessions["subagent-1"].turns[0].read).toBeGreaterThan(0);
+		expect(sessionScoped.sessions["agent-1"].turns[0].read).toBe(0);
+		expect(globallyScoped.sessions["agent-1"].turns[0].read).toBeGreaterThan(0);
 		// And what it reads is the harness prefix, not something deeper: the parent's
 		// project block differs, so nothing past block 0 can match.
 		const harness = await harnessPrefixTokens();
-		expect(globallyScoped.sessions["subagent-1"].turns[0].read).toBe(harness);
+		expect(globallyScoped.sessions["agent-1"].turns[0].read).toBe(harness);
 		expect(globallyScoped.cost).toBeLessThan(sessionScoped.cost);
 	});
 
@@ -176,7 +176,7 @@ describe("a harness prefix shared between a parent and its subagents", () => {
 		const deltas = await deltasAcrossFanOut(PRODUCTION, deepAnchor(1));
 
 		// Every fan-out, not most of them: with no sharing the extra depth is free
-		// money and more subagents only widen the gap, which is the whole finding.
+		// money and more agents only widen the gap, which is the whole finding.
 		expect(deltas.every(delta => delta > 0)).toBe(true);
 		const widening = deltas.slice(1).every((delta, index) => delta > deltas[index]);
 		expect(widening).toBe(true);
@@ -185,8 +185,8 @@ describe("a harness prefix shared between a parent and its subagents", () => {
 	it("pays for its depth only once the scope is set, and only above a fan-out this run reports", async () => {
 		const deltas = await deltasAcrossFanOut(sharedGlobally(PRODUCTION), sharedGlobally(deepAnchor(1)));
 
-		// The trade is one parent penalty against one saving per sharing subagent, so
-		// the delta shrinks by a constant per subagent and crosses zero exactly once.
+		// The trade is one parent penalty against one saving per sharing agent, so
+		// the delta shrinks by a constant per agent and crosses zero exactly once.
 		// Anything else means the fixture is measuring something other than the trade.
 		const narrowing = deltas.slice(1).every((delta, index) => delta < deltas[index]);
 		expect(narrowing).toBe(true);
@@ -194,7 +194,7 @@ describe("a harness prefix shared between a parent and its subagents", () => {
 		expect(crossover).toBeGreaterThan(0);
 		expect(crossover).toBeLessThanOrEqual(MAX_FAN_OUT);
 
-		// The number is the point: the anchor is not justified by "subagents exist",
+		// The number is the point: the anchor is not justified by "agents exist",
 		// it is justified by a fan-out this large sharing that exact harness at once.
 		// Below the crossover the deeper anchor is cheaper even with sharing on.
 		expect(deltas[crossover - 1]).toBeGreaterThan(0);
@@ -218,8 +218,8 @@ describe("a harness prefix shared between a parent and its subagents", () => {
 		// The premium is real money, so the pessimistic arm must cost more than the
 		// free one, or the sensitivity is not being applied at all.
 		expect(dear).toBeGreaterThan(free);
-		// And it still beats not sharing, from one subagent: the parent publishes the
-		// prefix once per lifetime and each subagent skips a whole write of it.
+		// And it still beats not sharing, from one agent: the parent publishes the
+		// prefix once per lifetime and each agent skips a whole write of it.
 		expect(dear).toBeLessThan(withoutSharing);
 	});
 
@@ -249,9 +249,9 @@ describe("a harness prefix shared between a parent and its subagents", () => {
 	 * block and actually differ after it, or every row above passes by measuring
 	 * two unrelated prompts.
 	 */
-	it("keeps the parent and the subagent sharing the harness and nothing past it", async () => {
+	it("keeps the parent and the agent sharing the harness and nothing past it", async () => {
 		const [parent] = await armPayloads(PRODUCTION, [parentSession()[0]]);
-		const [child] = await armPayloads(PRODUCTION, [subagentSession(1)[0]]);
+		const [child] = await armPayloads(PRODUCTION, [agentSession(1)[0]]);
 
 		const parentBlocks = (parent.system ?? []).map(block => block.text);
 		const childBlocks = (child.system ?? []).map(block => block.text);

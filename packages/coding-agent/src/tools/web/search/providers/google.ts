@@ -1,16 +1,15 @@
-import type { AuthStorage } from "@veyyon/ai";
 import { errorMessage } from "@veyyon/utils";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { parseHTML } from "linkedom";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../../provider-boundary";
-import type { SearchResponse, SearchSource } from "../types";
+import type { SearchResponse } from "../types";
 import { SearchProviderError } from "../types";
 import { clampNumResults, collapseWhitespace, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
-import { SearchProvider } from "./base";
+import { OpenSearchProvider } from "./base";
 import type { LoadedHtmlPage } from "./browser-page";
 import { browserFetch } from "./browser-page";
-import { isExternalHttpUrl, parseResultUrl } from "./utils";
+import { isExternalHttpUrl, parseResultUrl, RECENCY_TBS, toSearchSources } from "./utils";
 
 const GOOGLE_HOME_URL = "https://www.google.com/";
 
@@ -19,12 +18,6 @@ const GOOGLE_OWN_HOSTS: readonly string[] = ["google.com"];
 const GOOGLE_SEARCH_URL = "https://www.google.com/search";
 const MAX_NUM_RESULTS = 20;
 
-const RECENCY_TO_GOOGLE_TBS: Record<NonNullable<SearchParams["recency"]>, string> = {
-	day: "qdr:d",
-	week: "qdr:w",
-	month: "qdr:m",
-	year: "qdr:y",
-};
 const GOOGLE_SNIPPET_SELECTORS: readonly string[] = [
 	"[data-sncf='1'] .VwiC3b",
 	".VwiC3b",
@@ -90,7 +83,7 @@ function parseHtmlResults(html: string): ParsedResult[] {
 function buildSearchAttempt(params: SearchParams, numResults: number): { url: string; referer: string } {
 	const boundary = "Google search";
 	const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, boundary);
-	const tbs = params.recency ? RECENCY_TO_GOOGLE_TBS[params.recency] : undefined;
+	const tbs = params.recency ? RECENCY_TBS[params.recency] : undefined;
 	const fields = transformProviderPayload(
 		{
 			q: params.query,
@@ -181,27 +174,12 @@ export async function searchGoogle(params: SearchParams): Promise<SearchResponse
 	);
 	const html = await callGoogleHtml(params, numResults);
 	const parsed = parseHtmlResults(html);
-
-	const sources: SearchSource[] = [];
-	const seen = new Set<string>();
-	for (const result of parsed) {
-		if (seen.has(result.url)) continue;
-		seen.add(result.url);
-		sources.push({ title: result.title, url: result.url, snippet: result.snippet });
-		if (sources.length >= numResults) break;
-	}
-
-	return { provider: "google", sources };
+	return { provider: "google", sources: toSearchSources(parsed, numResults, { deduplicate: true }) };
 }
-
 /** Fetch-first Google Search provider with a headless-browser fallback; no API key is required. */
-export class GoogleProvider extends SearchProvider {
+export class GoogleProvider extends OpenSearchProvider {
 	readonly id = "google";
 	readonly label = "Google";
-
-	isAvailable(_authStorage: AuthStorage): boolean {
-		return true;
-	}
 
 	search(params: SearchParams): Promise<SearchResponse> {
 		return searchGoogle(params);

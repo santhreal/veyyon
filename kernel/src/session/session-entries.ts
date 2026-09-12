@@ -37,7 +37,7 @@ export type {
 
 declare module "@veyyon/session" {
 	interface CustomCompactionSessionEntries {
-		subagentSpawn: SubagentSpawnEntry;
+		agentSpawn: AgentSpawnEntry;
 		settingsSnapshot: SettingsSnapshotEntry;
 		sessionLifecycle: SessionLifecycleEntry;
 		sessionCheckpoint: SessionCheckpointEntry;
@@ -88,26 +88,26 @@ export interface NewSessionOptions {
 }
 
 /**
- * The payload a parent records for one subagent it spawned. Separated from the
+ * The payload a parent records for one spawned agent. Separated from the
  * entry so the task tool can hand a plain record to the session without knowing
  * the SessionEntryBase id/parentId/timestamp bookkeeping.
  */
-export interface SubagentSpawnRecord {
-	/** The subagent's id — matches its transcript filename stem and `history://<agentId>`. */
+export interface AgentSpawnRecord {
+	/** The spawned agent's id — matches its transcript filename stem and `history://<agentId>`. */
 	agentId: string;
 	/** Agent definition name (e.g. "task", "reviewer"). */
 	agentName: string;
-	/** The exact task text handed to the subagent. */
+	/** The exact task text handed to the spawned agent. */
 	task: string;
-	/** Absolute path to the subagent's durable transcript (`<artifactsDir>/<agentId>.jsonl`). */
+	/** Absolute path to the spawned agent's durable transcript (`<artifactsDir>/<agentId>.jsonl`). */
 	sessionFile: string;
-	/** Isolation mode the subagent ran under ("none", "worktree", "branch", ...). */
+	/** Isolation mode the spawned agent ran under ("none", "worktree", "branch", ...). */
 	isolation: string;
 	/** Terminal status: "completed" | "failed" | "cancelled". */
 	status: "completed" | "failed" | "cancelled";
 	/** Process exit code (0 = success). */
 	exitCode: number;
-	/** Wall-clock duration of the subagent run, in milliseconds. */
+	/** Wall-clock duration of the spawned agent run, in milliseconds. */
 	durationMs: number;
 	/** Aggregated token/cost usage, when known. */
 	usage?: Usage;
@@ -116,16 +116,16 @@ export interface SubagentSpawnRecord {
 }
 
 /**
- * Structured parent->child index entry: one per subagent a session spawned.
+ * Structured parent->child index entry: one per agent a session spawned.
  *
- * Purpose: make a session's subagent tree navigable without scraping tool-result
+ * Purpose: make a session's agent tree navigable without scraping tool-result
  * prose or scanning a sibling directory. Each entry points at the child's durable
  * transcript (`sessionFile`) and records its task, isolation, outcome, timing, and
- * usage — enough to enumerate and study every subagent of a run ("including
- * subagents, everything"). The authoritative per-subagent record remains the child
+ * usage — enough to enumerate and study every spawned agent of a run ("including
+ * spawned agents, everything"). The authoritative per-spawn record remains the child
  * transcript this entry points to; this entry is the navigable index over them.
  */
-export interface SubagentSpawnEntry extends SessionEntryBase, SubagentSpawnRecord {
+export interface AgentSpawnEntry extends SessionEntryBase, AgentSpawnRecord {
 	type: "subagent_spawn";
 }
 
@@ -134,7 +134,7 @@ export interface SubagentSpawnEntry extends SessionEntryBase, SubagentSpawnRecor
  *
  * Purpose: make a session backtest-reproducible. The record captures every Tier-A
  * setting AS RESOLVED at session start (compaction strategy, reserve tokens,
- * advisor/subagent config, tool config, sampling knobs, ...) keyed by dotted path,
+ * advisor/agent config, tool config, sampling knobs, ...) keyed by dotted path,
  * so a later study can reproduce the exact configuration the run used rather than
  * guessing from current defaults. Interactive changes to the few settings that
  * change mid-run (model, thinking level, service tier, mode, MCP selection) are

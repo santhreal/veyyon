@@ -72,7 +72,7 @@ const codexModel: Model<"openai-codex-responses"> = buildModel({
 
 const forkAgentTool: Tool = {
 	name: "fork_agent",
-	description: "Fork a subagent",
+	description: "Fork an agent",
 	parameters: z.object({ prompt: z.string() }),
 };
 

@@ -52,7 +52,7 @@ The same minimum-content guard exists again inside `AgentSession.handoff()` and 
   1. Renders the handoff prompt (`renderHandoffPrompt(...)` with optional `additionalFocus`, after obfuscating any focus instructions) and appends it as a trailing agent-attributed `user` message to a snapshot of `agent.state.messages`.
   2. Converts the snapshot with `convertMessagesToLlm(...)` (applies the session `transformContext`, extension context + steering wrap, then `convertToLlm` + obfuscation), exactly as the loop does.
   3. Builds the provider `Context` with `agent.buildSideRequestContext(llmMessages, #baseSystemPrompt)`: normalized tools and `transformProviderContext` (obfuscation) matching the loop. The **base** system prompt is pinned here, not a per-turn `before_agent_start` hook override, so the new session does not inherit prompt-specific hook state.
-  4. Builds stream options with `prepareSimpleStreamOptions(...)`: `promptCacheKey = agent.promptCacheKey ?? agent.sessionId`, exactly the key the live turn routed the provider cache under (it can diverge from `this.sessionId` for tan/subagent/shared sessions), a unique side `sessionId` (`<sid>:side:<snowflake>`) so OpenAI/Codex append-only state never mixes with the live turn, `serviceTier`/payload hooks mirrored from the session, and `preferWebsockets: false`.
+  4. Builds stream options with `prepareSimpleStreamOptions(...)`: `promptCacheKey = agent.promptCacheKey ?? agent.sessionId`, exactly the key the live turn routed the provider cache under (it can diverge from `this.sessionId` for tan/agent/shared sessions), a unique side `sessionId` (`<sid>:side:<snowflake>`) so OpenAI/Codex append-only state never mixes with the live turn, `serviceTier`/payload hooks mirrored from the session, and `preferWebsockets: false`.
 - Calls `generateHandoffFromContext(context, model, { streamOptions, completeImpl, telemetry, thinkingLevel })`, where `completeImpl` routes the request through the session's side-stream function (`#sideStreamFn`) instead of the default `completeSimple` transport.
 
 ### 2) Generate and capture output
@@ -107,7 +107,7 @@ If text was generated and not aborted:
 2. Flush current session writer (`sessionManager.flush()`).
 3. Cancel session-owned async jobs.
 4. Start a brand-new session with `parentSession` pointing at the previous session file when one exists.
-5. Rescope the subagent registry (`#rescopeAgentRegistry()`), so subagents that wrote into the old transcript are not listed under the new conversation, and clear checkpoint runtime state.
+5. Rescope the agent registry (`#rescopeAgentRegistry()`), so agents that wrote into the old transcript are not listed under the new conversation, and clear checkpoint runtime state.
 6. Reset in-memory agent state (`agent.reset()`): but the steering and follow-up queues are captured immediately before the reset (`peekSteeringQueue()`/`peekFollowUpQueue()`) and restored immediately after (`replaceQueues`), so steers/follow-ups issued during handoff generation survive into the new session instead of being dropped.
 7. Rebind `agent.sessionId` to the new session id.
 8. Rekey/reset Hindsight and Mnemopi memory session tracking for the new session.
@@ -260,4 +260,4 @@ High-level state flow:
 - Manual handoff has no streaming visibility; a cancellable loader is shown until the UI updates after generation completes.
 - Auto-triggered handoffs can write a timestamped `handoff-*.md` artifact when `compaction.handoffSaveToDisk` is enabled; write failure is logged and does not fail the handoff.
 
-*Verified against `946d75b873` on 2026-09-04.*
+*Verified against `63ffc8131ffb8d35ccbbb1c5de69531a7016eff4` on 2026-09-06.*

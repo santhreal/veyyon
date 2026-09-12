@@ -138,7 +138,7 @@ pause 0.6
 # beside the mode is never under a hover fill in one frame and not in another.
 move_px "${COMPOSER_EDITOR_X}" "${COMPOSER_EDITOR_Y}"
 pause 0.4
-AT_REST="${SCENE_RUNTIME_DIR}/footer-at-rest.png"
+AT_REST="${TMPDIR}/footer-at-rest.png"
 probe_frame "${AT_REST}"
 REST_CHIP="$(chip_pixels "${AT_REST}" "${FOOTER_CROP}")"
 echo "scene: at rest the footer carries ${REST_CHIP}px of chip ground" >&2
@@ -154,7 +154,7 @@ k "ctrl+k"
 pause 0.8
 t "zzqqxx"
 pause 0.8
-EMPTY_LIST="${SCENE_RUNTIME_DIR}/list-no-match.png"
+EMPTY_LIST="${TMPDIR}/list-no-match.png"
 probe_frame "${EMPTY_LIST}"
 k "Escape"
 pause 0.6

@@ -17,15 +17,15 @@ afterAll(() => {
 	tempDir.removeSync();
 });
 
-it("agent:// resolves a depth-2 subagent's .md output while its session is live and artifact-manager-adopted", async () => {
+it("agent:// resolves a depth-2 agent's .md output while its session is live and artifact-manager-adopted", async () => {
 	const root = tempDir.path();
 	const rootSessionFile = path.join(root, "session.jsonl");
 	const rootArtifactsDir = rootSessionFile.slice(0, -6);
 	await fs.mkdir(rootArtifactsDir, { recursive: true });
-	// Every subagent adopts the root ArtifactManager and reports its dir.
+	// Every agent adopts the root ArtifactManager and reports its dir.
 	const sharedArtifactManager = new ArtifactManager(rootArtifactsDir);
 
-	// A depth-1 subagent's OWN children are written under its own
+	// A depth-1 agent's OWN children are written under its own
 	// sessionFile.slice(0, -6) (task/index.ts), i.e. one level deeper.
 	const midSessionFile = path.join(rootArtifactsDir, "CodexDeepDive.jsonl");
 	const midOwnArtifactsDir = midSessionFile.slice(0, -6);

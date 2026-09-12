@@ -1,24 +1,15 @@
+import type { WorkerOutboundBase } from "../../subprocess/worker-client";
+import type {
+	WorkerProgressEvent,
+	WorkerProgressFileState,
+	WorkerProgressMessage,
+	WorkerProgressStatus,
+} from "../../subprocess/worker-request-client";
 import type { SttModelKey } from "./models";
 
-export type SttProgressStatus = "initiate" | "download" | "progress" | "progress_total" | "done" | "ready" | "error";
-
-export interface SttProgressFileState {
-	loaded: number;
-	total: number;
-}
-
-export interface SttProgressEvent {
-	modelKey: SttModelKey;
-	status: SttProgressStatus;
-	name?: string;
-	file?: string;
-	progress?: number;
-	loaded?: number;
-	total?: number;
-	files?: Record<string, SttProgressFileState>;
-	task?: string;
-	model?: string;
-}
+export type SttProgressStatus = WorkerProgressStatus;
+export type SttProgressFileState = WorkerProgressFileState;
+export type SttProgressEvent = WorkerProgressEvent<SttModelKey>;
 
 export type SttWorkerInbound =
 	| { type: "ping"; id: string }
@@ -35,12 +26,10 @@ export type SttWorkerInbound =
 	| { type: "stream_cancel"; id: string };
 
 export type SttWorkerOutbound =
-	| { type: "pong"; id: string }
+	| WorkerOutboundBase
+	| WorkerProgressMessage<SttModelKey>
 	| { type: "transcription"; id: string; text: string }
 	| { type: "downloaded"; id: string }
-	| { type: "error"; id: string; error: string }
-	| { type: "progress"; id: string; event: SttProgressEvent }
-	| { type: "log"; level: "debug" | "warn" | "error"; msg: string; meta?: Record<string, unknown> }
 	// ── Live streaming session ──
 	// `partial` is the volatile transcript of the in-progress speech segment
 	// (refreshed as more audio arrives, never appended verbatim); `segment` is a

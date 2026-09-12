@@ -27,7 +27,7 @@ export interface ExecutorBackendExecOptions {
 	 * Live status events (read/write/agent/…) delivered as they are emitted,
 	 * before the cell finishes. The same events are also returned in
 	 * `displayOutputs`; this channel exists so callers can stream long-running
-	 * progress (e.g. `agent()` subagents) into the UI mid-execution.
+	 * progress (e.g. `agent()` spawns) into the UI mid-execution.
 	 */
 	onStatus?: (event: EvalStatusEvent) => void;
 }

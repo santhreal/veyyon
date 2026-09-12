@@ -1,10 +1,10 @@
 import type { Usage } from "@veyyon/ai";
 import { Container, Spacer, Text } from "@veyyon/tui";
 import { formatDuration, formatNumber } from "@veyyon/utils";
+import { tokensPerSecond } from "../../../../presentation/token-rate";
 import { withIcon } from "../../../../theme/icon-label";
 import { theme } from "../../../../theme/theme";
 import { COMPOSER_INSET_COLS } from "../composer/composer-chrome";
-import { tokensPerSecond } from "../status-line/token-rate";
 
 /**
  * The per-turn receipt shown under a completed assistant message when

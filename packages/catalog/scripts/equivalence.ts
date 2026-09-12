@@ -627,6 +627,26 @@ function expandCheapCanonicalCandidates(normalized: string, queue: string[]): vo
 	}
 }
 
+const HEAVY_CANONICAL_EXPANDERS = [
+	toggleSeriesMinorVersionSeparators,
+	expandCompactMinorVersions,
+	expandCompactSeriesMinorVersions,
+	getWrapperCanonicalCandidates,
+	getBracketStrippedModelIdCandidates,
+	getModelLikeIdSegments,
+] as const;
+
+const FINAL_HEAVY_CANONICAL_NORMALIZERS = [
+	stripSyntheticPrefix,
+	stripLatestSuffix,
+	stripLegacyGlmTurboSuffix,
+	extractUpstreamFamilyCandidate,
+	stripProviderVersionSuffix,
+	stripDateSuffix,
+	stripTrailingMarker,
+	reorderAnthropicFamily,
+] as const;
+
 function expandHeavyCanonicalCandidates(normalized: string, queue: string[]): void {
 	for (const toggled of toggleShortVersionSeparators(normalized)) {
 		queue.push(toggled);
@@ -637,67 +657,17 @@ function expandHeavyCanonicalCandidates(normalized: string, queue: string[]): vo
 		queue.push(attachedFamilyVersion);
 	}
 
-	for (const toggledSeriesVersion of toggleSeriesMinorVersionSeparators(normalized)) {
-		queue.push(toggledSeriesVersion);
+	for (const expand of HEAVY_CANONICAL_EXPANDERS) {
+		for (const expanded of expand(normalized)) {
+			queue.push(expanded);
+		}
 	}
 
-	for (const expandedVersion of expandCompactMinorVersions(normalized)) {
-		queue.push(expandedVersion);
-	}
-
-	for (const expandedSeriesVersion of expandCompactSeriesMinorVersions(normalized)) {
-		queue.push(expandedSeriesVersion);
-	}
-
-	for (const wrapperCandidate of getWrapperCanonicalCandidates(normalized)) {
-		queue.push(wrapperCandidate);
-	}
-
-	for (const strippedAffixCandidate of getBracketStrippedModelIdCandidates(normalized)) {
-		queue.push(strippedAffixCandidate);
-	}
-	for (const segment of getModelLikeIdSegments(normalized)) {
-		queue.push(segment);
-	}
-
-	const strippedSyntheticPrefix = stripSyntheticPrefix(normalized);
-	if (strippedSyntheticPrefix) {
-		queue.push(strippedSyntheticPrefix);
-	}
-
-	const strippedLatest = stripLatestSuffix(normalized);
-	if (strippedLatest) {
-		queue.push(strippedLatest);
-	}
-
-	const strippedLegacyGlmTurbo = stripLegacyGlmTurboSuffix(normalized);
-	if (strippedLegacyGlmTurbo) {
-		queue.push(strippedLegacyGlmTurbo);
-	}
-
-	const extractedFamily = extractUpstreamFamilyCandidate(normalized);
-	if (extractedFamily) {
-		queue.push(extractedFamily);
-	}
-
-	const strippedProviderVersion = stripProviderVersionSuffix(normalized);
-	if (strippedProviderVersion) {
-		queue.push(strippedProviderVersion);
-	}
-
-	const strippedDate = stripDateSuffix(normalized);
-	if (strippedDate) {
-		queue.push(strippedDate);
-	}
-
-	const strippedMarker = stripTrailingMarker(normalized);
-	if (strippedMarker) {
-		queue.push(strippedMarker);
-	}
-
-	const reorderedAnthropic = reorderAnthropicFamily(normalized);
-	if (reorderedAnthropic) {
-		queue.push(reorderedAnthropic);
+	for (const normalize of FINAL_HEAVY_CANONICAL_NORMALIZERS) {
+		const candidate = normalize(normalized);
+		if (candidate) {
+			queue.push(candidate);
+		}
 	}
 }
 

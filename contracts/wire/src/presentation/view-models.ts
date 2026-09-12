@@ -8,4 +8,5 @@
 export * from "./composer";
 export * from "./overlay";
 export * from "./status";
+export * from "./summary";
 export * from "./transcript";

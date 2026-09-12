@@ -195,8 +195,8 @@ scroll_code_right() {
 # ─── The Panel Opens On The File ─────────────────────────────────────────────
 k "ctrl+backslash"
 pause 1.2
-mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
-EMPTY_PANE="${SCENE_RUNTIME_DIR}/frame-compare/pane-empty.png"
+mkdir -p "${TMPDIR}/frame-compare"
+EMPTY_PANE="${TMPDIR}/frame-compare/pane-empty.png"
 probe_frame "${EMPTY_PANE}"
 
 # The lookup is how an operator reaches a file by name, and it names the one
@@ -259,7 +259,7 @@ gesture_until_moved() {
 	local geometry="$1" against="$2" name="$3"
 	shift 3
 	local round=0
-	PROBED="${SCENE_RUNTIME_DIR}/frame-compare/${name}.png"
+	PROBED="${TMPDIR}/frame-compare/${name}.png"
 	MOVED=0
 	MOVED_WINDOW=0
 	for round in 1 2 3 4 5 6; do

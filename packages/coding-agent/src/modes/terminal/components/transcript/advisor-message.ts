@@ -1,7 +1,7 @@
 import type { Component } from "@veyyon/tui";
 import { formatCount } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
-import type { AdvisorMessageDetails, AdvisorSeverity } from "../../../../advisor";
+import type { AdvisorNoteDisplay } from "@veyyon/wire/presentation";
 import type { Theme } from "../../../../theme/theme";
 import { formatBadge, replaceTabs, type ToolUIColor, wrapTextWithAnsi } from "../../../../tools/core/render-utils";
 import { createCachedComponent, Ellipsis, truncateToWidth } from "../../draw/utils";
@@ -25,7 +25,7 @@ function wrapVarying(text: string, w1: number, w2: number): string[] {
 	return [firstLine, ...restWrap];
 }
 
-function severityColor(severity: AdvisorSeverity | undefined): ToolUIColor {
+function severityColor(severity: AdvisorNoteDisplay["severity"]): ToolUIColor {
 	switch (severity) {
 		case "blocker":
 			return "error";
@@ -43,8 +43,12 @@ function severityColor(severity: AdvisorSeverity | undefined): ToolUIColor {
  * a bold `customMessageLabel` header tag (skill-card convention), a heavy
  * rail tinted per-note severity, and the note body on the default text color.
  */
+export interface AdvisorMessageInput {
+	notes?: readonly AdvisorNoteDisplay[];
+}
+
 export function createAdvisorMessageCard(
-	details: AdvisorMessageDetails | undefined,
+	details: AdvisorMessageInput | undefined,
 	getExpanded: () => boolean,
 	uiTheme: Theme,
 ): Component {

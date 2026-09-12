@@ -603,6 +603,7 @@ describe("each prompt directory owns its rows and registry.ts aggregates every o
 		// half, which fails if a row module ever stops contributing its ids.
 		// 171 since `autoresearch/stall-nudge` was added.
 		expect(PROMPT_IDS.length).toBe(171);
+		expect(PROMPT_IDS).toContain("tools/read");
 		expect(new Set(PROMPT_IDS).size).toBe(PROMPT_IDS.length);
 	});
 });

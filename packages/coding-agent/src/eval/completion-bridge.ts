@@ -27,7 +27,7 @@ import {
 import type { ToolSession } from "../tools";
 import { ToolError } from "../tools/core/tool-errors";
 import { withBridgeTimeoutPause } from "./bridge-timeout";
-import type { JsStatusEvent } from "./js/shared/types";
+import type { EvalBridgeOptions } from "./types";
 
 /** Synthetic bridge name reserved for the `completion()` helper across both runtimes. */
 export const EVAL_COMPLETION_BRIDGE_NAME = "__completion__";
@@ -50,11 +50,7 @@ const completionArgsSchema = type({
 	"schema?": "Record<string,unknown>",
 });
 
-export interface EvalCompletionBridgeOptions {
-	session: ToolSession;
-	signal?: AbortSignal;
-	emitStatus?: (event: JsStatusEvent) => void;
-}
+export interface EvalCompletionBridgeOptions extends EvalBridgeOptions {}
 
 export interface EvalCompletionResult {
 	text: string;

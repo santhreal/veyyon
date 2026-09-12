@@ -9,7 +9,7 @@
  * rejects. That is not a cosmetic gap: `tool.ask({ questions: [{ id, options
  * }] })` reached the ask dialog with no question text, `replaceTabs(undefined)`
  * threw inside a render pass, and an uncaught exception in the render loop took
- * down the session and every subagent under it.
+ * down the session and every agent under it.
  *
  * WHAT CLASS THIS CLOSES. For every tool the bridge can reach that declares a
  * required argument, a call missing that argument is refused before `execute`

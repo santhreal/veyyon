@@ -6,62 +6,12 @@
 //! file. There is no mount/session state to undo, so
 //! [`stop`](IsolationBackend::stop) is a recursive remove.
 
-use std::path::Path;
-
-use async_trait::async_trait;
-
-#[cfg(not(windows))]
-use crate::IsoError;
-use crate::{BackendKind, IsoResult, IsolationBackend, ProbeResult};
-
-pub struct WindowsBlockCloneBackend;
-
-pub fn backend() -> &'static dyn IsolationBackend {
-	&WindowsBlockCloneBackend
-}
-
-#[async_trait]
-impl IsolationBackend for WindowsBlockCloneBackend {
-	fn kind(&self) -> BackendKind {
-		BackendKind::WindowsBlockClone
-	}
-
-	fn probe(&self) -> ProbeResult {
-		#[cfg(windows)]
-		{
-			ProbeResult::available()
-		}
-		#[cfg(not(windows))]
-		{
-			ProbeResult::unavailable("Windows block-clone isolation is only available on Windows")
-		}
-	}
-
-	fn start(&self, lower: &Path, merged: &Path) -> IsoResult<()> {
-		#[cfg(windows)]
-		{
-			imp::start(lower, merged)
-		}
-		#[cfg(not(windows))]
-		{
-			let _ = (lower, merged);
-			Err(IsoError::unavailable("Windows block-clone isolation is only available on Windows"))
-		}
-	}
-
-	fn stop(&self, merged: &Path) -> IsoResult<()> {
-		#[cfg(windows)]
-		{
-			imp::stop(merged)
-		}
-		#[cfg(not(windows))]
-		{
-			let _ = merged;
-			Ok(())
-		}
-	}
-}
-
+declare_backend!(
+	WindowsBlockCloneBackend,
+	WindowsBlockClone,
+	"Windows block-clone isolation is only available on Windows",
+	windows
+);
 #[cfg(windows)]
 mod imp {
 	use std::{
@@ -71,7 +21,7 @@ mod imp {
 			fs::{FileTypeExt, OpenOptionsExt},
 			io::AsRawHandle,
 		},
-		path::{Path, PathBuf},
+		path::Path,
 	};
 
 	use windows_sys::Win32::{
@@ -88,10 +38,14 @@ mod imp {
 		},
 	};
 
-	use crate::{IsoError, IsoResult};
+	use crate::{IsoError, IsoResult, ProbeResult, canonical_existing_dir};
+
+	pub const fn probe() -> ProbeResult {
+		ProbeResult::available()
+	}
 
 	pub fn start(lower: &Path, merged: &Path) -> IsoResult<()> {
-		let lower = canonical_existing_dir(lower)?;
+		let lower = canonical_existing_dir(lower, "block-clone")?;
 		prepare_destination(merged)?;
 
 		let result = recursive_block_clone(&lower, merged);
@@ -105,24 +59,6 @@ mod imp {
 		remove_path(merged).map_err(|err| {
 			IsoError::other(format!("unable to remove block-cloned tree {}: {err}", merged.display()))
 		})
-	}
-
-	fn canonical_existing_dir(path: &Path) -> IsoResult<PathBuf> {
-		let resolved = if path.is_absolute() {
-			path.to_path_buf()
-		} else {
-			std::env::current_dir().map_or_else(|_| path.to_path_buf(), |cwd| cwd.join(path))
-		};
-		let meta = fs::metadata(&resolved).map_err(|err| {
-			IsoError::other(format!("invalid block-clone source {}: {err}", resolved.display()))
-		})?;
-		if !meta.is_dir() {
-			return Err(IsoError::other(format!(
-				"block-clone source {} is not a directory",
-				resolved.display()
-			)));
-		}
-		Ok(fs::canonicalize(&resolved).unwrap_or(resolved))
 	}
 
 	fn prepare_destination(merged: &Path) -> IsoResult<()> {

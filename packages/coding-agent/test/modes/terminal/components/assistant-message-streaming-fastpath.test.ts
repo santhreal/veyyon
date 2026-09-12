@@ -1,35 +1,49 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type Component, Container, Markdown } from "@veyyon/tui";
+import type { AssistantMessageView, AssistantSegment } from "@veyyon/wire/presentation";
 
 const W = 100;
 
-function msg(content: AssistantMessage["content"], extra: Partial<AssistantMessage> = {}): AssistantMessage {
+function msg(
+	content: Array<
+		| { type: "text"; text: string }
+		| { type: "thinking"; thinking: string; thinkingSignature?: string; rawThinking?: string }
+		| { type: "redactedThinking"; data: string }
+		| { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> }
+	>,
+	extra: Partial<AssistantMessageView> = {},
+): AssistantMessageView {
+	const segments: AssistantSegment[] = [];
+	for (const block of content) {
+		if (block.type === "text") {
+			segments.push({ kind: "text", text: block.text });
+		} else if (block.type === "thinking") {
+			segments.push({
+				kind: "thinking",
+				text: block.thinking,
+				redacted: false,
+				...(block.rawThinking !== undefined ? { rawThinking: block.rawThinking } : {}),
+			});
+		} else if (block.type === "redactedThinking") {
+			segments.push({ kind: "thinking", text: "", redacted: true });
+		} else if (block.type === "toolCall") {
+			segments.push({ kind: "tool-call", toolCallId: block.id, toolName: block.name, input: "{}" });
+		}
+	}
 	return {
-		role: "assistant",
-		content,
-		api: "anthropic-messages",
-		provider: "anthropic",
+		segments,
 		model: "m",
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
-		stopReason: "stop",
-		timestamp: 0,
+		stopReason: "complete",
+		errorPresentation: { kind: "none" },
 		...extra,
 	};
 }
 
 /** Render `m` on a brand-new component, which always takes the teardown path. */
-function teardownRender(m: AssistantMessage): string {
+function teardownRender(m: AssistantMessageView): string {
 	const fresh = new AssistantMessageComponent();
 	fresh.updateContent(m);
 	return fresh.render(W).join("\n");
@@ -168,7 +182,7 @@ describe("AssistantMessageComponent streaming fast path", () => {
 
 		const errored = msg([{ type: "text", text: "partial answer in progress" }], {
 			stopReason: "error",
-			errorMessage: "upstream 502",
+			errorPresentation: { kind: "full", text: "upstream 502", isError: true },
 		});
 		reused.updateContent(errored);
 		expect(reused.render(W).join("\n")).toBe(teardownRender(errored));
@@ -203,7 +217,7 @@ describe("AssistantMessageComponent streaming fast path", () => {
 				thinking: "Visible\n```\nkeep me\n```",
 				rawThinking: "raw",
 			},
-		] as unknown as AssistantMessage["content"]);
+		]);
 		const component = new AssistantMessageComponent();
 		component.updateContent(m);
 		const rendered = Bun.stripANSI(component.render(W).join("\n"));

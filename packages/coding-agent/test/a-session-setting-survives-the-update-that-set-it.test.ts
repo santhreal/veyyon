@@ -52,7 +52,7 @@ const OPENED: OpenSessionParams = {
 };
 
 /** A different value for every field an update is allowed to write. */
-const UPDATES: UpdateSessionParams = {
+const UPDATES: Required<UpdateSessionParams> = {
 	goal: "make it faster, then smaller",
 	primaryMetric: "wall",
 	metricUnit: "s",
@@ -105,6 +105,9 @@ describe("a session setting survives the update that set it", () => {
 		expect(reloaded).toEqual(updated);
 		const before = fields(opened);
 		const after = fields(updated);
+		for (const [key, expectedValue] of Object.entries(UPDATES)) {
+			expect(after[key]).toEqual(expectedValue);
+		}
 		const unwritten = Object.keys(before).filter(
 			key => !NOT_UPDATABLE.includes(key) && JSON.stringify(after[key]) === JSON.stringify(before[key]),
 		);
@@ -158,5 +161,129 @@ describe("a session setting survives the update that set it", () => {
 		expect(updated.primaryMetric).toBe(OPENED.primaryMetric);
 		expect(updated.scopePaths).toEqual([...OPENED.scopePaths]);
 		expect(updated.certify).toBe(true);
+	});
+	it("persists explicit null on nullable fields and preserves them when subsequent updates omit them", async () => {
+		const storage = await openAutoresearchStorage(projectDir.path());
+		const opened = storage.openSession({
+			name: "nullable-test",
+			goal: "initial goal",
+			primaryMetric: "latency",
+			metricUnit: "ms",
+			direction: "lower",
+			preferredCommand: "bun test",
+			branch: "feature/test",
+			baselineCommit: "c".repeat(40),
+			maxIterations: 50,
+			scopePaths: ["src/a.ts"],
+			offLimits: [],
+			constraints: [],
+			secondaryMetrics: [],
+		});
+
+		const nullUpdated = storage.updateSession(opened.id, {
+			goal: null,
+			preferredCommand: null,
+			maxIterations: null,
+			branch: null,
+			baselineCommit: null,
+		});
+
+		expect(nullUpdated.goal).toBeNull();
+		expect(nullUpdated.preferredCommand).toBeNull();
+		expect(nullUpdated.maxIterations).toBeNull();
+		expect(nullUpdated.branch).toBeNull();
+		expect(nullUpdated.baselineCommit).toBeNull();
+
+		const reloadedNull = storage.getSessionById(opened.id);
+		expect(reloadedNull?.goal).toBeNull();
+		expect(reloadedNull?.preferredCommand).toBeNull();
+		expect(reloadedNull?.maxIterations).toBeNull();
+		expect(reloadedNull?.branch).toBeNull();
+		expect(reloadedNull?.baselineCommit).toBeNull();
+
+		const omittedUpdate = storage.updateSession(opened.id, { notes: "omission note" });
+		expect(omittedUpdate.notes).toBe("omission note");
+		expect(omittedUpdate.goal).toBeNull();
+		expect(omittedUpdate.preferredCommand).toBeNull();
+		expect(omittedUpdate.maxIterations).toBeNull();
+		expect(omittedUpdate.branch).toBeNull();
+		expect(omittedUpdate.baselineCommit).toBeNull();
+		expect(omittedUpdate.primaryMetric).toBe("latency");
+	});
+
+	it("persists boundary values including zero, false, empty strings, and empty arrays", async () => {
+		const storage = await openAutoresearchStorage(projectDir.path());
+		const opened = storage.openSession({
+			name: "boundary-test",
+			goal: "initial goal",
+			primaryMetric: "latency",
+			metricUnit: "ms",
+			direction: "lower",
+			preferredCommand: "bun test",
+			branch: "feature/test",
+			baselineCommit: "c".repeat(40),
+			maxIterations: 50,
+			scopePaths: ["src/a.ts", "src/b.ts"],
+			offLimits: ["tests"],
+			constraints: ["no deps"],
+			secondaryMetrics: ["memory"],
+			breadth: 4,
+			attempts: 2,
+			maxParallel: 4,
+			certify: true,
+			armModels: ["model-a", "model-b"],
+		});
+
+		const boundaryUpdated = storage.updateSession(opened.id, {
+			metricUnit: "",
+			notes: "",
+			maxIterations: 0,
+			breadth: 0,
+			attempts: 0,
+			maxParallel: 0,
+			certify: false,
+			scopePaths: [],
+			offLimits: [],
+			constraints: [],
+			secondaryMetrics: [],
+			armModels: [],
+		});
+
+		expect(boundaryUpdated.metricUnit).toBe("");
+		expect(boundaryUpdated.notes).toBe("");
+		expect(boundaryUpdated.maxIterations).toBe(0);
+		expect(boundaryUpdated.breadth).toBe(0);
+		expect(boundaryUpdated.attempts).toBe(0);
+		expect(boundaryUpdated.maxParallel).toBe(0);
+		expect(boundaryUpdated.certify).toBe(false);
+		expect(boundaryUpdated.scopePaths).toEqual([]);
+		expect(boundaryUpdated.offLimits).toEqual([]);
+		expect(boundaryUpdated.constraints).toEqual([]);
+		expect(boundaryUpdated.secondaryMetrics).toEqual([]);
+		expect(boundaryUpdated.armModels).toEqual([]);
+
+		const reloadedBoundary = storage.getSessionById(opened.id);
+		expect(reloadedBoundary).toEqual(boundaryUpdated);
+	});
+
+	it("returns unchanged session on empty update and throws error when updating non-existent session", async () => {
+		const storage = await openAutoresearchStorage(projectDir.path());
+		const opened = storage.openSession({ ...OPENED });
+
+		const noOpUpdated = storage.updateSession(opened.id, {});
+		expect(noOpUpdated).toEqual(opened);
+
+		expect(() => storage.updateSession(999999, {})).toThrow(/Session 999999 not found after update/);
+		expect(() => storage.updateSession(999999, { goal: "non-existent" })).toThrow(
+			/Session 999999 not found after update/,
+		);
+	});
+
+	it("propagates real SQLite errors when executing updates", async () => {
+		const storage = await openAutoresearchStorage(projectDir.path());
+		const opened = storage.openSession({ ...OPENED });
+		storage.close();
+
+		expect(() => storage.updateSession(opened.id, { goal: "closed-db" })).toThrow(/database is not open|closed/i);
 	});
 });

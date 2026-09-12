@@ -11,7 +11,10 @@ import {
 	streamCursor,
 	type ToolCallState,
 } from "@veyyon/ai/providers/cursor";
-import { streamCursor as lazyStreamCursor, setCursorProviderModule } from "@veyyon/ai/providers/register-builtins";
+import {
+	streamCursor as lazyStreamCursor,
+	setProviderModuleOverrideForTest,
+} from "@veyyon/ai/providers/register-builtins";
 import type { AssistantMessage, Context, CursorExecHandlers, Model, ToolResultMessage } from "@veyyon/ai/types";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
@@ -28,7 +31,7 @@ import {
 // file in the bucket; `packages/ai/test/helpers/provider-override-tripwire.ts` fails the test that
 // forgets, which is how these two were found.
 afterEach(() => {
-	setCursorProviderModule();
+	setProviderModuleOverrideForTest("cursor-agent");
 });
 
 const cursorModel: Model<"cursor-agent"> = buildModel({
@@ -543,8 +546,8 @@ describe("Cursor exec local-work tracking (issue #4593)", () => {
 		}
 		const source = new ProbedStream();
 		let providerSignal: AbortSignal | undefined;
-		setCursorProviderModule({
-			streamCursor: (_model, _context, options) => {
+		setProviderModuleOverrideForTest("cursor-agent", {
+			stream: (_model, _context, options) => {
 				providerSignal = options.signal;
 				void (async () => {
 					const partial = cursorAssistantMessage();
@@ -583,8 +586,8 @@ describe("Cursor exec local-work tracking (issue #4593)", () => {
 				await stalled.promise;
 			},
 		} as unknown as AssistantMessageEventStream;
-		setCursorProviderModule({
-			streamCursor: (_model, _context, options) => {
+		setProviderModuleOverrideForTest("cursor-agent", {
+			stream: (_model, _context, options) => {
 				providerSignal = options.signal;
 				return source;
 			},

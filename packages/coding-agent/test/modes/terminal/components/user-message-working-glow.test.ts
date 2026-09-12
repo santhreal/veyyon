@@ -55,7 +55,7 @@ describe("UserMessageComponent working indicator", () => {
 	 * (#C6CBD4 → 38;2;198;203;212), not the dim gray (#565F77) that made
 	 * prompts unreadable against the gray ground. */
 	it("renders prompt text in bright silver, not the dim history tone", () => {
-		const rows = new UserMessageComponent("fix the flaky auth test").render(60);
+		const rows = new UserMessageComponent({ text: "fix the flaky auth test" }).render(60);
 		const content = rows.find(row => stripAnsi(row).includes("fix the flaky auth test"))!;
 		expect(content).toContain("\x1b[38;2;198;203;212m");
 		expect(content).not.toContain("\x1b[38;2;86;95;119mfix");
@@ -65,7 +65,7 @@ describe("UserMessageComponent working indicator", () => {
 	 * → 38;2;240;134;46); idle it is dim. This is the whole indicator — any
 	 * richer per-frame treatment re-opens the seam regression. */
 	it("turns the gutter glyph ember while working and dim when idle", () => {
-		const component = new UserMessageComponent("run the tests");
+		const component = new UserMessageComponent({ text: "run the tests" });
 		const idleRow = component.render(60).find(row => stripAnsi(row).includes("›"))!;
 		expect(idleRow).toContain("\x1b[38;2;86;95;119m›");
 		component.setWorking(true);
@@ -78,7 +78,7 @@ describe("UserMessageComponent working indicator", () => {
 	 * hole (the shipped regression this suite exists to lock out). The
 	 * component must not even define the finalization hook. */
 	it("never reports itself unfinalized, working or not", () => {
-		const component = new UserMessageComponent("hello") as unknown as {
+		const component = new UserMessageComponent({ text: "hello" }) as unknown as {
 			isTranscriptBlockFinalized?: () => boolean;
 			setWorking(on: boolean): void;
 		};
@@ -90,7 +90,7 @@ describe("UserMessageComponent working indicator", () => {
 	 * glyph instead of replaying stale bytes. Setting the same state twice
 	 * must NOT bump (a no-op toggle would churn the committed-prefix audit). */
 	it("bumps the block version exactly once per state change", () => {
-		const component = new UserMessageComponent("hello");
+		const component = new UserMessageComponent({ text: "hello" });
 		const v0 = component.getTranscriptBlockVersion();
 		component.setWorking(true);
 		const v1 = component.getTranscriptBlockVersion();
@@ -105,7 +105,7 @@ describe("UserMessageComponent working indicator", () => {
 	 * reuse depends on it) and rebuilt across a state change. A fresh array
 	 * every frame was the animated regression's signature. */
 	it("returns reference-stable rows within a state, fresh rows across states", () => {
-		const component = new UserMessageComponent("ship it");
+		const component = new UserMessageComponent({ text: "ship it" });
 		const idleA = component.render(60);
 		expect(component.render(60)).toBe(idleA);
 		component.setWorking(true);
@@ -117,7 +117,7 @@ describe("UserMessageComponent working indicator", () => {
 	/** Ending the turn restores byte-identical idle rows — no residue of the
 	 * working state may remain in the transcript. */
 	it("restores byte-identical idle rows after the turn ends", () => {
-		const component = new UserMessageComponent("ship it");
+		const component = new UserMessageComponent({ text: "ship it" });
 		const idle = [...component.render(60)];
 		component.setWorking(true);
 		component.render(60);
@@ -128,7 +128,7 @@ describe("UserMessageComponent working indicator", () => {
 	/** The OSC 133 zone markers are gone in both states: terminals painting
 	 * prompt zones drew them as an uncontrolled background block over the message. */
 	it("emits no OSC 133 zone markers in either state", () => {
-		const component = new UserMessageComponent("hi");
+		const component = new UserMessageComponent({ text: "hi" });
 		component.setWorking(true);
 		for (const line of component.render(60)) {
 			expect(line).not.toContain("\x1b]133;");

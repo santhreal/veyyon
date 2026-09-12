@@ -110,13 +110,13 @@ describe("TinyFish web search provider", () => {
 		expect(response.provider).toBe("tinyfish");
 		expect(response.authMode).toBe("api_key");
 		expect(response.sources).toHaveLength(12);
-		expect(response.sources[0]).toEqual({
+		expect(response.sources[0]).toStrictEqual({
 			title: "tinyfish result 0",
 			url: "https://example.com/tinyfish-0",
 			snippet: "tinyfish snippet 0",
 			author: "Example Site",
 		});
-		expect(response.sources.at(-1)).toEqual({
+		expect(response.sources.at(-1)).toStrictEqual({
 			title: "tinyfish result 11",
 			url: "https://example.com/tinyfish-11",
 			snippet: "tinyfish snippet 11",

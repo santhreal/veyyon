@@ -1,52 +1,9 @@
+import { escapeHtml } from "@veyyon/tool-render/view-core";
+import { unescapeHtml } from "@veyyon/utils/strings";
 import { Marked } from "marked";
 import type { ReactNode } from "react";
 import { memo, useMemo } from "react";
 
-function escapeHtml(s: string): string {
-	return s
-		.replaceAll("&", "&amp;")
-		.replaceAll("<", "&lt;")
-		.replaceAll(">", "&gt;")
-		.replaceAll('"', "&quot;")
-		.replaceAll("'", "&#39;");
-}
-function unescapeHtml(raw: string): string {
-	const parseCodePoint = (value: number): string => {
-		if (Number.isFinite(value) && value >= 0 && value <= 0x10ffff) {
-			try {
-				return String.fromCodePoint(value);
-			} catch (_) {}
-		}
-		return "";
-	};
-
-	return raw.replace(/&(amp|lt|gt|quot|apos|nbsp|#\d+|#x[0-9a-fA-F]+);/gi, (match, entity) => {
-		const lower = entity.toLowerCase();
-		switch (lower) {
-			case "nbsp":
-				return " ";
-			case "lt":
-				return "<";
-			case "gt":
-				return ">";
-			case "quot":
-				return '"';
-			case "apos":
-				return "'";
-			case "amp":
-				return "&";
-			default: {
-				if (lower.startsWith("#x")) {
-					return parseCodePoint(Number.parseInt(lower.slice(2), 16));
-				}
-				if (lower.startsWith("#")) {
-					return parseCodePoint(Number(lower.slice(1)));
-				}
-				return match;
-			}
-		}
-	});
-}
 function safeHref(href: string): string | null {
 	const trimmed = href.trim();
 	if (/^(?:https?:|mailto:)/i.test(trimmed)) return trimmed;

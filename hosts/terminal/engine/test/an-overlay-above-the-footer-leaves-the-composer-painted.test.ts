@@ -22,7 +22,7 @@
  * overlay.
  */
 import { describe, expect, it } from "bun:test";
-import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
+import { type Component, CURSOR_MARKER, type Focusable, resolveOverlayLayout, TUI } from "@veyyon/tui";
 import { settleFrames } from "./helpers/settle-frames";
 import { VirtualTerminal } from "./virtual-terminal";
 
@@ -201,4 +201,107 @@ describe("an overlay above the footer leaves the composer painted", () => {
 			stop();
 		}
 	});
+
+	it("composites overlays into production window geometry with correct placement and margins", async () => {
+		const { term, tui, stop } = await rig({ footerRows: 0, pinned: false });
+		try {
+			const baseline = term.getViewport().map(line => line.trimEnd());
+			tui.showOverlay(new Lines("card-", 4), {
+				anchor: "top-left",
+				width: 10,
+				maxHeight: 4,
+				margin: { top: 2, left: 4 },
+			});
+			await settleFrames(term, tui);
+
+			const viewport = term.getViewport().map(line => line.trimEnd());
+			// Top margin (rows 0..1) preserves baseline background
+			expect(viewport[0]).toBe(baseline[0]);
+			expect(viewport[1]).toBe(baseline[1]);
+			// Overlay rows (rows 2..5): cols 0..3 from baseline, card-N padded to 10 cols at cols 4..13, suffix from baseline
+			for (let i = 0; i < 4; i++) {
+				const row = 2 + i;
+				const base = baseline[row] ?? "";
+				const baseBefore = base.slice(0, 4);
+				const baseAfter = base.length > 14 ? base.slice(14) : "";
+				const cardText = `card-${i}`.padEnd(10, " ");
+				expect(viewport[row]).toBe((baseBefore + cardText + baseAfter).trimEnd());
+			}
+			// Subsequent rows (rows 6..end) preserve baseline background
+			for (let row = 6; row < viewport.length; row++) {
+				expect(viewport[row]).toBe(baseline[row]);
+			}
+		} finally {
+			stop();
+		}
+	});
+
+	it("resolves overlay layout bounds and positions across anchors, percentages, and footer reserves", () => {
+		// Center 50% width and height in 80x24
+		const center = resolveOverlayLayout({ width: "50%", maxHeight: "50%", anchor: "center" }, 10, 80, 24);
+		expect(center).toEqual({
+			width: 40,
+			maxHeight: 12,
+			row: 7,
+			col: 20,
+		});
+
+		// Top-left with explicit margin and offset
+		const topleft = resolveOverlayLayout(
+			{ width: 30, maxHeight: 10, anchor: "top-left", margin: 2, offsetX: 3, offsetY: 1 },
+			8,
+			80,
+			24,
+		);
+		expect(topleft).toEqual({
+			width: 30,
+			maxHeight: 10,
+			row: 3,
+			col: 5,
+		});
+
+		expect(resolveOverlayLayout({ row: "25%", col: "75%", margin: 2, width: 10, maxHeight: 3 }, 3, 40, 16)).toEqual({
+			width: 10,
+			maxHeight: 3,
+			row: 4,
+			col: 21,
+		});
+
+		// Bottom-right with aboveFooter reserve
+		const botright = resolveOverlayLayout(
+			{ width: "50%", maxHeight: "100%", anchor: "bottom-right", aboveFooter: true },
+			20,
+			80,
+			24,
+			20, // footerTop = 20, footerReserve = 4 rows (rows 20..23)
+		);
+		expect(botright).toEqual({
+			width: 40,
+			maxHeight: 20,
+			row: 0,
+			col: 40,
+		});
+	});
+
+	for (const { kind, value } of [
+		{ kind: "null", value: null },
+		{ kind: "boolean", value: true },
+		{ kind: "object", value: {} },
+		{ kind: "array", value: [] },
+		{ kind: "symbol", value: Symbol("position") },
+		{ kind: "bigint", value: 1n },
+		{ kind: "function", value: () => 1 },
+	]) {
+		it(`uses the anchor for ${kind} positions from an untyped caller`, () => {
+			const options = { anchor: "bottom-right", width: 10, maxHeight: 3, margin: 2 } as const;
+			Reflect.set(options, "row", value);
+			Reflect.set(options, "col", value);
+			expect(resolveOverlayLayout(options, 3, 40, 16)).toEqual({
+				width: 10,
+				maxHeight: 3,
+				row: 11,
+				col: 28,
+			});
+		});
+	}
 });

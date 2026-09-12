@@ -20,7 +20,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { readIfPresent } from "./check-doc-links";
+import { readIfPresent } from "./workspace-layout";
 
 const created: string[] = [];
 

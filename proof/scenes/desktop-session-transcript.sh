@@ -106,7 +106,7 @@ SWITCH_MIN_PIXELS=100
 # scene claims no identity from where a card is.
 TURN_INK_MIN=120
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 MEASURE="${BASH_SOURCE[0]%/*}/measure-frame.py"
@@ -266,7 +266,7 @@ pause 0.5
 # Session A is the one the shared prelude created, and its id is what the
 # prelude wrote. One line of prose, asked for as the whole reply, so the
 # transcript it comes to is a different shape from session B's.
-SESSION_A="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])))' "${SCENE_RUNTIME_DIR}/created-session.json")"
+SESSION_A="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])))' "${TMPDIR}/created-session.json")"
 MARKER_A="alpha-one-session"
 MARKER_B="Count from 1 to 12"
 submit_prompt "Reply with the words ${MARKER_A} and nothing else. Do not use tools."
@@ -287,7 +287,7 @@ if ! native_session_ready created; then
 	abandon_take "the-second-session-was-created" "the session-creation chord produced no session within 10s"
 fi
 pause 1.5
-SESSION_B="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])))' "${SCENE_RUNTIME_DIR}/created-session.json")"
+SESSION_B="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])))' "${TMPDIR}/created-session.json")"
 if [ "${SESSION_A}" = "${SESSION_B}" ]; then
 	abandon_take "the-two-sessions-are-two" \
 		"the host reports one session for both turns (${SESSION_A}), so no switch happens between them"

@@ -9,9 +9,15 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent, VideoContent } from "@veyyon/ai";
 import type { SessionEntry, SessionHeader } from "@veyyon/kernel/session/session-entries";
+import { mapJsonStrings } from "../json-transform";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";
 import type { OutputMeta } from "../tools/core/output-meta";
 import type { SessionData, SubSession } from "./html";
+
+/** Serialized display metadata is separate from provider message fields. */
+interface ExportDisplayMetadata {
+	display?: unknown;
+}
 
 function redactShareHeader(o: SecretObfuscator, header: SessionHeader | null): SessionHeader | null {
 	if (!header) return header;
@@ -110,7 +116,7 @@ function redactShareOutputMeta(o: SecretObfuscator, meta: OutputMeta | undefined
 	};
 }
 
-function redactShareMessage(o: SecretObfuscator, message: AgentMessage): AgentMessage {
+function redactShareMessage(o: SecretObfuscator, message: AgentMessage): AgentMessage & ExportDisplayMetadata {
 	switch (message.role) {
 		case "user":
 		case "developer":
@@ -127,6 +133,10 @@ function redactShareMessage(o: SecretObfuscator, message: AgentMessage): AgentMe
 				...message,
 				details: undefined,
 				content: redactShareContent(o, message.content) as (TextContent | ImageContent | VideoContent)[],
+				display:
+					"display" in message && message.display
+						? mapJsonStrings(message.display, text => o.obfuscate(text))
+						: undefined,
 			};
 		case "assistant":
 			// Drop opaque provider-replay state (encrypted reasoning / native history) the viewer
@@ -136,22 +146,41 @@ function redactShareMessage(o: SecretObfuscator, message: AgentMessage): AgentMe
 				...message,
 				providerPayload: undefined,
 				errorMessage: message.errorMessage === undefined ? undefined : o.obfuscate(message.errorMessage),
-				content: message.content.flatMap((block): AssistantMessage["content"] => {
-					if (block.type === "redactedThinking") return [];
-					if (block.type === "text") return [{ ...block, text: o.obfuscate(block.text) }];
-					if (block.type === "thinking") return [{ ...block, thinking: o.obfuscate(block.thinking) }];
-					if (block.type === "toolCall") {
-						return [
-							{
-								...block,
-								arguments: obfuscateToolArguments(o, block.arguments),
-								intent: block.intent === undefined ? undefined : o.obfuscate(block.intent),
-								rawBlock: block.rawBlock === undefined ? undefined : o.obfuscate(block.rawBlock),
-							},
-						];
-					}
-					return [block];
-				}),
+				content: message.content.flatMap(
+					(block): Array<AssistantMessage["content"][number] & ExportDisplayMetadata> => {
+						switch (block.type) {
+							case "redactedThinking":
+								return [];
+							case "text":
+								return [{ ...block, text: o.obfuscate(block.text) }];
+							case "thinking":
+								return [{ ...block, thinking: o.obfuscate(block.thinking) }];
+							case "fallback":
+								return [
+									{
+										...block,
+										from: { model: o.obfuscate(block.from.model) },
+										to: { model: o.obfuscate(block.to.model) },
+									},
+								];
+							case "toolCall":
+								return [
+									{
+										...block,
+										arguments: obfuscateToolArguments(o, block.arguments),
+										intent: block.intent === undefined ? undefined : o.obfuscate(block.intent),
+										rawBlock: block.rawBlock === undefined ? undefined : o.obfuscate(block.rawBlock),
+										display:
+											"display" in block && block.display
+												? mapJsonStrings(block.display, text => o.obfuscate(text))
+												: undefined,
+									},
+								];
+							default:
+								return block satisfies never;
+						}
+					},
+				),
 			};
 		case "bashExecution":
 			return {

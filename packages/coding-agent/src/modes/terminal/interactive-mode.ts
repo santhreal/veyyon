@@ -100,6 +100,7 @@ import {
 } from "../../plan-mode/approved-plan";
 import { DEFAULT_PLAN_FILE_URL } from "../../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../../plan-mode/plan-path";
+import { StatusPresentationProducer } from "../../presentation/status-producer";
 import { planModePrompts } from "../../prompts/plan-mode/rows";
 import { requestsPrompts } from "../../prompts/requests/rows";
 import { type AgentRegistry, MAIN_AGENT_ID } from "../../registry/agent-registry";
@@ -169,7 +170,7 @@ import {
 } from "./components/composer/composer-chrome";
 import { buildComposerShortcuts, ComposerShortcutsBar } from "./components/composer/composer-shortcuts";
 import { CustomEditor } from "./components/composer/custom-editor";
-import { renderSubagentHudLines } from "./components/dashboard/subagent-hud";
+import { renderAgentHudLines } from "./components/dashboard/agent-hud";
 import {
 	renderTodoBoardLines,
 	TODO_BOARD_FRAME_DIVISOR,
@@ -217,9 +218,10 @@ import {
 	railClockMs,
 	railIdleHeadAtMs,
 } from "./draw/rail-motion";
+import { TerminalPresentationDriver } from "./driver";
 import { type FirstFrame, takeFirstFrame } from "./first-frame";
 import { OAuthManualInputManager } from "./oauth-manual-input";
-import { countRunningSubagentBadgeAgents, getRunningSubagentBadgeRegistry } from "./running-subagent-badge";
+import { countRunningAgentBadgeAgents, getRunningAgentBadgeRegistry } from "./running-agent-badge";
 import { type SessionObserverChangeKind, SessionObserverRegistry } from "./session-observer-registry";
 import { createSessionTeardown, type SessionTeardown } from "./session-teardown";
 import { runProviderSetupWizard } from "./setup-wizard/lazy";
@@ -258,7 +260,7 @@ export interface InteractiveModeOptions {
 
 /**
  * Anchored live-region container for the HUD/status rows between the transcript
- * and the editor (working loader, todo + subagent HUDs, transient notification
+ * and the editor (working loader, todo + agent HUDs, transient notification
  * panels). While it has content every row is live: it reports a seam at 0 so the
  * engine never commits these anchored, rebuilt-in-place rows to native
  * scrollback — otherwise stale duplicates pile up above the live copy on short
@@ -275,7 +277,7 @@ class AnchoredLiveContainer extends Container implements NativeScrollbackLiveReg
  *  before it auto-clears, mirroring the todo HUD's auto-clear timer. */
 const MODEL_CYCLE_TRACK_CLEAR_MS = 4000;
 
-/** How long a burst of subagent observer changes is coalesced before the block
+/** How long a burst of agent observer changes is coalesced before the block
  *  is rebuilt once. Exported because a test that drives the burst has to
  *  advance exactly this window: the block arms a repeating rail-motion interval
  *  as soon as it has lanes, so draining every pending timer never returns. */
@@ -308,11 +310,12 @@ export class InteractiveMode implements InteractiveModeContext {
 	createNextSession?: InteractiveSessionFactory;
 
 	ui: TUI;
+	readonly presentation: TerminalPresentationDriver;
 	chatContainer: TranscriptContainer;
 	pendingMessagesContainer: Container;
 	statusContainer: Container;
 	todoContainer: Container;
-	subagentContainer: Container;
+	agentContainer: Container;
 	btwContainer: Container;
 	omfgContainer: Container;
 	errorBannerContainer: Container;
@@ -322,6 +325,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	composerShortcuts: ComposerShortcutsBar;
 	hookWidgetContainerAbove: Container;
 	hookWidgetContainerBelow: Container;
+	statusProducer: StatusPresentationProducer;
 	statusLine: StatusLineComponent;
 	composerHairline: ComposerHairline;
 	capabilityLine: QuietZoneLine;
@@ -532,14 +536,14 @@ export class InteractiveMode implements InteractiveModeContext {
 		// the composer for the whole time the view was inside an agent, and an
 		// agent's failure stayed pinned after Esc returned to main.
 		this.clearPinnedError();
-		// The subagent HUD is scoped to the VIEWED session, and every focus
+		// The agent HUD is scoped to the VIEWED session, and every focus
 		// attach/detach (both directions, including the registry-driven
 		// auto-unfocus when the viewed agent dies) runs through here after the
 		// focus controller has already swapped the target. Re-derive the block
 		// against the new view, or the focused view keeps the parent's rows and
 		// the restored main view keeps the cleared ones until the next spawn
 		// event happens to land.
-		if (this.subagentContainer) this.#renderSubagentList();
+		if (this.agentContainer) this.#renderAgentList();
 		// Todos are per-session state (`AgentSession#todoPhases`), and the todo
 		// HUD is the loudest block above the composer. Every OTHER session switch
 		// (new, resume, branch, handoff, collab welcome) reloads it explicitly;
@@ -549,7 +553,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (this.todoContainer) this.#syncTodoSurfaceToView();
 		// The running-agent badge counts the same set the HUD lists, one number
 		// wide, so it re-scopes here too.
-		this.syncRunningSubagentBadge({ requestRender: false });
+		this.syncRunningAgentBadge({ requestRender: false });
 		// The composer chip band advertises keys whose meaning changes with the
 		// view: `esc` interrupts in the main session and leaves the view inside an
 		// agent, and the dequeue key always drains the DRIVING session's queue.
@@ -686,14 +690,24 @@ export class InteractiveMode implements InteractiveModeContext {
 			isKnownSlashCommand: text => this.isKnownSlashCommand(text),
 			pendingSubmission: () => this.#pendingSubmittedInput,
 		});
+		// Both ports read `ui` on every access rather than holding the screen built
+		// above: a harness assigns its own `TUI` after construction and before
+		// `init`, and the layout must size, and the hero mount on, the screen that
+		// paints. A fill sized against the discarded screen's row count is what
+		// pushed a 24-row board's phase row into scrollback under a 40-row default.
+		const host = this;
 		this.#layout = new HomeAnchorLayout({
-			ui: this.ui,
+			get ui() {
+				return host.ui;
+			},
 			transcriptChildCount: () => this.chatContainer.children.length,
 			// Resolved lazily: the welcome controller is constructed just below.
 			hasHero: () => this.#welcomeController.hasHero,
 		});
 		this.#welcomeController = new WelcomeController({
-			ui: this.ui,
+			get ui() {
+				return host.ui;
+			},
 			chatContainer: this.chatContainer,
 			topFillRows: width => this.#layout.topFillRows(width),
 			onHeroDismissed: removedRows => this.#layout.onHeroDismissed(removedRows),
@@ -702,7 +716,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.pendingMessagesContainer = new AnchoredLiveContainer();
 		this.statusContainer = new AnchoredLiveContainer();
 		this.todoContainer = new AnchoredLiveContainer();
-		this.subagentContainer = new AnchoredLiveContainer();
+		this.agentContainer = new AnchoredLiveContainer();
 		this.btwContainer = new AnchoredLiveContainer();
 		this.omfgContainer = new AnchoredLiveContainer();
 		this.errorBannerContainer = new AnchoredLiveContainer();
@@ -730,13 +744,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.ui.requestRender();
 		};
 		process.stdout.on("resize", this.#resizeHandler);
-		// Size the anchor from the children of the frame about to compose: a turn
-		// that grows or collapses in place between one frame and the next has no
-		// other moment to be measured in. There is no post-commit correction to
-		// pair with it — a fill sized from a frame that already composed is a
-		// second paint that moves the same rows to a different row, once per
-		// chunk of a streaming answer.
-		this.ui.onBeforeCompose = () => this.#layout.sync();
 		try {
 			this.historyStorage = HistoryStorage.open();
 			this.editor.setHistoryStorage(this.historyStorage);
@@ -771,7 +778,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		// component owns the progress, the shared motion clock owns the frames, and this asks
 		// for each one. A caller that only renders (the two-line selector, tests) passes none
 		// and gets the hard cut.
-		this.statusLine = new StatusLineComponent(session, { requestRender: () => this.ui.requestRender() });
+		this.statusProducer = new StatusPresentationProducer(session);
+		this.statusLine = new StatusLineComponent(this.statusProducer, { requestRender: () => this.ui.requestRender() });
 		this.statusLine.setAutoCompactEnabled(session.autoCompactionEnabled);
 		// The count has to arrive on the keeper's own events, not on the next
 		// repaint that happens for another reason: a handed-off conversation
@@ -861,6 +869,16 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#pendingSlashCommands = [...builtinCommands, ...hookCommands, ...customCommands, ...skillCommandList];
 
 		this.#uiHelpers = new UiHelpers(this);
+		this.presentation = new TerminalPresentationDriver(this.ui.terminal, {
+			surface: {
+				getTui: () => this.ui,
+				getComposer: () => this.editor,
+				transcript: this.#uiHelpers.transcript,
+				setStatusLine: state => {
+					this.statusLine.setSnapshot(state);
+				},
+			},
+		});
 		this.#btwController = new BtwController(this);
 		this.#tanCommandController = new TanCommandController(this);
 		this.#omfgController = new OmfgController(this);
@@ -1033,7 +1051,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			),
 		);
 
-		const startupQuiet = settings.get("startup.quiet");
+		const startupQuiet = this.settings.get("startup.quiet");
 
 		// The launch card is on screen already when the first frame painted one;
 		// its placeholder rows come off here, and the card itself is remounted
@@ -1044,6 +1062,15 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.ui.addChild(new Text(theme.fg("warning", `Warning: ${warning}`), 1, 0));
 			this.ui.addChild(new Spacer(1));
 		}
+
+		// Size the anchor from the children of the frame about to compose: a turn
+		// that grows or collapses in place between one frame and the next has no
+		// other moment to be measured in. There is no post-commit correction to
+		// pair with it — a fill sized from a frame that already composed is a
+		// second paint that moves the same rows to a different row, once per
+		// chunk of a streaming answer. Bound here, on the screen the fills mount
+		// on, rather than in the constructor, whose screen a harness may replace.
+		this.ui.onBeforeCompose = () => this.#layout.sync();
 
 		// The flexible top margin mounts above the hero AND the transcript: it
 		// centres the hero on the home screen, then (once a conversation starts)
@@ -1061,7 +1088,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.ui.addChild(this.chatContainer);
 		this.ui.addChild(this.pendingMessagesContainer);
 		this.ui.addChild(this.todoContainer);
-		this.ui.addChild(this.subagentContainer);
+		this.ui.addChild(this.agentContainer);
 		this.ui.addChild(this.btwContainer);
 		this.ui.addChild(this.omfgContainer);
 		this.ui.addChild(this.errorBannerContainer);
@@ -1098,7 +1125,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#observerRegistry.subscribeToEventBus(this.#eventBus);
 		}
 		this.#observerRegistry.setMainSession(this.sessionManager.getSessionFile() ?? undefined);
-		this.syncRunningSubagentBadge();
+		this.syncRunningAgentBadge();
 		this.#observerRegistry.onChange(kind => {
 			this.#scheduleObserverUiSync(kind);
 		});
@@ -1160,6 +1187,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				logger.debug("No tty input flush available at startup; discarding buffered input until mount completes");
 			}
 		}
+		this.presentation.start();
 		// The first paint used an estimated fill (no composed frame existed yet);
 		// now the exact composed height is known, so re-anchor precisely. It only
 		// re-renders if the estimate was off, so there is usually no visible reflow.
@@ -1571,18 +1599,25 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	#refreshComposerShortcuts(): void {
-		this.composerShortcuts.setShortcuts(
-			buildComposerShortcuts(this.keybindings, {
-				busy: this.#isAutoSubmitBlocked(),
-				hasDraft: this.editor.getText().trim().length > 0,
-				hasQueue: this.session.queuedMessageCount > 0,
-				focused: this.focusedAgentId !== undefined,
-				canBackgroundBash: hasForegroundBashWait(),
-			}),
-		);
-		// Live refresh: draft/busy/queue transitions call this after init, so the
-		// bar needs its own repaint request rather than relying on the initial mount.
-		this.ui.requestComponentRender(this.composerShortcuts);
+		const busy = this.#isAutoSubmitBlocked();
+		const focused = this.focusedAgentId !== undefined;
+		const canBackgroundBash = hasForegroundBashWait();
+		const hasQueue = this.session.queuedMessageCount > 0;
+		if (!busy && !hasQueue && !canBackgroundBash && this.composerShortcuts.shortcuts.length === 0) {
+			return;
+		}
+		const shortcuts = buildComposerShortcuts(this.keybindings, {
+			busy,
+			hasDraft: false,
+			hasQueue,
+			focused,
+			canBackgroundBash,
+		});
+		if (this.composerShortcuts.setShortcuts(shortcuts)) {
+			// Live refresh: busy/queue/keybinding transitions call this after init, so the
+			// bar needs its own repaint request rather than relying on the initial mount.
+			this.ui.requestComponentRender(this.composerShortcuts);
+		}
 	}
 
 	#submitLoopPromptWhenReady(prompt: string): void {
@@ -1829,7 +1864,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			bashMode: this.isBashMode,
 			pythonMode: this.isPythonMode,
 			planMode: this.planModeEnabled && !this.planModePaused,
-			focusedSubagent: this.focusedAgentId !== undefined,
+			focusedAgent: this.focusedAgentId !== undefined,
 			sessionAccentAnsi: getSessionAccentAnsi(hex),
 			thinkingLevel: this.session.thinkingLevel ?? ThinkingLevel.Off,
 		});
@@ -1837,14 +1872,14 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.ui.requestRender();
 	}
 
-	/** Refresh the running-subagents status badge from the active local or collab registry. */
-	syncRunningSubagentBadge(options: { requestRender?: boolean } = {}): void {
-		const registry = getRunningSubagentBadgeRegistry(this.collabGuest);
+	/** Refresh the running-agents status badge from the active local or collab registry. */
+	syncRunningAgentBadge(options: { requestRender?: boolean } = {}): void {
+		const registry = getRunningAgentBadgeRegistry(this.collabGuest);
 		if (this.#agentRegistrySubscriptionTarget !== registry) {
 			this.#agentRegistryUnsubscribe?.();
 			this.#agentRegistrySubscriptionTarget = registry;
 			this.#agentRegistryUnsubscribe = registry.onChange(() => {
-				this.syncRunningSubagentBadge();
+				this.syncRunningAgentBadge();
 			});
 		}
 		// The collab guest's mirrored registry has no local scope; the local one is
@@ -1855,12 +1890,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		// and the HUD already shows only the viewed agent's spawns; a badge still
 		// counting the whole conversation reported running agents that had no row
 		// anywhere in that view, which is the HUD's own defect one number wide.
-		const count = countRunningSubagentBadgeAgents(
+		const count = countRunningAgentBadgeAgents(
 			registry,
 			this.collabGuest ? undefined : this.sessionManager.getSessionId(),
 			this.focusedAgentId,
 		);
-		this.statusLine.setSubagentCount(count);
+		this.statusLine.setAgentCount(count);
 		if (options.requestRender !== false) this.ui.requestRender();
 	}
 
@@ -1872,10 +1907,10 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	/**
 	 * Auto-complete any pending/in_progress todo whose content matches a
-	 * subagent that has finished successfully. Fires on every observer
-	 * `onChange` so the visual state stays in sync with subagent lifecycle
+	 * agent that has finished successfully. Fires on every observer
+	 * `onChange` so the visual state stays in sync with agent lifecycle
 	 * without requiring the agent to issue a follow-up `todo`. Failed
-	 * and aborted subagents are intentionally NOT auto-completed — those
+	 * and aborted agents are intentionally NOT auto-completed — those
 	 * stay open so the user (or the next agent turn) can decide what to do.
 	 *
 	 * Idempotent: only flips open tasks, never re-touches completed ones.
@@ -1886,7 +1921,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * agent copied that agent's board onto the driving session and persisted it
 	 * there — a write-side version of the same leak.
 	 */
-	#reconcileTodosWithSubagents(): void {
+	#reconcileTodosWithAgents(): void {
 		const completedDescs: string[] = [];
 		for (const session of this.#observerRegistry.getSessionsSpawnedBy(this.focusedAgentId)) {
 			if (session.status !== "completed") continue;
@@ -2000,14 +2035,14 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	#flushObserverUiSync(): void {
-		this.syncRunningSubagentBadge({ requestRender: false });
+		this.syncRunningAgentBadge({ requestRender: false });
 		if (this.#observerUiSyncNeedsTodoReconcile) {
 			this.#observerUiSyncNeedsTodoReconcile = false;
-			this.#reconcileTodosWithSubagents();
+			this.#reconcileTodosWithAgents();
 		}
 		this.#syncTodoAutoClearTimer();
 		this.#renderTodoList();
-		this.#renderSubagentList();
+		this.#renderAgentList();
 		this.ui.requestRender();
 	}
 
@@ -2044,7 +2079,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	#renderTodoList(): void {
 		this.#buildTodoBoard();
 		// The board can be the only reason a frame is owed — a task in progress with
-		// no subagent running at all — so every path that redraws it re-decides
+		// no agent running at all — so every path that redraws it re-decides
 		// whether the clock should be ticking.
 		this.#syncAnchoredMotionTimer();
 	}
@@ -2095,7 +2130,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * of it lands on a row of its own, at the margin, outside the block's rail —
 	 * which is what a real capture of two live lanes showed: every lane's model
 	 * badge on its own line at column zero. The width sweep in
-	 * `test/subagent-hud-render.test.ts` could not see it, because the blocks were
+	 * `test/agent-hud-render.test.ts` could not see it, because the blocks were
 	 * obeying the bound they were given and the bound was wrong.
 	 *
 	 * `getPaddingX` is the same function the mount resolves its padding through,
@@ -2118,7 +2153,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	/**
-	 * Pending tasks a detached subagent is working on right now.
+	 * Pending tasks a detached agent is working on right now.
 	 *
 	 * A pending task that an active spawn's description matches takes the accent
 	 * and the in-flight mark, which is the only thing on the board stating that
@@ -2181,9 +2216,9 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	/**
-	 * Anchored HUD of in-flight subagents, mirroring the Todos block above the
+	 * Anchored HUD of in-flight agents, mirroring the Todos block above the
 	 * editor. Driven entirely by observer-registry change events, so rows appear
-	 * on spawn and the whole block clears itself once the last subagent leaves
+	 * on spawn and the whole block clears itself once the last agent leaves
 	 * the "active" state.
 	 *
 	 * The block belongs to the VIEWED session, not the driving one: focused into
@@ -2205,19 +2240,19 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * and off while the rest of it stood still — motion an operator reads as a
 	 * fault rather than as progress.
 	 */
-	#renderSubagentList(): void {
-		this.subagentContainer.clear();
+	#renderAgentList(): void {
+		this.agentContainer.clear();
 		const sessions = this.#observerRegistry.getSessionsSpawnedBy(this.#focusController.focusedAgentId);
-		const lines = renderSubagentHudLines(sessions, {
+		const lines = renderAgentHudLines(sessions, {
 			columns: this.#anchoredColumns(),
-			showModelBadge: settings.get("subagent.showResolvedModelBadge"),
+			showModelBadge: settings.get("agent.showResolvedModelBadge"),
 		});
 		this.#syncAnchoredMotionTimer();
 		if (lines.length === 0) return;
 		const painted = transitionsEnabled()
 			? paintRailMotion(lines, { kind: "idle", head: railIdleHeadAtMs(railClockMs()) }, theme)
 			: lines;
-		this.subagentContainer.addChild(new Text(painted.join("\n"), ANCHORED_BLOCK_PADDING_X, 0));
+		this.agentContainer.addChild(new Text(painted.join("\n"), ANCHORED_BLOCK_PADDING_X, 0));
 	}
 
 	/**
@@ -2254,7 +2289,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#anchoredStep++;
 			this.#advanceTodoSettle();
 			this.#renderTodoList();
-			this.#renderSubagentList();
+			this.#renderAgentList();
 			this.ui.requestRender();
 		}, RAIL_IDLE_STEP_MS);
 		// A chrome animation must never be the reason the process stays alive.
@@ -2285,7 +2320,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (todoBoardRailTravels(this.#todoMotion())) return true;
 		return this.#observerRegistry
 			.getSessionsSpawnedBy(this.#focusController.focusedAgentId)
-			.some(session => session.kind === "subagent" && session.status === "active" && session.detached === true);
+			.some(session => session.kind === "spawn" && session.status === "active" && session.detached === true);
 	}
 
 	/**
@@ -3425,6 +3460,7 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	stop(): void {
 		this.#freezeFrameProduction();
+		this.presentation.stop();
 		if (this.#cleanupUnsubscribe) {
 			this.#cleanupUnsubscribe();
 		}
@@ -3690,6 +3726,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.ui.setFocus(nextEditor);
 
 		this.#inputController.setupKeyHandlers();
+		this.presentation.syncComposer();
 		if (!nextEditor.adoptEarlySubmissions(previousEditor)) {
 			this.#inputController.setupEditorSubmitHandler();
 		}
@@ -4522,7 +4559,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#eventController.resetTranscriptAnchors();
 		this.#subscribeToAgent();
 		this.#goalMode.subscribeToSession();
-		this.statusLine.setSession(next);
+		this.statusProducer.setSession(next);
+		this.statusLine.setSource(this.statusProducer);
 		if (next.isStreaming) void this.#eventController.handleEvent({ type: "agent_start" });
 		return BackgroundSessions.global().keep(previous);
 	}

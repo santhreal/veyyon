@@ -12,39 +12,71 @@
  * derived from `TRANSCRIPT_BLOCK_KINDS`, the run-time table `@veyyon/wire` locks
  * against its own union, so a new block kind fails here until it has rows.
  *
- * Driving the driver drives the row builders behind it: `driver.ts` composes
- * rows from `src/modes/terminal/block-rows.ts` for the transcript and
- * `src/modes/terminal/chrome-rows.ts` for the status line and composer, and
- * both resolve their escapes through `src/modes/terminal/theme-ansi.ts`. Those
- * three are pure string functions with no terminal of their own, so their
- * contract is what a VT displays, and it is asserted here rather than against
- * their return values.
+ * Driving the driver drives the transcript and chrome components behind it:
+ * `driver.ts` mounts `TranscriptBlockComponent` for the transcript and
+ * `StatusLineComponent` and `CustomEditor` for the status line and composer.
+ * Their contract is what a VT displays, and it is asserted here rather than
+ * against isolated return values.
  *
  * What it does NOT catch: colour fidelity on a 256-colour terminal (the encoding
  * is chosen by `@veyyon/utils/color-format` and asserted in its own suite), and
  * mouse routing, which the engine owns.
  */
 
-import { describe, expect, test } from "bun:test";
-import type { ComposerState, StatusLineState, TranscriptBlock, UIEvent } from "@veyyon/wire/presentation";
+import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
+import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TUI } from "@veyyon/tui";
+import type { ComposerState, StatusLineState, SubmitEvent, TranscriptBlock, UIEvent } from "@veyyon/wire/presentation";
 import { TRANSCRIPT_BLOCK_KINDS } from "@veyyon/wire/presentation";
 import { settleFrames } from "../../../../hosts/terminal/engine/test/helpers/settle-frames";
 import { VirtualTerminal } from "../../../../hosts/terminal/engine/test/virtual-terminal";
-import { TerminalPresentationDriver } from "../../src/modes/terminal/driver";
+import { Settings } from "../../src/config/settings";
+import { QuietZoneLine } from "../../src/modes/terminal/components/composer/composer-chrome";
+import { CustomEditor } from "../../src/modes/terminal/components/composer/custom-editor";
+import { StatusLineComponent } from "../../src/modes/terminal/components/status-line/component";
+import { ChatTranscriptBuilder } from "../../src/modes/terminal/components/transcript/chat-transcript-builder";
+import { TranscriptContainer } from "../../src/modes/terminal/components/transcript/transcript-container";
+import { type TerminalDriverSurface, TerminalPresentationDriver } from "../../src/modes/terminal/driver";
+import { applyPresentationTheme, getEditorTheme } from "../../src/theme/theme";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
+import { makeStatusLineProducer } from "../helpers/status-line-session";
 import { testTheme as theme } from "./helpers/presentation-theme";
 
 const WIDTH = 80;
 const HEIGHT = 24;
 
+let settingsState: SettingsTestState | undefined;
+let originalAnsiPolicy: AnsiPolicy | undefined;
+beforeEach(async () => {
+	originalAnsiPolicy = getAnsiPolicy();
+	setAnsiPolicy("full");
+	settingsState = beginSettingsTest();
+	await Settings.init({
+		inMemory: true,
+		overrides: {
+			"statusLine.preset": "custom",
+			"statusLine.leftSegments": ["model"],
+			"statusLine.rightSegments": ["session_name"],
+			"statusLine.sessionAccent": false,
+		},
+	});
+	applyPresentationTheme(theme());
+});
+afterEach(() => {
+	if (originalAnsiPolicy !== undefined) setAnsiPolicy(originalAnsiPolicy);
+	restoreSettingsTestState(settingsState);
+	settingsState = undefined;
+});
+
 function status(overrides: Partial<StatusLineState> = {}): StatusLineState {
 	return {
-		activity: "idle",
-		model: "test/model-one",
-		context: { used: 2_000, total: 10_000, providerReported: false },
-		cost: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalUsd: 0 },
-		workingDirectory: "~/repo",
-		elapsedMs: 0,
-		queuedMessages: 0,
+		...makeStatusLineProducer({
+			modelId: "test/model-one",
+			modelName: "test/model-one",
+			sessionName: "STATUSSESSION",
+			cwd: () => "/repo",
+			contextWindow: 10_000,
+			contextUsage: { tokens: 2_000, contextWindow: 10_000 },
+		}).getSnapshot(),
 		...overrides,
 	};
 }
@@ -100,9 +132,9 @@ function blockOfKind(kind: TranscriptBlock["kind"]): TranscriptBlock {
 		case "hook":
 			return { kind, id, hookName: "HOOKNAME", text: "HOOKTEXT", timestamp };
 		case "branch-summary":
-			return { kind, id, summary: "BRANCHSUMMARY", replacedCount: 3, timestamp };
+			return { kind, id, summary: "BRANCHSUMMARY", timestamp };
 		case "compaction-summary":
-			return { kind, id, summary: "COMPACTIONSUMMARY", replacedCount: 5, timestamp };
+			return { kind, id, summary: "COMPACTIONSUMMARY", tokensBefore: 4096, timestamp };
 		case "file-mention":
 			return { kind, id, files: [{ kind: "file", name: "MENTIONEDFILE", lineCount: 2 }], timestamp };
 		case "error":
@@ -120,8 +152,8 @@ const KIND_MARKER: Record<TranscriptBlock["kind"], string> = {
 	"python-execution": "PYTHONCODE",
 	custom: "CUSTOMTEXT",
 	hook: "HOOKTEXT",
-	"branch-summary": "BRANCHSUMMARY",
-	"compaction-summary": "COMPACTIONSUMMARY",
+	"branch-summary": "branch",
+	"compaction-summary": "compacted",
 	"file-mention": "MENTIONEDFILE",
 	error: "ERRORTEXT",
 };
@@ -170,14 +202,13 @@ describe("the three zones are on screen together", () => {
 		const { driver, settle, screen } = rig();
 		try {
 			driver.setTranscriptBlocks([blockOfKind("user-message")]);
-			driver.setStatusLine(status({ activity: "thinking", gitBranch: "BRANCHNAME" }));
+			driver.setStatusLine(status());
 			driver.setComposerState(composer({ text: "COMPOSERTEXT" }));
 			await settle();
 			const painted = screen();
 			expect(painted).toContain("USERTEXT");
-			expect(painted).toContain("thinking");
 			expect(painted).toContain("test/model-one");
-			expect(painted).toContain("BRANCHNAME");
+			expect(painted).toContain("STATUSSESSION");
 			expect(painted).toContain("COMPOSERTEXT");
 		} finally {
 			driver.stop();
@@ -200,21 +231,23 @@ describe("the three zones are on screen together", () => {
 		}
 	});
 
-	test("a narrow frame sheds status segments from the right and keeps the activity", async () => {
+	test("a narrow frame sheds secondary status content and keeps the model", async () => {
 		// The narrow frame is where a segment is dropped, so it is asserted here
 		// rather than inferred from the wide one.
 		const term = new VirtualTerminal(24, HEIGHT, 5_000);
 		const driver = new TerminalPresentationDriver(term, { theme: theme() });
 		try {
 			driver.start();
-			driver.setStatusLine(status({ activity: "compacting", workingDirectory: "~/a/very/long/path/indeed" }));
+			const snapshot = status();
+			snapshot.facts.sessionName = "SECONDARYSESSIONTOOLONGFORTHISFRAME";
+			driver.setStatusLine(snapshot);
 			await settleFrames(term, driver.tui);
 			const painted = term
 				.getViewport()
 				.map(row => Bun.stripANSI(row).trimEnd())
 				.join("\n");
-			expect(painted).toContain("compacting");
-			expect(painted).not.toContain("~/a/very/long/path/indeed");
+			expect(painted).toContain("test/model-one");
+			expect(painted).not.toContain("SECONDARYSESSIONTOOLONGFORTHISFRAME");
 			for (const row of term.getViewport())
 				expect(Bun.stringWidth(Bun.stripANSI(row).trimEnd())).toBeLessThanOrEqual(24);
 		} finally {
@@ -326,12 +359,42 @@ describe("an update patches its own block", () => {
 			driver.stop();
 		}
 	});
+
+	test("standalone read blocks retain their individual result cards", async () => {
+		const { driver, settle, screen } = rig();
+		try {
+			for (const [id, output] of [
+				["first", "FIRSTREADOUTPUT"],
+				["second", "SECONDREADOUTPUT"],
+			] as const) {
+				driver.appendTranscriptBlock({
+					kind: "tool-execution",
+					id,
+					toolCallId: id,
+					toolName: "read",
+					status: "succeeded",
+					input: JSON.stringify({ path: `src/${id}.ts` }),
+					output,
+					timestamp: 1_700_000_000_000,
+					display: {
+						readEntry: { toolCallId: id, path: `src/${id}.ts`, status: "success" },
+						generic: { icon: "done", outputText: output },
+					},
+				});
+			}
+			await settle();
+			expect(screen()).toContain("FIRSTREADOUTPUT");
+			expect(screen()).toContain("SECONDREADOUTPUT");
+		} finally {
+			driver.stop();
+		}
+	});
 });
 
 describe("a theme change repaints", () => {
 	/** The row the status line occupies, found by its text rather than assumed. */
 	function statusRowIndex(term: VirtualTerminal): number {
-		const index = term.getViewport().findIndex(row => Bun.stripANSI(row).includes("thinking"));
+		const index = term.getViewport().findIndex(row => Bun.stripANSI(row).includes("test/model-one"));
 		if (index < 0) throw new Error("the status line is not on screen");
 		return index;
 	}
@@ -340,22 +403,25 @@ describe("a theme change repaints", () => {
 		const term = new VirtualTerminal(WIDTH, HEIGHT, 5_000);
 		// The status line was already drawn and its rows are cached per width, so a
 		// theme change with no state push is the only thing that can repaint it. The
-		// evidence is the underline flag on the activity segment's cells, read back
+		// evidence is the underline flag on the model segment's cells, read back
 		// from the terminal rather than from the bytes the engine emitted.
 		const driver = new TerminalPresentationDriver(term, { theme: theme() });
 		try {
 			driver.start();
-			driver.setStatusLine(status({ activity: "thinking" }));
+			driver.setStatusLine(status());
 			await settleFrames(term, driver.tui);
 			const row = statusRowIndex(term);
 			expect(term.getViewportRowUnderlineColumns(row)).toEqual([]);
 
-			driver.setTheme(theme({ accentStyle: { underline: true } }));
+			driver.setTheme(theme({ styles: { statusLineModel: { underline: true } } }));
 			await settleFrames(term, driver.tui);
 			const after = statusRowIndex(term);
-			// Exactly the eight columns of "thinking": the accent role paints the
-			// activity segment and nothing else on the row.
-			expect(term.getViewportRowUnderlineColumns(after)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+			const text = Bun.stripANSI(term.getViewport()[after]!);
+			const start = text.indexOf("test/model-one");
+			const underlined = term.getViewportRowUnderlineColumns(after);
+			for (let column = start; column < start + "test/model-one".length; column++) {
+				expect(underlined).toContain(column);
+			}
 			expect(Bun.stripANSI(term.getViewport()[after]!)).toContain("test/model-one");
 		} finally {
 			driver.stop();
@@ -441,7 +507,7 @@ describe("operator input leaves as a UIEvent", () => {
 			const events = collect(driver);
 			await settle();
 			term.sendInput("a");
-			expect(events).toEqual([]);
+			expect(events).toEqual([{ type: "composer-change", text: "a", cursorOffset: 1 }]);
 		} finally {
 			driver.stop();
 		}
@@ -583,6 +649,168 @@ describe("dialogs resolve with the operator's answer", () => {
 });
 
 describe("overlays", () => {
+	test.each([false, true])("routes input only to interactive overlays: %s", async interactive => {
+		const { term, driver, settle, screen } = rig();
+		const events: UIEvent[] = [];
+		driver.onInput(event => events.push(event));
+		const composerFocus = driver.tui.getFocused();
+		try {
+			const view = {
+				id: "input-card",
+				anchor: "center" as const,
+				title: "OVERLAYTITLE",
+				rows: ["OVERLAYBODY"],
+				interactive,
+				dismissable: false,
+			};
+			const handle = driver.showOverlay(view);
+			await settle();
+			expect(screen()).toContain("OVERLAYTITLE");
+			expect(screen()).toContain("OVERLAYBODY");
+			term.sendInput("a");
+			term.sendInput("\x1b");
+			await settle();
+			expect(screen()).toContain("OVERLAYBODY");
+			expect(events.filter(event => event.type === "composer-change")).toEqual(
+				interactive ? [] : [{ type: "composer-change", text: "a", cursorOffset: 1 }],
+			);
+			handle.update({ ...view, interactive: !interactive, dismissable: true });
+			if (interactive) expect(driver.tui.getFocused()).toBe(composerFocus);
+			else expect(driver.tui.getFocused()).not.toBe(composerFocus);
+			await settle();
+			term.sendInput("b");
+			const changes = events.filter(event => event.type === "composer-change");
+			expect(changes.at(-1)).toEqual({
+				type: "composer-change",
+				text: interactive ? "b" : "a",
+				cursorOffset: 1,
+			});
+			if (!interactive) {
+				term.sendInput("\x1b");
+				await settle();
+				expect(screen()).not.toContain("OVERLAYBODY");
+			}
+			handle.close();
+			term.sendInput("c");
+			expect(events.filter(event => event.type === "composer-change").at(-1)).toEqual({
+				type: "composer-change",
+				text: interactive ? "bc" : "ac",
+				cursorOffset: 2,
+			});
+		} finally {
+			driver.stop();
+		}
+	});
+
+	test("replacement handles cannot close or update the replacement", async () => {
+		const { driver, settle, screen } = rig();
+		try {
+			const view = {
+				id: "replace-card",
+				anchor: "center" as const,
+				rows: ["OLDOVERLAY"],
+				interactive: false,
+				dismissable: false,
+			};
+			const old = driver.showOverlay(view);
+			const current = driver.showOverlay({ ...view, rows: ["NEWOVERLAY"] });
+			old.close();
+			old.update({ ...view, rows: ["STALEUPDATE"] });
+			await settle();
+			expect(screen()).toContain("NEWOVERLAY");
+			expect(screen()).not.toContain("OLDOVERLAY");
+			expect(screen()).not.toContain("STALEUPDATE");
+			expect(() => current.update({ ...view, id: "renamed" })).toThrow("Cannot change overlay id");
+			await settle();
+			expect(screen()).toContain("NEWOVERLAY");
+			driver.closeOverlay("replace-card");
+			await settle();
+			expect(screen()).not.toContain("NEWOVERLAY");
+			expect(screen()).not.toContain("OLDOVERLAY");
+			expect(screen()).not.toContain("STALEUPDATE");
+		} finally {
+			driver.stop();
+		}
+	});
+
+	test("page keys scroll the overlay rather than the transcript", async () => {
+		const { term, driver, settle, screen } = rig(8);
+		const events: UIEvent[] = [];
+		driver.onInput(event => events.push(event));
+		try {
+			driver.showOverlay({
+				id: "scroll-card",
+				anchor: "center",
+				title: "SCROLLTITLE",
+				rows: Array.from({ length: 30 }, (_, index) => `CONTENTROW${index.toString().padStart(2, "0")}`),
+				interactive: true,
+				dismissable: true,
+			});
+			await settle();
+			expect(screen()).toContain("CONTENTROW00");
+			term.sendInput("\x1b[6~");
+			await settle();
+			expect(screen()).not.toContain("CONTENTROW00");
+			expect(screen()).toContain("SCROLLTITLE");
+			expect(events.filter(event => event.type === "scroll")).toEqual([]);
+			term.sendInput("\x1b[5~");
+			await settle();
+			expect(screen()).toContain("CONTENTROW00");
+		} finally {
+			driver.stop();
+		}
+	});
+
+	test("anchor updates reposition the same overlay", async () => {
+		const { driver, settle, rows } = rig();
+		try {
+			driver.setComposerState(composer({ text: "BASE" }));
+			const view = {
+				id: "position-card",
+				anchor: "top" as const,
+				rows: ["POSITIONTEXT"],
+				interactive: false,
+				dismissable: false,
+			};
+			const handle = driver.showOverlay(view);
+			await settle();
+			const top = rows().findIndex(line => line.includes("POSITIONTEXT"));
+			handle.update({ ...view, anchor: "bottom" });
+			await settle();
+			const bottom = rows().findIndex(line => line.includes("POSITIONTEXT"));
+			handle.update({ ...view, anchor: "center" });
+			await settle();
+			const center = rows().findIndex(line => line.includes("POSITIONTEXT"));
+			expect(top).toBeGreaterThanOrEqual(0);
+			expect(center).toBeGreaterThan(top);
+			expect(bottom).toBeGreaterThan(center);
+			handle.update({ ...view, anchor: "fullscreen" });
+			await settle();
+			expect(rows().filter(line => line.includes("POSITIONTEXT"))).toHaveLength(1);
+			expect(rows().join("\n")).not.toContain("BASE");
+			expect(
+				Bun.stringWidth(
+					rows()
+						.find(line => line.includes("POSITIONTEXT"))!
+						.trim(),
+				),
+			).toBe(WIDTH);
+			handle.update(view);
+			await settle();
+			expect(rows().findIndex(line => line.includes("POSITIONTEXT"))).toBe(top);
+			expect(rows().join("\n")).toContain("BASE");
+			expect(
+				Bun.stringWidth(
+					rows()
+						.find(line => line.includes("POSITIONTEXT"))!
+						.trim(),
+				),
+			).toBe(Math.floor(WIDTH * 0.8));
+		} finally {
+			driver.stop();
+		}
+	});
+
 	test("an overlay paints, updates in place and closes", async () => {
 		const { term, driver, settle } = rig();
 		try {
@@ -638,6 +866,33 @@ describe("overlays", () => {
 });
 
 describe("lifecycle", () => {
+	test.each(["created", "running", "stopped"] as const)("stop releases pending card clocks from %s", state => {
+		vi.useFakeTimers();
+		const term = new VirtualTerminal(WIDTH, HEIGHT, 5_000);
+		const driver = new TerminalPresentationDriver(term, { theme: theme() });
+		const initialTimers = vi.getTimerCount();
+		try {
+			if (state !== "created") driver.start();
+			if (state === "stopped") driver.stop();
+			driver.appendTranscriptBlock({
+				kind: "tool-execution",
+				id: "pending",
+				toolCallId: "pending",
+				toolName: "TOOLNAME",
+				status: "running",
+				input: "{}",
+				timestamp: 1_700_000_000_000,
+			});
+			vi.advanceTimersByTime(240);
+			driver.stop();
+			vi.advanceTimersByTime(2_000);
+			expect(vi.getTimerCount()).toBe(initialTimers);
+		} finally {
+			driver.stop();
+			vi.useRealTimers();
+		}
+	});
+
 	test("start is idempotent and stop leaves the driver not running", async () => {
 		const { driver, settle } = rig();
 		try {
@@ -703,5 +958,442 @@ describe("lifecycle", () => {
 		} finally {
 			driver.stop();
 		}
+	});
+});
+
+describe("surface adoption", () => {
+	interface AdoptedRig {
+		term: VirtualTerminal;
+		tui: TUI;
+		container: TranscriptContainer;
+		builder: ChatTranscriptBuilder;
+		statusComponent: StatusLineComponent;
+		statusRow: QuietZoneLine;
+		composer: CustomEditor;
+		driver: TerminalPresentationDriver;
+		settle: () => Promise<void>;
+		screen: () => string;
+		rows: () => string[];
+	}
+
+	function adoptedRig(height = HEIGHT, width = WIDTH): AdoptedRig {
+		const term = new VirtualTerminal(width, height, 5_000);
+		const tui = new TUI(term, false);
+		tui.setScrollbackRebuild(false);
+		tui.setScrollIsolation(true);
+
+		const container = new TranscriptContainer();
+		const builder = new ChatTranscriptBuilder({
+			container,
+			ui: tui,
+			requestRender: () => tui.requestRender(),
+			cwd: "/repo",
+		});
+
+		const initialSnapshot = status();
+		const statusComponent = new StatusLineComponent({
+			getSnapshot: () => initialSnapshot,
+			getRevision: () => 0,
+		});
+
+		const composer = new CustomEditor(getEditorTheme());
+		const statusRow = new QuietZoneLine(width => statusComponent.renderQuietLine(width));
+
+		tui.addChild(container);
+		tui.addChild(statusRow);
+		tui.addChild(composer);
+		tui.setFocus(composer);
+		tui.setPinnedFooterChildCount(2);
+
+		const surface: TerminalDriverSurface = {
+			getTui: () => tui,
+			getComposer: () => composer,
+			transcript: builder,
+			setStatusLine: state => {
+				statusComponent.setSnapshot(state);
+			},
+		};
+
+		tui.start();
+		const driver = new TerminalPresentationDriver(term, { theme: theme(), surface });
+		driver.start();
+
+		const settle = () => settleFrames(term, tui);
+		const rows = () => term.getViewport().map(row => Bun.stripANSI(row).trimEnd());
+		const screen = () => rows().join("\n");
+
+		return {
+			term,
+			tui,
+			container,
+			builder,
+			statusComponent,
+			statusRow,
+			composer,
+			driver,
+			settle,
+			screen,
+			rows,
+		};
+	}
+
+	test("adopts the existing engine and component tree without allocating duplicate root components", () => {
+		const rig = adoptedRig();
+		try {
+			expect(rig.driver.tui).toBe(rig.tui);
+			// The three host components (transcript container, status component, composer)
+			// are the only children on the root engine.
+			expect(rig.tui.children).toEqual([rig.container, rig.statusRow, rig.composer]);
+		} finally {
+			rig.driver.stop();
+			rig.tui.stop();
+		}
+	});
+
+	test("adopted transcript and status operations update host components and repaint VirtualTerminal", async () => {
+		const rig = adoptedRig();
+		try {
+			// Set initial transcript block, status line, and composer state
+			rig.driver.setTranscriptBlocks([blockOfKind("user-message")]);
+			const initialStatus = status();
+			initialStatus.facts.sessionName = "ADOPTEDSESSION";
+			rig.driver.setStatusLine(initialStatus);
+			rig.driver.setComposerState(composer({ text: "ADOPTEDCOMPOSER" }));
+			await rig.settle();
+
+			expect(rig.screen()).toContain("USERTEXT");
+			expect(rig.screen()).toContain("ADOPTEDSESSION");
+			expect(rig.screen()).toContain("ADOPTEDCOMPOSER");
+
+			// Append another block
+			rig.driver.appendTranscriptBlock(blockOfKind("developer-message"));
+			await rig.settle();
+			expect(rig.screen()).toContain("DEVTEXT");
+
+			// Update block in place
+			rig.driver.updateTranscriptBlock("block-user-message", { text: "PATCHED_GREETING" });
+			await rig.settle();
+			expect(rig.screen()).toContain("PATCHED_GREETING");
+			expect(rig.screen()).not.toContain("USERTEXT");
+
+			// Remove block
+			rig.driver.removeTranscriptBlock("block-user-message");
+			await rig.settle();
+			expect(rig.screen()).not.toContain("PATCHED_GREETING");
+			expect(rig.screen()).toContain("DEVTEXT");
+
+			// Clear transcript
+			rig.driver.clearTranscript();
+			await rig.settle();
+			expect(rig.screen()).not.toContain("DEVTEXT");
+			expect(rig.screen()).toContain("ADOPTEDSESSION");
+		} finally {
+			rig.driver.stop();
+			rig.tui.stop();
+		}
+	});
+
+	test("composer draft text is seeded on binding so existing draft is not dropped", () => {
+		const term = new VirtualTerminal(WIDTH, HEIGHT, 5_000);
+		const tui = new TUI(term, false);
+		const composerEditor = new CustomEditor(getEditorTheme());
+		composerEditor.setText("existing draft text");
+		composerEditor.setCursorOffset(19);
+
+		const hostChanges: string[] = [];
+		composerEditor.onComposerChange = state => hostChanges.push(state.text);
+
+		const surface: TerminalDriverSurface = {
+			getTui: () => tui,
+			getComposer: () => composerEditor,
+			transcript: new ChatTranscriptBuilder({
+				ui: tui,
+				container: new TranscriptContainer(),
+				cwd: "/repo",
+				requestRender: () => tui.requestRender(),
+			}),
+			setStatusLine: () => {},
+		};
+
+		const driver = new TerminalPresentationDriver(term, { theme: theme(), surface });
+		const driverEvents: UIEvent[] = [];
+		driver.onInput(event => driverEvents.push(event));
+		composerEditor.onComposerChange?.(composerEditor.getComposerState());
+		expect(driverEvents).toEqual([]);
+
+		// Modifying the text after adoption emits composer-change accurately
+		composerEditor.setText("existing draft text modified");
+		composerEditor.setCursorOffset(28);
+		composerEditor.onComposerChange?.(composerEditor.getComposerState());
+
+		expect(hostChanges).toContain("existing draft text modified");
+		expect(driverEvents).toContainEqual({
+			type: "composer-change",
+			text: "existing draft text modified",
+			cursorOffset: 28,
+		});
+
+		driver.stop();
+		tui.stop();
+	});
+
+	test("composer callbacks are chained without overwriting host handlers, and restored on stop", () => {
+		const rig = adoptedRig();
+		try {
+			const hostChanges: string[] = [];
+			const hostSubmits: SubmitEvent[] = [];
+			rig.composer.onComposerChange = state => hostChanges.push(state.text);
+			rig.composer.onComposerSubmit = event => hostSubmits.push(event);
+
+			// Re-sync after host attached its callbacks
+			rig.driver.syncComposer();
+
+			const driverEvents: UIEvent[] = [];
+			rig.driver.onInput(event => driverEvents.push(event));
+
+			// Change triggers host callback AND emits driver event
+			rig.composer.setText("typed content");
+			rig.composer.setCursorOffset(13);
+			rig.composer.onComposerChange?.(rig.composer.getComposerState());
+			expect(hostChanges).toContain("typed content");
+			expect(driverEvents).toContainEqual({
+				type: "composer-change",
+				text: "typed content",
+				cursorOffset: 13,
+			});
+
+			// Submit triggers host callback AND emits driver event
+			const submitEvt: SubmitEvent = { type: "submit", text: "typed content", attachments: [] };
+			rig.composer.onComposerSubmit?.(submitEvt);
+			expect(hostSubmits).toEqual([submitEvt]);
+			expect(driverEvents).toContainEqual(submitEvt);
+			const delivered = [...driverEvents];
+
+			// Lifecycle stop restores composer callbacks without discarding host handlers
+			rig.driver.stop();
+			rig.composer.setText("post-stop change");
+			rig.composer.onComposerChange?.(rig.composer.getComposerState());
+			expect(hostChanges).toContain("post-stop change");
+			expect(driverEvents).toEqual(delivered);
+		} finally {
+			rig.driver.stop();
+			rig.tui.stop();
+		}
+	});
+
+	test("adopted input routing does not consume controller gestures, but cancels driver-owned dialogs", async () => {
+		const rig = adoptedRig();
+		try {
+			const driverEvents: UIEvent[] = [];
+			rig.driver.onInput(event => driverEvents.push(event));
+			await rig.settle();
+			const hostInput: string[] = [];
+			rig.tui.addInputListener(data => {
+				hostInput.push(data);
+				return undefined;
+			});
+
+			// Standalone driver gestures (Ctrl+C interrupt, Ctrl+D exit, PageUp/PageDown)
+			// must NOT be emitted or consumed by the adopted driver; the production EventController owns them.
+			rig.term.sendInput("\x03");
+			rig.term.sendInput("\x04");
+			rig.term.sendInput("\x1b[5~");
+			rig.term.sendInput("\x1b[6~");
+			expect(driverEvents.filter(e => e.type === "interrupt" || e.type === "exit" || e.type === "scroll")).toEqual(
+				[],
+			);
+			expect(hostInput).toEqual(["\x03", "\x04", "\x1b[5~", "\x1b[6~"]);
+
+			// Driver-owned dialog cancellation via Ctrl+C still works
+			const pending = rig.driver.showDialog({
+				kind: "confirm",
+				id: "modal-cancel-test",
+				title: "MODALTITLE",
+				body: "MODALBODY",
+				confirmLabel: "Yes",
+				cancelLabel: "No",
+				destructive: false,
+			});
+			await rig.settle();
+			expect(rig.screen()).toContain("MODALTITLE");
+			rig.term.sendInput("\x03");
+			expect(await pending).toEqual({ outcome: "cancelled" });
+			expect(hostInput).toEqual(["\x03", "\x04", "\x1b[5~", "\x1b[6~"]);
+		} finally {
+			rig.driver.stop();
+			rig.tui.stop();
+		}
+	});
+
+	test.each([false, true])("overlays render on the adopted engine with interactive=%s", async interactive => {
+		const rig = adoptedRig();
+		try {
+			const handle = rig.driver.showOverlay({
+				id: "adopt-card",
+				anchor: "center",
+				rows: ["ADOPTEDOVERLAYCONTENT"],
+				interactive,
+				dismissable: true,
+			});
+			expect(rig.tui.hasOverlay()).toBe(interactive);
+			await rig.settle();
+			expect(rig.screen()).toContain("ADOPTEDOVERLAYCONTENT");
+
+			handle.close();
+			expect(rig.tui.hasOverlay()).toBe(false);
+		} finally {
+			rig.driver.stop();
+			rig.tui.stop();
+		}
+	});
+
+	test("dynamic getters adapt when host swaps composer", () => {
+		const term = new VirtualTerminal(WIDTH, HEIGHT, 5_000);
+		const tui = new TUI(term, false);
+		const composerA = new CustomEditor(getEditorTheme());
+		const composerB = new CustomEditor(getEditorTheme());
+		let currentComposer = composerA;
+
+		const surface: TerminalDriverSurface = {
+			getTui: () => tui,
+			getComposer: () => currentComposer,
+			transcript: new ChatTranscriptBuilder({
+				ui: tui,
+				container: new TranscriptContainer(),
+				cwd: "/repo",
+				requestRender: () => tui.requestRender(),
+			}),
+			setStatusLine: () => {},
+		};
+
+		const driver = new TerminalPresentationDriver(term, { theme: theme(), surface });
+		try {
+			driver.setComposerState(composer({ text: "FIRST_EDITOR" }));
+			expect(composerA.getText()).toBe("FIRST_EDITOR");
+
+			currentComposer = composerB;
+			driver.setComposerState(composer({ text: "SECOND_EDITOR" }));
+			expect(composerB.getText()).toBe("SECOND_EDITOR");
+		} finally {
+			driver.stop();
+			tui.stop();
+		}
+	});
+
+	test("dynamic getters adapt when host replaces TUI with another-size terminal", async () => {
+		const termA = new VirtualTerminal(80, 24, 5_000);
+		const termB = new VirtualTerminal(120, 40, 5_000);
+		const tuiA = new TUI(termA, false);
+		const tuiB = new TUI(termB, false);
+		tuiA.start();
+		tuiB.start();
+		let currentTui = tuiA;
+		const composer = new CustomEditor(getEditorTheme());
+
+		const surface: TerminalDriverSurface = {
+			getTui: () => currentTui,
+			getComposer: () => composer,
+			transcript: new ChatTranscriptBuilder({
+				get ui() {
+					return currentTui;
+				},
+				container: new TranscriptContainer(),
+				cwd: "/repo",
+				requestRender: () => currentTui.requestRender(),
+			}),
+			setStatusLine: () => {},
+		};
+
+		const driver = new TerminalPresentationDriver(termA, { theme: theme(), surface });
+		try {
+			expect(driver.width).toBe(80);
+			expect(driver.height).toBe(24);
+
+			// Host replaces engine with a larger terminal
+			currentTui = tuiB;
+			expect(driver.tui).toBe(tuiB);
+			expect(driver.width).toBe(120);
+			expect(driver.height).toBe(40);
+
+			// An overlay created on the adopted driver uses the replaced engine dimensions
+			const handle = driver.showOverlay({
+				id: "size-overlay",
+				anchor: "center",
+				rows: ["SIZETESTCONTENT"],
+				interactive: true,
+				dismissable: true,
+			});
+
+			expect(tuiB.hasOverlay()).toBe(true);
+			expect(tuiA.hasOverlay()).toBe(false);
+			await settleFrames(termB, tuiB);
+			const viewport = termB.getViewport().join("\n");
+			expect(viewport).toContain("SIZETESTCONTENT");
+
+			handle.close();
+			expect(tuiB.hasOverlay()).toBe(false);
+			const events: UIEvent[] = [];
+			driver.onInput(event => events.push(event));
+			driver.start();
+			termB.sendInput("x");
+			expect(events).toContainEqual({ type: "resize", width: 120, height: 40 });
+		} finally {
+			driver.stop();
+			tuiA.stop();
+			tuiB.stop();
+		}
+	});
+
+	test("syncComposer rebinds composer callbacks and start does not issue redundant tui.start in adopted mode", () => {
+		const term = new VirtualTerminal(WIDTH, HEIGHT, 5_000);
+		const existingTui = new TUI(term, false);
+		const composerA = new CustomEditor(getEditorTheme());
+		const composerB = new CustomEditor(getEditorTheme());
+		let currentComposer = composerA;
+
+		const hostChangesB: string[] = [];
+		composerB.onComposerChange = state => hostChangesB.push(state.text);
+
+		const surface: TerminalDriverSurface = {
+			getTui: () => existingTui,
+			getComposer: () => currentComposer,
+			transcript: new ChatTranscriptBuilder({
+				ui: existingTui,
+				container: new TranscriptContainer(),
+				cwd: "/repo",
+				requestRender: () => existingTui.requestRender(),
+			}),
+			setStatusLine: () => {},
+		};
+
+		// Host starts engine first
+		existingTui.start({ clearScrollback: true });
+
+		const driver = new TerminalPresentationDriver(term, { theme: theme(), surface });
+		const driverEvents: UIEvent[] = [];
+		driver.onInput(event => driverEvents.push(event));
+
+		// Attaching starts driver without clearing scrollback or double starting
+		driver.start();
+		expect(driver.running).toBe(true);
+
+		// Swap to composerB and explicitly syncComposer
+		currentComposer = composerB;
+		const synced = driver.syncComposer();
+		expect(synced).toBe(composerB);
+
+		composerB.setText("updated text B");
+		composerB.setCursorOffset(14);
+		composerB.onComposerChange?.(composerB.getComposerState());
+
+		expect(hostChangesB).toContain("updated text B");
+		expect(driverEvents).toContainEqual({
+			type: "composer-change",
+			text: "updated text B",
+			cursorOffset: 14,
+		});
+
+		driver.stop();
+		existingTui.stop();
 	});
 });

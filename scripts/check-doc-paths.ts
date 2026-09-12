@@ -32,7 +32,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { listTrackedMarkdown, readIfPresent } from "./check-doc-links";
+import { listTrackedMarkdown } from "./check-doc-links";
+import { readIfPresent } from "./workspace-layout";
 
 export interface DeadPath {
 	file: string;

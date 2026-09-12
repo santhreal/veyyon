@@ -20,23 +20,30 @@ function matchesKittySequenceJs(data: string, expectedCodepoint: number, expecte
 	const actualMod = parsed.modifier & ~LOCK_MASK;
 	const expectedMod = expectedModifier & ~LOCK_MASK;
 	if (actualMod !== expectedMod) return false;
-	if (parsed.codepoint === expectedCodepoint) return true;
-	if (parsed.baseLayoutKey !== undefined && parsed.baseLayoutKey === expectedCodepoint) return true;
-	return false;
+	return (
+		parsed.codepoint === expectedCodepoint ||
+		(parsed.baseLayoutKey !== undefined && parsed.baseLayoutKey === expectedCodepoint)
+	);
 }
 
 const bench = makeBench(ITERATIONS);
-
 console.log(`Kitty sequence match benchmark (${ITERATIONS} iterations)\n`);
 
-bench("js/parse+match", () => {
-	for (const sample of samples) {
-		matchesKittySequenceJs(sample.data, sample.codepoint, sample.modifier);
-	}
-});
+const ARMS = [
+	{
+		name: "js/parse+match",
+		fn: () => {
+			for (const s of samples) matchesKittySequenceJs(s.data, s.codepoint, s.modifier);
+		},
+	},
+	{
+		name: "native/match",
+		fn: () => {
+			for (const s of samples) nativeMatchesKittySequence(s.data, s.codepoint, s.modifier);
+		},
+	},
+] as const;
 
-bench("native/match", () => {
-	for (const sample of samples) {
-		nativeMatchesKittySequence(sample.data, sample.codepoint, sample.modifier);
-	}
-});
+for (const { name, fn } of ARMS) {
+	bench(name, fn);
+}

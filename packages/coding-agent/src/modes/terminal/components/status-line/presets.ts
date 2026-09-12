@@ -64,7 +64,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 			"path",
 			"git",
 			"pr",
-			"subagents",
+			"agents",
 		],
 		rightSegments: [
 			"session_name",
@@ -100,7 +100,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 			"git",
 			"pr",
 			"session",
-			"subagents",
+			"agents",
 		],
 		rightSegments: [
 			"session_name",

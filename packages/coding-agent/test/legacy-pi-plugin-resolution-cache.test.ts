@@ -108,3 +108,33 @@ test("legacy bare dependency rewrites cache fallback package resolution until pl
 
 	expect(refreshedRewrite).toContain("alt.js");
 });
+
+test("a bare dependency is resolved per importer: two extensions with their own copy each get their own", async () => {
+	const root = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-legacy-cache-importers-"));
+	tempRoots.push(root);
+	const importers: string[] = [];
+	for (const [name, main] of [
+		["first", "one.js"],
+		["second", "two.js"],
+	] as const) {
+		const importer = path.join(root, name, "src", "entry.ts");
+		const depRoot = path.join(root, name, "node_modules", "left-pad");
+		await fs.mkdir(path.dirname(importer), { recursive: true });
+		await fs.mkdir(depRoot, { recursive: true });
+		await Bun.write(importer, "export {};\n");
+		await writeJson(path.join(depRoot, "package.json"), { name: "left-pad", version: "1.0.0", main });
+		await Bun.write(path.join(depRoot, main), "export default function leftPad() {}\n");
+		importers.push(importer);
+	}
+
+	spyOn(Bun, "resolveSync").mockImplementation(() => {
+		throw new Error("compiled fallback");
+	});
+
+	const [first, second] = importers;
+	const firstRewrite = await __rewriteLegacyExtensionSourceForTests('import leftPad from "left-pad";', first ?? "");
+	const secondRewrite = await __rewriteLegacyExtensionSourceForTests('import leftPad from "left-pad";', second ?? "");
+
+	expect(firstRewrite).toContain(path.join("first", "node_modules", "left-pad", "one.js"));
+	expect(secondRewrite).toContain(path.join("second", "node_modules", "left-pad", "two.js"));
+});

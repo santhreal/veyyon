@@ -10,16 +10,14 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { type Component, CURSOR_MARKER, type Focusable } from "@veyyon/tui";
+import { HoverController } from "@veyyon/tui/utils/hover-controller";
 import { Key, matchesKey } from "@veyyon/utils/keys";
-import { HoverFade } from "@veyyon/utils/motion";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { theme } from "../../../../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import {
 	computeModalDims,
-	consumeModalChipHover,
-	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
 	type ModalShortcut,
@@ -27,6 +25,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "../chrome/modal-shell";
+import { routeModalCardMouse } from "./select-list-mouse-routing";
 import { hoverBandAt } from "./selector-helpers";
 
 export interface MoveOverlayResult {
@@ -194,14 +193,8 @@ export class MoveOverlay implements Component, Focusable {
 	/** Frame row where the suggestion rows begin (shell body start + input + blank). */
 	#listRowStart = 0;
 	/** Pointer-highlighted suggestion (never the selected one; selection owns its row). */
-	#hoveredIndex: number | null = null;
+	#hover = new HoverController<number>();
 	#onRequestRender?: () => void;
-	/**
-	 * The cross-fade between the suggestion the pointer left and the one it arrived at, once a host
-	 * lends this card a repaint. Absent, the band is switched.
-	 */
-	#hoverFade: HoverFade | undefined;
-
 	constructor(cwd: string, done: (result: MoveOverlayResult | undefined) => void) {
 		this.#cwd = cwd;
 		this.#done = done;
@@ -214,22 +207,12 @@ export class MoveOverlay implements Component, Focusable {
 		this.#onRequestRender = cb;
 		// The band fades only once the card has a repaint to lend it: the frames between two mouse
 		// reports have no input to hang off. Same ambient gate as the open unfold.
-		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: pointerMotionEnabled() });
-		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+		this.#hover.setMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
 	}
 
 	/** Settle the pointer band so no timer outlives a dismissed card. */
 	dispose(): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = undefined;
-		this.#hoveredIndex = null;
-	}
-
-	/** Band strength for a suggestion row; without a fade the hovered row is at 1 and the rest at 0. */
-	#hoverStrength(index: number): number {
-		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
-		return index === this.#hoveredIndex ? 1 : 0;
+		this.#hover.dispose();
 	}
 
 	get focused(): boolean {
@@ -313,7 +296,7 @@ export class MoveOverlay implements Component, Focusable {
 			for (let i = 0; i < shown; i++) {
 				const item = this.#results[i]!;
 				const selected = i === this.#selectedIndex;
-				const hoverStrength = this.#hoverStrength(i);
+				const hoverStrength = this.#hover.strength(i);
 				const marker = selected ? theme.fg("accent", "▶ ") : "  ";
 				const label = selected ? theme.fg("accent", item.label) : theme.fg("text", item.label);
 				const row = `${marker}${label}`;
@@ -340,57 +323,40 @@ export class MoveOverlay implements Component, Focusable {
 	invalidate(): void {}
 
 	#routeMouse(event: SgrMouseEvent): boolean {
-		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-			motion: event.motion,
-			leftClick: event.leftClick,
-		});
-		if (
-			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+		const shown = Math.min(this.#results.length, MAX_RESULTS);
+		return routeModalCardMouse({
+			shellGeometry: this.#shellGeometry,
+			event,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			onHoverShortcut: id => {
 				this.#hoveredShortcutId = id;
 				this.#onRequestRender?.();
-			})
-		) {
-			return true;
-		}
-		if (
-			chrome.kind === "close" ||
-			chrome.kind === "outside" ||
-			(chrome.kind === "shortcut" && chrome.id === "close")
-		) {
-			this.#done(undefined);
-			return true;
-		}
-		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
-			this.#confirm();
-			return true;
-		}
-		if (event.wheel !== null) {
-			if (this.#results.length > 0) {
-				this.#selectedIndex = Math.max(0, Math.min(this.#results.length - 1, this.#selectedIndex + event.wheel));
-				this.#onRequestRender?.();
-			}
-			return true;
-		}
-		const index = event.row - this.#listRowStart;
-		const shown = Math.min(this.#results.length, MAX_RESULTS);
-		if (event.motion) {
-			const hovered = index >= 0 && index < shown ? index : null;
-			if (hovered !== this.#hoveredIndex) {
-				this.#hoveredIndex = hovered;
-				this.#hoverFade?.set(hovered);
-				this.#onRequestRender?.();
-			}
-			return true;
-		}
-		if (event.leftClick) {
-			// Click mirrors Enter: confirm the suggestion under the pointer.
-			if (index >= 0 && index < shown) {
-				this.#selectedIndex = index;
-				this.#confirm();
-			}
-			return true;
-		}
-		return true;
+			},
+			onCancel: () => this.#done(undefined),
+			onConfirm: () => this.#confirm(),
+			onWheel: delta => {
+				if (this.#results.length > 0) {
+					this.#selectedIndex = Math.max(0, Math.min(this.#results.length - 1, this.#selectedIndex + delta));
+					this.#onRequestRender?.();
+				}
+			},
+			listRowStart: this.#listRowStart,
+			onHoverRow: () => {
+				const index = event.row - this.#listRowStart;
+				const hovered = index >= 0 && index < shown ? index : null;
+				if (hovered !== this.#hover.key) {
+					this.#hover.set(hovered);
+					this.#onRequestRender?.();
+				}
+			},
+			onClickRow: () => {
+				const index = event.row - this.#listRowStart;
+				if (index >= 0 && index < shown) {
+					this.#selectedIndex = index;
+					this.#confirm();
+				}
+			},
+		});
 	}
 
 	#renderInput(): string {

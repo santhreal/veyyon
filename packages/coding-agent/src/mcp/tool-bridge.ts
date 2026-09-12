@@ -210,14 +210,18 @@ function formatMCPContent(content: MCPContent[]): string {
 	return parts.join("\n\n");
 }
 
+/**
+ * Whether `text` repeats any argument VALUE of this call. Keys are never
+ * matched: they come from the tool's own schema, and a server that rejects a
+ * call ordinarily names the field it rejected ("image_path is required"), which
+ * withheld every such error under the old key check while protecting nothing.
+ */
 function containsRawToolArgument(text: string, value: unknown, seen: WeakSet<object> = new WeakSet()): boolean {
 	if (typeof value === "string") return value.length > 0 && text.includes(value);
 	if (value === null || typeof value !== "object" || seen.has(value)) return false;
 	seen.add(value);
 	if (Array.isArray(value)) return value.some(item => containsRawToolArgument(text, item, seen));
-	return Object.entries(value).some(
-		([key, item]) => (key.length > 0 && text.includes(key)) || containsRawToolArgument(text, item, seen),
-	);
+	return Object.values(value).some(item => containsRawToolArgument(text, item, seen));
 }
 
 /**

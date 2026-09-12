@@ -26,7 +26,7 @@ Schema default: `personality: default` in `settings-schema.ts`. The setting is a
 personality: pragmatic
 ```
 
-There is no `/personality` slash command in the shipped registry. Subagents use `none` regardless of the main setting (`sdk.ts`).
+There is no `/personality` slash command in the shipped registry. Agents use `none` regardless of the main setting (`sdk.ts`).
 
 ## Extending the catalog
 

@@ -13,9 +13,8 @@
  */
 
 import type { FramedBlockView, StatusRowView, ToolViewRenderer, ViewLine, ViewSection } from "@veyyon/view";
-import { stripOutputNotice } from "../core/output-meta";
-import { formatTruncationMetaNotice } from "../core/output-notice";
-import { PREVIEW_LIMITS, replaceTabs } from "../core/render-utils";
+import { extractResultText, formatTruncationMetaNotice, stripOutputNotice } from "../core/output-notice";
+import { PREVIEW_LIMITS, replaceTabs, shortenEmbeddedPaths, type ToolViewResult } from "../core/render-utils";
 import type { SSHToolDetails } from "./ssh";
 
 /** The arguments the card reads off an ssh call, which is any subset the model has sent so far. */
@@ -26,11 +25,7 @@ export interface SshViewArgs {
 }
 
 /** The result the card reads, which is the tool's own result shape narrowed to what a card shows. */
-export interface SshViewResult {
-	content: Array<{ type: string; text?: string }>;
-	details?: SSHToolDetails;
-	isError?: boolean;
-}
+export interface SshViewResult extends ToolViewResult<SSHToolDetails> {}
 
 /** The emblem a settled ssh card is titled by, instead of a success tick. */
 const SSH_EMBLEM = "tool.ssh";
@@ -46,7 +41,7 @@ const PROMPT = "$ ";
  * argument lands.
  */
 function commandSection(command: string, expanded: boolean): ViewSection {
-	const sanitized = replaceTabs(command);
+	const sanitized = replaceTabs(shortenEmbeddedPaths(command));
 	const lines = (sanitized.length > 0 ? sanitized.split("\n") : ["…"]).map(
 		(line, index): ViewLine => (index === 0 ? [{ text: PROMPT, tone: "dim" }, { text: line }] : [{ text: line }]),
 	);
@@ -60,10 +55,17 @@ function commandSection(command: string, expanded: boolean): ViewSection {
  * and printing both says the same thing twice in two registers.
  */
 function outputSection(result: SshViewResult, expanded: boolean): ViewSection {
-	const text = result.content?.find(block => block.type === "text")?.text ?? "";
+	const text = extractResultText(result.content);
 	const output = stripOutputNotice(text, result.details?.meta).trimEnd();
+	const isError = result.isError === true;
 	const lines: ViewLine[] = output
-		? output.split("\n").map((line): ViewLine => [{ text: replaceTabs(line), tone: "output" }])
+		? output
+				.split("\n")
+				.map(
+					(line): ViewLine => [
+						{ text: replaceTabs(shortenEmbeddedPaths(line)), tone: isError ? "error" : "output" },
+					],
+				)
 		: [];
 	const truncation = result.details?.meta?.truncation;
 	if (truncation !== undefined) {

@@ -35,7 +35,7 @@ Resolution order for every `veyyon` / `vey` invocation:
    `veyyon profile default [name]`, or edit it on the **Global** tab of `/settings`.
 4. `default`.
 
-## What a profile owns (shipped)
+## Profile configuration scope (shipped)
 
 When a profile `<name>` is active, native Veyyon paths resolve under:
 
@@ -47,11 +47,11 @@ That resolution is uniform across settings, sessions, blobs, slash commands, sti
 
 **Provider credentials are the one exception:** by default they live in a machine-wide store (`~/.veyyon/shared-auth/agent.db`) that every profile reads, so you sign in once. Set `profileSharing: false` in the global `~/.veyyon/config.yml` (or toggle it on the **Global** tab of `/settings`) to give each profile its own private credential store instead. See [Signing in › Credentials are shared across profiles](../using/authentication.md#credentials-are-shared-across-profiles).
 
-**Keybindings:** each profile owns `agent/keybindings.*`. New profiles seeded with `veyyon profile new --from default` copy the default profile's keybindings once. On first launch of an older named profile that has no keybindings file, Veyyon performs the same one-time seed and logs it. There is no live merge from the default profile after that.
+**Keybindings:** each profile defines `agent/keybindings.*`. New profiles seeded with `veyyon profile new --from default` copy the default profile's keybindings once. On first launch of an older named profile that has no keybindings file, Veyyon performs the same one-time seed and logs it. There is no live merge from the default profile after that.
 
 Project-level dirs (`<cwd>/.veyyon`, `.claude`, etc.) are **not** profile-scoped; they follow the working directory.
 
-**Other tools' config** (skills and `CLAUDE.md`/`AGENTS.md` written for Claude, Codex, and similar) is **off by default** and controlled per profile by `discovery.importForeignConfig`, so each profile decides on its own whether to ambiently read foreign files or run native-only. Another tool's own global dir (`~/.claude/skills`, …) cannot be relocated into a profile, see [Skills › Profiles isolate skills](../reference/skills.md#discovery-pipeline).
+**Other tools' config** (skills and `CLAUDE.md`/`AGENTS.md` written for Claude, Codex, and similar) is **off by default** and controlled per profile by `discovery.importForeignConfig`, allowing each profile to configure whether to ambiently read foreign files or run native-only. Another tool's own global dir (`~/.claude/skills`, …) cannot be relocated into a profile, see [Skills › Profiles isolate skills](../reference/skills.md#discovery-pipeline).
 
 ## Activating a profile
 
@@ -142,15 +142,15 @@ Do not document inline `[profiles.<name>]` tables or standalone `<name>.config.y
 
 ## Model policies and roles (per profile)
 
-Each profile's `config.yml` defines its interactive default, optional roles, subagent policy, and compaction policy:
+Each profile's `config.yml` defines its interactive default, optional roles, agent policy, and compaction policy:
 
 ```yaml
 modelRoles:
   default: openai/gpt-5             # interactive (also set live with /model)
   plan: openai/o3
   smol: deepseek/deepseek-chat
-subagent:
-  model: deepseek/deepseek-chat     # blanket model chain for subagents
+agent:
+  model: deepseek/deepseek-chat     # blanket model chain for agents
   thinkingLevel: high
   agents:
     scout:
@@ -163,7 +163,7 @@ compaction:
   threshold: "80%"
 ```
 
-Unset roles and model chains inherit the live main model at use time, so switching with `/model` changes them immediately. Per-agent subagent settings override the blanket subagent model and effort; an unset per-agent value falls back to that blanket policy. Only an explicit assignment pins a different model. Switching profiles switches all of these assignments with the profile.
+Unset roles and model chains inherit the live main model at use time, so switching with `/model` changes them immediately. Per-agent settings override the blanket agent model and effort; an unset per-agent value falls back to that blanket policy. Only an explicit assignment pins a different model. Switching profiles switches all of these assignments with the profile.
 
 ## See also
 

@@ -12,29 +12,24 @@ import { FOREIGN_PROVIDER_IDS, getForeignProviderIds } from "@veyyon/coding-agen
  * rather than a sample so any drift in either direction fails.
  */
 describe("foreign provider gate", () => {
-	const EXPECTED = [
-		"agents",
-		"agents-md",
-		"claude",
-		"claude-plugins",
-		"codex",
-		"cursor",
-		"gemini",
-		"github",
-		"opencode",
-		"windsurf",
-	];
+	const EXPECTED = ["agents", "agents-md", "claude", "codex", "cursor", "gemini", "github", "opencode", "windsurf"];
 	// `cline` and `vscode` are deliberately absent. Both discovery providers were
 	// deleted outright along with the repo-sourced configuration they read, so
 	// there is no provider left to gate; naming either here would pin a gate over
 	// something that cannot be registered.
+	//
+	// `claude-plugins` is deliberately absent too. Its roots are the profile's own
+	// marketplace installs, `--plugin-dir` paths and a trusted project registry —
+	// the operator's configuration. Gating it left every marketplace install inert
+	// at the default setting. The one foreign source it reads (Claude Code's own
+	// `~/.claude/plugins` registry) is gated inside `listClaudePluginRoots`.
 
 	it("gates exactly the known foreign-tool providers and no first-party ones", () => {
 		expect([...getForeignProviderIds()].sort()).toEqual([...EXPECTED].sort());
 	});
 
 	it("never gates veyyon's own first-party providers", () => {
-		for (const own of ["native", "builtin", "veyyon-plugins", "ssh", "mcp"]) {
+		for (const own of ["native", "builtin", "veyyon-plugins", "claude-plugins", "ssh", "mcp"]) {
 			expect(FOREIGN_PROVIDER_IDS.has(own)).toBe(false);
 		}
 	});

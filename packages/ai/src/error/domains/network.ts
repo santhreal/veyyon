@@ -23,7 +23,14 @@ import {
 import { Flag } from "../flag";
 import type { ErrorDomain } from "./types";
 
-const TIMEOUT_PATTERN = /\b(?:operation\s+)?timed?\s*out\b|\btimeout\b|\bstream stall\b/i;
+/**
+ * `stream stall(?:ed)?`: every provider's idle watchdog reports "<provider>
+ * stream stalled while waiting for the next event". `stall` alone missed that
+ * wording, so a mid-stream stall reached the auto-compaction loop as
+ * transient-only and was re-sent to the same model ten times over, one full
+ * context per attempt.
+ */
+const TIMEOUT_PATTERN = /\b(?:operation\s+)?timed?\s*out\b|\btimeout\b|\bstream stall(?:ed)?\b/i;
 
 /** The sole owner of the timeout wording; `domains/transport.ts` reads it to keep its own rule off timeouts. */
 export function isTimeoutText(text: string): boolean {

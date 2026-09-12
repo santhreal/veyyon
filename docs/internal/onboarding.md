@@ -5,9 +5,8 @@ is the map of the code; this is the path through it.
 
 ## Prerequisites
 
-- **Bun** (the version in the root `package.json` `packageManager` field,
-  currently 1.4.0; the workflows name no `bun-version`, so `oven-sh/setup-bun`
-  installs the version that field states). veyyon is Bun-first; do not
+- **Bun** (the version in `package.json` `packageManager` and the
+  `oven-sh/setup-bun` pin, currently 1.4.0). veyyon runs on Bun; do not
   substitute Node.
 - **Rust** (the pinned `nightly-2026-04-29` toolchain in
   `rust-toolchain.toml`). It is required by `bun run check` and by the fuller
@@ -138,10 +137,11 @@ format). Match the surrounding code.
 ## Opening a pull request
 
 Pull requests are open to everyone, see [CONTRIBUTING.md](../../CONTRIBUTING.md).
-Open the PR against `main`. Put your change under the affected package's
-`## [Unreleased]` changelog section, keep the PR description short (what broke, the
-fix), and make sure `bun run check` and the tests pass. Opening the PR runs
-`Checks` and `CI` against it; a maintainer makes the final call and decides
-whether an automated review is requested.
+A bug fix may open with no issue; anything else needs an issue first and `Refs #N`
+in the body. Open the PR against `main`. Put your change under the affected
+package's `## [Unreleased]` changelog section, keep the PR description short (what
+broke, the fix), and make sure `bun run check` and the tests pass. Opening the PR
+runs `Checks` and `CI` against it; a maintainer makes the final call on whether an
+automated review is requested.
 
-*Verified against `4aaaffd0a` on 2026-08-30.*
+*Verified against `504c88b39f` on 2026-09-11.*

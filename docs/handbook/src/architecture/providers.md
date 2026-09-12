@@ -13,7 +13,7 @@ auth, request, and response formats.
 
 ## Implementation
 
-The provider stack lives in the `@veyyon/ai` package.
+The provider stack is implemented in the `@veyyon/ai` package.
 
 | Component | Role |
 | --- | --- |

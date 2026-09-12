@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/coding-agent",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Coding agent CLI with read, bash, edit, write tools and session management",
   "homepage": "https://veyyon.dev",
   "author": "santhreal",
@@ -74,6 +74,7 @@
     "@veyyon/natives": "catalog:",
     "@veyyon/plugin": "catalog:",
     "@veyyon/settings": "catalog:",
+    "@veyyon/tool-render": "catalog:",
     "@veyyon/tui": "catalog:",
     "@veyyon/utils": "catalog:",
     "@veyyon/view": "catalog:",
@@ -109,8 +110,7 @@
   "devDependencies": {
     "@types/bun": "catalog:",
     "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
-    "@veyyon/tool-render": "workspace:*"
+    "@types/react-dom": "catalog:"
   },
   "engines": {
     "bun": ">=1.4.0"

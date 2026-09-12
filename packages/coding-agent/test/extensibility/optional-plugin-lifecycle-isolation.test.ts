@@ -23,7 +23,6 @@ import * as path from "node:path";
 import { clearClaudePluginRootsCache } from "@veyyon/coding-agent/discovery/helpers";
 import { loadCustomTools } from "@veyyon/coding-agent/extensibility/custom-tools/loader";
 import { loadExtensions } from "@veyyon/coding-agent/extensibility/extensions/loader";
-import { loadHooks } from "@veyyon/coding-agent/extensibility/hooks/loader";
 import {
 	getAllPluginExtensionPaths,
 	getAllPluginHookPaths,
@@ -442,8 +441,8 @@ describe("Optional Plugin Lifecycle & Isolation", () => {
 		expect(hookPaths.some(p => p.includes("disabled-tool-hook"))).toBe(false);
 		expect(hookPaths.some(p => p.includes("enabled-tool-hook"))).toBe(true);
 
-		const loadedHooks = await loadHooks(hookPaths, projectDir.path());
-		expect(loadedHooks.hooks).toHaveLength(1);
+		const loadedHooks = await loadExtensions(hookPaths, projectDir.path());
+		expect(loadedHooks.extensions).toHaveLength(1);
 		expect(loadedHooks.errors).toHaveLength(0);
 
 		expect(globalThis.__pluginExecutionEvidence?.has("@test/disabled-tool-hook:tool")).toBe(false);

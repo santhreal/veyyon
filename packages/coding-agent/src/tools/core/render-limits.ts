@@ -47,3 +47,8 @@ export const TRUNCATE_LENGTHS = {
 	/** Idle recap status line (~40-word LLM reply) */
 	RECAP: 280,
 } as const;
+/** Standard nouns for ToolView hidden counts and list truncation */
+export const LINE_NOUN = { one: "line", many: "lines" } as const;
+export const FILE_NOUN = { one: "file", many: "files" } as const;
+export const ITEM_NOUN = { one: "item", many: "items" } as const;
+export const MATCH_NOUN = { one: "match", many: "matches" } as const;

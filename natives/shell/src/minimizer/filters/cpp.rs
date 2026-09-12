@@ -2,7 +2,11 @@
 
 use std::path::Path;
 
-use crate::minimizer::{MinimizerCtx, MinimizerOutput, contract, primitives};
+use crate::minimizer::{
+	MinimizerCtx, MinimizerOutput,
+	filters::spec::{LineFilterSpec, VerdictStrategy},
+	primitives,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CppTool {
@@ -11,6 +15,65 @@ enum CppTool {
 	Ninja,
 	GTest,
 }
+
+const IMPORTANT_MARKERS: &[&str] = &["error", "failed", "failure", "warning", "fatal", "exception"];
+
+pub static CMAKE_SPEC: LineFilterSpec = LineFilterSpec {
+	strip_prefixes: &[
+		"-- Detecting ",
+		"-- Check for ",
+		"-- Looking for ",
+		"-- Performing Test ",
+		"-- Found ",
+		"-- Configuring done",
+		"-- Generating done",
+		"-- Build files have been written to:",
+	],
+	strip_contains: &["%] Built target ", "%] Building ", "%] Linking ", "%] Generating "],
+	important: IMPORTANT_MARKERS,
+	budget: (120, 80),
+	verdict: VerdictStrategy::CleanOrErrorsUnknown("cmake"),
+	..LineFilterSpec::new()
+};
+
+pub static CTEST_SPEC: LineFilterSpec = LineFilterSpec {
+	strip_prefixes: &["Test project ", "Start ", "Use \"--rerun-failed"],
+	strip_contains: &[" Passed", " tests passed, 0 tests failed out of "],
+	important: IMPORTANT_MARKERS,
+	budget: (120, 80),
+	verdict: VerdictStrategy::CleanOrErrorsUnknown("ctest"),
+	..LineFilterSpec::new()
+};
+
+pub static NINJA_SPEC: LineFilterSpec = LineFilterSpec {
+	strip_contains: &["] Building ", "] Linking ", "] Generating ", "] CXX ", "] CC "],
+	is_noise: Some(|line, exit_code| {
+		line != "ninja: no work to do."
+			&& line.starts_with('[')
+			&& (exit_code == 0 || !is_important(line))
+			&& (line.contains("] Building ")
+				|| line.contains("] Linking ")
+				|| line.contains("] Generating ")
+				|| line.contains("] CXX ")
+				|| line.contains("] CC "))
+	}),
+	important: IMPORTANT_MARKERS,
+	budget: (120, 80),
+	verdict: VerdictStrategy::CleanOrErrorsUnknown("ninja"),
+	..LineFilterSpec::new()
+};
+
+pub static GTEST_SPEC: LineFilterSpec = LineFilterSpec {
+	preserve_empty_in_failure: true,
+	is_pass_noise: Some(is_gtest_pass_noise),
+	is_summary: Some(is_gtest_summary),
+	is_failure_start: Some(is_gtest_failure_start),
+	important: IMPORTANT_MARKERS,
+	is_location: Some(looks_like_source_location),
+	budget: (120, 80),
+	verdict: VerdictStrategy::CleanOrErrorsUnknown("gtest"),
+	..LineFilterSpec::new()
+};
 
 #[must_use]
 pub fn supports(program: &str, _subcommand: Option<&str>) -> bool {
@@ -35,21 +98,21 @@ pub fn is_gtest_binary_name(program: &str) -> bool {
 }
 
 #[must_use]
+pub fn supports_gtest(program: &str, _subcommand: Option<&str>) -> bool {
+	is_gtest_binary_name(program)
+}
+#[must_use]
 pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerOutput {
 	let cleaned = primitives::strip_ansi(input);
 	let tool = direct_tool(ctx.program).or_else(|| invocation_tool(ctx.command));
 	let text = match tool {
-		Some(CppTool::CMake) => filter_cmake(&cleaned, exit_code),
-		Some(CppTool::CTest) => filter_ctest(&cleaned, exit_code),
-		Some(CppTool::Ninja) => filter_ninja(&cleaned, exit_code),
-		Some(CppTool::GTest) => filter_gtest(&cleaned, exit_code),
+		Some(CppTool::CMake) => CMAKE_SPEC.filter(&cleaned, exit_code),
+		Some(CppTool::CTest) => CTEST_SPEC.filter(&cleaned, exit_code),
+		Some(CppTool::Ninja) => NINJA_SPEC.filter(&cleaned, exit_code),
+		Some(CppTool::GTest) => GTEST_SPEC.filter(&cleaned, exit_code),
 		None => primitives::head_tail_lines(&cleaned, 120, 80),
 	};
-	if text == input {
-		MinimizerOutput::passthrough(input)
-	} else {
-		MinimizerOutput::transformed(text, input.len())
-	}
+	MinimizerOutput::maybe_transformed(input, text)
 }
 
 fn direct_tool(program: &str) -> Option<CppTool> {
@@ -80,120 +143,6 @@ fn command_tokens(command: &str) -> impl Iterator<Item = &str> {
 	command.split(|ch: char| ch.is_whitespace() || matches!(ch, ';' | '|' | '&'))
 }
 
-fn filter_cmake(input: &str, exit_code: i32) -> String {
-	let mut out = String::new();
-	for line in input.lines() {
-		let trimmed = line.trim();
-		if trimmed.is_empty() || is_cmake_noise(trimmed, exit_code) {
-			continue;
-		}
-		primitives::push_line(&mut out, line.trim_end());
-	}
-	finish_filtered(input, out, exit_code, "cmake")
-}
-
-fn is_cmake_noise(line: &str, exit_code: i32) -> bool {
-	if exit_code != 0 && is_important(line) {
-		return false;
-	}
-	line.starts_with("-- Detecting ")
-		|| line.starts_with("-- Check for ")
-		|| line.starts_with("-- Looking for ")
-		|| line.starts_with("-- Performing Test ")
-		|| line.starts_with("-- Found ")
-		|| line.starts_with("-- Configuring done")
-		|| line.starts_with("-- Generating done")
-		|| line.starts_with("-- Build files have been written to:")
-		|| line.starts_with("[  ") && line.contains("%] Built target ")
-		|| line.starts_with('[') && line.contains("%] Building ")
-		|| line.starts_with('[') && line.contains("%] Linking ")
-		|| line.starts_with('[') && line.contains("%] Generating ")
-}
-
-fn filter_ctest(input: &str, exit_code: i32) -> String {
-	let mut out = String::new();
-	for line in input.lines() {
-		let trimmed = line.trim();
-		if trimmed.is_empty() || is_ctest_noise(trimmed, exit_code) {
-			continue;
-		}
-		primitives::push_line(&mut out, line.trim_end());
-	}
-	finish_filtered(input, out, exit_code, "ctest")
-}
-
-fn is_ctest_noise(line: &str, exit_code: i32) -> bool {
-	if exit_code != 0 && is_important(line) {
-		return false;
-	}
-	line.starts_with("Test project ")
-		|| line.starts_with("Start ")
-		|| line.contains(" Test #") && line.contains(" Passed")
-		|| line.contains(" tests passed, 0 tests failed out of ")
-		|| line.starts_with("Use \"--rerun-failed")
-}
-
-fn filter_ninja(input: &str, exit_code: i32) -> String {
-	let mut out = String::new();
-	for line in input.lines() {
-		let trimmed = line.trim();
-		if trimmed.is_empty() || is_ninja_noise(trimmed, exit_code) {
-			continue;
-		}
-		primitives::push_line(&mut out, line.trim_end());
-	}
-	finish_filtered(input, out, exit_code, "ninja")
-}
-
-fn is_ninja_noise(line: &str, exit_code: i32) -> bool {
-	if line == "ninja: no work to do." {
-		return false;
-	}
-	if exit_code != 0 && is_important(line) {
-		return false;
-	}
-	line.starts_with('[')
-		&& (line.contains("] Building ")
-			|| line.contains("] Linking ")
-			|| line.contains("] Generating ")
-			|| line.contains("] CXX ")
-			|| line.contains("] CC "))
-}
-
-fn filter_gtest(input: &str, exit_code: i32) -> String {
-	let mut out = String::new();
-	let mut keeping_failure = false;
-
-	for line in input.lines() {
-		let trimmed = line.trim_start();
-		if trimmed.trim().is_empty() {
-			if keeping_failure {
-				primitives::push_line(&mut out, "");
-			}
-			continue;
-		}
-		if is_gtest_pass_noise(trimmed) {
-			keeping_failure = false;
-			continue;
-		}
-		if is_gtest_summary(trimmed) {
-			keeping_failure = false;
-			primitives::push_line(&mut out, line.trim_end());
-			continue;
-		}
-		if is_gtest_failure_start(trimmed) || is_important(trimmed) {
-			keeping_failure = true;
-			primitives::push_line(&mut out, line.trim_end());
-			continue;
-		}
-		if keeping_failure || (exit_code != 0 && looks_like_source_location(trimmed)) {
-			primitives::push_line(&mut out, line.trim_end());
-		}
-	}
-
-	finish_filtered(input, out, exit_code, "gtest")
-}
-
 fn is_gtest_pass_noise(line: &str) -> bool {
 	line.starts_with("[ RUN      ]")
 		|| line.starts_with("[       OK ]")
@@ -221,25 +170,6 @@ fn looks_like_source_location(line: &str) -> bool {
 		return false;
 	};
 	rest.chars().next().is_some_and(|ch| ch.is_ascii_digit())
-}
-
-fn finish_filtered(input: &str, out: String, exit_code: i32, subject: &str) -> String {
-	let deduped = primitives::dedup_consecutive_lines(&out);
-	let body = if deduped.trim().is_empty() {
-		if exit_code == 0 {
-			String::new()
-		} else {
-			primitives::head_tail_lines(input, 120, 80)
-		}
-	} else {
-		primitives::head_tail_lines(&deduped, 120, 80)
-	};
-	let verdict = if exit_code == 0 {
-		contract::clean(subject)
-	} else {
-		contract::errors_unknown(subject)
-	};
-	contract::apply(&verdict, &body)
 }
 
 fn is_important(line: &str) -> bool {

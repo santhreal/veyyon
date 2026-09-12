@@ -11,10 +11,11 @@
 
 import { matchesKey } from "@veyyon/utils/keys";
 import { clampLow } from "@veyyon/utils/math";
-import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
+import type { HoverFadeOptions } from "@veyyon/utils/motion";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import type { Component } from "../tui";
+import { HoverController } from "../utils/hover-controller";
 
 /** Tab definition */
 export interface Tab {
@@ -69,13 +70,7 @@ export class TabBar implements Component {
 	#activeIndex: number = 0;
 	#theme: TabBarTheme;
 	#label: string;
-	#hoverTabId: string | null = null;
-	/**
-	 * The cross-fade, once a host has offered a way to repaint between mouse
-	 * reports ({@link setHoverMotion}). Absent, the band is switched: exactly the
-	 * behavior every existing host has.
-	 */
-	#hoverFade?: HoverFade<string>;
+	#hover = new HoverController<string>();
 	/** Per-render tab hit zones: 0-based line + [start, end) columns. */
 	#hitZones: { line: number; start: number; end: number; index: number }[] = [];
 
@@ -332,18 +327,13 @@ export class TabBar implements Component {
 	 * 0-based column.
 	 */
 	tabAt(line: number, col: number): Tab | undefined {
-		for (const zone of this.#hitZones) {
-			if (zone.line === line && col >= zone.start && col < zone.end) {
-				return this.#tabs[zone.index];
-			}
-		}
-		return undefined;
+		const zone = this.#hitZones.find(z => z.line === line && col >= z.start && col < z.end);
+		return zone ? this.#tabs[zone.index] : undefined;
 	}
 
 	/** Highlight the tab under the pointer (null clears). */
 	setHoverTab(id: string | null): void {
-		this.#hoverTabId = id;
-		this.#hoverFade?.set(id);
+		this.#hover.set(id);
 	}
 
 	/**
@@ -358,16 +348,12 @@ export class TabBar implements Component {
 	 * terminal and a user with transitions off must keep seeing.
 	 */
 	setHoverMotion(options: HoverFadeOptions): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade<string>(options);
-		if (this.#hoverTabId !== null) this.#hoverFade.set(this.#hoverTabId);
+		this.#hover.setMotion(options);
 	}
 
 	/** Cancel every fade and forget the pointer. The bar paints no band after this. */
 	disposeHoverMotion(): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = undefined;
-		this.#hoverTabId = null;
+		this.#hover.dispose();
 	}
 
 	/**
@@ -377,8 +363,7 @@ export class TabBar implements Component {
 	 * a pointer target and the active tab's own accent is the stronger signal.
 	 */
 	#hoverStrength(tab: Tab): number {
-		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(tab.id);
-		return tab.id === this.#hoverTabId ? 1 : 0;
+		return this.#hover.strength(tab.id);
 	}
 
 	/**

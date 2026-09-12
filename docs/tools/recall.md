@@ -97,7 +97,7 @@ When no matches exist:
 - Non-`Error` failures caught by the tool are normalized to `new Error(String(err))` before rethrow.
 
 ## Notes
-- Shared backend details are in `docs/tools/retain.md`: storage, subagent aliasing, bank scoping, mission setup, and mental-model behavior.
+- Shared backend details are in `docs/tools/retain.md`: storage, agent aliasing, bank scoping, mission setup, and mental-model behavior.
 - Hindsight mental models are not fetched by this tool. They may already be present in the agent's developer instructions because the backend caches a `<mental_models>` block separately from recall results.
 - Mnemopi developer instructions may include a `<memories>` block from auto-recall; this explicit tool does not update that block.
 - The tool returns memory hits; it does not synthesize across them. Use `reflect` for that path.

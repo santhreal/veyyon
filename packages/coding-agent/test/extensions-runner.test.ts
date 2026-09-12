@@ -16,10 +16,9 @@ import {
 	testSetExtensionHandlerTimeoutMs,
 } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { APPROVAL_SELECT_OPTIONS, ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
-import { HookRunner } from "@veyyon/coding-agent/extensibility/hooks/runner";
 import { Type } from "@veyyon/kernel/registry/typebox";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
-import { getProjectAgentDir, logger, TempDir } from "@veyyon/utils";
+import { attachFaultSink, type Fault, getProjectAgentDir, logger, TempDir } from "@veyyon/utils";
 
 /**
  * Execution context for a test whose subject is NOT approval.
@@ -156,22 +155,6 @@ describe("ExtensionRunner", () => {
 		expect(context.obfuscateProviderText?.("RUNNER_SECRET")).toBe("#FIRST_RUNTIME#");
 		replacement = "#CURRENT_RUNTIME#";
 		expect(context.obfuscateProviderText?.("RUNNER_SECRET")).toBe("#CURRENT_RUNTIME#");
-	});
-
-	it("keeps the provider text transform live in legacy hook contexts", () => {
-		let replacement = "#FIRST_HOOK_RUNTIME#";
-		const runner = new HookRunner([], tempDir.path(), sessionManager, modelRegistry);
-		runner.initialize({
-			getModel: () => undefined,
-			sendMessageHandler: async () => {},
-			appendEntryHandler: async () => {},
-			obfuscateProviderText: text => text.replaceAll("HOOK_SECRET", replacement),
-		});
-
-		const context = runner.createCommandContext();
-		expect(context.obfuscateProviderText("HOOK_SECRET")).toBe("#FIRST_HOOK_RUNTIME#");
-		replacement = "#CURRENT_HOOK_RUNTIME#";
-		expect(context.obfuscateProviderText("HOOK_SECRET")).toBe("#CURRENT_HOOK_RUNTIME#");
 	});
 
 	describe("shortcut conflicts", () => {
@@ -430,6 +413,70 @@ describe("ExtensionRunner", () => {
 
 			const command = runner.getCommand("deploy");
 			expect(command?.description).toBe("Explicit deploy");
+		});
+
+		it("reports a shadowed command once, naming the extension whose version runs", async () => {
+			const deployCommand = `
+				export default function(pi) {
+					pi.registerCommand("deploy", { description: "d", handler: async () => {} });
+				}
+			`;
+			const loserPath = path.join(extensionsDir, "discovered-deploy.ts");
+			fs.writeFileSync(loserPath, deployCommand);
+			const winnerPath = path.join(tempDir.path(), "explicit-deploy.ts");
+			fs.writeFileSync(winnerPath, deployCommand);
+
+			const result = await loadTestExtensions([winnerPath]);
+			const runner = new ExtensionRunner(
+				result.extensions,
+				result.runtime,
+				tempDir.path(),
+				sessionManager,
+				modelRegistry,
+			);
+			const faults: Fault[] = [];
+			const detach = attachFaultSink(fault => {
+				faults.push(fault);
+			});
+			try {
+				runner.getRegisteredCommands();
+				runner.getRegisteredCommands();
+			} finally {
+				detach();
+			}
+
+			expect(faults).toHaveLength(1);
+			expect(faults[0]?.source).toBe("extensions");
+			expect(faults[0]?.text).toContain(`The extension at ${loserPath} registers the command "/deploy"`);
+			expect(faults[0]?.text).toContain(`the extension at ${winnerPath} also registers`);
+		});
+
+		it("reports a command that collides with a built-in once, and keeps the built-in", async () => {
+			fs.writeFileSync(
+				path.join(extensionsDir, "help.ts"),
+				`export default function(pi) { pi.registerCommand("help", { description: "h", handler: async () => {} }); }`,
+			);
+			const result = await loadTestExtensions();
+			const runner = new ExtensionRunner(
+				result.extensions,
+				result.runtime,
+				tempDir.path(),
+				sessionManager,
+				modelRegistry,
+			);
+			const faults: Fault[] = [];
+			const detach = attachFaultSink(fault => {
+				faults.push(fault);
+			});
+			try {
+				expect(runner.getRegisteredCommands(new Set(["help"]))).toHaveLength(0);
+				runner.getRegisteredCommands(new Set(["help"]));
+			} finally {
+				detach();
+			}
+
+			expect(faults).toHaveLength(1);
+			expect(faults[0]?.text).toContain('registers the command "/help", which is a built-in');
 		});
 	});
 

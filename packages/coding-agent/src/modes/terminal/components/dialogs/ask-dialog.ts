@@ -16,8 +16,9 @@ import { clamp } from "@veyyon/utils/math";
 import { HoverFade } from "@veyyon/utils/motion";
 import { routeSgrMouseInput } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
-import { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { stripRecommendedSuffix, withRecommendedSuffix } from "@veyyon/wire";
 import type {
 	ExtensionAskDialogOption,
@@ -35,8 +36,6 @@ import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../u
 import { CountdownTimer } from "../chrome/countdown-timer";
 import {
 	computeModalDims,
-	consumeModalChipHover,
-	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
@@ -44,6 +43,7 @@ import {
 	pointerMotionEnabled,
 	renderModalShell,
 } from "../chrome/modal-shell";
+import { routeModalChrome } from "../selectors/select-list-mouse-routing";
 import { handleTabSwitchKey, hoverBandAt } from "../selectors/selector-helpers";
 import { HOOK_EDITOR_TEXT_PAD_COLS } from "./hook-editor";
 
@@ -355,7 +355,7 @@ function isAskText(value: unknown): boolean {
  * header renderer and took the process down with `undefined is not an object
  * (evaluating 'text.replaceAll')` — an uncaught exception thrown from inside a
  * render pass, so there was no tool error and no notice, just a dead session and
- * every live subagent with it.
+ * every live agent with it.
  *
  * The precondition is therefore checked once, where the dialog is built, and a
  * violation is an ordinary rejection: `#presentDialog` catches a throwing
@@ -615,32 +615,26 @@ export class AskDialogComponent implements Component {
 
 	#handleMouse(data: string): void {
 		routeSgrMouseInput(data, event => {
-			const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-				motion: event.motion,
-				leftClick: event.leftClick,
-			});
-			if (
-				consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+			// Once closed, or while a text prompt owns the keys, chips only hover.
+			const inert = this.#closed || this.#promptActive;
+			const consumed = routeModalChrome({
+				shellGeometry: this.#shellGeometry,
+				event,
+				hoveredShortcutId: this.#hoveredShortcutId,
+				onHoverShortcut: id => {
 					this.#hoveredShortcutId = id;
 					this.#requestRender();
-				})
-			) {
-				return true;
-			}
-			if (this.#closed || this.#promptActive) return true;
-			if (
-				chrome.kind === "close" ||
-				chrome.kind === "outside" ||
-				(chrome.kind === "shortcut" && chrome.id === "close")
-			) {
-				this.#finishCancel();
-				return true;
-			}
-			if (chrome.kind === "shortcut" && chrome.id === "confirm") {
-				if (this.#isSubmitTab()) this.#handleSubmitTabInput("\n");
-				else this.#handleQuestionInput("\n");
-				return true;
-			}
+				},
+				onCancel: () => {
+					if (!inert) this.#finishCancel();
+				},
+				onConfirm: () => {
+					if (inert) return;
+					if (this.#isSubmitTab()) this.#handleSubmitTabInput("\n");
+					else this.#handleQuestionInput("\n");
+				},
+			});
+			if (consumed || inert) return true;
 			if (event.wheel !== null) {
 				if (this.#isSubmitTab()) {
 					this.#submitScrollOffset = Math.max(0, this.#submitScrollOffset + event.wheel);

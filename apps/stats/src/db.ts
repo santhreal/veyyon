@@ -683,7 +683,7 @@ export function getStatsByFolder(cutoff?: number): FolderStats[] {
 }
 
 /**
- * Get token usage grouped by agent type (main agent, task subagents, advisor).
+ * Get token usage grouped by agent type (main agent, spawned agents, advisor).
  * Token columns are explicit so the dashboard's share denominator matches the
  * counts it renders. Rows missing `agent_type` (defensive) fall back to "main".
  */
@@ -992,16 +992,11 @@ export function getCostTimeSeries(days = 90, cutoff?: number | null): CostTimeSe
  * Existing `messages` rows are unaffected - `INSERT OR IGNORE` keeps them.
  */
 function backfillUserMessages(database: Database): void {
-	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(USER_MESSAGES_BACKFILL_KEY) as
-		| { value: string }
-		| undefined;
-	if (!shouldResetBackfill(row?.value)) return;
+	if (!shouldResetBackfill(readBackfillState(database, USER_MESSAGES_BACKFILL_KEY))) return;
 
 	database.run("DELETE FROM user_messages");
 	database.run("DELETE FROM file_offsets");
-	database
-		.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)")
-		.run(USER_MESSAGES_BACKFILL_KEY, BACKFILL_PENDING);
+	writeBackfillState(database, USER_MESSAGES_BACKFILL_KEY, BACKFILL_PENDING);
 }
 
 /**
@@ -1013,16 +1008,11 @@ function backfillUserMessages(database: Database): void {
  * written here prevents re-wiping on subsequent inits.
  */
 function backfillToolCalls(database: Database): void {
-	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(TOOL_CALLS_BACKFILL_KEY) as
-		| { value: string }
-		| undefined;
-	if (!shouldResetBackfill(row?.value)) return;
+	if (!shouldResetBackfill(readBackfillState(database, TOOL_CALLS_BACKFILL_KEY))) return;
 
 	database.run("DELETE FROM tool_calls");
 	database.run("DELETE FROM file_offsets");
-	database
-		.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)")
-		.run(TOOL_CALLS_BACKFILL_KEY, BACKFILL_PENDING);
+	writeBackfillState(database, TOOL_CALLS_BACKFILL_KEY, BACKFILL_PENDING);
 }
 
 /**
@@ -1035,10 +1025,7 @@ function backfillToolCalls(database: Database): void {
  * interrupted run rolls back and retries on the next init.
  */
 function backfillAgentType(database: Database): void {
-	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(AGENT_TYPE_BACKFILL_KEY) as
-		| { value: string }
-		| undefined;
-	if (row?.value !== BACKFILL_PENDING) return;
+	if (readBackfillState(database, AGENT_TYPE_BACKFILL_KEY) !== BACKFILL_PENDING) return;
 
 	const sessionFiles = database.prepare("SELECT DISTINCT session_file FROM messages").all() as {
 		session_file: string;
@@ -1072,10 +1059,7 @@ function backfillAgentType(database: Database): void {
  * retries on the next init.
  */
 function backfillForkDuplicates(database: Database): void {
-	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(FORK_DEDUPE_KEY) as
-		| { value: string }
-		| undefined;
-	if (row?.value === BACKFILL_COMPLETE) return;
+	if (readBackfillState(database, FORK_DEDUPE_KEY) === BACKFILL_COMPLETE) return;
 
 	const markComplete = database.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)");
 	const apply = database.transaction(() => {
@@ -1096,70 +1080,59 @@ function backfillForkDuplicates(database: Database): void {
 	apply();
 }
 
-/**
- * One-shot wipe of `file_offsets` to force `parseSessionFile` to re-parse
- * every session from byte zero. We don't touch `user_messages`; the parser
- * now emits a `UserMessageLink` for every assistant->parent pair, and the
- * guarded `updateUserMessageLinks` UPDATE fixes any row whose `model` was
- * left NULL by the old in-pass-only linking logic. Idempotent: gated by a
- * sentinel row in `meta`.
- */
-function repairUserMessageLinks(database: Database): void {
-	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(USER_MESSAGE_LINKS_REPAIR_KEY) as
-		| { value: string }
-		| undefined;
-	if (!shouldResetBackfill(row?.value)) return;
+/** The recorded state of one `meta` sentinel, or undefined when it was never enrolled. */
+function readBackfillState(database: Database, key: string): string | undefined {
+	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(key) as { value: string } | undefined;
+	return row?.value;
+}
 
-	database.run("DELETE FROM file_offsets");
-	database
-		.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)")
-		.run(USER_MESSAGE_LINKS_REPAIR_KEY, BACKFILL_PENDING);
+function writeBackfillState(database: Database, key: string, value: string): void {
+	database.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(key, value);
 }
 
 /**
- * One-shot wipe of `file_offsets` so the next sync re-parses every session
- * and re-derives `premium_requests` from recorded `service_tier_change`
- * entries. Earlier ingestions captured priority OpenAI traffic with
- * `premium_requests = 0` because the AI layer only set the field for GitHub
- * Copilot traffic. The parser now folds priority requests into the same
- * counter; combined with the UPSERT in `insertMessageStats`, a single sync
- * pass brings the messages table up to date without touching any other
- * column. Idempotent: gated by a sentinel row in `meta`.
+ * One-shot wipe of `file_offsets` so the next sync re-parses every session from byte zero,
+ * enrolled under `key` and idempotent through its `meta` sentinel.
+ */
+function resetFileOffsetsOnce(database: Database, key: string): void {
+	if (!shouldResetBackfill(readBackfillState(database, key))) return;
+	database.run("DELETE FROM file_offsets");
+	writeBackfillState(database, key, BACKFILL_PENDING);
+}
+
+/**
+ * Re-parse every session so that `parseSessionFile` emits a `UserMessageLink` for every
+ * assistant->parent pair; `user_messages` is untouched, and the guarded `updateUserMessageLinks`
+ * UPDATE fixes any row whose `model` was left NULL by the old in-pass-only linking logic.
+ */
+function repairUserMessageLinks(database: Database): void {
+	resetFileOffsetsOnce(database, USER_MESSAGE_LINKS_REPAIR_KEY);
+}
+
+/**
+ * Re-parse every session to re-derive `premium_requests` from recorded `service_tier_change`
+ * entries. Earlier ingestions captured priority OpenAI traffic with `premium_requests = 0`
+ * because the AI layer only set the field for GitHub Copilot traffic; the parser now folds
+ * priority requests into the same counter, and the UPSERT in `insertMessageStats` brings the
+ * messages table up to date without touching any other column.
  */
 function backfillPriorityPremiumRequests(database: Database): void {
-	const row = database.prepare("SELECT value FROM meta WHERE key = ?").get(PRIORITY_PREMIUM_REQUESTS_BACKFILL_KEY) as
-		| { value: string }
-		| undefined;
-	if (!shouldResetBackfill(row?.value)) return;
-
-	database.run("DELETE FROM file_offsets");
-	database
-		.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)")
-		.run(PRIORITY_PREMIUM_REQUESTS_BACKFILL_KEY, BACKFILL_PENDING);
+	resetFileOffsetsOnce(database, PRIORITY_PREMIUM_REQUESTS_BACKFILL_KEY);
 }
 
 export function markPriorityPremiumRequestsBackfillComplete(): void {
 	if (!db) return;
-	db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
-		PRIORITY_PREMIUM_REQUESTS_BACKFILL_KEY,
-		BACKFILL_COMPLETE,
-	);
+	writeBackfillState(db, PRIORITY_PREMIUM_REQUESTS_BACKFILL_KEY, BACKFILL_COMPLETE);
 }
 
 export function markUserMessagesBackfillComplete(): void {
 	if (!db) return;
-	db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
-		USER_MESSAGES_BACKFILL_KEY,
-		BACKFILL_COMPLETE,
-	);
+	writeBackfillState(db, USER_MESSAGES_BACKFILL_KEY, BACKFILL_COMPLETE);
 }
 
 export function markUserMessageLinksRepairComplete(): void {
 	if (!db) return;
-	db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
-		USER_MESSAGE_LINKS_REPAIR_KEY,
-		BACKFILL_COMPLETE,
-	);
+	writeBackfillState(db, USER_MESSAGE_LINKS_REPAIR_KEY, BACKFILL_COMPLETE);
 }
 
 /**

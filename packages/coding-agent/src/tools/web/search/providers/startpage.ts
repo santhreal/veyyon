@@ -1,15 +1,15 @@
-import type { AuthStorage, FetchImpl } from "@veyyon/ai";
+import type { FetchImpl } from "@veyyon/ai";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { parseHTML } from "linkedom";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../../provider-boundary";
-import type { SearchResponse, SearchSource } from "../types";
+import type { SearchResponse } from "../types";
 import { SearchProviderError } from "../types";
 import { clampNumResults, collapseWhitespace, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
-import { SearchProvider } from "./base";
+import { OpenSearchProvider } from "./base";
 import type { LoadedHtmlPage } from "./browser-page";
 import { browserFetch } from "./browser-page";
-import { classifyProviderHttpError, resolveExternalResultUrl } from "./utils";
+import { RECENCY_SINGLE_LETTER, resolveExternalResultUrl, throwProviderHttpError, toSearchSources } from "./utils";
 
 /**
  * Startpage proxies Google's index behind a privacy frontend and serves fully
@@ -27,17 +27,6 @@ const STARTPAGE_OWN_HOSTS: readonly string[] = ["startpage.com"];
 const STARTPAGE_SEARCH_URL = "https://www.startpage.com/sp/search";
 const STARTPAGE_TRANSFORM_BOUNDARY = "Startpage search";
 const MAX_NUM_RESULTS = 20;
-
-/**
- * Recency → Startpage `with_date` param. Accepts single letters; an absent
- * value returns the unfiltered default.
- */
-const RECENCY_TO_STARTPAGE_WITH_DATE: Record<NonNullable<SearchParams["recency"]>, string> = {
-	day: "d",
-	week: "w",
-	month: "m",
-	year: "y",
-};
 
 /** One organic result lifted from the Startpage results page. */
 interface ParsedResult {
@@ -150,7 +139,7 @@ async function fetchFormInputs(
 async function callStartpageHtml(params: SearchParams): Promise<string> {
 	return withHardTimeout(params.signal, async signal => {
 		const fetchImpl = params.fetch ?? fetch;
-		const withDate = params.recency ? RECENCY_TO_STARTPAGE_WITH_DATE[params.recency] : undefined;
+		const withDate = params.recency ? RECENCY_SINGLE_LETTER[params.recency] : undefined;
 
 		const formInputs = await fetchFormInputs(fetchImpl, signal, params.resolveProviderTextTransform);
 		let page: LoadedHtmlPage;
@@ -224,9 +213,7 @@ async function callStartpageHtml(params: SearchParams): Promise<string> {
 			);
 		}
 		if (page.status < 200 || page.status >= 300) {
-			const classified = classifyProviderHttpError("startpage", page.status, page.html);
-			if (classified) throw classified;
-			throw new SearchProviderError("startpage", `Startpage HTML error (${page.status})`, page.status);
+			throwProviderHttpError("startpage", page.status, page.html);
 		}
 		return page.html;
 	});
@@ -242,30 +229,13 @@ export async function searchStartpage(params: SearchParams): Promise<SearchRespo
 	const html = await callStartpageHtml(params);
 	const parsed = parseHtmlResults(html);
 
-	const sources: SearchSource[] = [];
-	const seen = new Set<string>();
-	for (const result of parsed) {
-		if (seen.has(result.url)) continue;
-		seen.add(result.url);
-		sources.push({ title: result.title, url: result.url, snippet: result.snippet });
-		if (sources.length >= numResults) break;
-	}
-
-	return { provider: "startpage", sources };
+	return { provider: "startpage", sources: toSearchSources(parsed, numResults, { deduplicate: true }) };
 }
 
 /** Search provider for Startpage (no API key required). */
-export class StartpageProvider extends SearchProvider {
+export class StartpageProvider extends OpenSearchProvider {
 	readonly id = "startpage";
 	readonly label = "Startpage";
-
-	isAvailable(_authStorage: AuthStorage): boolean {
-		return true;
-	}
-
-	isExplicitlyAvailable(_authStorage: AuthStorage): boolean {
-		return true;
-	}
 
 	search(params: SearchParams): Promise<SearchResponse> {
 		return searchStartpage(params);

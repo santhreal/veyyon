@@ -1,13 +1,15 @@
 import { Ellipsis } from "@veyyon/natives";
 import { getKeybindings } from "@veyyon/utils/keybindings";
-import { extractPrintableText, isLoneLineFeed } from "@veyyon/utils/keys";
+import { isLoneLineFeed } from "@veyyon/utils/keys";
 import { clamp, clampLow } from "@veyyon/utils/math";
-import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
+import type { HoverFadeOptions } from "@veyyon/utils/motion";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { sanitizeSingleLine, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type { Component } from "../tui";
+import { HoverController } from "../utils/hover-controller";
+import { formatSearchStatus, handleSearchKeyInput } from "../utils/search-filter";
 import { ScrollView } from "./scroll-view";
 import { filterSettingItems } from "./settings-search";
 
@@ -145,14 +147,7 @@ export class SettingsList implements Component {
 	#submenuItemId: string | null = null;
 	// Mouse support: hover highlight and per-render hit maps (content-line
 	// index → item id), rebuilt by every main-list render.
-	#hoveredItemId: string | null = null;
-	/**
-	 * The cross-fade, once a host has lent this list a repaint
-	 * ({@link setHoverMotion}). Absent, the band is switched, which is what every
-	 * host had before. Keyed by setting id: a row keeps its band across a filter
-	 * keystroke that moves it, and loses it when the row itself goes away.
-	 */
-	#hoverFade?: HoverFade<string>;
+	#hover = new HoverController<string>();
 	#hitRows: (string | undefined)[] = [];
 	#sidebarHitRows: (string | undefined)[] = [];
 	#sidebarHitCol = 0;
@@ -264,8 +259,7 @@ export class SettingsList implements Component {
 
 	/** Highlight the item under the pointer (null clears). */
 	setHoverItem(id: string | null): void {
-		this.#hoveredItemId = id;
-		this.#hoverFade?.set(id);
+		this.#hover.set(id);
 	}
 
 	/**
@@ -278,9 +272,7 @@ export class SettingsList implements Component {
 	 * `display.transitions: off` get.
 	 */
 	setHoverMotion(options: HoverFadeOptions): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade<string>(options);
-		if (this.#hoveredItemId !== null) this.#hoverFade.set(this.#hoveredItemId);
+		this.#hover.setMotion(options);
 	}
 
 	/**
@@ -289,9 +281,7 @@ export class SettingsList implements Component {
 	 * a half-faded band leaves rather than jumping to full strength.
 	 */
 	disposeHoverMotion(): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = undefined;
-		this.#hoveredItemId = null;
+		this.#hover.dispose();
 	}
 
 	/**
@@ -301,9 +291,7 @@ export class SettingsList implements Component {
 	 * has moved onto it, so the suppression lives here rather than in the fade.
 	 */
 	#hoverStrength(id: string, isSelected: boolean): number {
-		if (isSelected) return 0;
-		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(id);
-		return id === this.#hoveredItemId ? 1 : 0;
+		return isSelected ? 0 : this.#hover.strength(id);
 	}
 
 	/**
@@ -513,9 +501,7 @@ export class SettingsList implements Component {
 	}
 
 	#renderSearchStatus(width: number): string {
-		const query = sanitizeSingleLine(this.#filterQuery);
-		const statusText = query ? `  Search: ${query}` : "  Type to search";
-		return this.#theme.hint(truncateToWidth(statusText, width, Ellipsis.Omit));
+		return formatSearchStatus(this.#filterQuery, width, this.#theme.hint);
 	}
 
 	#shouldRenderSearchStatus(): boolean {
@@ -524,28 +510,10 @@ export class SettingsList implements Component {
 	}
 
 	#handleSearchInput(data: string): boolean {
-		if (this.#options.typeToSearch === false) return false;
-		if (this.#items.length === 0) return false;
-
-		const kb = getKeybindings();
-		if (kb.matches(data, "tui.editor.deleteCharBackward")) {
-			if (this.#filterQuery.length === 0) return false;
-			const q = this.#filterQuery;
-			const len = q.length;
-			// Drop one code point: a low surrogate takes its high half with it, a lone one goes alone.
-			const cut =
-				len >= 2 && (q.charCodeAt(len - 1) & 0xfc00) === 0xdc00 && (q.charCodeAt(len - 2) & 0xfc00) === 0xd800
-					? 2
-					: 1;
-			this.#setFilter(q.slice(0, len - cut));
-			return true;
-		}
-
-		const printableText = extractPrintableText(data);
-		if (printableText === undefined) return false;
-		if (this.#filterQuery.length === 0 && printableText.trim().length === 0) return false;
-
-		this.#setFilter(this.#filterQuery + printableText);
+		if (this.#options.typeToSearch === false || this.#items.length === 0) return false;
+		const next = handleSearchKeyInput(data, this.#filterQuery, true, this.#filterQuery.length > 0);
+		if (next === null) return false;
+		this.#setFilter(next);
 		return true;
 	}
 

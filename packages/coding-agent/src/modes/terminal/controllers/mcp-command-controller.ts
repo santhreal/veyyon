@@ -6,7 +6,7 @@
 import { type Component, type OverlayHandle, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, getMCPConfigPath, getProjectDir, isAbortError, withTimeout } from "@veyyon/utils";
 import { raceWithTimeout } from "@veyyon/utils/scoped-timeout";
-import { replaceTabs } from "@veyyon/utils/wrap";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import type { SourceMeta } from "../../../discovery/capability/types";
 import { expandEnvVarsDeep, unresolvedRefusedDownstream } from "../../../discovery/env-expansion";
 import {
@@ -50,7 +50,14 @@ import {
 } from "../../../mcp/smithery-registry";
 import { sanitizeMcpStatusError } from "../../../mcp/startup-events";
 import type { MCPAuthConfig, MCPServerConfig, MCPServerConnection } from "../../../mcp/types";
-import { MCP_SCOPE_REMOVED_REPLACEMENT, removedOptionMessage } from "../../../slash-commands/helpers/parse";
+import {
+	MCP_ADD_USAGE,
+	MCP_REMOVE_USAGE,
+	MCP_SEARCH_USAGE,
+	parseMcpAddCommand,
+	parseMcpRemoveArgs,
+	parseMcpSearchArgs,
+} from "../../../slash-commands/helpers/mcp-args";
 import { withIcon } from "../../../theme/icon-label";
 import { theme } from "../../../theme/theme";
 import { shortenPath } from "../../../tools/core/render-utils";
@@ -60,9 +67,8 @@ import { MCPAddWizard } from "../components/dialogs/mcp-add-wizard";
 import { ChatBlock } from "../components/transcript/chat-block";
 import { TranscriptBlock } from "../components/transcript/transcript-container";
 import { urlHyperlinkAlways } from "../draw/hyperlink";
-import { parseCommandArgs } from "../shared";
 import type { InteractiveModeContext } from "../types";
-import { groupBySource, showCommandMessage } from "./command-controller-shared";
+import { dispatchSubcommand, groupBySource, showCommandMessage } from "./command-controller-shared";
 
 /**
  * The slice of the interactive context this controller uses: 12 members of the
@@ -243,63 +249,6 @@ export class MCPOAuthCancelledError extends Error {
 /** Reason recorded on the OAuth flow's AbortController when the user hits Esc. */
 const MCP_OAUTH_USER_CANCEL_REASON = "MCP OAuth flow cancelled by user";
 
-type MCPAddTransport = "http" | "sse";
-
-const MCP_ADD_USAGE = "Usage: /mcp add <name> [http|sse] [url <url>] [token <token>] [run <command...>]";
-
-const MCP_SEARCH_USAGE = "Usage: /mcp smithery-search <keyword...> [<limit 1-100>] [semantic]";
-
-const MCP_REMOVE_USAGE = "Usage: /mcp remove <name>";
-
-/**
- * The option spellings `/mcp add` no longer has, keyed by bare name. The empty key
- * is the separator that used to mean "everything after this is a command to run",
- * which is what the `run` keyword means now. The scope words are keys too, so a
- * plain `project` is refused with the reason rather than read as something else;
- * that reason is {@link MCP_SCOPE_REMOVED_REPLACEMENT}, which the text/ACP
- * handler delivers word for word from the same constant.
- */
-const MCP_ADD_REMOVED_OPTIONS: Record<string, string> = {
-	"": "write `run <command...>`, which takes the whole rest of the line",
-	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
-	project: MCP_SCOPE_REMOVED_REPLACEMENT,
-	user: MCP_SCOPE_REMOVED_REPLACEMENT,
-	url: "write `url <url>`",
-	transport: "write `http` or `sse` as a plain word",
-	token: "write `token <token>`",
-};
-
-/** The option spellings `/mcp smithery-search` no longer has, keyed by bare name. */
-const MCP_SEARCH_REMOVED_OPTIONS: Record<string, string> = {
-	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
-	project: MCP_SCOPE_REMOVED_REPLACEMENT,
-	user: MCP_SCOPE_REMOVED_REPLACEMENT,
-	limit: "write the limit as a plain integer",
-	semantic: "write `semantic` as a plain word",
-};
-
-/** The option spellings `/mcp remove` no longer has, keyed by bare name. */
-const MCP_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
-	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
-	project: MCP_SCOPE_REMOVED_REPLACEMENT,
-	user: MCP_SCOPE_REMOVED_REPLACEMENT,
-};
-
-type MCPAddParsed = {
-	initialName?: string;
-	quickConfig?: MCPServerConfig;
-	isCommandQuickAdd?: boolean;
-	hasAuthToken?: boolean;
-	error?: string;
-};
-
-type MCPSearchParsed = {
-	keyword: string;
-	limit: number;
-	semantic: boolean;
-	error?: string;
-};
-
 export class MCPCommandController {
 	constructor(private ctx: McpCommandControllerContext) {}
 
@@ -307,67 +256,32 @@ export class MCPCommandController {
 	 * Handle /mcp command and route to subcommands
 	 */
 	async handle(text: string): Promise<void> {
-		const parts = text.trim().split(/\s+/);
-		const subcommand = parts[1]?.toLowerCase();
-
-		if (!subcommand || subcommand === "help") {
-			this.#showHelp();
-			return;
-		}
-
-		switch (subcommand) {
-			case "add":
-				await this.#handleAdd(text);
-				break;
-			case "list":
-				await this.#handleList();
-				break;
-			case "remove":
-			case "rm":
-				await this.#handleRemove(text);
-				break;
-			case "test":
-				await this.#handleTest(parts[2]);
-				break;
-			case "reauth":
-				await this.#handleReauth(parts[2]);
-				break;
-			case "unauth":
-				await this.#handleUnauth(parts[2]);
-				break;
-			case "enable":
-				await this.#handleSetEnabled(parts[2], true);
-				break;
-			case "disable":
-				await this.#handleSetEnabled(parts[2], false);
-				break;
-			case "resources":
-				await this.#handleResources();
-				break;
-			case "prompts":
-				await this.#handlePrompts();
-				break;
-			case "notifications":
-				await this.#handleNotifications();
-				break;
-			case "smithery-search":
-				await this.#handleSearch(text);
-				break;
-			case "smithery-login":
-				await this.#handleSmitheryLogin();
-				break;
-			case "smithery-logout":
-				await this.#handleSmitheryLogout();
-				break;
-			case "reconnect":
-				await this.#handleReconnect(parts[2]);
-				break;
-			case "reload":
-				await this.#handleReload();
-				break;
-			default:
-				this.ctx.showError(`Unknown subcommand: ${subcommand}. Type /mcp help for usage.`);
-		}
+		await dispatchSubcommand(
+			text,
+			"mcp",
+			[
+				{ name: "add", handler: () => this.#handleAdd(text) },
+				{ name: "list", handler: () => this.#handleList() },
+				{ name: "remove", aliases: ["rm"], handler: () => this.#handleRemove(text) },
+				{ name: "test", handler: (_args, _full, parts) => this.#handleTest(parts[2]) },
+				{ name: "reauth", handler: (_args, _full, parts) => this.#handleReauth(parts[2]) },
+				{ name: "unauth", handler: (_args, _full, parts) => this.#handleUnauth(parts[2]) },
+				{ name: "enable", handler: (_args, _full, parts) => this.#handleSetEnabled(parts[2], true) },
+				{ name: "disable", handler: (_args, _full, parts) => this.#handleSetEnabled(parts[2], false) },
+				{ name: "resources", handler: () => this.#handleResources() },
+				{ name: "prompts", handler: () => this.#handlePrompts() },
+				{ name: "notifications", handler: () => this.#handleNotifications() },
+				{ name: "smithery-search", handler: () => this.#handleSearch(text) },
+				{ name: "smithery-login", handler: () => this.#handleSmitheryLogin() },
+				{ name: "smithery-logout", handler: () => this.#handleSmitheryLogout() },
+				{ name: "reconnect", handler: (_args, _full, parts) => this.#handleReconnect(parts[2]) },
+				{ name: "reload", handler: () => this.#handleReload() },
+			],
+			{
+				onHelp: () => this.#showHelp(),
+				showError: msg => this.ctx.showError(msg),
+			},
+		);
 	}
 
 	/**
@@ -407,171 +321,11 @@ export class MCPCommandController {
 	}
 
 	/**
-	 * Parse the argument tail of `/mcp add`.
-	 *
-	 * Every argument is a plain word, disambiguated two ways and no others. The
-	 * name is POSITION: token 1 is the name whatever it spells, so a server called
-	 * `url` or `run` is named without ceremony. Everything after it is either a
-	 * CLOSED SET word that is its own value (`http|sse`, the transport) or a
-	 * leading keyword introducing text no set could describe (`url <url>`,
-	 * `token <token>`, `run <command...>`).
-	 *
-	 * Those token sets cannot overlap, which is what makes reading a word by its
-	 * own shape sound here: the closed set and the three keywords are five literal
-	 * spellings, all distinct, and a keyword's value is consumed by position rather
-	 * than examined. `run` takes the whole remainder, so a command's own arguments
-	 * are never read as this grammar's words.
-	 */
-	#parseAddCommand(text: string): MCPAddParsed {
-		const prefixMatch = text.match(/^\/mcp\s+add\b\s*(.*)$/i);
-		const tokens = parseCommandArgs(prefixMatch?.[1]?.trim() ?? "");
-		if (tokens.length === 0) return {};
-
-		const name = tokens[0];
-		if (name.startsWith("-")) return { error: removedOptionMessage(name, MCP_ADD_REMOVED_OPTIONS, MCP_ADD_USAGE) };
-
-		let url: string | undefined;
-		let transport: MCPAddTransport = "http";
-		let authToken: string | undefined;
-		let commandTokens: string[] | undefined;
-
-		const seen = new Set<string>();
-		let index = 1;
-		while (index < tokens.length) {
-			const token = tokens[index];
-			if (token.startsWith("-") || token === "project" || token === "user") {
-				return { error: removedOptionMessage(token, MCP_ADD_REMOVED_OPTIONS, MCP_ADD_USAGE) };
-			}
-			let word: string;
-			if (token === "run") {
-				commandTokens = tokens.slice(index + 1);
-				word = "run";
-				index = tokens.length;
-			} else if (token === "url" || token === "token") {
-				const value = tokens[index + 1];
-				if (!value) return { error: `Missing value after \`${token}\`.\n${MCP_ADD_USAGE}` };
-				if (token === "url") url = value;
-				else authToken = value;
-				word = token;
-				index += 2;
-			} else if (token === "http" || token === "sse") {
-				transport = token;
-				word = "transport";
-				index += 1;
-			} else {
-				return { error: `Unknown argument: ${token}\n${MCP_ADD_USAGE}` };
-			}
-			if (seen.has(word)) return { error: `\`${word}\` given twice.\n${MCP_ADD_USAGE}` };
-			seen.add(word);
-		}
-
-		const hasCommand = Boolean(commandTokens && commandTokens.length > 0);
-		if (!url && !hasCommand) {
-			return { initialName: name };
-		}
-		if (url && hasCommand) {
-			return { error: "Use either `url <url>` or `run <command...>`, not both." };
-		}
-		if (authToken && !url) {
-			return { error: "`token` requires `url` (HTTP/SSE transport)." };
-		}
-
-		if (commandTokens && commandTokens.length > 0) {
-			const [command, ...args] = commandTokens;
-			const config: MCPServerConfig = {
-				type: "stdio",
-				command,
-				args: args.length > 0 ? args : undefined,
-			};
-			return { initialName: name, quickConfig: config, isCommandQuickAdd: true };
-		}
-
-		const useHttpTransport = transport === "http";
-		let normalizedUrl = url!;
-		if (!/^https?:\/\//i.test(normalizedUrl)) {
-			normalizedUrl = `https://${normalizedUrl}`;
-		}
-		const config: MCPServerConfig = {
-			type: useHttpTransport ? "http" : "sse",
-			url: normalizedUrl,
-			headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
-		};
-		return {
-			initialName: name,
-			quickConfig: config,
-			isCommandQuickAdd: false,
-			hasAuthToken: Boolean(authToken),
-		};
-	}
-
-	/**
-	 * Parse the argument tail of `/mcp smithery-search`.
-	 *
-	 * The keyword is arbitrary text and the two options are words, so the keyword
-	 * is required FIRST and the options are read from the END. Token 1 is always
-	 * part of the keyword, which is what keeps a one-word search for `semantic` or
-	 * for a number searching for it; scanning backwards then stops at the first
-	 * word that belongs to no option, and everything up to there is the keyword.
-	 *
-	 * The two cannot be confused: `semantic` is one literal word and the limit is
-	 * the only integer the command reads. A trailing scope word is refused there
-	 * rather than joined to the keyword, because a scope is what an operator who
-	 * writes one means, and this surface has none.
-	 *
-	 * What this does NOT resolve, because no rule can: a keyword whose LAST word is
-	 * `semantic` or an integer in range has that word read as the option. Put it
-	 * anywhere but last, or search for the single word alone.
-	 */
-	#parseSearchCommand(text: string): MCPSearchParsed {
-		const prefixMatch = text.match(/^\/mcp\s+smithery-search\b\s*(.*)$/i);
-		const tokens = parseCommandArgs(prefixMatch?.[1]?.trim() ?? "");
-		const base: MCPSearchParsed = { keyword: "", limit: 20, semantic: false };
-		if (tokens.length === 0) return { ...base, error: `Keyword required.\n${MCP_SEARCH_USAGE}` };
-		for (const token of tokens) {
-			if (token.startsWith("-")) {
-				return { ...base, error: removedOptionMessage(token, MCP_SEARCH_REMOVED_OPTIONS, MCP_SEARCH_USAGE) };
-			}
-		}
-
-		let limit = 20;
-		let semantic = false;
-		const seen = new Set<string>();
-		let end = tokens.length;
-		while (end > 1) {
-			const token = tokens[end - 1];
-			if (token === "project" || token === "user") {
-				return { ...base, error: removedOptionMessage(token, MCP_SEARCH_REMOVED_OPTIONS, MCP_SEARCH_USAGE) };
-			}
-			let word: string;
-			if (token === "semantic") {
-				semantic = true;
-				word = "semantic";
-			} else if (/^\d+$/.test(token)) {
-				const value = Number(token);
-				if (value < 1 || value > 100) {
-					return {
-						...base,
-						error: `Invalid limit: ${token}. Use an integer between 1 and 100.\n${MCP_SEARCH_USAGE}`,
-					};
-				}
-				limit = value;
-				word = "limit";
-			} else {
-				break;
-			}
-			if (seen.has(word)) return { ...base, error: `\`${word}\` given twice.\n${MCP_SEARCH_USAGE}` };
-			seen.add(word);
-			end -= 1;
-		}
-
-		return { keyword: tokens.slice(0, end).join(" "), limit, semantic };
-	}
-
-	/**
 	 * Handle /mcp add - Launch interactive wizard or quick-add from args
 	 */
 	async #handleAdd(text: string): Promise<void> {
-		const parsed = this.#parseAddCommand(text);
+		const match = text.match(/^\/mcp\s+add\b\s*(.*)$/i);
+		const parsed = parseMcpAddCommand(match?.[1]?.trim() ?? "");
 		if (parsed.error) {
 			this.ctx.showError(parsed.error);
 			return;
@@ -1374,24 +1128,16 @@ export class MCPCommandController {
 	 */
 	async #handleRemove(text: string): Promise<void> {
 		const match = text.match(/^\/mcp\s+(?:remove|rm)\b\s*(.*)$/i);
-		const rest = match?.[1]?.trim() ?? "";
-		let name: string | undefined;
-		for (const token of parseCommandArgs(rest)) {
-			if (token.startsWith("-") || (name !== undefined && (token === "project" || token === "user"))) {
-				this.ctx.showError(removedOptionMessage(token, MCP_REMOVE_REMOVED_OPTIONS, MCP_REMOVE_USAGE));
-				return;
-			}
-			if (name !== undefined) {
-				this.ctx.showError(`Unknown argument: ${token}\n${MCP_REMOVE_USAGE}`);
-				return;
-			}
-			name = token;
+		const parsed = parseMcpRemoveArgs(match?.[1]?.trim() ?? "", "terminal");
+		if (parsed.error) {
+			this.ctx.showError(parsed.error);
+			return;
 		}
-
-		if (!name) {
+		if (!parsed.name) {
 			this.ctx.showError(`Server name required.\n${MCP_REMOVE_USAGE}`);
 			return;
 		}
+		const name = parsed.name;
 
 		try {
 			const filePath = getMCPConfigPath("user", getProjectDir());
@@ -2333,7 +2079,8 @@ export class MCPCommandController {
 	}
 
 	async #handleSearch(text: string): Promise<void> {
-		const parsed = this.#parseSearchCommand(text);
+		const match = text.match(/^\/mcp\s+smithery-search\b\s*(.*)$/i);
+		const parsed = parseMcpSearchArgs(match?.[1]?.trim() ?? "", "terminal");
 		if (parsed.error) {
 			this.ctx.showError(parsed.error);
 			return;

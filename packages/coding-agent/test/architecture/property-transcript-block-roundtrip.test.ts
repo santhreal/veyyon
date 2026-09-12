@@ -1,7 +1,7 @@
 /**
- * WHY: the transcript builder is the only path from a session message to
- * something an operator sees, and its switch is on a role string. The defect
- * class this closes is a message role that reaches the builder and falls
+ * WHY: the serialized transcript projection dispatches on a message role.
+ * The defect class this closes is a message role that reaches the builder and
+ * falls
  * through: a new custom role a module of this package adds to
  * `CustomAgentMessages` by declaration merging, or a new member of the core
  * `Message` union, renders as an "Unrenderable message role" error block in
@@ -26,6 +26,8 @@ import type { AgentMessage } from "@veyyon/session";
 import type { TranscriptBlock } from "@veyyon/wire/presentation";
 import {
 	blockIdFor,
+	contentToText,
+	defaultToolText,
 	isDisplayed,
 	toTranscriptBlock,
 	toTranscriptBlocks,
@@ -242,5 +244,227 @@ describe("hidden messages stay out of the transcript", () => {
 		const last = { role: "developer", content: "after", timestamp: 2 } as AgentMessage;
 		const withHidden = toTranscriptBlocks([first, hidden, last]);
 		expect(withHidden.map(block => block.id)).toEqual([blockIdFor(first, 0), blockIdFor(last, 2)]);
+	});
+});
+
+describe("prompt projections preserve text and synthetic provenance", () => {
+	test.each(["user", "developer"] as const)("%s text chunks retain their original adjacency", role => {
+		const message: Extract<AgentMessage, { role: "user" | "developer" }> = {
+			role,
+			content: [
+				{ type: "text", text: "first" },
+				{ type: "text", text: "" },
+				{ type: "text", text: " second" },
+			],
+			timestamp: 1,
+		};
+		const block = toTranscriptBlock(message, { index: 0 });
+		expect(block.kind).toBe(role === "user" ? "user-message" : "developer-message");
+		if (block.kind !== "user-message" && block.kind !== "developer-message") throw new Error(block.kind);
+		expect(block.text).toBe("first second");
+		expect(block.synthetic).toBe(role === "developer");
+	});
+
+	test("a synthetic user prompt retains its provenance", () => {
+		const block = toTranscriptBlock(
+			{ role: "user", content: "generated prompt", synthetic: true, timestamp: 1 },
+			{ index: 0 },
+		);
+		if (block.kind !== "user-message") throw new Error(block.kind);
+		expect(block.synthetic).toBe(true);
+		expect(block.text).toBe("generated prompt");
+	});
+});
+
+describe("contentToText extracts wire-visible text across content structures", () => {
+	test("preserves string content verbatim", () => {
+		expect(contentToText("hello world")).toBe("hello world");
+		expect(contentToText("")).toBe("");
+	});
+
+	test("returns empty string for empty block array and empty text blocks", () => {
+		expect(contentToText([])).toBe("");
+		expect(contentToText([{ type: "text", text: "" }])).toBe("");
+	});
+
+	test("skips leading empty text blocks without prepending newline to following text", () => {
+		expect(
+			contentToText([
+				{ type: "text", text: "" },
+				{ type: "text", text: "hello" },
+			]),
+		).toBe("hello");
+	});
+
+	test("preserves empty text blocks after the first nonempty block", () => {
+		expect(
+			contentToText([
+				{ type: "text", text: "first" },
+				{ type: "text", text: "" },
+				{ type: "text", text: "last" },
+			]),
+		).toBe("first\n\nlast");
+	});
+
+	test("returns empty string for image-only content", () => {
+		expect(contentToText([{ type: "image", mimeType: "image/png" }])).toBe("");
+	});
+
+	test("joins multipart text blocks with newline separator", () => {
+		expect(
+			contentToText([
+				{ type: "text", text: "line 1" },
+				{ type: "text", text: "line 2" },
+			]),
+		).toBe("line 1\nline 2");
+	});
+
+	test("skips image and non-text blocks in mixed multipart content", () => {
+		expect(
+			contentToText([
+				{ type: "text", text: "before" },
+				{ type: "image", mimeType: "image/jpeg" },
+				null,
+				{ type: "other", text: "ignored" },
+				{ type: "text", text: "after" },
+			]),
+		).toBe("before\nafter");
+	});
+
+	test("returns empty string for non-string non-array inputs", () => {
+		expect(contentToText(undefined)).toBe("");
+		expect(contentToText(null)).toBe("");
+		expect(contentToText(123)).toBe("");
+		expect(contentToText({ text: "not in an array" })).toBe("");
+	});
+});
+
+describe("defaultToolText formats tool arguments safely", () => {
+	test("returns string arguments verbatim", () => {
+		expect(defaultToolText("raw string args")).toBe("raw string args");
+	});
+
+	test("returns empty string for undefined", () => {
+		expect(defaultToolText(undefined)).toBe("");
+	});
+
+	test("formats objects and arrays as 2-space indented JSON", () => {
+		expect(defaultToolText({ key: "val" })).toBe('{\n  "key": "val"\n}');
+		expect(defaultToolText([1, 2])).toBe("[\n  1,\n  2\n]");
+	});
+
+	test("formats primitives to JSON string", () => {
+		expect(defaultToolText(null)).toBe("null");
+		expect(defaultToolText(42)).toBe("42");
+		expect(defaultToolText(true)).toBe("true");
+	});
+
+	test("returns [unserializable] for circular references without throwing", () => {
+		const circular: Record<string, unknown> = {};
+		circular.self = circular;
+		expect(defaultToolText(circular)).toBe("[unserializable]");
+	});
+
+	test("returns [unserializable] for BigInt without throwing", () => {
+		expect(defaultToolText({ num: BigInt(42) })).toBe("[unserializable]");
+	});
+});
+
+describe("toTranscriptBlock projects content and tool text faithfully", () => {
+	test("compaction preserves full context and reports pre-compaction tokens without inventing savings", () => {
+		const block = toTranscriptBlock(
+			{
+				role: "compactionSummary",
+				summary: "Full context.",
+				shortSummary: "Index-only abbreviation.",
+				tokensBefore: 8192,
+				compactedBy: "provider/model",
+				warning: "Repeated operation.",
+				timestamp: 1,
+			},
+			{ index: 0 },
+		);
+		if (block.kind !== "compaction-summary") throw new Error(block.kind);
+		expect(block.summary).toBe("Full context.");
+		expect(block.tokensBefore).toBe(8192);
+		expect(block.compactedBy).toBe("provider/model");
+		expect(block.warning).toBe("Repeated operation.");
+		expect(block).not.toHaveProperty("reclaimedTokens");
+		expect(block).not.toHaveProperty("replacedCount");
+	});
+
+	test("user message extracts multipart text and images", () => {
+		const message = {
+			role: "user",
+			content: [
+				{ type: "text", text: "explain this:" },
+				{ type: "image", mimeType: "image/png" },
+				{ type: "text", text: "and this too" },
+			],
+			timestamp: 100,
+		} as AgentMessage;
+		const block = toTranscriptBlock(message, { index: 0 });
+		if (block.kind !== "user-message") throw new Error("expected user-message block");
+		expect(block.text).toBe("explain this:and this too");
+		expect(block.attachments).toEqual([{ kind: "image", name: "image/png" }]);
+	});
+
+	test("toolResult message extracts multipart text for both success and failure", () => {
+		const success = {
+			role: "toolResult",
+			toolCallId: "c1",
+			toolName: "bash",
+			content: [
+				{ type: "text", text: "row 1" },
+				{ type: "text", text: "row 2" },
+			],
+			isError: false,
+			timestamp: 100,
+		} as AgentMessage;
+		const successBlock = toTranscriptBlock(success, { index: 0 });
+		if (successBlock.kind !== "tool-execution") throw new Error("expected tool-execution");
+		expect(successBlock.output).toBe("row 1\nrow 2");
+
+		const failed = {
+			role: "toolResult",
+			toolCallId: "c2",
+			toolName: "bash",
+			content: [
+				{ type: "text", text: "err 1" },
+				{ type: "text", text: "err 2" },
+			],
+			isError: true,
+			timestamp: 101,
+		} as AgentMessage;
+		const failedBlock = toTranscriptBlock(failed, { index: 1 });
+		if (failedBlock.kind !== "tool-execution") throw new Error("expected tool-execution");
+		expect(failedBlock.error).toBe("err 1\nerr 2");
+	});
+
+	test("assistant message formats tool-call input with defaultToolText fallback", () => {
+		const message = {
+			role: "assistant",
+			content: [
+				{
+					type: "toolCall",
+					id: "call-1",
+					name: "read",
+					arguments: { path: "src/main.ts" },
+				},
+			],
+			model: "test-model",
+			stopReason: "toolUse",
+			timestamp: 100,
+		} as unknown as AgentMessage;
+		const block = toTranscriptBlock(message, { index: 0 });
+		if (block.kind !== "assistant-message") throw new Error("expected assistant-message");
+		expect(block.segments).toEqual([
+			{
+				kind: "tool-call",
+				toolCallId: "call-1",
+				toolName: "read",
+				input: '{\n  "path": "src/main.ts"\n}',
+			},
+		]);
 	});
 });

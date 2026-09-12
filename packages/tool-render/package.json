@@ -1,7 +1,7 @@
 {
 	"type": "module",
 	"name": "@veyyon/tool-render",
-	"version": "1.4.0",
+	"version": "1.4.1",
 	"description": "Shared React tool-call renderers for Veyyon HTML export and collab-web",
 	"homepage": "https://veyyon.dev",
 	"author": "santhreal",
@@ -27,17 +27,20 @@
 	},
 	"dependencies": {
 		"@veyyon/utils": "catalog:",
+		"@veyyon/view": "catalog:",
 		"@veyyon/wire": "catalog:",
 		"lucide-react": "catalog:",
+		"marked": "catalog:",
 		"react": "catalog:"
 	},
 	"devDependencies": {
 		"@types/bun": "catalog:",
-		"@types/react": "catalog:"
+		"@types/react": "catalog:",
+		"linkedom": "catalog:"
 	},
 	"peerDependencies": {
-		"react": "catalog:",
-		"react-dom": "catalog:"
+		"react": "19.2.7",
+		"react-dom": "19.2.7"
 	},
 	"engines": {
 		"bun": ">=1.4.0"

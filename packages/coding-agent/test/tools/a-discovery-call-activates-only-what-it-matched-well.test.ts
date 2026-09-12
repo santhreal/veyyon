@@ -102,7 +102,7 @@ async function liveHiddenTools(): Promise<readonly DiscoverableTool[]> {
 			todoEager: settings.get("todo.eager"),
 			todoEnabled: settings.get("todo.enabled"),
 			hasTodoTool: names.includes("todo"),
-			delegationStrength: settings.get("subagent.delegation"),
+			delegationStrength: settings.get("agent.delegation"),
 			hasTaskTool: names.includes("task"),
 		}),
 		harnessToolAllowlist: undefined,

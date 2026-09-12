@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { setBedrockProviderModule, streamBedrock } from "@veyyon/ai/providers/register-builtins";
+import { setProviderModuleOverrideForTest, streamBedrock } from "@veyyon/ai/providers/register-builtins";
 import type { AssistantMessage, Context, Model } from "@veyyon/ai/types";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { iterateWithIdleTimeout } from "@veyyon/ai/utils/idle-iterator";
@@ -59,7 +59,7 @@ const baseContext: Context = { messages: [] };
 // answers every later test FILE in the bucket. This one did, and the failure surfaced in a Bedrock
 // deadline suite that terminated in 3ms against this file's stub.
 afterEach(() => {
-	setBedrockProviderModule();
+	setProviderModuleOverrideForTest("bedrock-converse-stream");
 });
 
 describe("idle watchdog local-work deferral (issue #4593)", () => {
@@ -170,8 +170,8 @@ describe("idle watchdog local-work deferral (issue #4593)", () => {
 		}
 		const source = new ProbedStream();
 		let providerSignal: AbortSignal | undefined;
-		setBedrockProviderModule({
-			streamBedrock: (_model, _context, options) => {
+		setProviderModuleOverrideForTest("bedrock-converse-stream", {
+			stream: (_model, _context, options) => {
 				providerSignal = options.signal;
 				void (async () => {
 					const partial = createAssistantMessage();

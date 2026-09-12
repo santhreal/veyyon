@@ -47,7 +47,6 @@ def resolve_base():
             return ref
     raise SystemExit("no origin/main and no main: name the hold point in PROOF_BASE_REF")
 
-
 base = resolve_base()
 
 # Source lives under every first-party root, not `packages/` alone: a member under
@@ -61,8 +60,11 @@ SOURCE_ROOTS = ("contracts/", "hosts/", "kernel/", "natives/", "packages/", "plu
 CODE_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".rs", ".md", ".json", ".css")
 MANIFESTS = ("package.json", "tsconfig.json", "Cargo.toml", "bun.lock", "package-lock.json")
 
+# `--no-renames`: with rename detection on, a renamed file is listed under its new
+# name only, so the old path was never restored and the base tree imported a module
+# that did not exist.
 changed = subprocess.run(
-    ["git", "diff", "--name-only", f"{base}..HEAD"],
+    ["git", "diff", "--no-renames", "--name-only", f"{base}..HEAD"],
     capture_output=True, text=True, check=True,
 ).stdout.split("\n")
 
@@ -90,13 +92,11 @@ def sha(path):
     with open(path, "rb") as fh:
         return hashlib.sha256(fh.read()).hexdigest()
 
-
 def read_or_none(path):
     if not os.path.exists(path):
         return None
     with open(path, "rb") as fh:
         return fh.read()
-
 
 # The base tree decides what the arm holds: content when the base has the file,
 # absence when it does not. That covers a modification, a file the branch added, a

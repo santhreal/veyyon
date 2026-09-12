@@ -194,8 +194,8 @@ describe("system prompt context files", () => {
 	/**
 	 * A PROJECT file must never be presented as outranking the home global file.
 	 *
-	 * The regression: a repository's `AGENTS.md` said "do not use subagents for this
-	 * repository", a session asked for subagents anyway, and the agent REFUSED, citing the
+	 * The regression: a repository's `AGENTS.md` said "do not use agents for this
+	 * repository", a session asked for agents anyway, and the agent REFUSED, citing the
 	 * project file over both the home configuration and the live instruction. Two sentences
 	 * caused it. `context-file-authority.md` said "later and deeper files override earlier and
 	 * broader files", and `project-prompt.md`'s dir-context block said "Deeper rules override

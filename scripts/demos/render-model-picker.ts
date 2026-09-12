@@ -1,20 +1,12 @@
 /**
- * Print the session model picker (`/model`, `/models`, `/switch`, alt+p) as
- * ANSI, deterministically.
+ * Render the model picker component with mock models and reload states.
  *
- * The picker cannot be captured by opening it for real: the list is whatever
- * the machine's model cache and credentials produce, so the frame would differ
- * per host and per day. This renders the SHIPPED `ModelPickerComponent` with
- * the real theme against a fixed model list, so the pixels come from the code
- * that ships.
+ * Populates a model registry with synthetic models across multiple providers. Constructs
+ * the model picker component, optionally triggers a reload input sequence via Ctrl+R,
+ * and prints the rendered picker interface as ANSI text.
  *
  * Usage:
- *
- *     bun scripts/demos/render-model-picker.ts [--theme titanium|light] [--width 100] [--reloading]
- *
- * `--reloading` renders the in-flight state, which is the second frame worth
- * proving: the status line swaps to the progress text and the list must stay
- * legible underneath it.
+ *   bun scripts/demos/render-model-picker.ts [--reloading] [--width 100] [--theme titanium]
  */
 
 import type { TUI } from "../../hosts/terminal/engine/src/index";
@@ -23,9 +15,8 @@ import { buildModel } from "../../packages/catalog/src/build";
 import type { ModelRegistry } from "../../packages/coding-agent/src/config/model-registry";
 import { Settings } from "../../packages/coding-agent/src/config/settings";
 import { ModelPickerComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/model-picker";
-import { flag, hasFlag, initRender, renderWidth } from "./render-args";
+import { renderDemo } from "./render-args";
 
-/** A short, stable list: enough rows to show the frame, few enough to stay readable. */
 const MODELS: readonly [string, string][] = [
 	["anthropic", "claude-opus-5"],
 	["anthropic", "claude-sonnet-5"],
@@ -49,35 +40,31 @@ function makeModel(provider: string, id: string): Model {
 	});
 }
 
-const themeName = flag("theme", "titanium");
-const width = renderWidth();
-const reloading = hasFlag("reloading");
+await renderDemo(
+	({ width, hasFlag }) => {
+		const reloading = hasFlag("reloading");
+		const models = MODELS.map(([provider, id]) => makeModel(provider, id));
+		const pending = Promise.withResolvers<void>();
+		const registry = {
+			refresh: () => pending.promise,
+			refreshProvider: async () => {},
+			getError: () => undefined,
+			getAvailable: () => models,
+			getAll: () => models,
+		} as unknown as ModelRegistry;
 
-await initRender(themeName, { settings: true });
+		const tui = { requestRender: () => {}, terminal: { rows: 40 } } as unknown as TUI;
+		const picker = new ModelPickerComponent(
+			tui,
+			Settings.instance,
+			registry,
+			models.map(model => ({ model })),
+			{ onPick: () => {}, onCancel: () => {} },
+			{ currentSelector: "anthropic/claude-opus-5" },
+		);
 
-const models = MODELS.map(([provider, id]) => makeModel(provider, id));
-// A refresh that never settles holds the in-flight frame still for the capture.
-const pending = Promise.withResolvers<void>();
-const registry = {
-	refresh: () => pending.promise,
-	refreshProvider: async () => {},
-	getError: () => undefined,
-	getAvailable: () => models,
-	getAll: () => models,
-} as unknown as ModelRegistry;
-
-const tui = { requestRender: () => {}, terminal: { rows: 40 } } as unknown as TUI;
-
-const picker = new ModelPickerComponent(
-	tui,
-	Settings.instance,
-	registry,
-	models.map(model => ({ model })),
-	{ onPick: () => {}, onCancel: () => {} },
-	{ currentSelector: "anthropic/claude-opus-5" },
+		if (reloading) picker.handleInput("\x12");
+		return picker.render(width);
+	},
+	{ settings: true },
 );
-
-// Ctrl+R, through the real key path rather than by poking private state.
-if (reloading) picker.handleInput("\x12");
-
-process.stdout.write(`${picker.render(width).join("\n")}\n`);

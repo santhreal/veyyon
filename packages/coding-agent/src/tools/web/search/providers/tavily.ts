@@ -6,15 +6,13 @@
  */
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
-import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../types";
-import { SearchProviderError } from "../types";
 import { clampNumResults, dateToAgeSeconds } from "../utils";
 import type { SearchParams } from "./base";
-import { SearchProvider } from "./base";
-import { classifyProviderHttpError } from "./utils";
+import { ApiKeySearchProvider } from "./base";
+import { handleProviderHttpError } from "./utils";
 
 const TAVILY_SEARCH_URL = "https://api.tavily.com/search";
 // Deliberately below the shared SEARCH_DEFAULT_NUM_RESULTS: five is Tavily's own
@@ -90,10 +88,7 @@ async function callTavilySearch(apiKey: string, params: TavilySearchParams): Pro
 		});
 
 		if (!response.ok) {
-			const errorText = await response.text();
-			const classified = classifyProviderHttpError("tavily", response.status, errorText);
-			if (classified) throw classified;
-			throw new SearchProviderError("tavily", `Tavily API request failed (${response.status}).`, response.status);
+			await handleProviderHttpError("tavily", response, `Tavily API request failed (${response.status}).`);
 		}
 
 		return (await response.json()) as TavilySearchResponse;
@@ -122,7 +117,6 @@ function toSearchResponse(response: TavilySearchResponse, numResults: number): S
 		authMode: "api_key",
 	};
 }
-
 function hasRenderableResponse(response: SearchResponse): boolean {
 	if (response.answer?.trim()) return true;
 	return response.sources.length > 0;
@@ -160,13 +154,9 @@ export async function searchTavily(params: SearchParams): Promise<SearchResponse
 }
 
 /** Search provider for Tavily web search. */
-export class TavilyProvider extends SearchProvider {
+export class TavilyProvider extends ApiKeySearchProvider {
 	readonly id = "tavily";
 	readonly label = "Tavily";
-
-	isAvailable(authStorage: AuthStorage): boolean {
-		return authStorage.hasAuth("tavily") || !!getEnvApiKey("tavily");
-	}
 
 	search(params: SearchParams): Promise<SearchResponse> {
 		return searchTavily(params);

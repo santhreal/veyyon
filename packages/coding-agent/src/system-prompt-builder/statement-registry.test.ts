@@ -221,11 +221,11 @@ describe("the condition vocabulary evaluates as the template does", () => {
 	});
 
 	it("requires every nested condition under `whenAll`", () => {
-		const delegationGates = allOf(contains("tools", "task"), when("hasSpawnableSubagent"));
+		const delegationGates = allOf(contains("tools", "task"), when("hasSpawnableAgent"));
 
-		expect(conditionHolds(delegationGates, { tools: ["task"], hasSpawnableSubagent: true })).toBe(true);
-		expect(conditionHolds(delegationGates, { tools: ["task"], hasSpawnableSubagent: false })).toBe(false);
-		expect(conditionHolds(delegationGates, { tools: [], hasSpawnableSubagent: true })).toBe(false);
+		expect(conditionHolds(delegationGates, { tools: ["task"], hasSpawnableAgent: true })).toBe(true);
+		expect(conditionHolds(delegationGates, { tools: ["task"], hasSpawnableAgent: false })).toBe(false);
+		expect(conditionHolds(delegationGates, { tools: [], hasSpawnableAgent: true })).toBe(false);
 	});
 
 	it("expresses `A and not B`, the shape a flat variable list could not say", () => {
@@ -425,7 +425,7 @@ describe("a condition describes itself", () => {
 
 		expect(arm).toBeDefined();
 		expect(describeCondition(arm?.condition ?? { kind: "always" })).toBe(
-			"tools has task and hasSpawnableSubagent and not useCodexTaskPrompt and eagerTasks and not eagerTasksAlways",
+			"tools has task and hasSpawnableAgent and not useCodexTaskPrompt and eagerTasks and not eagerTasksAlways",
 		);
 	});
 

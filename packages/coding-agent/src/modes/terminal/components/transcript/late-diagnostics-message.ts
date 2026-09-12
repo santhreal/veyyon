@@ -1,24 +1,20 @@
 import { Container, Text } from "@veyyon/tui";
-import { getLanguageFromPath, theme } from "../../../../theme/theme";
-import { formatDiagnostics } from "../../../../tools/core/render-utils";
+import type { LateDiagnosticsFileDisplay } from "@veyyon/wire/presentation";
+import { theme } from "../../../../theme/theme";
+import { diagnosticsSection } from "../../../../tools/core/diagnostics";
+import { drawHiddenNote, drawSpans } from "../../draw/draw-tool-view";
 
 /** One file's worth of late LSP diagnostics, as carried on the transcript message. */
-export interface LateDiagnosticsFile {
-	path?: string;
-	summary?: string;
-	errored?: boolean;
-	messages?: string[];
-}
+export interface LateDiagnosticsFile extends LateDiagnosticsFileDisplay {}
 
 /**
- * Renders late LSP diagnostics (arrived after edit/write returned) in the
- * transcript, reusing the same tree renderer the edit/write tools use so the
- * styling stays consistent. Supports the global tool-output expand toggle.
+ * Renders late LSP diagnostics with the same diagnostic section and span drawing
+ * as edit/write cards. Supports the global tool-output expand toggle.
  */
 export class LateDiagnosticsMessageComponent extends Container {
 	#expanded = false;
 
-	constructor(private readonly files: LateDiagnosticsFile[]) {
+	constructor(private readonly files: readonly LateDiagnosticsFileDisplay[]) {
 		super();
 		this.#rebuild();
 	}
@@ -45,16 +41,13 @@ export class LateDiagnosticsMessageComponent extends Container {
 			if (file.summary) summaries.push(file.summary);
 			if (file.errored) errored = true;
 		}
-		if (messages.length === 0) return;
-
-		const text = formatDiagnostics(
-			{ errored, summary: summaries.join(", "), messages },
-			this.#expanded,
-			theme,
-			fp => theme.getLangIcon(getLanguageFromPath(fp)),
-			{ title: "Late diagnostics" },
-		);
-		const body = text.replace(/^\n+/, "");
-		if (body) this.addChild(new Text(body, 1, 0));
+		const section = diagnosticsSection({ errored, summary: summaries.join(", "), messages }, this.#expanded, {
+			title: "Late diagnostics",
+		});
+		if (section === undefined) return;
+		const lines = section.lines.map(line => drawSpans(line, theme));
+		const hidden = section.hidden === undefined ? undefined : drawHiddenNote(section.hidden, theme);
+		if (hidden !== undefined) lines.push(hidden);
+		this.addChild(new Text(lines.join("\n"), 1, 0));
 	}
 }

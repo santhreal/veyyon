@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/gui-host",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "private": true,
   "description": "Graphical host that draws the Veyyon view contract as HTML, the second implementation that proves the contract",
   "homepage": "https://veyyon.dev",
@@ -32,6 +32,7 @@
     "test": "bun test --parallel"
   },
   "dependencies": {
+    "@veyyon/tool-render": "catalog:",
     "@veyyon/view": "catalog:",
     "marked": "catalog:"
   },

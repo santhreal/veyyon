@@ -1,4 +1,5 @@
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
+import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import type { ProviderTextTransformResolver } from "../../../../provider-boundary";
 import type { SearchProviderId, SearchResponse } from "../types";
 
@@ -94,4 +95,23 @@ export abstract class SearchProvider {
 	 * Execute a search. Credentials MUST be resolved through `params.authStorage`.
 	 */
 	abstract search(params: SearchParams): Promise<SearchResponse>;
+}
+
+/**
+ * Base class for standard API-key search providers.
+ * Available when credentials exist in AuthStorage or environment.
+ */
+export abstract class ApiKeySearchProvider extends SearchProvider {
+	isAvailable(authStorage: AuthStorage): boolean {
+		return authStorage.hasAuth(this.id) || !!getEnvApiKey(this.id);
+	}
+}
+
+/**
+ * Base class for open / credential-free search providers that are always available.
+ */
+export abstract class OpenSearchProvider extends SearchProvider {
+	isAvailable(_authStorage: AuthStorage): boolean {
+		return true;
+	}
 }

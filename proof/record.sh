@@ -94,9 +94,9 @@ run_arm() {
 
 	echo "=== Recording ${arm} arm -> ${out_dir} ==="
 	if [[ "${arm}" == "before" ]]; then
-		OUT_DIR="${out_dir}" "${env_args[@]}" bash proof/docker/record-x11-before.sh "${SCENE_PATH}"
+		env OUT_DIR="${out_dir}" "${env_args[@]}" bash proof/docker/record-x11-before.sh "${SCENE_PATH}"
 	else
-		OUT_DIR="${out_dir}" "${env_args[@]}" bash proof/docker/record-x11.sh "${SCENE_PATH}"
+		env OUT_DIR="${out_dir}" "${env_args[@]}" bash proof/docker/record-x11.sh "${SCENE_PATH}"
 	fi
 }
 

@@ -54,6 +54,7 @@ import {
 } from "../utils/tool-choice";
 import type { CacheControlEphemeral } from "./anthropic-wire";
 import { compactGrammarDefinition } from "./grammar";
+import { createInitialResponsesAssistantMessage } from "./initial-message";
 import {
 	formatOpenAIInputText,
 	isOfficialOpenAIResponsesEndpoint,
@@ -86,7 +87,6 @@ import {
 	buildResponsesDeltaInput,
 	buildResponsesInput,
 	clearOpenAIStrictToolsState,
-	createInitialResponsesAssistantMessage,
 	createOpenAIStrictToolsState,
 	disableStrictToolsForScope,
 	getOpenAIPromptCacheKey,
@@ -770,10 +770,7 @@ const streamOpenAIResponsesOnce = (
 				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
 				capturedErrorResponse,
 			});
-			output.stopReason = result.stopReason;
-			output.errorStatus = result.status;
-			output.errorId = result.id;
-			output.errorMessage = result.message;
+			AIError.applyFinalizeResult(output, result);
 			// Some providers via OpenRouter include extra details here.
 			const rawMetadata = (error as { error?: { metadata?: { raw?: string } } })?.error?.metadata?.raw;
 			if (rawMetadata) output.errorMessage += `\n${rawMetadata}`;

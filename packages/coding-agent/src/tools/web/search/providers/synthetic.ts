@@ -7,15 +7,13 @@
 
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
-import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../types";
-import { SearchProviderError } from "../types";
 import { applyResultLimit } from "../utils";
 import type { SearchParams } from "./base";
-import { SearchProvider } from "./base";
-import { classifyProviderHttpError } from "./utils";
+import { ApiKeySearchProvider } from "./base";
+import { handleProviderHttpError } from "./utils";
 
 type SearchParamsWithFetch = SearchParams & { fetch?: FetchImpl };
 
@@ -63,10 +61,7 @@ async function callSyntheticSearch(
 		});
 
 		if (!response.ok) {
-			const errorText = await response.text();
-			const classified = classifyProviderHttpError("synthetic", response.status, errorText);
-			if (classified) throw classified;
-			throw new SearchProviderError("synthetic", `Synthetic API error (${response.status}).`, response.status);
+			await handleProviderHttpError("synthetic", response, `Synthetic API error (${response.status}).`);
 		}
 
 		return (await response.json()) as SyntheticSearchResponse;
@@ -90,7 +85,6 @@ export async function searchSynthetic(params: SearchParamsWithFetch): Promise<Se
 		},
 	);
 	const sources: SearchSource[] = [];
-
 	for (const result of data.results ?? []) {
 		if (!result.url) continue;
 		sources.push({
@@ -108,13 +102,9 @@ export async function searchSynthetic(params: SearchParamsWithFetch): Promise<Se
 }
 
 /** Search provider for Synthetic. */
-export class SyntheticProvider extends SearchProvider {
+export class SyntheticProvider extends ApiKeySearchProvider {
 	readonly id = "synthetic";
 	readonly label = "Synthetic";
-
-	isAvailable(authStorage: AuthStorage): boolean {
-		return authStorage.hasAuth("synthetic") || !!getEnvApiKey("synthetic");
-	}
 
 	search(params: SearchParamsWithFetch): Promise<SearchResponse> {
 		return searchSynthetic(params);

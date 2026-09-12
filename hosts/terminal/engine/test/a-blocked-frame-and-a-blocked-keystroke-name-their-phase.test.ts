@@ -11,7 +11,7 @@ import { VirtualTerminal } from "./virtual-terminal";
  * WHY THIS EXISTS, measured rather than assumed. Across 56 local session logs the
  * watchdog recorded 2249 blocks, up to 11 seconds each, and 2182 of them said
  * `phase: "unknown"`. Three production call sites pushed a phase at the time
- * (two subagent spans and the SelectList filter), so the field that decides
+ * (two agent spans and the SelectList filter), so the field that decides
  * whether a stall is actionable was empty for 97% of them. A watchdog whose
  * cause is always unknown reports that something is wrong and nothing else.
  *

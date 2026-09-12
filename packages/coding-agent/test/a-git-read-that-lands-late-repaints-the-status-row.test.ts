@@ -28,6 +28,8 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { recordLaunchFacts, resetLaunchFactsForTest } from "@veyyon/coding-agent/modes/launch-facts";
 import type { StatusLineSettings } from "@veyyon/coding-agent/modes/terminal/components/status-line";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
+import { StatusPresentationProducer } from "@veyyon/coding-agent/presentation/status-producer";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { GitRefHead, GitStatusSummary } from "@veyyon/coding-agent/utils/git";
 import * as git from "@veyyon/coding-agent/utils/git";
@@ -107,14 +109,14 @@ const gitRow: StatusLineSettings = {
  * No model, because the three git lookups are what it watches and its preset renders git, pr and
  * the session name.
  */
-function makeSession(cwd?: string) {
-	return {
+function makeSession(cwd?: string): StatusPresentationProducer {
+	const parts = {
 		...statusLineSessionParts({ sessionName: "late git read", messages: [], ...(cwd ? { cwd: () => cwd } : {}) }),
 		state: { messages: [], model: undefined },
 		model: undefined,
-
 		getAsyncJobSnapshot: () => ({ running: [] }),
-	} as unknown as ConstructorParameters<typeof StatusLineComponent>[0];
+	};
+	return new StatusPresentationProducer(parts as unknown as AgentSession);
 }
 
 type Landing<T> = { land: (value: T) => Promise<void> };
@@ -400,7 +402,7 @@ describe("the marker the card painted survives the mount", () => {
 		await recordLaunchFacts({ gitStatus: DIRTY });
 		resetLaunchFactsForTest();
 
-		// The row follows the active repo, which a worktree hop or a subagent's cwd moves off the
+		// The row follows the active repo, which a worktree hop or an agent's cwd moves off the
 		// project the recorder keyed on. A marker from there would be a claim about this one.
 		const { component, first } = renderOnce(heldOpen(neverAnswers()), "/repo");
 

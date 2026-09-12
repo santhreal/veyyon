@@ -95,7 +95,7 @@ DEPLOY_TOKEN=#0A1B2C3D4E5F678901234567#
 
 The placeholder is stable across restarts on the same machine. It contains a keyed HMAC rather than a load-order index, so seeing it does not give the provider an offline dictionary test for the value. A named vault entry instead uses its readable name, such as `#GITHUB_TOKEN#`, so the model can choose the right credential.
 
-The model is told two things about a placeholder: that putting one where a credential belongs is expected and works, and that it is opaque otherwise. It does not have the value and cannot request it. For named vault entries it is told one more thing, which credentials it currently has, covered under [What the agent knows, and when](#what-the-agent-knows-and-when).
+The model is told two things about a placeholder: that putting one where a credential belongs is expected and works, and that it is opaque otherwise. It does not have the value and cannot request it. For named vault entries it is told one more thing, which credentials it currently has, covered under [What the agent receives, and when](#what-the-agent-receives-and-when).
 
 ## Using a secret in a command
 
@@ -111,7 +111,7 @@ The command that actually executes contains the real token. The substitution hap
 
 The substituted command is not written down. Veyyon records one diagnostic entry per tool call so that a session interrupted mid-call can tell you on resume what was running, and that entry stores the placeholder form, not the substituted one. This matters because `/share` uploads the session file and backups copy it. What the command prints is a separate question, covered under [What this does not protect](#what-this-does-not-protect).
 
-## What the agent knows, and when
+## What the agent receives, and when
 
 Store `GITHUB_TOKEN` today, quit, and start a new session tomorrow. Ask for your open pull requests, and the agent writes `#GITHUB_TOKEN#` into the `curl` command without you mentioning the credential again.
 
@@ -282,7 +282,7 @@ Replaced GITHUB_TOKEN in the profile vault, 1d left.
 The previous value is gone. #GITHUB_TOKEN# now spends the credential you just stored.
 ```
 
-The agent is told at once that a credential exists and that it should write `#GITHUB_TOKEN#` where the value belongs. It is never given the value and cannot request it. It also keeps knowing after this session ends, because the inventory in the system prompt is rebuilt from the vault rather than remembered from the conversation. See [What the agent knows, and when](#what-the-agent-knows-and-when).
+The agent is told at once that a credential exists and that it should write `#GITHUB_TOKEN#` where the value belongs. It is never given the value and cannot request it. It also keeps knowing after this session ends, because the inventory in the system prompt is rebuilt from the vault rather than remembered from the conversation. See [What the agent receives, and when](#what-the-agent-receives-and-when).
 
 ### Managing what you stored
 
@@ -317,7 +317,7 @@ No verb prints a value: not on a row, not truncated onto one, not behind a key. 
 
 Every change reloads the live secret runtime, so a credential you revoke stops being spendable in the session you are sitting in rather than at the next restart. A reload that fails is reported rather than swallowed, because the vault write is already durable and you are the only one who can decide what to do about the gap.
 
-**Names are never completed.** The dropdown after `/secret ` offers verbs and nothing else. Completing a stored name would put part of your vault on screen on a keystroke, and accepting one would type a name onto a line whose first word decides between a command and a credential. `/secret list` is where names are read.
+**Names are never completed.** The dropdown after `/secret ` offers verbs and nothing else. Completing a stored name would put part of your vault on screen on a keystroke, and accepting one would type a name onto a line whose first word distinguishes between a command and a credential. `/secret list` is where names are read.
 
 ### Finding what is masked and not stored
 
@@ -375,7 +375,7 @@ The `STATUS` column and the closing line appear only when at least one entry has
 
 With nothing stored, `list` reports it and shows the one entry form that surface has, rather than printing an empty table.
 
-Removing and extending each notify the agent of what changed, whichever surface you did it from, so a placeholder you revoked stops being used instead of arriving at a command as literal text. See [What the agent knows, and when](#what-the-agent-knows-and-when).
+Removing and extending each notify the agent of what changed, whichever surface you did it from, so a placeholder you revoked stops being used instead of arriving at a command as literal text. See [What the agent receives, and when](#what-the-agent-receives-and-when).
 
 ### When a vault file cannot be read
 
@@ -585,11 +585,11 @@ memory for `add` under a different command, which puts the credential itself in 
 
 ### Encryption, and what it does not do
 
-Vault files use AES-256-GCM. Each write uses a fresh 12 byte nonce and the full 16 byte authentication tag. The key is a 32 byte file at `~/.veyyon/vault.key`, created on first use. It never lives inside a project directory.
+Vault files use AES-256-GCM. Each write uses a fresh 12 byte nonce and the full 16 byte authentication tag. The key is a 32 byte file at `~/.veyyon/vault.key`, created on first use. It is never stored inside a project directory.
 
 On POSIX, the key is mode 0600. Its directory must be owned by you and not writable by another user. On Windows, Veyyon applies and verifies a protected owner-only ACL. Existing vault files receive the same platform permission checks before they are read.
 
-A project-scoped vault lives inside the repository you are working in, so Veyyon keeps it out of your commits. The first time it stores a project secret, it writes `.veyyon/.gitignore` covering `vault.json` and the `vault.json.unreadable-*` file that a discarded vault is renamed to. If that file already exists, Veyyon adds the two rules and leaves your own lines alone. Only the vault is ignored, so anything else you keep in `.veyyon/`, such as prompt templates, stays trackable. Commit the generated `.veyyon/.gitignore` along with the rest of your project.
+A project-scoped vault is stored inside the repository you are working in, so Veyyon keeps it out of your commits. The first time it stores a project secret, it writes `.veyyon/.gitignore` covering `vault.json` and the `vault.json.unreadable-*` file that a discarded vault is renamed to. If that file already exists, Veyyon adds the two rules and leaves your own lines alone. Only the vault is ignored, so anything else you keep in `.veyyon/`, such as prompt templates, stays trackable. Commit the generated `.veyyon/.gitignore` along with the rest of your project.
 
 Committing a vault would not expose the credentials directly, because the ciphertext is unusable without the machine key. It would still put a credential store in your history, and nobody who clones the repository can open it, including you on another machine. A vault is not a portable backup. The authenticated location includes the semantic scope, canonical path, and physical scope-directory identity. If you move or recreate that directory, store those entries again.
 
@@ -599,7 +599,7 @@ Veyyon rejects symlinks, hard-linked files, directories, devices, insecure permi
 
 The sealed descriptor is limited to 8 MiB before it is read into memory. Writes enforce a separate 6,291,402-byte encoded plaintext limit before serialization, encryption, or Base64 expansion. A legacy version 1 envelope is rejected because it is not bound to its scope and path. Store those entries again so they use the current authenticated format.
 
-These failures are deliberately loud:
+These failures fail fast:
 
 - A vault file present with no readable key stops the session. It is never treated as empty.
 - A vault whose nonce, ciphertext, authentication tag, or bound location changed is rejected.
@@ -676,7 +676,7 @@ secrets:
   auditLog: false
 ```
 
-The file is mode 0600 and lives in the profile rather than the project. If veyyon cannot append to it, it reports it and the command still runs. The value is still protected either way.
+The file is mode 0600 and is stored in the profile rather than the project. If veyyon cannot append to it, it reports it and the command still runs. The value is still protected either way.
 
 At two megabytes, roughly ten thousand uses, the log is atomically moved to `secret-audit.jsonl.1` and a fresh one is started. A cross-process lock covers the size check, rotation, append, and read snapshot, so two sessions cannot overwrite a generation or exceed the record cap at the boundary. Oversized rows bound every field and report how many placeholder references were omitted. Both generations are read, so a report requested right after a rotation still fills up.
 
@@ -792,7 +792,7 @@ Nothing important goes only to the log file. That was the previous behaviour and
 
 The provider boundary is applied again whenever a local transcript is sent. Resuming a session can restore placeholders for display without giving the resumed raw text a path back to the provider.
 
-Changing the working directory is transactional. Veyyon loads the destination runtime before committing the move, and restores both the old directory and old runtime if loading fails. A resumed session or persisted subagent starts from its recorded directory before loading project-scoped secrets.
+Changing the working directory is transactional. Veyyon loads the destination runtime before committing the move, and restores both the old directory and old runtime if loading fails. A resumed session or persisted agent starts from its recorded directory before loading project-scoped secrets.
 
 ## What this does not protect
 

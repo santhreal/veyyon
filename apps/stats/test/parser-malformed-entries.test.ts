@@ -98,6 +98,32 @@ describe("malformed session entries", () => {
 		expect(result.stats.map(s => s.entryId)).toEqual(["ok"]);
 	});
 
+	it("routes user and assistant messages to their own stats, and skips either without an id", async () => {
+		const userEntry = (id: string | undefined, text: string) =>
+			JSON.stringify({
+				type: "message",
+				...(id === undefined ? {} : { id }),
+				timestamp: "2026-07-12T00:00:00.000Z",
+				message: { role: "user", content: text },
+			});
+		const file = await writeSession([
+			userEntry("u1", "first prompt"),
+			userEntry(undefined, "legacy prompt without an id"),
+			assistantEntry("a1", { content: [], stopReason: "stop", usage: USAGE, timestamp: 1752000002000 }),
+			JSON.stringify({
+				type: "message",
+				timestamp: "2026-07-12T00:00:00.000Z",
+				message: { role: "assistant", api: "anthropic-messages", provider: "anthropic", model: "m", usage: USAGE },
+			}),
+		]);
+
+		const result = await parseSessionFile(file);
+		expect(result.userStats).toHaveLength(1);
+		expect(result.userStats.map(s => s.entryId)).toStrictEqual(["u1"]);
+		expect(result.stats).toHaveLength(1);
+		expect(result.stats.map(s => s.entryId)).toStrictEqual(["a1"]);
+	});
+
 	it("keeps tool_calls insertable when the turn lacks a message timestamp", async () => {
 		const file = await writeSession([
 			assistantEntry("a1", {

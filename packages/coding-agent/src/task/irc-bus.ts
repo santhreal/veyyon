@@ -340,7 +340,7 @@ export class IrcBus {
 	 * waiters, and every traffic line they took part in.
 	 *
 	 * Called when a driving session re-roots to a different transcript (`/new`,
-	 * `/resume`) and releases the subagents of the conversation it left. The
+	 * `/resume`) and releases the spawned agents of the conversation it left. The
 	 * registry refs go, but the bus is process-global and its log is not keyed by
 	 * conversation, so without this the Comms stream of a brand-new session opens
 	 * on the previous session's chatter between agents that no longer exist —
@@ -410,7 +410,7 @@ export class IrcBus {
 	 *
 	 * A line involving NEITHER of them is skipped rather than ending the chain,
 	 * because it is not evidence about this pair at all. The log is global and
-	 * several subagents run at once, so ending the chain on any foreign line
+	 * several spawned agents run at once, so ending the chain on any foreign line
 	 * made the cap depend on whether an unrelated agent happened to send
 	 * something between two of these messages. Under concurrency something
 	 * almost always did, the count almost never reached the cap, and the loop

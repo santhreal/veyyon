@@ -73,11 +73,11 @@ process exit status follows the run.
 ## Critical bash commands
 
 Some shell commands always prompt in `plan`, `ask`, `ask-command` and `auto`, even over a per-tool
-`allow` override. The guard lives in `packages/coding-agent/src/tools/shell/bash-guard.ts` and has
+`allow` override. The guard is implemented in `packages/coding-agent/src/tools/shell/bash-guard.ts` and has
 two halves.
 
-The first half judges what a command would delete, after expansion rather than as text. It
-resolves a leading tilde and `$HOME`, judges every target rather than only the first, and
+The first half inspects what a command would delete, after expansion rather than as text. It
+resolves a leading tilde and `$HOME`, evaluates every target rather than only the first, and
 stops a recursive delete of the home directory, of anything containing it, of a system
 directory, or of a directory holding your credentials. It also stops a recursive delete whose
 target it cannot resolve, such as `rm -rf "$dir"/*`, because an empty `$dir` makes that

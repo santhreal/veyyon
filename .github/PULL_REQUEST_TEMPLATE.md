@@ -4,7 +4,7 @@
 
 ## Why
 
-<!-- Motivation, context, or link to issue (fixes #N) -->
+<!-- Motivation and context. Link the issue as `Refs #N`, not `Fixes #N`. -->
 
 ## Testing
 
@@ -12,6 +12,7 @@
 
 ---
 
+- [ ] Bug fix, or an issue exists and the body says `Refs #N`
 - [ ] `bun check` passes
 - [ ] Tested locally
 - [ ] CHANGELOG updated (if user-facing): a bullet under the affected package's `## [Unreleased]`. The repo-root `CHANGELOG.md` is generated — leave it alone.

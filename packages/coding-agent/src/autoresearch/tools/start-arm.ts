@@ -1,10 +1,9 @@
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth } from "@veyyon/utils/width";
-import { replaceTabs } from "@veyyon/utils/wrap";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
-import * as git from "../../utils/git";
 import { armIndex, enterArm } from "../arm-model";
-import { openAutoresearchStorageIfExists } from "../storage";
+import { resolveActiveBranchSession } from "../helpers";
 import type { AutoresearchToolFactoryOptions } from "../types";
 
 const startArmSchema = type({
@@ -37,19 +36,9 @@ export function createStartArmTool(
 		parameters: startArmSchema,
 		defaultInactive: true,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const storage = await openAutoresearchStorageIfExists(ctx.cwd);
-			const currentBranch = (await git.branch.current(ctx.cwd)) ?? null;
-			const session = storage?.getActiveSessionForBranch(currentBranch) ?? null;
-			if (!storage || !session) {
-				return {
-					content: [
-						{
-							type: "text",
-							text: "Error: no active autoresearch session for the current branch. Call init_experiment first.",
-						},
-					],
-				};
-			}
+			const sessionResult = await resolveActiveBranchSession(ctx.cwd);
+			if (!sessionResult.ok) return sessionResult.result;
+			const { session } = sessionResult;
 
 			const arm = params.arm.trim();
 			const index = armIndex(arm);

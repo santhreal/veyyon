@@ -635,15 +635,15 @@ export function writeHostVariantVerdict(nativesDir, verdict, { platform, arch, c
  * Detect AVX2 support on the real host, as a tri-state.
  *
  * A genuine verdict from an earlier run is read back from
- * `<nativesDir>/host-variant.json` so later launches skip the expensive probe.
- * The row is versioned and CPU-keyed; an unidentifiable host or stale row is
- * probed again. "unknown" is never persisted.
+ * `<nativesDir>/host-variant.json` on platforms with a subprocess probe.
+ * Linux reads current flags from `/proc/cpuinfo` without gathering per-CPU
+ * statistics or consulting a persisted verdict. "unknown" is never persisted.
  *
  * @returns {"supported" | "unsupported" | "unknown"}
  */
 function detectAvx2Support() {
 	const cacheFile = path.join(getNativesDir(), HOST_VARIANT_FILE);
-	const cpuIdentity = hostCpuIdentity();
+	const cpuIdentity = process.platform === "linux" ? null : hostCpuIdentity();
 	let cached = null;
 	if (cpuIdentity !== null) {
 		try {
@@ -1170,7 +1170,7 @@ let warnedStaleWorkspaceNative = false;
 
 /**
  * The export name the Rust addon emits for `version`, e.g. `1.0.14` ->
- * `__veyyonNativesV1_4_0`. `scripts/release.ts` bumps this name in lock-step
+ * `__veyyonNativesV1_4_1`. `scripts/release.ts` bumps this name in lock-step
  * with the package version, so a `.node` from another release physically cannot
  * expose the symbol this loader looks for. Exported so the version<->sentinel
  * contract can be pinned by a test (the workspace/test env skips the runtime

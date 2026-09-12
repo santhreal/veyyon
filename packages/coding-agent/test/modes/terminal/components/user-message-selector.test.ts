@@ -35,4 +35,36 @@ describe("UserMessageSelectorComponent", () => {
 		list.handleInput("\n");
 		expect(selected).toEqual(["message-7"]);
 	});
+
+	// Backspace removes one code point, including a surrogate pair, without clearing
+	// the preceding query. This covers the selector path, not terminal key decoding.
+	it.each(["x", "\u{1f680}", "\u0301"])("removes one trailing code point %s and retains the prior filter", suffix => {
+		const selected: string[] = [];
+		const component = new UserMessageSelectorComponent(
+			Array.from({ length: 11 }, (_, index) => ({
+				id: `message-${index}`,
+				text: index === 7 ? "needle" : `Routine status update ${index}`,
+			})),
+			id => selected.push(id),
+			() => {},
+		);
+		const list = component.getMessageList();
+		list.handleInput(" ");
+		for (const char of "needle") list.handleInput(char);
+		const beforeEdit = component
+			.render(80)
+			.map(line => Bun.stripANSI(line))
+			.join("\n");
+		list.handleInput(suffix);
+		list.handleInput("\x7f");
+		const rendered = component
+			.render(80)
+			.map(line => Bun.stripANSI(line))
+			.join("\n");
+		expect(rendered).toBe(beforeEdit);
+		expect(rendered).toContain("Search: needle");
+		expect(rendered).not.toContain("Routine status update");
+		list.handleInput("\n");
+		expect(selected).toEqual(["message-7"]);
+	});
 });

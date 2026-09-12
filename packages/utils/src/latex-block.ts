@@ -638,33 +638,37 @@ function consumeEnvironment(src: string, start: number): Span | null {
 	return env ? { text: src.slice(start, env.end), end: env.end } : null;
 }
 
-/** Split an environment body on top-level `\\` row breaks (depth-aware). */
-function splitRows(body: string): string[] {
+/**
+ * Split on top-level `\\` row breaks (depth-aware: never inside braces or a nested
+ * environment). An environment body has no other row separator; display source
+ * also breaks on a top-level `\n`, so `latexToBlock` passes `newlineBreaks`.
+ */
+function splitRowBreaks(src: string, newlineBreaks: boolean): string[] {
 	const rows: string[] = [];
 	let braceDepth = 0;
 	let envDepth = 0;
 	let last = 0;
 	let i = 0;
-	while (i < body.length) {
-		if (body.startsWith("\\begin", i)) {
+	while (i < src.length) {
+		if (src.startsWith("\\begin", i)) {
 			envDepth++;
 			i += 6;
 			continue;
 		}
-		if (body.startsWith("\\end", i)) {
+		if (src.startsWith("\\end", i)) {
 			envDepth--;
 			i += 4;
 			continue;
 		}
-		const c = body[i];
+		const c = src[i];
 		if (c === "\\") {
-			if (body[i + 1] === "\\" && braceDepth === 0 && envDepth === 0) {
-				rows.push(body.slice(last, i));
+			if (src[i + 1] === "\\" && braceDepth === 0 && envDepth === 0) {
+				rows.push(src.slice(last, i));
 				i += 2;
-				while (body[i] === " ") i++;
-				if (body[i] === "[") {
-					const close = body.indexOf("]", i);
-					i = close === -1 ? body.length : close + 1;
+				while (src[i] === " ") i++;
+				if (src[i] === "[") {
+					const close = src.indexOf("]", i);
+					i = close === -1 ? src.length : close + 1;
 				}
 				last = i;
 				continue;
@@ -674,9 +678,13 @@ function splitRows(body: string): string[] {
 		}
 		if (c === "{") braceDepth++;
 		else if (c === "}") braceDepth--;
+		else if (c === "\n" && newlineBreaks && braceDepth === 0 && envDepth === 0) {
+			rows.push(src.slice(last, i));
+			last = i + 1;
+		}
 		i++;
 	}
-	rows.push(body.slice(last));
+	rows.push(src.slice(last));
 	return rows;
 }
 
@@ -773,7 +781,7 @@ function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end
 			colSpec = [...spec.text].filter((ch): ch is CellAlign => ch === "l" || ch === "c" || ch === "r");
 			p = spec.end;
 		}
-		const cells = splitRows(src.slice(p, env.bodyEnd))
+		const cells = splitRowBreaks(src.slice(p, env.bodyEnd), false)
 			.map(row => row.trim())
 			.filter(row => row !== "")
 			.map(row => splitCells(row).map(cell => parseExpr(cell, ctx)));
@@ -792,7 +800,7 @@ function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end
 		while (src[p] === " " || src[p] === "\n") p++;
 		if (src[p] === "{") bodyStart = readBraceGroup(src, p).end;
 	}
-	const rows = splitRows(src.slice(bodyStart, env.bodyEnd))
+	const rows = splitRowBreaks(src.slice(bodyStart, env.bodyEnd), false)
 		.map(row => row.trim())
 		.filter(row => row !== "");
 	if (rows.length === 0) return { box: textBox(""), end: env.end };
@@ -1196,52 +1204,6 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 	return hconcat(boxes);
 }
 
-/** Split on top-level `\n` and `\\` row separators (outside braces and environments). */
-function splitLines(src: string): string[] {
-	const lines: string[] = [];
-	let braceDepth = 0;
-	let envDepth = 0;
-	let last = 0;
-	let i = 0;
-	while (i < src.length) {
-		if (src.startsWith("\\begin", i)) {
-			envDepth++;
-			i += 6;
-			continue;
-		}
-		if (src.startsWith("\\end", i)) {
-			envDepth--;
-			i += 4;
-			continue;
-		}
-		const c = src[i];
-		if (c === "\\") {
-			if (src[i + 1] === "\\" && braceDepth === 0 && envDepth === 0) {
-				lines.push(src.slice(last, i));
-				i += 2;
-				while (src[i] === " ") i++;
-				if (src[i] === "[") {
-					const close = src.indexOf("]", i);
-					i = close === -1 ? src.length : close + 1;
-				}
-				last = i;
-				continue;
-			}
-			i += 2; // escaped char — never a logical-line break
-			continue;
-		}
-		if (c === "{") braceDepth++;
-		else if (c === "}") braceDepth--;
-		else if (c === "\n" && braceDepth === 0 && envDepth === 0) {
-			lines.push(src.slice(last, i));
-			last = i + 1;
-		}
-		i++;
-	}
-	lines.push(src.slice(last));
-	return lines;
-}
-
 /**
  * Render a display LaTeX math fragment to lines with full 2-D layout: stacked
  * fractions, stretchy delimiters, matrix grids, operator limits, drawn
@@ -1251,7 +1213,7 @@ function splitLines(src: string): string[] {
  */
 export function latexToBlock(src: string): string[] {
 	if (typeof src !== "string" || src.trim() === "") return [];
-	const rows = splitLines(src.trim())
+	const rows = splitRowBreaks(src.trim(), true)
 		.map(line => line.trim())
 		.filter(line => line !== "")
 		.map(line => parseExpr(line));

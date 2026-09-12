@@ -1,9 +1,9 @@
 /**
  * Regression guard for PR review feedback on #2190.
  *
- * Subagents inherit the parent's custom-tool source *paths* (a cheap FS scan
+ * Agents inherit the parent's custom-tool source *paths* (a cheap FS scan
  * the parent already paid for), but each session MUST rebuild its own
- * `LoadedCustomTool[]` so factories see the subagent's `CustomToolAPI`
+ * `LoadedCustomTool[]` so factories see the agent's `CustomToolAPI`
  * (cwd, exec, pushPendingAction, UI). Forwarding the parent's loaded tool
  * instances would route execution and pending actions back to the parent —
  * wrong for isolated tasks and for queue routing.
@@ -54,40 +54,40 @@ describe("loadCustomTools per-session binding (#2190 review fix)", () => {
 	it("binds each load to the cwd passed to loadCustomTools", async () => {
 		const paths: ToolPathWithSource[] = [{ path: toolPath }];
 		const parentResult = await loadCustomTools(paths, "/tmp/parent-cwd", []);
-		const subagentResult = await loadCustomTools(paths, "/tmp/subagent-cwd", []);
+		const agentResult = await loadCustomTools(paths, "/tmp/agent-cwd", []);
 
 		expect(parentResult.errors).toEqual([]);
-		expect(subagentResult.errors).toEqual([]);
+		expect(agentResult.errors).toEqual([]);
 		expect(parentResult.tools).toHaveLength(1);
-		expect(subagentResult.tools).toHaveLength(1);
+		expect(agentResult.tools).toHaveLength(1);
 
 		expect(parentResult.tools[0]).toBeDefined();
-		expect(subagentResult.tools[0]).toBeDefined();
+		expect(agentResult.tools[0]).toBeDefined();
 		const parentApi = (parentResult.tools[0]!.tool as unknown as { __boundApi: CustomToolAPI }).__boundApi;
-		const subagentApi = (subagentResult.tools[0]!.tool as unknown as { __boundApi: CustomToolAPI }).__boundApi;
+		const agentApi = (agentResult.tools[0]!.tool as unknown as { __boundApi: CustomToolAPI }).__boundApi;
 
 		expect(parentApi.cwd).toBe("/tmp/parent-cwd");
-		expect(subagentApi.cwd).toBe("/tmp/subagent-cwd");
-		expect(subagentApi).not.toBe(parentApi);
+		expect(agentApi.cwd).toBe("/tmp/agent-cwd");
+		expect(agentApi).not.toBe(parentApi);
 		// Different tool instances — a session must never see the other's tool.
-		expect(subagentResult.tools[0]?.tool).not.toBe(parentResult.tools[0]?.tool);
+		expect(agentResult.tools[0]?.tool).not.toBe(parentResult.tools[0]?.tool);
 	});
 
 	it("routes pushPendingAction to the loader's own callback, not a shared one", async () => {
 		const parentLog: string[] = [];
-		const subagentLog: string[] = [];
+		const agentLog: string[] = [];
 
 		const parentResult = await loadCustomTools([{ path: toolPath }], "/tmp/parent-cwd", [], action =>
 			parentLog.push(`parent:${action.label}`),
 		);
-		const subagentResult = await loadCustomTools([{ path: toolPath }], "/tmp/subagent-cwd", [], action =>
-			subagentLog.push(`subagent:${action.label}`),
+		const agentResult = await loadCustomTools([{ path: toolPath }], "/tmp/agent-cwd", [], action =>
+			agentLog.push(`agent:${action.label}`),
 		);
 
 		expect(parentResult.tools[0]).toBeDefined();
-		expect(subagentResult.tools[0]).toBeDefined();
+		expect(agentResult.tools[0]).toBeDefined();
 		const parentApi = (parentResult.tools[0]!.tool as unknown as { __boundApi: CustomToolAPI }).__boundApi;
-		const subagentApi = (subagentResult.tools[0]!.tool as unknown as { __boundApi: CustomToolAPI }).__boundApi;
+		const agentApi = (agentResult.tools[0]!.tool as unknown as { __boundApi: CustomToolAPI }).__boundApi;
 
 		// Cast: the test fixture exposes the runtime API verbatim.
 		parentApi.pushPendingAction({
@@ -95,13 +95,13 @@ describe("loadCustomTools per-session binding (#2190 review fix)", () => {
 			sourceToolName: "echo",
 			apply: async () => ({ content: [] }),
 		});
-		subagentApi.pushPendingAction({
+		agentApi.pushPendingAction({
 			label: "ping",
 			sourceToolName: "echo",
 			apply: async () => ({ content: [] }),
 		});
 
 		expect(parentLog).toEqual(["parent:ping"]);
-		expect(subagentLog).toEqual(["subagent:ping"]);
+		expect(agentLog).toEqual(["agent:ping"]);
 	});
 });

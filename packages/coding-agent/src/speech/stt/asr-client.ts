@@ -1,7 +1,5 @@
-import { errorMessage, logger } from "@veyyon/utils";
 import {
 	createWorkerSubprocess,
-	logWorkerMessage,
 	type RefCountedWorkerHandle,
 	refCountedUnavailableWorker,
 	resolveWorkerSpawnCmd,
@@ -11,29 +9,31 @@ import {
 	spawnWorkerOrUnavailable,
 	wrapRefCountedSubprocess,
 } from "../../subprocess/worker-client";
+import {
+	type WorkerDownloadOptions,
+	type WorkerDownloadResult,
+	WorkerRequestClient,
+	type WorkerRoutedOutbound,
+} from "../../subprocess/worker-request-client";
 import { tinyWorkerEnv } from "../../tiny/title-client";
 import { STT_WORKER_ARG } from "../../worker-args";
-import type { SttProgressEvent, SttWorkerInbound, SttWorkerOutbound } from "./asr-protocol";
+import type { SttWorkerInbound, SttWorkerOutbound } from "./asr-protocol";
 import type { SttModelKey } from "./models";
 
 type PendingRequest =
 	| { kind: "transcribe"; modelKey: SttModelKey; resolve: (text: string) => void; reject: (error: Error) => void }
 	| { kind: "download"; modelKey: SttModelKey; resolve: (result: SttDownloadResult) => void };
 
+type RoutedMessage = WorkerRoutedOutbound<SttWorkerOutbound, SttModelKey>;
+
 export interface SttTranscribeOptions {
 	language?: string;
 	signal?: AbortSignal;
 }
 
-export interface SttDownloadOptions {
-	signal?: AbortSignal;
-	onProgress?: (event: SttProgressEvent) => void;
-}
+export type SttDownloadOptions = WorkerDownloadOptions<SttModelKey>;
 
-export interface SttDownloadResult {
-	ok: boolean;
-	error?: string;
-}
+export type SttDownloadResult = WorkerDownloadResult;
 
 /** Live streaming session handle returned by {@link SttClient.startStream}. */
 export interface SttStreamHandle {
@@ -89,24 +89,15 @@ function spawnSttWorker(): RefCountedWorkerHandle<SttWorkerInbound, SttWorkerOut
 	);
 }
 
-export class SttClient {
-	#worker: RefCountedWorkerHandle<SttWorkerInbound, SttWorkerOutbound> | null = null;
-	#unsubscribeMessage: (() => void) | null = null;
-	#unsubscribeError: (() => void) | null = null;
-	#pending = new Map<string, PendingRequest>();
+function terminatedError(): Error {
+	return new Error("stt worker terminated");
+}
+
+export class SttClient extends WorkerRequestClient<SttWorkerInbound, RoutedMessage, SttModelKey, PendingRequest> {
 	#streams = new Map<string, StreamState>();
-	#progressListeners = new Set<(event: SttProgressEvent) => void>();
-	#nextRequestId = 0;
-	#refed = false;
-	#spawnWorker: () => RefCountedWorkerHandle<SttWorkerInbound, SttWorkerOutbound>;
 
 	constructor(spawnWorker: () => RefCountedWorkerHandle<SttWorkerInbound, SttWorkerOutbound> = spawnSttWorker) {
-		this.#spawnWorker = spawnWorker;
-	}
-
-	onProgress(listener: (event: SttProgressEvent) => void): () => void {
-		this.#progressListeners.add(listener);
-		return () => this.#progressListeners.delete(listener);
+		super("stt", spawnWorker);
 	}
 
 	/**
@@ -116,24 +107,12 @@ export class SttClient {
 	 */
 	async transcribe(modelKey: SttModelKey, audio: Float32Array, options: SttTranscribeOptions = {}): Promise<string> {
 		options.signal?.throwIfAborted();
-		const worker = this.#ensureWorker();
-		const id = String(++this.#nextRequestId);
-		const { promise, resolve, reject } = Promise.withResolvers<string>();
-		this.#addPending(id, { kind: "transcribe", modelKey, resolve, reject });
-		const abort = (): void => {
-			const pending = this.#pending.get(id);
-			if (pending?.kind !== "transcribe") return;
-			this.#deletePending(id);
-			pending.reject(new DOMException("The operation was aborted.", "AbortError"));
-		};
-		options.signal?.addEventListener("abort", abort, { once: true });
-		try {
-			worker.send({ type: "transcribe", id, modelKey, audio, language: options.language });
-			return await promise;
-		} finally {
-			options.signal?.removeEventListener("abort", abort);
-			this.#deletePending(id);
-		}
+		return this.request<string>({
+			signal: options.signal,
+			message: id => ({ type: "transcribe", id, modelKey, audio, language: options.language }),
+			pending: (resolve, reject) => ({ kind: "transcribe", modelKey, resolve, reject }),
+			onAbort: (_resolve, reject) => reject(new DOMException("The operation was aborted.", "AbortError")),
+		});
 	}
 
 	/**
@@ -144,8 +123,8 @@ export class SttClient {
 	 * an aborted signal) tears the session down and resolves `stop()` with "".
 	 */
 	startStream(modelKey: SttModelKey, options: SttStreamOptions = {}): SttStreamHandle {
-		const worker = this.#ensureWorker();
-		const id = String(++this.#nextRequestId);
+		const worker = this.ensureWorker();
+		const id = this.nextRequestId();
 		const { promise, resolve, reject } = Promise.withResolvers<string>();
 		// `stop()` is normally the only awaiter of `promise`, but with model loading
 		// now deferred to the stream, a load failure (or early worker error) can
@@ -161,7 +140,7 @@ export class SttClient {
 			settled = true;
 			this.#streams.delete(id);
 			signal?.removeEventListener("abort", onAbort);
-			this.#syncWorkerRef();
+			this.syncWorkerRef();
 			apply();
 		};
 		this.#streams.set(id, {
@@ -172,7 +151,7 @@ export class SttClient {
 			reject,
 			finish,
 		});
-		this.#syncWorkerRef();
+		this.syncWorkerRef();
 		worker.send({ type: "stream_start", id, modelKey, language: options.language });
 		const handle: SttStreamHandle = {
 			pushAudio: audio => {
@@ -193,108 +172,30 @@ export class SttClient {
 		return handle;
 	}
 
-	async downloadModel(modelKey: SttModelKey, options: SttDownloadOptions = {}): Promise<SttDownloadResult> {
-		if (options.signal?.aborted) return { ok: false };
-		const unsubscribe = options.onProgress ? this.onProgress(options.onProgress) : undefined;
-		try {
-			const worker = this.#ensureWorker();
-			const id = String(++this.#nextRequestId);
-			const { promise, resolve } = Promise.withResolvers<SttDownloadResult>();
-			this.#addPending(id, { kind: "download", modelKey, resolve });
-			const abort = (): void => {
-				const pending = this.#pending.get(id);
-				if (pending?.kind !== "download") return;
-				this.#deletePending(id);
-				pending.resolve({ ok: false });
-			};
-			options.signal?.addEventListener("abort", abort, { once: true });
-			try {
-				worker.send({ type: "download", id, modelKey });
-				return await promise;
-			} finally {
-				options.signal?.removeEventListener("abort", abort);
-				this.#deletePending(id);
-			}
-		} catch (error) {
-			const message = errorMessage(error);
-			logger.debug("stt: local model download failed", {
-				modelKey,
-				error: message,
-			});
-			return { ok: false, error: message };
-		} finally {
-			unsubscribe?.();
-		}
+	downloadModel(modelKey: SttModelKey, options: SttDownloadOptions = {}): Promise<SttDownloadResult> {
+		return this.download<SttDownloadResult>(modelKey, options, {
+			message: id => ({ type: "download", id, modelKey }),
+			pending: resolve => ({ kind: "download", modelKey, resolve }),
+			aborted: { ok: false },
+			failed: error => ({ ok: false, error }),
+		});
 	}
 
-	async terminate(): Promise<void> {
-		const worker = this.#worker;
-		this.#worker = null;
-		this.#unsubscribeMessage?.();
-		this.#unsubscribeMessage = null;
-		this.#unsubscribeError?.();
-		this.#unsubscribeError = null;
-		for (const pending of this.#pending.values()) {
-			this.#emitProgress({ modelKey: pending.modelKey, status: "error" });
-			if (pending.kind === "transcribe") pending.reject(new Error("stt worker terminated"));
-			else pending.resolve({ ok: false });
-		}
-		this.#pending.clear();
-		this.#refed = false;
-		this.#failStreams(new Error("stt worker terminated"));
-		try {
-			await worker?.terminate();
-		} catch {
-			// Already gone.
-		}
+	/** A live stream keeps the worker referenced like a pending request does. */
+	busy(): boolean {
+		return this.#streams.size > 0;
 	}
 
-	#ensureWorker(): RefCountedWorkerHandle<SttWorkerInbound, SttWorkerOutbound> {
-		if (this.#worker) return this.#worker;
-		const worker = this.#spawnWorker();
-		this.#worker = worker;
-		this.#unsubscribeMessage = worker.onMessage(message => this.#handleMessage(message));
-		this.#unsubscribeError = worker.onError(error => this.#handleWorkerError(error));
-		return worker;
+	settlePending(pending: PendingRequest, error: Error | undefined): void {
+		if (pending.kind === "transcribe") pending.reject(error ?? terminatedError());
+		else pending.resolve(error ? { ok: false, error: error.message } : { ok: false });
 	}
 
-	/** Register a pending request and keep the worker referenced while work is in flight. */
-	#addPending(id: string, request: PendingRequest): void {
-		this.#pending.set(id, request);
-		this.#syncWorkerRef();
+	workerLost(error: Error | undefined): void {
+		this.#failStreams(error ?? terminatedError());
 	}
 
-	/** Drop a pending request and unref the worker once no request or stream is active. */
-	#deletePending(id: string): void {
-		if (this.#pending.delete(id)) this.#syncWorkerRef();
-	}
-
-	/**
-	 * STT workers start unreferenced so an idle warm model never blocks exit.
-	 * Setup/download commands must keep the worker alive while awaiting IPC, or
-	 * Bun can drain the event loop immediately after `Preparing Speech-to-Text`.
-	 */
-	#syncWorkerRef(): void {
-		const worker = this.#worker;
-		if (!worker) return;
-		const shouldRef = this.#pending.size > 0 || this.#streams.size > 0;
-		if (shouldRef === this.#refed) return;
-		this.#refed = shouldRef;
-		if (shouldRef) worker.ref();
-		else worker.unref();
-	}
-
-	#handleMessage(message: SttWorkerOutbound): void {
-		if (message.type === "log") {
-			logWorkerMessage(message);
-			return;
-		}
-		if (message.type === "progress") {
-			this.#emitProgress(message.event);
-			return;
-		}
-		if (message.type === "pong") return;
-
+	handleMessage(message: RoutedMessage): void {
 		if (message.type === "partial" || message.type === "segment" || message.type === "stream_done") {
 			const stream = this.#streams.get(message.id);
 			if (!stream) return;
@@ -304,18 +205,18 @@ export class SttClient {
 			return;
 		}
 
-		const pending = this.#pending.get(message.id);
+		const pending = this.getPending(message.id);
 		if (!pending) {
 			if (message.type === "error") {
 				const stream = this.#streams.get(message.id);
 				if (stream) {
-					this.#emitProgress({ modelKey: stream.modelKey, status: "error" });
+					this.failProgress(stream.modelKey);
 					stream.finish(() => stream.reject(new Error(message.error)));
 				}
 			}
 			return;
 		}
-		this.#deletePending(message.id);
+		this.deletePending(message.id);
 		if (message.type === "transcription") {
 			if (pending.kind === "transcribe") pending.resolve(message.text);
 			return;
@@ -325,32 +226,16 @@ export class SttClient {
 			return;
 		}
 		// message.type === "error"
-		this.#emitProgress({ modelKey: pending.modelKey, status: "error" });
+		this.failProgress(pending.modelKey);
 		if (pending.kind === "transcribe") pending.reject(new Error(message.error));
 		else pending.resolve({ ok: false, error: message.error });
 	}
 
-	#emitProgress(event: SttProgressEvent): void {
-		for (const listener of this.#progressListeners) listener(event);
-	}
-
 	#failStreams(error: Error): void {
 		for (const stream of Array.from(this.#streams.values())) {
-			this.#emitProgress({ modelKey: stream.modelKey, status: "error" });
+			this.failProgress(stream.modelKey);
 			stream.finish(() => stream.reject(error));
 		}
-	}
-
-	#handleWorkerError(error: Error): void {
-		logger.warn("stt: worker error", { error: error.message });
-		for (const pending of this.#pending.values()) {
-			this.#emitProgress({ modelKey: pending.modelKey, status: "error" });
-			if (pending.kind === "transcribe") pending.reject(error);
-			else pending.resolve({ ok: false, error: error.message });
-		}
-		this.#pending.clear();
-		this.#failStreams(error);
-		void this.terminate();
 	}
 }
 

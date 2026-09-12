@@ -37,6 +37,7 @@ import { settleFrames } from "../../../../hosts/terminal/engine/test/helpers/set
 import { VirtualTerminal } from "../../../../hosts/terminal/engine/test/virtual-terminal";
 import { TerminalPresentationDriver } from "../../src/modes/terminal/driver";
 import { PresentationEventBridge } from "../../src/presentation/event-bridge";
+import { makeStatusLineProducer } from "../helpers/status-line-session";
 import { makeToolSession } from "../helpers/tool-session";
 import { testTheme } from "./helpers/presentation-theme";
 
@@ -149,7 +150,7 @@ describe("a real agent turn reaches the terminal through the presentation seam",
 		// The prompt text itself: the bridge seeded and followed the transcript.
 		expect(frame).toContain("what port does src/config.ts use");
 		// The tool the model asked for, by name, from a toolCall block.
-		expect(frame).toContain("read");
+		expect(frame).toMatch(/read/i);
 		// The assistant's closing turn, which only exists if message_end landed.
 		expect(frame).toContain("PORT is 8080");
 
@@ -203,15 +204,16 @@ describe("a real agent turn reaches the terminal through the presentation seam",
 			attachments: [],
 			queueOnSubmit: false,
 		});
-		rig.driver.setStatusLine({
-			activity: "idle",
-			model: "mock-model",
-			context: { used: 0, total: 200000, providerReported: false },
-			cost: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalUsd: 0 },
-			workingDirectory: "~/work",
-			elapsedMs: 0,
-			queuedMessages: 0,
-		});
+		rig.driver.setStatusLine(
+			makeStatusLineProducer({
+				modelId: "mock-model",
+				modelName: "mock-model",
+				sessionName: "mock-session",
+				cwd: () => "~/work",
+				contextWindow: 200000,
+				contextUsage: { tokens: 0, contextWindow: 200000 },
+			}).getSnapshot(),
+		);
 
 		await rig.session.prompt("go");
 		await settleFrames(rig.terminal, rig.driver.tui);

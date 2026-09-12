@@ -5,7 +5,7 @@ import type { TaskItem } from "@veyyon/coding-agent/task/types";
 import { prompt } from "@veyyon/utils";
 
 // Contract: a multi-sibling spawn with spawn capacity and IRC available draws
-// a proactive coordinate-via-irc suggestion, and the subagent COOP prompt
+// a proactive coordinate-via-irc suggestion, and the agent COOP prompt
 // actively tells peers to coordinate before overlapping edits.
 
 const item = (): TaskItem => ({ task: "do the thing" });
@@ -30,10 +30,10 @@ describe("buildCoordinationAdvisory", () => {
 	});
 });
 
-describe("subagent COOP irc guidance", () => {
-	/** Static IRC capability guidance still warns every subagent before overlapping edits. */
+describe("agent COOP irc guidance", () => {
+	/** Static IRC capability guidance still warns every agent before overlapping edits. */
 	it("prompts coordination before overlapping edits when IRC is available", () => {
-		const out = prompt.render(PROMPTS["subagent/system-prompt"].text, {
+		const out = prompt.render(PROMPTS["agent/system-prompt"].text, {
 			agent: "Base worker.",
 			ircEnabled: true,
 		});

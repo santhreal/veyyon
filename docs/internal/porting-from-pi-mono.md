@@ -51,17 +51,20 @@ Upstream uses different package scopes. Replace them consistently.
 - Some upstream packages publish under the `@earendil-works/*` scope instead of `@mariozechner/*`. Map it the same way (`@earendil-works/pi-coding-agent` → `@veyyon/coding-agent`, and so on).
 - The bare `typebox` package is not an `@veyyon/*` scope; do not rewrite it as one. See the Extensions divergence in section 15 for how tool-parameter schemas map.
 
-## 4) Use Bun APIs where they improve on Node
+## 4) Runtime APIs: portable first
 
-We run on Bun, but the current source intentionally mixes Bun APIs with small Node standard-library APIs. Replace Node APIs only when Bun provides a clearer, safer, or simpler implementation; do not mechanically rewrite every Node import.
+We run on Bun, and the direction is portable: in new code reach for the language, then `node:*`,
+then POSIX tooling, then Bun, and choose a Bun API only where no reasonable portable equivalent
+exists. The root `AGENTS.md` holds the full table. Existing Bun code is correct and stays; do not
+widen a port to convert a file, and do not mechanically rewrite either direction.
 
-**Prefer replacing when porting new code:**
+**Replace when porting new code:**
 
-- Process spawning: prefer Bun Shell `$` for simple commands; use `Bun.spawn`/`Bun.spawnSync` for streaming or process control. Keep existing `child_process` only where its exact semantics are needed.
+- Process spawning: `execFile`/`spawn` from `node:child_process`. Upstream `` $`cmd` `` and `Bun.spawn` become the `node:child_process` spelling unless the port needs streaming semantics Bun already implements here.
 - HTTP clients: `node-fetch`, `axios` → native `fetch`
-- SQLite: `better-sqlite3` → `bun:sqlite`
-- Env loading: `dotenv` → Bun loads `.env` automatically
-- Runtime text/assets: prefer Bun imports such as `with { type: "text" }` or `Bun.file()` over copy steps or bundled fallback file reads.
+- SQLite: `better-sqlite3` → `bun:sqlite`, which has no portable equivalent
+- Env loading: `dotenv` → `process.env`
+- Runtime text/assets: `import … with { type: "text" }` over copy steps or bundled fallback file reads. This is the mandated spelling for prompts.
 
 **DO NOT replace (these work fine in Bun):**
 
@@ -72,12 +75,12 @@ We run on Bun, but the current source intentionally mixes Bun APIs with small No
 
 **Import style:** Use the `node:` prefix for Node standard-library imports. Namespace imports are common, but named imports are acceptable where the surrounding code already uses them.
 
-**Additional Bun conventions:**
+**Additional conventions:**
 
-- Prefer Bun Shell `$` for short, non-streaming commands; use `Bun.spawn` only when you need streaming I/O or process control.
-- Use `Bun.file()`/`Bun.write()` for simple files and `node:fs/promises` for directory-oriented operations. Existing synchronous `node:fs` calls are acceptable when the calling flow is intentionally synchronous.
-- Avoid `Bun.file().exists()` checks; use `isEnoent` handling in try/catch.
-- Prefer `Bun.sleep(ms)` over `setTimeout` wrappers.
+- `fs.readFile`/`fs.writeFile` from `node:fs/promises`, not `Bun.file()`/`Bun.write()`. Existing synchronous `node:fs` calls are acceptable when the calling flow is intentionally synchronous.
+- Avoid an existence check before a read; use `isEnoent` handling in try/catch.
+- `setTimeout` from `node:timers/promises`, not `Bun.sleep(ms)`.
+- `process.env`, not `Bun.env`. `import.meta.dirname`, not `import.meta.dir`.
 
 **Wrong:**
 
@@ -98,13 +101,13 @@ const configDir = path.join(os.homedir(), ".config", "myapp");
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "myapp-"));
 ```
 
-## 5) Prefer Bun embeds (no copying)
+## 5) Embed assets (no copying)
 
-Do not add new runtime asset copy steps. Keep assets in repo and prefer Bun embeds/imports; preserve existing explicit generation workflows such as `packages/coding-agent/src/export/html/tool-views.generated.js` (built from collab-web sources via `bun run gen:tool-views`).
+Do not add new runtime asset copy steps. Keep assets in repo and use import attributes; preserve existing explicit generation workflows such as `packages/coding-agent/src/export/html/tool-views.generated.js` (built from collab-web sources via `bun run gen:tool-views`).
 
-- If upstream copies assets into a dist folder, replace with Bun-friendly embeds.
-- Prompts are static `.md` files; use Bun text imports (`with { type: "text" }`) and Handlebars instead of inline prompt strings.
-- Use `import.meta.dir` + `Bun.file` to load adjacent non-text resources.
+- If upstream copies assets into a dist folder, replace with an embedded import.
+- Prompts are static `.md` files; use text imports (`with { type: "text" }`) and Handlebars instead of inline prompt strings.
+- Use `import.meta.dirname` + `fs.readFile` to load adjacent non-text resources. Never `import.meta.dir`.
 - Keep assets in-repo and let the bundler include them.
 - Eliminate copy scripts unless the user explicitly requests them or the package already has an intentional generation step.
 - If upstream reads a bundled fallback file at runtime, replace filesystem reads with a Bun text embed import unless the current package already uses a generated asset pipeline.
@@ -133,10 +136,10 @@ Treat `package.json` as a contract. Merge intentionally.
 - Use `Promise.withResolvers()` instead of `new Promise((resolve, reject) => ...)`.
 - Prefer ES `#` private fields for new encapsulated state. Constructor parameter properties already exist in current code and are acceptable; do not churn unrelated access modifiers while porting.
 - Prefer existing helpers and utilities over new ad-hoc code.
-  Preserve Bun-first infrastructure changes already made in this repo:
+  Preserve the runtime decisions already made in this repo:
   - Runtime is Bun (no Node entry points for the main CLI).
   - Package manager is Bun (no npm lockfiles).
-  - Heavy Node APIs should not be introduced casually; current source still uses selected Node APIs (`node:crypto`, `node:readline`, synchronous `node:fs`, and `child_process`) where they fit provider, CLI, or process-control semantics.
+  - `node:*` is the default spelling in new code. Current source uses `node:crypto`, `node:readline`, synchronous `node:fs`, and `child_process` where they fit provider, CLI, or process-control semantics.
   - Lightweight Node APIs (`os.homedir`, `os.tmpdir`, `fs.mkdtempSync`, `path.*`) are kept.
   - CLI shebangs use `bun` (not `node`, not `tsx`).
   - TypeScript packages generally use source files directly; `@veyyon/natives` exports generated native bindings from `natives/bridge/bindings/native`.
@@ -346,7 +349,7 @@ Our fork has architectural decisions that differ from upstream. **Do not port th
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | `createTool(cwd: string, options?)` | `createTools(session: ToolSession)` via `BUILTIN_TOOLS` registry                                              | Tool factories accept `ToolSession` and can return `null` |
 | Per-tool `*Operations` interfaces   | Only current per-tool override interfaces remain (for example `FindOperations`)                               | Used for SSH/remote overrides where present               |
-| Node.js `fs/promises` everywhere    | Bun file APIs for simple file writes/reads, `node:fs/promises` for dirs, selected sync `node:fs` where needed | Prefer Bun APIs when they simplify                        |
+| Node.js `fs/promises` everywhere    | `node:fs/promises`, with existing `Bun.file`/`Bun.write` call sites left as they are and selected sync `node:fs` where needed | New code uses the portable spelling      |
 
 ### Auth Storage
 
@@ -483,4 +486,4 @@ handbook pages. `neverPorted` in `scripts/upstream-port-policy.json` lists the
 paths a port has no business authoring, which is the checklist to read that diff
 against.
 
-*Verified against `9c904aa2db` on 2026-09-05.*
+*Verified against `504c88b39f` on 2026-09-11.*

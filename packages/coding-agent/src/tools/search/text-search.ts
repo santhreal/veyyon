@@ -44,7 +44,7 @@ import {
 	splitPathAndSelPreferringLiteral,
 	toPathList,
 } from "../core/path-utils";
-import { formatCodeFrameLine, formatCount, PREVIEW_LIMITS } from "../core/render-utils";
+import { formatCodeFrameLine, formatCount } from "../core/render-utils";
 import { ToolError } from "../core/tool-errors";
 import { toolResult } from "../core/tool-result";
 import { loadUrlReader } from "../web/manifest";
@@ -1659,9 +1659,3 @@ export interface TextSearchRenderArgs {
 	gitignore?: boolean;
 	skip?: number;
 }
-
-export const COLLAPSED_TEXT_LIMIT = PREVIEW_LIMITS.COLLAPSED_LINES * 2;
-/** Line budget for the expanded view. Larger than collapsed so expanding
- * reveals more matches with context, but still bounded so a single hot file
- * whose matches span the whole file can't dump its entire length. */
-export const EXPANDED_TEXT_LIMIT = PREVIEW_LIMITS.EXPANDED_LINES * 2;

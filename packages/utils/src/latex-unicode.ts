@@ -1,6 +1,7 @@
 import { SGR_BG_RESET, SGR_FG_RESET } from "./ansi";
 import { type AnsiColorFormat, getAnsiColorFormat } from "./color-format";
 import { clamp01 } from "./math";
+import { codePointLength } from "./string-length";
 
 // LaTeX → Unicode/ANSI converter.
 //
@@ -854,13 +855,6 @@ function mapAll(text: string, table: Record<string, string>): string | null {
 	return out;
 }
 
-/** Number of Unicode code points (not UTF-16 units) in `s`. */
-function codePointLength(s: string): number {
-	let n = 0;
-	for (const _ of s) n++;
-	return n;
-}
-
 /** Style a single ASCII letter/digit via the math alphanumeric block. */
 function styleAlnum(ch: string, style: FontStyle): string {
 	const hole = ALPHA_HOLES[`${style}:${ch}`];
@@ -1404,8 +1398,8 @@ class LatexParser {
 			return NOT_MAP[arg.text] ?? applyCombining(arg.text, "\u0338");
 		}
 
-		if (name === "overset" || name === "stackrel") return this.#scriptedAbove(style);
-		if (name === "underset") return this.#scriptedBelow(style);
+		if (name === "overset" || name === "stackrel") return this.#scripted(style, toSuperscript);
+		if (name === "underset") return this.#scripted(style, toSubscript);
 		if (name === "prescript") return this.#prescript(style);
 
 		const arrow = EXTENSIBLE_ARROWS[name];
@@ -1655,16 +1649,11 @@ class LatexParser {
 		return `${this.#wrapFrac(num)}/${this.#wrapFrac(den)}`;
 	}
 
-	#scriptedAbove(style: FontStyle | null): string {
-		const above = this.#argument(style);
+	/** `\overset{script}{base}` and `\underset{script}{base}`: the script argument precedes the base. */
+	#scripted(style: FontStyle | null, toScript: (text: string, group: boolean) => string): string {
+		const script = this.#argument(style);
 		const base = this.#argument(style);
-		return base.text + toSuperscript(above.text, true);
-	}
-
-	#scriptedBelow(style: FontStyle | null): string {
-		const below = this.#argument(style);
-		const base = this.#argument(style);
-		return base.text + toSubscript(below.text, true);
+		return base.text + toScript(script.text, true);
 	}
 
 	#prescript(style: FontStyle | null): string {

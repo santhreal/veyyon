@@ -1,6 +1,5 @@
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
-import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import {
 	PARALLEL_BETA_HEADER,
@@ -15,8 +14,8 @@ import type { SearchResponse } from "../types";
 import { SearchProviderError } from "../types";
 import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
-import { SearchProvider } from "./base";
-import { classifyProviderHttpError, toSearchSources } from "./utils";
+import { ApiKeySearchProvider } from "./base";
+import { throwProviderHttpError, toSearchSources } from "./utils";
 
 const MAX_NUM_RESULTS = 40;
 
@@ -118,8 +117,7 @@ export async function searchParallel(
 	} catch (err) {
 		if (err instanceof ParallelApiError) {
 			if (typeof err.statusCode === "number") {
-				const classified = classifyProviderHttpError("parallel", err.statusCode, "");
-				if (classified) throw classified;
+				throwProviderHttpError("parallel", err.statusCode, "", "Parallel search request failed.");
 			}
 			throw new SearchProviderError("parallel", "Parallel search request failed.", err.statusCode);
 		}
@@ -127,13 +125,9 @@ export async function searchParallel(
 	}
 }
 
-export class ParallelProvider extends SearchProvider {
+export class ParallelProvider extends ApiKeySearchProvider {
 	readonly id = "parallel";
 	readonly label = "Parallel";
-
-	isAvailable(authStorage: AuthStorage) {
-		return !!getEnvApiKey("parallel") || authStorage.hasAuth("parallel");
-	}
 
 	search(params: SearchParams): Promise<SearchResponse> {
 		return searchParallel(

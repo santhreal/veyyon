@@ -26,7 +26,7 @@ The native provider is the recommended format for new projects. It reads from yo
 | `<ancestor>/.veyyon/AGENTS.md` | Project | Project context. `veyyon` walks upward from the current directory to the repository root and every ancestor contributes at most **one** file. The nearest non-empty `.veyyon/` directory supplies that ancestor's file from its `AGENTS.md`; other ancestors fall back to a bare `AGENTS.md`, then a bare `CLAUDE.md`. See [Load order and shadowing](#load-order-and-shadowing) for the full per-directory order. |
 | `~/.veyyon/profiles/<profile>/agent/RULES.md` | User | User-level sticky rule content. Loaded as an always-apply rule, not as a context file. |
 
-Two details matter:
+Key discovery behaviors:
 
 - **Walk-up to the repository root.** Discovery starts in the current working directory and climbs through each ancestor up to the repository root. The nearest non-empty `.veyyon/` directory claims its own level with its `AGENTS.md`; every other level contributes a bare `AGENTS.md`, falling back to a bare `CLAUDE.md` when no `AGENTS.md` has content there.
 - **The `.veyyon/` directory must be non-empty.** An empty `.veyyon/` directory is skipped during the walk-up, so the search continues to the next ancestor. An empty `AGENTS.md` file contributes nothing and shadows nothing.
@@ -96,7 +96,7 @@ After deduplication, project files are sorted so **farther ancestors appear firs
 
 ### Scope authority: your own configuration is last and wins
 
-Provider priority and depth decide which files *survive*. A separate axis sets where each survivor is *rendered*, and therefore which one wins an outright conflict. These are two different orders and it is easy to read one as the other:
+Provider priority and depth select which files *survive*. A separate axis sets where each survivor is *rendered*, and therefore which one wins an outright conflict. These are two distinct orders:
 
 - **Resolution order** is the order the three scopes are read: global, then profile, then project.
 - **Authority order** is the order they are rendered, least authoritative first: the project group (farther ancestors first, closest to the cwd last), then the profile file, then the cross-profile global `~/.veyyon/AGENTS.md` **last of all**.
@@ -153,9 +153,9 @@ one you read FIRST is the narrowest, not the strongest: ...
 
 The agent sees each file's absolute path and its fully expanded Markdown content (with `@` imports already resolved, see below). When discovery is enabled, matching context files are injected at session start.
 
-A sentence stating that your live instruction in the conversation has absolute authority renders in every session, whether or not any context file loaded, because a rule or a memory can tell the agent to reject just as a file can. The scope ladder above renders only when at least one context file loaded, since there is nothing to rank otherwise. Below your live instruction, the surviving context files win over conflicting generic Veyyon workflow defaults, retrieved material, and historical summaries; among themselves they rank by the scope ladder, and a project file never overrides your own configuration.
+A sentence stating that your live instruction in the conversation has absolute authority renders in every session, whether or not any context file loaded, because a rule or a memory can instruct the agent to reject just as a file can. The scope ladder above renders only when at least one context file loaded, since there is nothing to rank otherwise. Below your live instruction, the surviving context files win over conflicting generic Veyyon workflow defaults, retrieved material, and historical summaries; among themselves they rank by the scope ladder, and a project file never overrides your own configuration.
 
-Deeper-directory `AGENTS.md` files that were *not* auto-loaded (for example, ones below the current directory) are surfaced separately in a `<dir-context>` block that lists their paths and tells the agent to read them before editing those directories. Those files are pointers, not full injected content.
+Deeper-directory `AGENTS.md` files that were *not* auto-loaded (for example, ones below the current directory) are surfaced separately in a `<dir-context>` block that lists their paths and instructs the agent to read them before editing those directories. Those files are pointers, not full injected content.
 
 ## `@` imports
 
@@ -215,7 +215,7 @@ disabledProviders:
 
 | Id kind | Examples | Effect when listed |
 |---|---|---|
-| Discovery provider ids | `native`, `claude`, `codex`, `gemini`, `opencode`, `github`, `agents`, `agents-md` | The entire config source is removed, not just its context files, but also any MCP servers, slash commands, skills, hooks, tools, prompts, and settings it would have contributed. |
+| Discovery provider ids | `native`, `claude`, `codex`, `gemini`, `opencode`, `github`, `agents`, `agents-md` | The entire config source is removed, including its context files, MCP servers, slash commands, skills, hooks, tools, prompts, and settings. |
 | Model provider ids | `anthropic`, `openai`, `google`, `groq`, `ollama`, `openrouter` | The model backend is removed from selection even when its credentials are present. See [Providers](../reference/providers.md). |
 
 Ids are exact and the two namespaces do not collide by accident: `google` disables the Google model backend, while `gemini` disables the Gemini CLI discovery files. Disabling a discovery provider is heavier than it looks, disabling `claude`, for instance, also drops Claude-discovered MCP servers, commands, skills, hooks, tools, and settings, not only `CLAUDE.md`.

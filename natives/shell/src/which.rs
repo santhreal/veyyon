@@ -25,7 +25,7 @@ use brush_core::{
 	results::ExecutionResult,
 	sys,
 };
-use clap::{Parser, error::ErrorKind};
+use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(name = "which", about = "Locate a command's executable in the shell's PATH")]
@@ -82,18 +82,11 @@ fn run_which<SE: ShellExtensions>(
 	let cli = match WhichCli::try_parse_from(argv) {
 		Ok(cli) => cli,
 		Err(err) => {
-			let rendered = err.to_string();
-			let code = match err.kind() {
-				ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
-					let _ = write!(stdout, "{rendered}");
-					0
-				},
-				_ => {
-					let _ = write!(stderr, "{rendered}");
-					2
-				},
-			};
-			return ExecutionResult::new(code);
+			return ExecutionResult::new(crate::coreutils::render_clap_error(
+				&err,
+				&mut stdout,
+				&mut stderr,
+			));
 		},
 	};
 

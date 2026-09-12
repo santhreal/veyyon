@@ -35,7 +35,7 @@ import {
 	MetadataSchema,
 	StopReason,
 } from "@veyyon/catalog/discovery/devin-gen/exa/codeium_common_pb/codeium_common_pb";
-import { calculateCost, discardAttemptUsage, emptyUsage } from "@veyyon/catalog/models";
+import { calculateCost, discardAttemptUsage } from "@veyyon/catalog/models";
 import { DEVIN_CASCADE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { isAbortError } from "@veyyon/utils/abortable";
 import { tryParseJson } from "@veyyon/utils/json";
@@ -61,6 +61,7 @@ import { clearStreamingPartialJson, setStreamingPartialJson } from "../utils/blo
 import { deterministicUuid } from "../utils/deterministic-id";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { toolWireSchema } from "../utils/schema/wire";
+import { createInitialResponsesAssistantMessage } from "./initial-message";
 import { NON_VIDEO_MODEL_PLACEHOLDER } from "./vision-content";
 
 /**
@@ -134,16 +135,11 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 		const startTime = performance.now();
 		let firstTokenTime: number | undefined;
 
-		const output: AssistantMessage = {
-			role: "assistant",
-			content: [],
-			api: "devin-agent" as Api,
-			provider: model.provider,
-			model: model.id,
-			usage: emptyUsage(),
-			stopReason: "stop",
-			timestamp: Date.now(),
-		};
+		const output: AssistantMessage = createInitialResponsesAssistantMessage(
+			"devin-agent" as Api,
+			model.provider,
+			model.id,
+		);
 
 		let currentTextBlock: TextContent | null = null;
 		let currentThinkingBlock: ThinkingContent | null = null;
@@ -479,10 +475,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 				rules: result.rules,
 				error: String(error),
 			});
-			output.stopReason = result.stopReason;
-			output.errorStatus = result.status;
-			output.errorId = result.id;
-			output.errorMessage = result.message;
+			AIError.applyFinalizeResult(output, result);
 			output.duration = performance.now() - startTime;
 			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
 			stream.push({ type: "error", reason: result.stopReason, error: output });

@@ -25,14 +25,9 @@ function createModeContext(opts: {
 			approvalBypassed: opts.bypassed,
 			goal: opts.goalMode
 				? {
-						id: "g",
 						objective: "o",
 						status: "active",
 						tokensUsed: 0,
-						timeUsedSeconds: 0,
-						turnsCompleted: 0,
-						createdAt: 0,
-						updatedAt: 0,
 					}
 				: null,
 		},
@@ -63,7 +58,7 @@ function createModeContext(opts: {
 		contextLimit: 0,
 		contextLimitKind: "window" as const,
 		autoCompactEnabled: false,
-		subagentCount: 0,
+		agentCount: 0,
 		backgroundSessionCount: 0,
 		activeMs: 0,
 		activeRepo: null,

@@ -6,27 +6,23 @@
  */
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
-import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { resolveProviderTextTransform } from "../../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../types";
-import { SearchProviderError } from "../types";
 import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
-import { SearchProvider } from "./base";
-import { classifyProviderHttpError } from "./utils";
+import { ApiKeySearchProvider } from "./base";
+import { handleProviderHttpError } from "./utils";
 
 const TINYFISH_SEARCH_URL = "https://api.search.tinyfish.ai";
 const MAX_NUM_RESULTS = 20;
 const MAX_PAGE = 10;
-
 const RECENCY_MINUTES: Record<NonNullable<SearchParams["recency"]>, number> = {
 	day: 1440,
 	week: 10080,
 	month: 43200,
 	year: 525600,
 };
-
 export interface TinyFishSearchParams {
 	query: string;
 	num_results?: number;
@@ -59,20 +55,25 @@ export function findApiKey(
 	return authStorage.getApiKey("tinyfish", sessionId, { signal });
 }
 
+export function buildTinyFishUrl(params: TinyFishSearchParams): URL {
+	const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "TinyFish search");
+	const url = new URL(TINYFISH_SEARCH_URL);
+	url.searchParams.set("query", transform(params.query));
+	if (params.recency) {
+		url.searchParams.set("recency_minutes", String(RECENCY_MINUTES[params.recency]));
+	}
+	if (params.num_results !== undefined) {
+		url.searchParams.set("num_results", String(params.num_results));
+	}
+	if (params.page !== undefined) {
+		url.searchParams.set("page", String(params.page));
+	}
+	return url;
+}
+
 async function callTinyFishSearch(apiKey: string, params: TinyFishSearchParams): Promise<TinyFishSearchResponse> {
 	return withHardTimeout(params.signal, async hardSignal => {
-		const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "TinyFish search");
-		const url = new URL(TINYFISH_SEARCH_URL);
-		url.searchParams.set("query", transform(params.query));
-		if (params.recency) {
-			url.searchParams.set("recency_minutes", String(RECENCY_MINUTES[params.recency]));
-		}
-		if (params.num_results !== undefined) {
-			url.searchParams.set("num_results", String(params.num_results));
-		}
-		if (params.page !== undefined) {
-			url.searchParams.set("page", String(params.page));
-		}
+		const url = buildTinyFishUrl(params);
 		const response = await (params.fetch ?? fetch)(url, {
 			method: "GET",
 			headers: {
@@ -83,30 +84,11 @@ async function callTinyFishSearch(apiKey: string, params: TinyFishSearchParams):
 		});
 
 		if (!response.ok) {
-			const errorText = await response.text();
-			const classified = classifyProviderHttpError("tinyfish", response.status, errorText);
-			if (classified) throw classified;
-			throw new SearchProviderError(
-				"tinyfish",
-				`TinyFish API request failed (${response.status}).`,
-				response.status,
-			);
+			await handleProviderHttpError("tinyfish", response, `TinyFish API request failed (${response.status}).`);
 		}
 
 		return (await response.json()) as TinyFishSearchResponse;
 	});
-}
-
-function appendTinyFishSources(sources: SearchSource[], results: readonly TinyFishSearchResult[]): void {
-	for (const result of results) {
-		if (!result.url) continue;
-		sources.push({
-			title: result.title ?? result.site_name ?? result.url,
-			url: result.url,
-			snippet: result.snippet ?? undefined,
-			author: result.site_name ?? undefined,
-		});
-	}
 }
 
 /** Execute TinyFish web search. */
@@ -135,7 +117,15 @@ export async function searchTinyFish(params: SearchParams): Promise<SearchRespon
 			for (let page = 0; page <= MAX_PAGE && collected.length < numResults; page += 1) {
 				const searchPage = await callTinyFishSearch(key, { ...tinyFishParams, page });
 				const results = searchPage.results ?? [];
-				appendTinyFishSources(collected, results);
+				for (const result of results) {
+					if (!result.url) continue;
+					collected.push({
+						title: result.title ?? result.site_name ?? result.url,
+						url: result.url,
+						snippet: result.snippet ?? undefined,
+						author: result.site_name ?? undefined,
+					});
+				}
 				if (results.length < pageSize) break;
 			}
 
@@ -156,13 +146,9 @@ export async function searchTinyFish(params: SearchParams): Promise<SearchRespon
 }
 
 /** Search provider for TinyFish web search. */
-export class TinyFishProvider extends SearchProvider {
+export class TinyFishProvider extends ApiKeySearchProvider {
 	readonly id = "tinyfish";
 	readonly label = "TinyFish";
-
-	isAvailable(authStorage: AuthStorage): boolean {
-		return authStorage.hasAuth("tinyfish") || !!getEnvApiKey("tinyfish");
-	}
 
 	search(params: SearchParams): Promise<SearchResponse> {
 		return searchTinyFish(params);

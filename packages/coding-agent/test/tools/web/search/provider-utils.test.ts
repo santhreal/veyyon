@@ -1,5 +1,15 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
-import { classifyProviderHttpError, toSearchSources } from "@veyyon/coding-agent/tools/web/search/providers/utils";
+import { AuthStorage } from "@veyyon/ai";
+import { SqliteAuthCredentialStore } from "@veyyon/ai/auth-storage-sqlite";
+import { BraveProvider } from "@veyyon/coding-agent/tools/web/search/providers/brave";
+import { DuckDuckGoProvider } from "@veyyon/coding-agent/tools/web/search/providers/duckduckgo";
+import {
+	classifyProviderHttpError,
+	handleProviderHttpError,
+	resolveProviderKey,
+	toSearchSources,
+} from "@veyyon/coding-agent/tools/web/search/providers/utils";
 import { SearchProviderError } from "@veyyon/coding-agent/tools/web/search/types";
 
 /**
@@ -106,5 +116,124 @@ describe("toSearchSources", () => {
 		const [a] = toSearchSources([{ title: "A", url: "https://a", publishedDate: "2000-01-01" }], 1);
 		expect(a.ageSeconds).toBeGreaterThan(0);
 		expect(a.publishedDate).toBe("2000-01-01");
+	});
+});
+
+describe("handleProviderHttpError", () => {
+	it("throws classified error when body indicates credit exhaustion", async () => {
+		const response = new Response("insufficient credits", { status: 500 });
+		await expect(
+			handleProviderHttpError("firecrawl", response, "Firecrawl API request failed (500)."),
+		).rejects.toMatchObject({
+			provider: "firecrawl",
+			status: 500,
+			message: "firecrawl: credits exhausted",
+		});
+	});
+
+	it("throws fallback SearchProviderError with supplied message on unclassified error", async () => {
+		const response = new Response("bad request", { status: 400 });
+		await expect(
+			handleProviderHttpError("firecrawl", response, "Firecrawl API request failed (400)."),
+		).rejects.toMatchObject({
+			provider: "firecrawl",
+			status: 400,
+			message: "Firecrawl API request failed (400).",
+		});
+	});
+});
+
+describe("resolveProviderKey", () => {
+	it("resolves and invokes the exact stored credential with session selection", async () => {
+		const db = new Database(":memory:");
+		const store = new SqliteAuthCredentialStore(db);
+		const authStorage = new AuthStorage(store);
+		try {
+			await authStorage.set("brave", [
+				{ type: "api_key", key: "key-default" },
+				{ type: "api_key", key: "key-session-a" },
+			]);
+			const credentials = authStorage.listStoredCredentials("brave");
+			expect(credentials).toHaveLength(2);
+			authStorage.pinSessionCredential("brave", "sess-a", credentials[1]!.id);
+
+			const resolveContext = { lastChance: false, error: undefined };
+			const resolverDefault = resolveProviderKey(authStorage, "brave");
+			const keyDefault =
+				typeof resolverDefault === "function" ? await resolverDefault(resolveContext) : resolverDefault;
+			expect(keyDefault).toBe("key-default");
+
+			const resolverSession = resolveProviderKey(authStorage, "brave", "sess-a");
+			const keySession =
+				typeof resolverSession === "function" ? await resolverSession(resolveContext) : resolverSession;
+			expect(keySession).toBe("key-session-a");
+		} finally {
+			store.close();
+		}
+	});
+
+	it("falls back to environment variable or undefined when AuthStorage is undefined", () => {
+		const origKey = process.env.BRAVE_API_KEY;
+		try {
+			process.env.BRAVE_API_KEY = "env-brave-key";
+			expect(resolveProviderKey(undefined, "brave")).toBe("env-brave-key");
+
+			delete process.env.BRAVE_API_KEY;
+			expect(resolveProviderKey(undefined, "brave")).toBeUndefined();
+		} finally {
+			if (origKey === undefined) delete process.env.BRAVE_API_KEY;
+			else process.env.BRAVE_API_KEY = origKey;
+		}
+	});
+});
+
+describe("real search provider availability contracts", () => {
+	it("DuckDuckGoProvider is available without credentials", () => {
+		const db = new Database(":memory:");
+		const store = new SqliteAuthCredentialStore(db);
+		const authStorage = new AuthStorage(store);
+		try {
+			const provider = new DuckDuckGoProvider();
+			expect(provider.isAvailable(authStorage)).toBe(true);
+			expect(provider.isExplicitlyAvailable(authStorage)).toBe(true);
+		} finally {
+			store.close();
+		}
+	});
+
+	it("BraveProvider respects absent, stored, and environment credentials", async () => {
+		const db = new Database(":memory:");
+		const store = new SqliteAuthCredentialStore(db);
+		const authStorage = new AuthStorage(store);
+		const origKey = process.env.BRAVE_API_KEY;
+		try {
+			delete process.env.BRAVE_API_KEY;
+			const provider = new BraveProvider();
+
+			// 1. Absent credentials
+			expect(provider.isAvailable(authStorage)).toBe(false);
+			expect(provider.isExplicitlyAvailable(authStorage)).toBe(false);
+
+			// 2. Stored credential in AuthStorage
+			await authStorage.set("brave", { type: "api_key", key: "stored-brave-key" });
+			expect(provider.isAvailable(authStorage)).toBe(true);
+			expect(provider.isExplicitlyAvailable(authStorage)).toBe(true);
+
+			// 3. Environment variable without stored credential
+			const emptyDb = new Database(":memory:");
+			const emptyStore = new SqliteAuthCredentialStore(emptyDb);
+			const emptyStorage = new AuthStorage(emptyStore);
+			try {
+				process.env.BRAVE_API_KEY = "env-brave-key";
+				expect(provider.isAvailable(emptyStorage)).toBe(true);
+				expect(provider.isExplicitlyAvailable(emptyStorage)).toBe(true);
+			} finally {
+				emptyStore.close();
+			}
+		} finally {
+			if (origKey === undefined) delete process.env.BRAVE_API_KEY;
+			else process.env.BRAVE_API_KEY = origKey;
+			store.close();
+		}
 	});
 });

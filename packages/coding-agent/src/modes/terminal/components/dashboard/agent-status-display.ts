@@ -55,8 +55,8 @@ const AGENT_STATUS_SYMBOL = {
 export const AGENT_DISPLAY_STATES = Object.keys(AGENT_STATUS_COLOR) as readonly AgentDisplayState[];
 
 // AGENT_STATUS_ORDER was here: a canonical sort rank per status, shared so the
-// Agent Hub roster and the Subagent Inbox sidebar could not disagree about which
-// agents floated to the top. Both views are gone, and the subagent dashboard
+// Agent Hub roster and the Agent Inbox sidebar could not disagree about which
+// agents floated to the top. Both views are gone, and the agent dashboard
 // that replaced them sorts by SPAWN order instead, deliberately: call signs are
 // assigned from the roster order, so a status-based sort renames agents as they
 // change state, and a name that moves is worse than no name. The constant had no

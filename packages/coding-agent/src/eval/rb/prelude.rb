@@ -439,7 +439,7 @@ unless defined?($__veyyon_prelude_loaded) && $__veyyon_prelude_loaded
   end
 
   # -------------------------------------------------------------------------
-  # Concurrency: parallel / pipeline over a bounded pool (subagent.maxConcurrency).
+  # Concurrency: parallel / pipeline over a bounded pool (agent.maxConcurrency).
   # -------------------------------------------------------------------------
 
   def __veyyon_concurrency_limit

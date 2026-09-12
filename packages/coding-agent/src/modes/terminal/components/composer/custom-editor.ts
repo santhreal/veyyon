@@ -7,12 +7,21 @@ import { Editor } from "@veyyon/tui/components/editor";
 import { BracketedPasteHandler, PASTE_END, PASTE_START } from "@veyyon/utils/bracketed-paste";
 import { addKeyAliases, canonicalKeyId } from "@veyyon/utils/keybindings";
 import { type KeyId, parseKey, parseKittySequence } from "@veyyon/utils/keys";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { hasUriScheme } from "@veyyon/utils/url";
+import { truncateToWidth } from "@veyyon/utils/width";
+import type { Attachment, CompletionState, ComposerMode, ComposerState, SubmitEvent } from "@veyyon/wire/presentation";
 // The leaf table, not the loader: this file needs the shipped chords, not yaml.
 import { KEYBINDINGS } from "../../../../config/keybinding-defs";
 import type { AppKeybinding } from "../../../../config/keybindings";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../../../../config/settings-instance";
+import {
+	cursorToOffset,
+	offsetToCursor,
+	resolveComposerMode,
+	toComposerState,
+} from "../../../../presentation/composer-builder";
 import { fgOrPlain, theme } from "../../../../theme/theme-binding";
 import { hasMagicKeyword, highlightMagicKeywords } from "../../../keywords/magic-keywords";
 import { imageReferenceHyperlink, PLACEHOLDER_REGEX, renderPlaceholders } from "../../image-reference-markers";
@@ -77,9 +86,12 @@ export type DeferredEditorAction = (typeof DEFERRED_EDITOR_ACTIONS)[number];
  * only the ids in {@link ConfigurableEditorAction} are picked out, so an action
  * this editor does not handle cannot arrive by accident.
  */
-const DEFAULT_ACTION_KEYS = Object.fromEntries(
-	CONFIGURABLE_EDITOR_ACTIONS.map(action => [action, [...[KEYBINDINGS[action].defaultKeys].flat()] as KeyId[]]),
-) as Record<ConfigurableEditorAction, KeyId[]>;
+const DEFAULT_ACTION_MATCH_KEYS: ReadonlyMap<ConfigurableEditorAction, ReadonlySet<string>> = new Map(
+	CONFIGURABLE_EDITOR_ACTIONS.map(action => {
+		const keys = KEYBINDINGS[action].defaultKeys;
+		return [action, buildMatchKeys(typeof keys === "string" ? [keys] : keys)];
+	}),
+);
 
 function buildMatchKeys(keys: readonly KeyId[]): Set<string> {
 	const matchKeys = new Set<string>();
@@ -311,6 +323,21 @@ export interface EarlySubmission {
 	readonly text: string;
 	readonly images?: ImageContent[];
 	readonly imageLinks?: (string | undefined)[];
+	readonly attachments?: readonly Attachment[];
+}
+
+const EMPTY_ATTACHMENTS: readonly Attachment[] = [];
+
+type EditorActionHandler = (() => unknown) | undefined;
+
+/** One row of the shortcut table: true when the key was consumed. */
+type EditorActionDispatch = (editor: CustomEditor, canonical: string) => boolean;
+
+/** Calls `handler` with the editor as receiver, as `editor.onX()` would; false when no handler is bound. */
+function fireEditorAction(editor: CustomEditor, handler: EditorActionHandler): boolean {
+	if (!handler) return false;
+	handler.call(editor);
+	return true;
 }
 
 /**
@@ -319,6 +346,17 @@ export interface EarlySubmission {
 export class CustomEditor extends Editor {
 	#earlySubmissions: EarlySubmission[] = [];
 	#earlyActions: DeferredEditorAction[] = [];
+	#locked = false;
+	#awaitingApproval = false;
+	#mode: ComposerMode | undefined;
+	#queueOnSubmit = false;
+	#hint: string | undefined;
+	#placeholder: string | undefined;
+	#attachments: readonly Attachment[] = EMPTY_ATTACHMENTS;
+	#completion: CompletionState | undefined;
+	#submitting = false;
+	onComposerChange?: (state: ComposerState) => void;
+	onComposerSubmit?: (event: SubmitEvent) => void;
 	#capturingEarlySubmissions = false;
 	#draftInputRevision = 0;
 	#submissionDraftScope: AsyncLocalStorage<number> | undefined;
@@ -350,15 +388,25 @@ export class CustomEditor extends Editor {
 	beginEarlySubmissions(): void {
 		this.#capturingEarlySubmissions = true;
 		this.onSubmit = text => {
-			if (!text && this.pendingImages.length === 0) return;
+			if (!text && this.pendingImages.length === 0 && this.#attachments.length === 0) return;
+			const atts = this.attachments;
 			this.#earlySubmissions.push({
 				text,
 				images: this.pendingImages.length > 0 ? this.pendingImages.slice() : undefined,
 				imageLinks: this.pendingImageLinks.length > 0 ? this.pendingImageLinks.slice() : undefined,
+				attachments: atts.length > 0 ? atts.slice() : undefined,
 			});
 			this.imageLinks = undefined;
 			this.pendingImages = [];
 			this.pendingImageLinks = [];
+			this.#attachments = EMPTY_ATTACHMENTS;
+			if (!this.#submitting) {
+				this.onComposerSubmit?.({
+					type: "submit",
+					text,
+					attachments: atts,
+				});
+			}
 		};
 	}
 
@@ -414,6 +462,282 @@ export class CustomEditor extends Editor {
 		this.imageLinks = undefined;
 		this.pendingImages = [];
 		this.pendingImageLinks = [];
+		this.#attachments = EMPTY_ATTACHMENTS;
+	}
+
+	/** Attachments currently staged on the editor (combining explicit attachments and pending images). */
+	get attachments(): readonly Attachment[] {
+		if (this.#attachments.length === 0 && this.pendingImages.length === 0 && this.pendingImageLinks.length === 0) {
+			return EMPTY_ATTACHMENTS;
+		}
+		const nonImages = this.#attachments.filter(a => a.kind !== "image");
+		const explicitImages = this.#attachments.filter(a => a.kind === "image");
+		const result: Attachment[] = [...nonImages];
+
+		const totalImages = Math.max(this.pendingImages.length, this.pendingImageLinks.length, explicitImages.length);
+		for (let idx = 0; idx < totalImages; idx++) {
+			const explicit = explicitImages[idx];
+			const img = this.pendingImages[idx];
+			const link = this.pendingImageLinks[idx] ?? this.imageLinks?.[idx] ?? explicit?.uri;
+			if (explicit) {
+				result.push({
+					...explicit,
+					data: img?.data ?? explicit.data,
+					mimeType: img?.mimeType ?? explicit.mimeType,
+					uri: link ?? explicit.uri,
+				});
+			} else {
+				const name = link ? link.replace(/^file:\/\//, "") : img?.mimeType ? `image (${img.mimeType})` : "image";
+				result.push({
+					kind: "image",
+					name,
+					data: img?.data,
+					mimeType: img?.mimeType,
+					uri: link,
+				});
+			}
+		}
+		return result;
+	}
+	set attachments(value: readonly Attachment[] | undefined) {
+		if (this.#isNewerDraft()) return;
+		this.#attachments = value && value.length > 0 ? value.map(a => ({ ...a })) : EMPTY_ATTACHMENTS;
+		this.pendingImages = [];
+		this.pendingImageLinks = [];
+		for (const att of this.#attachments) {
+			if (att.kind === "image") {
+				if (att.data && att.mimeType) {
+					this.pendingImages.push({
+						type: "image",
+						data: att.data,
+						mimeType: att.mimeType,
+					});
+					this.pendingImageLinks.push(att.uri);
+				} else if (att.uri) {
+					this.pendingImageLinks.push(att.uri);
+				}
+			}
+		}
+	}
+	get completion(): CompletionState | undefined {
+		const auto = this.getAutocompleteState();
+		if (!auto) {
+			this.#completion = undefined;
+			return undefined;
+		}
+		if (this.#completion && this.#completion.prefix === auto.prefix) {
+			return {
+				...this.#completion,
+				selectedIndex: auto.selectedIndex,
+			};
+		}
+		return {
+			prefix: auto.prefix,
+			candidates: auto.items.map(item => ({
+				value: item.value,
+				label: item.label !== item.value ? item.label : undefined,
+				detail: item.description,
+			})),
+			selectedIndex: auto.selectedIndex,
+		};
+	}
+	set completion(value: CompletionState | undefined) {
+		this.#completion = value;
+		if (value && value.candidates.length > 0) {
+			this.setAutocompleteSuggestions({
+				prefix: value.prefix,
+				items: value.candidates.map(c => ({
+					value: c.value,
+					label: c.label ?? c.value,
+					description: c.detail,
+				})),
+				selectedIndex: value.selectedIndex,
+			});
+		} else {
+			this.setAutocompleteSuggestions(undefined);
+		}
+	}
+
+	get locked(): boolean {
+		return this.#locked;
+	}
+	set locked(value: boolean) {
+		this.#locked = value;
+		this.#applyFlagMode("disabled", value);
+	}
+
+	get awaitingApproval(): boolean {
+		return this.#awaitingApproval;
+	}
+	set awaitingApproval(value: boolean) {
+		this.#awaitingApproval = value;
+		this.#applyFlagMode("awaiting-approval", value);
+	}
+
+	/** Enter `mode` while its flag is set; on clear, leave it only when the composer is still in it. */
+	#applyFlagMode(mode: "disabled" | "awaiting-approval", value: boolean): void {
+		if (value) {
+			this.#mode = mode;
+			this.disableSubmit = true;
+		} else if (this.#mode === mode) {
+			this.#mode = undefined;
+			this.disableSubmit = false;
+		}
+	}
+
+	get mode(): ComposerMode {
+		return this.getComposerState().mode;
+	}
+	set mode(value: ComposerMode | undefined) {
+		this.#mode = value;
+		this.disableSubmit = value === "disabled" || value === "awaiting-approval";
+	}
+
+	get queueOnSubmit(): boolean {
+		return this.#queueOnSubmit;
+	}
+	set queueOnSubmit(value: boolean) {
+		this.#queueOnSubmit = value;
+	}
+
+	get hint(): string | undefined {
+		return this.#hint;
+	}
+	set hint(value: string | undefined) {
+		this.#hint = value;
+	}
+
+	/** Return the 0-based UTF-16 character offset of the cursor in the full editor text. */
+	getCursorOffset(): number {
+		return cursorToOffset(this.getLines(), this.getCursor());
+	}
+
+	/** Set the cursor position to a 0-based UTF-16 character offset in the full text. */
+	setCursorOffset(offset: number): void {
+		this.setCursor(offsetToCursor(this.getLines(), offset));
+	}
+
+	/**
+	 * Build a snapshot of the current ComposerState from the editor's live buffer and session facts.
+	 */
+	getComposerState(): ComposerState {
+		const text = this.getText();
+		const cursorOffset = this.getCursorOffset();
+		const attachments = this.attachments;
+		const completion = this.completion;
+		const mode =
+			this.#mode ??
+			resolveComposerMode({
+				text,
+				cursorOffset,
+				attachments,
+				completion,
+				busy: this.#queueOnSubmit,
+				awaitingApproval: this.#awaitingApproval,
+				locked: this.#locked || this.disableSubmit,
+				hint: this.#hint,
+			});
+		const state = toComposerState({
+			text,
+			cursorOffset,
+			attachments,
+			completion,
+			busy: this.#queueOnSubmit,
+			awaitingApproval: this.#awaitingApproval || mode === "awaiting-approval",
+			locked: this.#locked || mode === "disabled",
+			hint: this.#hint,
+			mode,
+		});
+		if (this.#placeholder !== undefined) {
+			state.placeholder = this.#placeholder;
+		}
+		state.mode = mode;
+		return state;
+	}
+
+	/**
+	 * Apply a complete ComposerState snapshot into the editor buffer and state flags.
+	 */
+	setComposerState(state: ComposerState): void {
+		if (this.#isNewerDraft()) return;
+		this.#mode = state.mode;
+		this.#locked = state.mode === "disabled";
+		this.#awaitingApproval = state.mode === "awaiting-approval";
+		this.disableSubmit = state.mode === "disabled" || state.mode === "awaiting-approval";
+		this.#placeholder = state.placeholder;
+		this.setPlaceholder(state.placeholder !== "" ? state.placeholder : undefined);
+		this.#queueOnSubmit = state.queueOnSubmit;
+		this.#hint = state.hint;
+		this.attachments = state.attachments;
+		if (this.attachments.every(a => a.kind !== "image")) {
+			this.#imageLinks = undefined;
+		}
+
+		if (state.text !== this.getText()) {
+			super.setText(state.text);
+		}
+		if (state.cursorOffset !== undefined && state.cursorOffset !== this.getCursorOffset()) {
+			this.setCursorOffset(state.cursorOffset);
+		}
+		this.completion = state.completion;
+	}
+
+	override render(width: number): readonly string[] {
+		const baseRows = super.render(width);
+		const fileAtts = this.attachments.filter(att => att.kind === "file");
+		const hint = this.#hint;
+		const queue = this.#queueOnSubmit;
+		if (fileAtts.length === 0 && hint === undefined && !queue) {
+			return baseRows;
+		}
+		const usable = Math.max(0, Math.trunc(width));
+		if (usable === 0) {
+			return baseRows;
+		}
+		const extraRows: string[] = [];
+		for (const att of fileAtts) {
+			const sanitizedName = replaceTabs(att.name).replace(/[\r\n\x00-\x1f\x7f]/g, " ");
+			extraRows.push(fgOrPlain("dim", truncateToWidth(`  + ${sanitizedName}`, usable)));
+		}
+		if (queue) {
+			extraRows.push(fgOrPlain("dim", truncateToWidth("  a turn is running; enter queues this message", usable)));
+		}
+		if (hint !== undefined && hint !== "") {
+			const sanitizedHint = replaceTabs(hint).replace(/[\r\n\x00-\x1f\x7f]/g, " ");
+			extraRows.push(fgOrPlain("dim", truncateToWidth(`  ${sanitizedHint}`, usable)));
+		}
+		return [...baseRows, ...extraRows];
+	}
+
+	override submit(): void {
+		if (this.disableSubmit || this.mode === "disabled" || this.mode === "awaiting-approval") {
+			return;
+		}
+		if (!this.onSubmit && !this.onComposerSubmit) {
+			return;
+		}
+		const text = this.getText();
+		const atts = this.attachments;
+		const hasImages = this.pendingImages.length > 0;
+		if (!text.trim() && atts.length === 0 && !hasImages) {
+			return;
+		}
+		if (this.#submitting) return;
+		this.#submitting = true;
+		try {
+			if (this.onSubmit) {
+				super.submit();
+			} else {
+				this.clearDraft(text);
+			}
+			this.onComposerSubmit?.({
+				type: "submit",
+				text,
+				attachments: atts,
+			});
+		} finally {
+			this.#submitting = false;
+		}
 	}
 
 	/** Treat image/paste markers as indivisible: a stray backspace deletes the whole token
@@ -592,29 +916,16 @@ export class CustomEditor extends Editor {
 	#spaceHoldActive = false;
 	/** Idle timer that fires `onSpaceHoldEnd` once repeated spaces stop arriving. */
 	#spaceHoldTimer: NodeJS.Timeout | undefined;
-	#actionKeys = new Map<ConfigurableEditorAction, KeyId[]>(
-		Object.entries(DEFAULT_ACTION_KEYS).map(([action, keys]) => [action as ConfigurableEditorAction, keys.slice()]),
-	);
-	#actionMatchKeys = new Map<ConfigurableEditorAction, Set<string>>(
-		Object.entries(DEFAULT_ACTION_KEYS).map(([action, keys]) => [
-			action as ConfigurableEditorAction,
-			buildMatchKeys(keys),
-		]),
-	);
+	#actionMatchKeys = new Map(DEFAULT_ACTION_MATCH_KEYS);
 
 	setActionKeys(action: ConfigurableEditorAction, keys: KeyId[]): void {
-		this.#actionKeys.set(action, keys.slice());
-		this.#rebuildActionMatchKeys(action);
+		this.#actionMatchKeys.set(action, buildMatchKeys(keys));
 	}
 
 	applyKeybindings(keybindings: { getKeys(action: AppKeybinding): KeyId[] }): void {
 		for (const action of CONFIGURABLE_EDITOR_ACTIONS) {
 			this.setActionKeys(action, keybindings.getKeys(action));
 		}
-	}
-
-	#rebuildActionMatchKeys(action: ConfigurableEditorAction): void {
-		this.#actionMatchKeys.set(action, buildMatchKeys(this.#actionKeys.get(action) ?? []));
 	}
 
 	#rebuildCustomMatchKeys(): void {
@@ -630,6 +941,79 @@ export class CustomEditor extends Editor {
 	#matchesAction(canonical: string | undefined, action: ConfigurableEditorAction): boolean {
 		return canonical !== undefined && (this.#actionMatchKeys.get(action)?.has(canonical) ?? false);
 	}
+
+	/** Pushes a deferred action while early submissions are being captured; otherwise fires its handler. */
+	static #deferOrFire(editor: CustomEditor, action: DeferredEditorAction, handler: EditorActionHandler): boolean {
+		if (editor.#capturingEarlySubmissions) {
+			editor.#earlyActions.push(action);
+			return true;
+		}
+		return fireEditorAction(editor, handler);
+	}
+
+	/**
+	 * The app-level shortcuts this editor intercepts before the key reaches the
+	 * base editor, in precedence order: the first matching row that reports the
+	 * key consumed ends dispatch, a row that reports `false` lets later rows and
+	 * then the editor's own meaning see the key. Backward model cycling sits
+	 * before forward; retry sits after copy-prompt and yields to an extension
+	 * handler bound to the same chord, so adding the default Alt+R binding does
+	 * not steal existing shortcuts such as app.plan.toggle or extension commands.
+	 * `custom-editor-keybindings.test.ts` sweeps every configurable action
+	 * through this table.
+	 */
+	static readonly #ACTION_DISPATCH: ReadonlyArray<readonly [ConfigurableEditorAction, EditorActionDispatch]> = [
+		// Image paste is async: fires and handles its own result.
+		["app.clipboard.pasteImage", editor => fireEditorAction(editor, editor.onPasteImage)],
+		["app.clipboard.pasteTextRaw", editor => fireEditorAction(editor, editor.onPasteTextRaw)],
+		["app.editor.external", editor => fireEditorAction(editor, editor.onExternalEditor)],
+		[
+			"app.model.selectTemporary",
+			editor => CustomEditor.#deferOrFire(editor, "app.model.selectTemporary", editor.onSelectModelTemporary),
+		],
+		["app.display.reset", editor => fireEditorAction(editor, editor.onDisplayReset)],
+		// Manual bash backgrounding — CONDITIONAL consumption: the handler
+		// returns false when no foreground command is waiting, and the key
+		// falls through to its editor meaning (ctrl+b = readline cursor-left).
+		["app.bash.background", editor => editor.onBashBackground?.() === true],
+		["app.suspend", editor => fireEditorAction(editor, editor.onSuspend)],
+		["app.thinking.toggle", editor => fireEditorAction(editor, editor.onToggleThinking)],
+		["app.model.select", editor => CustomEditor.#deferOrFire(editor, "app.model.select", editor.onSelectModel)],
+		["app.history.search", editor => fireEditorAction(editor, editor.onHistorySearch)],
+		["app.tools.expand", editor => fireEditorAction(editor, editor.onExpandTools)],
+		["app.model.cycleBackward", editor => fireEditorAction(editor, editor.onCycleModelBackward)],
+		["app.model.cycleForward", editor => fireEditorAction(editor, editor.onCycleModelForward)],
+		["app.thinking.cycle", editor => fireEditorAction(editor, editor.onCycleThinkingLevel)],
+		// When the autocomplete popup is visible, ESC's first job is to dismiss
+		// the popup — let super.handleInput() route it to #cancelAutocomplete().
+		// The user can press ESC again afterward to fire the global interrupt
+		// handler. This matches the standard TUI/IDE pattern and prevents a
+		// single ESC from both closing an @ completion and aborting an active
+		// agent run (#1655).
+		["app.interrupt", editor => !editor.isShowingAutocomplete() && fireEditorAction(editor, editor.onEscape)],
+		["app.clear", editor => fireEditorAction(editor, editor.onClear)],
+		// Always consumed so the chord never reaches the parent handler; firing
+		// onExit is the controller's chance to snapshot the text as a draft.
+		[
+			"app.exit",
+			editor => {
+				editor.onExit?.();
+				return true;
+			},
+		],
+		["app.message.dequeue", editor => fireEditorAction(editor, editor.onDequeue)],
+		["app.clipboard.copyPrompt", editor => fireEditorAction(editor, editor.onCopyPrompt)],
+		[
+			"app.retry",
+			(editor, canonical) => {
+				if (!editor.onRetry) return false;
+				const extensionHandler = editor.#customMatchKeys.get(canonical);
+				if (extensionHandler) extensionHandler();
+				else editor.onRetry();
+				return true;
+			},
+		],
+	];
 
 	/**
 	 * Register a custom key handler. Extensions use this for shortcuts.
@@ -769,7 +1153,8 @@ export class CustomEditor extends Editor {
 			return;
 		}
 
-		const hadBareQueuePrefix = this.getText() === "->" || this.getText() === "=>";
+		const initialLines = this.getLines();
+		const hadBareQueuePrefix = initialLines.length === 1 && (initialLines[0] === "->" || initialLines[0] === "=>");
 		const kittyParsed = parseKittySequence(data);
 		if (kittyParsed && (kittyParsed.modifier & 64) !== 0 && this.onCapsLock) {
 			// Caps Lock is modifier bit 64
@@ -839,153 +1224,8 @@ export class CustomEditor extends Editor {
 		if (this.#handleSpaceHold(data, canonical)) return;
 
 		if (canonical !== undefined) {
-			// Intercept configured image paste (async - fires and handles result)
-			if (this.#matchesAction(canonical, "app.clipboard.pasteImage") && this.onPasteImage) {
-				void this.onPasteImage();
-				return;
-			}
-
-			// Intercept configured raw text paste (fires and handles result)
-			if (this.#matchesAction(canonical, "app.clipboard.pasteTextRaw") && this.onPasteTextRaw) {
-				this.onPasteTextRaw();
-				return;
-			}
-
-			// Intercept configured external editor shortcut
-			if (this.#matchesAction(canonical, "app.editor.external") && this.onExternalEditor) {
-				this.onExternalEditor();
-				return;
-			}
-
-			// Intercept configured temporary model selector shortcut
-			if (this.#matchesAction(canonical, "app.model.selectTemporary")) {
-				if (this.#capturingEarlySubmissions) {
-					this.#earlyActions.push("app.model.selectTemporary");
-					return;
-				}
-				if (this.onSelectModelTemporary) {
-					this.onSelectModelTemporary();
-					return;
-				}
-			}
-
-			// Intercept configured display reset shortcut
-			if (this.#matchesAction(canonical, "app.display.reset") && this.onDisplayReset) {
-				this.onDisplayReset();
-				return;
-			}
-
-			// Manual bash backgrounding — CONDITIONAL consumption: the handler
-			// returns false when no foreground command is waiting, and the key
-			// falls through to its editor meaning (ctrl+b = readline cursor-left).
-			if (this.#matchesAction(canonical, "app.bash.background") && this.onBashBackground) {
-				if (this.onBashBackground()) return;
-			}
-
-			// Intercept configured suspend shortcut
-			if (this.#matchesAction(canonical, "app.suspend") && this.onSuspend) {
-				this.onSuspend();
-				return;
-			}
-
-			// Intercept configured thinking block visibility toggle
-			if (this.#matchesAction(canonical, "app.thinking.toggle") && this.onToggleThinking) {
-				this.onToggleThinking();
-				return;
-			}
-
-			// Intercept configured model selector shortcut
-			if (this.#matchesAction(canonical, "app.model.select")) {
-				if (this.#capturingEarlySubmissions) {
-					this.#earlyActions.push("app.model.select");
-					return;
-				}
-				if (this.onSelectModel) {
-					this.onSelectModel();
-					return;
-				}
-			}
-
-			// Intercept configured history search shortcut
-			if (this.#matchesAction(canonical, "app.history.search") && this.onHistorySearch) {
-				this.onHistorySearch();
-				return;
-			}
-
-			// Intercept configured tool output expansion shortcut
-			if (this.#matchesAction(canonical, "app.tools.expand") && this.onExpandTools) {
-				this.onExpandTools();
-				return;
-			}
-
-			// Intercept configured backward model cycling (check before forward cycling)
-			if (this.#matchesAction(canonical, "app.model.cycleBackward") && this.onCycleModelBackward) {
-				this.onCycleModelBackward();
-				return;
-			}
-
-			// Intercept configured forward model cycling
-			if (this.#matchesAction(canonical, "app.model.cycleForward") && this.onCycleModelForward) {
-				this.onCycleModelForward();
-				return;
-			}
-
-			// Intercept configured thinking level cycling
-			if (this.#matchesAction(canonical, "app.thinking.cycle") && this.onCycleThinkingLevel) {
-				this.onCycleThinkingLevel();
-				return;
-			}
-
-			// Intercept configured interrupt shortcut.
-			// When the autocomplete popup is visible, ESC's first job is to dismiss
-			// the popup — let super.handleInput() route it to #cancelAutocomplete().
-			// The user can press ESC again afterward to fire the global interrupt
-			// handler. This matches the standard TUI/IDE pattern and prevents a
-			// single ESC from both closing an @ completion and aborting an active
-			// agent run (#1655).
-			if (this.#matchesAction(canonical, "app.interrupt") && this.onEscape && !this.isShowingAutocomplete()) {
-				this.onEscape();
-				return;
-			}
-
-			// Intercept configured clear shortcut
-			if (this.#matchesAction(canonical, "app.clear") && this.onClear) {
-				this.onClear();
-				return;
-			}
-
-			// Intercept configured exit shortcut. Always consume the shortcut so it
-			// never reaches the parent handler; firing onExit is the controller's
-			// chance to snapshot the current text as a draft before shutting down.
-			if (this.#matchesAction(canonical, "app.exit")) {
-				this.onExit?.();
-				return;
-			}
-
-			// Intercept configured dequeue shortcut (restore queued message to editor)
-			if (this.#matchesAction(canonical, "app.message.dequeue") && this.onDequeue) {
-				this.onDequeue();
-				return;
-			}
-
-			// Intercept configured copy-prompt shortcut
-			if (this.#matchesAction(canonical, "app.clipboard.copyPrompt") && this.onCopyPrompt) {
-				this.onCopyPrompt();
-				return;
-			}
-
-			// Intercept configured retry shortcut. Later user/custom handlers keep
-			// precedence so adding the default Alt+R binding does not steal existing
-			// shortcuts such as app.plan.toggle or extension commands; copy-prompt is
-			// checked above for the same reason.
-			if (this.#matchesAction(canonical, "app.retry") && this.onRetry) {
-				const customHandler = this.#customMatchKeys.get(canonical);
-				if (customHandler) {
-					customHandler();
-					return;
-				}
-				this.onRetry();
-				return;
+			for (const [action, dispatch] of CustomEditor.#ACTION_DISPATCH) {
+				if (this.#matchesAction(canonical, action) && dispatch(this, canonical)) return;
 			}
 
 			// Check custom key handlers (extensions)
@@ -999,13 +1239,14 @@ export class CustomEditor extends Editor {
 		// Pass to parent for normal handling
 		super.handleInput(data);
 		const cursor = this.getCursor();
-		if (
-			!hadBareQueuePrefix &&
-			(this.getText() === "->" || this.getText() === "=>") &&
-			cursor.line === 0 &&
-			cursor.col === 2
-		) {
-			this.insertText("\n");
+		if (!hadBareQueuePrefix && cursor.line === 0 && cursor.col === 2) {
+			const currentLines = this.getLines();
+			if (currentLines.length === 1 && (currentLines[0] === "->" || currentLines[0] === "=>")) {
+				this.insertText("\n");
+			}
+		}
+		if (this.onComposerChange) {
+			this.onComposerChange(this.getComposerState());
 		}
 	}
 }

@@ -1,31 +1,15 @@
+import type { WorkerOutboundBase } from "../subprocess/worker-client";
+import type {
+	WorkerProgressEvent,
+	WorkerProgressFileState,
+	WorkerProgressMessage,
+	WorkerProgressStatus,
+} from "../subprocess/worker-request-client";
 import type { TinyLocalModelKey, TinyTitleLocalModelKey } from "./models";
 
-export type TinyTitleProgressStatus =
-	| "initiate"
-	| "download"
-	| "progress"
-	| "progress_total"
-	| "done"
-	| "ready"
-	| "error";
-
-export interface TinyTitleProgressFileState {
-	loaded: number;
-	total: number;
-}
-
-export interface TinyTitleProgressEvent {
-	modelKey: TinyLocalModelKey;
-	status: TinyTitleProgressStatus;
-	name?: string;
-	file?: string;
-	progress?: number;
-	loaded?: number;
-	total?: number;
-	files?: Record<string, TinyTitleProgressFileState>;
-	task?: string;
-	model?: string;
-}
+export type TinyTitleProgressStatus = WorkerProgressStatus;
+export type TinyTitleProgressFileState = WorkerProgressFileState;
+export type TinyTitleProgressEvent = WorkerProgressEvent<TinyLocalModelKey>;
 
 export type TinyTitleWorkerInbound =
 	| { type: "ping"; id: string }
@@ -34,13 +18,11 @@ export type TinyTitleWorkerInbound =
 	| { type: "download"; id: string; modelKey: TinyLocalModelKey };
 
 export type TinyTitleWorkerOutbound =
-	| { type: "pong"; id: string }
+	| WorkerOutboundBase
+	| WorkerProgressMessage<TinyLocalModelKey>
 	| { type: "title"; id: string; title: string | null }
 	| { type: "completion"; id: string; text: string | null }
-	| { type: "downloaded"; id: string }
-	| { type: "error"; id: string; error: string }
-	| { type: "progress"; id: string; event: TinyTitleProgressEvent }
-	| { type: "log"; level: "debug" | "warn" | "error"; msg: string; meta?: Record<string, unknown> };
+	| { type: "downloaded"; id: string };
 
 /**
  * Wire transport between the parent (`TinyTitleClient`) and the tiny-model

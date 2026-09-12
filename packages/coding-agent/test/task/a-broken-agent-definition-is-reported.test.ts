@@ -1,16 +1,16 @@
 /**
- * A subagent definition that cannot be read or parsed says so, instead of just not existing.
+ * An agent definition that cannot be read or parsed says so, instead of just not existing.
  *
  * THE BUG. `loadAgentsFromDir` already treated an unlistable agents DIRECTORY as a fault worth
  * reporting: `readdirIfPresent` routes it through `reportFault`, and its own comment says the
- * point is that "the user's subagents disappear from `/agents` with no sign of why". The
+ * point is that "the user's agents disappear from `/agents` with no sign of why". The
  * per-FILE failure five lines below is the identical loss one agent at a time — the user wrote
  * a definition, it is absent from `/agents` and unusable from `task`, and the run continues as
  * if nothing were configured — and it was handled with `logger.warn`. The default transport set
  * is `{ file: true }` with no console transport, so that report reached a file nobody opens;
  * `utils/fault-sink.ts` exists because of exactly this asymmetry.
  *
- * WHERE THE FIXTURES LIVE. The GLOBAL user-authored definitions dir, `<configRoot>/subagents`,
+ * WHERE THE FIXTURES LIVE. The GLOBAL user-authored definitions dir, `<configRoot>/agents`,
  * isolated by pointing `VEYYON_CONFIG_DIR` at this suite's temp root. They used to live in
  * `<cwd>/.veyyon/agents`, which stopped being a source when project definitions were removed so
  * a repository could not shadow a bundled role, and then in the profile's `agents/` dir, which
@@ -33,7 +33,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/discovery/capability/fs";
 import { discoverAgents } from "@veyyon/coding-agent/task/discovery";
-import { attachFaultSink, type DetachFaultSink, type Fault, removeWithRetries } from "@veyyon/utils";
+import {
+	attachFaultSink,
+	type DetachFaultSink,
+	type Fault,
+	removeWithRetries,
+	SUBAGENTS_DIR_NAME,
+} from "@veyyon/utils";
 
 const HEALTHY_AGENT_MD = ["---", "name: diff-reader", "description: Reviews a diff.", "---", "You review."].join("\n");
 
@@ -55,7 +61,7 @@ describe("a broken agent definition is reported rather than dropped", () => {
 		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-broken-agent-def-"));
 		projectDir = path.join(tempHome, "project");
 		configRoot = path.join(tempHome, "config");
-		agentsDir = path.join(configRoot, "subagents");
+		agentsDir = path.join(configRoot, SUBAGENTS_DIR_NAME);
 		await fs.mkdir(projectDir, { recursive: true });
 		await fs.mkdir(agentsDir, { recursive: true });
 		previousConfigDir = process.env.VEYYON_CONFIG_DIR;

@@ -133,15 +133,24 @@ async function resolveWriteTarget(filePath: string): Promise<{ target: string; v
 		}
 
 		viaSymlink = true;
-		const absoluteTarget = path.resolve(target);
-		if (seen.has(absoluteTarget)) {
-			const error = new Error(`Too many symbolic links while resolving ${filePath}`) as NodeJS.ErrnoException;
-			error.code = "ELOOP";
-			throw error;
-		}
-		seen.add(absoluteTarget);
+		recordSymlinkHop(seen, target, filePath);
 		target = path.resolve(path.dirname(target), await fsp.readlink(target));
 	}
+}
+
+/**
+ * Records one hop of a symlink chain and fails with `ELOOP` when the chain
+ * revisits a link it already followed, which is what a cyclic chain does
+ * instead of ending in a file or a missing path.
+ */
+function recordSymlinkHop(seen: Set<string>, target: string, filePath: string): void {
+	const absoluteTarget = path.resolve(target);
+	if (seen.has(absoluteTarget)) {
+		const error = new Error(`Too many symbolic links while resolving ${filePath}`) as NodeJS.ErrnoException;
+		error.code = "ELOOP";
+		throw error;
+	}
+	seen.add(absoluteTarget);
 }
 
 /**
@@ -199,13 +208,7 @@ function resolveWriteTargetSync(filePath: string): { target: string; viaSymlink:
 		}
 
 		viaSymlink = true;
-		const absoluteTarget = path.resolve(target);
-		if (seen.has(absoluteTarget)) {
-			const error = new Error(`Too many symbolic links while resolving ${filePath}`) as NodeJS.ErrnoException;
-			error.code = "ELOOP";
-			throw error;
-		}
-		seen.add(absoluteTarget);
+		recordSymlinkHop(seen, target, filePath);
 		target = path.resolve(path.dirname(target), fs.readlinkSync(target));
 	}
 }

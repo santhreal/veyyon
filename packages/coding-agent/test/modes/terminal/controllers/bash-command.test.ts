@@ -63,3 +63,89 @@ describe("bash shortcut command", () => {
 		});
 	});
 });
+
+interface ShortcutBlock {
+	appendOutput(chunk: string): void;
+	isTranscriptBlockFinalized(): boolean;
+}
+
+const RESULT = {
+	output: "ok",
+	exitCode: 0,
+	cancelled: false,
+	truncated: false,
+	totalLines: 1,
+	totalBytes: 2,
+	outputLines: 1,
+	outputBytes: 2,
+};
+
+/** A context stub whose session runs `execute`; `pending` names the deferred-block list each handler feeds. */
+function shortcutContext(
+	isStreaming: boolean,
+	execute: (chunk: (piece: string) => void) => Promise<typeof RESULT>,
+): { ctx: InteractiveModeContext; presented: ShortcutBlock[]; errors: string[] } {
+	const presented: ShortcutBlock[] = [];
+	const errors: string[] = [];
+	const run = async (_input: string, onChunk: (piece: string) => void) => execute(onChunk);
+	const ctx = {
+		session: { isStreaming, executeBash: run, executePython: run },
+		chatContainer: createContainer(),
+		pendingMessagesContainer: createContainer(),
+		pendingBashComponents: [],
+		pendingPythonComponents: [],
+		ui: { requestRender: vi.fn(), requestComponentRender: vi.fn() },
+		present: (block: ShortcutBlock) => presented.push(block),
+		showError: (message: string) => errors.push(message),
+		refreshComposerShortcuts: vi.fn(),
+		dismissWelcome: vi.fn(),
+	} as unknown as InteractiveModeContext;
+	return { ctx, presented, errors };
+}
+
+describe.each([
+	["!", "handleBashCommand", "bashComponent", "pendingBashComponents", "Bash command failed"],
+	["%", "handlePythonCommand", "pythonComponent", "pendingPythonComponents", "Python execution failed"],
+] as const)("the %s shortcut", (_prefix, handler, slot, pendingList, failure) => {
+	beforeAll(async () => {
+		const theme = await getThemeByName("dark");
+		if (!theme) throw new Error("Expected dark theme");
+		setThemeInstance(theme);
+	});
+
+	it("presents its block at once, settles it with the result and releases the slot", async () => {
+		const { ctx, presented, errors } = shortcutContext(false, async onChunk => {
+			onChunk("o");
+			return RESULT;
+		});
+		await new CommandController(ctx)[handler]("run", false);
+
+		expect(presented).toHaveLength(1);
+		expect(presented[0]?.isTranscriptBlockFinalized()).toBe(true);
+		expect(ctx[slot]).toBeUndefined();
+		expect(ctx[pendingList]).toEqual([]);
+		expect(errors).toEqual([]);
+	});
+
+	it("defers its block behind a streaming turn into its own pending list", async () => {
+		const { ctx, presented } = shortcutContext(true, async () => RESULT);
+		await new CommandController(ctx)[handler]("run", false);
+
+		expect(presented).toEqual([]);
+		expect(ctx.pendingMessagesContainer.children).toHaveLength(1);
+		expect(ctx[pendingList]).toHaveLength(1);
+		expect(ctx.pendingMessagesContainer.children[0]).toBe(ctx[pendingList][0]);
+		expect(ctx[pendingList][0]?.isTranscriptBlockFinalized()).toBe(true);
+	});
+
+	it("settles its block and reports a thrown failure under its own label", async () => {
+		const { ctx, presented, errors } = shortcutContext(false, async () => {
+			throw new Error("kernel gone");
+		});
+		await new CommandController(ctx)[handler]("run", false);
+
+		expect(presented[0]?.isTranscriptBlockFinalized()).toBe(true);
+		expect(errors).toEqual([`${failure}: kernel gone`]);
+		expect(ctx[slot]).toBeUndefined();
+	});
+});

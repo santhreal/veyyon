@@ -131,6 +131,21 @@ impl MinimizerOutput {
 		Self { text, changed: true, input_bytes, output_bytes, filter: "", original_text: None }
 	}
 
+	/// Construct an output from a candidate rewrite, comparing it against the
+	/// un-minimized `original` capture.
+	///
+	/// If `candidate == original`, the candidate is consumed into a passthrough
+	/// output, avoiding a clone of `original`. Otherwise, [`Self::transformed`]
+	/// normalizes line endings and records the original byte length.
+	#[must_use]
+	pub fn maybe_transformed(original: &str, candidate: String) -> Self {
+		if candidate == original {
+			Self::passthrough(candidate)
+		} else {
+			Self::transformed(candidate, original.len())
+		}
+	}
+
 	/// Attach a `filter` label (e.g. `"git"`, `"pipeline:gradle"`) to an
 	/// output for telemetry, including non-rewrite miss reasons.
 	#[must_use]
@@ -311,6 +326,40 @@ mod tests {
 		// labeled sets filter name
 		let labeled = shrunk.labeled("git");
 		assert_eq!(labeled.filter, "git");
+	}
+
+	#[test]
+	fn output_maybe_transformed_distinguishes_identity_and_transformed_branches() {
+		// Compare before normalization, including empty and multibyte captures.
+		// Transport routing and filter-specific rewrites are covered by fixtures.
+		for raw in ["", "\0", "λ", "\r", "\r\r\n", "unchanged\r\nno trailing newline"] {
+			let pass = MinimizerOutput::maybe_transformed(raw, raw.to_string());
+			assert!(!pass.changed, "matching candidate must be passthrough: {raw:?}");
+			assert_eq!(pass.text, raw, "passthrough must preserve raw bytes");
+			assert_eq!(pass.input_bytes, raw.len());
+			assert_eq!(pass.output_bytes, raw.len());
+			assert_eq!(pass.filter, "passthrough");
+			assert!(pass.original_text.is_none());
+		}
+
+		for (original, candidate, expected) in [
+			("original λ capture", "compacted\r\r\nresult", "compacted\nresult\n"),
+			("原本", "", ""),
+			("", "λ", "λ\n"),
+			("λ\n", "λ", "λ\n"),
+		] {
+			let transformed = MinimizerOutput::maybe_transformed(original, candidate.to_string());
+			assert!(transformed.changed, "differing candidate must be changed: {candidate:?}");
+			assert_eq!(transformed.text, expected, "transformed output must be normalized");
+			assert_eq!(
+				transformed.input_bytes,
+				original.len(),
+				"input bytes must describe the capture"
+			);
+			assert_eq!(transformed.output_bytes, expected.len());
+			assert_eq!(transformed.filter, "");
+			assert!(transformed.original_text.is_none());
+		}
 	}
 
 	#[test]

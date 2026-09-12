@@ -12,6 +12,8 @@ import {
 	enqueueGlobalWatermark,
 	markGlobalPhase2Failed,
 	markGlobalPhase2FailedUnowned,
+	markStage1SucceededNoOutput,
+	markStage1SucceededWithOutput,
 	openMemoryDb,
 	tryClaimGlobalPhase2Job,
 	upsertThreads,
@@ -117,6 +119,61 @@ describe("memories/storage", () => {
 		closeMemoryDb(db);
 	});
 
+	test("a stage-1 completion is accepted only from the token that holds the running job", () => {
+		const db = openMemoryDb(dbPath);
+		const nowSec = 1_800_000_000;
+		const updatedAt = nowSec - 24 * 60 * 60;
+		upsertThreads(db, [
+			{ id: "thread-a", updatedAt, rolloutPath: "/sessions/a.jsonl", cwd: PROJECT_CWD, sourceKind: "cli" },
+		]);
+		const [claim] = claimStage1Jobs(db, {
+			nowSec,
+			threadScanLimit: 100,
+			maxRolloutsPerStartup: 10,
+			maxRolloutAgeDays: 30,
+			minRolloutIdleHours: 12,
+			leaseSeconds: 120,
+			runningConcurrencyCap: 8,
+			workerId: "test-worker",
+		});
+		expect(claim?.threadId).toBe("thread-a");
+		const output = {
+			threadId: "thread-a",
+			sourceUpdatedAt: updatedAt,
+			rawMemory: "raw",
+			rolloutSummary: "summary",
+			rolloutSlug: "slug",
+			nowSec,
+			cwd: PROJECT_CWD,
+		};
+		const stageRow = () =>
+			db
+				.prepare("SELECT status, last_success_watermark FROM jobs WHERE kind = 'memory_stage1' AND job_key = ?")
+				.get("thread-a") as { status: string; last_success_watermark: number | null };
+		const outputs = () => db.prepare("SELECT raw_memory FROM stage1_outputs WHERE thread_id = ?").all("thread-a");
+		const claimed = stageRow();
+		expect(claimed.status).toBe("running");
+		expect(claimed.last_success_watermark).not.toBe(updatedAt);
+
+		expect(markStage1SucceededWithOutput(db, { ...output, ownershipToken: "stale-token" })).toBe(false);
+		expect(stageRow()).toEqual(claimed);
+		expect(outputs()).toEqual([]);
+
+		expect(markStage1SucceededWithOutput(db, { ...output, ownershipToken: claim.ownershipToken })).toBe(true);
+		expect(stageRow()).toEqual({ status: "done", last_success_watermark: updatedAt });
+		expect(outputs()).toEqual([{ raw_memory: "raw" }]);
+
+		// The job is no longer running, so the same token is rejected a second time.
+		expect(markStage1SucceededNoOutput(db, { ...output, ownershipToken: claim.ownershipToken })).toBe(false);
+		expect(outputs()).toEqual([{ raw_memory: "raw" }]);
+
+		db.prepare("UPDATE jobs SET status = 'running' WHERE kind = 'memory_stage1' AND job_key = ?").run("thread-a");
+		expect(markStage1SucceededNoOutput(db, { ...output, ownershipToken: claim.ownershipToken })).toBe(true);
+		expect(stageRow().status).toBe("done");
+		expect(outputs()).toEqual([]);
+		closeMemoryDb(db);
+	});
+
 	test("markGlobalPhase2FailedUnowned recovers lost ownership", () => {
 		const db = openMemoryDb(dbPath);
 		const nowSec = 1_800_000_000;
@@ -215,7 +272,7 @@ describe("memories/storage", () => {
 
 		const model = createMemoryTestModel();
 		const settings = Settings.isolated({
-			"memories.enabled": true,
+			"memory.backend": "local",
 			"memories.minRolloutIdleHours": 0,
 			"memories.maxRolloutsPerStartup": 16,
 			"memories.threadScanLimit": 64,

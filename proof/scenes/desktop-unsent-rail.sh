@@ -109,7 +109,7 @@ SWITCH_MIN_PIXELS=100
 TYPED_MIN_PIXELS=500
 RAIL_DIFF_MIN=200
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 rail_list_bottom_edge() { # <shot> -> bottom edge of inked bounding box in rail list crop

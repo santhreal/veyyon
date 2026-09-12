@@ -7,8 +7,11 @@ name: Checks
 on:
   push:
     branches: [main]
+  # Every pull request, whatever its base. A stacked pull request against an
+  # integration branch ran nothing here and had to be dispatched by hand, and a
+  # dispatch has no base sha, so the secret scan and the changelog check read
+  # the whole history instead of the commits the pull request adds.
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 # Release shas must never lose their gates to branch churn: v1.0.36's Checks run

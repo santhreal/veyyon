@@ -373,6 +373,15 @@ function mirrorRequestAbort(req: Request): AbortController {
 	return controller;
 }
 
+/** The SSE encoder's cancel hook: a client that closes the response aborts the upstream call once. */
+function abortOnClientClose(controller: AbortController): (reason?: unknown) => void {
+	return reason => {
+		if (!controller.signal.aborted) {
+			controller.abort(reason instanceof Error ? reason : new Error("client closed request"));
+		}
+	};
+}
+
 // (handlePassthrough removed — see note above.)
 
 async function handleFormatEndpoint(
@@ -538,11 +547,7 @@ async function handleFormatEndpoint(
 
 	const sseStream = route.module.encodeStream(events, parsed.modelId, parsed.options, {
 		signal: controller.signal,
-		onCancel: reason => {
-			if (!controller.signal.aborted) {
-				controller.abort(reason instanceof Error ? reason : new Error("client closed request"));
-			}
-		},
+		onCancel: abortOnClientClose(controller),
 	});
 	return new Response(sseStream, {
 		status: 200,
@@ -713,11 +718,7 @@ async function handlePiNative(bootOpts: AuthGatewayBootOptions, req: Request, pe
 
 	const sseStream = piNative.encodeStream(events, parsed.modelId, parsed.options, {
 		signal: controller.signal,
-		onCancel: reason => {
-			if (!controller.signal.aborted) {
-				controller.abort(reason instanceof Error ? reason : new Error("client closed request"));
-			}
-		},
+		onCancel: abortOnClientClose(controller),
 	});
 	return new Response(sseStream, {
 		status: 200,

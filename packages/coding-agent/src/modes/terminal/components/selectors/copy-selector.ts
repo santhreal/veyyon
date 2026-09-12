@@ -1,8 +1,8 @@
 import { type Component, Text } from "@veyyon/tui";
+import { HoverController } from "@veyyon/tui/utils/hover-controller";
 import { formatMoreLines } from "@veyyon/utils/format";
 import { matchesKey } from "@veyyon/utils/keys";
 import { clampLow } from "@veyyon/utils/math";
-import { HoverFade } from "@veyyon/utils/motion";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
@@ -19,8 +19,6 @@ import {
 } from "../../utils/keybinding-matchers";
 import {
 	computeModalDims,
-	consumeModalChipHover,
-	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
@@ -29,6 +27,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "../chrome/modal-shell";
+import { routeModalCardMouse } from "./select-list-mouse-routing";
 import { hoverBandAt } from "./selector-helpers";
 
 /** Minimum rows reserved for the tree even on short terminals. */
@@ -85,15 +84,10 @@ export class CopySelectorComponent implements Component {
 	/** Frame row where the tree rows begin (shell body start). */
 	#listRowStart = 0;
 	/** Pointer-highlighted tree row (never the cursor row; the cursor owns its row). */
-	#hoveredIndex: number | null = null;
+	#hover = new HoverController<number>();
 	/** Per-render map of 0-based tree line → flat-node index. */
 	#hitRows: (number | undefined)[] = [];
 	#onRequestRender?: () => void;
-	/**
-	 * The cross-fade between the row the pointer left and the one it arrived at,
-	 * once a host lends this card a repaint. Absent, the band is switched.
-	 */
-	#hoverFade: HoverFade | undefined;
 
 	constructor(
 		roots: CopyTarget[],
@@ -108,22 +102,12 @@ export class CopySelectorComponent implements Component {
 		// The band fades only once the card has a repaint to lend it: the frames
 		// between two mouse reports have no input to hang off. Same ambient gate as
 		// the open unfold; without it the band is switched.
-		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: pointerMotionEnabled() });
-		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+		this.#hover.setMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
 	}
 
 	/** Settle the pointer band so no timer outlives a dismissed card. */
 	dispose(): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = undefined;
-		this.#hoveredIndex = null;
-	}
-
-	/** Band strength for a tree row; without a fade the hovered row is at 1 and the rest at 0. */
-	#hoverStrength(index: number): number {
-		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
-		return index === this.#hoveredIndex ? 1 : 0;
+		this.#hover.dispose();
 	}
 
 	invalidate(): void {
@@ -176,69 +160,45 @@ export class CopySelectorComponent implements Component {
 	}
 
 	#routeMouse(event: SgrMouseEvent): boolean {
-		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-			motion: event.motion,
-			leftClick: event.leftClick,
-		});
-		if (
-			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+		return routeModalCardMouse({
+			shellGeometry: this.#shellGeometry,
+			event,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			onHoverShortcut: id => {
 				this.#hoveredShortcutId = id;
 				this.#onRequestRender?.();
-			})
-		) {
-			return true;
-		}
-		if (
-			chrome.kind === "close" ||
-			chrome.kind === "outside" ||
-			(chrome.kind === "shortcut" && chrome.id === "close")
-		) {
-			this.callbacks.onCancel();
-			return true;
-		}
-		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
-			this.handleInput("\n");
-			return true;
-		}
-		if (event.wheel !== null) {
-			const flat = this.#flatten();
-			if (flat.length > 0) {
-				const idx = Math.max(
-					0,
-					flat.findIndex(n => n.target.id === this.#cursorId),
-				);
-				const next =
-					event.wheel < 0 ? (idx === 0 ? flat.length - 1 : idx - 1) : idx === flat.length - 1 ? 0 : idx + 1;
-				this.#cursorId = flat[next]!.target.id;
-				this.#onRequestRender?.();
-			}
-			return true;
-		}
-		const line = event.row - this.#listRowStart;
-		if (event.motion) {
-			const index = this.#hitRows[line] ?? null;
-			if (index !== this.#hoveredIndex) {
-				this.#hoveredIndex = index;
-				this.#hoverFade?.set(index);
-				this.#onRequestRender?.();
-			}
-			return true;
-		}
-		if (event.leftClick) {
-			const index = this.#hitRows[line];
-			if (index !== undefined) {
-				// Click mirrors the cursor + Enter: move to the row, then pick it
-				// when it carries copyable content.
+			},
+			onCancel: () => this.callbacks.onCancel(),
+			onConfirm: () => this.handleInput("\n"),
+			onWheel: delta => {
+				const flat = this.#flatten();
+				if (flat.length > 0) {
+					const idx = Math.max(
+						0,
+						flat.findIndex(n => n.target.id === this.#cursorId),
+					);
+					const next = delta < 0 ? (idx === 0 ? flat.length - 1 : idx - 1) : idx === flat.length - 1 ? 0 : idx + 1;
+					this.#cursorId = flat[next]!.target.id;
+					this.#onRequestRender?.();
+				}
+			},
+			listRowStart: this.#listRowStart,
+			hitRows: this.#hitRows,
+			onHoverRow: index => {
+				if (index !== this.#hover.key) {
+					this.#hover.set(index);
+					this.#onRequestRender?.();
+				}
+			},
+			onClickRow: index => {
 				const node = this.#flatten()[index];
 				if (node) {
 					this.#cursorId = node.target.id;
 					if (node.target.content !== undefined) this.callbacks.onPick(node.target);
 					this.#onRequestRender?.();
 				}
-			}
-			return true;
-		}
-		return true;
+			},
+		});
 	}
 
 	#renderTree(inner: number, flat: FlatNode[], cursorIdx: number, rows: number): string[] {
@@ -254,7 +214,7 @@ export class CopySelectorComponent implements Component {
 			}
 			const target = node.target;
 			const isSelected = i === cursorIdx;
-			const hoverStrength = this.#hoverStrength(i);
+			const hoverStrength = this.#hover.strength(i);
 
 			let prefix = "";
 			for (let l = 0; l < node.depth - 1; l++) prefix += gutterCells(node.ancestorHasNext[l]!);

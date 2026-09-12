@@ -23,17 +23,23 @@ import type {
 	ViewTone,
 } from "@veyyon/view";
 import type { DaemonSnapshot, DaemonState } from "../../launch/protocol";
+import { extractResultText } from "../core/output-notice";
 import {
 	DEFAULT_TERMINAL_PREVIEW_LINES,
 	formatDuration,
+	heldBack,
+	LINE_NOUN,
+	metaLines,
 	PREVIEW_LIMITS,
 	pluralize,
 	previewLine,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	shortenPath,
+	type ToolViewResult,
 	TRUNCATE_LENGTHS,
 } from "../core/render-utils";
-import { callMeta, type LaunchRenderArgs, type LaunchToolDetails, readyPendingSummary } from "./launch";
+import type { LaunchParams, LaunchRenderArgs, LaunchToolDetails } from "./launch";
 
 /** What every card of this tool is titled, with the operation set after it. */
 const LAUNCH_TITLE = "Launch";
@@ -41,17 +47,51 @@ const LAUNCH_TITLE = "Launch";
 /** The tool's own mark, which a settled card is titled by instead of an outcome icon. */
 const LAUNCH_EMBLEM = "tool.launch";
 
-/** The unit a held-back output count is in, which the host words. */
-const LINE_NOUN = { one: "line", many: "lines" } as const;
-
 /** The unit a held-back `list` count is in: the rows of that card are processes, not lines. */
 const PROCESS_NOUN = { one: "process", many: "processes" } as const;
 
 /** The result the card reads, which is the tool's own result shape narrowed to what a card shows. */
-export interface LaunchViewResult {
-	content?: Array<{ type: string; text?: string }>;
-	details?: LaunchToolDetails;
-	isError?: boolean;
+export interface LaunchViewResult extends Partial<ToolViewResult<LaunchToolDetails>> {}
+
+/**
+ * Human sentences for the readiness conditions still unmet, e.g.
+ * `port 5173 on 127.0.0.1 never accepted connections`. `ready` (from the start
+ * params) adds the concrete pattern/port; absent it falls back to generic labels.
+ */
+export function readyPendingSummary(daemon: DaemonSnapshot, ready?: LaunchParams["ready"]): string[] {
+	const parts: string[] = [];
+	for (const condition of daemon.readyPending ?? []) {
+		if (condition === "log") {
+			parts.push(ready?.log ? `log pattern /${ready.log}/ never matched` : "the log pattern never matched");
+		} else {
+			parts.push(
+				ready?.port !== undefined
+					? `port ${ready.port} on ${ready.host ?? "127.0.0.1"} never accepted connections`
+					: "the port never accepted connections",
+			);
+		}
+	}
+	return parts;
+}
+
+/** Op-specific call context (log filters, wait condition, send payload). */
+export function callMeta(args: LaunchRenderArgs): string[] {
+	const meta: string[] = [];
+	switch (args.op) {
+		case "logs":
+			if (args.follow) meta.push("follow");
+			if (args.grep) meta.push(`grep /${args.grep}/`);
+			break;
+		case "wait":
+			meta.push(args.pattern ? `for /${args.pattern}/` : `for ${args.for ?? "exit"}`);
+			break;
+		case "send":
+			if (args.signal) meta.push(args.signal);
+			else if (args.text) meta.push(args.text);
+			if (args.keys?.length) meta.push(args.keys.join(" "));
+			break;
+	}
+	return meta.map(entry => previewLine(replaceTabs(entry), TRUNCATE_LENGTHS.SHORT));
 }
 
 /** The role a daemon's state plays, which a host maps to its own appearance. */
@@ -117,7 +157,7 @@ function daemonFacts(daemon: DaemonSnapshot): ViewLine {
 
 /** The call's own context: the log filters, the wait condition or the payload a send carries. */
 function callEntries(args: LaunchRenderArgs): ViewLine[] {
-	return callMeta(args).map(entry => [{ text: entry }] as ViewLine);
+	return metaLines(callMeta(args));
 }
 
 /**
@@ -151,31 +191,21 @@ function header(
 /** The result's plain text as body lines, for an op whose structured detail did not arrive. */
 function textLines(text: string): ViewLine[] {
 	if (!text.trim()) return [];
-	return replaceTabs(text.trimEnd())
+	return replaceTabs(shortenEmbeddedPaths(text.trimEnd()))
 		.split("\n")
 		.map(line => [{ text: line, tone: "output" as const }] as ViewLine);
-}
-
-/** The text every op falls back to: the parts of the result the model was sent. */
-function resultText(result: LaunchViewResult): string {
-	return (
-		result.content
-			?.filter(item => item.type === "text")
-			.map(item => item.text ?? "")
-			.join("\n") ?? ""
-	);
 }
 
 /** The rows a card shows and the count it kept back, for a body the tool caps itself. */
 function capped(lines: readonly ViewLine[], limit: number | undefined, noun: ViewHiddenCount["noun"]): ViewSection {
 	if (limit === undefined || lines.length <= limit) return { lines, clip: true };
+	const hidden = heldBack(lines.length - limit, noun);
 	return {
 		lines: lines.slice(0, limit),
-		hidden: { count: lines.length - limit, noun, revealable: true },
+		...(hidden === undefined ? {} : { hidden }),
 		clip: true,
 	};
 }
-
 /** What the `start` op reports beyond the process's own facts: what matched, and what did not. */
 function startBody(details: LaunchToolDetails | undefined, args: LaunchRenderArgs): ViewLine[] {
 	const daemon = details?.daemon;
@@ -298,14 +328,14 @@ export const launchToolView: Required<ToolViewRenderer<LaunchRenderArgs, LaunchV
 		const daemon = details?.daemon;
 		const failed = isError || daemon?.state === "failed";
 		const partial = context.partial === true;
-		const text = resultText(result);
+		const text = extractResultText(result.content);
 
 		const meta: ViewLine[] = [];
 		let body: ViewLine[] = [];
 		let description = params.name ?? daemon?.name;
 
 		if (isError) {
-			body = replaceTabs(text.trimEnd())
+			body = replaceTabs(shortenEmbeddedPaths(text.trimEnd()))
 				.split("\n")
 				.map(line => [{ text: line, tone: "error" as const }] as ViewLine);
 		} else {

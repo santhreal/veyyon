@@ -35,6 +35,7 @@ import type {
 	UIEvent,
 } from "@veyyon/wire/presentation";
 import { PresentationEventBridge, type PresentationEventSource } from "../../src/presentation/event-bridge";
+import { toTranscriptBlock } from "../../src/presentation/transcript-builder";
 import type { AgentSession } from "../../src/session/agent-session";
 import type { AgentSessionEvent } from "../../src/session/agent-session-types";
 
@@ -372,6 +373,119 @@ describe("a tool execution is keyed by its call id", () => {
 		source.emit({ type: "tool_execution_start", toolCallId: "c5", toolName: "read", args: {} });
 		bridge.disconnect();
 		expect(bridge.runningToolCalls.size).toBe(0);
+	});
+
+	test("formats tool input using defaultToolText for strings, objects, and unserializable args", () => {
+		const { source, presentation } = connect();
+		source.emit({ type: "tool_execution_start", toolCallId: "s1", toolName: "raw", args: "string-input" });
+		source.emit({ type: "tool_execution_start", toolCallId: "s2", toolName: "obj", args: { num: 123 } });
+		const circular: Record<string, unknown> = {};
+		circular.self = circular;
+		source.emit({ type: "tool_execution_start", toolCallId: "s3", toolName: "circ", args: circular });
+
+		const b1 = presentation.blocks.find(b => b.id === "tool:s1");
+		const b2 = presentation.blocks.find(b => b.id === "tool:s2");
+		const b3 = presentation.blocks.find(b => b.id === "tool:s3");
+		if (b1?.kind !== "tool-execution" || b2?.kind !== "tool-execution" || b3?.kind !== "tool-execution") {
+			throw new Error("expected tool-execution blocks");
+		}
+		expect(b1.input).toBe("string-input");
+		expect(b2.input).toBe('{\n  "num": 123\n}');
+		expect(b3.input).toBe("[unserializable]");
+	});
+
+	test("extracts multipart text with newline separator on partial update and execution end", () => {
+		const { source, presentation } = connect();
+		source.emit({ type: "tool_execution_start", toolCallId: "m1", toolName: "bash", args: {} });
+		source.emit({
+			type: "tool_execution_update",
+			toolCallId: "m1",
+			toolName: "bash",
+			args: {},
+			partialResult: {
+				content: [
+					{ type: "text", text: "chunk 1" },
+					{ type: "text", text: "chunk 2" },
+				],
+			},
+		} as AgentEvent);
+		const updated = presentation.blocks.find(b => b.id === "tool:m1");
+		if (updated?.kind !== "tool-execution") throw new Error("expected tool-execution");
+		expect(updated.output).toBe("chunk 1\nchunk 2");
+
+		source.emit({
+			type: "tool_execution_end",
+			toolCallId: "m1",
+			toolName: "bash",
+			result: {
+				content: [
+					{ type: "text", text: "final 1" },
+					{ type: "text", text: "final 2" },
+				],
+			},
+		} as AgentEvent);
+		const finished = presentation.blocks.find(b => b.id === "tool:m1");
+		if (finished?.kind !== "tool-execution") throw new Error("expected tool-execution");
+		expect(finished.output).toBe("final 1\nfinal 2");
+	});
+
+	test("handles image-only, empty array, and string result content", () => {
+		const { source, presentation } = connect();
+		source.emit({ type: "tool_execution_start", toolCallId: "img", toolName: "read", args: {} });
+		source.emit({
+			type: "tool_execution_end",
+			toolCallId: "img",
+			toolName: "read",
+			result: { content: [{ type: "image", mimeType: "image/png" }] },
+		} as AgentEvent);
+		const imgBlock = presentation.blocks.find(b => b.id === "tool:img");
+		if (imgBlock?.kind !== "tool-execution") throw new Error("expected tool-execution");
+		expect(imgBlock.output).toBe("");
+
+		source.emit({ type: "tool_execution_start", toolCallId: "str", toolName: "echo", args: {} });
+		// Exercise legacy string content outside the current event contract.
+		source.emit({
+			type: "tool_execution_end",
+			toolCallId: "str",
+			toolName: "echo",
+			result: { content: "raw string content" },
+		} as unknown as AgentEvent);
+		const strBlock = presentation.blocks.find(b => b.id === "tool:str");
+		if (strBlock?.kind !== "tool-execution") throw new Error("expected tool-execution");
+		expect(strBlock.output).toBe("raw string content");
+	});
+
+	test("produces output parity between live event projection and transcript rebuild", () => {
+		const { source, presentation } = connect();
+		const toolResultContent = [
+			{ type: "text", text: "step 1" },
+			{ type: "text", text: "step 2" },
+		];
+		source.emit({ type: "tool_execution_start", toolCallId: "parity-1", toolName: "exec", args: { flag: true } });
+		source.emit({
+			type: "tool_execution_end",
+			toolCallId: "parity-1",
+			toolName: "exec",
+			result: { content: toolResultContent },
+		} as AgentEvent);
+		const liveBlock = presentation.blocks.find(b => b.id === "tool:parity-1");
+
+		const persistedMessage = {
+			role: "toolResult",
+			toolCallId: "parity-1",
+			toolName: "exec",
+			content: toolResultContent,
+			isError: false,
+			timestamp: 1234,
+		} as AgentMessage;
+		const rebuiltBlock = toTranscriptBlock(persistedMessage, { index: 0 });
+
+		if (liveBlock?.kind !== "tool-execution" || rebuiltBlock.kind !== "tool-execution") {
+			throw new Error("expected tool-execution blocks");
+		}
+		expect(liveBlock.output).toBe(rebuiltBlock.output);
+		expect(liveBlock.status).toBe(rebuiltBlock.status);
+		expect(liveBlock.id).toBe(rebuiltBlock.id);
 	});
 });
 

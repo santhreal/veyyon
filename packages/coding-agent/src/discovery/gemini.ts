@@ -29,7 +29,7 @@ import {
 	createSourceMeta,
 	discoverExtensionModulePaths,
 	getUserPath,
-	readContextFile,
+	loadUserContextFile,
 } from "./helpers";
 
 const PROVIDER_ID = "gemini";
@@ -119,24 +119,7 @@ async function loadMCPFromSettings(_ctx: LoadContext, path: string): Promise<Loa
  * loses to it on priority (native 100 against 60).
  */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
-	const items: ContextFile[] = [];
-	const warnings: string[] = [];
-
-	const userGeminiMd = getUserPath(ctx, "gemini", "GEMINI.md");
-	if (userGeminiMd) {
-		const { content, warning } = await readContextFile(userGeminiMd);
-		if (warning) warnings.push(warning);
-		if (content) {
-			items.push({
-				path: userGeminiMd,
-				content,
-				level: "user",
-				_source: createSourceMeta(PROVIDER_ID, userGeminiMd, "user"),
-			});
-		}
-	}
-
-	return { items, warnings };
+	return loadUserContextFile(ctx, PROVIDER_ID, "gemini", "GEMINI.md");
 }
 
 // =============================================================================

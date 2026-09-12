@@ -1,14 +1,23 @@
-import { afterEach, describe, expect, it } from "bun:test";
-import { setBedrockProviderModule, streamBedrock } from "@veyyon/ai/providers/register-builtins";
-import type { AssistantMessage, Context, Model } from "@veyyon/ai/types";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {
+	createLazyStream,
+	type LazyProviderModule,
+	providerModuleOverrideSnapshot,
+	setProviderModuleOverrideForTest,
+	streamBedrock,
+} from "@veyyon/ai/providers/register-builtins";
+import type { Api, AssistantMessage, Context, Model } from "@veyyon/ai/types";
 import type { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
 
-// Four tests here install a process-wide Bedrock override. Left behind, one answers every later
-// test file in the bucket, which is how a Bedrock deadline suite came to terminate in 3ms against a
-// stub. `packages/ai/test/helpers/provider-override-tripwire.ts` fails the test that forgets.
+let inheritedOverrides: ReadonlyMap<Api, LazyProviderModule<Api>> = new Map();
+
+beforeEach(() => {
+	inheritedOverrides = providerModuleOverrideSnapshot();
+});
+
 afterEach(() => {
-	setBedrockProviderModule();
+	setProviderModuleOverrideForTest("bedrock-converse-stream", inheritedOverrides.get("bedrock-converse-stream"));
 });
 
 function createModel(): Model<"bedrock-converse-stream"> {
@@ -63,8 +72,8 @@ describe("register-builtins lazy streams", () => {
 			result: async () => finalMessage,
 		} as unknown as AssistantMessageEventStream;
 
-		setBedrockProviderModule({
-			streamBedrock: () => source,
+		setProviderModuleOverrideForTest("bedrock-converse-stream", {
+			stream: () => source,
 		});
 
 		const stream = streamBedrock(createModel(), baseContext, {});
@@ -86,8 +95,8 @@ describe("register-builtins lazy streams", () => {
 			},
 		} as unknown as AssistantMessageEventStream;
 
-		setBedrockProviderModule({
-			streamBedrock: () => source,
+		setProviderModuleOverrideForTest("bedrock-converse-stream", {
+			stream: () => source,
 		});
 
 		const stream = streamBedrock(createModel(), baseContext, {});
@@ -119,8 +128,8 @@ describe("register-builtins lazy streams", () => {
 			},
 		} as unknown as AssistantMessageEventStream;
 
-		setBedrockProviderModule({
-			streamBedrock: (_model, _context, options) => {
+		setProviderModuleOverrideForTest("bedrock-converse-stream", {
+			stream: (_model, _context, options) => {
 				providerSignal = options.signal;
 				return source;
 			},
@@ -156,8 +165,8 @@ describe("register-builtins lazy streams", () => {
 			},
 		} as unknown as AssistantMessageEventStream;
 
-		setBedrockProviderModule({
-			streamBedrock: (_model, _context, options) => {
+		setProviderModuleOverrideForTest("bedrock-converse-stream", {
+			stream: (_model, _context, options) => {
 				providerSignal = options.signal;
 				return source;
 			},
@@ -180,5 +189,173 @@ describe("register-builtins lazy streams", () => {
 		}
 		expect(result.stopReason).toBe("aborted");
 		expect(result.errorMessage).toBe("Request was aborted");
+	});
+
+	it("concurrent first calls invoke dynamic import factory once", async () => {
+		let loadCalls = 0;
+		const expectedMessage = createAssistantMessage("stop", undefined);
+		const streamFn = createLazyStream("bedrock-converse-stream", async () => {
+			loadCalls++;
+			await Promise.resolve();
+			return {
+				stream: () =>
+					({
+						async *[Symbol.asyncIterator]() {
+							yield { type: "start", partial: expectedMessage } as const;
+							yield { type: "done", reason: "stop", message: expectedMessage } as const;
+						},
+						result: async () => expectedMessage,
+					}) as unknown as AssistantMessageEventStream,
+			};
+		});
+
+		const [s1, s2] = [streamFn(createModel(), baseContext, {}), streamFn(createModel(), baseContext, {})];
+		const results = await Promise.race([
+			Promise.all([s1.result(), s2.result()]),
+			Bun.sleep(100).then(() => "timeout" as const),
+		]);
+
+		expect(results).not.toBe("timeout");
+		if (results === "timeout") throw new Error("Timed out waiting for concurrent streams");
+		expect(loadCalls).toBe(1);
+		expect(results[0]).toEqual(expectedMessage);
+		expect(results[1]).toEqual(expectedMessage);
+	});
+
+	it("cold override prevents dynamic import until removed, then first real load occurs", async () => {
+		let loadCalls = 0;
+		const realMessage = createAssistantMessage("stop", undefined);
+		const coldOverrideMessage = { ...createAssistantMessage("stop", undefined), model: "cold-override-model" };
+
+		const streamFn = createLazyStream("bedrock-converse-stream", async () => {
+			loadCalls++;
+			return {
+				stream: () =>
+					({
+						async *[Symbol.asyncIterator]() {
+							yield { type: "start", partial: realMessage } as const;
+							yield { type: "done", reason: "stop", message: realMessage } as const;
+						},
+						result: async () => realMessage,
+					}) as unknown as AssistantMessageEventStream,
+			};
+		});
+
+		// 1. Install override before ANY stream calls (cold state)
+		setProviderModuleOverrideForTest("bedrock-converse-stream", {
+			stream: () =>
+				({
+					async *[Symbol.asyncIterator]() {
+						yield { type: "start", partial: coldOverrideMessage } as const;
+						yield { type: "done", reason: "stop", message: coldOverrideMessage } as const;
+					},
+					result: async () => coldOverrideMessage,
+				}) as unknown as AssistantMessageEventStream,
+		});
+
+		// 2. Stream call under cold override uses override, import factory NOT called
+		const s1 = streamFn(createModel(), baseContext, {});
+		const r1 = await Promise.race([s1.result(), Bun.sleep(100).then(() => "timeout" as const)]);
+		expect(r1).not.toBe("timeout");
+		expect(loadCalls).toBe(0);
+		expect(r1).toEqual(coldOverrideMessage);
+
+		// 3. Remove override -> next stream call triggers the first real import
+		setProviderModuleOverrideForTest("bedrock-converse-stream", inheritedOverrides.get("bedrock-converse-stream"));
+
+		const s2 = streamFn(createModel(), baseContext, {});
+		const r2 = await Promise.race([s2.result(), Bun.sleep(100).then(() => "timeout" as const)]);
+		expect(r2).not.toBe("timeout");
+		expect(loadCalls).toBe(1);
+		expect(r2).toEqual(realMessage);
+
+		// 4. Subsequent stream call reuses cached real import
+		const s3 = streamFn(createModel(), baseContext, {});
+		const r3 = await Promise.race([s3.result(), Bun.sleep(100).then(() => "timeout" as const)]);
+		expect(r3).not.toBe("timeout");
+		expect(loadCalls).toBe(1);
+		expect(r3).toEqual(realMessage);
+	});
+
+	it("overrides apply even after a module has been cached and removing resumes original cached module", async () => {
+		let loadCalls = 0;
+		const cachedMessage = createAssistantMessage("stop", undefined);
+		const overrideMessage = { ...createAssistantMessage("stop", undefined), model: "override-model" };
+
+		const streamFn = createLazyStream("bedrock-converse-stream", async () => {
+			loadCalls++;
+			return {
+				stream: () =>
+					({
+						async *[Symbol.asyncIterator]() {
+							yield { type: "start", partial: cachedMessage } as const;
+							yield { type: "done", reason: "stop", message: cachedMessage } as const;
+						},
+						result: async () => cachedMessage,
+					}) as unknown as AssistantMessageEventStream,
+			};
+		});
+
+		// 1. Initial call caches the module
+		const s1 = streamFn(createModel(), baseContext, {});
+		const r1 = await Promise.race([s1.result(), Bun.sleep(100).then(() => "timeout" as const)]);
+		expect(r1).not.toBe("timeout");
+		expect(loadCalls).toBe(1);
+		expect(r1).toEqual(cachedMessage);
+
+		// 2. Install test override after module is cached
+		setProviderModuleOverrideForTest("bedrock-converse-stream", {
+			stream: () =>
+				({
+					async *[Symbol.asyncIterator]() {
+						yield { type: "start", partial: overrideMessage } as const;
+						yield { type: "done", reason: "stop", message: overrideMessage } as const;
+					},
+					result: async () => overrideMessage,
+				}) as unknown as AssistantMessageEventStream,
+		});
+
+		const s2 = streamFn(createModel(), baseContext, {});
+		const r2 = await Promise.race([s2.result(), Bun.sleep(100).then(() => "timeout" as const)]);
+		expect(r2).not.toBe("timeout");
+		expect(loadCalls).toBe(1); // Not called again
+		expect(r2).toEqual(overrideMessage);
+
+		// 3. Remove override -> resumes original cached module
+		setProviderModuleOverrideForTest("bedrock-converse-stream", inheritedOverrides.get("bedrock-converse-stream"));
+
+		const s3 = streamFn(createModel(), baseContext, {});
+		const r3 = await Promise.race([s3.result(), Bun.sleep(100).then(() => "timeout" as const)]);
+		expect(r3).not.toBe("timeout");
+		expect(loadCalls).toBe(1); // Still 1, reused cached module
+		expect(r3).toEqual(cachedMessage);
+	});
+
+	it("failed dynamic imports remain cached on subsequent stream calls", async () => {
+		let loadCalls = 0;
+		const streamFn = createLazyStream("bedrock-converse-stream", async () => {
+			loadCalls++;
+			throw new Error("Failed to load provider SDK");
+		});
+
+		const s1 = streamFn(createModel(), baseContext, {});
+		const r1 = await Promise.race([s1.result(), Bun.sleep(100).then(() => "timeout" as const)]);
+		expect(r1).not.toBe("timeout");
+		if (r1 === "timeout") throw new Error("Timed out waiting for s1 error result");
+		expect(loadCalls).toBe(1);
+		expect(r1.stopReason).toBe("error");
+		expect(r1.errorMessage).toBe("Failed to load provider SDK");
+		expect(r1.api).toBe("bedrock-converse-stream");
+		expect(r1.model).toBe("mock-bedrock");
+
+		const s2 = streamFn(createModel(), baseContext, {});
+		const r2 = await Promise.race([s2.result(), Bun.sleep(100).then(() => "timeout" as const)]);
+		expect(r2).not.toBe("timeout");
+		if (r2 === "timeout") throw new Error("Timed out waiting for s2 error result");
+		expect(loadCalls).toBe(1); // Factory is NOT retried
+		expect(r2.stopReason).toBe("error");
+		expect(r2.errorMessage).toBe("Failed to load provider SDK");
+		expect(r2.api).toBe("bedrock-converse-stream");
+		expect(r2.model).toBe("mock-bedrock");
 	});
 });

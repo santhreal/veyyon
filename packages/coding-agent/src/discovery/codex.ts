@@ -8,7 +8,6 @@
  */
 import * as path from "node:path";
 import { logger, parseFrontmatter } from "@veyyon/utils";
-import { registerProvider } from "./capability";
 import type { ContextFile } from "./capability/context-file";
 import { contextFileCapability } from "./capability/context-file";
 import { type ExtensionModule, extensionModuleCapability } from "./capability/extension-module";
@@ -33,7 +32,9 @@ import {
 	discoverExtensionModulePaths,
 	loadFilesFromDir,
 	readContextFile,
+	registerProviderCapabilities,
 	SOURCE_PATHS,
+	scanMarkdownCommands,
 	scanSkillsFromDir,
 } from "./helpers";
 
@@ -218,21 +219,7 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
 	const userCommandsDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "commands");
-
-	return await loadFilesFromDir(userCommandsDir, PROVIDER_ID, "user", {
-		extensions: ["md"],
-		transform: (name: string, content: string, cmdPath: string, source: SourceMeta) => {
-			const { frontmatter, body } = parseFrontmatter(content, { source: cmdPath });
-			const commandName = frontmatter.name || name.replace(/\.md$/, "");
-			return {
-				name: String(commandName),
-				path: cmdPath,
-				content: body,
-				level: "user" as const,
-				_source: source,
-			};
-		},
-	});
+	return await scanMarkdownCommands(userCommandsDir, PROVIDER_ID, "user", { parseFrontmatter: true });
 }
 
 // =============================================================================
@@ -257,10 +244,6 @@ async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 		},
 	});
 }
-
-// =============================================================================
-// Hooks (hooks/)
-// =============================================================================
 
 async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	const userHooksDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "hooks");
@@ -287,14 +270,12 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 		},
 	});
 }
-
 // =============================================================================
 // Tools (tools/)
 // =============================================================================
 
 async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
 	const userToolsDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "tools");
-
 	return await loadFilesFromDir(userToolsDir, PROVIDER_ID, "user", {
 		extensions: ["ts", "js"],
 		transform: (name: string, _content: string, toolPath: string, source: SourceMeta) =>
@@ -311,66 +292,45 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 // Provider Registration (executes on module import)
 // =============================================================================
 
-registerProvider<ContextFile>(contextFileCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load context files from ~/.codex/AGENTS.md (user-level only)",
-	priority: PRIORITY,
-	load: loadContextFiles,
-});
-
-registerProvider<MCPServer>(mcpCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load MCP servers from config.toml [mcp_servers.*] sections",
-	priority: PRIORITY,
-	load: loadMCPServers,
-});
-
-registerProvider<DiscoveredSkill>(skillCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load skills from ~/.codex/skills and .codex/skills/",
-	priority: PRIORITY,
-	load: loadSkills,
-});
-
-registerProvider<ExtensionModule>(extensionModuleCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load extension modules from ~/.codex/extensions and .codex/extensions/",
-	priority: PRIORITY,
-	load: loadExtensionModules,
-});
-
-registerProvider<SlashCommand>(slashCommandCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load slash commands from ~/.codex/commands and .codex/commands/",
-	priority: PRIORITY,
-	load: loadSlashCommands,
-});
-
-registerProvider<Prompt>(promptCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load prompts from ~/.codex/prompts and .codex/prompts/",
-	priority: PRIORITY,
-	load: loadPrompts,
-});
-
-registerProvider<Hook>(hookCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load hooks from ~/.codex/hooks and .codex/hooks/",
-	priority: PRIORITY,
-	load: loadHooks,
-});
-
-registerProvider<DiscoveredCustomTool>(toolCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load custom tools from ~/.codex/tools and .codex/tools/",
-	priority: PRIORITY,
-	load: loadTools,
-});
+registerProviderCapabilities({ id: PROVIDER_ID, displayName: DISPLAY_NAME, priority: PRIORITY }, [
+	{
+		capabilityId: contextFileCapability.id,
+		description: "Load context files from ~/.codex/AGENTS.md (user-level only)",
+		load: loadContextFiles,
+	},
+	{
+		capabilityId: mcpCapability.id,
+		description: "Load MCP servers from config.toml [mcp_servers.*] sections",
+		load: loadMCPServers,
+	},
+	{
+		capabilityId: skillCapability.id,
+		description: "Load skills from ~/.codex/skills and .codex/skills/",
+		load: loadSkills,
+	},
+	{
+		capabilityId: extensionModuleCapability.id,
+		description: "Load extension modules from ~/.codex/extensions and .codex/extensions/",
+		load: loadExtensionModules,
+	},
+	{
+		capabilityId: slashCommandCapability.id,
+		description: "Load slash commands from ~/.codex/commands and .codex/commands/",
+		load: loadSlashCommands,
+	},
+	{
+		capabilityId: promptCapability.id,
+		description: "Load prompts from ~/.codex/prompts and .codex/prompts/",
+		load: loadPrompts,
+	},
+	{
+		capabilityId: hookCapability.id,
+		description: "Load hooks from ~/.codex/hooks and .codex/hooks/",
+		load: loadHooks,
+	},
+	{
+		capabilityId: toolCapability.id,
+		description: "Load custom tools from ~/.codex/tools and .codex/tools/",
+		load: loadTools,
+	},
+]);

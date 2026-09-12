@@ -198,8 +198,8 @@ esac
 # one tab along: one `/bin/sh` label (47px at the body ramp in this checkout's
 # font) past the strip's first tab.
 PROCESSES_TAB_X=$(( TAB_X + 47 ))
-AT_REST="${SCENE_RUNTIME_DIR}/frame-compare/process-at-rest.png"
-mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+AT_REST="${TMPDIR}/frame-compare/process-at-rest.png"
+mkdir -p "${TMPDIR}/frame-compare"
 probe_frame "${AT_REST}"
 
 k "ctrl+j"

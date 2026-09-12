@@ -20,9 +20,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { ComposerMode, DialogResult, SelectOption, SessionActivity } from "@veyyon/wire/presentation";
+import type { ComposerMode, DialogResult, SelectOption } from "@veyyon/wire/presentation";
 import {
 	type ComposerInput,
+	cursorToOffset,
+	offsetToCursor,
 	resolveComposerMode,
 	resolvePlaceholder,
 	toComposerState,
@@ -35,13 +37,8 @@ import {
 	toSelectDialog,
 	toToolApprovalDialog,
 } from "../../src/presentation/overlay-builder";
-import {
-	emptyCost,
-	resolveActivity,
-	resolveContextGauge,
-	type StatusInput,
-	toStatusLineState,
-} from "../../src/presentation/status-builder";
+import { messageFingerprint, structuralTextSize } from "../../src/presentation/status-producer";
+import { calculateTokensPerSecond, MIN_RATE_DURATION_MS, tokensPerSecond } from "../../src/presentation/token-rate";
 
 function composerInput(overrides: Partial<ComposerInput> = {}): ComposerInput {
 	return {
@@ -50,25 +47,6 @@ function composerInput(overrides: Partial<ComposerInput> = {}): ComposerInput {
 		busy: false,
 		awaitingApproval: false,
 		locked: false,
-		...overrides,
-	};
-}
-
-function statusInput(overrides: Partial<StatusInput> = {}): StatusInput {
-	return {
-		streaming: false,
-		thinking: false,
-		runningToolCalls: 0,
-		compacting: false,
-		awaitingApproval: false,
-		model: "mock/mock-model",
-		usedTokens: 0,
-		contextWindow: 200_000,
-		contextWindowFromProvider: false,
-		cost: emptyCost(),
-		workingDirectory: "/repo",
-		elapsedMs: 0,
-		queuedMessages: 0,
 		...overrides,
 	};
 }
@@ -121,86 +99,78 @@ describe("the composer's mode is decided once, in precedence order", () => {
 		expect("hint" in state).toBe(false);
 		expect(state.attachments).toEqual([]);
 	});
+
+	test("offsetToCursor and cursorToOffset round-trip positions across multiline text", () => {
+		const lines = ["first", "second line", "end"];
+		expect(offsetToCursor(lines, 0)).toEqual({ line: 0, col: 0 });
+		expect(offsetToCursor(lines, 5)).toEqual({ line: 0, col: 5 });
+		expect(offsetToCursor(lines, 6)).toEqual({ line: 1, col: 0 });
+		expect(offsetToCursor(lines, 12)).toEqual({ line: 1, col: 6 });
+		expect(offsetToCursor(lines, 17)).toEqual({ line: 1, col: 11 });
+		expect(offsetToCursor(lines, 18)).toEqual({ line: 2, col: 0 });
+		expect(offsetToCursor(lines, 21)).toEqual({ line: 2, col: 3 });
+		expect(offsetToCursor(lines, 999)).toEqual({ line: 2, col: 3 });
+		expect(offsetToCursor(lines, -10)).toEqual({ line: 0, col: 0 });
+
+		expect(cursorToOffset(lines, { line: 0, col: 0 })).toBe(0);
+		expect(cursorToOffset(lines, { line: 0, col: 5 })).toBe(5);
+		expect(cursorToOffset(lines, { line: 1, col: 0 })).toBe(6);
+		expect(cursorToOffset(lines, { line: 1, col: 6 })).toBe(12);
+		expect(cursorToOffset(lines, { line: 1, col: 11 })).toBe(17);
+		expect(cursorToOffset(lines, { line: 2, col: 0 })).toBe(18);
+		expect(cursorToOffset(lines, { line: 2, col: 3 })).toBe(21);
+		expect(cursorToOffset(lines, { line: 10, col: 99 })).toBe(21);
+	});
 });
 
-describe("the status line reports the activity that blocks the operator", () => {
-	const cases: readonly [StatusInput, SessionActivity][] = [
-		[
-			statusInput({
-				streaming: true,
-				thinking: true,
-				runningToolCalls: 2,
-				compacting: true,
-				awaitingApproval: true,
-			}),
-			"waiting-approval",
-		],
-		[statusInput({ streaming: true, runningToolCalls: 2, compacting: true }), "compacting"],
-		[statusInput({ streaming: true, thinking: true, runningToolCalls: 1 }), "tool-running"],
-		[statusInput({ streaming: true, thinking: true }), "thinking"],
-		[statusInput({ streaming: true }), "streaming"],
-		[statusInput(), "idle"],
-	];
-	test.each(cases)("%o resolves to %s", (input, expected) => {
-		expect(resolveActivity(input)).toBe(expected);
+describe("status presentation invariant reductions", () => {
+	test("structural text size measures primitives and structures without throwing or allocating", () => {
+		expect(structuralTextSize("hello")).toBe(5);
+		expect(structuralTextSize(12345)).toBe(8);
+		expect(structuralTextSize(true)).toBe(1);
+		expect(structuralTextSize(null)).toBe(1);
+		expect(structuralTextSize(undefined)).toBe(1);
+		expect(structuralTextSize(["a", "bc"])).toBe(2 + (1 + 1) + (1 + 2));
+		expect(structuralTextSize({ key: "value" })).toBe(2 + 3 + 1 + 5);
 	});
 
-	test("the context gauge never reads over full and never divides by zero", () => {
-		expect(resolveContextGauge(statusInput({ usedTokens: 300, contextWindow: 100 }))).toEqual({
-			used: 100,
-			total: 100,
-			providerReported: false,
-		});
-		expect(resolveContextGauge(statusInput({ usedTokens: 5, contextWindow: 0 }))).toEqual({
-			used: 1,
-			total: 1,
-			providerReported: false,
-		});
-		expect(resolveContextGauge(statusInput({ usedTokens: -20, contextWindow: 50 })).used).toBe(0);
-	});
+	test("message fingerprint produces stable fingerprints and changes on message mutation", () => {
+		const userMsg = { role: "user", content: "hello" } as unknown as never;
+		const fp1 = messageFingerprint(userMsg);
+		const fp2 = messageFingerprint(userMsg);
+		expect(fp1).toBe(fp2);
+		expect(fp1).toContain("user:5");
 
-	test("the gauge records whether the window came from the provider", () => {
-		// A catalog figure and a provider figure disagree, and an operator reading a
-		// percentage needs to know which one they are looking at.
-		expect(resolveContextGauge(statusInput({ contextWindowFromProvider: true })).providerReported).toBe(true);
-	});
+		const mutatedUserMsg = { role: "user", content: "hello world" } as unknown as never;
+		expect(messageFingerprint(mutatedUserMsg)).not.toBe(fp1);
 
-	test("an idle session is in no activity rather than zero milliseconds into one", () => {
-		expect(toStatusLineState(statusInput({ elapsedMs: 9_000 })).elapsedMs).toBe(0);
-		expect(toStatusLineState(statusInput({ streaming: true, elapsedMs: 9_000 })).elapsedMs).toBe(9_000);
-	});
-
-	test("counters never go negative", () => {
-		const state = toStatusLineState(statusInput({ streaming: true, elapsedMs: -5, queuedMessages: -3 }));
-		expect(state.elapsedMs).toBe(0);
-		expect(state.queuedMessages).toBe(0);
-	});
-
-	test("optional fields are omitted when the session has nothing to say", () => {
-		const bare = toStatusLineState(statusInput());
-		expect("thinkingLevel" in bare).toBe(false);
-		expect("gitBranch" in bare).toBe(false);
-		expect("notice" in bare).toBe(false);
-		const full = toStatusLineState(
-			statusInput({
-				thinkingLevel: "high",
-				gitBranch: "tui-decoupling",
-				notice: { level: "warning", text: "rate limited" },
-			}),
+		expect(messageFingerprint({ role: "bashExecution", command: "ls", output: "out" } as unknown as never)).toBe(
+			"bash:2:3",
 		);
-		expect(full.thinkingLevel).toBe("high");
-		expect(full.gitBranch).toBe("tui-decoupling");
-		expect(full.notice).toEqual({ level: "warning", text: "rate limited" });
 	});
 
-	test("a fresh session has spent nothing", () => {
-		expect(emptyCost()).toEqual({
-			inputTokens: 0,
-			outputTokens: 0,
-			cacheReadTokens: 0,
-			cacheWriteTokens: 0,
-			totalUsd: 0,
-		});
+	test("tokens per second returns null for zero tokens, short turns, or invalid inputs", () => {
+		expect(tokensPerSecond(0, 1000)).toBeNull();
+		expect(tokensPerSecond(-5, 1000)).toBeNull();
+		expect(tokensPerSecond(100, null)).toBeNull();
+		expect(tokensPerSecond(100, undefined)).toBeNull();
+		expect(tokensPerSecond(100, MIN_RATE_DURATION_MS - 1)).toBeNull();
+		expect(tokensPerSecond(100, 1000)).toBe(100);
+		expect(tokensPerSecond(250, 500)).toBe(500);
+	});
+
+	test("calculateTokensPerSecond resolves rates from assistant messages", () => {
+		const messages = [
+			{ role: "user", timestamp: 1000, content: "hi" },
+			{
+				role: "assistant",
+				timestamp: 2000,
+				duration: 500,
+				usage: { output: 100 },
+			},
+		];
+		expect(calculateTokensPerSecond(messages as never, false)).toBe(200);
+		expect(calculateTokensPerSecond([{ role: "user", timestamp: 1000 }], false)).toBeNull();
 	});
 });
 

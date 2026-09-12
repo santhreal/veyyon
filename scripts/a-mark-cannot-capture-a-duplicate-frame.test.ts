@@ -36,6 +36,7 @@ describe("a mark must observe the state it names rather than capture a duplicate
 set -euo pipefail
 export SCENE_NAME="test-dup"
 export SCENE_OUT="${tempDir}"
+export TMPDIR="${tempDir}"
 export SCENE_SERVER="x11"
 
 _be_window_px() { echo "1920 1080"; }
@@ -83,6 +84,7 @@ shot second-state
 set -euo pipefail
 export SCENE_NAME="test-diff"
 export SCENE_OUT="${tempDir}"
+export TMPDIR="${tempDir}"
 export SCENE_SERVER="x11"
 
 _counter=0

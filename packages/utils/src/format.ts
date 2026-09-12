@@ -84,7 +84,7 @@ function trim1(n: number): string {
  * reads as a real number.
  *
  * It is here rather than beside the context gauge because three surfaces state the same reading and
- * only one of them is a terminal status line: a subagent progress row and an eval cell's agent tree
+ * only one of them is a terminal status line: an agent progress row and an eval cell's agent tree
  * report it too, and a tool that reached into the status line's module for it would be importing a
  * host to format a number.
  */
@@ -178,7 +178,7 @@ export function pluralize(label: string, count: number): string {
  *
  * WHY THIS HAS AN OWNER. Nineteen surfaces write this phrase: every collapsed tool
  * block, the read tool's continuation notice, the edit preview, the LSP hover, the
- * MCP and eval renderers, the subagent dashboard's comms fold. Every one of them
+ * MCP and eval renderers, the agent dashboard's comms fold. Every one of them
  * wrote `${n} more lines` inline, so every one of them said "1 more lines" on the
  * commonest case of all, a block that hid exactly one line.
  *

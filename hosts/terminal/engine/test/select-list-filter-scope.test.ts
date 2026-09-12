@@ -39,6 +39,22 @@ function visible(items: SelectItem[], query: string): string {
 }
 
 describe("with an explicit filterText", () => {
+	it("reports selection indices in the same filtered order as the displayed rows", () => {
+		const list = new SelectList(VERSION_ROWS, 10, defaultSelectListTheme);
+		list.setSelectedIndex(2);
+		expect(list.getSelectedIndex()).toBe(2);
+		expect(list.getFilteredItems().map(item => item.value)).toEqual(["1.3.0", "1.2.0", "1.1.0"]);
+
+		list.setFilter("1.1");
+		expect(list.getFilteredItems().map(item => item.value)).toEqual(["1.1.0"]);
+		expect(list.getSelectedIndex()).toBe(0);
+		expect(list.getSelectedItem()?.value).toBe("1.1.0");
+
+		list.setFilter("missing");
+		expect(list.getFilteredItems()).toEqual([]);
+		expect(list.getSelectedItem()).toBeNull();
+	});
+
 	it("matches the version and nothing else", () => {
 		const shown = visible(VERSION_ROWS, "1.1");
 

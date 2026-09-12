@@ -5,6 +5,7 @@ import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { makeBench } from "./_harness";
 
 const ITERATIONS = 2000;
+const wrapWidth = 40;
 
 const samples = {
 	plain: "hello world this is a plain ASCII string with some words",
@@ -15,38 +16,26 @@ const samples = {
 		"This is a long line that should wrap multiple times when rendered with ANSI \x1b[32mcolors\x1b[0m and tabs\tbetween words.",
 };
 
-const wrapWidth = 40;
+const BENCH_CASES = [
+	{ name: "visibleWidth/plain", fn: () => visibleWidth(samples.plain) },
+	{ name: "visibleWidth/ansi", fn: () => visibleWidth(samples.ansi) },
+	{ name: "truncateToWidth/ansi", fn: () => truncateToWidth(samples.ansi, 32, Ellipsis.Unicode, true) },
+	{ name: "wrapTextWithAnsi/ansi", fn: () => wrapTextWithAnsi(samples.wrapped, wrapWidth) },
+	{ name: "sliceWithWidth/ansi", fn: () => sliceWithWidth(samples.ansi, 3, 18, true) },
+	{ name: "extractSegments/ansi", fn: () => extractSegments(samples.ansi, 10, 20, 15, true) },
+	{
+		name: "matchesKey",
+		fn: () => {
+			matchesKey("\x1b[A", "up");
+			matchesKey("\x1b[1;5C", "ctrl+right");
+			matchesKey("\x1b[1;2D", "shift+left");
+		},
+	},
+] as const;
 
 const bench = makeBench(ITERATIONS);
-
 console.log(`Text layout benchmark (${ITERATIONS} iterations)\n`);
 
-bench("visibleWidth/plain", () => {
-	visibleWidth(samples.plain);
-});
-
-bench("visibleWidth/ansi", () => {
-	visibleWidth(samples.ansi);
-});
-
-bench("truncateToWidth/ansi", () => {
-	truncateToWidth(samples.ansi, 32, Ellipsis.Unicode, true);
-});
-
-bench("wrapTextWithAnsi/ansi", () => {
-	wrapTextWithAnsi(samples.wrapped, wrapWidth);
-});
-
-bench("sliceWithWidth/ansi", () => {
-	sliceWithWidth(samples.ansi, 3, 18, true);
-});
-
-bench("extractSegments/ansi", () => {
-	extractSegments(samples.ansi, 10, 20, 15, true);
-});
-
-bench("matchesKey", () => {
-	matchesKey("\x1b[A", "up");
-	matchesKey("\x1b[1;5C", "ctrl+right");
-	matchesKey("\x1b[1;2D", "shift+left");
-});
+for (const { name, fn } of BENCH_CASES) {
+	bench(name, fn);
+}

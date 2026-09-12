@@ -1,24 +1,15 @@
+import type { WorkerOutboundBase } from "../../subprocess/worker-client";
+import type {
+	WorkerProgressEvent,
+	WorkerProgressFileState,
+	WorkerProgressMessage,
+	WorkerProgressStatus,
+} from "../../subprocess/worker-request-client";
 import type { TtsLocalModelKey } from "./models";
 
-export type TtsProgressStatus = "initiate" | "download" | "progress" | "progress_total" | "done" | "ready" | "error";
-
-export interface TtsProgressFileState {
-	loaded: number;
-	total: number;
-}
-
-export interface TtsProgressEvent {
-	modelKey: TtsLocalModelKey;
-	status: TtsProgressStatus;
-	name?: string;
-	file?: string;
-	progress?: number;
-	loaded?: number;
-	total?: number;
-	files?: Record<string, TtsProgressFileState>;
-	task?: string;
-	model?: string;
-}
+export type TtsProgressStatus = WorkerProgressStatus;
+export type TtsProgressFileState = WorkerProgressFileState;
+export type TtsProgressEvent = WorkerProgressEvent<TtsLocalModelKey>;
 
 export type TtsWorkerInbound =
 	| { type: "ping"; id: string }
@@ -36,12 +27,10 @@ export type TtsWorkerInbound =
 	| { type: "stream-cancel"; id: string };
 
 export type TtsWorkerOutbound =
-	| { type: "pong"; id: string }
+	| WorkerOutboundBase
+	| WorkerProgressMessage<TtsLocalModelKey>
 	| { type: "audio"; id: string; pcm: Float32Array; sampleRate: number }
 	| { type: "downloaded"; id: string }
-	| { type: "error"; id: string; error: string }
-	| { type: "progress"; id: string; event: TtsProgressEvent }
-	| { type: "log"; level: "debug" | "warn" | "error"; msg: string; meta?: Record<string, unknown> }
 	// One synthesized segment of a streaming session, in emission order, followed
 	// by a single `stream-done` once the input stream is closed and drained.
 	| { type: "audio-chunk"; id: string; index: number; text: string; pcm: Float32Array; sampleRate: number }

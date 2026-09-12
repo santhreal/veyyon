@@ -327,43 +327,28 @@ const KITTY_NUMPAD_TEXT: Record<number, string> = {
 };
 
 /**
- * Check if the input is a key release event.
- * Only meaningful when Kitty keyboard protocol with flag 2 is active.
- * Returns false if Kitty protocol is not active.
+ * Whether `data` is a Kitty event of the kind `pattern` matches. Only meaningful when the Kitty
+ * keyboard protocol with flag 2 is active; false otherwise, and false for bracketed paste content,
+ * which may carry the same bytes as text.
  */
-export function isKeyRelease(data: string): boolean {
-	// Only detect release events when Kitty protocol is active
+function isKittyEventKind(data: string, pattern: RegExp): boolean {
 	if (!kittyProtocolActive) {
 		return false;
 	}
-
-	// Don't treat bracketed paste content as key release
 	if (data.includes("\x1b[200~")) {
 		return false;
 	}
-
-	// Match the full CSI sequence pattern for release events
-	return KITTY_RELEASE_PATTERN.test(data);
+	return pattern.test(data);
 }
 
-/**
- * Check if the input is a key repeat event.
- * Only meaningful when Kitty keyboard protocol with flag 2 is active.
- * Returns false if Kitty protocol is not active.
- */
+/** Check if the input is a key release event. See {@link isKittyEventKind}. */
+export function isKeyRelease(data: string): boolean {
+	return isKittyEventKind(data, KITTY_RELEASE_PATTERN);
+}
+
+/** Check if the input is a key repeat event. See {@link isKittyEventKind}. */
 export function isKeyRepeat(data: string): boolean {
-	// Only detect repeat events when Kitty protocol is active
-	if (!kittyProtocolActive) {
-		return false;
-	}
-
-	// Don't treat bracketed paste content as key repeat
-	if (data.includes("\x1b[200~")) {
-		return false;
-	}
-
-	// Match the full CSI sequence pattern for repeat events
-	return KITTY_REPEAT_PATTERN.test(data);
+	return isKittyEventKind(data, KITTY_REPEAT_PATTERN);
 }
 
 export function parseKittySequence(data: string): ParsedKittySequence | null {

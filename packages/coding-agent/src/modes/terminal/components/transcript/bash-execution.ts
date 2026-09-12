@@ -31,6 +31,7 @@ export class BashExecutionComponent extends Container {
 	#droppedLineCount = 0;
 	#status: ExecutionStatus = "running";
 	#exitCode: number | undefined = undefined;
+	#signal?: string;
 	#loader: Loader;
 	#truncation?: TruncationMeta;
 	#expanded = false;
@@ -113,10 +114,11 @@ export class BashExecutionComponent extends Container {
 	setComplete(
 		exitCode: number | undefined,
 		cancelled: boolean,
-		options?: { output?: string; truncation?: TruncationMeta },
+		options?: { output?: string; truncation?: TruncationMeta; signal?: string },
 	): void {
 		this.#exitCode = exitCode;
-		this.#status = resolveExecutionStatus(exitCode, cancelled);
+		this.#signal = options?.signal;
+		this.#status = options?.signal !== undefined ? "error" : resolveExecutionStatus(exitCode, cancelled);
 		this.#truncation = options?.truncation;
 		if (options?.output !== undefined) {
 			this.#setOutput(options.output);
@@ -125,6 +127,11 @@ export class BashExecutionComponent extends Container {
 		// Stop loader
 		this.#loader.stop();
 
+		this.#updateDisplay();
+	}
+
+	setOutput(output: string): void {
+		this.#setOutput(output);
 		this.#updateDisplay();
 	}
 
@@ -175,6 +182,7 @@ export class BashExecutionComponent extends Container {
 			const footer = buildStatusFooter({
 				status: this.#status,
 				exitCode: this.#exitCode,
+				signal: this.#signal,
 				truncation: this.#truncation,
 				hiddenLineCount,
 				droppedLineCount: this.#droppedLineCount,

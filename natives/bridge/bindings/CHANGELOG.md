@@ -2,8 +2,23 @@
 
 ## [Unreleased]
 
+### Added
+
+- `PtyRunResult.signal` names the signal (`SIGTERM`, `SIGKILL`) that ended a PTY-run command, recovered from the wait status; a signal death also reports `exitCode` 1, so a consumer that attributes the death reads `signal` first.
+
+### Fixed
+
+- Restored APFS isolation compilation on macOS and stale destination preparation for Windows block-clone isolation.
+- Plain isolation diffs classify binary contents on either side of a symlink transition without dereferencing links.
+- `IsoResolveResult.reason` is set only when `fellBack` is true; a resolution that honoured the preferred backend carried the first unavailable probe's text as if it explained a fallback.
+
 ### Changed
 
+- Shell filters share token matching and JSON field lookup while preserving exact-token matching and grep record-ending behavior.
+- Shell filters share result finalization while preserving output bytes, rewrite status and original-capture accounting.
+- Deduplicated tree-sitter language dispatch, filesystem isolation backend declarations, and syntect scope color matching across native crates.
+- Shell builtins share cancellation and argument-error handling, and GitHub and GitLab output filters share Markdown cleanup, without changing output or exit status.
+- Linux native CPU detection reads current kernel flags without consulting persisted CPU verdict files.
 - Typed tuple copies use spreads rather than `.concat()`, which those types do not define. No user-visible behavior changes.
 - The loader's diagnostic comment names the addon crate at `natives/bridge/addon/src/lib.rs`, the path it moved to. No user-visible behavior changes.
 - The rebuild instruction in the stale-addon refusal reads `bun --cwd=natives/bridge/bindings run build`, the package's path after it moved out of `packages/`. The package name `@veyyon/natives` and every import specifier are unchanged.

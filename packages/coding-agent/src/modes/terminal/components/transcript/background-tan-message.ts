@@ -1,5 +1,5 @@
 import { Text } from "@veyyon/tui";
-import type { BackgroundTanDispatchDetails, CustomMessage } from "../../../../session/messages";
+import type { BackgroundTanDispatchCustomDisplay } from "@veyyon/wire/presentation";
 import { withIcon } from "../../../../theme/icon-label";
 import { theme } from "../../../../theme/theme";
 import { previewLine } from "../../../../tools/core/render-utils";
@@ -13,10 +13,11 @@ const TAN_WORK_PREVIEW_LENGTH = 56;
  * system-notice content (the persisted `content`) is for the model only — the
  * user sees one compact line, not the raw `<system-notice>` block.
  */
-export function createBackgroundTanDispatchBlock(message: CustomMessage<unknown>): TranscriptBlock {
-	const details = (message as CustomMessage<Partial<BackgroundTanDispatchDetails>>).details;
-	const jobId = details?.jobId ?? "unknown";
-	const work = details?.work ? previewLine(details.work, TAN_WORK_PREVIEW_LENGTH) : undefined;
+
+export function createBackgroundTanDispatchBlock(message: BackgroundTanDispatchCustomDisplay): TranscriptBlock {
+	const jobId = message.jobId;
+	const rawWork = message.work;
+	const work = rawWork ? previewLine(rawWork, TAN_WORK_PREVIEW_LENGTH) : undefined;
 	const line = [
 		theme.fg("muted", withIcon(theme.icon.output, "Tangent dispatched")),
 		theme.fg("dim", "[task]"),

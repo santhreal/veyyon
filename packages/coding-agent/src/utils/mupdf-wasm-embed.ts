@@ -5,7 +5,7 @@
 // with bytecode compilation, so the binary build (scripts/build-binary.ts and
 // scripts/ci-release-build-binaries.ts) regenerates this module to embed the
 // wasm bytes plus mupdf's JS modules via `with { type: "file" }`. Source
-// checkouts, `bun test`, and the npm `dist/cli.js` bundle keep mupdf external
+// checkouts, `bun test`, and the `dist/cli.js` bundle keep mupdf external
 // and load everything from node_modules, so this placeholder returns undefined
 // and the build resets back to it afterward.
 

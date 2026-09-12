@@ -123,7 +123,7 @@ Arm files and companion overlays:
 - `<name>.yml`: Configuration settings overlay modifying feature flags and runtime settings (e.g. `argot.enabled`, `defaultEffort`, context thresholds).
 - `<name>.sections.yml`: System prompt section body text overrides. Keys map to recognized section identifiers: `conventions`, `role`, `runtime`, `toolPolicy`, `executionWorkflow`, `deliveryContract`.
 - `<name>.statements.yml`: System prompt statement overrides or ablations. Keys map to statement identifiers. Setting a value to `null` ablates the statement; setting a string replaces its text.
-- `<name>.prompts.yml`: Prompt registry overrides for tool descriptions, subagent prompts, or agent directives.
+- `<name>.prompts.yml`: Prompt registry overrides for tool descriptions, agent prompts, or agent directives.
 - `<name>.rule.md`: Behavioral rule file mounted into agent context.
 
 The arm digest covers all associated files (`.yml`, `.sections.yml`, `.statements.yml`, `.prompts.yml`, `.rule.md`). Two arms sharing identical YAML settings but differing companion files are distinct and do not collide.

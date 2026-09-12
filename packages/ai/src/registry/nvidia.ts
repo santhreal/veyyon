@@ -1,4 +1,5 @@
 import * as AIError from "../error";
+import { promptApiKey } from "./api-key-login";
 import { validateOpenAICompatibleApiKey } from "./api-key-validation";
 import type { OAuthController, OAuthLoginCallbacks } from "./oauth/types";
 import type { ProviderDefinition } from "./types";
@@ -9,29 +10,13 @@ const VALIDATION_MODEL = "nvidia/llama-3.1-nemotron-70b-instruct";
 const PROVIDER_ID = "nvidia";
 
 export async function loginNvidia(options: OAuthController): Promise<string> {
-	if (!options.onPrompt) {
-		throw new AIError.OnPromptRequiredError("NVIDIA");
-	}
-
-	options.onAuth?.({
-		url: AUTH_URL,
+	const trimmed = await promptApiKey(options, {
+		providerLabel: "NVIDIA",
+		authUrl: AUTH_URL,
 		instructions: "Copy your API key from NVIDIA NGC Personal Keys",
-	});
-
-	const apiKey = await options.onPrompt({
-		message: "Paste your NVIDIA API key",
+		promptMessage: "Paste your NVIDIA API key",
 		placeholder: "nvapi-...",
-		secret: true,
 	});
-
-	if (options.signal?.aborted) {
-		throw new AIError.LoginCancelledError();
-	}
-
-	const trimmed = apiKey.trim();
-	if (!trimmed) {
-		throw new AIError.ApiKeyRequiredError();
-	}
 
 	options.onProgress?.("Validating API key (optional)...");
 	try {

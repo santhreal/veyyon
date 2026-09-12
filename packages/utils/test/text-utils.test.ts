@@ -2,9 +2,14 @@ import { describe, expect, it } from "bun:test";
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { clamp } from "@veyyon/utils/math";
 import { padLineToWidth } from "@veyyon/utils/padding";
-import { encodeTextSized } from "@veyyon/utils/text-sizing";
+import { replaceTabs } from "@veyyon/utils/tab-width";
+import {
+	encodeTextSized,
+	type TextSizingHorizontalAlign,
+	type TextSizingVerticalAlign,
+} from "@veyyon/utils/text-sizing";
 import { extractSegments, sliceWithWidth, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
-import { replaceTabs, sanitizeSingleLine } from "@veyyon/utils/wrap";
+import { sanitizeSingleLine } from "@veyyon/utils/wrap";
 import { collectPackageSources } from "./support/package-sources";
 
 describe("text utils", () => {
@@ -91,6 +96,39 @@ describe("text utils", () => {
 		expect(encoded).toBe("\x1b]66;s=2:w=3:v=2:h=1;Hi\x1b\\");
 		expect(visibleWidth(encoded)).toBe(6);
 		expect(encodeTextSized("A\nB", { scale: 1 })).toBe("\x1b]66;s=1;A B\x1b\\");
+	});
+
+	// Shared alignment mapping must not accept a direction from the other axis.
+	// Complete records make a new declared alignment require an expected encoding.
+	it("encodes alignments only on their declared axis", () => {
+		const vertical: Record<TextSizingVerticalAlign, number> = { top: 0, bottom: 1, center: 2 };
+		const horizontal: Record<TextSizingHorizontalAlign, number> = { left: 0, right: 1, center: 2 };
+		const values = new Set<unknown>([
+			...Object.keys(vertical),
+			...Object.keys(horizontal),
+			undefined,
+			null,
+			"",
+			"invalid",
+			0,
+		]);
+		for (const value of values) {
+			const v =
+				typeof value === "string" && Object.hasOwn(vertical, value)
+					? vertical[value as TextSizingVerticalAlign]
+					: undefined;
+			const h =
+				typeof value === "string" && Object.hasOwn(horizontal, value)
+					? horizontal[value as TextSizingHorizontalAlign]
+					: undefined;
+			const metadata = [v === undefined ? "" : `v=${v}`, h === undefined ? "" : `h=${h}`].filter(Boolean).join(":");
+			expect(
+				encodeTextSized("x", {
+					verticalAlign: value as TextSizingVerticalAlign,
+					horizontalAlign: value as TextSizingHorizontalAlign,
+				}),
+			).toBe(`\x1b]66;${metadata};x\x1b\\`);
+		}
 	});
 
 	it("counts OSC 66 text-sizing spans as visible text", () => {

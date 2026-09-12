@@ -112,7 +112,9 @@ These names are a contract between separate processes, so they are declared in e
 
 After the last tool socket disconnects, the broker checks the project-presence records. Live veyyon PIDs keep non-persistent managed processes running even when those veyyon instances have not called `launch`; dead PIDs are removed. Once no veyyon process remains, the broker waits three seconds, stops every non-persistent managed process, and exits. This PID check still works when an veyyon process is killed without JavaScript cleanup.
 
-`persist: true` explicitly opts a managed process out of last-client teardown. A broker with a live persistent process remains available without clients until another veyyon reconnects and stops it. Broker recovery terminates stale recorded children and preserves their records as exited instead of adopting an unknown process state.
+`persist: true` explicitly opts a managed process out of last-client teardown. A broker with a live persistent process remains available without clients until another veyyon reconnects and stops it, or until the persistent process ends on its own. The non-persistent processes beside it are still stopped at the idle grace, recorded as `terminated-by=idle-reaper`; once the persistent process ends, the broker re-arms the same grace and exits. Broker recovery terminates stale recorded children and preserves their records as exited instead of adopting an unknown process state.
+
+A process that dies to a signal nothing in veyyon sent is recorded as `terminated-by=external-signal` with the signal name (`SIGKILL`, `SIGTERM`), under a PTY and under pipes alike; the PTY run reports the signal from the child's wait status rather than the shell's exit code.
 
 ## Restart policies
 - `no`: never restart automatically (default)

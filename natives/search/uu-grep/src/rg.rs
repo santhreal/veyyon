@@ -5,32 +5,27 @@
 use std::{
 	ffi::{OsStr, OsString},
 	fs::File,
-	io::{self, BufWriter, LineWriter, Read, Write},
+	io::{self, Read, Write},
 	path::{Path, PathBuf},
 	process::{Command, Stdio},
 	sync::OnceLock,
-	time::{Duration, Instant},
+	time::Instant,
 };
 
-use clap::{ArgAction, CommandFactory, FromArgMatches, Parser, ValueEnum};
+use clap::{ArgAction, CommandFactory, FromArgMatches, Parser};
 use grep_cli::{CommandReader, DecompressionMatcher};
-use grep_matcher::{Captures, LineTerminator, Match as Span, Matcher};
-use grep_pcre2::{RegexMatcher as PcreMatcher, RegexMatcherBuilder as PcreMatcherBuilder};
-use grep_printer::{JSONBuilder, Stats};
-use grep_regex::{RegexMatcher, RegexMatcherBuilder};
-use grep_searcher::{
-	BinaryDetection, Encoding, Searcher, Sink, SinkContext, SinkFinish, SinkMatch,
-};
-use ignore::{
-	Match,
-	gitignore::{Gitignore, GitignoreBuilder},
-	overrides::{Override, OverrideBuilder},
-	types::{Types, TypesBuilder},
-};
+use grep_matcher::{LineTerminator, Matcher};
+use grep_printer::Stats;
+use grep_searcher::{Encoding, Searcher};
+use ignore::overrides::{Override, OverrideBuilder};
 use veyyon_grep_kernel::{
-	CompiledMatcher, SearcherSpec, build_searcher as kernel_build_searcher, pcre_matcher_defaults,
+	BinaryMode, BufferSinkOf as RgSinkOf, Buffering, CompiledMatcher, GenerateKind, MatcherFlags,
+	RegexEngine, RgWalk, RunState, SearchOptions, SearchOutcome, SearcherSpec, SortKey, SortSpec,
+	WalkFilterParams, binary_detection, build_searcher as kernel_build_searcher, display_bytes,
+	display_path, parse_color_choice, parse_flag_number, parse_generate_kind, parse_regex_engine,
+	parse_size, process_reader, sort_paths, unescape_separator, write_json_summary,
+	write_stats_summary,
 };
-
 /// The flags that choose what a run PRINTS, as one mutually exclusive group.
 ///
 /// ripgrep has a single output mode per run, and every flag that sets one
@@ -647,13 +642,6 @@ struct RgCli {
 	args: Vec<OsString>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-enum RegexEngine {
-	Default,
-	Pcre2,
-	Auto,
-}
-
 /// The four flags that choose how output is buffered.
 ///
 /// One state with three values rather than four independent booleans, and each
@@ -667,1291 +655,19 @@ const BUFFER_MODE_FLAGS: [&str; 4] =
 	["line_buffered", "no_line_buffered", "block_buffered", "no_block_buffered"];
 
 /// How output reaches the caller.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Buffering {
-	/// Flush at every line terminator, so a pipeline stage downstream sees each
-	/// match as it is found.
-	Line,
-	/// Fill a fixed-size buffer first, which is fewer writes for a large result
-	/// set and is what a redirect to a file wants.
-	Block,
-}
-
-impl Buffering {
-	/// The mode for this command line, given whether stdout is a terminal.
-	///
-	/// The terminal is the DEFAULT and not an override: ripgrep line-buffers to
-	/// a tty so a long search shows results while it runs, and block-buffers to
-	/// a pipe or a file because that is faster. Either explicit flag wins over
-	/// the default, and `--no-line-buffered` / `--no-block-buffered` return the
-	/// decision to the destination rather than forcing the other mode, which is
-	/// why they are values of this state and not their own booleans.
-	fn resolve(cli: &RgCli, stdout_is_terminal: bool) -> Self {
-		if cli.line_buffered {
-			return Self::Line;
-		}
-		if cli.block_buffered {
-			return Self::Block;
-		}
-		if stdout_is_terminal {
-			Self::Line
-		} else {
-			Self::Block
-		}
-	}
-
-	/// Wrap `sink` so it buffers the way this mode says.
-	///
-	/// `LineWriter` rather than writing straight through: a matching line is
-	/// emitted as several writes (path, separator, line number, separator, the
-	/// line itself), and an unbuffered sink turns each of those into its own
-	/// write syscall, so a line-buffered run cost five where it needs one. It
-	/// also means a consumer never reads half a record.
-	fn wrap<W: Write>(self, sink: W) -> RgSinkOf<W> {
-		match self {
-			Self::Line => RgSinkOf::Line(LineWriter::new(sink)),
-			Self::Block => RgSinkOf::Block(BufWriter::new(sink)),
-		}
-	}
-}
-
-/// Output writer for either buffering mode.
-///
-/// Generic over the sink so the buffering behaviour can be tested against a
-/// writer that records what reached it and when, rather than only against the
-/// real stdout where the timing of a flush is not observable.
-enum RgSinkOf<W: Write> {
-	Block(BufWriter<W>),
-	Line(LineWriter<W>),
-}
-
-/// The writer `run` actually uses.
 type RgOutput = RgSinkOf<veyyon_uutils_ctx::CtxStdout>;
 
-impl<W: Write> Write for RgSinkOf<W> {
-	fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-		match self {
-			Self::Block(output) => output.write(bytes),
-			Self::Line(output) => output.write(bytes),
-		}
-	}
-
-	fn flush(&mut self) -> io::Result<()> {
-		match self {
-			Self::Block(output) => output.flush(),
-			Self::Line(output) => output.flush(),
-		}
-	}
+#[cfg(test)]
+fn no_messages_for(cli: &RgCli) -> bool {
+	cli.no_messages
 }
 
-struct SearchOptions {
-	line_number:         bool,
-	column:              bool,
-	byte_offset:         bool,
-	count:               bool,
-	count_matches:       bool,
-	files_with_matches:  bool,
-	files_without_match: bool,
-	only_matching:       bool,
-	quiet:               bool,
-	vimgrep:             bool,
-	before:              usize,
-	after:               usize,
-	passthru:            bool,
-	trim:                bool,
-	max_columns:         Option<usize>,
-	max_columns_preview: bool,
-	null_paths:          bool,
-	/// The byte every emitted record ends with: `\n`, or NUL under
-	/// `--null-data`.
-	///
-	/// `--null-data` makes NUL the record separator on the way IN, and ripgrep
-	/// uses it on the way out too, so a `--null-data` pipeline can be read back
-	/// by `xargs -0`. Writing `\n` after a NUL-terminated record, which is what
-	/// this printer used to do, puts a stray newline at the front of every
-	/// record but the first once `xargs -0` splits it.
-	record_terminator:   u8,
-	no_messages:         bool,
-	replacement:         Option<Vec<u8>>,
-	json:                bool,
-	/// `--stats`, which prints a summary block after the results.
-	stats:               bool,
-	/// `--heading`: the path goes on its own line above each file's lines
-	/// instead of prefixing every one of them.
-	heading:             bool,
-	/// `--path-separator`: the byte every printed path uses in place of `/`.
-	///
-	/// Validated in `run`, so by the time a search reads it the value is known
-	/// to be exactly one byte.
-	path_separator:      Option<u8>,
-	/// `--include-zero`: a count mode reports `0` for a file that matched
-	/// nothing instead of saying nothing about it.
-	include_zero:        bool,
-	/// What goes between the fields of a MATCHING line, `:` unless
-	/// `--field-match-separator` says otherwise.
-	///
-	/// This is a string and not a byte because ripgrep accepts any string here,
-	/// escapes included: `--field-match-separator='\t'` prints a tab.
-	match_separator:     Vec<u8>,
-	/// What goes between the fields of a CONTEXT line, `-` unless
-	/// `--field-context-separator` says otherwise.
-	context_separator:   Vec<u8>,
-	/// What stands between two non-contiguous groups of context lines, `--`
-	/// unless `--context-separator` says otherwise.
-	///
-	/// `None` is `--no-context-separator`, which prints NOTHING between the
-	/// groups. That is different from an EMPTY separator, which still prints its
-	/// record terminator and so leaves a blank line: both were measured on
-	/// ripgrep 15.1.0.
-	group_separator:     Option<Vec<u8>>,
-	/// The `--pre` program, resolved once, or `None` when no preprocessor was
-	/// asked for. It lives with the other resolved options because it is one
-	/// per run and compiling its globs can fail, which has to be reported
-	/// before the first file.
-	pre:                 Option<Preprocessor>,
+trait MatcherFlagsExt {
+	fn from_cli(cli: &RgCli) -> Self;
 }
 
-impl SearchOptions {
-	/// The modes that replace per-line output with a per-file summary.
-	///
-	/// Four places decide whether a line, a context line, a context break or a
-	/// JSON stream may be printed, and each had this disjunction written out
-	/// again with a slightly different tail. The tails are all deliberate, but
-	/// four inline copies is how a fifth mode gets added to three of
-	/// them: the shared core lives here and each caller states its own delta
-	/// next to a reason.
-	fn summary_mode(&self) -> bool {
-		self.count || self.count_matches || self.files_with_matches || self.files_without_match
-	}
-
-	/// Whether the RUN may stop as soon as one file has matched.
-	///
-	/// `-q` wants nothing but the exit code, so one match settles it. `--stats`
-	/// wants numbers about the whole search, and measured on ripgrep 15.1.0
-	/// `--stats -q` over `aa bb aa\ncc\naa\n` reports `3 matches`, `2 matched
-	/// lines` and `15 bytes searched`, which is every byte of the input.
-	/// Stopping early made the block describe a search that did not happen:
-	/// ours reported 2 matches and 9 bytes for the same input.
-	fn stops_the_run_at_first_match(&self) -> bool {
-		self.quiet && !self.reports_whole_search_numbers()
-	}
-
-	/// Whether this run has to report numbers about the WHOLE search.
-	///
-	/// One owner for the question both early-exit predicates ask, because both
-	/// used to ask it as `!self.stats` and `--json` is the second way to ask for
-	/// the same numbers. Measured on ripgrep 15.1.0: `rg --json -q hit a.txt`
-	/// over a three-line file prints a summary record reading `matches: 2` and
-	/// `bytes_searched: 28`, which is every byte of the input, so the search ran
-	/// to the end even though `-q` wanted nothing but the exit code. Stopping
-	/// early would have made the record describe a search that did not happen,
-	/// which is the same defect the `--stats` half of this predicate was written
-	/// for.
-	fn reports_whole_search_numbers(&self) -> bool {
-		self.stats || self.json
-	}
-
-	/// Whether a FILE may stop as soon as it has matched.
-	///
-	/// `-l` prints the path and nothing else, so it needs one match per file,
-	/// and `-q` needs one in total. `--stats` again asks for the whole search:
-	/// `--stats -l` reports the same three matches and fifteen bytes a plain
-	/// run does.
-	fn stops_a_file_at_first_match(&self) -> bool {
-		(self.quiet || self.files_with_matches) && !self.reports_whole_search_numbers()
-	}
-
-	/// Whether context lines and the `--` between context blocks are printed.
-	///
-	/// A summary mode replaces per-line output entirely, so there is nothing for
-	/// a context line to sit beside. `quiet` prints NOTHING, and it belongs here
-	/// for a reason worth stating: before-context lines are emitted ahead of the
-	/// match that selected them, so a `-q -C1` run that stopped at the first
-	/// match had already written the line before it. That is a leak, not a
-	/// rounding error, and the sibling `grep` builtin's own predicate has always
-	/// included quiet.
-	///
-	/// `only_matching` and `vimgrep` are deliberately NOT here, though both once
-	/// were. They change how a MATCHING line is written, not whether the lines
-	/// around it are shown, and real ripgrep prints context lines in full under
-	/// both: `rg -o -C1` prints the matched span for the match and the whole
-	/// line for its neighbours, and `rg --vimgrep -C1` prints `path-line-text`
-	/// context records beside its `path:line:col:text` match records. Verified
-	/// against ripgrep 15.1.0 and pinned, with a non-vacuity twin each, by
-	/// `only_matching_keeps_whole_context_lines` and
-	/// `vimgrep_prints_context_lines_in_the_plain_form` below.
-	fn prints_context_lines(&self) -> bool {
-		!self.summary_mode() && !self.quiet
-	}
-
-	/// Whether this run ASKED for context lines around each match.
-	///
-	/// Not the same question as `prints_context_lines`, which is about whether
-	/// this run's mode prints records at all. A run can print records and want
-	/// no context: measured on ripgrep 15.1.0, `-C0` and `--passthru` each
-	/// print their records with no separator between one file and the next,
-	/// while `-A1` prints `--` there. That separator is the only thing this
-	/// predicate decides; see `RgSink::search_separator`.
-	fn requests_context(&self) -> bool {
-		self.before > 0 || self.after > 0
-	}
-
-	/// Whether an input that matched, or did not, is one the run SELECTED.
-	///
-	/// For every mode but `--files-without-match` these are the same question,
-	/// which is how they drifted apart: the per-file search returned "this file
-	/// matched" and the exit status treated it as "this file produced output".
-	/// `--files-without-match` LISTS the files that did NOT match, so a file
-	/// that matched prints nothing and is not selected. Both GNU grep `-L` and
-	/// ripgrep exit 1 when nothing is listed; this builtin exited 0, reporting
-	/// success for a search whose entire output was empty, which a script reads
-	/// as "found it".
-	fn selected_input(&self, any_match: bool) -> bool {
-		if self.files_without_match {
-			!any_match
-		} else {
-			any_match
-		}
-	}
-}
-
-struct SearchOutcome {
-	any_match: bool,
-	had_error: bool,
-}
-
-/// A writer that remembers how many bytes went through it.
-///
-/// `--stats` reports `bytes printed`, and the text printer writes from a dozen
-/// places. Counting at each of them would be a dozen chances to forget one, and
-/// a forgotten one is a quietly wrong number rather than a failure, so the
-/// count lives at the single point every byte already passes through.
-struct CountingWriter<'a, W: Write> {
-	inner:   &'a mut W,
-	written: u64,
-}
-
-impl<W: Write> Write for CountingWriter<'_, W> {
-	fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-		let n = self.inner.write(buf)?;
-		// The count follows what was ACCEPTED, not what was offered, so a short
-		// write does not inflate it.
-		self.written += n as u64;
-		Ok(n)
-	}
-
-	fn flush(&mut self) -> io::Result<()> {
-		self.inner.flush()
-	}
-}
-
-struct RgSink<'a, M: Matcher, W: Write> {
-	out:             CountingWriter<'a, W>,
-	matcher:         &'a M,
-	display:         Option<&'a [u8]>,
-	opts:            &'a SearchOptions,
-	captures:        M::Captures,
-	/// The bytes `-r` builds a replaced line in, reused so a replacement costs
-	/// no allocation per line.
-	scratch:         Vec<u8>,
-	/// Where the matches on the line being printed are, reused for the same
-	/// reason. One line's worth, gathered ONCE and then read by the count, the
-	/// column, the records and the `--max-columns` wording.
-	spans:           Vec<Span>,
-	/// Where each `-r` replacement landed in `scratch`, which is what a column
-	/// reports under `-r`.
-	replaced_spans:  Vec<Span>,
-	line_count:      u64,
-	match_count:     u64,
-	any_match:       bool,
-	/// Bytes the searcher read, taken from `SinkFinish` so it is the searcher's
-	/// own number rather than a second count of our own.
-	bytes_searched:  u64,
-	/// Whether another file already printed a group, so this one's heading needs
-	/// a blank line above it. Comes from the run, not from this file.
-	follows_a_group: bool,
-	/// Set once this sink has printed its heading, which is also the answer to
-	/// "did this file print anything" for the next file's separator.
-	printed_group:   bool,
-	/// Where the searcher found a byte that made this input binary, if it did.
-	/// Reported once in `finish`, because ripgrep prints it after the file's
-	/// records rather than in place of the one it stopped at.
-	binary_offset:   Option<u64>,
-	/// Whether the searcher this sink ran under STOPS on binary data rather than
-	/// converting it, read from the searcher in `finish`.
-	///
-	/// The two detections mean different things to a summary mode, so the sink
-	/// has to know which one it got; see `filtered_as_binary`.
-	binary_quit:     bool,
-}
-
-impl<M: Matcher, W: Write> RgSink<'_, M, W> {
-	/// Write the path, followed by the byte that separates it from what comes
-	/// next.
-	///
-	/// `--null` REPLACES that byte with NUL rather than adding one after it,
-	/// which is what makes the output splittable by `xargs -0`: ripgrep prints
-	/// `path\0` where it would print `path:` as a prefix, and `path\0` where it
-	/// would print `path\n` as a whole record. This printer used to append the
-	/// NUL and then write the separator as well, so `-0 -n` emitted
-	/// `path\0:1:hit` and `-0 -l` emitted `path\0\n`, neither of which
-	/// a NUL-splitting consumer can read.
-	fn write_path_with_separator(&mut self, separator: &[u8]) -> io::Result<()> {
-		if let Some(name) = self.display {
-			self.out.write_all(name)?;
-			if self.opts.null_paths {
-				self.out.write_all(b"\0")?;
-			} else {
-				self.out.write_all(separator)?;
-			}
-		}
-		Ok(())
-	}
-
-	/// Whether this input reports NOTHING because binary data filtered it out.
-	///
-	/// `BinaryDetection::quit` is a FILTER, not a truncation: the searcher stops
-	/// at the buffer holding the byte, so a count taken from what it did read
-	/// would be smaller than the file's real count and a caller comparing two
-	/// trees would read the difference as content. ripgrep resolves that by
-	/// reporting nothing at all for such a file, and only in its summary
-	/// printer.
-	///
-	/// Measured against ripgrep 15.1.0 over a tree holding `bin \0 hit`: `rg -c
-	/// hit .` and `rg -l hit .` leave the file out, `rg -c --include-zero hit .`
-	/// prints a `0` line for every text file that missed and STILL no line for
-	/// this one, and `rg --files-without-match hit .` leaves it out too, so the
-	/// file is absent from both halves of the count. The same file named as an
-	/// operand is searched with `convert` instead and counts normally.
-	///
-	/// A record mode is deliberately NOT filtered: it has already printed the
-	/// lines it reached, so it prints the notice after them and keeps its
-	/// matched status, which is what ripgrep's standard printer does.
-	fn filtered_as_binary(&self) -> bool {
-		self.binary_quit && self.binary_offset.is_some() && self.opts.summary_mode()
-	}
-
-	/// End a record with the terminator this run is using.
-	fn write_terminator(&mut self) -> io::Result<()> {
-		self.out.write_all(&[self.opts.record_terminator])
-	}
-
-	/// Whether this run prints the path as a heading above each file's lines.
-	///
-	/// `--vimgrep` IGNORES `--heading`, verified against ripgrep 15.1.0: its
-	/// whole contract is one parseable `path:line:col:text` record per match,
-	/// and hoisting the path out of the record would break every editor reading
-	/// it. The summary modes (`-c`, `-l`, `-L`) never reach here; they print
-	/// their own records from `finish`, and real rg leaves those prefixed too.
-	fn heading_mode(&self) -> bool {
-		self.opts.heading && !self.opts.vimgrep
-	}
-
-	/// Print this file's heading, once, before its first line.
-	///
-	/// The heading is a RECORD, not a prefix, which is the one rule that
-	/// explains every form ripgrep prints: it ends with the record terminator,
-	/// and `--null` replaces that byte with NUL. So `--heading` gives `path\n`,
-	/// `--heading --null` gives `path\0`, and `--heading --null-data` also
-	/// gives `path\0` because NUL is the record terminator there. `-l` prints a
-	/// path the same way and for the same reason, so both go through
-	/// `write_path_with_separator`.
-	///
-	/// The separator this run prints between one file's output and the next's,
-	/// if it prints one at all.
-	///
-	/// There is ONE mechanism here and three answers, which is how ripgrep does
-	/// it too. Under `--heading` the separator is EMPTY, so all that reaches the
-	/// output is the record terminator: the blank line between heading groups is
-	/// this separator and not a rule of its own. When context lines were asked
-	/// for, it is the context separator, so `rg -A1 hit .` prints `--` between
-	/// two files exactly as it does between two gaps in one file, and
-	/// `--no-context-separator` removes it from both places. Otherwise there is
-	/// none.
-	///
-	/// Measured against ripgrep 15.1.0: `-A1` prints `--` between files, `-A1
-	/// --context-separator=XX` prints `XX`, `-A1 --no-context-separator` prints
-	/// nothing, `-A1 --heading --context-separator=XX` prints the blank line and
-	/// ignores `XX`, and `-C0` and `--passthru` print nothing between files.
-	/// This used to print nothing but the heading blank line, so every context
-	/// run ran two files' output together with no mark where one ended.
-	fn search_separator(&self) -> Option<&[u8]> {
-		if self.heading_mode() {
-			Some(&[])
-		} else if self.opts.requests_context() {
-			self.opts.group_separator.as_deref()
-		} else {
-			None
-		}
-	}
-
-	/// Everything that belongs before this file's FIRST output, printed once.
-	///
-	/// Separates this file's output from the previous file's, which is why it
-	/// needs to know about the rest of the run, and why it is emitted even when
-	/// there is no path to print, under `--no-filename`: it separates the output
-	/// of two searches rather than decorating a heading.
-	fn begin_search(&mut self) -> io::Result<()> {
-		if self.printed_group {
-			return Ok(());
-		}
-		self.printed_group = true;
-		if self.follows_a_group
-			&& let Some(separator) = self.search_separator()
-		{
-			// Copied out because writing borrows `self` mutably while the separator is
-			// borrowed from it. One record's worth of bytes, once per file.
-			let separator = separator.to_vec();
-			self.out.write_all(&separator)?;
-			self.write_terminator()?;
-		}
-		Ok(())
-	}
-
-	/// The prelude plus this file's heading record, for the modes that print
-	/// one.
-	fn begin_group(&mut self) -> io::Result<()> {
-		if self.printed_group {
-			return Ok(());
-		}
-		self.begin_search()?;
-		if self.heading_mode() && self.display.is_some() {
-			self.write_path_with_separator(&[self.opts.record_terminator])?;
-		}
-		Ok(())
-	}
-
-	/// Report an input that turned out to hold binary data.
-	///
-	/// Byte for byte ripgrep 15.1.0, including the `\0` spelling and the word
-	/// `around`, which is honest: the offset is where the searcher noticed the
-	/// byte and not a promise about the byte's exact place.
-	///
-	/// It goes on STDOUT, like a record, because that is where ripgrep puts it.
-	/// The sibling `grep` builtin puts ITS notice on stderr, and the two are
-	/// right for their own reference tools: GNU grep moved the notice to stderr
-	/// in 3.5 and ripgrep never did.
-	///
-	/// The path is written INLINE with `: `, even under `--heading`, where a
-	/// record would get a heading record of its own instead. `--null` does not
-	/// reach this separator either. Both were measured, and both are why this
-	/// does not go through `write_path_with_separator`.
-	fn write_binary_notice(&mut self, offset: u64) -> io::Result<()> {
-		// The separator between files still belongs here, since this IS the file's
-		// output, but the heading record does not: `rg --heading hit bin text` prints
-		// the text file's group, a blank line, and then `bin: binary file matches`.
-		// Measured on ripgrep 15.1.0, `rg -A1 --binary hit .` prints `--` after the
-		// notice too, so the notice separates from the next file exactly as records
-		// do; that is why this goes through the shared prelude.
-		self.begin_search()?;
-		if let Some(name) = self.display {
-			self.out.write_all(name)?;
-			self.out.write_all(b": ")?;
-		}
-		write!(self.out, "binary file matches (found \"\\0\" byte around offset {offset})")?;
-		self.write_terminator()
-	}
-
-	fn write_prefix(
-		&mut self,
-		line_number: Option<u64>,
-		column: Option<usize>,
-		byte_offset: u64,
-		separator: &[u8],
-	) -> io::Result<()> {
-		// Every record goes through the prelude, not only a heading one: the
-		// separator between two files is printed there, and a run with context lines
-		// prints one without printing headings.
-		self.begin_group()?;
-		if !self.heading_mode() && self.display.is_some() {
-			self.write_path_with_separator(separator)?;
-		}
-		if self.opts.line_number
-			&& let Some(number) = line_number
-		{
-			write!(self.out, "{number}")?;
-			self.out.write_all(separator)?;
-		}
-		// `None` means this record HAS no column, not that nobody computed one, and the
-		// field is omitted rather than defaulted. A context line is the case that
-		// distinguishes them: it is printed because a match nearby selected it, so
-		// there is no match on it to have a column, and ripgrep prints `1-one` for it
-		// while still printing `2:3:xxhitxx` for the match. `unwrap_or(1)` here used
-		// to turn every context line into `1-1-one`. Every caller that DOES have a
-		// column passes it, including the match path, which now resolves its own
-		// default.
-		if self.opts.column
-			&& let Some(column) = column
-		{
-			write!(self.out, "{column}")?;
-			self.out.write_all(separator)?;
-		}
-		if self.opts.byte_offset {
-			write!(self.out, "{byte_offset}")?;
-			self.out.write_all(separator)?;
-		}
-		Ok(())
-	}
-
-	/// Write one body and the record terminator: `--trim` first, then
-	/// `--max-columns`.
-	///
-	/// Every body goes through here, a whole line and a lone match alike.
-	/// `--trim` applies to both: `rg -o --trim ' aa'` on `  aa` prints `aa`, so
-	/// the flag trims what is printed rather than the line it came from.
-	///
-	/// The terminator is the subtle part. A LINE arrives from the searcher with
-	/// its terminator attached, so this adds one only when the input's last
-	/// line had none; a match under `-o`, a notice and a preview all carry none
-	/// and always get one. Comparing against the RUN's terminator rather than
-	/// `\n` is what made `--null-data` emit `hit\0\n`.
-	fn write_body(&mut self, bytes: &[u8], kind: BodyKind<'_>) -> io::Result<()> {
-		let bytes = if self.opts.trim {
-			trim_ascii_start(bytes)
-		} else {
-			bytes
-		};
-		if self.exceeds_limit(bytes) {
-			self.write_substitute(bytes, kind)?;
-			return self.write_terminator();
-		}
-		self.out.write_all(bytes)?;
-		if !bytes.ends_with(&[self.opts.record_terminator]) {
-			self.write_terminator()?;
-		}
-		Ok(())
-	}
-
-	/// Whether `--max-columns` rejects this body.
-	///
-	/// The limit counts BYTES, and for a LINE it counts the terminator among
-	/// them, which is ripgrep 15.1.0's rule and not an obvious one: a
-	/// nineteen-character line survives `-M 20` and a twenty-character one does
-	/// not, because the second is twenty-one bytes once its newline is counted.
-	/// A match under `-o` carries no terminator, so `rg -o -M 2 aa` on `aa`
-	/// prints the match while `rg -M 2 aa` on the same file prints a notice.
-	/// That asymmetry is measured, and it falls out of the rule rather than
-	/// being a second rule.
-	fn exceeds_limit(&self, bytes: &[u8]) -> bool {
-		self
-			.opts
-			.max_columns
-			.is_some_and(|limit| limit > 0 && bytes.len() > limit)
-	}
-
-	/// What ripgrep prints instead of a body `--max-columns` rejected.
-	///
-	/// Four wordings, each measured against ripgrep 15.1.0 rather than guessed,
-	/// and the choice turns on whether the run already knows where the matches
-	/// are. See `knows_match_positions`.
-	///
-	/// The two forms do not agree on plurals, which looks like an oversight in
-	/// ripgrep and is reproduced deliberately: the preview says `1 more match`
-	/// and the notice says `with 1 matches`.
-	fn write_substitute(&mut self, bytes: &[u8], kind: BodyKind<'_>) -> io::Result<()> {
-		let content = self.strip_terminator(bytes);
-		if !self.opts.max_columns_preview {
-			return match kind {
-				BodyKind::MatchingLine { spans } if self.knows_match_positions() => {
-					let total = spans.len();
-					write!(self.out, "[Omitted long line with {total} matches]")
-				},
-				BodyKind::MatchingLine { .. } | BodyKind::MatchText => {
-					self.out.write_all(b"[Omitted long matching line]")
-				},
-				BodyKind::ContextLine => self.out.write_all(b"[Omitted long context line]"),
-			};
-		}
-		// The limit is in bytes and the cut is in characters, so the prefix decides
-		// where the tail starts and the count follows from it.
-		let limit = self.opts.max_columns.unwrap_or(0);
-		let prefix = preview_prefix(content, limit);
-		let cut = prefix.len();
-		self.out.write_all(prefix)?;
-		let remaining = match kind {
-			// A record under `-o` holds exactly one match and has just printed it, so
-			// ripgrep has nothing left to count and says so even when the line holds
-			// more: `rg -o -M 1 --max-columns-preview aa` on `aaaa` prints
-			// `a [... 0 more matches]` twice, and the same under `--column` and `-r`.
-			BodyKind::MatchText => Some(0),
-			BodyKind::MatchingLine { spans } if self.knows_match_positions() => {
-				// A match that STRADDLES the cut counts as reached: measured against
-				// ripgrep 15.1.0, a line whose only match begins two characters before
-				// the cut and ends after it previews as `[... 0 more matches]`.
-				Some(spans.iter().filter(|span| span.start() >= cut).count())
-			},
-			BodyKind::MatchingLine { .. } | BodyKind::ContextLine => None,
-		};
-		match remaining {
-			Some(1) => self.out.write_all(b" [... 1 more match]"),
-			Some(count) => write!(self.out, " [... {count} more matches]"),
-			None => self.out.write_all(PREVIEW_CUT_MARKER),
-		}
-	}
-
-	/// Whether this run has already worked out where each match on a line
-	/// begins.
-	///
-	/// ripgrep computes match positions only when a flag needs them, and its
-	/// `--max-columns` wording changes when it has them: it counts the matches
-	/// it is throwing away instead of saying only that a line was long.
-	/// `--column` (which `--vimgrep` turns on) needs a position to print, and
-	/// `-r` needs the spans to interpolate into. Both were measured to produce
-	/// the counted wording, and a plain `rg -M 20 pattern` was measured not to.
-	///
-	/// Context lines are exempt whatever this says, because nothing matched on
-	/// them, and so is `-o`, whose record is a single match already printed.
-	fn knows_match_positions(&self) -> bool {
-		self.opts.column || self.opts.replacement.is_some()
-	}
-
-	/// `bytes` without the run's record terminator, if it carries one.
-	///
-	/// The terminator has to come off before a preview so the marker does not
-	/// land after a newline, and it is the RUN's terminator rather than `\n`
-	/// because `--null-data` makes it a NUL.
-	fn strip_terminator<'b>(&self, bytes: &'b [u8]) -> &'b [u8] {
-		crate::strip_record_terminator(bytes, self.opts.record_terminator)
-	}
-
-	/// One matching line, from its match count to its records.
-	///
-	/// The line is scanned for matches ONCE, here, and the spans are then read
-	/// by everything downstream: the match count, the column, the record loop
-	/// and the `--max-columns` wording. Three separate walks used to do that
-	/// work, and they disagreed with each other about empty matches. See
-	/// `match_spans`.
-	fn print_matched_line(
-		&mut self,
-		line: &[u8],
-		line_number: Option<u64>,
-		line_offset: u64,
-	) -> io::Result<bool> {
-		let mut spans = std::mem::take(&mut self.spans);
-		let result = self.scan_and_print(line, &mut spans, line_number, line_offset);
-		spans.clear();
-		self.spans = spans;
-		result
-	}
-
-	/// The body of `print_matched_line`, which owns the span buffer so the
-	/// borrow checker allows the printing to keep reading it.
-	fn scan_and_print(
-		&mut self,
-		line: &[u8],
-		spans: &mut Vec<Span>,
-		line_number: Option<u64>,
-		line_offset: u64,
-	) -> io::Result<bool> {
-		// The terminator comes OFF before the line is scanned, which is ripgrep's rule
-		// and a visible one: with it on, `rg -o 'x*'` over `ab` found a fourth empty
-		// match at the newline and `--count-matches` reported 4 where ripgrep reports
-		// 3. The spans stay valid offsets into the untrimmed line, since only the tail
-		// was removed.
-		match_spans(self.matcher, self.strip_terminator(line), spans)?;
-
-		// Always the REAL number of matches on the line, never one per line.
-		//
-		// This used to add 1 unless `--count-matches` or `-o` was asking, even
-		// though the true number was already in hand. Nothing read the field in the
-		// other modes, so the lie was invisible; then `--stats` started reading it
-		// and reported 2 matches for `aa bb aa` plus `aa`, where ripgrep reports 3.
-		// `-c` is unaffected either way, because it prints `line_count`.
-		//
-		// `.max(1)` keeps a line the searcher selected counted as at least one
-		// match, which is what an inverted or multi-line search produces: the
-		// searcher matched, but a per-line scan finds nothing to point at.
-		let found =
-			u64::try_from(spans.len()).map_err(|error| io::Error::other(error.to_string()))?;
-		self.match_count += found.max(1);
-
-		// Neither mode prints a RECORD, so both leave here before the printer. What
-		// they disagree about is whether to read the rest of the file: normally there
-		// is nothing left to learn, but `--stats` counts every match, so it keeps
-		// reading and still prints nothing.
-		if self.opts.quiet || self.opts.files_with_matches {
-			return Ok(!self.opts.stops_a_file_at_first_match());
-		}
-		if self.opts.files_without_match || self.opts.count || self.opts.count_matches {
-			return Ok(true);
-		}
-		// Once the searcher has reported binary data, this file prints no more
-		// RECORDS: the notice in `finish` replaces them. Measured against ripgrep
-		// 15.1.0, which prints `1:hit early` for a match it had already reached and
-		// then the notice, and prints the notice alone for a small file where the
-		// byte was in the same buffer as every match. The line is still counted,
-		// because `--stats` is describing the search and not the output.
-		if self.binary_offset.is_some() {
-			return Ok(true);
-		}
-		if self.opts.replacement.is_some() {
-			// `-r` prints a line it built, and every position it reports is a position
-			// in THAT line: measured against ripgrep 15.1.0, `rg --vimgrep -r XYZ aa`
-			// on `aa bb aa` prints columns 1 and 8, the replacements' own offsets in
-			// `XYZ bb XYZ`, and not the 1 and 7 the original line would give. `-b`
-			// shifts with it. So the records are printed from the REPLACED spans.
-			let mut body = std::mem::take(&mut self.scratch);
-			let mut body_spans = std::mem::take(&mut self.replaced_spans);
-			body.clear();
-			body_spans.clear();
-			let result = self
-				.interpolate(line, spans, &mut body, &mut body_spans)
-				.and_then(|()| self.print_records(&body, &body_spans, line_number, line_offset));
-			body.clear();
-			body_spans.clear();
-			self.scratch = body;
-			self.replaced_spans = body_spans;
-			result?;
-		} else {
-			self.print_records(line, spans, line_number, line_offset)?;
-		}
-		Ok(true)
-	}
-
-	/// Apply `-r` to `line`, appending the result to `out` and recording where
-	/// each replacement landed in it.
-	///
-	/// This exists instead of `Matcher::replace_with_captures` because the
-	/// callback that method offers cannot say where in the output it wrote, and
-	/// the output offsets are exactly what a column reports under `-r`. Writing
-	/// the walk out also puts the whole-line and `-o` paths on ONE
-	/// implementation, which is why `rg -o -r X` now reports the replacement's
-	/// column rather than the original match's.
-	fn interpolate(
-		&mut self,
-		line: &[u8],
-		spans: &[Span],
-		out: &mut Vec<u8>,
-		out_spans: &mut Vec<Span>,
-	) -> io::Result<()> {
-		let Some(replacement) = self.opts.replacement.as_deref() else {
-			out.extend_from_slice(line);
-			out_spans.extend_from_slice(spans);
-			return Ok(());
-		};
-		let mut copied = 0usize;
-		for span in spans {
-			out.extend_from_slice(&line[copied..span.start()]);
-			let begin = out.len();
-			// A span the matcher found can still fail to yield captures under PCRE2's
-			// lookbehind, in which case ripgrep prints nothing for it. The span is
-			// still recorded, so the record keeps its column and simply has no body.
-			if self
-				.matcher
-				.captures_at(line, span.start(), &mut self.captures)
-				.map_err(|error| io::Error::other(error.to_string()))?
-			{
-				self.captures.interpolate(
-					|name| self.matcher.capture_index(name),
-					line,
-					replacement,
-					out,
-				);
-			}
-			out_spans.push(Span::new(begin, out.len()));
-			copied = span.end();
-		}
-		out.extend_from_slice(&line[copied..]);
-		Ok(())
-	}
-
-	/// The records one matching line prints.
-	///
-	/// `--vimgrep` and `-o` both print one record per match and differ only in
-	/// the BODY: vimgrep repeats the whole line, `-o` prints the match alone.
-	/// They compose, and `rg --vimgrep -o` prints `file:1:1:<match>`. This used
-	/// to be two loops where `--vimgrep` won outright and printed the whole
-	/// line under a flag whose entire promise is that it prints only what
-	/// matched.
-	///
-	/// Every other mode prints one record for the line, whatever its match
-	/// count.
-	fn print_records(
-		&mut self,
-		body: &[u8],
-		spans: &[Span],
-		line_number: Option<u64>,
-		line_offset: u64,
-	) -> io::Result<()> {
-		if self.record_spans_lines(body) {
-			return self.print_multi_line_records(body, spans, line_number, line_offset);
-		}
-		if self.opts.only_matching || self.opts.vimgrep {
-			for span in spans {
-				let offset = line_offset.saturating_add(
-					u64::try_from(span.start()).map_err(|error| io::Error::other(error.to_string()))?,
-				);
-				self.write_prefix(
-					line_number,
-					Some(span.start() + 1),
-					offset,
-					&self.opts.match_separator,
-				)?;
-				if self.opts.only_matching {
-					self.write_body(&body[span.start()..span.end()], BodyKind::MatchText)?;
-				} else {
-					self.write_body(body, BodyKind::MatchingLine { spans })?;
-				}
-			}
-			// A searcher can select a line that a per-line scan finds no match on: an
-			// inverted search, or a pattern whose span crosses lines. `--vimgrep` still
-			// owes one record and prints it at column 1. `-o` owes nothing, because it
-			// has no match text to show.
-			if spans.is_empty() && self.opts.vimgrep {
-				self.write_prefix(line_number, Some(1), line_offset, &self.opts.match_separator)?;
-				self.write_body(body, BodyKind::MatchingLine { spans })?;
-			}
-			return Ok(());
-		}
-		// A matching line reports the FIRST match's column when `--column` is on, and
-		// falls back to 1 for the same no-findable-span case.
-		let column = if self.opts.column {
-			Some(spans.first().map_or(1, |span| span.start() + 1))
-		} else {
-			None
-		};
-		self.write_prefix(line_number, column, line_offset, &self.opts.match_separator)?;
-		self.write_body(body, BodyKind::MatchingLine { spans })
-	}
-
-	/// Whether this record covers more than one line.
-	///
-	/// Only a `--multiline` search produces one: every other mode hands the sink
-	/// one line at a time. The trailing terminator is not a second line, so it
-	/// comes off before the question is asked.
-	fn record_spans_lines(&self, body: &[u8]) -> bool {
-		let terminator = self.opts.record_terminator;
-		body
-			.strip_suffix(&[terminator])
-			.unwrap_or(body)
-			.contains(&terminator)
-	}
-
-	/// The records a match that SPANS lines prints, one set per line it covers.
-	///
-	/// A multi-line match is still reported line by line, because the prefix is
-	/// what makes a result addressable: `rg -U '(?s)hit.gamma' a.txt` prints
-	/// `a.txt:3:hit hit` and `a.txt:4:gamma`, and every line carries the path so
-	/// a reader piping the output can tell which file the second line came from.
-	/// This printer used to write the record's bytes under ONE prefix, so the
-	/// second and later lines of a multi-line match arrived bare: measured
-	/// against ripgrep 15.1.0, `rg -U '(?s)hit.gamma' hit .` printed
-	/// `./a.txt:hit hit` and then a bare `gamma`, which names no file at all.
-	///
-	/// Three rules were measured rather than guessed, and each is deliberate:
-	///
-	/// * The LINE NUMBER counts up from the match's first line, so line 4 of the
-	///   file reports 4 even though the searcher reported the match at 3.
-	/// * The BYTE OFFSET is each line's own, not the match's: `-b` prints 15 and
-	///   23 for a match starting at 19.
-	/// * The COLUMN is the first match's column in the WHOLE record, repeated:
-	///   `--column` prints 5 on both lines here, so the second line reports a
-	///   column its own text has no match at. That is ripgrep's behaviour and it
-	///   is reproduced rather than corrected, because a column is only
-	///   meaningful next to the line number that goes with it.
-	fn print_multi_line_records(
-		&mut self,
-		body: &[u8],
-		spans: &[Span],
-		line_number: Option<u64>,
-		line_offset: u64,
-	) -> io::Result<()> {
-		let terminator = self.opts.record_terminator;
-		if self.opts.vimgrep {
-			return self.print_multi_line_vimgrep_records(body, spans, line_number, line_offset);
-		}
-		// The record's own first column, held across every line; see the doc above.
-		let column = if self.opts.column {
-			Some(spans.first().map_or(1, |span| span.start() + 1))
-		} else {
-			None
-		};
-		// One allocation per multi-line record, reused for each of its lines. The
-		// spans a body prints with have to be relative to THAT body, because the
-		// `--max-columns` wording counts them and a preview asks which of them begin
-		// past the cut.
-		let mut on_this_line: Vec<Span> = Vec::new();
-		let mut start = 0usize;
-		for (index, line) in body.split_inclusive(|byte| *byte == terminator).enumerate() {
-			let end = start + line.len();
-			let content = line.strip_suffix(&[terminator]).unwrap_or(line).len();
-			let index = u64::try_from(index).map_err(|error| io::Error::other(error.to_string()))?;
-			let start_offset = line_offset.saturating_add(
-				u64::try_from(start).map_err(|error| io::Error::other(error.to_string()))?,
-			);
-			if self.opts.only_matching {
-				// `-o` prints each match's text, and a match that crosses a line boundary
-				// prints the part of it that is on THIS line. Its prefix reports the
-				// match's own offset and column, which are the same on both pieces:
-				// measured on ripgrep 15.1.0, which reports the position of the match and
-				// not of the piece.
-				for span in spans
-					.iter()
-					.filter(|span| span.end() > start && span.start() < start + content)
-				{
-					let piece_start = span.start().max(start);
-					let piece_end = span.end().min(start + content);
-					let offset = line_offset.saturating_add(
-						u64::try_from(span.start())
-							.map_err(|error| io::Error::other(error.to_string()))?,
-					);
-					self.write_prefix(
-						line_number.map(|number| number + index),
-						Some(span.start() + 1),
-						offset,
-						&self.opts.match_separator,
-					)?;
-					self.write_body(&body[piece_start..piece_end], BodyKind::MatchText)?;
-				}
-			} else {
-				on_this_line.clear();
-				on_this_line.extend(
-					spans
-						.iter()
-						.filter(|span| span.end() > start && span.start() < end)
-						.map(|span| {
-							Span::new(span.start().max(start) - start, span.end().min(end) - start)
-						}),
-				);
-				self.write_prefix(
-					line_number.map(|number| number + index),
-					column,
-					start_offset,
-					&self.opts.match_separator,
-				)?;
-				self.write_body(line, BodyKind::MatchingLine { spans: &on_this_line })?;
-			}
-			start = end;
-		}
-		Ok(())
-	}
-
-	/// A multi-line match under `--vimgrep`: ONE record per match, on the line
-	/// the match starts on.
-	///
-	/// Measured against ripgrep 15.1.0, whose printer says so in as many words:
-	/// vimgrep wants one line per match even when the match spans several, so
-	/// `rg --vimgrep -U '(?s)hit.gamma' a.txt` prints `a.txt:3:5:hit hit` and
-	/// nothing for line 4. The column is the match's column ON THAT LINE, which
-	/// is the one place a multi-line record reports a column relative to the
-	/// line rather than to the record.
-	fn print_multi_line_vimgrep_records(
-		&mut self,
-		body: &[u8],
-		spans: &[Span],
-		line_number: Option<u64>,
-		line_offset: u64,
-	) -> io::Result<()> {
-		let terminator = self.opts.record_terminator;
-		// The same no-findable-span case the single-line path answers: the searcher
-		// selected the record, so vimgrep owes one record, and it prints the first
-		// line at column 1.
-		if spans.is_empty() {
-			let first = first_line(body, terminator);
-			self.write_prefix(line_number, Some(1), line_offset, &self.opts.match_separator)?;
-			return self.write_body(&body[..first], BodyKind::MatchingLine { spans });
-		}
-		for span in spans {
-			let (index, start, end) = line_holding(body, terminator, span.start());
-			let offset = line_offset.saturating_add(
-				u64::try_from(start).map_err(|error| io::Error::other(error.to_string()))?,
-			);
-			self.write_prefix(
-				line_number.map(|number| number + index),
-				Some(span.start() - start + 1),
-				offset,
-				&self.opts.match_separator,
-			)?;
-			self.write_body(&body[start..end], BodyKind::MatchingLine { spans })?;
-		}
-		Ok(())
-	}
-}
-
-/// The length of `body` up to and including its first terminator.
-fn first_line(body: &[u8], terminator: u8) -> usize {
-	body
-		.iter()
-		.position(|byte| *byte == terminator)
-		.map_or(body.len(), |at| at + 1)
-}
-
-/// The line of `body` that byte `position` sits on: its index from zero, where
-/// it starts, and where it ends after its terminator.
-///
-/// A position past the last line answers with the last line, which is what a
-/// zero-width match at the very end of a record needs.
-fn line_holding(body: &[u8], terminator: u8, position: usize) -> (u64, usize, usize) {
-	let mut start = 0usize;
-	let mut last = (0u64, 0usize, body.len());
-	for (index, line) in body.split_inclusive(|byte| *byte == terminator).enumerate() {
-		let index = index as u64;
-		let end = start + line.len();
-		if position < end {
-			return (index, start, end);
-		}
-		last = (index, start, end);
-		start = end;
-	}
-	last
-}
-
-impl<M: Matcher, W: Write> Sink for RgSink<'_, M, W> {
-	type Error = io::Error;
-
-	fn matched(&mut self, _searcher: &Searcher, mat: &SinkMatch<'_>) -> Result<bool, io::Error> {
-		self.any_match = true;
-		self.line_count += 1;
-		self.print_matched_line(mat.bytes(), mat.line_number(), mat.absolute_byte_offset())
-	}
-
-	fn context(&mut self, _searcher: &Searcher, ctx: &SinkContext<'_>) -> Result<bool, io::Error> {
-		if !self.opts.prints_context_lines() || self.binary_offset.is_some() {
-			return Ok(true);
-		}
-		self.write_prefix(
-			ctx.line_number(),
-			None,
-			ctx.absolute_byte_offset(),
-			&self.opts.context_separator,
-		)?;
-		self.write_body(ctx.bytes(), BodyKind::ContextLine)?;
-		Ok(true)
-	}
-
-	/// The searcher found a byte that makes this input binary.
-	///
-	/// Returning `true` keeps the search going, which is what `--binary` asks
-	/// for: under the default detection the searcher stops on its own, and
-	/// under `--binary` it converts the byte and reads to the end. Either way
-	/// the offset is remembered and reported once, in `finish`.
-	///
-	/// This hook used to be absent, which made the default a SILENT TRUNCATION:
-	/// a file with a NUL was searched up to that byte, everything after it was
-	/// dropped, and the run said nothing about it. Recall loss with no notice is
-	/// the one failure a search tool must never have.
-	fn binary_data(&mut self, _searcher: &Searcher, offset: u64) -> Result<bool, io::Error> {
-		self.binary_offset = Some(offset);
-		Ok(true)
-	}
-
-	fn context_break(&mut self, _searcher: &Searcher) -> Result<bool, io::Error> {
-		if self.binary_offset.is_some() {
-			return Ok(true);
-		}
-		// Exactly the condition `context` uses: a `--` stands for the lines between two
-		// context blocks, so it is printed by whatever prints those blocks.
-		// `--passthru` used to be excluded here, on the theory that passthru leaves
-		// no gap to separate. It does not need to be: a context request now turns
-		// passthru off in `search_options`, as it does upstream, so the two never
-		// reach this method together and there is no gap-free break to suppress.
-		if self.opts.prints_context_lines() {
-			// `--no-context-separator` prints NOTHING here, not an empty record: an
-			// EMPTY separator still ends with the record terminator and so leaves a
-			// blank line, and ripgrep 15.1.0 distinguishes the two.
-			if let Some(separator) = self.opts.group_separator.as_deref() {
-				self.out.write_all(separator)?;
-				self.write_terminator()?;
-			}
-		}
-		Ok(true)
-	}
-
-	fn finish(&mut self, searcher: &Searcher, finish: &SinkFinish) -> Result<(), io::Error> {
-		// Recorded before the early return below, because `--quiet` still SEARCHES
-		// the file; it only declines to print. A `--stats -q` run that reported
-		// zero bytes searched would be describing a search that happened.
-		self.bytes_searched = finish.byte_count();
-		self.binary_quit = searcher.binary_detection().quit_byte().is_some();
-		if self.opts.quiet {
-			return Ok(());
-		}
-		// Nothing at all for a file the binary filter took, not even the `0` that
-		// `--include-zero` asks for; see `filtered_as_binary`. The counts are left
-		// standing because `--stats` describes the SEARCH, and ripgrep's own stats
-		// are recorded before its printer squashes the count.
-		if self.filtered_as_binary() {
-			return Ok(());
-		}
-		// After the file's records and before the next file's group, which is where
-		// ripgrep prints it. A summary mode prints no notice at all: measured on
-		// ripgrep 15.1.0, `rg -c hit binfile` prints the count alone, because the
-		// notice belongs to the printer that would otherwise have printed records.
-		if let Some(offset) = self.binary_offset
-			&& self.any_match
-			&& !self.opts.summary_mode()
-		{
-			self.write_binary_notice(offset)?;
-			return Ok(());
-		}
-		if self.opts.files_with_matches {
-			if self.any_match {
-				// The path IS the whole record here, so `--null` terminates it and no
-				// separate terminator follows; that is why the separator is passed in.
-				self.write_path_with_separator(&[self.opts.record_terminator])?;
-			}
-		} else if self.opts.files_without_match {
-			if !self.any_match {
-				self.write_path_with_separator(&[self.opts.record_terminator])?;
-			}
-		} else if (self.opts.count || self.opts.count_matches)
-			&& (self.any_match || self.opts.include_zero)
-		{
-			// A file that matched nothing says nothing, because a count mode reports what
-			// was found. `--include-zero` is the flag that asks for the `0` anyway, which
-			// is what a caller comparing two trees file by file needs.
-			self.write_path_with_separator(&self.opts.match_separator)?;
-			let count = if self.opts.count_matches {
-				self.match_count
-			} else {
-				self.line_count
-			};
-			write!(self.out, "{count}")?;
-			self.write_terminator()?;
-		}
-		Ok(())
-	}
-}
-
-/// Which body is being written, which is what decides how `--max-columns`
-/// describes one it rejects.
-///
-/// ripgrep gives each of the three its own wording, and the distinctions are
-/// worth carrying: a reader who greps their own output for
-/// `Omitted long matching line` and finds it on a line that never matched has
-/// been told something false about their own search.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum BodyKind<'a> {
-	/// A whole line the pattern selected, with the spans the run reports columns
-	/// from: the line's own matches, or under `-r` the replacements in the text
-	/// being printed.
-	///
-	/// The spans are here because the counted wording counts them, and they are
-	/// already in hand: `[Omitted long line with 2 matches]` is `spans.len()`,
-	/// and a preview's `[... 1 more match]` is how many of them begin past the
-	/// cut. A second scan of the line to answer that would also answer it
-	/// differently under `-r`, whose printed text the pattern need not match at
-	/// all.
-	MatchingLine { spans: &'a [Span] },
-	/// A line printed only because it sits near one that matched.
-	ContextLine,
-	/// One match's text alone, under `-o`.
-	MatchText,
-}
-
-/// What follows a `--max-columns-preview` prefix when the run does not know
-/// where the matches are, and so has nothing to count.
-///
-/// The LEADING SPACE belongs to the marker, verified against ripgrep 15.1.0: a
-/// preview whose last kept character is itself a space prints two of them.
-const PREVIEW_CUT_MARKER: &[u8] = b" [... omitted end of long line]";
-
-/// The first `columns` CHARACTERS of `bytes`.
-///
-/// ripgrep counts the `--max-columns` limit in bytes and cuts the preview in
-/// characters, which reads like an inconsistency until you see what the other
-/// choice does. Measured against ripgrep 15.1.0: a line of thirty two-byte
-/// characters under `-M 20 --max-columns-preview` previews twenty of them,
-/// sixty bytes, and not the first twenty bytes, which would have split the
-/// eleventh character down the middle and put a lone continuation byte on
-/// stdout.
-///
-/// A byte that cannot begin a UTF-8 sequence counts as one character and
-/// advances one byte, so a binary line previews rather than looping.
-fn preview_prefix(bytes: &[u8], columns: usize) -> &[u8] {
-	let mut at = 0usize;
-	let mut seen = 0usize;
-	while at < bytes.len() && seen < columns {
-		at += utf8_sequence_len(bytes[at]).min(bytes.len() - at);
-		seen += 1;
-	}
-	&bytes[..at]
-}
-
-/// How many bytes the UTF-8 sequence starting with `byte` occupies, or 1 for a
-/// byte that starts none.
-fn utf8_sequence_len(byte: u8) -> usize {
-	match byte {
-		0x00..=0x7f => 1,
-		0xc0..=0xdf => 2,
-		0xe0..=0xef => 3,
-		0xf0..=0xf7 => 4,
-		_ => 1,
-	}
-}
-
-fn trim_ascii_start(bytes: &[u8]) -> &[u8] {
-	let start = bytes
-		.iter()
-		.position(|b| !b.is_ascii_whitespace() || *b == b'\n' || *b == b'\r')
-		.unwrap_or(bytes.len());
-	&bytes[start..]
-}
-
-/// Where every match on `line` is, in the order ripgrep reports them.
-///
-/// ONE owner for what used to be three hand-written walks over a line: the
-/// match count, the `-o` bodies and the `--vimgrep` records. They disagreed
-/// about EMPTY matches, and the disagreement was visible: `rg -o 'x*'` on `ab`
-/// prints three empty records and ours printed none, because two of the three
-/// walks skipped an empty match and the third printed it. Under
-/// `--count-matches` ripgrep reports 3 for that pattern and 2 for `b*`, so the
-/// count came out wrong too.
-///
-/// It delegates to the matcher's own iteration rather than looping over
-/// `find_at`, which is why the sequence now agrees with ripgrep by
-/// construction: both ask the same trait, whose rule is that an empty match
-/// adjacent to the previous match's end is not reported.
-fn match_spans<M: Matcher>(matcher: &M, line: &[u8], out: &mut Vec<Span>) -> io::Result<()> {
-	out.clear();
-	matcher
-		.find_iter(line, |span| {
-			out.push(span);
-			true
-		})
-		.map_err(|error| io::Error::other(error.to_string()))
-}
-
-/// What the CLI flags mean to a matcher, derived ONCE and read by both engines.
-///
-/// WHY THIS EXISTS. The two builders below take the same nine decisions and
-/// used to derive every one of them separately from `cli`, in two different
-/// spellings: `case_insensitive` against `caseless`, `dot_matches_new_line`
-/// against `dotall`. That is nine chances for the pair to disagree, and
-/// `--engine auto` makes the disagreement invisible: it tries the Rust engine
-/// and silently falls back to PCRE2, so a flag honoured by one and dropped by
-/// the other changes what a search RETURNS depending only on whether the
-/// pattern happened to compile.
-///
-/// The struct is DESTRUCTURED WITHOUT `..` in both builders on purpose. Adding
-/// a field here is then a compile error in each one, naming the field, so a
-/// tenth decision cannot reach one engine and miss the other. That is the whole
-/// point; do not "tidy" either destructure into `..`.
-struct MatcherFlags {
-	case_insensitive:     bool,
-	case_smart:           bool,
-	word:                 bool,
-	whole_line:           bool,
-	fixed_strings:        bool,
-	dot_matches_new_line: bool,
-	crlf:                 bool,
-	unicode:              bool,
-	/// The byte a line ends at, when the search is line oriented.
-	///
-	/// `None` under `--multiline`, where a match may span lines and pinning a
-	/// terminator would stop it, and `None` under `--crlf`, whose terminator is
-	/// two bytes and so cannot be named here at all: `crlf` above owns it. Only
-	/// the Rust engine takes this; see the note in the PCRE2 builder for why
-	/// that asymmetry is deliberate rather than an oversight.
-	line_terminator:      Option<u8>,
-}
-
-impl MatcherFlags {
+impl MatcherFlagsExt for MatcherFlags {
 	fn from_cli(cli: &RgCli) -> Self {
-		// The `--no-x` / `-i` / `-s` / `-S` families are resolved by CLAP, through
-		// `overrides_with`, so the flag written LAST on the command line wins and
-		// these are plain reads. See the note on `RgCli` for why that replaced a
-		// fixed precedence here.
 		Self {
 			case_insensitive:     cli.ignore_case,
 			case_smart:           cli.smart_case,
@@ -1959,17 +675,10 @@ impl MatcherFlags {
 			whole_line:           cli.line_regexp,
 			fixed_strings:        cli.fixed_strings,
 			dot_matches_new_line: cli.multiline && cli.multiline_dotall,
-			// `--null-data` is not the negation of `--crlf`; it is a different
-			// record separator, and it wins because a NUL-terminated record has no
-			// line ending to strip.
 			crlf:                 cli.crlf && !cli.null_data,
+			// `--no-unicode` turns utf and .ucp(false) off in MatcherSpec
 			unicode:              !cli.no_unicode,
-			// `--crlf` yields None because `RegexMatcherBuilder::crlf(true)` SETS the
-			// matcher's terminator to CRLF and a later `line_terminator` call
-			// OVERWRITES it. Naming LF here left the matcher saying LF while the
-			// searcher said CRLF, and grep-searcher refuses that pair, so `rg --crlf
-			// hit .` printed `grep config error: mismatched line terminators` for
-			// every file it opened and exited 2 having searched nothing.
+			multi_line:           true,
 			line_terminator:      if cli.null_data {
 				Some(b'\0')
 			} else if cli.multiline || cli.crlf {
@@ -1981,102 +690,6 @@ impl MatcherFlags {
 	}
 }
 
-fn build_rust_matcher(
-	patterns: &[String],
-	flags: &MatcherFlags,
-) -> Result<RegexMatcher, grep_regex::Error> {
-	let MatcherFlags {
-		case_insensitive,
-		case_smart,
-		word,
-		whole_line,
-		fixed_strings,
-		dot_matches_new_line,
-		crlf,
-		unicode,
-		line_terminator,
-	} = *flags;
-	let mut builder = RegexMatcherBuilder::new();
-	builder
-		.case_insensitive(case_insensitive)
-		.case_smart(case_smart)
-		.word(word)
-		.whole_line(whole_line)
-		.fixed_strings(fixed_strings)
-		.multi_line(true)
-		.dot_matches_new_line(dot_matches_new_line)
-		.unicode(unicode)
-		.crlf(crlf);
-	if let Some(terminator) = line_terminator {
-		builder.line_terminator(Some(terminator));
-	}
-	builder.build_many(patterns)
-}
-
-fn build_pcre_matcher(patterns: &[String], flags: &MatcherFlags) -> Result<PcreMatcher, String> {
-	let MatcherFlags {
-		case_insensitive,
-		case_smart,
-		word,
-		whole_line,
-		fixed_strings,
-		dot_matches_new_line,
-		crlf,
-		unicode,
-		// PCRE2 has no line-terminator setting to give it. Named rather than
-		// swallowed by `..` so that adding a TENTH flag still fails to compile
-		// here, which is the property this destructure exists for. Upstream
-		// ripgrep has the same asymmetry: the Rust engine uses the terminator to
-		// refuse a pattern that could match across a line, PCRE2 does not get the
-		// hint and relies on `multi_line` plus `dotall` instead.
-		line_terminator: _,
-	} = *flags;
-	let mut builder = PcreMatcherBuilder::new();
-	builder
-		.caseless(case_insensitive)
-		.case_smart(case_smart)
-		.word(word)
-		.whole_line(whole_line)
-		.fixed_strings(fixed_strings)
-		.multi_line(true)
-		.dotall(dot_matches_new_line)
-		.crlf(crlf);
-	pcre_matcher_defaults(&mut builder);
-	// `--no-unicode` turns the UTF and UCP halves back off, which is the one
-	// place a caller overrides the shared defaults rather than adding to them.
-	if !unicode {
-		builder.utf(false).ucp(false);
-	}
-	builder
-		.build_many(patterns)
-		.map_err(|error| error.to_string())
-}
-
-/// The rule that fences the default engine's error off from PCRE2's, 79 tildes
-/// wide, which is the width ripgrep 15.1.0 writes.
-///
-/// The fence is there because the default engine's error is itself several
-/// lines with its own indentation and carets, so without it a reader cannot
-/// tell where one engine stops complaining and the other starts.
-const ENGINE_ERROR_FENCE: &str =
-	"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~";
-
-/// The report for a pattern NEITHER engine can compile, in ripgrep 15.1.0's
-/// shape.
-///
-/// `--engine=auto` tries the default engine and promotes the pattern to PCRE2
-/// when it is refused, so a failure there is really two failures, and a caller
-/// needs both: the default engine's message is the one that names the
-/// construct, and PCRE2's is the one that says whether the promotion was even
-/// possible.
-fn both_engines_refused(rust: &str, pcre: &str) -> String {
-	format!(
-		"regex could not be compiled with either the default regex engine or with PCRE2.\n\ndefault \
-		 regex engine error:\n{ENGINE_ERROR_FENCE}\n{rust}\n{ENGINE_ERROR_FENCE}\n\nPCRE2 regex \
-		 engine error:\n{pcre}"
-	)
-}
-
 fn build_matcher(patterns: &[String], cli: &RgCli) -> Result<CompiledMatcher, String> {
 	let engine = cli.engine.unwrap_or(if cli.pcre2 {
 		RegexEngine::Pcre2
@@ -2084,65 +697,15 @@ fn build_matcher(patterns: &[String], cli: &RgCli) -> Result<CompiledMatcher, St
 		RegexEngine::Default
 	});
 	let flags = MatcherFlags::from_cli(cli);
-	match engine {
-		RegexEngine::Default => build_rust_matcher(patterns, &flags)
-			.map(CompiledMatcher::Rust)
-			.map_err(|error| error.to_string()),
-		RegexEngine::Pcre2 => build_pcre_matcher(patterns, &flags).map(CompiledMatcher::Pcre),
-		// The default engine's error is KEPT, because when PCRE2 refuses the pattern too
-		// it is the only one that says what is wrong with it. Discarding it left a caller
-		// who wrote `rg --engine=auto \'(\'` reading a PCRE2 message about a pattern they
-		// had not asked PCRE2 to compile.
-		RegexEngine::Auto => match build_rust_matcher(patterns, &flags) {
-			Ok(matcher) => Ok(CompiledMatcher::Rust(matcher)),
-			Err(rust) => build_pcre_matcher(patterns, &flags)
-				.map(CompiledMatcher::Pcre)
-				.map_err(|pcre| both_engines_refused(&rust.to_string(), &pcre)),
-		},
-	}
-}
-
-#[derive(Clone, Copy)]
-enum BinaryMode {
-	Automatic,
-	Explicit,
-}
-
-fn binary_detection(cli: &RgCli, mode: BinaryMode) -> BinaryDetection {
-	if cli.text || cli.null_data {
-		return BinaryDetection::none();
-	}
-	// A summary mode gets the SAME detection as a record mode, because which one
-	// applies is a property of how the file was reached and not of what the run
-	// prints. This used to turn detection off for `-c`, `-l`, `--count-matches`
-	// and `--files-without-match` on the theory that a count prints no raw bytes
-	// and so cannot be harmed by them. The theory was measured on a file named as
-	// an OPERAND, which is searched with `convert` and does count its matches, and
-	// so it looked right while being wrong for every file reached by traversal:
-	// `rg -c hit .` over a tree holding `bin \0 hit` counted that file where
-	// ripgrep leaves it out, and `-l` named it. What a summary mode does
-	// differently is decline to REPORT a file the quit detection fired on; that
-	// lives in `RgSink::filtered_as_binary`, next to the reporting it changes.
-	if cli.binary || cli.unrestricted >= 3 || matches!(mode, BinaryMode::Explicit) {
-		BinaryDetection::convert(b'\0')
-	} else {
-		BinaryDetection::quit(b'\0')
-	}
+	flags.build_matcher(patterns, engine)
 }
 
 fn build_searcher(cli: &RgCli, opts: &SearchOptions, mode: BinaryMode) -> Result<Searcher, String> {
 	let (encoding, bom_sniffing) = match cli.encoding.as_deref() {
 		None | Some("auto") => (None, true),
 		Some("none") => (None, false),
-		// The `rg: ` prefix is the CALLER's, added once where the message is printed. It
-		// used to be added here as well, so a bad `--encoding` value reported
-		// `rg: rg: grep config error: unknown encoding: utf-9`.
 		Some(label) => (Some(Encoding::new(label).map_err(|error| error.to_string())?), true),
 	};
-	// `rg -z` makes NUL the record separator; `--crlf` makes a line end at
-	// `\r\n` so a Windows checkout does not leave a stray `\r` on every match.
-	// They cannot both apply, and NUL wins because it is the stronger claim about
-	// what a record is.
 	let line_terminator = if cli.null_data {
 		Some(LineTerminator::byte(b'\0'))
 	} else if cli.crlf {
@@ -2151,15 +714,18 @@ fn build_searcher(cli: &RgCli, opts: &SearchOptions, mode: BinaryMode) -> Result
 		None
 	};
 	Ok(kernel_build_searcher(SearcherSpec {
-		// Columns, vimgrep output and JSON all report a line number whether or
-		// not `-n` was passed, so the searcher has to compute one for them.
 		line_number: opts.line_number || opts.column || opts.vimgrep || opts.json,
 		before_context: opts.before,
 		after_context: opts.after,
 		passthru: opts.passthru,
 		invert_match: cli.invert_match,
 		multi_line: cli.multiline,
-		binary_detection: binary_detection(cli, mode),
+		binary_detection: binary_detection(
+			cli.text || cli.null_data,
+			cli.binary,
+			cli.unrestricted >= 3,
+			mode,
+		),
 		max_matches: cli.max_count,
 		line_terminator,
 		encoding,
@@ -2248,7 +814,7 @@ fn search_options(cli: &RgCli) -> SearchOptions {
 		max_columns_preview: cli.max_columns_preview,
 		null_paths: cli.null,
 		record_terminator: if cli.null_data { b'\0' } else { b'\n' },
-		no_messages: no_messages_for(cli),
+		no_messages: cli.no_messages,
 		stats: cli.stats,
 		heading: cli.heading || cli.pretty,
 		replacement: cli
@@ -2277,566 +843,59 @@ fn search_options(cli: &RgCli) -> SearchOptions {
 			)
 		},
 		// Resolved by `run`, which is where a bad `--pre-glob` is reported before
-		// anything is searched.
-		pre: None,
+		pre_command: cli.pre.clone(),
+		pre_globs: cli.pre_globs.clone(),
 	}
 }
 
-/// Whether diagnostics are silenced, which is the ONE place the two flags meet.
-///
-/// `--messages` is the documented way to undo an earlier `--no-messages`, so
-/// the later flag wins and the rule is a conjunction rather than a single
-/// field. `list_files` needs the same answer as the search path but has no
-/// `SearchOptions`, and deriving it a second time inline is how `--files`
-/// came to ignore the flag entirely.
-fn no_messages_for(cli: &RgCli) -> bool {
-	cli.no_messages
-}
-
-/// Parses a NUM flag value that names a size.
-///
-/// A size is digits with an optional `K`, `M` or `G` suffix and nothing else,
-/// so `1K` is a kilobyte and `1k` is a mistake: ripgrep's suffixes are
-/// uppercase, and quietly accepting a lowercase one would hide a typo in a
-/// filter that decides which files are searched at all. The two refusals are
-/// worded exactly as ripgrep words them, because a size is refused while the
-/// command line is still being parsed and the wording is part of that contract.
-fn parse_size(input: &str) -> Result<u64, String> {
-	let malformed = || {
-		format!(
-			"invalid size: invalid format for size '{input}', which should be a non-empty sequence \
-			 of digits followed by an optional 'K', 'M' or 'G' suffix"
-		)
-	};
-	let (digits, multiplier) = match input.as_bytes().last() {
-		Some(b'K') => (&input[..input.len() - 1], 1024),
-		Some(b'M') => (&input[..input.len() - 1], 1024 * 1024),
-		Some(b'G') => (&input[..input.len() - 1], 1024 * 1024 * 1024),
-		_ => (input, 1),
-	};
-	if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
-		return Err(malformed());
-	}
-	let value = digits
-		.parse::<u64>()
-		.map_err(|err| format!("invalid size: invalid integer found in size '{input}': {err}"))?;
-	Ok(value.saturating_mul(multiplier))
-}
-
-/// Parses a NUM flag value that names a count.
-///
-/// Every numeric flag parses its value here, so the one wording ripgrep prints
-/// for a value that is not a number has one home. The value is parsed while the
-/// command line is parsed, which is what makes `rg -m abc` exit 2 before it
-/// opens a file.
-fn parse_flag_number<T>(input: &str) -> Result<T, String>
-where
-	T: std::str::FromStr<Err = std::num::ParseIntError>,
-{
-	input
-		.parse::<T>()
-		.map_err(|err| format!("value is not a valid number: {err}"))
-}
-
-/// The words ripgrep uses when a flag value is not one of its choices.
-///
-/// Two flags reach this phrase from different directions. `--color` is checked
-/// while the command line is parsed, and `--sort` is checked once the whole
-/// command line is known, because its direction lives in a second flag. One
-/// home for the phrase keeps the two from drifting apart.
-fn unrecognized_choice(value: &str) -> String {
-	format!("choice '{value}' is unrecognized")
-}
-
-/// Reads the `--engine` value.
-///
-/// ripgrep names the engine in its refusal rather than listing the choices, so
-/// this replaces the derived value-enum parser, whose message would list them.
-fn parse_regex_engine(input: &str) -> Result<RegexEngine, String> {
-	match input {
-		"default" => Ok(RegexEngine::Default),
-		"pcre2" => Ok(RegexEngine::Pcre2),
-		"auto" => Ok(RegexEngine::Auto),
-		other => Err(format!("unrecognized regex engine '{other}'")),
-	}
-}
-
-/// Reads the `--color` value.
-///
-/// This builtin never emits color, and it still refuses a value ripgrep would
-/// refuse: a caller who writes `--color=alwyas` has made a mistake in the
-/// command line, and accepting it would report success for a command ripgrep
-/// rejects.
-fn parse_color_choice(input: &str) -> Result<String, String> {
-	match input {
-		"never" | "auto" | "always" | "ansi" => Ok(input.to_string()),
-		other => Err(unrecognized_choice(other)),
-	}
-}
-
-/// What `--generate` can write.
-///
-/// ripgrep's five kinds, spelled the way it spells them. The names are the
-/// kebab-case forms clap derives, so `complete-bash` is the value on the
-/// command line and no second spelling table is needed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
-enum GenerateKind {
-	/// A roff man page.
-	Man,
-	/// A bash completion script.
-	CompleteBash,
-	/// A zsh completion script.
-	CompleteZsh,
-	/// A fish completion script.
-	CompleteFish,
-	/// A PowerShell completion script.
-	CompletePowershell,
-}
-
-/// Read a `--generate` kind, refusing anything else in ripgrep's words.
-///
-/// Hand-written rather than left to clap's `ValueEnum` parser for the same
-/// reason `parse_color_choice` is: `unrecognized_choice` is the one owner of
-/// the phrase ripgrep uses for a rejected choice, and clap's own message lists
-/// the alternatives where ripgrep does not.
-fn parse_generate_kind(input: &str) -> Result<GenerateKind, String> {
-	match input {
-		"man" => Ok(GenerateKind::Man),
-		"complete-bash" => Ok(GenerateKind::CompleteBash),
-		"complete-zsh" => Ok(GenerateKind::CompleteZsh),
-		"complete-fish" => Ok(GenerateKind::CompleteFish),
-		"complete-powershell" => Ok(GenerateKind::CompletePowershell),
-		other => Err(unrecognized_choice(other)),
-	}
-}
-
-/// Write the artifact `--generate` asked for.
-///
-/// Generated from `uu_app()`, the SAME clap command the parser uses, which is
-/// the whole point: a completion script listing a flag this builtin refuses, or
-/// omitting one it accepts, is a lie the shell repeats at every tab press. That
-/// also makes the artifacts a DELIBERATE divergence from ripgrep's own, which
-/// describe ripgrep's larger flag table; reproducing those bytes would mean
-/// shipping completions for flags that are not here.
 fn write_generated<W: Write>(kind: GenerateKind, out: &mut W) -> io::Result<()> {
-	let mut command = uu_app();
-	if kind == GenerateKind::Man {
-		return clap_mangen::Man::new(command).render(out);
-	}
-	let shell = match kind {
-		GenerateKind::CompleteBash => clap_complete::Shell::Bash,
-		GenerateKind::CompleteZsh => clap_complete::Shell::Zsh,
-		GenerateKind::CompleteFish => clap_complete::Shell::Fish,
-		GenerateKind::CompletePowershell => clap_complete::Shell::PowerShell,
-		GenerateKind::Man => unreachable!("the man kind returned above"),
-	};
-	clap_complete::generate(shell, &mut command, "rg", out);
-	Ok(())
-}
-
-/// Applies `--type-clear` and `--type-add` to a builder.
-///
-/// This is the one place a `--type-add` definition is parsed, so it is the one
-/// place a malformed definition is refused. `type_builder` reaches it with the
-/// default definitions already loaded, and the validation-only path in
-/// `build_path_filters` reaches it without them.
-fn add_type_definitions(builder: &mut TypesBuilder, cli: &RgCli) -> Result<(), String> {
-	for name in &cli.type_clears {
-		builder.clear(name);
-	}
-	for def in &cli.type_adds {
-		// ripgrep names neither the flag nor the value here, and the message it does
-		// print already says what a well formed definition looks like.
-		builder.add_def(def).map_err(|err| err.to_string())?;
-	}
-	Ok(())
-}
-
-fn type_builder(cli: &RgCli) -> Result<TypesBuilder, String> {
-	let mut builder = TypesBuilder::new();
-	builder.add_defaults();
-	add_type_definitions(&mut builder, cli)?;
-	for name in &cli.types {
-		builder.select(name);
-	}
-	for name in &cli.type_nots {
-		builder.negate(name);
-	}
-	Ok(builder)
+	veyyon_grep_kernel::write_generated(kind, uu_app(), "rg", out)
 }
 
 fn print_type_list<W: Write>(cli: &RgCli, out: &mut W) -> Result<(), String> {
-	let builder = type_builder(cli)?;
-	for def in builder.definitions() {
-		write!(out, "{}: ", def.name()).map_err(|err| err.to_string())?;
-		for (idx, glob) in def.globs().iter().enumerate() {
-			if idx > 0 {
-				out.write_all(b", ").map_err(|err| err.to_string())?;
-			}
-			out.write_all(glob.as_bytes())
-				.map_err(|err| err.to_string())?;
-		}
-		out.write_all(b"\n").map_err(|err| err.to_string())?;
+	veyyon_grep_kernel::print_type_list(
+		&cli.type_clears,
+		&cli.type_adds,
+		&cli.types,
+		&cli.type_nots,
+		out,
+	)
+}
+
+fn walk_filter_params(cli: &RgCli) -> WalkFilterParams<'_> {
+	WalkFilterParams {
+		max_filesize:          cli.max_filesize,
+		globs:                 &cli.globs,
+		iglobs:                &cli.iglobs,
+		glob_case_insensitive: cli.glob_case_insensitive,
+		ignore_files:          &cli.ignore_files,
+		type_clears:           &cli.type_clears,
+		type_adds:             &cli.type_adds,
+		types:                 &cli.types,
+		type_nots:             &cli.type_nots,
+		no_ignore:             cli.no_ignore,
+		unrestricted:          cli.unrestricted,
+		hidden:                cli.hidden,
+		no_ignore_dot:         cli.no_ignore_dot,
+		no_ignore_vcs:         cli.no_ignore_vcs,
+		no_ignore_exclude:     cli.no_ignore_exclude,
+		no_ignore_global:      cli.no_ignore_global,
+		no_ignore_parent:      cli.no_ignore_parent,
+		no_require_git:        cli.no_require_git,
+		follow:                cli.follow,
+		max_depth:             cli.max_depth,
+		one_file_system:       cli.one_file_system,
 	}
-	Ok(())
-}
-
-struct RgWalk {
-	request: veyyon_walker::WalkRequest,
-	filters: PathFilters,
-}
-
-struct PathFilters {
-	overrides:    Option<veyyon_walker::WalkOverrides>,
-	explicit:     Option<Gitignore>,
-	types:        Option<Types>,
-	max_filesize: Option<u64>,
-}
-
-impl PathFilters {
-	fn includes(&self, path: &Path, file_type: veyyon_walker::FileType, size: Option<f64>) -> bool {
-		use veyyon_walker::WalkOverrideVerdict as Verdict;
-
-		let is_dir = file_type == veyyon_walker::FileType::Dir;
-		// The same matcher the walk itself consults, so a whitelisted file cannot be
-		// admitted by one of the two and dropped by the other.
-		let override_verdict = self
-			.overrides
-			.as_ref()
-			.map_or(Verdict::Undecided, |overrides| overrides.verdict(path, is_dir));
-		if override_verdict == Verdict::Exclude {
-			return false;
-		}
-		let explicitly_included = override_verdict == Verdict::Include;
-		if !explicitly_included
-			&& self
-				.explicit
-				.as_ref()
-				.is_some_and(|ignore| matches!(ignore.matched(path, is_dir), Match::Ignore(_)))
-		{
-			return false;
-		}
-		if file_type != veyyon_walker::FileType::File {
-			return true;
-		}
-		if !explicitly_included
-			&& self
-				.types
-				.as_ref()
-				.is_some_and(|types| matches!(types.matched(path, false), Match::Ignore(_)))
-		{
-			return false;
-		}
-		if let Some(limit) = self.max_filesize {
-			let size = size.or_else(|| std::fs::metadata(path).ok().map(|meta| meta.len() as f64));
-			if size.is_some_and(|size| size > limit as f64) {
-				return false;
-			}
-		}
-		true
-	}
-}
-
-fn build_path_filters(cli: &RgCli) -> Result<PathFilters, String> {
-	let cwd = veyyon_uutils_ctx::cwd();
-	// `--max-filesize` was parsed with the command line, so a malformed size was
-	// refused before any file was opened.
-	let max_filesize = cli.max_filesize;
-	// `--glob` is case-sensitive unless `--glob-case-insensitive` says otherwise,
-	// and `--iglob` never is, so the case rule travels with each pattern. The
-	// walker compiles them, because it is the walk that has to honour them: a glob
-	// outranks the hidden rule and the ignore files, and only the traversal can
-	// decide not to prune a directory.
-	let overrides = if cli.globs.is_empty() && cli.iglobs.is_empty() {
-		None
-	} else {
-		let patterns = cli
-			.globs
-			.iter()
-			.map(|glob| veyyon_walker::WalkOverridePattern {
-				glob:             glob.clone(),
-				case_insensitive: cli.glob_case_insensitive,
-			})
-			.chain(
-				cli.iglobs
-					.iter()
-					.map(|glob| veyyon_walker::WalkOverridePattern::case_insensitive(glob.clone())),
-			);
-		Some(veyyon_walker::WalkOverrides::new(&cwd, patterns).map_err(|error| {
-			if error.glob.is_empty() {
-				error.message.clone()
-			} else {
-				let flag = if cli.iglobs.contains(&error.glob) {
-					"--iglob"
-				} else {
-					"--glob"
-				};
-				format!("{flag} {:?}: {}", error.glob, error.message)
-			}
-		})?)
-	};
-	let explicit = if cli.ignore_files.is_empty() {
-		None
-	} else {
-		let mut builder = GitignoreBuilder::new(&cwd);
-		for path in &cli.ignore_files {
-			let resolved = veyyon_uutils_ctx::resolve(path);
-			if let Some(error) = builder.add(&resolved) {
-				return Err(format!("{}: {error}", path.to_string_lossy()));
-			}
-		}
-		Some(builder.build().map_err(|error| error.to_string())?)
-	};
-	let types = if cli.types.is_empty() && cli.type_nots.is_empty() {
-		// Nothing selects a type, so nothing filters by one and the default
-		// definitions are not worth loading. A malformed `--type-add` is still a
-		// mistake in the command line, and ripgrep refuses it whether or not this run
-		// would have read it, so the definitions are parsed for their errors alone.
-		add_type_definitions(&mut TypesBuilder::new(), cli)?;
-		None
-	} else {
-		Some(
-			type_builder(cli)?
-				.build()
-				.map_err(|error| error.to_string())?,
-		)
-	};
-	Ok(PathFilters { overrides, explicit, types, max_filesize })
 }
 
 fn build_walk(cli: &RgCli, root: &Path) -> Result<RgWalk, String> {
-	let filters = build_path_filters(cli)?;
-	let unrestricted_no_ignore = cli.unrestricted >= 1;
-	let include_hidden = cli.hidden || cli.unrestricted >= 2;
-	let no_ignore = cli.no_ignore || unrestricted_no_ignore;
-	// A sorted search collects its files and orders them itself, so asking the walk
-	// for path order on top of that would pay for the ordering twice.
-	let order = veyyon_walker::WalkOrder::Unordered;
-	let request = veyyon_walker::WalkRequest::new(root)
-		.hidden(include_hidden)
-		.gitignore(!no_ignore)
-		// Each `--no-ignore-*` flag turns off ONE source. `--no-ignore-dot` drops
-		// `.ignore` and keeps `.gitignore`; `--no-ignore-vcs` does the reverse and
-		// takes the repository's exclude file with it, since both are git's;
-		// `--no-ignore-exclude` drops only that exclude file; `--no-ignore-global`
-		// drops the user's global gitignore; `--no-ignore-parent` stops reading ignore
-		// files in directories above the root. All five were parsed and none reached
-		// the walk, which had a single switch over all of them.
-		.dot_ignore(!cli.no_ignore_dot)
-		.vcs_ignore(!cli.no_ignore_vcs)
-		.exclude_ignore(!cli.no_ignore_exclude && !cli.no_ignore_vcs)
-		.global_ignore(!cli.no_ignore_global)
-		.parent_ignore(!cli.no_ignore_parent)
-		// `.gitignore` describes what git tracks, so ripgrep reads it only inside a
-		// repository: `rg hit .` in a directory with a `.gitignore` and no `.git`
-		// searches the "ignored" files. `--no-require-git` asks for them anyway.
-		// `.ignore` is not a git file and applies either way.
-		.require_git(!cli.no_require_git)
-		// ripgrep has no rule about `.git` at all: the directory is skipped only
-		// because it is hidden, so `rg --hidden hit .` searches `.git/config` and
-		// `rg -uu` does too. Pruning it by name here removed those files from a
-		// search that asked for them, and tying the pruning to `--no-ignore` made
-		// the omission depend on an unrelated flag.
-		.skip_git(false)
-		.skip_node_modules(false)
-		.follow_links(veyyon_walker::FollowLinks::from(cli.follow))
-		.detail(if filters.max_filesize.is_some() {
-			veyyon_walker::WalkDetail::Full
-		} else {
-			veyyon_walker::WalkDetail::Minimal
-		})
-		.order(order)
-		.emit_root(false)
-		.depth(1, cli.max_depth.unwrap_or(usize::MAX))
-		.visit_order(veyyon_walker::VisitOrder::PreOrder)
-		.directory_errors(veyyon_walker::DirectoryErrorMode::Visit)
-		.same_file_system(cli.one_file_system)
-		.cache(false);
-	let request = match filters.overrides.clone() {
-		Some(overrides) => request.overrides(overrides),
-		None => request,
-	};
-	Ok(RgWalk { request, filters })
+	veyyon_grep_kernel::build_walk(&walk_filter_params(cli), root)
 }
 
-/// The path a walked file prints under, given the operand the caller named.
-///
-/// ripgrep echoes an operand VERBATIM in front of every path from it and
-/// normalises nothing: `rg hit .` prints `./a.rs`, `rg hit .//.` prints
-/// `.//./a.rs`, and `rg hit sub` prints `sub/deep/d.rs`. `prefix` is `None` for
-/// the implicit root, the working directory ripgrep picks when the caller named
-/// no path at all, and that form prints the relative path bare.
-/// Reads a separator value, turning the escapes ripgrep accepts into bytes.
-///
-/// ripgrep takes `--field-match-separator='\t'` as a TAB, not as a backslash
-/// and a `t`, and the same for the other three separator flags, so a caller can
-/// put a control byte between fields from a shell that will not pass one
-/// literally. `\xHH` covers everything the named escapes do not, and an unknown
-/// escape keeps both of its characters rather than being dropped, because
-/// dropping it would silently change the separator the caller asked for.
-fn unescape_separator(value: &str) -> Vec<u8> {
-	let mut out = Vec::with_capacity(value.len());
-	let mut chars = value.chars();
-	while let Some(ch) = chars.next() {
-		if ch != '\\' {
-			let mut buffer = [0_u8; 4];
-			out.extend_from_slice(ch.encode_utf8(&mut buffer).as_bytes());
-			continue;
-		}
-		match chars.next() {
-			Some('n') => out.push(b'\n'),
-			Some('r') => out.push(b'\r'),
-			Some('t') => out.push(b'\t'),
-			Some('0') => out.push(0),
-			Some('\\') => out.push(b'\\'),
-			Some('x') => {
-				let digits = chars.clone().take(2).collect::<String>();
-				match u8::from_str_radix(&digits, 16) {
-					Ok(byte) if digits.len() == 2 => {
-						out.push(byte);
-						chars.next();
-						chars.next();
-					},
-					// Not two hex digits, so this was never an escape: keep what was
-					// written rather than inventing a byte for it.
-					_ => out.extend_from_slice(b"\\x"),
-				}
-			},
-			Some(other) => {
-				out.push(b'\\');
-				let mut buffer = [0_u8; 4];
-				out.extend_from_slice(other.encode_utf8(&mut buffer).as_bytes());
-			},
-			// A trailing backslash is itself.
-			None => out.push(b'\\'),
-		}
-	}
-	out
-}
-
-/// What `--sort`/`--sortr` order the files by.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SortKey {
-	/// By path, compared component by component, which is what puts `sub/a.txt`
-	/// before `sub.txt`: the first components are `sub` and `sub.txt`. Measured
-	/// against ripgrep 15.1.0, and it is exactly Rust's `Path` ordering.
-	Path,
-	/// By last-modified time, oldest first.
-	Modified,
-	/// By last-accessed time, oldest first.
-	Accessed,
-	/// By creation time, oldest first, where the platform records one.
-	Created,
-}
-
-/// A sort request: a key and a direction.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct SortSpec {
-	key:     SortKey,
-	reverse: bool,
-}
-
-/// Reads one `--sort`/`--sortr` value.
-///
-/// `none` is a real value meaning "do not sort", so this returns `Ok(None)` for
-/// it rather than treating it as an error. Anything else unrecognised exits 2
-/// with ripgrep's wording, because a sort key the tool ignores would silently
-/// answer a different question than the one asked.
-fn parse_sort_key(value: &str, flag: &str) -> Result<Option<SortKey>, String> {
-	match value {
-		"none" => Ok(None),
-		"path" => Ok(Some(SortKey::Path)),
-		"modified" => Ok(Some(SortKey::Modified)),
-		"accessed" => Ok(Some(SortKey::Accessed)),
-		"created" => Ok(Some(SortKey::Created)),
-		other => Err(format!("error parsing flag {flag}: {}", unrecognized_choice(other))),
-	}
-}
-
-/// The one place that decides whether, and how, a search sorts its files.
-///
-/// `--sort` and `--sortr` override each other through clap, so at most one is
-/// set and the one written last on the command line wins, which is what ripgrep
-/// does. `--sort-files` is the deprecated spelling of `--sort path`.
 fn resolve_sort(cli: &RgCli) -> Result<Option<SortSpec>, String> {
-	if let Some(value) = &cli.sortr {
-		return Ok(parse_sort_key(value, "--sortr")?.map(|key| SortSpec { key, reverse: true }));
-	}
-	if let Some(value) = &cli.sort {
-		return Ok(parse_sort_key(value, "--sort")?.map(|key| SortSpec { key, reverse: false }));
-	}
-	if cli.sort_files {
-		return Ok(Some(SortSpec { key: SortKey::Path, reverse: false }));
-	}
-	Ok(None)
+	veyyon_grep_kernel::resolve_sort(cli.sort.as_deref(), cli.sortr.as_deref(), cli.sort_files)
 }
 
-/// Orders collected files in place.
-///
-/// The time keys stat each file ONCE and sort the recorded times, rather than
-/// stat-ing inside the comparator, which would call it O(n log n) times. A file
-/// whose time cannot be read sorts after the ones that can, and every
-/// comparison falls back to the path, so the order is total and two runs over
-/// one tree print the same thing.
-fn sort_paths(files: &mut Vec<PathBuf>, spec: SortSpec) {
-	match spec.key {
-		SortKey::Path => files.sort_unstable(),
-		SortKey::Modified => sort_by_time(files, std::fs::Metadata::modified),
-		SortKey::Accessed => sort_by_time(files, std::fs::Metadata::accessed),
-		SortKey::Created => sort_by_time(files, std::fs::Metadata::created),
-	}
-	if spec.reverse {
-		files.reverse();
-	}
-}
-
-fn sort_by_time(
-	files: &mut Vec<PathBuf>,
-	read: fn(&std::fs::Metadata) -> io::Result<std::time::SystemTime>,
-) {
-	let mut keyed = files
-		.drain(..)
-		.map(|path| {
-			let time = std::fs::metadata(&path)
-				.ok()
-				.and_then(|meta| read(&meta).ok());
-			(time, path)
-		})
-		.collect::<Vec<_>>();
-	keyed.sort_unstable_by(|left, right| match (left.0, right.0) {
-		(Some(left_time), Some(right_time)) => left_time
-			.cmp(&right_time)
-			.then_with(|| left.1.cmp(&right.1)),
-		(Some(_), None) => std::cmp::Ordering::Less,
-		(None, Some(_)) => std::cmp::Ordering::Greater,
-		(None, None) => left.1.cmp(&right.1),
-	});
-	files.extend(keyed.into_iter().map(|(_, path)| path));
-}
-
-/// The bytes a display path prints as, with `--path-separator` applied.
-///
-/// ripgrep replaces every `/` in a printed path with that byte, the operand
-/// prefix included, and it must be exactly ONE byte: `--path-separator XY`
-/// exits 2. This is the only place a path becomes output, so it is the only
-/// place that substitution can live.
-fn display_bytes(path: &Path, separator: Option<u8>) -> Vec<u8> {
-	let mut bytes = path.as_os_str().as_encoded_bytes().to_vec();
-	if let Some(separator) = separator {
-		for byte in &mut bytes {
-			if *byte == b'/' {
-				*byte = separator;
-			}
-		}
-	}
-	bytes
-}
-
-/// Reads `--path-separator`, which ripgrep requires to be exactly one byte.
-///
-/// The wording and the second line of the message are ripgrep 15.1.0's, hint
-/// included: on some Windows shells `/` expands on its own, and a caller who
-/// hits this needs to know to write `//`.
 fn resolve_path_separator(cli: &RgCli) -> Result<Option<u8>, String> {
 	let Some(value) = cli.path_separator.as_deref() else {
 		return Ok(None);
@@ -2851,141 +910,6 @@ fn resolve_path_separator(cli: &RgCli) -> Result<Option<u8>, String> {
 		 expanded. Use '//' instead.",
 		bytes.len()
 	))
-}
-
-fn display_path(prefix: Option<&OsStr>, root: &Path, path: &Path) -> PathBuf {
-	let rel = path.strip_prefix(root).unwrap_or(path);
-	if rel.as_os_str().is_empty() {
-		return prefix.map_or_else(|| PathBuf::from("."), PathBuf::from);
-	}
-	prefix.map_or_else(|| rel.to_path_buf(), |operand| Path::new(operand).join(rel))
-}
-
-fn process_reader<M: Matcher, R: Read, W: Write>(
-	matcher: &M,
-	searcher: &mut Searcher,
-	reader: R,
-	display: Option<&[u8]>,
-	opts: &SearchOptions,
-	run: &mut RunState,
-	out: &mut W,
-) -> io::Result<bool> {
-	// `!opts.quiet`, because `rg --json -q` prints the summary record and NOTHING
-	// else, with `bytes_printed: 0` in it. Measured on ripgrep 15.1.0. Routing a
-	// quiet run through the normal sink instead of the JSON printer is what gets
-	// both halves right: that sink already withholds every line and still counts
-	// the whole search, and the summary is written once at the end either way.
-	if opts.json && !opts.quiet {
-		let mut builder = JSONBuilder::new();
-		builder.replacement(opts.replacement.clone());
-		let mut printer = builder.build(out);
-		if let Some(display) = display {
-			let path = PathBuf::from(String::from_utf8_lossy(display).into_owned());
-			let mut sink = printer.sink_with_path(matcher, &path);
-			searcher.search_reader(matcher, reader, &mut sink)?;
-			let matched = sink.has_match();
-			run.stats += sink.stats();
-			return Ok(matched);
-		}
-		let mut sink = printer.sink(matcher);
-		searcher.search_reader(matcher, reader, &mut sink)?;
-		let matched = sink.has_match();
-		run.stats += sink.stats();
-		return Ok(matched);
-	}
-
-	let captures = matcher
-		.new_captures()
-		.map_err(|error| io::Error::other(error.to_string()))?;
-	let mut sink = RgSink {
-		out: CountingWriter { inner: out, written: 0 },
-		matcher,
-		display,
-		opts,
-		captures,
-		scratch: Vec::new(),
-		spans: Vec::new(),
-		replaced_spans: Vec::new(),
-		line_count: 0,
-		match_count: 0,
-		any_match: false,
-		bytes_searched: 0,
-		follows_a_group: run.printed_group,
-		printed_group: false,
-		binary_offset: None,
-		binary_quit: false,
-	};
-	let started = Instant::now();
-	let outcome = searcher.search_reader(matcher, reader, &mut sink);
-	let elapsed = started.elapsed();
-	// Accounted even when the search FAILED partway, because the bytes really
-	// were read and the file really was searched. Reporting nothing for a file
-	// that errored would make `files searched` disagree with the diagnostics on
-	// stderr.
-	accumulate_text_stats(&mut run.stats, &sink, elapsed);
-	run.printed_group |= sink.printed_group;
-	outcome?;
-	// A file the binary filter took is not selected either way round: it prints no
-	// path under `--files-without-match`, so reporting it as selected would leave
-	// the exit status claiming a listing that is not on stdout. See
-	// `RgSink::filtered_as_binary`.
-	if sink.filtered_as_binary() {
-		return Ok(false);
-	}
-	Ok(opts.selected_input(sink.any_match))
-}
-
-/// State that belongs to the RUN rather than to one file.
-///
-/// Both fields used to be, or would have been, a separate `&mut` parameter on
-/// five functions that already carry
-/// `#[allow(clippy::too_many_arguments)]`. They travel together because they
-/// have the same lifetime and the same reason to exist: a per-file search
-/// cannot know the run's totals or whether another file has printed yet.
-struct RunState {
-	/// Totals for `--stats` and the JSON summary event.
-	stats:         Stats,
-	/// Whether any file has printed a group of lines yet.
-	///
-	/// `--heading` puts a blank line BETWEEN groups and not before the first, so
-	/// a sink has to know whether it is the first to print. The sink is rebuilt
-	/// per file, so this cannot live there.
-	printed_group: bool,
-}
-
-/// Fold one text-path search into the run's totals.
-///
-/// The JSON printer keeps its own `Stats` and is added to directly, so this is
-/// the other half of the same bookkeeping rather than a second scheme: both end
-/// up in the one `Stats` that `--stats` and the JSON summary read.
-///
-/// `matched_lines` and `matches` come from the sink's own counters, which are
-/// the numbers `-c` and `--count-matches` already print, so the block cannot
-/// disagree with the counts in the output above it.
-fn accumulate_text_stats<M: Matcher, W: Write>(
-	stats: &mut Stats,
-	sink: &RgSink<'_, M, W>,
-	elapsed: Duration,
-) {
-	stats.add_elapsed(elapsed);
-	stats.add_searches(1);
-	if sink.any_match {
-		stats.add_searches_with_match(1);
-	}
-	stats.add_bytes_searched(sink.bytes_searched);
-	// `bytes printed` describes the RECORDS a run printed, and a summary mode
-	// prints none: measured on ripgrep 15.1.0, `--stats -c`, `-l`,
-	// `--count-matches`, `--files-without-match` and `-q` all report `0 bytes
-	// printed` while their own output is on stdout, because those modes come from
-	// a printer that does not keep the number. Counting our summary lines here
-	// made the field disagree with ripgrep for every count run, and the field is
-	// the one a caller uses to size the output it is about to read, which a count
-	// line is not part of.
-	if !sink.opts.summary_mode() && !sink.opts.quiet {
-		stats.add_bytes_printed(sink.out.written);
-	}
-	stats.add_matched_lines(sink.line_count);
-	stats.add_matches(sink.match_count);
 }
 
 /// The preprocessor a run puts in front of its files, resolved once.
@@ -3149,8 +1073,10 @@ impl Read for FileInput {
 /// ripgrep 15.1.0, which prints `plain hit` for a `.br` file that is not brotli
 /// at all. A search that silently reads the wrong bytes is worse than one that
 /// stops, so this reports the file and keeps searching the rest of the tree.
-fn open_file_input(cli: &RgCli, opts: &SearchOptions, path: &Path) -> io::Result<FileInput> {
-	if let Some(pre) = opts.pre.as_ref().filter(|pre| pre.handles(path)) {
+fn open_file_input(cli: &RgCli, _opts: &SearchOptions, path: &Path) -> io::Result<FileInput> {
+	if let Ok(Some(pre)) = Preprocessor::resolve(cli)
+		&& pre.handles(path)
+	{
 		return pre.open(path).map(FileInput::Child);
 	}
 	if cli.search_zip
@@ -3434,7 +1360,7 @@ fn list_files<W: Write>(
 	// prints NOTHING for `rg --files --no-messages nosuchdir`, exiting 2 either
 	// way. Both diagnostics below used to print unconditionally, so the one flag
 	// whose entire job is silencing them did not reach this mode.
-	let no_messages = no_messages_for(cli);
+	let no_messages = cli.no_messages;
 	// Validated in `run`, so this cannot fail here.
 	let separator = resolve_path_separator(cli).unwrap_or(None);
 	for operand in paths {
@@ -3521,97 +1447,6 @@ fn show_names_for(paths: &[OsString], recursive: bool, cli: &RgCli, opts: &Searc
 	} else {
 		recursive || paths.len() > 1
 	}
-}
-
-/// A duration in the three-field shape every ripgrep JSON record uses.
-///
-/// `human` is the same six-decimal seconds rendering the `--stats` text block
-/// prints, which is what ripgrep 15.1.0 emits here: 14197 nanoseconds is
-/// `"0.000014s"`. It is NOT Rust's `Debug` for a `Duration`, which the first
-/// version of this function used and which renders the same value as
-/// `"14.197\u{b5}s"`, a string no consumer expecting ripgrep's schema can read.
-fn json_duration(elapsed: Duration) -> serde_json::Value {
-	// Alphabetical, for the reason `write_json_summary` states.
-	serde_json::json!({
-		"human": format!("{:.6}s", elapsed.as_secs_f64()),
-		"nanos": elapsed.subsec_nanos(),
-		"secs": elapsed.as_secs(),
-	})
-}
-
-/// Write the `summary` record that closes a `--json` stream.
-///
-/// PROBED AGAINST RIPGREP 15.1.0, including the parts that look like slips:
-///
-/// - It carries TWO durations. `stats.elapsed` is time inside the searcher and
-///   `elapsed_total` is wall time for the whole run, the same pair the
-///   `--stats` text block prints as "seconds spent searching" and "seconds
-///   total". `elapsed_total` was missing here entirely, so a consumer asking
-///   how long the run took read `undefined`.
-/// - The KEY ORDER is not the order the other records use. `begin`, `match` and
-///   `end` print `type` first and their stats fields in declaration order,
-///   while `summary` prints `data` before `type` and every field inside it
-///   alphabetically, down to `human`, `nanos`, `secs`. That is ripgrep
-///   serializing this one record through a map instead of a struct. Every field
-///   below is therefore written in ALPHABETICAL order, which is the one order
-///   that is correct however `serde_json` is built: with the `preserve_order`
-///   feature its map keeps insertion order, without it the map sorts, and
-///   alphabetical insertion satisfies both. Writing them in reading order
-///   instead made this record's bytes depend on which crates were in the build,
-///   because a `-p veyyon_uu_grep` build sorted them while a `--workspace`
-///   build, where another crate turns `preserve_order` on, did not. The bytes
-///   are what a consumer diffs, so the order is part of the contract.
-/// - It is written even when NOTHING matched, and it is then the whole output,
-///   with the exit code still 1.
-fn write_json_summary<W: Write>(out: &mut W, stats: &Stats, total: Duration) -> io::Result<()> {
-	let summary = serde_json::json!({
-		"data": {
-			"elapsed_total": json_duration(total),
-			"stats": {
-				"bytes_printed": stats.bytes_printed(),
-				"bytes_searched": stats.bytes_searched(),
-				"elapsed": json_duration(stats.elapsed()),
-				"matched_lines": stats.matched_lines(),
-				"matches": stats.matches(),
-				"searches": stats.searches(),
-				"searches_with_match": stats.searches_with_match(),
-			}
-		},
-		"type": "summary"
-	});
-	serde_json::to_writer(&mut *out, &summary).map_err(io::Error::other)?;
-	out.write_all(b"\n")
-}
-
-/// Write the `--stats` block, in ripgrep's own format.
-///
-/// PROBED AGAINST RIPGREP 15.1.0 rather than invented. Every detail below is a
-/// deliberate copy of what it prints, including the parts that read like bugs:
-///
-/// - A BLANK LINE comes first, always, even when nothing matched and the block
-///   is the entire output.
-/// - Nothing is singularized. One match prints `1 matches` and one file prints
-///   `1 files searched`. Pluralizing correctly would be a divergence.
-/// - The two durations are printed with SIX decimal places, and they are
-///   different quantities: time inside the searcher, then wall time for the
-///   whole run.
-/// - The block goes to STDOUT, after the results, so a pipeline that reads
-///   matches sees it. That is why `--stats` is not on by default.
-fn write_stats_summary<W: Write>(out: &mut W, stats: &Stats, total: Duration) -> io::Result<()> {
-	let searching = stats.elapsed();
-	write!(
-		out,
-		"\n{} matches\n{} matched lines\n{} files contained matches\n{} files searched\n{} bytes \
-		 printed\n{} bytes searched\n{:.6} seconds spent searching\n{:.6} seconds total\n",
-		stats.matches(),
-		stats.matched_lines(),
-		stats.searches_with_match(),
-		stats.searches(),
-		stats.bytes_printed(),
-		stats.bytes_searched(),
-		searching.as_secs_f64(),
-		total.as_secs_f64(),
-	)
 }
 
 fn execute_search<M: Matcher, W: Write>(
@@ -3780,101 +1615,8 @@ pub fn try_parse_argv(argv: Vec<OsString>) -> Result<(), clap::Error> {
 	RgCli::try_parse_from(argv).map(|_| ())
 }
 
-/// The spelling of a flag as this command line wrote it.
-///
-/// clap reports the argument by its declaration, `--max-count <NUM>`, while
-/// ripgrep echoes what you typed: `rg -m abc` names `-m` and `rg --max-count
-/// abc` names `--max-count`. The last spelling on the line wins, because that
-/// is the one whose value was parsed, and a short cluster names the flag when
-/// it holds the letter, so `-imabc` names `-m`. The spellings come from the
-/// parser itself, so they cannot drift away from the flags.
-fn typed_spelling(argv: &[OsString], declared_long: &str) -> String {
-	let name = declared_long.trim_start_matches('-');
-	let command = RgCli::command();
-	let Some(arg) = command
-		.get_arguments()
-		.find(|arg| arg.get_long() == Some(name))
-	else {
-		return declared_long.to_string();
-	};
-	let longs: Vec<&str> = std::iter::once(name)
-		.chain(arg.get_all_aliases().unwrap_or_default())
-		.collect();
-	let short = arg.get_short();
-	let mut spelling = None;
-	for token in argv.iter().skip(1) {
-		let Some(text) = token.to_str() else { continue };
-		if text == "--" {
-			break;
-		}
-		if let Some(rest) = text.strip_prefix("--") {
-			let written = rest.split('=').next().unwrap_or(rest);
-			if longs.contains(&written) {
-				spelling = Some(format!("--{written}"));
-			}
-			continue;
-		}
-		if let (Some(short), Some(cluster)) = (short, text.strip_prefix('-'))
-			&& cluster.contains(short)
-		{
-			spelling = Some(format!("-{short}"));
-		}
-	}
-	spelling.unwrap_or_else(|| format!("--{name}"))
-}
-
-/// Renders a command-line failure in ripgrep's words.
-///
-/// ripgrep has three shapes and no usage block: `error parsing flag <flag>:
-/// <reason>` for a value it cannot read, `missing value for flag <flag>: ...`
-/// for a flag whose value was left off, and `unrecognized flag <flag>` for a
-/// flag it does not know. clap words all three differently, adds a "tip" and a
-/// usage block, and points at `--help`, so its three kinds are translated here.
-/// Returns `None` for everything else, which is help and version output: those
-/// ask for clap's own rendering, and the caller prints it unchanged.
 fn argv_diagnostic(argv: &[OsString], error: &clap::Error) -> Option<String> {
-	use clap::error::{ContextKind, ContextValue, ErrorKind};
-	let text = |kind: ContextKind| match error.get(kind) {
-		Some(ContextValue::String(value)) => Some(value.clone()),
-		_ => None,
-	};
-	let declared = text(ContextKind::InvalidArg)?;
-	let long = declared.split(' ').next().unwrap_or(&declared);
-	// A positional argument is declared as `[ARGS]...`, and ripgrep has no wording
-	// for one, so it keeps clap's.
-	if !long.starts_with('-') {
-		return None;
-	}
-	match error.kind() {
-		// clap echoes the unknown flag as it was written, which is what ripgrep
-		// prints, so there is no spelling to recover here.
-		ErrorKind::UnknownArgument => Some(format!("unrecognized flag {long}")),
-		ErrorKind::ValueValidation => {
-			let reason = std::error::Error::source(error)?.to_string();
-			Some(format!("error parsing flag {}: {reason}", typed_spelling(argv, long)))
-		},
-		ErrorKind::InvalidValue => {
-			let value = text(ContextKind::InvalidValue)?;
-			// clap reports an absent value as an empty one with no valid choices to
-			// offer, and a flag with choices always has some, so that pair is how a
-			// missing value is told apart from a rejected one.
-			let no_choices = matches!(
-				error.get(ContextKind::ValidValue),
-				Some(ContextValue::Strings(choices)) if choices.is_empty()
-			);
-			if value.is_empty() && no_choices {
-				return Some(format!(
-					"missing value for flag {long}: missing argument for option '{long}'"
-				));
-			}
-			Some(format!(
-				"error parsing flag {}: {}",
-				typed_spelling(argv, long),
-				unrecognized_choice(&value)
-			))
-		},
-		_ => None,
-	}
+	veyyon_grep_kernel::argv_diagnostic(argv, error, &RgCli::command())
 }
 
 /// Whether a `--no-json` cancels the `--json` that chose the output mode.
@@ -3934,13 +1676,10 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		},
 	};
 
-	let mut opts = search_options(&cli);
-	match Preprocessor::resolve(&cli) {
-		Ok(pre) => opts.pre = pre,
-		Err(error) => {
-			let _ = writeln!(veyyon_uutils_ctx::stderr(), "rg: {error}");
-			return 2;
-		},
+	let opts = search_options(&cli);
+	if let Err(error) = Preprocessor::resolve(&cli) {
+		let _ = writeln!(veyyon_uutils_ctx::stderr(), "rg: {error}");
+		return 2;
 	}
 	// The sort key is validated once, here, so the search paths that ask for it
 	// again cannot be handed a value they would have to ignore. A sort key the tool
@@ -3953,8 +1692,12 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		let _ = writeln!(veyyon_uutils_ctx::stderr(), "rg: {error}");
 		return 2;
 	}
-	let mut out: RgOutput = Buffering::resolve(&cli, veyyon_uutils_ctx::stdout_is_terminal())
-		.wrap(veyyon_uutils_ctx::stdout());
+	let mut out: RgOutput = Buffering::resolve(
+		cli.line_buffered,
+		cli.block_buffered,
+		veyyon_uutils_ctx::stdout_is_terminal(),
+	)
+	.wrap(veyyon_uutils_ctx::stdout());
 	// Before the operands are read, because `--generate` looks at none of them:
 	// `rg --generate man hit a.txt` writes the man page and ignores both, which is
 	// what ripgrep does.
@@ -7472,7 +5215,7 @@ mod tests {
 	/// The character walk the preview cuts with, tested directly because the
 	/// inputs that break it are the ones a CLI test cannot express.
 	mod a_preview_prefix_never_splits_a_character {
-		use super::*;
+		use veyyon_grep_kernel::preview_prefix;
 
 		/// ASCII is one byte per character, so the prefix is the obvious one.
 		#[test]
@@ -10740,7 +8483,8 @@ mod tests {
 		use super::*;
 
 		fn mode(args: &[&str], terminal: bool) -> Buffering {
-			Buffering::resolve(&parse(args), terminal)
+			let cli = parse(args);
+			Buffering::resolve(cli.line_buffered, cli.block_buffered, terminal)
 		}
 
 		/// The default, which is the reason the flags are rarely needed.
@@ -10985,6 +8729,57 @@ mod tests {
 			out.flush().expect("the flush should succeed");
 
 			assert_eq!(log.lock().concat().len(), long.len());
+		}
+	}
+	mod restored_behavior_contracts {
+		use super::*;
+
+		/// A multi-line search with spans spanning across lines correctly
+		/// prints the matching lines and maps spans onto each line covered.
+		#[test]
+		fn multiline_records_spans_across_lines_are_correctly_rendered() {
+			let haystack = "first\nalpha start\nmiddle line\nend beta\nlast\n";
+			let (code, stdout, stderr) = run_rg(&["-U", "-n", r"(?s)alpha.*beta"], haystack);
+			assert_eq!(code, 0, "{stderr}");
+			assert_eq!(stdout, "2:alpha start\n3:middle line\n4:end beta\n");
+		}
+
+		/// Multi-line vimgrep records print each match on its actual line with
+		/// the actual line content and correct byte offset, not always line 1.
+		#[test]
+		fn multiline_vimgrep_records_print_each_matching_line_and_offset() {
+			let haystack = "first line\nmatch one\nmiddle line\nmatch two\nlast line\n";
+			let (code, stdout, stderr) =
+				run_rg(&["-U", "--vimgrep", "-b", r"(?m)match\s+\w+"], haystack);
+			assert_eq!(code, 0, "{stderr}");
+			assert_eq!(stdout, "<stdin>:2:1:11:match one\n<stdin>:4:1:33:match two\n");
+		}
+
+		/// `--heading` with context preserves the group separator (`--`)
+		/// between disjoint context blocks in the same file.
+		#[test]
+		fn heading_mode_with_context_preserves_group_separator() {
+			let tree = unique_tree("heading-context-sep");
+			const HAYSTACK: &str = "a1\na2\nhit1\na4\na5\na6\na7\nhit2\na9\n";
+			std::fs::write(tree.join("test.txt"), HAYSTACK).expect("fixture written");
+			let (_, stdout, _) =
+				run_rg_in(&["-H", "--heading", "-C1", "-n", "hit", "test.txt"], "", &tree);
+			assert_eq!(stdout, "test.txt\n2-a2\n3:hit1\n4-a4\n--\n7-a7\n8:hit2\n9-a9\n");
+			let _ = std::fs::remove_dir_all(tree);
+		}
+
+		/// `-c` respects `--field-match-separator` rather than forcing a colon.
+		#[test]
+		fn count_mode_preserves_custom_field_match_separator() {
+			let tree = unique_tree("count-custom-sep");
+			std::fs::write(tree.join("test.txt"), "hit 1\nhit 2\n").expect("fixture written");
+			let (_, stdout, _) = run_rg_in(
+				&["-c", "-H", "--field-match-separator", "###", "hit", "test.txt"],
+				"",
+				&tree,
+			);
+			assert_eq!(stdout, "test.txt###2\n");
+			let _ = std::fs::remove_dir_all(tree);
 		}
 	}
 }

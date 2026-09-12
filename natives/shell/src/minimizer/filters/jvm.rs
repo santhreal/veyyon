@@ -148,11 +148,7 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 		}
 	};
 
-	if text == input {
-		MinimizerOutput::passthrough(input)
-	} else {
-		MinimizerOutput::transformed(text, input.len())
-	}
+	MinimizerOutput::maybe_transformed(input, text)
 }
 
 // ── Gradle dispatch ──────────────────────────────────────────────────────────
@@ -178,11 +174,7 @@ fn filter_gradle(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> Minimiz
 		GradleTask::Other => filter_gradle_other(&stripped),
 	};
 
-	if text == input {
-		MinimizerOutput::passthrough(input)
-	} else {
-		MinimizerOutput::transformed(text, input.len())
-	}
+	MinimizerOutput::maybe_transformed(input, text)
 }
 
 /// `--stacktrace`/`--info`/`--debug`/`--full-stacktrace` anywhere → full

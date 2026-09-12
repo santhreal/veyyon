@@ -845,118 +845,64 @@ fn matches_key_inner(bytes: &[u8], key_id: &str, kitty_protocol_active: bool) ->
 		return enhanced_matches(CP_BACKSPACE, modifier);
 	}
 
-	if key.eq_ignore_ascii_case("insert") {
-		if modifier == 0 {
-			return matches_legacy_key(bytes, "insert") || enhanced_matches(FUNC_INSERT, 0);
+	const NAV_KEYS: &[(&str, &str, i32)] = &[
+		("insert", "insert", FUNC_INSERT),
+		("delete", "delete", FUNC_DELETE),
+		("clear", "clear", FUNC_CLEAR),
+		("home", "home", FUNC_HOME),
+		("end", "end", FUNC_END),
+		("pageup", "pageUp", FUNC_PAGE_UP),
+		("pagedown", "pageDown", FUNC_PAGE_DOWN),
+	];
+	for &(name, legacy_name, sentinel) in NAV_KEYS {
+		if key.eq_ignore_ascii_case(name) {
+			if modifier == 0 {
+				return matches_legacy_key(bytes, legacy_name) || enhanced_matches(sentinel, 0);
+			}
+			return matches_legacy_modifier_sequence(bytes, legacy_name, modifier)
+				|| enhanced_matches(sentinel, modifier);
 		}
-		return matches_legacy_modifier_sequence(bytes, "insert", modifier)
-			|| enhanced_matches(FUNC_INSERT, modifier);
 	}
 
-	if key.eq_ignore_ascii_case("delete") {
-		if modifier == 0 {
-			return matches_legacy_key(bytes, "delete") || enhanced_matches(FUNC_DELETE, 0);
-		}
-		return matches_legacy_modifier_sequence(bytes, "delete", modifier)
-			|| enhanced_matches(FUNC_DELETE, modifier);
-	}
-
-	if key.eq_ignore_ascii_case("clear") {
-		if modifier == 0 {
-			return matches_legacy_key(bytes, "clear") || enhanced_matches(FUNC_CLEAR, 0);
-		}
-		return matches_legacy_modifier_sequence(bytes, "clear", modifier)
-			|| enhanced_matches(FUNC_CLEAR, modifier);
-	}
-
-	if key.eq_ignore_ascii_case("home") {
-		if modifier == 0 {
-			return matches_legacy_key(bytes, "home") || enhanced_matches(FUNC_HOME, 0);
-		}
-		return matches_legacy_modifier_sequence(bytes, "home", modifier)
-			|| enhanced_matches(FUNC_HOME, modifier);
-	}
-
-	if key.eq_ignore_ascii_case("end") {
-		if modifier == 0 {
-			return matches_legacy_key(bytes, "end") || enhanced_matches(FUNC_END, 0);
-		}
-		return matches_legacy_modifier_sequence(bytes, "end", modifier)
-			|| enhanced_matches(FUNC_END, modifier);
-	}
-
-	if key.eq_ignore_ascii_case("pageup") {
-		if modifier == 0 {
-			return matches_legacy_key(bytes, "pageUp") || enhanced_matches(FUNC_PAGE_UP, 0);
-		}
-		return matches_legacy_modifier_sequence(bytes, "pageUp", modifier)
-			|| enhanced_matches(FUNC_PAGE_UP, modifier);
-	}
-
-	if key.eq_ignore_ascii_case("pagedown") {
-		if modifier == 0 {
-			return matches_legacy_key(bytes, "pageDown") || enhanced_matches(FUNC_PAGE_DOWN, 0);
-		}
-		return matches_legacy_modifier_sequence(bytes, "pageDown", modifier)
-			|| enhanced_matches(FUNC_PAGE_DOWN, modifier);
-	}
-
-	if key.eq_ignore_ascii_case("up") {
+	let arrow_info = if key.eq_ignore_ascii_case("up") {
+		Some(("up", ARROW_UP, None, None))
+	} else if key.eq_ignore_ascii_case("down") {
+		Some(("down", ARROW_DOWN, None, None))
+	} else if key.eq_ignore_ascii_case("left") {
+		Some(("left", ARROW_LEFT, Some((&b"\x1b[1;3D"[..], &b"\x1bB"[..])), Some(&b"\x1b[1;5D"[..])))
+	} else if key.eq_ignore_ascii_case("right") {
+		Some((
+			"right",
+			ARROW_RIGHT,
+			Some((&b"\x1b[1;3C"[..], &b"\x1bF"[..])),
+			Some(&b"\x1b[1;5C"[..]),
+		))
+	} else {
+		None
+	};
+	if let Some((legacy_name, sentinel, alt_mod, ctrl_mod)) = arrow_info {
 		if modifier == MOD_ALT {
-			return enhanced_matches(ARROW_UP, MOD_ALT);
-		}
-		if modifier == 0 {
-			return matches_legacy_key(bytes, "up") || enhanced_matches(ARROW_UP, 0);
-		}
-		return matches_legacy_modifier_sequence(bytes, "up", modifier)
-			|| enhanced_matches(ARROW_UP, modifier);
-	}
-
-	if key.eq_ignore_ascii_case("down") {
-		if modifier == MOD_ALT {
-			return enhanced_matches(ARROW_DOWN, MOD_ALT);
-		}
-		if modifier == 0 {
-			return matches_legacy_key(bytes, "down") || enhanced_matches(ARROW_DOWN, 0);
-		}
-		return matches_legacy_modifier_sequence(bytes, "down", modifier)
-			|| enhanced_matches(ARROW_DOWN, modifier);
-	}
-
-	if key.eq_ignore_ascii_case("left") {
-		if modifier == MOD_ALT {
-			return bytes == b"\x1b[1;3D"
-				|| (!kitty_protocol_active && bytes == b"\x1bB")
-				|| enhanced_matches(ARROW_LEFT, MOD_ALT);
+			if let Some((csi_alt, esc_alt)) = alt_mod
+				&& (bytes == csi_alt || (!kitty_protocol_active && bytes == esc_alt))
+			{
+				return true;
+			}
+			return enhanced_matches(sentinel, MOD_ALT);
 		}
 		if modifier == MOD_CTRL {
-			return bytes == b"\x1b[1;5D"
-				|| matches_legacy_modifier_sequence(bytes, "left", MOD_CTRL)
-				|| enhanced_matches(ARROW_LEFT, MOD_CTRL);
+			if let Some(csi_ctrl) = ctrl_mod
+				&& bytes == csi_ctrl
+			{
+				return true;
+			}
+			return matches_legacy_modifier_sequence(bytes, legacy_name, MOD_CTRL)
+				|| enhanced_matches(sentinel, MOD_CTRL);
 		}
 		if modifier == 0 {
-			return matches_legacy_key(bytes, "left") || enhanced_matches(ARROW_LEFT, 0);
+			return matches_legacy_key(bytes, legacy_name) || enhanced_matches(sentinel, 0);
 		}
-		return matches_legacy_modifier_sequence(bytes, "left", modifier)
-			|| enhanced_matches(ARROW_LEFT, modifier);
-	}
-
-	if key.eq_ignore_ascii_case("right") {
-		if modifier == MOD_ALT {
-			return bytes == b"\x1b[1;3C"
-				|| (!kitty_protocol_active && bytes == b"\x1bF")
-				|| enhanced_matches(ARROW_RIGHT, MOD_ALT);
-		}
-		if modifier == MOD_CTRL {
-			return bytes == b"\x1b[1;5C"
-				|| matches_legacy_modifier_sequence(bytes, "right", MOD_CTRL)
-				|| enhanced_matches(ARROW_RIGHT, MOD_CTRL);
-		}
-		if modifier == 0 {
-			return matches_legacy_key(bytes, "right") || enhanced_matches(ARROW_RIGHT, 0);
-		}
-		return matches_legacy_modifier_sequence(bytes, "right", modifier)
-			|| enhanced_matches(ARROW_RIGHT, modifier);
+		return matches_legacy_modifier_sequence(bytes, legacy_name, modifier)
+			|| enhanced_matches(sentinel, modifier);
 	}
 
 	// Function keys (now allow modifiers via CSI forms too)
@@ -1125,46 +1071,27 @@ fn matches_legacy_key(bytes: &[u8], key: &str) -> bool {
 
 /// Check if bytes match a legacy modifier sequence (shift/ctrl variants)
 fn matches_legacy_modifier_sequence(bytes: &[u8], key: &str, modifier: u32) -> bool {
-	if modifier == MOD_SHIFT {
-		let expected = match key {
-			"up" => Some("shift+up"),
-			"down" => Some("shift+down"),
-			"right" => Some("shift+right"),
-			"left" => Some("shift+left"),
-			"clear" => Some("shift+clear"),
-			"insert" => Some("shift+insert"),
-			"delete" => Some("shift+delete"),
-			"pageUp" => Some("shift+pageUp"),
-			"pageDown" => Some("shift+pageDown"),
-			"home" => Some("shift+home"),
-			"end" => Some("shift+end"),
-			_ => None,
-		};
-		if let Some(expected_key) = expected {
-			return LEGACY_SEQUENCES
-				.get(bytes)
-				.is_some_and(|&id| id == expected_key);
-		}
-	} else if modifier == MOD_CTRL {
-		let expected = match key {
-			"up" => Some("ctrl+up"),
-			"down" => Some("ctrl+down"),
-			"right" => Some("ctrl+right"),
-			"left" => Some("ctrl+left"),
-			"clear" => Some("ctrl+clear"),
-			"insert" => Some("ctrl+insert"),
-			"delete" => Some("ctrl+delete"),
-			"pageUp" => Some("ctrl+pageUp"),
-			"pageDown" => Some("ctrl+pageDown"),
-			"home" => Some("ctrl+home"),
-			"end" => Some("ctrl+end"),
-			_ => None,
-		};
-		if let Some(expected_key) = expected {
-			return LEGACY_SEQUENCES
-				.get(bytes)
-				.is_some_and(|&id| id == expected_key);
-		}
+	let prefix = match modifier {
+		MOD_SHIFT => "shift+",
+		MOD_CTRL => "ctrl+",
+		_ => return false,
+	};
+	if matches!(
+		key,
+		"up"
+			| "down"
+			| "right"
+			| "left"
+			| "clear"
+			| "insert"
+			| "delete"
+			| "pageUp"
+			| "pageDown"
+			| "home"
+			| "end"
+	) && let Some(&id) = LEGACY_SEQUENCES.get(bytes)
+	{
+		return id.strip_prefix(prefix) == Some(key);
 	}
 	false
 }

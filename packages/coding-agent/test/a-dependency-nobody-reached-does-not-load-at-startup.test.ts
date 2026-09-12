@@ -66,6 +66,9 @@ const EAGER_AT_STARTUP = [
 	"@veyyon/natives",
 	"@veyyon/tui",
 	"@veyyon/utils",
+	// The glyph table every tool card draws from (`UNICODE_SYMBOLS`) is the contract's one value
+	// export, shared with the GUI host and the HTML export; the terminal's first frame reads it.
+	"@veyyon/view",
 	"@veyyon/wire",
 	"argot",
 	"arktype",

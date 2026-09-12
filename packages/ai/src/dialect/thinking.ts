@@ -1,4 +1,4 @@
-import { partialSuffixOverlapAny } from "./coercion";
+import { partialSuffixOverlapAny, ThinkingSection } from "./coercion";
 import { FencedThinkingScanner } from "./fenced-thinking";
 import type { InbandScanEvent, InbandScanner } from "./types";
 import { THINK_CLOSE, THINK_OPEN, XML_THINKING_CLOSE, XML_THINKING_OPEN } from "./wire-tags";
@@ -33,7 +33,7 @@ const OPENS = TAGS.map(tag => tag.open);
 export class ThinkingInbandScanner implements InbandScanner {
 	#buffer = "";
 	#closeTag = "";
-	#thinking = "";
+	readonly #thinking = new ThinkingSection();
 	/** Fence-aware close-matcher while inside a ` ```thinking ` block; undefined otherwise. */
 	#fenced: FencedThinkingScanner | undefined;
 
@@ -47,8 +47,8 @@ export class ThinkingInbandScanner implements InbandScanner {
 		const events = this.#consume(true);
 		if (this.#buffer.length === 0) return events;
 		if (this.#closeTag) {
-			this.#emitThinking(this.#buffer, events);
-			events.push({ type: "thinkingEnd", thinking: this.#thinking });
+			this.#thinking.delta(this.#buffer, events);
+			this.#thinking.end(events);
 		} else {
 			events.push({ type: "text", text: this.#buffer });
 		}
@@ -64,10 +64,9 @@ export class ThinkingInbandScanner implements InbandScanner {
 				// Run even with an empty buffer so a held partial close flushes on final.
 				const result = this.#fenced.feed(this.#buffer, final);
 				this.#buffer = result.closed ? result.rest : "";
-				this.#emitThinking(result.thinking, events);
+				this.#thinking.delta(result.thinking, events);
 				if (result.closed || final) {
-					events.push({ type: "thinkingEnd", thinking: this.#thinking });
-					this.#thinking = "";
+					this.#thinking.end(events);
 					this.#closeTag = "";
 					this.#fenced = undefined;
 				}
@@ -79,14 +78,13 @@ export class ThinkingInbandScanner implements InbandScanner {
 				const close = this.#buffer.indexOf(this.#closeTag);
 				if (close === -1) {
 					const hold = final ? 0 : partialSuffixOverlapAny(this.#buffer, [this.#closeTag]);
-					this.#emitThinking(this.#buffer.slice(0, this.#buffer.length - hold), events);
+					this.#thinking.delta(this.#buffer.slice(0, this.#buffer.length - hold), events);
 					this.#buffer = this.#buffer.slice(this.#buffer.length - hold);
 					break;
 				}
-				this.#emitThinking(this.#buffer.slice(0, close), events);
+				this.#thinking.delta(this.#buffer.slice(0, close), events);
 				this.#buffer = this.#buffer.slice(close + this.#closeTag.length);
-				events.push({ type: "thinkingEnd", thinking: this.#thinking });
-				this.#thinking = "";
+				this.#thinking.end(events);
 				this.#closeTag = "";
 				continue;
 			}
@@ -102,17 +100,10 @@ export class ThinkingInbandScanner implements InbandScanner {
 			if (tag.index > 0) events.push({ type: "text", text: this.#buffer.slice(0, tag.index) });
 			this.#buffer = this.#buffer.slice(tag.index + tag.open.length);
 			this.#closeTag = tag.close;
-			this.#thinking = "";
 			if (tag.fenced) this.#fenced = new FencedThinkingScanner();
-			events.push({ type: "thinkingStart" });
+			this.#thinking.start(events);
 		}
 		return events;
-	}
-
-	#emitThinking(delta: string, events: InbandScanEvent[]): void {
-		if (delta.length === 0) return;
-		this.#thinking += delta;
-		events.push({ type: "thinkingDelta", delta });
 	}
 }
 

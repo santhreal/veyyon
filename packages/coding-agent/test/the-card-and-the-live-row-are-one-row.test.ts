@@ -163,7 +163,7 @@ function launchParts(): Map<string, string> {
 				autoCompactEnabled: false,
 				location: null,
 			}),
-		subagentBadge: quietRow.subagentBadgeText(0),
+		agentBadge: quietRow.agentBadgeText(0),
 		badgeSlot: null,
 	});
 	const parts = new Map<string, string>();

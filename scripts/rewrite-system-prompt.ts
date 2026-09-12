@@ -1,41 +1,12 @@
-#!/usr/bin/env bun
-
 /**
- * Rewrite the natural-language prose of a prompt file into the terse
- * implementation-scratchpad voice (see `rewrite-system-prompt.style.md`),
- * leaving every structural token byte-exact.
+ * Rewrite markdown prompt files against an editorial style guide using an LLM.
  *
- * The file is processed line by line. Lines that are blank, Markdown headings,
- * XML tags, or Handlebars directives are preserved verbatim. Prose lines have
- * their list/indent prefix and any wrapping `{{#…}}`/`{{/…}}` block tokens
- * peeled off; the remaining sentence keeps its inline code/tags/URLs/template
- * expressions visible and is sent to an LLM (Sonnet 4.5 via OpenRouter by
- * default) in small id-keyed JSON batches that run in parallel. Each response
- * is validated — every fragile token must survive — and any line whose rewrite
- * drops a token falls back to its original text.
+ * Identifies mutable prose lines in prompt files while preserving code blocks, Handlebars
+ * expressions, HTML tags, and markdown markers. Sends prose chunks to an OpenRouter model
+ * endpoint with style instructions and writes the updated markdown files to disk.
  *
  * Usage:
- *   OPENROUTER_API_KEY=… bun scripts/rewrite-system-prompt.ts            # rewrite system prompt in place
- *   OPENROUTER_API_KEY=… bun scripts/rewrite-system-prompt.ts --all      # rewrite every prompt + rule in place
- *   OPENROUTER_API_KEY=… bun scripts/rewrite-system-prompt.ts -i a -o b  # write to a different file
- *   bun scripts/rewrite-system-prompt.ts --dry-run                       # plan only, no network
- *
- * Output is in place by default (the input is overwritten); pass -o/--output to
- * redirect a single-file run. YAML frontmatter and fenced code blocks are kept
- * byte-exact and never sent to the model.
- *
- * Flags:
- *   -i, --input <path>     source file (default: the coding-agent system prompt)
- *   -o, --output <path>    destination for a single-file run (default: in place)
- *       --all              rewrite every bundled prompt and rule (always in place)
- *       --model <id>       OpenRouter model id (default: anthropic/claude-sonnet-4.5)
- *       --base-url <url>   OpenRouter-compatible base (default: https://openrouter.ai/api/v1)
- *       --chunk <n>        prose lines per request (default: 3)
- *       --concurrency <n>  parallel requests in flight (default: 6)
- *       --retries <n>      network/parse retries per chunk (default: 2)
- *       --temperature <n>  sampling temperature (default: 0.4)
- *       --limit <n>        rewrite only the first N prose lines per file (0 = all)
- *       --dry-run          classify + chunk, print a plan, make no network calls
+ *   bun scripts/rewrite-system-prompt.ts [-i <file>] [-o <file>] [--all] [--model <model>] [--dry-run]
  */
 
 import * as path from "node:path";
@@ -46,7 +17,6 @@ const DEFAULT_INPUT = "packages/coding-agent/src/prompts/system/system-prompt.md
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4.5";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 
-/** Prompt + rule markdown globs for `--all`, repo-root anchored. */
 const PROMPT_GLOBS = [
 	"packages/coding-agent/src/prompts/**/*.md",
 	"packages/coding-agent/src/commit/prompts/*.md",
@@ -59,19 +29,13 @@ const PROMPT_GLOBS = [
 	"plugins/hashline/src/prompt.md",
 ];
 
-/** Matches one inline token that must survive a rewrite untouched. */
 const FRAGILE_RE = /\{\{[^}]*\}\}|<[^>]*>|`[^`]*`|[A-Za-z][\w+.-]*:\/\/\S+/g;
 
 export interface ProseEntry {
-	/** Index into the file's line array. */
 	lineIndex: number;
-	/** Leading whitespace + wrapping block tokens + list marker. */
 	prefix: string;
-	/** Trailing wrapping block tokens. */
 	suffix: string;
-	/** The rewritable sentence core (fragile tokens left visible for the model). */
 	core: string;
-	/** Fragile tokens (code spans, tags, URLs, template exprs) that must survive. */
 	tokens: string[];
 }
 
@@ -83,23 +47,11 @@ export interface RewritePlan {
 export interface RewriteItem {
 	id: number;
 	text: string;
-	/** Fragile tokens the rewrite MUST preserve; validated before acceptance. */
 	tokens: readonly string[];
 }
 
-/**
- * Rewrite a batch of fragments. Returns a map of `id` -> validated rewritten
- * text; an id absent from the map could not be rewritten (caller keeps original).
- */
 export type RewriteChunk = (items: RewriteItem[]) => Promise<Map<number, string>>;
 
-/**
- * Split a line into a verbatim `prefix`, a rewritable `core`, and a verbatim
- * `suffix`. Invariant: `prefix + core + suffix === line`.
- *
- * `prefix` absorbs leading whitespace, any leading `{{…}}` block tokens, and a
- * single list/ordered marker. `suffix` absorbs trailing `{{…}}` tokens.
- */
 export function peel(line: string): { prefix: string; core: string; suffix: string } {
 	let s = line;
 	let suffix = "";
@@ -124,21 +76,9 @@ export function peel(line: string): { prefix: string; core: string; suffix: stri
 	return { prefix, core: s, suffix };
 }
 
-/**
- * Decide whether a line is structural (kept verbatim) rather than prose.
- *
- * Verbatim when: blank, a Markdown heading or horizontal rule, or — after
- * stripping Handlebars expressions, XML tags, code spans, and URLs — it carries
- * fewer than three alphabetic words and no sentence-ending punctuation. That
- * leaves XML tags, Handlebars directives, template-data list items, and short
- * `token: label` definition rows untouched while still catching wrapped prose
- * such as `{{#has tools "read"}}- file/dir reads …{{/has}}`.
- */
 export function isVerbatimLine(line: string): boolean {
 	const t = line.trim();
-	if (t === "") return true;
-	if (/^#{1,6}\s/.test(t)) return true; // markdown heading
-	if (/^[-*=_]{3,}\s*$/.test(t)) return true; // rule / heading underline
+	if (t === "" || /^#{1,6}\s/.test(t) || /^[-*=_]{3,}\s*$/.test(t)) return true;
 	const residue = t
 		.replace(/\{\{[^}]*\}\}/g, " ")
 		.replace(/<[^>]*>/g, " ")
@@ -146,16 +86,9 @@ export function isVerbatimLine(line: string): boolean {
 		.replace(/[A-Za-z][\w+.-]*:\/\/\S+/g, " ");
 	const words = residue.match(/[A-Za-z]{2,}/g) ?? [];
 	if (words.length === 0) return true;
-	const hasSentencePunct = /[.;?!]/.test(residue);
-	if (words.length < 3 && !hasSentencePunct) return true;
-	return false;
+	return words.length < 3 && !/[.;?!]/.test(residue);
 }
 
-/**
- * Verify a rewritten core still carries every fragile token from the original,
- * counting multiplicity. A dropped or reworded token (`{{…}}`, code span, tag,
- * URL) fails the check so the caller can fall back to the original line.
- */
 export function preservesTokens(rewritten: string, tokens: readonly string[]): boolean {
 	const want = new Map<string, number>();
 	for (const tok of tokens) want.set(tok, (want.get(tok) ?? 0) + 1);
@@ -165,18 +98,9 @@ export function preservesTokens(rewritten: string, tokens: readonly string[]): b
 	return true;
 }
 
-/**
- * Mark every line that belongs to a block-level structure the rewriter must
- * keep byte-exact and never send to the model: a leading YAML frontmatter block
- * (`---` … `---` at the very top) and fenced code blocks (``` or ~~~). The
- * per-line {@link isVerbatimLine} classifier only sees one line at a time, so a
- * frontmatter `description:` field or a `// comment` inside an example would
- * otherwise read as prose and get rewritten.
- */
 export function blockSkipMask(lines: readonly string[]): boolean[] {
 	const skip = new Array<boolean>(lines.length).fill(false);
 	let start = 0;
-	// Leading YAML frontmatter: `---` on the first line, closed by the next `---`.
 	if (lines.length > 0 && lines[0].trim() === "---") {
 		let close = -1;
 		for (let j = 1; j < lines.length; j++) {
@@ -190,7 +114,6 @@ export function blockSkipMask(lines: readonly string[]): boolean[] {
 			start = close + 1;
 		}
 	}
-	// Fenced code blocks; the closing fence must repeat the opening fence char.
 	let fenceChar: string | null = null;
 	for (let i = start; i < lines.length; i++) {
 		const m = lines[i].trim().match(/^(```+|~~~+)/);
@@ -207,24 +130,22 @@ export function blockSkipMask(lines: readonly string[]): boolean[] {
 	return skip;
 }
 
-/** Classify every line; build the rewrite plan. */
 export function planRewrite(content: string): RewritePlan {
 	const lines = content.split("\n");
 	const skip = blockSkipMask(lines);
 	const prose: ProseEntry[] = [];
 	for (let i = 0; i < lines.length; i++) {
-		if (skip[i]) continue; // frontmatter / fenced code block
+		if (skip[i]) continue;
 		const line = lines[i];
 		if (isVerbatimLine(line)) continue;
 		const { prefix, core, suffix } = peel(line);
-		if (core.trim() === "") continue; // nothing rewritable after peeling
+		if (core.trim() === "") continue;
 		const tokens = Array.from(core.matchAll(FRAGILE_RE), m => m[0]);
 		prose.push({ lineIndex: i, prefix, suffix, core, tokens });
 	}
 	return { lines, prose };
 }
 
-/** Split a list into fixed-size groups, preserving order. */
 export function chunk<T>(items: readonly T[], size: number): T[][] {
 	const groups: T[][] = [];
 	const step = Math.max(1, size);
@@ -232,7 +153,6 @@ export function chunk<T>(items: readonly T[], size: number): T[][] {
 	return groups;
 }
 
-/** Run `fn` over `items` with at most `limit` concurrent calls; preserve order. */
 async function mapPool<T, R>(
 	items: readonly T[],
 	limit: number,
@@ -267,13 +187,6 @@ export interface RewriteOptions {
 	onProgress?: (done: number, total: number) => void;
 }
 
-/**
- * Apply `rewriteChunk` across the plan's prose lines and reassemble the file.
- *
- * `rewriteChunk` returns replacement text keyed by line index. A missing id, or
- * a rewrite that drops a fragile token, falls back to the original line — so a
- * flaky batch degrades to "unchanged," never to corruption.
- */
 export async function rewriteAll(
 	content: string,
 	rewriteChunk: RewriteChunk,
@@ -286,11 +199,7 @@ export async function rewriteAll(
 
 	let done = 0;
 	const resolved = await mapPool(groups, opts.concurrency, async group => {
-		const items: RewriteItem[] = group.map(e => ({
-			id: e.lineIndex,
-			text: e.core,
-			tokens: e.tokens,
-		}));
+		const items: RewriteItem[] = group.map(e => ({ id: e.lineIndex, text: e.core, tokens: e.tokens }));
 		let map: Map<number, string>;
 		try {
 			map = await rewriteChunk(items);
@@ -329,7 +238,6 @@ export async function rewriteAll(
 	};
 }
 
-/** Tolerantly parse the model's `{"items":[…]}` reply (strips fences, locates the object). */
 export function parseItemsResponse(text: string): { id: number; text: string }[] {
 	let s = text.trim();
 	const fence = s.match(/^```[a-zA-Z]*\s*([\s\S]*?)\s*```$/);
@@ -343,13 +251,16 @@ export function parseItemsResponse(text: string): { id: number; text: string }[]
 		if (start < 0 || end <= start) throw new Error("response is not JSON");
 		parsed = JSON.parse(s.slice(start, end + 1));
 	}
-	const items = (parsed as { items?: unknown })?.items;
-	if (!Array.isArray(items)) throw new Error("response missing items[]");
+	if (!parsed || typeof parsed !== "object" || !("items" in parsed) || !Array.isArray(parsed.items)) {
+		throw new Error("response missing items[]");
+	}
 	const out: { id: number; text: string }[] = [];
-	for (const it of items) {
-		const id = (it as { id?: unknown })?.id;
-		const value = (it as { text?: unknown })?.text;
-		if (typeof id === "number" && typeof value === "string") out.push({ id, text: value });
+	for (const it of parsed.items) {
+		if (it && typeof it === "object" && "id" in it && "text" in it) {
+			if (typeof it.id === "number" && typeof it.text === "string") {
+				out.push({ id: it.id, text: it.text });
+			}
+		}
 	}
 	return out;
 }
@@ -363,7 +274,6 @@ interface OpenRouterOptions {
 	system: string;
 }
 
-/** OpenAI-style JSON-schema response format; forces a valid `{items:[{id,text}]}` reply. */
 const REWRITE_RESPONSE_FORMAT = {
 	type: "json_schema",
 	json_schema: {
@@ -391,7 +301,6 @@ const REWRITE_RESPONSE_FORMAT = {
 	},
 } as const;
 
-/** Build a {@link RewriteChunk} backed by an OpenRouter chat-completions endpoint. */
 export function makeOpenRouterRewriter(opts: OpenRouterOptions): RewriteChunk {
 	return async items => {
 		const result = new Map<number, string>();
@@ -405,10 +314,7 @@ export function makeOpenRouterRewriter(opts: OpenRouterOptions): RewriteChunk {
 					response_format: REWRITE_RESPONSE_FORMAT,
 					messages: [
 						{ role: "system", content: opts.system },
-						{
-							role: "user",
-							content: JSON.stringify({ items: pending.map(p => ({ id: p.id, text: p.text })) }),
-						},
+						{ role: "user", content: JSON.stringify({ items: pending.map(p => ({ id: p.id, text: p.text })) }) },
 					],
 				});
 				const res = await fetch(`${opts.baseUrl}/chat/completions`, {
@@ -421,17 +327,12 @@ export function makeOpenRouterRewriter(opts: OpenRouterOptions): RewriteChunk {
 					},
 					body,
 				});
-				if (!res.ok) {
-					throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
-				}
-				const data = (await res.json()) as {
-					choices?: { message?: { content?: unknown } }[];
-				};
+				if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+				const data = (await res.json()) as { choices?: Array<{ message?: { content?: unknown } }> };
 				const content = data.choices?.[0]?.message?.content;
 				if (typeof content !== "string") throw new Error("no message content");
 				const got = new Map<number, string>();
 				for (const it of parseItemsResponse(content)) got.set(it.id, it.text);
-				// Keep only rewrites that preserve every fragile token; re-request the rest.
 				const stillPending: RewriteItem[] = [];
 				for (const p of pending) {
 					const text = got.get(p.id);
@@ -442,7 +343,11 @@ export function makeOpenRouterRewriter(opts: OpenRouterOptions): RewriteChunk {
 			} catch (err) {
 				lastErr = err;
 			}
-			if (pending.length > 0 && attempt < opts.retries) await Bun.sleep(400 * (attempt + 1));
+			if (pending.length > 0 && attempt < opts.retries) {
+				const { promise, resolve } = Promise.withResolvers<void>();
+				setTimeout(resolve, 400 * (attempt + 1));
+				await promise;
+			}
 		}
 		if (pending.length > 0) {
 			console.error(
@@ -453,23 +358,20 @@ export function makeOpenRouterRewriter(opts: OpenRouterOptions): RewriteChunk {
 	};
 }
 
-interface CliOptions {
-	input: string;
-	output: string;
-	model: string;
-	baseUrl: string;
-	chunkSize: number;
-	concurrency: number;
-	retries: number;
-	temperature: number;
-	limit: number;
-	dryRun: boolean;
-	all: boolean;
+async function collectPromptFiles(): Promise<string[]> {
+	const root = path.resolve(import.meta.dir, "..");
+	const seen = new Set<string>();
+	for (const pattern of PROMPT_GLOBS) {
+		for await (const rel of new Bun.Glob(pattern).scan({ cwd: root, onlyFiles: true })) {
+			if (!rel.endsWith(".rewritten.md")) seen.add(path.join(root, rel));
+		}
+	}
+	return [...seen].sort();
 }
 
-function parseCli(argv: string[]): CliOptions {
+async function main(): Promise<void> {
 	const { values } = parseArgs({
-		args: argv,
+		args: process.argv.slice(2),
 		options: {
 			input: { type: "string", short: "i" },
 			output: { type: "string", short: "o" },
@@ -485,54 +387,28 @@ function parseCli(argv: string[]): CliOptions {
 		},
 		allowPositionals: false,
 	});
+
 	const input = values.input ?? DEFAULT_INPUT;
 	const output = values.output ?? input;
-	const num = (name: string, raw: string | undefined, fallback: number): number => {
-		const n = Number(raw);
-		if (!Number.isFinite(n)) throw new Error(`--${name} must be a number, got ${raw}`);
-		return raw === undefined ? fallback : n;
-	};
-	return {
-		input,
-		output,
-		model: values.model ?? DEFAULT_MODEL,
-		baseUrl: values["base-url"] ?? DEFAULT_BASE_URL,
-		chunkSize: num("chunk", values.chunk, 3),
-		concurrency: num("concurrency", values.concurrency, 6),
-		retries: num("retries", values.retries, 2),
-		temperature: num("temperature", values.temperature, 0.4),
-		limit: num("limit", values.limit, 0),
-		dryRun: values["dry-run"] ?? false,
-		all: values.all ?? false,
-	};
-}
+	const dryRun = values["dry-run"] ?? false;
+	const model = values.model ?? DEFAULT_MODEL;
+	const chunkSize = Number(values.chunk ?? 3);
+	const concurrency = Number(values.concurrency ?? 6);
+	const retries = Number(values.retries ?? 2);
+	const temperature = Number(values.temperature ?? 0.4);
+	const limit = Number(values.limit ?? 0);
 
-/** Resolve every bundled prompt and rule markdown file, repo-root anchored and sorted. */
-async function collectPromptFiles(): Promise<string[]> {
-	const root = path.resolve(import.meta.dir, "..");
-	const seen = new Set<string>();
-	for (const pattern of PROMPT_GLOBS) {
-		for await (const rel of new Bun.Glob(pattern).scan({ cwd: root, onlyFiles: true })) {
-			if (rel.endsWith(".rewritten.md")) continue; // skip stale artifacts from older runs
-			seen.add(path.join(root, rel));
-		}
-	}
-	return [...seen].sort();
-}
-
-async function main(): Promise<void> {
-	const opts = parseCli(process.argv.slice(2));
-	const files = opts.all ? await collectPromptFiles() : [opts.input];
+	const files = values.all ? await collectPromptFiles() : [input];
 	if (files.length === 0) {
 		console.error("No prompt files matched.");
 		return;
 	}
 
-	if (opts.dryRun) {
+	if (dryRun) {
 		for (const file of files) {
 			const content = await Bun.file(file).text();
 			const plan = planRewrite(content);
-			const groups = chunk(opts.limit > 0 ? plan.prose.slice(0, opts.limit) : plan.prose, opts.chunkSize);
+			const groups = chunk(limit > 0 ? plan.prose.slice(0, limit) : plan.prose, chunkSize);
 			console.error(
 				`${file}: ${plan.lines.length} lines, ${plan.prose.length} prose, ${plan.lines.length - plan.prose.length} verbatim, ${groups.length} chunk(s).`,
 			);
@@ -549,27 +425,27 @@ async function main(): Promise<void> {
 
 	const rewriteChunk = makeOpenRouterRewriter({
 		apiKey,
-		model: opts.model,
-		baseUrl: opts.baseUrl,
-		temperature: opts.temperature,
-		retries: opts.retries,
+		model,
+		baseUrl: values["base-url"] ?? DEFAULT_BASE_URL,
+		temperature,
+		retries,
 		system: STYLE_GUIDE,
 	});
 
 	for (const file of files) {
-		const output = opts.all ? file : opts.output;
+		const outPath = values.all ? file : output;
 		const content = await Bun.file(file).text();
 		const { content: rewritten, stats } = await rewriteAll(content, rewriteChunk, {
-			chunkSize: opts.chunkSize,
-			concurrency: opts.concurrency,
-			limit: opts.limit,
+			chunkSize,
+			concurrency,
+			limit,
 			onProgress: (done, total) => {
 				if (done === total || done % 10 === 0) console.error(`  ${file}: ${done}/${total} prose lines`);
 			},
 		});
-		await Bun.write(output, rewritten);
+		await Bun.write(outPath, rewritten);
 		console.error(
-			`Wrote ${output}: ${stats.changed} changed, ${stats.fallback} fallback, ${stats.proseLines} prose / ${stats.totalLines} lines (model ${opts.model}).`,
+			`Wrote ${outPath}: ${stats.changed} changed, ${stats.fallback} fallback, ${stats.proseLines} prose / ${stats.totalLines} lines (model ${model}).`,
 		);
 	}
 }

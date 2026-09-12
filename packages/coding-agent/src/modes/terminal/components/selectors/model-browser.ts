@@ -15,10 +15,11 @@ import { getModelPricing, modelsAreEqual } from "@veyyon/catalog/models";
 import type { ModelPerfStats } from "@veyyon/kernel/session/agent-storage";
 import { Ellipsis } from "@veyyon/natives";
 import { type Component, Input, ScrollView } from "@veyyon/tui";
+import { HoverController } from "@veyyon/tui/utils/hover-controller";
 import { clampLow, formatNumber } from "@veyyon/utils";
 import { fuzzyRank } from "@veyyon/utils/fuzzy";
 import { matchesKey } from "@veyyon/utils/keys";
-import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
+import type { HoverFadeOptions } from "@veyyon/utils/motion";
 import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { resolveEffort, withLegacyDefaultEffort } from "../../../../config/effort-resolver";
@@ -418,12 +419,8 @@ export class ModelBrowser implements Component {
 	 */
 	#columnWidths: { perfMode: PerfMode; ctx: number; cost: number; perf: number } | undefined;
 	#selectedIndex = 0;
-	#hoveredIndex: number | null = null;
-	/**
-	 * The cross-fade, once a host has lent this browser a repaint ({@link setHoverMotion}).
-	 * Absent, the band is switched: the browser is an inner list and owns no repaint of its own.
-	 */
-	#hoverFade: HoverFade | undefined;
+	/** Pointer-highlighted model row (never the selected one; selection owns its block). */
+	#hover = new HoverController<number>();
 	#maxVisible = 10;
 	#showProvider: boolean;
 	#currentContextTokens: number;
@@ -736,11 +733,11 @@ export class ModelBrowser implements Component {
 		if (event.wheel !== null) {
 			// Wheel pans the window; it never moves the selection and never wraps.
 			this.#windowStart = this.#clampWindowStart(this.#windowStart + event.wheel);
-			this.#setHoveredIndex(this.#hoverIndexAt(line));
+			this.#hover.set(this.#hoverIndexAt(line));
 			return;
 		}
 		if (event.motion) {
-			this.#setHoveredIndex(this.#hoverIndexAt(line));
+			this.#hover.set(this.#hoverIndexAt(line));
 			return;
 		}
 		if (!event.leftClick) return;
@@ -756,13 +753,7 @@ export class ModelBrowser implements Component {
 	}
 	/** Drop the hover band. Hosts call this when the pointer leaves the browser pane. */
 	clearHover(): void {
-		this.#setHoveredIndex(null);
-	}
-
-	/** Move the band, and tell the fade so it can carry the old row out as the new one arrives. */
-	#setHoveredIndex(index: number | null): void {
-		this.#hoveredIndex = index;
-		this.#hoverFade?.set(index);
+		this.#hover.set(null);
 	}
 
 	/**
@@ -770,22 +761,12 @@ export class ModelBrowser implements Component {
 	 * someone else's frame and has no repaint of its own, so the clock has to come from above.
 	 */
 	setHoverMotion(options: HoverFadeOptions): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade(options);
-		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+		this.#hover.setMotion(options);
 	}
 
 	/** Settle the band so no timer outlives the host card that owns this list. */
 	disposeHoverMotion(): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = undefined;
-		this.#hoveredIndex = null;
-	}
-
-	/** Band strength for a row; without a fade the hovered row is at 1 and the rest at 0. */
-	#hoverStrength(index: number): number {
-		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
-		return index === this.#hoveredIndex ? 1 : 0;
+		this.#hover.dispose();
 	}
 
 	/** List index under a frame-local row, or null when off-list or on a disabled row. */
@@ -1002,7 +983,7 @@ export class ModelBrowser implements Component {
 						item,
 						width - barCols,
 						i === this.#selectedIndex,
-						this.#hoverStrength(i),
+						this.#hover.strength(i),
 						ctxWidth,
 						costWidth,
 						perfWidth,

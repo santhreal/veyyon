@@ -274,6 +274,7 @@ describe("a contract imports only a contract, and only its types", () => {
 	 * `@veyyon/tool -> @veyyon/model`: a tool result holds the content blocks a message holds.
 	 * `@veyyon/wire -> @veyyon/model`: every block, stop reason and usage a guest reads is a
 	 * `Pick` of the one the model contract owns, so the two cannot drift.
+	 * `@veyyon/wire -> @veyyon/view`: tool execution blocks carry canonical host-agnostic `ToolView` models.
 	 */
 	test("every contract-to-contract edge is one recorded here", () => {
 		const edges: string[] = [];
@@ -284,6 +285,7 @@ describe("a contract imports only a contract, and only its types", () => {
 			"@veyyon/session -> @veyyon/model",
 			"@veyyon/tool -> @veyyon/model",
 			"@veyyon/wire -> @veyyon/model",
+			"@veyyon/wire -> @veyyon/view",
 		]);
 	});
 });

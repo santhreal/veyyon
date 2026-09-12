@@ -29,7 +29,7 @@ redeclaring the union:
 ```ts
 declare module "@veyyon/session" {
 	interface CustomCompactionSessionEntries {
-		subagentSpawn: SubagentSpawnEntry;
+		agentSpawn: AgentSpawnEntry;
 	}
 	interface CustomAgentMessages {
 		notification: NotificationMessage;

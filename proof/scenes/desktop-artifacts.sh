@@ -69,7 +69,7 @@ def create_test_png(w=64, h=64, color=(0, 160, 255, 255)):
     png += struct.pack('>I', 0) + b'IEND' + iend_crc
     return png
 
-runtime_dir = Path(os.environ["SCENE_RUNTIME_DIR"])
+runtime_dir = Path(os.environ["TMPDIR"])
 runtime_dir.mkdir(parents=True, exist_ok=True)
 png_bytes = create_test_png(64, 64)
 

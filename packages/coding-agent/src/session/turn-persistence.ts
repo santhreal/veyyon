@@ -6,7 +6,7 @@
  * (`#sessionMessagesReferToSameTurn` + `#messageValueSignature`) that
  * reconstructed the branch path on every check (O(n²) `unshift`) and
  * `JSON.stringify`-compared the full message content on every pairwise hit.
- * Long-running sessions with many subagents fired this thousands of times per
+ * Long-running sessions with many agents fired this thousands of times per
  * minute and froze the TUI loop (see issue #3629). The persistence key already
  * encodes a stable logical identity — timestamp + role-specific discriminators
  * — so the structural compare is now the rare collision tiebreaker (e.g. two

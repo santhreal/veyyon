@@ -52,7 +52,7 @@ export type ViewTone =
 	 * A card that reports work done by a model states what the work cost, and the figure is neither
 	 * good news nor bad: `success` would read as an outcome and `dim` as detail nobody scans, which
 	 * is the opposite of how a reader uses it. A terminal has carried a colour of its own for this
-	 * since before a view existed -- the status line, the agent roster and the subagent wall all
+	 * since before a view existed -- the status line, the agent roster and the agent wall all
 	 * draw the same one -- and a host with no such colour draws the figure in its body text.
 	 */
 	| "cost"
@@ -105,13 +105,13 @@ export interface ViewSpan {
 	 */
 	captured?: boolean;
 	/**
-	 * A glyph the host resolves from its own registry, drawn INSTEAD of `text` and in the span's tone.
+	 * A glyph the host resolves from `UNICODE_SYMBOLS`, drawn INSTEAD of `text` and in the span's tone.
 	 *
 	 * A row-level `emblem` marks what a card IS; this marks one run inside a line, which is what a
 	 * finding's priority mark is: the same line carries the mark and the `[P1]` label beside it, and the
 	 * mark is decoration the label already states in words. So `text` is the fallback a host without
 	 * the glyph draws, and it may be empty, which is a tool saying the mark carries nothing the rest of
-	 * the line does not.
+	 * the line does not. A key no host has draws `text`, never the key.
 	 */
 	symbol?: string;
 	/**
@@ -175,6 +175,13 @@ export interface ViewSpan {
 	 * editor and every terminal that follows a link expects.
 	 */
 	fileLine?: number;
+	/**
+	 * An agent id this run names, which a host that knows about subagents can navigate to.
+	 *
+	 * A browser guest opens the subagent pane or transcript for this agent id via `ToolRenderHost.openAgent`.
+	 * A host that cannot navigate to subagents draws the text and nothing else.
+	 */
+	agentId?: string;
 	/**
 	 * The language of the source this run names, which a host may badge.
 	 *
@@ -818,6 +825,11 @@ export type LineToolView = StatusRowView | TextBlockView;
  * `frozen` is whether the card has left the surface's live region: a detached spawn the reader has
  * scrolled past, or a block the surface has sealed. Its content no longer updates, so a row that
  * would otherwise read as in-progress states itself as inert instead of claiming work is happening.
+ *
+ * `showResolvedModel` is whether the surface shows the model a spawned agent resolved to beside its
+ * name. The surface reads the setting that controls it and the view receives the answer, so a view
+ * built for a transcript export, where no setting store exists, states the same card with the badge
+ * off. Omitted means off.
  */
 export interface ToolViewContext {
 	expanded: boolean;
@@ -826,6 +838,7 @@ export interface ToolViewContext {
 	frame?: number;
 	hasResult?: boolean;
 	frozen?: boolean;
+	showResolvedModel?: boolean;
 }
 
 /**
@@ -845,3 +858,5 @@ export interface ToolViewRenderer<Args = unknown, Result = unknown> {
 	renderCall?: (args: Args, context: ToolViewContext) => ToolView;
 	renderResult?: (result: Result, context: ToolViewContext, args?: Args) => ToolView;
 }
+
+export * from "./symbols";

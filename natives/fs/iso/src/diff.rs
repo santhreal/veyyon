@@ -286,7 +286,14 @@ fn walk_diff_blocking(lower: &Path, merged: &Path) -> IsoResult<Diff> {
 		match lower_index.get(rel) {
 			None => files.push(plain_change(merged, rel, ChangeKind::Added, None)?),
 			Some(l_meta) => {
-				if metas_equal(l_meta, m_meta) {
+				if l_meta.is_symlink() && m_meta.is_symlink() {
+					if let (Ok(lt), Ok(mt)) =
+						(std::fs::read_link(lower.join(rel)), std::fs::read_link(merged.join(rel)))
+						&& lt == mt
+					{
+						continue;
+					}
+				} else if metas_equal(l_meta, m_meta) {
 					continue;
 				}
 				files.push(plain_change(merged, rel, ChangeKind::Modified, Some(lower))?);
@@ -304,6 +311,9 @@ fn walk_diff_blocking(lower: &Path, merged: &Path) -> IsoResult<Diff> {
 }
 
 fn metas_equal(a: &Metadata, b: &Metadata) -> bool {
+	if a.file_type() != b.file_type() {
+		return false;
+	}
 	if a.len() != b.len() {
 		return false;
 	}
@@ -359,6 +369,20 @@ fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<PathBuf, Metadata>) -> IsoRe
 	Ok(())
 }
 
+/// A symlink contributes its stored target, not the contents of its target
+/// file.
+fn read_entry_bytes(path: &Path) -> IsoResult<Vec<u8>> {
+	let meta = std::fs::symlink_metadata(path)
+		.map_err(|err| IsoError::other(format!("stat {}: {err}", path.display())))?;
+	if meta.is_symlink() {
+		std::fs::read_link(path)
+			.map(|target| target.into_os_string().into_encoded_bytes())
+			.map_err(|err| IsoError::other(format!("read_link {}: {err}", path.display())))
+	} else {
+		std::fs::read(path).map_err(|err| IsoError::other(format!("read {}: {err}", path.display())))
+	}
+}
+
 /// Build a [`FileChange`] for an entry observed by [`walk_diff_blocking`].
 ///
 /// `op == Modified` requires `peer_root = Some(lower)` so we can read the
@@ -369,9 +393,7 @@ fn plain_change(
 	op: ChangeKind,
 	peer_root: Option<&Path>,
 ) -> IsoResult<FileChange> {
-	let full = side.join(rel);
-	let primary = std::fs::read(&full)
-		.map_err(|err| IsoError::other(format!("read {}: {err}", full.display())))?;
+	let primary = read_entry_bytes(&side.join(rel))?;
 	if looks_binary(&primary) {
 		return Ok(FileChange { path: rel.to_path_buf(), op, diff: None });
 	}
@@ -385,9 +407,7 @@ fn plain_change(
 					rel.display()
 				))
 			})?;
-			let peer_full = peer.join(rel);
-			let peer_bytes = std::fs::read(&peer_full)
-				.map_err(|err| IsoError::other(format!("read {}: {err}", peer_full.display())))?;
+			let peer_bytes = read_entry_bytes(&peer.join(rel))?;
 			if looks_binary(&peer_bytes) {
 				return Ok(FileChange { path: rel.to_path_buf(), op, diff: None });
 			}

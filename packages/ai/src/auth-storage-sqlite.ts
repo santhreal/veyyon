@@ -919,17 +919,34 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	}
 
 	deleteAuthCredential(id: number, disabledCause: string): void {
-		try {
-			this.#deleteStmt.run(normalizeDisabledCause(disabledCause), id);
-		} catch (error) {
-			// This method returns void, so a swallowed failure told the caller the
-			// credential was disabled when it is still enabled and still in rotation.
-			// A key revoked upstream then keeps being retried on every request.
-			logger.warn("Auth credential could not be disabled; it stays in rotation", {
+		this.#disable(
+			this.#deleteStmt,
+			id,
+			disabledCause,
+			"Auth credential could not be disabled; it stays in rotation",
+			{
 				id,
-				disabledCause,
-				error: errorMessage(error),
-			});
+			},
+		);
+	}
+
+	/**
+	 * Soft-delete through `stmt`, bound to `(cause, target)`. The method is void, so a swallowed
+	 * failure would tell the caller the credential was disabled when it is still enabled and still in
+	 * rotation — a key revoked upstream keeps being retried on every request — so the failure is
+	 * reported with the target it names.
+	 */
+	#disable(
+		stmt: Statement,
+		target: number | string,
+		disabledCause: string,
+		warning: string,
+		details: Record<string, number | string>,
+	): void {
+		try {
+			stmt.run(normalizeDisabledCause(disabledCause), target);
+		} catch (error) {
+			logger.warn(warning, { ...details, disabledCause, error: errorMessage(error) });
 		}
 	}
 
@@ -960,17 +977,13 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		return result.changes === 1;
 	}
 	deleteAuthCredentialsForProvider(provider: string, disabledCause: string): void {
-		try {
-			this.#deleteByProviderStmt.run(normalizeDisabledCause(disabledCause), provider);
-		} catch (error) {
-			// Same masked outcome as deleteAuthCredential, for every credential the
-			// provider owns: the caller believes the provider was signed out.
-			logger.warn("Auth credentials for provider could not be disabled; they stay in rotation", {
-				provider,
-				disabledCause,
-				error: errorMessage(error),
-			});
-		}
+		this.#disable(
+			this.#deleteByProviderStmt,
+			provider,
+			disabledCause,
+			"Auth credentials for provider could not be disabled; they stay in rotation",
+			{ provider },
+		);
 	}
 
 	/**

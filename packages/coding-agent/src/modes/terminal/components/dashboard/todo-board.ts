@@ -88,7 +88,7 @@ export interface TodoBoardOptions {
 	 */
 	maxRows: number;
 	expanded: boolean;
-	/** Task contents a detached subagent is working on right now. */
+	/** Task contents a detached agent is working on right now. */
 	owned: ReadonlySet<string>;
 	/** Board frame, already divided down from the shared anchored clock. */
 	frame: number;
@@ -124,7 +124,7 @@ function workingMark(frame: number, animate: boolean): string {
  *
  * Every state is separated by its glyph before it is separated by colour, so the
  * row still reads in a low-contrast theme and in a capture that dropped every
- * SGR. A pending task a detached subagent is working on takes the accent, which
+ * SGR. A pending task a detached agent is working on takes the accent, which
  * is the only thing on the board that states someone else is on it.
  */
 function taskLine(task: TodoItem, options: TodoBoardOptions, width: number): string {

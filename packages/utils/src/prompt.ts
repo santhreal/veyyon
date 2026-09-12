@@ -586,6 +586,7 @@ export interface RenderOptions {
  * `prompt-variables.ts` for why the check draws the line there.
  */
 export function render(template: string, context: TemplateContext = {}, options: RenderOptions = {}): string {
+	if (!template.includes("{{")) return format(template, { renderPhase: "post-render" });
 	const resolved = context ?? {};
 	if (!options.allowMissing) assertPromptContext(template, resolved, options.label);
 	const compiled = compile(template);

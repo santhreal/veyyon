@@ -175,8 +175,8 @@ case "${SUPERVISED}" in
 esac
 
 # ─── The Drawer Its Own Chord Opens ──────────────────────────────────────────
-AT_REST="${SCENE_RUNTIME_DIR}/frame-compare/drawer-at-rest.png"
-mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+AT_REST="${TMPDIR}/frame-compare/drawer-at-rest.png"
+mkdir -p "${TMPDIR}/frame-compare"
 probe_frame "${AT_REST}"
 
 k "ctrl+j"

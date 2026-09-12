@@ -2,12 +2,21 @@
 export type EvalLanguage = "python" | "js" | "ruby" | "julia";
 
 import type { ImageContent } from "@veyyon/ai";
+import type { ToolSession } from "../tools";
 import type { OutputMeta } from "../tools/core/output-meta";
+import type { JsStatusEvent } from "./js/shared/types";
 
 /** Status event emitted by eval prelude helpers for TUI rendering. */
 export interface EvalStatusEvent {
 	op: string;
 	[key: string]: unknown;
+}
+
+/** Options shared by all host-side eval bridge handlers. */
+export interface EvalBridgeOptions {
+	session: ToolSession;
+	signal?: AbortSignal;
+	emitStatus?: (event: JsStatusEvent) => void;
 }
 
 /** Display output captured during eval execution across supported backends. */

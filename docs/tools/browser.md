@@ -44,7 +44,7 @@
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `action` | `"open" \| "close" \| "run"` | Yes | Dispatches to the open/close/run path. |
-| `name` | `string` | No | Tab id. Defaults to `"main"`. Tabs live in a process-global map, so the same name is reused across later calls and in-process subagents until closed. |
+| `name` | `string` | No | Tab id. Defaults to `"main"`. Tabs live in a process-global map, so the same name is reused across later calls and in-process agents until closed. |
 | `timeout` | `number` | No | Tool wall-clock timeout in seconds. Defaults to `30`; clamped to the browser tool range before execution. |
 
 ### `action: "open"`

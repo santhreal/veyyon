@@ -16,8 +16,6 @@ import type { Settings } from "../../../../config/settings";
 import { theme } from "../../../../theme/theme";
 import {
 	computeModalDims,
-	consumeModalChipHover,
-	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
 	planModalChrome,
@@ -33,6 +31,7 @@ import {
 	sortModelItems,
 } from "./model-browser";
 import type { ScopedModelItem } from "./model-hub";
+import { routeModalChrome } from "./select-list-mouse-routing";
 
 export interface ModelPickerCallbacks {
 	/** A model was chosen for a session-only switch. `selector` is `provider/id`. */
@@ -53,7 +52,7 @@ const BROWSER_FRAME_ROWS = 5;
 /** Minimum rows for the browser list window on short terminals. */
 const MIN_VISIBLE = 5;
 
-const STATUS_HINT = "Interactive model — role / subagent / compaction slots stay unchanged";
+const STATUS_HINT = "Interactive model — role / agent / compaction slots stay unchanged";
 /**
  * The list is only ever as new as the cached catalog. Opening the picker calls
  * `refresh("online-if-uncached")`, which answers from a cache that stays fresh
@@ -208,37 +207,27 @@ export class ModelPickerComponent implements Component {
 	}
 
 	#routeMouse(event: SgrMouseEvent): boolean {
-		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-			motion: event.motion,
-			leftClick: event.leftClick,
-		});
-		if (
-			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+		const consumed = routeModalChrome({
+			shellGeometry: this.#shellGeometry,
+			event,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			onHoverShortcut: id => {
 				this.#hoveredShortcutId = id;
 				this.#tui.requestRender();
-			})
-		) {
-			return true;
-		}
-		if (chrome.kind === "close" || chrome.kind === "outside") {
+			},
 			// The [x] and an outside click are hard closes regardless of query.
-			this.#onCancel();
-			return true;
-		}
-		if (chrome.kind === "shortcut" && chrome.id === "close") {
+			onCancel: () => this.#onCancel(),
 			// The esc chip performs exactly what its label promises: the same
 			// cancel ladder as the esc key (clear a live query, then close).
-			this.#browser.handleCancel();
-			return true;
-		}
-		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
-			this.#browser.handleInput("\n");
-			return true;
-		}
-		if (chrome.kind === "shortcut" && chrome.id === "refresh") {
-			this.#refreshCatalog();
-			return true;
-		}
+			onCloseChip: () => this.#browser.handleCancel(),
+			onConfirm: () => this.#browser.handleInput("\n"),
+			onShortcut: id => {
+				if (id !== "refresh") return false;
+				this.#refreshCatalog();
+				return true;
+			},
+		});
+		if (consumed) return true;
 		// The body is [status, ...browser, hint]: the browser owns the rows
 		// between the status line and the trailing hint.
 		const line = event.row - this.#browserRowStart;

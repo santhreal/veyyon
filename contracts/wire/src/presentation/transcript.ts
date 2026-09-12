@@ -8,6 +8,9 @@
  * whose shape a renderer would have to know the agent to interpret.
  */
 
+import type { ToolView } from "@veyyon/view";
+import type { BranchSummaryView, CompactionSummaryView } from "./summary";
+
 /** Stable identity of a block across updates. Assigned by the builder, opaque to the renderer. */
 export type BlockId = string;
 
@@ -22,14 +25,21 @@ export interface Attachment {
 	lineCount?: number;
 	/** Why the content was not included. Absent when it was. */
 	omittedReason?: "too-large" | "binary" | "not-replicated";
+	/** Raw base64 data for image payloads. */
+	data?: string;
+	/** MIME type for image payloads (e.g. image/png). */
+	mimeType?: string;
+	/** Original source URI or file link (e.g. file:///path/to/image.png). */
+	uri?: string;
 }
 
 /** One span of an assistant turn, in emission order. */
 export type AssistantSegment =
 	| { kind: "text"; text: string }
-	| { kind: "thinking"; text: string; redacted: boolean }
-	| { kind: "tool-call"; toolCallId: string; toolName: string; input: string }
-	| { kind: "image"; mimeType: string; altText: string };
+	| { kind: "thinking"; text: string; redacted: boolean; rawThinking?: string }
+	| { kind: "tool-call"; toolCallId: string; toolName: string; input?: string }
+	| { kind: "image"; mimeType: string; altText: string }
+	| { kind: "fallback" };
 
 /** Lifecycle of a tool call as the renderer sees it. */
 export type ToolStatus = "pending" | "running" | "succeeded" | "failed" | "aborted" | "rejected";
@@ -48,35 +58,127 @@ export interface TurnUsage {
 	costUsd?: number;
 }
 
-export interface UserMessageBlock {
+/** Display presentation of turn errors or retry recovery notes. */
+export type AssistantErrorPresentation =
+	| { kind: "none" }
+	| { kind: "full"; text: string; isError: true }
+	| { kind: "compact-recovered"; text: string; isError: false };
+
+/** Display data shared by user and visible developer messages. */
+export interface UserMessageView {
+	text: string;
+	synthetic?: boolean;
+	imageLinks?: readonly (string | undefined)[];
+}
+
+/** Display data for an assistant turn. */
+export interface AssistantMessageView {
+	segments: readonly AssistantSegment[];
+	model?: string;
+	stopReason?: TurnStopReason;
+	usage?: TurnUsage;
+	/** Pre-resolved presentation of turn errors or retry recovery notes. */
+	errorPresentation?: AssistantErrorPresentation;
+	/** Exact reported thinking/reasoning token count for live streaming indicator. */
+	reportedThinkingTokens?: number;
+	timestamp?: number;
+	provider?: string;
+	responseId?: string;
+}
+
+export interface UserMessageBlock extends UserMessageView {
 	kind: "user-message";
 	id: BlockId;
-	text: string;
 	attachments: readonly Attachment[];
 	timestamp: number;
 }
 
 /** A developer/system turn the operator can see (rules, injected instructions). */
-export interface DeveloperMessageBlock {
+export interface DeveloperMessageBlock extends UserMessageView {
 	kind: "developer-message";
 	id: BlockId;
-	text: string;
 	timestamp: number;
 }
 
-export interface AssistantMessageBlock {
+export interface AssistantMessageBlock extends AssistantMessageView {
 	kind: "assistant-message";
 	id: BlockId;
-	segments: readonly AssistantSegment[];
 	/** Model identity as displayed, e.g. `"anthropic/claude-sonnet-4"`. */
 	model: string;
 	stopReason: TurnStopReason;
-	usage?: TurnUsage;
-	/** Set when the turn ended in a provider or transport failure. */
-	errorMessage?: string;
 	/** True while the turn is still streaming. */
 	streaming: boolean;
 	timestamp: number;
+}
+
+export interface ToolExecutionImageItem {
+	data?: string;
+	mimeType?: string;
+}
+
+export interface ToolExecutionMultiFileItem {
+	path: string;
+	isError?: boolean;
+	view?: ToolView;
+	errorNotice?: string;
+}
+
+export interface ToolExecutionGenericDisplay {
+	icon: "pending" | "running" | "done" | "error";
+	argsPreview?: string;
+	outputText?: string;
+	isJson?: boolean;
+}
+
+export interface ToolExecutionPolicies {
+	mergeCallAndResult?: boolean;
+	callIsLiveWidget?: boolean;
+	inline?: boolean;
+	animatedPendingPreview?: boolean;
+	animatedPartialResult?: boolean;
+	forceFirstResultViewportRepaint?: boolean;
+	forceResultViewportRepaintOnSettle?: boolean;
+	backgroundTaskFrozen?: boolean;
+	displaceable?: "job" | "todo";
+	sealed?: boolean;
+}
+
+/** Display state of one entry in a grouped read card. */
+export interface ReadEntryView {
+	toolCallId: string;
+	path: string;
+	displayPaths?: string[];
+	linkPath?: string;
+	status: "pending" | "success" | "warning" | "notExecuted" | "error";
+	correctedFrom?: string;
+	contentText?: string;
+	conflictCount?: number;
+	codeStartLine?: number;
+	codeLineNumbers?: Array<number | null>;
+}
+
+export interface ToolExecutionDisplay {
+	toolLabel?: string;
+	readEntry?: ReadEntryView;
+	callView?: ToolView;
+	resultView?: ToolView;
+	multiFileViews?: readonly ToolExecutionMultiFileItem[];
+	remainingPendingFiles?: number;
+	notExecutedReason?: string;
+	neverRan?: boolean;
+	generic?: ToolExecutionGenericDisplay;
+	images?: readonly ToolExecutionImageItem[];
+	imageSourcePath?: string;
+	policies?: ToolExecutionPolicies;
+	failures?: Partial<
+		Record<
+			"call" | "result",
+			{
+				error: string;
+				fallbackText?: string;
+			}
+		>
+	>;
 }
 
 export interface ToolExecutionBlock {
@@ -93,6 +195,8 @@ export interface ToolExecutionBlock {
 	/** Wall-clock duration in milliseconds once the call finished. */
 	durationMs?: number;
 	timestamp: number;
+	/** Canonical neutral tool presentation state. */
+	display?: ToolExecutionDisplay;
 }
 
 export interface BashExecutionBlock {
@@ -116,6 +220,88 @@ export interface PythonExecutionBlock {
 	timestamp: number;
 }
 
+export interface AsyncResultJobDisplay {
+	jobId?: string;
+	type?: string;
+	label?: string;
+	durationMs?: number;
+}
+
+export interface AsyncResultCustomDisplay {
+	variant: "async-result";
+	jobs: readonly AsyncResultJobDisplay[];
+}
+
+export interface LateDiagnosticsFileDisplay {
+	path?: string;
+	summary?: string;
+	errored?: boolean;
+	messages?: readonly string[];
+}
+
+export interface LateDiagnosticsCustomDisplay {
+	variant: "late-diagnostics";
+	files: readonly LateDiagnosticsFileDisplay[];
+}
+
+export interface CollabPromptCustomDisplay {
+	variant: "collab-prompt";
+	from: string;
+	text: string;
+}
+
+export interface SkillPromptCustomDisplay {
+	variant: "skill-prompt";
+	name: string;
+	path?: string;
+	args?: string;
+	lineCount?: number;
+	promptBytes?: number;
+	text: string;
+}
+
+export interface IrcMessageCustomDisplay {
+	variant: "irc";
+	kind: "incoming" | "autoreply" | "relay";
+	from?: string;
+	to?: string;
+	body?: string;
+	replyTo?: string;
+	timestamp?: number;
+}
+
+export interface AdvisorNoteDisplay {
+	note: string;
+	severity?: "nit" | "concern" | "blocker";
+	advisor?: string;
+}
+export interface AdvisorCustomDisplay {
+	variant: "advisor";
+	notes: readonly AdvisorNoteDisplay[];
+}
+
+export interface BackgroundTanDispatchCustomDisplay {
+	variant: "background-tan";
+	jobId: string;
+	work?: string;
+	sessionFile?: string;
+}
+
+export interface HandoffSummaryCustomDisplay {
+	variant: "handoff";
+	summary: string;
+}
+
+export type CustomBlockDisplay =
+	| AsyncResultCustomDisplay
+	| LateDiagnosticsCustomDisplay
+	| CollabPromptCustomDisplay
+	| SkillPromptCustomDisplay
+	| IrcMessageCustomDisplay
+	| AdvisorCustomDisplay
+	| BackgroundTanDispatchCustomDisplay
+	| HandoffSummaryCustomDisplay;
+
 /** A host-defined message with no runtime meaning to the renderer beyond its text. */
 export interface CustomBlock {
 	kind: "custom";
@@ -126,6 +312,7 @@ export interface CustomBlock {
 	/** Presentation weight the host asked for. */
 	level: "info" | "warning" | "error";
 	timestamp: number;
+	display?: CustomBlockDisplay;
 }
 
 export interface HookBlock {
@@ -134,25 +321,17 @@ export interface HookBlock {
 	hookName: string;
 	text: string;
 	timestamp: number;
+	display?: CustomBlockDisplay;
+	level?: "info" | "warning" | "error";
 }
 
-export interface BranchSummaryBlock {
-	kind: "branch-summary";
+export interface BranchSummaryBlock extends BranchSummaryView {
 	id: BlockId;
-	summary: string;
-	/** Messages the branch replaced. */
-	replacedCount: number;
 	timestamp: number;
 }
 
-export interface CompactionSummaryBlock {
-	kind: "compaction-summary";
+export interface CompactionSummaryBlock extends CompactionSummaryView {
 	id: BlockId;
-	summary: string;
-	/** Messages compaction folded into the summary. */
-	replacedCount: number;
-	/** Tokens the compaction reclaimed, when measured. */
-	reclaimedTokens?: number;
 	timestamp: number;
 }
 

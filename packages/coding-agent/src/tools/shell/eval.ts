@@ -17,9 +17,9 @@ import type {
 import { formatExitCodeNotice } from "../../exec/exit-notice";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import { DEFAULT_MAX_BYTES, OutputSink, type OutputSummary, TailBuffer } from "../../session/streaming-output";
+import { type EnabledAgentCatalog, resolveEnabledAgents } from "../../task/agent-settings";
 import { discoverAgents } from "../../task/discovery";
 import { resolveSpawnPolicy } from "../../task/spawn-policy";
-import { type EnabledSubagentCatalog, resolveEnabledSubagents } from "../../task/subagent-settings";
 import type { AgentDefinition } from "../../task/types";
 import { webpExclusionForModel } from "../../utils/image-loading";
 import { formatDimensionNote, resizeImage } from "../../utils/image-resize";
@@ -380,7 +380,7 @@ export class EvalTool implements AgentTool<typeof evalSchema, EvalToolDetails> {
 	get description(): string {
 		if (!this.session) return getEvalToolDescription();
 		const backends = resolveEvalBackends(this.session);
-		const catalog = this.#enabledSubagents();
+		const catalog = this.#enabledAgents();
 		return getEvalToolDescription({
 			py: backends.python,
 			js: backends.js,
@@ -462,11 +462,11 @@ export class EvalTool implements AgentTool<typeof evalSchema, EvalToolDetails> {
 		return this.session ? enabledEvalLanguages(resolveEvalBackends(this.session)) : ["py", "js"];
 	}
 
-	#enabledSubagents(): EnabledSubagentCatalog {
+	#enabledAgents(): EnabledAgentCatalog {
 		if (!this.session) {
-			throw new ToolError("Eval tool requires a session to resolve enabled subagents");
+			throw new ToolError("Eval tool requires a session to resolve enabled agents");
 		}
-		return resolveEnabledSubagents({
+		return resolveEnabledAgents({
 			settings: this.session.settings,
 			agents: this.#discoveredAgents,
 			parentSpawns: this.session.getSessionSpawns?.() ?? "*",
@@ -774,6 +774,27 @@ export class EvalTool implements AgentTool<typeof evalSchema, EvalToolDetails> {
 					appendTail(foldedOutput);
 				}
 
+				const finishCell = async (
+					outputText: string,
+					isError: boolean,
+				): Promise<AgentToolResult<EvalToolDetails>> => {
+					const summaryForMeta = await summarizeFinal(foldedOutput, finalizeOutput);
+					const details: EvalToolDetails = {
+						language: languages[0],
+						languages,
+						cells: [cellResult],
+						jsonOutputs: jsonOutputs.length > 0 ? jsonOutputs : undefined,
+						statusEvents: statusEvents.length > 0 ? statusEvents : undefined,
+					};
+					if (isError) details.isError = true;
+					if (notice) details.notice = notice;
+
+					return toolResult(details)
+						.content([{ type: "text", text: outputText }, ...images])
+						.truncationFromSummary(summaryForMeta, { direction: "tail" })
+						.done();
+				};
+
 				if (result.cancelled) {
 					cellResult.status = "error";
 					pushUpdate();
@@ -812,23 +833,7 @@ export class EvalTool implements AgentTool<typeof evalSchema, EvalToolDetails> {
 					}
 
 					const errorMsg = result.output || "Command aborted";
-					const outputText = foldedOutput || errorMsg;
-
-					const summaryForMeta = await summarizeFinal(foldedOutput, finalizeOutput);
-					const details: EvalToolDetails = {
-						language: languages[0],
-						languages,
-						cells: [cellResult],
-						jsonOutputs: jsonOutputs.length > 0 ? jsonOutputs : undefined,
-						statusEvents: statusEvents.length > 0 ? statusEvents : undefined,
-						isError: true,
-					};
-					if (notice) details.notice = notice;
-
-					return toolResult(details)
-						.content([{ type: "text", text: outputText }, ...images])
-						.truncationFromSummary(summaryForMeta, { direction: "tail" })
-						.done();
+					return await finishCell(foldedOutput || errorMsg, true);
 				}
 
 				if (result.exitCode !== 0 && result.exitCode !== undefined) {
@@ -837,22 +842,7 @@ export class EvalTool implements AgentTool<typeof evalSchema, EvalToolDetails> {
 					const outputText = foldedOutput
 						? `${foldedOutput}\n\n${formatExitCodeNotice(result.exitCode)}`
 						: formatExitCodeNotice(result.exitCode);
-
-					const summaryForMeta = await summarizeFinal(foldedOutput, finalizeOutput);
-					const details: EvalToolDetails = {
-						language: languages[0],
-						languages,
-						cells: [cellResult],
-						jsonOutputs: jsonOutputs.length > 0 ? jsonOutputs : undefined,
-						statusEvents: statusEvents.length > 0 ? statusEvents : undefined,
-						isError: true,
-					};
-					if (notice) details.notice = notice;
-
-					return toolResult(details)
-						.content([{ type: "text", text: outputText }, ...images])
-						.truncationFromSummary(summaryForMeta, { direction: "tail" })
-						.done();
+					return await finishCell(outputText, true);
 				}
 
 				cellResult.status = "complete";
@@ -862,21 +852,7 @@ export class EvalTool implements AgentTool<typeof evalSchema, EvalToolDetails> {
 				const outputText =
 					foldedOutput ||
 					(hasImages ? `(displayed ${formatCount("image", images.length)}; no text output)` : "(no output)");
-				const summaryForMeta = await summarizeFinal(foldedOutput, finalizeOutput);
-
-				const details: EvalToolDetails = {
-					language: languages[0],
-					languages,
-					cells: [cellResult],
-					jsonOutputs: jsonOutputs.length > 0 ? jsonOutputs : undefined,
-					statusEvents: statusEvents.length > 0 ? statusEvents : undefined,
-				};
-				if (notice) details.notice = notice;
-
-				return toolResult(details)
-					.content([{ type: "text", text: outputText }, ...images])
-					.truncationFromSummary(summaryForMeta, { direction: "tail" })
-					.done();
+				return await finishCell(outputText, false);
 			} finally {
 				if (!outputDumped) {
 					try {

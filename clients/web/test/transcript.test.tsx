@@ -112,4 +112,46 @@ describe("Transcript live tool rendering", () => {
 
 		expect(html).toContain("thinking…");
 	});
+
+	it("renders a projected call view once: the tool name in the head, the title without that name, the description", () => {
+		const callWithDisplay: WireSessionEntry = {
+			type: "message",
+			id: "assistant-display-1",
+			parentId: null,
+			timestamp: "2026-07-09T00:00:00Z",
+			message: {
+				role: "assistant",
+				content: [
+					{
+						type: "toolCall",
+						id: "call-1",
+						name: "read",
+						arguments: { path: "src/main.ts" },
+						display: {
+							callView: {
+								kind: "statusRow",
+								title: "Read File",
+								description: "src/main.ts",
+							},
+						},
+					} as unknown as WireSessionEntry extends { message: { content: (infer C)[] } } ? C : never,
+				],
+				model: "test/model",
+				provider: "anthropic",
+				usage: assistantUsage(),
+				stopReason: "stop",
+				timestamp: 1,
+			},
+		};
+
+		const html = renderTranscript({
+			entries: [callWithDisplay],
+			working: false,
+		});
+
+		expect(countOccurrences(html, '<span class="tv-name">read</span>')).toBe(1);
+		expect(html).toContain('<span class="v-title tv-name">File</span>');
+		expect(html).not.toContain("Read File");
+		expect(html).toContain("src/main.ts");
+	});
 });

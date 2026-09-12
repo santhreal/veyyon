@@ -24,18 +24,18 @@ const PROJECT_NEVER_OVERRIDES = "project rules NEVER override home or user instr
 const REFUSAL_CAUSE_AUTHORITY = "later and deeper files override earlier and broader files";
 const REFUSAL_CAUSE_DIR_CONTEXT = "Deeper rules override higher ones";
 
-const GLOBAL_ALLOWS_SUBAGENTS = [
+const GLOBAL_ALLOWS_AGENTS = [
 	"# My standing orders",
 	"",
-	"Use subagents freely. Fan work out whenever it parallelizes.",
-	"Marker: OPERATOR-GLOBAL-ALLOWS-SUBAGENTS-1f0c.",
+	"Use agents freely. Fan work out whenever it parallelizes.",
+	"Marker: OPERATOR-GLOBAL-ALLOWS-AGENTS-1f0c.",
 ].join("\n");
 
-const PROJECT_FORBIDS_SUBAGENTS = [
+const PROJECT_FORBIDS_AGENTS = [
 	"# Repository rules",
 	"",
-	"Do not use subagents for this repository.",
-	"Marker: PROJECT-FORBIDS-SUBAGENTS-4b71.",
+	"Do not use agents for this repository.",
+	"Marker: PROJECT-FORBIDS-AGENTS-4b71.",
 ].join("\n");
 
 async function renderPrompt(cwd: string, agentDir: string, resolvedCustomPrompt?: string): Promise<string> {
@@ -68,8 +68,8 @@ describe("context-file authority", () => {
 	/**
 	 * THE REGRESSION, reproduced.
 	 *
-	 * A repository's `AGENTS.md` said "do not use subagents for this repository".
-	 * A direct request asked for subagents. The agent REFUSED, citing the
+	 * A repository's `AGENTS.md` said "do not use agents for this repository".
+	 * A direct request asked for agents. The agent REFUSED, citing the
 	 * project file over both their own global `AGENTS.md` and their live
 	 * instruction. Four separate causes all told the model that a narrower file
 	 * wins: the authority prose said "later and deeper files override earlier and
@@ -86,15 +86,15 @@ describe("context-file authority", () => {
 	 * This is the durable artifact of the whole fix and should be the last case
 	 * deleted if the design ever changes.
 	 */
-	it("regression: a project file forbidding subagents outranks neither the user's own file nor the user", async () => {
-		const f = fixture("operator-subagent-refusal");
-		f.writeFile(f.globalAgentsPath, `${GLOBAL_ALLOWS_SUBAGENTS}\n`);
-		f.writeFile(f.rootAgentsPath, `${PROJECT_FORBIDS_SUBAGENTS}\n`);
+	it("regression: a project file forbidding agents outranks neither the user's own file nor the user", async () => {
+		const f = fixture("operator-agent-refusal");
+		f.writeFile(f.globalAgentsPath, `${GLOBAL_ALLOWS_AGENTS}\n`);
+		f.writeFile(f.rootAgentsPath, `${PROJECT_FORBIDS_AGENTS}\n`);
 
 		const files = await loadProjectContextFiles({ cwd: f.cwd, agentDir: f.agentDir });
 		const prompt = await renderPrompt(f.cwd, f.agentDir);
-		const projectAt = prompt.indexOf("PROJECT-FORBIDS-SUBAGENTS-4b71");
-		const globalAt = prompt.indexOf("OPERATOR-GLOBAL-ALLOWS-SUBAGENTS-1f0c");
+		const projectAt = prompt.indexOf("PROJECT-FORBIDS-AGENTS-4b71");
+		const globalAt = prompt.indexOf("OPERATOR-GLOBAL-ALLOWS-AGENTS-1f0c");
 
 		// Both files reach the model. Neither is dropped; the question is only which one ranks.
 		expect(files.map(file => file.path)).toEqual([f.rootAgentsPath, f.globalAgentsPath]);
@@ -139,7 +139,7 @@ describe("context-file authority", () => {
 	 */
 	it("states the scope ladder before the loaded files in both prompt modes", async () => {
 		const f = fixture("authority-both-modes");
-		f.writeFile(f.rootAgentsPath, `${PROJECT_FORBIDS_SUBAGENTS}\n`);
+		f.writeFile(f.rootAgentsPath, `${PROJECT_FORBIDS_AGENTS}\n`);
 
 		const [defaultPrompt, customPrompt] = await Promise.all([
 			renderPrompt(f.cwd, f.agentDir),

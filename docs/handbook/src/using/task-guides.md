@@ -174,8 +174,8 @@ task of the phases it draws, not an unbounded list — an anchored region that o
 cannot be scrolled away from.
 
 Each row's glyph is its state, before any colour: `□` waiting, a breathing cell in flight, `▪` done,
-`∎` abandoned. A task a detached subagent picked up breathes in that agent's own accent and names
-the agent at the right, which is the same hue its lane carries in the `Subagents` block. Light
+`∎` abandoned. A task a detached agent picked up breathes in that agent's own accent and names
+the agent at the right, which is the same hue its lane carries in the `Agents` block. Light
 travels down the rail while anything on the board is in flight and the rail is flat while nothing
 is, so a board waiting on you is distinguishable from a board being worked. A task closing sweeps a
 strike across its text, exhales its glyph and cools from green to grey; when the last task closes,

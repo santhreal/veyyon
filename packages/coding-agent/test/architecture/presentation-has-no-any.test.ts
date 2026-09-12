@@ -26,12 +26,7 @@ const DIRECTORIES = [repoPath("contracts/wire/src/presentation"), repoPath("pack
  * tree predates it and carries its own `any`s; those are not the boundary this
  * rule protects, and the boundary is what a browser client is written from.
  */
-const TERMINAL_CONTRACT_MODULES = [
-	repoPath("packages/coding-agent/src/modes/terminal/driver.ts"),
-	repoPath("packages/coding-agent/src/modes/terminal/block-rows.ts"),
-	repoPath("packages/coding-agent/src/modes/terminal/chrome-rows.ts"),
-	repoPath("packages/coding-agent/src/modes/terminal/theme-ansi.ts"),
-];
+const TERMINAL_CONTRACT_MODULES = [repoPath("packages/coding-agent/src/modes/terminal/driver.ts")];
 
 /**
  * `any` in a type position. Matches the annotation forms — `: any`, `as any`,

@@ -36,7 +36,7 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 
-DB_PATH = Path.home() / ".veyyon" / "stats.db"
+from common import DB_PATH, smooth_nan, thousands
 OUT_DIR = Path(__file__).resolve().parent / "out"
 DAY_MS = 86_400_000
 
@@ -184,27 +184,6 @@ def daily_percentile(
     )
     return dates, pct
 
-
-def smooth_nan(y: np.ndarray, w: int) -> np.ndarray:
-    if w <= 1 or y.size < w:
-        return y
-    mask = np.isfinite(y).astype(float)
-    yf = np.where(mask > 0, y, 0.0)
-    kernel = np.ones(w, dtype=float)
-    num = np.convolve(yf, kernel, mode="same")
-    den = np.convolve(mask, kernel, mode="same")
-    with np.errstate(divide="ignore", invalid="ignore"):
-        return np.where(den > 0, num / den, np.nan)
-
-
-# --------------------------------------------------------------------------- #
-# Plot helpers
-
-
-def thousands(x: float, _p=0) -> str:
-    if x >= 1000:
-        return f"{x / 1000:.1f}k"
-    return f"{x:.0f}"
 
 
 def style_time(ax: plt.Axes, deploy: datetime) -> None:

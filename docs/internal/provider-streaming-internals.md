@@ -99,6 +99,20 @@ Tool-call argument streaming:
 - implementation emits one synthetic `toolcall_delta` containing `JSON.stringify(arguments)`
 - no partial JSON parser needed for Google in this path
 
+## Protobuf protocol regeneration
+
+Cursor and Devin protocol inputs are in `packages/ai/src/providers/cursor/proto/`
+and `packages/ai/src/providers/devin/proto/`. Install the workspace dependencies,
+Buf CLI and Node 20 or later. Run this command from the provider's `proto/` directory:
+
+```sh
+buf generate --template buf.gen.yaml
+```
+
+The configurations invoke the workspace `@bufbuild/protoc-gen-es` executable through
+Node. Generated TypeScript is written to `packages/catalog/src/discovery/cursor-gen/`
+or `packages/catalog/src/discovery/devin-gen/`.
+
 ## Partial tool-call JSON accumulation and recovery
 
 Shared behavior for Anthropic/OpenAI Responses uses `parseStreamingJson()` / `parseStreamingJsonThrottled()` (`packages/utils/src/json-parse.ts`):
@@ -217,4 +231,4 @@ Provider-specific (not fully abstracted):
 - [`../../agent/src/agent-loop.ts`](../../packages/agent/src/agent-loop.ts): provider stream consumption and `message_update` bridging.
 - [`../src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts): session-level handling of streaming updates, abort, retry, and persistence.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `504c88b39f` on 2026-09-11.*

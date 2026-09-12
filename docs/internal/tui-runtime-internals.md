@@ -34,13 +34,13 @@ Boundary rule: the TUI engine is message-agnostic. It only knows `Component.rend
 - `chatContainer` (a `TranscriptContainer`)
 - `pendingMessagesContainer`
 - `todoContainer`
-- `subagentContainer`
+- `agentContainer`
 - `btwContainer`
 - `omfgContainer`
 - `errorBannerContainer`
 - `modelCycleContainer` (ctrl+p model-role cycle chip track)
 - a bottom-anchor fill spacer (sinks the status + composer block to the viewport bottom on the home screen)
-- `statusContainer` (transient loaders; sits below the sticky todo/subagent HUDs, above the editor)
+- `statusContainer` (transient loaders; sits below the sticky todo/agent HUDs, above the editor)
 - `statusLine` (hook statuses only; quiet status renders around the composer)
 - `hookWidgetContainerAbove`
 - the location line and composer hairline
@@ -50,6 +50,42 @@ Boundary rule: the TUI engine is message-agnostic. It only knows `Component.rend
 
 (All live containers except `chatContainer` and the plain hook/editor `Container`s are `AnchoredLiveContainer`s.) `init()` wires the tree in that order after any startup warnings/welcome/changelog, focuses the editor, registers input handlers via `InputController`, starts TUI, pushes terminal title state, updates the editor border, and requests a forced render.
 A forced render (`requestRender(true)`) queues a viewport repaint or explicit session replacement; it does **not** throw away previous-line history by default.
+
+### Presentation access
+
+`InteractiveMode.presentation` implements `PresentationContext` on the existing TUI,
+editor, transcript builder and status component. Transcript patches retain fields
+omitted from the patch. Removing a block already committed to native scrollback has
+no effect.
+
+`clearTranscript()` and `setTranscriptBlocks()` dispose removed components without
+clearing completed-call history. A session-history rebuild resets that history.
+A read group detached by a reset is not reused.
+
+An explicit tool display replaces the card's local producer subscription. Expansion
+and sealing retain that display. A subsequent raw tool update initializes a producer
+for expanded output.
+
+Standalone drivers render individual read cards through `ChatTranscriptBuilder`
+with `groupReadEntries: false`; adopted interactive surfaces render grouped reads.
+
+An adopted `TerminalPresentationDriver` attaches input notifications with `start()`
+and detaches them with `stop()`; the interactive mode starts and stops the engine.
+Stopping a standalone driver releases its card animation clocks even when the
+engine is not running.
+Standalone drivers start and stop their own engine. Adopted drivers leave interrupt,
+exit and scroll gestures to the interactive controller, except cancellation of a
+driver-created dialog.
+
+Input notifications use a subscription snapshot in registration order. A subscriber
+exception is logged without interrupting delivery to the remaining subscribers;
+subscription changes take effect on the next event.
+
+`setEditorComponent()` synchronizes the presentation callbacks after replacing the
+editor. Engine and editor access uses the current host objects. `setStatusLine()`
+updates the displayed snapshot without replacing the local status capabilities or
+activity clock. `StatusLineComponent.setSource()` resumes reads from the selected
+source.
 
 ## Terminal lifecycle and stdin normalization
 
@@ -232,4 +268,4 @@ Throttled/debounced paths:
 
 The runtime therefore mixes event-driven state transitions with bounded render cadence to keep interactivity responsive without repaint storms.
 
-*Verified against `9c904aa2db` on 2026-09-05.*
+*Verified against `504c88b39f` on 2026-09-11.*

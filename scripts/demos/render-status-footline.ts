@@ -25,86 +25,31 @@
 import { StatusLineComponent } from "../../packages/coding-agent/src/modes/terminal/components/status-line/component";
 import { STATUS_LINE_PRESETS } from "../../packages/coding-agent/src/modes/terminal/components/status-line/presets";
 import type { StatusLinePreset } from "../../packages/coding-agent/src/modes/terminal/components/status-line/types";
-import type { AgentSession } from "../../packages/coding-agent/src/session/agent-session";
 import { theme } from "../../packages/coding-agent/src/theme/theme";
-import { flag, initRender, renderWidth } from "./render-args";
-
-const themeName = flag("theme", "titanium");
-const width = renderWidth();
-await initRender(themeName, { settings: true });
-
-/** A session with every value the footline can read, all of them fixed. */
-function stubSession(): AgentSession {
-	const usage = {
-		input: 12_000,
-		output: 3_400,
-		cacheRead: 48_000,
-		cacheWrite: 1_200,
-		totalTokens: 64_600,
-		orchestrationInput: 0,
-		orchestrationOutput: 0,
-		orchestrationCacheRead: 0,
-		premiumRequests: 2,
-		cost: 0.42,
-		tokensPerSecond: 58.4,
-	};
-	return {
-		messages: [],
-		model: { contextWindow: 200_000, id: "gpt-5", name: "gpt-5", provider: "openai" },
-		contextUsageRevision: 0,
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		getContextUsage: () => ({ tokens: 84_000, contextWindow: 200_000 }),
-		state: { messages: [], model: { contextWindow: 200_000, id: "gpt-5", name: "gpt-5" } },
-		sessionManager: {
-			getUsageStatistics: () => usage,
-			getSessionName: () => "parser-rewrite",
-			getCwd: () => "/home/you/code/veyyon",
-		},
-		getPrewalkState: () => undefined,
-		getAsyncJobSnapshot: () => undefined,
-		settings: { getGroup: () => ({ enabled: false }) },
-		isAdvisorActive: () => false,
-		isApprovalBypassed: () => false,
-		isFastModeActive: () => false,
-		configuredThinkingLevel: () => "medium",
-		modelRegistry: { isUsingOAuth: () => false },
-	} as unknown as AgentSession;
-}
+import { createStubStatusSession, renderDemo } from "./render-args";
 
 const presets = Object.keys(STATUS_LINE_PRESETS) as StatusLinePreset[];
-const lines: string[] = [];
-for (const preset of presets) {
-	const statusLine = new StatusLineComponent(stubSession());
-	// The preset arrives through settings, which is how the app selects it too, so
-	// this demo cannot drift from what a user with `statusLine.preset` set would see.
-	statusLine.updateSettings({ preset });
-	const rendered = statusLine.renderQuietLine(width);
-	// The label goes on its own row: putting it in front of the line would shift every
-	// segment and make the presets incomparable, which is the one thing to avoid here.
-	lines.push(theme.fg("dim", `${preset}:`));
-	lines.push(rendered ?? theme.fg("error", "(no footline rendered)"));
-	lines.push("");
-}
 
-// The FOOTLINE while the view is proxied onto an agent — the one place that says you are inside
-// one and that Esc leaves it. Rendered beside the unproxied row of the same preset, because the
-// question a proof has to answer is not "is the hint there" but "does it read as an announcement
-// rather than as one more segment".
-//
-// This used to render `getTopBorder`, a method with zero production callers: the composer is
-// borderless, so the badge was being proved on a surface nobody could see.
-lines.push(theme.fg("dim", "footline, viewing an agent:"));
-{
-	const statusLine = new StatusLineComponent(stubSession());
-	statusLine.setSession(stubSession(), "designer-3");
-	lines.push(statusLine.renderQuietLine(width) ?? theme.fg("error", "(no footline rendered)"));
-}
-lines.push("");
-
-process.stdout.write(`${lines.join("\n")}\n`);
-console.error(
-	"note: the `hostname` (full, nerd), `profile` and `git` segments read this machine, so " +
-		"those parts differ between hosts and profiles; everything else comes from the fixed stub.",
+await renderDemo(
+	({ width }) => {
+		const lines: string[] = [];
+		for (const preset of presets) {
+			const statusLine = new StatusLineComponent(createStubStatusSession());
+			statusLine.updateSettings({ preset });
+			lines.push(theme.fg("dim", `${preset}:`));
+			lines.push(statusLine.renderQuietLine(width) ?? theme.fg("error", "(no footline rendered)"));
+			lines.push("");
+		}
+		lines.push(theme.fg("dim", "footline, viewing an agent:"));
+		const statusLine = new StatusLineComponent(createStubStatusSession());
+		statusLine.setSession(createStubStatusSession(), "designer-3");
+		lines.push(statusLine.renderQuietLine(width) ?? theme.fg("error", "(no footline rendered)"));
+		lines.push("");
+		console.error(
+			"note: the `hostname` (full, nerd), `profile` and `git` segments read this machine, so " +
+				"those parts differ between hosts and profiles; everything else comes from the fixed stub.",
+		);
+		return lines;
+	},
+	{ settings: true },
 );

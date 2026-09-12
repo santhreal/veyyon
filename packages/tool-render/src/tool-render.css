@@ -637,3 +637,177 @@
 		}
 	}
 }
+/* ---- Canonical @veyyon/view styling ---- */
+
+.v-row {
+	display: flex;
+	align-items: baseline;
+	gap: 0.35rem;
+	flex-wrap: wrap;
+}
+
+.v-title {
+	font-weight: 600;
+}
+
+.v-description {
+	color: var(--tv-fg);
+}
+
+.v-fits {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.v-trailing {
+	color: var(--tv-faint);
+}
+
+.v-meta {
+	display: inline-flex;
+	gap: 0.35rem;
+	flex-wrap: wrap;
+}
+
+.v-meta-entry {
+	display: inline-flex;
+}
+
+.v-chip {
+	font-size: 0.75rem;
+	padding: 0.1rem 0.35rem;
+	border-radius: 3px;
+}
+
+.v-framed {
+	border: 1px solid var(--tv-border);
+	border-radius: 4px;
+	padding: 0.4rem 0.6rem;
+	margin: 0.3rem 0;
+	background: color-mix(in oklch, var(--tv-fg) 2%, transparent);
+}
+
+.v-headed {
+	margin: 0.3rem 0;
+}
+
+.v-section {
+	margin: 0.3rem 0;
+}
+
+.v-section[data-separator="true"] {
+	border-top: 1px solid var(--tv-border);
+	padding-top: 0.3rem;
+}
+
+.v-section-label {
+	font-size: 0.75rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	color: var(--tv-faint);
+	margin: 0.2rem 0;
+}
+
+.v-code, .v-diff, .v-tree {
+	list-style: none;
+	margin: 0.2rem 0;
+	padding: 0;
+	font-family: inherit;
+}
+
+.v-code-line, .v-diff-line {
+	display: flex;
+	gap: 0.5rem;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.v-diff-added {
+	color: var(--tv-ok);
+	background: color-mix(in oklch, var(--tv-ok) 8%, transparent);
+}
+
+.v-diff-removed {
+	color: var(--tv-err);
+	background: color-mix(in oklch, var(--tv-err) 8%, transparent);
+}
+
+.v-diff-gap {
+	color: var(--tv-faint);
+}
+
+.v-tree-node {
+	margin: 0.15rem 0;
+}
+
+.v-item {
+	margin: 0.15rem 0;
+}
+
+.v-notice {
+	padding: 0.35rem 0.5rem;
+	border-radius: 4px;
+	border: 1px solid var(--tv-border);
+	margin: 0.25rem 0;
+}
+
+.v-tone-title {
+	color: var(--tv-fg);
+	font-weight: 600;
+}
+
+.v-tone-accent {
+	color: var(--tv-accent);
+}
+
+.v-tone-success {
+	color: var(--tv-ok);
+}
+
+.v-tone-error {
+	color: var(--tv-err);
+}
+
+.v-tone-warning {
+	color: var(--tv-warn);
+}
+
+.v-tone-muted {
+	color: var(--tv-muted);
+}
+
+.v-tone-dim {
+	color: var(--tv-faint);
+}
+
+.v-tone-diff-added {
+	color: var(--tv-ok);
+}
+
+.v-tone-diff-removed {
+	color: var(--tv-err);
+}
+
+.tv-multi-files {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+}
+
+.tv-multi-file-item {
+	border-left: 2px solid var(--tv-border);
+	padding-left: 0.5rem;
+}
+
+.tv-multi-file-header {
+	margin-bottom: 0.2rem;
+}
+
+.tv-read-summary {
+	display: inline-flex;
+	gap: 0.35rem;
+	align-items: baseline;
+	flex-wrap: wrap;
+}
+

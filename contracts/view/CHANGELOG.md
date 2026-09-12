@@ -30,3 +30,11 @@
 - `ViewSpan.badge` states that one run is a short label the host sets off in its own bracket grammar, the line-level twin of `StatusRowView.badge`, so a row that marks what kind of thing it names leaves the brackets to the host.
 - `ViewSpan.live` states that the thing a run names is still in flight, so a host with a clock may animate that run alone while the settled columns beside it stand still, and a host with no clock draws it in its tone.
 - `StatusRowView.descriptionFits` states that a row must keep its description whole by shortening it inside itself, so a card whose description is the file it acted on keeps both the path and the counts after it, and a card whose description is prose is left for the host to clip at its own edge.
+- `ViewSpan.agentId` states a semantic agent identifier for subagent drill-down navigation in hosts that support it.
+- `UNICODE_SYMBOLS` and `SymbolKey` are the one table of glyphs every host draws a symbol, emblem or status mark from, moved here from the terminal's theme so the GUI and the web renderers draw the same `✎` for `tool.edit`.
+- `ToolViewContext.showResolvedModel` states whether the surface shows the model a spawned agent resolved to beside its name; the surface reads the setting and the view receives the answer, so a transcript export with no setting store draws the same card with the badge off.
+
+### Changed
+
+- Doc comments refer to the spawned-agent wall as the agent wall. No behavior change.
+- `ViewSpan.symbol` names a key of `UNICODE_SYMBOLS`; a key no host has draws the span's `text`, never the key.

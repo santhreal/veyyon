@@ -21,7 +21,7 @@ import type {
 	ViewTone,
 } from "@veyyon/view";
 import { isTodoListDone, TODO_DONE_SUMMARY } from "@veyyon/wire";
-import { sanitizeErrorText } from "../core/render-utils";
+import { errorSection, extractResultText, metaLines, type ToolViewResult } from "../core/render-utils";
 import {
 	boundedTodoPreviewText,
 	formatPhaseDisplayName,
@@ -64,11 +64,7 @@ function taskMark(status: TodoItem["status"]): { symbol: string; tone: ViewTone 
 }
 
 /** The half of a tool result a todo card reads. */
-export interface TodoViewResult {
-	content?: Array<{ type: string; text?: string }>;
-	details?: TodoToolDetails;
-	isError?: boolean;
-}
+export interface TodoViewResult extends Partial<ToolViewResult<TodoToolDetails>> {}
 
 /**
  * One task as the line a host draws for it: the state's mark, then the task's own words.
@@ -130,7 +126,7 @@ function callRow(args: TodoRenderArgs): StatusRowView {
 	if (opsList.length > visible.length) {
 		meta.push(`… ${formatCount("operation", opsList.length - visible.length)} more`);
 	}
-	return { kind: "statusRow", status: "pending", title: "Todo", meta: meta.map(text => [{ text }]) };
+	return { kind: "statusRow", status: "pending", title: "Todo", meta: metaLines(meta) };
 }
 
 /** The row a settled card is titled by: the tool's own emblem and how many tasks the board holds. */
@@ -205,12 +201,12 @@ function boardSections(
 
 /** The card a failed write shows, which is the failure the tool reported and nothing else. */
 function failureCard(result: TodoViewResult): FramedBlockView {
-	const text = result.content?.find(part => part.type === "text")?.text ?? "Todo operation failed";
+	const text = extractResultText(result.content, "Todo operation failed");
 	return {
 		kind: "framedBlock",
 		header: { kind: "statusRow", status: "error", title: "Todo" },
 		state: "error",
-		sections: [{ lines: [[{ text: "  " }, { text: sanitizeErrorText(text), tone: "error" }]] }],
+		sections: [errorSection(text)],
 	};
 }
 
@@ -242,9 +238,8 @@ export const todoToolView: Required<ToolViewRenderer<TodoRenderArgs, TodoViewRes
 		const phases = (result.details?.phases ?? []).filter(phase => phase.tasks.length > 0);
 		if (isTodoListDone(phases)) return doneLine(phases);
 
-		const tasks = phases.flatMap(phase => phase.tasks);
-		if (tasks.length === 0) {
-			const text = result.content?.find(part => part.type === "text")?.text ?? "No todos";
+		if (phases.length === 0) {
+			const text = extractResultText(result.content, "No todos");
 			return {
 				kind: "headedBlock",
 				header: settledRow(0),
@@ -256,7 +251,7 @@ export const todoToolView: Required<ToolViewRenderer<TodoRenderArgs, TodoViewRes
 
 		return {
 			kind: "framedBlock",
-			header: settledRow(tasks.length),
+			header: settledRow(phases.reduce((count, phase) => count + phase.tasks.length, 0)),
 			state: context.partial ? "pending" : "success",
 			// The board is a record the tool keeps; the write's outcome is not a verdict on it.
 			contents: "listing",

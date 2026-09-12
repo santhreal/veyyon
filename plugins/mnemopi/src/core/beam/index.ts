@@ -167,20 +167,7 @@ export class BeamMemory implements BeamMemoryState {
 		this.db = openDatabase(this.dbPath);
 		initBeam(this.db);
 		autoMigrateAnnotations(this.db, this.dbPath);
-		if (options.annotations !== undefined) {
-			this.annotations = options.annotations;
-		} else {
-			const annotationStore = new AnnotationStore({ db: this.db, dbPath: this.dbPath });
-			this.annotations = {
-				add: (memoryId, kind, value, writeOptions) =>
-					annotationStore.add(memoryId, kind, value, writeOptions?.source, writeOptions?.confidence),
-				addMany: (memoryId, kind, values, writeOptions) =>
-					annotationStore.addMany(memoryId, kind, values, writeOptions?.source, writeOptions?.confidence),
-				queryByMemory: (memoryId, kind) => annotationStore.queryByMemory(memoryId, kind),
-				queryByKind: (kind, value) => annotationStore.queryByKind(kind, { value }),
-				getDistinctValues: kind => annotationStore.getDistinctValues(kind),
-			};
-		}
+		this.annotations = options.annotations ?? new AnnotationStore({ db: this.db, dbPath: this.dbPath });
 		this.triples = options.triples ?? null;
 		this.episodicGraph = new EpisodicGraph({ db: this.db, dbPath: this.dbPath });
 		this.veracityConsolidator = null;

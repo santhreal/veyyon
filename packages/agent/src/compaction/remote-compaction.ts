@@ -44,7 +44,7 @@ import {
 	REMOTE_COMPACTION_PRESERVE_KEY,
 	type RemoteCompactionPreserveData,
 } from "./remote-compaction-entry";
-import { REMOTE_COMPACTION_TIMEOUT_MS } from "./remote-summarizer";
+import { SERVER_COMPACTION_TIMEOUT_MS } from "./remote-summarizer";
 
 export type {
 	ServerCompactionRequest,
@@ -145,7 +145,7 @@ export async function compactWithProvider(
 				apiKey: key,
 				signal,
 				fetch: options?.fetch,
-				timeoutMs: REMOTE_COMPACTION_TIMEOUT_MS,
+				timeoutMs: SERVER_COMPACTION_TIMEOUT_MS,
 				sanitizeErrorText: text => options?.obfuscateProviderText?.(text) ?? text,
 			}),
 		{ signal, missingKeyMessage: "Server-side compaction credentials unavailable" },

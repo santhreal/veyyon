@@ -11,6 +11,15 @@ import type { Attachment } from "./transcript";
 /** What the composer is currently accepting. */
 export type ComposerMode = "input" | "disabled" | "awaiting-approval" | "shell" | "search";
 
+/** All composer modes as a readonly tuple. */
+export const COMPOSER_MODES = [
+	"input",
+	"disabled",
+	"awaiting-approval",
+	"shell",
+	"search",
+] as const satisfies readonly ComposerMode[];
+
 /** One completion candidate offered under the cursor. */
 export interface CompletionCandidate {
 	/** Text inserted when the candidate is accepted. */

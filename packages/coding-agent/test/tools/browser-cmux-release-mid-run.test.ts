@@ -7,7 +7,7 @@
  * on the tab so `releaseTab` could signal in-flight runs. Zero consumers
  * meant that `reject(...)` surfaced as an unhandled rejection and the
  * top-level `unhandledRejection` handler tore the whole process down
- * (killing sibling tabs and subagents).
+ * (killing sibling tabs and agents).
  *
  * The fix in `runInTabWithSnapshot` makes both backends await the same
  * `promise` (so `pending.reject` always has an attached handler AND the

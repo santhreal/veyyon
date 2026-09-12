@@ -50,15 +50,8 @@ export interface CustomMessage<T = unknown> {
 }
 
 /** Legacy hook message type (pre-extensions). Kept for session migration. */
-export interface HookMessage<T = unknown> {
+export interface HookMessage<T = unknown> extends Omit<CustomMessage<T>, "role"> {
 	role: "hookMessage";
-	customType: string;
-	content: string | (TextContent | ImageContent | VideoContent)[];
-	display: boolean;
-	details?: T;
-	/** Who initiated this message for billing/attribution semantics. */
-	attribution?: MessageAttribution;
-	timestamp: number;
 }
 
 export interface BranchSummaryMessage {

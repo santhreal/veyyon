@@ -2915,11 +2915,7 @@ const streamAnthropicOnce = (
 				abortTracker: activeAbortTracker,
 				rawRequestDump: materializeDumpBody(rawRequestDump, anthropicWireBodyJson),
 			});
-			output.stopReason = result.stopReason;
-			output.errorStatus = result.status;
-
-			output.errorId = result.id;
-			output.errorMessage = maybeAddReplayUnsignedThinkingHint(model, result.message);
+			AIError.applyFinalizeResult(output, result, maybeAddReplayUnsignedThinkingHint(model, result.message));
 			output.duration = performance.now() - startTime;
 			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
 			stream.push({ type: "error", reason: output.stopReason, error: output });
@@ -3301,7 +3297,7 @@ function applyPromptCaching(params: MessageCreateParamsStreaming, cacheControl?:
 		}
 
 		// Veyyon's first own system block is the stable harness shared across
-		// parent and subagent prompts. Anchor it before project, assignment, and
+		// parent and agent prompts. Anchor it before project, assignment, and
 		// Argot blocks so those changing suffixes cannot invalidate the shared
 		// prefix. OAuth prepends billing and Claude Code instruction blocks, so
 		// the harness sits at index 2 there and index 0 otherwise.

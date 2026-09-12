@@ -4,11 +4,11 @@ import { AgentRegistry, type RegistryEvent } from "@veyyon/coding-agent/registry
 /**
  * THE BUG THIS LOCKS OUT.
  *
- * A subagent stopped at an approval prompt is `running`, because it is mid-turn, and is
- * therefore indistinguishable by status from a subagent grinding through a build. Three
+ * An agent stopped at an approval prompt is `running`, because it is mid-turn, and is
+ * therefore indistinguishable by status from an agent grinding through a build. Three
  * consumers get that wrong in three different ways, and all three were live:
  *
- *   - `subagent.maxRuntimeMs` ABORTS a child whose approval card is still on the
+ *   - `agent.maxRuntimeMs` ABORTS a child whose approval card is still on the
  *     operator's screen. The operator then answers a prompt for an agent that is already
  *     dead, and the work is lost with no report. A runtime budget is meant to bound the
  *     AGENT's work, not the human's reading speed.
@@ -28,7 +28,7 @@ import { AgentRegistry, type RegistryEvent } from "@veyyon/coding-agent/registry
  * reading and aborts it for being slow at someone else's job. That near-miss is the
  * reason the banked total exists, so it gets its own cases rather than riding along.
  *
- * IF IT REGRESSES: subagents are killed for the operator's reading speed, and a blocked
+ * IF IT REGRESSES: agents are killed for the operator's reading speed, and a blocked
  * agent looks identical to a working one right up until the operator gives up on it.
  */
 

@@ -195,6 +195,42 @@ export function noTruncResult(content: string, totalLines?: number, totalBytes?:
 	return { content, totalLines, totalBytes };
 }
 
+/** Head truncation where the first line alone exceeds the byte budget: nothing is kept. */
+function firstLineExceedsLimitResult(totalLines: number, totalBytes: number): TruncationResult {
+	return {
+		content: "",
+		truncated: true,
+		truncatedBy: "bytes",
+		totalLines,
+		totalBytes,
+		outputLines: 0,
+		outputBytes: 0,
+		lastLinePartial: false,
+		firstLineExceedsLimit: true,
+	};
+}
+
+/** Tail truncation where the last line alone exceeds the byte budget: its last `maxBytes` are kept. */
+function partialLastLineResult(
+	line: string,
+	maxBytes: number,
+	totalLines: number,
+	totalBytes: number,
+): TruncationResult {
+	const tail = truncateTailBytes(line, maxBytes);
+	return {
+		content: tail.text,
+		truncated: true,
+		truncatedBy: "bytes",
+		totalLines,
+		totalBytes,
+		outputLines: 1,
+		outputBytes: tail.bytes,
+		lastLinePartial: true,
+		firstLineExceedsLimit: false,
+	};
+}
+
 /**
  * Truncate content from the head (keep first N lines/bytes).
  * Never returns partial lines. If the first line exceeds the byte limit,
@@ -239,19 +275,7 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
 		const lineCodeUnits = lineEnd - cursor;
 		if (lineCodeUnits > remaining) {
 			truncatedBy = "bytes";
-			if (includedLines === 0) {
-				return {
-					content: "",
-					truncated: true,
-					truncatedBy: "bytes",
-					totalLines,
-					totalBytes,
-					outputLines: 0,
-					outputBytes: 0,
-					lastLinePartial: false,
-					firstLineExceedsLimit: true,
-				};
-			}
+			if (includedLines === 0) return firstLineExceedsLimitResult(totalLines, totalBytes);
 			break;
 		}
 
@@ -261,19 +285,7 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
 
 		if (lineBytes > remaining) {
 			truncatedBy = "bytes";
-			if (includedLines === 0) {
-				return {
-					content: "",
-					truncated: true,
-					truncatedBy: "bytes",
-					totalLines,
-					totalBytes,
-					outputLines: 0,
-					outputBytes: 0,
-					lastLinePartial: false,
-					firstLineExceedsLimit: true,
-				};
-			}
+			if (includedLines === 0) return firstLineExceedsLimitResult(totalLines, totalBytes);
 			break;
 		}
 
@@ -345,19 +357,7 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
 			if (includedLines === 0) {
 				// Window the line substring to avoid materializing a giant string.
 				const windowStart = Math.max(lineStart, end - maxBytes);
-				const window = content.substring(windowStart, end);
-				const tail = truncateTailBytes(window, maxBytes);
-				return {
-					content: tail.text,
-					truncated: true,
-					truncatedBy: "bytes",
-					totalLines,
-					totalBytes,
-					outputLines: 1,
-					outputBytes: tail.bytes,
-					lastLinePartial: true,
-					firstLineExceedsLimit: false,
-				};
+				return partialLastLineResult(content.substring(windowStart, end), maxBytes, totalLines, totalBytes);
 			}
 			break;
 		}
@@ -367,20 +367,7 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
 
 		if (lineBytes > remaining) {
 			truncatedBy = "bytes";
-			if (includedLines === 0) {
-				const tail = truncateTailBytes(lineText, maxBytes);
-				return {
-					content: tail.text,
-					truncated: true,
-					truncatedBy: "bytes",
-					totalLines,
-					totalBytes,
-					outputLines: 1,
-					outputBytes: tail.bytes,
-					lastLinePartial: true,
-					firstLineExceedsLimit: false,
-				};
-			}
+			if (includedLines === 0) return partialLastLineResult(lineText, maxBytes, totalLines, totalBytes);
 			break;
 		}
 

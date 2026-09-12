@@ -119,7 +119,7 @@ export interface FirstFrame {
 	 * Called once the paint has reached the terminal, because that is when the bytes are complete
 	 * and the composed rows are final.
 	 */
-	settleReplayRecording(): void;
+	settleReplayRecording(): Promise<void>;
 	/** Drop the launch rows, leaving an empty root for the mode's own tree. Idempotent. */
 	release(): void;
 	/**
@@ -174,22 +174,27 @@ export function paintFirstFrame(version: string, keybindings?: KeybindingsManage
 			? replayed
 			: undefined;
 	if (adopted) setLaunchTip(adopted.tip);
-	const { providerName, terminalGround } = readLaunchFacts();
+	const facts = readLaunchFacts();
+	const defaultRole = !facts.providerName || !facts.modelName ? settings.getModelRole("default") : undefined;
 	// The provider the recording states, and on a cold launch — no recording
 	// yet — the one the configured role names, parsed from `provider/id`. The
 	// session records the same value, so warm and cold state the same fact; the
 	// role only stands in for the machine's first launch of the model, where
 	// `· huggingface` used to grow onto the hero a second later.
-	const launchProvider = providerName || launchProviderLabel();
+	const launchProvider = facts.providerName || launchProviderLabel(defaultRole);
 	// The ground every structural color is derived from is settled below, before the first paint,
 	// out of what this terminal last reported.
-	const hero = new WelcomeComponent(version, launchModelLabel(), launchProvider);
+	const hero = new WelcomeComponent(version, launchModelLabel(facts, defaultRole), launchProvider);
 	const layout = new HomeAnchorLayout({ ui, transcriptChildCount: () => 0, hasHero: () => true });
 	// The composer, live. Dressed through the one chrome owner and sized through
 	// the one height policy, so it is the same composer the mode goes on using
 	// rather than a lookalike that has to be reconciled with one.
 	const keybindingsManager = keybindings ?? KeybindingsManager.create();
 	const editor = new CustomEditor(getEditorTheme());
+	// Typeahead must paint before the next runtime import can occupy the event loop.
+	const inputRenderOptions = { preserveViewport: true };
+	const renderInput = (): void => ui.requestRender(true, inputRenderOptions);
+	editor.onChange = renderInput;
 	editor.applyKeybindings(keybindingsManager);
 	applyComposerChrome(editor, resolveComposerAccents(PRISTINE_COMPOSER_ACCENT_STATE));
 	editor.setUseTerminalCursor(ui.getShowHardwareCursor());
@@ -263,7 +268,7 @@ export function paintFirstFrame(version: string, keybindings?: KeybindingsManage
 	// about to confirm; when it does not confirm it, the answer wins on the very next frame rather
 	// than at mount.
 	const settleGround = (): void => {
-		const ground = ui.terminal.backgroundColor ?? terminalGround ?? undefined;
+		const ground = ui.terminal.backgroundColor ?? facts.terminalGround ?? undefined;
 		setDetectedTerminalGround(ground);
 		applyGroundPaint(planPaintGround(settings.get("tui.paintGround"), theme.getGroundHex(), ground), ui.terminal);
 	};
@@ -287,16 +292,27 @@ export function paintFirstFrame(version: string, keybindings?: KeybindingsManage
 	// Everything the render writes from here, which is the recording the next launch replays. The
 	// wrapper goes on AFTER `start`, so the terminal setup it emits -- the capability queries above
 	// all -- stays out: replaying a query means a second answer arriving with nobody expecting it.
+	let capturing = true;
 	let captured = "";
+	let recordingSettled = false;
+	let pendingSettlement: Promise<void> | undefined;
 	const terminal = ui.terminal;
-	const passThrough = terminal.write.bind(terminal);
-	terminal.write = (data: string): void => {
-		captured += data;
-		passThrough(data);
-	};
+	const originalWrite = terminal.write;
 	const stopCapture = (): void => {
-		terminal.write = passThrough;
+		if (!capturing) return;
+		capturing = false;
+		if (terminal.write === wrappedWrite) {
+			terminal.write = originalWrite;
+		}
+		captured = "";
 	};
+	const wrappedWrite = (data: string): void => {
+		if (capturing) {
+			captured += data;
+		}
+		originalWrite.call(terminal, data);
+	};
+	terminal.write = wrappedWrite;
 
 	// The session records the at-rest facts the moment they exist; the card
 	// reads them on every render, so the only thing a record needs is a render.
@@ -306,8 +322,8 @@ export function paintFirstFrame(version: string, keybindings?: KeybindingsManage
 	// the facts itself and the notify has no surface left to serve.
 	const unsubscribeFacts = onLaunchFactsRecorded(() => {
 		if (!mounted) return;
-		const facts = readLaunchFacts();
-		hero.setModel(launchModelLabel(), facts.providerName || launchProviderLabel());
+		const updatedFacts = readLaunchFacts();
+		hero.setModel(launchModelLabel(updatedFacts), updatedFacts.providerName || launchProviderLabel());
 		ui.requestRender();
 	});
 
@@ -318,6 +334,9 @@ export function paintFirstFrame(version: string, keybindings?: KeybindingsManage
 		editorContainer,
 		keybindings: keybindingsManager,
 		release(): void {
+			recordingSettled = true;
+			stopCapture();
+			if (editor.onChange === renderInput) editor.onChange = undefined;
 			unsubscribeFacts();
 			discardUntilMount?.();
 			discardUntilMount = undefined;
@@ -325,24 +344,36 @@ export function paintFirstFrame(version: string, keybindings?: KeybindingsManage
 			mounted = false;
 			for (const child of children) ui.removeChild(child);
 		},
-		settleReplayRecording(): void {
+		settleReplayRecording(): Promise<void> {
+			if (pendingSettlement !== undefined) {
+				return pendingSettlement;
+			}
+			if (recordingSettled || !mounted) {
+				stopCapture();
+				return Promise.resolve();
+			}
+			recordingSettled = true;
+			const recordingBytes = captured;
 			stopCapture();
 			const screen = ui.paintedScreen();
 			if (adopted === undefined) {
-				recordFirstFrame({
-					bytes: captured,
+				pendingSettlement = recordFirstFrame({
+					bytes: recordingBytes,
 					cols: ui.terminal.columns,
 					rows: ui.terminal.rows,
 					screen,
 					tip: hero.tip ?? "",
 				});
-				return;
+				return pendingSettlement;
 			}
 			const window = screen.window;
 			const previous = adopted.screen.window;
 			// The screen was replayed and the real card agrees with it row for row, so the recording
 			// still describes what a launch paints and stays.
-			if (window.length === previous.length && window.every((row, at) => row === previous[at])) return;
+			if (window.length === previous.length && window.every((row, at) => row === previous[at])) {
+				pendingSettlement = Promise.resolve();
+				return pendingSettlement;
+			}
 			// It disagreed, so the operator just watched those rows correct themselves. The bytes that
 			// would record the NEW card were never emitted -- only the diff was -- so the recording is
 			// dropped and the next launch composes one and records it. One corrected launch, not a run
@@ -355,7 +386,8 @@ export function paintFirstFrame(version: string, keybindings?: KeybindingsManage
 				replayedRows: previous.length,
 				composedRows: window.length,
 			});
-			clearFirstFrameRecording();
+			pendingSettlement = clearFirstFrameRecording();
+			return pendingSettlement;
 		},
 		async settleQueuedInput(): Promise<boolean> {
 			// A check-phase turn, so the loop reaches poll and the reader hands
@@ -368,10 +400,14 @@ export function paintFirstFrame(version: string, keybindings?: KeybindingsManage
 			// but must not auto-submit on handover.
 			editor.beginEarlySubmissions();
 			if (editor.getText().length === 0) return false;
+			// Input typed before or during the card means this launch cannot be replayed as a
+			// pristine card. Stop capturing immediately before rendering the typed draft to the terminal.
+			recordingSettled = true;
+			stopCapture();
 			// Forced rather than trusted: the editor's own render request is
 			// subject to the throttle, and this call is the one that has to be
 			// on screen before the caller blocks the loop again.
-			ui.requestRender(true);
+			renderInput();
 			const written = Promise.withResolvers<void>();
 			setImmediate(written.resolve);
 			await written.promise;

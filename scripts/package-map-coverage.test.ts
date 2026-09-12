@@ -26,7 +26,7 @@
 import { describe, expect, it } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import * as path from "node:path";
-import { memberTopLevels, REPO_ROOT as repoRoot, rustExcluded, workspaceMembers } from "./workspace-layout";
+import { isVendored, memberTopLevels, REPO_ROOT as repoRoot, rustExcluded, workspaceMembers } from "./workspace-layout";
 
 /** Every manifest that makes a directory a workspace member. */
 const MANIFESTS: readonly string[] = ["package.json", "Cargo.toml"];
@@ -52,11 +52,6 @@ const UNDOCUMENTED: ReadonlyMap<string, string> = new Map([
 		"A build target for the Python client's web assets rather than a first-party library, and the table has never listed it.",
 	],
 ]);
-
-/** Vendored third-party code: a workspace member the workspace does not own and does not document. */
-function isVendored(directory: string): boolean {
-	return directory.split("/").includes("vendor");
-}
 
 const members = workspaceMembers();
 const firstParty = members.filter(member => !isVendored(member.directory));

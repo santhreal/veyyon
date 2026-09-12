@@ -1,0 +1,1 @@
+- User says `parallel` or `parallelize` → MUST use `{{toolRefs.task}}` spawned agents; parallel tool calls alone do not satisfy.

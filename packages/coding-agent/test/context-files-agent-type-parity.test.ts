@@ -50,9 +50,9 @@ function renderedContextPaths(prompt: string): string[] {
  * Three prompt-assembly paths exist and they diverged: the default agent renders
  * context through `session/project-prompt.md`, an agent with a custom system
  * prompt renders it through `session/custom-system-prompt.md`, and a spawned
- * subagent does not discover at all, it INHERITS the parent's resolved list.
+ * agent does not discover at all, it INHERITS the parent's resolved list.
  *
- * The subagent path is where this bug family did its worst damage. Every spawn
+ * The agent path is where this bug family did its worst damage. Every spawn
  * site dropped inherited entries whose basename was `AGENTS.md`, which is every
  * scope a user actually writes, and then handed the child a prompt asserting
  * that "every AGENTS.md is already inlined" and that it must never grep for one.
@@ -63,7 +63,7 @@ function renderedContextPaths(prompt: string): string[] {
 describe("context file agent-type parity", () => {
 	/**
 	 * The headline invariant: for one cwd and one agent dir, the default agent,
-	 * a custom-prompt agent, and a subagent inheriting from the default agent all
+	 * a custom-prompt agent, and an agent inheriting from the default agent all
 	 * put the SAME files, in the SAME authority order, into their prompts.
 	 *
 	 * Comparing rendered paths rather than loader output is deliberate: the two
@@ -71,7 +71,7 @@ describe("context file agent-type parity", () => {
 	 * a divergence that never reaches a template is exactly the divergence that
 	 * shipped.
 	 */
-	it("gives the default agent, a custom-prompt agent, and a subagent the same rendered scopes", async () => {
+	it("gives the default agent, a custom-prompt agent, and an agent the same rendered scopes", async () => {
 		const f = fixture("parity-all-paths");
 		f.writeFile(f.globalAgentsPath, `${GLOBAL_BODY}\n`);
 		f.writeFile(f.profileAgentsPath, `${PROFILE_BODY}\n`);
@@ -92,7 +92,7 @@ describe("context file agent-type parity", () => {
 			agentDir: f.agentDir,
 			resolvedCustomPrompt: "You are a narrow reviewer agent.",
 		});
-		const subagentPrompt = await renderPrompt({
+		const agentPrompt = await renderPrompt({
 			cwd: f.cwd,
 			agentDir: f.agentDir,
 			contextFiles: inherited,
@@ -103,9 +103,9 @@ describe("context file agent-type parity", () => {
 		expect(parentContextFiles.map(file => file.path)).toEqual(expectedPaths);
 		expect(renderedContextPaths(defaultPrompt)).toEqual(expectedPaths);
 		expect(renderedContextPaths(customPrompt)).toEqual(expectedPaths);
-		expect(renderedContextPaths(subagentPrompt)).toEqual(expectedPaths);
-		expect(subagentPrompt).toContain(renderedContextBlock(f.globalAgentsPath, GLOBAL_BODY));
-		expect(subagentPrompt).toContain(renderedContextBlock(f.profileAgentsPath, PROFILE_BODY));
+		expect(renderedContextPaths(agentPrompt)).toEqual(expectedPaths);
+		expect(agentPrompt).toContain(renderedContextBlock(f.globalAgentsPath, GLOBAL_BODY));
+		expect(agentPrompt).toContain(renderedContextBlock(f.profileAgentsPath, PROFILE_BODY));
 	});
 
 	/**
@@ -117,7 +117,7 @@ describe("context file agent-type parity", () => {
 	 * equal length) also pins that nothing is copied and re-sorted on the way
 	 * through, which would break the authority order the parent resolved.
 	 */
-	it("hands a same-cwd subagent the parent's context files unfiltered and in order", async () => {
+	it("hands a same-cwd agent the parent's context files unfiltered and in order", async () => {
 		const f = fixture("parity-inherit");
 		f.writeFile(f.globalAgentsPath, `${GLOBAL_BODY}\n`);
 		f.writeFile(f.profileAgentsPath, `${PROFILE_BODY}\n`);
@@ -137,14 +137,14 @@ describe("context file agent-type parity", () => {
 	});
 
 	/**
-	 * A subagent rooted somewhere else must RE-DISCOVER, not inherit.
+	 * An agent rooted somewhere else must RE-DISCOVER, not inherit.
 	 *
 	 * The parent's project walk describes the parent's tree. Handing it to a
 	 * child spawned with a different cwd would inline rules for directories the
 	 * child cannot see, and would suppress the child's own repo rules, because
 	 * any array at all counts as "already resolved" downstream.
 	 */
-	it("returns undefined so a subagent spawned in another directory discovers its own scopes", () => {
+	it("returns undefined so an agent spawned in another directory discovers its own scopes", () => {
 		const f = fixture("parity-other-cwd");
 		const parentContextFiles = [{ path: f.nestedAgentsPath, content: `${PROJECT_NESTED_BODY}\n`, depth: 0 }];
 

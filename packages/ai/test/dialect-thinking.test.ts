@@ -243,3 +243,27 @@ describe("unterminated thinking at stream end", () => {
 		});
 	}
 });
+
+describe("a partial close tag held at stream end", () => {
+	// The suffix that could start the close tag is held back while more text may follow; when the
+	// stream ends instead, it is thinking like the rest, and the section still closes exactly once.
+	const cases: Array<{ dialect: Dialect; input: string; thinking: string; parseThinking?: true }> = [
+		{ dialect: "deepseek", input: "<think>partial</thi", thinking: "partial</thi" },
+		{ dialect: "gemma", input: "<|channel>thought\npartial<channel", thinking: "partial<channel" },
+		{ dialect: "glm", input: "<think>partial</thi", thinking: "partial</thi" },
+		{ dialect: "hermes", input: "<think>partial</thi", thinking: "partial</thi", parseThinking: true },
+		{ dialect: "kimi", input: "<think>partial</thi", thinking: "partial</thi" },
+		{ dialect: "pi-native", input: "<think>partial</thi", thinking: "partial</thi", parseThinking: true },
+		{ dialect: "qwen3", input: "<think>partial</thi", thinking: "partial</thi" },
+	];
+
+	for (const { dialect, input, thinking, parseThinking } of cases) {
+		it(`${dialect}: flushes the held suffix as thinking and closes the section once`, () => {
+			const events = scan(dialect, input, { options: parseThinking ? { parseThinking } : undefined });
+			expect(thinkingText(events)).toBe(thinking);
+			expect(visibleText(events)).toBe("");
+			expect(thinkingBoundaries(events)).toBe(1);
+			expect(thinkingEndCount(events)).toBe(1);
+		});
+	}
+});

@@ -70,7 +70,7 @@ card_tint() { # <png> -> pixels of a waiting decision's tint above the composer
 	approve_tint_pixels "$1" "${CARD_CROP}"
 }
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 # The screen as it is now, named, so a reading and the frame it was taken from
@@ -89,7 +89,7 @@ import json
 import os
 from pathlib import Path
 
-print(json.loads((Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json").read_text()))
+print(json.loads((Path(os.environ["TMPDIR"]) / "created-session.json").read_text()))
 PY
 )"
 if [ -z "${HELD_SESSION}" ]; then

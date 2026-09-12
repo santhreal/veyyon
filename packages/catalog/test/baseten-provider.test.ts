@@ -94,4 +94,24 @@ describe("Baseten provider discovery", () => {
 			},
 		});
 	});
+
+	test("falls back to the model id when the listing has no name, and trims one it has", async () => {
+		const fetchMock: FetchImpl = async () =>
+			new Response(
+				JSON.stringify({
+					data: [
+						{ id: "vendor/no-name", object: "model" },
+						{ id: "vendor/padded-name", object: "model", name: "  Padded  " },
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } },
+			);
+
+		const options = basetenModelManagerOptions({ apiKey: "baseten-test-key", fetch: fetchMock });
+		const models = await options.fetchDynamicModels?.();
+		expect(models?.map(model => [model.id, model.name])).toEqual([
+			["vendor/no-name", "vendor/no-name"],
+			["vendor/padded-name", "Padded"],
+		]);
+	});
 });

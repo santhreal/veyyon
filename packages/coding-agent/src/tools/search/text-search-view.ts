@@ -24,14 +24,24 @@ import type {
 } from "@veyyon/view";
 import { tryResolveInternalUrlSync } from "../../internal-urls/resolve-sync";
 import { classifyGroupedLines, groupLineIndicesByBlank } from "../core/grouped-file-output";
+import { extractResultText } from "../core/output-notice";
 import { toPathList } from "../core/path-utils";
-import { formatCount, formatScopeMeta, replaceTabs, sanitizeErrorText } from "../core/render-utils";
 import {
-	COLLAPSED_TEXT_LIMIT,
-	EXPANDED_TEXT_LIMIT,
-	type TextSearchDetails,
-	type TextSearchRenderArgs,
-} from "./text-search";
+	emptyStatusLine as emptyLine,
+	emptyTextBlock,
+	errorTextBlock,
+	FILE_NOUN,
+	formatCount,
+	heldBack,
+	ITEM_NOUN,
+	LINE_NOUN,
+	MATCH_NOUN,
+	replaceTabs,
+	scopeMetaLine,
+	type ToolViewResult,
+} from "../core/render-utils";
+import { COLLAPSED_TEXT_LIMIT, EXPANDED_TEXT_LIMIT } from "./search-card-limits";
+import type { TextSearchDetails, TextSearchRenderArgs } from "./text-search";
 
 /** What every card of this tool is titled. */
 const TEXT_SEARCH_TITLE = "Search text";
@@ -53,18 +63,14 @@ const URL_HEADER_PREFIX_RE = /^#+\s+/;
 
 /** The units a held-back count on this card is in, which the host words. */
 const NOUNS = {
-	match: { one: "match", many: "matches" },
-	file: { one: "file", many: "files" },
-	line: { one: "line", many: "lines" },
-	item: { one: "item", many: "items" },
+	match: MATCH_NOUN,
+	file: FILE_NOUN,
+	line: LINE_NOUN,
+	item: ITEM_NOUN,
 } as const;
 
 /** The result the card reads, which is the tool's own result shape narrowed to what a card shows. */
-export interface TextSearchViewResult {
-	content?: Array<{ type: string; text?: string }>;
-	details?: TextSearchDetails;
-	isError?: boolean;
-}
+export interface TextSearchViewResult extends Partial<ToolViewResult<TextSearchDetails>> {}
 
 /**
  * One line of the tool's output, kept beside the text it came from.
@@ -101,11 +107,6 @@ function scopeMeta(details: TextSearchDetails | undefined): ViewLine | undefined
 		{ text: "in " },
 		{ text: details.scopePath, ...(details.searchPath === undefined ? {} : { file: details.searchPath }) },
 	];
-}
-
-/** The empty answer, which is a warning mark and the words that say which kind of empty it is. */
-function emptyLine(label: string): ViewLine {
-	return [{ text: "", symbol: "status.warning", tone: "warning" }, { text: " " }, { text: label, tone: "muted" }];
 }
 
 /** What the search never reached, or nothing when it reached everything it was given. */
@@ -292,13 +293,8 @@ function budgetedBody(
 		for (let row = 1; row < group.length; row++) lines.push([{ text: "  " }, ...group[row]!.spans]);
 	}
 	if (!needsNote || (hiddenMatches === 0 && hiddenRows === 0)) return { lines };
-	return {
-		lines,
-		hidden:
-			hiddenMatches > 0
-				? { count: hiddenMatches, noun: NOUNS[unit], revealable: true }
-				: { count: hiddenRows, noun: NOUNS.line, revealable: true },
-	};
+	const hidden = hiddenMatches > 0 ? heldBack(hiddenMatches, NOUNS[unit]) : heldBack(hiddenRows, LINE_NOUN);
+	return hidden === undefined ? { lines } : { lines, hidden };
 }
 
 export const textSearchToolView: Required<ToolViewRenderer<TextSearchRenderArgs, TextSearchViewResult>> = {
@@ -311,7 +307,7 @@ export const textSearchToolView: Required<ToolViewRenderer<TextSearchRenderArgs,
 	renderCall(args, _context: ToolViewContext): ToolView {
 		const paths = toPathList(args?.path);
 		const meta: ViewLine[] = [];
-		if (paths.length > 0) meta.push([{ text: formatScopeMeta(paths) }]);
+		if (paths.length > 0) meta.push(scopeMetaLine(paths));
 		if (args?.case === false) meta.push([{ text: "case:insensitive" }]);
 		if (args?.gitignore === false) meta.push([{ text: "gitignore:false" }]);
 		if (args?.skip !== undefined && args.skip > 0) meta.push([{ text: `skip:${args.skip}` }]);
@@ -329,15 +325,7 @@ export const textSearchToolView: Required<ToolViewRenderer<TextSearchRenderArgs,
 		const details = result.details;
 
 		if (result.isError === true || details?.error !== undefined) {
-			const text = details?.error ?? result.content?.find(part => part.type === "text")?.text;
-			return {
-				kind: "textBlock",
-				spans: [
-					{ text: "", symbol: "status.error", tone: "error" },
-					{ text: " " },
-					{ text: `Error: ${sanitizeErrorText(text)}`, tone: "error" },
-				],
-			};
+			return errorTextBlock(details?.error ?? extractResultText(result.content));
 		}
 
 		// A result the tool described in detail carries a count; one that did not is a block of text
@@ -371,7 +359,7 @@ export const textSearchToolView: Required<ToolViewRenderer<TextSearchRenderArgs,
 		if (scope !== undefined) meta.push(scope);
 		if (truncated) meta.push([{ text: "truncated", tone: "warning" }]);
 
-		const text = details.displayContent ?? result.content?.find(part => part.type === "text")?.text ?? "";
+		const text = details.displayContent ?? extractResultText(result.content);
 		const lines = text.split("\n");
 		// Header and match paths are relative to where the search ran, so they resolve against `cwd`,
 		// falling back to `searchPath` for a result that predates it; the scoped file's own path seeds
@@ -419,9 +407,9 @@ function textOnlyResult(
 	context: ToolViewContext,
 	args: TextSearchRenderArgs | undefined,
 ): ToolView {
-	const text = result.details?.displayContent ?? result.content?.find(part => part.type === "text")?.text;
+	const text = result.details?.displayContent ?? extractResultText(result.content);
 	if (text === undefined || text === "" || text === "No matches found") {
-		return { kind: "textBlock", spans: emptyLine("No matches found") };
+		return emptyTextBlock("No matches found");
 	}
 
 	const lines = text.split("\n").filter(line => line.trim() !== "");
@@ -430,6 +418,7 @@ function textOnlyResult(
 	const needsNote = !context.expanded && lines.length > limit;
 	const shown = Math.min(lines.length, needsNote ? Math.max(limit - 1, 0) : limit);
 	const held = lines.length - shown;
+	const hidden = needsNote ? heldBack(held, ITEM_NOUN) : undefined;
 	return {
 		kind: "framedBlock",
 		header: header(args, { emblem: TEXT_SEARCH_EMBLEM, meta: [[{ text: formatCount("item", lines.length) }]] }),
@@ -438,7 +427,7 @@ function textOnlyResult(
 			{
 				lines: lines.slice(0, shown).map(line => [{ text: replaceTabs(line), tone: "output" as const }]),
 				clip: true,
-				...(needsNote && held > 0 ? { hidden: { count: held, noun: NOUNS.item, revealable: true } } : {}),
+				...(hidden === undefined ? {} : { hidden }),
 			},
 		],
 	};

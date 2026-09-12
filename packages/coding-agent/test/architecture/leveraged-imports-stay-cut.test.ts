@@ -222,7 +222,10 @@ describe("cheap values are imported from their owners, everywhere in the package
 		expect(sources.length).toBeGreaterThan(400);
 
 		const withBarrelValues = sources.filter(([, source]) => barrelValueNames(source).length > 0);
-		expect(withBarrelValues.length).toBeGreaterThan(5);
+		// A FLOOR, not a count. Cutting barrel value imports is what this file exists to enforce, so
+		// this number only ever falls and pinning it exactly would fail on the next legitimate cut.
+		// The containment check below is the actual proof that the parser can still see one.
+		expect(withBarrelValues.length).toBeGreaterThan(2);
 
 		const found = new Set(withBarrelValues.flatMap(([, source]) => barrelValueNames(source)));
 		expect([...found]).toContain("completeSimple");

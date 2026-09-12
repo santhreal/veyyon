@@ -269,6 +269,16 @@ function addUnique(out: string[], value: string): void {
 	}
 }
 
+const HEURISTIC_PATTERNS: readonly [RegExp, (val: string) => string][] = [
+	[/\bmy name is\s+([^,.!?;]+)/i, val => `The user's name is ${val}`],
+	[/\bi (?:am|work as)\s+(?:an?\s+)?([^,.!?;]+)/i, val => `The user is ${val}`],
+	[/\bi work (?:at|for)\s+([^,.!?;]+)/i, val => `The user works at ${val}`],
+	[/\bi (?:live in|am based in)\s+([^,.!?;]+)/i, val => `The user lives in ${val}`],
+	[/\bi (?:use|uses|am using)\s+([^,.!?;]+)/i, val => `The user uses ${val}`],
+	[/\bi (?:like|love|prefer|enjoy)\s+([^,.!?;]+)/i, val => `The user prefers ${val}`],
+	[/\bi (?:hate|dislike|do not like|don't like)\s+([^,.!?;]+)/i, val => `The user dislikes ${val}`],
+];
+
 export function heuristicExtractFacts(text: string): string[] {
 	const normalized = collapseWhitespace(text);
 	if (normalized === "") {
@@ -278,20 +288,10 @@ export function heuristicExtractFacts(text: string): string[] {
 	const clauses = normalized.split(/(?:[.!?;]+|\s+and\s+|\s+but\s+)/i);
 	for (const clause of clauses) {
 		const c = clause.trim();
-		let value = /\bmy name is\s+([^,.!?;]+)/i.exec(c)?.[1];
-		if (value !== undefined) addUnique(facts, `The user's name is ${value}`);
-		value = /\bi (?:am|work as)\s+(?:an?\s+)?([^,.!?;]+)/i.exec(c)?.[1];
-		if (value !== undefined) addUnique(facts, `The user is ${value}`);
-		value = /\bi work (?:at|for)\s+([^,.!?;]+)/i.exec(c)?.[1];
-		if (value !== undefined) addUnique(facts, `The user works at ${value}`);
-		value = /\bi (?:live in|am based in)\s+([^,.!?;]+)/i.exec(c)?.[1];
-		if (value !== undefined) addUnique(facts, `The user lives in ${value}`);
-		value = /\bi (?:use|uses|am using)\s+([^,.!?;]+)/i.exec(c)?.[1];
-		if (value !== undefined) addUnique(facts, `The user uses ${value}`);
-		value = /\bi (?:like|love|prefer|enjoy)\s+([^,.!?;]+)/i.exec(c)?.[1];
-		if (value !== undefined) addUnique(facts, `The user prefers ${value}`);
-		value = /\bi (?:hate|dislike|do not like|don't like)\s+([^,.!?;]+)/i.exec(c)?.[1];
-		if (value !== undefined) addUnique(facts, `The user dislikes ${value}`);
+		for (const [re, format] of HEURISTIC_PATTERNS) {
+			const val = re.exec(c)?.[1];
+			if (val !== undefined) addUnique(facts, format(val));
+		}
 		// Require an explicit `i` or `you` subject before `always|never`. The
 		// other heuristics in this block all need an `i` subject (`i live in …`,
 		// `i use …`) which keeps them from matching narrative prose; the

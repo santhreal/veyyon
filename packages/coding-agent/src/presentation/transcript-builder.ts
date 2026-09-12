@@ -1,25 +1,40 @@
 /**
  * `AgentMessage` to `TranscriptBlock`.
  *
- * This is the only place a renderer's view of the transcript is derived from
- * the session's own messages. It reduces a message to text, flags and counts:
- * no provider payloads, no tool argument objects, no content blocks. What
- * comes out crosses a serialization boundary unchanged, which is what lets a
- * browser client draw the same transcript a terminal draws.
+ * Projection of session messages into display data. The live terminal prompt
+ * component and the serialized transcript use the same prompt-text extraction.
+ * The serialized projection excludes provider payloads and tool argument objects.
  */
 
 import type { AgentMessage } from "@veyyon/agent-core";
-import type { AssistantMessage, ToolResultMessage } from "@veyyon/ai";
+import type { AssistantMessage, Message, ToolResultMessage } from "@veyyon/ai";
+import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
+import { formatBytes } from "@veyyon/utils/format";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { isRecord } from "@veyyon/utils/type-guards";
+import { truncateToWidth } from "@veyyon/utils/width";
 import type {
+	AssistantErrorPresentation,
+	AssistantMessageView,
 	AssistantSegment,
 	Attachment,
 	BlockId,
-	ToolStatus,
+	CustomBlock,
+	HookBlock,
 	TranscriptBlock,
 	TurnStopReason,
 	TurnUsage,
+	UserMessageView,
 } from "@veyyon/wire/presentation";
+import { resolveAbortLabel, shouldRenderAbortReason } from "../session/messages";
+import { TRUNCATE_LENGTHS } from "../tools/core/render-limits";
+import { base64DecodedBytes } from "../utils/video-loading";
+import { contentToText } from "./content-text";
+import { projectCustomDisplay, readCustomLevel } from "./custom-display";
+import { toBranchSummaryView, toCompactionSummaryView } from "./summary-builder";
+import { buildToolExecutionBlock } from "./tool-execution";
+
+export { contentToText } from "./content-text";
 
 /** Everything the builder needs that a message does not carry. */
 export interface TranscriptBuildOptions {
@@ -38,10 +53,58 @@ export interface TranscriptBuildOptions {
 	streaming?: boolean;
 	/** Renders arguments and results for display, with secrets already redacted. */
 	renderToolText?: (value: unknown) => string;
+	/** Retry attempt index for abort label presentation. */
+	retryAttempt?: number;
+	/**
+	 * Correlated tool call arguments by toolCallId. When present, toolResult blocks
+	 * receive these arguments to render full card views and inputs.
+	 */
+	toolCallArgs?: ReadonlyMap<string, unknown> | ((toolCallId: string) => unknown);
+}
+
+/**
+ * Collect tool call arguments from an array of messages, keyed by tool call id.
+ * Pure helper shared across replay, rebuild and bridge correlation.
+ */
+export function collectToolCallArgs(messages: readonly AgentMessage[]): Map<string, unknown> {
+	const toolCallArgs = new Map<string, unknown>();
+	for (const message of messages) {
+		if (!isRecord(message) || message.role !== "assistant") continue;
+		const content = (message as AssistantMessage).content;
+		if (!Array.isArray(content)) continue;
+		for (const block of content) {
+			if (isRecord(block) && block.type === "toolCall" && typeof block.id === "string") {
+				toolCallArgs.set(block.id, block.arguments);
+			}
+		}
+	}
+	return toolCallArgs;
+}
+
+/** Text chunks concatenate; video chunks include their media type and decoded size. */
+export function userMessageText(message: Extract<AgentMessage, { role: "developer" | "user" }> | Message): string {
+	if (typeof message.content === "string") return message.content;
+	let text = "";
+	for (const block of message.content) {
+		if (block.type === "text") {
+			text += block.text;
+		} else if (block.type === "video") {
+			if (text.length > 0 && !text.endsWith("\n")) text += "\n";
+			text += `[${block.mimeType} · ${formatBytes(base64DecodedBytes(block.data))}]`;
+		}
+	}
+	return text;
+}
+
+export function toUserMessageView(message: Extract<AgentMessage, { role: "developer" | "user" }>): UserMessageView {
+	return {
+		text: userMessageText(message),
+		synthetic: message.role === "developer" || (message.synthetic ?? false),
+	};
 }
 
 /** How a tool call's arguments are rendered when the caller supplies nothing better. */
-function defaultToolText(value: unknown): string {
+export function defaultToolText(value: unknown): string {
 	if (typeof value === "string") return value;
 	if (value === undefined) return "";
 	try {
@@ -93,20 +156,6 @@ function timestampOf(message: AgentMessage): number {
 	return readNumber(message, "timestamp") ?? 0;
 }
 
-/** Flatten the `string | (TextContent | ImageContent)[]` content shape to display text. */
-function contentToText(content: unknown): string {
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-	let text = "";
-	for (const block of content) {
-		if (!isRecord(block)) continue;
-		if (block.type === "text" && typeof block.text === "string") {
-			text += text.length > 0 ? `\n${block.text}` : block.text;
-		}
-	}
-	return text;
-}
-
 /** Image blocks in a content array, as attachments. */
 function contentImages(content: unknown): Attachment[] {
 	if (!Array.isArray(content)) return [];
@@ -144,16 +193,61 @@ function usageOf(message: AssistantMessage): TurnUsage | undefined {
 	return turn;
 }
 
-function assistantSegments(message: AssistantMessage, renderToolText: (value: unknown) => string): AssistantSegment[] {
+function sanitizeRecoveredRetryNote(note: string): string {
+	const normalized = collapseWhitespace(replaceTabs(note));
+	return truncateToWidth(normalized || "retried", TRUNCATE_LENGTHS.CONTENT);
+}
+
+export function resolveAssistantErrorPresentation(
+	message: {
+		stopReason?: string;
+		errorMessage?: string;
+		errorId?: number;
+		retryRecovery?: { status?: string; note?: string };
+	},
+	retryAttempt = 0,
+): AssistantErrorPresentation {
+	if (message.retryRecovery?.status === "recovered") {
+		return {
+			kind: "compact-recovered",
+			text: sanitizeRecoveredRetryNote(message.retryRecovery.note ?? ""),
+			isError: false,
+		};
+	}
+	if (message.stopReason === "aborted") {
+		if (!shouldRenderAbortReason(message)) return { kind: "none" };
+		return { kind: "full", text: resolveAbortLabel(message, retryAttempt), isError: true };
+	}
+	if (message.stopReason === "error") {
+		return { kind: "full", text: message.errorMessage || "Error", isError: true };
+	}
+	if (message.errorMessage && shouldRenderAbortReason(message)) {
+		return { kind: "full", text: message.errorMessage, isError: true };
+	}
+	return { kind: "none" };
+}
+
+export function assistantSegments(
+	message: Pick<AssistantMessage, "content">,
+	renderToolText?: (value: unknown) => string,
+): AssistantSegment[] {
 	const segments: AssistantSegment[] = [];
 	for (const block of message.content) {
 		switch (block.type) {
 			case "text":
-				if (block.text.length > 0) segments.push({ kind: "text", text: block.text });
+				segments.push({ kind: "text", text: block.text });
 				break;
-			case "thinking":
-				if (block.thinking.length > 0) segments.push({ kind: "thinking", text: block.thinking, redacted: false });
+			case "thinking": {
+				const rawThinking =
+					"rawThinking" in block && typeof block.rawThinking === "string" ? block.rawThinking : undefined;
+				segments.push({
+					kind: "thinking",
+					text: block.thinking,
+					redacted: false,
+					...(rawThinking !== undefined ? { rawThinking } : {}),
+				});
 				break;
+			}
 			case "redactedThinking":
 				segments.push({ kind: "thinking", text: "", redacted: true });
 				break;
@@ -162,21 +256,57 @@ function assistantSegments(message: AssistantMessage, renderToolText: (value: un
 					kind: "tool-call",
 					toolCallId: block.id,
 					toolName: block.name,
-					input: renderToolText(block.arguments),
+					...(renderToolText !== undefined ? { input: renderToolText(block.arguments) } : {}),
 				});
 				break;
 			case "fallback":
-				// A provider-internal fallback marker. `transformMessages` strips it on
-				// every hop that matters; nothing about it is for a reader.
+				segments.push({ kind: "fallback" });
 				break;
+			default: {
+				const exhaustive: never = block;
+				throw new Error(`Unhandled assistant content type: ${(exhaustive as { type: string }).type}`);
+			}
 		}
 	}
 	return segments;
 }
 
-function toolStatusOf(message: ToolResultMessage, pending: ReadonlySet<string>): ToolStatus {
-	if (pending.has(message.toolCallId)) return "running";
-	return message.isError ? "failed" : "succeeded";
+export function toAssistantMessageView(
+	message: AssistantMessage,
+	options?: {
+		renderToolText?: (value: unknown) => string;
+		retryAttempt?: number;
+	},
+): AssistantMessageView {
+	const retryAttempt = options?.retryAttempt ?? 0;
+	const segments = assistantSegments(message, options?.renderToolText);
+	const errorPresentation = resolveAssistantErrorPresentation(message, retryAttempt);
+	const view: AssistantMessageView = {
+		segments,
+		model: message.model ?? "",
+		stopReason: stopReasonOf(message),
+		errorPresentation,
+	};
+	const usage = usageOf(message);
+	if (usage !== undefined) {
+		view.usage = usage;
+	}
+	const reasoningTokens = message.usage?.reasoningTokens;
+	const outputTokens = message.usage?.output;
+	const thinkingTokens = reasoningTokens ?? outputTokens;
+	if (thinkingTokens !== undefined) {
+		view.reportedThinkingTokens = thinkingTokens;
+	}
+	if (message.timestamp !== undefined) {
+		view.timestamp = message.timestamp;
+	}
+	if (message.provider !== undefined) {
+		view.provider = message.provider;
+	}
+	if (message.responseId !== undefined) {
+		view.responseId = message.responseId;
+	}
+	return view;
 }
 
 function mentionAttachments(files: unknown): Attachment[] {
@@ -220,48 +350,71 @@ export function toTranscriptBlock(message: AgentMessage, options: TranscriptBuil
 			return {
 				kind: "user-message",
 				id,
-				text: contentToText(message.content),
+				text: userMessageText(message as Extract<AgentMessage, { role: "user" }>),
+				synthetic: readBoolean(message, "synthetic"),
 				attachments: contentImages(message.content),
 				timestamp,
 			};
 		}
 		case "developer": {
 			if (!isRecord(message)) break;
-			return { kind: "developer-message", id, text: contentToText(message.content), timestamp };
+			return {
+				kind: "developer-message",
+				id,
+				text: userMessageText(message as Extract<AgentMessage, { role: "developer" }>),
+				synthetic: true,
+				timestamp,
+			};
 		}
 		case "assistant": {
 			const assistant = message as AssistantMessage;
+			const view = toAssistantMessageView(assistant, {
+				renderToolText,
+				retryAttempt: options.retryAttempt,
+			});
 			const block: TranscriptBlock = {
 				kind: "assistant-message",
 				id,
-				segments: assistantSegments(assistant, renderToolText),
-				model: assistant.model ?? "",
-				stopReason: stopReasonOf(assistant),
+				...view,
+				model: view.model ?? "",
+				stopReason: view.stopReason ?? "complete",
 				streaming: options.streaming === true,
 				timestamp,
 			};
-			const usage = usageOf(assistant);
-			if (usage !== undefined) block.usage = usage;
-			if (assistant.errorMessage !== undefined) block.errorMessage = assistant.errorMessage;
 			return block;
 		}
 		case "toolResult": {
 			const result = message as ToolResultMessage;
-			const status = toolStatusOf(result, pending);
-			const text = contentToText(result.content);
-			const block: TranscriptBlock = {
-				kind: "tool-execution",
+			const isPending = pending.has(result.toolCallId);
+			const durationMs = result.metrics?.durationMs;
+			let args: unknown;
+			if (options.toolCallArgs !== undefined) {
+				if (typeof options.toolCallArgs === "function") {
+					args = options.toolCallArgs(result.toolCallId);
+				} else if (typeof (options.toolCallArgs as ReadonlyMap<string, unknown>).get === "function") {
+					args = (options.toolCallArgs as ReadonlyMap<string, unknown>).get(result.toolCallId);
+				}
+			}
+			return buildToolExecutionBlock({
 				id,
 				toolCallId: result.toolCallId,
 				toolName: result.toolName,
-				status,
-				input: "",
+				args,
+				result: {
+					content: Array.isArray(result.content)
+						? result.content.map(c => (typeof c === "string" ? { type: "text", text: c } : c))
+						: typeof result.content === "string"
+							? [{ type: "text", text: result.content }]
+							: [],
+					details: result.details,
+					isError: result.isError,
+				},
+				isError: result.isError,
+				isPartial: isPending,
+				durationMs,
 				timestamp,
-			};
-			if (status === "failed") block.error = text;
-			else block.output = text;
-			if (result.metrics?.durationMs !== undefined) block.durationMs = result.metrics.durationMs;
-			return block;
+				sealed: !isPending,
+			});
 		}
 		case "bashExecution": {
 			if (!isRecord(message)) break;
@@ -290,48 +443,58 @@ export function toTranscriptBlock(message: AgentMessage, options: TranscriptBuil
 				timestamp,
 			};
 		}
+
 		case "custom": {
 			if (!isRecord(message)) break;
-			return {
+			const customType = readString(message, "customType") ?? "custom-message";
+			const level = readCustomLevel(message);
+			const display = projectCustomDisplay(customType, message.details, message.content, timestamp, message);
+
+			const block: CustomBlock = {
 				kind: "custom",
 				id,
-				customKind: readString(message, "customType") ?? "custom-message",
-				text: contentToText(message.content),
-				level: "info",
+				customKind: customType,
+				text: contentToText(message.content, "\n", true),
+				level,
 				timestamp,
 			};
+			if (display !== undefined) {
+				block.display = display;
+			}
+			return block;
 		}
 		case "hookMessage": {
 			if (!isRecord(message)) break;
-			return {
+			const hookName = readString(message, "customType") ?? "hook";
+			const level = readCustomLevel(message);
+			const display = projectCustomDisplay(hookName, message.details, message.content, timestamp, message);
+			const block: HookBlock = {
 				kind: "hook",
 				id,
-				hookName: readString(message, "customType") ?? "hook",
-				text: contentToText(message.content),
+				hookName,
+				text: contentToText(message.content, "\n", true),
 				timestamp,
 			};
-		}
-		case "branchSummary": {
-			return {
-				kind: "branch-summary",
-				id,
-				summary: readString(message, "summary") ?? "",
-				replacedCount: 0,
-				timestamp,
-			};
-		}
-		case "compactionSummary": {
-			const block: TranscriptBlock = {
-				kind: "compaction-summary",
-				id,
-				summary: readString(message, "shortSummary") ?? readString(message, "summary") ?? "",
-				replacedCount: 0,
-				timestamp,
-			};
-			const before = readNumber(message, "tokensBefore");
-			if (before !== undefined) block.reclaimedTokens = before;
+			if (display !== undefined) {
+				block.display = display;
+			}
+			if (level !== "info") {
+				block.level = level;
+			}
 			return block;
 		}
+		case "branchSummary":
+			return {
+				...toBranchSummaryView(message as Extract<AgentMessage, { role: "branchSummary" }>),
+				id,
+				timestamp,
+			};
+		case "compactionSummary":
+			return {
+				...toCompactionSummaryView(message as Extract<AgentMessage, { role: "compactionSummary" }>),
+				id,
+				timestamp,
+			};
 		case "fileMention": {
 			if (!isRecord(message)) break;
 			return { kind: "file-mention", id, files: mentionAttachments(message.files), timestamp };
@@ -357,11 +520,33 @@ export function toTranscriptBlocks(
 	messages: readonly AgentMessage[],
 	options?: Omit<TranscriptBuildOptions, "index">,
 ): TranscriptBlock[] {
+	const extracted = collectToolCallArgs(messages);
+	let toolCallArgs: ReadonlyMap<string, unknown> | ((toolCallId: string) => unknown);
+	if (options?.toolCallArgs !== undefined) {
+		if (typeof options.toolCallArgs === "function") {
+			const fn = options.toolCallArgs;
+			toolCallArgs = (id: string) => {
+				const fromFn = fn(id);
+				return fromFn !== undefined ? fromFn : extracted.get(id);
+			};
+		} else if (typeof (options.toolCallArgs as ReadonlyMap<string, unknown>).get === "function") {
+			const merged = new Map<string, unknown>(extracted);
+			for (const [k, v] of (options.toolCallArgs as ReadonlyMap<string, unknown>).entries()) {
+				merged.set(k, v);
+			}
+			toolCallArgs = merged;
+		} else {
+			toolCallArgs = extracted;
+		}
+	} else {
+		toolCallArgs = extracted;
+	}
+
 	const blocks: TranscriptBlock[] = [];
 	for (let index = 0; index < messages.length; index++) {
 		const message = messages[index]!;
 		if (!isDisplayed(message)) continue;
-		blocks.push(toTranscriptBlock(message, { ...options, index }));
+		blocks.push(toTranscriptBlock(message, { ...options, toolCallArgs, index }));
 	}
 	return blocks;
 }

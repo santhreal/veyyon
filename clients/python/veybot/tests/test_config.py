@@ -64,6 +64,30 @@ def test_allowlist_csv_parsing(monkeypatch: pytest.MonkeyPatch, env: dict[str, s
     assert cfg.repo_allowlist == frozenset({"alpha/one", "beta/two", "gamma/three"})
 
 
+@pytest.mark.parametrize(
+    ("alias", "prop"),
+    [
+        ("VEYBOT_REPO_ALLOWLIST", "repo_allowlist"),
+        ("VEYBOT_RATE_LIMIT_UNLIMITED", "rate_limit_unlimited"),
+        ("VEYBOT_MAINTAINER_LOGINS", "maintainer_logins"),
+        ("VEYBOT_REVIEWER_BOTS", "reviewer_bots"),
+    ],
+)
+def test_csv_settings_accept_sequences_and_none(env: dict[str, str], alias: str, prop: str) -> None:
+    reset_settings_cache()
+    assert getattr(Settings(**{alias: ["Alpha/One", " beta "]}), prop) == frozenset({"alpha/one", "beta"})
+    assert getattr(Settings(**{alias: ("gamma",)}), prop) == frozenset({"gamma"})
+    assert getattr(Settings(**{alias: None}), prop) == frozenset()
+
+
+def test_whitespace_github_token_treated_as_unset(monkeypatch: pytest.MonkeyPatch, env: dict[str, str]) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "   ")
+    reset_settings_cache()
+    cfg = Settings()  # type: ignore[call-arg]
+    assert cfg.github_token is None
+    assert cfg.gh_proxy_url == "http://gh-proxy.invalid:8081"
+
+
 def test_blank_replay_token_treated_as_disabled(monkeypatch: pytest.MonkeyPatch, env: dict[str, str]) -> None:
     monkeypatch.setenv("VEYBOT_REPLAY_TOKEN", "")
     reset_settings_cache()

@@ -2,7 +2,7 @@
  * The settings screen applies a prompt gate by WRITING it, and says so when a flip cannot land.
  *
  * WHY THIS SUITE EXISTS. The controller carried a `case` per setting deciding which flips
- * rebuild the system prompt, and it had two of the nine. Flipping `subagent.batch` or
+ * rebuild the system prompt, and it had two of the nine. Flipping `agent.batch` or
  * `tools.format` changed the setting and left the model reading a prompt that described the
  * previous configuration, with nothing logged, until an unrelated rebuild happened to fire.
  *
@@ -92,7 +92,7 @@ describe("flipping a live prompt gate", () => {
 		// real notice gets ignored.
 		const { controller, showWarning } = harness();
 
-		controller.handleSettingChange("subagent.batch", true);
+		controller.handleSettingChange("agent.batch", true);
 
 		expect(showWarning).not.toHaveBeenCalled();
 	});

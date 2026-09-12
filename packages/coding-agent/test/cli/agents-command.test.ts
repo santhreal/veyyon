@@ -7,7 +7,7 @@
  * profile's `agent/agents`, which no loader reads: every unpacked definition was
  * absent from `/agents` and from `task`, silently. `~/.veyyon/subagents` is the
  * reader's directory, pinned from the reader's side by
- * `test/task/user-subagents-are-global-and-their-tools-are-checked.test.ts`, so a
+ * `test/task/user-agents-are-global-and-their-tools-are-checked.test.ts`, so a
  * writer that drifts from it fails one of the two.
  */
 import { describe, expect, it } from "bun:test";
@@ -103,11 +103,11 @@ describe("veyyon agents unpack", () => {
 		expect(stderr).toContain("--project");
 	}, 30_000);
 
-	it("rejects a scope flag that no longer has a reader", async () => {
+	it("shows the authored definitions directory in command help", async () => {
 		const home = makeTempDir2();
-		const { stderr, exitCode } = await runAgents(makeEnv(home), ["unpack", "--project"]);
-		expect(exitCode).not.toBe(0);
-		expect(stderr).toContain("--project");
+		const { stdout, exitCode } = await runAgents(makeEnv(home), []);
+		expect(exitCode).toBe(0);
+		expect(stdout).toContain("~/.veyyon/subagents");
 	}, 30_000);
 
 	it("--user names the same directory as the default", async () => {

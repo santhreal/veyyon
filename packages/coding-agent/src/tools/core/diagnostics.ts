@@ -9,9 +9,10 @@
  * second copy of the grammar.
  */
 
-import { replaceTabs } from "@veyyon/utils/wrap";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import type { ViewLine, ViewSection, ViewSpan } from "@veyyon/view";
 import { getLanguageFromPath } from "../../utils/lang-from-path";
+import { heldBack } from "./render-utils";
 
 /** One diagnostic, as the compiler line it was parsed out of states it. */
 export interface ParsedDiagnostic {
@@ -83,7 +84,7 @@ const NEST_INDENT = "  ";
  * Insertion order across files, which is the order the compiler reported them in: a card that
  * re-sorted the files would move a group a reader is looking at as more diagnostics arrive.
  */
-function groupByFile(messages: string[]): { byFile: Map<string, ParsedDiagnostic[]>; unparsed: string[] } {
+export function groupByFile(messages: string[]): { byFile: Map<string, ParsedDiagnostic[]>; unparsed: string[] } {
 	const byFile = new Map<string, ParsedDiagnostic[]>();
 	const unparsed: string[] = [];
 	for (const msg of messages) {
@@ -192,5 +193,6 @@ export function diagnosticsSection(
 	}
 
 	const held = total - shown;
-	return { lines, ...(held > 0 ? { hidden: { count: held, revealable: true } } : {}) };
+	const hidden = heldBack(held);
+	return { lines, ...(hidden === undefined ? {} : { hidden }) };
 }

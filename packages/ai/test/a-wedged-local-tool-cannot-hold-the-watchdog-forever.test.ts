@@ -13,7 +13,7 @@ import { iterateWithIdleTimeout } from "@veyyon/ai/utils/idle-iterator";
 //
 // That is the worse of the two failures, because a spurious abort recovers
 // itself and a wedge does not. The same shape is already recorded elsewhere in
-// this suite as "a subagent stalled for hours with no error surfaced"
+// this suite as "an agent stalled for hours with no error surfaced"
 // (openai-completions-progress-chunk.test.ts).
 //
 // These tests use no sleeps: the iterator's own deadlines drive them.

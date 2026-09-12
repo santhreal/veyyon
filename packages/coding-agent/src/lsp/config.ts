@@ -356,8 +356,74 @@ export function resolveCommand(command: string, cwd: string, options?: ResolveCo
 	return $which(command, { cache: options.cache, PATH: options.PATH });
 }
 
-interface ConfigSource {
-	read(): NormalizedConfig | null;
+export interface ConfigSource<T = NormalizedConfig> {
+	read(): T | null;
+}
+
+export function candidateConfigFiles(baseName: string): string[] {
+	return [
+		`${baseName}.json`,
+		`.${baseName}.json`,
+		`${baseName}.yaml`,
+		`.${baseName}.yaml`,
+		`${baseName}.yml`,
+		`.${baseName}.yml`,
+	];
+}
+
+export interface CollectConfigSourcesOptions<T> {
+	baseName: string;
+	cwd: string;
+	fileSource: (filePath: string) => ConfigSource<T>;
+	pluginSource?: (root: ClaudePluginRoot) => ConfigSource<T> | null;
+}
+
+export function collectConfigSources<T>(options: CollectConfigSourcesOptions<T>): Array<ConfigSource<T>> {
+	const filenames = candidateConfigFiles(options.baseName);
+	const sources: Array<ConfigSource<T>> = [];
+
+	// Project root files (highest priority)
+	for (const filename of filenames) {
+		sources.push(options.fileSource(path.join(options.cwd, filename)));
+	}
+
+	// Project config directories (.veyyon/, .pi/, .claude/)
+	const projectDirs = getConfigDirPaths("", { user: false, project: true, cwd: options.cwd });
+	for (const dir of projectDirs) {
+		for (const filename of filenames) {
+			sources.push(options.fileSource(path.join(dir, filename)));
+		}
+	}
+
+	// User config directories (~/.veyyon/agent/, ~/.pi/agent/, ~/.claude/)
+	const userDirs = getConfigDirPaths("", { user: true, project: false });
+	for (const dir of userDirs) {
+		for (const filename of filenames) {
+			sources.push(options.fileSource(path.join(dir, filename)));
+		}
+	}
+
+	// Plugin configs (from marketplace/--plugin-dir roots)
+	const pluginRoots = getPreloadedPluginRoots();
+	for (const root of pluginRoots) {
+		for (const filename of filenames) {
+			sources.push(options.fileSource(path.join(root.path, filename)));
+		}
+		if (options.pluginSource) {
+			const extra = options.pluginSource(root);
+			if (extra) {
+				sources.push(extra);
+			}
+		}
+	}
+
+	// User home root files (lowest priority fallback)
+	const home = os.homedir();
+	for (const filename of filenames) {
+		sources.push(options.fileSource(path.join(home, filename)));
+	}
+
+	return sources;
 }
 
 function fileConfigSource(filePath: string): ConfigSource {
@@ -447,46 +513,13 @@ function marketplaceConfigSource(root: ClaudePluginRoot): ConfigSource {
  * Configuration sources in priority order.
  * Supports both visible and hidden variants at each config location.
  */
-function getConfigSources(cwd: string): ConfigSource[] {
-	const filenames = ["lsp.json", ".lsp.json", "lsp.yaml", ".lsp.yaml", "lsp.yml", ".lsp.yml"];
-	const sources: ConfigSource[] = [];
-
-	// Project root files (highest priority)
-	for (const filename of filenames) {
-		sources.push(fileConfigSource(path.join(cwd, filename)));
-	}
-
-	// Project config directories (.veyyon/, .pi/, .claude/)
-	const projectDirs = getConfigDirPaths("", { user: false, project: true, cwd });
-	for (const dir of projectDirs) {
-		for (const filename of filenames) {
-			sources.push(fileConfigSource(path.join(dir, filename)));
-		}
-	}
-
-	// User config directories (~/.veyyon/agent/, ~/.pi/agent/, ~/.claude/)
-	const userDirs = getConfigDirPaths("", { user: true, project: false });
-	for (const dir of userDirs) {
-		for (const filename of filenames) {
-			sources.push(fileConfigSource(path.join(dir, filename)));
-		}
-	}
-
-	// Plugin LSP configs (from marketplace/--plugin-dir roots)
-	const pluginRoots = getPreloadedPluginRoots();
-	for (const root of pluginRoots) {
-		for (const filename of filenames) {
-			sources.push(fileConfigSource(path.join(root.path, filename)));
-		}
-		sources.push(marketplaceConfigSource(root));
-	}
-
-	// User home root files (lowest priority fallback)
-	for (const filename of filenames) {
-		sources.push(fileConfigSource(path.join(os.homedir(), filename)));
-	}
-
-	return sources;
+function getConfigSources(cwd: string): Array<ConfigSource<NormalizedConfig>> {
+	return collectConfigSources({
+		baseName: "lsp",
+		cwd,
+		fileSource: fileConfigSource,
+		pluginSource: marketplaceConfigSource,
+	});
 }
 
 /**

@@ -56,12 +56,18 @@ const disabledProviders = new Set<string>();
  * to import them as a machine-wide base layer). veyyon's own providers (native,
  * veyyon-plugins, builtin, project/user commands, ssh/mcp standards) are never
  * gated by this.
+ *
+ * `claude-plugins` is not in this set. The roots it loads are the profile's own
+ * marketplace installs (`veyyon plugin install`), `--plugin-dir` paths the
+ * operator named on the command line, and a trusted project registry — the
+ * operator's own configuration, not another tool's. The one foreign source that
+ * provider reads, Claude Code's `~/.claude/plugins/installed_plugins.json`, is
+ * gated inside `listClaudePluginRoots` on `isForeignConfigImportEnabled()`.
  */
 export const FOREIGN_PROVIDER_IDS: ReadonlySet<string> = new Set([
 	"agents",
 	"agents-md",
 	"claude",
-	"claude-plugins",
 	"codex",
 	"cursor",
 	"gemini",

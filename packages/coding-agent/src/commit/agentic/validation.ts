@@ -9,6 +9,21 @@ import type { CommitType, ConventionalDetail } from "../types";
 export { SUMMARY_MAX_CHARS };
 export const MAX_DETAIL_ITEMS = 6;
 
+/** A validation verdict as the model reads it: the response plus the limits it was judged against. */
+export function verdictWithLimits(response: object): string {
+	return JSON.stringify(
+		{
+			...response,
+			constraints: {
+				maxSummaryChars: SUMMARY_MAX_CHARS,
+				maxDetailItems: MAX_DETAIL_ITEMS,
+			},
+		},
+		null,
+		2,
+	);
+}
+
 const fillerWords = ["comprehensive", "various", "several", "improved", "enhanced", "better"];
 const metaPhrases = ["this commit", "this change", "updated code", "modified files"];
 const pastTenseVerbs = new Set([

@@ -49,11 +49,7 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 		_ => primitives::head_tail_dedup_capped(&cleaned, 80, 40),
 	};
 
-	if text == input {
-		MinimizerOutput::passthrough(input)
-	} else {
-		MinimizerOutput::transformed(text, input.len())
-	}
+	MinimizerOutput::maybe_transformed(input, text)
 }
 
 /// Returns `true` when the full command is `aws s3 ls [...]` (not `cp`, `sync`,
@@ -84,7 +80,7 @@ fn is_s3_ls(command: &str) -> bool {
 /// follow the positional (`aws s3 cp s3://bucket/key - --request-payer
 /// requester`); a false positive only skips minimization, which is safe.
 fn is_aws_stdout_pipe(command: &str) -> bool {
-	command.split_whitespace().any(|token| token == "-")
+	primitives::command_has_exact_token(command, "-")
 }
 
 fn filter_aws(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> String {
@@ -150,54 +146,46 @@ fn try_compact_aws_json(ctx: &MinimizerCtx<'_>, input: &str) -> Option<String> {
 	compact_aws_generic(&root)
 }
 
+fn compact_service_table(
+	root: &Value,
+	array_keys: &[&str],
+	headers: &[&str],
+	field_getters: &[&[&str]],
+) -> Option<String> {
+	let rows = extract_array(root, array_keys)?;
+	let values = rows
+		.iter()
+		.map(|item| {
+			field_getters
+				.iter()
+				.map(|keys| string_field_map(item, keys))
+				.collect::<Vec<_>>()
+		})
+		.collect::<Vec<_>>();
+	Some(compact_named_rows(headers, &values))
+}
+
 fn compact_aws_service_json(ctx: &MinimizerCtx<'_>, root: &Value) -> Option<String> {
 	match ctx.subcommand {
 		Some("sts") => extract_aws_sts_caller(root).map(compact_aws_sts_caller),
-		Some("s3" | "s3api") => extract_aws_s3_buckets(root).map(|rows| {
-			compact_named_rows(
-				&["bucket", "date"],
-				&rows
-					.iter()
-					.map(|bucket| {
-						vec![
-							string_field_map(bucket, &["Name", "Bucket", "bucket", "name"]),
-							string_field_map(bucket, &["CreationDate", "CreationDateTime", "date"]),
-						]
-					})
-					.collect::<Vec<_>>(),
-			)
-		}),
-		Some("lambda") => extract_array(root, &["Functions"]).map(|rows| {
-			compact_named_rows(
-				&["function", "runtime", "memory", "modified"],
-				&rows
-					.iter()
-					.map(|item| {
-						vec![
-							string_field_map(item, &["FunctionName", "Name"]),
-							string_field_map(item, &["Runtime"]),
-							string_field_map(item, &["MemorySize"]),
-							string_field_map(item, &["LastModified"]),
-						]
-					})
-					.collect::<Vec<_>>(),
-			)
-		}),
-		Some("iam") => extract_aws_iam_entities(root).map(|rows| {
-			compact_named_rows(
-				&["name", "arn", "created"],
-				&rows
-					.iter()
-					.map(|item| {
-						vec![
-							string_field_map(item, &["UserName", "RoleName", "GroupName", "Name"]),
-							string_field_map(item, &["Arn"]),
-							string_field_map(item, &["CreateDate"]),
-						]
-					})
-					.collect::<Vec<_>>(),
-			)
-		}),
+		Some("s3" | "s3api") => {
+			compact_service_table(root, &["Buckets", "buckets"], &["bucket", "date"], &[
+				&["Name", "Bucket", "bucket", "name"],
+				&["CreationDate", "CreationDateTime", "date"],
+			])
+		},
+		Some("lambda") => compact_service_table(
+			root,
+			&["Functions"],
+			&["function", "runtime", "memory", "modified"],
+			&[&["FunctionName", "Name"], &["Runtime"], &["MemorySize"], &["LastModified"]],
+		),
+		Some("iam") => compact_service_table(
+			root,
+			&["Users", "Roles", "Groups", "Policies"],
+			&["name", "arn", "created"],
+			&[&["UserName", "RoleName", "GroupName", "Name"], &["Arn"], &["CreateDate"]],
+		),
 		Some("logs") => extract_aws_logs_events(root).map(compact_aws_logs_events),
 		Some("ecs") => extract_aws_arn_list(root, &["clusterArns", "taskArns", "serviceArns"])
 			.map(|rows| compact_single_col("arn", &rows)),
@@ -220,38 +208,22 @@ fn compact_aws_service_json(ctx: &MinimizerCtx<'_>, root: &Value) -> Option<Stri
 					.collect::<Vec<_>>(),
 			)
 		}),
-		Some("cloudformation") => extract_array(root, &["Stacks"]).map(|rows| {
-			compact_named_rows(
-				&["stack", "status", "updated"],
-				&rows
-					.iter()
-					.map(|item| {
-						vec![
-							string_field_map(item, &["StackName"]),
-							string_field_map(item, &["StackStatus"]),
-							string_field_map(item, &["LastUpdatedTime", "CreationTime"]),
-						]
-					})
-					.collect::<Vec<_>>(),
-			)
-		}),
+		Some("cloudformation") => {
+			compact_service_table(root, &["Stacks"], &["stack", "status", "updated"], &[
+				&["StackName"],
+				&["StackStatus"],
+				&["LastUpdatedTime", "CreationTime"],
+			])
+		},
 		Some("eks") => compact_aws_eks(root),
 		Some("sqs") => compact_aws_sqs(root),
-		Some("secretsmanager") => extract_array(root, &["SecretList"]).map(|rows| {
-			compact_named_rows(
-				&["name", "arn", "changed"],
-				&rows
-					.iter()
-					.map(|item| {
-						vec![
-							string_field_map(item, &["Name"]),
-							string_field_map(item, &["ARN", "Arn"]),
-							string_field_map(item, &["LastChangedDate", "LastAccessedDate"]),
-						]
-					})
-					.collect::<Vec<_>>(),
-			)
-		}),
+		Some("secretsmanager") => {
+			compact_service_table(root, &["SecretList"], &["name", "arn", "changed"], &[
+				&["Name"],
+				&["ARN", "Arn"],
+				&["LastChangedDate", "LastAccessedDate"],
+			])
+		},
 		_ => None,
 	}
 }
@@ -272,10 +244,6 @@ fn compact_aws_sts_caller(map: &Map<String, Value>) -> String {
 		string_field_map(map, &["Arn"]),
 		string_field_map(map, &["UserId"])
 	)
-}
-
-fn extract_aws_s3_buckets(root: &Value) -> Option<Vec<&Map<String, Value>>> {
-	extract_array(root, &["Buckets", "buckets"])
 }
 
 /// True for an `aws s3 ls` date column (`YYYY-MM-DD`).
@@ -367,10 +335,6 @@ fn compact_aws_s3_ls_text(input: &str) -> Option<String> {
 		}
 		Some(out)
 	}
-}
-
-fn extract_aws_iam_entities(root: &Value) -> Option<Vec<&Map<String, Value>>> {
-	extract_array(root, &["Users", "Roles", "Groups", "Policies"])
 }
 
 fn extract_aws_logs_events(root: &Value) -> Option<Vec<&Map<String, Value>>> {
@@ -1110,55 +1074,14 @@ fn trim_row_layout(line: &str) -> &str {
 }
 
 fn compact_delimited_table(input: &str, max_rows: usize) -> String {
-	let border_style = detect_pipe_border_style(input);
-	let mut out = Vec::new();
-	let mut data_rows = 0usize;
-	let mut saw_header = false;
-	for line in input.lines() {
-		// Two different trims, and the difference is the point: whether the line
-		// says anything is decided on ALL whitespace, but the content that survives
-		// keeps its tabs. See `trim_row_layout`.
-		if line.trim().is_empty() {
-			continue;
-		}
-		let trimmed = trim_row_layout(line);
-		if is_border_line(trimmed) {
-			continue;
-		}
-		// A line the minimizer wrote is not a row to reshape. `| (×2)` is a
-		// repeat counter, and splitting it on its pipes turned it into a
-		// tab-prefixed cell. See `primitives::is_minimizer_annotation`.
-		if primitives::is_minimizer_annotation(trimmed) {
-			out.push(trimmed.to_string());
-			continue;
-		}
-		let normalized = if trimmed.contains('|') {
-			// See `normalize_pipe_row_if_meaningful`: a row of empty cells would
-			// be emitted as a blank line, which this loop drops on the way in.
-			let Some(normalized) = normalize_pipe_row_if_meaningful(trimmed, border_style) else {
-				continue;
-			};
-			normalized
-		} else {
-			trimmed.to_string()
-		};
-		if !saw_header {
-			saw_header = true;
-			out.push(normalized);
-			continue;
-		}
-		data_rows += 1;
-		if data_rows <= max_rows || is_sql_diagnostic_line(trimmed) {
-			out.push(normalized);
-		}
-	}
-	if data_rows > max_rows {
-		out.push(format!("[…{} rows elided…]", data_rows - max_rows));
-	}
-	primitives::join_lines(&out)
+	compact_pipe_table(input, max_rows, false)
 }
 
 fn compact_psql_table(input: &str) -> String {
+	compact_pipe_table(input, MAX_PSQL_ROWS, true)
+}
+
+fn compact_pipe_table(input: &str, max_rows: usize, extract_row_counts: bool) -> String {
 	let border_style = detect_pipe_border_style(input);
 	let mut out = Vec::new();
 	let mut row_count_lines = Vec::new();
@@ -1166,8 +1089,6 @@ fn compact_psql_table(input: &str) -> String {
 	let mut saw_header = false;
 
 	for line in input.lines() {
-		// See `trim_row_layout`: emptiness is decided on all whitespace, content
-		// keeps its tabs.
 		if line.trim().is_empty() {
 			continue;
 		}
@@ -1175,24 +1096,15 @@ fn compact_psql_table(input: &str) -> String {
 		if is_border_line(trimmed) {
 			continue;
 		}
-		if is_psql_row_count(trimmed) {
+		if extract_row_counts && is_psql_row_count(trimmed) {
 			row_count_lines.push(trimmed.to_string());
 			continue;
 		}
-		// A line the minimizer wrote is not a row to reshape. `| (×2)` is a
-		// repeat counter, and splitting it on its pipes turned it into a
-		// tab-prefixed cell. See `primitives::is_minimizer_annotation`.
-		if primitives::is_minimizer_annotation(trimmed) {
-			out.push(trimmed.to_string());
-			continue;
-		}
-		if is_sql_diagnostic_line(trimmed) {
+		if primitives::is_minimizer_annotation(trimmed) || is_sql_diagnostic_line(trimmed) {
 			out.push(trimmed.to_string());
 			continue;
 		}
 		if trimmed.contains('|') {
-			// See `normalize_pipe_row_if_meaningful`: a row of empty cells would
-			// be emitted as a blank line, which this loop drops on the way in.
 			let Some(normalized) = normalize_pipe_row_if_meaningful(trimmed, border_style) else {
 				continue;
 			};
@@ -1202,16 +1114,24 @@ fn compact_psql_table(input: &str) -> String {
 				continue;
 			}
 			data_rows += 1;
-			if data_rows <= MAX_PSQL_ROWS {
+			if data_rows <= max_rows {
 				out.push(normalized);
 			}
-		} else {
+		} else if !saw_header && !extract_row_counts {
+			saw_header = true;
 			out.push(trimmed.to_string());
+		} else if extract_row_counts {
+			out.push(trimmed.to_string());
+		} else {
+			data_rows += 1;
+			if data_rows <= max_rows {
+				out.push(trimmed.to_string());
+			}
 		}
 	}
 
-	if data_rows > MAX_PSQL_ROWS {
-		out.push(format!("[…{} rows elided…]", data_rows - MAX_PSQL_ROWS));
+	if data_rows > max_rows {
+		out.push(format!("[…{} rows elided…]", data_rows - max_rows));
 	}
 	out.extend(row_count_lines);
 	primitives::join_lines(&out)

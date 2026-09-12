@@ -294,6 +294,37 @@ describe("AuthStorage codex oauth ranking", () => {
 		expect(apiKey).toBe("api-acct-healthy");
 	});
 
+	test("falls back to the earliest-unblocking account when all are exhausted and it is listed last", async () => {
+		if (!authStorage) throw new Error("test setup failed");
+
+		// The mirror of the all-exhausted fallback below: the soonest reset sits at the end of the
+		// list, so only a block ordered by its reset, not the list order, can name it.
+		await authStorage.set("openai-codex", [
+			{ type: "oauth", ...createCredential("acct-later-first", "later-first@example.com") },
+			{ type: "oauth", ...createCredential("acct-soon-last", "soon-last@example.com") },
+		]);
+
+		usageByAccount.set(
+			"acct-later-first",
+			createCodexUsageReport({
+				accountId: "acct-later-first",
+				primary: { usedFraction: 1, resetInMs: 30 * 60 * 1000 },
+				secondary: { usedFraction: 1, resetInMs: 30 * 60 * 1000 },
+			}),
+		);
+		usageByAccount.set(
+			"acct-soon-last",
+			createCodexUsageReport({
+				accountId: "acct-soon-last",
+				primary: { usedFraction: 1, resetInMs: 5 * 60 * 1000 },
+				secondary: { usedFraction: 1, resetInMs: 5 * 60 * 1000 },
+			}),
+		);
+
+		const apiKey = await authStorage.getApiKey("openai-codex", "session-all-exhausted-reversed");
+		expect(apiKey).toBe("api-acct-soon-last");
+	});
+
 	test("temporarily blocks only the exhausted Codex OAuth credential after a quota 429", async () => {
 		if (!authStorage) throw new Error("test setup failed");
 

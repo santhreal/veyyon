@@ -37,9 +37,13 @@ describe("the presentation contract does not depend on a renderer", () => {
 		expect(forbiddenEdges(PRESENTATION, isRendererImport)).toEqual([]);
 	});
 
-	test("every specifier is a relative sibling or a dependency-free package", () => {
-		// The contract's whole value is that it depends on nothing in this repo. A
-		// specifier that is neither relative nor a node builtin is the edge to check.
+	test("every specifier is a relative sibling or a dependency-free contract", () => {
+		// The contract's whole value is that it runs nothing in this repo. A specifier that is
+		// neither relative nor a node builtin is the edge to check, and the only one admitted is
+		// `@veyyon/view`, the contract a tool card is described in: a transcript block carries the
+		// card's `ToolView` so a host draws it without the tool. It is declared in the wire package's
+		// `dependencies` and reached type-only, which `a-contract-imports-only-a-contract-and-only-
+		// its-types.test.ts` pins for every contract pair.
 		const external: string[] = [];
 		for (const file of typeScriptFiles(PRESENTATION)) {
 			for (const specifier of importSpecifiers(file)) {
@@ -47,6 +51,6 @@ describe("the presentation contract does not depend on a renderer", () => {
 				external.push(specifier);
 			}
 		}
-		expect([...new Set(external)].sort()).toEqual([]);
+		expect([...new Set(external)].sort()).toEqual(["@veyyon/view"]);
 	});
 });

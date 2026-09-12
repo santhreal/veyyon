@@ -6,7 +6,7 @@ import { getSessionSlashCommands } from "@veyyon/coding-agent/extensibility/exte
  * sources (extension-registered, prompt/custom commands, and skills), shared by the
  * five wiring sites so they cannot drift. Its behavior was untested. This suite locks:
  * the source order (extension, then prompt, then skill), the CustomCommandSource ->
- * location mapping (user/project map through, bundled yields no location field), the
+ * location mapping (user/project/plugin map through, bundled yields no location field), the
  * skill name shape (`skill:<name>`), that an empty skill description is dropped rather
  * than emitted as "", that skill commands appear only when skillsSettings
  * .enableSkillCommands is on, and that a missing extensionRunner contributes nothing.
@@ -23,6 +23,7 @@ const fullSession = (): Session =>
 		customCommands: [
 			{ command: { name: "userc", description: "user cmd" }, source: "user", resolvedPath: "/u/userc.md" },
 			{ command: { name: "projc", description: "proj cmd" }, source: "project", resolvedPath: "/p/projc.md" },
+			{ command: { name: "plugc", description: "plugin cmd" }, source: "plugin", resolvedPath: "/n/plug/cmd.ts" },
 			{ command: { name: "bundc", description: "bundled cmd" }, source: "bundled", resolvedPath: "/b/bundc.md" },
 		],
 		skills: [
@@ -38,6 +39,7 @@ describe("getSessionSlashCommands", () => {
 			{ name: "ext-cmd", description: "an extension cmd", source: "extension" },
 			{ name: "userc", description: "user cmd", source: "prompt", location: "user", path: "/u/userc.md" },
 			{ name: "projc", description: "proj cmd", source: "prompt", location: "project", path: "/p/projc.md" },
+			{ name: "plugc", description: "plugin cmd", source: "prompt", location: "plugin", path: "/n/plug/cmd.ts" },
 			// bundled: no `location` key at all
 			{ name: "bundc", description: "bundled cmd", source: "prompt", path: "/b/bundc.md" },
 			{ name: "skill:myskill", description: "skill desc", source: "skill", path: "/s/SKILL.md" },

@@ -104,7 +104,7 @@ const fullInventory = inventory(
 
 const fullRoles = accountRoleAnnotations({
 	mainModel: { provider: "anthropic", id: "opus-5" },
-	subagentProviders: ["openai-codex"],
+	agentProviders: ["openai-codex"],
 	webSearchPreference: "gemini",
 });
 
@@ -128,7 +128,7 @@ describe("the /account status block reports the accounts in use", () => {
 				"  Google Gemini CLI  (no name set)               web search",
 				"                     second@example.com · project example-project",
 				"",
-				"  OpenAI Codex       codex-main                  subagents",
+				"  OpenAI Codex       codex-main                  agents",
 				"                     first@example.com",
 				"                     5h      [████▍░░░░░] 44%   resets in 1h",
 				"",
@@ -334,17 +334,17 @@ describe("role annotations name why a provider is in the session", () => {
 
 	/**
 	 * One provider can serve several roles, and each role is said once. A provider repeated in the
-	 * sources (main model and subagent inheritance both landing on it) must not read
-	 * "subagents · subagents".
+	 * sources (main model and agent inheritance both landing on it) must not read
+	 * "agents · agents".
 	 */
 	it("collects several roles per provider without repeating one", () => {
 		const roles = accountRoleAnnotations({
 			mainModel: { provider: "anthropic", id: "opus-5" },
-			subagentProviders: ["anthropic", "anthropic"],
+			agentProviders: ["anthropic", "anthropic"],
 			webSearchPreference: "anthropic",
 		});
 
-		expect(roles.get("anthropic")).toEqual(["main model  (opus-5)", "subagents", "web search"]);
+		expect(roles.get("anthropic")).toEqual(["main model  (opus-5)", "agents", "web search"]);
 	});
 
 	/**

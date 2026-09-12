@@ -80,22 +80,9 @@ function envString(value: string | undefined): string | undefined {
 	return trimmed.length === 0 ? undefined : trimmed;
 }
 
-function pickBudget(value: unknown): HindsightConfig["recallBudget"] | undefined {
-	return typeof value === "string" && (VALID_BUDGETS as string[]).includes(value)
-		? (value as HindsightConfig["recallBudget"])
-		: undefined;
-}
-
-function pickRetainMode(value: unknown): HindsightConfig["retainMode"] | undefined {
-	return typeof value === "string" && (VALID_RETAIN_MODES as string[]).includes(value)
-		? (value as HindsightConfig["retainMode"])
-		: undefined;
-}
-
-function pickScoping(value: unknown): HindsightScoping | undefined {
-	return typeof value === "string" && (VALID_SCOPINGS as string[]).includes(value)
-		? (value as HindsightScoping)
-		: undefined;
+/** The value when it is one of `valid`; any other value, including a non-string, is undefined. */
+function pickOneOf<T extends string>(value: unknown, valid: readonly T[]): T | undefined {
+	return typeof value === "string" && (valid as readonly string[]).includes(value) ? (value as T) : undefined;
 }
 
 /**
@@ -110,11 +97,11 @@ export function loadHindsightConfig(settings: Settings, env: NodeJS.ProcessEnv =
 	const apiTokenEnv = envString(env.HINDSIGHT_API_TOKEN);
 	const bankIdEnv = envString(env.HINDSIGHT_BANK_ID);
 	const bankMissionEnv = envString(env.HINDSIGHT_BANK_MISSION);
-	const retainModeEnv = pickRetainMode(env.HINDSIGHT_RETAIN_MODE);
-	const recallBudgetEnv = pickBudget(env.HINDSIGHT_RECALL_BUDGET);
+	const retainModeEnv = pickOneOf(env.HINDSIGHT_RETAIN_MODE, VALID_RETAIN_MODES);
+	const recallBudgetEnv = pickOneOf(env.HINDSIGHT_RECALL_BUDGET, VALID_BUDGETS);
 	const autoRecallEnv = envBool(env.HINDSIGHT_AUTO_RECALL);
 	const autoRetainEnv = envBool(env.HINDSIGHT_AUTO_RETAIN);
-	const scopingEnv = pickScoping(env.HINDSIGHT_SCOPING);
+	const scopingEnv = pickOneOf(env.HINDSIGHT_SCOPING, VALID_SCOPINGS);
 	const debugEnv = envBool(env.HINDSIGHT_DEBUG);
 	const recallMaxTokensEnv = envInt(env.HINDSIGHT_RECALL_MAX_TOKENS);
 	const recallContextTurnsEnv = envInt(env.HINDSIGHT_RECALL_CONTEXT_TURNS);
@@ -126,14 +113,14 @@ export function loadHindsightConfig(settings: Settings, env: NodeJS.ProcessEnv =
 	const retainTimeoutMsEnv = envInt(env.HINDSIGHT_RETAIN_TIMEOUT_MS);
 
 	// Read from settings (each falls back to its schema default).
-	const settingsRetainMode = pickRetainMode(settings.get("hindsight.retainMode"));
+	const settingsRetainMode = pickOneOf(settings.get("hindsight.retainMode"), VALID_RETAIN_MODES);
 	if (settings.get("hindsight.retainMode") && !settingsRetainMode) {
 		logger.warn("Hindsight: invalid retainMode setting, falling back to full-session", {
 			value: settings.get("hindsight.retainMode"),
 		});
 	}
-	const settingsRecallBudget = pickBudget(settings.get("hindsight.recallBudget"));
-	const settingsScoping = pickScoping(settings.get("hindsight.scoping"));
+	const settingsRecallBudget = pickOneOf(settings.get("hindsight.recallBudget"), VALID_BUDGETS);
+	const settingsScoping = pickOneOf(settings.get("hindsight.scoping"), VALID_SCOPINGS);
 	if (settings.get("hindsight.scoping") && !settingsScoping) {
 		logger.warn("Hindsight: invalid scoping setting, falling back to per-project-tagged", {
 			value: settings.get("hindsight.scoping"),

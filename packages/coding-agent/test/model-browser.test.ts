@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
@@ -9,7 +9,10 @@ import {
 	resolveRoleAssignments,
 	sortModelItems,
 } from "@veyyon/coding-agent/modes/terminal/components/selectors/model-browser";
-import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { getThemeByName, initTheme, setThemeInstance, theme } from "@veyyon/coding-agent/theme/theme";
+import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
+import { motionClock } from "@veyyon/utils/motion";
+import { parseSgrMouse } from "@veyyon/utils/mouse";
 
 function makeModel(provider: string, id: string): Model {
 	return buildModel({
@@ -121,5 +124,91 @@ describe("ModelBrowser perf display", () => {
 		browser.setItems(buildBrowserItems([makeModel("openai", "gpt-5")]));
 
 		expect(renderPlain(browser, 120)[2]).not.toContain("t/s");
+	});
+});
+
+describe("ModelBrowser hover controller lifecycle", () => {
+	let policy: AnsiPolicy;
+	let originalColorterm: string | undefined;
+	let originalTheme: typeof theme | undefined;
+
+	beforeEach(async () => {
+		originalTheme = theme;
+		originalColorterm = Bun.env.COLORTERM;
+		Bun.env.COLORTERM = "truecolor";
+		const loaded = await getThemeByName("titanium");
+		if (loaded) setThemeInstance(loaded);
+		policy = getAnsiPolicy();
+		setAnsiPolicy("full");
+	});
+
+	afterEach(() => {
+		motionClock.clear();
+		setAnsiPolicy(policy);
+		if (originalColorterm === undefined) delete Bun.env.COLORTERM;
+		else Bun.env.COLORTERM = originalColorterm;
+		if (originalTheme !== undefined) setThemeInstance(originalTheme);
+	});
+
+	test("handles pointer changes, no-motion mode, late attachment, callback replacement and disposal", () => {
+		const browser = makeBrowser([makeModel("openai", "gpt-5"), makeModel("anthropic", "claude-3")], []);
+		browser.render(80);
+		// Row 0 is at line 2 (LIST_ROW_START = 2)
+		// 1. Without motion lent, routeMouse paints the switched truecolor band
+		browser.routeMouse(parseSgrMouse("\x1b[<35;11;3M")!, 2);
+		const linesWithHover = browser.render(80);
+		expect(linesWithHover[2]).toContain("\x1b[48;2;");
+
+		browser.clearHover();
+		const linesWithoutHover = browser.render(80);
+		expect(linesWithoutHover[2]).not.toContain("\x1b[48;2;");
+		expect(linesWithHover[2]).not.toBe(linesWithoutHover[2]);
+
+		// 2. Motion mode: routeMouse triggers requestRender and registers on motionClock
+		let renderCalls = 0;
+		browser.setHoverMotion({
+			requestRender: () => {
+				renderCalls++;
+			},
+			enabled: true,
+		});
+		browser.routeMouse(parseSgrMouse("\x1b[<35;11;3M")!, 2);
+		expect(renderCalls).toBeGreaterThan(0);
+		expect(motionClock.liveCount).toBeGreaterThan(0);
+		motionClock.clear();
+
+		// 3. Late render-callback attachment: set hover first, then attach motion
+		browser.clearHover();
+		browser.routeMouse(parseSgrMouse("\x1b[<35;11;3M")!, 2);
+		let lateRenderCalls = 0;
+		browser.setHoverMotion({
+			requestRender: () => {
+				lateRenderCalls++;
+			},
+			enabled: true,
+		});
+		expect(motionClock.liveCount).toBeGreaterThan(0);
+		expect(lateRenderCalls).toBeGreaterThan(0);
+		motionClock.clear();
+
+		// 4. Callback replacement: replacing motion options cleans up prior fade
+		let replacementCalls = 0;
+		const lateCallsBeforeReplacement = lateRenderCalls;
+		browser.setHoverMotion({
+			requestRender: () => {
+				replacementCalls++;
+			},
+			enabled: false,
+		});
+		const callsBeforePointer = replacementCalls;
+		browser.routeMouse(parseSgrMouse("\x1b[<35;11;4M")!, 3);
+		expect(replacementCalls).toBeGreaterThan(callsBeforePointer);
+		expect(lateRenderCalls).toBe(lateCallsBeforeReplacement);
+		expect(motionClock.liveCount).toBe(0);
+
+		// 5. Dispose cleans up hover and fade
+		browser.disposeHoverMotion();
+		const linesAfterDispose = browser.render(80);
+		expect(linesAfterDispose[3]).not.toContain("\x1b[48;2;");
 	});
 });

@@ -1,13 +1,13 @@
 /**
- * The subagent spawn semaphore, scoped to a session TREE.
+ * The agent spawn semaphore, scoped to a session TREE.
  *
- * `subagent.maxConcurrency` is documented as a per-session ceiling, and the
+ * `agent.maxConcurrency` is documented as a per-session ceiling, and the
  * semaphore enforcing it used to live on the `TaskTool` instance, with a comment
- * claiming that amounted to the same thing. It does not. A subagent gets its own
+ * claiming that amounted to the same thing. It does not. An agent gets its own
  * tool set, so every agent that spawns holds a semaphore of its own, and the
  * operator's ceiling is multiplied by the number of spawners: with nested
  * spawning enabled, a cap of 32 admits 32 per spawner rather than 32 in total.
- * Stock installs set `subagent.maxNestedSpawnDepth` to 0, where a child gets no
+ * Stock installs set `agent.maxNestedSpawnDepth` to 0, where a child gets no
  * task tool and the two readings agree, which is why this went unnoticed.
  *
  * The tree identity is the budget group's owner, the same answer the CPU, memory,

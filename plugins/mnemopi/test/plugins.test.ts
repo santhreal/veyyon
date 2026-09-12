@@ -181,6 +181,22 @@ describe("built-in plugins", () => {
 		expect(plugin.isBlocked("blocked")).toBe(true);
 		expect(plugin.isBlocked("allowed")).toBe(false);
 	});
+
+	it("reads each cap under its camelCase alias, with the snake_case key winning when both are set", () => {
+		const logging = new LoggingPlugin({ maxEntries: 2 });
+		for (let i = 0; i < 3; i++) logging.onRemember({ id: `m${i}`, content: "x" });
+		expect(logging.getLog()).toHaveLength(2);
+
+		const metrics = new MetricsPlugin({ maxTimingSamples: 1 });
+		metrics.recordTiming("recall", 1);
+		metrics.recordTiming("recall", 2);
+		expect(metrics.getTimings("recall")).toEqual([2]);
+
+		const filter = new FilterPlugin({ max_blocked: 1, maxBlocked: 3 });
+		filter.addRule(() => false);
+		for (const id of ["a", "b", "c"]) filter.onRemember({ id });
+		expect(filter.getBlocked()).toHaveLength(1);
+	});
 });
 
 describe("MnemopiPlugin abstract base", () => {
@@ -243,6 +259,16 @@ describe("LoggingPlugin details", () => {
 		const plugin = new LoggingPlugin();
 		plugin.onRemember({ id: "m1", content: { nested: true } });
 		expect(plugin.getLog()[0]?.content_preview).toBe("");
+	});
+
+	it("records a remember and a recall row under their own event names with the memory id and preview", () => {
+		const plugin = new LoggingPlugin();
+		plugin.onRemember({ id: "m1", content: "remembered text" });
+		plugin.onRecall({ id: "m2", content: "recalled text" });
+		expect(plugin.getLog().map(({ timestamp, ...row }) => row)).toEqual([
+			{ event: "remember", memory_id: "m1", content_preview: "remembered text" },
+			{ event: "recall", memory_id: "m2", content_preview: "recalled text" },
+		]);
 	});
 
 	it("clearLog empties the log and getLog returns an independent copy", () => {

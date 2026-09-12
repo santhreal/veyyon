@@ -83,8 +83,13 @@ export const REV_CATEGORY = reverseMap(CATEGORY_MAP);
 const SORTED_PHRASES = Object.entries(PHRASE_MAP).sort(([left], [right]) => right.length - left.length);
 export const REV_PHRASE = reverseMap(PHRASE_MAP);
 
-function replaceAllLiteral(text: string, pattern: string, replacement: string): string {
-	return text.replaceAll(pattern, replacement);
+/** Replace every literal `pattern` in `text` with its `replacement`, in table order. */
+function replaceAllLiteral(text: string, table: Iterable<readonly [pattern: string, replacement: string]>): string {
+	let result = text;
+	for (const [pattern, replacement] of table) {
+		result = result.replaceAll(pattern, replacement);
+	}
+	return result;
 }
 
 export function applyCategoryPrefixes(text: string): string {
@@ -99,19 +104,11 @@ export function applyCategoryPrefixes(text: string): string {
 }
 
 export function applyPhrases(text: string): string {
-	let result = text;
-	for (const [phrase, shorthand] of SORTED_PHRASES) {
-		result = replaceAllLiteral(result, phrase, shorthand);
-	}
-	return result;
+	return replaceAllLiteral(text, SORTED_PHRASES);
 }
 
 export function applyStructural(text: string): string {
-	let result = text;
-	for (const [pattern, replacement] of STRUCTURAL_REPLACEMENTS) {
-		result = replaceAllLiteral(result, pattern, replacement);
-	}
-	return result;
+	return replaceAllLiteral(text, STRUCTURAL_REPLACEMENTS);
 }
 
 export function compactParens(text: string): string {

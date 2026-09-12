@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
-import {
-	resolveCliModel,
-	resolveModelFromSettings,
-	resolveModelRoleValue,
-} from "@veyyon/coding-agent/config/model-resolver";
+import { resolveCliModel, resolveModelRoleValue } from "@veyyon/coding-agent/config/model-resolver";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 
 function model(provider: string, id: string): Model<"anthropic-messages"> {
@@ -30,9 +26,9 @@ describe("issue #980 provider-qualified model resolution", () => {
 			modelRoles: { default: "anthropic/claude-3-7-sonnet" },
 		});
 
-		const resolved = resolveModelFromSettings({ settings, availableModels });
-		expect(resolved?.provider).toBe("anthropic");
-		expect(resolved?.id).toBe("claude-3-7-sonnet");
+		const resolved = resolveModelRoleValue(settings.getModelRole("default"), availableModels, { settings });
+		expect(resolved.model?.provider).toBe("anthropic");
+		expect(resolved.model?.id).toBe("claude-3-7-sonnet");
 	});
 
 	test("does not silently fall back to bedrock when a provider-qualified role misses", () => {
@@ -45,9 +41,6 @@ describe("issue #980 provider-qualified model resolution", () => {
 		const roleResolved = resolveModelRoleValue(roleValue, availableModels, { settings });
 		expect(roleResolved.model).toBeUndefined();
 
-		const settingsResolved = resolveModelFromSettings({ settings, availableModels });
-		expect(settingsResolved).toBeUndefined();
-
 		const cliResolved = resolveCliModel({
 			cliModel: "anthropic/claude-3-7-sonnet",
 			modelRegistry: {
@@ -56,7 +49,7 @@ describe("issue #980 provider-qualified model resolution", () => {
 		});
 		expect(cliResolved.model).toBeUndefined();
 		expect(cliResolved.error).toBe(
-			'Model "anthropic/claude-3-7-sonnet" not found. Run "veyyon models" to see available models.',
+			'Model "anthropic/claude-3-7-sonnet" not found among 2 model(s) with usable credentials. Did you mean: amazon-bedrock/claude-3-7-sonnet, anthropic/claude-sonnet-4-5?',
 		);
 	});
 });

@@ -201,6 +201,9 @@ describe("agentLoop with AgentMessage", () => {
 		if (final.role !== "assistant") throw new Error("expected assistant message");
 		expect(final.content).toEqual([{ type: "text", text: "clean retry response" }]);
 		expect(JSON.stringify(messages)).not.toContain("to=functions.");
+		// The leaked partial was discarded before the retry, so the retry request
+		// carried the user prompt alone rather than the leaked assistant text.
+		expect(mock.calls[1].context.messages.map(m => m.role)).toEqual(["user"]);
 	});
 
 	it("does not hard-abort a codex tool call whose argument legitimately carries the marker", async () => {

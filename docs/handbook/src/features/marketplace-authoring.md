@@ -76,6 +76,8 @@ The catalog file lives at either `.veyyon-plugin/marketplace.json` or `.claude-p
 | `strict` | no | Boolean plugin metadata flag |
 | `commands`, `agents`, `hooks`, `mcpServers`, `lspServers` | no | Capability metadata used by plugin tooling and selectors |
 
+An entry whose `name` or `source` fails validation is not offered; the rest of the catalog is. `veyyon plugin marketplace add` and `update` print the entry, the failing field and the reason to stderr, and a session that refreshes the marketplace reports the same text on its notice channel.
+
 ### Full catalog example
 
 ```json
@@ -198,7 +200,7 @@ A plugin directory (regardless of source type) ships its content in conventional
 my-plugin/
   skills/<name>/SKILL.md   ← skills
   commands/*.md            ← slash commands
-  agents/*.md              ← subagent definitions
+  agents/*.md              ← agent definitions
   hooks/pre/, hooks/post/  ← hooks
   tools/                   ← custom tools
   .mcp.json                ← MCP server definitions

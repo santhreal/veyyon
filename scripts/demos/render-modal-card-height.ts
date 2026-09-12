@@ -21,8 +21,7 @@ import {
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
 } from "../../packages/coding-agent/src/modes/terminal/components/chrome/modal-shell";
-import { initTheme } from "../../packages/coding-agent/src/theme/theme";
-import { flag, renderWidth } from "./render-args";
+import { renderDemo } from "./render-args";
 
 /** Rows short enough that the empty space below them is the whole point. */
 const ROWS = [
@@ -35,24 +34,16 @@ const ROWS = [
 	"1.3.0    14 May 2026",
 ];
 
-/** Tall enough that the fixed-height card has somewhere to be wrong. */
-const AREA_HEIGHT = 34;
-
-const variant = flag("variant", "after");
-const themeName = flag("theme", "titanium");
-const width = renderWidth();
-
-await initTheme(false, "unicode", false, themeName, themeName);
-
-const shell = renderModalShell({
-	title: "Version · takes effect on restart",
-	sizing: MODAL_SIZING_MEDIUM,
-	areaWidth: width,
-	areaHeight: AREA_HEIGHT,
-	body: ROWS,
-	preferredBodyRows: variant === "before" ? undefined : ROWS.length,
-	shortcuts: SELECT_LIST_SHORTCUTS,
-	showClose: true,
-});
-
-process.stdout.write(`${shell.lines.join("\n")}\n`);
+await renderDemo(
+	({ width, flag }) =>
+		renderModalShell({
+			title: "Version · takes effect on restart",
+			sizing: MODAL_SIZING_MEDIUM,
+			areaWidth: width,
+			areaHeight: 34,
+			body: ROWS,
+			preferredBodyRows: flag("variant", "after") === "before" ? undefined : ROWS.length,
+			shortcuts: SELECT_LIST_SHORTCUTS,
+			showClose: true,
+		}).lines,
+);

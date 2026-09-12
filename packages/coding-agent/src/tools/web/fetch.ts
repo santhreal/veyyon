@@ -948,10 +948,11 @@ function buildBinaryNotice(finalUrl: string, mime: string, byteLength?: number):
 	return `[Binary content: ${binaryContentType(mime)}, ${size}] ${finalUrl}`;
 }
 
-function buildBinaryPayloadResult(
+/** Bounds `content` with {@link finalizeOutput} and assembles the render result around it. */
+function buildRenderResult(
 	url: string,
 	finalUrl: string,
-	mime: string,
+	contentType: string,
 	method: string,
 	content: string,
 	fetchedAt: string,
@@ -961,7 +962,7 @@ function buildBinaryPayloadResult(
 	return {
 		url,
 		finalUrl,
-		contentType: binaryContentType(mime),
+		contentType,
 		method,
 		content: output.content,
 		fetchedAt,
@@ -1027,68 +1028,31 @@ async function tryRenderBinaryPayload(
 	}
 
 	const resultNotes = notes.slice();
+	const contentType = binaryContentType(mime);
+	const finish = (method: string, content: string): FetchRenderResult =>
+		buildRenderResult(url, finalUrl, contentType, method, content, fetchedAt, resultNotes);
 	const binary = await fetchBinary(finalUrl, timeout, signal);
 	if (!binary.ok) {
 		resultNotes.push(binary.error ? `Binary fetch failed: ${binary.error}` : "Binary fetch failed");
-		return buildBinaryPayloadResult(
-			url,
-			finalUrl,
-			mime,
-			"binary",
-			buildBinaryNotice(finalUrl, mime),
-			fetchedAt,
-			resultNotes,
-		);
+		return finish("binary", buildBinaryNotice(finalUrl, mime));
 	}
 
 	const binaryExtHint = getExtensionHint(finalUrl, binary.contentDisposition) || extHint;
 	if (isNotebookHint(mime, binaryExtHint)) {
 		try {
-			return buildBinaryPayloadResult(
-				url,
-				finalUrl,
-				mime,
-				"notebook",
-				await renderNotebookPayload(binary.buffer, finalUrl),
-				fetchedAt,
-				resultNotes,
-			);
+			return finish("notebook", await renderNotebookPayload(binary.buffer, finalUrl));
 		} catch (error) {
 			resultNotes.push(`Notebook rendering failed: ${formatErrorMessage(error)}`);
-			return buildBinaryPayloadResult(
-				url,
-				finalUrl,
-				mime,
-				"binary",
-				buildBinaryNotice(finalUrl, mime, binary.buffer.byteLength),
-				fetchedAt,
-				resultNotes,
-			);
+			return finish("binary", buildBinaryNotice(finalUrl, mime, binary.buffer.byteLength));
 		}
 	}
 
 	if (isSqliteHint(mime, binaryExtHint) || looksLikeSqlite(binary.buffer)) {
 		try {
-			return buildBinaryPayloadResult(
-				url,
-				finalUrl,
-				mime,
-				"sqlite",
-				await renderSqlitePayload(binary.buffer),
-				fetchedAt,
-				resultNotes,
-			);
+			return finish("sqlite", await renderSqlitePayload(binary.buffer));
 		} catch (error) {
 			resultNotes.push(`SQLite rendering failed: ${formatErrorMessage(error)}`);
-			return buildBinaryPayloadResult(
-				url,
-				finalUrl,
-				mime,
-				"binary",
-				buildBinaryNotice(finalUrl, mime, binary.buffer.byteLength),
-				fetchedAt,
-				resultNotes,
-			);
+			return finish("binary", buildBinaryNotice(finalUrl, mime, binary.buffer.byteLength));
 		}
 	}
 
@@ -1097,39 +1061,16 @@ async function tryRenderBinaryPayload(
 	const archiveFormat = hintedArchiveFormat ?? (shouldArchiveSniff ? sniffArchiveFormat(binary.buffer) : undefined);
 	if (archiveFormat) {
 		try {
-			return buildBinaryPayloadResult(
-				url,
-				finalUrl,
-				mime,
-				"archive",
-				await listArchiveRoot(binary.buffer, archiveFormat, { limit: URL_ARCHIVE_LIST_LIMIT }),
-				fetchedAt,
-				resultNotes,
-			);
+			const listing = await listArchiveRoot(binary.buffer, archiveFormat, { limit: URL_ARCHIVE_LIST_LIMIT });
+			return finish("archive", listing);
 		} catch (error) {
 			resultNotes.push(`Archive rendering failed: ${formatErrorMessage(error)}`);
-			return buildBinaryPayloadResult(
-				url,
-				finalUrl,
-				mime,
-				"binary",
-				buildBinaryNotice(finalUrl, mime, binary.buffer.byteLength),
-				fetchedAt,
-				resultNotes,
-			);
+			return finish("binary", buildBinaryNotice(finalUrl, mime, binary.buffer.byteLength));
 		}
 	}
 
 	if (rawLooksBinary) {
-		return buildBinaryPayloadResult(
-			url,
-			finalUrl,
-			mime,
-			"binary",
-			buildBinaryNotice(finalUrl, mime, binary.buffer.byteLength),
-			fetchedAt,
-			resultNotes,
-		);
+		return finish("binary", buildBinaryNotice(finalUrl, mime, binary.buffer.byteLength));
 	}
 
 	return null;
@@ -1285,6 +1226,8 @@ async function renderUrl(
 	}
 
 	const { finalUrl, content: rawContent } = response;
+	const finish = (contentType: string, method: string, content: string): FetchRenderResult =>
+		buildRenderResult(url, finalUrl, contentType, method, content, fetchedAt, notes);
 	if (response.truncated) {
 		notes.push(`Response body exceeded ${formatBytes(MAX_BYTES)} and was cut mid-stream; content is incomplete`);
 	}
@@ -1309,19 +1252,11 @@ async function renderUrl(
 					notes.push(
 						`Image exceeds inline source limit (${binary.buffer.byteLength} bytes > ${MAX_INLINE_IMAGE_SOURCE_BYTES} bytes)`,
 					);
-					const output = finalizeOutput(
+					return finish(
+						imageMimeType,
+						"image-too-large",
 						`Fetched image content (${imageMimeType}), but it is too large to inline render.`,
 					);
-					return {
-						url,
-						finalUrl,
-						contentType: imageMimeType,
-						method: "image-too-large",
-						content: output.content,
-						fetchedAt,
-						truncated: output.truncated,
-						notes,
-					};
 				}
 
 				const resized = await resizeImage(
@@ -1332,37 +1267,21 @@ async function renderUrl(
 					resized.originalWidth > 0 && resized.originalHeight > 0 && resized.width > 0 && resized.height > 0;
 				if (!isDecodedImage) {
 					notes.push(`Fetched payload could not be decoded as ${imageMimeType}; returning text metadata only`);
-					const output = finalizeOutput(
+					return finish(
+						imageMimeType,
+						"image-invalid",
 						rawContent ?? `Fetched payload was labeled ${imageMimeType}, but bytes were not a valid image.`,
 					);
-					return {
-						url,
-						finalUrl,
-						contentType: imageMimeType,
-						method: "image-invalid",
-						content: output.content,
-						fetchedAt,
-						truncated: output.truncated,
-						notes,
-					};
 				}
 				if (resized.buffer.length > MAX_INLINE_IMAGE_OUTPUT_BYTES) {
 					notes.push(
 						`Image exceeds inline output limit after resize (${resized.buffer.length} bytes > ${MAX_INLINE_IMAGE_OUTPUT_BYTES} bytes)`,
 					);
-					const output = finalizeOutput(
+					return finish(
+						imageMimeType,
+						"image-too-large",
 						`Fetched image content (${imageMimeType}), but it is too large to inline render.`,
 					);
-					return {
-						url,
-						finalUrl,
-						contentType: imageMimeType,
-						method: "image-too-large",
-						content: output.content,
-						fetchedAt,
-						truncated: output.truncated,
-						notes,
-					};
 				}
 
 				const dimensionNote = formatDimensionNote(resized);
@@ -1401,17 +1320,7 @@ async function renderUrl(
 			if (converted.ok) {
 				if (converted.content.trim().length > 50) {
 					notes.push("Converted with markit");
-					const output = finalizeOutput(converted.content);
-					return {
-						url,
-						finalUrl,
-						contentType: mime,
-						method: "markit",
-						content: output.content,
-						fetchedAt,
-						truncated: output.truncated,
-						notes,
-					};
+					return finish(mime, "markit", converted.content);
 				}
 				notes.push("markit conversion produced no usable output");
 			} else if (converted.error) {
@@ -1451,59 +1360,19 @@ async function renderUrl(
 	// HTML extraction) and returns the response body verbatim. Binary-oriented branches
 	// above already ran because raw isn't useful for binary payloads.
 	if (raw) {
-		const output = finalizeOutput(rawContent);
-		return {
-			url,
-			finalUrl,
-			contentType: mime,
-			method: "raw",
-			content: output.content,
-			fetchedAt,
-			truncated: output.truncated,
-			notes,
-		};
+		return finish(mime, "raw", rawContent);
 	}
 	if (isJson) {
-		const output = finalizeOutput(formatJson(rawContent));
-		return {
-			url,
-			finalUrl,
-			contentType: mime,
-			method: "json",
-			content: output.content,
-			fetchedAt,
-			truncated: output.truncated,
-			notes,
-		};
+		return finish(mime, "json", formatJson(rawContent));
 	}
 
 	if (isFeed || (isXml && (rawContent.includes("<rss") || rawContent.includes("<feed")))) {
 		const parsed = await parseFeedToMarkdown(rawContent);
-		const output = finalizeOutput(parsed);
-		return {
-			url,
-			finalUrl,
-			contentType: mime,
-			method: "feed",
-			content: output.content,
-			fetchedAt,
-			truncated: output.truncated,
-			notes,
-		};
+		return finish(mime, "feed", parsed);
 	}
 
 	if (isText && !looksLikeHtml(rawContent)) {
-		const output = finalizeOutput(rawContent);
-		return {
-			url,
-			finalUrl,
-			contentType: mime,
-			method: "text",
-			content: output.content,
-			fetchedAt,
-			truncated: output.truncated,
-			notes,
-		};
+		return finish(mime, "text", rawContent);
 	}
 
 	// Step 5: For HTML, try digestible formats first (unless raw mode)
@@ -1516,17 +1385,7 @@ async function renderUrl(
 			const altResult = await loadPage(resolved, { timeout, signal });
 			if (altResult.ok && altResult.content.trim().length > 100 && !looksLikeHtml(altResult.content)) {
 				notes.push(`Used markdown alternate: ${resolved}`);
-				const output = finalizeOutput(altResult.content);
-				return {
-					url,
-					finalUrl,
-					contentType: "text/markdown",
-					method: "alternate-markdown",
-					content: output.content,
-					fetchedAt,
-					truncated: output.truncated,
-					notes,
-				};
+				return finish("text/markdown", "alternate-markdown", altResult.content);
 			}
 		}
 
@@ -1534,34 +1393,14 @@ async function renderUrl(
 		const mdSuffix = await tryMdSuffix(finalUrl, timeout, signal);
 		if (mdSuffix) {
 			notes.push("Found .md suffix version");
-			const output = finalizeOutput(mdSuffix);
-			return {
-				url,
-				finalUrl,
-				contentType: "text/markdown",
-				method: "md-suffix",
-				content: output.content,
-				fetchedAt,
-				truncated: output.truncated,
-				notes,
-			};
+			return finish("text/markdown", "md-suffix", mdSuffix);
 		}
 
 		// 5C: Content negotiation
 		const negotiated = await tryContentNegotiation(url, timeout, signal);
 		if (negotiated) {
 			notes.push(`Content negotiation returned ${negotiated.type}`);
-			const output = finalizeOutput(negotiated.content);
-			return {
-				url,
-				finalUrl,
-				contentType: normalizeMime(negotiated.type),
-				method: "content-negotiation",
-				content: output.content,
-				fetchedAt,
-				truncated: output.truncated,
-				notes,
-			};
+			return finish(normalizeMime(negotiated.type), "content-negotiation", negotiated.content);
 		}
 
 		// 5D: Check for feed alternates
@@ -1572,17 +1411,7 @@ async function renderUrl(
 			if (altResult.ok && altResult.content.trim().length > 200) {
 				notes.push(`Used feed alternate: ${resolved}`);
 				const parsed = await parseFeedToMarkdown(altResult.content);
-				const output = finalizeOutput(parsed);
-				return {
-					url,
-					finalUrl,
-					contentType: "application/feed",
-					method: "alternate-feed",
-					content: output.content,
-					fetchedAt,
-					truncated: output.truncated,
-					notes,
-				};
+				return finish("application/feed", "alternate-feed", parsed);
 			}
 		}
 
@@ -1605,30 +1434,10 @@ async function renderUrl(
 			const llmResult = await tryLlmEndpoints(finalUrl, timeout, signal);
 			if (llmResult) {
 				notes.push(`Used llms.txt fallback: ${llmResult.endpoint}`);
-				const output = finalizeOutput(llmResult.content);
-				return {
-					url,
-					finalUrl,
-					contentType: "text/plain",
-					method: "llms.txt",
-					content: output.content,
-					fetchedAt,
-					truncated: output.truncated,
-					notes,
-				};
+				return finish("text/plain", "llms.txt", llmResult.content);
 			}
 
-			const output = finalizeOutput(rawContent);
-			return {
-				url,
-				finalUrl,
-				contentType: mime,
-				method: "raw-html",
-				content: output.content,
-				fetchedAt,
-				truncated: output.truncated,
-				notes,
-			};
+			return finish(mime, "raw-html", rawContent);
 		}
 
 		// Step 6: If rendered output is low quality, try more targeted fallbacks
@@ -1642,17 +1451,7 @@ async function renderUrl(
 					const converted = await convertDocument(binary.buffer, ext, timeout, signal);
 					if (converted.ok && converted.content.trim().length > htmlResult.content.length) {
 						notes.push(`Extracted and converted document: ${docUrl}`);
-						const output = finalizeOutput(converted.content);
-						return {
-							url,
-							finalUrl,
-							contentType: "application/document",
-							method: "extracted-document",
-							content: output.content,
-							fetchedAt,
-							truncated: output.truncated,
-							notes,
-						};
+						return finish("application/document", "extracted-document", converted.content);
 					}
 					if (!converted.ok && converted.error) {
 						notes.push(`markit conversion failed: ${converted.error}`);
@@ -1665,47 +1464,17 @@ async function renderUrl(
 			const llmResult = await tryLlmEndpoints(finalUrl, timeout, signal);
 			if (llmResult) {
 				notes.push(`Used llms.txt fallback: ${llmResult.endpoint}`);
-				const output = finalizeOutput(llmResult.content);
-				return {
-					url,
-					finalUrl,
-					contentType: "text/plain",
-					method: "llms.txt",
-					content: output.content,
-					fetchedAt,
-					truncated: output.truncated,
-					notes,
-				};
+				return finish("text/plain", "llms.txt", llmResult.content);
 			}
 
 			notes.push("Page appears to require JavaScript or is mostly navigation");
 		}
 
-		const output = finalizeOutput(htmlResult.content);
-		return {
-			url,
-			finalUrl,
-			contentType: mime,
-			method: htmlResult.method,
-			content: output.content,
-			fetchedAt,
-			truncated: output.truncated,
-			notes,
-		};
+		return finish(mime, htmlResult.method, htmlResult.content);
 	}
 
 	// Fallback: return raw content
-	const output = finalizeOutput(rawContent);
-	return {
-		url,
-		finalUrl,
-		contentType: mime,
-		method: "raw",
-		content: output.content,
-		fetchedAt,
-		truncated: output.truncated,
-		notes,
-	};
+	return finish(mime, "raw", rawContent);
 }
 
 // =============================================================================

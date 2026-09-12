@@ -215,7 +215,7 @@ export const commands: CommandEntry[] = [
 		name: "worktree",
 		load: () => import("./commands/worktree").then(m => m.default),
 		aliases: ["wt"],
-		summary: { description: "List or clear agent-managed git worktrees (~/.veyyon/wt)" },
+		summary: { description: "List or clear agent-managed git worktrees (~/.veyyon/profiles/<name>/wt)" },
 	},
 	{
 		name: "search",

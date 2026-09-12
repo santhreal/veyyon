@@ -1,20 +1,24 @@
 /** Fallback renderer for tools without a dedicated view. */
 import type { ReactNode } from "react";
+import { createElement } from "react";
 import { Output, ResultImages, ResultText } from "./parts";
 import type { ToolRenderer, ToolRenderProps } from "./types";
-import { argsDigest } from "./util";
+import { argsDigest, prettyJson } from "./util";
+import { ToolExecutionBody, ToolExecutionSummary } from "./ViewRenderer";
 
-function Summary({ args }: ToolRenderProps): ReactNode {
-	return <span>{argsDigest(args)}</span>;
+export function GenericSummary(props: ToolRenderProps): ReactNode {
+	if (props.display) {
+		return createElement(ToolExecutionSummary, props);
+	}
+	return <span>{argsDigest(props.args)}</span>;
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
-	let argText = "";
-	try {
-		argText = JSON.stringify(args, null, 2) ?? "";
-	} catch {
-		argText = String(args);
+export function GenericBody(props: ToolRenderProps): ReactNode {
+	if (props.display) {
+		return createElement(ToolExecutionBody, props);
 	}
+	const { args, result } = props;
+	const argText = prettyJson(args);
 	return (
 		<>
 			{argText && argText !== "{}" && (
@@ -25,5 +29,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 		</>
 	);
 }
-
-export const genericRenderer: ToolRenderer = { Summary, Body };
+export const genericRenderer: ToolRenderer = {
+	Summary: GenericSummary,
+	Body: GenericBody,
+};

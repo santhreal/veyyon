@@ -4,8 +4,9 @@ import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
 import { APP_NAME, DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault } from "@veyyon/utils/dirs";
 import { clamp01 } from "@veyyon/utils/math";
 import { centerLine, padding } from "@veyyon/utils/padding";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
-import { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../../../../config/settings-instance";
 import { theme } from "../../../../theme/theme-binding";

@@ -27,7 +27,7 @@ export interface ConfirmDialog {
 	body: string;
 	confirmLabel: string;
 	cancelLabel: string;
-	/** True when the destructive action is the default. */
+	/** True when the confirmation is for a destructive action (defaulting selection to cancellation). */
 	destructive: boolean;
 }
 

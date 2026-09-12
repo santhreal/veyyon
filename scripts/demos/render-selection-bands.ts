@@ -19,27 +19,9 @@
  *       | bun scripts/demos/render-proof.ts --out /tmp/proof/band-history --width 110
  */
 
-import type { HistoryEntry, HistoryStorage } from "@veyyon/kernel/session/history-storage";
-import { setAnsiPolicy } from "../../hosts/terminal/engine/src/index";
+import type { HistoryStorage } from "@veyyon/kernel/session/history-storage";
 import { HistorySearchComponent } from "../../packages/coding-agent/src/modes/terminal/components/composer/history-search";
-import { initTheme } from "../../packages/coding-agent/src/theme/theme";
-import { flag, renderWidth } from "./render-args";
-
-const width = renderWidth();
-const themeName = flag("theme", "titanium");
-const ROWS = Number.parseInt(flag("rows", "34"), 10);
-/** Which result the cursor sits on, so a proof can show a short row banded. */
-const SELECTED = Number.parseInt(flag("selected", "1"), 10);
-
-await initTheme(false, "unicode", false, themeName, themeName);
-// The proof is ABOUT the fill, so the policy that decides whether a fill is
-// emitted at all cannot be left to whatever a pipe reports.
-setAnsiPolicy("full");
-
-// Fixed geometry: the card sizes itself from the live terminal, and a proof that
-// changes shape with the window it was generated in cannot be compared.
-Object.defineProperty(process.stdout, "rows", { configurable: true, get: () => ROWS });
-Object.defineProperty(process.stdout, "columns", { configurable: true, get: () => width });
+import { renderDemo } from "./render-args";
 
 /** Prompts of very uneven length, which is what makes a ragged band visible. */
 const PROMPTS = [
@@ -55,28 +37,35 @@ const PROMPTS = [
 
 const NOW = Math.floor(Date.parse("2026-07-27T12:00:00.000Z") / 1000);
 
-function entries(): HistoryEntry[] {
-	return PROMPTS.map((prompt, index) => ({
-		id: index + 1,
-		prompt,
-		cwd: "/repo",
-		sessionId: "s-1",
-		created_at: NOW - index * 900,
-	}));
-}
-
 const storage = {
-	getRecent: () => entries(),
-	search: () => entries(),
+	getRecent: () =>
+		PROMPTS.map((prompt, index) => ({
+			id: index + 1,
+			prompt,
+			cwd: "/repo",
+			sessionId: "s-1",
+			created_at: NOW - index * 900,
+		})),
+	search: () =>
+		PROMPTS.map((prompt, index) => ({
+			id: index + 1,
+			prompt,
+			cwd: "/repo",
+			sessionId: "s-1",
+			created_at: NOW - index * 900,
+		})),
 } as unknown as HistoryStorage;
 
-const card = new HistorySearchComponent(
-	storage,
-	() => {},
-	() => {},
+await renderDemo(
+	({ width, flag }) => {
+		const card = new HistorySearchComponent(
+			storage,
+			() => {},
+			() => {},
+		);
+		const selected = Number.parseInt(flag("selected", "1"), 10);
+		for (let step = 0; step < selected; step++) card.handleInput("\x1b[B");
+		return card.render(width);
+	},
+	{ defaultHeight: 34 },
 );
-// Walk the cursor down rather than reaching into the component: the selection
-// index is private, and driving the keys is what a user does anyway.
-for (let step = 0; step < SELECTED; step++) card.handleInput("\x1b[B");
-
-process.stdout.write(`${card.render(width).join("\n")}\n`);

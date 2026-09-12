@@ -30,7 +30,7 @@ At session start, if a memory summary exists for the current project, it is inje
 - Cite the memory artifact path when memory changes the plan, and pair it with current-repo evidence before acting.
 - Prefer repo state and user instruction when they conflict with memory; treat conflicting memory as stale.
 
-A backend contributes in two places, and which one it uses matters for what a session costs you:
+A backend contributes in two locations, which determine token usage and caching behavior:
 
 - **The system prompt** contains the guidance that does not change while the session runs. The provider caches the prompt as
   the prefix of every request, so this text is paid for once.
@@ -75,7 +75,7 @@ The agent can read memory files directly using `memory://` URLs with the `read` 
 
 ## How it works
 
-Local summary memories are built by a background pipeline that runs at startup; `/memory enqueue` marks consolidation work that the next startup picks up. The pipeline is skipped for subagents and for sessions that are not persisted to a session file.
+Local summary memories are built by a background pipeline that runs at startup; `/memory enqueue` marks consolidation work that the next startup picks up. The pipeline is skipped for agents and for sessions that are not persisted to a session file.
 
 **Phase 1, per-session extraction:** For each past session that has changed since it was last processed, a model reads the session history and extracts durable signal: technical decisions, constraints, resolved failures, recurring workflows. Sessions that are too recent, too old, currently active, or beyond the configured scan/age limits are skipped. Each extraction produces a raw memory block and a short synopsis for that session.
 

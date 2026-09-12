@@ -2,7 +2,7 @@
  * An eval card states the code that ran, what it printed, and what it spawned.
  *
  * WHY THIS SUITE EXISTS. `eval` is the one tool whose card is a program: the source is the subject of
- * the row, the output belongs under the cell that produced it, and a cell that spawns subagents or
+ * the row, the output belongs under the cell that produced it, and a cell that spawns agents or
  * calls prelude helpers reports both while it is still running. The tool describes all of it as a
  * `ToolView`, so every claim below drives the view and hands it to the terminal drawer, which is the
  * path a session takes.
@@ -10,7 +10,7 @@
  * THE DEFECT CLASS THIS CLOSES. A card that loses part of a run: a cell whose source is not stated as
  * source in its own language, a collapsed cell that shows the START of a stream instead of its live
  * edge, a wall of progress lines that spends the whole window and pushes the interesting line out of
- * it, a spawned subagent that never reaches the card or reaches it without the tool it is in, a helper
+ * it, a spawned agent that never reaches the card or reaches it without the tool it is in, a helper
  * call whose earlier siblings are dropped silently, a failed cell drawn as a successful one, and a
  * JSON display, notice or truncation warning that is computed and never stated. Every backend of
  * `EvalLanguage` and every member of a cell's own status union is swept through a total record, so a
@@ -293,7 +293,7 @@ describe("an eval card states code and output", () => {
 		expect(opened).not.toContain("line 3");
 	});
 
-	it("states a spawned subagent with the tool it is in and the intent it stated", () => {
+	it("states a spawned agent with the tool it is in and the intent it stated", () => {
 		const running: EvalStatusEvent = {
 			op: "agent",
 			id: "AuthLoader",
@@ -319,7 +319,7 @@ describe("an eval card states code and output", () => {
 		expect(sectionText(section(both, "Agents"))).not.toContain("spawned");
 	});
 
-	it("states what a settled subagent cost and how each failure ended", () => {
+	it("states what a settled agent cost and how each failure ended", () => {
 		const done = section(
 			framed({
 				cells: [
@@ -342,7 +342,7 @@ describe("an eval card states code and output", () => {
 		expect(done?.lines.map(line => line[0]?.status)).toEqual(["done", "error", "aborted"]);
 	});
 
-	it("states a subagent's task while it has no tool and no intent to report", () => {
+	it("states an agent's task while it has no tool and no intent to report", () => {
 		const text = sectionText(
 			section(
 				framed({

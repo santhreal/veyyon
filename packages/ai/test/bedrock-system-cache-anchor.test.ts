@@ -4,7 +4,7 @@
  * WHY THIS SUITE EXISTS. `buildSystemPrompt` appended ONE `cachePoint` after
  * ALL system blocks, so the cached prefix ended at the last block. The system
  * prompt here is not one block: block 0 is the harness shared across parent and
- * subagent prompts, and project context, the assignment and the handle table
+ * agent prompts, and project context, the assignment and the handle table
  * are appended after it and change constantly. With a single trailing
  * checkpoint, any edit to any later block invalidated the ENTIRE system prefix,
  * and the next turn re-read and re-wrote all of it at full input rate plus the

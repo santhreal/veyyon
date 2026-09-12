@@ -56,43 +56,32 @@ export class OmfgPanelComponent extends Container {
 	}
 
 	setStatus(state: OmfgPanelState, status: string): void {
-		if (this.#closed) return;
-		this.#state = state;
-		this.#status = status;
-		this.#errorMessage = undefined;
-		this.#rebuild();
+		this.#settle(state, status);
 	}
 
 	markSaved(path: string): void {
 		if (this.#closed) return;
-		this.#state = "saved";
 		this.#savedPath = path;
-		this.#status = `Saved ${path}`;
-		this.#errorMessage = undefined;
-		this.#rebuild();
+		this.#settle("saved", `Saved ${path}`);
 	}
 
 	markRejected(): void {
-		if (this.#closed) return;
-		this.#state = "rejected";
-		this.#status = "Rule was not saved.";
-		this.#errorMessage = undefined;
-		this.#rebuild();
+		this.#settle("rejected", "Rule was not saved.");
 	}
 
 	markAborted(): void {
-		if (this.#closed) return;
-		this.#state = "aborted";
-		this.#status = "Cancelled.";
-		this.#errorMessage = undefined;
-		this.#rebuild();
+		this.#settle("aborted", "Cancelled.");
 	}
 
 	markError(message: string): void {
+		this.#settle("error", "Could not create rule.", message);
+	}
+
+	#settle(state: OmfgPanelState, status: string, errorMessage?: string): void {
 		if (this.#closed) return;
-		this.#state = "error";
-		this.#status = "Could not create rule.";
-		this.#errorMessage = message;
+		this.#state = state;
+		this.#status = status;
+		this.#errorMessage = errorMessage;
 		this.#rebuild();
 	}
 

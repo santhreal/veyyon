@@ -1,49 +1,26 @@
-import * as AIError from "../error";
-import { validateOpenAICompatibleApiKey } from "./api-key-validation";
-import type { OAuthController, OAuthLoginCallbacks } from "./oauth/types";
+import { createApiKeyLogin } from "./api-key-login";
+import type { OAuthLoginCallbacks } from "./oauth/types";
 import type { ProviderDefinition } from "./types";
 
 const AUTH_URL = "https://chat.qwen.ai";
 const API_BASE_URL = "https://portal.qwen.ai/v1";
 const VALIDATION_MODEL = "coder-model";
 
-export async function loginQwenPortal(options: OAuthController): Promise<string> {
-	if (!options.onPrompt) {
-		throw new AIError.OnPromptRequiredError("Qwen Portal");
-	}
-
-	options.onAuth?.({
-		url: AUTH_URL,
-		instructions: "Copy your Qwen OAuth token or API key",
-	});
-
-	const token = await options.onPrompt({
-		message: "Paste your Qwen OAuth token or API key",
-		placeholder: "sk-...",
-		secret: true,
-	});
-
-	if (options.signal?.aborted) {
-		throw new AIError.LoginCancelledError();
-	}
-
-	const trimmed = token.trim();
-	if (!trimmed) {
-		throw new AIError.ApiKeyRequiredError("Qwen token/API key is required");
-	}
-
-	options.onProgress?.("Validating credentials...");
-	await validateOpenAICompatibleApiKey({
+export const loginQwenPortal = createApiKeyLogin({
+	providerLabel: "Qwen Portal",
+	authUrl: AUTH_URL,
+	instructions: "Copy your Qwen OAuth token or API key",
+	promptMessage: "Paste your Qwen OAuth token or API key",
+	placeholder: "sk-...",
+	emptyKeyMessage: "Qwen token/API key is required",
+	progressMessage: "Validating credentials...",
+	validation: {
+		kind: "chat-completions",
 		provider: "qwen-portal",
-		apiKey: trimmed,
 		baseUrl: API_BASE_URL,
 		model: VALIDATION_MODEL,
-		signal: options.signal,
-		fetch: options.fetch,
-	});
-
-	return trimmed;
-}
+	},
+});
 
 export const qwenPortalProvider = {
 	id: "qwen-portal",

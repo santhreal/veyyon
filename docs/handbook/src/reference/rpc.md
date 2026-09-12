@@ -17,13 +17,20 @@ Primary implementation:
 
 ```bash
 veyyon --mode rpc [regular CLI options]
+veyyon --mode rpc-ui [regular CLI options]
 ```
+
+`rpc-ui` is `rpc` for a host that answers UI requests. Extensions use the
+[Extension UI Sub-Protocol](#extension-ui-sub-protocol) in both modes; `rpc-ui` additionally
+hands that same request/response channel to the tool layer, so `hasUI` is true for tools and
+the `ask` tool is registered. Under plain `rpc` the `ask` tool is absent, the `ui` member of a
+tool's context is `undefined`, and `bash` runs in a PTY; `rpc-ui` disables the PTY.
 
 Behavior notes:
 
 - `@file` CLI arguments are rejected in RPC mode.
 - RPC mode disables automatic session title generation by default to avoid an extra model call.
-- RPC mode host-defaults a small set of settings so embedders inherit Veyyon's neutral defaults: `subagent.isolation.mode`/`merge`/`commits`, `subagent.delegation`, `subagent.batch`, `subagent.maxConcurrency`, `subagent.maxNestedSpawnDepth`, `subagent.agents`, `memory.backend`, and `memories.enabled`, plus `async.enabled`, `async.maxJobs`, `bash.autoBackground.enabled`, and `bash.autoBackground.thresholdMs`. The default is only applied when the path is unset: any explicit configuration (caller overrides, `--config` overlays, or the profile `config.yml`) is preserved. `todo.*` settings are always caller-controlled in protocol modes.
+- RPC mode host-defaults a small set of settings so embedders inherit Veyyon's neutral defaults: `agent.isolation.mode`/`merge`/`commits`, `agent.delegation`, `agent.batch`, `agent.maxConcurrency`, `agent.maxNestedSpawnDepth`, `agent.agents`, and `memory.backend`, plus `async.enabled`, `async.maxJobs`, `bash.autoBackground.enabled`, and `bash.autoBackground.thresholdMs`. The default is only applied when the path is unset: any explicit configuration (caller overrides, `--config` overlays, or the profile `config.yml`) is preserved. `todo.*` settings are always caller-controlled in protocol modes.
 - The process reads stdin as JSONL (`readJsonl(Bun.stdin.stream())`).
 - At startup it writes `{ "type": "ready" }` before processing commands.
 - When stdin closes, pending host-tool calls and host-URI requests are rejected and the process exits with code `0`.
@@ -46,7 +53,7 @@ There is no envelope beyond the object shape itself.
 7. Extension errors (`{ type: "extension_error", extensionPath, event, error }`)
 8. Available-commands updates (`{ type: "available_commands_update", commands }`), emitted at startup and whenever command metadata changes
 9. Prompt lifecycle hints (`{ type: "prompt_result", id?, agentInvoked }`) for scheduled prompts that later resolve without invoking the agent
-10. Subagent frames (`subagent_lifecycle`, `subagent_progress`, `subagent_event`), gated by `set_subagent_subscription`
+10. Agent frames (`subagent_lifecycle`, `subagent_progress`, `subagent_event`), gated by `set_subagent_subscription`
 11. Builtin slash-command side channels (`command_output`, `session_info_update`, `config_update`)
 
 ### Inbound frame categories (stdin)
@@ -93,7 +100,7 @@ Important edge behavior from runtime:
 - `{ id?, type: "set_host_uri_schemes", schemes: RpcHostUriSchemeDefinition[] }`
 - `{ id?, type: "set_subagent_subscription", level: "off" | "progress" | "events" }`
 - `{ id?, type: "get_subagents" }`
-- `{ id?, type: "get_subagent_messages", subagentId?: string, sessionFile?: string, fromByte?: number }`
+- `{ id?, type: "get_subagent_messages", agentId?: string, sessionFile?: string, fromByte?: number }`
 
 ### Model
 
@@ -235,7 +242,10 @@ Local-only slash commands may emit `command_output` frames before completing via
 
 ### `set_todos` payload
 
-Replaces the in-memory todo state for the current session and returns the normalized phase list:
+Replaces the in-memory todo state for the current session and returns the normalized phase list.
+A phase is `{ name, tasks }` and a task is `{ content, status }`; `status` is one of `pending`,
+`in_progress`, `completed`, `abandoned`. Neither carries an `id`: a task is addressed by its
+`content` string, and any other field in a phase or task is dropped, not echoed back.
 
 ```json
 {
@@ -243,26 +253,17 @@ Replaces the in-memory todo state for the current session and returns the normal
   "type": "set_todos",
   "phases": [
     {
-      "id": "phase-1",
       "name": "Evaluation",
       "tasks": [
-        {
-          "id": "task-1",
-          "content": "Map the read tool surface",
-          "status": "in_progress"
-        },
-        {
-          "id": "task-2",
-          "content": "Exercise edit operations",
-          "status": "pending"
-        }
+        { "content": "Map the read tool surface", "status": "in_progress" },
+        { "content": "Exercise edit operations", "status": "pending" }
       ]
     }
   ]
 }
 ```
 
-This is useful for hosts that want to pre-seed a plan before the first prompt.
+Use it to pre-seed a plan before the first prompt.
 
 ### `set_host_tools` payload
 

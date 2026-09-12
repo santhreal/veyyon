@@ -10,7 +10,7 @@ import { parseConfiguredThinkingLevel } from "@veyyon/coding-agent/thinking";
  *   - a missing or non-string `name`/`description` makes the whole definition invalid (returns null), so
  *     the loader rejects it instead of registering a half-formed agent;
  *   - tool names are lower-cased, retired workspace-search names migrate to `search`, names are
- *     de-duplicated, and an explicit tool list always gains `yield` (a subagent with a fixed toolset
+ *     de-duplicated, and an explicit tool list always gains `yield` (an agent with a fixed toolset
  *     must still be able to return control);
  *   - `spawns` accepts the literal "*", a CSV string, or an array, and is inferred to "*" when the tools
  *     include `task` (backward compatibility with older agents that only declared the tool);

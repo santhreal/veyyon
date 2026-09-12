@@ -14,8 +14,6 @@ import { CountdownTimer } from "../chrome/countdown-timer";
 import {
 	CARD_BODY_COL_INSET,
 	computeModalDims,
-	consumeModalChipHover,
-	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
 	type ModalShortcut,
@@ -26,6 +24,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "../chrome/modal-shell";
+import { routeModalChrome } from "../selectors/select-list-mouse-routing";
 
 export interface HookInputOptions {
 	tui?: TUI;
@@ -47,6 +46,8 @@ export interface HookInputOptions {
 	 * than in the title: what the field accepts, or where its value ends up.
 	 */
 	hint?: string;
+	/** Initial text in the input field. */
+	initialValue?: string;
 	/** Repaint request for hover paints and the countdown tick. */
 	onRequestRender?: () => void;
 }
@@ -112,6 +113,9 @@ export class HookInputComponent extends Container {
 		this.#input.mask = opts?.mask;
 		this.#input.credentialMode = opts?.credentialMode ?? opts?.mask !== undefined;
 		this.#input.isEscapeInput = matchesAppInterrupt;
+		if (opts?.initialValue) {
+			this.#input.setValue(opts.initialValue);
+		}
 		this.#input.onSubmit = value => this.#onSubmitCallback(value);
 		this.#input.onEscape = () => this.#onCancelCallback();
 		this.addChild(this.#input);
@@ -119,6 +123,13 @@ export class HookInputComponent extends Container {
 
 	setOnRequestRender(callback: () => void): void {
 		this.#onRequestRender = callback;
+	}
+	getValue(): string {
+		return this.#input.getValue();
+	}
+
+	setValue(value: string): void {
+		this.#input.setValue(value);
 	}
 
 	/** The field's own hint leads, because it describes THIS field; the keys are
@@ -144,33 +155,22 @@ export class HookInputComponent extends Container {
 	}
 
 	#routeMouse(event: SgrMouseEvent): boolean {
-		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-			motion: event.motion,
-			leftClick: event.leftClick,
-		});
-		if (
-			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+		const consumed = routeModalChrome({
+			shellGeometry: this.#shellGeometry,
+			event,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			onHoverShortcut: id => {
 				this.#hoveredShortcutId = id;
 				this.#onRequestRender?.();
-			})
-		) {
-			return true;
-		}
-		if (event.motion) return true;
-		if (
-			chrome.kind === "close" ||
-			chrome.kind === "outside" ||
-			(chrome.kind === "shortcut" && chrome.id === "close")
-		) {
-			this.#onCancelCallback();
-			return true;
-		}
-		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
-			// The submit chip answers with what is typed, exactly as Enter does.
-			this.#countdown?.reset();
-			this.#onSubmitCallback(this.#input.getValue());
-			return true;
-		}
+			},
+			onCancel: () => this.#onCancelCallback(),
+			onConfirm: () => {
+				// The submit chip answers with what is typed, exactly as Enter does.
+				this.#countdown?.reset();
+				this.#onSubmitCallback(this.#input.getValue());
+			},
+		});
+		if (consumed) return true;
 		// A click on the field itself places the caret under the pointer.
 		const geo = this.#shellGeometry;
 		if (geo && event.leftClick) {

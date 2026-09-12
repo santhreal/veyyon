@@ -139,6 +139,7 @@ export function createCollapsedPreview(previewText: string, previewLines: number
 export function buildStatusFooter(opts: {
 	status: ExecutionStatus;
 	exitCode: number | undefined;
+	signal?: string | undefined;
 	truncation: TruncationMeta | undefined;
 	hiddenLineCount: number;
 	/**
@@ -165,6 +166,8 @@ export function buildStatusFooter(opts: {
 	}
 	if (opts.status === "cancelled") {
 		parts.push(theme.fg("warning", "(cancelled)"));
+	} else if (opts.signal !== undefined) {
+		parts.push(theme.fg("error", `(killed by signal ${opts.signal})`));
 	} else if (opts.status === "error") {
 		parts.push(theme.fg("error", `(exit ${opts.exitCode})`));
 	}

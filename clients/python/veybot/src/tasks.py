@@ -844,6 +844,8 @@ async def handle_comment(
     comment = _comment_from_payload(payload)
     clone_url = repo.clone_url
 
+    task_kind = "handle_comment"
+    branch_afresh = False
     if existing is None:
         if directive is None:
             log.info("skip: comment on unknown issue", extra={"key": key})
@@ -852,44 +854,9 @@ async def handle_comment(
         # then route through triage-with-directive so the agent classifies
         # first and executes the directive in the same RPC turn.
         log.info("directive bootstrap", extra={"key": key, "author": directive.author})
-        db.upsert_issue(key=key, repo=repo.full_name, number=issue.number, state="reproducing")
-        workspace = await _run_workspace_op(
-            sandbox.ensure_workspace,
-            repo=repo.full_name,
-            number=issue.number,
-            title=issue.title,
-            clone_url=clone_url,
-            default_branch=repo.default_branch,
-            author_name=settings.resolved_author_name,
-            author_email=settings.git_author_email,
-            slot_uid=slot_uid,
-        )
-        db.upsert_issue(
-            key=key,
-            repo=repo.full_name,
-            number=issue.number,
-            state="reproducing",
-            branch=workspace.branch,
-            session_dir=str(workspace.session_dir),
-        )
-        inputs = TaskInputs(
-            settings=settings,
-            db=db,
-            github=github,
-            git_transport=git_transport,
-            repo=repo,
-            issue=issue,
-            workspace=workspace,
-            delivery_id=delivery_id,
-            attempts=attempts,
-            slot_uid=slot_uid,
-            natives_cache=sandbox.natives_cache,
-        )
-        directive = await _attach_thread(github, directive, repo.full_name, issue.number, is_pr=False)
-        await run_task(task_kind="triage_issue", inputs=inputs, directive=directive)
-        return
-
-    if existing.state in ("merged", "closed", "abandoned"):
+        task_kind = "triage_issue"
+        branch_afresh = True
+    elif existing.state in ("merged", "closed", "abandoned"):
         if directive is None:
             log.info("skip: comment on finalized issue", extra={"key": key, "state": existing.state})
             try:
@@ -905,18 +872,23 @@ async def handle_comment(
         # afresh from default. The old branch may have been merged/deleted.
         log.info("directive reopen", extra={"key": key, "from_state": existing.state, "author": directive.author})
         await _run_workspace_op(sandbox.remove_workspace, repo=repo.full_name, number=issue.number)
+        branch_afresh = True
+
+    if branch_afresh:
         db.upsert_issue(key=key, repo=repo.full_name, number=issue.number, state="reproducing")
-        workspace = await _run_workspace_op(
-            sandbox.ensure_workspace,
-            repo=repo.full_name,
-            number=issue.number,
-            title=issue.title,
-            clone_url=clone_url,
-            default_branch=repo.default_branch,
-            author_name=settings.resolved_author_name,
-            author_email=settings.git_author_email,
-            slot_uid=slot_uid,
-        )
+    workspace = await _run_workspace_op(
+        sandbox.ensure_workspace,
+        repo=repo.full_name,
+        number=issue.number,
+        title=issue.title,
+        clone_url=clone_url,
+        default_branch=repo.default_branch,
+        existing_branch=None if branch_afresh or existing is None else existing.branch,
+        author_name=settings.resolved_author_name,
+        author_email=settings.git_author_email,
+        slot_uid=slot_uid,
+    )
+    if branch_afresh:
         db.upsert_issue(
             key=key,
             repo=repo.full_name,
@@ -925,35 +897,6 @@ async def handle_comment(
             branch=workspace.branch,
             session_dir=str(workspace.session_dir),
         )
-        inputs = TaskInputs(
-            settings=settings,
-            db=db,
-            github=github,
-            git_transport=git_transport,
-            repo=repo,
-            issue=issue,
-            workspace=workspace,
-            delivery_id=delivery_id,
-            attempts=attempts,
-            slot_uid=slot_uid,
-            natives_cache=sandbox.natives_cache,
-        )
-        directive = await _attach_thread(github, directive, repo.full_name, issue.number, is_pr=False)
-        await run_task(task_kind="handle_comment", inputs=inputs, comment=comment, directive=directive)
-        return
-
-    workspace = await _run_workspace_op(
-        sandbox.ensure_workspace,
-        repo=repo.full_name,
-        number=issue.number,
-        title=issue.title,
-        clone_url=clone_url,
-        default_branch=repo.default_branch,
-        existing_branch=existing.branch,
-        author_name=settings.resolved_author_name,
-        author_email=settings.git_author_email,
-        slot_uid=slot_uid,
-    )
     inputs = TaskInputs(
         settings=settings,
         db=db,
@@ -968,6 +911,9 @@ async def handle_comment(
         natives_cache=sandbox.natives_cache,
     )
     directive = await _attach_thread(github, directive, repo.full_name, issue.number, is_pr=False)
+    if task_kind == "triage_issue":
+        await run_task(task_kind="triage_issue", inputs=inputs, directive=directive)
+        return
     await run_task(task_kind="handle_comment", inputs=inputs, comment=comment, directive=directive)
 
 

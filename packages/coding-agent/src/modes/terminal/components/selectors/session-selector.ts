@@ -1,21 +1,20 @@
 import type { SessionInfo, SessionStatus } from "@veyyon/kernel/session/session-listing";
 import { type Component, Container, Input, ScrollView, Spacer, Text } from "@veyyon/tui";
+import { HoverController } from "@veyyon/tui/utils/hover-controller";
 import { clampLow, errorMessage, formatBytes } from "@veyyon/utils";
 import { FuzzyText } from "@veyyon/utils/fuzzy";
 import { matchesKey } from "@veyyon/utils/keys";
-import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
+import type { HoverFadeOptions } from "@veyyon/utils/motion";
 import { routeSgrMouseInput } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
-import { replaceTabs } from "@veyyon/utils/wrap";
 import { withIcon } from "../../../../theme/icon-label";
 import { theme } from "../../../../theme/theme";
 import { shortenPath } from "../../../../tools/core/render-utils";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import {
 	computeModalDims,
-	consumeModalChipHover,
-	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
@@ -24,6 +23,7 @@ import {
 	sizingForArea,
 } from "../chrome/modal-shell";
 import { HookSelectorComponent } from "./hook-selector";
+import { routeModalChrome } from "./select-list-mouse-routing";
 import { hoverBandAt } from "./selector-helpers";
 
 /**
@@ -274,13 +274,7 @@ class SessionList implements Component {
 	// (where the overlay enables mouse tracking and paints from screen row 0).
 	#hitRows: (number | undefined)[] = [];
 	/** Pointer-highlighted session (never the selected one; selection owns its block). */
-	#hoveredIndex: number | null = null;
-	/**
-	 * The cross-fade, once the card has lent this list a repaint
-	 * ({@link setHoverMotion}). Absent, the band is switched: exactly what this
-	 * list did before there was a fade.
-	 */
-	#hoverFade?: HoverFade;
+	#hover = new HoverController<number>();
 	readonly #searchInput: Input;
 	onSelect?: (session: SessionInfo) => void;
 	onCancel?: () => void;
@@ -520,9 +514,8 @@ class SessionList implements Component {
 	 * suppressing it there left a row nothing could point at.
 	 */
 	setHoverIndex(index: number | null): boolean {
-		if (this.#hoveredIndex === index) return false;
-		this.#hoveredIndex = index;
-		this.#hoverFade?.set(index);
+		if (this.#hover.key === index) return false;
+		this.#hover.set(index);
 		return true;
 	}
 
@@ -533,25 +526,12 @@ class SessionList implements Component {
 	 * terminal or a user with transitions off gets.
 	 */
 	setHoverMotion(options: HoverFadeOptions): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade(options);
-		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+		this.#hover.setMotion(options);
 	}
 
 	/** Drop the fade and forget the pointer, so no timer outlives the card. */
 	disposeHoverMotion(): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = undefined;
-		this.#hoveredIndex = null;
-	}
-
-	/**
-	 * Band strength for a session block. Every row can carry a band, the cursor row included:
-	 * suppressing it there left the row the keyboard already sat on unable to answer the pointer.
-	 */
-	#hoverStrength(index: number): number {
-		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
-		return index === this.#hoveredIndex ? 1 : 0;
+		this.#hover.dispose();
 	}
 
 	/** Wheel notch: move the selection one step (clamped, no wrap). */
@@ -631,7 +611,7 @@ class SessionList implements Component {
 			const blockStart = sessionLines.length;
 			const session = this.#filteredSessions[i];
 			const isSelected = i === this.#selectedIndex;
-			const hoverStrength = this.#hoverStrength(i);
+			const hoverStrength = this.#hover.strength(i);
 
 			// Normalize first message to single line
 			const normalizedMessage = session.firstMessage.replace(/\n/g, " ").trim();
@@ -1117,34 +1097,23 @@ export class SessionSelectorComponent extends Container {
 			return;
 		}
 		routeSgrMouseInput(data, event => {
-			const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-				motion: event.motion,
-				leftClick: event.leftClick,
-			});
-			if (
-				consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+			const consumed = routeModalChrome({
+				shellGeometry: this.#shellGeometry,
+				event,
+				hoveredShortcutId: this.#hoveredShortcutId,
+				onHoverShortcut: id => {
 					this.#hoveredShortcutId = id;
 					this.#onRequestRender?.();
-				})
-			) {
-				return true;
-			}
-			if (
-				chrome.kind === "close" ||
-				chrome.kind === "outside" ||
-				(chrome.kind === "shortcut" && chrome.id === "close")
-			) {
-				this.#sessionList.onCancel?.();
-				return true;
-			}
-			if (chrome.kind === "shortcut" && chrome.id === "confirm") {
-				this.#sessionList.handleInput("\n");
-				return true;
-			}
-			if (chrome.kind === "shortcut" && chrome.id === "delete") {
-				this.#sessionList.handleInput("\x7f");
-				return true;
-			}
+				},
+				onCancel: () => this.#sessionList.onCancel?.(),
+				onConfirm: () => this.#sessionList.handleInput("\n"),
+				onShortcut: id => {
+					if (id !== "delete") return false;
+					this.#sessionList.handleInput("\x7f");
+					return true;
+				},
+			});
+			if (consumed) return true;
 			if (event.wheel !== null) {
 				this.#sessionList.handleWheel(event.wheel);
 				return true;
@@ -1168,30 +1137,18 @@ export class SessionSelectorComponent extends Container {
 		routeSgrMouseInput(data, event => {
 			const dialog = this.#confirmationDialog;
 			if (!dialog) return true;
-			const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-				motion: event.motion,
-				leftClick: event.leftClick,
-			});
-			if (
-				consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+			const consumed = routeModalChrome({
+				shellGeometry: this.#shellGeometry,
+				event,
+				hoveredShortcutId: this.#hoveredShortcutId,
+				onHoverShortcut: id => {
 					this.#hoveredShortcutId = id;
 					this.#onRequestRender?.();
-				})
-			) {
-				return true;
-			}
-			if (
-				chrome.kind === "close" ||
-				chrome.kind === "outside" ||
-				(chrome.kind === "shortcut" && chrome.id === "close")
-			) {
-				dialog.handleInput("\x1b");
-				return true;
-			}
-			if (chrome.kind === "shortcut" && chrome.id === "confirm") {
-				dialog.handleInput("\n");
-				return true;
-			}
+				},
+				onCancel: () => dialog.handleInput("\x1b"),
+				onConfirm: () => dialog.handleInput("\n"),
+			});
+			if (consumed) return true;
 			if (event.wheel !== null) {
 				dialog.handleWheel(event.wheel);
 				this.#onRequestRender?.();

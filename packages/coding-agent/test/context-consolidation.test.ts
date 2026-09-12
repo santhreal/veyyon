@@ -8,6 +8,7 @@ import { createMockModel } from "@veyyon/ai/providers/mock";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
+import { StatusPresentationProducer } from "@veyyon/coding-agent/presentation/status-producer";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { ContextUsageBreakdown } from "@veyyon/coding-agent/session/agent-session-types";
 import { computeContextBreakdown } from "@veyyon/coding-agent/session/context-usage";
@@ -340,7 +341,7 @@ describe("Context usage consolidation", () => {
 		const cb = computeContextBreakdown(session);
 		expect(cb.usedTokens).toBe(used!);
 
-		const sl = new StatusLineComponent(session);
+		const sl = new StatusLineComponent(new StatusPresentationProducer(session));
 		expect(sl.getCachedContextBreakdown().usedTokens).toBe(used!);
 
 		const cu = session.getContextUsage();
@@ -375,7 +376,7 @@ describe("Context usage consolidation", () => {
 		sessionManager.appendMessage(assistant);
 		syncSession(session, agent);
 
-		const sl = new StatusLineComponent(session);
+		const sl = new StatusLineComponent(new StatusPresentationProducer(session));
 		const initialBreakdown = sl.getCachedContextBreakdown();
 
 		const assistantExt = assistant as unknown as { thinkingSignature: string };

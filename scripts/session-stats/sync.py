@@ -40,6 +40,8 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from common import DB_PATH, extract_warnings, find_longest_repeat, looks_successful, parse_iso_ms
+
 try:
     import tiktoken
 except ImportError:
@@ -50,7 +52,6 @@ except ImportError:
 # Config
 
 SESSIONS_ROOT = Path.home() / ".veyyon" / "agent" / "sessions"
-DB_PATH = Path.home() / ".veyyon" / "stats.db"
 TOKENIZER_NAME = "o200k_base"
 SCHEMA_VERSION = 3
 # Bump whenever parse_hashline_input / find_longest_repeat / duplicated_anchors
@@ -504,26 +505,6 @@ def parse_hashline_input(input_str: str) -> list[EditSection]:
     return sections
 
 
-def find_longest_repeat(block: list[str], min_len: int = 4) -> tuple[int, int] | None:
-    """Returns (start_index, repeat_len) if a repeat of >= min_len with at least
-    half meaningful lines exists. O(n^2) per block — fine for typical edits."""
-    n = len(block)
-    if n < 2 * min_len:
-        return None
-    best: tuple[int, int] | None = None
-    for i in range(n - min_len + 1):
-        for j in range(i + min_len, n - min_len + 1):
-            k = 0
-            while i + k < j and j + k < n and block[i + k] == block[j + k]:
-                k += 1
-            if k < min_len:
-                continue
-            meaningful = sum(1 for s in block[i : i + k] if len(s.strip()) >= 4)
-            if meaningful < max((k + 1) // 2, 2):
-                continue
-            if best is None or k > best[1]:
-                best = (i, k)
-    return best
 
 
 def duplicated_anchors(sections: list[EditSection]) -> list[list]:
@@ -543,60 +524,6 @@ def duplicated_anchors(sections: list[EditSection]) -> list[list]:
     return out
 
 
-# --------------------------------------------------------------------------- #
-# Edit result classification (port of cmd_followups.rs success/warnings).
-
-_RE_FAILURE_HEAD = re.compile(
-    r"^(edit rejected|error\b|failed\b|invalid\b|unrecognized\b|cannot\b|"
-    r"no enclosing|file has been (modified|changed)|file has not been read|"
-    r"permission denied|tool execution was aborted|request was aborted|"
-    r"cancelled|canceled|line \d+:|expected|unexpected|patch failed|"
-    r"no replacements|0 matches)",
-    re.IGNORECASE,
-)
-
-
-def looks_successful(text: str) -> bool:
-    if not text:
-        return False
-    head = ""
-    for ln in text.split("\n"):
-        if ln.strip():
-            head = ln
-            break
-    if not head:
-        return False
-    return _RE_FAILURE_HEAD.match(head.lstrip()) is None
-
-
-def extract_warnings(text: str) -> list[str]:
-    out: list[str] = []
-    for ln in text.split("\n"):
-        t = ln.lstrip()
-        if t.startswith("Auto-rebased anchor"):
-            out.append("auto-rebased")
-        elif t.startswith("Auto-absorbed"):
-            out.append("auto-absorbed")
-        elif t.startswith("Auto-dropped"):
-            out.append("auto-dropped")
-    return out
-
-
-# --------------------------------------------------------------------------- #
-# JSONL parsing
-
-
-def parse_iso_ms(s: str | None) -> int:
-    if not s:
-        return 0
-    try:
-        if s.endswith("Z"):
-            s = s[:-1] + "+00:00"
-        from datetime import datetime
-
-        return int(datetime.fromisoformat(s).timestamp() * 1000)
-    except Exception:
-        return 0
 
 
 def join_text(items) -> str:

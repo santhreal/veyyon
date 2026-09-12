@@ -21,7 +21,7 @@ use brush_core::{
 	openfiles::{OpenFile, OpenFiles, null},
 	results::ExecutionResult,
 };
-use clap::{ArgAction, Parser, ValueEnum, error::ErrorKind};
+use clap::{ArgAction, Parser, ValueEnum};
 use globset::{GlobBuilder, GlobMatcher};
 use regex::{Regex, RegexBuilder};
 use veyyon_walker::CollectedEntry;
@@ -584,31 +584,12 @@ async fn run_fd<SE: ShellExtensions>(
 		.collect();
 	drop(context);
 
-	let cancel_flag = Arc::new(AtomicBool::new(false));
-	let thread_flag = Arc::clone(&cancel_flag);
-	let mut handle = tokio::task::spawn_blocking(move || {
+	let code = crate::coreutils::run_cancellable_blocking(cancel, move |thread_flag| {
 		let mut stdout = stdout.unwrap_or_else(null_sink);
 		let mut stderr = stderr.unwrap_or_else(null_sink);
 		run_fd_sync(argv, cwd, &mut stdout, &mut stderr, &thread_flag)
-	});
-
-	let code = match cancel {
-		Some(token) => {
-			let token_check = token.clone();
-			tokio::select! {
-				biased;
-				() = token.cancelled() => {
-					cancel_flag.store(true, Ordering::Relaxed);
-					let _ = (&mut handle).await;
-					130
-				},
-				result = &mut handle => {
-					if token_check.is_cancelled() { 130 } else { result.unwrap_or(1) }
-				},
-			}
-		},
-		None => handle.await.unwrap_or(1),
-	};
+	})
+	.await;
 
 	Ok(ExecutionResult::new(exit_status(code)))
 }
@@ -622,19 +603,7 @@ fn run_fd_sync(
 ) -> i32 {
 	let cli = match FdCli::try_parse_from(argv) {
 		Ok(cli) => cli,
-		Err(err) => {
-			let rendered = err.to_string();
-			return match err.kind() {
-				ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
-					let _ = write!(stdout, "{rendered}");
-					0
-				},
-				_ => {
-					let _ = write!(stderr, "{rendered}");
-					2
-				},
-			};
-		},
+		Err(err) => return i32::from(crate::coreutils::render_clap_error(&err, stdout, stderr)),
 	};
 
 	let quiet = cli.quiet;

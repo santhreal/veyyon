@@ -545,7 +545,7 @@ describe("todoMatchesAnyDescription", () => {
 
 	it("ignores punctuation differences in identifiers", () => {
 		// One side has a method-prefix '#', the other doesn't. Reproduced
-		// from a real run where 3 subagents were spawned but only 2 of 3
+		// from a real run where 3 agents were spawned but only 2 of 3
 		// matched todos lit up because the matcher's normalizer collapsed
 		// whitespace but left punctuation intact.
 		expect(

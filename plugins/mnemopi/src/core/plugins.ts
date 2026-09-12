@@ -16,6 +16,12 @@ export function pluginRoot(env: NodeJS.ProcessEnv = process.env): string {
 export type PluginConfig = Record<string, unknown>;
 export type MemoryDict = Record<string, unknown>;
 
+/** A numeric option under its snake_case or camelCase key; `fallback` when absent or not a finite number. */
+function configuredNumber(config: PluginConfig, snake: string, camel: string, fallback: number): number {
+	const configured = config[snake] ?? config[camel];
+	return typeof configured === "number" && Number.isFinite(configured) ? configured : fallback;
+}
+
 export class MnemopiPlugin {
 	static readonly abstractBase = true;
 	name = "";
@@ -78,24 +84,21 @@ export class LoggingPlugin extends MnemopiPlugin {
 	readonly #maxEntries: number;
 	constructor(config: PluginConfig = {}) {
 		super(config);
-		const configured = config.max_entries ?? config.maxEntries;
-		this.#maxEntries = typeof configured === "number" && Number.isFinite(configured) ? configured : 10000;
+		this.#maxEntries = configuredNumber(config, "max_entries", "maxEntries", 10000);
 	}
 	#append(entry: MemoryDict): void {
 		this.#memoryLog.push(entry);
 		if (this.#memoryLog.length > this.#maxEntries) this.#memoryLog.shift();
 	}
 	override onRemember(memory: MemoryDict): void {
-		this.#append({
-			event: "remember",
-			timestamp: new Date().toISOString(),
-			memory_id: memory.id,
-			content_preview: previewContent(memory.content),
-		});
+		this.#appendMemoryEvent("remember", memory);
 	}
 	override onRecall(memory: MemoryDict): void {
+		this.#appendMemoryEvent("recall", memory);
+	}
+	#appendMemoryEvent(event: "remember" | "recall", memory: MemoryDict): void {
 		this.#append({
-			event: "recall",
+			event,
 			timestamp: new Date().toISOString(),
 			memory_id: memory.id,
 			content_preview: previewContent(memory.content),
@@ -141,8 +144,7 @@ export class MetricsPlugin extends MnemopiPlugin {
 	readonly #maxTimingSamples: number;
 	constructor(config: PluginConfig = {}) {
 		super(config);
-		const configured = config.max_timing_samples ?? config.maxTimingSamples;
-		this.#maxTimingSamples = typeof configured === "number" && Number.isFinite(configured) ? configured : 1000;
+		this.#maxTimingSamples = configuredNumber(config, "max_timing_samples", "maxTimingSamples", 1000);
 	}
 	override onRemember(_memory: MemoryDict): void {
 		this.#counters.remember += 1;
@@ -196,8 +198,7 @@ export class FilterPlugin extends MnemopiPlugin {
 	readonly #maxBlocked: number;
 	constructor(config: PluginConfig = {}) {
 		super(config);
-		const configured = config.max_blocked ?? config.maxBlocked;
-		this.#maxBlocked = typeof configured === "number" && Number.isFinite(configured) ? configured : 1000;
+		this.#maxBlocked = configuredNumber(config, "max_blocked", "maxBlocked", 1000);
 	}
 	addRule(rule: FilterRule): void {
 		this.#rules.push(rule);
@@ -258,8 +259,7 @@ export class CompressionPlugin extends MnemopiPlugin {
 	constructor(config: PluginConfig = {}) {
 		super(config);
 		this.enabled = Boolean(config.enabled);
-		const configured = config.threshold_chars ?? config.thresholdChars;
-		this.#threshold = typeof configured === "number" && Number.isFinite(configured) ? configured : 20;
+		this.#threshold = configuredNumber(config, "threshold_chars", "thresholdChars", 20);
 	}
 	compressLines(lines: string[]): string[] {
 		if (!this.enabled || this.#threshold < 0) return lines;
@@ -273,14 +273,18 @@ export class CompressionPlugin extends MnemopiPlugin {
 
 export type PluginConstructor<T extends MnemopiPlugin = MnemopiPlugin> = new (config?: PluginConfig) => T;
 
+const BUILTIN_PLUGINS: readonly [string, PluginConstructor][] = [
+	["logging", LoggingPlugin],
+	["metrics", MetricsPlugin],
+	["filter", FilterPlugin],
+	["compression", CompressionPlugin],
+];
+
 export class PluginManager {
 	readonly #registry = new Map<string, PluginConstructor>();
 	readonly #instances = new Map<string, MnemopiPlugin>();
 	constructor(private readonly pluginDir: string = pluginRoot()) {
-		this.registerPlugin("logging", LoggingPlugin);
-		this.registerPlugin("metrics", MetricsPlugin);
-		this.registerPlugin("filter", FilterPlugin);
-		this.registerPlugin("compression", CompressionPlugin);
+		for (const [name, pluginClass] of BUILTIN_PLUGINS) this.registerPlugin(name, pluginClass);
 	}
 	registerPlugin(name: string, pluginClass: PluginConstructor): void {
 		if (typeof pluginClass !== "function" || !(pluginClass.prototype instanceof MnemopiPlugin)) {

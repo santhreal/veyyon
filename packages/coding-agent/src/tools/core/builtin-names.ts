@@ -60,7 +60,7 @@ export type BuiltinToolName = (typeof BUILTIN_TOOL_NAMES)[number];
  * `rewind` IS ABSENT FOR A DIFFERENT REASON THAN `bash`, and it is worth stating so the next reader
  * does not add it. It restores the workspace to a checkpoint, so it plainly writes; but `RewindTool`
  * and `CheckpointTool` both `createIf` only for a top-level session (`tools/fs/checkpoint.ts:73,119`), so
- * a SUBAGENT cannot receive either one however its `tools:` line reads. Putting it here would classify
+ * a spawned agent cannot receive either one however its `tools:` line reads. Putting it here would classify
  * an agent by a grant that never takes effect.
  */
 export const WORKSPACE_WRITING_TOOL_NAMES = ["edit", "write", "ast_edit", "memory_edit", "manage_skill"] as const;

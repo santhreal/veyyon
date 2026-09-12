@@ -8,6 +8,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { existingOnly, readIfPresent } from "./workspace-layout";
 
 export interface DeadLink {
 	file: string;
@@ -130,30 +131,6 @@ export function extractLinks(markdown: string): FoundLink[] {
 	return found;
 }
 
-/**
- * Read a listed file, or `undefined` when it has been deleted since it was listed.
- *
- * WHY THIS IS NOT A CATCH-ALL. Every doc walk here does two steps -- list the markdown files, then read
- * each one -- and the tree can change in between: `git ls-files` reports the INDEX, so it includes a doc
- * deleted in the working tree, and a parallel session moving prompt files, a rebase, or a generator run
- * can remove one after the listing too. That killed the install-methods gate twice with a raw ENOENT
- * naming a file that was not the test's subject, which reads exactly like a real finding until you get
- * to the stack. A file that no longer exists cannot document or link anything, so skipping it is the
- * right answer.
- *
- * ONLY ENOENT is tolerated. Swallowing every IO error would let a permissions problem quietly shrink the
- * scan and report a clean pass over files nobody read, which is the silent fallback this repo bans, so
- * anything else still throws.
- */
-export function readIfPresent(absPath: string): string | undefined {
-	try {
-		return fs.readFileSync(absPath, "utf8");
-	} catch (error) {
-		if ((error as { code?: string }).code === "ENOENT") return undefined;
-		throw error;
-	}
-}
-
 export function checkDocLinks(rootDir: string, relFiles: string[]): LinkCheckResult {
 	const anchorCache = new Map<string, Set<string>>();
 	const anchorsFor = (absPath: string): Set<string> => {
@@ -231,34 +208,6 @@ export function checkDocLinks(rootDir: string, relFiles: string[]): LinkCheckRes
 		}
 	}
 	return result;
-}
-
-/**
- * Drop paths `git ls-files` reports that are not on disk.
- *
- * `git ls-files` lists what the INDEX tracks, which still includes a file
- * deleted in the working tree but not yet committed. Every doc gate then reads
- * each listed path, so a perfectly ordinary state — a refactor mid-flight, a
- * branch that removes a doc, a shared worktree — made the gate die with a raw
- * `ENOENT` naming a file, instead of reporting on the docs that do exist. It is
- * the worst kind of failure to receive: it says nothing about the rule being
- * checked, and it points at a file whose absence is the intended change.
- *
- * A deleted file also cannot violate any of these rules. It has no links, no
- * imports, and tells no user to install anything, so skipping it is correct and
- * not merely convenient.
- *
- * One owner because there were four listers and only one of them guarded this,
- * which is the same defect surfacing in three places and being fixed in one.
- *
- * `check-doc-freshness.ts` deliberately does NOT use this and should not: there,
- * a listed file that is gone is REPORTED (`result.missing`) rather than skipped,
- * because that gate is about whether docs are being maintained and a vanished
- * doc is exactly the kind of thing it should say out loud. The difference is
- * about what each gate is asking, not an inconsistency to unify away.
- */
-export function existingOnly(rootDir: string, relativePaths: readonly string[]): string[] {
-	return relativePaths.filter(rel => fs.existsSync(path.join(rootDir, rel)));
 }
 
 export function listTrackedMarkdown(rootDir: string): string[] {

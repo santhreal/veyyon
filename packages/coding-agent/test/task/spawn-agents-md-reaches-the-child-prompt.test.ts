@@ -11,7 +11,7 @@
  * already resolved this" and skips discovery entirely. So the child was handed no
  * rules AND the project prompt's standing claim that "every AGENTS.md is already
  * inlined", which forbids it from looking for them. Nothing warned. Every
- * subagent in the product ran with none of the instruction files.
+ * agent in the product ran with none of the instruction files.
  *
  * WHY THIS SUITE AND NOT THE EXISTING ONES.
  *  - `test/context-files-agent-type-parity.test.ts` calls `inheritContextFiles`
@@ -23,7 +23,7 @@
  * `contextFiles` the spawn site actually produced, and renders the child's prompt
  * from exactly those, asserting the operator's file BYTES are in it.
  *
- * IF THIS REGRESSES: subagents silently ignore every project and global rule,
+ * IF THIS REGRESSES: agents silently ignore every project and global rule,
  * and the failure is invisible from inside the child, which simply believes the
  * prompt that told it the rules were already inlined.
  */
@@ -123,7 +123,7 @@ async function spawnAndCapture(session: ToolSession, callId: string, name: strin
 	return spy.mock.calls[0]?.[0];
 }
 
-describe("a spawned subagent's prompt carries the operator's AGENTS.md scopes", () => {
+describe("a spawned agent's prompt carries the operator's AGENTS.md scopes", () => {
 	beforeEach(() => {
 		AgentRegistry.resetGlobalForTests();
 		AgentLifecycleManager.resetGlobalForTests();

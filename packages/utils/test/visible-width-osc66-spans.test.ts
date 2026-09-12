@@ -42,7 +42,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { Ellipsis, visibleWidth as nativeVisibleWidth } from "@veyyon/natives";
-import { DEFAULT_TAB_WIDTH } from "@veyyon/utils/tab-spacing";
+import { DEFAULT_TAB_WIDTH } from "@veyyon/utils/tab-width";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 
 /** Both oracles' answer for one string, so a case cannot assert only one of them. */

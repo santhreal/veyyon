@@ -28,7 +28,7 @@
  * field's own submit, else {@link Form.onSubmit} (the dialog's default
  * action), else it moves the ring to the next field.
  */
-import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
+import { extractPrintableText, isLoneLineFeed, matchesKey } from "@veyyon/utils/keys";
 import { clampLow } from "@veyyon/utils/math";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
@@ -569,5 +569,5 @@ export class Form implements Component, Focusable, MouseRoutable {
 }
 
 function isEnter(data: string): boolean {
-	return matchesKey(data, "return") || matchesKey(data, "enter") || data === "\n";
+	return matchesKey(data, "enter") || isLoneLineFeed(data);
 }

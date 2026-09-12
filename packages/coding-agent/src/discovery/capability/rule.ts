@@ -152,12 +152,19 @@ function normalizeRuleField(value: unknown): string[] | undefined {
 	return Array.from(new Set(tokens));
 }
 
+type ScopeOpener = "(" | "[" | "{";
+
+/** Each closer decrements its own opener's depth, so a stray `)` never closes a `[`. */
+const SCOPE_OPENER_OF_CLOSER = new Map<string, ScopeOpener>([
+	[")", "("],
+	["]", "["],
+	["}", "{"],
+]);
+
 function splitScopeTokens(value: string): string[] {
 	const tokens: string[] = [];
 	let current = "";
-	let parenDepth = 0;
-	let bracketDepth = 0;
-	let braceDepth = 0;
+	const depth: Record<ScopeOpener, number> = { "(": 0, "[": 0, "{": 0 };
 	let quote: '"' | "'" | undefined;
 	for (let i = 0; i < value.length; i++) {
 		const char = value[i];
@@ -173,37 +180,18 @@ function splitScopeTokens(value: string): string[] {
 			current += char;
 			continue;
 		}
-		if (char === "(") {
-			parenDepth++;
+		if (char === "(" || char === "[" || char === "{") {
+			depth[char]++;
 			current += char;
 			continue;
 		}
-		if (char === ")") {
-			parenDepth = Math.max(0, parenDepth - 1);
+		const opener = SCOPE_OPENER_OF_CLOSER.get(char);
+		if (opener) {
+			depth[opener] = Math.max(0, depth[opener] - 1);
 			current += char;
 			continue;
 		}
-		if (char === "[") {
-			bracketDepth++;
-			current += char;
-			continue;
-		}
-		if (char === "]") {
-			bracketDepth = Math.max(0, bracketDepth - 1);
-			current += char;
-			continue;
-		}
-		if (char === "{") {
-			braceDepth++;
-			current += char;
-			continue;
-		}
-		if (char === "}") {
-			braceDepth = Math.max(0, braceDepth - 1);
-			current += char;
-			continue;
-		}
-		if (char === "," && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) {
+		if (char === "," && depth["("] === 0 && depth["["] === 0 && depth["{"] === 0) {
 			const token = current.trim();
 			if (token.length > 0) {
 				tokens.push(token);

@@ -25,12 +25,14 @@ import type {
 } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { ProviderHttpError } from "@veyyon/ai/error/classes";
+import { Flag, is as hasFlag } from "@veyyon/ai/error/flag";
+import { classify as classifyError } from "@veyyon/ai/error/flags";
 import { createOpenAICodexCompactionRequestContext } from "@veyyon/ai/providers/openai-codex-responses";
 import { detectDegenerateRepetition } from "@veyyon/ai/utils/thinking-loop";
 import { Effort } from "@veyyon/catalog/effort";
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
-import { logger, prompt } from "@veyyon/utils";
+import { errorMessage, logger, prompt } from "@veyyon/utils";
 import { instrumentedCompleteSimple } from "../instrumented-complete";
 import { AGENT_PROMPTS } from "../prompts/registry";
 import type { AgentTelemetry } from "../telemetry";
@@ -54,6 +56,15 @@ import {
 	stripRemoteCompactionPreserveData,
 } from "./remote-compaction-entry";
 import { requestRemoteCompaction } from "./remote-summarizer";
+import {
+	formatSegmentSummaries,
+	mapWithConcurrency,
+	planMergeGroups,
+	planSummarySegments,
+	STAGED_SUMMARY_CONCURRENCY,
+	type SummarySegment,
+	stagedSegmentBudget,
+} from "./staged-summary";
 // The trigger decision moved to the module whose header owns it, and is re-exported below so no caller
 // changed. What is left here is the ENGINE: the summarizer, the cut point, the provider round trip.
 import {
@@ -189,6 +200,15 @@ export interface CompactionResult<T = unknown> {
 	details?: T;
 	/** Hook-provided data to persist alongside compaction entry. */
 	preserveData?: Record<string, unknown>;
+	/**
+	 * Segments the history summary was produced from: 1 for one request over the
+	 * whole span, more when the span was summarized in stages (see
+	 * `./staged-summary`). A caller that records a value above 1 for the model
+	 * can ask for stages first on the next compaction with
+	 * {@link SummaryOptions.summaryStaging} instead of paying for the single
+	 * request to time out again. Absent on a hook-produced or server-side result.
+	 */
+	summaryStages?: number;
 }
 
 // ============================================================================
@@ -505,6 +525,10 @@ const SUMMARIZATION_PROMPT = prompt.render(AGENT_PROMPTS["compaction/compaction-
 
 const UPDATE_SUMMARIZATION_PROMPT = prompt.render(AGENT_PROMPTS["compaction/compaction-update-summary"].text);
 
+const STAGED_SEGMENT_PROMPT_TEMPLATE = AGENT_PROMPTS["compaction/compaction-staged-segment"].text;
+
+const STAGED_MERGE_PROMPT = prompt.render(AGENT_PROMPTS["compaction/compaction-staged-merge"].text);
+
 const HANDOFF_DOCUMENT_PROMPT = prompt.render(AGENT_PROMPTS["compaction/handoff-document"].text);
 
 export const AUTO_HANDOFF_THRESHOLD_FOCUS = prompt.render(
@@ -679,6 +703,14 @@ export interface SummaryOptions {
 		ctx: Context,
 		options: SimpleStreamOptions,
 	) => Promise<AssistantMessage>;
+	/**
+	 * How the history summary is produced. `"auto"` (the default) sends one
+	 * request over the whole span and falls back to stages when that request
+	 * does not fit the model's window or times out; `"staged"` goes to stages
+	 * first, for a caller that recorded a timeout on this model earlier (see
+	 * {@link CompactionResult.summaryStages}).
+	 */
+	summaryStaging?: "auto" | "staged";
 }
 
 function localCodexCompaction(options: SummaryOptions | undefined) {
@@ -800,6 +832,273 @@ function buildSummaryPrompt(
 	return { promptText, maxTokens: summaryOutputBudget(model, reserveTokens, 0.8) };
 }
 
+/** The text of a completed summarization response, refused when it is unusable. */
+function usableSummaryText(response: AssistantMessage, what: string): string {
+	const textContent = response.content
+		.filter((c): c is { type: "text"; text: string } => c.type === "text")
+		.map(c => c.text)
+		.join("\n");
+
+	// An empty summary is never valid, and it is far worse than a failed request:
+	// the summary REPLACES the history it summarizes, so storing an empty one
+	// deletes the conversation and reports success. A model can reach this with
+	// `stopReason: "stop"` by spending its whole budget on reasoning and emitting
+	// no text, which was observed live on the handoff path. Fail loudly instead.
+	if (textContent.trim().length === 0) {
+		throw new Error(
+			`${what} returned an empty summary (stopReason: ${response.stopReason}). ` +
+				`The history was NOT compacted. Retry, or lower the compaction thinking level so the ` +
+				`model spends its budget on the summary instead of reasoning.`,
+		);
+	}
+
+	// A summary that repeats one sentence until the budget runs out passes the
+	// emptiness check above and still describes nothing. The loop guard on this
+	// very request re-samples a stalled generation three times and then lets it
+	// cook with the guard OFF, handing back the raw degenerate text — right for a
+	// live turn, which is on screen while it happens and can be interrupted, and
+	// wrong for text that REPLACES the span it claims to describe. Fail the same
+	// way an empty one does, so the caller keeps its history.
+	const degeneracy = detectDegenerateRepetition(textContent);
+	if (degeneracy) {
+		throw new Error(
+			`${what} returned a degenerate summary (${degeneracy}). ` +
+				`The history was NOT compacted. Retry; if it recurs, compact with a different model.`,
+		);
+	}
+
+	return textContent;
+}
+
+/**
+ * One summarization request over `context`, through the session's credential
+ * refresh and side-request transport, returning the usable summary text.
+ */
+async function requestSummary(
+	model: Model,
+	buildContext: () => Context,
+	maxTokens: number,
+	apiKey: ApiKey,
+	signal: AbortSignal | undefined,
+	options: SummaryOptions | undefined,
+	what: string,
+): Promise<string> {
+	const response = await withAuth(
+		apiKey,
+		async key => {
+			// Build a fresh context inside the auth-attempt closure. A runtime
+			// changed while credentials refreshed therefore governs this send.
+			const attemptResponse = await instrumentedCompleteSimple(
+				model,
+				buildContext(),
+				{
+					maxTokens,
+					signal,
+					apiKey: key,
+					reasoning: resolveCompactionEffort(model, options?.thinkingLevel),
+					initiatorOverride: options?.initiatorOverride,
+					metadata: options?.metadata,
+					fetch: options?.fetch,
+					sessionId: options?.sessionId,
+					promptCacheKey: options?.promptCacheKey,
+					providerSessionState: options?.providerSessionState,
+					codexCompaction: localCodexCompaction(options),
+					serviceTier: options?.serviceTier,
+				},
+				{ telemetry: options?.telemetry, oneshotKind: "compaction_summary", completeImpl: options?.completeImpl },
+			);
+			throwIfCompactionCancelled(attemptResponse);
+			if (attemptResponse.stopReason === "error") {
+				throw createSummarizationError(`${what} failed`, attemptResponse, options);
+			}
+			return attemptResponse;
+		},
+		{ signal },
+	);
+	return usableSummaryText(response, what);
+}
+
+/** A history summary and how many segments it was produced from. */
+export interface GeneratedSummary {
+	summary: string;
+	/** 1 for one request over the whole span; the segment count when staged. */
+	stages: number;
+}
+
+/** Whether a failed summarization request timed out rather than being refused. */
+function isSummaryTimeout(error: unknown, model: Model): boolean {
+	if (error instanceof CompactionCancelledError) return false;
+	return hasFlag(classifyError(error, model.api), Flag.Timeout);
+}
+
+/**
+ * Whether one request over the whole span fits the model's context window.
+ * `contextWindow` unset admits the request; the caller has no window to refuse it against.
+ */
+function singleRequestFitsWindow(model: Model, requestTokens: number): boolean {
+	const contextWindow = model.contextWindow ?? 0;
+	return contextWindow <= 0 || requestTokens <= contextWindow;
+}
+
+/** Input plus output tokens of one request over the whole span. */
+function singleRequestTokens(
+	built: { promptText: string; maxTokens: number },
+	options: SummaryOptions | undefined,
+	cacheAligned: boolean,
+): number {
+	// A cache-aligned request is cheap, not small: the replayed window still
+	// occupies the context window it is billed against at the cache-read rate.
+	const inputTokens =
+		cacheAligned && options?.sessionSystemPrompt && options?.sessionMessages
+			? estimateCacheAlignedRequestTokens({
+					sessionSystemPrompt: options.sessionSystemPrompt,
+					sessionMessages: options.sessionMessages,
+					instruction: built.promptText,
+				})
+			: countTokens([SUMMARIZATION_SYSTEM_PROMPT, built.promptText]);
+	return inputTokens + built.maxTokens;
+}
+
+/** Output budget of one segment request: half the summary budget, as a turn prefix gets. */
+function segmentOutputBudget(model: Model, reserveTokens: number): number {
+	return summaryOutputBudget(model, reserveTokens, 0.5);
+}
+
+/** The user turn of one segment request. */
+function buildSegmentPrompt(segment: SummarySegment, options: SummaryOptions | undefined): string {
+	const instruction = prompt.render(STAGED_SEGMENT_PROMPT_TEMPLATE, {
+		index: segment.index,
+		count: segment.count,
+	});
+	return `<conversation>\n${segment.text}\n</conversation>\n\n${formatAdditionalContext(options?.extraContext)}${instruction}`;
+}
+
+/** The user turn of one merge request over consecutive segment summaries. */
+function buildMergePrompt(
+	summaries: readonly string[],
+	previousSummary: string | undefined,
+	customInstructions: string | undefined,
+	options: SummaryOptions | undefined,
+): string {
+	let basePrompt = STAGED_MERGE_PROMPT;
+	// A caller's own summary instruction (a compaction hook's prompt) describes the
+	// final summary, so it governs the merge and not the segments.
+	if (options?.promptOverride) basePrompt = options.promptOverride;
+	if (customInstructions) basePrompt = `${basePrompt}\n\nAdditional focus: ${customInstructions}`;
+	let promptText = formatSegmentSummaries(summaries);
+	if (previousSummary) promptText += `<previous-summary>\n${previousSummary}\n</previous-summary>\n\n`;
+	promptText += formatAdditionalContext(options?.extraContext);
+	promptText += basePrompt;
+	return promptText;
+}
+
+/**
+ * The largest request a staged summary of `currentMessages` sends: the largest
+ * segment request, or the first merge round's largest request. Every later round
+ * reads fewer summaries than the first.
+ */
+function stagedRequestTokens(
+	currentMessages: AgentMessage[],
+	model: Model,
+	reserveTokens: number,
+	customInstructions: string | undefined,
+	previousSummary: string | undefined,
+	options: SummaryOptions | undefined,
+): number {
+	const segments = planStagedSegments(currentMessages, model, options);
+	let largest = 0;
+	for (const segment of segments) {
+		const tokens = countTokens([SUMMARIZATION_SYSTEM_PROMPT, buildSegmentPrompt(segment, options)]);
+		largest = Math.max(largest, tokens + segmentOutputBudget(model, reserveTokens));
+	}
+	// Segment summaries are bounded by their output budget; the first merge round
+	// reads at most one segment budget of them plus the previous summary.
+	const budget = stagedSegmentBudget(model);
+	const mergeInput = countTokens([
+		SUMMARIZATION_SYSTEM_PROMPT,
+		buildMergePrompt([], previousSummary, customInstructions, options),
+	]);
+	const largestMerge = mergeInput + Math.min(budget, segments.length * segmentOutputBudget(model, reserveTokens));
+	return Math.max(largest, largestMerge + summaryOutputBudget(model, reserveTokens, 0.8));
+}
+
+function planStagedSegments(
+	currentMessages: AgentMessage[],
+	model: Model,
+	options: SummaryOptions | undefined,
+): SummarySegment[] {
+	const llmMessages = transformSummarySourceMessages(
+		(options?.convertToLlm ?? defaultConvertToLlm)(currentMessages),
+		options,
+	);
+	return planSummarySegments(llmMessages, preferredDialect(model.id), stagedSegmentBudget(model));
+}
+
+/**
+ * Summarize the span in stages: every segment beside its siblings, then the
+ * segment summaries merged in rounds until one summary remains. See
+ * `./staged-summary` for why a span is summarized this way.
+ */
+async function generateStagedSummary(
+	segments: SummarySegment[],
+	model: Model,
+	reserveTokens: number,
+	apiKey: ApiKey,
+	signal: AbortSignal | undefined,
+	customInstructions: string | undefined,
+	previousSummary: string | undefined,
+	options: SummaryOptions | undefined,
+): Promise<GeneratedSummary> {
+	const segmentBudget = segmentOutputBudget(model, reserveTokens);
+	let summaries = await mapWithConcurrency(segments, STAGED_SUMMARY_CONCURRENCY, segment =>
+		requestSummary(
+			model,
+			() =>
+				buildCompactionProviderContext(SUMMARIZATION_SYSTEM_PROMPT, buildSegmentPrompt(segment, options), options),
+			segmentBudget,
+			apiKey,
+			signal,
+			options,
+			`Segment ${segment.index} of ${segment.count} summarization`,
+		),
+	);
+	const mergeBudget = summaryOutputBudget(model, reserveTokens, 0.8);
+	const groupBudget = stagedSegmentBudget(model);
+	let round = 0;
+	while (summaries.length > 1 || round === 0) {
+		round += 1;
+		const groups = planMergeGroups(summaries, groupBudget);
+		// The final round carries the previous summary and the caller's own
+		// instruction, because its answer is the summary that replaces the span.
+		const final = groups.length === 1;
+		summaries = await mapWithConcurrency(groups, STAGED_SUMMARY_CONCURRENCY, (group, position) =>
+			requestSummary(
+				model,
+				() =>
+					buildCompactionProviderContext(
+						SUMMARIZATION_SYSTEM_PROMPT,
+						buildMergePrompt(
+							group,
+							final ? previousSummary : undefined,
+							final ? customInstructions : undefined,
+							final ? options : { ...options, promptOverride: undefined },
+						),
+						options,
+					),
+				mergeBudget,
+				apiKey,
+				signal,
+				options,
+				`Merge round ${round} group ${position + 1} of ${groups.length}`,
+			),
+		);
+		if (final) break;
+	}
+	const summary = summaries[0];
+	if (summary === undefined) throw new Error("Staged summarization produced no summary");
+	return { summary, stages: segments.length };
+}
+
 export async function generateSummary(
 	currentMessages: AgentMessage[],
 	model: Model,
@@ -809,11 +1108,11 @@ export async function generateSummary(
 	customInstructions?: string,
 	previousSummary?: string,
 	options?: SummaryOptions,
-): Promise<string> {
+): Promise<GeneratedSummary> {
 	const sessionSystemPrompt = options?.sessionSystemPrompt;
 	const sessionMessages = options?.sessionMessages;
 	const cacheAligned = canUseCacheAlignedCompaction({ model, sessionSystemPrompt, sessionMessages });
-	const { promptText, maxTokens } = buildSummaryPrompt(
+	const built = buildSummaryPrompt(
 		currentMessages,
 		model,
 		reserveTokens,
@@ -822,6 +1121,7 @@ export async function generateSummary(
 		options,
 		cacheAligned,
 	);
+	const { promptText, maxTokens } = built;
 
 	if (options?.remoteEndpoint) {
 		const endpoint = options.remoteEndpoint;
@@ -844,16 +1144,38 @@ export async function generateSummary(
 			},
 			{ signal, missingKeyMessage: "Remote compaction credentials unavailable" },
 		);
-		return remote.summary;
+		return { summary: remote.summary, stages: 1 };
 	}
 
-	const response = await withAuth(
-		apiKey,
-		async key => {
-			// Build a fresh context inside the auth-attempt closure. A runtime
-			// changed while credentials refreshed therefore governs this send.
-			const attemptResponse = await instrumentedCompleteSimple(
-				model,
+	const staged = (reason: string): Promise<GeneratedSummary> => {
+		const segments = planStagedSegments(currentMessages, model, options);
+		logger.info("Compaction summary runs in stages", {
+			model: `${model.provider}/${model.id}`,
+			reason,
+			segments: segments.length,
+			segmentBudgetTokens: stagedSegmentBudget(model),
+		});
+		return generateStagedSummary(
+			segments,
+			model,
+			reserveTokens,
+			apiKey,
+			signal,
+			customInstructions,
+			previousSummary,
+			options,
+		);
+	};
+
+	if (options?.summaryStaging === "staged") return staged("requested");
+	if (!singleRequestFitsWindow(model, singleRequestTokens(built, options, cacheAligned))) {
+		return staged("the single request exceeds the context window");
+	}
+
+	try {
+		const summary = await requestSummary(
+			model,
+			() =>
 				cacheAligned && sessionSystemPrompt && sessionMessages
 					? buildCacheAlignedCompactionContext({
 							sessionSystemPrompt,
@@ -863,65 +1185,24 @@ export async function generateSummary(
 							sanitize: text => sanitizeCompactionProviderText(text, options),
 						})
 					: buildCompactionProviderContext(SUMMARIZATION_SYSTEM_PROMPT, promptText, options),
-				{
-					maxTokens,
-					signal,
-					apiKey: key,
-					reasoning: resolveCompactionEffort(model, options?.thinkingLevel),
-					initiatorOverride: options?.initiatorOverride,
-					metadata: options?.metadata,
-					fetch: options?.fetch,
-					sessionId: options?.sessionId,
-					promptCacheKey: options?.promptCacheKey,
-					providerSessionState: options?.providerSessionState,
-					codexCompaction: localCodexCompaction(options),
-					serviceTier: options?.serviceTier,
-				},
-				{ telemetry: options?.telemetry, oneshotKind: "compaction_summary", completeImpl: options?.completeImpl },
-			);
-			throwIfCompactionCancelled(attemptResponse);
-			if (attemptResponse.stopReason === "error") {
-				throw createSummarizationError("Summarization failed", attemptResponse, options);
-			}
-			return attemptResponse;
-		},
-		{ signal },
-	);
-
-	const textContent = response.content
-		.filter((c): c is { type: "text"; text: string } => c.type === "text")
-		.map(c => c.text)
-		.join("\n");
-
-	// An empty summary is never valid, and it is far worse than a failed request:
-	// the summary REPLACES the history it summarizes, so storing an empty one
-	// deletes the conversation and reports success. A model can reach this with
-	// `stopReason: "stop"` by spending its whole budget on reasoning and emitting
-	// no text, which was observed live on the handoff path. Fail loudly instead.
-	if (textContent.trim().length === 0) {
-		throw new Error(
-			`Summarization returned an empty summary (stopReason: ${response.stopReason}). ` +
-				`The history was NOT compacted. Retry, or lower the compaction thinking level so the ` +
-				`model spends its budget on the summary instead of reasoning.`,
+			maxTokens,
+			apiKey,
+			signal,
+			options,
+			"Summarization",
 		);
+		return { summary, stages: 1 };
+	} catch (error) {
+		if (!isSummaryTimeout(error, model) || signal?.aborted) throw error;
+		// The whole span in one request never answered. A span of one segment
+		// would send the same request again; anything larger is retried in stages.
+		if (planStagedSegments(currentMessages, model, options).length < 2) throw error;
+		logger.warn("Compaction summary timed out as one request, retrying in stages", {
+			model: `${model.provider}/${model.id}`,
+			error: errorMessage(error),
+		});
+		return staged("the single request timed out");
 	}
-
-	// A summary that repeats one sentence until the budget runs out passes the
-	// emptiness check above and still describes nothing. The loop guard on this
-	// very request re-samples a stalled generation three times and then lets it
-	// cook with the guard OFF, handing back the raw degenerate text — right for a
-	// live turn, which is on screen while it happens and can be interrupted, and
-	// wrong for text that REPLACES the span it claims to describe. Fail the same
-	// way an empty one does, so the caller keeps its history.
-	const degeneracy = detectDegenerateRepetition(textContent);
-	if (degeneracy) {
-		throw new Error(
-			`Summarization returned a degenerate summary (${degeneracy}). ` +
-				`The history was NOT compacted. Retry; if it recurs, compact with a different model.`,
-		);
-	}
-
-	return textContent;
 }
 
 // ============================================================================
@@ -1325,6 +1606,11 @@ export function assertValidCompactionResult(preparation: CompactionPreparation, 
  * previous summaries, hook context, and the requested output budget. Candidate
  * admission uses this total because provider context windows cover input plus
  * generated output, not conversation messages alone.
+ *
+ * A history request that would not fit the model's window is not the request
+ * that is sent: `generateSummary` summarizes such a span in stages, so the
+ * estimate is the largest staged request instead, and a candidate whose window
+ * holds one segment is admitted for a span of any size.
  */
 export function estimateCompactionRequestTokens(
 	preparation: CompactionPreparation,
@@ -1355,17 +1641,19 @@ export function estimateCompactionRequestTokens(
 			options,
 			cacheAligned,
 		);
-		// A cache-aligned request is cheap, not small: the replayed window still
-		// occupies the context window it is billed against at the cache-read rate.
-		const inputTokens =
-			cacheAligned && options?.sessionSystemPrompt && options?.sessionMessages
-				? estimateCacheAlignedRequestTokens({
-						sessionSystemPrompt: options.sessionSystemPrompt,
-						sessionMessages: options.sessionMessages,
-						instruction: built.promptText,
-					})
-				: countTokens([SUMMARIZATION_SYSTEM_PROMPT, built.promptText]);
-		requests.push(inputTokens + built.maxTokens);
+		const singleRequest = singleRequestTokens(built, options, cacheAligned);
+		requests.push(
+			options?.summaryStaging !== "staged" && singleRequestFitsWindow(model, singleRequest)
+				? singleRequest
+				: stagedRequestTokens(
+						preparation.messagesToSummarize,
+						model,
+						reserveTokens,
+						customInstructions,
+						previousSummary,
+						options,
+					),
+		);
 	}
 	if (preparation.isSplitTurn && preparation.turnPrefixMessages.length > 0) {
 		const llmMessages = (options?.convertToLlm ?? defaultConvertToLlm)(preparation.turnPrefixMessages);
@@ -1849,6 +2137,7 @@ export async function compact(
 		fetch: options?.fetch,
 		completeImpl: options?.completeImpl,
 		obfuscateProviderText: options?.obfuscateProviderText,
+		summaryStaging: options?.summaryStaging,
 	};
 
 	const previousLegacyArchiveText = legacyArchiveSourceText(previousPreserveData);
@@ -1898,6 +2187,7 @@ export async function compact(
 
 	// Generate summaries (can be parallel if both needed) and merge into one
 	let summary: string;
+	let summaryStages = 1;
 
 	if (isSplitTurn && turnPrefixMessages.length > 0) {
 		// Generate both summaries in parallel
@@ -1913,14 +2203,15 @@ export async function compact(
 						previousSummaryForCompaction,
 						summaryOptions,
 					)
-				: Promise.resolve("No prior history."),
+				: Promise.resolve<GeneratedSummary>({ summary: "No prior history.", stages: 1 }),
 			generateTurnPrefixSummary(turnPrefixMessages, model, reserveTokens, apiKey, signal, summaryOptions),
 		]);
 		// Merge into single summary
-		summary = `${historyResult}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixResult}`;
+		summary = `${historyResult.summary}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixResult}`;
+		summaryStages = historyResult.stages;
 	} else if (messagesToSummarize.length > 0) {
 		// Generate history summary from messages to summarize
-		summary = await generateSummary(
+		const historyResult = await generateSummary(
 			messagesToSummarize,
 			model,
 			reserveTokens,
@@ -1930,6 +2221,8 @@ export async function compact(
 			previousSummaryForCompaction,
 			summaryOptions,
 		);
+		summary = historyResult.summary;
+		summaryStages = historyResult.stages;
 	} else if (previousSummaryForCompaction) {
 		// No new messages to summarize, preserve previous summary
 		summary = previousSummaryForCompaction;
@@ -1958,6 +2251,7 @@ export async function compact(
 		tokensBefore,
 		details: { readFiles, modifiedFiles } as CompactionDetails,
 		preserveData: finalPreserveData,
+		summaryStages,
 	};
 }
 

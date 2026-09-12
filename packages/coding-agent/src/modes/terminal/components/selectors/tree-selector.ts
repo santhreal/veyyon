@@ -1,22 +1,21 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { SessionTreeNode } from "@veyyon/kernel/session/session-entries";
 import { type Component, Input } from "@veyyon/tui";
+import { HoverController } from "@veyyon/tui/utils/hover-controller";
 import { fuzzyMatch } from "@veyyon/utils/fuzzy";
 import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
-import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
+import type { HoverFadeOptions } from "@veyyon/utils/motion";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { TreeFilterMode } from "../../../../config/settings-schema";
+import { resolveAssistantErrorPresentation } from "../../../../presentation/transcript-builder";
 import { theme } from "../../../../theme/theme";
 import { shortenPath, TRUNCATE_LENGTHS } from "../../../../tools/core/render-utils";
 import { canonicalizeMessage } from "../../../../utils/thinking-display";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
-import { resolveAssistantErrorPresentation } from "../../utils/transcript-render-helpers";
 import {
 	computeModalDims,
-	consumeModalChipHover,
-	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
@@ -25,6 +24,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "../chrome/modal-shell";
+import { routeModalChrome } from "./select-list-mouse-routing";
 import { centeredWindow, hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
 
 /** Gutter info: position (displayIndent where connector was) and whether to show │ */
@@ -73,12 +73,7 @@ class TreeList implements Component {
 	/** Rows the card can spare for tree entries; the shell decides it per frame. */
 	#maxVisibleLines: number;
 	/** Pointer-highlighted entry (never the selected one; selection owns its row). */
-	#hoveredIndex: number | null = null;
-	/**
-	 * The cross-fade, once the card has lent this list a repaint
-	 * ({@link setHoverMotion}). Absent, the band is switched.
-	 */
-	#hoverFade?: HoverFade;
+	#hover = new HoverController<number>();
 	/** Per-render map of 0-based rendered line → filtered-node index. */
 	#hitRows: (number | undefined)[] = [];
 
@@ -446,9 +441,8 @@ class TreeList implements Component {
 	 * suppressing it there left a row nothing could point at.
 	 */
 	setHoverIndex(index: number | null): boolean {
-		if (this.#hoveredIndex === index) return false;
-		this.#hoveredIndex = index;
-		this.#hoverFade?.set(index);
+		if (this.#hover.key === index) return false;
+		this.#hover.set(index);
 		return true;
 	}
 
@@ -458,23 +452,12 @@ class TreeList implements Component {
 	 * `enabled: false` is the switched band.
 	 */
 	setHoverMotion(options: HoverFadeOptions): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade(options);
-		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+		this.#hover.setMotion(options);
 	}
 
 	/** Drop the fade and forget the pointer, so no timer outlives the card. */
 	disposeHoverMotion(): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = undefined;
-		this.#hoveredIndex = null;
-	}
-
-	/** Band strength for a row: 0 for the selected one, which owns its own styling. */
-	#hoverStrength(index: number, isSelected: boolean): number {
-		if (isSelected) return 0;
-		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
-		return index === this.#hoveredIndex ? 1 : 0;
+		this.#hover.dispose();
 	}
 
 	/** Move the selection one step for a wheel notch (wraps like the arrow keys). */
@@ -695,7 +678,7 @@ class TreeList implements Component {
 			// before tinting so the highlight has the same shape on every entry. The
 			// pointer borrows the same band; the cursor keeps its accent arrow, so
 			// the two never read as one selection.
-			const hoverStrength = this.#hoverStrength(i, isSelected);
+			const hoverStrength = isSelected ? 0 : this.#hover.strength(i);
 			this.#hitRows[i - startIndex] = i;
 			if (isSelected) rows.push(selectionBand(line, rowWidth));
 			else if (hoverStrength > 0) rows.push(hoverBandAt(line, rowWidth, hoverStrength));
@@ -1075,37 +1058,27 @@ export class TreeSelectorComponent implements Component {
 	}
 
 	#routeMouse(event: SgrMouseEvent): boolean {
-		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-			motion: event.motion,
-			leftClick: event.leftClick,
-		});
-		if (
-			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+		const consumed = routeModalChrome({
+			shellGeometry: this.#shellGeometry,
+			event,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			onHoverShortcut: id => {
 				this.#hoveredShortcutId = id;
 				this.#onRequestRender?.();
-			})
-		) {
-			return true;
-		}
-		if (
-			chrome.kind === "close" ||
-			chrome.kind === "outside" ||
-			(chrome.kind === "shortcut" && chrome.id === "close")
-		) {
-			// While the label editor owns the body, close means "abandon the edit"
-			// — the same thing Esc does there — and the tree stays up.
-			if (this.#labelInput) {
-				this.#hideLabelInput();
-				this.#onRequestRender?.();
-				return true;
-			}
-			this.onCancel();
-			return true;
-		}
-		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
-			this.handleInput("\n");
-			return true;
-		}
+			},
+			onCancel: () => {
+				// While the label editor owns the body, close means "abandon the edit"
+				// — the same thing Esc does there — and the tree stays up.
+				if (this.#labelInput) {
+					this.#hideLabelInput();
+					this.#onRequestRender?.();
+					return;
+				}
+				this.onCancel();
+			},
+			onConfirm: () => this.handleInput("\n"),
+		});
+		if (consumed) return true;
 		// The label editor has no rows to hit-test; only the chrome answers.
 		if (this.#labelInput) return true;
 		if (event.wheel !== null) {

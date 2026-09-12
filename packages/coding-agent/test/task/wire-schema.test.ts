@@ -99,7 +99,7 @@ describe("task wire schema", () => {
 	});
 });
 
-// Contract: `agent` and `name` shape the spawned subagent's identity and the
+// Contract: `agent` and `name` shape the spawned agent's identity and the
 // task text is the work being authorized, so an approval-gated session must
 // surface them before the user authorizes the spawn.
 describe("task approval details surface the dispatch", () => {
@@ -113,7 +113,7 @@ describe("task approval details surface the dispatch", () => {
 			makeToolSession({
 				cwd: "/tmp",
 				hasUI: false,
-				settings: Settings.isolated({ "subagent.isolation.mode": "none", "subagent.batch": false }),
+				settings: Settings.isolated({ "agent.isolation.mode": "none", "agent.batch": false }),
 				getSessionFile: () => null,
 				getSessionSpawns: () => "*",
 			}),

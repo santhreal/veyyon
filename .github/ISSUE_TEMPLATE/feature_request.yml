@@ -2,6 +2,12 @@ name: Feature Request
 description: Suggest a new feature or improvement
 labels: ["enhancement"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Open this before writing the code. A pull request that is not a bug fix needs an
+        agreed issue behind it, so wait for a reply here first. A bug fix needs no issue
+        and may open as a pull request directly.
   - type: textarea
     id: description
     attributes:

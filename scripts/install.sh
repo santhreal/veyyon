@@ -1198,7 +1198,7 @@ resolved_dir_for() {
 }
 
 # Report whether `$1` on PATH is the copy we just installed into $2.
-# A stale copy earlier on PATH (an old `bun add -g` global, a distro package, a
+# A stale copy earlier on PATH (an old binary download in another directory, a
 # previous manual install) silently wins every future invocation, so this is
 # checked and reported LOUDLY rather than assumed from mere presence on PATH.
 check_not_shadowed() {

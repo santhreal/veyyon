@@ -50,6 +50,7 @@ import {
 } from "@veyyon/coding-agent/modes/terminal/components/status-line/session-facts";
 import { paintFirstFrame, takeFirstFrame } from "@veyyon/coding-agent/modes/terminal/first-frame";
 import { launchModelLabel, launchProviderLabel } from "@veyyon/coding-agent/modes/terminal/launch-formatting";
+import { StatusPresentationProducer } from "@veyyon/coding-agent/presentation/status-producer";
 import { computeNonMessageBreakdown } from "@veyyon/coding-agent/session/non-message-tokens";
 import { resetGroundTintsForTest } from "@veyyon/coding-agent/theme/ground-tints";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
@@ -57,7 +58,7 @@ import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 import type { GitStatusSummary } from "@veyyon/coding-agent/utils/git";
 import { getLaunchFactsCachePath, stripAnsi } from "@veyyon/utils";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
-import { makeStatusLineSession, type StubSessionOptions } from "./helpers/status-line-session";
+import { makeStatusLineProducer, makeStatusLineSession, type StubSessionOptions } from "./helpers/status-line-session";
 
 const DIRTY: GitStatusSummary = { staged: 1, unstaged: 2, untracked: 3, truncated: false };
 const CLEAN: GitStatusSummary = { staged: 0, unstaged: 0, untracked: 0, truncated: false };
@@ -914,7 +915,7 @@ describe("what a running session records for the next launch", () => {
 			contextUsage: { tokens: 32_000, contextWindow: 128_000 },
 			...options,
 		});
-		new StatusLineComponent(session).renderQuietLine(120);
+		new StatusLineComponent(new StatusPresentationProducer(session)).renderQuietLine(120);
 		return readLaunchFacts();
 	}
 
@@ -989,7 +990,9 @@ describe("what a running session records for the next launch", () => {
 		const projectContext = computeNonMessageBreakdown(session).systemContextTokens;
 		expect(projectContext, "the fixture contributed no project context, so nothing is subtracted").toBeGreaterThan(0);
 
-		const file = await written(() => new StatusLineComponent(session).renderQuietLine(120));
+		const file = await written(() =>
+			new StatusLineComponent(new StatusPresentationProducer(session)).renderQuietLine(120),
+		);
 
 		const project = Object.values(file.projects)[0];
 		const model = Object.values(file.models)[0];
@@ -1012,7 +1015,9 @@ describe("what a running session records for the next launch", () => {
 			systemPrompt: ["the model's own prompt", "PROJECT CONTEXT ".repeat(20_000)],
 		});
 
-		const file = await written(() => new StatusLineComponent(session).renderQuietLine(120));
+		const file = await written(() =>
+			new StatusLineComponent(new StatusPresentationProducer(session)).renderQuietLine(120),
+		);
 
 		expect(Object.values(file.models)[0]?.contextPercent).toBe(0);
 	});
@@ -1088,7 +1093,7 @@ describe("the effort the card prints before a session resolves one", () => {
 	const THINKS = { modelId: "claude-sonnet-4", modelProvider: "anthropic", modelThinking: true };
 
 	function recordedAfterRender(options: StubSessionOptions): LaunchFacts {
-		new StatusLineComponent(makeStatusLineSession(options)).renderQuietLine(120);
+		new StatusLineComponent(makeStatusLineProducer(options)).renderQuietLine(120);
 		return readLaunchFacts();
 	}
 

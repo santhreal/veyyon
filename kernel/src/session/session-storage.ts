@@ -199,14 +199,60 @@ const writerRegistry = new FinalizationRegistry<number>(fd => {
 	}
 });
 
-class FileSessionStorageWriter implements SessionStorageWriter {
-	#fd: number;
+export abstract class BaseSessionStorageWriter implements SessionStorageWriter {
 	#closed = false;
 	#error: Error | undefined;
-	#onError: ((err: Error) => void) | undefined;
+	readonly #onError: ((err: Error) => void) | undefined;
+
+	constructor(options?: { onError?: (err: Error) => void }) {
+		this.#onError = options?.onError;
+	}
+
+	get isClosed(): boolean {
+		return this.#closed;
+	}
+
+	markClosed(): void {
+		this.#closed = true;
+	}
+
+	recordError(err: unknown): Error {
+		const error = toError(err);
+		if (!this.#error) this.#error = error;
+		this.#onError?.(error);
+		return error;
+	}
+
+	ensureOpen(): void {
+		if (this.#closed) throw new Error("Writer closed");
+		if (this.#error) throw this.#error;
+	}
+
+	ensureNoError(): void {
+		if (this.#error) throw this.#error;
+	}
+	abstract append(line: string): Promise<void>;
+
+	async flush(): Promise<void> {
+		this.ensureNoError();
+	}
+
+	isOpen(): boolean {
+		return !this.#closed;
+	}
+
+	abstract close(): Promise<void>;
+
+	getError(): Error | undefined {
+		return this.#error;
+	}
+}
+
+class FileSessionStorageWriter extends BaseSessionStorageWriter {
+	#fd: number;
 
 	constructor(fpath: string, options?: { flags?: "a" | "w"; onError?: (err: Error) => void }) {
-		this.#onError = options?.onError;
+		super(options);
 		const flags = options?.flags ?? "a";
 		// Ensure parent directory exists
 		const dir = path.dirname(fpath);
@@ -219,16 +265,8 @@ class FileSessionStorageWriter implements SessionStorageWriter {
 		writerRegistry.register(this, this.#fd, this);
 	}
 
-	#recordError(err: unknown): Error {
-		const error = toError(err);
-		if (!this.#error) this.#error = error;
-		this.#onError?.(error);
-		return error;
-	}
-
 	async append(line: string): Promise<void> {
-		if (this.#closed) throw new Error("Writer closed");
-		if (this.#error) throw this.#error;
+		this.ensureOpen();
 		try {
 			const buf = Buffer.from(line, "utf-8");
 			let offset = 0;
@@ -240,21 +278,13 @@ class FileSessionStorageWriter implements SessionStorageWriter {
 				offset += written;
 			}
 		} catch (err) {
-			throw this.#recordError(err);
+			throw this.recordError(err);
 		}
 	}
 
-	async flush(): Promise<void> {
-		if (this.#error) throw this.#error;
-	}
-
-	isOpen(): boolean {
-		return !this.#closed;
-	}
-
 	async close(): Promise<void> {
-		if (this.#closed) return;
-		this.#closed = true;
+		if (this.isClosed) return;
+		this.markClosed();
 		// Unregister from finalization - we're closing properly
 		writerRegistry.unregister(this);
 		try {
@@ -268,16 +298,12 @@ class FileSessionStorageWriter implements SessionStorageWriter {
 			// error, so `getError()` reports it and the `onError` callback fires.
 			// Still does not throw: close runs on shutdown and teardown paths where
 			// throwing would mask the reason the session is ending.
-			const error = this.#recordError(err);
+			const error = this.recordError(err);
 			logger.warn("Could not close the session file cleanly; the transcript may be missing its last writes", {
 				error: error.message,
 				fix: "Check that the session directory is writable and not out of space. The session's earlier messages are unaffected.",
 			});
 		}
-	}
-
-	getError(): Error | undefined {
-		return this.#error;
 	}
 }
 
@@ -689,67 +715,65 @@ export class FileSessionStorage implements SessionStorage {
 	}
 }
 
-function matchesPattern(name: string, pattern: string): boolean {
+export function matchStorageGlob(name: string, pattern: string): boolean {
 	if (pattern === "*") return true;
-	if (pattern.startsWith("*.")) {
-		return name.endsWith(pattern.slice(1));
-	}
+	if (pattern.startsWith("*.")) return name.endsWith(pattern.slice(1));
 	return name === pattern;
 }
 
-class MemorySessionStorageWriter implements SessionStorageWriter {
+export function filterStorageMapKeys(
+	keys: Iterable<string>,
+	dir: string,
+	pattern: string,
+	recursive: boolean,
+): string[] {
+	const prefix = dir.endsWith("/") ? dir : `${dir}/`;
+	const matches: string[] = [];
+	for (const filePath of keys) {
+		if (!filePath.startsWith(prefix)) continue;
+		if (recursive) {
+			const relative = filePath.slice(prefix.length);
+			const name = relative.slice(Math.max(relative.lastIndexOf("/"), relative.lastIndexOf("\\")) + 1);
+			if (matchStorageGlob(name, pattern)) matches.push(filePath);
+		} else {
+			const name = filePath.slice(prefix.length);
+			if (name.includes("/") || name.includes("\\")) continue;
+			if (matchStorageGlob(name, pattern)) matches.push(filePath);
+		}
+	}
+	return matches;
+}
+
+class MemorySessionStorageWriter extends BaseSessionStorageWriter {
 	#storage: MemorySessionStorage;
 	#path: string;
-	#closed = false;
-	#error: Error | undefined;
-	#onError: ((err: Error) => void) | undefined;
 
 	constructor(
 		storage: MemorySessionStorage,
 		path: string,
 		options?: { flags?: "a" | "w"; onError?: (err: Error) => void },
 	) {
+		super(options);
 		this.#storage = storage;
 		this.#path = path;
-		this.#onError = options?.onError;
 		if ((options?.flags ?? "a") === "w") {
 			this.#storage.writeTextSync(path, "");
 		}
 	}
 
-	#recordError(err: unknown): Error {
-		const error = toError(err);
-		if (!this.#error) this.#error = error;
-		this.#onError?.(error);
-		return error;
-	}
-
 	async append(line: string): Promise<void> {
-		if (this.#closed) throw new Error("Writer closed");
-		if (this.#error) throw this.#error;
+		this.ensureOpen();
 		try {
 			// O(1) append — push onto the path's indexed in-memory entry.
 			this.#storage.appendSync(this.#path, line);
 		} catch (err) {
-			throw this.#recordError(err);
+			throw this.recordError(err);
 		}
 	}
 
-	async flush(): Promise<void> {
-		if (this.#error) throw this.#error;
-	}
-
-	isOpen(): boolean {
-		return !this.#closed;
-	}
-
 	async close(): Promise<void> {
-		if (this.#closed) return;
-		this.#closed = true;
-	}
-
-	getError(): Error | undefined {
-		return this.#error;
+		if (this.isClosed) return;
+		this.markClosed();
 	}
 }
 
@@ -957,27 +981,11 @@ export class MemorySessionStorage implements SessionStorage {
 	}
 
 	listFilesSync(dir: string, pattern: string): string[] {
-		const prefix = dir.endsWith("/") ? dir : `${dir}/`;
-		const files: string[] = [];
-		for (const path of this.#files.keys()) {
-			if (!path.startsWith(prefix)) continue;
-			const name = path.slice(prefix.length);
-			if (name.includes("/") || name.includes("\\")) continue;
-			if (!matchesPattern(name, pattern)) continue;
-			files.push(path);
-		}
-		return files;
+		return filterStorageMapKeys(this.#files.keys(), dir, pattern, false);
 	}
 
 	listFilesRecursiveSync(dir: string, pattern: string): string[] {
-		const prefix = dir.endsWith("/") ? dir : `${dir}/`;
-		const files: string[] = [];
-		for (const filePath of this.#files.keys()) {
-			if (!filePath.startsWith(prefix)) continue;
-			if (!matchesPattern(path.basename(filePath), pattern)) continue;
-			files.push(filePath);
-		}
-		return files;
+		return filterStorageMapKeys(this.#files.keys(), dir, pattern, true);
 	}
 
 	exists(path: string): Promise<boolean> {
@@ -1041,7 +1049,14 @@ export class MemorySessionStorage implements SessionStorage {
 		this.#files.delete(path);
 		return Promise.resolve();
 	}
-	deleteSessionWithArtifacts(_sessionPath: string): Promise<void> {
+
+	deleteSessionWithArtifacts(sessionPath: string): Promise<void> {
+		this.#files.delete(sessionPath);
+		const artifactsDir = sessionFileStem(sessionPath);
+		const prefix = `${artifactsDir}/`;
+		for (const key of Array.from(this.#files.keys())) {
+			if (key.startsWith(prefix)) this.#files.delete(key);
+		}
 		return Promise.resolve();
 	}
 

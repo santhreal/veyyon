@@ -29,11 +29,7 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 		_ => cleaned,
 	};
 
-	if text == input {
-		MinimizerOutput::passthrough(input)
-	} else {
-		MinimizerOutput::transformed(text, input.len())
-	}
+	MinimizerOutput::maybe_transformed(input, text)
 }
 
 fn ruby_tool<'a>(program: &'a str, subcommand: Option<&'a str>) -> Option<&'a str> {
@@ -288,7 +284,7 @@ fn compact_rspec_json(input: &str) -> Option<String> {
 	let map = value.as_object()?;
 	let mut out = String::new();
 
-	if let Some(summary_line) = first_json_string(map, &["summary_line"]) {
+	if let Some(summary_line) = primitives::first_json_string(map, &["summary_line"]) {
 		primitives::push_line(&mut out, summary_line);
 	} else if let Some(summary) = map.get("summary").and_then(|value| value.as_object()) {
 		primitives::push_line(&mut out, &rspec_summary_from_json(summary));
@@ -299,7 +295,7 @@ fn compact_rspec_json(input: &str) -> Option<String> {
 			let Some(example_map) = example.as_object() else {
 				continue;
 			};
-			let status = first_json_string(example_map, &["status"]);
+			let status = primitives::first_json_string(example_map, &["status"]);
 			if status == Some("failed") {
 				push_rspec_json_example(&mut out, "FAILED", example_map);
 			} else if status == Some("pending") {
@@ -327,10 +323,10 @@ fn compact_rspec_json(input: &str) -> Option<String> {
 }
 
 fn rspec_summary_from_json(map: &serde_json::Map<String, serde_json::Value>) -> String {
-	let examples = first_json_u64(map, &["example_count"]);
-	let failures = first_json_u64(map, &["failure_count"]);
-	let pending = first_json_u64(map, &["pending_count"]);
-	let errors = first_json_u64(map, &["errors_outside_of_examples_count"]);
+	let examples = primitives::first_json_u64(map, &["example_count"]);
+	let failures = primitives::first_json_u64(map, &["failure_count"]);
+	let pending = primitives::first_json_u64(map, &["pending_count"]);
+	let errors = primitives::first_json_u64(map, &["errors_outside_of_examples_count"]);
 
 	let mut parts = Vec::new();
 	if let Some(examples) = examples {
@@ -358,7 +354,7 @@ fn push_rspec_json_example(
 	label: &str,
 	map: &serde_json::Map<String, serde_json::Value>,
 ) {
-	let description = first_json_string(map, &["full_description", "description", "id"])
+	let description = primitives::first_json_string(map, &["full_description", "description", "id"])
 		.unwrap_or("<unknown example>");
 	primitives::push_line(out, &format!("{label}: {description}"));
 	push_json_location(out, map);
@@ -366,7 +362,7 @@ fn push_rspec_json_example(
 	if let Some(exception) = map.get("exception").and_then(|value| value.as_object()) {
 		push_json_exception(out, exception);
 	}
-	if let Some(message) = first_json_string(map, &["pending_message", "message"]) {
+	if let Some(message) = primitives::first_json_string(map, &["pending_message", "message"]) {
 		primitives::push_line(out, message);
 	}
 }
@@ -377,9 +373,9 @@ fn push_rspec_json_error(out: &mut String, map: &serde_json::Map<String, serde_j
 }
 
 fn push_json_location(out: &mut String, map: &serde_json::Map<String, serde_json::Value>) {
-	if let Some(path) = first_json_string(map, &["file_path", "file", "path"]) {
+	if let Some(path) = primitives::first_json_string(map, &["file_path", "file", "path"]) {
 		let mut location = path.to_string();
-		if let Some(line) = first_json_u64(map, &["line_number", "line"]) {
+		if let Some(line) = primitives::first_json_u64(map, &["line_number", "line"]) {
 			location.push(':');
 			location.push_str(&line.to_string());
 		}
@@ -388,10 +384,10 @@ fn push_json_location(out: &mut String, map: &serde_json::Map<String, serde_json
 }
 
 fn push_json_exception(out: &mut String, map: &serde_json::Map<String, serde_json::Value>) {
-	if let Some(class_name) = first_json_string(map, &["class", "class_name", "type"]) {
+	if let Some(class_name) = primitives::first_json_string(map, &["class", "class_name", "type"]) {
 		primitives::push_line(out, class_name);
 	}
-	if let Some(message) = first_json_string(map, &["message", "description"]) {
+	if let Some(message) = primitives::first_json_string(map, &["message", "description"]) {
 		primitives::push_line(out, message);
 	}
 	if let Some(backtrace) = map.get("backtrace").and_then(|value| value.as_array()) {
@@ -404,21 +400,6 @@ fn push_json_exception(out: &mut String, map: &serde_json::Map<String, serde_jso
 			}
 		}
 	}
-}
-
-fn first_json_string<'a>(
-	map: &'a serde_json::Map<String, serde_json::Value>,
-	keys: &[&str],
-) -> Option<&'a str> {
-	keys
-		.iter()
-		.find_map(|key| map.get(*key).and_then(|value| value.as_str()))
-}
-
-fn first_json_u64(map: &serde_json::Map<String, serde_json::Value>, keys: &[&str]) -> Option<u64> {
-	keys
-		.iter()
-		.find_map(|key| map.get(*key).and_then(serde_json::Value::as_u64))
 }
 
 fn filter_minitest(input: &str, exit_code: i32) -> String {
@@ -581,10 +562,9 @@ fn is_rake_keep_line(trimmed: &str) -> bool {
 		return true;
 	}
 	let lower = trimmed.to_ascii_lowercase();
-	let words: Vec<&str> = lower.split_whitespace().collect();
-	words.iter().any(|w| {
+	lower.split_whitespace().any(|w| {
 		matches!(
-			*w,
+			w,
 			"passed"
 				| "failed"
 				| "error"
@@ -595,7 +575,6 @@ fn is_rake_keep_line(trimmed: &str) -> bool {
 		)
 	})
 }
-
 fn ruby_test_success(input: &str) -> String {
 	let mut out = String::new();
 	let mut summary = String::new();

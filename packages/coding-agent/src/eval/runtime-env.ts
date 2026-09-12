@@ -76,6 +76,38 @@ export const BASE_ENV_ALLOWLIST = [
 ];
 
 /**
+ * Cross-language Windows allowlist shared by every eval sandbox (py/rb/jl).
+ * Covers standard Windows user/system profile, architecture and session environment variables.
+ */
+export const BASE_WINDOWS_ENV_ALLOWLIST = [
+	"APPDATA",
+	"COMPUTERNAME",
+	"COMSPEC",
+	"HOMEDRIVE",
+	"HOMEPATH",
+	"LOCALAPPDATA",
+	"NUMBER_OF_PROCESSORS",
+	"OS",
+	"PATH",
+	"PATHEXT",
+	"PROCESSOR_ARCHITECTURE",
+	"PROCESSOR_IDENTIFIER",
+	"PROGRAMDATA",
+	"PROGRAMFILES",
+	"PROGRAMFILES(X86)",
+	"PROGRAMW6432",
+	"SESSIONNAME",
+	"SYSTEMDRIVE",
+	"SYSTEMROOT",
+	"TEMP",
+	"TMP",
+	"USERDOMAIN",
+	"USERPROFILE",
+	"USERNAME",
+	"WINDIR",
+];
+
+/**
  * Union of internal PI tokens and provider API keys that must never reach an
  * eval sandbox, even under a broad allow-prefix (e.g. the `PI_` prefix admits
  * `VEYYON_SESSION`/`VEYYON_TOKEN` unless explicitly denied here). Single authoritative
@@ -100,25 +132,32 @@ export const SECRET_ENV_DENYLIST = [
 ];
 
 export interface EnvFilterOptions {
-	allowList: string[];
-	windowsAllowList: string[];
-	denyList: string[];
-	allowPrefixes: string[];
+	allowList?: string[];
+	windowsAllowList?: string[];
+	denyList?: string[];
+	allowPrefixes?: string[];
 }
 
 /**
  * Creates an environment filter function based on the provided allowlists, denylists, and prefixes.
  */
 export function createEnvFilter(
-	options: EnvFilterOptions,
+	options?: EnvFilterOptions,
 ): (env: Record<string, string | undefined>) => Record<string, string | undefined> {
+	const allowList = options?.allowList ?? BASE_ENV_ALLOWLIST;
+	const windowsAllowList = options?.windowsAllowList ?? BASE_WINDOWS_ENV_ALLOWLIST;
+	const denyList = options?.denyList ?? SECRET_ENV_DENYLIST;
+	const allowPrefixes = options?.allowPrefixes ?? BASE_ENV_ALLOW_PREFIXES;
+
 	const normalizedAllowList = new Set(
-		options.allowList.concat(options.windowsAllowList).map(key => (CASE_INSENSITIVE_ENV ? key.toUpperCase() : key)),
+		(process.platform === "win32" ? allowList.concat(windowsAllowList) : allowList).map(key =>
+			CASE_INSENSITIVE_ENV ? key.toUpperCase() : key,
+		),
 	);
-	const normalizedDenyList = new Set(options.denyList.map(key => (CASE_INSENSITIVE_ENV ? key.toUpperCase() : key)));
+	const normalizedDenyList = new Set(denyList.map(key => (CASE_INSENSITIVE_ENV ? key.toUpperCase() : key)));
 	const normalizedAllowPrefixes = CASE_INSENSITIVE_ENV
-		? options.allowPrefixes.map(prefix => prefix.toUpperCase())
-		: options.allowPrefixes;
+		? allowPrefixes.map(prefix => prefix.toUpperCase())
+		: allowPrefixes;
 
 	return (env: Record<string, string | undefined>): Record<string, string | undefined> => {
 		const filtered: Record<string, string | undefined> = {};
@@ -151,6 +190,19 @@ export function resolveExplicitPath(interpreter: string, cwd: string): string {
 				? path.join(os.homedir(), interpreter.slice(2))
 				: interpreter;
 	return path.isAbsolute(expanded) ? expanded : path.resolve(cwd, expanded);
+}
+
+/**
+ * Resolves an explicitly configured interpreter path into a runtime object without discovery probing.
+ */
+export function resolveExplicitRuntime<T>(
+	interpreter: string,
+	cwd: string,
+	baseEnv: Record<string, string | undefined>,
+	createRuntime: (executablePath: string, env: Record<string, string | undefined>) => T,
+): T {
+	const executablePath = resolveExplicitPath(interpreter, cwd);
+	return createRuntime(executablePath, { ...baseEnv });
 }
 
 /**
@@ -187,4 +239,36 @@ export function resolveRuntime<T>(
 		throw new Error(`${displayName} executable not found on PATH`);
 	}
 	return runtime;
+}
+
+/**
+ * Creates standard explicit, candidate-enumeration, and priority-resolution runtime helpers.
+ */
+export function createSimpleRuntimeResolvers<TKey extends string>(
+	binaryName: string,
+	pathKey: TKey,
+): {
+	resolveExplicit: (
+		interpreter: string,
+		cwd: string,
+		baseEnv: Record<string, string | undefined>,
+	) => { [K in TKey]: string } & { env: Record<string, string | undefined> };
+	enumerate: (
+		cwd: string,
+		baseEnv: Record<string, string | undefined>,
+		interpreter?: string,
+	) => Array<{ [K in TKey]: string } & { env: Record<string, string | undefined> }>;
+	resolve: (
+		cwd: string,
+		baseEnv: Record<string, string | undefined>,
+		interpreter?: string,
+	) => { [K in TKey]: string } & { env: Record<string, string | undefined> };
+} {
+	const createRuntime = (executablePath: string, env: Record<string, string | undefined>) =>
+		({ [pathKey]: executablePath, env }) as { [K in TKey]: string } & { env: Record<string, string | undefined> };
+	return {
+		resolveExplicit: (interpreter, cwd, baseEnv) => resolveExplicitRuntime(interpreter, cwd, baseEnv, createRuntime),
+		enumerate: (cwd, baseEnv, interpreter) => enumerateRuntimes(cwd, baseEnv, binaryName, createRuntime, interpreter),
+		resolve: (cwd, baseEnv, interpreter) => resolveRuntime(cwd, baseEnv, binaryName, createRuntime, interpreter),
+	};
 }

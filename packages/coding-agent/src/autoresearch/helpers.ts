@@ -1,6 +1,7 @@
 import { nonEmptyTrimmed, trimTrailingSlashes } from "@veyyon/utils";
 import * as git from "../utils/git";
-import type { ASIData, ASIValue, MetricDirection, NumericMetricMap } from "./types";
+import { type AutoresearchStorage, openAutoresearchStorageIfExists, type SessionRow } from "./storage";
+import type { ASIData, ASIValue, AutoresearchToolResult, MetricDirection, NumericMetricMap } from "./types";
 
 export const METRIC_LINE_PREFIX = "METRIC";
 export const ASI_LINE_PREFIX = "ASI";
@@ -266,4 +267,35 @@ export async function gitStatusPorcelain(cwd: string): Promise<string> {
 export async function gitWorkDirPrefix(cwd: string): Promise<string> {
 	if (!(await git.repo.resolve(cwd))) return "";
 	return git.show.prefix(cwd);
+}
+
+export type ActiveBranchSessionResult =
+	| { ok: true; storage: AutoresearchStorage; session: SessionRow }
+	| { ok: false; result: AutoresearchToolResult<never> };
+
+/**
+ * Open autoresearch storage and resolve the active session for the current branch.
+ *
+ * Returns `{ ok: true, storage, session }` when storage exists and has an active session
+ * on the current branch, or `{ ok: false, result }` with the standard missing-session error
+ * tool result.
+ */
+export async function resolveActiveBranchSession(cwd: string): Promise<ActiveBranchSessionResult> {
+	const storage = await openAutoresearchStorageIfExists(cwd);
+	const currentBranch = (await git.branch.current(cwd)) ?? null;
+	const session = storage?.getActiveSessionForBranch(currentBranch) ?? null;
+	if (!storage || !session) {
+		return {
+			ok: false,
+			result: {
+				content: [
+					{
+						type: "text",
+						text: "Error: no active autoresearch session for the current branch. Call init_experiment first.",
+					},
+				],
+			},
+		};
+	}
+	return { ok: true, storage, session };
 }

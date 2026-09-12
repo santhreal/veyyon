@@ -1,4 +1,5 @@
 import type { WireToolResultMessage } from "@veyyon/wire";
+import type { ToolExecutionDisplay } from "@veyyon/wire/presentation";
 import type { ReactNode } from "react";
 import { memo } from "react";
 import { messageText } from "../../lib/format";
@@ -13,13 +14,19 @@ export interface ToolCardProps {
 	running?: boolean;
 	partialResult?: unknown;
 	host?: ToolRenderHost;
+	display?: ToolExecutionDisplay;
 }
 
 /** Wire-type adapter over the shared per-tool renderer stack. */
 export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode {
-	const { name, intent, args, result, running, partialResult, host } = props;
+	const { name, intent, args, result, running, partialResult, host, display: callDisplay } = props;
 	const partial =
 		running && !result ? (typeof partialResult === "string" ? partialResult : messageText(partialResult)) : "";
+	const resultDisplay =
+		result && typeof result === "object" && "display" in result
+			? (result.display as ToolExecutionDisplay | undefined)
+			: undefined;
+	const display = resultDisplay ?? callDisplay;
 	return (
 		<ToolView
 			name={name}
@@ -29,6 +36,7 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 			intent={intent}
 			partial={partial || undefined}
 			host={host}
+			display={display}
 		/>
 	);
 });

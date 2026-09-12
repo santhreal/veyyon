@@ -768,4 +768,57 @@ describe("Editor autocomplete invalidation on destructive edits (issue #4295)", 
 		editor.handleInput("\r");
 		expect(submitted).toBe("hello");
 	});
+	it("cancels autocomplete on Enter with a valid prefix but null selected completion without submitting", async () => {
+		const editor = new Editor(defaultEditorTheme);
+		let submitted = false;
+		editor.onSubmit = () => {
+			submitted = true;
+		};
+
+		editor.setText("prefix");
+		editor.setAutocompleteSuggestions({
+			prefix: "prefix",
+			items: [
+				{ value: "item1", label: "Item 1" },
+				{ value: "item2", label: "Item 2" },
+			],
+			selectedIndex: 0.5 as number, // clampLow does not truncate float; reaches null selected item
+		});
+
+		expect(editor.isShowingAutocomplete()).toBe(true);
+
+		// Enter on valid prefix but null selected item must cancel autocomplete without submitting
+		editor.handleInput("\r");
+
+		expect(editor.isShowingAutocomplete()).toBe(false);
+		expect(submitted).toBe(false);
+		expect(editor.getText()).toBe("prefix");
+	});
+
+	it("preserves empty string from getText() on sparse single-element lines", () => {
+		const editor = new Editor(defaultEditorTheme);
+		editor.setAutocompleteProvider({
+			async getSuggestions() {
+				return null;
+			},
+			applyCompletion() {
+				return {
+					lines: new Array(1) as unknown as string[],
+					cursorLine: 0,
+					cursorCol: 0,
+				};
+			},
+		});
+
+		editor.setText("x");
+		editor.setAutocompleteSuggestions({
+			prefix: "x",
+			items: [{ value: "applied", label: "applied" }],
+		});
+		editor.handleInput("\t");
+
+		// getText() must return empty string "" rather than undefined
+		expect(editor.getText()).toBe("");
+		expect(typeof editor.getText()).toBe("string");
+	});
 });

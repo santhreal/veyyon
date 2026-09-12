@@ -20,9 +20,10 @@ import { logWorkerMessage, type WorkerLogPayload } from "./worker-log";
  *
  * Only the genuinely identical pieces live here: the worker-handle shape, the
  * spawn-command resolution, the parent-env snapshot, the `Bun.spawn` wiring,
- * the inline "worker unavailable" stub, and the ping/pong smoke probe. Each
- * client keeps its own divergent request/response correlation, streaming, and
- * teardown semantics.
+ * the inline "worker unavailable" stub, and the ping/pong smoke probe. The
+ * request/response correlation, the ref-while-busy rule and the teardown that
+ * the model clients share is `WorkerRequestClient` in `./worker-request-client`;
+ * each client keeps only its own message routing and streaming semantics.
  */
 
 /** Minimal inbound contract shared by every worker: a correlated `ping`. */

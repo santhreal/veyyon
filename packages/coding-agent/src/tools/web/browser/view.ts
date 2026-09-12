@@ -27,8 +27,16 @@ import type {
 	ViewLine,
 	ViewSection,
 } from "@veyyon/view";
-import { formatTruncationMetaNotice, stripOutputNotice } from "../../core/output-notice";
-import { replaceTabs, shortenPath } from "../../core/render-utils";
+import { extractResultText, formatTruncationMetaNotice, stripOutputNotice } from "../../core/output-notice";
+import {
+	heldBack,
+	LINE_NOUN,
+	replaceTabs,
+	screenRows,
+	shortenEmbeddedPaths,
+	shortenPath,
+	type ToolViewResult,
+} from "../../core/render-utils";
 import type { BrowserToolDetails } from "../browser";
 
 /** The tool's own mark, which a settled row is titled by instead of an outcome icon. */
@@ -49,9 +57,6 @@ const BROWSER_PREVIEW_LINES = 10;
  */
 const EXPANDED_MAX_LINES = 200;
 
-/** The unit a held-back count is in, which the host words. */
-const LINE_NOUN = { one: "line", many: "lines" } as const;
-
 /** The call arguments a card reads, which are the tool's own input narrowed to what it shows. */
 export interface BrowserViewArgs {
 	action?: "open" | "close" | "run";
@@ -66,11 +71,7 @@ export interface BrowserViewArgs {
 }
 
 /** The result a card reads, which is the tool's own result shape narrowed to what a card shows. */
-export interface BrowserViewResult {
-	content: Array<{ type: string; text?: string }>;
-	details?: BrowserToolDetails;
-	isError?: boolean;
-}
+export interface BrowserViewResult extends ToolViewResult<BrowserToolDetails> {}
 
 /**
  * Which browser the tab is on, said in the words the call or the result gives.
@@ -118,21 +119,6 @@ function withoutTrailingBlanks(text: string): string {
 	return text.replace(/\s+$/, "");
 }
 
-/**
- * Text as the rows a screen would have shown.
- *
- * A carriage return inside a row is a cursor sent back to column one, which is how every progress
- * bar draws itself, so the row is what was left standing after the last one. Done here rather than
- * left to a host: the rows are what the card SAYS, and a host that split on `\n` alone would be
- * shown one row holding four states of the same progress bar.
- */
-function screenRows(text: string): string[] {
-	return text.split(/\r?\n/).map(row => {
-		const restart = row.lastIndexOf("\r");
-		return restart < 0 ? row : row.slice(restart + 1);
-	});
-}
-
 /** How many rows of a section a reader is shown, which the disclosure decides. */
 function ceiling(expanded: boolean): number {
 	return expanded ? EXPANDED_MAX_LINES : BROWSER_PREVIEW_LINES;
@@ -144,10 +130,11 @@ function codeSection(code: string, expanded: boolean): ViewSection | undefined {
 	const rows = screenRows(code);
 	const kept = rows.slice(0, Math.min(rows.length, ceiling(expanded)));
 	const held = rows.length - kept.length;
+	const hidden = heldBack(held, LINE_NOUN, !expanded);
 	return {
 		lines: kept.map(row => [{ text: row }] as ViewLine),
 		code: { language: RUN_LANGUAGE },
-		...(held > 0 ? { hidden: { count: held, noun: LINE_NOUN, revealable: !expanded } } : {}),
+		...(hidden === undefined ? {} : { hidden }),
 	};
 }
 
@@ -158,22 +145,28 @@ function codeSection(code: string, expanded: boolean): ViewSection | undefined {
  * terminal replays the styles it trusts and a host that can replay none keeps the words. Every other
  * row is output the card colours as output, which is the tool stating what the row IS.
  */
-function outputSection(output: string, expanded: boolean, label: string | undefined): ViewSection | undefined {
+function outputSection(
+	output: string,
+	expanded: boolean,
+	label: string | undefined,
+	isError?: boolean,
+): ViewSection | undefined {
 	if (!output) return undefined;
 	const rows = screenRows(output);
 	const kept = rows.slice(0, Math.min(rows.length, ceiling(expanded)));
 	const held = rows.length - kept.length;
+	const hidden = heldBack(held, LINE_NOUN, !expanded);
 	return {
 		...(label === undefined ? {} : { label }),
-		lines: kept.map(row => outputRow(row)),
-		...(held > 0 ? { hidden: { count: held, noun: LINE_NOUN, revealable: !expanded } } : {}),
+		lines: kept.map(row => outputRow(row, isError)),
+		...(hidden === undefined ? {} : { hidden }),
 	};
 }
 
 /** One row of output, verbatim when it is a screen row and toned as output when it is text. */
-function outputRow(row: string): ViewLine {
-	const text = replaceTabs(row);
-	return row.includes("\x1b[") ? [{ text, captured: true }] : [{ text, tone: "output" }];
+function outputRow(row: string, isError?: boolean): ViewLine {
+	const text = replaceTabs(shortenEmbeddedPaths(row));
+	return row.includes("\x1b[") ? [{ text, captured: true }] : [{ text, tone: isError ? "error" : "output" }];
 }
 
 /**
@@ -279,7 +272,7 @@ function tabCard(
 		title,
 		...(meta.length > 0 ? { meta } : {}),
 	};
-	const printed = outputSection(output, context.expanded, undefined);
+	const printed = outputSection(output, context.expanded, undefined, isError);
 	if (printed === undefined) return header;
 	return {
 		kind: "headedBlock",
@@ -287,17 +280,6 @@ function tabCard(
 		lines: printed.lines,
 		...(printed.hidden === undefined ? {} : { hidden: printed.hidden }),
 	};
-}
-
-/** The text parts of a result, which is everything a card shows of what the tool returned. */
-function textOf(content: Array<{ type: string; text?: string }> | undefined): string {
-	if (!content) return "";
-	return withoutTrailingBlanks(
-		content
-			.filter(part => part.type === "text")
-			.map(part => part.text ?? "")
-			.join("\n"),
-	);
 }
 
 export const browserToolView: Required<ToolViewRenderer<BrowserViewArgs, BrowserViewResult>> = {
@@ -318,7 +300,7 @@ export const browserToolView: Required<ToolViewRenderer<BrowserViewArgs, Browser
 		const isError = result.isError === true;
 		// The notice the tool appended for the model is stated by the card as its own group, so the
 		// reader is not shown the same sentence twice in two voices.
-		const output = stripOutputNotice(textOf(result.content), details?.meta);
+		const output = stripOutputNotice(withoutTrailingBlanks(extractResultText(result.content)), details?.meta);
 		if ((details?.action ?? called.action) === "run") return runCard(called, details, context, output, isError);
 		return tabCard(called, details, context, output, isError);
 	},

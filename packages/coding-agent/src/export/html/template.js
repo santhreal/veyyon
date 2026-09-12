@@ -15,7 +15,7 @@
       const { header, entries, leafId: defaultLeafId, systemPrompt, tools, subSessions } = data;
 
       // Session render context: scopes entry lookups and tool-view host
-      // wiring to one transcript (main session or an embedded subagent).
+      // wiring to one transcript (main session or an embedded agent).
       const mainSctx = { entries, prefix: '', idPrefix: 'entry-' };
 
       // ============================================================
@@ -412,18 +412,10 @@
 
       function formatToolCall(name, args) {
         switch (name) {
-          case 'read': {
-            const path = shortenPath(String(args.path || args.file_path || ''));
-            const offset = args.offset;
-            const limit = args.limit;
-            let display = path;
-            if (offset !== undefined || limit !== undefined) {
-              const start = offset ?? 1;
-              const end = limit !== undefined ? start + limit - 1 : '';
-              display += `:${start}${end ? `-${end}` : ''}`;
-            }
-            return `[read: ${display}]`;
-          }
+          case 'read':
+            // The line selector rides on the path itself (`src/app.ts:50-200`); `limit` is the
+            // directory entry cap, never a line window.
+            return `[read: ${shortenPath(String(args.path || args.file_path || ''))}]`;
           case 'write':
             return `[write: ${shortenPath(String(args.path || args.file_path || ''))}]`;
           case 'edit':
@@ -747,6 +739,7 @@
           name: call.name,
           args: call.arguments || {},
           result: result || undefined,
+          display: (result && result.display) ? result.display : (call.display || undefined),
           host: {
             hasAgent: (id) => !!lookupSubSession(sctx.prefix, id),
             openAgent: (id) => openSubSession(joinKey(sctx.prefix, id)),
@@ -760,7 +753,7 @@
       // ============================================================
       //
       // Task tool cards expose agent chips (wired through the payload `host`
-      // above); clicking one opens that subagent's transcript in a stacked
+      // above); clicking one opens that agent's transcript in a stacked
       // overlay. Keys are slash-joined agent ids relative to the main
       // session: top-level agent 'ToolAsk', its child 'ToolAsk/Helper'.
 
@@ -788,7 +781,7 @@
       }
 
       /**
-       * Root-to-leaf path through an arbitrary entry list (subagent
+       * Root-to-leaf path through an arbitrary entry list (agent
        * transcripts are linear chains; same parent-walk as getPath).
        */
       function getPathIn(entryList, targetId) {
@@ -816,10 +809,10 @@
         subOverlayEl.id = 'subsession-overlay';
         subOverlayEl.innerHTML = `
           <div class="subsession-backdrop"></div>
-          <div class="subsession-panel" role="dialog" aria-modal="true" aria-label="Subagent session" tabindex="-1">
+          <div class="subsession-panel" role="dialog" aria-modal="true" aria-label="Agent session" tabindex="-1">
             <div class="subsession-header">
-              <nav class="subsession-breadcrumb" aria-label="Subagent breadcrumb"></nav>
-              <button type="button" class="subsession-close" title="Close (Esc)" aria-label="Close subagent view">&times;</button>
+              <nav class="subsession-breadcrumb" aria-label="Agent breadcrumb"></nav>
+              <button type="button" class="subsession-close" title="Close (Esc)" aria-label="Close agent view">&times;</button>
             </div>
             <div class="subsession-meta"></div>
             <div class="subsession-body"></div>

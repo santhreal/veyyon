@@ -13,7 +13,7 @@
  *    still on screen at 80 columns. THE BUG: the footer was a single row, cut to
  *    width, and the wizard's own keys sit at the END of it, so `esc leave setup`
  *    was the first thing dropped on exactly the terminal where a user is most
- *    likely to be stuck. Six-hint steps (providers, subagents, import) all lost
+ *    likely to be stuck. Six-hint steps (providers, agents, import) all lost
  *    it at 80 columns.
  * 4. WHAT DOES ENTER DO. Every step names Enter.
  * 5. NOTHING IS CUT OFF at 80x24. THE BUGS: the approvals subtitle and both
@@ -30,8 +30,8 @@
  *    `escapeAction`, and the footer names whichever meaning is live.
  *
  * ISOLATION. Nothing here reads the operator's machine: settings are in-memory
- * and isolated, auth storage is a stub, and neither `shouldRun` (the subagent
- * and import scans, which walk the real home) is called. The subagent and import
+ * and isolated, auth storage is a stub, and neither `shouldRun` (the agent
+ * and import scans, which walk the real home) is called. The agent and import
  * lists are therefore empty, which is the honest trade: the layout contract is
  * what is under test, and no assertion depends on the operator's files.
  */
@@ -286,13 +286,13 @@ describe("nothing is cut off, at 80x24 or on a short terminal", () => {
 
 	/**
 	 * A scene's own intro prose was written as one long row per sentence and cut
-	 * by the frame: the subagents step ended "Change it later in Settings →
+	 * by the frame: the agents step ended "Change it later in Settings →
 	 * Suba…", so the place to change the answer was named and then hidden, and
 	 * the approvals step lost the end of the sentence that groups the tools.
 	 */
 	it("wraps a scene's intro prose rather than cutting the end off it", () => {
 		const cases: ReadonlyArray<readonly [string, string]> = [
-			["subagents", "Settings → Subagents."],
+			["agents", "Settings → Agents."],
 			["approvals", "and running commands."],
 		];
 		for (const [id, tail] of cases) {

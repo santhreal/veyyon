@@ -303,6 +303,28 @@ describe("MCP tool arguments", () => {
 		expect(JSON.stringify(result)).not.toContain(rawSecret);
 	});
 
+	it("delivers an isError payload that names only an argument key, not a value", async () => {
+		// A server that rejects a call names the field it rejected. The field name
+		// comes from the tool schema, which the model already holds, so nothing is
+		// protected by withholding it, and the old check withheld exactly this.
+		const transport = createMockTransport(
+			new Map([
+				[
+					"tools/call",
+					[{ content: [{ type: "text", text: "image_path must be an absolute path" }], isError: true }],
+				],
+			]),
+		);
+		const tool = new MCPTool(createMockConnection({ tools: {} }, transport), imageToolDefinition);
+		const context = { obfuscateProviderText: (text: string) => text } as CustomToolContext;
+
+		const result = await tool.execute("call-key-only", { image_path: "./relative.png" }, undefined, context);
+
+		const delivered = result.content[0] as { type: "text"; text: string };
+		expect(delivered.text).toContain("image_path must be an absolute path");
+		expect(delivered.text).not.toContain("withheld");
+	});
+
 	it("waits for DeferredMCPTool connection resolution before using the live transform", async () => {
 		const rawSecret = "deferred-raw-secret";
 		const calls: CapturedRequest[] = [];

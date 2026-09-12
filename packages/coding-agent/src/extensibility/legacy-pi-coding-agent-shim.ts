@@ -288,6 +288,17 @@ function legacyRenderResult(result: AgentToolResult<unknown>, _options: unknown,
 	return new Text(output ? `\n${themedMuted(theme, output)}` : "", 0, 0);
 }
 
+/** A legacy call card: the tool's title, then `detail(params)` in the muted colour. */
+function legacyRenderCall(
+	title: string,
+	detail: (params: unknown) => string,
+): (params: unknown, optionsArg: unknown, themeArg: unknown) => Text {
+	return (params, optionsArg, themeArg) => {
+		const theme = renderTheme(optionsArg, themeArg);
+		return new Text(`${themedTitle(theme, title)} ${themedMuted(theme, detail(params))}`, 0, 0);
+	};
+}
+
 function lineRangePath(readPath: string, offset: number | undefined, limit: number | undefined): string {
 	if (offset === undefined && limit === undefined) return readPath;
 	const start = Math.max(1, Math.floor(offset ?? 1));
@@ -407,11 +418,7 @@ export function createReadToolDefinition(cwd: string, options?: ReadToolOptions)
 		description: tool.description,
 		parameters: legacyReadSchema,
 		approval: "read",
-		renderCall: (params, options, themeArg) => {
-			const theme = renderTheme(options, themeArg);
-			const readPath = stringField(params, "path") ?? "";
-			return new Text(`${themedTitle(theme, "read")} ${themedMuted(theme, readPath)}`, 0, 0);
-		},
+		renderCall: legacyRenderCall("read", params => stringField(params, "path") ?? ""),
 		renderResult: legacyRenderResult,
 		execute: (toolCallId, params, signal, onUpdate) => {
 			const readPath = stringField(params, "path") ?? "";
@@ -435,11 +442,7 @@ export function createBashToolDefinition(cwd: string, options?: BashToolOptions)
 		description: tool.description,
 		parameters: legacyBashSchema,
 		approval: "exec",
-		renderCall: (params, optionsArg, themeArg) => {
-			const theme = renderTheme(optionsArg, themeArg);
-			const command = stringField(params, "command") ?? "";
-			return new Text(`${themedTitle(theme, "bash")} ${themedMuted(theme, command)}`, 0, 0);
-		},
+		renderCall: legacyRenderCall("bash", params => stringField(params, "command") ?? ""),
 		renderResult: legacyRenderResult,
 		execute: (toolCallId, params, signal, onUpdate) => {
 			const rawCommand = stringField(params, "command") ?? "";
@@ -492,12 +495,10 @@ export function createGrepToolDefinition(cwd: string, options?: GrepToolOptions)
 		description: "Search file contents for a pattern.",
 		parameters: legacyGrepSchema,
 		approval: "read",
-		renderCall: (params, optionsArg, themeArg) => {
-			const theme = renderTheme(optionsArg, themeArg);
-			const pattern = stringField(params, "pattern") ?? "";
-			const searchPath = stringField(params, "path") ?? ".";
-			return new Text(`${themedTitle(theme, "grep")} ${themedMuted(theme, `/${pattern}/ in ${searchPath}`)}`, 0, 0);
-		},
+		renderCall: legacyRenderCall(
+			"grep",
+			params => `/${stringField(params, "pattern") ?? ""}/ in ${stringField(params, "path") ?? "."}`,
+		),
 		renderResult: legacyRenderResult,
 		execute: (toolCallId, params, signal, onUpdate) => {
 			const rawPattern = stringField(params, "pattern") ?? "";
@@ -543,12 +544,10 @@ export function createFindToolDefinition(cwd: string, options?: FindToolOptions)
 		description: "Find files by glob pattern.",
 		parameters: legacyFindSchema,
 		approval: "read",
-		renderCall: (params, optionsArg, themeArg) => {
-			const theme = renderTheme(optionsArg, themeArg);
-			const pattern = stringField(params, "pattern") ?? "";
-			const searchPath = stringField(params, "path") ?? ".";
-			return new Text(`${themedTitle(theme, "find")} ${themedMuted(theme, `${pattern} in ${searchPath}`)}`, 0, 0);
-		},
+		renderCall: legacyRenderCall(
+			"find",
+			params => `${stringField(params, "pattern") ?? ""} in ${stringField(params, "path") ?? "."}`,
+		),
 		renderResult: legacyRenderResult,
 		execute: async (toolCallId, params, signal, onUpdate) => {
 			const pattern = stringField(params, "pattern") ?? "*";
@@ -598,10 +597,7 @@ export function createLsToolDefinition(cwd: string, options?: LsToolOptions): To
 		description: "List directory entries.",
 		parameters: legacyLsSchema,
 		approval: "read",
-		renderCall: (params, optionsArg, themeArg) => {
-			const theme = renderTheme(optionsArg, themeArg);
-			return new Text(`${themedTitle(theme, "ls")} ${themedMuted(theme, stringField(params, "path") ?? ".")}`, 0, 0);
-		},
+		renderCall: legacyRenderCall("ls", params => stringField(params, "path") ?? "."),
 		renderResult: legacyRenderResult,
 		execute: async (_toolCallId, params, _signal, _onUpdate) => {
 			const rawPath = stringField(params, "path") ?? ".";
@@ -667,7 +663,7 @@ export const SettingsManager = {
  * prompt / theme / AGENTS.md discovery inside a `DefaultResourceLoader`
  * instance that the caller constructs, `reload()`s, and hands to
  * `createAgentSession({ resourceLoader })`. Every published version of
- * pi-schedule-prompt (≥0.2.0) and other pi extensions that spawn subagents
+ * pi-schedule-prompt (≥0.2.0) and other pi extensions that spawn agents
  * import the class at module scope; a missing export takes the whole
  * extension down at parse time (issue #4567).
  *
@@ -1125,7 +1121,7 @@ export class DefaultResourceLoader implements ResourceLoader {
  * context-file discovery are configured directly on the session options — so
  * an untranslated call would silently ignore the loader (including its
  * `noExtensions`/`noSkills` opt-outs), re-run veyyon's own discovery, and
- * happily re-load the calling extension into the subagent. That's exactly
+ * happily re-load the calling extension into the agent. That's exactly
  * the recursion the caller passed the loader to prevent.
  *
  * Translate the loader's captured state into veyyon's option fields, then

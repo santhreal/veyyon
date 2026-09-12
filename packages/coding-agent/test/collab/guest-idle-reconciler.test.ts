@@ -20,6 +20,8 @@ import {
 } from "@veyyon/coding-agent/collab/guest";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
+import type { StatusDataSource } from "@veyyon/wire/presentation";
+import { makeStatusLineProducer } from "../helpers/status-line-session";
 
 beforeAll(async () => {
 	resetSettingsForTest();
@@ -59,39 +61,8 @@ function makeCtx(hasLoader: boolean): Fixture {
 	return { ctx, markActivityEnd, loaderStop, isLoaderArmed: () => loaderArmed };
 }
 
-function makeSession(): ConstructorParameters<typeof StatusLineComponent>[0] {
-	return {
-		state: { messages: [], model: undefined },
-		messages: [],
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		isStreaming: false,
-		isAutoThinking: false,
-		autoResolvedThinkingLevel: () => undefined,
-		isFastModeActive: () => false,
-		isFastModeEnabled: () => false,
-		isAdvisorActive: () => false,
-		getGoalModeState: () => null,
-		getAsyncJobSnapshot: () => ({ running: [] }),
-		modelRegistry: { isUsingOAuth: () => false },
-		sessionFile: "/tmp/collab-guest-idle.jsonl",
-		sessionManager: {
-			getSessionName: () => "collab guest idle test",
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-			}),
-		},
-	} as unknown as ConstructorParameters<typeof StatusLineComponent>[0];
+function makeSession(): StatusDataSource {
+	return makeStatusLineProducer({ sessionName: "collab guest idle test" });
 }
 
 describe("reconcileGuestIdleHostState", () => {

@@ -5,7 +5,7 @@
  * win in the spread. This guard makes that collision a loud test failure.
  *
  * The slice list comes from `SETTINGS_DOMAIN_SLICES`, which sits beside the spread
- * itself. It used to be retyped here, and when the Subagents domain was added the
+ * itself. It used to be retyped here, and when the Agents domain was added the
  * copy was not updated: the guard kept passing while covering one slice less than
  * the schema actually had.
  *

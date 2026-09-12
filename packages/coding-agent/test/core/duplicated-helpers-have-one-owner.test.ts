@@ -54,6 +54,11 @@
  *    needed. Both are shared across package boundaries, so the owner is the package that already owns
  *    the concept: `@veyyon/wire` for the envelope, beside the header length it reads, and
  *    `@veyyon/utils` for the byte coercion.
+ *  - the collab link grammar (room id, base64url codec, relay-origin normalisation, link formatting
+ *    and parsing), which the host minted with `Buffer` and the browser guest parsed with `atob`
+ *    under a header that called itself a vendored mirror. Owned by `@veyyon/wire` beside the key
+ *    sizes and the default relay it reads; only the web deep link stays in the host, because its
+ *    base-URL check reads `@veyyon/utils/url`.
  *  - `buildTreePrefix`, drawn by three renderers, one of which had drifted to the opposite argument
  *    order; `isThenable`, whose two copies came with a comment justifying one of them; and the CLI
  *    model-runtime bootstrap, whose copies both had to close the credential store on failure.
@@ -409,6 +414,48 @@ describe("the collab wire envelope", () => {
 	});
 });
 
+describe("the collab link grammar", () => {
+	/**
+	 * A link the host mints is what the browser guest parses, so the grammar is a wire format: the room
+	 * id length, the key and token sizes, the dot-versus-hash joiner and the `%23` tolerance were all
+	 * stated twice. Drift there is silent in the worst direction, because a link that formats on one side
+	 * and fails to parse on the other reads as a bad relay. The behaviour is pinned in
+	 * `test/collab/crypto.test.ts` and `clients/web/test/link.test.ts`, through these same objects.
+	 */
+	it("is parsed and formatted by @veyyon/wire, and the host re-exports those exact functions", () => {
+		expect(collabProtocol.parseCollabLink).toBe(wire.parseCollabLink);
+		expect(collabProtocol.formatCollabLink).toBe(wire.formatCollabLink);
+		expect(collabProtocol.generateRoomId).toBe(wire.generateRoomId);
+	});
+
+	/**
+	 * The web deep link is the one link the host still renders itself. It nests the wire package's
+	 * dot-joined payload, so a link the host mints for the browser parses back to the same room through
+	 * the wire package alone, which is what the browser guest has.
+	 */
+	it("nests the wire payload in the host's web deep link", () => {
+		const key = wire.generateRoomKey();
+		const token = wire.generateWriteToken();
+		const roomId = wire.generateRoomId();
+		const parsed = wire.parseCollabLink(
+			collabProtocol.formatCollabWebLink(
+				"wss://relay.example.com:8443",
+				roomId,
+				key,
+				token,
+				"https://web.example/app",
+			),
+		);
+		if ("error" in parsed) throw new Error(parsed.error);
+		expect(parsed).toEqual({ wsUrl: `wss://relay.example.com:8443/r/${roomId}`, roomId, key, writeToken: token });
+	});
+
+	/** The browser guest, a browser-graph module this realm cannot import, states the same edge. */
+	it("is what the browser guest imports too", () => {
+		expect(packageImportsOf("clients/web/src/lib/link.ts")).toEqual(["@veyyon/wire"]);
+	});
+});
+
 describe("asStrictBytes", () => {
 	/**
 	 * Four packages seal, sign or hash bytes through WebCrypto, and each had a private copy of the same
@@ -502,19 +549,16 @@ describe("the AES-256-GCM frame seal", () => {
 	});
 
 	/**
-	 * `@veyyon/wire` depends on one thing, `@veyyon/model`, and reaches it by `import type` only: its
-	 * content blocks, stop reason and usage are projections of the model contract's shapes, and the
-	 * contract layer gate admits that edge and pins it. Nothing that runs arrives through it, which is
-	 * what lets the browser guest import `@veyyon/wire` directly. The seal was the one thing that
-	 * looked like it needed `@veyyon/utils`, so this fails if a second dependency appears rather than
-	 * waiting for a browser build to break.
+	 * Wire payloads project model messages and host-independent tool views through type-only
+	 * contract imports. Pin both dependencies so adding a runtime package still fails here;
+	 * the contract-layer suite separately verifies erased imports and the acyclic graph.
 	 */
-	it("gave @veyyon/wire no dependency but the model contract it projects", () => {
+	it("limits wire dependencies to its model and tool-view projection contracts", () => {
 		const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "contracts/wire/package.json"), "utf-8")) as {
 			dependencies?: Record<string, string>;
 		};
 
-		expect(manifest.dependencies ?? {}).toEqual({ "@veyyon/model": "catalog:" });
+		expect(manifest.dependencies ?? {}).toEqual({ "@veyyon/model": "catalog:", "@veyyon/view": "catalog:" });
 	});
 });
 

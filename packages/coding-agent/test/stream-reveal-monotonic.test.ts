@@ -21,28 +21,23 @@
  * with visible text must never shrink it.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
-import type { AssistantMessage } from "@veyyon/ai";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import type { AssistantMessageView, AssistantSegment } from "@veyyon/wire/presentation";
 
-function makeAssistantMessage(content: AssistantMessage["content"]): AssistantMessage {
+type ContentInput = Array<{ type: "text"; text: string } | { type: "thinking"; thinking: string }>;
+
+function makeAssistantMessage(content: ContentInput): AssistantMessageView {
+	const segments: AssistantSegment[] = [];
+	for (const block of content) {
+		if (block.type === "text") segments.push({ kind: "text", text: block.text });
+		else if (block.type === "thinking") segments.push({ kind: "thinking", text: block.thinking, redacted: false });
+	}
 	return {
-		role: "assistant",
-		content,
-		api: "anthropic-messages",
-		provider: "anthropic",
+		segments,
 		model: "mock",
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			reasoningTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
-		stopReason: "stop",
+		stopReason: "complete",
 		timestamp: 0,
 	};
 }
@@ -75,7 +70,7 @@ describe("assistant streaming render monotonicity", () => {
 		const assistant = new AssistantMessageComponent(undefined, false);
 		const width = 60;
 		let lastRows = 0;
-		const feed = (content: AssistantMessage["content"]) => {
+		const feed = (content: ContentInput) => {
 			assistant.updateContent(makeAssistantMessage(content), { transient: true });
 			const rows = assistant.render(width).length;
 			expect(rows).toBeGreaterThanOrEqual(lastRows);
@@ -106,7 +101,7 @@ describe("assistant streaming render monotonicity", () => {
 		const width = 60;
 
 		let committed: string[] = [];
-		const feed = (content: AssistantMessage["content"], transient: boolean) => {
+		const feed = (content: ContentInput, transient: boolean) => {
 			assistant.updateContent(makeAssistantMessage(content), { transient });
 			const lines = transcript.render(width);
 			const seam = transcript.getNativeScrollbackLiveRegionStart() ?? lines.length;

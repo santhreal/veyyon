@@ -3,47 +3,14 @@
 //! Originally derived from `ast-grep-language` v0.39.9, stripped of
 //! serde/ignore machinery, and extended with additional languages.
 
-mod parsers;
-
 use std::{borrow::Cow, collections::HashMap, fmt, path::Path, sync::LazyLock};
 
 use ast_grep_core::{
 	Doc, Language, Node,
 	matcher::{KindMatcher, Pattern, PatternBuilder, PatternError},
-	meta_var::MetaVariable,
 	tree_sitter::{LanguageExt, StrDoc, TSLanguage, TSRange},
 };
 use phf::phf_map;
-
-/// Implements a stub language (no expando / `pre_process_pattern` needed).
-/// Use when the language grammar accepts `$VAR` as valid identifiers.
-macro_rules! impl_lang {
-	($lang:ident, $func:ident) => {
-		#[derive(Clone, Copy, Debug)]
-		pub struct $lang;
-		impl Language for $lang {
-			fn kind_to_id(&self, kind: &str) -> u16 {
-				self.get_ts_language().id_for_node_kind(kind, true)
-			}
-
-			fn field_to_id(&self, field: &str) -> Option<u16> {
-				self
-					.get_ts_language()
-					.field_id_for_name(field)
-					.map(|f| f.get())
-			}
-
-			fn build_pattern(&self, builder: &PatternBuilder) -> Result<Pattern, PatternError> {
-				builder.build(|src| StrDoc::try_new(src, *self))
-			}
-		}
-		impl LanguageExt for $lang {
-			fn get_ts_language(&self) -> TSLanguage {
-				parsers::$func().into()
-			}
-		}
-	};
-}
 
 fn pre_process_pattern(expando: char, query: &str) -> Cow<'_, str> {
 	let mut ret = Vec::with_capacity(query.len());
@@ -64,124 +31,7 @@ fn pre_process_pattern(expando: char, query: &str) -> Cow<'_, str> {
 	Cow::Owned(ret.into_iter().collect())
 }
 
-/// Implements a language with `expando_char` / `pre_process_pattern`.
-/// Use when the language does NOT accept `$` as a valid identifier character.
-macro_rules! impl_lang_expando {
-	($lang:ident, $func:ident, $char:expr) => {
-		#[derive(Clone, Copy, Debug)]
-		pub struct $lang;
-		impl Language for $lang {
-			fn kind_to_id(&self, kind: &str) -> u16 {
-				self.get_ts_language().id_for_node_kind(kind, true)
-			}
-
-			fn field_to_id(&self, field: &str) -> Option<u16> {
-				self
-					.get_ts_language()
-					.field_id_for_name(field)
-					.map(|f| f.get())
-			}
-
-			fn expando_char(&self) -> char {
-				$char
-			}
-
-			fn pre_process_pattern<'q>(&self, query: &'q str) -> Cow<'q, str> {
-				pre_process_pattern(self.expando_char(), query)
-			}
-
-			fn build_pattern(&self, builder: &PatternBuilder) -> Result<Pattern, PatternError> {
-				builder.build(|src| StrDoc::try_new(src, *self))
-			}
-		}
-		impl LanguageExt for $lang {
-			fn get_ts_language(&self) -> TSLanguage {
-				parsers::$func().into()
-			}
-		}
-	};
-}
-
-// ── Customized languages with expando_char ──────────────────────────────
-
-impl_lang_expando!(C, language_c, '𐀀');
-impl_lang_expando!(Cpp, language_cpp, '𐀀');
-impl_lang_expando!(CSharp, language_c_sharp, 'µ');
-impl_lang_expando!(Cmake, language_cmake, 'µ');
-impl_lang_expando!(Css, language_css, '_');
-impl_lang_expando!(Dockerfile, language_dockerfile, 'µ');
-impl_lang_expando!(Elixir, language_elixir, 'µ');
-impl_lang_expando!(Erlang, language_erlang, 'µ');
-impl_lang_expando!(Fortran, language_fortran, '𐀀');
-impl_lang_expando!(Go, language_go, 'µ');
-impl_lang!(Graphql, language_graphql);
-impl_lang_expando!(Haskell, language_haskell, 'µ');
-impl_lang_expando!(Hcl, language_hcl, 'µ');
-impl_lang_expando!(Ini, language_ini, 'µ');
-impl_lang_expando!(Just, language_just, 'µ');
-impl_lang_expando!(Kotlin, language_kotlin, 'µ');
-impl_lang_expando!(Nix, language_nix, '_');
-impl_lang_expando!(Ocaml, language_ocaml, 'µ');
-impl_lang_expando!(Php, language_php, 'µ');
-impl_lang_expando!(Powershell, language_powershell, 'µ');
-impl_lang_expando!(Proto, language_proto, 'µ');
-impl_lang_expando!(Python, language_python, 'µ');
-impl_lang_expando!(R, language_r, 'µ');
-impl_lang_expando!(Ruby, language_ruby, 'µ');
-impl_lang_expando!(Rust, language_rust, 'µ');
-impl_lang_expando!(Sql, language_sql, 'µ');
-impl_lang_expando!(Swift, language_swift, 'µ');
-
-// New expando languages
-impl_lang_expando!(Make, language_make, 'µ');
-impl_lang_expando!(ObjC, language_objc, '𐀀');
-impl_lang_expando!(Starlark, language_starlark, 'µ');
-impl_lang_expando!(Odin, language_odin, 'µ');
-impl_lang_expando!(Julia, language_julia, 'µ');
-impl_lang_expando!(Verilog, language_verilog, 'µ');
-impl_lang_expando!(Zig, language_zig, 'µ');
-impl_lang_expando!(Tlaplus, language_tlaplus, 'µ');
-
-// ── Stub languages ($ accepted in grammar) ──────────────────────────────
-
-impl_lang!(Astro, language_astro);
-impl_lang!(Bash, language_bash);
-impl_lang!(Clojure, language_clojure);
-impl_lang!(Java, language_java);
-impl_lang!(JavaScript, language_javascript);
-impl_lang!(Json, language_json);
-impl_lang!(Lua, language_lua);
-impl_lang!(Scala, language_scala);
-impl_lang!(Solidity, language_solidity);
-impl_lang!(Svelte, language_svelte);
-impl_lang!(Tsx, language_tsx);
-impl_lang!(TypeScript, language_typescript);
-impl_lang!(Vue, language_vue);
-impl_lang!(Yaml, language_yaml);
-
-// New stub languages
-impl_lang!(Markdown, language_markdown);
-impl_lang!(Toml, language_toml);
-impl_lang!(Diff, language_diff);
-impl_lang!(Xml, language_xml);
-impl_lang!(Regex, language_regex);
-impl_lang!(Dart, language_dart);
-impl_lang!(EmacsLisp, language_elisp);
-
-// ── Html (custom implementation with injection support) ──────────────────
-
-#[derive(Clone, Copy, Debug)]
-pub struct Html;
-
-impl Language for Html {
-	fn expando_char(&self) -> char {
-		'z'
-	}
-
-	fn pre_process_pattern<'q>(&self, query: &'q str) -> Cow<'q, str> {
-		pre_process_pattern(self.expando_char(), query)
-	}
-
+impl Language for SupportLang {
 	fn kind_to_id(&self, kind: &str) -> u16 {
 		self.get_ts_language().id_for_node_kind(kind, true)
 	}
@@ -193,48 +43,159 @@ impl Language for Html {
 			.map(|f| f.get())
 	}
 
+	fn expando_char(&self) -> char {
+		match self {
+			Self::C | Self::Cpp | Self::Fortran | Self::ObjC => '𐀀',
+			Self::Css | Self::Nix => '_',
+			Self::Html => 'z',
+			Self::Astro
+			| Self::Bash
+			| Self::Clojure
+			| Self::Java
+			| Self::JavaScript
+			| Self::Json
+			| Self::Lua
+			| Self::Scala
+			| Self::Solidity
+			| Self::Svelte
+			| Self::Tsx
+			| Self::TypeScript
+			| Self::Vue
+			| Self::Yaml
+			| Self::Markdown
+			| Self::Toml
+			| Self::Diff
+			| Self::Xml
+			| Self::Regex
+			| Self::Dart
+			| Self::EmacsLisp
+			| Self::Graphql => '$',
+			_ => 'µ',
+		}
+	}
+
+	fn pre_process_pattern<'q>(&self, query: &'q str) -> Cow<'q, str> {
+		let expando = self.expando_char();
+		if expando == '$' {
+			Cow::Borrowed(query)
+		} else {
+			pre_process_pattern(expando, query)
+		}
+	}
+
 	fn build_pattern(&self, builder: &PatternBuilder) -> Result<Pattern, PatternError> {
 		builder.build(|src| StrDoc::try_new(src, *self))
 	}
+
+	fn from_path<P: AsRef<Path>>(path: P) -> Option<Self> {
+		from_extension(path.as_ref())
+	}
 }
 
-impl LanguageExt for Html {
+impl LanguageExt for SupportLang {
 	fn get_ts_language(&self) -> TSLanguage {
-		parsers::language_html()
+		match self {
+			Self::Astro => tree_sitter_astro::LANGUAGE.into(),
+			Self::Bash => tree_sitter_bash::LANGUAGE.into(),
+			Self::C => tree_sitter_c::LANGUAGE.into(),
+			Self::Cmake => tree_sitter_cmake::LANGUAGE.into(),
+			Self::Cpp => tree_sitter_cpp::LANGUAGE.into(),
+			Self::CSharp => tree_sitter_c_sharp::LANGUAGE.into(),
+			Self::Dart => tree_sitter_dart::LANGUAGE.into(),
+			Self::Clojure => tree_sitter_clojure::LANGUAGE.into(),
+			Self::Css => tree_sitter_css::LANGUAGE.into(),
+			Self::Diff => tree_sitter_diff::LANGUAGE.into(),
+			Self::Dockerfile => tree_sitter_dockerfile::language(),
+			Self::EmacsLisp => tree_sitter_elisp::LANGUAGE.into(),
+			Self::Elixir => tree_sitter_elixir::LANGUAGE.into(),
+			Self::Erlang => tree_sitter_erlang::LANGUAGE.into(),
+			Self::Fortran => tree_sitter_fortran::LANGUAGE.into(),
+			Self::Go => tree_sitter_go::LANGUAGE.into(),
+			Self::Graphql => tree_sitter_graphql::LANGUAGE.into(),
+			Self::Haskell => tree_sitter_haskell::LANGUAGE.into(),
+			Self::Hcl => tree_sitter_hcl::LANGUAGE.into(),
+			Self::Html => tree_sitter_html::LANGUAGE.into(),
+			Self::Ini => tree_sitter_ini::LANGUAGE.into(),
+			Self::Java => tree_sitter_java::LANGUAGE.into(),
+			Self::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
+			Self::Json => tree_sitter_json::LANGUAGE.into(),
+			Self::Just => tree_sitter_just::LANGUAGE.into(),
+			Self::Julia => tree_sitter_julia::LANGUAGE.into(),
+			Self::Kotlin => tree_sitter_kotlin::LANGUAGE.into(),
+			Self::Lua => tree_sitter_lua::LANGUAGE.into(),
+			Self::Make => tree_sitter_make::LANGUAGE.into(),
+			Self::Markdown => tree_sitter_md::LANGUAGE.into(),
+			Self::Nix => tree_sitter_nix::LANGUAGE.into(),
+			Self::ObjC => tree_sitter_objc::LANGUAGE.into(),
+			Self::Ocaml => tree_sitter_ocaml::LANGUAGE_OCAML.into(),
+			Self::Odin => tree_sitter_odin::LANGUAGE.into(),
+			Self::Php => tree_sitter_php::LANGUAGE_PHP_ONLY.into(),
+			Self::Powershell => tree_sitter_powershell::LANGUAGE.into(),
+			Self::Proto => tree_sitter_proto::LANGUAGE.into(),
+			Self::Python => tree_sitter_python::LANGUAGE.into(),
+			Self::R => tree_sitter_r::LANGUAGE.into(),
+			Self::Regex => tree_sitter_regex::LANGUAGE.into(),
+			Self::Ruby => tree_sitter_ruby::LANGUAGE.into(),
+			Self::Rust => tree_sitter_rust::LANGUAGE.into(),
+			Self::Scala => tree_sitter_scala::LANGUAGE.into(),
+			Self::Solidity => tree_sitter_solidity::LANGUAGE.into(),
+			Self::Sql => tree_sitter_sql::LANGUAGE.into(),
+			Self::Starlark => tree_sitter_starlark::LANGUAGE.into(),
+			Self::Svelte => tree_sitter_svelte::LANGUAGE.into(),
+			Self::Swift => tree_sitter_swift::LANGUAGE.into(),
+			Self::Toml => tree_sitter_toml_ng::LANGUAGE.into(),
+			Self::Tlaplus => tree_sitter_tlaplus::LANGUAGE.into(),
+			Self::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
+			Self::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+			Self::Verilog => tree_sitter_verilog::LANGUAGE.into(),
+			Self::Vue => tree_sitter_vue::LANGUAGE.into(),
+			Self::Xml => tree_sitter_xml::LANGUAGE_XML.into(),
+			Self::Yaml => tree_sitter_yaml::LANGUAGE.into(),
+			Self::Zig => tree_sitter_zig::LANGUAGE.into(),
+		}
 	}
 
 	fn injectable_languages(&self) -> Option<&'static [&'static str]> {
-		Some(&["css", "js", "ts", "tsx", "scss", "less", "stylus", "coffee"])
+		match self {
+			Self::Html => Some(&["css", "js", "ts", "tsx", "scss", "less", "stylus", "coffee"]),
+			_ => None,
+		}
 	}
 
 	fn extract_injections<L: LanguageExt>(
 		&self,
 		root: Node<StrDoc<L>>,
 	) -> HashMap<String, Vec<TSRange>> {
-		let lang = root.lang();
-		let mut map = HashMap::new();
-		let matcher = KindMatcher::new("script_element", lang.clone());
-		for script in root.find_all(matcher) {
-			let injected = find_html_lang(&script).unwrap_or_else(|| "js".into());
-			let content = script.children().find(|c| c.kind() == "raw_text");
-			if let Some(content) = content {
-				map.entry(injected)
-					.or_insert_with(Vec::new)
-					.push(node_to_range(&content));
-			}
+		match self {
+			Self::Html => extract_html_injections(root),
+			_ => HashMap::new(),
 		}
-		let matcher = KindMatcher::new("style_element", lang.clone());
-		for style in root.find_all(matcher) {
-			let injected = find_html_lang(&style).unwrap_or_else(|| "css".into());
-			let content = style.children().find(|c| c.kind() == "raw_text");
-			if let Some(content) = content {
-				map.entry(injected)
-					.or_insert_with(Vec::new)
-					.push(node_to_range(&content));
-			}
-		}
-		map
 	}
+}
+fn extract_html_injections<L: LanguageExt>(root: Node<StrDoc<L>>) -> HashMap<String, Vec<TSRange>> {
+	let lang = root.lang();
+	let mut map = HashMap::new();
+	let matcher = KindMatcher::new("script_element", lang.clone());
+	for script in root.find_all(matcher) {
+		let injected = find_html_lang(&script).unwrap_or_else(|| "js".into());
+		let content = script.children().find(|c| c.kind() == "raw_text");
+		if let Some(content) = content {
+			map.entry(injected)
+				.or_insert_with(Vec::new)
+				.push(node_to_range(&content));
+		}
+	}
+	let matcher = KindMatcher::new("style_element", lang.clone());
+	for style in root.find_all(matcher) {
+		let injected = find_html_lang(&style).unwrap_or_else(|| "css".into());
+		let content = style.children().find(|c| c.kind() == "raw_text");
+		if let Some(content) = content {
+			map.entry(injected)
+				.or_insert_with(Vec::new)
+				.push(node_to_range(&content));
+		}
+	}
+	map
 }
 
 fn find_html_lang<D: Doc>(node: &Node<D>) -> Option<String> {
@@ -262,7 +223,6 @@ fn node_to_range<D: Doc>(node: &Node<D>) -> TSRange {
 	let ep = tree_sitter::Point::new(ep.0, ep.1);
 	TSRange { start_byte: r.start, end_byte: r.end, start_point: sp, end_point: ep }
 }
-
 // ── SupportLang enum ────────────────────────────────────────────────────
 
 /// All supported languages for ast-grep structural search/replace.
@@ -426,120 +386,6 @@ impl SupportLang {
 impl fmt::Display for SupportLang {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "{self:?}")
-	}
-}
-
-// ── Dispatch macro ──────────────────────────────────────────────────────
-
-macro_rules! execute_lang_method {
-	($me:expr, $method:ident, $($pname:tt),*) => {
-		use SupportLang as S;
-		match *$me {
-			S::Astro => Astro.$method($($pname,)*),
-			S::Bash => Bash.$method($($pname,)*),
-			S::C => C.$method($($pname,)*),
-			S::Cmake => Cmake.$method($($pname,)*),
-			S::Cpp => Cpp.$method($($pname,)*),
-			S::CSharp => CSharp.$method($($pname,)*),
-			S::Dart => Dart.$method($($pname,)*),
-			S::Clojure => Clojure.$method($($pname,)*),
-			S::Css => Css.$method($($pname,)*),
-			S::Diff => Diff.$method($($pname,)*),
-			S::Dockerfile => Dockerfile.$method($($pname,)*),
-			S::EmacsLisp => EmacsLisp.$method($($pname,)*),
-			S::Elixir => Elixir.$method($($pname,)*),
-			S::Erlang => Erlang.$method($($pname,)*),
-			S::Fortran => Fortran.$method($($pname,)*),
-			S::Go => Go.$method($($pname,)*),
-			S::Graphql => Graphql.$method($($pname,)*),
-			S::Haskell => Haskell.$method($($pname,)*),
-			S::Hcl => Hcl.$method($($pname,)*),
-			S::Html => Html.$method($($pname,)*),
-			S::Ini => Ini.$method($($pname,)*),
-			S::Java => Java.$method($($pname,)*),
-			S::JavaScript => JavaScript.$method($($pname,)*),
-			S::Json => Json.$method($($pname,)*),
-			S::Just => Just.$method($($pname,)*),
-			S::Julia => Julia.$method($($pname,)*),
-			S::Kotlin => Kotlin.$method($($pname,)*),
-			S::Lua => Lua.$method($($pname,)*),
-			S::Make => Make.$method($($pname,)*),
-			S::Markdown => Markdown.$method($($pname,)*),
-			S::Nix => Nix.$method($($pname,)*),
-			S::ObjC => ObjC.$method($($pname,)*),
-			S::Ocaml => Ocaml.$method($($pname,)*),
-			S::Odin => Odin.$method($($pname,)*),
-			S::Php => Php.$method($($pname,)*),
-			S::Powershell => Powershell.$method($($pname,)*),
-			S::Proto => Proto.$method($($pname,)*),
-			S::Python => Python.$method($($pname,)*),
-			S::R => R.$method($($pname,)*),
-			S::Regex => Regex.$method($($pname,)*),
-			S::Ruby => Ruby.$method($($pname,)*),
-			S::Rust => Rust.$method($($pname,)*),
-			S::Scala => Scala.$method($($pname,)*),
-			S::Solidity => Solidity.$method($($pname,)*),
-			S::Sql => Sql.$method($($pname,)*),
-			S::Starlark => Starlark.$method($($pname,)*),
-			S::Svelte => Svelte.$method($($pname,)*),
-			S::Swift => Swift.$method($($pname,)*),
-			S::Toml => Toml.$method($($pname,)*),
-			S::Tlaplus => Tlaplus.$method($($pname,)*),
-			S::Tsx => Tsx.$method($($pname,)*),
-			S::TypeScript => TypeScript.$method($($pname,)*),
-			S::Verilog => Verilog.$method($($pname,)*),
-			S::Vue => Vue.$method($($pname,)*),
-			S::Xml => Xml.$method($($pname,)*),
-			S::Yaml => Yaml.$method($($pname,)*),
-			S::Zig => Zig.$method($($pname,)*),
-		}
-	};
-}
-
-macro_rules! impl_lang_method {
-	($method:ident, ($($pname:tt: $ptype:ty),*) => $return_type:ty) => {
-		#[inline]
-		fn $method(&self, $($pname: $ptype),*) -> $return_type {
-			execute_lang_method! { self, $method, $($pname),* }
-		}
-	};
-}
-
-impl Language for SupportLang {
-	impl_lang_method!(kind_to_id, (kind: &str) => u16);
-
-	impl_lang_method!(field_to_id, (field: &str) => Option<u16>);
-
-	impl_lang_method!(meta_var_char, () => char);
-
-	impl_lang_method!(expando_char, () => char);
-
-	impl_lang_method!(extract_meta_var, (source: &str) => Option<MetaVariable>);
-
-	impl_lang_method!(build_pattern, (builder: &PatternBuilder) => Result<Pattern, PatternError>);
-
-	fn pre_process_pattern<'q>(&self, query: &'q str) -> Cow<'q, str> {
-		execute_lang_method! { self, pre_process_pattern, query }
-	}
-
-	fn from_path<P: AsRef<Path>>(path: P) -> Option<Self> {
-		from_extension(path.as_ref())
-	}
-}
-
-impl LanguageExt for SupportLang {
-	impl_lang_method!(get_ts_language, () => TSLanguage);
-
-	impl_lang_method!(injectable_languages, () => Option<&'static [&'static str]>);
-
-	fn extract_injections<L: LanguageExt>(
-		&self,
-		root: Node<StrDoc<L>>,
-	) -> HashMap<String, Vec<TSRange>> {
-		match self {
-			Self::Html => Html.extract_injections(root),
-			_ => HashMap::new(),
-		}
 	}
 }
 

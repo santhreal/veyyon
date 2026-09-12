@@ -4,7 +4,7 @@
  *
  * The rows are compared as terminal bytes -- the tree connectors, the outcome badges, the per-agent
  * counts, the context gauge, the cost, the model badge and the colour the reasoning level is drawn
- * in included. What a subagent row says is the card's whole subject, so this sweeps a pending row, a
+ * in included. What an agent row says is the card's whole subject, so this sweeps a pending row, a
  * running row with a tool under it, a retrying row, a done row, a failed row and an aborted row, at
  * both disclosures and frozen.
  *
@@ -40,7 +40,7 @@
  * identically by both arms. It compares one theme and one set of ANSI capabilities, and it says
  * nothing about the transcript component around the card -- merging a call with its result, and the
  * streamed argument buffer a preview is decoded from, are the component's. The nested-task rows a
- * subagent's own `task` call contributes are drawn from data another suite proves is extracted.
+ * agent's own `task` call contributes are drawn from data another suite proves is extracted.
  *
  * The comparison is taken through `test/differential/harness.ts`, whose header states the frozen
  * oracle, the shared defect class and the styling policy every cell here runs under.
@@ -54,6 +54,7 @@ import { taskToolView } from "@veyyon/coding-agent/task/task-view";
 import type { AgentProgress, SingleResult, TaskParams, TaskToolDetails } from "@veyyon/coding-agent/task/types";
 import { UNICODE_SYMBOLS } from "@veyyon/coding-agent/theme/symbols";
 import { theme } from "@veyyon/coding-agent/theme/theme";
+import { showResolvedModelDefault } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { ToolViewContext } from "@veyyon/view";
 import * as taskOracle from "../oracles/task-main-renderer";
 import { renderCompLines, useDifferentialTheme, WIDTH } from "./harness";
@@ -222,8 +223,11 @@ describe("task tool differential", () => {
 		return renderCompLines(taskOracle.renderResult(card, options, theme, args), WIDTH);
 	}
 
+	// Main's renderer read `agent.showResolvedModelBadge` itself; the view is handed the same fact
+	// by the host, through the one reader every context builder shares.
 	function viewResult(card: TaskCardResult, context: ToolViewContext, args?: TaskParams): string[] {
-		return renderCompLines(drawToolView(taskToolView.renderResult(card, context, args), theme), WIDTH);
+		const stated: ToolViewContext = { ...context, showResolvedModel: showResolvedModelDefault() };
+		return renderCompLines(drawToolView(taskToolView.renderResult(card, stated, args), theme), WIDTH);
 	}
 
 	it("draws the call preview while the arguments are arriving", () => {

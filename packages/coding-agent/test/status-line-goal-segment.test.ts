@@ -47,15 +47,10 @@ function createGoalContext(opts: {
 			streaming: opts.streaming ?? false,
 			goal: goal
 				? {
-						id: "g",
 						objective: "o",
 						status: goal.status ?? "active",
 						tokensUsed: goal.tokensUsed,
 						tokenBudget: goal.tokenBudget,
-						timeUsedSeconds: 0,
-						turnsCompleted: 0,
-						createdAt: 0,
-						updatedAt: 0,
 					}
 				: null,
 			goalVerbose: opts.verbose ?? false,
@@ -88,7 +83,7 @@ function createGoalContext(opts: {
 		contextLimit: 0,
 		contextLimitKind: "window" as const,
 		autoCompactEnabled: false,
-		subagentCount: 0,
+		agentCount: 0,
 		backgroundSessionCount: 0,
 		activeMs: opts.activeMs ?? 0,
 		activeRepo: null,

@@ -21,7 +21,7 @@
  * vault on disk, `createAgentSession`, a scripted model issuing one tool call and a registered tool
  * that reports what actually arrived. The central assertion sweeps EVERY event the session emits
  * rather than naming the two a UI happens to read today: a card, a JSON line, an HTML export and a
- * subagent HUD all reconcile from this stream, so proving the value is absent from all of it covers
+ * agent HUD all reconcile from this stream, so proving the value is absent from all of it covers
  * the sinks that exist and the ones added later.
  *
  * Run in yolo mode deliberately. The secret-use boundary is skipped there by design, so this is the

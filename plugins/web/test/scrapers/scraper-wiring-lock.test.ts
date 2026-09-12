@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
-import { specialHandlers } from "@veyyon/web/scrapers";
+import { SITE_DECLARATION_ENTRIES, specialHandlers } from "@veyyon/web/scrapers";
 
 const SCRAPERS_DIR = path.join(import.meta.dir, "../../src/scrapers");
 const NON_HANDLER_FILES = new Set(["index.ts", "types.ts", "utils.ts"]);
@@ -91,5 +91,29 @@ describe("scraper source contract locks", () => {
 		expect(offenders, "a handler catch that returns null must rethrow cancellations (isCancellation) first").toEqual(
 			[],
 		);
+	});
+});
+describe("declarative site registry", () => {
+	it("every site declaration entry creates a callable SpecialHandler with expected family and properties", () => {
+		expect(SITE_DECLARATION_ENTRIES.length).toBeGreaterThan(50);
+		const seenSites = new Set<string>();
+		for (const entry of SITE_DECLARATION_ENTRIES) {
+			expect(entry.site).toBeDefined();
+			expect(typeof entry.site).toBe("string");
+			expect(seenSites.has(entry.site)).toBe(false);
+			seenSites.add(entry.site);
+
+			expect([
+				"package-registry",
+				"academic",
+				"security",
+				"discussion",
+				"media",
+				"documentation",
+				"business",
+			]).toContain(entry.family);
+			const handler = entry.createHandler();
+			expect(typeof handler).toBe("function");
+		}
 	});
 });

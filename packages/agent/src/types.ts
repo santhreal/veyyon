@@ -767,6 +767,7 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = unk
 		result: AgentToolResult<TDetails, TParameters>,
 		options: RenderResultOptions,
 		theme: TTheme,
+		args?: Static<TParameters>,
 	) => unknown;
 
 	/**

@@ -1,5 +1,22 @@
 import { THINKING_EFFORTS } from "@veyyon/catalog/effort";
-import { scope, type Type } from "arktype";
+import { scope, type Traversal, type Type } from "arktype";
+
+/**
+ * Rejects the first key in `keys` whose value is the empty string, in list
+ * order, with the message `<key> a non-empty string`. A key that is absent or
+ * holds a non-string is left to the object schema.
+ */
+function rejectEmptyStrings<T extends object>(value: T, ctx: Traversal, keys: readonly (keyof T & string)[]): boolean {
+	for (const key of keys) {
+		const field: unknown = value[key];
+		if (typeof field === "string" && field.length === 0) return ctx.mustBe(`${key} a non-empty string`);
+	}
+	return true;
+}
+
+const MODEL_DEFINITION_NON_EMPTY_KEYS = ["id", "name", "baseUrl", "contextPromotionTarget", "compactionModel"] as const;
+const MODEL_OVERRIDE_NON_EMPTY_KEYS = ["name", "contextPromotionTarget", "compactionModel"] as const;
+const PROVIDER_CONFIG_NON_EMPTY_KEYS = ["baseUrl", "apiKey"] as const;
 
 // Schema construction is deferred behind modelsConfigSchemas(): even with the
 // jitless scope below (~65% cheaper than default ArkType codegen), building
@@ -200,33 +217,7 @@ function buildModelsConfigSchemas() {
 		"contextPromotionTarget?": "string",
 		"compactionModel?": "string",
 		"remoteCompaction?": RetiredRemoteCompactionSchema,
-	}).narrow((value, ctx) => {
-		// Enforce id non-empty
-		if (typeof value.id === "string" && value.id.length === 0) {
-			return ctx.mustBe("id a non-empty string");
-		}
-		if (value.name !== undefined && typeof value.name === "string" && value.name.length === 0) {
-			return ctx.mustBe("name a non-empty string");
-		}
-		if (value.baseUrl !== undefined && typeof value.baseUrl === "string" && value.baseUrl.length === 0) {
-			return ctx.mustBe("baseUrl a non-empty string");
-		}
-		if (
-			value.contextPromotionTarget !== undefined &&
-			typeof value.contextPromotionTarget === "string" &&
-			value.contextPromotionTarget.length === 0
-		) {
-			return ctx.mustBe("contextPromotionTarget a non-empty string");
-		}
-		if (
-			value.compactionModel !== undefined &&
-			typeof value.compactionModel === "string" &&
-			value.compactionModel.length === 0
-		) {
-			return ctx.mustBe("compactionModel a non-empty string");
-		}
-		return true;
-	});
+	}).narrow((value, ctx) => rejectEmptyStrings(value, ctx, MODEL_DEFINITION_NON_EMPTY_KEYS));
 
 	const ModelOverrideSchema = type({
 		"name?": "string",
@@ -249,26 +240,7 @@ function buildModelsConfigSchemas() {
 		"contextPromotionTarget?": "string",
 		"compactionModel?": "string",
 		"remoteCompaction?": RetiredRemoteCompactionSchema,
-	}).narrow((value, ctx) => {
-		if (value.name !== undefined && typeof value.name === "string" && value.name.length === 0) {
-			return ctx.mustBe("name a non-empty string");
-		}
-		if (
-			value.contextPromotionTarget !== undefined &&
-			typeof value.contextPromotionTarget === "string" &&
-			value.contextPromotionTarget.length === 0
-		) {
-			return ctx.mustBe("contextPromotionTarget a non-empty string");
-		}
-		if (
-			value.compactionModel !== undefined &&
-			typeof value.compactionModel === "string" &&
-			value.compactionModel.length === 0
-		) {
-			return ctx.mustBe("compactionModel a non-empty string");
-		}
-		return true;
-	});
+	}).narrow((value, ctx) => rejectEmptyStrings(value, ctx, MODEL_OVERRIDE_NON_EMPTY_KEYS));
 
 	const ProviderDiscoverySchema = type({
 		type: '"ollama" | "llama.cpp" | "lm-studio" | "openai-models-list" | "proxy" | "litellm"',
@@ -297,15 +269,7 @@ function buildModelsConfigSchemas() {
 		 * and `apiKey` must carry the gateway bearer.
 		 */
 		"transport?": '"pi-native"',
-	}).narrow((value, ctx) => {
-		if (value.baseUrl !== undefined && typeof value.baseUrl === "string" && value.baseUrl.length === 0) {
-			return ctx.mustBe("baseUrl a non-empty string");
-		}
-		if (value.apiKey !== undefined && typeof value.apiKey === "string" && value.apiKey.length === 0) {
-			return ctx.mustBe("apiKey a non-empty string");
-		}
-		return true;
-	});
+	}).narrow((value, ctx) => rejectEmptyStrings(value, ctx, PROVIDER_CONFIG_NON_EMPTY_KEYS));
 
 	const ModelsConfigSchema = type({
 		"providers?": { "[string]": ProviderConfigSchema },

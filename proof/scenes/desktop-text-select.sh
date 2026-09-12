@@ -144,7 +144,7 @@ EDITOR_MAX_PIXELS=120
 # question mark is not the words the drag crossed.
 SAME_WORDS_MAX_PIXELS=55
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 MEASURE="${BASH_SOURCE[0]%/*}/measure-frame.py"

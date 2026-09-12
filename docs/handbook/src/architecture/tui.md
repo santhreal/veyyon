@@ -34,11 +34,12 @@ const picked = await terminal.custom<string | undefined>((tui, theme, keybinding
 
 ## Core component contract (`@veyyon/tui`)
 
-`hosts/terminal/engine/src/tui.ts` defines:
+`hosts/terminal/engine/src/core/component-types.ts` defines:
 
 ```ts
 export interface Component {
   render(width: number): readonly string[];
+  measureHeight?(width: number): number;
   handleInput?(data: string): void;
   wantsKeyRelease?: boolean;
   invalidate?(): void;
@@ -47,6 +48,8 @@ export interface Component {
 ```
 
 Render results are component-owned and immutable to callers; a component that did not change should return the **same array reference** it returned last time (reference equality is what enables the renderer's memoization and row virtualization), and must return a new array whenever its content changed.
+
+`measureHeight(width)` returns the same nonnegative integer as `render(width).length` without constructing output or advancing render state. Home-screen layout uses this measurement before bounded-tail or full rendering. Components without the method retain their existing measurement path.
 
 `Focusable` is separate:
 
@@ -74,7 +77,7 @@ Minimal pattern:
 
 ```ts
 import { truncateToWidth } from "@veyyon/utils/width";
-import { replaceTabs } from "@veyyon/utils/wrap";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 
 render(width: number): readonly string[] {
   return this.lines.map(line => truncateToWidth(replaceTabs(line), width));
@@ -144,7 +147,7 @@ Behavior in interactive mode (`extension-ui-controller.ts`):
 
 ## 2) Hook/custom-tool UI context (legacy typing)
 
-`HookUIContext.custom` is typed as `(tui, theme, done)` in hook/custom-tool types.
+`HookUIContext.terminal.custom` is typed as `(tui, theme, done)` in `extensibility/terminal-capability.ts`.
 Underlying interactive implementation calls factories with `(tui, theme, keybindings, done)`. JS consumers can use the extra arg; type-level compatibility still reflects the 3-arg legacy signature.
 
 Custom tools typically use the same UI entrypoint via the factory-scoped `pi.ui` object, then return the selected value in normal tool content:
@@ -181,9 +184,14 @@ Custom tools and extension tools define two optional renderers:
 Both return `HostView`, which is whatever the active host draws. In the terminal
 that is a `@veyyon/tui` `Component`, and `ToolExecutionComponent` mounts it.
 
+The `view` alternative returns host-independent `ToolView` values; see
+[custom tool rendering hooks](../using/custom-tools.md#rendering-hooks).
+
 ## Lifecycle and cancellation
 
 - `dispose()` is optional at type level but should be implemented when you own timers, subprocesses, watchers, sockets, or overlays.
+- `Container.dispose()` and `Box.dispose()` dispose their children; `clear()` and `removeChild()` only detach them.
+- Tool cards dispose replaced renderer components and retain reused component instances. Disposing a card also stops its animation clocks and detaches its presentation subscription.
 - `done(...)` should be called exactly once from your component flow.
 - For cancellable long-running UI, pair `CancellableLoader` with `AbortSignal` and call `done(...)` from `onAbort`.
 
@@ -208,7 +216,7 @@ import type { Component } from "@veyyon/tui";
 import { SelectList } from "@veyyon/tui";
 import { matchesKey } from "@veyyon/utils/keys";
 import { truncateToWidth } from "@veyyon/utils/width";
-import { replaceTabs } from "@veyyon/utils/wrap";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import {
   getSelectListTheme,
   type ExtensionAPI,
@@ -276,7 +284,7 @@ export default function extension(pi: ExtensionAPI): void {
 
 ## Key implementation files
 
-- `hosts/terminal/engine/src/tui.ts`: `Component`, `Focusable`, cursor marker, focus, overlay, input dispatch.
+- `hosts/terminal/engine/src/core/tui.ts`: terminal rendering, focus, overlays, and input dispatch.
 - `packages/utils/src/width.ts`: width/truncation/sanitization primitives.
 - `packages/utils/src/keys.ts` / `keybindings.ts`: key parsing and configurable action mapping.
 - `packages/coding-agent/src/modes/terminal/controllers/extension-ui-controller.ts`: interactive mounting/unmounting for extension/hook/custom-tool UI.
@@ -284,4 +292,5 @@ export default function extension(pi: ExtensionAPI): void {
 - `packages/coding-agent/src/extensibility/hooks/types.ts`: hook UI contract (legacy custom signature).
 - `packages/coding-agent/src/extensibility/custom-tools/types.ts`: custom tool execute/render contracts.
 - `packages/coding-agent/src/modes/terminal/components/transcript/tool-execution.ts`: mounting `renderCall`/`renderResult` components and partial-state options.
+- `packages/coding-agent/src/modes/terminal/components/transcript/chat-transcript-builder.ts`: shared persisted-message replay and live-message dispatch for interactive chat and transcript viewers.
 - `packages/coding-agent/src/tools/core/context.ts`: tool UI context propagation (`hasUI`, `ui`).

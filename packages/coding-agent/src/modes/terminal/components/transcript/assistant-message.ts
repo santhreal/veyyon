@@ -1,4 +1,4 @@
-import type { AssistantMessage, ImageContent } from "@veyyon/ai";
+import type { ImageContent } from "@veyyon/model";
 import {
 	type Component,
 	Container,
@@ -14,6 +14,7 @@ import {
 } from "@veyyon/tui";
 import { formatCount, formatNumber } from "@veyyon/utils";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import type { AssistantErrorPresentation, AssistantMessageView, AssistantSegment } from "@veyyon/wire/presentation";
 import chalk from "chalk";
 import type { AssistantThinkingRenderer } from "../../../../extensibility/extensions/types";
 import { getMarkdownTheme } from "../../../../theme/markdown-theme";
@@ -24,7 +25,6 @@ import {
 	formatThinkingForDisplay,
 	hasDisplayableThinking,
 } from "../../../../utils/thinking-display";
-import { resolveAssistantErrorPresentation } from "../../utils/transcript-render-helpers";
 import { paintHotTail, shimmerPhase } from "../chrome/follow";
 import { type CacheInvalidation, CacheInvalidationMarkerComponent } from "./cache-invalidation-marker";
 
@@ -40,20 +40,20 @@ const MAX_TRANSCRIPT_ERROR_LINES = 8;
 /** Opening or closing fence of a code block: ≥3 backticks/tildes plus info string. */
 const CODE_FENCE_LINE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 
-type ThinkingContentBlock = Extract<AssistantMessage["content"][number], { type: "thinking" }>;
-type DisplayThinkingContentBlock = ThinkingContentBlock & { rawThinking?: string };
+type ThinkingSegment = Extract<AssistantSegment, { kind: "thinking" }>;
 
-function resolveThinkingDisplay(block: ThinkingContentBlock, proseOnly: boolean): { text: string; visible: boolean } {
-	const rawThinking = (block as DisplayThinkingContentBlock).rawThinking;
-	// When rawThinking is set, `block.thinking` is already the formatted display
+function resolveThinkingDisplay(segment: ThinkingSegment, proseOnly: boolean): { text: string; visible: boolean } {
+	if (segment.redacted) return { text: "", visible: false };
+	const rawThinking = segment.rawThinking;
+	// When rawThinking is set, `segment.text` is already the formatted display
 	// text that buildDisplayMessage produced (then revealed/sliced by the
 	// streaming controller) — re-running the formatter would double-process it,
 	// and the growing revealed slice would never hit the per-tick memo. Only
 	// format raw (non-display) thinking blocks.
-	const formatted = rawThinking !== undefined ? block.thinking : formatThinkingForDisplay(block.thinking, proseOnly);
+	const formatted = rawThinking !== undefined ? segment.text : formatThinkingForDisplay(segment.text, proseOnly);
 	return {
 		text: formatted.trim(),
-		visible: hasDisplayableThinking(rawThinking ?? block.thinking, formatted),
+		visible: hasDisplayableThinking(rawThinking ?? segment.text, formatted),
 	};
 }
 
@@ -197,7 +197,7 @@ function lerpHex(from: string, to: string, t: number): string {
 export class AssistantMessageComponent extends Container {
 	#contentContainer: Container;
 	#markerSlot: Container;
-	#lastMessage?: AssistantMessage;
+	#lastMessage?: AssistantMessageView;
 	#toolImagesByCallId = new Map<string, ImageContent[]>();
 	#convertedKittyImages = new Map<string, ImageContent>();
 	#kittyConversionsInFlight = new Set<string>();
@@ -279,7 +279,7 @@ export class AssistantMessageComponent extends Container {
 	#thinkingRateLive = false;
 
 	constructor(
-		message?: AssistantMessage,
+		message?: AssistantMessageView,
 		private hideThinkingBlock = false,
 		private readonly onImageUpdate?: () => void,
 		private readonly thinkingRenderers: readonly AssistantThinkingRenderer[] = [],
@@ -366,6 +366,11 @@ export class AssistantMessageComponent extends Container {
 		this.proseOnlyThinking = proseOnly;
 	}
 
+	stopAnimation(): void {
+		this.#stopThinkingAnimation();
+		this.#stopShimmer();
+	}
+
 	override dispose(): void {
 		this.#stopThinkingAnimation();
 		this.#stopShimmer();
@@ -380,13 +385,14 @@ export class AssistantMessageComponent extends Container {
 	 * the active tail block is a thinking block (the model is reasoning right now).
 	 * Once text starts, a tool call streams, or the block is sealed, the pulse ends.
 	 */
-	#shouldAnimateThinking(message: AssistantMessage): boolean {
+	#shouldAnimateThinking(message: AssistantMessageView): boolean {
 		if (!this.hideThinkingBlock || this.#transcriptBlockFinalized) return false;
 		let tail: "text" | "thinking" | undefined;
-		for (const content of message.content) {
-			if (content.type === "toolCall") return false;
-			if (content.type === "text" && canonicalizeMessage(content.text)) tail = "text";
-			else if (content.type === "thinking" && canonicalizeMessage(content.thinking)) tail = "thinking";
+		for (const content of message.segments) {
+			if (content.kind === "tool-call") return false;
+			if (content.kind === "text" && canonicalizeMessage(content.text)) tail = "text";
+			else if (content.kind === "thinking" && !content.redacted && canonicalizeMessage(content.text))
+				tail = "thinking";
 		}
 		return tail === "thinking";
 	}
@@ -566,21 +572,21 @@ export class AssistantMessageComponent extends Container {
 		}
 	}
 
-	applyRetryRecovery(retryRecovery: AssistantMessage["retryRecovery"]): void {
-		if (!this.#lastMessage || !retryRecovery) return;
+	applyRetryRecovery(errorPresentation: AssistantErrorPresentation): void {
+		if (!this.#lastMessage || !errorPresentation) return;
 		this.setErrorPinned(false);
-		this.updateContent({ ...this.#lastMessage, retryRecovery });
+		this.updateContent({ ...this.#lastMessage, errorPresentation });
 	}
 
 	messagePersistenceKey(): string | undefined {
 		if (!this.#lastMessage) return undefined;
 		return [
 			"assistant",
-			this.#lastMessage.timestamp,
-			this.#lastMessage.provider,
-			this.#lastMessage.model,
+			this.#lastMessage.timestamp ?? 0,
+			this.#lastMessage.provider ?? "",
+			this.#lastMessage.model ?? "",
 			this.#lastMessage.responseId ?? "",
-			this.#lastMessage.stopReason,
+			this.#lastMessage.stopReason ?? "",
 		].join(":");
 	}
 
@@ -720,32 +726,32 @@ export class AssistantMessageComponent extends Container {
 		}
 	}
 
-	#computeShapeKey(message: AssistantMessage): string {
+	#computeShapeKey(message: AssistantMessageView): string {
 		const parts: string[] = [`htb:${this.hideThinkingBlock ? 1 : 0}|pot:${this.proseOnlyThinking ? 1 : 0}`];
-		for (const content of message.content) {
-			if (content.type === "text") {
+		for (const content of message.segments) {
+			if (content.kind === "text") {
 				parts.push(canonicalizeMessage(content.text) ? "T1" : "T0");
-			} else if (content.type === "thinking") {
+			} else if (content.kind === "thinking") {
 				const display = resolveThinkingDisplay(content, this.proseOnlyThinking);
 				if (!display.visible) parts.push("K0");
 				else if (this.hideThinkingBlock) parts.push("KH");
 				else parts.push("KV");
 			} else {
-				// Non-rendered blocks (toolCall, redactedThinking, …) still occupy a
+				// Non-rendered blocks (tool-call, fallback, …) still occupy a
 				// content index. Encode their position so an inserted/removed one shifts
 				// the key and forces the teardown path instead of mis-indexing children.
-				parts.push(`O:${content.type}`);
+				parts.push(`O:${content.kind}`);
 			}
 		}
 		return parts.join("|");
 	}
 
-	#canFastPath(message: AssistantMessage): boolean {
-		for (const content of message.content) {
-			if (content.type === "toolCall") return false;
+	#canFastPath(message: AssistantMessageView): boolean {
+		for (const content of message.segments) {
+			if (content.kind === "tool-call") return false;
 		}
 		if (this.#toolImagesByCallId.size > 0) return false;
-		const errorPresentation = resolveAssistantErrorPresentation(message);
+		const errorPresentation = message.errorPresentation ?? { kind: "none" };
 		if (errorPresentation.kind === "compact-recovered") return false;
 		if (errorPresentation.kind === "full" && !(message.stopReason === "error" && this.#errorPinned)) {
 			return false;
@@ -755,8 +761,8 @@ export class AssistantMessageComponent extends Container {
 		if (this.thinkingRenderers.length > 0 && this.#fastPathItems) {
 			for (const item of this.#fastPathItems) {
 				if (item.blockType === "thinking") {
-					const content = message.content[item.contentIndex];
-					if (content?.type === "thinking") {
+					const content = message.segments[item.contentIndex];
+					if (content?.kind === "thinking") {
 						const display = resolveThinkingDisplay(content, this.proseOnlyThinking);
 						if (display.text !== item.lastText) return false;
 					}
@@ -766,7 +772,7 @@ export class AssistantMessageComponent extends Container {
 		return true;
 	}
 
-	#tryFastPathUpdate(message: AssistantMessage, opts?: { transient?: boolean }): boolean {
+	#tryFastPathUpdate(message: AssistantMessageView, opts?: { transient?: boolean }): boolean {
 		if (!this.#fastPathKey || !this.#fastPathItems) return false;
 		if (!this.#canFastPath(message)) {
 			this.#fastPathKey = undefined;
@@ -783,16 +789,16 @@ export class AssistantMessageComponent extends Container {
 		this.#applyItemTransience(transient);
 		for (let i = 0; i < this.#fastPathItems.length; i++) {
 			const item = this.#fastPathItems[i]!;
-			const content = message.content[item.contentIndex];
+			const content = message.segments[item.contentIndex];
 			if (!content) {
 				this.#fastPathKey = undefined;
 				this.#fastPathItems = undefined;
 				return false;
 			}
 			let newText: string;
-			if (item.blockType === "text" && content.type === "text") {
+			if (item.blockType === "text" && content.kind === "text") {
 				newText = content.text.trim();
-			} else if (item.blockType === "thinking" && content.type === "thinking") {
+			} else if (item.blockType === "thinking" && content.kind === "thinking") {
 				newText = resolveThinkingDisplay(content, this.proseOnlyThinking).text;
 			} else {
 				this.#fastPathKey = undefined;
@@ -833,12 +839,12 @@ export class AssistantMessageComponent extends Container {
 	 * (a tool call ends the text segment — the glow must not linger on frozen
 	 * text while a tool card renders below it).
 	 */
-	#shouldPaintTrail(message: AssistantMessage): boolean {
+	#shouldPaintTrail(message: AssistantMessageView): boolean {
 		if (!this.#lastUpdateTransient || this.#transcriptBlockFinalized) return false;
-		return !message.content.some(c => c.type === "toolCall");
+		return !message.segments.some(c => c.kind === "tool-call");
 	}
 
-	updateContent(message: AssistantMessage, opts?: { transient?: boolean }): void {
+	updateContent(message: AssistantMessageView, opts?: { transient?: boolean }): void {
 		this.#blockVersion++;
 		this.#lastMessage = message;
 		this.#lastUpdateTransient = opts?.transient === true;
@@ -859,7 +865,7 @@ export class AssistantMessageComponent extends Container {
 		// self-suppresses (see #thinkingDotsLabel).
 		const isThinkingNow = this.#lastUpdateTransient && this.#shouldAnimateThinking(message);
 		if (isThinkingNow) {
-			const currentTokens = message.usage.reasoningTokens ?? message.usage.output;
+			const currentTokens = message.reportedThinkingTokens ?? message.usage?.reasoning ?? message.usage?.output ?? 0;
 			this.#thinkingTokens = currentTokens;
 			const now = performance.now();
 			if (this.#lastTokenCount !== undefined) {
@@ -886,9 +892,9 @@ export class AssistantMessageComponent extends Container {
 		// getTranscriptBlockSettledRows. Detected from raw source — a Markdown
 		// parser only resolves the fence once it closes, but the stale commits
 		// would happen mid-stream.
-		this.#containsMermaidSource = message.content.some(content => {
-			if (content.type === "text") return containsMermaidFence(content.text);
-			if (content.type === "thinking" && !this.hideThinkingBlock) {
+		this.#containsMermaidSource = message.segments.some(content => {
+			if (content.kind === "text") return containsMermaidFence(content.text);
+			if (content.kind === "thinking" && !this.hideThinkingBlock && !content.redacted) {
 				const display = resolveThinkingDisplay(content, this.proseOnlyThinking);
 				return display.visible && containsMermaidFence(display.text);
 			}
@@ -911,19 +917,20 @@ export class AssistantMessageComponent extends Container {
 			| Array<{ md: Markdown; contentIndex: number; blockType: "text" | "thinking"; lastText: string }>
 			| undefined = shouldCapture ? [] : undefined;
 
-		const hasVisibleContent = message.content.some(
+		const hasVisibleContent = message.segments.some(
 			c =>
-				(c.type === "text" && canonicalizeMessage(c.text)) ||
+				(c.kind === "text" && canonicalizeMessage(c.text)) ||
 				(!this.hideThinkingBlock &&
-					c.type === "thinking" &&
+					c.kind === "thinking" &&
+					!c.redacted &&
 					resolveThinkingDisplay(c, this.proseOnlyThinking).visible),
 		);
 
 		// Render content in order
 		let thinkingIndex = 0;
-		for (let i = 0; i < message.content.length; i++) {
-			const content = message.content[i];
-			if (content.type === "text" && canonicalizeMessage(content.text)) {
+		for (let i = 0; i < message.segments.length; i++) {
+			const content = message.segments[i]!;
+			if (content.kind === "text" && canonicalizeMessage(content.text)) {
 				// Set paddingY=0 to avoid extra spacing before tool executions
 				const trimmed = content.text.trim();
 				// Body prose must carry the theme's text color: without a default
@@ -936,7 +943,11 @@ export class AssistantMessageComponent extends Container {
 				md.transientRenderCache = this.#lastUpdateTransient;
 				this.#contentContainer.addChild(md);
 				captureItems?.push({ md, contentIndex: i, blockType: "text", lastText: trimmed });
-			} else if (content.type === "thinking" && resolveThinkingDisplay(content, this.proseOnlyThinking).visible) {
+			} else if (
+				content.kind === "thinking" &&
+				!content.redacted &&
+				resolveThinkingDisplay(content, this.proseOnlyThinking).visible
+			) {
 				const thinkingText = resolveThinkingDisplay(content, this.proseOnlyThinking).text;
 				if (this.hideThinkingBlock) {
 					thinkingIndex += 1;
@@ -944,12 +955,14 @@ export class AssistantMessageComponent extends Container {
 				}
 				// Add spacing only when another visible assistant content block follows.
 				// This avoids a superfluous blank line before separately-rendered tool execution blocks.
-				const hasVisibleContentAfter = message.content
+				const hasVisibleContentAfter = message.segments
 					.slice(i + 1)
 					.some(
 						c =>
-							(c.type === "text" && canonicalizeMessage(c.text)) ||
-							(c.type === "thinking" && resolveThinkingDisplay(c, this.proseOnlyThinking).visible),
+							(c.kind === "text" && canonicalizeMessage(c.text)) ||
+							(c.kind === "thinking" &&
+								!c.redacted &&
+								resolveThinkingDisplay(c, this.proseOnlyThinking).visible),
 					);
 
 				// A muted "Thinking" label heads the first visible reasoning block:
@@ -986,7 +999,7 @@ export class AssistantMessageComponent extends Container {
 		}
 
 		this.#renderToolImages();
-		const errorPresentation = resolveAssistantErrorPresentation(message);
+		const errorPresentation = message.errorPresentation ?? { kind: "none" };
 		if (errorPresentation.kind === "compact-recovered") {
 			this.#contentContainer.addChild(new Spacer(1));
 			this.#contentContainer.addChild(new Text(theme.fg("dim", errorPresentation.text), 1, 0));
@@ -1016,7 +1029,6 @@ export class AssistantMessageComponent extends Container {
 			this.#fastPathItems = undefined;
 		}
 	}
-
 	/**
 	 * Only the actively streaming (last) markdown renders in transient mode;
 	 * completed blocks render final — syntax-highlighted, module-LRU-cached,

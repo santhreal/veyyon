@@ -5,49 +5,20 @@
  * for both the shared gateway and local kernel spawning.
  */
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { $env, $which, getPythonEnvDir } from "@veyyon/utils";
 import {
 	BASE_ENV_ALLOW_PREFIXES,
 	BASE_ENV_ALLOWLIST,
+	BASE_WINDOWS_ENV_ALLOWLIST,
 	CASE_INSENSITIVE_ENV,
 	createEnvFilter,
-	SECRET_ENV_DENYLIST,
+	resolveExplicitPath,
 } from "../runtime-env";
 
 // Python-specific runtime-state vars not shared by the other language
 // sandboxes (venv/conda layout, import path).
 const PYTHON_ENV_ALLOWLIST = ["CONDA_PREFIX", "CONDA_DEFAULT_ENV", "VIRTUAL_ENV", "PYTHONPATH"];
-
-const WINDOWS_ENV_ALLOWLIST = [
-	"APPDATA",
-	"COMPUTERNAME",
-	"COMSPEC",
-	"HOMEDRIVE",
-	"HOMEPATH",
-	"LOCALAPPDATA",
-	"NUMBER_OF_PROCESSORS",
-	"OS",
-	"PATH",
-	"PATHEXT",
-	"PROCESSOR_ARCHITECTURE",
-	"PROCESSOR_IDENTIFIER",
-	"PROGRAMDATA",
-	"PROGRAMFILES",
-	"PROGRAMFILES(X86)",
-	"PROGRAMW6432",
-	"SESSIONNAME",
-	"SYSTEMDRIVE",
-	"SYSTEMROOT",
-	"TEMP",
-	"TMP",
-	"USERDOMAIN",
-	"USERDOMAIN_ROAMINGPROFILE",
-	"USERPROFILE",
-	"USERNAME",
-	"WINDIR",
-];
 
 // Python needs no prefixes beyond the shared base: its venv/conda layout is
 // carried by named variables in PYTHON_ENV_ALLOWLIST, not by a namespace.
@@ -81,8 +52,7 @@ export interface PythonRuntime {
 
 export const filterEnv = createEnvFilter({
 	allowList: [...BASE_ENV_ALLOWLIST, ...PYTHON_ENV_ALLOWLIST],
-	windowsAllowList: WINDOWS_ENV_ALLOWLIST,
-	denyList: SECRET_ENV_DENYLIST,
+	windowsAllowList: [...BASE_WINDOWS_ENV_ALLOWLIST, "USERDOMAIN_ROAMINGPROFILE"],
 	allowPrefixes: PYTHON_ENV_ALLOW_PREFIXES,
 });
 
@@ -144,13 +114,7 @@ export function resolveExplicitPythonRuntime(
 	cwd: string,
 	baseEnv: Record<string, string | undefined>,
 ): PythonRuntime {
-	const expanded =
-		interpreter === "~"
-			? os.homedir()
-			: interpreter.startsWith("~/")
-				? path.join(os.homedir(), interpreter.slice(2))
-				: interpreter;
-	const pythonPath = path.isAbsolute(expanded) ? expanded : path.resolve(cwd, expanded);
+	const pythonPath = resolveExplicitPath(interpreter, cwd);
 	const venv = detectExplicitVenv(pythonPath);
 	if (venv) {
 		return { pythonPath, env: applyVenvEnv(baseEnv, venv.venvPath, venv.binDir), venvPath: venv.venvPath };

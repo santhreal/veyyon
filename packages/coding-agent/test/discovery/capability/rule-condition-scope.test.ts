@@ -74,4 +74,9 @@ describe("astCondition and scope splitting", () => {
 		expect(parse({ scope: "tool:edit(a,b), tool:write" }).scope).toEqual(["tool:edit(a,b)", "tool:write"]);
 		expect(parse({ scope: 'tool:x("a,b"), tool:y' }).scope).toEqual(['tool:x("a,b")', "tool:y"]);
 	});
+
+	it("nests brackets and braces, and a closer of another kind never ends the open one", () => {
+		expect(parse({ scope: "tool:x[a,b], tool:y{c,d}" }).scope).toEqual(["tool:x[a,b]", "tool:y{c,d}"]);
+		expect(parse({ scope: "tool:x[a), b], tool:y" }).scope).toEqual(["tool:x[a), b]", "tool:y"]);
+	});
 });

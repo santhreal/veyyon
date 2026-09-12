@@ -55,6 +55,10 @@ const PRIORITY_TONES: Record<FindingPriority, ViewTone> = {
 	P3: "accent",
 };
 
+export function priorityTone(priority: FindingPriority): ViewTone {
+	return PRIORITY_TONES[priority] ?? "muted";
+}
+
 /**
  * The priority mark and its label, as the two spans every finding row carries.
  *
@@ -62,7 +66,7 @@ const PRIORITY_TONES: Record<FindingPriority, ViewTone> = {
  * fallback text is empty because the `[P1]` span beside it already states the priority in words.
  */
 function prioritySpans(priority: FindingPriority): readonly ViewSpan[] {
-	const tone = PRIORITY_TONES[priority] ?? "muted";
+	const tone = priorityTone(priority);
 	return [
 		{ symbol: getPriorityInfo(priority).symbol, text: "", tone },
 		{ text: " " },
@@ -71,7 +75,7 @@ function prioritySpans(priority: FindingPriority): readonly ViewSpan[] {
 }
 
 /** The title a finding reports, without the priority prefix an agent may have written into it. */
-function findingTitle(title: string): string {
+export function findingTitle(title: string): string {
 	return title.replace(/^\[P\d\]\s*/, "");
 }
 
@@ -144,6 +148,16 @@ export function parseReportFindingDetails(value: unknown): ReportFindingDetails 
 		line_start: lineStart,
 		line_end: lineEnd,
 	};
+}
+
+export function normalizeReportFindings(value: unknown): ReportFindingDetails[] {
+	if (!Array.isArray(value)) return [];
+	const findings: ReportFindingDetails[] = [];
+	for (const item of value) {
+		const finding = parseReportFindingDetails(item);
+		if (finding) findings.push(finding);
+	}
+	return findings;
 }
 
 export const reportFindingTool: AgentTool<typeof ReportFindingParams, ReportFindingDetails> = {

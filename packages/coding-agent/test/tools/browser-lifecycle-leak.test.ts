@@ -159,7 +159,7 @@ describe("browser lifecycle — session-scoped teardown reaps owned tabs", () =>
 
 		expect(first.tab).toBe(second.tab);
 		expect(second.created).toBe(false);
-		// Reuse must NOT reassign ownership — a subagent re-driving an existing
+		// Reuse must NOT reassign ownership — an agent re-driving an existing
 		// tab shouldn't yank teardown responsibility from the session that opened it.
 		expect(second.tab.ownerSessionId).toBe("session-A");
 

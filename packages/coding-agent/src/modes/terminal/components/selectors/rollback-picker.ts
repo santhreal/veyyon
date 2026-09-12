@@ -24,10 +24,10 @@
  * cannot drift into marking "current" differently from the text listing.
  */
 import type { SelectItem } from "@veyyon/tui";
-import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 import { type RollbackRow, rollbackMarkers, rollbackPublishedDate, type UrlOpener } from "../../../../cli/rollback-cli";
 import { getSelectListTheme } from "../../../../theme/theme";
 import { ModalSelectListComponent } from "./modal-select-list";
+import { ModalSelectWrapper } from "./select-list-mouse-routing";
 
 /** The keypress that opens the highlighted version's changelog. */
 export const CHANGELOG_KEY = "c";
@@ -73,77 +73,52 @@ export interface RollbackPickerCallbacks {
 	openUrl: UrlOpener;
 }
 
-export class RollbackPickerComponent {
-	#inner: ModalSelectListComponent;
+export class RollbackPickerComponent extends ModalSelectWrapper {
 	#rows: readonly RollbackRow[];
 	#callbacks: RollbackPickerCallbacks;
 
 	constructor(rows: readonly RollbackRow[], callbacks: RollbackPickerCallbacks) {
-		this.#rows = rows;
-		this.#callbacks = callbacks;
-		// Open on the running version, so the list starts where the reader is and
-		// the neighbours above and below are the versions they are choosing between.
 		const currentIndex = Math.max(
 			0,
 			rows.findIndex(row => row.current),
 		);
-		this.#inner = new ModalSelectListComponent(
-			{
-				// The restart caveat lives in the TITLE rather than among the tips,
-				// because the tips rotate: a caveat you see one launch in three is
-				// not a caveat. The obvious reading of a picker that closes cleanly
-				// is that the running process is now the version you chose, and it
-				// never is.
-				title: "Version · takes effect on restart",
-				items: rollbackSelectItems(rows),
-				theme: getSelectListTheme(),
-				selectedIndex: currentIndex,
-				// Sized to the list rather than pinned at 12, matching the modal's own
-				// default rule, so a short history scrolls only when it has to. Note
-				// this does NOT shrink the card: ModalShell's medium size is fixed
-				// chrome shared by every picker, so a seven-row list still paints
-				// inside a card sized for more (see the MODAL-CARD-HEIGHT row in the
-				// backlog). Changing that belongs to the shell, not to this caller.
-				maxVisible: Math.min(12, Math.max(5, rows.length)),
-				// Versions are short, and the default 32-cell primary column would
-				// leave the card too narrow for a description — dropping the markers
-				// that are the whole reason each row is readable.
-				layout: { minPrimaryColumnWidth: 10, maxPrimaryColumnWidth: 14 },
-				tipCandidates: [
-					`Tip · ${CHANGELOG_KEY} opens this version's changelog`,
-					"Tip · Type to filter, Esc cancel",
-				],
-			},
-			{
-				onSelect: item => this.#choose(item.value),
-				onCancel: callbacks.onCancel,
-			},
+		super(
+			new ModalSelectListComponent(
+				{
+					title: "Version · takes effect on restart",
+					items: rollbackSelectItems(rows),
+					theme: getSelectListTheme(),
+					selectedIndex: currentIndex,
+					maxVisible: Math.min(12, Math.max(5, rows.length)),
+					layout: { minPrimaryColumnWidth: 10, maxPrimaryColumnWidth: 14 },
+					tipCandidates: [
+						`Tip · ${CHANGELOG_KEY} opens this version's changelog`,
+						"Tip · Type to filter, Esc cancel",
+					],
+				},
+				{
+					onSelect: item => {
+						if (rows.find(row => row.version === item.value)?.current) {
+							callbacks.onCancel();
+							return;
+						}
+						callbacks.onSelect(item.value);
+					},
+					onCancel: callbacks.onCancel,
+				},
+			),
 		);
-	}
-
-	/**
-	 * Selecting the running version is a no-op, not a reinstall.
-	 *
-	 * `rollbackToVersion` refuses it too, and refusing in both places is
-	 * deliberate: the picker should not raise an error dialog for a row it drew
-	 * as "current", and the installer must stay safe for callers that are not
-	 * this component.
-	 */
-	#choose(version: string): void {
-		if (this.#rows.find(row => row.version === version)?.current) {
-			this.#callbacks.onCancel();
-			return;
-		}
-		this.#callbacks.onSelect(version);
+		this.#rows = rows;
+		this.#callbacks = callbacks;
 	}
 
 	/** The row under the cursor, or null when a filter has emptied the list. */
 	selectedRow(): RollbackRow | null {
-		const value = this.#inner.getSelectList().getSelectedItem()?.value;
+		const value = this.inner.getSelectList().getSelectedItem()?.value;
 		return this.#rows.find(row => row.version === value) ?? null;
 	}
 
-	handleInput(data: string): void {
+	override handleInput(data: string): void {
 		// Intercepted before the list sees it, because the list treats a printable
 		// character as a filter keystroke; without this, `c` would silently start
 		// filtering instead of opening the changelog.
@@ -152,26 +127,6 @@ export class RollbackPickerComponent {
 			if (row) this.#callbacks.openUrl(row.changelogUrl);
 			return;
 		}
-		this.#inner.handleInput(data);
-	}
-
-	setOnRequestRender(cb: () => void): void {
-		this.#inner.setOnRequestRender(cb);
-	}
-
-	getSelectList() {
-		return this.#inner.getSelectList();
-	}
-
-	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
-		this.#inner.getSelectList().routeMouse(event, line - 1, col);
-	}
-
-	render(width: number): string[] {
-		return this.#inner.render(width);
-	}
-
-	invalidate(): void {
-		this.#inner.invalidate();
+		this.inner.handleInput(data);
 	}
 }

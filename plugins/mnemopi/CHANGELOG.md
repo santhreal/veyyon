@@ -6,9 +6,13 @@
 
 ### Changed
 
+- Gist participants and fact sources are read from their stored JSON columns through one `parseStoredStringList` in `util/sqlite`; a null, empty, non-JSON or non-array value still reads as no entries.
+- Deduplicated SQLite table migrations, schema declarations, and entity import pipelines across beam and triplestore modules.
 - Typed tuple copies use spreads rather than `.concat()`, which those types do not define. No user-visible behavior changes.
 - The package directory is `plugins/mnemopi` instead of `packages/mnemopi`; the published package name, entry points and behavior are unchanged.
-
+- The logging plugin records a remember and a recall through one memory-event step; each row still carries its own event name, memory id and content preview.
+- AAAK phrase and structural tables apply through one literal-replacement loop; encoded output is unchanged.
+- The logging, metrics, filter and compression plugins read their numeric cap through one option reader that accepts the snake_case key or its camelCase alias and falls back to the default for a non-finite value; no behavior change.
 
 ## [16.3.9] - 2026-07-06
 

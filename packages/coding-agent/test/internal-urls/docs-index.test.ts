@@ -10,7 +10,7 @@ const files = ["agent.md", "tools/read.md"];
 const bodies = ["agent body", "read body"];
 const embedPayload = embed(files, bodies);
 
-// The embed path only runs in compiled binaries / the npm bundle; dev tests
+// The embed path only runs in compiled binaries / the prepacked bundle; dev tests
 // otherwise exercise the disk fallback (empty placeholder), so a regression in
 // the two-line `<filenames>\n<gzip bodies>` parsing would ship broken `veyyon://`
 // docs undetected. These cover the populated-embed decode directly.

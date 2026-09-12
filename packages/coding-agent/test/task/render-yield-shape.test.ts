@@ -8,7 +8,7 @@ import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/the
 /** The card the terminal draws from the task tool's view, which is what the product renders. */
 const taskToolRenderer = viewToolRenderer(taskToolView, { mergeCallAndResult: true });
 
-// Regression for #1987: when a subagent stores a non-array value in
+// Regression for #1987: when an agent stores a non-array value in
 // `extractedToolData.yield`, the renderer cast it to `Array<{ data }>` and
 // then called `?.map`. Optional chaining only short-circuits on null/undefined,
 // so a plain object made `.map` undefined and crashed the TUI with

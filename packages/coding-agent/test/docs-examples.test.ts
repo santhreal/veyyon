@@ -683,6 +683,16 @@ describe("docs examples — inline dotted settings mentions are registered paths
 		"pids.max",
 		"pids.current",
 	]);
+	/**
+	 * ACP protocol identifiers share the dotted shape, and two of them collide with settings roots.
+	 *
+	 * `auth` and `speech` ARE settings roots, so the ACP reference naming the client capability
+	 * `auth.terminal` (the `clientCapabilities.auth.terminal` flag the agent reads before it offers
+	 * terminal auth) and the extension method `speech.models.list` was reported as two unregistered
+	 * settings paths. Both are wire identifiers the page has to spell verbatim. The exact set is
+	 * pinned, so a token that merely looks like one is still checked.
+	 */
+	const ACP_IDENTIFIERS = new Set(["auth.terminal", "speech.models.list"]);
 	const NEGATION_RE = /\bnot?\s+(?:a\s+)?`|\*\*not\*\*|does not exist|not shipped|never existed|removed|is gone/i;
 
 	const schemaPaths = new Set(Object.keys(SETTINGS_SCHEMA));
@@ -761,6 +771,7 @@ describe("docs examples — inline dotted settings mentions are registered paths
 					if (FILE_EXT_RE.test(token)) continue;
 					if (HOSTNAME_RE.test(token)) continue;
 					if (CGROUP_CONTROL.has(token)) continue;
+					if (ACP_IDENTIFIERS.has(token)) continue;
 					if (!schemaRoots.has(token.split(".")[0])) continue;
 					mentions++;
 					if (!isKnownDotted(token)) {

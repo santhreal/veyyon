@@ -410,7 +410,7 @@ describe("tool loading resolves to identical outcomes after consolidation", () =
 	 *
 	 * LOCKS OUT: a regression in `filterInitialToolsForDiscoveryAll`. Exactly the tools with
 	 * `loadMode: "essential"` survive, plus `task` (force-active because
-	 * `subagent.delegation` defaults to `preferred`), `search_tool_bm25`, and the
+	 * `agent.delegation` defaults to `preferred`), `search_tool_bm25`, and the
 	 * unconditionally-appended `resolve`. Every hidden tool must reappear in the
 	 * discoverable index — hidden-and-unfindable is the failure mode this guards.
 	 */
@@ -526,7 +526,7 @@ describe("tool loading resolves to identical outcomes after consolidation", () =
 	});
 
 	/**
-	 * `subagent.delegation: "off"` under discovery-all.
+	 * `agent.delegation: "off"` under discovery-all.
 	 *
 	 * LOCKS OUT: a session that cannot delegate still shipping the delegation surface.
 	 * `task` loses its force-active exemption AND its permission, so it is neither active
@@ -550,7 +550,7 @@ describe("tool loading resolves to identical outcomes after consolidation", () =
 	 * It cannot police the constant's VALUE: both cells size themselves from
 	 * `TOOL_DISCOVERY_AUTO_THRESHOLD`, so raising 40 to 4000 moves them with it and this
 	 * suite stays green (verified by mutation). That is pinned by
-	 * `tool-discovery/subagent.test.ts`, which passes the count to `resolveEffectiveMode`
+	 * `discovery/tool-discovery-mode-resolves-from-tools-and-mcp-settings.test.ts`, which passes the count to `resolveEffectiveMode`
 	 * directly; changing `>` to `>=` turns that suite red.
 	 *
 	 * Both counts and both expected lists are derived. The pair previously wrote out 40 and

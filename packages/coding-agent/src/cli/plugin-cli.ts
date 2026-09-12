@@ -4,7 +4,7 @@
  * Handles `veyyon plugin <command>` subcommands for plugin lifecycle management.
  */
 
-import { APP_NAME, errorMessage, getProjectDir } from "@veyyon/utils";
+import { APP_NAME, attachFaultSink, errorMessage, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import { PluginManager, parseSettingValue, validateSetting } from "../extensibility/plugins";
 import { createMarketplaceManager, type MarketplaceManager } from "../extensibility/plugins/marketplace";
@@ -73,6 +73,20 @@ export { classifyInstallTarget } from "./classify-install-target";
  * Run a plugin command.
  */
 export async function runPluginCommand(cmd: PluginCommandArgs): Promise<void> {
+	// A fault a lower layer cannot throw for (a catalog entry the parser dropped, a path it could
+	// not stat) reaches the operator here, since no session exists to carry it and the file log is
+	// read by nobody. Several handlers exit the process, so the sink is not detached on that path.
+	const detachFaultSink = attachFaultSink(fault => {
+		console.error(chalk.yellow(`${theme.status.warning} ${fault.text}`));
+	});
+	try {
+		await dispatchPluginCommand(cmd);
+	} finally {
+		detachFaultSink();
+	}
+}
+
+async function dispatchPluginCommand(cmd: PluginCommandArgs): Promise<void> {
 	const manager = new PluginManager();
 
 	switch (cmd.action) {

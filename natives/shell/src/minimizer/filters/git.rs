@@ -40,8 +40,10 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 	let text = match ctx.subcommand {
 		Some("status") if is_status_machine_format(ctx.command) => cleaned,
 		Some("status") => condense_status(&cleaned),
-		Some("diff") if has_token(ctx.command, "--summary") => cleaned,
-		Some("diff") if is_stat_format(ctx.command) => condense_diff_stat(&cleaned),
+		Some("diff") if primitives::command_has_exact_token(ctx.command, "--summary") => cleaned,
+		Some("diff") if primitives::command_has_any_token(ctx.command, &["--stat"]) => {
+			condense_diff_stat(&cleaned)
+		},
 		Some("diff") => {
 			if exit_code == 0 {
 				if let Some(mode) = diff_listing_mode(ctx.command) {
@@ -69,19 +71,16 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 		Some("tag") => primitives::compact_listing(&cleaned, 40),
 		Some("stash") => condense_stash(ctx.command, &cleaned, exit_code),
 		Some("worktree") => {
-			if has_token(ctx.command, "--porcelain")
-				|| has_token(ctx.command, "-z")
-				|| has_token(ctx.command, "--null")
-			{
+			if primitives::command_has_any_exact_token(ctx.command, &["--porcelain", "-z", "--null"]) {
 				cleaned
 			} else {
 				condense_worktree(&cleaned)
 			}
 		},
-		Some("push") if has_token(ctx.command, "--porcelain") => cleaned,
+		Some("push") if primitives::command_has_exact_token(ctx.command, "--porcelain") => cleaned,
 		Some("push") => condense_push(&cleaned, exit_code),
 		Some("pull") => condense_pull(&cleaned, exit_code),
-		Some("fetch") if has_token(ctx.command, "--porcelain") => cleaned,
+		Some("fetch") if primitives::command_has_exact_token(ctx.command, "--porcelain") => cleaned,
 		Some("fetch") => condense_fetch(&cleaned, exit_code),
 		Some("commit") => condense_commit(&cleaned, exit_code),
 		Some("merge" | "rebase" | "checkout" | "switch" | "restore" | "clean" | "reset" | "add") => {
@@ -89,11 +88,7 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 		},
 		_ => cleaned,
 	};
-	if text == input {
-		MinimizerOutput::passthrough(input)
-	} else {
-		MinimizerOutput::transformed(text, input.len())
-	}
+	MinimizerOutput::maybe_transformed(input, text)
 }
 
 fn is_show_path_content(command: &str) -> bool {
@@ -111,22 +106,7 @@ fn is_show_path_content(command: &str) -> bool {
 
 fn is_stash_patch(command: &str) -> bool {
 	primitives::command_has_ordered_tokens(command, "stash", "show")
-		&& (has_token(command, "-p") || has_token(command, "--patch"))
-}
-
-fn has_token(command: &str, token: &str) -> bool {
-	command.split_whitespace().any(|part| part == token)
-}
-
-/// Whether `command` carries `--flag` in either the space-separated
-/// (`--flag value`) or the inline (`--flag=value`) form. `has_token` only
-/// matches the bare token, so inline `=`-joined flags (e.g. `--format=%H`)
-/// would otherwise slip through guards that key off the flag name alone.
-fn has_flag(command: &str, flag: &str) -> bool {
-	let inline_prefix = format!("{flag}=");
-	command
-		.split_whitespace()
-		.any(|part| part == flag || part.starts_with(&inline_prefix))
+		&& primitives::command_has_any_exact_token(command, &["-p", "--patch"])
 }
 
 fn is_status_machine_format(command: &str) -> bool {
@@ -135,12 +115,6 @@ fn is_status_machine_format(command: &str) -> bool {
 			|| part == "-z"
 			|| part.starts_with('-') && !part.starts_with("--") && part.contains('z')
 	})
-}
-
-fn is_stat_format(command: &str) -> bool {
-	command
-		.split_whitespace()
-		.any(|part| part == "--stat" || part.starts_with("--stat="))
 }
 
 #[derive(Clone, Copy)]
@@ -163,11 +137,11 @@ impl DiffListingMode {
 }
 
 fn diff_listing_mode(command: &str) -> Option<DiffListingMode> {
-	if has_token(command, "--name-only") {
+	if primitives::command_has_exact_token(command, "--name-only") {
 		Some(DiffListingMode::NameOnly)
-	} else if has_token(command, "--name-status") {
+	} else if primitives::command_has_exact_token(command, "--name-status") {
 		Some(DiffListingMode::NameStatus)
-	} else if has_token(command, "--numstat") {
+	} else if primitives::command_has_exact_token(command, "--numstat") {
 		Some(DiffListingMode::Numstat)
 	} else {
 		None
@@ -745,7 +719,7 @@ fn is_branch_non_listing(command: &str) -> bool {
 /// deletion, creation, or custom formatting) whose output `compact_listing`
 /// would corrupt by treating it as a plain tag-name listing.
 fn is_tag_non_listing(command: &str) -> bool {
-	if !has_token(command, "tag") {
+	if !primitives::command_has_exact_token(command, "tag") {
 		return false;
 	}
 
@@ -780,21 +754,21 @@ fn is_show_custom_format(command: &str) -> bool {
 	// inline (`--format=%H`, `--pretty=fuller`) forms; both rewrite the commit
 	// prelude that `condense_show` would otherwise truncate, so treat either
 	// form as a custom format. `--diff-filter` likewise takes an inline value.
-	has_flag(command, "--format")
-		|| has_flag(command, "--pretty")
-		|| has_flag(command, "--diff-filter")
-		|| has_token(command, "--name-only")
-		|| has_token(command, "--name-status")
-		|| has_token(command, "--stat")
-		|| has_token(command, "--numstat")
-		|| has_token(command, "--shortstat")
-		|| has_token(command, "--summary")
-		|| has_token(command, "--check")
-		|| has_token(command, "--dirstat")
+	primitives::command_has_any_token(command, &["--format", "--pretty", "--diff-filter"])
+		|| primitives::command_has_any_exact_token(command, &[
+			"--name-only",
+			"--name-status",
+			"--stat",
+			"--numstat",
+			"--shortstat",
+			"--summary",
+			"--check",
+			"--dirstat",
+		])
 }
-
 fn is_log_custom_format(command: &str) -> bool {
-	has_flag(command, "--format") || has_flag(command, "--pretty") || has_token(command, "--oneline")
+	primitives::command_has_any_token(command, &["--format", "--pretty"])
+		|| primitives::command_has_exact_token(command, "--oneline")
 }
 
 fn condense_branch(input: &str) -> String {
@@ -1423,7 +1397,7 @@ fn condense_fetch(input: &str, exit_code: i32) -> String {
 }
 
 fn condense_stash(command: &str, input: &str, exit_code: i32) -> String {
-	if has_token(command, "list") {
+	if primitives::command_has_exact_token(command, "list") {
 		return condense_stash_list(input);
 	}
 	if input.contains("No local changes to save") {
@@ -1889,6 +1863,31 @@ mod tests {
 			assert!(!out.changed, "`{command}` must pass through custom-format show output");
 			assert_eq!(out.text, input, "`{command}` must preserve output verbatim");
 		}
+	}
+
+	#[test]
+	fn show_and_log_custom_format_equal_siblings_parity() {
+		let cfg = MinimizerConfig { enabled: true, ..Default::default() };
+		assert!(is_show_custom_format("git show --format=fuller HEAD"));
+		assert!(is_show_custom_format("git show --pretty=oneline HEAD"));
+		assert!(is_show_custom_format("git show --diff-filter=ACD HEAD"));
+		assert!(is_log_custom_format("git log --format=%H"));
+		assert!(is_log_custom_format("git log --pretty=short"));
+
+		assert!(!is_show_custom_format("git show --summary=false HEAD"));
+		assert!(!is_show_custom_format("git show --name-only=false HEAD"));
+		assert!(!is_show_custom_format("git show --stat=custom HEAD"));
+		assert!(!is_show_custom_format("git show --numstat=false HEAD"));
+		assert!(!is_log_custom_format("git log --oneline=false"));
+
+		assert!(is_show_custom_format("git show --name-only HEAD"));
+		assert!(is_show_custom_format("git show --stat HEAD"));
+		assert!(is_log_custom_format("git log --oneline"));
+
+		let ctx_push_sibling = test_ctx(Some("push"), "git push --porcelain=v2", &cfg);
+		assert!(!primitives::command_has_exact_token(ctx_push_sibling.command, "--porcelain"));
+		let ctx_tag_sibling = test_ctx(Some("tag"), "git tag=v1.0.0", &cfg);
+		assert!(!primitives::command_has_exact_token(ctx_tag_sibling.command, "tag"));
 	}
 
 	#[test]

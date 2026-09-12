@@ -70,12 +70,14 @@ describe("buildGoogleGenerateContentParams toolConfig serialization (F7)", () =>
 		});
 		expect(params.config!.tools).toBeDefined();
 		expect(params.config!.toolConfig).toBeUndefined();
+		expect(Object.hasOwn(params.config!, "toolConfig")).toBe(false);
 	});
 
 	it("emits allowedFunctionNames for named-tool object toolChoice", () => {
+		const names: [string, ...string[]] = ["search"];
 		const params = buildGoogleGenerateContentParams(model, ctx(), {
 			apiKey: "fake",
-			toolChoice: { mode: "ANY", allowedFunctionNames: ["search"] },
+			toolChoice: { mode: "ANY", allowedFunctionNames: names },
 		});
 		expect(params.config!.toolConfig).toEqual({
 			functionCallingConfig: {
@@ -83,10 +85,19 @@ describe("buildGoogleGenerateContentParams toolConfig serialization (F7)", () =>
 				allowedFunctionNames: ["search"],
 			},
 		});
+		params.config!.toolConfig!.functionCallingConfig!.allowedFunctionNames!.push("other");
+		expect(names).toEqual(["search"]);
 	});
 
 	it("clears toolConfig when no toolChoice is provided", () => {
 		const params = buildGoogleGenerateContentParams(model, ctx(), { apiKey: "fake" });
 		expect(params.config!.toolConfig).toBeUndefined();
+		expect(Object.hasOwn(params.config!, "toolConfig")).toBe(true);
+	});
+
+	it.each([undefined, "auto", "any"] as const)("clears toolConfig without tools for choice %s", toolChoice => {
+		const params = buildGoogleGenerateContentParams(model, { ...ctx(), tools: [] }, { toolChoice });
+		expect(params.config!.toolConfig).toBeUndefined();
+		expect(Object.hasOwn(params.config!, "toolConfig")).toBe(true);
 	});
 });

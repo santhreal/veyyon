@@ -3,8 +3,8 @@ import * as AIError from "../../error";
 import { clearGitLabDuoDirectAccessCache } from "../../providers/gitlab-duo";
 import type { FetchImpl } from "../../types";
 import { DEFAULT_CALLBACK_PATH, OAuthCallbackFlow, type OAuthCallbackFlowOptions } from "./callback-server";
-import { credentialExpiryFromExpiresIn } from "./expiry";
-import { generatePKCE } from "./pkce";
+import { type GitLabTokenResponse, mapGitLabTokenResponse } from "./gitlab-token";
+import { generatePKCE, type PKCEPair } from "./pkce";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./types";
 
 /**
@@ -21,11 +21,6 @@ const DEFAULT_CLIENT_ID = "da4edff2e6ebd2bc3208611e2768bc1c1dd7be791dc5ff26ca34c
 const OAUTH_SCOPES = ["api"];
 const DEFAULT_CALLBACK_PORT = 8080;
 const DEFAULT_CALLBACK_HOSTNAME = "localhost";
-
-interface PKCEPair {
-	verifier: string;
-	challenge: string;
-}
 
 /**
  * Resolve the OAuth client id, preferring `GITLAB_CLIENT_ID` when set so users
@@ -88,31 +83,6 @@ function resolveCallbackOptions(): OAuthCallbackFlowOptions {
 	};
 }
 
-function mapTokenResponse(payload: {
-	access_token?: string;
-	refresh_token?: string;
-	expires_in?: number;
-	created_at?: number;
-}): OAuthCredentials {
-	if (!payload.access_token || !payload.refresh_token || typeof payload.expires_in !== "number") {
-		throw new AIError.OAuthError("GitLab OAuth token response missing required fields", {
-			kind: "validation",
-			provider: "gitlab-duo",
-		});
-	}
-
-	const createdAtMs =
-		typeof payload.created_at === "number" && Number.isFinite(payload.created_at)
-			? payload.created_at * 1000
-			: Date.now();
-
-	return {
-		access: payload.access_token,
-		refresh: payload.refresh_token,
-		expires: credentialExpiryFromExpiresIn(payload.expires_in, { issuedAtMs: createdAtMs, provider: "gitlab-duo" }),
-	};
-}
-
 class GitLabDuoOAuthFlow extends OAuthCallbackFlow {
 	#pkce: PKCEPair;
 	#clientId: string;
@@ -170,14 +140,7 @@ class GitLabDuoOAuthFlow extends OAuthCallbackFlow {
 		}
 
 		clearGitLabDuoDirectAccessCache();
-		return mapTokenResponse(
-			(await response.json()) as {
-				access_token?: string;
-				refresh_token?: string;
-				expires_in?: number;
-				created_at?: number;
-			},
-		);
+		return mapGitLabTokenResponse((await response.json()) as GitLabTokenResponse, "gitlab-duo");
 	}
 }
 
@@ -210,12 +173,5 @@ export async function refreshGitLabDuoToken(credentials: OAuthCredentials): Prom
 	}
 
 	clearGitLabDuoDirectAccessCache();
-	return mapTokenResponse(
-		(await response.json()) as {
-			access_token?: string;
-			refresh_token?: string;
-			expires_in?: number;
-			created_at?: number;
-		},
-	);
+	return mapGitLabTokenResponse((await response.json()) as GitLabTokenResponse, "gitlab-duo");
 }

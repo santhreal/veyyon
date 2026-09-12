@@ -188,7 +188,7 @@ SAME_WORDS_MAX_PIXELS=200
 # same rectangle in the same face, so this is the ink of the words themselves.
 OTHER_WORDS_MIN_PIXELS=400
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 MEASURE="${BASH_SOURCE[0]%/*}/measure-frame.py"

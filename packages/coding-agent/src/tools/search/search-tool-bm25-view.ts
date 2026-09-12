@@ -17,18 +17,22 @@ import type {
 	ViewLine,
 	ViewSpan,
 } from "@veyyon/view";
-import { formatCount, replaceTabs, TRUNCATE_LENGTHS } from "../core/render-utils";
+import { extractResultText } from "../core/output-notice";
+import {
+	formatCount,
+	heldBack,
+	replaceTabs,
+	shortenEmbeddedPaths,
+	type ToolViewResult,
+	TRUNCATE_LENGTHS,
+} from "../core/render-utils";
 import type { SearchToolBm25Details, SearchToolBm25Match, SearchToolBm25Params } from "./search-tool-bm25";
 
 /** Matches a collapsed card lists before it says how many more it found. */
 export const COLLAPSED_MATCH_LIMIT = 5;
 
 /** The result the card reads, which is the tool's own result shape narrowed to what a card shows. */
-export interface SearchToolBm25ViewResult {
-	content: Array<{ type: string; text?: string }>;
-	details?: SearchToolBm25Details;
-	isError?: boolean;
-}
+export interface SearchToolBm25ViewResult extends ToolViewResult<SearchToolBm25Details> {}
 
 /** What every card of this tool is titled. */
 const TOOL_DISCOVERY_TITLE = "Tool Discovery";
@@ -68,9 +72,15 @@ function fallbackCard(text: string): HeadedBlockView {
 	return {
 		kind: "headedBlock",
 		header: { kind: "statusRow", status: "warning", title: TOOL_DISCOVERY_TITLE },
-		lines: (text || "Tool discovery completed")
-			.split("\n")
-			.map(line => [{ text: truncateToWidth(replaceTabs(line), TRUNCATE_LENGTHS.LINE), tone: "dim" }] as ViewLine),
+		lines: (text || "Tool discovery completed").split("\n").map(
+			line =>
+				[
+					{
+						text: truncateToWidth(replaceTabs(shortenEmbeddedPaths(line)), TRUNCATE_LENGTHS.LINE),
+						tone: "dim",
+					},
+				] as ViewLine,
+		),
 	};
 }
 
@@ -106,13 +116,7 @@ export const searchToolBm25ToolView: Required<ToolViewRenderer<SearchToolBm25Par
 	renderResult(result, context): ToolView {
 		const details = result.details;
 		if (!details) {
-			return fallbackCard(
-				result.content
-					.filter(part => part.type === "text")
-					.map(part => part.text)
-					.filter((text): text is string => typeof text === "string" && text.length > 0)
-					.join("\n"),
-			);
+			return fallbackCard(extractResultText(result.content));
 		}
 		const header = resultHeader(details);
 		if (details.tools.length === 0) {
@@ -136,6 +140,7 @@ export const searchToolBm25ToolView: Required<ToolViewRenderer<SearchToolBm25Par
 		// a collapsed card is the tool's judgement and how the reader asks for the rest is the host's.
 		const shown = context.expanded ? details.tools.length : Math.min(details.tools.length, COLLAPSED_MATCH_LIMIT);
 		const held = details.tools.length - shown;
+		const hidden = heldBack(held, MATCH_NOUN, !context.expanded);
 		const card: FramedBlockView = {
 			kind: "framedBlock",
 			header,
@@ -147,7 +152,7 @@ export const searchToolBm25ToolView: Required<ToolViewRenderer<SearchToolBm25Par
 				{
 					list: true,
 					lines: details.tools.slice(0, shown).map(matchLine),
-					...(held > 0 ? { hidden: { count: held, noun: MATCH_NOUN, revealable: !context.expanded } } : {}),
+					...(hidden === undefined ? {} : { hidden }),
 				},
 			],
 		};

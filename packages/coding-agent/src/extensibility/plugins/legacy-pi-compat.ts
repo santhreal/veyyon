@@ -236,11 +236,11 @@ const TYPEBOX_SPECIFIER_FILTER = /^(?:@sinclair\/typebox|typebox)$/;
 // pre-#3423 helpers that derived `/$bunfs/root/...` paths from
 // `import.meta.dir` are gone. Dev / source-link / installed-package modes
 // still need a real filesystem path for the source shims, which
-// `sourceShimPath` computes either from the npm prebuilt `dist/cli.js`
+// `sourceShimPath` computes either from the prebuilt `dist/cli.js`
 // bundle (`VEYYON_BUNDLED=true`) or directly from the monorepo source tree.
 
 /**
- * Compute the package root for the npm prebuilt `dist/cli.js` bundle.
+ * Compute the package root for the prebuilt `dist/cli.js` bundle.
  *
  * `bundle-dist.ts` defines `process.env.VEYYON_BUNDLED="true"`; after bundling,
  * `import.meta.dir` points at `<package>/dist`. Do not resolve the package via
@@ -620,8 +620,18 @@ async function rewriteLegacyExtensionSource(
 					`${prefix}${toImportSpecifier(TYPEBOX_SHIM_PATH)}${suffix}`,
 			)
 		: withPi;
-	const withPkg = await rewriteExtensionPackageImports(withTypeBox, importerPath, mtimeTag);
-	const withBare = await rewriteExtensionBareImports(withPkg, importerPath, mtimeTag);
+	const withPkg = await rewriteExtensionImports(
+		withTypeBox,
+		PACKAGE_IMPORT_SPECIFIER_REGEX,
+		specifier => resolvePackageImportSpecifier(specifier, importerPath),
+		mtimeTag,
+	);
+	const withBare = await rewriteExtensionImports(
+		withPkg,
+		BARE_EXTENSION_IMPORT_SPECIFIER_REGEX,
+		specifier => resolveExtensionBareDependency(specifier, importerPath),
+		mtimeTag,
+	);
 	const withNativeAddons = await rewriteExtensionNativeAddonRequires(withBare, importerPath);
 	if (!mtimeTag) {
 		return withNativeAddons;
@@ -857,21 +867,22 @@ async function resolvePackageImportSpecifier(specifier: string, importerPath: st
 
 const PACKAGE_IMPORT_SPECIFIER_REGEX = /((?:from\s+|import\s+|import\s*\(\s*)["'])(#[^"'()\s]+)(["'])/g;
 
-async function rewriteExtensionPackageImports(
+async function rewriteExtensionImports(
 	source: string,
-	importerPath: string,
+	regex: RegExp,
+	resolve: (specifier: string) => Promise<string | null>,
 	mtimeTag: string | null = null,
 ): Promise<string> {
 	let rewritten = "";
 	let lastIndex = 0;
-	for (const match of source.matchAll(PACKAGE_IMPORT_SPECIFIER_REGEX)) {
+	for (const match of source.matchAll(regex)) {
 		const matchIndex = match.index;
 		if (matchIndex === undefined) continue;
 
 		const [fullMatch, prefix, specifier, suffix] = match;
 		if (!prefix || !specifier || !suffix) continue;
 
-		const resolved = await resolvePackageImportSpecifier(specifier, importerPath);
+		const resolved = await resolve(specifier);
 		if (!resolved) continue;
 
 		rewritten += source.slice(lastIndex, matchIndex);
@@ -919,14 +930,27 @@ function splitBarePackageSpecifier(specifier: string): BarePackageSpecifier | nu
 	return { name, subpath: rest.length > 0 ? rest.join("/") : null };
 }
 
-async function findNodePackageRoot(packageName: string, importerPath: string): Promise<string | null> {
-	const cacheKey = `${packageName}\0${path.resolve(path.dirname(importerPath))}`;
-	const cached = nodePackageRootCache.get(cacheKey);
+/**
+ * The cached promise under `key`, or the one `compute` starts now. The promise itself is cached
+ * rather than its value, so concurrent callers of one key share one computation and a rejection
+ * is repeated to each of them.
+ */
+function memoized<T>(cache: Map<string, Promise<T>>, key: string, compute: () => Promise<T>): Promise<T> {
+	const cached = cache.get(key);
 	if (cached) return cached;
-
-	const promise = findNodePackageRootUncached(packageName, importerPath);
-	nodePackageRootCache.set(cacheKey, promise);
+	const promise = compute();
+	cache.set(key, promise);
 	return promise;
+}
+
+function importerCacheKey(specifier: string, importerPath: string): string {
+	return `${specifier}\0${path.resolve(path.dirname(importerPath))}`;
+}
+
+function findNodePackageRoot(packageName: string, importerPath: string): Promise<string | null> {
+	return memoized(nodePackageRootCache, importerCacheKey(packageName, importerPath), () =>
+		findNodePackageRootUncached(packageName, importerPath),
+	);
 }
 
 async function findNodePackageRootUncached(packageName: string, importerPath: string): Promise<string | null> {
@@ -944,13 +968,8 @@ async function findNodePackageRootUncached(packageName: string, importerPath: st
 	}
 }
 
-async function readPackageManifest(packageRoot: string): Promise<Record<string, unknown> | null> {
-	const cached = packageManifestCache.get(packageRoot);
-	if (cached) return cached;
-
-	const promise = readPackageManifestUncached(packageRoot);
-	packageManifestCache.set(packageRoot, promise);
-	return promise;
+function readPackageManifest(packageRoot: string): Promise<Record<string, unknown> | null> {
+	return memoized(packageManifestCache, packageRoot, () => readPackageManifestUncached(packageRoot));
 }
 
 /**
@@ -1073,13 +1092,9 @@ async function resolveExtensionBareDependency(specifier: string, importerPath: s
 		return null;
 	}
 
-	const cacheKey = `${specifier}\0${path.resolve(path.dirname(importerPath))}`;
-	const cached = bareDependencyResolutionCache.get(cacheKey);
-	if (cached) return cached;
-
-	const promise = resolveExtensionBareDependencyUncached(specifier, importerPath);
-	bareDependencyResolutionCache.set(cacheKey, promise);
-	return promise;
+	return memoized(bareDependencyResolutionCache, importerCacheKey(specifier, importerPath), () =>
+		resolveExtensionBareDependencyUncached(specifier, importerPath),
+	);
 }
 
 async function resolveExtensionBareDependencyUncached(specifier: string, importerPath: string): Promise<string | null> {
@@ -1113,13 +1128,9 @@ async function resolveExtensionNativeAddon(specifier: string, importerPath: stri
 		return null;
 	}
 
-	const cacheKey = `${specifier}\0${path.resolve(path.dirname(importerPath))}`;
-	const cached = nativeAddonResolutionCache.get(cacheKey);
-	if (cached) return cached;
-
-	const promise = resolveExtensionNativeAddonUncached(specifier, importerPath);
-	nativeAddonResolutionCache.set(cacheKey, promise);
-	return promise;
+	return memoized(nativeAddonResolutionCache, importerCacheKey(specifier, importerPath), () =>
+		resolveExtensionNativeAddonUncached(specifier, importerPath),
+	);
 }
 
 async function resolveExtensionNativeAddonUncached(specifier: string, importerPath: string): Promise<string | null> {
@@ -1181,13 +1192,8 @@ async function rewriteExtensionNativeAddonRequires(source: string, importerPath:
  * extension graph so {@link rewriteExtensionNativeAddonRequires} can pin its
  * platform-package requires to absolute paths.
  */
-async function moduleRequiresNativeAddon(modulePath: string): Promise<boolean> {
-	const cached = nativeAddonRequireScanCache.get(modulePath);
-	if (cached) return cached;
-
-	const promise = moduleRequiresNativeAddonUncached(modulePath);
-	nativeAddonRequireScanCache.set(modulePath, promise);
-	return promise;
+function moduleRequiresNativeAddon(modulePath: string): Promise<boolean> {
+	return memoized(nativeAddonRequireScanCache, modulePath, () => moduleRequiresNativeAddonUncached(modulePath));
 }
 
 async function moduleRequiresNativeAddonUncached(modulePath: string): Promise<boolean> {
@@ -1209,34 +1215,6 @@ async function moduleRequiresNativeAddonUncached(modulePath: string): Promise<bo
 	return false;
 }
 
-async function rewriteExtensionBareImports(
-	source: string,
-	importerPath: string,
-	mtimeTag: string | null = null,
-): Promise<string> {
-	let rewritten = "";
-	let lastIndex = 0;
-	for (const match of source.matchAll(BARE_EXTENSION_IMPORT_SPECIFIER_REGEX)) {
-		const matchIndex = match.index;
-		if (matchIndex === undefined) continue;
-
-		const [fullMatch, prefix, specifier, suffix] = match;
-		if (!prefix || !specifier || !suffix) continue;
-
-		const resolved = await resolveExtensionBareDependency(specifier, importerPath);
-		if (!resolved) continue;
-
-		rewritten += source.slice(lastIndex, matchIndex);
-		rewritten += `${prefix}${toGraphImportSpecifier(resolved, mtimeTag)}${suffix}`;
-		lastIndex = matchIndex + fullMatch.length;
-	}
-
-	if (lastIndex === 0) {
-		return source;
-	}
-	return `${rewritten}${source.slice(lastIndex)}`;
-}
-
 // Match source modules in an extension graph: relative imports, package
 // `imports` aliases such as `#src/*`, and extension-local bare dependency
 // entries. Bare imports inside node_modules dependencies remain native Bun
@@ -1245,6 +1223,61 @@ async function rewriteExtensionBareImports(
 // are scanned too so CJS entries and napi-rs loaders reached without an
 // import statement still join the graph.
 const EXTENSION_GRAPH_SPECIFIER_REGEX = /((?:from\s+|import\s+|import\s*\(\s*)["'])([^"'()\s]+)(["'])/g;
+
+const ESM_SYNTAX_REGEX = /^\s*(?:import\s|export\s|import\s*\()/m;
+const CJS_SYNTAX_REGEX = /\bmodule\.exports\b|\bexports\.[A-Za-z_$]|\brequire\s*\(/;
+
+/**
+ * Whether a source module is CommonJS: by extension when the extension states
+ * it, otherwise by shape (no `import`/`export` statement, and a `require`,
+ * `module.exports` or `exports.x` reference).
+ *
+ * Source served through a `Bun.plugin` `onLoad` hook is never given Bun's own
+ * CommonJS treatment: a `module.exports = factory` file arrives as an empty
+ * namespace, unevaluated, and the loader then reports "no default export" for
+ * an extension that was never run. The entry is therefore wrapped by
+ * {@link wrapCommonJsAsModule}, and every other CommonJS module in the graph is
+ * left off the hook so Bun's native loader evaluates it.
+ */
+function isCommonJsSource(filePath: string, source: string): boolean {
+	const ext = path.extname(filePath);
+	if (ext === ".cjs" || ext === ".cts") return true;
+	if (ext === ".mjs" || ext === ".mts") return false;
+	return !ESM_SYNTAX_REGEX.test(source) && CJS_SYNTAX_REGEX.test(source);
+}
+
+/**
+ * A CommonJS extension entry as an ES module: `module` and `exports` are
+ * declared, the body runs unchanged (Bun provides `require`, `__dirname` and
+ * `__filename` to an ES module), and `module.exports` is the default export,
+ * which is where the extension loader reads the factory from. A transpiled
+ * ES module (`exports.__esModule = true; exports.default = factory`) unwraps
+ * to its `default`, the same interop Bun's native loader applies to it.
+ */
+function wrapCommonJsAsModule(source: string): string {
+	return (
+		"const module = { exports: {} };\nlet exports = module.exports;\n" +
+		`${source}\n` +
+		'export default module.exports !== null && typeof module.exports === "object" && module.exports.__esModule === true && "default" in module.exports\n' +
+		"\t? module.exports.default\n\t: module.exports;\n"
+	);
+}
+
+/** The source of a file on disk, read once per graph walk however many times the walk asks. */
+type SourceReader = (modulePath: string) => Promise<string>;
+
+/**
+ * {@link isCommonJsSource} over a file on disk; an unreadable file is not CommonJS, and the import
+ * that follows names it. The read goes through the walk's reader: the check runs on a candidate
+ * before the walk reaches it, and the walk's own read of the same file must be the same read.
+ */
+async function isCommonJsModule(modulePath: string, readSource: SourceReader): Promise<boolean> {
+	try {
+		return isCommonJsSource(modulePath, await readSource(modulePath));
+	} catch {
+		return false;
+	}
+}
 
 // Extension source realpaths already covered by an installed load-time hook for
 // each entry. `Bun.plugin()` registrations are process-global and permanent, so
@@ -1260,13 +1293,8 @@ function nextLegacyPiLoadTag(): string {
 }
 
 /** Resolve symlinks in a path, falling back to the input if realpath fails. */
-async function realpathOrSelf(p: string): Promise<string> {
-	const cached = realpathCache.get(p);
-	if (cached) return cached;
-
-	const promise = realpathOrSelfUncached(p);
-	realpathCache.set(p, promise);
-	return promise;
+function realpathOrSelf(p: string): Promise<string> {
+	return memoized(realpathCache, p, () => realpathOrSelfUncached(p));
 }
 
 async function realpathOrSelfUncached(p: string): Promise<string> {
@@ -1290,6 +1318,10 @@ async function realpathOrSelfUncached(p: string): Promise<string> {
  */
 async function collectExtensionModules(entryRealPath: string): Promise<Map<string, string>> {
 	const modules = new Map<string, string>();
+	// One read per file: a candidate is checked for CommonJS when its importer is walked, and read
+	// again as a module of its own when the walk reaches it. Both come from here.
+	const sources = new Map<string, Promise<string>>();
+	const readSource: SourceReader = file => memoized(sources, file, () => Bun.file(file).text());
 	const queuedFollowBareDependencies = new Map<string, boolean>([[entryRealPath, true]]);
 	const queue: Array<{ file: string; followBareDependencies: boolean }> = [
 		{ file: entryRealPath, followBareDependencies: true },
@@ -1306,7 +1338,7 @@ async function collectExtensionModules(entryRealPath: string): Promise<Map<strin
 		}
 		let source: string;
 		try {
-			source = await Bun.file(file).text();
+			source = await readSource(file);
 		} catch {
 			continue;
 		}
@@ -1332,13 +1364,20 @@ async function collectExtensionModules(entryRealPath: string): Promise<Map<strin
 					const candidate = Bun.resolveSync(specifier, dir);
 					if (
 						hasSourceModuleExtension(candidate) &&
-						(!isRequired || (await moduleRequiresNativeAddon(candidate)))
+						(isRequired
+							? await moduleRequiresNativeAddon(candidate)
+							: !(await isCommonJsModule(candidate, readSource)))
 					) {
 						resolved = await realpathOrSelf(candidate);
 					}
 				} else if (specifier.startsWith("#")) {
 					const candidate = await resolvePackageImportSpecifier(specifier, file);
-					if (candidate && (!isRequired || (await moduleRequiresNativeAddon(candidate)))) {
+					if (
+						candidate &&
+						(isRequired
+							? await moduleRequiresNativeAddon(candidate)
+							: !(await isCommonJsModule(candidate, readSource)))
+					) {
 						resolved = candidate;
 					}
 				} else if (
@@ -1430,8 +1469,12 @@ function installExtensionGraphHook(
 					} else {
 						raw = await Bun.file(sourcePath).text();
 					}
+					const rewritten = await rewriteLegacyExtensionSource(raw, sourcePath, mtimeTag);
 					return {
-						contents: await rewriteLegacyExtensionSource(raw, sourcePath, mtimeTag),
+						contents:
+							sourcePath === entryRealPath && isCommonJsSource(sourcePath, rewritten)
+								? wrapCommonJsAsModule(rewritten)
+								: rewritten,
 						loader: getLoader(sourcePath),
 					};
 				});
@@ -1455,7 +1498,13 @@ function installExtensionGraphHook(
 					if (source === undefined) {
 						throw new Error(`Missing pre-rewritten CommonJS extension source: ${sourcePath}`);
 					}
-					return { contents: source, loader: getLoader(sourcePath) };
+					return {
+						contents:
+							sourcePath === entryRealPath && isCommonJsSource(sourcePath, source)
+								? wrapCommonJsAsModule(source)
+								: source,
+						loader: getLoader(sourcePath),
+					};
 				});
 			},
 		});

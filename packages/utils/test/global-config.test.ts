@@ -356,19 +356,19 @@ describe("migrateLegacyDefaultProfileLayout", () => {
 	 */
 	it("exempts the directory getGlobalSubagentsDir resolves to", () => {
 		const root = getGlobalConfigRootDir();
-		const subagents = getGlobalSubagentsDir();
-		expect(path.dirname(subagents)).toBe(root);
+		const agents = getGlobalSubagentsDir();
+		expect(path.dirname(agents)).toBe(root);
 		fs.mkdirSync(path.join(root, "agent"), { recursive: true });
 		fs.writeFileSync(path.join(root, "agent", "agent.db"), "db");
-		fs.mkdirSync(subagents, { recursive: true });
-		fs.writeFileSync(path.join(subagents, "auditor.md"), "---\nname: auditor\n---\nbody\n");
+		fs.mkdirSync(agents, { recursive: true });
+		fs.writeFileSync(path.join(agents, "auditor.md"), "---\nname: auditor\n---\nbody\n");
 
 		const result = migrateLegacyDefaultProfileLayout();
 
 		expect(result.migrated).toBe(true);
-		expect(result.movedEntries).not.toContain(path.basename(subagents));
-		expect(fs.existsSync(path.join(result.targetDir, path.basename(subagents)))).toBe(false);
-		expect(fs.readFileSync(path.join(subagents, "auditor.md"), "utf8")).toContain("name: auditor");
+		expect(result.movedEntries).not.toContain(path.basename(agents));
+		expect(fs.existsSync(path.join(result.targetDir, path.basename(agents)))).toBe(false);
+		expect(fs.readFileSync(path.join(agents, "auditor.md"), "utf8")).toContain("name: auditor");
 	});
 
 	it("leaves named profiles untouched under profiles/", () => {

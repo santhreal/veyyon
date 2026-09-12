@@ -44,7 +44,7 @@ function sessionDelivering(outcome: "injected" | "woken"): AgentSession {
 	} as unknown as AgentSession;
 }
 
-/** Register one more running subagent, so a test can have a third voice. */
+/** Register one more running agent, so a test can have a third voice. */
 function registerAgent(id: string, session: AgentSession | null, scope?: string): void {
 	AgentRegistry.global().register({
 		id,

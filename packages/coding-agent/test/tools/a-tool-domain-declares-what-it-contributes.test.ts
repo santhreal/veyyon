@@ -9,7 +9,7 @@
  *      model is offered cannot be constructed, or one no domain claims is unreachable.
  *   2. Two domains claim the same name. The later spread wins, so the model calls one tool and gets
  *      the other's implementation.
- *   3. A domain's renderer table draws a name that domain does not contribute, which paints one
+ *   3. A domain's view table describes a name that domain does not contribute, which paints one
  *      tool's card for another tool's result.
  *
  * The sweep derives the domain list from `BUILTIN_TOOL_DOMAINS` at run time, so a sixth domain is
@@ -23,32 +23,35 @@
 import { describe, expect, it } from "bun:test";
 import type { ToolDomainManifest } from "@veyyon/kernel/registry/tool-domain";
 import { agentDomain } from "../../src/tools/agent/manifest";
-import { agentRenderers } from "../../src/tools/agent/renderers";
 import { VIBE_TOOL_NAMES } from "../../src/tools/agent/vibe";
 import { BUILTIN_TOOL_NAMES, HIDDEN_TOOL_NAMES } from "../../src/tools/core/builtin-names";
 import { fsDomain } from "../../src/tools/fs/manifest";
-import { fsRenderers } from "../../src/tools/fs/renderers";
 import { BUILTIN_TOOL_DOMAINS, BUILTIN_TOOLS, HIDDEN_TOOLS, type ToolFactory } from "../../src/tools/index";
-import { toolRenderers } from "../../src/tools/renderers";
+import { type ToolRenderer, toolRenderers } from "../../src/tools/renderers";
 import { searchDomain } from "../../src/tools/search/manifest";
-import { searchRenderers } from "../../src/tools/search/renderers";
 import { shellDomain } from "../../src/tools/shell/manifest";
-import { shellRenderers } from "../../src/tools/shell/renderers";
+import {
+	agentViewDefinitions,
+	fsViewDefinitions,
+	searchViewDefinitions,
+	shellViewDefinitions,
+	toolViewDefinitions,
+	webViewDefinitions,
+} from "../../src/tools/view-registry";
 import { webDomain } from "../../src/tools/web/manifest";
-import { webRenderers } from "../../src/tools/web/renderers";
 
 /**
- * The renderer table each domain publishes, keyed by the domain name its manifest declares.
+ * The view definitions for each domain, keyed by the domain name its manifest declares.
  *
  * A domain that draws nothing belongs here with an empty table rather than absent, so the
  * "every domain accounted for" assertion below stays exact.
  */
-const DOMAIN_RENDERERS: Readonly<Record<string, Record<string, unknown>>> = {
-	fs: fsRenderers,
-	search: searchRenderers,
-	shell: shellRenderers,
-	web: webRenderers,
-	agent: agentRenderers,
+const DOMAIN_VIEWS: Readonly<Record<string, Record<string, object>>> = {
+	fs: fsViewDefinitions,
+	search: searchViewDefinitions,
+	shell: shellViewDefinitions,
+	web: webViewDefinitions,
+	agent: agentViewDefinitions,
 };
 
 /** The aggregate table, keyed loosely so a name derived at run time can look a renderer up in it. */
@@ -78,7 +81,7 @@ function rowsOf(manifest: ToolDomainManifest<ToolFactory>): [string, ToolFactory
 describe("a tool domain declares what it contributes", () => {
 	it("sweeps every domain the package ships", () => {
 		expect(BUILTIN_TOOL_DOMAINS).toEqual(DECLARED_DOMAINS);
-		expect(BUILTIN_TOOL_DOMAINS.map(domain => domain.domain).sort()).toEqual(Object.keys(DOMAIN_RENDERERS).sort());
+		expect(BUILTIN_TOOL_DOMAINS.map(domain => domain.domain).sort()).toEqual(Object.keys(DOMAIN_VIEWS).sort());
 		for (const manifest of BUILTIN_TOOL_DOMAINS) {
 			expect(rowsOf(manifest).length).toBeGreaterThan(0);
 		}
@@ -113,18 +116,32 @@ describe("a tool domain declares what it contributes", () => {
 		const outsideManifest: string[] = [];
 		for (const manifest of BUILTIN_TOOL_DOMAINS) {
 			const contributed = new Set(rowsOf(manifest).map(([name]) => name));
-			const drawn = Object.keys(DOMAIN_RENDERERS[manifest.domain] ?? {});
+			const views = DOMAIN_VIEWS[manifest.domain] ?? {};
+			const drawn = Object.keys(views);
 
 			outsideManifest.push(...drawn.filter(name => !contributed.has(name)));
 			for (const name of drawn) {
-				expect(ALL_RENDERERS[name]).toBe(DOMAIN_RENDERERS[manifest.domain]?.[name]);
+				expect(ALL_RENDERERS[name]).toMatchObject(views[name]);
 			}
 		}
 
 		// The vibe tools reach a session through `createVibeTools` rather than a manifest, because a
-		// subagent never gets them. Their renderers still ship with the domain that constructs them,
+		// agent never gets them. Their renderers still ship with the domain that constructs them,
 		// and this is the whole set: any other renderer for a name no manifest claims fails here.
 		expect(outsideManifest.sort()).toEqual([...VIBE_TOOL_NAMES].sort());
+	});
+
+	it("adapts every canonical view and preserves shared-definition identity", () => {
+		expect(Object.keys(toolRenderers)).toEqual(Object.keys(toolViewDefinitions));
+		const adapters = new Map<object, ToolRenderer>();
+		for (const [name, definition] of Object.entries(toolViewDefinitions)) {
+			const renderer = toolRenderers[name];
+			expect(renderer).toMatchObject(definition);
+			// Streamed-argument grouping and first-result replay depend on alias identity.
+			const existing = adapters.get(definition);
+			if (existing) expect(renderer).toBe(existing);
+			else adapters.set(definition, renderer);
+		}
 	});
 
 	it("renders no name that no tool answers to", () => {

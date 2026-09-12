@@ -31,11 +31,7 @@ import {
 } from "../../packages/coding-agent/src/modes/terminal/draw/rail-motion";
 import { theme } from "../../packages/coding-agent/src/theme/theme";
 import { bashToolView } from "../../packages/coding-agent/src/tools/shell/bash-view";
-import { flag, hasFlag, initRender, renderWidth } from "./render-args";
-
-const themeName = flag("theme", "titanium");
-const width = renderWidth();
-await initRender(themeName, { settings: true });
+import { renderDemo } from "./render-args";
 
 const command =
 	'export TMPDIR="$HOME/.cache/lurien-e2e" ORT_DYLIB_PATH=/usr/local/lib/sherpa-onnx/libonnxruntime.so; cargo test -p lurien-vision --test audio_transcription 2>&1 | grep -E "^error" | head -5';
@@ -50,27 +46,25 @@ const OUTPUT = [
 	"test streams_partial_segments ... ok",
 ].join("\n");
 
-const running = hasFlag("running");
-const view = running
-	? bashToolView.renderCall({ command }, { expanded: false, partial: true })
-	: bashToolView.renderResult(
-			// `BashToolDetails` carries the exit code only; the command and output reach the card
-			// through the call args and the result content.
-			{ content: [{ type: "text", text: OUTPUT }], details: { exitCode: 0 } },
-			{ expanded: false, partial: false },
-			{ command },
-		);
-const component = drawToolView(view, theme);
-
-const lines = component.render(width);
-const idle = flag("idle", "");
-const settle = flag("settle", "");
-const motion: RailMotion | undefined =
-	idle !== ""
-		? { kind: "idle", head: railIdleHeadAt(Number(idle)) }
-		: settle !== "" && Number(settle) > 0
-			? { kind: "settle", frame: Math.min(Number(settle), RAIL_SETTLE_FRAMES) }
-			: undefined;
-
-const painted = motion ? paintRailMotion(lines, motion, theme) : lines;
-process.stdout.write(`${painted.join("\n")}\n`);
+await renderDemo(
+	({ width, flag, hasFlag }) => {
+		const view = hasFlag("running")
+			? bashToolView.renderCall({ command }, { expanded: false, partial: true })
+			: bashToolView.renderResult(
+					{ content: [{ type: "text", text: OUTPUT }], details: { exitCode: 0 } },
+					{ expanded: false, partial: false },
+					{ command },
+				);
+		const lines = drawToolView(view, theme).render(width);
+		const idle = flag("idle", "");
+		const settle = flag("settle", "");
+		const motion: RailMotion | undefined =
+			idle !== ""
+				? { kind: "idle", head: railIdleHeadAt(Number(idle)) }
+				: settle !== "" && Number(settle) > 0
+					? { kind: "settle", frame: Math.min(Number(settle), RAIL_SETTLE_FRAMES) }
+					: undefined;
+		return motion ? paintRailMotion(lines, motion, theme) : lines;
+	},
+	{ settings: true },
+);

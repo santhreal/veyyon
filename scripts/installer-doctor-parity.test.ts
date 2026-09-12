@@ -7,7 +7,7 @@ import * as path from "node:path";
  *
  * Why this suite exists: doctor used to report success whenever the command name
  * existed anywhere on PATH. That is exactly the state a SHADOWED install is in —
- * an older copy earlier on PATH (a previous `bun add -g`, a distro package, a
+ * an older copy earlier on PATH (an older binary in another directory, a
  * stale manual install) keeps winning every invocation, so the user "upgrades",
  * sees a green doctor, and runs the old binary forever. Presence on PATH is not
  * proof; where the name RESOLVES is. Both installers must check it, report the

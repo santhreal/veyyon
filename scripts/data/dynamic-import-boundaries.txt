@@ -52,7 +52,6 @@ packages/coding-agent/src/export/markit/converters/pdf/extract.ts
 packages/coding-agent/src/extensibility/coding-agent-api.ts
 packages/coding-agent/src/extensibility/custom-commands/loader.ts
 packages/coding-agent/src/extensibility/custom-tools/loader.ts
-packages/coding-agent/src/extensibility/hooks/loader.ts
 packages/coding-agent/src/extensibility/plugins/legacy-pi-compat.ts
 packages/coding-agent/src/extensibility/plugins/marketplace-auto-update.ts
 packages/coding-agent/src/main.ts
@@ -103,6 +102,7 @@ packages/coding-agent/test/extensibility/legacy-pi-ai-type-remap.test.ts
 packages/coding-agent/test/extensibility/legacy-pi-inplace-load.test.ts
 packages/coding-agent/test/fixtures/run-root-command-piped-stdin.ts
 packages/coding-agent/test/image-b64poly.test.ts
+packages/coding-agent/test/oracles/historical-loader.ts
 packages/coding-agent/test/profile-lifecycle.test.ts
 packages/coding-agent/test/secrets/documented-keywords-match-the-data.test.ts
 packages/coding-agent/test/session/owned-resources.test.ts
@@ -126,12 +126,7 @@ plugins/mnemopi/src/core/extraction.ts
 plugins/mnemopi/src/core/fastembed-runtime.ts
 plugins/mnemopi/test/checking-a-schema-is-not-running-the-engine.test.ts
 plugins/mnemopi/test/local-llm.test.ts
-plugins/web/src/scrapers/arxiv.ts
-plugins/web/src/scrapers/go-pkg.ts
-plugins/web/src/scrapers/iacr.ts
-plugins/web/src/scrapers/readthedocs.ts
 plugins/web/src/scrapers/twitter.ts
-plugins/web/src/scrapers/wikipedia.ts
 scripts/check-doc-imports.ts
 scripts/demos/render-args.ts
 scripts/package-exports-surface.ts

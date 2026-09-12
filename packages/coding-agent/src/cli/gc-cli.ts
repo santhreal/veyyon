@@ -272,31 +272,9 @@ async function readTextIfPresent(file: string): Promise<string> {
 	}
 }
 
-async function collectJsonlFiles(root: string): Promise<string[]> {
+async function collectSessionFiles(root: string, glob: Bun.Glob): Promise<string[]> {
 	try {
-		const files = await Array.fromAsync(JSONL_GLOB.scan(root), name => path.join(root, name));
-		files.sort();
-		return files;
-	} catch (error) {
-		if (codeOf(error) === "ENOENT") return [];
-		throw error;
-	}
-}
-
-async function collectCompressedJsonlFiles(root: string): Promise<string[]> {
-	try {
-		const files = await Array.fromAsync(JSONL_GZ_GLOB.scan(root), name => path.join(root, name));
-		files.sort();
-		return files;
-	} catch (error) {
-		if (codeOf(error) === "ENOENT") return [];
-		throw error;
-	}
-}
-
-async function collectBackupJsonlFiles(root: string): Promise<string[]> {
-	try {
-		const files = await Array.fromAsync(JSONL_BACKUP_GLOB.scan(root), name => path.join(root, name));
+		const files = await Array.fromAsync(glob.scan(root), name => path.join(root, name));
 		files.sort();
 		return files;
 	} catch (error) {
@@ -309,9 +287,9 @@ async function collectReferencedBlobHashes(sessionRoots: string[]): Promise<Set<
 	const hashes = new Set<string>();
 	for (const root of sessionRoots) {
 		const files = [
-			...(await collectJsonlFiles(root)),
-			...(await collectCompressedJsonlFiles(root)),
-			...(await collectBackupJsonlFiles(root)),
+			...(await collectSessionFiles(root, JSONL_GLOB)),
+			...(await collectSessionFiles(root, JSONL_GZ_GLOB)),
+			...(await collectSessionFiles(root, JSONL_BACKUP_GLOB)),
 		];
 		for (const file of files) {
 			const text = await readTextIfPresent(file);
@@ -406,7 +384,7 @@ async function listActiveSessions(sessionsRoot: string): Promise<SessionInfo[]> 
 }
 
 async function listNestedSessionsReadOnly(artifactsRoot: string): Promise<SessionInfo[]> {
-	const files = await collectJsonlFiles(artifactsRoot);
+	const files = await collectSessionFiles(artifactsRoot, JSONL_GLOB);
 	const dirs = Array.from(new Set(files.map(file => path.dirname(file)))).sort();
 	const storage = new FileSessionStorage();
 	const sessions: SessionInfo[] = [];
@@ -609,7 +587,7 @@ function deleteHistoryRowsForSessions(dbPath: string, sessionIds: string[]): { d
 
 async function collectArchivedSessionIds(archiveRoot: string): Promise<string[]> {
 	const ids = new Set<string>();
-	for (const file of await collectCompressedJsonlFiles(archiveRoot)) {
+	for (const file of await collectSessionFiles(archiveRoot, JSONL_GZ_GLOB)) {
 		const id = await archivedSessionIdFromFile(file);
 		if (id) ids.add(id);
 	}

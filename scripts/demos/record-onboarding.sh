@@ -21,7 +21,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 BUN="${VEYYON_DEMO_BUN:-$HOME/.bun/bin/bun}"
-SCENES=(providers subagents glyphs theme import)
+SCENES=(providers agents glyphs theme import)
 
 OUT="${VEYYON_DEMO_OUT:-.captures/onboarding-proofs}"
 mkdir -p "$OUT"

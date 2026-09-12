@@ -22,7 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { loadConfig } from "@veyyon/coding-agent/lsp/config";
+import { candidateConfigFiles, loadConfig } from "@veyyon/coding-agent/lsp/config";
 import { logger } from "@veyyon/utils";
 
 /**
@@ -189,5 +189,56 @@ describe("the absent and the healthy cases", () => {
 		expect(warnings.map(entry => entry.message)).toContain(
 			"Ignoring invalid LSP server config (missing required fields).",
 		);
+	});
+});
+
+describe("configuration source ordering and precedence", () => {
+	it("generates candidate config filenames in visible/hidden JSON, YAML, YML order", () => {
+		expect(candidateConfigFiles("lsp")).toEqual([
+			"lsp.json",
+			".lsp.json",
+			"lsp.yaml",
+			".lsp.yaml",
+			"lsp.yml",
+			".lsp.yml",
+		]);
+		expect(candidateConfigFiles("dap")).toEqual([
+			"dap.json",
+			".dap.json",
+			"dap.yaml",
+			".dap.yaml",
+			"dap.yml",
+			".dap.yml",
+		]);
+	});
+
+	it("honors source precedence: project root overrides project config dir", () => {
+		fs.mkdirSync(path.join(cwd, ".veyyon"), { recursive: true });
+		fs.writeFileSync(path.join(cwd, "package.json"), "{}");
+
+		// Project config dir (.veyyon/lsp.json)
+		fs.writeFileSync(
+			path.join(cwd, ".veyyon", "lsp.json"),
+			JSON.stringify({
+				servers: {
+					fixture: { command: "node", args: ["dir-arg"], fileTypes: ["ts"], rootMarkers: ["package.json"] },
+					"dir-only": { command: "node", fileTypes: ["do"], rootMarkers: ["package.json"] },
+				},
+			}),
+		);
+
+		// Project root (lsp.json in cwd)
+		fs.writeFileSync(
+			path.join(cwd, "lsp.json"),
+			JSON.stringify({
+				servers: {
+					fixture: { command: "node", args: ["root-arg"], fileTypes: ["ts"], rootMarkers: ["package.json"] },
+				},
+			}),
+		);
+
+		const config = loadConfig(cwd);
+		expect(config.servers.fixture?.args).toEqual(["root-arg"]);
+		expect(config.servers["dir-only"]?.fileTypes).toEqual(["do"]);
 	});
 });

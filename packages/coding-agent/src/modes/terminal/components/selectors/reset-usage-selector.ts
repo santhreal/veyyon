@@ -1,7 +1,7 @@
 import { type Component, ScrollView } from "@veyyon/tui";
+import { HoverController } from "@veyyon/tui/utils/hover-controller";
 import { clampLow, formatCount } from "@veyyon/utils";
 import { matchesKey } from "@veyyon/utils/keys";
-import { HoverFade } from "@veyyon/utils/motion";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import type { ResetUsageAccount } from "../../../../slash-commands/helpers/reset-usage";
@@ -9,8 +9,6 @@ import { theme } from "../../../../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import {
 	computeModalDims,
-	consumeModalChipHover,
-	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
 	type ModalShortcut,
@@ -18,6 +16,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "../chrome/modal-shell";
+import { routeModalCardMouse } from "./select-list-mouse-routing";
 import { hoverBandAt } from "./selector-helpers";
 
 const RESET_SELECTOR_MAX_VISIBLE = 10;
@@ -51,15 +50,10 @@ export class ResetUsageSelectorComponent implements Component {
 	/** Frame row where the account rows begin (shell body start). */
 	#listRowStart = 0;
 	/** Pointer-highlighted account (never the selected one; selection owns its row). */
-	#hoveredIndex: number | null = null;
+	#hover = new HoverController<number>();
 	/** Per-render map of 0-based body line → account index. */
 	#hitRows: (number | undefined)[] = [];
 	#onRequestRender?: () => void;
-	/**
-	 * The cross-fade between the account the pointer left and the one it arrived at, once a host
-	 * lends this card a repaint. Absent, the band is switched.
-	 */
-	#hoverFade: HoverFade | undefined;
 
 	constructor(accounts: ResetUsageAccount[], onSelect: (account: ResetUsageAccount) => void, onCancel: () => void) {
 		this.#accounts = accounts;
@@ -73,27 +67,15 @@ export class ResetUsageSelectorComponent implements Component {
 		this.#onRequestRender = cb;
 		// The band fades only once the card has a repaint to lend it: the frames between two mouse
 		// reports have no input to hang off. Same ambient gate as the open unfold.
-		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: pointerMotionEnabled() });
-		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+		this.#hover.setMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
 	}
 
 	/** Settle the pointer band so no timer outlives a dismissed card. */
 	dispose(): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = undefined;
-		this.#hoveredIndex = null;
+		this.#hover.dispose();
 	}
 
-	/** Band strength for an account row; without a fade the hovered row is at 1 and the rest at 0. */
-	#hoverStrength(index: number): number {
-		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
-		return index === this.#hoveredIndex ? 1 : 0;
-	}
-
-	invalidate(): void {
-		// No cached state to invalidate currently
-	}
+	invalidate(): void {}
 
 	#pendingAccount(): ResetUsageAccount | undefined {
 		return this.#pendingIndex !== null ? this.#accounts[this.#pendingIndex] : undefined;
@@ -107,12 +89,11 @@ export class ResetUsageSelectorComponent implements Component {
 		const endIndex = Math.min(startIndex + maxVisible, total);
 
 		const rows: string[] = [];
-		this.#hitRows = [];
 		for (let i = startIndex; i < endIndex; i++) {
 			const account = this.#accounts[i];
 			if (!account) continue;
 			const isSelected = i === this.#selectedIndex;
-			const hoverStrength = this.#hoverStrength(i);
+			const hoverStrength = this.#hover.strength(i);
 			const redeemable = account.availableCount > 0;
 			const countLabel = account.error ? account.error : formatCount("saved reset", account.availableCount);
 			const countText = account.error
@@ -220,75 +201,60 @@ export class ResetUsageSelectorComponent implements Component {
 	}
 
 	#routeMouse(event: SgrMouseEvent): boolean {
-		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-			motion: event.motion,
-			leftClick: event.leftClick,
-		});
-		if (
-			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+		return routeModalCardMouse({
+			shellGeometry: this.#shellGeometry,
+			event,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			onHoverShortcut: id => {
 				this.#hoveredShortcutId = id;
 				this.#onRequestRender?.();
-			})
-		) {
-			return true;
-		}
-		if (
-			chrome.kind === "close" ||
-			chrome.kind === "outside" ||
-			(chrome.kind === "shortcut" && chrome.id === "close")
-		) {
-			if (this.#pendingIndex !== null) {
-				this.#pendingIndex = null;
-				this.#statusMessage = undefined;
-				this.#onRequestRender?.();
-				return true;
-			}
-			this.#onCancelCallback();
-			return true;
-		}
-		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
-			this.handleInput("\n");
-			return true;
-		}
-		if (event.wheel !== null) {
-			if (this.#accounts.length > 0) {
-				const total = this.#accounts.length;
-				this.#selectedIndex =
-					event.wheel < 0
-						? this.#selectedIndex === 0
-							? total - 1
-							: this.#selectedIndex - 1
-						: this.#selectedIndex === total - 1
-							? 0
-							: this.#selectedIndex + 1;
-				this.#pendingIndex = null;
-				this.#statusMessage = undefined;
-				this.#onRequestRender?.();
-			}
-			return true;
-		}
-		const line = event.row - this.#listRowStart;
-		if (event.motion) {
-			const index = this.#hitRows[line] ?? null;
-			if (index !== this.#hoveredIndex) {
-				this.#hoveredIndex = index;
-				this.#hoverFade?.set(index);
-				this.#onRequestRender?.();
-			}
-			return true;
-		}
-		if (event.leftClick) {
-			const index = this.#hitRows[line];
-			if (index !== undefined) {
-				// Click mirrors Enter: first press arms the pending state, a second
-				// press on the same row spends the reset.
+			},
+			onCancel: () => {
+				if (this.#pendingIndex !== null) {
+					this.#pendingIndex = null;
+					this.#statusMessage = undefined;
+					this.#onRequestRender?.();
+					return;
+				}
+				this.#onCancelCallback();
+			},
+			onConfirm: () => this.handleInput("\n"),
+			onWheel: delta => {
+				if (this.#accounts.length > 0) {
+					const total = this.#accounts.length;
+					this.#selectedIndex =
+						delta < 0
+							? this.#selectedIndex === 0
+								? total - 1
+								: this.#selectedIndex - 1
+							: this.#selectedIndex === total - 1
+								? 0
+								: this.#selectedIndex + 1;
+					this.#pendingIndex = null;
+					this.#statusMessage = undefined;
+					this.#onRequestRender?.();
+				}
+			},
+			listRowStart: this.#listRowStart,
+			hitRows: this.#hitRows,
+			onHoverRow: index => {
+				if (index !== this.#hover.key) {
+					this.#hover.set(index);
+					this.#onRequestRender?.();
+				}
+			},
+			onClickRow: index => {
+				const account = this.#accounts[index];
+				if (!account) return;
+				if (account.availableCount <= 0) {
+					this.#statusMessage = "That account has no saved resets to spend.";
+					this.#onRequestRender?.();
+					return;
+				}
 				this.#selectedIndex = index;
 				this.handleInput("\n");
-				this.#onRequestRender?.();
-			}
-			return true;
-		}
-		return true;
+			},
+		});
 	}
 
 	render(width: number): readonly string[] {

@@ -151,11 +151,7 @@ fn filter_bun_check(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> Mini
 	let cleaned = primitives::strip_ansi(input);
 	let text = compact_bun_check_output(ctx, &cleaned, exit_code)
 		.unwrap_or_else(|| lint::condense_lint_output(ctx.program, &cleaned, exit_code));
-	if text == input {
-		MinimizerOutput::passthrough(input)
-	} else {
-		MinimizerOutput::transformed(text, input.len())
-	}
+	MinimizerOutput::maybe_transformed(input, text)
 }
 
 fn compact_bun_check_output(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> Option<String> {
@@ -297,11 +293,7 @@ fn filter_bun_build(input: &str, exit_code: i32) -> MinimizerOutput {
 	} else {
 		primitives::head_tail_dedup_capped(&out, 120, 80)
 	};
-	if text == input {
-		MinimizerOutput::passthrough(input)
-	} else {
-		MinimizerOutput::transformed(text, input.len())
-	}
+	MinimizerOutput::maybe_transformed(input, text)
 }
 
 fn is_bun_build_noise(line: &str, exit_code: i32) -> bool {

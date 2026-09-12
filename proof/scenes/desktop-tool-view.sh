@@ -165,7 +165,7 @@ restore_collapsed() {
 	} >&2
 	screen_differs_from_shot_per_mille tool-card-collapsed
 }
-STRAY_FRAME="${SCENE_RUNTIME_DIR}/unexplained-stray.png"
+STRAY_FRAME="${TMPDIR}/unexplained-stray.png"
 for step in $(seq 0 39); do
 	CARD_Y=$(( CROP_Y + 8 + step * 16 ))
 	[ "${CARD_Y}" -lt "${CARD_FLOOR}" ] || break

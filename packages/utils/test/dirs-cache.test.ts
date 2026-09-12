@@ -7,8 +7,10 @@ import {
 	__resetDirsFromEnvForTests,
 	APP_NAME,
 	getActiveProfile,
+	getAuthBrokerSnapshotCachePath,
 	getConfigDirName,
 	getDocumentConversionCacheDir,
+	getGithubCacheDbPath,
 	getProfileRootDir,
 	setAgentDir,
 } from "@veyyon/utils/dirs";
@@ -63,6 +65,54 @@ describe("document conversion cache directory", () => {
 		setAgentDir(customAgentDir);
 
 		expect(getDocumentConversionCacheDir()).toBe(path.join(customAgentDir, "cache", "document-conversions"));
+	});
+});
+
+describe("env-overridable cache files", () => {
+	let tempRoot = "";
+	let originalGithub: string | undefined;
+	let originalBroker: string | undefined;
+	let originalAgentDir: string | undefined;
+	let originalProfile: string | undefined;
+	let originalXdgCacheHome: string | undefined;
+
+	beforeEach(() => {
+		originalGithub = process.env.VEYYON_GITHUB_CACHE_DB;
+		originalBroker = process.env.VEYYON_AUTH_BROKER_SNAPSHOT_CACHE;
+		originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
+		originalProfile = process.env.VEYYON_PROFILE;
+		originalXdgCacheHome = process.env.XDG_CACHE_HOME;
+		tempRoot = mkdtempSync(path.join(os.tmpdir(), "veyyon-utils-cache-files-"));
+	});
+
+	afterEach(async () => {
+		restoreEnv("VEYYON_GITHUB_CACHE_DB", originalGithub);
+		restoreEnv("VEYYON_AUTH_BROKER_SNAPSHOT_CACHE", originalBroker);
+		restoreEnv("VEYYON_CODING_AGENT_DIR", originalAgentDir);
+		restoreEnv("VEYYON_PROFILE", originalProfile);
+		restoreEnv("XDG_CACHE_HOME", originalXdgCacheHome);
+		__resetDirsFromEnvForTests();
+		await fs.rm(tempRoot, { recursive: true, force: true });
+	});
+
+	it("sits under the profile root's cache by its own file name, and moves to its own env override", () => {
+		delete process.env.VEYYON_GITHUB_CACHE_DB;
+		delete process.env.VEYYON_AUTH_BROKER_SNAPSHOT_CACHE;
+		delete process.env.VEYYON_CODING_AGENT_DIR;
+		delete process.env.XDG_CACHE_HOME;
+		process.env.VEYYON_PROFILE = "cache-files-profile";
+		__resetDirsFromEnvForTests();
+		const cacheDir = path.join(getProfileRootDir("cache-files-profile"), "cache");
+
+		expect(getGithubCacheDbPath()).toBe(path.join(cacheDir, "github-cache.db"));
+		expect(getAuthBrokerSnapshotCachePath()).toBe(path.join(cacheDir, "auth-broker-snapshot.enc"));
+
+		process.env.VEYYON_GITHUB_CACHE_DB = path.join(tempRoot, "gh.db");
+		expect(getGithubCacheDbPath()).toBe(path.join(tempRoot, "gh.db"));
+		expect(getAuthBrokerSnapshotCachePath()).toBe(path.join(cacheDir, "auth-broker-snapshot.enc"));
+
+		process.env.VEYYON_AUTH_BROKER_SNAPSHOT_CACHE = path.join(tempRoot, "broker.enc");
+		expect(getAuthBrokerSnapshotCachePath()).toBe(path.join(tempRoot, "broker.enc"));
 	});
 });
 

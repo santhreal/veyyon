@@ -126,8 +126,8 @@ DRAFT_PIXELS_MIN=300
 # between them. Everything is counted between the ring's own edges, so a
 # transcript block behind the card cannot be read as part of it.
 plan_reading() { # <png> -> "RING_PX TOP BOTTOM ACCENT_PX"
-	local dump="${SCENE_RUNTIME_DIR}/frame-compare/plan-reading.txt"
-	mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+	local dump="${TMPDIR}/frame-compare/plan-reading.txt"
+	mkdir -p "${TMPDIR}/frame-compare"
 	magick "$1" -crop "${CARD_BAND}" +repage txt:- >"${dump}"
 	python3 - "${dump}" "${RING#\#}" "${ACCENT#\#}" "${COMPOSER_CARD_W}" <<'PY'
 import re
@@ -176,7 +176,7 @@ PY
 # writes its plan and asks for approval, so the wait is on the window rather
 # than on a timer.
 await_plan() { # <seconds> -> 0 once a plan is ringed and offers its answers
-	local deadline=$(( SECONDS + $1 )) probe="${SCENE_RUNTIME_DIR}/awaiting-plan.png"
+	local deadline=$(( SECONDS + $1 )) probe="${TMPDIR}/awaiting-plan.png"
 	local top=0 bottom=0 accent=0
 	while (( SECONDS < deadline )); do
 		probe_frame "${probe}"
@@ -223,7 +223,7 @@ import socket
 
 profile = os.environ.get("VEYYON_PROFILE") or "default"
 endpoint = Path.home() / ".veyyon" / "profiles" / profile / "agent" / "gui-host.sock"
-created = json.loads((Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json").read_text())
+created = json.loads((Path(os.environ["TMPDIR"]) / "created-session.json").read_text())
 with socket.socket(socket.AF_UNIX) as connection:
     connection.settimeout(10.0)
     connection.connect(str(endpoint))
@@ -291,7 +291,7 @@ fi
 # control, so arriving there paints no hover fill into the difference.
 move_px "${PRIMARY_X}" "${PRIMARY_Y}"
 pause 0.4
-EMPTY_EDITOR="${SCENE_RUNTIME_DIR}/empty-composer.png"
+EMPTY_EDITOR="${TMPDIR}/empty-composer.png"
 probe_frame "${EMPTY_EDITOR}"
 
 # ─── The Refinement, Written Under The Plan ─────────────────────────────────

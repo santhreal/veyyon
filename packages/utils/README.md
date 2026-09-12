@@ -1,6 +1,6 @@
 # @veyyon/utils
 
-Shared utilities for [veyyon](https://github.com/santhreal/veyyon) packages. Bun-first.
+Shared utilities for [veyyon](https://github.com/santhreal/veyyon) packages.
 
 ## Notable modules
 

@@ -14,12 +14,13 @@ import { formatGroupedFiles } from "../core/grouped-file-output";
 import { inlineBudgetFor, saveOutputArtifact } from "../core/output-artifact";
 import type { OutputMeta } from "../core/output-meta";
 import { toPathList } from "../core/path-utils";
-import { capParseErrors, formatCodeFrameLine, formatParseErrors, PREVIEW_LIMITS } from "../core/render-utils";
+import { capParseErrors, formatCodeFrameLine, formatParseErrors } from "../core/render-utils";
 import { ToolError, throwIfAborted } from "../core/tool-errors";
 import { toolResult } from "../core/tool-result";
 import { loadUrlReader } from "../web/manifest";
 import { parseReadUrlTarget } from "../web/read-url-target";
 import { formatMatchLine } from "./match-line-format";
+import { MATCH_LIMIT_NOTICE_PREFIX } from "./search-card-limits";
 import { isImmutableSearchSourcePath, resolveToolSearchScope } from "./search-scope";
 import { BROAD_SEARCH_INLINE_MAX_BYTES } from "./text-search";
 
@@ -31,13 +32,6 @@ export interface StructureSearchInput {
 
 /** Bytes a metavariable value may restate before the name alone stands for it. */
 export const META_VALUE_MAX_BYTES = 60;
-
-/**
- * Opening words of the match-limit notice. The renderer's group filter matches
- * this prefix to keep the notice out of the code-frame groups, so both sites
- * read one definition rather than two copies of the same words.
- */
-export const MATCH_LIMIT_NOTICE_PREFIX = "Match limit reached";
 
 function compareAstFindMatch(left: AstFindMatch, right: AstFindMatch): number {
 	const pathCmp = left.path.localeCompare(right.path);
@@ -509,5 +503,3 @@ export interface StructureSearchRenderArgs {
 	path?: string;
 	skip?: number;
 }
-
-export const COLLAPSED_MATCH_LIMIT = PREVIEW_LIMITS.COLLAPSED_LINES * 2;

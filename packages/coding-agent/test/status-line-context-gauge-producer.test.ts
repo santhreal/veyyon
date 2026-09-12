@@ -28,6 +28,7 @@ import type { StatusLineSegmentId } from "@veyyon/coding-agent/modes/terminal/co
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
+import { StatusPresentationProducer } from "../src/presentation/status-producer";
 import { statusLineSessionParts } from "./helpers/status-line-session";
 
 beforeAll(async () => {
@@ -87,7 +88,7 @@ function render(
 	segments: StatusLineSegmentId[],
 	options?: { guestUsage?: ContextUsage },
 ): string {
-	const component = new StatusLineComponent(session);
+	const component = new StatusLineComponent(new StatusPresentationProducer(session));
 	component.setAutoCompactEnabled(true);
 	if (options?.guestUsage) {
 		component.setCollabStatus({

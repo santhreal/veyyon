@@ -4,15 +4,29 @@
 // surface so external imports are unchanged.
 
 import { SGR_BG_RESET, SGR_FG_RESET } from "@veyyon/utils/ansi";
+import { colorLuma } from "@veyyon/utils/color";
 import { isRecord } from "@veyyon/utils/type-guards";
+import {
+	type ColorValue,
+	type HexColor,
+	type PresentationTheme,
+	SPINNER_TYPES,
+	type StyleRole,
+	SYMBOL_PRESETS,
+	type TextStyle,
+	THEME_BG_COLORS,
+	THEME_COLORS,
+	type ThemeBg,
+	type ThemeColor,
+} from "@veyyon/wire/presentation/theme";
 import type { SpinnerFramesOverride } from "./symbols";
+
+export type { ColorValue, HexColor, StyleRole, TextStyle, ThemeBg, ThemeColor };
+export { THEME_BG_COLORS, THEME_COLORS };
 
 // ============================================================================
 // Types & Schema
 // ============================================================================
-
-export type ColorValue = string | number;
-
 /**
  * A theme file, as a custom theme on disk is allowed to be written.
  *
@@ -81,7 +95,7 @@ export interface ThemeJsonProblems {
 	problems: string[];
 }
 
-function isColorValue(value: unknown): boolean {
+function isColorValue(value: unknown): value is ColorValue {
 	return typeof value === "string" || typeof value === "number";
 }
 
@@ -191,186 +205,147 @@ export function validateThemeJson(value: unknown): ThemeJsonProblems {
 	return { missingColors, problems };
 }
 
-export type ThemeColor =
-	| "accent"
-	| "border"
-	| "borderAccent"
-	| "borderMuted"
-	| "success"
-	| "error"
-	| "warning"
-	| "muted"
-	| "dim"
-	| "text"
-	| "thinkingText"
-	| "userMessageText"
-	| "customMessageText"
-	| "customMessageLabel"
-	| "toolTitle"
-	| "toolOutput"
-	| "mdHeading"
-	| "mdLink"
-	| "mdLinkUrl"
-	| "link"
-	| "mdCode"
-	| "mdCodeBlock"
-	| "mdCodeBlockBorder"
-	| "mdQuote"
-	| "mdQuoteBorder"
-	| "mdHr"
-	| "mdListBullet"
-	| "toolDiffAdded"
-	| "toolDiffRemoved"
-	| "toolDiffContext"
-	| "syntaxComment"
-	| "syntaxKeyword"
-	| "syntaxFunction"
-	| "syntaxVariable"
-	| "syntaxString"
-	| "syntaxNumber"
-	| "syntaxType"
-	| "syntaxOperator"
-	| "syntaxPunctuation"
-	| "thinkingOff"
-	| "thinkingMinimal"
-	| "thinkingLow"
-	| "thinkingMedium"
-	| "thinkingHigh"
-	| "thinkingXhigh"
-	| "thinkingMax"
-	| "bashMode"
-	| "pythonMode"
-	| "statusLineSep"
-	| "statusLineModel"
-	| "statusLinePath"
-	| "statusLineGitClean"
-	| "statusLineGitDirty"
-	| "statusLineContext"
-	| "statusLineSpend"
-	| "statusLineStaged"
-	| "statusLineDirty"
-	| "statusLineUntracked"
-	| "statusLineOutput"
-	| "statusLineCost"
-	| "statusLineSubagents"
-	| "sessionAccent"
-	| "modeAccent"
-	| "shareAccent"
-	| "infoAccent"
-	| "matchHighlight";
+/**
+ * Validate a PresentationTheme snapshot before constructing or applying a Theme.
+ * Rejects invalid, missing required, or inconsistent properties.
+ */
+export function validatePresentationTheme(value: unknown): asserts value is PresentationTheme {
+	if (!isRecord(value)) {
+		throw new Error("PresentationTheme must be an object");
+	}
+	if (typeof value.id !== "string" || value.id.length === 0) {
+		throw new Error('PresentationTheme "id" must be a non-empty string');
+	}
+	if (typeof value.name !== "string" || value.name.length === 0) {
+		throw new Error('PresentationTheme "name" must be a non-empty string');
+	}
+	if (value.appearance !== "light" && value.appearance !== "dark") {
+		throw new Error('PresentationTheme "appearance" must be "light" or "dark"');
+	}
+	if (typeof value.symbolPreset !== "string" || !(SYMBOL_PRESETS as readonly string[]).includes(value.symbolPreset)) {
+		throw new Error('PresentationTheme "symbolPreset" must be "unicode", "nerd" or "ascii"');
+	}
+	if (!isRecord(value.colors)) {
+		throw new Error('PresentationTheme "colors" must be an object');
+	}
+	if (!isRecord(value.backgrounds)) {
+		throw new Error('PresentationTheme "backgrounds" must be an object');
+	}
 
-/** Set of all valid ThemeColor string values for runtime validation */
-const THEME_COLOR_RECORD = {
-	accent: true,
-	border: true,
-	borderAccent: true,
-	borderMuted: true,
-	success: true,
-	error: true,
-	warning: true,
-	muted: true,
-	dim: true,
-	text: true,
-	thinkingText: true,
-	userMessageText: true,
-	customMessageText: true,
-	customMessageLabel: true,
-	toolTitle: true,
-	toolOutput: true,
-	mdHeading: true,
-	mdLink: true,
-	mdLinkUrl: true,
-	link: true,
-	mdCode: true,
-	mdCodeBlock: true,
-	mdCodeBlockBorder: true,
-	mdQuote: true,
-	mdQuoteBorder: true,
-	mdHr: true,
-	mdListBullet: true,
-	toolDiffAdded: true,
-	toolDiffRemoved: true,
-	toolDiffContext: true,
-	syntaxComment: true,
-	syntaxKeyword: true,
-	syntaxFunction: true,
-	syntaxVariable: true,
-	syntaxString: true,
-	syntaxNumber: true,
-	syntaxType: true,
-	syntaxOperator: true,
-	syntaxPunctuation: true,
-	thinkingOff: true,
-	thinkingMinimal: true,
-	thinkingLow: true,
-	thinkingMedium: true,
-	thinkingHigh: true,
-	thinkingXhigh: true,
-	thinkingMax: true,
-	bashMode: true,
-	pythonMode: true,
-	statusLineSep: true,
-	statusLineModel: true,
-	statusLinePath: true,
-	statusLineGitClean: true,
-	statusLineGitDirty: true,
-	statusLineContext: true,
-	statusLineSpend: true,
-	statusLineStaged: true,
-	statusLineDirty: true,
-	statusLineUntracked: true,
-	statusLineOutput: true,
-	statusLineCost: true,
-	statusLineSubagents: true,
-	sessionAccent: true,
-	modeAccent: true,
-	shareAccent: true,
-	infoAccent: true,
-	matchHighlight: true,
-} satisfies Record<ThemeColor, true>;
+	for (const token of THEME_COLORS) {
+		if (value.colors[token] === undefined) {
+			throw new Error(`PresentationTheme missing required color: ${token}`);
+		}
+		if (!isColorValue(value.colors[token])) {
+			throw new Error(`PresentationTheme "colors.${token}" must be a string or number`);
+		}
+	}
 
-const VALID_THEME_COLORS: ReadonlySet<string> = new Set(Object.keys(THEME_COLOR_RECORD));
+	for (const token of THEME_BG_COLORS) {
+		if (value.backgrounds[token] === undefined) {
+			throw new Error(`PresentationTheme missing required background: ${token}`);
+		}
+		if (!isColorValue(value.backgrounds[token])) {
+			throw new Error(`PresentationTheme "backgrounds.${token}" must be a string or number`);
+		}
+	}
+
+	// Verify appearance consistency if statusLineBg is evaluatable
+	const statusLineBg = value.backgrounds.statusLineBg;
+	if (isColorValue(statusLineBg)) {
+		const luma = colorLuma(statusLineBg);
+		if (luma !== undefined) {
+			const expectedAppearance = luma > 0.5 ? "light" : "dark";
+			if (value.appearance !== expectedAppearance) {
+				throw new Error(
+					`PresentationTheme appearance mismatch: declared "${value.appearance}" but statusLineBg resolves to "${expectedAppearance}"`,
+				);
+			}
+		}
+	}
+
+	if (value.symbolOverrides !== undefined) {
+		if (!isRecord(value.symbolOverrides) || !Object.values(value.symbolOverrides).every(v => typeof v === "string")) {
+			throw new Error('PresentationTheme "symbolOverrides" must map symbol keys to strings');
+		}
+	}
+
+	if (value.spinnerFrames !== undefined) {
+		if (!isRecord(value.spinnerFrames)) {
+			throw new Error('PresentationTheme "spinnerFrames" must be an object');
+		}
+		for (const [type, frames] of Object.entries(value.spinnerFrames)) {
+			if (!(SPINNER_TYPES as readonly string[]).includes(type)) {
+				throw new Error(`Invalid spinner type in spinnerFrames: ${type}`);
+			}
+			if (!isSpinnerFrameList(frames)) {
+				throw new Error(`PresentationTheme "spinnerFrames.${type}" must be a non-empty string array`);
+			}
+		}
+	}
+
+	if (value.groundHex !== undefined && typeof value.groundHex !== "string") {
+		throw new Error('PresentationTheme "groundHex" must be a string');
+	}
+
+	if (value.styles !== undefined) {
+		if (!isRecord(value.styles)) {
+			throw new Error('PresentationTheme "styles" must be an object');
+		}
+		for (const [token, style] of Object.entries(value.styles)) {
+			if (!isValidThemeColor(token)) {
+				throw new Error(`Invalid theme color in styles: ${token}`);
+			}
+			if (!isRecord(style)) {
+				throw new Error(`PresentationTheme "styles.${token}" must be a TextStyle object`);
+			}
+			for (const [k, v] of Object.entries(style)) {
+				if (!["bold", "dim", "italic", "underline", "inverse", "strikethrough"].includes(k)) {
+					throw new Error(`Invalid style attribute in styles.${token}: ${k}`);
+				}
+				if (v !== undefined && typeof v !== "boolean") {
+					throw new Error(`PresentationTheme "styles.${token}.${k}" must be a boolean`);
+				}
+			}
+		}
+	}
+}
+
+const VALID_THEME_COLORS: ReadonlySet<string> = new Set<string>(THEME_COLORS);
 
 /** Check if a string is a valid ThemeColor value */
 export function isValidThemeColor(color: string): color is ThemeColor {
 	return VALID_THEME_COLORS.has(color);
 }
 
-export type ThemeBg =
-	| "selectedBg"
-	| "userMessageBg"
-	| "customMessageBg"
-	| "toolPendingBg"
-	| "toolSuccessBg"
-	| "toolErrorBg"
-	| "statusLineBg"
-	| "composerBg";
+const VALID_THEME_BG_COLORS: ReadonlySet<string> = new Set<string>(THEME_BG_COLORS);
 
-/** Set of all valid ThemeBg string values, and the runtime half of the required-token list. */
-const THEME_BG_RECORD = {
-	selectedBg: true,
-	userMessageBg: true,
-	customMessageBg: true,
-	toolPendingBg: true,
-	toolSuccessBg: true,
-	toolErrorBg: true,
-	statusLineBg: true,
-	composerBg: true,
-} satisfies Record<ThemeBg, true>;
+/** Check if a string is a valid ThemeBg value */
+export function isValidThemeBg(color: string): color is ThemeBg {
+	return VALID_THEME_BG_COLORS.has(color);
+}
 
 /**
  * Every color token a theme file must carry: both unions minus the optional list.
- *
- * Derived from the two `satisfies Record<..., true>` tables rather than written out again, so a
- * token added to either union is required by this validator without anyone remembering to add
- * it here. The `satisfies` on the result is the proof that the derivation stayed a subset.
  */
 export const REQUIRED_THEME_COLOR_TOKENS: readonly RequiredThemeColorToken[] = [
-	...Object.keys(THEME_COLOR_RECORD),
-	...Object.keys(THEME_BG_RECORD),
+	...THEME_COLORS,
+	...THEME_BG_COLORS,
 ].filter(
 	(token): token is RequiredThemeColorToken => !(OPTIONAL_THEME_COLOR_TOKENS as readonly string[]).includes(token),
 );
+
+/**
+ * Defaults for the optional identity/state accent tokens, keyed by the token,
+ * naming the token it defaults to. Single owner of that fallback chain.
+ */
+export const QUIET_TOKEN_DEFAULTS: Partial<Record<ThemeColor, ThemeColor>> = {
+	sessionAccent: "accent",
+	modeAccent: "accent",
+	shareAccent: "link",
+	infoAccent: "muted",
+	matchHighlight: "warning",
+};
 
 export type ColorMode = "truecolor" | "256color";
 

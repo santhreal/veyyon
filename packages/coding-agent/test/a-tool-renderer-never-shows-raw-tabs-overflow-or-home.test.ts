@@ -258,20 +258,9 @@ describe("systematic audit of all tool renderers across widths and paths", () =>
 			it(`renders assistant message markdown (tables, fences, lists, long tokens) at width ${width}`, () => {
 				const mdContent = `# Header with\ttabs\n\n| Col 1 | Col 2 |\n|---|---|\n| cell 1 | ${longLine} |\n\n\`\`\`ts\nconst x = "${getHomeDir()}";\n\tconst y = 1;\n\`\`\`\n\n- Item 1 with\ttabs\n  - Nested item\n\n${longLine}\n`;
 				const comp = new AssistantMessageComponent({
-					role: "assistant",
-					content: [{ type: "text", text: mdContent }],
-					api: "anthropic-messages",
-					provider: "anthropic",
+					segments: [{ kind: "text", text: mdContent }],
 					model: "m",
-					usage: {
-						input: 0,
-						output: 0,
-						cacheRead: 0,
-						cacheWrite: 0,
-						totalTokens: 0,
-						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-					},
-					stopReason: "stop",
+					stopReason: "complete",
 					timestamp: 0,
 				});
 				const frames = comp.render(width);
@@ -284,7 +273,7 @@ describe("systematic audit of all tool renderers across widths and paths", () =>
 
 			it(`renders user message echo at width ${width}`, () => {
 				const userText = `User input with\ttabs\n${longLine}\nLine 3\n`;
-				const comp = new UserMessageComponent(userText);
+				const comp = new UserMessageComponent({ text: userText });
 				const frames = comp.render(width);
 				for (const line of frames) {
 					expect(line).not.toContain("\t");

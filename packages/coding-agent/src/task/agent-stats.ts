@@ -1,13 +1,13 @@
 /**
- * Shared subagent statistics and output formatting utilities.
+ * Shared agent statistics and output formatting utilities.
  *
  * Host-independent ViewSpan definitions for agent statistics and cleaned tool
- * output, shared by the task tool's ToolView and the Subagent Dashboard.
+ * output, shared by the task tool's ToolView and the Agent Dashboard.
  */
 
 import { formatContextUsage, formatNumber, sanitizeText } from "@veyyon/utils";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth } from "@veyyon/utils/width";
-import { replaceTabs } from "@veyyon/utils/wrap";
 import type { ViewSpan, ViewTone } from "@veyyon/view";
 import { EXIT_CODE_NOTICE_RE } from "../exec/exit-notice";
 import { stripGeneratedOutputNotice, stripRawOutputArtifactNotice } from "../tools/core/output-notice";
@@ -17,7 +17,7 @@ import { splitModelSelector } from "./model-selector";
 const MODEL_BADGE_WIDTH = 30;
 
 /** A run of the card's own words. */
-function span(text: string, tone?: ViewTone): ViewSpan {
+export function span(text: string, tone?: ViewTone): ViewSpan {
 	return tone === undefined ? { text } : { text, tone };
 }
 
@@ -79,7 +79,7 @@ function stripRecentOutputNoticeLine(text: string): string {
 }
 
 /**
- * The tail of a subagent's output with the runtime notices the bash tool appends
+ * The tail of an agent's output with the runtime notices the bash tool appends
  * (exit code, wall time, artifact pointer) stripped, so the preview is what the
  * child's tools printed rather than what the harness added.
  */

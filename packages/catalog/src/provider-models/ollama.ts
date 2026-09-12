@@ -1,7 +1,7 @@
 import { fetchWithRetry } from "@veyyon/utils/fetch-retry";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
-import type { DiscoveryFailure, DiscoveryHooks } from "../discovery/failure";
+import { type DiscoveryFailure, type DiscoveryHooks, readDiscoveryJson } from "../discovery/failure";
 import { Effort } from "../effort";
 import { isGlm52ModelId } from "../identity/family";
 import type { ModelManagerOptions } from "../model-manager";
@@ -106,16 +106,8 @@ async function fetchShowMetadata(
 		report("request", errorMessage(error));
 		return undefined;
 	}
-	if (!response.ok) {
-		report("status", `HTTP ${response.status} ${response.statusText}`.trim());
-		return undefined;
-	}
-	try {
-		return (await response.json()) as OllamaShowResponse;
-	} catch (error) {
-		report("body", errorMessage(error));
-		return undefined;
-	}
+	const payload = await readDiscoveryJson(response, report);
+	return payload === undefined ? undefined : (payload as OllamaShowResponse);
 }
 
 export function ollamaCloudModelManagerOptions(

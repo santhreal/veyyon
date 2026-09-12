@@ -518,10 +518,13 @@ describe("AgentSession context promotion", () => {
 	});
 
 	it("refuses overflow recovery loudly when the summary cannot fit the model", async () => {
-		// The other side of the row above: a history larger than the window cannot be
-		// summarized by that model at all, because the summarization request carries
-		// the conversation it is summarizing. The recovery has to say so and leave the
-		// overflow in place, rather than reporting a compaction that never ran.
+		// The other side of the row above: a history the model cannot summarize at
+		// all. A history larger than the window is not that case any more, because a
+		// span that does not fit one request is summarized in segments; the dead
+		// end is a window too small to hold even one segment request, which
+		// `compaction.modelContextWindow` states for a proxy that serves less than
+		// the model advertises. The recovery has to say so and leave the overflow in
+		// place, rather than reporting a compaction that never ran.
 		//
 		// The history is MANY small messages rather than one enormous one, and that is
 		// the whole fixture. A single oversized text is what the truncation tier exists
@@ -537,10 +540,14 @@ describe("AgentSession context promotion", () => {
 		if (contextWindow === null) {
 			throw new Error("Expected codex spark model to state a context window");
 		}
+		// Below the 2k-token segment floor plus the summary prompts, so no staged
+		// request fits either.
+		const servedWindow = 1_000;
 		const settings = Settings.isolated({
 			"compaction.enabled": true,
 			"compaction.strategy": "summary",
 			"compaction.keepRecentTokens": 1,
+			"compaction.modelContextWindow": servedWindow,
 			"contextPromotion.enabled": false,
 		});
 		const compactSpy = vi.spyOn(compactionModule, "compact");
@@ -592,7 +599,7 @@ describe("AgentSession context promotion", () => {
 		expect(events[0]?.willRetry).toBe(false);
 		// The number in the message is what makes it actionable: which model, how
 		// much it holds, and how much the summary would have needed.
-		expect(events[0]?.errorMessage).toContain(`${model.provider}/${model.id} holds ${model.contextWindow} tokens`);
+		expect(events[0]?.errorMessage).toContain(`${model.provider}/${model.id} holds ${servedWindow} tokens`);
 		expect(events[0]?.errorMessage).toContain("the summary needed");
 		expect(session.sessionManager.getEntries().some(entry => entry.type === "compaction")).toBe(false);
 		// And the refusal the user has to read is still the last thing in context.

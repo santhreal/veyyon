@@ -13,7 +13,7 @@ The contract between the harness and the model. For copy-paste provider setup, s
 
 A BYOK (bring-your-own-key) run needs three facts:
 
-| Fact | What it is | Where it lives |
+| Fact | What it is | Where it is defined |
 | --- | --- | --- |
 | **Endpoint** | Base URL and API kind | A built-in provider, or a custom provider under `providers:` in `~/.veyyon/profiles/default/agent/models.yml` |
 | **Model** | The model id the endpoint understands | Pinned with `--model` / `/model`, or discovered from the provider |
@@ -43,9 +43,9 @@ $ export DEEPSEEK_API_KEY=sk-...
 $ veyyon --model deepseek/deepseek-chat
 ```
 
-## What the harness owns
+## Harness responsibilities
 
-These behaviors stay constant no matter which endpoint you point at:
+These behaviors remain constant across endpoints:
 
 - The workflow: read, edit, verify, stop when the work is done.
 - Tool dispatch, argument handling, and edit verification through the **hashline** edit engine
@@ -57,7 +57,7 @@ These behaviors stay constant no matter which endpoint you point at:
 Provider is configuration (endpoint, credentials, model id). Keep the same
 commands.
 
-## What the provider owns
+## Provider responsibilities
 
 The provider defines the wire protocol, auth scheme, model list, rate limits, and the tokens it returns.
 Veyyon adapts to that surface through the provider's `api` kind:
@@ -143,14 +143,14 @@ under `modelRoles`:
 
 - `modelRoles.tiny` (or `smol`): lightweight background work (titles, memory, auto-thinking).
 
-Subagent models are not roles. They live in the Subagents settings area, on two exclusive scopes.
-With **Same Model for All Subagents** off, the first of these names the model: that agent's row in
-`subagent.agents`, then the agent definition's own `model:`, otherwise the `default` model role.
-With it on, `subagent.model` names it for every agent and the rows above are not read. There is no
+Agent models are not roles. They are configured in the Agents settings area, on two exclusive scopes.
+With **Same Model for All Agents** off, the first of these sets the model: that agent's row in
+`agent.agents`, then the agent definition's own `model:`, otherwise the `default` model role.
+With it on, `agent.model` sets it for every agent and the rows above are not read. There is no
 silent blend, and a configured value that matches no available model rejects the spawn instead of
 quietly handing the decision to the next layer. `/agents` shows the resolved model and which
-setting decided.
-See [Settings: Subagents](../reference/settings.md#subagents) and
+setting applied.
+See [Settings: Agents](../reference/settings.md#agents) and
 [Models, roles, and profiles](../using/roles-and-profiles.md).
 
 ## Automation note

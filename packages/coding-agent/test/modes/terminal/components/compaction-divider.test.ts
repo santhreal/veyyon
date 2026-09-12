@@ -10,7 +10,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import { createCompactionSummaryMessage } from "@veyyon/agent-core/compaction";
 import type { ImageContent } from "@veyyon/ai";
 import { KEYBINDINGS } from "@veyyon/coding-agent/config/keybindings";
-import { CompactionSummaryMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/compaction-summary-message";
+import { SummaryMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/summary-message";
+import { toCompactionSummaryView } from "@veyyon/coding-agent/presentation/summary-builder";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { getKeybindings, KeybindingsManager, setKeybindings } from "@veyyon/utils/keybindings";
 
@@ -31,13 +32,15 @@ afterEach(() => {
 
 const SUMMARY = "Earlier the user fixed the login TTL bug.";
 
-function makeComponent(images?: ImageContent[]): CompactionSummaryMessageComponent {
-	return new CompactionSummaryMessageComponent(
-		createCompactionSummaryMessage(SUMMARY, 84000, new Date().toISOString(), undefined, undefined, images),
+function makeComponent(images?: ImageContent[]): SummaryMessageComponent {
+	return new SummaryMessageComponent(
+		toCompactionSummaryView(
+			createCompactionSummaryMessage(SUMMARY, 84000, new Date().toISOString(), undefined, undefined, images),
+		),
 	);
 }
 
-describe("CompactionSummaryMessageComponent", () => {
+describe("compaction summary rendering", () => {
 	it("collapsed: a single short divider carrying the expand affordance", () => {
 		const lines = makeComponent().render(80);
 		expect(lines.length).toBe(3); // breathing room above and below the rule

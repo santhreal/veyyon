@@ -293,80 +293,76 @@ export class TodoCommandController {
 		this.ctx.showStatus(`Started: ${hit.task.content}`);
 	}
 
-	#mutateStatus(rest: string, target: "completed" | "abandoned"): void {
-		const op = target === "completed" ? "done" : "drop";
+	#applyTargetedOp(
+		rest: string,
+		options: {
+			op: "done" | "drop" | "rm";
+			onEmpty: (current: TodoPhase[]) => void;
+			formatTaskStatus: (taskName: string) => string;
+			formatPhaseStatus: (phaseName: string) => string;
+			removed?: boolean;
+		},
+	): void {
 		const current = this.#currentPhases();
 		const trimmed = rest.trim();
 		if (!trimmed) {
-			// no-arg: apply to all
-			const { phases, errors } = applyOpsToPhases(current, [{ op }]);
-			if (errors.length > 0) {
-				this.ctx.showError(errors.join("; "));
-				return;
-			}
-			this.#commit(phases, `/todo ${op} (all)`);
-			this.ctx.showStatus(`Marked all tasks ${target}.`);
+			options.onEmpty(current);
 			return;
 		}
-
 		const taskHit = findTaskFuzzy(current, trimmed);
 		if (taskHit) {
-			const { phases, errors } = applyOpsToPhases(current, [{ op, task: taskHit.task.content }]);
+			const { phases, errors } = applyOpsToPhases(current, [{ op: options.op, task: taskHit.task.content }]);
 			if (errors.length > 0) {
 				this.ctx.showError(errors.join("; "));
 				return;
 			}
-			this.#commit(phases, `/todo ${op} ${taskHit.task.content}`);
-			this.ctx.showStatus(`Marked ${target}: ${taskHit.task.content}`);
+			this.#commit(phases, `/todo ${options.op} ${taskHit.task.content}`, { removed: options.removed });
+			this.ctx.showStatus(options.formatTaskStatus(taskHit.task.content));
 			return;
 		}
-
 		const phaseHit = findPhaseFuzzy(current, trimmed);
 		if (phaseHit) {
-			const { phases, errors } = applyOpsToPhases(current, [{ op, phase: phaseHit.name }]);
+			const { phases, errors } = applyOpsToPhases(current, [{ op: options.op, phase: phaseHit.name }]);
 			if (errors.length > 0) {
 				this.ctx.showError(errors.join("; "));
 				return;
 			}
-			this.#commit(phases, `/todo ${op} ${phaseHit.name}`);
-			this.ctx.showStatus(`Marked phase ${phaseHit.name} ${target}.`);
+			this.#commit(phases, `/todo ${options.op} ${phaseHit.name}`, { removed: options.removed });
+			this.ctx.showStatus(options.formatPhaseStatus(phaseHit.name));
 			return;
 		}
-
 		this.ctx.showError(`No task or phase matched "${trimmed}".`);
 	}
 
+	#mutateStatus(rest: string, target: "completed" | "abandoned"): void {
+		const op = target === "completed" ? "done" : "drop";
+		this.#applyTargetedOp(rest, {
+			op,
+			onEmpty: current => {
+				const { phases, errors } = applyOpsToPhases(current, [{ op }]);
+				if (errors.length > 0) {
+					this.ctx.showError(errors.join("; "));
+					return;
+				}
+				this.#commit(phases, `/todo ${op} (all)`);
+				this.ctx.showStatus(`Marked all tasks ${target}.`);
+			},
+			formatTaskStatus: task => `Marked ${target}: ${task}`,
+			formatPhaseStatus: phase => `Marked phase ${phase} ${target}.`,
+		});
+	}
+
 	#remove(rest: string): void {
-		const current = this.#currentPhases();
-		const trimmed = rest.trim();
-		if (!trimmed) {
-			this.#commit([], "/todo rm (all)", { removed: true });
-			this.ctx.showStatus("Cleared all todos.");
-			return;
-		}
-		const taskHit = findTaskFuzzy(current, trimmed);
-		if (taskHit) {
-			const { phases, errors } = applyOpsToPhases(current, [{ op: "rm", task: taskHit.task.content }]);
-			if (errors.length > 0) {
-				this.ctx.showError(errors.join("; "));
-				return;
-			}
-			this.#commit(phases, `/todo rm ${taskHit.task.content}`, { removed: true });
-			this.ctx.showStatus(`Removed: ${taskHit.task.content}`);
-			return;
-		}
-		const phaseHit = findPhaseFuzzy(current, trimmed);
-		if (phaseHit) {
-			const { phases, errors } = applyOpsToPhases(current, [{ op: "rm", phase: phaseHit.name }]);
-			if (errors.length > 0) {
-				this.ctx.showError(errors.join("; "));
-				return;
-			}
-			this.#commit(phases, `/todo rm ${phaseHit.name}`, { removed: true });
-			this.ctx.showStatus(`Removed phase: ${phaseHit.name}`);
-			return;
-		}
-		this.ctx.showError(`No task or phase matched "${trimmed}".`);
+		this.#applyTargetedOp(rest, {
+			op: "rm",
+			removed: true,
+			onEmpty: () => {
+				this.#commit([], "/todo rm (all)", { removed: true });
+				this.ctx.showStatus("Cleared all todos.");
+			},
+			formatTaskStatus: task => `Removed: ${task}`,
+			formatPhaseStatus: phase => `Removed phase: ${phase}`,
+		});
 	}
 
 	// ------------------------------------------------------------- editor

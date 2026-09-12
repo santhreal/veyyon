@@ -21,8 +21,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { dynamicImportSpecifiersIn, moduleSpecifiersIn, typeOnlyModuleSpecifiersIn } from "@veyyon/utils/module-reach";
-import { REPO_ROOT, typeScriptMembers } from "./workspace-layout";
-
+import { REPO_ROOT, typeScriptMembers, walkDirectory } from "./workspace-layout";
 export interface SpecifierViolation {
 	file: string;
 	specifier: string;
@@ -31,17 +30,7 @@ export interface SpecifierViolation {
 
 /** Recursively collects all .ts and .d.ts files under a directory. */
 function sweepTypeScriptFiles(dir: string): string[] {
-	if (!fs.existsSync(dir)) return [];
-	const files: string[] = [];
-	for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-		const fullPath = path.join(dir, entry.name);
-		if (entry.isDirectory()) {
-			files.push(...sweepTypeScriptFiles(fullPath));
-		} else if (entry.isFile() && (entry.name.endsWith(".ts") || entry.name.endsWith(".d.ts"))) {
-			files.push(fullPath);
-		}
-	}
-	return files.sort();
+	return walkDirectory(dir, p => p.endsWith(".ts") || p.endsWith(".d.ts"));
 }
 
 /** Classifies a module specifier and returns a reason string if forbidden, or null if allowed. */

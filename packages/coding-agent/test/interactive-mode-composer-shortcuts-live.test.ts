@@ -2,6 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { AuthStorage } from "@veyyon/ai/auth-storage";
+import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
@@ -131,5 +132,34 @@ describe("InteractiveMode composer shortcuts live refresh", () => {
 		queuedCount = 0;
 		mode.updatePendingMessagesDisplay();
 		expect(renderChips(mode)).not.toContain("dequeue");
+	});
+
+	it("refreshes chip labels on in-place keybinding updates", async () => {
+		const streaming = true;
+		Object.defineProperty(session, "isStreaming", { configurable: true, get: () => streaming });
+		await mode.eventController.handleEvent({ type: "agent_start" });
+		const initial = renderChips(mode);
+		expect(initial).toContain("interrupt");
+
+		// Mutate keybindings in-place
+		mode.keybindings.setUserBindings({ "app.interrupt": "ctrl+x" });
+		await mode.eventController.handleEvent({ type: "agent_start" });
+		const updated = renderChips(mode);
+		expect(updated).toContain("ctrl+x interrupt");
+		expect(updated).not.toEqual(initial);
+	});
+
+	it("refreshes chip labels when KeybindingsManager instance is replaced", async () => {
+		const streaming = true;
+		Object.defineProperty(session, "isStreaming", { configurable: true, get: () => streaming });
+		await mode.eventController.handleEvent({ type: "agent_start" });
+		expect(renderChips(mode)).toContain("interrupt");
+
+		// Replace KeybindingsManager instance
+		const customManager = KeybindingsManager.create(tempDir.path());
+		customManager.setUserBindings({ "app.interrupt": "ctrl+k" });
+		mode.keybindings = customManager;
+		await mode.eventController.handleEvent({ type: "agent_start" });
+		expect(renderChips(mode)).toContain("ctrl+k interrupt");
 	});
 });

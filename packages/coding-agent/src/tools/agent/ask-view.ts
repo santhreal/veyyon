@@ -8,8 +8,15 @@
  * toned.
  */
 
-import { replaceTabs } from "@veyyon/utils/wrap";
 import type { StatusRowView, ToolView, ToolViewContext, ViewLine, ViewSection } from "@veyyon/view";
+import {
+	extractResultText,
+	metaLines,
+	replaceTabs,
+	sanitizeErrorText,
+	shortenEmbeddedPaths,
+	type ToolViewResult,
+} from "../core/render-utils";
 import type { AskToolDetails, QuestionResult } from "./ask";
 
 /** One choice offered by a call, as the streamed arguments carry it. */
@@ -30,10 +37,7 @@ export interface AskRenderArgs {
 	}>;
 }
 
-export interface AskViewResult {
-	content?: Array<{ type: string; text?: string }>;
-	details?: AskToolDetails;
-}
+export interface AskViewResult extends Partial<ToolViewResult<AskToolDetails>> {}
 
 /** The glyph a card's own emblem names, for a settled answer. */
 const ASK_EMBLEM = "tool.ask";
@@ -246,8 +250,7 @@ function answered(result: { selectedOptions?: readonly string[]; customInput?: s
 
 /** The row a card with no answer to report shows, which is the tool's own message. */
 function fallbackText(result: AskViewResult): string {
-	const text = result.content?.find(part => part.type === "text")?.text;
-	return text ?? "";
+	return extractResultText(result.content);
 }
 
 /** The question a reader is looking at, or the failure that there is none. */
@@ -284,7 +287,7 @@ function callView(args: AskRenderArgs): ToolView {
 			kind: "statusRow",
 			title: "Ask",
 			titleTone: "title",
-			...(meta.length === 0 ? {} : { meta: meta.map(entry => [{ text: entry }]) }),
+			...(meta.length === 0 ? {} : { meta: metaLines(meta) }),
 		},
 		state: "pending",
 		sections: offeredSections({ question: args.question, options, multi: args.multi }),
@@ -293,13 +296,24 @@ function callView(args: AskRenderArgs): ToolView {
 
 /** What came back: an answer, a redirect to chat, or the tool's own message. */
 function resultView(result: AskViewResult): ToolView {
+	if (result.isError) {
+		const fallback = fallbackText(result) || "Ask failed";
+		const sanitized = sanitizeErrorText(fallback);
+		return {
+			kind: "framedBlock",
+			header: { kind: "statusRow", status: "error", title: "Ask" },
+			state: "error",
+			sections: [{ lines: sanitized.split("\n").map(line => [{ text: line, tone: "error" }]) }],
+		};
+	}
+
 	const details = result.details;
 	if (!details) {
 		const fallback = fallbackText(result);
 		return {
 			kind: "headedBlock",
 			header: { kind: "statusRow", status: "warning", title: "Ask" },
-			lines: fallback ? [[{ text: fallback, tone: "dim" }]] : [],
+			lines: fallback ? [[{ text: replaceTabs(shortenEmbeddedPaths(fallback)), tone: "dim" }]] : [],
 		};
 	}
 
@@ -338,7 +352,7 @@ function resultView(result: AskViewResult): ToolView {
 
 	if (!details.question) {
 		const fallback = fallbackText(result);
-		return { kind: "textBlock", spans: fallback ? [{ text: fallback }] : [] };
+		return { kind: "textBlock", spans: fallback ? [{ text: replaceTabs(shortenEmbeddedPaths(fallback)) }] : [] };
 	}
 
 	const hasSelection = answered(details);

@@ -20,9 +20,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
-
-const REPO_ROOT = path.resolve(import.meta.dir, "..");
+import { REPO_ROOT, typeScriptMembers, typeScriptMemberTopLevels, walkDirectory } from "./workspace-layout";
 
 /**
  * Suites whose subject IS a list of module paths, which therefore name every
@@ -46,35 +44,6 @@ const PATH_LEDGERS = new Set([
 ]);
 
 /**
- * Directory names the walk never enters: foreign trees, build output and the
- * untracked run artifacts a benchmark writes. Every name here is either not
- * checked in or holds no TypeScript, so a skip can never hide a test file.
- * `tests/evals/suites/deep-swe` and `tests/evals/test/suites/deep-swe` are
- * checked-in source and are walked.
- */
-const SKIP_DIRS = new Set(["node_modules", "dist", "target", "repo-cache", "runs", "assets"]);
-
-function walk(dir: string, keep: (file: string) => boolean): string[] {
-	const found: string[] = [];
-	let entries: fs.Dirent[];
-	try {
-		entries = fs.readdirSync(dir, { withFileTypes: true });
-	} catch {
-		return found;
-	}
-	for (const entry of entries) {
-		const full = path.join(dir, entry.name);
-		if (entry.isDirectory()) {
-			if (SKIP_DIRS.has(entry.name)) continue;
-			found.push(...walk(full, keep));
-		} else if (keep(full)) {
-			found.push(full);
-		}
-	}
-	return found;
-}
-
-/**
  * Every workspace member directory, across the roots the root manifest declares.
  *
  * This read `packages/` alone, so a shipped module under any other root — `contracts/view/src` is
@@ -91,9 +60,10 @@ function collectShippedModules(): string[] {
 	const files: string[] = [];
 	for (const pkg of packageDirs()) {
 		files.push(
-			...walk(
+			...walkDirectory(
 				path.join(pkg, "src"),
 				file => file.endsWith(".ts") && !file.endsWith(".d.ts") && !file.includes(".test."),
+				["node_modules", "dist", "target", "repo-cache", "runs", "assets", "build"],
 			),
 		);
 	}
@@ -113,10 +83,10 @@ function collectShippedModules(): string[] {
 function collectTestFiles(): string[] {
 	const files: string[] = [];
 	for (const pkg of packageDirs()) {
-		files.push(...walk(pkg, file => file.endsWith(".test.ts") || file.endsWith(".test.tsx")));
-		files.push(...walk(path.join(pkg, "test"), file => file.endsWith(".ts")));
+		files.push(...walkDirectory(pkg, file => file.endsWith(".test.ts") || file.endsWith(".test.tsx")));
+		files.push(...walkDirectory(path.join(pkg, "test"), file => file.endsWith(".ts")));
 	}
-	files.push(...walk(path.join(REPO_ROOT, "scripts"), file => file.endsWith(".test.ts")));
+	files.push(...walkDirectory(path.join(REPO_ROOT, "scripts"), file => file.endsWith(".test.ts")));
 	return [...new Set(files.map(file => path.relative(REPO_ROOT, file)))].filter(file => !PATH_LEDGERS.has(file));
 }
 
@@ -272,7 +242,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/providers/grammar.ts",
 	"packages/ai/src/providers/openai-chat-server-schema.ts",
 	"packages/ai/src/providers/openai-responses-server-schema.ts",
-	"packages/ai/src/providers/synthetic.ts",
 	"packages/ai/src/registry/api-key-login.ts",
 	"packages/ai/src/registry/baseten.ts",
 	"packages/ai/src/registry/llama-cpp.ts",
@@ -283,7 +252,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/registry/oauth/wafer.ts",
 	"packages/ai/src/registry/openai-codex-device.ts",
 	"packages/ai/src/registry/qianfan.ts",
-	"packages/ai/src/registry/qwen-portal.ts",
 	"packages/ai/src/registry/sakana.ts",
 	"packages/ai/src/registry/tavily.ts",
 	"packages/ai/src/registry/together.ts",
@@ -337,13 +305,11 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/cli/rollback-picker-host.ts",
 	"packages/coding-agent/src/cli/session-picker.ts",
 	"packages/coding-agent/src/cli/session-stats-cli.ts",
-	"packages/coding-agent/src/cli/setup-model-picker.ts",
 	"packages/coding-agent/src/cli/stats-cli.ts",
 	"packages/coding-agent/src/cli/worktree-cli.ts",
 	"packages/coding-agent/src/commands/auth-gateway.ts",
 	"packages/coding-agent/src/commands/complete.ts",
 	"packages/coding-agent/src/commands/dry-balance.ts",
-	"packages/coding-agent/src/commands/gallery.ts",
 	"packages/coding-agent/src/commands/gc.ts",
 	"packages/coding-agent/src/commands/rollback.ts",
 	"packages/coding-agent/src/commands/say.ts",
@@ -371,27 +337,25 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/lsp/clients/lsp-linter-client.ts",
 	"packages/coding-agent/src/lsp/deferred-diagnostics.ts",
 	"packages/coding-agent/src/mcp/config-commands.ts",
-	"packages/coding-agent/src/mcp/smithery-auth.ts",
 	"packages/coding-agent/src/mcp/smithery-connect.ts",
 	"packages/coding-agent/src/memory/mnemopi/embed-worker.ts",
 	"packages/coding-agent/src/modes/terminal/components/chrome/overlay-box.ts",
 	"packages/coding-agent/src/modes/terminal/components/composer/keybinding-hints.ts",
 	"packages/coding-agent/src/modes/terminal/components/selectors/select-list-mouse-routing.ts",
+	"packages/coding-agent/src/modes/terminal/components/transcript/collab-prompt-message.ts",
 	"packages/coding-agent/src/modes/terminal/setup-wizard/scenes/wizard-list.ts",
 	"packages/coding-agent/src/modes/terminal/skill-command.ts",
+	"packages/coding-agent/src/modes/terminal/utils/interactive-context-helpers.ts",
 	"packages/coding-agent/src/plan-mode/plan-path.ts",
 	"packages/coding-agent/src/secrets/standalone-runtime.ts",
 	"packages/coding-agent/src/slash-commands/bare-subcommand.ts",
 	"packages/coding-agent/src/speech/stt/asr-worker.ts",
-	"packages/coding-agent/src/speech/tts/downloader.ts",
 	"packages/coding-agent/src/speech/tts/tts-worker.ts",
 	"packages/coding-agent/src/theme/before-markdown-theme.ts",
 	"packages/coding-agent/src/tools/core/result-notice.ts",
 	"packages/coding-agent/src/tools/search/text-search-scope.ts",
 	"packages/coding-agent/src/tools/web/browser/handle-release.ts",
 	"packages/coding-agent/src/tools/web/browser/tab-worker-entry.ts",
-	"packages/coding-agent/src/tools/web/search/providers/jina.ts",
-	"packages/coding-agent/src/tools/web/search/providers/synthetic.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/ansi.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/canvas.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/class-diagram.ts",

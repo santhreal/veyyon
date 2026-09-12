@@ -223,7 +223,7 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 					// icon at the top of the spinner ramp is a full cell, the rail is an
 					// eighth of one, and the two stacked read as a chip balanced on a wire.
 					// One edge down the whole block instead, which is what the anchored
-					// Todos and Subagents blocks already draw.
+					// Todos and Agents blocks already draw.
 					onRail(row.text)
 				: row.kind === "content"
 					? onRail(`${contentLeftPadding}${row.inner}`)

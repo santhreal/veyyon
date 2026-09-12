@@ -1,10 +1,10 @@
 /**
  * GRAN-4: the MAIN (top-level) session records a `session_init` entry with its
- * exact system prompt + active tools at start — the same entry type a subagent
+ * exact system prompt + active tools at start — the same entry type an agent
  * writes — so the main agent's run is replayable/backtestable at full fidelity.
  *
  * Why this suite exists:
- *   Subagents persisted `session_init` (exact system prompt, tools) enabling
+ *   Agents persisted `session_init` (exact system prompt, tools) enabling
  *   faithful revive/replay, but the main top-level session did not: its exact
  *   system prompt AS SENT was never in the record, only reconstructable from
  *   config. A faithful backtest of the main agent could not reproduce the exact

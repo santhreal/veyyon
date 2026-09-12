@@ -4,11 +4,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- Exported `stripApplyPatchPathNoise` from `@veyyon/hashline` for shared header-path normalization across streaming and patch parsing.
+
+### Fixed
+
+- A plain `INS.POST` anchored on the trailing phantom line of a newline-terminated file appends the body as new terminated lines, like `INS.TAIL`; the rebuild emitted the phantom sentinel as an empty line and left the new last line without its newline.
+
 ### Changed
 
+- Unified patch operation definitions into a shared declarative operation table across tokenization and execution.
 - Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
 - The package directory is `plugins/hashline` instead of `packages/hashline`; the published package name, entry points and behavior are unchanged.
-
+- Seen-line and clipped-line records merge into a snapshot through one keyed step; recorded provenance is unchanged.
 
 ## [16.5.0] - 2026-07-13
 

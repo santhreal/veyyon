@@ -226,14 +226,14 @@ export const TOOL_LOAD_CASES: readonly ToolLoadCase[] = [
 	},
 	{
 		name: "delegation-off-discovery-all",
-		settings: { "tools.discoveryMode": "all", "subagent.delegation": "off" },
+		settings: { "tools.discoveryMode": "all", "agent.delegation": "off" },
 	},
 	// The two cells straddle the boundary exactly: `FIXTURE_REGISTRY_SIZE + AT_THRESHOLD_BULK`
 	// is NOT "> TOOL_DISCOVERY_AUTO_THRESHOLD" and one more tool is. Both counts derive from
 	// the threshold and the registry size rather than restating them, so a tool added to the
 	// shipped registry turns the parity cell red with the number to re-pin instead of sliding
 	// both cells onto the same side of a line they are here to bracket. The off-by-one is
-	// asserted directly against `resolveEffectiveMode` in `tool-discovery/subagent.test.ts`;
+	// asserted directly against `resolveEffectiveMode` in `discovery/tool-discovery-mode-resolves-from-tools-and-mcp-settings.test.ts`;
 	// these two prove the real boot path agrees with it.
 	{ name: "auto-at-threshold", extensions: [bulkToolExtension(AT_THRESHOLD_BULK, "bulk")] },
 	{ name: "auto-over-threshold", extensions: [bulkToolExtension(AT_THRESHOLD_BULK + 1, "bulk")] },

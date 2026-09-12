@@ -10,22 +10,19 @@ import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { resolveProviderTextTransform } from "../../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../types";
-import { SearchProviderError } from "../types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
-import { SearchProvider } from "./base";
-import { classifyProviderHttpError } from "./utils";
+import { ApiKeySearchProvider } from "./base";
+import { handleProviderHttpError, resolveProviderKey } from "./utils";
 
 const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
 const MAX_NUM_RESULTS = 20;
-
 const RECENCY_MAP: Record<"day" | "week" | "month" | "year", "pd" | "pw" | "pm" | "py"> = {
 	day: "pd",
 	week: "pw",
 	month: "pm",
 	year: "py",
 };
-
 export interface BraveSearchParams {
 	query: string;
 	num_results?: number;
@@ -98,10 +95,7 @@ async function callBraveSearch(
 		});
 
 		if (!response.ok) {
-			const errorText = await response.text();
-			const classified = classifyProviderHttpError("brave", response.status, errorText);
-			if (classified) throw classified;
-			throw new SearchProviderError("brave", `Brave API request failed (${response.status}).`, response.status);
+			await handleProviderHttpError("brave", response, `Brave API request failed (${response.status}).`);
 		}
 
 		const data = (await response.json()) as BraveSearchResponse;
@@ -113,16 +107,13 @@ async function callBraveSearch(
 /** Execute Brave web search. */
 export async function searchBrave(params: BraveSearchParams): Promise<SearchResponse> {
 	const numResults = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
-	const keyOrResolver: ApiKey | undefined = params.authStorage
-		? params.authStorage.resolver("brave", { sessionId: params.sessionId })
-		: (findApiKey() ?? undefined);
+	const keyOrResolver: ApiKey | undefined = resolveProviderKey(params.authStorage, "brave", params.sessionId);
 
 	const { response, requestId } = await withAuth(keyOrResolver, key => callBraveSearch(key, params), {
 		signal: params.signal,
 		missingKeyMessage: 'Brave credentials not found. Set BRAVE_API_KEY or configure an API key for provider "brave".',
 	});
 	const sources: SearchSource[] = [];
-
 	for (const result of response.web?.results ?? []) {
 		if (!result.url) continue;
 		sources.push({
@@ -142,13 +133,9 @@ export async function searchBrave(params: BraveSearchParams): Promise<SearchResp
 }
 
 /** Search provider for Brave web search. */
-export class BraveProvider extends SearchProvider {
+export class BraveProvider extends ApiKeySearchProvider {
 	readonly id = "brave";
 	readonly label = "Brave";
-
-	isAvailable(authStorage: AuthStorage): boolean {
-		return authStorage.hasAuth("brave") || !!findApiKey();
-	}
 
 	search(params: SearchParams): Promise<SearchResponse> {
 		return searchBrave({

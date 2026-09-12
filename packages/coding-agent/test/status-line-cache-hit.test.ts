@@ -2,7 +2,11 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
+import { withIcon } from "@veyyon/coding-agent/theme/icon-label";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { theme } from "@veyyon/coding-agent/theme/theme-binding";
+import { formatNumber } from "@veyyon/utils/format";
+import { useFullColor } from "./helpers/theme-assertions";
 
 beforeAll(async () => {
 	await initTheme();
@@ -54,4 +58,28 @@ describe("cache_hit status-line segment", () => {
 		expect(result.visible).toBe(false);
 		expect(result.content).toBe("");
 	});
+});
+
+describe("token and cache count status-line segments", () => {
+	useFullColor();
+	const rows = [
+		["token_in", "input", () => theme.icon.input, "statusLineSpend"],
+		["token_out", "output", () => theme.icon.output, "statusLineOutput"],
+		["cache_read", "cacheRead", () => theme.icon.cache, "statusLineSpend"],
+		["cache_write", "cacheWrite", () => theme.icon.cache, "statusLineOutput"],
+	] as const;
+
+	for (const [id, field, icon, color] of rows) {
+		it(`${id} paints its own count with its icon in the ${color} color, and hides at zero`, () => {
+			const others = Object.fromEntries(
+				rows.filter(([otherId]) => otherId !== id).map(([, otherField]) => [otherField, 7]),
+			);
+			const shown = renderSegment(id, ctxWith({ ...others, [field]: 12_345 }));
+			expect(shown.visible).toBe(true);
+			expect(plain(shown.content)).toBe(withIcon(icon(), formatNumber(12_345)));
+			expect(shown.content).toBe(theme.fg(color, withIcon(icon(), formatNumber(12_345))));
+			const hidden = renderSegment(id, ctxWith({ ...others, [field]: 0 }));
+			expect(hidden).toEqual({ content: "", visible: false });
+		});
+	}
 });

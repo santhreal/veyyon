@@ -8,4 +8,5 @@
 - **A security vulnerability** — do **not** open a public issue. Follow
   [SECURITY.md](SECURITY.md).
 - **Contributing** — see [CONTRIBUTING.md](CONTRIBUTING.md). Issues and pull
-  requests are open to everyone.
+  requests are open to everyone. A bug fix may open as a pull request directly;
+  anything else starts with an issue.

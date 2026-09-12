@@ -25,6 +25,7 @@ import * as contextModule from "../src/presentation/context";
 import * as eventsModule from "../src/presentation/events";
 import * as barrel from "../src/presentation/index";
 import {
+	COMPOSER_MODES,
 	type ComposerState,
 	DIALOG_KINDS,
 	type DialogResult,
@@ -34,7 +35,11 @@ import {
 	type PresentationCapabilities,
 	type PresentationContext,
 	type PresentationTheme,
+	SPINNER_TYPES,
 	type StatusLineState,
+	SYMBOL_PRESETS,
+	THEME_BG_COLORS,
+	THEME_COLORS,
 	TRANSCRIPT_BLOCK_KINDS,
 	type TranscriptBlock,
 	UI_EVENT_TYPES,
@@ -42,6 +47,7 @@ import {
 } from "../src/presentation/index";
 import * as overlayModule from "../src/presentation/overlay";
 import * as statusModule from "../src/presentation/status";
+import * as summaryModule from "../src/presentation/summary";
 import * as themeModule from "../src/presentation/theme";
 import * as transcriptModule from "../src/presentation/transcript";
 import * as viewModelsModule from "../src/presentation/view-models";
@@ -57,6 +63,7 @@ const PRESENTATION_MODULES: Record<string, Record<string, unknown>> = {
 	"presentation/events.ts": eventsModule,
 	"presentation/overlay.ts": overlayModule,
 	"presentation/status.ts": statusModule,
+	"presentation/summary.ts": summaryModule,
 	"presentation/theme.ts": themeModule,
 	"presentation/transcript.ts": transcriptModule,
 	"presentation/view-models.ts": viewModelsModule,
@@ -216,7 +223,16 @@ describe("the presentation contract is locked", () => {
 	});
 
 	test("union tables enumerate their members once, with no duplicates", () => {
-		for (const table of [TRANSCRIPT_BLOCK_KINDS, UI_EVENT_TYPES, DIALOG_KINDS]) {
+		for (const table of [
+			TRANSCRIPT_BLOCK_KINDS,
+			UI_EVENT_TYPES,
+			DIALOG_KINDS,
+			COMPOSER_MODES,
+			THEME_COLORS,
+			THEME_BG_COLORS,
+			SYMBOL_PRESETS,
+			SPINNER_TYPES,
+		]) {
 			expect(new Set(table).size).toBe(table.length);
 		}
 	});

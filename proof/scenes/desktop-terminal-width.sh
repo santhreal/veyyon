@@ -154,8 +154,8 @@ grid_region() {
 }
 
 # ─── The Drawer Its Own Chord Opens ──────────────────────────────────────────
-AT_REST="${SCENE_RUNTIME_DIR}/frame-compare/grid-at-rest.png"
-mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+AT_REST="${TMPDIR}/frame-compare/grid-at-rest.png"
+mkdir -p "${TMPDIR}/frame-compare"
 probe_frame "${AT_REST}"
 
 k "ctrl+j"
@@ -175,7 +175,7 @@ move_px "$(( GRID_X + GRID_W / 2 ))" "$(( GRID_TOP + GRID_H / 2 ))"
 click
 pause 0.4
 
-BLANK="${SCENE_RUNTIME_DIR}/frame-compare/grid-blank.png"
+BLANK="${TMPDIR}/frame-compare/grid-blank.png"
 probe_frame "${BLANK}"
 
 RULE="$(python3 -c "import sys; sys.stdout.write('=' * ${RULE_COLS})")"

@@ -24,6 +24,7 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { median } from "./record-settled-startup";
 
 /** Kept trivial on purpose: a long answer measures the model, not the harness. */
 const PROMPT = "Reply with exactly: OK";
@@ -168,12 +169,6 @@ async function runOnce(arm: Arm, cwd: string, timeoutMs: number): Promise<RunRes
 	);
 
 	return promise;
-}
-
-function median(values: number[]): number {
-	const sorted = [...values].sort((a, b) => a - b);
-	const mid = Math.floor(sorted.length / 2);
-	return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
 interface ArmSummary {

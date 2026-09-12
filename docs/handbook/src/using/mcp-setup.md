@@ -180,11 +180,23 @@ To turn a server off entirely, add its name to `disabledServers` in `mcp.json`.
 | Command | Purpose |
 | --- | --- |
 | `/mcp` | List servers, connection/auth status, and exposed tools |
-| `/mcp add` | Add a server (writes `mcp.json`) |
+| `/mcp add` | Add a server through the interactive wizard (writes `mcp.json`) |
+| `/mcp add <name> [http\|sse] [url <url>] [token <token>] [run <command...>]` | Add a server without the wizard |
 | `/mcp list` | List configured servers |
 | `/mcp remove <name>` | Remove a server |
 | `/mcp test <name>` | Test connectivity |
 | `/mcp reauth <name>` | Refresh OAuth |
+| `/mcp unauth <name>` | Remove the stored OAuth credential |
+| `/mcp enable <name>` / `/mcp disable <name>` | Turn a server on or off |
+| `/mcp reconnect <name>` | Reconnect one server, including one whose automatic reconnects were suspended after repeated exits |
+| `/mcp reload` | Reload `mcp.json` and rediscover tools |
+| `/mcp resources` / `/mcp prompts` | List the resources and prompts connected servers expose |
+| `/mcp notifications` | Show notification capabilities and subscription state |
+| `/mcp smithery-search <keyword...>` | Search the Smithery registry and deploy from the picker |
+
+`/mcp add` stores manually entered credentials in `env` for stdio servers and in `headers` for
+HTTP and SSE servers. After OAuth failure or cancellation, choose **Retry** to restart authorization
+or **Edit OAuth settings** to change the authorization URL, token URL, client ID, client secret or scopes.
 
 Run `/mcp list` to see exactly which tools, resources, and templates Veyyon registered.
 

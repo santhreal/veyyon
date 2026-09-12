@@ -7,18 +7,24 @@ everyone; please read this before opening a PR.
 
 - **Issues are open to everyone.** File bugs, feature requests, and questions
   freely — they are triaged automatically.
+- **A bug fix opens as a PR directly.** Anything else needs an issue first, so
+  the scope is settled before you write the code.
 - **Pull requests are open to everyone too.** Open a PR against `main`. It runs
   through CI and an automated review, then a maintainer reviews it.
 
 ## Opening a PR
 
-1. Fork the repo (or branch, if you have write access) and make your change.
-2. Put a changelog entry under the affected package's `## [Unreleased]`
+1. If the change is not a bug fix, open an issue first and wait for a reply. A
+   large PR with no issue behind it is sent back for one, however good the code
+   is.
+2. Fork the repo (or branch, if you have write access) and make your change.
+3. Put a changelog entry under the affected package's `## [Unreleased]`
    section. Leave the repo-root `CHANGELOG.md` alone: it is assembled from every
    package changelog and resynced automatically after your PR merges.
-3. Keep the PR description short (what broke, the fix), and make sure
+4. Keep the PR description short (what broke, the fix), and make sure
    `bun run check` and the tests pass locally.
-4. Open the PR against `main`.
+5. Open the PR against `main`. Put `Refs #N` in the body, not `Fixes #N`: a
+   closing keyword closes the issue on merge, and that is the reporter's call.
 
 ## UI changes
 

@@ -101,7 +101,7 @@ describe("settings layout", () => {
 	});
 
 	it("exposes advisor sub-settings under the model Advisor group", () => {
-		const advisorDependentPaths: SettingPath[] = ["advisor.subagents", "advisor.syncBacklog", "advisor.immuneTurns"];
+		const advisorDependentPaths: SettingPath[] = ["advisor.agents", "advisor.syncBacklog", "advisor.immuneTurns"];
 		for (const path of advisorDependentPaths) {
 			const def = getSettingsForTab("model").find(item => item.path === path);
 			expect(def).toMatchObject({

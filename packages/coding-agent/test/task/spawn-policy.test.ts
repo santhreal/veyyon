@@ -10,7 +10,7 @@ import { makeToolSession } from "../helpers/tool-session";
 
 /**
  * resolveSpawnPolicy is the single interpreter of a parent agent's `spawns`
- * frontmatter. Every spawn-gating decision (whether a subagent may be spawned,
+ * frontmatter. Every spawn-gating decision (whether an agent may be spawned,
  * which agent answers an omitted agent field, and the exact allow-list text used
  * in rejection messages and prompt descriptions) flows through it, so its
  * branch table must be pinned exactly. These tests were missing.
@@ -169,13 +169,13 @@ const oracleAgent = {
 function makeSpawnSession(spawns: string): ToolSession {
 	const settings = Settings.isolated({
 		"async.enabled": false,
-		"subagent.batch": true,
-		"subagent.isolation.mode": "none",
+		"agent.batch": true,
+		"agent.isolation.mode": "none",
 		// Enabled the way an operator does. Only the general-purpose delegate ships enabled
-		// (`subagentEnabledByDefault`), so without these rows the catalog resolves to zero agents
+		// (`agentEnabledByDefault`), so without these rows the catalog resolves to zero agents
 		// and the description renders "Agent spawning is currently disabled". The case below would
 		// then be measuring enablement policy instead of the spawn-policy allow-list it is about.
-		"subagent.agents": { "fact-finder": { enabled: true }, oracle: { enabled: true } },
+		"agent.agents": { "fact-finder": { enabled: true }, oracle: { enabled: true } },
 	});
 	return makeToolSession({
 		settings,

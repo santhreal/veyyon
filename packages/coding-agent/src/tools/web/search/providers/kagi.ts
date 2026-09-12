@@ -10,9 +10,7 @@ import { SearchProviderError } from "../types";
 import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { classifyProviderHttpError, toSearchSources } from "./utils";
-
-type SearchParamsWithFetch = SearchParams & { fetch?: FetchImpl };
+import { throwProviderHttpError, toSearchSources } from "./utils";
 
 const MAX_NUM_RESULTS = 40;
 
@@ -29,7 +27,6 @@ export async function searchKagi(params: {
 }): Promise<SearchResponse> {
 	const numResults = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 	const fetchImpl = params.fetch ?? fetch;
-
 	try {
 		const result = await searchWithKagi(
 			params.query,
@@ -54,8 +51,7 @@ export async function searchKagi(params: {
 	} catch (err) {
 		if (err instanceof KagiApiError) {
 			if (typeof err.statusCode === "number") {
-				const classified = classifyProviderHttpError("kagi", err.statusCode, err.body);
-				if (classified) throw classified;
+				throwProviderHttpError("kagi", err.statusCode, err.body, "Kagi search request failed.");
 			}
 			throw new SearchProviderError("kagi", "Kagi search request failed.", err.statusCode);
 		}
@@ -72,9 +68,7 @@ export class KagiProvider extends SearchProvider {
 		return authStorage.hasAuth("kagi");
 	}
 
-	search(params: SearchParamsWithFetch): Promise<SearchResponse> {
-		const fetchImpl = params.fetch;
-
+	search(params: SearchParams & { fetch?: FetchImpl }): Promise<SearchResponse> {
 		return searchKagi({
 			query: params.query,
 			num_results: params.numSearchResults ?? params.limit,
@@ -82,7 +76,7 @@ export class KagiProvider extends SearchProvider {
 			signal: params.signal,
 			authStorage: params.authStorage,
 			sessionId: params.sessionId,
-			fetch: fetchImpl,
+			fetch: params.fetch,
 			resolveProviderTextTransform: params.resolveProviderTextTransform,
 		});
 	}

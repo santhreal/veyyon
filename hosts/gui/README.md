@@ -28,9 +28,13 @@ class, and the structure a stylesheet lays out arrives as data attributes: `data
 `data-side` on a change row, `data-depth`, `data-opens` and `data-last` on a tree row,
 `data-language` on source, and `data-live` on anything still in flight.
 
-An embedder supplies its own icon set through `GuiViewOptions.symbols`, keyed by the symbol and
-emblem names a tool states and by `status:<name>` for the mark a status draws. A key with no entry
-draws the span's own text, which is the fallback the contract states.
+A symbol, emblem or notice mark key draws the glyph `UNICODE_SYMBOLS` in `@veyyon/view` holds for
+it, the same table the terminal's plain preset and the HTML export draw from. An embedder overrides
+a glyph through `GuiViewOptions.symbols`, keyed by the symbol and emblem names a tool states and by
+`status:<name>` for the mark a status draws. A key in neither table draws the span's own text, no
+emblem and no notice mark; the key itself is never text.
+Only own properties of the symbol table are resolved; inherited names fall through to the shared table.
+Symbol values from `GuiViewOptions.symbols` are inserted as markup; glyphs from the shared table are escaped as text.
 
 ## What this host answers differently from the terminal
 

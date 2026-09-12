@@ -117,6 +117,10 @@ export class EvalExecutionComponent extends Container {
 		this.#updateDisplay();
 	}
 
+	setOutput(output: string): void {
+		this.#setOutput(output);
+		this.#updateDisplay();
+	}
 	#updateDisplay(): void {
 		const availableLines = this.#outputLines;
 		const previewLogicalLines = availableLines.slice(-EXECUTION_PREVIEW_LINES);

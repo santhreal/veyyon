@@ -1,8 +1,16 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import { buildModel } from "@veyyon/catalog/build";
+import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
+import { ModelSelectorPanel } from "@veyyon/coding-agent/modes/terminal/components/selectors/model-selector";
+import {
+	ModelChainSubmenu,
+	SettingsSelectorComponent,
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { TERMINAL } from "@veyyon/tui";
+import { parseSgrMouse } from "@veyyon/utils/mouse";
 import { stubStdoutGeometry } from "../../../helpers/stdout-geometry";
 
 function strip(s: string): string {
@@ -186,5 +194,109 @@ describe("SettingsSelectorComponent memory tab", () => {
 
 		comp.handleInput("\x1b");
 		expect(cancelCount).toBe(1);
+	});
+
+	it("renders fallback message and returns on Escape when model catalog is unavailable", () => {
+		const comp = createSelector();
+		comp.openTab("model");
+		expect(comp.selectSetting("compaction.model")).toBe(true);
+		comp.handleInput("\n");
+		const rendered = strip(comp.render(120).join("\n"));
+		expect(rendered).toContain("Model catalog unavailable");
+		expect(rendered).toContain("Esc to go back");
+
+		comp.handleInput("\x1b");
+		const after = strip(comp.render(120).join("\n"));
+		expect(after).not.toContain("Model catalog unavailable");
+		expect(after).toContain("Compaction Model");
+	});
+
+	it("formats model roles value correctly when unassigned or assigned", () => {
+		const comp = createSelector();
+		expect(comp.formatModelRolesValue()).toBe("all inherit");
+		settings.setModelRole("smol", "anthropic/claude-3-5-haiku");
+		expect(comp.formatModelRolesValue()).toBe("1 assigned");
+	});
+
+	it("formats rules value correctly for built-in, disabled, and experimental rules", () => {
+		const comp = createSelector();
+		settings.set("ttsr.builtinRules", true);
+		expect(comp.formatRulesValue()).toBe("all on");
+		settings.set("ttsr.disabledRules", ["rule1", "rule2"]);
+		expect(comp.formatRulesValue()).toBe("2 off");
+		settings.set("ttsr.experimentalRules", ["exp1"]);
+		expect(comp.formatRulesValue()).toBe("2 off, 1 experimental on");
+		settings.set("ttsr.builtinRules", false);
+		expect(comp.formatRulesValue()).toBe("built-ins off, 2 more off, 1 experimental on");
+	});
+
+	it("redraws model picker on mouse hover with dynamic submenu receiver binding", () => {
+		const terminalCaps = TERMINAL as unknown as { trueColor: boolean };
+		const originalTrueColor = terminalCaps.trueColor;
+		terminalCaps.trueColor = true;
+		const model = buildModel({
+			id: "claude-3-5-sonnet",
+			provider: "anthropic",
+			name: "Claude 3.5 Sonnet",
+			api: "anthropic",
+			baseUrl: "https://api.anthropic.com",
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+			contextWindow: 200000,
+			maxTokens: 8192,
+		});
+		const models = [model];
+		const registry = {
+			getAllModels: () => models,
+			findModel: () => model,
+			isKeylessProvider: () => false,
+			hasConfiguredAuth: () => true,
+			authStorage: { hasAuth: () => true },
+		} as unknown as ModelRegistry;
+		let initialCalls = 0;
+		let replacedCalls = 0;
+		let lastReceiver: unknown;
+		const submenu = new ModelChainSubmenu(
+			"compaction.model",
+			registry,
+			models,
+			"Compaction Model",
+			["anthropic/claude-3-5-sonnet"],
+			() => {},
+			() => {},
+			function (this: ModelChainSubmenu) {
+				lastReceiver = this;
+				initialCalls++;
+			},
+		);
+
+		try {
+			submenu.handleInput("\n");
+			const panel = submenu.children.find((c): c is ModelSelectorPanel => c instanceof ModelSelectorPanel);
+			expect(panel).toBeDefined();
+
+			submenu.render(80);
+
+			submenu.requestRender = function (this: ModelChainSubmenu) {
+				lastReceiver = this;
+				replacedCalls++;
+			};
+
+			const hoverEvent = parseSgrMouse("\x1b[<35;6;7M");
+			if (!hoverEvent) throw new Error("Expected a decoded hover event");
+
+			expect(initialCalls).toBe(1);
+			expect(replacedCalls).toBe(0);
+
+			panel?.routeMouse(hoverEvent, 6);
+
+			expect(initialCalls).toBe(1);
+			expect(replacedCalls).toBe(1);
+			expect(lastReceiver).toBe(submenu);
+		} finally {
+			submenu.clear();
+			terminalCaps.trueColor = originalTrueColor;
+		}
 	});
 });

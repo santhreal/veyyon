@@ -167,14 +167,14 @@ describe("no kernel retypes a shared budget", () => {
 	});
 
 	/**
-	 * And each kernel takes both budgets and both helpers from the owner.
+	 * Each kernel imports the shared budgets, trace convention and runner publisher.
 	 *
 	 * Asserted against the PARSED import clause rather than against the file's text. `toContain(name)` is
 	 * satisfied by a doc comment that merely mentions `KERNEL_SHUTDOWN_GRACE_MS`, and by a kernel that
 	 * names the symbol while declaring its own copy beside it; the parsed clause is satisfied only by an
 	 * import that actually binds the owner's value.
 	 */
-	it("has every kernel importing the owner's budgets and conventions", async () => {
+	it("has every kernel importing the shared lifecycle and runner operations", async () => {
 		for (const kernel of KERNELS) {
 			const text = await Bun.file(path.join(EVAL_SRC, kernel)).text();
 			expect(namedImportsFrom(text, "../kernel-base"), `${kernel} imports from the owner`).toEqual(
@@ -182,7 +182,7 @@ describe("no kernel retypes a shared budget", () => {
 					"KERNEL_SHUTDOWN_GRACE_MS",
 					"KERNEL_INTERRUPT_ESCALATION_MS",
 					"kernelIpcTraceEnvVar",
-					"kernelRunnerCacheDir",
+					"createRunnerScriptPublisher",
 				]),
 			);
 		}

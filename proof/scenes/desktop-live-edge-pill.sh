@@ -86,7 +86,7 @@ accent_pixels() { # <shot> -> count of accent-filled pixels in the column
 }
 
 differing_pixels() { # <shot-a> <shot-b>
-	local scratch="${SCENE_RUNTIME_DIR}/frame-compare"
+	local scratch="${TMPDIR}/frame-compare"
 	mkdir -p "${scratch}"
 	local crop="${CROP_W}x${CROP_H}+${CROP_X}+${CROP_Y}" differing
 	magick "${SCENE_OUT}/${SCENE_NAME}-$1.png" -crop "${crop}" +repage "${scratch}/a.png"

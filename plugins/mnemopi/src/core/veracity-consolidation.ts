@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { type DatabasePath, openDatabase } from "../db";
 import { toUtcIso } from "../util/datetime";
+import { parseStoredStringList } from "../util/sqlite";
 import {
 	aggregateVeracity,
 	clampVeracity,
@@ -96,23 +97,6 @@ export interface ConsolidationStats {
 function sqliteInTransaction(db: Database): boolean {
 	const txDb = db as TxDatabase;
 	return txDb.inTransaction === true || txDb.in_transaction === true || (txDb[TX_DEPTH] ?? 0) > 0;
-}
-
-function parseSources(raw: string | null): string[] {
-	if (raw === null || raw === "") return [];
-	try {
-		const parsed: unknown = JSON.parse(raw);
-		if (!Array.isArray(parsed)) return [];
-		const out: string[] = [];
-		for (const item of parsed) {
-			if (typeof item === "string") out.push(item);
-		}
-		return out;
-	} catch {
-		// Same as the episodic tag reader: an unparseable stored list yields no entries, matching what a row
-		// with none gives, and consolidation proceeds with the memory rather than dropping it.
-		return [];
-	}
 }
 
 export function computeFactId(subject: string, predicate: string, object: string): string {
@@ -242,7 +226,7 @@ export class VeracityConsolidator {
 			if (existing !== null) {
 				const newConfidence = this.bayesianUpdate(existing.confidence, veracity);
 				const newCount = existing.mention_count + 1;
-				const sources = parseSources(existing.sources_json);
+				const sources = parseStoredStringList(existing.sources_json);
 				if (source !== undefined && source !== null && source !== "" && !sources.includes(source))
 					sources.push(source);
 				this.conn
@@ -372,7 +356,7 @@ export class VeracityConsolidator {
 			mention_count: row.mention_count,
 			first_seen: row.first_seen,
 			last_seen: row.last_seen,
-			sources: parseSources(row.sources_json),
+			sources: parseStoredStringList(row.sources_json),
 			veracity: row.veracity,
 			superseded: row.superseded_by !== null,
 			id: row.id,

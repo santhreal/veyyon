@@ -3,9 +3,22 @@
  * `tool_choice 'specified' is incompatible with thinking enabled`
  * whenever the agent forces a tool call while reasoning is on.
  *
- * The fix follows the Anthropic pattern (`disableThinkingIfToolChoiceForced`)
- * — when a forced tool_choice is sent to a Kimi reasoning model, we strip
- * reasoning for that single turn rather than dropping `tool_choice` outright.
+ * THE INVARIANT, which outlived two mechanisms. A Kimi reasoning turn must never
+ * put a forced `tool_choice` and a thinking signal on the wire together. #827
+ * satisfied that by following the Anthropic pattern
+ * (`disableThinkingIfToolChoiceForced`): keep the forced choice and strip
+ * reasoning for that one turn.
+ *
+ * The OpenCode gateways later stopped accepting any `tool_choice` but `"auto"`
+ * (`only '"auto"' is supported for 'tool_choice'`), so on those hosts the
+ * `"required"` that #827 sent became its own 400 and the choice is dropped
+ * instead — which satisfies the same invariant from the other side and lets
+ * reasoning through, since nothing is being forced. The strip-reasoning
+ * mechanism still governs Moonshot and OpenRouter, which take a forced choice;
+ * those cases are below and unchanged.
+ *
+ * So the assertions are written against the invariant rather than either
+ * mechanism: whichever half is present on the wire, the other must be absent.
  */
 import { describe, expect, it } from "bun:test";
 import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
@@ -82,16 +95,24 @@ interface CompletionsBody {
 }
 
 describe("issue #827 — kimi reasoning models drop reasoning under forced tool_choice", () => {
-	it("strips reasoning_effort when toolChoice is forced on direct Kimi (Moonshot-style id)", async () => {
-		const body = (await captureBody(kimiOpencodeGoModel(), {
-			reasoning: "high",
-			toolChoice: "any",
-		})) as CompletionsBody;
+	it("never puts a forced choice and a thinking signal on the wire together, on any gateway shape", async () => {
+		// Every shape a caller can force. The gateway takes none of them, so each
+		// must leave the wire with no `tool_choice` — and with reasoning intact,
+		// because there is no longer anything for thinking to be incompatible with.
+		for (const toolChoice of ["any", "required", { type: "tool", name: "echo" }] as const) {
+			const body = (await captureBody(kimiOpencodeGoModel(), {
+				reasoning: "high",
+				toolChoice,
+			})) as CompletionsBody;
+			const label = JSON.stringify(toolChoice);
 
-		// Forced choice still forwarded so the model must pick a tool…
-		expect(body.tool_choice).toBe("required");
-		// …but reasoning is suppressed to satisfy Kimi's "thinking incompatible with forced tool_choice" rule.
-		expect(body.reasoning_effort).toBeUndefined();
+			expect(body.tool_choice, `${label} reaches an upstream that accepts only "auto"`).toBeUndefined();
+			// The invariant: nothing is forced, so the thinking signal is allowed.
+			expect(body.reasoning_effort, label).toBe("high");
+			expect(body.thinking, label).toBeUndefined();
+			// And the tool stays offered, or dropping the choice would cost the call.
+			expect(JSON.stringify(body.tools ?? []), label).toContain("echo");
+		}
 	});
 
 	it("preserves reasoning_effort when toolChoice is auto", async () => {
@@ -100,7 +121,9 @@ describe("issue #827 — kimi reasoning models drop reasoning under forced tool_
 			toolChoice: "auto",
 		})) as CompletionsBody;
 
-		expect(body.tool_choice).toBe("auto");
+		// `"auto"` is the one value the gateway accepts, and an omitted field is
+		// the same request; it is dropped with the rest so one rule covers them all.
+		expect(body.tool_choice).toBeUndefined();
 		expect(body.reasoning_effort).toBe("high");
 	});
 

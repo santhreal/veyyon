@@ -3,7 +3,7 @@
  */
 
 import { settings } from "../../config/settings-instance";
-import { readLaunchFacts } from "../launch-facts";
+import { type LaunchFacts, readLaunchFacts } from "../launch-facts";
 
 /**
  * What the card prints for the model before a catalog exists to name it.
@@ -21,10 +21,10 @@ import { readLaunchFacts } from "../launch-facts";
  * them on. Empty when no default role is configured, which is the one case where the card has
  * nothing to state and says so.
  */
-export function launchModelLabel(): string {
-	const { modelName } = readLaunchFacts();
+export function launchModelLabel(facts?: LaunchFacts, defaultRole?: string): string {
+	const modelName = facts !== undefined ? facts.modelName : readLaunchFacts().modelName;
 	if (modelName) return modelName;
-	const role = settings.getModelRole("default");
+	const role = defaultRole !== undefined ? defaultRole : settings.getModelRole("default");
 	if (!role) return "";
 	return role.slice(role.lastIndexOf("/") + 1);
 }
@@ -38,8 +38,8 @@ export function launchModelLabel(): string {
  * launch of a model has no recording, and the role already states the fact for
  * free. Empty when no role is configured or the role carries no provider.
  */
-export function launchProviderLabel(): string {
-	const role = settings.getModelRole("default");
+export function launchProviderLabel(defaultRole?: string): string {
+	const role = defaultRole !== undefined ? defaultRole : settings.getModelRole("default");
 	if (!role) return "";
 	const slash = role.indexOf("/");
 	return slash > 0 ? role.slice(0, slash) : "";

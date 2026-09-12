@@ -11,8 +11,9 @@ import { truncateToWidth } from "@veyyon/utils/width";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../../config/settings-instance";
 import { theme } from "../../../../theme/theme";
-import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
+import { matchesSelectCancel } from "../../utils/keybinding-matchers";
 import { pointerMotionEnabled } from "../chrome/modal-shell";
+import { handleListNavigationKey } from "./select-list-mouse-routing";
 import { hoverBandAt, renderScrollableList } from "./selector-helpers";
 
 /** Default visible provider rows when the host does not size the selector. */
@@ -357,9 +358,9 @@ export class OAuthSelectorComponent implements Component {
 							if (!provider) continue;
 							const isSelected = i === this.#selectedIndex;
 							const isAvailable = provider.available;
+							const credential = theme.fg("muted", ` · ${CREDENTIAL_LABELS[provider.credential]}`);
 							const statusIndicator = this.#getStatusIndicator(provider.id);
 
-							const credential = theme.fg("muted", ` · ${CREDENTIAL_LABELS[provider.credential]}`);
 							let line: string;
 							if (isSelected) {
 								const prefix = theme.fg("accent", `${theme.nav.cursor} `);
@@ -422,40 +423,16 @@ export class OAuthSelectorComponent implements Component {
 			return;
 		}
 
-		// Up arrow
-		if (matchesSelectUp(keyData)) {
-			if (this.#filteredProviders.length > 0) {
-				this.#selectedIndex =
-					this.#selectedIndex === 0 ? this.#filteredProviders.length - 1 : this.#selectedIndex - 1;
-			}
-			this.#statusMessage = undefined;
-		}
-		// Down arrow
-		else if (matchesSelectDown(keyData)) {
-			if (this.#filteredProviders.length > 0) {
-				this.#selectedIndex =
-					this.#selectedIndex === this.#filteredProviders.length - 1 ? 0 : this.#selectedIndex + 1;
-			}
-			this.#statusMessage = undefined;
-		}
-		// Page up - jump up by one visible page
-		else if (matchesKey(keyData, "pageUp")) {
-			if (this.#filteredProviders.length > 0) {
-				this.#selectedIndex = Math.max(0, this.#selectedIndex - this.#maxVisible);
-			}
-			this.#statusMessage = undefined;
-		}
-		// Page down - jump down by one visible page
-		else if (matchesKey(keyData, "pageDown")) {
-			if (this.#filteredProviders.length > 0) {
-				this.#selectedIndex = Math.min(this.#filteredProviders.length - 1, this.#selectedIndex + this.#maxVisible);
-			}
-			this.#statusMessage = undefined;
-		}
-		// Enter
-		else if (matchesKey(keyData, "enter") || matchesKey(keyData, "return") || keyData === "\n") {
-			this.#confirmSelection();
-		}
+		handleListNavigationKey(keyData, {
+			selectedIndex: this.#selectedIndex,
+			totalItems: this.#filteredProviders.length,
+			pageSize: this.#maxVisible,
+			onMove: next => {
+				this.#selectedIndex = next;
+				this.#statusMessage = undefined;
+			},
+			onSelect: () => this.#confirmSelection(),
+		});
 	}
 
 	/** Confirm the selected provider (Enter or mouse click). */

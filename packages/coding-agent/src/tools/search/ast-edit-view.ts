@@ -8,7 +8,7 @@
  */
 
 import { collapseWhitespace } from "@veyyon/utils";
-import { replaceTabs } from "@veyyon/utils/wrap";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import type {
 	FramedBlockView,
 	StatusRowView,
@@ -19,13 +19,16 @@ import type {
 	ViewSpan,
 } from "@veyyon/view";
 import { classifyGroupedLines, groupLineIndicesByBlank } from "../core/grouped-file-output";
+import { extractResultText } from "../core/output-notice";
 import {
+	errorSection,
 	formatCount,
 	formatParseErrorsCountLabel,
-	formatScopeMeta,
+	heldBack,
 	PARSE_ERRORS_LIMIT,
 	PREVIEW_LIMITS,
-	sanitizeErrorText,
+	scopeMetaLine,
+	type ToolViewResult,
 } from "../core/render-utils";
 import type { AstEditToolDetails } from "./ast-edit";
 
@@ -45,11 +48,7 @@ export interface AstEditViewArgs {
 }
 
 /** The result the card reads, which is the tool's own result shape narrowed to what a card shows. */
-export interface AstEditViewResult {
-	content: Array<{ type: string; text?: string }>;
-	details?: AstEditToolDetails;
-	isError?: boolean;
-}
+export interface AstEditViewResult extends ToolViewResult<AstEditToolDetails> {}
 
 /**
  * One line of a pattern, for the row that heads the card.
@@ -134,7 +133,7 @@ function parseErrorLines(parseErrors: readonly string[], total: number | undefin
 /** The row a settled card is headed by when the edit replaced nothing. */
 function emptyHeader(details: AstEditToolDetails | undefined, args: AstEditViewArgs | undefined): StatusRowView {
 	const meta: ViewLine[] = [[{ text: "0 replacements" }]];
-	if (details?.scopePath) meta.push([{ text: formatScopeMeta(details.scopePath) }]);
+	if (details?.scopePath) meta.push(scopeMetaLine(details.scopePath));
 	const searched = details?.filesSearched ?? 0;
 	if (searched > 0) meta.push([{ text: `searched ${searched}` }]);
 	return {
@@ -152,7 +151,7 @@ function resultHeader(details: AstEditToolDetails, args: AstEditViewArgs | undef
 		[{ text: formatCount("replacement", details.totalReplacements) }],
 		[{ text: formatCount("file", details.filesTouched) }],
 	];
-	if (details.scopePath) meta.push([{ text: formatScopeMeta(details.scopePath) }]);
+	if (details.scopePath) meta.push(scopeMetaLine(details.scopePath));
 	meta.push([{ text: `searched ${details.filesSearched}` }]);
 	if (details.limitReached) meta.push([{ text: "limit reached", tone: "warning" }]);
 	return {
@@ -180,7 +179,7 @@ function asideLines(details: AstEditToolDetails): ViewLine[] {
 export const astEditToolView: Required<ToolViewRenderer<AstEditViewArgs, AstEditViewResult>> = {
 	renderCall(args): StatusRowView {
 		const meta: ViewLine[] = [];
-		if (args.paths?.length) meta.push([{ text: formatScopeMeta(args.paths) }]);
+		if (args.paths?.length) meta.push(scopeMetaLine(args.paths));
 		const rewriteCount = args.ops?.length ?? 0;
 		if (rewriteCount > 1) meta.push([{ text: `${rewriteCount} rewrites` }]);
 		return {
@@ -194,23 +193,14 @@ export const astEditToolView: Required<ToolViewRenderer<AstEditViewArgs, AstEdit
 
 	renderResult(result, context: ToolViewContext, args): ToolView {
 		const details = result.details;
-		const text = result.content?.find(part => part.type === "text")?.text;
+		const text = extractResultText(result.content);
 
 		if (result.isError) {
 			return {
 				kind: "framedBlock",
 				header: { kind: "statusRow", status: "error", title: AST_EDIT_TITLE },
 				state: "error",
-				// The two leading spaces are the indent `formatErrorDetail` wrote. Each line carries the
-				// tone of its own, where the string form coloured the block once and left every line
-				// after the first uncoloured.
-				sections: [
-					{
-						lines: sanitizeErrorText(text || "Unknown error")
-							.split("\n")
-							.map(line => [{ text: "  " }, { text: line, tone: "error" as const }]),
-					},
-				],
+				sections: [errorSection(text, "Unknown error")],
 			};
 		}
 
@@ -239,6 +229,7 @@ export const astEditToolView: Required<ToolViewRenderer<AstEditViewArgs, AstEdit
 			.map(indices => indices.map(index => drawn[index]!));
 		const changes = budgetedGroups(groups, context.expanded, COLLAPSED_CHANGE_LIMIT);
 		const asides = asideLines(details!);
+		const hidden = heldBack(changes.held, CHANGE_NOUN);
 		const card: FramedBlockView = {
 			kind: "framedBlock",
 			header: resultHeader(details!, args),
@@ -248,9 +239,7 @@ export const astEditToolView: Required<ToolViewRenderer<AstEditViewArgs, AstEdit
 					? [
 							{
 								lines: changes.lines,
-								...(changes.held > 0
-									? { hidden: { count: changes.held, noun: CHANGE_NOUN, revealable: true } }
-									: {}),
+								...(hidden === undefined ? {} : { hidden }),
 							},
 						]
 					: []),

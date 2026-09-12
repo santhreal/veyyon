@@ -126,7 +126,7 @@ describe("SettingsSelectorComponent tab context", () => {
 		const component = createSelector();
 
 		component.openTab("experimental");
-		driveDownTo(component, "argot.subagents");
+		driveDownTo(component, "argot.agents");
 		component.openTab("appearance");
 		settings.set("argot.enabled", false);
 		component.openTab("experimental");
@@ -134,7 +134,7 @@ describe("SettingsSelectorComponent tab context", () => {
 		expectSelectedRowVisible(component, "experimental", "tools.format");
 		const frame = component.render(WIDTH).map(stripVTControlCharacters).join("\n");
 		expect(frame).toContain("Tool Calling Mode");
-		expect(frame).not.toContain("Argot in Subagents");
+		expect(frame).not.toContain("Argot in Agents");
 	});
 
 	/**

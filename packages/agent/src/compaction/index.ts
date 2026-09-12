@@ -13,5 +13,6 @@ export * from "./pruning";
 export * from "./remote-compaction";
 export * from "./remote-summarizer";
 export * from "./shake";
+export * from "./staged-summary";
 export * from "./threshold";
 export * from "./utils";

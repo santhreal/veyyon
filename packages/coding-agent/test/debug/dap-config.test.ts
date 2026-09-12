@@ -245,6 +245,52 @@ describe("DAP adapter configuration", () => {
 		expect(getAdapterConfigs(cwd)["acme-ruby"]?.command).toBe("ruby-debug-adapter");
 	});
 
+	it("honors source precedence: project root overrides project config dir which overrides plugin root", async () => {
+		const cwd = await makeTempDir("veyyon-dap-config-precedence-");
+		const pluginRoot = path.join(cwd, "plugins", "priority-debug");
+		await fs.mkdir(path.join(pluginRoot, ".claude-plugin"), { recursive: true });
+		await fs.mkdir(path.join(cwd, ".veyyon"), { recursive: true });
+
+		await fs.writeFile(
+			path.join(pluginRoot, ".claude-plugin", "plugin.json"),
+			JSON.stringify({ name: "priority-debug" }),
+		);
+		await fs.writeFile(
+			path.join(pluginRoot, "dap.json"),
+			JSON.stringify({
+				adapters: {
+					"tier-adapter": { command: "plugin-cmd", fileTypes: [".tier"] },
+					"plugin-only": { command: "plugin-only-cmd", fileTypes: [".po"] },
+				},
+			}),
+		);
+		await injectPluginDirRoots(cwd, [pluginRoot], cwd);
+
+		await fs.writeFile(
+			path.join(cwd, ".veyyon", "dap.json"),
+			JSON.stringify({
+				adapters: {
+					"tier-adapter": { command: "project-dir-cmd", fileTypes: [".tier"] },
+					"dir-only": { command: "dir-only-cmd", fileTypes: [".do"] },
+				},
+			}),
+		);
+
+		await fs.writeFile(
+			path.join(cwd, "dap.json"),
+			JSON.stringify({
+				adapters: {
+					"tier-adapter": { command: "project-root-cmd", fileTypes: [".tier"] },
+				},
+			}),
+		);
+
+		const configs = getAdapterConfigs(cwd);
+		expect(configs["tier-adapter"]?.command).toBe("project-root-cmd");
+		expect(configs["dir-only"]?.command).toBe("dir-only-cmd");
+		expect(configs["plugin-only"]?.command).toBe("plugin-only-cmd");
+	});
+
 	it("ignores invalid custom adapters without discarding valid configs", async () => {
 		const cwd = await makeTempDir("veyyon-dap-config-invalid-");
 		await fs.writeFile(

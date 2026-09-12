@@ -81,7 +81,7 @@ describe("task renderer: streaming call preview", () => {
 			task: taskLines.join("\n"),
 		};
 
-		// The task text is the brief handed to the subagent; it renders as
+		// The task text is the brief handed to the agent; it renders as
 		// markdown in full regardless of the expanded toggle.
 		const collapsed = render(args, false);
 		expect(collapsed).toContain("Step 1");

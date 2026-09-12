@@ -8,14 +8,13 @@ import { openPath } from "../../../../utils/open";
 import {
 	CARD_BODY_COL_INSET,
 	computeModalDims,
-	consumeModalChipHover,
-	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	renderModalShell,
 	sizingForArea,
 } from "../chrome/modal-shell";
+import { routeModalChrome } from "../selectors/select-list-mouse-routing";
 
 /** What a login flow is currently asking the operator to paste. */
 interface PromptState {
@@ -78,9 +77,9 @@ export class LoginDialogComponent implements Component {
 	#escapeMode: "cancel" | "skip" = "cancel";
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
-	/** Body line the field was painted on in the last frame, or -1 while no question is asked. */
-	#inputBodyLine = -1;
 	#getTerminalRows: () => number;
+	/** Body line containing the input in the last rendered frame. */
+	#inputBodyLine = -1;
 
 	constructor(
 		tui: TUI,
@@ -231,27 +230,22 @@ export class LoginDialogComponent implements Component {
 	}
 
 	#routeMouse(event: SgrMouseEvent): boolean {
-		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-			motion: event.motion,
-			leftClick: event.leftClick,
-		});
-		if (
-			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+		const consumed = routeModalChrome({
+			shellGeometry: this.#shellGeometry,
+			event,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			onHoverShortcut: id => {
 				this.#hoveredShortcutId = id;
 				this.#tui.requestRender();
-			})
-		) {
-			return true;
-		}
-		if (event.motion) return true;
-		if (
-			chrome.kind === "close" ||
-			chrome.kind === "outside" ||
-			(chrome.kind === "shortcut" && chrome.id === "cancel")
-		) {
-			this.#escape();
-			return true;
-		}
+			},
+			onCancel: () => this.#escape(),
+			onShortcut: id => {
+				if (id !== "cancel") return false;
+				this.#escape();
+				return true;
+			},
+		});
+		if (consumed || event.motion) return true;
 		// A click on the field places its caret; the pasted key is then editable
 		// where the pointer landed rather than only at its end.
 		const geometry = this.#shellGeometry;

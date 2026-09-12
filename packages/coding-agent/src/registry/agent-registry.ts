@@ -1,6 +1,6 @@
 /**
  * AgentRegistry - Process-global registry of agents (the main session plus
- * every subagent), keyed by stable id.
+ * every spawned agent), keyed by stable id.
  *
  * Tracks each agent's status and (when live) its AgentSession so peers can be
  * addressed by id (`irc`, `task resume`, `history://`). Sessions are
@@ -56,9 +56,42 @@ export function mainAgentIdFor(sessionId: string): string {
  */
 export const AGENT_STATUSES = ["running", "idle", "parked", "aborted"] as const;
 export type AgentStatus = (typeof AGENT_STATUSES)[number];
+
 /**
- * - `main`/`sub`: the user-facing agent tree (driving agent + task subagents).
- * - `advisor`: a passive review transcript persisted like a subagent for usage
+ * The status transitions a live process may perform, keyed by the current status.
+ *
+ * - `running → idle`: the turn drained. `running → parked`: the run finished with
+ *   no session to keep (isolated run, tan clone). `running → aborted`: killed.
+ * - `idle → running`: a follow-up turn started. `idle → parked`: the idle TTL
+ *   elapsed. `idle → aborted`: killed.
+ * - `parked → idle`: revived. `parked → aborted`: killed while parked.
+ * - `aborted` is terminal.
+ *
+ * `parked → running` is absent because a parked ref has no session to run a turn
+ * on: a revive attaches the session and reports `idle` first, and the turn's own
+ * `agent_start` then reports `running`.
+ */
+export const AGENT_TRANSITIONS: Readonly<Record<AgentStatus, readonly AgentStatus[]>> = {
+	running: ["idle", "parked", "aborted"],
+	idle: ["running", "parked", "aborted"],
+	parked: ["idle", "aborted"],
+	aborted: [],
+};
+
+/** Thrown by {@link AgentRegistry.setStatus} for a transition {@link AGENT_TRANSITIONS} does not list. */
+export class AgentTransitionError extends Error {
+	constructor(
+		readonly id: string,
+		readonly from: AgentStatus,
+		readonly to: AgentStatus,
+	) {
+		super(`Agent "${id}" is ${from} and cannot become ${to}`);
+		this.name = "AgentTransitionError";
+	}
+}
+/**
+ * - `main`/`sub`: the user-facing agent tree (driving agent + spawned task agents).
+ * - `advisor`: a passive review transcript persisted like a spawned agent for usage
  *   attribution and Control Center observability, but never a peer — hidden from
  *   agent-facing rosters (`irc`, `history://`) and not messageable/revivable.
  */
@@ -72,7 +105,7 @@ export type AgentKind = "main" | "sub" | "advisor";
  * person" from "quiet", and each of them gets it wrong otherwise:
  *
  *   - the runtime budget, which must not spend an operator's reading time
- *     (`subagent.maxRuntimeMs` would otherwise abort an agent whose card is
+ *     (`agent.maxRuntimeMs` would otherwise abort an agent whose card is
  *     still on screen, which is abandonment with the prompt still visible),
  *   - the agent dashboard and rosters, which cannot today tell a blocked agent
  *     from a working one, so a stuck spawn looks like a busy spawn,
@@ -105,12 +138,12 @@ export interface AgentRef {
 	 *
 	 * The session id rather than the transcript path, because the two disagree in both directions. A
 	 * new session has an id before it is ever written to disk, so a path-keyed scope is undefined for
-	 * exactly the window in which the first subagents spawn, and `/move` rewrites the path of a
+	 * exactly the window in which the first spawned agents spawn, and `/move` rewrites the path of a
 	 * conversation that never ended, which a path-keyed scope reads as a new one.
 	 *
 	 * The registry is process-global but a roster is not: `/new` and `/resume` re-root the driving
 	 * session, ACP and cmux hosts register one `main` per client session, and the SDK embeds more.
-	 * Without a scope, each of those lists every other one's subagents.
+	 * Without a scope, each of those lists every other one's spawned agents.
 	 *
 	 * Undefined means not attributable to a conversation, such as a collab guest mirror or a
 	 * hand-built ref in a test. Scoping treats an unknown scope on either side as visible, so the
@@ -177,7 +210,7 @@ export interface RegisterInput {
 	 * When this agent first existed and when it last did something, for a ref
 	 * being RESTORED rather than started. Both default to now.
 	 *
-	 * A subagent read back from disk has a history, and stamping it with the
+	 * An agent read back from disk has a history, and stamping it with the
 	 * moment of the scan threw that history away: every agent from every previous
 	 * run reported "just now" in the roster for as long as the process lived, so
 	 * the column that exists to separate this minute's work from yesterday's said
@@ -211,7 +244,7 @@ export class AgentRegistry {
 	 * Register an agent, deriving its conversation {@link AgentRef.scope} when the
 	 * caller does not state one.
 	 *
-	 * Derivation is by LINEAGE, not by the agent's own transcript: a subagent
+	 * Derivation is by LINEAGE, not by the agent's own transcript: a spawned agent
 	 * writes its session file inside its parent's directory, so its own path
 	 * names a different string for the same conversation. Taking the parent's
 	 * scope makes a whole spawn tree one scope, however deep it nests.
@@ -257,15 +290,41 @@ export class AgentRegistry {
 		if (input.parentId) return this.#refs.get(input.parentId)?.scope;
 		// A root session names its own conversation, and its caller states the id.
 		// The transcript path is the fallback for a caller that has no id to give.
-		// A parentless SUBAGENT is left unattributed on purpose: it is an orphan
+		// A parentless spawned agent is left unattributed on purpose: it is an orphan
 		// nobody claimed, and inventing a scope from its own path would produce a
 		// name nothing else shares, hiding it from the roster that should show it.
 		return input.kind === "main" ? (input.sessionFile ?? undefined) : undefined;
 	}
 
+	/**
+	 * Move an agent to `status`. The only writer of {@link AgentRef.status}: the
+	 * lifecycle manager, the task executor, the tan controller and a revived
+	 * session's event sync all call this, so the transition table is checked once,
+	 * here. A same-status write is a no-op. A transition {@link AGENT_TRANSITIONS}
+	 * does not list throws {@link AgentTransitionError} and changes nothing.
+	 */
 	setStatus(id: string, status: AgentStatus): void {
 		const ref = this.#refs.get(id);
 		if (!ref || ref.status === status) return;
+		if (!AGENT_TRANSITIONS[ref.status].includes(status)) {
+			throw new AgentTransitionError(id, ref.status, status);
+		}
+		this.#applyStatus(ref, status);
+	}
+
+	/**
+	 * Copy a status reported by another process, without the transition check. A
+	 * collab guest mirrors the host's roster from snapshots that may skip states
+	 * (a host that went `running → idle → parked` between two snapshots reports
+	 * `parked`), and the host is the authority on its own agents.
+	 */
+	mirrorStatus(id: string, status: AgentStatus): void {
+		const ref = this.#refs.get(id);
+		if (!ref || ref.status === status) return;
+		this.#applyStatus(ref, status);
+	}
+
+	#applyStatus(ref: AgentRef, status: AgentStatus): void {
 		ref.status = status;
 		// Activity describes current work; it is meaningless once the agent
 		// leaves `running`, so drop it to avoid showing stale work in rosters.
@@ -301,7 +360,7 @@ export class AgentRegistry {
 	/**
 	 * Record that this agent did something, without changing its status.
 	 *
-	 * {@link setActivity} is the subagent heartbeat and carries a gist; the
+	 * {@link setActivity} is the spawned agent heartbeat and carries a gist; the
 	 * driving session has no gist to report and must not acquire one, but its
 	 * `lastActivity` still has to move or the roster prints the age of the
 	 * process. Nothing wired the main agent to the registry at all, so its row
@@ -554,7 +613,7 @@ export class AgentRegistry {
 	}
 
 	/**
-	 * Number of task subagents with a turn currently executing in `scope`, and,
+	 * Number of spawned task agents with a turn currently executing in `scope`, and,
 	 * when `under` is given, below that agent in the spawn tree.
 	 *
 	 * Scoped because the number is a badge an operator reads as "how much work is
@@ -566,9 +625,9 @@ export class AgentRegistry {
 	 *
 	 * `under` is the same argument one level down: while the view is focused on
 	 * an agent, "mine" is that agent's subtree, and the surfaces beside the badge
-	 * (the subagent HUD) already scope themselves that way.
+	 * (the agent HUD) already scope themselves that way.
 	 */
-	runningSubagentCount(scope?: string, under?: string): number {
+	runningAgentCount(scope?: string, under?: string): number {
 		const subtree = under === undefined ? undefined : new Set(this.descendantsOf(under));
 		let count = 0;
 		for (const ref of this.#refs.values()) {

@@ -43,6 +43,12 @@ export interface CursorWriter {
 	hideCursor(): void;
 }
 
+export function relativeMoveY(rowDelta: number): string {
+	if (rowDelta > 0) return `\x1b[${rowDelta}B`;
+	if (rowDelta < 0) return `\x1b[${-rowDelta}A`;
+	return "";
+}
+
 export class HardwareCursorTracker {
 	/** Actual terminal cursor row (may differ from the caret due to IME positioning). */
 	row = 0;
@@ -154,12 +160,7 @@ export class HardwareCursorTracker {
 
 		// Move cursor from current position to target.
 		const rowDelta = target.row - fromRow;
-		let seq = "";
-		if (rowDelta > 0) {
-			seq += `\x1b[${rowDelta}B`; // Move down
-		} else if (rowDelta < 0) {
-			seq += `\x1b[${-rowDelta}A`; // Move up
-		}
+		let seq = relativeMoveY(rowDelta);
 		// Move to absolute column (1-indexed)
 		seq += `\x1b[${target.col + 1}G`;
 		seq += target.visible ? "\x1b[?25h" : "\x1b[?25l";

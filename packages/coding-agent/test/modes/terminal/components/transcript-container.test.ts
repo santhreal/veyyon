@@ -4,6 +4,7 @@ import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
+import { toAssistantMessageView } from "@veyyon/coding-agent/presentation/transcript-builder";
 import { USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type Component, Text } from "@veyyon/tui";
@@ -236,9 +237,11 @@ describe("TranscriptContainer", () => {
 		const container = new TranscriptContainer();
 		const assistant = new AssistantMessageComponent();
 		assistant.updateContent(
-			makeAssistantMessage({
-				content: [{ type: "text", text: "The config file write went through." }],
-			}),
+			toAssistantMessageView(
+				makeAssistantMessage({
+					content: [{ type: "text", text: "The config file write went through." }],
+				}),
+			),
 		);
 		container.addChild(assistant);
 		expect(assistant.isTranscriptBlockFinalized()).toBe(false);
@@ -251,11 +254,13 @@ describe("TranscriptContainer", () => {
 		expect(container.getNativeScrollbackLiveRegionStart()).toBe(0);
 
 		assistant.updateContent(
-			makeAssistantMessage({
-				content: [{ type: "text", text: "The config file write went through despite the interruption." }],
-				stopReason: "aborted",
-				errorMessage: USER_INTERRUPT_LABEL,
-			}),
+			toAssistantMessageView(
+				makeAssistantMessage({
+					content: [{ type: "text", text: "The config file write went through despite the interruption." }],
+					stopReason: "aborted",
+					errorMessage: USER_INTERRUPT_LABEL,
+				}),
+			),
 		);
 		assistant.markTranscriptBlockFinalized();
 
@@ -444,7 +449,7 @@ describe("TranscriptContainer", () => {
 			stopReason: "error",
 			errorMessage: "boom",
 		} as AssistantMessage;
-		const component = new AssistantMessageComponent(message);
+		const component = new AssistantMessageComponent(toAssistantMessageView(message));
 		expect(component.isTranscriptBlockFinalized()).toBe(true);
 
 		component.setErrorPinned(true);

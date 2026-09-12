@@ -1,8 +1,9 @@
 import { padding } from "@veyyon/utils/padding";
-import { applyBackgroundToLine } from "@veyyon/utils/sgr";
 import { getPaddingX } from "@veyyon/utils/tight-mode";
 import { visibleWidth } from "@veyyon/utils/width";
 import type { Component } from "../tui";
+import { formatBorderRule, frameBorderLines } from "../utils/border";
+import { applyLineBackground } from "../utils/text-layout";
 
 type Cache = {
 	width: number;
@@ -72,6 +73,12 @@ export class Box implements Component {
 	clear(): void {
 		this.children = [];
 		this.#invalidateCache();
+	}
+
+	dispose(): void {
+		for (const child of this.children) {
+			child.dispose?.();
+		}
 	}
 
 	setPaddingX(paddingX: number): void {
@@ -205,18 +212,27 @@ export class Box implements Component {
 			}
 
 			if (border) {
-				const paint = border.color ?? (s => s);
-				const rule = border.chars.horizontal.repeat(Math.max(0, emitWidth));
-				const side = paint(border.chars.vertical);
-				result.push(paint(border.chars.topLeft + rule + border.chars.topRight));
-				for (const row of interior) {
-					result.push(side + row + side);
-				}
-				result.push(paint(border.chars.bottomLeft + rule + border.chars.bottomRight));
+				result.push(
+					formatBorderRule(
+						border.chars.topLeft,
+						border.chars.horizontal,
+						emitWidth,
+						border.chars.topRight,
+						border.color,
+					),
+				);
+				result.push(...frameBorderLines(interior, border.chars.vertical, border.color));
+				result.push(
+					formatBorderRule(
+						border.chars.bottomLeft,
+						border.chars.horizontal,
+						emitWidth,
+						border.chars.bottomRight,
+						border.color,
+					),
+				);
 			} else {
-				for (const row of interior) {
-					result.push(row);
-				}
+				result.push(...interior);
 			}
 		}
 
@@ -225,13 +241,6 @@ export class Box implements Component {
 	}
 
 	#applyBg(line: string, width: number): string {
-		const visLen = visibleWidth(line);
-		const padNeeded = Math.max(0, width - visLen);
-		const padded = line + padding(padNeeded);
-
-		if (this.#bgFn) {
-			return applyBackgroundToLine(padded, width, this.#bgFn);
-		}
-		return padded;
+		return applyLineBackground(line, width, this.#bgFn);
 	}
 }

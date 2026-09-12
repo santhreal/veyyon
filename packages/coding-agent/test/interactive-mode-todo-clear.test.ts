@@ -176,7 +176,7 @@ describe("InteractiveMode todo HUD persistence", () => {
 		expect(liveRegion.getNativeScrollbackLiveRegionStart?.()).toBeUndefined();
 	});
 
-	it("marks todos complete when subagent reconciliation reports a finished agent", async () => {
+	it("marks todos complete when agent reconciliation reports a finished agent", async () => {
 		await createMode(-1);
 		vi.spyOn(mode.statusLine, "watchGitState").mockImplementation(() => {});
 		session.setTodoPhases([
@@ -185,7 +185,7 @@ describe("InteractiveMode todo HUD persistence", () => {
 		mode.setTodos(session.getTodoPhases());
 
 		await mode.init();
-		// Subagent lifecycle changes coalesce behind a 100ms observer UI sync
+		// Agent lifecycle changes coalesce behind a 100ms observer UI sync
 		// timer before todo reconciliation runs; flush it deterministically.
 		vi.useFakeTimers();
 		eventBus.emit(TASK_SUBAGENT_LIFECYCLE_CHANNEL, {

@@ -147,7 +147,7 @@ describe("AgentSession approved-plan reference re-injection after compaction (is
 		const settings = Settings.isolated({
 			"compaction.enabled": true,
 			"compaction.autoContinue": true,
-			"subagent.delegation": "allowed",
+			"agent.delegation": "allowed",
 			"todo.enabled": false,
 			"todo.eager": "default",
 			"todo.reminders": false,

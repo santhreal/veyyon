@@ -21,8 +21,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { CustomMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/custom-message";
 import { HookMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/hook-message";
 import { UserMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/user-message";
-import type { CustomMessage, HookMessage } from "@veyyon/coding-agent/session/messages";
 import { initTheme, setTheme, theme } from "@veyyon/coding-agent/theme/theme";
+import type { CustomBlock, HookBlock } from "@veyyon/wire/presentation";
 
 /** Any ANSI background attribute: truecolor (48;2), 256 (48;5), or the classic
  * 40-47/100-107 range. The terminal-default reset `\x1b[49m` is allowed — it
@@ -48,7 +48,7 @@ describe("inline transcript components emit no background SGR", () => {
 	/** The user bubble was the loudest slab (userMessageBg painted full-width
 	 * padding rows). It must render fg-only. */
 	it("UserMessageComponent renders without painting userMessageBg", () => {
-		const lines = new UserMessageComponent("profile the render loop **now**\nsecond line").render(60);
+		const lines = new UserMessageComponent({ text: "profile the render loop **now**\nsecond line" }).render(60);
 		// The content is named, not merely counted: `expectNoBgPaint` iterates the rows, so a
 		// component that rendered nothing (or dropped the body and kept its chrome) would satisfy a
 		// row-count check and pass the paint assertion vacuously.
@@ -59,28 +59,29 @@ describe("inline transcript components emit no background SGR", () => {
 
 	/** Extension-injected custom messages boxed the text in customMessageBg. */
 	it("CustomMessageComponent renders without painting customMessageBg", () => {
-		const message: CustomMessage = {
-			role: "custom",
-			customType: "note",
-			content: "an extension note with `code`",
-			display: true,
+		const block: CustomBlock = {
+			kind: "custom",
+			id: "c-0",
+			customKind: "note",
+			text: "an extension note with `code`",
+			level: "info",
 			timestamp: 0,
 		};
-		const lines = new CustomMessageComponent(message).render(60);
+		const lines = new CustomMessageComponent(block).render(60);
 		expect(lines.join("\n")).toContain("an extension note with");
 		expectNoBgPaint(lines, "custom-message");
 	});
 
 	/** Legacy hook messages used the same painted card. */
 	it("HookMessageComponent renders without painting customMessageBg", () => {
-		const message: HookMessage = {
-			role: "hookMessage",
-			customType: "hook",
-			content: "hook output line",
-			display: true,
+		const block: HookBlock = {
+			kind: "hook",
+			id: "h-0",
+			hookName: "hook",
+			text: "hook output line",
 			timestamp: 0,
 		};
-		const lines = new HookMessageComponent(message).render(60);
+		const lines = new HookMessageComponent(block).render(60);
 		expect(lines.join("\n")).toContain("hook output line");
 		expectNoBgPaint(lines, "hook-message");
 	});

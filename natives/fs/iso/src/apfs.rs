@@ -7,75 +7,25 @@
 //! is no mount to undo, so [`stop`](IsolationBackend::stop) is a recursive
 //! remove.
 
-use std::path::Path;
-
-use async_trait::async_trait;
-
-#[cfg(not(target_os = "macos"))]
-use crate::IsoError;
-use crate::{BackendKind, IsoResult, IsolationBackend, ProbeResult};
-
-pub struct ApfsBackend;
-
-pub fn backend() -> &'static dyn IsolationBackend {
-	&ApfsBackend
-}
-
-#[async_trait]
-impl IsolationBackend for ApfsBackend {
-	fn kind(&self) -> BackendKind {
-		BackendKind::Apfs
-	}
-
-	fn probe(&self) -> ProbeResult {
-		#[cfg(target_os = "macos")]
-		{
-			ProbeResult::available()
-		}
-		#[cfg(not(target_os = "macos"))]
-		{
-			ProbeResult::unavailable("APFS clonefile isolation is only available on macOS")
-		}
-	}
-
-	fn start(&self, lower: &Path, merged: &Path) -> IsoResult<()> {
-		#[cfg(target_os = "macos")]
-		{
-			imp::start(lower, merged)
-		}
-		#[cfg(not(target_os = "macos"))]
-		{
-			let _ = (lower, merged);
-			Err(IsoError::unavailable("APFS clonefile isolation is only available on macOS"))
-		}
-	}
-
-	fn stop(&self, merged: &Path) -> IsoResult<()> {
-		#[cfg(target_os = "macos")]
-		{
-			imp::stop(merged)
-		}
-		#[cfg(not(target_os = "macos"))]
-		{
-			let _ = merged;
-			Ok(())
-		}
-	}
-}
+declare_backend!(
+	ApfsBackend,
+	Apfs,
+	"APFS clonefile isolation is only available on macOS",
+	target_os = "macos"
+);
 
 #[cfg(target_os = "macos")]
 mod imp {
-	use std::{
-		ffi::CString,
-		fs,
-		os::unix::ffi::OsStrExt,
-		path::{Path, PathBuf},
-	};
+	use std::{ffi::CString, fs, os::unix::ffi::OsStrExt, path::Path};
 
-	use crate::{IsoError, IsoResult};
+	use crate::{IsoError, IsoResult, ProbeResult, canonical_existing_dir};
+
+	pub const fn probe() -> ProbeResult {
+		ProbeResult::available()
+	}
 
 	pub fn start(lower: &Path, merged: &Path) -> IsoResult<()> {
-		let lower = canonical_existing_dir(lower)?;
+		let lower = canonical_existing_dir(lower, "clone")?;
 		if let Some(parent) = merged.parent() {
 			fs::create_dir_all(parent).map_err(|err| {
 				IsoError::other(format!("unable to create parent of {}: {err}", merged.display()))
@@ -121,24 +71,6 @@ mod imp {
 				merged.display()
 			))),
 		}
-	}
-
-	fn canonical_existing_dir(path: &Path) -> IsoResult<PathBuf> {
-		let resolved = if path.is_absolute() {
-			path.to_path_buf()
-		} else {
-			std::env::current_dir().map_or_else(|_| path.to_path_buf(), |cwd| cwd.join(path))
-		};
-		let meta = fs::metadata(&resolved).map_err(|err| {
-			IsoError::other(format!("invalid clone source {}: {err}", resolved.display()))
-		})?;
-		if !meta.is_dir() {
-			return Err(IsoError::other(format!(
-				"clone source {} is not a directory",
-				resolved.display()
-			)));
-		}
-		Ok(fs::canonicalize(&resolved).unwrap_or(resolved))
 	}
 
 	fn to_cstring(bytes: &[u8], label: &str) -> IsoResult<CString> {

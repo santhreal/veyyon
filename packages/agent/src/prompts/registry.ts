@@ -20,6 +20,8 @@ import compactionAutoHandoffThresholdFocus from "./compaction/auto-handoff-thres
 import compactionBranchSummary from "./compaction/branch-summary.md" with { type: "text" };
 import compactionBranchSummaryContext from "./compaction/branch-summary-context.md" with { type: "text" };
 import compactionBranchSummaryPreamble from "./compaction/branch-summary-preamble.md" with { type: "text" };
+import compactionCompactionStagedMerge from "./compaction/compaction-staged-merge.md" with { type: "text" };
+import compactionCompactionStagedSegment from "./compaction/compaction-staged-segment.md" with { type: "text" };
 import compactionCompactionSummary from "./compaction/compaction-summary.md" with { type: "text" };
 import compactionCompactionSummaryContext from "./compaction/compaction-summary-context.md" with { type: "text" };
 import compactionCompactionTurnPrefix from "./compaction/compaction-turn-prefix.md" with { type: "text" };
@@ -51,6 +53,14 @@ export const agentCorePrompts = definePromptRegistry("packages/agent/src/prompts
 	"compaction/compaction-summary": {
 		text: compactionCompactionSummary,
 		purpose: "the structured summary that replaces a compacted conversation",
+	},
+	"compaction/compaction-staged-merge": {
+		text: compactionCompactionStagedMerge,
+		purpose: "merges the segment summaries of a staged compaction into one handoff summary",
+	},
+	"compaction/compaction-staged-segment": {
+		text: compactionCompactionStagedSegment,
+		purpose: "summarizes one segment of a conversation too large or too slow to summarize whole",
 	},
 	"compaction/compaction-summary-context": {
 		text: compactionCompactionSummaryContext,

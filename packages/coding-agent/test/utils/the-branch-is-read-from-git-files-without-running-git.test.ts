@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
+import assert from "node:assert/strict";
 import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -137,6 +138,14 @@ describe("the branch a checkout is on, read from its files", () => {
 			".git/config": '# a comment\n[extensions]\n\trefStorage = "reftable" ; trailing\n',
 		});
 		expect(branchLabelFromFiles(root)).toBeNull();
+	});
+
+	it("accepts an already resolved GitRepository directly without resolving again", () => {
+		const { root } = checkout({ ".git/HEAD": HEAD_ON_MAIN });
+		const repository = resolveRepositorySync(root);
+		assert.ok(repository, "The fixture must resolve to a Git repository");
+		expect(branchLabelFromFiles(repository)).toBe("main");
+		expect(resolveHeadStateFromFiles(repository)?.kind).toBe("ref");
 	});
 
 	it("is unaffected by a refstorage key outside the extensions section", () => {

@@ -1,9 +1,9 @@
 /**
  * Regression guard for PR review feedback on #2190.
  *
- * Subagents inherit the parent's extension source *paths* (a cheap FS scan
+ * Agents inherit the parent's extension source *paths* (a cheap FS scan
  * the parent already paid for), but each session MUST rebuild its own
- * `Extension` instances so factories see the subagent's `ExtensionAPI`
+ * `Extension` instances so factories see the agent's `ExtensionAPI`
  * (cwd, eventBus, runtime). Forwarding the parent's loaded Extension
  * instances would have tools/handlers/commands close over the parent's
  * `cwd` and event bus — wrong for isolated tasks.
@@ -60,27 +60,27 @@ describe("loadExtensions per-session binding (#2190 review fix)", () => {
 		(globalThis as { __bindings?: { events: EventBus }[] }).__bindings = [];
 
 		const parentEventBus = new EventBus();
-		const subagentEventBus = new EventBus();
-		expect(parentEventBus).not.toBe(subagentEventBus);
+		const agentEventBus = new EventBus();
+		expect(parentEventBus).not.toBe(agentEventBus);
 
 		const parent = await loadExtensions([extPath], "/tmp/parent-cwd", parentEventBus);
-		const subagent = await loadExtensions([extPath], "/tmp/subagent-cwd", subagentEventBus);
+		const agent = await loadExtensions([extPath], "/tmp/agent-cwd", agentEventBus);
 
 		expect(parent.errors).toEqual([]);
-		expect(subagent.errors).toEqual([]);
+		expect(agent.errors).toEqual([]);
 		expect(parent.extensions).toHaveLength(1);
-		expect(subagent.extensions).toHaveLength(1);
+		expect(agent.extensions).toHaveLength(1);
 
-		// Distinct Extension instances — the subagent must never share with parent.
-		expect(subagent.extensions[0]).not.toBe(parent.extensions[0]);
+		// Distinct Extension instances — the agent must never share with parent.
+		expect(agent.extensions[0]).not.toBe(parent.extensions[0]);
 		// Distinct ExtensionRuntime instances — flagValues and pendingProviderRegistrations
 		// MUST NOT be shared, or per-session flags/registrations bleed across.
-		expect(subagent.runtime).not.toBe(parent.runtime);
+		expect(agent.runtime).not.toBe(parent.runtime);
 
 		// Each factory saw the eventBus passed to its own loadExtensions call.
 		const bindings = (globalThis as { __bindings?: { events: EventBus }[] }).__bindings ?? [];
 		expect(bindings).toHaveLength(2);
 		expect(bindings[0]?.events).toBe(parentEventBus);
-		expect(bindings[1]?.events).toBe(subagentEventBus);
+		expect(bindings[1]?.events).toBe(agentEventBus);
 	});
 });

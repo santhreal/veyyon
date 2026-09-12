@@ -177,6 +177,42 @@ export interface WriteToolDetails {
  * version of pasted patch content creates invisible file corruption, and
  * auto-stripping mangled legitimate numbered/prefixed text.
  */
+const INVALID_CONTENT_CHECKS: ReadonlyArray<{
+	test: (line: string, trimmed: string) => boolean;
+	message: (trimmed: string, lineNum: number) => string;
+}> = [
+	{
+		test: (line, _trimmed) => HASHLINE_HEADER_RE.test(line) || LOOSE_HASHLINE_HEADER_RE.test(line),
+		message: (trimmed, lineNum) =>
+			`Cannot write content: detected hashline section header '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply patches or strip display headers. To write the file, pass the raw file content; to apply a patch, use the edit tool.`,
+	},
+	{
+		test: (line, _trimmed) => HASHLINE_OP_RE.test(line),
+		message: (trimmed, lineNum) =>
+			`Cannot write content: detected hashline patch operation '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply patches. To write the file, pass the complete file content; to apply a patch, use the edit tool.`,
+	},
+	{
+		test: (_line, trimmed) => UNIFIED_DIFF_HUNK_RE.test(trimmed),
+		message: (trimmed, lineNum) =>
+			`Cannot write content: detected unified diff hunk header '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply diffs. To write the file, pass the complete file content; to apply a patch, use the edit tool.`,
+	},
+	{
+		test: (_line, trimmed) => APPLY_PATCH_MARKER_RE.test(trimmed),
+		message: (trimmed, lineNum) =>
+			`Cannot write content: detected patch marker '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply patches. To write the file, pass the complete file content; to apply a patch, use the edit tool.`,
+	},
+	{
+		test: (_line, trimmed) => READ_TRUNCATION_NOTICE_RE.test(trimmed),
+		message: (trimmed, lineNum) =>
+			`Cannot write content: detected read tool truncation notice '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not strip read display prefixes. Pass the raw file content without read tool output decorations.`,
+	},
+	{
+		test: (line, _trimmed) => SEARCH_PREFIX_RE.test(line),
+		message: (trimmed, lineNum) =>
+			`Cannot write content: detected search/read display prefix '${trimmed.slice(0, 10)}' on line ${lineNum}. The write tool writes whole files and does not strip search/read display prefixes. Pass the raw file content without line prefixes.`,
+	},
+];
+
 function assertValidWriteContent(content: string): void {
 	if (!content) return;
 	const lines = content.split("\n");
@@ -187,40 +223,10 @@ function assertValidWriteContent(content: string): void {
 		const trimmed = line.trim();
 		if (trimmed.length === 0) continue;
 
-		if (HASHLINE_HEADER_RE.test(line) || LOOSE_HASHLINE_HEADER_RE.test(line)) {
-			throw new ToolError(
-				`Cannot write content: detected hashline section header '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply patches or strip display headers. To write the file, pass the raw file content; to apply a patch, use the edit tool.`,
-			);
-		}
-
-		if (HASHLINE_OP_RE.test(line)) {
-			throw new ToolError(
-				`Cannot write content: detected hashline patch operation '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply patches. To write the file, pass the complete file content; to apply a patch, use the edit tool.`,
-			);
-		}
-
-		if (UNIFIED_DIFF_HUNK_RE.test(trimmed)) {
-			throw new ToolError(
-				`Cannot write content: detected unified diff hunk header '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply diffs. To write the file, pass the complete file content; to apply a patch, use the edit tool.`,
-			);
-		}
-
-		if (APPLY_PATCH_MARKER_RE.test(trimmed)) {
-			throw new ToolError(
-				`Cannot write content: detected patch marker '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply patches. To write the file, pass the complete file content; to apply a patch, use the edit tool.`,
-			);
-		}
-
-		if (READ_TRUNCATION_NOTICE_RE.test(trimmed)) {
-			throw new ToolError(
-				`Cannot write content: detected read tool truncation notice '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not strip read display prefixes. Pass the raw file content without read tool output decorations.`,
-			);
-		}
-
-		if (SEARCH_PREFIX_RE.test(line)) {
-			throw new ToolError(
-				`Cannot write content: detected search/read display prefix '${trimmed.slice(0, 10)}' on line ${lineNum}. The write tool writes whole files and does not strip search/read display prefixes. Pass the raw file content without line prefixes.`,
-			);
+		for (const check of INVALID_CONTENT_CHECKS) {
+			if (check.test(line, trimmed)) {
+				throw new ToolError(check.message(trimmed, lineNum));
+			}
 		}
 	}
 
@@ -496,42 +502,55 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		this.description = prompt.render(toolsPrompts["tools/write"].text);
 	}
 
-	async #resolveArchiveWritePath(writePath: string): Promise<ResolvedArchiveWritePath | null> {
-		const candidates = parseArchivePathCandidates(writePath).filter(candidate => candidate.archivePath !== writePath);
-		if (candidates.length === 0) {
-			return null;
-		}
-
+	async #probeWriteCandidates<TCandidate, TTarget, TResolved>(
+		candidates: TCandidate[],
+		getPath: (c: TCandidate) => string,
+		parseTarget: (c: TCandidate) => TTarget,
+		buildResolved: (candidate: TCandidate, target: TTarget, absolutePath: string, exists: boolean) => TResolved,
+		validateFile?: (absolutePath: string) => Promise<boolean>,
+	): Promise<TResolved | null> {
+		if (candidates.length === 0) return null;
 		const fallbackCandidate = candidates[candidates.length - 1]!;
-		const fallback: ResolvedArchiveWritePath = {
-			absolutePath: resolvePlanPath(this.session, fallbackCandidate.archivePath),
-			archivePath: fallbackCandidate.archivePath,
-			archiveSubPath: normalizeArchiveWriteSubPath(fallbackCandidate.subPath),
-			exists: false,
-		};
+		const fallback = buildResolved(
+			fallbackCandidate,
+			parseTarget(fallbackCandidate),
+			resolvePlanPath(this.session, getPath(fallbackCandidate)),
+			false,
+		);
 
+		let sawExistingInvalid = false;
 		for (const candidate of candidates) {
-			const absolutePath = resolvePlanPath(this.session, candidate.archivePath);
+			const target = parseTarget(candidate);
+			const absolutePath = resolvePlanPath(this.session, getPath(candidate));
 			try {
 				const stat = await Bun.file(absolutePath).stat();
-				if (stat.isDirectory()) {
+				if (stat.isDirectory()) continue;
+				if (validateFile && !(await validateFile(absolutePath))) {
+					sawExistingInvalid = true;
 					continue;
 				}
-
-				return {
-					absolutePath,
-					archivePath: candidate.archivePath,
-					archiveSubPath: normalizeArchiveWriteSubPath(candidate.subPath),
-					exists: true,
-				};
+				return buildResolved(candidate, target, absolutePath, true);
 			} catch (error) {
-				if (!isArchivePathNotFound(error)) {
-					throw error;
-				}
+				if (!isArchivePathNotFound(error)) throw error;
 			}
 		}
 
-		return fallback;
+		return sawExistingInvalid ? null : fallback;
+	}
+
+	async #resolveArchiveWritePath(writePath: string): Promise<ResolvedArchiveWritePath | null> {
+		const candidates = parseArchivePathCandidates(writePath).filter(candidate => candidate.archivePath !== writePath);
+		return this.#probeWriteCandidates(
+			candidates,
+			candidate => candidate.archivePath,
+			candidate => normalizeArchiveWriteSubPath(candidate.subPath),
+			(candidate, archiveSubPath, absolutePath, exists) => ({
+				absolutePath,
+				archivePath: candidate.archivePath,
+				archiveSubPath,
+				exists,
+			}),
+		);
 	}
 
 	async #writeArchiveEntry(
@@ -583,53 +602,19 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 
 	async #resolveSqliteWritePath(writePath: string): Promise<ResolvedSqliteWritePath | null> {
 		const candidates = parseSqlitePathCandidates(writePath).filter(candidate => candidate.sqlitePath !== writePath);
-		if (candidates.length === 0) {
-			return null;
-		}
-
-		const fallbackCandidate = candidates[candidates.length - 1]!;
-		const fallbackTarget = parseSqliteWriteTarget(fallbackCandidate.subPath, fallbackCandidate.queryString);
-		const fallback: ResolvedSqliteWritePath = {
-			absolutePath: resolvePlanPath(this.session, fallbackCandidate.sqlitePath),
-			sqlitePath: fallbackCandidate.sqlitePath,
-			table: fallbackTarget.table,
-			key: fallbackTarget.key,
-			exists: false,
-		};
-
-		let sawExistingNonSqlite = false;
-		for (const candidate of candidates) {
-			const target = parseSqliteWriteTarget(candidate.subPath, candidate.queryString);
-			const absolutePath = resolvePlanPath(this.session, candidate.sqlitePath);
-			try {
-				const stat = await Bun.file(absolutePath).stat();
-				if (stat.isDirectory()) {
-					continue;
-				}
-				if (!(await isSqliteFile(absolutePath))) {
-					sawExistingNonSqlite = true;
-					continue;
-				}
-
-				return {
-					absolutePath,
-					sqlitePath: candidate.sqlitePath,
-					table: target.table,
-					key: target.key,
-					exists: true,
-				};
-			} catch (error) {
-				if (!isArchivePathNotFound(error)) {
-					throw error;
-				}
-			}
-		}
-
-		if (sawExistingNonSqlite) {
-			return null;
-		}
-
-		return fallback;
+		return this.#probeWriteCandidates(
+			candidates,
+			candidate => candidate.sqlitePath,
+			candidate => parseSqliteWriteTarget(candidate.subPath, candidate.queryString),
+			(candidate, target, absolutePath, exists) => ({
+				absolutePath,
+				sqlitePath: candidate.sqlitePath,
+				table: target.table,
+				key: target.key,
+				exists,
+			}),
+			isSqliteFile,
+		);
 	}
 
 	async #writeSqliteRow(
@@ -1085,14 +1070,14 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			// Try ACP bridge first for editor-visible filesystem paths. Internal
 			// artifacts such as local:// plans are owned by veyyon, not the editor.
 			if (await routeWriteThroughBridge(this.session, path, absolutePath, content, signal)) {
-				const madeExecutable = await maybeMarkExecutableForShebang(absolutePath, content);
-				const header = maybeWriteSnapshotHeader(this.session, absolutePath, content);
-				const writeLine = `Successfully wrote ${content.length} bytes to ${displayPath}`;
-				const resultText = header ? `${header}\n${writeLine}` : writeLine;
-				const fullResultText = madeExecutable ? `${resultText}\n${EXECUTABLE_NOTICE}` : resultText;
+				const { resultText, madeExecutable } = await this.#formatSuccessfulWriteResult(
+					absolutePath,
+					displayPath,
+					content,
+				);
 				return {
-					content: [{ type: "text", text: fullResultText }],
-					details: { resolvedPath: absolutePath, madeExecutable: madeExecutable || undefined },
+					content: [{ type: "text", text: resultText }],
+					details: { resolvedPath: absolutePath, madeExecutable },
 				};
 			}
 
@@ -1103,18 +1088,15 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			if (!this.#deferredDiagnostics || batchRequest?.flush === false) {
 				this.session.bumpFileMutationVersion?.(absolutePath);
 			}
-			const madeExecutable = await maybeMarkExecutableForShebang(absolutePath, content);
-
-			const header = maybeWriteSnapshotHeader(this.session, absolutePath, content);
-			const writeLine = `Successfully wrote ${content.length} bytes to ${displayPath}`;
-			let resultText = header ? `${header}\n${writeLine}` : writeLine;
-			if (madeExecutable) {
-				resultText += `\n${EXECUTABLE_NOTICE}`;
-			}
+			const { resultText, madeExecutable } = await this.#formatSuccessfulWriteResult(
+				absolutePath,
+				displayPath,
+				content,
+			);
 			if (!diagnostics) {
 				return {
 					content: [{ type: "text", text: resultText }],
-					details: { resolvedPath: absolutePath, madeExecutable: madeExecutable || undefined },
+					details: { resolvedPath: absolutePath, madeExecutable },
 				};
 			}
 
@@ -1123,7 +1105,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 				details: {
 					resolvedPath: absolutePath,
 					diagnostics,
-					madeExecutable: madeExecutable || undefined,
+					madeExecutable,
 					meta: outputMeta()
 						.diagnostics(diagnostics.summary, diagnostics.messages ?? [])
 						.get(),
@@ -1131,34 +1113,17 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			};
 		});
 	}
-}
 
-export const WRITE_STREAMING_PREVIEW_LINES = 12;
-
-export function normalizeDisplayText(text: unknown): string {
-	let displayText = "";
-	if (typeof text === "string") {
-		displayText = text;
-	} else if (text !== undefined && text !== null) {
-		displayText = String(text);
+	async #formatSuccessfulWriteResult(
+		absolutePath: string,
+		displayPath: string,
+		content: string,
+	): Promise<{ resultText: string; madeExecutable?: boolean }> {
+		const madeExecutable = await maybeMarkExecutableForShebang(absolutePath, content);
+		const header = maybeWriteSnapshotHeader(this.session, absolutePath, content);
+		const writeLine = `Successfully wrote ${content.length} bytes to ${displayPath}`;
+		const resultText = header ? `${header}\n${writeLine}` : writeLine;
+		const fullResultText = madeExecutable ? `${resultText}\n${EXECUTABLE_NOTICE}` : resultText;
+		return { resultText: fullResultText, madeExecutable: madeExecutable || undefined };
 	}
-	return displayText.replace(/\r/g, "");
-}
-
-/**
- * Whether the text a call carries outgrows the window a streaming preview shows.
- *
- * A bounded newline scan rather than a split, because this runs on every live compose while the
- * model writes: the answer is whether the count passes the window, so the scan stops the moment it
- * does and never materializes the lines.
- */
-export function writeContentExceedsStreamingWindow(args: unknown): boolean {
-	if (args == null || typeof args !== "object" || !("content" in args)) return false;
-	const content = args.content;
-	if (typeof content !== "string" || !content) return false;
-	let lines = 1;
-	for (let index = content.indexOf("\n"); index !== -1; index = content.indexOf("\n", index + 1)) {
-		if (++lines > WRITE_STREAMING_PREVIEW_LINES) return true;
-	}
-	return false;
 }

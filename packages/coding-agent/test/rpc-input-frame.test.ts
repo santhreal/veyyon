@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { RpcHostToolBridge } from "@veyyon/coding-agent/modes/rpc/host-tools";
 import {
+	dispatchRpcControlFrame,
 	dispatchRpcInputFrame,
 	type PendingExtensionRequest,
 	RpcInputDispatcher,
@@ -685,5 +686,43 @@ describe("RpcShutdownCoordinator", () => {
 		gateB.resolve();
 		await drain;
 		expect(drained).toBe(true);
+	});
+});
+
+describe("dispatchRpcControlFrame host tool frames", () => {
+	const payload = { content: [{ type: "text", text: "5" }] };
+	const dispatched = (frame: unknown) => {
+		const { deps } = makeDeps(async () => {
+			throw new Error("host tool frames never reach the command queue");
+		});
+		const results: unknown[] = [];
+		const updates: unknown[] = [];
+		deps.onHostToolResult = frame => results.push(frame);
+		deps.onHostToolUpdate = frame => updates.push(frame);
+		const handled = dispatchRpcControlFrame(frame, deps);
+		return { handled, results, updates };
+	};
+
+	test("a result frame reaches only the result handler and an update frame only the update handler", () => {
+		const result = { type: "host_tool_result", id: "call_1", result: payload };
+		expect(dispatched(result)).toEqual({ handled: true, results: [result], updates: [] });
+		const update = { type: "host_tool_update", id: "call_1", partialResult: payload };
+		expect(dispatched(update)).toEqual({ handled: true, results: [], updates: [update] });
+	});
+
+	test.each([
+		[
+			"a result frame carrying the update payload key",
+			{ type: "host_tool_result", id: "call_1", partialResult: payload },
+		],
+		["an update frame carrying the result payload key", { type: "host_tool_update", id: "call_1", result: payload }],
+		["a result frame with a numeric id", { type: "host_tool_result", id: 1, result: payload }],
+		[
+			"an update frame whose content is not an array",
+			{ type: "host_tool_update", id: "call_1", partialResult: { content: "x" } },
+		],
+		["a frame of an unrelated type", { type: "host_tool_call", id: "call_1", result: payload }],
+	])("%s is not a host tool frame", (_label, frame) => {
+		expect(dispatched(frame)).toEqual({ handled: false, results: [], updates: [] });
 	});
 });

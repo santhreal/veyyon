@@ -8,7 +8,6 @@
 //! global offsets, optional match limits, and per-file match summaries.
 
 use std::{
-	borrow::Cow,
 	cell::RefCell,
 	fs::File,
 	io::{self, Read},
@@ -17,9 +16,7 @@ use std::{
 };
 
 use grep_matcher::Matcher;
-use grep_pcre2::{RegexMatcher as PcreMatcher, RegexMatcherBuilder as PcreMatcherBuilder};
-use grep_regex::{RegexMatcher, RegexMatcherBuilder};
-use grep_searcher::{BinaryDetection, Searcher, Sink, SinkContext, SinkContextKind, SinkMatch};
+use grep_searcher::{BinaryDetection, Searcher};
 use napi::{
 	JsString,
 	bindgen_prelude::*,
@@ -29,8 +26,9 @@ use napi_derive::napi;
 use parking_lot::Mutex;
 use smallvec::SmallVec;
 use veyyon_grep_kernel::{
-	CompiledMatcher, SearcherSpec, build_searcher as kernel_build_searcher, escape_literal_pattern,
-	pcre_matcher_defaults,
+	CollectedMatch, CompiledMatcher, FileSearchResult, MatchCollector, SearchResultInternal,
+	SearcherSpec, TypeFilter, build_searcher as kernel_build_searcher, compile_with_demotion,
+	matches_type_filter, matches_type_filter_str, resolve_context, resolve_type_filter,
 };
 
 use crate::{glob_util, iofs, napi_error::to_napi_with, task};
@@ -217,68 +215,6 @@ pub struct GrepResult {
 	pub pattern_treated_as_literal: Option<String>,
 }
 
-enum TypeFilter {
-	Known { exts: &'static [&'static str], names: &'static [&'static str] },
-	Custom(String),
-}
-
-impl TypeFilter {
-	fn match_ext(&self, ext: &str) -> bool {
-		match self {
-			Self::Known { exts, .. } => exts.iter().any(|e| ext.eq_ignore_ascii_case(e)),
-			Self::Custom(custom_ext) => ext.eq_ignore_ascii_case(custom_ext),
-		}
-	}
-
-	fn match_name(&self, name: &str) -> bool {
-		match self {
-			Self::Known { names, .. } => names.iter().any(|n| name.eq_ignore_ascii_case(n)),
-			Self::Custom(ext) => ext.eq_ignore_ascii_case(name),
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Internal match collection
-// ---------------------------------------------------------------------------
-
-struct MatchCollector {
-	matches:         Vec<CollectedMatch>,
-	match_count:     u64,
-	collected_count: u64,
-	max_count:       Option<u64>,
-	offset:          u64,
-	skipped:         u64,
-	limit_reached:   bool,
-	max_columns:     Option<usize>,
-	collect_matches: bool,
-	context_before:  SmallVec<[ContextLine; 8]>,
-}
-
-#[derive(Debug)]
-struct CollectedMatch {
-	line_number:    u64,
-	line:           String,
-	context_before: SmallVec<[ContextLine; 8]>,
-	context_after:  SmallVec<[ContextLine; 8]>,
-	truncated:      bool,
-}
-
-struct SearchResultInternal {
-	matches:       Vec<CollectedMatch>,
-	match_count:   u64,
-	collected:     u64,
-	limit_reached: bool,
-}
-
-#[derive(Debug)]
-struct FileSearchResult {
-	relative_path: String,
-	matches:       Vec<CollectedMatch>,
-	match_count:   u64,
-	limit_reached: bool,
-}
-
 /// Outcome of attempting to read a file for searching.
 enum ReadFile {
 	/// File was read successfully into the provided buffer.
@@ -298,139 +234,6 @@ struct SearchWorker {
 impl SearchWorker {
 	fn new(params: SearchParams) -> Self {
 		Self { searcher: build_searcher_for_params(params), buffer: Vec::new() }
-	}
-}
-
-impl MatchCollector {
-	fn new(
-		max_count: Option<u64>,
-		offset: u64,
-		max_columns: Option<usize>,
-		collect_matches: bool,
-	) -> Self {
-		Self {
-			matches: Vec::new(),
-			match_count: 0,
-			collected_count: 0,
-			max_count,
-			offset,
-			skipped: 0,
-			limit_reached: false,
-			max_columns,
-			collect_matches,
-			context_before: SmallVec::new(),
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-fn truncate_line(line: String, max_columns: Option<usize>) -> (String, bool) {
-	match max_columns {
-		Some(max) if line.len() > max => {
-			let cut = max.saturating_sub(3);
-			let boundary = line.floor_char_boundary(cut);
-			(format!("{}...", &line[..boundary]), true)
-		},
-		_ => (line, false),
-	}
-}
-
-fn bytes_to_trimmed_string(bytes: &[u8]) -> String {
-	match std::str::from_utf8(bytes) {
-		Ok(text) => text.trim_end().to_string(),
-		Err(_) => String::from_utf8_lossy(bytes).trim_end().to_string(),
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Sink implementation for grep-searcher
-// ---------------------------------------------------------------------------
-
-impl Sink for MatchCollector {
-	type Error = io::Error;
-
-	fn matched(
-		&mut self,
-		_searcher: &Searcher,
-		mat: &SinkMatch<'_>,
-	) -> std::result::Result<bool, Self::Error> {
-		self.match_count += 1;
-
-		if self.limit_reached {
-			return Ok(false);
-		}
-
-		if self.skipped < self.offset {
-			self.skipped += 1;
-			self.context_before.clear();
-			return Ok(true);
-		}
-
-		if self.collect_matches {
-			let raw_line = bytes_to_trimmed_string(mat.bytes());
-			let (line, truncated) = truncate_line(raw_line, self.max_columns);
-			let line_number = mat.line_number().unwrap_or(0);
-
-			self.matches.push(CollectedMatch {
-				line_number,
-				line,
-				context_before: std::mem::take(&mut self.context_before),
-				context_after: SmallVec::new(),
-				truncated,
-			});
-		} else {
-			self.context_before.clear();
-		}
-
-		self.collected_count += 1;
-
-		if let Some(max) = self.max_count
-			&& self.collected_count >= max
-		{
-			self.limit_reached = true;
-		}
-
-		Ok(true)
-	}
-
-	fn context(
-		&mut self,
-		_searcher: &Searcher,
-		ctx: &SinkContext<'_>,
-	) -> std::result::Result<bool, Self::Error> {
-		if !self.collect_matches {
-			return Ok(true);
-		}
-
-		let raw_line = bytes_to_trimmed_string(ctx.bytes());
-		let (line, truncated) = truncate_line(raw_line, self.max_columns);
-		let line_number = ctx.line_number().unwrap_or(0);
-		let truncated = truncated.then_some(true);
-
-		match ctx.kind() {
-			SinkContextKind::Before => {
-				self.context_before.push(ContextLine {
-					line_number: crate::utils::clamp_u32(line_number),
-					line,
-					truncated,
-				});
-			},
-			SinkContextKind::After => {
-				if let Some(last_match) = self.matches.last_mut() {
-					last_match.context_after.push(ContextLine {
-						line_number: crate::utils::clamp_u32(line_number),
-						line,
-						truncated,
-					});
-				}
-			},
-			SinkContextKind::Other => {},
-		}
-
-		Ok(true)
 	}
 }
 
@@ -464,88 +267,6 @@ fn resolve_grep_operand(path: &str) -> Result<PathBuf> {
 	}
 	let cwd = std::env::current_dir().map_err(|err| to_napi_with("Failed to resolve cwd", err))?;
 	Ok(cwd.join(candidate))
-}
-
-fn resolve_type_filter(type_name: Option<&str>) -> Option<TypeFilter> {
-	let normalized = type_name
-		.map(str::trim)
-		.filter(|value| !value.is_empty())
-		.map(|value| value.trim_start_matches('.').to_lowercase())?;
-
-	let (exts, names): (&[&str], &[&str]) = match normalized.as_str() {
-		"js" | "javascript" => (&["js", "jsx", "mjs", "cjs"], &[]),
-		"ts" | "typescript" => (&["ts", "tsx", "mts", "cts"], &[]),
-		"json" => (&["json", "jsonc", "json5"], &[]),
-		"yaml" | "yml" => (&["yaml", "yml"], &[]),
-		"toml" => (&["toml"], &[]),
-		"md" | "markdown" => (&["md", "markdown", "mdx"], &[]),
-		"py" | "python" => (&["py", "pyi"], &[]),
-		"rs" | "rust" => (&["rs"], &[]),
-		"go" => (&["go"], &[]),
-		"java" => (&["java"], &[]),
-		"kt" | "kotlin" => (&["kt", "kts"], &[]),
-		"c" => (&["c", "h"], &[]),
-		"cpp" | "cxx" => (&["cpp", "cc", "cxx", "hpp", "hxx", "hh"], &[]),
-		"cs" | "csharp" => (&["cs", "csx"], &[]),
-		"php" => (&["php", "phtml"], &[]),
-		"rb" | "ruby" => (&["rb", "rake", "gemspec"], &[]),
-		"sh" | "bash" => (&["sh", "bash", "zsh"], &[]),
-		"zsh" => (&["zsh"], &[]),
-		"fish" => (&["fish"], &[]),
-		"html" => (&["html", "htm"], &[]),
-		"css" => (&["css"], &[]),
-		"scss" => (&["scss"], &[]),
-		"sass" => (&["sass"], &[]),
-		"less" => (&["less"], &[]),
-		"xml" => (&["xml"], &[]),
-		"docker" | "dockerfile" => (&[], &["dockerfile"]),
-		"make" | "makefile" => (&[], &["makefile"]),
-		_ => {
-			return Some(TypeFilter::Custom(normalized));
-		},
-	};
-
-	Some(TypeFilter::Known { exts, names })
-}
-
-fn matches_type_filter(path: &Path, filter: &TypeFilter) -> bool {
-	let base_name = path
-		.file_name()
-		.and_then(|name| name.to_str())
-		.unwrap_or("");
-	if filter.match_name(base_name) {
-		return true;
-	}
-	let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
-	if ext.is_empty() {
-		return false;
-	}
-	filter.match_ext(ext)
-}
-
-fn matches_type_filter_str(path: &str, filter: &TypeFilter) -> bool {
-	let base = path.rsplit('/').next().unwrap_or(path);
-	if filter.match_name(base) {
-		return true;
-	}
-	let ext = base.rsplit_once('.').map_or("", |(_, ext)| ext);
-	if ext.is_empty() {
-		return false;
-	}
-	filter.match_ext(ext)
-}
-
-fn resolve_context(
-	context: Option<u32>,
-	context_before: Option<u32>,
-	context_after: Option<u32>,
-) -> (u32, u32) {
-	if context_before.is_some() || context_after.is_some() {
-		(context_before.unwrap_or(0), context_after.unwrap_or(0))
-	} else {
-		let value = context.unwrap_or(0);
-		(value, value)
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -715,43 +436,42 @@ fn read_file_bytes_with_size(
 // Result conversion
 // ---------------------------------------------------------------------------
 
+fn to_public_context_lines(
+	lines: SmallVec<[veyyon_grep_kernel::ContextLine; 8]>,
+) -> Option<Vec<ContextLine>> {
+	if lines.is_empty() {
+		None
+	} else {
+		Some(
+			lines
+				.into_iter()
+				.map(|c| ContextLine {
+					line_number: c.line_number,
+					line:        c.line,
+					truncated:   c.truncated,
+				})
+				.collect(),
+		)
+	}
+}
+
 fn to_public_match(matched: CollectedMatch) -> Match {
-	let context_before = if matched.context_before.is_empty() {
-		None
-	} else {
-		Some(matched.context_before.into_vec())
-	};
-	let context_after = if matched.context_after.is_empty() {
-		None
-	} else {
-		Some(matched.context_after.into_vec())
-	};
 	Match {
-		line_number: crate::utils::clamp_u32(matched.line_number),
-		line: matched.line,
-		context_before,
-		context_after,
-		truncated: if matched.truncated { Some(true) } else { None },
+		line_number:    crate::utils::clamp_u32(matched.line_number),
+		line:           matched.line,
+		context_before: to_public_context_lines(matched.context_before),
+		context_after:  to_public_context_lines(matched.context_after),
+		truncated:      if matched.truncated { Some(true) } else { None },
 	}
 }
 
 fn to_grep_match(path: String, matched: CollectedMatch) -> GrepMatch {
-	let context_before = if matched.context_before.is_empty() {
-		None
-	} else {
-		Some(matched.context_before.into_vec())
-	};
-	let context_after = if matched.context_after.is_empty() {
-		None
-	} else {
-		Some(matched.context_after.into_vec())
-	};
 	GrepMatch {
 		path,
 		line_number: crate::utils::clamp_u32(matched.line_number),
 		line: matched.line,
-		context_before,
-		context_after,
+		context_before: to_public_context_lines(matched.context_before),
+		context_after: to_public_context_lines(matched.context_after),
 		truncated: if matched.truncated { Some(true) } else { None },
 		match_count: None,
 	}
@@ -814,267 +534,14 @@ pub(crate) struct GrepConfig {
 	pub(crate) max_count_per_file: Option<u32>,
 }
 
-// ---------------------------------------------------------------------------
-// Regex brace sanitization
-// ---------------------------------------------------------------------------
-
-/// Check if `bytes[start]` (which must be `b'{'`) begins a valid repetition
-/// quantifier: `{N}`, `{N,}`, or `{N,M}` where N and M are decimal digits.
-/// Returns the byte index of the closing `}` if valid.
-fn find_valid_repetition(bytes: &[u8], start: usize) -> Option<usize> {
-	let len = bytes.len();
-	let mut i = start + 1;
-	// Must start with at least one digit.
-	if i >= len || !bytes[i].is_ascii_digit() {
-		return None;
-	}
-	while i < len && bytes[i].is_ascii_digit() {
-		i += 1;
-	}
-	if i >= len {
-		return None;
-	}
-	if bytes[i] == b'}' {
-		return Some(i);
-	}
-	if bytes[i] != b',' {
-		return None;
-	}
-	i += 1;
-	if i >= len {
-		return None;
-	}
-	// After comma: optional digits then `}`.
-	while i < len && bytes[i].is_ascii_digit() {
-		i += 1;
-	}
-	if i < len && bytes[i] == b'}' {
-		return Some(i);
-	}
-	None
-}
-
-fn find_braced_escape_end(bytes: &[u8], start: usize) -> Option<usize> {
-	let mut i = start + 1;
-	while i < bytes.len() {
-		if bytes[i] == b'}' {
-			return Some(i);
-		}
-		i += 1;
-	}
-	None
-}
-
-/// Escape `{` and `}` that don't form valid repetition quantifiers.
-///
-/// Patterns like `${platform}` or `a{b}` contain braces the regex engine
-/// rejects as malformed repetitions. Since such braces can never be valid
-/// regex syntax, turning them into `\{` / `\}` is semantics-preserving
-/// and avoids confusing error messages for callers who pass literal text
-/// fragments (e.g. JS template strings).
-fn sanitize_braces(pattern: &str) -> Cow<'_, str> {
-	let bytes = pattern.as_bytes();
-	if !bytes.contains(&b'{') && !bytes.contains(&b'}') {
-		return Cow::Borrowed(pattern);
-	}
-
-	let len = bytes.len();
-	let mut result = String::with_capacity(len + 8);
-	let mut modified = false;
-	let mut i = 0;
-
-	while i < len {
-		// Pass escaped characters through unchanged.
-		if bytes[i] == b'\\' && i + 1 < len {
-			result.push('\\');
-			i += 1;
-			// The next character is the escaped literal; push it regardless.
-			// Safety: index is in bounds (checked above).
-			let ch = pattern[i..]
-				.chars()
-				.next()
-				.expect("non-empty slice has a char");
-			result.push(ch);
-			i += ch.len_utf8();
-			if matches!(ch, 'p' | 'P' | 'x' | 'u') && i < len && bytes[i] == b'{' {
-				if let Some(end) = find_braced_escape_end(bytes, i) {
-					result.push_str(&pattern[i..=end]);
-					i = end + 1;
-				} else {
-					result.push_str(&pattern[i..]);
-					i = len;
-				}
-			}
-			continue;
-		}
-
-		if bytes[i] == b'{' {
-			if let Some(end) = find_valid_repetition(bytes, i) {
-				result.push_str(&pattern[i..=end]);
-				i = end + 1;
-				continue;
-			}
-			result.push_str("\\{");
-			i += 1;
-			modified = true;
-			continue;
-		}
-
-		if bytes[i] == b'}' {
-			result.push_str("\\}");
-			i += 1;
-			modified = true;
-			continue;
-		}
-
-		let ch = pattern[i..]
-			.chars()
-			.next()
-			.expect("non-empty slice has a char");
-		result.push(ch);
-		i += ch.len_utf8();
-	}
-
-	if modified {
-		Cow::Owned(result)
-	} else {
-		Cow::Borrowed(pattern)
-	}
-}
-
-/// Escape unescaped parentheses after a group-syntax regex error.
-///
-/// Search patterns like `fetchAnthropicProvider(` are common literal snippets,
-/// but the regex engine parses the trailing `(` as the start of a capture
-/// group. When the parser already reported invalid group syntax, escaping any
-/// remaining literal parentheses preserves useful search behavior without
-/// changing valid regexes.
-fn escape_unescaped_parentheses(pattern: &str) -> Cow<'_, str> {
-	let bytes = pattern.as_bytes();
-	if !bytes.contains(&b'(') && !bytes.contains(&b')') {
-		return Cow::Borrowed(pattern);
-	}
-
-	let mut result = String::with_capacity(pattern.len() + 4);
-	let mut modified = false;
-	let mut i = 0;
-
-	while i < bytes.len() {
-		if bytes[i] == b'\\' && i + 1 < bytes.len() {
-			result.push('\\');
-			i += 1;
-			let ch = pattern[i..]
-				.chars()
-				.next()
-				.expect("non-empty slice has a char");
-			result.push(ch);
-			i += ch.len_utf8();
-			continue;
-		}
-
-		let ch = pattern[i..]
-			.chars()
-			.next()
-			.expect("non-empty slice has a char");
-		if matches!(ch, '(' | ')') {
-			result.push('\\');
-			modified = true;
-		}
-		result.push(ch);
-		i += ch.len_utf8();
-	}
-
-	if modified {
-		Cow::Owned(result)
-	} else {
-		Cow::Borrowed(pattern)
-	}
-}
-
-fn build_regex_matcher(
-	pattern: &str,
-	ignore_case: bool,
-	multiline: bool,
-) -> std::result::Result<RegexMatcher, grep_regex::Error> {
-	let build = |line_terminated| {
-		let mut builder = RegexMatcherBuilder::new();
-		builder.case_insensitive(ignore_case).multi_line(multiline);
-		if line_terminated {
-			builder.line_terminator(Some(b'\n'));
-		}
-		builder.build(pattern)
-	};
-
-	if !multiline && let Ok(matcher) = build(true) {
-		return Ok(matcher);
-	}
-	build(false)
-}
-
-fn build_pcre_matcher(
-	pattern: &str,
-	ignore_case: bool,
-	multiline: bool,
-) -> std::result::Result<PcreMatcher, grep_pcre2::Error> {
-	let mut builder = PcreMatcherBuilder::new();
-	builder.caseless(ignore_case).multi_line(multiline);
-	pcre_matcher_defaults(&mut builder);
-	builder.build(pattern)
-}
-
 /// Compile `pattern` into a matcher.
-///
-/// The second tuple element is the *literal-demotion notice*: `None` when the
-/// pattern compiled as a real regex (possibly after the paren-escape retry),
-/// and `Some(error)` when BOTH engines rejected it and it was demoted to a
-/// literal search of the escaped text. Callers MUST surface a `Some` notice to
-/// the operator/agent — a silent literal fallback hides recall loss (a pattern
-/// the user wrote as a regex quietly matching only its literal bytes). See
-/// [`GrepResult::pattern_treated_as_literal`].
 fn build_matcher(
 	pattern: &str,
 	ignore_case: bool,
 	multiline: bool,
 ) -> Result<(CompiledMatcher, Option<String>)> {
-	let sanitized = sanitize_braces(pattern);
-	let err = match build_regex_matcher(sanitized.as_ref(), ignore_case, multiline) {
-		Ok(matcher) => return Ok((CompiledMatcher::Rust(matcher), None)),
-		Err(err) => err,
-	};
-
-	// PCRE2 supports features the Rust regex engine deliberately omits, such
-	// as lookaround and backreferences.
-	if let Ok(matcher) = build_pcre_matcher(sanitized.as_ref(), ignore_case, multiline) {
-		return Ok((CompiledMatcher::Pcre(matcher), None));
-	}
-
-	// Targeted retry: a stray `(`/`)` in an otherwise valid regex (e.g.
-	// `fetchProvider(`) — escape the parentheses but keep the rest of the regex
-	// working.
-	let message = err.to_string();
-	if message.contains("unclosed group") || message.contains("unopened group") {
-		let escaped = escape_unescaped_parentheses(sanitized.as_ref());
-		if escaped.as_ref() != sanitized.as_ref() {
-			if let Ok(matcher) = build_regex_matcher(escaped.as_ref(), ignore_case, multiline) {
-				return Ok((CompiledMatcher::Rust(matcher), None));
-			}
-			if let Ok(matcher) = build_pcre_matcher(escaped.as_ref(), ignore_case, multiline) {
-				return Ok((CompiledMatcher::Pcre(matcher), None));
-			}
-		}
-	}
-
-	// Final fallback: both engines rejected the pattern, so match it literally
-	// instead of failing the whole search. This is recall-preserving for agent
-	// code-snippet patterns, but it is NOT silent — the returned notice is
-	// surfaced up to the CLI/agent so the operator knows the pattern was not
-	// honored as a regex.
-	// The escaping rule has one owner in the kernel; the `grep` builtin used to
-	// hand-roll a second copy of the meta-character list, which was identical and
-	// free to drift.
-	build_regex_matcher(&escape_literal_pattern(pattern), ignore_case, multiline)
-		.map(|matcher| (CompiledMatcher::Rust(matcher), Some(message.clone())))
-		.map_err(|_| to_napi_with("Regex error", message))
+	compile_with_demotion(pattern, ignore_case, multiline)
+		.map_err(|err| to_napi_with("Regex error", err))
 }
 
 // ---------------------------------------------------------------------------
@@ -2277,10 +1744,10 @@ mod tests {
 	use std::{fs, path::Path, time::Duration};
 
 	use grep_matcher::Matcher;
+	use veyyon_grep_kernel::{escape_unescaped_parentheses, sanitize_braces};
 
 	#[cfg(unix)]
 	use super::{GrepConfig, GrepOutputMode, grep_sync, resolve_grep_operand};
-	use super::{escape_unescaped_parentheses, sanitize_braces};
 	#[cfg(unix)]
 	use crate::task;
 
@@ -3343,7 +2810,7 @@ mod tests {
 		use smallvec::SmallVec;
 
 		use super::super::{
-			CollectedMatch, ContextLine, FileSearchResult, GrepMatch, OutputMode, SearchParams,
+			CollectedMatch, FileSearchResult, GrepMatch, OutputMode, SearchParams,
 			aggregate_parallel_results, push_content_matches, push_count_match, push_file_match,
 		};
 
@@ -3369,7 +2836,7 @@ mod tests {
 						.map(|index| CollectedMatch {
 							line_number:    index + 1,
 							line:           format!("{} line {index}", file.path),
-							context_before: SmallVec::from_vec(vec![ContextLine {
+							context_before: SmallVec::from_vec(vec![veyyon_grep_kernel::ContextLine {
 								line_number: 1,
 								line:        format!("{} before {index}", file.path),
 								truncated:   None,

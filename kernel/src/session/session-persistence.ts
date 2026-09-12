@@ -1,3 +1,4 @@
+import { isNonEmptyString } from "@veyyon/utils/type-guards";
 import {
 	type BlobStore,
 	externalizeImageDataSync,
@@ -51,11 +52,6 @@ function shouldExternalizeImagePayload(
 	if (!isImageDataPayload(value)) return false;
 	if (isBlobRef(value.data) || value.data.length < BLOB_EXTERNALIZE_THRESHOLD) return false;
 	return (key === TEXT_CONTENT_KEY && isImageBlock(value)) || key === "images";
-}
-
-/** True for a non-empty string — marks signature/encrypted fields whose block must persist verbatim. */
-function isNonEmptyString(value: unknown): value is string {
-	return typeof value === "string" && value.length > 0;
 }
 
 /**
@@ -137,7 +133,7 @@ function truncateForPersistence(obj: unknown, blobStore: BlobStore, key?: string
 			//   should such a field ever reappear on a message it must never bloat the
 			//   durable record. The finest-grained streaming detail we DO keep lives in
 			//   the durable message itself (AssistantMessage.turnMetrics/request timing
-			//   and throughput) and in child subagent transcripts plus externalized
+			//   and throughput) and in child agent transcripts plus externalized
 			//   blobs, whose GC retention is proven in gc-cli.test.ts (GRAN-7).
 			if (childKey === "jsonlEvents") {
 				changed = true;

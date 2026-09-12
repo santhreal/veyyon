@@ -29,7 +29,18 @@ import type {
 	ViewSpan,
 	ViewTone,
 } from "@veyyon/view";
-import { PREVIEW_LIMITS, replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../core/render-utils";
+import { extractResultText } from "../core/output-notice";
+import {
+	heldBack,
+	LINE_NOUN,
+	metaLines,
+	PREVIEW_LIMITS,
+	replaceTabs,
+	shortenEmbeddedPaths,
+	type ToolViewResult,
+	TRUNCATE_LENGTHS,
+	truncateToWidth,
+} from "../core/render-utils";
 import type {
 	GhRunWatchFailedLogDetails,
 	GhRunWatchJobDetails,
@@ -45,9 +56,6 @@ const GH_EMBLEM = "tool.gh";
 /** What a watch card is titled, whichever of the two modes it reports. */
 const WATCH_TITLE = "GitHub Run Watch";
 
-/** The unit the fallback card's held-back count is in, which the host words. */
-const LINE_NOUN = { one: "line", many: "lines" } as const;
-
 /** The unit a failed job's held-back log count is in. */
 const LOG_LINE_NOUN = { one: "log line", many: "log lines" } as const;
 
@@ -62,11 +70,7 @@ export interface GithubViewArgs {
 }
 
 /** The result a card reads, which is the tool's own result shape narrowed to what a card shows. */
-export interface GithubViewResult {
-	content?: Array<{ type: string; text?: string }>;
-	details?: GhToolDetails;
-	isError?: boolean;
-}
+export interface GithubViewResult extends Partial<ToolViewResult<GhToolDetails>> {}
 
 /** What each op names itself, so a card states the operation rather than the tool. */
 const OP_TITLES: Record<string, string> = {
@@ -148,11 +152,6 @@ function buildOpMeta(args: GithubViewArgs): string[] {
 		}
 	}
 	return meta;
-}
-
-/** Each meta fact as its own entry, so the host joins them with its own separator. */
-function metaLines(meta: readonly string[]): ViewLine[] {
-	return meta.map(entry => [{ text: entry }]);
 }
 
 /** What a watch card's head row says it is watching, or what it watched. */
@@ -290,11 +289,12 @@ function failedLogSections(failedLogs: readonly GhRunWatchFailedLogDetails[], ex
 			if (!expanded) held = tailLines.length - previewLimit;
 		}
 
+		const hidden = heldBack(held, LOG_LINE_NOUN);
 		sections.push({
 			...(sections.length === 0 ? { label: "failed logs" } : {}),
 			lines,
 			clip: true,
-			...(held > 0 ? { hidden: { count: held, noun: LOG_LINE_NOUN, revealable: true } } : {}),
+			...(hidden === undefined ? {} : { hidden }),
 		});
 	}
 	return sections;
@@ -325,16 +325,6 @@ function watchSections(watch: GhRunWatchViewDetails, expanded: boolean): ViewSec
 	sections.push(...failedLogSections(watch.failedLogs ?? [], expanded));
 	return sections;
 }
-
-/** The parts of a result the model was sent, which is what a card falls back to showing. */
-function extractText(content: readonly { type: string; text?: string }[]): string {
-	return content
-		.filter(part => part.type === "text")
-		.map(part => part.text)
-		.filter((value): value is string => typeof value === "string" && value.length > 0)
-		.join("\n");
-}
-
 /**
  * The head row of a settled card, which is titled by the tool's own mark when it succeeded and by an
  * outcome icon when it did not.
@@ -364,7 +354,7 @@ function watchCard(watch: GhRunWatchViewDetails, isError: boolean, expanded: boo
 
 /** The rows the tool's text becomes, with the blank lines at either end of it dropped. */
 function bodyLines(text: string): string[] {
-	const lines = replaceTabs(text).split("\n");
+	const lines = replaceTabs(shortenEmbeddedPaths(text)).split("\n");
 	while (lines.length > 0 && lines[0].trim() === "") lines.shift();
 	while (lines.length > 0 && lines[lines.length - 1].trim() === "") lines.pop();
 	return lines;
@@ -372,7 +362,7 @@ function bodyLines(text: string): string[] {
 
 /** The card every op that is not a watch draws for its result: a row, two rows, or a panel. */
 function opCard(result: GithubViewResult, args: GithubViewArgs, expanded: boolean): ToolView {
-	const text = extractText(result.content ?? []);
+	const text = extractResultText(result.content);
 	const title = formatOpTitle(args.op);
 	const meta = metaLines(buildOpMeta(args));
 	const isError = result.isError === true;
@@ -400,8 +390,7 @@ function opCard(result: GithubViewResult, args: GithubViewArgs, expanded: boolea
 	const limit = Math.min(lines.length, expanded ? PREVIEW_LIMITS.OUTPUT_EXPANDED : PREVIEW_LIMITS.OUTPUT_COLLAPSED);
 	const visible = lines.slice(0, limit);
 	const remaining = lines.length - visible.length;
-	const hidden: ViewHiddenCount | undefined =
-		!expanded && remaining > 0 ? { count: remaining, noun: LINE_NOUN, revealable: true } : undefined;
+	const hidden: ViewHiddenCount | undefined = expanded ? undefined : heldBack(remaining, LINE_NOUN);
 	return {
 		kind: "framedBlock",
 		header,

@@ -18,7 +18,7 @@ import {
 	type SliceResult,
 } from "@veyyon/natives";
 import { ESC, OSC, OSC66 } from "./ansi";
-import { DEFAULT_TAB_WIDTH } from "./tab-spacing";
+import { DEFAULT_TAB_WIDTH } from "./tab-width";
 
 export type HangulCompatibilityJamoWidth = "platform" | "unicode" | 1 | 2;
 
@@ -491,11 +491,7 @@ export function visibleWidth(str: string): number {
 	// below so CSI/OSC-heavy render output can still bail out at the first ESC.
 	if (str.length >= LONG_WIDTH_FAST_PATH_MIN && !str.includes(ESC)) {
 		let width = correctedBunWidth(str);
-
-		let tabCount = 0;
-		for (let tabIndex = str.indexOf(TAB); tabIndex !== -1; tabIndex = str.indexOf(TAB, tabIndex + 1)) {
-			tabCount++;
-		}
+		const tabCount = countTabs(str);
 		if (tabCount > 0) width += tabCount * DEFAULT_TAB_WIDTH;
 		return width;
 	}
@@ -516,18 +512,8 @@ export function visibleWidth(str: string): number {
 		return tabCount === 0 ? str.length : str.length + tabCount * (DEFAULT_TAB_WIDTH - 1);
 	}
 
-	if (tabCount === 0) {
-		let tabIndex = str.indexOf(TAB, i + 1);
-		if (tabIndex !== -1) {
-			tabCount = 1;
-			for (tabIndex = str.indexOf(TAB, tabIndex + 1); tabIndex !== -1; tabIndex = str.indexOf(TAB, tabIndex + 1)) {
-				tabCount++;
-			}
-		}
-	} else {
-		for (let tabIndex = str.indexOf(TAB, i + 1); tabIndex !== -1; tabIndex = str.indexOf(TAB, tabIndex + 1)) {
-			tabCount++;
-		}
+	for (let tabIndex = str.indexOf(TAB, i + 1); tabIndex !== -1; tabIndex = str.indexOf(TAB, tabIndex + 1)) {
+		tabCount++;
 	}
 
 	// `Bun.stringWidth` is a JSC builtin (no per-call N-API number box, unlike

@@ -33,6 +33,20 @@ from .host_uris import (
     HostUriWriteHandler,
     host_uri,
 )
+from .logging import (
+    JsonFormatter,
+    PrettyFormatter,
+    configure_logging,
+    get_logger,
+    reset_logging_for_tests,
+)
+from .retry import (
+    TRANSIENT_RETRY_DELAYS,
+    is_transient_retryable,
+    parse_retry_after,
+    retry_transient,
+    retry_transient_async,
+)
 from .protocol import (
     AgentEndEvent,
     AgentMessage,
@@ -188,4 +202,14 @@ __all__ = [
     "parse_todo_phases",
     "host_tool",
     "host_uri",
+    "JsonFormatter",
+    "PrettyFormatter",
+    "TRANSIENT_RETRY_DELAYS",
+    "configure_logging",
+    "get_logger",
+    "is_transient_retryable",
+    "parse_retry_after",
+    "reset_logging_for_tests",
+    "retry_transient",
+    "retry_transient_async",
 ]

@@ -17,6 +17,7 @@
 
 import * as path from "node:path";
 import { formatCount } from "@veyyon/utils/format";
+import { parseReadArgs, parseReadDetails } from "@veyyon/utils/fs-tool-args";
 import { hasUrlScheme } from "@veyyon/utils/url";
 import type {
 	FramedBlockView,
@@ -29,15 +30,33 @@ import type {
 } from "@veyyon/view";
 import { tryResolveInternalUrlSync } from "../../internal-urls/resolve-sync";
 import { getLanguageFromPath } from "../../utils/lang-from-path";
-import { stripOutputNotice } from "../core/output-meta";
-// The notice module that owns the sentences, not `output-meta`, which forwards them through the
-// tool wrapper: this file needs the words a truncation and an artifact are named by.
-import { formatFullOutputReference, formatTruncationMetaNotice } from "../core/output-notice";
-import { isReadableUrlPath, splitInternalUrlSel, splitPathAndSel } from "../core/path-utils";
-import { formatBytes, replaceTabs, shortenPath } from "../core/render-utils";
+import {
+	extractResultText,
+	formatFullOutputReference,
+	formatTruncationMetaNotice,
+	stripOutputNotice,
+} from "../core/output-notice";
+import {
+	isRawSelector,
+	isReadableUrlPath,
+	parseSel,
+	pathOf,
+	splitInternalUrlSel,
+	splitPathAndSel,
+} from "../core/path-utils";
+import {
+	formatBytes,
+	heldBack,
+	LINE_NOUN,
+	replaceTabs,
+	screenRows,
+	shortenEmbeddedPaths,
+	shortenPath,
+	type ToolViewResult,
+} from "../core/render-utils";
 import type { ReadUrlToolDetails } from "../web/fetch";
 import { readUrlToolView } from "../web/fetch-view";
-import { isRawSelector, parseSel, type ReadRenderArgs, type ReadToolDetails, readSourceFsPath } from "./read";
+import type { ReadRenderArgs, ReadToolDetails } from "./read";
 
 /** What every card of this tool is titled. */
 const READ_TITLE = "Read";
@@ -48,21 +67,13 @@ const CONTENT_LINES = { collapsed: 12, expanded: 200 } as const;
 /** Lines of the card's notices shown at each disclosure state, which is what `Output` holds. */
 const NOTICE_LINES = { collapsed: 6, expanded: 200 } as const;
 
-/** The unit a held-back count is in, which the host words. */
-const LINE_NOUN = { one: "line", many: "lines" } as const;
-
 /** The result a card reads, which is the tool's own result shape narrowed to what a card shows. */
-export interface ReadViewResult {
-	content?: Array<{ type: string; text?: string }>;
-	details?: ReadToolDetails;
-	isError?: boolean;
-}
+export interface ReadViewResult extends Partial<ToolViewResult<ReadToolDetails>> {}
 
-/** The path the call names, under either of the two argument names the model may send. */
-function pathOf(args: ReadRenderArgs | undefined): string {
-	if (typeof args?.file_path === "string") return args.file_path;
-	if (typeof args?.path === "string") return args.path;
-	return "";
+/** Absolute filesystem source path used when resolvedPath is absent. */
+export function readSourceFsPath(details: ReadToolDetails | undefined): string | undefined {
+	const source = details?.meta?.source;
+	return source?.type === "path" ? source.value : undefined;
 }
 
 /** The path and the selector after it, which are one argument the model sends as one string. */
@@ -88,12 +99,17 @@ function firstSelectorLine(sel: string | undefined): number | undefined {
 	}
 }
 
-/** The range an `offset`/`limit` pair names, as the selector suffix a reader recognises. */
-function rangeSuffix(args: ReadRenderArgs | undefined): string {
-	if (args?.offset === undefined && args?.limit === undefined) return "";
-	const startLine = args.offset ?? 1;
-	const endLine = args.limit === undefined ? "" : `-${startLine + args.limit - 1}`;
-	return `:${startLine}${endLine}`;
+/**
+ * The directory arguments a call passed, stated as arguments rather than as a line range: `limit`
+ * caps the entries a listing returns and `depth` is how far it recurses, and neither is a window
+ * into a file.
+ */
+function listingSuffix(args: ReadRenderArgs | undefined): string {
+	const { depth, limit } = parseReadArgs(args);
+	const parts: string[] = [];
+	if (depth !== null) parts.push(`depth ${depth}`);
+	if (limit !== null) parts.push(`limit ${limit}`);
+	return parts.length === 0 ? "" : ` (${parts.join(", ")})`;
 }
 
 /**
@@ -109,7 +125,6 @@ function describeTarget(
 		resolvedPath?: string;
 		sourcePath?: string;
 		suffixResolution?: { from: string; to: string };
-		offset?: number;
 		fallbackLabel?: string;
 	},
 ): { label: string; target?: string; line?: number } {
@@ -121,7 +136,7 @@ function describeTarget(
 		: shortenPath(basePath || options.resolvedPath || options.fallbackLabel || rawPath);
 	const absoluteInput = path.isAbsolute(basePath) ? basePath : undefined;
 	const target = options.resolvedPath ?? options.sourcePath ?? tryResolveInternalUrlSync(basePath) ?? absoluteInput;
-	const line = firstSelectorLine(split.sel) ?? options.offset;
+	const line = firstSelectorLine(split.sel);
 	return {
 		label: `${plain}${selectorSuffix}`,
 		...(target === undefined ? {} : { target }),
@@ -152,10 +167,9 @@ function header(
 		...(options.resolvedPath === undefined ? {} : { resolvedPath: options.resolvedPath }),
 		...(options.sourcePath === undefined ? {} : { sourcePath: options.sourcePath }),
 		...(options.suffixResolution === undefined ? {} : { suffixResolution: options.suffixResolution }),
-		...(args?.offset === undefined ? {} : { offset: args.offset }),
 		...(options.fallbackLabel === undefined ? {} : { fallbackLabel: options.fallbackLabel }),
 	});
-	const description = `${described.label}${rangeSuffix(args)}`;
+	const description = `${described.label}${listingSuffix(args)}`;
 	return {
 		kind: "statusRow",
 		...(options.status === undefined ? {} : { status: options.status }),
@@ -180,30 +194,15 @@ function header(
  */
 function resultMeta(details: ReadToolDetails | undefined): ViewLine[] {
 	const meta: ViewLine[] = [];
-	const suffix = details?.suffixResolution;
-	if (suffix) meta.push([{ text: `corrected from ${shortenPath(suffix.from)}`, tone: "dim" }]);
-	if (details?.summary) {
-		meta.push([{ text: `summary: ${formatCount("elided span", details.summary.elidedSpans)}` }]);
+	const d = parseReadDetails(details);
+	if (d.suffixFrom) meta.push([{ text: `corrected from ${shortenPath(d.suffixFrom)}`, tone: "dim" }]);
+	if (d.elidedSpans !== null) {
+		meta.push([{ text: `summary: ${formatCount("elided span", d.elidedSpans)}` }]);
 	}
-	if (details?.conflictCount !== undefined && details.conflictCount > 0) {
-		meta.push([{ text: `warn ${formatCount("conflict", details.conflictCount)}`, tone: "warning" }]);
+	if (d.conflictCount !== null && d.conflictCount > 0) {
+		meta.push([{ text: `warn ${formatCount("conflict", d.conflictCount)}`, tone: "warning" }]);
 	}
 	return meta;
-}
-
-/**
- * Text as the rows a screen would have shown.
- *
- * A carriage return inside a line is a cursor sent back to column one, so what a reader saw is
- * whatever was written after the last one: the same reading the terminal's own cells give, made here
- * because the rows a card states are rows and not a stream of control characters. Tabs are left
- * alone, because how wide a tab is belongs to the host.
- */
-function screenRows(text: string): string[] {
-	return text.split(/\r?\n/).map(row => {
-		const at = row.lastIndexOf("\r");
-		return at < 0 ? row : row.slice(at + 1);
-	});
 }
 
 /**
@@ -235,8 +234,8 @@ function contentSection(
 	const rows = screenRows(content);
 	const { kept, held } = window(rows, options.expanded, CONTENT_LINES);
 	const lines = kept.map(row => [{ text: row }] as ViewLine);
-	const hidden = held > 0 ? { hidden: { count: held, noun: LINE_NOUN, revealable: !options.expanded } } : {};
-	if (options.markdown) return { lines, markdown: true, ...hidden };
+	const hidden = heldBack(held, LINE_NOUN, !options.expanded);
+	if (options.markdown) return { lines, markdown: true, ...(hidden === undefined ? {} : { hidden }) };
 	const display = options.details?.displayContent;
 	const numbers = display?.lineNumbers?.slice(0, kept.length);
 	return {
@@ -249,7 +248,7 @@ function contentSection(
 					: { firstLineNumber: display.startLine }
 				: { lineNumbers: numbers }),
 		},
-		...hidden,
+		...(hidden === undefined ? {} : { hidden }),
 	};
 }
 
@@ -284,20 +283,12 @@ function noticeSection(details: ReadToolDetails | undefined, expanded: boolean):
 	if (lines.length === 0) return undefined;
 	const max = expanded ? NOTICE_LINES.expanded : NOTICE_LINES.collapsed;
 	const held = Math.max(0, lines.length - max);
+	const hidden = heldBack(held, LINE_NOUN, !expanded);
 	return {
 		label: "Output",
 		lines: lines.slice(0, Math.min(lines.length, max)),
-		...(held > 0 ? { hidden: { count: held, noun: LINE_NOUN, revealable: !expanded } } : {}),
+		...(hidden === undefined ? {} : { hidden }),
 	};
-}
-
-/** The text parts of a result, which is everything a card shows of what the tool returned. */
-function textOf(content: Array<{ type: string; text?: string }> | undefined): string {
-	if (!content) return "";
-	return content
-		.filter(part => part.type === "text")
-		.map(part => part.text ?? "")
-		.join("\n");
 }
 
 /** Whether the result carries a picture, which is a card that states the read and draws no source. */
@@ -347,7 +338,7 @@ export const readToolView: Required<ToolViewRenderer<ReadRenderArgs, ReadViewRes
 		const details = result.details;
 
 		if (result.isError === true) {
-			const text = (textOf(result.content) || "Unknown error").replace(/^Error:\s*/, "");
+			const text = (extractResultText(result.content) || "Unknown error").replace(/^Error:\s*/, "");
 			return {
 				kind: "framedBlock",
 				header: header(rawPath, args, {
@@ -359,7 +350,11 @@ export const readToolView: Required<ToolViewRenderer<ReadRenderArgs, ReadViewRes
 				// a hole in the card rather than a column: the rows of a code section are widened by the
 				// host's own highlighter, and a row of prose is widened here.
 				sections: [
-					{ lines: screenRows(text).map(row => [{ text: replaceTabs(row), tone: "error" as const }] as ViewLine) },
+					{
+						lines: screenRows(text).map(
+							row => [{ text: replaceTabs(shortenEmbeddedPaths(row)), tone: "error" as const }] as ViewLine,
+						),
+					},
 				],
 			};
 		}
@@ -367,7 +362,8 @@ export const readToolView: Required<ToolViewRenderer<ReadRenderArgs, ReadViewRes
 		// The structured display text when the read reported one, so the card shows the file's own
 		// lines rather than the hashline anchors the model reads; the notice appended for the model is
 		// stated by the card as its own group, so a reader is not told the same thing twice.
-		const content = details?.displayContent?.text ?? stripOutputNotice(textOf(result.content), details?.meta);
+		const content =
+			details?.displayContent?.text ?? stripOutputNotice(extractResultText(result.content), details?.meta);
 		const suffix = details?.suffixResolution;
 		const sourcePath = readSourceFsPath(details);
 		const sections: ViewSection[] = [];
@@ -375,7 +371,7 @@ export const readToolView: Required<ToolViewRenderer<ReadRenderArgs, ReadViewRes
 		if (hasImage(result)) {
 			const detail = screenRows(content)
 				.filter(row => row.length > 0)
-				.map(row => [{ text: replaceTabs(row), tone: "output" as const }] as ViewLine);
+				.map(row => [{ text: replaceTabs(shortenEmbeddedPaths(row)), tone: "output" as const }] as ViewLine);
 			const notices = noticeLines(details);
 			const lines = [...detail, ...notices];
 			sections.push({

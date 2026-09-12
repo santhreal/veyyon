@@ -37,7 +37,7 @@
  * `scripts/workspace-layout.ts`, so a member at any depth is covered.
  */
 import { describe, expect, it } from "bun:test";
-import { type Dirent, readdirSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join, relative } from "node:path";
 import {
 	fastWorkspacePackages,
@@ -45,7 +45,13 @@ import {
 	nativeAndIntegrationPackages,
 	workspaceTestPackages,
 } from "./ci-test-ts";
-import { REPO_ROOT, typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
+import {
+	isPackageDir,
+	packagesWithTests,
+	REPO_ROOT,
+	testFileCount,
+	typeScriptMemberTopLevels,
+} from "./workspace-layout";
 
 /**
  * Packages the runner reaches WITHOUT a list entry, with the mechanism that
@@ -57,52 +63,7 @@ const DISCOVERED_NOT_LISTED: Record<string, string> = {
 	"packages/coding-agent": "discovered by walking the package in codingAgentTestCommands",
 };
 
-/** Whether a repo-relative directory is a workspace member, by carrying a manifest. */
-function isPackageDir(dir: string): boolean {
-	try {
-		return statSync(join(REPO_ROOT, dir, "package.json")).isFile();
-	} catch {
-		return false;
-	}
-}
-
-/** Count the test files under a directory, skipping trees that are not ours. */
-function testFileCount(dir: string): number {
-	const SKIP = new Set(["node_modules", ".git", "dist", "target", "repo-cache", "runs", "deep-swe", "assets"]);
-	let found = 0;
-	const walk = (abs: string): void => {
-		let entries: Dirent[];
-		try {
-			entries = readdirSync(abs, { withFileTypes: true });
-		} catch {
-			return;
-		}
-		for (const entry of entries) {
-			if (entry.isDirectory()) {
-				if (SKIP.has(entry.name)) continue;
-				walk(join(abs, entry.name));
-				continue;
-			}
-			// `.test.tsx` counts: collab-web and metaharness ship component suites, and
-			// counting only `.test.ts` is how those two looked smaller than they are.
-			if (/\.test\.tsx?$/.test(entry.name)) found += 1;
-		}
-	};
-	walk(join(REPO_ROOT, dir));
-	return found;
-}
-
-/** The TypeScript member top levels whose members this runner is responsible for. */
 const ROOTS = typeScriptMemberTopLevels();
-
-/** Every workspace member under any declared root that ships at least one test file. */
-function packagesWithTests(): string[] {
-	const out: string[] = [];
-	for (const member of typeScriptMembers()) {
-		if (testFileCount(member) > 0) out.push(member);
-	}
-	return out.sort();
-}
 
 /** Whether a bucket entry names a member under a declared root, so the stale sweep can judge it. */
 function isUnderADeclaredRoot(dir: string): boolean {

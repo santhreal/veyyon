@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { argsDigest, truncate } from "../src/util";
+import { argsDigest, truncate, truncateWs } from "../src/util";
 
 // tool-render's `truncate` used to be a local implementation that sliced by
 // UTF-16 code unit (splitting emoji/astral chars into a lone surrogate) and
@@ -42,5 +42,29 @@ describe("truncate — delegates to the code-point-safe owner", () => {
 		const digest = argsDigest({ path: "z".repeat(200) }, 20);
 		expect([...digest].length).toBeLessThanOrEqual(20);
 		expect(digest.endsWith("…")).toBe(true);
+	});
+});
+
+// One-line summaries must keep accepting unknown input after scalar extraction
+// moves between modules. This covers the exported formatter, not host layout.
+describe("one-line summaries from unknown input", () => {
+	it.each([
+		["undefined", undefined],
+		["null", null],
+		["boolean", false],
+		["number", 12],
+		["array", []],
+		["object", {}],
+		["bigint", 0n],
+		["symbol", Symbol("sample")],
+		["function", () => undefined],
+	])("does not coerce %s input", (_kind, value) => {
+		expect(truncateWs(value)).toBe("");
+	});
+
+	it("normalizes whitespace before applying the character budget", () => {
+		expect(truncateWs(" \nalpha\t beta\r\n", 8)).toBe("alpha b…");
+		expect(truncateWs(" \u{1f680} \ttext ", 3)).toBe("\u{1f680} …");
+		expect(truncateWs("x".repeat(90))).toBe(`${"x".repeat(79)}…`);
 	});
 });

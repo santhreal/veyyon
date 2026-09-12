@@ -5,15 +5,24 @@
 //! - comment, keyword, function, variable, string, number, type, operator,
 //!   punctuation, inserted, deleted
 
-use std::{cell::RefCell, collections::HashMap, sync::OnceLock};
+use std::{cell::RefCell, collections::HashMap, sync::LazyLock};
 
 use napi_derive::napi;
 use syntect::parsing::{
 	ParseState, Scope, ScopeStack, ScopeStackOp, SyntaxDefinition, SyntaxReference, SyntaxSet,
 };
 
-static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
-static SCOPE_MATCHERS: OnceLock<ScopeMatchers> = OnceLock::new();
+static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(build_syntax_set);
+static COMPILED_RULES: LazyLock<Vec<(Scope, usize)>> = LazyLock::new(|| {
+	SCOPE_RULES
+		.iter()
+		.flat_map(|(selectors, idx)| {
+			selectors
+				.iter()
+				.map(move |sel| (Scope::new(sel).unwrap(), *idx))
+		})
+		.collect()
+});
 
 // Thread-local cache for scope -> color index lookups
 thread_local! {
@@ -30,7 +39,7 @@ const EXTRA_SYNTAXES: &[&str] = &[
 ];
 
 fn get_syntax_set() -> &'static SyntaxSet {
-	SYNTAX_SET.get_or_init(build_syntax_set)
+	&SYNTAX_SET
 }
 
 /// Load syntect's newline-aware defaults and add the vendored extra syntaxes.
@@ -46,102 +55,36 @@ fn build_syntax_set() -> SyntaxSet {
 	builder.build()
 }
 
-/// Pre-compiled scope patterns for fast matching.
-struct ScopeMatchers {
-	// Comment (index 0)
-	comment: Scope,
+const SCOPE_RULES: &[(&[&str], usize)] = &[
+	(&["comment"], 0),
+	(&["markup.inserted"], 9),
+	(&["markup.deleted"], 10),
+	(&["meta.diff.header", "meta.diff.range"], 1),
+	(&["string", "constant.character", "meta.string"], 4),
+	(&["constant.numeric", "constant.integer"], 5),
+	(&["keyword", "storage.type", "storage.modifier"], 1),
+	(&["entity.name.function", "support.function", "meta.function-call", "variable.function"], 2),
+	(
+		&[
+			"entity.name.type",
+			"support.type",
+			"support.class",
+			"entity.name.class",
+			"entity.name.struct",
+			"entity.name.enum",
+			"entity.name.interface",
+			"entity.name.trait",
+		],
+		6,
+	),
+	(&["keyword.operator", "punctuation.accessor"], 7),
+	(&["punctuation"], 8),
+	(&["variable", "entity.name", "meta.path"], 3),
+	(&["constant"], 5),
+];
 
-	// String (index 4)
-	string:             Scope,
-	constant_character: Scope,
-	meta_string:        Scope,
-
-	// Number (index 5)
-	constant_numeric: Scope,
-	constant_integer: Scope,
-	constant:         Scope,
-
-	// Keyword (index 1)
-	keyword:          Scope,
-	storage_type:     Scope,
-	storage_modifier: Scope,
-
-	// Function (index 2)
-	entity_name_function: Scope,
-	support_function:     Scope,
-	meta_function_call:   Scope,
-	variable_function:    Scope,
-
-	// Type (index 6)
-	entity_name_type:      Scope,
-	support_type:          Scope,
-	support_class:         Scope,
-	entity_name_class:     Scope,
-	entity_name_struct:    Scope,
-	entity_name_enum:      Scope,
-	entity_name_interface: Scope,
-	entity_name_trait:     Scope,
-
-	// Operator (index 7)
-	keyword_operator:     Scope,
-	punctuation_accessor: Scope,
-
-	// Punctuation (index 8)
-	punctuation: Scope,
-
-	// Variable (index 3)
-	variable:    Scope,
-	entity_name: Scope,
-	meta_path:   Scope,
-
-	// Diff (indices 9, 10)
-	markup_inserted:  Scope,
-	markup_deleted:   Scope,
-	meta_diff_header: Scope,
-	meta_diff_range:  Scope,
-}
-
-impl ScopeMatchers {
-	fn new() -> Self {
-		Self {
-			comment:               Scope::new("comment").unwrap(),
-			string:                Scope::new("string").unwrap(),
-			constant_character:    Scope::new("constant.character").unwrap(),
-			meta_string:           Scope::new("meta.string").unwrap(),
-			constant_numeric:      Scope::new("constant.numeric").unwrap(),
-			constant_integer:      Scope::new("constant.integer").unwrap(),
-			constant:              Scope::new("constant").unwrap(),
-			keyword:               Scope::new("keyword").unwrap(),
-			storage_type:          Scope::new("storage.type").unwrap(),
-			storage_modifier:      Scope::new("storage.modifier").unwrap(),
-			entity_name_function:  Scope::new("entity.name.function").unwrap(),
-			support_function:      Scope::new("support.function").unwrap(),
-			meta_function_call:    Scope::new("meta.function-call").unwrap(),
-			variable_function:     Scope::new("variable.function").unwrap(),
-			entity_name_type:      Scope::new("entity.name.type").unwrap(),
-			support_type:          Scope::new("support.type").unwrap(),
-			support_class:         Scope::new("support.class").unwrap(),
-			entity_name_class:     Scope::new("entity.name.class").unwrap(),
-			entity_name_struct:    Scope::new("entity.name.struct").unwrap(),
-			entity_name_enum:      Scope::new("entity.name.enum").unwrap(),
-			entity_name_interface: Scope::new("entity.name.interface").unwrap(),
-			entity_name_trait:     Scope::new("entity.name.trait").unwrap(),
-			keyword_operator:      Scope::new("keyword.operator").unwrap(),
-			punctuation_accessor:  Scope::new("punctuation.accessor").unwrap(),
-			punctuation:           Scope::new("punctuation").unwrap(),
-			variable:              Scope::new("variable").unwrap(),
-			entity_name:           Scope::new("entity.name").unwrap(),
-			meta_path:             Scope::new("meta.path").unwrap(),
-			markup_inserted:       Scope::new("markup.inserted").unwrap(),
-			markup_deleted:        Scope::new("markup.deleted").unwrap(),
-			meta_diff_header:      Scope::new("meta.diff.header").unwrap(),
-			meta_diff_range:       Scope::new("meta.diff.range").unwrap(),
-		}
-	}
-}
-
-fn get_scope_matchers() -> &'static ScopeMatchers {
-	SCOPE_MATCHERS.get_or_init(ScopeMatchers::new)
+fn get_compiled_scope_rules() -> &'static [(Scope, usize)] {
+	&COMPILED_RULES
 }
 
 /// Theme colors for syntax highlighting.
@@ -245,92 +188,11 @@ fn is_known_alias(lang: &str) -> bool {
 /// Compute the color index for a single scope (uncached).
 #[inline]
 fn compute_scope_color(s: Scope) -> usize {
-	let m = get_scope_matchers();
-
-	// Comment (index 0)
-	if m.comment.is_prefix_of(s) {
-		return 0;
+	for (scope, idx) in get_compiled_scope_rules() {
+		if scope.is_prefix_of(s) {
+			return *idx;
+		}
 	}
-
-	// Diff inserted (index 9)
-	if m.markup_inserted.is_prefix_of(s) {
-		return 9;
-	}
-
-	// Diff deleted (index 10)
-	if m.markup_deleted.is_prefix_of(s) {
-		return 10;
-	}
-
-	// Diff header/range -> keyword (index 1)
-	if m.meta_diff_header.is_prefix_of(s) || m.meta_diff_range.is_prefix_of(s) {
-		return 1;
-	}
-
-	// String (index 4)
-	if m.string.is_prefix_of(s)
-		|| m.constant_character.is_prefix_of(s)
-		|| m.meta_string.is_prefix_of(s)
-	{
-		return 4;
-	}
-
-	// Number (index 5)
-	if m.constant_numeric.is_prefix_of(s) || m.constant_integer.is_prefix_of(s) {
-		return 5;
-	}
-
-	// Keyword (index 1)
-	if m.keyword.is_prefix_of(s)
-		|| m.storage_type.is_prefix_of(s)
-		|| m.storage_modifier.is_prefix_of(s)
-	{
-		return 1;
-	}
-
-	// Function (index 2)
-	if m.entity_name_function.is_prefix_of(s)
-		|| m.support_function.is_prefix_of(s)
-		|| m.meta_function_call.is_prefix_of(s)
-		|| m.variable_function.is_prefix_of(s)
-	{
-		return 2;
-	}
-
-	// Type (index 6)
-	if m.entity_name_type.is_prefix_of(s)
-		|| m.support_type.is_prefix_of(s)
-		|| m.support_class.is_prefix_of(s)
-		|| m.entity_name_class.is_prefix_of(s)
-		|| m.entity_name_struct.is_prefix_of(s)
-		|| m.entity_name_enum.is_prefix_of(s)
-		|| m.entity_name_interface.is_prefix_of(s)
-		|| m.entity_name_trait.is_prefix_of(s)
-	{
-		return 6;
-	}
-
-	// Operator (index 7)
-	if m.keyword_operator.is_prefix_of(s) || m.punctuation_accessor.is_prefix_of(s) {
-		return 7;
-	}
-
-	// Punctuation (index 8)
-	if m.punctuation.is_prefix_of(s) {
-		return 8;
-	}
-
-	// Variable (index 3)
-	if m.variable.is_prefix_of(s) || m.entity_name.is_prefix_of(s) || m.meta_path.is_prefix_of(s) {
-		return 3;
-	}
-
-	// Generic constant -> number (index 5)
-	if m.constant.is_prefix_of(s) {
-		return 5;
-	}
-
-	// No match
 	usize::MAX
 }
 
@@ -546,5 +408,47 @@ mod tests {
 		assert!(out.contains("<s>Start"));
 		assert!(out.contains("<k>-->"));
 		assert!(out.contains("<c> note"));
+	}
+
+	#[test]
+	fn test_scope_rules_token_classes_coverage() {
+		let rules = get_compiled_scope_rules();
+		assert!(!rules.is_empty(), "compiled scope rules must not be empty");
+
+		// Verify every rule maps to a valid token class index (0..=10)
+		for (scope, idx) in rules {
+			assert!(*idx <= 10, "invalid color index {idx} for scope {scope:?}");
+		}
+
+		// Verify all 11 semantic token classes (0..=10) are represented
+		let mut covered_indices = std::collections::BTreeSet::new();
+		for (_, idx) in rules {
+			covered_indices.insert(*idx);
+		}
+		assert_eq!(
+			covered_indices.len(),
+			11, /* 0..=10 (comment, keyword, function, variable, string, number, type, operator,
+			     * punctuation, inserted, deleted) */
+			"must cover all token class indices"
+		);
+
+		assert_eq!(compute_scope_color(Scope::new("keyword.operator.assignment").unwrap()), 1);
+		assert_eq!(compute_scope_color(Scope::new("punctuation.accessor.dot").unwrap()), 7);
+		assert_eq!(compute_scope_color(Scope::new("comment.line").unwrap()), 0);
+		assert_eq!(compute_scope_color(Scope::new("markup.inserted.diff").unwrap()), 9);
+		assert_eq!(compute_scope_color(Scope::new("markup.deleted.diff").unwrap()), 10);
+		assert_eq!(compute_scope_color(Scope::new("meta.diff.header").unwrap()), 1);
+		assert_eq!(compute_scope_color(Scope::new("string.quoted.double").unwrap()), 4);
+		assert_eq!(compute_scope_color(Scope::new("constant.numeric.integer").unwrap()), 5);
+		assert_eq!(compute_scope_color(Scope::new("keyword.control").unwrap()), 1);
+		assert_eq!(compute_scope_color(Scope::new("entity.name.function.rust").unwrap()), 2);
+		assert_eq!(compute_scope_color(Scope::new("entity.name.type.rust").unwrap()), 6);
+		assert_eq!(compute_scope_color(Scope::new("punctuation.definition.block").unwrap()), 8);
+		assert_eq!(compute_scope_color(Scope::new("variable.other.rust").unwrap()), 3);
+		assert_eq!(compute_scope_color(Scope::new("constant.language").unwrap()), 5);
+
+		// Verify unmatched scope returns usize::MAX
+		let unmatched = Scope::new("completely.unknown.token.class").unwrap();
+		assert_eq!(compute_scope_color(unmatched), usize::MAX);
 	}
 }

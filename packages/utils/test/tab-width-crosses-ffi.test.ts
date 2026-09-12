@@ -23,7 +23,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { Ellipsis, visibleWidth as nativeVisibleWidth } from "@veyyon/natives";
-import { DEFAULT_TAB_WIDTH } from "@veyyon/utils/tab-spacing";
+import { DEFAULT_TAB_WIDTH } from "@veyyon/utils/tab-width";
 import { extractSegments, sliceWithWidth, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 

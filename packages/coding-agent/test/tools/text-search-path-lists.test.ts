@@ -101,12 +101,12 @@ async function makeJsonlSessionFile(dirPath: string, entries: object[]): Promise
 	return filePath;
 }
 
-function makeSubagentRegistry(sessions: ObservableSession[]): SessionObserverRegistry {
+function makeAgentRegistry(sessions: ObservableSession[]): SessionObserverRegistry {
 	return {
 		getSessions: () => sessions,
 		onChange: () => () => {},
 		setMainSession: () => {},
-		getActiveSubagentCount: () => sessions.filter(session => session.status === "active").length,
+		getActiveAgentCount: () => sessions.filter(session => session.status === "active").length,
 	} as unknown as SessionObserverRegistry;
 }
 
@@ -372,10 +372,10 @@ describe("tool path arrays", () => {
 				},
 			},
 		]);
-		const observers = makeSubagentRegistry([
+		const observers = makeAgentRegistry([
 			{
 				id: "search-overlay-session",
-				kind: "subagent",
+				kind: "spawn",
 				label: "Search Overlay",
 				status: "active",
 				sessionFile,

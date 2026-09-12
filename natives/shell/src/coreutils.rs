@@ -26,10 +26,58 @@ use brush_core::{
 	openfiles::{OpenFile, OpenFiles},
 	results::ExecutionResult,
 };
+use tokio_util::sync::CancellationToken;
 
 /// Signature of a patched uutils `run` entry point: consumes `argv` (with the
 /// command name at index 0) and returns a process-style exit code.
 type UutilRun = fn(Vec<OsString>) -> i32;
+
+/// Await a blocking builtin and report cancellation only after its thread
+/// finishes.
+pub async fn run_cancellable_blocking(
+	cancel: Option<CancellationToken>,
+	task: impl FnOnce(Arc<AtomicBool>) -> i32 + Send + 'static,
+) -> i32 {
+	let cancel_flag = Arc::new(AtomicBool::new(false));
+	let thread_flag = Arc::clone(&cancel_flag);
+	let mut handle = tokio::task::spawn_blocking(move || task(thread_flag));
+
+	match cancel {
+		Some(token) => {
+			let token_check = token.clone();
+			tokio::select! {
+				biased;
+				() = token.cancelled() => {
+					cancel_flag.store(true, Ordering::Relaxed);
+					let _ = (&mut handle).await;
+					130
+				},
+				result = &mut handle => {
+					// If the token already fired, the task only finished because
+					// our cancel flag unblocked it — report interrupted.
+					if token_check.is_cancelled() { 130 } else { result.unwrap_or(1) }
+				},
+			}
+		},
+		None => handle.await.unwrap_or(1),
+	}
+}
+
+/// Print help/version to stdout with status 0, or usage errors to stderr with
+/// status 2.
+pub fn render_clap_error(err: &clap::Error, stdout: &mut OpenFile, stderr: &mut OpenFile) -> u8 {
+	let rendered = err.to_string();
+	match err.kind() {
+		clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion => {
+			let _ = write!(stdout, "{rendered}");
+			0
+		},
+		_ => {
+			let _ = write!(stderr, "{rendered}");
+			2
+		},
+	}
+}
 
 /// Drives a patched uutils utility to completion under a [`veyyon_uutils_ctx`]
 /// scope derived from the command execution context.
@@ -84,9 +132,6 @@ async fn run_uutil<SE: ShellExtensions>(
 		_ => false,
 	};
 
-	let cancel_flag = Arc::new(AtomicBool::new(false));
-	let scope_flag = Arc::clone(&cancel_flag);
-
 	// brush passes the command name as the first `CommandArg`, which is exactly
 	// the argv[0] uutils' argument parsing expects.
 	let argv: Vec<OsString> = args
@@ -96,7 +141,12 @@ async fn run_uutil<SE: ShellExtensions>(
 
 	drop(context);
 
-	let mut handle = tokio::task::spawn_blocking(move || {
+	// Respect bash abort/timeout. On cancel we set the context's cancel flag,
+	// which makes a blocked `stdin` read return EOF; the utility unwinds
+	// cleanly (flushing what it already produced) and the blocking task
+	// completes. We await that completion before returning so no detached
+	// thread keeps writing to the command's (possibly redirected) fds.
+	let code = run_cancellable_blocking(cancel, move |scope_flag| {
 		let stdin: Box<dyn Read + Send> = match stdin {
 			Some(file) => Box::new(file),
 			None => Box::new(io::empty()),
@@ -123,32 +173,8 @@ async fn run_uutil<SE: ShellExtensions>(
 			},
 			|| run_caught(run, argv),
 		)
-	});
-
-	// Respect bash abort/timeout. On cancel we set the context's cancel flag,
-	// which makes a blocked `stdin` read return EOF; the utility unwinds
-	// cleanly (flushing what it already produced) and the blocking task
-	// completes. We await that completion before returning so no detached
-	// thread keeps writing to the command's (possibly redirected) fds.
-	let code = match cancel {
-		Some(token) => {
-			let token_check = token.clone();
-			tokio::select! {
-				biased;
-				() = token.cancelled() => {
-					cancel_flag.store(true, Ordering::Relaxed);
-					let _ = (&mut handle).await;
-					130
-				},
-				result = &mut handle => {
-					// If the token already fired, the task only finished because
-					// our cancel flag unblocked it — report interrupted.
-					if token_check.is_cancelled() { 130 } else { result.unwrap_or(1) }
-				},
-			}
-		},
-		None => handle.await.unwrap_or(1),
-	};
+	})
+	.await;
 
 	Ok(ExecutionResult::new((code & 0xff) as u8))
 }

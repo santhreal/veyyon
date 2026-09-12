@@ -35,8 +35,6 @@ import {
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import {
 	computeModalDims,
-	consumeModalChipHover,
-	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
@@ -56,6 +54,7 @@ import {
 	sortModelItems,
 	thinkingLevelGlyph,
 } from "./model-browser";
+import { routeModalChrome } from "./select-list-mouse-routing";
 import { hoverBandAt } from "./selector-helpers";
 
 /**
@@ -1376,26 +1375,17 @@ export class ModelHubComponent implements Component {
 	// ═══════════════════════════════════════════════════════════════════════
 
 	#routeMouseEvent(event: SgrMouseEvent): boolean {
-		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-			motion: event.motion,
-			leftClick: event.leftClick,
-		});
-		if (
-			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+		const consumed = routeModalChrome({
+			shellGeometry: this.#shellGeometry,
+			event,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			onHoverShortcut: id => {
 				this.#hoveredShortcutId = id;
 				this.#tui.requestRender();
-			})
-		) {
-			return true;
-		}
-		if (
-			chrome.kind === "close" ||
-			chrome.kind === "outside" ||
-			(chrome.kind === "shortcut" && chrome.id === "close")
-		) {
-			this.#callbacks.onCancel();
-			return true;
-		}
+			},
+			onCancel: () => this.#callbacks.onCancel(),
+		});
+		if (consumed) return true;
 
 		// row() insets content by the border column plus a space; the card may
 		// be centered, so the sidebar|body split starts at `frameLeft + 2`.

@@ -11,7 +11,7 @@ import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from
 import { theme } from "../../../theme/theme";
 import { parseCommandArgs } from "../shared";
 import type { InteractiveModeContext } from "../types";
-import { groupBySource, showCommandMessage } from "./command-controller-shared";
+import { dispatchSubcommand, groupBySource, showCommandMessage } from "./command-controller-shared";
 
 const SSH_ADD_USAGE =
 	"Usage: /ssh add <name> <host> [user <user>] [<port>] [key <keyPath>] [desc <description>] [compat]";
@@ -63,28 +63,19 @@ export class SSHCommandController {
 	 * Handle /ssh command and route to subcommands
 	 */
 	async handle(text: string): Promise<void> {
-		const parts = text.trim().split(/\s+/);
-		const subcommand = parts[1]?.toLowerCase();
-
-		if (!subcommand || subcommand === "help") {
-			this.#showHelp();
-			return;
-		}
-
-		switch (subcommand) {
-			case "add":
-				await this.#handleAdd(text);
-				break;
-			case "list":
-				await this.#handleList();
-				break;
-			case "remove":
-			case "rm":
-				await this.#handleRemove(text);
-				break;
-			default:
-				this.ctx.showError(`Unknown subcommand: ${subcommand}. Type /ssh help for usage.`);
-		}
+		await dispatchSubcommand(
+			text,
+			"ssh",
+			[
+				{ name: "add", handler: () => this.#handleAdd(text) },
+				{ name: "list", handler: () => this.#handleList() },
+				{ name: "remove", aliases: ["rm"], handler: () => this.#handleRemove(text) },
+			],
+			{
+				onHelp: () => this.#showHelp(),
+				showError: msg => this.ctx.showError(msg),
+			},
+		);
 	}
 
 	/**

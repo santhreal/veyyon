@@ -5,6 +5,7 @@
 // `.env` AT IMPORT TIME. This module is in `cli.ts`'s static graph, so pulling the barrel here would load the
 // DEFAULT profile's `.env` before `--profile` has even been parsed (pinned by profile-cli.test.ts).
 import { renderHelpParagraph, renderHelpTable } from "@veyyon/utils/cli";
+import { CliUsageError } from "@veyyon/utils/cli-usage-error";
 import { APP_NAME, CONFIG_DIR_NAME } from "@veyyon/utils/dirs";
 import { pluralize } from "@veyyon/utils/format";
 import { nearestNames } from "@veyyon/utils/levenshtein";
@@ -20,7 +21,6 @@ import {
 	STRING_VALUE_FLAGS,
 	VALUELESS_FLAGS,
 } from "./flag-tables";
-import { CliUsageError } from "./usage-error";
 
 export type Mode = "text" | "json" | "rpc" | "acp" | "rpc-ui";
 
@@ -445,7 +445,7 @@ const BUILTIN_TOOL_HELP: Record<BuiltinToolName, string> = {
 	search_tool_bm25: "Search the descriptions of tools that have not been loaded yet",
 	set_cwd: "Change the session's working directory for the rest of the session",
 	ssh: "Execute a command on a remote host over SSH",
-	task: "Spawn subagents to complete delegated tasks",
+	task: "Spawn agents to complete delegated tasks",
 	todo: "Write a structured todo list to track progress within a session",
 	web_search: "Search the web",
 	write: "Write files (creates/overwrites)",
@@ -549,11 +549,8 @@ export function getExtraHelpText(): string {
 		chalk.bold("USEFUL COMMANDS"),
 		...renderHelpTable(
 			[
-				[
-					"veyyon agents unpack",
-					`Export bundled subagents to ~/${CONFIG_DIR_NAME}/subagents, which every profile reads`,
-				],
-				["veyyon agents unpack --dir <path>", "Export bundled subagents to a directory of your own"],
+				["veyyon agents unpack", `Export bundled agents to ~/${CONFIG_DIR_NAME}/agents, which every profile reads`],
+				["veyyon agents unpack --dir <path>", "Export bundled agents to a directory of your own"],
 			],
 			{ indent: "  " },
 		),

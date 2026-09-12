@@ -116,7 +116,7 @@ use_crop "${PANEL_LEFT}" "${PANE_TOP}" "${PANE_W}" "${PANE_H}"
 
 echo "scene: the pane reads ${PANE_GEOM}" >&2
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 # The pane is drawn when two probes a moment apart are the same over it: its
@@ -182,7 +182,7 @@ import time
 
 profile = os.environ.get("VEYYON_PROFILE") or "default"
 endpoint = Path.home() / ".veyyon" / "profiles" / profile / "agent" / "gui-host.sock"
-created = json.loads((Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json").read_text())
+created = json.loads((Path(os.environ["TMPDIR"]) / "created-session.json").read_text())
 deadline = time.monotonic() + 240
 quiet_for = 8.0
 last_shape = None

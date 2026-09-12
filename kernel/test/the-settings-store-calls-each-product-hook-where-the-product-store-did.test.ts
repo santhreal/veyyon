@@ -17,7 +17,7 @@
  * suites drive the composed store.
  */
 
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -26,9 +26,11 @@ import {
 	resetDeclaredSettingsForTest,
 	type SettingPath,
 	type SettingsTable,
+	settingsSchema,
 } from "@veyyon/kernel/settings/schema";
 import {
 	type GlobalSettingBinding,
+	groupSettingPaths,
 	type RawSettings,
 	type SettingsOptions,
 	SettingsStore,
@@ -58,12 +60,6 @@ type StoreSettings = typeof STORE_SETTINGS;
 declare module "@veyyon/kernel/settings/schema" {
 	interface DeclaredSettings extends StoreSettings {}
 }
-
-// From an empty registry, whichever sibling suite the runner loaded first in this process.
-beforeAll(() => {
-	resetDeclaredSettingsForTest();
-	declareSettings(STORE_SETTINGS);
-});
 
 type Call =
 	| ["migrate", RawSettings]
@@ -143,12 +139,23 @@ function inMemory(overrides?: SettingsOptions["overrides"]): { store: SettingsSt
 }
 
 let agentDir: string;
+let priorSettings: SettingsTable;
 
 beforeEach(async () => {
+	try {
+		priorSettings = { ...settingsSchema() };
+	} catch (error) {
+		if (!(error instanceof Error) || !error.message.startsWith("No settings are declared:")) throw error;
+		priorSettings = {};
+	}
+	resetDeclaredSettingsForTest();
+	declareSettings(STORE_SETTINGS);
 	agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-kernel-store-"));
 });
 
 afterEach(async () => {
+	resetDeclaredSettingsForTest();
+	declareSettings(priorSettings);
 	await fs.rm(agentDir, { recursive: true, force: true });
 });
 
@@ -158,6 +165,14 @@ describe("registered settings snapshots", () => {
 	// Timing and application schema composition are covered outside this suite.
 	it("invalidates the path index across empty, replacement, and growing registries", () => {
 		const entries = Object.entries(STORE_SETTINGS);
+		const prefixes = [...new Set(entries.map(([key]) => key.split(".")[0]!))];
+		const checkGroups = (registered: string[]): void => {
+			for (const prefix of prefixes) {
+				const actual: readonly string[] = groupSettingPaths(prefix);
+				expect(actual.toSorted()).toEqual(registered.filter(key => key.startsWith(`${prefix}.`)).toSorted());
+			}
+			expect(groupSettingPaths("unknown")).toEqual([]);
+		};
 		try {
 			for (let index = 0; index < entries.length; index++) {
 				const [firstPath, firstDef] = entries[index]!;
@@ -166,19 +181,23 @@ describe("registered settings snapshots", () => {
 				declareSettings({ [firstPath]: firstDef });
 				const { store } = inMemory();
 				expect(store.getEffectiveSnapshot()).toEqual({ [firstPath]: firstDef.default });
+				checkGroups([firstPath]);
 
 				resetDeclaredSettingsForTest();
 				expect(() => store.getEffectiveSnapshot()).toThrow("No settings are declared");
+				expect(() => groupSettingPaths(firstPath.split(".")[0]!)).toThrow("No settings are declared");
 				declareSettings({ [nextPath]: nextDef });
 				const replaced = store.getEffectiveSnapshot();
 				expect(Object.keys(replaced)).toEqual([nextPath]);
 				expect(replaced).toEqual({ [nextPath]: nextDef.default });
+				checkGroups([nextPath]);
 
 				declareSettings({ [firstPath]: firstDef });
 				expect(store.getEffectiveSnapshot()).toEqual({
 					[firstPath]: firstDef.default,
 					[nextPath]: nextDef.default,
 				});
+				checkGroups([nextPath, firstPath]);
 			}
 		} finally {
 			resetDeclaredSettingsForTest();
@@ -308,6 +327,31 @@ describe("the side effect of a write", () => {
 		// The previous value is read first, which resolves it on the fork's own fresh cache.
 		expect(hooks.names()).toEqual(["resolveForCwd", "mergedViewRebuilt", "resolveForCwd", "applyHook"]);
 	});
+
+	it("reports a rejected global write once even if a listener mutates the reported failure snapshot", async () => {
+		const hooks = new RecordingHooks();
+		hooks.binding.write = () => {
+			throw new Error("EACCES: permission denied");
+		};
+		const store = await new SettingsStore({ agentDir, cwd: "/work" }, hooks).load();
+		const reported: unknown[] = [];
+		store.onSaveFailure(failure => {
+			reported.push({ ...failure });
+			failure.path = "/mutated/path";
+			failure.attempts = 99;
+		});
+
+		store.set("machine.version", 1);
+		store.set("machine.version", 2);
+
+		expect(reported).toHaveLength(1);
+		expect(store.lastSaveError?.path).not.toBe("/mutated/path");
+
+		store.set("machine.version", 3);
+		expect(reported).toHaveLength(1);
+		expect(store.saveFailure?.attempts).toBe(3);
+		expect(store.saveFailure?.path).not.toBe("/mutated/path");
+	});
 });
 
 describe("the merged view and what is derived from it", () => {
@@ -356,11 +400,14 @@ describe("the merged view and what is derived from it", () => {
 	});
 
 	it("reads an unregistered dotted path from the tree without a default rather than throwing", () => {
-		const { store } = inMemory({ "future.knob": 7 } as SettingsOptions["overrides"]);
+		const { store } = inMemory({ "future.knob": 7, toString: "not-a-fn" } as SettingsOptions["overrides"]);
 
 		expect(store.get("future.knob" as SettingPath)).toBe(7);
 		expect(store.get("future.other" as SettingPath)).toBeUndefined();
+		expect(store.get("toString" as SettingPath)).toBe("not-a-fn");
 		expect(store.isConfigured("future.knob" as SettingPath)).toBe(true);
+		expect(store.isConfigured("toString" as SettingPath)).toBe(true);
+		expect(store.isConfigured("valueOf" as SettingPath)).toBe(false);
 	});
 
 	it("snapshots every registered path, sorted, at its effective value", () => {
@@ -397,9 +444,12 @@ describe("a fork and a clone", () => {
 		store.forkWithRuntimeOverrides();
 		expect(hooks.names()).not.toContain("applyAllHooks");
 
+		store.set("store.name", "profile");
 		const clone = await store.cloneForCwd("/other");
-		expect(clone.getCwd()).toBe(path.normalize("/other"));
 		expect(hooks.names().at(-1)).toBe("applyAllHooks");
+		expect(clone.getCwd()).toBe(path.normalize("/other"));
+		expect(clone.get("store.name")).toBe("profile");
+		expect(clone.layerValue("profile", ["store", "name"])).toBe("profile");
 	});
 });
 

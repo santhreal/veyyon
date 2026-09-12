@@ -1,8 +1,8 @@
 /**
- * Pure assembly of subagent `yield` calls into the final payload consumed by
+ * Pure assembly of agent `yield` calls into the final payload consumed by
  * output-schema validation.
  *
- * Lives apart from the subagent runtime in `executor.ts` so the rendering path
+ * Lives apart from the agent runtime in `executor.ts` so the rendering path
  * (`render.ts` → `extractIncrementalReviewResult`) can assemble incremental
  * yields without importing that runtime's dependency graph (`sdk`,
  * `session-manager`, the TUI tool renderers). It has no side effects and
@@ -25,7 +25,7 @@ function isIncrementalYieldType(type: YieldItem["type"]): type is string[] {
 	return Array.isArray(type) && type.length > 0;
 }
 
-function getYieldLabels(type: YieldItem["type"]): string[] {
+export function getYieldLabels(type: YieldItem["type"]): string[] {
 	if (typeof type === "string") {
 		const label = type.trim();
 		return label ? [label] : [];

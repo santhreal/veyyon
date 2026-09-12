@@ -1,13 +1,13 @@
 /**
  * A setting that declares a `ui` block is REACHABLE in `/settings`.
  *
- * THE BUG THIS LOCKS OUT. `subagent.idleTtlMs` shipped with a complete `ui` block -- tab, group,
+ * THE BUG THIS LOCKS OUT. `agent.idleTtlMs` shipped with a complete `ui` block -- tab, group,
  * label, a two-sentence description -- and a docs entry, and it did not appear in `/settings` at all.
  * The adapter that turns a schema row into a UI row (`pathToSettingDef` in
  * `modes/terminal/components/selectors/settings-defs.ts`) returns `null` for a NUMBER with no `ui.options`, so stage one
  * of the park/close lifecycle was documented, defaulted and honored while being unreachable. Nothing
  * failed. Every settings suite in this repository checks named paths one at a time
- * (`settings-layout`, `model-selector-settings`, `subagent-agents-surface`, `compaction-strategy-settings`),
+ * (`settings-layout`, `model-selector-settings`, `agents-surface`, `compaction-strategy-settings`),
  * so a row nobody thought to name is a row nobody notices is gone.
  *
  * WHY IT IS ASSERTED AGAINST THE SCHEMA AND NOT AGAINST THE UI. The failure mode of the suites above
@@ -65,7 +65,7 @@ describe("every setting that declares a ui block is reachable in /settings", () 
 		expect(reachableInSettings().size).toBeGreaterThan(300);
 		// And the row the whole suite is named after is on the surface. It shipped with a full ui block,
 		// a docs entry and no row at all, because the adapter dropped optionless numbers.
-		expect(reachableInSettings().has("subagent.idleTtlMs")).toBe(true);
+		expect(reachableInSettings().has("agent.idleTtlMs")).toBe(true);
 	});
 
 	/**

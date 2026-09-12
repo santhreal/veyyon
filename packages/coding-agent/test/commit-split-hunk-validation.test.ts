@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import type { CommitAgentState } from "../src/commit/agentic/state";
 import { createSplitCommitTool } from "../src/commit/agentic/tools/split-commit";
+import { MAX_DETAIL_ITEMS, SUMMARY_MAX_CHARS } from "../src/commit/agentic/validation";
 import * as git from "../src/utils/git";
 
 const STAGED_DIFF = `diff --git a/src/a.ts b/src/a.ts
@@ -128,5 +129,38 @@ describe("split_commit hunk selector validation", () => {
 		expect(state.splitProposal?.commits[0]?.changes.map(change => change.path)).toContain(
 			"packages/coding-agent/CHANGELOG.md",
 		);
+	});
+
+	it("states the limits the proposal was judged against in the text the model reads", async () => {
+		vi.spyOn(git, "diff").mockResolvedValue(STAGED_DIFF);
+		const state: CommitAgentState = {
+			overview: { files: ["src/a.ts", "src/b.ts"], stat: "", numstat: [], scopeCandidates: "", isWideScope: false },
+		};
+		const tool = createSplitCommitTool("/repo", state, []);
+
+		const result = await tool.execute(
+			"split-commit",
+			{
+				commits: [
+					{
+						changes: [
+							{ path: "src/a.ts", hunks: { type: "all" } },
+							{ path: "src/b.ts", hunks: { type: "all" } },
+						],
+						type: "fix",
+						scope: null,
+						summary: "Fixed the verdict limits",
+					},
+				],
+			},
+			undefined,
+			{} as never,
+		);
+
+		const first = result.content[0];
+		if (first?.type !== "text") throw new Error("expected a text verdict");
+		const verdict = JSON.parse(first.text) as { valid: boolean; constraints: Record<string, number> };
+		expect(verdict.valid).toBe(true);
+		expect(verdict.constraints).toEqual({ maxSummaryChars: SUMMARY_MAX_CHARS, maxDetailItems: MAX_DETAIL_ITEMS });
 	});
 });

@@ -12,6 +12,7 @@ import { isAbortError } from "@veyyon/utils/abortable";
 import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
+import { promptApiKey } from "../api-key-login";
 import { VALIDATION_TIMEOUT_MS } from "../api-key-validation";
 import type { OAuthController } from "./types";
 
@@ -158,25 +159,13 @@ async function validateXiaomiApiKey(
  */
 export async function loginXiaomi(options: OAuthController): Promise<string> {
 	const fetchImpl = options.fetch ?? fetch;
-	if (!options.onPrompt) {
-		throw new AIError.OnPromptRequiredError(PROVIDER_NAME);
-	}
-	options.onAuth?.({
-		url: STANDARD_AUTH_URL,
+	const trimmed = await promptApiKey(options, {
+		providerLabel: PROVIDER_NAME,
+		authUrl: STANDARD_AUTH_URL,
 		instructions: "Copy your API key from the Xiaomi MiMo console",
-	});
-	const apiKey = await options.onPrompt({
-		message: "Paste your Xiaomi API key (sk-... or token-plan tp-...)",
+		promptMessage: "Paste your Xiaomi API key (sk-... or token-plan tp-...)",
 		placeholder: "sk-... or tp-...",
-		secret: true,
 	});
-	if (options.signal?.aborted) {
-		throw new AIError.LoginCancelledError();
-	}
-	const trimmed = apiKey.trim();
-	if (!trimmed) {
-		throw new AIError.ApiKeyRequiredError();
-	}
 
 	options.onProgress?.(`Validating ${PROVIDER_ID} API key...`);
 	await validateXiaomiApiKey(trimmed, undefined, options.signal, fetchImpl);
@@ -190,25 +179,13 @@ export async function loginXiaomi(options: OAuthController): Promise<string> {
  */
 export async function loginXiaomiTokenPlan(options: OAuthController, region: XiaomiTokenPlanRegion): Promise<string> {
 	const fetchImpl = options.fetch ?? fetch;
-	if (!options.onPrompt) {
-		throw new AIError.OnPromptRequiredError(`Xiaomi Token Plan (${TOKEN_PLAN_REGION_NAMES[region]})`);
-	}
-	options.onAuth?.({
-		url: TOKEN_PLAN_AUTH_URL,
+	const trimmed = await promptApiKey(options, {
+		providerLabel: `Xiaomi Token Plan (${TOKEN_PLAN_REGION_NAMES[region]})`,
+		authUrl: TOKEN_PLAN_AUTH_URL,
 		instructions: `Copy your token-plan API key for the ${TOKEN_PLAN_REGION_NAMES[region]} region`,
-	});
-	const apiKey = await options.onPrompt({
-		message: `Paste your Xiaomi Token Plan ${TOKEN_PLAN_REGION_NAMES[region]} API key (tp-...)`,
+		promptMessage: `Paste your Xiaomi Token Plan ${TOKEN_PLAN_REGION_NAMES[region]} API key (tp-...)`,
 		placeholder: "tp-...",
-		secret: true,
 	});
-	if (options.signal?.aborted) {
-		throw new AIError.LoginCancelledError();
-	}
-	const trimmed = apiKey.trim();
-	if (!trimmed) {
-		throw new AIError.ApiKeyRequiredError();
-	}
 
 	options.onProgress?.(`Validating Xiaomi Token Plan (${TOKEN_PLAN_REGION_NAMES[region]}) API key...`);
 	await validateXiaomiApiKey(trimmed, region, options.signal, fetchImpl);

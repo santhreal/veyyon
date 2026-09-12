@@ -44,23 +44,21 @@ export class BtwPanelComponent extends Container {
 	}
 
 	markComplete(): void {
-		if (this.#closed) return;
-		this.#state = "complete";
-		this.#errorMessage = undefined;
-		this.#rebuild();
+		this.#settle("complete");
 	}
 
 	markAborted(): void {
-		if (this.#closed) return;
-		this.#state = "aborted";
-		this.#errorMessage = undefined;
-		this.#rebuild();
+		this.#settle("aborted");
 	}
 
 	markError(message: string): void {
+		this.#settle("error", message);
+	}
+
+	#settle(state: BtwPanelState, errorMessage?: string): void {
 		if (this.#closed) return;
-		this.#state = "error";
-		this.#errorMessage = message;
+		this.#state = state;
+		this.#errorMessage = errorMessage;
 		this.#rebuild();
 	}
 

@@ -743,19 +743,6 @@ pub fn normalize_context_args(argv: Vec<OsString>) -> Vec<OsString> {
 	normalized
 }
 
-/// Escape regular-expression meta-characters so a pattern is matched literally
-/// (used to implement `-F`/`--fixed-strings` and the per-alternative literal
-/// demotion below).
-///
-/// This used to carry its own meta-character list with a comment saying it
-/// mirrored the escaper in `regex`. It did, character for character, which is
-/// exactly why it was a hazard: nothing kept it mirroring, and `regex-syntax`
-/// has added meta characters before. The rule now has one owner in the kernel;
-/// see [`escape_literal_pattern`] for the recall argument.
-fn escape_literal(pat: &str) -> String {
-	escape_literal_pattern(pat)
-}
-
 /// What this builtin's flags mean to a matcher, derived ONCE and read by both
 /// engines.
 ///
@@ -832,17 +819,6 @@ fn apply_pcre_flags(builder: &mut PcreMatcherBuilder, flags: &GrepMatcherFlags) 
 		.word(word)
 		.whole_line(whole_line);
 	pcre_matcher_defaults(builder);
-}
-
-/// Compile all patterns using the last-selected matcher mode.
-/// A record without its terminator.
-///
-/// Both builtins strip one in the places where the terminator is not part of
-/// what they are looking at: the bytes a span is measured against, and the
-/// bytes a notice is appended after. One owner, so `-z` cannot mean one thing
-/// in `grep` and another in `rg`.
-pub(crate) fn strip_record_terminator(bytes: &[u8], terminator: u8) -> &[u8] {
-	bytes.strip_suffix(&[terminator]).unwrap_or(bytes)
 }
 
 /// The POSIX rule for WHICH span a match reports, for the two modes that show
@@ -1052,7 +1028,7 @@ fn compile_matcher(
 	if mode == MatchMode::Fixed {
 		let escaped: Vec<String> = patterns
 			.iter()
-			.map(|pattern| escape_literal(pattern))
+			.map(|pattern| escape_literal_pattern(pattern))
 			.collect();
 		return builder
 			.build_many(&escaped)
@@ -1071,7 +1047,7 @@ fn compile_matcher(
 					if builder.build(pattern).is_ok() {
 						pattern.clone()
 					} else {
-						escape_literal(pattern)
+						escape_literal_pattern(pattern)
 					}
 				})
 				.collect();
@@ -2319,6 +2295,15 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 			&opts,
 			max_count,
 		),
+	}
+}
+
+fn strip_record_terminator(line: &[u8], terminator: u8) -> &[u8] {
+	let content = veyyon_grep_kernel::strip_record_terminator(line, terminator);
+	if terminator == b'\n' && content.len() < line.len() {
+		content.strip_suffix(b"\r").unwrap_or(content)
+	} else {
+		content
 	}
 }
 
@@ -5130,6 +5115,33 @@ mod tests {
 			);
 			assert_eq!(strip_record_terminator(b"hit", b'\n'), b"hit", "an unterminated last line");
 			assert_eq!(strip_record_terminator(b"", b'\n'), b"", "an empty record");
+		}
+
+		/// Record normalization must preserve CR content except in a CRLF
+		/// terminator. Exercises the real span-output path; matching-engine
+		/// conformance is separate.
+		#[test]
+		fn span_output_preserves_record_ending_semantics() {
+			let root = unique_tree("span-record-endings");
+			for (input, nul, expected) in [
+				("ab\n", false, "ab\n"),
+				("ab\r\n", false, "ab\n"),
+				("ab\r", false, "ab\r\n"),
+				("ab\0", true, "ab\0"),
+				("ab\r\0", true, "ab\r\0"),
+				("ab\n\0", true, "ab\n\0"),
+			] {
+				std::fs::write(root.join("records.txt"), input).expect("the fixture");
+				let mut args = vec!["-o", "-E"];
+				if nul {
+					args.push("-z");
+				}
+				args.extend(["a|a[^x]*", "records.txt"]);
+				let (code, stdout, stderr) = run_grep_in(&args, "", &root);
+				assert_eq!(code, 0, "{input:?}: {stderr}");
+				assert_eq!(stdout, expected, "{input:?}, nul={nul}");
+				assert_eq!(stderr, "");
+			}
 		}
 
 		/// End to end, the shape the ledger row was filed for.

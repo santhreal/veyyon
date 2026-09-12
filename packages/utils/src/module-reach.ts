@@ -108,13 +108,18 @@ export interface ModuleReachResolution {
 	readonly packages?: ReadonlyArray<readonly [string, string]>;
 }
 
+/** The first capture of every match of each pattern in `code`, patterns in order, matches in source order. */
+function firstCaptures(code: string, ...patterns: readonly RegExp[]): string[] {
+	const found: string[] = [];
+	for (const pattern of patterns) {
+		for (const match of code.matchAll(pattern)) if (match[1]) found.push(match[1]);
+	}
+	return found;
+}
+
 /** Every module specifier `source` instantiates at runtime, in source order. */
 export function moduleSpecifiersIn(source: string): string[] {
-	const code = withoutComments(source);
-	const found: string[] = [];
-	for (const match of code.matchAll(SIDE_EFFECT_IMPORT_RE)) if (match[1]) found.push(match[1]);
-	for (const match of code.matchAll(FROM_IMPORT_RE)) if (match[1]) found.push(match[1]);
-	return found;
+	return firstCaptures(withoutComments(source), SIDE_EFFECT_IMPORT_RE, FROM_IMPORT_RE);
 }
 
 /**
@@ -134,10 +139,7 @@ const TYPE_IMPORT_RE = /(?:^|\n)[ \t]*(?:import|export)\s+type[\s{*][\w$*{},\s]*
 
 /** Every module specifier `source` names for TYPES ONLY, in source order. See {@link TYPE_IMPORT_RE}. */
 export function typeOnlyModuleSpecifiersIn(source: string): string[] {
-	const code = withoutComments(source);
-	const found: string[] = [];
-	for (const match of code.matchAll(TYPE_IMPORT_RE)) if (match[1]) found.push(match[1]);
-	return found;
+	return firstCaptures(withoutComments(source), TYPE_IMPORT_RE);
 }
 
 /**
@@ -159,10 +161,7 @@ const DYNAMIC_IMPORT_RE = /\bimport\s*\(\s*["']([^"']+)["']/g;
 
 /** Every module specifier `source` imports DYNAMICALLY, in source order. See {@link DYNAMIC_IMPORT_RE}. */
 export function dynamicImportSpecifiersIn(source: string): string[] {
-	const code = withoutComments(source);
-	const found: string[] = [];
-	for (const match of code.matchAll(DYNAMIC_IMPORT_RE)) if (match[1]) found.push(match[1]);
-	return found;
+	return firstCaptures(withoutComments(source), DYNAMIC_IMPORT_RE);
 }
 
 /**

@@ -1,9 +1,9 @@
 import { useMemo } from "react";
 import { getRecentErrors } from "../api";
-import { formatCost, formatInteger, formatRelativeTime } from "../data/formatters";
+import { createMessageColumns, renderMessageMobileCard } from "../components/requests-table-shared";
 import { useResource } from "../data/useResource";
 import type { MessageStats, TimeRange } from "../types";
-import { AsyncBoundary, DataTable, Panel, StatusPill } from "../ui";
+import { AsyncBoundary, DataTable, Panel } from "../ui";
 
 export interface ErrorsRouteProps {
 	active: boolean;
@@ -22,95 +22,23 @@ export function ErrorsRoute({ active, refreshTrigger, onRequestClick }: ErrorsRo
 		enabled: active,
 	});
 
-	const columns = useMemo(
-		() => [
-			{
-				key: "model",
-				header: "Model",
-				render: (item: MessageStats) => (
-					<div>
-						<div className="stats-font-medium stats-text-primary">{item.model}</div>
-						<div className="stats-text-xs stats-text-muted">{item.provider}</div>
-					</div>
-				),
-			},
-			{
-				key: "timestamp",
-				header: "Time",
-				render: (item: MessageStats) => formatRelativeTime(item.timestamp),
-			},
-			{
-				key: "errorMessage",
-				header: "Error Message",
-				render: (item: MessageStats) => (
-					<div
-						className="stats-text-xs stats-text-danger stats-truncate stats-max-w-md stats-font-mono"
-						title={item.errorMessage || ""}
-					>
-						{item.errorMessage || "Unknown error"}
-					</div>
-				),
-			},
-			{
-				key: "tokens",
-				header: "Tokens",
-				numeric: true,
-				render: (item: MessageStats) => formatInteger(item.usage.totalTokens),
-			},
-			{
-				key: "cost",
-				header: "Cost",
-				numeric: true,
-				render: (item: MessageStats) => formatCost(item.usage.cost.total, 4),
-			},
-		],
-		[],
-	);
-
-	const renderMobileCard = (item: MessageStats, onClick?: () => void) => (
-		<div className="stats-mobile-card stats-border-danger" onClick={onClick}>
-			<div className="stats-mobile-card-header">
-				<div>
-					<div className="stats-font-semibold stats-text-primary">{item.model}</div>
-					<div className="stats-text-xs stats-text-muted">{item.provider}</div>
-				</div>
-				<StatusPill variant="danger">Failed</StatusPill>
-			</div>
-			<div className="stats-mobile-card-grid">
-				<div>
-					<div className="stats-mobile-card-label">Time</div>
-					<div className="stats-mobile-card-value">{formatRelativeTime(item.timestamp)}</div>
-				</div>
-				<div>
-					<div className="stats-mobile-card-label">Cost</div>
-					<div className="stats-mobile-card-value">{formatCost(item.usage.cost.total, 4)}</div>
-				</div>
-				<div>
-					<div className="stats-mobile-card-label">Tokens</div>
-					<div className="stats-mobile-card-value">{formatInteger(item.usage.totalTokens)}</div>
-				</div>
-			</div>
-			{item.errorMessage && <div className="stats-mobile-card-error mt-2 stats-font-mono">{item.errorMessage}</div>}
-		</div>
-	);
+	const columns = useMemo(() => createMessageColumns(true), []);
 
 	return (
 		<div className="stats-route-container">
 			<Panel title="Recent Errors" subtitle="Up to 50 most recent failed requests in the stats database">
-				<AsyncBoundary
-					loading={loading}
-					error={error}
-					data={recentErrors}
-					emptyText="No recent failures in the local stats database"
-				>
-					<DataTable
-						columns={columns}
-						data={recentErrors || []}
-						keyExtractor={item => item.id || `${item.sessionFile}-${item.entryId}`}
-						onRowClick={item => item.id && onRequestClick(item.id)}
-						renderMobileCard={renderMobileCard}
-						emptyText="No recent failures in the local stats database"
-					/>
+				<AsyncBoundary loading={loading} error={error} data={recentErrors}>
+					{recentErrors && (
+						<DataTable<MessageStats>
+							columns={columns}
+							data={recentErrors}
+							keyExtractor={item => item.id ?? `${item.sessionFile}-${item.entryId}`}
+							onRowClick={item => {
+								if (item.id !== undefined) onRequestClick(item.id);
+							}}
+							renderMobileCard={(item, onClick) => renderMessageMobileCard(item, onClick, true)}
+						/>
+					)}
 				</AsyncBoundary>
 			</Panel>
 		</div>

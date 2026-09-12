@@ -49,7 +49,6 @@ Key integration points:
 - `packages/coding-agent/src/discovery/capability/index.ts`
 - `packages/coding-agent/src/discovery/index.ts`
 - `packages/coding-agent/src/extensibility/skills.ts`
-- `packages/coding-agent/src/extensibility/hooks/loader.ts`
 - `packages/coding-agent/src/extensibility/custom-tools/loader.ts`
 - `packages/coding-agent/src/extensibility/extensions/loader.ts`
 
@@ -266,7 +265,7 @@ Native provider (`id: native`) reads native config from one place: the active pr
 ### Directory admission rules
 
 - The profile agent directory is used only when it exists and is non-empty.
-- Skills are loaded only from the active profile's agent dir (`~/.veyyon/profiles/<name>/agent/skills`). Project-local `.veyyon/skills` directories are deliberately not scanned, so no repository can inject skills into a session by ambient autodiscovery.
+- Skills are loaded only from the active profile's agent dir (`~/.veyyon/profiles/<name>/agent/skills`). Project-local `.veyyon/skills` directories are not scanned, preventing repositories from injecting skills into a session via ambient autodiscovery.
 - `AGENTS.md` has three scopes: the global cross-profile `~/.veyyon/AGENTS.md`, the active profile's first matching instruction file, and the project walk from the working directory to the repository root (one file per directory level: `.veyyon/AGENTS.md` at the nearest non-empty `.veyyon/` claims its level, bare `AGENTS.md` next, bare `CLAUDE.md` last). `RULES.md` is the active profile's file only; a repository's `.veyyon/RULES.md` is not read. Persistent system-prompt changes use `PROMPT_SECTIONS/` under the active profile's agent dir. See [`docs/handbook/src/models/system-prompt.md`](../models/system-prompt.md).
 
 ### Scope-specific loading
@@ -350,7 +349,7 @@ The settings layers deep-merge in a fixed order (profile, then `--config` overla
 
 - `ConfigFile` JSON -> YAML migration for YAML-targeted files.
 - Settings migration from `settings.json` and `agent.db` to `config.yml`.
-- Settings key migrations include `queueMode`, `ask.timeout`, flat `theme`, `task.isolation.enabled`, legacy `task.isolation.mode` values, the whole `task.*` group plus `modelRoles.task` moving to `subagent.*`, removed edit modes, `statusLine.plan_mode`, `memories.enabled`, and hindsight scoping/name fields.
+- Settings key migrations include `queueMode`, `ask.timeout`, flat `theme`, `task.isolation.enabled`, legacy `task.isolation.mode` values, the whole `task.*` group plus `modelRoles.task` moving to `agent.*`, removed edit modes, `statusLine.plan_mode`, `memories.enabled`, and hindsight scoping/name fields.
 - The removed per-source skill toggles (`skills.enableCodexUser`, `skills.enableClaudeUser`, `skills.enableClaudeProject`, `skills.enablePiUser`, `skills.enablePiProject`, `skills.enableAgentsUser`, `skills.enableAgentsProject`) and `skills.customDirectories` are no longer read. Skills load only from the active profile. A stale key in an old `config.yml` is ignored, not an error.
 
 If these compatibility paths are removed in code, update this document immediately; several runtime behaviors still depend on them today.

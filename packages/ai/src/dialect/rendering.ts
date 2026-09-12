@@ -6,6 +6,8 @@ import type { DialectRenderOptions, DialectToolResult } from "./types";
 import {
 	THINK_CLOSE,
 	THINK_OPEN,
+	TOOL_CALL_CLOSE,
+	TOOL_CALL_OPEN,
 	TOOL_RESPONSE_CLOSE,
 	TOOL_RESPONSE_OPEN,
 	XML_THINKING_CLOSE,
@@ -14,6 +16,21 @@ import {
 
 export function renderToolResponseResults(results: readonly DialectToolResult[]): string {
 	return results.map(result => `${TOOL_RESPONSE_OPEN}\n${result.text}\n${TOOL_RESPONSE_CLOSE}`).join("\n");
+}
+
+/**
+ * Render a single named JSON tool call enclosed in `<tool_call>` tags.
+ * Shared by dialects in the Hermes/Qwen3 ChatML family.
+ */
+export function renderJsonToolCall(call: ToolCall, _options: DialectRenderOptions = {}): string {
+	return `${TOOL_CALL_OPEN}\n${stringifyJson({ name: call.name, arguments: call.arguments })}\n${TOOL_CALL_CLOSE}`;
+}
+
+/**
+ * Render multiple named JSON tool calls, each enclosed in `<tool_call>` tags, separated by newlines.
+ */
+export function renderJsonAssistantToolCalls(calls: readonly ToolCall[], options: DialectRenderOptions = {}): string {
+	return calls.map(call => renderJsonToolCall(call, options)).join("\n");
 }
 
 /**

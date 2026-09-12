@@ -110,6 +110,30 @@ describe("schema repair (A1)", () => {
 		if (outcome.status !== "unrepairable") return;
 		expect(outcome.reason).toContain("repair limit");
 	});
+
+	it("parses stringified arguments into an object and reports the string origin", () => {
+		const outcome = call('{"path": "/tmp/a.txt",}');
+		expect(outcome.status).toBe("repaired");
+		if (outcome.status !== "repaired") return;
+		expect(outcome.arguments).toEqual({ path: "/tmp/a.txt" });
+		expect(outcome.hints).toEqual(["Parsed stringified tool arguments into a JSON object."]);
+	});
+
+	it("refuses a stringified argument that parses to a non-object with the string wording", () => {
+		const outcome = call('"just text"');
+		expect(outcome.status).toBe("unrepairable");
+		if (outcome.status !== "unrepairable") return;
+		expect(outcome.reason).toBe("Tool arguments string parsed to a non-object value.");
+		expect(outcome.hints).toEqual(["Send tool arguments as a JSON object."]);
+	});
+
+	it("refuses a parse-sentinel payload that repairs to a non-object with the sentinel wording", () => {
+		const outcome = call({ __parseError: "Unexpected token", __rawJson: "[1, 2,]" });
+		expect(outcome.status).toBe("unrepairable");
+		if (outcome.status !== "unrepairable") return;
+		expect(outcome.reason).toBe("Repaired JSON is not an object; tool arguments must be a JSON object.");
+		expect(outcome.hints).toEqual(["Wrap tool arguments in a JSON object with named fields."]);
+	});
 });
 
 describe("schema repair — alias/typo key cascade (U4-01)", () => {

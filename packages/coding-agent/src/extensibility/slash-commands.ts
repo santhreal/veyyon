@@ -3,13 +3,13 @@ import { appendInlineArgsFallback, templateUsesInlineArgPlaceholders } from "../
 import type { SlashCommand } from "../discovery";
 import { loadCapability } from "../discovery";
 import { slashCommandCapability } from "../discovery/capability/slash-command";
-import { parseSlashCommand } from "../slash-commands/helpers/parse";
+import { parseSlashCommand, resolveSlashCommand } from "../slash-commands/helpers/parse";
 import { EMBEDDED_COMMAND_TEMPLATES } from "../task/commands";
 import { parseCommandArgs, substituteArgs } from "../utils/command-args";
 
 export type SlashCommandSource = "extension" | "prompt" | "skill";
 
-export type SlashCommandLocation = "user" | "project" | "path";
+export type SlashCommandLocation = "user" | "project" | "path" | "plugin";
 
 export interface SlashCommandInfo {
 	name: string;
@@ -124,17 +124,18 @@ export async function loadSlashCommands(options: LoadSlashCommandsOptions = {}):
 /**
  * Expand a slash command if it matches a file-based command.
  * Returns the expanded content or the original text if not a slash command.
+ *
+ * A plugin command is registered as `<plugin>:<name>`; `resolveSlashCommand` matches it from
+ * either `/<plugin>:<name>` or `/<plugin> <name>`.
  */
 export function expandSlashCommand(text: string, fileCommands: FileSlashCommand[]): string {
 	const parsed = parseSlashCommand(text);
 	if (!parsed) return text;
 
-	const commandName = parsed.name;
-	const argsString = parsed.args;
-
-	const fileCommand = fileCommands.find(cmd => cmd.name === commandName);
-	if (fileCommand) {
-		const args = parseCommandArgs(argsString);
+	const resolved = resolveSlashCommand(parsed, name => fileCommands.find(cmd => cmd.name === name));
+	if (resolved) {
+		const fileCommand = resolved.command;
+		const args = parseCommandArgs(resolved.args);
 		const argsText = args.join(" ");
 		const usesInlineArgPlaceholders = templateUsesInlineArgPlaceholders(fileCommand.content);
 		const substituted = substituteArgs(fileCommand.content, args);

@@ -4,7 +4,6 @@ import {
 	discoverGitLabDuoWorkflowRuntimeNamespace,
 	type GitLabDuoWorkflowNamespaceSelection,
 } from "@veyyon/catalog/discovery/gitlab-duo-workflow";
-import { emptyUsage } from "@veyyon/catalog/models";
 import { GITLAB_SAAS_URL } from "@veyyon/catalog/provider-endpoints";
 import { tryParseJson } from "@veyyon/utils/json";
 import * as logger from "@veyyon/utils/logger";
@@ -15,7 +14,6 @@ import { parseToolArgsText } from "../dialect/coercion";
 import * as AIError from "../error";
 import { AI_PROMPTS } from "../prompts/registry";
 import type {
-	Api,
 	AssistantMessage,
 	Context,
 	FetchImpl,
@@ -33,7 +31,9 @@ import { normalizeSystemPrompts } from "../utils";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { openBoundedFirstEventBudget } from "../utils/first-event-budget";
 import { toolWireSchema } from "../utils/schema/wire";
+import { createInitialResponsesAssistantMessage } from "./initial-message";
 import { NON_VIDEO_MODEL_PLACEHOLDER } from "./vision-content";
+
 export const GITLAB_DUO_WORKFLOW_PROVIDER_ID = "gitlab-duo-agent";
 export const GITLAB_DUO_WORKFLOW_API = "gitlab-duo-agent";
 export const GITLAB_DUO_WORKFLOW_DEFINITION = "ambient";
@@ -444,7 +444,7 @@ export const streamGitLabDuoWorkflow: StreamFunction<"gitlab-duo-agent"> = (
 	options: GitLabDuoWorkflowOptions,
 ): AssistantMessageEventStream => {
 	const stream = new AssistantMessageEventStream();
-	const output = createAssistantMessage(model);
+	const output = createInitialResponsesAssistantMessage(model.api, model.provider, model.id);
 	stream.push({ type: "start", partial: output });
 	const state: GitLabDuoWorkflowStreamState = { stream, output, started: true };
 
@@ -1403,21 +1403,6 @@ async function runGitLabDuoWorkflow(
 			if (lastSocketResult === "timeout" && !timeoutReconnected) {
 				timeoutReconnected = true;
 				traceGitLabDuoWorkflow("websocket.idle_restart", { workflowId });
-				await stopGitLabDuoWorkflow(fetchImpl, baseUrl, apiKey, workflowId);
-				workflowId = await createGitLabDuoWorkflow(
-					fetchImpl,
-					baseUrl,
-					apiKey,
-					createNamespaceId,
-					goal,
-					restProjectId,
-					workflowDefinition,
-					model,
-					options.onPayload,
-					options.signal,
-				);
-				startPayload = { ...startPayload, workflowID: workflowId };
-				continue;
 			}
 			// The server caps each workflow at a fixed step (graph-recursion) limit.
 			// A long but healthy veyyon tool-call loop legitimately overruns it; that is
@@ -1429,25 +1414,13 @@ async function runGitLabDuoWorkflow(
 			// checkpoint dedupe drops any re-sent ui_chat_log entries. Bounded so a
 			// task that perpetually overruns degrades to a graceful stop, not a quota
 			// sink.
-			if (lastSocketResult === "step_limit" && stepLimitRestarts < GITLAB_DUO_WORKFLOW_MAX_STEP_LIMIT_RESTARTS) {
+			else if (
+				lastSocketResult === "step_limit" &&
+				stepLimitRestarts < GITLAB_DUO_WORKFLOW_MAX_STEP_LIMIT_RESTARTS
+			) {
 				stepLimitRestarts++;
 				state.stepLimitRequested = false;
 				traceGitLabDuoWorkflow("websocket.step_limit_restart", { workflowId, restart: stepLimitRestarts });
-				await stopGitLabDuoWorkflow(fetchImpl, baseUrl, apiKey, workflowId);
-				workflowId = await createGitLabDuoWorkflow(
-					fetchImpl,
-					baseUrl,
-					apiKey,
-					createNamespaceId,
-					goal,
-					restProjectId,
-					workflowDefinition,
-					model,
-					options.onPayload,
-					options.signal,
-				);
-				startPayload = { ...startPayload, workflowID: workflowId };
-				continue;
 			}
 			// The server emitted a fresh tool-call boundary whose `ui_chat_log` total did
 			// not advance past the previous boundary of this workflow — the server-side
@@ -1458,32 +1431,17 @@ async function runGitLabDuoWorkflow(
 			// rebuilt from the agent loop's intact `context.messages`, so no in-flight
 			// tool result is lost. Bounded so a persistently stalling endpoint degrades to
 			// a surfaced result instead of looping on quota.
-			if (lastSocketResult === "stalled" && stallRestarts < GITLAB_DUO_WORKFLOW_MAX_STALL_RESTARTS) {
+			else if (lastSocketResult === "stalled" && stallRestarts < GITLAB_DUO_WORKFLOW_MAX_STALL_RESTARTS) {
 				stallRestarts++;
 				state.stalledRequested = false;
 				traceGitLabDuoWorkflow("websocket.stall_restart", { workflowId, restart: stallRestarts });
-				await stopGitLabDuoWorkflow(fetchImpl, baseUrl, apiKey, workflowId);
-				workflowId = await createGitLabDuoWorkflow(
-					fetchImpl,
-					baseUrl,
-					apiKey,
-					createNamespaceId,
-					goal,
-					restProjectId,
-					workflowDefinition,
-					model,
-					options.onPayload,
-					options.signal,
-				);
-				startPayload = { ...startPayload, workflowID: workflowId };
-				continue;
 			}
 			// The server returned its de-identified catch-all FAILED — a wrapper over a
 			// transient upstream fault (model 5xx, AgentStuckError, …). Retry on a FRESH
 			// workflow exactly like step_limit (same-id reconnect is broken on inline
 			// flows): the conversation replays through the goal transcript. Bounded low
 			// so a deterministic failure surfaces instead of looping on quota.
-			if (
+			else if (
 				lastSocketResult === "retryable_error" &&
 				genericErrorRetries < GITLAB_DUO_WORKFLOW_MAX_GENERIC_ERROR_RETRIES
 			) {
@@ -1492,42 +1450,42 @@ async function runGitLabDuoWorkflow(
 				// Clear the stashed message: it only surfaces if the retry also fails.
 				state.output.errorMessage = undefined;
 				traceGitLabDuoWorkflow("websocket.generic_error_retry", { workflowId, retry: genericErrorRetries });
-				await stopGitLabDuoWorkflow(fetchImpl, baseUrl, apiKey, workflowId);
-				workflowId = await createGitLabDuoWorkflow(
-					fetchImpl,
-					baseUrl,
-					apiKey,
-					createNamespaceId,
-					goal,
-					restProjectId,
-					workflowDefinition,
-					model,
-					options.onPayload,
-					options.signal,
-				);
-				startPayload = { ...startPayload, workflowID: workflowId };
-				continue;
+			} else {
+				// A retryable error that exhausted its retries must surface as a real error;
+				// the FAILED branch suppressed the error event expecting a retry, so emit it
+				// now before falling through to the terminal break.
+				if (lastSocketResult === "retryable_error" && !state.stream.done) {
+					state.output.stopReason = "error";
+					// An oversized goal that exhausted its retry is almost certainly failing on
+					// the byte size, not a transient fault — surface it as a context-overflow so
+					// the session auto-compacts instead of hard-failing.
+					if (state.goalOverflowMessage) state.output.errorMessage = state.goalOverflowMessage;
+					state.stream.push({ type: "error", reason: "error", error: state.output });
+				}
+				// A stall that exhausted its fresh-workflow restarts is a persistent failure to
+				// progress; surface it as a real error so the run does not stop silently.
+				if (lastSocketResult === "stalled" && !state.stream.done) {
+					state.output.stopReason = "error";
+					state.output.errorMessage =
+						state.goalOverflowMessage ?? state.output.errorMessage ?? GITLAB_DUO_WORKFLOW_STALL_ERROR_MESSAGE;
+					state.stream.push({ type: "error", reason: "error", error: state.output });
+				}
+				break;
 			}
-			// A retryable error that exhausted its retries must surface as a real error;
-			// the FAILED branch suppressed the error event expecting a retry, so emit it
-			// now before falling through to the terminal break.
-			if (lastSocketResult === "retryable_error" && !state.stream.done) {
-				state.output.stopReason = "error";
-				// An oversized goal that exhausted its retry is almost certainly failing on
-				// the byte size, not a transient fault — surface it as a context-overflow so
-				// the session auto-compacts instead of hard-failing.
-				if (state.goalOverflowMessage) state.output.errorMessage = state.goalOverflowMessage;
-				state.stream.push({ type: "error", reason: "error", error: state.output });
-			}
-			// A stall that exhausted its fresh-workflow restarts is a persistent failure to
-			// progress; surface it as a real error so the run does not stop silently.
-			if (lastSocketResult === "stalled" && !state.stream.done) {
-				state.output.stopReason = "error";
-				state.output.errorMessage =
-					state.goalOverflowMessage ?? state.output.errorMessage ?? GITLAB_DUO_WORKFLOW_STALL_ERROR_MESSAGE;
-				state.stream.push({ type: "error", reason: "error", error: state.output });
-			}
-			break;
+			await stopGitLabDuoWorkflow(fetchImpl, baseUrl, apiKey, workflowId);
+			workflowId = await createGitLabDuoWorkflow(
+				fetchImpl,
+				baseUrl,
+				apiKey,
+				createNamespaceId,
+				goal,
+				restProjectId,
+				workflowDefinition,
+				model,
+				options.onPayload,
+				options.signal,
+			);
+			startPayload = { ...startPayload, workflowID: workflowId };
 		}
 		settledNormally = true;
 		finalizeGitLabDuoWorkflowResumeResult(state, providerSessionState, lastSocketResult);
@@ -2367,19 +2325,6 @@ function buildGitLabMcpToolDefinition(tool: Tool): GitLabMcpToolDefinition {
 			schema && typeof schema === "object" ? schema : { type: "object", properties: {}, required: [] },
 		),
 		isApproved: true,
-	};
-}
-
-function createAssistantMessage(model: Model<Api>): AssistantMessage {
-	return {
-		role: "assistant",
-		content: [],
-		api: model.api,
-		provider: model.provider,
-		model: model.id,
-		usage: emptyUsage(),
-		stopReason: "stop",
-		timestamp: Date.now(),
 	};
 }
 

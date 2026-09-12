@@ -13,5 +13,6 @@ export * from "./context";
 export * from "./events";
 export * from "./overlay";
 export * from "./status";
+export * from "./summary";
 export * from "./theme";
 export * from "./transcript";

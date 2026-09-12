@@ -9,8 +9,8 @@ import {
 /**
  * Contract for issue #2998: the exported theme-getter functions must not crash
  * when `theme` is undefined (the state before `initTheme()` assigns the global,
- * or when a plugin calls them from a separate module instance under npm-global
- * installs where the live binding was never initialized). They must return a
+ * or when a plugin calls them from a separate module instance
+ * where the live binding was never initialized). They must return a
  * usable plain-text fallback instead of throwing "undefined is not an object".
  *
  * These tests intentionally do NOT call `initTheme()`, so every getter here is

@@ -309,76 +309,76 @@ function scanMoveDest(line: string, index: number, end: number): string | null {
 	return unquotePath(line.slice(cursor, end).trim());
 }
 
+function scanAnchorOp(
+	line: string,
+	cursor: number,
+	end: number,
+	kind: "block" | "delete_block" | "insert_after_block",
+	keyword: string,
+	allowColon: boolean,
+): TargetScan | null {
+	const kwEnd = scanKeyword(line, cursor, end, keyword);
+	if (kwEnd === null) return null;
+	const anchor = scanLineNumber(line, skipWhitespace(line, kwEnd, end), end);
+	if (anchor === null) return null;
+	if (allowColon) {
+		return {
+			target: { kind, anchor: { line: anchor.line } },
+			nextIndex: consumeOptionalColon(line, anchor.nextIndex, end),
+		};
+	}
+	const next = skipStrayDot(line, skipWhitespace(line, anchor.nextIndex, end), end);
+	if (next < end && line.charCodeAt(next) === CHAR_COLON) return null;
+	return { target: { kind, anchor: { line: anchor.line } }, nextIndex: next };
+}
+
+function scanRangeOp(
+	line: string,
+	cursor: number,
+	end: number,
+	kind: "replace" | "delete",
+	keyword: string,
+	allowColon: boolean,
+): TargetScan | null {
+	const kwEnd = scanKeyword(line, cursor, end, keyword);
+	if (kwEnd === null) return null;
+	const range = scanHeaderRange(line, kwEnd, end, true);
+	if (range === null) return null;
+	if (allowColon) {
+		return { target: { kind, range: range.range }, nextIndex: consumeOptionalColon(line, range.nextIndex, end) };
+	}
+	const next = skipStrayDot(line, skipWhitespace(line, range.nextIndex, end), end);
+	if (next < end && line.charCodeAt(next) === CHAR_COLON) return null;
+	return { target: { kind, range: range.range }, nextIndex: next };
+}
+
 function scanHunkAnchor(line: string, start: number, end: number): TargetScan | null {
 	const cursor = skipWhitespace(line, start, end);
 
 	const remEnd = scanKeyword(line, cursor, end, HL_REM_KEYWORD);
 	if (remEnd !== null) {
 		const next = skipWhitespace(line, remEnd, end);
-		if (next !== end) return null;
-		return { target: { kind: "rem" }, nextIndex: next };
+		return next === end ? { target: { kind: "rem" }, nextIndex: next } : null;
 	}
 	const moveEnd = scanKeyword(line, cursor, end, HL_MOVE_KEYWORD);
 	if (moveEnd !== null) {
 		const dest = scanMoveDest(line, moveEnd, end);
-		if (dest === null || dest.length === 0) return null;
-		return { target: { kind: "move", dest }, nextIndex: end };
+		return dest && dest.length > 0 ? { target: { kind: "move", dest }, nextIndex: end } : null;
 	}
 
-	// `replace_block N:` — resolve N to a tree-sitter block range at apply time.
-	const replaceBlockEnd = scanKeyword(line, cursor, end, HL_REPLACE_BLOCK_KEYWORD);
-	if (replaceBlockEnd !== null) {
-		const anchor = scanLineNumber(line, skipWhitespace(line, replaceBlockEnd, end), end);
-		if (anchor === null) return null;
-		return {
-			target: { kind: "block", anchor: { line: anchor.line } },
-			nextIndex: consumeOptionalColon(line, anchor.nextIndex, end),
-		};
-	}
-	const replaceEnd = scanKeyword(line, cursor, end, HL_REPLACE_KEYWORD);
-	if (replaceEnd !== null) {
-		const range = scanHeaderRange(line, replaceEnd, end, true);
-		if (range === null) return null;
-		return {
-			target: { kind: "replace", range: range.range },
-			nextIndex: consumeOptionalColon(line, range.nextIndex, end),
-		};
-	}
-	// `delete_block N` — resolve N to a tree-sitter block range at apply time
-	// and delete its whole span. Like `delete N.=M`, it takes no body and no
-	// trailing colon.
-	const deleteBlockEnd = scanKeyword(line, cursor, end, HL_DELETE_BLOCK_KEYWORD);
-	if (deleteBlockEnd !== null) {
-		const anchor = scanLineNumber(line, skipWhitespace(line, deleteBlockEnd, end), end);
-		if (anchor === null) return null;
-		let next = skipWhitespace(line, anchor.nextIndex, end);
-		next = skipStrayDot(line, next, end);
-		if (next < end && line.charCodeAt(next) === CHAR_COLON) return null;
-		return { target: { kind: "delete_block", anchor: { line: anchor.line } }, nextIndex: next };
-	}
-	const deleteEnd = scanKeyword(line, cursor, end, HL_DELETE_KEYWORD);
-	if (deleteEnd !== null) {
-		const range = scanHeaderRange(line, deleteEnd, end, true);
-		if (range === null) return null;
-		let next = skipWhitespace(line, range.nextIndex, end);
-		next = skipStrayDot(line, next, end);
-		if (next < end && line.charCodeAt(next) === CHAR_COLON) return null;
-		return { target: { kind: "delete", range: range.range }, nextIndex: next };
-	}
-	// `insert_after_block N:` — insert after the last line of the tree-sitter
-	// block at N.
-	const insertAfterBlockEnd = scanKeyword(line, cursor, end, HL_INSERT_AFTER_BLOCK_KEYWORD);
-	if (insertAfterBlockEnd !== null) {
-		const anchor = scanLineNumber(line, skipWhitespace(line, insertAfterBlockEnd, end), end);
-		if (anchor === null) return null;
-		return {
-			target: { kind: "insert_after_block", anchor: { line: anchor.line } },
-			nextIndex: consumeOptionalColon(line, anchor.nextIndex, end),
-		};
-	}
 	const insertEnd = scanKeyword(line, cursor, end, HL_INSERT_KEYWORD);
-	if (insertEnd !== null) return scanInsertTarget(line, insertEnd, end);
-	return null;
+	if (insertEnd !== null) {
+		const insertTarget = scanInsertTarget(line, insertEnd, end);
+		if (insertTarget !== null) return insertTarget;
+	}
+
+	return (
+		scanAnchorOp(line, cursor, end, "block", HL_REPLACE_BLOCK_KEYWORD, true) ??
+		scanRangeOp(line, cursor, end, "replace", HL_REPLACE_KEYWORD, true) ??
+		scanAnchorOp(line, cursor, end, "delete_block", HL_DELETE_BLOCK_KEYWORD, false) ??
+		scanRangeOp(line, cursor, end, "delete", HL_DELETE_KEYWORD, false) ??
+		scanAnchorOp(line, cursor, end, "insert_after_block", HL_INSERT_AFTER_BLOCK_KEYWORD, true)
+	);
 }
 
 interface ParsedHunkHeader {

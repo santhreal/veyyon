@@ -31,22 +31,14 @@ import { type Component, CURSOR_MARKER, type Focusable, ProcessTerminal, TUI } f
 import { TranscriptContainer } from "../../packages/coding-agent/src/modes/terminal/components/transcript/transcript-container";
 import { HomeAnchorLayout } from "../../packages/coding-agent/src/modes/terminal/controllers/home-anchor-layout";
 import { initTheme } from "../../packages/coding-agent/src/theme/theme";
+import { flagNumber } from "./render-args";
 
-const args = process.argv.slice(2);
-
-function flag(name: string, fallback: number): number {
-	const at = args.indexOf(`--${name}`);
-	if (at === -1) return fallback;
-	const value = Number(args[at + 1]);
-	return Number.isFinite(value) ? value : fallback;
-}
-
-const TURNS = flag("turns", 24);
-const DELAY_MS = flag("delay", 160);
+const TURNS = flagNumber("turns", 24);
+const DELAY_MS = flagNumber("delay", 160);
 /** Rows the streaming answer grows to before it settles to its short tail. */
-const STREAM = flag("stream", 30);
-/** Rows of pinned HUD under the transcript — the todo list and subagent tree. */
-const HUD = flag("hud", 5);
+const STREAM = flagNumber("stream", 30);
+/** Rows of pinned HUD under the transcript — the todo list and agent tree. */
+const HUD = flagNumber("hud", 5);
 
 /** A finalized transcript block: plain components are final, so rows commit. */
 class Block implements Component {
@@ -92,7 +84,7 @@ class Hud implements Component {
 		if (this.rows <= 0) return [];
 		return [
 			"  ▪ Todo list done · 51 tasks",
-			"  Subagents",
+			"  Agents",
 			"    ├ GitBenchAndHardening",
 			"    └ GuardUXAndBufferOpt",
 			"",

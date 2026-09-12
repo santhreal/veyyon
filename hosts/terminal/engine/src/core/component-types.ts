@@ -34,6 +34,12 @@ export interface Component {
 	render(width: number): readonly string[];
 
 	/**
+	 * Physical row count at this width without constructing output or advancing
+	 * render state. When provided, this must equal `render(width).length`.
+	 */
+	measureHeight?(width: number): number;
+
+	/**
 	 * Optional handler for keyboard input when component has focus
 	 */
 	handleInput?(data: string): void;
@@ -252,6 +258,8 @@ export interface Focusable {
 export interface RenderRequestOptions {
 	/** Clear terminal scrollback for intentional transcript replacement. */
 	clearScrollback?: boolean;
+	/** Reuse the viewport diff for an immediate render; explicit scrollback clearing takes precedence. */
+	preserveViewport?: boolean;
 }
 
 /** Type guard to check if a component implements Focusable */

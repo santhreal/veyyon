@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 
 import { dbPath } from "../config";
 import { closeQuietly, openDatabase, transaction } from "../db";
+import { type EntityImportStats, importEntityBatch } from "../util/sqlite";
 import { ENTITY_STOPWORDS } from "./stopwords";
 
 const ANNOTATION_KIND_VALUES = ["mentions", "fact", "occurred_on", "has_source"] as const;
@@ -35,12 +36,7 @@ export interface AnnotationInput {
 	readonly created_at?: string | null;
 }
 
-export interface AnnotationImportStats {
-	inserted: number;
-	skipped: number;
-	overwritten: number;
-	imported_renumbered: number;
-}
+export type AnnotationImportStats = EntityImportStats;
 
 export interface AnnotationStoreOptions {
 	readonly dbPath?: string;
@@ -116,10 +112,6 @@ function sameContent(item: AnnotationInput, existing: StoredAnnotationContent): 
 		normalized.confidence === existing.confidence &&
 		normalized.created_at === existing.created_at
 	);
-}
-
-function isSqliteConstraint(error: unknown): boolean {
-	return error instanceof Error && /constraint/i.test(error.message);
 }
 
 function insertAnnotation(statement: WritableStatement, item: AnnotationInput, id?: number): void {
@@ -201,12 +193,20 @@ export class AnnotationStore {
 		if (this.#ownsConnection) closeQuietly(this.db);
 	}
 
-	add(memoryId: string, kind: string, value: string, source = "", confidence = 1.0): number {
+	add(
+		memoryId: string,
+		kind: string,
+		value: string,
+		sourceOrOptions: string | { source?: string; confidence?: number } = "",
+		confidence = 1.0,
+	): number {
+		const source = typeof sourceOrOptions === "object" ? (sourceOrOptions.source ?? "") : sourceOrOptions;
+		const conf = typeof sourceOrOptions === "object" ? (sourceOrOptions.confidence ?? 1.0) : confidence;
 		const result = this.db
 			.prepare(
 				"INSERT OR IGNORE INTO annotations (memory_id, kind, value, source, confidence) VALUES (?, ?, ?, ?, ?)",
 			)
-			.run(memoryId, kind, value, source, confidence);
+			.run(memoryId, kind, value, source, conf);
 		return Number(result.lastInsertRowid);
 	}
 
@@ -214,17 +214,19 @@ export class AnnotationStore {
 		memoryId: string,
 		kind: string,
 		values: readonly string[] | null | undefined,
-		source = "",
+		sourceOrOptions: string | { source?: string; confidence?: number } = "",
 		confidence = 1.0,
 	): number {
 		if (!values || values.length === 0) return 0;
 		const rows = values.filter(value => value.length > 0 && value.trim().length > 0);
 		if (rows.length === 0) return 0;
+		const source = typeof sourceOrOptions === "object" ? (sourceOrOptions.source ?? "") : sourceOrOptions;
+		const conf = typeof sourceOrOptions === "object" ? (sourceOrOptions.confidence ?? 1.0) : confidence;
 		const insert = this.db.prepare(
 			"INSERT OR IGNORE INTO annotations (memory_id, kind, value, source, confidence) VALUES (?, ?, ?, ?, ?)",
 		);
 		transaction(this.db, () => {
-			for (const value of rows) insert.run(memoryId, kind, value, source, confidence);
+			for (const value of rows) insert.run(memoryId, kind, value, source, conf);
 		});
 		return rows.length;
 	}
@@ -241,14 +243,17 @@ export class AnnotationStore {
 	}
 	queryByKind(
 		kind: string,
-		options: {
-			readonly value?: string | null;
-			readonly memory_id?: string | null;
-			readonly memoryId?: string | null;
-			readonly filter_noise?: boolean;
-			readonly filterNoise?: boolean;
-		} = {},
+		valueOrOptions:
+			| string
+			| {
+					readonly value?: string | null;
+					readonly memory_id?: string | null;
+					readonly memoryId?: string | null;
+					readonly filter_noise?: boolean;
+					readonly filterNoise?: boolean;
+			  } = {},
 	): AnnotationRow[] {
+		const options = typeof valueOrOptions === "string" ? { value: valueOrOptions } : valueOrOptions;
 		const conditions = ["kind = ?"];
 		const params: SqlValue[] = [kind];
 		if (options.value !== null && options.value !== undefined) {
@@ -280,72 +285,33 @@ export class AnnotationStore {
 		return rows.map(normalizeRow);
 	}
 	importAll(annotations: readonly AnnotationInput[], force = false): AnnotationImportStats {
-		const stats: AnnotationImportStats = {
-			inserted: 0,
-			skipped: 0,
-			overwritten: 0,
-			imported_renumbered: 0,
-		};
-		const seenIds = new Set<number>();
-		for (const item of annotations) {
-			const id = rowId(item.id);
-			if (id === null) continue;
-			if (seenIds.has(id)) {
-				throw new Error(
-					`import_all: duplicate id ${id} in the imported batch. Deduplicate the input before calling.`,
-				);
-			}
-			seenIds.add(id);
-		}
+		const insertWithId = this.db.prepare(
+			"INSERT INTO annotations (id, memory_id, kind, value, source, confidence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		) as WritableStatement;
+		const insertWithoutId = this.db.prepare(
+			"INSERT INTO annotations (memory_id, kind, value, source, confidence, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+		) as WritableStatement;
 
-		transaction(this.db, () => {
-			const existingRows = this.db
-				.prepare("SELECT id, memory_id, kind, value, source, confidence, created_at FROM annotations")
-				.all() as AnnotationRow[];
-			const existing = new Map<number, StoredAnnotationContent>();
-			for (const row of existingRows) existing.set(Number(row.id), normalizeRow(row));
-
-			const insertWithId = this.db.prepare(
-				"INSERT INTO annotations (id, memory_id, kind, value, source, confidence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			) as WritableStatement;
-			const insertWithoutId = this.db.prepare(
-				"INSERT INTO annotations (memory_id, kind, value, source, confidence, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-			) as WritableStatement;
-			const deleteById = this.db.prepare("DELETE FROM annotations WHERE id = ?");
-
-			for (const item of annotations) {
-				const id = rowId(item.id);
-				const current = id === null ? undefined : existing.get(id);
-				if (id === null) {
-					insertAnnotation(insertWithoutId, item);
-					stats.inserted++;
-					continue;
-				}
-				if (current === undefined) {
-					insertAnnotation(insertWithId, item, id);
-					stats.inserted++;
-					continue;
-				}
-				if (force) {
-					deleteById.run(id);
-					insertAnnotation(insertWithId, item, id);
-					stats.overwritten++;
-					continue;
-				}
-				if (sameContent(item, current)) {
-					stats.skipped++;
-					continue;
-				}
-				try {
-					insertAnnotation(insertWithoutId, item);
-					stats.imported_renumbered++;
-				} catch (error) {
-					if (isSqliteConstraint(error)) stats.skipped++;
-					else throw error;
-				}
-			}
-		});
-		return stats;
+		return importEntityBatch(
+			this.db,
+			annotations,
+			{
+				tableName: "annotations",
+				getId: item => rowId(item.id),
+				fetchExisting: db => {
+					const existingRows = db
+						.prepare("SELECT id, memory_id, kind, value, source, confidence, created_at FROM annotations")
+						.all() as AnnotationRow[];
+					const existing = new Map<number, StoredAnnotationContent>();
+					for (const row of existingRows) existing.set(Number(row.id), normalizeRow(row));
+					return existing;
+				},
+				isSameContent: (item, existing) => sameContent(item, existing),
+				insertWithId: (_db, item, id) => insertAnnotation(insertWithId, item, id),
+				insertWithoutId: (_db, item) => insertAnnotation(insertWithoutId, item),
+			},
+			force,
+		);
 	}
 }
 

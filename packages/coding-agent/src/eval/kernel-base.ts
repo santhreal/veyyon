@@ -1,7 +1,11 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
-import { errorMessage, isTimeoutError, logger, Snowflake } from "@veyyon/utils";
+import { $flag, errorMessage, isBunTestRuntime, isTimeoutError, logger, Snowflake } from "@veyyon/utils";
 import type { Subprocess } from "bun";
+import { Settings } from "../config/settings";
 import { type KernelDisplayOutput, renderKernelDisplay } from "./py/display";
+import { hostHasInheritableConsole, shouldDetachKernel, shouldHideKernelWindow } from "./py/spawn-options";
 
 export type KernelRuntimeEnv = Record<string, string | null>;
 
@@ -86,22 +90,36 @@ export interface KernelStartOptions {
 	adoptPid?: (pid: number) => void;
 }
 
+/** Standard JSON-encoded exit payload for NDJSON runner IPC. */
+export const JSON_KERNEL_EXIT_PAYLOAD = JSON.stringify({ type: "exit" });
+
+/** Standard JSON payload builder for NDJSON runner execution requests. */
+export function buildJsonKernelPayload(code: string, msgId: string, opts?: KernelExecuteOptions): string {
+	return JSON.stringify({
+		id: msgId,
+		code,
+		cwd: opts?.cwd,
+		env: opts?.env,
+		silent: opts?.silent ?? false,
+		storeHistory: opts?.storeHistory ?? !(opts?.silent ?? false),
+	});
+}
+
 /** Per-language configuration handed to {@link BaseKernel} by each subclass. */
 export interface BaseKernelOptions<TExecuteOptions extends KernelExecuteOptions = KernelExecuteOptions> {
 	/** Human-readable language label used in log messages and errors. */
 	languageName: string;
 	/** When true, every IPC frame is logged at debug level. */
-	traceIpc: boolean;
+	traceIpc?: boolean;
 	/** Wire payload asking the runner to exit cleanly. */
-	exitPayload: string;
+	exitPayload?: string;
 	/** How long to wait after SIGINT before escalating to subprocess termination. */
-	interruptEscalationMs: number;
+	interruptEscalationMs?: number;
 	/** Default grace period applied by {@link BaseKernel.shutdown}. */
-	shutdownGraceMs: number;
+	shutdownGraceMs?: number;
 	/** Serializes an execution request into the runner's wire protocol. */
-	buildPayload: (code: string, msgId: string, options?: TExecuteOptions) => string;
+	buildPayload?: (code: string, msgId: string, options?: TExecuteOptions) => string;
 }
-
 export type FrameType = "started" | "stdout" | "stderr" | "display" | "result" | "error" | "done";
 
 export interface Frame {
@@ -186,6 +204,287 @@ export function kernelIpcTraceEnvVar(language: string): string {
  */
 export function kernelRunnerCacheDir(tmpDir: string, language: string): string {
 	return path.join(tmpDir, `veyyon-${language}-runner`);
+}
+
+/**
+ * Creates a cached runner-script publisher for a language kernel.
+ * Writes the runner script once to `<tmpdir>/veyyon-<language>-runner/runner-<hash>.<extension>`.
+ */
+export function createRunnerScriptPublisher(
+	language: string,
+	script: string,
+	extension: string,
+): () => Promise<string> {
+	let cachedPath: string | null = null;
+	const cacheDir = kernelRunnerCacheDir(os.tmpdir(), language);
+	return async () => {
+		if (cachedPath) return cachedPath;
+		await fs.promises.mkdir(cacheDir, { recursive: true });
+		const hash = Bun.hash(script).toString(36);
+		const target = path.join(cacheDir, `runner-${hash}.${extension}`);
+		if (!fs.existsSync(target)) {
+			await Bun.write(target, script);
+		}
+		cachedPath = target;
+		return target;
+	};
+}
+
+export interface KernelAvailabilityResult<TRuntime = unknown> {
+	ok: boolean;
+	reason?: string;
+	runtime?: TRuntime;
+	executablePath?: string;
+}
+
+export interface KernelAvailabilityCheckerOptions<TRuntime> {
+	skipFlag: string;
+	filterEnv: (env: Record<string, string | undefined>) => Record<string, string | undefined>;
+	enumerateRuntimes: (cwd: string, baseEnv: Record<string, string | undefined>, interpreter?: string) => TRuntime[];
+	missingReason: string;
+	probeRuntime: (runtime: TRuntime, cwd: string) => Promise<{ exitCode: number }>;
+	getExecutablePath: (runtime: TRuntime) => string;
+	includeFailedExecutablePath?: boolean;
+	formatFailureReason: (failures: string[], runtimes: TRuntime[]) => string;
+}
+
+export function createKernelAvailabilityChecker<TRuntime>(
+	options: KernelAvailabilityCheckerOptions<TRuntime>,
+): (cwd: string, interpreter?: string) => Promise<KernelAvailabilityResult<TRuntime>> {
+	const cache = new Map<string, Promise<KernelAvailabilityResult<TRuntime>>>();
+	return async (cwd: string, interpreter?: string): Promise<KernelAvailabilityResult<TRuntime>> => {
+		if (isBunTestRuntime() || $flag(options.skipFlag)) {
+			return { ok: true };
+		}
+		const resolvedCwd = path.resolve(cwd);
+		const key = `${resolvedCwd}\0${interpreter ?? ""}`;
+		const cached = cache.get(key);
+		if (cached) return await cached;
+		const probePromise = (async (): Promise<KernelAvailabilityResult<TRuntime>> => {
+			try {
+				const settings = await Settings.init();
+				const { env } = settings.getShellConfig();
+				const baseEnv = options.filterEnv(env);
+				const runtimes = options.enumerateRuntimes(resolvedCwd, baseEnv, interpreter);
+				if (runtimes.length === 0) {
+					return { ok: false, reason: options.missingReason };
+				}
+				const failures: string[] = [];
+				for (const runtime of runtimes) {
+					const execPath = options.getExecutablePath(runtime);
+					try {
+						const probe = await options.probeRuntime(runtime, resolvedCwd);
+						if (probe.exitCode === 0) {
+							return { ok: true, executablePath: execPath, runtime };
+						}
+						failures.push(`${execPath} (exit code ${probe.exitCode})`);
+					} catch (err) {
+						failures.push(`${execPath} (${errorMessage(err)})`);
+					}
+				}
+				return {
+					ok: false,
+					executablePath: options.includeFailedExecutablePath ? options.getExecutablePath(runtimes[0]) : undefined,
+					reason: options.formatFailureReason(failures, runtimes),
+				};
+			} catch (err) {
+				return { ok: false, reason: errorMessage(err) };
+			}
+		})();
+		cache.set(key, probePromise);
+		const result = await probePromise;
+		if (!result.ok && cache.get(key) === probePromise) {
+			cache.delete(key);
+		}
+		return result;
+	};
+}
+
+export function adaptAvailabilityResult<TRuntime, TKey extends string>(
+	result: KernelAvailabilityResult<TRuntime>,
+	pathKey: TKey,
+): { ok: boolean; reason?: string; runtime?: TRuntime } & { [K in TKey]?: string } {
+	const availability: Record<string, unknown> = { ok: result.ok };
+	if (result.reason !== undefined) availability.reason = result.reason;
+	if (result.runtime !== undefined) availability.runtime = result.runtime;
+	if (result.executablePath !== undefined) availability[pathKey] = result.executablePath;
+	return availability as { ok: boolean; reason?: string; runtime?: TRuntime } & { [K in TKey]?: string };
+}
+
+export function createLanguageAvailabilityChecker<TRuntime, TKey extends string>(
+	options: KernelAvailabilityCheckerOptions<TRuntime>,
+	pathKey: TKey,
+): (
+	cwd: string,
+	interpreter?: string,
+) => Promise<{ ok: boolean; reason?: string; runtime?: TRuntime } & { [K in TKey]?: string }> {
+	const checker = createKernelAvailabilityChecker<TRuntime>(options);
+	return async (cwd, interpreter) => adaptAvailabilityResult(await checker(cwd, interpreter), pathKey);
+}
+
+export function assembleSpawnEnv(
+	runtimeEnv: Record<string, string | undefined>,
+	optionsEnv?: Record<string, string | undefined>,
+	extraEnv?: Record<string, string>,
+	options?: { ownPropertiesOnly?: boolean },
+): Record<string, string> {
+	const spawnEnv: Record<string, string> = {};
+	if (options?.ownPropertiesOnly) {
+		for (const [key, value] of Object.entries(runtimeEnv)) {
+			if (typeof value === "string") spawnEnv[key] = value;
+		}
+		for (const [key, value] of Object.entries(optionsEnv ?? {})) {
+			if (typeof value === "string") spawnEnv[key] = value;
+		}
+		if (extraEnv) {
+			for (const [key, value] of Object.entries(extraEnv)) {
+				spawnEnv[key] = value;
+			}
+		}
+	} else {
+		for (const key in runtimeEnv) {
+			const value = runtimeEnv[key];
+			if (typeof value === "string") spawnEnv[key] = value;
+		}
+		for (const key in optionsEnv) {
+			const value = optionsEnv[key];
+			if (typeof value === "string") spawnEnv[key] = value;
+		}
+		if (extraEnv) {
+			for (const key in extraEnv) {
+				spawnEnv[key] = extraEnv[key];
+			}
+		}
+	}
+	return spawnEnv;
+}
+
+export function spawnKernelProcess(
+	cmd: string[],
+	options: {
+		cwd: string;
+		env: Record<string, string>;
+	},
+): Subprocess {
+	return Bun.spawn(cmd, {
+		cwd: options.cwd,
+		detached: shouldDetachKernel(process.platform),
+		env: options.env,
+		stdin: "pipe",
+		stdout: "pipe",
+		stderr: "pipe",
+		windowsHide: shouldHideKernelWindow({
+			platform: process.platform,
+			hostHasInheritableConsole: hostHasInheritableConsole(),
+		}),
+	});
+}
+
+export async function initializeKernelSubprocess<TKernel extends BaseKernel>(
+	kernel: TKernel,
+	options: {
+		signal?: AbortSignal;
+		deadlineMs?: number;
+		startupTimeoutMs?: number;
+		initScript: string;
+		preludeScript: string;
+		languageName: string;
+		releaseReason: string;
+	},
+): Promise<TKernel> {
+	const startupTimeout = options.startupTimeoutMs ?? DEFAULT_KERNEL_STARTUP_TIMEOUT_MS;
+	const startupBudget = Math.min(getRemainingTimeMs(options.deadlineMs) ?? startupTimeout, startupTimeout);
+	try {
+		await kernel.executeWithBudget(
+			options.initScript,
+			options.signal,
+			startupBudget,
+			`${options.languageName} kernel init`,
+		);
+		await kernel.executeWithBudget(
+			options.preludeScript,
+			options.signal,
+			startupBudget,
+			`${options.languageName} kernel prelude`,
+		);
+		return kernel;
+	} catch (err) {
+		await releaseKernel(kernel, options.releaseReason, { timeoutMs: KERNEL_SHUTDOWN_GRACE_MS });
+		throw err;
+	}
+}
+
+export interface KernelSubprocessRuntime {
+	env: Record<string, string | undefined>;
+}
+
+export interface LaunchKernelSubprocessOptions<
+	TKernel extends BaseKernel,
+	TRuntime extends KernelSubprocessRuntime = KernelSubprocessRuntime,
+> {
+	languageName: string;
+	options: KernelStartOptions;
+	checkAvailability: (
+		cwd: string,
+		interpreter?: string,
+	) => Promise<{ ok: boolean; reason?: string; runtime?: TRuntime }>;
+	resolveRuntimeFallback: (
+		cwd: string,
+		interpreter: string | undefined,
+		shellEnv: Record<string, string | undefined>,
+	) => TRuntime;
+	ensureRunnerScript: () => Promise<string>;
+	createKernel: (id: string) => TKernel;
+	getExecutableCommand: (runtime: TRuntime, scriptPath: string) => string[];
+	getSpawnEnv?: (runtime: TRuntime, optionsEnv?: Record<string, string | undefined>) => Record<string, string>;
+	startupTimeoutMs?: number;
+	initScript: string;
+	preludeScript: string;
+	releaseReason: string;
+}
+
+export async function launchKernelSubprocess<
+	TKernel extends BaseKernel,
+	TRuntime extends KernelSubprocessRuntime = KernelSubprocessRuntime,
+>(config: LaunchKernelSubprocessOptions<TKernel, TRuntime>): Promise<TKernel> {
+	const { options, languageName } = config;
+	const availability = await logger.time(
+		`${languageName}Kernel.start:availabilityCheck`,
+		config.checkAvailability,
+		options.cwd,
+		options.interpreter,
+	);
+	if (!availability.ok) {
+		throw new Error(availability.reason ?? `${languageName} kernel unavailable`);
+	}
+
+	let runtime = availability.runtime;
+	if (!runtime) {
+		const { env: shellEnv } = (await Settings.init()).getShellConfig();
+		runtime = config.resolveRuntimeFallback(options.cwd, options.interpreter, shellEnv);
+	}
+
+	const scriptPath = await config.ensureRunnerScript();
+	const kernel = config.createKernel(Snowflake.next());
+	const spawnEnv = config.getSpawnEnv
+		? config.getSpawnEnv(runtime, options.env)
+		: assembleSpawnEnv(runtime.env, options.env);
+	const proc = spawnKernelProcess(config.getExecutableCommand(runtime, scriptPath), {
+		cwd: options.cwd,
+		env: spawnEnv,
+	});
+	options.adoptPid?.(proc.pid);
+	kernel.setProcess(proc);
+
+	return await initializeKernelSubprocess(kernel, {
+		signal: options.signal,
+		deadlineMs: options.deadlineMs,
+		startupTimeoutMs: config.startupTimeoutMs ?? DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
+		initScript: config.initScript,
+		preludeScript: config.preludeScript,
+		languageName,
+		releaseReason: config.releaseReason,
+	});
 }
 
 export function getRemainingTimeMs(deadlineMs?: number): number | undefined {
@@ -313,11 +612,18 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 	#exitedPromise: Promise<number> | null = null;
 	#pending = new Map<string, PendingExecution>();
 	#readBuffer = "";
-	readonly #options: BaseKernelOptions<TExecuteOptions>;
+	readonly #options: Required<BaseKernelOptions<TExecuteOptions>>;
 
 	constructor(id: string, options: BaseKernelOptions<TExecuteOptions>) {
 		this.id = id;
-		this.#options = options;
+		this.#options = {
+			languageName: options.languageName,
+			traceIpc: options.traceIpc ?? false,
+			exitPayload: options.exitPayload ?? JSON_KERNEL_EXIT_PAYLOAD,
+			interruptEscalationMs: options.interruptEscalationMs ?? KERNEL_INTERRUPT_ESCALATION_MS,
+			shutdownGraceMs: options.shutdownGraceMs ?? KERNEL_SHUTDOWN_GRACE_MS,
+			buildPayload: options.buildPayload ?? buildJsonKernelPayload,
+		};
 	}
 
 	setProcess(proc: Subprocess<"pipe", "pipe", "pipe">) {

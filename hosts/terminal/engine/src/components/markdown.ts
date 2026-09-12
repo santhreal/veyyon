@@ -3,16 +3,19 @@ import { OSC66, SGR_RESET, sgrSequence } from "@veyyon/utils/ansi";
 import { latexToBlock } from "@veyyon/utils/latex-block";
 import { inlineMathSpanEnd, isBareMathEnvironment, latexToUnicode } from "@veyyon/utils/latex-unicode";
 import { padding } from "@veyyon/utils/padding";
-import { applyBackgroundToLine, sgrCarryAfter } from "@veyyon/utils/sgr";
+import { sgrCarryAfter } from "@veyyon/utils/sgr";
+import { unescapeHtml } from "@veyyon/utils/strings";
 import type { SymbolTheme } from "@veyyon/utils/symbols";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { encodeTextSized } from "@veyyon/utils/text-sizing";
 import { getPaddingX } from "@veyyon/utils/tight-mode";
 import { getSegmenter, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
-import { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { LRUCache } from "lru-cache/raw";
 import { Marked, type Token, Tokenizer, type TokenizerAndRendererExtension, type Tokens } from "marked";
 import { TERMINAL } from "../terminal-capabilities";
 import type { Component } from "../tui";
+import { applyLineBackground } from "../utils/text-layout";
 
 const STRICT_STRIKETHROUGH_REGEX = /^(~~)(?=[^\s~])((?:\\.|[^\\])*?(?:\\.|[^\s~\\]))\1(?=[^~]|$)/;
 
@@ -24,46 +27,6 @@ const STRICT_STRIKETHROUGH_REGEX = /^(~~)(?=[^\s~])((?:\\.|[^\\])*?(?:\\.|[^\s~\
 
 function isOsc66Line(line: string): boolean {
 	return line.includes(OSC66);
-}
-
-function normalizeHtmlEntitiesForTerminal(raw: string): string {
-	const parseCodePoint = (value: number): string => {
-		if (Number.isFinite(value) && value >= 0 && value <= 0x10ffff) {
-			try {
-				return String.fromCodePoint(value);
-			} catch (_) {
-				// Fallback to empty string or original if invalid codepoint
-			}
-		}
-		return "";
-	};
-
-	return raw.replace(/&(amp|lt|gt|quot|apos|nbsp|#\d+|#x[0-9a-fA-F]+);/gi, (match, entity) => {
-		const lower = entity.toLowerCase();
-		switch (lower) {
-			case "nbsp":
-				return " ";
-			case "lt":
-				return "<";
-			case "gt":
-				return ">";
-			case "quot":
-				return '"';
-			case "apos":
-				return "'";
-			case "amp":
-				return "&";
-			default: {
-				if (lower.startsWith("#x")) {
-					return parseCodePoint(Number.parseInt(lower.slice(2), 16));
-				}
-				if (lower.startsWith("#")) {
-					return parseCodePoint(Number(lower.slice(1)));
-				}
-				return match;
-			}
-		}
-	});
 }
 
 interface HtmlListState {
@@ -137,7 +100,7 @@ function normalizeHtmlForTerminal(
 	for (const match of withoutComments.matchAll(HTML_TAG_REGEX)) {
 		const tag = match[0];
 		const index = match.index ?? 0;
-		const textBeforeTag = normalizeHtmlEntitiesForTerminal(withoutComments.slice(lastIndex, index));
+		const textBeforeTag = unescapeHtml(withoutComments.slice(lastIndex, index));
 		const name = htmlTagName(tag);
 		// Most tags handled here are block-level. Inline contexts — span, summary,
 		// text, and the content inside a `<code>` run — keep their surrounding
@@ -180,19 +143,6 @@ function normalizeHtmlForTerminal(
 				}
 				break;
 			case "ol":
-				if (isClosing) {
-					state.lists.pop();
-					state.openItems.pop();
-					state.itemHasContent.pop();
-				} else if (!isSelfClosing) {
-					if (state.openItems.length > 0 && state.openItems[state.openItems.length - 1]) {
-						output = appendHtmlListBreak(output, state);
-					}
-					state.lists.push({ type: "ol", next: htmlOlStart(tag) });
-					state.openItems.push(false);
-					state.itemHasContent.push(false);
-				}
-				break;
 			case "ul":
 				if (isClosing) {
 					state.lists.pop();
@@ -202,7 +152,7 @@ function normalizeHtmlForTerminal(
 					if (state.openItems.length > 0 && state.openItems[state.openItems.length - 1]) {
 						output = appendHtmlListBreak(output, state);
 					}
-					state.lists.push({ type: "ul", next: 1 });
+					state.lists.push({ type: name, next: name === "ol" ? htmlOlStart(tag) : 1 });
 					state.openItems.push(false);
 					state.itemHasContent.push(false);
 				}
@@ -236,7 +186,7 @@ function normalizeHtmlForTerminal(
 		}
 	}
 
-	const remainingText = normalizeHtmlEntitiesForTerminal(withoutComments.slice(lastIndex));
+	const remainingText = unescapeHtml(withoutComments.slice(lastIndex));
 	markCurrentHtmlItemContent(state, remainingText);
 	return output + (inCode && codeHook ? codeHook(remainingText) : remainingText);
 }
@@ -909,7 +859,7 @@ function collapseInlineHtml(tokens: Token[]): Token[] {
 				if (close?.name === "code" && close.closing) break;
 			}
 			if (j >= tokens.length) continue; // unmatched `<code>` — drop it, render the rest normally
-			const text = normalizeHtmlEntitiesForTerminal(plainInlineTokens(tokens.slice(i + 1, j)));
+			const text = unescapeHtml(plainInlineTokens(tokens.slice(i + 1, j)));
 			out.push({ type: "codespan", raw: text, text } as Token);
 			i = j;
 			continue;
@@ -1469,20 +1419,23 @@ export class Markdown implements Component {
 	): StreamPrefixLineCache | undefined {
 		const cache = this.#streamPrefixLineCache;
 		if (!cache) return undefined;
-		if (cache.text !== frozenText && (!normalizedText.startsWith(cache.text) || !frozenText.startsWith(cache.text))) {
+		if (
+			(cache.text !== frozenText &&
+				(!normalizedText.startsWith(cache.text) || !frozenText.startsWith(cache.text))) ||
+			cache.width !== signature.width ||
+			cache.paddingX !== signature.paddingX ||
+			cache.paddingY !== signature.paddingY ||
+			cache.codeBlockIndent !== signature.codeBlockIndent ||
+			cache.themeId !== signature.themeId ||
+			cache.defaultTextStyleId !== signature.defaultTextStyleId ||
+			cache.imageProtocol !== signature.imageProtocol ||
+			cache.hyperlinks !== signature.hyperlinks ||
+			cache.textSizing !== signature.textSizing ||
+			cache.bgColorProbe !== signature.bgColorProbe ||
+			cache.headingProbe !== signature.headingProbe
+		) {
 			return undefined;
 		}
-		if (cache.width !== signature.width) return undefined;
-		if (cache.paddingX !== signature.paddingX) return undefined;
-		if (cache.paddingY !== signature.paddingY) return undefined;
-		if (cache.codeBlockIndent !== signature.codeBlockIndent) return undefined;
-		if (cache.themeId !== signature.themeId) return undefined;
-		if (cache.defaultTextStyleId !== signature.defaultTextStyleId) return undefined;
-		if (cache.imageProtocol !== signature.imageProtocol) return undefined;
-		if (cache.hyperlinks !== signature.hyperlinks) return undefined;
-		if (cache.textSizing !== signature.textSizing) return undefined;
-		if (cache.bgColorProbe !== signature.bgColorProbe) return undefined;
-		if (cache.headingProbe !== signature.headingProbe) return undefined;
 		return cache;
 	}
 
@@ -1539,14 +1492,7 @@ export class Markdown implements Component {
 			previousLineWasOsc66 = false;
 			const lineWithMargins = leftMargin + line + rightMargin;
 
-			if (bgFn) {
-				contentLines.push(applyBackgroundToLine(lineWithMargins, signature.width, bgFn));
-			} else {
-				// No background - just pad to width
-				const visibleLen = visibleWidth(lineWithMargins);
-				const paddingNeeded = Math.max(0, signature.width - visibleLen);
-				contentLines.push(lineWithMargins + padding(paddingNeeded));
-			}
+			contentLines.push(applyLineBackground(lineWithMargins, signature.width, bgFn));
 		}
 
 		return contentLines;
@@ -1676,12 +1622,10 @@ export class Markdown implements Component {
 	}
 
 	#renderEmptyPaddingLines(signature: RenderSignature): string[] {
-		const emptyLine = padding(signature.width);
+		const emptyLine = applyLineBackground("", signature.width, this.#defaultTextStyle?.bgColor);
 		const emptyLines: string[] = [];
-		const bgFn = this.#defaultTextStyle?.bgColor;
 		for (let i = 0; i < signature.paddingY; i++) {
-			const line = bgFn ? applyBackgroundToLine(emptyLine, signature.width, bgFn) : emptyLine;
-			emptyLines.push(line);
+			emptyLines.push(emptyLine);
 		}
 		return emptyLines;
 	}
@@ -1730,28 +1674,7 @@ export class Markdown implements Component {
 			return this.#defaultStylePrefix;
 		}
 
-		const sentinel = "\u0000";
-		let styled = sentinel;
-
-		if (this.#defaultTextStyle.color) {
-			styled = this.#defaultTextStyle.color(styled);
-		}
-
-		if (this.#defaultTextStyle.bold) {
-			styled = this.#theme.bold(styled);
-		}
-		if (this.#defaultTextStyle.italic) {
-			styled = this.#theme.italic(styled);
-		}
-		if (this.#defaultTextStyle.strikethrough) {
-			styled = this.#theme.strikethrough(styled);
-		}
-		if (this.#defaultTextStyle.underline) {
-			styled = this.#theme.underline(styled);
-		}
-
-		const sentinelIndex = styled.indexOf(sentinel);
-		this.#defaultStylePrefix = sentinelIndex >= 0 ? styled.slice(0, sentinelIndex) : "";
+		this.#defaultStylePrefix = this.#getStylePrefix(text => this.#applyDefaultStyle(text));
 		return this.#defaultStylePrefix;
 	}
 
@@ -2141,6 +2064,10 @@ export class Markdown implements Component {
 		styleContext?: InlineStyleContext,
 	): Array<{ text: string; nested: boolean }> {
 		const lines: Array<{ text: string; nested: boolean }> = [];
+		const apply = styleContext?.applyText ?? ((t: string) => this.#applyDefaultStyle(t));
+		const pushMath = (latex: string) => {
+			for (const mathLine of latexToBlock(latex)) lines.push({ text: apply(mathLine), nested: false });
+		};
 
 		for (const token of tokens) {
 			if (token.type === "list") {
@@ -2154,9 +2081,7 @@ export class Markdown implements Component {
 				// Text content (may have inline tokens, or a sole display-math token)
 				const displayMath = soleDisplayMath(token.tokens);
 				if (displayMath) {
-					const apply = styleContext?.applyText ?? ((t: string) => this.#applyDefaultStyle(t));
-					for (const mathLine of latexToBlock(displayMath.text))
-						lines.push({ text: apply(mathLine), nested: false });
+					pushMath(displayMath.text);
 				} else {
 					const text =
 						token.tokens && token.tokens.length > 0
@@ -2165,12 +2090,9 @@ export class Markdown implements Component {
 					lines.push({ text, nested: false });
 				}
 			} else if (token.type === "paragraph") {
-				// Paragraph in list item
-				const apply = styleContext?.applyText ?? ((t: string) => this.#applyDefaultStyle(t));
 				const displayMath = soleDisplayMath(token.tokens);
 				if (displayMath) {
-					for (const mathLine of latexToBlock(displayMath.text))
-						lines.push({ text: apply(mathLine), nested: false });
+					pushMath(displayMath.text);
 				} else {
 					lines.push({ text: this.#renderInlineTokens(token.tokens || [], styleContext), nested: false });
 				}
@@ -2183,9 +2105,7 @@ export class Markdown implements Component {
 				}
 				lines.push({ text: this.#codeFenceRow(token.lang, "close"), nested: false });
 			} else if (isMathToken(token)) {
-				// Display math block inside a list item: stack fractions / matrix rows.
-				const apply = styleContext?.applyText ?? ((t: string) => this.#applyDefaultStyle(t));
-				for (const mathLine of latexToBlock(token.text)) lines.push({ text: apply(mathLine), nested: false });
+				pushMath(token.text);
 			} else {
 				// Other token types - try to render as inline
 				const text = this.#renderInlineTokens([token], styleContext);
@@ -2261,25 +2181,18 @@ export class Markdown implements Component {
 		const maxUnbrokenWordWidth = 30;
 
 		// Calculate natural column widths (what each column needs without constraints)
-		const naturalWidths: number[] = [];
-		const minWordWidths: number[] = [];
-		for (let i = 0; i < numCols; i++) {
-			const headerText = this.#renderInlineTokens(token.header[i].tokens || [], styleContext);
-			const headerLineWidths = this.#terminalLineWidths(headerText);
-			naturalWidths[i] = Math.max(...headerLineWidths, 0);
-			minWordWidths[i] = Math.max(1, this.#getLongestWordWidth(headerText, maxUnbrokenWordWidth));
-		}
-		for (const row of token.rows) {
-			for (let i = 0; i < row.length; i++) {
-				const cellText = this.#renderInlineTokens(row[i].tokens || [], styleContext);
-				const cellLineWidths = this.#terminalLineWidths(cellText);
-				naturalWidths[i] = Math.max(naturalWidths[i] || 0, ...cellLineWidths);
-				minWordWidths[i] = Math.max(
-					minWordWidths[i] || 1,
-					this.#getLongestWordWidth(cellText, maxUnbrokenWordWidth),
-				);
+		const naturalWidths: number[] = new Array(numCols).fill(0);
+		const minWordWidths: number[] = new Array(numCols).fill(1);
+		const inspectCells = (rowCells: typeof token.header) => {
+			for (let i = 0; i < rowCells.length; i++) {
+				const text = this.#renderInlineTokens(rowCells[i]?.tokens || [], styleContext);
+				const lineWidths = this.#terminalLineWidths(text);
+				naturalWidths[i] = Math.max(naturalWidths[i] || 0, ...lineWidths, 0);
+				minWordWidths[i] = Math.max(minWordWidths[i] || 1, this.#getLongestWordWidth(text, maxUnbrokenWordWidth));
 			}
-		}
+		};
+		inspectCells(token.header);
+		for (const row of token.rows) inspectCells(row);
 
 		let minColumnWidths = minWordWidths;
 		let minCellsWidth = minColumnWidths.reduce((a, b) => a + b, 0);
@@ -2359,62 +2272,42 @@ export class Markdown implements Component {
 		// indexing past the end.
 		const align: TableAlign[] = Array.from({ length: numCols }, (_, i) => token.align?.[i] ?? null);
 
-		// Render top border
-		const topBorderCells = columnWidths.map(w => h.repeat(w));
-		lines.push(`${t.topLeft}${h}${topBorderCells.join(`${h}${t.teeDown}${h}`)}${h}${t.topRight}`);
+		const rule = (left: string, mid: string, right: string) =>
+			`${left}${h}${columnWidths.map(w => h.repeat(w)).join(`${h}${mid}${h}`)}${h}${right}`;
+		const renderRowCells = (cells: typeof token.header, isHeader: boolean): string[] => {
+			const cellLines = cells.map((cell, i) =>
+				this.#wrapCellText(this.#renderInlineTokens(cell.tokens || [], styleContext), columnWidths[i]),
+			);
+			const maxLines = Math.max(...cellLines.map(c => c.length));
+			const out: string[] = [];
+			for (let lineIdx = 0; lineIdx < maxLines; lineIdx++) {
+				const rowParts = cellLines.map((lines, colIdx) => {
+					const text = alignCellText(lines[lineIdx] || "", columnWidths[colIdx], align[colIdx]);
+					return isHeader ? this.#theme.bold(text) : text;
+				});
+				out.push(`${v} ${rowParts.join(` ${v} `)} ${v}`);
+			}
+			return out;
+		};
 
-		// Render header with wrapping
-		const headerCellLines: string[][] = token.header.map((cell, i) => {
-			const text = this.#renderInlineTokens(cell.tokens || [], styleContext);
-			return this.#wrapCellText(text, columnWidths[i]);
-		});
-		const headerLineCount = Math.max(...headerCellLines.map(c => c.length));
-
-		for (let lineIdx = 0; lineIdx < headerLineCount; lineIdx++) {
-			const rowParts = headerCellLines.map((cellLines, colIdx) => {
-				const text = cellLines[lineIdx] || "";
-				return this.#theme.bold(alignCellText(text, columnWidths[colIdx], align[colIdx]));
-			});
-			lines.push(`${v} ${rowParts.join(` ${v} `)} ${v}`);
-		}
-
-		// Render separator
-		const separatorCells = columnWidths.map(w => h.repeat(w));
-		const separatorLine = `${t.teeRight}${h}${separatorCells.join(`${h}${t.cross}${h}`)}${h}${t.teeLeft}`;
+		lines.push(rule(t.topLeft, t.teeDown, t.topRight));
+		lines.push(...renderRowCells(token.header, true));
+		const separatorLine = rule(t.teeRight, t.cross, t.teeLeft);
 		lines.push(separatorLine);
 
-		// Render rows with wrapping. Inter-row rules are drawn only where a cell
-		// wraps to multiple lines (they group the wrapped row visually); a grid
-		// line after every single-line row doubles table height for nothing.
 		let prevRowWrapped = false;
 		for (let rowIndex = 0; rowIndex < token.rows.length; rowIndex++) {
 			const row = token.rows[rowIndex];
-			const rowCellLines: string[][] = row.map((cell, i) => {
-				const text = this.#renderInlineTokens(cell.tokens || [], styleContext);
-				return this.#wrapCellText(text, columnWidths[i]);
-			});
-			const rowLineCount = Math.max(...rowCellLines.map(c => c.length));
-
-			if (rowIndex > 0 && (prevRowWrapped || rowLineCount > 1)) {
+			const renderedRow = renderRowCells(row, false);
+			if (rowIndex > 0 && (prevRowWrapped || renderedRow.length > 1)) {
 				lines.push(separatorLine);
 			}
-			prevRowWrapped = rowLineCount > 1;
-
-			for (let lineIdx = 0; lineIdx < rowLineCount; lineIdx++) {
-				const rowParts = rowCellLines.map((cellLines, colIdx) => {
-					const text = cellLines[lineIdx] || "";
-					return alignCellText(text, columnWidths[colIdx], align[colIdx]);
-				});
-				lines.push(`${v} ${rowParts.join(` ${v} `)} ${v}`);
-			}
+			lines.push(...renderedRow);
+			prevRowWrapped = renderedRow.length > 1;
 		}
-
-		// Render bottom border
-		const bottomBorderCells = columnWidths.map(w => h.repeat(w));
-		lines.push(`${t.bottomLeft}${h}${bottomBorderCells.join(`${h}${t.teeUp}${h}`)}${h}${t.bottomRight}`);
-
+		lines.push(rule(t.bottomLeft, t.teeUp, t.bottomRight));
 		if (nextTokenType && nextTokenType !== "space") {
-			lines.push(""); // Add spacing after table
+			lines.push("");
 		}
 		return lines;
 	}
@@ -2467,7 +2360,7 @@ function walkInlineTokens(tokens: Token[], ctx: InlineWalkContext): string {
 	const appendDefaultText = (token: Token): void => {
 		if ("text" in token && typeof token.text === "string") {
 			const rawText = trimLeadingWhitespace ? token.text.replace(/^\s+/, "") : token.text;
-			const text = normalizeHtmlEntitiesForTerminal(rawText);
+			const text = unescapeHtml(rawText);
 			trimLeadingWhitespace = false;
 			markContent(text);
 			result += ctx.applyTextWithNewlines(text);
@@ -2483,7 +2376,7 @@ function walkInlineTokens(tokens: Token[], ctx: InlineWalkContext): string {
 		switch (token.type) {
 			case "text": {
 				const rawText = trimLeadingWhitespace ? token.text.replace(/^\s+/, "") : token.text;
-				const text = normalizeHtmlEntitiesForTerminal(rawText);
+				const text = unescapeHtml(rawText);
 				trimLeadingWhitespace = false;
 				markContent(text);
 				if (token.tokens) markContent(plainInlineTokens(token.tokens));
@@ -2625,7 +2518,7 @@ export function renderInlineMarkdown(text: string, mdTheme: MarkdownTheme, baseC
 				})
 				.join(applyText(" "));
 		} else if ("text" in token && typeof token.text === "string") {
-			result += applyText(normalizeHtmlEntitiesForTerminal(token.text));
+			result += applyText(unescapeHtml(token.text));
 		}
 	}
 	return result;

@@ -744,30 +744,8 @@ function findHierarchicalContext(
 		const outer = spaceParts.slice(0, -1).join(" ");
 		const inner = spaceParts[spaceParts.length - 1];
 		const outerResult = findContextLine(lines, outer, startFrom, { allowFuzzy });
-		if (outerResult.matchCount !== undefined && outerResult.matchCount > 1) {
-			return {
-				index: undefined,
-				confidence: outerResult.confidence,
-				matchCount: outerResult.matchCount,
-				matchIndices: outerResult.matchIndices,
-				strategy: outerResult.strategy,
-			};
-		}
-		if (outerResult.index !== undefined) {
-			const innerResult = findContextLine(lines, inner, outerResult.index + 1, { allowFuzzy });
-			if (innerResult.index !== undefined) {
-				return innerResult.matchCount && innerResult.matchCount > 1
-					? { ...innerResult, matchCount: 1, matchIndices: [innerResult.index] }
-					: innerResult;
-			}
-			if (innerResult.matchCount !== undefined && innerResult.matchCount > 1) {
-				return {
-					...innerResult,
-					matchCount: 1,
-					matchIndices: innerResult.index !== undefined ? [innerResult.index] : innerResult.matchIndices,
-				};
-			}
-		}
+		const resolved = resolveInnerAfterOuter(lines, inner, outerResult, allowFuzzy);
+		if (resolved) return resolved;
 	}
 
 	const result = findContextLine(lines, context, startFrom, { allowFuzzy });
@@ -806,37 +784,55 @@ function findHierarchicalContext(
 		const outer = spaceParts.slice(0, -1).join(" ");
 		const inner = spaceParts[spaceParts.length - 1];
 		const outerResult = findContextLine(lines, outer, startFrom, { allowFuzzy });
-
-		if (outerResult.matchCount !== undefined && outerResult.matchCount > 1) {
-			return {
-				index: undefined,
-				confidence: outerResult.confidence,
-				matchCount: outerResult.matchCount,
-				matchIndices: outerResult.matchIndices,
-				strategy: outerResult.strategy,
-			};
-		}
+		const resolved = resolveInnerAfterOuter(lines, inner, outerResult, allowFuzzy);
+		if (resolved) return resolved;
 
 		if (outerResult.index === undefined) {
 			return { index: undefined, confidence: outerResult.confidence };
 		}
-
-		const innerResult = findContextLine(lines, inner, outerResult.index + 1, { allowFuzzy });
-		if (innerResult.index !== undefined) {
-			return innerResult.matchCount && innerResult.matchCount > 1
-				? { ...innerResult, matchCount: 1, matchIndices: [innerResult.index] }
-				: innerResult;
-		}
-		if (innerResult.matchCount !== undefined && innerResult.matchCount > 1) {
-			return {
-				...innerResult,
-				matchCount: 1,
-				matchIndices: innerResult.index !== undefined ? [innerResult.index] : innerResult.matchIndices,
-			};
-		}
 	}
 
 	return result;
+}
+
+/**
+ * The second level of a space-separated hierarchical context: `inner` is
+ * searched after the line `outerResult` matched. Returns the ambiguity of the
+ * outer match, the inner match, or the inner match's ambiguity pinned to its
+ * first index; undefined when the outer line did not match once or the inner
+ * line matched nothing, which the caller falls back from.
+ */
+function resolveInnerAfterOuter(
+	lines: string[],
+	inner: string,
+	outerResult: ContextLineResult,
+	allowFuzzy: boolean,
+): ContextLineResult | undefined {
+	if (outerResult.matchCount !== undefined && outerResult.matchCount > 1) {
+		return {
+			index: undefined,
+			confidence: outerResult.confidence,
+			matchCount: outerResult.matchCount,
+			matchIndices: outerResult.matchIndices,
+			strategy: outerResult.strategy,
+		};
+	}
+	if (outerResult.index === undefined) return undefined;
+
+	const innerResult = findContextLine(lines, inner, outerResult.index + 1, { allowFuzzy });
+	if (innerResult.index !== undefined) {
+		return innerResult.matchCount && innerResult.matchCount > 1
+			? { ...innerResult, matchCount: 1, matchIndices: [innerResult.index] }
+			: innerResult;
+	}
+	if (innerResult.matchCount !== undefined && innerResult.matchCount > 1) {
+		return {
+			...innerResult,
+			matchCount: 1,
+			matchIndices: innerResult.index !== undefined ? [innerResult.index] : innerResult.matchIndices,
+		};
+	}
+	return undefined;
 }
 
 /** Find sequence with optional hint position, returning full search result */

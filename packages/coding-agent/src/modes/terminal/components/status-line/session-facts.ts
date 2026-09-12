@@ -20,11 +20,9 @@
  * mid-render is how the row acquired its first dependency, and a value block
  * cannot grow a second one.
  */
-import { ThinkingLevel } from "@veyyon/agent-core/thinking";
+import type { ModelFact, SessionFacts, StatusModelFact } from "@veyyon/wire/presentation";
 import { settings } from "../../../../config/settings-instance";
-import type { Goal } from "../../../../goals/state";
 import { AUTO_THINKING } from "../../../../thinking/constants";
-import type { ApprovalMode } from "../../../../tools/core/approval-modes";
 import { isKnownApprovalMode } from "../../../../tools/core/approval-modes";
 import { readLaunchFacts } from "../../../launch-facts";
 import { launchModelLabel } from "../../launch-formatting";
@@ -41,45 +39,12 @@ import type { SegmentContext, StatusLineSegmentOptions } from "./types";
  * a whole qualified id is left to the live row, where a catalog has already had
  * its say. No second formatting rule.
  */
-export interface ModelFact {
-	id: string;
-	name: string;
-	/** The model supports a thinking budget, so the effort tail may render. */
-	supportsThinking: boolean;
-}
-
-export interface SessionFacts {
-	model: ModelFact | null;
-	/** The configured effort. Ignored while {@link autoThinking} is set. */
-	thinkingLevel: ThinkingLevel;
-	/**
-	 * Auto-thinking's state when it is on, absent when it is off. `resolved` is
-	 * null while the turn is still being classified, which the segment prints as
-	 * its pending marker rather than as a level.
-	 */
-	autoThinking: { resolved: string | null } | null;
-	advisorActive: boolean;
-	fastMode: boolean;
-	/** The active model is served by a subscription login rather than metered credit. */
-	subscription: boolean;
-	/** The agent is mid-response. Drives the gauge tip and the goal spinner. */
-	streaming: boolean;
-	approvalMode: ApprovalMode | undefined;
-	/** `/yolo` is on: every prompt is off, whatever {@link approvalMode} says. */
-	approvalBypassed: boolean;
-	/** The session's working directory, or null to fall back to the process one. */
-	cwd: string | null;
-	sessionId: string | null;
-	sessionName: string | null;
-	goal: Goal | null;
-	goalModelBudgets: boolean;
-	goalVerbose: boolean;
-}
+export type { ModelFact, SessionFacts, StatusModelFact };
 
 /** What the row knows before a session exists and before config is read. */
 export const NO_SESSION_FACTS: SessionFacts = {
 	model: null,
-	thinkingLevel: ThinkingLevel.Off,
+	thinkingLevel: "off",
 	autoThinking: null,
 	advisorActive: false,
 	fastMode: false,
@@ -137,7 +102,7 @@ export function factsAtLaunch(): SessionFacts {
 		// `auto` is a session mode rather than a rung: a session that starts in it has classified no
 		// turn yet, so the row states the pending marker, which is what the settled row states at
 		// this same moment. A concrete rung is replayed as itself.
-		thinkingLevel: thinking !== null && thinking !== AUTO_THINKING ? thinking : ThinkingLevel.Off,
+		thinkingLevel: thinking !== null && thinking !== AUTO_THINKING ? thinking : "off",
 		autoThinking: thinking === AUTO_THINKING ? { resolved: null } : null,
 		approvalMode: isKnownApprovalMode(approvalMode) ? approvalMode : undefined,
 		goalModelBudgets: settings.get("goal.modelBudgetsEnabled") === true,
@@ -188,6 +153,7 @@ export interface LaunchContextRequest {
  * a measurement and a clean tree would be a claim, so the gauge spells `? left` and the branch
  * renders without its marker until the session's first paint replaces the block.
  */
+
 export function launchSegmentContext(request: LaunchContextRequest): SegmentContext {
 	const launchFacts = readLaunchFacts();
 	return {
@@ -208,7 +174,7 @@ export function launchSegmentContext(request: LaunchContextRequest): SegmentCont
 		contextLimit: 0,
 		contextLimitKind: "window",
 		autoCompactEnabled: request.autoCompactEnabled,
-		subagentCount: 0,
+		agentCount: 0,
 		backgroundSessionCount: 0,
 		activeMs: 0,
 		git: { branch: request.branch, status: launchFacts.gitStatus, pr: null },

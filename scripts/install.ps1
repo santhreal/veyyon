@@ -1313,7 +1313,7 @@ function Test-AliasPointsAtUs {
 }
 
 # Report whether `$Name` on PATH is the copy just installed into `$WantDir`.
-# A stale copy earlier on PATH (a previous `bun add -g`, an old manual install)
+# A stale copy earlier on PATH (an older binary in another directory, an old manual install)
 # silently wins every future invocation, so mere presence on PATH is not enough:
 # the resolved location is compared and a mismatch is reported LOUDLY. Compared
 # by directory because the alias shim and the binary are different files in the

@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@veyyon/agent-core";
-import { estimateTokens } from "@veyyon/agent-core/compaction";
+import { estimateTokens } from "@veyyon/agent-core/compaction/token-estimate";
 import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
 import { errorMessage, logger } from "@veyyon/utils";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";

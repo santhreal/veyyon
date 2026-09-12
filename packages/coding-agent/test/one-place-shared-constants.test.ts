@@ -40,11 +40,7 @@ import { typeScriptMembers } from "../../../scripts/workspace-layout";
 import { SUMMARY_MAX_CHARS as AGENTIC_SUMMARY_MAX_CHARS } from "../src/commit/agentic/validation";
 import { SUMMARY_MAX_CHARS, validateSummary } from "../src/commit/analysis/validation";
 import { PROJECT_TAG_PREFIX } from "../src/memory/hindsight/bank";
-import {
-	calculateTokensPerSecond,
-	MIN_RATE_DURATION_MS,
-	tokensPerSecond,
-} from "../src/modes/terminal/components/status-line/token-rate";
+import { calculateTokensPerSecond, MIN_RATE_DURATION_MS, tokensPerSecond } from "../src/presentation/token-rate";
 
 const REPO_ROOT = path.join(import.meta.dir, "..", "..", "..");
 
@@ -176,16 +172,7 @@ describe("the tokens-per-second floor", () => {
 	 */
 	it("is declared in exactly one module", async () => {
 		expect(await declarersOf("MIN_RATE_DURATION_MS")).toEqual([
-			path.join(
-				"packages",
-				"coding-agent",
-				"src",
-				"modes",
-				"terminal",
-				"components",
-				"status-line",
-				"token-rate.ts",
-			),
+			path.join("packages", "coding-agent", "src", "presentation", "token-rate.ts"),
 		]);
 		// And the old name is gone from both, not merely renamed in one of them.
 		expect(await declarersOf("MIN_DURATION_MS")).toEqual([]);

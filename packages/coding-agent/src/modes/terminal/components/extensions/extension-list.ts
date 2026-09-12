@@ -6,12 +6,13 @@
  * master switch is off.
  */
 import type { Component } from "@veyyon/tui";
+import { HoverController } from "@veyyon/tui/utils/hover-controller";
 import { matchesKey } from "@veyyon/utils/keys";
-import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
+import type { HoverFadeOptions } from "@veyyon/utils/motion";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { isProviderEnabled } from "../../../../discovery";
-import { applyFilter } from "../../../../extensibility/extension-state/state-manager";
+import { applyFilter, getKindDisplayName } from "../../../../extensibility/extension-state/state-manager";
 import type { ExtensionKind, ExtensionRow, ExtensionState } from "../../../../extensibility/extension-state/types";
 import { withIcon } from "../../../../theme/icon-label";
 import { theme } from "../../../../theme/theme";
@@ -51,12 +52,11 @@ export class ExtensionList implements Component {
 	#focused = false;
 	#masterSwitchProvider: string | null = null;
 	#maxVisible: number;
-	#hoveredIndex: number | null = null;
 	/**
-	 * The cross-fade, once the dashboard has lent this list a repaint ({@link setHoverMotion}).
+	 * Pointer hover controller and cross-fade, once the dashboard has lent this list a repaint ({@link setHoverMotion}).
 	 * Absent, the band is switched.
 	 */
-	#hoverFade: HoverFade | undefined;
+	#hover = new HoverController<number>();
 	/** Item rows rendered in the last frame, for mouse hit-testing. */
 	#visibleCount = 0;
 
@@ -161,7 +161,7 @@ export class ExtensionList implements Component {
 					for (let i = startIdx; i < endIdx; i++) {
 						const listItem = this.#listItems[i];
 						const isSelected = this.#focused && i === this.#selectedIndex;
-						const hoverStrength = this.#focused ? this.#hoverStrength(i) : 0;
+						const hoverStrength = this.#focused ? this.#hover.strength(i) : 0;
 
 						let rowStr: string;
 						if (listItem.type === "master") {
@@ -378,30 +378,9 @@ export class ExtensionList implements Component {
 	}
 
 	#getKindLabel(kind: ExtensionKind): string {
-		switch (kind) {
-			case "extension-module":
-				return "Extension Modules";
-			case "skill":
-				return "Skills";
-			case "tool":
-				return "Tools";
-			case "slash-command":
-				return "Commands";
-			case "rule":
-				return "Rules";
-			case "mcp":
-				return "MCP Servers";
-			case "hook":
-				return "Hooks";
-			case "prompt":
-				return "Prompts";
-			case "context-file":
-				return "Context";
-			case "instruction":
-				return "Instructions";
-			default:
-				return kind;
-		}
+		if (kind === "slash-command") return "Commands";
+		if (kind === "context-file") return "Context";
+		return getKindDisplayName(kind);
 	}
 
 	#clampSelection(): void {
@@ -432,8 +411,7 @@ export class ExtensionList implements Component {
 	 * suppressing it there left a row nothing could point at.
 	 */
 	setHoverIndex(index: number | null): void {
-		this.#hoveredIndex = index;
-		this.#hoverFade?.set(index);
+		this.#hover.set(index);
 	}
 
 	/**
@@ -442,22 +420,12 @@ export class ExtensionList implements Component {
 	 * direct construction still gets.
 	 */
 	setHoverMotion(options: HoverFadeOptions): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade(options);
-		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+		this.#hover.setMotion(options);
 	}
 
 	/** Settle the band so no timer outlives the dashboard that owns this list. */
 	disposeHoverMotion(): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = undefined;
-		this.#hoveredIndex = null;
-	}
-
-	/** Band strength for a row; without a fade the hovered row is at 1 and the rest at 0. */
-	#hoverStrength(index: number): number {
-		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
-		return index === this.#hoveredIndex ? 1 : 0;
+		this.#hover.dispose();
 	}
 
 	/**

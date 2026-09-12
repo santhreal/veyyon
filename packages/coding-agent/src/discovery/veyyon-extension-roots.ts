@@ -2,25 +2,26 @@
  * Veyyon extension package roots.
  *
  * An "extension package root" is a directory configured via either
- * `extensions:` in user/project settings or the `--extension`/`-e` CLI flag
+ * `extensions:` in the profile's config.yml or the `--extension`/`-e` CLI flag
  * that points to a packaged extension on disk. The package's standard
  * sub-directories (`skills/`, `hooks/`, `tools/`, `commands/`, `rules/`,
  * `prompts/`, `.mcp.json`) are wired into discovery by `veyyon-plugins.ts`.
  *
  * CLI-provided paths are injected via {@link injectVeyyonExtensionCliRoots}
- * before discovery runs; settings paths are read lazily from
- * `<scope>/settings.json` in {@link listVeyyonExtensionRoots} to mirror what
- * `loadExtensionModules` already does.
+ * before discovery runs; the `extensions` setting is read from the settings
+ * store in {@link listVeyyonExtensionRoots}, the same source the session's
+ * extension-module loader reads (`settings.get("extensions")` in `sdk.ts`).
  *
  * @see ./veyyon-plugins.ts
  * @see ./builtin.ts `loadExtensionModules`
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getAgentDir, isEnoent, logger, tryParseJson } from "@veyyon/utils";
+import { getAgentDir, isEnoent, logger } from "@veyyon/utils";
+import { settingsOrNull } from "../config/settings-instance";
 import { getEnabledPlugins } from "../extensibility/plugins/loader";
 import { expandTilde } from "../tools/core/path-utils";
-import { readDirEntries, readFile } from "./capability/fs";
+import { readDirEntries } from "./capability/fs";
 import type { LoadContext } from "./capability/types";
 import { listClaudePluginRoots, pluginsRootFor } from "./helpers";
 
@@ -75,33 +76,17 @@ export function getInjectedVeyyonExtensionCliRoots(): readonly VeyyonExtensionRo
 	return injectedCliRoots.map(({ path: p, level }) => ({ path: p, level, name: path.basename(p) }));
 }
 
-interface ScopeDirs {
-	project: string;
-	user: string;
-}
-
 /**
- * WHICH profile supplies the user scope, and the project dir for `ctx.cwd`.
+ * The `extensions` setting, read from the settings store.
  *
- * `agentDir` used to be absent here and `user` was always `getAgentDir()`, so a caller
- * that had resolved a DIFFERENT profile still got the process-active profile's
- * `settings.json#extensions` and its installed plugins. Skills, rules, prompts, commands,
- * hooks and tools shipped by that profile's packages therefore followed whichever profile
- * the process booted with, not the one the caller named.
+ * This is the source `sdk.ts` reads to load the extension MODULES named by the setting
+ * (`settings.get("extensions")`). Sub-discovery used to read `<agentDir>/settings.json`
+ * instead — the legacy file `config/settings.ts` migrates away from — so a package named
+ * in config.yml loaded its module and none of its `skills/`, `hooks/`, `commands/`.
+ * One setting, one reader.
  */
-function scopeDirs(ctx: LoadContext, agentDir: string): ScopeDirs {
-	return {
-		project: path.join(ctx.cwd, ".veyyon"),
-		user: agentDir,
-	};
-}
-
-async function readSettingsExtensions(settingsPath: string): Promise<string[]> {
-	const content = await readFile(settingsPath);
-	if (!content) return [];
-	const parsed = tryParseJson<{ extensions?: unknown }>(content);
-	const raw = parsed?.extensions;
-	if (!Array.isArray(raw)) return [];
+function settingsExtensions(): string[] {
+	const raw = settingsOrNull()?.get("extensions") ?? [];
 	return raw.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
 }
 
@@ -127,8 +112,8 @@ async function isDirectory(p: string): Promise<boolean> {
 /** Options for {@link listVeyyonExtensionRoots}. */
 export interface ListVeyyonExtensionRootsOptions {
 	/**
-	 * WHICH profile supplies the user scope: its `settings.json#extensions` and its
-	 * installed plugins. Default: {@link getAgentDir}, the process-active profile.
+	 * WHICH profile supplies the user scope: its installed plugins. Default:
+	 * {@link getAgentDir}, the process-active profile.
 	 */
 	agentDir?: string;
 }
@@ -140,7 +125,7 @@ export interface ListVeyyonExtensionRootsOptions {
  * are dropped):
  *
  * 1. CLI roots injected via {@link injectVeyyonExtensionCliRoots}
- * 2. User `<agentDir>/settings.json#extensions`
+ * 2. The `extensions` setting (config.yml), read from the settings store
  * 3. Enabled npm/link plugins installed under `<plugins>/node_modules/` (for
  *    `veyyon install <pkg>` / `veyyon plugin install` / `veyyon plugin link`). Marketplace
  *    installs are loaded by the `claude-plugins` provider and are excluded here.
@@ -156,8 +141,8 @@ export interface ListVeyyonExtensionRootsOptions {
  * `commands/`, `rules/`, `prompts/`, `hooks/`, `tools/` and MCP were all then
  * scanned. It is gone, and so is the project settings layer that fed it.
  *
- * Both remaining file sources are PROFILE scoped, so `options.agentDir` selects
- * them. Without it both resolved the process-global active profile, which is why
+ * The installed-plugin source is PROFILE scoped, so `options.agentDir` selects
+ * it. Without it it resolved the process-global active profile, which is why
  * a session rooted in another agent dir loaded that profile's plugin packages
  * instead of its own.
  */
@@ -166,11 +151,8 @@ export async function listVeyyonExtensionRoots(
 	options: ListVeyyonExtensionRootsOptions = {},
 ): Promise<VeyyonExtensionRoot[]> {
 	const agentDir = options.agentDir ?? getAgentDir();
-	const { user } = scopeDirs(ctx, agentDir);
-	const [userExtensions, installedPlugins] = await Promise.all([
-		readSettingsExtensions(path.join(user, "settings.json")),
-		listInstalledPluginRoots(ctx, pluginsRootFor(agentDir)),
-	]);
+	const userExtensions = settingsExtensions();
+	const installedPlugins = await listInstalledPluginRoots(ctx, pluginsRootFor(agentDir));
 
 	const candidates: InjectedRoot[] = [
 		...injectedCliRoots,

@@ -164,6 +164,12 @@ describe("EDIT_MODE_STRATEGIES.matcherEntries", () => {
 		expect(EDIT_MODE_STRATEGIES.hashline.matcherEntries({ input: "" })).toBeUndefined();
 		expect(EDIT_MODE_STRATEGIES.apply_patch.matcherEntries({ input: "*** Begin Patch\n" })).toBeUndefined();
 		expect(EDIT_MODE_STRATEGIES.replace.matcherEntries({})).toBeUndefined();
+		// A path with no digest yet, and a digest with no path, both fall back.
+		expect(EDIT_MODE_STRATEGIES.replace.matcherEntries({ path: "src/foo.ts", edits: [] })).toBeUndefined();
+		expect(
+			EDIT_MODE_STRATEGIES.patch.matcherEntries({ path: "", edits: [{ op: "update", diff: "@@\n+y" }] }),
+		).toBeUndefined();
+		expect(EDIT_MODE_STRATEGIES.hashline.matcherEntries({ input: "SWAP 1.=1:\n+x" })).toBeUndefined();
 	});
 });
 

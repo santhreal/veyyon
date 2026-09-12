@@ -142,32 +142,25 @@ function tagsForDay(value: Date): string[] {
 	return [isoDate(value), `week-${isoWeek(value)}-${value.getUTCFullYear()}`, dayName(value)];
 }
 
+const DELTA_UNIT_DAYS: Record<string, number> = {
+	day: 1,
+	week: 7,
+	month: 30,
+	year: 365,
+};
+const DELTA_UNIT_SECONDS: Record<string, number> = {
+	second: 1,
+	minute: 60,
+	hour: 3600,
+};
+
 function deltaDate(reference: Date, num: number, unit: string, direction: 1 | -1): Date | undefined {
 	if (!Number.isSafeInteger(num)) return undefined;
-	let days = 0;
-	switch (unit) {
-		case "second":
-			return finiteDate(addSeconds(reference, direction * num));
-		case "minute":
-			return finiteDate(addSeconds(reference, direction * num * 60));
-		case "hour":
-			return finiteDate(addSeconds(reference, direction * num * 3600));
-		case "day":
-			days = num;
-			break;
-		case "week":
-			days = num * 7;
-			break;
-		case "month":
-			days = num * 30;
-			break;
-		case "year":
-			days = num * 365;
-			break;
-		default:
-			return undefined;
-	}
-	return finiteDate(addDays(reference, direction * days));
+	const days = DELTA_UNIT_DAYS[unit];
+	if (days !== undefined) return finiteDate(addDays(reference, direction * num * days));
+	const sec = DELTA_UNIT_SECONDS[unit];
+	if (sec !== undefined) return finiteDate(addSeconds(reference, direction * num * sec));
+	return undefined;
 }
 
 export function parseNlDate(text: string, reference?: QueryTime): ParsedNaturalDate | null {
@@ -254,57 +247,25 @@ export function parseNlDate(text: string, reference?: QueryTime): ParsedNaturalD
 
 	m = /\b(this|last|next)\s+(week|month|year)\b/.exec(textLower);
 	if (m !== null) {
-		const qualifier = m[1] as string;
-		const unit = m[2] as string;
-		const refDate = dateOnly(ref);
-		if (qualifier === "this") {
-			if (unit === "week")
-				return [refDate, "week", [`week-${isoWeek(refDate)}-${refDate.getUTCFullYear()}`, "this-week"]];
-			if (unit === "month")
-				return [
-					refDate,
-					"month",
-					[`${refDate.getUTCFullYear()}-${String(refDate.getUTCMonth() + 1).padStart(2, "0")}`, "this-month"],
-				];
-			if (unit === "year") return [refDate, "year", [String(refDate.getUTCFullYear()), "this-year"]];
-		} else if (qualifier === "last") {
-			if (unit === "week") {
-				const d = addDays(ref, -7);
-				return [d, "week", [`week-${isoWeek(d)}-${d.getUTCFullYear()}`, "last-week"]];
-			}
-			if (unit === "month") {
-				const year = ref.getUTCMonth() === 0 ? ref.getUTCFullYear() - 1 : ref.getUTCFullYear();
-				const month = ref.getUTCMonth() === 0 ? 12 : ref.getUTCMonth();
-				const d = dateUtc(year, month, 1) as Date;
-				return [
-					d,
-					"month",
-					[`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`, "last-month"],
-				];
-			}
-			if (unit === "year") {
-				const d = dateUtc(ref.getUTCFullYear() - 1, 1, 1) as Date;
-				return [d, "year", [String(d.getUTCFullYear()), "last-year"]];
-			}
-		} else if (qualifier === "next") {
-			if (unit === "week") {
-				const d = addDays(ref, 7);
-				return [d, "week", [`week-${isoWeek(d)}-${d.getUTCFullYear()}`, "next-week"]];
-			}
-			if (unit === "month") {
-				const year = ref.getUTCMonth() === 11 ? ref.getUTCFullYear() + 1 : ref.getUTCFullYear();
-				const month = ref.getUTCMonth() === 11 ? 1 : ref.getUTCMonth() + 2;
-				const d = dateUtc(year, month, 1) as Date;
-				return [
-					d,
-					"month",
-					[`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`, "next-month"],
-				];
-			}
-			if (unit === "year") {
-				const d = dateUtc(ref.getUTCFullYear() + 1, 1, 1) as Date;
-				return [d, "year", [String(d.getUTCFullYear()), "next-year"]];
-			}
+		const qualifier = m[1] as "this" | "last" | "next";
+		const unit = m[2] as "week" | "month" | "year";
+		const offset = qualifier === "this" ? 0 : qualifier === "last" ? -1 : 1;
+		const tag = `${qualifier}-${unit}`;
+		if (unit === "week") {
+			const d = offset === 0 ? dateOnly(ref) : addDays(ref, offset * 7);
+			return [d, "week", [`week-${isoWeek(d)}-${d.getUTCFullYear()}`, tag]];
+		}
+		if (unit === "month") {
+			const totalMonths = ref.getUTCFullYear() * 12 + ref.getUTCMonth() + offset;
+			const year = Math.floor(totalMonths / 12);
+			const month = (totalMonths % 12) + 1;
+			const d = offset === 0 ? dateOnly(ref) : (dateUtc(year, month, 1) as Date);
+			const monthStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+			return [d, "month", [monthStr, tag]];
+		}
+		if (unit === "year") {
+			const d = offset === 0 ? dateOnly(ref) : (dateUtc(ref.getUTCFullYear() + offset, 1, 1) as Date);
+			return [d, "year", [String(d.getUTCFullYear()), tag]];
 		}
 	}
 

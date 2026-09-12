@@ -86,14 +86,6 @@ function hostOptions(expanded: boolean, frame?: number): RenderResultOptions {
 	return { expanded, isPartial: false, spinnerFrame: frame };
 }
 
-function asOracleResult(result: VibeToolResult): {
-	content: Array<{ type: string; text?: string }>;
-	details?: VibeToolDetails;
-	isError?: boolean;
-} {
-	return result;
-}
-
 function viewCall(op: VibeOp, args: VibeRenderArgs, expanded: boolean, frame: number | undefined, width: number) {
 	const view = createVibeToolView(op).renderCall(args, context(expanded, frame));
 	return renderCompLines(drawToolView(view, theme, frame), width);
@@ -124,7 +116,7 @@ function oracleResult(
 	width: number,
 ) {
 	return renderCompLines(
-		createVibeToolRenderer(op).renderResult(asOracleResult(result), hostOptions(expanded, frame), theme, args),
+		createVibeToolRenderer(op).renderResult(result, hostOptions(expanded, frame), theme, args),
 		width,
 	);
 }

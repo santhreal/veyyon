@@ -7,7 +7,9 @@ import {
 	ReadToolGroupComponent,
 	readArgsTargetInternalUrl,
 } from "@veyyon/coding-agent/modes/terminal/components/transcript/read-tool-group";
+import { buildToolExecutionBlock } from "@veyyon/coding-agent/presentation/tool-execution";
 import * as themeModule from "@veyyon/coding-agent/theme/theme";
+import type { ReadEntryView } from "@veyyon/wire/presentation/transcript";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 import { useFullColor } from "./helpers/theme-assertions";
 
@@ -40,6 +42,89 @@ describe("ReadToolGroupComponent", () => {
 	afterAll(() => {
 		restoreSettingsTestState(settingsState);
 		settingsState = undefined;
+	});
+
+	// Wire snapshots must preserve every grouped-read status and the rendered preview.
+	// Existing tests below pin the historical output independently of the shared projector.
+	const wireCases: Record<
+		ReadEntryView["status"],
+		{
+			result: { content: Array<{ type: string; text: string }>; details?: unknown; isError?: boolean };
+			content?: string;
+			path?: string;
+		}
+	> = {
+		pending: { result: { content: [{ type: "text", text: "unfinished preview" }] } },
+		success: {
+			result: {
+				content: [{ type: "text", text: "model excerpt" }],
+				details: { displayContent: { text: "display excerpt", startLine: 7, lineNumbers: [7, null, 9] } },
+			},
+			content: "display excerpt",
+		},
+		warning: {
+			result: {
+				content: [{ type: "text", text: "corrected excerpt" }],
+				details: { suffixResolution: { from: "input.ts", to: "src/resolved.ts" } },
+			},
+			content: "corrected excerpt",
+			path: "src/resolved.ts:7-9",
+		},
+		notExecuted: {
+			result: {
+				content: [{ type: "text", text: "model-only skipped result" }],
+				details: { __skipped: true },
+			},
+		},
+		error: {
+			result: { content: [{ type: "text", text: "read failed" }], isError: true },
+			content: "read failed",
+		},
+	};
+
+	it.each(Object.entries(wireCases))("preserves %s read rows through a wire round trip", (status, fixture) => {
+		const args = { path: "src/input.ts:7-9" };
+		const block = buildToolExecutionBlock({
+			toolName: "read",
+			toolCallId: "read-wire",
+			args,
+			result: fixture.result,
+			isPartial: status === "pending",
+		});
+		const entry = block.display?.readEntry;
+		expect(entry?.status).toBe(status as ReadEntryView["status"]);
+		expect(entry?.path).toBe(fixture.path ?? args.path);
+		expect(entry?.contentText).toBe(fixture.content);
+		if (!entry) throw new Error("Read display metadata is missing");
+		if (status === "success") expect(entry.codeLineNumbers).toEqual([7, null, 9]);
+		const snapshot = Object.freeze(JSON.parse(JSON.stringify(entry)) as ReadEntryView);
+		const wire = new ReadToolGroupComponent({ showContentPreview: true });
+		const legacy = new ReadToolGroupComponent({ showContentPreview: true });
+		try {
+			wire.updateEntry(snapshot);
+			legacy.updateArgs(args, "read-wire");
+			legacy.updateResult(fixture.result, status === "pending", "read-wire");
+			for (const width of [40, 120]) {
+				expect(wire.render(width)).toEqual(legacy.render(width));
+			}
+			wire.updateArgs({ path: "src/next.ts" }, "read-wire");
+			expect(snapshot.path).toBe(fixture.path ?? args.path);
+		} finally {
+			wire.dispose();
+			legacy.dispose();
+		}
+	});
+
+	it("preserves an execution error supplied outside the read result", () => {
+		const block = buildToolExecutionBlock({
+			toolName: "read",
+			toolCallId: "read-error",
+			args: { path: "src/input.ts" },
+			result: { content: [{ type: "text", text: "read failed" }] },
+			isError: true,
+			isPartial: false,
+		});
+		expect(block.display?.readEntry?.status).toBe("error");
 	});
 
 	it("keeps inline read previews disabled by default", () => {
@@ -116,6 +201,20 @@ describe("ReadToolGroupComponent", () => {
 		expect(plain).toContain(`${themeModule.theme.tree.branch} ${onePath}:1-2`);
 		expect(plain).toContain(`${themeModule.theme.tree.branch} ${twoPath}:3-4`);
 		expect(plain).toContain(`${themeModule.theme.tree.last} ${threePath}:5-6`);
+	});
+
+	it("keeps spaces and nested glob commas inside a file while advancing past selector range commas", () => {
+		const component = new ReadToolGroupComponent();
+		component.updateArgs({ path: "src/a {b,{c,d}}.ts:1-2,5-6,5-6 report.ts:7-8" }, "read-glob-ranges");
+		component.updateResult({ content: [{ type: "text", text: "combined" }] }, false, "read-glob-ranges");
+		try {
+			const plain = Bun.stripANSI(component.render(200).join("\n"));
+			expect(plain).toContain("Read (2)");
+			expect(plain).toContain(`${themeModule.theme.tree.branch} src/a {b,{c,d}}.ts:1-2,5-6`);
+			expect(plain).toContain(`${themeModule.theme.tree.last} 5-6 report.ts:7-8`);
+		} finally {
+			component.clear();
+		}
 	});
 
 	it("merges multi-range selectors into one file row", () => {

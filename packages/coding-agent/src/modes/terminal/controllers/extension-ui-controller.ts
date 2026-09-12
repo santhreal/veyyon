@@ -13,7 +13,7 @@ import {
 import { clampLow, errorMessage } from "@veyyon/utils";
 import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 import type { CollabUiRequestDraft, CollabUiSelectItem } from "@veyyon/wire";
-import { registerAutoresearchUi } from "../../../autoresearch/dashboard";
+import { type AutoresearchUiDelegate, registerAutoresearchUi } from "../../../autoresearch/dashboard";
 import { KeybindingsManager } from "../../../config/keybindings";
 import type {
 	CompactOptions,
@@ -36,6 +36,7 @@ import { runExtensionSetModel } from "../../../extensibility/extensions/compact-
 import { getSessionSlashCommands } from "../../../extensibility/extensions/get-commands-handler";
 import { createExtensionModelQuery } from "../../../extensibility/extensions/model-api";
 import type { TerminalWidgetContent } from "../../../extensibility/terminal-capability";
+import { toConfirmDialog, toPromptDialog, toSelectDialog } from "../../../presentation/overlay-builder";
 import { normalizeCustomMessagePayload, USER_INTERRUPT_LABEL } from "../../../session/messages";
 import { getAvailableThemesWithPaths, getThemeByName, setTheme, type Theme, theme } from "../../../theme/theme";
 import {
@@ -43,7 +44,7 @@ import {
 	ASK_NEXT_OPTION_LABEL,
 	ASK_OTHER_OPTION_LABEL,
 } from "../../../tools/agent/ask-option-labels";
-import { setSessionTerminalTitle, setTerminalTitle } from "../../../utils/title-generator";
+import { setTerminalTitle } from "../../../utils/title-generator";
 import { AskDialogComponent, boundPromptTitle } from "../components/dialogs/ask-dialog";
 import { LAUNCHER_OVERLAY, LauncherComponent } from "../components/dialogs/autoresearch-launcher";
 import { AutoresearchScreenComponent } from "../components/dialogs/autoresearch-screen";
@@ -198,153 +199,11 @@ export class ExtensionUiController {
 			TERMINAL.sendNotification(notification);
 		});
 
+		this.initializeHookRunner(uiContext, true);
 		const extensionRunner = this.ctx.session.extensionRunner;
 		if (!extensionRunner) {
-			return; // No hooks loaded
+			return;
 		}
-
-		const actions: ExtensionActions = {
-			sendMessage: (message, options) => {
-				const wasStreaming = this.ctx.session.isStreaming;
-				const normalized = normalizeCustomMessagePayload(message);
-				this.ctx.session
-					.sendCustomMessage(normalized, options)
-					.then(() => this.#applyCustomMessageDisplay(wasStreaming, normalized.display))
-					.catch((err: unknown) => {
-						this.ctx.showError(`Extension sendMessage failed: ${errorMessage(err)}`);
-					});
-			},
-			sendUserMessage: this.#sendExtensionUserMessage,
-			appendEntry: (customType, data) => {
-				this.ctx.sessionManager.appendCustomEntry(customType, data);
-			},
-			setLabel: (targetId, label) => {
-				this.ctx.sessionManager.appendLabelChange(targetId, label);
-			},
-			getActiveTools: () => this.ctx.session.getActiveToolNames(),
-			getAllTools: () => this.ctx.session.getAllToolNames(),
-			setActiveTools: toolNames => this.ctx.session.setActiveToolsByName(toolNames),
-			setModel: (model, options) => runExtensionSetModel(this.ctx.session, model, options),
-			getThinkingLevel: () => this.ctx.session.thinkingLevel,
-			setThinkingLevel: (level, persist) => this.ctx.session.setThinkingLevel(level, persist),
-			getCommands: () => getSessionSlashCommands(this.ctx.session),
-			getSessionName: () => this.ctx.sessionManager.getSessionName(),
-			setSessionName: name => this.#updateSessionName(name),
-		};
-		const contextActions: ExtensionContextActions = {
-			getModel: () => this.ctx.session.model,
-			isIdle: () => !this.ctx.session.isStreaming,
-			// `ExtensionContextActions.abort` is `() => void`, so returning
-			// `session.abort(...)` here hands a promise into a void slot: the
-			// runner discards it at `#abortFn()` and a rejected abort floats to
-			// postmortem, which exits the process. `abortDetached` is the helper
-			// that exists for exactly this and is already used at the hook-runner
-			// wiring below; these two were simply missed.
-			abort: () => {
-				abortDetached(
-					this.ctx.session,
-					"extension-ui-controller.initHooksAndCustomTools.abort",
-					USER_INTERRUPT_LABEL,
-				);
-			},
-			hasPendingMessages: () => this.ctx.session.queuedMessageCount > 0,
-			shutdown: () => {
-				// Defer the actual teardown to the main loop, which calls
-				// `checkShutdownRequested()` at idle boundaries so any queued
-				// steering / follow-up messages drain first (see issue #1020).
-				this.ctx.shutdownRequested = true;
-			},
-			getContextUsage: () => this.ctx.session.getContextUsage(),
-			compact: instructionsOrOptions => this.#compactSession(instructionsOrOptions),
-			getSystemPrompt: () => this.ctx.session.systemPrompt,
-		};
-		const commandActions: ExtensionCommandContextActions = {
-			getContextUsage: () => this.ctx.session.getContextUsage(),
-			waitForIdle: () => this.ctx.session.agent.waitForIdle(),
-			reload: async () => {
-				await this.ctx.session.reload();
-				this.ctx.renderInitialMessages({ clearTerminalHistory: true });
-				await this.ctx.reloadTodos();
-				this.ctx.showStatus("Reloaded session");
-			},
-			newSession: async options => {
-				this.ctx.clearTransientSessionUi();
-
-				// Create new session
-				this.clearExtensionTerminalInputListeners();
-				this.clearHookWidgets();
-				const success = await this.ctx.session.newSession({ parentSession: options?.parentSession });
-				if (!success) {
-					return { cancelled: true };
-				}
-				setSessionTerminalTitle(this.ctx.sessionManager.getSessionName(), this.ctx.sessionManager.getCwd());
-
-				// Call setup callback if provided
-				if (options?.setup) {
-					await options.setup(this.ctx.sessionManager);
-				}
-
-				// Reset and update status line
-				this.ctx.statusLine.invalidate();
-				this.ctx.statusLine.resetActiveTime();
-				this.ctx.clearTransientSessionUi();
-				this.ctx.resetTranscript();
-
-				this.ctx.present([
-					new Spacer(1),
-					new Text(`${theme.fg("accent", `${theme.status.success} New session started`)}`, 1, 1),
-				]);
-				await this.ctx.reloadTodos();
-				this.ctx.ui.requestRender(true, { clearScrollback: true });
-
-				return { cancelled: false };
-			},
-			branch: async entryId => {
-				const result = await this.ctx.session.branch(entryId);
-				if (result.cancelled) {
-					return { cancelled: true };
-				}
-
-				// Update UI
-				this.ctx.renderInitialMessages({ clearTerminalHistory: true });
-				await this.ctx.reloadTodos();
-				this.ctx.editor.setText(result.selectedText);
-				this.ctx.showStatus("Branched to new session");
-
-				return { cancelled: false };
-			},
-			navigateTree: async (targetId, options) => {
-				const result = await this.ctx.session.navigateTree(targetId, { summarize: options?.summarize });
-				if (result.cancelled) {
-					return { cancelled: true };
-				}
-
-				// Update UI
-				this.ctx.renderInitialMessages({ clearTerminalHistory: true });
-				await this.ctx.reloadTodos();
-				if (result.editorText && !this.ctx.editor.getText().trim()) {
-					this.ctx.editor.setText(result.editorText);
-				}
-				this.ctx.showStatus("Navigated to selected point");
-
-				return { cancelled: false };
-			},
-			compact: async instructionsOrOptions => this.#handleInteractiveCompact(instructionsOrOptions),
-			switchSession: async sessionPath => {
-				this.clearHookWidgets();
-				const result = await this.ctx.session.switchSession(sessionPath);
-				if (!result) {
-					return { cancelled: true };
-				}
-				setSessionTerminalTitle(this.ctx.sessionManager.getSessionName(), this.ctx.sessionManager.getCwd());
-				this.ctx.renderInitialMessages({ clearTerminalHistory: true });
-				await this.ctx.reloadTodos();
-				return { cancelled: false };
-			},
-		};
-
-		extensionRunner.initialize(actions, contextActions, commandActions, uiContext);
-
 		// Subscribe to extension errors
 		extensionRunner.onError((error: ExtensionError) => {
 			this.showExtensionError(error.extensionPath, error.error);
@@ -630,9 +489,20 @@ export class ExtensionUiController {
 		dialogOptions?: InteractiveSelectorDialogOptions,
 		extra?: { slider?: HookSelectorSlider },
 	): Promise<string | undefined> {
+		const selectDialog = toSelectDialog({
+			id: `select:${Date.now()}`,
+			title,
+			options: options.map(opt =>
+				typeof opt === "string"
+					? { value: opt, label: opt }
+					: { value: opt.label, label: opt.label, description: opt.description },
+			),
+			selectedIndex: dialogOptions?.initialIndex,
+			filterable: options.length > 12,
+		});
 		const request: CollabUiRequestDraft = {
 			kind: "select",
-			title,
+			title: selectDialog.title,
 			options: toWireSelectOptions(options),
 			initialIndex: dialogOptions?.initialIndex,
 			selectionMarker: dialogOptions?.selectionMarker,
@@ -641,7 +511,7 @@ export class ExtensionUiController {
 			helpText: dialogOptions?.helpText,
 		};
 		return this.#raceCollabDialog(request, dialogOptions?.signal, signal =>
-			this.showHookSelector(title, options, { ...dialogOptions, signal }, extra),
+			this.showHookSelector(selectDialog.title, options, { ...dialogOptions, signal }, extra),
 		);
 	}
 
@@ -1026,8 +896,18 @@ export class ExtensionUiController {
 	 * Show a confirmation dialog for hooks.
 	 */
 	async showHookConfirm(title: string, message: string): Promise<boolean> {
-		const result = await this.showHookSelector(`${title}\n${message}`, ["Yes", "No"]);
-		return result === "Yes";
+		const dialog = toConfirmDialog({
+			id: `confirm:${Date.now()}`,
+			title,
+			body: message,
+			confirmLabel: "Yes",
+			cancelLabel: "No",
+		});
+		const result = await this.showHookSelector(dialog.body ? `${dialog.title}\n${dialog.body}` : dialog.title, [
+			dialog.confirmLabel,
+			dialog.cancelLabel,
+		]);
+		return result === dialog.confirmLabel;
 	}
 
 	/**
@@ -1047,17 +927,24 @@ export class ExtensionUiController {
 		 */
 		inputOptions?: { mask?: boolean; hint?: string },
 	): Promise<string | undefined> {
+		const dialog = toPromptDialog({
+			id: `prompt:${Date.now()}`,
+			title,
+			placeholder,
+			masked: inputOptions?.mask,
+		});
 		return this.#presentDialog(dialogOptions?.signal, settle => {
 			const input = new HookInputComponent(
-				title,
-				placeholder,
+				dialog.title,
+				dialog.placeholder,
 				value => settle(value),
 				() => settle(undefined),
 				{
 					timeout: dialogOptions?.timeout,
 					onTimeout: dialogOptions?.onTimeout,
 					tui: this.ctx.ui,
-					mask: inputOptions?.mask === true ? DEFAULT_MASK_CHAR : undefined,
+					mask: dialog.masked ? DEFAULT_MASK_CHAR : undefined,
+					credentialMode: dialog.masked,
 					hint: inputOptions?.hint,
 					onRequestRender: () => this.ctx.ui.requestRender(),
 				},
@@ -1366,7 +1253,8 @@ export class ExtensionUiController {
 		this.#dialogQueue.shift()?.();
 	}
 }
-registerAutoresearchUi({
+/** The terminal host's autoresearch surfaces: the run screen and the launcher, each a `custom` overlay. */
+export const terminalAutoresearchUi: AutoresearchUiDelegate = {
 	async showScreen(ctx, runtime, model, options) {
 		const terminal = ctx.ui.terminal;
 		if (!terminal) {
@@ -1418,4 +1306,5 @@ registerAutoresearchUi({
 			{ overlay: LAUNCHER_OVERLAY },
 		);
 	},
-});
+};
+registerAutoresearchUi(terminalAutoresearchUi);

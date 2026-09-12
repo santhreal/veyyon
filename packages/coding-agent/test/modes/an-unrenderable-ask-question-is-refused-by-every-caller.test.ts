@@ -7,7 +7,7 @@
  * shaped `{id, header, options}` reached the header renderer and threw
  * `TypeError: undefined is not an object (evaluating 'text.replaceAll')` from
  * inside a render pass. A throw there is not a tool error and not a notice: it is
- * an uncaught exception, so the session died and took every live subagent with it.
+ * an uncaught exception, so the session died and took every live agent with it.
  *
  * WHAT CLASS THIS CLOSES. Not "the reported question shape" and not "the dialog
  * component in isolation": every producer that can carry a question into the

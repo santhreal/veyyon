@@ -140,8 +140,8 @@ CARD_CENTRE_Y=$(( BAND_Y + MARGIN + 30 ))
 
 fill_pixels() { # <shot> <geometry> <hex> -> count of pixels of exactly that colour
 	local png="${SCENE_OUT}/${SCENE_NAME}-$1.png"
-	local dump="${SCENE_RUNTIME_DIR}/frame-compare/$1-$3.txt"
-	mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+	local dump="${TMPDIR}/frame-compare/$1-$3.txt"
+	mkdir -p "${TMPDIR}/frame-compare"
 	magick "${png}" -crop "$2" +repage txt:- >"${dump}"
 	python3 - "${dump}" "$3" <<'PY'
 import re

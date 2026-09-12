@@ -26,8 +26,32 @@ import type {
 	ViewTone,
 } from "@veyyon/view";
 import { stripTaskResultEnvelope } from "@veyyon/wire/task-result";
-import { Ellipsis, formatDuration, getPreviewLines, replaceTabs, truncateToWidth } from "../core/render-utils";
-import { type AgentActivitySnapshot, COLLAPSED_LIST_LIMIT, type JobSnapshot, type JobToolDetails } from "./job";
+import {
+	Ellipsis,
+	extractResultText,
+	formatDuration,
+	getPreviewLines,
+	PREVIEW_LIMITS,
+	replaceTabs,
+	sanitizeErrorText,
+	shortenEmbeddedPaths,
+	type ToolViewResult,
+	truncateToWidth,
+} from "../core/render-utils";
+import type { AgentActivitySnapshot, JobSnapshot, JobToolDetails } from "./job";
+
+/**
+ * A poll snapshot where every watched job is still running and nothing was
+ * cancelled — pure "still waiting" noise once a newer poll exists. The TUI
+ * keeps such a block un-finalized (displaceable) so a follow-up `job` call
+ * replaces it instead of stacking another waiting frame in the transcript.
+ */
+export function isWaitingPollDetails(details: unknown): boolean {
+	const d = details as JobToolDetails | undefined;
+	if (!d || !Array.isArray(d.jobs) || d.jobs.length === 0) return false;
+	if (d.cancelled?.length) return false;
+	return d.jobs.every(job => job?.status === "running");
+}
 
 /** The columns a job's label may spend before it is cut. */
 const LABEL_MAX_WIDTH = 60;
@@ -52,15 +76,11 @@ export interface JobRenderArgs {
 }
 
 /** The result a job card reads: the text the tool returned, and the snapshot it carries. */
-export interface JobViewResult {
-	content?: Array<{ type: string; text?: string }>;
-	details?: JobToolDetails;
-	isError?: boolean;
-}
+export interface JobViewResult extends Partial<ToolViewResult<JobToolDetails>> {}
 
-/** The state a job reports, as the mark a host draws for it. */
-function statusMark(status: JobSnapshot["status"]): ViewStatus {
-	switch (status) {
+/** The state a job reports, as the mark a host draws for it. A queued job has not started, so it is pending, not running. */
+function statusMark(job: Pick<JobSnapshot, "status" | "queued">): ViewStatus {
+	switch (job.status) {
 		case "completed":
 			return "done";
 		case "failed":
@@ -68,13 +88,13 @@ function statusMark(status: JobSnapshot["status"]): ViewStatus {
 		case "cancelled":
 			return "aborted";
 		case "running":
-			return "running";
+			return job.queued ? "pending" : "running";
 	}
 }
 
 /** The tone a job's kind badge carries, which is what its state means. */
-function statusTone(status: JobSnapshot["status"]): ViewTone {
-	switch (status) {
+function statusTone(job: Pick<JobSnapshot, "status" | "queued">): ViewTone {
+	switch (job.status) {
 		case "completed":
 			return "success";
 		case "failed":
@@ -82,7 +102,7 @@ function statusTone(status: JobSnapshot["status"]): ViewTone {
 		case "cancelled":
 			return "warning";
 		case "running":
-			return "accent";
+			return job.queued ? "muted" : "accent";
 	}
 }
 
@@ -123,7 +143,7 @@ function describeTarget(args: JobRenderArgs | undefined): string {
  */
 function jobLines(job: JobSnapshot, context: ToolViewContext): ViewLine[] {
 	const lines: ViewLine[] = [];
-	const tone = statusTone(job.status);
+	const tone = statusTone(job);
 	// Task jobs label themselves with their agent id, which is also the job id — drop the id column
 	// instead of stuttering it twice.
 	const named = job.label.trim() !== job.id;
@@ -136,17 +156,18 @@ function jobLines(job: JobSnapshot, context: ToolViewContext): ViewLine[] {
 		visibleLabelLines[visibleLabelLines.length - 1] = `${visibleLabelLines[visibleLabelLines.length - 1]!} …`;
 	}
 	// A running job is live only where the surface repaints: a still capture and a settled snapshot
-	// carry the words and no motion, so the label is drawn as body text there.
-	const live = job.status === "running" && context.frame !== undefined;
+	// carry the words and no motion, so the label is drawn as body text there. A queued job has no
+	// motion to show either: nothing is running until it holds a slot.
+	const live = job.status === "running" && !job.queued && context.frame !== undefined;
 	lines.push([
-		{ text: "", status: statusMark(job.status) },
+		{ text: "", status: statusMark(job) },
 		...(named ? [{ text: " " }, { text: job.id, tone: "muted" as ViewTone }] : []),
 		{ text: " " },
 		{ text: job.type, badge: true, tone },
 		{ text: " " },
 		{ text: visibleLabelLines[0] ?? "", tone: live ? "accent" : "output", ...(live ? { live: true } : {}) },
 		{ text: " " },
-		{ text: formatDuration(job.durationMs), tone: "dim" },
+		{ text: job.queued ? `queued ${formatDuration(job.durationMs)}` : formatDuration(job.durationMs), tone: "dim" },
 	]);
 	for (let index = 1; index < visibleLabelLines.length; index++) {
 		lines.push([{ text: ROW_BODY_INDENT }, { text: visibleLabelLines[index]!, tone: "output" }]);
@@ -219,6 +240,8 @@ function summaryRow(
 	// The title already carries the running count, so meta lists only the settled categories —
 	// "waiting on 19 of 19 · 19 running" read awkward.
 	const meta: ViewLine[] = [];
+	const queued = jobs.reduce((count, job) => (job.queued ? count + 1 : count), 0);
+	if (queued > 0) meta.push([{ text: `${queued} queued`, tone: "muted" }]);
 	if (counts.completed > 0) meta.push([{ text: `${counts.completed} done`, tone: "success" }]);
 	if (counts.failed > 0) meta.push([{ text: `${counts.failed} failed`, tone: "error" }]);
 	if (counts.cancelled > 0) meta.push([{ text: `${counts.cancelled} cancelled`, tone: "warning" }]);
@@ -244,12 +267,25 @@ function summaryRow(
 
 /** The card a snapshot with neither a job nor an agent in it falls back to. */
 function emptyCard(result: JobViewResult, args: JobRenderArgs | undefined): HeadedBlockView {
-	const fallback = result.content?.find(part => part.type === "text")?.text || "No jobs to process";
+	if (result.isError) {
+		const fallback = extractResultText(result.content) || "Job operation failed";
+		const sanitized = sanitizeErrorText(fallback);
+		return {
+			kind: "headedBlock",
+			header: { kind: "statusRow", status: "error", title: describeTarget(args) || "Job" },
+			lines: sanitized.split("\n").map(line => [{ text: line, tone: "error" }]),
+		};
+	}
+	const fallback = extractResultText(result.content) || "No jobs to process";
 	return {
 		kind: "headedBlock",
 		header: { kind: "statusRow", status: "warning", title: describeTarget(args) || "Job" },
 		lines: [
-			[{ text: "", symbol: "status.warning", tone: "warning" }, { text: " " }, { text: fallback, tone: "muted" }],
+			[
+				{ text: "", symbol: "status.warning", tone: "warning" },
+				{ text: " " },
+				{ text: replaceTabs(shortenEmbeddedPaths(fallback)), tone: "muted" },
+			],
 		],
 	};
 }
@@ -290,8 +326,8 @@ export const jobToolView: Required<ToolViewRenderer<JobRenderArgs, JobViewResult
 		const sorted = [...jobs].sort(
 			(left, right) => STATUS_ORDER[left.status] - STATUS_ORDER[right.status] || right.durationMs - left.durationMs,
 		);
-		const shownJobs = context.expanded ? sorted : sorted.slice(0, COLLAPSED_LIST_LIMIT);
-		const shownAgents = context.expanded ? agents : agents.slice(0, COLLAPSED_LIST_LIMIT);
+		const shownJobs = context.expanded ? sorted : sorted.slice(0, PREVIEW_LIMITS.COLLAPSED_ITEMS);
+		const shownAgents = context.expanded ? agents : agents.slice(0, PREVIEW_LIMITS.COLLAPSED_ITEMS);
 		const hidden = heldBack(sorted.length - shownJobs.length, agents.length - shownAgents.length);
 
 		return {

@@ -7,6 +7,7 @@ import { scratchpadMaxItems } from "../../config";
 import { transaction } from "../../db";
 import { toUtcIso } from "../../util/datetime";
 import { generateId } from "../../util/ids";
+import { getMemoryTableStats } from "../../util/sqlite";
 import { currentEmbeddingModel, embeddingsDisabled } from "../embeddings";
 import { EpisodicGraph } from "../episodic-graph";
 import { countExtractedFactCategories, extractFactCategoriesSafe } from "../extraction";
@@ -594,30 +595,8 @@ export function getWorkingStats(
 	authorType: string | null = null,
 	channelId: string | null = null,
 ): BeamStats {
-	const clauses: string[] = [];
-	const params: SQLQueryBindings[] = [];
-	if (authorId) {
-		clauses.push("author_id = ?");
-		params.push(authorId);
-	}
-	if (authorType) {
-		clauses.push("author_type = ?");
-		params.push(authorType);
-	}
-	if (channelId) {
-		clauses.push("channel_id = ?");
-		params.push(channelId);
-	}
-	const where = clauses.length === 0 ? "" : ` WHERE ${clauses.join(" AND ")}`;
-	const total = beam.db.prepare(`SELECT COUNT(*) AS total FROM working_memory${where}`).get(...params) as {
-		total: number;
-	};
-	const last = beam.db
-		.prepare(`SELECT timestamp FROM working_memory${where} ORDER BY timestamp DESC LIMIT 1`)
-		.get(...params) as { timestamp: string | null } | null;
-	return { total: total.total, count: total.total, last: last?.timestamp ?? null };
+	return getMemoryTableStats(beam.db, "working_memory", authorId, authorType, channelId);
 }
-
 export function getGlobalWorkingStats(beam: BeamMemoryState): BeamStats {
 	return getWorkingStats(beam);
 }
@@ -757,6 +736,9 @@ export function scratchpadClear(beam: BeamMemoryState): void {
 	beam.db.prepare("DELETE FROM scratchpad WHERE session_id = ?").run(beam.sessionId);
 }
 
+const EXPORT_BASE_COLUMNS =
+	"id, content, source, timestamp, session_id, importance, metadata_json, valid_until, superseded_by, scope, recall_count, last_recalled, created_at, veracity, memory_type, author_id, author_type, channel_id, trust_tier, event_date, event_date_precision, temporal_tags";
+
 export function exportToDict(beam: BeamMemoryState): Record<string, unknown> {
 	const db = beam.db;
 	return {
@@ -767,42 +749,25 @@ export function exportToDict(beam: BeamMemoryState): Record<string, unknown> {
 			component: "beam",
 		},
 		working_memory: db
-			.prepare(`
-				SELECT id, content, source, timestamp, session_id, importance,
-					   embed_text,
-					   metadata_json, valid_until, superseded_by, scope,
-					   recall_count, last_recalled, created_at, veracity, consolidated_at,
-					   memory_type, author_id, author_type, channel_id, trust_tier,
-					   event_date, event_date_precision, temporal_tags
-				FROM working_memory
-				ORDER BY session_id, timestamp
-			`)
+			.prepare(
+				`SELECT ${EXPORT_BASE_COLUMNS.replace("metadata_json,", "embed_text, metadata_json,")}, consolidated_at FROM working_memory ORDER BY session_id, timestamp`,
+			)
 			.all(),
 		episodic_memory: db
-			.prepare(`
-				SELECT rowid, id, content, source, timestamp, session_id, importance,
-					   metadata_json, summary_of, valid_until, superseded_by, scope,
-					   recall_count, last_recalled, created_at, veracity, memory_type,
-					   author_id, author_type, channel_id, trust_tier,
-					   event_date, event_date_precision, temporal_tags
-				FROM episodic_memory
-				ORDER BY session_id, timestamp
-			`)
+			.prepare(
+				`SELECT rowid, ${EXPORT_BASE_COLUMNS.replace("metadata_json,", "metadata_json, summary_of,")} FROM episodic_memory ORDER BY session_id, timestamp`,
+			)
 			.all(),
 		episodic_embeddings: [],
 		scratchpad: db
-			.prepare(`
-				SELECT id, content, session_id, created_at, updated_at
-				FROM scratchpad
-				ORDER BY session_id, updated_at
-			`)
+			.prepare(
+				"SELECT id, content, session_id, created_at, updated_at FROM scratchpad ORDER BY session_id, updated_at",
+			)
 			.all(),
 		consolidation_log: db
-			.prepare(`
-				SELECT id, session_id, items_consolidated, summary_preview, created_at
-				FROM consolidation_log
-				ORDER BY session_id, created_at
-			`)
+			.prepare(
+				"SELECT id, session_id, items_consolidated, summary_preview, created_at FROM consolidation_log ORDER BY session_id, created_at",
+			)
 			.all(),
 	};
 }
@@ -818,29 +783,33 @@ export function importFromDict(beam: BeamMemoryState, data: Record<string, unkno
 	const oldToNewRowid = new Map<number, number>();
 
 	transaction(db, () => {
+		const checkWorking = db.prepare("SELECT 1 FROM working_memory WHERE id = ?");
+		const deleteWorking = db.prepare("DELETE FROM working_memory WHERE id = ?");
+		const insertWorking = db.prepare(`
+			INSERT INTO working_memory
+			(id, content, source, timestamp, session_id, importance, metadata_json,
+			 valid_until, superseded_by, scope, recall_count, last_recalled, created_at,
+			 veracity, consolidated_at, memory_type, embed_text, author_id, author_type, channel_id,
+			 trust_tier, event_date, event_date_precision, temporal_tags)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`);
+
 		for (const raw of Array.isArray(data.working_memory) ? data.working_memory : []) {
 			const item = jsonObject(raw);
 			const id = String(item.id ?? "");
 			if (id.length === 0) continue;
-			const exists = db.prepare("SELECT 1 FROM working_memory WHERE id = ?").get(id) !== null;
+			const exists = checkWorking.get(id) !== null;
 			if (exists && !force) {
 				stats.working_memory.skipped++;
 				continue;
 			}
 			if (exists) {
-				db.prepare("DELETE FROM working_memory WHERE id = ?").run(id);
+				deleteWorking.run(id);
 				stats.working_memory.overwritten++;
 			} else {
 				stats.working_memory.inserted++;
 			}
-			db.prepare(`
-				INSERT INTO working_memory
-				(id, content, source, timestamp, session_id, importance, metadata_json,
-				 valid_until, superseded_by, scope, recall_count, last_recalled, created_at,
-				 veracity, consolidated_at, memory_type, embed_text, author_id, author_type, channel_id,
-				 trust_tier, event_date, event_date_precision, temporal_tags)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`).run(
+			insertWorking.run(
 				id,
 				sqlBinding(item.content, ""),
 				sqlBinding(item.source, null),
@@ -868,39 +837,43 @@ export function importFromDict(beam: BeamMemoryState, data: Record<string, unkno
 			);
 		}
 
+		const checkEpisodic = db.prepare("SELECT 1 FROM episodic_memory WHERE id = ?");
+		const getEpisodicRowid = db.prepare("SELECT rowid FROM episodic_memory WHERE id = ?");
+		const deleteEpisodic = db.prepare("DELETE FROM episodic_memory WHERE id = ?");
+		const deleteVec = vecAvailable(db) ? db.prepare("DELETE FROM vec_episodes WHERE rowid = ?") : null;
+		const insertEpisodic = db.prepare(`
+			INSERT INTO episodic_memory
+			(id, content, source, timestamp, session_id, importance, metadata_json,
+			 summary_of, valid_until, superseded_by, scope, recall_count, last_recalled, created_at,
+			 veracity, memory_type, author_id, author_type, channel_id, trust_tier,
+			 event_date, event_date_precision, temporal_tags)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`);
+
 		for (const raw of Array.isArray(data.episodic_memory) ? data.episodic_memory : []) {
 			const item = jsonObject(raw);
 			const id = String(item.id ?? "");
 			if (id.length === 0) continue;
-			const exists = db.prepare("SELECT 1 FROM episodic_memory WHERE id = ?").get(id) !== null;
+			const exists = checkEpisodic.get(id) !== null;
 			if (exists && !force) {
 				stats.episodic_memory.skipped++;
 				continue;
 			}
 			if (exists) {
-				const existingRow = db.prepare("SELECT rowid FROM episodic_memory WHERE id = ?").get(id) as {
-					rowid: number;
-				} | null;
-				if (existingRow !== null && vecAvailable(db)) {
+				const existingRow = getEpisodicRowid.get(id) as { rowid: number } | null;
+				if (existingRow !== null && deleteVec !== null) {
 					try {
-						db.prepare("DELETE FROM vec_episodes WHERE rowid = ?").run(existingRow.rowid);
+						deleteVec.run(existingRow.rowid);
 					} catch {
 						// sqlite-vec cleanup is best-effort; import correctness takes precedence.
 					}
 				}
-				db.prepare("DELETE FROM episodic_memory WHERE id = ?").run(id);
+				deleteEpisodic.run(id);
 				stats.episodic_memory.overwritten++;
 			} else {
 				stats.episodic_memory.inserted++;
 			}
-			db.prepare(`
-				INSERT INTO episodic_memory
-				(id, content, source, timestamp, session_id, importance, metadata_json,
-				 summary_of, valid_until, superseded_by, scope, recall_count, last_recalled, created_at,
-				 veracity, memory_type, author_id, author_type, channel_id, trust_tier,
-				 event_date, event_date_precision, temporal_tags)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`).run(
+			insertEpisodic.run(
 				id,
 				sqlBinding(item.content, ""),
 				sqlBinding(item.source, null),
@@ -926,9 +899,7 @@ export function importFromDict(beam: BeamMemoryState, data: Record<string, unkno
 				sqlBinding(item.temporal_tags, "[]"),
 			);
 			const oldRowid = Number(item.rowid);
-			const newRow = db.prepare("SELECT rowid FROM episodic_memory WHERE id = ?").get(id) as {
-				rowid: number;
-			} | null;
+			const newRow = getEpisodicRowid.get(id) as { rowid: number } | null;
 			if (Number.isFinite(oldRowid) && newRow !== null) oldToNewRowid.set(oldRowid, newRow.rowid);
 		}
 
@@ -949,15 +920,21 @@ export function importFromDict(beam: BeamMemoryState, data: Record<string, unkno
 			}
 		}
 
+		const checkScratchpad = db.prepare("SELECT 1 FROM scratchpad WHERE id = ?");
+		const updateScratchpad = db.prepare(
+			"UPDATE scratchpad SET content = ?, session_id = ?, created_at = ?, updated_at = ? WHERE id = ?",
+		);
+		const insertScratchpad = db.prepare(
+			"INSERT INTO scratchpad (id, content, session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		);
+
 		for (const raw of Array.isArray(data.scratchpad) ? data.scratchpad : []) {
 			const item = jsonObject(raw);
 			const id = String(item.id ?? "");
 			if (id.length === 0) continue;
-			const exists = db.prepare("SELECT 1 FROM scratchpad WHERE id = ?").get(id) !== null;
+			const exists = checkScratchpad.get(id) !== null;
 			if (exists) {
-				db.prepare(
-					"UPDATE scratchpad SET content = ?, session_id = ?, created_at = ?, updated_at = ? WHERE id = ?",
-				).run(
+				updateScratchpad.run(
 					sqlBinding(item.content, ""),
 					sqlBinding(item.session_id, "default"),
 					sqlBinding(item.created_at, null),
@@ -966,9 +943,7 @@ export function importFromDict(beam: BeamMemoryState, data: Record<string, unkno
 				);
 				stats.scratchpad.updated++;
 			} else {
-				db.prepare(
-					"INSERT INTO scratchpad (id, content, session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-				).run(
+				insertScratchpad.run(
 					id,
 					sqlBinding(item.content, ""),
 					sqlBinding(item.session_id, "default"),
@@ -979,11 +954,12 @@ export function importFromDict(beam: BeamMemoryState, data: Record<string, unkno
 			}
 		}
 
+		const insertConsolidation = db.prepare(
+			"INSERT INTO consolidation_log (session_id, items_consolidated, summary_preview, created_at) VALUES (?, ?, ?, ?)",
+		);
 		for (const raw of Array.isArray(data.consolidation_log) ? data.consolidation_log : []) {
 			const item = jsonObject(raw);
-			db.prepare(
-				"INSERT INTO consolidation_log (session_id, items_consolidated, summary_preview, created_at) VALUES (?, ?, ?, ?)",
-			).run(
+			insertConsolidation.run(
 				sqlBinding(item.session_id, "default"),
 				sqlBinding(item.items_consolidated, 0),
 				sqlBinding(item.summary_preview, ""),

@@ -83,7 +83,7 @@ describe("a number typed into a settings text box", () => {
 	 * the input would have refused a documented value.
 	 */
 	it("accepts any decimal where the schema declares no bound", () => {
-		const unbounded = "subagent.idleTtlMs";
+		const unbounded = "agent.idleTtlMs";
 		expect(getUi(unbounded)?.min).toBeUndefined();
 		expect(getUi(unbounded)?.max).toBeUndefined();
 		expect(parseNumberSetting(unbounded, "99999")).toBe(99999);

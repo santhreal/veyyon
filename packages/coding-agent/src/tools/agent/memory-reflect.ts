@@ -4,6 +4,7 @@ import { type } from "arktype";
 import { ensureBankExists } from "../../memory/hindsight/bank";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
+import { requireMnemopiSessionState } from "./memory-session";
 import { reflectToolView } from "./memory-view";
 
 const memoryReflectSchema = type({
@@ -36,10 +37,7 @@ export class MemoryReflectTool implements AgentTool<typeof memoryReflectSchema> 
 		return untilAborted(signal, async () => {
 			const backend = this.session.settings.get("memory.backend");
 			if (backend === "mnemopi") {
-				const state = this.session.getMnemopiSessionState?.();
-				if (!state) {
-					throw new Error("Mnemopi backend is not initialised for this session.");
-				}
+				const state = requireMnemopiSessionState(this.session);
 
 				try {
 					const query = params.context?.trim()

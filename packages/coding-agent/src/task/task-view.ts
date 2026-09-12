@@ -33,33 +33,38 @@ import type {
 	ViewTone,
 	ViewTreeLines,
 } from "@veyyon/view";
-// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
-import { settings } from "../config/settings-instance";
 import {
 	type FindingPriority,
+	findingTitle,
 	getPriorityInfo,
+	normalizeReportFindings,
 	PRIORITY_LABELS,
-	parseReportFindingDetails,
+	priorityTone,
 	type ReportFindingDetails,
 	type SubmitReviewDetails,
 } from "../tools/agent/review";
 import { jsonTreeViewLines } from "../tools/core/json-tree-view";
-import { formatDuration, formatMoreItems, previewLine, replaceTabs, truncateToWidth } from "../tools/core/render-utils";
-import { appendAgentStats, sanitizeRecentOutput } from "./agent-stats";
-import { classifySubagentOutcome } from "./outcome";
+import {
+	extractResultText,
+	formatDuration,
+	formatMoreItems,
+	previewLine,
+	replaceTabs,
+	shortenEmbeddedPaths,
+	type ToolViewResult,
+	truncateToWidth,
+} from "../tools/core/render-utils";
+import { appendAgentStats, STATS_DOT, sanitizeRecentOutput, span } from "./agent-stats";
+import { classifyAgentOutcome } from "./outcome";
 import { repairDoubleEncodedJsonString, repairTaskParams } from "./repair-args";
 import { DEFAULT_SPAWN_AGENT } from "./spawn-policy";
 import { YIELD_TOOL_NAME } from "./subprocess-tool-registry";
 import { formatTaskId } from "./task-id";
 import type { AgentProgress, SingleResult, TaskItem, TaskParams, TaskToolDetails, YieldItem } from "./types";
-import { assembleYieldResult } from "./yield-assembly";
+import { assembleYieldResult, getYieldLabels } from "./yield-assembly";
 
 /** What the tool returns, as the card reads it. */
-export interface TaskViewResult {
-	content: Array<{ type: string; text?: string }>;
-	details?: TaskToolDetails;
-	isError?: boolean;
-}
+export interface TaskViewResult extends ToolViewResult<TaskToolDetails> {}
 
 /** How deep the card follows a tree of spawned agents before it says so and stops. */
 const MAX_NESTED_TASK_RENDER_DEPTH = 8;
@@ -102,35 +107,13 @@ function detailRow(place: NodePlace, spans: ViewSpan[]): TaskRow {
 	return { spans, depth: place.depth, last: place.last, opens: false };
 }
 
-/** A run of the card's own words. */
-function span(text: string, tone?: ViewTone): ViewSpan {
-	return tone === undefined ? { text } : { text, tone };
+function pushDotSpan(target: ViewSpan[], text: string, tone: ViewTone): void {
+	if (target.length > 0) target.push(STATS_DOT);
+	target.push(span(text, tone));
 }
-
-/**
- * The separator between two trailing facts of a row, as the host's own glyph.
- *
- * A row that stated a literal dot would draw one on a terminal whose preset writes ` - `, so the mark
- * is named and the fallback text is what a host with no glyph for it writes.
- */
-const DOT: ViewSpan = { text: " · ", symbol: "sep.dot", tone: "dim" };
 
 /** The two columns a section's own body sits in, under the line that names it. */
 const INSET: ViewSpan = { text: "  " };
-
-/** The tone a finding's priority carries, which the review module decides and this reads back. */
-const PRIORITY_TONES: Readonly<Record<string, ViewTone>> = {
-	error: "error",
-	warning: "warning",
-	muted: "muted",
-	accent: "accent",
-	info: "info",
-	success: "success",
-};
-
-function priorityTone(priority: FindingPriority): ViewTone {
-	return PRIORITY_TONES[getPriorityInfo(priority).color] ?? "muted";
-}
 
 /** The mark an agent's state carries, which the host animates when the state is one that moves. */
 function statusOf(status: AgentProgress["status"]): ViewStatus {
@@ -157,7 +140,7 @@ function findingSummarySpans(findings: ReportFindingDetails[]): ViewSpan[] {
 
 	const line: ViewSpan[] = [span("Findings:", "dim"), span(" ")];
 	PRIORITY_LABELS.forEach((label, index) => {
-		if (index > 0) line.push(DOT);
+		if (index > 0) line.push(STATS_DOT);
 		const tone = priorityTone(label);
 		line.push(
 			{ text: "", symbol: getPriorityInfo(label).symbol, tone },
@@ -168,29 +151,12 @@ function findingSummarySpans(findings: ReportFindingDetails[]): ViewSpan[] {
 	return line;
 }
 
-function normalizeReportFindings(value: unknown): ReportFindingDetails[] {
-	if (!Array.isArray(value)) return [];
-	const findings: ReportFindingDetails[] = [];
-	for (const item of value) {
-		const finding = parseReportFindingDetails(item);
-		if (finding) findings.push(finding);
-	}
-	return findings;
-}
-
-/** Reviewer output declares `findings` as an array, so a lone finding section still assembles as a list. */
 const REVIEWER_ARRAY_LABELS: ReadonlySet<string> = new Set(["findings"]);
 
 function extractIncrementalReviewResult(
-	items: RenderYieldItem[],
+	items: YieldItem[],
 ): { summary: SubmitReviewDetails; findings: ReportFindingDetails[] } | undefined {
-	const yieldItems: YieldItem[] = items.map(item => ({
-		data: item.data,
-		type: item.type,
-		status: item.status === "aborted" ? "aborted" : item.status === "success" ? "success" : undefined,
-		useLastTurn: item.useLastTurn,
-	}));
-	const assembled = assembleYieldResult(yieldItems, undefined, REVIEWER_ARRAY_LABELS);
+	const assembled = assembleYieldResult(items, undefined, REVIEWER_ARRAY_LABELS);
 	const data = assembled?.data;
 	if (!isRecord(data)) return undefined;
 	const record = data as Record<string, unknown>;
@@ -209,12 +175,26 @@ function extractIncrementalReviewResult(
 		findings: normalizeReportFindings(record.findings),
 	};
 }
-
-interface RenderYieldItem {
-	data?: unknown;
-	type?: string | string[];
-	status?: string;
-	useLastTurn?: boolean;
+function extractReviewDetails(extractedToolData: Record<string, unknown> | undefined):
+	| {
+			summary: SubmitReviewDetails;
+			findings: ReportFindingDetails[];
+	  }
+	| undefined {
+	if (!extractedToolData) return undefined;
+	const completeData = normalizeYieldData(extractedToolData.yield);
+	const incrementalReview = extractIncrementalReviewResult(completeData);
+	if (incrementalReview) return incrementalReview;
+	for (let i = completeData.length - 1; i >= 0; i--) {
+		const d = completeData[i].data;
+		if (d && typeof d === "object" && "overall_correctness" in d) {
+			return {
+				summary: d as unknown as SubmitReviewDetails,
+				findings: normalizeReportFindings(extractedToolData.report_finding),
+			};
+		}
+	}
+	return undefined;
 }
 
 /**
@@ -224,14 +204,14 @@ interface RenderYieldItem {
  * optional chaining short-circuits on `null` and `undefined` alone, so `.map` on a plain object
  * threw and took the card with it. A lone object is read as a one-entry list and a primitive drops.
  */
-function normalizeYieldData(value: unknown): RenderYieldItem[] {
+function normalizeYieldData(value: unknown): YieldItem[] {
 	const items = Array.isArray(value) ? value : value !== null && typeof value === "object" ? [value] : [];
-	const normalized: RenderYieldItem[] = [];
+	const normalized: YieldItem[] = [];
 	for (const item of items) {
 		if (item === null || typeof item !== "object") continue;
 		const record = item as Record<string, unknown>;
 		const typeValue = record.type;
-		let type: RenderYieldItem["type"];
+		let type: YieldItem["type"];
 		if (typeof typeValue === "string") {
 			type = typeValue;
 		} else if (Array.isArray(typeValue)) {
@@ -249,29 +229,14 @@ function normalizeYieldData(value: unknown): RenderYieldItem[] {
 		normalized.push({
 			data: record.data,
 			type,
-			status: typeof record.status === "string" ? record.status : undefined,
+			status: record.status === "aborted" ? "aborted" : record.status === "success" ? "success" : undefined,
 			useLastTurn: record.useLastTurn === true ? true : undefined,
 		});
 	}
 	return normalized;
 }
 
-function getRenderYieldLabels(type: RenderYieldItem["type"]): string[] {
-	if (typeof type === "string") {
-		const label = type.trim();
-		return label ? [label] : [];
-	}
-	if (!Array.isArray(type)) return [];
-	const labels: string[] = [];
-	for (const value of type) {
-		const label = value.trim();
-		if (label) labels.push(label);
-	}
-	return labels;
-}
-
-function formatYieldPreview(item: RenderYieldItem): string {
-	if (item.useLastTurn === true && item.data === undefined) return "last assistant turn";
+function formatYieldPreview(item: YieldItem): string {
 	if (item.data === undefined) return "last assistant turn";
 	if (typeof item.data === "string") return previewLine(replaceTabs(sanitizeText(item.data)), YIELD_PREVIEW_WIDTH);
 	try {
@@ -288,9 +253,9 @@ const YIELD_PREVIEW_WIDTH = 70;
 const COLLAPSED_YIELD_LIMIT = 3;
 
 function yieldSectionRows(value: unknown, place: NodePlace, expanded: boolean): TaskRow[] {
-	const typedItems: Array<{ item: RenderYieldItem; labels: string[] }> = [];
+	const typedItems: Array<{ item: YieldItem; labels: string[] }> = [];
 	for (const item of normalizeYieldData(value)) {
-		const labels = getRenderYieldLabels(item.type);
+		const labels = getYieldLabels(item.type);
 		if (labels.length === 0) continue;
 		typedItems.push({ item, labels });
 	}
@@ -312,12 +277,22 @@ const OUTPUT_LINE_WIDTH = 70;
 /** Columns a warning above an agent's output may spend. */
 const OUTPUT_WARNING_WIDTH = 80;
 
+function appendTruncatedLines(target: TaskRow[], lines: readonly string[], place: NodePlace, cap: number): void {
+	for (const line of lines.slice(0, cap)) {
+		target.push(detailRow(place, [INSET, span(truncateToWidth(replaceTabs(line), OUTPUT_LINE_WIDTH), "dim")]));
+	}
+	if (lines.length > cap) {
+		target.push(detailRow(place, [INSET, span(formatMoreItems(lines.length - cap, "line"), "dim")]));
+	}
+}
+
 /**
  * What an agent returned: a JSON value as a tree, or its output as lines.
  *
  * The warning an agent that never called `yield` carries opens the section, because it is the reason
  * the output below it is whatever the process happened to print.
  */
+
 function outputRows(
 	output: string,
 	place: NodePlace,
@@ -369,15 +344,7 @@ function outputRows(
 	}
 
 	if (!warning) rows.push(detailRow(place, [span("Output", "dim")]));
-
-	const outputLines = trimmedOutput.split("\n");
-	const previewCount = expanded ? maxExpanded : maxCollapsed;
-	for (const line of outputLines.slice(0, previewCount)) {
-		rows.push(detailRow(place, [INSET, span(truncateToWidth(replaceTabs(line), OUTPUT_LINE_WIDTH), "dim")]));
-	}
-	if (outputLines.length > previewCount) {
-		rows.push(detailRow(place, [INSET, span(formatMoreItems(outputLines.length - previewCount, "line"), "dim")]));
-	}
+	appendTruncatedLines(rows, trimmedOutput.split("\n"), place, expanded ? maxExpanded : maxCollapsed);
 	return rows;
 }
 
@@ -389,19 +356,12 @@ const JSON_TREE_LINES = 24;
 const ASSIGNMENT_ROWS = 20;
 
 /** The brief an agent was given, which an expanded card shows under its row. */
-function assignmentRows(task: string, place: NodePlace, expanded: boolean): TaskRow[] {
-	const rows: TaskRow[] = [];
+function assignmentRows(task: string | undefined, place: NodePlace, expanded: boolean): TaskRow[] {
+	if (!task || !expanded) return [];
 	const trimmed = sanitizeText(task).trim();
-	if (!expanded || !trimmed) return rows;
-
-	rows.push(detailRow(place, [span("Task", "dim")]));
-	const taskLines = trimmed.split("\n");
-	for (const line of taskLines.slice(0, ASSIGNMENT_ROWS)) {
-		rows.push(detailRow(place, [INSET, span(truncateToWidth(replaceTabs(line), OUTPUT_LINE_WIDTH), "dim")]));
-	}
-	if (taskLines.length > ASSIGNMENT_ROWS) {
-		rows.push(detailRow(place, [INSET, span(formatMoreItems(taskLines.length - ASSIGNMENT_ROWS, "line"), "dim")]));
-	}
+	if (!trimmed) return [];
+	const rows: TaskRow[] = [detailRow(place, [span("Task", "dim")])];
+	appendTruncatedLines(rows, trimmed.split("\n"), place, ASSIGNMENT_ROWS);
 	return rows;
 }
 
@@ -483,6 +443,14 @@ function agentTypeBadge(agent: string | undefined): ViewSpan[] {
 /** Columns an agent's brief may spend on the row that names it. */
 const BRIEF_WIDTH = 64;
 
+function callEntryRow(idLabel: string, brief: string, agent?: string, isolated?: boolean): TaskRow {
+	const line: ViewSpan[] = [span("•", "dim"), span(" "), { text: idLabel, tone: "accent", bold: true }];
+	if (brief) line.push(span(": "), span(previewLine(brief, BRIEF_WIDTH), "muted"));
+	line.push(...agentTypeBadge(agent));
+	if (isolated) line.push(span(" [isolated]", "dim"));
+	return openRow(TOP, line);
+}
+
 /** The agent a call is spawning, while its arguments are still arriving. */
 function callRows(args: Partial<TaskParams> | undefined): TaskRow[] {
 	if (!args) return [];
@@ -491,10 +459,7 @@ function callRows(args: Partial<TaskParams> | undefined): TaskRow[] {
 	const idLabel = rawName ? formatTaskId(rawName) : "";
 	const brief = taskFirstLine(args.task);
 	if (idLabel || brief) {
-		const line: ViewSpan[] = [span("•", "dim"), span(" "), { text: idLabel || "agent", tone: "accent", bold: true }];
-		if (brief) line.push(span(": "), span(previewLine(brief, BRIEF_WIDTH), "muted"));
-		line.push(...agentTypeBadge(args.agent));
-		rows.push(openRow(TOP, line));
+		rows.push(callEntryRow(idLabel || "agent", brief, args.agent));
 	}
 	rows.push(...callItemRows(args.tasks));
 	return rows;
@@ -514,12 +479,7 @@ function callItemRows(tasks: TaskItem[] | undefined): TaskRow[] {
 		const item = tasks[i] as Partial<TaskItem> | undefined;
 		const rawName = typeof item?.name === "string" ? item.name.trim() : "";
 		const idLabel = rawName ? formatTaskId(rawName) : `#${i + 1}`;
-		const line: ViewSpan[] = [span("•", "dim"), span(" "), { text: idLabel, tone: "accent", bold: true }];
-		const brief = taskFirstLine(item?.task);
-		if (brief) line.push(span(": "), span(previewLine(brief, BRIEF_WIDTH), "muted"));
-		line.push(...agentTypeBadge(item?.agent));
-		if (item?.isolated === true) line.push(span(" [isolated]", "dim"));
-		rows.push(openRow(TOP, line));
+		rows.push(callEntryRow(idLabel, taskFirstLine(item?.task), item?.agent, item?.isolated === true));
 	}
 	if (cap < tasks.length) {
 		rows.push(openRow(TOP, [span("•", "dim"), span(" "), span(formatMoreItems(tasks.length - cap, "agent"), "dim")]));
@@ -539,6 +499,12 @@ function markdownSection(text: string | undefined, separator: boolean): ViewSect
 		...(separator ? { separator: true } : {}),
 	};
 }
+function appendMarkdownBriefSections(target: ViewSection[], args?: Partial<TaskParams>): void {
+	const contextSection = markdownSection(args?.context, false);
+	if (contextSection) target.push(contextSection);
+	const assignmentSection = markdownSection(args?.task, false);
+	if (assignmentSection) target.push(assignmentSection);
+}
 
 /** Columns the tool an agent is running may spend. */
 const TOOL_DETAIL_WIDTH = 40;
@@ -556,6 +522,7 @@ function progressRows(
 	progress: AgentProgress,
 	place: NodePlace,
 	expanded: boolean,
+	showResolvedModelBadge: boolean,
 	frozen: boolean,
 	seen: WeakSet<object> | undefined,
 	nestedDepth: number,
@@ -575,18 +542,30 @@ function progressRows(
 	if (progress.status === "running" || progress.status === "pending") {
 		const tone: ViewTone = frozen ? "dim" : "accent";
 		line.push({ text: "", symbol: "status.done", tone }, span(" "));
-		line.push(description === undefined ? span(displayId, tone) : { text: displayId, tone, bold: true });
+		line.push(
+			description === undefined
+				? { text: displayId, tone, agentId: progress.id }
+				: { text: displayId, tone, bold: true, agentId: progress.id },
+		);
 		if (description) line.push(span(":", tone), span(" "), span(description, tone));
 	} else if (progress.status === "completed") {
 		// A finished row settles from the accent to the card's own body text: completion reads as a
 		// colour change rather than as a new mark, mark included.
 		line.push({ text: "", symbol: "status.done", tone: "text" }, span(" "));
-		if (description) line.push({ text: displayId, tone: "text", bold: true }, span(`: ${description}`, "text"));
-		else line.push(span(displayId, "text"));
+		if (description)
+			line.push(
+				{ text: displayId, tone: "text", bold: true, agentId: progress.id },
+				span(`: ${description}`, "text"),
+			);
+		else line.push({ text: displayId, tone: "text", agentId: progress.id });
 	} else {
 		line.push({ text: "", status: statusOf(progress.status), tone: iconTone }, span(" "));
-		if (description) line.push({ text: displayId, tone: "accent", bold: true }, span(`: ${description}`, "accent"));
-		else line.push(span(displayId, "accent"));
+		if (description)
+			line.push(
+				{ text: displayId, tone: "accent", bold: true, agentId: progress.id },
+				span(`: ${description}`, "accent"),
+			);
+		else line.push({ text: displayId, tone: "accent", agentId: progress.id });
 	}
 	line.push(...agentTypeBadge(progress.agent));
 
@@ -610,7 +589,6 @@ function progressRows(
 		line.push(span(" "), { text: progress.status === "failed" ? "failed" : "aborted", badge: true, tone: iconTone });
 	}
 
-	const showBadge = settings.get("subagent.showResolvedModelBadge");
 	if (progress.status === "running") {
 		if (!description) {
 			line.push(
@@ -618,9 +596,9 @@ function progressRows(
 				span(previewLine(sanitizeText(progress.assignment ?? progress.task), TOOL_DETAIL_WIDTH), "muted"),
 			);
 		}
-		appendAgentStats(line, { ...progress, showResolvedModelBadge: showBadge });
+		appendAgentStats(line, { ...progress, showResolvedModelBadge });
 	} else if (progress.status === "completed") {
-		appendAgentStats(line, { ...progress, showResolvedModelBadge: showBadge });
+		appendAgentStats(line, { ...progress, showResolvedModelBadge });
 	}
 
 	rows.push(openRow(place, line));
@@ -638,7 +616,7 @@ function progressRows(
 				toolLine.push(span(": "), span(previewLine(sanitizeText(toolDetail), TOOL_DETAIL_WIDTH), "dim"));
 			if (progress.currentToolStartMs) {
 				const elapsed = Date.now() - progress.currentToolStartMs;
-				if (elapsed > SLOW_TOOL_MS) toolLine.push(DOT, span(formatDuration(elapsed), "warning"));
+				if (elapsed > SLOW_TOOL_MS) toolLine.push(STATS_DOT, span(formatDuration(elapsed), "warning"));
 			}
 			rows.push(detailRow(place, toolLine));
 		} else if (progress.recentTools.length > 0) {
@@ -684,25 +662,9 @@ function progressRows(
 		// A finished reviewer states its verdict from the yield sections it assembled, falling back to
 		// the older `report_finding` side channel.
 		if (progress.status === "completed") {
-			const completeData = normalizeYieldData(progress.extractedToolData.yield);
-			const incrementalReview = extractIncrementalReviewResult(completeData);
-			if (incrementalReview) {
-				rows.push(...reviewRows(incrementalReview.summary, incrementalReview.findings, place, expanded));
-				return rows;
-			}
-			const reviewData = completeData
-				.map(c => c.data as SubmitReviewDetails)
-				.filter(d => d && typeof d === "object" && "overall_correctness" in d);
-			if (reviewData.length > 0) {
-				const summary = reviewData[reviewData.length - 1];
-				rows.push(
-					...reviewRows(
-						summary,
-						normalizeReportFindings(progress.extractedToolData.report_finding),
-						place,
-						expanded,
-					),
-				);
+			const review = extractReviewDetails(progress.extractedToolData);
+			if (review) {
+				rows.push(...reviewRows(review.summary, review.findings, place, expanded));
 				return rows;
 			}
 		}
@@ -729,7 +691,9 @@ function progressRows(
 	const inflight = progress.inflightTaskDetails;
 	if (completedTaskCalls.length > 0 || inflight) {
 		const snapshots = inflight ? [...completedTaskCalls, inflight] : completedTaskCalls;
-		rows.push(...nestedTreeRows(snapshots, place.depth + 1, expanded, frozen, seen, nestedDepth));
+		rows.push(
+			...nestedTreeRows(snapshots, place.depth + 1, expanded, showResolvedModelBadge, frozen, seen, nestedDepth),
+		);
 	}
 
 	if (expanded && progress.status === "running") {
@@ -749,7 +713,8 @@ const RETRY_MESSAGE_WIDTH = 60;
  * The rows arrive newest first, so they are reversed into reading order and the front is what a
  * window drops.
  */
-function liveOutput(recentOutput: readonly string[]): string {
+function liveOutput(recentOutput: readonly string[] | undefined): string {
+	if (!recentOutput || recentOutput.length === 0) return "";
 	const rows = sanitizeRecentOutput([...recentOutput].reverse().join("\n")).split("\n");
 	if (rows.length <= LIVE_OUTPUT_ROWS) return rows.join("\n");
 	const visible = LIVE_OUTPUT_ROWS <= 1 ? [] : rows.slice(rows.length - (LIVE_OUTPUT_ROWS - 1));
@@ -817,10 +782,7 @@ function findingRows(findings: ReportFindingDetails[], place: NodePlace, expande
 		const finding = sorted[i];
 		const isLast = i === displayCount - 1 && (expanded || sorted.length <= COLLAPSED_FINDING_LIMIT);
 		const at: NodePlace = { depth: place.depth + 1, last: isLast };
-		const title = replaceTabs(sanitizeText(finding.title?.replace(/^\[P\d\]\s*/, "") ?? "Untitled")).replace(
-			/[\r\n]+/g,
-			" ",
-		);
+		const title = replaceTabs(sanitizeText(findingTitle(finding.title ?? "Untitled"))).replace(/[\r\n]+/g, " ");
 		const loc = `${path.basename(sanitizeText(finding.file_path || "<unknown>"))}:${finding.line_start}`;
 		rows.push(
 			openRow(at, [
@@ -847,6 +809,7 @@ function resultRows(
 	result: SingleResult,
 	place: NodePlace,
 	expanded: boolean,
+	showResolvedModelBadge: boolean,
 	seen: WeakSet<object> | undefined,
 	nestedDepth: number,
 ): TaskRow[] {
@@ -854,7 +817,7 @@ function resultRows(
 	const { warning: missingYieldWarning, rest: outputWithoutWarning } = extractMissingYieldWarning(result.output);
 	// The same classification the wire uses, so a row cannot read as done while the tool result is
 	// marked an error, or the reverse.
-	const outcome = classifySubagentOutcome(result);
+	const outcome = classifyAgentOutcome(result);
 	const aborted = outcome.kind === "aborted";
 	const mergeFailed = outcome.kind === "merge-failed";
 	const success = outcome.kind === "completed";
@@ -887,9 +850,12 @@ function resultRows(
 		span(" "),
 	];
 	if (description) {
-		line.push({ text: displayId, tone: titleTone, bold: true }, span(`: ${description}`, titleTone));
+		line.push(
+			{ text: displayId, tone: titleTone, bold: true, agentId: result.id },
+			span(`: ${description}`, titleTone),
+		);
 	} else {
-		line.push(span(displayId, titleTone));
+		line.push({ text: displayId, tone: titleTone, agentId: result.id });
 	}
 	line.push(...agentTypeBadge(result.agent));
 	line.push(span(" "), { text: statusText, badge: true, tone });
@@ -900,9 +866,9 @@ function resultRows(
 		contextWindow: result.contextWindow,
 		cost: result.usage?.cost.total ?? 0,
 		resolvedModel: result.resolvedModel,
-		showResolvedModelBadge: settings.get("subagent.showResolvedModelBadge"),
+		showResolvedModelBadge,
 	});
-	line.push(DOT, span(formatDuration(result.durationMs), "dim"));
+	line.push(STATS_DOT, span(formatDuration(result.durationMs), "dim"));
 	if (result.truncated) line.push(span(" "), span("[truncated]", "warning"));
 	rows.push(openRow(place, line));
 
@@ -920,22 +886,14 @@ function resultRows(
 
 	// A review verdict, preferring the incremental yield sections and falling back to the older
 	// `report_finding` side channel. `normalizeYieldData` guards a slot that is not an array.
-	const completeData = normalizeYieldData(result.extractedToolData?.yield);
+	const review = extractReviewDetails(result.extractedToolData);
+	if (review) {
+		rows.push(...reviewRows(review.summary, review.findings, place, expanded));
+		return rows;
+	}
 	const reportFindingData = normalizeReportFindings(result.extractedToolData?.report_finding);
-	const incrementalReview = extractIncrementalReviewResult(completeData);
-	if (incrementalReview) {
-		rows.push(...reviewRows(incrementalReview.summary, incrementalReview.findings, place, expanded));
-		return rows;
-	}
-
-	const reviewData = completeData
-		.map(c => c.data as SubmitReviewDetails)
-		.filter(d => d && typeof d === "object" && "overall_correctness" in d);
-	if (reviewData.length > 0) {
-		rows.push(...reviewRows(reviewData[reviewData.length - 1], reportFindingData, place, expanded));
-		return rows;
-	}
 	if (reportFindingData.length > 0) {
+		const completeData = normalizeYieldData(result.extractedToolData?.yield);
 		rows.push(
 			detailRow(place, [
 				{ text: "", symbol: "status.warning", tone: "warning" },
@@ -970,7 +928,15 @@ function resultRows(
 			if (toolName === "report_finding") continue;
 			if (toolName === "task" && (dataArray as unknown[]).length > 0) {
 				nestedRows.push(
-					...nestedResultRows(dataArray as TaskToolDetails[], place.depth + 1, expanded, seen, nestedDepth),
+					...nestedTreeRows(
+						dataArray as TaskToolDetails[],
+						place.depth + 1,
+						expanded,
+						showResolvedModelBadge,
+						undefined,
+						seen,
+						nestedDepth,
+					),
 				);
 			}
 		}
@@ -1012,12 +978,16 @@ function resultRows(
 /** Output rows an expanded settled agent shows. */
 const SETTLED_OUTPUT_ROWS = 12;
 
-const MISSING_YIELD_WARNING_PREFIX = "SYSTEM WARNING: Subagent exited without calling yield tool";
+/** The runtime's spelling and the one a session file recorded before the `subagent` vocabulary was retired. */
+const MISSING_YIELD_WARNING_PREFIXES = [
+	"SYSTEM WARNING: Agent exited without calling yield tool",
+	"SYSTEM WARNING: Subagent exited without calling yield tool",
+];
 
-function extractMissingYieldWarning(output: string): { warning?: string; rest: string } {
-	const lines = output.split("\n");
+function extractMissingYieldWarning(output: string = ""): { warning?: string; rest: string } {
+	const lines = (output ?? "").split("\n");
 	const firstLine = lines[0]?.trim() ?? "";
-	if (!firstLine.startsWith(MISSING_YIELD_WARNING_PREFIX)) return { rest: output };
+	if (!MISSING_YIELD_WARNING_PREFIXES.some(prefix => firstLine.startsWith(prefix))) return { rest: output };
 	const rest = lines
 		.slice(1)
 		.join("\n")
@@ -1056,15 +1026,11 @@ function hiddenProgressSpans(hidden: readonly AgentProgress[]): ViewSpan[] {
 	};
 	for (const p of hidden) counts[p.status]++;
 	const parts: ViewSpan[] = [];
-	const push = (text: string, tone: ViewTone): void => {
-		if (parts.length > 0) parts.push(DOT);
-		parts.push(span(text, tone));
-	};
-	if (counts.completed > 0) push(`${counts.completed} done`, "dim");
-	if (counts.running > 0) push(`${counts.running} running`, "dim");
-	if (counts.pending > 0) push(`${counts.pending} pending`, "dim");
-	if (counts.failed > 0) push(`${counts.failed} failed`, "error");
-	if (counts.aborted > 0) push(`${counts.aborted} aborted`, "error");
+	if (counts.completed > 0) pushDotSpan(parts, `${counts.completed} done`, "dim");
+	if (counts.running > 0) pushDotSpan(parts, `${counts.running} running`, "dim");
+	if (counts.pending > 0) pushDotSpan(parts, `${counts.pending} pending`, "dim");
+	if (counts.failed > 0) pushDotSpan(parts, `${counts.failed} failed`, "error");
+	if (counts.aborted > 0) pushDotSpan(parts, `${counts.aborted} aborted`, "error");
 	const line: ViewSpan[] = [span(formatMoreItems(hidden.length, "agent"), "dim")];
 	if (parts.length > 0) line.push(span(" (", "dim"), ...parts, span(")", "dim"));
 	return line;
@@ -1096,55 +1062,14 @@ function guardRow(depth: number, text: string): TaskRow {
 	return { spans: [span(text, "dim")], depth: Math.max(0, depth - 1), opens: false, last: true };
 }
 
-/** Nested finished agents, as the children of the agent that spawned them. */
-function nestedResultRows(
-	detailsList: TaskToolDetails[],
-	depth: number,
-	expanded: boolean,
-	seen: WeakSet<object> = new WeakSet<object>(),
-	nestedDepth = 0,
-): TaskRow[] {
-	const rows: TaskRow[] = [];
-	for (const details of detailsList) {
-		if (seen.has(details)) {
-			rows.push(guardRow(depth, "… nested task progress already shown"));
-			continue;
-		}
-		if (nestedDepth >= MAX_NESTED_TASK_RENDER_DEPTH) {
-			rows.push(guardRow(depth, "… nested task depth limit reached"));
-			continue;
-		}
-		seen.add(details);
-		if (!details.results || details.results.length === 0) {
-			seen.delete(details);
-			continue;
-		}
-		const ordered = orderResultsForDisplay(details.results);
-		const visible = expanded ? ordered : selectCollapsedResults(ordered);
-		const hiddenCount = ordered.length - visible.length;
-		visible.forEach((result, index) => {
-			const last = hiddenCount === 0 && index === visible.length - 1;
-			rows.push(...resultRows(result, { depth, last }, expanded, seen, nestedDepth + 1));
-		});
-		if (hiddenCount > 0) {
-			rows.push({
-				spans: [span(formatMoreItems(hiddenCount, "agent"), "dim")],
-				depth,
-				opens: true,
-				last: true,
-			});
-		}
-		seen.delete(details);
-	}
-	return rows;
-}
-
 /** Nested agents, finished or in flight, as one tree under the agent that spawned them. */
 function nestedTreeRows(
 	detailsList: TaskToolDetails[],
 	depth: number,
 	expanded: boolean,
-	frozen: boolean,
+	showResolvedModelBadge: boolean,
+	// Undefined excludes live progress from completed-result snapshots.
+	frozen: boolean | undefined,
 	seen: WeakSet<object> = new WeakSet<object>(),
 	nestedDepth = 0,
 ): TaskRow[] {
@@ -1165,25 +1090,27 @@ function nestedTreeRows(
 			const hiddenCount = ordered.length - visible.length;
 			visible.forEach((result, index) => {
 				const last = hiddenCount === 0 && index === visible.length - 1;
-				rows.push(...resultRows(result, { depth, last }, expanded, seen, nestedDepth + 1));
+				rows.push(...resultRows(result, { depth, last }, expanded, showResolvedModelBadge, seen, nestedDepth + 1));
 			});
 			if (hiddenCount > 0) {
-				rows.push({ spans: [span(formatMoreItems(hiddenCount, "agent"), "dim")], depth, opens: true, last: true });
+				rows.push(openRow({ depth, last: true }, [span(formatMoreItems(hiddenCount, "agent"), "dim")]));
 			}
 			seen.delete(details);
 			continue;
 		}
 		const inflight = details.progress;
-		if (inflight && inflight.length > 0) {
+		if (frozen !== undefined && inflight && inflight.length > 0) {
 			const ordered = orderProgressForDisplay(inflight);
 			const visible = expanded ? ordered : ordered.slice(Math.max(0, ordered.length - COLLAPSED_AGENT_LIMIT));
 			const hiddenCount = ordered.length - visible.length;
 			visible.forEach((prog, index) => {
 				const last = hiddenCount === 0 && index === visible.length - 1;
-				rows.push(...progressRows(prog, { depth, last }, expanded, frozen, seen, nestedDepth + 1));
+				rows.push(
+					...progressRows(prog, { depth, last }, expanded, showResolvedModelBadge, frozen, seen, nestedDepth + 1),
+				);
 			});
 			if (hiddenCount > 0) {
-				rows.push({ spans: [span(formatMoreItems(hiddenCount, "agent"), "dim")], depth, opens: true, last: true });
+				rows.push(openRow({ depth, last: true }, [span(formatMoreItems(hiddenCount, "agent"), "dim")]));
 			}
 		}
 		seen.delete(details);
@@ -1233,13 +1160,7 @@ function renderCall(rawArgs: unknown, context: ToolViewContext): FramedBlockView
 	// Once a result snapshot exists the result card draws the same agents and the same brief, so the
 	// call preview would repeat it.
 	if (context.hasResult !== true) {
-		const contextSection = markdownSection(args?.context, false);
-		const assignmentSection = markdownSection(args?.task, false);
-		// The result card's order — background, brief, then the agents — so a row does not jump from
-		// above the brief to below it when the first snapshot replaces this card. It is also the order
-		// the arguments arrive in, so the preview grows downward instead of pushing the brief around.
-		if (contextSection) sections.push(contextSection);
-		if (assignmentSection) sections.push(assignmentSection);
+		appendMarkdownBriefSections(sections, args);
 		const rows = callRows(args);
 		if (rows.length > 0) sections.push(treeSection(rows));
 	}
@@ -1258,19 +1179,20 @@ function renderResult(result: TaskViewResult, context: ToolViewContext, rawArgs?
 	const expanded = context.expanded === true;
 	const partial = context.partial === true;
 	const frozen = context.frozen === true;
-	const fallbackText = result.content.find(c => c.type === "text")?.text ?? "";
+	const showResolvedModelBadge = context.showResolvedModel === true;
+	const fallbackText = extractResultText(result.content);
 	const details = result.details;
 	const agentLabel = agentHeaderLabel(args);
-	const contextSection = markdownSection(args?.context, false);
-	const assignmentSection = markdownSection(args?.task, false);
-
 	if (!details) {
 		const errored = result.isError === true;
 		const sections: ViewSection[] = [];
-		if (contextSection) sections.push(contextSection);
-		if (assignmentSection) sections.push(assignmentSection);
+		appendMarkdownBriefSections(sections, args);
 		if (fallbackText)
-			sections.push({ separator: true, lines: [[span(fallbackText, errored ? "error" : "dim")]], clip: true });
+			sections.push({
+				separator: true,
+				lines: [[span(replaceTabs(shortenEmbeddedPaths(fallbackText)), errored ? "error" : "dim")]],
+				clip: true,
+			});
 		return {
 			kind: "framedBlock",
 			header: errored ? header("error", undefined, agentLabel) : header(undefined, "status.done", agentLabel),
@@ -1290,7 +1212,7 @@ function renderResult(result: TaskViewResult, context: ToolViewContext, rawArgs?
 	if (hasResults) {
 		for (const r of details.results) {
 			requestTotal += r.requests ?? 0;
-			switch (classifySubagentOutcome(r).kind) {
+			switch (classifyAgentOutcome(r).kind) {
 				case "aborted":
 					abortedCount++;
 					break;
@@ -1342,11 +1264,13 @@ function renderResult(result: TaskViewResult, context: ToolViewContext, rawArgs?
 		if (visible.length < ordered.length) {
 			rows.push(openRow(TOP, hiddenProgressSpans(ordered.slice(0, ordered.length - visible.length))));
 		}
-		for (const progress of visible) rows.push(...progressRows(progress, TOP, expanded, frozen, undefined, 0));
+		for (const progress of visible) {
+			rows.push(...progressRows(progress, TOP, expanded, showResolvedModelBadge, frozen, undefined, 0));
+		}
 	} else if (details.results && details.results.length > 0) {
 		const ordered = orderResultsForDisplay(details.results);
 		const visible = expanded ? ordered : selectCollapsedResults(ordered);
-		for (const res of visible) rows.push(...resultRows(res, TOP, expanded, undefined, 0));
+		for (const res of visible) rows.push(...resultRows(res, TOP, expanded, showResolvedModelBadge, undefined, 0));
 		if (visible.length < ordered.length) {
 			rows.push(openRow(TOP, [span(formatMoreItems(ordered.length - visible.length, "agent"), "dim")]));
 		}
@@ -1356,30 +1280,27 @@ function renderResult(result: TaskViewResult, context: ToolViewContext, rawArgs?
 		const supplemental = details.progress
 			? orderProgressForDisplay(details.progress.filter(p => !details.results.some(res => res.id === p.id)))
 			: [];
-		for (const progress of supplemental) rows.push(...progressRows(progress, TOP, expanded, frozen, undefined, 0));
+		for (const progress of supplemental) {
+			rows.push(...progressRows(progress, TOP, expanded, showResolvedModelBadge, frozen, undefined, 0));
+		}
 
 		const summary: ViewSpan[] = [{ text: "", symbol: "format.bracketLeft", tone: "dim" }];
 		const parts: ViewSpan[] = [];
-		const push = (text: string, tone: ViewTone): void => {
-			if (parts.length > 0) parts.push(DOT);
-			parts.push(span(text, tone));
-		};
-		if (abortedCount > 0) push(`${abortedCount} aborted`, "error");
-		if (successCount > 0) push(`${successCount} succeeded`, "success");
-		if (mergeFailedCount > 0) push(`${mergeFailedCount} merge failed`, "warning");
-		if (failCount > 0) push(`${failCount} failed`, "error");
-		if (requestTotal > 0) push(`${formatNumber(requestTotal)} req`, "dim");
-		push(formatDuration(details.totalDurationMs), "dim");
+		if (abortedCount > 0) pushDotSpan(parts, `${abortedCount} aborted`, "error");
+		if (successCount > 0) pushDotSpan(parts, `${successCount} succeeded`, "success");
+		if (mergeFailedCount > 0) pushDotSpan(parts, `${mergeFailedCount} merge failed`, "warning");
+		if (failCount > 0) pushDotSpan(parts, `${failCount} failed`, "error");
+		if (requestTotal > 0) pushDotSpan(parts, `${formatNumber(requestTotal)} req`, "dim");
+		pushDotSpan(parts, formatDuration(details.totalDurationMs), "dim");
 		summary.push(...parts, { text: "", symbol: "format.bracketRight", tone: "dim" });
 		rows.push(openRow(TOP, summary));
 	}
 
 	const sections: ViewSection[] = [];
-	if (contextSection) sections.push(contextSection);
-	if (assignmentSection) sections.push(assignmentSection);
+	appendMarkdownBriefSections(sections, args);
 
 	if (rows.length === 0) {
-		const text = fallbackText.trim() ? fallbackText : "No results";
+		const text = fallbackText.trim() ? replaceTabs(shortenEmbeddedPaths(fallbackText)) : "No results";
 		sections.push({ separator: true, lines: [[span(text, refused ? "warning" : "dim")]], clip: true });
 		return { kind: "framedBlock", header: headerRow, state, sections };
 	}
@@ -1397,7 +1318,7 @@ function renderResult(result: TaskViewResult, context: ToolViewContext, rawArgs?
 		if (markerIndex >= 0) {
 			for (const line of summaryLines.slice(markerIndex)) {
 				if (!line.trim()) continue;
-				rows.push(openRow(TOP, [span(line, "dim")]));
+				rows.push(openRow(TOP, [span(replaceTabs(shortenEmbeddedPaths(line)), "dim")]));
 			}
 		}
 	}

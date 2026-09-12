@@ -1023,20 +1023,15 @@ export function getWebpDimensions(base64Data: string): ImageDimensions | null {
 	}
 }
 
+const IMAGE_DIMENSION_PARSERS: Record<string, (base64Data: string) => ImageDimensions | null> = {
+	"image/png": getPngDimensions,
+	"image/jpeg": getJpegDimensions,
+	"image/gif": getGifDimensions,
+	"image/webp": getWebpDimensions,
+};
+
 export function getImageDimensions(base64Data: string, mimeType: string): ImageDimensions | null {
-	if (mimeType === "image/png") {
-		return getPngDimensions(base64Data);
-	}
-	if (mimeType === "image/jpeg") {
-		return getJpegDimensions(base64Data);
-	}
-	if (mimeType === "image/gif") {
-		return getGifDimensions(base64Data);
-	}
-	if (mimeType === "image/webp") {
-		return getWebpDimensions(base64Data);
-	}
-	return null;
+	return IMAGE_DIMENSION_PARSERS[mimeType]?.(base64Data) ?? null;
 }
 
 export function renderImage(
@@ -1284,32 +1279,20 @@ function osc99Payload(meta: string[], payload: string, holdUntilLaterPayload: bo
 	return out;
 }
 
+const OSC99_URGENCY_MAP: Record<string, string> = { low: "0", normal: "1", critical: "2" };
+const OSC99_ACTIONS_MAP: Record<string, string> = {
+	focus: "focus",
+	report: "report",
+	"focus-report": "focus,report",
+	none: "-focus",
+};
+
 function osc99Urgency(urgency: TerminalNotification["urgency"]): string | undefined {
-	switch (urgency) {
-		case "low":
-			return "0";
-		case "normal":
-			return "1";
-		case "critical":
-			return "2";
-		default:
-			return undefined;
-	}
+	return urgency ? OSC99_URGENCY_MAP[urgency] : undefined;
 }
 
 function osc99Actions(actions: TerminalNotification["actions"]): string | undefined {
-	switch (actions) {
-		case "focus":
-			return "focus";
-		case "report":
-			return "report";
-		case "focus-report":
-			return "focus,report";
-		case "none":
-			return "-focus";
-		default:
-			return undefined;
-	}
+	return actions ? OSC99_ACTIONS_MAP[actions] : undefined;
 }
 
 /**

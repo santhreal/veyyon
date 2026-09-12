@@ -22,15 +22,15 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
-import { makeStatusLineSession } from "../../../../../test/helpers/status-line-session";
+import { makeStatusLineProducer } from "../../../../../test/helpers/status-line-session";
 import { Settings } from "../../../../config/settings";
-import type { AgentSession } from "../../../../session/agent-session";
+import type { StatusPresentationProducer } from "../../../../presentation/status-producer";
 import { getThemeByName, setThemeInstance } from "../../../../theme/theme";
 import { StatusLineComponent } from "./component";
 
 /** A session with a session name, a cost, and a context reading, all fixed. */
-function makeSession(): AgentSession {
-	return makeStatusLineSession({
+function makeSession(): StatusPresentationProducer {
+	return makeStatusLineProducer({
 		modelId: "gpt-5",
 		contextWindow: 200_000,
 		contextUsage: { tokens: 84_000, contextWindow: 200_000 },

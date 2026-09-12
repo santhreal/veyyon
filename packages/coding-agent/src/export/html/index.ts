@@ -1,3 +1,4 @@
+import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { setImmediate } from "node:timers/promises";
@@ -8,6 +9,7 @@ import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { APP_NAME, isEnoent, logger } from "@veyyon/utils";
 import { atomicWriteFileWith } from "@veyyon/utils/atomic-write";
 import { isSessionFileName, SESSION_BACKUP_EXTENSION, sessionFileStem } from "@veyyon/utils/session-file";
+import { projectSessionEntriesForExport } from "../../presentation/web-tool-display";
 import type { SecretObfuscator } from "../../secrets/obfuscator";
 import { getResolvedThemeColors, getThemeExportColors } from "../../theme/theme";
 import { redactSessionDataForShare } from "../redact-snapshot";
@@ -63,7 +65,7 @@ export interface ExportOptions {
 	 * default `"web"` palette. Resolves to the active TUI theme when omitted.
 	 */
 	themeName?: string;
-	/** Embed subagent session transcripts found next to the session file (default true). */
+	/** Embed agent session transcripts found next to the session file (default true). */
 	includeSubSessions?: boolean;
 	/**
 	 * Redact secrets from the snapshot before it is written, through the same typed walk
@@ -189,7 +191,7 @@ export async function generateThemeVars(
 	return lines.join(" ");
 }
 
-/** Embedded subagent session transcript, keyed by slash-joined agent path in `SessionData.subSessions`. */
+/** Embedded agent session transcript, keyed by slash-joined agent path in `SessionData.subSessions`. */
 export interface SubSession {
 	/** Bare agent id (session file stem), e.g. "ToolAsk". */
 	agentId: string;
@@ -221,10 +223,10 @@ export function buildSessionData(sm: SessionManager, state?: AgentState): Sessio
 }
 
 /**
- * Collect subagent session transcripts stored next to a session file.
+ * Collect agent session transcripts stored next to a session file.
  *
- * A session at `<dir>/<name>.jsonl` keeps its subagent sessions at `<dir>/<name>/<AgentId>.jsonl`;
- * each subagent's own children nest the same way under `<dir>/<name>/<AgentId>/`. Keys in the
+ * A session at `<dir>/<name>.jsonl` keeps its agent sessions at `<dir>/<name>/<AgentId>.jsonl`;
+ * each agent's own children nest the same way under `<dir>/<name>/<AgentId>/`. Keys in the
  * returned record are slash-joined ids relative to the main session ("ToolAsk", "ToolAsk/Helper").
  * Empty files, backups, and unrelated files are skipped. A corrupt transcript refuses the export so
  * the resulting artifact cannot silently claim to contain a complete session.
@@ -523,6 +525,32 @@ async function writeExportFile(
 	});
 }
 
+/**
+ * Attach the sub-sessions beside `sessionFile`, redact what the obfuscator holds, then write the
+ * document to the output path the options or the session file name selects.
+ */
+async function finishExport(sessionFile: string, sessionData: SessionData, opts: ExportOptions): Promise<string> {
+	if (opts.includeSubSessions !== false) {
+		const subSessions = await collectSubSessions(sessionFile);
+		if (Object.keys(subSessions).length > 0) {
+			for (const key of Object.keys(subSessions)) {
+				subSessions[key].entries = projectSessionEntriesForExport(subSessions[key].entries);
+			}
+			sessionData.subSessions = subSessions;
+		}
+	}
+
+	// After sub-sessions are attached: an agent transcript carries the same tool output the
+	// primary one does, so redacting before the merge would leave the child's copy verbatim.
+	const redacted = opts.obfuscator?.hasSecrets()
+		? redactSessionDataForShare(opts.obfuscator, sessionData)
+		: sessionData;
+	const palette = opts.palette ?? (opts.themeName ? "theme" : "web");
+	const outputPath = opts.outputPath || `${APP_NAME}-session-${sessionFileStem(path.basename(sessionFile))}.html`;
+	await writeExportFile(outputPath, redacted, palette, opts.themeName);
+	return outputPath;
+}
+
 /** Export session to HTML using SessionManager and AgentState. */
 export async function exportSessionToHtml(
 	sm: SessionManager,
@@ -535,49 +563,35 @@ export async function exportSessionToHtml(
 	if (!sessionFile) throw new Error("Cannot export in-memory session to HTML");
 
 	const sessionData = buildSessionData(sm, state);
-	if (opts.includeSubSessions !== false) {
-		const subSessions = await collectSubSessions(sessionFile);
-		if (Object.keys(subSessions).length > 0) sessionData.subSessions = subSessions;
-	}
-
-	// After sub-sessions are attached: a subagent transcript carries the same tool output the
-	// primary one does, so redacting before the merge would leave the child's copy verbatim.
-	const redacted = opts.obfuscator?.hasSecrets()
-		? redactSessionDataForShare(opts.obfuscator, sessionData)
-		: sessionData;
-	const palette = opts.palette ?? (opts.themeName ? "theme" : "web");
-	const outputPath = opts.outputPath || `${APP_NAME}-session-${sessionFileStem(path.basename(sessionFile))}.html`;
-	await writeExportFile(outputPath, redacted, palette, opts.themeName);
-	return outputPath;
+	sessionData.entries = projectSessionEntriesForExport(sessionData.entries);
+	return finishExport(sessionFile, sessionData, opts);
 }
 
-/** Export session file to HTML (standalone). */
+/**
+ * Export session file to HTML (standalone).
+ *
+ * The input is checked before the session is opened: the loader reads a missing file as an empty
+ * session, which would export an empty transcript and report success, so a path that is not a
+ * file fails here and nothing is written.
+ */
 export async function exportFromFile(inputPath: string, options?: ExportOptions | string): Promise<string> {
 	const opts: ExportOptions = typeof options === "string" ? { outputPath: options } : options || {};
 
-	let sm: SessionManager;
+	let input: Stats | undefined;
 	try {
-		sm = await SessionManager.open(inputPath, undefined, undefined, { suppressBreadcrumb: true });
+		input = await fs.stat(inputPath);
 	} catch (err) {
-		if (isEnoent(err)) throw new Error(`File not found: ${inputPath}`);
-		throw err;
+		if (!isEnoent(err)) throw err;
 	}
+	if (input === undefined) throw new Error(`Session file not found: ${inputPath}`);
+	if (!input.isFile()) throw new Error(`Not a session file: ${inputPath}`);
+
+	const sm = await SessionManager.open(inputPath, undefined, undefined, { suppressBreadcrumb: true });
 
 	const sessionData: SessionData = {
 		header: sm.getHeader(),
-		entries: sm.getEntries(),
+		entries: projectSessionEntriesForExport(sm.getEntries()),
 		leafId: sm.getLeafId(),
 	};
-	if (opts.includeSubSessions !== false) {
-		const subSessions = await collectSubSessions(inputPath);
-		if (Object.keys(subSessions).length > 0) sessionData.subSessions = subSessions;
-	}
-
-	const redacted = opts.obfuscator?.hasSecrets()
-		? redactSessionDataForShare(opts.obfuscator, sessionData)
-		: sessionData;
-	const palette = opts.palette ?? (opts.themeName ? "theme" : "web");
-	const outputPath = opts.outputPath || `${APP_NAME}-session-${sessionFileStem(path.basename(inputPath))}.html`;
-	await writeExportFile(outputPath, redacted, palette, opts.themeName);
-	return outputPath;
+	return finishExport(inputPath, sessionData, opts);
 }

@@ -32,6 +32,7 @@ function makeHarness(options: {
 	hasHero?: boolean;
 }) {
 	const state = {
+		columns: 80,
 		composedFrameRows: options.composedFrameRows ?? 0,
 		transcriptChildren: options.transcriptChildren ?? 0,
 		hasHero: options.hasHero ?? false,
@@ -40,7 +41,12 @@ function makeHarness(options: {
 	};
 	const children: Array<{ render: (width: number) => readonly string[] }> = [block(options.contentRows)];
 	const ui = {
-		terminal: { columns: 80, rows: options.rows },
+		terminal: {
+			get columns() {
+				return state.columns;
+			},
+			rows: options.rows,
+		},
 		get composedFrameRows() {
 			return state.composedFrameRows;
 		},
@@ -104,13 +110,18 @@ describe("HomeAnchorLayout.sync — home-screen slack", () => {
 		expect(rowsOf(collapsed.layout.bottomFill)).toBe(26);
 	});
 
-	test("both fills are registered as layout-sized, so a partial frame renders them", () => {
+	test("both fills are registered as layout-sized by the first sizing pass, so a partial frame renders them", () => {
 		// The sizing pass runs at the top of a frame that requested nothing on
 		// the fills' behalf. A component-scoped frame reuses the previous rows of
 		// every root child it was not asked to repaint, so an unregistered fill
 		// composes at the height the PREVIOUS frame's content called for — one
 		// row of overflow per streamed row, and nothing downstream to repair it.
+		// Registered against the screen the pass sizes, not the one the port held
+		// at construction, and once: the pass runs every frame.
 		const { layout, state } = makeHarness({ rows: 30, contentRows: 8 });
+		expect(state.layoutSized).toEqual([]);
+		layout.sync();
+		layout.sync();
 		expect(state.layoutSized).toEqual([layout.topFill, layout.bottomFill]);
 	});
 
@@ -150,6 +161,28 @@ describe("HomeAnchorLayout.sync — home-screen slack", () => {
 			tail: [30],
 			bottom: 10,
 		});
+	});
+
+	test.each([0, 4, 40])("uses height-only measurement without advancing rendering: %i rows", height => {
+		const measured = {
+			measureHeight: (width: number) => Math.ceil((height * 80) / width),
+			render: (): readonly string[] => {
+				throw new Error("Layout must not start painting");
+			},
+			renderViewportTail: (): readonly string[] => {
+				throw new Error("Height measurement must precede tail rendering");
+			},
+		};
+		const { layout, children, state } = makeHarness({ rows: 30, contentRows: 8 });
+		children.splice(1, 0, measured);
+		layout.sync();
+		expect(rowsOf(layout.topFill)).toBe(0);
+		expect(rowsOf(layout.bottomFill)).toBe(Math.max(0, 22 - height));
+
+		state.columns = 40;
+		layout.sync();
+		expect(rowsOf(layout.topFill)).toBe(0);
+		expect(rowsOf(layout.bottomFill)).toBe(Math.max(0, 22 - height * 2));
 	});
 
 	test("the measurement saturates at the viewport, so a long transcript routes no slack", () => {

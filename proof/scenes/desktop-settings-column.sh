@@ -133,7 +133,7 @@ lead_ink_pixels() { # <shot> -> lit pixels in the leading half of the column
 }
 
 name_pixels_changed() { # <shot> <shot> -> pixels differing in the titlebar name
-	local scratch="${SCENE_RUNTIME_DIR}/name-compare"
+	local scratch="${TMPDIR}/name-compare"
 	mkdir -p "${scratch}"
 	local crop="${NAME_W}x${NAME_H}+${NAME_X}+${NAME_Y}" changed
 	magick "${SCENE_OUT}/${SCENE_NAME}-$1.png" -crop "${crop}" +repage "${scratch}/a.png"

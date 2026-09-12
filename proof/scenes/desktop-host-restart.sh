@@ -71,7 +71,7 @@ HOST_BIN="${VEYYON_BIN:-/repo/packages/coding-agent/src/cli.ts}"
 if [ ! -x "${HOST_BIN}" ]; then
 	abandon_take "the-host-is-startable" "no executable GUI host at ${HOST_BIN}, so a killed host cannot be restarted"
 fi
-HOST_LOG="${SCENE_RUNTIME_DIR}/host-restart.log"
+HOST_LOG="${TMPDIR}/host-restart.log"
 
 # Killing the host is the one destructive thing this scene does, and the first
 # take of it killed the X server: a process matched by command line alone, and
@@ -188,7 +188,7 @@ RECOVERY_TIMEOUT=45
 # merely slow is not published as one that never came.
 PERMANENCE_SECONDS=30
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 BASE_FRAME="${PROBE_DIR}/host-restart-attached.png"
 

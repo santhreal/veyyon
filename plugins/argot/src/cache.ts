@@ -11,7 +11,7 @@
  * signature (the git HEAD, or {@link listingSignature} for a project with no
  * git), and once written for a signature it is never mutated. A repository that
  * moves produces a new signature and a new entry; the old one stays put. This is
- * what makes the cache safe under many sessions and subagents at once: two agents
+ * what makes the cache safe under many sessions and agents at once: two agents
  * on the same state read the same entry, two agents on different states read
  * different entries, and nothing writes over a file another reader holds. There
  * is no shared mutable file to contend on.

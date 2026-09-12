@@ -91,7 +91,7 @@ Mnemopi:
 - Non-`Error` failures caught by the tool are normalized to `new Error(String(err))` before rethrow.
 
 ## Notes
-- Shared backend details are in `docs/tools/retain.md`: storage, subagent aliasing, bank scoping, seed mental models, and prompt injection.
+- Shared backend details are in `docs/tools/retain.md`: storage, agent aliasing, bank scoping, seed mental models, and prompt injection.
 - Hindsight `reflect` does not read the cached `<mental_models>` block directly. It queries the Hindsight server over the bank contents. The same session may also have separate mental-model context injected into its developer instructions.
 - Hindsight reflect mission and retain mission are bank-level server settings, not per-request payload. The tool just ensures they are present best-effort before reflecting.
 - Mnemopi `reflect` is local recall plus formatting, so its output shape differs from Hindsight's remote synthesized answer.

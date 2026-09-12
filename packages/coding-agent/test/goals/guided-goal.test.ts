@@ -59,6 +59,13 @@ function mockResponse(args: unknown) {
 	};
 }
 
+function mockTextResponse(text: string) {
+	return {
+		stopReason: "stop",
+		content: [{ type: "text", text }],
+	};
+}
+
 function createToolSession(cwd: string, settings: Settings): ToolSession {
 	return {
 		cwd,
@@ -253,6 +260,45 @@ describe("guided goal setup", () => {
 		const result = await runGuidedGoalTurn(createSession(), { messages: [{ role: "user", content: "Ship it" }] });
 
 		expect(result).toEqual({ kind: "question", question: "What is done?", objective: "Ship the feature." });
+	});
+
+	// WHY: the OpenCode gateways reject every non-"auto" tool_choice, so veyyon omits the field
+	// there and the respond tool is offered rather than required. A model that answers in text
+	// instead of calling it is the ordinary case on those hosts, not a malformed reply, and the
+	// interview has to continue from it. Turn-level coverage stopped at the tool-call route, so a
+	// regression in the text branch of runGuidedGoalTurn would have surfaced only as a dead
+	// interview on a live gateway. The shapes suite covers the parse; these cover the route.
+	// Does not catch: whether the model actually chooses to answer in either form.
+	it("reads a question the model answered in text instead of calling the tool", async () => {
+		spyOn(core, "instrumentedCompleteSimple").mockResolvedValue(
+			mockTextResponse(JSON.stringify({ kind: "question", question: "What is done?" })) as never,
+		);
+
+		const result = await runGuidedGoalTurn(createSession(), { messages: [{ role: "user", content: "Ship it" }] });
+
+		expect(result).toEqual({ kind: "question", question: "What is done?" });
+	});
+
+	it("starts a goal the model declared ready in text around prose", async () => {
+		spyOn(core, "instrumentedCompleteSimple").mockResolvedValue(
+			mockTextResponse(
+				`Here is the objective:\n\n${JSON.stringify({ kind: "ready", objective: "Deliver the confirmed feature." })}`,
+			) as never,
+		);
+
+		const result = await runGuidedGoalTurn(createSession(), { messages: [{ role: "user", content: "Ship it" }] });
+
+		expect(result).toEqual({ kind: "ready", objective: "Deliver the confirmed feature." });
+	});
+
+	it("rejects a text answer that carried no payload", async () => {
+		spyOn(core, "instrumentedCompleteSimple").mockResolvedValue(
+			mockTextResponse("Sure, I can help you set that up.") as never,
+		);
+
+		await expect(
+			runGuidedGoalTurn(createSession(), { messages: [{ role: "user", content: "Ship it" }] }),
+		).rejects.toThrow("No JSON payload found in response");
 	});
 
 	it("obfuscates secrets in the transcript before the request and deobfuscates the echoed objective", async () => {

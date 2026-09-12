@@ -1,18 +1,15 @@
 /**
  * Tool renderer contract.
  *
- * Every tool gets a renderer with two React components:
- * - `Summary` — one-line inline header content (dense, truncated by the chrome).
- * - `Body` — expanded detail view (args, outputs, diffs, images).
- *
  * Renderers are host-agnostic: they run inside the collab-web React app and
  * inside the `<vey-tool-view>` web component bundled into HTML session exports.
  * They must never import host-specific modules (wire types, coding-agent
  * runtime, node builtins) and must tolerate partial/malformed `args` and
  * `details` — these arrive as plain JSON over the wire.
  */
-import type { ComponentType } from "react";
 
+import type { ToolExecutionDisplay } from "@veyyon/wire/presentation";
+import type { ComponentType } from "react";
 export interface ToolResultText {
 	type: "text";
 	text: string;
@@ -56,11 +53,17 @@ export interface ToolRenderProps {
 	running?: boolean;
 	/** Host capabilities (sub-session drill-down, …). */
 	host?: ToolRenderHost;
+	/** Canonical projected display (from result or pending call). */
+	display?: ToolExecutionDisplay;
 }
-
 export interface ToolRenderer {
 	/** Inline single-line header summary. Must not render block elements. */
 	Summary: ComponentType<ToolRenderProps>;
 	/** Expanded body. Omit when the summary already says everything. */
 	Body?: ComponentType<ToolRenderProps>;
+}
+
+export interface ToolDescriptor extends ToolRenderer {
+	name: string;
+	aliases?: readonly string[];
 }

@@ -49,6 +49,15 @@ function resolveGeminiSearchModel(configuredModel: string | undefined): string {
 	return model || DEFAULT_MODEL;
 }
 
+/** The per-attempt body of a Gemini search request: the payload re-run through the text transform. */
+function geminiSearchBody(
+	requestBody: Record<string, unknown>,
+	resolveTextTransform: ProviderTextTransformResolver | undefined,
+): RequestInit {
+	const transform = resolveProviderTextTransform(resolveTextTransform, "Gemini search request");
+	return { body: JSON.stringify(transformProviderPayload(requestBody, transform, "Gemini search request")) };
+}
+
 const GEMINI_PROVIDERS = ["google-gemini-cli", "google-antigravity"] as const;
 type GeminiProviderId = (typeof GEMINI_PROVIDERS)[number];
 
@@ -402,12 +411,7 @@ async function callGeminiSearch(
 			try {
 				response = await fetchWithRetry(() => `${endpoint}/v1internal:streamGenerateContent?alt=sse`, {
 					...buildInit(),
-					prepareInit: () => {
-						const transform = resolveProviderTextTransform(resolveTextTransform, "Gemini search request");
-						return {
-							body: JSON.stringify(transformProviderPayload(requestBody, transform, "Gemini search request")),
-						};
-					},
+					prepareInit: () => geminiSearchBody(requestBody, resolveTextTransform),
 					fetch: fetchImpl,
 					maxAttempts: isLastEndpoint ? MAX_RETRIES + 1 : 1,
 					defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,
@@ -497,12 +501,7 @@ async function callGeminiDeveloperSearch(
 					Accept: "text/event-stream",
 				},
 				signal: hardSignal,
-				prepareInit: () => {
-					const transform = resolveProviderTextTransform(resolveTextTransform, "Gemini search request");
-					return {
-						body: JSON.stringify(transformProviderPayload(requestBody, transform, "Gemini search request")),
-					};
-				},
+				prepareInit: () => geminiSearchBody(requestBody, resolveTextTransform),
 				fetch: fetchImpl,
 				maxAttempts: MAX_RETRIES + 1,
 				defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,

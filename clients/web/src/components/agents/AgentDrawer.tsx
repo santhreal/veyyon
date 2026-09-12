@@ -1,4 +1,4 @@
-import type { AgentSnapshot, SubagentProgressPayload, WireSessionEntry } from "@veyyon/wire";
+import type { AgentProgressPayload, AgentSnapshot, WireSessionEntry } from "@veyyon/wire";
 import { OctagonX, RotateCcw, SendHorizontal, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
@@ -13,7 +13,7 @@ const POLL_MS = 1200;
 
 export function AgentDrawer(props: {
 	agent: AgentSnapshot;
-	progress?: SubagentProgressPayload;
+	progress?: AgentProgressPayload;
 	client: GuestClient;
 	/** View-link guests: hide kill/revive/chat (the host rejects them anyway). */
 	readOnly?: boolean;

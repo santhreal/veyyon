@@ -106,7 +106,7 @@ RETURN_MAX_PIXELS=400
 # against zero.
 CLOSED_MAX_PIXELS=200
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 # The column the sheet's ground ends in, measured rather than trimmed to.

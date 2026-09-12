@@ -27,7 +27,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as http2 from "node:http2";
 import { create, toBinary } from "@bufbuild/protobuf";
 import { buildGrepResultFromToolResult, streamCursor } from "@veyyon/ai/providers/cursor";
-import { setCursorProviderModule } from "@veyyon/ai/providers/register-builtins";
+import { setProviderModuleOverrideForTest } from "@veyyon/ai/providers/register-builtins";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -50,7 +50,7 @@ import {
 } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
 
 afterEach(() => {
-	setCursorProviderModule();
+	setProviderModuleOverrideForTest("cursor-agent");
 });
 
 function frameConnect(payload: Uint8Array): Buffer {

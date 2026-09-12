@@ -17,6 +17,7 @@ import {
 	type LocationContext,
 	resolveLocationContext,
 } from "@veyyon/coding-agent/modes/terminal/components/status-line/location-context";
+import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
 
 function createGitDirectory(repoRoot: string): void {
 	const gitDir = path.join(repoRoot, ".git");
@@ -50,13 +51,13 @@ describe("a location context derives repo and worktree state", () => {
 	it("derives empty repo and worktree context for an ordinary unversioned directory", () => {
 		const projectDir = path.join(tempRoot, "plain-dir");
 		fs.mkdirSync(projectDir, { recursive: true });
-
 		const context: LocationContext = resolveLocationContext(projectDir);
 		expect(context).toEqual({
 			projectDir,
 			activeRepo: null,
 			effectiveGitCwd: projectDir,
 			worktree: null,
+			repository: null,
 		});
 	});
 
@@ -77,7 +78,13 @@ describe("a location context derives repo and worktree state", () => {
 			},
 			effectiveGitCwd: childRepo,
 			worktree: null,
+			repository: expect.objectContaining({
+				repoRoot: childRepo,
+				gitDir: path.join(childRepo, ".git"),
+			}),
 		});
+		expect(context.repository).not.toBeNull();
+		expect(branchLabelFromFiles(context.repository!)).toBe("main");
 	});
 
 	it("derives linked worktree metadata and keeps effectiveGitCwd for a worktree directory", () => {
@@ -94,7 +101,12 @@ describe("a location context derives repo and worktree state", () => {
 				projectName: "monorepo",
 				worktreeName: "monorepo-feature-ui",
 			},
+			repository: expect.objectContaining({
+				repoRoot: worktreeRoot,
+			}),
 		});
+		expect(context.repository).not.toBeNull();
+		expect(branchLabelFromFiles(context.repository!)).toBe("feature-ui");
 	});
 
 	it("derives clean context with effectiveGitCwd matching projectDir for a direct git repo", () => {
@@ -108,6 +120,37 @@ describe("a location context derives repo and worktree state", () => {
 			activeRepo: null,
 			effectiveGitCwd: repoRoot,
 			worktree: null,
+			repository: expect.objectContaining({
+				repoRoot,
+				gitDir: path.join(repoRoot, ".git"),
+			}),
 		});
+		expect(context.repository).not.toBeNull();
+		expect(branchLabelFromFiles(context.repository!)).toBe("main");
+	});
+
+	it("derives branch with operation from context.repository when a rebase is in progress", () => {
+		const repoRoot = path.join(tempRoot, "rebase-repo");
+		fs.mkdirSync(repoRoot, { recursive: true });
+		createGitDirectory(repoRoot);
+		const rebaseMerge = path.join(repoRoot, ".git", "rebase-merge");
+		fs.mkdirSync(rebaseMerge, { recursive: true });
+		fs.writeFileSync(path.join(rebaseMerge, "head-name"), "refs/heads/topic\n", "utf8");
+		fs.writeFileSync(path.join(repoRoot, ".git", "HEAD"), "0123456789abcdef0123456789abcdef01234567\n", "utf8");
+
+		const context: LocationContext = resolveLocationContext(repoRoot);
+		expect(context.repository).not.toBeNull();
+		expect(branchLabelFromFiles(context.repository!)).toBe("topic|REBASE");
+	});
+
+	it("returns null branch for a reftable repo without errors using context.repository", () => {
+		const repoRoot = path.join(tempRoot, "reftable-repo");
+		fs.mkdirSync(repoRoot, { recursive: true });
+		createGitDirectory(repoRoot);
+		fs.writeFileSync(path.join(repoRoot, ".git", "config"), "[extensions]\n\trefstorage = reftable\n", "utf8");
+
+		const context: LocationContext = resolveLocationContext(repoRoot);
+		expect(context.repository).not.toBeNull();
+		expect(branchLabelFromFiles(context.repository!)).toBeNull();
 	});
 });

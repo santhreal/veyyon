@@ -7,7 +7,7 @@ import { ToolError, throwIfAborted } from "../../core/tool-errors";
  * Browser run teardown aborts can reject promises created for evaluated code after user code
  * has stopped observing them (for example fire-and-forget `wait()`/facade calls). In 16.3.0
  * those zero-consumer rejections reached the process-level `unhandledRejection` handler and
- * killed every subagent sharing the process (issues #4499/#4672). Attaching a no-op rejection
+ * killed every agent sharing the process (issues #4499/#4672). Attaching a no-op rejection
  * handler at creation makes the promise observed while returning the original promise so callers
  * that do await it still receive the rejection.
  */

@@ -27,6 +27,7 @@ import { notifyProviderResponse } from "../utils/provider-response";
 import { sanitizeSchemaForOpenAIResponses, toolWireSchema } from "../utils/schema";
 import { notifyRawSseEvent, resolveOpenAiSseEventName } from "../utils/sse-debug";
 import { mapToOpenAIResponsesToolChoice } from "../utils/tool-choice";
+import { createInitialResponsesAssistantMessage } from "./initial-message";
 import {
 	applyOpenAIReasoningEffortFallback,
 	createOpenAIReasoningEffortFallbackKey,
@@ -38,7 +39,6 @@ import {
 	applyCommonResponsesSamplingParams,
 	applyResponsesReasoningParams,
 	buildResponsesInput,
-	createInitialResponsesAssistantMessage,
 	getOpenAIPromptCacheKey,
 	isOpenAIResponsesProgressEvent,
 	parseAzureDeploymentNameMap,
@@ -269,10 +269,7 @@ const streamAzureOpenAIResponsesOnce = (
 				abortTracker,
 				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
 			});
-			output.stopReason = result.stopReason;
-			output.errorStatus = result.status;
-			output.errorId = result.id;
-			output.errorMessage = result.message;
+			AIError.applyFinalizeResult(output, result);
 			output.duration = performance.now() - startTime;
 			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
 			stream.push({ type: "error", reason: output.stopReason, error: output });

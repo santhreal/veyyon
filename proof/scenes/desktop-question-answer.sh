@@ -140,8 +140,8 @@ QUIET_ROWS_MAX=2
 # the ring's own edges, so a transcript block behind the card cannot be read as
 # part of it.
 card_reading() { # <png> -> "RING_PX TOP BOTTOM OPTION_RUNS ACCENT_PX"
-	local dump="${SCENE_RUNTIME_DIR}/frame-compare/card-reading.txt"
-	mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+	local dump="${TMPDIR}/frame-compare/card-reading.txt"
+	mkdir -p "${TMPDIR}/frame-compare"
 	magick "$1" -crop "${CARD_BAND}" +repage txt:- >"${dump}"
 	python3 - "${dump}" "${RING#\#}" "${INSET#\#}" "${ACCENT#\#}" \
 		"${COMPOSER_CARD_W}" "${ROW_COLUMNS_MIN}" <<'PY'
@@ -200,8 +200,8 @@ PY
 }
 
 notice_rows() { # <png> -> pixel rows of the window's notice ground under the titlebar
-	local dump="${SCENE_RUNTIME_DIR}/frame-compare/notice-rows.txt"
-	mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+	local dump="${TMPDIR}/frame-compare/notice-rows.txt"
+	mkdir -p "${TMPDIR}/frame-compare"
 	magick "$1" -crop "${NOTICE_BAND}" +repage txt:- >"${dump}"
 	python3 - "${dump}" "${NOTICE#\#}" "$(( WIN_W / 5 ))" <<'PY'
 import re
@@ -224,7 +224,7 @@ PY
 # command raises its question the moment the prompt reaches the host, so the
 # wait is on the window rather than on a timer.
 await_card() { # <seconds> -> 0 once a card offers rows
-	local deadline=$(( SECONDS + $1 )) probe="${SCENE_RUNTIME_DIR}/awaiting-card.png" runs=0
+	local deadline=$(( SECONDS + $1 )) probe="${TMPDIR}/awaiting-card.png" runs=0
 	while (( SECONDS < deadline )); do
 		probe_frame "${probe}"
 		read -r _ _ _ runs _ < <(card_reading "${probe}")
@@ -260,7 +260,7 @@ pause 0.5
 type_prompt "/review"
 k "Escape"
 pause 0.6
-BEFORE_PRESS="${SCENE_RUNTIME_DIR}/before-press.png"
+BEFORE_PRESS="${TMPDIR}/before-press.png"
 probe_frame "${BEFORE_PRESS}"
 move_px "${PRIMARY_X}" "${PRIMARY_Y}"
 pause 0.3

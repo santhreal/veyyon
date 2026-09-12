@@ -5,7 +5,6 @@ import * as sdkModule from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
-import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import {
 	createAssistantStopMessage,
 	createAssistantToolCallMessage,
@@ -14,7 +13,8 @@ import {
 	createSessionResult,
 	yieldRejectedEvent,
 	yieldSuccessEvent,
-} from "../helpers/subagent-session";
+} from "../helpers/agent-session";
+import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 
 // Spawning a task writes a session (and, for worktree runs, a checkout) under the
 // ACTIVE PROFILE's agent dir, so without this the suite creates them inside the
@@ -22,18 +22,18 @@ import {
 useIsolatedAgentDir();
 
 /**
- * Contract: when `task.maxRuntimeMs` is set, a subagent whose inference call
+ * Contract: when `task.maxRuntimeMs` is set, an agent whose inference call
  * never resolves (provider stream hang the watchdog couldn't catch) MUST be
  * aborted within ~maxRuntimeMs and surface a clear "runtime limit exceeded"
  * reason — not a generic "Cancelled by caller" — so on-call engineers don't
  * mistake it for a user cancellation.
  *
  * Without this defense, the executor's `await session.waitForIdle()` waits
- * indefinitely (see session 019e2b4d-fa25-7000-a725-955278e9b293, subagent 7,
+ * indefinitely (see session 019e2b4d-fa25-7000-a725-955278e9b293, agent 7,
  * which stayed silent for ~2 hours).
  *
  * A stalled child is `hangUntilAbort` on the shared fake in
- * `test/helpers/subagent-session.ts`: `prompt` and `waitForIdle` wait for something to abort the
+ * `test/helpers/agent-session.ts`: `prompt` and `waitForIdle` wait for something to abort the
  * session, so only the executor's own guards can end these runs. The soft-budget cases below drive
  * their events from `waitForIdle` rather than from `prompt`, because they assert how many aborts had
  * happened by the time a yield's `tool_execution_end` landed, and that ordering lives in that window.
@@ -59,20 +59,20 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 		agent: baseAgent,
 		task: "do work",
 		index: 0,
-		id: "subagent-walltime",
+		id: "agent-walltime",
 		modelRegistry: { refresh: async () => {} } as unknown as ModelRegistry,
 		enableLsp: false,
 	};
 
-	it("aborts a stalled subagent and surfaces a runtime-limit reason", async () => {
-		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 1_000 });
+	it("aborts a stalled agent and surfaces a runtime-limit reason", async () => {
+		const settings = Settings.isolated({ "agent.maxRuntimeMs": 1_000 });
 		const handle = createMockSessionHandle(() => {}, { hangUntilAbort: true });
 		mockCreateAgentSession(handle.session);
 
 		const startedAt = Date.now();
 		const result = await runSubprocess({
 			...baseOptions,
-			id: "subagent-timeout",
+			id: "agent-timeout",
 			settings,
 		});
 		const elapsedMs = Date.now() - startedAt;
@@ -91,7 +91,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 	it("does not abort early when the runtime budget is unlimited", async () => {
 		// The child answers immediately with a yield, so nothing hangs; the point is
 		// only that NO timeout fires when maxRuntimeMs=0.
-		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 0 });
+		const settings = Settings.isolated({ "agent.maxRuntimeMs": 0 });
 		const session = createMockSession(({ emit }) => {
 			emit(yieldSuccessEvent({ ok: true }, "tool-fast"));
 		});
@@ -99,7 +99,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 
 		const result = await runSubprocess({
 			...baseOptions,
-			id: "subagent-no-limit",
+			id: "agent-no-limit",
 			settings,
 		});
 
@@ -112,7 +112,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 		// timer fires while the executor is still doing async setup, well before
 		// it ever calls session.prompt(). The fix must observe abortSignal
 		// immediately before prompting and return the runtime-limit result.
-		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 30 });
+		const settings = Settings.isolated({ "agent.maxRuntimeMs": 30 });
 		const handle = createMockSessionHandle(() => {}, { hangUntilAbort: true });
 		vi.spyOn(sdkModule, "createAgentSession").mockImplementation(async () => {
 			await new Promise(resolve => setTimeout(resolve, 200));
@@ -121,7 +121,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 
 		const result = await runSubprocess({
 			...baseOptions,
-			id: "subagent-setup-timeout",
+			id: "agent-setup-timeout",
 			settings,
 		});
 
@@ -135,11 +135,11 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 	});
 
 	it("a late successful yield does not flip a timed-out run to success", async () => {
-		// A hung subagent emits a successful `yield` event during teardown (after
+		// A hung agent emits a successful `yield` event during teardown (after
 		// the timer has already aborted). Without the fix, `hasYield=true` would
 		// make finalizeSubprocessOutput zero the exit code and `wasAborted`
 		// would resolve to false — silently masking the runtime-limit breach.
-		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 30 });
+		const settings = Settings.isolated({ "agent.maxRuntimeMs": 30 });
 		const handle = createMockSessionHandle(() => {}, {
 			hangUntilAbort: true,
 			// Emitted from inside `abort`, which is the only way to land in the teardown window.
@@ -149,7 +149,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 
 		const result = await runSubprocess({
 			...baseOptions,
-			id: "subagent-late-yield",
+			id: "agent-late-yield",
 			settings,
 		});
 
@@ -163,7 +163,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 	});
 
 	it("commits a yield tool call before the soft request budget aborts the turn", async () => {
-		const settings = Settings.isolated({ "subagent.softRequestBudget": 1 });
+		const settings = Settings.isolated({ "agent.softRequestBudget": 1 });
 		let abortCountBeforeYieldExecutionEnd: number | undefined;
 		const handle = createMockSessionHandle(() => {}, {
 			onWaitForIdle: ({ idleIndex, emit, pushTurn }) => {
@@ -182,7 +182,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 
 		const result = await runSubprocess({
 			...baseOptions,
-			id: "subagent-soft-budget-yield",
+			id: "agent-soft-budget-yield",
 			settings,
 		});
 
@@ -195,7 +195,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 	});
 
 	it("does not finalize rejected yield arguments after crossing the soft request budget", async () => {
-		const settings = Settings.isolated({ "subagent.softRequestBudget": 1 });
+		const settings = Settings.isolated({ "agent.softRequestBudget": 1 });
 		let abortCountBeforeRejectedYieldExecutionEnd: number | undefined;
 		let abortCountBeforeValidYieldExecutionEnd: number | undefined;
 		const handle = createMockSessionHandle(() => {}, {
@@ -226,7 +226,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 
 		const result = await runSubprocess({
 			...baseOptions,
-			id: "subagent-soft-budget-rejected-yield",
+			id: "agent-soft-budget-rejected-yield",
 			settings,
 		});
 
@@ -252,7 +252,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 	});
 
 	it("resumes the hard budget guard after an incremental yield commits", async () => {
-		const settings = Settings.isolated({ "subagent.softRequestBudget": 1 });
+		const settings = Settings.isolated({ "agent.softRequestBudget": 1 });
 		let abortCountBeforeYieldExecutionEnd: number | undefined;
 		let abortCountAfterFollowingTurn: number | undefined;
 		const handle = createMockSessionHandle(() => {}, {
@@ -277,7 +277,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 
 		const result = await runSubprocess({
 			...baseOptions,
-			id: "subagent-soft-budget-incremental-yield",
+			id: "agent-soft-budget-incremental-yield",
 			settings,
 		});
 
@@ -301,7 +301,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 		// `singleResult.contextWindow` onto AgentProgress. This test pins the
 		// upstream contract: when an assistant message_end carries totalTokens,
 		// executor must surface it on SingleResult.contextTokens.
-		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 0 });
+		const settings = Settings.isolated({ "agent.maxRuntimeMs": 0 });
 		const session = createMockSession(({ emit, pushTurn }) => {
 			pushTurn(createAssistantStopMessage("ok", "stop", { input: 100, output: 50, totalTokens: 12345 }));
 			emit(yieldSuccessEvent({ ok: true }, "tool-ok"));
@@ -310,7 +310,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 
 		const result = await runSubprocess({
 			...baseOptions,
-			id: "subagent-context-tokens",
+			id: "agent-context-tokens",
 			settings,
 		});
 

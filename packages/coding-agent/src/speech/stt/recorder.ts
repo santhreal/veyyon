@@ -385,6 +385,30 @@ function recorderFailure(recorder: ResolvedRecorder, error: unknown): string {
 	return `${recorder.tool} (${recorder.bin}): ${message}`;
 }
 
+/**
+ * Start the first recorder in `recorders` that comes up, in priority order. A
+ * recorder that fails to start is logged under `warnMessage` and the next one
+ * is tried; when none starts, the error lists every failure after `summary`.
+ */
+async function startFirstRecorder<T>(
+	recorders: readonly ResolvedRecorder[],
+	start: (recorder: ResolvedRecorder) => Promise<T>,
+	warnMessage: string,
+	summary: string,
+): Promise<T> {
+	const failures: string[] = [];
+	for (const recorder of recorders) {
+		try {
+			return await start(recorder);
+		} catch (error) {
+			const failure = recorderFailure(recorder, error);
+			failures.push(failure);
+			logger.warn(warnMessage, { recorder: recorder.tool, bin: recorder.bin, error: failure });
+		}
+	}
+	throw new Error(`${summary}\n${failures.join("\n")}`);
+}
+
 async function startRecordingWithRecorder(recorder: ResolvedRecorder, outputPath: string): Promise<RecordingHandle> {
 	logger.debug("Starting audio recording", { tool: recorder.tool, bin: recorder.bin, outputPath });
 	switch (recorder.tool) {
@@ -405,21 +429,12 @@ export async function startRecording(outputPath: string): Promise<RecordingHandl
 		throw new Error("No audio recorder available — run `veyyon setup speech`");
 	}
 
-	const failures: string[] = [];
-	for (const recorder of recorders) {
-		try {
-			return await startRecordingWithRecorder(recorder, outputPath);
-		} catch (error) {
-			const failure = recorderFailure(recorder, error);
-			failures.push(failure);
-			logger.warn("STT recorder failed to start; trying fallback", {
-				recorder: recorder.tool,
-				bin: recorder.bin,
-				error: failure,
-			});
-		}
-	}
-	throw new Error(`No audio recorder could start — run \`veyyon setup speech\`.\n${failures.join("\n")}`);
+	return startFirstRecorder(
+		recorders,
+		recorder => startRecordingWithRecorder(recorder, outputPath),
+		"STT recorder failed to start; trying fallback",
+		"No audio recorder could start — run `veyyon setup speech`.",
+	);
 }
 
 /**
@@ -568,19 +583,10 @@ export async function startStreamingRecording(
 	const streamingRecorders = recorders.filter(recorder => recorder.tool !== "powershell");
 	if (streamingRecorders.length === 0) return null;
 
-	const failures: string[] = [];
-	for (const recorder of streamingRecorders) {
-		try {
-			return await startStreamingRecordingWithRecorder(recorder, onAudio);
-		} catch (error) {
-			const failure = recorderFailure(recorder, error);
-			failures.push(failure);
-			logger.warn("STT streaming recorder failed to start; trying fallback", {
-				recorder: recorder.tool,
-				bin: recorder.bin,
-				error: failure,
-			});
-		}
-	}
-	throw new Error(`No streaming audio recorder could start.\n${failures.join("\n")}`);
+	return startFirstRecorder(
+		streamingRecorders,
+		recorder => startStreamingRecordingWithRecorder(recorder, onAudio),
+		"STT streaming recorder failed to start; trying fallback",
+		"No streaming audio recorder could start.",
+	);
 }

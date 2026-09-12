@@ -116,7 +116,7 @@ TAG_NOISE_MAX=40
 # coordinates: one band per line of text or per control, and nothing for the
 # ground between them. The reader is written to a file rather than fed on
 # standard input, which carries the crop's own bytes.
-INK_BANDS_PY="${SCENE_RUNTIME_DIR}/ink-bands.py"
+INK_BANDS_PY="${TMPDIR}/ink-bands.py"
 cat >"${INK_BANDS_PY}" <<'PY'
 import sys
 

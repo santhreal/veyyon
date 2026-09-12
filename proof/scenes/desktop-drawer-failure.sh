@@ -167,8 +167,8 @@ drawer_region() {
 #
 # Sets RUNS, FILLED, BAND_PX and BAND_OFFSET.
 read_bands() { # <png>
-	local dump="${SCENE_RUNTIME_DIR}/frame-compare/drawer-pixels.txt"
-	mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+	local dump="${TMPDIR}/frame-compare/drawer-pixels.txt"
+	mkdir -p "${TMPDIR}/frame-compare"
 	magick "$1" -crop "${BODY_GEOM}" +repage txt:- >"${dump}"
 	read -r RUNS FILLED BAND_PX BAND_OFFSET < <(
 		python3 - "${dump}" "$(( CHROME_H / 2 ))" <<'PY'
@@ -296,8 +296,8 @@ esac
 # one tab along: one `/bin/sh` label (47px at the body ramp in this checkout's
 # font) past the strip's first tab.
 PROCESSES_TAB_X=$(( TAB_X + 47 ))
-AT_REST="${SCENE_RUNTIME_DIR}/frame-compare/drawer-at-rest.png"
-mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+AT_REST="${TMPDIR}/frame-compare/drawer-at-rest.png"
+mkdir -p "${TMPDIR}/frame-compare"
 probe_frame "${AT_REST}"
 
 k "ctrl+j"

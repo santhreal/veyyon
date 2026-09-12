@@ -214,7 +214,7 @@ describe("AgentSession.switchSession previous-context build", () => {
 				refreshedCwds.push(cwd);
 				return cwd === projectB ? targetObfuscator : sourceObfuscator;
 			},
-			isSubagent: true,
+			isSpawned: true,
 		});
 		sessions.push(session);
 

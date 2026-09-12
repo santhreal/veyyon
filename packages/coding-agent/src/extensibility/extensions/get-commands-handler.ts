@@ -72,6 +72,8 @@ function customCommandLocation(source: CustomCommandSource): SlashCommandLocatio
 			return "user";
 		case "project":
 			return "project";
+		case "plugin":
+			return "plugin";
 		case "bundled":
 			return undefined;
 	}

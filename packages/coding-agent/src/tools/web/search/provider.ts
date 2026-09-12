@@ -5,143 +5,44 @@
 // fetch/parse/format helpers) and only one — at most — is needed per session,
 // so eager construction was wasted work at startup.
 //
-// Provider modules are loaded lazily; display metadata lives in types.ts so UI
-// listings can share it without importing provider implementations.
+// Provider modules are loaded lazily; display metadata lives in types.ts so a
+// card or a settings listing reads it without importing provider implementations.
 
 import type { AuthStorage } from "@veyyon/ai";
 import type { SearchProvider } from "./providers/base";
-import { SEARCH_PROVIDER_LABELS, SEARCH_PROVIDER_ORDER, SearchProviderError, type SearchProviderId } from "./types";
+import { getSearchProviderLabel, SEARCH_PROVIDER_ORDER, SearchProviderError, type SearchProviderId } from "./types";
 
 export type { SearchParams } from "./providers/base";
 export { SearchProvider } from "./providers/base";
-export { SEARCH_PROVIDER_ORDER } from "./types";
+export { getSearchProviderLabel, SEARCH_PROVIDER_ORDER } from "./types";
 
-interface ProviderMeta {
-	id: SearchProviderId;
-	label: string;
-	load: () => Promise<SearchProvider>;
-}
-
-/** Lazy factories. Each `load()` dynamic-imports its provider module on first call. */
-const PROVIDER_META: Record<SearchProviderId, ProviderMeta> = {
-	perplexity: {
-		id: "perplexity",
-		label: SEARCH_PROVIDER_LABELS.perplexity,
-		load: async () => new (await import("./providers/perplexity")).PerplexityProvider(),
-	},
-	gemini: {
-		id: "gemini",
-		label: SEARCH_PROVIDER_LABELS.gemini,
-		load: async () => new (await import("./providers/gemini")).GeminiProvider(),
-	},
-	anthropic: {
-		id: "anthropic",
-		label: SEARCH_PROVIDER_LABELS.anthropic,
-		load: async () => new (await import("./providers/anthropic")).AnthropicProvider(),
-	},
-	codex: {
-		id: "codex",
-		label: SEARCH_PROVIDER_LABELS.codex,
-		load: async () => new (await import("./providers/codex")).CodexProvider(),
-	},
-	xai: {
-		id: "xai",
-		label: SEARCH_PROVIDER_LABELS.xai,
-		load: async () => new (await import("./providers/xai")).XAIProvider(),
-	},
-	zai: {
-		id: "zai",
-		label: SEARCH_PROVIDER_LABELS.zai,
-		load: async () => new (await import("./providers/zai")).ZaiProvider(),
-	},
-	exa: {
-		id: "exa",
-		label: SEARCH_PROVIDER_LABELS.exa,
-		load: async () => new (await import("./providers/exa")).ExaProvider(),
-	},
-	tinyfish: {
-		id: "tinyfish",
-		label: SEARCH_PROVIDER_LABELS.tinyfish,
-		load: async () => new (await import("./providers/tinyfish")).TinyFishProvider(),
-	},
-	jina: {
-		id: "jina",
-		label: SEARCH_PROVIDER_LABELS.jina,
-		load: async () => new (await import("./providers/jina")).JinaProvider(),
-	},
-	kagi: {
-		id: "kagi",
-		label: SEARCH_PROVIDER_LABELS.kagi,
-		load: async () => new (await import("./providers/kagi")).KagiProvider(),
-	},
-	tavily: {
-		id: "tavily",
-		label: SEARCH_PROVIDER_LABELS.tavily,
-		load: async () => new (await import("./providers/tavily")).TavilyProvider(),
-	},
-	firecrawl: {
-		id: "firecrawl",
-		label: SEARCH_PROVIDER_LABELS.firecrawl,
-		load: async () => new (await import("./providers/firecrawl")).FirecrawlProvider(),
-	},
-	brave: {
-		id: "brave",
-		label: SEARCH_PROVIDER_LABELS.brave,
-		load: async () => new (await import("./providers/brave")).BraveProvider(),
-	},
-	kimi: {
-		id: "kimi",
-		label: SEARCH_PROVIDER_LABELS.kimi,
-		load: async () => new (await import("./providers/kimi")).KimiProvider(),
-	},
-	parallel: {
-		id: "parallel",
-		label: SEARCH_PROVIDER_LABELS.parallel,
-		load: async () => new (await import("./providers/parallel")).ParallelProvider(),
-	},
-	synthetic: {
-		id: "synthetic",
-		label: SEARCH_PROVIDER_LABELS.synthetic,
-		load: async () => new (await import("./providers/synthetic")).SyntheticProvider(),
-	},
-	searxng: {
-		id: "searxng",
-		label: SEARCH_PROVIDER_LABELS.searxng,
-		load: async () => new (await import("./providers/searxng")).SearXNGProvider(),
-	},
-	duckduckgo: {
-		id: "duckduckgo",
-		label: SEARCH_PROVIDER_LABELS.duckduckgo,
-		load: async () => new (await import("./providers/duckduckgo")).DuckDuckGoProvider(),
-	},
-	google: {
-		id: "google",
-		label: SEARCH_PROVIDER_LABELS.google,
-		load: async () => new (await import("./providers/google")).GoogleProvider(),
-	},
-	startpage: {
-		id: "startpage",
-		label: SEARCH_PROVIDER_LABELS.startpage,
-		load: async () => new (await import("./providers/startpage")).StartpageProvider(),
-	},
-	mojeek: {
-		id: "mojeek",
-		label: SEARCH_PROVIDER_LABELS.mojeek,
-		load: async () => new (await import("./providers/mojeek")).MojeekProvider(),
-	},
-	public: {
-		id: "public",
-		label: SEARCH_PROVIDER_LABELS.public,
-		load: async () => new (await import("./providers/public")).PublicWebProvider(),
-	},
+/** Lazy factories. Each one dynamic-imports its provider module on first call. */
+const PROVIDER_LOADERS: Record<SearchProviderId, () => Promise<SearchProvider>> = {
+	perplexity: async () => new (await import("./providers/perplexity")).PerplexityProvider(),
+	gemini: async () => new (await import("./providers/gemini")).GeminiProvider(),
+	anthropic: async () => new (await import("./providers/anthropic")).AnthropicProvider(),
+	codex: async () => new (await import("./providers/codex")).CodexProvider(),
+	xai: async () => new (await import("./providers/xai")).XAIProvider(),
+	zai: async () => new (await import("./providers/zai")).ZaiProvider(),
+	exa: async () => new (await import("./providers/exa")).ExaProvider(),
+	tinyfish: async () => new (await import("./providers/tinyfish")).TinyFishProvider(),
+	jina: async () => new (await import("./providers/jina")).JinaProvider(),
+	kagi: async () => new (await import("./providers/kagi")).KagiProvider(),
+	tavily: async () => new (await import("./providers/tavily")).TavilyProvider(),
+	firecrawl: async () => new (await import("./providers/firecrawl")).FirecrawlProvider(),
+	brave: async () => new (await import("./providers/brave")).BraveProvider(),
+	kimi: async () => new (await import("./providers/kimi")).KimiProvider(),
+	parallel: async () => new (await import("./providers/parallel")).ParallelProvider(),
+	synthetic: async () => new (await import("./providers/synthetic")).SyntheticProvider(),
+	searxng: async () => new (await import("./providers/searxng")).SearXNGProvider(),
+	duckduckgo: async () => new (await import("./providers/duckduckgo")).DuckDuckGoProvider(),
+	google: async () => new (await import("./providers/google")).GoogleProvider(),
+	startpage: async () => new (await import("./providers/startpage")).StartpageProvider(),
+	mojeek: async () => new (await import("./providers/mojeek")).MojeekProvider(),
+	public: async () => new (await import("./providers/public")).PublicWebProvider(),
 };
 
 const instanceCache = new Map<SearchProviderId, SearchProvider>();
-
-/** Cheap, sync metadata accessor — never triggers a provider load. */
-export function getSearchProviderLabel(id: SearchProviderId): string {
-	return PROVIDER_META[id]?.label ?? id;
-}
 
 /** Format one provider failure for the user-facing fallback summary. */
 export function formatSearchProviderFailure(error: unknown, provider: Pick<SearchProvider, "id" | "label">): string {
@@ -175,11 +76,11 @@ export function formatSearchProviderFailures(
 export async function getSearchProvider(id: SearchProviderId): Promise<SearchProvider> {
 	const cached = instanceCache.get(id);
 	if (cached) return cached;
-	const meta = PROVIDER_META[id];
-	if (!meta) {
+	const load = PROVIDER_LOADERS[id];
+	if (!load) {
 		throw new Error(`Unknown search provider: ${id}`);
 	}
-	const provider = await meta.load();
+	const provider = await load();
 	instanceCache.set(id, provider);
 	return provider;
 }

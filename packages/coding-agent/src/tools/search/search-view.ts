@@ -14,7 +14,14 @@
 
 import { isRecord } from "@veyyon/utils";
 import type { ToolView, ToolViewContext, ToolViewRenderer } from "@veyyon/view";
-import { replaceTabs, sanitizeErrorText, TRUNCATE_LENGTHS, truncateToWidth } from "../core/render-utils";
+import { extractResultText } from "../core/output-notice";
+import {
+	errorTextBlock,
+	replaceTabs,
+	type ToolViewResult,
+	TRUNCATE_LENGTHS,
+	truncateToWidth,
+} from "../core/render-utils";
 import type { FileSearchDetails, FileSearchRenderArgs } from "./file-search";
 import { type FileSearchViewResult, fileSearchToolView } from "./file-search-view";
 import type { SearchToolDetails, SearchToolInput, SearchType } from "./search";
@@ -23,11 +30,7 @@ import { type StructureSearchViewResult, structureSearchToolView } from "./struc
 import type { TextSearchDetails, TextSearchRenderArgs } from "./text-search";
 import { type TextSearchViewResult, textSearchToolView } from "./text-search-view";
 
-export interface SearchViewResult {
-	content: Array<{ type: string; text?: string }>;
-	details?: SearchToolDetails;
-	isError?: boolean;
-}
+export interface SearchViewResult extends ToolViewResult<SearchToolDetails> {}
 
 /** The search this call is, or nothing: the type came from the model, so it may be absent or junk. */
 function renderedType(args: unknown, details?: unknown): SearchType | undefined {
@@ -76,15 +79,7 @@ export const searchToolView: Required<ToolViewRenderer<SearchToolInput, SearchVi
 		// A failure with no type never reached a search, so no sub-view owns it: the tool's own message
 		// is the whole card, and it is the one row here that states its own error mark.
 		if (result.isError === true && type === undefined) {
-			const text = result.content?.find(entry => entry.type === "text")?.text;
-			return {
-				kind: "textBlock",
-				spans: [
-					{ text: "", symbol: "status.error", tone: "error" },
-					{ text: " " },
-					{ text: `Error: ${sanitizeErrorText(text)}`, tone: "error" },
-				],
-			};
+			return errorTextBlock(extractResultText(result.content));
 		}
 		const details = result.details?.result;
 		if (type === "files") {

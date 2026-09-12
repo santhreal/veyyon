@@ -31,7 +31,7 @@ import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { mayContinueAtSettle, type SettleContinuationState } from "@veyyon/kernel/session/settle-continuation";
 import { getStringProperty, logger, prompt } from "@veyyon/utils";
 import { turnControlPrompts } from "../../prompts/turn-control/rows";
-import { getLatestTodoPhasesFromEntries, type TodoPhase } from "../../tools/agent/todo";
+import { clonePhases, getLatestTodoPhasesFromEntries, type TodoPhase } from "../../tools/agent/todo";
 import { TOOL } from "../../tools/core/builtin-names";
 import { buildNamedToolChoice } from "../../utils/tool-choice";
 import { toolCallOpFromMessage } from "../agent-session-message-shapes";
@@ -198,11 +198,11 @@ export class TodoRuntime {
 	// ---------------------------------------------------------------- the board
 
 	phases(): TodoPhase[] {
-		return this.clonePhases(this.#phases);
+		return clonePhases(this.#phases);
 	}
 
 	setPhases(phases: TodoPhase[]): void {
-		const nextPhases = this.clonePhases(phases);
+		const nextPhases = clonePhases(phases);
 		const previous = todoReminderFingerprint(incompleteTodoItems(this.#phases));
 		const next = todoReminderFingerprint(incompleteTodoItems(nextPhases));
 		this.#phases = nextPhases;
@@ -218,13 +218,6 @@ export class TodoRuntime {
 	 *  switch, compaction). */
 	syncFromBranch(): void {
 		this.setPhases(getLatestTodoPhasesFromEntries(this.#host.sessionStore.getBranch()));
-	}
-
-	clonePhases(phases: TodoPhase[]): TodoPhase[] {
-		return phases.map(phase => ({
-			name: phase.name,
-			tasks: phase.tasks.map(task => ({ content: task.content, status: task.status })),
-		}));
 	}
 
 	// ------------------------------------------------------------- state pokes

@@ -157,13 +157,14 @@ describe("the tool execution arms", () => {
 			isError: false,
 		} as unknown as AgentSessionEvent);
 
-		expect(wire).toEqual({
+		expect(wire).toMatchObject({
 			type: "tool_execution_end",
 			toolCallId: "call_1",
 			toolName: "read",
 			result: { output: "file contents", metrics: { bytes: 4096 } },
 			isError: false,
 		});
+		expect(wire && "display" in wire ? wire.display : undefined).toBeDefined();
 	});
 
 	/** The start arm keeps `intent`, which is the one-line description a guest shows while it runs. */
@@ -176,13 +177,14 @@ describe("the tool execution arms", () => {
 			intent: "list the directory",
 		} as unknown as AgentSessionEvent);
 
-		expect(wire).toEqual({
+		expect(wire).toMatchObject({
 			type: "tool_execution_start",
 			toolCallId: "call_2",
 			toolName: "bash",
 			args: { command: "ls" },
 			intent: "list the directory",
 		});
+		expect(wire && "display" in wire ? wire.display : undefined).toBeDefined();
 	});
 });
 

@@ -38,7 +38,7 @@
 
 import { spawnSync } from "node:child_process";
 import * as path from "node:path";
-import { readIfPresent } from "./check-doc-links";
+import { readIfPresent } from "./workspace-layout";
 
 export interface Stamp {
 	sha: string;

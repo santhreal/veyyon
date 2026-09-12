@@ -369,7 +369,7 @@
 				},
 				"statusLineSubagents": {
 					"$ref": "#/$defs/colorValue",
-					"description": "Status line subagents segment"
+					"description": "Status line agents segment"
 				}
 			},
 			"additionalProperties": false

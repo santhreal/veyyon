@@ -7,7 +7,7 @@
  * recorded prefix, which is only correct when the virtualized child is the
  * first root child. It is not: `home-anchor-layout` mounts a `topFill` above
  * the transcript whenever a conversation exists, and every HUD (todos,
- * subagents) sits in that band too. With a header of two rows the prefix ended
+ * agents) sits in that band too. With a header of two rows the prefix ended
  * up misaligned by exactly the header height, the next audit read that as a
  * committed-prefix divergence, and the repair erased native scrollback and
  * replayed the transcript — measured here at 20 full redraws and 20 ED3 erases
@@ -50,12 +50,12 @@
  * `test/modes/terminal/draw/a-tool-blocks-rail-moves-while-it-runs-and-cools-once-it-lands`.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
-import type { AssistantMessage } from "@veyyon/ai";
 import { interactionFixtures } from "@veyyon/coding-agent/cli/gallery-fixtures/interaction";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type Component, CURSOR_MARKER, type Focusable, isInsideTerminalMultiplexer, TUI } from "@veyyon/tui";
+import type { AssistantMessageView } from "@veyyon/wire/presentation";
 import { countDestructivePaints } from "../../../../../../hosts/terminal/engine/test/helpers/destructive-paints";
 import { settleFrames } from "../../../../../../hosts/terminal/engine/test/helpers/settle-frames";
 import { VirtualTerminal } from "../../../../../../hosts/terminal/engine/test/virtual-terminal";
@@ -151,23 +151,17 @@ describe("a transcript under a header does not rebuild the screen", () => {
 });
 
 /** A finished assistant text, the shape a streaming reply carries frame to frame. */
-function assistantText(text: string): AssistantMessage {
+function assistantText(text: string): AssistantMessageView {
 	return {
-		role: "assistant",
-		content: [{ type: "text", text }],
-		api: "anthropic-messages",
-		provider: "anthropic",
+		segments: [{ kind: "text", text }],
 		model: "claude-sonnet-4-5",
+		stopReason: "complete",
 		usage: {
 			input: 0,
 			output: 0,
 			cacheRead: 0,
 			cacheWrite: 0,
-			totalTokens: 0,
-			reasoningTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		},
-		stopReason: "stop",
 		timestamp: Date.now(),
 	};
 }

@@ -23,6 +23,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
+import { toAssistantMessageView } from "@veyyon/coding-agent/presentation/transcript-builder";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import {
 	formatThinkingForDisplay,
@@ -174,7 +175,7 @@ describe("an elided thinking fence says how much it hid", () => {
 		expect(messageHasDisplayableThinking(thinkingMessage(text), true)).toBe(true);
 
 		const component = new AssistantMessageComponent(
-			thinkingMessage("Rewriting the plan.\n```md\n# Spec\nbody\nmore"),
+			toAssistantMessageView(thinkingMessage("Rewriting the plan.\n```md\n# Spec\nbody\nmore")),
 		);
 		const rendered = Bun.stripANSI(component.render(80).join("\n"));
 		expect(rendered).toContain("(3 lines of code)");

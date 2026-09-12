@@ -5,7 +5,7 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 
 # The frame the drawer opens over: the preamble ends with its palette dismissed,
 # so this is the session at rest with a draft in the composer.
-AT_REST="${SCENE_RUNTIME_DIR}/frame-compare/terminal-at-rest.png"
+AT_REST="${TMPDIR}/frame-compare/terminal-at-rest.png"
 probe_frame "${AT_REST}"
 
 k "ctrl+backslash"

@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
 import { toUtcIso } from "../util/datetime";
 import { unicodeWordTokens, WORD_TOKEN_HYPHEN_RE } from "../util/regex";
-import { tableExists } from "../util/sqlite";
+import { parseStoredStringList, tableExists } from "../util/sqlite";
 import { jaccardIndex, overlapScore } from "../util/text-similarity";
 import { CONTENT_STOPWORDS } from "./stopwords";
 
@@ -105,6 +105,35 @@ const EXTRACT_FACTS_MAX_CONTENT_LEN = 4096;
 const MAX_FACTS_PER_MEMORY = 5;
 const DEFAULT_LINK_THRESHOLD = 0.35;
 
+const FACT_EXTRACTION_PATTERNS = [
+	{ re: /\b([A-Z][a-zA-Z\s]+?)\s+is\s+(?:a|an|the)?\s*([a-zA-Z\s]+?)\b/g, predicate: "is", objIdx: 2, conf: 0.7 },
+	{ re: /\b([A-Z][a-zA-Z\s]+?)\s+has\s+(?:a|an|the)?\s*([a-zA-Z\d\s]+?)\b/g, predicate: "has", objIdx: 2, conf: 0.6 },
+	{
+		re: /\b([A-Z][a-zA-Z\s]+?)\s+(?:uses?|using|used)\s+(?:a|an|the)?\s*([a-zA-Z\s]+?)\b/g,
+		predicate: "uses",
+		objIdx: 2,
+		conf: 0.6,
+	},
+	{
+		re: /\b([A-Z][a-zA-Z\s]+?)\s+works?\s+(?:at|for|with)\s+([A-Z][a-zA-Z\s]+?)\b/g,
+		predicate: "works_at",
+		objIdx: 2,
+		conf: 0.7,
+	},
+] as const;
+
+const TEMPORAL_SCOPE_PATTERNS: readonly [RegExp, string][] = [
+	[/\b(yesterday|today|tomorrow|now|soon|later|earlier)\b/i, "point_in_time"],
+	[/\b(last\s+week|last\s+month|last\s+year|next\s+week)\b/i, "point_in_time"],
+	[/\b(since|from|starting)\b.*\b(until|to|through|end)\b/i, "duration"],
+	[/\b(between|from)\b.*\b(and|to)\b/i, "range"],
+	[/\b\d{1,2}:\d{2}\s*(AM|PM|am|pm)?\b/, "point_in_time"],
+	[/\b\d{4}-\d{2}-\d{2}\b/, "point_in_time"],
+];
+
+const POSITIVE_EMOTIONS = ["happy", "excited", "great", "awesome", "love", "enjoy", "glad", "pleased"];
+const NEGATIVE_EMOTIONS = ["sad", "angry", "frustrated", "upset", "hate", "disappointed", "worried"];
+const NEUTRAL_EMOTIONS = ["fine", "okay", "alright", "normal", "standard"];
 function unique(values: Iterable<string>, limit = Number.MAX_SAFE_INTEGER): string[] {
 	const seen = new Set<string>();
 	const out: string[] = [];
@@ -120,30 +149,12 @@ function unique(values: Iterable<string>, limit = Number.MAX_SAFE_INTEGER): stri
 	return out;
 }
 
-function parseJsonStringArray(value: string | null): string[] {
-	if (value === null || value === "") return [];
-	try {
-		const parsed: unknown = JSON.parse(value);
-		if (!Array.isArray(parsed)) return [];
-		const strings: string[] = [];
-		for (const item of parsed) {
-			if (typeof item === "string") strings.push(item);
-		}
-		return strings;
-	} catch {
-		// A stored tag list that is not JSON has no tags to return, which is the same empty list a row with no
-		// tags gives and the same one a non-array value gives above. Reading it cannot repair it, and the
-		// caller treats the memory as untagged rather than skipping the memory.
-		return [];
-	}
-}
-
 function rowToGist(row: GistRow): Gist {
 	return {
 		id: row.id,
 		text: row.text,
 		timestamp: row.timestamp ?? "",
-		participants: parseJsonStringArray(row.participants_json),
+		participants: parseStoredStringList(row.participants_json),
 		location: row.location,
 		emotion: row.emotion,
 		timeScope: row.time_scope,
@@ -211,7 +222,7 @@ export class EpisodicGraph {
 	}
 
 	#initTables(): void {
-		this.db.run(`
+		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS gists (
 				id TEXT PRIMARY KEY,
 				text TEXT NOT NULL,
@@ -222,9 +233,7 @@ export class EpisodicGraph {
 				time_scope TEXT,
 				memory_id TEXT,
 				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-			)
-		`);
-		this.db.run(`
+			);
 			CREATE TABLE IF NOT EXISTS facts (
 				fact_id TEXT PRIMARY KEY,
 				session_id TEXT DEFAULT 'default',
@@ -235,13 +244,11 @@ export class EpisodicGraph {
 				source_msg_id TEXT,
 				confidence REAL DEFAULT 0.5,
 				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-			)
-		`);
-		this.db.run("CREATE INDEX IF NOT EXISTS idx_facts_subject ON facts(subject)");
-		this.db.run("CREATE INDEX IF NOT EXISTS idx_facts_predicate ON facts(predicate)");
-		this.db.run("CREATE INDEX IF NOT EXISTS idx_facts_object ON facts(object)");
-		this.db.run("CREATE INDEX IF NOT EXISTS idx_facts_source_msg ON facts(source_msg_id)");
-		this.db.run(`
+			);
+			CREATE INDEX IF NOT EXISTS idx_facts_subject ON facts(subject);
+			CREATE INDEX IF NOT EXISTS idx_facts_predicate ON facts(predicate);
+			CREATE INDEX IF NOT EXISTS idx_facts_object ON facts(object);
+			CREATE INDEX IF NOT EXISTS idx_facts_source_msg ON facts(source_msg_id);
 			CREATE TABLE IF NOT EXISTS graph_edges (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				source TEXT NOT NULL,
@@ -251,11 +258,11 @@ export class EpisodicGraph {
 				timestamp TEXT,
 				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 				UNIQUE(source, target, edge_type)
-			)
+			);
+			CREATE INDEX IF NOT EXISTS idx_edges_source ON graph_edges(source);
+			CREATE INDEX IF NOT EXISTS idx_edges_target ON graph_edges(target);
+			CREATE INDEX IF NOT EXISTS idx_edges_type ON graph_edges(edge_type);
 		`);
-		this.db.run("CREATE INDEX IF NOT EXISTS idx_edges_source ON graph_edges(source)");
-		this.db.run("CREATE INDEX IF NOT EXISTS idx_edges_target ON graph_edges(target)");
-		this.db.run("CREATE INDEX IF NOT EXISTS idx_edges_type ON graph_edges(edge_type)");
 	}
 
 	extractGist(content: string, memoryId: string): Gist {
@@ -288,21 +295,10 @@ export class EpisodicGraph {
 			});
 		};
 
-		for (const match of bounded.matchAll(/\b([A-Z][a-zA-Z\s]+?)\s+is\s+(?:a|an|the)?\s*([a-zA-Z\s]+?)\b/g)) {
-			pushFact(match[1] ?? "", "is", match[2] ?? "", 0.7);
-		}
-		for (const match of bounded.matchAll(/\b([A-Z][a-zA-Z\s]+?)\s+has\s+(?:a|an|the)?\s*([a-zA-Z\d\s]+?)\b/g)) {
-			pushFact(match[1] ?? "", "has", match[2] ?? "", 0.6);
-		}
-		for (const match of bounded.matchAll(
-			/\b([A-Z][a-zA-Z\s]+?)\s+(uses?|using|used)\s+(?:a|an|the)?\s*([a-zA-Z\s]+?)\b/g,
-		)) {
-			pushFact(match[1] ?? "", "uses", match[3] ?? "", 0.6);
-		}
-		for (const match of bounded.matchAll(
-			/\b([A-Z][a-zA-Z\s]+?)\s+works?\s+(?:at|for|with)\s+([A-Z][a-zA-Z\s]+?)\b/g,
-		)) {
-			pushFact(match[1] ?? "", "works_at", match[2] ?? "", 0.7);
+		for (const { re, predicate, objIdx, conf } of FACT_EXTRACTION_PATTERNS) {
+			for (const match of bounded.matchAll(re)) {
+				pushFact(match[1] ?? "", predicate, match[objIdx] ?? "", conf);
+			}
 		}
 		return facts;
 	}
@@ -532,15 +528,7 @@ export class EpisodicGraph {
 	}
 
 	#extractTemporalScope(content: string): string | null {
-		const patterns: readonly [RegExp, string][] = [
-			[/\b(yesterday|today|tomorrow|now|soon|later|earlier)\b/i, "point_in_time"],
-			[/\b(last\s+week|last\s+month|last\s+year|next\s+week)\b/i, "point_in_time"],
-			[/\b(since|from|starting)\b.*\b(until|to|through|end)\b/i, "duration"],
-			[/\b(between|from)\b.*\b(and|to)\b/i, "range"],
-			[/\b\d{1,2}:\d{2}\s*(AM|PM|am|pm)?\b/, "point_in_time"],
-			[/\b\d{4}-\d{2}-\d{2}\b/, "point_in_time"],
-		];
-		for (const [pattern, scope] of patterns) {
+		for (const [pattern, scope] of TEMPORAL_SCOPE_PATTERNS) {
 			if (pattern.test(content)) return scope;
 		}
 		return null;
@@ -558,13 +546,9 @@ export class EpisodicGraph {
 
 	#extractEmotion(content: string): string | null {
 		const lower = content.toLocaleLowerCase();
-		if (
-			["happy", "excited", "great", "awesome", "love", "enjoy", "glad", "pleased"].some(word => lower.includes(word))
-		)
-			return "positive";
-		if (["sad", "angry", "frustrated", "upset", "hate", "disappointed", "worried"].some(word => lower.includes(word)))
-			return "negative";
-		if (["fine", "okay", "alright", "normal", "standard"].some(word => lower.includes(word))) return "neutral";
+		if (POSITIVE_EMOTIONS.some(word => lower.includes(word))) return "positive";
+		if (NEGATIVE_EMOTIONS.some(word => lower.includes(word))) return "negative";
+		if (NEUTRAL_EMOTIONS.some(word => lower.includes(word))) return "neutral";
 		return null;
 	}
 
@@ -582,17 +566,11 @@ export class EpisodicGraph {
 		for (const row of gistRows) ids.add(row.memory_id);
 		// Standalone graph stores do not have Beam memory tables; a broken handle
 		// still propagates instead of silently shrinking the candidate set.
-		if (tableExists(this.db, "working_memory")) {
-			const workingRows = this.db.query("SELECT id FROM working_memory WHERE id != ?").all(exclude) as {
-				id: string;
-			}[];
-			for (const row of workingRows) ids.add(row.id);
-		}
-		if (tableExists(this.db, "episodic_memory")) {
-			const episodicRows = this.db.query("SELECT id FROM episodic_memory WHERE id != ?").all(exclude) as {
-				id: string;
-			}[];
-			for (const row of episodicRows) ids.add(row.id);
+		for (const table of ["working_memory", "episodic_memory"] as const) {
+			if (tableExists(this.db, table)) {
+				const rows = this.db.query(`SELECT id FROM ${table} WHERE id != ?`).all(exclude) as { id: string }[];
+				for (const row of rows) ids.add(row.id);
+			}
 		}
 		return [...ids];
 	}
@@ -600,17 +578,13 @@ export class EpisodicGraph {
 	#memoryContent(memoryId: string): string {
 		// Standalone EpisodicGraph users may not have Beam tables; gate instead of
 		// catching so a broken handle propagates rather than degrading to gist text.
-		if (tableExists(this.db, "working_memory")) {
-			const working = this.db.query("SELECT content FROM working_memory WHERE id = ?").get(memoryId) as {
-				content: string;
-			} | null;
-			if (working !== null) return working.content;
-		}
-		if (tableExists(this.db, "episodic_memory")) {
-			const episodic = this.db.query("SELECT content FROM episodic_memory WHERE id = ?").get(memoryId) as {
-				content: string;
-			} | null;
-			if (episodic !== null) return episodic.content;
+		for (const table of ["working_memory", "episodic_memory"] as const) {
+			if (tableExists(this.db, table)) {
+				const row = this.db.query(`SELECT content FROM ${table} WHERE id = ?`).get(memoryId) as {
+					content: string;
+				} | null;
+				if (row !== null) return row.content;
+			}
 		}
 		const gist = this.db.query("SELECT text FROM gists WHERE memory_id = ?").get(memoryId) as {
 			text: string;

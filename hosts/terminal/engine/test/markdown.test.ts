@@ -664,6 +664,21 @@ describe("Markdown component", () => {
 			expect(joinedOutput).toContain("\x1b[1m");
 		});
 
+		it("re-opens the default style after a styled span", () => {
+			// Marker functions stand in for SGR bytes: the bold span closes the
+			// default color, and the prefix of the default style (`{`) is emitted
+			// before the following text leaf re-applies it in full.
+			const markdown = new Markdown(
+				"**bold** tail",
+				0,
+				0,
+				{ ...defaultMarkdownTheme, bold: text => `⟪b:${text}⟫` },
+				{ color: text => `{${text}}` },
+			);
+
+			expect(markdown.render(80).join("\n")).toContain("⟪b:{bold}⟫{{ tail}");
+		});
+
 		it("should not leak styles into following lines when rendered in TUI", async () => {
 			class MarkdownWithInput implements Component {
 				markdownLineCount = 0;

@@ -27,6 +27,73 @@ use std::{fmt, path::Path};
 
 use async_trait::async_trait;
 
+macro_rules! declare_backend {
+	($name:ident, $kind:ident, $msg:expr, $($cfg:tt)+) => {
+		pub struct $name;
+		pub fn backend() -> &'static dyn $crate::IsolationBackend {
+			&$name
+		}
+		#[async_trait::async_trait]
+		impl $crate::IsolationBackend for $name {
+			fn kind(&self) -> $crate::BackendKind {
+				$crate::BackendKind::$kind
+			}
+			fn probe(&self) -> $crate::ProbeResult {
+				#[cfg($($cfg)+)]
+				{
+					imp::probe()
+				}
+				#[cfg(not($($cfg)+))]
+				{
+					$crate::ProbeResult::unavailable($msg)
+				}
+			}
+			fn start(&self, lower: &std::path::Path, merged: &std::path::Path) -> $crate::IsoResult<()> {
+				#[cfg($($cfg)+)]
+				{
+					imp::start(lower, merged)
+				}
+				#[cfg(not($($cfg)+))]
+				{
+					let _ = (lower, merged);
+					Err($crate::IsoError::unavailable($msg))
+				}
+			}
+			fn stop(&self, merged: &std::path::Path) -> $crate::IsoResult<()> {
+				#[cfg($($cfg)+)]
+				{
+					imp::stop(merged)
+				}
+				#[cfg(not($($cfg)+))]
+				{
+					let _ = merged;
+					Ok(())
+				}
+			}
+		}
+	};
+}
+
+pub(crate) fn canonical_existing_dir(
+	path: &std::path::Path,
+	label: &str,
+) -> IsoResult<std::path::PathBuf> {
+	let resolved = if path.is_absolute() {
+		path.to_path_buf()
+	} else {
+		std::env::current_dir().map_or_else(|_| path.to_path_buf(), |cwd| cwd.join(path))
+	};
+	let meta = std::fs::metadata(&resolved).map_err(|err| {
+		IsoError::other(format!("invalid {label} source {}: {err}", resolved.display()))
+	})?;
+	if !meta.is_dir() {
+		return Err(IsoError::other(format!(
+			"{label} source {} is not a directory",
+			resolved.display()
+		)));
+	}
+	Ok(std::fs::canonicalize(&resolved).unwrap_or(resolved))
+}
 mod apfs;
 mod btrfs;
 mod diff;
@@ -325,8 +392,8 @@ pub const fn auto_order() -> &'static [BackendKind] {
 /// every host-available backend in fallback order, starting with `kind`, so
 /// callers can retry when a backend is unavailable for a specific filesystem
 /// path. `fell_back` is `true` when a `preferred` choice (or earlier automatic
-/// candidate) was unusable. `reason` carries the first unavailable probe's
-/// explanation when available.
+/// candidate) was unusable, and `reason` then carries the first unavailable
+/// probe's explanation; it is `None` whenever `fell_back` is `false`.
 #[derive(Debug, Clone)]
 pub struct Resolution {
 	pub kind:       BackendKind,
@@ -382,6 +449,7 @@ pub fn resolve(preferred: Option<BackendKind>) -> Resolution {
 		Some(p) => kind != p,
 		None => kind != auto_order()[0],
 	};
+	let reason = if fell_back { reason } else { None };
 
 	Resolution { kind, candidates, fell_back, reason }
 }

@@ -41,7 +41,7 @@ describe("inheritResolvedCollection", () => {
 	 * LOCKS OUT: `[...(session.skills ?? [])]` at `task/index.ts`, `eval/agent-bridge.ts`, and
 	 * `vibe/runtime.ts`.
 	 *
-	 * IF THIS REGRESSES: a subagent spawned by a parent with no skills loaded can never load a skill
+	 * IF THIS REGRESSES: an agent spawned by a parent with no skills loaded can never load a skill
 	 * of its own for the whole session, without a single warning anywhere. Prompt templates and
 	 * rules ride the identical switch and fail the same way.
 	 */

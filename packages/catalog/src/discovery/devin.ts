@@ -47,7 +47,7 @@ export const DEVIN_EXTENSION_VERSION = "0.0.0-dev";
  * entries and drops `adaptive`; sending the native CLI's own `[3, 4, 6, 8]` returns all 174.
  *
  * We deliberately ask for LESS than the CLI does. Styles 4 and 6 are its internal buckets —
- * `swe-check`, `opus-4-7-review`, `gpt-5-5-review` (4) and `subagent-default`,
+ * `swe-check`, `opus-4-7-review`, `gpt-5-5-review` (4) and `agent-default`,
  * `memory-migration-default` (6) — which the CLI receives and then hides, because they are
  * fixed roles in its own harness and not models a user picks. Asking only for the
  * user-facing styles makes the server do that filtering: `[3, 8]` returns exactly the 169

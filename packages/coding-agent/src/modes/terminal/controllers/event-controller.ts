@@ -10,6 +10,9 @@ import { extractTextContent } from "../../../commit/utils";
 import { settings } from "../../../config/settings-instance";
 import { getFileSnapshotStore } from "../../../edit/file-snapshot-store";
 import type { PlanApprovalDetails } from "../../../plan-mode/approved-plan";
+import { SessionProjectionEngine } from "../../../presentation/session-projection-engine";
+import { compactionActionLabel, resolveCompactionKind } from "../../../presentation/summary-builder";
+import { resolveAssistantErrorPresentation, toAssistantMessageView } from "../../../presentation/transcript-builder";
 import { sideChannelPrompts } from "../../../prompts/side-channel/rows";
 import { SECRET_SPEND_NOTICE_SOURCE } from "../../../secrets/notices";
 import type { AgentSession } from "../../../session/agent-session";
@@ -24,11 +27,10 @@ import { nextActionableTask } from "../../../tools/agent/todo";
 import { previewLine, TRUNCATE_LENGTHS } from "../../../tools/core/render-utils";
 import { streamingStringKeysForTool } from "../../../tools/core/streamed-tool-args";
 import { canonicalizeMessage } from "../../../utils/thinking-display";
-import { formatRetryLine, formatRetrySummary, type RetryTrace, retryReason } from "../../retry-display";
+import { formatRetryLine } from "../../retry-display";
 import { TodoReminderComponent } from "../components/dashboard/todo-reminder";
 import { AssistantMessageComponent } from "../components/transcript/assistant-message";
 import { detectCacheInvalidation, usesExplicitPromptCache } from "../components/transcript/cache-invalidation-marker";
-import { compactionActionLabel, resolveCompactionKind } from "../components/transcript/compaction-summary-message";
 import {
 	ReadToolGroupComponent,
 	readArgsHaveTarget,
@@ -161,7 +163,8 @@ export class EventController {
 	#renderedCustomMessages = new Set<string>();
 	#lastIntent: string | undefined = undefined;
 	#backgroundTaskCallIds = new Set<string>();
-	#readToolCallArgs = new Map<string, Record<string, unknown>>();
+	#projection: SessionProjectionEngine;
+	#attachedSession: AgentSession | undefined;
 	#readToolCallAssistantComponents = new Map<string, AssistantMessageComponent>();
 	#toolTimelineComponents = new Map<string, Component>();
 	#postToolAssistantComponents = new Map<string, AssistantMessageComponent>();
@@ -178,7 +181,6 @@ export class EventController {
 	 * `auto_retry_start` events and consumed once when they resolve, so the
 	 * summary reports the whole sequence rather than the last attempt.
 	 */
-	#retryTrace: RetryTrace | undefined = undefined;
 	#idleCompactionTimer?: NodeJS.Timeout;
 	#idleRecapTimer?: NodeJS.Timeout;
 	// In-flight ephemeral recap turn; aborted by #cancelIdleRecap when any
@@ -228,6 +230,9 @@ export class EventController {
 					})
 				: null,
 		);
+		this.#projection = new SessionProjectionEngine({
+			getMessages: () => (this.#attachedSession ?? this.ctx.session)?.messages ?? [],
+		});
 		this.#streamingReveal = new StreamingRevealController({
 			getSmoothStreaming: () => this.ctx.settings.get("display.smoothStreaming"),
 			getHideThinkingBlock: () => this.ctx.effectiveHideThinkingBlock,
@@ -320,7 +325,7 @@ export class EventController {
 	}
 
 	#getReadGroup(): ReadToolGroupComponent {
-		if (!this.#lastReadGroup) {
+		if (!this.#lastReadGroup || !this.ctx.chatContainer.children.includes(this.#lastReadGroup)) {
 			const group = new ReadToolGroupComponent({
 				showContentPreview: this.ctx.settings.get("read.toolResultPreview"),
 			});
@@ -335,7 +340,7 @@ export class EventController {
 		if (!toolCallId) return;
 		const normalizedArgs =
 			args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {};
-		this.#readToolCallArgs.set(toolCallId, normalizedArgs);
+		this.#projection.recordToolCall(toolCallId, "read", normalizedArgs);
 		const assistantComponent = this.ctx.streamingComponent ?? this.#lastAssistantComponent;
 		if (assistantComponent) {
 			this.#readToolCallAssistantComponents.set(toolCallId, assistantComponent);
@@ -343,10 +348,8 @@ export class EventController {
 	}
 
 	#clearReadToolCall(toolCallId: string): void {
-		this.#readToolCallArgs.delete(toolCallId);
 		this.#readToolCallAssistantComponents.delete(toolCallId);
 	}
-
 	#inlineReadToolImages(
 		toolCallId: string,
 		result: { content: Array<{ type: string; data?: string; mimeType?: string }> },
@@ -384,13 +387,13 @@ export class EventController {
 		segment: AssistantMessage | undefined,
 	): AssistantMessageComponent | undefined {
 		if (!segment || !assistantHasVisibleContent(segment)) return undefined;
+		const view = toAssistantMessageView(segment);
 		const existing = this.#postToolAssistantComponents.get(toolCallId);
 		if (existing) {
-			existing.updateContent(segment);
+			existing.updateContent(view);
 			return existing;
 		}
-		const component = createAssistantMessageComponent(this.ctx);
-		component.updateContent(segment);
+		const component = createAssistantMessageComponent(this.ctx, view);
 		this.#postToolAssistantComponents.set(toolCallId, component);
 		if (!this.#insertAfterTranscriptComponent(this.#toolTimelineComponents.get(toolCallId), component)) {
 			this.ctx.chatContainer.addChild(component);
@@ -438,11 +441,13 @@ export class EventController {
 	 * before the first orphaned update; every other handler is tolerant of
 	 * unknown anchors (guarded by streamingComponent/pendingTools lookups).
 	 *
-	 * Both re-pointing paths come through here — viewing a subagent, and `/new`
+	 * Both re-pointing paths come through here — viewing an agent, and `/new`
 	 * or `/resume` swapping the session the UI displays — so neither grows its
 	 * own copy of the guard.
 	 */
 	attachTo(target: AgentSession): void {
+		this.#attachedSession = target;
+		this.#projection.seedMessages();
 		let assistantStreamSynced = false;
 		this.ctx.unsubscribe = target.subscribe(async (event: AgentSessionEvent) => {
 			if (event.type === "message_start" && event.message.role === "assistant") {
@@ -469,8 +474,8 @@ export class EventController {
 		this.#toolTimelineComponents.clear();
 		this.#postToolAssistantComponents.clear();
 		this.#backgroundTaskCallIds.clear();
-		this.#readToolCallArgs.clear();
 		this.#readToolCallAssistantComponents.clear();
+		this.#projection.reset();
 		this.#lastAssistantComponent = undefined;
 		this.#pinnedErrorComponent = undefined;
 		this.#cancelIdleCompaction();
@@ -602,12 +607,12 @@ export class EventController {
 		this.#toolTimelineComponents.clear();
 		this.#postToolAssistantComponents.clear();
 		this.#lastIntent = undefined;
-		this.#readToolCallArgs.clear();
 		this.#readToolCallAssistantComponents.clear();
+		this.#projection.clearTurnToolState();
+		this.#projection.clearRetryTrace();
 		this.#resetReadGroup();
 		this.#resolveDisplaceableTodo();
 		this.#lastAssistantComponent = undefined;
-		// Restore the previous turn's inline error in the transcript before dropping
 		// the banner, so the error stays in history once the banner is gone.
 		this.#pinnedErrorComponent?.setErrorPinned(false);
 		this.#pinnedErrorComponent = undefined;
@@ -704,13 +709,12 @@ export class EventController {
 			this.ctx.ui.requestRender();
 		} else if (event.message.role === "assistant") {
 			this.#lastVisibleBlockCount = 0;
+			this.#projection.recordAssistantMessageToolCalls(event.message);
 			this.ctx.streamingComponent = createAssistantMessageComponent(this.ctx);
 			this.ctx.streamingMessage = event.message;
 			this.ctx.chatContainer.addChild(this.ctx.streamingComponent);
-			this.#streamingReveal.begin(
-				this.ctx.streamingComponent,
-				splitAssistantMessageToolTimeline(this.ctx.streamingMessage).beforeTools,
-			);
+			const timeline = splitAssistantMessageToolTimeline(this.ctx.streamingMessage);
+			this.#streamingReveal.begin(this.ctx.streamingComponent, toAssistantMessageView(timeline.beforeTools));
 			this.ctx.ui.requestRender();
 		}
 	}
@@ -907,6 +911,7 @@ export class EventController {
 		else if (streamDelta?.type === "thinking_delta") setShimmerActivity("thinking");
 		this.#vocalizeDelta(event);
 		if (this.ctx.streamingComponent && event.message.role === "assistant") {
+			this.#projection.recordAssistantMessageToolCalls(event.message);
 			const smoothStreaming = this.ctx.settings.get("display.smoothStreaming");
 			const repaintTargets = new Set<Component>();
 			const streamingComponent = this.ctx.streamingComponent;
@@ -918,7 +923,7 @@ export class EventController {
 			}
 			this.ctx.streamingMessage = event.message;
 			const timeline = splitAssistantMessageToolTimeline(this.ctx.streamingMessage);
-			this.#streamingReveal.setTarget(timeline.beforeTools);
+			this.#streamingReveal.setTarget(toAssistantMessageView(timeline.beforeTools));
 
 			const visibleBlockCount = this.ctx.streamingMessage.content.filter(
 				content =>
@@ -1126,8 +1131,7 @@ export class EventController {
 						}
 					: this.ctx.streamingMessage;
 			const displayTimeline = splitAssistantMessageToolTimeline(displayMessage);
-			this.ctx.streamingComponent.updateContent(displayTimeline.beforeTools);
-
+			this.ctx.streamingComponent.updateContent(toAssistantMessageView(displayTimeline.beforeTools));
 			if (this.ctx.streamingMessage.stopReason !== "aborted" && this.ctx.streamingMessage.stopReason !== "error") {
 				for (const [toolCallId, component] of this.ctx.pendingTools.entries()) {
 					component.setArgsComplete(toolCallId);
@@ -1219,6 +1223,8 @@ export class EventController {
 		setShimmerActivity("tool");
 		this.#updateWorkingMessageFromIntent(event.intent);
 		this.#resolveDisplaceablePoll(event.toolName);
+		this.#projection.recordToolCall(event.toolCallId, event.toolName, event.args);
+		this.#projection.markToolCallRunning(event.toolCallId, true);
 		if (this.ctx.settledToolCalls.has(event.toolCallId)) return;
 		if (!this.ctx.pendingTools.has(event.toolCallId)) {
 			if (event.toolName === "read" && readArgsHaveTarget(event.args) && !readArgsTargetInternalUrl(event.args)) {
@@ -1304,35 +1310,21 @@ export class EventController {
 				this.ctx.pendingTools.delete(event.toolCallId);
 				this.#backgroundTaskCallIds.delete(event.toolCallId);
 				this.ctx.settledToolCalls.add(event.toolCallId);
+				this.#projection.markToolCallRunning(event.toolCallId, false);
+				this.#projection.markToolCallSettled(event.toolCallId);
 			}
 			this.ctx.ui.requestRender();
 		}
 	}
 
 	async #handleToolExecutionEnd(event: Extract<AgentSessionEvent, { type: "tool_execution_end" }>): Promise<void> {
-		// A transient overlay (auto-compaction / auto-retry / handoff) that ran
-		// between this tool's start and end could have detached the working
-		// loader. `tool_execution_update` already reconciles this so the spinner
-		// reappears mid-tool; mirror it here so subagent (`task`) completions —
-		// which only fire `tool_execution_end`, never `_update` — do not leave
-		// the UI looking idle while the session keeps streaming (#3857).
 		this.#ensureWorkingLoaderWhileStreaming();
-		// A result for a call whose card is already final changes nothing on
-		// screen, and letting it through is not harmless: the read branch below
-		// BUILDS a group component when it finds no pending one, so a replayed
-		// end event grew a second read card after turn teardown reset the group.
-		// The handler's side effects (plan approval, todo displacement) must not
-		// re-fire on a duplicate either.
 		if (this.ctx.settledToolCalls.has(event.toolCallId)) return;
-		// Settle ONCE, at the handler's entry, ahead of every branch below. Doing
-		// it next to each `pendingTools.delete` instead would mean a branch added
-		// later silently reopens the ghost-question hole; there is exactly one
-		// door into "this call finished" and this is it. A background `task` that
-		// reports `async.state === "running"` has NOT finished — its card stays
-		// live and settles from `#handleToolExecutionUpdate`'s terminal branch.
+		this.#projection.markToolCallRunning(event.toolCallId, false);
 		const endAsyncState = asyncToolState(event.result.details);
 		if (event.toolName !== "task" || endAsyncState !== "running") {
 			this.ctx.settledToolCalls.add(event.toolCallId);
+			this.#projection.markToolCallSettled(event.toolCallId);
 		}
 		if (event.toolName === "read") {
 			if (this.#inlineReadToolImages(event.toolCallId, event.result)) {
@@ -1347,7 +1339,7 @@ export class EventController {
 				let component = this.ctx.pendingTools.get(event.toolCallId);
 				if (!component) {
 					const group = this.#getReadGroup();
-					const args = this.#readToolCallArgs.get(event.toolCallId);
+					const args = this.#projection.findToolCallArgs(event.toolCallId) as Record<string, unknown> | undefined;
 					if (args) {
 						group.updateArgs(args, event.toolCallId);
 					}
@@ -1485,7 +1477,7 @@ export class EventController {
 			if (this.ctx.pendingTools.has(toolCallId)) filtered.add(toolCallId);
 		}
 		this.#backgroundTaskCallIds = filtered;
-		this.#readToolCallArgs.clear();
+		this.#projection.clearTurnToolState();
 		this.#readToolCallAssistantComponents.clear();
 		this.#toolTimelineComponents.clear();
 		this.#postToolAssistantComponents.clear();
@@ -1527,7 +1519,7 @@ export class EventController {
 	}
 
 	/**
-	 * Trailing Esc hint for live maintenance loaders. While a subagent is
+	 * Trailing Esc hint for live maintenance loaders. While an agent is
 	 * focused, Esc returns to main instead of cancelling its maintenance
 	 * (#2819), so the loader drops the hint entirely rather than advertise a
 	 * cancel that no longer happens. Includes the leading space so the focused
@@ -1609,38 +1601,15 @@ export class EventController {
 
 	async #handleAutoRetryStart(event: Extract<AgentSessionEvent, { type: "auto_retry_start" }>): Promise<void> {
 		this.#trackRetrySupersededAssistantComponent(this.#lastAssistantComponent);
-		// The recovery event names a component by persistence key, and that key carries
-		// the turn's stop reason, which rides the HEAD segment. `#lastAssistantComponent`
-		// is a post-tool segment whenever the turn wrote text after a call, and a segment
-		// key says `stop`: tracking only that one meant a recovered error turn with a
-		// trailing sentence never found its component, so its inline error survived the
-		// banner it had been mirroring.
 		this.#trackRetrySupersededAssistantComponent(this.#pinnedErrorComponent);
 		this.#stopWorkingLoader();
-		// Living shimmer: keep the activity truthful across the retry window (the
-		// retry uses its own warning loader; the working loader resumes after).
 		setShimmerActivity("error");
 		this.ctx.statusContainer.disposeChildren();
 		if (AIError.is(event.errorId, AIError.Flag.ThinkingLoop)) {
-			// The retry path drops the failed assistant from runtime context. Do not
-			// restore its inline Error row; just unpin the fixed-region banner so the
-			// retry UI is the visible state.
 			this.#pinnedErrorComponent = undefined;
 			this.ctx.clearPinnedError();
 		}
-		// Accumulate what this turn's retries cost, so the summary emitted when
-		// they resolve can attribute the wait instead of leaving it unexplained.
-		// The kind rides along: a continuation is not a retry, and the summary is
-		// what the operator reads after the fact.
-		this.#retryTrace ??= { attempts: 0, totalDelayMs: 0 };
-		const trace = this.#retryTrace;
-		trace.attempts = event.attempt;
-		trace.totalDelayMs += Math.max(0, event.delayMs);
-		trace.reason = retryReason(event.errorId, event.errorMessage);
-		trace.mode = event.mode;
-		// In living mode the activity is now "error", so render the retry text
-		// through the shimmer: it blinks red (the error motion) instead of sitting
-		// in a flat muted grey. Other modes keep the plain warning styling.
+		this.#projection.recordAutoRetryStart(event);
 		const living = this.ctx.settings.get("display.shimmer") === "living";
 		const retryMessageColor: LoaderMessageColorFn = living
 			? Object.assign((text: string) => shimmerText(text, theme), { animated: true as const })
@@ -1670,14 +1639,14 @@ export class EventController {
 			this.ctx.retryLoader = undefined;
 			this.ctx.statusContainer.disposeChildren();
 		}
-		// Living shimmer: retry resolved — the model resumes reasoning.
 		setShimmerActivity("thinking");
+		const { summary, error } = this.#projection.recordAutoRetryEnd(event);
 		if (event.success) {
 			let appliedRecovered = false;
 			for (const recovered of event.recoveredErrors ?? []) {
 				const component = this.#takeRetrySupersededAssistantComponent(recovered.persistenceKey);
 				if (!component) continue;
-				component.applyRetryRecovery(recovered.retryRecovery);
+				component.applyRetryRecovery(resolveAssistantErrorPresentation({ retryRecovery: recovered.retryRecovery }));
 				if (this.#pinnedErrorComponent === component) this.#pinnedErrorComponent = undefined;
 				appliedRecovered = true;
 			}
@@ -1685,19 +1654,11 @@ export class EventController {
 				this.ctx.clearPinnedError();
 			}
 			this.#clearRetrySupersededAssistantComponents();
-			// A recovered turn used to leave no trace of the retries, so the wait
-			// they cost read as the tool being slow. Attribute it once, here.
-			const summary = this.#retryTrace ? formatRetrySummary(this.#retryTrace) : undefined;
 			if (summary) this.ctx.showStatus(summary);
 		} else {
 			this.#clearRetrySupersededAssistantComponents();
-			// A cancelled continuation is not a failed retry, and "1 attempts" of the
-			// wrong recovery is the kind of line an operator reads twice.
-			const what = event.mode === "continue" ? "Continuation" : "Retry";
-			const attempts = event.attempt === 1 ? "1 attempt" : `${event.attempt} attempts`;
-			this.ctx.showError(`${what} failed after ${attempts}: ${event.finalError || "Unknown error"}`);
+			if (error) this.ctx.showError(error);
 		}
-		this.#retryTrace = undefined;
 		this.#ensureWorkingLoaderWhileStreaming();
 		this.ctx.ui.requestRender();
 	}

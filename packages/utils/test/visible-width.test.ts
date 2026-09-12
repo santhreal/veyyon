@@ -12,7 +12,7 @@
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import { Ellipsis, visibleWidth as nativeVisibleWidth } from "@veyyon/natives";
-import { DEFAULT_TAB_WIDTH } from "@veyyon/utils/tab-spacing";
+import { DEFAULT_TAB_WIDTH } from "@veyyon/utils/tab-width";
 import {
 	resetHangulCompatibilityJamoWidthForTests,
 	setHangulCompatibilityJamoWidth,
@@ -80,6 +80,24 @@ describe("visibleWidth — parity with the native width engine", () => {
 	it("expands each tab to the configured tab width", () => {
 		expect(visibleWidth("a\tb")).toBe(2 + TAB);
 		expect(visibleWidth("\t\t")).toBe(2 * TAB);
+	});
+
+	// Tab expansion must agree across short ASCII scans, long rows and the
+	// continuation after a Unicode character or complete ANSI prefix.
+	it("preserves tab width across row lengths and scan transitions", () => {
+		for (const length of [0, 1, 2, 63, 64, 65, 127, 128, 129, 1024, 4096]) {
+			const body = "x".repeat(length);
+			for (const input of [
+				`\t${body}`,
+				`${body}\t`,
+				`\t${body}\t`,
+				`漢\t${body}`,
+				`\t漢${body}\t`,
+				`${ESC}[31m${body}\tZ${ESC}[0m`,
+			]) {
+				expect(visibleWidth(input)).toBe(nativeVisibleWidth(input, TAB));
+			}
+		}
 	});
 
 	it("scales OSC 66 text-sizing payloads by `s=`", () => {

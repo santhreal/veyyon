@@ -91,7 +91,7 @@ TRANSCRIPT_CROP="${SESSION_REGION_W}x$(( WIN_H - 3 * TITLEBAR_H - COMPOSER_BAND_
 # minimum; reserve three authored gutters beyond it to exclude the taller
 # empty card and its border from the table-rule measurement.
 REPLY_CROP="${SESSION_REGION_W}x$(( WIN_H - 3 * TITLEBAR_H - COMPOSER_BAND_H - 3 * GUTTER_PX ))+${SESSION_REGION_X}+$(( WIN_Y + 3 * TITLEBAR_H ))"
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 # The overlay a palette of session rows draws, the ink a typed filter adds, and

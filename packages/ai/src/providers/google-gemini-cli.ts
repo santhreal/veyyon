@@ -5,7 +5,7 @@
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { scheduler } from "node:timers/promises";
-import { calculateCost, emptyCost, emptyUsage, inheritUsageCarryovers } from "@veyyon/catalog/models";
+import { calculateCost, emptyCost, inheritUsageCarryovers } from "@veyyon/catalog/models";
 import {
 	ANTIGRAVITY_ENDPOINTS,
 	ANTIGRAVITY_PRIMARY_ENDPOINT,
@@ -39,7 +39,6 @@ import { normalizeSystemPrompts } from "../utils";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { extractGoogleValidationUrl, formatGoogleValidationRequiredMessage } from "../utils/google-validation";
 import { materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
-
 import { armPreResponseTimeout, getStreamFirstEventTimeoutMs } from "../utils/idle-iterator";
 import { fetchProviderWithRetry } from "../utils/provider-fetch";
 // Refresh is the sole responsibility of AuthStorage (broker-aware, single-flighted);
@@ -50,6 +49,8 @@ import { stopReasonForTerminallessEof } from "../utils/terminalless-eof";
 import { interleavedThinkingBeta } from "./anthropic";
 import type { Content, FunctionCallingConfigMode, ThinkingConfig, ThinkingLevel } from "./google-shared";
 import {
+	buildGoogleBaseGenerationConfig,
+	buildGoogleToolConfig,
 	convertMessages,
 	convertTools,
 	EMPTY_STREAM_BASE_DELAY_MS,
@@ -58,7 +59,6 @@ import {
 	isThinkingPart,
 	MAX_EMPTY_STREAM_RETRIES,
 	mapStopReasonString,
-	mapToolChoice,
 	nextToolCallId,
 	pushBlockEndEvent,
 	pushToolCallEvents,
@@ -66,6 +66,7 @@ import {
 	retainThoughtSignature,
 	startTextOrThinkingBlock,
 } from "./google-shared";
+import { createInitialResponsesAssistantMessage } from "./initial-message";
 
 /**
  * Thinking level for Gemini 3 models. Re-exported from `google-shared` so existing
@@ -529,16 +530,11 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 		const startTime = performance.now();
 		let firstTokenTime: number | undefined;
 
-		const output: AssistantMessage = {
-			role: "assistant",
-			content: [],
-			api: "google-gemini-cli" as Api,
-			provider: model.provider,
-			model: model.id,
-			usage: emptyUsage(),
-			stopReason: "stop",
-			timestamp: Date.now(),
-		};
+		const output: AssistantMessage = createInitialResponsesAssistantMessage(
+			"google-gemini-cli" as Api,
+			model.provider,
+			model.id,
+		);
 		let rawRequestDump: RawHttpRequestDump | undefined;
 		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
 		let wireBodyJson: string | undefined;
@@ -1102,10 +1098,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 				signal: options?.signal,
 				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
 			});
-			output.stopReason = result.stopReason;
-			output.errorStatus = result.status;
-			output.errorId = result.id;
-			output.errorMessage = result.message;
+			AIError.applyFinalizeResult(output, result);
 			output.duration = performance.now() - startTime;
 			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
 			stream.push({ type: "error", reason: output.stopReason, error: output });
@@ -1250,28 +1243,8 @@ export function buildRequest(
 ): CloudCodeAssistRequest {
 	const systemPrompts = normalizeSystemPrompts(context.systemPrompt);
 	const contents = convertMessages(model, context);
-	const generationConfig: CloudCodeAssistRequest["request"]["generationConfig"] = {};
-	if (options.temperature !== undefined) {
-		generationConfig.temperature = options.temperature;
-	}
-	if (options.maxTokens !== undefined) {
-		generationConfig.maxOutputTokens = options.maxTokens;
-	}
-	if (options.topP !== undefined) {
-		generationConfig.topP = options.topP;
-	}
-	if (options.topK !== undefined) {
-		generationConfig.topK = options.topK;
-	}
-	if (options.minP !== undefined) {
-		generationConfig.minP = options.minP;
-	}
-	if (options.presencePenalty !== undefined) {
-		generationConfig.presencePenalty = options.presencePenalty;
-	}
-	if (options.repetitionPenalty !== undefined) {
-		generationConfig.repetitionPenalty = options.repetitionPenalty;
-	}
+	const generationConfig: CloudCodeAssistRequest["request"]["generationConfig"] =
+		buildGoogleBaseGenerationConfig(options);
 
 	// Thinking config
 	if (options.thinking?.enabled && model.reasoning) {
@@ -1322,23 +1295,9 @@ export function buildRequest(
 	if (context.tools && context.tools.length > 0) {
 		const convertedTools = convertTools(context.tools, model);
 		request.tools = isAntigravity ? normalizeAntigravityTools(convertedTools) : convertedTools;
-		if (options.toolChoice) {
-			const choice = options.toolChoice;
-			if (typeof choice === "string") {
-				const mode = mapToolChoice(choice);
-				if (mode !== "AUTO") {
-					request.toolConfig = {
-						functionCallingConfig: { mode },
-					};
-				}
-			} else {
-				request.toolConfig = {
-					functionCallingConfig: {
-						mode: "ANY",
-						allowedFunctionNames: choice.allowedFunctionNames.slice(),
-					},
-				};
-			}
+		const toolConfig = buildGoogleToolConfig(options.toolChoice);
+		if (toolConfig) {
+			request.toolConfig = toolConfig;
 		}
 		// Antigravity's default tool mode is VALIDATED (verified for Gemini and
 		// Claude); an explicit non-auto tool choice above wins.

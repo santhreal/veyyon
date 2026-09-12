@@ -43,8 +43,8 @@ export interface WorktreeContext {
  * The project name comes from the shared primary checkout; bare-repo worktrees
  * resolve to the shared `foo.git` dir, so a trailing `.git` is stripped.
  */
-export function resolveWorktreeContext(cwd: string): WorktreeContext | null {
-	const worktree = linkedWorktreeSync(cwd);
+export function resolveWorktreeContext(target: GitRepository | string): WorktreeContext | null {
+	const worktree = linkedWorktreeSync(target);
 	if (!worktree) return null;
 	const base = path.basename(worktree.primaryRoot);
 	const projectName = base.endsWith(".git") ? base.slice(0, -4) : base;
@@ -190,6 +190,18 @@ function hasGitMarkerSync(childPath: string): boolean {
 	}
 }
 
+export function findSingleDirectChildRepoSync(cwd: string): ActiveRepoContext | null {
+	const repoChildPaths: string[] = [];
+	for (const entry of readDirectChildrenSync(cwd)) {
+		const childPath = resolveDirectChildDirectorySync(cwd, entry);
+		if (!childPath) continue;
+		if (!hasGitMarkerSync(childPath)) continue;
+		repoChildPaths.push(childPath);
+		if (repoChildPaths.length > 1) break;
+	}
+	return singleChildRepo(cwd, repoChildPaths);
+}
+
 async function findSingleDirectChildRepo(cwd: string): Promise<ActiveRepoContext | null> {
 	const repoChildPaths: string[] = [];
 	for (const entry of await readDirectChildren(cwd)) {
@@ -198,18 +210,6 @@ async function findSingleDirectChildRepo(cwd: string): Promise<ActiveRepoContext
 		if (!(await hasGitMarker(childPath))) continue;
 		repoChildPaths.push(childPath);
 		// Two is already ambiguous, so there is nothing to learn from a third.
-		if (repoChildPaths.length > 1) break;
-	}
-	return singleChildRepo(cwd, repoChildPaths);
-}
-
-function findSingleDirectChildRepoSync(cwd: string): ActiveRepoContext | null {
-	const repoChildPaths: string[] = [];
-	for (const entry of readDirectChildrenSync(cwd)) {
-		const childPath = resolveDirectChildDirectorySync(cwd, entry);
-		if (!childPath) continue;
-		if (!hasGitMarkerSync(childPath)) continue;
-		repoChildPaths.push(childPath);
 		if (repoChildPaths.length > 1) break;
 	}
 	return singleChildRepo(cwd, repoChildPaths);

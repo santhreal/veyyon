@@ -7,7 +7,7 @@
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/retain.md`
 - Hindsight collaborators:
   - `packages/coding-agent/src/memory/hindsight/state.ts`: per-session queue, flush, auto-retain.
-  - `packages/coding-agent/src/memory/hindsight/backend.ts`: session bootstrap, prompt injection, subagent aliasing.
+  - `packages/coding-agent/src/memory/hindsight/backend.ts`: session bootstrap, prompt injection, agent aliasing.
   - `packages/coding-agent/src/memory/hindsight/bank.ts`: bank id derivation, tag scoping, first-use bank/mission setup.
   - `packages/coding-agent/src/memory/hindsight/client.ts`: HTTP `retain` / `retainBatch` calls.
   - `packages/coding-agent/src/memory/hindsight/content.ts`: retention transcript shaping, memory-tag stripping.
@@ -15,7 +15,7 @@
   - `packages/coding-agent/src/memory/hindsight/seeds.json`: built-in mental-model seed definitions.
   - `packages/coding-agent/src/memory/hindsight/transcript.ts`: extracts user/assistant turns for auto-retain.
 - Mnemopi collaborators:
-  - `packages/coding-agent/src/memory/mnemopi/backend.ts`: local backend bootstrap, prompt injection, subagent aliasing, enqueue/clear.
+  - `packages/coding-agent/src/memory/mnemopi/backend.ts`: local backend bootstrap, prompt injection, agent aliasing, enqueue/clear.
   - `packages/coding-agent/src/memory/mnemopi/state.ts`: scoped recall/retain state and local writes.
   - `packages/coding-agent/src/memory/mnemopi/config.ts`: local SQLite path, bank, scoping, provider settings.
   - `plugins/mnemopi/src/core/memory.ts`: local memory runtime used by `remember(...)`.
@@ -69,18 +69,18 @@ Mnemopi:
   - tool-called retains are per-session work for the active backend;
   - persisted Hindsight memories are cross-session server-side bank data;
   - persisted Mnemopi memories are local SQLite data;
-  - subagents alias parent memory state for both supported backends.
+  - agents alias parent memory state for both supported backends.
 
 ## Side Effects
 - Filesystem
   - Hindsight: none for retained memories. No local memory file is written.
   - Mnemopi: writes to local SQLite under `mnemopi.dbPath`, defaulting beneath the agent memories directory (`mnemopi/mnemopi.db`) with one database file per scoped bank when needed.
 - Network
-  - Hindsight: `POST /v1/default/banks/{bank_id}/memories` via `retainBatch(...)`, plus optional `PUT /v1/default/banks/{bank_id}` via `ensureBankExists(...)` before the first write per bank per session state (the set is created with the primary session state and shared with subagent aliases).
+  - Hindsight: `POST /v1/default/banks/{bank_id}/memories` via `retainBatch(...)`, plus optional `PUT /v1/default/banks/{bank_id}` via `ensureBankExists(...)` before the first write per bank per session state (the set is created with the primary session state and shared with agent aliases).
   - Mnemopi: none unless configured embedding or LLM providers make calls during extraction.
 - Session state
-  - Hindsight: appends to the in-memory `HindsightRetainQueue`, includes `metadata.session_id`, and shares parent state for subagents.
-  - Mnemopi: writes through the session's scoped `Mnemopi` instance, includes `session_id`, `cwd`, and optional `context`, and shares scoped resources with subagents.
+  - Hindsight: appends to the in-memory `HindsightRetainQueue`, includes `metadata.session_id`, and shares parent state for agents.
+  - Mnemopi: writes through the session's scoped `Mnemopi` instance, includes `session_id`, `cwd`, and optional `context`, and shares scoped resources with agents.
 - User-visible prompts / interactive UI
   - Hindsight async flush failures emit `session.emitNotice("warning", ...)`; the model is not told.
   - Mnemopi write failures are logged by `rememberInScope(...)`; the tool response does not expose per-item failures.

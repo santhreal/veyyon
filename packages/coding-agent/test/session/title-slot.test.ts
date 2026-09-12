@@ -93,6 +93,32 @@ describe("parseTitleSlotFromContent / overlayTitleSlotContent", () => {
 		expect(parseTitleSlotFromContent(overlaid)?.title).toBe("New");
 		expect(overlaid.includes("TAIL")).toBe(true);
 	});
+
+	// The fast string path must match a fixed-byte overwrite even for a wrong-width
+	// first line or malformed UTF-16. Storage integration is covered separately.
+	it("overwrites 256 UTF-8 bytes rather than a line or 256 code units", () => {
+		const update = { title: "New", updatedAt: UPDATED_AT };
+		const fresh = serializeTitleSlot(update);
+		const oldSlot = serializeTitleSlot({ title: "中文", updatedAt: UPDATED_AT });
+		const prefixes = [
+			oldSlot,
+			oldSlot.replace(/ +"\}\n$/, '"}\n'),
+			`${"x".repeat(254)}\n`,
+			`${"x".repeat(255)}\n`,
+			`${"x".repeat(256)}\n`,
+			`${"é".repeat(127)}x\n`,
+			`${"é".repeat(128)}\n`,
+			"",
+		];
+		for (const prefix of prefixes) {
+			for (const suffix of ["tail\n", "中文𐐀\n", "\ud800x\udfff\n"]) {
+				const content = prefix + suffix;
+				const encoded = new TextEncoder().encode(content);
+				const tail = new TextDecoder().decode(encoded.subarray(256));
+				expect(overlayTitleSlotContent(content, update)).toBe(fresh + tail);
+			}
+		}
+	});
 });
 
 /**

@@ -16,19 +16,20 @@ import { clampLow } from "@veyyon/utils/math";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
 import { estimateTokensFromText } from "@veyyon/utils/tokens";
 import { truncateToWidth } from "@veyyon/utils/width";
+import type { ComposerMode, ComposerState } from "@veyyon/wire/presentation";
 import { isThresholdCompactionDisabled } from "../../../../config/compaction-strategy";
 import { settings } from "../../../../config/settings-instance";
 import { groundHairlineHex, groundTintFgAnsi } from "../../../../theme/ground-tints";
 import { theme } from "../../../../theme/theme-binding";
 import { branchLabelFromFiles } from "../../../../utils/git-head";
 import { EMBER } from "../chrome/sun";
-import { type LocationContext, resolveLocationContext } from "../status-line/location-context";
+import { resolveLocationContext } from "../status-line/location-context";
 import {
+	agentBadgeText,
 	composeQuietRow,
 	effectiveStatusLineSettings,
 	gatherQuietSegments,
 	statusLineSettingsFromConfig,
-	subagentBadgeText,
 } from "../status-line/quiet-row";
 import { launchSegmentContext } from "../status-line/session-facts";
 
@@ -49,12 +50,14 @@ export interface ComposerAccentState {
 	pythonMode: boolean;
 	/** Plan mode, active (enabled and not paused). */
 	planMode: boolean;
-	/** A focused subagent view borrows the composer; its chrome dims. */
-	focusedSubagent: boolean;
+	/** A focused agent view borrows the composer; its chrome dims. */
+	focusedAgent: boolean;
 	/** The named-session identity accent, already resolved (or undefined when
 	 * the accent is disabled or the session is unnamed). */
 	sessionAccentAnsi: string | undefined;
 	thinkingLevel: ThinkingLevel;
+	/** Wire composer mode, when known. */
+	mode?: ComposerMode;
 }
 
 /** The composer's resolved chrome accents: the (hidden) border color, the
@@ -80,7 +83,7 @@ export function resolveComposerAccents(state: ComposerAccentState): ComposerAcce
 	let borderColor: (str: string) => string;
 	if (state.bypass) {
 		borderColor = theme.getBypassModeBorderColor();
-	} else if (state.bashMode) {
+	} else if (state.bashMode || state.mode === "shell") {
 		borderColor = theme.getBashModeBorderColor();
 	} else if (state.pythonMode) {
 		borderColor = theme.getPythonModeBorderColor();
@@ -90,8 +93,8 @@ export function resolveComposerAccents(state: ComposerAccentState): ComposerAcce
 	} else {
 		borderColor = theme.getThinkingBorderColor(state.thinkingLevel);
 	}
-	if (state.focusedSubagent) {
-		// Focused subagent view: faint the outline so the borrowed session is
+	if (state.focusedAgent) {
+		// Focused agent view: faint the outline so the borrowed session is
 		// visually distinct from the main one.
 		const base = borderColor;
 		borderColor = (str: string) => `\x1b[2m${base(str)}\x1b[22m`;
@@ -100,20 +103,25 @@ export function resolveComposerAccents(state: ComposerAccentState): ComposerAcce
 	let gutter: string;
 	if (state.bypass) {
 		gutter = theme.getBypassModeBorderColor()("!");
-	} else if (state.bashMode) {
+	} else if (state.bashMode || state.mode === "shell") {
 		gutter = theme.getBashModeBorderColor()("$");
 	} else if (state.pythonMode) {
 		gutter = theme.getPythonModeBorderColor()("›");
+	} else if (state.mode === "search") {
+		gutter = theme.fg("accent", "/");
+	} else if (state.mode === "awaiting-approval") {
+		gutter = theme.fg("accent", "?");
+	} else if (state.mode === "disabled") {
+		gutter = theme.fg("dim", "×");
 	} else if (state.planMode) {
 		gutter = theme.fg("modeAccent", "◈");
 	} else {
-		// A named session keeps its identity accent; otherwise the `›` takes
 		// the theme's borderAccent (ember on titanium) — a fixed hue, never
 		// activity-tinted. The chrome is silent; motion belongs to content.
 		const open = state.sessionAccentAnsi ?? theme.getFgAnsi("borderAccent");
 		gutter = `${open}›\x1b[39m`;
 	}
-	if (state.focusedSubagent) gutter = `\x1b[2m${gutter}\x1b[22m`;
+	if (state.focusedAgent) gutter = `\x1b[2m${gutter}\x1b[22m`;
 
 	const inset = " ".repeat(COMPOSER_INSET_COLS);
 	return {
@@ -128,7 +136,7 @@ export function resolveComposerAccents(state: ComposerAccentState): ComposerAcce
 
 /**
  * The accent state of a composer nothing has happened to yet: no approval
- * bypass, no bash or python prefix, no plan mode, no borrowed subagent view,
+ * bypass, no bash or python prefix, no plan mode, no borrowed agent view,
  * no named session and no thinking level. It is what the launch composer
  * resolves its chrome from, and what every field of {@link ComposerAccentState}
  * falls back to before a session exists to answer for it.
@@ -138,7 +146,7 @@ export const PRISTINE_COMPOSER_ACCENT_STATE: ComposerAccentState = {
 	bashMode: false,
 	pythonMode: false,
 	planMode: false,
-	focusedSubagent: false,
+	focusedAgent: false,
 	sessionAccentAnsi: undefined,
 	thinkingLevel: ThinkingLevel.Off,
 };
@@ -168,13 +176,39 @@ export interface ComposerChromeTarget {
  * the design has no composer card: the input renders on the terminal's own
  * ground.
  */
-export function applyComposerChrome(editor: ComposerChromeTarget, accents: ComposerAccents): void {
+export function applyComposerChrome(
+	editor: ComposerChromeTarget,
+	accents: ComposerAccents,
+	placeholder: string = COMPOSER_PLACEHOLDER,
+): void {
 	editor.setBorderVisible(false);
-	editor.setPlaceholder(COMPOSER_PLACEHOLDER);
+	editor.setPlaceholder(placeholder);
 	editor.borderColor = accents.borderColor;
 	editor.setPromptGutter(accents.promptGutter);
 	editor.setPromptGutterContinuation(accents.promptGutterContinuation);
 	editor.setRowBackground(undefined);
+}
+
+/**
+ * Dress and synchronize a composer component with the wire ComposerState and mode accents.
+ */
+export function applyComposerState(
+	editor: ComposerChromeTarget & { setComposerState?(state: ComposerState): void },
+	state: ComposerState,
+	accents?: ComposerAccents,
+): void {
+	const resolvedAccents =
+		accents ??
+		resolveComposerAccents({
+			...PRISTINE_COMPOSER_ACCENT_STATE,
+			mode: state.mode,
+		});
+	applyComposerChrome(
+		editor,
+		resolvedAccents,
+		state.placeholder !== undefined ? state.placeholder : COMPOSER_PLACEHOLDER,
+	);
+	editor.setComposerState?.(state);
 }
 
 /**
@@ -296,9 +330,11 @@ export class QuietZoneLine implements Component, MouseRoutable {
 	) {}
 
 	render(width: number): string[] {
-		const pad = Math.max(0, Math.min(this.indent, width - 1));
+		const w = Math.max(0, width);
+		if (w === 0) return [];
+		const pad = Math.max(0, Math.min(this.indent, w - 1));
 		this.#lastPad = pad;
-		const line = this.line(width - pad);
+		const line = this.line(Math.max(0, w - pad));
 		return line === null ? [] : [" ".repeat(pad) + line];
 	}
 
@@ -461,16 +497,21 @@ export class LaunchComposerHead implements Component {
  */
 export class LaunchComposerFoot implements Component {
 	readonly #getDraft: () => string;
-	#location: LocationContext | undefined;
 
 	constructor(getDraft: () => string) {
 		this.#getDraft = getDraft;
 	}
 
+	measureHeight(_width: number): number {
+		return 4;
+	}
+
 	render(width: number): string[] {
-		const w = Math.max(1, width);
-		const inset = " ".repeat(COMPOSER_INSET_COLS);
-		return ["", truncateToWidth(`${inset}${this.#footline(w - COMPOSER_INSET_COLS)}`, w), "", ""];
+		const w = Math.max(0, width);
+		if (w === 0) return ["", "", "", ""];
+		const inset = " ".repeat(Math.min(COMPOSER_INSET_COLS, w));
+		const avail = Math.max(0, w - COMPOSER_INSET_COLS);
+		return ["", truncateToWidth(`${inset}${this.#footline(avail)}`, w), "", ""];
 	}
 
 	/**
@@ -498,8 +539,10 @@ export class LaunchComposerFoot implements Component {
 		// The endless-session `∞` is a CONFIGURED fact, not a measured one, so the
 		// row states it now rather than letting it appear beside the gauge a
 		// second later. Same predicate the session mirrors into the live row.
-		const compaction = settings.getGroup("compaction");
-		const autoCompactEnabled = !isThresholdCompactionDisabled(compaction.enabled, compaction.strategy);
+		const autoCompactEnabled = !isThresholdCompactionDisabled(
+			settings.get("compaction.enabled"),
+			settings.get("compaction.strategy"),
+		);
 		const groups = gatherQuietSegments({
 			width: avail,
 			effectiveSettings,
@@ -507,14 +550,13 @@ export class LaunchComposerFoot implements Component {
 			expansion: 0,
 			buildContext: request => {
 				const projectDir = getProjectDir();
-				let location: LocationContext | null = null;
-				if (gitEnabled && (request.includePath || request.includeGit || request.includePr)) {
-					if (this.#location?.projectDir !== projectDir) this.#location = resolveLocationContext(projectDir);
-					location = this.#location;
-				}
+				const location =
+					gitEnabled && (request.includePath || request.includeGit || request.includePr)
+						? resolveLocationContext(projectDir)
+						: null;
 				const branch =
-					request.includeGit || request.includePr
-						? branchLabelFromFiles(location?.effectiveGitCwd ?? projectDir)
+					(request.includeGit || request.includePr) && location?.repository
+						? branchLabelFromFiles(location.repository)
 						: null;
 				return launchSegmentContext({
 					width: request.width,
@@ -525,7 +567,7 @@ export class LaunchComposerFoot implements Component {
 					location,
 				});
 			},
-			subagentBadge: subagentBadgeText(0),
+			agentBadge: agentBadgeText(0),
 			badgeSlot: null,
 		});
 		return (

@@ -24,40 +24,18 @@
  *     bun scripts/demos/render-resources-settings.ts --budget on --width 100 --height 24
  */
 import { Settings } from "../../packages/coding-agent/src/config/settings";
-import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/settings-selector";
-import { flag, initRender, renderWidth } from "./render-args";
+import { renderDemo } from "./render-args";
+import { createTestSettingsSelector } from "./render-settings-helper";
 
-const themeName = flag("theme", "titanium");
-const width = renderWidth();
-const height = Number(flag("height", "24"));
-const budgetOn = flag("budget", "off") === "on";
-
-Object.defineProperty(process.stdout, "rows", { configurable: true, value: height });
-await initRender(themeName, { settings: true });
-// 25 GB rather than 1: a round rung off the option ladder, so the `on` shot shows a value an
-// operator would actually pick instead of the smallest one that happens to be non-zero.
-Settings.instance.set("session.writeBudgetGb", budgetOn ? 25 : 0);
-
-const selector = new SettingsSelectorComponent(
-	{
-		availableThinkingLevels: [],
-		thinkingLevel: undefined,
-		availableThemes: [themeName, "light"],
-		availablePersonalities: ["default"],
-		providers: ["anthropic"],
-		cwd: process.cwd(),
+await renderDemo(
+	({ width, flag, theme }) => {
+		Settings.instance.set("session.writeBudgetGb", flag("budget", "off") === "on" ? 25 : 0);
+		const selector = createTestSettingsSelector(theme);
+		selector.openTab("resources");
+		if (!selector.selectSetting("session.writeBudgetGb")) {
+			throw new Error("the write budget row is not on the resources tab, so this proof is not of it");
+		}
+		return selector.render(width);
 	},
-	{ onChange: () => {}, onCancel: () => {} },
+	{ settings: true, defaultHeight: 24 },
 );
-
-// The selector opens on Appearance, and `selectSetting` only searches the tab that is open, so the
-// tab has to be opened first: without this the capture silently renders Appearance in both states
-// and the pair comes out byte-identical. The budget row is the one row present in both states, so
-// selecting it puts the Disk group in the viewport of both shots and makes the missing kill row
-// visible as an absence. A failed selection would render a truthful-looking frame of the wrong
-// rows, so it stops the capture instead.
-selector.openTab("resources");
-if (!selector.selectSetting("session.writeBudgetGb")) {
-	throw new Error("the write budget row is not on the resources tab, so this proof is not of it");
-}
-process.stdout.write(`${selector.render(width).join("\n")}\n`);

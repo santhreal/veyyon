@@ -1,5 +1,6 @@
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
+import { promptApiKey } from "./api-key-login";
 import * as apiKeyValidation from "./api-key-validation";
 import type { OAuthController, OAuthCredentials, OAuthLoginCallbacks } from "./oauth/types";
 import type { ProviderDefinition } from "./types";
@@ -56,25 +57,13 @@ export async function loginAlibabaCodingPlan(options: OAuthController): Promise<
 		instructions = "Copy your API key from the Alibaba Cloud DashScope console (International)";
 	}
 
-	options.onAuth?.({
-		url: authUrl,
+	const trimmed = await promptApiKey(options, {
+		providerLabel: "Alibaba Coding Plan",
+		authUrl,
 		instructions,
-	});
-
-	const apiKey = await options.onPrompt({
-		message: "Paste your Alibaba Coding Plan API key",
+		promptMessage: "Paste your Alibaba Coding Plan API key",
 		placeholder: "sk-...",
-		secret: true,
 	});
-
-	if (options.signal?.aborted) {
-		throw new AIError.LoginCancelledError();
-	}
-
-	const trimmed = apiKey.trim();
-	if (!trimmed) {
-		throw new AIError.ApiKeyRequiredError();
-	}
 
 	options.onProgress?.("Validating API key...");
 	await apiKeyValidation.validateOpenAICompatibleApiKey({

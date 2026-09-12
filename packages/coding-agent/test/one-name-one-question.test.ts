@@ -8,7 +8,7 @@
  *
  *   - `modes/acp/acp-event-mapper.ts` inspects an `unknown` value and asks only whether it
  *     has `role === "assistant"`. Structural, no other requirement.
- *   - `modes/terminal/components/status-line/token-rate.ts` additionally requires a numeric
+ *   - `presentation/token-rate.ts` additionally requires a numeric
  *     `timestamp` and a `usage.output`, because it is about to compute a rate.
  *   - `modes/terminal/controllers/omfg-rule.ts` additionally requires `content` to be an ARRAY,
  *     because it is about to walk the blocks looking for tool calls.
@@ -37,7 +37,7 @@ import {
 	memberRootOf,
 	REPO_ROOT,
 } from "../../utils/test/support/package-sources";
-import { tokensPerSecond } from "../src/modes/terminal/components/status-line/token-rate";
+import { tokensPerSecond } from "../src/presentation/token-rate";
 
 // Roots and keys come from the shared owner. This named `packages/`, so a second declaration of a
 // locked name under another root read as no declaration at all. The root view then missed members
@@ -129,7 +129,7 @@ describe("no two modules answer different questions under one name", () => {
 		]);
 		expect(await declarersOf("isLinkableAssistantEntry")).toEqual([path.join("apps", "stats", "src", "parser.ts")]);
 		expect(await declarersOf("isRateableAssistantTurn")).toEqual([
-			path.join("coding-agent", "src", "modes", "terminal", "components", "status-line", "token-rate.ts"),
+			path.join("coding-agent", "src", "presentation", "token-rate.ts"),
 		]);
 	});
 });

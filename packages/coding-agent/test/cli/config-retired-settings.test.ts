@@ -18,11 +18,11 @@ describe("the retired-setting marker", () => {
 	it("names the replacement for every key that has been superseded", () => {
 		const retired = paths.filter(path => retiredBy(path) !== undefined);
 		expect(retired.sort()).toEqual([
+			"agent.modelByDepth",
 			"compaction.thresholdPercent",
 			"compaction.thresholdTokens",
 			"defaultThinkingLevel",
 			"setupVersion",
-			"subagent.modelByDepth",
 		]);
 	});
 

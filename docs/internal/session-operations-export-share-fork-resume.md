@@ -43,9 +43,10 @@ Behavior details:
 
 - `--copy`, `clipboard`, and `copy` arguments are explicitly rejected with a warning to use `/dump`.
 - Export embeds session header/entries/leaf plus current `systemPrompt` and tool descriptions from agent state.
-- Subagent transcripts stored next to the session file (`<session>/<AgentId>.jsonl`, recursively for nested spawns) are embedded as `subSessions` (`collectSubSessions` in `src/export/html/index.ts`; disable with `includeSubSessions: false` in `ExportOptions`). In the page, agent ids in task tool cards open a breadcrumbed sub-session overlay.
-- Tool calls render through the `<vey-tool-view>` web component: the React per-tool renderers shared with collab-web (`clients/web/src/tool-render/`), prebuilt into `src/export/html/tool-views.generated.js` by `bun run gen:tool-views`.
+- Agent transcripts stored next to the session file (`<session>/<AgentId>.jsonl`, recursively for nested spawns) are embedded as `subSessions` (`collectSubSessions` in `src/export/html/index.ts`; disable with `includeSubSessions: false` in `ExportOptions`). In the page, agent ids in task tool cards open a breadcrumbed sub-session overlay.
+- Tool calls render through the `<vey-tool-view>` web component using projected `ToolExecutionDisplay` values and the React components in `packages/tool-render/src/`, prebuilt into `src/export/html/tool-views.generated.js` by `bun run gen:tool-views`.
 - No session entries are appended during export.
+- With an obfuscator, export redacts configured secrets in primary and embedded transcripts, including both model fields of provider fallback transitions.
 
 Caveat:
 
@@ -376,4 +377,4 @@ When session manager is created with `SessionManager.inMemory()` (`--no-session`
 - `/share` custom-share failures do not degrade to the default encrypted share flow; they terminate the command with error.
 - `/export` argument tokenization is simplistic and does not preserve quoted paths with spaces.
 
-*Verified against `23e2a7938b9f` on 2026-08-28.*
+*Verified against `504c88b39f` on 2026-09-11.*

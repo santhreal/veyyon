@@ -44,9 +44,9 @@ export const hindsightBackend: MemoryBackend = {
 		const sessionId = session.sessionId;
 		if (!sessionId) return;
 
-		// Subagents alias the parent's state so recall/retain/reflect tool calls
+		// Agents alias the parent's state so recall/retain/reflect tool calls
 		// persist to the same Hindsight bank. Auto-recall and auto-retain stay
-		// with the parent — running them per subagent would double-recall and
+		// with the parent — running them per agent would double-recall and
 		// pollute the bank with internal exploration transcripts.
 		if (options.taskDepth > 0) {
 			const parent = options.parentHindsightSessionState;
@@ -284,7 +284,7 @@ async function installPrimaryState(
  * `onHindsightScopeChanged` handler: re-evaluate the bank scope from current
  * settings and rebuild the primary state when it has actually drifted. No-op
  * when the scope is unchanged or the session is no longer hosting a primary
- * state (e.g. it was wiped to `undefined`, or this is a subagent alias).
+ * state (e.g. it was wiped to `undefined`, or this is an agent alias).
  */
 async function rebuildPrimaryStateOnScopeChange(session: AgentSession): Promise<void> {
 	const current = session.getHindsightSessionState();

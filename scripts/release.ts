@@ -204,11 +204,18 @@ export function bumpVersion(current: string, bump: "major" | "minor" | "patch"):
 	}
 }
 
-/** Rewrite only a package manifest's own version, preserving every other byte. */
+/**
+ * Rewrite a package manifest's own version and every literal `@veyyon/*` pin in it, preserving
+ * every other byte. A workspace peer stays literal (a consumer outside the workspace cannot
+ * resolve `catalog:`), so it moves with the release the same way the root catalog does; a
+ * `catalog:` or `workspace:*` specifier and every third-party range are left as they are.
+ */
 export function rewritePackageVersion(content: string, version: string): string {
 	const pattern = /("version":\s*)"[^"]+"/;
 	if (!pattern.test(content)) throw new Error('Package manifest has no top-level "version" field.');
-	return content.replace(pattern, `$1"${version}"`);
+	return content
+		.replace(pattern, `$1"${version}"`)
+		.replace(/("@veyyon\/[^"]+":\s*)"\d+\.\d+\.\d+"/g, `$1"${version}"`);
 }
 
 /** Rewrite the root Cargo workspace version, never an unrelated package version. */
@@ -480,16 +487,30 @@ export async function validateReleaseVersionAuthorities(
 	}
 
 	const sentinelName = sentinelExportName(version);
-	const sentinelGlob = new Glob("{natives,tests,packages}/**/*.{rs,ts,mts,cts,js,mjs,cjs}");
+	const sentinelRoots = [
+		...new Set(
+			[...manifestPaths, ...cargoManifestPaths]
+				.map(manifestPath => {
+					const dir = normalizedRelativePath(path.posix.dirname(manifestPath));
+					return dir === "." ? "." : (dir.split("/")[0] ?? "");
+				})
+				.filter(root => root.length > 0),
+		),
+	].sort();
 	let sentinelAuthorities = 0;
-	for await (const sourcePath of sentinelGlob.scan({ cwd: rootDir, onlyFiles: true })) {
-		const normalizedPath = normalizedRelativePath(sourcePath);
-		if (isSentinelRewriteExcluded(normalizedPath)) continue;
-		const source = await Bun.file(path.join(rootDir, normalizedPath)).text();
-		for (const match of source.matchAll(/__veyyonNativesV[0-9][A-Za-z0-9_]*/g)) {
-			sentinelAuthorities++;
-			if (match[0] !== sentinelName) {
-				errors.push(`native sentinel ${match[0]} in ${normalizedPath} disagrees with expected ${sentinelName}`);
+	for (const root of sentinelRoots) {
+		const sentinelPattern =
+			root === "." ? "**/*.{rs,ts,mts,cts,js,mjs,cjs}" : `${root}/**/*.{rs,ts,mts,cts,js,mjs,cjs}`;
+		const sentinelGlob = new Glob(sentinelPattern);
+		for await (const sourcePath of sentinelGlob.scan({ cwd: rootDir, onlyFiles: true })) {
+			const normalizedPath = normalizedRelativePath(sourcePath);
+			if (isSentinelRewriteExcluded(normalizedPath)) continue;
+			const source = await Bun.file(path.join(rootDir, normalizedPath)).text();
+			for (const match of source.matchAll(/__veyyonNativesV[0-9][A-Za-z0-9_]*/g)) {
+				sentinelAuthorities++;
+				if (match[0] !== sentinelName) {
+					errors.push(`native sentinel ${match[0]} in ${normalizedPath} disagrees with expected ${sentinelName}`);
+				}
 			}
 		}
 	}

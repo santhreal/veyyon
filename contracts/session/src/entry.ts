@@ -132,7 +132,7 @@ export interface SessionInitEntry extends SessionEntryBase {
 	tools: string[];
 	/** Output schema if structured output was requested */
 	outputSchema?: unknown;
-	/** Spawn allowlist the subagent ran with ("" = none, "*" = any, else CSV); absent on pre-spawns files. */
+	/** Spawn allowlist the agent ran with ("" = none, "*" = any, else CSV); absent on pre-spawns files. */
 	spawns?: string;
 	/** The agent's `readSummarize` setting (`false` = read summarization disabled); absent uses the session default. */
 	readSummarize?: boolean;
@@ -157,7 +157,7 @@ export interface ModeChangeEntry extends SessionEntryBase {
  * ```ts
  * declare module "@veyyon/session" {
  *     interface CustomCompactionSessionEntries {
- *         subagentSpawn: SubagentSpawnEntry;
+ *         agentSpawn: AgentSpawnEntry;
  *     }
  * }
  * ```

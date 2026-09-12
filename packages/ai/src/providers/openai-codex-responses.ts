@@ -71,7 +71,12 @@ import {
 import { clearStreamingPartialJson, kStreamingLastParseLen, kStreamingPartialJson } from "../utils/block-symbols";
 import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
-import { type FirstEventBudget, isPreResponseStall, openStallLadderBudget } from "../utils/first-event-budget";
+import {
+	type FirstEventBudget,
+	isPreResponseStall,
+	openStallLadderBudget,
+	PRE_RESPONSE_STALL_ATTEMPTS,
+} from "../utils/first-event-budget";
 import { materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
 import {
 	armPreResponseTimeout,
@@ -91,6 +96,7 @@ import {
 import { adaptSchemaForStrict, NO_STRICT, sanitizeSchemaForOpenAIResponses, toolWireSchema } from "../utils/schema";
 import { notifyRawSseEvent } from "../utils/sse-debug";
 import { compactGrammarDefinition } from "./grammar";
+import { createInitialResponsesAssistantMessage } from "./initial-message";
 import {
 	type CodexReasoningContext,
 	type CodexRequestOptions,
@@ -481,6 +487,7 @@ const CODEX_RESERVED_METADATA_KEYS: Record<string, true> = {
 	turn_started_at_unix_ms: true,
 	forked_from_thread_id: true,
 	parent_thread_id: true,
+	// Codex protocol metadata key; spelled as codex-rs spells it.
 	subagent_kind: true,
 	thread_source: true,
 	sandbox: true,
@@ -830,6 +837,8 @@ class CodexStreamRuntime {
 	/** Summary deltas buffered while waiting to see whether atomic `.done` events arrive. */
 	pendingSummaryDeltas = new Map<CodexOpenItem, string[]>();
 	websocketStreamRetries = 0;
+	/** Websocket retries spent on a stall alone; bounded by {@link PRE_RESPONSE_STALL_ATTEMPTS}. */
+	websocketStallRetries = 0;
 	providerRetryAttempt = 0;
 	sawTerminalEvent = false;
 	canSafelyReplayWebsocketOverSse = true;
@@ -1113,6 +1122,15 @@ function isCodexWebSocketRetryableStreamError(error: unknown): boolean {
 		message.includes("timeout waiting for first websocket event") ||
 		message.includes("syntaxerror") ||
 		message.includes("json")
+	);
+}
+
+/** The two websocket watchdog messages: the server took the request and then sent no progress. */
+function isCodexWebSocketStallError(error: Error): boolean {
+	const message = error.message.toLowerCase();
+	return (
+		message.includes("idle timeout waiting for websocket") ||
+		message.includes("timeout waiting for first websocket event")
 	);
 }
 function toCodexHeaderRecord(value: unknown): Record<string, string> | null {
@@ -1809,19 +1827,14 @@ function isCodexStalePreviousResponseError(error: unknown): boolean {
 async function handleCodexStreamFailure(context: CodexStreamFailureContext, error: unknown): Promise<AssistantMessage> {
 	const { output } = context;
 	if (context.requestContext.websocketState) {
-		resetCodexWebSocketAppendState(context.requestContext.websocketState);
-		context.requestContext.websocketState.turnState = undefined;
-		context.requestContext.websocketState.modelsEtag = undefined;
+		resetCodexWebSocketChain(context.requestContext.websocketState);
 	}
 	const result = await AIError.finalize(error, {
 		api: context.model.api,
 		signal: context.options?.signal,
 		rawRequestDump: materializeDumpBody(context.requestContext.rawRequestDump, context.requestContext.wireBodyJson),
 	});
-	output.stopReason = result.stopReason;
-	output.errorStatus = result.status;
-	output.errorId = result.id;
-	output.errorMessage = result.message;
+	AIError.applyFinalizeResult(output, result);
 	output.duration = performance.now() - context.startTime;
 	if (context.firstTokenTime) {
 		output.ttft = context.firstTokenTime - context.startTime;
@@ -2310,9 +2323,7 @@ class CodexStreamProcessor {
 		this.runtime.whitespaceLoopRetries += 1;
 		const websocketState = this.requestContext.websocketState;
 		if (websocketState) {
-			resetCodexWebSocketAppendState(websocketState);
-			websocketState.turnState = undefined;
-			websocketState.modelsEtag = undefined;
+			resetCodexWebSocketChain(websocketState);
 		}
 
 		CODEX_DEBUG &&
@@ -2322,22 +2333,12 @@ class CodexStreamProcessor {
 				transport: this.runtime.transport,
 			});
 
-		this.runtime.resetAccumulators();
-		this.runtime.sawTerminalEvent = false;
+		this.#restartTurn();
 		this.runtime.whitespaceToolCallArgumentsDelta = undefined;
-		resetOutputState(this.model, this.output);
-		this.firstTokenTime = undefined;
-		await scheduler.wait(CODEX_WHITESPACE_LOOP_RETRY_DELAY_MS * this.runtime.whitespaceLoopRetries, {
-			signal: this.requestSetup.requestSignal,
-		});
-
-		if (this.runtime.transport === "websocket" && websocketState) {
-			await this.#reopenWebSocketStream(websocketState);
-			return true;
-		}
-
-		await this.#reopenSseStream(websocketState);
-		return true;
+		return this.#reopenAfterDelay(
+			CODEX_WHITESPACE_LOOP_RETRY_DELAY_MS * this.runtime.whitespaceLoopRetries,
+			websocketState,
+		);
 	}
 
 	/**
@@ -2436,13 +2437,8 @@ class CodexStreamProcessor {
 		}
 
 		this.runtime.providerRetryAttempt += 1;
-		resetCodexWebSocketAppendState(websocketState);
-		websocketState.turnState = undefined;
-		websocketState.modelsEtag = undefined;
-		this.runtime.resetAccumulators();
-		this.runtime.sawTerminalEvent = false;
-		resetOutputState(this.model, this.output);
-		this.firstTokenTime = undefined;
+		resetCodexWebSocketChain(websocketState);
+		this.#restartTurn();
 
 		CODEX_DEBUG &&
 			logger.debug("[codex] codex previous_response_id expired; retrying with full context", {
@@ -2470,16 +2466,30 @@ class CodexStreamProcessor {
 		const isFatal = CODEX_WEBSOCKET_FATAL_PATTERNS.some(pattern =>
 			fatalWebSocketMessage.includes(pattern.toLowerCase()),
 		);
+		// A stall is the socket's own watchdog firing: the server took the request
+		// and then sent no progress for the whole idle (or first-event) window. A
+		// dead socket is worth a fresh one; a server that accepted the request and
+		// went silent is not made to answer by re-sending the same context, and
+		// each re-send costs the full window again. So a stall rides the same
+		// two-attempt ladder the pre-response budget states: the attempt that
+		// stalled and one retry, after which the turn moves to SSE. Measured
+		// 2026-09-09: five stalled websocket retries at the default idle window
+		// held one compaction summary for thirty minutes per attempt.
+		const isStall = isCodexWebSocketStallError(streamError);
+		const stallLadderExhausted = isStall && this.runtime.websocketStallRetries >= PRE_RESPONSE_STALL_ATTEMPTS - 1;
 		const activateFallback =
 			replayingBufferedOutputOverSse ||
 			isFatal ||
+			stallLadderExhausted ||
 			this.runtime.websocketStreamRetries >= CODEX_WEBSOCKET_RETRY_BUDGET;
 		recordCodexWebSocketFailure(state, activateFallback, {
 			cause: replayingBufferedOutputOverSse
 				? "stream-failed-while-replaying-over-sse"
 				: isFatal
 					? "fatal-stream-error"
-					: "stream-retry-budget-exhausted",
+					: stallLadderExhausted
+						? "stall-ladder-exhausted"
+						: "stream-retry-budget-exhausted",
 			error: streamError.message,
 		});
 		CODEX_DEBUG &&
@@ -2494,6 +2504,7 @@ class CodexStreamProcessor {
 
 		if (!activateFallback) {
 			this.runtime.websocketStreamRetries += 1;
+			if (isStall) this.runtime.websocketStallRetries += 1;
 			// Full re-send on a fresh socket: clear accumulator state from the failed
 			// attempt. Content is empty here, but blockless native items (e.g.
 			// web_search_call) may already have accumulated.
@@ -2532,9 +2543,7 @@ class CodexStreamProcessor {
 		this.runtime.providerRetryAttempt += 1;
 		const websocketState = this.requestContext.websocketState;
 		if (websocketState) {
-			resetCodexWebSocketAppendState(websocketState);
-			websocketState.turnState = undefined;
-			websocketState.modelsEtag = undefined;
+			resetCodexWebSocketChain(websocketState);
 		}
 
 		CODEX_DEBUG &&
@@ -2545,20 +2554,26 @@ class CodexStreamProcessor {
 				transport: this.runtime.transport,
 			});
 
+		this.#restartTurn();
+		return this.#reopenAfterDelay(CODEX_RETRY_DELAY_MS * this.runtime.providerRetryAttempt, websocketState);
+	}
+
+	/** Clears every accumulator of the failed attempt so the replayed request starts from an empty message. */
+	#restartTurn(): void {
 		this.runtime.resetAccumulators();
 		this.runtime.sawTerminalEvent = false;
 		resetOutputState(this.model, this.output);
 		this.firstTokenTime = undefined;
-		await scheduler.wait(CODEX_RETRY_DELAY_MS * this.runtime.providerRetryAttempt, {
-			signal: this.requestSetup.requestSignal,
-		});
+	}
 
+	/** Waits `delayMs`, then replays over the websocket when that is the live transport and over SSE otherwise. */
+	async #reopenAfterDelay(delayMs: number, websocketState: CodexWebSocketSessionState | undefined): Promise<true> {
+		await scheduler.wait(delayMs, { signal: this.requestSetup.requestSignal });
 		if (this.runtime.transport === "websocket" && websocketState) {
 			await this.#reopenWebSocketStream(websocketState);
-			return true;
+		} else {
+			await this.#reopenSseStream(websocketState);
 		}
-
-		await this.#reopenSseStream(websocketState);
 		return true;
 	}
 
@@ -2609,9 +2624,7 @@ class CodexStreamProcessor {
 		}
 		if (!this.runtime.sawTerminalEvent) {
 			if (this.requestContext.websocketState) {
-				resetCodexWebSocketAppendState(this.requestContext.websocketState);
-				this.requestContext.websocketState.turnState = undefined;
-				this.requestContext.websocketState.modelsEtag = undefined;
+				resetCodexWebSocketChain(this.requestContext.websocketState);
 			}
 			CODEX_DEBUG &&
 				logger.debug("[codex] codex stream ended unexpectedly", {
@@ -2647,16 +2660,11 @@ const streamOpenAICodexResponsesOnce = (
 
 	(async () => {
 		const startTime = performance.now();
-		const output: AssistantMessage = {
-			role: "assistant",
-			content: [],
-			api: "openai-codex-responses" as Api,
-			provider: model.provider,
-			model: model.id,
-			usage: emptyUsage(),
-			stopReason: "stop",
-			timestamp: Date.now(),
-		};
+		const output: AssistantMessage = createInitialResponsesAssistantMessage(
+			"openai-codex-responses" as Api,
+			model.provider,
+			model.id,
+		);
 		const requestSetup = createRequestSetup(options);
 		let processingContext: CodexStreamProcessor | undefined;
 		const cacheEnforcement: CacheEnforcement = resolveCacheEnforcement(options?.cacheEnforcement);
@@ -2890,6 +2898,13 @@ function resetCodexWebSocketAppendState(state: CodexWebSocketSessionState): void
 	state.lastResponseItems = undefined;
 }
 
+/** Drops the append baseline and the turn-state and models-etag headers, so the next request replays in full. */
+function resetCodexWebSocketChain(state: CodexWebSocketSessionState): void {
+	resetCodexWebSocketAppendState(state);
+	state.turnState = undefined;
+	state.modelsEtag = undefined;
+}
+
 /**
  * Record a codex websocket failure, and tear the socket down.
  *
@@ -3080,80 +3095,44 @@ function parseCodexResponseStatus(value: unknown): ResponseStatus | undefined {
 	}
 }
 
+/** Copies each named key whose value is a number; undefined when none is present. */
+function pickNumberFields<T extends Record<string, number | undefined>>(
+	value: unknown,
+	keys: ReadonlyArray<keyof T & string>,
+): T | undefined {
+	if (!value || typeof value !== "object") return undefined;
+	const source = value as Record<string, unknown>;
+	let picked: Record<string, number> | undefined;
+	for (const key of keys) {
+		const field = source[key];
+		if (typeof field !== "number") continue;
+		picked ??= {};
+		picked[key] = field;
+	}
+	return picked as T | undefined;
+}
+
 function parseCodexResponseUsage(value: unknown): CodexResponseUsage | undefined {
 	if (!value || typeof value !== "object") return undefined;
-	const usage: CodexResponseUsage = {};
-	let hasUsage = false;
-	if ("input_tokens" in value && typeof value.input_tokens === "number") {
-		usage.input_tokens = value.input_tokens;
-		hasUsage = true;
-	}
-	if ("output_tokens" in value && typeof value.output_tokens === "number") {
-		usage.output_tokens = value.output_tokens;
-		hasUsage = true;
-	}
-	if ("total_tokens" in value && typeof value.total_tokens === "number") {
-		usage.total_tokens = value.total_tokens;
-		hasUsage = true;
-	}
-	if ("prompt_cache_hit_tokens" in value && typeof value.prompt_cache_hit_tokens === "number") {
-		usage.prompt_cache_hit_tokens = value.prompt_cache_hit_tokens;
-		hasUsage = true;
-	}
-	if (
-		"input_tokens_details" in value &&
-		value.input_tokens_details &&
-		typeof value.input_tokens_details === "object"
-	) {
-		const details = value.input_tokens_details;
-		const parsedDetails: NonNullable<CodexResponseUsage["input_tokens_details"]> = {};
-		let hasDetails = false;
-		if ("cached_tokens" in details && typeof details.cached_tokens === "number") {
-			parsedDetails.cached_tokens = details.cached_tokens;
-			hasDetails = true;
-		}
-		if ("cache_write_tokens" in details && typeof details.cache_write_tokens === "number") {
-			parsedDetails.cache_write_tokens = details.cache_write_tokens;
-			hasDetails = true;
-		}
-		if ("orchestration_input_tokens" in details && typeof details.orchestration_input_tokens === "number") {
-			parsedDetails.orchestration_input_tokens = details.orchestration_input_tokens;
-			hasDetails = true;
-		}
-		if (
-			"orchestration_input_cached_tokens" in details &&
-			typeof details.orchestration_input_cached_tokens === "number"
-		) {
-			parsedDetails.orchestration_input_cached_tokens = details.orchestration_input_cached_tokens;
-			hasDetails = true;
-		}
-		if (hasDetails) {
-			usage.input_tokens_details = parsedDetails;
-			hasUsage = true;
-		}
-	}
-	if (
-		"output_tokens_details" in value &&
-		value.output_tokens_details &&
-		typeof value.output_tokens_details === "object"
-	) {
-		const details = value.output_tokens_details;
-		const parsedDetails: NonNullable<CodexResponseUsage["output_tokens_details"]> = {};
-		let hasDetails = false;
-		if ("reasoning_tokens" in details && typeof details.reasoning_tokens === "number") {
-			parsedDetails.reasoning_tokens = details.reasoning_tokens;
-			hasDetails = true;
-		}
-		if ("orchestration_output_tokens" in details && typeof details.orchestration_output_tokens === "number") {
-			parsedDetails.orchestration_output_tokens = details.orchestration_output_tokens;
-			hasDetails = true;
-		}
-		if (hasDetails) {
-			usage.output_tokens_details = parsedDetails;
-			hasUsage = true;
-		}
-	}
-	return hasUsage ? usage : undefined;
+	const usage: CodexResponseUsage =
+		pickNumberFields<Omit<CodexResponseUsage, "input_tokens_details" | "output_tokens_details">>(value, [
+			"input_tokens",
+			"output_tokens",
+			"total_tokens",
+			"prompt_cache_hit_tokens",
+		]) ?? {};
+	const source = value as Record<string, unknown>;
+	const inputDetails = pickNumberFields<NonNullable<CodexResponseUsage["input_tokens_details"]>>(
+		source.input_tokens_details,
+		["cached_tokens", "cache_write_tokens", "orchestration_input_tokens", "orchestration_input_cached_tokens"],
+	);
+	if (inputDetails) usage.input_tokens_details = inputDetails;
+	const outputDetails = pickNumberFields<NonNullable<CodexResponseUsage["output_tokens_details"]>>(
+		source.output_tokens_details,
+		["reasoning_tokens", "orchestration_output_tokens"],
+	);
+	if (outputDetails) usage.output_tokens_details = outputDetails;
+	return Object.keys(usage).length > 0 ? usage : undefined;
 }
 
 function describeCodexInputItemType(item: unknown): string {
@@ -3295,9 +3274,7 @@ function buildCodexChainedRequestBody(
 				hadTurnStateHeader: Boolean(state.turnState),
 				hadModelsEtagHeader: Boolean(state.modelsEtag),
 			});
-		resetCodexWebSocketAppendState(state);
-		state.turnState = undefined;
-		state.modelsEtag = undefined;
+		resetCodexWebSocketChain(state);
 	}
 	return requestBody;
 }
@@ -3607,14 +3584,12 @@ class CodexWebSocketConnection {
 			const priorResponseId = this.#lastSeenResponseId;
 			while (true) {
 				let timeoutMs: number | undefined;
-				let timeoutReason: string;
+				const timeoutReason = (): string =>
+					createCodexWebSocketTimeoutMessage(
+						sawFirstEvent ? "idle timeout waiting for websocket" : "timeout waiting for first websocket event",
+						{ lastEventAt, lastEventType, lastProgressAt, lastProgressEventType },
+					);
 				if (sawFirstEvent) {
-					timeoutReason = createCodexWebSocketTimeoutMessage("idle timeout waiting for websocket", {
-						lastEventAt,
-						lastEventType,
-						lastProgressAt,
-						lastProgressEventType,
-					});
 					if (idleTimeoutMs !== undefined && idleTimeoutMs > 0) {
 						timeoutMs = idleTimeoutMs - (Date.now() - lastProgressAt);
 						if (timeoutMs <= 0) {
@@ -3625,19 +3600,11 @@ class CodexWebSocketConnection {
 									msSinceLastEvent: Date.now() - lastEventAt,
 									msSinceLastProgress: Date.now() - lastProgressAt,
 								});
-							throw new CodexWebSocketTransportError(`${timeoutReason}`);
+							throw new CodexWebSocketTransportError(timeoutReason());
 						}
 					}
-				} else {
-					timeoutReason = createCodexWebSocketTimeoutMessage("timeout waiting for first websocket event", {
-						lastEventAt,
-						lastEventType,
-						lastProgressAt,
-						lastProgressEventType,
-					});
-					if (firstEventTimeoutMs !== undefined && firstEventTimeoutMs > 0) {
-						timeoutMs = firstEventTimeoutMs;
-					}
+				} else if (firstEventTimeoutMs !== undefined && firstEventTimeoutMs > 0) {
+					timeoutMs = firstEventTimeoutMs;
 				}
 				const next = await this.#nextMessage(timeoutMs, timeoutReason);
 				if (next instanceof Error) {
@@ -3879,7 +3846,10 @@ class CodexWebSocketConnection {
 
 	async #nextMessage(
 		timeoutMs: number | undefined,
-		timeoutReason: string,
+		// Built when the deadline fires, not when the wait starts: the message
+		// reports how long ago the last progress was, and a value computed before
+		// a 300 s wait reported "31087ms ago" for a stall of five minutes.
+		timeoutReason: () => string,
 	): Promise<Record<string, unknown> | Error | null> {
 		while (this.#queue.length === 0) {
 			const { promise, resolve } = Promise.withResolvers<void>();
@@ -3899,7 +3869,7 @@ class CodexWebSocketConnection {
 			await promise;
 			if (timeout) clearTimeout(timeout);
 			if (timedOut && this.#queue.length === 0) {
-				return new CodexWebSocketTransportError(`${timeoutReason}`);
+				return new CodexWebSocketTransportError(timeoutReason());
 			}
 		}
 		return this.#queue.shift() ?? null;

@@ -1539,6 +1539,28 @@ describe("ModelRegistry", () => {
 			);
 			expect(disabledProbeUrls).toEqual([]);
 		});
+
+		test("refresh probes a built-in local provider at its models.yml baseUrl override", async () => {
+			writeRawModelsJson({ ollama: { baseUrl: "http://127.0.0.1:41434/v1" } });
+			await Settings.init({
+				inMemory: true,
+				overrides: {
+					disabledProviders: ["llama.cpp", "lm-studio"],
+				},
+			});
+			const requestedUrls: string[] = [];
+			const fetchMock: FetchImpl = input => {
+				requestedUrls.push(String(input));
+				throw new Error(`Unexpected URL: ${String(input)}`);
+			};
+
+			const registry = new ModelRegistry(authStorage, modelsJsonPath, { fetch: fetchMock });
+			await registry.refresh("online");
+
+			const ollamaProbeUrls = requestedUrls.filter(url => url.includes("127.0.0.1:41434"));
+			expect(ollamaProbeUrls).not.toEqual([]);
+			expect(requestedUrls.filter(url => url.includes("127.0.0.1:11434"))).toEqual([]);
+		});
 	});
 	describe("bundled Anthropic catalog availability", () => {
 		let anthropicAuth: AuthStorage;

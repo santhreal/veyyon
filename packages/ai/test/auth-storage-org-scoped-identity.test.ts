@@ -491,6 +491,85 @@ describe("anthropic usage report dedupe partitions by org", () => {
 		const reports = ((await storage.fetchUsageReports()) ?? []).filter(r => r.provider === "anthropic");
 		expect(reports).toHaveLength(1);
 	});
+
+	it("merges no-email reports whose limits all carry one scope account id, and keeps an ambiguous scope apart", async () => {
+		// Two rows with distinct stored identities, so each is fetched and only the report's own
+		// scope can say they are one account.
+		const bareRow = (id: number): StoredAuthCredential => ({
+			id,
+			provider: "anthropic",
+			credential: {
+				type: "oauth",
+				access: `oat-${id}`,
+				refresh: `refresh-${id}`,
+				expires: Date.now() + 3_600_000,
+				accountId: `account-${id}`,
+			},
+			disabledCause: null,
+		});
+		const noEmailStorage = (): AuthStorage =>
+			new AuthStorage(makeStore([bareRow(1), bareRow(2)]), {
+				usageProviderResolver: provider => (provider === "anthropic" ? claudeUsage.claudeUsageProvider : undefined),
+			});
+		const scoped = (accountIds: string[]): UsageReport => ({
+			...emailOnlyReport(),
+			limits: accountIds.map((accountId, index) => ({
+				...emailOnlyReport().limits[0]!,
+				id: `anthropic:${index}`,
+				scope: { provider: "anthropic", windowId: "5h", accountId },
+			})),
+			metadata: undefined,
+		});
+		const anthropicReports = async (): Promise<UsageReport[]> =>
+			((await storage?.fetchUsageReports()) ?? []).filter(r => r.provider === "anthropic");
+
+		storage = noEmailStorage();
+		await storage.reload();
+		vi.spyOn(claudeUsage.claudeUsageProvider, "fetchUsage").mockImplementation(async () =>
+			scoped([" account-shared "]),
+		);
+		expect(await anthropicReports()).toHaveLength(1);
+
+		storage.close();
+		storage = noEmailStorage();
+		await storage.reload();
+		vi.spyOn(claudeUsage.claudeUsageProvider, "fetchUsage").mockImplementation(async () =>
+			scoped(["account-shared", "account-other"]),
+		);
+		expect(await anthropicReports()).toHaveLength(2);
+	});
+
+	it("merges no-email reports of another provider by the one scope project id their limits carry", async () => {
+		const provider = "unit-scope-provider";
+		const row = (id: number): StoredAuthCredential => ({
+			id,
+			provider,
+			credential: { type: "oauth", access: `oat-${id}`, refresh: `refresh-${id}`, expires: Date.now() + 3_600_000 },
+			disabledCause: null,
+		});
+		storage = new AuthStorage(makeStore([row(1), row(2)]), {
+			usageProviderResolver: candidate =>
+				candidate === provider
+					? {
+							id: provider,
+							fetchUsage: async () => ({
+								provider,
+								fetchedAt: Date.now(),
+								limits: [
+									{
+										...emailOnlyReport().limits[0]!,
+										id: `${provider}:5h`,
+										scope: { provider, windowId: "5h", projectId: "project-shared" },
+									},
+								],
+							}),
+						}
+					: undefined,
+		});
+		await storage.reload();
+
+		expect(((await storage.fetchUsageReports()) ?? []).filter(r => r.provider === provider)).toHaveLength(1);
+	});
 });
 
 describe("broker-backed refresh row addressing", () => {

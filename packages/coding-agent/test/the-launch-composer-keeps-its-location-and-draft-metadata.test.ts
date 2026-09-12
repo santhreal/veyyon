@@ -121,11 +121,39 @@ test.each(Object.keys(STATUS_LINE_PRESETS) as StatusLinePreset[])(
 			const rendered = row(foot);
 			if (tokens === null) expect(rendered).not.toMatch(/~\d+ tok/);
 			else expect(rendered).toContain(`~${tokens} tok`);
+			for (const width of [1, 40, 80, 140, 400]) {
+				expect(foot.measureHeight(width)).toBe(4);
+				expect(foot.render(width)).toHaveLength(4);
+			}
 		}
 		await settings.set("statusLine.enabled", false);
 		draft = "qjq";
-		for (const width of [40, 80, 140, 400]) expect(row(foot, width).trim()).toBe("");
+		for (const width of [1, 40, 80, 140, 400]) {
+			expect(foot.measureHeight(width)).toBe(4);
+			expect(foot.render(width)).toHaveLength(4);
+			expect(row(foot, width).trim()).toBe("");
+		}
 		await settings.set("statusLine.enabled", true);
 		expect(row(foot)).toContain("~1 tok");
 	},
 );
+
+test("refreshes the git branch and operation dynamically across renders of the same footline instance", () => {
+	const repoRoot = path.join(isolated.root, "live-repo");
+	repository(repoRoot);
+	setProjectDir(repoRoot);
+	const foot = new LaunchComposerFoot(() => "");
+	expect(row(foot)).toContain("main");
+
+	// Modify HEAD on disk in the same directory:
+	writeFileSync(path.join(repoRoot, ".git", "HEAD"), "ref: refs/heads/feature-branch\n");
+	expect(row(foot)).toContain("feature-branch");
+	expect(row(foot)).not.toContain("main");
+
+	// Start a rebase on disk:
+	const rebaseMerge = path.join(repoRoot, ".git", "rebase-merge");
+	mkdirSync(rebaseMerge, { recursive: true });
+	writeFileSync(path.join(rebaseMerge, "head-name"), "refs/heads/topic\n");
+	writeFileSync(path.join(repoRoot, ".git", "HEAD"), "0123456789abcdef0123456789abcdef01234567\n");
+	expect(row(foot)).toContain("topic|REBASE");
+});

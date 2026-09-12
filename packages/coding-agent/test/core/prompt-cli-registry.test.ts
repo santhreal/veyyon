@@ -107,15 +107,15 @@ describe("listing every prompt", () => {
 });
 
 describe("describing one prompt", () => {
-	it("reports the subagent prompt's sections and which are optional", async () => {
-		// The distinction is what lets a reader tell a subagent that rendered three
+	it("reports the agent prompt's sections and which are optional", async () => {
+		// The distinction is what lets a reader tell an agent that rendered three
 		// of five sections from one that lost two.
-		const { output, exitCode } = await runPromptCommand({ prompt: "subagent/system-prompt" });
+		const { output, exitCode } = await runPromptCommand({ prompt: "agent/system-prompt" });
 
 		expect(exitCode).toBe(0);
 		expect(output).toContain("role");
 		expect(output).toContain("optional");
-		expect(output).toContain("packages/coding-agent/src/prompts/subagent/system-prompt.md");
+		expect(output).toContain("packages/coding-agent/src/prompts/agent/system-prompt.md");
 	});
 
 	it("describes a single-region prompt without pretending it has structure", async () => {
@@ -144,10 +144,10 @@ describe("describing one prompt", () => {
 	it("names the near miss rather than leaving 163 ids to search", async () => {
 		// The reason the message does not list every id: the one the operator nearly
 		// typed is the only one worth printing, and it turns the error into the fix.
-		const { output, exitCode } = await runPromptCommand({ prompt: "subagent/system-promt" });
+		const { output, exitCode } = await runPromptCommand({ prompt: "agent/system-promt" });
 
 		expect(exitCode).toBe(1);
-		expect(output).toContain('Did you mean "subagent/system-prompt"');
+		expect(output).toContain('Did you mean "agent/system-prompt"');
 	});
 
 	it("describes a prompt owned by another package, with its own file path", async () => {

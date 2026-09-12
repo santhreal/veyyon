@@ -174,12 +174,11 @@ const LEGACY_KEYBINDINGS_JSON = "keybindings.json";
 interface KeybindingsConfigPaths {
 	readPath: string;
 	writeBackPath: string;
+	exists: boolean;
 }
 
-/** Controls inherited keybinding lookup when creating a manager for a named profile. */
+/** Controls default-profile keybinding seeding when creating a manager. */
 export interface KeybindingsCreateOptions {
-	/** @deprecated Live merge removed; seed keybindings at profile creation instead. */
-	inheritedAgentDir?: string;
 	/** When false, skip the one-time default-profile keybindings seed (tests). */
 	seedFromDefault?: boolean;
 }
@@ -275,27 +274,24 @@ function writeKeybindingsConfig(filePath: string, config: KeybindingsConfig): bo
 function resolveKeybindingsConfigPaths(agentDir: string): KeybindingsConfigPaths {
 	const ymlPath = path.join(agentDir, KEYBINDINGS_YML);
 	if (fs.existsSync(ymlPath)) {
-		return { readPath: ymlPath, writeBackPath: ymlPath };
+		return { readPath: ymlPath, writeBackPath: ymlPath, exists: true };
 	}
 
 	const yamlPath = path.join(agentDir, KEYBINDINGS_YAML);
 	if (fs.existsSync(yamlPath)) {
-		return { readPath: yamlPath, writeBackPath: yamlPath };
+		return { readPath: yamlPath, writeBackPath: yamlPath, exists: true };
 	}
 
 	const jsonPath = path.join(agentDir, LEGACY_KEYBINDINGS_JSON);
 	if (fs.existsSync(jsonPath)) {
-		return { readPath: jsonPath, writeBackPath: ymlPath };
+		return { readPath: jsonPath, writeBackPath: ymlPath, exists: true };
 	}
 
-	return { readPath: ymlPath, writeBackPath: ymlPath };
+	return { readPath: ymlPath, writeBackPath: ymlPath, exists: false };
 }
 
 export function profileHasKeybindingsFile(agentDir: string): boolean {
-	for (const filename of [KEYBINDINGS_YML, KEYBINDINGS_YAML, LEGACY_KEYBINDINGS_JSON]) {
-		if (fs.existsSync(path.join(agentDir, filename))) return true;
-	}
-	return false;
+	return resolveKeybindingsConfigPaths(agentDir).exists;
 }
 
 /**
@@ -336,6 +332,9 @@ function loadProfileKeybindingsConfig(agentDir: string): {
 	profilePath: string;
 } {
 	const profilePaths = resolveKeybindingsConfigPaths(agentDir);
+	if (!profilePaths.exists) {
+		return { config: {}, profilePath: profilePaths.readPath };
+	}
 	const profile = loadKeybindingsConfig(profilePaths.readPath, profilePaths.writeBackPath);
 	return { config: profile.config, profilePath: profile.persistedPath };
 }

@@ -18,7 +18,7 @@
  * computed from it, which is worse than an absent row and impossible to notice
  * (Law 10).
  */
-import { isRecord } from "@veyyon/utils/type-guards";
+import { isNonEmptyString, isRecord } from "@veyyon/utils/type-guards";
 
 /** Why a record was rejected, phrased for the operator who has to fix the file. */
 export type SessionEntryShapeProblem = string;
@@ -30,10 +30,6 @@ const OK: SessionEntryShapeResult = { ok: true };
 
 function bad(problem: SessionEntryShapeProblem): SessionEntryShapeResult {
 	return { ok: false, problem };
-}
-
-function isNonEmptyString(value: unknown): value is string {
-	return typeof value === "string" && value.length > 0;
 }
 
 /** The four token counters every usage reader sums without checking. */

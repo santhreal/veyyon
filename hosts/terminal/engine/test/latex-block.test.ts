@@ -218,6 +218,18 @@ describe("latexToBlock (2-D layout)", () => {
 		expect(latexToBlock("a \\\\ b")).toEqual(["a", "b"]);
 	});
 
+	it("splits a top-level newline into vertical rows", () => {
+		expect(latexToBlock("a = b\nc = d")).toEqual(["a = b", "c = d"]);
+	});
+
+	it("keeps a newline inside an environment on the row it interrupts", () => {
+		expect(latexToBlock("\\begin{bmatrix} a & b \\\\ c\n & d \\end{bmatrix}")).toEqual([
+			"⎡ a  b ⎤",
+			"⎢      ⎥",
+			"⎣ c  d ⎦",
+		]);
+	});
+
 	it("keeps \\color scope across a stacked fraction, painting the bar", () => {
 		Object.assign(TERMINAL, { trueColor: true });
 		const lines = latexToBlock("\\color{red} x + \\frac{a}{b}");

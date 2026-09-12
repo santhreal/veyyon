@@ -27,7 +27,7 @@ inputs:
         - exa/reactive_component_pb/reactive_component.proto
         - exa/trust_pb/trust.proto
 plugins:
-   - local: ../../../../../../node_modules/.bin/protoc-gen-es
+   - local: ["node", "../../../../../../node_modules/@bufbuild/protoc-gen-es/bin/protoc-gen-es"]
      out: ../../../../../catalog/src/discovery/devin-gen
      opt:
         - target=ts

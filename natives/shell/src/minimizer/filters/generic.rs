@@ -11,9 +11,5 @@ pub fn filter(_ctx: &MinimizerCtx<'_>, input: &str, _exit_code: i32) -> Minimize
 	} else {
 		deduped
 	};
-	if text == input {
-		MinimizerOutput::passthrough(input)
-	} else {
-		MinimizerOutput::transformed(text, input.len())
-	}
+	MinimizerOutput::maybe_transformed(input, text)
 }

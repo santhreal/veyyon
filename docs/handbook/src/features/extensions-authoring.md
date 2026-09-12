@@ -130,6 +130,22 @@ Multiple entry points are supported:
 }
 ```
 
+The `veyyon` field accepts four entry keys. Each path is relative to the package root. A file entry
+is that file; a directory entry resolves to its `index.{ts,js,mjs,cjs}`, and an `extensions`
+directory additionally resolves by the same rules as a configured `-e` directory (its own
+`package.json` `extensions`, then a direct index, then a one-level scan of sub-extensions):
+
+| Key | Type | Loaded by |
+| --- | --- | --- |
+| `extensions` | Array of Strings | The extension runner. |
+| `hooks` | String | The extension runner; the module default-exports a hook factory, the same shape as a file under `hooks/pre/`. |
+| `tools` | String | The custom tool loader. |
+| `commands` | Array of Strings | The custom command loader; each module is a TypeScript slash command, and `pi.getCommands()` reports it with `location: "plugin"`. |
+
+A `features` map declares optional groups, each holding the same four keys as lists.
+`veyyon plugin features <plugin> --enable a,b` selects which groups load; a group with
+`"default": true` loads when no selection is recorded.
+
 ## Registering commands
 
 ```ts

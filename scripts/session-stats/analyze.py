@@ -31,71 +31,16 @@ import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
-DB_PATH = Path.home() / ".veyyon" / "stats.db"
-
-
-# --------------------------------------------------------------------------- #
-# Shared helpers
-
-
-def open_ro() -> sqlite3.Connection:
-    if not DB_PATH.exists():
-        sys.exit(f"db not found: {DB_PATH}. Run sync.py first.")
-    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def commas(n: int) -> str:
-    return f"{n:,}"
-
-
-def pct(part: int, total: int) -> float:
-    return 0.0 if total == 0 else (100.0 * part / total)
-
-
-def truncate_line(s: str, n: int) -> str:
-    s = s.replace("\n", " | ")
-    if len(s) <= n:
-        return s
-    return s[: n - 1] + "…"
-
-
-def parse_bucket(spec: str) -> int:
-    """`h`,`d`,`w`,`m`,`<N>h`,`<N>d`,`<N>w` -> seconds."""
-    units = {"h": 3600, "d": 86400, "w": 604800, "m": 2592000}
-    if spec in units:
-        return units[spec]
-    if spec[-1] in units and spec[:-1].isdigit():
-        return int(spec[:-1]) * units[spec[-1]]
-    if spec == "hour":
-        return 3600
-    if spec == "day":
-        return 86400
-    if spec == "week":
-        return 604800
-    raise ValueError(f"bad --by spec: {spec}")
-
-
-def since_cutoff_ms(args: argparse.Namespace) -> int | None:
-    """Resolve --since spec (h/d/w/m/<N>{h,d,w}) to an epoch-ms cutoff, or None."""
-    spec = getattr(args, "since", None)
-    if not spec:
-        return None
-    return int(time.time() * 1000) - parse_bucket(spec) * 1000
-
-
-def percentile(values: list[int], p: float) -> float:
-    if not values:
-        return 0.0
-    s = sorted(values)
-    k = (len(s) - 1) * (p / 100.0)
-    lo, hi = int(k), min(int(k) + 1, len(s) - 1)
-    if lo == hi:
-        return float(s[lo])
-    return s[lo] + (s[hi] - s[lo]) * (k - lo)
-
-
+from common import (
+    DB_PATH,
+    commas,
+    open_ro,
+    parse_bucket,
+    percentile,
+    pct,
+    since_cutoff_ms,
+    truncate_line,
+)
 # --------------------------------------------------------------------------- #
 # `tools` — per-tool token totals (cmd_tools.rs port)
 

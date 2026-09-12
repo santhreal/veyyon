@@ -229,7 +229,7 @@ describe("createAgentSession deferred MCP auto discovery", () => {
 		if (!parent.mcpManager) throw new Error("expected parent session to create an MCPManager");
 		const parentManager = parent.mcpManager;
 		try {
-			// A subagent-style session reuses the parent's manager via
+			// An agent-style session reuses the parent's manager via
 			// `mcpManager` and therefore does NOT own it.
 			const child = await createAgentSession({
 				...baseOptions(),

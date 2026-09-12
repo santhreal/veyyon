@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { existingOnly, readIfPresent } from "./check-doc-links";
+import { listTrackedFiles } from "./git-baseline";
+import { existingOnly, readIfPresent } from "./workspace-layout";
 
 /**
  * Locks the release gate to the install methods veyyon actually ships, and locks
@@ -55,20 +56,7 @@ const removedNpmMachinery = [
  * check pass or fail by accident.
  */
 function markdownFiles(root: string): string[] {
-	const out = Bun.spawnSync(["git", "ls-files", "*.md"], { cwd: root });
-	expect(out.exitCode, "git ls-files must succeed").toBe(0);
-	// `existingOnly`: git lists the INDEX, which still contains a doc deleted in
-	// the working tree but not yet committed. Reading one killed this test with a
-	// raw ENOENT naming that file — an error about tree state, in a test about
-	// install instructions. A deleted doc also cannot tell a user to install
-	// anything, so skipping it is the correct answer and not a workaround.
-	return existingOnly(
-		root,
-		new TextDecoder()
-			.decode(out.stdout)
-			.split("\n")
-			.filter(line => line.length > 0),
-	);
+	return existingOnly(root, listTrackedFiles(root, ["*.md"]));
 }
 
 describe("the release gate covers both shipped install channels", () => {

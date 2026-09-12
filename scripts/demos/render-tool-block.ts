@@ -1,23 +1,12 @@
 /**
- * The tool block, at one width, in the two chromes.
+ * Render tool execution output blocks across status states and borders.
  *
- * A tool block is the most repeated object in a session: every read, bash, search and
- * diff result is one. It used to be a box — a rule with the title cut into it, a wall
- * down each side, a rule under the last line — drawn at the terminal width with every
- * row padded out to reach it. It is now a title line and a rail: one thin glyph down
- * the left of the output, nothing above it, nothing below it, nothing to the right.
+ * Constructs output block options for read operations, multi-section command executions,
+ * and command failure messages. Renders each block using standard transcript block styling
+ * or enclosed box border styling, printing the resulting lines as ANSI text.
  *
- * Both arms render the SAME blocks from the SAME options, so the pair differs in the
- * chrome and in nothing else. `--box` is the OFF arm and rebuilds the old geometry
- * here rather than in the product, which is the only way to put the two side by side
- * once the product has stopped drawing one of them.
- *
- * Run:
- *
- *     bun scripts/demos/render-tool-block.ts --width 100 [--box] |
- *       bun scripts/demos/render-proof.ts --out /tmp/block --width 100
- *
- * `--theme <name>` renders another theme; the default is titanium.
+ * Usage:
+ *   bun scripts/demos/render-tool-block.ts [--box] [--width 100] [--theme titanium]
  */
 
 import { padding } from "@veyyon/utils/padding";
@@ -26,11 +15,7 @@ import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type { OutputBlockOptions } from "../../packages/coding-agent/src/modes/terminal/draw/output-block";
 import { renderOutputBlock } from "../../packages/coding-agent/src/modes/terminal/draw/output-block";
 import { theme } from "../../packages/coding-agent/src/theme/theme";
-import { flag, hasFlag, initRender, renderWidth } from "./render-args";
-
-const themeName = flag("theme", "titanium");
-const width = renderWidth();
-await initRender(themeName, { settings: true });
+import { renderDemo } from "./render-args";
 
 const BLOCKS: Array<(w: number) => OutputBlockOptions> = [
 	w => ({
@@ -56,10 +41,6 @@ const BLOCKS: Array<(w: number) => OutputBlockOptions> = [
 	}),
 ];
 
-/**
- * The chrome every block had before: a bar with the title cut into it, a wall down
- * each side, a bar under the last row, all drawn to the terminal width.
- */
 function renderAsBox(options: OutputBlockOptions, w: number): string[] {
 	const box = theme.boxSharp;
 	const h = box.horizontal;
@@ -96,10 +77,14 @@ function renderAsBox(options: OutputBlockOptions, w: number): string[] {
 	return lines;
 }
 
-const lines: string[] = [];
-for (const build of BLOCKS) {
-	const options = build(width);
-	lines.push(...(hasFlag("box") ? renderAsBox(options, width) : renderOutputBlock(options, theme)), "");
-}
-
-process.stdout.write(`${lines.join("\n")}\n`);
+await renderDemo(
+	({ width, hasFlag }) => {
+		const lines: string[] = [];
+		for (const build of BLOCKS) {
+			const options = build(width);
+			lines.push(...(hasFlag("box") ? renderAsBox(options, width) : renderOutputBlock(options, theme)), "");
+		}
+		return lines;
+	},
+	{ settings: true },
+);

@@ -96,7 +96,7 @@ describe("issue #846: phase1 stage1 failures must be logged", () => {
 		await fs.writeFile(sessionFile, `${JSON.stringify({ type: "session", id: "current-thread", cwd: agentDir })}\n`);
 
 		const settings = Settings.isolated({
-			"memories.enabled": true,
+			"memory.backend": "local",
 			"memories.minRolloutIdleHours": 0,
 			"memories.maxRolloutsPerStartup": 4,
 			"memories.threadScanLimit": 64,

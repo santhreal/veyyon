@@ -133,16 +133,36 @@ describe("nobody takes one cheap name from the whole package", () => {
 	 * import clause, and a formatting change is exactly what defeats that class of pattern. If it stopped
 	 * matching, the rule would pass on a repository full of violations.
 	 *
-	 * The engine names are the proof, because they are the ones the rule deliberately allows: they must be
-	 * FOUND and then excused, not missed.
+	 * Proven in two halves, because one filename cannot carry both. Inline clauses pin the spellings the
+	 * regex has to survive, and they cannot go stale: repointing a file at its owner is the outcome this
+	 * suite exists to produce, so a control anchored to a named file expires the moment the suite works.
+	 * That is what happened to the previous anchor, `coding-agent/src/tools/fs/inspect-image.ts`, which now
+	 * takes its names as `import type` and is no longer a runtime importer at all.
+	 *
+	 * The repository half then proves the regex still matches THIS tree, and the engine names are the proof
+	 * because they are the ones the rule deliberately allows: they must be FOUND and then excused, not
+	 * missed. Both halves derive their subject at run time, so the next repointing shrinks the set without
+	 * turning the control vacuous.
 	 */
 	it("the detector really finds single-name barrel imports", () => {
-		const singles = SOURCES.filter(([, source]) => barrelRuntimeNames(source).length === 1).map(
-			([relative]) => relative,
+		expect(barrelRuntimeNames('import { completeSimple } from "@veyyon/ai";')).toEqual(["completeSimple"]);
+		expect(barrelRuntimeNames('import {\n\tcompleteSimple,\n} from "@veyyon/ai";')).toEqual(["completeSimple"]);
+		expect(barrelRuntimeNames("import { streamSimple } from '@veyyon/ai';")).toEqual(["streamSimple"]);
+		expect(barrelRuntimeNames('import { type Model, isUsageLimitOutcome } from "@veyyon/ai";')).toEqual([
+			"isUsageLimitOutcome",
+		]);
+		expect(barrelRuntimeNames('import type { Model } from "@veyyon/ai";')).toEqual([]);
+		expect(barrelRuntimeNames('import { completeSimple } from "@veyyon/ai/stream";')).toEqual([]);
+
+		const singles = SOURCES.map(([relative, source]) => [relative, barrelRuntimeNames(source)] as const).filter(
+			([, names]) => names.length === 1,
 		);
 
 		expect(singles.length).toBeGreaterThan(0);
-		expect(singles).toContain("coding-agent/src/tools/fs/inspect-image.ts");
+		expect(
+			singles.filter(([, names]) => !ENGINE_NAMES.has(names[0] as string)).map(([relative]) => relative),
+			"a single non-engine name must be reported by the rule above, not swallowed here",
+		).toEqual([]);
 	});
 });
 
@@ -179,11 +199,23 @@ describe("the modules that were repointed stay cut", () => {
 	 * re-exports the contract module. A contract imports nothing in this repository, so no consumer
 	 * gained an edge to a subsystem it did not already reach.
 	 */
+	/**
+	 * Re-measured 2026-09-11: `parser.ts` 119 -> 120, `db.ts` 121 -> 122, `sync-worker.ts` 120 -> 121,
+	 * each by the one module `@veyyon/utils/tab-width`, a zero-import leaf holding `DEFAULT_TAB_WIDTH`
+	 * and `replaceTabs`, split out of `tab-spacing.ts` (already on every one of these reaches through
+	 * the `@veyyon/utils` entry point) so the browser bundles can share the width without the
+	 * `.editorconfig` reader. `shared-llm.ts` 205 -> 207 by two leaves under files already reached:
+	 * `ai/providers/initial-message.ts` (the empty Responses assistant message, imported by
+	 * `providers/gitlab-duo-workflow.ts` instead of restated; imports only `@veyyon/catalog/models`)
+	 * and `catalog/discovery/failure.ts` (the discovery-failure vocabulary and its `readDiscoveryJson`
+	 * reader, taken by `provider-models/ollama.ts`; imports only `@veyyon/utils/type-guards`). No
+	 * consumer gained an edge to a subsystem it did not already reach.
+	 */
 	it.each([
 		["agent/src/proxy.ts", 145],
-		["apps/stats/src/parser.ts", 119],
-		["apps/stats/src/db.ts", 121],
-		["apps/stats/src/sync-worker.ts", 120],
+		["apps/stats/src/parser.ts", 120],
+		["apps/stats/src/db.ts", 122],
+		["apps/stats/src/sync-worker.ts", 121],
 		["plugins/mnemopi/src/core/embeddings.ts", 131],
 		// Re-measured 2026-08-28 at 66, from 127. The file took `trimTrailingSlashes` and
 		// `withScopedTimeoutSignal` from the `@veyyon/utils` entry point, so every module that entry
@@ -195,14 +227,9 @@ describe("the modules that were repointed stay cut", () => {
 		// used to spell `"\x1b"` inline and now takes `ESC` from that owner. The leaf adds no edge of
 		// its own, so nothing outside this closure was gained.
 		["coding-agent/src/config/api-key-resolver.ts", 56],
-		// Re-measured 2026-09-04 at 205, from 202: the three `@veyyon/model` leaves named above. 202
-		// was one module from the catalog OpenCode discovery header leaf; 184 was the 2026-07-27
-		// engine-call remeasure; 325 before that was the leak. The file still takes no name from the
-		// barrel. Re-measured at 206 when video content arrived: the one new module is
-		// `ai/src/providers/vision-content.ts`, whose only import is `import type` of `../types` and
-		// is therefore erased, so the leaf adds no edge and the nine providers that partition vision
-		// content reach it from a closure they were already in.
-		["coding-agent/src/commit/shared-llm.ts", 206],
+		// The 207-module graph above also includes `ai/src/providers/vision-content.ts`
+		// for video partitioning. That module imports only types; the combined reach is 208.
+		["coding-agent/src/commit/shared-llm.ts", 208],
 		// The agent's hot loop and the `Agent` class. Both STREAM, so both reach the engine whatever
 		// specifier they use; the ceilings are what the other ten names cost when taken from the entry
 		// point. 378 -> 321 and 380 -> 323.

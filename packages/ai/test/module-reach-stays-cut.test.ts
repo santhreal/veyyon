@@ -152,8 +152,14 @@ const AUTH_STORAGE_CEILING = 227;
  * `contracts/model/src/{effort,service-tier}.ts` and `catalog/effort.ts` and
  * `catalog/provider-models/wire-capabilities.ts` re-export them. A contract imports nothing in this
  * repository, so the two leaves add file count and no subtree.
+ *
+ * 79 since 2026-09-11, measured: `catalog/discovery/failure.ts`, the discovery-failure vocabulary and
+ * the one `readDiscoveryJson` reader over it. `provider-models/ollama.ts`, already in this closure
+ * through `provider-models/index.ts`, took the reader from that owner instead of parsing the response
+ * inline. The leaf imports `@veyyon/utils/type-guards`, which was already reached, so it adds one
+ * module and no subtree.
  */
-const ENV_API_KEY_CEILING = 78;
+const ENV_API_KEY_CEILING = 79;
 
 /** Measured 2026-07-26 at 75: the logger and nothing else. A backend import here is the regression. */
 const USAGE_REGISTRY_CEILING = 83;

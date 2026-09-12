@@ -21,7 +21,7 @@
  * `AuthStorage`, and whether the login list renders the new entries.
  */
 import { describe, expect, test, vi } from "bun:test";
-import { ApiKeyRequiredError } from "@veyyon/ai/error";
+import { ApiKeyRequiredError, LoginCancelledError } from "@veyyon/ai/error";
 import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import type { OAuthAuthInfo, OAuthLoginCallbacks } from "@veyyon/ai/registry/oauth/types";
 import type { ProviderDefinition } from "@veyyon/ai/registry/types";
@@ -79,6 +79,36 @@ const SINGLE_KEY_PROVIDERS: readonly SingleKeyProvider[] = [
 		id: "command-code",
 		authUrl: "https://commandcode.ai/studio/provider",
 		validationUrl: "https://api.commandcode.ai/provider/v1/chat/completions",
+	},
+	{
+		id: "cloudflare-ai-gateway",
+		authUrl: "https://developers.cloudflare.com/ai-gateway/configuration/authentication/",
+		validationUrl: null,
+	},
+	{
+		id: "vercel-ai-gateway",
+		authUrl: "https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai-gateway%2Fapi-keys&title=AI+Gateway+API+Keys",
+		validationUrl: null,
+	},
+	{
+		id: "litellm",
+		authUrl: "https://docs.litellm.ai/docs/proxy/deploy",
+		validationUrl: null,
+	},
+	{
+		id: "parallel",
+		authUrl: "https://platform.parallel.ai/settings?tab=api-keys",
+		validationUrl: null,
+	},
+	{
+		id: "tavily",
+		authUrl: "https://app.tavily.com/home",
+		validationUrl: null,
+	},
+	{
+		id: "kagi",
+		authUrl: "https://kagi.com/settings/api",
+		validationUrl: null,
 	},
 ];
 
@@ -184,6 +214,22 @@ describe("single-key providers have a real /login", () => {
 			const { callbacks, fetchUrls } = harness("   \t \n ");
 			await expect(login(callbacks)).rejects.toBeInstanceOf(ApiKeyRequiredError);
 			expect(fetchUrls).toEqual([]);
+		},
+	);
+
+	test.each(SINGLE_KEY_PROVIDERS.map(provider => [provider.id, provider] as const))(
+		"%s throws LoginCancelledError when the abort signal is aborted",
+		async (_id, provider) => {
+			const def = providerById(provider.id);
+			const login = def.login;
+			if (typeof login !== "function") {
+				throw new Error(`provider ${provider.id} has no callable login`);
+			}
+
+			const controller = new AbortController();
+			controller.abort();
+			const { callbacks } = harness("pasted-secret-key");
+			await expect(login({ ...callbacks, signal: controller.signal })).rejects.toBeInstanceOf(LoginCancelledError);
 		},
 	);
 

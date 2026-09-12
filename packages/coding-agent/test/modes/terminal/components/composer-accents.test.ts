@@ -3,12 +3,12 @@
  * (ARCH-2, bottom-chrome slice). These tests exist because the DS-6 glyph
  * morph was previously decided inline in interactive-mode and had ZERO
  * byte-level coverage: a regression could swap a mode glyph, drop the bypass
- * precedence, or lose the focused-subagent dim, and nothing would fail. Every
+ * precedence, or lose the focused-agent dim, and nothing would fail. Every
  * mode state is pinned here with exact output bytes, including the precedence
  * order (`/yolo` bypass outranks everything — the operator must never lose
  * sight of a full approval bypass).
  */
-import { beforeAll, describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
@@ -16,7 +16,14 @@ import {
 	type ComposerAccentState,
 	resolveComposerAccents,
 } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
-import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
+import {
+	createThemeFromPresentationTheme,
+	getPresentationTheme,
+	initTheme,
+	setThemeInstance,
+	theme,
+} from "@veyyon/coding-agent/theme/theme";
+import * as terminalCapabilities from "@veyyon/tui/terminal-capabilities";
 
 const INSET = " ".repeat(COMPOSER_INSET_COLS);
 
@@ -27,7 +34,7 @@ function idle(overrides: Partial<ComposerAccentState> = {}): ComposerAccentState
 		bashMode: false,
 		pythonMode: false,
 		planMode: false,
-		focusedSubagent: false,
+		focusedAgent: false,
 		sessionAccentAnsi: undefined,
 		thinkingLevel: ThinkingLevel.Off,
 		...overrides,
@@ -55,9 +62,25 @@ describe("resolveComposerAccents — the DS-6 glyph morph", () => {
 		expect(a.promptGutter).toBe(`${INSET}${theme.getBashModeBorderColor()("$")} `);
 	});
 
-	it("python mode keeps the › but takes the python mode color", () => {
-		const a = resolveComposerAccents(idle({ pythonMode: true }));
-		expect(a.promptGutter).toBe(`${INSET}${theme.getPythonModeBorderColor()("›")} `);
+	it.each([false, true])("python mode colors the caret and border with focusedAgent=%s", focusedAgent => {
+		const previousTheme = theme;
+		const colorsEnabled = spyOn(terminalCapabilities, "colorEnabled").mockReturnValue(true);
+		const snapshot = getPresentationTheme();
+		try {
+			setThemeInstance(
+				createThemeFromPresentationTheme(
+					{ ...snapshot, colors: { ...snapshot.colors, pythonMode: "#123456", bashMode: "#abcdef" } },
+					{ mode: "truecolor" },
+				),
+			);
+			const a = resolveComposerAccents(idle({ pythonMode: true, focusedAgent }));
+			const dim = (value: string) => (focusedAgent ? `\x1b[2m${value}\x1b[22m` : value);
+			expect(a.promptGutter).toBe(`${INSET}${dim("\x1b[38;2;18;52;86m›\x1b[39m")} `);
+			expect(a.borderColor("x")).toBe(dim("\x1b[38;2;18;52;86mx\x1b[39m"));
+		} finally {
+			setThemeInstance(previousTheme);
+			colorsEnabled.mockRestore();
+		}
 	});
 
 	it("plan mode morphs the glyph to the modeAccent ◈", () => {
@@ -96,17 +119,17 @@ describe("resolveComposerAccents — the DS-6 glyph morph", () => {
 	});
 });
 
-describe("resolveComposerAccents — the focused-subagent dim", () => {
-	/** A focused subagent view borrows the composer; its chrome faints (SGR 2)
+describe("resolveComposerAccents — the focused-agent dim", () => {
+	/** A focused agent view borrows the composer; its chrome faints (SGR 2)
 	 * so the borrowed session is visually distinct from the main one. */
 	it("wraps both the caret and the border in dim", () => {
-		const a = resolveComposerAccents(idle({ focusedSubagent: true }));
+		const a = resolveComposerAccents(idle({ focusedAgent: true }));
 		expect(a.promptGutter).toBe(`${INSET}\x1b[2m${theme.getFgAnsi("borderAccent")}›\x1b[39m\x1b[22m `);
 		expect(a.borderColor("x")).toBe(`\x1b[2m${theme.getThinkingBorderColor(ThinkingLevel.Off)("x")}\x1b[22m`);
 	});
 
 	it("dims the danger states too, without losing their glyphs", () => {
-		const a = resolveComposerAccents(idle({ bypass: true, focusedSubagent: true }));
+		const a = resolveComposerAccents(idle({ bypass: true, focusedAgent: true }));
 		expect(a.promptGutter).toBe(`${INSET}\x1b[2m${theme.getBypassModeBorderColor()("!")}\x1b[22m `);
 	});
 });

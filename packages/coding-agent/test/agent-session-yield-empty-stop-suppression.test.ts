@@ -3,7 +3,7 @@
  * provider continuation can produce a trailing empty assistant `stop`.
  *
  * The session's executor treats a successful yield as the terminal result for
- * a scripted subagent run; if the loop continues after that tool result, the
+ * a scripted agent run; if the loop continues after that tool result, the
  * already-yielded child resumes and can enter post-yield retries or tool calls
  * (see issues #3389 and #4963).
  */

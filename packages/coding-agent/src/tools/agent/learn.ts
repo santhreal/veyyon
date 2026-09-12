@@ -6,6 +6,7 @@ import { isNameClaimedByAuthoredSkill } from "../../extensibility/skills";
 import { localBackend } from "../../memory/local-backend";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
+import { requireMnemopiSessionState } from "./memory-session";
 
 const learnSchema = type({
 	memory: type("string").describe("the durable, self-contained lesson to remember (what, when, why)"),
@@ -54,10 +55,7 @@ export class LearnTool implements AgentTool<typeof learnSchema> {
 		const backend = this.session.settings.get("memory.backend");
 		let memoryMessage = "Lesson stored";
 		if (backend === "mnemopi") {
-			const state = this.session.getMnemopiSessionState?.();
-			if (!state) {
-				throw new Error("Mnemopi backend is not initialised for this session.");
-			}
+			const state = requireMnemopiSessionState(this.session);
 			const id = state.rememberScoped(params.memory, {
 				source: "coding-agent-learn",
 				importance: 0.8,

@@ -18,15 +18,15 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { visibleWidth } from "@veyyon/utils/width";
-import { makeStatusLineSession } from "../../../../../test/helpers/status-line-session";
+import { makeStatusLineProducer } from "../../../../../test/helpers/status-line-session";
 import { resetSettingsForTest, Settings } from "../../../../config/settings";
 import { settings } from "../../../../config/settings-instance";
-import type { AgentSession } from "../../../../session/agent-session";
+import type { StatusPresentationProducer } from "../../../../presentation/status-producer";
 import { getThemeByName, setThemeInstance } from "../../../../theme/theme";
 import { StatusLineComponent } from "./component";
 
-function makeSession(): AgentSession {
-	return makeStatusLineSession({ contextUsage: { tokens: 42, contextWindow: 128_000 } });
+function makeSession(): StatusPresentationProducer {
+	return makeStatusLineProducer({ contextUsage: { tokens: 42, contextWindow: 128_000 } });
 }
 
 beforeAll(async () => {

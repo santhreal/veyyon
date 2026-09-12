@@ -1,5 +1,5 @@
 /**
- * A subagent's resolved model string, split into the two facts a badge shows.
+ * An agent's resolved model string, split into the two facts a badge shows.
  *
  * The executor reports one string — `provider/id[:level]` — and every surface that shows it wants
  * the id without its provider and the reasoning level on its own. The split is not obvious: a model

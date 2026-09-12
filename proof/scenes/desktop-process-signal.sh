@@ -173,7 +173,7 @@ drawer_region() {
 		"${SESSION_REGION_W}" "$(( WIN_Y + WIN_H - DRAWER_TOP ))"
 }
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 WINDOW_CROP="$(printf '%dx%d+%d+%d' "${WIN_W}" "${WIN_H}" "${WIN_X}" "${WIN_Y}")"

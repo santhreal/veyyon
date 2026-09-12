@@ -7,41 +7,76 @@
 
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ToolCallContext } from "@veyyon/agent-core";
+import type { AgentToolResult, ToolCallContext } from "@veyyon/agent-core";
 import type { Ellipsis } from "@veyyon/natives";
 // Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { formatCount, pluralize } from "@veyyon/utils/format";
 import { getKeybindings } from "@veyyon/utils/keybindings";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth } from "@veyyon/utils/width";
-import { replaceTabs } from "@veyyon/utils/wrap";
+import type { TextBlockView, ViewHiddenCount, ViewLine, ViewSection, ViewSpan, ViewTone } from "@veyyon/view";
 import { formatKeyHints, type KeyId } from "../../config/keybindings";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
-import { settings } from "../../config/settings-instance";
+import { settings, settingsOrNull } from "../../config/settings-instance";
 import type { Theme, ThemeColor } from "../../theme/theme";
 import { formatDimensionNote, type ResizedImage } from "../../utils/image-resize";
-import {
-	getSeverityRank,
-	type ParsedDiagnostic,
-	parseDiagnosticMessage,
-	sanitizeDiagnosticDisplayText,
-} from "./diagnostics";
 import { isPathWithinCwd } from "./path-utils";
 import { TRUNCATE_LENGTHS } from "./render-limits";
 import { shortenPath } from "./shorten-path";
 
 export { Ellipsis } from "@veyyon/natives";
+export { replaceTabs } from "@veyyon/utils/tab-width";
 export { truncateToWidth } from "@veyyon/utils/width";
-export { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
-// The string form below is the only thing left here that knows the diagnostics grammar's output; the
-// grammar itself, and the view form the converted cards state, are in `./diagnostics`.
-export { sanitizeDiagnosticDisplayText } from "./diagnostics";
+export { wrapTextWithAnsi } from "@veyyon/utils/wrap";
+export { extractResultText } from "./output-notice";
 export * from "./render-limits";
+
+export interface ToolViewResult<TDetails> extends Pick<AgentToolResult<TDetails>, "details" | "isError"> {
+	content: Array<{ type?: string; text?: string }>;
+}
+
+export function errorTextBlock(message: string | undefined): TextBlockView {
+	return {
+		kind: "textBlock",
+		spans: [
+			{ text: "", symbol: "status.error", tone: "error" },
+			{ text: " " },
+			{ text: `Error: ${sanitizeErrorText(message)}`, tone: "error" },
+		],
+	};
+}
+
+/**
+ * View lines for error text indented by two columns with error tone.
+ */
+export function errorViewLines(message: string | undefined, defaultMessage?: string): ViewLine[] {
+	return sanitizeErrorText(message || defaultMessage)
+		.split("\n")
+		.map(line => [{ text: "  " }, { text: line, tone: "error" as const }]);
+}
+
+/**
+ * A section carrying indented error lines.
+ */
+export function errorSection(message: string | undefined, defaultMessage?: string): ViewSection {
+	return { lines: errorViewLines(message, defaultMessage) };
+}
 
 // =============================================================================
 // Standardized Display Constants
 // =============================================================================
+
+/**
+ * Whether a spawned agent's card shows the model it resolved to when the caller states nothing:
+ * the `agent.showResolvedModelBadge` setting when a settings store is initialised, off otherwise,
+ * which is the transcript export run without one. Every tool-view context builder reads it here,
+ * so the live block, the registry path an extension wraps and the rebuilt transcript agree.
+ */
+export function showResolvedModelDefault(): boolean {
+	return settingsOrNull()?.get("agent.showResolvedModelBadge") ?? false;
+}
 
 /** Resolve inline image dimension caps from settings and viewport. */
 export function resolveImageOptions(): { maxWidthCells: number; maxHeightCells?: number } {
@@ -94,6 +129,52 @@ export function getPreviewLines(text: string, maxLines: number, maxLineLen: numb
  */
 export function previewLine(text: string, maxWidth: number, ellipsis?: Ellipsis): string {
 	return truncateToWidth(collapseWhitespace(text), maxWidth, ellipsis);
+}
+
+/**
+ * Split text into lines, collapsing trailing carriage-return overwrite artifacts (\r).
+ */
+export function screenRows(text: string): string[] {
+	return text.split(/\r?\n/).map(row => {
+		const at = row.lastIndexOf("\r");
+		return at < 0 ? row : row.slice(at + 1);
+	});
+}
+
+/** Single-line warning span pair for empty or zero-result tool views */
+export function emptyStatusLine(label: string): ViewLine {
+	return [{ text: "", symbol: "status.warning", tone: "warning" }, { text: " " }, { text: label, tone: "muted" }];
+}
+
+/** Single-line warning text block for empty or zero-result tool views */
+export function emptyTextBlock(label: string): TextBlockView {
+	return { kind: "textBlock", spans: emptyStatusLine(label) };
+}
+
+/**
+ * What a card kept back, or undefined when it kept back nothing (count <= 0).
+ */
+export function heldBack(
+	count: number,
+	noun?: ViewHiddenCount["noun"],
+	revealable: boolean = true,
+): ViewHiddenCount | undefined {
+	if (count <= 0) return undefined;
+	return noun === undefined ? { count, revealable } : { count, noun, revealable };
+}
+
+/**
+ * Single metadata line formatted as `Name: value`.
+ */
+export function metadataLine(name: string, value: string): ViewLine {
+	return [{ text: `${name}:`, tone: "muted" }, { text: ` ${value}` }];
+}
+
+/**
+ * Array of single-span ViewLines from an array of text strings.
+ */
+export function metaLines(entries: readonly string[]): ViewLine[] {
+	return entries.map(entry => [{ text: entry }]);
 }
 
 // =============================================================================
@@ -229,6 +310,21 @@ export function renderCollapsedOutputLines(
 	return collapseProgressRuns(lines).map(row => {
 		const text = styleLine(row.text);
 		return row.hidden === 0 ? text : `${text}${theme.fg("dim", ` … +${row.hidden} earlier`)}`;
+	});
+}
+
+/**
+ * Format collapsed output rows as ViewLines, appending ` … +N earlier` badge in dim tone for runs.
+ */
+export function collapsedProgressViewLines(
+	runs: readonly CollapsedOutputRow[],
+	tone: ViewTone = "output",
+	transformText?: (text: string) => string,
+): ViewLine[] {
+	return runs.map(row => {
+		const text = transformText !== undefined ? transformText(row.text) : row.text;
+		const body: ViewSpan = { text, tone };
+		return row.hidden === 0 ? [body] : [body, { text: ` … +${row.hidden} earlier`, tone: "dim" }];
 	});
 }
 
@@ -421,104 +517,6 @@ export function formatTitle(label: string, theme: Theme, options?: ToolUITitleOp
 }
 
 // =============================================================================
-// Diagnostic Formatting
-// =============================================================================
-
-/**
- * Emits plain railed-ready lines (file header, two-space indented diagnostics, overflow)
- * without tree connectors. Callers that embed this in a framedBlock (edit/renderer.ts,
- * tools/fs/write.ts) or display component (late-diagnostics-message.ts) provide the outer rail.
- */
-export function formatDiagnostics(
-	diag: { errored: boolean; summary: string; messages: string[] },
-	expanded: boolean,
-	theme: Theme,
-	getLangIcon: (filePath: string) => string,
-	options?: { title?: string },
-): string {
-	if (diag.messages.length === 0) return "";
-
-	const byFile = new Map<string, ParsedDiagnostic[]>();
-	const unparsed: string[] = [];
-
-	for (const msg of diag.messages) {
-		const parsed = parseDiagnosticMessage(msg);
-		if (parsed) {
-			const existing = byFile.get(parsed.filePath) ?? [];
-			existing.push(parsed);
-			byFile.set(parsed.filePath, existing);
-		} else {
-			unparsed.push(sanitizeDiagnosticDisplayText(msg));
-		}
-	}
-
-	for (const diagnostics of byFile.values()) {
-		diagnostics.sort((a, b) => {
-			const severityCompare = getSeverityRank(a.severity) - getSeverityRank(b.severity);
-			if (severityCompare !== 0) return severityCompare;
-			if (a.line !== b.line) return a.line - b.line;
-			if (a.col !== b.col) return a.col - b.col;
-			return a.message.localeCompare(b.message);
-		});
-	}
-
-	const headerIcon = diag.errored
-		? theme.styledSymbol("status.error", "error")
-		: theme.styledSymbol("status.warning", "warning");
-	const summary = sanitizeDiagnosticDisplayText(diag.summary);
-	const summaryTag = summary ? ` ${theme.fg("dim", `(${summary})`)}` : "";
-	let output = `\n\n${headerIcon} ${theme.fg("toolTitle", options?.title ?? "Diagnostics")}${summaryTag}`;
-
-	const maxDiags = expanded ? diag.messages.length : 5;
-	let diagsShown = 0;
-
-	const files = Array.from(byFile.entries());
-
-	// Count total diagnostics for "... X more" calculation
-	const totalParsedDiags = files.reduce((sum, [, diags]) => sum + diags.length, 0);
-	const totalDiags = totalParsedDiags + unparsed.length;
-
-	for (let fi = 0; fi < files.length && diagsShown < maxDiags; fi++) {
-		const [filePath, diagnostics] = files[fi];
-
-		const fileIcon = getLangIcon(filePath);
-		const badge = fileIcon ? `${theme.fg("muted", fileIcon)} ` : "";
-		output += `\n${badge}${theme.fg("accent", filePath)}`;
-
-		for (let di = 0; di < diagnostics.length && diagsShown < maxDiags; di++) {
-			const d = diagnostics[di];
-
-			const sevIcon =
-				d.severity === "error"
-					? theme.styledSymbol("status.error", "error")
-					: d.severity === "warning"
-						? theme.styledSymbol("status.warning", "warning")
-						: theme.styledSymbol("status.info", "muted");
-			const location = theme.fg("dim", `:${d.line}:${d.col}`);
-			const codeTag = d.code ? theme.fg("dim", ` (${d.code})`) : "";
-			const msgColor = d.severity === "error" ? "error" : d.severity === "warning" ? "warning" : "toolOutput";
-
-			output += `\n  ${sevIcon}${location} ${theme.fg(msgColor, d.message)}${codeTag}`;
-			diagsShown++;
-		}
-	}
-
-	for (let ui = 0; ui < unparsed.length && diagsShown < maxDiags; ui++) {
-		const msg = unparsed[ui];
-		const color = msg.includes("[error]") ? "error" : msg.includes("[warning]") ? "warning" : "dim";
-		output += `\n  ${theme.fg(color, msg)}`;
-		diagsShown++;
-	}
-
-	if (totalDiags > diagsShown) {
-		const remaining = totalDiags - diagsShown;
-		output += `\n${theme.fg("dim", `… ${remaining} more`)} ${formatExpandHint(theme)}`;
-	}
-
-	return output;
-}
-
-// =============================================================================
 // Diff Utilities
 // =============================================================================
 
@@ -561,6 +559,16 @@ export function formatDiffStats(added: number, removed: number, hunks: number, t
 	if (removed > 0) parts.push(theme.fg("toolDiffRemoved", `-${removed}`));
 	if (hunks > 0) parts.push(theme.fg("dim", formatCount("hunk", hunks)));
 	return parts.join(theme.fg("dim", " / "));
+}
+
+/**
+ * ViewLine metadata entries for diff added and removed line counts.
+ */
+export function diffStatsMetaLines(added: number, removed: number): ViewLine[] {
+	const meta: ViewLine[] = [];
+	if (added > 0) meta.push([{ text: `+${added}`, tone: "diffAdded" }]);
+	if (removed > 0) meta.push([{ text: `-${removed}`, tone: "diffRemoved" }]);
+	return meta;
 }
 
 interface DiffSegment {
@@ -730,6 +738,11 @@ export function formatScopePaths(paths: string | readonly string[]): string {
 /** The `in <paths>` status-line fragment built from {@link formatScopePaths}. */
 export function formatScopeMeta(paths: string | readonly string[]): string {
 	return `in ${formatScopePaths(paths)}`;
+}
+
+/** The `in <paths>` ViewLine built from {@link formatScopeMeta}. */
+export function scopeMetaLine(paths: string | readonly string[]): ViewLine {
+	return [{ text: formatScopeMeta(paths) }];
 }
 
 /**

@@ -191,8 +191,8 @@ echo "scene: the pane reads ${PANE_W}x${ROWS_H} at +${PANEL_LEFT}+${ROWS_TOP}," 
 # the wait it is watching.
 read_pane() { # <png> [height]
 	local height="${2:-${ROWS_H}}"
-	local dump="${SCENE_RUNTIME_DIR}/frame-compare/pane-pixels.txt"
-	mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+	local dump="${TMPDIR}/frame-compare/pane-pixels.txt"
+	mkdir -p "${TMPDIR}/frame-compare"
 	magick "$1" -crop "${PANE_W}x${height}+${PANEL_LEFT}+${ROWS_TOP}" +repage txt:- >"${dump}"
 	read -r RUNS NOTICE_PX DIFF_PX < <(
 		python3 - "${dump}" <<'PY'
@@ -254,9 +254,9 @@ PY
 # Sets BANNER, 1 when the band under the titlebar is not the ground the column
 # draws lower down.
 read_banner() { # <png>
-	local band="${SCENE_RUNTIME_DIR}/frame-compare/band.txt"
-	local ground="${SCENE_RUNTIME_DIR}/frame-compare/ground.txt"
-	mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+	local band="${TMPDIR}/frame-compare/band.txt"
+	local ground="${TMPDIR}/frame-compare/ground.txt"
+	mkdir -p "${TMPDIR}/frame-compare"
 	magick "$1" -crop "${STRIP_GEOM}" +repage txt:- >"${band}"
 	magick "$1" -crop "${GROUND_GEOM}" +repage txt:- >"${ground}"
 	BANNER="$(
@@ -300,9 +300,9 @@ click
 PANE_PROBE_H=120
 PANE_DEADLINE_S=90
 PANE_GEOM="${PANE_W}x${ROWS_H}+${PANEL_LEFT}+${ROWS_TOP}"
-PANE_A="${SCENE_RUNTIME_DIR}/frame-compare/pane-a.png"
-PANE_B="${SCENE_RUNTIME_DIR}/frame-compare/pane-b.png"
-mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+PANE_A="${TMPDIR}/frame-compare/pane-a.png"
+PANE_B="${TMPDIR}/frame-compare/pane-b.png"
+mkdir -p "${TMPDIR}/frame-compare"
 RESOLVED=0
 WAITED=0
 for _ in $(seq 1 "${PANE_DEADLINE_S}"); do

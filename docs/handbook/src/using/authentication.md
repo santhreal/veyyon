@@ -45,9 +45,9 @@ selected account. Press `esc` to leave the filter and get the full list back, an
 close the card.
 
 Switching is **per provider**. Choosing another Anthropic account changes Anthropic and nothing else,
-because several providers serve one session at the same time: your main model, your subagent roles,
+because several providers serve one session at the same time: your main model, your agent roles,
 and web search can each be a different provider. Moving between providers is a model choice, so it
-lives in `/models`.
+is in `/models`.
 
 ## Naming an account
 
@@ -140,7 +140,7 @@ a `.env` file) is used without an interactive sign-in. OAuth-only providers (for
 | `groq` | `GROQ_API_KEY` |
 | `mistral` | `MISTRAL_API_KEY` |
 
-The full provider → variable map lives in [Providers](../models/providers.md). `.env` files are loaded
+The full provider → variable map is documented in [Providers](../models/providers.md). `.env` files are loaded
 from `<cwd>/.env`, `~/.veyyon/profiles/default/agent/.env`, `~/.veyyon/.env`, and `~/.env`, with earlier sources winning.
 
 ## How keys are resolved

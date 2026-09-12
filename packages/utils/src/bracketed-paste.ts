@@ -29,6 +29,16 @@ export type PasteResult =
 			remaining: string;
 	  };
 
+/** Where {@link BracketedPasteHandler.route} delivers each part of a chunk. */
+export type PasteSinks = {
+	/** Ordinary key bytes that shared the chunk with a paste. */
+	keys(bytes: string): void;
+	/** One assembled paste payload. */
+	paste(content: string): void;
+	/** Bytes after a completed end marker, sent back through the caller's input entry. */
+	reenter(rest: string): void;
+};
+
 // Some terminals re-encode the control bytes inside a bracketed paste as key-event
 // escape sequences (observed with tmux extended-keys passthrough under kitty). tmux
 // emits one of two formats depending on `extended-keys-format`:
@@ -159,5 +169,22 @@ export class BracketedPasteHandler {
 		}
 
 		return { handled: true, prefix, remaining: "" };
+	}
+
+	/**
+	 * Processes `data` and delivers each part: bytes before the start marker to `keys`, an assembled
+	 * paste to `paste`, and the bytes after a completed end marker to `reenter`, the caller's own
+	 * input entry, so a remainder that begins a second paste meets every check the first chunk did.
+	 * Returns `false` when `data` held no paste sequence; the caller then handles it as keys.
+	 */
+	route(data: string, sinks: PasteSinks): boolean {
+		const paste = this.process(data);
+		if (!paste.handled) return false;
+		if (paste.prefix !== undefined && paste.prefix.length > 0) sinks.keys(paste.prefix);
+		if (paste.pasteContent !== undefined) {
+			sinks.paste(paste.pasteContent);
+			if (paste.remaining.length > 0) sinks.reenter(paste.remaining);
+		}
+		return true;
 	}
 }

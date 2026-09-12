@@ -418,11 +418,13 @@ import {
 import { PENDING_PLACEHOLDER_RE } from "../secrets/placeholder";
 import {
 	parseSlashCommand,
+	resolveSlashCommand,
 	unknownSlashCommandMessage,
 	unresolvedSlashCommandName,
 } from "../slash-commands/helpers/parse";
 import { invalidateHostMetadata } from "../ssh/connection-manager";
 import { isLivePromptGate } from "../system-prompt-builder/gate-registry";
+import { enabledAgentNames, preferredAgentName, resolveDelegation } from "../task/agent-settings";
 import {
 	IrcBus,
 	type IrcMessage,
@@ -431,7 +433,6 @@ import {
 	projectIrcDeliveryTelemetry,
 } from "../task/irc-bus";
 import { usesCodexTaskPrompt } from "../task/prompt-policy";
-import { enabledSubagentNames, preferredSubagentName, resolveDelegation } from "../task/subagent-settings";
 import { theme } from "../theme/theme-binding";
 import {
 	AUTO_THINKING,
@@ -611,6 +612,7 @@ import { TodoRuntime } from "./runtime/todo-runtime";
 import { TtsrRuntime } from "./runtime/ttsr-runtime";
 import { formatSessionDumpText } from "./session-dump-format";
 import { formatSessionHistoryMarkdown } from "./session-history-format";
+import { incompleteTodoItems } from "./todo-reminder";
 import { parseTurnBudgetDirective } from "./turn-budget";
 import { planTurnPersistence, sameMessageContent, sessionMessagePersistenceKey } from "./turn-persistence";
 import { classifyUnexpectedStop, isUnexpectedStopCandidate } from "./unexpected-stop-classifier";
@@ -828,9 +830,9 @@ export class AgentSession {
 	 */
 	#approvalBypassActive = false;
 	/**
-	 * The parent session's live bypass state, for a subagent. Undefined in a root
+	 * The parent session's live bypass state, for a spawned agent. Undefined in a root
 	 * session. Read on every {@link isApprovalBypassed} call so `/yolo off` in the
-	 * parent reaches a subagent that is already running.
+	 * parent reaches a spawned agent that is already running.
 	 */
 	readonly #parentApprovalBypassed?: () => boolean;
 	/**
@@ -889,7 +891,7 @@ export class AgentSession {
 	 * A session's own construction is on the boot path, so anything it awaits there is time before the
 	 * user sees anything. Work whose result no frame reads — a memory backend opening its database and
 	 * installing this session's state — is handed to {@link deferStartupWork} instead and awaited at
-	 * the one place that needs it, the start of a turn. Every tool call and every subagent spawn
+	 * the one place that needs it, the start of a turn. Every tool call and every agent spawn
 	 * happens inside a turn, so one await covers all of them.
 	 */
 	#startupHydration: Promise<void> = Promise.resolve();
@@ -979,16 +981,16 @@ export class AgentSession {
 	#evalKernelOwnerId: string;
 	#parentEvalSessionId: string | undefined;
 	/**
-	 * AsyncJobManager owned by this session (top-level only). Subagents leave
+	 * AsyncJobManager owned by this session (top-level only). Spawned agents leave
 	 * this undefined and **MUST NOT** dispose the global instance on teardown.
 	 */
 	readonly #ownedAsyncJobManager: AsyncJobManager | undefined;
 	/** Whether another session in this process spawned this one. */
-	readonly #isSubagent: boolean;
+	readonly #isSpawned: boolean;
 	/**
 	 * AsyncJobManager scoped to this session for introspection/cancellation.
 	 *
-	 * This differs from `#ownedAsyncJobManager`: subagents can inherit a parent
+	 * This differs from `#ownedAsyncJobManager`: agents can inherit a parent
 	 * manager for their own owner id, while secondary top-level sessions are left
 	 * undefined to avoid reading the primary's jobs.
 	 */
@@ -1087,7 +1089,7 @@ export class AgentSession {
 	};
 	/**
 	 * The side transport, for a subsystem outside this class that makes a request
-	 * on the session's behalf: the first-input title, a spawned subagent's label.
+	 * on the session's behalf: the first-input title, a spawned agent's label.
 	 * Handing this over is what gives such a request the same watchdogs, in-flight
 	 * cap and provider-concurrency bracket every summarization already has.
 	 */
@@ -1262,6 +1264,12 @@ export class AgentSession {
 	#announcedCompactionFallbacks = new Set<string>();
 	/** Server-side compaction failure notices already emitted, keyed by error text. */
 	#announcedServerCompactionFailures = new Set<string>();
+	/**
+	 * Compaction candidates whose single-request summary was superseded by a
+	 * staged one this session. The next compaction on such a model starts staged
+	 * instead of paying the single request's timeout again.
+	 */
+	#stagedSummaryModels = new Set<string>();
 	#hindsightSessionState: HindsightSessionState | undefined = undefined;
 	readonly rawSseDebugBuffer: RawSseDebugBuffer;
 
@@ -1460,7 +1468,7 @@ export class AgentSession {
 	}
 
 	/**
-	 * Subagent types a `/` command declared for the turn it just started.
+	 * Agent types a `/` command declared for the turn it just started.
 	 *
 	 * Empty except between a command returning a prompt and that prompt's run
 	 * settling. See {@link agentGrantedThisTurn}.
@@ -1495,7 +1503,7 @@ export class AgentSession {
 	/**
 	 * Whether a `/` command has granted this agent type for the turn in flight.
 	 *
-	 * `subagent.agents.<name>.enabled` governs what the MODEL may choose. It does
+	 * `agent.agents.<name>.enabled` governs what the MODEL may choose. It does
 	 * not govern the person typing: `/review` names `reviewer` outright, and someone
 	 * running `/review` is asking for a review rather than asking the model whether
 	 * to review. The command declares the agents its prompt names, that declaration
@@ -1756,7 +1764,7 @@ export class AgentSession {
 		this.#evalKernelOwnerId = config.evalKernelOwnerId ?? `agent-session:${Snowflake.next()}`;
 		this.#parentEvalSessionId = config.parentEvalSessionId;
 		this.#ownedAsyncJobManager = config.ownedAsyncJobManager;
-		this.#isSubagent = config.isSubagent === true;
+		this.#isSpawned = config.isSpawned === true;
 		this.#asyncJobManager = config.asyncJobManager ?? config.ownedAsyncJobManager;
 		this.#scopedModels = config.scopedModels ?? [];
 		this.#thinking = new ThinkingRuntime({
@@ -2379,7 +2387,7 @@ export class AgentSession {
 		if (this.#isDisposed) return false;
 		if (this.#advisors.length > 0) return true;
 		if (!this.#advisorEnabled) return false;
-		if (this.#agentKind !== "main" && !this.settings.get("advisor.subagents")) return false;
+		if (this.#agentKind !== "main" && !this.settings.get("advisor.agents")) return false;
 
 		const descriptors = this.#resolveAdvisorRuntimeDescriptors(true);
 
@@ -3151,8 +3159,8 @@ export class AgentSession {
 
 	/**
 	 * This session's Argot codec, or `undefined` when the feature is off. Exposed
-	 * so a spawning parent can hand a subagent a fork of it (the `inherit`
-	 * subagent mode); the fork is detached, so the child never mutates the parent.
+	 * so a spawning parent can hand a spawned agent a fork of it (the `inherit`
+	 * agent mode); the fork is detached, so the child never mutates the parent.
 	 */
 	getArgotSession(): ArgotSession | undefined {
 		return this.#argot;
@@ -3430,16 +3438,16 @@ export class AgentSession {
 	 * so a session cleans up its own background work without touching its
 	 * parent's or a sibling's jobs.
 	 *
-	 * DOWN the spawn tree, never up or sideways. A subagent exists to serve the
+	 * DOWN the spawn tree, never up or sideways. A spawned agent exists to serve the
 	 * agent that spawned it, so once this session is being torn down or moved to a
 	 * new session, a grandchild's background job has nobody left to deliver to: it
 	 * would keep running, keep spending, and report to a session that is gone.
-	 * Cancelling only `ownerId` left exactly that orphan whenever a subagent had
+	 * Cancelling only `ownerId` left exactly that orphan whenever a spawned agent had
 	 * itself delegated. Reaching UP would be the old bug this scoping fixed (issue
 	 * #1923): a secondary in-process session must never tear down the primary's
 	 * work.
 	 *
-	 * Cancellation runs against this session's scoped manager. Subagents have
+	 * Cancellation runs against this session's scoped manager. Spawned agents have
 	 * unique agent ids and inherit the parent's manager to clean up their own
 	 * jobs. A secondary in-process top-level session gets no scoped manager,
 	 * because it defaults to `MAIN_AGENT_ID`; reaching through the global
@@ -3460,13 +3468,13 @@ export class AgentSession {
 
 	/**
 	 * Re-root this session in the agent registry after it has moved to a
-	 * different transcript, and release the subagents of the conversation it
+	 * different transcript, and release the spawned agents of the conversation it
 	 * left.
 	 *
 	 * The registry is process-global and, until this existed, nothing ever told
 	 * it that a conversation had ended. `/new` and `/resume` swap the transcript
-	 * under the same `AgentSession`, so every subagent of the previous
-	 * conversation stayed registered: the subagent dashboard listed them, `irc
+	 * under the same `AgentSession`, so every spawned agent of the previous
+	 * conversation stayed registered: the agent dashboard listed them, `irc
 	 * list` offered them as peers, and messaging one woke an agent whose replies
 	 * were written into a transcript the operator had already left. That is the
 	 * "agents from other sessions" symptom, and it is a leak as much as a
@@ -3480,7 +3488,7 @@ export class AgentSession {
 	 * same subtree.
 	 *
 	 * A release that throws is logged and skipped rather than failing the
-	 * session switch: a subagent that cannot be disposed must not strand the
+	 * session switch: a spawned agent that cannot be disposed must not strand the
 	 * operator between two conversations.
 	 */
 	async #rescopeAgentRegistry(): Promise<void> {
@@ -3498,7 +3506,7 @@ export class AgentSession {
 					try {
 						await lifecycle.release(child);
 					} catch (error) {
-						logger.warn("Failed to release a subagent of the previous conversation", {
+						logger.warn("Failed to release a spawned agent of the previous conversation", {
 							agentId: child,
 							error: errorMessage(error),
 						});
@@ -3508,7 +3516,7 @@ export class AgentSession {
 		}
 		// The traffic goes whether or not anything was still registered to release.
 		// Guarding this on `descendants.length` was wrong in the COMMON case: a
-		// subagent that finished and aged out, or was disposed, is already
+		// agent that finished and aged out, or was disposed, is already
 		// unregistered by the time the operator types `/new`, so the walk returns
 		// nothing and the entire previous conversation's log survived in the
 		// process-global bus. The new session's Comms pane then opened on the old
@@ -3855,6 +3863,30 @@ export class AgentSession {
 		return false;
 	}
 
+	/**
+	 * True when the latest compaction entry on the current branch sits after
+	 * {@link assistantMessage}'s own entry, i.e. the assistant was kept through
+	 * that compaction and its `usage` describes the pre-rewrite prompt. One
+	 * backward walk from the leaf: the first compaction entry met is the latest,
+	 * and the assistant predates it iff its entry is still ahead on the walk.
+	 * A message that is not on the branch predates nothing.
+	 */
+	#assistantPredatesLatestCompaction(assistantMessage: AssistantMessage): boolean {
+		const key = sessionMessagePersistenceKey(assistantMessage);
+		const branch = this.sessionManager.getBranch();
+		let compactionSeen = false;
+		for (let index = branch.length - 1; index >= 0; index--) {
+			const entry = branch[index];
+			if (entry.type === "compaction") {
+				compactionSeen = true;
+				continue;
+			}
+			if (entry.type !== "message" || key === undefined) continue;
+			if (sessionMessagePersistenceKey(entry.message) === key) return compactionSeen;
+		}
+		return false;
+	}
+
 	#appendSessionMessage(
 		message:
 			| Message
@@ -4006,7 +4038,7 @@ export class AgentSession {
 		// planning pass. Pre-#3629 this re-walked the branch and structurally
 		// JSON-compared every entry per turn message, which on long sessions
 		// turned each `onTurnEnd` into a seconds-long sync block (the
-		// `ui.loop-blocked` warnings tagged `subagent:*` in the bug report).
+		// `ui.loop-blocked` warnings tagged `agent:*` in the bug report).
 		const branchKeys = this.#indexPersistedMessageKeys();
 		const turnKeys = turnMessages.map(sessionMessagePersistenceKey);
 		const persistedKeys = new Set<string>();
@@ -4731,7 +4763,7 @@ export class AgentSession {
 					!this.#isEmptyAssistantStop(assistantMsg) &&
 					// An unreplayable-batch continuation announces its wait through the
 					// same event as the retry ladder but counts on its own allowance, so
-					// without this arm its start had no end: the countdown, a subagent
+					// without this arm its start had no end: the countdown, an agent
 					// HUD's retryState and the turn's retry trace would stay open on a
 					// turn that already came back.
 					(this.#retryAttempt > 0 || batchContinues > 0)
@@ -6075,7 +6107,7 @@ export class AgentSession {
 	 *
 	 * This used to live in `InteractiveMode.applyCwdChange` and ONLY there, reached
 	 * through the TUI's `cwd_changed` handler. So an SDK session, an ACP session, a
-	 * headless run and every subagent re-rooted with the previous project's
+	 * headless run and every spawned agent re-rooted with the previous project's
 	 * settings, provider exclusions, plugin roots, capabilities and system prompt
 	 * still live: the base prompt states the cwd verbatim, so those modes went on
 	 * naming a directory the session had left, and the model read the old project's
@@ -6088,7 +6120,7 @@ export class AgentSession {
 	 *
 	 * WHOSE STATE MOVES depends on who is asking. The process-global half lives in
 	 * `#rescopeProcessToCwd` and runs only for the session that owns the process; a
-	 * subagent re-roots itself and leaves its parent and its siblings where they are.
+	 * spawned agent re-roots itself and leaves its parent and its siblings where they are.
 	 *
 	 * REPEATING A DIRECTORY IS SKIPPED, and that is not an optimization: the TUI
 	 * reaches this twice for one move. `setCwd` calls it and then emits
@@ -6110,12 +6142,12 @@ export class AgentSession {
 
 		// Re-scope the Settings instance owned by THIS session before loading any
 		// runtime candidate. The process singleton may be a different instance
-		// (SDK/embedded and subagent sessions commonly use isolated Settings).
+		// (SDK/embedded and spawned agent sessions commonly use isolated Settings).
 		await this.settings.reloadForCwd(normalizedCwd);
 
-		// A subagent may not mutate process-global cwd/capability state, but its
+		// A spawned agent may not mutate process-global cwd/capability state, but its
 		// session-owned settings, secrets, tools, prompt, and advisors still move.
-		if (!this.#isSubagent) await this.#rescopeProcessToCwd(normalizedCwd);
+		if (!this.#isSpawned) await this.#rescopeProcessToCwd(normalizedCwd);
 		await this.#refreshSecrets({ refreshPrompt: false });
 		await this.refreshSshTool({ activateIfAvailable: true });
 		await this.refreshBaseSystemPrompt("cwd-change");
@@ -6545,7 +6577,7 @@ export class AgentSession {
 		const postPromptDrain = this.#cancelPostPromptTasks();
 		this.agent.abort();
 		await postPromptDrain;
-		// Cancel jobs this agent registered so a subagent's teardown doesn't
+		// Cancel jobs this agent registered so a spawned agent's teardown doesn't
 		// leak its background bash/task work into the parent's manager. Only
 		// the session that owns the manager goes on to dispose it (which itself
 		// nukes any leftover jobs and pending deliveries).
@@ -6578,7 +6610,7 @@ export class AgentSession {
 		}
 		// Everything keyed by the SESSION id rather than the eval-kernel owner id. Today that is the
 		// browser tool's headless / spawned Chromium and worker tabs: its `tabs`/`browsers` maps are
-		// module-global, shared with subagents and future sessions, so release walks by
+		// module-global, shared with spawned agents and future sessions, so release walks by
 		// `ownerSessionId` (stamped at `acquireTab` creation, never on reuse) and touches only what
 		// THIS session created. The registry carries the 3s bound that keeps a broken CDP close from
 		// stalling `/exit` (issue #3963).
@@ -7334,8 +7366,8 @@ export class AgentSession {
 	/**
 	 * Whether the `/yolo` full-bypass is currently active for this session.
 	 *
-	 * A subagent's own flag is a COPY of the parent's, taken when the child was
-	 * built, so revocation used to be partial: `/yolo`, spawn a long subagent,
+	 * A spawned agent's own flag is a COPY of the parent's, taken when the child was
+	 * built, so revocation used to be partial: `/yolo`, spawn a long agent,
 	 * `/yolo off`, and the parent went back to prompting while the child kept
 	 * running every bash and edit unasked until it finished. The parent probe is
 	 * consulted live and can only narrow: a child whose own flag is off is never
@@ -8019,7 +8051,7 @@ export class AgentSession {
 	/**
 	 * Expand argot handles across transcript entries a viewer parsed off disk.
 	 *
-	 * The subagent dashboard reads a subagent's or advisor's session file
+	 * The agent dashboard reads a spawned agent's or advisor's session file
 	 * directly, so it never passes through `buildDisplaySessionContext`. It gets
 	 * the same codec through this accessor rather than reaching for `#argot`.
 	 */
@@ -8428,22 +8460,18 @@ export class AgentSession {
 	}
 
 	async sendGoalModeContext(options?: { deliverAs?: "steer" | "followUp" | "nextTurn" }): Promise<void> {
-		const message = this.#buildGoalModeMessage();
-		if (!message) return;
-		await this.sendCustomMessage(
-			{
-				customType: message.customType,
-				content: message.content,
-				display: message.display,
-				details: message.details,
-				attribution: message.attribution,
-			},
-			options ? { deliverAs: options.deliverAs } : undefined,
-		);
+		await this.#sendModeContext(this.#buildGoalModeMessage(), options);
 	}
 
 	async sendVibeModeContext(options?: { deliverAs?: "steer" | "followUp" | "nextTurn" }): Promise<void> {
-		const message = this.#buildVibeModeMessage();
+		await this.#sendModeContext(this.#buildVibeModeMessage(), options);
+	}
+
+	/** Deliver a built mode-context message with its attribution; a `null` message (mode off) sends nothing. */
+	async #sendModeContext(
+		message: CustomMessage | null,
+		options: { deliverAs?: "steer" | "followUp" | "nextTurn" } | undefined,
+	): Promise<void> {
 		if (!message) return;
 		await this.sendCustomMessage(
 			{
@@ -8579,8 +8607,8 @@ export class AgentSession {
 		// roster has carried since the rename to `deep`, and a literal cannot
 		// track a set the operator configures, so with only `sonic` enabled the
 		// sentence sent the model at an agent the spawn path then refused.
-		const subagentNames = enabledSubagentNames(this.#toolRegistry.get(TOOL.task));
-		const researchAgent = preferredSubagentName(subagentNames, "scout"); // not-a-tool-name: agent ids
+		const agentNames = enabledAgentNames(this.#toolRegistry.get(TOOL.task));
+		const researchAgent = preferredAgentName(agentNames, "scout"); // not-a-tool-name: agent ids
 		const activeToolNames = new Set(this.agent.state.tools.map(tool => tool.name));
 		const workspaceDiscoveryTools =
 			[TOOL.search, TOOL.read]
@@ -8687,14 +8715,9 @@ export class AgentSession {
 		const phases = this.getTodoPhases().filter(phase => phase.tasks.length > 0);
 		if (phases.length === 0) return undefined;
 
-		const tasks = phases.flatMap(phase => phase.tasks.map(task => ({ ...task, phase: phase.name })));
+		const tasks = phases.flatMap(phase => phase.tasks);
 		const closed = tasks.filter(task => task.status === "completed" || task.status === "abandoned").length;
-		const openItems = prioritizeTodoItems(
-			tasks.filter(
-				(task): task is typeof task & { status: "pending" | "in_progress" } =>
-					task.status === "pending" || task.status === "in_progress",
-			),
-		);
+		const openItems = prioritizeTodoItems(incompleteTodoItems(phases));
 		const next = openItems[0];
 		const nextItem = next
 			? {
@@ -8833,7 +8856,7 @@ export class AgentSession {
 			keywordNotices.push({
 				role: "custom",
 				customType: "workflow-notice",
-				content: renderWorkflowNotice({ taskBatch: this.settings.get("subagent.batch") }),
+				content: renderWorkflowNotice({ taskBatch: this.settings.get("agent.batch") }),
 				display: false,
 				attribution: "user",
 				timestamp,
@@ -9371,27 +9394,31 @@ export class AgentSession {
 
 	/**
 	 * Try to execute an extension command. Returns true if command was found and executed.
+	 *
+	 * A plugin command is registered as `<plugin>:<name>`; `resolveSlashCommand` matches it from
+	 * either `/<plugin>:<name>` or `/<plugin> <name>`.
 	 */
 	async #tryExecuteExtensionCommand(text: string): Promise<boolean> {
-		if (!this.#extensionRunner) return false;
+		const runner = this.#extensionRunner;
+		if (!runner) return false;
 
 		const parsed = parseSlashCommand(text);
 		if (!parsed) return false;
-		const commandName = parsed.name;
-		const args = parsed.args;
 
-		const command = this.#extensionRunner.getCommand(commandName);
-		if (!command) return false;
+		const resolved = resolveSlashCommand(parsed, name => runner.getCommand(name));
+		if (!resolved) return false;
+		const { command, args } = resolved;
+		const commandName = command.name;
 
 		// Get command context from extension runner (includes session control methods)
-		const ctx = this.#extensionRunner.createCommandContext();
+		const ctx = runner.createCommandContext();
 
 		try {
 			await command.handler(args, ctx);
 			return true;
 		} catch (err) {
 			// Emit error via extension runner
-			this.#extensionRunner.emitError({
+			runner.emitError({
 				extensionPath: `command:${commandName}`,
 				event: "command",
 				error: errorMessage(err),
@@ -9474,20 +9501,26 @@ export class AgentSession {
 	/**
 	 * Try to execute a custom command. Returns the prompt string if found, null otherwise.
 	 * If the command returns void, returns empty string to indicate it was handled.
+	 *
+	 * A plugin command is registered as `<plugin>:<name>`; `resolveSlashCommand` matches it from
+	 * either `/<plugin>:<name>` or `/<plugin> <name>`.
 	 */
 	async #tryExecuteCustomCommand(text: string): Promise<string | null> {
 		if (this.#customCommands.length === 0 && this.#mcpPromptCommands.length === 0) return null;
 
 		const parsed = parseSlashCommand(text);
 		if (!parsed) return null;
-		const commandName = parsed.name;
-		const argsString = parsed.args;
 
 		// Find matching command
-		const loaded =
-			this.#customCommands.find(c => c.command.name === commandName) ??
-			this.#mcpPromptCommands.find(c => c.command.name === commandName);
-		if (!loaded) return null;
+		const resolved = resolveSlashCommand(
+			parsed,
+			name =>
+				this.#customCommands.find(c => c.command.name === name) ??
+				this.#mcpPromptCommands.find(c => c.command.name === name),
+		);
+		if (!resolved) return null;
+		const { command: loaded, args: argsString } = resolved;
+		const commandName = loaded.command.name;
 
 		// Get command context from extension runner (includes session control methods)
 		const baseCtx = this.#createCommandContext();
@@ -9771,12 +9804,14 @@ export class AgentSession {
 	 * Throw an error if the text is an extension command.
 	 */
 	#throwIfExtensionCommand(text: string): void {
-		if (!this.#extensionRunner) return;
+		const runner = this.#extensionRunner;
+		if (!runner) return;
 
 		const parsed = parseSlashCommand(text);
 		if (!parsed) return;
-		const commandName = parsed.name;
-		const command = this.#extensionRunner.getCommand(commandName);
+		const resolved = resolveSlashCommand(parsed, name => runner.getCommand(name));
+		const commandName = resolved?.command.name ?? parsed.name;
+		const command = resolved?.command;
 
 		if (command) {
 			throw new Error(
@@ -10343,7 +10378,7 @@ export class AgentSession {
 			await this.sessionManager.flush();
 		}
 		await this.sessionManager.newSession(options);
-		// The transcript changed under this session, so its subagents belong to a
+		// The transcript changed under this session, so its spawned agents belong to a
 		// conversation the operator has left. Release them and re-root this ref.
 		await this.#rescopeAgentRegistry();
 
@@ -11593,7 +11628,7 @@ export class AgentSession {
 			const cacheSessionId = this.sessionId;
 			// The loop sends `promptCacheKey` (providerPromptCacheKey) and falls back to
 			// the provider session id; providers route on `promptCacheKey ?? sessionId`.
-			// Both can diverge from this.sessionId (tan/subagent/shared sessions), so
+			// Both can diverge from this.sessionId (tan/agent/shared sessions), so
 			// mirror exactly what the live turn populated the cache under.
 			const handoffPromptCacheKey = this.agent.promptCacheKey ?? this.agent.sessionId;
 			const handoffPromptText = renderHandoffPrompt(this.#obfuscateTextForProvider(customInstructions));
@@ -11677,7 +11712,7 @@ export class AgentSession {
 			this.#cancelOwnAsyncJobs();
 			await this.sessionManager.newSession(previousSessionFile ? { parentSession: previousSessionFile } : undefined);
 			// A handoff continues the work in a NEW transcript. The pre-handoff
-			// subagents wrote into the old one and their jobs were just cancelled;
+			// spawned agents wrote into the old one and their jobs were just cancelled;
 			// leaving them registered would list them under the new conversation.
 			await this.#rescopeAgentRegistry();
 
@@ -11944,9 +11979,16 @@ export class AgentSession {
 		// The error shouldn't trigger another compaction since we already compacted.
 		// Example: opus fails -> switch to codex -> compact -> switch back to opus -> opus error
 		// is still in context but shouldn't trigger compaction again.
-		const compactionEntry = getLatestCompactionEntry(this.sessionManager.getBranch());
-		const errorIsFromBeforeCompaction =
-			compactionEntry !== null && assistantMessage.timestamp < new Date(compactionEntry.timestamp).getTime();
+		//
+		// Decided by position on the branch, not by timestamp. The scheduled
+		// auto-continue re-enters this check with the kept assistant
+		// (#promptWithMessage -> #checkCompaction) and its stale, pre-rewrite
+		// `usage`; a compaction entry appended in the same millisecond as that
+		// assistant's `timestamp` made a `<` comparison read it as new, the stale
+		// count re-tripped the threshold on a history with nothing left to
+		// summarize, and the "freed too little context" warning fired on a
+		// compaction that had just worked.
+		const errorIsFromBeforeCompaction = this.#assistantPredatesLatestCompaction(assistantMessage);
 		if (sameModel && !errorIsFromBeforeCompaction && AIError.isContextOverflow(assistantMessage, contextWindow)) {
 			// Clear the failed turn from active context so the retry (or the next
 			// user prompt) does not replay it. The persisted branch entry stays
@@ -12806,7 +12848,7 @@ export class AgentSession {
 	}
 
 	#enforceVerificationBeforeFinalize(): boolean {
-		if (this.#isSubagent) return false;
+		if (this.#isSpawned) return false;
 		if (this.#afterEditCheck() !== "verify") return false;
 		const reminder = this.#verificationEvidence.takeFinalizationReminder();
 		if (!reminder) return false;
@@ -12843,7 +12885,7 @@ export class AgentSession {
 	}
 
 	#enforceCodeReviewBeforeFinalize(): boolean {
-		if (this.#isSubagent) return false;
+		if (this.#isSpawned) return false;
 		if (this.#afterEditCheck() !== "review") return false;
 		const inContext = this.#toolCallIdsInContext();
 		const reminder = this.#verificationEvidence.takeCodeReviewReminder(id => inContext.has(id));
@@ -13014,7 +13056,7 @@ export class AgentSession {
 		};
 		return {
 			toolRefs: { task: wireName(TOOL.task), todo: wireName(TOOL.todo) },
-			taskBatch: this.settings.get("subagent.batch"),
+			taskBatch: this.settings.get("agent.batch"),
 		};
 	}
 
@@ -13022,10 +13064,10 @@ export class AgentSession {
 		// Resolved against the agents the live task tool will actually accept: a
 		// reminder to delegate, in a session where every agent is disabled, is an
 		// instruction the model can only fail to follow.
-		if (!resolveDelegation(this.settings, enabledSubagentNames(this.#toolRegistry.get(TOOL.task))).required) {
+		if (!resolveDelegation(this.settings, enabledAgentNames(this.#toolRegistry.get(TOOL.task))).required) {
 			return undefined;
 		}
-		// Main agent only: subagents keep `task` active (the parent only filters `todo`),
+		// Main agent only: agents keep `task` active (the parent only filters `todo`),
 		// so a salient delegate-reminder there would amplify nested fan-out. Gate on the
 		// resolved agent kind, not the id, so a top-level session with a custom `agentId`
 		// still gets the reminder.
@@ -13605,6 +13647,19 @@ export class AgentSession {
 	}
 
 	/**
+	 * Remember a candidate whose summary was produced in stages, so the next
+	 * compaction on it does not first wait out the single request that never
+	 * answers. A single-stage result clears the memo: the model answered as one
+	 * request again, so staging is no longer forced.
+	 */
+	#recordSummaryStaging(candidate: Model, result: CompactionResult): void {
+		if (result.summaryStages === undefined) return;
+		const key = this.#getModelKey(candidate);
+		if (result.summaryStages > 1) this.#stagedSummaryModels.add(key);
+		else this.#stagedSummaryModels.delete(key);
+	}
+
+	/**
 	 * Say so when compaction ran on anything other than the first candidate.
 	 *
 	 * A chain that quietly lands three models down is worse than no chain: the
@@ -13831,7 +13886,7 @@ export class AgentSession {
 						// concurrency cap (e.g. providers.ollama-cloud.maxConcurrency)
 						// brackets compaction the same way it brackets the live
 						// agent turn — without this, multiple ollama-cloud
-						// subagents auto/manually compacting issued uncapped
+						// agents auto/manually compacting issued uncapped
 						// summary requests in parallel (chatgpt-codex review on
 						// #3751).
 						completeImpl: this.#sideCompleteImpl,
@@ -13839,8 +13894,10 @@ export class AgentSession {
 						// the tier the operator selected for this candidate's family,
 						// that request is billed and paced on a tier they never chose.
 						serviceTier: this.#effectiveServiceTier(candidate),
+						summaryStaging: this.#stagedSummaryModels.has(this.#getModelKey(candidate)) ? "staged" : undefined,
 					},
 				);
+				this.#recordSummaryStaging(candidate, compacted);
 				this.#announceCompactionFallback(candidates, candidate, skipReasons);
 				return compacted;
 			} catch (error) {
@@ -14319,7 +14376,12 @@ export class AgentSession {
 					willRetry: false,
 					skipped: true,
 				});
-				const noProgressDeadEnd = reason !== "idle";
+				// Nothing to summarize is a dead end only while the context is still
+				// over the bar. Once an earlier pass in this turn created headroom —
+				// a rescue tier, a prune, a dedup — the next threshold check finds
+				// nothing left to cut, and warning there tells the operator to start
+				// a fresh session moments after maintenance succeeded.
+				const noProgressDeadEnd = reason !== "idle" && !this.#compactionMeets("recovery-band");
 				let continuationScheduled = false;
 				if (!suppressContinuation && this.agent.hasQueuedMessages()) {
 					this.#scheduleAgentContinue({
@@ -14458,6 +14520,7 @@ export class AgentSession {
 						codexCompaction,
 						completeImpl: this.#sideCompleteImpl,
 						serviceTier: this.#effectiveServiceTier(candidate),
+						summaryStaging: this.#stagedSummaryModels.has(this.#getModelKey(candidate)) ? "staged" : undefined,
 					};
 					const candidateWindow =
 						typeof configuredCompactionWindow === "number" && configuredCompactionWindow > 0
@@ -14568,6 +14631,7 @@ export class AgentSession {
 					}
 
 					if (compactResult) {
+						this.#recordSummaryStaging(candidate, compactResult);
 						this.#announceCompactionFallback(candidates, candidate, skipReasons);
 						break;
 					}
@@ -15076,7 +15140,7 @@ export class AgentSession {
 		// no wait at all. #isRetryableError is false here by construction, which is
 		// what sent us down this path, so #handleRetryableError never ran and the
 		// retry latch does not exist yet: without creating it `isRetrying` stays
-		// false, escape never reaches abortRetry(), and the countdown, a subagent
+		// false, escape never reaches abortRetry(), and the countdown, an agent
 		// HUD's retryState and every hook, extension, collab and SDK consumer see
 		// nothing while the session sits silent for seconds.
 		this.#ensureRetryPromise();
@@ -15906,7 +15970,7 @@ export class AgentSession {
 		// retry.maxDelayMs and we have no fallback credential or model to
 		// switch to, surface the error instead of sleeping. Defends against
 		// 3-hour Anthropic rate-limit windows that would otherwise leave a
-		// subagent (or interactive session) silently hung. The original
+		// agent (or interactive session) silently hung. The original
 		// assistant error message is preserved in agent state so the caller
 		// can act on it.
 		const maxDelayMs = retryPolicy.maxDelayMs;

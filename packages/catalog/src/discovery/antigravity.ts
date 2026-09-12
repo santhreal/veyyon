@@ -8,7 +8,7 @@ import {
 	type VariantCollapseTable,
 } from "../variant-collapse";
 import { getAntigravityUserAgent } from "../wire/gemini-headers";
-import type { DiscoveryFailure, DiscoveryHooks } from "./failure";
+import { type DiscoveryFailure, type DiscoveryHooks, readDiscoveryJson } from "./failure";
 import { gatewayContextWindow, gatewayMaxTokens } from "./gateway-limits";
 
 // Re-exported, not redeclared: `@veyyon/catalog/provider-endpoints` owns the hosts, and this module's
@@ -229,18 +229,8 @@ export async function fetchAntigravityDiscoveryModels(
 			continue;
 		}
 
-		if (!response.ok) {
-			report("status", `HTTP ${response.status} ${response.statusText}`.trim());
-			continue;
-		}
-
-		let payload: unknown;
-		try {
-			payload = await response.json();
-		} catch (error) {
-			report("body", `response is not JSON: ${errorMessage(error)}`);
-			continue;
-		}
+		const payload = await readDiscoveryJson(response, report);
+		if (payload === undefined) continue;
 
 		const parsed = parseAntigravityDiscoveryResponse(payload);
 		if (!parsed) {

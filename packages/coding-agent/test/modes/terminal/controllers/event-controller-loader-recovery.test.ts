@@ -212,7 +212,7 @@ describe("EventController loader recovery after overflow maintenance", () => {
 		expect(statusContainer.children).toContain(ctx.loadingAnimation);
 	});
 
-	it("re-shows the Working… loader after a subagent task completes while the session keeps streaming", async () => {
+	it("re-shows the Working… loader after an agent task completes while the session keeps streaming", async () => {
 		const { ctx, streamState, statusContainer, workingLoaders } = createContext();
 		const controller = new EventController(ctx);
 
@@ -222,7 +222,7 @@ describe("EventController loader recovery after overflow maintenance", () => {
 		expect(firstWorking).toBeDefined();
 
 		// A transient overlay (auto-retry / auto-compaction) tore the loader down
-		// mid-tool; the session is still streaming when the subagent's task
+		// mid-tool; the session is still streaming when the agent's task
 		// completes. Before the fix, `tool_execution_end` (unlike `_update`) did
 		// not re-arm the loader, so the UI looked idle while the agent kept going.
 		streamState.isStreaming = true;

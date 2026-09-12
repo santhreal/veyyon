@@ -59,7 +59,7 @@ box_differing_pixels() { # <shot-a> <shot-b> <w> <h> <x> <y>
 # name on, so its own box is the bounding box of the change — which is how it is
 # clicked without guessing at a row height or counting prose lines.
 changed_box() { # <shot-a> <shot-b> -> "<w> <h> <x> <y>" in screen pixels
-	local scratch="${SCENE_RUNTIME_DIR}/frame-compare"
+	local scratch="${TMPDIR}/frame-compare"
 	local crop="${CROP_W}x${CROP_H}+${CROP_X}+${CROP_Y}" geometry
 	mkdir -p "${scratch}"
 	magick "${SCENE_OUT}/${SCENE_NAME}-$1.png" -crop "${crop}" +repage "${scratch}/box-a.png"

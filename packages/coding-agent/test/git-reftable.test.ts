@@ -103,6 +103,14 @@ describe.skipIf(!supportsReftable)("git reftable support", () => {
 		expect(nonexistentExists).toBe(false);
 	});
 
+	test("an aborted ref read rejects instead of answering null", async () => {
+		const aborted = AbortSignal.abort();
+		await expect(git.ref.resolve(sharedRepoDir, "refs/heads/main", aborted)).rejects.toThrow();
+		await expect(git.head.sha(sharedRepoDir, aborted)).rejects.toThrow();
+		// A missing ref is a null answer, not a rejection.
+		expect(await git.ref.resolve(sharedRepoDir, "refs/heads/nonexistent")).toBeNull();
+	});
+
 	test("handles git config trailing comments correctly", async () => {
 		const repository = await git.repo.resolve(configRepoDir);
 		expect(repository).not.toBeNull();

@@ -6,7 +6,7 @@
  * removal was deliberate: the 2026-07-27 entry in `system-prompt-cached-prefix-stability.test.ts`
  * calls both lines redundant against "the `<critical>` line saying there is no stopping condition
  * other than completion". No such line is in `<critical>`. It lives in
- * `src/prompts/session/project-prompt.md`, which is the SUBAGENT prompt, so the main-session prompt
+ * `src/prompts/session/project-prompt.md`, which is the AGENT prompt, so the main-session prompt
  * lost two anti-early-stop instructions in exchange for text it does not carry.
  *
  * A digest pin cannot catch that class on its own: it says the bytes moved, never which sentence
@@ -55,7 +55,7 @@ const NEVER_STOP_EARLY =
 
 describe("the composed prompt forbids stopping with work left", () => {
 	/**
-	 * Unconditional means unconditional. A session with three tools and no subagents still must not
+	 * Unconditional means unconditional. A session with three tools and no agents still must not
 	 * stop mid-deliverable, so the reduced tool set is the fixture: a gate added later would pass a
 	 * full-tool assertion and reintroduce exactly the hole this suite closes.
 	 */

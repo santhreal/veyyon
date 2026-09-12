@@ -12,7 +12,7 @@ import {
 	type MarketplaceCatalog,
 	type MarketplaceSourceType,
 } from "@veyyon/kernel/loader/plugins/marketplace/types";
-import { isEnoent, isRecord, logger, removeTempPath, scopedTimeoutSignal } from "@veyyon/utils";
+import { isEnoent, isRecord, logger, removeTempPath, reportFault, scopedTimeoutSignal } from "@veyyon/utils";
 import * as git from "../../../utils/git";
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -176,13 +176,21 @@ export function parseMarketplaceCatalog(content: string, filePath: string): Mark
 			}
 			validPlugins.push(entry);
 		} catch (err) {
-			// Warn and skip invalid plugin entries instead of failing the entire catalog.
-			// This lets the rest of the marketplace load even if one entry has a bad name/source.
+			// One bad entry costs that entry, not the marketplace, since a Claude Code catalog may list
+			// shapes this loader cannot install. The drop is reported to whoever owns a surface, because
+			// `plugin marketplace add` then prints a success line and `plugin discover` never lists the
+			// plugin, and a file-log line alone left both looking like the catalog never had it.
 			const name =
 				typeof plugins[i] === "object" && plugins[i] !== null
 					? ((plugins[i] as Record<string, unknown>).name ?? `[${i}]`)
 					: `[${i}]`;
-			logger.warn(`Skipping invalid plugin ${name}: ${(err as Error).message}`);
+			reportFault({
+				source: "marketplace",
+				text:
+					`The plugin "${String(name)}" in this marketplace cannot be installed, so it is not offered: ` +
+					`${(err as Error).message}. Fix: correct that entry in the catalog, or report it to the marketplace owner.`,
+				context: { catalogPath: filePath, index: i },
+			});
 		}
 	}
 	// Replace the plugins array with only valid entries

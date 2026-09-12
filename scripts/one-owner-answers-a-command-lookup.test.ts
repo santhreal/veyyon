@@ -8,7 +8,7 @@ import { describe, expect, it } from "bun:test";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { existingOnly } from "./check-doc-links";
+import { existingOnly } from "./workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const OWNER_FILE = "packages/utils/src/which.ts";
@@ -24,8 +24,7 @@ export const ALLOWLIST: Readonly<Record<string, string>> = {
 	"natives/bridge/bindings/scripts/ensure-native.ts": "bootstraps native addon before @veyyon/utils is available",
 	"natives/bridge/bindings/scripts/native-portability.ts": "bootstraps native addon before @veyyon/utils is available",
 	"natives/bridge/bindings/test/native.test.ts": "native addon test suite running without @veyyon/utils dependency",
-	"clients/python/veybot/web/scripts/verify-cards.ts": "standalone python extension verification script",
-	"clients/python/veybot/web/scripts/verify-live.ts": "standalone python extension verification script",
+	"clients/python/veybot/web/scripts/resolve-chrome.ts": "standalone python extension verification script",
 	"scripts/one-owner-answers-a-command-lookup.test.ts": "quotes the owner call to assert the owner implements it",
 	"scripts/tests-never-touch-real-home.test.ts": "quotes Bun.which in static test fixture string",
 };

@@ -77,7 +77,7 @@ export function renderEffortStep(
 	container.addChild(new Spacer(1));
 	// A model whose effort lives in sibling model ids narrows to nothing, leaving the
 	// base row alone. Saying "valid effort variants" over a one-row list reads as a
-	// broken screen, which is what the Subagent Effort row already learned; the
+	// broken screen, which is what the Agent Effort row already learned; the
 	// sentence has one owner so both surfaces say the same thing.
 	const heading =
 		items.length <= 1

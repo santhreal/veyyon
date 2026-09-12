@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 import threading
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -1057,6 +1059,54 @@ def test_classify_pr_rejects_bad_rank(db: Database, tmp_path: Path) -> None:
         tool = next(x for x in build(bindings) if x.name == "classify_pr")
         with pytest.raises(RpcCommandError):
             tool.execute({"rank": "prio:p1", "type": "fix", "rationale": "wrong namespace"}, _ctx())
+    finally:
+        _stop_loop(loop, t)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("path", " ", "pr_review_comment requires a non-empty 'path'."),
+        ("line", 0, "pr_review_comment requires a positive integer 'line'."),
+        ("body", "", "pr_review_comment requires a non-empty 'body'."),
+        ("side", "INVALID", "pr_review_comment 'side' must be RIGHT or LEFT."),
+        ("start_line", 0, "pr_review_comment 'start_line' must be a positive integer when provided."),
+        ("start_side", "INVALID", "pr_review_comment 'start_side' must be RIGHT or LEFT when provided."),
+    ],
+)
+def test_audited_review_failure_persists_before_rpc_error(
+    db: Database, tmp_path: Path, field: str, value: Any, message: str
+) -> None:
+    """Audit/raise consolidation must not lose the failure or stage invalid input.
+
+    These cases cover review validation, not subprocess or remote GitHub failures.
+    """
+    bindings, loop, t = _review_bindings(db, tmp_path, httpx.MockTransport(lambda _r: httpx.Response(500)))
+    args = {"path": "src/app.py", "line": 1, "body": "Review comment", field: value}
+    try:
+        tool = next(x for x in build(bindings) if x.name == "pr_review_comment")
+        with pytest.raises(RpcCommandError) as caught:
+            tool.execute(args, _ctx())
+        assert caught.value.command == message
+        assert caught.value.error == {"message": message}
+        assert db.list_staged_review_comments(bindings.issue_key) == []
+        with closing(sqlite3.connect(db.path)) as connection:
+            rows = connection.execute(
+                "SELECT issue_key, tool, args_json, result_json, error FROM tool_calls ORDER BY id"
+            ).fetchall()
+        assert rows == [(bindings.issue_key, tool.name, json.dumps(args, separators=(",", ":")), None, message)]
+    finally:
+        _stop_loop(loop, t)
+
+
+def test_audited_review_failure_preserves_database_error_precedence(db: Database, tmp_path: Path) -> None:
+    """An unavailable audit database must fail before the RPC error is constructed."""
+    bindings, loop, t = _review_bindings(db, tmp_path, httpx.MockTransport(lambda _r: httpx.Response(500)))
+    try:
+        tool = next(x for x in build(bindings) if x.name == "pr_review_comment")
+        db.close()
+        with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+            tool.execute({"path": "", "line": 1, "body": "Review comment"}, _ctx())
     finally:
         _stop_loop(loop, t)
 
@@ -3740,3 +3790,29 @@ def test_repair_commit_escapes_rewrites_fork_point_across_merge(db: Database, tm
     assert "\\n" not in bodies, bodies
     # And the intended real newline must be present in the repaired subject/body.
     assert "P_subject\nP_body" in bodies, bodies
+
+def test_tool_table_exhaustive_runtime_derivation(db: Database, tmp_path: Path) -> None:
+    """Assert every advertised host tool in host_tools.toml is registered in TOOL_TABLE
+    with a valid handler, and build() instantiates all specs in TOOL_TABLE."""
+    import tomllib
+    from pathlib import Path
+    from veybot import persona
+    prompts_toml = Path(persona.__file__).parent / "prompts" / "host_tools.toml"
+    with prompts_toml.open("rb") as f:
+        toml_tools = tomllib.load(f)
+
+    toml_names = set(toml_tools.keys())
+    table_names = set(host_tools.TOOL_TABLE.keys())
+    assert toml_names == table_names
+
+    for name, spec in host_tools.TOOL_TABLE.items():
+        assert callable(spec.handler), f"Tool {name} must have a callable handler"
+        assert spec.name == name
+
+    bindings, loop, thread = _bindings(db, tmp_path, httpx.MockTransport(lambda _r: httpx.Response(500)))
+    try:
+        tools = host_tools.build(bindings)
+        built_names = {t.name for t in tools}
+        assert built_names == table_names
+    finally:
+        _stop_loop(loop, thread)

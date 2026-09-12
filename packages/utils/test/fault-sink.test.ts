@@ -4,8 +4,8 @@
  * WHY THIS SUITE EXISTS. `fs-optional.ts` opens by declaring that its subject's failure "is not
  * allowed to be silent", and then reported every failure with `logger.warn`. The default transport
  * set is `{ file: true }` with no console transport, and no TUI can write to the console without
- * corrupting its render, so the report reached nobody: a `~/.veyyon/agents` directory that exists and
- * cannot be listed showed the operator "no subagents" and put the reason in a file nobody opens. Two
+ * corrupting its render, so the report reached nobody: a `~/.veyyon/subagents` directory that exists and
+ * cannot be listed showed the operator "no agents" and put the reason in a file nobody opens. Two
  * doc comments promised the opposite in so many words. `pathExists` claimed it "fixes what
  * `existsSync` cannot express" by reporting a path that exists and cannot be stat'd, and
  * `PluginManager.doctor` cited that exact sentence as its reason for using `pathExists` over

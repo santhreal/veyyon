@@ -41,7 +41,7 @@ import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { resolveCompactionKind } from "@veyyon/coding-agent/modes/terminal/components/transcript/compaction-summary-message";
+import { resolveCompactionKind } from "@veyyon/coding-agent/presentation/summary-builder";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import type { CompactionEntry } from "@veyyon/kernel/session/session-entries";

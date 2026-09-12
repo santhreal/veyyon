@@ -4,9 +4,9 @@
  * Taps the host session's event stream and SessionManager append chokepoint,
  * broadcasting entries/events/state to guests through the relay. Guests prompt
  * and abort through us; the host machine runs the agent and tools. The host's
- * subagent ecosystem is mirrored too: task EventBus traffic (observer HUD),
- * agent-registry snapshots (the subagent dashboard roster), hub chat/kill/revive commands,
- * and incremental subagent-transcript reads.
+ * agent ecosystem is mirrored too: task EventBus traffic (observer HUD),
+ * agent-registry snapshots (the agent dashboard roster), hub chat/kill/revive commands,
+ * and incremental agent-transcript reads.
  */
 
 import { timingSafeEqual } from "node:crypto";
@@ -22,6 +22,13 @@ import type {
 } from "@veyyon/wire";
 import { mapJsonStrings } from "../json-transform";
 import type { InteractiveModeContext } from "../modes/terminal/types";
+import {
+	extractToolResultContent,
+	extractToolResultDetails,
+	recordToolCorrelationEntry,
+	type ToolCallCorrelation,
+	type ToolResultCorrelation,
+} from "../presentation/web-tool-display";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { type AgentRef, AgentRegistry } from "../registry/agent-registry";
 import type { AgentSessionEvent } from "../session/agent-session-types";
@@ -135,6 +142,8 @@ export class CollabHost {
 	#busUnsubscribers: (() => void)[] = [];
 	#registryUnsubscribe?: () => void;
 	#stopped = false;
+	#toolCalls = new Map<string, ToolCallCorrelation>();
+	#toolResults = new Map<string, ToolResultCorrelation>();
 
 	constructor(ctx: CollabHostContext) {
 		this.#ctx = ctx;
@@ -200,7 +209,7 @@ export class CollabHost {
 	 * Redact a frame on its way to a guest.
 	 *
 	 * A collab link is a bearer capability the operator may have forwarded once, and everything
-	 * the host sees goes down it: entries, live events, subagent bus traffic, error strings. The
+	 * the host sees goes down it: entries, live events, agent bus traffic, error strings. The
 	 * same transcript routed through `/share` or `/export` has its configured secrets replaced
 	 * with placeholders, so a guest must not receive the literal value instead. This is the one
 	 * seam every outbound frame passes through, so the walk lives here rather than at each of the
@@ -287,7 +296,22 @@ export class CollabHost {
 		}
 
 		this.#unsubscribe = this.#ctx.session.subscribe(event => {
-			const wireEvent = toWireAgentEvent(event);
+			if (event.type === "tool_execution_start") {
+				this.#toolCalls.set(event.toolCallId, {
+					toolCallId: event.toolCallId,
+					toolName: event.toolName,
+					args: event.args,
+					intent: event.intent,
+				});
+			} else if (event.type === "tool_execution_end") {
+				this.#toolResults.set(event.toolCallId, {
+					toolCallId: event.toolCallId,
+					content: extractToolResultContent(event.result),
+					details: extractToolResultDetails(event.result),
+					isError: event.isError === true,
+				});
+			}
+			const wireEvent = toWireAgentEvent(event, this.#toolCalls);
 			if (wireEvent) this.#broadcast({ t: "event", event: shrinkForReplication(wireEvent) });
 			this.#onEventForState(event);
 		});
@@ -299,7 +323,8 @@ export class CollabHost {
 		}
 		this.#registryUnsubscribe = AgentRegistry.global().onChange(() => this.#scheduleAgentsBroadcast());
 		this.#ctx.sessionManager.onEntryAppended = entry => {
-			const wire = toWireSessionEntry(entry);
+			recordToolCorrelationEntry(entry, this.#toolCalls, this.#toolResults);
+			const wire = toWireSessionEntry(entry, this.#toolCalls, this.#toolResults);
 			if (wire) this.#broadcast({ t: "entry", entry: shrinkForReplication(wire) });
 			// Model/thinking/title changes land as entries while idle; refresh
 			// guest state promptly (debounce + JSON diff dedupe).
@@ -334,6 +359,8 @@ export class CollabHost {
 		for (const pending of this.#pendingUi.values()) pending.settle({ kind: "unavailable" });
 		this.#pendingUi.clear();
 		this.#peers.clear();
+		this.#toolCalls.clear();
+		this.#toolResults.clear();
 		this.#socket?.close();
 		this.#socket = null;
 		this.#ctx.collabHost = undefined;
@@ -417,7 +444,12 @@ export class CollabHost {
 		// every undeclared field on the VALUE, and a guest persists what it receives.
 		// `toWireSessionEntry` answers undefined for an entry no guest renders, so the filter and
 		// the projection are one step and an unprojected entry cannot be broadcast.
-		const entries = snapshot.entries.map(toWireSessionEntry).filter(entry => entry !== undefined);
+		for (const entry of snapshot.entries) {
+			recordToolCorrelationEntry(entry, this.#toolCalls, this.#toolResults);
+		}
+		const entries = snapshot.entries
+			.map(entry => toWireSessionEntry(entry, this.#toolCalls, this.#toolResults))
+			.filter(entry => entry !== undefined);
 		const socket = this.#socket;
 		if (!socket) return;
 		this.#sendTo(

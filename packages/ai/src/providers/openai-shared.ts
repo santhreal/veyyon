@@ -2,7 +2,7 @@ import type { Effort } from "@veyyon/catalog/effort";
 import { toFirepassWireModelId, toFireworksWireModelId } from "@veyyon/catalog/fireworks-model-id";
 import { isGlm52ReasoningEffortModelId } from "@veyyon/catalog/identity";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
-import { calculateCost, emptyCost, emptyUsage, inheritUsageCarryovers, scaleUsageCost } from "@veyyon/catalog/models";
+import { calculateCost, emptyCost, inheritUsageCarryovers, scaleUsageCost } from "@veyyon/catalog/models";
 import type {
 	OpenAICompat,
 	OpenAIReasoningDisableMode,
@@ -2872,19 +2872,7 @@ export function promoteResponsesToolUseStopReason(output: AssistantMessage, endT
 	}
 }
 
-/** Initial empty `AssistantMessage` that streaming providers accumulate into. */
-export function createInitialResponsesAssistantMessage(api: Api, provider: string, modelId: string): AssistantMessage {
-	return {
-		role: "assistant",
-		content: [],
-		api,
-		provider,
-		model: modelId,
-		usage: emptyUsage(),
-		stopReason: "stop",
-		timestamp: Date.now(),
-	};
-}
+export * from "./initial-message";
 
 /** Extension fields we add on top of `ResponseCreateParamsStreaming` across the Responses-family providers. */
 export type ResponsesSamplingParamsExtras = {

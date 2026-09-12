@@ -69,7 +69,7 @@ Skills load only from the active profile. `loadSkills()` passes an explicit
 provider allowlist to `loadCapability("skills")`, so only the profile-native
 providers run and no foreign-tool directory is ever scanned:
 
-- `native` (priority 100): the profile's `.../agent/skills` dir, user level only, via `src/discovery/builtin.ts`. Project-local `.veyyon/skills` is deliberately not scanned.
+- `native` (priority 100): the profile's `.../agent/skills` dir, user level only, via `src/discovery/builtin.ts`. Project-local `.veyyon/skills` is not scanned.
 - `veyyon-plugins` (priority 90): `skills/` bundled with plugins installed into the active profile
 - `veyyon-managed` (priority 5): auto-learn skills under `.../agent/managed-skills`, discovered unconditionally (only writing/nudging is gated by `autolearn.enabled`); always defers to a same-named authored skill
 
@@ -117,7 +117,7 @@ System prompt construction (`src/system-prompt.ts`) uses discovered skills as fo
 
 `hide: true` does not disable the skill. Hidden skills are still loaded and remain reachable through `skill://<name>` and `/skill:<name>` when skill commands are enabled.
 
-Task tool subagents receive the session's discovered/provided skills list via normal session creation; there is no per-task skill pinning override.
+Task tool agents receive the session's discovered/provided skills list via normal session creation; there is no per-task skill pinning override.
 
 ### Interactive `/skill:<name>` commands
 

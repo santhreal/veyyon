@@ -28,10 +28,10 @@ import {
 	replaceTabs,
 	TRUNCATE_LENGTHS,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import {
-	COLLAPSED_MATCH_LIMIT,
-	type StructureSearchDetails,
-	type StructureSearchRenderArgs,
+import { COLLAPSED_MATCH_LIMIT } from "@veyyon/coding-agent/tools/search/search-card-limits";
+import type {
+	StructureSearchDetails,
+	StructureSearchRenderArgs,
 } from "@veyyon/coding-agent/tools/search/structure-search";
 import {
 	type StructureSearchViewResult,

@@ -39,10 +39,10 @@ export function expandToolArguments(argot: ArgotSession, args: Record<string, un
 }
 
 /**
- * Expand handles in a subagent's returned text at the RETURN boundary — the last
+ * Expand handles in a child agent's returned text at the RETURN boundary — the last
  * seam a child emits across, and the one a broken harness silently skips.
  *
- * A subagent running `fresh`/`inherit` writes `§handle` tokens keyed to its OWN
+ * A spawned agent running `fresh`/`inherit` writes `§handle` tokens keyed to its OWN
  * codec. The raw assistant text the executor captures from the child's stream
  * events (accumulated output chunks, the final turn, cancelled-run salvage) is in
  * that handle form, and it becomes the parent's tool result and on-disk artifact.
@@ -58,13 +58,13 @@ export function expandToolArguments(argot: ArgotSession, args: Record<string, un
  * identity; `expand` on text carrying no sigil is also identity. Both make it safe
  * to route every captured chunk through here unconditionally.
  */
-export function expandSubagentReturn(codec: ArgotSession | undefined, text: string): string {
+export function expandAgentReturn(codec: ArgotSession | undefined, text: string): string {
 	if (!text || codec === undefined || !codec.loaded) return text;
 	return codec.expand(text);
 }
 
 /**
- * Build a stream decoder for a subagent's LIVE token preview — the streaming
+ * Build a stream decoder for a child agent's LIVE token preview — the streaming
  * display seam. This is the one display seam a plain {@link ArgotSession.expand}
  * cannot serve, because the child's text arrives token by token and a handle can
  * split across two deltas (`§db` then `conn`): expanding each delta alone would
@@ -79,7 +79,7 @@ export function expandSubagentReturn(codec: ArgotSession | undefined, text: stri
  * child message and feed every delta to `decoder.push`, rendering only its
  * return; call `decoder.flush()` at message end and `decoder.reset()` on abort.
  */
-export function createSubagentStreamDecoder(codec: ArgotSession | undefined): StreamDecoder | undefined {
+export function createAgentStreamDecoder(codec: ArgotSession | undefined): StreamDecoder | undefined {
 	if (codec === undefined || !codec.loaded) return undefined;
 	return codec.streamDecoder();
 }
@@ -500,7 +500,7 @@ export function expandSessionContext(argot: ArgotSession, context: SessionContex
  * Expand handles across persisted transcript entries read straight off disk.
  *
  * `expandSessionContext` covers a rebuild that goes through `SessionManager`.
- * The subagent dashboard's transcript viewer does not: it parses a subagent's
+ * The agent dashboard's transcript viewer does not: it parses a spawned agent's
  * or advisor's `.jsonl` itself, because those two cases have no live session to
  * hand the view over to. The persisted file keeps the cheap handles (see
  * {@link expandSessionContext}), so that viewer was the one display that showed

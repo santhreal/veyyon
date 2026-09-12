@@ -75,7 +75,7 @@ export interface PromptCommandFlags {
 	 * The other registered prompts are not assembled from live session state the
 	 * way the system prompt is, so they are inspected as the TEMPLATE they ship:
 	 * their sections, their variable contract, and their sizes. That is the
-	 * question worth answering about them, because until now the subagent prompt
+	 * question worth answering about them, because until now the agent prompt
 	 * in particular could not be examined at all without reading the file and
 	 * simulating its conditionals by eye.
 	 */
@@ -164,7 +164,7 @@ export async function runPromptCommand(flags: PromptCommandFlags = {}): Promise<
 	//
 	// This call used to pass tools, tool names and cwd and nothing else, so every settings-fed
 	// gate fell to `system-prompt.ts`'s omitted-option default and this command rendered a prompt
-	// no session sends. With `subagent.delegation=required` and `personality=none` it printed no
+	// no session sends. With `agent.delegation=required` and `personality=none` it printed no
 	// Eager Tasks section and a personality block, both the opposite of the configuration. The
 	// derivation is shared with `sdk.ts` (`system-prompt-builder/gate-inputs.ts`) rather than
 	// copied, so a gate cannot reach the session path and miss this one.

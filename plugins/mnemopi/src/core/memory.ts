@@ -380,17 +380,8 @@ function sourceCounts(db: Database): Record<string, number> {
 	return counts;
 }
 
-function buildBeamAnnotations(db: Database, dbPath: string | undefined): BeamMemory["annotations"] {
-	const annotationStore = dbPath === undefined ? new AnnotationStore({ db }) : new AnnotationStore({ db, dbPath });
-	return {
-		add: (memoryId, kind, value, writeOptions) =>
-			annotationStore.add(memoryId, kind, value, writeOptions?.source, writeOptions?.confidence),
-		addMany: (memoryId, kind, values, writeOptions) =>
-			annotationStore.addMany(memoryId, kind, values, writeOptions?.source, writeOptions?.confidence),
-		queryByMemory: (memoryId, kind) => annotationStore.queryByMemory(memoryId, kind),
-		queryByKind: (kind, value) => annotationStore.queryByKind(kind, { value }),
-		getDistinctValues: kind => annotationStore.getDistinctValues(kind),
-	};
+function buildBeamAnnotations(db: Database, dbPath: string | undefined): AnnotationStore {
+	return dbPath === undefined ? new AnnotationStore({ db }) : new AnnotationStore({ db, dbPath });
 }
 
 function buildEpisodicGraph(db: Database, dbPath: string | undefined): EpisodicGraph {

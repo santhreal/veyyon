@@ -21,7 +21,7 @@
  * ('onmouseover') === true`.
  *
  * Anyone who can land text in a transcript reaches this: a fetched page, a
- * README in a cloned repo, an MCP tool result, a subagent return, or
+ * README in a cloned repo, an MCP tool result, an agent return, or
  * prompt-injected model text. On `/share` the payload runs on the share origin,
  * which is also the collab web base, so same-origin script can read a live
  * session's room key out of the URL fragment.

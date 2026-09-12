@@ -2,6 +2,8 @@ import { enoentError, toError } from "@veyyon/utils";
 import type { PathState } from "@veyyon/utils/fs-optional";
 import { sessionFileStem } from "@veyyon/utils/session-file";
 import {
+	BaseSessionStorageWriter,
+	filterStorageMapKeys,
 	type SessionFileBody,
 	type SessionStorage,
 	type SessionStorageStat,
@@ -53,12 +55,6 @@ interface EnqueueOptions {
 
 const RESOLVED = Promise.resolve();
 
-function matchesGlob(name: string, pattern: string): boolean {
-	if (pattern === "*") return true;
-	if (pattern.startsWith("*.")) return name.endsWith(pattern.slice(1));
-	return name === pattern;
-}
-
 function byteLength(text: string): number {
 	return Buffer.byteLength(text, "utf-8");
 }
@@ -69,14 +65,7 @@ function normalizeByteLimit(maxBytes: number): number {
 }
 
 function uniquePaths(paths: readonly string[]): string[] {
-	const out: string[] = [];
-	const seen = new Set<string>();
-	for (const path of paths) {
-		if (seen.has(path)) continue;
-		seen.add(path);
-		out.push(path);
-	}
-	return out;
+	return Array.from(new Set(paths));
 }
 function titleUpdateForIndex(entry: IndexEntry): SessionTitleUpdate | undefined {
 	if (!entry.titleUpdatedAt) return undefined;
@@ -192,29 +181,11 @@ export class IndexedSessionStorage implements SessionStorage {
 	}
 
 	listFilesSync(dir: string, pattern: string): string[] {
-		const prefix = dir.endsWith("/") ? dir : `${dir}/`;
-		const out: string[] = [];
-		for (const path of this.#index.keys()) {
-			if (!path.startsWith(prefix)) continue;
-			const name = path.slice(prefix.length);
-			if (name.includes("/") || name.includes("\\")) continue;
-			if (!matchesGlob(name, pattern)) continue;
-			out.push(path);
-		}
-		return out;
+		return filterStorageMapKeys(this.#index.keys(), dir, pattern, false);
 	}
 
 	listFilesRecursiveSync(dir: string, pattern: string): string[] {
-		const prefix = dir.endsWith("/") ? dir : `${dir}/`;
-		const out: string[] = [];
-		for (const filePath of this.#index.keys()) {
-			if (!filePath.startsWith(prefix)) continue;
-			const relative = filePath.slice(prefix.length);
-			const name = relative.slice(Math.max(relative.lastIndexOf("/"), relative.lastIndexOf("\\")) + 1);
-			if (!matchesGlob(name, pattern)) continue;
-			out.push(filePath);
-		}
-		return out;
+		return filterStorageMapKeys(this.#index.keys(), dir, pattern, true);
 	}
 
 	exists(path: string): Promise<boolean> {
@@ -552,12 +523,9 @@ export class IndexedSessionStorage implements SessionStorage {
 	}
 }
 
-class IndexedSessionStorageWriter implements SessionStorageWriter {
+class IndexedSessionStorageWriter extends BaseSessionStorageWriter {
 	#storage: IndexedSessionStorage;
 	#path: string;
-	#closed = false;
-	#error: Error | undefined;
-	#onError: ((err: Error) => void) | undefined;
 	#pendingChain: Promise<void> = Promise.resolve();
 
 	constructor(
@@ -565,66 +533,50 @@ class IndexedSessionStorageWriter implements SessionStorageWriter {
 		path: string,
 		options?: { flags?: "a" | "w"; onError?: (err: Error) => void },
 	) {
+		super(options);
 		this.#storage = storage;
 		this.#path = path;
-		this.#onError = options?.onError;
 		if ((options?.flags ?? "a") === "w") {
 			const mtimeMs = storage._truncateForWriter(path);
-			this.#trackPromise(storage._queueTruncate(path, mtimeMs, () => this.#error));
+			this.#trackPromise(storage._queueTruncate(path, mtimeMs, () => this.getError()));
 		}
-	}
-
-	#recordError(err: unknown): Error {
-		const error = toError(err);
-		if (!this.#error) this.#error = error;
-		this.#onError?.(error);
-		return error;
 	}
 
 	#trackPromise(promise: Promise<void>): Promise<void> {
 		const next = this.#pendingChain.then(async () => {
-			if (this.#error) throw this.#error;
+			this.ensureNoError();
 			try {
 				await promise;
 			} catch (err) {
-				throw this.#recordError(err);
+				throw this.recordError(err);
 			}
 		});
-		// The failure travels to the caller through the returned `next`, and `#recordError` also latches it in
-		// `#error` so every later call rethrows it. The chain copy must resolve, or the recorded error would be
-		// re-delivered to unrelated later writers as an unhandled rejection instead of through `#error`.
+		// The failure travels to the caller through the returned `next`, and `recordError` also latches it so
+		// every later call rethrows it via `ensureNoError`/`getError`. The chain copy must resolve, or the
+		// recorded error would be re-delivered to unrelated later writers as an unhandled rejection.
 		this.#pendingChain = next.catch(() => {});
 		return next;
 	}
 
 	async append(line: string): Promise<void> {
-		if (this.#closed) throw new Error("Writer closed");
-		if (this.#error) throw this.#error;
+		this.ensureOpen();
 		const mtimeMs = this.#storage._appendForWriter(this.#path, line);
-		await this.#trackPromise(this.#storage._queueAppend(this.#path, line, mtimeMs, () => this.#error));
+		await this.#trackPromise(this.#storage._queueAppend(this.#path, line, mtimeMs, () => this.getError()));
 	}
 
 	async flush(): Promise<void> {
-		if (this.#error) throw this.#error;
+		this.ensureNoError();
 		await this.#pendingChain;
-		if (this.#error) throw this.#error;
-	}
-
-	isOpen(): boolean {
-		return !this.#closed;
+		this.ensureNoError();
 	}
 
 	async close(): Promise<void> {
-		if (this.#closed) return;
-		this.#closed = true;
+		if (this.isClosed) return;
+		this.markClosed();
 		try {
 			await this.flush();
 		} finally {
 			this.#storage._writerClosed(this);
 		}
-	}
-
-	getError(): Error | undefined {
-		return this.#error;
 	}
 }

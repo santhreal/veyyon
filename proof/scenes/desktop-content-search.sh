@@ -99,8 +99,8 @@ pause 0.3
 # the command list that `/` opens and `search` collapses, which states the
 # palette was live rather than the window being blank.
 ARM="${SCENE_ARM:-after}"
-mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
-COMMANDS_LISTED="${SCENE_RUNTIME_DIR}/frame-compare/commands-listed.png"
+mkdir -p "${TMPDIR}/frame-compare"
+COMMANDS_LISTED="${TMPDIR}/frame-compare/commands-listed.png"
 if [ "${ARM}" = "before" ]; then
 	t "/"
 	pause 1.0

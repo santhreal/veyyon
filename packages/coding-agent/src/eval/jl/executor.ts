@@ -1,4 +1,3 @@
-import { sessionCpuAdoption } from "../../session/cpu-limit";
 import {
 	createCancelledKernelResult,
 	createKernelExecutionDriver,
@@ -7,7 +6,6 @@ import {
 	type KernelExecutorBaseOptions,
 } from "../executor-base";
 import { KERNEL_SHUTDOWN_GRACE_MS } from "../kernel-base";
-import type { KernelToolBridgeInfo } from "../kernel-tool-bridge";
 import type { EvalDisplayOutput, EvalStatusEvent } from "../types";
 import { checkJuliaKernelAvailability, JuliaKernel } from "./kernel";
 import { resolveExplicitJuliaRuntime } from "./runtime";
@@ -65,74 +63,15 @@ export function createCancelledJuliaResult(timedOut: boolean, timeoutMs?: number
 	return createCancelledKernelResult(output);
 }
 
-function buildKernelEnvPatch(options: {
-	sessionFile?: string;
-	artifactsDir?: string;
-	bridge?: KernelToolBridgeInfo;
-	bridgeSessionId?: string;
-	localRoots?: Record<string, string>;
-}): Record<string, string | undefined> {
-	const patch: Record<string, string | undefined> = {};
-	if (options.sessionFile) patch.VEYYON_SESSION_FILE = options.sessionFile;
-	if (options.artifactsDir) patch.VEYYON_ARTIFACTS_DIR = options.artifactsDir;
-	if (options.bridge) {
-		patch.VEYYON_TOOL_BRIDGE_URL = options.bridge.url;
-		patch.VEYYON_TOOL_BRIDGE_TOKEN = options.bridge.token;
-		patch.VEYYON_TOOL_BRIDGE_SESSION = options.bridgeSessionId ?? "";
-	}
-	if (options.localRoots) {
-		patch.VEYYON_EVAL_LOCAL_ROOTS = JSON.stringify(options.localRoots);
-	}
-	return patch;
-}
-
-function buildKernelEnv(options: {
-	sessionFile?: string;
-	artifactsDir?: string;
-	bridge?: KernelToolBridgeInfo;
-	bridgeSessionId?: string;
-	localRoots?: Record<string, string>;
-}): Record<string, string> | undefined {
-	const patch = buildKernelEnvPatch(options);
-	const keys = Object.keys(patch);
-	if (keys.length === 0) return undefined;
-	const realEnv: Record<string, string> = {};
-	for (const key in patch) {
-		const val = patch[key];
-		if (typeof val === "string") realEnv[key] = val;
-	}
-	return realEnv;
-}
-
-async function startKernel(cwd: string, options: JuliaExecutorOptions): Promise<JuliaKernel> {
-	const env: Record<string, string | undefined> = {};
-	const patch = buildKernelEnv(options);
-	if (patch) {
-		for (const key in patch) {
-			const value = patch[key];
-			if (typeof value === "string") env[key] = value;
-		}
-	}
-	return await JuliaKernel.start({
-		cwd,
-		interpreter: options.interpreter,
-		env,
-		signal: options.signal,
-		deadlineMs: options.deadlineMs,
-		adoptPid: sessionCpuAdoption(() => options.toolSession?.getSessionId?.() ?? null),
-	});
-}
-
 const driver = createKernelExecutionDriver<JuliaExecutorOptions, JuliaKernel>({
 	languageName: "Julia",
 	logLabel: "julia",
 	runIdPrefix: "jl",
 	disposerName: "julia-kernels",
 	cancelledErrorClass: JuliaExecutionCancelledError,
-	startKernel,
+	kernelClass: JuliaKernel,
 	checkKernelAvailability: checkJuliaKernelAvailability,
 	resolveInterpreterPath: (interpreter, cwd) => resolveExplicitJuliaRuntime(interpreter, cwd, {}).juliaPath,
-	buildKernelEnvPatch,
 	formatKernelTimeoutAnnotation,
 	formatTimeoutAnnotation,
 	createCancelledResult: createCancelledJuliaResult,

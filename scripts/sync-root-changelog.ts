@@ -163,7 +163,7 @@ export function orphanedRootEntries(currentRoot: string, expectedRoot: string): 
  * CLI and nothing else: `release.ts` wrote the same file with a bare
  * `Bun.write(buildRootChangelog())` one line after the changelog roll. That is
  * the worst place to lose the check, because an entry the release deletes is
- * gone by the time the tag, the npm packages and the GitHub release have already
+ * gone by the time the tag and the GitHub release have already
  * shipped under a changelog that never mentioned it.
  *
  * `rootPath` exists so a test can drive the refusal against a real file and

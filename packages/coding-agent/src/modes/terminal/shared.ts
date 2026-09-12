@@ -5,7 +5,7 @@ import { hoverBand, theme } from "../../theme/theme";
 // Tab Bar Theme
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Shared tab bar theme used by fullscreen overlays (settings, the subagent dashboard). */
+/** Shared tab bar theme used by fullscreen overlays (settings, the agent dashboard). */
 export function getTabBarTheme(): TabBarTheme {
 	return {
 		label: (text: string) => theme.bold(theme.fg("accent", text)),
@@ -35,5 +35,4 @@ export function interruptHint(): string {
 	return ` ${theme.format.bracketLeft}esc${theme.format.bracketRight}`;
 }
 
-export { sanitizeStatusText, sanitizeStyledStatusText } from "@veyyon/utils/sanitize-status-text";
 export { parseCommandArgs } from "../../utils/command-args";

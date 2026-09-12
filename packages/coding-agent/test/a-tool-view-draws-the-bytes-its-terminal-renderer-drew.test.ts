@@ -79,8 +79,8 @@ import type { ThemeColor } from "@veyyon/coding-agent/theme/color";
 import { UNICODE_SYMBOLS } from "@veyyon/coding-agent/theme/symbols";
 import { initTheme, type Theme as TerminalTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
-import { replaceTabs } from "@veyyon/utils/wrap";
 import type { LineToolView, ToolView, ViewStatus, ViewTone } from "@veyyon/view";
 import { createToolExecution } from "./helpers/tool-execution";
 

@@ -3,6 +3,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import {
+	captureRegistryForTests,
+	initializeWithSettings,
+	restoreRegistryForTests,
+} from "@veyyon/coding-agent/discovery/capability";
 import { preloadPluginRoots } from "@veyyon/coding-agent/discovery/helpers";
 import { LspTool } from "@veyyon/coding-agent/lsp";
 import * as lspClient from "@veyyon/coding-agent/lsp/client";
@@ -1478,7 +1484,11 @@ describe("lsp regressions", () => {
 		expect(detectLanguageId(emacsPath)).toBe("emacs-lisp");
 	});
 
-	it("loads config-only marketplace LSP servers from Claude plugin cache", async () => {
+	it("loads config-only marketplace LSP servers from the Claude plugin cache once foreign import is on", async () => {
+		// `~/.claude/plugins/installed_plugins.json` is Claude Code's configuration, read only under
+		// `discovery.importForeignConfig`; the row states the opt-in and restores the registry after.
+		const registrySnapshot = captureRegistryForTests();
+		initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true }));
 		const tempDir = TempDir.createSync("@veyyon-lsp-marketplace-config-");
 		const home = path.join(tempDir.path(), "home");
 		const cwd = path.join(tempDir.path(), "repo");
@@ -1560,6 +1570,7 @@ describe("lsp regressions", () => {
 			expect(whichSpy).toHaveBeenCalledWith("csharp-ls");
 		} finally {
 			await preloadPluginRoots(path.join(tempDir.path(), "empty-home"), cwd);
+			restoreRegistryForTests(registrySnapshot);
 			tempDir.removeSync();
 		}
 	});

@@ -3,8 +3,8 @@ import { logger } from "@veyyon/utils";
 import type { ModelRegistry } from "../../../config/model-registry";
 import type { Settings } from "../../../config/settings";
 import type { CustomTool } from "../../../extensibility/custom-tools/types";
+import { preferredAgentName, resolveEnabledAgents } from "../../../task/agent-settings";
 import { loadBundledAgents } from "../../../task/agents";
-import { preferredSubagentName, resolveEnabledSubagents } from "../../../task/subagent-settings";
 import type { CommitAgentState } from "../state";
 import { createAnalyzeFileTool } from "./analyze-file";
 import { createGitFileDiffTool } from "./git-file-diff";
@@ -66,8 +66,8 @@ const COMMIT_ANALYSIS_PREFERRED_AGENT = "sonic";
  * separate, benchmarked change rather than smuggled in here.
  */
 export function commitAnalysisSpawnTarget(settings: Settings): string | undefined {
-	const catalog = resolveEnabledSubagents({ settings, agents: loadBundledAgents() });
-	return preferredSubagentName(
+	const catalog = resolveEnabledAgents({ settings, agents: loadBundledAgents() });
+	return preferredAgentName(
 		catalog.agents.map(agent => agent.name),
 		COMMIT_ANALYSIS_PREFERRED_AGENT,
 	);
@@ -90,7 +90,7 @@ export function createCommitTools(options: CommitToolOptions): Array<CustomTool<
 			// hunks, which is a real answer rather than an empty one. The log line
 			// is the only place an operator can learn why their analysis stopped
 			// happening, since a missing tool leaves no other trace.
-			logger.warn("Commit agent: file analysis unavailable, no subagent is enabled", {
+			logger.warn("Commit agent: file analysis unavailable, no agent is enabled", {
 				preferred: COMMIT_ANALYSIS_PREFERRED_AGENT,
 			});
 		} else {

@@ -80,6 +80,20 @@ describe("release metadata rewriting", () => {
 		);
 	});
 
+	/**
+	 * A literal `@veyyon/*` peer pin names the version the workspace resolves; left at the old
+	 * version, the bump commit fails the catalog-pins gate and `bun install` reaches for the
+	 * registry. `catalog:`, `workspace:*` and third-party ranges are not versions to move.
+	 */
+	it("moves a literal workspace peer pin with the manifest version and nothing else", () => {
+		const before =
+			'{\n  "name": "@veyyon/plugin-x",\n  "version": "1.2.3",\n  "dependencies": { "@veyyon/utils": "catalog:", "@veyyon/wire": "workspace:*", "zod": "1.2.3" },\n  "peerDependencies": { "@veyyon/coding-agent": "1.2.3", "react": "19.2.7" }\n}\n';
+
+		expect(rewritePackageVersion(before, "1.2.4")).toBe(
+			'{\n  "name": "@veyyon/plugin-x",\n  "version": "1.2.4",\n  "dependencies": { "@veyyon/utils": "catalog:", "@veyyon/wire": "workspace:*", "zod": "1.2.3" },\n  "peerDependencies": { "@veyyon/coding-agent": "1.2.4", "react": "19.2.7" }\n}\n',
+		);
+	});
+
 	/** A malformed public manifest must stop a cut instead of silently retaining its old version. */
 	it("refuses a package manifest without a version", () => {
 		expect(() => rewritePackageVersion('{"name":"@veyyon/broken"}', "1.2.4")).toThrow(

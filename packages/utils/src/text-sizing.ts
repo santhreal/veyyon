@@ -19,30 +19,11 @@ export interface TextSizingOptions {
 const OSC66_UNSAFE = /[\x00-\x1f\x7f-\x9f]/u;
 const OSC66_UNSAFE_GLOBAL = /[\x00-\x1f\x7f-\x9f]/gu;
 
-function textSizingVerticalAlignValue(align: TextSizingVerticalAlign | undefined): number | undefined {
-	switch (align) {
-		case "top":
-			return 0;
-		case "bottom":
-			return 1;
-		case "center":
-			return 2;
-		default:
-			return undefined;
-	}
-}
-
-function textSizingHorizontalAlignValue(align: TextSizingHorizontalAlign | undefined): number | undefined {
-	switch (align) {
-		case "left":
-			return 0;
-		case "right":
-			return 1;
-		case "center":
-			return 2;
-		default:
-			return undefined;
-	}
+function alignValue<T extends string>(align: T | undefined, start: T, end: T): number | undefined {
+	if (align === start) return 0;
+	if (align === end) return 1;
+	if (align === "center") return 2;
+	return undefined;
 }
 
 /**
@@ -56,9 +37,9 @@ export function encodeTextSized(text: string, options: TextSizingOptions = {}): 
 	if (options.widthCells !== undefined && Number.isFinite(options.widthCells)) {
 		metadata.push(`w=${Math.max(0, Math.trunc(options.widthCells))}`);
 	}
-	const verticalAlign = textSizingVerticalAlignValue(options.verticalAlign);
+	const verticalAlign = alignValue(options.verticalAlign, "top", "bottom");
 	if (verticalAlign !== undefined) metadata.push(`v=${verticalAlign}`);
-	const horizontalAlign = textSizingHorizontalAlignValue(options.horizontalAlign);
+	const horizontalAlign = alignValue(options.horizontalAlign, "left", "right");
 	if (horizontalAlign !== undefined) metadata.push(`h=${horizontalAlign}`);
 
 	const safeText = OSC66_UNSAFE.test(text) ? text.replace(OSC66_UNSAFE_GLOBAL, " ") : text;

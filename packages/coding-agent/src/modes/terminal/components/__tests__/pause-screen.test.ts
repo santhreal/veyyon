@@ -61,7 +61,7 @@ describe("pause screen", () => {
 			expect(lines.length).toBe(24);
 			const text = lines.map(stripAnsi).join("\n");
 			expect(text).toContain("P A U S E D");
-			expect(text).toContain("Main agent, subagents, and advisor");
+			expect(text).toContain("Main agent, spawned agents, and advisor");
 			expect(text).toContain("paused for 1:05");
 			// The hint names the click since the pointer resumes too (see the pointer suite below).
 			expect(text).toContain("esc · enter · space · click — resume");

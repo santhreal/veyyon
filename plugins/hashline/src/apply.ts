@@ -354,8 +354,7 @@ function balanceSum(a: DelimiterBalance, b: DelimiterBalance): DelimiterBalance 
 }
 
 function balanceComponentCovers(candidate: number, target: number): boolean {
-	if (target === 0) return true;
-	return candidate > 0 === target > 0 && Math.abs(candidate) >= Math.abs(target);
+	return target === 0 || (candidate > 0 === target > 0 && Math.abs(candidate) >= Math.abs(target));
 }
 
 function balanceCovers(candidate: DelimiterBalance, target: DelimiterBalance): boolean {
@@ -1291,7 +1290,13 @@ export function applyEdits(text: string, edits: readonly Edit[]): ApplyResult {
 	const { edits: landed, warnings: landingWarnings } = repairAfterInsertLandings(repaired, fileLines);
 	const warnings = boundaryWarnings.concat(landingWarnings);
 
-	// Partition edits into bof, eof, and anchor-targeted buckets.
+	// Partition edits into bof, eof, and anchor-targeted buckets. An after-insert
+	// anchored on the trailing phantom line ("" sentinel of a newline-terminated
+	// file) is an append: the rebuild loop would otherwise emit the sentinel as a
+	// real empty line and leave the new last line unterminated, so it joins the
+	// eof bucket and lands like `insert tail:`. (A replacement insert is always
+	// `before_anchor`, so none reaches this branch.)
+	const phantomLine = trailingPhantomLine(fileLines);
 	const bofLines: string[] = [];
 	const eofLines: string[] = [];
 	const anchorEdits: IndexedEdit[] = [];
@@ -1299,6 +1304,12 @@ export function applyEdits(text: string, edits: readonly Edit[]): ApplyResult {
 		if (edit.kind === "insert" && edit.cursor.kind === "bof") {
 			bofLines.push(edit.text);
 		} else if (edit.kind === "insert" && edit.cursor.kind === "eof") {
+			eofLines.push(edit.text);
+		} else if (
+			edit.kind === "insert" &&
+			edit.cursor.kind === "after_anchor" &&
+			edit.cursor.anchor.line === phantomLine
+		) {
 			eofLines.push(edit.text);
 		} else {
 			anchorEdits.push({ edit, idx });

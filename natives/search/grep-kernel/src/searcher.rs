@@ -125,6 +125,46 @@ pub fn build_searcher(spec: SearcherSpec) -> Searcher {
 	builder.build()
 }
 
+/// How binary data is treated during search.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BinaryMode {
+	Automatic,
+	Explicit,
+}
+
+/// Compute the appropriate [`BinaryDetection`] setting for ripgrep search.
+#[must_use]
+pub fn binary_detection(
+	text_or_null: bool,
+	binary: bool,
+	unrestricted_binary: bool,
+	mode: BinaryMode,
+) -> BinaryDetection {
+	if text_or_null {
+		return BinaryDetection::none();
+	}
+	if binary || unrestricted_binary || matches!(mode, BinaryMode::Explicit) {
+		BinaryDetection::convert(b'\0')
+	} else {
+		BinaryDetection::quit(b'\0')
+	}
+}
+
+/// Resolve (before, after) context line counts from optional flags.
+#[must_use]
+pub fn resolve_context(
+	context: Option<u32>,
+	context_before: Option<u32>,
+	context_after: Option<u32>,
+) -> (u32, u32) {
+	if context_before.is_some() || context_after.is_some() {
+		(context_before.unwrap_or(0), context_after.unwrap_or(0))
+	} else {
+		let value = context.unwrap_or(0);
+		(value, value)
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use grep_regex::RegexMatcherBuilder;

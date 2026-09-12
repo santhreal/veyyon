@@ -139,13 +139,13 @@ describe("settings migrations are fixed points", () => {
 	/**
 	 * A boolean-to-enum migration must not re-fire on the enum it produced, and
 	 * the key it lands on moved too: `task.eager` (boolean, then a three-value
-	 * enum) is now `subagent.delegation`, whose scale adds `off` at the bottom.
+	 * enum) is now `agent.delegation`, whose scale adds `off` at the bottom.
 	 * The legacy `true` meant the strongest push, which is `required`.
 	 */
-	test("maps a boolean task.eager onto subagent.delegation once", async () => {
+	test("maps a boolean task.eager onto agent.delegation once", async () => {
 		writeConfig({ task: { eager: true } });
 
-		const { first, second } = await loadTwice("subagent.delegation");
+		const { first, second } = await loadTwice("agent.delegation");
 
 		expect(first).toBe("required");
 		expect(second).toBe("required");
@@ -158,7 +158,7 @@ describe("settings migrations are fixed points", () => {
 	test("maps the enum form of task.eager onto the matching delegation strength", async () => {
 		writeConfig({ task: { eager: "preferred" } });
 
-		const { first, second } = await loadTwice("subagent.delegation");
+		const { first, second } = await loadTwice("agent.delegation");
 
 		expect(first).toBe("preferred");
 		expect(second).toBe("preferred");
@@ -172,7 +172,7 @@ describe("settings migrations are fixed points", () => {
 	test("maps a legacy isolation mode once", async () => {
 		writeConfig({ task: { isolation: { mode: "worktree" } } });
 
-		const { first, second } = await loadTwice("subagent.isolation.mode");
+		const { first, second } = await loadTwice("agent.isolation.mode");
 
 		expect(first).toBe("rcopy");
 		expect(second).toBe("rcopy");
@@ -186,7 +186,7 @@ describe("settings migrations are fixed points", () => {
 	test("maps task.isolation.enabled to a mode once", async () => {
 		writeConfig({ task: { isolation: { enabled: true } } });
 
-		const { first, second } = await loadTwice("subagent.isolation.mode");
+		const { first, second } = await loadTwice("agent.isolation.mode");
 
 		expect(first).toBe("auto");
 		expect(second).toBe("auto");

@@ -325,7 +325,7 @@ describe("boundReleaseNotesBody", () => {
 	 * draft with HTTP 422. The bounded body keeps only complete entries and names
 	 * the immutable sources for every omitted detail.
 	 */
-	it("shortens an oversized body only at a complete bullet boundary", () => {
+	it("shortens an oversized body only at a complete bullet boundary and links to the aggregate CHANGELOG.md", () => {
 		const entries = Array.from(
 			{ length: 40 },
 			(_, index) => `- Entry ${index}: ${"x".repeat(80)}\n  continuation-${index}.`,
@@ -342,7 +342,10 @@ describe("boundReleaseNotesBody", () => {
 		for (const index of included) expect(prefix).toContain(`continuation-${index}.`);
 		expect(prefix).toMatch(/continuation-\d+\.$/);
 		expect(bounded).toContain("shortened from");
-		expect(bounded).toContain("/tree/v1.0.38/packages");
+		expect(bounded).toContain("/blob/v1.0.38/CHANGELOG.md");
+		expect(bounded).toContain(
+			"Read the [complete changelog](https://github.com/santhreal/veyyon/blob/v1.0.38/CHANGELOG.md)",
+		);
 		expect(bounded).toContain("/compare/v1.0.37...v1.0.38");
 	});
 
@@ -354,7 +357,30 @@ describe("boundReleaseNotesBody", () => {
 
 		expect(bounded.length).toBeLessThanOrEqual(600);
 		expect(bounded).not.toContain("secret-detail");
+		expect(bounded).toContain("/blob/v1.0.38/CHANGELOG.md");
 		expect(bounded).toContain("/commits/v1.0.38");
+	});
+
+	/** Trailing orphaned headings are stripped when none of their bullets fit within the budget. */
+	it("prunes trailing section headers when no bullets from that section fit", () => {
+		const body =
+			"## @veyyon/coding-agent\n\n### Fixed\n\n- Main bullet.\n\n## @veyyon/orphaned\n\n### Added\n\n- Big bullet that does not fit " +
+			"x".repeat(300);
+		const bounded = boundReleaseNotesBody(body, { version: "1.0.38", floor: "1.0.37", maxChars: 400 });
+
+		expect(bounded.length).toBeLessThanOrEqual(400);
+		expect(bounded).toContain("- Main bullet.");
+		expect(bounded).not.toContain("## @veyyon/orphaned");
+		expect(bounded).not.toContain("### Added");
+		expect(bounded).toContain("/blob/v1.0.38/CHANGELOG.md");
+	});
+
+	/** Budgets smaller than the notice itself fail loud rather than producing negative budgets or overflow. */
+	it("rejects maxChars budgets too small to contain the truncation notice", () => {
+		const body = "- Entry exceeding the available body budget.\n".repeat(3);
+		expect(() => boundReleaseNotesBody(body, { version: "1.0.38", floor: null, maxChars: 50 })).toThrow(
+			"too small for the",
+		);
 	});
 });
 

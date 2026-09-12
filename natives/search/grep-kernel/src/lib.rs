@@ -60,15 +60,22 @@
 //! and sharing the type does not force either engine to change which one it
 //! makes.
 
-mod searcher;
+pub mod cli;
+pub mod matcher;
+pub mod searcher;
+pub mod sink;
+pub mod types;
 
 use std::fmt;
 
+pub use cli::*;
 use grep_matcher::{Match, Matcher, NoCaptures, NoError};
 use grep_pcre2::{RegexMatcher as PcreMatcher, RegexMatcherBuilder as PcreMatcherBuilder};
 use grep_regex::RegexMatcher;
-pub use searcher::{SearcherSpec, build_searcher};
-
+pub use matcher::*;
+pub use searcher::*;
+pub use sink::*;
+pub use types::*;
 /// A pattern that has been compiled, on whichever engine accepted it.
 ///
 /// The variants are public because a caller that knows it will search many
@@ -166,6 +173,12 @@ pub enum MatcherEngine {
 /// tell which of its flags this function had already decided for it.
 pub fn pcre_matcher_defaults(builder: &mut PcreMatcherBuilder) -> &mut PcreMatcherBuilder {
 	builder.utf(true).ucp(true).jit_if_available(true)
+}
+
+pub fn pcre_matcher_override_no_unicode(
+	builder: &mut PcreMatcherBuilder,
+) -> &mut PcreMatcherBuilder {
+	builder.utf(false).ucp(false)
 }
 
 /// Escape a pattern so it matches its own bytes: the one owner of literal

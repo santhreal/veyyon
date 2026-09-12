@@ -672,10 +672,8 @@ function resolveModelRefs(availability: GitLabDuoWorkflowAvailability): readonly
 	return availability.defaultModel ? [availability.defaultModel] : [];
 }
 
-function extractExplicitRootNamespaceId(value: unknown): string | null {
-	if (!isRecord(value)) {
-		return null;
-	}
+/** The root namespace id a record declares directly or through its root namespace/ancestor record. */
+function declaredRootNamespaceId(value: Record<string, unknown>): string | null {
 	const direct = normalizeIdentifier(value.root_namespace_id) ?? normalizeIdentifier(value.rootNamespaceId);
 	if (direct) {
 		return direct;
@@ -685,12 +683,20 @@ function extractExplicitRootNamespaceId(value: unknown): string | null {
 		getRecord(value.rootNamespace, "") ??
 		getRecord(value.root_ancestor, "") ??
 		getRecord(value.rootAncestor, "");
-	if (rootNamespace) {
-		return (
-			normalizeIdentifier(rootNamespace.id) ??
-			normalizeIdentifier(rootNamespace.full_path) ??
-			normalizeIdentifier(rootNamespace.fullPath)
-		);
+	return rootNamespace
+		? (normalizeIdentifier(rootNamespace.id) ??
+				normalizeIdentifier(rootNamespace.full_path) ??
+				normalizeIdentifier(rootNamespace.fullPath))
+		: null;
+}
+
+function extractExplicitRootNamespaceId(value: unknown): string | null {
+	if (!isRecord(value)) {
+		return null;
+	}
+	const declared = declaredRootNamespaceId(value);
+	if (declared) {
+		return declared;
 	}
 	const namespace = getRecord(value.namespace, "");
 	return namespace ? extractExplicitRootNamespaceId(namespace) : null;
@@ -700,20 +706,7 @@ function extractRootNamespaceId(value: unknown): string | null {
 	if (!isRecord(value)) {
 		return null;
 	}
-	const direct = normalizeIdentifier(value.root_namespace_id) ?? normalizeIdentifier(value.rootNamespaceId);
-	if (direct) {
-		return direct;
-	}
-	const rootNamespace =
-		getRecord(value.root_namespace, "") ??
-		getRecord(value.rootNamespace, "") ??
-		getRecord(value.root_ancestor, "") ??
-		getRecord(value.rootAncestor, "");
-	const nestedRoot = rootNamespace
-		? (normalizeIdentifier(rootNamespace.id) ??
-			normalizeIdentifier(rootNamespace.full_path) ??
-			normalizeIdentifier(rootNamespace.fullPath))
-		: null;
+	const nestedRoot = declaredRootNamespaceId(value);
 	if (nestedRoot) {
 		return nestedRoot;
 	}

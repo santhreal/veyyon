@@ -55,10 +55,10 @@ export function toExecutorBackendResult(result: {
 
 export interface CreateKernelBackendOptions<TOptions extends KernelExecutorBaseOptions> {
 	id: EvalLanguage;
-	label: string;
-	highlightLang: string;
-	settingPrefix: string;
-	sessionPrefix: string;
+	label?: string;
+	highlightLang?: string;
+	settingPrefix?: string;
+	sessionPrefix?: string;
 	checkAvailability: (cwd: string, interpreter?: string) => Promise<{ ok: boolean }>;
 	execute: (code: string, options: TOptions) => Promise<KernelExecutionResult>;
 }
@@ -66,7 +66,12 @@ export interface CreateKernelBackendOptions<TOptions extends KernelExecutorBaseO
 export function createKernelBackend<TOptions extends KernelExecutorBaseOptions>(
 	config: CreateKernelBackendOptions<TOptions>,
 ): ExecutorBackend {
-	const { id, label, highlightLang, settingPrefix, sessionPrefix, checkAvailability, execute } = config;
+	const id = config.id;
+	const label = config.label ?? id.charAt(0).toUpperCase() + id.slice(1);
+	const highlightLang = config.highlightLang ?? id;
+	const settingPrefix = config.settingPrefix ?? id;
+	const sessionPrefix = config.sessionPrefix ?? `${id}:`;
+	const { checkAvailability, execute } = config;
 	return {
 		id,
 		label,

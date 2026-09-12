@@ -239,14 +239,16 @@ export async function readDisabledServers(filePath: string): Promise<string[]> {
 	return Array.isArray(config.disabledServers) ? config.disabledServers : [];
 }
 
-/**
- * Add or remove a server name from the disabled servers list.
- */
-export async function setServerDisabled(filePath: string, name: string, disabled: boolean): Promise<void> {
+async function mutateServerToggleList(
+	filePath: string,
+	key: "disabledServers" | "enabledServers",
+	name: string,
+	present: boolean,
+): Promise<void> {
 	await mutateMCPConfigFile(filePath, config => {
-		const current = new Set(config.disabledServers ?? []);
+		const current = new Set(config[key] ?? []);
 
-		if (disabled) {
+		if (present) {
 			current.add(name);
 		} else {
 			current.delete(name);
@@ -254,15 +256,22 @@ export async function setServerDisabled(filePath: string, name: string, disabled
 
 		const updated: MCPConfigFile = {
 			...config,
-			disabledServers: current.size > 0 ? Array.from(current).sort() : undefined,
+			[key]: current.size > 0 ? Array.from(current).sort() : undefined,
 		};
 
-		if (!updated.disabledServers) {
-			delete updated.disabledServers;
+		if (!updated[key]) {
+			delete updated[key];
 		}
 
 		return updated;
 	});
+}
+
+/**
+ * Add or remove a server name from the disabled servers list.
+ */
+export async function setServerDisabled(filePath: string, name: string, disabled: boolean): Promise<void> {
+	return mutateServerToggleList(filePath, "disabledServers", name, disabled);
 }
 
 /**
@@ -280,26 +289,7 @@ export async function readEnabledServers(filePath: string): Promise<string[]> {
  * NOT override the `disabledServers` denylist.
  */
 export async function setServerForceEnabled(filePath: string, name: string, force: boolean): Promise<void> {
-	await mutateMCPConfigFile(filePath, config => {
-		const current = new Set(config.enabledServers ?? []);
-
-		if (force) {
-			current.add(name);
-		} else {
-			current.delete(name);
-		}
-
-		const updated: MCPConfigFile = {
-			...config,
-			enabledServers: current.size > 0 ? Array.from(current).sort() : undefined,
-		};
-
-		if (!updated.enabledServers) {
-			delete updated.enabledServers;
-		}
-
-		return updated;
-	});
+	return mutateServerToggleList(filePath, "enabledServers", name, force);
 }
 
 /** Paths and target state for toggling one MCP server across known config files. */

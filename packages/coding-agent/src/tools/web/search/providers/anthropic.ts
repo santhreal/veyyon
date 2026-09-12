@@ -4,21 +4,22 @@
  * Uses Claude's built-in web_search_20250305 tool to search the web.
  * Returns synthesized answers with citations and source metadata.
  */
+import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
+import { withAuth } from "@veyyon/ai/auth-retry";
 import {
-	type AnthropicAuthConfig,
 	type AnthropicSystemBlock,
-	type ApiKey,
-	type AuthStorage,
-	buildAnthropicAuthConfig,
-	buildAnthropicSearchHeaders,
 	buildAnthropicSystemBlocks,
-	buildAnthropicUrl,
-	type FetchImpl,
 	resolveAnthropicMetadataUserId,
 	stripClaudeToolPrefix,
-	withAuth,
 	wrapFetchForCch,
-} from "@veyyon/ai";
+} from "@veyyon/ai/providers/anthropic";
+import "@veyyon/ai/usage/defaults";
+import {
+	type AnthropicAuthConfig,
+	buildAnthropicAuthConfig,
+	buildAnthropicSearchHeaders,
+	buildAnthropicUrl,
+} from "@veyyon/ai/utils/anthropic-auth";
 import { ANTHROPIC_WEB_SEARCH_TOOL } from "@veyyon/catalog/wire/anthropic";
 import { $env } from "@veyyon/utils";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
@@ -28,11 +29,10 @@ import {
 	transformProviderPayload,
 } from "../../../../provider-boundary";
 import type { AnthropicApiResponse, AnthropicCitation, SearchCitation, SearchResponse, SearchSource } from "../types";
-import { SearchProviderError } from "../types";
 import { applyResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { classifyProviderHttpError } from "./utils";
+import { handleProviderHttpError } from "./utils";
 
 const DEFAULT_MODEL = "claude-haiku-4-5";
 const DEFAULT_MAX_TOKENS = 4096;
@@ -145,10 +145,7 @@ async function callSearch(
 		});
 
 		if (!response.ok) {
-			const errorText = await response.text();
-			const classified = classifyProviderHttpError("anthropic", response.status, errorText);
-			if (classified) throw classified;
-			throw new SearchProviderError("anthropic", `Anthropic API error (${response.status}).`, response.status);
+			await handleProviderHttpError("anthropic", response, `Anthropic API error (${response.status}).`);
 		}
 
 		return response.json() as Promise<AnthropicApiResponse>;

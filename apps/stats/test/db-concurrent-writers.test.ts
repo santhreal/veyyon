@@ -9,7 +9,7 @@ import { installStatsTestIsolation } from "./helpers/temp-agent";
  * Several veyyon processes write to one stats database at once.
  *
  * `stats.db` is per-user, not per-session, so every concurrent session, every
- * subagent, and every `veyyon stats` run writes to the SAME file. SQLite takes a
+ * spawned agent, and every `veyyon stats` run writes to the SAME file. SQLite takes a
  * whole-database write lock, so this is the one place in veyyon where ordinary
  * use produces genuine multi-process write contention.
  *

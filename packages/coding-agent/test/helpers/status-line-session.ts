@@ -23,6 +23,8 @@
  */
 import type { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { StatusDataSource } from "@veyyon/wire/presentation";
+import { StatusPresentationProducer } from "../../src/presentation/status-producer";
 
 const CONTEXT_WINDOW = 128_000;
 
@@ -175,4 +177,14 @@ export function statusLineSessionParts(options: StubSessionOptions = {}): Record
 /** The stub as an `AgentSession`, which is what a component constructor takes. */
 export function makeStatusLineSession(options: StubSessionOptions = {}): AgentSession {
 	return statusLineSessionParts(options) as unknown as AgentSession;
+}
+
+/** Create a StatusPresentationProducer for tests from stub session options. */
+export function makeStatusLineProducer(options: StubSessionOptions = {}): StatusPresentationProducer {
+	return new StatusPresentationProducer(makeStatusLineSession(options));
+}
+
+/** Create a StatusDataSource for tests from stub session options. */
+export function makeStatusLineSource(options: StubSessionOptions = {}): StatusDataSource {
+	return makeStatusLineProducer(options);
 }

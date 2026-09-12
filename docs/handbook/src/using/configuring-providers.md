@@ -2,7 +2,7 @@
 
 Copy-paste setups for bring-your-own-key (BYOK) and local providers.
 Once a provider works, see [Models and providers](../reference/models-yml.md) to choose and switch models.
-For what the harness owns versus what the provider owns, see
+For harness responsibilities versus provider responsibilities, see
 [Model contract](../concepts/model-contract.md).
 
 Custom providers live under `providers:` in `~/.veyyon/profiles/default/agent/models.yml`. Keys are resolved from the

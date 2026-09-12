@@ -5,72 +5,21 @@
 //! details; this backend only validates paths, invokes it without a shell, and
 //! removes the snapshot on [`stop`](IsolationBackend::stop).
 
-use std::path::Path;
-
-use async_trait::async_trait;
-
-#[cfg(not(target_os = "linux"))]
-use crate::IsoError;
-use crate::{BackendKind, IsoResult, IsolationBackend, ProbeResult};
-
-pub struct BtrfsBackend;
-
-pub fn backend() -> &'static dyn IsolationBackend {
-	&BtrfsBackend
-}
-
-#[async_trait]
-impl IsolationBackend for BtrfsBackend {
-	fn kind(&self) -> BackendKind {
-		BackendKind::Btrfs
-	}
-
-	fn probe(&self) -> ProbeResult {
-		#[cfg(target_os = "linux")]
-		{
-			imp::probe()
-		}
-		#[cfg(not(target_os = "linux"))]
-		{
-			ProbeResult::unavailable("btrfs snapshot isolation is only available on Linux")
-		}
-	}
-
-	fn start(&self, lower: &Path, merged: &Path) -> IsoResult<()> {
-		#[cfg(target_os = "linux")]
-		{
-			imp::start(lower, merged)
-		}
-		#[cfg(not(target_os = "linux"))]
-		{
-			let _ = (lower, merged);
-			Err(IsoError::unavailable("btrfs snapshot isolation is only available on Linux"))
-		}
-	}
-
-	fn stop(&self, merged: &Path) -> IsoResult<()> {
-		#[cfg(target_os = "linux")]
-		{
-			imp::stop(merged)
-		}
-		#[cfg(not(target_os = "linux"))]
-		{
-			let _ = merged;
-			Ok(())
-		}
-	}
-}
-
+declare_backend!(
+	BtrfsBackend,
+	Btrfs,
+	"btrfs snapshot isolation is only available on Linux",
+	target_os = "linux"
+);
 #[cfg(target_os = "linux")]
 mod imp {
 	use std::{
 		fs,
-		path::{Path, PathBuf},
+		path::Path,
 		process::{Command, Stdio},
 	};
 
-	use crate::{IsoError, IsoResult, ProbeResult};
-
+	use crate::{IsoError, IsoResult, ProbeResult, canonical_existing_dir};
 	pub fn probe() -> ProbeResult {
 		match Command::new("btrfs")
 			.arg("version")
@@ -92,7 +41,7 @@ mod imp {
 	}
 
 	pub fn start(lower: &Path, merged: &Path) -> IsoResult<()> {
-		let lower = canonical_existing_dir(lower)?;
+		let lower = canonical_existing_dir(lower, "btrfs snapshot")?;
 		prepare_destination(merged)?;
 
 		let output = Command::new("btrfs")
@@ -134,24 +83,6 @@ mod imp {
 
 	pub fn stop(merged: &Path) -> IsoResult<()> {
 		delete_subvolume_or_tree(merged)
-	}
-
-	fn canonical_existing_dir(path: &Path) -> IsoResult<PathBuf> {
-		let resolved = if path.is_absolute() {
-			path.to_path_buf()
-		} else {
-			std::env::current_dir().map_or_else(|_| path.to_path_buf(), |cwd| cwd.join(path))
-		};
-		let meta = fs::metadata(&resolved).map_err(|err| {
-			IsoError::other(format!("invalid btrfs snapshot source {}: {err}", resolved.display()))
-		})?;
-		if !meta.is_dir() {
-			return Err(IsoError::other(format!(
-				"btrfs snapshot source {} is not a directory",
-				resolved.display()
-			)));
-		}
-		Ok(fs::canonicalize(&resolved).unwrap_or(resolved))
 	}
 
 	fn prepare_destination(merged: &Path) -> IsoResult<()> {

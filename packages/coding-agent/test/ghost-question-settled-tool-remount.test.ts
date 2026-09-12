@@ -21,7 +21,7 @@
  * `!record.started` branch and `createAbortedToolResult`, Cursor's three
  * exec-channel emitters, the ACP replay, the collab relay, the RPC forwarder),
  * plus `message_start`+`message_update` resynthesis on collab resync and
- * subagent focus re-attach. The UI is the single consumer of all of them, so
+ * agent focus re-attach. The UI is the single consumer of all of them, so
  * idempotence is the UI's job.
  *
  * THE INVARIANT THESE TESTS DEFEND, at the choke point every case crosses:
@@ -29,6 +29,7 @@
  *   Once a tool call's transcript card is FINAL — a result landed, or the card
  *   was sealed at turn end — no render path may ever create another card for
  *   that toolCallId.
+ * Clearing presentation rows retains this ledger; rebuilding session history resets it.
  *
  * Two axes are enumerated from source so a NEW member turns this suite red
  * rather than sliding through:
@@ -155,7 +156,7 @@ const MOUNT_RISK = {
 /**
  * The replay each `can-mount` event needs to actually reach its mount site.
  * `message_update` is preceded by `message_start` because that is exactly how a
- * collab resync and a subagent focus re-attach resynthesize an orphaned delta —
+ * collab resync and an agent focus re-attach resynthesize an orphaned delta —
  * without the re-opened stream the controller has no `streamingMessage` to walk.
  */
 function replayFor(kind: keyof typeof MOUNT_RISK, toolName: string): AgentSessionEvent[] {
@@ -218,6 +219,8 @@ const CONTROLLER_ENTRY_POINTS = {
 
 const HELPER_ENTRY_POINTS = {
 	constructor: "not-an-entry-point",
+	// Returns the existing projection port; reading the accessor mounts no card.
+	transcript: "inert",
 	renderSessionContext: "mounts-tool-cards",
 	renderInitialMessages: "mounts-tool-cards",
 	// Asserted inert below rather than assumed: its `toolResult` case is a
@@ -436,11 +439,17 @@ describe("a settled tool call can never re-mount as a live card", () => {
 	//    it carries explicit handling for an `agent_end` that lands after the
 	//    NEXT turn's `agent_start`. Any ledger scoped to the turn rather than to
 	//    the transcript looks correct until this phase.
-	for (const phase of ["mid-turn", "after-turn-end", "next-turn"] as const) {
+	for (const phase of [
+		"mid-turn",
+		"after-turn-end",
+		"next-turn",
+		"after-presentation-clear",
+		"after-presentation-replace",
+	] as const) {
 		for (const toolName of Object.keys(toolRenderers)) {
 			for (const kind of REPLAYABLE) {
 				it(`freezes the '${toolName}' card when a settled call is re-announced by ${kind} (${phase})`, async () => {
-					const { chatContainer, controller, session } = createFixture();
+					const { chatContainer, controller, session, helpers } = createFixture();
 					await runToCompletion(controller, toolName);
 					if (phase !== "mid-turn") {
 						session.isStreaming = false;
@@ -450,8 +459,12 @@ describe("a settled tool call can never re-mount as a live card", () => {
 						session.isStreaming = true;
 						await controller.handleEvent({ type: "agent_start" } as unknown as AgentSessionEvent);
 					}
+					// Removing visible rows must not reopen completed calls to stale events.
+					const cleared = phase === "after-presentation-clear" || phase === "after-presentation-replace";
+					if (phase === "after-presentation-clear") helpers.transcript.clearTranscript();
+					if (phase === "after-presentation-replace") helpers.transcript.setTranscriptBlocks([]);
 					const before = toolCardBytes(chatContainer);
-					expect(before.length).toBe(1);
+					expect(before.length).toBe(cleared ? 0 : 1);
 
 					for (const event of replayFor(kind, toolName)) await controller.handleEvent(event);
 
@@ -474,6 +487,36 @@ describe("a settled tool call can never re-mount as a live card", () => {
 	// inertness is the safe reading — the alternative is a spinner wired to a
 	// call that already finished.
 	for (const toolName of Object.keys(toolRenderers)) {
+		for (const transition of [
+			"replacing session history",
+			"clearing presentation",
+			"replacing presentation",
+		] as const) {
+			it(`allows a fresh '${toolName}' call after ${transition}`, async () => {
+				const { chatContainer, controller, helpers } = createFixture();
+				try {
+					await runToCompletion(controller, toolName);
+					if (transition === "replacing session history") {
+						helpers.renderSessionContext({ messages: [] } as unknown as SessionContext);
+					} else if (transition === "clearing presentation") {
+						helpers.transcript.clearTranscript();
+					} else {
+						helpers.transcript.setTranscriptBlocks([]);
+					}
+					expect(toolCardBytes(chatContainer)).toEqual([]);
+					await controller.handleEvent({
+						type: "tool_execution_start",
+						toolCallId: transition === "replacing session history" ? CALL_ID : `${CALL_ID}-next`,
+						toolName,
+						args: TOOL_ARGS,
+					} as unknown as AgentSessionEvent);
+					expect(toolCards(chatContainer)).toHaveLength(1);
+				} finally {
+					controller.dispose();
+					chatContainer.disposeChildren();
+				}
+			});
+		}
 		it(`ignores a late call event for '${toolName}' after its result already painted`, async () => {
 			const { chatContainer, controller } = createFixture();
 			await controller.handleEvent({ type: "agent_start" } as unknown as AgentSessionEvent);

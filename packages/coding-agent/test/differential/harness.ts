@@ -9,10 +9,10 @@
  * once here rather than copied into every suite, so a change to how the comparison is taken lands in
  * one file and cannot drift between tools.
  *
- * THE ORACLES. `test/oracles/*-main-renderer.ts` are frozen copies of the renderers as they stood on
- * `origin/main` at SHA `e9467ab12c976cd830eb7a61e30bfd6adc4bff1f`. They are the other arm of every
- * comparison. Hand-written expected strings would test the expectation; a frozen oracle tests the
- * equivalence, which is the claim the conversion makes.
+ * THE ORACLES. `test/oracles/*-main-renderer.ts` load frozen renderer sources through
+ * `test/oracles/historical-loader.ts` from its pinned `ORACLE_SNAPSHOT_COMMIT`. Each oracle header
+ * records its original production revision. The loader verifies Git blob hashes and adapts imports;
+ * the comparison uses the frozen renderer rather than handwritten expected strings.
  *
  * THE DEFECT CLASS THESE SUITES CLOSE, for every tool that has one:
  *  - Spans losing tone, bold or italic styling during view conversion.

@@ -6,7 +6,7 @@ Identical license texts are grouped so the binary does not carry duplicate copie
 
 ================================================================================
 Files covered:
-- docs/handbook/book/fonts/OPEN-SANS-LICENSE.txt
+- docs/handbook/fonts/OPEN-SANS-LICENSE.txt
 
 
                                  Apache License
@@ -213,7 +213,7 @@ Files covered:
 
 ================================================================================
 Files covered:
-- docs/handbook/book/fonts/SOURCE-CODE-PRO-LICENSE.txt
+- docs/handbook/fonts/SOURCE-CODE-PRO-LICENSE.txt
 
 Copyright 2010, 2012 Adobe Systems Incorporated (http://www.adobe.com/), with Reserved Font Name 'Source'. All Rights Reserved. Source is a trademark of Adobe Systems Incorporated in the United States and/or other countries.
 
@@ -759,12 +759,11 @@ carries forward here because no Codex source is present in this tree.
 
 ## Fonts and other assets
 
-- `docs/handbook/book/fonts/OPEN-SANS-LICENSE.txt` and
-  `apps/site/docs/fonts/OPEN-SANS-LICENSE.txt` — Open Sans font, Apache
-  License 2.0.
-- `docs/handbook/book/fonts/SOURCE-CODE-PRO-LICENSE.txt` and
-  `apps/site/docs/fonts/SOURCE-CODE-PRO-LICENSE.txt` — Source Code Pro, SIL
-  Open Font License 1.1.
+- `docs/handbook/fonts/OPEN-SANS-LICENSE.txt` — Open Sans font, Apache
+  License 2.0. mdbook bundles the font and this notice into the handbook
+  build (`docs/handbook/book/fonts/`, served as `docs/fonts/` on the site).
+- `docs/handbook/fonts/SOURCE-CODE-PRO-LICENSE.txt` — Source Code Pro, SIL
+  Open Font License 1.1; bundled the same way.
 - `natives/bridge/addon/src/fonts/Silver.LICENSE` — Silver, Creative
   Commons Attribution 4.0 International.
 - `natives/bridge/addon/src/fonts/{5x8,6x12,8x13}.bdf` and

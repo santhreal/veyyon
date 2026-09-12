@@ -1,31 +1,20 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { AssistantThinkingRenderer } from "@veyyon/coding-agent/extensibility/extensions";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import { clearMermaidCache } from "@veyyon/coding-agent/theme/mermaid-cache";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { ImageProtocol, setTerminalImageProtocol, TERMINAL, Text } from "@veyyon/tui";
+import type { AssistantMessageView } from "@veyyon/wire/presentation";
 
 const originalImageProtocol = TERMINAL.imageProtocol;
 
-function createAssistantMessage(markdown: string): AssistantMessage {
+function createAssistantMessage(markdown: string): AssistantMessageView {
 	return {
-		role: "assistant",
-		content: [{ type: "text", text: markdown }],
-		api: "anthropic-messages",
-		provider: "anthropic",
+		segments: [{ kind: "text", text: markdown }],
 		model: "claude-sonnet-4-5",
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
-		stopReason: "stop",
+		stopReason: "complete",
 		timestamp: Date.now(),
 	};
 }
@@ -162,7 +151,7 @@ describe("AssistantMessageComponent thinking renderers", () => {
 		const component = new AssistantMessageComponent(
 			{
 				...createAssistantMessage(""),
-				content: [{ type: "thinking", thinking: "I should inspect the input." }],
+				segments: [{ kind: "thinking", text: "I should inspect the input.", redacted: false }],
 			},
 			false,
 			undefined,
@@ -190,7 +179,7 @@ describe("AssistantMessageComponent thinking renderers", () => {
 		const component = new AssistantMessageComponent(
 			{
 				...createAssistantMessage(""),
-				content: [{ type: "thinking", thinking: "I should inspect the input." }],
+				segments: [{ kind: "thinking", text: "I should inspect the input.", redacted: false }],
 			},
 			false,
 			undefined,
@@ -214,7 +203,7 @@ describe("AssistantMessageComponent thinking renderers", () => {
 		const component = new AssistantMessageComponent(
 			{
 				...createAssistantMessage(""),
-				content: [{ type: "thinking", thinking: "I should inspect the input." }],
+				segments: [{ kind: "thinking", text: "I should inspect the input.", redacted: false }],
 			},
 			false,
 			() => {
@@ -247,7 +236,7 @@ describe("AssistantMessageComponent thinking renderers", () => {
 		const component = new AssistantMessageComponent(
 			{
 				...createAssistantMessage(""),
-				content: [{ type: "thinking", thinking: "I should inspect the input." }],
+				segments: [{ kind: "thinking", text: "I should inspect the input.", redacted: false }],
 			},
 			true,
 			undefined,

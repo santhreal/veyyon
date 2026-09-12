@@ -29,7 +29,7 @@ export interface TranscriptComposerPort {
 	/** The committed transcript context to replay on rebuild (the host applies
 	 * its collapse-compacted display setting). */
 	buildTranscriptContext(): SessionContext;
-	/** Whether the VIEWED session is streaming (main or focused subagent). */
+	/** Whether the VIEWED session is streaming (main or focused agent). */
 	isViewStreaming(): boolean;
 	streamingComponent(): Component | undefined;
 	pendingTools: Map<string, ToolExecutionHandle>;

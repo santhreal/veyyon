@@ -1737,7 +1737,7 @@ check "and it does remove the checkout under the HOME it was given" \
 
 # --- doctor: detects a stale copy shadowing the fresh install ---
 # The classic silent install failure: an older veyyon/vey earlier on PATH (a
-# previous `bun add -g`, a distro package, a manual copy) keeps winning every
+# previous binary download, a manual copy) keeps winning every
 # invocation while the installer reports success, so the user "upgrades" and
 # nothing changes. doctor used to check only that the name existed SOMEWHERE on
 # PATH, which is exactly the state a shadowed install is in. It must now compare

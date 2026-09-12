@@ -5,7 +5,7 @@ import { GEMINI_DEVELOPER_API_ENDPOINT } from "../provider-endpoints";
 import { toModelSpec } from "../provider-models/bundled-references";
 import type { FetchImpl, Model, ModelSpec } from "../types";
 import { discoveryFetch, toArray, toFields, toFiniteNumber, toStringValue } from "../utils";
-import type { DiscoveryFailure, DiscoveryHooks } from "./failure";
+import { type DiscoveryFailure, type DiscoveryHooks, readDiscoveryJson } from "./failure";
 
 const DEFAULT_PAGE_SIZE = 100;
 const DEFAULT_MAX_PAGES = 25;
@@ -155,18 +155,8 @@ export async function fetchGeminiModels(
 			return null;
 		}
 
-		if (!response.ok) {
-			report("status", `HTTP ${response.status} ${response.statusText}`.trim());
-			return null;
-		}
-
-		let payload: unknown;
-		try {
-			payload = await response.json();
-		} catch (error) {
-			report("body", `response is not JSON: ${errorMessage(error)}`);
-			return null;
-		}
+		const payload = await readDiscoveryJson(response, report);
+		if (payload === undefined) return null;
 
 		const parsed = readModelListPage(payload);
 		if (!parsed) {

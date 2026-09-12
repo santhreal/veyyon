@@ -92,7 +92,7 @@ shot todo-board
 
 # The three implementation lanes must overlap. The block's header is the guard, because
 # it is the one string a spawn always produces.
-expect_model_screen "Subagents" 600 agent-lanes
+expect_model_screen "Agents" 600 agent-lanes
 pause 1
 if screen_has "DynamicsAgent" && screen_has "RenderAgent" && screen_has "FlightAgent"; then
 	echo "scene: all three ship-simulator workers visible" >&2

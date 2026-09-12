@@ -64,6 +64,20 @@ run_docker() {
 	[ -n "${SANDBOX_GITDIR:-}" ] &&
 		mount_args+=(--mount "type=bind,src=${SANDBOX_GITDIR},dst=${SANDBOX_GITDIR},readonly")
 
+	if [ -d "${HOST_HOME}/.rustup" ]; then
+		mount_args+=(--mount "type=bind,src=${HOST_HOME}/.rustup,dst=/sandbox/rustup,readonly")
+		env_args+=(-e "RUSTUP_HOME=/sandbox/rustup")
+	fi
+	if [ -d "${HOST_HOME}/.cargo" ]; then
+		mount_args+=(--mount "type=bind,src=${HOST_HOME}/.cargo,dst=/sandbox/cargo")
+		env_args+=(-e "CARGO_HOME=/sandbox/cargo" -e "PATH=/sandbox/bin:/sandbox/cargo/bin:/sandbox/rustup/toolchains/nightly-2026-04-29-x86_64-unknown-linux-gnu/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bun-node-fallback-bin")
+	fi
+	if [ -d "/mnt/FlareTraining/santh-archive/cargo-target" ]; then
+		mount_args+=(--mount "type=bind,src=/mnt/FlareTraining/santh-archive/cargo-target,dst=/mnt/FlareTraining/santh-archive/cargo-target")
+	fi
+	if [ -d "/var/santh-cargo-target" ]; then
+		mount_args+=(--mount "type=bind,src=/var/santh-cargo-target,dst=/var/santh-cargo-target")
+	fi
 	local -a tty_args=()
 	[ -t 0 ] && [ -t 1 ] && tty_args=(-it)
 
@@ -74,7 +88,6 @@ run_docker() {
 	# tmpfs and allow exec, so the difference showed up as six tests failing on
 	# this rung alone, with messages that read like the script under test was
 	# broken. `nosuid,nodev` are restated because naming any option drops the
-	# defaults.
 	docker run --rm "${tty_args[@]}" \
 		--network none \
 		--user "$(id -u):$(id -g)" \
@@ -86,7 +99,7 @@ run_docker() {
 		"${env_args[@]}" \
 		--entrypoint /bin/sh \
 		"${GUEST_IMAGE}" \
-		-c 'mkdir -p "$HOME/.bun/install/cache" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME"; exec "$@"' _ "$@"
+		-c 'mkdir -p /sandbox/bin "$HOME/.bun/install/cache" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME"; if [ -f /sandbox/rustup/toolchains/nightly-2026-04-29-x86_64-unknown-linux-gnu/bin/cargo-real ]; then ln -sf /sandbox/rustup/toolchains/nightly-2026-04-29-x86_64-unknown-linux-gnu/bin/cargo-real /sandbox/bin/cargo; fi; exec "$@"' _ "$@"
 }
 
 # Used by --probe to list which binaries the rung provides.

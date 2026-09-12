@@ -51,9 +51,9 @@ describe("classifyAgentType", () => {
 		expect(classifyAgentType(path.join(project, "1700000000000_abc.jsonl"))).toBe("main");
 		expect(classifyAgentType(path.join(session, "AuthLoader.jsonl"))).toBe("subagent");
 		expect(classifyAgentType(path.join(session, "__advisor.jsonl"))).toBe("advisor");
-		// A subagent's own advisor still counts as advisor, however deep it nests.
+		// A spawned agent's own advisor still counts as advisor, however deep it nests.
 		expect(classifyAgentType(path.join(session, "AuthLoader", "__advisor.jsonl"))).toBe("advisor");
-		// A subagent that spawned its own subagent is still a subagent.
+		// A spawned agent that spawned its own child is still a subagent.
 		expect(classifyAgentType(path.join(session, "AuthLoader", "Nested.jsonl"))).toBe("subagent");
 		// Named (multi-advisor) transcripts `__advisor.<slug>.jsonl` also count as advisor.
 		expect(classifyAgentType(path.join(session, "__advisor.arch.jsonl"))).toBe("advisor");

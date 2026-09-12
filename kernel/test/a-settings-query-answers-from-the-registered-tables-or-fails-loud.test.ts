@@ -16,7 +16,7 @@
  * application pins every domain the schema spreads.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	declareSettings,
 	describeSettingTypeMismatch,
@@ -64,12 +64,21 @@ declare module "@veyyon/kernel/settings/schema" {
 	interface DeclaredSettings extends ExampleSettings {}
 }
 
+let priorSettings: SettingsTable;
+
 describe("a settings query answers from the registered tables or fails loud", () => {
-	beforeAll(() => {
+	beforeEach(() => {
+		try {
+			priorSettings = { ...settingsSchema() };
+		} catch (error) {
+			if (!(error instanceof Error) || !error.message.startsWith("No settings are declared:")) throw error;
+			priorSettings = {};
+		}
 		resetDeclaredSettingsForTest();
 	});
-	afterAll(() => {
+	afterEach(() => {
 		resetDeclaredSettingsForTest();
+		declareSettings(priorSettings);
 	});
 
 	it("throws from every query while no table has registered", () => {
@@ -116,6 +125,7 @@ describe("a settings query answers from the registered tables or fails loud", ()
 	});
 
 	it("throws naming the path when a declared registry has no such setting", () => {
+		declareSettings(EXAMPLE_SETTINGS);
 		const absent = "example.absent" as SettingPath;
 		for (const query of [getDefault, getType, getUi, hasUi, getEnumValues]) {
 			expect(() => query(absent)).toThrow('Setting "example.absent" is not declared');
@@ -128,6 +138,7 @@ describe("a settings query answers from the registered tables or fails loud", ()
 	});
 
 	it("rejects a second table declaring a path the first already declared", () => {
+		declareSettings(EXAMPLE_SETTINGS);
 		expect(() =>
 			declareSettings({
 				"example.other": { type: "string", default: undefined },
@@ -140,6 +151,7 @@ describe("a settings query answers from the registered tables or fails loud", ()
 	});
 
 	it("keeps a key snapshot stable until registration without changing an earlier snapshot", () => {
+		declareSettings(EXAMPLE_SETTINGS);
 		// Store indexes use this snapshot's identity to avoid enumerating on every read.
 		const before = settingsSchemaPaths();
 		expect(settingsSchemaPaths()).toBe(before);
@@ -152,6 +164,7 @@ describe("a settings query answers from the registered tables or fails loud", ()
 	});
 
 	it("keeps the key snapshot consistent with declarations when an accessor throws", () => {
+		declareSettings(EXAMPLE_SETTINGS);
 		for (const includePrefix of [false, true]) {
 			const table: SettingsTable = includePrefix
 				? { "example.beforeFailure": { type: "boolean", default: true } }

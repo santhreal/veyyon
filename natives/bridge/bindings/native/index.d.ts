@@ -208,7 +208,7 @@ export declare function __veyyonInstallTokioRuntime(): void
  * `natives/bridge/bindings/native/index.js` (which derives the name from
  * `package.json#version`).
  */
-export declare function __veyyonNativesV1_4_0(): void
+export declare function __veyyonNativesV1_4_1(): void
 
 /**
  * Apply ast-grep rewrite rules to matching files; honors `dryRun` and returns
@@ -1352,6 +1352,12 @@ export interface PtyArgvStartOptions {
 export interface PtyRunResult {
   /** Exit code when the command completes. */
   exitCode?: number
+  /**
+   * Signal that ended the command (`SIGKILL`, `SIGTERM`), when it died to one
+   * rather than exiting. A signal death also reports `exit_code` 1, so a
+   * consumer that attributes the death reads this field first.
+   */
+  signal?: string
   /** Whether command was cancelled by signal/user kill. */
   cancelled: boolean
   /** Whether command timed out. */

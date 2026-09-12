@@ -2135,7 +2135,11 @@ async def test_handle_comment_directive_bootstraps_untriaged_issue(
     async def _resolve(_gh, _payload):
         return repo, issue
 
+    async def _fake_attach(_gh, d, _r, _n, *, is_pr=False):
+        return d
+
     monkeypatch.setattr(tasks, "_resolve_repo_and_issue", _resolve)
+    monkeypatch.setattr(tasks, "_attach_thread", _fake_attach)
 
     payload = {
         "action": "created",
@@ -2162,6 +2166,8 @@ async def test_handle_comment_directive_bootstraps_untriaged_issue(
     row = db.get_issue("octo/widget#88")
     assert row is not None
     assert row.state == "reproducing"
+    assert row.branch == "farm/auto/octo__widget__88"
+    assert row.session_dir == str(tmp_path / "octo__widget__88" / "session")
     assert sandbox.ensure_calls, "ensure_workspace must be called"
     assert sandbox.remove_calls == [], "no removal on bootstrap"
     close_database()
@@ -2197,7 +2203,11 @@ async def test_handle_comment_directive_reopens_finalized_issue(
     async def _resolve(_gh, _payload):
         return repo, issue
 
+    async def _fake_attach(_gh, d, _r, _n, *, is_pr=False):
+        return d
+
     monkeypatch.setattr(tasks, "_resolve_repo_and_issue", _resolve)
+    monkeypatch.setattr(tasks, "_attach_thread", _fake_attach)
 
     post_comment_calls: list = []
 
@@ -2234,6 +2244,8 @@ async def test_handle_comment_directive_reopens_finalized_issue(
     assert post_comment_calls == [], "no 'this is closed' comment on reopen"
     row = db.get_issue("octo/widget#88")
     assert row is not None and row.state == "reproducing"
+    assert row.branch == "farm/auto/octo__widget__88"
+    assert call["inputs"].workspace.branch == "farm/auto/octo__widget__88"
     close_database()
 
 

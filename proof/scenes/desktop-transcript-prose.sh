@@ -76,7 +76,7 @@ SEARCH_X=$(( WIN_X + ROW_INSET + 32 ))
 SEARCH_Y=$(( WIN_Y + TITLEBAR_H + CONTENT_INSET + 16 ))
 WINDOW_CROP="${WIN_W}x${WIN_H}+${WIN_X}+${WIN_Y}"
 TRANSCRIPT_CROP="${SESSION_REGION_W}x$(( WIN_H - TITLEBAR_H - COMPOSER_BAND_H ))+${SESSION_REGION_X}+$(( WIN_Y + TITLEBAR_H ))"
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 # The overlay a palette of session rows draws, the ink a typed filter adds, and

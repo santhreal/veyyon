@@ -2,7 +2,7 @@
  * Contract: one encoding for a model chain, read the same way by every consumer.
  *
  * The settings picker persists it as a string array; legacy configs may still
- * hold a comma-separated string. Compaction and the subagent spawner read both
+ * hold a comma-separated string. Compaction and the agent spawner read both
  * through `normalizeModelPatternList`. If those two ever disagree, the picker
  * shows a chain the runtime does not run,
  * which is the worst kind of settings bug: it looks configured and does nothing.
@@ -16,8 +16,8 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { normalizeModelPatternList, resolveCompactionModelPatterns } from "@veyyon/coding-agent/config/model-resolver";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import type { SubagentAgentSettings } from "@veyyon/coding-agent/config/settings-domains/subagents";
-import { resolveSubagentModel } from "@veyyon/coding-agent/task/subagent-settings";
+import type { AgentSettings } from "@veyyon/coding-agent/config/settings-domains/agents";
+import { resolveAgentModel } from "@veyyon/coding-agent/task/agent-settings";
 import { TempDir } from "@veyyon/utils";
 import { YAML } from "bun";
 
@@ -93,11 +93,11 @@ describe("model chain encoding", () => {
 	 * The chain is a LANE, because a lane is where a model is chosen now: one
 	 * agent, one page, one chain.
 	 */
-	it("resolveSubagentModel keeps a lane's whole chain, in order", () => {
+	it("resolveAgentModel keeps a lane's whole chain, in order", () => {
 		const settings = Settings.isolated({
-			"subagent.agents": { reviewer: { model: "anthropic/opus,anthropic/sonnet,anthropic/haiku" } },
+			"agent.agents": { reviewer: { model: "anthropic/opus,anthropic/sonnet,anthropic/haiku" } },
 		} as Parameters<typeof Settings.isolated>[0]);
-		const resolved = resolveSubagentModel({ settings, agentName: "reviewer", agentModel: undefined });
+		const resolved = resolveAgentModel({ settings, agentName: "reviewer", agentModel: undefined });
 		expect(resolved.source).toBe("lane");
 		expect(resolved.patterns).toEqual(["anthropic/opus", "anthropic/sonnet", "anthropic/haiku"]);
 	});
@@ -111,11 +111,11 @@ describe("model chain encoding", () => {
 	 * layer that decided is named, so a silent replacement can never come back.
 	 */
 	it("lets a lane row outrank the definition, and names the layer that decided", () => {
-		const lane: SubagentAgentSettings = { model: ["openai/gpt-5", "openai/gpt-5-mini"] };
+		const lane: AgentSettings = { model: ["openai/gpt-5", "openai/gpt-5-mini"] };
 		const settings = Settings.isolated({
-			"subagent.agents": { reviewer: lane },
+			"agent.agents": { reviewer: lane },
 		} as Parameters<typeof Settings.isolated>[0]);
-		const resolved = resolveSubagentModel({
+		const resolved = resolveAgentModel({
 			settings,
 			agentName: "reviewer",
 			agentModel: "anthropic/opus,anthropic/sonnet",
@@ -133,11 +133,11 @@ describe("model chain encoding", () => {
 	 * an older release wrote — resolves exactly as if the table were empty.
 	 */
 	it("keeps the definition's chain whole under a row that names no model", () => {
-		const row: SubagentAgentSettings = { enabled: true, maxNestedSpawnDepth: 0 };
+		const row: AgentSettings = { enabled: true, maxNestedSpawnDepth: 0 };
 		const settings = Settings.isolated({
-			"subagent.agents": { reviewer: row },
+			"agent.agents": { reviewer: row },
 		} as Parameters<typeof Settings.isolated>[0]);
-		const resolved = resolveSubagentModel({
+		const resolved = resolveAgentModel({
 			settings,
 			agentName: "reviewer",
 			agentModel: "anthropic/opus,anthropic/sonnet",

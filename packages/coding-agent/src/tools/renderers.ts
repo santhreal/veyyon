@@ -1,36 +1,17 @@
 /**
- * TUI renderers for built-in tools.
- *
- * The rows come from the domain renderer tables, each sitting next to the tools it draws, plus the
- * six whose subject lives outside `tools/`. This module owns the {@link ToolRenderer} contract and
- * the union; it no longer owns the list.
+ * Terminal adapters for the canonical tool view definitions.
+ * Shared definitions retain one adapter identity across provider aliases.
  */
 import type { Component } from "@veyyon/tui";
 import type { ToolViewRenderer } from "@veyyon/view";
-import { editToolView } from "../edit/edit-view";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { goalToolView } from "../goals/goal-tool";
-import { lspToolView } from "../lsp/view";
 import { viewToolRenderer } from "../modes/terminal/draw/draw-tool-view";
-import { taskToolView } from "../task/task-view";
 import type { Theme } from "../theme/theme";
-import { agentRenderers } from "./agent/renderers";
-import { fsRenderers } from "./fs/renderers";
-import { searchRenderers } from "./search/renderers";
-import { shellRenderers } from "./shell/renderers";
-import { webRenderers } from "./web/renderers";
-import { webSearchToolView } from "./web/search/view";
+import { type ToolViewDefinition, toolViewDefinitions } from "./view-registry";
 
-/**
- * Per-renderer opt-in for a full viewport replay when the first result
- * replaces a painted pending-call render. A predicate receives the painted
- * call args and render options so the repaint stays scoped to the pending
- * shapes that actually re-anchor (an over-eager replay wipes native
- * scrollback on direct terminals).
- */
-export type FirstResultViewportRepaint = boolean | ((args: unknown, options: RenderResultOptions) => boolean);
+export * from "./view-registry";
 
-export type ToolRenderer = {
+export type ToolRenderer = Omit<ToolViewDefinition, "view"> & {
 	renderCall: (args: unknown, options: RenderResultOptions, theme: Theme) => Component;
 	renderResult: (
 		result: { content: Array<{ type: string; text?: string }>; details?: unknown; isError?: boolean },
@@ -48,67 +29,18 @@ export type ToolRenderer = {
 	 * list kept by hand.
 	 */
 	view?: ToolViewRenderer<never, never>;
-	mergeCallAndResult?: boolean;
-	/**
-	 * Whether the call render IS an interactive widget rather than a preview of one.
-	 *
-	 * `ask` paints the whole selectable question in `renderCall`, because until a result arrives
-	 * that widget is the card. For a call that never reached the tool, painting it puts an
-	 * answerable question on screen for a question that was never asked, so the component falls
-	 * back to the plain tool label. Only set this where the call render invites an answer: a
-	 * command preview (`bash`) or a diff preview is the one fact the card must keep in that state.
-	 */
-	callIsLiveWidget?: boolean;
-	/** Render without background box, inline in the response flow */
-	inline?: boolean;
-	/**
-	 * Whether the renderer's pending-call path visibly consumes
-	 * `options.spinnerFrame`. Used to avoid scheduling repaint ticks for live
-	 * partial calls whose bytes cannot change between spinner frames.
-	 */
-	animatedPendingPreview?: boolean | ((args: unknown) => boolean);
-	/**
-	 * Whether the renderer's partial-result path visibly consumes
-	 * `options.spinnerFrame`.
-	 */
-	animatedPartialResult?: boolean | ((args: unknown) => boolean);
-	/**
-	 * Whether replacing a pending call render with the first result requires a
-	 * full viewport repaint. Use for merged renderers whose pending rows can be
-	 * re-anchored instead of preserved by the result render.
-	 */
-	forceFirstResultViewportRepaint?: FirstResultViewportRepaint;
-	/**
-	 * Whether settling a provisional partial result into the final render requires
-	 * a full viewport repaint. Use when the result renderer changes chrome or
-	 * frame topology at `options.isPartial: true -> false`.
-	 */
-	forceResultViewportRepaintOnSettle?: boolean;
 };
 
-// One object under both names: `apply_patch` is the provider-side spelling of `edit`, and a host
-// that groups by renderer identity (streamed-arg keys, the first-result replay) treats them as the
-// same card. Two wrappers around the same view would be two objects and split that grouping.
-const editRenderer = viewToolRenderer(editToolView, { mergeCallAndResult: true }) as ToolRenderer;
-
-export const toolRenderers: Record<string, ToolRenderer> = {
-	...fsRenderers,
-	...searchRenderers,
-	...shellRenderers,
-	...webRenderers,
-	...agentRenderers,
-	edit: editRenderer,
-	apply_patch: editRenderer,
-	// The lsp tool describes a view, and this entry is the terminal's drawing of it — the path a
-	// rebuilt transcript takes, where no tool instance exists to read `tool.view` from.
-	lsp: viewToolRenderer(lspToolView, { mergeCallAndResult: true, inline: true }) as ToolRenderer,
-	// The task tool describes a view, and this entry is the terminal's drawing of it. The lazy getter
-	// that used to stand here worked around an import cycle through `task/render.ts`, which drew the
-	// card with the terminal engine and reached back into this table; a view imports neither.
-	task: viewToolRenderer(taskToolView, { mergeCallAndResult: true }) as ToolRenderer,
-	// The goal tool describes a view instead of drawing a component, so its entry here is the
-	// terminal's drawing of that same view. It exists for the rebuilt transcript of a session that
-	// never constructed the tool, which is the one path that cannot read `tool.view`.
-	goal: viewToolRenderer(goalToolView, { mergeCallAndResult: true }) as ToolRenderer,
-	web_search: viewToolRenderer(webSearchToolView, { mergeCallAndResult: true }) as ToolRenderer,
-};
+export const toolRenderers: Record<string, ToolRenderer> = {};
+{
+	const adapters = new Map<ToolViewDefinition, ToolRenderer>();
+	for (const name of Object.keys(toolViewDefinitions)) {
+		const definition = toolViewDefinitions[name];
+		let renderer = adapters.get(definition);
+		if (renderer === undefined) {
+			renderer = viewToolRenderer(definition.view, definition) as ToolRenderer;
+			adapters.set(definition, renderer);
+		}
+		toolRenderers[name] = renderer;
+	}
+}

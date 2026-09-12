@@ -205,6 +205,14 @@ export function isBlankRow(row: string): boolean {
 	return row.replace(SGR_SEQUENCE, "").trim().length === 0;
 }
 
+/** Find the first index in [from, limit) where rows are not equivalent. Returns -1 if none. */
+export function firstRowDivergence(a: readonly string[], b: readonly string[], limit: number, from = 0): number {
+	for (let i = from; i < limit; i++) {
+		if (!rowsEquivalent(a[i]!, b[i]!)) return i;
+	}
+	return -1;
+}
+
 // Tail-alignment sampling bounds: look back through up to LOOKBACK rows of
 // the committed prefix to collect SAMPLES non-blank comparisons.
 const RESYNC_TAIL_LOOKBACK = 24;
@@ -256,14 +264,7 @@ export function findCommittedPrefixResync(
 	if (frame.length >= hardEnd) {
 		// 1. Hard scan: frozen snapshots whose source just became final. Full
 		// scan, no tolerance — a finalized row that changed must re-anchor.
-		let hardMismatch = false;
-		for (let i = verified; i < hardEnd; i++) {
-			if (!rowsEquivalent(frame[i]!, prefix[i]!)) {
-				hardMismatch = true;
-				break;
-			}
-		}
-		if (!hardMismatch) {
+		if (firstRowDivergence(frame, prefix, hardEnd, verified) === -1) {
 			// 2. Tail sample over the verified zone (only when the hard scan is
 			// clean): walk up from its end until LOOKBACK rows or SAMPLES
 			// non-blank comparisons.
@@ -289,10 +290,8 @@ export function findCommittedPrefixResync(
 	// covers the checked zones): re-anchor at the first row whose content
 	// changed.
 	const limit = Math.min(hardEnd, frame.length);
-	for (let i = 0; i < limit; i++) {
-		if (!rowsEquivalent(frame[i]!, prefix[i]!)) return i;
-	}
-	return limit < hardEnd ? limit : -1;
+	const diverged = firstRowDivergence(frame, prefix, limit);
+	return diverged >= 0 ? diverged : limit < hardEnd ? limit : -1;
 }
 
 /**
@@ -316,6 +315,21 @@ export function auditCommittedPrefix(
 }
 
 /**
+ * Append the first marker's position and strip every marker from the line.
+ */
+export function extractLineCursorMarker(line: string, row: number, markers: { row: number; col: number }[]): string {
+	let markerIndex = line.indexOf(CURSOR_MARKER);
+	if (markerIndex === -1) return line;
+	markers.push({ row, col: visibleWidth(line.slice(0, markerIndex)) });
+	let stripped = line;
+	while (markerIndex !== -1) {
+		stripped = stripped.slice(0, markerIndex) + stripped.slice(markerIndex + CURSOR_MARKER.length);
+		markerIndex = stripped.indexOf(CURSOR_MARKER, markerIndex);
+	}
+	return stripped;
+}
+
+/**
  * Strip every CURSOR_MARKER from the rendered lines (markers are internal
  * sentinels and must never reach the terminal, the committed prefix, or
  * the resync audit) and return the positions of the stripped markers,
@@ -325,19 +339,26 @@ export function auditCommittedPrefix(
 export function extractCursorMarkers(lines: string[]): { row: number; col: number }[] {
 	const markers: { row: number; col: number }[] = [];
 	for (let row = lines.length - 1; row >= 0; row--) {
-		const line = lines[row];
-		let markerIndex = line.indexOf(CURSOR_MARKER);
-		if (markerIndex === -1) continue;
-		const beforeMarker = line.slice(0, markerIndex);
-		markers.push({ row, col: visibleWidth(beforeMarker) });
-		let stripped = line;
-		while (markerIndex !== -1) {
-			stripped = stripped.slice(0, markerIndex) + stripped.slice(markerIndex + CURSOR_MARKER.length);
-			markerIndex = stripped.indexOf(CURSOR_MARKER, markerIndex);
-		}
-		lines[row] = stripped;
+		const line = lines[row]!;
+		const stripped = extractLineCursorMarker(line, row, markers);
+		if (stripped !== line) lines[row] = stripped;
 	}
 	return markers;
+}
+
+/**
+ * Pick the visible cursor marker: the bottom-most marker at or below `windowTop`.
+ * Expects `markers` in ascending order by frame row.
+ */
+export function findVisibleCursorMarker(
+	markers: readonly { readonly row: number; readonly col: number }[],
+	windowTop: number,
+): { row: number; col: number } | null {
+	for (let i = markers.length - 1; i >= 0; i--) {
+		const marker = markers[i]!;
+		if (marker.row >= windowTop) return marker;
+	}
+	return null;
 }
 
 export function truncateLargeConptyFrame(
@@ -594,41 +615,13 @@ function ansiAsciiLineWidth(line: string, maxWidth: number): number | undefined 
 	for (let i = 0; i < line.length; ) {
 		const code = line.charCodeAt(i);
 		if (code === 0x1b) {
+			if (ansiSequenceHasVisiblePayload(line, i)) return undefined;
 			const next = line.charCodeAt(i + 1);
-			if (next === 0x5b) {
-				let j = i + 2;
-				while (j < line.length) {
-					const final = line.charCodeAt(j);
-					if (final >= 0x40 && final <= 0x7e) break;
-					j++;
-				}
-				if (j >= line.length) return undefined;
-				i = j + 1;
-				continue;
-			}
-			if (next === 0x5d) {
-				// OSC 66 text-sizing spans carry visible payload inside the OSC.
-				// Fall back to visibleWidth() so scaled cells stay exact.
-				if (line.charCodeAt(i + 2) === 0x36 && line.charCodeAt(i + 3) === 0x36 && line.charCodeAt(i + 4) === 0x3b) {
-					return undefined;
-				}
-				let j = i + 2;
-				while (j < line.length) {
-					const osc = line.charCodeAt(j);
-					if (osc === 0x07) {
-						i = j + 1;
-						break;
-					}
-					if (osc === 0x1b && line.charCodeAt(j + 1) === 0x5c) {
-						i = j + 2;
-						break;
-					}
-					j++;
-				}
-				if (j >= line.length) return undefined;
-				continue;
-			}
-			return undefined;
+			if (next !== 0x5b && next !== 0x5d) return undefined;
+			const end = ansiSequenceEnd(line, i);
+			if (end < 0) return undefined;
+			i = end;
+			continue;
 		}
 		if (code < 0x20 || code > 0x7e) return undefined;
 		col++;

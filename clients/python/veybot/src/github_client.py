@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import quote
 
 import httpx
+from veyyon_rpc import TRANSIENT_RETRY_DELAYS, is_transient_retryable, parse_retry_after as _parse_retry_after
 
 log = logging.getLogger(__name__)
 
@@ -214,46 +215,6 @@ def _is_failed_conclusion(conclusion: str | None) -> bool:
         return False
     return conclusion not in PASSING_CHECK_CONCLUSIONS and conclusion not in IGNORED_CHECK_CONCLUSIONS
 
-
-def _parse_retry_after(resp: httpx.Response) -> float | None:
-    ra = resp.headers.get("retry-after")
-    if ra:
-        try:
-            return float(ra)
-        except ValueError:
-            pass
-    reset = resp.headers.get("x-ratelimit-reset")
-    if reset:
-        try:
-            return max(0.0, float(reset) - time.time())
-        except ValueError:
-            pass
-    return None
-
-
-# Connection-establishment failures prove the request never reached the server
-# (no bytes were processed), so retrying them cannot duplicate a side effect.
-# A read/write timeout, by contrast, may have already been delivered AND applied
-# — the response was merely slow or lost — so retrying a non-idempotent write
-# there would double-apply it (a duplicate issue comment / PR review).
-_CONNECT_FAILURE_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
-_IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
-
-
-def is_transient_retryable(exc: BaseException, method: str) -> bool:
-    """Whether `exc` is a transient transport error safe to retry for `method`.
-
-    The single owner of the retry-safety decision shared by `GitHubClient`
-    and `GitHubProxyClient`. Idempotent reads retry through any transient
-    connect/timeout error; non-idempotent writes retry ONLY on
-    connection-establishment failures, never a read/write timeout that may
-    have already applied the effect.
-    """
-    if not isinstance(exc, (httpx.ConnectError, httpx.TimeoutException)):
-        return False
-    if method.upper() in _IDEMPOTENT_METHODS:
-        return True
-    return isinstance(exc, _CONNECT_FAILURE_ERRORS)
 
 
 class GitHubClient:

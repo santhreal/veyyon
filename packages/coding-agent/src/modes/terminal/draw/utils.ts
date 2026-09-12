@@ -4,6 +4,7 @@
 
 import type { Component } from "@veyyon/tui";
 import { padding } from "@veyyon/utils/padding";
+import { applyBackgroundToLine } from "@veyyon/utils/sgr";
 import { visibleWidth } from "@veyyon/utils/width";
 import type { Theme, ThemeBg } from "../../../theme/theme";
 import type { State } from "./types";
@@ -132,10 +133,10 @@ export function getTreeContinuePrefix(isLast: boolean, theme: Theme): string {
 }
 
 export function padToWidth(text: string, width: number, bgFn?: (s: string) => string): string {
-	if (width <= 0) return bgFn ? bgFn(text) : text;
+	if (bgFn) return applyBackgroundToLine(text, width, bgFn);
+	if (width <= 0) return text;
 	const paddingNeeded = Math.max(0, width - visibleWidth(text));
-	const padded = paddingNeeded > 0 ? text + padding(paddingNeeded) : text;
-	return bgFn ? bgFn(padded) : padded;
+	return paddingNeeded > 0 ? text + padding(paddingNeeded) : text;
 }
 
 export function getStateBgColor(state: State): ThemeBg {

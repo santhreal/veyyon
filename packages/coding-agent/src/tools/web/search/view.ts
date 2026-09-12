@@ -15,13 +15,20 @@
  */
 
 import { formatAge, formatCount } from "@veyyon/utils/format";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth } from "@veyyon/utils/width";
-import { replaceTabs } from "@veyyon/utils/wrap";
 import type { StatusRowView, ToolView, ToolViewRenderer, ViewLine, ViewSection, ViewSpan } from "@veyyon/view";
+import { extractResultText } from "../../core/output-notice";
 import { PREVIEW_LIMITS } from "../../core/render-limits";
-import { getDomain } from "../../core/render-utils";
-import { getSearchProviderLabel } from "./provider";
-import type { SearchRenderDetails, SearchResponse, SearchSource } from "./types";
+import {
+	getDomain,
+	heldBack,
+	LINE_NOUN,
+	metadataLine,
+	shortenEmbeddedPaths,
+	type ToolViewResult,
+} from "../../core/render-utils";
+import { getSearchProviderLabel, type SearchRenderDetails, type SearchResponse, type SearchSource } from "./types";
 
 /** Sources a collapsed card lists before it says how many it held back. */
 const MAX_COLLAPSED_ITEMS = PREVIEW_LIMITS.COLLAPSED_ITEMS;
@@ -46,16 +53,7 @@ export interface WebSearchViewArgs {
 }
 
 /** The result the card reads, which is the tool's result shape narrowed to what a card shows. */
-export interface WebSearchViewResult {
-	content: Array<{ type: string; text?: string }>;
-	details?: SearchRenderDetails;
-	isError?: boolean;
-}
-
-/** `Name: value`, where the name is secondary detail and the value is the text it introduces. */
-function metadataLine(name: string, value: string): ViewLine {
-	return [{ text: `${name}:`, tone: "muted" }, { text: ` ${value}` }];
-}
+export interface WebSearchViewResult extends ToolViewResult<SearchRenderDetails> {}
 
 /** The provider a card reports, by the label it is known by, or nothing when no provider ran. */
 function providerLabelOf(provider: SearchResponse["provider"] | undefined): string | undefined {
@@ -79,7 +77,7 @@ function errorView(message: string, details: SearchRenderDetails | undefined): T
 		kind: "framedBlock",
 		header: errorHeader(details),
 		state: "error",
-		sections: [{ lines: [[{ text: `Error: ${replaceTabs(message)}`, tone: "error" }]] }],
+		sections: [{ lines: [[{ text: `Error: ${replaceTabs(shortenEmbeddedPaths(message))}`, tone: "error" }]] }],
 	};
 }
 
@@ -102,13 +100,12 @@ function fallbackView(contentText: string, expanded: boolean): ToolView {
 			{
 				lines:
 					shown.length > 0
-						? shown.map((line): ViewLine => [{ text: line.trim(), tone: "dim" }])
+						? shown.map(
+								(line): ViewLine => [{ text: replaceTabs(shortenEmbeddedPaths(line.trim())), tone: "dim" }],
+							)
 						: [[{ text: "No response data", tone: "muted" }]],
 				clip: true,
-				hidden:
-					remaining > 0
-						? { count: remaining, noun: { one: "line", many: "lines" }, revealable: !expanded }
-						: undefined,
+				hidden: heldBack(remaining, LINE_NOUN, !expanded),
 			},
 		],
 	};
@@ -134,7 +131,7 @@ function answerSection(answer: string, args: WebSearchViewArgs | undefined, expa
 		lines: [[{ text: kept.join("\n") }]],
 		markdown: true,
 		// A one-shot caller printed the card and exited, so the count is stated and no gesture with it.
-		hidden: remaining > 0 ? { count: remaining, noun: { one: "line", many: "lines" }, revealable: false } : undefined,
+		hidden: heldBack(remaining, LINE_NOUN, false),
 	};
 }
 
@@ -167,10 +164,7 @@ function sourcesSection(sources: readonly SearchSource[], expanded: boolean): Vi
 		label: "Sources",
 		lines: shown.length > 0 ? shown.map(sourceLine) : [[{ text: "No sources returned", tone: "muted" }]],
 		clip: true,
-		hidden:
-			remaining > 0
-				? { count: remaining, noun: { one: "source", many: "sources" }, revealable: !expanded }
-				: undefined,
+		hidden: heldBack(remaining, { one: "source", many: "sources" }, !expanded),
 	};
 }
 
@@ -208,8 +202,11 @@ export const webSearchToolView: Required<ToolViewRenderer<WebSearchViewArgs, Web
 
 	renderResult(result, context, args): ToolView {
 		const details = result.details;
-		if (details?.error) return errorView(details.error, details);
-		const rawText = result.content?.find(block => block.type === "text")?.text?.trim() ?? "";
+		const rawText = extractResultText(result.content).trim();
+		if (result.isError || details?.error) {
+			const errorMessage = details?.error || rawText || "Web search failed";
+			return errorView(errorMessage, details);
+		}
 		const response = details?.response;
 		if (!response) return fallbackView(rawText, context.expanded);
 

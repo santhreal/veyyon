@@ -334,7 +334,6 @@ const NEGATED_INLINE_ISRECORD = [
 const NEGATED_ISRECORD_INLINE_GRANDFATHERED = new Set([
 	"coding-agent/src/modes/acp/acp-event-mapper.ts",
 	"coding-agent/src/modes/terminal/components/selectors/model-hub.ts",
-	"coding-agent/src/modes/terminal/components/transcript/read-tool-group.ts",
 	"coding-agent/src/modes/terminal/controllers/omfg-rule.ts",
 	"coding-agent/src/modes/rpc/rpc-mode.ts",
 ]);

@@ -806,4 +806,36 @@ describe("SettingsList", () => {
 		expect(list.hitTest(1, 0)).toBeUndefined();
 		expect(list.hitTest(2, 0)).toBe("2");
 	});
+
+	it("does not reserve scrollbar gutter when filtered items count equals maxVisible with expanded description", () => {
+		const items = [
+			{ id: "1", label: "Item 1", currentValue: "val1", description: "Line 1\nLine 2" },
+			{ id: "2", label: "Item 2", currentValue: "val2" },
+			{ id: "3", label: "Item 3", currentValue: "val3" },
+			{ id: "4", label: "Item 4", currentValue: "val4" },
+			{ id: "5", label: "Item 5", currentValue: "val5" },
+		];
+		const list = new SettingsList(
+			items,
+			5,
+			testTheme,
+			() => {},
+			() => {},
+		);
+		list.setOptions({
+			descriptionMode: "expand",
+			expandedIds: new Set(["1"]),
+			layout: "flat",
+		});
+
+		const rendered = list.render(60);
+		// With 5 items and maxVisible 5, total rows (3 visible items + 2 desc lines = 5) matches height 5.
+		// No scrollbar is rendered (no scroll track/thumb glyphs like │).
+		const scrollbarChars = ["│", "┃", "█", "░", "▒", "▓"];
+		for (const line of rendered) {
+			for (const char of scrollbarChars) {
+				expect(line.endsWith(char)).toBe(false);
+			}
+		}
+	});
 });

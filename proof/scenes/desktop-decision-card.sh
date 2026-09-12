@@ -139,7 +139,7 @@ colour_boxes() { # <png> <hex> <fuzz-percent> <area-floor>
 
 # The screen as it is now, for one of the readings above.
 probe_stack() {
-	local frame="${SCENE_RUNTIME_DIR}/frame-compare/stack.png"
+	local frame="${TMPDIR}/frame-compare/stack.png"
 	probe_frame "${frame}"
 	printf '%s' "${frame}"
 }
@@ -328,7 +328,7 @@ if ! await_cards "${STACK_MAX_VISIBLE}" 240; then
 	abandon_take "a-stack-past-its-cap-folds" \
 		"three tool calls did not leave the stack drawing its authored ${STACK_MAX_VISIBLE} cards within 240s"
 fi
-FOLDED_FRAME="${SCENE_RUNTIME_DIR}/folded.png"
+FOLDED_FRAME="${TMPDIR}/folded.png"
 probe_frame "${FOLDED_FRAME}"
 pause 0.4
 shot decisions-folded

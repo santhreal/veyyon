@@ -22,24 +22,17 @@
 import { type Component, CURSOR_MARKER, type Focusable, ProcessTerminal, TUI } from "@veyyon/tui";
 import { TranscriptContainer } from "../../packages/coding-agent/src/modes/terminal/components/transcript/transcript-container";
 import { initTheme } from "../../packages/coding-agent/src/theme/theme";
+import { flagNumber } from "./render-args";
 
-const args = process.argv.slice(2);
-function flag(name: string, fallback: number): number {
-	const index = args.indexOf(`--${name}`);
-	if (index === -1) return fallback;
-	const value = Number(args[index + 1]);
-	return Number.isFinite(value) ? value : fallback;
-}
-
-const TURNS = flag("turns", 14);
-const DELAY_MS = flag("delay", 450);
+const TURNS = flagNumber("turns", 14);
+const DELAY_MS = flagNumber("delay", 450);
 // Rows of a root child mounted ABOVE the transcript. The shipped layout always
 // has one (`home-anchor-layout` fills the slack with `topFill`, and the todo and
-// subagent HUDs sit in the same band), and the commit slide used to assume the
+// agent HUDs sit in the same band), and the commit slide used to assume the
 // transcript started at frame row 0, so the header is what the defect needs.
-const HEADER = flag("header", 2);
+const HEADER = flagNumber("header", 2);
 // Rows of a still-arriving answer streamed after the finalized turns.
-const STREAM = flag("stream", 45);
+const STREAM = flagNumber("stream", 45);
 
 /** A finalized transcript block: plain components are final, so rows commit. */
 class Block implements Component {

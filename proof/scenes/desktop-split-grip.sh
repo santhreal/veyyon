@@ -94,7 +94,7 @@ if [ "$(( LEFT_X - DRAWER_X ))" -lt 16 ]; then
 		"the transcript column starts ${TRANSCRIPT_COLUMN_LEFT}px in, leaving no strip of the session column outside it"
 fi
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 # ─── Reading The Split's Own Row Out Of The Frame ────────────────────────────

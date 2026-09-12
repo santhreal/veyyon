@@ -189,10 +189,19 @@ mod filters_that_trim_check_before_they_trim {
 	#[test]
 	fn golangci_lint_does_not_flatten_its_own_grouping() {
 		let config = enabled();
-		let ctx = context("golangci-lint", Some("apply"), "", &config);
+		let ctx = context("golangci-lint", Some("run"), "golangci-lint run", &config);
 		let (first, second) = two_passes(&ctx, "x:0\n\n\n\n\n\n", 101);
 		assert_eq!(first, "[errors] golangci-lint\nx:\n  0\n", "the first pass groups: {first:?}");
 		assert_eq!(second, first, "the second pass must not un-indent it");
+	}
+
+	#[test]
+	fn an_unsupported_golangci_command_does_not_group_ordinary_output() {
+		let config = enabled();
+		let ctx = context("golangci-lint", Some("apply"), "golangci-lint apply", &config);
+		let (first, second) = two_passes(&ctx, "x:0\n\n\n\n\n\n", 101);
+		assert_eq!(first, "x:0\n\n");
+		assert_eq!(second, first);
 	}
 
 	/// A realistic golangci-lint capture keeps its grouping across passes.

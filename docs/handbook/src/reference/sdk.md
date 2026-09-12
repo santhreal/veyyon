@@ -325,7 +325,7 @@ stops compiling. A hand-written `"yield"` keeps compiling and quietly stops matc
 symptom is a tool that is no longer there.
 
 A few strings in the package share a spelling with a tool while naming something else, such as the
-`"task"` agent id, the `"write"` approval tier, and the `subagent.output: "yield"` setting value.
+`"task"` agent id, the `"write"` approval tier, and the `agent.output: "yield"` setting value.
 Those stay literals and carry a `// not-a-tool-name:` comment saying which they are. The test
 `test/tools/tool-name-literals-have-one-owner.test.ts` reads the selection sites and fails on any
 unmarked tool-name literal.
@@ -366,7 +366,7 @@ Use these when you want partial control without recreating internal discovery lo
 - `discoverMCPServers(cwd?)`
 - `buildSystemPrompt(options?)`
 
-## Subagent-oriented options
+## Agent-oriented options
 
 For SDK consumers building orchestrators (similar to task executor flow):
 
@@ -402,7 +402,7 @@ Use `setToolUIContext(...)` only if your embedder provides UI capabilities that 
 
 `createAgentSession()` runs two background optimizations to overlap I/O with the rest of session setup:
 
-- **Model-host preconnect.** As soon as the model is resolved, the SDK fires a best-effort `fetch.preconnect()` call against the model host so DNS + TCP + TLS + HTTP/2 to the provider's host happens in parallel with extension/skill load, tool registry build, and system-prompt assembly. The first real `fetch(...)` then reuses the warm connection, saving 100–300 ms on transcontinental hops (e.g. residential IP → `api.anthropic.com`). Implementation lives in `preconnectModelHost()` in `packages/coding-agent/src/sdk.ts`. If Bun's `preconnect` is unavailable (non-Bun runtime) or the call throws, the optimization is silently skipped: never a hard dependency. Applies to every mode (interactive, print, RPC, ACP).
+- **Model-host preconnect.** As soon as the model is resolved, the SDK fires a best-effort `fetch.preconnect()` call against the model host so DNS + TCP + TLS + HTTP/2 to the provider's host happens in parallel with extension/skill load, tool registry build, and system-prompt assembly. The first real `fetch(...)` then reuses the warm connection, saving 100–300 ms on transcontinental hops (e.g. residential IP → `api.anthropic.com`). Implementation is in `preconnectModelHost()` in `packages/coding-agent/src/sdk.ts`. If Bun's `preconnect` is unavailable (non-Bun runtime) or the call throws, the optimization is silently skipped: never a hard dependency. Applies to every mode (interactive, print, RPC, ACP).
 - **Conditional LSP warmup.** Startup LSP servers (those returned by `discoverStartupLspServers(cwd)`) are only warmed when **all** of these hold:
   - `enableLsp !== false` on the session options, **and**
   - `options.hasUI === true` (interactive TUI), **and**

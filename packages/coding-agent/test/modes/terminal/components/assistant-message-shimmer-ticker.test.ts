@@ -1,9 +1,9 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { TERMINAL } from "@veyyon/tui";
+import type { AssistantMessageView, AssistantSegment } from "@veyyon/wire/presentation";
 
 // WHY THIS SUITE EXISTS
 // ---------------------
@@ -26,22 +26,24 @@ import { TERMINAL } from "@veyyon/tui";
 
 const W = 100;
 
-function msg(content: AssistantMessage["content"]): AssistantMessage {
+function msg(
+	content: Array<
+		| { type: "text"; text: string }
+		| { type: "thinking"; thinking: string }
+		| { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> }
+	>,
+): AssistantMessageView {
+	const segments: AssistantSegment[] = [];
+	for (const block of content) {
+		if (block.type === "text") segments.push({ kind: "text", text: block.text });
+		else if (block.type === "thinking") segments.push({ kind: "thinking", text: block.thinking, redacted: false });
+		else if (block.type === "toolCall")
+			segments.push({ kind: "tool-call", toolCallId: block.id, toolName: block.name, input: "{}" });
+	}
 	return {
-		role: "assistant",
-		content,
-		api: "anthropic-messages",
-		provider: "anthropic",
+		segments,
 		model: "m",
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
-		stopReason: "stop",
+		stopReason: "complete",
 		timestamp: 0,
 	};
 }

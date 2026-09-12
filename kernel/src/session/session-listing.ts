@@ -702,9 +702,10 @@ async function scanSessionDir(
 	sessionDir: string,
 	storage: SessionStorage,
 	withStatus: boolean,
+	recoverBackups = true,
 ): Promise<SessionInfo[]> {
 	try {
-		await recoverOrphanedBackups(sessionDir, storage);
+		if (recoverBackups) await recoverOrphanedBackups(sessionDir, storage);
 		const files = storage.listFilesSync(sessionDir, `*${SESSION_FILE_EXTENSION}`);
 		return await collectSessionsFromFiles(files, storage, withStatus);
 	} catch (error) {
@@ -719,35 +720,19 @@ async function scanSessionDir(
 	}
 }
 
-async function scanSessionDirReadOnly(
-	sessionDir: string,
-	storage: SessionStorage,
-	withStatus: boolean,
-): Promise<SessionInfo[]> {
-	try {
-		const files = storage.listFilesSync(sessionDir, `*${SESSION_FILE_EXTENSION}`);
-		return await collectSessionsFromFiles(files, storage, withStatus);
-	} catch (error) {
-		if (!isEnoent(error)) {
-			recordUnreadableSessionDir(sessionDir, toError(error).message);
-		}
-		return [];
-	}
-}
-
 /**
  * List sessions in a resolved session directory (newest first), reading each
  * file's lifecycle {@link SessionStatus}.
  */
 export function listSessions(sessionDir: string, storage: SessionStorage): Promise<SessionInfo[]> {
-	return scanSessionDir(sessionDir, storage, true);
+	return scanSessionDir(sessionDir, storage, true, true);
 }
 
 /**
  * List sessions without repairing orphaned backups or mutating the directory.
  */
 export function listSessionsReadOnly(sessionDir: string, storage: SessionStorage): Promise<SessionInfo[]> {
-	return scanSessionDirReadOnly(sessionDir, storage, true);
+	return scanSessionDir(sessionDir, storage, true, false);
 }
 
 /**

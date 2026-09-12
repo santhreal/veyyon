@@ -398,6 +398,54 @@ describe("Agent — all-mode steering dequeue via prompt", () => {
 		);
 		expect(delivered.length).toBe(2);
 	});
+
+	function deliveredUserTexts(agent: Agent, pattern: RegExp): string[] {
+		return agent.state.messages.flatMap(m =>
+			m.role === "user" && Array.isArray(m.content)
+				? m.content.flatMap(p => (p.type === "text" && pattern.test(p.text) ? [p.text] : []))
+				: [],
+		);
+	}
+
+	it("delivers queued steering messages one turn each in one-at-a-time mode, in order", async () => {
+		const mock = createMockModel({ responses: [{ content: ["a1"] }, { content: ["a2"] }, { content: ["a3"] }] });
+		const agent = new Agent({ streamFn: mock.stream });
+		agent.replaceMessages([
+			{ role: "user", content: [{ type: "text", text: "init" }], timestamp: 1 },
+			createAssistantMessage([{ type: "text", text: "init-response" }]),
+		]);
+		agent.steer({ role: "user", content: [{ type: "text", text: "S1" }], timestamp: 2 });
+		agent.steer({ role: "user", content: [{ type: "text", text: "S2" }], timestamp: 3 });
+
+		await agent.continue();
+
+		expect(mock.calls.length).toBe(2);
+		expect(agent.peekSteeringQueue()).toEqual([]);
+		expect(deliveredUserTexts(agent, /^S[12]$/)).toEqual(["S1", "S2"]);
+	});
+
+	it("delivers queued follow-ups all at once in all mode and one turn each in one-at-a-time mode", async () => {
+		for (const [mode, calls] of [
+			["all", 1],
+			["one-at-a-time", 2],
+		] as const) {
+			const mock = createMockModel({ responses: [{ content: ["a1"] }, { content: ["a2"] }, { content: ["a3"] }] });
+			const agent = new Agent({ streamFn: mock.stream });
+			agent.setFollowUpMode(mode);
+			agent.replaceMessages([
+				{ role: "user", content: [{ type: "text", text: "init" }], timestamp: 1 },
+				createAssistantMessage([{ type: "text", text: "init-response" }]),
+			]);
+			agent.followUp({ role: "user", content: [{ type: "text", text: "F1" }], timestamp: 2 });
+			agent.followUp({ role: "user", content: [{ type: "text", text: "F2" }], timestamp: 3 });
+
+			await agent.continue();
+
+			expect(mock.calls.length).toBe(calls);
+			expect(agent.peekFollowUpQueue()).toEqual([]);
+			expect(deliveredUserTexts(agent, /^F[12]$/)).toEqual(["F1", "F2"]);
+		}
+	});
 });
 
 describe("Agent — interceptor and hook setters reach the loop config", () => {

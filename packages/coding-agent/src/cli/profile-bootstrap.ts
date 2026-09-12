@@ -33,6 +33,7 @@
  * them also activates (`veyyon --print --profile work`).
  */
 
+import { CliUsageError } from "@veyyon/utils/cli-usage-error";
 import { isSubcommand } from "../cli-commands";
 import {
 	EXTENSION_SHADOWABLE_STRING_FLAGS,
@@ -42,7 +43,6 @@ import {
 	PROFILE_BOOTSTRAP_BOUNDARY_ARG,
 	STRING_VALUE_FLAGS,
 } from "./flag-tables";
-import { CliUsageError } from "./usage-error";
 
 function isProfileBootstrapSubcommand(arg: string): boolean {
 	return arg === "launch" || arg === "acp";
@@ -64,6 +64,38 @@ export interface ProfileBootstrapResult {
 	aliasName?: string;
 }
 
+interface GlobalFlagValue {
+	value: string;
+	/** Argv tokens the value occupied beyond the flag: 1 for `--flag value`, 0 for `--flag=value`. */
+	consumed: number;
+}
+
+/**
+ * Read a global string flag spelled `--flag value` or `--flag=value`. Returns undefined when `arg` is
+ * not that flag, and throws when the flag is present without a value.
+ */
+function readGlobalFlagValue(
+	arg: string,
+	next: string | undefined,
+	flag: string,
+	requirement: string,
+): GlobalFlagValue | undefined {
+	if (arg === flag) {
+		if (!next || next.startsWith("-")) {
+			throw new CliUsageError(`${flag} requires a ${requirement}`);
+		}
+		return { value: next, consumed: 1 };
+	}
+	if (arg.startsWith(flag) && arg[flag.length] === "=") {
+		const value = arg.slice(flag.length + 1);
+		if (!value) {
+			throw new CliUsageError(`${flag} requires a ${requirement}`);
+		}
+		return { value, consumed: 0 };
+	}
+	return undefined;
+}
+
 /**
  * Strip `--profile` / `--alias` from argv while preserving the surrounding
  * argument structure, returning the residual argv to hand to the launch parser
@@ -80,6 +112,9 @@ export interface ProfileBootstrapResult {
  * Throws when either flag is supplied without a value.
  */
 export function extractProfileFlags(argv: readonly string[]): ProfileBootstrapResult {
+	if (argv.length === 0) {
+		return { argv: [], profile: undefined, aliasName: undefined };
+	}
 	const stripped: string[] = [];
 	let profile: string | undefined;
 	let aliasName: string | undefined;
@@ -111,42 +146,18 @@ export function extractProfileFlags(argv: readonly string[]): ProfileBootstrapRe
 			continue;
 		}
 
-		if (arg === "--profile") {
-			const value = argv[index + 1];
-			if (!value || value.startsWith("-")) {
-				throw new CliUsageError("--profile requires a profile name");
-			}
-			profile = value;
+		const profileFlag = readGlobalFlagValue(arg, argv[index + 1], "--profile", "profile name");
+		if (profileFlag) {
+			profile = profileFlag.value;
 			insertBoundaryBeforeNextValue = needsBoundaryAfterGlobalStrip(stripped);
-			index += 1;
+			index += profileFlag.consumed;
 			continue;
 		}
-		if (arg.startsWith("--profile=")) {
-			const value = arg.slice("--profile=".length);
-			if (!value) {
-				throw new CliUsageError("--profile requires a profile name");
-			}
-			profile = value;
+		const aliasFlag = readGlobalFlagValue(arg, argv[index + 1], "--alias", "command name");
+		if (aliasFlag) {
+			aliasName = aliasFlag.value;
 			insertBoundaryBeforeNextValue = needsBoundaryAfterGlobalStrip(stripped);
-			continue;
-		}
-		if (arg === "--alias") {
-			const value = argv[index + 1];
-			if (!value || value.startsWith("-")) {
-				throw new CliUsageError("--alias requires a command name");
-			}
-			aliasName = value;
-			insertBoundaryBeforeNextValue = needsBoundaryAfterGlobalStrip(stripped);
-			index += 1;
-			continue;
-		}
-		if (arg.startsWith("--alias=")) {
-			const value = arg.slice("--alias=".length);
-			if (!value) {
-				throw new CliUsageError("--alias requires a command name");
-			}
-			aliasName = value;
-			insertBoundaryBeforeNextValue = needsBoundaryAfterGlobalStrip(stripped);
+			index += aliasFlag.consumed;
 			continue;
 		}
 

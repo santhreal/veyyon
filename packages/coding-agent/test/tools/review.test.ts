@@ -1,7 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import { finalizeSubprocessOutput } from "@veyyon/coding-agent/task/executor";
 import { subprocessToolRegistry } from "@veyyon/coding-agent/task/subprocess-tool-registry";
-import { parseReportFindingDetails, toReviewFinding } from "@veyyon/coding-agent/tools/agent/review";
+import {
+	findingTitle,
+	normalizeReportFindings,
+	parseReportFindingDetails,
+	priorityTone,
+	toReviewFinding,
+} from "@veyyon/coding-agent/tools/agent/review";
 
 describe("report_finding subprocess extraction", () => {
 	it("returns undefined for malformed finding details", () => {
@@ -130,6 +136,86 @@ describe("toReviewFinding", () => {
 			findings: Array<{ priority: number }>;
 		};
 		expect(parsed.findings[0].priority).toBe(2);
+	});
+});
+
+describe("priorityTone", () => {
+	it("maps priorities to expected view tones", () => {
+		expect(priorityTone("P0")).toBe("error");
+		expect(priorityTone("P1")).toBe("warning");
+		expect(priorityTone("P2")).toBe("muted");
+		expect(priorityTone("P3")).toBe("accent");
+		expect(priorityTone("invalid" as never)).toBe("muted");
+	});
+});
+
+describe("findingTitle", () => {
+	it("strips [P0]-[P3] prefixes with optional trailing space", () => {
+		expect(findingTitle("[P0] Critical security flaw")).toBe("Critical security flaw");
+		expect(findingTitle("[P1]   Missing null check")).toBe("Missing null check");
+		expect(findingTitle("[P2]Style suggestion")).toBe("Style suggestion");
+		expect(findingTitle("[P3] Info notice")).toBe("Info notice");
+	});
+
+	it("preserves un-prefixed titles verbatim", () => {
+		expect(findingTitle("Plain title")).toBe("Plain title");
+		expect(findingTitle("")).toBe("");
+	});
+});
+
+describe("normalizeReportFindings", () => {
+	it("returns empty array for non-array inputs", () => {
+		expect(normalizeReportFindings(null)).toEqual([]);
+		expect(normalizeReportFindings(undefined)).toEqual([]);
+		expect(normalizeReportFindings({})).toEqual([]);
+		expect(normalizeReportFindings("string")).toEqual([]);
+	});
+
+	it("filters out malformed items and preserves valid findings", () => {
+		const valid = {
+			title: "[P0] Bug",
+			body: "Details",
+			priority: "P0",
+			confidence: 0.9,
+			file_path: "src/a.ts",
+			line_start: 1,
+			line_end: 2,
+		};
+		const malformed = { title: "No fields" };
+		expect(normalizeReportFindings([valid, malformed])).toEqual([
+			{
+				title: "[P0] Bug",
+				body: "Details",
+				priority: "P0",
+				confidence: 0.9,
+				file_path: "src/a.ts",
+				line_start: 1,
+				line_end: 2,
+			},
+		]);
+	});
+
+	it("coerces numeric priority values in finding objects", () => {
+		const numericFinding = {
+			title: "Bug",
+			body: "Details",
+			priority: 1,
+			confidence: 0.8,
+			file_path: "src/b.ts",
+			line_start: 5,
+			line_end: 5,
+		};
+		expect(normalizeReportFindings([numericFinding])).toEqual([
+			{
+				title: "Bug",
+				body: "Details",
+				priority: "P1",
+				confidence: 0.8,
+				file_path: "src/b.ts",
+				line_start: 5,
+				line_end: 5,
+			},
+		]);
 	});
 });
 

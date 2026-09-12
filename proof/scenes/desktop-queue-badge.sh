@@ -74,7 +74,7 @@ working_fill_pixels() { # <shot> -> count of pixels of the working tint's fill
 }
 
 # ─── A Real Turn, Long Enough To Photograph ──────────────────────────────────
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 # The composer is a band at the foot of the window, which is where a click has to

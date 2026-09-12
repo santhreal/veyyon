@@ -5,7 +5,7 @@ import { parseKnownModel, semverEqual } from "../identity/classify";
 import type { ModelReasoningOptions, ModelSpec } from "../types";
 import { discoveryFetch, toArray, toBoolean, toFields, toFiniteNumber, toNonEmptyString } from "../utils";
 import { CODEX_BASE_URL, CODEX_CLIENT_VERSION, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "../wire/codex";
-import type { DiscoveryFailure, DiscoveryHooks } from "./failure";
+import { type DiscoveryFailure, type DiscoveryHooks, readDiscoveryJson } from "./failure";
 
 const DEFAULT_MODEL_LIST_PATHS = ["/codex/models", "/models"] as const;
 /**
@@ -124,18 +124,8 @@ export async function fetchCodexModels(options: CodexModelDiscoveryOptions): Pro
 			continue;
 		}
 
-		if (!response.ok) {
-			report("status", `HTTP ${response.status} ${response.statusText}`.trim());
-			continue;
-		}
-
-		let payload: unknown;
-		try {
-			payload = await response.json();
-		} catch (error) {
-			report("body", `response is not JSON: ${errorMessage(error)}`);
-			continue;
-		}
+		const payload = await readDiscoveryJson(response, report);
+		if (payload === undefined) continue;
 
 		const models = normalizeCodexModels(payload, baseUrl);
 		if (models === null) {

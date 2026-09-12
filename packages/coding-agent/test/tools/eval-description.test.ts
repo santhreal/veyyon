@@ -62,7 +62,7 @@ describe("eval tool description", () => {
 	});
 
 	it("omits agent() when the session forbids spawning", () => {
-		// Subagents with spawns: undefined (resolved to "") cannot launch tasks.
+		// Agents with spawns: undefined (resolved to "") cannot launch tasks.
 		// The prelude doc must not promise a helper that always throws.
 		const text = getEvalToolDescription({ py: true, js: true, spawns: false });
 		expect(text).not.toContain("agent(prompt");

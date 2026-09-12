@@ -12,7 +12,7 @@ export interface ComposerShortcutContext {
 	hasDraft: boolean;
 	/** Queue holds steered/follow-up messages. */
 	hasQueue: boolean;
-	/** Focused session is a subagent (Esc returns instead of interrupting). */
+	/** Focused session is an agent (Esc returns instead of interrupting). */
 	focused: boolean;
 	/** A foreground bash command is waiting (Ctrl+B moves it to background). */
 	canBackgroundBash: boolean;
@@ -85,8 +85,22 @@ export class ComposerShortcutsBar implements Component, MouseRoutable {
 	/** Host maps a clicked chip id to the action its keybinding runs. */
 	onChipClick?: (id: string) => void;
 
-	setShortcuts(shortcuts: readonly ModalShortcut[]): void {
+	get shortcuts(): readonly ModalShortcut[] {
+		return this.#shortcuts;
+	}
+
+	setShortcuts(shortcuts: readonly ModalShortcut[]): boolean {
+		if (
+			this.#shortcuts.length === shortcuts.length &&
+			this.#shortcuts.every((s, i) => {
+				const next = shortcuts[i]!;
+				return s.id === next.id && s.label === next.label && s.clickable === next.clickable;
+			})
+		) {
+			return false;
+		}
 		this.#shortcuts = shortcuts;
+		return true;
 	}
 
 	invalidate(): void {

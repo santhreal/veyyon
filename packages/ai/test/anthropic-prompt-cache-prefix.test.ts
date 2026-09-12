@@ -52,7 +52,7 @@ function cacheControls(payload: AnthropicPayload): CacheControl[] {
 
 describe("Anthropic stable system-prefix caching", () => {
 	/**
-	 * The harness block is shared across parent and subagent prompts. Project,
+	 * The harness block is shared across parent and agent prompts. Project,
 	 * assignment, and Argot suffix changes must not invalidate that prefix.
 	 */
 	it("anchors both the stable harness and final system blocks for API-key requests", async () => {

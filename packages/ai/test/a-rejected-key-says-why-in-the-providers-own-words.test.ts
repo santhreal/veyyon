@@ -20,9 +20,15 @@
  * behaviour and is still better than inventing a message.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, vi } from "bun:test";
 import * as AIError from "@veyyon/ai/error";
-import { validateOpenAICompatibleApiKey } from "@veyyon/ai/registry/api-key-validation";
+import * as validators from "@veyyon/ai/registry/api-key-validation";
+import * as timeout from "@veyyon/utils/scoped-timeout";
+
+type ValidatorName = Exclude<keyof typeof validators, "VALIDATION_TIMEOUT_MS">;
+const validatorNames = Object.keys(validators).filter(
+	(name): name is ValidatorName => typeof validators[name as keyof typeof validators] === "function",
+);
 
 /** The exact body Command Code returns for a key on a plan without API access. */
 const COMMAND_CODE_403 = JSON.stringify({
@@ -38,12 +44,13 @@ function respond(status: number, body: string): typeof fetch {
 	return (() => Promise.resolve(new Response(body, { status }))) as unknown as typeof fetch;
 }
 
-async function validationError(status: number, body: string): Promise<string> {
+async function errorForValidation(validator: ValidatorName, status: number, body: string): Promise<string> {
 	try {
-		await validateOpenAICompatibleApiKey({
+		await validators[validator]({
 			provider: "command-code",
 			apiKey: "sk-test-key",
 			baseUrl: "https://api.example.invalid/v1",
+			modelsUrl: "https://api.example.invalid/v1/models",
 			model: "some-model",
 			fetch: respond(status, body),
 		});
@@ -53,7 +60,72 @@ async function validationError(status: number, body: string): Promise<string> {
 	}
 }
 
-describe("a rejected key says why in the provider's own words", () => {
+describe.each(validatorNames)("a rejected key says why in the provider's own words (%s)", validator => {
+	const validationError = (status: number, body: string): Promise<string> =>
+		errorForValidation(validator, status, body);
+
+	it("accepts a successful response without consuming its body", async () => {
+		const response = new Response("unused success body");
+		await expect(
+			validators[validator]({
+				provider: "example",
+				apiKey: "test-key",
+				baseUrl: "https://api.example.invalid/v1",
+				modelsUrl: "https://api.example.invalid/v1/models",
+				model: "some-model",
+				fetch: async () => response,
+			}),
+		).resolves.toBeUndefined();
+		expect(response.bodyUsed).toBe(false);
+	});
+
+	it("keeps its deadline active until a stalled error body ends", async () => {
+		const scopedTimeoutSignal = timeout.scopedTimeoutSignal;
+		const clock = vi
+			.spyOn(timeout, "scopedTimeoutSignal")
+			.mockImplementation((_milliseconds, parent) => scopedTimeoutSignal(50, parent));
+		const caller = new AbortController();
+		const cleanup = setTimeout(() => caller.abort("test cleanup"), 1500);
+		let bodyAborted = false;
+		const started = performance.now();
+		try {
+			await expect(
+				validators[validator]({
+					provider: "example",
+					apiKey: "test-key",
+					baseUrl: "https://api.example.invalid/v1",
+					modelsUrl: "https://api.example.invalid/v1/models",
+					model: "some-model",
+					signal: caller.signal,
+					fetch: async (_url, init) => {
+						const signal = init?.signal;
+						if (!signal) throw new Error("Validation request lacks a cancellation signal");
+						return new Response(
+							new ReadableStream<Uint8Array>({
+								start(controller) {
+									const abort = () => {
+										bodyAborted = true;
+										controller.error(signal.reason);
+									};
+									if (signal.aborted) abort();
+									else signal.addEventListener("abort", abort, { once: true });
+								},
+							}),
+							{ status: 401 },
+						);
+					},
+				}),
+			).rejects.toThrow("example API key validation failed (401)");
+			expect(bodyAborted).toBe(true);
+			expect(caller.signal.aborted).toBe(false);
+			expect(performance.now() - started).toBeLessThan(1000);
+		} finally {
+			clearTimeout(cleanup);
+			caller.abort();
+			clock.mockRestore();
+		}
+	});
+
 	it("surfaces the provider's sentence for the plan-limit body that started this", async () => {
 		// The whole sentence, including the billing URL: the operator's next action
 		// is in the tail of it, so a fix that kept only the first clause is wrong.
@@ -103,8 +175,8 @@ describe("a rejected key says why in the provider's own words", () => {
 		expect(message).toContain("Bad Gateway");
 	});
 
-	it("reports the status alone when the body is empty", async () => {
-		expect(await validationError(403, "")).toContain("(403)");
+	it.each(["", " \n\t "])("reports the status alone when the body has no detail (%j)", async body => {
+		expect(await validationError(403, body)).toBe("command-code API key validation failed (403)");
 	});
 
 	it("treats a prototype-polluting key as no message and leaves Object.prototype alone", async () => {
@@ -122,10 +194,13 @@ describe("a rejected key says why in the provider's own words", () => {
 		const message = await validationError(403, JSON.stringify({ error: { message: "x".repeat(50_000) } }));
 		expect(message.length).toBeLessThan(5_000);
 	});
+});
 
-	it("exposes the extractor as the one owner every validator shares", () => {
-		// Three validation kinds interpolate this; a second copy is how one of
-		// them keeps printing raw JSON after the other two are fixed.
-		expect(typeof AIError.providerErrorMessage).toBe("function");
-	});
+it("requires an explicit decision for every public validation entry point", () => {
+	expect(validatorNames.toSorted()).toEqual([
+		"validateAnthropicCompatibleApiKey",
+		"validateApiKeyAgainstModelsEndpoint",
+		"validateOpenAICompatibleApiKey",
+	]);
+	expect(typeof AIError.providerErrorMessage).toBe("function");
 });

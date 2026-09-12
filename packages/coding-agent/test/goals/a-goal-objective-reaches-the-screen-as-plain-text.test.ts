@@ -27,7 +27,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { goalToolView } from "@veyyon/coding-agent/goals/goal-tool";
+import { goalToolView } from "@veyyon/coding-agent/goals/goal-view";
 import type { Goal, GoalModeState, GoalToolDetails } from "@veyyon/coding-agent/goals/state";
 import {
 	GOAL_SUBCOMMANDS,

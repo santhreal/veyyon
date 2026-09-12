@@ -489,32 +489,25 @@ export class PolyphonicRecallEngine {
 
 	#lookupMemory(memoryId: string): MemoryHydrationRow | null {
 		const now = new Date().toISOString();
-		const working = this.db
-			.query(`
-				SELECT id, content, source, timestamp, session_id, importance, metadata_json, veracity,
-					memory_type, recall_count, last_recalled, valid_until, superseded_by, scope,
-					author_id, author_type, channel_id, trust_tier, created_at, 'working' AS tier_name
-				FROM working_memory
-				WHERE id = ?
-					AND superseded_by IS NULL
-					AND (valid_until IS NULL OR valid_until > ?)
-					AND (session_id = ? OR scope = 'global')
-			`)
-			.get(memoryId, now, this.sessionId) as MemoryHydrationRow | null;
-		if (working !== null) return working;
-		return this.db
-			.query(`
-				SELECT id, content, source, timestamp, session_id, importance, metadata_json, veracity,
-					memory_type, recall_count, last_recalled, valid_until, superseded_by, scope,
-					author_id, author_type, channel_id, trust_tier, created_at, rowid, summary_of,
-					tier, 'episodic' AS tier_name
-				FROM episodic_memory
-				WHERE id = ?
-					AND superseded_by IS NULL
-					AND (valid_until IS NULL OR valid_until > ?)
-					AND (session_id = ? OR scope = 'global')
-			`)
-			.get(memoryId, now, this.sessionId) as MemoryHydrationRow | null;
+		for (const [table, tierName, extraCols] of [
+			["working_memory", "working", ""],
+			["episodic_memory", "episodic", ", rowid, summary_of, tier"],
+		] as const) {
+			const row = this.db
+				.query(`
+					SELECT id, content, source, timestamp, session_id, importance, metadata_json, veracity,
+						memory_type, recall_count, last_recalled, valid_until, superseded_by, scope,
+						author_id, author_type, channel_id, trust_tier, created_at${extraCols}, '${tierName}' AS tier_name
+					FROM ${table}
+					WHERE id = ?
+						AND superseded_by IS NULL
+						AND (valid_until IS NULL OR valid_until > ?)
+						AND (session_id = ? OR scope = 'global')
+				`)
+				.get(memoryId, now, this.sessionId) as MemoryHydrationRow | null;
+			if (row !== null) return row;
+		}
+		return null;
 	}
 }
 

@@ -8,7 +8,9 @@ import type { AgentRegistry } from "../../registry/agent-registry";
 import { formatDuration, PREVIEW_LIMITS } from "../core/render-utils";
 import { ToolError } from "../core/tool-errors";
 import type { ToolSession } from "../index";
-import { jobToolView } from "./job-view";
+import { isWaitingPollDetails, jobToolView } from "./job-view";
+
+export { isWaitingPollDetails } from "./job-view";
 
 const jobSchema = type({
 	"poll?": type("string[]").describe("job ids to wait for; omit to wait on all running jobs"),
@@ -34,6 +36,8 @@ export interface JobSnapshot {
 	id: string;
 	type: AsyncJobType;
 	status: "running" | "completed" | "failed" | "cancelled";
+	/** Registered but parked behind the spawn semaphore: no work has started yet. */
+	queued?: true;
 	label: string;
 	durationMs: number;
 	resultText?: string;
@@ -49,7 +53,7 @@ interface CancelOutcome {
 }
 
 /**
- * A live subagent from the AgentRegistry that has no backing job in the
+ * A live agent from the AgentRegistry that has no backing job in the
  * AsyncJobManager — e.g. an idle agent woken (or a parked agent revived) via
  * `irc`, or a spawn owned by another agent. Surfaced by `list` and empty-poll
  * snapshots so the job tool's picture matches the UI's running-agent count.
@@ -66,21 +70,8 @@ export interface AgentActivitySnapshot {
 export interface JobToolDetails {
 	jobs: JobSnapshot[];
 	cancelled?: { id: string; status: CancelStatus }[];
-	/** Running subagents not represented by a job row in this result. */
+	/** Running agents not represented by a job row in this result. */
 	agents?: AgentActivitySnapshot[];
-}
-
-/**
- * A poll snapshot where every watched job is still running and nothing was
- * cancelled — pure "still waiting" noise once a newer poll exists. The TUI
- * keeps such a block un-finalized (displaceable) so a follow-up `job` call
- * replaces it instead of stacking another waiting frame in the transcript.
- */
-export function isWaitingPollDetails(details: unknown): boolean {
-	const d = details as JobToolDetails | undefined;
-	if (!d || !Array.isArray(d.jobs) || d.jobs.length === 0) return false;
-	if (d.cancelled?.length) return false;
-	return d.jobs.every(job => job?.status === "running");
 }
 
 export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
@@ -291,7 +282,7 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		// re-arms the async delivery of anything that settled inside the window and was
 		// NOT acknowledged. So the order is the exactly-once contract, in both
 		// directions: acknowledge first and the re-arm stays quiet; unwatch first and
-		// the operator gets the same subagent report twice. The `finally` is what makes
+		// the operator gets the same agent report twice. The `finally` is what makes
 		// the watch impossible to leak if `#buildResult` ever throws.
 		try {
 			return this.#buildResult(manager, allTrackedJobs, cancelOutcomes);
@@ -376,7 +367,7 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 	}
 
 	/**
-	 * Running subagents from the registry that are not covered by one of the
+	 * Running agents from the registry that are not covered by one of the
 	 * caller's running jobs. Agents woken via `irc` (idle wake / park revival)
 	 * and spawns owned by another agent run with no AsyncJobManager entry, yet
 	 * the UI's agent badge counts them — a snapshot must account for that
@@ -446,6 +437,7 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 			startTime: number;
 			resultText?: string;
 			errorText?: string;
+			queued?: boolean;
 		}[],
 	): JobSnapshot[] {
 		const now = Date.now();
@@ -456,6 +448,7 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 				id: latest.id,
 				type: latest.type,
 				status: latest.status as JobSnapshot["status"],
+				...(latest.status === "running" && latest.queued === true ? { queued: true as const } : {}),
 				label: latest.label,
 				durationMs: Math.max(0, now - latest.startTime),
 				...(latest.resultText ? { resultText: latest.resultText } : {}),
@@ -518,7 +511,11 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		if (running.length > 0) {
 			lines.push(`## Still Running (${running.length})\n`);
 			for (const j of running) {
-				lines.push(`- \`${j.id}\` [${j.type}] — ${j.label} (up ${formatDuration(j.durationMs)})`);
+				lines.push(
+					j.queued
+						? `- \`${j.id}\` [${j.type}] — ${j.label} (queued ${formatDuration(j.durationMs)}, waiting for a concurrency slot)`
+						: `- \`${j.id}\` [${j.type}] — ${j.label} (up ${formatDuration(j.durationMs)})`,
+				);
 			}
 		}
 

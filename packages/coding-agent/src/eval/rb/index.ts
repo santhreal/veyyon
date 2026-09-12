@@ -10,9 +10,6 @@ export function namespaceSessionId(sessionId: string): string {
 
 export default createKernelBackend<RubyExecutorOptions>({
 	id: "ruby",
-	label: "Ruby",
-	highlightLang: "ruby",
-	settingPrefix: "ruby",
 	sessionPrefix: RUBY_SESSION_PREFIX,
 	checkAvailability: (cwd, interpreter) => checkRubyKernelAvailability(cwd, interpreter),
 	execute: (code, options) => executeRuby(code, options),

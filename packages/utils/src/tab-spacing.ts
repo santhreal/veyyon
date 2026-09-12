@@ -1,5 +1,5 @@
 /**
- * Default tab width (display / tab expansion) and per-file width from `.editorconfig`.
+ * Per-file tab width from `.editorconfig`; the display default is in `./tab-width`.
  * Mirrors former `veyyon-natives` `indent` + `text` default-tab-width behavior (no N-API).
  */
 import * as fs from "node:fs";
@@ -7,6 +7,9 @@ import * as path from "node:path";
 import { isFsError } from "./fs-error";
 import * as logger from "./logger";
 import { errorMessage } from "./type-guards";
+
+// `DEFAULT_TAB_WIDTH` is `./tab-width`'s; it stays on this subpath, where it was declared before.
+export { DEFAULT_TAB_WIDTH } from "./tab-width";
 
 /**
  * The bounds an `.editorconfig` value is clamped into on its way to an LSP formatting request.
@@ -18,15 +21,6 @@ import { errorMessage } from "./type-guards";
  */
 export const MIN_TAB_WIDTH = 1;
 export const MAX_TAB_WIDTH = 16;
-
-/**
- * The display tab width, and the one number that DOES cross the FFI: `packages/utils/src/width.ts`
- * charges it per tab in `visibleWidth` and hands it to every native cut, slice, wrap and overlay.
- * The native side clamps what it is handed to its own maximum and the JS oracle does not, so a
- * value above that maximum makes the two disagree and every cut overflow the width it was cut to.
- * `packages/utils/test/tab-width-crosses-ffi.test.ts` is what fails when it does.
- */
-export const DEFAULT_TAB_WIDTH = 3;
 
 /**
  * Per-component path length cap on common filesystems (`NAME_MAX = 255` on

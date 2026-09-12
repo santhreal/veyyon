@@ -7,6 +7,7 @@ import {
 	getCurrentThemeName,
 	getThemeByName,
 	isThemeWatcherActive,
+	onThemeChange,
 	setColorBlindMode,
 	setSymbolPreset,
 	setTheme,
@@ -138,6 +139,21 @@ describe("theme reload — fallback is reported, never silent", () => {
 		expect(result.success).toBe(true);
 		expect(result.fellBack).toBeUndefined();
 		expect(result.error).toBeUndefined();
+	});
+
+	it("re-renders a preset or colour-blind change as an ephemeral repaint of the committed theme", async () => {
+		writeCustomTheme("mytheme", VALID_THEME);
+		await setTheme("mytheme");
+		const events: { ephemeral?: boolean }[] = [];
+		const unsubscribe = onThemeChange(event => events.push(event));
+		try {
+			expect((await setSymbolPreset("ascii")).success).toBe(true);
+			expect((await setColorBlindMode(true)).success).toBe(true);
+		} finally {
+			unsubscribe();
+		}
+		expect(events).toEqual([{ ephemeral: true }, { ephemeral: true }]);
+		expect(getCurrentThemeName()).toBe("mytheme");
 	});
 });
 

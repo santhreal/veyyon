@@ -35,7 +35,7 @@ import {
 	discoverExtensionModulePaths,
 	getUserPath,
 	loadFilesFromDir,
-	readContextFile,
+	loadUserContextFile,
 	scanSkillsFromDir,
 } from "./helpers";
 
@@ -78,24 +78,7 @@ async function loadJsonConfig(configPath: string): Promise<Record<string, unknow
  * user's XDG config directory rather than in the checkout.
  */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
-	const items: ContextFile[] = [];
-	const warnings: string[] = [];
-
-	const userAgentsMd = getUserPath(ctx, "opencode", "AGENTS.md");
-	if (userAgentsMd) {
-		const { content, warning } = await readContextFile(userAgentsMd);
-		if (warning) warnings.push(warning);
-		if (content) {
-			items.push({
-				path: userAgentsMd,
-				content,
-				level: "user",
-				_source: createSourceMeta(PROVIDER_ID, userAgentsMd, "user"),
-			});
-		}
-	}
-
-	return { items, warnings };
+	return loadUserContextFile(ctx, PROVIDER_ID, "opencode", "AGENTS.md");
 }
 
 // =============================================================================

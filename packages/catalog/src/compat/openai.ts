@@ -376,7 +376,18 @@ export function buildOpenAICompat(spec: ModelSpec<"openai-completions">): Resolv
 		alwaysSendMaxTokens: isKimiModel,
 		disableReasoningOnForcedToolChoice: isKimiModel || isAnthropicModel,
 		disableReasoningOnToolChoice: isDeepseekFamily && Boolean(spec.reasoning) && !isOpenRouter,
-		supportsToolChoice: !isDirectDeepseekReasoning,
+		// OpenCode's gateways reject every `tool_choice` value but `"auto"`:
+		// `[invalid_request_error] only '"auto"' is supported for 'tool_choice'.
+		// '"none"', '"required"', and named function choices are not currently
+		// supported`. Omitting the field is what `"auto"` means on an
+		// OpenAI-compatible endpoint, so dropping it costs nothing and is the only
+		// setting that covers all three rejected forms at once. Reported against
+		// the guided goal, which pins its `respond` tool by name and so 400ed on
+		// every interview turn; `"none"` reaches the same upstream from a
+		// side-channel turn. `isOpenCodeHost` covers the provider ids and the
+		// `opencode.ai` URL marker, so a custom provider pointed at the gateway
+		// answers the same way.
+		supportsToolChoice: !isDirectDeepseekReasoning && !isOpenCodeHost,
 		supportsForcedToolChoice: !requiresEnabledThinking,
 		supportsNamedToolChoice: provider !== "llama.cpp",
 		maxTokensField: useMaxTokens ? "max_tokens" : "max_completion_tokens",
@@ -538,6 +549,7 @@ export function buildOpenAIResponsesCompat(spec: OpenAIResponsesSpecLike): Resol
 	const isCodexBackend = modelMatchesHost({ provider: spec.provider, baseUrl }, "codexBackend");
 	const isOpenRouter = modelMatchesHost({ provider: spec.provider, baseUrl }, "openrouter");
 	const isHuggingfaceRouter = modelMatchesHost({ provider: spec.provider, baseUrl }, "huggingfaceRouter");
+	const isOpenCodeHost = modelMatchesHost({ provider: spec.provider, baseUrl }, "opencode");
 	const isOpenAIUrl = hostMatchesUrl(baseUrl, "openai");
 	const id = spec.id ?? "";
 	const thinkingFormat: ResolvedOpenAISharedCompat["thinkingFormat"] = isOpenRouter ? "openrouter" : "openai";
@@ -571,7 +583,11 @@ export function buildOpenAIResponsesCompat(spec: OpenAIResponsesSpecLike): Resol
 		filterReasoningHistory: spec.provider === "xai-oauth" || (isOpenRouter && isAnthropicModel),
 		disableReasoningOnForcedToolChoice: isKimiModel,
 		disableReasoningOnToolChoice: isDeepseekFamily && reasoningCapable && !isOpenRouter,
-		supportsToolChoice: true,
+		// The OpenCode gateways accept only `"auto"`, on this endpoint as much as on
+		// chat-completions, and the reported failure came through here: the bundle
+		// routes `muse-spark-1.3-contributor` to `/responses`. See the matching
+		// comment in `buildOpenAICompat` for the upstream's own wording.
+		supportsToolChoice: !isOpenCodeHost,
 		supportsForcedToolChoice: true,
 		supportsNamedToolChoice: true,
 		reasoningContentField: "reasoning_content",

@@ -128,17 +128,11 @@ export function splitTrailingPartialEscape(text: string): { head: string; partia
 	return { head: text.slice(0, start), partial: text.slice(start) };
 }
 
-/**
- * Escape the three XML-significant characters (`&`, `<`, `>`) in text destined
- * for an XML/markup element body. Allocation-conscious: returns the input
- * unchanged (same reference) when nothing needs escaping. Quotes are left as-is
- * — use it for element text, not attribute values.
- */
-export function escapeXmlText(input: string): string {
+function escapeXml(input: string, escapeQuotes: boolean): string {
 	let firstEscapable = -1;
 	for (let index = 0; index < input.length; index++) {
 		const char = input.charCodeAt(index);
-		if (char === 38 || char === 60 || char === 62) {
+		if (char === 38 || char === 60 || char === 62 || (escapeQuotes && char === 34)) {
 			firstEscapable = index;
 			break;
 		}
@@ -151,9 +145,20 @@ export function escapeXmlText(input: string): string {
 		if (char === "&") output += "&amp;";
 		else if (char === "<") output += "&lt;";
 		else if (char === ">") output += "&gt;";
+		else if (escapeQuotes && char === '"') output += "&quot;";
 		else output += char;
 	}
 	return output;
+}
+
+/**
+ * Escape the three XML-significant characters (`&`, `<`, `>`) in text destined
+ * for an XML/markup element body. Allocation-conscious: returns the input
+ * unchanged (same reference) when nothing needs escaping. Quotes are left as-is
+ * — use it for element text, not attribute values.
+ */
+export function escapeXmlText(input: string): string {
+	return escapeXml(input, false);
 }
 
 /**
@@ -164,24 +169,5 @@ export function escapeXmlText(input: string): string {
  * values; {@link escapeXmlText} is for element bodies and leaves `"` intact.
  */
 export function escapeXmlAttribute(input: string): string {
-	let firstEscapable = -1;
-	for (let index = 0; index < input.length; index++) {
-		const char = input.charCodeAt(index);
-		if (char === 38 || char === 60 || char === 62 || char === 34) {
-			firstEscapable = index;
-			break;
-		}
-	}
-	if (firstEscapable === -1) return input;
-
-	let output = input.slice(0, firstEscapable);
-	for (let index = firstEscapable; index < input.length; index++) {
-		const char = input[index];
-		if (char === "&") output += "&amp;";
-		else if (char === "<") output += "&lt;";
-		else if (char === ">") output += "&gt;";
-		else if (char === '"') output += "&quot;";
-		else output += char;
-	}
-	return output;
+	return escapeXml(input, true);
 }

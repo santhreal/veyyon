@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CombinedAutocompleteProvider } from "@veyyon/utils/autocomplete";
+import { applyAutocompleteCompletion, CombinedAutocompleteProvider, extractAtPrefix } from "@veyyon/utils/autocomplete";
 
 describe("CombinedAutocompleteProvider", () => {
 	describe("extractPathPrefix", () => {
@@ -479,6 +479,36 @@ describe("CombinedAutocompleteProvider", () => {
 
 			expect(result.lines[0]).toBe("/model claude-sonnet");
 			expect(result.cursorCol).toBe("/model claude-sonnet".length);
+		});
+	});
+
+	describe("applyAutocompleteCompletion pure function", () => {
+		it("applies completions without requiring a CombinedAutocompleteProvider instance", () => {
+			const result = applyAutocompleteCompletion(["/h"], 0, 2, { value: "help", label: "help" }, "/h");
+			expect(result.lines[0]).toBe("/help ");
+			expect(result.cursorCol).toBe("/help ".length);
+		});
+
+		it("applies @ file completions correctly", () => {
+			const result = applyAutocompleteCompletion(
+				["see @src/in"],
+				0,
+				"see @src/in".length,
+				{ value: "@src/index.ts", label: "src/index.ts" },
+				"@src/in",
+			);
+			expect(result.lines[0]).toBe("see @src/index.ts ");
+			expect(result.cursorCol).toBe("see @src/index.ts ".length);
+		});
+	});
+
+	describe("extractAtPrefix", () => {
+		it("extracts bare @ prefix after whitespace or delimiter", () => {
+			expect(extractAtPrefix("@file")).toBe("@file");
+			expect(extractAtPrefix("check @file.ts")).toBe("@file.ts");
+			expect(extractAtPrefix('check @"quoted file.ts')).toBe('@"quoted file.ts');
+			expect(extractAtPrefix('check @"quoted file.ts"')).toBeNull();
+			expect(extractAtPrefix("not an at prefix")).toBeNull();
 		});
 	});
 

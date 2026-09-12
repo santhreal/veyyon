@@ -250,3 +250,4 @@ export const specialHandlers: SpecialHandler[] = [
 	handleWikidata,
 	handleWikipedia,
 ];
+export * from "./engine/registry";

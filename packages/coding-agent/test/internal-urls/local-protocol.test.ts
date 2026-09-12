@@ -149,7 +149,7 @@ describe("LocalProtocolHandler", () => {
 			await Bun.write(path.join(callerArtifactsDir, "local", "PLAN.md"), "# caller session");
 
 			// Process-global override points at the WRONG session (simulates a
-			// stale override leaked from a prior subagent, or the multi-`main`
+			// stale override leaked from a prior agent, or the multi-`main`
 			// AgentRegistry case in cmux/ACP where "first one wins" lookup
 			// picks a sibling session's artifacts dir — issue #1608).
 			LocalProtocolHandler.setOverride({

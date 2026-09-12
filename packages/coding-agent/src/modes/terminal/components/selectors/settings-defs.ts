@@ -17,6 +17,7 @@ import {
 	getPathsForTab,
 	getType,
 	getUi,
+	type SettingValue as SchemaSettingValue,
 	SETTING_TABS,
 	type SettingPath,
 	TAB_GROUPS,
@@ -89,7 +90,7 @@ export interface ProviderLimitsSettingDef extends BaseSettingDef {
 	type: "providerLimits";
 }
 
-/** Searchable model picker (auth badges). Used for subagent/compaction model slots. */
+/** Searchable model picker (auth badges). Used for agent/compaction model slots. */
 export interface ModelSelectorSettingDef extends BaseSettingDef {
 	type: "modelSelector";
 }
@@ -100,17 +101,17 @@ export interface ModelRolesSettingDef extends BaseSettingDef {
 }
 
 /**
- * The `subagent.agents` table: one row per discovered agent, each carrying
+ * The `agent.agents` table: one row per discovered agent, each carrying
  * whether it is offered, its model, and its effort.
  *
  * A dedicated type rather than the generic record-as-text control because the
  * keys are not free-form — they are the agents this project actually has, and an
  * operator editing JSON by hand cannot see which names exist or what a blank
- * model resolves to. The editor reads `task/subagent-settings.ts` for both, so
+ * model resolves to. The editor reads `task/agent-settings.ts` for both, so
  * the settings tab and `/agents` cannot disagree about precedence.
  */
-export interface SubagentAgentsSettingDef extends BaseSettingDef {
-	type: "subagentAgents";
+export interface AgentsSettingDef extends BaseSettingDef {
+	type: "agents";
 }
 
 /**
@@ -123,22 +124,22 @@ export interface DefaultEffortSettingDef extends BaseSettingDef {
 }
 
 /**
- * `subagent.thinkingLevel`: the effort every agent runs at while the roster is
+ * `agent.thinkingLevel`: the effort every agent runs at while the roster is
  * on shared scope.
  *
  * A dedicated type rather than the generic text control because the levels a
  * model accepts are not free-form, and a stored level no endpoint declares is
  * clamped away at dispatch and reads as the picker having done nothing. The
- * ladder narrows against `subagent.model`, which is the model those agents
+ * ladder narrows against `agent.model`, which is the model those agents
  * actually run, so the row and the spawn cannot disagree.
  */
-export interface SubagentSharedEffortSettingDef extends BaseSettingDef {
-	type: "subagentSharedEffort";
+export interface AgentSharedEffortSettingDef extends BaseSettingDef {
+	type: "agentSharedEffort";
 }
 
 /**
  * The profile's DEFAULT model — the model each new session starts on. Rendered
- * with the same searchable model+effort picker as the role/subagent slots, but
+ * with the same searchable model+effort picker as the role/agent slots, but
  * backed by the `default` model-role slot (the slot the interactive `/model`
  * choice writes to and startup restores from), so it has no schema key of its
  * own and never duplicates that source of truth.
@@ -190,9 +191,9 @@ export type SettingDef =
 	| ProviderLimitsSettingDef
 	| ModelSelectorSettingDef
 	| ModelRolesSettingDef
-	| SubagentAgentsSettingDef
+	| AgentsSettingDef
 	| DefaultEffortSettingDef
-	| SubagentSharedEffortSettingDef
+	| AgentSharedEffortSettingDef
 	| DefaultModelSettingDef
 	| AdvisorModelSettingDef
 	| RulesSettingDef
@@ -252,49 +253,30 @@ function whenSettingsSay(read: () => boolean): boolean {
 	}
 }
 
+const settingFlag = (path: SettingPath) => () => whenSettingsSay(() => Settings.instance.get(path) === true);
+const settingValue =
+	<P extends SettingPath>(path: P, check: (val: SchemaSettingValue<P>) => boolean) =>
+	() =>
+		whenSettingsSay(() => check(Settings.instance.get(path)));
+
 const CONDITIONS: Record<string, () => boolean> = {
 	hasImageProtocol: () => !!TERMINAL.imageProtocol,
-	advisorEnabled: () => whenSettingsSay(() => Settings.instance.get("advisor.enabled") === true),
-	argotEnabled: () => whenSettingsSay(() => Settings.instance.get("argot.enabled") === true),
-	autoQaEnabled: () => whenSettingsSay(() => Settings.instance.get("dev.autoqa") === true),
-	// The footline is opt-in, and a preset or a thinking-level spelling for a row that
-	// does not render is a knob with nothing behind it.
-	statusLineEnabled: () => whenSettingsSay(() => Settings.instance.get("statusLine.enabled") === true),
-	// The kill policy only matters while a budget exists; at 0 cores the toggle
-	// would be a knob with nothing behind it.
-	cpuLimitEnabled: () => whenSettingsSay(() => Settings.instance.get("session.cpuLimitCores") > 0),
-	// Same shape for the write budget: at 0 GB nothing is metered, so a choice
-	// between refusing and killing has no case where it applies.
-	writeBudgetEnabled: () => whenSettingsSay(() => Settings.instance.get("session.writeBudgetGb") > 0),
-	// Blocking on a rejection only makes sense while rejections are reported: a
-	// run that stopped for a reason nothing was going to tell you about is worse
-	// than one that quietly overpays.
-	cacheRejectionReported: () => whenSettingsSay(() => Settings.instance.get("cache.reportRejection") === true),
-	// Both close budgets are meaningless while nothing closes, and a visible timer
-	// that does not run reads as a bug in the feature rather than an off switch.
-	subagentPruneEnabled: () => whenSettingsSay(() => Settings.instance.get("subagent.prune.enabled") === true),
-	// The blanket model and effort exist only while the roster is on one scope.
-	// Shown while the switch is off they are two rows that decide nothing, which
-	// is exactly how the retired version of this switch confused people.
-	subagentSharedModel: () => whenSettingsSay(() => Settings.instance.get("subagent.sharedModel") === true),
-	// Isolation ships off, and the merge strategy and commit style only describe
-	// how an isolated run's changes come back. Shown while no backend is selected
-	// they are two choices with no case where either applies.
-	subagentIsolationEnabled: () => whenSettingsSay(() => Settings.instance.get("subagent.isolation.mode") !== "none"),
-	// The wrap-up notice announces crossing a budget; with the guard at 0 there is
-	// no crossing, so the row would be a switch over nothing.
-	subagentSoftRequestBudgetEnabled: () =>
-		whenSettingsSay(() => (Settings.instance.get("subagent.softRequestBudget") ?? 0) > 0),
-	bashAutoBackgroundEnabled: () =>
-		whenSettingsSay(() => Settings.instance.get("bash.autoBackground.enabled") === true),
-	bashStallDetectionEnabled: () =>
-		whenSettingsSay(() => Settings.instance.get("bash.stallDetection.enabled") === true),
-	hindsightActive: () => whenSettingsSay(() => Settings.instance.get("memory.backend") === "hindsight"),
-	mnemopiActive: () => whenSettingsSay(() => Settings.instance.get("memory.backend") === "mnemopi"),
-	autolearnActive: () => whenSettingsSay(() => Settings.instance.get("autolearn.enabled") === true),
-	// Reads the Default Effort list through its one owner, so a `*` row of `auto`
-	// counts: checking the retired `defaultThinkingLevel` here would have gone
-	// stale the moment the list became the surface people edit.
+	advisorEnabled: settingFlag("advisor.enabled"),
+	argotEnabled: settingFlag("argot.enabled"),
+	autoQaEnabled: settingFlag("dev.autoqa"),
+	statusLineEnabled: settingFlag("statusLine.enabled"),
+	cpuLimitEnabled: settingValue("session.cpuLimitCores", v => v > 0),
+	writeBudgetEnabled: settingValue("session.writeBudgetGb", v => v > 0),
+	cacheRejectionReported: settingFlag("cache.reportRejection"),
+	agentPruneEnabled: settingFlag("agent.prune.enabled"),
+	agentSharedModel: settingFlag("agent.sharedModel"),
+	agentIsolationEnabled: settingValue("agent.isolation.mode", v => v !== "none"),
+	agentSoftRequestBudgetEnabled: settingValue("agent.softRequestBudget", v => (v ?? 0) > 0),
+	bashAutoBackgroundEnabled: settingFlag("bash.autoBackground.enabled"),
+	bashStallDetectionEnabled: settingFlag("bash.stallDetection.enabled"),
+	hindsightActive: settingValue("memory.backend", v => v === "hindsight"),
+	mnemopiActive: settingValue("memory.backend", v => v === "mnemopi"),
+	autolearnActive: settingFlag("autolearn.enabled"),
 	autoThinkingActive: () =>
 		whenSettingsSay(
 			() =>
@@ -305,36 +287,20 @@ const CONDITIONS: Record<string, () => boolean> = {
 					),
 				}).level === AUTO_THINKING,
 		),
-	planModeEnabled: () => whenSettingsSay(() => Settings.instance.get("plan.enabled")),
-	speechEnabled: () => whenSettingsSay(() => Settings.instance.get("speech.enabled") === true),
-	sttEnabled: () => whenSettingsSay(() => Settings.instance.get("stt.enabled") === true),
-	// `providers.unexpectedStopModel` has declared `condition: "unexpectedStopDetection"`
-	// since it shipped and this predicate did not exist, so the lookup answered
-	// `undefined` and the row rendered unconditionally: a classifier for a feature that
-	// defaults to off, offered on the Providers tab with nothing to classify. An
-	// unresolved condition name fails OPEN, which is why the suite now checks that every
-	// name in the schema lands on a predicate here rather than only the four it lists.
-	unexpectedStopDetection: () =>
-		whenSettingsSay(() => Settings.instance.get("features.unexpectedStopDetection") === true),
-	// Four tools that ship OFF and whose knobs rendered anyway. The Files tab
-	// offered lazy startup, format-on-write and three diagnostics rules to a
-	// session with no language server; the Tools tab offered headless, cmux and a
-	// screenshot directory for a Chromium nothing launches, plus a cache and two
-	// TTLs for an unavailable github tool; the Providers tab offered a secret
-	// lifetime and an audit log with no vault behind them.
-	lspEnabled: () => whenSettingsSay(() => Settings.instance.get("lsp.enabled") === true),
-	browserEnabled: () => whenSettingsSay(() => Settings.instance.get("browser.enabled") === true),
-	githubEnabled: () => whenSettingsSay(() => Settings.instance.get("github.enabled") === true),
-	launchEnabled: () => whenSettingsSay(() => Settings.instance.get("launch.enabled") === true),
-	// The two TTLs read both toggles: a window on a cache nothing writes to is as
-	// empty a knob as one on a tool nothing runs.
-	githubCacheEnabled: () =>
-		whenSettingsSay(
-			() =>
-				Settings.instance.get("github.enabled") === true && Settings.instance.get("github.cache.enabled") === true,
-		),
-	secretsEnabled: () => whenSettingsSay(() => Settings.instance.get("secrets.enabled") === true),
-	prewalkEnabled: () => whenSettingsSay(() => Settings.instance.get("prewalk.enabled") === true),
+	planModeEnabled: settingValue("plan.enabled", Boolean),
+	speechEnabled: settingFlag("speech.enabled"),
+	sttEnabled: settingFlag("stt.enabled"),
+	unexpectedStopDetection: settingFlag("features.unexpectedStopDetection"),
+	lspEnabled: settingFlag("lsp.enabled"),
+	browserEnabled: settingFlag("browser.enabled"),
+	githubEnabled: settingFlag("github.enabled"),
+	launchEnabled: settingFlag("launch.enabled"),
+	githubCacheEnabled: settingValue(
+		"github.enabled",
+		v => v === true && Settings.instance.get("github.cache.enabled") === true,
+	),
+	secretsEnabled: settingFlag("secrets.enabled"),
+	prewalkEnabled: settingFlag("prewalk.enabled"),
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -394,11 +360,7 @@ export function formatLspSummary(): string {
 
 function pathToSettingDef(path: SettingPath): SettingDef | null {
 	const ui = getUi(path);
-	if (!ui) return null;
-	// Declared state rather than a declared control. One setting uses this, and it says
-	// so; see `hidden` in settings-schema.ts.
-	if (ui.hidden) return null;
-
+	if (!ui || ui.hidden) return null;
 	const schemaType = getType(path);
 	const condition = ui.condition ? CONDITIONS[ui.condition] : undefined;
 	const base = {
@@ -421,18 +383,12 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 		};
 	}
 
-	if (schemaType === "boolean") {
-		return { ...base, type: "boolean" };
-	}
+	if (schemaType === "boolean") return { ...base, type: "boolean" };
 
 	const options = resolveOptions(ui);
 
 	if (schemaType === "enum") {
-		if (options === undefined) {
-			return { ...base, type: "enum", values: getEnumValues(path) ?? [] };
-		}
-		// "runtime" is not a valid sentinel for enums — schema types prevent this,
-		// but treat defensively as an empty submenu.
+		if (options === undefined) return { ...base, type: "enum", values: getEnumValues(path) ?? [] };
 		return { ...base, type: "submenu", options: options === "runtime" ? [] : options };
 	}
 
@@ -449,33 +405,20 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 		return { ...base, type: "submenu", options };
 	}
 
-	// A chain setting is edited by picking models, never by typing a type name.
-	// This used to be a hardcoded pair of paths inside the string branch, so a
-	// third chain setting would have silently become a text box; it derives from
-	// the schema now.
-	if (schemaType === "modelChain") {
-		return { ...base, type: "modelSelector" };
-	}
-
+	if (schemaType === "modelChain") return { ...base, type: "modelSelector" };
 	if (schemaType === "string") {
-		if (path === "subagent.thinkingLevel") return { ...base, type: "subagentSharedEffort" };
+		if (path === "agent.thinkingLevel") return { ...base, type: "agentSharedEffort" };
 		if (path === "compaction.threshold") {
 			return { ...base, type: "compactionThreshold", options: options && options !== "runtime" ? options : [] };
 		}
-		if (options === "runtime") {
-			// Empty list now; the selector layer (theme handling, etc.) injects choices.
-			return { ...base, type: "submenu", options: [] };
-		}
-		if (options) {
-			return { ...base, type: "submenu", options };
-		}
+		if (options) return { ...base, type: "submenu", options: options === "runtime" ? [] : options };
 		return { ...base, type: "text" };
 	}
 
 	if (schemaType === "record") {
 		if (path === "providers.maxInFlightRequests") return { ...base, type: "providerLimits" };
 		if (path === "modelRoles") return { ...base, type: "modelRoles" };
-		if (path === "subagent.agents") return { ...base, type: "subagentAgents" };
+		if (path === "agent.agents") return { ...base, type: "agents" };
 		if (path === "defaultEffort") return { ...base, type: "defaultEffort" };
 		return { ...base, type: "text" };
 	}

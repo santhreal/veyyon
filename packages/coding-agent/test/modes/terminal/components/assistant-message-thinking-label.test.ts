@@ -9,32 +9,28 @@
  * separates reasoning from the answer at a glance.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import type { AssistantMessageView, AssistantSegment } from "@veyyon/wire/presentation";
 
-function message(content: AssistantMessage["content"]): AssistantMessage {
+function message(
+	content: Array<{ type: "text"; text: string } | { type: "thinking"; thinking: string }>,
+): AssistantMessageView {
+	const segments: AssistantSegment[] = [];
+	for (const block of content) {
+		if (block.type === "text") segments.push({ kind: "text", text: block.text });
+		else if (block.type === "thinking") segments.push({ kind: "thinking", text: block.thinking, redacted: false });
+	}
 	return {
-		role: "assistant",
-		content,
-		api: "anthropic-messages",
-		provider: "anthropic",
+		segments,
 		model: "m",
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
-		stopReason: "stop",
+		stopReason: "complete",
 		timestamp: Date.now(),
 	};
 }
 
-function renderLines(msg: AssistantMessage, hideThinking = false): string[] {
+function renderLines(msg: AssistantMessageView, hideThinking = false): string[] {
 	const component = new AssistantMessageComponent(msg, hideThinking, undefined, []);
 	return component
 		.render(60)

@@ -1,1 +1,0 @@
-- User says `parallel` or `parallelize` → MUST use `{{toolRefs.task}}` subagents; parallel tool calls alone do not satisfy.

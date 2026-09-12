@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { setImmediate as nextEventLoopTurn } from "node:timers/promises";
 import { isContextOverflow } from "@veyyon/ai/error";
 import {
 	buildGitLabDuoWorkflowApprovalStartRequest,
@@ -880,6 +881,191 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 			stopReason: "stop",
 			timestamp: Date.now(),
 		};
+	}
+
+	/**
+	 * WHY: Fresh-workflow consolidation must preserve restart bounds, wire IDs, and
+	 * stop/create/payload ordering, including failures after the old run was stopped.
+	 * These exercise the public stream with only REST and WebSocket boundaries replaced.
+	 * Fresh-loop stalls and write-only request flags are not observable here: each
+	 * fresh socket has no previous tool boundary, and action resumes use another path.
+	 */
+	async function runRestartTranscript(
+		outcomes: readonly string[],
+		failure?: "create-hook" | "start-hook" | "stop" | "create-http",
+	) {
+		const transcript: string[] = [];
+		const sessions = new Map<string, ProviderSessionState>();
+		const controller = new AbortController();
+		// Exercise the real socket idle timer without replacing global timers across parallel tests.
+		const deadline = setTimeout(() => controller.abort(), 1000);
+		let socketIndex = 0;
+		let creates = 0;
+		let stopped = false;
+		const transport = makeWorkflowTransportFetch();
+		const fetchImpl: FetchImpl = async (input, init) => {
+			if (init?.method === "PATCH") {
+				const id = String(input).split("/").at(-1);
+				transcript.push(`stop:${id}`);
+				await Promise.resolve();
+				stopped = true;
+				transcript.push(`stopped:${id}`);
+				if (failure === "stop") throw new Error("stop transport failed");
+			}
+			if (init?.method === "POST" && String(input).endsWith("/workflows")) {
+				transcript.push(`create:${++creates}`);
+				if (failure === "create-http") return new Response("{}", { status: 503 });
+			}
+			return transport(input, init);
+		};
+		const webSocketFactory: GitLabDuoWorkflowWebSocketFactory = () => {
+			const outcome = outcomes[socketIndex++] ?? "FINISHED";
+			const socket: GitLabDuoWorkflowWebSocketLike = {
+				onopen: null,
+				onmessage: null,
+				onerror: null,
+				onclose: null,
+				send(data) {
+					const body = z.object({ startRequest: z.object({ workflowID: z.string() }) }).parse(JSON.parse(data));
+					transcript.push(`start:${body.startRequest.workflowID}`);
+					queueMicrotask(() => {
+						if (outcome === "timeout") return;
+						if (outcome === "closed") {
+							socket.onclose?.(new CloseEvent("close", { code: 1006, reason: "dropped" }));
+							return;
+						}
+						socket.onmessage?.(
+							new MessageEvent("message", {
+								data: JSON.stringify(
+									outcome === "step_limit"
+										? { status: "FAILED", error: "The workflow reached its maximum step limit" }
+										: outcome === "retryable_error"
+											? {
+													status: "FAILED",
+													error: "error processing your request in the Duo Agent Platform",
+												}
+											: outcome === "fatal"
+												? { status: "FAILED", error: "permission denied" }
+												: { status: outcome },
+								),
+							}),
+						);
+					});
+				},
+				close() {},
+			};
+			queueMicrotask(() => socket.onopen?.(new Event("open")));
+			return socket;
+		};
+		try {
+			const stream = streamGitLabDuoWorkflow(model, context, {
+				apiKey: "redacted",
+				rootNamespaceId: "gid://gitlab/Group/1",
+				workflowDefinition: "chat",
+				workflowId: "workflow-0",
+				providerSessionState: sessions,
+				fetch: fetchImpl,
+				webSocketFactory,
+				idleTimeoutMs: 25,
+				signal: controller.signal,
+				get onPayload() {
+					const afterStop = stopped;
+					return async (payload: unknown) => {
+						if (payload !== null && typeof payload === "object" && "workflow_definition" in payload) {
+							transcript.push(`create-hook:${afterStop}`);
+							await Promise.resolve();
+							if (failure === "create-hook") throw new Error("restart create hook failed");
+						}
+						if (payload !== null && typeof payload === "object" && "startRequest" in payload) {
+							transcript.push(`start-hook:${creates}`);
+							if (creates > 0 && failure === "start-hook") throw new Error("restart start hook failed");
+						}
+					};
+				},
+			});
+			const result = await stream.result();
+			// Terminal stream events precede finally cleanup; drain its asynchronous REST work.
+			await nextEventLoopTurn();
+			expect(controller.signal.aborted).toBe(false);
+			expect(
+				[...sessions.values()].map(session => (session as GitLabDuoWorkflowProviderSessionState).active),
+			).toEqual([undefined]);
+			return { result, transcript, socketIndex };
+		} finally {
+			clearTimeout(deadline);
+			controller.abort();
+		}
+	}
+
+	for (const [outcome, restarts] of [
+		["timeout", 1],
+		["step_limit", 4],
+		["retryable_error", 1],
+	] as const) {
+		it(`preserves restart transcript and bound for ${outcome}`, async () => {
+			const { result, transcript, socketIndex } = await runRestartTranscript(Array(restarts + 1).fill(outcome));
+			const expected = ["start-hook:0", "start:workflow-0"];
+			for (let id = 0; id < restarts; id++) {
+				expected.push(
+					`stop:workflow-${id}`,
+					`stopped:workflow-${id}`,
+					"create-hook:true",
+					`create:${id + 1}`,
+					`start-hook:${id + 1}`,
+					`start:workflow-${id + 1}`,
+				);
+			}
+			if (outcome === "timeout") expected.push(`stop:workflow-${restarts}`, `stopped:workflow-${restarts}`);
+			expect(transcript).toEqual(expected);
+			expect(socketIndex).toBe(restarts + 1);
+			expect(result.stopReason).toBe(outcome === "retryable_error" ? "error" : "stop");
+			expect(result.errorMessage).toBe(
+				outcome === "retryable_error" ? "error processing your request in the Duo Agent Platform" : undefined,
+			);
+		}, 2000);
+	}
+
+	for (const outcome of ["FINISHED", "fatal", "closed"] as const) {
+		it(`preserves terminal restart transcript for ${outcome}`, async () => {
+			const { result, transcript, socketIndex } = await runRestartTranscript([outcome]);
+			expect(transcript).toEqual(
+				outcome === "closed"
+					? ["start-hook:0", "start:workflow-0", "stop:workflow-0", "stopped:workflow-0"]
+					: ["start-hook:0", "start:workflow-0"],
+			);
+			expect(socketIndex).toBe(1);
+			expect(result.stopReason).toBe(outcome === "fatal" ? "error" : "stop");
+			expect(result.errorMessage).toBe(outcome === "fatal" ? "permission denied" : undefined);
+		}, 2000);
+	}
+
+	for (const failure of ["create-hook", "start-hook", "stop", "create-http"] as const) {
+		it(`preserves restart transcript on ${failure} failure`, async () => {
+			const { result, transcript } = await runRestartTranscript(["step_limit", "FINISHED"], failure);
+			const expected = [
+				"start-hook:0",
+				"start:workflow-0",
+				"stop:workflow-0",
+				"stopped:workflow-0",
+				"create-hook:true",
+			];
+			if (failure !== "create-hook") expected.push("create:1");
+			if (failure === "start-hook" || failure === "stop") expected.push("start-hook:1");
+			if (failure === "stop") expected.push("start:workflow-1");
+			else {
+				const id = failure === "start-hook" ? 1 : 0;
+				expected.push(`stop:workflow-${id}`, `stopped:workflow-${id}`);
+			}
+			expect(transcript).toEqual(expected);
+			expect(result.stopReason).toBe(failure === "stop" ? "stop" : "error");
+			if (failure !== "stop") {
+				expect(result.errorMessage).toContain(
+					failure === "create-http"
+						? "create failed with HTTP 503"
+						: `restart ${failure === "create-hook" ? "create" : "start"} hook failed`,
+				);
+			}
+		}, 2000);
 	}
 
 	it("awaits fresh replacements for workflow create and every WebSocket start attempt", async () => {

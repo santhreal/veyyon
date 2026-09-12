@@ -14,7 +14,7 @@ it. Until you decide, it is withheld.
 
 A file outside the project root is not affected. Profile extensions, installed
 plugins and paths you set in `extensions:` load as before — a configured path is
-your own instruction and loads even when it lives inside the project, which is
+your own instruction and loads even when stored inside the project, which is
 where an extension is written while you are developing it. Settings come from
 your profile and your home directory, so a repository cannot add itself to that
 list.

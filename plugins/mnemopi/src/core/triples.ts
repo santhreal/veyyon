@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
 import { hermesRoot } from "../config";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
-
+import { type EntityImportStats, importEntityBatch } from "../util/sqlite";
 export interface TripleRow {
 	id: number;
 	subject: string;
@@ -32,12 +32,7 @@ export interface TripleQueryOptions {
 	readonly as_of?: string | null;
 }
 
-export interface TripleImportStats {
-	inserted: number;
-	skipped: number;
-	overwritten: number;
-	imported_renumbered: number;
-}
+export type TripleImportStats = EntityImportStats;
 
 export type TripleImportRow = Partial<Omit<TripleRow, "id">> & { readonly id?: number | null };
 
@@ -321,73 +316,25 @@ export class TripleStore {
 		return this.conn.query(`SELECT ${TRIPLE_COLUMNS} FROM triples ORDER BY id`).all().map(rowToTriple);
 	}
 	importAll(triples: readonly TripleImportRow[], force = false): TripleImportStats {
-		const stats: TripleImportStats = {
-			inserted: 0,
-			skipped: 0,
-			overwritten: 0,
-			imported_renumbered: 0,
-		};
-		const seen = new Set<number>();
-		for (const item of triples) {
-			if (item.id === undefined || item.id === null) continue;
-			if (seen.has(item.id))
-				throw new Error(
-					`import_all: duplicate id ${item.id} in the imported batch. Deduplicate the input before calling.`,
-				);
-			seen.add(item.id);
-		}
-
-		this.conn.run("BEGIN IMMEDIATE");
-		try {
-			const existing = new Map<number, ContentSnapshot>();
-			for (const row of this.conn.query(`SELECT ${TRIPLE_COLUMNS} FROM triples`).all().map(rowToTriple)) {
-				existing.set(row.id, contentFromRow(row));
-			}
-			const explicitNoCollision: TripleImportRow[] = [];
-			const noId: TripleImportRow[] = [];
-			const collisions: TripleImportRow[] = [];
-			for (const item of triples) {
-				const id = item.id;
-				if (id === undefined || id === null) noId.push(item);
-				else if (existing.has(id)) collisions.push(item);
-				else explicitNoCollision.push(item);
-			}
-			for (const item of explicitNoCollision) {
-				this.#insertWithId(item, item.id as number);
-				stats.inserted++;
-			}
-			for (const item of noId) {
-				this.#insertWithoutId(item);
-				stats.inserted++;
-			}
-			for (const item of collisions) {
-				const id = item.id as number;
-				if (force) {
-					this.conn.run("DELETE FROM triples WHERE id = ?", [id]);
-					this.#insertWithId(item, id);
-					stats.overwritten++;
-				} else if (sameContent(normalizeContent(item), existing.get(id) as ContentSnapshot)) {
-					stats.skipped++;
-				} else {
-					try {
-						this.#insertWithoutId(item);
-						stats.imported_renumbered++;
-					} catch (error) {
-						if (!(error instanceof Error) || !error.message.toLowerCase().includes("constraint")) throw error;
-						stats.skipped++;
+		return importEntityBatch(
+			this.conn,
+			triples,
+			{
+				tableName: "triples",
+				getId: item => (item.id === undefined || item.id === null ? null : item.id),
+				fetchExisting: db => {
+					const existing = new Map<number, ContentSnapshot>();
+					for (const row of db.query(`SELECT ${TRIPLE_COLUMNS} FROM triples`).all().map(rowToTriple)) {
+						existing.set(row.id, contentFromRow(row));
 					}
-				}
-			}
-			this.conn.run("COMMIT");
-			return stats;
-		} catch (error) {
-			try {
-				this.conn.run("ROLLBACK");
-			} catch {
-				// Preserve the original error.
-			}
-			throw error;
-		}
+					return existing;
+				},
+				isSameContent: (item, existing) => sameContent(normalizeContent(item), existing),
+				insertWithId: (_db, item, id) => this.#insertWithId(item, id),
+				insertWithoutId: (_db, item) => this.#insertWithoutId(item),
+			},
+			force,
+		);
 	}
 	#insertWithId(item: TripleImportRow, id: number): void {
 		const bindings = normalizeImportBindings(item);

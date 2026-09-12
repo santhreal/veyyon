@@ -179,7 +179,7 @@ describe("goal runtime", () => {
 
 	// WHY: a tool flush fires on `tool_execution_end`, which the agent loop emits BEFORE it appends
 	// the tool-result message, so the session totals it reads do not yet include the usage a
-	// subagent reported in that result. Reading early is not a loss, and this is the property that
+	// agent reported in that result. Reading early is not a loss, and this is the property that
 	// makes it not one: the flush rebases its baseline on the usage it actually observed, so the
 	// tokens it could not see are still owed and the next flush pays them. Lose this and every
 	// early read becomes a permanent undercount.
@@ -189,12 +189,12 @@ describe("goal runtime", () => {
 		});
 		harness.runtime.onTurnStart("turn-1", createUsage());
 
-		// tool_execution_end: the result message carrying the subagent's usage is not in state yet.
+		// tool_execution_end: the result message carrying the agent's usage is not in state yet.
 		harness.setUsage(createUsage({ output: 10 }));
 		await harness.runtime.onToolCompleted("task");
 		expect(harness.getState()?.goal.tokensUsed).toBe(10);
 
-		// message_end: the subagent's 300 tokens land in the session totals.
+		// message_end: the agent's 300 tokens land in the session totals.
 		harness.setUsage(createUsage({ output: 310 }));
 		await harness.runtime.onAgentEnd({ currentUsage: createUsage({ output: 310 }) });
 		expect(harness.getState()?.goal.tokensUsed).toBe(310);
@@ -202,7 +202,7 @@ describe("goal runtime", () => {
 
 	// WHY: the `goal` tool completes a goal in the middle of the turn that completed it, and
 	// accounting stopped right there. Every token the rest of that turn spent — the sibling tool
-	// calls in the same batch, a subagent among them, and the closing message written once they
+	// calls in the same batch, an agent among them, and the closing message written once they
 	// returned — was spent on the goal and landed after it stopped counting, so the total reported
 	// for the finished goal was short by exactly the work that finished it. These pin the
 	// reconciliation, its bound (once, for that turn only) and what it must NOT reopen. Not

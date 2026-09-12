@@ -1,4 +1,10 @@
+/**
+ * Late diagnostics preserve grouped severity, location, disclosure and indentation
+ * while applying terminal text sanitization to every displayed field. These tests
+ * do not exercise LSP transport or delivery timing.
+ */
 import { beforeEach, describe, expect, it } from "bun:test";
+import * as os from "node:os";
 import { stripVTControlCharacters } from "node:util";
 import { LateDiagnosticsMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/late-diagnostics-message";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
@@ -15,7 +21,7 @@ describe("LateDiagnosticsMessageComponent", () => {
 		setThemeInstance(darkTheme);
 	});
 
-	it("renders late diagnostics through the shared tree renderer", () => {
+	it("groups files and renders parsed diagnostic locations", () => {
 		const component = new LateDiagnosticsMessageComponent([
 			{
 				path: "/abs/packages/coding-agent/src/foo.ts",
@@ -39,6 +45,7 @@ describe("LateDiagnosticsMessageComponent", () => {
 		// `[error]`/`[typescript]` markers of the old flat format must be gone.
 		expect(text).not.toContain("[error]");
 		expect(text).not.toContain("[typescript]");
+		expect(text).not.toMatch(/[├└│]/);
 	});
 
 	it("caps collapsed output and reveals the rest when expanded", () => {
@@ -53,7 +60,8 @@ describe("LateDiagnosticsMessageComponent", () => {
 		const collapsed = plain(component);
 		expect(collapsed).toContain("err 1");
 		expect(collapsed).not.toContain("err 8");
-		expect(collapsed).toContain("more");
+		expect(collapsed).toContain("… 3 more");
+		expect(collapsed).not.toMatch(/[├└│]/);
 
 		component.setExpanded(true);
 		const expanded = plain(component);
@@ -65,9 +73,12 @@ describe("LateDiagnosticsMessageComponent", () => {
 		const component = new LateDiagnosticsMessageComponent([
 			{
 				path: "/abs/a.ts",
-				summary: "1 error(s)",
+				summary: "1 error(s), 1 warning(s)",
 				errored: true,
-				messages: ["a.ts:1:1 [error] [typescript] bad a (2322)"],
+				messages: [
+					"a.ts:20:1 [warning] [typescript] unused a (6133)",
+					"a.ts:10:5 [error] [typescript] bad a (2322)",
+				],
 			},
 			{
 				path: "/abs/b.ts",
@@ -83,6 +94,53 @@ describe("LateDiagnosticsMessageComponent", () => {
 		expect(text).toContain("b.ts");
 		expect(text).toContain("bad a");
 		expect(text).toContain("bad b");
+		const lines = text.split("\n");
+		const a = lines.findIndex(line => line.includes("a.ts"));
+		const b = lines.findIndex(line => line.includes("b.ts"));
+		expect(lines[a + 1]).toMatch(/^\s{3}\S.*:10:5/);
+		expect(lines[a + 2]).toMatch(/^\s{3}\S.*:20:1/);
+		expect(b).toBeGreaterThan(a + 2);
+		expect(lines[b + 1]).toMatch(/^\s{3}\S.*:2:2/);
+		expect(text).not.toMatch(/[├└│]/);
+	});
+
+	it("expands tabs in summaries, parsed diagnostics and unmatched lines", () => {
+		const component = new LateDiagnosticsMessageComponent([
+			{
+				errored: true,
+				summary: "1\terror(s)",
+				messages: [
+					"src/example.go:183:41 [error] [compiler] too many\targuments in call (WrongArgCount)",
+					"\tunparsed diagnostic\tmessage",
+				],
+			},
+		]);
+		component.setExpanded(true);
+		const text = plain(component);
+		expect(text).not.toContain("\t");
+		const normalized = text.replace(/\s+/g, " ");
+		expect(normalized).toContain("too many arguments in call");
+		expect(normalized).toContain("unparsed diagnostic message");
+		expect(normalized).toContain("1 error(s)");
+	});
+
+	it("shortens home paths across every displayed diagnostic field", () => {
+		const home = os.homedir();
+		const component = new LateDiagnosticsMessageComponent([
+			{
+				errored: true,
+				summary: `${home}/summary`,
+				messages: [
+					`${home}/src/app.ts:1:2 [error] [compiler] ${home}/detail (${home}/code)`,
+					`unparsed ${home}/output`,
+				],
+			},
+		]);
+		const text = plain(component);
+		expect(text).not.toContain(home);
+		for (const suffix of ["summary", "src/app.ts", "detail", "code", "output"]) {
+			expect(text).toContain(`~/${suffix}`);
+		}
 	});
 
 	it("renders nothing when no diagnostics are present", () => {

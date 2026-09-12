@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, formatCount, truncate } from "@veyyon/utils";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth } from "@veyyon/utils/width";
-import { replaceTabs } from "@veyyon/utils/wrap";
 import type { TextBlockView, ViewSpan, ViewTone } from "@veyyon/view";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
@@ -18,6 +18,7 @@ import {
 	isBetter,
 	mergeAsi,
 	pathMatchesSpec,
+	resolveActiveBranchSession,
 	sanitizeAsi,
 } from "../helpers";
 import {
@@ -28,7 +29,7 @@ import {
 	findBestKeptMetric,
 	findBestKeptResult,
 } from "../state";
-import { openAutoresearchStorageIfExists, type SessionRow } from "../storage";
+import type { SessionRow } from "../storage";
 import type {
 	ASIData,
 	AutoresearchToolFactoryOptions,
@@ -74,19 +75,9 @@ export function createLogExperimentTool(
 		parameters: logExperimentSchema,
 		defaultInactive: true,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const storage = await openAutoresearchStorageIfExists(ctx.cwd);
-			const currentBranch = (await git.branch.current(ctx.cwd)) ?? null;
-			const session = storage?.getActiveSessionForBranch(currentBranch) ?? null;
-			if (!storage || !session) {
-				return {
-					content: [
-						{
-							type: "text",
-							text: "Error: no active autoresearch session for the current branch. Call init_experiment first.",
-						},
-					],
-				};
-			}
+			const sessionResult = await resolveActiveBranchSession(ctx.cwd);
+			if (!sessionResult.ok) return sessionResult.result;
+			const { storage, session } = sessionResult;
 			const pendingRun = storage.getPendingRun(session.id);
 			if (!pendingRun) {
 				return {

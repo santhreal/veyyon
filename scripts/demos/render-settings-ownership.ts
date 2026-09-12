@@ -9,37 +9,25 @@
 import { DEFAULT_MODEL_SLOT } from "../../packages/coding-agent/src/config/model-roles";
 import { Settings } from "../../packages/coding-agent/src/config/settings";
 import { DEFAULT_MODEL_SETTING_ID } from "../../packages/coding-agent/src/modes/terminal/components/selectors/settings-defs";
-import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/settings-selector";
-import { flag, initRender, renderWidth } from "./render-args";
+import { renderDemo } from "./render-args";
+import { createTestSettingsSelector } from "./render-settings-helper";
 
-const themeName = flag("theme", "titanium");
-const state = flag("state", "default-model");
-const width = renderWidth();
-
-await initRender(themeName, { settings: true });
-
-const selector = new SettingsSelectorComponent(
-	{
-		availableThinkingLevels: [],
-		thinkingLevel: undefined,
-		availableThemes: [themeName, "light"],
-		availablePersonalities: ["default"],
-		providers: ["anthropic", "openai"],
-		cwd: process.cwd(),
+await renderDemo(
+	({ width, flag, theme }) => {
+		const state = flag("state", "default-model");
+		const selector = createTestSettingsSelector(theme, { providers: ["anthropic", "openai"] });
+		if (state === "shadowed") {
+			Settings.instance.override("contextPromotion.enabled", true);
+			selector.openTab("context");
+			selector.selectSetting("contextPromotion.enabled");
+			selector.handleInput("\x1b[C");
+		} else {
+			Settings.instance.setPersistedModelRole(DEFAULT_MODEL_SLOT, "anthropic/claude-sonnet-4-5");
+			Settings.instance.override("modelRoles", { [DEFAULT_MODEL_SLOT]: "openai/gpt-5.2" });
+			selector.openTab("model");
+			selector.selectSetting(DEFAULT_MODEL_SETTING_ID);
+		}
+		return selector.render(width);
 	},
-	{ onChange: () => {}, onCancel: () => {} },
+	{ settings: true },
 );
-
-if (state === "shadowed") {
-	Settings.instance.override("contextPromotion.enabled", true);
-	selector.openTab("context");
-	selector.selectSetting("contextPromotion.enabled");
-	selector.handleInput("\x1b[C");
-} else {
-	Settings.instance.setPersistedModelRole(DEFAULT_MODEL_SLOT, "anthropic/claude-sonnet-4-5");
-	Settings.instance.override("modelRoles", { [DEFAULT_MODEL_SLOT]: "openai/gpt-5.2" });
-	selector.openTab("model");
-	selector.selectSetting(DEFAULT_MODEL_SETTING_ID);
-}
-
-process.stdout.write(`${selector.render(width).join("\n")}\n`);

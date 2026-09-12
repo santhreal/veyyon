@@ -226,6 +226,64 @@ export async function connectToServer(
 }
 
 /**
+ * Every page of a cursor-paginated list method, collected in order.
+ *
+ * The two guards were added to `tools/list` after a server answered every page
+ * with the same cursor: no request timeout catches that, because each request
+ * answers promptly, so the loop grew its list until the process died. The
+ * other list methods paginate the same way and had no guard, so the guards
+ * are stated once here for all of them: a repeated cursor and the page limit
+ * both end the listing with a warning and whatever was collected so far.
+ */
+async function listAllPages<Result, Item>(
+	connection: MCPServerConnection,
+	method: string,
+	what: string,
+	options: { signal?: AbortSignal } | undefined,
+	page: (result: Result) => { items: Item[]; nextCursor?: string },
+): Promise<Item[]> {
+	const items: Item[] = [];
+	const seenCursors = new Set<string>();
+	let cursor: string | undefined;
+	let pages = 0;
+
+	do {
+		const params: Record<string, unknown> = {};
+		if (cursor) {
+			params.cursor = cursor;
+		}
+
+		const result = page(await connection.transport.request<Result>(method, params, options));
+		for (let i = 0; i < result.items.length; i++) items.push(result.items[i]!);
+		cursor = result.nextCursor;
+		pages++;
+
+		if (cursor && seenCursors.has(cursor)) {
+			logger.warn(`MCP server repeated a pagination cursor; stopped listing its ${what}`, {
+				method,
+				path: `mcp:${connection.name}`,
+				server: connection.name,
+				items: items.length,
+			});
+			break;
+		}
+		if (cursor) seenCursors.add(cursor);
+		if (pages >= MAX_TOOL_LIST_PAGES) {
+			logger.warn(`MCP server exceeded the page limit; stopped listing its ${what}`, {
+				method,
+				pages,
+				path: `mcp:${connection.name}`,
+				server: connection.name,
+				items: items.length,
+			});
+			break;
+		}
+	} while (cursor);
+
+	return items;
+}
+
+/**
  * List tools from a connected server.
  */
 export async function listTools(
@@ -242,49 +300,14 @@ export async function listTools(
 		return connection.tools;
 	}
 
-	const allTools: MCPToolDefinition[] = [];
-	const seenCursors = new Set<string>();
-	let cursor: string | undefined;
-	let pages = 0;
-
-	do {
-		const params: Record<string, unknown> = {};
-		if (cursor) {
-			params.cursor = cursor;
-		}
-
-		// Deliberately NOT cast to the result type and spread. That cast is erased
-		// at runtime, so the old code trusted a third-party server's payload
-		// completely: a missing `tools` threw a bare TypeError, and a `tools` that
-		// was a string got spread into one nameless tool per character.
-		const raw = await connection.transport.request<unknown>("tools/list", params, options);
+	// Deliberately NOT cast to the result type and spread. That cast is erased
+	// at runtime, so the old code trusted a third-party server's payload
+	// completely: a missing `tools` threw a bare TypeError, and a `tools` that
+	// was a string got spread into one nameless tool per character.
+	const allTools = await listAllPages(connection, "tools/list", "tools", options, (raw: unknown) => {
 		const page = validateToolListPage(raw, connection.name);
-		for (let ti = 0; ti < page.tools.length; ti++) allTools.push(page.tools[ti]!);
-		cursor = page.nextCursor;
-		pages++;
-
-		// A server that answers every page with the same cursor otherwise loops
-		// forever, growing `allTools` until the process dies. No request timeout
-		// catches this, because each individual request answers promptly.
-		if (cursor && seenCursors.has(cursor)) {
-			logger.warn("MCP server repeated a pagination cursor; stopped listing its tools", {
-				path: `mcp:${connection.name}`,
-				server: connection.name,
-				tools: allTools.length,
-			});
-			break;
-		}
-		if (cursor) seenCursors.add(cursor);
-		if (pages >= MAX_TOOL_LIST_PAGES) {
-			logger.warn("MCP server exceeded the tool-list page limit; stopped listing its tools", {
-				pages,
-				path: `mcp:${connection.name}`,
-				server: connection.name,
-				tools: allTools.length,
-			});
-			break;
-		}
-	} while (cursor);
+		return { items: page.tools, nextCursor: page.nextCursor };
+	});
 
 	// Cache tools
 	connection.tools = allTools;
@@ -369,19 +392,13 @@ export async function listResources(
 		return connection.resources;
 	}
 
-	const allResources: MCPResource[] = [];
-	let cursor: string | undefined;
-
-	do {
-		const params: Record<string, unknown> = {};
-		if (cursor) {
-			params.cursor = cursor;
-		}
-
-		const result = await connection.transport.request<MCPResourcesListResult>("resources/list", params, options);
-		for (let ri = 0; ri < result.resources.length; ri++) allResources.push(result.resources[ri]!);
-		cursor = result.nextCursor;
-	} while (cursor);
+	const allResources = await listAllPages(
+		connection,
+		"resources/list",
+		"resources",
+		options,
+		(result: MCPResourcesListResult) => ({ items: result.resources, nextCursor: result.nextCursor }),
+	);
 
 	connection.resources = allResources;
 	return allResources;
@@ -416,24 +433,18 @@ export async function listResourceTemplates(
 		return connection.resourceTemplates;
 	}
 
-	const allTemplates: MCPResourceTemplate[] = [];
-	let cursor: string | undefined;
-
+	let allTemplates: MCPResourceTemplate[];
 	try {
-		do {
-			const params: Record<string, unknown> = {};
-			if (cursor) {
-				params.cursor = cursor;
-			}
-
-			const result = await connection.transport.request<MCPResourceTemplatesListResult>(
-				"resources/templates/list",
-				params,
-				options,
-			);
-			for (let ti = 0; ti < result.resourceTemplates.length; ti++) allTemplates.push(result.resourceTemplates[ti]!);
-			cursor = result.nextCursor;
-		} while (cursor);
+		allTemplates = await listAllPages(
+			connection,
+			"resources/templates/list",
+			"resource templates",
+			options,
+			(result: MCPResourceTemplatesListResult) => ({
+				items: result.resourceTemplates,
+				nextCursor: result.nextCursor,
+			}),
+		);
 	} catch (error) {
 		// A server that doesn't implement the optional templates method answers
 		// -32601; cache an empty list so we neither retry nor let the failure
@@ -473,22 +484,7 @@ export async function subscribeToResources(
 	uris: string[],
 	options?: MCPRequestOptions,
 ): Promise<void> {
-	if (uris.length === 0 || !connection.capabilities.resources?.subscribe) return;
-	const results = await Promise.allSettled(
-		uris.map(uri => {
-			const params: MCPResourceSubscribeParams = { uri };
-			return connection.transport.request(
-				"resources/subscribe",
-				params as unknown as Record<string, unknown>,
-				options,
-			);
-		}),
-	);
-	for (const result of results) {
-		if (result.status === "rejected") {
-			logger.warn("Failed to subscribe to MCP resource", { error: result.reason });
-		}
-	}
+	await requestPerResource(connection, "resources/subscribe", uris, options, "Failed to subscribe to MCP resource");
 }
 
 /**
@@ -499,20 +495,30 @@ export async function unsubscribeFromResources(
 	uris: string[],
 	options?: MCPRequestOptions,
 ): Promise<void> {
+	await requestPerResource(
+		connection,
+		"resources/unsubscribe",
+		uris,
+		options,
+		"Failed to unsubscribe from MCP resource",
+	);
+}
+
+/** One request per uri, sent together; a rejected one is logged as `failure` and the rest still land. */
+async function requestPerResource(
+	connection: MCPServerConnection,
+	method: "resources/subscribe" | "resources/unsubscribe",
+	uris: string[],
+	options: MCPRequestOptions | undefined,
+	failure: string,
+): Promise<void> {
 	if (uris.length === 0 || !connection.capabilities.resources?.subscribe) return;
 	const results = await Promise.allSettled(
-		uris.map(uri => {
-			const params: MCPResourceSubscribeParams = { uri };
-			return connection.transport.request(
-				"resources/unsubscribe",
-				params as unknown as Record<string, unknown>,
-				options,
-			);
-		}),
+		uris.map(uri => connection.transport.request(method, { uri } satisfies MCPResourceSubscribeParams, options)),
 	);
 	for (const result of results) {
 		if (result.status === "rejected") {
-			logger.warn("Failed to unsubscribe from MCP resource", { error: result.reason });
+			logger.warn(failure, { error: result.reason });
 		}
 	}
 }
@@ -546,19 +552,13 @@ export async function listPrompts(
 		return connection.prompts;
 	}
 
-	const allPrompts: MCPPrompt[] = [];
-	let cursor: string | undefined;
-
-	do {
-		const params: Record<string, unknown> = {};
-		if (cursor) {
-			params.cursor = cursor;
-		}
-
-		const result = await connection.transport.request<MCPPromptsListResult>("prompts/list", params, options);
-		for (let pi = 0; pi < result.prompts.length; pi++) allPrompts.push(result.prompts[pi]!);
-		cursor = result.nextCursor;
-	} while (cursor);
+	const allPrompts = await listAllPages(
+		connection,
+		"prompts/list",
+		"prompts",
+		options,
+		(result: MCPPromptsListResult) => ({ items: result.prompts, nextCursor: result.nextCursor }),
+	);
 
 	connection.prompts = allPrompts;
 	return allPrompts;

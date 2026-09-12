@@ -1,29 +1,21 @@
 /**
- * Phase 6 — C layer.
- *
- * Asserts `EventController.#handleMessageEnd`'s render labeling for the three
- * abort-classification paths:
- *
- *   C1  errorMessage = SILENT_ABORT_MARKER + aborted
- *       → `updateContent` receives a message with `stopReason: "stop"`;
- *         `errorMessage` is NOT overwritten.
- *   C2  errorMessage = undefined (no threaded reason) + aborted + no TTSR flag
- *       → `streamingMessage.errorMessage` is set to the generic "Operation
- *         aborted"; `updateContent` receives the original message ref.
- *   C2b errorMessage = USER_INTERRUPT_LABEL (threaded via AbortController) + aborted
- *       → the threaded reason is preserved verbatim, NOT replaced by the generic.
- *   C3  isTtsrAbortPending = true + aborted
- *       → `updateContent` receives a message with `stopReason: "stop"`;
- *         `errorMessage` is NOT set (TTSR existing behavior unchanged).
+ * WHY: abort classification must preserve persisted reasons while suppressing
+ * silent and TTSR abort notices in the rendered assistant card. Drive the real
+ * EventController and AssistantMessageComponent rather than asserting the shape
+ * of an internal updateContent argument. Provider transport is not exercised.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
-import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { SILENT_ABORT_MARKER, USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { stripAnsi } from "@veyyon/utils";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 function makeAssistantMessage(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
 	return {
@@ -46,15 +38,14 @@ function makeAssistantMessage(overrides: Partial<AssistantMessage> = {}): Assist
 	};
 }
 
+const fixtures: Array<{ controller: EventController; streamingComponent: AssistantMessageComponent }> = [];
+
 function createFixture(opts: {
 	streamingMessage: AssistantMessage;
 	isTtsrAbortPending?: boolean;
 	retryAttempt?: number;
 }) {
-	const updateContent = vi.fn();
-	const setComplete = vi.fn();
-	const markTranscriptBlockFinalized = vi.fn();
-	const streamingComponent = { updateContent, setComplete, markTranscriptBlockFinalized };
+	const streamingComponent = new AssistantMessageComponent(undefined, true, undefined, [], undefined, true);
 	const requestRender = vi.fn();
 
 	const ctxBase = {
@@ -86,18 +77,33 @@ function createFixture(opts: {
 	} as unknown as InteractiveModeContext;
 
 	const controller = new EventController(ctx);
+	fixtures.push({ controller, streamingComponent });
 	return { controller, ctx, streamingComponent, requestRender };
 }
 
+function renderedText(component: AssistantMessageComponent): string {
+	return component.render(120).map(stripAnsi).join("\n");
+}
+
 describe("EventController #handleMessageEnd abort labeling", () => {
+	let settingsState: SettingsTestState | undefined;
 	beforeEach(async () => {
+		settingsState = beginSettingsTest();
 		await Settings.init({ inMemory: true, cwd: process.cwd() });
+		await initTheme(false);
 	});
 	afterEach(() => {
-		resetSettingsForTest();
+		for (const fixture of fixtures) {
+			fixture.controller.dispose();
+			fixture.streamingComponent.dispose?.();
+		}
+		fixtures.length = 0;
+		vi.restoreAllMocks();
+		restoreSettingsTestState(settingsState);
+		settingsState = undefined;
 	});
 
-	it("C1: SILENT_ABORT_MARKER + aborted -> updateContent stopReason='stop', errorMessage NOT overwritten", async () => {
+	it("suppresses a silent marker without overwriting the persisted reason", async () => {
 		const message = makeAssistantMessage({
 			stopReason: "aborted",
 			errorMessage: SILENT_ABORT_MARKER,
@@ -110,12 +116,10 @@ describe("EventController #handleMessageEnd abort labeling", () => {
 		};
 		await controller.handleEvent(event);
 
-		// `updateContent` was called once with a copy whose `stopReason` is "stop".
-		// The marker on errorMessage is preserved unchanged on that display copy.
-		expect(streamingComponent.updateContent).toHaveBeenCalledTimes(1);
-		const arg = streamingComponent.updateContent.mock.calls[0]![0] as AssistantMessage;
-		expect(arg.stopReason).toBe("stop");
-		expect(arg.errorMessage).toBe(SILENT_ABORT_MARKER);
+		const rendered = renderedText(streamingComponent);
+		expect(rendered).toContain("draft");
+		expect(rendered).not.toContain("Operation aborted");
+		expect(rendered).not.toContain(SILENT_ABORT_MARKER);
 
 		// Per the silent-abort contract: the controller must NOT overwrite errorMessage
 		// with the operator-facing string. The marker is what drives replay-side
@@ -126,7 +130,7 @@ describe("EventController #handleMessageEnd abort labeling", () => {
 		expect(ctx.streamingMessage).toBeUndefined();
 	});
 
-	it("C1b: silent-abort errorId without marker suppresses the abort line", async () => {
+	it("suppresses a silent-abort error ID without requiring a text marker", async () => {
 		const message = makeAssistantMessage({
 			stopReason: "aborted",
 			errorMessage: undefined,
@@ -137,13 +141,12 @@ describe("EventController #handleMessageEnd abort labeling", () => {
 		await controller.handleEvent({ type: "message_end", message });
 
 		expect(message.errorMessage).toBeUndefined();
-		expect(streamingComponent.updateContent).toHaveBeenCalledTimes(1);
-		const arg = streamingComponent.updateContent.mock.calls[0]![0] as AssistantMessage;
-		expect(arg.stopReason).toBe("stop");
-		expect(arg.errorMessage).toBeUndefined();
+		const rendered = renderedText(streamingComponent);
+		expect(rendered).toContain("draft");
+		expect(rendered).not.toContain("Operation aborted");
 	});
 
-	it("C2: errorMessage undefined (no threaded reason) + aborted + no TTSR -> errorMessage='Operation aborted', updateContent receives original ref", async () => {
+	it("renders the generic abort reason when no reason was supplied", async () => {
 		const message = makeAssistantMessage({ stopReason: "aborted", errorMessage: undefined });
 		const { controller, streamingComponent } = createFixture({
 			streamingMessage: message,
@@ -155,15 +158,12 @@ describe("EventController #handleMessageEnd abort labeling", () => {
 		// No threaded reason -> generic operator-facing label stamped in-place.
 		expect(message.errorMessage).toBe("Operation aborted");
 
-		// `updateContent` saw the original streaming message ref (no `{...streamingMessage, stopReason:"stop"}` spread).
-		expect(streamingComponent.updateContent).toHaveBeenCalledTimes(1);
-		const arg = streamingComponent.updateContent.mock.calls[0]![0] as AssistantMessage;
-		expect(arg).toBe(message);
-		expect(arg.stopReason).toBe("aborted");
-		expect(arg.errorMessage).toBe("Operation aborted");
+		const rendered = renderedText(streamingComponent);
+		expect(rendered).toContain("draft");
+		expect(rendered.split("Operation aborted").length - 1).toBe(1);
 	});
 
-	it("C2b: threaded user-interrupt reason on aborted message is preserved, not replaced by the generic label", async () => {
+	it("preserves the threaded user-interrupt reason without a redundant transcript notice", async () => {
 		const message = makeAssistantMessage({ stopReason: "aborted", errorMessage: USER_INTERRUPT_LABEL });
 		const { controller, streamingComponent } = createFixture({
 			streamingMessage: message,
@@ -172,15 +172,16 @@ describe("EventController #handleMessageEnd abort labeling", () => {
 
 		await controller.handleEvent({ type: "message_end", message });
 
-		// The Esc-interrupt reason rode the AbortController onto errorMessage; the
-		// controller must surface it verbatim instead of overwriting with "Operation aborted".
+		// The persisted reason distinguishes an intentional interrupt; the
+		// canonical abort policy suppresses its redundant transcript notice.
 		expect(message.errorMessage).toBe(USER_INTERRUPT_LABEL);
-		const arg = streamingComponent.updateContent.mock.calls[0]![0] as AssistantMessage;
-		expect(arg.errorMessage).toBe(USER_INTERRUPT_LABEL);
-		expect(arg.stopReason).toBe("aborted");
+		const rendered = renderedText(streamingComponent);
+		expect(rendered).toContain("draft");
+		expect(rendered).not.toContain(USER_INTERRUPT_LABEL);
+		expect(rendered).not.toContain("Operation aborted");
 	});
 
-	it("C3: isTtsrAbortPending=true + aborted -> updateContent stopReason='stop', errorMessage NOT set", async () => {
+	it("suppresses a TTSR abort without persisting a generic abort reason", async () => {
 		const message = makeAssistantMessage({ stopReason: "aborted", errorMessage: undefined });
 		const { controller, streamingComponent } = createFixture({
 			streamingMessage: message,
@@ -189,12 +190,10 @@ describe("EventController #handleMessageEnd abort labeling", () => {
 
 		await controller.handleEvent({ type: "message_end", message });
 
-		// TTSR keeps its existing flag-only render path — `errorMessage` stays undefined,
-		// and the display copy gets `stopReason: "stop"`.
+		// TTSR remains silent in both the persisted message and rendered card.
 		expect(message.errorMessage).toBeUndefined();
-		expect(streamingComponent.updateContent).toHaveBeenCalledTimes(1);
-		const arg = streamingComponent.updateContent.mock.calls[0]![0] as AssistantMessage;
-		expect(arg.stopReason).toBe("stop");
-		expect(arg.errorMessage).toBeUndefined();
+		const rendered = renderedText(streamingComponent);
+		expect(rendered).toContain("draft");
+		expect(rendered).not.toContain("Operation aborted");
 	});
 });

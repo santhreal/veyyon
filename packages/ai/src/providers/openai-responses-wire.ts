@@ -33,7 +33,7 @@ export type ComputerAction =
 	| ComputerAction.Scroll
 	| ComputerAction.Type
 	| ComputerAction.Wait;
-export declare namespace ComputerAction {
+declare namespace SharedComputerAction {
 	/**
 	 * A click action.
 	 */
@@ -87,18 +87,6 @@ export declare namespace ComputerAction {
 	 */
 	interface Drag {
 		/**
-		 * An array of coordinates representing the path of the drag action. Coordinates
-		 * will appear as an array of objects, eg
-		 *
-		 * ```
-		 * [
-		 *   { x: 100, y: 200 },
-		 *   { x: 200, y: 300 }
-		 * ]
-		 * ```
-		 */
-		path: Array<Drag.Path>;
-		/**
 		 * Specifies the event type. For a drag action, this property is always set to
 		 * `drag`.
 		 */
@@ -107,21 +95,6 @@ export declare namespace ComputerAction {
 		 * The keys being held while dragging the mouse.
 		 */
 		keys?: Array<string> | null;
-	}
-	namespace Drag {
-		/**
-		 * An x/y coordinate pair, e.g. `{ x: 100, y: 200 }`.
-		 */
-		interface Path {
-			/**
-			 * The x-coordinate.
-			 */
-			x: number;
-			/**
-			 * The y-coordinate.
-			 */
-			y: number;
-		}
 	}
 	/**
 	 * A collection of keypresses the model would like to perform.
@@ -224,6 +197,72 @@ export declare namespace ComputerAction {
 		 */
 		type: "wait";
 	}
+}
+export declare namespace ComputerAction {
+	/**
+	 * A click action.
+	 */
+	interface Click extends SharedComputerAction.Click {}
+	/**
+	 * A double click action.
+	 */
+	interface DoubleClick extends SharedComputerAction.DoubleClick {}
+	/**
+	 * A drag action.
+	 */
+	interface Drag extends SharedComputerAction.Drag {
+		/**
+		 * An array of coordinates representing the path of the drag action. Coordinates
+		 * will appear as an array of objects, eg
+		 *
+		 * ```
+		 * [
+		 *   { x: 100, y: 200 },
+		 *   { x: 200, y: 300 }
+		 * ]
+		 * ```
+		 */
+		path: Array<Drag.Path>;
+	}
+	namespace Drag {
+		/**
+		 * An x/y coordinate pair, e.g. `{ x: 100, y: 200 }`.
+		 */
+		interface Path {
+			/**
+			 * The x-coordinate.
+			 */
+			x: number;
+			/**
+			 * The y-coordinate.
+			 */
+			y: number;
+		}
+	}
+	/**
+	 * A collection of keypresses the model would like to perform.
+	 */
+	interface Keypress extends SharedComputerAction.Keypress {}
+	/**
+	 * A mouse move action.
+	 */
+	interface Move extends SharedComputerAction.Move {}
+	/**
+	 * A screenshot action.
+	 */
+	interface Screenshot extends SharedComputerAction.Screenshot {}
+	/**
+	 * A scroll action.
+	 */
+	interface Scroll extends SharedComputerAction.Scroll {}
+	/**
+	 * An action to type in text.
+	 */
+	interface Type extends SharedComputerAction.Type {}
+	/**
+	 * A wait action.
+	 */
+	interface Wait extends SharedComputerAction.Wait {}
 }
 /**
  * Flattened batched actions for `computer_use`. Each action includes an `type`
@@ -925,60 +964,6 @@ export declare namespace Response {
 			 */
 			type: "error";
 		}
-		/**
-		 * A moderation result produced for the response input or output.
-		 */
-		interface ModerationResult {
-			/**
-			 * A dictionary of moderation categories to booleans, True if the input is flagged
-			 * under this category.
-			 */
-			categories: {
-				[key: string]: boolean;
-			};
-			/**
-			 * Which modalities of input are reflected by the score for each category.
-			 */
-			category_applied_input_types: {
-				[key: string]: Array<"text" | "image">;
-			};
-			/**
-			 * A dictionary of moderation categories to scores.
-			 */
-			category_scores: {
-				[key: string]: number;
-			};
-			/**
-			 * A boolean indicating whether the content was flagged by any category.
-			 */
-			flagged: boolean;
-			/**
-			 * The moderation model that produced this result.
-			 */
-			model: string;
-			/**
-			 * The object type, which was always `moderation_result` for successful moderation
-			 * results.
-			 */
-			type: "moderation_result";
-		}
-		/**
-		 * An error produced while attempting moderation for the response input or output.
-		 */
-		interface Error {
-			/**
-			 * The error code.
-			 */
-			code: string;
-			/**
-			 * The error message.
-			 */
-			message: string;
-			/**
-			 * The object type, which was always `error` for moderation failures.
-			 */
-			type: "error";
-		}
 	}
 }
 /**
@@ -1454,55 +1439,15 @@ export declare namespace ResponseComputerToolCall {
 	/**
 	 * A click action.
 	 */
-	interface Click {
-		/**
-		 * Indicates which mouse button was pressed during the click. One of `left`,
-		 * `right`, `wheel`, `back`, or `forward`.
-		 */
-		button: "left" | "right" | "wheel" | "back" | "forward";
-		/**
-		 * Specifies the event type. For a click action, this property is always `click`.
-		 */
-		type: "click";
-		/**
-		 * The x-coordinate where the click occurred.
-		 */
-		x: number;
-		/**
-		 * The y-coordinate where the click occurred.
-		 */
-		y: number;
-		/**
-		 * The keys being held while clicking.
-		 */
-		keys?: Array<string> | null;
-	}
+	interface Click extends SharedComputerAction.Click {}
 	/**
 	 * A double click action.
 	 */
-	interface DoubleClick {
-		/**
-		 * The keys being held while double-clicking.
-		 */
-		keys: Array<string> | null;
-		/**
-		 * Specifies the event type. For a double click action, this property is always set
-		 * to `double_click`.
-		 */
-		type: "double_click";
-		/**
-		 * The x-coordinate where the double click occurred.
-		 */
-		x: number;
-		/**
-		 * The y-coordinate where the double click occurred.
-		 */
-		y: number;
-	}
+	interface DoubleClick extends SharedComputerAction.DoubleClick {}
 	/**
 	 * A drag action.
 	 */
-	interface Drag {
+	interface Drag extends SharedComputerAction.Drag {
 		/**
 		 * An array of coordinates representing the path of the drag action. Coordinates
 		 * will appear as an array of objects, eg
@@ -1515,15 +1460,6 @@ export declare namespace ResponseComputerToolCall {
 		 * ```
 		 */
 		path: Array<Drag.Path>;
-		/**
-		 * Specifies the event type. For a drag action, this property is always set to
-		 * `drag`.
-		 */
-		type: "drag";
-		/**
-		 * The keys being held while dragging the mouse.
-		 */
-		keys?: Array<string> | null;
 	}
 	namespace Drag {
 		/**
@@ -1543,104 +1479,27 @@ export declare namespace ResponseComputerToolCall {
 	/**
 	 * A collection of keypresses the model would like to perform.
 	 */
-	interface Keypress {
-		/**
-		 * The combination of keys the model is requesting to be pressed. This is an array
-		 * of strings, each representing a key.
-		 */
-		keys: Array<string>;
-		/**
-		 * Specifies the event type. For a keypress action, this property is always set to
-		 * `keypress`.
-		 */
-		type: "keypress";
-	}
+	interface Keypress extends SharedComputerAction.Keypress {}
 	/**
 	 * A mouse move action.
 	 */
-	interface Move {
-		/**
-		 * Specifies the event type. For a move action, this property is always set to
-		 * `move`.
-		 */
-		type: "move";
-		/**
-		 * The x-coordinate to move to.
-		 */
-		x: number;
-		/**
-		 * The y-coordinate to move to.
-		 */
-		y: number;
-		/**
-		 * The keys being held while moving the mouse.
-		 */
-		keys?: Array<string> | null;
-	}
+	interface Move extends SharedComputerAction.Move {}
 	/**
 	 * A screenshot action.
 	 */
-	interface Screenshot {
-		/**
-		 * Specifies the event type. For a screenshot action, this property is always set
-		 * to `screenshot`.
-		 */
-		type: "screenshot";
-	}
+	interface Screenshot extends SharedComputerAction.Screenshot {}
 	/**
 	 * A scroll action.
 	 */
-	interface Scroll {
-		/**
-		 * The horizontal scroll distance.
-		 */
-		scroll_x: number;
-		/**
-		 * The vertical scroll distance.
-		 */
-		scroll_y: number;
-		/**
-		 * Specifies the event type. For a scroll action, this property is always set to
-		 * `scroll`.
-		 */
-		type: "scroll";
-		/**
-		 * The x-coordinate where the scroll occurred.
-		 */
-		x: number;
-		/**
-		 * The y-coordinate where the scroll occurred.
-		 */
-		y: number;
-		/**
-		 * The keys being held while scrolling.
-		 */
-		keys?: Array<string> | null;
-	}
+	interface Scroll extends SharedComputerAction.Scroll {}
 	/**
 	 * An action to type in text.
 	 */
-	interface Type {
-		/**
-		 * The text to type.
-		 */
-		text: string;
-		/**
-		 * Specifies the event type. For a type action, this property is always set to
-		 * `type`.
-		 */
-		type: "type";
-	}
+	interface Type extends SharedComputerAction.Type {}
 	/**
 	 * A wait action.
 	 */
-	interface Wait {
-		/**
-		 * Specifies the event type. For a wait action, this property is always set to
-		 * `wait`.
-		 */
-		type: "wait";
-	}
+	interface Wait extends SharedComputerAction.Wait {}
 }
 export interface ResponseComputerToolCallOutputItem {
 	/**
@@ -2964,6 +2823,217 @@ export interface ResponseInputImageContent {
 	 */
 	image_url?: string | null;
 }
+declare namespace SharedResponseItem {
+	/**
+	 * An image generation request made by the model.
+	 */
+	interface ImageGenerationCall {
+		/**
+		 * The unique ID of the image generation call.
+		 */
+		id: string;
+		/**
+		 * The generated image encoded in base64.
+		 */
+		result: string | null;
+		/**
+		 * The status of the image generation call.
+		 */
+		status: "in_progress" | "completed" | "generating" | "failed";
+		/**
+		 * The type of the image generation call. Always `image_generation_call`.
+		 */
+		type: "image_generation_call";
+	}
+	/**
+	 * A tool call to run a command on the local shell.
+	 */
+	interface LocalShellCall {
+		/**
+		 * The unique ID of the local shell call.
+		 */
+		id: string;
+		/**
+		 * The unique ID of the local shell tool call generated by the model.
+		 */
+		call_id: string;
+		/**
+		 * The status of the local shell call.
+		 */
+		status: "in_progress" | "completed" | "incomplete";
+		/**
+		 * The type of the local shell call. Always `local_shell_call`.
+		 */
+		type: "local_shell_call";
+	}
+	namespace LocalShellCall {
+		/**
+		 * Execute a shell command on the server.
+		 */
+		interface Action {
+			/**
+			 * The command to run.
+			 */
+			command: Array<string>;
+			/**
+			 * Environment variables to set for the command.
+			 */
+			env: {
+				[key: string]: string;
+			};
+			/**
+			 * The type of the local shell action. Always `exec`.
+			 */
+			type: "exec";
+			/**
+			 * Optional timeout in milliseconds for the command.
+			 */
+			timeout_ms?: number | null;
+			/**
+			 * Optional user to run the command as.
+			 */
+			user?: string | null;
+			/**
+			 * Optional working directory to run the command in.
+			 */
+			working_directory?: string | null;
+		}
+	}
+	/**
+	 * The output of a local shell tool call.
+	 */
+	interface LocalShellCallOutput {
+		/**
+		 * The unique ID of the local shell tool call generated by the model.
+		 */
+		id: string;
+		/**
+		 * A JSON string of the output of the local shell tool call.
+		 */
+		output: string;
+		/**
+		 * The type of the local shell tool call output. Always `local_shell_call_output`.
+		 */
+		type: "local_shell_call_output";
+		/**
+		 * The status of the item. One of `in_progress`, `completed`, or `incomplete`.
+		 */
+		status?: "in_progress" | "completed" | "incomplete" | null;
+	}
+	/**
+	 * A list of tools available on an MCP server.
+	 */
+	interface McpListTools {
+		/**
+		 * The unique ID of the list.
+		 */
+		id: string;
+		/**
+		 * The label of the MCP server.
+		 */
+		server_label: string;
+		/**
+		 * The type of the item. Always `mcp_list_tools`.
+		 */
+		type: "mcp_list_tools";
+		/**
+		 * Error message if the server could not list tools.
+		 */
+		error?: string | null;
+	}
+	namespace McpListTools {
+		/**
+		 * A tool available on an MCP server.
+		 */
+		interface Tool {
+			/**
+			 * The JSON schema describing the tool's input.
+			 */
+			input_schema: unknown;
+			/**
+			 * The name of the tool.
+			 */
+			name: string;
+			/**
+			 * Additional annotations about the tool.
+			 */
+			annotations?: unknown | null;
+			/**
+			 * The description of the tool.
+			 */
+			description?: string | null;
+		}
+	}
+	/**
+	 * A request for human approval of a tool invocation.
+	 */
+	interface McpApprovalRequest {
+		/**
+		 * The unique ID of the approval request.
+		 */
+		id: string;
+		/**
+		 * A JSON string of arguments for the tool.
+		 */
+		arguments: string;
+		/**
+		 * The name of the tool to run.
+		 */
+		name: string;
+		/**
+		 * The label of the MCP server making the request.
+		 */
+		server_label: string;
+		/**
+		 * The type of the item. Always `mcp_approval_request`.
+		 */
+		type: "mcp_approval_request";
+	}
+	/**
+	 * An invocation of a tool on an MCP server.
+	 */
+	interface McpCall {
+		/**
+		 * The unique ID of the tool call.
+		 */
+		id: string;
+		/**
+		 * A JSON string of the arguments passed to the tool.
+		 */
+		arguments: string;
+		/**
+		 * The name of the tool that was run.
+		 */
+		name: string;
+		/**
+		 * The label of the MCP server running the tool.
+		 */
+		server_label: string;
+		/**
+		 * The type of the item. Always `mcp_call`.
+		 */
+		type: "mcp_call";
+		/**
+		 * Unique identifier for the MCP tool call approval request. Include this value in
+		 * a subsequent `mcp_approval_response` input to approve or reject the
+		 * corresponding tool call.
+		 */
+		approval_request_id?: string | null;
+		/**
+		 * The error from the tool call, if any.
+		 */
+		error?: string | null;
+		/**
+		 * The output from the tool call.
+		 */
+		output?: string | null;
+		/**
+		 * The status of the tool call. One of `in_progress`, `completed`, `incomplete`,
+		 * `calling`, or `failed`.
+		 */
+		status?: "in_progress" | "completed" | "incomplete" | "calling" | "failed";
+	}
+}
 /**
  * A message input to the model with a role indicating instruction following
  * hierarchy. Instructions given with the `developer` or `system` role take
@@ -3152,103 +3222,26 @@ export declare namespace ResponseInputItem {
 	/**
 	 * An image generation request made by the model.
 	 */
-	interface ImageGenerationCall {
-		/**
-		 * The unique ID of the image generation call.
-		 */
-		id: string;
-		/**
-		 * The generated image encoded in base64.
-		 */
-		result: string | null;
-		/**
-		 * The status of the image generation call.
-		 */
-		status: "in_progress" | "completed" | "generating" | "failed";
-		/**
-		 * The type of the image generation call. Always `image_generation_call`.
-		 */
-		type: "image_generation_call";
-	}
+	interface ImageGenerationCall extends SharedResponseItem.ImageGenerationCall {}
 	/**
 	 * A tool call to run a command on the local shell.
 	 */
-	interface LocalShellCall {
-		/**
-		 * The unique ID of the local shell call.
-		 */
-		id: string;
+	interface LocalShellCall extends SharedResponseItem.LocalShellCall {
 		/**
 		 * Execute a shell command on the server.
 		 */
 		action: LocalShellCall.Action;
-		/**
-		 * The unique ID of the local shell tool call generated by the model.
-		 */
-		call_id: string;
-		/**
-		 * The status of the local shell call.
-		 */
-		status: "in_progress" | "completed" | "incomplete";
-		/**
-		 * The type of the local shell call. Always `local_shell_call`.
-		 */
-		type: "local_shell_call";
 	}
 	namespace LocalShellCall {
 		/**
 		 * Execute a shell command on the server.
 		 */
-		interface Action {
-			/**
-			 * The command to run.
-			 */
-			command: Array<string>;
-			/**
-			 * Environment variables to set for the command.
-			 */
-			env: {
-				[key: string]: string;
-			};
-			/**
-			 * The type of the local shell action. Always `exec`.
-			 */
-			type: "exec";
-			/**
-			 * Optional timeout in milliseconds for the command.
-			 */
-			timeout_ms?: number | null;
-			/**
-			 * Optional user to run the command as.
-			 */
-			user?: string | null;
-			/**
-			 * Optional working directory to run the command in.
-			 */
-			working_directory?: string | null;
-		}
+		interface Action extends SharedResponseItem.LocalShellCall.Action {}
 	}
 	/**
 	 * The output of a local shell tool call.
 	 */
-	interface LocalShellCallOutput {
-		/**
-		 * The unique ID of the local shell tool call generated by the model.
-		 */
-		id: string;
-		/**
-		 * A JSON string of the output of the local shell tool call.
-		 */
-		output: string;
-		/**
-		 * The type of the local shell tool call output. Always `local_shell_call_output`.
-		 */
-		type: "local_shell_call_output";
-		/**
-		 * The status of the item. One of `in_progress`, `completed`, or `incomplete`.
-		 */
-		status?: "in_progress" | "completed" | "incomplete" | null;
-	}
+	interface LocalShellCallOutput extends SharedResponseItem.LocalShellCallOutput {}
 	/**
 	 * A tool representing a request to execute one or more shell commands.
 	 */
@@ -3439,76 +3432,22 @@ export declare namespace ResponseInputItem {
 	/**
 	 * A list of tools available on an MCP server.
 	 */
-	interface McpListTools {
-		/**
-		 * The unique ID of the list.
-		 */
-		id: string;
-		/**
-		 * The label of the MCP server.
-		 */
-		server_label: string;
+	interface McpListTools extends SharedResponseItem.McpListTools {
 		/**
 		 * The tools available on the server.
 		 */
 		tools: Array<McpListTools.Tool>;
-		/**
-		 * The type of the item. Always `mcp_list_tools`.
-		 */
-		type: "mcp_list_tools";
-		/**
-		 * Error message if the server could not list tools.
-		 */
-		error?: string | null;
 	}
 	namespace McpListTools {
 		/**
 		 * A tool available on an MCP server.
 		 */
-		interface Tool {
-			/**
-			 * The JSON schema describing the tool's input.
-			 */
-			input_schema: unknown;
-			/**
-			 * The name of the tool.
-			 */
-			name: string;
-			/**
-			 * Additional annotations about the tool.
-			 */
-			annotations?: unknown | null;
-			/**
-			 * The description of the tool.
-			 */
-			description?: string | null;
-		}
+		interface Tool extends SharedResponseItem.McpListTools.Tool {}
 	}
 	/**
 	 * A request for human approval of a tool invocation.
 	 */
-	interface McpApprovalRequest {
-		/**
-		 * The unique ID of the approval request.
-		 */
-		id: string;
-		/**
-		 * A JSON string of arguments for the tool.
-		 */
-		arguments: string;
-		/**
-		 * The name of the tool to run.
-		 */
-		name: string;
-		/**
-		 * The label of the MCP server making the request.
-		 */
-		server_label: string;
-		/**
-		 * The type of the item. Always `mcp_approval_request`.
-		 */
-		type: "mcp_approval_request";
-	}
+	interface McpApprovalRequest extends SharedResponseItem.McpApprovalRequest {}
 	/**
 	 * A response to an MCP approval request.
 	 */
@@ -3537,47 +3476,7 @@ export declare namespace ResponseInputItem {
 	/**
 	 * An invocation of a tool on an MCP server.
 	 */
-	interface McpCall {
-		/**
-		 * The unique ID of the tool call.
-		 */
-		id: string;
-		/**
-		 * A JSON string of the arguments passed to the tool.
-		 */
-		arguments: string;
-		/**
-		 * The name of the tool that was run.
-		 */
-		name: string;
-		/**
-		 * The label of the MCP server running the tool.
-		 */
-		server_label: string;
-		/**
-		 * The type of the item. Always `mcp_call`.
-		 */
-		type: "mcp_call";
-		/**
-		 * Unique identifier for the MCP tool call approval request. Include this value in
-		 * a subsequent `mcp_approval_response` input to approve or reject the
-		 * corresponding tool call.
-		 */
-		approval_request_id?: string | null;
-		/**
-		 * The error from the tool call, if any.
-		 */
-		error?: string | null;
-		/**
-		 * The output from the tool call.
-		 */
-		output?: string | null;
-		/**
-		 * The status of the tool call. One of `in_progress`, `completed`, `incomplete`,
-		 * `calling`, or `failed`.
-		 */
-		status?: "in_progress" | "completed" | "incomplete" | "calling" | "failed";
-	}
+	interface McpCall extends SharedResponseItem.McpCall {}
 	/**
 	 * Compacts the current context. Must be the final input item.
 	 */
@@ -3913,220 +3812,49 @@ export declare namespace ResponseOutputItem {
 	/**
 	 * An image generation request made by the model.
 	 */
-	interface ImageGenerationCall {
-		/**
-		 * The unique ID of the image generation call.
-		 */
-		id: string;
-		/**
-		 * The generated image encoded in base64.
-		 */
-		result: string | null;
-		/**
-		 * The status of the image generation call.
-		 */
-		status: "in_progress" | "completed" | "generating" | "failed";
-		/**
-		 * The type of the image generation call. Always `image_generation_call`.
-		 */
-		type: "image_generation_call";
-	}
+	interface ImageGenerationCall extends SharedResponseItem.ImageGenerationCall {}
 	/**
 	 * A tool call to run a command on the local shell.
 	 */
-	interface LocalShellCall {
-		/**
-		 * The unique ID of the local shell call.
-		 */
-		id: string;
+	interface LocalShellCall extends SharedResponseItem.LocalShellCall {
 		/**
 		 * Execute a shell command on the server.
 		 */
 		action: LocalShellCall.Action;
-		/**
-		 * The unique ID of the local shell tool call generated by the model.
-		 */
-		call_id: string;
-		/**
-		 * The status of the local shell call.
-		 */
-		status: "in_progress" | "completed" | "incomplete";
-		/**
-		 * The type of the local shell call. Always `local_shell_call`.
-		 */
-		type: "local_shell_call";
 	}
 	namespace LocalShellCall {
 		/**
 		 * Execute a shell command on the server.
 		 */
-		interface Action {
-			/**
-			 * The command to run.
-			 */
-			command: Array<string>;
-			/**
-			 * Environment variables to set for the command.
-			 */
-			env: {
-				[key: string]: string;
-			};
-			/**
-			 * The type of the local shell action. Always `exec`.
-			 */
-			type: "exec";
-			/**
-			 * Optional timeout in milliseconds for the command.
-			 */
-			timeout_ms?: number | null;
-			/**
-			 * Optional user to run the command as.
-			 */
-			user?: string | null;
-			/**
-			 * Optional working directory to run the command in.
-			 */
-			working_directory?: string | null;
-		}
+		interface Action extends SharedResponseItem.LocalShellCall.Action {}
 	}
 	/**
 	 * The output of a local shell tool call.
 	 */
-	interface LocalShellCallOutput {
-		/**
-		 * The unique ID of the local shell tool call generated by the model.
-		 */
-		id: string;
-		/**
-		 * A JSON string of the output of the local shell tool call.
-		 */
-		output: string;
-		/**
-		 * The type of the local shell tool call output. Always `local_shell_call_output`.
-		 */
-		type: "local_shell_call_output";
-		/**
-		 * The status of the item. One of `in_progress`, `completed`, or `incomplete`.
-		 */
-		status?: "in_progress" | "completed" | "incomplete" | null;
-	}
+	interface LocalShellCallOutput extends SharedResponseItem.LocalShellCallOutput {}
 	/**
 	 * An invocation of a tool on an MCP server.
 	 */
-	interface McpCall {
-		/**
-		 * The unique ID of the tool call.
-		 */
-		id: string;
-		/**
-		 * A JSON string of the arguments passed to the tool.
-		 */
-		arguments: string;
-		/**
-		 * The name of the tool that was run.
-		 */
-		name: string;
-		/**
-		 * The label of the MCP server running the tool.
-		 */
-		server_label: string;
-		/**
-		 * The type of the item. Always `mcp_call`.
-		 */
-		type: "mcp_call";
-		/**
-		 * Unique identifier for the MCP tool call approval request. Include this value in
-		 * a subsequent `mcp_approval_response` input to approve or reject the
-		 * corresponding tool call.
-		 */
-		approval_request_id?: string | null;
-		/**
-		 * The error from the tool call, if any.
-		 */
-		error?: string | null;
-		/**
-		 * The output from the tool call.
-		 */
-		output?: string | null;
-		/**
-		 * The status of the tool call. One of `in_progress`, `completed`, `incomplete`,
-		 * `calling`, or `failed`.
-		 */
-		status?: "in_progress" | "completed" | "incomplete" | "calling" | "failed";
-	}
+	interface McpCall extends SharedResponseItem.McpCall {}
 	/**
 	 * A list of tools available on an MCP server.
 	 */
-	interface McpListTools {
-		/**
-		 * The unique ID of the list.
-		 */
-		id: string;
-		/**
-		 * The label of the MCP server.
-		 */
-		server_label: string;
+	interface McpListTools extends SharedResponseItem.McpListTools {
 		/**
 		 * The tools available on the server.
 		 */
 		tools: Array<McpListTools.Tool>;
-		/**
-		 * The type of the item. Always `mcp_list_tools`.
-		 */
-		type: "mcp_list_tools";
-		/**
-		 * Error message if the server could not list tools.
-		 */
-		error?: string | null;
 	}
 	namespace McpListTools {
 		/**
 		 * A tool available on an MCP server.
 		 */
-		interface Tool {
-			/**
-			 * The JSON schema describing the tool's input.
-			 */
-			input_schema: unknown;
-			/**
-			 * The name of the tool.
-			 */
-			name: string;
-			/**
-			 * Additional annotations about the tool.
-			 */
-			annotations?: unknown | null;
-			/**
-			 * The description of the tool.
-			 */
-			description?: string | null;
-		}
+		interface Tool extends SharedResponseItem.McpListTools.Tool {}
 	}
 	/**
 	 * A request for human approval of a tool invocation.
 	 */
-	interface McpApprovalRequest {
-		/**
-		 * The unique ID of the approval request.
-		 */
-		id: string;
-		/**
-		 * A JSON string of arguments for the tool.
-		 */
-		arguments: string;
-		/**
-		 * The name of the tool to run.
-		 */
-		name: string;
-		/**
-		 * The label of the MCP server making the request.
-		 */
-		server_label: string;
-		/**
-		 * The type of the item. Always `mcp_approval_request`.
-		 */
-		type: "mcp_approval_request";
-	}
+	interface McpApprovalRequest extends SharedResponseItem.McpApprovalRequest {}
 	/**
 	 * A response to an MCP approval request.
 	 */

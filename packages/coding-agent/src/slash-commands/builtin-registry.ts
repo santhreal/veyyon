@@ -62,7 +62,7 @@ import {
 } from "../session/account-inventory";
 import type { AgentSession } from "../session/agent-session";
 import type { FreshSessionResult, HandoffResult } from "../session/agent-session-types";
-import { configuredSubagentModelChains } from "../task/subagent-settings";
+import { configuredAgentModelChains } from "../task/agent-settings";
 import { theme } from "../theme/theme";
 import { configuredThinkingLevelsForModel, parseConfiguredThinkingLevel } from "../thinking";
 import { normalizeApprovalMode } from "../tools/core/approval";
@@ -294,6 +294,17 @@ const shutdownHandlerTui = (_command: ParsedSlashCommand, runtime: TuiSlashComma
 	return commandConsumed();
 };
 
+/** A TUI handler that clears the composer and hands the trimmed text after the command name to `dispatch`. */
+function argumentHandlerTui(
+	dispatch: (ctx: TuiSlashCommandHostContext, text: string) => Promise<void>,
+): (command: ParsedSlashCommand, runtime: TuiSlashCommandRuntime) => Promise<void> {
+	return async (command, runtime) => {
+		const text = command.text.slice(`/${command.name}`.length).trim();
+		runtime.ctx.editor.setText("");
+		await dispatch(runtime.ctx, text);
+	};
+}
+
 async function handleUsageResetCommand(
 	arg: string,
 	session: AgentSession,
@@ -367,10 +378,10 @@ const ACCOUNT_VERBS: readonly string[] = BUILTIN_SLASH_COMMAND_DECLARATIONS.flat
  * Which providers this session routes to, and for what, as `/account status` annotates them.
  *
  * The three roles are the three ways a provider ends up serving one session: the model the user is
- * looking at, the models subagents run on, and the web-search backend. They are read from the
+ * looking at, the models spawned agents run on, and the web-search backend. They are read from the
  * settings the runtime itself obeys, so the block cannot claim a role the router does not honor.
  *
- * Subagents are a UNION of every chain a spawn can land on: the default model role, the shared
+ * Spawned agents are a UNION of every chain a spawn can land on: the default model role, the shared
  * chain, and every lane that names a model of its own. Both scopes are read, because the scope
  * switch is one keystroke and re-annotating providers on it would make the badges flicker.
  * Nothing resolvable at all falls back to the main provider, which is what a spawn reaches when
@@ -380,18 +391,18 @@ function accountRoleSources(session: AgentSession): AccountRoleSources {
 	const model = session.model;
 	const available = session.modelRegistry.getAvailable();
 	const preferences = getModelMatchPreferences(session.settings);
-	const subagentProviders: string[] = [];
-	for (const chain of configuredSubagentModelChains(session.settings)) {
+	const agentProviders: string[] = [];
+	for (const chain of configuredAgentModelChains(session.settings)) {
 		for (const pattern of resolveConfiguredModelPatterns(chain, session.settings)) {
 			const resolved = resolveModelFromString(pattern, available, preferences);
-			if (resolved && !subagentProviders.includes(resolved.provider)) subagentProviders.push(resolved.provider);
+			if (resolved && !agentProviders.includes(resolved.provider)) agentProviders.push(resolved.provider);
 		}
 	}
-	if (subagentProviders.length === 0 && model) subagentProviders.push(model.provider);
+	if (agentProviders.length === 0 && model) agentProviders.push(model.provider);
 	const webSearch = session.settings.get("providers.webSearch");
 	return {
 		...(model ? { mainModel: { provider: model.provider, id: model.id } } : {}),
-		subagentProviders,
+		agentProviders,
 		...(typeof webSearch === "string" ? { webSearchPreference: webSearch } : {}),
 	};
 }
@@ -1876,7 +1887,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			const snapshot = runtime.session.getAsyncJobSnapshot({ recentLimit: 5 });
 			if (!snapshot || (snapshot.running.length === 0 && snapshot.recent.length === 0)) {
 				await runtime.output(
-					"No background jobs running. (Background jobs run async tools — e.g. long-running bash, debug, or task subagents that would otherwise tie up a turn. They appear here while alive and for ~5 minutes after.)",
+					"No background jobs running. (Background jobs run async tools — e.g. long-running bash, debug, or task spawned agents that would otherwise tie up a turn. They appear here while alive and for ~5 minutes after.)",
 				);
 				return commandConsumed();
 			}
@@ -2290,27 +2301,9 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			await runtime.ctx.handleResumeSession(match.session.path);
 		},
 	},
-	btw: {
-		handleTui: async (command, runtime) => {
-			const question = command.text.slice(`/${command.name}`.length).trim();
-			runtime.ctx.editor.setText("");
-			await runtime.ctx.handleBtwCommand(question);
-		},
-	},
-	tan: {
-		handleTui: async (command, runtime) => {
-			const work = command.text.slice(`/${command.name}`.length).trim();
-			runtime.ctx.editor.setText("");
-			await runtime.ctx.handleTanCommand(work);
-		},
-	},
-	omfg: {
-		handleTui: async (command, runtime) => {
-			const complaint = command.text.slice(`/${command.name}`.length).trim();
-			runtime.ctx.editor.setText("");
-			await runtime.ctx.handleOmfgCommand(complaint);
-		},
-	},
+	btw: { handleTui: argumentHandlerTui((ctx, question) => ctx.handleBtwCommand(question)) },
+	tan: { handleTui: argumentHandlerTui((ctx, work) => ctx.handleTanCommand(work)) },
+	omfg: { handleTui: argumentHandlerTui((ctx, complaint) => ctx.handleOmfgCommand(complaint)) },
 	retry: {
 		handleTui: async (_command, runtime) => {
 			const didRetry = await runtime.ctx.session.retry();

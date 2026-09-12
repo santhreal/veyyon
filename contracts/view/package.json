@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/view",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Host-agnostic view model a Veyyon tool returns instead of a terminal component",
   "homepage": "https://veyyon.dev",
   "author": "santhreal",

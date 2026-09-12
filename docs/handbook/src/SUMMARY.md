@@ -37,8 +37,8 @@
 - [Secrets](./features/secrets.md)
 - [Models and providers](./using/models.md)
 - [Sessions](./using/sessions.md)
-- [Subagents](./features/subagents.md)
-- [Writing a subagent](./features/subagents-authoring.md)
+- [Agents](./features/agents.md)
+- [Writing an agent](./features/agents-authoring.md)
 - [Multi-agent monitoring](./features/cockpit.md)
 - [Keybindings and Vim mode](./features/keybindings.md)
 - [Web search](./features/web-search.md)
@@ -107,11 +107,12 @@
   - [Skills](./reference/skills.md)
   - [The `/tree` command](./reference/tree-command.md)
   - [The RPC surface](./reference/rpc.md)
+  - [The ACP server](./reference/acp.md)
   - [The SDK](./reference/sdk.md)
   - [Exit codes](./reference/exit-codes.md)
   - [File locations](./reference/file-locations.md)
 
-# Under the hood
+# Architecture and internals
 
 - [Architecture overview](./architecture/overview.md)
   - [Approvals internals](./architecture/sandbox.md)

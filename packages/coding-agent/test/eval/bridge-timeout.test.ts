@@ -47,7 +47,7 @@ describe("isEvalTimeoutControlEvent", () => {
 		expect(isEvalTimeoutControlEvent({ op: "read" })).toBe(false);
 		expect(isEvalTimeoutControlEvent({ op: "write" })).toBe(false);
 		// A real delegated-agent progress event must render/persist normally, not be swallowed.
-		expect(isEvalTimeoutControlEvent({ op: "agent", id: "subagent-1" })).toBe(false);
+		expect(isEvalTimeoutControlEvent({ op: "agent", id: "agent-1" })).toBe(false);
 	});
 });
 

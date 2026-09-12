@@ -247,10 +247,7 @@ function buildAsciiTable(columns: string[], rows: SqliteRow[]): string {
 }
 
 function parseLimit(value: string | null, fallback: number): number {
-	if (value === null || value.trim().length === 0) {
-		return fallback;
-	}
-
+	if (value === null || value.trim().length === 0) return fallback;
 	const parsed = Number.parseInt(value, 10);
 	if (!Number.isFinite(parsed) || parsed < 1) {
 		throw new ToolError(`SQLite limit must be a positive integer; got '${value}'`);
@@ -259,10 +256,7 @@ function parseLimit(value: string | null, fallback: number): number {
 }
 
 function parseOffset(value: string | null): number {
-	if (value === null || value.trim().length === 0) {
-		return 0;
-	}
-
+	if (value === null || value.trim().length === 0) return 0;
 	const parsed = Number.parseInt(value, 10);
 	if (!Number.isFinite(parsed) || parsed < 0) {
 		throw new ToolError(`SQLite offset must be a non-negative integer; got '${value}'`);

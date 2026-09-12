@@ -19,6 +19,7 @@ import type { ContextUsage } from "@veyyon/coding-agent/extensibility/extensions
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
+import { StatusPresentationProducer } from "../src/presentation/status-producer";
 import { statusLineSessionParts } from "./helpers/status-line-session";
 
 beforeAll(async () => {
@@ -33,6 +34,7 @@ afterAll(() => {
 
 interface Fake {
 	session: AgentSession;
+	producer: StatusPresentationProducer;
 	/** Number of times `getContextUsage()` was queried. */
 	usageCalls: () => number;
 	/** Swap the value the next `getContextUsage()` query returns. */
@@ -59,8 +61,10 @@ function makeSession(opts: { messages: unknown[]; contextWindow?: number; usage?
 			return revision;
 		},
 	} as unknown as AgentSession;
+	const producer = new StatusPresentationProducer(session);
 	return {
 		session,
+		producer,
 		usageCalls: () => calls,
 		setUsage: next => {
 			usage = next;
@@ -80,18 +84,18 @@ function assistantMessage(text: string): unknown {
 
 describe("StatusLineComponent context breakdown", () => {
 	it("surfaces the provider-anchored tokens and context window from getContextUsage", () => {
-		const { session } = makeSession({
+		const { producer } = makeSession({
 			messages: [userMessage("hi")],
 			usage: { tokens: 5000, contextWindow: 272_000, percent: 1.8 },
 		});
-		const breakdown = new StatusLineComponent(session).getCachedContextBreakdown();
+		const breakdown = new StatusLineComponent(producer).getCachedContextBreakdown();
 		expect(breakdown.usedTokens).toBe(5000);
 		expect(breakdown.contextWindow).toBe(272_000);
 	});
 
 	it("memoizes: repeated redraws with no change do not re-query usage", () => {
-		const { session, usageCalls } = makeSession({ messages: [userMessage("hi")] });
-		const comp = new StatusLineComponent(session);
+		const { producer, usageCalls } = makeSession({ messages: [userMessage("hi")] });
+		const comp = new StatusLineComponent(producer);
 
 		comp.getCachedContextBreakdown();
 		comp.getCachedContextBreakdown();
@@ -105,7 +109,7 @@ describe("StatusLineComponent context breakdown", () => {
 			messages: [userMessage("hi")],
 			usage: { tokens: 100, contextWindow: 200_000, percent: 0.05 },
 		});
-		const comp = new StatusLineComponent(fake.session);
+		const comp = new StatusLineComponent(fake.producer);
 		expect(comp.getCachedContextBreakdown().usedTokens).toBe(100);
 
 		(fake.session.messages as unknown[]).push(assistantMessage("a reply that bumped the real prompt size"));
@@ -117,8 +121,8 @@ describe("StatusLineComponent context breakdown", () => {
 
 	it("re-queries when the streaming tail grows in place", () => {
 		const tail = assistantMessage("partial") as { content: { type: string; text: string }[] };
-		const { session, usageCalls } = makeSession({ messages: [userMessage("hi"), tail] });
-		const comp = new StatusLineComponent(session);
+		const { producer, usageCalls } = makeSession({ messages: [userMessage("hi"), tail] });
+		const comp = new StatusLineComponent(producer);
 
 		comp.getCachedContextBreakdown();
 		tail.content[0]!.text = "partial response that kept streaming".repeat(8);
@@ -128,10 +132,10 @@ describe("StatusLineComponent context breakdown", () => {
 	});
 
 	it("re-queries when the message array is replaced (branch switch / rebuild)", () => {
-		const { session, usageCalls } = makeSession({
+		const { session, producer, usageCalls } = makeSession({
 			messages: [userMessage("a"), userMessage("b")],
 		});
-		const comp = new StatusLineComponent(session);
+		const comp = new StatusLineComponent(producer);
 		comp.getCachedContextBreakdown();
 
 		(session as { messages: unknown[] }).messages = [userMessage("c"), userMessage("d")];
@@ -141,8 +145,8 @@ describe("StatusLineComponent context breakdown", () => {
 	});
 
 	it("re-queries when the model context window changes", () => {
-		const { session, usageCalls } = makeSession({ messages: [userMessage("hi")], contextWindow: 200_000 });
-		const comp = new StatusLineComponent(session);
+		const { session, producer, usageCalls } = makeSession({ messages: [userMessage("hi")], contextWindow: 200_000 });
+		const comp = new StatusLineComponent(producer);
 		comp.getCachedContextBreakdown();
 
 		(session.model as { contextWindow: number }).contextWindow = 400_000;
@@ -156,7 +160,7 @@ describe("StatusLineComponent context breakdown", () => {
 			messages: [userMessage("hi")],
 			usage: { tokens: 190_000, contextWindow: 272_000, percent: 69.9 },
 		});
-		const comp = new StatusLineComponent(fake.session);
+		const comp = new StatusLineComponent(fake.producer);
 		expect(comp.getCachedContextBreakdown().usedTokens).toBe(190_000);
 
 		// Turn ends/aborts: the message list and last-message fingerprint are
@@ -170,11 +174,11 @@ describe("StatusLineComponent context breakdown", () => {
 	});
 
 	it("propagates a speculative/numeric token count, e.g. right after compaction", () => {
-		const { session } = makeSession({
+		const { producer } = makeSession({
 			messages: [userMessage("compaction summary")],
 			usage: { tokens: 1234, contextWindow: 272_000, percent: 0.45 },
 		});
-		const breakdown = new StatusLineComponent(session).getCachedContextBreakdown();
+		const breakdown = new StatusLineComponent(producer).getCachedContextBreakdown();
 		expect(breakdown.usedTokens).toBe(1234);
 		expect(breakdown.contextWindow).toBe(272_000);
 	});
@@ -183,15 +187,15 @@ describe("StatusLineComponent context breakdown", () => {
 	// unavailable usage means there is no anchor yet, which the breakdown reports as
 	// `null` so the footline can say `? left` instead of inventing a full context.
 	it("reports an unknown token count as unknown, keeping the model window", () => {
-		const { session } = makeSession({ messages: [userMessage("hi")], usage: undefined, contextWindow: 128_000 });
-		const breakdown = new StatusLineComponent(session).getCachedContextBreakdown();
+		const { producer } = makeSession({ messages: [userMessage("hi")], usage: undefined, contextWindow: 128_000 });
+		const breakdown = new StatusLineComponent(producer).getCachedContextBreakdown();
 		expect(breakdown.usedTokens).toBeNull();
 		expect(breakdown.contextWindow).toBe(128_000);
 	});
 
 	it("does not query usage when no context segment is rendered", () => {
-		const { session, usageCalls } = makeSession({ messages: [userMessage("hi")] });
-		const comp = new StatusLineComponent(session);
+		const { producer, usageCalls } = makeSession({ messages: [userMessage("hi")] });
+		const comp = new StatusLineComponent(producer);
 		comp.updateSettings({
 			preset: "custom",
 			leftSegments: ["pi"],
@@ -211,11 +215,11 @@ describe("StatusLineComponent context breakdown", () => {
 	 * the bar form is the only way these stay honest.
 	 */
 	it("renders the room left as a percentage in the context segment", () => {
-		const { session } = makeSession({
+		const { producer } = makeSession({
 			messages: [userMessage("hi"), assistantMessage("done")],
 			usage: { tokens: 5000, contextWindow: 272_000, percent: 1.8 },
 		});
-		const comp = new StatusLineComponent(session);
+		const comp = new StatusLineComponent(producer);
 		comp.updateSettings({ preset: "custom", leftSegments: ["context_pct"], rightSegments: [] });
 
 		const plain = (comp.renderQuietLine(80) ?? "").replaceAll(/\x1b\[[0-9;]*m/g, "");
@@ -226,11 +230,11 @@ describe("StatusLineComponent context breakdown", () => {
 	});
 
 	it("renders speculative usage instead of ? after compaction", () => {
-		const { session } = makeSession({
+		const { producer } = makeSession({
 			messages: [userMessage("compaction summary")],
 			usage: { tokens: 1234, contextWindow: 272_000, percent: 0.45 },
 		});
-		const comp = new StatusLineComponent(session);
+		const comp = new StatusLineComponent(producer);
 		comp.updateSettings({ preset: "custom", leftSegments: ["context_pct"], rightSegments: [] });
 
 		const plain = (comp.renderQuietLine(80) ?? "").replaceAll(/\x1b\[[0-9;]*m/g, "");
@@ -239,12 +243,12 @@ describe("StatusLineComponent context breakdown", () => {
 	});
 
 	it("admits an unknown percentage when the model window is unavailable", () => {
-		const { session } = makeSession({
+		const { producer } = makeSession({
 			messages: [userMessage("hi")],
 			contextWindow: 0,
 			usage: { tokens: 5000, contextWindow: 0, percent: 0 },
 		});
-		const comp = new StatusLineComponent(session);
+		const comp = new StatusLineComponent(producer);
 		comp.updateSettings({ preset: "custom", leftSegments: ["context_pct"], rightSegments: [] });
 
 		const plain = (comp.renderQuietLine(80) ?? "").replaceAll(/\x1b\[[0-9;]*m/g, "");

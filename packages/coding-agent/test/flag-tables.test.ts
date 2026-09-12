@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { CliUsageError } from "@veyyon/utils/cli-usage-error";
 import { type Args, parseArgs } from "../src/cli/args";
 import {
 	flagConsumesValue,
@@ -7,7 +8,6 @@ import {
 	OPTIONAL_VALUE_FLAGS,
 	STRING_VALUE_FLAGS,
 } from "../src/cli/flag-tables";
-import { CliUsageError } from "../src/cli/usage-error";
 import { CLI_THINKING_LEVELS } from "../src/thinking";
 import { APPROVAL_MODE_VALUES } from "../src/tools/core/approval-modes";
 import { BUILTIN_TOOL_NAMES } from "../src/tools/core/builtin-names";

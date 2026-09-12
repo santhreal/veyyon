@@ -484,6 +484,28 @@ describe("InteractiveMode goal mode integration", () => {
 		expect(content).not.toContain("Run focused checks");
 	});
 
+	it("delivers the goal and vibe contexts hidden, agent-attributed and on the requested channel", async () => {
+		await harness.mode.handleGoalModeCommand("Ship the release");
+		harness.session.setVibeModeState({ enabled: true });
+		const sendCustomMessage = vi.spyOn(harness.session, "sendCustomMessage").mockResolvedValue(false);
+
+		await harness.session.sendGoalModeContext({ deliverAs: "steer" });
+		await harness.session.sendVibeModeContext({ deliverAs: "followUp" });
+
+		expect(sendCustomMessage.mock.calls).toHaveLength(2);
+		const [goalCall, vibeCall] = sendCustomMessage.mock.calls;
+		expect(goalCall?.[0]).toMatchObject({ customType: "goal-mode-context", display: false, attribution: "agent" });
+		expect(goalCall?.[1]).toEqual({ deliverAs: "steer" });
+		expect(vibeCall?.[0]).toMatchObject({ customType: "vibe-mode-context", display: false, attribution: "agent" });
+		expect(normalizeCustomMessagePayload(vibeCall?.[0]).content).toContain("<vibe-mode>");
+		expect(vibeCall?.[1]).toEqual({ deliverAs: "followUp" });
+
+		sendCustomMessage.mockClear();
+		harness.session.setVibeModeState(undefined);
+		await harness.session.sendVibeModeContext({ deliverAs: "steer" });
+		expect(sendCustomMessage.mock.calls).toEqual([]);
+	});
+
 	it("holds a goal continuation tick while the agent is streaming", async () => {
 		// The 800ms continuation timer armed by getUserInput() can outlive the idle window when
 		// streaming starts between schedule and fire (e.g. /goal set taking the streaming branch,

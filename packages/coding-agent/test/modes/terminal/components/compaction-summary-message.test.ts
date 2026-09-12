@@ -3,6 +3,7 @@ import { SERVER_COMPACTION_WIRE_APIS } from "@veyyon/ai/providers/openai-compact
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import {
+	BranchSummaryMessageComponent,
 	COMPACTION_KIND_LABEL,
 	type CompactionKind,
 	CompactionSummaryMessageComponent,
@@ -12,6 +13,8 @@ import {
 	REMOTE_COMPACTION_KIND_BY_API,
 	resolveCompactionKind,
 } from "@veyyon/coding-agent/modes/terminal/components/transcript/compaction-summary-message";
+import { SummaryMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/summary-message";
+import { toCompactionSummaryView, toHandoffSummaryView } from "@veyyon/coding-agent/presentation/summary-builder";
 import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { getKeybindings, setKeybindings } from "@veyyon/utils/keybindings";
@@ -44,17 +47,27 @@ function makeHandoffMessage(content: CustomMessage<unknown>["content"]): CustomM
 describe("compaction summary divider", () => {
 	/** Stored compaction summaries stay collapsed behind the transcript's Ctrl+O affordance. */
 	it("renders a collapsed compaction divider instead of a user or assistant response", () => {
-		const component = new CompactionSummaryMessageComponent({
+		const legacyComponent = new CompactionSummaryMessageComponent({
 			role: "compactionSummary",
 			summary: "The parser fix is complete.",
 			tokensBefore: 12_345,
 			timestamp: Date.now(),
 		});
-		const collapsed = Bun.stripANSI(component.render(80).join("\n"));
+		expect(legacyComponent).toBeInstanceOf(CompactionSummaryMessageComponent);
+		expect(legacyComponent).toBeInstanceOf(SummaryMessageComponent);
+		const collapsed = Bun.stripANSI(legacyComponent.render(80).join("\n"));
 
 		expect(collapsed).toContain("compacted");
 		expect(collapsed).toContain("ctrl+o");
 		expect(collapsed).not.toContain("The parser fix is complete.");
+
+		const viewComponent = new CompactionSummaryMessageComponent({
+			kind: "compaction-summary",
+			summary: "The parser fix is complete.",
+			tokensBefore: 12_345,
+		});
+		expect(viewComponent).toBeInstanceOf(CompactionSummaryMessageComponent);
+		expect(Bun.stripANSI(viewComponent.render(80).join("\n"))).toBe(collapsed);
 	});
 
 	/**
@@ -64,12 +77,14 @@ describe("compaction summary divider", () => {
 	 */
 	it("follows the live expand keybinding", () => {
 		const previous = getKeybindings();
-		const component = new CompactionSummaryMessageComponent({
-			role: "compactionSummary",
-			summary: "Summary",
-			tokensBefore: 1,
-			timestamp: Date.now(),
-		});
+		const component = new SummaryMessageComponent(
+			toCompactionSummaryView({
+				role: "compactionSummary",
+				summary: "Summary",
+				tokensBefore: 1,
+				timestamp: Date.now(),
+			}),
+		);
 		try {
 			setKeybindings(new KeybindingsManager({ "app.tools.expand": "alt+e" }));
 			expect(Bun.stripANSI(component.render(80).join("\n"))).toContain("alt+e");
@@ -90,12 +105,14 @@ describe("compaction summary divider", () => {
 		const previous = getKeybindings();
 		try {
 			setKeybindings(new KeybindingsManager({ "app.tools.expand": [] }));
-			const component = new CompactionSummaryMessageComponent({
-				role: "compactionSummary",
-				summary: "Summary",
-				tokensBefore: 1,
-				timestamp: Date.now(),
-			});
+			const component = new SummaryMessageComponent(
+				toCompactionSummaryView({
+					role: "compactionSummary",
+					summary: "Summary",
+					tokensBefore: 1,
+					timestamp: Date.now(),
+				}),
+			);
 			const collapsed = Bun.stripANSI(component.render(80).join("\n"));
 			expect(collapsed).toContain("compacted");
 			expect(collapsed).not.toContain("ctrl+o");
@@ -107,12 +124,14 @@ describe("compaction summary divider", () => {
 
 	/** Expanding the divider reveals summary prose but never its private provider delimiter. */
 	it("expands summary prose without rendering summary tags", () => {
-		const component = new CompactionSummaryMessageComponent({
-			role: "compactionSummary",
-			summary: "<summary>\nThe parser fix is complete.\n</summary>",
-			tokensBefore: 12_345,
-			timestamp: Date.now(),
-		});
+		const component = new SummaryMessageComponent(
+			toCompactionSummaryView({
+				role: "compactionSummary",
+				summary: "<summary>\nThe parser fix is complete.\n</summary>",
+				tokensBefore: 12_345,
+				timestamp: Date.now(),
+			}),
+		);
 		component.setExpanded(true);
 		const expanded = Bun.stripANSI(component.render(80).join("\n"));
 
@@ -133,6 +152,7 @@ describe("handoff summary divider", () => {
 		);
 
 		expect(component).toBeInstanceOf(HandoffSummaryMessageComponent);
+		expect(component).toBeInstanceOf(SummaryMessageComponent);
 		const collapsed = Bun.stripANSI(component!.render(80).join("\n"));
 		expect(collapsed).toContain("handoff");
 		expect(collapsed).toContain("ctrl+o");
@@ -152,6 +172,7 @@ describe("handoff summary divider", () => {
 		);
 
 		expect(component).toBeInstanceOf(HandoffSummaryMessageComponent);
+		expect(component).toBeInstanceOf(SummaryMessageComponent);
 		const expanded = Bun.stripANSI(component!.render(80).join("\n"));
 		expect(expanded).toContain("Handoff context");
 		expect(expanded).toContain("Continue the resize fix");
@@ -159,11 +180,77 @@ describe("handoff summary divider", () => {
 		expect(expanded).not.toContain("</handoff-context>");
 	});
 
+	it("renders branch summary messages through the historical BranchSummaryMessageComponent", () => {
+		const branchComponent = new BranchSummaryMessageComponent({
+			role: "branchSummary",
+			summary: "Branch summary details.",
+			fromId: "b1",
+			timestamp: Date.now(),
+		});
+		expect(branchComponent).toBeInstanceOf(BranchSummaryMessageComponent);
+		expect(branchComponent).toBeInstanceOf(SummaryMessageComponent);
+		const collapsed = Bun.stripANSI(branchComponent.render(80).join("\n"));
+		expect(collapsed).toContain("branch");
+		expect(collapsed).toContain("ctrl+o");
+		branchComponent.setExpanded(true);
+		const expanded = Bun.stripANSI(branchComponent.render(80).join("\n"));
+		expect(expanded).toContain("Branch summary");
+		expect(expanded).toContain("Branch summary details.");
+
+		const viewComponent = new BranchSummaryMessageComponent({
+			kind: "branch-summary",
+			summary: "Branch summary details.",
+		});
+		viewComponent.setExpanded(true);
+		expect(Bun.stripANSI(viewComponent.render(80).join("\n"))).toBe(expanded);
+	});
+
+	it("preserves historical HandoffSummaryMessageComponent direct-constructor content extraction", () => {
+		const hiddenMessage = makeHandoffMessage("<handoff-context>\nHidden document body.\n</handoff-context>");
+		hiddenMessage.display = false;
+		const directComponent = new HandoffSummaryMessageComponent(hiddenMessage);
+		directComponent.setExpanded(true);
+		const expanded = Bun.stripANSI(directComponent.render(80).join("\n"));
+		expect(expanded).toContain("Handoff context");
+		expect(expanded).toContain("Hidden document body.");
+
+		const viewComponent = new HandoffSummaryMessageComponent({
+			kind: "handoff-summary",
+			summary: "Direct view summary.",
+		});
+		viewComponent.setExpanded(true);
+		expect(Bun.stripANSI(viewComponent.render(80).join("\n"))).toContain("Direct view summary.");
+	});
+
+	it("does not project hidden handoff messages", () => {
+		const message = makeHandoffMessage("Hidden context.");
+		message.display = false;
+		expect(toHandoffSummaryView(message)).toBeUndefined();
+	});
+
+	it.each([
+		["plain", "  Plain context.  ", "Plain context."],
+		["unfinished wrapper", "<handoff-context>\nOpen context.", "Open context."],
+		["closed wrapper", "Prefix<handoff-context>\nInner context.\n</handoff-context>Suffix", "Inner context."],
+		["empty", "", "No handoff content."],
+	] as const)("preserves the %s handoff document boundary", (_name, content, expected) => {
+		const view = toHandoffSummaryView(makeHandoffMessage(content));
+		if (!view) throw new Error("Expected a visible handoff summary");
+		const component = new SummaryMessageComponent(view);
+		component.setExpanded(true);
+		const expanded = Bun.stripANSI(component.render(80).join("\n"));
+		expect(expanded).toContain(expected);
+		expect(expanded).not.toContain("<handoff-context>");
+		expect(expanded).not.toContain("</handoff-context>");
+		expect(expanded).not.toContain("Prefix");
+		expect(expanded).not.toContain("Suffix");
+	});
+
 	it("leaves unrelated custom messages on the generic renderer path", () => {
 		const message = makeHandoffMessage("Not a handoff.");
 		message.customType = "extension-note";
 
-		expect(createHandoffSummaryMessageComponent(message, false)).toBeUndefined();
+		expect(toHandoffSummaryView(message)).toBeUndefined();
 	});
 });
 

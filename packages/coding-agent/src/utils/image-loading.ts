@@ -120,11 +120,64 @@ export async function normalizeModelContextImages(
 	return normalized;
 }
 
+/**
+ * The output of one image input after the shared size and encoder policy:
+ * resized when `autoResize` is set, canonicalized otherwise, and never larger
+ * than `maxBytes`. `null` when the bytes do not decode as an image.
+ */
+interface EncodedImageInput {
+	data: string;
+	mimeType: string;
+	bytes: number;
+	dimensionNote?: string;
+}
+
+async function encodeImageInput(
+	data: string,
+	options: { autoResize: boolean; excludeWebP?: boolean },
+	maxBytes: number,
+): Promise<EncodedImageInput | null> {
+	// The source MIME is never inherited from an earlier probe: it is
+	// established from the decoded bytes by the resizer or the canonicalizer.
+	const sourceImage: ImageContent = { type: "image", data, mimeType: "application/octet-stream" };
+	let encoded: EncodedImageInput;
+	try {
+		if (options.autoResize) {
+			const resized = await resizeImage(sourceImage, { excludeWebP: options.excludeWebP });
+			encoded = {
+				data: resized.data,
+				mimeType: resized.mimeType,
+				bytes: resized.buffer.byteLength,
+				dimensionNote: formatDimensionNote(resized),
+			};
+		} else {
+			const canonical = await canonicalizeImageContent(sourceImage, { excludeWebP: options.excludeWebP });
+			encoded = { data: canonical.data, mimeType: canonical.mimeType, bytes: canonical.buffer.byteLength };
+		}
+	} catch {
+		return null;
+	}
+	if (encoded.bytes > maxBytes) {
+		throw new ImageInputTooLargeError(encoded.bytes, maxBytes);
+	}
+	return encoded;
+}
+
+function loadedImageInput(resolvedPath: string, note: string, encoded: EncodedImageInput): LoadedImageInput {
+	return {
+		resolvedPath,
+		mimeType: encoded.mimeType,
+		data: encoded.data,
+		textNote: encoded.dimensionNote ? `${note}\n${encoded.dimensionNote}` : note,
+		dimensionNote: encoded.dimensionNote,
+		bytes: encoded.bytes,
+	};
+}
+
 export async function loadImageInput(options: LoadImageInputOptions): Promise<LoadedImageInput | null> {
 	const maxBytes = options.maxBytes ?? MAX_IMAGE_INPUT_BYTES;
 	const resolvedPath = options.resolvedPath ?? resolveReadPath(options.path, options.cwd);
-	// detectedMimeType is only an earlier probe hint. Provider-bound MIME is
-	// established below from decoded bytes and never inherited from this value.
+	// detectedMimeType is only an earlier probe hint; see encodeImageInput.
 
 	const stat = await Bun.file(resolvedPath).stat();
 	if (stat.size > maxBytes) {
@@ -136,49 +189,9 @@ export async function loadImageInput(options: LoadImageInputOptions): Promise<Lo
 		throw new ImageInputTooLargeError(inputBuffer.byteLength, maxBytes);
 	}
 
-	const sourceImage: ImageContent = {
-		type: "image",
-		data: Buffer.from(inputBuffer).toBase64(),
-		mimeType: "application/octet-stream",
-	};
-	let outputData: string;
-	let outputMimeType: string;
-	let outputBytes: number;
-	let dimensionNote: string | undefined;
-
-	try {
-		if (options.autoResize) {
-			const resized = await resizeImage(sourceImage, { excludeWebP: options.excludeWebP });
-			outputData = resized.data;
-			outputMimeType = resized.mimeType;
-			outputBytes = resized.buffer.byteLength;
-			dimensionNote = formatDimensionNote(resized);
-		} else {
-			const canonical = await canonicalizeImageContent(sourceImage, { excludeWebP: options.excludeWebP });
-			outputData = canonical.data;
-			outputMimeType = canonical.mimeType;
-			outputBytes = canonical.buffer.byteLength;
-		}
-	} catch {
-		return null;
-	}
-	if (outputBytes > maxBytes) {
-		throw new ImageInputTooLargeError(outputBytes, maxBytes);
-	}
-
-	let textNote = `Read image file [${outputMimeType}]`;
-	if (dimensionNote) {
-		textNote += `\n${dimensionNote}`;
-	}
-
-	return {
-		resolvedPath,
-		mimeType: outputMimeType,
-		data: outputData,
-		textNote,
-		dimensionNote,
-		bytes: outputBytes,
-	};
+	const encoded = await encodeImageInput(Buffer.from(inputBuffer).toBase64(), options, maxBytes);
+	if (!encoded) return null;
+	return loadedImageInput(resolvedPath, `Read image file [${encoded.mimeType}]`, encoded);
 }
 
 /** Loads a chat attachment image through the same size and encoder policy as file-backed image inputs. */
@@ -190,47 +203,7 @@ export async function loadImageAttachmentInput(
 	if (inputBytes > maxBytes) {
 		throw new ImageInputTooLargeError(inputBytes, maxBytes);
 	}
-	const sourceImage: ImageContent = {
-		type: "image",
-		data: options.image.data,
-		mimeType: "application/octet-stream",
-	};
-	let outputData: string;
-	let outputMimeType: string;
-	let outputBytes: number;
-	let dimensionNote: string | undefined;
-
-	try {
-		if (options.autoResize) {
-			const resized = await resizeImage(sourceImage, { excludeWebP: options.excludeWebP });
-			outputData = resized.data;
-			outputMimeType = resized.mimeType;
-			outputBytes = resized.buffer.byteLength;
-			dimensionNote = formatDimensionNote(resized);
-		} else {
-			const canonical = await canonicalizeImageContent(sourceImage, { excludeWebP: options.excludeWebP });
-			outputData = canonical.data;
-			outputMimeType = canonical.mimeType;
-			outputBytes = canonical.buffer.byteLength;
-		}
-	} catch {
-		return null;
-	}
-	if (outputBytes > maxBytes) {
-		throw new ImageInputTooLargeError(outputBytes, maxBytes);
-	}
-
-	let textNote = `Read image attachment ${options.label} [${outputMimeType}]`;
-	if (dimensionNote) {
-		textNote += `\n${dimensionNote}`;
-	}
-
-	return {
-		resolvedPath: options.uri,
-		mimeType: outputMimeType,
-		data: outputData,
-		textNote,
-		dimensionNote,
-		bytes: outputBytes,
-	};
+	const encoded = await encodeImageInput(options.image.data, options, maxBytes);
+	if (!encoded) return null;
+	return loadedImageInput(options.uri, `Read image attachment ${options.label} [${encoded.mimeType}]`, encoded);
 }

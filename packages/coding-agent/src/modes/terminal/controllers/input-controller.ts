@@ -5,13 +5,14 @@ import type { ImageContent } from "@veyyon/ai";
 import { abortDetached } from "@veyyon/kernel/session/detached-abort";
 import { errorMessage, isEnoent, logger, sanitizeText } from "@veyyon/utils";
 import type { AutocompleteProvider, SlashCommand } from "@veyyon/utils/autocomplete";
-import { matchesKey } from "@veyyon/utils/keys";
+import { type KeyId, matchesKey } from "@veyyon/utils/keys";
 import { EXIT_INTERRUPTED } from "../../../cli/exit-codes";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../../../config/settings-instance";
 // The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
 // handler and reaches hundreds of modules.
 import { resolveLocalRoot } from "../../../internal-urls/local-protocol";
+import { toAssistantMessageView } from "../../../presentation/transcript-builder";
 import { turnControlPrompts } from "../../../prompts/turn-control/rows";
 import { USER_INTERRUPT_LABEL } from "../../../session/messages";
 import { executeBuiltinSlashCommand } from "../../../slash-commands/builtin-registry";
@@ -139,8 +140,8 @@ const TINY_TITLE_PROGRESS_DONE_TTL_MS = 3_000;
 // events for seconds. Only reveal the bar once a still-incomplete event arrives after
 // this grace window, so an already-downloaded model never flashes the bar.
 const TINY_TITLE_PROGRESS_REVEAL_DELAY_MS = 1_000;
-// Double-tap ← on an empty editor opens the subagent dashboard (and, in a
-// focused subagent view, ←← returns to the main session). The upper bound is
+// Double-tap ← on an empty editor opens the agent dashboard (and, in a
+// focused agent view, ←← returns to the main session). The upper bound is
 // AGENT_VIEW_LEFT_TAP_WINDOW_MS, imported rather than restated: it is the same
 // gesture window the agent views were built around, and a second copy of the
 // number here is how the two ends of one gesture drift apart. The lower bound
@@ -306,6 +307,21 @@ export class InputController {
 		abortDetached(this.ctx.session, "input-controller.abortStreamingTurn", USER_INTERRUPT_LABEL);
 	}
 
+	/**
+	 * Consume `key` while the focused editor is empty and `allowed()` holds, running `act`; any other
+	 * state leaves the key to the editor.
+	 */
+	#addEmptyComposerKeyListener(key: KeyId, allowed: () => boolean, act: () => Promise<unknown>): void {
+		this.ctx.ui.addInputListener(data => {
+			if (!matchesKey(data, key)) return undefined;
+			if (!allowed()) return undefined;
+			if (this.ctx.ui.getFocused() !== this.ctx.editor) return undefined;
+			if (this.ctx.editor.getText().trim()) return undefined;
+			void act();
+			return { consume: true };
+		});
+	}
+
 	setupKeyHandlers(): void {
 		if (typeof this.ctx.editor.applyKeybindings === "function") {
 			this.ctx.editor.applyKeybindings(this.ctx.keybindings);
@@ -326,39 +342,30 @@ export class InputController {
 		}
 		if (!this.#btwBranchListenerInstalled) {
 			this.#btwBranchListenerInstalled = true;
-			this.ctx.ui.addInputListener(data => {
-				if (!matchesKey(data, "b")) return undefined;
-				if (!this.ctx.canBranchBtw()) return undefined;
-				if (this.ctx.ui.getFocused() !== this.ctx.editor) return undefined;
-				if (this.ctx.editor.getText().trim()) return undefined;
-				void this.ctx.handleBtwBranchKey();
-				return { consume: true };
-			});
+			this.#addEmptyComposerKeyListener(
+				"b",
+				() => this.ctx.canBranchBtw(),
+				() => this.ctx.handleBtwBranchKey(),
+			);
 		}
 		if (!this.#btwCopyListenerInstalled) {
 			this.#btwCopyListenerInstalled = true;
-			this.ctx.ui.addInputListener(data => {
-				if (!matchesKey(data, "c")) return undefined;
-				if (!this.ctx.canCopyBtw()) return undefined;
-				if (this.ctx.ui.getFocused() !== this.ctx.editor) return undefined;
-				if (this.ctx.editor.getText().trim()) return undefined;
-				void this.ctx.handleBtwCopyKey();
-				return { consume: true };
-			});
+			this.#addEmptyComposerKeyListener(
+				"c",
+				() => this.ctx.canCopyBtw(),
+				() => this.ctx.handleBtwCopyKey(),
+			);
 		}
 		if (!this.#goalDetailListenerInstalled) {
 			this.#goalDetailListenerInstalled = true;
 			// Down-arrow on an empty composer expands the goal status segment into
 			// its detail/action menu (only while a goal is active or paused, so it
 			// never steals `down` in ordinary editing). Mirrors the b/c affordances.
-			this.ctx.ui.addInputListener(data => {
-				if (!matchesKey(data, "down")) return undefined;
-				if (!this.ctx.goalModeEnabled && !this.ctx.goalModePaused) return undefined;
-				if (this.ctx.ui.getFocused() !== this.ctx.editor) return undefined;
-				if (this.ctx.editor.getText().trim()) return undefined;
-				void this.ctx.openGoalDetail();
-				return { consume: true };
-			});
+			this.#addEmptyComposerKeyListener(
+				"down",
+				() => this.ctx.goalModeEnabled || this.ctx.goalModePaused,
+				() => this.ctx.openGoalDetail(),
+			);
 		}
 		this.ctx.editor.onEscape = () => {
 			// Side-channel panels are the topmost view. Esc dismisses them before
@@ -371,9 +378,9 @@ export class InputController {
 			// → /compact → auto end → manual finally), leaving Esc wired to a
 			// stale no-op closure until restart.
 			//
-			// While a subagent is focused, Esc honors the advertised view action
+			// While an agent is focused, Esc honors the advertised view action
 			// ("Esc returns to main") instead of cancelling maintenance —
-			// accidentally killing a focused subagent's compaction on the way out
+			// accidentally killing a focused agent's compaction on the way out
 			// was #2819. The auto-maintenance loaders relabel their hint to match
 			// (see EventController). Main-session maintenance still owns Esc and
 			// stays cancellable from the main view (focused submit gates /compact
@@ -565,10 +572,10 @@ export class InputController {
 			this.ctx.editor.setCustomKeyHandler(key, () => this.ctx.showAgentsDashboard());
 		}
 
-		// Double-tap left arrow on an empty editor: opens the subagent dashboard
-		// from the main session, or returns the focused subagent view to the main
+		// Double-tap left arrow on an empty editor: opens the agent dashboard
+		// from the main session, or returns the focused agent view to the main
 		// session. Focused ←← intentionally matches Esc. From the main session the
-		// gesture stays inert when there are no subagents (requireContent); the
+		// gesture stays inert when there are no agents (requireContent); the
 		// explicit hub key still opens the empty roster. The card closes with Esc or
 		// the same key that opened it, so the gesture needs no close-tap handoff:
 		// inside the card the arrows switch views.
@@ -587,9 +594,10 @@ export class InputController {
 		this.ctx.editor.onChange = (text: string) => {
 			const wasBashMode = this.ctx.isBashMode;
 			const wasPythonMode = this.ctx.isPythonMode;
-			const trimmed = text.trimStart();
+			const c0 = text.charCodeAt(0);
+			const trimmed = c0 >= 33 && c0 <= 126 ? text : text.trimStart();
 			this.ctx.isBashMode = trimmed.startsWith("!");
-			this.ctx.isPythonMode = parsePythonCommandInput(trimmed) !== undefined;
+			this.ctx.isPythonMode = trimmed.startsWith("$") && parsePythonCommandInput(trimmed) !== undefined;
 			if (wasBashMode !== this.ctx.isBashMode || wasPythonMode !== this.ctx.isPythonMode) {
 				this.ctx.updateEditorBorderColor();
 			}
@@ -612,7 +620,7 @@ export class InputController {
 	 * (`[LEFT_DOUBLE_TAP_MIN_GAP_MS, AGENT_VIEW_LEFT_TAP_WINDOW_MS)`). Taps closer
 	 * than the lower bound, or any third-and-later tap before a quiet gap, are a
 	 * burst and never fire — so a stray click that makes the terminal emit a run
-	 * of ← keys can no longer pop the subagent dashboard.
+	 * of ← keys can no longer pop the agent dashboard.
 	 */
 	#detectLeftDoubleTap(): boolean {
 		const now = Date.now();
@@ -739,7 +747,7 @@ export class InputController {
 				: undefined;
 		const hasPendingImages = (inputImages?.length ?? 0) > 0;
 		if ((!isSettingsInitialized() || settings.get("emojiAutocomplete")) && text) text = expandEmoticons(text);
-		// Focused subagent session: the editor is a plain chat box for it.
+		// Focused agent session: the editor is a plain chat box for it.
 		// Everything below (continue shortcuts, slash/bash/python, loop,
 		// compaction queueing) is main-session-only.
 		if (this.ctx.focusedAgentId) {
@@ -812,23 +820,9 @@ export class InputController {
 			return;
 		}
 
-		// Handle built-in slash commands
-		if (text) {
-			const slashResult = await executeBuiltinSlashCommand(text, {
-				ctx: this.ctx,
-			});
-			if (slashResult === true) {
-				if (!shouldSkipHistory(text)) this.ctx.editor.addToHistory(text);
-				return;
-			}
-			if (typeof slashResult === "string") {
-				// Command handled but returned remaining text to use as prompt.
-				// Record the original slash command text so Up Arrow recalls
-				// "/loop 10 fix bug" rather than just "fix bug".
-				if (!shouldSkipHistory(text)) this.ctx.editor.addToHistory(text);
-				text = slashResult;
-			}
-		}
+		const rewritten = await this.#consumeBuiltinSlashCommand(text);
+		if (rewritten === undefined) return;
+		text = rewritten;
 
 		// Collab guest: prompts execute on the host; local slash/skill/bash/
 		// python execution is host-only (builtins are gated inside
@@ -1064,7 +1058,7 @@ export class InputController {
 		this.ctx.editor.addToHistory(text);
 	}
 
-	/** Submit editor text to the focused subagent session (chat-only focus policy). */
+	/** Submit editor text to the focused agent session (chat-only focus policy). */
 	async #submitToFocusedSession(text: string, streamingBehavior: "steer" | "followUp"): Promise<void> {
 		const target = this.ctx.viewSession;
 		const images = this.ctx.editor.pendingImages.length > 0 ? this.ctx.editor.pendingImages.slice() : undefined;
@@ -1404,6 +1398,26 @@ export class InputController {
 		this.ctx.ui.requestRender();
 	}
 
+	/**
+	 * Runs a builtin slash command in `text`. Returns `undefined` when the command consumed the
+	 * submission, else the text to send as the prompt: the remainder a command such as `/loop 10
+	 * fix bug` hands back, or `text` untouched when it is not a builtin. Either way the line as
+	 * typed is what Up Arrow recalls, unless it is a sensitive command.
+	 */
+	async #consumeBuiltinSlashCommand(text: string): Promise<string | undefined> {
+		if (!text) return text;
+		const slashResult = await executeBuiltinSlashCommand(text, { ctx: this.ctx });
+		if (slashResult === true) {
+			if (!shouldSkipHistory(text)) this.ctx.editor.addToHistory(text);
+			return undefined;
+		}
+		if (typeof slashResult === "string") {
+			if (!shouldSkipHistory(text)) this.ctx.editor.addToHistory(text);
+			return slashResult;
+		}
+		return text;
+	}
+
 	/** Send editor text as a follow-up message (queued behind current stream). */
 	async handleFollowUp(): Promise<void> {
 		let text = normalizeSubmittedPrompt(this.ctx.editor.getExpandedText());
@@ -1412,7 +1426,7 @@ export class InputController {
 			images && this.ctx.editor.pendingImageLinks.length > 0 ? this.ctx.editor.pendingImageLinks.slice() : undefined;
 		if (!text && !images) return;
 
-		// Focused subagent session: follow-ups go to it; non-chat input is gated.
+		// Focused agent session: follow-ups go to it; non-chat input is gated.
 		if (this.ctx.focusedAgentId) {
 			await this.#submitToFocusedSession(text, "followUp");
 			return;
@@ -1429,21 +1443,9 @@ export class InputController {
 			return;
 		}
 
-		if (text) {
-			const slashResult = await executeBuiltinSlashCommand(text, {
-				ctx: this.ctx,
-			});
-			if (slashResult === true) {
-				if (!shouldSkipHistory(text)) this.ctx.editor.addToHistory(text);
-				return;
-			}
-			if (typeof slashResult === "string") {
-				// Command handled but returned remaining text to use as prompt.
-				// Record the original slash command text so Up Arrow recalls it.
-				if (!shouldSkipHistory(text)) this.ctx.editor.addToHistory(text);
-				text = slashResult;
-			}
-		}
+		const rewritten = await this.#consumeBuiltinSlashCommand(text);
+		if (rewritten === undefined) return;
+		text = rewritten;
 
 		// Skill commands invoke through the custom-message path regardless of
 		// which keybinding submitted them. Enter routes them as `steer`;
@@ -2043,7 +2045,7 @@ export class InputController {
 
 		if (this.ctx.streamingComponent && this.ctx.streamingMessage) {
 			this.ctx.streamingComponent.setHideThinkingBlock(this.ctx.hideThinkingBlock);
-			this.ctx.streamingComponent.updateContent(this.ctx.streamingMessage);
+			this.ctx.streamingComponent.updateContent(toAssistantMessageView(this.ctx.streamingMessage));
 		}
 
 		// Every block now carries the new flag, but on ED3-risk terminals the

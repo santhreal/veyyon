@@ -874,6 +874,34 @@ describe("ProcessTerminal OSC 11 background paint (set/reset)", () => {
 		terminal.stop();
 	});
 
+	it("contains a subscriber that throws during replay, for both colour and appearance", () => {
+		const { terminal } = setup();
+		process.stdin.emit("data", "\x1b]11;rgb:0000/0000/0000\x07");
+		process.stdin.emit("data", "\x1b[?1;2c");
+
+		const colorCalls: string[] = [];
+		const appearanceCalls: string[] = [];
+		terminal.onBackgroundColorChange(hex => {
+			colorCalls.push(hex);
+			throw new Error("colour subscriber broke");
+		});
+		terminal.onAppearanceChange(appearance => {
+			appearanceCalls.push(appearance);
+			throw new Error("appearance subscriber broke");
+		});
+		// A later, well-behaved subscriber is still replayed after the broken one.
+		const lateColors: string[] = [];
+		const lateAppearances: string[] = [];
+		terminal.onBackgroundColorChange(hex => lateColors.push(hex));
+		terminal.onAppearanceChange(appearance => lateAppearances.push(appearance));
+		terminal.stop();
+
+		expect(colorCalls).toEqual(["#000000"]);
+		expect(appearanceCalls).toEqual(["dark"]);
+		expect(lateColors).toEqual(["#000000"]);
+		expect(lateAppearances).toEqual(["dark"]);
+	});
+
 	it("setBackgroundColor writes the OSC 11 set sequence and stop() restores with OSC 111", () => {
 		const { terminal, setCount, resetCount } = setup();
 

@@ -20,7 +20,7 @@ const MEMORY_NAMESPACE = "root";
 
 /**
  * Snapshot of memory roots for every registered session, deduped.
- * Each session has its own cwd (possibly a worktree), so subagents and main
+ * Each session has its own cwd (possibly a worktree), so agents and main
  * may see different roots.
  */
 export function memoryRootsFromRegistry(): string[] {
@@ -156,10 +156,10 @@ async function tryResolveInRoot(url: InternalUrl, memoryRoot: string): Promise<I
 /**
  * Snapshot of live mnemopi session states, deduplicated. A mnemopi backend
  * always keeps its state on the {@link AgentSession} it was initialised for;
- * subagents alias their parent's state, so different `session` objects can
+ * agents alias their parent's state, so different `session` objects can
  * point at the same underlying banks. The dedupe below picks the
  * canonical (non-aliased) state per bank set so `memory://<id>` resolves in
- * one pass regardless of how many subagents are alive.
+ * one pass regardless of how many agents are alive.
  */
 function mnemopiSessionStatesFromRegistry(): MnemopiSessionState[] {
 	const seen = new Set<unknown>();

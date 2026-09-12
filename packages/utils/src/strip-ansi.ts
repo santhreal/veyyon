@@ -84,9 +84,13 @@ const SEQUENCE_AT = new RegExp(ESCAPE_SEQUENCE.source, "y");
  */
 const OPEN_FRAGMENT_LIMIT = 64 * 1024;
 
+function normalizeC1(s: string): string {
+	return s.replace(C1_INTRODUCERS, ch => C1_MAP[ch] ?? ch);
+}
+
 export function stripAnsi(s: string): string {
 	if (!HAS_ESCAPE_OR_C1.test(s)) return s;
-	const normalized = s.replace(C1_INTRODUCERS, ch => C1_MAP[ch] ?? ch);
+	const normalized = normalizeC1(s);
 	// An escape that opened no sequence of any of those kinds is dropped, and only
 	// the escape byte: whatever follows it is text and is kept, which is what a
 	// capture cut at a buffer boundary mid-escape looks like. Dropping it is also
@@ -115,8 +119,7 @@ const SGR_SEQUENCE = /^\x1b\[[\x30-\x3f]*m$/;
  */
 export function stripAnsiExceptSgr(s: string): string {
 	if (!HAS_ESCAPE_OR_C1.test(s)) return s;
-	const normalized = s.replace(C1_INTRODUCERS, ch => C1_MAP[ch] ?? ch);
-	return normalized
+	return normalizeC1(s)
 		.replace(ESCAPE_SEQUENCE, sequence => (SGR_SEQUENCE.test(sequence) ? sequence : ""))
 		.replace(/\x1b(?!\[[\x30-\x3f]*m)/g, "");
 }
@@ -156,7 +159,7 @@ export class AnsiStripper {
 	 * unclosed remainder stays in [`pending`].
 	 */
 	push(chunk: string): string {
-		const buffer = this.#open + chunk.replace(C1_INTRODUCERS, ch => C1_MAP[ch] ?? ch);
+		const buffer = this.#open + normalizeC1(chunk);
 		this.#open = "";
 		let settled = "";
 		let cursor = 0;

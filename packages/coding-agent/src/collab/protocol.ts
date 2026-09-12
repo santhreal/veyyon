@@ -9,6 +9,7 @@
 
 import type { Usage as AgentUsage, ImageContent, Model } from "@veyyon/ai";
 import type { SessionEntry, SessionHeader, SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
+import { isRecord } from "@veyyon/utils/type-guards";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import {
@@ -16,11 +17,12 @@ import {
 	type CollabUiRequest,
 	DEFAULT_RELAY_URL,
 	ENVELOPE_HEADER_LENGTH,
+	formatCollabLinkPayload,
 	type GuestFrame,
-	type ParsedCollabLink,
+	isLocalHostname,
+	normalizeRelayOrigin,
 	type Participant,
 	ROOM_ID_BYTES,
-	ROOM_KEY_BYTES,
 	type SessionState,
 	type AgentEvent as WireAgentEvent,
 	type AgentSnapshot as WireAgentSnapshot,
@@ -31,8 +33,14 @@ import {
 	type WireSessionEntry,
 	type WireSessionHeader,
 	type WireUsage,
-	WRITE_TOKEN_BYTES,
 } from "@veyyon/wire";
+import {
+	extractToolResultContent,
+	extractToolResultDetails,
+	isToolCallRecord,
+	normalizeToolResultContent,
+	projectToolDisplay,
+} from "../presentation/web-tool-display";
 import type { AgentSessionEvent } from "../session/agent-session-types";
 
 export type {
@@ -95,7 +103,19 @@ function toWireUsage(usage: AgentUsage): WireUsage {
  * `steering` and `attribution` come off the user and developer arms for the same reason, and
  * `prunedAt`, `useless` and `metrics` off tool results.
  */
-function toWireMessage(message: SessionMessageEntry["message"]): WireMessage {
+export interface CollabToolCallLookup {
+	get(toolCallId: string): { toolName: string; args: unknown; intent?: string } | undefined;
+}
+
+export interface CollabToolResultLookup {
+	get(toolCallId: string): { content: unknown; details?: unknown; isError?: boolean } | undefined;
+}
+
+function toWireMessage(
+	message: SessionMessageEntry["message"],
+	toolCallLookup?: CollabToolCallLookup,
+	toolResultLookup?: CollabToolResultLookup,
+): WireMessage {
 	switch (message.role) {
 		case "user":
 			return {
@@ -106,10 +126,42 @@ function toWireMessage(message: SessionMessageEntry["message"]): WireMessage {
 			};
 		case "developer":
 			return { role: "developer", content: message.content, timestamp: message.timestamp };
-		case "assistant":
+		case "assistant": {
+			const content = (message.content as WireAssistantMessage["content"]).map(block => {
+				if (isToolCallRecord(block)) {
+					const existingDisplay = "display" in block && isRecord(block.display) ? block.display : undefined;
+					const matchingResult = toolResultLookup?.get(block.id);
+					const display =
+						existingDisplay ??
+						projectToolDisplay({
+							toolName: block.name,
+							toolCallId: block.id,
+							args: block.arguments,
+							result: matchingResult
+								? {
+										content: normalizeToolResultContent(matchingResult.content),
+										details: matchingResult.details,
+										isError: matchingResult.isError,
+									}
+								: undefined,
+							isError: matchingResult?.isError,
+							isPartial: matchingResult === undefined,
+							expanded: true,
+						});
+					return {
+						type: block.type,
+						id: block.id,
+						name: block.name,
+						arguments: block.arguments,
+						intent: block.intent,
+						display,
+					};
+				}
+				return block;
+			});
 			return {
 				role: "assistant",
-				content: message.content as WireAssistantMessage["content"],
+				content,
 				model: message.model,
 				provider: message.provider,
 				usage: toWireUsage(message.usage),
@@ -117,18 +169,37 @@ function toWireMessage(message: SessionMessageEntry["message"]): WireMessage {
 				errorMessage: message.errorMessage,
 				timestamp: message.timestamp,
 			};
-		case "toolResult":
+		}
+		case "toolResult": {
+			const existingDisplay = "display" in message && isRecord(message.display) ? message.display : undefined;
+			const matchingCall = toolCallLookup?.get(message.toolCallId);
+			const toolName = message.toolName || matchingCall?.toolName || "";
+			const display =
+				existingDisplay ??
+				projectToolDisplay({
+					toolName,
+					toolCallId: message.toolCallId,
+					args: matchingCall?.args,
+					result: {
+						content: normalizeToolResultContent(message.content),
+						details: message.details,
+						isError: message.isError,
+					},
+					isPartial: false,
+					timestamp: message.timestamp,
+					expanded: true,
+				});
 			return {
 				role: "toolResult",
 				toolCallId: message.toolCallId,
 				toolName: message.toolName,
 				content: message.content,
-				// Declared by the wire contract: a guest renders a tool result from it, and the
-				// tool's own detail shape is what tells it how.
 				details: message.details,
 				isError: message.isError,
 				timestamp: message.timestamp,
+				display,
 			};
+		}
 		// The seven roles that come from the host's `CustomAgentMessages` hook. A guest renders all
 		// of them, so they travel; each is projected onto its declared shape like the four above.
 		case "bashExecution":
@@ -216,11 +287,15 @@ function toWireMessage(message: SessionMessageEntry["message"]): WireMessage {
  * Returns `undefined` for an entry type no guest renders, so callers filter and project in one
  * step and cannot broadcast an entry that was never projected.
  */
-export function toWireSessionEntry(entry: SessionEntry): WireSessionEntry | undefined {
+export function toWireSessionEntry(
+	entry: SessionEntry,
+	toolCallLookup?: CollabToolCallLookup,
+	toolResultLookup?: CollabToolResultLookup,
+): WireSessionEntry | undefined {
 	const base = { id: entry.id, parentId: entry.parentId, timestamp: entry.timestamp };
 	switch (entry.type) {
 		case "message":
-			return { ...base, type: "message", message: toWireMessage(entry.message) };
+			return { ...base, type: "message", message: toWireMessage(entry.message, toolCallLookup, toolResultLookup) };
 		case "custom_message":
 			return {
 				...base,
@@ -275,7 +350,10 @@ export function toWireSessionEntry(entry: SessionEntry): WireSessionEntry | unde
  *
  * Returns `undefined` for an event no guest renders, so filtering and projecting are one step.
  */
-export function toWireAgentEvent(event: AgentSessionEvent): WireAgentEvent | undefined {
+export function toWireAgentEvent(
+	event: AgentSessionEvent,
+	toolCallLookup?: CollabToolCallLookup,
+): WireAgentEvent | undefined {
 	switch (event.type) {
 		case "agent_start":
 		case "agent_end":
@@ -287,31 +365,69 @@ export function toWireAgentEvent(event: AgentSessionEvent): WireAgentEvent | und
 		case "message_start":
 		case "message_update":
 		case "message_end":
-			return { type: event.type, message: toWireMessage(event.message) };
-		case "tool_execution_start":
+			return { type: event.type, message: toWireMessage(event.message, toolCallLookup) };
+		case "tool_execution_start": {
+			const display = projectToolDisplay({
+				toolName: event.toolName,
+				toolCallId: event.toolCallId,
+				args: event.args,
+				isPartial: true,
+				expanded: true,
+			});
 			return {
 				type: "tool_execution_start",
 				toolCallId: event.toolCallId,
 				toolName: event.toolName,
 				args: event.args,
 				intent: event.intent,
+				display,
 			};
-		case "tool_execution_update":
+		}
+		case "tool_execution_update": {
+			const display = projectToolDisplay({
+				toolName: event.toolName,
+				toolCallId: event.toolCallId,
+				args: event.args,
+				result: {
+					content: extractToolResultContent(event.partialResult),
+					details: extractToolResultDetails(event.partialResult),
+				},
+				isPartial: true,
+				expanded: true,
+			});
 			return {
 				type: "tool_execution_update",
 				toolCallId: event.toolCallId,
 				toolName: event.toolName,
 				args: event.args,
 				partialResult: event.partialResult,
+				display,
 			};
-		case "tool_execution_end":
+		}
+		case "tool_execution_end": {
+			const cachedCall = toolCallLookup?.get(event.toolCallId);
+			const display = projectToolDisplay({
+				toolName: event.toolName,
+				toolCallId: event.toolCallId,
+				args: cachedCall?.args,
+				result: {
+					content: extractToolResultContent(event.result),
+					details: extractToolResultDetails(event.result),
+					isError: event.isError,
+				},
+				isError: event.isError,
+				isPartial: false,
+				expanded: true,
+			});
 			return {
 				type: "tool_execution_end",
 				toolCallId: event.toolCallId,
 				toolName: event.toolName,
 				result: event.result,
 				isError: event.isError,
+				display,
 			};
+		}
 		case "notice":
 			return { type: "notice", level: event.level, message: event.message, source: event.source };
 		case "auto_compaction_start":
@@ -611,7 +727,7 @@ export type CollabFrame =
 	 */
 	| { t: "event"; event: WireAgentEvent }
 	| { t: "state"; state: CollabSessionState }
-	/** Mirrored EventBus traffic (task subagent lifecycle/progress channels only). */
+	/** Mirrored EventBus traffic (task agent lifecycle/progress channels only). */
 	| { t: "bus"; channel: BusChannel; data: unknown }
 	/** Full agent-registry snapshot (debounced on registry change). */
 	| { t: "agents"; agents: AgentSnapshot[] }
@@ -637,107 +753,13 @@ export { packEnvelope, rewriteEnvelopePeer, unpackEnvelope } from "@veyyon/wire"
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Link format: wss://<host[:port]>/r/<roomId>.<base64url-32-byte-key>
+//
+// The grammar is `@veyyon/wire`'s too: the browser guest parses what this host
+// mints. Only the web deep link stays here, because its base URL check reads
+// `@veyyon/utils/url`, which a contract does not import.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const ROOM_PATH_RE = /^\/r\/([A-Za-z0-9_-]{10,64})(?:\.([A-Za-z0-9_-]+))?$/;
-const BARE_LINK_RE = /^([A-Za-z0-9_-]{10,64})[#.]([A-Za-z0-9_-]+)$/;
-const B64URL_RE = /^[A-Za-z0-9_-]+$/;
-const LOCAL_HOSTNAMES: Record<string, true> = { localhost: true, "127.0.0.1": true, "::1": true, "[::1]": true };
-
-function isLocalHostname(hostname: string): boolean {
-	return LOCAL_HOSTNAMES[hostname] === true;
-}
-
-export function generateRoomId(): string {
-	const bytes = new Uint8Array(ROOM_ID_BYTES);
-	crypto.getRandomValues(bytes);
-	return Buffer.from(bytes).toString("base64url");
-}
-
-/** Normalize a relay base URL (ws/wss/http/https) into a ws/wss origin, or an error. */
-function normalizeRelayOrigin(relayUrl: string): { origin: string } | { error: string } {
-	let url: URL;
-	try {
-		url = new URL(relayUrl);
-	} catch {
-		return { error: `Invalid relay URL: ${relayUrl}` };
-	}
-	let scheme: string;
-	switch (url.protocol) {
-		case "wss:":
-		case "https:":
-			scheme = "wss:";
-			break;
-		case "ws:":
-		case "http:":
-			scheme = "ws:";
-			break;
-		default:
-			return { error: `Unsupported relay URL scheme: ${url.protocol}` };
-	}
-	if (scheme === "ws:" && !isLocalHostname(url.hostname)) {
-		return { error: "relay link must be wss:// (plain ws:// is only allowed for localhost)" };
-	}
-	const port = url.port ? `:${url.port}` : "";
-	return { origin: `${scheme}//${url.hostname}${port}` };
-}
-
-/**
- * Render the payload half of a link: `<roomId>.<key>` for the default relay,
- * `host[:port]/r/<roomId>.<key>` for another wss relay, and a full URL for a
- * localhost ws:// relay so parsing cannot mis-infer wss.
- *
- * The room secret is dot-joined rather than `#`-joined because this text gets
- * nested inside the fragment of the browser deep link: RFC 3986 forbids a raw
- * `#` inside a fragment, so strict URL stacks (macOS Foundation behind
- * terminal click-to-open) percent-encode a second `#` to `%23` and break the
- * link. Parsers accept the `#` form and the mangled `%23` form too.
- *
- * Full links append the write token to the key
- * (`base64url(key ∥ writeToken)`); read-only (view) links carry the bare
- * 32-byte key, which is also the pre-token link format.
- */
-function formatCollabLinkPayload(
-	relayUrl: string,
-	roomId: string,
-	key: Uint8Array,
-	writeToken: Uint8Array | undefined,
-	joiner: string,
-): string {
-	const normalized = normalizeRelayOrigin(relayUrl);
-	if ("error" in normalized) throw new Error(normalized.error);
-	const secret = writeToken ? Buffer.concat([key, writeToken]) : Buffer.from(key);
-	const keyText = secret.toString("base64url");
-	// The default relay collapses to a hostless `<roomId>.<key>`. There is no
-	// authority for a terminal to linkify, so the secret cannot become a
-	// request line, and the dot is required: this exact text is what gets
-	// nested in the web deep link's fragment.
-	if (normalized.origin === DEFAULT_RELAY_URL) return `${roomId}.${keyText}`;
-	const compact = normalized.origin.startsWith("wss://")
-		? normalized.origin.slice("wss://".length)
-		: normalized.origin;
-	return `${compact}/r/${roomId}${joiner}${keyText}`;
-}
-
-/**
- * Render the shareable link a human sees and pastes.
- *
- * When the link names a relay host, the secret rides in the fragment
- * (`host/r/<roomId>#<key>`) and never in the path. Terminals linkify
- * `host/r/…` and open it as `https://…`; with the secret dot-joined into the
- * path, one click on your own link puts the AES-256-GCM room key and the
- * write token in the relay's HTTP request line, and from there into its
- * access log and any TLS-terminating proxy in front of it. A fragment is
- * never sent to the server, so a click discloses only `/r/<roomId>`, which
- * the WebSocket handshake reveals anyway. That is what
- * `collab/crypto.ts` means by "the relay sees opaque bytes".
- *
- * Only one `#` appears here, so the nested-fragment escaping problem that
- * forces the dot-joined payload form does not apply.
- */
-export function formatCollabLink(relayUrl: string, roomId: string, key: Uint8Array, writeToken?: Uint8Array): string {
-	return formatCollabLinkPayload(relayUrl, roomId, key, writeToken, "#");
-}
+export { formatCollabLink, generateRoomId, parseCollabLink } from "@veyyon/wire";
 
 function normalizeCollabWebBaseUrl(relayUrl: string, webUrl?: string): string {
 	const explicitWebUrl = webUrl?.trim();
@@ -785,51 +807,4 @@ export function formatCollabWebLink(
 ): string {
 	const payload = formatCollabLinkPayload(relayUrl, roomId, key, writeToken, ".");
 	return `${normalizeCollabWebBaseUrl(relayUrl, webUrl)}/#${payload}`;
-}
-
-export function parseCollabLink(link: string): ParsedCollabLink | { error: string } {
-	// Lenient input: terminals that open OSC 8 links through strict URL stacks
-	// (macOS Foundation) percent-encode the legacy second `#` to `%23`.
-	let text = link.trim().replace(/%23/gi, "#");
-	// Bare `<roomId>.<key>` (legacy `<roomId>#<key>`) → default relay.
-	const bare = BARE_LINK_RE.exec(text);
-	if (bare) text = `${DEFAULT_RELAY_URL}/r/${bare[1]}.${bare[2]}`;
-	// Scheme-less `host[:port]/r/…` → wss.
-	else if (!text.includes("://")) text = `wss://${text}`;
-	let url: URL;
-	try {
-		url = new URL(text);
-	} catch {
-		return { error: `Invalid collab link: ${link}` };
-	}
-	if ((url.protocol === "http:" || url.protocol === "https:") && url.hash) {
-		const inner = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
-		const parsed = parseCollabLink(inner);
-		if (!("error" in parsed)) return parsed;
-	}
-	const normalized = normalizeRelayOrigin(url.origin);
-	if ("error" in normalized) return normalized;
-	const match = ROOM_PATH_RE.exec(url.pathname);
-	if (!match) {
-		// Non-http(s) deep links may also carry a complete collab link in the
-		// fragment. http(s) links are handled once above so invalid fragments
-		// fall through to direct relay validation instead of double-recursing.
-		const inner = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
-		if (inner && url.protocol !== "http:" && url.protocol !== "https:") return parseCollabLink(inner);
-		return { error: "Collab link must contain a /r/<roomId> path" };
-	}
-	const roomId = match[1]!;
-	// Key rides dot-joined in the path (`/r/<roomId>.<key>`); legacy links
-	// carry it in the fragment (`/r/<roomId>#<key>`).
-	const fragment = match[2] ?? (url.hash.startsWith("#") ? url.hash.slice(1) : url.hash);
-	if (!fragment) {
-		return { error: "Collab link is missing the <key> part" };
-	}
-	const secret = B64URL_RE.test(fragment) ? new Uint8Array(Buffer.from(fragment, "base64url")) : null;
-	if (!secret || (secret.byteLength !== ROOM_KEY_BYTES && secret.byteLength !== ROOM_KEY_BYTES + WRITE_TOKEN_BYTES)) {
-		return { error: "Collab link key must be 32 (view) or 48 (full) base64url bytes" };
-	}
-	const key = secret.subarray(0, ROOM_KEY_BYTES);
-	const writeToken = secret.byteLength > ROOM_KEY_BYTES ? secret.subarray(ROOM_KEY_BYTES) : undefined;
-	return { wsUrl: `${normalized.origin}/r/${roomId}`, roomId, key, writeToken };
 }

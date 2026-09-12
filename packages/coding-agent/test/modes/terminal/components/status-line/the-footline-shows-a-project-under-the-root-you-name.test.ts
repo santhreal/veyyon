@@ -24,10 +24,9 @@ import {
 	resolveDisplayRoots,
 } from "@veyyon/coding-agent/modes/terminal/components/status-line/location";
 import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/terminal/components/status-line/quiet-row";
-import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { logger, pathIsWithin, stripAnsi } from "@veyyon/utils";
-import { makeStatusLineSession } from "../../../../helpers/status-line-session";
+import { makeStatusLineProducer } from "../../../../helpers/status-line-session";
 
 /** Wide enough that nothing on the row is clipped, so the text asserted is the text produced. */
 const ROOM_TO_SPARE = 400;
@@ -35,8 +34,8 @@ const ROOM_TO_SPARE = 400;
 /** The project below whichever root a case is about, and short enough to never be clipped. */
 const PROJECT = path.join("platform-services", "normalizer");
 
-function makeSession(cwd: () => string): AgentSession {
-	return makeStatusLineSession({ cwd });
+function makeSession(cwd: () => string) {
+	return makeStatusLineProducer({ cwd });
 }
 
 function slotText(line: string, bounds: readonly QuietSegmentBounds[], id: string): string | null {

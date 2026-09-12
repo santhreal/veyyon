@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { ThinkingLevel } from "@veyyon/agent-core";
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { PRIORITY_TIER_COMMAND_LABEL, PRIORITY_TIER_LABEL } from "../../../../config/service-tier";
 import { Settings } from "../../../../config/settings";
@@ -33,12 +33,12 @@ const EFFORT_SYMBOL_KEYS: readonly SymbolKey[] = [
 /** Strip SGR so a case can assert on text, or keep them to assert on color. */
 const strip = (text: string): string => stripAnsi(text);
 
-function makeContext(over: { fast: boolean; thinking?: ThinkingLevel; compact?: boolean }): SegmentContext {
+function makeContext(over: { fast: boolean; thinking?: string; compact?: boolean }): SegmentContext {
 	return {
 		facts: {
 			...NO_SESSION_FACTS,
 			model: { id: "claude-sonnet-4-5", name: "Sonnet 4.5", supportsThinking: true },
-			thinkingLevel: over.thinking ?? ThinkingLevel.Off,
+			thinkingLevel: over.thinking ?? "off",
 			fastMode: over.fast,
 		},
 		activeRepo: null,

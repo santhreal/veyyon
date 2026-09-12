@@ -99,6 +99,11 @@ function makeUsage(over: Partial<Usage> = {}): Usage {
 	};
 }
 
+function collector(): { warnings: AgentTelemetryWarning[]; onTelemetryWarning: (w: AgentTelemetryWarning) => void } {
+	const warnings: AgentTelemetryWarning[] = [];
+	return { warnings, onTelemetryWarning: w => warnings.push(w) };
+}
+
 function assistant(content: AssistantMessage["content"], over: Partial<AssistantMessage> = {}): AssistantMessage {
 	return {
 		role: "assistant",
@@ -475,11 +480,6 @@ describe("failChatSpan", () => {
 });
 
 describe("non-fatal warning hooks", () => {
-	function collector(): { warnings: AgentTelemetryWarning[]; onTelemetryWarning: (w: AgentTelemetryWarning) => void } {
-		const warnings: AgentTelemetryWarning[] = [];
-		return { warnings, onTelemetryWarning: w => warnings.push(w) };
-	}
-
 	it("surfaces a resolveAttributes throw without failing the span", () => {
 		const { warnings, onTelemetryWarning } = collector();
 		const telemetry = telemetryFor({
@@ -535,9 +535,9 @@ describe("non-fatal warning hooks", () => {
 		});
 		const span = startChatSpan(telemetry, MODEL, { stepNumber: 0, request: {} });
 		await finishChatSpan(telemetry, span, assistant([{ type: "text", text: "ok" }]), { stepNumber: 0 });
-		const codes = warnings.map(w => w.code);
-		expect(codes).toContain("on_span_start_failed");
-		expect(codes).toContain("on_span_end_failed");
+		const byCode = new Map(warnings.map(w => [w.code, w]));
+		expect(byCode.get("on_span_start_failed")?.error).toMatchObject({ message: "start boom" });
+		expect(byCode.get("on_span_end_failed")?.error).toMatchObject({ message: "end boom" });
 	});
 
 	it("surfaces an onChatUsage rejection", async () => {
@@ -635,6 +635,25 @@ describe("recordManualChatTelemetry", () => {
 		expect(cancelled.attributes[GenAIAttr.ErrorType]).toBe("aborted");
 		expect(cancelled.status.code).toBe(SpanStatusCode.ERROR);
 		expect(cancelled.status.message).toBe("aborted");
+	});
+
+	it("reports a rejecting onChatUsage on the manual path and still ends the span", async () => {
+		const { warnings, onTelemetryWarning } = collector();
+		const telemetry = telemetryFor({
+			onTelemetryWarning,
+			onChatUsage: async () => {
+				throw new Error("manual usage boom");
+			},
+		});
+		await recordManualChatTelemetry(telemetry, {
+			model: MODEL,
+			stepNumber: 3,
+			usage: makeUsage(),
+			finishReason: "stop",
+		});
+		const warning = warnings.find(w => w.code === "on_chat_usage_failed");
+		expect(warning?.error).toMatchObject({ message: "manual usage boom" });
+		expect(onlySpan().attributes[PiGenAIAttr.AgentStepNumber]).toBe(3);
 	});
 });
 

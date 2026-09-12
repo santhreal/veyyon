@@ -185,6 +185,30 @@ export interface AtomicReplacement {
 	rollback(): void;
 }
 
+type PosixExchange = (from: string, to: string, flags: number) => AtomicCallResult;
+
+/** Exchange `stagedPath` and `destinationPath` through a POSIX rename flag, with the same exchange as rollback. */
+function exchangeWithRollback(
+	exchange: PosixExchange,
+	stagedPath: string,
+	destinationPath: string,
+	flags: number,
+): AtomicReplacement {
+	const replacement = exchange(stagedPath, destinationPath, flags);
+	if (!replacement.ok) {
+		throw atomicFailure("The atomic vault exchange", replacement.error);
+	}
+	return {
+		displacedPath: stagedPath,
+		rollback(): void {
+			const rollback = exchange(stagedPath, destinationPath, flags);
+			if (!rollback.ok) {
+				throw atomicFailure("The atomic vault exchange rollback", rollback.error);
+			}
+		},
+	};
+}
+
 /** Replace an existing destination atomically while retaining an atomic rollback path. */
 export function replaceWithRollback(
 	stagedPath: string,
@@ -192,34 +216,10 @@ export function replaceWithRollback(
 	windowsBackupPath: string,
 ): AtomicReplacement {
 	if (linuxRename !== undefined) {
-		const replacement = linuxRename(stagedPath, destinationPath, RENAME_EXCHANGE);
-		if (!replacement.ok) {
-			throw atomicFailure("The atomic vault exchange", replacement.error);
-		}
-		return {
-			displacedPath: stagedPath,
-			rollback(): void {
-				const rollback = linuxRename(stagedPath, destinationPath, RENAME_EXCHANGE);
-				if (!rollback.ok) {
-					throw atomicFailure("The atomic vault exchange rollback", rollback.error);
-				}
-			},
-		};
+		return exchangeWithRollback(linuxRename, stagedPath, destinationPath, RENAME_EXCHANGE);
 	}
 	if (darwinRename !== undefined) {
-		const replacement = darwinRename(stagedPath, destinationPath, RENAME_SWAP);
-		if (!replacement.ok) {
-			throw atomicFailure("The atomic vault exchange", replacement.error);
-		}
-		return {
-			displacedPath: stagedPath,
-			rollback(): void {
-				const rollback = darwinRename(stagedPath, destinationPath, RENAME_SWAP);
-				if (!rollback.ok) {
-					throw atomicFailure("The atomic vault exchange rollback", rollback.error);
-				}
-			},
-		};
+		return exchangeWithRollback(darwinRename, stagedPath, destinationPath, RENAME_SWAP);
 	}
 	if (windowsPaths !== undefined) {
 		const replacement = windowsPaths.replace(destinationPath, stagedPath, windowsBackupPath);

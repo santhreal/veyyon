@@ -17,11 +17,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { rustMembers } from "./workspace-layout";
-
-/** The repository root, found from this file rather than the process cwd. */
-export const repoRoot = path.resolve(import.meta.dir, "..");
-
+import { isVendored, REPO_ROOT as repoRoot, rustMembers } from "./workspace-layout";
 /** One crate manifest, as much of it as the contract needs. */
 export interface CrateManifest {
 	/** Path from the repository root to the crate directory. */
@@ -94,7 +90,7 @@ export function readCrateManifest(dir: string): CrateManifest {
  * all and pass. `rustMembers()` returns what cargo itself resolves, at whatever depth.
  */
 export function firstPartyCrateDirs(): string[] {
-	return rustMembers().filter(directory => !directory.split("/").includes("vendor"));
+	return rustMembers().filter(directory => !isVendored(directory));
 }
 
 /** The names declared under the root `[workspace.dependencies]` table. */

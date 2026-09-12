@@ -843,6 +843,18 @@ pub fn command_has_any_token(command: &str, tokens: &[&str]) -> bool {
 	})
 }
 
+#[must_use]
+pub fn command_has_exact_token(command: &str, token: &str) -> bool {
+	command.split_whitespace().any(|part| part == token)
+}
+
+#[must_use]
+pub fn command_has_any_exact_token(command: &str, tokens: &[&str]) -> bool {
+	command
+		.split_whitespace()
+		.any(|part| tokens.contains(&part))
+}
+
 /// Join lines with newlines and terminate the result, or return an empty
 /// string.
 ///
@@ -1115,6 +1127,58 @@ pub fn is_horizontal_rule(line: &str) -> bool {
 		&& line.chars().any(|ch| matches!(ch, '-' | '*' | '_'))
 }
 
+// ── Markdown body filter (mr view / issue view) ──────────────────────
+
+/// Filter markdown body noise: HTML comments, badges, image-only lines,
+/// horizontal rules. Collapse multiple blank lines. Apply `head_tail_dedup`.
+#[must_use]
+pub fn filter_markdown_body_view(input: &str) -> String {
+	let mut out = String::new();
+	let mut in_html_comment = false;
+	let mut previous_blank = false;
+	let mut comment_lines = 0usize;
+
+	for line in input.lines() {
+		let trimmed = line.trim();
+		if in_html_comment {
+			if trimmed.contains("-->") {
+				in_html_comment = false;
+				comment_lines = 0;
+			} else {
+				comment_lines += 1;
+				// Safety: cap unclosed comment consumption at 50 lines to
+				// prevent data loss from malformed/truncated markdown.
+				if comment_lines > 50 {
+					in_html_comment = false;
+					comment_lines = 0;
+				}
+			}
+			continue;
+		}
+		if trimmed.starts_with("<!--") {
+			if !trimmed.contains("-->") {
+				in_html_comment = true;
+				comment_lines = 0;
+			}
+			continue;
+		}
+		if is_markdown_badge_or_image(trimmed) || is_horizontal_rule(trimmed) {
+			continue;
+		}
+		if trimmed.is_empty() {
+			if !previous_blank {
+				out.push('\n');
+			}
+			previous_blank = true;
+			continue;
+		}
+		previous_blank = false;
+		out.push_str(line.trim_end());
+		out.push('\n');
+	}
+	head_tail_dedup(&out)
+}
+
 /// Compact a long plain listing to head/tail form.
 ///
 /// A listing that already carries this function's `N entries` tally is returned
@@ -1268,6 +1332,30 @@ pub fn filter_lines_regex(
 	out
 }
 
+/// Extract the first string value from a JSON map matching any of the candidate
+/// `keys`.
+#[must_use]
+pub fn first_json_string<'a>(
+	map: &'a serde_json::Map<String, serde_json::Value>,
+	keys: &[&str],
+) -> Option<&'a str> {
+	keys
+		.iter()
+		.find_map(|key| map.get(*key).and_then(|value| value.as_str()))
+}
+
+/// Extract the first u64 value from a JSON map matching any of the candidate
+/// `keys`.
+#[must_use]
+pub fn first_json_u64(
+	map: &serde_json::Map<String, serde_json::Value>,
+	keys: &[&str],
+) -> Option<u64> {
+	keys
+		.iter()
+		.find_map(|key| map.get(*key).and_then(serde_json::Value::as_u64))
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -1404,6 +1492,14 @@ mod tests {
 	}
 
 	#[test]
+	fn test_command_has_exact_token() {
+		assert!(command_has_exact_token("aws s3 cp - bucket", "-"));
+		assert!(!command_has_exact_token("aws s3 cp -=file bucket", "-"));
+		assert!(command_has_any_exact_token("git status -z", &["--porcelain", "-z"]));
+		assert!(!command_has_any_exact_token("git status -z=1", &["--porcelain", "-z"]));
+	}
+
+	#[test]
 	fn test_horizontal_rule_requires_non_space() {
 		assert!(is_horizontal_rule("---"));
 		assert!(is_horizontal_rule("- - -"));
@@ -1426,5 +1522,15 @@ mod tests {
 		// genuinely empty lines collapse (the glab filter semantics).
 		assert_eq!(collapse_blank_runs("a\n   \nb\n", false), "a\n   \nb\n");
 		assert_eq!(collapse_blank_runs("a\n\n\nb\n", false), "a\n\nb\n");
+	}
+	#[test]
+	fn test_first_json_accessors() {
+		let mut map = serde_json::Map::new();
+		map.insert("name".to_string(), serde_json::Value::String("item".to_string()));
+		map.insert("count".to_string(), serde_json::Value::Number(42.into()));
+		assert_eq!(first_json_string(&map, &["missing", "name"]), Some("item"));
+		assert_eq!(first_json_string(&map, &["absent"]), None);
+		assert_eq!(first_json_u64(&map, &["missing", "count"]), Some(42));
+		assert_eq!(first_json_u64(&map, &["absent"]), None);
 	}
 }

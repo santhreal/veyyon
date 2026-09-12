@@ -33,7 +33,6 @@ import {
 } from "../../utils/keybinding-matchers";
 import {
 	computeModalDims,
-	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
@@ -43,6 +42,7 @@ import {
 import { fit } from "../chrome/overlay-box";
 import { renderSliderLines } from "../chrome/segment-track";
 import type { HookSelectorSlider } from "../selectors/hook-selector";
+import { routeModalChrome } from "../selectors/select-list-mouse-routing";
 import { selectionBand } from "../selectors/selector-helpers";
 import { joinPlanSections, parsePlanSections, sectionDeletionSpan } from "./plan-toc";
 
@@ -359,30 +359,23 @@ export class PlanReviewOverlay implements Component {
 	 */
 	#handleMouse(data: string): boolean {
 		return routeSgrMouseInput(data, event => {
-			const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-				motion: event.motion,
-				leftClick: event.leftClick,
+			const consumed = routeModalChrome({
+				shellGeometry: this.#shellGeometry,
+				event,
+				hoveredShortcutId: this.#hoveredShortcutId,
+				onHoverShortcut: id => {
+					this.#hoveredShortcutId = id;
+					// Over a chip the option highlight clears; motion inside the card but
+					// not over a chip falls through so the per-row option hover below runs.
+					if (id !== null) this.#setHoveredOption(undefined);
+				},
+				onCancel: () => this.callbacks.onCancel(),
+				onConfirm: () => {
+					if (this.#annotating) this.#submitAnnotation(this.#input.getValue());
+					else this.#confirmSelection();
+				},
 			});
-			if (chrome.kind === "hover-shortcut") {
-				this.#hoveredShortcutId = chrome.id;
-				if (chrome.id !== null) {
-					this.#setHoveredOption(undefined);
-					return true;
-				}
-				// Motion inside the card but not over a chip: fall through so the
-				// per-row option hover below still runs.
-			} else if (
-				chrome.kind === "close" ||
-				chrome.kind === "outside" ||
-				(chrome.kind === "shortcut" && chrome.id === "close")
-			) {
-				this.callbacks.onCancel();
-				return true;
-			} else if (chrome.kind === "shortcut" && chrome.id === "confirm") {
-				if (this.#annotating) this.#submitAnnotation(this.#input.getValue());
-				else this.#confirmSelection();
-				return true;
-			}
+			if (consumed) return true;
 
 			if (event.wheel !== null) {
 				// Scroll wheel: three rows per notch.

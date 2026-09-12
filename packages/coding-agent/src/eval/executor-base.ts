@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { registerOwnedResourceDisposer } from "@veyyon/kernel/session/owned-resources";
 import { errorMessage, getProjectDir, isCancellation, isTimeoutError, logger, postmortem } from "@veyyon/utils";
 import { Settings } from "../config/settings";
-import { gateSessionCpuSpawn } from "../session/cpu-limit";
+import { gateSessionCpuSpawn, sessionCpuAdoption } from "../session/cpu-limit";
 import { OutputSink } from "../session/streaming-output";
 import type { ToolSession } from "../tools";
 import { inlineBudgetFor } from "../tools/core/output-artifact";
@@ -14,6 +14,7 @@ import {
 	KERNEL_SHUTDOWN_GRACE_MS,
 	type KernelEnvPatch,
 	type KernelExecutor,
+	type KernelStartOptions,
 	releaseKernel,
 	type SessionKernel,
 } from "./kernel-base";
@@ -82,6 +83,7 @@ export interface KernelExecutorBaseOptions {
 	artifactsDir?: string;
 	localRoots?: Record<string, string>;
 	bridge?: KernelToolBridgeInfo;
+	env?: KernelEnvPatch;
 }
 
 /** Normalised execution result produced by {@link executeWithKernelBase}. */
@@ -389,6 +391,7 @@ interface ManagedKernelEnvOptions {
 	artifactsDir?: string;
 	/** The eval session's stable id; the `kv` store keys its file by it, bridge or no bridge. */
 	evalSessionId?: string;
+	sessionId?: string;
 	bridgeSessionId?: string;
 	bridge?: { url: string; token: string };
 	localRoots?: Record<string, string>;
@@ -403,7 +406,7 @@ export function buildManagedKernelEnvPatch(options: ManagedKernelEnvOptions): Re
 		VEYYON_TOOL_BRIDGE_TOKEN: options.bridge?.token ?? null,
 		VEYYON_TOOL_BRIDGE_SESSION: options.bridge && options.bridgeSessionId ? options.bridgeSessionId : null,
 		VEYYON_EVAL_LOCAL_ROOTS: localRoots && Object.keys(localRoots).length > 0 ? JSON.stringify(localRoots) : null,
-		VEYYON_EVAL_SESSION_ID: options.evalSessionId ?? null,
+		VEYYON_EVAL_SESSION_ID: options.evalSessionId ?? options.sessionId ?? null,
 	};
 }
 
@@ -873,7 +876,8 @@ export interface KernelExecutionDriverOptions<
 	runIdPrefix: string;
 	disposerName: string;
 	cancelledErrorClass?: CancelledErrorClass;
-	startKernel: (cwd: string, options: TOptions) => Promise<TKernel>;
+	kernelClass?: { start: (options: KernelStartOptions) => Promise<TKernel> };
+	startKernel?: (cwd: string, options: TOptions) => Promise<TKernel>;
 	checkKernelAvailability: (cwd: string, interpreter?: string) => Promise<{ ok: boolean; reason?: string }>;
 	resolveInterpreterPath: (interpreter: string, cwd: string) => string;
 	buildKernelEnvPatch?: (options: TOptions) => Record<string, string | null | undefined>;
@@ -907,10 +911,26 @@ export function createKernelExecutionDriver<
 		runIdPrefix,
 		disposerName,
 		cancelledErrorClass = KernelExecutionCancelledError,
-		startKernel,
+		kernelClass,
+		startKernel = async (cwd: string, options: TOptions): Promise<TKernel> => {
+			if (!kernelClass) {
+				throw new Error(`Neither startKernel nor kernelClass provided for ${languageName}`);
+			}
+			return await kernelClass.start({
+				cwd,
+				env: buildManagedKernelEnv(options),
+				signal: options.signal,
+				deadlineMs: options.deadlineMs,
+				interpreter: options.interpreter,
+				adoptPid: sessionCpuAdoption(() => options.toolSession?.getSessionId?.() ?? null),
+			});
+		},
 		checkKernelAvailability,
 		resolveInterpreterPath,
-		buildKernelEnvPatch = opts => buildManagedKernelEnvPatch({ ...opts, evalSessionId: opts.sessionId }),
+		buildKernelEnvPatch = opts => ({
+			...buildManagedKernelEnvPatch({ ...opts, evalSessionId: opts.sessionId }),
+			...(opts.env ?? {}),
+		}),
 		formatKernelTimeoutAnnotation: formatKernelTimeout = formatKernelTimeoutAnnotation,
 		formatTimeoutAnnotation: formatTimeout = formatTimeoutAnnotation,
 		createCancelledResult = (timedOut, timeoutMs) =>

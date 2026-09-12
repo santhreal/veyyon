@@ -8,26 +8,21 @@
  * (eval/py/kernel.ts); the IPC loop, lifecycle, and display rendering are shared
  * with it via BaseKernel.
  */
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { $flag, errorMessage, isBunTestRuntime, logger, Snowflake } from "@veyyon/utils";
+import { $flag } from "@veyyon/utils";
 import { $ } from "bun";
-import { Settings } from "../../config/settings";
 import {
 	BaseKernel,
+	createLanguageAvailabilityChecker,
+	createRunnerScriptPublisher,
 	DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
-	getRemainingTimeMs,
 	KERNEL_INTERRUPT_ESCALATION_MS,
 	KERNEL_SHUTDOWN_GRACE_MS,
 	type KernelEnvPatch,
 	type KernelExecuteOptions,
 	type KernelStartOptions,
 	kernelIpcTraceEnvVar,
-	kernelRunnerCacheDir,
-	releaseKernel,
+	launchKernelSubprocess,
 } from "../kernel-base";
-import { hostHasInheritableConsole, shouldDetachKernel, shouldHideKernelWindow } from "../py/spawn-options";
 import { RUBY_PRELUDE } from "./prelude";
 import RUNNER_SCRIPT from "./runner.rb" with { type: "text" };
 import {
@@ -44,22 +39,7 @@ export { renderKernelDisplay } from "../py/display";
 
 const TRACE_IPC = $flag(kernelIpcTraceEnvVar("RUBY"));
 
-// Cache the runner script on disk so the subprocess loads it normally. Cached
-// per script hash so installs don't race across versions.
-const RUNNER_CACHE_DIR = kernelRunnerCacheDir(os.tmpdir(), "ruby");
-let RUNNER_SCRIPT_PATH: string | null = null;
-
-async function ensureRunnerScript(): Promise<string> {
-	if (RUNNER_SCRIPT_PATH) return RUNNER_SCRIPT_PATH;
-	await fs.promises.mkdir(RUNNER_CACHE_DIR, { recursive: true });
-	const hash = Bun.hash(RUNNER_SCRIPT).toString(36);
-	const target = path.join(RUNNER_CACHE_DIR, `runner-${hash}.rb`);
-	if (!fs.existsSync(target)) {
-		await Bun.write(target, RUNNER_SCRIPT);
-	}
-	RUNNER_SCRIPT_PATH = target;
-	return target;
-}
+const ensureRunnerScript = createRunnerScriptPublisher("ruby", RUNNER_SCRIPT, "rb");
 
 const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS;
 // How long to wait after SIGINT for the runner to emit `done` before escalating
@@ -73,139 +53,47 @@ export interface RubyKernelAvailability {
 	runtime?: RubyRuntime;
 }
 
-// Cache successful probes per resolved cwd + explicit interpreter. Failures are
-// not cached so installing Ruby mid-session is picked up on the next attempt.
-const availabilityCache = new Map<string, Promise<RubyKernelAvailability>>();
-
-export async function checkRubyKernelAvailability(cwd: string, interpreter?: string): Promise<RubyKernelAvailability> {
-	if (isBunTestRuntime() || $flag("VEYYON_RUBY_SKIP_CHECK")) {
-		return { ok: true };
-	}
-	const resolvedCwd = path.resolve(cwd);
-	const key = `${resolvedCwd}\0${interpreter ?? ""}`;
-	const cached = availabilityCache.get(key);
-	if (cached) return await cached;
-	const probe = probeRubyKernelAvailability(resolvedCwd, interpreter);
-	availabilityCache.set(key, probe);
-	const result = await probe;
-	if (!result.ok && availabilityCache.get(key) === probe) {
-		availabilityCache.delete(key);
-	}
-	return result;
-}
-
-async function probeRubyKernelAvailability(cwd: string, interpreter?: string): Promise<RubyKernelAvailability> {
-	try {
-		const settings = await Settings.init();
-		const { env } = settings.getShellConfig();
-		const baseEnv = filterEnv(env);
-		const runtimes = enumerateRubyRuntimes(cwd, baseEnv, interpreter);
-		if (runtimes.length === 0) {
-			return { ok: false, reason: "Ruby executable not found on PATH" };
-		}
-		const failures: string[] = [];
-		for (const runtime of runtimes) {
-			try {
-				const probe = await $`${runtime.rubyPath} -e ${"exit 0"}`.quiet().nothrow().cwd(cwd).env(runtime.env);
-				if (probe.exitCode === 0) {
-					return { ok: true, rubyPath: runtime.rubyPath, runtime };
-				}
-				failures.push(`${runtime.rubyPath} (exit code ${probe.exitCode})`);
-			} catch (err) {
-				failures.push(`${runtime.rubyPath} (${errorMessage(err)})`);
-			}
-		}
-		return {
-			ok: false,
-			rubyPath: runtimes[0].rubyPath,
-			reason: `No working Ruby interpreter found. Tried: ${failures.join("; ")}`,
-		};
-	} catch (err) {
-		return { ok: false, reason: errorMessage(err) };
-	}
-}
+export const checkRubyKernelAvailability = createLanguageAvailabilityChecker<RubyRuntime, "rubyPath">(
+	{
+		skipFlag: "VEYYON_RUBY_SKIP_CHECK",
+		filterEnv,
+		enumerateRuntimes: (cwd, baseEnv, interpreter) => enumerateRubyRuntimes(cwd, baseEnv, interpreter),
+		missingReason: "Ruby executable not found on PATH",
+		probeRuntime: (runtime, cwd) => $`${runtime.rubyPath} -e ${"exit 0"}`.quiet().nothrow().cwd(cwd).env(runtime.env),
+		getExecutablePath: runtime => runtime.rubyPath,
+		includeFailedExecutablePath: true,
+		formatFailureReason: failures => `No working Ruby interpreter found. Tried: ${failures.join("; ")}`,
+	},
+	"rubyPath",
+);
 
 export class RubyKernel extends BaseKernel<KernelExecuteOptions> {
 	private constructor(id: string) {
 		super(id, {
 			languageName: "Ruby",
 			traceIpc: TRACE_IPC,
-			exitPayload: JSON.stringify({ type: "exit" }),
 			interruptEscalationMs: KERNEL_INTERRUPT_ESCALATION_MS,
 			shutdownGraceMs: KERNEL_SHUTDOWN_GRACE_MS,
-			buildPayload: (code, msgId, opts) =>
-				JSON.stringify({
-					id: msgId,
-					code,
-					cwd: opts?.cwd,
-					env: opts?.env,
-					silent: opts?.silent ?? false,
-					storeHistory: opts?.storeHistory ?? !(opts?.silent ?? false),
-				}),
 		});
 	}
 
 	static async start(options: KernelStartOptions): Promise<RubyKernel> {
-		const availability = await logger.time(
-			"RubyKernel.start:availabilityCheck",
-			checkRubyKernelAvailability,
-			options.cwd,
-			options.interpreter,
-		);
-		if (!availability.ok) {
-			throw new Error(availability.reason ?? "Ruby kernel unavailable");
-		}
-
-		// Reuse the interpreter the availability probe selected. The fallback
-		// computes a runtime only for the skip-check fast path (test runtime /
-		// VEYYON_RUBY_SKIP_CHECK), where no candidate was probed.
-		let runtime = availability.runtime;
-		if (!runtime) {
-			const { env: shellEnv } = (await Settings.init()).getShellConfig();
-			runtime = options.interpreter
-				? resolveExplicitRubyRuntime(options.interpreter, options.cwd, filterEnv(shellEnv))
-				: resolveRubyRuntime(options.cwd, filterEnv(shellEnv));
-		}
-		const spawnEnv: Record<string, string> = {};
-		for (const key in runtime.env) {
-			const value = runtime.env[key];
-			if (typeof value === "string") spawnEnv[key] = value;
-		}
-		for (const key in options.env) {
-			const value = options.env[key];
-			if (typeof value === "string") spawnEnv[key] = value;
-		}
-
-		const scriptPath = await ensureRunnerScript();
-		const kernel = new RubyKernel(Snowflake.next());
-
-		const proc = Bun.spawn([runtime.rubyPath, scriptPath], {
-			cwd: options.cwd,
-			detached: shouldDetachKernel(process.platform),
-			env: spawnEnv,
-			stdin: "pipe",
-			stdout: "pipe",
-			stderr: "pipe",
-			windowsHide: shouldHideKernelWindow({
-				platform: process.platform,
-				hostHasInheritableConsole: hostHasInheritableConsole(),
-			}),
+		return await launchKernelSubprocess({
+			languageName: "Ruby",
+			options,
+			checkAvailability: checkRubyKernelAvailability,
+			resolveRuntimeFallback: (cwd, interpreter, shellEnv) =>
+				interpreter
+					? resolveExplicitRubyRuntime(interpreter, cwd, filterEnv(shellEnv))
+					: resolveRubyRuntime(cwd, filterEnv(shellEnv)),
+			ensureRunnerScript,
+			createKernel: id => new RubyKernel(id),
+			getExecutableCommand: (runtime, scriptPath) => [runtime.rubyPath, scriptPath],
+			startupTimeoutMs: STARTUP_TIMEOUT_MS,
+			initScript: buildInitScript(options.cwd, options.env),
+			preludeScript: RUBY_PRELUDE,
+			releaseReason: "ruby-kernel-startup-failed",
 		});
-		options.adoptPid?.(proc.pid);
-		kernel.setProcess(proc);
-
-		const startup = { signal: options.signal, deadlineMs: options.deadlineMs };
-		const startupBudget = Math.min(getRemainingTimeMs(startup.deadlineMs) ?? STARTUP_TIMEOUT_MS, STARTUP_TIMEOUT_MS);
-
-		try {
-			const initScript = buildInitScript(options.cwd, options.env);
-			await kernel.executeWithBudget(initScript, startup.signal, startupBudget, "Ruby kernel init");
-			await kernel.executeWithBudget(RUBY_PRELUDE, startup.signal, startupBudget, "Ruby kernel prelude");
-			return kernel;
-		} catch (err) {
-			await releaseKernel(kernel, "ruby-kernel-startup-failed", { timeoutMs: KERNEL_SHUTDOWN_GRACE_MS });
-			throw err;
-		}
 	}
 }
 

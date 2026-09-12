@@ -36,7 +36,7 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 
-DB_PATH = Path.home() / ".veyyon" / "stats.db"
+from common import DB_PATH, millions, smooth_nan
 OUT_DIR = Path(__file__).resolve().parent / "out"
 
 DAY_MS = 86_400_000
@@ -189,24 +189,6 @@ def smooth(y: np.ndarray, w: int = 7) -> np.ndarray:
     return np.convolve(y.astype(float), kernel, mode="same")
 
 
-def smooth_nan(y: np.ndarray, w: int = 7) -> np.ndarray:
-    if w <= 1 or len(y) < w:
-        return y
-    mask = np.isfinite(y).astype(float)
-    yf = np.where(mask > 0, y, 0.0)
-    kernel = np.ones(w, dtype=float)
-    num = np.convolve(yf, kernel, mode="same")
-    den = np.convolve(mask, kernel, mode="same")
-    with np.errstate(divide="ignore", invalid="ignore"):
-        return np.where(den > 0, num / den, np.nan)
-
-
-def millions(x: float, _pos: int = 0) -> str:
-    if x >= 1e6:
-        return f"{x / 1e6:.1f}M"
-    if x >= 1e3:
-        return f"{x / 1e3:.0f}k"
-    return f"{x:.0f}"
 
 
 def style_time_axis(ax: plt.Axes) -> None:

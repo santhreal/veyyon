@@ -216,12 +216,12 @@ function emergencyBackupSidecarPath(targetPath: string, suffix: (typeof SQLITE_S
 function snapshotCurrentDatabase(targetPath: string): void {
 	const mainBackup = emergencyBackupPath(targetPath);
 	rmSync(mainBackup, { force: true });
-	for (const suffix of SQLITE_SIDECAR_SUFFIXES)
-		rmSync(emergencyBackupSidecarPath(targetPath, suffix), { force: true });
 	if (existsSync(targetPath)) copyFileSync(targetPath, mainBackup);
 	for (const suffix of SQLITE_SIDECAR_SUFFIXES) {
+		const backupSidecar = emergencyBackupSidecarPath(targetPath, suffix);
+		rmSync(backupSidecar, { force: true });
 		const sidecar = sqliteSidecarPath(targetPath, suffix);
-		if (existsSync(sidecar)) copyFileSync(sidecar, emergencyBackupSidecarPath(targetPath, suffix));
+		if (existsSync(sidecar)) copyFileSync(sidecar, backupSidecar);
 	}
 }
 

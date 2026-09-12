@@ -26,21 +26,21 @@ describe("settings model pickers", () => {
 	});
 
 	/**
-	 * The shared subagent model is a picker on the Subagents tab and nowhere else, drawn under the
+	 * The shared agent model is a picker on the Agents tab and nowhere else, drawn under the
 	 * switch that turns it on. It also sat on the Model tab while the per-agent overrides sat behind
 	 * `/agents` and a role called "Subtask" sat in the role table: three places to look for one
-	 * decision, which is how an operator could set a subagent model and watch something else win. A
+	 * decision, which is how an operator could set an agent model and watch something else win. A
 	 * Model-tab row is that split reopening.
 	 */
-	it("exposes subagent.model on the Subagents tab only", () => {
+	it("exposes agent.model on the Agents tab only", () => {
 		invalidateSettingDefsCache();
-		expect(getSettingsForTab("subagents").find(def => def.path === "subagent.model")?.type).toBe("modelSelector");
-		expect(getSettingsForTab("model").find(def => def.path === "subagent.model")).toBeUndefined();
+		expect(getSettingsForTab("agents").find(def => def.path === "agent.model")?.type).toBe("modelSelector");
+		expect(getSettingsForTab("model").find(def => def.path === "agent.model")).toBeUndefined();
 	});
 
 	/**
 	 * The gap this closes: `/settings` had no control for the DEFAULT (main)
-	 * model — only roles and the subagent slot — so a user could not pick the
+	 * model — only roles and the agent slot — so a user could not pick the
 	 * model each new session starts on without editing config by hand. The entry
 	 * is synthetic (no schema key; it maps to the `default` model-role slot the
 	 * interactive `/model` choice persists to) and must sit at the very top of the

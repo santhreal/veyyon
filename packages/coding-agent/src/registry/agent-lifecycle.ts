@@ -1,6 +1,6 @@
 /**
  * AgentLifecycleManager - Owns the idle → parked → revived lifecycle of
- * adopted subagents.
+ * adopted spawned agents.
  *
  * The task executor hands a finished agent over via {@link AgentLifecycleManager.adopt};
  * from then on the manager arms a TTL timer whenever the agent goes `idle`,
@@ -17,14 +17,14 @@ import { type AgentRef, AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from 
 export type AgentReviver = () => Promise<AgentSession>;
 
 /**
- * Builds a reviver for a `parked` ref restored from disk (the persisted-subagent scan,
+ * Builds a reviver for a `parked` ref restored from disk (the persisted-agent scan,
  * collab mirror, resumed process) that carries a sessionFile but no in-memory
  * adoption. Returns undefined when the ref cannot be faithfully rebuilt (no
  * persisted session contract, or its workspace is gone). Injected from the
  * top-level session so this manager stays free of sdk/SessionManager imports.
  */
-export type PersistedSubagentReviverFactory = (ref: AgentRef) => Promise<AgentReviver | undefined>;
-export type PersistedSubagentIdleTtlResolver = (ref: AgentRef) => number;
+export type PersistedAgentReviverFactory = (ref: AgentRef) => Promise<AgentReviver | undefined>;
+export type PersistedAgentIdleTtlResolver = (ref: AgentRef) => number;
 
 /**
  * Prune budgets for a ref the manager adopts on demand rather than at hand-over.
@@ -36,11 +36,11 @@ export type PersistedSubagentIdleTtlResolver = (ref: AgentRef) => number;
  * the same injected seam as the idle TTL because the reason they were missing was
  * plumbing rather than policy.
  */
-export interface PersistedSubagentPruneBudget {
+export interface PersistedAgentPruneBudget {
 	afterMs: number;
 	waitingAfterMs: number;
 }
-export type PersistedSubagentPruneBudgetResolver = (ref: AgentRef) => PersistedSubagentPruneBudget;
+export type PersistedAgentPruneBudgetResolver = (ref: AgentRef) => PersistedAgentPruneBudget;
 
 export interface AdoptOptions {
 	/** TTL before an idle agent is parked. <= 0 disables parking. */
@@ -88,8 +88,9 @@ function disarm(adopted: AdoptedAgent): void {
 }
 
 /**
- * Normalize a pair of prune budgets. Shared by {@link AgentLifecycleManager.adopt} and the
- * cold-adopt path so there is ONE place that decides what zero means.
+ * Build an adoption from raw budgets. The one place that decides what zero means, for
+ * every path that adopts: the hand-over ({@link AgentLifecycleManager.adopt}), the
+ * cold revive and the restored-ref scan.
  *
  * A zero quiet budget means "never prune", and that has to include the waiting case:
  * honouring a waiting budget beside it would prune exactly the agents most likely to be
@@ -97,12 +98,19 @@ function disarm(adopted: AdoptedAgent): void {
  * disabling it. The waiting budget is also never shorter than the quiet one, because an
  * agent that stopped to let a peer finish has not run out of things to do.
  */
-function normalizePruneBudgets(
+function adoption(
+	idleTtlMs: number,
 	afterMs: number | undefined,
 	waitingAfterMs: number | undefined,
-): PersistedSubagentPruneBudget {
+	revive: AgentReviver | undefined,
+): AdoptedAgent {
 	const parked = Math.max(0, afterMs ?? 0);
-	return { afterMs: parked, waitingAfterMs: parked === 0 ? 0 : Math.max(parked, waitingAfterMs ?? parked) };
+	return {
+		idleTtlMs,
+		pruneAfterMs: parked,
+		pruneWaitingAfterMs: parked === 0 ? 0 : Math.max(parked, waitingAfterMs ?? parked),
+		revive,
+	};
 }
 
 /**
@@ -114,6 +122,25 @@ function normalizePruneBudgets(
  * the agent was allowed to sit parked.
  */
 const REVIVE_RECHECK_MS = 1_000;
+
+/**
+ * Report a session's turns to the registry: `agent_start` on an `idle` ref makes
+ * it `running`, `agent_end` on a `running` ref makes it `idle`. Installed once per
+ * live session by the executor at hand-over and by a cold revive; the
+ * subscription needs no teardown because a disposed session emits nothing.
+ *
+ * Both writes are conditional on the current status so a turn event that arrives
+ * after a kill (`aborted`) or a park (`parked`) is dropped rather than rejected
+ * by the transition table: the event describes a session the registry has
+ * already let go of.
+ */
+export function syncStatusWithTurns(registry: AgentRegistry, id: string, session: AgentSession): void {
+	session.subscribe(event => {
+		const status = registry.get(id)?.status;
+		if (event.type === "agent_start" && status === "idle") registry.setStatus(id, "running");
+		else if (event.type === "agent_end" && status === "running") registry.setStatus(id, "idle");
+	});
+}
 
 export class AgentLifecycleManager {
 	static #global: AgentLifecycleManager | undefined;
@@ -135,6 +162,7 @@ export class AgentLifecycleManager {
 			current.#adopted.clear();
 			current.#revivals.clear();
 			current.#parking.clear();
+			current.#pinned.clear();
 			current.#persistedReviverFactory = undefined;
 		}
 		AgentLifecycleManager.#global = undefined;
@@ -146,12 +174,20 @@ export class AgentLifecycleManager {
 	readonly #parking = new Set<string>();
 	/** In-flight revives, so concurrent {@link ensureLive} calls coalesce. */
 	readonly #revivals = new Map<string, Promise<AgentSession>>();
+	/**
+	 * Ids a screen is attached to, with the number of holders. A pinned agent is
+	 * never parked: the park that its idle TTL fires is dropped and re-armed from
+	 * the last unpin. Without this a focus could attach to the session a concurrent
+	 * park was flushing and disposing, leaving the transcript, the status line and
+	 * the editor's interrupt on a dead session.
+	 */
+	readonly #pinned = new Map<string, number>();
 	#unsubscribe: (() => void) | undefined;
-	#persistedReviverFactory: PersistedSubagentReviverFactory | undefined;
+	#persistedReviverFactory: PersistedAgentReviverFactory | undefined;
 	/** One process-wide next-deadline timer; never one poller/timer per agent. */
 	#timer: NodeJS.Timeout | undefined;
 	/** TTL policy applied when a cold-revived ref is adopted on demand. */
-	#persistedReviveTtl: number | PersistedSubagentIdleTtlResolver = 0;
+	#persistedReviveTtl: number | PersistedAgentIdleTtlResolver = 0;
 	/**
 	 * Prune budgets applied when a cold-revived ref is adopted on demand.
 	 *
@@ -159,7 +195,7 @@ export class AgentLifecycleManager {
 	 * never-prune behaviour rather than silently acquiring a prune stage it did not ask
 	 * for. The non-ACP bootstrap passes the operator's resolved budgets.
 	 */
-	#persistedRevivePruneBudget: PersistedSubagentPruneBudget | PersistedSubagentPruneBudgetResolver = {
+	#persistedRevivePruneBudget: PersistedAgentPruneBudget | PersistedAgentPruneBudgetResolver = {
 		afterMs: 0,
 		waitingAfterMs: 0,
 	};
@@ -171,14 +207,14 @@ export class AgentLifecycleManager {
 
 	/**
 	 * Install the factory used to cold-revive `parked` refs restored from disk
-	 * (the persisted-subagent scan, collab mirror, resumed process) — they carry a sessionFile
+	 * (the persisted-agent scan, collab mirror, resumed process) — they carry a sessionFile
 	 * but no adoption. Set by the top-level session, which owns the ambient deps
 	 * (auth, models, MCP, artifacts) the factory needs at revive time.
 	 */
-	setPersistedSubagentReviverFactory(
-		factory: PersistedSubagentReviverFactory,
-		idleTtl: number | PersistedSubagentIdleTtlResolver,
-		pruneBudget: PersistedSubagentPruneBudget | PersistedSubagentPruneBudgetResolver = {
+	setPersistedAgentReviverFactory(
+		factory: PersistedAgentReviverFactory,
+		idleTtl: number | PersistedAgentIdleTtlResolver,
+		pruneBudget: PersistedAgentPruneBudget | PersistedAgentPruneBudgetResolver = {
 			afterMs: 0,
 			waitingAfterMs: 0,
 		},
@@ -189,7 +225,7 @@ export class AgentLifecycleManager {
 	}
 
 	/**
-	 * Take ownership of a finished subagent. Caller has already set registry
+	 * Take ownership of a finished spawned agent. Caller has already set registry
 	 * status to "idle". Arms the TTL timer (idleTtlMs <= 0 adopts without one).
 	 *
 	 * Two stages, one timer. An idle agent is parked when `idleTtlMs` elapses, which
@@ -210,21 +246,7 @@ export class AgentLifecycleManager {
 		// Recognized by role rather than by name: a driving agent's id is derived
 		// from the conversation it drives, so there is no one id to compare with.
 		if (ref.kind === "main") return;
-		// A zero quiet budget means "never prune", and that has to include the waiting
-		// case: honouring a waiting budget beside it would prune exactly the agents most
-		// likely to be needed while leaving every ordinary one listed, which inverts the
-		// switch instead of disabling it. Normalized here rather than trusted from the
-		// caller so the invariant holds for every adoption, not just the settings path.
-		const { afterMs: pruneAfterMs, waitingAfterMs: pruneWaitingAfterMs } = normalizePruneBudgets(
-			opts.pruneAfterMs,
-			opts.pruneWaitingAfterMs,
-		);
-		const adopted: AdoptedAgent = {
-			idleTtlMs: opts.idleTtlMs,
-			pruneAfterMs,
-			pruneWaitingAfterMs,
-			revive: opts.revive,
-		};
+		const adopted = adoption(opts.idleTtlMs, opts.pruneAfterMs, opts.pruneWaitingAfterMs, opts.revive);
 		this.#adopted.set(id, adopted);
 		this.#refreshDeadline(id, adopted);
 		this.#scheduleNext();
@@ -238,6 +260,40 @@ export class AgentLifecycleManager {
 	/** True while {@link park} is disposing this agent's session (lets dispose hooks distinguish park from teardown). */
 	isParking(id: string): boolean {
 		return this.#parking.has(id);
+	}
+
+	/**
+	 * Keep an agent's session live while something is attached to it. Returns the
+	 * release, which is idempotent. Pinning is independent of adoption so a screen
+	 * can attach to a running agent before the executor hands it over.
+	 */
+	pin(id: string): () => void {
+		this.#pinned.set(id, (this.#pinned.get(id) ?? 0) + 1);
+		let released = false;
+		return () => {
+			if (released) return;
+			released = true;
+			const holders = this.#pinned.get(id);
+			if (holders === undefined) return;
+			if (holders > 1) {
+				this.#pinned.set(id, holders - 1);
+				return;
+			}
+			this.#pinned.delete(id);
+			const adopted = this.#adopted.get(id);
+			const ref = this.#registry.get(id);
+			if (!adopted || ref?.status !== "idle" || !ref.session || adopted.idleTtlMs <= 0) return;
+			// Counted from the unpin, not from `lastActivity`: the agent was idle on
+			// screen for as long as the operator was reading it, and a park that fires
+			// the instant the screen leaves would drop the session they just left.
+			arm(adopted, Date.now() + adopted.idleTtlMs, "park");
+			this.#scheduleNext();
+		};
+	}
+
+	/** True while a screen is attached to this agent's session. */
+	isPinned(id: string): boolean {
+		return this.#pinned.has(id);
 	}
 
 	/**
@@ -259,6 +315,9 @@ export class AgentLifecycleManager {
 		if (!ref || !session) return;
 		disarm(adopted);
 		this.#scheduleNext();
+		// A pinned agent is on screen. The deadline stays disarmed; the unpin re-arms
+		// it, so the park is deferred rather than lost.
+		if (this.#pinned.has(id)) return;
 
 		this.#parking.add(id);
 		let parked = false;
@@ -272,10 +331,11 @@ export class AgentLifecycleManager {
 				});
 				return;
 			}
-			// A follow-up may have started while the durable flush was in flight.
-			// Re-check both identity and status before closing any live resources.
+			// A follow-up may have started, or a screen attached, while the durable
+			// flush was in flight. Re-check identity, status and pin before closing any
+			// live resources.
 			const current = this.#registry.get(id);
-			if (current?.status !== "idle" || current.session !== session) return;
+			if (current?.status !== "idle" || current.session !== session || this.#pinned.has(id)) return;
 			try {
 				await session.dispose();
 			} catch (error) {
@@ -289,7 +349,13 @@ export class AgentLifecycleManager {
 			if (!parked) {
 				const current = this.#registry.get(id);
 				const currentAdoption = this.#adopted.get(id);
-				if (current?.status === "idle" && current.session && currentAdoption && currentAdoption.idleTtlMs > 0) {
+				if (
+					current?.status === "idle" &&
+					current.session &&
+					currentAdoption &&
+					currentAdoption.idleTtlMs > 0 &&
+					!this.#pinned.has(id)
+				) {
 					// Re-armed through `arm` so the stage travels with it: the expiry that fired
 					// this park cleared both, and a deadline it cannot classify is one it cannot
 					// act on.
@@ -338,7 +404,7 @@ export class AgentLifecycleManager {
 	/**
 	 * Resolve a reviver and bring the agent back to a live session. A ref
 	 * restored from disk is `parked` with a sessionFile but no in-memory
-	 * adoption; build a reviver via the injected persisted-subagent factory and
+	 * adoption; build a reviver via the injected persisted-agent factory and
 	 * adopt it so the agent rejoins the normal idle↔parked lifecycle. Throws
 	 * when the agent is not revivable or no reviver can be produced.
 	 */
@@ -348,23 +414,12 @@ export class AgentLifecycleManager {
 		if (!revive && ref.status === "parked" && ref.sessionFile && this.#persistedReviverFactory) {
 			revive = await this.#persistedReviverFactory(ref);
 			if (revive) {
-				const idleTtlMs =
-					typeof this.#persistedReviveTtl === "function"
-						? this.#persistedReviveTtl(ref)
-						: this.#persistedReviveTtl;
-				// A cold-revived ref carries the operator's CURRENT prune budgets, injected
-				// beside the idle TTL. It used to carry zeros, which meant a ref restored from
-				// disk and woken once was never pruned again, so a resumed session accumulated
-				// every agent it ever revived. The prune budget counts from `lastActivity`, and
-				// the revive below bumps that through `setStatus(id, "idle")`, so a just-woken
-				// agent gets a FULL budget from the wake rather than being dropped for having
-				// been parked a long time.
-				const budget =
-					typeof this.#persistedRevivePruneBudget === "function"
-						? this.#persistedRevivePruneBudget(ref)
-						: this.#persistedRevivePruneBudget;
-				const { afterMs, waitingAfterMs } = normalizePruneBudgets(budget.afterMs, budget.waitingAfterMs);
-				this.#adopted.set(id, { idleTtlMs, pruneAfterMs: afterMs, pruneWaitingAfterMs: waitingAfterMs, revive });
+				// A cold-revived ref carries the operator's CURRENT prune budgets beside the
+				// idle TTL. The prune budget counts from `lastActivity`, and the revive below
+				// bumps that through `setStatus(id, "idle")`, so a just-woken agent gets a
+				// FULL budget from the wake rather than being dropped for having been parked
+				// a long time.
+				this.#adopted.set(id, this.#persistedAdoption(ref, revive));
 				coldAdopted = true;
 			}
 		}
@@ -528,6 +583,7 @@ export class AgentLifecycleManager {
 		await Promise.all(ids.map(id => this.release(id)));
 		this.#revivals.clear();
 		this.#parking.clear();
+		this.#pinned.clear();
 		this.#persistedReviverFactory = undefined;
 	}
 
@@ -677,13 +733,13 @@ export class AgentLifecycleManager {
 	}
 
 	/**
-	 * Put a subagent restored from disk under the same prune budget as one this
+	 * Put a spawned agent restored from disk under the same prune budget as one this
 	 * process parked itself.
 	 *
-	 * Adoption used to happen only at hand-over, so a ref the persisted-subagent
+	 * Adoption used to happen only at hand-over, so a ref the persisted-agent
 	 * scan registered was `parked` with no adoption and therefore no deadline of
 	 * any kind: nothing ever re-derived one, because `parked` is a stable state
-	 * and only a status change re-derives. Every subagent of every previous run
+	 * and only a status change re-derives. Every agent of every previous run
 	 * stayed in the roster for the whole session however long it had been quiet,
 	 * while the operator's "Prune After" governed only the agents this process
 	 * happened to spawn. One roster held eighty of them.
@@ -698,20 +754,30 @@ export class AgentLifecycleManager {
 	 */
 	#adoptRestored(ref: AgentRef): void {
 		if (ref.kind !== "sub" || ref.status !== "parked" || !ref.sessionFile) return;
-		const budget =
-			typeof this.#persistedRevivePruneBudget === "function"
-				? this.#persistedRevivePruneBudget(ref)
-				: this.#persistedRevivePruneBudget;
 		// Zero is the operator's off switch and also what a host that installed no
 		// budget carries. It is NOT re-checked here: `#refreshDeadline` arms nothing
 		// for a zero budget, and a second copy of that rule is a second place for it
 		// to drift.
-		const { afterMs, waitingAfterMs } = normalizePruneBudgets(budget.afterMs, budget.waitingAfterMs);
-		const idleTtlMs =
-			typeof this.#persistedReviveTtl === "function" ? this.#persistedReviveTtl(ref) : this.#persistedReviveTtl;
-		const adopted: AdoptedAgent = { idleTtlMs, pruneAfterMs: afterMs, pruneWaitingAfterMs: waitingAfterMs };
+		const adopted = this.#persistedAdoption(ref, undefined);
 		this.#adopted.set(ref.id, adopted);
 		this.#refreshDeadline(ref.id, adopted);
 		this.#scheduleNext();
+	}
+
+	/**
+	 * The adoption a ref restored from disk receives, whether it is being revived
+	 * (`revive` set) or only listed: the operator's current idle TTL and prune
+	 * budgets, read through the installed resolvers at the moment of adoption so a
+	 * change in `/settings` governs every agent adopted after it, normalized by the
+	 * same rule as a hand-over.
+	 */
+	#persistedAdoption(ref: AgentRef, revive: AgentReviver | undefined): AdoptedAgent {
+		const idleTtlMs =
+			typeof this.#persistedReviveTtl === "function" ? this.#persistedReviveTtl(ref) : this.#persistedReviveTtl;
+		const budget =
+			typeof this.#persistedRevivePruneBudget === "function"
+				? this.#persistedRevivePruneBudget(ref)
+				: this.#persistedRevivePruneBudget;
+		return adoption(idleTtlMs, budget.afterMs, budget.waitingAfterMs, revive);
 	}
 }

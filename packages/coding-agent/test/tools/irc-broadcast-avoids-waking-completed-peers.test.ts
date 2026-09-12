@@ -1,10 +1,10 @@
 /**
  * WHY:
- * When a subagent completes its task, its session is kept alive in memory with
+ * When an agent completes its task, its session is kept alive in memory with
  * status "idle" for its idle TTL before being parked. Previously, `irc send to:all`
  * broadcast to all visible peers (`running` or `idle`), which delivered messages to
- * completed subagents and triggered `#wakeForIrc`, starting unexpected new turns on
- * finished subagents.
+ * completed agents and triggered `#wakeForIrc`, starting unexpected new turns on
+ * finished agents.
  *
  * This test suite defends the invariant that:
  * 1. Broadcast (`to: "all"`) ONLY delivers to active running peers and NEVER

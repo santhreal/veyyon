@@ -169,3 +169,17 @@ export function padLinesToHeight(lines: readonly string[], rows: number): readon
 	while (padded.length < rows) padded.push("");
 	return padded;
 }
+
+/** Edit a query by code point; ignore non-printable keys and initial whitespace. */
+export function applySearchInput(keyData: string, query: string): string | undefined {
+	if (matchesKey(keyData, "backspace")) {
+		if (query.length === 0) return undefined;
+		const last = query.charCodeAt(query.length - 1);
+		const previous = query.charCodeAt(query.length - 2);
+		const paired = last >= 0xdc00 && last <= 0xdfff && previous >= 0xd800 && previous <= 0xdbff;
+		return query.slice(0, paired ? -2 : -1);
+	}
+	const printableText = extractPrintableText(keyData);
+	if (printableText === undefined || (query.length === 0 && printableText.trim().length === 0)) return undefined;
+	return query + printableText;
+}

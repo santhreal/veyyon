@@ -22,7 +22,7 @@ afterAll(() => {
 });
 
 function render(text: string): string {
-	return new UserMessageComponent(text).render(80).join("\n");
+	return new UserMessageComponent({ text: text }).render(80).join("\n");
 }
 
 describe("UserMessageComponent magic-keyword highlighting", () => {
@@ -73,7 +73,13 @@ describe("UserMessageComponent magic-keyword highlighting", () => {
 	it("wraps image references in file hyperlinks when a blob path is available", () => {
 		const imagePath = path.resolve("/tmp/veyyon-image.png");
 		const imageUri = url.pathToFileURL(path.resolve(imagePath)).href;
-		const raw = new UserMessageComponent("please inspect [Image #1]", false, [imagePath]).render(80).join("\n");
+		const raw = new UserMessageComponent({
+			text: "please inspect [Image #1]",
+			synthetic: false,
+			imageLinks: [imagePath],
+		})
+			.render(80)
+			.join("\n");
 		expect(Bun.stripANSI(raw)).toContain("[Image #1]");
 		expect(raw).toContain("\x1b]8;id=");
 		expect(raw).toContain(imageUri);

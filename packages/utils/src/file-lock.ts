@@ -143,7 +143,7 @@ function validateOptions(options: FileLockOptions): Required<FileLockOptions> {
 
 async function inspectParent(filePath: string): Promise<FileIdentity> {
 	const stat = await fs.lstat(path.dirname(filePath));
-	if (!stat.isDirectory() || stat.isSymbolicLink()) {
+	if (!isPlainDirectory(stat)) {
 		throw new Error(`file-lock: unsafe parent directory for ${escapeTerminalText(filePath)}`);
 	}
 	return identityOf(stat);
@@ -151,7 +151,7 @@ async function inspectParent(filePath: string): Promise<FileIdentity> {
 
 function inspectParentSync(filePath: string): FileIdentity {
 	const stat = fsSync.lstatSync(path.dirname(filePath));
-	if (!stat.isDirectory() || stat.isSymbolicLink()) {
+	if (!isPlainDirectory(stat)) {
 		throw new Error(`file-lock: unsafe parent directory for ${escapeTerminalText(filePath)}`);
 	}
 	return identityOf(stat);
@@ -185,6 +185,72 @@ function parseOwnerBytes(bytes: Buffer): LockInfo | null {
 	return isLockInfo(parsed) ? parsed : null;
 }
 
+/** Both inspect twins state what they saw through this one shape; `infoIdentity` and `info` only when observed. */
+function observe(
+	kind: LockObservation["kind"],
+	directoryStat: fsSync.Stats,
+	directoryIdentity: FileIdentity,
+	infoIdentity?: FileIdentity,
+	info?: LockInfo,
+): LockObservation {
+	const observation: LockObservation = {
+		kind,
+		directoryIdentity,
+		directoryMtimeMs: directoryStat.mtimeMs,
+		directoryCtimeMs: directoryStat.ctimeMs,
+	};
+	if (infoIdentity) observation.infoIdentity = infoIdentity;
+	if (info) observation.info = info;
+	return observation;
+}
+
+function isPlainDirectory(stat: fsSync.Stats): boolean {
+	return stat.isDirectory() && !stat.isSymbolicLink();
+}
+
+/** What the `info` file's lstat alone rules out before it is opened; `null` when it is worth opening. */
+function classifyInfoStat(infoStat: fsSync.Stats): "unsafe" | "invalid" | null {
+	if (!infoStat.isFile() || infoStat.isSymbolicLink() || infoStat.nlink !== 1) return "unsafe";
+	if (infoStat.size < 1 || infoStat.size > MAX_OWNER_INFO_BYTES) return "invalid";
+	return null;
+}
+
+/** The opened descriptor is the single-linked regular file the lstat described. */
+function openedInfoMatches(openedStat: fsSync.Stats, infoStat: fsSync.Stats, infoIdentity: FileIdentity): boolean {
+	return (
+		openedStat.isFile() &&
+		openedStat.nlink === 1 &&
+		openedStat.size === infoStat.size &&
+		sameIdentity(identityOf(openedStat), infoIdentity)
+	);
+}
+
+/** The read covered the whole file and the file is still the one opened. */
+function readInfoMatches(
+	bytesRead: number,
+	finalStat: fsSync.Stats,
+	infoStat: fsSync.Stats,
+	infoIdentity: FileIdentity,
+): boolean {
+	return (
+		bytesRead === infoStat.size &&
+		finalStat.size === infoStat.size &&
+		sameIdentity(identityOf(finalStat), infoIdentity)
+	);
+}
+
+function ownerObservation(
+	bytes: Buffer,
+	directoryStat: fsSync.Stats,
+	directoryIdentity: FileIdentity,
+	infoIdentity: FileIdentity,
+): LockObservation {
+	const info = parseOwnerBytes(bytes);
+	return info
+		? observe("valid", directoryStat, directoryIdentity, infoIdentity, info)
+		: observe("invalid", directoryStat, directoryIdentity, infoIdentity);
+}
+
 async function inspectLockDirectory(lockPath: string): Promise<LockObservation | null> {
 	let directoryStat: fsSync.Stats;
 	try {
@@ -194,109 +260,36 @@ async function inspectLockDirectory(lockPath: string): Promise<LockObservation |
 		throw error;
 	}
 	const directoryIdentity = identityOf(directoryStat);
-	if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) {
-		return {
-			kind: "unsafe",
-			directoryIdentity,
-			directoryMtimeMs: directoryStat.mtimeMs,
-			directoryCtimeMs: directoryStat.ctimeMs,
-		};
-	}
+	if (!isPlainDirectory(directoryStat)) return observe("unsafe", directoryStat, directoryIdentity);
 
 	const infoPath = path.join(lockPath, "info");
 	let infoStat: fsSync.Stats;
 	try {
 		infoStat = await fs.lstat(infoPath);
 	} catch (error) {
-		if (isEnoent(error)) {
-			return {
-				kind: "ownerless",
-				directoryIdentity,
-				directoryMtimeMs: directoryStat.mtimeMs,
-				directoryCtimeMs: directoryStat.ctimeMs,
-			};
-		}
+		if (isEnoent(error)) return observe("ownerless", directoryStat, directoryIdentity);
 		throw error;
 	}
 	const infoIdentity = identityOf(infoStat);
-	if (!infoStat.isFile() || infoStat.isSymbolicLink() || infoStat.nlink !== 1) {
-		return {
-			kind: "unsafe",
-			directoryIdentity,
-			directoryMtimeMs: directoryStat.mtimeMs,
-			directoryCtimeMs: directoryStat.ctimeMs,
-			infoIdentity,
-		};
-	}
-	if (infoStat.size < 1 || infoStat.size > MAX_OWNER_INFO_BYTES) {
-		return {
-			kind: "invalid",
-			directoryIdentity,
-			directoryMtimeMs: directoryStat.mtimeMs,
-			directoryCtimeMs: directoryStat.ctimeMs,
-			infoIdentity,
-		};
-	}
+	const ruledOut = classifyInfoStat(infoStat);
+	if (ruledOut) return observe(ruledOut, directoryStat, directoryIdentity, infoIdentity);
 
 	let handle: fs.FileHandle | undefined;
 	try {
 		handle = await fs.open(infoPath, fsSync.constants.O_RDONLY | (fsSync.constants.O_NOFOLLOW ?? 0));
 		const openedStat = await handle.stat();
-		if (
-			!openedStat.isFile() ||
-			openedStat.nlink !== 1 ||
-			openedStat.size !== infoStat.size ||
-			!sameIdentity(identityOf(openedStat), infoIdentity)
-		) {
-			return {
-				kind: "unsafe",
-				directoryIdentity,
-				directoryMtimeMs: directoryStat.mtimeMs,
-				directoryCtimeMs: directoryStat.ctimeMs,
-				infoIdentity,
-			};
+		if (!openedInfoMatches(openedStat, infoStat, infoIdentity)) {
+			return observe("unsafe", directoryStat, directoryIdentity, infoIdentity);
 		}
 		const bytes = Buffer.allocUnsafe(infoStat.size + 1);
 		const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
 		const finalStat = await handle.stat();
-		if (
-			bytesRead !== infoStat.size ||
-			finalStat.size !== infoStat.size ||
-			!sameIdentity(identityOf(finalStat), infoIdentity)
-		) {
-			return {
-				kind: "unsafe",
-				directoryIdentity,
-				directoryMtimeMs: directoryStat.mtimeMs,
-				directoryCtimeMs: directoryStat.ctimeMs,
-				infoIdentity,
-			};
+		if (!readInfoMatches(bytesRead, finalStat, infoStat, infoIdentity)) {
+			return observe("unsafe", directoryStat, directoryIdentity, infoIdentity);
 		}
-		const info = parseOwnerBytes(bytes.subarray(0, bytesRead));
-		return info
-			? {
-					kind: "valid",
-					directoryIdentity,
-					directoryMtimeMs: directoryStat.mtimeMs,
-					directoryCtimeMs: directoryStat.ctimeMs,
-					infoIdentity,
-					info,
-				}
-			: {
-					kind: "invalid",
-					directoryIdentity,
-					directoryMtimeMs: directoryStat.mtimeMs,
-					directoryCtimeMs: directoryStat.ctimeMs,
-					infoIdentity,
-				};
+		return ownerObservation(bytes.subarray(0, bytesRead), directoryStat, directoryIdentity, infoIdentity);
 	} catch {
-		return {
-			kind: "unsafe",
-			directoryIdentity,
-			directoryMtimeMs: directoryStat.mtimeMs,
-			directoryCtimeMs: directoryStat.ctimeMs,
-			infoIdentity,
-		};
+		return observe("unsafe", directoryStat, directoryIdentity, infoIdentity);
 	} finally {
 		await handle?.close().catch(() => {});
 	}
@@ -311,109 +304,36 @@ function inspectLockDirectorySync(lockPath: string): LockObservation | null {
 		throw error;
 	}
 	const directoryIdentity = identityOf(directoryStat);
-	if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) {
-		return {
-			kind: "unsafe",
-			directoryIdentity,
-			directoryMtimeMs: directoryStat.mtimeMs,
-			directoryCtimeMs: directoryStat.ctimeMs,
-		};
-	}
+	if (!isPlainDirectory(directoryStat)) return observe("unsafe", directoryStat, directoryIdentity);
 
 	const infoPath = path.join(lockPath, "info");
 	let infoStat: fsSync.Stats;
 	try {
 		infoStat = fsSync.lstatSync(infoPath);
 	} catch (error) {
-		if (isEnoent(error)) {
-			return {
-				kind: "ownerless",
-				directoryIdentity,
-				directoryMtimeMs: directoryStat.mtimeMs,
-				directoryCtimeMs: directoryStat.ctimeMs,
-			};
-		}
+		if (isEnoent(error)) return observe("ownerless", directoryStat, directoryIdentity);
 		throw error;
 	}
 	const infoIdentity = identityOf(infoStat);
-	if (!infoStat.isFile() || infoStat.isSymbolicLink() || infoStat.nlink !== 1) {
-		return {
-			kind: "unsafe",
-			directoryIdentity,
-			directoryMtimeMs: directoryStat.mtimeMs,
-			directoryCtimeMs: directoryStat.ctimeMs,
-			infoIdentity,
-		};
-	}
-	if (infoStat.size < 1 || infoStat.size > MAX_OWNER_INFO_BYTES) {
-		return {
-			kind: "invalid",
-			directoryIdentity,
-			directoryMtimeMs: directoryStat.mtimeMs,
-			directoryCtimeMs: directoryStat.ctimeMs,
-			infoIdentity,
-		};
-	}
+	const ruledOut = classifyInfoStat(infoStat);
+	if (ruledOut) return observe(ruledOut, directoryStat, directoryIdentity, infoIdentity);
 
 	let fd: number | undefined;
 	try {
 		fd = fsSync.openSync(infoPath, fsSync.constants.O_RDONLY | (fsSync.constants.O_NOFOLLOW ?? 0));
 		const openedStat = fsSync.fstatSync(fd);
-		if (
-			!openedStat.isFile() ||
-			openedStat.nlink !== 1 ||
-			openedStat.size !== infoStat.size ||
-			!sameIdentity(identityOf(openedStat), infoIdentity)
-		) {
-			return {
-				kind: "unsafe",
-				directoryIdentity,
-				directoryMtimeMs: directoryStat.mtimeMs,
-				directoryCtimeMs: directoryStat.ctimeMs,
-				infoIdentity,
-			};
+		if (!openedInfoMatches(openedStat, infoStat, infoIdentity)) {
+			return observe("unsafe", directoryStat, directoryIdentity, infoIdentity);
 		}
 		const bytes = Buffer.allocUnsafe(infoStat.size + 1);
 		const bytesRead = fsSync.readSync(fd, bytes, 0, bytes.length, 0);
 		const finalStat = fsSync.fstatSync(fd);
-		if (
-			bytesRead !== infoStat.size ||
-			finalStat.size !== infoStat.size ||
-			!sameIdentity(identityOf(finalStat), infoIdentity)
-		) {
-			return {
-				kind: "unsafe",
-				directoryIdentity,
-				directoryMtimeMs: directoryStat.mtimeMs,
-				directoryCtimeMs: directoryStat.ctimeMs,
-				infoIdentity,
-			};
+		if (!readInfoMatches(bytesRead, finalStat, infoStat, infoIdentity)) {
+			return observe("unsafe", directoryStat, directoryIdentity, infoIdentity);
 		}
-		const info = parseOwnerBytes(bytes.subarray(0, bytesRead));
-		return info
-			? {
-					kind: "valid",
-					directoryIdentity,
-					directoryMtimeMs: directoryStat.mtimeMs,
-					directoryCtimeMs: directoryStat.ctimeMs,
-					infoIdentity,
-					info,
-				}
-			: {
-					kind: "invalid",
-					directoryIdentity,
-					directoryMtimeMs: directoryStat.mtimeMs,
-					directoryCtimeMs: directoryStat.ctimeMs,
-					infoIdentity,
-				};
+		return ownerObservation(bytes.subarray(0, bytesRead), directoryStat, directoryIdentity, infoIdentity);
 	} catch {
-		return {
-			kind: "unsafe",
-			directoryIdentity,
-			directoryMtimeMs: directoryStat.mtimeMs,
-			directoryCtimeMs: directoryStat.ctimeMs,
-			infoIdentity,
-		};
+		return observe("unsafe", directoryStat, directoryIdentity, infoIdentity);
 	} finally {
 		if (fd !== undefined) {
 			try {

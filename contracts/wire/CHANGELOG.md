@@ -4,13 +4,21 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Bumped `COLLAB_PROTO` to `4`: tool execution display projections (`ToolExecutionDisplay`) are carried on tool calls, tool results, and live execution events. Old guests speaking proto v3 or below are rejected with the protocol-mismatch error.
+
 ### Added
 
+- Tool execution display metadata includes per-call grouped-read status, paths, previews and line numbers.
 - `@veyyon/wire/presentation` states the renderer contract: `PresentationContext`, the transcript, status, composer and overlay view-models, the `UIEvent` union and an abstract hex-colour theme. A renderer implementing it draws a session without importing coding-agent. The subpath adds no dependencies.
+- `@veyyon/wire/collab-link` owns the collab link grammar: `encodeBase64Url`, `decodeBase64Url`, `isLocalHostname`, `normalizeRelayOrigin`, `generateRoomId`, `formatCollabLinkPayload`, `formatCollabLink` and `parseCollabLink`, beside `ROOM_ID_BYTES`, `ROOM_KEY_BYTES`, `WRITE_TOKEN_BYTES`, `DEFAULT_RELAY_URL` and `ParsedCollabLink`, which moved there and are re-exported from the barrel unchanged; base64url goes through `atob`/`btoa` so the browser guest and the host run the same code.
 
 ### Changed
 
 - `TextContent`, `ImageContent`, `ThinkingContent`, `RedactedThinkingContent`, `ToolCallContent`, `FallbackContent`, `WireStopReason` and `WireUsage` are `Pick` projections of the shapes `@veyyon/model` owns, imported type-only, with the same fields as before; the package declares `@veyyon/model` and no runtime dependency.
+- `AgentProgressPayload` and `AgentLifecyclePayload` are the payloads on the `task:subagent:progress` and `task:subagent:lifecycle` bus channels; `SubagentProgressPayload` and `SubagentLifecyclePayload` remain exported as the same types, and the channel spellings are unchanged.
+- `generateRoomKey` and `generateWriteToken` return the filled random buffer directly; the key and token lengths are unchanged.
 
 - `VideoContent` joins the user, developer, tool-result and custom message content unions so collab guests receive video attachments.
 

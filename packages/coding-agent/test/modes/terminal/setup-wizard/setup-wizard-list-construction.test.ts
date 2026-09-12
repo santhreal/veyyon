@@ -86,12 +86,12 @@ const CANDIDATES: readonly ImportCandidate[] = ["one", "two", "three", "four", "
 }));
 
 /** Every scene that mounts a picker, by the id the wizard knows it as. */
-const LIST_SCENE_IDS = ["providers", "approvals", "subagents", "glyph-mode", "theme", "import-config"] as const;
+const LIST_SCENE_IDS = ["providers", "approvals", "agents", "glyph-mode", "theme", "import-config"] as const;
 
 /**
  * Mount one, in the state onboarding shows it.
  *
- * `subagents` and `import-config` take their rows as a constructor argument
+ * `agents` and `import-config` take their rows as a constructor argument
  * (their scenes fill them by scanning the machine, which a test must not do),
  * so they are built directly; the rest are mounted through their scene exactly
  * as the wizard mounts them. Called inside each case, never at collection time:
@@ -103,7 +103,7 @@ function mountScene(id: (typeof LIST_SCENE_IDS)[number]): SetupSceneController {
 			return providersSetupScene.mount(makeHost());
 		case "approvals":
 			return approvalsSetupScene.mount(makeHost());
-		case "subagents":
+		case "agents":
 			return new AgentsSceneController(makeHost(), AGENTS);
 		case "glyph-mode":
 			return glyphSetupScene.mount(makeHost());
@@ -119,14 +119,14 @@ const WIDTH = 72;
  * Two body budgets, because "searchable" is a function of the budget, not of
  * the scene. Measured over these six scenes: at 8 rows providers, theme and
  * import overflow; at 12 the theme preview and the import list fit again while
- * the subagents list, which reserves four rows for its detail block, does not.
+ * the agents list, which reserves four rows for its detail block, does not.
  * Neither budget alone reaches every list, and a sweep is the only way this
  * table is not quietly vacuous for half its rows.
  */
 const BUDGETS = [8, 12] as const;
 
 /** Lists that must overflow at one of {@link BUDGETS}, so their case is live. */
-const MUST_BE_SEARCHABLE_SOMEWHERE = ["providers", "subagents", "theme", "import-config"] as const;
+const MUST_BE_SEARCHABLE_SOMEWHERE = ["providers", "agents", "theme", "import-config"] as const;
 
 function body(controller: SetupSceneController, rows: number): string {
 	return controller

@@ -12,7 +12,7 @@
 set -euo pipefail
 source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 
-PREFIX_DIR="${SCENE_RUNTIME_DIR}/moving-prefix"
+PREFIX_DIR="${TMPDIR}/moving-prefix"
 mkdir -p "${PREFIX_DIR}"
 export PREFIX_DIR
 WINDOW_CROP="${WIN_W}x${WIN_H}+${WIN_X}+${WIN_Y}"
@@ -32,7 +32,7 @@ t "local/qwen2.5-1.5b"
 pause 0.6
 k "Return"
 pause 0.8
-submit_prompt "Write a Markdown numbered list from 1 to 80. Use exactly this syntax: 1. **One** then 2. **Two**, with one item per line. Put two literal asterisks before and after every English number word. Continue through 80. **Eighty**. No tools, code fences, introduction, or conclusion."
+submit_prompt 'Write a Markdown numbered list from 1 to 80, one item per line. Use exactly the line formats `1. **One**`, `2. **Two**`, through `80. **Eighty**`. Each line must end with the closing asterisks, without trailing punctuation. Output the list only: no backticks, tools, code fences, introduction, or conclusion.'
 move_px "${COMPOSER_X}" "${COMPOSER_Y}"
 
 # No further input during this interval. A changing transcript while the row
@@ -71,7 +71,7 @@ import os
 from pathlib import Path
 import re
 
-runtime = Path(os.environ['SCENE_RUNTIME_DIR'])
+runtime = Path(os.environ['TMPDIR'])
 session = json.loads((runtime / 'created-session.json').read_text())
 profile = os.environ.get('VEYYON_PROFILE') or 'default'
 store = Path.home() / '.veyyon' / 'profiles' / profile / 'agent' / 'sessions'
@@ -91,7 +91,7 @@ for line in paths[0].read_text().splitlines():
 	replies.append(''.join(block.get('text', '') for block in content if block.get('type') == 'text'))
 text = '\n'.join(replies)
 items = re.findall(r'^\s*(\d+)\.\s+\*\*([^*\n]+)\*\*\s*$', text, re.MULTILINE)
-(Path(os.environ['PREFIX_DIR']) / 'provider-reply.txt').write_text(text)
+(Path(os.environ['SCENE_OUT']) / f"{os.environ['SCENE_NAME']}-provider-reply.txt").write_text(text)
 if [int(number) for number, _ in items] != list(range(1, 81)):
 	raise SystemExit(f'The real reply contains {len(items)} numbered bold items, not the requested 1 through 80')
 print('scene: persisted real assistant reply contains numbered bold items 1 through 80')

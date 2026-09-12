@@ -9,29 +9,15 @@
  *
  *     bun scripts/demos/render-settings-rollback.ts [--theme titanium] [--width 130]
  */
-import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/settings-selector";
-import { flag, initRender, renderWidth } from "./render-args";
+import { renderDemo } from "./render-args";
+import { createTestSettingsSelector } from "./render-settings-helper";
 
-const themeName = flag("theme", "titanium");
-const width = renderWidth();
-
-await initRender(themeName, { settings: true });
-
-const selector = new SettingsSelectorComponent(
-	{
-		availableThinkingLevels: [],
-		thinkingLevel: undefined,
-		availableThemes: [themeName],
-		availablePersonalities: ["default"],
-		providers: ["anthropic"],
-		cwd: process.cwd(),
+await renderDemo(
+	({ width, theme }) => {
+		const selector = createTestSettingsSelector(theme, { availableThemes: [theme] }, { onRollback: async () => {} });
+		selector.openTab("interaction");
+		selector.selectSetting("__action:rollback");
+		return selector.render(width);
 	},
-	// The installer is what makes the row appear at all, so the proof render has
-	// to supply one; a no-op is enough, since nothing is selected here.
-	{ onChange: () => {}, onCancel: () => {}, onRollback: async () => {} },
+	{ settings: true },
 );
-
-selector.openTab("interaction");
-selector.selectSetting("__action:rollback");
-
-process.stdout.write(`${selector.render(width).join("\n")}\n`);

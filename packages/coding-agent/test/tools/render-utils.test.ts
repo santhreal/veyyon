@@ -2,14 +2,13 @@ import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { getThemeByName, initTheme, type Theme, theme } from "@veyyon/coding-agent/theme/theme";
+import { initTheme, type Theme, theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	capParseErrors,
 	capPreviewLines,
 	dedupeParseErrors,
 	expandKeyHint,
 	formatCodeFrameLine,
-	formatDiagnostics,
 	formatErrorMessage,
 	formatExpandHint,
 	formatMoreItems,
@@ -25,7 +24,6 @@ import {
 	shortenPath,
 	truncateDiffByHunk,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import { sanitizeText } from "@veyyon/utils";
 import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
 
 describe("parse error formatting", () => {
@@ -194,95 +192,6 @@ describe("formatScreenshot", () => {
 		expect(lines).toContain(
 			"[Image: original 1600x1200, displayed at 800x600. Multiply coordinates by 2.00 to map to original image.]",
 		);
-	});
-});
-
-describe("formatDiagnostics", () => {
-	it("replaces tabs in rendered diagnostic text", async () => {
-		const theme = await getThemeByName("dark");
-		expect(theme).toBeDefined();
-
-		const formatted = formatDiagnostics(
-			{
-				errored: true,
-				summary: "1\terror(s)",
-				messages: [
-					"src/example.go:183:41 [error] [compiler] too many\targuments in call (WrongArgCount)",
-					"\tunparsed diagnostic\tmessage",
-				],
-			},
-			true,
-			theme!,
-			() => "go",
-		);
-
-		expect(formatted).not.toContain("\t");
-		expect(formatted.replace(/\s+/g, " ")).toContain("too many arguments in call");
-		expect(formatted.replace(/\s+/g, " ")).toContain("unparsed diagnostic message");
-		expect(formatted.replace(/\s+/g, " ")).toContain("1 error(s)");
-	});
-
-	it("renders files and diagnostics with no tree connectors and indented diagnostics", async () => {
-		const theme = await getThemeByName("dark");
-		expect(theme).toBeDefined();
-
-		const formatted = formatDiagnostics(
-			{
-				errored: true,
-				summary: "2 errors",
-				messages: [
-					"src/foo.ts:10:5 [error] [ts] Type error (TS2322)",
-					"src/foo.ts:20:1 [warning] [ts] Unused variable (TS6133)",
-					"src/bar.ts:5:2 [error] [ts] Missing semicolon (TS1005)",
-				],
-			},
-			true,
-			theme!,
-			() => "ts",
-		);
-
-		const cleanLines = sanitizeText(formatted)
-			.split("\n")
-			.filter(l => l.trim());
-		// Header line
-		expect(cleanLines[0]).toContain("Diagnostics (2 errors)");
-		// No tree connectors
-		for (const line of cleanLines) {
-			expect(line).not.toMatch(/[├└│]/);
-		}
-		// File lines are followed by 2-space indented diagnostics
-		const fooIndex = cleanLines.findIndex(l => l.includes("src/foo.ts"));
-		expect(fooIndex).toBeGreaterThan(0);
-		expect(cleanLines[fooIndex + 1]).toMatch(/^\s{2}\S/);
-		expect(cleanLines[fooIndex + 1]).toContain(":10:5");
-		expect(cleanLines[fooIndex + 2]).toMatch(/^\s{2}\S/);
-		expect(cleanLines[fooIndex + 2]).toContain(":20:1");
-		const barIndex = cleanLines.findIndex(l => l.includes("src/bar.ts"));
-		expect(barIndex).toBeGreaterThan(fooIndex + 2);
-		expect(cleanLines[barIndex + 1]).toMatch(/^\s{2}\S/);
-		expect(cleanLines[barIndex + 1]).toContain(":5:2");
-	});
-
-	it("collapses diagnostics with an overflow counter when not expanded", async () => {
-		const theme = await getThemeByName("dark");
-		expect(theme).toBeDefined();
-
-		const messages = Array.from({ length: 8 }, (_, i) => `src/file.ts:${i + 1}:1 [error] [ts] Error ${i + 1}`);
-		const collapsed = formatDiagnostics({ errored: true, summary: "8 errors", messages }, false, theme!, () => "ts");
-		const cleanCollapsed = sanitizeText(collapsed)
-			.split("\n")
-			.filter(l => l.trim());
-		expect(cleanCollapsed.some(l => l.includes("… 3 more"))).toBe(true);
-		for (const line of cleanCollapsed) {
-			expect(line).not.toMatch(/[├└│]/);
-		}
-
-		const expanded = formatDiagnostics({ errored: true, summary: "8 errors", messages }, true, theme!, () => "ts");
-		const cleanExpanded = sanitizeText(expanded)
-			.split("\n")
-			.filter(l => l.trim());
-		expect(cleanExpanded.some(l => l.includes("more"))).toBe(false);
-		expect(cleanExpanded.some(l => l.includes("Error 8"))).toBe(true);
 	});
 });
 

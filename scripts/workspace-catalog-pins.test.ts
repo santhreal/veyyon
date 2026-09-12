@@ -28,10 +28,13 @@
 
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
-import * as path from "node:path";
-import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
-
-const repoRoot = path.resolve(import.meta.dir, "..");
+import { join } from "node:path";
+import {
+	readPackageJson,
+	REPO_ROOT as repoRoot,
+	typeScriptMemberTopLevels,
+	workspaceManifests,
+} from "./workspace-layout";
 
 /** Fields whose entries are resolved for THIS workspace, so `catalog:` is usable in them. */
 const RESOLVED_FIELDS = ["dependencies", "devDependencies", "optionalDependencies"] as const;
@@ -42,36 +45,26 @@ interface PackageManifest {
 	devDependencies?: Record<string, string>;
 	optionalDependencies?: Record<string, string>;
 	peerDependencies?: Record<string, string>;
-	workspaces?: { catalog?: Record<string, string> };
 }
 
-function readManifest(file: string): PackageManifest {
-	return JSON.parse(readFileSync(file, "utf-8")) as PackageManifest;
+const rootManifest = readPackageJson("", repoRoot);
+const rawCatalog =
+	rootManifest &&
+	typeof rootManifest === "object" &&
+	"workspaces" in rootManifest &&
+	rootManifest.workspaces &&
+	typeof rootManifest.workspaces === "object" &&
+	"catalog" in rootManifest.workspaces &&
+	rootManifest.workspaces.catalog &&
+	typeof rootManifest.workspaces.catalog === "object"
+		? rootManifest.workspaces.catalog
+		: {};
+const catalog: Record<string, string> = {};
+for (const [k, v] of Object.entries(rawCatalog)) {
+	if (typeof v === "string") catalog[k] = v;
 }
 
-const catalog: Record<string, string> = readManifest(path.join(repoRoot, "package.json")).workspaces?.catalog ?? {};
-
-/**
- * Every workspace member manifest, across the members the root manifest declares.
- *
- * This read `packages/` alone. `contracts/wire` and `contracts/view` both declare `@types/bun`,
- * which is catalogued, so a literal range written there was a second place to change the version
- * and this gate did not look at it. The root view was in turn blind to literal paths
- * (`natives/bridge/bindings`, `clients/python/veybot/web`), which `typeScriptMembers()` now reaches.
- */
-function workspaceManifests(): Array<{ rel: string; manifest: PackageManifest }> {
-	const found: Array<{ rel: string; manifest: PackageManifest }> = [];
-	for (const member of typeScriptMembers()) {
-		const rel = `${member}/package.json`;
-		const file = path.join(repoRoot, rel);
-		try {
-			found.push({ rel, manifest: readManifest(file) });
-		} catch {
-			// A non-existent manifest is skipped.
-		}
-	}
-	return found;
-}
+const manifests = workspaceManifests(repoRoot) as Array<{ rel: string; manifest: PackageManifest }>;
 
 /** A spec that names a version rather than deferring to the catalog or the workspace. */
 function isLiteralVersion(spec: string): boolean {
@@ -82,8 +75,6 @@ function isLiteralVersion(spec: string): boolean {
 		!spec.startsWith("link:")
 	);
 }
-
-const manifests = workspaceManifests();
 
 describe("the catalog is the only place a shared version is written", () => {
 	it("reads a manifest under every root the workspace declares", () => {
@@ -184,7 +175,7 @@ describe("the lockfile", () => {
 		// for one of these names would mean two versions installed side by side, which is the
 		// outcome the whole change exists to prevent. Nested entries (`fastembed/onnxruntime-node`)
 		// are a dependency's own private resolution and are not this contract's business.
-		const lock = readFileSync(path.join(repoRoot, "bun.lock"), "utf-8");
+		const lock = readFileSync(join(repoRoot, "bun.lock"), "utf-8");
 		for (const name of ["react", "react-dom", "@types/react", "@types/bun", "fast-check", "onnxruntime-node"]) {
 			const entries = [
 				...lock.matchAll(new RegExp(`^\\s*"${name.replace("/", "\\/")}": \\["${name}@([^"]+)"`, "gm")),
@@ -194,7 +185,7 @@ describe("the lockfile", () => {
 	});
 
 	it("resolves the react family to the single version the catalog names", () => {
-		const lock = readFileSync(path.join(repoRoot, "bun.lock"), "utf-8");
+		const lock = readFileSync(join(repoRoot, "bun.lock"), "utf-8");
 		expect(lock).toContain('"react": ["react@19.2.7"');
 		expect(lock).toContain('"react-dom": ["react-dom@19.2.7"');
 		expect(lock).toContain('"fast-check": ["fast-check@4.9.0"');

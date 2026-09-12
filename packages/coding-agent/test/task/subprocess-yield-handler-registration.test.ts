@@ -1,12 +1,12 @@
 /**
- * Contracts: the task executor can read a subagent's yield without help from anyone else.
+ * Contracts: the task executor can read an agent's yield without help from anyone else.
  *
- * HOW A SUBAGENT FINISHES. It calls `yield`. The executor sees a `tool_execution_end` for that tool
+ * HOW A AGENT FINISHES. It calls `yield`. The executor sees a `tool_execution_end` for that tool
  * name, looks the tool up in `subprocessToolRegistry`, and uses the handler to pull the result out
  * and to decide the run is over. No handler means no extracted data, which means `yieldCalled` is
- * never set, which means the subagent is prompted again for a result it already gave, twice more,
- * and the run ends with `SYSTEM WARNING: Subagent exited without calling yield tool` and exit code
- * 1. The subagent did nothing wrong and nothing says so.
+ * never set, which means the agent is prompted again for a result it already gave, twice more,
+ * and the run ends with `SYSTEM WARNING: Agent exited without calling yield tool` and exit code
+ * 1. The agent did nothing wrong and nothing says so.
  *
  * WHY THAT WAS REACHABLE. The handler is registered as a side effect of loading `tools/agent/yield.ts`,
  * and `task/executor.ts` did not import it. In production the registration arrived by luck of import
@@ -18,7 +18,7 @@
  *
  * This suite pins the requirement at its own level, so a future import cleanup that drops the
  * side-effect import fails HERE, with the reason, rather than as a wave of unrelated-looking
- * subagent failures.
+ * agent failures.
  */
 import { describe, expect, it } from "bun:test";
 import { subprocessToolRegistry, YIELD_TOOL_NAME } from "@veyyon/coding-agent/task/subprocess-tool-registry";
@@ -69,7 +69,7 @@ describe("importing the task executor", () => {
 	});
 
 	/**
-	 * An aborted yield is still a yield: the subagent answered, and the answer is that it stopped. If
+	 * An aborted yield is still a yield: the agent answered, and the answer is that it stopped. If
 	 * this returned `undefined` the executor would treat an abort as no result at all and remind an
 	 * agent that is already gone.
 	 */
@@ -94,7 +94,7 @@ describe("importing the task executor", () => {
 	});
 
 	/**
-	 * A rejected yield is not a result. The executor must keep waiting, because the subagent still has
+	 * A rejected yield is not a result. The executor must keep waiting, because the agent still has
 	 * to answer, and extracting a value here would end the run on a failed call.
 	 */
 	it("extracts nothing from a yield that did not succeed", () => {

@@ -4,13 +4,13 @@
  * Interactive multi-step wizard for adding MCP servers.
  */
 import { type Component, Container, Input, Spacer, Text } from "@veyyon/tui";
+import { HoverController } from "@veyyon/tui/utils/hover-controller";
 import { errorMessage, getMCPConfigPath, getProjectDir } from "@veyyon/utils";
 import { matchesKey } from "@veyyon/utils/keys";
-import { HoverFade } from "@veyyon/utils/motion";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth } from "@veyyon/utils/width";
-import { replaceTabs } from "@veyyon/utils/wrap";
 import { validateServerName } from "../../../../mcp/config-writer";
 import { analyzeAuthError, discoverOAuthEndpoints, fetchResourceMetadataScopes } from "../../../../mcp/oauth-discovery";
 import type {
@@ -25,8 +25,6 @@ import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../u
 import {
 	CARD_BODY_COL_INSET,
 	computeModalDims,
-	consumeModalChipHover,
-	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
 	type ModalShortcut,
@@ -35,6 +33,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "../chrome/modal-shell";
+import { routeModalChrome } from "../selectors/select-list-mouse-routing";
 import { hoverBandAt } from "../selectors/selector-helpers";
 
 type TransportType = "stdio" | "http" | "sse";
@@ -115,6 +114,84 @@ const MAX_DISPLAY_WIDTH = 120;
 function sanitize(text: string): string {
 	return truncateToWidth(replaceTabs(text), MAX_DISPLAY_WIDTH);
 }
+interface TextInputStepDescriptor {
+	readonly title: string;
+	readonly prompt: string;
+	readonly field: keyof WizardState;
+	readonly subtitle?: string;
+	readonly hint?: string;
+	readonly showValidationError?: boolean;
+}
+
+const TEXT_INPUT_STEPS: Partial<Record<WizardStep, TextInputStepDescriptor>> = {
+	name: {
+		title: "Step 1: Server Name",
+		prompt: "Enter a unique name for this server:",
+		field: "name",
+		showValidationError: true,
+	},
+	command: {
+		title: "Step 3: Command",
+		prompt: "Enter the command to run:",
+		field: "command",
+	},
+	args: {
+		title: "Step 4: Arguments (Optional)",
+		prompt: "Enter command arguments (space-separated):",
+		field: "args",
+	},
+	url: {
+		title: "Step 3: Server URL",
+		prompt: "Enter the server URL:",
+		field: "url",
+		showValidationError: true,
+	},
+	"oauth-auth-url": {
+		title: "OAuth: Authorization URL",
+		prompt: "Enter the OAuth authorization endpoint:",
+		field: "oauthAuthUrl",
+		hint: "e.g., https://auth.example.com/oauth/authorize",
+	},
+	"oauth-token-url": {
+		title: "OAuth: Token URL",
+		prompt: "Enter the OAuth token endpoint:",
+		field: "oauthTokenUrl",
+		hint: "e.g., https://auth.example.com/oauth/token",
+	},
+	"oauth-client-id": {
+		title: "OAuth: Client ID",
+		prompt: "Enter your OAuth client ID:",
+		field: "oauthClientId",
+	},
+	"oauth-client-secret": {
+		title: "OAuth: Client Secret (Optional)",
+		prompt: "Enter your OAuth client secret:",
+		subtitle: "(Leave empty for PKCE-only flows)",
+		field: "oauthClientSecret",
+	},
+	"oauth-scopes": {
+		title: "OAuth: Scopes (Optional)",
+		prompt: "Enter OAuth scopes (space-separated):",
+		field: "oauthScopes",
+		hint: "e.g., read write",
+	},
+	apikey: {
+		title: "API Key Required",
+		prompt: "Enter your API key or token:",
+		subtitle: "(Supports !command for password manager)",
+		field: "apiKey",
+	},
+	"env-var-name": {
+		title: "Step: Environment Variable Name",
+		prompt: "Enter the environment variable name:",
+		field: "envVarName",
+	},
+	"header-name": {
+		title: "Step: HTTP Header Name",
+		prompt: "Enter the HTTP header name:",
+		field: "headerName",
+	},
+};
 
 export class MCPAddWizard implements Component {
 	#currentStep: WizardStep = "name";
@@ -144,13 +221,11 @@ export class MCPAddWizard implements Component {
 	#optionRows = new Map<Component, number>();
 	/** Per-render map of 0-based body line → option index. */
 	#hitRows: (number | undefined)[] = [];
-	/** Pointer-highlighted option (never the selected one; selection owns its row). */
-	#hoveredIndex: number | null = null;
 	/**
-	 * The cross-fade between the option the pointer left and the one it arrived at, once a host
-	 * lends this card a repaint. Absent, the band is switched.
+	 * Manages pointer hover state and cross-fade for option rows, once a host lends this card a repaint.
+	 * Absent, the band is switched.
 	 */
-	#hoverFade: HoverFade | undefined;
+	#hover = new HoverController<number>();
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	/** Frame row where the body begins (shell body start). */
@@ -223,22 +298,12 @@ export class MCPAddWizard implements Component {
 		this.#onRenderCallback = cb;
 		// The band fades only once the card has a repaint to lend it: the frames between two mouse
 		// reports have no input to hang off. Same ambient gate as the open unfold.
-		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: pointerMotionEnabled() });
-		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+		this.#hover.setMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
 	}
 
 	/** Settle the pointer band so no timer outlives a dismissed wizard. */
 	dispose(): void {
-		this.#hoverFade?.dispose();
-		this.#hoverFade = undefined;
-		this.#hoveredIndex = null;
-	}
-
-	/** Band strength for an option row; without a fade the hovered row is at 1 and the rest at 0. */
-	#hoverStrength(index: number): number {
-		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
-		return index === this.#hoveredIndex ? 1 : 0;
+		this.#hover.dispose();
 	}
 
 	/**
@@ -248,9 +313,9 @@ export class MCPAddWizard implements Component {
 	 */
 	#clearContent(): void {
 		this.#contentContainer.clear();
+		this.#inputField = null;
 		this.#optionRows.clear();
-		this.#hoveredIndex = null;
-		this.#hoverFade?.set(null);
+		this.#hover.set(null);
 	}
 
 	/** Add an option row and record which option it stands for, for the pointer. */
@@ -260,29 +325,33 @@ export class MCPAddWizard implements Component {
 		this.#optionRows.set(row, index);
 	}
 
+	#renderChoiceOptions(options: readonly string[]): void {
+		for (let i = 0; i < options.length; i++) {
+			const isSelected = i === this.#selectedIndex;
+			const prefix = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
+			const text = isSelected ? theme.fg("accent", options[i]) : options[i];
+			this.#addOptionRow(prefix + text, i);
+		}
+
+		this.#contentContainer.addChild(new Spacer(1));
+	}
+
 	#requestRender(): void {
 		this.#onRenderCallback?.();
 	}
 
 	#renderStep(): void {
 		this.#clearContent();
-		this.#inputField = null; // Reset input field
+
+		const textDescriptor = TEXT_INPUT_STEPS[this.#currentStep];
+		if (textDescriptor) {
+			this.#renderTextInputStep(textDescriptor);
+			return;
+		}
 
 		switch (this.#currentStep) {
-			case "name":
-				this.#renderNameStep();
-				break;
 			case "transport":
 				this.#renderTransportStep();
-				break;
-			case "command":
-				this.#renderCommandStep();
-				break;
-			case "args":
-				this.#renderArgsStep();
-				break;
-			case "url":
-				this.#renderUrlStep();
 				break;
 			case "auth-method":
 				this.#renderAuthMethodStep();
@@ -290,32 +359,8 @@ export class MCPAddWizard implements Component {
 			case "oauth-error":
 				this.#renderOAuthErrorStep();
 				break;
-			case "oauth-auth-url":
-				this.#renderOAuthAuthUrlStep();
-				break;
-			case "oauth-token-url":
-				this.#renderOAuthTokenUrlStep();
-				break;
-			case "oauth-client-id":
-				this.#renderOAuthClientIdStep();
-				break;
-			case "oauth-client-secret":
-				this.#renderOAuthClientSecretStep();
-				break;
-			case "oauth-scopes":
-				this.#renderOAuthScopesStep();
-				break;
-			case "apikey":
-				this.#renderApiKeyStep();
-				break;
 			case "auth-location":
 				this.#renderAuthLocationStep();
-				break;
-			case "env-var-name":
-				this.#renderEnvVarNameStep();
-				break;
-			case "header-name":
-				this.#renderHeaderNameStep();
 				break;
 			case "confirm":
 				this.#renderConfirmStep();
@@ -323,19 +368,26 @@ export class MCPAddWizard implements Component {
 		}
 	}
 
-	#renderNameStep(): void {
-		this.#contentContainer.addChild(new Text(theme.fg("accent", "Step 1: Server Name")));
+	#renderTextInputStep(descriptor: TextInputStepDescriptor): void {
+		this.#contentContainer.addChild(new Text(theme.fg("accent", descriptor.title)));
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text("Enter a unique name for this server:", 0, 0));
+		this.#contentContainer.addChild(new Text(descriptor.prompt, 0, 0));
+		if (descriptor.subtitle) {
+			this.#contentContainer.addChild(new Text(theme.fg("muted", descriptor.subtitle), 0, 0));
+		}
 		this.#contentContainer.addChild(new Spacer(1));
 
 		this.#inputField = new Input();
-		this.#inputField.setValue(this.#state.name);
+		this.#inputField.setValue(String(this.#state[descriptor.field] ?? ""));
 		this.#contentContainer.addChild(this.#inputField);
 		this.#contentContainer.addChild(new Spacer(1));
 
-		// Show validation error if any
-		if (this.#validationError) {
+		if (descriptor.hint) {
+			this.#contentContainer.addChild(new Text(theme.fg("muted", descriptor.hint), 0, 0));
+			this.#contentContainer.addChild(new Spacer(1));
+		}
+
+		if (descriptor.showValidationError && this.#validationError) {
 			this.#contentContainer.addChild(new Text(theme.fg("error", `x ${sanitize(this.#validationError)}`), 0, 0));
 			this.#contentContainer.addChild(new Spacer(1));
 		}
@@ -347,107 +399,14 @@ export class MCPAddWizard implements Component {
 		this.#contentContainer.addChild(new Text("Select the transport type:", 0, 0));
 		this.#contentContainer.addChild(new Spacer(1));
 
-		const options = [
-			{ value: "stdio" as const, label: "stdio (Local process)" },
-			{ value: "http" as const, label: "http (HTTP server)" },
-			{ value: "sse" as const, label: "sse (Server-Sent Events)" },
-		];
-
-		for (let i = 0; i < options.length; i++) {
-			const option = options[i];
-			const isSelected = i === this.#selectedIndex;
-			const prefix = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
-			const text = isSelected ? theme.fg("accent", option.label) : option.label;
-			this.#addOptionRow(prefix + text, i);
-		}
-
-		this.#contentContainer.addChild(new Spacer(1));
-	}
-
-	#renderCommandStep(): void {
-		this.#contentContainer.addChild(new Text(theme.fg("accent", "Step 3: Command")));
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text("Enter the command to run:", 0, 0));
-		this.#contentContainer.addChild(new Spacer(1));
-
-		this.#inputField = new Input();
-		this.#inputField.setValue(this.#state.command);
-		this.#contentContainer.addChild(this.#inputField);
-		this.#contentContainer.addChild(new Spacer(1));
-	}
-
-	#renderArgsStep(): void {
-		this.#contentContainer.addChild(new Text(theme.fg("accent", "Step 4: Arguments (Optional)")));
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text("Enter command arguments (space-separated):", 0, 0));
-		this.#contentContainer.addChild(new Spacer(1));
-
-		this.#inputField = new Input();
-		this.#inputField.setValue(this.#state.args);
-		this.#contentContainer.addChild(this.#inputField);
-		this.#contentContainer.addChild(new Spacer(1));
-	}
-
-	#renderUrlStep(): void {
-		this.#contentContainer.addChild(new Text(theme.fg("accent", "Step 3: Server URL")));
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text("Enter the server URL:", 0, 0));
-		this.#contentContainer.addChild(new Spacer(1));
-
-		this.#inputField = new Input();
-		this.#inputField.setValue(this.#state.url);
-		this.#contentContainer.addChild(this.#inputField);
-		this.#contentContainer.addChild(new Spacer(1));
-
-		// Show validation error if any
-		if (this.#validationError) {
-			this.#contentContainer.addChild(new Text(theme.fg("error", `x ${sanitize(this.#validationError)}`), 0, 0));
-			this.#contentContainer.addChild(new Spacer(1));
-		}
+		this.#renderChoiceOptions(["stdio (Local process)", "http (HTTP server)", "sse (Server-Sent Events)"]);
 	}
 
 	#renderAuthLocationStep(): void {
 		this.#contentContainer.addChild(new Text(theme.fg("accent", "Step: How to provide the key?")));
 		this.#contentContainer.addChild(new Spacer(1));
 
-		const options = [
-			{ value: "env" as const, label: "Environment variable" },
-			{ value: "header" as const, label: "HTTP header" },
-		];
-
-		for (let i = 0; i < options.length; i++) {
-			const option = options[i];
-			const isSelected = i === this.#selectedIndex;
-			const prefix = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
-			const text = isSelected ? theme.fg("accent", option.label) : option.label;
-			this.#addOptionRow(prefix + text, i);
-		}
-
-		this.#contentContainer.addChild(new Spacer(1));
-	}
-
-	#renderEnvVarNameStep(): void {
-		this.#contentContainer.addChild(new Text(theme.fg("accent", "Step: Environment Variable Name")));
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text("Enter the environment variable name:", 0, 0));
-		this.#contentContainer.addChild(new Spacer(1));
-
-		this.#inputField = new Input();
-		this.#inputField.setValue(this.#state.envVarName);
-		this.#contentContainer.addChild(this.#inputField);
-		this.#contentContainer.addChild(new Spacer(1));
-	}
-
-	#renderHeaderNameStep(): void {
-		this.#contentContainer.addChild(new Text(theme.fg("accent", "Step: HTTP Header Name")));
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text("Enter the HTTP header name:", 0, 0));
-		this.#contentContainer.addChild(new Spacer(1));
-
-		this.#inputField = new Input();
-		this.#inputField.setValue(this.#state.headerName);
-		this.#contentContainer.addChild(this.#inputField);
-		this.#contentContainer.addChild(new Spacer(1));
+		this.#renderChoiceOptions(["Environment variable", "HTTP header"]);
 	}
 
 	#renderConfirmStep(): void {
@@ -487,15 +446,7 @@ export class MCPAddWizard implements Component {
 		this.#contentContainer.addChild(new Text("Save this configuration?", 0, 0));
 		this.#contentContainer.addChild(new Spacer(1));
 
-		const options = ["Yes", "No"];
-		for (let i = 0; i < options.length; i++) {
-			const isSelected = i === this.#selectedIndex;
-			const prefix = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
-			const text = isSelected ? theme.fg("accent", options[i]) : options[i];
-			this.#addOptionRow(prefix + text, i);
-		}
-
-		this.#contentContainer.addChild(new Spacer(1));
+		this.#renderChoiceOptions(["Yes", "No"]);
 	}
 
 	/**
@@ -522,42 +473,33 @@ export class MCPAddWizard implements Component {
 	}
 
 	#routeMouse(event: SgrMouseEvent): boolean {
-		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-			motion: event.motion,
-			leftClick: event.leftClick,
-		});
-		if (
-			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+		const consumed = routeModalChrome({
+			shellGeometry: this.#shellGeometry,
+			event,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			onHoverShortcut: id => {
 				this.#hoveredShortcutId = id;
 				this.#requestRender();
-			})
-		) {
-			return true;
-		}
-		if (
-			chrome.kind === "close" ||
-			chrome.kind === "outside" ||
-			(chrome.kind === "shortcut" && chrome.id === "close")
-		) {
-			// The glyph closes the WIZARD, not the step: an abandoned add leaves
-			// nothing behind, and stepping back from a click on `[x]` would be a
-			// different action from the one the glyph draws.
-			if (this.#oauthAbort) {
-				this.#oauthAbort.abort("MCP OAuth flow cancelled by user");
+			},
+			onCancel: () => {
+				// The glyph closes the WIZARD, not the step: an abandoned add leaves
+				// nothing behind, and stepping back from a click on `[x]` would be a
+				// different action from the one the glyph draws.
+				if (this.#oauthAbort) {
+					this.#oauthAbort.abort("MCP OAuth flow cancelled by user");
+					return;
+				}
+				this.#onCancelCallback();
+			},
+			onConfirm: () => this.handleInput("\n"),
+			onShortcut: id => {
+				if (id !== "back") return false;
+				this.#goBack();
+				this.#requestRender();
 				return true;
-			}
-			this.#onCancelCallback();
-			return true;
-		}
-		if (chrome.kind === "shortcut" && chrome.id === "back") {
-			this.#goBack();
-			this.#requestRender();
-			return true;
-		}
-		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
-			this.handleInput("\n");
-			return true;
-		}
+			},
+		});
+		if (consumed) return true;
 		const line = event.row - this.#bodyRowStart;
 		// An input step has no rows to pick; a click on the field places its caret.
 		if (this.#inputField) {
@@ -579,9 +521,8 @@ export class MCPAddWizard implements Component {
 		}
 		if (event.motion) {
 			const index = this.#hitRows[line] ?? null;
-			if (index !== this.#hoveredIndex) {
-				this.#hoveredIndex = index;
-				this.#hoverFade?.set(index);
+			if (index !== this.#hover.key) {
+				this.#hover.set(index);
 				this.#requestRender();
 			}
 			return true;
@@ -630,7 +571,7 @@ export class MCPAddWizard implements Component {
 					this.#hitRows[body.length] = option;
 					// The cursor row answers the pointer like any other: its accent prefix is not a band,
 					// so suppressing the band there left the row the eye was already on feeling dead.
-					const strength = this.#hoverStrength(option);
+					const strength = this.#hover.strength(option);
 					body.push(strength > 0 ? hoverBandAt(rendered, dims.contentWidth, strength) : rendered);
 					continue;
 				}
@@ -803,6 +744,7 @@ export class MCPAddWizard implements Component {
 					return;
 				}
 				this.#state.apiKey = value;
+				this.#state.authMethod = "manual";
 				// Determine auth location based on transport
 				if (this.#state.transport === "stdio") {
 					this.#currentStep = "env-var-name";
@@ -812,23 +754,15 @@ export class MCPAddWizard implements Component {
 				}
 				break;
 			case "env-var-name":
-				if (!value) {
-					return;
-				}
-				this.#state.envVarName = value;
-				this.#state.authLocation = "env";
+			case "header-name": {
+				if (!value) return;
+				const isEnv = this.#currentStep === "env-var-name";
+				this.#state[isEnv ? "envVarName" : "headerName"] = value;
+				this.#state.authLocation = isEnv ? "env" : "header";
 				this.#currentStep = "confirm";
 				this.#selectedIndex = 0;
 				break;
-			case "header-name":
-				if (!value) {
-					return;
-				}
-				this.#state.headerName = value;
-				this.#state.authLocation = "header";
-				this.#currentStep = "confirm";
-				this.#selectedIndex = 0;
-				break;
+			}
 		}
 
 		this.#inputField = null;
@@ -857,10 +791,10 @@ export class MCPAddWizard implements Component {
 			case "oauth-error":
 				if (this.#selectedIndex === 0) {
 					void this.#launchOAuthFlow();
-				} else {
-					this.#currentStep = "oauth-auth-url";
+					return;
 				}
-				return;
+				this.#currentStep = "oauth-auth-url";
+				break;
 			case "auth-location": {
 				const authLocations: Array<"env" | "header"> = ["env", "header"];
 				this.#state.authLocation = authLocations[this.#selectedIndex];
@@ -897,11 +831,8 @@ export class MCPAddWizard implements Component {
 			case "transport":
 				return 2; // 3 options
 			case "auth-method":
-				return 1; // 2 options
 			case "oauth-error":
-				return 1; // 2 options
 			case "auth-location":
-				return 1; // 2 options
 			case "confirm":
 				return 1; // 2 options
 			default:
@@ -924,13 +855,6 @@ export class MCPAddWizard implements Component {
 				this.#currentStep = "command";
 				break;
 			case "auth-method":
-				// Go back to url or args depending on transport
-				if (this.#state.transport === "stdio") {
-					this.#currentStep = "args";
-				} else {
-					this.#currentStep = "url";
-				}
-				break;
 			case "oauth-auth-url":
 			case "apikey":
 				// Go back to transport-specific connection step
@@ -999,8 +923,8 @@ export class MCPAddWizard implements Component {
 		this.#contentContainer.addChild(new Spacer(1));
 
 		const options = [
-			{ value: "oauth" as const, label: "OAuth flow (web-based)", desc: "(opens browser)" },
-			{ value: "manual" as const, label: "Manual API key/token", desc: "(paste or use shell command)" },
+			{ label: "OAuth flow (web-based)", desc: "(opens browser)" },
+			{ label: "Manual API key/token", desc: "(paste or use shell command)" },
 		];
 
 		for (let i = 0; i < options.length; i++) {
@@ -1019,103 +943,13 @@ export class MCPAddWizard implements Component {
 		this.#contentContainer.addChild(new Spacer(1));
 	}
 
-	#renderOAuthAuthUrlStep(): void {
-		this.#contentContainer.addChild(new Text(theme.fg("accent", "OAuth: Authorization URL")));
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text("Enter the OAuth authorization endpoint:", 0, 0));
-		this.#contentContainer.addChild(new Spacer(1));
-
-		this.#inputField = new Input();
-		this.#inputField.setValue(this.#state.oauthAuthUrl);
-		this.#contentContainer.addChild(this.#inputField);
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(
-			new Text(theme.fg("muted", "e.g., https://auth.example.com/oauth/authorize"), 0, 0),
-		);
-		this.#contentContainer.addChild(new Spacer(1));
-	}
-
-	#renderOAuthTokenUrlStep(): void {
-		this.#contentContainer.addChild(new Text(theme.fg("accent", "OAuth: Token URL")));
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text("Enter the OAuth token endpoint:", 0, 0));
-		this.#contentContainer.addChild(new Spacer(1));
-
-		this.#inputField = new Input();
-		this.#inputField.setValue(this.#state.oauthTokenUrl);
-		this.#contentContainer.addChild(this.#inputField);
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "e.g., https://auth.example.com/oauth/token"), 0, 0));
-		this.#contentContainer.addChild(new Spacer(1));
-	}
-
-	#renderOAuthClientIdStep(): void {
-		this.#contentContainer.addChild(new Text(theme.fg("accent", "OAuth: Client ID")));
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text("Enter your OAuth client ID:", 0, 0));
-		this.#contentContainer.addChild(new Spacer(1));
-
-		this.#inputField = new Input();
-		this.#inputField.setValue(this.#state.oauthClientId);
-		this.#contentContainer.addChild(this.#inputField);
-		this.#contentContainer.addChild(new Spacer(1));
-	}
-
-	#renderOAuthClientSecretStep(): void {
-		this.#contentContainer.addChild(new Text(theme.fg("accent", "OAuth: Client Secret (Optional)")));
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text("Enter your OAuth client secret:", 0, 0));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "(Leave empty for PKCE-only flows)"), 0, 0));
-		this.#contentContainer.addChild(new Spacer(1));
-
-		this.#inputField = new Input();
-		this.#inputField.setValue(this.#state.oauthClientSecret);
-		this.#contentContainer.addChild(this.#inputField);
-		this.#contentContainer.addChild(new Spacer(1));
-	}
-
-	#renderOAuthScopesStep(): void {
-		this.#contentContainer.addChild(new Text(theme.fg("accent", "OAuth: Scopes (Optional)")));
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text("Enter OAuth scopes (space-separated):", 0, 0));
-		this.#contentContainer.addChild(new Spacer(1));
-
-		this.#inputField = new Input();
-		this.#inputField.setValue(this.#state.oauthScopes);
-		this.#contentContainer.addChild(this.#inputField);
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "e.g., read write"), 0, 0));
-		this.#contentContainer.addChild(new Spacer(1));
-	}
-
 	#renderOAuthErrorStep(): void {
 		this.#contentContainer.addChild(new Text(theme.fg("error", "OAuth authentication failed"), 0, 0));
 		this.#contentContainer.addChild(new Spacer(1));
 		this.#contentContainer.addChild(new Text("Choose next action:", 0, 0));
 		this.#contentContainer.addChild(new Spacer(1));
 
-		const options = ["Retry OAuth authentication", "Edit OAuth settings"];
-		for (let i = 0; i < options.length; i++) {
-			const isSelected = i === this.#selectedIndex;
-			const prefix = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
-			const text = isSelected ? theme.fg("accent", options[i]) : options[i];
-			this.#addOptionRow(prefix + text, i);
-		}
-
-		this.#contentContainer.addChild(new Spacer(1));
-	}
-
-	#renderApiKeyStep(): void {
-		this.#contentContainer.addChild(new Text(theme.fg("accent", "API Key Required")));
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text("Enter your API key or token:", 0, 0));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "(Supports !command for password manager)"), 0, 0));
-		this.#contentContainer.addChild(new Spacer(1));
-
-		this.#inputField = new Input();
-		this.#inputField.setValue(this.#state.apiKey);
-		this.#contentContainer.addChild(this.#inputField);
-		this.#contentContainer.addChild(new Spacer(1));
+		this.#renderChoiceOptions(["Retry OAuth authentication", "Edit OAuth settings"]);
 	}
 
 	/**
@@ -1460,14 +1294,12 @@ export class MCPAddWizard implements Component {
 			}
 
 			this.#contentContainer.addChild(new Spacer(1));
-			this.#contentContainer.addChild(new Text(`${theme.fg("accent", "→ ")}Retry`, 0, 0));
-			this.#contentContainer.addChild(new Text("  Edit OAuth settings", 0, 0));
-			this.#contentContainer.addChild(new Spacer(1));
-			this.#requestRender();
-
-			// Set up as a selector step
 			this.#selectedIndex = 0;
 			this.#currentStep = "oauth-error";
+			this.#addOptionRow(`${theme.fg("accent", "→ ")}Retry`, 0);
+			this.#addOptionRow("  Edit OAuth settings", 1);
+			this.#contentContainer.addChild(new Spacer(1));
+			this.#requestRender();
 		} finally {
 			this.#oauthAbort = null;
 		}

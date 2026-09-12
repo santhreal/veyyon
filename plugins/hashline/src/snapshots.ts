@@ -140,18 +140,12 @@ const DEFAULT_MAX_VERSIONS_PER_PATH = 4;
 /** Global ceiling on retained snapshot text across all paths (UTF-16 code units). */
 const DEFAULT_MAX_TOTAL_BYTES = 64 * 1024 * 1024;
 
-/** Union `lines` into `snapshot.seenLines`, lazily creating the set. */
-function mergeSeenLines(snapshot: Snapshot, lines: Iterable<number> | undefined): void {
+/** Union `lines` into `snapshot[key]`, lazily creating the set. */
+function mergeLines(snapshot: Snapshot, key: "seenLines" | "clippedLines", lines: Iterable<number> | undefined): void {
 	if (lines === undefined) return;
-	if (snapshot.seenLines === undefined) snapshot.seenLines = new Set<number>();
-	for (const line of lines) snapshot.seenLines.add(line);
-}
-
-/** Union `lines` into `snapshot.clippedLines`, lazily creating the set. */
-function mergeClippedLines(snapshot: Snapshot, lines: Iterable<number> | undefined): void {
-	if (lines === undefined) return;
-	if (snapshot.clippedLines === undefined) snapshot.clippedLines = new Set<number>();
-	for (const line of lines) snapshot.clippedLines.add(line);
+	snapshot[key] ??= new Set<number>();
+	const target = snapshot[key];
+	for (const line of lines) target.add(line);
 }
 
 export interface InMemorySnapshotStoreOptions {
@@ -237,7 +231,7 @@ export class InMemorySnapshotStore extends SnapshotStore {
 			// head (it is the current file content), then reuse the tag. Union any
 			// newly-displayed lines so re-reading more of the file widens coverage.
 			existing.recordedAt = Date.now();
-			mergeSeenLines(existing, seenLines);
+			mergeLines(existing, "seenLines", seenLines);
 			if (history[0] !== existing) {
 				this.#versions.set(path, [existing, ...history.filter(version => version !== existing)]);
 			}
@@ -245,19 +239,19 @@ export class InMemorySnapshotStore extends SnapshotStore {
 		}
 
 		const snapshot: Snapshot = { path, text: fullText, hash, recordedAt: Date.now() };
-		mergeSeenLines(snapshot, seenLines);
+		mergeLines(snapshot, "seenLines", seenLines);
 		this.#versions.set(path, [snapshot, ...history].slice(0, this.#maxVersionsPerPath));
 		return hash;
 	}
 
 	recordSeenLines(path: string, hash: string, lines: Iterable<number>): void {
 		const version = this.#versions.get(path)?.find(snapshot => snapshot.hash === hash);
-		if (version) mergeSeenLines(version, lines);
+		if (version) mergeLines(version, "seenLines", lines);
 	}
 
 	recordClippedLines(path: string, hash: string, lines: Iterable<number>): void {
 		const version = this.#versions.get(path)?.find(snapshot => snapshot.hash === hash);
-		if (version) mergeClippedLines(version, lines);
+		if (version) mergeLines(version, "clippedLines", lines);
 	}
 
 	invalidate(path: string): void {

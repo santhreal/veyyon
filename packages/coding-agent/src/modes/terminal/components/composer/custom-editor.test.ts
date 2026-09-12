@@ -2,6 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:
 import { CURSOR_MARKER } from "@veyyon/tui";
 import { PASTE_END, PASTE_START } from "@veyyon/utils/bracketed-paste";
 import { setKittyProtocolActive } from "@veyyon/utils/keys";
+import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 import { $ } from "bun";
 import { getDefaultPasteImageKeys } from "../../../../config/keybindings";
 import { getEditorTheme, initTheme, theme } from "../../../../theme/theme";
@@ -380,5 +381,629 @@ describe("CustomEditor arrow-key caret movement (BUG-1 guard)", () => {
 		editor.handleInput("X");
 		expect(gestures).toBe(0);
 		expect(editor.getText()).toBe("aXb");
+	});
+});
+
+describe("CustomEditor ComposerState consumption and reporting", () => {
+	beforeAll(async () => {
+		await initTheme();
+	});
+
+	it("reports pristine state matching default editor properties", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		const state = editor.getComposerState();
+		expect(state.mode).toBe("input");
+		expect(state.text).toBe("");
+		expect(state.cursorOffset).toBe(0);
+		expect(state.placeholder).toBe("Ask, or / for commands");
+		expect(state.attachments).toEqual([]);
+		expect(state.queueOnSubmit).toBe(false);
+		expect(state.completion).toBeUndefined();
+		expect(state.hint).toBeUndefined();
+	});
+
+	it("consumes and updates full ComposerState snapshots, clearing absent fields", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.setComposerState({
+			mode: "shell",
+			text: "console.log('test');\nsecond line",
+			cursorOffset: 7,
+			placeholder: "custom shell placeholder",
+			attachments: [{ kind: "file", name: "app.ts" }],
+			completion: { prefix: "con", candidates: [{ value: "console" }], selectedIndex: 0 },
+			queueOnSubmit: true,
+			hint: "queued mode",
+		});
+
+		expect(editor.getText()).toBe("console.log('test');\nsecond line");
+		expect(editor.getCursorOffset()).toBe(7);
+		expect(editor.attachments).toEqual([{ kind: "file", name: "app.ts" }]);
+		expect(editor.completion).toEqual({ prefix: "con", candidates: [{ value: "console" }], selectedIndex: 0 });
+		expect(editor.queueOnSubmit).toBe(true);
+		expect(editor.hint).toBe("queued mode");
+
+		const reported = editor.getComposerState();
+		expect(reported.mode).toBe("shell");
+		expect(reported.text).toBe("console.log('test');\nsecond line");
+		expect(reported.cursorOffset).toBe(7);
+		expect(reported.placeholder).toBe("custom shell placeholder");
+		expect(reported.queueOnSubmit).toBe(true);
+		expect(reported.attachments).toEqual([{ kind: "file", name: "app.ts" }]);
+		expect(reported.completion).toEqual({ prefix: "con", candidates: [{ value: "console" }], selectedIndex: 0 });
+
+		// Second snapshot replaces absent fields rather than merging
+		editor.setComposerState({
+			mode: "input",
+			text: "clean text",
+			cursorOffset: 5,
+			placeholder: "",
+			attachments: [],
+			queueOnSubmit: false,
+		});
+		const second = editor.getComposerState();
+		expect(second.mode).toBe("input");
+		expect(second.text).toBe("clean text");
+		expect(second.cursorOffset).toBe(5);
+		expect(second.placeholder).toBe("");
+		expect(second.completion).toBeUndefined();
+		expect(second.hint).toBeUndefined();
+		expect(second.attachments).toEqual([]);
+	});
+
+	it("unifies explicit attachments with pending images and roundtrips image payloads", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.attachments = [{ kind: "file", name: "doc.txt" }];
+		editor.pendingImages = [{ type: "image", data: "base64data123", mimeType: "image/png" }];
+		editor.pendingImageLinks = ["file:///tmp/screen.png"];
+
+		const state = editor.getComposerState();
+		expect(state.attachments).toEqual([
+			{ kind: "file", name: "doc.txt" },
+			{
+				kind: "image",
+				name: "/tmp/screen.png",
+				data: "base64data123",
+				mimeType: "image/png",
+				uri: "file:///tmp/screen.png",
+			},
+		]);
+
+		// Restoring into a second editor restores pendingImages and imageLinks faithfully
+		const second = new CustomEditor(getEditorTheme());
+		second.setComposerState(state);
+		expect(second.pendingImages).toEqual([{ type: "image", data: "base64data123", mimeType: "image/png" }]);
+		expect(second.pendingImageLinks).toEqual(["file:///tmp/screen.png"]);
+
+		// Submitting the second editor fires onComposerSubmit with the complete image payload
+		const submitted: unknown[] = [];
+		second.onComposerSubmit = event => submitted.push(event);
+		second.setText("submit with image");
+		second.submit();
+		expect(submitted).toEqual([
+			{
+				type: "submit",
+				text: "submit with image",
+				attachments: [
+					{ kind: "file", name: "doc.txt" },
+					{
+						kind: "image",
+						name: "/tmp/screen.png",
+						data: "base64data123",
+						mimeType: "image/png",
+						uri: "file:///tmp/screen.png",
+					},
+				],
+			},
+		]);
+
+		// Replacing with a new state without images clears pending images
+		second.setComposerState({
+			mode: "input",
+			text: "no images",
+			cursorOffset: 0,
+			placeholder: "",
+			attachments: [],
+			queueOnSubmit: false,
+		});
+		expect(second.pendingImages).toEqual([]);
+		expect(second.pendingImageLinks).toEqual([]);
+	});
+
+	it("accepts explicitly pushed autocomplete suggestions via keyboard and mouse", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.setBorderVisible(false);
+		editor.setText("/h");
+		editor.completion = {
+			prefix: "/h",
+			candidates: [
+				{ value: "help", label: "help", detail: "Show help commands" },
+				{ value: "history", label: "history", detail: "Show history" },
+			],
+			selectedIndex: 0,
+		};
+		expect(editor.isShowingAutocomplete()).toBe(true);
+		expect(editor.completion).toEqual({
+			prefix: "/h",
+			candidates: [
+				{ value: "help", label: "help", detail: "Show help commands" },
+				{ value: "history", label: "history", detail: "Show history" },
+			],
+			selectedIndex: 0,
+		});
+
+		// Tab accepts the selected suggestion
+		editor.handleInput("\t");
+		expect(editor.getText()).toBe("/help ");
+		expect(editor.isShowingAutocomplete()).toBe(false);
+		expect(editor.completion).toBeUndefined();
+
+		// Test mouse acceptance
+		editor.setText("/hi");
+		editor.completion = {
+			prefix: "/hi",
+			candidates: [{ value: "history", label: "history" }],
+			selectedIndex: 0,
+		};
+		// Render to populate internal row mapping
+		editor.render(80);
+		// Route mouse click to the autocomplete row
+		const mouseEvent: SgrMouseEvent = {
+			button: 0,
+			col: 5,
+			row: 1,
+			release: false,
+			wheel: null,
+			motion: false,
+			leftClick: true,
+		};
+		editor.routeMouse(mouseEvent, 1, 5);
+		expect(editor.getText()).toBe("/history ");
+		expect(editor.isShowingAutocomplete()).toBe(false);
+
+		// Explicit clearing cancels popup
+		editor.completion = {
+			prefix: "/h",
+			candidates: [{ value: "help" }],
+			selectedIndex: 0,
+		};
+		expect(editor.isShowingAutocomplete()).toBe(true);
+		editor.completion = undefined;
+		expect(editor.isShowingAutocomplete()).toBe(false);
+		expect(editor.completion).toBeUndefined();
+	});
+
+	it("submit invokes onComposerSubmit once with current text and attachments", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		const submitted: unknown[] = [];
+		editor.onComposerSubmit = event => {
+			submitted.push(event);
+		};
+		editor.setText("run command");
+		editor.attachments = [{ kind: "file", name: "config.json" }];
+
+		editor.submit();
+		expect(submitted).toEqual([
+			{
+				type: "submit",
+				text: "run command",
+				attachments: [{ kind: "file", name: "config.json" }],
+			},
+		]);
+	});
+
+	it("getCursorOffset and setCursorOffset correctly navigate multiline buffers", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.setText("line1\nline2\nline3");
+		expect(editor.getCursorOffset()).toBe(17);
+
+		editor.setCursorOffset(0);
+		expect(editor.getCursorOffset()).toBe(0);
+		expect(editor.getCursor()).toEqual({ line: 0, col: 0 });
+
+		editor.setCursorOffset(6);
+		expect(editor.getCursorOffset()).toBe(6);
+		expect(editor.getCursor()).toEqual({ line: 1, col: 0 });
+
+		editor.setCursorOffset(8);
+		expect(editor.getCursorOffset()).toBe(8);
+		expect(editor.getCursor()).toEqual({ line: 1, col: 2 });
+
+		editor.setCursorOffset(17);
+		expect(editor.getCursorOffset()).toBe(17);
+		expect(editor.getCursor()).toEqual({ line: 2, col: 5 });
+
+		// Bounds clamping
+		editor.setCursorOffset(-10);
+		expect(editor.getCursorOffset()).toBe(0);
+		editor.setCursorOffset(999);
+		expect(editor.getCursorOffset()).toBe(17);
+	});
+
+	it("resolves mode automatically based on text prefix or explicit session flags", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.setText("!ls -la");
+		expect(editor.getComposerState().mode).toBe("shell");
+
+		editor.setText("/help");
+		expect(editor.getComposerState().mode).toBe("search");
+
+		editor.setText("normal prompt");
+		expect(editor.getComposerState().mode).toBe("input");
+
+		editor.locked = true;
+		expect(editor.getComposerState().mode).toBe("disabled");
+		expect(editor.disableSubmit).toBe(true);
+
+		editor.locked = false;
+		editor.awaitingApproval = true;
+		expect(editor.getComposerState().mode).toBe("awaiting-approval");
+	});
+
+	it("clearing one session flag leaves a mode the other flag owns, and clearing its own mode re-enables submit", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.setText("normal prompt");
+		editor.awaitingApproval = true;
+		expect(editor.disableSubmit).toBe(true);
+
+		editor.locked = false;
+		expect(editor.getComposerState().mode).toBe("awaiting-approval");
+		expect(editor.disableSubmit).toBe(true);
+
+		editor.awaitingApproval = false;
+		expect(editor.getComposerState().mode).toBe("input");
+		expect(editor.disableSubmit).toBe(false);
+
+		editor.locked = true;
+		editor.awaitingApproval = false;
+		expect(editor.getComposerState().mode).toBe("disabled");
+		expect(editor.disableSubmit).toBe(true);
+	});
+
+	it("notifies onComposerChange on input", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		const updates: number[] = [];
+		editor.onComposerChange = state => {
+			updates.push(state.cursorOffset);
+		};
+
+		editor.handleInput("a");
+		editor.handleInput("b");
+		editor.handleInput("c");
+		expect(updates).toEqual([1, 2, 3]);
+		expect(editor.getComposerState().text).toBe("abc");
+	});
+
+	it("fires onComposerSubmit with attachments on early submission", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		const events: unknown[] = [];
+		editor.onComposerSubmit = event => {
+			events.push(event);
+		};
+		editor.attachments = [{ kind: "file", name: "doc.txt" }];
+		editor.beginEarlySubmissions();
+
+		editor.setText("test submit");
+		editor.onSubmit?.("test submit");
+
+		expect(events).toEqual([
+			{
+				type: "submit",
+				text: "test submit",
+				attachments: [{ kind: "file", name: "doc.txt" }],
+			},
+		]);
+		expect(editor.takeEarlySubmissions()).toEqual([
+			{
+				text: "test submit",
+				images: undefined,
+				imageLinks: undefined,
+				attachments: [{ kind: "file", name: "doc.txt" }],
+			},
+		]);
+	});
+
+	it("withPreservedDraft protects newer drafts from setComposerState overwrite", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.withPreservedDraft(() => {
+			editor.handleInput("new user typing");
+			editor.setComposerState({
+				mode: "input",
+				text: "stale background state",
+				cursorOffset: 0,
+				placeholder: "",
+				attachments: [],
+				queueOnSubmit: false,
+			});
+			expect(editor.getText()).toBe("new user typing");
+		});
+	});
+
+	it("clearDraft resets text, pending images, image links, and attachments", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.setText("draft to clear");
+		editor.attachments = [{ kind: "file", name: "test.txt" }];
+		editor.clearDraft();
+		expect(editor.getText()).toBe("");
+		expect(editor.attachments).toEqual([]);
+	});
+
+	it("feeds completion into live autocomplete list and renders it", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.setComposerState({
+			mode: "input",
+			text: "/m",
+			cursorOffset: 2,
+			placeholder: "",
+			attachments: [],
+			completion: {
+				prefix: "/m",
+				candidates: [
+					{ value: "/model", label: "/model", detail: "Select model" },
+					{ value: "/mode", label: "/mode", detail: "Switch mode" },
+				],
+				selectedIndex: 0,
+			},
+			queueOnSubmit: false,
+		});
+
+		expect(editor.isShowingAutocomplete()).toBe(true);
+		expect(editor.completion).toEqual({
+			prefix: "/m",
+			candidates: [
+				{ value: "/model", label: "/model", detail: "Select model" },
+				{ value: "/mode", label: "/mode", detail: "Switch mode" },
+			],
+			selectedIndex: 0,
+		});
+
+		const rendered = editor.render(80).join("\n");
+		expect(rendered).toContain("/model");
+		expect(rendered).toContain("/mode");
+	});
+
+	it("renders observable attachment, queue notice, and hint rows", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.setComposerState({
+			mode: "input",
+			text: "my prompt",
+			cursorOffset: 9,
+			placeholder: "",
+			attachments: [{ kind: "file", name: "src/index.ts" }],
+			queueOnSubmit: true,
+			hint: "press enter to queue",
+		});
+
+		const rendered = editor.render(80).join("\n");
+		expect(rendered).toContain("+ src/index.ts");
+		expect(rendered).toContain("a turn is running; enter queues this message");
+		expect(rendered).toContain("press enter to queue");
+	});
+
+	it("submit guards prevent submission during awaiting-approval, disabled, empty, or unlistened state", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		const submits: unknown[] = [];
+		editor.onComposerSubmit = event => submits.push(event);
+
+		// 1. Awaiting approval
+		editor.setComposerState({
+			mode: "awaiting-approval",
+			text: "cannot submit during approval",
+			cursorOffset: 28,
+			placeholder: "",
+			attachments: [],
+			queueOnSubmit: false,
+		});
+		editor.submit();
+		expect(submits.length).toBe(0);
+		expect(editor.getText()).toBe("cannot submit during approval");
+
+		// 2. Disabled
+		editor.setComposerState({
+			mode: "disabled",
+			text: "disabled session",
+			cursorOffset: 16,
+			placeholder: "",
+			attachments: [],
+			queueOnSubmit: false,
+		});
+		editor.submit();
+		expect(submits.length).toBe(0);
+
+		// 3. Empty input
+		editor.setComposerState({
+			mode: "input",
+			text: "   ",
+			cursorOffset: 0,
+			placeholder: "",
+			attachments: [],
+			queueOnSubmit: false,
+		});
+		editor.submit();
+		expect(submits.length).toBe(0);
+
+		// 4. No listeners does not clear draft
+		const noListenerEditor = new CustomEditor(getEditorTheme());
+		noListenerEditor.setText("preserve this text");
+		noListenerEditor.submit();
+		expect(noListenerEditor.getText()).toBe("preserve this text");
+	});
+
+	it("preserves multiple distinct same-MIME images without deduplication", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.pendingImages = [
+			{ type: "image", data: "base64img1", mimeType: "image/png" },
+			{ type: "image", data: "base64img2", mimeType: "image/png" },
+		];
+		editor.pendingImageLinks = [undefined, undefined];
+
+		const atts = editor.attachments;
+		expect(atts.length).toBe(2);
+		expect(atts[0]).toEqual({
+			kind: "image",
+			name: "image (image/png)",
+			data: "base64img1",
+			mimeType: "image/png",
+			uri: undefined,
+		});
+		expect(atts[1]).toEqual({
+			kind: "image",
+			name: "image (image/png)",
+			data: "base64img2",
+			mimeType: "image/png",
+			uri: undefined,
+		});
+
+		const state = editor.getComposerState();
+		expect(state.attachments.length).toBe(2);
+	});
+
+	it("preserves URI-only image attachments and original metadata", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.attachments = [
+			{
+				kind: "image",
+				name: "custom-diagram.png",
+				uri: "file:///workspace/diagram.png",
+				byteSize: 2048,
+				lineCount: undefined,
+			},
+		];
+
+		const atts = editor.attachments;
+		expect(atts).toEqual([
+			{
+				kind: "image",
+				name: "custom-diagram.png",
+				uri: "file:///workspace/diagram.png",
+				byteSize: 2048,
+				lineCount: undefined,
+				data: undefined,
+				mimeType: undefined,
+			},
+		]);
+
+		const second = new CustomEditor(getEditorTheme());
+		second.setComposerState(editor.getComposerState());
+		expect(second.attachments).toEqual([
+			{
+				kind: "image",
+				name: "custom-diagram.png",
+				uri: "file:///workspace/diagram.png",
+				byteSize: 2048,
+				lineCount: undefined,
+				data: undefined,
+				mimeType: undefined,
+			},
+		]);
+	});
+
+	it("returns undefined for completion after dismissal and does not resurrect stale state", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.setText("/test");
+		editor.completion = {
+			prefix: "/t",
+			candidates: [{ value: "/test", label: "test" }],
+			selectedIndex: 0,
+		};
+		expect(editor.isShowingAutocomplete()).toBe(true);
+		expect(editor.completion).toBeDefined();
+
+		// Dismiss autocomplete
+		editor.handleInput("\x1b"); // Escape key
+		expect(editor.isShowingAutocomplete()).toBe(false);
+		expect(editor.completion).toBeUndefined();
+		expect(editor.getComposerState().completion).toBeUndefined();
+	});
+
+	it("returns explicit mode for shell, search, and input when set via setComposerState or mode setter", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.setText("plain text");
+		editor.mode = "shell";
+		expect(editor.mode).toBe("shell");
+		expect(editor.getComposerState().mode).toBe("shell");
+
+		editor.mode = "search";
+		expect(editor.mode).toBe("search");
+		expect(editor.getComposerState().mode).toBe("search");
+
+		editor.mode = "input";
+		expect(editor.mode).toBe("input");
+		expect(editor.getComposerState().mode).toBe("input");
+
+		editor.setComposerState({
+			mode: "shell",
+			text: "echo hi",
+			cursorOffset: 7,
+			placeholder: "",
+			attachments: [],
+			queueOnSubmit: false,
+		});
+		expect(editor.getComposerState().mode).toBe("shell");
+	});
+
+	it("emits onComposerSubmit exactly once on early submission and submit invocation", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		const submissions: unknown[] = [];
+		editor.onComposerSubmit = event => submissions.push(event);
+		editor.beginEarlySubmissions();
+
+		editor.setText("early command");
+		editor.submit();
+		expect(submissions.length).toBe(1);
+		expect(submissions[0]).toEqual({
+			type: "submit",
+			text: "early command",
+			attachments: [],
+		});
+	});
+
+	it("renders tiny terminal widths without upward clamping and sanitizes attachment names and hints", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.setBorderVisible(false);
+		editor.setComposerState({
+			mode: "input",
+			text: "prompt",
+			cursorOffset: 6,
+			placeholder: "",
+			attachments: [{ kind: "file", name: "bad\tfile\nname\x00.ts" }],
+			queueOnSubmit: true,
+			hint: "hint\twith\nnewlines\x1f",
+		});
+
+		// Render at width 2
+		const tinyRows = editor.render(2);
+		for (const row of tinyRows) {
+			// Check that visual width doesn't exceed 2
+			expect(row.length).toBeLessThanOrEqual(50); // ANSI formatting length, but content truncated
+		}
+
+		// Render at width 80 to verify sanitization
+		const normalRows = editor.render(80).join("\n");
+		expect(normalRows).not.toContain("\t");
+		expect(normalRows).not.toContain("\nname");
+		expect(normalRows).toContain("bad   file name .ts");
+		expect(normalRows).toContain("hint   with newlines ");
+	});
+
+	it("clears locked, awaitingApproval, and stale imageLinks on snapshot replacement", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		editor.locked = true;
+		editor.imageLinks = ["file:///test.png"];
+		expect(editor.locked).toBe(true);
+		expect(editor.imageLinks).toEqual(["file:///test.png"]);
+
+		editor.setComposerState({
+			mode: "input",
+			text: "unlocked prompt",
+			cursorOffset: 15,
+			placeholder: "",
+			attachments: [],
+			queueOnSubmit: false,
+		});
+
+		expect(editor.locked).toBe(false);
+		expect(editor.awaitingApproval).toBe(false);
+		expect(editor.imageLinks).toBeUndefined();
+		expect(editor.getComposerState().mode).toBe("input");
 	});
 });

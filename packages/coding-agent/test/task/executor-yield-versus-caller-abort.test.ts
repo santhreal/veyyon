@@ -1,7 +1,7 @@
 /**
- * Contracts: a subagent's delivered result survives the caller's abort.
+ * Contracts: an agent's delivered result survives the caller's abort.
  *
- * THE RULE. Once a subagent has called `yield`, its work is done and its output belongs to the
+ * THE RULE. Once an agent has called `yield`, its work is done and its output belongs to the
  * caller. An abort arriving around that point (the user pressed ^C, the parent turn ended, a batch
  * sibling failed) must NOT turn the finished run into a failure: the exit code stays 0, the run is
  * not reported as aborted, and the yielded data still comes back. An abort with NO yield is the
@@ -20,7 +20,7 @@
  * passing across the collapse.
  *
  * WHY THE SUITE EXISTS AT ALL. Nothing combined a delivered yield with a caller abort, in either
- * direction, so the question "I cancelled, does my subagent's finished work survive" was unverified.
+ * direction, so the question "I cancelled, does my agent's finished work survive" was unverified.
  */
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -28,13 +28,13 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
 import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
-import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import {
 	createAssistantStopMessage,
 	createMockSession,
 	createSessionResult,
 	yieldSuccessEvent,
-} from "../helpers/subagent-session";
+} from "../helpers/agent-session";
+import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 
 // Spawning writes a session under the ACTIVE PROFILE's agent dir, so without this the suite creates
 // sessions inside the developer's real `~/.veyyon/profiles/<profile>/agent/sessions`.
@@ -57,7 +57,7 @@ const baseOptions = {
 	enableLsp: false,
 };
 
-describe("a caller abort after the subagent has yielded", () => {
+describe("a caller abort after the agent has yielded", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
@@ -71,7 +71,7 @@ describe("a caller abort after the subagent has yielded", () => {
 	 * `requestAbort`. Written that way, every assertion below passes on a build where the abort
 	 * branches are broken, which is exactly what happened the first time this was written.
 	 *
-	 * Abort-then-yield is also the real race: the user cancels, and the subagent's final `yield` is
+	 * Abort-then-yield is also the real race: the user cancels, and the agent's final `yield` is
 	 * already in flight. Its work exists, so it must not be thrown away.
 	 */
 	async function runYieldingThenAborting(id: string, yieldedData: unknown) {
@@ -103,7 +103,7 @@ describe("a caller abort after the subagent has yielded", () => {
 	 * The point of keeping the run successful: the caller still gets the work. An exit code of 0 with
 	 * an empty output would satisfy the two tests above and lose exactly what they exist to protect.
 	 */
-	it("still returns the data the subagent yielded", async () => {
+	it("still returns the data the agent yielded", async () => {
 		const result = await runYieldingThenAborting("yield-then-abort-output", { finding: "left-pad is fine" });
 
 		expect(result.output).toContain("left-pad is fine");
@@ -111,7 +111,7 @@ describe("a caller abort after the subagent has yielded", () => {
 	});
 });
 
-describe("a caller abort before the subagent has yielded", () => {
+describe("a caller abort before the agent has yielded", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
@@ -149,7 +149,7 @@ describe("a caller abort before the subagent has yielded", () => {
 	 *
 	 * That matters beyond coverage. The obvious simplification is to let the payload logic own the
 	 * outcome alone; done literally, that flips this case from failure to SUCCESS, reporting a cancelled
-	 * subagent's partial chatter as a delivered result. This test is what makes that attempt fail
+	 * agent's partial chatter as a delivered result. This test is what makes that attempt fail
 	 * instead of ship, and a mutation run confirms it: dropping that one line fails eight tests.
 	 */
 	it("fails an aborted run that streamed text but never yielded", async () => {

@@ -7,10 +7,17 @@
  * terminal draws them through `drawToolView`; a second host draws the same values its own way.
  */
 
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth } from "@veyyon/utils/width";
-import { replaceTabs } from "@veyyon/utils/wrap";
 import type { HeadedBlockView, StatusRowView, TextBlockView, ToolViewRenderer, ViewLine } from "@veyyon/view";
-import { PREVIEW_LIMITS, sanitizeErrorText } from "../core/render-utils";
+import {
+	errorTextBlock,
+	extractResultText,
+	heldBack,
+	LINE_NOUN,
+	PREVIEW_LIMITS,
+	shortenEmbeddedPaths,
+} from "../core/render-utils";
 
 /** The bullet a stored memory is marked with, resolved by the host from its own glyph table. */
 const BULLET = "format.bullet";
@@ -22,8 +29,8 @@ const MEMORY_EMBLEM = "tool.memory";
 const QUERY_WIDTH = 80;
 
 /** A tool result's text content, trimmed, or the empty string when it carries none. */
-export function memoryResultText(result: { content?: Array<{ type: string; text?: string }> }): string {
-	return (result.content?.find(part => part.type === "text")?.text ?? "").trim();
+export function memoryResultText(result: { content?: Array<{ type?: string; text?: string }> | string }): string {
+	return replaceTabs(shortenEmbeddedPaths(extractResultText(result.content).trim()));
 }
 
 /**
@@ -38,7 +45,7 @@ export function memoryQueryRow(
 	query: string | undefined,
 	row: Pick<StatusRowView, "status" | "emblem" | "meta">,
 ): StatusRowView {
-	const trimmed = replaceTabs((query ?? "").trim());
+	const trimmed = replaceTabs(shortenEmbeddedPaths((query ?? "").trim()));
 	return {
 		kind: "statusRow",
 		title,
@@ -51,7 +58,9 @@ export function memoryQueryRow(
 export function retainedContents(
 	args: { items?: Array<{ content?: string; context?: string }> } | undefined,
 ): string[] {
-	return (args?.items ?? []).map(item => replaceTabs((item?.content ?? "").trim())).filter(line => line.length > 0);
+	return (args?.items ?? [])
+		.map(item => replaceTabs(shortenEmbeddedPaths((item?.content ?? "").trim())))
+		.filter(line => line.length > 0);
 }
 
 /** The row a `retain` shows while it is still storing: the tool's title and nothing settled yet. */
@@ -83,11 +92,12 @@ export function retainBlock(contents: readonly string[], header: StatusRowView, 
 		{ text: content, tone: "output" as const },
 	]);
 	const remaining = contents.length - shown.length;
+	const hidden = heldBack(remaining, undefined, !expanded);
 	return {
 		kind: "headedBlock",
 		header,
 		lines,
-		...(remaining > 0 ? { hidden: { count: remaining, revealable: !expanded } } : {}),
+		...(hidden === undefined ? {} : { hidden }),
 	};
 }
 
@@ -115,13 +125,12 @@ export function reflectBlock(header: StatusRowView, answer: string, expanded: bo
 	const limit = expanded ? PREVIEW_LIMITS.OUTPUT_EXPANDED : PREVIEW_LIMITS.OUTPUT_COLLAPSED;
 	const shown = answerLines.slice(0, limit);
 	const remaining = answerLines.length - shown.length;
+	const hidden = heldBack(remaining, LINE_NOUN, !expanded);
 	return {
 		kind: "headedBlock",
 		header,
 		lines: shown.map(line => [{ text: replaceTabs(line), tone: "output" as const }]),
-		...(remaining > 0
-			? { hidden: { count: remaining, noun: { one: "line", many: "lines" }, revealable: !expanded } }
-			: {}),
+		...(hidden === undefined ? {} : { hidden }),
 	};
 }
 
@@ -136,14 +145,7 @@ export function memoryFailure(
 	result: { content?: Array<{ type: string; text?: string }> },
 	fallback: string,
 ): TextBlockView {
-	return {
-		kind: "textBlock",
-		spans: [
-			{ symbol: "status.error", text: "", tone: "error" },
-			{ text: " " },
-			{ text: `Error: ${sanitizeErrorText(memoryResultText(result) || fallback)}`, tone: "error" },
-		],
-	};
+	return errorTextBlock(memoryResultText(result) || fallback);
 }
 
 /** What a memory card reads off a call, which is partial while the arguments are still streaming. */

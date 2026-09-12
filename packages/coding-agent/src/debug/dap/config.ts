@@ -1,10 +1,7 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { errorMessage, isEnoent, isRecord, logger, parseJsonOrYamlByExtension, WhichCachePolicy } from "@veyyon/utils";
-import { getConfigDirPaths } from "../../config";
-import { getPreloadedPluginRoots } from "../../discovery/helpers";
-import { hasRootMarkers, resolveCommand } from "../../lsp/config";
+import { type ConfigSource, collectConfigSources, hasRootMarkers, resolveCommand } from "../../lsp/config";
 import DEFAULTS from "./defaults.json" with { type: "json" };
 import type { DapAdapterConfig, DapResolvedAdapter } from "./types";
 
@@ -12,10 +9,6 @@ const EXTENSIONLESS_DEBUGGER_ORDER: readonly string[] = ["gdb", "lldb-dap"];
 
 interface NormalizedConfig {
 	adapters: Record<string, unknown>;
-}
-
-interface ConfigSource {
-	read(): NormalizedConfig | null;
 }
 
 function normalizeConfig(value: unknown): NormalizedConfig | null {
@@ -136,46 +129,18 @@ function mergeAdapters(
 	return merged;
 }
 
-function fileConfigSource(filePath: string): ConfigSource {
+function fileConfigSource(filePath: string): ConfigSource<NormalizedConfig> {
 	return {
 		read: () => readConfigFile(filePath),
 	};
 }
 
-function getConfigSources(cwd: string): ConfigSource[] {
-	const filenames = ["dap.json", ".dap.json", "dap.yaml", ".dap.yaml", "dap.yml", ".dap.yml"];
-	const sources: ConfigSource[] = [];
-
-	for (const filename of filenames) {
-		sources.push(fileConfigSource(path.join(cwd, filename)));
-	}
-
-	const projectDirs = getConfigDirPaths("", { user: false, project: true, cwd });
-	for (const dir of projectDirs) {
-		for (const filename of filenames) {
-			sources.push(fileConfigSource(path.join(dir, filename)));
-		}
-	}
-
-	const userDirs = getConfigDirPaths("", { user: true, project: false });
-	for (const dir of userDirs) {
-		for (const filename of filenames) {
-			sources.push(fileConfigSource(path.join(dir, filename)));
-		}
-	}
-
-	const pluginRoots = getPreloadedPluginRoots();
-	for (const root of pluginRoots) {
-		for (const filename of filenames) {
-			sources.push(fileConfigSource(path.join(root.path, filename)));
-		}
-	}
-
-	for (const filename of filenames) {
-		sources.push(fileConfigSource(path.join(os.homedir(), filename)));
-	}
-
-	return sources;
+function getConfigSources(cwd: string): Array<ConfigSource<NormalizedConfig>> {
+	return collectConfigSources({
+		baseName: "dap",
+		cwd,
+		fileSource: fileConfigSource,
+	});
 }
 
 function loadAdapterConfigs(cwd: string): Record<string, DapAdapterConfig> {

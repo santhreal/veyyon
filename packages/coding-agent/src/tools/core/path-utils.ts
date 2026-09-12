@@ -21,6 +21,13 @@ import { ToolError } from "./tool-errors";
 
 export { expandTilde };
 
+/** The path argument, accepting the legacy file_path spelling before path. */
+export function pathOf(args: { file_path?: unknown; path?: unknown } | undefined): string {
+	if (typeof args?.file_path === "string") return args.file_path;
+	if (typeof args?.path === "string") return args.path;
+	return "";
+}
+
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
 // The line-range/`raw`/`conflicts` selector grammar and `splitPathAndSel` (the
 // canonical filesystem splitter) live in @veyyon/utils (read-selector.ts), shared
@@ -303,6 +310,69 @@ export function selectorLineRanges(sel: string | undefined): [LineRange, ...Line
 		if (ranges) return ranges;
 	}
 	return undefined;
+}
+
+/** Parsed representation of a path-embedded selector. */
+export type ParsedSelector =
+	| { kind: "none" }
+	| { kind: "raw" }
+	| { kind: "conflicts" }
+	| { kind: "lines"; ranges: [LineRange, ...LineRange[]]; raw?: boolean };
+
+/** Returns true when the selector requested verbatim/raw output (alone or combined with a range). */
+export function isRawSelector(parsed: ParsedSelector): boolean {
+	return parsed.kind === "raw" || (parsed.kind === "lines" && parsed.raw === true);
+}
+
+function selectorChunkLooksReadLike(chunk: string): boolean {
+	const lower = chunk.toLowerCase();
+	return (
+		lower === "raw" || lower === "conflicts" || /^-\d+(?:[-+]\d+)?$/.test(chunk) || parseLineRanges(chunk) !== null
+	);
+}
+
+function invalidSelector(sel: string): ToolError {
+	return new ToolError(
+		`Invalid selector ':${sel}'. Use :N, :N-M, :N+K, :N- (open-ended), a comma-separated list of ranges, :raw, or a range combined with raw (e.g. :raw:50-100).`,
+	);
+}
+
+export function parseSel(sel: string | undefined): ParsedSelector {
+	if (!sel || sel.length === 0) return { kind: "none" };
+
+	// Compound selector: `1-50:raw` or `raw:1-50`. Split into chunks and accept
+	// exactly one line range (possibly multi) plus the literal `raw`. Selector-like
+	// compounds that are not in that accepted set are invalid rather than "none";
+	// otherwise `read` can silently widen a malformed selector like
+	// `artifact://5:conflicts:1-1` while `grep` rejects it.
+	if (sel.includes(":")) {
+		const chunks = sel.split(":");
+		if (chunks.length === 2) {
+			const [a, b] = chunks as [string, string];
+			const aIsRaw = a.toLowerCase() === "raw";
+			const bIsRaw = b.toLowerCase() === "raw";
+			const rangeChunk = aIsRaw ? b : bIsRaw ? a : null;
+			const rawChunk = aIsRaw ? a : bIsRaw ? b : null;
+			if (rangeChunk !== null && rawChunk !== null) {
+				const ranges = parseLineRanges(rangeChunk);
+				if (ranges) {
+					return { kind: "lines", ranges, raw: true };
+				}
+			}
+		}
+		if (chunks.every(selectorChunkLooksReadLike)) throw invalidSelector(sel);
+		// Unrecognized compound — fall through (sqlite/archive/url consume their own colon syntax).
+		return { kind: "none" };
+	}
+
+	if (sel.toLowerCase() === "raw") return { kind: "raw" };
+	if (sel.toLowerCase() === "conflicts") return { kind: "conflicts" };
+	const ranges = parseLineRanges(sel);
+	if (ranges) {
+		return { kind: "lines", ranges };
+	}
+	// Unrecognized selectors fall through; sqlite/archive/url readers consume their own colon syntax.
+	return { kind: "none" };
 }
 
 /** Return `true` when `lineNumber` (1-indexed) falls in any of the supplied ranges. */
@@ -879,9 +949,16 @@ const TOP_LEVEL_WHITESPACE_RE = /\s/;
 
 type DelimitedPathSplitMode = "comma" | "semicolon" | "whitespace" | "mixed";
 
-function hasTopLevelPathDelimiter(entry: string): boolean {
+/** Find a delimiter outside escaped characters and glob braces, starting at a top-level boundary. */
+export function findTopLevelPathDelimiter(
+	entry: string,
+	start: number,
+	mode: DelimitedPathSplitMode | "punctuation",
+): number {
+	if (!Number.isSafeInteger(start) || start < 0)
+		throw new RangeError("Path scan start must be a non-negative safe integer");
 	let braceDepth = 0;
-	for (let i = 0; i < entry.length; i++) {
+	for (let i = start; i < entry.length; i++) {
 		const ch = entry[i];
 		if (ch === "\\" && i + 1 < entry.length) {
 			i++;
@@ -895,31 +972,7 @@ function hasTopLevelPathDelimiter(entry: string): boolean {
 			if (braceDepth > 0) braceDepth--;
 			continue;
 		}
-		if (braceDepth === 0 && (ch === "," || ch === ";" || TOP_LEVEL_WHITESPACE_RE.test(ch))) {
-			return true;
-		}
-	}
-	return false;
-}
-
-export function splitTopLevelDelimitedPath(entry: string, mode: DelimitedPathSplitMode): string[] {
-	const parts: string[] = [];
-	let braceDepth = 0;
-	let start = 0;
-	for (let i = 0; i < entry.length; i++) {
-		const ch = entry[i];
-		if (ch === "\\" && i + 1 < entry.length) {
-			i++;
-			continue;
-		}
-		if (ch === "{") {
-			braceDepth++;
-			continue;
-		}
-		if (ch === "}") {
-			if (braceDepth > 0) braceDepth--;
-			continue;
-		}
+		if (braceDepth !== 0) continue;
 		const isSep =
 			mode === "comma"
 				? ch === ","
@@ -927,10 +980,20 @@ export function splitTopLevelDelimitedPath(entry: string, mode: DelimitedPathSpl
 					? ch === ";"
 					: mode === "whitespace"
 						? TOP_LEVEL_WHITESPACE_RE.test(ch)
-						: ch === "," || ch === ";" || TOP_LEVEL_WHITESPACE_RE.test(ch);
-		if (braceDepth !== 0 || !isSep) continue;
-		parts.push(entry.slice(start, i));
-		start = i + 1;
+						: ch === "," || ch === ";" || (mode !== "punctuation" && TOP_LEVEL_WHITESPACE_RE.test(ch));
+		if (isSep) return i;
+	}
+	return -1;
+}
+
+export function splitTopLevelDelimitedPath(entry: string, mode: DelimitedPathSplitMode): string[] {
+	const parts: string[] = [];
+	let start = 0;
+	for (;;) {
+		const delimiter = findTopLevelPathDelimiter(entry, start, mode);
+		if (delimiter === -1) break;
+		parts.push(entry.slice(start, delimiter));
+		start = delimiter + 1;
 	}
 	parts.push(entry.slice(start));
 	return parts;
@@ -1096,7 +1159,7 @@ export function splitDelimitedPathEntrySync(
 	options: DelimitedPathSplitOptions = {},
 ): string[] | null {
 	const normalizedEntry = normalizePathLikeInput(entry);
-	if (!hasTopLevelPathDelimiter(normalizedEntry)) return null;
+	if (findTopLevelPathDelimiter(normalizedEntry, 0, "mixed") === -1) return null;
 	if (isInternalUrlPath(normalizedEntry)) {
 		if (options.internalUrls !== "split-on-semicolon") return null;
 		return getDelimitedCandidates(normalizedEntry, "semicolon");
@@ -1142,7 +1205,7 @@ export async function splitDelimitedPathEntry(
 	options: DelimitedPathSplitOptions = {},
 ): Promise<string[] | null> {
 	const normalizedEntry = normalizePathLikeInput(entry);
-	if (!hasTopLevelPathDelimiter(normalizedEntry)) return null;
+	if (findTopLevelPathDelimiter(normalizedEntry, 0, "mixed") === -1) return null;
 	if (isInternalUrlPath(normalizedEntry)) {
 		if (options.internalUrls !== "split-on-semicolon") return null;
 		return getDelimitedCandidates(normalizedEntry, "semicolon");

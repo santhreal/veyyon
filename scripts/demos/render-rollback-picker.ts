@@ -19,8 +19,7 @@
  */
 import { buildRollbackRows } from "../../packages/coding-agent/src/cli/rollback-cli";
 import { RollbackPickerComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/rollback-picker";
-import { initTheme } from "../../packages/coding-agent/src/theme/theme";
-import { flag, hasFlag, renderWidth } from "./render-args";
+import { renderDemo } from "./render-args";
 
 /** A release history with one of every marker, so no row state goes unproven. */
 const RELEASES = [
@@ -36,20 +35,13 @@ const RELEASES = [
 const CURRENT = "1.5.1";
 const MOVES = [{ from: "1.4.0", to: "1.5.0", at: "2026-06-25T00:00:00Z" }];
 
-const themeName = flag("theme", "titanium");
-const width = renderWidth();
-const filtered = hasFlag("filtered");
-
-// Both slots get the same theme so the render does not depend on the capturing
-// terminal's background luminance, which is what the tape is varying.
-await initTheme(false, "unicode", false, themeName, themeName);
-
-const rows = buildRollbackRows(RELEASES, CURRENT, MOVES);
-const picker = new RollbackPickerComponent(rows, {
-	onSelect: () => {},
-	onCancel: () => {},
-	openUrl: () => {},
+await renderDemo(({ width, hasFlag }) => {
+	const rows = buildRollbackRows(RELEASES, CURRENT, MOVES);
+	const picker = new RollbackPickerComponent(rows, {
+		onSelect: () => {},
+		onCancel: () => {},
+		openUrl: () => {},
+	});
+	if (hasFlag("filtered")) picker.getSelectList().setFilter("1.5");
+	return picker.render(width);
 });
-if (filtered) picker.getSelectList().setFilter("1.5");
-
-process.stdout.write(`${picker.render(width).join("\n")}\n`);

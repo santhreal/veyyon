@@ -11,7 +11,7 @@ import { type ManifestHolder, manifestFromPackageJson } from "@veyyon/kernel/loa
 import { normalizePluginRuntimeConfig } from "@veyyon/kernel/loader/plugins/runtime-config";
 import type { InstalledPlugin, PluginRuntimeConfig, ProjectPluginOverrides } from "@veyyon/kernel/loader/plugins/types";
 import type { PluginManifest } from "@veyyon/plugin";
-import { errorMessage, getPluginsDir, getPluginsLockfile, isEnoent, logger } from "@veyyon/utils";
+import { errorMessage, getPluginsDir, getPluginsLockfile, isEnoent, logger, reportFault } from "@veyyon/utils";
 import { getConfigDirPaths } from "../../config";
 import { registerPluginCacheInvalidator, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
 import { installLegacyPiSpecifierShim } from "./legacy-pi-compat";
@@ -74,6 +74,20 @@ async function loadProjectOverrides(cwd: string): Promise<ProjectPluginOverrides
 	return {};
 }
 /**
+ * A file the plugin roots depend on exists and cannot be read or parsed. The
+ * root carries on without it; the operator is told what was skipped and where.
+ */
+function reportUnreadablePluginFile(filePath: string, err: unknown, skipped: string): void {
+	reportFault({
+		source: "plugins",
+		text:
+			`Cannot read ${filePath}: ${errorMessage(err)}. Not loaded in this run: ${skipped}. ` +
+			"Fix: repair the file or reinstall the plugin with `veyyon plugin install`.",
+		context: { path: filePath, error: errorMessage(err) },
+	});
+}
+
+/**
  * Per-root enumeration of plugins from `<root>/node_modules`,
  * `<root>/package.json#dependencies`, and `<root>/veyyon-plugins.lock.json#plugins`.
  * Honors `projectOverrides.disabled` and `projectOverrides.features`. Returns an
@@ -95,7 +109,7 @@ async function collectPluginsAtRoot(
 	} catch (err) {
 		// Linked-only setups may have no `<root>/package.json` yet — that's
 		// fine, the lockfile still records the link.
-		if (!isEnoent(err)) throw err;
+		if (!isEnoent(err)) reportUnreadablePluginFile(pkgJsonPath, err, "the plugins it lists");
 	}
 
 	const lockPath = path.join(root, "veyyon-plugins.lock.json");
@@ -103,7 +117,7 @@ async function collectPluginsAtRoot(
 	try {
 		runtimeConfig = normalizePluginRuntimeConfig(await Bun.file(lockPath).json());
 	} catch (err) {
-		if (!isEnoent(err)) throw err;
+		if (!isEnoent(err)) reportUnreadablePluginFile(lockPath, err, "the linked plugins and enable state it records");
 		runtimeConfig = normalizePluginRuntimeConfig({});
 	}
 
@@ -125,7 +139,11 @@ async function collectPluginsAtRoot(
 			// Lockfile entry without a corresponding node_modules tree means the
 			// link was deleted out from under us; skip silently.
 			if (isEnoent(err)) continue;
-			throw err;
+			// A manifest that exists and cannot be read is that plugin's fault, not
+			// the root's: one broken package used to throw out of here and take
+			// every other plugin at this root, and the session, down with it.
+			reportUnreadablePluginFile(pluginPkgPath, err, `the plugin "${name}"`);
+			continue;
 		}
 
 		const manifest: PluginManifest | undefined = manifestFromPackageJson(pluginPkg);
@@ -414,10 +432,18 @@ function resolveManifestEntryFiles(joined: string, expandDirectory: boolean): st
 }
 
 /**
+ * Every manifest key whose entries resolve to files a loader imports. Each
+ * key has one consumer: `tools` the custom-tool loader, `commands` the
+ * custom-command loader, `hooks` and `extensions` the extension loader.
+ */
+export const PLUGIN_MANIFEST_ENTRY_KEYS = ["tools", "hooks", "commands", "extensions"] as const;
+export type PluginManifestEntryKey = (typeof PLUGIN_MANIFEST_ENTRY_KEYS)[number];
+
+/**
  * Generic path resolver for plugin manifest entries (tools, hooks, commands, extensions).
  * Handles both single-string and string[] base entries, plus feature-specific entries.
  */
-function resolvePluginPaths(plugin: InstalledPlugin, key: "tools" | "hooks" | "commands" | "extensions"): string[] {
+function resolvePluginPaths(plugin: InstalledPlugin, key: PluginManifestEntryKey): string[] {
 	const resolved: string[] = [];
 	for (const entry of resolvePluginManifestEntries(plugin, key)) {
 		if (entry.resolvedPath) {
@@ -436,7 +462,7 @@ function resolvePluginPaths(plugin: InstalledPlugin, key: "tools" | "hooks" | "c
  */
 export function resolvePluginManifestEntries(
 	plugin: InstalledPlugin,
-	key: "tools" | "hooks" | "commands" | "extensions",
+	key: PluginManifestEntryKey,
 ): Array<{ entry: string; resolvedPath: string | null }> {
 	const declared: Array<{ entry: string; resolvedPath: string | null }> = [];
 	const manifest = plugin.manifest;
@@ -456,21 +482,10 @@ export function resolvePluginManifestEntries(
 		}
 	}
 
-	if (manifest.features && plugin.enabledFeatures) {
-		const enabledSet = new Set(plugin.enabledFeatures);
+	if (manifest.features && plugin.enabledFeatures !== undefined) {
+		const enabledSet = plugin.enabledFeatures ? new Set(plugin.enabledFeatures) : null;
 		for (const [featName, feat] of Object.entries(manifest.features)) {
-			if (!enabledSet.has(featName)) continue;
-			if (feat[key]) {
-				for (const entry of feat[key]) {
-					const resolvedEntry = resolveEntry(entry);
-					for (let ri = 0; ri < resolvedEntry.length; ri++) declared.push(resolvedEntry[ri]!);
-				}
-			}
-		}
-	} else if (manifest.features && plugin.enabledFeatures === null) {
-		// null means use defaults - enable features with default: true
-		for (const [_featName, feat] of Object.entries(manifest.features)) {
-			if (!feat.default) continue;
+			if (enabledSet ? !enabledSet.has(featName) : !feat.default) continue;
 			if (feat[key]) {
 				for (const entry of feat[key]) {
 					const resolvedEntry = resolveEntry(entry);
@@ -503,72 +518,85 @@ export function resolvePluginExtensionPaths(plugin: InstalledPlugin): string[] {
 // Aggregated Discovery
 // =============================================================================
 
-/**
- * Get all tool paths from all enabled plugins.
- *
- * `pluginsRoot` names WHICH profile's plugins directory supplies the user
- * scope, the same contract as {@link GetEnabledPluginsOptions.pluginsRoot}.
- * Undefined means the process-active profile, which is what
- * {@link pluginsRootFor} returns for the active agent dir, so a caller can
- * forward that result unconditionally.
- */
-export async function getAllPluginToolPaths(cwd: string, pluginsRoot?: string): Promise<string[]> {
-	const plugins = await getEnabledPlugins(cwd, { pluginsRoot });
+async function getAllPluginPaths(
+	cwd: string,
+	resolvePaths: (plugin: ScopedInstalledPlugin) => string[],
+	opts?: GetEnabledPluginsOptions | string,
+): Promise<string[]> {
+	const plugins = await getEnabledPlugins(cwd, typeof opts === "string" ? { pluginsRoot: opts } : opts);
 	const paths: string[] = [];
 
 	for (const plugin of plugins) {
-		const pluginPaths = resolvePluginToolPaths(plugin);
+		const pluginPaths = resolvePaths(plugin);
 		for (let pi = 0; pi < pluginPaths.length; pi++) paths.push(pluginPaths[pi]!);
 	}
 
 	return paths;
+}
+
+/**
+ * Get all tool paths from all enabled plugins.
+ *
+ * `pluginsRootOrOpts` names WHICH profile's plugins directory supplies the user
+ * scope (or full {@link GetEnabledPluginsOptions}), the same contract as
+ * {@link GetEnabledPluginsOptions.pluginsRoot}. Undefined means the
+ * process-active profile, which is what {@link pluginsRootFor} returns for
+ * the active agent dir, so a caller can forward that result unconditionally.
+ */
+export async function getAllPluginToolPaths(
+	cwd: string,
+	pluginsRootOrOpts?: string | GetEnabledPluginsOptions,
+): Promise<string[]> {
+	return getAllPluginPaths(cwd, resolvePluginToolPaths, pluginsRootOrOpts);
 }
 
 /**
  * Get all hook paths from all enabled plugins.
+ *
+ * `pluginsRootOrOpts` names WHICH profile's plugins directory supplies the user
+ * scope (or full {@link GetEnabledPluginsOptions}), the same contract as
+ * {@link GetEnabledPluginsOptions.pluginsRoot}. Undefined means the
+ * process-active profile, which is what {@link pluginsRootFor} returns for
+ * the active agent dir, so a caller can forward that result unconditionally.
  */
-export async function getAllPluginHookPaths(cwd: string): Promise<string[]> {
-	const plugins = await getEnabledPlugins(cwd);
-	const paths: string[] = [];
-
-	for (const plugin of plugins) {
-		const pluginPaths = resolvePluginHookPaths(plugin);
-		for (let pi = 0; pi < pluginPaths.length; pi++) paths.push(pluginPaths[pi]!);
-	}
-
-	return paths;
+export async function getAllPluginHookPaths(
+	cwd: string,
+	pluginsRootOrOpts?: string | GetEnabledPluginsOptions,
+): Promise<string[]> {
+	return getAllPluginPaths(cwd, resolvePluginHookPaths, pluginsRootOrOpts);
 }
 
 /**
  * Get all command paths from all enabled plugins.
+ *
+ * `pluginsRootOrOpts` names WHICH profile's plugins directory supplies the user
+ * scope (or full {@link GetEnabledPluginsOptions}), the same contract as
+ * {@link GetEnabledPluginsOptions.pluginsRoot}. Undefined means the
+ * process-active profile, which is what {@link pluginsRootFor} returns for
+ * the active agent dir, so a caller can forward that result unconditionally.
  */
-export async function getAllPluginCommandPaths(cwd: string): Promise<string[]> {
-	const plugins = await getEnabledPlugins(cwd);
-	const paths: string[] = [];
-
-	for (const plugin of plugins) {
-		const pluginPaths = resolvePluginCommandPaths(plugin);
-		for (let pi = 0; pi < pluginPaths.length; pi++) paths.push(pluginPaths[pi]!);
-	}
-
-	return paths;
+export async function getAllPluginCommandPaths(
+	cwd: string,
+	pluginsRootOrOpts?: string | GetEnabledPluginsOptions,
+): Promise<string[]> {
+	return getAllPluginPaths(cwd, resolvePluginCommandPaths, pluginsRootOrOpts);
 }
 
 /**
  * Get all extension module paths from all enabled plugins.
+ *
+ * `pluginsRootOrOpts` names WHICH profile's plugins directory supplies the user
+ * scope (or full {@link GetEnabledPluginsOptions}), the same contract as
+ * {@link GetEnabledPluginsOptions.pluginsRoot}. Undefined means the
+ * process-active profile, which is what {@link pluginsRootFor} returns for
+ * the active agent dir, so a caller can forward that result unconditionally.
  */
-export async function getAllPluginExtensionPaths(cwd: string): Promise<string[]> {
-	const plugins = await getEnabledPlugins(cwd);
-	const paths: string[] = [];
-
-	for (const plugin of plugins) {
-		const pluginPaths = resolvePluginExtensionPaths(plugin);
-		for (let pi = 0; pi < pluginPaths.length; pi++) paths.push(pluginPaths[pi]!);
-	}
-
-	return paths;
+export async function getAllPluginExtensionPaths(
+	cwd: string,
+	pluginsRootOrOpts?: string | GetEnabledPluginsOptions,
+): Promise<string[]> {
+	return getAllPluginPaths(cwd, resolvePluginExtensionPaths, pluginsRootOrOpts);
 }
-
 /**
  * Get plugin settings for use in tool/hook contexts.
  * Merges global settings with project overrides.

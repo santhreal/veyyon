@@ -66,7 +66,7 @@ echo "scene: the picker is read over ${PICKER_CROP}" >&2
 read_overlay() { # <shot>
 	local closed="${SCENE_OUT}/${SCENE_NAME}-picker-closed.png"
 	local open="${SCENE_OUT}/${SCENE_NAME}-$1.png"
-	local scratch="${SCENE_RUNTIME_DIR}/frame-compare"
+	local scratch="${TMPDIR}/frame-compare"
 	mkdir -p "${scratch}"
 	magick "${closed}" -crop "${PICKER_CROP}" +repage "${scratch}/picker-closed.png"
 	magick "${open}" -crop "${PICKER_CROP}" +repage "${scratch}/picker-open.png"

@@ -36,7 +36,7 @@ import { SearchProviderError } from "../types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { classifyProviderHttpError } from "./utils";
+import { handleProviderHttpError } from "./utils";
 
 const MAX_NUM_RESULTS = 20;
 
@@ -48,7 +48,6 @@ const RECENCY_MAP: Record<"day" | "week" | "month" | "year", string> = {
 	month: "month",
 	year: "year",
 };
-
 /** SearXNG JSON API response types */
 interface SearXNGResult {
 	title?: string;
@@ -75,48 +74,51 @@ interface SearXNGAuth {
 	value: string;
 }
 
-/** Find SearXNG endpoint from settings or environment. */
-function findEndpoint(): string | null {
+/**
+ * The SearXNG value at `key`, or the environment variable `envName` when the setting is unset or
+ * settings are not initialized yet. `present` is what counts as set: the endpoint and token treat
+ * an empty string as unset, the Basic auth pair takes any string.
+ */
+function findSetting(
+	key: "searxng.endpoint" | "searxng.token" | "searxng.basicUsername" | "searxng.basicPassword",
+	envName: string,
+	present: (value: string | undefined) => value is string,
+): string | null {
 	try {
-		const endpoint = settings.get("searxng.endpoint");
-		if (endpoint) return endpoint;
+		const value = settings.get(key);
+		if (present(value)) return value;
 	} catch {
 		// Settings not initialized yet
 	}
-	return process.env.SEARXNG_ENDPOINT ?? null;
+	return process.env[envName] ?? null;
+}
+
+function nonEmpty(value: string | undefined): value is string {
+	return Boolean(value);
+}
+
+function defined(value: string | undefined): value is string {
+	return value !== undefined;
+}
+
+/** Find SearXNG endpoint from settings or environment. */
+function findEndpoint(): string | null {
+	return findSetting("searxng.endpoint", "SEARXNG_ENDPOINT", nonEmpty);
 }
 
 /** Find SearXNG bearer token from settings or environment. */
 function findToken(): string | null {
-	try {
-		const token = settings.get("searxng.token");
-		if (token) return token;
-	} catch {
-		// Settings not initialized yet
-	}
-	return process.env.SEARXNG_TOKEN ?? null;
+	return findSetting("searxng.token", "SEARXNG_TOKEN", nonEmpty);
 }
 
 /** Find SearXNG Basic auth username from settings or environment. */
 function findBasicUsername(): string | null {
-	try {
-		const username = settings.get("searxng.basicUsername");
-		if (username !== undefined) return username;
-	} catch {
-		// Settings not initialized yet
-	}
-	return process.env.SEARXNG_BASIC_USERNAME ?? null;
+	return findSetting("searxng.basicUsername", "SEARXNG_BASIC_USERNAME", defined);
 }
 
 /** Find SearXNG Basic auth password from settings or environment. */
 function findBasicPassword(): string | null {
-	try {
-		const password = settings.get("searxng.basicPassword");
-		if (password !== undefined) return password;
-	} catch {
-		// Settings not initialized yet
-	}
-	return process.env.SEARXNG_BASIC_PASSWORD ?? null;
+	return findSetting("searxng.basicPassword", "SEARXNG_BASIC_PASSWORD", defined);
 }
 
 /** Build the RFC 7617 Basic auth credential using UTF-8 bytes. */
@@ -219,10 +221,7 @@ async function callSearXNGSearch(
 		});
 
 		if (!response.ok) {
-			const errorText = await response.text();
-			const classified = classifyProviderHttpError("searxng", response.status, errorText);
-			if (classified) throw classified;
-			throw new SearchProviderError("searxng", `SearXNG API error (${response.status}).`, response.status);
+			await handleProviderHttpError("searxng", response, `SearXNG API error (${response.status}).`);
 		}
 
 		return (await response.json()) as SearXNGResponse;
@@ -271,7 +270,6 @@ export async function searchSearXNG(params: {
 	);
 
 	const sources: SearchSource[] = [];
-
 	for (const result of response.results ?? []) {
 		if (!result.url) continue;
 		const publishedDate = result.publishedDate ?? result.published_date;

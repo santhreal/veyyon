@@ -1,62 +1,4 @@
-/**
- * Startup benchmark: how long veyyon takes to put something on the screen.
- *
- * Eight arms, cheapest first, so a regression can be attributed to a layer:
- *
- *   version      `--version`, which returns before the command registry loads. Runtime init plus
- *                the entry module's own graph, and nothing else.
- *   help         `--help`, which loads the command registry. version + registry.
- *   ready        an interactive launch with `VEYYON_TIMING=x`, which prints the startup timing tree
- *                and exits at the point the TUI would take the terminal. Everything the boot path
- *                does before the first frame, minus the frame itself.
- *   first-frame  an interactive launch under a pty, timed from spawn to the first byte the process
- *                writes, with no first-frame recording on disk. The card is composed.
- *   composer     the same launch, timed to the composer's own placeholder row being on screen.
- *   editable     the same launch, timed to a character typed after the first byte coming back
- *                echoed. This is the moment the terminal answers the operator, and no output-only
- *                timer can observe it.
- *   statusrow    the same launch, timed to the status row being on screen — the row carrying where
- *                you are, the branch, the model and the approval rung.
- *   replay       the same launch again, against the recording the launch before it wrote. The card
- *                is replayed rather than composed.
- *   replay:*     composer, editable and statusrow on that replayed launch. The replayed card is
- *                bytes, so these say when it stops being a picture and starts answering.
- *
- * `first-frame` and `replay` are the off and on arms of the first-frame replay, at exact parity:
- * one binary, one seeded home, one terminal size, two consecutive launches, and the recording is
- * the only difference between them. `first-frame` deletes the recording before it spawns, so it
- * reports the composed number rather than whichever state the arm before it left behind.
- *
- * A FIRST BYTE IS NOT A USABLE SCREEN, which is why `composer`, `editable`, `statusrow` and the
- * `replay:*` arms exist. `first-frame` was the whole answer here and it reads 45-46ms on a warm
- * binary: optimizing against it alone declares victory on a frame the operator cannot yet read.
- * The replay arm read the first byte only, which was that same mistake one layer down.
- *
- * `statusrow` used to trail the frame by about a second, because the row belonged to the session
- * and the card painted a hand-written `path · git` in its place. The card now renders the real row
- * from config, so the arm reads at the frame instead. A run where it trails again means the card
- * stopped painting it.
- *
- * Each arm runs against an isolated agent home so the numbers do not depend on the machine's
- * accumulated caches, sessions, or vault, and so a run cannot touch them. `--cold` throws that home
- * away between repetitions, which is the first-launch number; the default keeps it, which is the
- * number a returning user sees.
- *
- * A thrown-away home is re-seeded the way an install leaves one, with the native addon already
- * extracted. Both supported install paths extract it before a user launches anything: `install.sh`
- * runs `doctor_natives`, and the self-updater runs the same search probe. Skipping that step
- * charged every cold launch 264ms of extraction against a 293ms frame, and no user reaches that
- * state without deleting the agent home from under an installed binary.
- *
- * Usage:
- *   bun scripts/bench-startup.ts [--runs 5] [--cold] [--bin <veyyon>] [--json out.json]
- *
- * `--bin` measures a built binary instead of `bun <source>`; the source arm carries Bun's own
- * transpile cost and is the pessimistic reading.
- */
 import { execFile, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -65,22 +7,12 @@ import { Process } from "@veyyon/natives";
 import { AnsiStripper } from "@veyyon/utils";
 import { parseDocument } from "yaml";
 import { AUTONOMY_LABEL } from "../packages/coding-agent/src/tools/core/approval-modes";
-import { recordSettledStartup } from "./record-settled-startup";
+import { computeDigest, median, recordSettledStartup } from "./record-settled-startup";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const CLI_SOURCE = path.join(REPO_ROOT, "packages", "coding-agent", "src", "cli.ts");
-/** Onboarding generation the seeded home claims to have finished, so no run measures the wizard. */
 const ONBOARDED_CONFIG = "onboardingVersion: 1\nstartup:\n  checkUpdate: false\n  autoUpdate: false\n";
 
-/**
- * Arm groups, one launch each. A run measures all of them, which is what makes a whole run
- * comparable, and `--only` narrows it to the named ones.
- *
- * Narrowing exists because the groups interfere. `ready` boots all the way to the TUI handoff,
- * spawning workers and a daemon and touching the model registry, and it sits between two pty
- * launches whose numbers are single-digit milliseconds. Optimizing the composed frame means
- * measuring `frame` on a machine the bench is not itself loading.
- */
 const ARM_GROUPS = ["version", "help", "ready", "frame", "replay"] as const;
 const OPTIONAL_ARM_GROUPS = ["settled", "responsive"] as const;
 type ArmGroup = (typeof ARM_GROUPS)[number] | (typeof OPTIONAL_ARM_GROUPS)[number];
@@ -103,6 +35,8 @@ interface Options {
 	rows: number;
 	probeIntervalMs: number;
 	probeCount: number;
+	memory: boolean;
+	memoryIntervalMs: number;
 }
 
 interface Sample {
@@ -121,6 +55,8 @@ function parseArgs(argv: string[]): Options {
 		rows: 45,
 		probeIntervalMs: 50,
 		probeCount: 40,
+		memory: false,
+		memoryIntervalMs: 25,
 	};
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i];
@@ -141,9 +77,11 @@ function parseArgs(argv: string[]): Options {
 		else if (arg === "--rows") options.rows = Number(argv[++i]);
 		else if (arg === "--probe-interval-ms") options.probeIntervalMs = Number(argv[++i]);
 		else if (arg === "--probe-count") options.probeCount = Number(argv[++i]);
+		else if (arg === "--memory") options.memory = true;
+		else if (arg === "--memory-interval-ms") options.memoryIntervalMs = Number(argv[++i]);
 		else throw new Error(`unknown argument: ${arg}`);
 	}
-	for (const [name, value] of Object.entries({
+	const positiveInts: Record<string, number> = {
 		runs: options.runs,
 		"observe-ms": options.observationMs,
 		"stable-ms": options.stableMs,
@@ -151,7 +89,9 @@ function parseArgs(argv: string[]): Options {
 		rows: options.rows,
 		"probe-interval-ms": options.probeIntervalMs,
 		"probe-count": options.probeCount,
-	})) {
+		"memory-interval-ms": options.memoryIntervalMs,
+	};
+	for (const [name, value] of Object.entries(positiveInts)) {
 		if (!Number.isSafeInteger(value) || value < 1) throw new Error(`--${name} must be a positive integer`);
 	}
 	if (options.source && options.bin) throw new Error("--source and --bin are mutually exclusive");
@@ -169,35 +109,16 @@ function parseArgs(argv: string[]): Options {
 }
 
 function parseArmGroups(raw: string | undefined): Set<ArmGroup> {
-	const names = (raw ?? "").split(",").filter(name => name !== "");
+	const names = (raw ?? "").split(",").filter(Boolean);
 	const known: readonly string[] = [...ARM_GROUPS, ...OPTIONAL_ARM_GROUPS];
 	if (names.length === 0) throw new Error(`--only needs at least one of: ${known.join(", ")}`);
 	for (const name of names) {
-		if (!known.includes(name)) {
+		if (!known.includes(name))
 			throw new Error(`--only got unknown arm group ${JSON.stringify(name)}; known: ${known.join(", ")}`);
-		}
 	}
 	return new Set(names as ArmGroup[]);
 }
 
-/** The command that launches veyyon: a built binary when given one, else the source entry under Bun. */
-function launcher(options: Options): { command: string; prefix: string[] } {
-	return options.bin
-		? { command: options.bin, prefix: [] }
-		: { command: process.execPath, prefix: [options.source ?? CLI_SOURCE] };
-}
-
-/**
- * A pty wrapper, because the interactive arms refuse to run without a terminal and neither Node nor
- * Bun can allocate one. `script` ships with util-linux and with macOS, and its argument order
- * differs between them.
- *
- * `stty -echo` FIRST, because the line discipline echoes typed input on its own and the `editable`
- * arms cannot tell that apart from the composer answering. With echo left on, `sh -c 'printf X;
- * sleep 2'` returns the probe in 1.1ms and scores better than veyyon: the arm reads the kernel, not
- * the program, on every launch that has not yet taken the terminal into raw mode. Turning it off
- * means an echo observed here was written by the process under test.
- */
 export function ptyWrapper(
 	command: string,
 	args: string[],
@@ -215,25 +136,9 @@ export interface RunOutcome {
 	stdout: string;
 }
 
-/**
- * Typed into the launch composer to prove it answers. Three characters that occur nowhere in the
- * launch card's art, its copy or a path, so an echo cannot be mistaken for the card repainting.
- */
 const PROBE = "qjq";
-/**
- * How long a recorded launch is held open before it is killed. Generous rather than tight: an arm
- * that has not fired by the kill is reported as absent rather than slow, which reads as the arm
- * disappearing from the table instead of as a regression.
- */
 const FRAME_HOLD_MS = 4000;
 
-/**
- * The status row on screen: an approval rung with a separator dot on each side.
- *
- * Read off `AUTONOMY_LABEL` rather than spelled here, so renaming a rung fails this arm loudly
- * instead of leaving it reporting no samples. The rungs carry no regex metacharacters today, and
- * the escape keeps that from being a condition of the bench working.
- */
 export const STATUS_ROW = new RegExp(
 	`·\\s+(?:${Object.values(AUTONOMY_LABEL)
 		.map(label => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
@@ -247,25 +152,17 @@ export interface FrameMarks {
 	statusrow?: number;
 }
 
-/**
- * Record one interactive launch under a pty and timestamp the moments a person waits for.
- *
- * Stdin is a pipe rather than `ignore` because the editable arm has to type: the probe goes in as
- * soon as the first byte lands, so the echo timestamp measures when the composer became able to
- * answer and not how long this harness waited before asking.
- *
- * `probe: false` withholds it, which the replay arms need. A launch the operator typed into records
- * nothing, because what is on screen at the end of it is a draft rather than a card the next launch
- * can replay, so a typing launch can never leave the recording the replay arm measures against.
- * Those arms want the first byte only, and the first byte is timed before any probe would be sent.
- *
- * The markers are read off a recorded stream rather than assumed:
- *   composer    the composer's placeholder row, which nothing else draws
- *   statusrow   the approval rung between two of the row's separator dots. The gauge used to be
- *               the marker and reported nothing: it is the row's last segment, so an eighty-column
- *               terminal — what the pty here gives — sheds it before anything else, and a launch
- *               resolving a long model id never printed it at all.
- */
+async function killProcessTree(pid: number | undefined, target: Process | null): Promise<void> {
+	const ref = target ?? (pid === undefined ? null : Process.fromPid(pid));
+	if (ref) {
+		if (!(await ref.terminate({ gracefulMs: 500, timeoutMs: 2000 }))) {
+			throw new Error(`Startup process tree ${ref.pid} did not terminate`);
+		}
+	} else if (pid !== undefined) {
+		process.kill(pid, "SIGKILL");
+	}
+}
+
 export async function recordFrame(
 	command: string,
 	args: string[],
@@ -291,12 +188,10 @@ export async function recordFrame(
 	let stdoutSeen = "";
 	let stderrSeen = "";
 	const at = (): number => performance.now() - started;
+
 	const handleChunk = (chunk: string, isStderr: boolean): void => {
-		if (isStderr) {
-			stderrSeen += stderrStripper.push(chunk);
-		} else {
-			stdoutSeen += stdoutStripper.push(chunk);
-		}
+		if (isStderr) stderrSeen += stderrStripper.push(chunk);
+		else stdoutSeen += stdoutStripper.push(chunk);
 		const visible = stdoutSeen + stdoutStripper.pending + stderrSeen + stderrStripper.pending;
 		if (marks.firstByte === undefined) {
 			marks.firstByte = at();
@@ -306,6 +201,7 @@ export async function recordFrame(
 		if (marks.editable === undefined && visible.includes(PROBE)) marks.editable = at();
 		if (marks.statusrow === undefined && STATUS_ROW.test(visible)) marks.statusrow = at();
 	};
+
 	child.stdout.setEncoding("utf8");
 	child.stdout.on("data", (chunk: string) => handleChunk(chunk, false));
 	child.stderr.setEncoding("utf8");
@@ -324,30 +220,16 @@ export async function recordFrame(
 		clearTimeout(timer);
 	}
 	try {
-		const target = processState.target ?? (child.pid === undefined ? null : Process.fromPid(child.pid));
-		if (target) {
-			const terminated = await target.terminate({ gracefulMs: 500, timeoutMs: 2000 });
-			if (!terminated) {
-				throw new Error(`Startup process tree ${target.pid} did not terminate`);
-			}
-		} else if (child.pid !== undefined) {
-			child.kill("SIGKILL");
-		}
+		await killProcessTree(child.pid, processState.target);
 	} catch (error) {
-		if (failure) {
+		if (failure)
 			throw new AggregateError([failure.error, error], "Startup recording and process cleanup both failed");
-		}
 		throw error;
 	}
 	if (failure) throw failure.error;
 	return marks;
 }
 
-/**
- * Spawn one process and stop timing at `until`: the first byte for the pty arms, process exit for
- * the rest. The child is killed the moment the number is captured — an interactive launch never
- * ends on its own, and nothing after the first byte is being measured.
- */
 export async function timeRun(
 	command: string,
 	args: string[],
@@ -372,17 +254,7 @@ export async function timeRun(
 		processState.target = child.pid === undefined ? null : Process.fromPid(child.pid);
 	});
 
-	const cleanup = async (): Promise<void> => {
-		const target = processState.target ?? (child.pid === undefined ? null : Process.fromPid(child.pid));
-		if (target) {
-			const terminated = await target.terminate({ gracefulMs: 500, timeoutMs: 2000 });
-			if (!terminated) {
-				throw new Error(`Startup process tree ${target.pid} did not terminate`);
-			}
-		} else if (child.pid !== undefined) {
-			child.kill("SIGKILL");
-		}
-	};
+	const cleanup = () => killProcessTree(child.pid, processState.target);
 
 	const finish = async (): Promise<void> => {
 		if (settled) return;
@@ -393,9 +265,7 @@ export async function timeRun(
 				await cleanup();
 				reject(new Error(`no output before exit: ${stdout.slice(-300)}`));
 			} else {
-				if (until === "first-byte") {
-					await cleanup();
-				}
+				if (until === "first-byte") await cleanup();
 				resolve({ ms, stdout });
 			}
 		} catch (error) {
@@ -444,16 +314,6 @@ export async function timeRun(
 	return promise;
 }
 
-/**
- * A seeded agent home: onboarded, installed, empty of everything else.
- *
- * The addon an install left behind is hardlinked in rather than extracted again. A compiled binary
- * cannot `dlopen` the addon it carries, so the loader writes it to
- * `<home>/.veyyon/natives/<version>/` on the first native call, and every install path already pays
- * that write. Re-extracting it per arm both models nothing and skews the arm it precedes: 135MB of
- * writeback is still in flight when the launch being timed starts. A hardlink is the same bytes at
- * the same path for no I/O.
- */
 async function seedHome(root: string, installedNatives: string | undefined): Promise<string> {
 	const home = path.join(root, "home");
 	await fs.mkdir(path.join(home, ".veyyon"), { recursive: true });
@@ -462,7 +322,6 @@ async function seedHome(root: string, installedNatives: string | undefined): Pro
 	return home;
 }
 
-/** Disable release checks only in the copied benchmark configuration. */
 export async function disableBenchmarkUpdates(configPath: string): Promise<void> {
 	let source = "";
 	try {
@@ -478,18 +337,6 @@ export async function disableBenchmarkUpdates(configPath: string): Promise<void>
 	await fs.writeFile(configPath, config.toString());
 }
 
-async function executableDigest(command: string): Promise<string> {
-	const digest = createHash("sha256");
-	for await (const chunk of createReadStream(command)) digest.update(chunk);
-	return digest.digest("hex");
-}
-
-/**
- * Mirror a directory as hardlinks. Same filesystem by construction: both live under the scratch.
- *
- * Idempotent, because a warm run keeps its home and re-seeds it before every arm. An existing link
- * is already the file this would create.
- */
 async function hardlinkTree(from: string, to: string): Promise<void> {
 	await fs.mkdir(to, { recursive: true });
 	for (const entry of await fs.readdir(from, { withFileTypes: true })) {
@@ -507,16 +354,6 @@ async function hardlinkTree(from: string, to: string): Promise<void> {
 
 const execFileAsync = promisify(execFile);
 
-/**
- * Run the installer's own native self-test once against a throwaway home, and return the natives
- * cache it extracted. `install.sh` runs this as `doctor_natives`, `install.ps1` runs its mirror and
- * the self-updater runs the same search probe, so a machine reaches its first launch with this
- * directory already populated.
- *
- * Returns undefined when the probe cannot run, which leaves the launch arms to extract for
- * themselves and report the cost. That matches `install.sh`, which skips the probe on a build with
- * no `grep` subcommand.
- */
 export async function extractInstalledNatives(
 	root: string,
 	command: string,
@@ -539,94 +376,52 @@ export async function extractInstalledNatives(
 	return (await fs.stat(natives).catch(() => undefined))?.isDirectory() === true ? natives : undefined;
 }
 
-/** `Total: 394.3ms` from the timing tree the `ready` arm prints. */
-function parseInstrumentedTotal(stdout: string): number | undefined {
-	const match = /Total:\s+([0-9.]+)ms/.exec(stdout);
-	return match ? Number(match[1]) : undefined;
-}
-
-/** `(before instrumentation): 511ms` — runtime init plus module load, before the first marker. */
-function parseBeforeInstrumentation(stdout: string): number | undefined {
-	const match = /\(before instrumentation\):\s+([0-9.]+)ms/.exec(stdout);
-	return match ? Number(match[1]) : undefined;
-}
-
-function median(values: number[]): number {
-	const sorted = [...values].sort((a, b) => a - b);
-	const mid = Math.floor(sorted.length / 2);
-	return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-}
-
 function report(arm: string, samples: number[]): string {
 	if (samples.length === 0) return `${arm}: no samples`;
+	const unit = arm.endsWith("-kb") ? "kB" : "ms";
 	return (
-		`${arm.padEnd(12)} median ${median(samples).toFixed(0)}ms ` +
+		`${arm.padEnd(arm.endsWith("-kb") ? 32 : 12)} median ${median(samples).toFixed(0)}${unit} ` +
 		`(min ${Math.min(...samples).toFixed(0)}, max ${Math.max(...samples).toFixed(0)}, n=${samples.length})`
 	);
 }
 
 async function main(): Promise<void> {
 	const options = parseArgs(process.argv.slice(2));
-	const launch = launcher(options);
+	const launch = options.bin
+		? { command: options.bin, prefix: [] }
+		: { command: process.execPath, prefix: [options.source ?? CLI_SOURCE] };
 	const { prefix } = launch;
-	// Local disk, not the repository, when the repository is a network mount. A seeded home on NFS
-	// measures the network: the launch reads its config, writes its vault and session store, and
-	// loads the addon through it, none of which a user's launch does over a wire.
 	const scratch = path.resolve(options.scratch ?? path.join(REPO_ROOT, ".captures", "bench-startup"));
 	await fs.rm(scratch, { recursive: true, force: true });
 	await fs.mkdir(scratch, { recursive: true });
-	// Never let a self-updating executable replace the supplied installed binary.
 	const command = options.bin ? path.join(scratch, path.basename(options.bin)) : launch.command;
 	if (options.bin) await fs.copyFile(path.resolve(options.bin), command);
-	const binarySha256 = options.bin ? await executableDigest(command) : undefined;
+	const binarySha256 = options.bin ? await computeDigest(command) : undefined;
 
 	const samples: Sample[] = [];
 	const push = (arm: string, ms: number): void => {
 		samples.push({ arm, ms });
 	};
-
-	/**
-	 * The first-frame recording, kept inside the scratch directory.
-	 *
-	 * Named explicitly because the seeded `HOME` does not reach it: the recording resolves its path
-	 * from `os.homedir()`, which Bun fixes at process start, so a launch spawned with `HOME` set
-	 * still writes to the operator's own cache. Without this the bench would both pollute that cache
-	 * and read whichever recording the operator's last real launch left there.
-	 */
 	const recording = path.join(scratch, "first-frame.json");
-
 	const cwd = options.cwd ?? REPO_ROOT;
-
-	/** The addon the install left behind, extracted once and hardlinked into every seeded home. */
 	const installedNatives = await extractInstalledNatives(scratch, command, prefix, cwd);
 
-	/**
-	 * `--cold` means every arm pays first-launch cost, so the home is thrown away before each arm
-	 * rather than each run: the GPU probe, the model catalog and the session store are all caches one
-	 * arm would otherwise warm for the next, which turned a cold first-frame number into a warm one.
-	 * The installed addon survives the wipe, because an install is not a cache the user accumulated.
-	 */
 	async function envFor(): Promise<Record<string, string>> {
 		if (options.cold) await fs.rm(path.join(scratch, "home"), { recursive: true, force: true });
 		if (options.seed) {
 			const config = path.join(scratch, "config");
-			if (options.cold) {
-				await fs.rm(config, { recursive: true, force: true });
+			const shouldSeed =
+				options.cold ||
+				!(await fs.stat(config).then(
+					() => true,
+					() => false,
+				));
+			if (shouldSeed) {
+				if (options.cold) await fs.rm(config, { recursive: true, force: true });
 				await fs.cp(options.seed, config, { recursive: true, force: false });
 				await disableBenchmarkUpdates(path.join(config, "config.yml"));
 				await disableBenchmarkUpdates(path.join(config, "profiles", "default", "agent", "config.yml"));
 				if (installedNatives) await hardlinkTree(installedNatives, path.join(config, "natives"));
-			} else {
-				const configExists = await fs.stat(config).then(
-					() => true,
-					() => false,
-				);
-				if (!configExists) {
-					await fs.cp(options.seed, config, { recursive: true, force: false });
-					await disableBenchmarkUpdates(path.join(config, "config.yml"));
-					await disableBenchmarkUpdates(path.join(config, "profiles", "default", "agent", "config.yml"));
-					if (installedNatives) await hardlinkTree(installedNatives, path.join(config, "natives"));
-				}
 			}
 		}
 		const home = await seedHome(scratch, installedNatives);
@@ -646,12 +441,10 @@ async function main(): Promise<void> {
 			const env = await envFor();
 			push("version", (await timeRun(command, [...prefix, "--version"], env, "exit", options.timeoutMs, cwd)).ms);
 		}
-
 		if (wants("help")) {
 			const env = await envFor();
 			push("help", (await timeRun(command, [...prefix, "--help"], env, "exit", options.timeoutMs, cwd)).ms);
 		}
-
 		if (wants("ready")) {
 			const env = await envFor();
 			const readyPty = ptyWrapper(command, prefix);
@@ -664,21 +457,14 @@ async function main(): Promise<void> {
 				cwd,
 			);
 			push("ready", ready.ms);
-			const total = parseInstrumentedTotal(ready.stdout);
-			const before = parseBeforeInstrumentation(ready.stdout);
-			if (total !== undefined) push("ready:boot", total);
-			if (before !== undefined) push("ready:load", before);
+			const totalMatch = /Total:\s+([0-9.]+)ms/.exec(ready.stdout);
+			if (totalMatch) push("ready:boot", Number(totalMatch[1]));
+			const beforeMatch = /\(before instrumentation\):\s+([0-9.]+)ms/.exec(ready.stdout);
+			if (beforeMatch) push("ready:load", Number(beforeMatch[1]));
 		}
-
 		if (wants("frame")) {
 			const env = await envFor();
 			const framePty = ptyWrapper(command, prefix);
-			// One recorded launch answers all four: the arms are moments in a single
-			// frame's life, and timing them separately would spend four launches to
-			// compare numbers from four different processes.
-			//
-			// The recording goes first, so this arm composes the card whatever the arm before it left
-			// behind. This launch types, so it leaves no recording of its own.
 			await fs.rm(recording, { force: true });
 			const marks = await recordFrame(framePty.command, framePty.args, env, FRAME_HOLD_MS, true, cwd);
 			if (marks.firstByte !== undefined) push("first-frame", marks.firstByte);
@@ -686,26 +472,11 @@ async function main(): Promise<void> {
 			if (marks.editable !== undefined) push("editable", marks.editable);
 			if (marks.statusrow !== undefined) push("statusrow", marks.statusrow);
 		}
-
 		if (wants("replay")) {
 			const env = await envFor();
 			const framePty = ptyWrapper(command, prefix);
-			// The recording the replay arm measures against, written by a launch nobody typed into.
-			// Its own timing is discarded: it is the off arm again, and the off arm is already
-			// measured.
 			await fs.rm(recording, { force: true });
 			await recordFrame(framePty.command, framePty.args, env, FRAME_HOLD_MS, false, cwd);
-
-			// Same env, same pty, same binary, and the recording the launch above wrote. Nothing else
-			// differs, so the gap between this arm and `first-frame` is the replay and only the
-			// replay. A run where they read the same means the recording was rejected: the launch
-			// above and this one disagreed about the frame, or the binary changed underneath them.
-			//
-			// This one types. A first byte is not a usable screen on the replay path either, and the
-			// replayed card is bytes from the previous launch rather than a composer that exists yet,
-			// so the gap between `replay` and `replay:editable` is how long the screen is a picture.
-			// Typing costs this launch its own recording, which nothing reads: the recording is
-			// rewritten above on every run.
 			const replayed = await recordFrame(framePty.command, framePty.args, env, FRAME_HOLD_MS, true, cwd);
 			if (replayed.firstByte !== undefined) push("replay", replayed.firstByte);
 			if (replayed.composer !== undefined) push("replay:composer", replayed.composer);
@@ -740,6 +511,9 @@ async function main(): Promise<void> {
 					observedArm === "responsive"
 						? { intervalMs: options.probeIntervalMs, count: options.probeCount }
 						: undefined,
+				memory: options.memory
+					? { enabled: true, intervalMs: options.memoryIntervalMs, targetExecutable: command, targetArgs: prefix }
+					: undefined,
 			});
 			if (observedArm === "settled") {
 				push("settled:first-byte", marks.firstByte);
@@ -761,12 +535,30 @@ async function main(): Promise<void> {
 				}
 				push("responsive:worst-input", worst);
 			}
+			if (marks.memory) {
+				push(`${observedArm}:main-peak-rss-kb`, Math.round(marks.memory.mainPeakRssBytes / 1024));
+				push(`${observedArm}:main-steady-rss-kb`, Math.round(marks.memory.mainSteadyRssBytes / 1024));
+				push(`${observedArm}:tree-peak-rss-kb`, Math.round(marks.memory.treePeakRssBytes / 1024));
+				push(`${observedArm}:tree-steady-rss-kb`, Math.round(marks.memory.treeSteadyRssBytes / 1024));
+			}
 		}
 	}
-	if (binarySha256 !== undefined && (await executableDigest(command)) !== binarySha256) {
+	if (binarySha256 !== undefined && (await computeDigest(command)) !== binarySha256) {
 		throw new Error("Benchmark executable changed during measurement; discard these samples and rebuild the target");
 	}
 
+	const memoryArms = options.memory
+		? [
+				"settled:main-peak-rss-kb",
+				"settled:main-steady-rss-kb",
+				"settled:tree-peak-rss-kb",
+				"settled:tree-steady-rss-kb",
+				"responsive:main-peak-rss-kb",
+				"responsive:main-steady-rss-kb",
+				"responsive:tree-peak-rss-kb",
+				"responsive:tree-steady-rss-kb",
+			]
+		: [];
 	const arms = [
 		"version",
 		"help",
@@ -789,6 +581,7 @@ async function main(): Promise<void> {
 		"responsive:input-before-metadata",
 		"responsive:input-after-metadata",
 		"responsive:worst-input",
+		...memoryArms,
 	];
 	const lines = [
 		`veyyon startup — ${options.bin ? `binary ${options.bin}` : "bun source"}, ${options.cold ? "cold" : "warm"} home, ${options.runs} run(s)`,
@@ -826,6 +619,7 @@ async function main(): Promise<void> {
 					input: options.only?.has("responsive")
 						? { intervalMs: options.probeIntervalMs, count: options.probeCount }
 						: undefined,
+					memory: options.memory ? { sampleIntervalMs: options.memoryIntervalMs } : undefined,
 					samples,
 				},
 				null,

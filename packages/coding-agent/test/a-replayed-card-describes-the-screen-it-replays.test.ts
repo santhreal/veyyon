@@ -34,12 +34,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { ProcessTerminal } from "@veyyon/tui/terminal";
 import { clearFirstFrameRecording, recordFirstFrame } from "../src/cli/first-frame-recorder";
-import {
-	isBareInteractiveLaunch,
-	RECORDED_ENV_KEYS,
-	replayFirstFrame,
-	takeReplayedFirstFrame,
-} from "../src/cli/first-frame-replay";
+import { replayFirstFrame, takeReplayedFirstFrame } from "../src/cli/first-frame-replay";
 
 const COLS = 100;
 const ROWS = 30;
@@ -118,8 +113,8 @@ function bareLaunch(): { readonly file: string; readonly written: () => string[]
 	return { file, written: () => writes };
 }
 
-function recordOne(): void {
-	recordFirstFrame({ bytes: BYTES, cols: COLS, rows: ROWS, screen: SCREEN, tip: TIP });
+async function recordOne(): Promise<void> {
+	await recordFirstFrame({ bytes: BYTES, cols: COLS, rows: ROWS, screen: SCREEN, tip: TIP });
 }
 
 function readRecording(file: string): Record<string, unknown> {
@@ -131,33 +126,33 @@ function writeRecording(file: string, recording: unknown): void {
 }
 
 describe("a recording of the launch card", () => {
-	it("replays the bytes it recorded and hands back the screen they painted", () => {
+	it("replays the bytes it recorded and hands back the screen they painted", async () => {
 		const launch = bareLaunch();
-		recordOne();
+		await recordOne();
 		replayFirstFrame();
 		expect(launch.written()).toEqual([BYTES]);
 		expect(takeReplayedFirstFrame()).toEqual({ screen: SCREEN, tip: TIP });
 	});
 
-	it("hands the screen back once, so a later frame composes against the screen as it then is", () => {
+	it("hands the screen back once, so a later frame composes against the screen as it then is", async () => {
 		bareLaunch();
-		recordOne();
+		await recordOne();
 		replayFirstFrame();
 		expect(takeReplayedFirstFrame()).toBeDefined();
 		expect(takeReplayedFirstFrame()).toBeUndefined();
 	});
 
-	it("leaves no partial file behind, because the reader is the next process's first read", () => {
+	it("leaves no partial file behind, because the reader is the next process's first read", async () => {
 		const launch = bareLaunch();
-		recordOne();
+		await recordOne();
 		expect(fs.readdirSync(path.dirname(launch.file))).toEqual(["first-frame.json"]);
 	});
 
-	it("is gone after it is cleared, and clearing one that is already gone is not an error", () => {
+	it("is gone after it is cleared, and clearing one that is already gone is not an error", async () => {
 		const launch = bareLaunch();
-		recordOne();
-		clearFirstFrameRecording();
-		clearFirstFrameRecording();
+		await recordOne();
+		await clearFirstFrameRecording();
+		await clearFirstFrameRecording();
 		expect(fs.existsSync(launch.file)).toBe(false);
 		replayFirstFrame();
 		expect(launch.written()).toEqual([]);
@@ -282,16 +277,16 @@ function valueAt(recording: Record<string, unknown>, at: string): unknown {
 }
 
 describe("every field a recording carries", () => {
-	it("has a corruption, so a new one fails until someone decides it is load-bearing", () => {
+	it("has a corruption, so a new one fails until someone decides it is load-bearing", async () => {
 		const launch = bareLaunch();
-		recordOne();
+		await recordOne();
 		expect(fieldPaths(readRecording(launch.file)).sort()).toEqual(Object.keys(CORRUPTIONS).sort());
 	});
 
 	for (const [field, corrupt] of Object.entries(CORRUPTIONS)) {
-		it(`is not replayed when ${field} does not describe this launch`, () => {
+		it(`is not replayed when ${field} does not describe this launch`, async () => {
 			const launch = bareLaunch();
-			recordOne();
+			await recordOne();
 			const recording = readRecording(launch.file);
 			corrupt(recording);
 			writeRecording(launch.file, recording);
@@ -306,26 +301,26 @@ describe("every field a recording carries", () => {
  * The shape the writer produces, read back once so the sweep below enumerates the fields that
  * exist rather than the fields someone remembered. Probing unwinds itself, leaving no stub set.
  */
-function probeShape(): Record<string, unknown> {
+async function probeShape(): Promise<Record<string, unknown>> {
 	const depth = undo.length;
 	const launch = bareLaunch();
-	recordOne();
+	await recordOne();
 	const recording = readRecording(launch.file);
 	while (undo.length > depth) undo.pop()?.();
 	takeReplayedFirstFrame();
 	return recording;
 }
 
-const SHAPE = probeShape();
+const SHAPE = await probeShape();
 
 describe("every field read as a type it does not hold", () => {
 	// A stale value is caught by comparing it. A wrong-typed value is caught only by a type guard,
 	// and a missing type guard is invisible until a truncated or foreign file reaches the reader,
 	// which is the one case that has no other check in front of it.
 	for (const at of fieldPaths(SHAPE)) {
-		it(`is not replayed when ${at} is not the type the reader trusts`, () => {
+		it(`is not replayed when ${at} is not the type the reader trusts`, async () => {
 			const launch = bareLaunch();
-			recordOne();
+			await recordOne();
 			const recording = readRecording(launch.file);
 			setAt(recording, at, wrongType(valueAt(recording, at)));
 			writeRecording(launch.file, recording);
@@ -340,9 +335,9 @@ describe("every field read as a type it does not hold", () => {
 			["null", null],
 			["a number", 0],
 		] as const) {
-			it(`is not replayed when ${at} is ${label} instead of an object`, () => {
+			it(`is not replayed when ${at} is ${label} instead of an object`, async () => {
 				const launch = bareLaunch();
-				recordOne();
+				await recordOne();
 				const recording = readRecording(launch.file);
 				setAt(recording, at, value);
 				writeRecording(launch.file, recording);
@@ -369,12 +364,10 @@ describe("every field read as a type it does not hold", () => {
  * still worth proving, and is what actually broke, is that a recording carrying a different
  * environment than this one is refused: by a changed value, by a key it does not have, and by a key
  * it has and the recording does not.
- */
-describe("every environment variable the frame is a function of", () => {
 	for (const key of RECORDED_ENV_KEYS) {
-		it(`is not replayed when the recording carries a different ${key}`, () => {
+		it(`is not replayed when the recording carries a different ${key}`, async () => {
 			const launch = bareLaunch();
-			recordOne();
+			await recordOne();
 			const recording = readRecording(launch.file);
 			(recording.env as Record<string, string>)[key] = "not-what-this-process-received";
 			writeRecording(launch.file, recording);
@@ -385,9 +378,9 @@ describe("every environment variable the frame is a function of", () => {
 
 		// Both directions of the key-set comparison, without depending on which variables the machine
 		// running this happens to export. Whichever way the recording differs, it is refused.
-		it(`is not replayed when the recording's key set differs by ${key}`, () => {
+		it(`is not replayed when the recording's key set differs by ${key}`, async () => {
 			const launch = bareLaunch();
-			recordOne();
+			await recordOne();
 			const recording = readRecording(launch.file);
 			const env = recording.env as Record<string, string>;
 			if (key in env) delete env[key];
@@ -399,9 +392,9 @@ describe("every environment variable the frame is a function of", () => {
 		});
 	}
 
-	it("records the variables this process received and no others", () => {
+	it("records the variables this process received and no others", async () => {
 		const launch = bareLaunch();
-		recordOne();
+		await recordOne();
 		const env = readRecording(launch.file).env as Record<string, string>;
 		expect(Object.keys(env).sort()).toEqual(
 			RECORDED_ENV_KEYS.filter(key => process.env[key] !== undefined)
@@ -411,7 +404,6 @@ describe("every environment variable the frame is a function of", () => {
 		for (const [key, value] of Object.entries(env)) expect(process.env[key]).toBe(value);
 	});
 });
-
 describe("a recording that cannot be trusted", () => {
 	it("is not replayed when there is none", () => {
 		const launch = bareLaunch();
@@ -419,9 +411,9 @@ describe("a recording that cannot be trusted", () => {
 		expect(launch.written()).toEqual([]);
 	});
 
-	it("is not replayed when the file is not JSON", () => {
+	it("is not replayed when the file is not JSON", async () => {
 		const launch = bareLaunch();
-		recordOne();
+		await recordOne();
 		fs.writeFileSync(launch.file, "{ this is not");
 		replayFirstFrame();
 		expect(launch.written()).toEqual([]);
@@ -435,9 +427,9 @@ describe("a recording that cannot be trusted", () => {
 		expect(launch.written()).toEqual([]);
 	});
 
-	it("is not replayed when the bytes are empty, which would paint nothing and claim a screen", () => {
+	it("is not replayed when the bytes are empty, which would paint nothing and claim a screen", async () => {
 		const launch = bareLaunch();
-		recordOne();
+		await recordOne();
 		const recording = readRecording(launch.file);
 		recording.bytes = "";
 		writeRecording(launch.file, recording);
@@ -481,19 +473,19 @@ describe("the launch a recording may be replayed onto", () => {
 		expect(isBareInteractiveLaunch()).toBe(true);
 	});
 
-	it("is not a command line carrying an argument, whatever the argument would have done", () => {
+	it("is not a command line carrying an argument, whatever the argument would have done", async () => {
 		const launch = bareLaunch();
-		recordOne();
+		await recordOne();
 		stub(process, "argv", [process.execPath, "veyyon", "--version"]);
 		expect(isBareInteractiveLaunch()).toBe(false);
 		replayFirstFrame();
 		expect(launch.written()).toEqual([]);
 	});
 
-	it("is not a pipe on either side, where the bytes would land in somebody's output", () => {
+	it("is not a pipe on either side, where the bytes would land in somebody's output", async () => {
 		for (const stream of [process.stdin, process.stdout]) {
 			const launch = bareLaunch();
-			recordOne();
+			await recordOne();
 			stub(stream, "isTTY", false);
 			expect(isBareInteractiveLaunch()).toBe(false);
 			replayFirstFrame();
@@ -538,7 +530,7 @@ describe("the size the replay reads", () => {
 
 			// The replay's answer, observed through the only thing it exposes: a recording written at
 			// the renderer's size replays, and one written at any other size does not.
-			recordFirstFrame({
+			await recordFirstFrame({
 				bytes: BYTES,
 				cols: terminal.columns,
 				rows: terminal.rows,
@@ -551,7 +543,7 @@ describe("the size the replay reads", () => {
 		});
 	}
 
-	it("rejects a recording written at a size the renderer would not compose at", () => {
+	it("rejects a recording written at a size the renderer would not compose at", async () => {
 		const launch = bareLaunch();
 		stub(process.stdout, "columns", 0);
 		stub(process.stdout, "rows", 0);
@@ -559,7 +551,7 @@ describe("the size the replay reads", () => {
 		setEnv("LINES", undefined);
 		// 0x0 is what the raw stream reports here; the renderer composes at 80x24. A replay that
 		// compared raw values would accept this and paint an empty frame's rows onto a real card.
-		recordFirstFrame({
+		await recordFirstFrame({
 			bytes: BYTES,
 			cols: 0,
 			rows: 0,

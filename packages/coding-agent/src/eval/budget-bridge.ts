@@ -8,17 +8,12 @@
  * The directive is opt-in (`magicKeywords.turnBudget`, default off), so on a
  * default install this resolves to the Goal Mode budget or to no ceiling.
  */
-import type { ToolSession } from "../tools";
-import type { JsStatusEvent } from "./js/shared/types";
+import type { EvalBridgeOptions } from "./types";
 
 /** Synthetic bridge name reserved for the `budget` helper across both runtimes. */
 export const EVAL_BUDGET_BRIDGE_NAME = "__budget__";
 
-export interface EvalBudgetBridgeOptions {
-	session: ToolSession;
-	signal?: AbortSignal;
-	emitStatus?: (event: JsStatusEvent) => void;
-}
+export interface EvalBudgetBridgeOptions extends EvalBridgeOptions {}
 
 export interface EvalBudgetResult {
 	total: number | null;

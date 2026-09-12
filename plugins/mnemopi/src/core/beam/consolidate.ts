@@ -6,7 +6,7 @@ import { errorMessage } from "@veyyon/utils/type-guards";
 import { degradeBatchSize, sleepBatchSize, tier2Days, tier3Days, tier3MaxChars } from "../../config";
 import { generateId, stableMemoryId } from "../../util/ids";
 import { unicodeWordTokens, WORD_TOKEN_DOT_HYPHEN_RE } from "../../util/regex";
-import { escapeLike, sqlPlaceholders } from "../../util/sqlite";
+import { escapeLike, getMemoryTableStats, sqlPlaceholders } from "../../util/sqlite";
 import { aaakEncode } from "../aaak";
 import { REGEX_EXTRACTION_MAX_INPUT_CHARS } from "../entities";
 import { EpisodicGraph } from "../episodic-graph";
@@ -624,73 +624,68 @@ function classifyAbility(query: string): string {
 	return "";
 }
 
-function factRetrieve(beam: BeamMemoryState, query: string, topK: number): MemoriaRetrieveResult {
+function memoriaTableRetrieve(
+	beam: BeamMemoryState,
+	ability: string,
+	query: string,
+	table: string,
+	columns: readonly string[],
+	orderBy: string,
+	topK: number,
+): MemoriaRetrieveResult {
 	const tokens = makeQuestionTokens(query);
 	const clauses: string[] = [];
 	const params: SQLQueryBindings[] = [sourceSession(beam)];
 	for (const token of tokens) {
-		clauses.push(
-			"(lower(key) LIKE ? ESCAPE '\\' OR lower(value) LIKE ? ESCAPE '\\' OR lower(context_snippet) LIKE ? ESCAPE '\\')",
-		);
 		const like = `%${escapeLike(token)}%`;
-		params.push(like, like, like);
+		clauses.push(`(${columns.map(col => `lower(${col}) LIKE ? ESCAPE '\\'`).join(" OR ")})`);
+		for (let i = 0; i < columns.length; i++) params.push(like);
 	}
 	const where = clauses.length === 0 ? "1=1" : clauses.join(" OR ");
 	params.push(topK);
 	const results = asRows(
 		beam.db
-			.query(
-				`SELECT * FROM memoria_facts WHERE session_id = ? AND (${where}) ORDER BY importance DESC, id DESC LIMIT ?`,
-			)
+			.query(`SELECT * FROM ${table} WHERE session_id = ? AND (${where}) ORDER BY ${orderBy} LIMIT ?`)
 			.all(...params),
 	);
-	return { ability: "IE", query, results };
+	return { ability, query, results };
+}
+
+function factRetrieve(beam: BeamMemoryState, query: string, topK: number): MemoriaRetrieveResult {
+	return memoriaTableRetrieve(
+		beam,
+		"IE",
+		query,
+		"memoria_facts",
+		["key", "value", "context_snippet"],
+		"importance DESC, id DESC",
+		topK,
+	);
 }
 
 function timelineRetrieve(beam: BeamMemoryState, query: string, topK: number): MemoriaRetrieveResult {
-	const tokens = makeQuestionTokens(query);
-	const clauses: string[] = [];
-	const params: SQLQueryBindings[] = [sourceSession(beam)];
-	for (const token of tokens) {
-		clauses.push("(lower(description) LIKE ? ESCAPE '\\' OR date LIKE ? ESCAPE '\\')");
-		const like = `%${escapeLike(token)}%`;
-		params.push(like, like);
-	}
-	const where = clauses.length === 0 ? "1=1" : clauses.join(" OR ");
-	params.push(topK);
-	const results = asRows(
-		beam.db
-			.query(
-				`SELECT * FROM memoria_timelines WHERE session_id = ? AND (${where}) ORDER BY date ASC, event_id ASC LIMIT ?`,
-			)
-			.all(...params),
+	return memoriaTableRetrieve(
+		beam,
+		"TR",
+		query,
+		"memoria_timelines",
+		["description", "date"],
+		"date ASC, event_id ASC",
+		topK,
 	);
-	return { ability: "TR", query, results };
 }
 
 function kgRetrieve(beam: BeamMemoryState, query: string, topK: number): MemoriaRetrieveResult {
-	const tokens = makeQuestionTokens(query);
-	const clauses: string[] = [];
-	const params: SQLQueryBindings[] = [sourceSession(beam)];
-	for (const token of tokens) {
-		clauses.push(
-			"(lower(subject) LIKE ? ESCAPE '\\' OR lower(predicate) LIKE ? ESCAPE '\\' OR lower(object) LIKE ? ESCAPE '\\')",
-		);
-		const like = `%${escapeLike(token)}%`;
-		params.push(like, like, like);
-	}
-	const where = clauses.length === 0 ? "1=1" : clauses.join(" OR ");
-	params.push(topK);
-	const results = asRows(
-		beam.db
-			.query(
-				`SELECT * FROM memoria_kg WHERE session_id = ? AND (${where}) ORDER BY confidence DESC, id DESC LIMIT ?`,
-			)
-			.all(...params),
+	return memoriaTableRetrieve(
+		beam,
+		"MR",
+		query,
+		"memoria_kg",
+		["subject", "predicate", "object"],
+		"confidence DESC, id DESC",
+		topK,
 	);
-	return { ability: "MR", query, results };
 }
-
 export function memoriaRetrieve(
 	beam: BeamMemoryState,
 	query: string,
@@ -710,30 +705,11 @@ export function getEpisodicStats(
 	authorType: string | null = null,
 	channelId: string | null = null,
 ): BeamStats {
-	const clauses: string[] = [];
-	const params: SQLQueryBindings[] = [];
-	if (authorId) {
-		clauses.push("author_id = ?");
-		params.push(authorId);
-	}
-	if (authorType) {
-		clauses.push("author_type = ?");
-		params.push(authorType);
-	}
-	if (channelId) {
-		clauses.push("channel_id = ?");
-		params.push(channelId);
-	}
-	const where = clauses.length === 0 ? "" : ` WHERE ${clauses.join(" AND ")}`;
-	const total = (
-		beam.db.query(`SELECT COUNT(*) AS count FROM episodic_memory${where}`).get(...params) as {
-			count: number;
-		}
-	).count;
-	const last = beam.db
-		.query(`SELECT timestamp FROM episodic_memory${where} ORDER BY timestamp DESC LIMIT 1`)
-		.get(...params) as { timestamp: string | null } | null;
-	return { count: total, total, last: last?.timestamp ?? null, vectors: 0, vec_type: "none" };
+	return {
+		...getMemoryTableStats(beam.db, "episodic_memory", authorId, authorType, channelId),
+		vectors: 0,
+		vec_type: "none",
+	};
 }
 export function getMemoriaStats(beam: BeamMemoryState): BeamStats {
 	const stats: Record<string, number> = Object.create(null);

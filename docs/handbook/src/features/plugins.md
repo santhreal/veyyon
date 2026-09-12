@@ -46,6 +46,7 @@ subdirectory path), a URL, or an npm package.
 ## File Locations
 
 Plugin install state is **profile-scoped** under `~/.veyyon/profiles/<profile>/plugins/` (default profile: `profiles/default/plugins/`). Config root is relocatable with `VEYYON_CONFIG_DIR`.
+Sessions with an explicit agent directory use that profile's installed plugin root.
 
 | Path | Description |
 | --- | --- |

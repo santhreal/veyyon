@@ -422,6 +422,30 @@ function findEndOfCentralDirectory(tail: Uint8Array): number {
 	throw new ToolError("Invalid ZIP archive: missing end of central directory");
 }
 
+/** The ZIP64 EOCD record offset a locator states, or undefined when `locator` is not one. */
+function parseZip64Locator(locator: Uint8Array): number | undefined {
+	if (readUInt32LE(locator, 0) !== ZIP64_EOCD_LOCATOR_SIGNATURE) return undefined;
+	if (readUInt32LE(locator, 4) !== 0 || readUInt32LE(locator, 16) > 1) {
+		throw new ToolError("Multi-disk ZIP archives are not supported");
+	}
+	return readUInt64LEAsNumber(locator, 8);
+}
+
+/** The central directory location a 56-byte ZIP64 EOCD record states. */
+function parseZip64EndOfCentralDirectory(record: Uint8Array): ZipCentralDirectoryInfo {
+	if (readUInt32LE(record, 0) !== ZIP64_EOCD_SIGNATURE) {
+		throw new ToolError("Invalid ZIP archive: missing ZIP64 end of central directory");
+	}
+	if (readUInt32LE(record, 16) !== 0 || readUInt32LE(record, 20) !== 0) {
+		throw new ToolError("Multi-disk ZIP archives are not supported");
+	}
+	return {
+		entries: readUInt64LEAsNumber(record, 32),
+		size: readUInt64LEAsNumber(record, 40),
+		offset: readUInt64LEAsNumber(record, 48),
+	};
+}
+
 async function readZip64CentralDirectoryInfo(
 	source: ByteSource,
 	tail: Uint8Array,
@@ -435,28 +459,10 @@ async function readZip64CentralDirectoryInfo(
 		locatorOffset >= tailStart
 			? tail.subarray(locatorOffset - tailStart, locatorOffset - tailStart + ZIP64_EOCD_LOCATOR_LENGTH)
 			: await source.read(locatorOffset, eocdOffset);
-	if (readUInt32LE(locator, 0) !== ZIP64_EOCD_LOCATOR_SIGNATURE) return undefined;
+	const zip64EocdOffset = parseZip64Locator(locator);
+	if (zip64EocdOffset === undefined) return undefined;
 
-	const zip64EocdDisk = readUInt32LE(locator, 4);
-	const zip64EocdOffset = readUInt64LEAsNumber(locator, 8);
-	const totalDisks = readUInt32LE(locator, 16);
-	if (zip64EocdDisk !== 0 || totalDisks > 1) {
-		throw new ToolError("Multi-disk ZIP archives are not supported");
-	}
-
-	const record = await source.read(zip64EocdOffset, zip64EocdOffset + 56);
-	if (readUInt32LE(record, 0) !== ZIP64_EOCD_SIGNATURE) {
-		throw new ToolError("Invalid ZIP archive: missing ZIP64 end of central directory");
-	}
-	if (readUInt32LE(record, 16) !== 0 || readUInt32LE(record, 20) !== 0) {
-		throw new ToolError("Multi-disk ZIP archives are not supported");
-	}
-
-	return {
-		entries: readUInt64LEAsNumber(record, 32),
-		size: readUInt64LEAsNumber(record, 40),
-		offset: readUInt64LEAsNumber(record, 48),
-	};
+	return parseZip64EndOfCentralDirectory(await source.read(zip64EocdOffset, zip64EocdOffset + 56));
 }
 
 async function readZipCentralDirectoryInfo(source: ByteSource): Promise<ZipCentralDirectoryInfo> {
@@ -1103,25 +1109,10 @@ function readZip64CentralDirectoryInfoSync(bytes: Uint8Array, eocdOffset: number
 	if (locatorOffset < 0) return undefined;
 
 	const locator = readMemoryRange(bytes, locatorOffset, locatorOffset + ZIP64_EOCD_LOCATOR_LENGTH);
-	if (readUInt32LE(locator, 0) !== ZIP64_EOCD_LOCATOR_SIGNATURE) return undefined;
-	if (readUInt32LE(locator, 4) !== 0 || readUInt32LE(locator, 16) > 1) {
-		throw new ToolError("Multi-disk ZIP archives are not supported");
-	}
+	const zip64EocdOffset = parseZip64Locator(locator);
+	if (zip64EocdOffset === undefined) return undefined;
 
-	const zip64EocdOffset = readUInt64LEAsNumber(locator, 8);
-	const record = readMemoryRange(bytes, zip64EocdOffset, zip64EocdOffset + 56);
-	if (readUInt32LE(record, 0) !== ZIP64_EOCD_SIGNATURE) {
-		throw new ToolError("Invalid ZIP archive: missing ZIP64 end of central directory");
-	}
-	if (readUInt32LE(record, 16) !== 0 || readUInt32LE(record, 20) !== 0) {
-		throw new ToolError("Multi-disk ZIP archives are not supported");
-	}
-
-	return {
-		entries: readUInt64LEAsNumber(record, 32),
-		size: readUInt64LEAsNumber(record, 40),
-		offset: readUInt64LEAsNumber(record, 48),
-	};
+	return parseZip64EndOfCentralDirectory(readMemoryRange(bytes, zip64EocdOffset, zip64EocdOffset + 56));
 }
 
 function readCentralDirectoryInfoSync(bytes: Uint8Array): ZipCentralDirectoryInfo {

@@ -22,7 +22,7 @@
  *     that drops a ref without consulting `#revivals` (explicit release, process
  *     teardown).
  *
- * IF THIS REGRESSES: waking a subagent that was pruning leaks its whole live
+ * IF THIS REGRESSES: waking an agent that was pruning leaks its whole live
  * resource set for the lifetime of the process, and the leak is unobservable —
  * nothing holds a reference to report on.
  */

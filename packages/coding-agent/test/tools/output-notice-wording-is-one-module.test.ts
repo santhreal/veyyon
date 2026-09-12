@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { OutputMeta } from "@veyyon/coding-agent/tools/core/output-notice";
 import {
+	extractResultText,
 	formatFullOutputReference,
 	formatOutputNotice,
 	formatTruncationMetaNotice,
@@ -320,5 +321,69 @@ describe("the strippers agree with the text, byte for byte", () => {
 			text: "body\n[raw output: artifact://]",
 		});
 		expect(stripRawOutputArtifactNotice("body only")).toEqual({ text: "body only" });
+	});
+});
+
+describe("extractResultText", () => {
+	it("uses fallback only when no text block is present", () => {
+		for (const content of [undefined, [], [{ type: "image" }]]) {
+			expect(extractResultText(content, "No text")).toBe("No text");
+		}
+		for (const content of ["", [{ type: "text", text: "" }], [{ type: "text" }]]) {
+			expect(extractResultText(content, "No text")).toBe("");
+		}
+		expect(extractResultText("plain text", "No text")).toBe("plain text");
+	});
+
+	it("returns empty string for undefined, empty array, or non-text parts", () => {
+		expect(extractResultText(undefined)).toBe("");
+		expect(extractResultText([])).toBe("");
+		expect(extractResultText([{ type: "image" }])).toBe("");
+	});
+
+	it("extracts a single text block and coerces values to string", () => {
+		expect(extractResultText([{ type: "text", text: "single block" }])).toBe("single block");
+		expect(extractResultText([{ type: "text" }])).toBe("");
+		// Decoded malformed text retained Array.join's coercion before consolidation.
+		const decoded = JSON.parse('[{"type":"text","text":0}]') as { type: string; text?: string }[];
+		expect(extractResultText(decoded)).toBe("0");
+	});
+
+	it("joins multiple text blocks preserving order and empty blocks", () => {
+		expect(
+			extractResultText([
+				{ type: "text", text: "" },
+				{ type: "text", text: "middle" },
+				{ type: "text", text: "" },
+			]),
+		).toBe("\nmiddle\n");
+	});
+
+	it("skips interleaved non-text blocks without adding extra separators", () => {
+		expect(
+			extractResultText([{ type: "text", text: "head" }, { type: "image" }, { type: "text", text: "tail" }]),
+		).toBe("head\ntail");
+	});
+
+	it("skips sparse slots but rejects explicitly invalid blocks", () => {
+		const sparse: { type: string; text?: string }[] = [];
+		sparse[2] = { type: "text", text: "body" };
+		expect(extractResultText(sparse)).toBe("body");
+		for (const serialized of ["[null]", '[null,{"type":"text","text":"body"}]']) {
+			expect(() => extractResultText(JSON.parse(serialized))).toThrow(TypeError);
+		}
+	});
+
+	it("round-trips through extractResultText and stripOutputNotice", () => {
+		const meta = lineWindowMeta();
+		const body = "line 1\nline 2";
+		const notice = formatOutputNotice(meta);
+		const content = [
+			{ type: "text", text: "line 1" },
+			{ type: "text", text: `line 2${notice}` },
+		];
+		const extracted = extractResultText(content);
+		expect(extracted).toBe(`${body}${notice}`);
+		expect(stripOutputNotice(extracted, meta)).toBe(body);
 	});
 });

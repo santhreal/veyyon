@@ -1,6 +1,6 @@
 /**
  * WHY: `/share` redacts the transcript before it leaves the machine, through a typed walk that
- * covers tool-result output and subagent transcripts. `/export` wrote the same transcript into a
+ * covers tool-result output and agent transcripts. `/export` wrote the same transcript into a
  * self-contained HTML file and redacted nothing, so a secret that landed in a tool output (a
  * `.env` read, a curl with a token) shipped verbatim in the file the operator attaches to a bug
  * report. Both egress paths now run the same walk.
@@ -8,7 +8,7 @@
  * The contract these tests defend:
  *   - a configured secret appearing in a primary-session tool result is replaced in the exported
  *     snapshot;
- *   - so is one appearing in an embedded subagent transcript, which is a separate branch of the
+ *   - so is one appearing in an embedded agent transcript, which is a separate branch of the
  *     walk and the one a partial fix would miss;
  *   - with no obfuscator the snapshot is unchanged, so export is not silently lossy;
  *   - non-secret transcript text survives redaction, so this is not a blanket scrub.
@@ -19,7 +19,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { removeWithRetries } from "@veyyon/utils";
-import { exportFromFile } from "../src/export/html";
+import { exportFromFile, type SessionData } from "../src/export/html";
 import { SecretObfuscator } from "../src/secrets/obfuscator";
 
 const SECRET = "sk-live-EXPORTLEAK-0123456789";
@@ -60,7 +60,64 @@ afterEach(async () => {
 });
 
 describe("HTML export secret redaction", () => {
-	it("replaces a secret in the primary transcript and in an embedded subagent transcript", async () => {
+	it("preserves fallback transitions and redacts model text in primary and nested transcripts", async () => {
+		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: SECRET }]);
+		const placeholder = obfuscator.obfuscate(SECRET);
+		for (const [file, id] of [
+			[sessionFile, "main"],
+			[path.join(root, "main/Helper.jsonl"), "helper"],
+		] as const) {
+			await fs.appendFile(
+				file,
+				`${JSON.stringify({
+					type: "message",
+					id: `${id}-fallback`,
+					parentId: `${id}-1`,
+					timestamp: "2026-01-01T00:00:00Z",
+					message: {
+						role: "assistant",
+						api: "anthropic-messages",
+						provider: "anthropic",
+						model: "example",
+						stopReason: "stop",
+						timestamp: 0,
+						content: [
+							{ type: "fallback", from: { model: `before-${SECRET}` }, to: { model: `after-${SECRET}` } },
+						],
+						usage: {
+							input: 0,
+							output: 0,
+							cacheRead: 0,
+							cacheWrite: 0,
+							totalTokens: 0,
+							cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+						},
+					},
+				})}\n`,
+			);
+		}
+		const outputPath = path.join(root, "fallback.html");
+		await exportFromFile(sessionFile, { outputPath, obfuscator });
+		const snapshot = await exportedSnapshot(outputPath);
+		expect(snapshot).not.toContain(SECRET);
+		const parsed = JSON.parse(snapshot) as SessionData;
+		for (const entries of [parsed.entries, parsed.subSessions?.Helper.entries]) {
+			const assistant = entries?.find(entry => entry.type === "message" && entry.message.role === "assistant");
+			expect(assistant).toMatchObject({
+				message: {
+					content: [
+						{
+							type: "fallback",
+							from: { model: `before-${placeholder}` },
+							to: { model: `after-${placeholder}` },
+						},
+					],
+				},
+			});
+		}
+	});
+
+	it("replaces a secret in the primary transcript and in an embedded agent transcript", async () => {
 		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: SECRET }]);
 		const placeholder = obfuscator.obfuscate(SECRET);
 		const outputPath = path.join(root, "redacted.html");
@@ -70,9 +127,13 @@ describe("HTML export secret redaction", () => {
 
 		expect(snapshot).not.toContain(SECRET);
 		expect(snapshot).toContain(placeholder);
-		// Both copies: the primary entry and the Helper sub-session the export embeds.
-		expect(snapshot.split(placeholder).length - 1).toBe(2);
-		expect(JSON.parse(snapshot).subSessions.Helper.entries[0].message.content).toBe(`child saw ${placeholder} once`);
+		const parsed = JSON.parse(snapshot);
+		expect(parsed.entries[0].message.content).toBe(`API_KEY=${placeholder}\nPORT=8080\n`);
+		expect(JSON.stringify(parsed.entries[0].message.display)).toContain(placeholder);
+		expect(JSON.stringify(parsed.entries[0].message.display)).not.toContain(SECRET);
+		expect(parsed.subSessions.Helper.entries[0].message.content).toBe(`child saw ${placeholder} once`);
+		expect(JSON.stringify(parsed.subSessions.Helper.entries[0].message.display)).toContain(placeholder);
+		expect(JSON.stringify(parsed.subSessions.Helper.entries[0].message.display)).not.toContain(SECRET);
 	});
 
 	it("leaves non-secret transcript text untouched", async () => {

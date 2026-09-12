@@ -3,7 +3,7 @@
  * {@link UiHelpers} and the input/event controllers, so the live chat surfaces
  * construct components and reset editor state identically.
  */
-import type { AssistantMessage } from "@veyyon/ai";
+import type { AssistantMessageView } from "@veyyon/wire/presentation";
 import { AssistantMessageComponent } from "../components/transcript/assistant-message";
 import type { InteractiveModeContext } from "../types";
 
@@ -24,7 +24,7 @@ export type AssistantMessageComponentContext = Pick<
  */
 export function createAssistantMessageComponent(
 	ctx: AssistantMessageComponentContext,
-	message?: AssistantMessage,
+	message?: AssistantMessageView,
 ): AssistantMessageComponent {
 	const component: AssistantMessageComponent = new AssistantMessageComponent(
 		message,

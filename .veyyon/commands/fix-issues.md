@@ -27,11 +27,11 @@ Parse `$ARGUMENTS`.
 
 Print the resolved set before fanning out so the user can confirm scope.
 
-### 2. Fan out one subagent per issue
+### 2. Fan out one agent per issue
 
-Use **`task` with parallel subagents** — one task per issue. Pass the issue number, title, body summary, and the workflow below as the assignment. Subagents work in isolation; coordinate via `irc` only when two issues clearly touch the same file.
+Use **`task` with parallel agents** — one task per issue. Pass the issue number, title, body summary, and the workflow below as the assignment. Agents work in isolation; coordinate via `irc` only when two issues clearly touch the same file.
 
-Each subagent **MUST** follow this exact workflow:
+Each agent **MUST** follow this exact workflow:
 
 #### a. Read everything
 
@@ -92,7 +92,7 @@ Use absolute paths — the worktree lives outside the main checkout.
 2. Confirm it still fails inside the worktree on the current branch.
 3. Implement the fix in source. Match existing patterns (see `AGENTS.md`); fix at the source, not at the symptom; no stubs, no mocks added to product code.
 4. Re-run the repro test until it passes.
-5. Add or adjust adjacent unit/contract tests where the fix changes a real contract — not just plumbing. Run **only** the affected test files; no full-suite runs from subagents.
+5. Add or adjust adjacent unit/contract tests where the fix changes a real contract — not just plumbing. Run **only** the affected test files; no full-suite runs from agents.
 6. Run `bun fmt` over the union of files edited.
 
 #### f. Commit
@@ -112,7 +112,7 @@ Do **not** push. The human pushes / opens the PR.
 
 #### g. Report back
 
-Each subagent returns a short structured report:
+Each agent returns a short structured report:
 
 ```
 Issue #<N>  <title>
@@ -126,7 +126,7 @@ Notes:     <root cause in one sentence; or what info is missing>
 
 ### 3. Aggregate
 
-After all subagents finish, print a single summary table:
+After all agents finish, print a single summary table:
 
 ```
 | # | Title | Status | Branch / Notes |
@@ -138,7 +138,7 @@ Group worktree paths by status (`fixed` first), so the user can `cd` and push th
 ## Rules
 
 - **MUST** reproduce on `main` in the current cwd **before** creating any worktree. No worktree until repro is confirmed.
-- **MUST** use parallel subagents — one per issue.
+- **MUST** use parallel agents — one per issue.
 - **MUST** check for an existing PR first; if one exists and is reasonable, divert to `review-prs` flow instead of duplicating work.
 - **MUST** symlink `target`, `node_modules`, and the native `*.node` binaries before any build/test runs in the worktree. **MUST NOT** symlink the whole `natives/bridge/bindings/native/` directory that would shadow tracked source files.
 - **MUST** use conventional commits with `Fixes #<N>` in the body.

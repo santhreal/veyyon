@@ -9,9 +9,9 @@
  * writer instead of hand-rolling a staging rename.
  */
 
-import * as fs from "node:fs";
+import * as fsp from "node:fs/promises";
 import type { AdoptedScreen } from "@veyyon/tui/tui";
-import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
+import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import { ENTRY_ENV, type FirstFrameRecording, REPLAY_SHAPE_VERSION, recordingPath } from "./first-frame-replay";
 
 /**
@@ -20,39 +20,54 @@ import { ENTRY_ENV, type FirstFrameRecording, REPLAY_SHAPE_VERSION, recordingPat
  * Failure is silent for the same reason the replay's is, one step later: a cache that cannot be
  * written costs the next launch its speedup and nothing else.
  */
-export function recordFirstFrame(options: {
+export async function recordFirstFrame(options: {
 	readonly bytes: string;
 	readonly cols: number;
 	readonly rows: number;
 	readonly screen: AdoptedScreen;
 	readonly tip: string;
-}): void {
+}): Promise<void> {
 	try {
-		const stat = fs.statSync(process.execPath);
+		const destination = recordingPath();
+		const binaryPath = process.execPath;
+		const recordedAtMs = Date.now();
+		const screenSnapshot: AdoptedScreen = {
+			window: options.screen.window.slice(),
+			frameLength: options.screen.frameLength,
+			width: options.screen.width,
+			height: options.screen.height,
+			cursorRow: options.screen.cursorRow,
+			windowTopRow: options.screen.windowTopRow,
+		};
+		const cols = options.cols;
+		const rows = options.rows;
+		const bytes = options.bytes;
+		const tip = options.tip;
+		const stat = await fsp.stat(binaryPath);
 		const recording: FirstFrameRecording = {
 			version: REPLAY_SHAPE_VERSION,
-			cols: options.cols,
-			rows: options.rows,
+			cols,
+			rows,
 			env: ENTRY_ENV,
-			binary: { path: process.execPath, mtimeMs: stat.mtimeMs, size: stat.size },
-			bytes: options.bytes,
-			screen: options.screen,
-			tip: options.tip,
-			recordedAtMs: Date.now(),
+			binary: { path: binaryPath, mtimeMs: stat.mtimeMs, size: stat.size },
+			bytes,
+			screen: screenSnapshot,
+			tip,
+			recordedAtMs,
 		};
 		// Staged and renamed by the one writer: the reader is the next process's first file read and
 		// must never see half a recording. `fsync: false` because a recording lost to a power cut is
 		// a launch that composes its card, which is the ordinary path.
-		atomicWriteFileSync(recordingPath(), JSON.stringify(recording), { fsync: false });
+		await atomicWriteFile(destination, JSON.stringify(recording), { fsync: false });
 	} catch {
 		// A cache that cannot be written costs the next launch its speedup and nothing else.
 	}
 }
 
 /** Discard the recording, so the next launch composes its card. */
-export function clearFirstFrameRecording(): void {
+export async function clearFirstFrameRecording(): Promise<void> {
 	try {
-		fs.rmSync(recordingPath(), { force: true });
+		await fsp.rm(recordingPath(), { force: true });
 	} catch {
 		// Already gone, or a root nothing may write: either way the next launch composes.
 	}

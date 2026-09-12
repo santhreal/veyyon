@@ -23,16 +23,20 @@ import type {
 	ToolView,
 	ToolViewContext,
 	ToolViewRenderer,
-	ViewHiddenCount,
 	ViewLine,
 	ViewSection,
 	ViewStatus,
 	ViewTone,
 } from "@veyyon/view";
+import { sanitizeDiagnosticDisplayText } from "../tools/core/diagnostics";
+import { extractResultText } from "../tools/core/output-notice";
 import {
+	heldBack,
+	LINE_NOUN,
 	replaceTabs,
-	sanitizeDiagnosticDisplayText,
+	shortenEmbeddedPaths,
 	shortenPath,
+	type ToolViewResult,
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
 } from "../tools/core/render-utils";
@@ -59,7 +63,6 @@ const DOC_LINES = { collapsed: 1, expanded: 40 } as const;
 const ITEM_LINES = { collapsed: COLLAPSED_ITEMS, expanded: 200 } as const;
 
 /** The units a held-back count is in, which the host words. */
-const LINE_NOUN = { one: "line", many: "lines" } as const;
 const DIAGNOSTIC_NOUN = { one: "diagnostic", many: "diagnostics" } as const;
 const REFERENCE_NOUN = { one: "reference", many: "references" } as const;
 const SYMBOL_NOUN = { one: "symbol", many: "symbols" } as const;
@@ -68,11 +71,7 @@ const SYMBOL_NOUN = { one: "symbol", many: "symbols" } as const;
 const NEST_INDENT = "  ";
 
 /** The result a card reads, which is the tool's own result narrowed to what a card shows. */
-export interface LspViewResult {
-	content?: Array<{ type: string; text?: string }>;
-	details?: LspToolDetails;
-	isError?: boolean;
-}
+export interface LspViewResult extends Partial<ToolViewResult<LspToolDetails>> {}
 
 /** The fenced block a hover answer carries its signature in. */
 const CODE_FENCE = /```(\w*)\n([\s\S]*?)```/;
@@ -113,13 +112,9 @@ function severityTone(severity: string): ViewTone {
 
 /** One line of text with no leading or trailing control characters a host would draw as a hole. */
 function row(text: string, tone?: ViewTone): ViewLine {
-	return tone === undefined ? [{ text: replaceTabs(text) }] : [{ text: replaceTabs(text), tone }];
-}
-
-/** What a card kept back, or nothing when it kept back none of it. */
-function heldBack(count: number, noun: { one: string; many: string }, expanded: boolean): ViewHiddenCount | undefined {
-	if (count <= 0) return undefined;
-	return { count, noun, revealable: !expanded };
+	return tone === undefined
+		? [{ text: replaceTabs(shortenEmbeddedPaths(text)) }]
+		: [{ text: replaceTabs(shortenEmbeddedPaths(text)), tone }];
 }
 
 /** The window of a list a card shows, and how much of it stayed behind. */
@@ -131,15 +126,6 @@ function window<T>(
 	const max = expanded ? bounds.expanded : bounds.collapsed;
 	if (items.length <= max) return { kept: items, held: 0 };
 	return { kept: items.slice(0, max), held: items.length - max };
-}
-
-/** The text parts of a result, which is everything a card shows of what the tool returned. */
-function textOf(content: Array<{ type: string; text?: string }> | undefined): string {
-	if (!content) return "";
-	return content
-		.filter(part => part.type === "text")
-		.map(part => part.text ?? "")
-		.join("\n");
 }
 
 /**
@@ -211,7 +197,7 @@ function diagnosticSections(text: string, lines: readonly string[], expanded: bo
 				label: RESPONSE_LABEL,
 				lines: kept.map(diagnosticRow),
 				list: true,
-				...withHidden(heldBack(held, DIAGNOSTIC_NOUN, expanded)),
+				hidden: heldBack(held, DIAGNOSTIC_NOUN, !expanded),
 			},
 		];
 	}
@@ -222,7 +208,7 @@ function diagnosticSections(text: string, lines: readonly string[], expanded: bo
 				label: RESPONSE_LABEL,
 				lines: kept.map(line => row(line, "muted")),
 				list: true,
-				...withHidden(heldBack(held, DIAGNOSTIC_NOUN, expanded)),
+				hidden: heldBack(held, DIAGNOSTIC_NOUN, !expanded),
 			},
 		];
 	}
@@ -254,7 +240,7 @@ function referenceSections(lines: readonly string[], expanded: boolean): ViewSec
 			label: RESPONSE_LABEL,
 			lines: kept,
 			list: true,
-			...withHidden(heldBack(held, REFERENCE_NOUN, expanded)),
+			hidden: heldBack(held, REFERENCE_NOUN, !expanded),
 		},
 	];
 }
@@ -284,7 +270,7 @@ function symbolSections(lines: readonly string[], expanded: boolean): ViewSectio
 			label: RESPONSE_LABEL,
 			lines: kept,
 			list: true,
-			...withHidden(heldBack(held, SYMBOL_NOUN, expanded)),
+			hidden: heldBack(held, SYMBOL_NOUN, !expanded),
 		},
 	];
 }
@@ -310,7 +296,7 @@ function hoverSections(text: string, expanded: boolean): ViewSection[] {
 		...(sections.length === 0 ? { label: RESPONSE_LABEL } : {}),
 		lines: source.kept.map(line => [{ text: line }]),
 		code: language === "" ? {} : { language },
-		...withHidden(heldBack(source.held, LINE_NOUN, expanded)),
+		hidden: heldBack(source.held, LINE_NOUN, !expanded),
 	});
 	if (after) sections.push(docSection(after, expanded));
 	return sections;
@@ -322,7 +308,7 @@ function docSection(source: string, expanded: boolean, label?: string): ViewSect
 	return {
 		...(label === undefined ? {} : { label }),
 		lines: kept.map(line => row(line, "muted")),
-		...withHidden(heldBack(held, LINE_NOUN, expanded)),
+		hidden: heldBack(held, LINE_NOUN, !expanded),
 	};
 }
 
@@ -334,14 +320,9 @@ function outputSections(text: string, expanded: boolean): ViewSection[] {
 		{
 			label: RESPONSE_LABEL,
 			lines: kept.map(line => row(line, "output")),
-			...withHidden(heldBack(held, LINE_NOUN, expanded)),
+			hidden: heldBack(held, LINE_NOUN, !expanded),
 		},
 	];
-}
-
-/** A hidden count as the member a section carries it in, or nothing at all. */
-function withHidden(hidden: ViewHiddenCount | undefined): { hidden?: ViewHiddenCount } {
-	return hidden === undefined ? {} : { hidden };
 }
 
 /** What the call asked about, in the words the row is described by. */
@@ -374,7 +355,7 @@ function describeCall(args: LspParams | undefined): { description: string; meta:
 function requestSection(request: LspParams | undefined): ViewSection | undefined {
 	if (request === undefined) return undefined;
 	const lines: ViewLine[] = [];
-	if (request.file) lines.push(row(request.file, "output"));
+	if (request.file) lines.push(row(shortenPath(request.file), "output"));
 	if (request.line !== undefined) lines.push(row(`line ${request.line}`, "dim"));
 	if (request.symbol) lines.push(row(`symbol: ${replaceTabs(request.symbol).replaceAll(/\r?\n/g, " ")}`, "dim"));
 	if (request.query) lines.push(row(`query: ${request.query}`, "dim"));
@@ -470,7 +451,7 @@ export const lspToolView: Required<ToolViewRenderer<LspParams, LspViewResult>> =
 	},
 
 	renderResult(result: LspViewResult, context: ToolViewContext, args?: LspParams): ToolView {
-		const text = textOf(result.content);
+		const text = extractResultText(result.content);
 		if (!text) return emptyCard();
 
 		const request = args ?? result.details?.request;

@@ -5,7 +5,7 @@ function abortErrorFromSignal(signal: AbortSignal): unknown {
 /**
  * Process-global pause gate for agent loops.
  *
- * Every agent in a process — main session, in-process subagents, advisor —
+ * Every agent in a process — main session, in-process agents, advisor —
  * funnels through {@link ../agent-loop!agentLoop}, which polls this gate at its
  * two action boundaries: before each model call and before each tool call
  * starts. Engaging the gate therefore freezes all of them at the next safe

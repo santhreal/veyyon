@@ -56,8 +56,12 @@ function render(opts: {
 }): { lines: readonly string[]; text: string; flat: string; mounted: boolean } {
 	const box = new Box(1, 1);
 	const message: FramedMessage = {
-		customType: opts.customType ?? "deploy-status",
-		content: opts.content ?? "shipped to staging",
+		kind: "custom",
+		id: "custom-frame",
+		customKind: opts.customType ?? "deploy-status",
+		text: opts.content ?? "shipped to staging",
+		level: "info",
+		timestamp: 0,
 	};
 	const mounted = renderFramedMessage({
 		message,

@@ -1,5 +1,4 @@
-import { tryParseJson } from "@veyyon/utils";
-import { formatBytes } from "@veyyon/utils/format";
+import { formatBytes, tryParseJson } from "@veyyon/utils";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, decodeHtmlEntities, loadPage, scraperDegrade, tryParseUrl } from "./types";
 

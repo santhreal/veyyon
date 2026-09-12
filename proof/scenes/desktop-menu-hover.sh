@@ -115,7 +115,7 @@ BAND_H=20
 LIT_MIN_PIXELS=240
 QUIET_MAX_PIXELS=20
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 MEASURE="${BASH_SOURCE[0]%/*}/measure-frame.py"

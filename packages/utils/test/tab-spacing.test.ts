@@ -2,7 +2,8 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
-import { DEFAULT_TAB_WIDTH, getEditorConfigFormatting, MAX_TAB_WIDTH, MIN_TAB_WIDTH } from "../src/tab-spacing";
+import { getEditorConfigFormatting, MAX_TAB_WIDTH, MIN_TAB_WIDTH } from "../src/tab-spacing";
+import { DEFAULT_TAB_WIDTH } from "../src/tab-width";
 
 // getEditorConfigFormatting resolves real `.editorconfig` files by walking the
 // directory chain from the file up to a `root = true` marker, so every case

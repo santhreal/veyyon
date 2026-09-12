@@ -13,7 +13,7 @@
 
 import { Ellipsis } from "@veyyon/natives";
 import { type Component, Markdown, renderInlineMarkdown, TERMINAL, Text } from "@veyyon/tui";
-import { pluralize } from "@veyyon/utils/format";
+import { sanitizeText } from "@veyyon/utils";
 import { padding } from "@veyyon/utils/padding";
 import { sliceWithWidth, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
@@ -45,15 +45,18 @@ import { shimmerEnabled, shimmerText } from "../../../theme/shimmer";
 import { type SymbolKey, UNICODE_SYMBOLS } from "../../../theme/symbols";
 import type { Theme, ThemeColor } from "../../../theme/theme";
 import {
+	capPreviewLines,
 	formatBadge,
 	formatExpandHint,
 	formatStatusIcon,
 	previewWindowRows,
 	replaceTabs,
 	shortenEmbeddedPaths,
+	showResolvedModelDefault,
 } from "../../../tools/core/render-utils";
 import type { ToolUIStatus } from "../../../tools/core/tool-ui-status";
-import type { FirstResultViewportRepaint } from "../../../tools/renderers";
+import type { ToolRenderer } from "../../../tools/renderers";
+import { sanitizeWithOptionalSixelPassthrough } from "../../../utils/sixel";
 import { paintHotTail, shimmerPhase } from "../components/chrome/follow";
 import { renderDiff } from "../components/transcript/diff";
 import { fileHyperlink, urlHyperlink } from "./hyperlink";
@@ -147,6 +150,31 @@ const THINKING_COLORS: Readonly<Record<string, ThemeColor>> = {
 };
 
 /**
+ * The tool's words as the terminal shows them: control bytes out, the home directory as `~`, a tab as
+ * spaces.
+ *
+ * This is the one strip the contract promises: a host draws a span's text and "strips the rest",
+ * and the rest is every escape a tool did not mark `captured`. A tool that builds a span from a
+ * model-supplied reason or a file's contents cannot be trusted to have stripped it first, and a
+ * screen clear or an OSC hyperlink drawn verbatim reaches the terminal as an instruction. So every
+ * non-captured string a view carries passes through here, and a captured run through
+ * `styleTerminalRow`, which keeps the styles it trusts and drops the same bytes.
+ *
+ * The one payload that survives is a Sixel image, and only under the same pair of switches
+ * (`VEYYON_FORCE_IMAGE_PROTOCOL=sixel`, `VEYYON_ALLOW_SIXEL_PASSTHROUGH=1`) the tool read before
+ * it kept the bytes: an image protocol is a control sequence the operator asked to see, and a strip
+ * here after the tool's own would blank the row the image sits on.
+ */
+function sanitizeViewText(text: string): string {
+	return sanitizeWithOptionalSixelPassthrough(text, plain => replaceTabs(shortenEmbeddedPaths(sanitizeText(plain))));
+}
+
+/** Extract multi-line plain text from an array of span lines. */
+function linesToText(lines: readonly ViewLine[]): string {
+	return lines.map(line => line.map(span => span.text).join("")).join("\n");
+}
+
+/**
  * One span as terminal bytes.
  *
  * Emphasis is applied INSIDE the colour, which is the order every hand-written renderer here already
@@ -202,11 +230,13 @@ export function drawSpan(span: ViewSpan, theme: Theme, frame?: number): string {
 			formatStatusIcon(STATUS_ICONS[span.status], theme, span.status === "running" ? frame : undefined),
 		);
 	}
-	const spanText = span.captured ? span.text : replaceTabs(shortenEmbeddedPaths(span.text));
+	// Replayed before any other treatment: a captured run is another program's bytes, and a badge or
+	// a shimmer wrapped around unstripped bytes would send them on as they are.
+	if (span.captured) return styleTerminalRow(span.text, theme.getFgAnsi(TONE_COLORS.output));
+	const spanText = sanitizeViewText(span.text);
 	if (span.badge === true) {
 		return linked(span, formatBadge(spanText, TONE_COLORS[span.tone ?? "accent"], theme));
 	}
-	if (span.captured) return styleTerminalRow(span.text, theme.getFgAnsi(TONE_COLORS.output));
 	// A live run of ANOTHER PROGRAM's output is the follow rather than a shimmer: the newest
 	// characters of a stream grade up to the accent and cool back into the output colour, which is the
 	// treatment every live tool row on this host already had. A shimmer sweeps a whole run, which
@@ -309,8 +339,7 @@ export function drawStatusRow(view: StatusRowView, theme: Theme, spinnerFrame?: 
 	// The tone is applied INSIDE the link and inside the status line's own colouring of the
 	// description, which is the order every hand-written header used: the escape that opens the link
 	// carries no colour, and the row's secondary colour is the ground a toned run sits on.
-	const rawDescription =
-		view.description === undefined ? undefined : replaceTabs(shortenEmbeddedPaths(view.description));
+	const rawDescription = view.description === undefined ? undefined : sanitizeViewText(view.description);
 	const toned =
 		rawDescription === undefined || view.descriptionTone === undefined
 			? rawDescription
@@ -333,14 +362,14 @@ export function drawStatusRow(view: StatusRowView, theme: Theme, spinnerFrame?: 
 			icon: view.status === undefined ? undefined : STATUS_ICONS[view.status],
 			iconOverride: emblem,
 			spinnerFrame,
-			title: replaceTabs(shortenEmbeddedPaths(view.title)),
+			title: sanitizeViewText(view.title),
 			titleColor: view.titleTone === undefined ? undefined : TONE_COLORS[view.titleTone],
 			description,
 			badge:
 				view.badge === undefined
 					? undefined
 					: {
-							label: replaceTabs(shortenEmbeddedPaths(view.badge.label)),
+							label: sanitizeViewText(view.badge.label),
 							color: TONE_COLORS[view.badge.tone],
 						},
 			meta: view.meta?.map(entry => drawSpans(entry, theme, spinnerFrame)),
@@ -388,9 +417,7 @@ export function drawToolViewText(view: LineToolView, theme: Theme, spinnerFrame?
 function drawMarkdownRows(source: string, width: number, theme: Theme, tone: ViewTone | undefined): readonly string[] {
 	if (!source.trim()) return [];
 	const ground = tone === undefined ? undefined : { color: (text: string) => theme.fg(TONE_COLORS[tone], text) };
-	return new Markdown(replaceTabs(shortenEmbeddedPaths(source)), 0, 0, getMarkdownTheme(), ground).render(
-		Math.max(1, width),
-	);
+	return new Markdown(sanitizeViewText(source), 0, 0, getMarkdownTheme(), ground).render(Math.max(1, width));
 }
 
 /** The rail glyph, the space after it and one column of air, which a header row never spends. */
@@ -417,7 +444,7 @@ function drawFittedHeader(view: StatusRowView, theme: Theme, width: number, fram
 	if (description === undefined || view.descriptionFits !== true) return drawn;
 	const overflow = visibleWidth(drawn) - Math.max(0, width - HEADER_CHROME);
 	if (overflow <= 0) return drawn;
-	const sanitizedDesc = replaceTabs(shortenEmbeddedPaths(description));
+	const sanitizedDesc = sanitizeViewText(description);
 	const descriptionWidth = visibleWidth(sanitizedDesc);
 	const fitted = Math.max(1, descriptionWidth - overflow);
 	if (fitted >= descriptionWidth) return drawn;
@@ -460,10 +487,7 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 		const drawnHere =
 			section.list || section.code !== undefined || diff !== undefined || markdown || tree !== undefined;
 		return {
-			label:
-				section.label === undefined
-					? undefined
-					: theme.fg("toolTitle", replaceTabs(shortenEmbeddedPaths(section.label))),
+			label: section.label === undefined ? undefined : theme.fg("toolTitle", sanitizeViewText(section.label)),
 			separator: section.separator === true,
 			lines: section.list
 				? drawItemList(section.lines, section.hidden, theme, spinnerFrame)
@@ -479,7 +503,7 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 			diff: diff !== undefined,
 			// A document is laid out at the host's width, so its rows are composed inside the closure
 			// below from the source the section carries rather than drawn once here.
-			markdown: markdown ? section.lines.map(line => line.map(span => span.text).join("")).join("\n") : undefined,
+			markdown: markdown ? linesToText(section.lines) : undefined,
 			// The ground the document's own text sits on, which the section states by toning the span it
 			// carries the source in. Read from the first toned span, so a document stated as several
 			// spans of one line is one document with one ground rather than a run-by-run palette.
@@ -639,7 +663,7 @@ function codeGutterWidth(numbers: readonly (number | null)[], totalLines: number
  * width so the source stays in one column.
  */
 function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: Theme): string[] {
-	const source = lines.map(line => line.map(span => span.text).join("")).join("\n");
+	const source = linesToText(lines);
 	const language = code.language ?? "";
 	const first = code.firstLineNumber;
 	const numbers = code.lineNumbers;
@@ -652,30 +676,27 @@ function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: T
 	) {
 		return codeMemo.rows;
 	}
-	const highlighted = highlightCode(shortenEmbeddedPaths(source), code.language);
-	const rows =
-		numbers !== undefined
-			? (() => {
-					const gutter = codeGutterWidth(numbers, code.totalLines);
-					return highlighted.map((body, index) => {
-						const number = numbers[index];
-						const cell =
-							number === null || number === undefined
-								? " ".repeat(gutter)
-								: String(number).padStart(gutter, " ");
-						return `${theme.fg("dim", `${cell} `)}${replaceTabs(body)}`;
-					});
-				})()
-			: first === undefined
-				? highlighted.map(body => replaceTabs(body))
-				: (() => {
-						const last = code.totalLines ?? first + highlighted.length - 1;
-						const gutter = Math.max(CODE_GUTTER_MIN_WIDTH, String(last).length);
-						return highlighted.map(
-							(body, index) =>
-								`${theme.fg("dim", `${String(first + index).padStart(gutter, " ")} `)}${replaceTabs(body)}`,
-						);
-					})();
+	// Stripped before the highlighter rather than after, so an escape inside the source is never
+	// tokenized into a row the highlighter then wraps in colour of its own.
+	const highlighted = highlightCode(shortenEmbeddedPaths(sanitizeText(source)), code.language);
+	let rows: string[];
+	if (numbers !== undefined) {
+		const gutter = codeGutterWidth(numbers, code.totalLines);
+		rows = highlighted.map((body, index) => {
+			const number = numbers[index];
+			const cell =
+				number === null || number === undefined ? " ".repeat(gutter) : String(number).padStart(gutter, " ");
+			return `${theme.fg("dim", `${cell} `)}${replaceTabs(body)}`;
+		});
+	} else if (first !== undefined) {
+		const last = code.totalLines ?? first + highlighted.length - 1;
+		const gutter = Math.max(CODE_GUTTER_MIN_WIDTH, String(last).length);
+		rows = highlighted.map(
+			(body, index) => `${theme.fg("dim", `${String(first + index).padStart(gutter, " ")} `)}${replaceTabs(body)}`,
+		);
+	} else {
+		rows = highlighted.map(body => replaceTabs(body));
+	}
 	// The lead is the prompt the first line is read under, so it opens that row in the aside colour
 	// and the highlighter never sees it. A section carrying no source draws no lead: a prompt over a
 	// command nobody has states nothing.
@@ -683,9 +704,7 @@ function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: T
 	const led =
 		lead === undefined
 			? rows
-			: rows.map((row, index) =>
-					index === 0 ? `${theme.fg("dim", replaceTabs(shortenEmbeddedPaths(lead)))}${row}` : row,
-				);
+			: rows.map((row, index) => (index === 0 ? `${theme.fg("dim", sanitizeViewText(lead))}${row}` : row));
 	codeMemo.theme = theme;
 	codeMemo.language = language;
 	codeMemo.shape = shape;
@@ -772,7 +791,7 @@ function drawItemList(
 			expanded: false,
 			maxCollapsed: drawn.length,
 			heldBack: hidden?.count ?? 0,
-			itemType: hidden?.noun?.one ?? "item",
+			itemType: hidden?.noun === undefined ? "item" : sanitizeViewText(hidden.noun.one),
 			renderItem: line => line,
 		},
 		theme,
@@ -829,11 +848,7 @@ function drawTailWindow(lines: readonly string[], window: ViewTailWindow, theme:
 	const viewport = Math.max(1, previewWindowRows() - (window.reserve ?? 0));
 	const max =
 		window.max === undefined ? viewport : window.viewport === true ? Math.min(window.max, viewport) : window.max;
-	if (rows.length <= max) return rows;
-	const kept = max <= 1 ? [] : rows.slice(rows.length - (max - 1));
-	const earlier = rows.length - kept.length;
-	const note = `… ${earlier} earlier ${pluralize("line", earlier)} ${formatExpandHint(theme, false, true)}`;
-	return [theme.fg("dim", note), ...kept];
+	return capPreviewLines(rows, theme, { max });
 }
 
 /**
@@ -911,8 +926,7 @@ function drawLineToWidth(line: ViewLine, theme: Theme, width: number, frame?: nu
 			used += visibleWidth(replayed);
 			continue;
 		}
-		const sanitizedText = replaceTabs(shortenEmbeddedPaths(span.text));
-		const text = truncateToWidth(sanitizedText, remaining, Ellipsis.Unicode);
+		const text = truncateToWidth(sanitizeViewText(span.text), remaining, Ellipsis.Unicode);
 		drawn += drawSpan({ ...span, text }, theme, frame);
 		used += visibleWidth(text);
 	}
@@ -968,7 +982,7 @@ function drawRowToWidth(line: ViewLine, theme: Theme, width: number, frame?: num
 /** The unit a held-back count is in, as the words that follow it, or nothing when the tool named none. */
 function nounSuffix(hidden: ViewHiddenCount): string {
 	if (hidden.noun === undefined) return "";
-	return ` ${hidden.count === 1 ? hidden.noun.one : hidden.noun.many}`;
+	return ` ${sanitizeViewText(hidden.count === 1 ? hidden.noun.one : hidden.noun.many)}`;
 }
 
 /**
@@ -978,7 +992,7 @@ function nounSuffix(hidden: ViewHiddenCount): string {
  * One sentence for both kinds: a tool states a count and the host words it, so a panel and a terse
  * card say `… 3 more lines` the same way and a reader learns one gesture.
  */
-function drawHiddenNote(hidden: ViewHiddenCount, theme: Theme): string | undefined {
+export function drawHiddenNote(hidden: ViewHiddenCount, theme: Theme): string | undefined {
 	if (hidden.count <= 0 && !hidden.revealable) return undefined;
 	const hint = formatExpandHint(theme, !hidden.revealable, true);
 	if (hidden.count <= 0) return hint;
@@ -1017,7 +1031,10 @@ function drawNoticeSpan(span: ViewSpan, theme: Theme): string {
 	if (span.symbol !== undefined && Object.hasOwn(UNICODE_SYMBOLS, span.symbol)) {
 		return theme.symbol(span.symbol as SymbolKey);
 	}
-	let text = span.captured ? span.text : replaceTabs(shortenEmbeddedPaths(span.text));
+	// A captured run keeps the styles the terminal replays and loses the rest; with no base colour,
+	// since the plate colours the whole row and the run's own reset drops it at that column as a
+	// toned span's would.
+	let text = span.captured ? styleTerminalRow(span.text, "") : sanitizeViewText(span.text);
 	if (span.bold) text = theme.bold(text);
 	if (span.italic) text = theme.italic(text);
 	return text;
@@ -1047,7 +1064,7 @@ export function drawNotice(view: NoticeView, theme: Theme): Component {
 	const tag =
 		view.tag === undefined
 			? ""
-			: ` ${theme.bold(`${theme.format.bracketLeft}${replaceTabs(shortenEmbeddedPaths(view.tag))}${theme.format.bracketRight}`)}`;
+			: ` ${theme.bold(`${theme.format.bracketLeft}${sanitizeViewText(view.tag)}${theme.format.bracketRight}`)}`;
 	const lines = ["", `${mark}${drawNoticeLine(view.headline, theme)}${tag}`];
 	// The blank row is the gap between the headline and what follows it, so a notice that is a
 	// headline alone is three rows rather than a headline with two empty rows under it.
@@ -1099,20 +1116,7 @@ export function drawToolView(view: ToolView, theme: Theme, spinnerFrame?: number
  * render consumes a spinner frame, and whether a shape change needs the viewport replayed. A view
  * states none of them, so a conversion moves them here from the deleted renderer object.
  */
-export interface ViewToolRendererPolicy {
-	mergeCallAndResult?: boolean;
-	/** Drawn in the response flow rather than in the card's own box, which is the row's placement. */
-	inline?: boolean;
-	/**
-	 * That the call render IS the live control a reader answers, so a call that never ran must not
-	 * paint it: a question nobody can answer any more draws its plain label instead.
-	 */
-	callIsLiveWidget?: boolean;
-	animatedPendingPreview?: boolean | ((args: unknown) => boolean);
-	animatedPartialResult?: boolean | ((args: unknown) => boolean);
-	forceFirstResultViewportRepaint?: FirstResultViewportRepaint;
-	forceResultViewportRepaintOnSettle?: boolean;
-}
+export interface ViewToolRendererPolicy extends Omit<ToolRenderer, "renderCall" | "renderResult" | "view"> {}
 
 /**
  * What the registry hands a renderer: the disclosure state, plus the loosely typed bag of surface
@@ -1144,10 +1148,11 @@ export function viewToolRenderer<Args, Result>(
 	/**
 	 * What the surface knows, out of the loosely typed bag the registry path threads through.
 	 *
-	 * The live path builds a `ToolViewContext` directly and states both facts; this path is handed
-	 * the same two through `renderContext`, because the registry's signature predates the contract
-	 * and carries a record. A caller that states neither gets a context that omits both, which is
-	 * what a rebuilt transcript with no live block knows.
+	 * The live path builds a `ToolViewContext` directly and states every fact; this path is handed
+	 * the same ones through `renderContext`, because the registry's signature predates the contract
+	 * and carries a record. A caller that states neither `hasResult` nor `frozen` gets a context that
+	 * omits both, which is what a rebuilt transcript with no live block knows. `showResolvedModel`
+	 * falls back to the setting, so an extension that wraps the task tool draws the same card.
 	 */
 	const contextOf = (options: RegistryRenderOptions): ToolViewContext => {
 		const bag = options.renderContext;
@@ -1157,6 +1162,8 @@ export function viewToolRenderer<Args, Result>(
 			frame: options.spinnerFrame,
 			...(bag?.hasResult === undefined ? {} : { hasResult: bag.hasResult === true }),
 			...(bag?.frozen === undefined ? {} : { frozen: bag.frozen === true }),
+			showResolvedModel:
+				bag?.showResolvedModel === undefined ? showResolvedModelDefault() : bag.showResolvedModel === true,
 		};
 	};
 	return {

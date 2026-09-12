@@ -48,6 +48,7 @@ import type {
 	ThinkingConfig,
 	ThinkingLevel,
 } from "./google-types";
+import { createInitialResponsesAssistantMessage } from "./initial-message";
 import { transformMessages } from "./transform-messages";
 import { NON_VIDEO_MODEL_PLACEHOLDER, NON_VISION_IMAGE_PLACEHOLDER } from "./vision-content";
 
@@ -965,12 +966,46 @@ export async function consumeGoogleStream<T extends GoogleApiType>(args: {
  * Generation/sampling fields that map directly onto Gemini's `GenerateContentConfig`.
  * Excludes any provider-specific extensions (`topP`/`topK`/etc are all forwarded as-is).
  */
-interface GoogleGenerationConfig extends GenerateContentConfig {
+export interface GoogleGenerationConfig extends GenerateContentConfig {
 	topP?: number;
 	topK?: number;
 	minP?: number;
 	presencePenalty?: number;
 	repetitionPenalty?: number;
+}
+
+/**
+ * Extract and populate base Gemini generation configuration options.
+ */
+export function buildGoogleBaseGenerationConfig(options: StreamOptions): GoogleGenerationConfig {
+	const generationConfig: GoogleGenerationConfig = {};
+	if (options.temperature !== undefined) generationConfig.temperature = options.temperature;
+	if (options.maxTokens !== undefined) generationConfig.maxOutputTokens = options.maxTokens;
+	if (options.topP !== undefined) generationConfig.topP = options.topP;
+	if (options.topK !== undefined) generationConfig.topK = options.topK;
+	if (options.minP !== undefined) generationConfig.minP = options.minP;
+	if (options.presencePenalty !== undefined) generationConfig.presencePenalty = options.presencePenalty;
+	if (options.repetitionPenalty !== undefined) generationConfig.repetitionPenalty = options.repetitionPenalty;
+	return generationConfig;
+}
+
+/**
+ * Build Gemini toolConfig from a standard tool choice option.
+ */
+export function buildGoogleToolConfig(
+	toolChoice?: GoogleSharedStreamOptions["toolChoice"],
+): { functionCallingConfig: { mode: FunctionCallingConfigMode; allowedFunctionNames?: string[] } } | undefined {
+	if (!toolChoice) return undefined;
+	if (typeof toolChoice === "string") {
+		const mode = mapToolChoice(toolChoice);
+		return mode !== "AUTO" ? { functionCallingConfig: { mode } } : undefined;
+	}
+	return {
+		functionCallingConfig: {
+			mode: "ANY",
+			allowedFunctionNames: toolChoice.allowedFunctionNames.slice(),
+		},
+	};
 }
 
 /**
@@ -990,14 +1025,7 @@ export function buildGoogleGenerateContentParams<T extends "google-generative-ai
 	const systemPrompts = normalizeSystemPrompts(context.systemPrompt);
 	const contents = convertMessages(model, context);
 
-	const generationConfig: GoogleGenerationConfig = {};
-	if (options.temperature !== undefined) generationConfig.temperature = options.temperature;
-	if (options.maxTokens !== undefined) generationConfig.maxOutputTokens = options.maxTokens;
-	if (options.topP !== undefined) generationConfig.topP = options.topP;
-	if (options.topK !== undefined) generationConfig.topK = options.topK;
-	if (options.minP !== undefined) generationConfig.minP = options.minP;
-	if (options.presencePenalty !== undefined) generationConfig.presencePenalty = options.presencePenalty;
-	if (options.repetitionPenalty !== undefined) generationConfig.repetitionPenalty = options.repetitionPenalty;
+	const generationConfig = buildGoogleBaseGenerationConfig(options);
 
 	const config: GenerateContentConfig = {
 		...(Object.keys(generationConfig).length > 0 && generationConfig),
@@ -1014,23 +1042,9 @@ export function buildGoogleGenerateContentParams<T extends "google-generative-ai
 	}
 
 	if (context.tools && context.tools.length > 0 && options.toolChoice) {
-		const choice = options.toolChoice;
-		if (typeof choice === "string") {
-			const mode = mapToolChoice(choice);
-			if (mode !== "AUTO") {
-				config.toolConfig = {
-					functionCallingConfig: { mode },
-				};
-			}
-		} else {
-			// Named-tool routing — `mode: "ANY"` plus an explicit allow-list. The
-			// caller is responsible for ensuring the names exist in `context.tools`.
-			config.toolConfig = {
-				functionCallingConfig: {
-					mode: "ANY",
-					allowedFunctionNames: choice.allowedFunctionNames.slice(),
-				},
-			};
+		const toolConfig = buildGoogleToolConfig(options.toolChoice);
+		if (toolConfig) {
+			config.toolConfig = toolConfig;
 		}
 	} else {
 		config.toolConfig = undefined;
@@ -1095,16 +1109,7 @@ export function streamGoogleGenAI<T extends "google-generative-ai" | "google-ver
 		const startTime = performance.now();
 		let firstTokenTime: number | undefined;
 
-		const output: AssistantMessage = {
-			role: "assistant",
-			content: [],
-			api: api as Api,
-			provider: model.provider,
-			model: model.id,
-			usage: emptyUsage(),
-			stopReason: "stop",
-			timestamp: Date.now(),
-		};
+		const output: AssistantMessage = createInitialResponsesAssistantMessage(api as Api, model.provider, model.id);
 		let rawRequestDump: RawHttpRequestDump | undefined;
 		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
 		let wireBodyJson: string | undefined;
@@ -1229,10 +1234,7 @@ export function streamGoogleGenAI<T extends "google-generative-ai" | "google-ver
 				signal: options?.signal,
 				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
 			});
-			output.stopReason = result.stopReason;
-			output.errorStatus = result.status;
-			output.errorId = result.id;
-			output.errorMessage = result.message;
+			AIError.applyFinalizeResult(output, result);
 			output.duration = performance.now() - startTime;
 			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
 			stream.push({ type: "error", reason: output.stopReason, error: output });

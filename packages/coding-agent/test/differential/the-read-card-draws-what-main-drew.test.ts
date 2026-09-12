@@ -3,7 +3,7 @@
  *
  * The file's own rows are compared as terminal bytes -- the highlighter's colours included -- and so
  * are the pending row, the notices, the image card, the error card and the file each row links to.
- * SIX DIFFERENCES ARE PINNED AS EXCEPTION CELLS rather than waived in a normalizer:
+ * SEVEN DIFFERENCES ARE PINNED AS EXCEPTION CELLS rather than waived in a normalizer:
  *
  *  - The file is the row's DESCRIPTION, where main wrote it into the title, so the row reads
  *    `Read: src/example.ts` where main read `Read src/example.ts`.
@@ -13,6 +13,7 @@
  *    where main wrote them into the title as parentheticals.
  *  - The collapsed window's held-back note hangs at the section's own indent, not past the gutter.
  *  - A tab in an image's details is widened, where main passed the byte through.
+ *  - A legacy `offset` names no line range, where main drew one the tool never read.
  *
  * WHAT THIS SUITE DOES NOT CATCH. It never calls `execute()`, so nothing here proves what a read
  * REPORTS: `test/tools/read*.test.ts` own that, and a `details` shape that changed meaning would be
@@ -147,9 +148,6 @@ describe("read tool differential", () => {
 			{ path: "" },
 			{ path: "src/example.ts" },
 			{ path: "/repo/src/example.ts:10-12" },
-			{ path: "src/example.ts", offset: 40 },
-			{ path: "src/example.ts", offset: 40, limit: 20 },
-			{ path: "src/example.ts", limit: 20 },
 			{ path: "local://handoff.md:2" },
 			{ path: "notes.txt:raw" },
 			{ file_path: "src/aliased.ts" },
@@ -166,8 +164,8 @@ describe("read tool differential", () => {
 		}
 		// Anti-vacuity: the pending row is the tool's name and the target it was asked for, selector
 		// and range included, and a call with no path at all still draws a row.
-		const named = stripVTControlCharacters(callViewRows(calls[5]!, COLLAPSED, 200).join("\n"));
-		expect(named).toContain("Read: src/example.ts:40-59");
+		const named = stripVTControlCharacters(callViewRows(calls[3]!, COLLAPSED, 200).join("\n"));
+		expect(named).toContain("Read: /repo/src/example.ts:10-12");
 		expect(stripVTControlCharacters(callViewRows(calls[0]!, COLLAPSED, 200).join(""))).toContain("Read: …");
 	});
 
@@ -524,10 +522,6 @@ describe("read tool differential", () => {
 					details: detailsOf("x", { meta: { source: { type: "path", value: "/repo/src/example.ts" } } }),
 				},
 				{
-					args: { path: "src/example.ts", offset: 40 },
-					details: detailsOf("x", { resolvedPath: "/repo/src/example.ts" }),
-				},
-				{
 					args: { path: "archive.zip:dir/file.ts" },
 					details: detailsOf("x", { resolvedPath: "/repo/archive.zip" }),
 				},
@@ -660,14 +654,14 @@ describe("read tool differential", () => {
 			conflictCount: 2,
 		});
 		const result = textResult("x", details);
-		const args: ReadRenderArgs = { path: "example.ts", offset: 5, limit: 3 };
+		const args: ReadRenderArgs = { path: "example.ts:5-7" };
 		const drawn = unstyled(viewRows(result, COLLAPSED, args, 200))[0] ?? "";
 		const oracle = unstyled(oracleRows(result, HOST_COLLAPSED, args, 200))[0] ?? "";
-		// Main wrote each fact into the title as a parenthetical, which put the correction between the
-		// path and the range it was read at: `src/example.ts (corrected from example.ts):5-7`. The
-		// three are facts about one read rather than parts of its name, so they are meta entries and
-		// the host puts its own separator between them, leaving the description the file and its range.
-		expect(oracle).toContain("Read src/example.ts (corrected from example.ts):5-7 (summary: 3 elided spans)");
+		// Main wrote each fact into the title as a parenthetical after the path and its range:
+		// `src/example.ts:5-7 (corrected from example.ts) (summary: 3 elided spans)`. The three are
+		// facts about one read rather than parts of its name, so they are meta entries and the host
+		// puts its own separator between them, leaving the description the file and its range.
+		expect(oracle).toContain("Read src/example.ts:5-7 (corrected from example.ts) (summary: 3 elided spans)");
 		expect(oracle).toContain("(warn 2 conflicts)");
 		expect(drawn).toContain("Read: src/example.ts:5-7");
 		for (const fact of ["corrected from example.ts", "summary: 3 elided spans", "warn 2 conflicts"]) {
@@ -688,5 +682,27 @@ describe("read tool differential", () => {
 		expect(drawn).toStartWith("▏  …");
 		expect(oracle).toStartWith("▏     …");
 		expect(noteWords([drawn])).toBe(noteWords([oracle]));
+	});
+
+	it("exception cell: a legacy offset or limit is not a line range, because the schema has neither window", () => {
+		// Main's renderer read a legacy `offset`/`limit` pair as a line window and drew `:40` or `:1-20`.
+		// The schema names no `offset` and its `limit` is the directory entry cap, so a call carrying
+		// the legacy key names the path and states the argument by name: a range the tool never read
+		// is not drawn.
+		const cases: Array<{ args: ReadRenderArgs; oracleSuffix: string; drawnSuffix: string }> = [
+			{ args: { path: "src/example.ts", offset: 40 } as ReadRenderArgs, oracleSuffix: ":40", drawnSuffix: "" },
+			{ args: { path: "src/example.ts", limit: 20 }, oracleSuffix: ":1-20", drawnSuffix: " (limit 20)" },
+			{
+				args: { path: "src/example.ts", offset: 40, limit: 20 } as ReadRenderArgs,
+				oracleSuffix: ":40-59",
+				drawnSuffix: " (limit 20)",
+			},
+		];
+		for (const { args, oracleSuffix, drawnSuffix } of cases) {
+			const drawn = unstyled(callViewRows(args, COLLAPSED, 200))[0] ?? "";
+			const oracle = unstyled(callOracleRows(args, HOST_COLLAPSED, 200))[0] ?? "";
+			expect(oracle).toBe(`⋯ Read: src/example.ts${oracleSuffix}`);
+			expect(drawn).toBe(`⋯ Read: src/example.ts${drawnSuffix}`);
+		}
 	});
 });

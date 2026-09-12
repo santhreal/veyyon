@@ -31,8 +31,8 @@ function makeSession(cwd: string): ToolSession {
 		hasUI: false,
 		settings: Settings.isolated({
 			"async.enabled": false,
-			"subagent.isolation.mode": "none",
-			"subagent.enableLsp": true,
+			"agent.isolation.mode": "none",
+			"agent.enableLsp": true,
 		}),
 		taskDepth: 0,
 		enableLsp: true,

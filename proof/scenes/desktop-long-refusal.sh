@@ -121,8 +121,8 @@ VALUE_GEOM="${COLUMN_W}x32+$(( FIELD_X - COLUMN_W / 2 ))+$(( FIELD_Y - 16 ))"
 
 fill_rows() { # <shot> <geometry> <hex> -> pixel rows carrying exactly that colour
 	local png="${SCENE_OUT}/${SCENE_NAME}-$1.png"
-	local dump="${SCENE_RUNTIME_DIR}/frame-compare/$1-$3.txt"
-	mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+	local dump="${TMPDIR}/frame-compare/$1-$3.txt"
+	mkdir -p "${TMPDIR}/frame-compare"
 	magick "${png}" -crop "$2" +repage txt:- >"${dump}"
 	python3 - "${dump}" "$3" <<'PY'
 import re

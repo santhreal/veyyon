@@ -16,9 +16,6 @@ export function veyyonXAIUserAgent(): string {
 	return "veyyon/xai";
 }
 
-/** @deprecated Use {@link veyyonXAIUserAgent} */
-export const ohMyPiXAIUserAgent = veyyonXAIUserAgent;
-
 type XAIProvider = "xai-oauth" | "xai";
 
 /**

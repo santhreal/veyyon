@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Two workers on one session, and the panel that shows them.
 #
-# A subagent row has to show the part a transcript alone cannot: two lanes running
+# An agent row has to show the part a transcript alone cannot: two lanes running
 # at once, each with its own progress, and the control centre listing them while
 # they are live rather than after they returned. So the scene opens the panel while
 # the workers are still working, and again once they are idle, which is the same

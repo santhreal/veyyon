@@ -39,6 +39,7 @@ import {
 	getInstalledPlugin,
 	type InstalledPluginEntry,
 	type InstalledPluginsRegistry,
+	parseInstalledPluginsRegistry,
 	readInstalledPluginsRegistry,
 	removeInstalledPlugin,
 	writeInstalledPluginsRegistry,
@@ -393,6 +394,29 @@ describe("Optional Plugin Manifest & Loader Invariants", () => {
 			// Removing missing entry fails loud without altering registry
 			expect(() => removeMarketplaceEntry(afterRemove, "missing")).toThrow(/not found/);
 			expect(getMarketplaceEntry(afterRemove, "community")).toEqual(mkt2);
+		});
+
+		it("parses installed plugins registry content with format validation", () => {
+			expect(parseInstalledPluginsRegistry("invalid json")).toBeNull();
+			expect(parseInstalledPluginsRegistry("")).toBeNull();
+			expect(parseInstalledPluginsRegistry(JSON.stringify({}))).toBeNull();
+			expect(parseInstalledPluginsRegistry(JSON.stringify({ version: "2", plugins: {} }))).toBeNull();
+			expect(parseInstalledPluginsRegistry(JSON.stringify({ version: 2 }))).toBeNull();
+			expect(parseInstalledPluginsRegistry(JSON.stringify({ version: 2, plugins: [] }))).toBeNull();
+
+			const validJson = JSON.stringify({
+				version: 2,
+				plugins: { "plugin-a@market": [sampleEntry] },
+			});
+			const parsed = parseInstalledPluginsRegistry(validJson);
+			expect(parsed).toEqual({
+				version: 2,
+				plugins: { "plugin-a@market": [sampleEntry] },
+			});
+
+			// Accepts any numeric version forward-compatibly
+			const v3Json = JSON.stringify({ version: 3, plugins: {} });
+			expect(parseInstalledPluginsRegistry(v3Json)).toEqual({ version: 3, plugins: {} });
 		});
 
 		it("reads and writes installed plugins registry from disk safely", async () => {

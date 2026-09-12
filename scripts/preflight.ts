@@ -91,7 +91,7 @@ const CONTRACTS: readonly Contract[] = [
 	},
 	{
 		suite: "packages/coding-agent/test/context-files-agent-type-parity.test.ts",
-		symptom: "a spawned subagent runs without the standing instructions its parent has",
+		symptom: "a spawned agent runs without the standing instructions its parent has",
 	},
 	{
 		suite: "packages/coding-agent/test/context-files-scope-failures.test.ts",

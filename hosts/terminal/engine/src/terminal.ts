@@ -691,18 +691,7 @@ export class ProcessTerminal implements Terminal {
 	}
 
 	onBackgroundColorChange(callback: (hex: string) => void): void {
-		this.#backgroundColorCallbacks.push(callback);
-		// Replay like onAppearanceChange: the startup OSC 11 reply can land
-		// before the painted-ground consumer subscribes.
-		if (this.#backgroundColorHex) {
-			try {
-				callback(this.#backgroundColorHex);
-			} catch (error) {
-				logger.error("background-color subscriber threw during replay", {
-					error: errorMessage(error),
-				});
-			}
-		}
+		this.#subscribeWithReplay(this.#backgroundColorCallbacks, callback, this.#backgroundColorHex, "background-color");
 	}
 
 	setBackgroundColor(hex: string): void {
@@ -725,21 +714,27 @@ export class ProcessTerminal implements Terminal {
 	}
 
 	onAppearanceChange(callback: (appearance: TerminalAppearance) => void): void {
-		this.#appearanceCallbacks.push(callback);
-		// Replay an already-detected appearance: the startup OSC 11 response can
-		// arrive before consumers (e.g. the theme bridge) subscribe, and the
-		// dedup in #handleOsc11Response would otherwise suppress the value for
-		// them forever (#4731).
-		if (this.#appearance) {
-			try {
-				callback(this.#appearance);
-			} catch (error) {
-				// Keep other subscribers alive, but a throwing appearance
-				// subscriber (e.g. the theme bridge) is a broken feature.
-				logger.error("appearance-change subscriber threw during replay", {
-					error: errorMessage(error),
-				});
-			}
+		this.#subscribeWithReplay(this.#appearanceCallbacks, callback, this.#appearance, "appearance-change");
+	}
+
+	/**
+	 * Register `callback` and replay the value already detected: the startup OSC 11 response can
+	 * arrive before a consumer (the theme bridge, the painted-ground consumer) subscribes, and the
+	 * dedup in #handleOsc11Response would otherwise suppress the value for it forever (#4731). A
+	 * throwing subscriber is a broken feature and is logged, so the other subscribers stay alive.
+	 */
+	#subscribeWithReplay<T>(
+		callbacks: ((value: T) => void)[],
+		callback: (value: T) => void,
+		current: T | undefined,
+		subscriber: string,
+	): void {
+		callbacks.push(callback);
+		if (current === undefined) return;
+		try {
+			callback(current);
+		} catch (error) {
+			logger.error(`${subscriber} subscriber threw during replay`, { error: errorMessage(error) });
 		}
 	}
 
@@ -1522,11 +1517,12 @@ export class ProcessTerminal implements Terminal {
 		}
 	}
 
-	async drainInput(maxMs = 1000, idleMs = 50): Promise<void> {
-		if (this.#headless) return;
+	/**
+	 * Pop the kitty keyboard frame and clear modifyOtherKeys so no late key release
+	 * produces a protocol escape sequence after input handling stops.
+	 */
+	#disableKeyboardProtocols(): void {
 		if (this.#kittyProtocolActive) {
-			// Disable Kitty keyboard protocol first so any late key releases
-			// do not generate new Kitty escape sequences.
 			this.#safeWrite("\x1b[<u");
 			this.#kittyProtocolActive = false;
 			setKittyProtocolActive(false);
@@ -1539,6 +1535,11 @@ export class ProcessTerminal implements Terminal {
 			this.#safeWrite("\x1b[>4;0m");
 			this.#modifyOtherKeysActive = false;
 		}
+	}
+
+	async drainInput(maxMs = 1000, idleMs = 50): Promise<void> {
+		if (this.#headless) return;
+		this.#disableKeyboardProtocols();
 
 		const previousHandler = this.#inputHandler;
 		this.#inputHandler = undefined;
@@ -1644,20 +1645,7 @@ export class ProcessTerminal implements Terminal {
 		this.#reportedColumns = undefined;
 		this.#reportedRows = undefined;
 
-		// Disable Kitty keyboard protocol if not already done by drainInput()
-		if (this.#kittyProtocolActive) {
-			this.#safeWrite("\x1b[<u");
-			this.#kittyProtocolActive = false;
-			setKittyProtocolActive(false);
-		}
-		if (this.#modifyOtherKeysTimeout) {
-			clearTimeout(this.#modifyOtherKeysTimeout);
-			this.#modifyOtherKeysTimeout = undefined;
-		}
-		if (this.#modifyOtherKeysActive) {
-			this.#safeWrite("\x1b[>4;0m");
-			this.#modifyOtherKeysActive = false;
-		}
+		this.#disableKeyboardProtocols();
 
 		this.#restoreWindowsVTInput();
 		// Clean up StdinBuffer

@@ -13,8 +13,6 @@ import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import {
 	computeModalDims,
-	consumeModalChipHover,
-	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
 	pointerMotionEnabled,
@@ -22,6 +20,7 @@ import {
 	SELECT_LIST_SHORTCUTS,
 	sizingForArea,
 } from "../chrome/modal-shell";
+import { routeModalCardMouse } from "./select-list-mouse-routing";
 
 export interface ModalSelectListCallbacks {
 	onSelect: (item: SelectItem) => void;
@@ -132,50 +131,38 @@ export class ModalSelectListComponent implements Component {
 	}
 
 	#routeMouse(event: SgrMouseEvent): boolean {
-		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-			motion: event.motion,
-			leftClick: event.leftClick,
-		});
-		if (
-			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+		const geo = this.#shellGeometry;
+		return routeModalCardMouse({
+			shellGeometry: geo,
+			event,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			onHoverShortcut: id => {
 				this.#hoveredShortcutId = id;
 				this.#onRequestRender?.();
-			})
-		) {
-			return true;
-		}
-		if (
-			chrome.kind === "close" ||
-			chrome.kind === "outside" ||
-			(chrome.kind === "shortcut" && chrome.id === "close")
-		) {
-			this.#onCancel();
-			return true;
-		}
-		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
-			this.#list.handleInput("\n");
-			return true;
-		}
-
-		const geo = this.#shellGeometry;
-		if (!geo) return true;
-		const bodyLine = event.row - geo.bodyRowStart;
-		const overBody = bodyLine >= 0 && bodyLine < geo.bodyRowCount;
-
-		if (event.wheel !== null) {
-			if (overBody) this.#list.handleWheel(event.wheel);
-			return true;
-		}
-		if (event.motion) {
-			this.#list.setHoverIndex(overBody ? (this.#list.hitTest(bodyLine) ?? null) : null);
-			this.#onRequestRender?.();
-			return true;
-		}
-		if (event.leftClick && overBody) {
-			const index = this.#list.hitTest(bodyLine);
-			if (index !== undefined) this.#list.clickItem(index);
-		}
-		return true;
+			},
+			onCancel: () => this.#onCancel(),
+			onConfirm: () => this.#list.handleInput("\n"),
+			onWheel: delta => {
+				if (geo && event.row >= geo.bodyRowStart && event.row < geo.bodyRowStart + geo.bodyRowCount) {
+					this.#list.handleWheel(delta);
+				}
+			},
+			listRowStart: geo?.bodyRowStart,
+			onHoverRow: line => {
+				if (geo && line !== null && line >= 0 && line < geo.bodyRowCount) {
+					this.#list.setHoverIndex(this.#list.hitTest(line) ?? null);
+				} else {
+					this.#list.setHoverIndex(null);
+				}
+				this.#onRequestRender?.();
+			},
+			onClickRow: line => {
+				if (geo && line >= 0 && line < geo.bodyRowCount) {
+					const index = this.#list.hitTest(line);
+					if (index !== undefined) this.#list.clickItem(index);
+				}
+			},
+		});
 	}
 
 	render(width: number): string[] {

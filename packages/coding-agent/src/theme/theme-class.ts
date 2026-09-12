@@ -10,7 +10,19 @@ import type { SubCellBarRamp } from "@veyyon/utils/bar";
 import { colorLuma, relativeLuminance } from "@veyyon/utils/color";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import * as logger from "@veyyon/utils/logger";
-import { bgAnsi, type ColorMode, colorToAnsi, fgAnsi, resolveToHex, type ThemeBg, type ThemeColor } from "./color";
+import type { PresentationTheme, TextStyle } from "@veyyon/wire/presentation/theme";
+import {
+	bgAnsi,
+	type ColorMode,
+	colorToAnsi,
+	detectColorMode,
+	fgAnsi,
+	QUIET_TOKEN_DEFAULTS,
+	resolveToHex,
+	type ThemeBg,
+	type ThemeColor,
+	validatePresentationTheme,
+} from "./color";
 import { getVisibleGround } from "./ground-tints";
 import {
 	BAR_RAMPS,
@@ -144,8 +156,12 @@ export class Theme {
 	readonly #hexFgColors: Record<ThemeColor, string>;
 	/** Resolved hex strings for background colors — populated at construction. */
 	readonly #hexBgColors: Record<ThemeBg, string>;
+	readonly #rawFgColors: Record<ThemeColor, string | number>;
+	readonly #rawBgColors: Record<ThemeBg, string | number>;
 	#symbols: SymbolMap;
+	#symbolOverrides: Partial<Record<SymbolKey, string>>;
 	#spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>>;
+	#styles: Partial<Record<ThemeColor, TextStyle>> | undefined;
 	/**
 	 * Perceptual luma (0..1) of the status-line background — used to classify the
 	 * theme light/dark. Undefined when it can't be resolved. Classified against the
@@ -171,8 +187,14 @@ export class Theme {
 		symbolOverrides: Partial<Record<SymbolKey, string>>,
 		spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>> = {},
 		groundHex: string | undefined = undefined,
+		styles?: Partial<Record<ThemeColor, TextStyle>>,
 	) {
 		this.#groundHex = groundHex;
+		this.#symbolOverrides = symbolOverrides;
+		this.#spinnerFramesOverrides = spinnerFramesOverrides;
+		this.#styles = styles && Object.keys(styles).length > 0 ? styles : undefined;
+		this.#rawFgColors = fgColors;
+		this.#rawBgColors = bgColors;
 		this.statusLineLuminance = colorLuma(bgColors.statusLineBg);
 		this.#statusLineContrastLuminance = relativeLuminance(bgColors.statusLineBg);
 		const slIsLight = this.statusLineLuminance !== undefined && this.statusLineLuminance > 0.5;
@@ -186,14 +208,35 @@ export class Theme {
 		// `link` (bare-URL/interactive link color) is optional in theme JSON;
 		// themes without it inherit the markdown link color.
 		if (this.#fgColors.link === undefined) {
-			this.#fgColors.link = this.#fgColors.mdLink;
-			this.#hexFgColors.link = this.#hexFgColors.mdLink;
+			const fallbackLink = this.#rawFgColors.mdLink ?? this.#rawFgColors.accent ?? "";
+			this.#fgColors.link = this.#fgColors.mdLink ?? fgAnsi(fallbackLink, mode);
+			this.#hexFgColors.link = this.#hexFgColors.mdLink ?? resolveToHex(fallbackLink, slIsLight);
+			this.#rawFgColors.link = fallbackLink;
+		}
+		if (this.#fgColors.thinkingMax === undefined) {
+			const fallbackVal = this.#rawFgColors.thinkingXhigh ?? this.#rawFgColors.accent ?? "";
+			this.#rawFgColors.thinkingMax = fallbackVal;
+			this.#fgColors.thinkingMax = fgAnsi(fallbackVal, mode);
+			this.#hexFgColors.thinkingMax = resolveToHex(fallbackVal, slIsLight);
+		}
+		for (const [token, fallback] of Object.entries(QUIET_TOKEN_DEFAULTS) as [ThemeColor, ThemeColor][]) {
+			if (this.#fgColors[token] === undefined) {
+				const fallbackVal = this.#rawFgColors[fallback] ?? this.#rawFgColors.accent ?? "";
+				this.#rawFgColors[token] = fallbackVal;
+				this.#fgColors[token] = fgAnsi(fallbackVal, mode);
+				this.#hexFgColors[token] = resolveToHex(fallbackVal, slIsLight);
+			}
 		}
 		this.#bgColors = {} as Record<ThemeBg, string>;
 		this.#hexBgColors = {} as Record<ThemeBg, string>;
 		for (const [key, value] of Object.entries(bgColors) as [ThemeBg, string | number][]) {
 			this.#bgColors[key] = bgAnsi(value, mode);
 			this.#hexBgColors[key] = resolveToHex(value, slIsLight);
+		}
+		if (this.#bgColors.composerBg === undefined) {
+			this.#rawBgColors.composerBg = "";
+			this.#bgColors.composerBg = bgAnsi("", mode);
+			this.#hexBgColors.composerBg = resolveToHex("", slIsLight);
 		}
 		// Build symbol map from preset + overrides
 		const baseSymbols = SYMBOL_PRESETS[symbolPreset];
@@ -340,19 +383,42 @@ export class Theme {
 		return this.getColorHex("accent");
 	}
 
+	#styleSequence(style: TextStyle): string {
+		let seq = "";
+		if (style.bold === true) seq += "\x1b[1m";
+		if (style.dim === true) seq += "\x1b[2m";
+		if (style.italic === true) seq += "\x1b[3m";
+		if (style.underline === true) seq += "\x1b[4m";
+		if (style.inverse === true) seq += "\x1b[7m";
+		if (style.strikethrough === true) seq += "\x1b[9m";
+		return seq;
+	}
+
+	#styleCloseSequence(style: TextStyle): string {
+		let seq = "";
+		if (style.bold === true || style.dim === true) seq += "\x1b[22m";
+		if (style.italic === true) seq += "\x1b[23m";
+		if (style.underline === true) seq += "\x1b[24m";
+		if (style.inverse === true) seq += "\x1b[27m";
+		if (style.strikethrough === true) seq += "\x1b[29m";
+		return seq;
+	}
+
 	fg(color: ThemeColor, text: string): string {
 		const ansi = this.#fgColors[color];
-		if (!ansi) throw new Error(`Unknown theme color: ${color}`);
-		// The unknown-colour check runs FIRST and unconditionally: a typo'd key
-		// must fail the same way whether or not colour happens to be enabled, or
-		// the bug only surfaces on the machines that render it.
-		if (!colorEnabled()) return text;
-		return `${ansi}${text}\x1b[39m`; // Reset only foreground color
+		if (ansi === undefined) throw new Error(`Unknown theme color: ${color}`);
+		const style = this.#styles?.[color];
+		const styleOpen = style && attributesEnabled() ? this.#styleSequence(style) : "";
+		const styleClose = style && attributesEnabled() ? this.#styleCloseSequence(style) : "";
+		if (!colorEnabled()) {
+			return styleOpen ? `${styleOpen}${text}${styleClose}` : text;
+		}
+		return `${ansi}${styleOpen}${text}${styleClose}\x1b[39m`;
 	}
 
 	bg(color: ThemeBg, text: string): string {
 		const ansi = this.#bgColors[color];
-		if (!ansi) throw new Error(`Unknown theme background color: ${color}`);
+		if (ansi === undefined) throw new Error(`Unknown theme background color: ${color}`);
 		if (!colorEnabled()) return text;
 		return `${ansi}${text}\x1b[49m`; // Reset only background color
 	}
@@ -419,13 +485,13 @@ export class Theme {
 
 	getFgAnsi(color: ThemeColor): string {
 		const ansi = this.#fgColors[color];
-		if (!ansi) throw new Error(`Unknown theme color: ${color}`);
+		if (ansi === undefined) throw new Error(`Unknown theme color: ${color}`);
 		return ansi;
 	}
 
 	getBgAnsi(color: ThemeBg): string {
 		const ansi = this.#bgColors[color];
-		if (!ansi) throw new Error(`Unknown theme background color: ${color}`);
+		if (ansi === undefined) throw new Error(`Unknown theme background color: ${color}`);
 		return ansi;
 	}
 
@@ -783,5 +849,50 @@ export class Theme {
 		const hex = key ? LANG_BRAND_COLORS[key] : undefined;
 		if (!hex) return this.fg("muted", icon);
 		return `${colorToAnsi(hex, this.mode)}${icon}\x1b[39m`;
+	}
+
+	/**
+	 * Export this Theme instance as a serializable canonical PresentationTheme snapshot.
+	 */
+	toPresentationTheme(name = "custom", id = "custom"): PresentationTheme {
+		const res: PresentationTheme = {
+			id,
+			name,
+			appearance: this.isLight ? "light" : "dark",
+			colors: { ...this.#rawFgColors },
+			backgrounds: { ...this.#rawBgColors },
+			symbolPreset: this.symbolPreset,
+		};
+		if (Object.keys(this.#symbolOverrides).length > 0) {
+			res.symbolOverrides = { ...this.#symbolOverrides };
+		}
+		if (Object.keys(this.#spinnerFramesOverrides).length > 0) {
+			res.spinnerFrames = { ...this.#spinnerFramesOverrides };
+		}
+		if (this.#groundHex !== undefined) {
+			res.groundHex = this.#groundHex;
+		}
+		if (this.#styles !== undefined && Object.keys(this.#styles).length > 0) {
+			res.styles = { ...this.#styles };
+		}
+		return res;
+	}
+
+	/**
+	 * Reconstruct a production Theme instance from a canonical PresentationTheme snapshot.
+	 */
+	static fromPresentationTheme(snapshot: PresentationTheme, mode?: ColorMode): Theme {
+		validatePresentationTheme(snapshot);
+		const colorMode = mode ?? detectColorMode();
+		return new Theme(
+			snapshot.colors,
+			snapshot.backgrounds,
+			colorMode,
+			snapshot.symbolPreset,
+			snapshot.symbolOverrides ?? {},
+			snapshot.spinnerFrames ?? {},
+			snapshot.groundHex,
+			snapshot.styles,
+		);
 	}
 }

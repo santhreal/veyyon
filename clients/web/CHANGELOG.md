@@ -7,6 +7,7 @@
 ### Changed
 
 - The package directory is `clients/web` instead of `packages/collab-web`; the package name, the relay and the guest client are unchanged.
+- Updated collaboration client to protocol v4, carrying tool execution displays on active tool state and tool result messages.
 
 
 ## [16.5.1] - 2026-07-14

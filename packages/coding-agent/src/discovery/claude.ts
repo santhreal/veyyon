@@ -5,10 +5,9 @@
  * Priority: 80 (tool-specific, below builtin but above shared standards)
  */
 import * as path from "node:path";
-import { isMissingPath, tryParseJson } from "@veyyon/utils";
+import { tryParseJson } from "@veyyon/utils";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
-import { registerProvider } from "./capability";
 import { type ContextFile, contextFileCapability } from "./capability/context-file";
 import { type ExtensionModule, extensionModuleCapability } from "./capability/extension-module";
 import { readFile } from "./capability/fs";
@@ -20,13 +19,16 @@ import { type DiscoveredCustomTool, toolCapability } from "./capability/tool";
 import type { LoadContext, LoadResult } from "./capability/types";
 import { expandEnvVarsDeep, warnUnresolved } from "./env-expansion";
 import {
+	buildExtensionModuleItems,
 	calculateDepth,
 	createSourceMeta,
 	discoverExtensionModulePaths,
-	getExtensionNameFromPath,
-	loadFilesFromDir,
 	readContextFile,
+	registerProviderCapabilities,
+	scanCustomToolsFromDir,
+	scanMarkdownCommands,
 	scanSkillsFromDir,
+	scanSubdirectoryHooks,
 } from "./helpers";
 
 const PROVIDER_ID = "claude";
@@ -168,22 +170,7 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const userSkillsDir = path.join(getUserClaude(ctx), "skills");
-
-	const [userResult] = await Promise.allSettled([
-		scanSkillsFromDir({ dir: userSkillsDir, providerId: PROVIDER_ID, level: "user" }),
-	]);
-
-	const items: DiscoveredSkill[] = [];
-	const warnings: string[] = [];
-
-	if (userResult.status === "fulfilled") {
-		items.push(...userResult.value.items);
-		warnings.push(...(userResult.value.warnings ?? []));
-	} else if (!isMissingPath(userResult.reason)) {
-		warnings.push(`Failed to scan Claude user skills in ${userSkillsDir}: ${String(userResult.reason)}`);
-	}
-
-	return { items, warnings };
+	return await scanSkillsFromDir({ dir: userSkillsDir, providerId: PROVIDER_ID, level: "user" });
 }
 
 // =============================================================================
@@ -191,33 +178,9 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 // =============================================================================
 
 async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<ExtensionModule>> {
-	const items: ExtensionModule[] = [];
-	const warnings: string[] = [];
-
-	const userBase = getUserClaude(ctx);
-	const userExtensionsDir = path.join(userBase, "extensions");
-
-	const dirsToDiscover: { dir: string; level: "user" | "project" }[] = [{ dir: userExtensionsDir, level: "user" }];
-
-	const pathsByLevel = await Promise.all(
-		dirsToDiscover.map(async ({ dir, level }) => {
-			const paths = await discoverExtensionModulePaths(dir);
-			return paths.map(extPath => ({ extPath, level }));
-		}),
-	);
-
-	for (const extensions of pathsByLevel) {
-		for (const { extPath, level } of extensions) {
-			items.push({
-				name: getExtensionNameFromPath(extPath),
-				path: extPath,
-				level,
-				_source: createSourceMeta(PROVIDER_ID, extPath, level),
-			});
-		}
-	}
-
-	return { items, warnings };
+	const userExtensionsDir = path.join(getUserClaude(ctx), "extensions");
+	const userPaths = await discoverExtensionModulePaths(userExtensionsDir);
+	return { items: buildExtensionModuleItems(PROVIDER_ID, userPaths, []), warnings: [] };
 }
 
 // =============================================================================
@@ -272,21 +235,8 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 	const enableUser = claudeUserCommandsEnabled();
 
 	if (enableUser) {
-		const userBase = getUserClaude(ctx);
-		const userCommandsDir = path.join(userBase, "commands");
-
-		const userResult = await loadFilesFromDir<SlashCommand>(userCommandsDir, PROVIDER_ID, "user", {
-			extensions: ["md"],
-			recursive: true,
-			transform: (name, content, filePath, source) => ({
-				name: name.replace(/\.md$/, ""),
-				path: filePath,
-				content,
-				level: "user",
-				_source: source,
-			}),
-		});
-
+		const userCommandsDir = path.join(getUserClaude(ctx), "commands");
+		const userResult = await scanMarkdownCommands(userCommandsDir, PROVIDER_ID, "user", { recursive: true });
 		items.push(...addClaudeCommandNamespaceAliases(userResult.items, userCommandsDir));
 		if (userResult.warnings) warnings.push(...userResult.warnings);
 	}
@@ -299,43 +249,7 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 // =============================================================================
 
 async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
-	const items: Hook[] = [];
-	const warnings: string[] = [];
-
-	const userBase = getUserClaude(ctx);
-	const userHooksDir = path.join(userBase, "hooks");
-
-	const hookTypes = ["pre", "post"] as const;
-
-	const loadTasks: { dir: string; hookType: "pre" | "post"; level: "user" | "project" }[] = [];
-	for (const hookType of hookTypes) {
-		loadTasks.push({ dir: path.join(userHooksDir, hookType), hookType, level: "user" });
-	}
-
-	const results = await Promise.all(
-		loadTasks.map(({ dir, hookType, level }) =>
-			loadFilesFromDir<Hook>(dir, PROVIDER_ID, level, {
-				transform: (name, _content, path, source) => {
-					const toolName = name.replace(/\.(sh|bash|zsh|fish)$/, "");
-					return {
-						name,
-						path,
-						type: hookType,
-						tool: toolName,
-						level,
-						_source: source,
-					};
-				},
-			}),
-		),
-	);
-
-	for (const result of results) {
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
-	}
-
-	return { items, warnings };
+	return await scanSubdirectoryHooks(path.join(getUserClaude(ctx), "hooks"), PROVIDER_ID, "user");
 }
 
 // =============================================================================
@@ -343,87 +257,47 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 // =============================================================================
 
 async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
-	const items: DiscoveredCustomTool[] = [];
-	const warnings: string[] = [];
-
-	const userBase = getUserClaude(ctx);
-	const userToolsDir = path.join(userBase, "tools");
-
-	const userResult = await loadFilesFromDir<DiscoveredCustomTool>(userToolsDir, PROVIDER_ID, "user", {
-		transform: (name, _content, path, source) => {
-			const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
-			return {
-				name: toolName,
-				path,
-				description: `${toolName} custom tool`,
-				level: "user",
-				_source: source,
-			};
-		},
-	});
-
-	items.push(...userResult.items);
-	if (userResult.warnings) warnings.push(...userResult.warnings);
-
-	return { items, warnings };
+	return await scanCustomToolsFromDir(path.join(getUserClaude(ctx), "tools"), PROVIDER_ID, "user");
 }
 
 // =============================================================================
 // Provider Registration
 // =============================================================================
 
-registerProvider<MCPServer>(mcpCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load MCP servers from .claude.json and .claude/mcp.json",
-	priority: PRIORITY,
-	load: loadMCPServers,
-});
-
-registerProvider<ContextFile>(contextFileCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load CLAUDE.md files from .claude/ directories",
-	priority: PRIORITY,
-	load: loadContextFiles,
-});
-
-registerProvider<DiscoveredSkill>(skillCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load skills from .claude/skills/*/SKILL.md",
-	priority: PRIORITY,
-	load: loadSkills,
-});
-
-registerProvider<ExtensionModule>(extensionModuleCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load extension modules from .claude/extensions",
-	priority: PRIORITY,
-	load: loadExtensionModules,
-});
-
-registerProvider<SlashCommand>(slashCommandCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load slash commands from .claude/commands/*.md",
-	priority: PRIORITY,
-	load: loadSlashCommands,
-});
-
-registerProvider<Hook>(hookCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load hooks from .claude/hooks/pre/ and .claude/hooks/post/",
-	priority: PRIORITY,
-	load: loadHooks,
-});
-
-registerProvider<DiscoveredCustomTool>(toolCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load custom tools from .claude/tools/",
-	priority: PRIORITY,
-	load: loadTools,
-});
+registerProviderCapabilities({ id: PROVIDER_ID, displayName: DISPLAY_NAME, priority: PRIORITY }, [
+	{
+		capabilityId: mcpCapability.id,
+		description: "Load MCP servers from .claude.json and .claude/mcp.json",
+		load: loadMCPServers,
+	},
+	{
+		capabilityId: contextFileCapability.id,
+		description: "Load CLAUDE.md files from .claude/ directories",
+		load: loadContextFiles,
+	},
+	{
+		capabilityId: skillCapability.id,
+		description: "Load skills from .claude/skills/*/SKILL.md",
+		load: loadSkills,
+	},
+	{
+		capabilityId: extensionModuleCapability.id,
+		description: "Load extension modules from .claude/extensions",
+		load: loadExtensionModules,
+	},
+	{
+		capabilityId: slashCommandCapability.id,
+		description: "Load slash commands from .claude/commands/*.md",
+		load: loadSlashCommands,
+	},
+	{
+		capabilityId: hookCapability.id,
+		description: "Load hooks from .claude/hooks/pre/ and .claude/hooks/post/",
+		load: loadHooks,
+	},
+	{
+		capabilityId: toolCapability.id,
+		description: "Load custom tools from .claude/tools/",
+		load: loadTools,
+	},
+]);

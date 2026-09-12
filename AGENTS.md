@@ -176,8 +176,21 @@ The regeneration command belongs in the handbook page that owns the surface.
 
 ## GitHub
 
-Never comment on GitHub (issues, PRs, discussions) and never create issues, unless the request says
-exactly what to write.
+Comment, open, review, label, edit and close when instructed to. The instruction is the approval,
+whether or not it specifies the wording. Write the text, post it, then report what was posted.
+Never act uninstructed: no unsolicited comment, issue or review, and nothing on a repository
+outside these accounts.
+
+### A pull request needs an issue first
+
+A bug fix may open with no issue. Everything else — feature, refactor, dependency, migration —
+needs an issue first, and `Refs #N` in the pull request body.
+
+Scope is settled on the issue, before the work exists. For a large pull request with no issue
+behind it, request the issue instead of reviewing the diff.
+
+One concern per pull request. The description covers every change in the diff; an undescribed
+change is itself a finding, per [`review.md`](review.md). Split a fix that includes unrelated work.
 
 Never write a closing keyword into a commit message, a pull request title, or a pull request body.
 `Closes`, `Fixes`, `Resolves` and their variants (`close`, `closed`, `fix`, `fixed`, `resolve`,
@@ -188,6 +201,10 @@ the same approval as closing the issue by hand, and a push to `main` grants no s
 Reference an issue with `Refs #911` or a bare `#911`. Both link the commit to the issue and close
 nothing. An issue closes when the reporter has confirmed the fix in a release, and only when the
 request says to close it.
+
+veybot is the one exception, bounded to the issue it was opened for: `gh_open_pr` in
+`python/veybot/src/host_tools.py` rejects a body without `Fixes #N` for that number. Every other
+pull request writes `Refs #N`.
 
 A closing keyword that already landed cannot be undone by editing the commit message: reopen the
 issue and say it autoclosed.
@@ -249,7 +266,7 @@ model is actually told, and why enablement is inert". Read it before touching th
 - Before adding, renaming or re-describing an agent, name which spawns move to it and which move off
   it. A row that changes no behavior does not ship.
 - Two agents that share a prompt body are one agent. Diff the prompts the workers receive and the
-  models they resolve through `resolveSubagentModel` before claiming the prompt distinguishes them.
+  models they resolve through `resolveAgentModel` before claiming the prompt distinguishes them.
 
 ## Code Quality
 
@@ -417,20 +434,20 @@ argot. Never hand-roll handle logic here.
 
 - Every seam is wired in `packages/coding-agent/src/argot-wire.ts`, the only veyyon module that
   touches the codec: `expandToolArguments` (tool args), `expandAssistantContent` (finished display),
-  `createSubagentStreamDecoder` (the live streamed preview, feeding `StreamDecoder.push`/`flush` and
-  never a raw delta), `expandSessionContext` (transcript, export, resume), and `expandSubagentReturn`
-  (a subagent's result to its parent).
-- A user never sees a raw `§handle`. That includes the live subagent HUD preview
+  `createAgentStreamDecoder` (the live streamed preview, feeding `StreamDecoder.push`/`flush` and
+  never a raw delta), `expandSessionContext` (transcript, export, resume), and `expandAgentReturn`
+  (an agent's result to its parent).
+- A user never sees a raw `§handle`. That includes the live agent HUD preview
   (`progress.recentOutput` in `task/executor.ts`). A raw handle in any display, tool, transcript, or
   parent return is a defect.
 - A new place the model's text crosses out of its history is a new seam. Route it through an
   `argot-wire.ts` function, adding a thin delegate there if none fits.
-- `test/argot-subagent-*.test.ts` drive the real executor and prove each seam with a negative control
+- `test/argot-agent-*.test.ts` drive the real executor and prove each seam with a negative control
   (revert the expand, the handle leaks). A new seam gets the same treatment.
 - Argot's proof artifacts: the settings differential from `proof/scenes/settings-pointer.sh` carried
   in the pull request (off arm at the default, on arm with `SCENE_SETTINGS='argot.enabled: true'`) —
   off shows only the "Argot Shorthand" master toggle, on shows it plus Models, Dictionary Budget,
-  Context Cutoff and Subagents — and the bench
+  Context Cutoff and Agents — and the bench
   `tests/evals/suites/typescript-edit/argot-bench.ts`, which runs the edit tasks with encoding on
   and off and certifies the token delta. `test/argot-settings-e2e.test.ts` asserts every Argot
   setting end to end, including that the knobs are hidden while off. Keep all of it current.
@@ -438,7 +455,7 @@ argot. Never hand-roll handle logic here.
 ## Commands
 
 - Commit frequently: each logical chunk as its own commit once it stands alone and its gate is green.
-  Pushing is separate and needs explicit approval.
+  Pushing follows the operator's global `AGENTS.md`; this file does not set it.
 - Stage only the paths you changed. `git add -A` is banned; this tree carries other lanes' in-flight
   work.
 - Never `tsc`/`npx tsc`. Always `bun run check`.
@@ -679,9 +696,11 @@ bun run release minor          # do it.
 Rust workspace, the natives sentinel and the lockfiles, rolls each package's `## [Unreleased]` into a
 dated section, regenerates the root changelog, and commits `chore: bump version to vX.Y.Z`. It then
 shows the commit and tag and asks once; on yes it pushes `main`, waits for that SHA's checks, and
-tags. It needs explicit approval to run because it pushes: the prompt is that approval, no flag
-answers it in advance, and an agent never answers it. `release:dry` publishes nothing, which is why
-it is non-interactive.
+tags. `release:dry` publishes nothing, which is why it is non-interactive.
+
+Mechanics are here. Approval is in the operator's global `AGENTS.md`. The script's prompt is a
+terminal confirmation, not the approval; it fails without a TTY, hence the three by-hand moves
+below.
 
 Only a tag publishes. A push, a green run, and a waiting `## [Unreleased]` bullet do not. The three
 underlying moves, which every non-publishing exit prints and which you can finish by hand:

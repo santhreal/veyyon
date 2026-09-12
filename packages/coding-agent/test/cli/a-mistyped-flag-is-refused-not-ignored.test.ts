@@ -25,7 +25,7 @@
 import { describe, expect, it } from "bun:test";
 import { parseArgs, reportUnrecognizedFlags } from "@veyyon/coding-agent/cli/args";
 import { PROFILE_BOOTSTRAP_BOUNDARY_ARG } from "@veyyon/coding-agent/cli/flag-tables";
-import { CliUsageError } from "@veyyon/coding-agent/cli/usage-error";
+import { CliUsageError } from "@veyyon/utils/cli-usage-error";
 
 /** Collect what the reporter writes instead of letting it reach the real stderr. */
 function report(flags: string[]): string {

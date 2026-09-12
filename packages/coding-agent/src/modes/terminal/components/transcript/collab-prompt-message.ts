@@ -1,7 +1,5 @@
-import type { TextContent } from "@veyyon/ai";
 import { Container, Markdown, Text } from "@veyyon/tui";
-import type { CollabPromptDetails } from "../../../../collab/protocol";
-import type { CustomMessage } from "../../../../session/messages";
+import type { CollabPromptCustomDisplay } from "@veyyon/wire/presentation";
 import { getMarkdownTheme } from "../../../../theme/markdown-theme";
 import { theme } from "../../../../theme/theme";
 
@@ -9,21 +7,16 @@ import { theme } from "../../../../theme/theme";
  * Renders a collab guest prompt on every participant's transcript: a
  * user-message-styled bubble prefixed with the author's name.
  */
+
 export class CollabPromptMessageComponent extends Container {
-	constructor(message: CustomMessage<CollabPromptDetails>) {
+	constructor(message: CollabPromptCustomDisplay) {
 		super();
-		const from = message.details?.from?.trim() || "guest";
+		const from = message.from;
 		const authorText = new Text(theme.fg("accent", `\x1b[1m«${from}»\x1b[22m ›`), 1, 0);
 		authorText.setIgnoreTight(true);
 		this.addChild(authorText);
-		const text =
-			typeof message.content === "string"
-				? message.content
-				: message.content
-						.filter((content): content is TextContent => content.type === "text")
-						.map(content => content.text)
-						.join("");
-		const md = new Markdown(text, 1, 1, getMarkdownTheme(), {
+
+		const md = new Markdown(message.text, 1, 1, getMarkdownTheme(), {
 			color: (value: string) => theme.fg("userMessageText", value),
 		});
 		md.setIgnoreTight(true);

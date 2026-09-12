@@ -8,9 +8,10 @@
  *
  * Threading the parameter alone is not enough, which is the second half of what these
  * tests lock. Three providers are profile-rooted (`native` reading `<agentDir>/skills`,
- * `veyyon-managed` reading `<agentDir>/managed-skills`, `veyyon-plugins` reading
- * `<agentDir>/settings.json#extensions` and that profile's installed plugins), and every
- * one of them used to resolve the directory from the process-global `getAgentDir()`.
+ * `veyyon-managed` reading `<agentDir>/managed-skills`, `veyyon-plugins` reading that
+ * profile's installed plugins and the `extensions` setting of the store its session
+ * installed), and every one of them used to resolve the directory from the process-global
+ * `getAgentDir()`.
  * `loadSkills` forwards the value as `LoadOptions.agentDir`, which `loadCapability` puts
  * on the `LoadContext` each provider receives, and each provider reads it from there. It
  * does NOT re-resolve or post-filter those scopes: a filter would be a second source of
@@ -25,6 +26,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { setSettingsInstance } from "@veyyon/coding-agent/config/settings-instance";
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/discovery/capability/fs";
 import { loadSkills } from "@veyyon/coding-agent/extensibility/skills";
 import { discoverSkills } from "@veyyon/coding-agent/session/factory-extensions";
@@ -57,8 +60,15 @@ describe("skills honor an explicitly named agent dir", () => {
 		return dir;
 	}
 
-	async function declareExtensions(agentDir: string, packagePaths: string[]): Promise<void> {
-		await fs.writeFile(path.join(agentDir, "settings.json"), JSON.stringify({ extensions: packagePaths }));
+	/**
+	 * Install the settings store a session rooted in a profile has: `extensions` is read from
+	 * the process store, which `Settings.init({ cwd, agentDir })` fills for the profile the
+	 * session runs as. The legacy `<agentDir>/settings.json` is not read by anything; the
+	 * store migrates it into config.yml on that profile's own first load.
+	 */
+	function enterProfileWithExtensions(packagePaths: string[]): void {
+		clearFsCache();
+		setSettingsInstance(Settings.isolated({ extensions: packagePaths }));
 	}
 
 	beforeEach(async () => {
@@ -123,15 +133,16 @@ describe("skills honor an explicitly named agent dir", () => {
 
 	test("plugin-shipped skills follow the named agent dir, and passing it CHANGES the result", async () => {
 		// `veyyon-plugins` is the third profile-scoped skill provider and the last one to be
-		// threaded. Its roots come from `<agentDir>/settings.json#extensions` plus that
-		// profile's installed plugins, both of which resolved the process-global agent dir,
-		// so a redirected load used to get the booted profile's plugin packages.
+		// threaded. Its roots come from the profile's `extensions` setting plus that profile's
+		// installed plugins; the installed-plugin root resolved the process-global agent dir, so
+		// a redirected load used to get the booted profile's plugin packages. Each arm installs
+		// the store its profile's session would have, as a session does.
 		const namedPackage = await writePluginPackage(namedRoot, "named-pkg", "named-plugin-skill");
 		const activePackage = await writePluginPackage(activeRoot, "active-pkg", "active-plugin-skill");
-		await declareExtensions(namedProfile, [namedPackage]);
-		await declareExtensions(activeProfile, [activePackage]);
 
+		enterProfileWithExtensions([activePackage]);
 		const defaulted = await loadSkills({ cwd: projectDir });
+		enterProfileWithExtensions([namedPackage]);
 		const explicit = await loadSkills({ cwd: projectDir, agentDir: namedProfile });
 
 		expect(defaulted.skills.map(skill => skill.name)).toEqual(["active-plugin-skill"]);
@@ -154,9 +165,10 @@ describe("skills honor an explicitly named agent dir", () => {
 			JSON.stringify({ extensions: [projectPackage] }),
 		);
 		const namedPackage = await writePluginPackage(namedRoot, "named-pkg", "named-plugin-skill");
-		await declareExtensions(namedProfile, [namedPackage]);
 
+		enterProfileWithExtensions([namedPackage]);
 		const redirected = await loadSkills({ cwd: projectDir, agentDir: namedProfile });
+		enterProfileWithExtensions([]);
 		const defaulted = await loadSkills({ cwd: projectDir });
 
 		// The named profile's own package still loads, so the project package's absence is a scope

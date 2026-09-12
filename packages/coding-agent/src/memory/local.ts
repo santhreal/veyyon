@@ -153,7 +153,7 @@ interface ConsolidationOutputSchema {
 /**
  * Start the background memory startup pipeline.
  *
- * Skips for ephemeral sessions, subagent sessions, disabled settings, or DB failures.
+ * Skips for ephemeral sessions, agent sessions, disabled settings, or DB failures.
  */
 export function startMemoryStartupTask(options: {
 	session: AgentSession;
@@ -1391,7 +1391,7 @@ async function resolveMemoryModel(options: {
 
 function loadMemoryConfig(settings: Settings): MemoryRuntimeConfig {
 	return {
-		enabled: settings.get("memory.backend") === "local" || settings.get("memories.enabled") === true,
+		enabled: settings.get("memory.backend") === "local",
 		maxRolloutsPerStartup: settings.get("memories.maxRolloutsPerStartup") ?? DEFAULTS.maxRolloutsPerStartup,
 		maxRolloutAgeDays: settings.get("memories.maxRolloutAgeDays") ?? DEFAULTS.maxRolloutAgeDays,
 		minRolloutIdleHours: settings.get("memories.minRolloutIdleHours") ?? DEFAULTS.minRolloutIdleHours,
@@ -1479,7 +1479,7 @@ export async function saveLearnedLesson(
 	const filePath = path.join(getMemoryRoot(agentDir, cwd), LEARNED_LESSONS_FILE);
 
 	// Serialize the read-modify-write per file: parallel `learn` calls (sibling
-	// subagents, or two shared tool calls in one turn) share the project memory
+	// agents, or two shared tool calls in one turn) share the project memory
 	// root, so an unguarded RMW would let the last writer drop the other's lesson.
 	const run = (learnedWriteChains.get(filePath) ?? Promise.resolve()).then(() => appendLearnedLine(filePath, line));
 	// `guarded` only keeps the chain alive for the NEXT writer; the failure itself is not swallowed,

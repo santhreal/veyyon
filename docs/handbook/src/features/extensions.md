@@ -219,7 +219,7 @@ Cancelable pre-events:
 - `after_provider_response`
 - `context`
 - `agent_start` / `agent_end`: agent loop lifecycle notification; `agent_end` remains notification-only
-- `session_stop`: main-session stop hook, awaited before settle; may continue with `{ continue: true, additionalContext }` or `{ decision: "block", reason }`; capped at 8 consecutive continuations and never fires for task/subagent sessions
+- `session_stop`: main-session stop hook, awaited before settle; may continue with `{ continue: true, additionalContext }` or `{ decision: "block", reason }`; capped at 8 consecutive continuations and never fires for task/agent sessions
 - `turn_start` / `turn_end`
 - `message_start` / `message_update` / `message_end`
 
@@ -306,7 +306,7 @@ pi.registerTool({
 });
 ```
 
-`tool_call`/`tool_result` intercept all tools once the registry is wrapped in `sdk.ts`, including built-ins and extension/custom tools. `ToolDefinition` also supports optional `hidden`, `defaultInactive`, `deferrable`, `approval`, `mcpServerName`, `mcpToolName`, `renderCall`, and `renderResult` fields.
+`tool_call`/`tool_result` intercept all tools once the registry is wrapped in `sdk.ts`, including built-ins and extension/custom tools. `ToolDefinition` also supports optional `hidden`, `defaultInactive`, `deferrable`, `approval`, `mcpServerName`, `mcpToolName`, `view`, `renderCall`, and `renderResult` fields.
 
 ## UI integration points
 
@@ -348,7 +348,7 @@ Unsupported or inert in the RPC implementation:
 - theme switching/loading (`setTheme` returns failure)
 - tool expansion controls
 
-### Print/headless/subagent paths
+### Print/headless/agent paths
 
 When no UI context is supplied to runner init, `ctx.hasUI` is `false` and methods are no-op/default-returning.
 
@@ -419,6 +419,10 @@ Used by interactive rendering to add display-only supplemental UI below each vis
 
 Provide `renderCall` / `renderResult` on `registerTool` definitions for custom tool visualization in TUI.
 
+Set `view.renderCall` and `view.renderResult` for host-independent cards instead of
+terminal components. See [custom tool rendering hooks](../using/custom-tools.md#rendering-hooks)
+for callback precedence and custom-tool conversion.
+
 ## Constraints and pitfalls
 
 - Runtime actions are unavailable during extension load.
@@ -435,4 +439,4 @@ Use the right surface:
 - **Hooks** (`src/extensibility/hooks/*`): separate legacy event API.
 - **Custom-tools** (`src/extensibility/custom-tools/*`): tool-focused modules; when loaded alongside extensions they are adapted and still pass through extension interception wrappers.
 
-If you need one package that owns policy, tools, command UX, and rendering together, use extensions.
+If you need one package that combines policy, tools, command UX, and rendering together, use extensions.

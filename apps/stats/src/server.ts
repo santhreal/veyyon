@@ -29,7 +29,7 @@ const IS_BUN_COMPILED =
 	import.meta.url.includes("$bunfs") ||
 	import.meta.url.includes("~BUN") ||
 	import.meta.url.includes("%7EBUN");
-// The prepacked npm bundle (coding-agent dist/cli.js) constant-folds
+// The prepacked bundle (coding-agent dist/cli.js) constant-folds
 // process.env.VEYYON_BUNDLED at build time. Like compiled binaries, it ships no
 // dashboard sources or prebuilt dist/client next to the bundle, so the
 // embedded archive is the only viable asset source.
@@ -180,6 +180,25 @@ const ensureClientBuild = async () => {
 	await Bun.write(path.join(STATIC_DIR, "index.html"), indexHtml);
 };
 
+/** One JSON read per stats route; every one takes the `range` query and answers the whole value. */
+const RANGE_READS: Record<string, (range: string | null) => Promise<unknown>> = {
+	"/api/stats": getDashboardStats,
+	"/api/stats/overview": getOverviewStats,
+	"/api/stats/model-dashboard": getModelDashboardStats,
+	"/api/stats/costs": getCostDashboardStats,
+	"/api/stats/behavior": getBehaviorDashboardStats,
+	"/api/stats/tools": getToolDashboardStats,
+	"/api/stats/models": async range => (await getDashboardStats(range)).byModel,
+	"/api/stats/folders": async range => (await getDashboardStats(range)).byFolder,
+	"/api/stats/timeseries": async range => (await getDashboardStats(range)).timeSeries,
+};
+
+/** The two `limit`-bounded reads, the only routes that read a second query parameter. */
+const LIMIT_READS: Record<string, (limit: number | undefined) => Promise<unknown>> = {
+	"/api/stats/recent": getRecentRequests,
+	"/api/stats/errors": getRecentErrors,
+};
+
 /**
  * Handle API requests.
  */
@@ -188,63 +207,13 @@ async function handleApi(req: Request): Promise<Response> {
 	const path = url.pathname;
 
 	// Stats reads are DB-only; explicit /api/sync does the expensive session scan.
-	const range = url.searchParams.get("range");
+	const rangeRead = Object.hasOwn(RANGE_READS, path) ? RANGE_READS[path] : undefined;
+	if (rangeRead) return Response.json(await rangeRead(url.searchParams.get("range")));
 
-	if (path === "/api/stats") {
-		const stats = await getDashboardStats(range);
-		return Response.json(stats);
-	}
-
-	if (path === "/api/stats/overview") {
-		const stats = await getOverviewStats(range);
-		return Response.json(stats);
-	}
-
-	if (path === "/api/stats/model-dashboard") {
-		const stats = await getModelDashboardStats(range);
-		return Response.json(stats);
-	}
-
-	if (path === "/api/stats/costs") {
-		const stats = await getCostDashboardStats(range);
-		return Response.json(stats);
-	}
-
-	if (path === "/api/stats/behavior") {
-		const stats = await getBehaviorDashboardStats(range);
-		return Response.json(stats);
-	}
-
-	if (path === "/api/stats/tools") {
-		const stats = await getToolDashboardStats(range);
-		return Response.json(stats);
-	}
-
-	if (path === "/api/stats/recent") {
+	const limitRead = Object.hasOwn(LIMIT_READS, path) ? LIMIT_READS[path] : undefined;
+	if (limitRead) {
 		const limit = url.searchParams.get("limit");
-		const stats = await getRecentRequests(limit ? parseInt(limit, 10) : undefined);
-		return Response.json(stats);
-	}
-
-	if (path === "/api/stats/errors") {
-		const limit = url.searchParams.get("limit");
-		const stats = await getRecentErrors(limit ? parseInt(limit, 10) : undefined);
-		return Response.json(stats);
-	}
-
-	if (path === "/api/stats/models") {
-		const stats = await getDashboardStats(range);
-		return Response.json(stats.byModel);
-	}
-
-	if (path === "/api/stats/folders") {
-		const stats = await getDashboardStats(range);
-		return Response.json(stats.byFolder);
-	}
-
-	if (path === "/api/stats/timeseries") {
-		const stats = await getDashboardStats(range);
-		return Response.json(stats.timeSeries);
+		return Response.json(await limitRead(limit ? parseInt(limit, 10) : undefined));
 	}
 
 	if (path.startsWith("/api/request/")) {

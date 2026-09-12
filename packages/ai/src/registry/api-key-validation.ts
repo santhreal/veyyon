@@ -3,15 +3,7 @@ import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
 import type { FetchImpl } from "../types";
 
-type OpenAICompatibleValidationOptions = {
-	provider: string;
-	apiKey: string;
-	baseUrl: string;
-	model: string;
-	signal?: AbortSignal;
-	fetch?: FetchImpl;
-};
-type AnthropicCompatibleValidationOptions = {
+type MessageValidationOptions = {
 	provider: string;
 	apiKey: string;
 	baseUrl: string;
@@ -50,12 +42,22 @@ function resolveValidationHeaders(
 	return typeof headers === "function" ? headers() : headers;
 }
 
+async function throwValidationError(response: Response, provider: string): Promise<never> {
+	// A validation endpoint answers the request that carried the key, so the body is read
+	// under the shared ceiling and redacted before it can reach a message or a log.
+	const body = await AIError.readProviderErrorBody(response);
+	const message = body.text.trim()
+		? `${provider} API key validation failed (${response.status}): ${AIError.providerErrorMessage(body)}`
+		: `${provider} API key validation failed (${response.status})`;
+	throw new AIError.ApiKeyRequiredError(message);
+}
+
 /**
  * Validate an API key against an OpenAI-compatible chat completions endpoint.
  *
  * Performs a minimal request to verify credentials and endpoint access.
  */
-export async function validateOpenAICompatibleApiKey(options: OpenAICompatibleValidationOptions): Promise<void> {
+export async function validateOpenAICompatibleApiKey(options: MessageValidationOptions): Promise<void> {
 	// The scoped handle clears its backing timer on settle (a bare
 	// AbortSignal.timeout stays armed), and the fence spans the body read.
 	const requestTimeout = scopedTimeoutSignal(VALIDATION_TIMEOUT_MS, options.signal);
@@ -78,17 +80,9 @@ export async function validateOpenAICompatibleApiKey(options: OpenAICompatibleVa
 			signal,
 		});
 
-		if (response.ok) {
-			return;
+		if (!response.ok) {
+			await throwValidationError(response, options.provider);
 		}
-
-		// A validation endpoint answers the request that carried the key, so the body is read
-		// under the shared ceiling and redacted before it can reach a message or a log.
-		const body = await AIError.readProviderErrorBody(response);
-		const message = body.text.trim()
-			? `${options.provider} API key validation failed (${response.status}): ${AIError.providerErrorMessage(body)}`
-			: `${options.provider} API key validation failed (${response.status})`;
-		throw new AIError.ApiKeyRequiredError(message);
 	} finally {
 		requestTimeout.cancel();
 	}
@@ -97,7 +91,7 @@ export async function validateOpenAICompatibleApiKey(options: OpenAICompatibleVa
 /**
  * Validate an API key against an Anthropic-compatible messages endpoint.
  */
-export async function validateAnthropicCompatibleApiKey(options: AnthropicCompatibleValidationOptions): Promise<void> {
+export async function validateAnthropicCompatibleApiKey(options: MessageValidationOptions): Promise<void> {
 	// The scoped handle clears its backing timer on settle (a bare
 	// AbortSignal.timeout stays armed), and the fence spans the body read.
 	const requestTimeout = scopedTimeoutSignal(VALIDATION_TIMEOUT_MS, options.signal);
@@ -121,15 +115,9 @@ export async function validateAnthropicCompatibleApiKey(options: AnthropicCompat
 			signal,
 		});
 
-		if (response.ok) {
-			return;
+		if (!response.ok) {
+			await throwValidationError(response, options.provider);
 		}
-
-		const body = await AIError.readProviderErrorBody(response);
-		const message = body.text.trim()
-			? `${options.provider} API key validation failed (${response.status}): ${AIError.providerErrorMessage(body)}`
-			: `${options.provider} API key validation failed (${response.status})`;
-		throw new AIError.ApiKeyRequiredError(message);
 	} finally {
 		requestTimeout.cancel();
 	}
@@ -158,15 +146,9 @@ export async function validateApiKeyAgainstModelsEndpoint(options: ModelListVali
 			signal,
 		});
 
-		if (response.ok) {
-			return;
+		if (!response.ok) {
+			await throwValidationError(response, options.provider);
 		}
-
-		const body = await AIError.readProviderErrorBody(response);
-		const message = body.text.trim()
-			? `${options.provider} API key validation failed (${response.status}): ${AIError.providerErrorMessage(body)}`
-			: `${options.provider} API key validation failed (${response.status})`;
-		throw new AIError.ApiKeyRequiredError(message);
 	} finally {
 		requestTimeout.cancel();
 	}

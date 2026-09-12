@@ -48,6 +48,9 @@ import { canUseInteractiveBashPty } from "./bash-pty-selection";
 import { expandInternalUrls, type InternalUrlExpansionOptions } from "./bash-skill-urls";
 import { bashToolView } from "./bash-view";
 import { resolveEvalBackends } from "./eval-backends";
+import { type BackgroundReason, formatBackgroundNotice } from "./execution-messages";
+
+export { type BackgroundReason, formatBackgroundNotice } from "./execution-messages";
 
 export const BASH_DEFAULT_PREVIEW_LINES = DEFAULT_TERMINAL_PREVIEW_LINES;
 
@@ -277,9 +280,6 @@ export interface BashToolDetails {
 	};
 }
 
-/** Why a still-running bash call was moved to the background. */
-type BackgroundReason = "threshold" | "stall" | "manual";
-
 export interface BashToolOptions {}
 
 type ManagedBashJobCompletion =
@@ -366,20 +366,6 @@ function normalizeBashEnv(env: Record<string, string> | undefined): Record<strin
 		normalized[key] = value;
 	}
 	return normalized;
-}
-
-export function formatBackgroundNotice(jobId: string, reason: BackgroundReason = "threshold"): string {
-	if (reason === "stall") {
-		return (
-			`No new output for a while, so this command may be stuck. Backgrounded as job ${jobId}; ` +
-			`its result will still be delivered automatically if it finishes. If you believe it is hung, ` +
-			`cancel it with the job tool (cancel: ["${jobId}"]).`
-		);
-	}
-	if (reason === "manual") {
-		return `Backgrounded as job ${jobId} at the operator's request; result will be delivered automatically.`;
-	}
-	return `Backgrounded as job ${jobId}; result will be delivered automatically.`;
 }
 
 /**

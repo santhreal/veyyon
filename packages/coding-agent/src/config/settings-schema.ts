@@ -1,5 +1,6 @@
 import { declareSettings, type SettingPath, type SettingValue } from "@veyyon/kernel/settings/schema";
 import type { SettingTab } from "@veyyon/settings";
+import { AGENTS_SETTINGS } from "./settings-domains/agents";
 import { APPEARANCE_SETTINGS } from "./settings-domains/appearance";
 import { CONTEXT_SETTINGS } from "./settings-domains/context";
 import { EDITING_SETTINGS } from "./settings-domains/editing";
@@ -9,7 +10,6 @@ import { INTERACTION_SETTINGS } from "./settings-domains/interaction";
 import { MODEL_SETTINGS } from "./settings-domains/model";
 import { PROVIDERS_SETTINGS } from "./settings-domains/providers";
 import { RESOURCES_SETTINGS } from "./settings-domains/resources";
-import { SUBAGENTS_SETTINGS } from "./settings-domains/subagents";
 import { TASKS_SETTINGS } from "./settings-domains/tasks";
 import { TOOLS_SETTINGS } from "./settings-domains/tools";
 
@@ -34,6 +34,7 @@ export {
 	retiredBy,
 	type SettingPath,
 	type SettingValue,
+	settingsSchemaPaths,
 } from "@veyyon/kernel/settings/schema";
 export { type BashInterceptorRule, DEFAULT_BASH_INTERCEPTOR_RULES } from "./bash-interceptor-rules";
 
@@ -78,7 +79,7 @@ export const SETTING_TABS: SettingTab[] = [
 	"shell",
 	"tools",
 	"tasks",
-	"subagents",
+	"agents",
 	"providers",
 	"experimental",
 	"global",
@@ -98,7 +99,7 @@ export const TAB_METADATA: Record<SettingTab, { label: string; icon: `tab.${stri
 	shell: { label: "Shell", icon: "tab.shell" },
 	tools: { label: "Tools", icon: "tab.tools" },
 	tasks: { label: "Tasks", icon: "tab.tasks" },
-	subagents: { label: "Subagents", icon: "tab.subagents" },
+	agents: { label: "Agents", icon: "tab.agents" },
 	providers: { label: "Providers", icon: "tab.providers" },
 	experimental: { label: "Experimental", icon: "tab.experimental" },
 };
@@ -156,7 +157,7 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 		"Developer",
 	],
 	tasks: ["Modes", "Commands & Skills"],
-	subagents: ["Delegation", "Subagents", "Limits", "Park", "Prune", "Isolation", "Coordination"],
+	agents: ["Delegation", "Agents", "Limits", "Idle Agents", "Isolation", "Coordination"],
 	providers: ["Accounts", "Services", "Discovery", "Fireworks", "Tiny Model", "Protocol", "Timeouts", "Privacy"],
 	experimental: ["Argot", "Tool Calling", "Auto-Learn"],
 };
@@ -170,7 +171,7 @@ export type StatusLineSegmentId =
 	| "path"
 	| "git"
 	| "pr"
-	| "subagents"
+	| "agents"
 	| "background"
 	| "token_in"
 	| "token_out"
@@ -228,7 +229,7 @@ export const SETTINGS_DOMAIN_SLICES: Record<string, Record<string, unknown>> = {
 	resources: RESOURCES_SETTINGS,
 	tools: TOOLS_SETTINGS,
 	tasks: TASKS_SETTINGS,
-	subagents: SUBAGENTS_SETTINGS,
+	agents: AGENTS_SETTINGS,
 	providers: PROVIDERS_SETTINGS,
 };
 
@@ -243,7 +244,7 @@ export const SETTINGS_SCHEMA = declareSettings({
 	...RESOURCES_SETTINGS,
 	...TOOLS_SETTINGS,
 	...TASKS_SETTINGS,
-	...SUBAGENTS_SETTINGS,
+	...AGENTS_SETTINGS,
 	...PROVIDERS_SETTINGS,
 } as const);
 
@@ -273,187 +274,83 @@ export type TreeFilterMode = SettingValue<"treeFilterMode">;
 /** Personality preset - derived from schema */
 export type Personality = SettingValue<"personality">;
 
+/** Codex auto-redeem mode - derived from schema */
+export type CodexAutoRedeemMode = SettingValue<"codexResets.autoRedeem">;
+
+/** Value types under a schema prefix; group interfaces retain their public optional-key contracts. */
+export type GroupSettings<Prefix extends string> = {
+	[P in SettingPath as P extends `${Prefix}.${infer Key}` ? Key : never]: SettingValue<P>;
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Typed Group Definitions
 // ═══════════════════════════════════════════════════════════════════════════
 
-export interface CompactionSettings {
-	enabled: boolean;
-	strategy: "summary";
+export interface CompactionSettings
+	extends Omit<
+		GroupSettings<"compaction">,
+		"threshold" | "model" | "remote" | "modelFallbackStrategy" | "modelContextWindow"
+	> {
 	/** The one compaction-trigger value, unit included: `auto`, `85%`, or `170000`. */
 	threshold: string;
-	/** Retired; read only by `withLegacyCompactionThreshold`. */
-	thresholdPercent: number;
-	/** Retired; read only by `withLegacyCompactionThreshold`. */
-	thresholdTokens: number;
 	model?: string;
-	reserveTokens: number | undefined;
-	keepRecentTokens: number;
-	midTurnEnabled: boolean;
-	handoffSaveToDisk: boolean;
-	autoContinue: boolean;
-	/** Optional summarizer endpoint for the `summary` strategy — returns summary text. */
-	remoteEndpoint: string | undefined;
-	idleEnabled: boolean;
-	idleThresholdTokens: number;
-	idleTimeoutSeconds: number;
-	supersedeReads: boolean;
-	dropUseless: boolean;
 }
 
-export interface RecapSettings {
-	enabled: boolean;
-	idleSeconds: number;
-}
+export interface RecapSettings extends GroupSettings<"recap"> {}
 
-export interface TitleSettings {
-	refreshOnReplan: boolean;
-}
+export interface TitleSettings extends GroupSettings<"title"> {}
 
-export interface ContextPromotionSettings {
-	enabled: boolean;
-}
-export interface RetrySettings {
-	enabled: boolean;
-	maxRetries: number;
-	baseDelayMs: number;
-	maxDelayMs: number;
-	modelFallback: boolean;
-}
+export interface ContextPromotionSettings extends GroupSettings<"contextPromotion"> {}
 
-export interface MemoriesSettings {
-	enabled: boolean;
-	maxRolloutsPerStartup: number;
-	maxRolloutAgeDays: number;
-	minRolloutIdleHours: number;
-	threadScanLimit: number;
-	maxRawMemoriesForGlobal: number;
-	stage1Concurrency: number;
-	stage1LeaseSeconds: number;
-	stage1RetryDelaySeconds: number;
-	phase2LeaseSeconds: number;
-	phase2RetryDelaySeconds: number;
-	phase2HeartbeatSeconds: number;
-	rolloutPayloadPercent: number;
-	fallbackTokenLimit: number;
-	summaryInjectionTokenLimit: number;
-}
+export interface RetrySettings
+	extends Pick<GroupSettings<"retry">, "enabled" | "maxRetries" | "baseDelayMs" | "maxDelayMs" | "modelFallback"> {}
+
+export interface MemoriesSettings extends Omit<GroupSettings<"memories">, "phase1InputTokenLimit"> {}
 
 export interface TodoCompletionSettings {
 	enabled: boolean;
 	maxReminders: number;
 }
 
-export interface BranchSummarySettings {
-	enabled: boolean;
-	reserveTokens: number;
-}
+export interface BranchSummarySettings extends GroupSettings<"branchSummary"> {}
 
-export interface SkillsSettings {
-	/** Master switch. When false, no skills load at all. */
-	enabled?: boolean;
-	/** Expose loaded skills as `/skill:<name>` slash commands. */
-	enableSkillCommands?: boolean;
+export interface SkillsSettings extends Partial<GroupSettings<"skills">> {
 	/**
 	 * Skills load only from the active profile's Veyyon agent dir
 	 * (`~/.veyyon/profiles/<name>/agent/skills`), its managed auto-learn skills,
 	 * and skills bundled with plugins installed into that profile. There is no
 	 * cross-computer autodiscovery and no per-source toggle: Claude, Codex, the
 	 * Agent Skills standard, GitHub, and OpenCode directories are never scanned.
-	 * The two lists below filter that profile set by skill name.
+	 * The includeSkills and ignoredSkills lists filter that profile set by name.
 	 */
-	ignoredSkills?: string[];
-	includeSkills?: string[];
 	disabledExtensions?: string[];
 }
 
-export interface CommitSettings {
-	mapReduceEnabled: boolean;
-	mapReduceMinFiles: number;
-	mapReduceMaxFileTokens: number;
-	mapReduceTimeoutMs: number;
-	mapReduceMaxConcurrency: number;
-	changelogMaxDiffChars: number;
-}
+export interface CommitSettings extends GroupSettings<"commit"> {}
 
-export interface TtsrSettings {
-	enabled: boolean;
-	contextMode: "discard" | "keep";
-	interruptMode: "never" | "prose-only" | "tool-only" | "always";
-	repeatMode: "once" | "after-gap";
-	repeatGap: number;
-	/** Bucketing-only (read by bucketRules, not the TtsrManager). */
-	builtinRules?: boolean;
-	/** Bucketing-only (read by bucketRules, not the TtsrManager). */
-	disabledRules?: string[];
-	/** Bucketing-only: experimental rule names the operator opted into. */
-	experimentalRules?: string[];
-}
+export interface TtsrSettings
+	extends Pick<GroupSettings<"ttsr">, "enabled" | "contextMode" | "interruptMode" | "repeatMode" | "repeatGap">,
+		Partial<Pick<GroupSettings<"ttsr">, "builtinRules" | "disabledRules" | "experimentalRules">> {}
 
-export interface ExaSettings {
-	enabled: boolean;
-	enableSearch: boolean;
-	searchDelayMs: number;
-	enableResearcher: boolean;
-	enableWebsets: boolean;
-}
+export interface ExaSettings extends GroupSettings<"exa"> {}
 
 /**
  * Every `statusLine.*` setting, derived from the schema rather than restated.
- *
- * `getGroup("statusLine")` returns every key with that prefix at run time, and the
- * hand-written version of this interface listed six of eleven: `enabled`,
- * `sessionAccent`, `transparent`, `compactThinkingLevel` and `showAccount` were all
- * readable and none of them type-checked. A mapped type cannot fall behind the next
- * footline knob someone adds.
  */
-export type StatusLineSettings = {
-	[P in SettingPath as P extends `statusLine.${infer Key}` ? Key : never]: SettingValue<P>;
-};
+export type StatusLineSettings = GroupSettings<"statusLine">;
 
-export interface ThinkingBudgetsSettings {
-	minimal: number;
-	low: number;
-	medium: number;
-	high: number;
-	xhigh: number;
-	max: number;
-}
+export interface ThinkingBudgetsSettings extends GroupSettings<"thinkingBudgets"> {}
 
-export interface SttSettings {
-	enabled: boolean;
-	language: string | undefined;
+export interface SttSettings extends Pick<GroupSettings<"stt">, "enabled" | "language"> {
 	modelName: string;
 	streaming: boolean;
 }
 
-export interface ShellMinimizerSettings {
-	enabled: boolean;
-	settingsPath: string | undefined;
-	only: string[];
-	except: string[];
-	maxCaptureBytes: number;
-	sourceOutlineLevel: "default" | "aggressive";
-	legacyFilters: boolean | undefined;
-}
-export type CodexAutoRedeemMode = "unset" | "yes" | "no";
+export interface ShellMinimizerSettings extends GroupSettings<"shellMinimizer"> {}
 
-export interface CodexResetsSettings {
-	autoRedeem: CodexAutoRedeemMode;
-	minBlockedMinutes: number;
-	keepCredits: number;
-}
+export interface CodexResetsSettings extends GroupSettings<"codexResets"> {}
 
-export interface GcSettings {
-	blobs: boolean;
-	archive: boolean;
-	wal: boolean;
-	coldArchiveAfterDays: number;
-	retainNewestGlobal: number;
-	retainNewestPerCwd: number;
-	/** Minutes a file must have gone unwritten before GC may delete or archive it. Floored at 1. */
-	writeGraceMinutes: number;
-}
+export interface GcSettings extends GroupSettings<"gc"> {}
 
 /** Map group prefix -> typed settings interface */
 export interface GroupTypeMap {

@@ -57,9 +57,8 @@
  *    `process.env.PATH` and then calling `Bun.which` returns the pre-mutation
  *    answer, while `Bun.spawn` of the same bare word resolves against the LIVE
  *    environment. So a PATH stub reaches a site that names its binary as a
- *    bare word (`git`), and cannot reach one that resolves it through
- *    `$which` first.
- *
+ *    bare word (`git`), while sites resolving through `$which` or
+ *    `getToolPath` isolate those lookup boundaries via test spies.
  * ## What is NOT proved here, stated so the gap is known
  *
  * That the kernel throttles. The fake tree is an ordinary directory; nothing
@@ -79,12 +78,12 @@
  *     observer and the PTY spawner adopt inside Rust, not through a JS hook,
  *     so a stub here would prove nothing about that path.
  */
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { disposeOwnedResources } from "@veyyon/kernel/session/owned-resources";
-import { getToolsDir } from "@veyyon/utils";
+import * as utils from "@veyyon/utils";
 import { DapClient } from "../src/debug/dap/client";
 import { execCommand } from "../src/exec/exec";
 import { spawnObsidian } from "../src/internal-urls/vault-protocol";
@@ -102,6 +101,7 @@ import {
 import { startRecording } from "../src/speech/stt/recorder";
 import { playAudioFile } from "../src/speech/tts/player";
 import * as git from "../src/utils/git";
+import * as toolsManager from "../src/utils/tools-manager";
 import { makeCgroupRoot, makeDelegatedParent, makeFakeHost, removeCgroupRoots } from "./helpers/fake-cgroup";
 
 /**
@@ -162,32 +162,36 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-	// The registry is cleared FIRST, before anything is killed. Every site here
-	// is fire-and-forget, and several retry a second backend when the first
-	// child dies. A retry that spawns during teardown resolves the CURRENT root
-	// limiter at adopt time, so with the registry still populated it writes its
-	// pid into the next case's `cgroup.procs` and fails that case with a pid
-	// belonging to this one. Deregistering first leaves a late adopt with no
-	// target, which is what the production path does for an ended session.
-	await disposeOwnedResources("session", ROOT_SESSION);
-	resetSessionCpuLimitsForTests();
+	try {
+		// The registry is cleared FIRST, before anything is killed. Every site here
+		// is fire-and-forget, and several retry a second backend when the first
+		// child dies. A retry that spawns during teardown resolves the CURRENT root
+		// limiter at adopt time, so with the registry still populated it writes its
+		// pid into the next case's `cgroup.procs` and fails that case with a pid
+		// belonging to this one. Deregistering first leaves a late adopt with no
+		// target, which is what the production path does for an ended session.
+		await disposeOwnedResources("session", ROOT_SESSION);
+		resetSessionCpuLimitsForTests();
 
-	for (const pid of startedPids) {
-		try {
-			process.kill(pid, "SIGKILL");
-		} catch {
-			// Already gone: the case killed it, or the site did.
+		for (const pid of startedPids) {
+			try {
+				process.kill(pid, "SIGKILL");
+			} catch {
+				// Already gone: the case killed it, or the site did.
+			}
 		}
+		startedPids.clear();
+
+		// Killing the child is what lets a site's promise settle. Bounded, because
+		// a site that never settles must not hang the suite: the registry is
+		// already empty, so a straggler can no longer corrupt a later case.
+		await Promise.race([Promise.allSettled(inFlight), Bun.sleep(SETTLE_TIMEOUT_MS)]);
+		inFlight.length = 0;
+
+		await removeCgroupRoots();
+	} finally {
+		vi.restoreAllMocks();
 	}
-	startedPids.clear();
-
-	// Killing the child is what lets a site's promise settle. Bounded, because
-	// a site that never settles must not hang the suite: the registry is
-	// already empty, so a straggler can no longer corrupt a later case.
-	await Promise.race([Promise.allSettled(inFlight), Bun.sleep(SETTLE_TIMEOUT_MS)]);
-	inFlight.length = 0;
-
-	await removeCgroupRoots();
 });
 
 /**
@@ -261,25 +265,6 @@ async function makeStub(name: string): Promise<Stub> {
 		mode: 0o755,
 	});
 	return { argv: ["/bin/sh", bin], bin, name, pidFile };
-}
-
-/**
- * The same stub, planted where `getToolPath("ffmpeg")` looks for a downloaded
- * static binary: `<toolsDir>/ffmpeg`.
- *
- * That lookup is a bare `existsSync` on a path computed from the agent
- * directory, so unlike `Bun.which` it reads the filesystem at CALL time and a
- * file written by the test is found. `name` still varies per case so each case
- * gets its own pid file and the exact-pid assertion stays exact.
- */
-async function makeManagedToolStub(name: string): Promise<Stub> {
-	const stub = await makeStub(name);
-	const toolsDir = getToolsDir();
-	await fs.mkdir(toolsDir, { recursive: true });
-	const planted = path.join(toolsDir, "ffmpeg");
-	await fs.copyFile(stub.bin, planted);
-	await fs.chmod(planted, 0o755);
-	return { ...stub, argv: ["/bin/sh", planted], bin: planted };
 }
 
 /**
@@ -589,17 +574,18 @@ describe("spawn sites that resolve their own binary adopt their child", () => {
 	 * tts/player.ts: the audio player process.
 	 *
 	 * `playerCommandsFor` tries paplay, then aplay, then the BUNDLED static
-	 * ffmpeg from the managed tools directory. The first two go through
-	 * `Bun.which`, which is unreachable from here (see the file header note on
-	 * PATH snapshotting), so the stub is planted at the third: an `ffmpeg` in
-	 * `getToolsDir()`, which `getToolPath` finds with a plain `existsSync`. That
-	 * is the same lookup production uses after `veyyon setup speech`.
+	 * ffmpeg from the managed tools directory. Isolating external discovery
+	 * through `utils.$which` (mocked to null) and `toolsManager.getToolPath`
+	 * (mocked to return the owned stub) exercises the fallback path and adopts
+	 * the player without touching the real tools directory or executing host binaries.
 	 */
 	it(
 		"playAudioFile adopts the audio player",
 		async () => {
 			const budget = await startRootBudget();
-			const stub = await makeManagedToolStub("player-ffmpeg");
+			const stub = await makeStub("player-ffmpeg");
+			vi.spyOn(utils, "$which").mockReturnValue(null);
+			vi.spyOn(toolsManager, "getToolPath").mockImplementation(tool => (tool === "ffmpeg" ? stub.bin : null));
 			runSite(playAudioFile(path.join(stubDir, "tone.wav")));
 			await expectAdopted(budget, await stubPid(stub));
 		},
@@ -613,12 +599,19 @@ describe("spawn sites that resolve their own binary adopt their child", () => {
 	 * backend, and `startRecording` walks the list until one starts. A recorder
 	 * runs for the whole dictation, which is exactly the sustained load the
 	 * budget is meant to see, so losing its adoption leaks for minutes.
+	 *
+	 * Isolating external discovery through `utils.$which` (mocked to null) and
+	 * `toolsManager.getToolPath` (mocked to return the owned stub) ensures
+	 * `startRecording` launches and adopts the intended stub regardless of
+	 * host-installed audio binaries.
 	 */
 	it(
 		"startRecording adopts the recorder backend",
 		async () => {
 			const budget = await startRootBudget();
-			const stub = await makeManagedToolStub("recorder-ffmpeg");
+			const stub = await makeStub("recorder-ffmpeg");
+			vi.spyOn(utils, "$which").mockReturnValue(null);
+			vi.spyOn(toolsManager, "getToolPath").mockImplementation(tool => (tool === "ffmpeg" ? stub.bin : null));
 			runSite(startRecording(path.join(stubDir, "rec.wav")));
 			await expectAdopted(budget, await stubPid(stub));
 		},

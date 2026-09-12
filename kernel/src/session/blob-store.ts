@@ -104,24 +104,34 @@ export class BlobStore {
 
 	constructor(readonly dir: string) {}
 
+	#preparePut(
+		data: Buffer,
+		options?: BlobPutOptions,
+	): { blobPath: string; displayPath: string; result: BlobPutResult } {
+		const hash = new Bun.SHA256().update(data).digest("hex");
+		const blobPath = path.join(this.dir, hash);
+		const extension = normalizeBlobExtension(options?.extension);
+		const displayPath = extension ? `${blobPath}.${extension}` : blobPath;
+		return {
+			blobPath,
+			displayPath,
+			result: {
+				hash,
+				path: blobPath,
+				displayPath,
+				get ref() {
+					return `${BLOB_PREFIX}${hash}`;
+				},
+			},
+		};
+	}
+
 	/**
 	 * Write binary data to the blob store.
 	 * @returns SHA-256 hex hash of the data
 	 */
 	async put(data: Buffer, options?: BlobPutOptions): Promise<BlobPutResult> {
-		const hash = new Bun.SHA256().update(data).digest("hex");
-		const blobPath = path.join(this.dir, hash);
-		const extension = normalizeBlobExtension(options?.extension);
-		const displayPath = extension ? `${blobPath}.${extension}` : blobPath;
-		const result = {
-			hash,
-			path: blobPath,
-			displayPath,
-			get ref() {
-				return `${BLOB_PREFIX}${hash}`;
-			},
-		};
-
+		const { blobPath, displayPath, result } = this.#preparePut(data, options);
 		await Bun.write(blobPath, data);
 		await ensureDisplayPath(blobPath, displayPath, data);
 		return result;
@@ -133,18 +143,7 @@ export class BlobStore {
 	 * Returns once the bytes are in the kernel page cache.
 	 */
 	putSync(data: Buffer, options?: BlobPutOptions): BlobPutResult {
-		const hash = new Bun.SHA256().update(data).digest("hex");
-		const blobPath = path.join(this.dir, hash);
-		const extension = normalizeBlobExtension(options?.extension);
-		const displayPath = extension ? `${blobPath}.${extension}` : blobPath;
-		const result = {
-			hash,
-			path: blobPath,
-			displayPath,
-			get ref() {
-				return `${BLOB_PREFIX}${hash}`;
-			},
-		};
+		const { blobPath, displayPath, result } = this.#preparePut(data, options);
 		fs.mkdirSync(this.dir, { recursive: true });
 		fs.writeFileSync(blobPath, data);
 		ensureDisplayPathSync(blobPath, displayPath, data);
@@ -271,32 +270,56 @@ export function externalizeTextSync(blobStore: BlobStore, text: string): string 
 	return `${TEXT_BLOB_PREFIX}${stored.hash}`;
 }
 
+async function resolveBlobBuffer(
+	blobStore: BlobStore,
+	data: string,
+	parser: (data: string) => string | null,
+	warningMessage: string,
+): Promise<Buffer | null> {
+	const hash = parser(data);
+	if (!hash) return null;
+	const buffer = await blobStore.get(hash);
+	if (!buffer) logger.warn(warningMessage, { hash });
+	return buffer;
+}
+
+function resolveBlobBufferSync(
+	blobStore: BlobStore,
+	data: string,
+	parser: (data: string) => string | null,
+	warningMessage: string,
+): Buffer | null {
+	const hash = parser(data);
+	if (!hash) return null;
+	const buffer = blobStore.getSync(hash);
+	if (!buffer) logger.warn(warningMessage, { hash });
+	return buffer;
+}
+
 /**
  * Resolve a `blobtext:` reference back to its original UTF-8 string. Non-refs pass
  * through unchanged. A missing blob logs a warning and returns the reference as-is
  * rather than crashing the load.
  */
 export async function resolveTextBlobRef(blobStore: BlobStore, data: string): Promise<string> {
-	const hash = parseTextBlobRef(data);
-	if (!hash) return data;
-	const buffer = await blobStore.get(hash);
-	if (!buffer) {
-		logger.warn("Blob not found for persisted text reference", { hash });
-		return data;
-	}
-	return buffer.toString("utf8");
+	const buffer = await resolveBlobBuffer(
+		blobStore,
+		data,
+		parseTextBlobRef,
+		"Blob not found for persisted text reference",
+	);
+	return buffer ? buffer.toString("utf8") : data;
 }
 
 /** Synchronous variant of {@link resolveTextBlobRef}. */
 export function resolveTextBlobRefSync(blobStore: BlobStore, data: string): string {
-	const hash = parseTextBlobRef(data);
-	if (!hash) return data;
-	const buffer = blobStore.getSync(hash);
-	if (!buffer) {
-		logger.warn("Blob not found for persisted text reference", { hash });
-		return data;
-	}
-	return buffer.toString("utf8");
+	const buffer = resolveBlobBufferSync(
+		blobStore,
+		data,
+		parseTextBlobRef,
+		"Blob not found for persisted text reference",
+	);
+	return buffer ? buffer.toString("utf8") : data;
 }
 
 /**
@@ -305,8 +328,7 @@ export function resolveTextBlobRefSync(blobStore: BlobStore, data: string): stri
  */
 export async function externalizeImageDataUrl(blobStore: BlobStore, dataUrl: string): Promise<string> {
 	if (isBlobRef(dataUrl)) return dataUrl;
-	const { ref } = await blobStore.put(Buffer.from(dataUrl, "utf8"));
-	return ref;
+	return (await blobStore.put(Buffer.from(dataUrl, "utf8"))).ref;
 }
 
 /**
@@ -328,11 +350,11 @@ export async function externalizeImageData(
 	mimeType?: string,
 ): Promise<string> {
 	if (isBlobRef(base64Data)) return base64Data;
-	const buffer = Buffer.from(base64Data, "base64");
-	const { ref } = await blobStore.put(buffer, {
-		extension: blobExtensionForImageMimeType(mimeType),
-	});
-	return ref;
+	return (
+		await blobStore.put(Buffer.from(base64Data, "base64"), {
+			extension: blobExtensionForImageMimeType(mimeType),
+		})
+	).ref;
 }
 
 /**
@@ -341,10 +363,11 @@ export async function externalizeImageData(
  */
 export function externalizeImageDataSync(blobStore: BlobStore, base64Data: string, mimeType?: string): string {
 	if (isBlobRef(base64Data)) return base64Data;
-	const stored = blobStore.tryPutSync(Buffer.from(base64Data, "base64"), {
-		extension: blobExtensionForImageMimeType(mimeType),
-	});
-	return stored?.ref ?? base64Data;
+	return (
+		blobStore.tryPutSync(Buffer.from(base64Data, "base64"), {
+			extension: blobExtensionForImageMimeType(mimeType),
+		})?.ref ?? base64Data
+	);
 }
 
 /**
@@ -353,15 +376,8 @@ export function externalizeImageDataSync(blobStore: BlobStore, base64Data: strin
  * If the blob is missing, logs a warning and returns the reference as-is.
  */
 export async function resolveImageDataUrl(blobStore: BlobStore, data: string): Promise<string> {
-	const hash = parseBlobRef(data);
-	if (!hash) return data;
-
-	const buffer = await blobStore.get(hash);
-	if (!buffer) {
-		logger.warn("Blob not found for persisted image data URL", { hash });
-		return data;
-	}
-	return buffer.toString("utf8");
+	const buffer = await resolveBlobBuffer(blobStore, data, parseBlobRef, "Blob not found for persisted image data URL");
+	return buffer ? buffer.toString("utf8") : data;
 }
 
 /**
@@ -370,26 +386,12 @@ export async function resolveImageDataUrl(blobStore: BlobStore, data: string): P
  * If the blob is missing, logs a warning and returns a placeholder.
  */
 export async function resolveImageData(blobStore: BlobStore, data: string): Promise<string> {
-	const hash = parseBlobRef(data);
-	if (!hash) return data;
-
-	const buffer = await blobStore.get(hash);
-	if (!buffer) {
-		logger.warn("Blob not found for image reference", { hash });
-		return data; // Return the ref as-is; downstream will see invalid base64 but won't crash
-	}
-	return buffer.toString("base64");
+	const buffer = await resolveBlobBuffer(blobStore, data, parseBlobRef, "Blob not found for image reference");
+	return buffer ? buffer.toString("base64") : data;
 }
 
 /** Synchronous variant of {@link resolveImageData}. */
 export function resolveImageDataSync(blobStore: BlobStore, data: string): string {
-	const hash = parseBlobRef(data);
-	if (!hash) return data;
-
-	const buffer = blobStore.getSync(hash);
-	if (!buffer) {
-		logger.warn("Blob not found for image reference", { hash });
-		return data;
-	}
-	return buffer.toString("base64");
+	const buffer = resolveBlobBufferSync(blobStore, data, parseBlobRef, "Blob not found for image reference");
+	return buffer ? buffer.toString("base64") : data;
 }

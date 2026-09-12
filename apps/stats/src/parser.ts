@@ -45,12 +45,12 @@ import { computeUserMessageMetrics } from "./user-metrics";
 /**
  * Classify which agent produced a transcript from its path within the sessions
  * directory. Layout: `<sessionsDir>/<project>/<file>.jsonl` is the `main`
- * agent; subagent and advisor transcripts live nested one level deeper inside
+ * agent; spawned agent and advisor transcripts live nested one level deeper inside
  * the session's artifacts dir (`<project>/<session>/<id>.jsonl`,
  * `<project>/<session>/__advisor.jsonl`). Any advisor transcript
  * (`__advisor.jsonl` or `__advisor.<slug>.jsonl`) — at any depth, including a
- * subagent's own advisor — counts as `advisor`; every other nested transcript
- * is a task `subagent`.
+ * spawned agent's own advisor — counts as `advisor`; every other nested transcript
+ * is a task spawn.
  */
 export function classifyAgentType(sessionPath: string): AgentType {
 	const base = path.basename(sessionPath);
@@ -58,7 +58,7 @@ export function classifyAgentType(sessionPath: string): AgentType {
 		return "advisor";
 	}
 	const rel = path.relative(getSessionsDir(), sessionPath);
-	// `<project>/<file>.jsonl` -> 2 segments. Deeper nesting is a subagent.
+	// `<project>/<file>.jsonl` -> 2 segments. Deeper nesting is a spawned subagent.
 	return rel.split(path.sep).length <= 2 ? "main" : "subagent";
 }
 
@@ -89,23 +89,24 @@ function extractFolderFromPath(sessionPath: string): string {
  * `isAssistantMessage`, as were three unrelated predicates elsewhere.
  */
 function isLinkableAssistantEntry(entry: SessionLogEntry): entry is SessionMessageEntry {
-	if (entry.type !== "message") return false;
-	const msgEntry = entry as SessionMessageEntry;
-	// Legacy sessions (pre-id tracking) recorded message entries without an `id`.
-	// They're not linkable and would violate the messages.entry_id NOT NULL
-	// constraint, so skip them at the parser boundary.
-	if (typeof msgEntry.id !== "string" || msgEntry.id.length === 0) return false;
-	return msgEntry.message?.role === "assistant";
+	return isLinkableMessageOfRole(entry, "assistant");
 }
 
 /**
  * Check if an entry is a user message (non-toolResult).
  */
 function isUserMessage(entry: SessionLogEntry): entry is SessionMessageEntry {
+	return isLinkableMessageOfRole(entry, "user");
+}
+
+function isLinkableMessageOfRole(entry: SessionLogEntry, role: "assistant" | "user"): entry is SessionMessageEntry {
 	if (entry.type !== "message") return false;
 	const msgEntry = entry as SessionMessageEntry;
+	// Legacy sessions (pre-id tracking) recorded message entries without an `id`.
+	// They're not linkable and would violate the messages.entry_id NOT NULL
+	// constraint, so skip them at the parser boundary.
 	if (typeof msgEntry.id !== "string" || msgEntry.id.length === 0) return false;
-	return msgEntry.message?.role === "user";
+	return msgEntry.message?.role === role;
 }
 
 /**

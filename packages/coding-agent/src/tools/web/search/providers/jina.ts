@@ -11,15 +11,12 @@ import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { resolveProviderTextTransform } from "../../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../types";
-import { SearchProviderError } from "../types";
 import { applyResultLimit } from "../utils";
 import type { SearchParams } from "./base";
-import { SearchProvider } from "./base";
-import { classifyProviderHttpError } from "./utils";
+import { ApiKeySearchProvider } from "./base";
+import { handleProviderHttpError, resolveProviderKey } from "./utils";
 
 const JINA_SEARCH_URL = "https://s.jina.ai";
-type SearchParamsWithFetch = SearchParams & { fetch?: FetchImpl };
-
 export interface JinaSearchParams {
 	query: string;
 	num_results?: number;
@@ -58,10 +55,7 @@ async function callJinaSearch(apiKey: string, params: JinaSearchParams): Promise
 		});
 
 		if (!response.ok) {
-			const errorText = await response.text();
-			const classified = classifyProviderHttpError("jina", response.status, errorText);
-			if (classified) throw classified;
-			throw new SearchProviderError("jina", `Jina API request failed (${response.status}).`, response.status);
+			await handleProviderHttpError("jina", response, `Jina API request failed (${response.status}).`);
 		}
 
 		const payload = (await response.json()) as { data?: JinaSearchResponse } | null;
@@ -71,16 +65,13 @@ async function callJinaSearch(apiKey: string, params: JinaSearchParams): Promise
 
 /** Execute Jina web search. */
 export async function searchJina(params: JinaSearchParams): Promise<SearchResponse> {
-	const keyOrResolver: ApiKey | undefined = params.authStorage
-		? params.authStorage.resolver("jina", { sessionId: params.sessionId })
-		: (findApiKey() ?? undefined);
+	const keyOrResolver: ApiKey | undefined = resolveProviderKey(params.authStorage, "jina", params.sessionId);
 
 	const response = await withAuth(keyOrResolver, key => callJinaSearch(key, params), {
 		signal: params.signal,
 		missingKeyMessage: 'Jina credentials not found. Set JINA_API_KEY or configure an API key for provider "jina".',
 	});
 	const sources: SearchSource[] = [];
-
 	for (const result of response) {
 		if (!result?.url) continue;
 		sources.push({
@@ -97,22 +88,16 @@ export async function searchJina(params: JinaSearchParams): Promise<SearchRespon
 }
 
 /** Search provider for Jina Reader. */
-export class JinaProvider extends SearchProvider {
+export class JinaProvider extends ApiKeySearchProvider {
 	readonly id = "jina";
 	readonly label = "Jina";
 
-	isAvailable(authStorage: AuthStorage): boolean {
-		return authStorage.hasAuth("jina") || !!findApiKey();
-	}
-
-	search(params: SearchParamsWithFetch): Promise<SearchResponse> {
-		const fetchImpl = params.fetch;
-
+	search(params: SearchParams): Promise<SearchResponse> {
 		return searchJina({
 			query: params.query,
 			num_results: params.numSearchResults ?? params.limit,
 			signal: params.signal,
-			fetch: fetchImpl,
+			fetch: params.fetch,
 			resolveProviderTextTransform: params.resolveProviderTextTransform,
 			authStorage: params.authStorage,
 			sessionId: params.sessionId,

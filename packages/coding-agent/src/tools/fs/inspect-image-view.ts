@@ -12,7 +12,16 @@
  */
 
 import type { FramedBlockView, StatusRowView, ToolView, ToolViewRenderer, ViewLine, ViewSection } from "@veyyon/view";
-import { replaceTabs, sanitizeErrorText, shortenPath, truncateToWidth } from "../core/render-utils";
+import { extractResultText } from "../core/output-notice";
+import {
+	errorViewLines,
+	heldBack,
+	LINE_NOUN,
+	replaceTabs,
+	shortenPath,
+	type ToolViewResult,
+	truncateToWidth,
+} from "../core/render-utils";
 import type { InspectImageToolDetails } from "./inspect-image";
 
 /** The arguments the card reads off an inspect_image call, which is any subset the model has sent. */
@@ -22,11 +31,7 @@ export interface InspectImageViewArgs {
 }
 
 /** The result the card reads, which is the tool's own result shape narrowed to what a card shows. */
-export interface InspectImageViewResult {
-	content: Array<{ type: string; text?: string }>;
-	details?: InspectImageToolDetails;
-	isError?: boolean;
-}
+export interface InspectImageViewResult extends ToolViewResult<InspectImageToolDetails> {}
 
 /** The emblem a settled inspect card is titled by, instead of a success tick. */
 const INSPECT_EMBLEM = "tool.inspectImage";
@@ -79,8 +84,7 @@ function answerSection(question: string, answer: string, expanded: boolean): Vie
 	const lines = question ? [questionLine(question), [], ...shown] : shown;
 	return {
 		lines,
-		hidden:
-			remaining > 0 ? { count: remaining, noun: { one: "line", many: "lines" }, revealable: !expanded } : undefined,
+		hidden: heldBack(remaining, LINE_NOUN, !expanded),
 	};
 }
 
@@ -100,10 +104,7 @@ function failureCard(question: string, pathDisplay: string, text: string): Frame
 		contents: "data",
 		sections: [
 			{
-				lines: [
-					...questionLines(question),
-					[{ text: "  " }, { text: sanitizeErrorText(text || "inspection failed"), tone: "error" }],
-				],
+				lines: [...questionLines(question), ...errorViewLines(text, "inspection failed")],
 			},
 		],
 	};
@@ -132,7 +133,7 @@ export const inspectImageToolView: Required<ToolViewRenderer<InspectImageViewArg
 		const details = result.details;
 		const pathDisplay = describeImage(details?.imagePath ?? args?.path, "image");
 		const question = typeof args?.question === "string" ? args.question.trim() : "";
-		const answer = result.content.find(block => block.type === "text")?.text?.trimEnd() ?? "";
+		const answer = extractResultText(result.content).trimEnd();
 
 		if (result.isError) return failureCard(question, pathDisplay, answer);
 

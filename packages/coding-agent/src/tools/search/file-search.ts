@@ -22,7 +22,6 @@ import {
 	resolveToCwd,
 	toPathList,
 } from "../core/path-utils";
-import { PREVIEW_LIMITS } from "../core/render-utils";
 import { ToolError, throwIfAborted, toolAbort } from "../core/tool-errors";
 import { toolResult } from "../core/tool-result";
 
@@ -506,5 +505,3 @@ export interface FileSearchRenderArgs {
 	input?: string;
 	limit?: number;
 }
-
-export const COLLAPSED_LIST_LIMIT = PREVIEW_LIMITS.COLLAPSED_ITEMS;

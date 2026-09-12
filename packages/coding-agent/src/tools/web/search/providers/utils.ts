@@ -1,5 +1,58 @@
+import type { ApiKey, AuthStorage } from "@veyyon/ai";
+import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { SearchProviderError, type SearchProviderId, type SearchSource } from "../types";
 import { dateToAgeSeconds } from "../utils";
+import type { SearchParams } from "./base";
+
+export type SearchRecency = NonNullable<SearchParams["recency"]>;
+
+/** Google / Firecrawl `tbs=qdr:*` temporal filter map. */
+export const RECENCY_TBS: Record<SearchRecency, string> = {
+	day: "qdr:d",
+	week: "qdr:w",
+	month: "qdr:m",
+	year: "qdr:y",
+};
+
+/** Single-letter date filter map used by DuckDuckGo (`df`) and Startpage (`with_date`). */
+export const RECENCY_SINGLE_LETTER: Record<SearchRecency, string> = {
+	day: "d",
+	week: "w",
+	month: "m",
+	year: "y",
+};
+
+/**
+ * Resolve provider API key from AuthStorage resolver or environment fallback.
+ */
+export function resolveProviderKey(
+	authStorage: AuthStorage | undefined,
+	provider: string,
+	sessionId?: string,
+): ApiKey | undefined {
+	if (authStorage) {
+		return authStorage.resolver(provider, { sessionId });
+	}
+	return getEnvApiKey(provider) ?? undefined;
+}
+/**
+ * Map a provider's raw source list to the unified SearchSource shape,
+ * clamped to the requested result count and annotated with ageSeconds.
+ */
+function projectSearchSource(source: {
+	title: string;
+	url: string;
+	snippet?: string;
+	publishedDate?: string;
+}): SearchSource {
+	return {
+		title: source.title,
+		url: source.url,
+		snippet: source.snippet,
+		publishedDate: source.publishedDate,
+		ageSeconds: dateToAgeSeconds(source.publishedDate),
+	};
+}
 
 /**
  * Map a provider's raw source list to the unified SearchSource shape,
@@ -13,14 +66,22 @@ export function toSearchSources(
 		publishedDate?: string;
 	}>,
 	numResults: number,
+	options?: { deduplicate?: boolean },
 ): SearchSource[] {
-	return sources.slice(0, numResults).map(source => ({
-		title: source.title,
-		url: source.url,
-		snippet: source.snippet,
-		publishedDate: source.publishedDate,
-		ageSeconds: dateToAgeSeconds(source.publishedDate),
-	}));
+	if (!options?.deduplicate) {
+		return sources.slice(0, numResults).map(projectSearchSource);
+	}
+	const max = Math.max(0, Math.floor(numResults) || 0);
+	if (max === 0) return [];
+	const out: SearchSource[] = [];
+	const seen = new Set<string>();
+	for (const source of sources) {
+		if (seen.has(source.url)) continue;
+		seen.add(source.url);
+		out.push(projectSearchSource(source));
+		if (out.length >= max) break;
+	}
+	return out;
 }
 
 /**
@@ -61,6 +122,36 @@ export function classifyProviderHttpError(
 		return new SearchProviderError(provider, `${provider}: 403 forbidden`, status);
 	}
 	return null;
+}
+
+/**
+ * Throw a provider error on non-OK HTTP status, applying credit/quota/auth classification.
+ */
+export function throwProviderHttpError(
+	provider: SearchProviderId,
+	status: number | undefined,
+	body: string,
+	fallbackMessage?: string,
+): never {
+	if (typeof status === "number") {
+		const classified = classifyProviderHttpError(provider, status, body);
+		if (classified) throw classified;
+	}
+	throw new SearchProviderError(provider, fallbackMessage ?? `${provider} HTML error (${status})`, status);
+}
+
+/**
+ * Handle non-OK HTTP responses from upstream search providers.
+ * Extracts response text, applies credit/quota/auth error classification,
+ * and throws either the classified error or a SearchProviderError with the fallback message.
+ */
+export async function handleProviderHttpError(
+	provider: SearchProviderId,
+	response: Response,
+	fallbackMessage: string,
+): Promise<never> {
+	const errorText = await response.text();
+	throwProviderHttpError(provider, response.status, errorText, fallbackMessage);
 }
 
 /**

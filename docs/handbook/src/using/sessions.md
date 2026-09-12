@@ -128,7 +128,7 @@ which:
 - **Steer (`Enter`).** The message is injected into the *current* turn: the model sees it at the
   next tool boundary and adjusts course without abandoning its work.
 - **Queue a follow-up (`Ctrl+Q`, or `Ctrl+Enter` where the terminal delivers it).** The message is queued in the running process and starts a
-  **new turn** once the current one finishes. The queue lives in memory for the lifetime of the
+  **new turn** once the current one finishes. The queue is stored in memory for the lifetime of the
   process; it is not written to the session file, so it does not survive a restart. Slash commands and `!` shell escapes
   queue client-side instead; they are local actions, not model input.
 

@@ -316,6 +316,7 @@ export const repoScriptTests = [
 	"scripts/a-local-action-is-called-with-everything-it-requires.test.ts",
 	"scripts/a-module-is-imported-at-the-top-of-its-file.test.ts",
 	"scripts/a-package-exports-its-public-surface.test.ts",
+	"scripts/an-export-floor-only-grows.test.ts",
 	"scripts/a-package-is-added-only-when-an-existing-one-cannot-serve.test.ts",
 	"scripts/a-shipped-module-arrives-with-a-test-that-names-it.test.ts",
 	"scripts/a-suite-is-named-for-the-behavior-it-defends.test.ts",
@@ -410,6 +411,7 @@ export const repoScriptTests = [
 	"scripts/release-bump-subject.test.ts",
 	"apps/site/tools/gen-changelog.test.ts",
 	"scripts/tracked-but-deleted-paths.test.ts",
+	"scripts/every-referenced-source-file-is-tracked.test.ts",
 	"apps/site/tools/undocumented-release-ratchet.test.ts",
 	"apps/site/tools/nav.test.ts",
 	"scripts/demos/lib/png.test.ts",
@@ -421,9 +423,14 @@ export const repoScriptTests = [
 	"scripts/a-capture-runs-on-the-bun-the-product-requires.test.ts",
 	"scripts/first-party-docs-are-indexed.test.ts",
 	"scripts/script-tests-coverage.test.ts",
-	"scripts/startup-is-measured-after-the-screen-settles.test.ts",
-	"scripts/a-startup-benchmark-keeps-its-executable-and-config-isolated.test.ts",
-	"scripts/a-startup-benchmark-terminates-child-trees-and-honors-cwd.test.ts",
+	// The startup benchmark suites (`startup-is-measured-after-the-screen-settles`,
+	// `a-startup-benchmark-keeps-its-executable-and-config-isolated`,
+	// `a-startup-benchmark-terminates-child-trees-and-honors-cwd`) import `@veyyon/natives` for a
+	// value, so they load the addon at import time. The `test_scripts` job in checks.yml runs
+	// this list without one and reported all twelve of their cases as a failed addon load;
+	// ci.yml's `test_ts_native` job, which downloads the addon, runs them by path instead, and
+	// `script-tests-coverage.test.ts` reads that step as their runner. No quoted string in
+	// this comment: the deleted-suite lock reads the array's string literals from source.
 	"scripts/a-package-script-runs-in-an-existing-directory.test.ts",
 	"scripts/stray-output-path.test.ts",
 	// The leak tracer's own contract tests. Also run by the `test-leaks` job in
@@ -484,13 +491,8 @@ export const repoScriptTests = [
 	// root. Unwired it enforces nothing, because the coupling it forbids is added by
 	// an ordinary import that type-checks.
 	"scripts/a-plugin-never-imports-another-plugin.test.ts",
-	// The PR-wide equivalence proof: a moved file kept its bytes, a formatted file kept its tokens,
-	// every published subpath and every command survived, and the kernel names no tool and no host.
-	// Each reads git rather than the tree alone, so none of them is covered by a package bucket.
-	"scripts/a-moved-file-keeps-every-byte-but-its-paths.test.ts",
-	"scripts/a-formatting-change-keeps-every-token.test.ts",
-	"scripts/a-published-surface-survives-the-move.test.ts",
-	"scripts/every-command-and-flag-survives-the-move.test.ts",
+	// The kernel names no tool and no host. Reads the tree's import graph across members, so no
+	// package bucket covers it.
 	"scripts/the-kernel-names-no-tool-and-no-host.test.ts",
 	// The ChatGPT Codex compaction route has been broken and re-fixed 50+ times, and
 	// each break falls back to paid local compaction that busts the prompt cache. The

@@ -1,7 +1,7 @@
 /**
  * Harness documentation index for the `veyyon://` protocol.
  *
- * Compiled binaries and the prepacked npm bundle inline a compressed index of the
+ * Compiled binaries and the prepacked bundle inline a compressed index of the
  * docs (injected via `process.env.VEYYON_DOCS_EMBED` at build time). The format is two lines:
  *   1. a plain JSON array of the sorted doc file names, and
  *   2. a base64 gzip blob of the index-aligned doc bodies (`string[]`).
@@ -78,7 +78,7 @@ function getIndex(): DocsIndex {
 		index = readDocsFromDisk();
 		return index;
 	}
-	// Populated embed in compiled binaries / npm bundle. A non-empty payload with
+	// Populated embed in compiled binaries / prepacked bundle. A non-empty payload with
 	// no newline is a broken build (truncated/corrupt embed), not a placeholder.
 	const decoded = decodeDocsIndex(docsEmbed);
 	if (decoded === null) {

@@ -16,7 +16,7 @@ import {
  *
  * It lives there because `@veyyon/stats` classifies a transcript as the advisor's by matching this name and
  * cannot import the coding agent, so it had declared the same filename itself. The stem is chosen so it
- * cannot collide with a task subagent's `<id>.jsonl` (task ids are reserved against this exact stem in
+ * cannot collide with a task agent's `<id>.jsonl` (task ids are reserved against this exact stem in
  * {@link AgentOutputManager}).
  */
 export {
@@ -38,16 +38,16 @@ export function advisorTranscriptFilename(slug: string): string {
  * Append-only persister for an advisor agent's transcript.
  *
  * The advisor is a passive reviewer with its own model usage, so — like a task
- * subagent — its turns are written to a JSONL inside the owning session's
+ * agent — its turns are written to a JSONL inside the owning session's
  * artifacts dir (`<session>/__advisor.jsonl`, `<session>/<SubId>/__advisor.jsonl`
- * for subagent advisors). That single file gives the advisor model proper usage
+ * for spawned agents' advisors). That single file gives the advisor model proper usage
  * attribution in `veyyon stats` (the stats parser scans the session dir
  * recursively) and a read-only transcript in the Control Center, without making the
  * advisor a registered, messageable peer.
  *
  * The target is derived from the *session file* (`getSessionFile()`), never
- * `getArtifactsDir()` — subagents adopt the parent's artifact manager, so the
- * artifacts dir points at the parent root and every subagent advisor would
+ * `getArtifactsDir()` — spawned agents adopt the parent's artifact manager, so the
+ * artifacts dir points at the parent root and every spawned agent's advisor would
  * collide. The file path is resolved synchronously when a message finalizes and
  * captured for the queued write, so a `/new`, resume, or session switch in
  * flight can never misattribute an old advisor turn into the new session's file.

@@ -1367,6 +1367,57 @@ exec ${JSON.stringify(realGit)} "$@"
 		expect(result.details?.repo).toBe(targetRepo);
 	});
 
+	it("a branch watch reports each poll, then the failure grace note, on the same watching update", async () => {
+		const targetRepo = "cagedbird043/cxf";
+		const headSha = "0123456789abcdef0123456789abcdef01234567";
+		vi.spyOn(git.github, "json")
+			.mockResolvedValueOnce({ commit: { sha: headSha } })
+			.mockResolvedValueOnce({
+				workflow_runs: [
+					{
+						id: 9,
+						name: "CI",
+						display_title: "branch watch",
+						status: "completed",
+						conclusion: "failure",
+						head_branch: "main",
+						html_url: `https://github.com/${targetRepo}/actions/runs/9`,
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				total_count: 1,
+				jobs: [{ id: 7, name: "test", status: "completed", conclusion: "failure" }],
+			});
+		const controller = new AbortController();
+		const updates: Array<{ text: string; state?: string; pollCount?: number; note?: string }> = [];
+		const tool = new GithubTool(createSession("/tmp/run-watch-branch-grace"));
+		const watch = tool.execute(
+			"run-watch",
+			{ op: "run_watch", repo: targetRepo, branch: "main" },
+			controller.signal,
+			update => {
+				const text = update.content[0]?.type === "text" ? update.content[0].text : "";
+				const watchDetails = update.details?.watch;
+				updates.push({
+					text,
+					state: watchDetails?.state,
+					pollCount: watchDetails?.pollCount,
+					note: watchDetails?.note,
+				});
+				// The grace wait is the first real delay; abort it once the note has been reported.
+				if (watchDetails?.note) controller.abort();
+			},
+		);
+		await expect(watch).rejects.toThrow();
+		expect(updates.map(update => [update.state, update.pollCount, update.note])).toEqual([
+			["watching", 1, undefined],
+			["watching", 1, "Failure detected. Waiting 5s to capture concurrent failures before fetching logs."],
+		]);
+		expect(updates[1]?.text).toContain("Failure detected. Waiting 5s");
+		expect(updates[0]?.text).not.toContain("Failure detected");
+	});
+
 	it("fails fast when explicit `repo` differs from the cwd repo and no `branch`/`run` selector is given (issue #1949)", async () => {
 		// Without a selector, the legacy code grabbed the cwd's HEAD SHA and
 		// queried it against the explicit repo — yielding an unrelated commit

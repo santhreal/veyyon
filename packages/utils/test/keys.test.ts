@@ -1,5 +1,26 @@
 import { describe, expect, it } from "bun:test";
-import { extractPrintableText, matchesKey, parseKey, setKittyProtocolActive } from "@veyyon/utils/keys";
+import {
+	extractPrintableText,
+	isKeyRelease,
+	isKeyRepeat,
+	matchesKey,
+	parseKey,
+	setKittyProtocolActive,
+} from "@veyyon/utils/keys";
+
+describe("isKeyRelease / isKeyRepeat", () => {
+	it("classifies the Kitty event kind only while the protocol is active", () => {
+		setKittyProtocolActive(true);
+		expect(isKeyRelease("\x1b[127;1:3u")).toBe(true);
+		expect(isKeyRepeat("\x1b[127;1:3u")).toBe(false);
+		expect(isKeyRepeat("\x1b[127;1:2u")).toBe(true);
+		expect(isKeyRelease("\x1b[127;1:2u")).toBe(false);
+		expect(isKeyRelease("\x1b[3;1:3~")).toBe(true);
+		setKittyProtocolActive(false);
+		expect(isKeyRelease("\x1b[127;1:3u")).toBe(false);
+		expect(isKeyRepeat("\x1b[127;1:2u")).toBe(false);
+	});
+});
 
 describe("matchesKey", () => {
 	it("matches ctrl+letter sequences", () => {

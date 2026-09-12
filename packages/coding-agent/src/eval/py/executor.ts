@@ -5,9 +5,7 @@
  * propagation (including VEYYON_EVAL_SESSION_ID for KV store access), and lifecycle
  * disposal via the shared KernelExecutionDriver.
  */
-import { sessionCpuAdoption } from "../../session/cpu-limit";
 import {
-	buildManagedKernelEnv,
 	createKernelExecutionDriver,
 	type KernelExecutionResult,
 	type KernelExecutorBaseOptions,
@@ -31,27 +29,15 @@ export interface PythonExecutorOptions extends KernelExecutorBaseOptions {
 
 export type PythonResult = KernelExecutionResult;
 
-async function startKernel(cwd: string, options: PythonExecutorOptions): Promise<PythonKernel> {
-	return await PythonKernel.start({
-		cwd,
-		env: buildManagedKernelEnv({ ...options, evalSessionId: options.sessionId }),
-		signal: options.signal,
-		deadlineMs: options.deadlineMs,
-		interpreter: options.interpreter,
-		adoptPid: sessionCpuAdoption(() => options.toolSession?.getSessionId?.() ?? null),
-	});
-}
-
 const driver = createKernelExecutionDriver<PythonExecutorOptions, PythonKernel>({
 	languageName: "Python",
 	logLabel: "python",
 	runIdPrefix: "py",
 	disposerName: "python-kernels",
-	startKernel,
+	kernelClass: PythonKernel,
 	checkKernelAvailability: checkPythonKernelAvailability,
 	resolveInterpreterPath: (interpreter, cwd) => resolveExplicitPythonRuntime(interpreter, cwd, {}).pythonPath,
 });
-
 export const {
 	disposeAll: disposeAllKernelSessions,
 	disposeByOwner: disposeKernelSessionsByOwner,

@@ -16,7 +16,7 @@ export { CURRENT_SETUP_VERSION };
 
 export const ALL_SCENES = [
 	providersSetupScene,
-	// Before subagents and cosmetics: it is the one answer that changes what the
+	// Before agents and cosmetics: it is the one answer that changes what the
 	// agent may do to the machine, and the one a user should not discover later.
 	approvalsSetupScene,
 	agentsSetupScene,

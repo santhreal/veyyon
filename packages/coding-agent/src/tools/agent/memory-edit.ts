@@ -5,6 +5,7 @@ import { MNEMOPI_MEMORY_EDIT_OPERATIONS } from "../../memory/mnemopi/verbs";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
 import { throwIfAborted } from "../core/tool-errors";
+import { requireMnemopiSessionState } from "./memory-session";
 
 const memoryEditSchema = type({
 	// Derived from the store's own list, so a verb cannot be offered to the model without a branch that
@@ -49,10 +50,7 @@ export class MemoryEditTool implements AgentTool<typeof memoryEditSchema> {
 	 */
 	async execute(_id: string, params: MemoryEditParams, signal?: AbortSignal): Promise<AgentToolResult> {
 		throwIfAborted(signal);
-		const state = this.session.getMnemopiSessionState?.();
-		if (!state) {
-			throw new Error("Mnemopi backend is not initialised for this session.");
-		}
+		const state = requireMnemopiSessionState(this.session);
 		if (params.op === "update" && params.content === undefined && params.importance === undefined) {
 			throw new Error("memory_edit update requires content or importance.");
 		}

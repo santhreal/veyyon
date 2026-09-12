@@ -5,7 +5,7 @@
  * startup or responsiveness; those require the real PTY benchmark.
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Process, ProcessStatus } from "@veyyon/natives";
 import { recordSettledStartup } from "./record-settled-startup";
@@ -142,6 +142,169 @@ describe("settled editable startup", () => {
 			expect(match).not.toBeNull();
 			const child = Process.fromPid(Number(match![1]));
 			expect(child?.status() ?? ProcessStatus.Exited).toBe(ProcessStatus.Exited);
+		},
+	);
+
+	test.skipIf(process.platform !== "linux")(
+		"measures main and tree resident memory and records observation into trace",
+		async () => {
+			const root = join(import.meta.dirname, "../.captures");
+			await mkdir(root, { recursive: true });
+			const directory = await mkdtemp(join(root, "settled-memory-test-"));
+			scratchDirectories.push(directory);
+			const trace = join(directory, "trace.json");
+			const script = join(directory, "target-app.sh");
+			await writeFile(
+				script,
+				`#!/bin/sh
+printf '\\033[2J\\033[HStudy Model\\r\\n\\r\\n  › qjq\\r\\n71%% left\\r\\n'
+sleep 1
+`,
+				{ mode: 0o755 },
+			);
+
+			const recorded = await recordSettledStartup({
+				command: "/bin/sh",
+				args: [script],
+				cwd: directory,
+				env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+				columns: 100,
+				rows: 10,
+				expectedModel: "Study Model",
+				observationMs: 300,
+				stableMs: 100,
+				trace,
+				memory: {
+					enabled: true,
+					intervalMs: 20,
+					targetExecutable: "/bin/sh",
+					targetArgs: [script],
+				},
+			});
+
+			expect(recorded.memory).toBeDefined();
+			expect(recorded.memory!.samplesCount).toBeGreaterThan(0);
+			expect(recorded.memory!.mainPeakRssBytes).toBeGreaterThan(0);
+			expect(recorded.memory!.mainSteadyRssBytes).toBeGreaterThan(0);
+			expect(recorded.memory!.targetPid).toBeGreaterThan(0);
+
+			for (const sample of recorded.memory!.samples) {
+				expect(sample.treeRssBytes).toBeGreaterThanOrEqual(sample.mainRssBytes);
+			}
+			const maxSampledTree = Math.max(...recorded.memory!.samples.map(s => s.treeRssBytes));
+			const maxSampledMain = Math.max(...recorded.memory!.samples.map(s => s.mainRssBytes));
+			expect(maxSampledTree).toBeGreaterThanOrEqual(maxSampledMain);
+
+			const traceContent = JSON.parse(await readFile(trace, "utf8")) as { memory?: { samplesCount: number } };
+			expect(traceContent.memory?.samplesCount).toBe(recorded.memory!.samplesCount);
+		},
+	);
+
+	test.skipIf(process.platform !== "linux")(
+		"rejects when target process is not found for memory sampling",
+		async () => {
+			const root = join(import.meta.dirname, "../.captures");
+			await mkdir(root, { recursive: true });
+			const directory = await mkdtemp(join(root, "settled-memory-fail-test-"));
+			scratchDirectories.push(directory);
+			const trace = join(directory, "trace.json");
+			const script = join(directory, "app.sh");
+			await writeFile(
+				script,
+				`#!/bin/sh
+printf '\\033[2J\\033[HStudy Model\\r\\n\\r\\n  › qjq\\r\\n71%% left\\r\\n'
+sleep 1
+`,
+				{ mode: 0o755 },
+			);
+
+			const started = performance.now();
+			let thrown: unknown;
+			try {
+				await recordSettledStartup({
+					command: "/bin/sh",
+					args: [script],
+					cwd: directory,
+					env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+					columns: 100,
+					rows: 10,
+					expectedModel: "Study Model",
+					observationMs: 200,
+					stableMs: 100,
+					trace,
+					memory: {
+						enabled: true,
+						intervalMs: 20,
+						targetExecutable: "nonexistent-target-binary-xyz",
+					},
+				});
+			} catch (err) {
+				thrown = err;
+			}
+			expect(performance.now() - started).toBeLessThan(4000);
+			expect(thrown).toBeInstanceOf(AggregateError);
+			const agg = thrown as AggregateError;
+			expect(
+				agg.errors.some(
+					e =>
+						e instanceof Error && /Incomplete memory sampling: target CLI process was not found/.test(e.message),
+				),
+			).toBe(true);
+		},
+	);
+
+	test.skipIf(process.platform !== "linux")(
+		"rejects when no memory samples fall within the required stable window",
+		async () => {
+			const root = join(import.meta.dirname, "../.captures");
+			await mkdir(root, { recursive: true });
+			const directory = await mkdtemp(join(root, "settled-memory-stable-test-"));
+			scratchDirectories.push(directory);
+			const trace = join(directory, "trace.json");
+			const script = join(directory, "slow-sample-app.sh");
+			await writeFile(
+				script,
+				`#!/bin/sh
+printf '\\033[2J\\033[HStudy Model\\r\\n\\r\\n  › qjq\\r\\n71%% left\\r\\n'
+sleep 2
+`,
+				{ mode: 0o755 },
+			);
+
+			const started = performance.now();
+			let thrown: unknown;
+			try {
+				await recordSettledStartup({
+					command: "/bin/sh",
+					args: [script],
+					cwd: directory,
+					env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+					columns: 100,
+					rows: 10,
+					expectedModel: "Study Model",
+					observationMs: 200,
+					stableMs: 100,
+					trace,
+					memory: {
+						enabled: true,
+						intervalMs: 250,
+						targetExecutable: "/bin/sh",
+						targetArgs: [script],
+					},
+				});
+			} catch (err) {
+				thrown = err;
+			}
+			expect(performance.now() - started).toBeLessThan(4000);
+			expect(thrown).toBeInstanceOf(AggregateError);
+			const agg = thrown as AggregateError;
+			expect(
+				agg.errors.some(
+					e =>
+						e instanceof Error &&
+						/Incomplete memory sampling: no samples recorded during stable window/.test(e.message),
+				),
+			).toBe(true);
 		},
 	);
 });

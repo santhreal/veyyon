@@ -15,9 +15,12 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:te
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
 import { NO_SESSION_FACTS } from "../src/modes/terminal/components/status-line/session-facts";
+import { StatusPresentationProducer } from "../src/presentation/status-producer";
+import { statusLineSessionParts } from "./helpers/status-line-session";
 
 beforeAll(async () => {
 	resetSettingsForTest();
@@ -64,7 +67,7 @@ function createCtx(activeMs: number): SegmentContext {
 		contextLimit: 0,
 		contextLimitKind: "window" as const,
 		autoCompactEnabled: false,
-		subagentCount: 0,
+		agentCount: 0,
 		backgroundSessionCount: 0,
 		activeMs,
 		activeRepo: null,
@@ -75,46 +78,13 @@ function createCtx(activeMs: number): SegmentContext {
 	};
 }
 
-function makeSession(
-	overrides: { isStreaming?: boolean; sessionFile?: string | undefined } = {},
-): ConstructorParameters<typeof StatusLineComponent>[0] {
-	// The component reads the session for usage stats, model, the
-	// `isStreaming` gate inside `#closeStaleActiveWindow`, and the
-	// `sessionFile` snapshot inside `#meter()` (file-change detection).
-	// The time-spent accounting path otherwise never touches it — stub
-	// with the minimum surface the constructor needs to settle.
-	return {
-		state: { messages: [], model: undefined },
-		messages: [],
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		isStreaming: overrides.isStreaming ?? false,
-		isAutoThinking: false,
-		autoResolvedThinkingLevel: () => undefined,
-		isFastModeActive: () => false,
-		isFastModeEnabled: () => false,
-		isAdvisorActive: () => false,
-		getGoalModeState: () => null,
-		getAsyncJobSnapshot: () => ({ running: [] }),
-		modelRegistry: { isUsingOAuth: () => false },
+function makeSession(overrides: { isStreaming?: boolean; sessionFile?: string | undefined } = {}): AgentSession {
+	const raw = {
+		...statusLineSessionParts({ contextWindow: 100_000, contextUsage: undefined }),
 		sessionFile: overrides.sessionFile,
-		sessionManager: {
-			getSessionName: () => "time-spent test",
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-			}),
-		},
-	} as unknown as ConstructorParameters<typeof StatusLineComponent>[0];
+		isStreaming: overrides.isStreaming ?? false,
+	};
+	return raw as unknown as AgentSession;
 }
 
 describe("time_spent segment", () => {
@@ -241,13 +211,13 @@ describe("StatusLineComponent active-time accounting", () => {
 		expect(c.getActiveMs()).toBe(0);
 	});
 
-	it("tracks meters per session: subagent agent_start opened while focused never ticks into the main meter on detach", () => {
+	it("tracks meters per session: agent agent_start opened while focused never ticks into the main meter on detach", () => {
 		// Regression for the PR review: SessionFocusController synthesizes
 		// `agent_start` on mid-turn attach but unfocusing immediately
 		// unsubscribes without a matching synthetic `agent_end`. With a
 		// single shared meter the main status line kept ticking through
-		// idle time after the subagent later finished. Per-session WeakMap
-		// keeps the leak inside the subagent's meter.
+		// idle time after the agent later finished. Per-session WeakMap
+		// keeps the leak inside the agent's meter.
 		const main = makeSession({ isStreaming: false });
 		const sub = makeSession({ isStreaming: true });
 		const c = new StatusLineComponent(main);
@@ -260,15 +230,15 @@ describe("StatusLineComponent active-time accounting", () => {
 		c.markActivityEnd();
 		expect(c.getActiveMs()).toBe(1_000);
 
-		// Focus into a streaming subagent: synthesized agent_start opens
-		// the subagent's meter only.
-		c.setSession(sub, "Subagent");
+		// Focus into a streaming agent: synthesized agent_start opens
+		// the agent's meter only.
+		c.setSession(sub, "Agent");
 		c.markActivityStart();
 		now += 3_000;
 		expect(c.getActiveMs()).toBe(3_000);
 
-		// Detach back to main while subagent is still running — the
-		// subagent meter stays open but the main meter is untouched.
+		// Detach back to main while agent is still running — the
+		// agent meter stays open but the main meter is untouched.
 		c.setSession(main);
 		expect(c.getActiveMs()).toBe(1_000);
 		// Wall-clock keeps advancing; main meter must not tick.
@@ -276,7 +246,7 @@ describe("StatusLineComponent active-time accounting", () => {
 		expect(c.getActiveMs()).toBe(1_000);
 	});
 
-	it("drops a stale subagent window on re-focus when the agent finished while we were detached", () => {
+	it("drops a stale agent window on re-focus when the agent finished while we were detached", () => {
 		// SessionFocusController only synthesizes agent_start when the
 		// session is currently streaming. Re-focusing a now-idle session
 		// whose previous meter is still open would otherwise tick over
@@ -288,20 +258,20 @@ describe("StatusLineComponent active-time accounting", () => {
 		let now = 7_000_000_000;
 		vi.spyOn(Date, "now").mockImplementation(() => now);
 
-		c.setSession(sub, "Subagent");
+		c.setSession(sub, "Agent");
 		c.markActivityStart();
 		now += 2_000;
-		// Detach mid-turn — subagent meter left open.
+		// Detach mid-turn — agent meter left open.
 		c.setSession(main);
 
-		// Long detached gap. The subagent finishes in reality during this
+		// Long detached gap. The agent finishes in reality during this
 		// gap, but we never see its agent_end because we're unsubscribed.
 		now += 600_000;
 
-		// Re-focus the (now idle) subagent. The stale window is dropped
+		// Re-focus the (now idle) agent. The stale window is dropped
 		// rather than crediting the detached gap.
 		(sub as unknown as { isStreaming: boolean }).isStreaming = false;
-		c.setSession(sub, "Subagent");
+		c.setSession(sub, "Agent");
 		expect(c.getActiveMs()).toBe(0);
 	});
 
@@ -354,5 +324,35 @@ describe("StatusLineComponent active-time accounting", () => {
 		// the meter must NOT reset.
 		(session as unknown as { sessionFile: string }).sessionFile = "/tmp/new-session.jsonl";
 		expect(c.getActiveMs()).toBe(5_000);
+	});
+
+	it("keeps active meters independent between two producer instances over the same AgentSession", () => {
+		const rawSession = {
+			...statusLineSessionParts({ contextWindow: 100_000, contextUsage: undefined }),
+			sessionFile: "/tmp/shared-session.jsonl",
+			isStreaming: false,
+		} as unknown as AgentSession;
+
+		const producerA = new StatusPresentationProducer(rawSession);
+		const producerB = new StatusPresentationProducer(rawSession);
+
+		let now = 10_000_000_000;
+		vi.spyOn(Date, "now").mockImplementation(() => now);
+
+		// Turn on producer A
+		producerA.markActivityStart();
+		now += 4_000;
+		producerA.markActivityEnd();
+
+		expect(producerA.getActiveMs()).toBe(4_000);
+		expect(producerB.getActiveMs()).toBe(0);
+
+		// Turn on producer B
+		producerB.markActivityStart();
+		now += 7_000;
+		producerB.markActivityEnd();
+
+		expect(producerA.getActiveMs()).toBe(4_000);
+		expect(producerB.getActiveMs()).toBe(7_000);
 	});
 });

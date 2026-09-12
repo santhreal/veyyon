@@ -44,9 +44,9 @@ describe("resolveConfiguredModelPatterns", () => {
 		/**
 		 * An unset role names NO model of its own.
 		 *
-		 * It used to expand to `priority.json`, which is the defect the Subagents
+		 * It used to expand to `priority.json`, which is the defect the Agents
 		 * settings area was built to fix: agent frontmatter carried `@smol` / `@slow`
-		 * / `@designer`, so a stock install ran its subagents on three different
+		 * / `@designer`, so a stock install ran its agents on three different
 		 * concrete models while every role picker said "inherit (follows main model)".
 		 * Expansion must report "nothing here" and let the caller apply inherit.
 		 */

@@ -1,6 +1,6 @@
 /**
  * Regression: when an image-only or text+image submission is delivered to a
- * focused subagent (`#submitToFocusedSession`) and `viewSession.prompt`
+ * focused agent (`#submitToFocusedSession`) and `viewSession.prompt`
  * rejects, the controller must restore both `text` AND `pendingImages` /
  * `pendingImageLinks`. Previously only `text` was handed back, so the pasted
  * image silently disappeared from the composer on retry.

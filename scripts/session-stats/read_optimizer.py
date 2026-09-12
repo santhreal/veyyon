@@ -45,7 +45,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-DB_PATH = Path.home() / ".veyyon" / "stats.db"
+from common import open_ro
+
 OUT_DIR = Path(__file__).resolve().parent / "out"
 DEFAULT_SINCE = "2026-05-04"
 
@@ -716,9 +717,7 @@ def main() -> int:
     since = datetime.strptime(args.since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     since_ms = int(since.timestamp() * 1000)
 
-    if not DB_PATH.exists():
-        sys.exit(f"db missing: {DB_PATH}")
-    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    conn = open_ro()
     groups = load_reads(conn, since_ms)
     conn.close()
     total_calls = sum(len(v) for v in groups.values())

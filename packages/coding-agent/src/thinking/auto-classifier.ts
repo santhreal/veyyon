@@ -24,7 +24,7 @@ import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import { thinkingPrompts } from "../prompts/thinking/rows";
-import { isSecretPlaceholder, PLACEHOLDER_RE } from "../secrets/placeholder";
+import { withAtomicSecretPlaceholders } from "../secrets/placeholder";
 import { preprocessTinyMessage } from "../tiny/message-preproc";
 import {
 	isTinyMemoryLocalModelKey,
@@ -33,41 +33,6 @@ import {
 } from "../tiny/models";
 import { tinyModelClient } from "../tiny/title-client";
 import { clampAutoThinkingEffort } from ".";
-
-const PLACEHOLDER_SHIELD_START = 0xe100;
-const PLACEHOLDER_SHIELD_END = 0xf8ff;
-
-/** Keep provider placeholders whole across tiny-message cleanup and middle truncation. */
-function preprocessProviderInput(text: string): string {
-	const unavailable = new Set(text);
-	let nextCodePoint = PLACEHOLDER_SHIELD_START;
-	const allocateShield = (): string => {
-		while (nextCodePoint <= PLACEHOLDER_SHIELD_END) {
-			const candidate = String.fromCharCode(nextCodePoint++);
-			if (!unavailable.has(candidate)) {
-				unavailable.add(candidate);
-				return candidate;
-			}
-		}
-		throw new Error("Too many distinct secret placeholders to preprocess safely.");
-	};
-	const padding = allocateShield();
-	const shields = new Map<string, string>();
-	const shielded = text.replace(PLACEHOLDER_RE, candidate => {
-		if (!isSecretPlaceholder(candidate)) return candidate;
-		let shield = shields.get(candidate);
-		if (!shield) {
-			shield = allocateShield();
-			shields.set(candidate, shield);
-		}
-		return shield + padding.repeat(candidate.length - 1);
-	});
-	let processed = preprocessTinyMessage(shielded).split(padding).join("");
-	for (const [placeholder, shield] of shields) {
-		processed = processed.split(shield).join(placeholder);
-	}
-	return processed;
-}
 
 const DIFFICULTY_SYSTEM_PROMPT = prompt.render(thinkingPrompts["thinking/difficulty"].text);
 
@@ -133,7 +98,7 @@ async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Prom
 		const sanitize = deps.obfuscateProviderText ?? ((text: string) => text);
 		// Exact secret replacement must precede lossy tiny-message preprocessing:
 		// otherwise middle truncation can leave a no-longer-matchable secret prefix.
-		const providerInput = preprocessProviderInput(sanitize(input));
+		const providerInput = withAtomicSecretPlaceholders(sanitize(input), preprocessTinyMessage);
 		requestContext.systemPrompt = [sanitize(DIFFICULTY_SYSTEM_PROMPT)];
 		requestContext.messages = [
 			{

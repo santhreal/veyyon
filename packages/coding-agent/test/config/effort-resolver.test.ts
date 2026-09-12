@@ -137,7 +137,7 @@ describe("resolving which effort applies", () => {
  * "Ignores a junk row" above is only half a contract. The other half is that
  * ignoring it is AUDIBLE, because "inherited" is exactly what an operator sees
  * when they set nothing: a typo left a row that looked configured and did
- * nothing, forever, with no way to notice. `resolveSubagentThinkingLevel` already
+ * nothing, forever, with no way to notice. `resolveAgentThinkingLevel` already
  * reported its own store that way, and `defaultEffort` — the ONE persisted effort
  * store the settings screen edits — did not, so the same mistake was loud in one
  * place and silent in the other.
@@ -219,11 +219,11 @@ describe("a defaultEffort row that names no level is reported, not swallowed", (
 	 * parser, so an operator who mistypes either one is told the same thing with the
 	 * same accepted list — the drift this replaced had two copies of the message.
 	 */
-	it("reports the subagent effort setting through the same owner", () => {
+	it("reports the agent effort setting through the same owner", () => {
 		const warnings: string[] = [];
 		const restore = captureLoggerWarnings(warnings);
 		try {
-			expect(parseConfiguredEffortSetting("subagent.thinkingLevel", "sideways")).toBeUndefined();
+			expect(parseConfiguredEffortSetting("agent.thinkingLevel", "sideways")).toBeUndefined();
 			expect(parseConfiguredEffortSetting('defaultEffort["*"]', "sideways")).toBeUndefined();
 		} finally {
 			restore();

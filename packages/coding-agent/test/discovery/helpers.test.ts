@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { parseFrontmatter } from "@veyyon/utils";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/discovery/capability/fs";
+import {
+	scanCustomToolsFromDir,
+	scanMarkdownCommands,
+	scanSubdirectoryHooks,
+} from "@veyyon/coding-agent/discovery/helpers";
+import { parseFrontmatter, removeWithRetries } from "@veyyon/utils";
 
 describe("parseFrontmatter", () => {
 	const parse = (content: string) => parseFrontmatter(content, { source: "tests:frontmatter", level: "off" });
@@ -145,5 +154,100 @@ Body content`;
 			nestedField: { innerKey: "value" },
 		});
 		expect(result.body).toBe("Body content");
+	});
+});
+
+describe("consolidated discovery helpers", () => {
+	let tempDir = "";
+
+	const setup = async () => {
+		clearFsCache();
+		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-discovery-helpers-test-"));
+	};
+
+	const teardown = async () => {
+		clearFsCache();
+		if (tempDir) {
+			await removeWithRetries(tempDir);
+			tempDir = "";
+		}
+	};
+
+	describe("scanCustomToolsFromDir", () => {
+		test("discovers all files and strips only recognized script extensions", async () => {
+			await setup();
+			try {
+				await fs.writeFile(path.join(tempDir, "git-helper.sh"), "#!/bin/sh\n");
+				await fs.writeFile(path.join(tempDir, "query.py"), "print('hello')\n");
+				await fs.writeFile(path.join(tempDir, "ignored.txt"), "text file\n");
+
+				const result = await scanCustomToolsFromDir(tempDir, "test-provider", "user");
+
+				expect(result.warnings).toEqual([]);
+				expect(result.items).toHaveLength(3);
+				const names = result.items.map(t => t.name).sort();
+				expect(names).toEqual(["git-helper", "ignored.txt", "query"]);
+				const gitHelper = result.items.find(t => t.name === "git-helper");
+				expect(gitHelper?.description).toBe("git-helper custom tool");
+				expect(gitHelper?.level).toBe("user");
+				expect(gitHelper?._source.provider).toBe("test-provider");
+			} finally {
+				await teardown();
+			}
+		});
+	});
+
+	describe("scanSubdirectoryHooks", () => {
+		test("scans pre/ and post/ subdirectories and parses tool names", async () => {
+			await setup();
+			try {
+				const preDir = path.join(tempDir, "pre");
+				const postDir = path.join(tempDir, "post");
+				await fs.mkdir(preDir, { recursive: true });
+				await fs.mkdir(postDir, { recursive: true });
+				await fs.writeFile(path.join(preDir, "bash.sh"), "#!/bin/sh\n");
+				await fs.writeFile(path.join(postDir, "write.bash"), "#!/bin/bash\n");
+
+				const result = await scanSubdirectoryHooks(tempDir, "claude-test", "user");
+				expect(result.warnings).toEqual([]);
+				expect(result.items).toHaveLength(2);
+
+				const pre = result.items.find(h => h.type === "pre");
+				expect(pre?.name).toBe("bash.sh");
+				expect(pre?.tool).toBe("bash");
+				expect(pre?.type).toBe("pre");
+
+				const post = result.items.find(h => h.type === "post");
+				expect(post?.name).toBe("write.bash");
+				expect(post?.tool).toBe("write");
+				expect(post?.type).toBe("post");
+			} finally {
+				await teardown();
+			}
+		});
+	});
+
+	describe("scanMarkdownCommands", () => {
+		test("parses markdown commands with frontmatter and namespace prefix", async () => {
+			await setup();
+			try {
+				await fs.writeFile(path.join(tempDir, "deploy.md"), "---\nname: custom-deploy\n---\nDeploy body");
+				await fs.writeFile(path.join(tempDir, "status.md"), "Status body");
+
+				const withFm = await scanMarkdownCommands(tempDir, "test-prov", "user", {
+					parseFrontmatter: true,
+					prefix: "my-plugin",
+				});
+				expect(withFm.items).toHaveLength(2);
+				const deploy = withFm.items.find(c => c.path.endsWith("deploy.md"));
+				expect(deploy?.name).toBe("my-plugin:custom-deploy");
+				expect(deploy?.content).toBe("Deploy body");
+				const status = withFm.items.find(c => c.path.endsWith("status.md"));
+				expect(status?.name).toBe("my-plugin:status");
+				expect(status?.content).toBe("Status body");
+			} finally {
+				await teardown();
+			}
+		});
 	});
 });

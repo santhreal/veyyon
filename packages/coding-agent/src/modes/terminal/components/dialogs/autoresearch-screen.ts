@@ -22,8 +22,9 @@ import { type Component, type SelectItem, SelectList } from "@veyyon/tui";
 import { clampLow, stripAnsi } from "@veyyon/utils";
 import { matchesKey } from "@veyyon/utils/keys";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
-import { replaceTabs, sanitizeSingleLine } from "@veyyon/utils/wrap";
+import { sanitizeSingleLine } from "@veyyon/utils/wrap";
 import {
 	ACTION_KEYS,
 	ACTION_LABELS,

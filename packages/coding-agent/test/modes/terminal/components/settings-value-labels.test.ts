@@ -3,7 +3,7 @@
  *
  * WHY THIS SUITE EXISTS. A settings row had one string doing two jobs: the value it
  * displayed and the value it stored. For a duration setting those are not the same
- * thing, so every row backed by a millisecond count showed the count. `Max Subagent
+ * thing, so every row backed by a millisecond count showed the count. `Max Agent
  * Runtime` rendered `0` while its own option list called that `Unlimited`, and the
  * prune budgets rendered `300000` and `1800000`. The labels existed the whole
  * time and only the submenu ever showed them, so the panel an operator scans read as
@@ -24,7 +24,7 @@ import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
-import { resolveSubagentIdleTtlMs } from "@veyyon/coding-agent/task/subagent-settings";
+import { resolveAgentIdleTtlMs } from "@veyyon/coding-agent/task/agent-settings";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import * as YAML from "yaml";
 import { stubStdoutGeometry } from "../../../helpers/stdout-geometry";
@@ -50,7 +50,7 @@ afterEach(() => {
 
 const makeTempDir = useTrackedTempDirs("veyyon-settings-labels-");
 
-function subagentsPanel(cwd: string = process.cwd(), width = 100): string {
+function agentsPanel(cwd: string = process.cwd(), width = 100): string {
 	const component = new SettingsSelectorComponent(
 		{
 			availableThinkingLevels: [],
@@ -62,7 +62,7 @@ function subagentsPanel(cwd: string = process.cwd(), width = 100): string {
 		},
 		{ onChange: () => {}, onCancel: () => {} },
 	);
-	component.openTab("subagents");
+	component.openTab("agents");
 	return component.render(width).map(stripVTControlCharacters).join("\n");
 }
 
@@ -80,7 +80,7 @@ function overlayOwnedBudget(ms: number): { agentDir: string; cwd: string; config
 	const overlay = path.join(root, "overlay.yml");
 	fs.mkdirSync(agentDir, { recursive: true });
 	fs.mkdirSync(cwd, { recursive: true });
-	fs.writeFileSync(overlay, YAML.stringify({ subagent: { prune: { afterMs: ms } } }));
+	fs.writeFileSync(overlay, YAML.stringify({ agent: { prune: { afterMs: ms } } }));
 	return { agentDir, cwd, configFiles: [overlay] };
 }
 
@@ -91,7 +91,7 @@ describe("settings rows show option labels, not stored values", () => {
 	 * have to see.
 	 */
 	it("renders the prune budgets as durations", () => {
-		const panel = subagentsPanel();
+		const panel = agentsPanel();
 
 		expect(panel).toContain("Prune After");
 		expect(panel).toContain("1 hour");
@@ -102,13 +102,13 @@ describe("settings rows show option labels, not stored values", () => {
 
 	/**
 	 * A zero that the option list names is the worst case for a raw-value row, because
-	 * `0` looks like a real answer and quietly means the opposite of one. `Max Subagent
+	 * `0` looks like a real answer and quietly means the opposite of one. `Max Agent
 	 * Runtime` is that row, and it predates the prune settings entirely.
 	 */
 	it("renders a named zero by its label", () => {
-		const panel = subagentsPanel();
+		const panel = agentsPanel();
 
-		expect(panel).toContain("Max Subagent Runtime");
+		expect(panel).toContain("Max Agent Runtime");
 		expect(panel).toContain("Unlimited");
 	});
 
@@ -118,9 +118,9 @@ describe("settings rows show option labels, not stored values", () => {
 	 * which is exactly when they are looking at it.
 	 */
 	it("labels a configured value, not only the default", async () => {
-		await Settings.instance.set("subagent.prune.afterMs", 3_600_000);
+		await Settings.instance.set("agent.prune.afterMs", 3_600_000);
 
-		const panel = subagentsPanel();
+		const panel = agentsPanel();
 
 		expect(panel).toContain("1 hour");
 		expect(panel).not.toContain("3600000");
@@ -133,9 +133,9 @@ describe("settings rows show option labels, not stored values", () => {
 	 * which read as "never expire" and would silently disable pruning altogether.
 	 */
 	it("keeps the stored value numeric while showing a label", () => {
-		subagentsPanel();
+		agentsPanel();
 
-		const stored = Settings.instance.get("subagent.prune.waitingAfterMs");
+		const stored = Settings.instance.get("agent.prune.waitingAfterMs");
 		expect(typeof stored).toBe("number");
 		expect(stored).toBe(7_200_000);
 	});
@@ -146,9 +146,9 @@ describe("settings rows show option labels, not stored values", () => {
 	 * would hide a setting that is genuinely in effect.
 	 */
 	it("falls back to the raw value when no option matches", async () => {
-		await Settings.instance.set("subagent.prune.afterMs", 111_000);
+		await Settings.instance.set("agent.prune.afterMs", 111_000);
 
-		expect(subagentsPanel()).toContain("111000");
+		expect(agentsPanel()).toContain("111000");
 	});
 
 	/**
@@ -176,7 +176,7 @@ describe("settings rows show option labels, not stored values", () => {
 		// enough; the stub has to be replaced.
 		geometryStub?.restore();
 		geometryStub = stubStdoutGeometry({ columns: 140, rows: 40 });
-		const panel = subagentsPanel(fixture.cwd, 140);
+		const panel = agentsPanel(fixture.cwd, 140);
 
 		expect(panel).toContain("--config file · 1 hour");
 		expect(panel).not.toContain("3600000");
@@ -196,20 +196,20 @@ describe("settings rows show option labels, not stored values", () => {
 describe("the Prune group follows its own switch", () => {
 	/** On: the switch and both budgets. */
 	it("shows both budgets while prune is enabled", () => {
-		const panel = subagentsPanel();
+		const panel = agentsPanel();
 
-		expect(panel).toContain("Prune Parked Subagents");
+		expect(panel).toContain("Prune Parked Agents");
 		expect(panel).toContain("Prune After");
 		expect(panel).toContain("Prune After While Waiting");
 	});
 
 	/** Off: the switch alone, so no inert timer is left claiming a schedule. */
 	it("hides both budgets while prune is disabled", async () => {
-		await Settings.instance.set("subagent.prune.enabled", false);
+		await Settings.instance.set("agent.prune.enabled", false);
 
-		const panel = subagentsPanel();
+		const panel = agentsPanel();
 
-		expect(panel).toContain("Prune Parked Subagents");
+		expect(panel).toContain("Prune Parked Agents");
 		expect(panel).not.toContain("Prune After");
 	});
 });
@@ -217,7 +217,7 @@ describe("the Prune group follows its own switch", () => {
 /**
  * Stage one of the park/prune lifecycle is reachable at all.
  *
- * WHY THIS EXISTS. `subagent.idleTtlMs` decides when a finished subagent releases
+ * WHY THIS EXISTS. `agent.idleTtlMs` decides when a finished agent releases
  * its session, it carries a `ui` block with a tab, a group, a label and a
  * description, and `docs/handbook/src/reference/settings-reference.md` lists it as a setting. It rendered
  * nowhere. `pathToSettingDef` drops a numeric setting that declares no `ui.options`,
@@ -229,19 +229,19 @@ describe("the Prune group follows its own switch", () => {
  * the def list is what was already lying: the schema entry existed the whole time.
  */
 describe("stage one of the park/prune lifecycle is on the settings screen", () => {
-	it("renders the Park After row as a duration beside the prune budgets", () => {
-		const panel = subagentsPanel();
+	it("renders the Park Idle Agents After row as a duration beside the prune budgets", () => {
+		const panel = agentsPanel();
 
-		expect(panel).toContain("Park After");
+		expect(panel).toContain("Park Idle Agents After");
 		expect(panel).toContain("5 minutes");
 		expect(panel).not.toContain("300000");
 	});
 
 	/** The off value has a name, and a bare `0` in a duration column reads as a bug. */
 	it("renders a zero idle TTL by its label", async () => {
-		await Settings.instance.set("subagent.idleTtlMs", 0);
+		await Settings.instance.set("agent.idleTtlMs", 0);
 
-		const panel = subagentsPanel();
+		const panel = agentsPanel();
 
 		expect(panel).toContain("Until exit");
 	});
@@ -249,21 +249,21 @@ describe("stage one of the park/prune lifecycle is on the settings screen", () =
 	/**
 	 * The row is wired to the value the lifecycle actually reads. A row that renders
 	 * correctly and edits a path nothing consumes is the same dead knob as no row at
-	 * all, so the displayed label and `resolveSubagentIdleTtlMs` are asserted from one
+	 * all, so the displayed label and `resolveAgentIdleTtlMs` are asserted from one
 	 * write.
 	 */
 	it("feeds the value the park timer reads", async () => {
-		await Settings.instance.set("subagent.idleTtlMs", 900_000);
+		await Settings.instance.set("agent.idleTtlMs", 900_000);
 
-		expect(subagentsPanel()).toContain("15 minutes");
-		expect(resolveSubagentIdleTtlMs(Settings.instance)).toBe(900_000);
+		expect(agentsPanel()).toContain("15 minutes");
+		expect(resolveAgentIdleTtlMs(Settings.instance)).toBe(900_000);
 	});
 });
 
 /**
  * The search result list is a SECOND render path, built by `#setSearchQuery` into its
  * own `SettingsList`, and it is the path an operator reaches these rows by most of
- * the time: typing "prune" is faster than finding the Subagents tab. Both paths build
+ * the time: typing "prune" is faster than finding the Agents tab. Both paths build
  * their rows through `#defToItem`, so the labeller reaches search today, but nothing
  * held that: a search-specific item builder would regress it while every tab-panel
  * assertion above stayed green.
@@ -281,7 +281,7 @@ describe("search results are labelled too", () => {
 			},
 			{ onChange: () => {}, onCancel: () => {} },
 		);
-		component.openTab("subagents");
+		component.openTab("agents");
 		// A printable keystroke is what opens the cross-tab search.
 		component.handleInput("prune after");
 		const panel = component.render(100).map(stripVTControlCharacters).join("\n");

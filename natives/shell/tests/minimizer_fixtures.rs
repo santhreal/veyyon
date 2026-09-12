@@ -96,6 +96,22 @@ fn check_fixture(fixture: &Fixture, cfg: &MinimizerConfig) -> Result<(), String>
 
 	let mut problems: Vec<String> = Vec::new();
 
+	// The dispatcher must preserve capture accounting and artifact contents for
+	// every discovered fixture, not only produce the expected visible text.
+	if out.input_bytes != raw_len || out.output_bytes != min_len {
+		problems.push(format!(
+			"byte accounting: reported {}/{} B, actual {raw_len}/{min_len} B",
+			out.input_bytes, out.output_bytes
+		));
+	}
+	if out.changed {
+		if out.original_text.as_deref() != Some(fixture.raw.as_str()) {
+			problems.push("rewritten output lost the original capture".to_string());
+		}
+	} else if minimized != fixture.raw {
+		problems.push("unchanged output differs from the captured bytes".to_string());
+	}
+
 	if raw_len >= GATE_MIN_BYTES {
 		let budget = (SAVINGS_RATIO * raw_len as f64).floor() as usize;
 		if min_len > budget {

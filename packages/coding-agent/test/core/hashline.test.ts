@@ -349,7 +349,7 @@ describe("hashline — anchor-stale recovery via read snapshot cache", () => {
 			// Simulate the read tool having shown V0 to the model in this session.
 			const v0Tag = recordFullSnapshot(getFileReadCache(session), filePath, v0Text);
 
-			// External actor (linter, subagent, user) insert heads 7 lines. Anchors
+			// External actor (linter, agent, user) insert heads 7 lines. Anchors
 			// authored against V0 no longer match V1, so the model's edit cannot
 			// land without consulting the cached snapshot.
 			const headerLines = ["H1", "H2", "H3", "H4", "H5", "H6", "H7"];

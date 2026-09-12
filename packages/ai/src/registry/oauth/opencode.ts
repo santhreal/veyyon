@@ -9,8 +9,7 @@
  * 3. User pastes the API key back into the CLI
  */
 
-import * as AIError from "../../error";
-import type { OAuthController } from "./types";
+import { createApiKeyLogin } from "../api-key-login";
 
 const AUTH_URL = "https://opencode.ai/auth";
 
@@ -20,32 +19,11 @@ const AUTH_URL = "https://opencode.ai/auth";
  * Opens browser to auth page, prompts user to paste their API key.
  * Returns the API key directly (not OAuthCredentials - this isn't OAuth).
  */
-export async function loginOpenCode(options: OAuthController): Promise<string> {
-	if (!options.onPrompt) {
-		throw new AIError.OnPromptRequiredError("OpenCode Zen");
-	}
-
-	// Open browser to auth page
-	options.onAuth?.({
-		url: AUTH_URL,
-		instructions: "Log in and copy your API key",
-	});
-
-	// Prompt user to paste their API key
-	const apiKey = await options.onPrompt({
-		message: "Paste your OpenCode Zen API key",
-		placeholder: "sk-...",
-		secret: true,
-	});
-
-	if (options.signal?.aborted) {
-		throw new AIError.LoginCancelledError();
-	}
-
-	const trimmed = apiKey.trim();
-	if (!trimmed) {
-		throw new AIError.ApiKeyRequiredError();
-	}
-
-	return trimmed;
-}
+export const loginOpenCode = createApiKeyLogin({
+	providerLabel: "OpenCode Zen",
+	authUrl: AUTH_URL,
+	instructions: "Log in and copy your API key",
+	promptMessage: "Paste your OpenCode Zen API key",
+	placeholder: "sk-...",
+	validation: null,
+});

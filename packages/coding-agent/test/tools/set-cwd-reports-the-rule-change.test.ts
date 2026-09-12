@@ -12,7 +12,7 @@
  * Only the interactive TUI ever repaired that. Its `cwd_changed` handler runs
  * `applyCwdChange`, which reloads project settings and rebuilds the base system
  * prompt for the new directory. An SDK session, an ACP session, a headless run
- * and every subagent re-rooted with no rule reload at all, so they kept following
+ * and every agent re-rooted with no rule reload at all, so they kept following
  * the previous project's instructions for the rest of the session, and nothing in
  * the transcript said so. Even in the TUI the repair lands on the NEXT prompt,
  * after the turn that called `set_cwd` has already continued working under the
@@ -36,8 +36,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
-import { fsRenderers } from "@veyyon/coding-agent/tools/fs/renderers";
 import { SetCwdTool, type SetCwdToolDetails } from "@veyyon/coding-agent/tools/fs/set-cwd";
+import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { Component } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
@@ -224,7 +224,7 @@ describe("set_cwd rule reporting", () => {
 		const { tool } = toolAt(outer);
 		const result = await tool.execute("s1", { path: sibling });
 		const theme = (await getThemeByName("titanium"))!;
-		const rendered = await renderToText(fsRenderers.set_cwd?.renderResult?.(result, {} as never, theme));
+		const rendered = await renderToText(toolRenderers.set_cwd?.renderResult?.(result, {} as never, theme));
 
 		expect(rendered).toContain("+1 -1 rule files");
 	});
@@ -237,7 +237,7 @@ describe("set_cwd rule reporting", () => {
 		const { tool } = toolAt(outer);
 		const result = await tool.execute("s1", { path: sibling });
 		const theme = (await getThemeByName("titanium"))!;
-		const rendered = await renderToText(fsRenderers.set_cwd?.renderResult?.(result, {} as never, theme));
+		const rendered = await renderToText(toolRenderers.set_cwd?.renderResult?.(result, {} as never, theme));
 
 		expect(rendered).toContain("+1 rule file");
 		expect(rendered).not.toContain("rule files");

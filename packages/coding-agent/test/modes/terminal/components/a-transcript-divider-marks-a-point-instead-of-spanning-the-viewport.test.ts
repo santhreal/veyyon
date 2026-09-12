@@ -21,6 +21,7 @@
  */
 
 import { beforeAll, describe, expect, it } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
 	createBranchSummaryMessage,
 	createCompactionSummaryMessage,
@@ -29,11 +30,17 @@ import {
 import { KEYBINDINGS } from "@veyyon/coding-agent/config/keybindings";
 import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
 import * as cacheMarkerModule from "@veyyon/coding-agent/modes/terminal/components/transcript/cache-invalidation-marker";
-import * as compactionModule from "@veyyon/coding-agent/modes/terminal/components/transcript/compaction-summary-message";
+import * as compactionModule from "@veyyon/coding-agent/modes/terminal/components/transcript/summary-message";
 import { TRANSCRIPT_DIVIDER_RULE_WIDTH } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-divider";
+import {
+	toBranchSummaryView,
+	toCompactionSummaryView,
+	toHandoffSummaryView,
+} from "@veyyon/coding-agent/presentation/summary-builder";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { Component } from "@veyyon/tui";
 import { KeybindingsManager, setKeybindings } from "@veyyon/utils/keybindings";
+import type { SummaryMessageView } from "@veyyon/wire/presentation";
 
 const WIDTH = 80;
 
@@ -44,28 +51,37 @@ beforeAll(async () => {
 	setKeybindings(new KeybindingsManager(KEYBINDINGS));
 });
 
-/** Every exported component whose render draws a divider row, by export name. */
-const FIXTURES: Record<string, () => Component> = {
-	CompactionSummaryMessageComponent: () =>
-		new compactionModule.CompactionSummaryMessageComponent(
-			createCompactionSummaryMessage("Earlier the login TTL bug was fixed.", 84_000, new Date().toISOString()),
-		),
-	HandoffSummaryMessageComponent: () =>
-		new compactionModule.HandoffSummaryMessageComponent(
-			createCustomMessage(
-				"handoff",
-				"<handoff-context>\nCarry the TTL fix forward.\n</handoff-context>",
-				true,
-				undefined,
-				new Date().toISOString(),
+const SUMMARY_FIXTURES: Record<SummaryMessageView["kind"], () => Component> = {
+	"compaction-summary": () =>
+		new compactionModule.SummaryMessageComponent(
+			toCompactionSummaryView(
+				createCompactionSummaryMessage("Compaction summary.", 84_000, new Date().toISOString()),
 			),
 		),
-	BranchSummaryMessageComponent: () =>
-		new compactionModule.BranchSummaryMessageComponent(
-			createBranchSummaryMessage("The side branch landed the parser fix.", "branch-1", new Date().toISOString()),
+	"handoff-summary": () =>
+		new compactionModule.SummaryMessageComponent(
+			toHandoffSummaryView(
+				createCustomMessage(
+					"handoff",
+					"<handoff-context>\nHandoff summary.\n</handoff-context>",
+					true,
+					undefined,
+					new Date().toISOString(),
+				),
+			)!,
 		),
-	CacheInvalidationMarkerComponent: () =>
-		new cacheMarkerModule.CacheInvalidationMarkerComponent({ reprocessedTokens: 50_999 }),
+	"branch-summary": () =>
+		new compactionModule.SummaryMessageComponent(
+			toBranchSummaryView(createBranchSummaryMessage("Branch summary.", "branch-1", new Date().toISOString())),
+		),
+};
+
+/** Every exported divider and every summary variant takes the same shape checks. */
+const FIXTURES = {
+	SummaryMessageComponent: SUMMARY_FIXTURES,
+	CacheInvalidationMarkerComponent: {
+		cache: () => new cacheMarkerModule.CacheInvalidationMarkerComponent({ reprocessedTokens: 50_999 }),
+	},
 };
 
 /**
@@ -97,41 +113,52 @@ describe("a transcript divider", () => {
 		expect(exportedDividerComponents()).toEqual(Object.keys(FIXTURES).sort());
 	});
 
-	for (const [name, make] of Object.entries(FIXTURES)) {
-		describe(name, () => {
-			it("starts on the transcript's rail", () => {
-				const row = dividerRow(make(), WIDTH);
-				// Every other transcript block opens at the composer gutter. A divider
-				// only sat at column zero while it spanned the viewport.
-				expect(row.slice(0, COMPOSER_INSET_COLS)).toBe(" ".repeat(COMPOSER_INSET_COLS));
-				expect(row[COMPOSER_INSET_COLS]).not.toBe(" ");
-			});
+	it("covers every summary kind declared by the display contract", () => {
+		const source = readFileSync(
+			new URL("../../../../../../contracts/wire/src/presentation/summary.ts", import.meta.url),
+			"utf8",
+		);
+		const kinds = [...source.matchAll(/\bkind:\s*"([^"]+)"/g)].map(match => match[1]!).sort();
+		expect(Object.keys(SUMMARY_FIXTURES).sort()).toEqual(kinds);
+	});
 
-			it("opens with a short rule and stops at its label", () => {
-				const row = dividerRow(make(), WIDTH).slice(COMPOSER_INSET_COLS);
-				const rule = theme.tree.horizontal;
-				const leading = row.length - row.replace(new RegExp(`^${rule}+`), "").length;
+	for (const [componentName, variants] of Object.entries(FIXTURES)) {
+		for (const [kind, make] of Object.entries(variants)) {
+			describe(`${componentName}/${kind}`, () => {
+				it("starts on the transcript's rail", () => {
+					const row = dividerRow(make(), WIDTH);
+					// Every other transcript block opens at the composer gutter. A divider
+					// only sat at column zero while it spanned the viewport.
+					expect(row.slice(0, COMPOSER_INSET_COLS)).toBe(" ".repeat(COMPOSER_INSET_COLS));
+					expect(row[COMPOSER_INSET_COLS]).not.toBe(" ");
+				});
 
-				expect(leading).toBe(TRANSCRIPT_DIVIDER_RULE_WIDTH);
-				// Pinned against the constant AND against an absolute ceiling: reading
-				// only the constant would follow it up to any width and call a rule
-				// spanning half the viewport a mark.
-				expect(leading).toBeLessThanOrEqual(12);
-				expect(row[leading]).toBe(" ");
-				// A trailing rule is the full-width shape this suite exists to keep out.
-				expect(row.trimEnd().endsWith(rule)).toBe(false);
-			});
+				it("opens with a short rule and stops at its label", () => {
+					const row = dividerRow(make(), WIDTH).slice(COMPOSER_INSET_COLS);
+					const rule = theme.tree.horizontal;
+					const leading = row.length - row.replace(new RegExp(`^${rule}+`), "").length;
 
-			it("does not span the viewport", () => {
-				const row = dividerRow(make(), WIDTH);
-				expect(Bun.stringWidth(row.trimEnd())).toBeLessThan(WIDTH);
-			});
+					expect(leading).toBe(TRANSCRIPT_DIVIDER_RULE_WIDTH);
+					// Pinned against the constant AND against an absolute ceiling: reading
+					// only the constant would follow it up to any width and call a rule
+					// spanning half the viewport a mark.
+					expect(leading).toBeLessThanOrEqual(12);
+					expect(row[leading]).toBe(" ");
+					// A trailing rule is the full-width shape this suite exists to keep out.
+					expect(row.trimEnd().endsWith(rule)).toBe(false);
+				});
 
-			it("drops the rule rather than the words when the viewport cannot hold both", () => {
-				const row = dividerRow(make(), 12);
-				expect(row.trimStart().startsWith(theme.tree.horizontal)).toBe(false);
-				expect(row.trim().length).toBeGreaterThan(0);
+				it("does not span the viewport", () => {
+					const row = dividerRow(make(), WIDTH);
+					expect(Bun.stringWidth(row.trimEnd())).toBeLessThan(WIDTH);
+				});
+
+				it("drops the rule rather than the words when the viewport cannot hold both", () => {
+					const row = dividerRow(make(), 12);
+					expect(row.trimStart().startsWith(theme.tree.horizontal)).toBe(false);
+					expect(row.trim().length).toBeGreaterThan(0);
+				});
 			});
-		});
+		}
 	}
 });

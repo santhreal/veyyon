@@ -6,7 +6,7 @@
  * line after the changelog roll with a bare
  * `Bun.write(ROOT_PATH, buildRootChangelog())` and never consulted it, which is
  * the worst place to lose the check: by the time anyone notices an entry is
- * missing, the tag, the npm packages and the GitHub release have all shipped
+ * missing, the tag and the GitHub release have all shipped
  * under a changelog that never mentioned it.
  *
  * The check now owns the write, so both callers go through it. These tests drive

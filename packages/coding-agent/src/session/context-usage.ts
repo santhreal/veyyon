@@ -14,7 +14,7 @@
 
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { CompactionSettings } from "@veyyon/agent-core/compaction";
-import { estimateTokens } from "@veyyon/agent-core/compaction";
+import { estimateTokens } from "@veyyon/agent-core/compaction/token-estimate";
 import type { ContextSnapshot, Model } from "@veyyon/ai";
 import type { SessionTelemetryDetail } from "@veyyon/ai/instrumentation";
 import { resolveContextLimit } from "../config/compaction-strategy";

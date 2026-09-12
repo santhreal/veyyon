@@ -6,6 +6,25 @@ use regex::Regex;
 
 use crate::minimizer::{MinimizerCtx, MinimizerOutput, primitives};
 
+const RUNNER_BOILERPLATE: &[&str] = &[
+	"Running with gitlab-runner",
+	"Using Docker executor",
+	"Running on runner-",
+	"Preparing the",
+	"Preparing environment",
+	"Getting source from",
+	"Resolving secrets",
+	"Cleaning up",
+	"Uploading artifacts",
+	"Downloading artifacts",
+	"Runtime platform",
+	"Fetching changes with git",
+	"Initialized empty Git",
+	"Created fresh repository",
+	"Checking out ",
+	"Skipping Git submodules",
+];
+
 /// Match GitLab CI section markers: `section_start/end:timestamp:name` followed
 /// by bracket code.
 static SECTION_MARKER_RE: LazyLock<Regex> =
@@ -49,11 +68,7 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 		_ => primitives::head_tail_dedup(&cleaned),
 	};
 
-	if text == input {
-		MinimizerOutput::passthrough(input)
-	} else {
-		MinimizerOutput::transformed(text, input.len())
-	}
+	MinimizerOutput::maybe_transformed(input, text)
 }
 
 /// Check whether the command should be passed through unmodified.
@@ -109,24 +124,10 @@ fn filter_ci_trace(input: &str) -> String {
 		}
 		previous_blank = false;
 
-		// Skip runner boilerplate
-		if trimmed.starts_with("Running with gitlab-runner")
-			|| (trimmed.starts_with("on ") && trimmed.contains("system ID:"))
-			|| trimmed.starts_with("Using Docker executor")
-			|| trimmed.starts_with("Running on runner-")
-			|| trimmed.starts_with("Preparing the")
-			|| trimmed.starts_with("Preparing environment")
-			|| trimmed.starts_with("Getting source from")
-			|| trimmed.starts_with("Resolving secrets")
-			|| trimmed.starts_with("Cleaning up")
-			|| trimmed.starts_with("Uploading artifacts")
-			|| trimmed.starts_with("Downloading artifacts")
-			|| trimmed.starts_with("Runtime platform")
-			|| trimmed.starts_with("Fetching changes with git")
-			|| trimmed.starts_with("Initialized empty Git")
-			|| trimmed.starts_with("Created fresh repository")
-			|| trimmed.starts_with("Checking out ")
-			|| trimmed.starts_with("Skipping Git submodules")
+		if (trimmed.starts_with("on ") && trimmed.contains("system ID:"))
+			|| RUNNER_BOILERPLATE
+				.iter()
+				.any(|prefix| trimmed.starts_with(prefix))
 		{
 			continue;
 		}
@@ -290,59 +291,7 @@ fn filter_mr_issue_view(input: &str, exit_code: i32) -> String {
 	if exit_code != 0 {
 		return primitives::head_tail_dedup(input);
 	}
-	filter_markdown_body_view(input)
-}
-
-// ── Markdown body filter (mr view / issue view) ──────────────────────
-
-/// Filter markdown body noise: HTML comments, badges, image-only lines,
-/// horizontal rules. Collapse multiple blank lines. Apply `head_tail_dedup`.
-fn filter_markdown_body_view(input: &str) -> String {
-	let mut out = String::new();
-	let mut in_html_comment = false;
-	let mut previous_blank = false;
-	let mut comment_lines = 0usize;
-
-	for line in input.lines() {
-		let trimmed = line.trim();
-		if in_html_comment {
-			if trimmed.contains("-->") {
-				in_html_comment = false;
-				comment_lines = 0;
-			} else {
-				comment_lines += 1;
-				// Safety: cap unclosed comment consumption at 50 lines to
-				// prevent data loss from malformed/truncated markdown.
-				if comment_lines > 50 {
-					in_html_comment = false;
-					comment_lines = 0;
-				}
-			}
-			continue;
-		}
-		if trimmed.starts_with("<!--") {
-			if !trimmed.contains("-->") {
-				in_html_comment = true;
-				comment_lines = 0;
-			}
-			continue;
-		}
-		if primitives::is_markdown_badge_or_image(trimmed) || primitives::is_horizontal_rule(trimmed)
-		{
-			continue;
-		}
-		if trimmed.is_empty() {
-			if !previous_blank {
-				out.push('\n');
-			}
-			previous_blank = true;
-			continue;
-		}
-		previous_blank = false;
-		out.push_str(line.trim_end());
-		out.push('\n');
-	}
-	primitives::head_tail_dedup(&out)
+	primitives::filter_markdown_body_view(input)
 }
 
 #[cfg(test)]

@@ -75,12 +75,11 @@ import type {
 	StatusLinePreset,
 	StatusLineSegmentId,
 } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
-import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { stripAnsi } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
 import { NO_SESSION_FACTS } from "../../../../../src/modes/terminal/components/status-line/session-facts";
-import { makeStatusLineSession } from "../../../../helpers/status-line-session";
+import { makeStatusLineProducer } from "../../../../helpers/status-line-session";
 import { useTrackedTempDirs } from "../../../../helpers/tracked-temp-dir";
 
 const makeTempDir = useTrackedTempDirs("veyyon-statusline-terminal-safety-");
@@ -109,11 +108,11 @@ function given(columns: number): number {
  * every segment printing text this process did not author, not only the two that read the
  * filesystem. A model name is provider text; a session name is a generated title.
  */
-function stubSession(cwd: string, modelName = "claude\x1b[31m-3-7-sonnet"): AgentSession {
+function stubSession(cwd: string, modelName = "claude\x1b[31m-3-7-sonnet") {
 	// Hostile by default: the model name is provider text and the session name is
 	// a generated title, so the row sweep reaches every segment printing text
 	// this process did not author, not only the two that read the filesystem.
-	return makeStatusLineSession({
+	return makeStatusLineProducer({
 		cwd: () => cwd,
 		modelName,
 		sessionName: "ingest\r-normalizer\x07-session",

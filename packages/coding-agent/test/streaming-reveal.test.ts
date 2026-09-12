@@ -1,5 +1,4 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import type { AssistantMessage } from "@veyyon/ai";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import {
 	BlockUnitCounter,
@@ -13,60 +12,76 @@ import {
 } from "@veyyon/coding-agent/modes/terminal/controllers/streaming-reveal";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { getSegmenter } from "@veyyon/utils/width";
+import type { AssistantMessageView, AssistantSegment } from "@veyyon/wire/presentation";
 
 beforeAll(async () => {
 	await initTheme(false);
 });
 
-function makeUsage(): AssistantMessage["usage"] {
+function makeMessage(
+	content:
+		| AssistantSegment[]
+		| Array<
+				| { type: "text"; text: string }
+				| { type: "thinking"; thinking: string; thinkingSignature?: string }
+				| { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> }
+		  >,
+): AssistantMessageView {
+	const segments: AssistantSegment[] = [];
+	for (const block of content) {
+		if ("kind" in block) {
+			segments.push(block);
+		} else if (block.type === "text") {
+			segments.push({ kind: "text", text: block.text });
+		} else if (block.type === "thinking") {
+			const rawThinking =
+				"rawThinking" in block && typeof block.rawThinking === "string" ? block.rawThinking : undefined;
+			segments.push({
+				kind: "thinking",
+				text: block.thinking,
+				redacted: false,
+				...(rawThinking !== undefined ? { rawThinking } : {}),
+			});
+		} else if (block.type === "toolCall") {
+			segments.push({
+				kind: "tool-call",
+				toolCallId: block.id,
+				toolName: block.name,
+				input: JSON.stringify(block.arguments),
+			});
+		}
+	}
 	return {
-		input: 0,
-		output: 0,
-		cacheRead: 0,
-		cacheWrite: 0,
-		totalTokens: 0,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-	};
-}
-
-function makeMessage(content: AssistantMessage["content"]): AssistantMessage {
-	return {
-		role: "assistant",
-		content,
-		api: "anthropic-messages",
-		provider: "anthropic",
+		segments,
 		model: "mock",
-		usage: makeUsage(),
-		stopReason: "stop",
-		timestamp: 0,
+		stopReason: "complete",
 	};
 }
 
-function textAt(message: AssistantMessage, index: number): string {
-	const block = message.content[index];
-	if (block?.type !== "text") {
+function textAt(message: AssistantMessageView, index: number): string {
+	const block = message.segments[index];
+	if (block?.kind !== "text") {
 		throw new Error(`Expected text block at index ${index}`);
 	}
 	return block.text;
 }
 
-function thinkingAt(message: AssistantMessage, index: number): string {
-	const block = message.content[index];
-	if (block?.type !== "thinking") {
+function thinkingAt(message: AssistantMessageView, index: number): string {
+	const block = message.segments[index];
+	if (block?.kind !== "thinking") {
 		throw new Error(`Expected thinking block at index ${index}`);
 	}
-	return block.thinking;
+	return block.text;
 }
 
 class RecordingComponent {
-	messages: AssistantMessage[] = [];
+	messages: AssistantMessageView[] = [];
 	transientFlags: Array<boolean | undefined> = [];
 
-	updateContent(message: AssistantMessage, opts?: { transient?: boolean }): void {
+	updateContent(message: AssistantMessageView, opts?: { transient?: boolean }): void {
 		this.messages.push(message);
 		this.transientFlags.push(opts?.transient);
 	}
-
 	// Component protocol stub — the reveal controller now hands the component
 	// to `requestComponentRender`, which only exercises identity, so returning
 	// an empty rendered frame is sufficient for these tests.
@@ -75,7 +90,7 @@ class RecordingComponent {
 	}
 }
 
-function latestMessage(component: RecordingComponent): AssistantMessage {
+function latestMessage(component: RecordingComponent): AssistantMessageView {
 	const message = component.messages.at(-1);
 	if (!message) {
 		throw new Error("Expected at least one rendered message");
@@ -119,7 +134,7 @@ describe("streaming reveal", () => {
 		expect(visibleUnits(target, true)).toBe("answer".length);
 		const display = buildDisplayMessage(target, 1, true);
 
-		expect(display.content[0]).toBe(thinkingBlock);
+		expect(display.segments[0]).toEqual(expect.objectContaining({ kind: "thinking", text: "thought" }));
 		expect(thinkingAt(display, 0)).toBe("thought");
 		expect(textAt(display, 1)).toBe("a");
 	});
@@ -131,7 +146,7 @@ describe("streaming reveal", () => {
 		expect(visibleUnits(target, false)).toBe("answer".length);
 		const display = buildDisplayMessage(target, 1, false);
 
-		expect(display.content[0]).toBe(thinkingBlock);
+		expect(display.segments[0]).toEqual(expect.objectContaining({ kind: "thinking", text: "..." }));
 		expect(textAt(display, 1)).toBe("a");
 	});
 

@@ -15,9 +15,6 @@ export { namespaceSessionId, PYTHON_SESSION_PREFIX } from "./session-namespace";
 // snapshot of whichever binding existed at import time.
 export default createKernelBackend<PythonExecutorOptions>({
 	id: "python",
-	label: "Python",
-	highlightLang: "python",
-	settingPrefix: "python",
 	sessionPrefix: PYTHON_SESSION_PREFIX,
 	checkAvailability: (cwd, interpreter) => checkPythonKernelAvailability(cwd, interpreter),
 	execute: (code, options) => executePython(code, options),

@@ -64,11 +64,41 @@ const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
  * launch runs is the same, and re-pinning here is the decision that growth is supposed to
  * force.
  *
+ * RE-MEASURED 2026-09-11 at 1637, up from 1624: 93 modules arrived and 79 left. What left is
+ * the eval kernels and their bridges (`eval/*`, 41 modules, no longer on the launch path), the
+ * `@veyyon/ai` barrel and the twelve provider and auth modules only it reached, the vibe tool and
+ * its runtime, `catalog/registry-snapshot`, `kernel/session/auth-storage` and `utils/html-markdown`.
+ * What arrived, by group: every tool card as a view the host draws (`tools/<domain>/<tool>-view.ts`,
+ * `tools/view-registry.ts`, `presentation/{read-group,tool-call-preview,tool-execution,web-tool-display}.ts`,
+ * `edit/edit-view.ts`, `goals/goal-view.ts`, `task/task-view.ts`, `tools/core/{json-tree-render,list-limit}.ts`,
+ * `tools/search/search-card-limits.ts`, `tools/web/read-url-target.ts`), each a sibling of a tool module
+ * that was already reached; the subagent surfaces renamed to agent (`prompts/agent/*`,
+ * `settings-domains/agents.ts`, the two agent tool-policy statements) plus the task modules split out
+ * beside them (`task/{agent-settings,agent-stats,model-selector,outcome,repair-args,task-id}.ts`);
+ * six engine leaves (`components/form.ts`, `utils/{border,hover-controller,scroll-layout,search-filter,text-layout}.ts`)
+ * and three `contracts/wire` leaves (`collab-link`, `presentation/theme`, `task-result`); the hashline
+ * operations table and the edit modules that read it (`plugins/hashline/src/operations.ts`,
+ * `edit/hashline/{block-resolver,diff}.ts`, `edit/streaming.ts`); the product's own tool-event input
+ * (`extensibility/tool-event-input.ts`, replacing the kernel's); the utils leaves the launch now reads
+ * (`cli-usage-error`, `fs-tool-args`, `github-check-run`, `json-snapshot`, `tab-width`, `terminal-emulator`);
+ * and the staged compaction absorbed from origin/main (`agent/compaction/staged-summary.ts` and its two
+ * prompt bodies) with `ai/providers/initial-message.ts` and `catalog/discovery/failure.ts`. The rest are
+ * one-file terminal and session helpers (`config/settings-signals`, `debug/session-snapshot`,
+ * `internal-urls/resolve-sync`, `modes/terminal/{launch-formatting,draw/utils,utils/async-tool-state}`,
+ * `components/{dialogs/plan-toc,selectors/select-list-mouse-routing,status-line/location-context}`,
+ * `session/account-format`, `slash-commands/helpers/mcp-args`, `subprocess/worker-request-client`,
+ * `thinking/constants`).
+ *
+ * RE-MEASURED 2026-09-11 at 1639, up from 1637: `@veyyon/view` grew its first value export,
+ * `UNICODE_SYMBOLS`, the glyph table the terminal, the GUI host and the HTML export draw from,
+ * so the walker now counts `contracts/view/src/index.ts` and `contracts/view/src/symbols.ts`,
+ * which it skipped while the package was reached by type only.
+ *
  * A ratchet, not a target: nothing breaks when it grows, which is exactly why it is pinned. There
  * is no margin left on purpose — the next module on this graph is a barrel someone reached for
  * and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1624;
+const LAUNCH_REACH_CEILING = 1639;
 
 /**
  * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The

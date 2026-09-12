@@ -35,7 +35,8 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { GoalTool, goalToolView } from "@veyyon/coding-agent/goals/goal-tool";
+import { GoalTool } from "@veyyon/coding-agent/goals/goal-tool";
+import { goalToolView } from "@veyyon/coding-agent/goals/goal-view";
 import type { Goal, GoalToolDetails } from "@veyyon/coding-agent/goals/state";
 import { drawStatusRow, drawToolView, toolDrawsItself } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { framedBlock } from "@veyyon/coding-agent/modes/terminal/draw/output-block";

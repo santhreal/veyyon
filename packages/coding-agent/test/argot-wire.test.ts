@@ -7,7 +7,7 @@
  * through integration and e2e tests, so a regression to a single guard — dropping
  * the `!loaded` check, expanding an `off` child's text, building a decoder for an
  * unarmed codec — could pass the integration suites in one configuration while
- * breaking another. In particular `createSubagentStreamDecoder`, the seam-3
+ * breaking another. In particular `createAgentStreamDecoder`, the seam-3
  * helper, had no direct test at all. This suite asserts each seam function's
  * contract directly on real ArgotSession instances, loaded and unloaded, so every
  * guard is pinned in one place.
@@ -18,10 +18,10 @@ import type { AssistantMessage } from "@veyyon/ai";
 import {
 	ArgotStreamDisplayDecoder,
 	buildArgotGate,
-	createSubagentStreamDecoder,
+	createAgentStreamDecoder,
+	expandAgentReturn,
 	expandAssistantContent,
 	expandSessionContext,
-	expandSubagentReturn,
 	expandToolArguments,
 } from "@veyyon/coding-agent/argot-wire";
 import type { SessionContext } from "@veyyon/kernel/session/session-context";
@@ -80,43 +80,43 @@ describe("expandToolArguments", () => {
 	});
 });
 
-describe("expandSubagentReturn (the return boundary)", () => {
+describe("expandAgentReturn (the return boundary)", () => {
 	it("is identity for an `off` child with no codec", () => {
-		expect(expandSubagentReturn(undefined, "wrote §db here")).toBe("wrote §db here");
+		expect(expandAgentReturn(undefined, "wrote §db here")).toBe("wrote §db here");
 	});
 
 	it("is identity for an unarmed codec", () => {
-		expect(expandSubagentReturn(unloadedCodec(), "wrote §db here")).toBe("wrote §db here");
+		expect(expandAgentReturn(unloadedCodec(), "wrote §db here")).toBe("wrote §db here");
 	});
 
 	it("returns empty text unchanged without consulting the codec", () => {
-		expect(expandSubagentReturn(loadedCodec(), "")).toBe("");
+		expect(expandAgentReturn(loadedCodec(), "")).toBe("");
 	});
 
 	it("expands the child's own handles at the boundary once loaded", () => {
-		expect(expandSubagentReturn(loadedCodec(), "opened §dbconn")).toBe(
+		expect(expandAgentReturn(loadedCodec(), "opened §dbconn")).toBe(
 			"opened packages/server/src/database/connection.ts",
 		);
 	});
 
 	it("is identity for loaded text carrying no sigil", () => {
-		expect(expandSubagentReturn(loadedCodec(), "plain output, no handles")).toBe("plain output, no handles");
+		expect(expandAgentReturn(loadedCodec(), "plain output, no handles")).toBe("plain output, no handles");
 	});
 });
 
-describe("createSubagentStreamDecoder (the streaming display seam)", () => {
+describe("createAgentStreamDecoder (the streaming display seam)", () => {
 	it("returns undefined for an `off` child with no codec, so the caller streams raw", () => {
-		expect(createSubagentStreamDecoder(undefined)).toBeUndefined();
+		expect(createAgentStreamDecoder(undefined)).toBeUndefined();
 	});
 
 	it("returns undefined for an unarmed codec", () => {
-		expect(createSubagentStreamDecoder(unloadedCodec())).toBeUndefined();
+		expect(createAgentStreamDecoder(unloadedCodec())).toBeUndefined();
 	});
 
 	it("the returned decoder holds a split handle until it completes, never leaking a raw handle", () => {
 		// `§dbconn` split as `§db` + `conn`: the first push must not emit a raw
 		// `§db`, and the flushed total must be the full expansion (longest match).
-		const decoder = createSubagentStreamDecoder(loadedCodec());
+		const decoder = createAgentStreamDecoder(loadedCodec());
 		if (decoder === undefined) throw new Error("expected a decoder for a loaded codec");
 		let shown = decoder.push("opened §db");
 		expect(shown).not.toContain("§db");

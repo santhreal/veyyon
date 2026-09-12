@@ -1,24 +1,8 @@
 /**
- * WHY THIS SUITE EXISTS. `tools/core/diagnostics.ts` is the one place a compiler's diagnostic lines
- * become the rows a card shows, for every host. Two surfaces read it: the string form in
- * `tools/core/render-utils.ts` still formats for the callers that have not converted, and the
- * `ViewSection` form the converted cards state. A drift in the grammar, the ordering or the
- * hold-back arithmetic changes what a reader is told a build did, and a green type check would not
- * see it: every field is a string or a number that still compiles when it is wrong.
- *
- * THE CLASS THIS CLOSES. "A diagnostic reaches a reader saying something other than what the
- * compiler said." Four mechanisms carry that, and each is asserted at its own boundary rather than
- * through one card that happens to exercise all four: the line grammar (which fields are optional
- * and where a path ends), the within-file ordering (worst first, then position), the grouping
- * (compiler order across files, never re-sorted by name), and the collapsed hold-back count, which
- * must account for the lines the grammar did not match or a card claims to have shown everything
- * while dropping them.
- *
- * WHAT IT DOES NOT CATCH. How a host DRAWS the section: the tones and symbol keys asserted here are
- * the contract vocabulary, and whether a terminal resolves `status.error` to a red glyph is
- * `draw-tool-view`'s claim, pinned in the converted-tool differential suite. It also does not assert
- * that the string form in `render-utils` and the view form state the same facts, which no caller
- * depends on while both exist.
+ * Diagnostic projection preserves compiler fields, file order, severity ordering
+ * and collapsed counts, including unmatched lines. Every host consumes this
+ * section shape. Terminal styling and late-message presentation are covered by
+ * the host drawing and late-diagnostic component suites, not this suite.
  */
 
 import { describe, expect, it } from "bun:test";

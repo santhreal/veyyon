@@ -13,7 +13,7 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
-import { goalToolView } from "@veyyon/coding-agent/goals/goal-tool";
+import { goalToolView } from "@veyyon/coding-agent/goals/goal-view";
 import type { Goal, GoalToolDetails } from "@veyyon/coding-agent/goals/state";
 import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme } from "@veyyon/coding-agent/theme/theme";

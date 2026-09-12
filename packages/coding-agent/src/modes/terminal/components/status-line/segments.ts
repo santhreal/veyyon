@@ -1,7 +1,4 @@
 import * as os from "node:os";
-// The one-enum leaf, not the `@veyyon/agent-core` barrel: the barrel is the whole agent runtime,
-// 69ms of module evaluation, and the status row draws before a session exists.
-import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
 import { DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault, getProjectDir } from "@veyyon/utils/dirs";
 import { formatDuration, formatNumber, normalizePremiumRequests } from "@veyyon/utils/format";
@@ -123,7 +120,7 @@ const modelSegment: StatusLineSegment = {
 				thinkingDisplay = autoThinking.resolved
 					? (theme.thinking[autoThinking.resolved as keyof typeof theme.thinking] ?? autoThinking.resolved)
 					: `${theme.thinking.autoPending} auto`;
-			} else if (thinkingLevel !== ThinkingLevel.Off) {
+			} else if (thinkingLevel !== "off") {
 				thinkingDisplay = theme.thinking[thinkingLevel as keyof typeof theme.thinking] ?? "";
 			}
 		}
@@ -468,20 +465,20 @@ const prSegment: StatusLineSegment = {
 	},
 };
 
-const subagentsSegment: StatusLineSegment = {
-	id: "subagents",
+const agentsSegment: StatusLineSegment = {
+	id: "agents",
 	render(ctx) {
-		if (ctx.subagentCount === 0) {
+		if (ctx.agentCount === 0) {
 			return { content: "", visible: false };
 		}
-		const content = withIcon(theme.icon.agents, `${ctx.subagentCount}`);
+		const content = withIcon(theme.icon.agents, `${ctx.agentCount}`);
 		return { content: theme.fg("statusLineSubagents", content), visible: true };
 	},
 };
 /**
  * Conversations running with nothing drawing them.
  *
- * The only signal that a handed-off `/new` is still spending. A subagent is at
+ * The only signal that a handed-off `/new` is still spending. An agent is at
  * least visible in the transcript that spawned it; a backgrounded conversation
  * has no surface at all, so this count is the whole of what an operator can see
  * about it. Hidden at zero, like every other conditional segment.
@@ -497,27 +494,26 @@ const backgroundSegment: StatusLineSegment = {
 	},
 };
 
-const tokenInSegment: StatusLineSegment = {
-	id: "token_in",
-	render(ctx) {
-		const { input } = ctx.usageStats;
-		if (!input) return { content: "", visible: false };
+/** A usage counter: hidden at zero, else the icon and the formatted count in `color`. */
+function usageCountSegment(
+	id: StatusLineSegmentId,
+	field: "input" | "output" | "cacheRead" | "cacheWrite",
+	icon: () => string,
+	color: ThemeColor,
+): StatusLineSegment {
+	return {
+		id,
+		render(ctx) {
+			const count = ctx.usageStats[field];
+			if (!count) return { content: "", visible: false };
+			return { content: theme.fg(color, withIcon(icon(), formatNumber(count))), visible: true };
+		},
+	};
+}
 
-		const content = withIcon(theme.icon.input, formatNumber(input));
-		return { content: theme.fg("statusLineSpend", content), visible: true };
-	},
-};
+const tokenInSegment = usageCountSegment("token_in", "input", () => theme.icon.input, "statusLineSpend");
 
-const tokenOutSegment: StatusLineSegment = {
-	id: "token_out",
-	render(ctx) {
-		const { output } = ctx.usageStats;
-		if (!output) return { content: "", visible: false };
-
-		const content = withIcon(theme.icon.output, formatNumber(output));
-		return { content: theme.fg("statusLineOutput", content), visible: true };
-	},
-};
+const tokenOutSegment = usageCountSegment("token_out", "output", () => theme.icon.output, "statusLineOutput");
 
 const tokenTotalSegment: StatusLineSegment = {
 	id: "token_total",
@@ -761,29 +757,9 @@ const accountSegment: StatusLineSegment = {
 	},
 };
 
-const cacheReadSegment: StatusLineSegment = {
-	id: "cache_read",
-	render(ctx) {
-		const { cacheRead } = ctx.usageStats;
-		if (!cacheRead) return { content: "", visible: false };
+const cacheReadSegment = usageCountSegment("cache_read", "cacheRead", () => theme.icon.cache, "statusLineSpend");
 
-		const parts = [theme.icon.cache, formatNumber(cacheRead)].filter(Boolean);
-		const content = parts.join(" ");
-		return { content: theme.fg("statusLineSpend", content), visible: true };
-	},
-};
-
-const cacheWriteSegment: StatusLineSegment = {
-	id: "cache_write",
-	render(ctx) {
-		const { cacheWrite } = ctx.usageStats;
-		if (!cacheWrite) return { content: "", visible: false };
-
-		const parts = [theme.icon.cache, formatNumber(cacheWrite)].filter(Boolean);
-		const content = parts.join(" ");
-		return { content: theme.fg("statusLineOutput", content), visible: true };
-	},
-};
+const cacheWriteSegment = usageCountSegment("cache_write", "cacheWrite", () => theme.icon.cache, "statusLineOutput");
 
 const cacheHitSegment: StatusLineSegment = {
 	id: "cache_hit",
@@ -905,7 +881,7 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
 	path: pathSegment,
 	git: gitSegment,
 	pr: prSegment,
-	subagents: subagentsSegment,
+	agents: agentsSegment,
 	background: backgroundSegment,
 	token_in: tokenInSegment,
 	token_out: tokenOutSegment,

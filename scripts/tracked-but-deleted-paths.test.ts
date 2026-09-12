@@ -31,7 +31,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { withoutComments } from "@veyyon/utils/module-reach";
 import { checkFreshness } from "./check-doc-freshness";
-import { existingOnly } from "./check-doc-links";
+import { existingOnly } from "./workspace-layout";
 
 let root: string;
 

@@ -573,7 +573,7 @@ export class SelectorController {
 	}
 
 	/**
-	 * Show the subagent dashboard: the ONE agent surface.
+	 * Show the agent dashboard: the ONE agent surface.
 	 *
 	 * Every entry point lands here — `/agents`, `/cockpit` (alias `/hub`), the
 	 * `app.agents.hub` and `app.session.observe` keys, and the editor's `←←`
@@ -581,7 +581,7 @@ export class SelectorController {
 	 * about what was running.
 	 *
 	 * `requireContent` is the gesture's gate: `←←` on an empty editor must stay
-	 * inert until there is a subagent to look at, while an explicit key still
+	 * inert until there is an agent to look at, while an explicit key still
 	 * opens the empty roster. Agents persisted by earlier runs register
 	 * asynchronously, so the gate waits for that scan rather than treating the
 	 * initial roster as the answer.
@@ -603,10 +603,10 @@ export class SelectorController {
 			registry: this.ctx.collabGuest?.agentRegistry,
 			remote: this.ctx.collabGuest?.agentRemote,
 			observers,
-			showModelBadge: settings.get("subagent.showResolvedModelBadge"),
+			showModelBadge: settings.get("agent.showResolvedModelBadge"),
 			sessionFile: this.ctx.sessionManager.getSessionFile() ?? null,
 			// The roster is this conversation's, not the process's. Without it a
-			// session resumed with `/resume` listed the subagents of every
+			// session resumed with `/resume` listed the agents of every
 			// conversation the process had driven before it.
 			scope: this.ctx.sessionManager.getSessionId(),
 			focusAgent: id => this.ctx.focusAgentSession(id),
@@ -646,7 +646,7 @@ export class SelectorController {
 		};
 
 		if (options?.requireContent && dashboard.isEmpty) {
-			void dashboard.persistedSubagentsReady.then(() => {
+			void dashboard.persistedAgentsReady.then(() => {
 				if (dashboard.isEmpty) {
 					dashboard.dispose();
 					return;
@@ -951,64 +951,44 @@ export class SelectorController {
 	#showModelPicker(temporaryOnly: boolean): void {
 		const currentContextTokens = this.ctx.session.getContextUsage()?.tokens ?? 0;
 		const current = this.ctx.session.model;
-		let overlayHandle: OverlayHandle | undefined;
-		// The card holds a pointer band on the shared motion clock; hiding an overlay only stops
-		// painting it. The show site created the card, so the show site hands it back.
-		let picker: ModelPickerComponent | undefined;
-		let closed = false;
-		const done = () => {
-			if (closed) return;
-			closed = true;
-			picker?.dispose();
-			overlayHandle?.hide();
-			this.focusActiveEditorArea();
-			this.ctx.ui.requestRender();
-		};
-		picker = new ModelPickerComponent(
-			this.ctx.ui,
-			this.ctx.settings,
-			this.ctx.session.modelRegistry,
-			this.ctx.session.scopedModels,
-			{
-				onPick: async (model, selector) => {
-					try {
-						const roleThinkingLevel = this.ctx.session.resolveTemporaryModelThinkingLevel(model);
-						if (temporaryOnly) {
-							await this.ctx.session.setModelTemporary(model, roleThinkingLevel);
-							this.ctx.showStatus(`Session-only model: ${selector}`);
-						} else {
-							await this.ctx.session.setModel(model, DEFAULT_MODEL_SLOT, {
-								selector,
-								thinkingLevel: roleThinkingLevel,
-								persist: true,
-								currentContextTokens,
-							});
-							this.ctx.showStatus(`Model: ${selector}`);
+		this.showModalSelector(done => {
+			const picker = new ModelPickerComponent(
+				this.ctx.ui,
+				this.ctx.settings,
+				this.ctx.session.modelRegistry,
+				this.ctx.session.scopedModels,
+				{
+					onPick: async (model, selector) => {
+						try {
+							const roleThinkingLevel = this.ctx.session.resolveTemporaryModelThinkingLevel(model);
+							if (temporaryOnly) {
+								await this.ctx.session.setModelTemporary(model, roleThinkingLevel);
+								this.ctx.showStatus(`Session-only model: ${selector}`);
+							} else {
+								await this.ctx.session.setModel(model, DEFAULT_MODEL_SLOT, {
+									selector,
+									thinkingLevel: roleThinkingLevel,
+									persist: true,
+									currentContextTokens,
+								});
+								this.ctx.showStatus(`Model: ${selector}`);
+							}
+							this.ctx.statusLine.invalidate();
+							this.ctx.updateEditorBorderColor();
+							done();
+						} catch (error) {
+							this.ctx.showError(errorMessage(error));
 						}
-						this.ctx.statusLine.invalidate();
-						this.ctx.updateEditorBorderColor();
-						done();
-					} catch (error) {
-						this.ctx.showError(errorMessage(error));
-					}
+					},
+					onCancel: done,
 				},
-				onCancel: done,
-			},
-			{
-				currentContextTokens,
-				currentSelector: current ? `${current.provider}/${current.id}` : undefined,
-			},
-		);
-		// Fullscreen host; ModelPicker paints a floating ModalShell medium card.
-		overlayHandle = this.ctx.ui.showOverlay(picker, {
-			anchor: "top-left",
-			width: "100%",
-			maxHeight: "100%",
-			margin: 0,
-			fullscreen: true,
+				{
+					currentContextTokens,
+					currentSelector: current ? `${current.provider}/${current.id}` : undefined,
+				},
+			);
+			return { component: picker, focus: picker };
 		});
-		this.ctx.ui.setFocus(picker);
-		this.ctx.ui.requestRender();
 	}
 
 	/**
@@ -1178,38 +1158,18 @@ export class SelectorController {
 			return;
 		}
 
-		let overlayHandle: OverlayHandle | undefined;
-		// Declared before `done` closes over it, for the same reason the shared
-		// modal helper does: the card is constructed with callbacks that reach
-		// `done`, so a close racing construction must not read it too early.
-		let selector: CopySelectorComponent | undefined;
-		const done = () => {
-			overlayHandle?.hide();
-			// The card's pointer band lives on the shared clock; hiding the overlay
-			// does not tell it that.
-			selector?.dispose();
-			this.ctx.ui.requestRender();
-		};
-		selector = new CopySelectorComponent(targets, {
-			onPick: target => {
-				done();
-				if (target.content === undefined) return;
-				void copyToClipboard(target.content);
-				this.ctx.showStatus(target.copyMessage ?? "Copied to clipboard");
-			},
-			onCancel: done,
+		this.showModalSelector(done => {
+			const selector = new CopySelectorComponent(targets, {
+				onPick: target => {
+					done();
+					if (target.content === undefined) return;
+					void copyToClipboard(target.content);
+					this.ctx.showStatus(target.copyMessage ?? "Copied to clipboard");
+				},
+				onCancel: done,
+			});
+			return { component: selector, focus: selector };
 		});
-
-		overlayHandle = this.ctx.ui.showOverlay(selector, {
-			anchor: "top-left",
-			width: "100%",
-			maxHeight: "100%",
-			margin: 0,
-			fullscreen: true,
-		});
-		selector.setOnRequestRender?.(() => this.ctx.ui.requestRender());
-		this.ctx.ui.setFocus(selector);
-		this.ctx.ui.requestRender();
 	}
 
 	showTreeSelector(): void {
@@ -1355,59 +1315,46 @@ export class SelectorController {
 		// directly to a rendered line (the overlay paints from screen row 0), and
 		// `fillHeight` selects the large centered-card sizing (card height
 		// itself tracks the session list, so a short list stays a short card).
-		let overlayHandle: OverlayHandle | undefined;
-		const done = () => {
-			overlayHandle?.hide();
-			this.focusActiveEditorArea();
-			this.ctx.ui.requestRender();
-		};
-		const selector = new SessionSelectorComponent(
-			sessions,
-			async (session: SessionInfo) => {
-				done();
-				await this.handleResumeSession(session.path);
-			},
-			() => {
-				done();
-			},
-			() => {
-				// Release the alt buffer before teardown: shutdown() awaits flush/save/
-				// dispose/drain before stop() leaves the alt screen, so without this the
-				// fullscreen picker would freeze on screen for that window on Ctrl+C.
-				done();
-				void this.ctx.shutdown();
-			},
-			{
-				onDelete: async (session: SessionInfo) => {
-					if (!(await this.#detachActiveSessionBeforeDeletion(session.path))) {
-						return false;
-					}
-					const storage = new FileSessionStorage();
-					try {
-						await storage.deleteSessionWithArtifacts(session.path);
-						return true;
-					} catch (err) {
-						throw new Error(`Failed to delete session: ${errorMessage(err)}`, {
-							cause: err,
-						});
-					}
+		this.showModalSelector(done => {
+			const selector = new SessionSelectorComponent(
+				sessions,
+				async (session: SessionInfo) => {
+					done();
+					await this.handleResumeSession(session.path);
 				},
-				historyMatcher,
-				loadAllSessions: () => SessionManager.listAll(),
-				getTerminalRows: () => this.ctx.ui.terminal.rows,
-				fillHeight: true,
-			},
-		);
-		selector.setOnRequestRender(() => this.ctx.ui.requestRender());
-		overlayHandle = this.ctx.ui.showOverlay(selector, {
-			anchor: "top-left",
-			width: "100%",
-			maxHeight: "100%",
-			margin: 0,
-			fullscreen: true,
+				() => {
+					done();
+				},
+				() => {
+					// Release the alt buffer before teardown: shutdown() awaits flush/save/
+					// dispose/drain before stop() leaves the alt screen, so without this the
+					// fullscreen picker would freeze on screen for that window on Ctrl+C.
+					done();
+					void this.ctx.shutdown();
+				},
+				{
+					onDelete: async (session: SessionInfo) => {
+						if (!(await this.#detachActiveSessionBeforeDeletion(session.path))) {
+							return false;
+						}
+						const storage = new FileSessionStorage();
+						try {
+							await storage.deleteSessionWithArtifacts(session.path);
+							return true;
+						} catch (err) {
+							throw new Error(`Failed to delete session: ${errorMessage(err)}`, {
+								cause: err,
+							});
+						}
+					},
+					historyMatcher,
+					loadAllSessions: () => SessionManager.listAll(),
+					getTerminalRows: () => this.ctx.ui.terminal.rows,
+					fillHeight: true,
+				},
+			);
+			return { component: selector, focus: selector };
 		});
-		this.ctx.ui.setFocus(selector);
-		this.ctx.ui.requestRender();
 	}
 
 	#refreshSessionTerminalTitle(): void {

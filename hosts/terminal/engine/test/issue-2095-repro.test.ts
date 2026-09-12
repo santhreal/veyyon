@@ -63,6 +63,49 @@ function captureWrites(term: VirtualTerminal): string[] {
 	return writes;
 }
 
+interface ScheduledRender {
+	delayMs: number;
+	fired: boolean;
+	cancelled: boolean;
+}
+
+/** A `RenderScheduler` that records every render timer it queues, and whether each fired or was cancelled. */
+function recordingRenderScheduler(): { scheduler: RenderScheduler; scheduled: ScheduledRender[] } {
+	const scheduled: ScheduledRender[] = [];
+	const scheduler: RenderScheduler = {
+		now: () => performance.now(),
+		scheduleImmediate: cb => process.nextTick(cb),
+		scheduleRender: (cb, delayMs): RenderTimer => {
+			const entry: ScheduledRender = { delayMs, fired: false, cancelled: false };
+			scheduled.push(entry);
+			const handle = setTimeout(() => {
+				entry.fired = true;
+				cb();
+			}, delayMs);
+			return {
+				cancel: () => {
+					entry.cancelled = true;
+					clearTimeout(handle);
+				},
+			};
+		},
+	};
+	return { scheduler, scheduled };
+}
+
+/** Tall content whose last row is replaceable, so a trailing paint is visible in the viewport. */
+class TallMutableContent implements Component {
+	tail = "tail row initial";
+
+	invalidate(): void {}
+
+	render(width: number): string[] {
+		const lines = Array.from({ length: 199 }, (_v, i) => `transcript row ${i.toString().padStart(5, "0")}`);
+		lines.push(this.tail);
+		return lines.map(line => line.slice(0, width));
+	}
+}
+
 describe("issue #2095: ConPTY post-full-paint settle prevents viewport drift", () => {
 	const originalWslDistro = Bun.env.WSL_DISTRO_NAME;
 	const originalWslInterop = Bun.env.WSL_INTEROP;
@@ -221,18 +264,7 @@ describe("issue #2095: ConPTY post-full-paint settle prevents viewport drift", (
 		setPlatform("win32");
 		const term = new VirtualTerminal(80, 24, 4096);
 
-		type Scheduled = { delayMs: number };
-		const scheduled: Scheduled[] = [];
-		const recordingScheduler: RenderScheduler = {
-			now: () => performance.now(),
-			scheduleImmediate: cb => process.nextTick(cb),
-			scheduleRender: (cb, delayMs): RenderTimer => {
-				const entry: Scheduled = { delayMs };
-				scheduled.push(entry);
-				const handle = setTimeout(cb, delayMs);
-				return { cancel: () => clearTimeout(handle) };
-			},
-		};
+		const { scheduler: recordingScheduler, scheduled } = recordingRenderScheduler();
 
 		const tui = new TUI(term, undefined, { renderScheduler: recordingScheduler });
 		let midPaintFired = false;
@@ -281,6 +313,67 @@ describe("issue #2095: ConPTY post-full-paint settle prevents viewport drift", (
 			// pending timers drain before the test tears down the TUI.
 			await Bun.sleep(200);
 			await settle(term, tui);
+		} finally {
+			tui.stop();
+		}
+	});
+
+	it("paints content that changed inside the settle window when the trailing render fires on win32", async () => {
+		setPlatform("win32");
+		const term = new VirtualTerminal(80, 24, 4096);
+		const tui = new TUI(term);
+		const content = new TallMutableContent();
+		tui.addChild(content);
+
+		try {
+			tui.start();
+			await settle(term, tui);
+			// Promote the next paint to `sessionReplace` so the settle arms.
+			tui.requestRender(true, { clearScrollback: true });
+			await settle(term, tui);
+			expect(term.getViewport().join("\n")).toContain("tail row initial");
+
+			// Change the content inside the window and ask for an ordinary render:
+			// nothing paints until the window closes, then the trailing render does.
+			content.tail = "tail row changed";
+			tui.requestRender();
+			await Bun.sleep(60);
+			expect(term.getViewport().join("\n")).toContain("tail row initial");
+
+			await Bun.sleep(180);
+			await settle(term, tui);
+			expect(term.getViewport().join("\n")).toContain("tail row changed");
+		} finally {
+			tui.stop();
+		}
+	});
+
+	it("cancels the trailing settle timer when a forced render preempts it, so it never fires later", async () => {
+		setPlatform("win32");
+		const term = new VirtualTerminal(80, 24, 4096);
+		const { scheduler, scheduled } = recordingRenderScheduler();
+		const tui = new TUI(term, undefined, { renderScheduler: scheduler });
+		tui.addChild(new TallContent(200));
+
+		try {
+			tui.start();
+			await settle(term, tui);
+			scheduled.length = 0;
+			tui.requestRender(true, { clearScrollback: true });
+			await settle(term, tui);
+			scheduled.length = 0;
+
+			// An ordinary request inside the window arms the trailing timer; a forced
+			// render then preempts the settle and must take that timer with it.
+			tui.requestRender();
+			const trailing = scheduled.filter(s => s.delayMs > 0);
+			expect(trailing.length).toBe(1);
+			tui.requestRender(true);
+			await settle(term, tui);
+			expect(trailing[0]).toMatchObject({ cancelled: true, fired: false });
+
+			await Bun.sleep(200);
+			expect(trailing[0]?.fired).toBe(false);
 		} finally {
 			tui.stop();
 		}

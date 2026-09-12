@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { parse } from "@babel/parser";
+import * as t from "@babel/types";
 import type { LazyStreamLimits } from "@veyyon/ai/providers/register-builtins";
 import * as registerBuiltins from "@veyyon/ai/providers/register-builtins";
 import { iterateWithIdleTimeout } from "@veyyon/ai/utils/idle-iterator";
@@ -99,10 +101,11 @@ const LIMITS_FIELD_KINDS: Record<keyof LazyStreamLimits, "number" | "boolean"> =
 	openAIIdleEnvFloorsFirstEvent: "boolean",
 };
 
-/** One `export const streamX = createLazyStream(loader, LIMITS?)` registration. */
+/** One `export const streamX = createLazyStream(api, loader, LIMITS?)` registration. */
 interface Registration {
 	streamExport: string;
-	loader: string;
+	api: string;
+	moduleName: string;
 	limitsName: string | undefined;
 	limits: LazyStreamLimits | undefined;
 }
@@ -134,63 +137,130 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-function parseLimitsDeclaration(name: string, body: string): LazyStreamLimits {
-	const limits: LazyStreamLimits = {};
-	for (const rawLine of body.split("\n")) {
-		const line = rawLine.trim();
-		if (line.length === 0 || line.startsWith("//")) continue;
-		const field = /^([A-Za-z0-9_$]+):\s*(.+?),?$/.exec(line);
-		if (!field) throw new Error(`${name}: cannot parse limits field from ${JSON.stringify(line)}`);
-		const key = field[1];
-		const literal = field[2];
-		if (!(key in LIMITS_FIELD_KINDS)) throw new Error(`${name}: ${key} is not a LazyStreamLimits field`);
-		const numeric = /^\d[\d_]*$/.test(literal) ? Number(literal.replaceAll("_", "")) : undefined;
-		const boolish = literal === "true" ? true : literal === "false" ? false : undefined;
-		switch (key) {
-			case "defaultFirstEventTimeoutMs":
-			case "defaultIdleTimeoutMs": {
-				if (numeric === undefined) throw new Error(`${name}.${key}: expected a number literal, got ${literal}`);
-				limits[key] = numeric;
-				break;
+function extractImportPathFromFactory(node: t.Node): string {
+	const importPaths: string[] = [];
+
+	t.traverseFast(node, n => {
+		if (t.isCallExpression(n) && t.isImport(n.callee)) {
+			const firstArg = n.arguments[0];
+			if (t.isStringLiteral(firstArg)) {
+				importPaths.push(firstArg.value);
+			} else {
+				throw new Error("Dynamic import argument must be a string literal");
 			}
-			case "providerHandlesStreamTimeouts":
-			case "openAIIdleEnvFloorsFirstEvent": {
-				if (boolish === undefined) throw new Error(`${name}.${key}: expected a boolean literal, got ${literal}`);
-				limits[key] = boolish;
-				break;
-			}
-			default:
-				throw new Error(`${name}: ${key} is a LazyStreamLimits field this lock does not know how to parse`);
 		}
+	});
+	if (importPaths.length === 0) {
+		throw new Error("Could not find dynamic import('./...') in factory function");
 	}
-	return limits;
+	if (importPaths.length > 1) {
+		throw new Error(`Expected exactly one dynamic import, found ${importPaths.length}`);
+	}
+	return importPaths[0].replace(/^\.\//, "");
 }
 
 const source = await fs.readFile(REGISTER_BUILTINS, "utf8");
+const ast = parse(source, {
+	sourceType: "module",
+	plugins: ["typescript"],
+});
 
 const limitsByName = new Map<string, LazyStreamLimits>();
-for (const match of source.matchAll(/(?:export )?const ([A-Z][A-Z0-9_]*): LazyStreamLimits = \{([\s\S]*?)\n\};/g)) {
-	limitsByName.set(match[1], parseLimitsDeclaration(match[1], match[2]));
-}
-
 const registrations: Registration[] = [];
-for (const match of source.matchAll(/export const (stream[A-Za-z0-9]+)\s*=\s*createLazyStream\(([^)]*)\)/g)) {
-	const identifiers = match[2].match(/[A-Za-z_$][A-Za-z0-9_$]*/g) ?? [];
-	const loader = identifiers[0];
-	if (loader === undefined) throw new Error(`${match[1]}: createLazyStream call has no loader argument`);
-	const limitsName = identifiers[1];
-	if (limitsName !== undefined && !limitsByName.has(limitsName)) {
-		throw new Error(`${match[1]} passes ${limitsName}, which this lock could not parse from register-builtins.ts`);
-	}
-	const limits = limitsName === undefined ? undefined : limitsByName.get(limitsName);
-	registrations.push({ streamExport: match[1], loader, limitsName, limits });
-}
 
-const moduleByLoader = new Map<string, string>();
-for (const match of source.matchAll(
-	/function (load[A-Za-z0-9]+ProviderModule)\(\)[\s\S]*?import\("\.\/([A-Za-z0-9-]+)"\)/g,
-)) {
-	moduleByLoader.set(match[1], match[2]);
+for (const stmt of ast.program.body) {
+	let decl: t.Node = stmt;
+	if (t.isExportNamedDeclaration(decl) && decl.declaration) {
+		decl = decl.declaration;
+	}
+	if (t.isVariableDeclaration(decl)) {
+		for (const declarator of decl.declarations) {
+			if (!t.isIdentifier(declarator.id)) continue;
+			const varName = declarator.id.name;
+
+			// 1. Check for LazyStreamLimits declarations
+			const typeAnnotation = declarator.id.typeAnnotation;
+			const isLimitsDecl =
+				t.isTSTypeAnnotation(typeAnnotation) &&
+				t.isTSTypeReference(typeAnnotation.typeAnnotation) &&
+				t.isIdentifier(typeAnnotation.typeAnnotation.typeName) &&
+				typeAnnotation.typeAnnotation.typeName.name === "LazyStreamLimits";
+
+			if (isLimitsDecl) {
+				if (!t.isObjectExpression(declarator.init)) {
+					throw new Error(`${varName}: expected ObjectExpression for LazyStreamLimits`);
+				}
+				const limits: LazyStreamLimits = {};
+				for (const prop of declarator.init.properties) {
+					if (!t.isObjectProperty(prop) || !t.isIdentifier(prop.key)) {
+						throw new Error(`${varName}: unsupported property syntax in limits object`);
+					}
+					const key = prop.key.name;
+					if (!(key in LIMITS_FIELD_KINDS)) {
+						throw new Error(`${varName}: ${key} is not a LazyStreamLimits field`);
+					}
+					const expectedKind = LIMITS_FIELD_KINDS[key as keyof LazyStreamLimits];
+					if (expectedKind === "number") {
+						if (!t.isNumericLiteral(prop.value)) {
+							throw new Error(`${varName}.${key}: expected number literal`);
+						}
+						limits[key as keyof LazyStreamLimits] = prop.value.value as never;
+					} else if (expectedKind === "boolean") {
+						if (!t.isBooleanLiteral(prop.value)) {
+							throw new Error(`${varName}.${key}: expected boolean literal`);
+						}
+						limits[key as keyof LazyStreamLimits] = prop.value.value as never;
+					}
+				}
+				limitsByName.set(varName, limits);
+			}
+
+			// 2. Check for createLazyStream registrations
+			if (varName.startsWith("stream") && t.isCallExpression(declarator.init)) {
+				const callExpr = declarator.init;
+				if (t.isIdentifier(callExpr.callee) && callExpr.callee.name === "createLazyStream") {
+					if (callExpr.arguments.length < 2 || callExpr.arguments.length > 3) {
+						throw new Error(
+							`${varName}: createLazyStream expects 2 or 3 arguments, got ${callExpr.arguments.length}`,
+						);
+					}
+
+					// Arg 0: API key
+					const arg0 = callExpr.arguments[0];
+					if (!t.isStringLiteral(arg0)) {
+						throw new Error(`${varName}: first argument must be a string literal API key`);
+					}
+					const api = arg0.value;
+
+					// Arg 1: Dynamic import factory
+					const arg1 = callExpr.arguments[1];
+					if (!t.isArrowFunctionExpression(arg1) && !t.isFunctionExpression(arg1)) {
+						throw new Error(`${varName}: second argument must be a dynamic import factory function`);
+					}
+					const moduleName = extractImportPathFromFactory(arg1);
+
+					// Arg 2 (optional): Limits identifier
+					let limitsName: string | undefined;
+					let limits: LazyStreamLimits | undefined;
+					if (callExpr.arguments.length === 3) {
+						const arg2 = callExpr.arguments[2];
+						if (!t.isIdentifier(arg2)) {
+							throw new Error(`${varName}: third argument must be a limits identifier`);
+						}
+						limitsName = arg2.name;
+						if (!limitsByName.has(limitsName)) {
+							throw new Error(
+								`${varName} passes ${limitsName}, which this lock could not parse from register-builtins.ts`,
+							);
+						}
+						limits = limitsByName.get(limitsName);
+					}
+
+					registrations.push({ streamExport: varName, api, moduleName, limitsName, limits });
+				}
+			}
+		}
+	}
 }
 
 /** Provider names exported by the module at run time, the authority on membership. */
@@ -349,7 +419,7 @@ describe("lazy provider stream budget coverage", () => {
 	});
 
 	it("every provider module exporting a stream entry point is registered or has a recorded reason", async () => {
-		const registeredModules = new Set(moduleByLoader.values());
+		const registeredModules = new Set(registrations.map(r => r.moduleName));
 		const codeByModule = new Map<string, string>();
 		const streamModules: string[] = [];
 		for (const entry of await fs.readdir(PROVIDERS_DIR, { withFileTypes: true })) {
@@ -406,10 +476,7 @@ describe("lazy provider stream budget coverage", () => {
 		expect(optedOut.length).toBeGreaterThan(0);
 		const unarmed: string[] = [];
 		for (const registration of optedOut) {
-			const moduleName = moduleByLoader.get(registration.loader);
-			if (moduleName === undefined) {
-				throw new Error(`${registration.streamExport}: could not resolve ${registration.loader} to a module path`);
-			}
+			const moduleName = registration.moduleName;
 			const text = await fs.readFile(path.join(PROVIDERS_DIR, `${moduleName}.ts`), "utf8");
 			// Comments stripped: a module that only MENTIONS the watchdog in prose has
 			// not armed one.

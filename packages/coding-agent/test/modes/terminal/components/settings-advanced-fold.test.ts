@@ -30,9 +30,9 @@ const terminal = TERMINAL as unknown as MutableTerminalInfo;
 // from later additions so the "26 original keys / placement-only" spec below stays
 // exact.
 //
-// `subagent.showResolvedModelBadge` was one of them and is not any more: it moved
-// to the Subagents tab, beside the models and per-agent rows whose resolution it
-// displays. A subagent question answered on the Appearance tab is a second place to
+// `agent.showResolvedModelBadge` was one of them and is not any more: it moved
+// to the Agents tab, beside the models and per-agent rows whose resolution it
+// displays. An agent question answered on the Appearance tab is a second place to
 // look, which is the whole reason that area exists.
 // `statusLine.transparent` was one of them and is not any more: nothing paints a
 // status-line background since the editor's top border was deleted, so the key

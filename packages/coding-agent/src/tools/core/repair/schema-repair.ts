@@ -297,6 +297,52 @@ function boundedRawJson(raw: string): string | { error: string } {
 	return raw;
 }
 
+/** The messages one repair path reports; the repair itself is shared. */
+interface JsonObjectRepairWording {
+	nonObjectReason: string;
+	nonObjectHint: string;
+	repairedHint: string;
+	parseFailurePrefix: string;
+	parseFailureHint: string;
+}
+
+const PARSE_SENTINEL_WORDING: JsonObjectRepairWording = {
+	nonObjectReason: "Repaired JSON is not an object; tool arguments must be a JSON object.",
+	nonObjectHint: "Wrap tool arguments in a JSON object with named fields.",
+	repairedHint: "Recovered tool arguments from malformed JSON (trailing commas / relaxed parse).",
+	parseFailurePrefix: "Tool call arguments are not valid JSON and could not be repaired: ",
+	parseFailureHint: "Fix the JSON syntax and re-send the tool call.",
+};
+
+const STRING_ARGUMENTS_WORDING: JsonObjectRepairWording = {
+	nonObjectReason: "Tool arguments string parsed to a non-object value.",
+	nonObjectHint: "Send tool arguments as a JSON object.",
+	repairedHint: "Parsed stringified tool arguments into a JSON object.",
+	parseFailurePrefix: "Could not parse stringified tool arguments: ",
+	parseFailureHint: "Send tool arguments as a JSON object, not a bare string.",
+};
+
+function repairJsonObjectArguments(raw: string, wording: JsonObjectRepairWording): ToolCallRepairOutcome {
+	const bounded = boundedRawJson(raw);
+	if (typeof bounded !== "string") {
+		return { status: "unrepairable", reason: bounded.error, hints: ["Shorten the payload or fix JSON syntax."] };
+	}
+	try {
+		const parsed = parseJsonWithRepair<unknown>(bounded);
+		const objectArgs = asObjectArgs(parsed);
+		if (!objectArgs) {
+			return { status: "unrepairable", reason: wording.nonObjectReason, hints: [wording.nonObjectHint] };
+		}
+		return { status: "repaired", arguments: objectArgs, hints: [wording.repairedHint] };
+	} catch (error) {
+		return {
+			status: "unrepairable",
+			reason: `${wording.parseFailurePrefix}${errorMessage(error)}`,
+			hints: [wording.parseFailureHint],
+		};
+	}
+}
+
 function recoverFromParseSentinel(args: Record<string, unknown>): ToolCallRepairOutcome | undefined {
 	if (!("__parseError" in args)) return undefined;
 	const rawJson = typeof args.__rawJson === "string" ? args.__rawJson : "";
@@ -307,63 +353,7 @@ function recoverFromParseSentinel(args: Record<string, unknown>): ToolCallRepair
 			hints: ["Fix the JSON syntax and re-send the tool call."],
 		};
 	}
-	const bounded = boundedRawJson(rawJson);
-	if (typeof bounded !== "string") {
-		return { status: "unrepairable", reason: bounded.error, hints: ["Shorten the payload or fix JSON syntax."] };
-	}
-	try {
-		const parsed = parseJsonWithRepair<unknown>(bounded);
-		const objectArgs = asObjectArgs(parsed);
-		if (!objectArgs) {
-			return {
-				status: "unrepairable",
-				reason: "Repaired JSON is not an object; tool arguments must be a JSON object.",
-				hints: ["Wrap tool arguments in a JSON object with named fields."],
-			};
-		}
-		return {
-			status: "repaired",
-			arguments: objectArgs,
-			hints: ["Recovered tool arguments from malformed JSON (trailing commas / relaxed parse)."],
-		};
-	} catch (error) {
-		const message = errorMessage(error);
-		return {
-			status: "unrepairable",
-			reason: `Tool call arguments are not valid JSON and could not be repaired: ${message}`,
-			hints: ["Fix the JSON syntax and re-send the tool call."],
-		};
-	}
-}
-
-function recoverFromStringArguments(raw: string): ToolCallRepairOutcome | undefined {
-	const bounded = boundedRawJson(raw);
-	if (typeof bounded !== "string") {
-		return { status: "unrepairable", reason: bounded.error, hints: ["Shorten the payload or fix JSON syntax."] };
-	}
-	try {
-		const parsed = parseJsonWithRepair<unknown>(bounded);
-		const objectArgs = asObjectArgs(parsed);
-		if (!objectArgs) {
-			return {
-				status: "unrepairable",
-				reason: "Tool arguments string parsed to a non-object value.",
-				hints: ["Send tool arguments as a JSON object."],
-			};
-		}
-		return {
-			status: "repaired",
-			arguments: objectArgs,
-			hints: ["Parsed stringified tool arguments into a JSON object."],
-		};
-	} catch (error) {
-		const message = errorMessage(error);
-		return {
-			status: "unrepairable",
-			reason: `Could not parse stringified tool arguments: ${message}`,
-			hints: ["Send tool arguments as a JSON object, not a bare string."],
-		};
-	}
+	return repairJsonObjectArguments(rawJson, PARSE_SENTINEL_WORDING);
 }
 
 /**
@@ -392,14 +382,7 @@ export function repairToolCallArguments(tool: Tool, toolCall: ToolCall): ToolCal
 	let repaired = false;
 
 	if (typeof toolCall.arguments === "string") {
-		const outcome = recoverFromStringArguments(toolCall.arguments);
-		if (!outcome) {
-			return {
-				status: "unrepairable",
-				reason: "Tool arguments must be a JSON object.",
-				hints: [],
-			};
-		}
+		const outcome = repairJsonObjectArguments(toolCall.arguments, STRING_ARGUMENTS_WORDING);
 		if (outcome.status === "unrepairable") return outcome;
 		workingArgs = outcome.arguments;
 		hints = outcome.hints.slice();

@@ -81,6 +81,23 @@ export function bashExecutionToText(msg: BashExecutionMessage): string {
 	return text;
 }
 
+/** Why a still-running bash call was moved to the background. */
+export type BackgroundReason = "threshold" | "stall" | "manual";
+
+export function formatBackgroundNotice(jobId: string, reason: BackgroundReason = "threshold"): string {
+	if (reason === "stall") {
+		return (
+			`No new output for a while, so this command may be stuck. Backgrounded as job ${jobId}; ` +
+			`its result will still be delivered automatically if it finishes. If you believe it is hung, ` +
+			`cancel it with the job tool (cancel: ["${jobId}"]).`
+		);
+	}
+	if (reason === "manual") {
+		return `Backgrounded as job ${jobId} at the operator's request; result will be delivered automatically.`;
+	}
+	return `Backgrounded as job ${jobId}; result will be delivered automatically.`;
+}
+
 /**
  * Convert a PythonExecutionMessage to user message text for LLM context.
  */

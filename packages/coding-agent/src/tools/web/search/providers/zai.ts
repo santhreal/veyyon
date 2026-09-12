@@ -7,7 +7,6 @@
 
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
-import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { isRecord, trimmedString } from "@veyyon/utils";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { MCP_PROTOCOL_VERSION } from "../../../../mcp/protocol-version";
@@ -20,7 +19,7 @@ import type { SearchResponse, SearchSource } from "../types";
 import { SearchProviderError } from "../types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
-import { SearchProvider } from "./base";
+import { ApiKeySearchProvider } from "./base";
 import { classifyProviderHttpError } from "./utils";
 
 const ZAI_MCP_URL = "https://api.z.ai/api/mcp/web_search_prime/mcp";
@@ -402,11 +401,6 @@ export async function searchZai(params: ZaiSearchParams): Promise<SearchResponse
 		sessionId: params.sessionId,
 	});
 
-	// Cap the requested count once, here, so both the outbound API `count` and the
-	// post-fetch slice honor the same bound as every other list provider (an
-	// unclamped `limit` used to reach the Z.AI API and the slice). Clamping at this
-	// shared entry means a direct searchZai call is bounded too, not only the
-	// ZaiProvider wrapper.
 	const resultCap = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 	const cappedParams = { ...params, num_results: resultCap };
 
@@ -420,7 +414,6 @@ export async function searchZai(params: ZaiSearchParams): Promise<SearchResponse
 	if (sources.length > resultCap) {
 		sources = sources.slice(0, resultCap);
 	}
-
 	return {
 		provider: "zai",
 		answer: payload.answer,
@@ -429,16 +422,13 @@ export async function searchZai(params: ZaiSearchParams): Promise<SearchResponse
 	};
 }
 
+/** Search provider for Z.AI web search MCP. */
 type ZaiProviderSearchParams = SearchParams & { fetch?: FetchImpl };
 
 /** Search provider for Z.AI web search MCP. */
-export class ZaiProvider extends SearchProvider {
+export class ZaiProvider extends ApiKeySearchProvider {
 	readonly id = "zai";
 	readonly label = "Z.AI";
-
-	isAvailable(authStorage: AuthStorage): Promise<boolean> | boolean {
-		return authStorage.hasAuth("zai") || !!getEnvApiKey("zai");
-	}
 
 	search(params: SearchParams): Promise<SearchResponse> {
 		const { fetch: fetchOverride } = params as ZaiProviderSearchParams;

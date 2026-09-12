@@ -24,6 +24,8 @@ import { TempDir } from "../packages/utils/src/temp";
 import {
 	expandMemberPattern,
 	globbedRoots,
+	memberDirectoryOf,
+	packageDirectories,
 	REPO_ROOT,
 	rustMembers,
 	typeScriptMembers,
@@ -274,5 +276,32 @@ describe("the workspace members come from the manifests", () => {
 			"kernel",
 			"natives/bridge/bindings",
 		]);
+	});
+});
+
+describe("packageDirectories and memberDirectoryOf map declared package names", () => {
+	it("resolves package directory by declared manifest name", () => {
+		const map = packageDirectories(REPO_ROOT);
+		expect(map.get("@veyyon/utils")).toBe(join(REPO_ROOT, "packages/utils"));
+		expect(memberDirectoryOf("@veyyon/utils", REPO_ROOT)).toBe(join(REPO_ROOT, "packages/utils"));
+		expect(memberDirectoryOf("nonexistent-package-name-12345", REPO_ROOT)).toBeUndefined();
+	});
+
+	it("observes manifests added or changed dynamically between invocations", () => {
+		using tempDir = TempDir.createSync("@veyyon-pkg-invalidation-");
+		const root = tempDir.path();
+		mkdirSync(join(root, "packages", "alpha"), { recursive: true });
+		writeFileSync(join(root, "packages", "alpha", "package.json"), JSON.stringify({ name: "@test/alpha" }));
+		writeFileSync(join(root, "package.json"), JSON.stringify({ workspaces: { packages: ["packages/*"] } }));
+
+		const initialMap = packageDirectories(root);
+		expect(initialMap.get("@test/alpha")).toBe(join(root, "packages/alpha"));
+		expect(initialMap.get("@test/beta")).toBeUndefined();
+
+		mkdirSync(join(root, "packages", "beta"), { recursive: true });
+		writeFileSync(join(root, "packages", "beta", "package.json"), JSON.stringify({ name: "@test/beta" }));
+
+		const updatedMap = packageDirectories(root);
+		expect(updatedMap.get("@test/beta")).toBe(join(root, "packages/beta"));
 	});
 });

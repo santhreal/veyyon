@@ -8,7 +8,7 @@
  * the user.
  *
  * Furthermore, when tool results arrived without structured `details` (e.g. from
- * wire transports, subagent returns, session replay, or external callers), `renderResult`
+ * wire transports, agent returns, session replay, or external callers), `renderResult`
  * strictly gated body generation on the presence of `details.daemon` or `details.daemons`,
  * causing `list`, `describe`, `start`, `stop`, `restart`, `send`, and `wait` to drop
  * all plain-text output in `result.content` and render empty bodies or misleading

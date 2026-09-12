@@ -95,6 +95,38 @@ describe("SearXNG web search provider", () => {
 		}
 	});
 
+	it("treats an empty endpoint or token setting as unset and reads the environment instead", async () => {
+		process.env.SEARXNG_ENDPOINT = "https://env.example.org";
+		process.env.SEARXNG_TOKEN = "env-token";
+		const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "searxng-settings-"));
+		try {
+			await Bun.write(
+				path.join(agentDir, "config.yml"),
+				["searxng:", '  endpoint: ""', '  token: ""', ""].join("\n"),
+			);
+			await Settings.init({ agentDir });
+
+			const captured: { url?: URL; headers?: Headers } = {};
+			const fetchMock: FetchImpl = (input, init) => {
+				captured.url = new URL(input.toString());
+				captured.headers = new Headers(init?.headers);
+				return Promise.resolve(
+					new Response(JSON.stringify({ results: [] }), {
+						status: 200,
+						headers: { "Content-Type": "application/json" },
+					}),
+				);
+			};
+
+			await searchSearXNG({ query: "empty settings", fetch: fetchMock });
+
+			expect(captured.url?.origin).toBe("https://env.example.org");
+			expect(captured.headers?.get("Authorization")).toBe("Bearer env-token");
+		} finally {
+			await removeWithRetries(agentDir);
+		}
+	});
+
 	it("prefers Basic auth over bearer token when both are configured", async () => {
 		process.env.SEARXNG_ENDPOINT = "https://searx.example.org";
 		process.env.SEARXNG_TOKEN = "bearer-token";

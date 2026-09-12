@@ -32,11 +32,13 @@ import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/terminal/compone
 import type { StatusLinePreset } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { visibleWidth } from "@veyyon/utils/width";
+import type { StatusDataSource } from "@veyyon/wire/presentation";
 import {
 	beginSettingsTest,
 	restoreSettingsTestState,
 	type SettingsTestState,
 } from "../../../helpers/settings-test-state";
+import { makeStatusLineProducer } from "../../../helpers/status-line-session";
 
 let settingsState: SettingsTestState | undefined;
 
@@ -54,50 +56,12 @@ afterAll(() => {
 const AGENT = "designer-3";
 const WIDTH = 100;
 
-function makeSession() {
-	return {
-		// Fixed values throughout: every segment on the bar reads this stub, and a moving number
-		// would make the width assertions below pass or fail on the clock.
-		getContextUsage: () => ({ tokens: 84_000, contextWindow: 200_000 }),
-		state: { messages: [], model: { contextWindow: 200_000, id: "gpt-5", name: "gpt-5" } },
-		messages: [],
-		model: undefined,
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		isStreaming: false,
-		isAutoThinking: false,
-		autoResolvedThinkingLevel: () => undefined,
-		isFastModeActive: () => false,
-		isApprovalBypassed: () => false,
-		isFastModeEnabled: () => false,
-		getGoalModeState: () => null,
-		getAsyncJobSnapshot: () => ({ running: [] }),
-		getPrewalkState: () => undefined,
-		isAdvisorActive: () => false,
-		configuredThinkingLevel: () => "medium",
-		// `get` as well as `getGroup`: the mode segment names the tool-approval
-		// rung, and a stub that only answers `getGroup` threw out of the whole
-		// status line rather than rendering the bar this file is about.
-		settings: { getGroup: () => ({ enabled: false }), get: () => undefined },
-		modelRegistry: { isUsingOAuth: () => false },
-		sessionManager: {
-			getSessionName: () => "parser-rewrite",
-			getCwd: () => "/home/you/code/veyyon",
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-			}),
-		},
-	} as unknown as ConstructorParameters<typeof StatusLineComponent>[0];
+function makeSession(): StatusDataSource {
+	return makeStatusLineProducer({
+		modelId: "gpt-5",
+		sessionName: "parser-rewrite",
+		contextUsage: { tokens: 84_000, contextWindow: 200_000 },
+	});
 }
 
 /** The composer footline for `preset`, focused on {@link AGENT} when `focused`. */

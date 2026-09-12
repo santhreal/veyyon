@@ -465,7 +465,7 @@ outlive the update that made it. Uninstall removes those too, so the install
 directory is left empty rather than holding a few hundred megabytes you have no
 name for. A backup you saved yourself under a name of your own is left alone.
 
-Two things it deliberately leaves behind. If you already had your own `vey` command, the installer never created that alias in the first place (it reports that at install time and prints the `veyyon` command instead), so uninstall does not touch it or its completion file. And if a checkout at `~/.veyyon/src` has uncommitted edits or commits on a local branch that is on no remote, it is moved to `~/.veyyon/src.bak-<timestamp>` instead of being deleted, so nothing you wrote is lost. Older installers created that tree. The current installer never does, so uninstall only ever cleans up one an older version left behind.
+Two things it leaves behind. If you already had your own `vey` command, the installer never created that alias in the first place (it reports that at install time and prints the `veyyon` command instead), so uninstall does not touch it or its completion file. And if a checkout at `~/.veyyon/src` has uncommitted edits or commits on a local branch that is on no remote, it is moved to `~/.veyyon/src.bak-<timestamp>` instead of being deleted, so nothing you wrote is lost. Older installers created that tree. The current installer never does, so uninstall only ever cleans up one an older version left behind.
 
 ```console
 $ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall

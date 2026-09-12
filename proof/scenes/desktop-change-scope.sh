@@ -118,7 +118,7 @@ use_crop "${PANEL_LEFT}" "${PANE_TOP}" "${PANE_W}" "${PANE_H}"
 
 echo "scene: the chrome row reads ${CHROME_GEOM}, the pane ${PANE_GEOM}" >&2
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 PARK_X=$(( PANEL_LEFT + PANE_W / 2 ))
 PARK_Y=$(( PANEL_BOTTOM - 4 ))

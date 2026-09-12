@@ -1,21 +1,15 @@
 /**
- * Render the Default Model row when a runtime override owns the active effort.
+ * Render the settings selector model tab with configured default effort overrides.
  *
- * The profile has `low` saved as this model's default effort while the runtime
- * role selector asks for `test/reasoning-model:high`, so two settings disagree
- * about the effort in force. What this draws is the Model tab opened on the Default
- * Model row, whose help text has to say which of the two is active and which one
- * this row would change.
+ * Initializes in-memory settings with a model role requiring high effort and a default
+ * effort setting requiring low effort. Opens the model settings tab, selects the default
+ * model entry, navigates into the effort picker, and prints the rendered selector lines
+ * as ANSI text.
  *
- * Takes `--width` and nothing else.
- *
- * Run:
- *     env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-default-effort-ownership.ts --width 100 |
- *       bun scripts/demos/render-proof.ts --out /tmp/default-effort-ownership --width 100 --scale 2
- *
- * The output is a debugging aid and not a proof: it never enters `assets/`, a
- * README, or a handbook page. See docs/handbook/src/foundations/verification.md.
+ * Usage:
+ *   bun scripts/demos/render-default-effort-ownership.ts [--width 100] [--theme dark]
  */
+
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
@@ -23,10 +17,8 @@ import type { ModelRegistry } from "../../packages/coding-agent/src/config/model
 import { resetSettingsForTest, Settings } from "../../packages/coding-agent/src/config/settings";
 import { DEFAULT_MODEL_SETTING_ID } from "../../packages/coding-agent/src/modes/terminal/components/selectors/settings-defs";
 import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/settings-selector";
-import { initTheme } from "../../packages/coding-agent/src/theme/theme";
-import { renderWidth } from "./render-args";
+import { renderDemo } from "./render-args";
 
-const width = renderWidth(process.argv.slice(2));
 const model: Model = buildModel({
 	id: "reasoning-model",
 	name: "Reasoning model",
@@ -46,32 +38,32 @@ const registry = {
 	authStorage: { hasAuth: () => true },
 } as unknown as ModelRegistry;
 
-resetSettingsForTest();
-await Settings.init({
-	inMemory: true,
-	overrides: {
-		modelRoles: { default: "test/reasoning-model:high" },
-		defaultEffort: { "test/reasoning-model": Effort.Low },
-	},
+await renderDemo(async ({ width }) => {
+	resetSettingsForTest();
+	await Settings.init({
+		inMemory: true,
+		overrides: {
+			modelRoles: { default: "test/reasoning-model:high" },
+			defaultEffort: { "test/reasoning-model": Effort.Low },
+		},
+	});
+
+	const selector = new SettingsSelectorComponent(
+		{
+			availableThinkingLevels: [],
+			thinkingLevel: undefined,
+			availableThemes: ["dark"],
+			availablePersonalities: ["default"],
+			providers: ["test"],
+			cwd: process.cwd(),
+			modelRegistry: registry,
+			availableModels: [model],
+		},
+		{ onChange: () => {}, onCancel: () => {} },
+	);
+	selector.openTab("model");
+	selector.selectSetting(DEFAULT_MODEL_SETTING_ID);
+	selector.handleInput("\n");
+	selector.handleInput("\n");
+	return selector.render(width);
 });
-await initTheme();
-
-const selector = new SettingsSelectorComponent(
-	{
-		availableThinkingLevels: [],
-		thinkingLevel: undefined,
-		availableThemes: ["dark"],
-		availablePersonalities: ["default"],
-		providers: ["test"],
-		cwd: process.cwd(),
-		modelRegistry: registry,
-		availableModels: [model],
-	},
-	{ onChange: () => {}, onCancel: () => {} },
-);
-selector.openTab("model");
-selector.selectSetting(DEFAULT_MODEL_SETTING_ID);
-selector.handleInput("\n");
-selector.handleInput("\n");
-
-process.stdout.write(`${selector.render(width).join("\n")}\n`);

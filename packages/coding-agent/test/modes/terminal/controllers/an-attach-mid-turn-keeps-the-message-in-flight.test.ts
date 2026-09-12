@@ -1,6 +1,6 @@
 /**
  * WHY: two features re-point the transcript at a session that may already be
- * streaming — viewing a subagent, and `/new` / `/resume` swapping the session
+ * streaming — viewing an agent, and `/new` / `/resume` swapping the session
  * the composer displays. Both land after the in-flight assistant message's
  * `message_start` has already been emitted, so without a synthesized start the
  * accumulating `message_update` deltas have no anchor and the answer renders

@@ -4,7 +4,7 @@ import { isIrcEnabled } from "@veyyon/coding-agent/tools/agent/irc-enabled";
 
 /**
  * isIrcEnabled decides whether the IRC tool is offered: IRC needs a peer to talk to.
- * Any subagent (taskDepth > 0) always has a parent, so it remains enabled even when
+ * Any agent (taskDepth > 0) always has a parent, so it remains enabled even when
  * that child is a leaf. A root session has potential peers only when delegation is
  * enabled and the same inclusive spawn-capacity gate as the task tool permits it.
  * The default cap is zero: the root may spawn direct children, while depth-one
@@ -13,12 +13,12 @@ import { isIrcEnabled } from "@veyyon/coding-agent/tools/agent/irc-enabled";
 
 const settings = (maxNestedSpawnDepth?: number, enabled = true): Settings =>
 	Settings.isolated({
-		"subagent.enabled": enabled,
-		...(maxNestedSpawnDepth === undefined ? {} : { "subagent.maxNestedSpawnDepth": maxNestedSpawnDepth }),
+		"agent.enabled": enabled,
+		...(maxNestedSpawnDepth === undefined ? {} : { "agent.maxNestedSpawnDepth": maxNestedSpawnDepth }),
 	});
 
-describe("isIrcEnabled subagents", () => {
-	it("is always enabled for a subagent regardless of the depth cap or master switch", () => {
+describe("isIrcEnabled agents", () => {
+	it("is always enabled for an agent regardless of the depth cap or master switch", () => {
 		expect(isIrcEnabled(settings(0), 1)).toBe(true);
 		expect(isIrcEnabled(settings(0, false), 1)).toBe(true);
 	});

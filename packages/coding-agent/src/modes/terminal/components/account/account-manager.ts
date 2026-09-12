@@ -9,7 +9,7 @@
  * gone. This card is one row per CREDENTIAL, which is the thing you switch, name and log out.
  *
  * WHY SWITCHING IS PER PROVIDER. Several providers serve one session at once (main model,
- * subagent roles, web search), so there is no single "current account" to pick. `enter` uses the
+ * agent roles, web search), so there is no single "current account" to pick. `enter` uses the
  * selected account FOR ITS PROVIDER and the footer says so by name, because a key labelled just
  * `use` reads as a global switch and is not one. Moving from Anthropic to Google is a model
  * decision and lives in `/models`.
@@ -22,10 +22,10 @@
  */
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { type Component, Input } from "@veyyon/tui";
+import { HoverController } from "@veyyon/tui/utils/hover-controller";
 import { clampLow } from "@veyyon/utils";
 import { fuzzyFilter } from "@veyyon/utils/fuzzy";
 import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
-import { HoverFade } from "@veyyon/utils/motion";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
@@ -37,8 +37,6 @@ import { theme } from "../../../../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import {
 	computeModalDims,
-	consumeModalChipHover,
-	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
@@ -48,6 +46,7 @@ import {
 	sizingForArea,
 } from "../chrome/modal-shell";
 import { fit } from "../chrome/overlay-box";
+import { routeModalChrome } from "../selectors/select-list-mouse-routing";
 import { hoverBandAt, renderScrollableList, selectionBand } from "../selectors/selector-helpers";
 import {
 	type AccountGlyphKind,
@@ -196,12 +195,11 @@ export class AccountManagerComponent implements Component {
 	#sidebarScroll = 0;
 	/** Set by an activation (keys, click, open) so the next paint reveals the active provider. */
 	#sidebarFollowActive = true;
-	#sidebarHover: number | null = null;
 	/**
-	 * The cross-fade for the sidebar band, once the host has lent the card a repaint. A card
+	 * The hover controller for the sidebar band, once the host has lent the card a repaint. A card
 	 * constructed without one keeps the switched band, which is what a non-interactive test sees.
 	 */
-	#sidebarFade: HoverFade | undefined;
+	#sidebarHover = new HoverController<number>();
 	#bodyScroll = 0;
 
 	/** Inline rename editor, open over the selected row. */
@@ -246,7 +244,7 @@ export class AccountManagerComponent implements Component {
 		// reports have no input to hang off. Same ambient gate as the open unfold.
 		const requestRender = options.requestRender;
 		if (requestRender) {
-			this.#sidebarFade = new HoverFade({ requestRender, enabled: pointerMotionEnabled() });
+			this.#sidebarHover.setMotion({ requestRender, enabled: pointerMotionEnabled() });
 		}
 	}
 
@@ -270,15 +268,7 @@ export class AccountManagerComponent implements Component {
 	}
 
 	dispose(): void {
-		this.#sidebarFade?.dispose();
-		this.#sidebarFade = undefined;
-		this.#sidebarHover = null;
-	}
-
-	/** Sidebar band strength; without a fade the hovered row is at 1 and the rest at 0. */
-	#sidebarStrength(index: number): number {
-		if (this.#sidebarFade !== undefined) return this.#sidebarFade.strengthAt(index);
-		return index === this.#sidebarHover ? 1 : 0;
+		this.#sidebarHover.dispose();
 	}
 
 	#rebuildEntries(): void {
@@ -619,37 +609,32 @@ export class AccountManagerComponent implements Component {
 	}
 
 	#routeMouse(event: SgrMouseEvent): boolean {
-		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-			motion: event.motion,
-			leftClick: event.leftClick,
-		});
-		if (
-			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
-				this.#hoveredShortcutId = id;
-				this.#requestRender?.();
-			})
-		) {
-			return true;
-		}
-		if (
-			chrome.kind === "close" ||
-			chrome.kind === "outside" ||
-			(chrome.kind === "shortcut" && chrome.id === "close")
-		) {
-			this.handleInput("\x1b");
-			this.#requestRender?.();
-			return true;
-		}
-		if (chrome.kind === "shortcut") {
-			// A chip runs the KEY it names, never a private copy of the action, so the footer and
-			// the keyboard can never drift apart.
-			const key = SHORTCUT_KEYS[chrome.id];
+		// A chip runs the KEY it names, never a private copy of the action, so the footer and
+		// the keyboard can never drift apart. `close` and `confirm` go the same way.
+		const pressChip = (id: string): boolean => {
+			const key = SHORTCUT_KEYS[id];
 			if (key) {
 				this.handleInput(key);
 				this.#requestRender?.();
 			}
 			return true;
-		}
+		};
+		const consumed = routeModalChrome({
+			shellGeometry: this.#shellGeometry,
+			event,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			onHoverShortcut: id => {
+				this.#hoveredShortcutId = id;
+				this.#requestRender?.();
+			},
+			onCancel: () => {
+				this.handleInput("\x1b");
+				this.#requestRender?.();
+			},
+			onConfirm: () => pressChip("confirm"),
+			onShortcut: pressChip,
+		});
+		if (consumed) return true;
 
 		// `row()` insets content by the border column plus a space, and the card floats, so the
 		// split starts at `frameLeft + 2`.
@@ -668,8 +653,7 @@ export class AccountManagerComponent implements Component {
 		const overBody = overSplit && innerCol >= this.#sidebarWidthLast + 3;
 
 		if (event.motion) {
-			this.#sidebarHover = overSidebar ? this.#sidebarScroll + contentLine - searchOffset : null;
-			this.#sidebarFade?.set(this.#sidebarHover);
+			this.#sidebarHover.set(overSidebar ? this.#sidebarScroll + contentLine - searchOffset : null);
 			return true;
 		}
 		if (event.wheel !== null) {
@@ -817,7 +801,7 @@ export class AccountManagerComponent implements Component {
 				const left = `${cursor} ${label}`;
 				const gap = Math.max(1, width - visibleWidth(left) - visibleWidth(annotation));
 				let line = `${left}${" ".repeat(gap)}${annotation}`;
-				const hoverStrength = this.#sidebarStrength(i);
+				const hoverStrength = this.#sidebarHover.strength(i);
 				if (hoverStrength > 0) line = hoverBandAt(line, width, hoverStrength);
 				lines.push(line);
 			}

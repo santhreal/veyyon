@@ -3,6 +3,7 @@
  * the `<vey-tool-view>` web component embedded in HTML session exports.
  */
 import { INTENT_FIELD } from "@veyyon/wire";
+import type { ToolExecutionDisplay } from "@veyyon/wire/presentation";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 import { PartialTail } from "./partial-tail";
@@ -24,6 +25,8 @@ export interface ToolViewProps {
 	defaultOpen?: boolean;
 	/** Host capabilities (sub-session drill-down, …). */
 	host?: ToolRenderHost;
+	/** Canonical projected display (from result or pending call). */
+	display?: ToolExecutionDisplay;
 }
 
 function normalizeArgs(raw: unknown): { args: Record<string, unknown>; intent: string | undefined } {
@@ -41,6 +44,7 @@ export function ToolView(props: ToolViewProps): ReactNode {
 	const [open, setOpen] = useState(props.defaultOpen ?? false);
 	const { args, intent: argIntent } = normalizeArgs(props.args);
 	const intent = props.intent?.trim() || argIntent;
+	const toolLabel = props.display?.toolLabel ?? props.name;
 	const renderer = resolveToolRenderer(props.name);
 	const renderProps: ToolRenderProps = {
 		name: props.name,
@@ -48,8 +52,8 @@ export function ToolView(props: ToolViewProps): ReactNode {
 		result: props.result,
 		running: props.running,
 		host: props.host,
+		display: props.display,
 	};
-
 	const isError = props.result?.isError === true;
 	const status = props.running ? "run" : isError ? "err" : props.result ? "ok" : "pending";
 	// The tail is stripped incrementally: each arrival costs what arrived, not
@@ -75,7 +79,7 @@ export function ToolView(props: ToolViewProps): ReactNode {
 				) : (
 					<span className={`tv-status tv-status--${status}`} aria-hidden="true" />
 				)}
-				<span className="tv-name">{props.name}</span>
+				<span className="tv-name">{toolLabel}</span>
 				<span className="tv-sum">
 					<renderer.Summary {...renderProps} />
 				</span>

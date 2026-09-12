@@ -1,23 +1,22 @@
 # Hooks
 
-Hook subsystem code lives under `src/extensibility/hooks/*`. Runtime loading uses the extension runner:
+A hook is an extension module registered under the `hooks` capability. It is loaded by the extension loader, its handlers bind to the extension runner, and its tool interception runs through `ExtensionToolWrapper`.
 
 ## Runtime loading
 
 - `--hook` is treated as an alias for `--extension` (CLI paths are merged into `additionalExtensionPaths`)
 - JS/TS hook factories discovered through `hookCapability` (for example `~/.veyyon/profiles/<name>/agent/hooks/pre/*.ts`; hooks are user-level only, a working tree's `.veyyon/hooks/` is not read) are loaded as extension modules so their `pi.on(...)` handlers bind to the runtime event bus
-- tools are wrapped by `ExtensionToolWrapper`, not `HookToolWrapper`
+- a plugin's `hooks` manifest entry is loaded the same way
+- tools are wrapped by `ExtensionToolWrapper`
 - context transforms and lifecycle emissions go through `ExtensionRunner`
-
-So this file documents the legacy hook subsystem implementation itself (types/loader/runner/wrapper), plus the factory shape still accepted when a discovered hook path is loaded by the extension runner.
 
 ## Key files
 
 - `src/extensibility/hooks/types.ts`: hook context, event types, and result contracts
-- `src/extensibility/hooks/loader.ts`: module loading and hook discovery bridge
-- `src/extensibility/hooks/runner.ts`: event dispatch, command lookup, error signaling
-- `src/extensibility/hooks/tool-wrapper.ts`: pre/post tool interception wrapper
-- `src/extensibility/hooks/index.ts`: exports/re-exports
+- `src/extensibility/hooks/index.ts`: type exports
+- `src/extensibility/extensions/loader.ts`: discovery and module loading
+- `src/extensibility/extensions/runner.ts`: event dispatch, command lookup, error signaling
+- `src/extensibility/extensions/wrapper.ts`: approval, pre/post tool interception
 
 ## What a hook module is
 
@@ -50,24 +49,16 @@ The factory can:
 
 ## Discovery and loading
 
-Default sessions load JS/TS hook factories discovered by `hookCapability` through the extension runner. `discoverExtensionPaths(configuredPaths, cwd)` does:
+A session loads JS/TS hook factories discovered by `hookCapability` through the extension runner. `discoverExtensionPaths(configuredPaths, cwd)` does:
 
 1. Load native extension modules from the capability registry
 2. Load importable `.ts`/`.js` hook factories from the hook capability registry
-3. Append plugin extension entry points
+3. Append plugin extension entry points and plugin `hooks` entries
 4. Append explicitly configured paths
 
-The legacy `discoverAndLoadHooks(configuredPaths, cwd)` helper still exists and does:
-
-1. Load discovered hooks from capability registry (`loadCapability("hooks")`)
-2. Append explicitly configured paths (deduped by absolute path)
-3. Call `loadHooks(allPaths, cwd)`
-
-`loadHooks` then imports each path and expects a `default` function.
+`loadExtensions` then imports each path and expects a `default` function. A CommonJS module (`module.exports = factory`) is accepted.
 
 ### Path resolution
-
-`loader.ts` resolves hook paths as:
 
 - absolute path: used as-is
 - `~` path: expanded
@@ -111,67 +102,69 @@ Hook events are strongly typed in `types.ts`.
 - `tool_call` (pre-execution) → can return `{ block?: boolean; reason?: string }`
 - `tool_result` (post-execution) → can return `{ content?; details?; isError? }`
 
-This is the hook subsystem’s core pre/post interception model.
-
 ```text
-Hook tool interception flow
+Tool interception flow
 
+approval policy
+   │
+   ├─ denied ──> throw (no handler runs)
+   │
+   ▼
 tool_call handlers
    │
-   ├─ any { block: true }? ── yes ──> throw (tool blocked)
+   ├─ any { block: true }, a throw, or a timeout? ── yes ──> throw (tool blocked)
    │
    └─ no
       │
       ▼
    execute underlying tool
       │
-      ├─ success ──> tool_result handlers can override { content, details }
+      ├─ success ──> tool_result handlers can override { content, details, isError }
       │
-      └─ error   ──> emit tool_result(isError=true) then rethrow original error
+      └─ error   ──> emit tool_result(isError=true); an override returns as an isError result,
+                     otherwise the original error is rethrown
 ```
 
 ## Execution model and mutation semantics
 
-### 1) Pre-execution: `tool_call`
+`ExtensionToolWrapper.execute()` in `src/extensibility/extensions/wrapper.ts` runs every tool call.
 
-`HookToolWrapper.execute()` emits `tool_call` before tool execution.
+### 1) Approval
 
-- if any handler returns `{ block: true }`, execution stops
-- if handler throws, wrapper fails closed and blocks execution
-- returned `reason` becomes the thrown error text
+The approval policy (`tools.approvalMode`, `tools.approval.<tool>`) is checked before any handler runs. A denied call throws `Tool call denied by user: <tool>` and reaches no handler.
 
-### 2) Tool execution
+### 2) Pre-execution: `tool_call`
 
-Underlying tool executes normally if not blocked.
+- if any handler returns `{ block: true }`, execution stops and the returned `reason` becomes the thrown error text
+- if a handler throws or times out, the call is blocked with a reason that names the extension path
 
-### 3) Post-execution: `tool_result`
+### 3) Tool execution
 
-After success, wrapper emits `tool_result` with:
+The underlying tool executes if not blocked. A cancellation (abort or deadline) propagates as thrown and reaches no `tool_result` handler.
 
-- `toolName`, `toolCallId`, `input`
-- `content`
-- `details`
-- `isError: false`
+### 4) Post-execution: `tool_result`
 
-If handler returns overrides:
+After execution, the wrapper emits `tool_result` with `toolName`, `toolCallId`, `input`, `content`, `details` and `isError`. A tool that threw is emitted with `isError: true` and the error message as its text content.
 
-- `content` can replace result content
-- `details` can replace result details
+If a handler returns overrides:
 
-On tool failure, wrapper emits `tool_result` with `isError: true` and error text content, then rethrows original error.
+- `content` replaces the result content
+- `details` replaces the result details
+- `isError` replaces the error state: a handler can rewrite a failed call's content while keeping it an error, flip a failure to success, or flag a success as an error
+
+When no handler returns an override, a failed call rethrows its original error.
 
 ### What hooks can mutate
 
 - LLM context for a single call via `context` (`messages` replacement chain)
-- tool output content/details on successful tool calls (`tool_result` path)
+- tool output content, details and error state via `tool_result`
 - pre-agent injected message via `before_agent_start`
 - cancellation/custom compaction/tree behavior via `session_before_*` and `session_compacting`
 
-### What hooks cannot mutate in this implementation
+### What hooks cannot mutate
 
 - raw tool input parameters in-place (only block/allow on `tool_call`)
-- execution continuation after thrown tool errors (error path rethrows)
-- final success/error status in wrapper behavior (returned `isError` is typed but not applied by `HookToolWrapper`)
+- the approval decision, which is taken before any handler runs
 
 ## Ordering and conflict behavior
 
@@ -183,30 +176,16 @@ For `hooks`, capability key is `${type}:${tool}:${name}`. Shadowed duplicates fr
 
 ### Load order
 
-`discoverAndLoadHooks` builds a flat `allPaths` list, deduped by resolved absolute path, then `loadHooks` iterates in that order.
-File order within each discovered directory depends on `readdir` output; the hook loader does not perform an additional sort.
+`discoverExtensionPaths` lists native extension modules, then discovered hook factories, then plugin extension entry points, then configured paths, deduped by resolved absolute path. File order within a discovered directory is `readdir` order.
 
 ### Runtime handler order
 
-Inside `HookRunner`, order is deterministic by registration sequence:
+Inside `ExtensionRunner`, handlers run in load order, then in registration order within a module.
 
-1. hooks array order
-2. handler registration order per hook/event
+- `tool_call`: the first `{ block: true }` short-circuits; a handler that throws or does not answer within the handler timeout blocks the call with a reason that names the extension path
+- `tool_result`: each handler receives the event as modified by the handlers before it; the last value set for `content`, `details` and `isError` wins
 
-Conflict behavior by event type:
-
-- `tool_call`: last returned result wins unless a handler blocks; first block short-circuits
-- `tool_result`: last returned override wins (no short-circuit)
-- `context`: chained; each handler receives prior handler’s message output
-- `before_agent_start`: first returned message is kept; later messages ignored
-- `session_before_*`: latest returned result is tracked; `cancel: true` short-circuits immediately
-- `session_compacting`: latest returned result wins
-
-Command/renderer conflicts:
-
-- `getCommand(name)` returns first match across hooks (first loaded wins)
-- `getMessageRenderer(customType)` returns first match
-- `getRegisteredCommands()` returns all commands (no dedupe)
+Command conflicts: a name two extensions register is reported once per session to the operator channel, and the later registration wins. A name that collides with a built-in command is reported the same way.
 
 ## UI interactions (`HookContext.ui`)
 
@@ -241,14 +220,14 @@ Hook status text set via `ctx.ui.setStatus(key, text)` is:
 
 ### Load-time
 
-- invalid module or missing default export → captured in `LoadHooksResult.errors`
-- loading continues for other hooks
+- an import that throws, a missing default export, or a factory that throws → captured in `LoadExtensionsResult.errors` and reported to the operator channel
+- loading continues for other modules
 
 ### Event-time
 
-`HookRunner.emit(...)` catches handler errors for most events and emits `HookError` to listeners (`hookPath`, `event`, `error`), then continues.
+`ExtensionRunner` catches a handler error for most events and emits it to error listeners (`extensionPath`, `event`, `error`), then continues.
 
-`emitToolCall(...)` is stricter: handler errors are not swallowed there; they propagate to caller. In `HookToolWrapper`, this blocks the tool call (fail-safe).
+`emitToolCall(...)` is stricter: a handler that throws or times out blocks the tool call, with a reason that names the extension path.
 
 ## Realistic API examples
 
@@ -336,11 +315,6 @@ export default function (pi: HookAPI): void {
 
 ## Export surface
 
-`src/extensibility/hooks/index.ts` and the package subpath `@veyyon/coding-agent/extensibility/hooks` export:
+`src/extensibility/hooks/index.ts` and the package subpath `@veyyon/coding-agent/extensibility/hooks` export the hook types only: `HookAPI`, `HookContext`, `HookCommandContext`, `HookUIContext`, the event and result types, and `ExecOptions`/`ExecResult`. There is no hook loader, runner or tool wrapper; the extension runner loads and drives a hook module.
 
-- loading APIs (`discoverAndLoadHooks`, `loadHooks`)
-- runner and wrapper (`HookRunner`, `HookToolWrapper`)
-- all hook types
-- `execCommand` re-export
-
-The package root (`@veyyon/coding-agent`) re-exports `HookAPI` and `HookContext`; the full hooks subsystem is additionally available from the hooks subpath.
+The package root (`@veyyon/coding-agent`) re-exports `HookAPI` and `HookContext`.

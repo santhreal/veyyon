@@ -42,16 +42,13 @@ import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { SecretRuntimeLease } from "@veyyon/coding-agent/session/agent-session-types";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
-import { setProjectDir, TempDir } from "@veyyon/utils";
+import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 
 const A_VALUE = "redaction-outlives-project-a-value-13579";
 const B_VALUE = "redaction-outlives-project-b-value-97531";
 const AGENT_SESSION_SOURCE = path.resolve(import.meta.dir, "../../src/session/agent-session.ts");
 const getConfigRoot = useIsolatedConfigRoot();
-
-/** The working directory this file inherited, restored before a fixture tree is deleted. */
-const HOME_CWD = process.cwd();
 
 let registryRoot: TempDir;
 let authStorage: AuthStorage;
@@ -75,9 +72,12 @@ interface Fixture {
 	vaultA: SecretVault;
 	settings: Settings;
 	session: AgentSession;
+	/** Where the process stood before the session moved it; put back before `root` goes. */
+	originalProjectDir: string;
 }
 
 async function createFixture(extension?: ExtensionFactory): Promise<Fixture> {
+	const originalProjectDir = getProjectDir();
 	const root = TempDir.createSync("redaction-outlives-");
 	const projectA = path.resolve(root.join("project-a"));
 	const projectB = path.resolve(root.join("project-b"));
@@ -109,16 +109,18 @@ async function createFixture(extension?: ExtensionFactory): Promise<Fixture> {
 		enableLsp: false,
 		skipPythonPreflight: true,
 	});
-	return { root, projectA, projectB, vaultA, settings, session };
+	return { root, projectA, projectB, vaultA, settings, session, originalProjectDir };
 }
 
+/**
+ * `setCwd` re-scopes the PROCESS, since this session owns it, so a row that moved to project B
+ * left the process standing in a directory this removes. Put it back first: a later suite that
+ * restores its own state fails with ENOENT on a directory it never created, and the leak tracer
+ * cannot even take its after-test snapshot.
+ */
 async function dispose(fixture: Fixture): Promise<void> {
 	await fixture.session.dispose();
-	// `createAgentSession` chdirs into the fixture's project through `setProjectDir`,
-	// so the process working directory is inside the tree about to be deleted. Leave
-	// it there and every later `process.cwd()` in this process throws ENOENT — the
-	// next file in a shared run, and the leak tracer's own snapshot.
-	setProjectDir(HOME_CWD);
+	setProjectDir(fixture.originalProjectDir);
 	await fixture.root.remove();
 }
 

@@ -52,7 +52,7 @@ import time
 
 profile = os.environ.get("VEYYON_PROFILE") or "default"
 endpoint = Path.home() / ".veyyon" / "profiles" / profile / "agent" / "gui-host.sock"
-created = json.loads((Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json").read_text())
+created = json.loads((Path(os.environ["TMPDIR"]) / "created-session.json").read_text())
 # A host action is externally tagged: the unit variants are a bare string and
 # this one carries its own value, never a separate `payload` field.
 request = json.dumps({"id": 1, "action": {"OpenSession": {"session": created}}}) + "\n"

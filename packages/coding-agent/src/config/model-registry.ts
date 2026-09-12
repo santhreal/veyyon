@@ -2048,6 +2048,15 @@ export class ModelRegistry {
 		}
 	}
 
+	/** The endpoint a built-in provider is discovered at: runtime override, then models.yml, then the catalog. */
+	#builtInDiscoveryBaseUrl(providerId: string): string | undefined {
+		return (
+			this.#runtimeProviderOverrides.get(providerId)?.baseUrl ??
+			this.#providerOverrides.get(providerId)?.baseUrl ??
+			this.getProviderBaseUrl(providerId)
+		);
+	}
+
 	async #collectBuiltInModelManagerOptions(
 		strategy: ModelRefreshStrategy,
 		providerFilter: ReadonlySet<string> | undefined,
@@ -2091,22 +2100,15 @@ export class ModelRegistry {
 			},
 		];
 		const disabledProviders = getDisabledProviderIdsFromSettings();
-		const standardProviderDescriptors = PROVIDER_DESCRIPTORS.filter(descriptor => {
-			if (disabledProviders.has(descriptor.providerId)) return false;
-			if (configuredDiscoveryProviders.has(descriptor.providerId)) return false;
-			return providerFilter ? providerFilter.has(descriptor.providerId) : true;
-		});
-		const enabledSpecialProviderDescriptors = specialProviderDescriptors.filter(descriptor => {
-			if (disabledProviders.has(descriptor.providerId)) return false;
-			if (configuredDiscoveryProviders.has(descriptor.providerId)) return false;
-			return providerFilter ? providerFilter.has(descriptor.providerId) : true;
-		});
+		const discovers = ({ providerId }: { providerId: string }): boolean =>
+			!disabledProviders.has(providerId) &&
+			!configuredDiscoveryProviders.has(providerId) &&
+			(providerFilter ? providerFilter.has(providerId) : true);
+		const standardProviderDescriptors = PROVIDER_DESCRIPTORS.filter(discovers);
+		const enabledSpecialProviderDescriptors = specialProviderDescriptors.filter(discovers);
 		const standardProviderKeys = await Promise.all(
 			standardProviderDescriptors.map(descriptor => {
-				const discoveryBaseUrl =
-					this.#runtimeProviderOverrides.get(descriptor.providerId)?.baseUrl ??
-					this.#providerOverrides.get(descriptor.providerId)?.baseUrl ??
-					this.getProviderBaseUrl(descriptor.providerId);
+				const discoveryBaseUrl = this.#builtInDiscoveryBaseUrl(descriptor.providerId);
 				const cacheProviderId =
 					descriptor.createModelManagerOptions({ baseUrl: discoveryBaseUrl, fetch: this.#fetch })
 						.cacheProviderId ?? descriptor.providerId;
@@ -2128,10 +2130,7 @@ export class ModelRegistry {
 					this.#providerOverrides.has(descriptor.providerId) ||
 					this.#keylessProviders.has(descriptor.providerId));
 			if (isAuthenticated(apiKey) || descriptor.allowUnauthenticated || hasExplicitVllmConfig) {
-				const discoveryBaseUrl =
-					this.#runtimeProviderOverrides.get(descriptor.providerId)?.baseUrl ??
-					this.#providerOverrides.get(descriptor.providerId)?.baseUrl ??
-					this.getProviderBaseUrl(descriptor.providerId);
+				const discoveryBaseUrl = this.#builtInDiscoveryBaseUrl(descriptor.providerId);
 				options.push(
 					descriptor.createModelManagerOptions({
 						apiKey: isDiscoveryBearerApiKey(apiKey) ? apiKey : undefined,
@@ -2438,7 +2437,7 @@ export class ModelRegistry {
 	 * Check whether auth is configured for a model's provider.
 	 *
 	 * Mirrors the upstream `@mariozechner/pi-coding-agent` API surface so that
-	 * external plugins/extensions and downstream wrappers (e.g. subagent launch
+	 * external plugins/extensions and downstream wrappers (e.g. spawned agent launch
 	 * paths that pre-flight auth before model resolution) can probe a model
 	 * without resolving an API key. Returns true for keyless providers as well
 	 * as providers with stored credentials. See issue #993.

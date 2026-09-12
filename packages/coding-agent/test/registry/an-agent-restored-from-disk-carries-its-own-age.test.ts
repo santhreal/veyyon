@@ -1,9 +1,9 @@
 /**
- * A subagent read back from disk is as old as its transcript, and the operator's
+ * An agent read back from disk is as old as its transcript, and the operator's
  * prune budget reaches it.
  *
- * THE DEFECT. `registerPersistedSubagents` walks the session tree and registers
- * every subagent of every previous run as `parked`. It passed no timestamps, so
+ * THE DEFECT. `registerPersistedAgents` walks the session tree and registers
+ * every agent of every previous run as `parked`. It passed no timestamps, so
  * `AgentRegistry.register` stamped `createdAt`/`lastActivity` with the moment of
  * the scan, and the roster's age column reported "just now" for work finished
  * yesterday — for every row at once, which is the column saying nothing at all.
@@ -14,12 +14,12 @@
  * for an adopted agent, `parked` is a stable state, and only a status change
  * re-derives one, so a restored ref had no deadline and nothing would ever give
  * it one: "Prune After" governed the agents this process spawned and nothing
- * else. A resumed session accumulated every subagent it had ever written, eighty
+ * else. A resumed session accumulated every agent it had ever written, eighty
  * rows deep.
  *
  * THE CLASS. Any ref restored rather than started — today the persisted scan for
  * both `sub` and `advisor` kinds — must carry the times of the thing it was
- * restored from, and any parked subagent, however it got there, must answer to
+ * restored from, and any parked agent, however it got there, must answer to
  * the same prune budget. The kind sweep below reads `AgentKind` at run time and
  * pins the set this path prunes by exact equality, so a fourth kind turns this
  * suite red until someone records a decision for it.
@@ -36,7 +36,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { type AgentKind, type AgentRef, AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
-import { registerPersistedSubagents } from "@veyyon/coding-agent/registry/persisted-subagents";
+import { registerPersistedAgents } from "@veyyon/coding-agent/registry/persisted-agents";
 import { Snowflake } from "@veyyon/utils";
 
 const HOUR = 60 * 60_000;
@@ -66,7 +66,7 @@ async function flushAsync(): Promise<void> {
 
 /** Install the budget the non-ACP bootstrap installs, with no reviver available. */
 function installBudget(afterMs: number): void {
-	lifecycle.setPersistedSubagentReviverFactory(async () => undefined, 0, {
+	lifecycle.setPersistedAgentReviverFactory(async () => undefined, 0, {
 		afterMs,
 		waitingAfterMs: afterMs,
 	});
@@ -101,7 +101,7 @@ describe("an agent restored from disk carries the age of its transcript", () => 
 		const freshAt = await seedTranscript(path.join(root, "main", "Otter.jsonl"), 10 * 60_000);
 		const scanAt = Date.now();
 
-		await registerPersistedSubagents(registry, path.join(root, "main.jsonl"), "session-a");
+		await registerPersistedAgents(registry, path.join(root, "main.jsonl"), "session-a");
 
 		const kestrel = registry.get("Kestrel");
 		const otter = registry.get("Otter");
@@ -115,7 +115,7 @@ describe("an agent restored from disk carries the age of its transcript", () => 
 	/** `createdAt` orders the roster, so it is restored for the same reason. */
 	it("restores the creation stamp too, so the roster orders by real history", async () => {
 		await seedTranscript(path.join(root, "main", "Kestrel.jsonl"), 3 * HOUR);
-		await registerPersistedSubagents(registry, path.join(root, "main.jsonl"), "session-a");
+		await registerPersistedAgents(registry, path.join(root, "main.jsonl"), "session-a");
 
 		expect(Date.now() - (registry.get("Kestrel")?.createdAt ?? Date.now())).toBeGreaterThan(2 * HOUR);
 	});
@@ -123,7 +123,7 @@ describe("an agent restored from disk carries the age of its transcript", () => 
 	/** An advisor transcript is restored as well, and is aged the same way. */
 	it("ages a restored advisor row from its own transcript", async () => {
 		await seedTranscript(path.join(root, "main", "__advisor.jsonl"), 3 * HOUR);
-		await registerPersistedSubagents(registry, path.join(root, "main.jsonl"), "session-a");
+		await registerPersistedAgents(registry, path.join(root, "main.jsonl"), "session-a");
 
 		const advisor = registry.list().find(ref => ref.kind === "advisor");
 		expect(Date.now() - (advisor?.lastActivity ?? Date.now())).toBeGreaterThan(2 * HOUR);
@@ -142,7 +142,7 @@ describe("the prune budget reaches an agent restored from disk", () => {
 		installBudget(CLOSE_AFTER);
 		vi.useFakeTimers();
 
-		await registerPersistedSubagents(registry, path.join(root, "main.jsonl"), "session-a");
+		await registerPersistedAgents(registry, path.join(root, "main.jsonl"), "session-a");
 		vi.advanceTimersByTime(1);
 		await flushAsync();
 
@@ -161,7 +161,7 @@ describe("the prune budget reaches an agent restored from disk", () => {
 		installBudget(CLOSE_AFTER);
 		vi.useFakeTimers();
 
-		await registerPersistedSubagents(registry, path.join(root, "main.jsonl"), "session-a");
+		await registerPersistedAgents(registry, path.join(root, "main.jsonl"), "session-a");
 		vi.advanceTimersByTime(1);
 		await flushAsync();
 
@@ -170,16 +170,16 @@ describe("the prune budget reaches an agent restored from disk", () => {
 	});
 
 	/**
-	 * The off switch. `subagent.prune.enabled` resolves to a zero budget, and
+	 * The off switch. `agent.prune.enabled` resolves to a zero budget, and
 	 * a zero budget must keep every restored agent listed however old it is — that
-	 * is what "keep every finished subagent listed until you exit" means.
+	 * is what "keep every finished agent listed until you exit" means.
 	 */
 	it("keeps every restored agent when the budget is off", async () => {
 		await seedTranscript(path.join(root, "main", "Kestrel.jsonl"), 3 * HOUR);
 		installBudget(0);
 		vi.useFakeTimers();
 
-		await registerPersistedSubagents(registry, path.join(root, "main.jsonl"), "session-a");
+		await registerPersistedAgents(registry, path.join(root, "main.jsonl"), "session-a");
 		vi.advanceTimersByTime(HOUR);
 		await flushAsync();
 
@@ -194,7 +194,7 @@ describe("the prune budget reaches an agent restored from disk", () => {
 		await seedTranscript(path.join(root, "main", "Kestrel.jsonl"), 3 * HOUR);
 		vi.useFakeTimers();
 
-		await registerPersistedSubagents(registry, path.join(root, "main.jsonl"), "session-a");
+		await registerPersistedAgents(registry, path.join(root, "main.jsonl"), "session-a");
 		vi.advanceTimersByTime(HOUR);
 		await flushAsync();
 
@@ -229,10 +229,10 @@ describe("the prune budget reaches an agent restored from disk", () => {
 	 * Which kinds this path may drop, swept over the union rather than asserted
 	 * for the one that prompted it. A `main` ref is a conversation, not a finished
 	 * spawn, and an `advisor` row belongs to the session it observes; only `sub`
-	 * is a subagent the roster prunes. Pinned by exact equality, so a fourth kind
+	 * is an agent the roster prunes. Pinned by exact equality, so a fourth kind
 	 * arrives red.
 	 */
-	it("prunes subagents and nothing else", async () => {
+	it("prunes agents and nothing else", async () => {
 		installBudget(CLOSE_AFTER);
 		vi.useFakeTimers();
 		const pruned: AgentKind[] = [];

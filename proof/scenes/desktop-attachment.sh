@@ -49,7 +49,7 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 # take, so the card, its caption and what the host is asked for all agree
 # without a binary in the tree. A plasma at a fixed seed is deterministic and
 # it is not a flat field, so the thumbnail is visibly an image.
-PASTE_DIR="${SCENE_RUNTIME_DIR}/attachment"
+PASTE_DIR="${TMPDIR}/attachment"
 PASTE_PNG="${PASTE_DIR}/pasted.png"
 PASTE_WIDTH=240
 PASTE_HEIGHT=160
@@ -89,7 +89,7 @@ CLEARED_MAX_PIXELS=200
 # the column rather than a control on it.
 PROMPT_MIN_PIXELS=4000
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 # The transcript column, in root coordinates: the session surface less the

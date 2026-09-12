@@ -7,7 +7,10 @@ import {
 	mintToolCallId,
 	partialSuffixOverlap,
 	partialSuffixOverlapAny,
+	scanOutsideText,
+	scanThinkingText,
 	setToolArg,
+	ThinkingSection,
 	type ToolArgShape,
 } from "./coercion";
 import {
@@ -73,16 +76,11 @@ interface OpenCall {
 	rawBlock: string;
 }
 
-interface TagMatch {
-	index: number;
-	tag: string;
-}
-
 class GLMInbandScanner implements InbandScanner {
 	#buffer = "";
 	#state: State = "outside";
 	#call: OpenCall | null = null;
-	#thinking = "";
+	readonly #thinking = new ThinkingSection();
 	#parseThinking: boolean;
 	#stringArgs: (toolName: string) => ReadonlySet<string>;
 
@@ -143,29 +141,20 @@ class GLMInbandScanner implements InbandScanner {
 
 	#consumeOutside(final: boolean, events: InbandScanEvent[]): boolean {
 		const tags = this.#parseThinking ? OUTSIDE_TAGS : OUTSIDE_TAGS_NO_THINK;
-		const match = findFirstTag(this.#buffer, tags);
-		if (!match) {
-			const hold = final ? 0 : partialSuffixOverlapAny(this.#buffer, tags);
-			const emit = this.#buffer.slice(0, this.#buffer.length - hold);
-			if (emit.length > 0) events.push({ type: "text", text: emit });
-			this.#buffer = this.#buffer.slice(this.#buffer.length - hold);
-			return false;
-		}
+		const { buffer, tag } = scanOutsideText(this.#buffer, tags, final, events);
+		this.#buffer = buffer;
+		if (tag === null) return false;
 
-		if (match.index > 0) events.push({ type: "text", text: this.#buffer.slice(0, match.index) });
-		this.#buffer = this.#buffer.slice(match.index + match.tag.length);
-
-		if (match.tag === TOOL_CALL_OPEN) {
+		if (tag === TOOL_CALL_OPEN) {
 			this.#state = "name";
 			return true;
 		}
-		if (match.tag === THINK_OPEN && this.#parseThinking) {
-			this.#thinking = "";
-			events.push({ type: "thinkingStart" });
+		if (tag === THINK_OPEN && this.#parseThinking) {
+			this.#thinking.start(events);
 			this.#state = "thinking";
 			return true;
 		}
-		if (match.tag === TOOL_RESPONSE_OPEN) {
+		if (tag === TOOL_RESPONSE_OPEN) {
 			this.#buffer = "";
 			return false;
 		}
@@ -173,19 +162,9 @@ class GLMInbandScanner implements InbandScanner {
 	}
 
 	#consumeThinking(final: boolean, events: InbandScanEvent[]): void {
-		const close = this.#buffer.indexOf(THINK_CLOSE);
-		if (close === -1) {
-			const hold = final ? 0 : partialSuffixOverlap(this.#buffer, THINK_CLOSE);
-			const emit = this.#buffer.slice(0, this.#buffer.length - hold);
-			this.#emitThinking(emit, events);
-			this.#buffer = this.#buffer.slice(this.#buffer.length - hold);
-			if (final) this.#endThinking(events);
-			return;
-		}
-		this.#emitThinking(this.#buffer.slice(0, close), events);
-		this.#buffer = this.#buffer.slice(close + THINK_CLOSE.length);
-		this.#endThinking(events);
-		this.#state = "outside";
+		const { buffer, closed } = scanThinkingText(this.#buffer, THINK_CLOSE, final, this.#thinking, events);
+		this.#buffer = buffer;
+		if (closed) this.#state = "outside";
 	}
 
 	#consumeName(final: boolean, events: InbandScanEvent[]): boolean {
@@ -363,15 +342,8 @@ class GLMInbandScanner implements InbandScanner {
 		if (this.#call && text.length > 0) this.#call.rawBlock += text;
 	}
 
-	#emitThinking(delta: string, events: InbandScanEvent[]): void {
-		if (delta.length === 0) return;
-		this.#thinking += delta;
-		events.push({ type: "thinkingDelta", delta });
-	}
-
 	#endThinking(events: InbandScanEvent[]): void {
-		events.push({ type: "thinkingEnd", thinking: this.#thinking });
-		this.#thinking = "";
+		this.#thinking.end(events);
 		this.#state = "outside";
 	}
 
@@ -382,16 +354,6 @@ class GLMInbandScanner implements InbandScanner {
 		if (i > 0) this.#buffer = this.#buffer.slice(i);
 		return skipped;
 	}
-}
-
-function findFirstTag(text: string, tags: readonly string[]): TagMatch | null {
-	let best: TagMatch | null = null;
-	for (const tag of tags) {
-		const index = text.indexOf(tag);
-		if (index === -1) continue;
-		if (!best || index < best.index) best = { index, tag };
-	}
-	return best;
 }
 
 function minFound(...values: readonly number[]): number {

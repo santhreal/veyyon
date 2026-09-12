@@ -1,5 +1,5 @@
 import { errorMessage } from "@veyyon/utils/type-guards";
-import type { Api } from "../types";
+import type { Api, AssistantMessage } from "../types";
 import type { AbortSourceTracker } from "../utils/abort";
 import type { CapturedHttpErrorResponse, RawHttpRequestDump } from "../utils/http-inspector";
 import { classify, classifyMessage, status } from "./flags";
@@ -92,4 +92,22 @@ export async function finalize(error: unknown, opts: FinalizeOptions = {}): Prom
 		rules: Array.from(new Set(trace)),
 		message,
 	};
+}
+
+/**
+ * Assign a finalized error bundle onto an {@link AssistantMessage}'s error fields.
+ *
+ * Centralizes the repeated `stopReason`, `errorStatus`, `errorId`, and `errorMessage`
+ * assignment while keeping timing calculations, streaming error-event emission,
+ * and custom message post-processing (diagnostics, hints) under provider ownership.
+ */
+export function applyFinalizeResult(
+	output: AssistantMessage,
+	result: FinalizeResult,
+	message: string = result.message,
+): asserts output is AssistantMessage & { stopReason: "aborted" | "error" } {
+	output.stopReason = result.stopReason;
+	output.errorStatus = result.status;
+	output.errorId = result.id;
+	output.errorMessage = message;
 }

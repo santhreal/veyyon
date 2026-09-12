@@ -149,7 +149,7 @@ EDITOR_MIN_PIXELS=600
 # empty editor draws that a full one does not draw over.
 EDITOR_MAX_PIXELS=120
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 MEASURE="${BASH_SOURCE[0]%/*}/measure-frame.py"

@@ -40,11 +40,7 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 		_ => primitives::head_tail_dedup(&cleaned),
 	};
 
-	if text == input {
-		MinimizerOutput::passthrough(input)
-	} else {
-		MinimizerOutput::transformed(text, input.len())
-	}
+	MinimizerOutput::maybe_transformed(input, text)
 }
 
 fn preserves_raw_mode(ctx: &MinimizerCtx<'_>) -> bool {
@@ -90,8 +86,7 @@ fn filter_pr_issue(input: &str, exit_code: i32) -> String {
 	if exit_code != 0 {
 		return primitives::head_tail_dedup(input);
 	}
-	let markdown_filtered = filter_markdown_noise(input);
-	primitives::head_tail_dedup(&markdown_filtered)
+	primitives::filter_markdown_body_view(input)
 }
 
 /// Summarize the DEFAULT (non-JSON) `gh pr checks` table.
@@ -175,52 +170,6 @@ fn filter_run(input: &str, exit_code: i32) -> String {
 		return primitives::head_tail_lines(&deduped, 160, 120);
 	}
 	primitives::head_tail_lines(&deduped, 120, 80)
-}
-
-fn filter_markdown_noise(input: &str) -> String {
-	let mut out = String::new();
-	let mut in_html_comment = false;
-	let mut previous_blank = false;
-	let mut comment_lines = 0usize;
-
-	for line in input.lines() {
-		let trimmed = line.trim();
-		if in_html_comment {
-			if trimmed.contains("-->") {
-				in_html_comment = false;
-				comment_lines = 0;
-			} else {
-				comment_lines += 1;
-				if comment_lines > 50 {
-					in_html_comment = false;
-					comment_lines = 0;
-				}
-			}
-			continue;
-		}
-		if trimmed.starts_with("<!--") {
-			if !trimmed.contains("-->") {
-				in_html_comment = true;
-				comment_lines = 0;
-			}
-			continue;
-		}
-		if primitives::is_markdown_badge_or_image(trimmed) || primitives::is_horizontal_rule(trimmed)
-		{
-			continue;
-		}
-		if trimmed.is_empty() {
-			if !previous_blank {
-				out.push('\n');
-			}
-			previous_blank = true;
-			continue;
-		}
-		previous_blank = false;
-		out.push_str(line.trim_end());
-		out.push('\n');
-	}
-	out
 }
 
 fn contains_failure_signal(input: &str) -> bool {

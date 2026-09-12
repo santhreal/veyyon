@@ -1,9 +1,10 @@
 import { Ellipsis } from "@veyyon/natives";
-import { matchesKey } from "@veyyon/utils/keys";
 import { clamp } from "@veyyon/utils/math";
+import { padding } from "@veyyon/utils/padding";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
-import { replaceTabs } from "@veyyon/utils/wrap";
 import type { Component } from "../tui";
+import { computeThumbRange, handleStandardScrollKey } from "../utils/scroll-layout";
 
 const DEFAULT_TRACK = "│";
 const DEFAULT_THUMB = "█";
@@ -148,39 +149,14 @@ export class ScrollView implements Component {
 	 * consumer gets the same scroll keys, including Shift-to-go-faster.
 	 */
 	handleScrollKey(data: string): boolean {
-		if (matchesKey(data, "shift+up")) {
-			this.scroll(-this.#fastScrollLines);
-			return true;
-		}
-		if (matchesKey(data, "shift+down")) {
-			this.scroll(this.#fastScrollLines);
-			return true;
-		}
-		if (matchesKey(data, "up")) {
-			this.scroll(-1);
-			return true;
-		}
-		if (matchesKey(data, "down")) {
-			this.scroll(1);
-			return true;
-		}
-		if (matchesKey(data, "pageUp")) {
-			this.page(-1);
-			return true;
-		}
-		if (matchesKey(data, "pageDown")) {
-			this.page(1);
-			return true;
-		}
-		if (matchesKey(data, "home")) {
-			this.scrollToTop();
-			return true;
-		}
-		if (matchesKey(data, "end")) {
-			this.scrollToBottom();
-			return true;
-		}
-		return false;
+		return handleStandardScrollKey(
+			data,
+			delta => this.scroll(delta),
+			delta => this.page(delta),
+			() => this.scrollToTop(),
+			() => this.scrollToBottom(),
+			this.#fastScrollLines,
+		);
 	}
 
 	invalidate(): void {
@@ -211,7 +187,9 @@ export class ScrollView implements Component {
 		if (this.#height === 0) return [];
 		const showScrollbar = safeWidth > 0 && this.#shouldRenderScrollbar();
 		const contentWidth = this.contentWidth(safeWidth);
-		const thumb = showScrollbar ? this.#thumbRange() : undefined;
+		const thumb = showScrollbar
+			? computeThumbRange(this.#height, this.#totalRows ?? this.#lines.length, this.#scrollOffset)
+			: undefined;
 		const lines: string[] = [];
 		for (let row = 0; row < this.#height; row++) {
 			const sourceIndex = this.#totalRows === undefined ? this.#scrollOffset + row : row;
@@ -221,7 +199,7 @@ export class ScrollView implements Component {
 				lines.push(truncated);
 				continue;
 			}
-			const content = `${truncated}${" ".repeat(Math.max(0, contentWidth - visibleWidth(truncated)))}`;
+			const content = `${truncated}${padding(contentWidth - visibleWidth(truncated))}`;
 			const barGlyph = thumb && row >= thumb.start && row < thumb.end ? this.#thumbChar : this.#trackChar;
 			const styledBar =
 				thumb && row >= thumb.start && row < thumb.end ? this.#theme.thumb(barGlyph) : this.#theme.track(barGlyph);
@@ -239,16 +217,5 @@ export class ScrollView implements Component {
 		if (this.#scrollbar === "never") return false;
 		if (this.#scrollbar === "always") return true;
 		return (this.#totalRows ?? this.#lines.length) > this.#height;
-	}
-
-	#thumbRange(): { start: number; end: number } {
-		if (this.#height <= 0) return { start: 0, end: 0 };
-		const rowCount = this.#totalRows ?? this.#lines.length;
-		if (rowCount <= this.#height) return { start: 0, end: this.#height };
-		const thumbSize = clamp(Math.floor((this.#height * this.#height) / rowCount), 1, this.#height);
-		const travel = this.#height - thumbSize;
-		const maxOffset = this.getMaxScrollOffset();
-		const start = maxOffset === 0 ? 0 : Math.round((this.#scrollOffset / maxOffset) * travel);
-		return { start, end: start + thumbSize };
 	}
 }

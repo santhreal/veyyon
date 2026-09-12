@@ -98,6 +98,42 @@ function cleanVttToText(vtt: string): string {
 }
 
 /**
+ * Download one subtitle track for `videoUrl` beside `tmpBase` and return its cleaned text, or
+ * undefined when yt-dlp failed or wrote no track. `trackFlag` selects the manual or the
+ * auto-generated track.
+ */
+async function downloadSubtitleText(
+	ytdlp: string,
+	trackFlag: "--write-sub" | "--write-auto-sub",
+	tmpBase: string,
+	videoUrl: string,
+	execOptions: ptree.ExecOptions,
+): Promise<string | undefined> {
+	const subResult = await ptree.exec(
+		[
+			ytdlp,
+			trackFlag,
+			"--sub-lang",
+			"en,en-US,en-GB",
+			"--sub-format",
+			"vtt",
+			"--skip-download",
+			"--no-warnings",
+			"--no-playlist",
+			"-o",
+			tmpBase,
+			videoUrl,
+		],
+		execOptions,
+	);
+	if (!subResult.ok) return undefined;
+	// Find the downloaded subtitle file using glob
+	const subFiles = await Array.fromAsync(new Bun.Glob(`${tmpBase}*.vtt`).scan({ absolute: true }));
+	if (subFiles.length === 0) return undefined;
+	return cleanVttToText(await Bun.file(subFiles[0]).text());
+}
+
+/**
  * Handle YouTube URLs - fetch metadata and transcript
  */
 export const handleYouTube: SpecialHandler = async (
@@ -248,64 +284,21 @@ export const handleYouTube: SpecialHandler = async (
 		try {
 			// Try manual subtitles first (English preferred)
 			if (hasManualSubs) {
-				const subResult = await ptree.exec(
-					[
-						ytdlp,
-						"--write-sub",
-						"--sub-lang",
-						"en,en-US,en-GB",
-						"--sub-format",
-						"vtt",
-						"--skip-download",
-						"--no-warnings",
-						"--no-playlist",
-						"-o",
-						tmpBase,
-						videoUrl,
-					],
-					execOptions,
-				);
-
-				if (subResult.ok) {
-					// Find the downloaded subtitle file using glob
-					const subFiles = await Array.fromAsync(new Bun.Glob(`${tmpBase}*.vtt`).scan({ absolute: true }));
-					if (subFiles.length > 0) {
-						const vttContent = await Bun.file(subFiles[0]).text();
-						transcript = cleanVttToText(vttContent);
-						transcriptSource = "manual";
-						notes.push("Using manual subtitles");
-					}
+				const text = await downloadSubtitleText(ytdlp, "--write-sub", tmpBase, videoUrl, execOptions);
+				if (text !== undefined) {
+					transcript = text;
+					transcriptSource = "manual";
+					notes.push("Using manual subtitles");
 				}
 			}
 
 			// Fall back to auto-generated captions
 			if (!transcript && hasAutoSubs) {
-				const autoResult = await ptree.exec(
-					[
-						ytdlp,
-						"--write-auto-sub",
-						"--sub-lang",
-						"en,en-US,en-GB",
-						"--sub-format",
-						"vtt",
-						"--skip-download",
-						"--no-warnings",
-						"--no-playlist",
-						"-o",
-						tmpBase,
-						videoUrl,
-					],
-					execOptions,
-				);
-
-				if (autoResult.ok) {
-					const subFiles = await Array.fromAsync(new Bun.Glob(`${tmpBase}*.vtt`).scan({ absolute: true }));
-					if (subFiles.length > 0) {
-						const vttContent = await Bun.file(subFiles[0]).text();
-						transcript = cleanVttToText(vttContent);
-						transcriptSource = "auto-generated";
-						notes.push("Using auto-generated captions");
-					}
+				const text = await downloadSubtitleText(ytdlp, "--write-auto-sub", tmpBase, videoUrl, execOptions);
+				if (text !== undefined) {
+					transcript = text;
+					transcriptSource = "auto-generated";
+					notes.push("Using auto-generated captions");
 				}
 			}
 		} finally {

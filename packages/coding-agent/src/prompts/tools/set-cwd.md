@@ -11,7 +11,7 @@ The result names which rule files (AGENTS.md, CLAUDE.md and the other context la
 Rules:
 - `path` must exist and be a directory.
 - The change is session-scoped and ephemeral: it applies to this session only and never writes the profile `session.workdir` setting.
-- Subagents already running keep the cwd they were spawned with; new subagents inherit the new root.
+- Spawned agents already running keep the cwd they were spawned with; new spawns inherit the new root.
 - Re-rooting to a directory OUTSIDE the current working directory needs the same permission as reading or writing outside it, so it may ask the user first. Re-rooting to a subdirectory of the current one never asks: it narrows what the session can reach rather than widening it.
 - Prefer an absolute path. Relative paths resolve against the current session cwd, not the OS cwd or the project root, so a relative path can point somewhere unexpected when the session was re-rooted.
 - `.` means the current session cwd and `..` means its parent. A later tool header may display the cwd itself as `.`, which is only a short label for the absolute cwd returned here, not evidence that the session moved.

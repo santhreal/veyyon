@@ -43,6 +43,12 @@ interface StackEntry {
 
 type ScannerMode = "code" | "single" | "double" | "template" | "blockComment";
 
+const QUOTE_TO_MODE: Record<string, ScannerMode> = {
+	"'": "single",
+	'"': "double",
+	"`": "template",
+};
+
 function normalizeLineSpans(spans: readonly LineSpan[], totalLines: number): LineSpan[] {
 	if (totalLines <= 0) return [];
 	const normalized: LineSpan[] = [];
@@ -258,20 +264,9 @@ function lexicalBracketContext(fullLines: readonly string[], visible: ReadonlySe
 				continue;
 			}
 			if (isHashCommentStart(line, index)) break;
-			if (ch === "'") {
-				mode = "single";
-				escaped = false;
-				index++;
-				continue;
-			}
-			if (ch === '"') {
-				mode = "double";
-				escaped = false;
-				index++;
-				continue;
-			}
-			if (ch === "`") {
-				mode = "template";
+			const quoteMode = QUOTE_TO_MODE[ch];
+			if (quoteMode) {
+				mode = quoteMode;
 				escaped = false;
 				index++;
 				continue;

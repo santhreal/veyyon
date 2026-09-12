@@ -31,7 +31,7 @@ Opaque authenticated replay fields are validated rather than mutated. A live sec
 
 3. Local display restoration expands only live reversible placeholders. Replace-mode substitutions are one-way. Expired and removed values lose expansion rights but retain forward redaction tombstones, so old transcript text cannot become provider-visible.
 
-4. Toggling secret protection and running `/secret` commands rebuilds the runtime immediately, and the system-prompt inventory of spendable names with it. A working-directory move loads the destination project scope transactionally and drops the source project's mappings. If loading fails, both the old directory and runtime are restored. Persisted subagents and resumed sessions initialize from their recorded directory. A same-directory refresh retains only forward redaction history for removed values.
+4. Toggling secret protection and running `/secret` commands rebuilds the runtime immediately, and the system-prompt inventory of spendable names with it. A working-directory move loads the destination project scope transactionally and drops the source project's mappings. If loading fails, both the old directory and runtime are restored. Persisted agents and resumed sessions initialize from their recorded directory. A same-directory refresh retains only forward redaction history for removed values.
 
 ### Spending a secret prompts first
 
@@ -64,7 +64,7 @@ the tombstone that keeps an old value hidden from providers keeps it out of this
 The full arguments the model wrote are persisted with the assistant message, and those hold the
 placeholder, since the model never saw anything else.
 
-What the command printed is a different matter. Tool output is saved as it was printed and
+What the command printed is handled separately. Tool output is saved as it was printed and
 redacted on its way to the provider, not on its way to disk, so a command that echoes a credential
 puts it in the session file. Veyyon redacts what it records itself; it cannot redact what a command
 chose to print.
@@ -82,9 +82,9 @@ Two modes control what happens to each secret:
 
 - A plain `obfuscate` entry under 8 characters **stops startup** with an error stating the entry and the fix. It is not skipped. Skipping it would send the value to the provider while the file stated otherwise.
 - Use `mode: replace` for a short value. Replace is one-way, needs no reversible placeholder, and has no minimum.
-- A **regex** match under the floor is skipped rather than rejected, because a short match usually means the pattern reached into ordinary prose. The skip is recorded once per pattern so you can see that the pattern is over-matching. If short matches are genuinely secret, set `minLength` on that entry.
+- A **regex** match under the floor is skipped rather than rejected, because a short match usually means the pattern reached into ordinary prose. The skip is recorded once per pattern so you can see that the pattern is over-matching. If short matches are secret, set `minLength` on that entry.
 
-An unreadable or malformed `secrets.yml` also stops startup. A missing file does not: nothing was declared, so there is nothing to protect. The distinction matters because reading a broken file as "no secrets" starts a session that believes it has nothing to hide.
+An unreadable or malformed `secrets.yml` also stops startup. A missing file does not: nothing was declared, so there is nothing to protect. The distinction is significant: reading a broken file as "no secrets" starts a session with unconfigured protection.
 
 ### Per-entry validation is a refusal, not a skip
 
@@ -165,7 +165,7 @@ A word a command does not read is **rejected**, stating the position it arrived 
 
 The refusal states the POSITION and never repeats the word. The common slip is muscle memory for `add` under another command (`/secret extend TOKEN sk-live-...`, `/secret rm TOKEN sk-live-...`, a value appended to `/secret list`), so the extra word is very often the credential, and quoting it would write that credential into the scrollback and the saved transcript permanently. A digit-only word is echoed, because a number cannot be a credential and the echo is what makes the hint useful: `/secret rm TOKEN 50` can then state what a bare number would have meant. In a terminal the refusal also states the value form.
 
-`needsValuePrompt` sets whether a surface prompts, and it lives in the pure command layer so the TUI and text/ACP paths cannot disagree about when a masked field is warranted. A surface that cannot mask must not substitute an unmasked prompt: absent `promptForValue`, `runSecretCommand` rejects the add and names `from-env`. That same absence is what selects the grammar, so a client is never offered a field it cannot open.
+`needsValuePrompt` sets whether a surface prompts, and it is defined in the command layer so the TUI and text/ACP paths cannot disagree about when a masked field is warranted. A surface that cannot mask must not substitute an unmasked prompt: absent `promptForValue`, `runSecretCommand` rejects the add and names `from-env`. That same absence is what selects the grammar, so a client is never offered a field it cannot open.
 
 ### `discard`: the repair for a vault that cannot be read
 
@@ -202,13 +202,13 @@ Entries without a name get a generated name (`SECRET_1`), so every vault entry h
 
 Argument completion offers the subcommands and nothing else, derived from `SECRET_TUI_SUBCOMMANDS`, which the parser builds from the same table it routes with. A verb cannot be typeable and unoffered, and a word cannot be offered and unparseable. The operator-facing account is [Managing what you stored](../features/secrets.md#managing-what-you-stored).
 
-No stored NAME is ever offered. Completing one from `session.obfuscator.namedSecretNames()` renders part of the vault on a keystroke, and accepting a suggestion writes it onto a line whose first word decides between a command and a credential, so a fumbled verb stores the suggestion instead of running it. `/secret list` is where names are read.
+No stored NAME is ever offered. Completing one from `session.obfuscator.namedSecretNames()` renders part of the vault on a keystroke, and accepting a suggestion writes it onto a line whose first word determines whether the input is a command or a credential, so a fumbled verb stores the suggestion instead of running it. `/secret list` is where names are read.
 
 The prefix filter keeps the menu out of a paste. A pasted credential arrives as one insert, so the prefix is the whole token and matches nothing; only a hand-typed word that is the start of a subcommand opens the dropdown. Nothing about the vault is read to build it, so completion still works when secret protection is off.
 
 ### What the model is told about a stored secret
 
-The operator-facing account is [What the agent knows, and when](../features/secrets.md#what-the-agent-knows-and-when). Two mechanisms carry it, with different jobs.
+The operator-facing account is [What the agent receives, and when](../features/secrets.md#what-the-agent-receives-and-when). Two mechanisms carry it, with different jobs.
 
 **The inventory** is a system-prompt section. `SecretObfuscator.namedSecretNames()` returns every readable name the live runtime can expand, sorted, and never a value. It calls `#forgetExpired()` first, so a name stops being answered at the moment it stops working. That list becomes an optional option-backed runtime section registered in `RUNTIME_SECTIONS` (`system-prompt-builder/section-registry.ts`) and supplied where `sdk.ts` calls the system-prompt builder, beside `secretsEnabled`. `AgentSession.refreshSecrets()` reloads the runtime and rebuilds the base prompt, which is what makes a removed or expired name stop appearing.
 
@@ -413,7 +413,7 @@ Only standard, bounded global matching is accepted. The sticky `y` flag and expr
 
 ## Interaction with env var detection
 
-Environment variables are collected first, then file-defined entries are appended. File entries can cover secrets that do not live in environment variables, such as values in local configuration. Equal plain values converge on the same machine-keyed placeholder, so their provider representation is independent of declaration order.
+Environment variables are collected first, then file-defined entries are appended. File entries can cover secrets that are not defined in environment variables, such as values in local configuration. Equal plain values converge on the same machine-keyed placeholder, so their provider representation is independent of declaration order.
 
 ## Key files
 

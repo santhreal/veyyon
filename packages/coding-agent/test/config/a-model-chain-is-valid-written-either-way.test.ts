@@ -1,7 +1,7 @@
 /**
  * A chain of models is one setting with two spellings, and both are valid.
  *
- * `compaction.model` and `subagent.model` hold an ORDERED CHAIN: the first model
+ * `compaction.model` and `agent.model` hold an ORDERED CHAIN: the first model
  * is tried, and the rest are used when an earlier one errors. Every reader goes
  * through `normalizeModelPatternList`, which splits a comma string and flattens a
  * list into the same array, so `"opus,sonnet"` and `["opus", "sonnet"]` have
@@ -11,7 +11,7 @@
  * `type: "string"`, so a config written as a YAML list was reported by
  * `describeSettingTypeMismatch` as a value that "does not match its declared
  * type" and shown to the user as invalid, while the value was read correctly.
- * The handbook shows the list form for `subagent.model`, because a list of models
+ * The handbook shows the list form for `agent.model`, because a list of models
  * reads as a list, so the DOCUMENTED spelling was the one being flagged. A user
  * following the docs got a warning about their own working config, which teaches
  * them to distrust the warning rather than to fix anything.
@@ -34,7 +34,7 @@ import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 const makeChainConfigDir = useTrackedTempDirs("veyyon-model-chain-");
 
 /** The two settings that hold a chain. Both must answer the same way. */
-const CHAIN_PATHS = ["compaction.model", "subagent.model"] as const;
+const CHAIN_PATHS = ["compaction.model", "agent.model"] as const;
 
 describe("the detector accepts either spelling of a chain", () => {
 	/**
@@ -114,9 +114,9 @@ describe("the detector still refuses what is genuinely wrong", () => {
 	 * list of strings" would leave the user hunting through a long chain.
 	 */
 	test("a list with a non-string entry is reported, naming the index", () => {
-		const reason = describeSettingTypeMismatch("subagent.model", ["opus", 4]);
+		const reason = describeSettingTypeMismatch("agent.model", ["opus", 4]);
 
-		expect(reason).toContain("subagent.model");
+		expect(reason).toContain("agent.model");
 		expect(reason).toContain("at index 1");
 		expect(reason).toContain("number");
 	});
@@ -152,7 +152,7 @@ describe("a config file written either way loads clean", () => {
 	 * loaded from a real file, reports nothing.
 	 */
 	test("a YAML list reports no invalid value", async () => {
-		writeConfig({ subagent: { model: ["opus", "sonnet"] }, compaction: { model: ["opus", "sonnet"] } });
+		writeConfig({ agent: { model: ["opus", "sonnet"] }, compaction: { model: ["opus", "sonnet"] } });
 
 		const settings = await Settings.loadIsolated({ agentDir, cwd: agentDir });
 
@@ -164,7 +164,7 @@ describe("a config file written either way loads clean", () => {
 	 * not hidden by the list case passing.
 	 */
 	test("a comma string reports no invalid value", async () => {
-		writeConfig({ subagent: { model: "opus,sonnet" }, compaction: { model: "opus,sonnet" } });
+		writeConfig({ agent: { model: "opus,sonnet" }, compaction: { model: "opus,sonnet" } });
 
 		const settings = await Settings.loadIsolated({ agentDir, cwd: agentDir });
 
@@ -179,11 +179,11 @@ describe("a config file written either way loads clean", () => {
 	 * invisible to the assertions above.
 	 */
 	test("the configured value survives the load in the shape it was written", async () => {
-		writeConfig({ subagent: { model: ["opus", "sonnet"] } });
+		writeConfig({ agent: { model: ["opus", "sonnet"] } });
 
 		const settings = await Settings.loadIsolated({ agentDir, cwd: agentDir });
 
-		expect(settings.get("subagent.model")).toEqual(["opus", "sonnet"]);
+		expect(settings.get("agent.model")).toEqual(["opus", "sonnet"]);
 	});
 
 	/**
@@ -191,12 +191,12 @@ describe("a config file written either way loads clean", () => {
 	 * half of the contract that makes the report actionable.
 	 */
 	test("a wrong-typed chain is still reported with its file", async () => {
-		writeConfig({ subagent: { model: 4 } });
+		writeConfig({ agent: { model: 4 } });
 
 		const settings = await Settings.loadIsolated({ agentDir, cwd: agentDir });
 
 		expect(settings.invalidValues).toHaveLength(1);
-		expect(settings.invalidValues[0]?.path).toBe("subagent.model");
+		expect(settings.invalidValues[0]?.path).toBe("agent.model");
 		expect(settings.invalidValues[0]?.file).toContain("config.yml");
 	});
 });

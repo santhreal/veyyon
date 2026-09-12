@@ -22,30 +22,28 @@ import type {
 	ViewSection,
 } from "@veyyon/view";
 import { classifyGroupedLines, groupLineIndicesByBlank } from "../core/grouped-file-output";
+import { extractResultText } from "../core/output-notice";
 import { toPathList } from "../core/path-utils";
 import {
+	emptyStatusLine as emptyLine,
+	errorTextBlock,
 	formatCount,
 	formatParseErrorsCountLabel,
-	formatScopeMeta,
+	heldBack,
+	MATCH_NOUN,
 	PARSE_ERRORS_LIMIT,
 	replaceTabs,
-	sanitizeErrorText,
+	scopeMetaLine,
+	type ToolViewResult,
 } from "../core/render-utils";
-import {
-	COLLAPSED_MATCH_LIMIT,
-	MATCH_LIMIT_NOTICE_PREFIX,
-	type StructureSearchDetails,
-	type StructureSearchRenderArgs,
-} from "./structure-search";
+import { COLLAPSED_MATCH_LIMIT, MATCH_LIMIT_NOTICE_PREFIX } from "./search-card-limits";
+import type { StructureSearchDetails, StructureSearchRenderArgs } from "./structure-search";
 
 /** What every card of this tool is titled. */
 const STRUCTURE_SEARCH_TITLE = "Search structure";
 
 /** The tool's own mark, which a settled card is titled by instead of an outcome icon. */
 const STRUCTURE_SEARCH_EMBLEM = "icon.search";
-
-/** The unit every held-back count on this card is in, which the host words. */
-const MATCH_NOUN = { one: "match", many: "matches" } as const;
 
 /** The prefix of the group the tool writes when it stopped at its match cap, which is not a match. */
 const PARSE_ISSUES_PREFIX = "Parse issues:";
@@ -54,11 +52,7 @@ const PARSE_ISSUES_PREFIX = "Parse issues:";
 const META_ROW_PREFIX = "  meta:";
 
 /** The result the card reads, which is the tool's own result shape narrowed to what a card shows. */
-export interface StructureSearchViewResult {
-	content?: Array<{ type: string; text?: string }>;
-	details?: StructureSearchDetails;
-	isError?: boolean;
-}
+export interface StructureSearchViewResult extends Partial<ToolViewResult<StructureSearchDetails>> {}
 
 /** One line of the tool's output, kept beside the raw text the budget classifies it by. */
 interface MatchRow {
@@ -79,11 +73,6 @@ function header(
 		...(description === undefined ? {} : { description }),
 		meta: options.meta,
 	};
-}
-
-/** The empty answer, which is a warning mark and the words that say what was searched for nothing. */
-function emptyLine(label: string): ViewLine {
-	return [{ text: "", symbol: "status.warning", tone: "warning" }, { text: " " }, { text: label, tone: "muted" }];
 }
 
 /**
@@ -183,7 +172,8 @@ function budgetedBody(groups: readonly (readonly MatchRow[])[], maxLines: number
 	}
 
 	const remaining = groups.length - fitting;
-	return remaining > 0 ? { lines, hidden: { count: remaining, noun: MATCH_NOUN, revealable: true } } : { lines };
+	const hidden = heldBack(remaining, MATCH_NOUN);
+	return hidden === undefined ? { lines } : { lines, hidden };
 }
 
 /**
@@ -236,7 +226,7 @@ export const structureSearchToolView: Required<ToolViewRenderer<StructureSearchR
 		renderCall(args, _context: ToolViewContext): ToolView {
 			const paths = toPathList(args?.path);
 			const meta: ViewLine[] = [];
-			if (paths.length > 0) meta.push([{ text: formatScopeMeta(paths) }]);
+			if (paths.length > 0) meta.push(scopeMetaLine(paths));
 			if (args?.skip !== undefined && args.skip > 0) meta.push([{ text: `skip:${args.skip}` }]);
 			return {
 				kind: "statusRow",
@@ -251,18 +241,7 @@ export const structureSearchToolView: Required<ToolViewRenderer<StructureSearchR
 			const details = result.details;
 
 			if (result.isError === true) {
-				const text = result.content?.find(part => part.type === "text")?.text;
-				return {
-					kind: "textBlock",
-					spans: [
-						{ text: "", symbol: "status.error", tone: "error" },
-						{ text: " " },
-						{
-							text: `Error: ${sanitizeErrorText(text === undefined || text === "" ? "Unknown error" : text)}`,
-							tone: "error",
-						},
-					],
-				};
+				return errorTextBlock(extractResultText(result.content));
 			}
 
 			const matchCount = details?.matchCount ?? 0;
@@ -292,7 +271,7 @@ export const structureSearchToolView: Required<ToolViewRenderer<StructureSearchR
 			meta.push([{ text: `searched ${filesSearched}` }]);
 			if (limitReached) meta.push([{ text: "limit reached", tone: "warning" }]);
 
-			const text = details?.displayContent ?? result.content?.find(part => part.type === "text")?.text ?? "";
+			const text = details?.displayContent ?? extractResultText(result.content);
 			const lines = text.split("\n");
 			const groups = matchGroups(lines, matchRows(lines, details));
 			const notes = noteSection(details);

@@ -55,4 +55,21 @@ describe("migrating the retired threshold keys", () => {
 	it("does nothing to a config that never mentioned compaction", () => {
 		expect(migrated({}).threshold).toBe("auto");
 	});
+
+	it("rewrites flat compaction.thresholdTokens as a bare token count", () => {
+		const compaction = migrated({ "compaction.thresholdTokens": 150_000 });
+		expect(compaction.threshold).toBe("150000");
+		expect(compaction.thresholdTokens).toBe(-1);
+	});
+
+	it("rewrites flat compaction.thresholdPercent with its unit", () => {
+		const compaction = migrated({ "compaction.thresholdPercent": 80 });
+		expect(compaction.threshold).toBe("80%");
+		expect(compaction.thresholdPercent).toBe(-1);
+	});
+
+	it("prefers explicit new flat/nested threshold over flat legacy threshold keys", () => {
+		const compaction = migrated({ "compaction.threshold": "65%", "compaction.thresholdTokens": 150_000 });
+		expect(compaction.threshold).toBe("65%");
+	});
 });

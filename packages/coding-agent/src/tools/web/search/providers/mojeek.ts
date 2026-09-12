@@ -1,17 +1,16 @@
-import type { AuthStorage } from "@veyyon/ai";
 import { errorMessage, untilAborted } from "@veyyon/utils";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { parseHTML } from "linkedom";
 import type { Page } from "puppeteer-core";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../../provider-boundary";
-import type { SearchResponse, SearchSource } from "../types";
+import type { SearchResponse } from "../types";
 import { SearchProviderError } from "../types";
 import { clampNumResults, collapseWhitespace, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
-import { SearchProvider } from "./base";
+import { OpenSearchProvider } from "./base";
 import type { LoadedHtmlPage } from "./browser-page";
 import { browserFetch } from "./browser-page";
-import { classifyProviderHttpError, resolveExternalResultUrl } from "./utils";
+import { resolveExternalResultUrl, throwProviderHttpError, toSearchSources } from "./utils";
 
 const MOJEEK_ORIGIN = "https://www.mojeek.de";
 const MOJEEK_HOME_URL = `${MOJEEK_ORIGIN}/?arc=none&lang=en&lb=en&theme=dark`;
@@ -162,9 +161,7 @@ async function callMojeekHtml(params: SearchParams, numResults: number): Promise
 			);
 		}
 		if (page.status < 200 || page.status >= 300) {
-			const classified = classifyProviderHttpError("mojeek", page.status, page.html);
-			if (classified) throw classified;
-			throw new SearchProviderError("mojeek", `Mojeek HTML error (${page.status})`, page.status);
+			throwProviderHttpError("mojeek", page.status, page.html, `Mojeek HTML error (${page.status})`);
 		}
 		return page.html;
 	});
@@ -180,30 +177,12 @@ export async function searchMojeek(params: SearchParams): Promise<SearchResponse
 	const html = await callMojeekHtml(params, numResults);
 	const parsed = parseHtmlResults(html);
 
-	const sources: SearchSource[] = [];
-	const seen = new Set<string>();
-	for (const result of parsed) {
-		if (seen.has(result.url)) continue;
-		seen.add(result.url);
-		sources.push({ title: result.title, url: result.url, snippet: result.snippet });
-		if (sources.length >= numResults) break;
-	}
-
-	return { provider: "mojeek", sources };
+	return { provider: "mojeek", sources: toSearchSources(parsed, numResults, { deduplicate: true }) };
 }
-
 /** Search provider for Mojeek (independent index, no API key required). */
-export class MojeekProvider extends SearchProvider {
+export class MojeekProvider extends OpenSearchProvider {
 	readonly id = "mojeek";
 	readonly label = "Mojeek";
-
-	isAvailable(_authStorage: AuthStorage): boolean {
-		return true;
-	}
-
-	isExplicitlyAvailable(_authStorage: AuthStorage): boolean {
-		return true;
-	}
 
 	search(params: SearchParams): Promise<SearchResponse> {
 		return searchMojeek(params);

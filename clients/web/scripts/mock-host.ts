@@ -4,7 +4,7 @@
  *
  *   bun scripts/mock-host.ts [--port 7466]
  *
- * Replays a scripted streaming turn on every guest prompt, ticks subagent
+ * Replays a scripted streaming turn on every guest prompt, ticks agent
  * progress on the bus every 2s, and answers fetch-transcript with byte slices
  * of the fixture JSONL — exactly the frames a real `veyyon /collab` host emits.
  */
@@ -14,6 +14,7 @@ import type { AgentSnapshot, HostFrame, SessionState, WireFrame, WireSessionEntr
 import { generateRoomKey, importRoomKey, open, seal } from "../src/lib/codec";
 import { COLLAB_PROTO, formatCollabLink, generateRoomId, packEnvelope, unpackEnvelope } from "../src/lib/link";
 import {
+	agentTranscriptJsonl,
 	fixtureAgents,
 	fixtureEntries,
 	fixtureHeader,
@@ -22,7 +23,6 @@ import {
 	makeProbeProgress,
 	makeScriptedTurn,
 	type ScriptedStep,
-	subagentTranscriptJsonl,
 } from "./fixture";
 import { startLocalRelay } from "./local-relay";
 
@@ -59,7 +59,7 @@ const link = formatCollabLink(relay.url, roomId, rawKey);
 const entries: WireSessionEntry[] = [...fixtureEntries];
 const agents: AgentSnapshot[] = fixtureAgents.map(agent => ({ ...agent }));
 const peers = new Map<number, string>();
-const transcriptBytes = new TextEncoder().encode(subagentTranscriptJsonl);
+const transcriptBytes = new TextEncoder().encode(agentTranscriptJsonl);
 const transcriptDecoder = new TextDecoder();
 
 let lastEntryId: string | null = entries[entries.length - 1]?.id ?? null;

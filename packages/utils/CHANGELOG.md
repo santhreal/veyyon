@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `ParsedReadArgs` from `@veyyon/utils/fs-tool-args` carries `depth` and `limit`, the `read` schema's directory-listing arguments, in place of `from`, `to` and `rangeSuffix`: the schema has no `offset`, its `limit` is an entry cap, and the line window rides on the path's own selector, so no `:A-B` is derived from either number.
+
 ### Added
 
 - `SUPPORTED_VIDEO_MIME_TYPES` exports the supported video MIME types (`video/mp4`, `video/webm`, `video/quicktime`).
@@ -12,40 +16,60 @@
 
 ### Added
 
+- `@veyyon/utils/fs-tool-args` parses a `read` or `write` tool call's arguments and result details (`parseReadArgs`, `parseReadDetails`, `parseWriteArgs`, `parseWriteDetails`, `countLines`), moved from `@veyyon/tool-render` so every host reads them without the React renderers.
+- `BracketedPasteHandler.route(data, sinks)` delivers one chunk's parts to `PasteSinks`: bytes before the start marker to `keys`, the assembled payload to `paste`, and bytes after the end marker to `reenter`; it returns `false` when the chunk held no paste sequence.
+- `@veyyon/utils/tab-width` is the one definition of `replaceTabs` and `DEFAULT_TAB_WIDTH`, a dependency-free module the browser bundles share; `@veyyon/utils/wrap` and `@veyyon/utils/tab-spacing` re-export them unchanged.
 - `@veyyon/utils/terminal-emulator` resolves terminal identity without loading the terminal renderer.
+- `@veyyon/utils/cli-usage-error` is the one `CliUsageError` class, a leaf a CLI entry catches without loading the command framework; `@veyyon/utils/cli` still exports it.
 - `@veyyon/utils/json-snapshot` atomically stores rebuildable JSON snapshots with one serialization and verifies their input fingerprint and exact payload bytes.
 - `@veyyon/utils/format` owns `formatCostTiered` and `normalizePremiumRequests`, the terminal cost and premium-request formatters the status row and the stats CLI read.
-- `@veyyon/utils/format` owns `formatContextUsage`, the `47K/200K` reading of tokens against a limit that the status-line gauge, a subagent progress row and an eval cell's subagent tree all state.
+- `@veyyon/utils/format` owns `formatContextUsage`, the `47K/200K` reading of tokens against a limit that the status-line gauge, an agent progress row and an eval cell's agent tree all state.
 - The string, escape, keyboard, mouse, motion and layout-math primitives that `@veyyon/tui` used to own are `@veyyon/utils` modules, reachable by subpath and not on the barrel, so a caller that needs the escape bytes or the fuzzy matcher no longer declares a dependency on the terminal renderer.
 - `@veyyon/utils/color-format` states whether escape sequences are written as 24-bit or 256-colour SGR; `@veyyon/tui` sets it once the terminal's capabilities resolve, which is how a utils module renders colour without reading terminal state.
 - `@veyyon/utils/ttyid` reads the controlling terminal's identity, and `@veyyon/utils/image-fallback` states the four causes a client can fail to draw a picture for, as `IMAGE_FALLBACK_REASONS` and the `ImageFallbackReason` union over it. Both moved out of `@veyyon/tui`, so a conversation engine can name a session or a cause without importing a renderer.
 - `@veyyon/utils/host-notification` states `HostNotification`, the out-of-band message a tool asks its host to deliver, and `HostNotifier`, the delivery a host installs. Neither names a terminal, so a GUI host can honour one.
 - `@veyyon/utils/sanitize-status-text` reduces text to one line a terminal draws as text, stripping escape sequences, mapping the remaining controls to spaces and collapsing space runs, so domain code that names a value in a single-line surface no longer imports the terminal host to sanitize it.
 - `@veyyon/utils/markdown-table` renders and escapes GFM tables, `@veyyon/utils/turndown` builds the Turndown instance and normalizes a `<td>`-first table, and `@veyyon/utils/html-markdown` converts HTML to markdown through both. All three are subpaths and none is on the barrel, so a document converter or a scraper reaches them without importing the coding agent.
-- `workspaceModuleReachResolution()` resolves every workspace member declared by the root manifest, at whatever depth it sits, instead of the direct children of `packages/`, so a cross-package specifier into `@veyyon/kernel`, `@veyyon/tui`, a contract or a plugin resolves again and every module-reach ceiling built on it measures what it claims.
 
 ### Changed
 
+- The relaxed JSON parser's object and array loops position on the next element and consume the delimiter after it through one pair of container steps, and both atomic-write target resolvers record a symlink hop and raise `ELOOP` through one helper; no behavior change.
+- Display LaTeX splits its top-level rows and an environment body splits its `\\` rows through one depth-aware scanner; no behavior change.
+- Literal prompt templates skip variable analysis and compilation while preserving formatted output.
+- XML escaping, C1 normalization, OSC 66 alignment and tab counting share implementations without changing rendered text.
+- LaTeX rendering shares code-point counting with unchanged output, and `isNonEmptyString` provides shared session-field validation.
+- Web and terminal Markdown rendering use shared HTML entity decoding with unchanged output.
+- `getGlobalSubagentsDir` retains its public export name and definitions-directory behavior.
 - JSON snapshot parsing uses the shared JSON parser; snapshot validation is unchanged.
 - `HostNotification` and `HostNotifier` are defined in `@veyyon/host`; `@veyyon/utils/host-notification` re-exports both, so no caller changes.
 - Source-path comments in `dirs.ts` name the website changelog generator at `apps/site/tools/gen-changelog.mjs`; behavior is unchanged.
 - Typed tuple and Set copies use spreads rather than `.concat()` or `.slice()`, which those types do not define. No user-visible behavior changes.
 - Root help lists subcommands from the registry summaries when those are present, and from the loaded command classes otherwise.
+- `moduleSpecifiersIn`, `typeOnlyModuleSpecifiersIn` and `dynamicImportSpecifiersIn` collect their specifiers through one capture loop; the reach they report is unchanged.
+- `getGithubCacheDbPath` and `getAuthBrokerSnapshotCachePath` resolve through one env-overridable cache-file step, and LaTeX `\overset`, `\stackrel` and `\underset` stack through one scripted step; resolved paths and rendered text are unchanged.
 - Source-path comments in `ansi.ts` and `sgr.ts` name the terminal output-block at `src/modes/terminal/draw/output-block.ts`. No user-visible behavior changes.
 - Source-path comments in `ansi.ts` and `eval-prompt-overrides.ts` name the benchmark modules they cite at their new paths under `tests/evals/`; behavior is unchanged.
 - `sanitize-text.ts` imports the escape byte from `@veyyon/utils/ansi` rather than declaring a second copy of it.
 - Source-path comments in `sanitize-text.ts`, `strip-ansi.ts`, `tab-spacing.ts` and `width.ts` name the Rust modules they cite at their new paths under `natives/`. No user-visible behavior changes.
+- The async and sync lock-directory inspectors classify a lock's `info` file (plain directory, link and size checks, opened-descriptor identity, owner record) through shared pure helpers between their own syscalls, with the same observations for every input.
 - Source-path comments in `adversarial-strings.ts`, `ansi.ts`, `tab-spacing.ts` and `width.ts` name the modules they cite at the paths those modules occupy: `visibleWidth`, `sliceWithWidth` and the ansi escape are `packages/utils` modules and their locks are `packages/utils` suites, while the adversarial-string helpers are `hosts/terminal/engine` test helpers. No user-visible behavior changes.
-- `stripAnsiExceptSgr()` strips every escape sequence `stripAnsi()` strips except SGR, for a surface that admits styled text.
+- `workspaceModuleReachResolution()` resolves every workspace member declared by the root manifest, at whatever depth it sits, instead of the direct children of `packages/`, so a cross-package specifier into `@veyyon/kernel`, `@veyyon/tui`, a contract or a plugin resolves again and every module-reach ceiling built on it measures what it claims.
+- `isKeyRelease` and `isKeyRepeat` classify a Kitty event through one check of the protocol state, the paste marker and the event pattern; the answers are unchanged.
 
 ### Fixed
 
+- Corrected comments that named a distribution channel or runtime API the project does not use; no behavior change.
 - `stripAnsi` removes a CSI sequence written with colon subparameters. The parameter class was `[0-9;?]`, but the spec's parameter bytes are the whole `0x30-0x3f` range, so `:` `<` `=` `>` were not matched: a true-color SGR of the form `ESC [ 38:2:255:0:0 m`, which libvte and several test runners emit, left `38:2:255:0:0m` behind as visible text in captured output. The class is now the spec's, and the three byte classes are disjoint so the pattern accepts exactly what a greedy scanner accepts. The behaviour is pinned against `tests/fixtures/ansi-strip-corpus.json`, which the Rust `strip_ansi` in the shell minimizer reads too, so the two implementations answer the same cases instead of drifting apart.
+
+## [1.4.1] - 2026-09-08
+
+### Added
+
+- `stripAnsiExceptSgr()` strips every escape sequence `stripAnsi()` strips except SGR, for a surface that admits styled text.
 
 ### Removed
 
 - Removed `isNewerVersion` in favor of publication-order comparison and equality checks.
-
 
 ## [1.4.0] - 2026-09-04
 

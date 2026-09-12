@@ -16,6 +16,7 @@ import { blendHex } from "@veyyon/utils/motion";
 import { parseHexColor } from "@veyyon/utils/paint-ground";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { sliceWithWidth, visibleWidth } from "@veyyon/utils/width";
+import { type PresentationTheme, SYMBOL_PRESETS } from "@veyyon/wire/presentation/theme";
 import { registerSettingsTestResetHook } from "../config/settings-instance";
 import { onAutoThemeMappingChanged, onColorBlindModeChanged, onSymbolPresetChanged } from "../config/settings-signals";
 // The bundled theme JSON lives in `./builtin-themes` and the light/dark classifier in
@@ -30,8 +31,10 @@ import {
 	type ColorMode,
 	detectColorMode,
 	fgAnsi,
+	QUIET_TOKEN_DEFAULTS,
 	resolveThemeColors,
 	resolveVarRefs,
+	THEME_BG_COLORS,
 	type ThemeBg,
 	type ThemeColor,
 	type ThemeJson,
@@ -43,6 +46,19 @@ import { normalizeSpinnerFramesOverride, type SymbolPreset } from "./symbols";
 import { setActiveTheme, theme } from "./theme-binding";
 import { Theme } from "./theme-class";
 
+export {
+	type ColorValue,
+	type HexColor,
+	type PresentationTheme,
+	type SpinnerType,
+	type StyleRole,
+	SYMBOL_PRESETS,
+	type SymbolKey,
+	type SymbolPreset,
+	type TextStyle,
+	type ThemeBg,
+	type ThemeColor,
+} from "@veyyon/wire/presentation/theme";
 export { getLanguageFromPath } from "../utils/lang-from-path";
 // Re-exported so this stays the one place callers import theme lookups from, even though the
 // definitions moved out of the cycle. Each comes from its owning leaf rather than through
@@ -55,11 +71,8 @@ export { isValidThemeColor } from "./color";
 // it costs nothing. `getMarkdownTheme` is deliberately NOT forwarded: that one carries the mermaid
 // renderer, and forwarding it would put those 36 modules straight back on this file's graph.
 export { highlightCode } from "./highlight";
-export type { SpinnerType, SymbolKey, SymbolPreset } from "./symbols";
 export { isLightTheme, isLightThemeJson } from "./theme-luminance";
-export type { ThemeBg, ThemeColor };
 export { Theme };
-
 // ============================================================================
 // Theme Loading
 // ============================================================================
@@ -156,21 +169,6 @@ interface CreateThemeOptions {
 /** HSV adjustment to shift green toward blue for colorblind mode (red-green colorblindness) */
 const COLORBLIND_ADJUSTMENT = { h: 60, s: 0.71 };
 
-/**
- * Defaults for the optional identity/state accent tokens, keyed by the token,
- * valued by the required token whose resolved color it inherits when a theme
- * does not declare it. Session/mode identity fall back to the theme's accent,
- * share to its link color, info to muted, and match highlights to warning
- * (the closest "look here" hue every theme already has).
- */
-const QUIET_TOKEN_DEFAULTS: Partial<Record<ThemeColor, ThemeColor>> = {
-	sessionAccent: "accent",
-	modeAccent: "accent",
-	shareAccent: "link",
-	infoAccent: "muted",
-	matchHighlight: "warning",
-};
-
 export function createTheme(themeJson: ThemeJson, options: CreateThemeOptions = {}): Theme {
 	const { mode, symbolPresetOverride, colorBlindMode } = options;
 	const colorMode = mode ?? detectColorMode();
@@ -185,16 +183,7 @@ export function createTheme(themeJson: ThemeJson, options: CreateThemeOptions = 
 
 	const fgColors: Record<ThemeColor, string | number> = {} as Record<ThemeColor, string | number>;
 	const bgColors: Record<ThemeBg, string | number> = {} as Record<ThemeBg, string | number>;
-	const bgColorKeys: Set<string> = new Set([
-		"selectedBg",
-		"userMessageBg",
-		"customMessageBg",
-		"toolPendingBg",
-		"toolSuccessBg",
-		"toolErrorBg",
-		"statusLineBg",
-		"composerBg",
-	]);
+	const bgColorKeys: ReadonlySet<string> = new Set<string>(THEME_BG_COLORS);
 	for (const [key, value] of Object.entries(resolvedColors)) {
 		if (bgColorKeys.has(key)) {
 			bgColors[key as ThemeBg] = value;
@@ -528,6 +517,38 @@ export function setThemeInstance(themeInstance: Theme): void {
 }
 
 /**
+ * Convert a canonical PresentationTheme snapshot to a production Theme instance.
+ */
+export function createThemeFromPresentationTheme(snapshot: PresentationTheme, options: CreateThemeOptions = {}): Theme {
+	return Theme.fromPresentationTheme(snapshot, options.mode);
+}
+
+/**
+ * Apply a canonical PresentationTheme snapshot to the host-wide theme lifecycle.
+ * Updates the live theme binding and notifies listeners.
+ */
+export function applyPresentationTheme(snapshot: PresentationTheme, options: CreateThemeOptions = {}): Theme {
+	const instance = createThemeFromPresentationTheme(snapshot, options);
+	setThemeInstance(instance);
+	currentThemeName = snapshot.name ?? snapshot.id ?? "<in-memory>";
+	return instance;
+}
+
+/**
+ * Export a production Theme instance (or the current live theme) as a canonical PresentationTheme snapshot.
+ */
+export function toPresentationTheme(themeInstance: Theme = theme, name?: string, id?: string): PresentationTheme {
+	return themeInstance.toPresentationTheme(name ?? currentThemeName ?? "custom", id ?? currentThemeName ?? "custom");
+}
+
+/**
+ * Get the currently active theme as a canonical PresentationTheme snapshot.
+ */
+export function getPresentationTheme(): PresentationTheme {
+	return toPresentationTheme(theme, currentThemeName, currentThemeName);
+}
+
+/**
  * Set the symbol preset override, recreating the theme with the new preset.
  *
  * Returns the reload outcome so callers can surface a fallback. The preset
@@ -535,7 +556,12 @@ export function setThemeInstance(themeInstance: Theme): void {
  */
 export async function setSymbolPreset(preset: SymbolPreset): Promise<ThemeLoadResult> {
 	currentSymbolPresetOverride = preset;
-	if (!currentThemeName) return { success: true };
+	return reapplyCommittedTheme();
+}
+
+/** Re-render the committed theme under the current overrides; a plain success before any theme is committed. */
+function reapplyCommittedTheme(): Promise<ThemeLoadResult> {
+	if (!currentThemeName) return Promise.resolve({ success: true });
 	return applyTheme(currentThemeName, { ephemeral: true });
 }
 
@@ -552,8 +578,7 @@ export function getSymbolPresetOverride(): SymbolPreset | undefined {
  */
 export async function setColorBlindMode(enabled: boolean): Promise<ThemeLoadResult> {
 	currentColorBlindMode = enabled;
-	if (!currentThemeName) return { success: true };
-	return applyTheme(currentThemeName, { ephemeral: true });
+	return reapplyCommittedTheme();
 }
 
 /**
@@ -615,43 +640,34 @@ registerSettingsTestResetHook(() => {
 	currentColorBlindMode = false;
 });
 
-onSymbolPresetChanged(
-	preset => {
-		setSymbolPreset(preset)
-			.then(result => {
-				// The preset applied, but re-rendering the committed theme fell back.
-				// Record which theme is actually on screen now.
-				if (result.fellBack) {
-					logger.warn("Settings: symbolPreset applied but the theme fell back", {
-						preset,
-						error: result.error,
-					});
-				}
-			})
-			.catch(err => {
-				logger.warn("Settings: symbolPreset hook failed", { preset, error: String(err) });
-			});
-	},
-	{ permanent: true },
-);
+/**
+ * Apply a theme setting from its signal without awaiting it. A result that applied but fell back
+ * while re-rendering the committed theme, and a setter that rejected, are each logged against the
+ * setting so the theme actually on screen is recorded.
+ */
+function applyThemeSetting<T>(
+	setting: "symbolPreset" | "colorBlindMode",
+	value: T,
+	apply: (value: T) => Promise<ThemeLoadResult>,
+): void {
+	apply(value)
+		.then(result => {
+			if (result.fellBack) {
+				logger.warn(`Settings: ${setting} applied but the theme fell back`, {
+					[setting]: value,
+					error: result.error,
+				});
+			}
+		})
+		.catch(err => {
+			logger.warn(`Settings: ${setting} hook failed`, { [setting]: value, error: String(err) });
+		});
+}
 
-onColorBlindModeChanged(
-	enabled => {
-		setColorBlindMode(enabled)
-			.then(result => {
-				if (result.fellBack) {
-					logger.warn("Settings: colorBlindMode applied but the theme fell back", {
-						enabled,
-						error: result.error,
-					});
-				}
-			})
-			.catch(err => {
-				logger.warn("Settings: colorBlindMode hook failed", { enabled, error: String(err) });
-			});
-	},
-	{ permanent: true },
-);
+onSymbolPresetChanged(preset => applyThemeSetting("symbolPreset", preset, setSymbolPreset), { permanent: true });
+onColorBlindModeChanged(enabled => applyThemeSetting("colorBlindMode", enabled, setColorBlindMode), {
+	permanent: true,
+});
 
 export function onThemeChange(callback: (event: ThemeChangeEvent) => void): () => void {
 	onThemeChangeCallback = callback;
@@ -701,14 +717,14 @@ function notifyThemeChange(event: ThemeChangeEvent = {}): void {
  * Get available symbol presets.
  */
 export function getAvailableSymbolPresets(): SymbolPreset[] {
-	return ["unicode", "nerd", "ascii"];
+	return [...SYMBOL_PRESETS];
 }
 
 /**
  * Check if a string is a valid symbol preset.
  */
 export function isValidSymbolPreset(preset: string): preset is SymbolPreset {
-	return preset === "unicode" || preset === "nerd" || preset === "ascii";
+	return (SYMBOL_PRESETS as readonly string[]).includes(preset);
 }
 
 async function startThemeWatcher(): Promise<void> {
@@ -1291,8 +1307,8 @@ export function getEditorTheme(): EditorTheme {
 
 export function getSettingsListTheme(): SettingsListTheme {
 	// Plugins (e.g. pi-rtk-optimizer) may call this before `initTheme()` assigns
-	// the global `theme`, or from a separate module instance under npm-global
-	// installs where the live binding was never initialized. Fall back to plain
+	// the global `theme`, or from a separate module instance
+	// where the live binding was never initialized. Fall back to plain
 	// text so the call returns a usable (unstyled) theme instead of crashing with
 	// "undefined is not an object (evaluating 'theme.fg')". See #2998.
 	if (typeof theme === "undefined") {

@@ -83,6 +83,13 @@ describe("latexToUnicode symbol fixes", () => {
 	it("collapses common fractions to vulgar glyphs", () => {
 		expect(latexToUnicode("\\frac{1}{2}")).toBe("½");
 	});
+
+	it("stacks \\overset and \\stackrel above the base and \\underset below it, grouping an unmappable script", () => {
+		expect(latexToUnicode("\\overset{n}{X}")).toBe("Xⁿ");
+		expect(latexToUnicode("\\stackrel{2}{=}")).toBe("=²");
+		expect(latexToUnicode("\\underset{2}{X}")).toBe("X₂");
+		expect(latexToUnicode("\\underset{q}{X}")).toBe("X_(q)");
+	});
 });
 
 describe("renderMathInText bare-environment handling", () => {

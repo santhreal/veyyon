@@ -1000,6 +1000,55 @@ class PatchTool {
 		expect(result).toContain("this.value = 200;"); // PatchTool changed
 	});
 
+	test("@@ outer inner edits the body under the outer line when an identical body precedes it", async () => {
+		const filePath = path.join(tempDir, "tool.ts");
+		// Both constructors are byte-identical, so only the `class PatchTool`
+		// half of the anchor decides which one the hunk lands on: the inner
+		// `constructor` has to be searched after the outer line, not from the top.
+		await Bun.write(
+			filePath,
+			`class OtherTool {
+	constructor() {
+		this.value = 1;
+	}
+}
+
+class PatchTool {
+	constructor() {
+		this.value = 1;
+	}
+}
+`,
+		);
+
+		await applyPatch(
+			{
+				path: "tool.ts",
+				op: "update",
+				diff: `@@ class PatchTool constructor
+ 	constructor() {
+-		this.value = 1;
++		this.value = 200;
+ 	}`,
+			},
+			{ cwd: tempDir },
+		);
+
+		const result = await Bun.file(filePath).text();
+		expect(result).toBe(`class OtherTool {
+	constructor() {
+		this.value = 1;
+	}
+}
+
+class PatchTool {
+	constructor() {
+		this.value = 200;
+	}
+}
+`);
+	});
+
 	test("space-separated anchors work with function keyword", async () => {
 		const filePath = path.join(tempDir, "funcs.ts");
 		await Bun.write(

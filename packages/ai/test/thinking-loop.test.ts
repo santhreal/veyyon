@@ -242,7 +242,7 @@ function perFileTemplates(): string {
 	return targets
 		.map(
 			([file, sym], i) =>
-				`${i + 1}. Subagent Refactor${i}:\n  - target: packages/coding-agent/test/${file}\n  - assignment: Replace the ReturnType annotation in packages/coding-agent/test/${file} with the explicit type ${sym}. Verify where ${sym} is imported from, then run biome check write unsafe on the file.`,
+				`${i + 1}. Agent Refactor${i}:\n  - target: packages/coding-agent/test/${file}\n  - assignment: Replace the ReturnType annotation in packages/coding-agent/test/${file} with the explicit type ${sym}. Verify where ${sym} is imported from, then run biome check write unsafe on the file.`,
 		)
 		.join("\n\n");
 }

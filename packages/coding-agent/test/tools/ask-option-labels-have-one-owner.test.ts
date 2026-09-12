@@ -307,12 +307,30 @@ describe("the recommended-option marker has one owner", () => {
 	/**
 	 * The cross-package half. tool-render is a separate package that renders the answer for HTML export and
 	 * collab, so its copy could drift without anything in coding-agent noticing.
+	 *
+	 * Swept rather than named: pinning one path let the descriptor consolidation move the reader and leave
+	 * this case opening a file that no longer exists. The sweep finds whichever file renders the marker, and
+	 * fails when none does, so a move is followed instead of hiding the invariant.
 	 */
 	it("has tool-render reading the marker from wire rather than its own copy", async () => {
-		const rel = "../../../tool-render/src/tools/ask.tsx";
-		const text = await Bun.file(path.resolve(import.meta.dir, rel)).text();
-		expect(MARKER_DECL.test(text)).toBe(false);
-		expect(moduleSpecifiersIn(text)).toContain("@veyyon/wire");
+		const root = path.resolve(import.meta.dir, "../../../tool-render/src");
+		const files = new Bun.Glob("**/*.{ts,tsx}").scanSync({ cwd: root, absolute: true });
+		const readers: { file: string; text: string }[] = [];
+		for (const file of files) {
+			const text = await Bun.file(file).text();
+			if (text.includes("RecommendedSuffix") || text.includes("(Recommended)")) {
+				readers.push({ file: path.relative(root, file), text });
+			}
+		}
+
+		// No reader at all means the marker stopped being rendered outside the terminal, which is a
+		// behaviour change this suite must report rather than pass over in silence.
+		expect(readers.map(({ file }) => file)).not.toEqual([]);
+		for (const { file, text } of readers) {
+			expect(MARKER_DECL.test(text), file).toBe(false);
+			expect(HAND_APPEND.test(text), file).toBe(false);
+			expect(moduleSpecifiersIn(text), file).toContain("@veyyon/wire");
+		}
 	});
 
 	/**

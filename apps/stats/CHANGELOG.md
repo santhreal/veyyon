@@ -4,10 +4,19 @@
 
 ### Changed
 
+- Removed the duplicate JavaScript build script; the TypeScript build entrypoint produces unchanged dashboard assets.
+- Centralized shared request and error data table renderers across overview, requests, and errors routes.
+- The per-type breakdown labels spawned sessions as "Spawned agents" while preserving the `subagent` discriminator and historical token and cost totals.
 - The package directory is `apps/stats` instead of `packages/stats`; the published package name, entry points and behavior are unchanged.
 - Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
 - Repointed a doc comment at `@veyyon/kernel/session/session-entries`, where the session header type now lives; no behavior change.
+- Array spreads over iterators in the dashboard aggregators are `Array.from` calls and source comments reference `apps/stats` and `clients/web`; no user-visible change.
+- The `/api/stats/*` routes are one table of reads in the server rather than one `if` block each; every route answers the same JSON.
+- Every backfill reads and writes its `meta` sentinel through one pair of helpers, and the two file-offset re-parses share one enrol-and-wipe step; each backfill runs once, as before.
+- User and assistant session messages qualify for linking through one role-and-id check; a message without an id is skipped from both statistics, as before.
+### Fixed
 
+- Corrected comments that named a distribution channel or runtime API the project does not use; no behavior change.
 
 ## [1.4.0] - 2026-09-04
 

@@ -2,7 +2,7 @@
  * Fullscreen `/pause` screen.
  *
  * `/pause` engages the process-global {@link agentPauseGate}, freezing every
- * agent loop in the process (main agent, in-process subagents, advisor) at its
+ * agent loop in the process (main agent, in-process spawned agents, advisor) at its
  * next safe boundary — nothing is aborted, so a later resume continues exactly
  * where each loop parked. While engaged, this component owns the alternate
  * screen (the `runStartupSplash` idiom) and paints a large pause glyph with a
@@ -51,7 +51,7 @@ const MIN_FULL_HEIGHT = 18;
 
 const TITLE = "P A U S E D";
 const BODY_LINES = [
-	"Main agent, subagents, and advisor hold at their next step.",
+	"Main agent, spawned agents, and advisor hold at their next step.",
 	"In-flight calls finish; nothing new starts until you resume.",
 ] as const;
 const RESUME_HINT = "esc · enter · space · click — resume";

@@ -6,6 +6,7 @@ import type {
 	WireSessionEntry,
 	WireToolResultMessage,
 } from "@veyyon/wire";
+import type { ToolExecutionDisplay } from "@veyyon/wire/presentation";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
@@ -130,6 +131,17 @@ function AssistantBody({
 				const act = active.get(block.id);
 				const result = results.get(block.id);
 				const args = act?.args ?? block.arguments;
+				const callDisplay =
+					act && typeof act === "object" && "display" in act
+						? (act.display as ToolExecutionDisplay | undefined)
+						: typeof block === "object" && "display" in block
+							? (block.display as ToolExecutionDisplay | undefined)
+							: undefined;
+				const resultDisplay =
+					result && typeof result === "object" && "display" in result
+						? (result.display as ToolExecutionDisplay | undefined)
+						: undefined;
+				const display = resultDisplay ?? callDisplay;
 				return (
 					<ToolCard
 						key={block.id}
@@ -141,6 +153,7 @@ function AssistantBody({
 						host={host}
 						running={!result && (act !== undefined || pending)}
 						partialResult={act?.partialResult}
+						display={display}
 					/>
 				);
 			}
@@ -340,6 +353,11 @@ export function Transcript(props: TranscriptProps): ReactNode {
 							running
 							partialResult={tool.partialResult}
 							host={host}
+							display={
+								typeof tool === "object" && "display" in tool
+									? (tool.display as ToolExecutionDisplay | undefined)
+									: undefined
+							}
 						/>
 					))}
 				</Row>

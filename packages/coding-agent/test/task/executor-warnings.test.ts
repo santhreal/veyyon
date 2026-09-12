@@ -5,7 +5,7 @@ import {
 	SUBAGENT_WARNING_NULL_YIELD,
 } from "@veyyon/coding-agent/task/executor";
 
-describe("subagent warning injection", () => {
+describe("agent warning injection", () => {
 	it("injects null-data warning when yield is success without data", () => {
 		const result = finalizeSubprocessOutput({
 			rawOutput: "partial output",
@@ -21,7 +21,7 @@ describe("subagent warning injection", () => {
 		expect(result.hasYield).toBe(true);
 	});
 
-	it("injects missing-submit warning when subagent exits cleanly without yield", () => {
+	it("injects missing-submit warning when agent exits cleanly without yield", () => {
 		const result = finalizeSubprocessOutput({
 			rawOutput: "",
 			exitCode: 0,
@@ -69,7 +69,7 @@ describe("subagent warning injection", () => {
 		const result = finalizeSubprocessOutput({
 			rawOutput: "",
 			exitCode: 1,
-			stderr: "subagent terminated",
+			stderr: "agent terminated",
 			doneAborted: true,
 			signalAborted: false,
 			yieldItems: undefined,
@@ -77,7 +77,7 @@ describe("subagent warning injection", () => {
 		});
 
 		expect(result.rawOutput).toBe("");
-		expect(result.stderr).toBe("subagent terminated");
+		expect(result.stderr).toBe("agent terminated");
 		expect(result.exitCode).toBe(1);
 	});
 

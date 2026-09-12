@@ -43,12 +43,12 @@ pub fn supports(subcommand: Option<&str>) -> bool {
 #[must_use]
 pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerOutput {
 	if exit_code == 0
-		&& (command_contains_any(ctx.command, &["--json"])
+		&& (primitives::command_has_exact_token(ctx.command, "--json")
 			|| primitives::command_has_any_token(ctx.command, &["--format=json"])
 			|| primitives::command_has_ordered_tokens(ctx.command, "--format", "json")
 			|| ctx.program == "uv"
 				&& matches!(ctx.subcommand, Some("pip"))
-				&& command_contains_any(ctx.command, &["freeze"]))
+				&& primitives::command_has_exact_token(ctx.command, "freeze"))
 	{
 		return MinimizerOutput::passthrough(input);
 	}
@@ -75,7 +75,7 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 			deduped
 		} else if exit_code == 0
 			&& (is_package_tree_command(ctx) || is_package_export_command(ctx))
-			&& !command_contains_any(ctx.command, &["--json"])
+			&& !primitives::command_has_exact_token(ctx.command, "--json")
 			&& !primitives::command_has_any_token(ctx.command, &["--format=json"])
 			&& !primitives::command_has_ordered_tokens(ctx.command, "--format", "json")
 		{
@@ -90,11 +90,7 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 		}
 	};
 
-	if text == input {
-		MinimizerOutput::passthrough(input)
-	} else {
-		MinimizerOutput::transformed(text, input.len())
-	}
+	MinimizerOutput::maybe_transformed(input, text)
 }
 
 /// Per-(program, subcommand) success no-op detection. Returns the one-line
@@ -194,12 +190,14 @@ fn is_package_tree_command(ctx: &MinimizerCtx<'_>) -> bool {
 		"bun" => {
 			matches!(ctx.subcommand, Some("list" | "ls" | "tree" | "why" | "explain"))
 				|| matches!(ctx.subcommand, Some("pm"))
-					&& command_contains_any(ctx.command, &["list", "ls", "tree", "why"])
+					&& primitives::command_has_any_exact_token(ctx.command, &[
+						"list", "ls", "tree", "why",
+					])
 		},
 		"uv" => {
 			matches!(ctx.subcommand, Some("list" | "ls" | "tree"))
 				|| matches!(ctx.subcommand, Some("pip"))
-					&& command_contains_any(ctx.command, &["list", "ls", "tree"])
+					&& primitives::command_has_any_exact_token(ctx.command, &["list", "ls", "tree"])
 		},
 		// Default tabular `pip list` / `pip list --outdated` are inventory dumps
 		// like `uv pip list`; give them the same tree/list compaction. `--json`
@@ -209,7 +207,7 @@ fn is_package_tree_command(ctx: &MinimizerCtx<'_>) -> bool {
 		"poetry" => {
 			matches!(ctx.subcommand, Some("tree"))
 				|| matches!(ctx.subcommand, Some("show"))
-					&& command_contains_any(ctx.command, &["--tree"])
+					&& primitives::command_has_exact_token(ctx.command, "--tree")
 		},
 		_ => false,
 	}
@@ -224,10 +222,6 @@ fn is_package_export_command(ctx: &MinimizerCtx<'_>) -> bool {
 
 fn is_package_lock_command(ctx: &MinimizerCtx<'_>) -> bool {
 	matches!((ctx.program, ctx.subcommand), ("uv" | "poetry", Some("lock")))
-}
-
-fn command_contains_any(command: &str, words: &[&str]) -> bool {
-	command.split_whitespace().any(|part| words.contains(&part))
 }
 
 fn compact_package_tree_output(input: &str) -> String {
@@ -435,26 +429,32 @@ fn compact_package_lock_output(ctx: &MinimizerCtx<'_>, input: &str) -> String {
 	}
 }
 
+const LOCK_SUMMARY_LOWER: &[&str] = &[
+	"writing lock file",
+	"updated lockfile",
+	"resolved ",
+	"installing dependencies from lock file",
+	"no dependencies to install or update",
+];
+
 fn is_lock_summary_line(lower: &str) -> bool {
-	lower.starts_with("writing lock file")
-		|| lower.starts_with("updated lockfile")
-		|| lower.starts_with("resolved ")
-		|| lower.starts_with("installing dependencies from lock file")
-		|| lower == "no changes."
-		|| lower.starts_with("no dependencies to install or update")
+	lower == "no changes."
+		|| LOCK_SUMMARY_LOWER
+			.iter()
+			.any(|prefix| lower.starts_with(prefix))
 }
 
+const GENERIC_PROGRESS_PREFIXES: &[&str] =
+	&["Progress:", "Resolving:", "Downloading:", "Downloaded"];
+
+const GENERIC_PROGRESS_LOWER: &[&str] =
+	&["resolving dependencies", "installing dependencies", "fetching packages"];
+
 fn is_generic_progress(line: &str, lower: &str) -> bool {
-	line.starts_with("Progress:")
-		|| line.starts_with("Resolving:")
-		|| line.starts_with("Downloading:")
-		|| line.starts_with("Downloaded")
-		|| lower.starts_with("resolving dependencies")
-		|| lower.starts_with("installing dependencies")
-		|| lower.starts_with("fetching packages")
-		// A spinner is a GLYPH. This asked whether the line contained the WORD
-		// "spinner", which deleted every npm line naming a package with that in its
-		// name, `npm WARN deprecated cli-spinners@1.0.0` included.
+	GENERIC_PROGRESS_PREFIXES
+		.iter()
+		.any(|p| line.starts_with(p))
+		|| GENERIC_PROGRESS_LOWER.iter().any(|p| lower.starts_with(p))
 		|| primitives::is_spinner_frame(line)
 		|| line
 			.chars()
@@ -543,23 +543,24 @@ fn is_up_to_date_line(lower: &str) -> bool {
 	body.starts_with("up to date") || body.starts_with("already up-to-date")
 }
 
+const PYTHON_PROGRESS_LOWER: &[&str] = &[
+	"collecting ",
+	"using cached ",
+	"downloading ",
+	"preparing metadata",
+	"installing build dependencies",
+	"resolving dependencies",
+	"writing lock file",
+	"package operations:",
+	"[notice]",
+];
+
 fn is_python_package_noise(ctx: &MinimizerCtx<'_>, _line: &str, lower: &str) -> bool {
 	let program = ctx.program;
 	if !matches!(program, "pip" | "pip3" | "uv" | "poetry") {
 		return false;
 	}
-	lower.starts_with("collecting ")
-		|| lower.starts_with("using cached ")
-		|| lower.starts_with("downloading ")
-		|| lower.starts_with("preparing metadata")
-		|| lower.starts_with("installing build dependencies")
-		|| lower.starts_with("resolving dependencies")
-		|| lower.starts_with("writing lock file")
-		|| lower.starts_with("package operations:")
-		// pip prints an upgrade nag as '[notice] A new release of pip is
-		// available' plus a '[notice] To update, run: …' follow-up — non-actionable
-		// for the wrapped command. Scoped to pip/uv/poetry by the gate above.
-		|| lower.starts_with("[notice]")
+	PYTHON_PROGRESS_LOWER.iter().any(|p| lower.starts_with(p))
 		|| program == "uv" && is_uv_progress_noise(lower, uv_keeps_install_summary(ctx))
 		|| program == "poetry" && is_poetry_bullet_progress(lower)
 }
@@ -589,29 +590,32 @@ fn uv_keeps_install_summary(ctx: &MinimizerCtx<'_>) -> bool {
 	ctx.program == "uv" && matches!(ctx.subcommand, Some("sync" | "add" | "remove"))
 }
 
+const UV_PROGRESS_LOWER: &[&str] =
+	&["resolved ", "prepared ", "installed ", "uninstalled ", "updated ", "built ", "downloaded "];
+
 fn is_uv_progress_noise(lower: &str, keep_install_summary: bool) -> bool {
 	if keep_install_summary && (lower.starts_with("installed ") || lower.starts_with("uninstalled "))
 	{
 		return false;
 	}
-	lower.starts_with("resolved ")
-		|| lower.starts_with("prepared ")
-		|| lower.starts_with("installed ")
-		|| lower.starts_with("uninstalled ")
-		|| lower.starts_with("updated ")
-		|| lower.starts_with("built ")
-		|| lower.starts_with("downloaded ")
+	UV_PROGRESS_LOWER.iter().any(|p| lower.starts_with(p))
 }
+
+const RUBY_PHP_BREW_LOWER: &[&str] = &[
+	"fetching ",
+	"using ",
+	"bundle complete",
+	"==> downloading",
+	"==> pouring",
+	"loading composer repositories",
+	"generating autoload files",
+];
 
 fn is_ruby_php_brew_noise(program: &str, _line: &str, lower: &str) -> bool {
 	if !matches!(program, "bundle" | "brew" | "composer") {
 		return false;
 	}
 	if program == "bundle" {
-		// Keep 'Bundle complete! … N gems now installed' / 'Bundle updated!' — the
-		// one-line gem-count signal (replaces the defs/bundle-install.toml
-		// short-circuit). Strip the 'Use `bundle info [gemname]`…' follow-up hint.
-		// Using/Fetching/Installing rows are still per-gem progress noise.
 		if lower.starts_with("bundle complete") || lower.starts_with("bundle updated") {
 			return false;
 		}
@@ -619,16 +623,8 @@ fn is_ruby_php_brew_noise(program: &str, _line: &str, lower: &str) -> bool {
 			return true;
 		}
 	}
-	lower.starts_with("fetching ")
-		|| lower.starts_with("installing ") && !lower.contains("error")
-		|| lower.starts_with("using ")
-		// brew/composer never emit 'Bundle complete'; this strip is preserved for
-		// them but bundle now keeps the line (handled above).
-		|| lower.starts_with("bundle complete")
-		|| lower.starts_with("==> downloading")
-		|| lower.starts_with("==> pouring")
-		|| lower.starts_with("loading composer repositories")
-		|| lower.starts_with("generating autoload files")
+	(lower.starts_with("installing ") && !lower.contains("error"))
+		|| RUBY_PHP_BREW_LOWER.iter().any(|p| lower.starts_with(p))
 }
 
 fn contains_audit_or_security_summary(input: &str) -> bool {
@@ -863,6 +859,21 @@ mod tests {
 		let out = filter(&context, input, 0);
 		assert!(!out.changed);
 		assert_eq!(out.text, input);
+	}
+
+	#[test]
+	fn equal_suffixed_flags_do_not_match_exact_tokens() {
+		let cfg = MinimizerConfig { enabled: true, ..Default::default() };
+		let context = ctx("npm", Some("ls"), "npm ls --json=false", &cfg);
+		let mut input = String::from("app@1.0.0\n");
+		for idx in 0..90 {
+			let _ = writeln!(input, "├── dep{idx:03}@1.0.0");
+		}
+		let out = filter(&context, &input, 0);
+		assert!(out.text.starts_with("package tree/list: 91 entries\n"));
+
+		let context_non_list = ctx("npm", None, "npm other list=foo", &cfg);
+		assert!(!is_package_tree_command(&context_non_list));
 	}
 
 	#[test]

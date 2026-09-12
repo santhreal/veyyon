@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, setSystemTime, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
@@ -444,6 +444,50 @@ describe("AgentSession auto-compaction progress guard", () => {
 		expect(promptSpy).toHaveBeenCalledTimes(1);
 		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
 		expect(noProgress.map(n => n.message)).toEqual([]);
+	});
+
+	it("does not re-trip the threshold when the compaction entry lands in the same millisecond as the kept assistant", async () => {
+		// The auto-continue re-enters the compaction check with the kept assistant, whose
+		// `usage` still describes the pre-rewrite prompt. "Kept through a compaction" was
+		// decided by `assistant.timestamp < compaction.timestamp`, so a compaction entry
+		// written in the same millisecond read the assistant as new, its stale 190k
+		// re-tripped the threshold on a history with nothing left to summarize, and the
+		// dead-end warning fired on a compaction that had just worked. In-memory runs hit
+		// that millisecond by chance about one time in twenty-five; a frozen clock hits it
+		// every time.
+		setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+		try {
+			const { promise: submitted, resolve: onSubmitted } = Promise.withResolvers<void>();
+			vi.spyOn(session.agent, "prompt").mockImplementation(async () => {
+				onSubmitted();
+				return undefined as never;
+			});
+			vi.spyOn(session.agent, "continue").mockResolvedValue();
+			vi.spyOn(session, "getContextUsage").mockReturnValue({ tokens: 1000, contextWindow: 200000, percent: 0.5 });
+
+			const notices = collectNotices();
+			const startCount = countCompactionStarts();
+			const { promise: compactionDone, resolve: onCompactionDone } = Promise.withResolvers<void>();
+			session.subscribe(event => {
+				if (event.type === "auto_compaction_end") onCompactionDone();
+			});
+
+			const assistantMsg = highUsageAssistant();
+			session.agent.emitExternalEvent({ type: "message_end", message: assistantMsg });
+			session.agent.emitExternalEvent({ type: "agent_end", messages: [assistantMsg] });
+
+			await compactionDone;
+			await session.waitForIdle();
+			await Promise.race([submitted, Bun.sleep(5_000)]);
+
+			// One compaction: the re-entered check reads the kept assistant as
+			// pre-compaction and does not start a second, empty one.
+			expect(startCount()).toBe(1);
+			const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
+			expect(noProgress.map(n => n.message)).toEqual([]);
+		} finally {
+			setSystemTime();
+		}
 	});
 
 	it("rebases the in-flight prompt snapshot so mid-run compaction is not misread as a dead-end", async () => {

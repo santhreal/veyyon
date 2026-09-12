@@ -446,18 +446,14 @@ export class PatternDetector {
 	}
 	summarizePatterns(memories: readonly MemoryRecord[]): Record<string, unknown> {
 		const patterns = this.detectAll(memories);
+		const byType = (type: string) =>
+			patterns.filter(pattern => pattern.patternType === type).map(pattern => pattern.toDict());
 		return {
 			total_memories: memories.length,
 			patterns_found: patterns.length,
-			temporal_patterns: patterns
-				.filter(pattern => pattern.patternType === "temporal")
-				.map(pattern => pattern.toDict()),
-			content_patterns: patterns
-				.filter(pattern => pattern.patternType === "content")
-				.map(pattern => pattern.toDict()),
-			sequence_patterns: patterns
-				.filter(pattern => pattern.patternType === "sequence")
-				.map(pattern => pattern.toDict()),
+			temporal_patterns: byType("temporal"),
+			content_patterns: byType("content"),
+			sequence_patterns: byType("sequence"),
 			top_pattern: patterns[0]?.toDict() ?? null,
 		};
 	}

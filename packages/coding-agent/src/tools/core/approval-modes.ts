@@ -108,6 +108,15 @@ export interface SessionToolApprovals {
 
 /**
  * The rung each ACCEPTED `tools.approvalMode` value maps to.
+ *
+ * Exhaustive over `ApprovalMode` on purpose: the accepted set
+ * (`APPROVAL_MODE_VALUES`) and the normalizer used to be two lists that could
+ * drift, and they did. The schema default moved to `auto` while the
+ * normalizer's switch had no case for it, so the SHIPPED DEFAULT failed closed
+ * to `ask` and every tier prompted, which is exactly the configuration a
+ * fresh install runs. A `Record` over the union makes a missing rung a compile
+ * error instead of a runtime fail-closed, and keeps the legacy aliases as
+ * explicit entries rather than riders on the typo fallback.
  */
 export const RUNG_BY_ACCEPTED_MODE: Record<ApprovalMode, AutonomyLevel> = {
 	plan: "plan",
@@ -115,15 +124,30 @@ export const RUNG_BY_ACCEPTED_MODE: Record<ApprovalMode, AutonomyLevel> = {
 	"ask-command": "ask-command",
 	auto: "auto",
 	yolo: "yolo",
+	// `always-ask` named the ask rung before it did.
 	"always-ask": "ask",
+	// `auto-edit` and `write` named the same rung before it did: reads and
+	// writes run, commands ask.
 	write: "ask-command",
 	"auto-edit": "ask-command",
 };
 
 /**
  * Map a stored setting / CLI value to the shipped autonomy ladder.
+ *
+ * `undefined` (no configured mode) maps to `DEFAULT_APPROVAL_MODE`, the one
+ * place the unset case is decided, so this agrees with the schema default by
+ * construction rather than by two literals happening to match.
+ *
+ * An unrecognized NON-EMPTY value (a hand-edited config typo like `askk`) is a
+ * different question and fails closed to `ask`, never up the ladder and never
+ * to the default. The typo is surfaced loudly by the startup config check (see
+ * `validateApprovalModeSetting`), so this is not a silent fallback.
  */
 export function normalizeApprovalMode(mode: string | undefined): AutonomyLevel {
 	if (mode === undefined) return DEFAULT_APPROVAL_MODE;
+	// Only a value OUTSIDE the accepted set may reach the fail-closed branch.
+	// The mapping of every accepted value is exhaustive by construction (see
+	// RUNG_BY_ACCEPTED_MODE), so a known value can never land here by drift.
 	return isKnownApprovalMode(mode) ? RUNG_BY_ACCEPTED_MODE[mode] : "ask";
 }

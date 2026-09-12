@@ -5,7 +5,7 @@ import { describe, expect, it } from "bun:test";
 import { Settings } from "../src/config/settings";
 import { getDefault, SETTINGS_SCHEMA, type SettingPath } from "../src/config/settings-schema";
 
-const SAMPLE_PATHS = ["tier.openai", "tier.subagent", "display.smoothStreaming", "tools.approvalMode"] as const;
+const SAMPLE_PATHS = ["tier.openai", "tier.agent", "display.smoothStreaming", "tools.approvalMode"] as const;
 
 describe("settings schema defaults matrix", () => {
 	it("sample paths exist on SETTINGS_SCHEMA", () => {

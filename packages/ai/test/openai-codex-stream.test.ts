@@ -3801,6 +3801,76 @@ describe("openai-codex streaming", () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
+	// A server that accepts the request (`response.created`) and then sends no
+	// progress for the whole idle window is a stall, and re-sending the same
+	// context does not make it answer. The websocket ladder used to spend its
+	// full retry budget on such stalls — CODEX_WEBSOCKET_RETRY_BUDGET (5)
+	// re-sends at the idle window apiece, thirty minutes at the default — before
+	// falling back to SSE. Now a stall rides the two-attempt ladder: the attempt
+	// that stalled, one retry, then SSE.
+	it("moves a stalled websocket turn to SSE after one retry instead of spending the whole retry budget", async () => {
+		const tempDir = TempDir.createSync("@pi-codex-stream-");
+		setAgentDir(tempDir.path());
+		const token = createCodexTestToken();
+		let sseRequests = 0;
+		const fetchMock = vi.fn(async (input: string | URL) => {
+			const url = typeof input === "string" ? input : input.toString();
+			if (url === "https://chatgpt.com/backend-api/codex/responses") {
+				sseRequests += 1;
+				return new Response(createStatefulCodexSse("Hello SSE", "resp_sse_after_stall"), {
+					status: 200,
+					headers: { "content-type": "text/event-stream" },
+				});
+			}
+			return new Response("not found", { status: 404 });
+		});
+
+		let sendCount = 0;
+		let interval: NodeJS.Timeout | undefined;
+		class AcceptedThenSilentWebSocket extends MockWebSocket {
+			constructor(url: string, options?: { headers?: WsHeaders }) {
+				super(url, options);
+				this.scheduleOpen();
+			}
+
+			send(): void {
+				sendCount += 1;
+				this.sendJson({ type: "response.created", response: { id: `resp_stalled_${sendCount}` } });
+				// The observed shape: metadata frames keep arriving, no progress does.
+				interval = setInterval(() => {
+					this.sendJson({ type: "response.metadata", metadata: {} });
+				}, 2);
+			}
+
+			close(): void {
+				clearInterval(interval);
+				super.close();
+			}
+		}
+		global.WebSocket = AcceptedThenSilentWebSocket as unknown as typeof WebSocket;
+
+		const model = createCodexTestModel("https://chatgpt.com/backend-api");
+		const providerSessionState = new Map<string, ProviderSessionState>();
+		const result = await streamOpenAICodexResponses(model, createCodexTestContext(), {
+			fetch: fetchMock as FetchImpl,
+			apiKey: token,
+			sessionId: "ws-stall-ladder-session",
+			providerSessionState,
+			streamIdleTimeoutMs: 20,
+		}).result();
+
+		// The attempt that stalled and exactly one websocket retry, then one SSE turn.
+		expect(sendCount).toBe(2);
+		expect(sseRequests).toBe(1);
+		expect(result.stopReason).toBe("stop");
+		expect(result.content).toEqual([expect.objectContaining({ type: "text", text: "Hello SSE" })]);
+		const transport = getOpenAICodexTransportDetails(model, {
+			sessionId: "ws-stall-ladder-session",
+			providerSessionState,
+		});
+		expect(transport.websocketDisabled).toBe(true);
+	});
+
 	it("retries, then surfaces an error, when whitespace-only tool-call argument deltas never recover", async () => {
 		const tempDir = TempDir.createSync("@pi-codex-stream-");
 		setAgentDir(tempDir.path());

@@ -251,3 +251,230 @@ export function memberTopLevels(): string[] {
 export function typeScriptMemberTopLevels(): string[] {
 	return [...new Set(typeScriptMembers().map(member => member.split("/")[0] ?? ""))].sort();
 }
+
+/**
+ * Returns whether a path is inside a third-party or vendored directory.
+ */
+export function isVendored(path: string): boolean {
+	return path.split("/").includes("vendor");
+}
+
+/**
+ * Returns whether a relative file path is a test file or within a test directory.
+ */
+export function isTestPath(file: string): boolean {
+	return (
+		file.endsWith(".test.ts") ||
+		file.endsWith(".test.tsx") ||
+		file.includes(".test.") ||
+		file.includes("/test/") ||
+		file.includes("/tests/") ||
+		file.includes("/__tests__/") ||
+		file.includes("/fixtures/") ||
+		file.includes("/oracles/")
+	);
+}
+
+/**
+ * Filters relative paths to only those that currently exist on disk.
+ */
+export function existingOnly(rootDir: string, relativePaths: readonly string[]): string[] {
+	return relativePaths.filter(rel => existsSync(join(rootDir, rel)));
+}
+
+/**
+ * Reads a file as string if it exists; returns undefined on ENOENT.
+ */
+export function readIfPresent(absPath: string): string | undefined {
+	try {
+		return readFileSync(absPath, "utf8");
+	} catch (error: unknown) {
+		if (error !== null && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+			return undefined;
+		}
+		throw error;
+	}
+}
+
+/**
+ * Checks whether a directory is a workspace package directory by verifying package.json existence.
+ */
+export function isPackageDir(dir: string, repoRoot: string = REPO_ROOT): boolean {
+	return existsSync(join(repoRoot, dir, "package.json"));
+}
+
+/**
+ * Reads and parses the package.json manifest of a member directory.
+ */
+export function readPackageJson(dir: string, repoRoot: string = REPO_ROOT): Record<string, unknown> | null {
+	const manifestPath = join(repoRoot, dir, "package.json");
+	try {
+		return JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Recursively walks a directory, collecting paths matching a filter predicate.
+ */
+export function walkDirectory(
+	dir: string,
+	predicate?: (path: string) => boolean,
+	skipDirs: readonly string[] = ["node_modules", "dist", "target", "repo-cache", "runs", "assets", "vendor", "build"],
+): string[] {
+	const found: string[] = [];
+	const skipped = new Set(skipDirs);
+	const walk = (d: string): void => {
+		let entries: Dirent[];
+		try {
+			entries = readdirSync(d, { withFileTypes: true });
+		} catch {
+			return;
+		}
+		for (const entry of entries) {
+			const full = join(d, entry.name);
+			if (entry.isDirectory()) {
+				if (!skipped.has(entry.name)) walk(full);
+				continue;
+			}
+			if (!predicate || predicate(full)) {
+				found.push(full);
+			}
+		}
+	};
+	walk(dir);
+	return found.sort();
+}
+
+/**
+ * Collects all shipped TypeScript source files across workspace members.
+ */
+export function collectSourceFiles(
+	members: readonly string[] = typeScriptMembers(),
+	repoRoot: string = REPO_ROOT,
+): string[] {
+	const found: string[] = [];
+	for (const member of members) {
+		const src = join(repoRoot, member, "src");
+		if (existsSync(src)) {
+			found.push(
+				...walkDirectory(
+					src,
+					p =>
+						(p.endsWith(".ts") || p.endsWith(".tsx")) &&
+						!p.endsWith(".test.ts") &&
+						!p.endsWith(".test.tsx") &&
+						!p.endsWith(".d.ts"),
+				),
+			);
+		}
+	}
+	return found;
+}
+
+export interface WorkspacePackage {
+	readonly dir: string;
+	readonly name: string;
+	readonly scripts: Record<string, string>;
+	readonly manifest: Record<string, unknown>;
+}
+
+export function workspacePackages(repoRoot: string = REPO_ROOT): WorkspacePackage[] {
+	const out: WorkspacePackage[] = [];
+	for (const member of typeScriptMembersOf(repoRoot)) {
+		const parsed = readPackageJson(member, repoRoot);
+		if (!parsed) continue;
+		const name = typeof parsed.name === "string" ? parsed.name : member;
+		const rawScripts = parsed.scripts;
+		const scripts: Record<string, string> = {};
+		if (rawScripts && typeof rawScripts === "object") {
+			for (const [k, v] of Object.entries(rawScripts)) {
+				if (typeof v === "string") {
+					scripts[k] = v;
+				}
+			}
+		}
+		out.push({ dir: member, name, scripts, manifest: parsed });
+	}
+	return out;
+}
+
+/**
+ * Map from declared package name to member directory path, read fresh from disk on each invocation.
+ */
+export function packageDirectories(repoRoot: string = REPO_ROOT): Map<string, string> {
+	const dirs = new Map<string, string>();
+	for (const member of typeScriptMembersOf(repoRoot)) {
+		const manifestPath = join(repoRoot, member, "package.json");
+		if (!existsSync(manifestPath)) continue;
+		try {
+			const data = JSON.parse(readFileSync(manifestPath, "utf-8")) as { name?: unknown };
+			if (typeof data.name === "string") dirs.set(data.name, join(repoRoot, member));
+		} catch {}
+	}
+	return dirs;
+}
+
+let workspaceDirectoriesByRepo: Map<string, Map<string, string>> | undefined;
+
+/**
+ * Resolves the directory of a TypeScript workspace package by its manifest name, cached per repository root.
+ */
+export function memberDirectoryOf(packageName: string, repoRoot: string = REPO_ROOT): string | undefined {
+	if (workspaceDirectoriesByRepo === undefined) {
+		workspaceDirectoriesByRepo = new Map();
+	}
+	let dirs = workspaceDirectoriesByRepo.get(repoRoot);
+	if (dirs === undefined) {
+		dirs = packageDirectories(repoRoot);
+		workspaceDirectoriesByRepo.set(repoRoot, dirs);
+	}
+	return dirs.get(packageName);
+}
+
+export interface WorkspaceManifestEntry {
+	readonly rel: string;
+	readonly manifest: Record<string, unknown>;
+}
+
+export function workspaceManifests(repoRoot: string = REPO_ROOT): WorkspaceManifestEntry[] {
+	const found: WorkspaceManifestEntry[] = [];
+	for (const member of typeScriptMembersOf(repoRoot)) {
+		const rel = `${member}/package.json`;
+		const parsed = readPackageJson(member, repoRoot);
+		if (parsed) {
+			found.push({ rel, manifest: parsed });
+		}
+	}
+	return found;
+}
+
+export function testFileCount(dir: string, repoRoot: string = REPO_ROOT): number {
+	const SKIP = new Set(["node_modules", ".git", "dist", "target", "repo-cache", "runs", "deep-swe", "assets"]);
+	let found = 0;
+	const walk = (abs: string): void => {
+		let entries: Dirent[];
+		try {
+			entries = readdirSync(abs, { withFileTypes: true });
+		} catch {
+			return;
+		}
+		for (const entry of entries) {
+			if (entry.isDirectory()) {
+				if (SKIP.has(entry.name)) continue;
+				walk(join(abs, entry.name));
+				continue;
+			}
+			if (/\.test\.tsx?$/.test(entry.name)) found += 1;
+		}
+	};
+	walk(join(repoRoot, dir));
+	return found;
+}
+
+export function packagesWithTests(repoRoot: string = REPO_ROOT): string[] {
+	return typeScriptMembersOf(repoRoot)
+		.filter(member => testFileCount(member, repoRoot) > 0)
+		.sort();
+}

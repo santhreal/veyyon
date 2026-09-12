@@ -4,7 +4,7 @@
  * 1. With an AsyncJobManager wired, `execute` returns immediately (agent id +
  *    job id) while the job body is still gated; job completion delivers a
  *    result carrying the irc follow-up / `history://<id>` hint.
- * 2. The session-scoped spawn semaphore (subagent.maxConcurrency) serializes job
+ * 2. The session-scoped spawn semaphore (agent.maxConcurrency) serializes job
  *    bodies: with concurrency 1 the second body does not start until the
  *    first releases.
  *
@@ -162,7 +162,7 @@ describe("task spawn routing", () => {
 			createSession({
 				settings: {
 					"async.enabled": false,
-					"subagent.agents": { reviewer: { enabled: false } },
+					"agent.agents": { reviewer: { enabled: false } },
 				},
 			}),
 		);
@@ -173,9 +173,7 @@ describe("task spawn routing", () => {
 			task: "Review this.",
 		});
 
-		expect(getFirstText(result)).toContain(
-			'Agent "reviewer" is disabled (subagent.agents.reviewer.enabled is false)',
-		);
+		expect(getFirstText(result)).toContain('Agent "reviewer" is disabled (agent.agents.reviewer.enabled is false)');
 		expect(runSpy).not.toHaveBeenCalled();
 	});
 
@@ -191,7 +189,7 @@ describe("task spawn routing", () => {
 			createSession({
 				settings: {
 					"async.enabled": false,
-					"subagent.agents": { reviewer: { enabled: true } },
+					"agent.agents": { reviewer: { enabled: true } },
 				},
 			}),
 		);
@@ -208,7 +206,7 @@ describe("task spawn routing", () => {
 
 	/**
 	 * Task dispatch reads policy at spawn time, so a model or effort change applies to the next
-	 * child without rebuilding the TaskTool — and a `subagent.agents.<name>` row is the layer that
+	 * child without rebuilding the TaskTool — and a `agent.agents.<name>` row is the layer that
 	 * outranks every other one. This fixture has no blanket setting and no active session model, so
 	 * the row is the only thing that can decide: whatever crosses the boundary here came from it.
 	 */
@@ -220,7 +218,7 @@ describe("task spawn routing", () => {
 		const spy = vi.spyOn(executorModule, "runSubprocess").mockResolvedValue(makeResult("ConfiguredTask"));
 		const settings = Settings.isolated({
 			"async.enabled": false,
-			"subagent.agents": {
+			"agent.agents": {
 				task: { model: "openai/gpt-5.2-codex", thinkingLevel: "xhigh" },
 			},
 		});
@@ -306,7 +304,7 @@ describe("task spawn routing", () => {
 		});
 
 		const manager = createManager();
-		const tool = await TaskTool.create(createSession({ manager, settings: { "subagent.maxConcurrency": 1 } }));
+		const tool = await TaskTool.create(createSession({ manager, settings: { "agent.maxConcurrency": 1 } }));
 
 		const first = await tool.execute("tc-1", { agent: "task", name: "First", task: "Work A." } as TaskParams);
 		const second = await tool.execute("tc-2", { agent: "task", name: "Second", task: "Work B." } as TaskParams);
@@ -348,7 +346,7 @@ describe("task spawn routing", () => {
 		});
 
 		const manager = createManager();
-		const tool = await TaskTool.create(createSession({ manager, settings: { "subagent.maxConcurrency": 1 } }));
+		const tool = await TaskTool.create(createSession({ manager, settings: { "agent.maxConcurrency": 1 } }));
 
 		const first = await tool.execute("tc-1", { agent: "task", name: "First", task: "Work A." } as TaskParams);
 		const second = await tool.execute("tc-2", { agent: "task", name: "Second", task: "Work B." } as TaskParams);
@@ -391,7 +389,7 @@ describe("task spawn routing", () => {
 		});
 
 		const manager = createManager();
-		const tool = await TaskTool.create(createSession({ manager, settings: { "subagent.maxConcurrency": 1 } }));
+		const tool = await TaskTool.create(createSession({ manager, settings: { "agent.maxConcurrency": 1 } }));
 
 		// A holds the only permit, gated inside the executor.
 		const first = await tool.execute("tc-1", { agent: "task", name: "First", task: "Work A." } as TaskParams);
@@ -442,7 +440,7 @@ describe("task spawn routing", () => {
 	});
 
 	for (const maxConcurrency of [0, 0.5]) {
-		it(`runs spawn job bodies unbounded when subagent.maxConcurrency is ${maxConcurrency}`, async () => {
+		it(`runs spawn job bodies unbounded when agent.maxConcurrency is ${maxConcurrency}`, async () => {
 			vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
 				agents: [taskAgent],
 				projectAgentsDir: null,
@@ -460,7 +458,7 @@ describe("task spawn routing", () => {
 
 			const manager = createManager();
 			const tool = await TaskTool.create(
-				createSession({ manager, settings: { "subagent.maxConcurrency": maxConcurrency } }),
+				createSession({ manager, settings: { "agent.maxConcurrency": maxConcurrency } }),
 			);
 
 			const first = await tool.execute("tc-1", { agent: "task", name: "First", task: "Work A." } as TaskParams);
@@ -480,7 +478,7 @@ describe("task spawn routing", () => {
 		});
 	}
 
-	it("re-reads subagent.maxConcurrency on each spawn so a mid-session change applies on the next acquire", async () => {
+	it("re-reads agent.maxConcurrency on each spawn so a mid-session change applies on the next acquire", async () => {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
 			agents: [taskAgent],
 			projectAgentsDir: null,
@@ -497,7 +495,7 @@ describe("task spawn routing", () => {
 		});
 
 		const manager = createManager();
-		const settings = Settings.isolated({ "subagent.maxConcurrency": 4 });
+		const settings = Settings.isolated({ "agent.maxConcurrency": 4 });
 		const tool = await TaskTool.create(
 			makeToolSession({
 				cwd: "/tmp",
@@ -514,7 +512,7 @@ describe("task spawn routing", () => {
 		await pollUntil(() => started.length === 1);
 
 		// Tighten the cap mid-session. The next spawn MUST see the new ceiling.
-		settings.override("subagent.maxConcurrency", 1);
+		settings.override("agent.maxConcurrency", 1);
 		const second = await tool.execute("tc-2", { agent: "task", name: "Second", task: "Work B." } as TaskParams);
 		const secondJob = manager.getJob(second.details!.async!.jobId)!;
 
@@ -550,7 +548,7 @@ describe("task spawn routing", () => {
 		});
 
 		const manager = createManager();
-		const settings = Settings.isolated({ "subagent.maxConcurrency": 4 });
+		const settings = Settings.isolated({ "agent.maxConcurrency": 4 });
 		const tool = await TaskTool.create(
 			makeToolSession({
 				cwd: "/tmp",
@@ -573,7 +571,7 @@ describe("task spawn routing", () => {
 		expect([...started].sort()).toEqual(["First", "Fourth", "Second", "Third"]);
 		expect(fifthJob.queued).toBe(true);
 
-		settings.override("subagent.maxConcurrency", 1);
+		settings.override("agent.maxConcurrency", 1);
 		gates.get("First")!.resolve();
 		await jobs[0]!.promise;
 		await Promise.resolve();

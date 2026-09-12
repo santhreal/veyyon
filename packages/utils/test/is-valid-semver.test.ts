@@ -5,18 +5,18 @@ import { isValidSemver } from "@veyyon/utils/semver";
  * `isValidSemver` is the gate between an untrusted string and an installer.
  *
  * Its production caller reads a tag out of a release API response and, if this
- * returns true, hands the version to whichever package manager owns the install.
+ * returns true, hands the version to the installer.
  * So a false positive here is not a formatting nit: it is a version string
- * reaching `npm install veyyon@<x>` or a release-artifact URL.
+ * reaching the release-artifact URL the installer resolves.
  *
  * It used to delegate to `Bun.semver.order`, which is lenient in exactly the
  * wrong direction. Each case below that Bun accepted is listed with what it
  * would have done downstream, because the reason to reject them is concrete
  * rather than pedantic:
  *
- *  - `"1.2"` and `"1"` are npm RANGES. Pinning to one installs whatever version
- *    in that range happens to be newest, which is not the release that was
- *    verified, and defeats the point of pinning at all.
+ *  - `"1.2"` and `"1"` are partial versions/ranges rather than complete releases.
+ *    Pinning to one resolves whatever version in that range happens to be newest,
+ *    which is not the release that was verified, and defeats the point of pinning at all.
  *  - `"v1.2.3"` and `" 1.2.3 "` build a download URL that does not exist, so the
  *    failure surfaces as a confusing 404 far from its cause.
  *  - `"01.2.3"` is a distinct string from `"1.2.3"`, so it compares and caches

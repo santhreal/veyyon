@@ -4,37 +4,66 @@
 
 ### Breaking Changes
 
-- `@veyyon/tui` exports rendering only. The string, escape, keyboard, mouse, motion and layout-math primitives it also carried are now `@veyyon/utils` modules, imported by subpath: `@veyyon/utils/{ansi,autocomplete,bar,bracketed-paste,deccara,fuzzy,keybindings,keys,kill-ring,kitty-graphics,latex-block,latex-unicode,loop-watchdog,motion,mouse,padding,paint-columns,paint-ground,paint-surface,sgr,symbols,text-sizing,tight-mode,tmux,width,word-nav,wrap}`. The barrel re-exports none of them.
+- `@veyyon/tui` exports rendering only. The string, escape, keyboard, mouse, motion and layout-math primitives it also carried are now `@veyyon/utils` modules, imported by subpath: `@veyyon/utils/{ansi,autocomplete,bar,bracketed-paste,deccara,fuzzy,keybindings,keys,kill-ring,kitty-graphics,latex-block,latex-unicode,loop-watchdog,motion,mouse,padding,paint-columns,paint-ground,paint-surface,sgr,symbols,tab-width,text-sizing,tight-mode,tmux,width,word-nav,wrap}`. The barrel re-exports none of them.
 - `MOTION` and the grow, hover, paint and settle curve tables are one module, `@veyyon/utils/motion`.
 - `EditorComponent` is `@veyyon/tui/components/editor-component`.
-- The render engine is `@veyyon/tui/core/*`: `component-types`, `container`, `cursor`, `image-budget`, `mouse-routing`, `overlay`, `renderer`, `scroll`, `terminal-session` and `tui`. `@veyyon/tui/tui` re-exports all of it, so an existing import path keeps resolving.
+- Render engine modules are available through `@veyyon/tui/core/*`: `component-types`, `container`, `cursor`, `image-budget`, `mouse-routing`, `overlay`, `renderer`, `scroll`, `terminal-session` and `tui`; existing TUI contract imports remain available through `@veyyon/tui/tui`.
 - `TUI.overlayStack` is private. The overlay stack's behavior is `OverlayStack` in `@veyyon/tui/core/overlay`.
 - `getTerminalId` is `@veyyon/utils/ttyid`, and `ImageFallbackReason` is `@veyyon/utils/image-fallback`. Neither is rendering, and a caller that needs a session id or the name of a cause no longer depends on the terminal renderer to get it.
 - `detectTerminalId` and `TerminalId` are exported from `@veyyon/utils/terminal-emulator` instead of `@veyyon/tui/terminal-capabilities`.
 
 ### Added
 
+- Components can provide `measureHeight(width)` for layout measurement without constructing rendered rows.
+- Forced render requests accept `preserveViewport` to paint changed rows immediately while retaining pending full-repaint and scrollback requests.
 - `TUI.frameScrollable` states whether the last composed frame had content above the viewport, so a host can render a scroll affordance without re-deriving it from row counts it cannot see.
 - The package is `hosts/terminal/engine` in the repository, beside the other halves of the terminal host. The published package name, exports and entry points are unchanged.
+
+### Changed
+
+- `Editor.setCursor` clamps its line and column through `clampLow` from `@veyyon/utils/math`; no behavior change.
+- `Editor` and `Input` deliver a chunk's typed prefix, paste payload and remainder through `BracketedPasteHandler.route` with sinks built once per component; the bytes each part reaches are unchanged.
+- Input drain and terminal stop pop the kitty keyboard protocol, cancel the pending modifyOtherKeys probe and reset modifyOtherKeys through one `#disableKeyboardProtocols`; the bytes written at shutdown are unchanged.
+- The Markdown component derives the default text style's SGR prefix from the same style chain that paints its text; no behavior change.
+- Cursor movement sequences and overlay percentage parsing use shared implementations without changing terminal output.
+- Collapsed and deduplicated scroll math, search input filtering, border framing, cursor deletion and autocomplete helpers across engine components without changing rendering or behavior.
+- Direct writes and component-scoped rendering share layout-reuse checks, and frame rendering shares cursor-marker extraction, selection and row-divergence scans without changing terminal output.
+- Markdown rendering uses the shared HTML entity decoder without changing displayed text.
+- Text layout and pointer-hover state use shared implementations without changing rendering or input handling.
+- The overlay stack resolves its topmost painted and topmost focusable entries by one reverse scan; focus and pointer routing are unchanged.
+- The ConPTY post-full-paint settle arms and cancels its trailing render timer through one pair of steps; a render requested inside the window still paints once the window closes, and a forced render still discards the pending trailing render.
+- The single-line `Input` answers its editing keybindings from one ordered table, and a key bound to two of them runs only the first.
+- Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
+- `onBackgroundColorChange` and `onAppearanceChange` register and replay a late subscriber through one step; a subscriber that throws during replay is logged and the others still run, as before.
+- `TerminalNotification` extends `HostNotification` from `@veyyon/utils/host-notification`, so a terminal is one host that can deliver a tool's notification and the two shapes cannot drift apart.
+- `visualColAtOffset` and `offsetAtVisualCol` are exported from `@veyyon/utils/width` and shared by `Editor` and `Input`.
+- Source comments refer to the spawned-agent HUD as the agent HUD. No behavior change.
+
+### Fixed
+
+- Disposing a `Box` disposes its child components and their resources.
+- Enter submits the current message when an edit has invalidated the open file-completion popup.
+- Independent offscreen edits no longer accumulate into a false history rebuild, and changes to plain components preserve committed history until an explicit replay.
+- A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.
+- An inline image whose top has scrolled above the viewport, or which is taller than the terminal, is left undrawn until a repaint can reach its origin, instead of being stamped at full size over the top of the live transcript.
+- An inline image is handed pixels at exactly the cell box the terminal will scale it into, so the terminal's own scaler no longer smears a downscaled screenshot; the transmitted payload shrinks by more than half at the same size on screen.
+- The row shown in place of a picture names the setting that undoes the reason when there is one, instead of stating the reason alone.
+
+## [1.4.1] - 2026-09-08
+
+### Added
+
 - `Form`: a component of labelled fields — `text` with an in-field caret, `stepper` with `◂`/`▸` arrows and typed digits, `toggle`, `segmented`, `button` and `note` — that lays every value out at one column after the widest label, moves a ring with `↑↓`/`tab`, routes a click to the caret, arrow, option, switch or button under the pointer, windows a `segmented` strip wider than its row around the chosen option, and moves the ring on from a text field whose Enter nothing takes.
 - `Input` routes a click to the caret position under it (`routeMouse`) and reports the caret with `getCursor()`.
 - A `MouseRoutable` overlay drawn over the transcript on the normal screen receives the wheel and click reports inside its bounds; reports outside it keep scrolling the transcript and reaching the pinned footer.
 
 ### Changed
 
-- Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
-- `TerminalNotification` extends `HostNotification` from `@veyyon/utils/host-notification`, so a terminal is one host that can deliver a tool's notification and the two shapes cannot drift apart.
 - `visualColAtOffset` and `offsetAtVisualCol` are exported from `@veyyon/tui` utils, shared by `Editor` and `Input`.
 
 ### Fixed
 
-- Independent offscreen edits no longer accumulate into a false history rebuild, and changes to plain components preserve committed history until an explicit replay.
-- A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.
-- An inline image whose top has scrolled above the viewport, or which is taller than the terminal, is left undrawn until a repaint can reach its origin, instead of being stamped at full size over the top of the live transcript.
-- An inline image is handed pixels at exactly the cell box the terminal will scale it into, so the terminal's own scaler no longer smears a downscaled screenshot; the transmitted payload shrinks by more than half at the same size on screen.
-- The row shown in place of a picture names the setting that undoes the reason when there is one, instead of stating the reason alone.
 - An inline image whose first rows have scrolled into native scrollback is repainted as a placement clipped to its visible rows, so a forced viewport repaint (an overlay opening or closing, a resize, a tool finalizing) no longer draws it too low over the text below it or erases part of it.
-
 
 ## [1.4.0] - 2026-09-04
 

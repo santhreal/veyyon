@@ -9,15 +9,11 @@
 
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { NoticeView, StatusRowView, ToolViewRenderer, ViewLine } from "@veyyon/view";
-import { replaceTabs } from "../core/render-utils";
+import { replaceTabs, type ToolViewResult } from "../core/render-utils";
 import type { ResolveParams, ResolveToolDetails } from "./resolve";
 
 /** The result the card reads, which is the tool's own result shape narrowed to what a card shows. */
-export interface ResolveViewResult {
-	content: Array<{ type: string; text?: string }>;
-	details?: ResolveToolDetails;
-	isError?: boolean;
-}
+export interface ResolveViewResult extends ToolViewResult<ResolveToolDetails> {}
 
 /** Columns of reason the call row carries before the rest is dropped. */
 const CALL_REASON_WIDTH = 72;

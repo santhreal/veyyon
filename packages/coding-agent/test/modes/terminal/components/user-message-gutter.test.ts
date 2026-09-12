@@ -36,7 +36,7 @@ describe("UserMessageComponent prompt gutter", () => {
 	 * this pins is exactly a raw trim() mistaking a colored padding row for
 	 * content and hanging the glyph on a blank line. */
 	it("places the dim › on the first content line, never on a padding row", () => {
-		const lines = plain(new UserMessageComponent("hello world").render(60));
+		const lines = plain(new UserMessageComponent({ text: "hello world" }).render(60));
 		const contentIndex = lines.findIndex(line => line.includes("hello world"));
 		expect(contentIndex).toBeGreaterThanOrEqual(0);
 		expect(lines[contentIndex]).toBe("  › hello world");
@@ -44,7 +44,7 @@ describe("UserMessageComponent prompt gutter", () => {
 			expect(lines[i]).not.toContain("›");
 		}
 		// The glyph itself renders through the dim token — history, not chrome.
-		const raw = new UserMessageComponent("hello world").render(60);
+		const raw = new UserMessageComponent({ text: "hello world" }).render(60);
 		const gutterLine = raw.find(line => stripAnsi(line).includes("›"));
 		expect(gutterLine).toContain(theme.fg("dim", "›"));
 	});
@@ -52,7 +52,7 @@ describe("UserMessageComponent prompt gutter", () => {
 	/** Every following content line hangs 4 columns so the message reads as
 	 * one body under the glyph. */
 	it("indents continuation lines by the gutter width", () => {
-		const lines = plain(new UserMessageComponent("first line\n\nsecond line").render(60));
+		const lines = plain(new UserMessageComponent({ text: "first line\n\nsecond line" }).render(60));
 		expect(lines).toContain("  › first line");
 		expect(lines).toContain("    second line");
 	});
@@ -61,7 +61,7 @@ describe("UserMessageComponent prompt gutter", () => {
 	 * terminal width, gutter included — no row may exceed the budget. */
 	it("keeps every wrapped row within the requested width", () => {
 		const long = "word ".repeat(30).trim();
-		const rendered = new UserMessageComponent(long).render(40);
+		const rendered = new UserMessageComponent({ text: long }).render(40);
 		for (const line of rendered) {
 			expect(stripAnsi(line.replace(OSC_ZONE, "")).length).toBeLessThanOrEqual(40);
 		}
@@ -73,7 +73,7 @@ describe("UserMessageComponent prompt gutter", () => {
 	 * multiplexer prompt grouping, which never justified a painted region veyyon
 	 * does not own. */
 	it("emits no OSC 133 zone markers", () => {
-		const rendered = new UserMessageComponent("zoned").render(60);
+		const rendered = new UserMessageComponent({ text: "zoned" }).render(60);
 		for (const line of rendered) {
 			expect(line).not.toContain("\x1b]133;");
 		}

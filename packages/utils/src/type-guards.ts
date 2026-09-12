@@ -6,6 +6,10 @@ export function asRecord(value: unknown): Record<string, unknown> | null {
 	return isRecord(value) ? value : null;
 }
 
+export function isNonEmptyString(value: unknown): value is string {
+	return typeof value === "string" && value.length > 0;
+}
+
 export function toError(value: unknown): Error {
 	return value instanceof Error ? value : new Error(String(value));
 }

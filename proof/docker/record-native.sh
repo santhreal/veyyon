@@ -85,10 +85,6 @@ fi
 export PROOF_HOST_REPO_SOURCE="${BINARY}"
 export PROOF_HOST_REPO_TARGET=/desktop-bin/veyyon-desktop
 export SCENE_TERMINAL=native
-# Inside /out, so the runtime state a scene writes (the session baseline, the
-# created session id) lands in the capture directory the caller can read after
-# the container is gone, rather than in the container's own tmpfs.
-export SCENE_RUNTIME_DIR="/out/runtime/$(date -u +%Y%m%dT%H%M%S)-$$"
 export SCENE_COMMAND="env VK_DRIVER_FILES=${VK_ICD:-/usr/share/vulkan/icd.d/lvp_icd.json} \
 VEYYON_BIN=/repo/packages/coding-agent/src/cli.ts \
 VEYYON_DESKTOP_TOKENS_DIR=${PROOF_TOKENS_DIR:-/repo/crates/veyyon-desktop-tokens/tokens} \

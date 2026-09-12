@@ -41,11 +41,11 @@ import sys
 
 profile = os.environ.get("VEYYON_PROFILE") or "default"
 endpoint = Path.home() / ".veyyon" / "profiles" / profile / "agent" / "gui-host.sock"
-baseline_path = Path(os.environ["SCENE_RUNTIME_DIR"]) / "sessions-before.json"
+baseline_path = Path(os.environ["TMPDIR"]) / "sessions-before.json"
 mode = sys.argv[1]
 minimum_messages = int(sys.argv[2])
 baseline = set(json.loads(baseline_path.read_text())) if mode != "before" else set()
-created_path = Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json"
+created_path = Path(os.environ["TMPDIR"]) / "created-session.json"
 created_id = json.loads(created_path.read_text()) if mode == "finished" else None
 deadline = time.monotonic() + (90 if mode == "finished" else 10)
 latest_row = None
@@ -143,7 +143,7 @@ import time
 
 profile = os.environ.get("VEYYON_PROFILE") or "default"
 endpoint = Path.home() / ".veyyon" / "profiles" / profile / "agent" / "gui-host.sock"
-created = json.loads((Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json").read_text())
+created = json.loads((Path(os.environ["TMPDIR"]) / "created-session.json").read_text())
 deadline = time.monotonic() + 240
 last = "no session snapshot"
 while time.monotonic() < deadline:
@@ -528,7 +528,7 @@ echo "scene: draft ${DRAFT_PX}px, kept ${KEPT_PX}px, moved ${MOVED_PX}px," \
 COMPOSER_BAND_CROP="${SESSION_REGION_W}x${COMPOSER_BAND_H}+${SESSION_REGION_X}+$(( WIN_Y + WIN_H - COMPOSER_BAND_H ))"
 
 type_prompt() { # <text> [floor-pixels]
-	local text="$1" floor="${2:-400}" empty="${SCENE_RUNTIME_DIR}/frame-compare/prompt-empty.png" drew
+	local text="$1" floor="${2:-400}" empty="${TMPDIR}/frame-compare/prompt-empty.png" drew
 	move_px "${COMPOSER_X}" "${COMPOSER_Y}"
 	click
 	k "ctrl+a"

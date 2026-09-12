@@ -134,19 +134,19 @@ describe("a run row states its own verdict", () => {
 
 	it("tags the run the detail pane calls best, on a segment holding an unmeasured zero", () => {
 		// Three surfaces report a best: this row's tag, the session pane's Best row,
-		// and the status row. They were three scans, two of which admitted the
-		// placeholder zero a run that never measured is logged with and one of
-		// which did not. Where lower is better that zero is the best value there
-		// is, so a kept run that measured nothing took the tag in the ledger while
-		// the pane beside it named a different run.
-		//
-		// Run 3 is `keep`, which is what makes it the divergent case: `crash` is
-		// excluded by status before the metric is looked at, so a corpus whose
-		// unmeasured run crashed passes under either rule.
+		// and the status row. They were three scans that disagreed about a run
+		// logged with the placeholder zero. A placeholder is known by its
+		// provenance, not its value: a crash logs the number the tool requires of
+		// it and the harness printed nothing, so it measured nothing, while a kept
+		// zero where lower is better is the best value there is and IS the best.
+		// Every surface reads the run through `measuredMetric`, so a scan that
+		// admitted run 3's zero (a kept run at zero tagged best in the ledger while
+		// the pane named run 2) or excluded run 4's (the goal reached and never
+		// tagged) diverges here.
 		const runtime = runtimeWith([
 			result({ runNumber: 1, metric: 300, measuredPrimary: 300 }),
 			result({ runNumber: 2, metric: 150, measuredPrimary: 150 }),
-			result({ runNumber: 3, metric: 0, measuredPrimary: null }),
+			result({ runNumber: 3, metric: 0, measuredPrimary: null, status: "crash" }),
 		]);
 		expect(labelOf(runtime, 2)).toContain("best");
 		expect(labelOf(runtime, 3)).not.toContain("best");
@@ -155,6 +155,13 @@ describe("a run row states its own verdict", () => {
 		const pane = renderRunDetail(runtime, "session", 80).map(stripAnsi);
 		const bestRow = pane.find(line => line.startsWith("Best")) ?? "";
 		expect(bestRow).toContain("run 2");
+
+		// A kept run that reached zero is the best, on the row and in the pane.
+		runtime.state.results.push(result({ runNumber: 4, metric: 0, measuredPrimary: 0 }));
+		expect(labelOf(runtime, 4)).toContain("best");
+		expect(labelOf(runtime, 2)).not.toContain("best");
+		const reached = renderRunDetail(runtime, "session", 80).map(stripAnsi);
+		expect(reached.find(line => line.startsWith("Best")) ?? "").toContain("run 4");
 	});
 
 	it("says a run is flagged before it says what the run was", () => {

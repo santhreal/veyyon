@@ -636,7 +636,7 @@ export function accountsForProvider(inventory: AccountInventory, provider: strin
  * Every provider actively routed for a session, which is what `/account` reports.
  *
  * A provider with credentials the session has never used is NOT in use: several providers
- * serve one session at once (main model, subagent roles, web search), so the honest answer
+ * serve one session at once (main model, agent roles, web search), so the honest answer
  * to "which account am I on" is one row per provider that has actually routed, not a list of
  * everything configured.
  *

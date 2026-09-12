@@ -3,7 +3,7 @@
 # Drives the full autonomous Nebula Drift build cycle:
 # 1. /yolo mode confirmation
 # 2. Synthetic release signing secret storage
-# 3. Autonomous goal creation, phased planning, 3 parallel task subagents,
+# 3. Autonomous goal creation, phased planning, 3 parallel task agents,
 #    integration edits, compilation/test verification, HMAC release signing,
 #    and real-time 3D terminal flight presentation.
 set -euo pipefail
@@ -78,7 +78,7 @@ else
 fi
 shot todo-board
 
-expect_model_screen "Subagents" 600 agent-lanes
+expect_model_screen "Agents" 600 agent-lanes
 pause 1
 if screen_has "DynamicsAgent" && screen_has "RenderAgent" && screen_has "FlightAgent"; then
 	echo "scene: all three ship-simulator workers visible" >&2

@@ -1,4 +1,5 @@
 import { AbortError } from "@veyyon/utils/abortable";
+import { renderMarkdownTable } from "@veyyon/utils/markdown-table";
 import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { asRecord, finiteNumber, isRecord, trimmedString } from "@veyyon/utils/type-guards";
@@ -6,7 +7,7 @@ import { MAX_BYTES } from "./types";
 
 // Re-export the @veyyon/utils guards/coercers so scraper modules can import
 // them from this local barrel; each has exactly one definition (the owner).
-export { asRecord, finiteNumber, isRecord, trimmedString };
+export { asRecord, finiteNumber, isRecord, renderMarkdownTable, trimmedString };
 
 export interface BinaryFetchSuccess {
 	ok: true;
@@ -115,4 +116,14 @@ export function partialIsoDate(
 		if (day) out += `-${String(day).padStart(2, "0")}`;
 	}
 	return out;
+}
+export function getNested(obj: any, path: string): any {
+	if (!obj || typeof obj !== "object" || !path) return undefined;
+	const parts = path.split(".");
+	let curr = obj;
+	for (const part of parts) {
+		if (curr === null || curr === undefined || typeof curr !== "object") return undefined;
+		curr = curr[part];
+	}
+	return curr;
 }

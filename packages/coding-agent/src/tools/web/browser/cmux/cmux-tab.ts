@@ -534,10 +534,8 @@ export class CmuxTab {
 		return new CmuxElementHandle(this, selector);
 	}
 
-	async waitForSelector(selector: string, opts?: { timeout?: number }): Promise<CmuxElementHandle> {
-		const timeoutMs = opts?.timeout ?? this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS;
-		await this.#waitForSelector(selector, timeoutMs);
-		return new CmuxElementHandle(this, selector);
+	waitForSelector(selector: string, opts?: { timeout?: number }): Promise<CmuxElementHandle> {
+		return this.waitFor(selector, opts);
 	}
 
 	async evaluate<TResult, TArgs extends unknown[]>(

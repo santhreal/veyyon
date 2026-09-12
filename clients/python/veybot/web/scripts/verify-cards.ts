@@ -8,6 +8,7 @@ import * as path from "node:path";
 import type { HTTPRequest } from "puppeteer-core";
 import puppeteer from "puppeteer-core";
 import type { StatusResponse } from "../src/types";
+import { resolveChrome } from "./resolve-chrome";
 
 const VIEWPORT = { width: 1280, height: 720, deviceScaleFactor: 1 } as const;
 
@@ -19,34 +20,106 @@ interface CheckResult {
 
 const results: CheckResult[] = [];
 
-// Resolve a Chrome/Chromium binary. Walks the explicit path, PATH lookups via
-// Bun.which, and well-known absolute locations; each candidate is confirmed
-// with fs.stat so a directory or stale entry never wins.
-async function resolveChrome(explicit: string | undefined): Promise<string> {
-  const candidates: string[] = [];
-  const fromEnv = explicit ?? process.env.PUPPETEER_EXECUTABLE_PATH ?? process.env.CHROME_PATH;
-  if (fromEnv) candidates.push(fromEnv);
-  for (const name of ["google-chrome-stable", "google-chrome", "chromium", "chromium-browser", "chrome"]) {
-    const found = Bun.which(name);
-    if (found) candidates.push(found);
-  }
-  candidates.push(
-    "/usr/bin/google-chrome-stable",
-    "/usr/bin/google-chrome",
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
-    "/snap/bin/chromium",
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  );
-  for (const candidate of candidates) {
-    try {
-      const stat = await fs.stat(candidate);
-      if (stat.isFile()) return candidate;
-    } catch {
-      // not present — try the next candidate
+interface CardContrastSample {
+  tag: string;
+  class: string;
+  text: string | undefined;
+  fgStr: string;
+  bgStr: string;
+  ratio: number;
+}
+
+interface CardContrastAudit {
+  borderShadowOk: boolean;
+  textContrastOk: boolean;
+  pillContrastOk: boolean;
+  samples: Record<"meta" | "label" | "error" | "pill", CardContrastSample | null>;
+}
+
+// Runs inside the page (serialized by puppeteer), so it closes over nothing.
+// `fallbackBg` is the page ground a transparent chain resolves to and
+// `unknownLuminance` the luminance an unparseable colour string counts as;
+// the dark theme uses the black ground and 0, the light theme the white ground and 1.
+function auditCardContrast(fallbackBg: string, unknownLuminance: number): CardContrastAudit {
+  const getLuminance = (str: string): number => {
+    const s = str.trim().toLowerCase();
+    if (s.startsWith("lab")) {
+      const m = s.match(/lab\(([\d.]+)\s+([\d.-]+)\s+([\d.-]+)/);
+      if (m) {
+        const L = parseFloat(m[1]);
+        return L > 8 ? Math.pow((L + 16) / 116, 3) : L / 903.3;
+      }
     }
-  }
-  throw new Error("No Chrome/Chromium found. Pass --chrome <path> or set PUPPETEER_EXECUTABLE_PATH.");
+    const mRgb = s.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (mRgb) {
+      const r = parseInt(mRgb[1]), g = parseInt(mRgb[2]), b = parseInt(mRgb[3]);
+      const a = [r, g, b].map(v => {
+        v /= 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      });
+      return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722;
+    }
+    return unknownLuminance;
+  };
+
+  const getContrast = (c1: string, c2: string): number => {
+    const lum1 = getLuminance(c1);
+    const lum2 = getLuminance(c2);
+    return (Math.max(lum1, lum2) + 0.05) / (Math.min(lum1, lum2) + 0.05);
+  };
+
+  const getBgColor = (el: Element): string => {
+    let cur: Element | null = el;
+    while (cur) {
+      const bg = window.getComputedStyle(cur).backgroundColor;
+      if (bg && bg !== "transparent" && !bg.includes("rgba(0, 0, 0, 0)")) {
+        return bg;
+      }
+      cur = cur.parentElement;
+    }
+    return fallbackBg;
+  };
+
+  const contrastOf = (el: Element): number => getContrast(window.getComputedStyle(el).color, getBgColor(el));
+
+  const sample = (selector: string): CardContrastSample | null => {
+    const el = document.querySelector(selector);
+    if (!el) return null;
+    const fg = window.getComputedStyle(el).color;
+    const bg = getBgColor(el);
+    return {
+      tag: el.tagName,
+      class: el.className,
+      text: el.textContent?.trim()?.slice(0, 30),
+      fgStr: fg,
+      bgStr: bg,
+      ratio: getContrast(fg, bg),
+    };
+  };
+
+  const borderShadowOk = Array.from(document.querySelectorAll(".rmp-card")).every(el => {
+    const style = window.getComputedStyle(el);
+    const radius = style.borderRadius;
+    const shadow = style.boxShadow;
+    const bl = parseFloat(style.borderLeftWidth);
+    const br = parseFloat(style.borderRightWidth);
+    return radius === "8px" && (shadow === "none" || shadow.includes("0px 0px 0px") || shadow === "") && bl <= 1.05 && br <= 1.05;
+  });
+
+  const textElements = Array.from(document.querySelectorAll(".rmp-card-meta, .rmp-step-label, .rmp-card-error"));
+  const pillElements = Array.from(document.querySelectorAll(".pill"));
+
+  return {
+    borderShadowOk,
+    textContrastOk: textElements.every(el => contrastOf(el) >= 4.5),
+    pillContrastOk: pillElements.every(el => contrastOf(el) >= 3.0),
+    samples: {
+      meta: sample(".rmp-card-meta"),
+      label: sample(".rmp-step-label"),
+      error: sample(".rmp-card-error"),
+      pill: sample(".pill"),
+    },
+  };
 }
 
 const baseStatus: StatusResponse = {
@@ -594,150 +667,9 @@ async function main(): Promise<void> {
     ok: terminalLeakKeys.length === 0,
     detail: `Terminal/superseded card keys: ${terminalLeakKeys.join(", ") || "none"}`,
   });
-  const debugTextContrast = await page.evaluate(() => {
-    const getLuminance = (str: string): number => {
-      const s = str.trim().toLowerCase();
-      if (s.startsWith("lab")) {
-        const m = s.match(/lab\(([\d.]+)\s+([\d.-]+)\s+([\d.-]+)/);
-        if (m) {
-          const L = parseFloat(m[1]);
-          return L > 8 ? Math.pow((L + 16) / 116, 3) : L / 903.3;
-        }
-      }
-      const mRgb = s.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-      if (mRgb) {
-        const r = parseInt(mRgb[1]), g = parseInt(mRgb[2]), b = parseInt(mRgb[3]);
-        const a = [r, g, b].map(v => {
-          v /= 255;
-          return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-        });
-        return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722;
-      }
-      return 0;
-    };
-
-    const getContrast = (c1: string, c2: string): number => {
-      const lum1 = getLuminance(c1);
-      const lum2 = getLuminance(c2);
-      return (Math.max(lum1, lum2) + 0.05) / (Math.min(lum1, lum2) + 0.05);
-    };
-
-    const getBgColor = (el: Element, fallback = "lab(15 0 0)"): string => {
-      let cur: Element | null = el;
-      while (cur) {
-        const bg = window.getComputedStyle(cur).backgroundColor;
-        if (bg && bg !== "transparent" && !bg.includes("rgba(0, 0, 0, 0)")) {
-          return bg;
-        }
-        cur = cur.parentElement;
-      }
-      return fallback;
-    };
-
-    const meta = document.querySelector(".rmp-card-meta");
-    const label = document.querySelector(".rmp-step-label");
-    const error = document.querySelector(".rmp-card-error");
-    const pill = document.querySelector(".pill");
-
-    const getElDetails = (el: Element | null) => {
-      if (!el) return null;
-      const fg = window.getComputedStyle(el).color;
-      const bg = getBgColor(el);
-      const ratio = getContrast(fg, bg);
-      return {
-        tag: el.tagName,
-        class: el.className,
-        text: el.textContent?.trim()?.slice(0, 30),
-        fgStr: fg,
-        bgStr: bg,
-        ratio
-      };
-    };
-
-    return {
-      meta: getElDetails(meta),
-      label: getElDetails(label),
-      error: getElDetails(error),
-      pill: getElDetails(pill),
-    };
-  });
-  console.log("Contrast diagnostics (dark theme):", JSON.stringify(debugTextContrast, null, 2));
-
   // Contrast & structural checks (dark theme)
-  const structuralCheck = await page.evaluate(() => {
-    const cards = Array.from(document.querySelectorAll(".rmp-card"));
-    
-    // borders and shadows
-    const borderShadowOk = cards.every(el => {
-      const style = window.getComputedStyle(el);
-      const radius = style.borderRadius;
-      const shadow = style.boxShadow;
-      const bl = parseFloat(style.borderLeftWidth);
-      const br = parseFloat(style.borderRightWidth);
-      return radius === "8px" && (shadow === "none" || shadow.includes("0px 0px 0px") || shadow === "") && bl <= 1.05 && br <= 1.05;
-    });
-
-    const getLuminance = (str: string): number => {
-      const s = str.trim().toLowerCase();
-      if (s.startsWith("lab")) {
-        const m = s.match(/lab\(([\d.]+)\s+([\d.-]+)\s+([\d.-]+)/);
-        if (m) {
-          const L = parseFloat(m[1]);
-          return L > 8 ? Math.pow((L + 16) / 116, 3) : L / 903.3;
-        }
-      }
-      const mRgb = s.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-      if (mRgb) {
-        const r = parseInt(mRgb[1]), g = parseInt(mRgb[2]), b = parseInt(mRgb[3]);
-        const a = [r, g, b].map(v => {
-          v /= 255;
-          return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-        });
-        return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722;
-      }
-      return 0;
-    };
-
-    const getContrast = (c1: string, c2: string): number => {
-      const lum1 = getLuminance(c1);
-      const lum2 = getLuminance(c2);
-      return (Math.max(lum1, lum2) + 0.05) / (Math.min(lum1, lum2) + 0.05);
-    };
-
-    const getBgColor = (el: Element): string => {
-      let cur: Element | null = el;
-      while (cur) {
-        const bg = window.getComputedStyle(cur).backgroundColor;
-        if (bg && bg !== "transparent" && !bg.includes("rgba(0, 0, 0, 0)")) {
-          return bg;
-        }
-        cur = cur.parentElement;
-      }
-      return "lab(15 0 0)";
-    };
-
-    const metaElements = Array.from(document.querySelectorAll(".rmp-card-meta"));
-    const labelElements = Array.from(document.querySelectorAll(".rmp-step-label"));
-    const errorElements = Array.from(document.querySelectorAll(".rmp-card-error"));
-    const pillElements = Array.from(document.querySelectorAll(".pill"));
-
-    const textElements = [...metaElements, ...labelElements, ...errorElements];
-    const textContrastOk = textElements.every(el => {
-      const fg = window.getComputedStyle(el).color;
-      const bg = getBgColor(el);
-      const ratio = getContrast(fg, bg);
-      return ratio >= 4.5;
-    });
-
-    const pillContrastOk = pillElements.every(el => {
-      const fg = window.getComputedStyle(el).color;
-      const bg = getBgColor(el);
-      const ratio = getContrast(fg, bg);
-      return ratio >= 3.0;
-    });
-
-    return { borderShadowOk, textContrastOk, pillContrastOk };
-  });
+  const structuralCheck = await page.evaluate(auditCardContrast, "lab(15 0 0)", 0);
+  console.log("Contrast diagnostics (dark theme):", JSON.stringify(structuralCheck.samples, null, 2));
 
   results.push({
     name: "dark-theme-structural",
@@ -762,68 +694,7 @@ async function main(): Promise<void> {
   // 4. Populated state - Light Theme
   await applyTheme("light");
 
-  const lightThemeChecks = await page.evaluate(() => {
-    const getLuminance = (str: string): number => {
-      const s = str.trim().toLowerCase();
-      if (s.startsWith("lab")) {
-        const m = s.match(/lab\(([\d.]+)\s+([\d.-]+)\s+([\d.-]+)/);
-        if (m) {
-          const L = parseFloat(m[1]);
-          return L > 8 ? Math.pow((L + 16) / 116, 3) : L / 903.3;
-        }
-      }
-      const mRgb = s.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-      if (mRgb) {
-        const r = parseInt(mRgb[1]), g = parseInt(mRgb[2]), b = parseInt(mRgb[3]);
-        const a = [r, g, b].map(v => {
-          v /= 255;
-          return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-        });
-        return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722;
-      }
-      return 1.0;
-    };
-
-    const getContrast = (c1: string, c2: string): number => {
-      const lum1 = getLuminance(c1);
-      const lum2 = getLuminance(c2);
-      return (Math.max(lum1, lum2) + 0.05) / (Math.min(lum1, lum2) + 0.05);
-    };
-
-    const getBgColor = (el: Element): string => {
-      let cur: Element | null = el;
-      while (cur) {
-        const bg = window.getComputedStyle(cur).backgroundColor;
-        if (bg && bg !== "transparent" && !bg.includes("rgba(0, 0, 0, 0)")) {
-          return bg;
-        }
-        cur = cur.parentElement;
-      }
-      return "lab(100 0 0)";
-    };
-
-    const metaElements = Array.from(document.querySelectorAll(".rmp-card-meta"));
-    const labelElements = Array.from(document.querySelectorAll(".rmp-step-label"));
-    const errorElements = Array.from(document.querySelectorAll(".rmp-card-error"));
-    const pillElements = Array.from(document.querySelectorAll(".pill"));
-
-    const textElements = [...metaElements, ...labelElements, ...errorElements];
-    const textContrastOk = textElements.every(el => {
-      const fg = window.getComputedStyle(el).color;
-      const bg = getBgColor(el);
-      const ratio = getContrast(fg, bg);
-      return ratio >= 4.5;
-    });
-
-    const pillContrastOk = pillElements.every(el => {
-      const fg = window.getComputedStyle(el).color;
-      const bg = getBgColor(el);
-      const ratio = getContrast(fg, bg);
-      return ratio >= 3.0;
-    });
-
-    return { textContrastOk, pillContrastOk };
-  });
+  const lightThemeChecks = await page.evaluate(auditCardContrast, "lab(100 0 0)", 1.0);
 
   results.push({
     name: "light-theme-text-contrast",

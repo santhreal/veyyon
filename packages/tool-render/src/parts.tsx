@@ -3,9 +3,9 @@
  * instead of inventing new CSS — see tool-render.css for the `tv-` classes.
  */
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { isValidElement, useMemo, useState } from "react";
 import type { ToolRenderHost, ToolResultImage, ToolResultLike } from "./types";
-import { getHljs, replaceTabs, resultImagesOf, resultTextOf, shortenPath, stripAnsi } from "./util";
+import { getHljs, keyed, replaceTabs, resultImagesOf, resultTextOf, shortenPath, stripAnsi } from "./util";
 
 export type Tone = "accent" | "ok" | "err" | "warn";
 
@@ -16,6 +16,28 @@ export type Tone = "accent" | "ok" | "err" | "warn";
  */
 function isEmptyNode(node: ReactNode): boolean {
 	return node == null || node === "" || node === false;
+}
+
+/**
+ * What a node is, for keying a sibling list of nodes that carry no ids: its text for a string or
+ * number, its own key for a keyed element, else the element type with a string child. Equal
+ * siblings are told apart by `keyed`.
+ */
+export function nodeIdentity(node: ReactNode): string {
+	if (typeof node === "string" || typeof node === "number") return String(node);
+	if (isValidElement<{ children?: ReactNode }>(node)) {
+		if (node.key !== null) return node.key;
+		const type = typeof node.type === "string" ? node.type : typeof node.type === "function" ? node.type.name : "";
+		const child = node.props.children;
+		return typeof child === "string" || typeof child === "number" ? `${type}:${child}` : type;
+	}
+	return String(node);
+}
+
+/** A compact fingerprint of an image's bytes: its type, size and trailing base64 characters. */
+export function imageIdentity(img: { data?: string; mimeType?: string }): string {
+	const data = img.data ?? "";
+	return `${img.mimeType ?? ""}:${data.length}:${data.slice(-16)}`;
 }
 
 /** Inline chip. Renders nothing for empty content. */
@@ -30,8 +52,8 @@ export function Badges({ items }: { items: ReadonlyArray<ReactNode> }): ReactNod
 	if (visible.length === 0) return null;
 	return (
 		<span className="tv-badges">
-			{visible.map((item, i) => (
-				<Badge key={i}>{item}</Badge>
+			{keyed(visible, nodeIdentity).map(({ key, item }) => (
+				<Badge key={key}>{item}</Badge>
 			))}
 		</span>
 	);
@@ -76,6 +98,12 @@ export function Kv({ k, children }: { k: ReactNode; children: ReactNode }): Reac
 			<span className="tv-kv-val">{children}</span>
 		</>
 	);
+}
+
+/** Field in a KvGrid that renders an InvalidArg fallback when a present raw arg resolves empty. */
+export function ArgKv({ k, raw, val }: { k: string; raw: unknown; val: ReactNode }): ReactNode {
+	if (raw === undefined) return null;
+	return <Kv k={k}>{isEmptyNode(val) ? <InvalidArg what={k} /> : val}</Kv>;
 }
 
 function useHighlight(code: string, lang: string | null | undefined): string | null {
@@ -127,6 +155,7 @@ export function Output({ text, maxLines = 10, lang, error, variant = "plain", ti
 		<div className="tv-out">
 			{title && <div className="tv-out-title">{title}</div>}
 			{html !== null ? (
+				// biome-ignore lint/security/noDangerouslySetInnerHtml: `html` is highlight.js markup built from `shown`, which hljs escapes before wrapping in its span classes
 				<pre className={classes.join(" ")} dangerouslySetInnerHTML={{ __html: html }} />
 			) : (
 				<pre className={classes.join(" ")}>{shown}</pre>
@@ -239,9 +268,9 @@ export function ResultImages({ result }: { result: ToolResultLike | undefined })
 	if (images.length === 0) return null;
 	return (
 		<div className="tv-imgs">
-			{images.map((img, i) => (
+			{keyed(images, imageIdentity).map(({ key, item: img }, i) => (
 				<button
-					key={i}
+					key={key}
 					type="button"
 					style={{ all: "unset", display: "inline-flex" }}
 					onClick={() => openImage(img)}
@@ -275,6 +304,24 @@ export function InvalidArg({ what }: { what?: string }): ReactNode {
 	return <span className="tv-err-text">[invalid {what ?? "arg"}]</span>;
 }
 
+export function MissingPathsNote({ paths }: { paths: readonly string[] }): ReactNode {
+	if (paths.length === 0) return null;
+	return <Note tone="warn">skipped missing: {paths.map(p => shortenPath(p)).join(", ")}</Note>;
+}
+
+export function ParseErrorsOutput({
+	errors,
+	title,
+	variant = "plain",
+}: {
+	errors: readonly string[];
+	title: string;
+	variant?: "code" | "plain";
+}): ReactNode {
+	if (errors.length === 0) return null;
+	return <Output text={errors.join("\n")} maxLines={6} title={title} variant={variant} />;
+}
+
 /**
  * Unified-diff-ish block: `+` rows added, `-` rows removed, `@@` hunk headers
  * faint, blank rows render as `…` gaps (non-contiguous regions).
@@ -287,14 +334,14 @@ export function DiffBlock({ diff, maxLines = 80 }: { diff: string; maxLines?: nu
 	return (
 		<div className="tv-out">
 			<div className="tv-diff">
-				{shown.map((line, i) => {
+				{keyed(shown, line => line).map(({ key, item: line }) => {
 					let cls = "";
 					if (line.trim().length === 0) cls = "--gap";
 					else if (line.startsWith("+")) cls = "--add";
 					else if (line.startsWith("-")) cls = "--del";
 					else if (line.startsWith("@@")) cls = "--hunk";
 					return (
-						<div key={i} className={`tv-diff-row${cls ? ` tv-diff-row${cls}` : ""}`}>
+						<div key={key} className={`tv-diff-row${cls ? ` tv-diff-row${cls}` : ""}`}>
 							{line.trim().length === 0 ? "…" : line}
 						</div>
 					);

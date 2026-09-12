@@ -7,7 +7,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, getAgentDir, isEnoent, isRecord, logger } from "@veyyon/utils";
-import { registerProvider } from "./capability";
 import { readFile } from "./capability/fs";
 import { type Hook, hookCapability } from "./capability/hook";
 import { type MCPServer, mcpCapability } from "./capability/mcp";
@@ -20,14 +19,17 @@ import {
 	type ClaudePluginRoot,
 	createSourceMeta,
 	listClaudePluginRoots,
-	loadFilesFromDir,
 	pluginsRootFor,
+	registerProviderCapabilities,
+	scanCustomToolsFromDir,
+	scanMarkdownCommands,
 	scanSkillsFromDir,
+	scanSubdirectoryHooks,
 } from "./helpers";
 
 import { resolvePluginStdioPaths, substitutePluginRoot } from "./substitute-plugin-root";
 
-const PROVIDER_ID = "claude-plugins";
+export const PROVIDER_ID = "claude-plugins";
 const DISPLAY_NAME = "Claude Code Marketplace";
 const PRIORITY = 70; // Below claude.ts (80) so user .claude/ overrides win
 
@@ -190,14 +192,7 @@ async function resolvePluginDir(
 
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const items: DiscoveredSkill[] = [];
-	const warnings: string[] = [];
-	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(
-		ctx.home,
-		ctx.cwd,
-		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
-		ctx.agentDir ?? getAgentDir(),
-	);
-	warnings.push(...rootWarnings);
+	const { roots, warnings } = await pluginRootsFor(ctx);
 	const results = await Promise.all(
 		roots.map(async root => {
 			const resolveWarnings: string[] = [];
@@ -243,15 +238,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
 	const items: SlashCommand[] = [];
-	const warnings: string[] = [];
-
-	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(
-		ctx.home,
-		ctx.cwd,
-		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
-		ctx.agentDir ?? getAgentDir(),
-	);
-	warnings.push(...rootWarnings);
+	const { roots, warnings } = await pluginRootsFor(ctx);
 
 	const results = await Promise.all(
 		roots.map(async root => {
@@ -297,19 +284,7 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 							};
 						}
 					}
-					return loadFilesFromDir<SlashCommand>(dir, PROVIDER_ID, root.scope, {
-						extensions: ["md"],
-						transform: (name, content, filePath, source) => {
-							const cmdName = name.replace(/\.md$/, "");
-							return {
-								name: root.plugin ? `${root.plugin}:${cmdName}` : cmdName,
-								path: filePath,
-								content,
-								level: root.scope,
-								_source: source,
-							};
-						},
-					});
+					return scanMarkdownCommands(dir, PROVIDER_ID, root.scope, { prefix: root.plugin });
 				}),
 			);
 			return { commandResults, resolveWarnings };
@@ -331,94 +306,44 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 // Hooks
 // =============================================================================
 
-async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
-	const items: Hook[] = [];
-	const warnings: string[] = [];
+/**
+ * The installed plugin roots for `ctx`, and their listing warnings copied out of the shared cache
+ * entry so a loader can append its own without editing what the next loader reads.
+ */
+async function pluginRootsFor(ctx: LoadContext): Promise<{ roots: ClaudePluginRoot[]; warnings: string[] }> {
+	const agentDir = ctx.agentDir ?? getAgentDir();
+	const { roots, warnings } = await listClaudePluginRoots(ctx.home, ctx.cwd, pluginsRootFor(agentDir), agentDir);
+	return { roots, warnings: [...warnings] };
+}
 
-	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(
-		ctx.home,
-		ctx.cwd,
-		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
-		ctx.agentDir ?? getAgentDir(),
-	);
-	warnings.push(...rootWarnings);
-
-	const hookTypes = ["pre", "post"] as const;
-
-	const loadTasks: { root: ClaudePluginRoot; hookType: "pre" | "post" }[] = [];
-	for (const root of roots) {
-		for (const hookType of hookTypes) {
-			loadTasks.push({ root, hookType });
-		}
-	}
-
-	const results = await Promise.all(
-		loadTasks.map(async ({ root, hookType }) => {
-			const hooksDir = path.join(root.path, "hooks", hookType);
-			return loadFilesFromDir<Hook>(hooksDir, PROVIDER_ID, root.scope, {
-				transform: (name, _content, filePath, source) => {
-					const toolName = name.replace(/\.(sh|bash|zsh|fish)$/, "");
-					return {
-						name,
-						path: filePath,
-						type: hookType,
-						tool: toolName,
-						level: root.scope,
-						_source: source,
-					};
-				},
-			});
-		}),
-	);
-
-	for (const result of results) {
+/** Scan every plugin root in parallel and merge the items and warnings in root order. */
+async function loadFromPluginRoots<T>(
+	ctx: LoadContext,
+	scan: (root: ClaudePluginRoot) => Promise<LoadResult<T>>,
+): Promise<LoadResult<T>> {
+	const { roots, warnings } = await pluginRootsFor(ctx);
+	const items: T[] = [];
+	for (const result of await Promise.all(roots.map(scan))) {
 		items.push(...result.items);
 		if (result.warnings) warnings.push(...result.warnings);
 	}
-
 	return { items, warnings };
+}
+
+function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
+	return loadFromPluginRoots(ctx, root =>
+		scanSubdirectoryHooks(path.join(root.path, "hooks"), PROVIDER_ID, root.scope),
+	);
 }
 
 // =============================================================================
 // Custom Tools
 // =============================================================================
 
-async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
-	const items: DiscoveredCustomTool[] = [];
-	const warnings: string[] = [];
-
-	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(
-		ctx.home,
-		ctx.cwd,
-		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
-		ctx.agentDir ?? getAgentDir(),
+function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
+	return loadFromPluginRoots(ctx, root =>
+		scanCustomToolsFromDir(path.join(root.path, "tools"), PROVIDER_ID, root.scope),
 	);
-	warnings.push(...rootWarnings);
-
-	const results = await Promise.all(
-		roots.map(async root => {
-			const toolsDir = path.join(root.path, "tools");
-			return loadFilesFromDir<DiscoveredCustomTool>(toolsDir, PROVIDER_ID, root.scope, {
-				transform: (name, _content, filePath, source) => {
-					const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
-					return {
-						name: toolName,
-						path: filePath,
-						description: `${toolName} custom tool`,
-						level: root.scope,
-						_source: source,
-					};
-				},
-			});
-		}),
-	);
-
-	for (const result of results) {
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
-	}
-
-	return { items, warnings };
 }
 
 // =============================================================================
@@ -427,15 +352,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 
 async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> {
 	const items: MCPServer[] = [];
-	const warnings: string[] = [];
-
-	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(
-		ctx.home,
-		ctx.cwd,
-		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
-		ctx.agentDir ?? getAgentDir(),
-	);
-	warnings.push(...rootWarnings);
+	const { roots, warnings } = await pluginRootsFor(ctx);
 
 	for (const root of roots) {
 		const mcpPath = path.join(root.path, ".mcp.json");
@@ -535,42 +452,30 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 // Provider Registration
 // =============================================================================
 
-registerProvider<DiscoveredSkill>(skillCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load skills from Claude Code marketplace plugins (~/.claude/plugins/cache/)",
-	priority: PRIORITY,
-	load: loadSkills,
-});
-
-registerProvider<SlashCommand>(slashCommandCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load slash commands from Claude Code marketplace plugins",
-	priority: PRIORITY,
-	load: loadSlashCommands,
-});
-
-registerProvider<Hook>(hookCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load hooks from Claude Code marketplace plugins",
-	priority: PRIORITY,
-	load: loadHooks,
-});
-
-registerProvider<DiscoveredCustomTool>(toolCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load custom tools from Claude Code marketplace plugins",
-	priority: PRIORITY,
-	load: loadTools,
-});
-
-registerProvider<MCPServer>(mcpCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load MCP servers from marketplace plugin .mcp.json files",
-	priority: PRIORITY,
-	load: loadMCPServers,
-});
+registerProviderCapabilities({ id: PROVIDER_ID, displayName: DISPLAY_NAME, priority: PRIORITY }, [
+	{
+		capabilityId: skillCapability.id,
+		description: "Load skills from Claude Code marketplace plugins (~/.claude/plugins/cache/)",
+		load: loadSkills,
+	},
+	{
+		capabilityId: slashCommandCapability.id,
+		description: "Load slash commands from Claude Code marketplace plugins",
+		load: loadSlashCommands,
+	},
+	{
+		capabilityId: hookCapability.id,
+		description: "Load hooks from Claude Code marketplace plugins",
+		load: loadHooks,
+	},
+	{
+		capabilityId: toolCapability.id,
+		description: "Load custom tools from Claude Code marketplace plugins",
+		load: loadTools,
+	},
+	{
+		capabilityId: mcpCapability.id,
+		description: "Load MCP servers from marketplace plugin .mcp.json files",
+		load: loadMCPServers,
+	},
+]);

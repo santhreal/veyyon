@@ -2,7 +2,9 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import type { SkillPromptCustomDisplay } from "@veyyon/wire/presentation";
 import { Settings } from "../../../../config/settings";
+import { toTranscriptBlock } from "../../../../presentation/transcript-builder";
 import type { CustomMessage, SkillPromptDetails } from "../../../../session/messages";
 import { getThemeByName, setThemeInstance, type Theme } from "../../../../theme/theme";
 import { SkillMessageComponent } from "../transcript/skill-message";
@@ -13,8 +15,20 @@ const strip = (lines: readonly string[]): string => stripAnsi(lines.join("\n"));
 function makeMessage(
 	details: SkillPromptDetails,
 	content = "Use the atomic-commit workflow.",
-): CustomMessage<SkillPromptDetails> {
-	return { role: "custom", customType: "skill-prompt", content, display: true, details, timestamp: Date.now() };
+): SkillPromptCustomDisplay {
+	const message: CustomMessage<SkillPromptDetails> = {
+		role: "custom",
+		customType: "skill-prompt",
+		content,
+		display: true,
+		details,
+		timestamp: 0,
+	};
+	const block = toTranscriptBlock(message, { index: 0 });
+	if (block.kind !== "custom" || block.display?.variant !== "skill-prompt") {
+		throw new Error("Skill prompt projection lost its specialized display");
+	}
+	return block.display;
 }
 
 describe("SkillMessageComponent", () => {

@@ -90,7 +90,7 @@ import json
 import os
 from pathlib import Path
 
-print(json.loads((Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json").read_text()))
+print(json.loads((Path(os.environ["TMPDIR"]) / "created-session.json").read_text()))
 PY
 )"
 if [ -z "${LEFT_SESSION}" ]; then
@@ -156,7 +156,7 @@ PY
 # with no model chosen is a turn the provider ends as an abort, which is the
 # state this scene is trying to tell apart from a real one. The picker is
 # opened from its own chip, whose point the preamble derived from the tokens.
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 WINDOW_CROP="${WIN_W}x${WIN_H}+${WIN_X}+${WIN_Y}"
 PICKER_CLOSED="${PROBE_DIR}/abandoned-picker-closed.png"

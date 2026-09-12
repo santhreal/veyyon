@@ -1,7 +1,7 @@
 /**
  * Fullscreen transcript viewer.
  *
- * The subagent dashboard mounts this as a `fullscreen` overlay
+ * The agent dashboard mounts this as a `fullscreen` overlay
  * (`ui.showOverlay(..., { fullscreen: true })`), so it borrows the terminal's
  * alternate screen buffer (the vim/less idiom) and paints the whole screen — no
  * compositing into the live transcript's scrollback.
@@ -37,8 +37,6 @@ import type { ObservableSession, SessionObserverRegistry } from "../../session-o
 import { matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import {
 	computeModalDims,
-	consumeModalChipHover,
-	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
@@ -47,6 +45,7 @@ import {
 	sizingForArea,
 } from "../chrome/modal-shell";
 import { COMPOSER_INSET_COLS } from "../composer/composer-chrome";
+import { routeModalChrome } from "../selectors/select-list-mouse-routing";
 import { ChatTranscriptBuilder } from "../transcript/chat-transcript-builder";
 import { type AgentDisplayState, agentDisplayState, agentStatusWord } from "./agent-status-display";
 
@@ -209,6 +208,7 @@ export class AgentTranscriptViewer implements Component {
 			hideThinkingBlock: deps.hideThinkingBlock,
 			proseOnlyThinking: deps.proseOnlyThinking,
 			requestRender: deps.requestRender,
+			indentFileMentions: 1,
 		});
 		this.#scrollView = new ScrollView([], {
 			height: 10,
@@ -539,30 +539,22 @@ export class AgentTranscriptViewer implements Component {
 	 * the whole screen while it is up.
 	 */
 	#routeMouse(event: SgrMouseEvent): boolean {
-		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-			motion: event.motion,
-			leftClick: event.leftClick,
-		});
-		if (
-			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+		const consumed = routeModalChrome({
+			shellGeometry: this.#shellGeometry,
+			event,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			onHoverShortcut: id => {
 				this.#hoveredShortcutId = id;
 				this.deps.requestRender();
-			})
-		) {
-			return true;
-		}
-		if (
-			chrome.kind === "close" ||
-			chrome.kind === "outside" ||
-			(chrome.kind === "shortcut" && chrome.id === "close")
-		) {
-			this.deps.onClose();
-			return true;
-		}
-		if (chrome.kind === "shortcut" && chrome.id === "expand") {
-			this.#toggleExpanded();
-			return true;
-		}
+			},
+			onCancel: () => this.deps.onClose(),
+			onShortcut: id => {
+				if (id !== "expand") return false;
+				this.#toggleExpanded();
+				return true;
+			},
+		});
+		if (consumed) return true;
 		if (event.wheel !== null) {
 			this.#scrollView.scroll(event.wheel * 3);
 			this.#syncFollow();
@@ -727,7 +719,7 @@ export class AgentTranscriptViewer implements Component {
 		parentId: string | undefined,
 	): string[] {
 		// "Transcript", not the name of the screen that opened it. This viewer is
-		// reached from the subagent dashboard, and titling it with the surface it
+		// reached from the agent dashboard, and titling it with the surface it
 		// came from told the reader where they had been rather than what they were
 		// looking at. It said "Agent Hub" for months after that screen was gone.
 		const lines = [theme.fg("accent", `Transcript ${theme.sep.dot} ${this.deps.agentId}`)];

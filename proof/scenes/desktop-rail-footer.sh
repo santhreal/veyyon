@@ -98,7 +98,7 @@ GEAR_BOX_MAX=$(( GEAR_PX * 3 ))
 SETTINGS_MIN_PIXELS=2000
 RETURN_MAX_PIXELS=400
 
-PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+PROBE_DIR="${TMPDIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
 footer_ink_box() { # <shot> -> WxH+X+Y of the inked bounding box in the footer band

@@ -418,7 +418,7 @@ describe("a limit the operator configured but no gate has mentioned", () => {
 	it("lets a value a gate passed win over the configured one", async () => {
 		setSettingsInstance(Settings.isolated({ "session.maxProcesses": 4 }));
 
-		// A subagent's cloned settings are a better answer than the process-wide
+		// An agent's cloned settings are a better answer than the process-wide
 		// singleton, so an explicit limit is never overwritten by configuration.
 		const fixture = await makeFixture({ maxProcesses: 1 });
 

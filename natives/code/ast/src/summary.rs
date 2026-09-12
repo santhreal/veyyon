@@ -397,418 +397,336 @@ fn node_line_count(node: Node<'_>) -> u32 {
 
 fn is_comment_kind(language: SupportLang, kind: &str) -> bool {
 	match language {
-		SupportLang::TypeScript | SupportLang::Tsx | SupportLang::JavaScript => kind == "comment",
-		SupportLang::Rust => kind == "block_comment",
-		SupportLang::Python => kind == "comment",
-		SupportLang::Go => kind == "comment",
-		SupportLang::Fortran => kind == "comment",
-		SupportLang::Java => kind == "block_comment",
-		SupportLang::C | SupportLang::Cpp | SupportLang::ObjC => kind == "comment",
-		SupportLang::CSharp => kind == "comment",
-		SupportLang::Ruby => kind == "comment",
-		SupportLang::Php => kind == "comment",
-		SupportLang::Swift => kind == "comment",
-		SupportLang::Kotlin => kind == "block_comment",
-		SupportLang::Scala => kind == "block_comment",
-		SupportLang::Lua => kind == "comment",
-		SupportLang::EmacsLisp => kind == "comment",
+		SupportLang::Rust | SupportLang::Java | SupportLang::Kotlin | SupportLang::Scala => {
+			kind == "block_comment"
+		},
+		SupportLang::TypeScript
+		| SupportLang::Tsx
+		| SupportLang::JavaScript
+		| SupportLang::Python
+		| SupportLang::Go
+		| SupportLang::Fortran
+		| SupportLang::C
+		| SupportLang::Cpp
+		| SupportLang::ObjC
+		| SupportLang::CSharp
+		| SupportLang::Ruby
+		| SupportLang::Php
+		| SupportLang::Swift
+		| SupportLang::Lua
+		| SupportLang::EmacsLisp => kind == "comment",
 		_ => false,
 	}
 }
 
 fn is_elidable_kind(language: SupportLang, kind: &str) -> bool {
-	match language {
-		SupportLang::TypeScript | SupportLang::Tsx | SupportLang::JavaScript => matches!(
-			kind,
-			"statement_block"
-				| "function_body"
-				| "object"
-				| "array"
-				| "template_string"
-				| "class_body"
-				| "interface_body"
-				| "enum_body"
-				| "object_type"
-				| "switch_body"
-				| "jsx_element"
-				| "jsx_self_closing_element"
-		),
-		SupportLang::Rust => matches!(
-			kind,
-			"block"
-				| "array_expression"
-				| "tuple_expression"
-				| "struct_expression"
-				| "match_block"
-				| "raw_string_literal"
-				| "declaration_list"
-				| "field_declaration_list"
-				| "ordered_field_declaration_list"
-				| "enum_variant_list"
-				| "where_clause"
-				| "use_list"
-				| "macro_definition"
-				| "token_tree"
-		),
-		SupportLang::Python => matches!(
-			kind,
-			"block"
-				| "dictionary"
-				| "list" | "set"
-				| "string"
-				| "tuple"
-				| "argument_list"
-				| "parameters"
-				| "parenthesized_expression"
-				| "list_comprehension"
-				| "set_comprehension"
-				| "dictionary_comprehension"
-				| "generator_expression"
-				| "import_from_statement"
-				| "subscript"
-		),
-		SupportLang::Go => matches!(
-			kind,
-			"block"
-				| "composite_literal"
-				| "interpreted_string_literal"
-				| "raw_string_literal"
-				| "import_spec_list"
-				| "const_declaration"
-				| "var_declaration"
-				| "field_declaration_list"
-				| "interface_type"
-				| "expression_switch_statement"
-				| "type_switch_statement"
-				| "select_statement"
-		),
-		SupportLang::Java => matches!(
-			kind,
-			"block"
-				| "array_initializer"
-				| "class_body"
-				| "interface_body"
-				| "enum_body"
-				| "annotation_type_body"
-				| "constructor_body"
-				| "switch_block"
-				| "string_literal"
-		),
-		SupportLang::C => matches!(
-			kind,
-			"compound_statement"
-				| "initializer_list"
-				| "string_literal"
-				| "field_declaration_list"
-				| "enumerator_list"
-				| "concatenated_string"
-		),
-		SupportLang::Cpp => matches!(
-			kind,
-			"compound_statement"
-				| "initializer_list"
-				| "string_literal"
-				| "field_declaration_list"
-				| "enumerator_list"
-				| "concatenated_string"
-				| "declaration_list"
-				| "raw_string_literal"
-				| "requires_clause"
-		),
-		SupportLang::ObjC => matches!(
-			kind,
-			"compound_statement"
-				| "initializer_list"
-				| "string_literal"
-				| "protocol_declaration"
-				| "class_interface"
-				| "class_implementation"
-				| "instance_variables"
-				| "array_literal"
-				| "dictionary_literal"
-		),
-		SupportLang::CSharp => matches!(
-			kind,
-			"block"
-				| "initializer_expression"
-				| "array_initializer_expression"
-				| "declaration_list"
-				| "enum_member_declaration_list"
-				| "switch_expression"
-				| "raw_string_literal"
-				| "interpolated_string_expression"
-		),
-		SupportLang::Ruby => matches!(
-			kind,
-			"body_statement"
-				| "method"
-				| "do_block"
-				| "array"
-				| "hash" | "block"
-				| "case" | "heredoc_body"
-		),
-		SupportLang::Php => matches!(
-			kind,
-			"compound_statement"
-				| "array_creation_expression"
-				| "declaration_list"
-				| "enum_declaration_list"
-				| "match_block"
-				| "heredoc"
-				| "nowdoc"
-		),
-		SupportLang::Swift => matches!(
-			kind,
-			"function_body"
-				| "array_literal"
-				| "dictionary_literal"
-				| "multi_line_string_literal"
-				| "class_body"
-				| "protocol_body"
-				| "enum_class_body"
-				| "computed_property"
-				| "lambda_literal"
-		),
-		SupportLang::Kotlin => matches!(
-			kind,
-			"function_body"
-				| "collection_literal"
-				| "multi_line_string_literal"
-				| "class_body"
-				| "enum_class_body"
-				| "when_expression"
-				| "import_list"
-		),
-		SupportLang::Scala => matches!(
-			kind,
-			"block"
-				| "collection_literal"
-				| "template_body"
-				| "enum_body"
-				| "match_expression"
-				| "for_expression"
-				| "string"
-		),
-		SupportLang::Lua => matches!(kind, "block" | "table_constructor" | "string"),
-		SupportLang::Dart => matches!(
-			kind,
-			"block"
-				| "function_expression_body"
-				| "class_body"
-				| "enum_body"
-				| "extension_body"
-				| "mixin_body"
-				| "list_literal"
-				| "set_or_map_literal"
-				| "string_literal"
-		),
-		SupportLang::Bash => matches!(
-			kind,
-			"compound_statement"
-				| "if_statement"
-				| "case_statement"
-				| "do_group"
-				| "subshell"
-				| "array"
-				| "heredoc_body"
-		),
-		SupportLang::Powershell => matches!(
-			kind,
-			"script_block"
-				| "statement_block"
-				| "class_statement"
-				| "param_block"
-				| "hash_literal_expression"
-				| "array_expression"
-				| "expandable_here_string_literal"
-				| "verbatim_here_string_characters"
-		),
-		SupportLang::Haskell => matches!(
-			kind,
-			"imports"
-				| "data_type"
-				| "class"
-				| "instance"
-				| "function"
-				| "do" | "case"
-				| "let" | "local_binds"
-				| "list" | "tuple"
-		),
-		SupportLang::Ocaml => matches!(
-			kind,
-			"structure"
-				| "signature"
-				| "variant_declaration"
-				| "record_declaration"
-				| "match_expression"
-				| "match_case"
-				| "let_expression"
-				| "value_definition"
-				| "list_expression"
-		),
-		SupportLang::Elixir => matches!(kind, "do_block" | "list" | "map" | "string" | "sigil"),
-		SupportLang::Erlang => matches!(
-			kind,
-			"fun_decl"
-				| "case_expr"
-				| "if_expr"
-				| "receive_expr"
-				| "record_decl"
-				| "list" | "map_expr"
-				| "tuple"
-		),
-		SupportLang::EmacsLisp => matches!(
-			kind,
-			"function_definition"
-				| "macro_definition"
-				| "special_form"
-				| "list" | "vector"
-				| "hash_table"
-				| "bytecode"
-				| "string_text_properties"
-				| "string"
-		),
-		SupportLang::Clojure => {
-			matches!(kind, "list_lit" | "map_lit" | "vec_lit" | "set_lit" | "str_lit")
+	let kinds: &[&str] = match language {
+		SupportLang::TypeScript | SupportLang::Tsx | SupportLang::JavaScript => &[
+			"statement_block",
+			"function_body",
+			"object",
+			"array",
+			"template_string",
+			"class_body",
+			"interface_body",
+			"enum_body",
+			"object_type",
+			"switch_body",
+			"jsx_element",
+			"jsx_self_closing_element",
+		],
+		SupportLang::Rust => &[
+			"block",
+			"array_expression",
+			"tuple_expression",
+			"struct_expression",
+			"match_block",
+			"raw_string_literal",
+			"declaration_list",
+			"field_declaration_list",
+			"ordered_field_declaration_list",
+			"enum_variant_list",
+			"where_clause",
+			"use_list",
+			"macro_definition",
+			"token_tree",
+		],
+		SupportLang::Python => &[
+			"block",
+			"dictionary",
+			"list",
+			"set",
+			"string",
+			"tuple",
+			"argument_list",
+			"parameters",
+			"parenthesized_expression",
+			"list_comprehension",
+			"set_comprehension",
+			"dictionary_comprehension",
+			"generator_expression",
+			"import_from_statement",
+			"subscript",
+		],
+		SupportLang::Go => &[
+			"block",
+			"composite_literal",
+			"interpreted_string_literal",
+			"raw_string_literal",
+			"import_spec_list",
+			"const_declaration",
+			"var_declaration",
+			"field_declaration_list",
+			"interface_type",
+			"expression_switch_statement",
+			"type_switch_statement",
+			"select_statement",
+		],
+		SupportLang::Java => &[
+			"block",
+			"array_initializer",
+			"class_body",
+			"interface_body",
+			"enum_body",
+			"annotation_type_body",
+			"constructor_body",
+			"switch_block",
+			"string_literal",
+		],
+		SupportLang::C => &[
+			"compound_statement",
+			"initializer_list",
+			"string_literal",
+			"field_declaration_list",
+			"enumerator_list",
+			"concatenated_string",
+		],
+		SupportLang::Cpp => &[
+			"compound_statement",
+			"initializer_list",
+			"string_literal",
+			"field_declaration_list",
+			"enumerator_list",
+			"concatenated_string",
+			"declaration_list",
+			"raw_string_literal",
+			"requires_clause",
+		],
+		SupportLang::ObjC => &[
+			"compound_statement",
+			"initializer_list",
+			"string_literal",
+			"protocol_declaration",
+			"class_interface",
+			"class_implementation",
+			"instance_variables",
+			"array_literal",
+			"dictionary_literal",
+		],
+		SupportLang::CSharp => &[
+			"block",
+			"initializer_expression",
+			"array_initializer_expression",
+			"declaration_list",
+			"enum_member_declaration_list",
+			"switch_expression",
+			"raw_string_literal",
+			"interpolated_string_expression",
+		],
+		SupportLang::Ruby => {
+			&["body_statement", "method", "do_block", "array", "hash", "block", "case", "heredoc_body"]
 		},
-		SupportLang::Solidity => {
-			matches!(kind, "contract_body" | "function_body" | "struct_body" | "enum_body")
+		SupportLang::Php => &[
+			"compound_statement",
+			"array_creation_expression",
+			"declaration_list",
+			"enum_declaration_list",
+			"match_block",
+			"heredoc",
+			"nowdoc",
+		],
+		SupportLang::Swift => &[
+			"function_body",
+			"array_literal",
+			"dictionary_literal",
+			"multi_line_string_literal",
+			"class_body",
+			"protocol_body",
+			"enum_class_body",
+			"computed_property",
+			"lambda_literal",
+		],
+		SupportLang::Kotlin => &[
+			"function_body",
+			"collection_literal",
+			"multi_line_string_literal",
+			"class_body",
+			"enum_class_body",
+			"when_expression",
+			"import_list",
+		],
+		SupportLang::Scala => &[
+			"block",
+			"collection_literal",
+			"template_body",
+			"enum_body",
+			"match_expression",
+			"for_expression",
+			"string",
+		],
+		SupportLang::Lua => &["block", "table_constructor", "string"],
+		SupportLang::Dart => &[
+			"block",
+			"function_expression_body",
+			"class_body",
+			"enum_body",
+			"extension_body",
+			"mixin_body",
+			"list_literal",
+			"set_or_map_literal",
+			"string_literal",
+		],
+		SupportLang::Bash => &[
+			"compound_statement",
+			"if_statement",
+			"case_statement",
+			"do_group",
+			"subshell",
+			"array",
+			"heredoc_body",
+		],
+		SupportLang::Powershell => &[
+			"script_block",
+			"statement_block",
+			"class_statement",
+			"param_block",
+			"hash_literal_expression",
+			"array_expression",
+			"expandable_here_string_literal",
+			"verbatim_here_string_characters",
+		],
+		SupportLang::Haskell => &[
+			"imports",
+			"data_type",
+			"class",
+			"instance",
+			"function",
+			"do",
+			"case",
+			"let",
+			"local_binds",
+			"list",
+			"tuple",
+		],
+		SupportLang::Ocaml => &[
+			"structure",
+			"signature",
+			"variant_declaration",
+			"record_declaration",
+			"match_expression",
+			"match_case",
+			"let_expression",
+			"value_definition",
+			"list_expression",
+		],
+		SupportLang::Elixir => &["do_block", "list", "map", "string", "sigil"],
+		SupportLang::Erlang => &[
+			"fun_decl",
+			"case_expr",
+			"if_expr",
+			"receive_expr",
+			"record_decl",
+			"list",
+			"map_expr",
+			"tuple",
+		],
+		SupportLang::EmacsLisp => &[
+			"function_definition",
+			"macro_definition",
+			"special_form",
+			"list",
+			"vector",
+			"hash_table",
+			"bytecode",
+			"string_text_properties",
+			"string",
+		],
+		SupportLang::Clojure => &["list_lit", "map_lit", "vec_lit", "set_lit", "str_lit"],
+		SupportLang::Solidity => &["contract_body", "function_body", "struct_body", "enum_body"],
+		SupportLang::Sql => &["column_definitions", "case"],
+		SupportLang::Zig => &["Block", "ContainerDecl", "InitList"],
+		SupportLang::Odin => {
+			&["block", "struct_declaration", "enum_declaration", "union_declaration", "struct"]
 		},
-		SupportLang::Sql => matches!(kind, "column_definitions" | "case"),
-		SupportLang::Zig => matches!(kind, "Block" | "ContainerDecl" | "InitList"),
-		SupportLang::Odin => matches!(
-			kind,
-			"block" | "struct_declaration" | "enum_declaration" | "union_declaration" | "struct"
-		),
-		SupportLang::Verilog => matches!(
-			kind,
-			"module_declaration"
-				| "seq_block"
-				| "case_statement"
-				| "function_declaration"
-				| "task_declaration"
-				| "list_of_port_declarations"
-		),
-		SupportLang::Tlaplus => matches!(kind, "module" | "theorem" | "let_in"),
-		SupportLang::Nix => matches!(
-			kind,
-			"attrset_expression" | "list_expression" | "let_expression" | "indented_string_expression"
-		),
-		SupportLang::Proto => matches!(kind, "message_body" | "enum_body" | "oneof" | "service"),
-		SupportLang::Julia => matches!(
-			kind,
-			"function_definition"
-				| "struct_definition"
-				| "module_definition"
-				| "do_clause"
-				| "vector_expression"
-				| "string_literal"
-		),
-		SupportLang::R => matches!(kind, "braced_expression" | "call" | "string"),
-		SupportLang::Starlark => matches!(kind, "block" | "list" | "dictionary" | "string"),
-		SupportLang::Astro => {
-			matches!(kind, "frontmatter_js_block" | "script_element" | "style_element" | "element")
+		SupportLang::Verilog => &[
+			"module_declaration",
+			"seq_block",
+			"case_statement",
+			"function_declaration",
+			"task_declaration",
+			"list_of_port_declarations",
+		],
+		SupportLang::Tlaplus => &["module", "theorem", "let_in"],
+		SupportLang::Nix => {
+			&["attrset_expression", "list_expression", "let_expression", "indented_string_expression"]
 		},
-		SupportLang::Vue => {
-			matches!(kind, "template_element" | "script_element" | "style_element" | "element")
-		},
-		SupportLang::Svelte => matches!(kind, "script_element" | "style_element" | "element"),
-		SupportLang::Html => matches!(kind, "element" | "script_element" | "style_element"),
-		SupportLang::Css => matches!(kind, "block" | "keyframe_block_list"),
-		SupportLang::Json => matches!(kind, "object" | "array"),
-		SupportLang::Xml => kind == "element",
-		SupportLang::Markdown => matches!(kind, "fenced_code_block" | "pipe_table" | "list"),
-		SupportLang::Graphql => matches!(
-			kind,
-			"fields_definition"
-				| "enum_values_definition"
-				| "input_fields_definition"
-				| "schema_definition"
-		),
-		SupportLang::Hcl => matches!(kind, "body" | "object"),
-		SupportLang::Dockerfile => kind == "shell_command",
-		SupportLang::Cmake => matches!(kind, "argument_list" | "body"),
-		SupportLang::Make => kind == "recipe",
-		SupportLang::Just => kind == "recipe_body",
-		SupportLang::Fortran => false,
-		// Skip: data formats with no closing-token anchor (Yaml mappings,
-		// Toml tables, Ini sections), the diff format whose informational
-		// content IS the lines inside hunks, and the leaf-token-only Regex
-		// grammar. Eliding any of these deletes the only content worth
-		// reading.
-		SupportLang::Yaml
-		| SupportLang::Toml
-		| SupportLang::Ini
-		| SupportLang::Diff
-		| SupportLang::Regex => false,
-	}
+		SupportLang::Proto => &["message_body", "enum_body", "oneof", "service"],
+		SupportLang::Julia => &[
+			"function_definition",
+			"struct_definition",
+			"module_definition",
+			"do_clause",
+			"vector_expression",
+			"string_literal",
+		],
+		SupportLang::R => &["braced_expression", "call", "string"],
+		SupportLang::Starlark => &["block", "list", "dictionary", "string"],
+		SupportLang::Astro => &["frontmatter_js_block", "script_element", "style_element", "element"],
+		SupportLang::Vue => &["template_element", "script_element", "style_element", "element"],
+		SupportLang::Svelte => &["script_element", "style_element", "element"],
+		SupportLang::Html => &["element", "script_element", "style_element"],
+		SupportLang::Css => &["block", "keyframe_block_list"],
+		SupportLang::Json => &["object", "array"],
+		SupportLang::Xml => &["element"],
+		SupportLang::Markdown => &["fenced_code_block", "pipe_table", "list"],
+		SupportLang::Graphql => &[
+			"fields_definition",
+			"enum_values_definition",
+			"input_fields_definition",
+			"schema_definition",
+		],
+		SupportLang::Hcl => &["body", "object"],
+		SupportLang::Dockerfile => &["shell_command"],
+		SupportLang::Cmake => &["argument_list", "body"],
+		SupportLang::Make => &["recipe"],
+		SupportLang::Just => &["recipe_body"],
+		_ => &[],
+	};
+	kinds.contains(&kind)
 }
 
 fn is_groupable_kind(language: SupportLang, kind: &str) -> bool {
-	match language {
-		SupportLang::TypeScript | SupportLang::Tsx | SupportLang::JavaScript => {
-			kind == "import_statement"
-		},
-		SupportLang::Rust => matches!(kind, "use_declaration" | "extern_crate_declaration"),
+	let kinds: &[&str] = match language {
+		SupportLang::TypeScript | SupportLang::Tsx | SupportLang::JavaScript => &["import_statement"],
+		SupportLang::Rust => &["use_declaration", "extern_crate_declaration"],
 		SupportLang::Python => {
-			matches!(kind, "import_statement" | "import_from_statement" | "future_import_statement")
+			&["import_statement", "import_from_statement", "future_import_statement"]
 		},
-		SupportLang::Go => kind == "import_declaration",
-		SupportLang::Java => kind == "import_declaration",
-		SupportLang::C | SupportLang::Cpp => kind == "preproc_include",
-		SupportLang::ObjC => matches!(kind, "preproc_include" | "import_declaration"),
-		SupportLang::CSharp => kind == "using_directive",
-		SupportLang::Php => kind == "namespace_use_declaration",
-		SupportLang::Swift => kind == "import_declaration",
-		SupportLang::Scala => matches!(kind, "import_declaration" | "import"),
-		SupportLang::Dart => kind == "import_or_export",
-		SupportLang::Ocaml => kind == "open_module",
-		SupportLang::Solidity => kind == "import_directive",
-		SupportLang::Julia => matches!(kind, "import_statement" | "using_statement"),
-		SupportLang::Proto => kind == "import",
-		SupportLang::Fortran => kind == "use_statement",
-		// Languages where imports either have no run pattern, are wrapped in a
-		// single AST node already covered by `is_elidable_kind` (Kotlin's
-		// `import_list`, Haskell's `imports`), or live inside a too-generic
-		// container (Powershell `statement_list`).
-		SupportLang::Kotlin
-		| SupportLang::Haskell
-		| SupportLang::Powershell
-		| SupportLang::Ruby
-		| SupportLang::Lua
-		| SupportLang::Elixir
-		| SupportLang::Erlang
-		| SupportLang::EmacsLisp
-		| SupportLang::Clojure
-		| SupportLang::Sql
-		| SupportLang::Zig
-		| SupportLang::Odin
-		| SupportLang::Verilog
-		| SupportLang::Tlaplus
-		| SupportLang::Nix
-		| SupportLang::R
-		| SupportLang::Starlark
-		| SupportLang::Bash
-		| SupportLang::Astro
-		| SupportLang::Vue
-		| SupportLang::Svelte
-		| SupportLang::Html
-		| SupportLang::Css
-		| SupportLang::Json
-		| SupportLang::Xml
-		| SupportLang::Markdown
-		| SupportLang::Graphql
-		| SupportLang::Hcl
-		| SupportLang::Dockerfile
-		| SupportLang::Cmake
-		| SupportLang::Make
-		| SupportLang::Just
-		| SupportLang::Yaml
-		| SupportLang::Toml
-		| SupportLang::Ini
-		| SupportLang::Diff
-		| SupportLang::Regex => false,
-	}
+		SupportLang::Go | SupportLang::Java | SupportLang::Swift => &["import_declaration"],
+		SupportLang::C | SupportLang::Cpp => &["preproc_include"],
+		SupportLang::ObjC => &["preproc_include", "import_declaration"],
+		SupportLang::CSharp => &["using_directive"],
+		SupportLang::Php => &["namespace_use_declaration"],
+		SupportLang::Scala => &["import_declaration", "import"],
+		SupportLang::Dart => &["import_or_export"],
+		SupportLang::Ocaml => &["open_module"],
+		SupportLang::Solidity => &["import_directive"],
+		SupportLang::Julia => &["import_statement", "using_statement"],
+		SupportLang::Proto => &["import"],
+		SupportLang::Fortran => &["use_statement"],
+		_ => &[],
+	};
+	kinds.contains(&kind)
 }
 
 fn normalize_spans(mut spans: Vec<LineSpan>, total_lines: u32) -> Vec<LineSpan> {

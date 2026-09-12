@@ -17,8 +17,10 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import type { AnyAgentTool } from "@veyyon/agent-core";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
+import { ToolExecutionProducer } from "@veyyon/coding-agent/presentation/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import type { Component, TUI } from "@veyyon/tui";
+import { type ToolViewDefinition, toolViewDefinitions } from "@veyyon/coding-agent/tools/view-registry";
+import { type Component, Text, type TUI } from "@veyyon/tui";
 import { createToolExecution } from "./helpers/tool-execution";
 
 const WIDTH = 160;
@@ -39,13 +41,78 @@ function flatten(component: Component): string {
 		.trim();
 }
 
-function toolWith(renderers: Partial<Pick<AnyAgentTool, "renderCall" | "renderResult">>): AnyAgentTool {
+function toolWith(
+	renderers: Partial<Pick<AnyAgentTool, "renderCall" | "renderResult">>,
+): AnyAgentTool & Pick<ToolViewDefinition, "mergeCallAndResult"> {
 	return { name: "widget", label: "widget", ...renderers } as unknown as AnyAgentTool;
 }
 
 function boom(): never {
 	throw new Error("payload has no rows");
 }
+
+it("retains disclosure context without repeating unchanged view callbacks", () => {
+	let projections = 0;
+	const tool = toolWith({});
+	tool.view = {
+		renderCall: (_args, context) => {
+			projections++;
+			return {
+				kind: "statusRow",
+				title: `${context.expanded ? "expanded" : "collapsed"} ${context.frame} ${context.frozen ? "frozen" : "live"}`,
+			};
+		},
+	};
+	const producer = new ToolExecutionProducer({ toolName: "widget", args: {}, tool });
+	try {
+		producer.produceBlock({ expanded: true, frame: 9, frozen: true });
+		const previous = projections;
+		expect(producer.produceBlock()).toMatchObject({ display: { callView: { title: "expanded 9 frozen" } } });
+		expect(producer.produceBlock({ expanded: true, frame: 9, frozen: true })).toMatchObject({
+			display: { callView: { title: "expanded 9 frozen" } },
+		});
+		expect(projections).toBe(previous);
+		expect(producer.produceBlock({ expanded: false, frame: 10, frozen: false })).toMatchObject({
+			display: { callView: { title: "collapsed 10 live" } },
+		});
+		expect(projections).toBe(previous + 1);
+	} finally {
+		producer.seal();
+	}
+});
+
+describe("host renderer precedence", () => {
+	it.each([
+		["renderCall", false],
+		["renderCall", true],
+		["renderResult", false],
+		["renderResult", true],
+	] as const)("%s overrides view rendering with own view=%s", (phase, ownView) => {
+		for (const name of ["widget", ...Object.keys(toolViewDefinitions)]) {
+			const tool = toolWith({
+				[phase]: function (this: AnyAgentTool) {
+					return new Text(`host-${phase}: ${this.label}`, 0, 0);
+				},
+			});
+			tool.name = name;
+			tool.label = `label-${name}`;
+			tool.mergeCallAndResult = false;
+			if (ownView) {
+				tool.view = {
+					renderCall: () => ({ kind: "statusRow", title: "view-call" }),
+					renderResult: () => ({ kind: "statusRow", title: "view-result" }),
+				};
+			}
+			const component = createToolExecution(name, {}, {}, tool, uiStub);
+			if (phase === "renderResult") component.updateResult({ content: [{ type: "text", text: "result" }] }, false);
+			const text = flatten(component);
+			expect(text).toContain(`host-${phase}: label-${name}`);
+			expect(text).not.toContain(phase === "renderCall" ? "view-call" : "view-result");
+			if (ownView && phase === "renderResult") expect(text).toContain("view-call");
+			component.stopAnimation();
+		}
+	});
+});
 
 describe("renderCall throws", () => {
 	it("reports the tool, the phase, and the failure", () => {
@@ -68,6 +135,25 @@ describe("renderCall throws", () => {
 });
 
 describe("renderResult throws", () => {
+	it("retains both phase failures when the result renderer also throws", () => {
+		const tool = toolWith({});
+		tool.mergeCallAndResult = false;
+		tool.view = {
+			renderCall: () => {
+				throw new Error("call phase failed");
+			},
+			renderResult: () => {
+				throw new Error("result phase failed");
+			},
+		};
+		const component = createToolExecution("widget", {}, {}, tool, uiStub);
+		component.updateResult({ content: [{ type: "text", text: "retained output" }] }, false);
+		const text = flatten(component);
+		expect(text).toContain('tool "widget" call renderer threw: call phase failed');
+		expect(text).toContain('tool "widget" result renderer threw: result phase failed');
+		expect(text).toContain("retained output");
+	});
+
 	function withResult(text: string, renderResult: () => never): ToolExecutionComponent {
 		const component = createToolExecution(
 			"widget",
@@ -135,5 +221,76 @@ describe("the notice as a signal", () => {
 
 		expect(text).toContain("widget ok");
 		expect(text).not.toContain("renderer threw");
+	});
+});
+
+describe("live view methods remain optional", () => {
+	it.each(["renderCall", "renderResult"] as const)("omitting %s does not corrupt a live tool's card", absent => {
+		const tool = toolWith({});
+		tool.name = "read";
+		tool.mergeCallAndResult = false;
+		tool.view =
+			absent === "renderCall"
+				? { renderResult: () => ({ kind: "statusRow", title: "live result" }) }
+				: { renderCall: () => ({ kind: "statusRow", title: "live call" }) };
+		const component = createToolExecution("read", {}, {}, tool, uiStub);
+		expect(flatten(component)).not.toContain("renderer threw");
+		component.updateResult({ content: [{ type: "text", text: "raw result" }] }, false);
+		const text = flatten(component);
+		expect(text).not.toContain("renderer threw");
+		expect(text).toContain(absent === "renderCall" ? "live result" : "raw result");
+		component.updateResult(
+			{
+				content: [{ type: "text", text: "raw multi-file result" }],
+				details: { perFileResults: [{ path: "src/a.ts" }, { path: "src/b.ts" }] },
+			},
+			false,
+		);
+		const multiFileText = flatten(component);
+		expect(multiFileText).not.toContain("renderer threw");
+		expect(multiFileText).toContain(absent === "renderCall" ? "live result" : "raw multi-file result");
+	});
+});
+
+// A malformed registry entry must report failure rather than use the optional-method fallback
+// for live tools. The sweep follows the canonical views used by every rebuilt card.
+describe("a registered renderer loses a required method", () => {
+	it.each([
+		["renderCall", false],
+		["renderResult", false],
+		["renderResult", true],
+	] as const)("%s reports failure for registered cards with multi-file=%s", (method, multiFile) => {
+		for (const [name, { view: renderer }] of Object.entries(toolViewDefinitions)) {
+			const descriptor = Object.getOwnPropertyDescriptor(renderer, method);
+			if (!descriptor) throw new Error(`Registered renderer ${name} has no ${method} descriptor`);
+			Object.defineProperty(renderer, method, { configurable: true, writable: true, value: undefined });
+			try {
+				const component = createToolExecution(name, {}, {}, undefined, uiStub);
+				if (method === "renderResult") {
+					component.updateResult(
+						{
+							content: [{ type: "text", text: "retained result output" }],
+							...(multiFile
+								? { details: { perFileResults: [{ path: "src/a.ts" }, { path: "src/b.ts" }] } }
+								: {}),
+						},
+						false,
+					);
+				}
+				const text = flatten(component);
+				const phase = method === "renderCall" ? "call" : "result";
+				expect(text).toContain(`tool "${name}" ${phase} renderer threw`);
+				expect(text).toContain(
+					method === "renderCall"
+						? "showing the tool name only"
+						: multiFile
+							? "no result is shown for src/a.ts"
+							: "retained result output",
+				);
+				component.stopAnimation();
+			} finally {
+				Object.defineProperty(renderer, method, descriptor);
+			}
+		}
 	});
 });

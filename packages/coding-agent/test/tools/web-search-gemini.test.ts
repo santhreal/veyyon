@@ -192,6 +192,23 @@ describe("searchGemini tools serialization", () => {
 		});
 	});
 
+	it("runs the OAuth and developer-API request bodies through the live text transform", async () => {
+		const resolveProviderTextTransform = () => (text: string) => text.replace("secret", "[redacted]");
+
+		await searchGemini({ ...makeParams("find secret one"), fetch: mockGeminiFetch(), resolveProviderTextTransform });
+		expect(capturedRequest?.body?.request).toMatchObject({
+			contents: [{ role: "user", parts: [{ text: "find [redacted] one" }] }],
+		});
+
+		await searchGemini({
+			...makeParams("find secret two"),
+			authStorage: apiKeyAuthStorage,
+			fetch: mockGeminiFetch(DEVELOPER_SSE_RESPONSE),
+			resolveProviderTextTransform,
+		});
+		expect(capturedRequest?.body?.contents).toEqual([{ role: "user", parts: [{ text: "find [redacted] two" }] }]);
+	});
+
 	it("includes codeExecution and urlContext tools when provided", async () => {
 		const fetchMock = mockGeminiFetch();
 		await searchGemini({

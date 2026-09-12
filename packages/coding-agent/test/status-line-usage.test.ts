@@ -3,8 +3,10 @@ import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
+import { StatusPresentationProducer } from "../src/presentation/status-producer";
 import { statusLineSessionParts } from "./helpers/status-line-session";
 import { useFullColor } from "./helpers/theme-assertions";
 
@@ -22,23 +24,25 @@ function makeComponent(
 	reports: unknown,
 	options: { provider?: string; activeIdentity?: { accountId?: string; email?: string; projectId?: string } } = {},
 ): StatusLineComponent {
-	const component = new StatusLineComponent({
-		...statusLineSessionParts({ contextWindow: 1000, contextUsage: undefined }),
-		state: { messages: [], model: { contextWindow: 1000, provider: options.provider } },
-		model: { contextWindow: 1000, provider: options.provider },
-		fetchUsageReports: async () => reports,
-		modelRegistry: {
-			isUsingOAuth: () => false,
-			authStorage: {
-				getOAuthAccountIdentity: (provider: string) =>
-					provider === options.provider ? options.activeIdentity : undefined,
-				// This session stores no credentials: these cases are about usage windows, and the
-				// footline's account segment reads the store to decide whether there is more than one
-				// account to tell apart.
-				listStoredCredentials: () => [],
+	const component = new StatusLineComponent(
+		new StatusPresentationProducer({
+			...statusLineSessionParts({ contextWindow: 1000, contextUsage: undefined }),
+			state: { messages: [], model: { contextWindow: 1000, provider: options.provider } },
+			model: { contextWindow: 1000, provider: options.provider },
+			fetchUsageReports: async () => reports,
+			modelRegistry: {
+				isUsingOAuth: () => false,
+				authStorage: {
+					getOAuthAccountIdentity: (provider: string) =>
+						provider === options.provider ? options.activeIdentity : undefined,
+					// This session stores no credentials: these cases are about usage windows, and the
+					// footline's account segment reads the store to decide whether there is more than one
+					// account to tell apart.
+					listStoredCredentials: () => [],
+				},
 			},
-		},
-	} as unknown as ConstructorParameters<typeof StatusLineComponent>[0]);
+		} as unknown as AgentSession),
+	);
 	component.updateSettings({
 		preset: "custom",
 		leftSegments: [],
@@ -201,7 +205,7 @@ describe("usage status-line segment", () => {
 				},
 			},
 		} as unknown as ConstructorParameters<typeof StatusLineComponent>[0];
-		const component = new StatusLineComponent(session);
+		const component = new StatusLineComponent(new StatusPresentationProducer(session as unknown as AgentSession));
 		component.updateSettings({
 			preset: "custom",
 			leftSegments: [],

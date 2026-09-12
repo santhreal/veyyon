@@ -8,7 +8,7 @@ REPO_DIR="${SCENE_CWD:?}"
 export REPO_DIR
 case "${REPO_DIR}" in /sandbox/*) ;; *) abandon_take "review-sandbox" "fixture repository is not recorder-owned" ;; esac
 REVIEW_HELPER="${BASH_SOURCE[0]%/*}/native-review-probe.py"
-REVIEW_DIR="${SCENE_RUNTIME_DIR:?}/diff-review"
+REVIEW_DIR="${TMPDIR:?}/diff-review"
 mkdir -p "${REVIEW_DIR}"
 printf '*\n!ledger.rs\n!.gitignore\n' > "${REPO_DIR}/.gitignore"
 printf 'fn ledger() {\nlet alpha = 1;\nlet bravo = 2;\nlet carol = 3;\nlet delta = 4;\n}\n' > "${REPO_DIR}/ledger.rs"
@@ -66,7 +66,7 @@ review_aim "${REVIEW_X}" "${REVIEW_Y}"
 if [ "${SCENE_ARM:-after}" = before ]; then
 	# The same real line has no comment control in the baseline executable.
 	shot review-created
-	if [ -f "${SCENE_RUNTIME_DIR}/desktop-state/reviews.json" ]; then
+	if [ -f "${TMPDIR}/desktop-state/reviews.json" ]; then
 		abandon_take "review-before" "baseline unexpectedly wrote review state"
 	fi
 	return
@@ -108,7 +108,7 @@ for _ in $(seq 1 60); do
 done
 if [ "${CLOSED}" != 1 ]; then abandon_take "review-relaunch" "native window process did not exit after close"; fi
 wait "${KITTY_PID}" || true
-"${SCENE_RUNTIME_DIR}/bootstrap.sh" > "${REVIEW_DIR}/relaunch.log" 2>&1 &
+"${TMPDIR}/bootstrap.sh" > "${REVIEW_DIR}/relaunch.log" 2>&1 &
 KITTY_PID=$!
 PLACED=0
 for _ in $(seq 1 60); do

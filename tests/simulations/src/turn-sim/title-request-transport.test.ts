@@ -12,7 +12,7 @@
  * arrived, and a title model that goes silent is a hang rather than a wrong
  * answer: the replan path holds a single in-flight latch for the whole request,
  * so one silent provider retires the refresh for the rest of the session, and the
- * subagent-label path fires one such request per spawned agent with nothing
+ * agent-label path fires one such request per spawned agent with nothing
  * bracketing the fan-out.
  *
  * WHAT IS ASSERTED. That the side request the provider served for the title is
@@ -24,7 +24,7 @@
  * difference.
  *
  * NOT asserted: the first-input title (the interactive input controller owns that
- * call site and there is no TUI here) and the subagent label (a spawn is a
+ * call site and there is no TUI here) and the agent label (a spawn is a
  * subprocess, which this harness does not run). Both take the same transport from
  * the same session accessor as the path this file drives, and the accessor is what
  * every call site names.

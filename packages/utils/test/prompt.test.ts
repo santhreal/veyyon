@@ -3,6 +3,22 @@ import * as prompt from "@veyyon/utils/prompt";
 
 const FULL = { renderPhase: "pre-render", replaceAsciiSymbols: true, normalizeRfc2119: true } as const;
 
+/** Literal rendering must retain formatting and brace bytes without interpreting context values. */
+describe("render: literal templates", () => {
+	it.each([
+		["", ""],
+		[" \n\t\n", ""],
+		["\ntext  \n", "text"],
+		["| a | b |\n|:--- | --:|", "|a|b|\n|:---|---:|"],
+		["<note>\nbody\n\n</note>", "<note>\nbody\n</note>"],
+		["```\nbody\n\n\nend\n```", "```\nbody\n\n\nend\n```"],
+		['{"value": "}"} }}} }}}}', '{"value": "}"} }}} }}}}'],
+		["<!-- literal -->\n{ name }\n**MUST NOT** ->", "<!-- literal -->\n{ name }\n**MUST NOT** ->"],
+	])("formats %j as %j", (template, expected) => {
+		expect(prompt.render(template, { name: "{{missing}}" })).toBe(expected);
+	});
+});
+
 describe("format: ascii symbol replacement", () => {
 	it("replaces all seven symbols in one line", () => {
 		expect(prompt.format("a -> b <- c <-> d != e <= f >= g ... h", FULL)).toBe("a → b ← c ↔ d ≠ e ≤ f ≥ g … h");

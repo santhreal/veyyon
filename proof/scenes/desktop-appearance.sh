@@ -155,7 +155,7 @@ rail_grey() { # <shot>
 # in root coordinates: one band per row's badge or button, and nothing for the
 # ground between them. The reader is written to a file rather than fed on
 # standard input, which carries the crop's own bytes.
-INK_BANDS_PY="${SCENE_RUNTIME_DIR}/ink-bands.py"
+INK_BANDS_PY="${TMPDIR}/ink-bands.py"
 cat >"${INK_BANDS_PY}" <<'PY'
 import sys
 

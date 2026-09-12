@@ -150,3 +150,43 @@ export function assertNameRuleCoversValueForm(): void {
 		throw new Error("MAX_SECRET_NAME_LENGTH is below MIN_SECRET_NAME_LENGTH, so no name can be valid.");
 	}
 }
+
+const PLACEHOLDER_SHIELD_START = 0xe100;
+const PLACEHOLDER_SHIELD_END = 0xf8ff;
+
+/**
+ * Run lossy text preprocessing while treating every real secret placeholder
+ * as one indivisible token. Same-width padding preserves the truncation budget;
+ * any half retained around an elision is removed, while the one-character
+ * marker expands back only as a complete placeholder.
+ */
+export function withAtomicSecretPlaceholders(text: string, transform: (value: string) => string): string {
+	const unavailable = new Set(text);
+	let nextCodePoint = PLACEHOLDER_SHIELD_START;
+	const allocateShield = (): string => {
+		while (nextCodePoint <= PLACEHOLDER_SHIELD_END) {
+			const candidate = String.fromCharCode(nextCodePoint++);
+			if (!unavailable.has(candidate)) {
+				unavailable.add(candidate);
+				return candidate;
+			}
+		}
+		throw new Error("Too many distinct secret placeholders to preprocess safely.");
+	};
+	const padding = allocateShield();
+	const shields = new Map<string, string>();
+	const shielded = text.replace(PLACEHOLDER_RE, candidate => {
+		if (!isSecretPlaceholder(candidate)) return candidate;
+		let shield = shields.get(candidate);
+		if (!shield) {
+			shield = allocateShield();
+			shields.set(candidate, shield);
+		}
+		return shield + padding.repeat(candidate.length - 1);
+	});
+	let transformed = transform(shielded).split(padding).join("");
+	for (const [placeholder, shield] of shields) {
+		transformed = transformed.split(shield).join(placeholder);
+	}
+	return transformed;
+}

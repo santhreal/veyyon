@@ -18,14 +18,14 @@ export interface InheritContextFilesArgs {
 
 /**
  * The context files a spawned agent starts from, so the global, profile, and
- * project scopes reach a subagent's prompt exactly as they reach its parent's.
+ * project scopes reach a child agent's prompt exactly as they reach its parent's.
  *
  * Three rules the spawn sites used to get wrong:
  *
  * 1. Nothing is filtered by file name. Every spawn site dropped entries whose
  *    basename was `AGENTS.md`, which is every scope a user actually writes:
  *    `~/.veyyon/AGENTS.md`, the active profile's `AGENTS.md`, and the project
- *    walk. Only a `CLAUDE.md` survived. The subagent was then handed the project
+ *    walk. Only a `CLAUDE.md` survived. The spawned agent was then handed the project
  *    prompt's standing claim that "every AGENTS.md ... is already inlined", so it
  *    neither had the rules nor was allowed to look for them.
  * 2. An empty result is `undefined`, never `[]`. Downstream treats any array,
@@ -40,7 +40,7 @@ export function inheritContextFiles(args: InheritContextFilesArgs): ContextFileE
 	const { parentContextFiles, parentCwd, spawnCwd, agentName } = args;
 
 	if (path.resolve(parentCwd) !== path.resolve(spawnCwd)) {
-		logger.debug("Subagent re-discovers context files: spawn cwd differs from parent", {
+		logger.debug("Spawned agent re-discovers context files: spawn cwd differs from parent", {
 			agent: agentName,
 			parentCwd,
 			spawnCwd,

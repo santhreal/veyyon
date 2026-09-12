@@ -90,7 +90,7 @@ function createContext(overrides?: {
 }) {
 	const tempDir = TempDir.createSync("@veyyon-tan-controller-");
 	const parentFile = path.join(tempDir.path(), "parent.jsonl");
-	// The clone nests inside the parent's artifact directory, like a subagent.
+	// The clone nests inside the parent's artifact directory, like an agent.
 	const cloneFile = path.join(parentFile.slice(0, -6), "clone.jsonl");
 	let capturedRun: CapturedJobRun | undefined;
 	let capturedOptions: AsyncJobRegisterOptions | undefined;
@@ -132,7 +132,7 @@ function createContext(overrides?: {
 	const ctx = {
 		session,
 		sessionManager,
-		settings: Settings.isolated({ "subagent.enableLsp": true }),
+		settings: Settings.isolated({ "agent.enableLsp": true }),
 		showStatus: vi.fn(),
 		showWarning: vi.fn(),
 		showError: vi.fn(),
@@ -320,7 +320,7 @@ describe("TanCommandController", () => {
 		expect(opts?.providerSessionId).toMatch(/^parent-session:tan:/);
 	});
 
-	it("parks the finished tan in the registry so it stays visible in the subagent dashboard", async () => {
+	it("parks the finished tan in the registry so it stays visible in the agent dashboard", async () => {
 		const harness = createContext();
 		vi.spyOn(SessionManager, "forkFrom").mockResolvedValue(harness.cloneManager);
 		const appendSessionInit = vi.fn();

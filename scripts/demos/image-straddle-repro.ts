@@ -26,21 +26,13 @@ import { type Component, CURSOR_MARKER, type Focusable, Image, ProcessTerminal, 
 import { TranscriptContainer } from "../../packages/coding-agent/src/modes/terminal/components/transcript/transcript-container";
 import { HomeAnchorLayout } from "../../packages/coding-agent/src/modes/terminal/controllers/home-anchor-layout";
 import { initTheme, theme } from "../../packages/coding-agent/src/theme/theme";
+import { flagNumber } from "./render-args";
 
-const args = process.argv.slice(2);
-
-function flag(name: string, fallback: number): number {
-	const index = args.indexOf(`--${name}`);
-	if (index === -1) return fallback;
-	const value = Number(args[index + 1]);
-	return Number.isFinite(value) ? value : fallback;
-}
-
-const TAIL = flag("tail", 30);
-const STEP_MS = flag("step", 3000);
-const HOLD_MS = flag("hold", 60_000);
-const IMAGE_W = flag("w", 600);
-const IMAGE_H = flag("h", 432);
+const TAIL = flagNumber("tail", 30);
+const STEP_MS = flagNumber("step", 3000);
+const HOLD_MS = flagNumber("hold", 60_000);
+const IMAGE_W = flagNumber("w", 600);
+const IMAGE_H = flagNumber("h", 432);
 
 const PNG_SIGNATURE = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
 

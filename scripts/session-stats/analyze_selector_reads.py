@@ -42,49 +42,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-DB_PATH = Path.home() / ".veyyon" / "stats.db"
+from common import DEFAULT_PAGE, open_ro, parse_path_range
 OUT_DIR = Path(__file__).resolve().parent / "out"
 DEFAULT_SINCE = "2026-05-04"
-
-# When a read has start but no explicit end (`:50` or default bare path with
-# no offset/limit), assume the read tool returns this many lines. The read
-# tool's default page is 500.
-DEFAULT_PAGE = 500
-
-_RANGE_RE = re.compile(r"^(\d+)(?:([-+])(\d+))?$")
-
-
-# --------------------------------------------------------------------------- #
-# Selector parsing
-
-
-def parse_selector(path: str) -> tuple[str, int | None, int | None, str]:
-    """Returns (base_path, start, end, kind)."""
-    if not path:
-        return path, None, None, "none"
-    tail_idx = path.rfind("/")
-    tail = path[tail_idx + 1 :]
-    colon = tail.rfind(":")
-    if colon < 0:
-        return path, None, None, "none"
-    suffix = tail[colon + 1 :]
-    base = (path[: tail_idx + 1] + tail[:colon]) if tail_idx >= 0 else tail[:colon]
-    if suffix == "raw":
-        return base, None, None, "raw"
-    if suffix == "conflicts":
-        return base, None, None, "conflicts"
-    m = _RANGE_RE.match(suffix)
-    if not m:
-        return path, None, None, "none"
-    start = int(m.group(1))
-    op = m.group(2)
-    nval = m.group(3)
-    if op == "-" and nval is not None:
-        return base, start, int(nval), "range"
-    if op == "+" and nval is not None:
-        return base, start, start + int(nval) - 1, "range"
-    # bare `:N` — open-ended; assume one page.
-    return base, start, start + DEFAULT_PAGE - 1, "range"
 
 
 def args_to_interval(
@@ -100,7 +60,7 @@ def args_to_interval(
     path = obj.get("path")
     if not isinstance(path, str):
         return None
-    base, start, end, kind = parse_selector(path)
+    base, start, end, kind = parse_path_range(path)
     if kind != "none":
         return base, start, end, kind
     # Legacy offset/limit.
@@ -580,9 +540,7 @@ def main() -> int:
     since = datetime.strptime(args.since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     since_ms = int(since.timestamp() * 1000)
 
-    if not DB_PATH.exists():
-        sys.exit(f"db missing: {DB_PATH}")
-    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    conn = open_ro()
     by_key = collect(conn, since_ms)
     conn.close()
 

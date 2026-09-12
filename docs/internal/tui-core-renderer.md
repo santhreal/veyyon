@@ -95,6 +95,10 @@ scrolled reader could be looking at.
    flight; it is state-isolated and consumes no commit, window, or
    forced-render flag, so the settle's authoritative full paint reconciles as
    if those frames never ran.
+   Direct writes and component-scoped composition use `#canReuseComposedLayout`
+   to check geometry, pending repaint requests, overlays, image-budget quiescence
+   and root-child identity against the composed segments. Direct writes additionally
+   exclude the alternate screen.
 1. Compose the frame (`render(width)`), collecting `liveRegionStart` from the
    root children (absolute row indices; the topmost reporter wins).
 2. **Audit the committed prefix** (`auditCommittedPrefix`, skipped on geometry
@@ -138,7 +142,8 @@ scrolled reader could be looking at.
      gesture and no erase.
 5. Cursor markers were stripped at compose time into `#frameCursorMarkers`
    (they never reach the terminal, the prefix ledger, or the audit); pick the
-   bottom-most marker at or below the window top, prepare lines (width fitting,
+   bottom-most marker at or below the window top with `findVisibleCursorMarker`,
+   also used by direct writes, then prepare lines (width fitting,
    `prepareLinesArray` over `core/renderer.ts`, cached per width in
    `PreparedFrameCache`), slice the window (or, while a frozen scroll-isolation view
    is up, assemble it from the scroll snapshot above the live footer, §11),
@@ -686,4 +691,4 @@ thumb) and the attributes the terminal presents, through
 `VirtualTerminal#getViewportRowFaintColumns`. A byte assertion alone would still
 pass if a later reset in the same row cancelled the dim.
 
-*Verified against `9c904aa2db` on 2026-09-05.*
+*Verified against `46980a2485` on 2026-09-11.*

@@ -9,21 +9,20 @@
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
-import { asRecord, tryParseJson } from "@veyyon/utils";
+import { asRecord } from "@veyyon/utils";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 // The two owners rather than the store that re-exports both: the slot leaf for the value, the schema for
 // the default. A web-search provider reading two settings paid 95 modules for the pair.
 import { settings } from "../../../../config/settings-instance";
 import { getDefault } from "../../../../config/settings-schema";
-import { findApiKey, isSearchResponse } from "../../../../exa/mcp-client";
+import { findApiKey, isSearchResponse, normalizeMcpToolPayload } from "../../../../exa/mcp-client";
 import { parseSSE } from "../../../../mcp/json-rpc";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../types";
-import { SearchProviderError } from "../types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { classifyProviderHttpError } from "./utils";
+import { handleProviderHttpError } from "./utils";
 
 const EXA_API_URL = "https://api.exa.ai/search";
 const DEFAULT_EXA_SEARCH_DELAY_MS = getDefault("exa.searchDelayMs");
@@ -158,40 +157,6 @@ interface ExaSearchResponse {
 	searchTime?: number;
 }
 
-function normalizeExaMcpPayload(payload: unknown): unknown {
-	const candidates: unknown[] = [];
-	const root = asRecord(payload);
-
-	if (root) {
-		if (root.structuredContent !== undefined) candidates.push(root.structuredContent);
-		if (root.data !== undefined) candidates.push(root.data);
-		if (root.result !== undefined) candidates.push(root.result);
-		candidates.push(root);
-
-		const content = root.content;
-		if (Array.isArray(content)) {
-			for (const item of content) {
-				const part = asRecord(item);
-				if (!part) continue;
-				const text = part.text;
-				if (typeof text !== "string" || text.trim().length === 0) continue;
-				const parsed = tryParseJson(text);
-				if (parsed !== null) candidates.push(parsed);
-			}
-		}
-	} else {
-		candidates.push(payload);
-	}
-
-	for (const candidate of candidates) {
-		if (isSearchResponse(candidate)) {
-			return candidate;
-		}
-	}
-
-	return payload;
-}
-
 function parseOptionalField(section: string, label: string): string | null | undefined {
 	const regex = new RegExp(`(?:^|\\n)${label}:\\s*([^\\n]*)`);
 	const match = section.match(regex);
@@ -324,10 +289,7 @@ async function callExaSearch(apiKey: string, params: ExaSearchParams): Promise<E
 		});
 
 		if (!response.ok) {
-			const errorText = await response.text();
-			const classified = classifyProviderHttpError("exa", response.status, errorText);
-			if (classified) throw classified;
-			throw new SearchProviderError("exa", `Exa API request failed (${response.status}).`, response.status);
+			await handleProviderHttpError("exa", response, `Exa API request failed (${response.status}).`);
 		}
 
 		return response.json() as Promise<ExaSearchResponse>;
@@ -372,10 +334,7 @@ async function callExaMcpSearch(params: ExaSearchParams): Promise<ExaSearchRespo
 			signal: hardSignal,
 		});
 		if (!response.ok) {
-			const errorText = await response.text();
-			const classified = classifyProviderHttpError("exa", response.status, errorText);
-			if (classified) throw classified;
-			throw new SearchProviderError("exa", `Exa public MCP request failed (${response.status}).`, response.status);
+			await handleProviderHttpError("exa", response, `Exa public MCP request failed (${response.status}).`);
 		}
 		const mcpResponse = parseSSE(await response.text()) as {
 			result?: {
@@ -392,7 +351,7 @@ async function callExaMcpSearch(params: ExaSearchParams): Promise<ExaSearchRespo
 		if (mcpResponse.error) {
 			throw new Error("Exa public MCP request failed.");
 		}
-		const responsePayload = normalizeExaMcpPayload(mcpResponse.result);
+		const responsePayload = normalizeMcpToolPayload(mcpResponse.result);
 		if (isSearchResponse(responsePayload)) {
 			return responsePayload as ExaSearchResponse;
 		}
@@ -437,9 +396,7 @@ export async function searchExa(params: ExaSearchParams): Promise<SearchResponse
 		response = await callExaMcpSearch(cappedParams);
 	}
 
-	// Convert to unified SearchResponse
 	const sources: SearchSource[] = [];
-
 	if (response.results) {
 		for (const result of response.results) {
 			if (!result.url) continue;
@@ -453,12 +410,10 @@ export async function searchExa(params: ExaSearchParams): Promise<SearchResponse
 			});
 		}
 	}
-
-	// Bound the returned sources to the same clamped cap used for the request.
 	const limitedSources = sources.length > resultCap ? sources.slice(0, resultCap) : sources;
 
 	// Synthesize answer only from results that have a URL (same guard as sources loop)
-	const answer = response.results ? synthesizeAnswer(response.results.filter(r => !!r.url)) : undefined;
+	const answer = response.results ? synthesizeAnswer(response.results.filter(r => Boolean(r.url))) : undefined;
 
 	return {
 		provider: "exa",

@@ -29,7 +29,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { Process } from "@veyyon/natives";
+import { Process, ProcessStatus } from "@veyyon/natives";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
 import { createDaemonBrokerClient, type DaemonBrokerClient } from "../../src/launch/client";
 import {
@@ -136,6 +136,13 @@ function idleSpec(name: string, overrides?: Partial<DaemonSpec>): DaemonSpec {
 		...overrides,
 	};
 }
+
+/**
+ * Both transports a daemon runs under. `DaemonSpec.pty` is a boolean, so this
+ * is its whole variant space; a third transport would widen the type and this
+ * list together.
+ */
+const PTY_VALUES: readonly DaemonSpec["pty"][] = [false, true];
 
 async function connect(projectDir: string, runtimeDir: string, idleGraceMs = 5_000): Promise<DaemonBrokerClient> {
 	const client = await createDaemonBrokerClient(projectDir, { runtimeDir, idleGraceMs });
@@ -256,6 +263,89 @@ describe("every termination path records who and why", () => {
 		} finally {
 			await shutdown(client);
 		}
+	}, 30_000);
+
+	// The arm above kills a pipe-spawned daemon. The default is a PTY, and there
+	// the same SIGKILL used to be recorded as `process-exit — exited with code 1`:
+	// the addon copied only the exit code out of the wait status, the record had
+	// no `Bun.Subprocess.signalCode` to fall back on, and the killer was lost.
+	// Both spellings of `spec.pty` are driven, so neither transport can drop the
+	// signal again.
+	for (const pty of PTY_VALUES) {
+		it(`records external-signal with the signal for a pty=${pty} daemon killed from outside`, async () => {
+			const projectDir = await tempDir(`veyyon-term-pty${pty}-project-`);
+			const runtimeDir = await tempDir(`veyyon-term-pty${pty}-runtime-`);
+			const client = await connect(projectDir, runtimeDir);
+			try {
+				const started = await client.request({ op: "start", spec: idleSpec("killed-outside", { pty }) });
+				if (started.op !== "start" || started.daemon.pid === undefined)
+					throw new Error("killed-outside did not start");
+				process.kill(started.daemon.pid, "SIGKILL");
+				const record = recordCoverage(
+					await completionFor(client, "killed-outside", "external-signal"),
+					"external-signal",
+				);
+				expect(record.signal).toBe("SIGKILL");
+				expect(record.exitCode).toBeUndefined();
+				expect(record.exitReason).toContain("no veyyon component");
+				const described = await client.request({ op: "describe", name: "killed-outside" });
+				if (described.op !== "describe") throw new Error("unexpected describe result");
+				expect(described.daemon.terminatedBy).toBe("external-signal");
+				expect(described.daemon.signal).toBe("SIGKILL");
+			} finally {
+				await shutdown(client);
+			}
+		}, 30_000);
+	}
+
+	// `lifetime=last-client-exit` beside a `persist` sibling. The reaper used to
+	// return early whenever a persistent daemon was alive, so the non-persistent
+	// one outlived the last client until an explicit broker shutdown, and once
+	// the persistent daemon later ended nothing re-armed the reaper, leaving the
+	// broker up with no client and nothing to supervise.
+	it("reaps a last-client-exit daemon beside a live persistent one, then exits when that one ends", async () => {
+		const projectDir = await tempDir("veyyon-term-idle2-project-");
+		const runtimeDir = await tempDir("veyyon-term-idle2-runtime-");
+		const idleGraceMs = 200;
+		const client = await connect(projectDir, runtimeDir, idleGraceMs);
+		const stays = await client.request({ op: "start", spec: idleSpec("stays", { persist: true }) });
+		if (stays.op !== "start" || stays.daemon.pid === undefined) throw new Error("stays did not start");
+		const staysPid = stays.daemon.pid;
+		const goes = await client.request({ op: "start", spec: idleSpec("goes") });
+		if (goes.op !== "start" || goes.daemon.pid === undefined) throw new Error("goes did not start");
+		const goesPid = goes.daemon.pid;
+		const lease: unknown = JSON.parse(await fs.readFile(daemonBrokerLeasePath(runtimeDir), "utf8"));
+		if (typeof lease !== "object" || lease === null || !("pid" in lease) || typeof lease.pid !== "number") {
+			throw new Error("broker lease did not name a pid");
+		}
+		const brokerPid = lease.pid;
+		client.close();
+
+		// Bound: the grace, then the 2s stop timeout the reaper allows each daemon.
+		const reapBoundMs = idleGraceMs + 2_000 + 500;
+		const reaped = await waitUntil(() => Process.fromPid(goesPid)?.status() !== ProcessStatus.Running, reapBoundMs);
+		expect(reaped).toBeTrue();
+		// The persistent sibling and the broker holding it are both still up.
+		expect(Process.fromPid(staysPid)?.status()).toBe(ProcessStatus.Running);
+		expect(processExists(brokerPid)).toBeTrue();
+
+		const observer = await connect(projectDir, runtimeDir, idleGraceMs);
+		try {
+			const record = recordCoverage(await completionFor(observer, "goes", "idle-reaper", 2_000), "idle-reaper");
+			expect(record.exitReason).toContain("persistent daemon kept the broker alive");
+			const described = await observer.request({ op: "describe", name: "stays" });
+			if (described.op !== "describe") throw new Error("unexpected describe result");
+			expect(described.daemon.state).toBe("running");
+		} finally {
+			observer.close();
+		}
+
+		// With no client connected, the persistent daemon ends; the broker must
+		// notice from the settle path and go, rather than wait for a client that
+		// will never close.
+		process.kill(stays.daemon.pid, "SIGKILL");
+		await waitForBrokerExit(projectDir, runtimeDir);
+		expect(await waitUntil(() => !processExists(brokerPid), 5_000)).toBeTrue();
 	}, 30_000);
 
 	it("records broker-shutdown when a client asks the broker to stop", async () => {

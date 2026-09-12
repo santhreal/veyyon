@@ -456,81 +456,29 @@ export class AutoresearchStorage {
 	updateSession(sessionId: number, updates: UpdateSessionParams): SessionRow {
 		const setClauses: string[] = [];
 		const values: SQLQueryBindings[] = [];
-		if (updates.goal !== undefined) {
-			setClauses.push("goal = ?");
-			values.push(updates.goal);
-		}
-		if (updates.preferredCommand !== undefined) {
-			setClauses.push("preferred_command = ?");
-			values.push(updates.preferredCommand);
-		}
-		if (updates.maxIterations !== undefined) {
-			setClauses.push("max_iterations = ?");
-			values.push(updates.maxIterations);
-		}
-		if (updates.scopePaths !== undefined) {
-			setClauses.push("scope_paths_json = ?");
-			values.push(JSON.stringify(updates.scopePaths));
-		}
-		if (updates.offLimits !== undefined) {
-			setClauses.push("off_limits_json = ?");
-			values.push(JSON.stringify(updates.offLimits));
-		}
-		if (updates.constraints !== undefined) {
-			setClauses.push("constraints_json = ?");
-			values.push(JSON.stringify(updates.constraints));
-		}
-		if (updates.secondaryMetrics !== undefined) {
-			setClauses.push("secondary_metrics_json = ?");
-			values.push(JSON.stringify(updates.secondaryMetrics));
-		}
-		if (updates.primaryMetric !== undefined) {
-			setClauses.push("primary_metric = ?");
-			values.push(updates.primaryMetric);
-		}
-		if (updates.metricUnit !== undefined) {
-			setClauses.push("metric_unit = ?");
-			values.push(updates.metricUnit);
-		}
-		if (updates.direction !== undefined) {
-			setClauses.push("direction = ?");
-			values.push(updates.direction);
-		}
-		if (updates.branch !== undefined) {
-			setClauses.push("branch = ?");
-			values.push(updates.branch);
-		}
-		if (updates.baselineCommit !== undefined) {
-			setClauses.push("baseline_commit = ?");
-			values.push(updates.baselineCommit);
-		}
-		if (updates.notes !== undefined) {
-			setClauses.push("notes = ?");
-			values.push(updates.notes);
-		}
-		// The swarm settings the console edits on a live session: declared by
-		// `UpdateSessionParams` and silently dropped here, so raising breadth on a
-		// live session left the loop running its old shape.
-		if (updates.breadth !== undefined) {
-			setClauses.push("breadth = ?");
-			values.push(updates.breadth);
-		}
-		if (updates.attempts !== undefined) {
-			setClauses.push("attempts = ?");
-			values.push(updates.attempts);
-		}
-		if (updates.maxParallel !== undefined) {
-			setClauses.push("max_parallel = ?");
-			values.push(updates.maxParallel);
-		}
-		if (updates.certify !== undefined) {
-			setClauses.push("certify = ?");
-			values.push(updates.certify ? 1 : 0);
-		}
-		if (updates.armModels !== undefined) {
-			setClauses.push("arm_models_json = ?");
-			values.push(JSON.stringify(updates.armModels));
-		}
+		appendOptionalColumn(setClauses, values, "goal = ?", updates.goal);
+		appendOptionalColumn(setClauses, values, "preferred_command = ?", updates.preferredCommand);
+		appendOptionalColumn(setClauses, values, "max_iterations = ?", updates.maxIterations);
+		appendOptionalColumn(setClauses, values, "scope_paths_json = ?", updates.scopePaths, JSON.stringify);
+		appendOptionalColumn(setClauses, values, "off_limits_json = ?", updates.offLimits, JSON.stringify);
+		appendOptionalColumn(setClauses, values, "constraints_json = ?", updates.constraints, JSON.stringify);
+		appendOptionalColumn(setClauses, values, "secondary_metrics_json = ?", updates.secondaryMetrics, JSON.stringify);
+		appendOptionalColumn(setClauses, values, "primary_metric = ?", updates.primaryMetric);
+		appendOptionalColumn(setClauses, values, "metric_unit = ?", updates.metricUnit);
+		appendOptionalColumn(setClauses, values, "direction = ?", updates.direction);
+		appendOptionalColumn(setClauses, values, "branch = ?", updates.branch);
+		appendOptionalColumn(setClauses, values, "baseline_commit = ?", updates.baselineCommit);
+		appendOptionalColumn(setClauses, values, "notes = ?", updates.notes);
+		appendOptionalColumn(setClauses, values, "breadth = ?", updates.breadth);
+		appendOptionalColumn(setClauses, values, "attempts = ?", updates.attempts);
+		appendOptionalColumn(setClauses, values, "max_parallel = ?", updates.maxParallel);
+		appendOptionalColumn(
+			setClauses,
+			values,
+			"certify = ?",
+			updates.certify !== undefined ? (updates.certify ? 1 : 0) : undefined,
+		);
+		appendOptionalColumn(setClauses, values, "arm_models_json = ?", updates.armModels, JSON.stringify);
 		if (setClauses.length > 0) {
 			values.push(sessionId);
 			this.#db.prepare(`UPDATE sessions SET ${setClauses.join(", ")} WHERE id = ?`).run(...(values as never[]));
@@ -782,6 +730,31 @@ export function closeAllAutoresearchStorages(): void {
 		}
 	}
 	storageCache.clear();
+}
+
+function appendOptionalColumn(
+	clauses: string[],
+	values: SQLQueryBindings[],
+	clause: string,
+	value: SQLQueryBindings | undefined,
+): void;
+function appendOptionalColumn<T>(
+	clauses: string[],
+	values: SQLQueryBindings[],
+	clause: string,
+	value: T | undefined,
+	encode: (val: T) => SQLQueryBindings,
+): void;
+function appendOptionalColumn<T>(
+	clauses: string[],
+	values: SQLQueryBindings[],
+	clause: string,
+	value: T | undefined,
+	encode?: (val: T) => SQLQueryBindings,
+): void {
+	if (value === undefined) return;
+	clauses.push(clause);
+	values.push(encode ? encode(value) : (value as unknown as SQLQueryBindings));
 }
 
 function rowToSession(row: SessionDbRow): SessionRow {

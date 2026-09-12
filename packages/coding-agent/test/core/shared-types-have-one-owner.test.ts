@@ -568,7 +568,7 @@ describe("the unified types are usable as one type", () => {
 	});
 
 	it("keeps the sections field the diverged copy was missing", () => {
-		const entry: PromptEntry = PROMPTS["subagent/system-prompt"];
+		const entry: PromptEntry = PROMPTS["agent/system-prompt"];
 		const sections: readonly PromptSection[] = entry.sections ?? [];
 
 		expect(sections.map(section => section.id)).toEqual(["role", "context", "plan", "coop", "completion"]);

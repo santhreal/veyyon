@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import { clamp, errorMessage, formatCount, logger } from "@veyyon/utils";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { truncateToWidth } from "@veyyon/utils/width";
-import { replaceTabs } from "@veyyon/utils/wrap";
 import type { TextBlockView } from "@veyyon/view";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";

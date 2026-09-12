@@ -72,6 +72,26 @@ describe("EpisodicGraph CRUD", () => {
 			expect(graph.getFact("missing")).toBeNull();
 		});
 	});
+
+	it("reads a gist whose stored participant list is damaged as a gist with none, and keeps every string item", () => {
+		const db = openDatabase(":memory:");
+		try {
+			const graph = new EpisodicGraph({ db });
+			graph.storeGist(graph.extractGist("Alice met Bob.", "mem_seed"), "mem_seed");
+			db.run(
+				`INSERT INTO gists (id, text, timestamp, participants_json, memory_id) VALUES
+					('gist_raw', 'raw', '2026-05-30T00:00:00.000Z', 'not json', 'mem_raw'),
+					('gist_mixed', 'mixed', '2026-05-30T00:00:00.000Z', '["Ada", 7, null, "Grace"]', 'mem_mixed'),
+					('gist_object', 'object', '2026-05-30T00:00:00.000Z', '{"Ada": true}', 'mem_object')`,
+			);
+
+			expect(graph.getGist("gist_raw")?.participants).toEqual([]);
+			expect(graph.getGist("gist_mixed")?.participants).toEqual(["Ada", "Grace"]);
+			expect(graph.getGist("gist_object")?.participants).toEqual([]);
+		} finally {
+			closeQuietly(db);
+		}
+	});
 });
 
 describe("EpisodicGraph links and traversal", () => {

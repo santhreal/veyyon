@@ -130,7 +130,7 @@ function verifyTimeouts(scene: string, findings: Finding[], name: string): void 
  *
  * `wait_for_screen` returns and lets the scene walk on to the next guard, so a miss used
  * to cost a ceiling and then hand the next guard its own: one take waited out 1200s on a
- * subagent name and 1800s on an edit block, ran past an hour, and published two
+ * agent name and 1800s on an edit block, ran past an hour, and published two
  * byte-identical frames under two names. `expect_screen` is for output the product prints
  * for what the scene already did, `expect_model_screen` for output only a model choice
  * produces, and both abandon the take at the first miss with the reason. A bare

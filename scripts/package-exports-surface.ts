@@ -17,9 +17,7 @@
  *   bun run scripts/gen-package-exports-baseline.ts
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { REPO_ROOT, typeScriptMembers } from "./workspace-layout";
+import { REPO_ROOT, readPackageJson, typeScriptMembers } from "./workspace-layout";
 
 /** Extensions an `exports` entry names when it publishes an asset rather than a module. */
 const ASSET_SUFFIXES = [".json", ".css", ".md", ".lark", ".txt", ".wasm", ".node", ".sql"];
@@ -52,12 +50,10 @@ export interface PublishableMember {
  * it: a wildcard shape, a published asset, or an entry no server runtime can import.
  */
 function specifierOf(packageName: string, exportKey: string): string | undefined {
-	if (exportKey.includes("*")) return undefined;
-	if (ASSET_SUFFIXES.some(suffix => exportKey.endsWith(suffix))) return undefined;
+	if (exportKey.includes("*") || ASSET_SUFFIXES.some(suffix => exportKey.endsWith(suffix))) return undefined;
 	const specifier =
 		exportKey === "." ? packageName : exportKey.startsWith("./") ? `${packageName}/${exportKey.slice(2)}` : undefined;
-	if (specifier === undefined) return undefined;
-	return specifier in SPECIFIERS_A_SERVER_RUNTIME_CANNOT_IMPORT ? undefined : specifier;
+	return specifier && !(specifier in SPECIFIERS_A_SERVER_RUNTIME_CANNOT_IMPORT) ? specifier : undefined;
 }
 
 /**
@@ -69,17 +65,14 @@ function specifierOf(packageName: string, exportKey: string): string | undefined
 export function publishableMembers(): PublishableMember[] {
 	const members: PublishableMember[] = [];
 	for (const directory of typeScriptMembers()) {
-		const manifestPath = join(REPO_ROOT, directory, "package.json");
-		if (!existsSync(manifestPath)) continue;
-		const manifest: { name?: string; private?: boolean; exports?: Record<string, unknown> } = JSON.parse(
-			readFileSync(manifestPath, "utf8"),
-		);
-		if (manifest.private === true || !manifest.name) continue;
-		const specifiers = Object.keys(manifest.exports ?? {})
-			.map(key => specifierOf(manifest.name!, key))
+		const manifest = readPackageJson(directory, REPO_ROOT);
+		if (!manifest || manifest.private === true || typeof manifest.name !== "string" || !manifest.name) continue;
+		const name = manifest.name;
+		const specifiers = Object.keys((manifest.exports as Record<string, unknown>) ?? {})
+			.map(key => specifierOf(name, key))
 			.filter((specifier): specifier is string => specifier !== undefined)
 			.sort();
-		members.push({ name: manifest.name, directory, specifiers });
+		members.push({ name, directory, specifiers });
 	}
 	return members.sort((left, right) => left.name.localeCompare(right.name));
 }

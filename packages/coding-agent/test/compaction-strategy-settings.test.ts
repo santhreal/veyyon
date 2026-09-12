@@ -8,7 +8,7 @@ import { getKnownRoleIds, MODEL_ROLE_IDS, SELECTABLE_MODEL_ROLE_IDS } from "@vey
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 import { getSettingsForTab } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
-import { resolveSubagentModel } from "@veyyon/coding-agent/task/subagent-settings";
+import { resolveAgentModel } from "@veyyon/coding-agent/task/agent-settings";
 
 describe("compaction strategy settings", () => {
 	// Every historical strategy token now folds to the sole in-place `summary`
@@ -100,17 +100,17 @@ describe("model role selectability", () => {
 	});
 });
 
-describe("subagent and compaction model resolution", () => {
+describe("agent and compaction model resolution", () => {
 	/**
-	 * A subagent's own lane outranks its definition's `model:` frontmatter, and
-	 * moves that agent alone. The full matrix lives in the subagent-model suite;
+	 * An agent's own lane outranks its definition's `model:` frontmatter, and
+	 * moves that agent alone. The full matrix lives in the agent-model suite;
 	 * this keeps the neighbouring compaction case honest company.
 	 */
 	it("prefers an agent's lane over its frontmatter model", () => {
 		const settings = Settings.isolated({
-			"subagent.agents": { scout: { model: "openai/gpt-5" } },
+			"agent.agents": { scout: { model: "openai/gpt-5" } },
 		} as Parameters<typeof Settings.isolated>[0]);
-		const resolved = resolveSubagentModel({
+		const resolved = resolveAgentModel({
 			settings,
 			agentName: "scout",
 			agentModel: "anthropic/claude-sonnet-4-5",

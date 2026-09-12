@@ -1,9 +1,10 @@
 import { padding } from "@veyyon/utils/padding";
-import { applyBackgroundToLine, sgrCarryAfter } from "@veyyon/utils/sgr";
+import { sgrCarryAfter } from "@veyyon/utils/sgr";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import { getPaddingX } from "@veyyon/utils/tight-mode";
-import { visibleWidth } from "@veyyon/utils/width";
-import { normalizeWrapInput, replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
+import { normalizeWrapInput, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type { Component } from "../tui";
+import { applyLineBackground } from "../utils/text-layout";
 
 /**
  * Text component - displays multi-line text with word wrapping
@@ -160,23 +161,14 @@ export class Text implements Component {
 			// Add margins
 			const lineWithMargins = leftMargin + line + rightMargin;
 
-			// Apply background if specified (this also pads to full width)
-			if (this.#customBgFn) {
-				contentLines.push(applyBackgroundToLine(lineWithMargins, width, this.#customBgFn));
-			} else {
-				// No background - just pad to width with spaces
-				const visibleLen = visibleWidth(lineWithMargins);
-				const paddingNeeded = Math.max(0, width - visibleLen);
-				contentLines.push(lineWithMargins + padding(paddingNeeded));
-			}
+			contentLines.push(applyLineBackground(lineWithMargins, width, this.#customBgFn));
 		}
 
 		// Add top/bottom padding (empty lines)
-		const emptyLine = padding(width);
+		const emptyLine = applyLineBackground("", width, this.#customBgFn);
 		const emptyLines: string[] = [];
 		for (let i = 0; i < this.#paddingY; i++) {
-			const line = this.#customBgFn ? applyBackgroundToLine(emptyLine, width, this.#customBgFn) : emptyLine;
-			emptyLines.push(line);
+			emptyLines.push(emptyLine);
 		}
 
 		const result = [...emptyLines, ...contentLines, ...emptyLines];

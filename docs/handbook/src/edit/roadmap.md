@@ -16,7 +16,7 @@ Hashline avoids re-echoing surrounding text: the model references spans by `[PAT
 
 ## Concurrency
 
-Non-parallel tools take an exclusive lock so file mutations from one turn are serialized. Same-file concurrent edits from subagents still need care; independent files may proceed under the tool locking rules.
+Non-parallel tools take an exclusive lock so file mutations from one turn are serialized. Same-file concurrent edits from agents still need care; independent files may proceed under the tool locking rules.
 
 ## Trailing newlines
 

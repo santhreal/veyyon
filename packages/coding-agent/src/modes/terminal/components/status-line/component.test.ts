@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { makeStatusLineSession } from "../../../../../test/helpers/status-line-session";
 import { Settings } from "../../../../config/settings";
+import { StatusPresentationProducer } from "../../../../presentation/status-producer";
 import type { AgentSession } from "../../../../session/agent-session";
 import { getThemeByName, setThemeInstance } from "../../../../theme/theme";
 import { StatusLineComponent } from "./component";
@@ -24,29 +25,50 @@ beforeAll(async () => {
 describe("StatusLineComponent", () => {
 	it("fingerprints tool-call arguments containing bigint values", () => {
 		const statusLine = new StatusLineComponent(
-			makeSessionWithLastMessage({
-				role: "assistant",
-				timestamp: 1,
-				content: [
-					{
-						type: "toolCall",
-						name: "read",
-						arguments: { offset: 1n, nested: { limit: 2n } },
-					},
-				],
-			}) as unknown as AgentSession,
+			new StatusPresentationProducer(
+				makeSessionWithLastMessage({
+					role: "assistant",
+					timestamp: 1,
+					content: [
+						{
+							type: "toolCall",
+							name: "read",
+							arguments: { offset: 1n, nested: { limit: 2n } },
+						},
+					],
+				}),
+			),
 		);
 
 		expect(statusLine.getCachedContextBreakdown()).toEqual({ usedTokens: 42, contextWindow: 128000 });
 	});
 
 	it("renders Prewalk annotation when prewalk is armed", () => {
-		const statusLine = new StatusLineComponent(makeSessionWithLastMessage(null, true) as unknown as AgentSession);
+		const statusLine = new StatusLineComponent(
+			new StatusPresentationProducer(makeSessionWithLastMessage(null, true)),
+		);
 
 		// The default preset puts `mode` in the footline's capability group.
 		const line = statusLine.renderQuietLine(100);
 		expect(line).not.toBeNull();
 		// SGR codes might be included, so we check if the stripped content contains "Prewalk"
 		expect(stripAnsi(line ?? "")).toContain("Prewalk");
+	});
+
+	it("evaluates getSnapshot once per render frame", () => {
+		let snapshotCalls = 0;
+		const producer = new StatusPresentationProducer(makeSessionWithLastMessage(null));
+		const source = {
+			getSnapshot: () => {
+				snapshotCalls++;
+				return producer.getSnapshot();
+			},
+			getRevision: () => producer.getRevision(),
+			getActiveMs: () => producer.getActiveMs(),
+			getRunClock: () => producer.getRunClock(),
+		};
+		const statusLine = new StatusLineComponent(source);
+		statusLine.renderQuietLine(100);
+		expect(snapshotCalls).toBe(1);
 	});
 });

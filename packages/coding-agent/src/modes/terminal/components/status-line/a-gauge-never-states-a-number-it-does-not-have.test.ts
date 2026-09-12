@@ -3,6 +3,7 @@ import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { makeStatusLineSession } from "../../../../../test/helpers/status-line-session";
 import { contextUsageFrame } from "../../../../collab/protocol";
 import { Settings } from "../../../../config/settings";
+import { StatusPresentationProducer } from "../../../../presentation/status-producer";
 import type { AgentSession } from "../../../../session/agent-session";
 import { getThemeByName, setThemeInstance } from "../../../../theme/theme";
 import { StatusLineComponent } from "./component";
@@ -46,7 +47,7 @@ function sessionWith(usage: UsageShape | undefined): AgentSession {
 
 /** The rendered footline, ANSI stripped: what a reader actually sees. */
 function line(usage: UsageShape | undefined): string {
-	const statusLine = new StatusLineComponent(sessionWith(usage));
+	const statusLine = new StatusLineComponent(new StatusPresentationProducer(sessionWith(usage)));
 	const rendered = statusLine.renderQuietLine(200);
 	return rendered === null ? "" : stripAnsi(rendered);
 }
@@ -70,7 +71,7 @@ describe("a gauge never states a number it does not have", () => {
 	});
 
 	it("keeps the unknown out of the breakdown other surfaces read", () => {
-		const statusLine = new StatusLineComponent(sessionWith(undefined));
+		const statusLine = new StatusLineComponent(new StatusPresentationProducer(sessionWith(undefined)));
 		expect(statusLine.getCachedContextBreakdown()).toEqual({ usedTokens: null, contextWindow: 128000 });
 	});
 
@@ -92,13 +93,15 @@ describe("a gauge never states a number it does not have", () => {
 	}
 
 	it("reports the anchored count once it arrives, replacing the unknown", () => {
-		const statusLine = new StatusLineComponent(sessionWith(undefined));
+		const statusLine = new StatusLineComponent(new StatusPresentationProducer(sessionWith(undefined)));
 		expect(stripAnsi(statusLine.renderQuietLine(200) ?? "")).toContain("? left");
 
 		// A new component for the anchored session rather than mutating the first: the
 		// breakdown is memoized against message identity on purpose, and this case is
 		// about what a reader sees after the next response, not about cache eviction.
-		const anchored = new StatusLineComponent(sessionWith({ tokens: 64000, contextWindow: 128000 }));
+		const anchored = new StatusLineComponent(
+			new StatusPresentationProducer(sessionWith({ tokens: 64000, contextWindow: 128000 })),
+		);
 		expect(stripAnsi(anchored.renderQuietLine(200) ?? "")).toContain("50% left");
 	});
 });

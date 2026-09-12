@@ -33,7 +33,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
+import { collectSourceFiles, typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PACKAGES = path.join(REPO_ROOT, "packages");
@@ -77,9 +77,6 @@ const PRIVATE_CONSTRUCTOR = /^\s*private\s+constructor\b/;
 const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"plugins/mnemopi/src/core/binary-vectors.ts": 4,
 };
-
-/** Directories that hold source we do not own or do not ship. */
-const SKIPPED_DIRS = new Set(["vendor", "node_modules", "repo-cache", "__tests__", "dist", "build"]);
 
 /**
  * Lines that declare a member with an access keyword OUTSIDE a constructor's
@@ -139,28 +136,7 @@ function countParens(text: string): number {
 
 /** Every shipped `.ts` and `.tsx` file under `packages/*\/src`, keyed by `<package>/src/<path>`. */
 function sourceFiles(): string[] {
-	const found: string[] = [];
-	const walk = (dir: string): void => {
-		for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-			const full = path.join(dir, entry.name);
-			if (entry.isDirectory()) {
-				if (!SKIPPED_DIRS.has(entry.name)) walk(full);
-				continue;
-			}
-			if (
-				(entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) &&
-				!entry.name.endsWith(".test.ts") &&
-				!entry.name.endsWith(".test.tsx")
-			) {
-				found.push(full);
-			}
-		}
-	};
-	for (const member of MEMBERS) {
-		const src = path.join(REPO_ROOT, member, "src");
-		if (fs.existsSync(src)) walk(src);
-	}
-	return found;
+	return collectSourceFiles(MEMBERS, REPO_ROOT);
 }
 
 /** Path as the allowlist spells it: `<root>/<member>/src/<rest>`, with forward slashes. */

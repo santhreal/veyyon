@@ -1,6 +1,14 @@
 import { tryParseJson } from "@veyyon/utils";
-import type { SpecialHandler } from "./types";
-import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
+import type { ScraperDegrade, SpecialHandler } from "./types";
+import {
+	buildResult,
+	formatNumber,
+	isScraperDegrade,
+	loadFailure,
+	loadPage,
+	scraperDegrade,
+	tryParseUrl,
+} from "./types";
 
 interface HfModelData {
 	modelId: string;
@@ -60,6 +68,37 @@ interface HfUserData {
 	numSpaces?: number;
 }
 
+/** A Hub resource's API record with the README fetched beside it; `readme` is empty when absent or blank. */
+interface HfResourcePage<T> {
+	record: T;
+	finalUrl: string;
+	readme: string;
+}
+
+/**
+ * Fetch a Hub resource's API record and its README together. The README gets a
+ * shorter budget: it is optional, the record is not.
+ */
+async function loadHfResource<T>(
+	apiUrl: string,
+	readmeUrl: string,
+	timeout: number,
+	signal: AbortSignal | undefined,
+): Promise<HfResourcePage<T> | ScraperDegrade> {
+	const [apiResult, readmeResult] = await Promise.all([
+		loadPage(apiUrl, { timeout, signal }),
+		loadPage(readmeUrl, { timeout: Math.min(timeout, 5), signal }),
+	]);
+
+	if (!apiResult.ok) return scraperDegrade("huggingface", loadFailure(apiResult));
+
+	const record = tryParseJson<T>(apiResult.content);
+	if (!record) return scraperDegrade("huggingface", "unexpected response shape");
+
+	const readme = readmeResult.ok && readmeResult.content.trim() ? readmeResult.content : "";
+	return { record, finalUrl: apiResult.finalUrl, readme };
+}
+
 /**
  * Parse Hugging Face URL and determine type
  */
@@ -114,18 +153,14 @@ export const handleHuggingFace: SpecialHandler = async (url: string, timeout: nu
 	try {
 		switch (parsed.type) {
 			case "model": {
-				const apiUrl = `https://huggingface.co/api/models/${parsed.id}`;
-				const readmeUrl = `https://huggingface.co/${parsed.id}/raw/main/README.md`;
-
-				const [apiResult, readmeResult] = await Promise.all([
-					loadPage(apiUrl, { timeout, signal }),
-					loadPage(readmeUrl, { timeout: Math.min(timeout, 5), signal }),
-				]);
-
-				if (!apiResult.ok) return scraperDegrade("huggingface", loadFailure(apiResult));
-
-				const model = tryParseJson<HfModelData>(apiResult.content);
-				if (!model) return scraperDegrade("huggingface", "unexpected response shape");
+				const page = await loadHfResource<HfModelData>(
+					`https://huggingface.co/api/models/${parsed.id}`,
+					`https://huggingface.co/${parsed.id}/raw/main/README.md`,
+					timeout,
+					signal,
+				);
+				if (isScraperDegrade(page)) return page;
+				const model = page.record;
 
 				let md = `# ${model.modelId}\n\n`;
 
@@ -158,26 +193,22 @@ export const handleHuggingFace: SpecialHandler = async (url: string, timeout: nu
 
 				md += "\n";
 
-				if (readmeResult.ok && readmeResult.content.trim()) {
-					md += `## Model Card\n\n${readmeResult.content}`;
+				if (page.readme) {
+					md += `## Model Card\n\n${page.readme}`;
 				}
 
-				return buildResult(md, { url, finalUrl: apiResult.finalUrl, method: "huggingface", fetchedAt, notes });
+				return buildResult(md, { url, finalUrl: page.finalUrl, method: "huggingface", fetchedAt, notes });
 			}
 
 			case "dataset": {
-				const apiUrl = `https://huggingface.co/api/datasets/${parsed.id}`;
-				const readmeUrl = `https://huggingface.co/datasets/${parsed.id}/raw/main/README.md`;
-
-				const [apiResult, readmeResult] = await Promise.all([
-					loadPage(apiUrl, { timeout, signal }),
-					loadPage(readmeUrl, { timeout: Math.min(timeout, 5), signal }),
-				]);
-
-				if (!apiResult.ok) return scraperDegrade("huggingface", loadFailure(apiResult));
-
-				const dataset = tryParseJson<HfDatasetData>(apiResult.content);
-				if (!dataset) return scraperDegrade("huggingface", "unexpected response shape");
+				const page = await loadHfResource<HfDatasetData>(
+					`https://huggingface.co/api/datasets/${parsed.id}`,
+					`https://huggingface.co/datasets/${parsed.id}/raw/main/README.md`,
+					timeout,
+					signal,
+				);
+				if (isScraperDegrade(page)) return page;
+				const dataset = page.record;
 
 				let md = `# ${dataset.id}\n\n`;
 				if (dataset.description) md += `${dataset.description}\n\n`;
@@ -209,26 +240,22 @@ export const handleHuggingFace: SpecialHandler = async (url: string, timeout: nu
 
 				md += "\n";
 
-				if (readmeResult.ok && readmeResult.content.trim()) {
-					md += `## Dataset Card\n\n${readmeResult.content}`;
+				if (page.readme) {
+					md += `## Dataset Card\n\n${page.readme}`;
 				}
 
-				return buildResult(md, { url, finalUrl: apiResult.finalUrl, method: "huggingface", fetchedAt, notes });
+				return buildResult(md, { url, finalUrl: page.finalUrl, method: "huggingface", fetchedAt, notes });
 			}
 
 			case "space": {
-				const apiUrl = `https://huggingface.co/api/spaces/${parsed.id}`;
-				const readmeUrl = `https://huggingface.co/spaces/${parsed.id}/raw/main/README.md`;
-
-				const [apiResult, readmeResult] = await Promise.all([
-					loadPage(apiUrl, { timeout, signal }),
-					loadPage(readmeUrl, { timeout: Math.min(timeout, 5), signal }),
-				]);
-
-				if (!apiResult.ok) return scraperDegrade("huggingface", loadFailure(apiResult));
-
-				const space = tryParseJson<HfSpaceData>(apiResult.content);
-				if (!space) return scraperDegrade("huggingface", "unexpected response shape");
+				const page = await loadHfResource<HfSpaceData>(
+					`https://huggingface.co/api/spaces/${parsed.id}`,
+					`https://huggingface.co/spaces/${parsed.id}/raw/main/README.md`,
+					timeout,
+					signal,
+				);
+				if (isScraperDegrade(page)) return page;
+				const space = page.record;
 
 				let md = `# ${space.id}\n\n`;
 				if (space.title) md += `${space.title}\n\n`;
@@ -249,11 +276,11 @@ export const handleHuggingFace: SpecialHandler = async (url: string, timeout: nu
 
 				md += "\n";
 
-				if (readmeResult.ok && readmeResult.content.trim()) {
-					md += `## Space Info\n\n${readmeResult.content}`;
+				if (page.readme) {
+					md += `## Space Info\n\n${page.readme}`;
 				}
 
-				return buildResult(md, { url, finalUrl: apiResult.finalUrl, method: "huggingface", fetchedAt, notes });
+				return buildResult(md, { url, finalUrl: page.finalUrl, method: "huggingface", fetchedAt, notes });
 			}
 
 			case "model_or_user": {

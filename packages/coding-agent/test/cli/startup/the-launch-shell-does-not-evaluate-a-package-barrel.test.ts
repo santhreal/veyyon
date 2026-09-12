@@ -61,8 +61,13 @@ const BARRELS = ["@veyyon/tui", "@veyyon/utils", "@veyyon/agent-core", "@veyyon/
  * with the barrel edges out. The cheapest barrel edge that could return, `@veyyon/tui`, adds 16
  * modules on top of the leaves the shell already evaluates, so the ceiling sits under that and
  * still leaves room for a handful of honest new leaves.
+ *
+ * RE-MEASURED 2026-09-11 at 351, from 349: `@veyyon/view` grew its first value export,
+ * `UNICODE_SYMBOLS`, which `theme/symbols.ts` reads, so `contracts/view/src/index.ts` and
+ * `contracts/view/src/symbols.ts` evaluate where the package was reached by type only. The
+ * ceiling keeps one leaf of margin over the measurement, still well under the barrel edge.
  */
-const SHELL_GRAPH_MODULE_CEILING = 350;
+const SHELL_GRAPH_MODULE_CEILING = 353;
 
 async function probe(code: string): Promise<number> {
 	const { stdout } = await run("bun", ["-e", code], { cwd: repoRoot, maxBuffer: 1 << 24 });

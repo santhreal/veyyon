@@ -1,7 +1,7 @@
 /**
- * Subagent discovery from filesystem.
+ * Agent discovery from filesystem.
  *
- * Discovers subagent definitions from veyyon-native roots:
+ * Discovers agent definitions from veyyon-native roots:
  *   - `~/.veyyon/subagents/*.md` — user-authored, read by EVERY profile.
  *   - `<ext>/agents/*.md` for every veyyon extension package wired through
  *     `listVeyyonExtensionRoots` (CLI `--extension` roots, `extensions:` in
@@ -14,7 +14,7 @@
  * DISCOVERY IS GLOBAL, ENABLING IS PER-PROFILE. The definitions dir hangs off
  * the base config root ({@link getGlobalSubagentsDir}), not off the active
  * profile's agent dir, so an agent is authored once and every profile sees it;
- * `subagent.agents.<name>.enabled` is the per-profile answer to whether the
+ * `agent.agents.<name>.enabled` is the per-profile answer to whether the
  * model may spawn it. The previous location was `<agentDir>/agents/`, which
  * made the same definition profile-private and spelled `agent/agents/` — two
  * unrelated meanings one path segment apart, inside the directory that also
@@ -54,7 +54,7 @@ export interface DiscoveryResult {
  * Names in a definition's `tools:` list that match no built-in and carry no
  * third-party namespace, i.e. almost certainly typos.
  *
- * They cannot simply be dropped: a subagent may legitimately be granted an MCP
+ * They cannot simply be dropped: an agent may legitimately be granted an MCP
  * proxy tool (`mcp__<server>__<tool>`) or a custom tool loaded from an
  * extension, and neither is a built-in name this process can enumerate at parse
  * time. So the rule is narrow — a bare, unnamespaced name that is not a
@@ -73,10 +73,10 @@ function unrecognizedToolNames(agent: AgentDefinition): string[] {
  * Load agents from a directory.
  */
 async function loadAgentsFromDir(dir: string, source: AgentSource): Promise<AgentDefinition[]> {
-	// Subagent directories are optional (no `~/.veyyon/subagents`, no extension roots), so a MISSING one
+	// Agent directories are optional (no `~/.veyyon/subagents`, no extension roots), so a MISSING one
 	// contributes no agents and says nothing. One that exists and cannot be listed is a different thing --
-	// the user's subagents disappear from `/agents` with no sign of why -- and the shared owner reports it.
-	const entries = await readdirIfPresent(dir, "subagent definitions");
+	// the user's agents disappear from `/agents` with no sign of why -- and the shared owner reports it.
+	const entries = await readdirIfPresent(dir, "agent definitions");
 	const files = entries
 		.filter(entry => (entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith(".md"))
 		.sort((a, b) => a.name.localeCompare(b.name))
@@ -119,7 +119,7 @@ async function loadAgentsFromDir(dir: string, source: AgentSource): Promise<Agen
 
 /**
  * Discover agents from filesystem and merge with bundled agents.
- * Precedence (highest wins): the global `subagents` dir at the base config root,
+ * Precedence (highest wins): the global `agents` dir at the base config root,
  * veyyon extension-package agents in `listVeyyonExtensionRoots` source order
  * (CLI roots > project `extensions:` settings > user `extensions:` settings >
  * installed npm/link plugins), Claude marketplace plugin agents (project

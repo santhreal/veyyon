@@ -242,7 +242,7 @@ describe("an account choice outlives the session that made it", () => {
 
 	/**
 	 * Clearing must be as durable as choosing, and must be scoped to the one provider. Several
-	 * providers serve one session at once (main model, subagent roles, web search), so clearing
+	 * providers serve one session at once (main model, agent roles, web search), so clearing
 	 * Anthropic's choice may not touch the Codex one.
 	 */
 	test("clearProviderSelection forgets the choice durably, and only for its own provider", async () => {

@@ -33,7 +33,7 @@ export interface MessageStats {
 	errorMessage: string | null;
 	/** Token usage */
 	usage: Usage;
-	/** Which agent produced this message (main agent, task subagent, advisor) */
+	/** Which agent produced this message (main agent, spawned agent, advisor) */
 	agentType: AgentType;
 }
 

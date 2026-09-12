@@ -474,7 +474,7 @@ export interface RerootHint {
  * directory has become the session's real subject.
  *
  * Session-scoped by construction: one instance per `createTools` call, so counts
- * never leak between sessions and a subagent starts clean.
+ * never leak between sessions and a spawned agent starts clean.
  */
 export class RerootDetector {
 	/** Candidate directory to the distinct evidence keys seen under it. */

@@ -10,7 +10,7 @@
 (function () {
 	"use strict";
 
-	var JSDELIVR = "https://cdn.jsdelivr.net/gh/santhreal/veyyon@main/website/models-data.json";
+	var JSDELIVR = "https://cdn.jsdelivr.net/gh/santhreal/veyyon@main/apps/site/models-data.json";
 	var LOCAL = "./models-data.json";
 
 	var state = { data: null, query: "", filters: new Set() };

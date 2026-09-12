@@ -22,7 +22,7 @@ Both are persisted as session entries and converted into agent-attributed develo
 
 ## Session entry model
 
-Compaction and branch summaries are first-class session entries, not plain assistant/user messages.
+Compaction and branch summaries are distinct session entry types, not assistant or user messages.
 
 - `CompactionEntry`
   - `type: "compaction"`
@@ -154,7 +154,7 @@ has its heavy non-error tool results replaced with an elision marker (largest fi
 offloaded to a recovery `artifact://` blob), so the tail stays within budget even when one turn
 alone is bigger. User messages, assistant text, tool calls, and error results are never elided.
 
-Note that the summary prompt does not state any of that. Its opening line requests "a structured
+The summary prompt does not state any of that. Its opening line requests "a structured
 handoff summary for another LLM to resume the task", which describes a cold restart that compaction
 does not perform. This is inherited from upstream, whose engine keeps the same recent tail, so the
 mismatch is upstream's rather than a fork difference. It is recorded here because a summarizer told
@@ -348,8 +348,8 @@ OpenAI and Azure OpenAI serve `POST /responses/compact`, which compacts a sessio
 context inside the provider and returns the compacted window. Veyyon uses it when the
 model's `compat.supportsServerCompaction` flag is set, which is resolved per host at
 model build time: the official OpenAI API and Azure's v1 API today, and any gateway
-that opts in with an override. The Codex provider stays out, because its transport
-owns history state server-side and a client-minted window has no replay contract there.
+that opts in with an override. The Codex provider is excluded because its transport
+maintains history state server-side and a client-minted window has no replay contract there.
 A re-pointed `openai` model also stays out, since another vendor's host does not serve
 that path. Turning `compaction.remote` off is the only thing that disables it; leaving
 it unset leaves it on.
@@ -363,8 +363,8 @@ remote call plus the exact summary the remote call was supposed to replace, and 
 of the two was ever read. Writing readable text here is not a missing feature that could
 be added later. The only way to produce it is to pay a second model to describe a span,
 which is the local strategy with an extra network round trip in front of it, and any text
-derived from the blob rather than the span would be invented. An empty summary is the
-honest record of what happened.
+derived from the blob rather than the span would be invented. An empty summary
+records what happened.
 
 Because the entry cannot explain itself, the rebuild will not trust it outside the
 provider that minted it. `buildSessionContext` treats a compaction as usable only when the
@@ -551,7 +551,7 @@ From `settings-schema.ts`:
 - `compaction.autoContinue` = `true`
 - `compaction.midTurnEnabled` = `true`
 - `compaction.remoteEndpoint` = `undefined`
-- `compaction.threshold` = `auto`; the one trigger setting, with its unit in the value. `auto` is `contextWindow - max(15% of contextWindow, reserveTokens)`. `85%` is a percent of the current model's window. `170000` is an absolute token amount, model-independent: compaction runs once context exceeds that many tokens whatever the current model's window is, and when the amount is larger than that window it is honored up to `contextWindow - 1` with a one-time warning (never silently reinterpreted). Resolution and the migration off the two retired keys live in `packages/agent/src/compaction/threshold.ts`.
+- `compaction.threshold` = `auto`; the one trigger setting, with its unit in the value. `auto` is `contextWindow - max(15% of contextWindow, reserveTokens)`. `85%` is a percent of the current model's window. `170000` is an absolute token amount, model-independent: compaction runs once context exceeds that many tokens whatever the current model's window is, and when the amount is larger than that window it is honored up to `contextWindow - 1` with a one-time warning (never silently reinterpreted). Resolution and migration logic for retired keys is defined in `packages/agent/src/compaction/threshold.ts`.
 - `compaction.thresholdTokens` = `-1` and `compaction.thresholdPercent` = `-1`; retired. The global config is rewritten on load (`#migrateRawSettings`): a positive amount becomes `threshold: <amount>`, a positive percent becomes `threshold: <percent>%` (the amount wins when both are set), and both keys are dropped, so the ambiguity leaves the file without moving the trigger. Config sources that are never rewritten — project files, `--config` overlays — are folded in at read time by `withLegacyCompactionThreshold` with the same precedence, and the session reports which retired key supplied the value.
 - `compaction.idleEnabled` = `false`
 - `compaction.idleThresholdTokens` = `200000`

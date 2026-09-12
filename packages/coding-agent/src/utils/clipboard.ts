@@ -191,15 +191,34 @@ const POWERSHELL_TIMEOUT_MS = 8000;
  * missing, or the bridge times out.
  */
 async function readImageViaPowerShell(): Promise<ClipboardImage | null> {
+	const stdout = await runPowerShell(
+		["-NoProfile", "-NonInteractive", "-Sta", "-Command", POWERSHELL_IMAGE_SCRIPT],
+		"clipboard: powershell read failed",
+	);
+	if (stdout === null) return null;
+	const b64 = stdout.trim();
+	if (!b64) return null;
+	const bytes = Buffer.from(b64, "base64");
+	if (bytes.byteLength === 0) return null;
+	return { data: bytes, mimeType: "image/png" };
+}
+
+/**
+ * Runs `powershell.exe` with `args` and resolves to its stdout on a zero exit.
+ * Resolves to null when the spawn itself fails (not on PATH, blocked by
+ * policy, or no Windows host under this process), when the process does not
+ * reap cleanly (logged under `failureLog`), when it is killed at
+ * {@link POWERSHELL_TIMEOUT_MS}, or when it exits non-zero. Null means this
+ * reader cannot get the clipboard, which is what a caller needs to try the
+ * next reader.
+ */
+async function runPowerShell(args: readonly string[], failureLog: string): Promise<string | null> {
 	try {
-		const proc = Bun.spawn(
-			["powershell.exe", "-NoProfile", "-NonInteractive", "-Sta", "-Command", POWERSHELL_IMAGE_SCRIPT],
-			{
-				stdout: "pipe",
-				stderr: "ignore",
-				stdin: "ignore",
-			},
-		);
+		const proc = Bun.spawn(["powershell.exe", ...args], {
+			stdout: "pipe",
+			stderr: "ignore",
+			stdin: "ignore",
+		});
 		const timer = setTimeout(() => proc.kill(), POWERSHELL_TIMEOUT_MS);
 		let stdout = "";
 		try {
@@ -207,19 +226,14 @@ async function readImageViaPowerShell(): Promise<ClipboardImage | null> {
 			await proc.exited;
 		} catch (err) {
 			// powershell.exe can be a Windows process reached either natively or
-			// over WSL interop; if it doesn't reap cleanly, report no image instead
+			// over WSL interop; if it doesn't reap cleanly, report no result instead
 			// of surfacing an opaque bridge failure to the prompt.
-			logger.warn("clipboard: powershell read failed", { error: String(err) });
+			logger.warn(failureLog, { error: String(err) });
 			return null;
 		} finally {
 			clearTimeout(timer);
 		}
-		if (proc.exitCode !== 0) return null;
-		const b64 = stdout.trim();
-		if (!b64) return null;
-		const bytes = Buffer.from(b64, "base64");
-		if (bytes.byteLength === 0) return null;
-		return { data: bytes, mimeType: "image/png" };
+		return proc.exitCode === 0 ? stdout : null;
 	} catch {
 		return null;
 	}
@@ -251,31 +265,12 @@ $ErrorActionPreference = 'Stop'
  * wl-paste/xclip); an empty string is a successful "no text" read.
  */
 async function readTextViaPowerShell(): Promise<string | null> {
-	try {
-		const proc = Bun.spawn(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", POWERSHELL_TEXT_SCRIPT], {
-			stdout: "pipe",
-			stderr: "ignore",
-			stdin: "ignore",
-		});
-		const timer = setTimeout(() => proc.kill(), POWERSHELL_TIMEOUT_MS);
-		let stdout = "";
-		try {
-			stdout = await readPipeText(proc.stdout);
-			await proc.exited;
-		} catch (err) {
-			logger.warn("clipboard: powershell text read failed", { error: String(err) });
-			return null;
-		} finally {
-			clearTimeout(timer);
-		}
-		if (proc.exitCode !== 0) return null;
-		return stdout.replaceAll("\r\n", "\n");
-	} catch {
-		// Spawning PowerShell at all failed: not on PATH, blocked by policy, or no Windows host under this
-		// process. Null means "this reader cannot get the clipboard", which is what the caller needs to try
-		// the next reader; the reader that DOES run reports its own failures a few lines above.
-		return null;
-	}
+	const stdout = await runPowerShell(
+		["-NoProfile", "-NonInteractive", "-Command", POWERSHELL_TEXT_SCRIPT],
+		"clipboard: powershell text read failed",
+	);
+	if (stdout === null) return null;
+	return stdout.replaceAll("\r\n", "\n");
 }
 
 /**

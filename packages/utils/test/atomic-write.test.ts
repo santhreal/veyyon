@@ -9,8 +9,15 @@ import {
 	atomicWriteFileWith,
 	atomicWriteJson,
 } from "../src/atomic-write";
+import { type FsError, isFsError } from "../src/fs-error";
 import { TempDir } from "../src/temp";
 import { collectPackageSources } from "./support/package-sources";
+
+/** The `FsError` a writer threw, or a failure naming what it threw instead. */
+function fsErrorOf(thrown: unknown): FsError {
+	if (!isFsError(thrown)) throw new Error(`Expected an fs error, got ${String(thrown)}`);
+	return thrown;
+}
 
 describe("atomicWriteFile", () => {
 	let dir: TempDir;
@@ -137,6 +144,27 @@ describe("atomicWriteFile", () => {
 
 		await expect(atomicWriteFile(link, "data")).rejects.toThrow();
 		expect(fs.existsSync(path.join(dir.path(), "missing-dir"))).toBe(false);
+	});
+
+	it("fails with ELOOP on a cyclic symlink chain instead of following it forever", async () => {
+		if (process.platform === "win32") return;
+		// a -> b -> a: no file ever ends the chain, so resolution has to stop on
+		// the first repeated link and name the path the caller asked for.
+		const a = path.join(dir.path(), "a.yml");
+		const b = path.join(dir.path(), "b.yml");
+		fs.symlinkSync(b, a);
+		fs.symlinkSync(a, b);
+
+		const thrown = fsErrorOf(
+			await atomicWriteFile(a, "data").then(
+				() => undefined,
+				(error: unknown) => error,
+			),
+		);
+		expect(thrown.code).toBe("ELOOP");
+		expect(thrown.message).toBe(`Too many symbolic links while resolving ${a}`);
+		expect(fs.readlinkSync(a)).toBe(b);
+		expect(fs.readlinkSync(b)).toBe(a);
 	});
 
 	it("writes correctly with fsync disabled", async () => {
@@ -581,6 +609,25 @@ describe("atomicWriteFile", () => {
 
 			expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
 			expect(fs.readFileSync(realFile, "utf8")).toBe("new: 2\n");
+		});
+
+		it("fails with ELOOP on a cyclic symlink chain instead of following it forever", () => {
+			if (process.platform === "win32") return;
+			const a = path.join(dir.path(), "a.yml");
+			const b = path.join(dir.path(), "b.yml");
+			fs.symlinkSync(b, a);
+			fs.symlinkSync(a, b);
+
+			let thrown: unknown;
+			try {
+				atomicWriteFileSync(a, "data");
+			} catch (error) {
+				thrown = error;
+			}
+			const error = fsErrorOf(thrown);
+			expect(error.code).toBe("ELOOP");
+			expect(error.message).toBe(`Too many symbolic links while resolving ${a}`);
+			expect(fs.readlinkSync(a)).toBe(b);
 		});
 
 		it("throws and leaves a prior file intact when the write path is invalid", () => {

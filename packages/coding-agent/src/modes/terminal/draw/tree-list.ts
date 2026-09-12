@@ -2,7 +2,7 @@
  * Hierarchical tree list rendering helper.
  */
 
-import { replaceTabs } from "@veyyon/utils/wrap";
+import { replaceTabs } from "@veyyon/utils/tab-width";
 import type { Theme } from "../../../theme/theme";
 import { formatMoreItems } from "../../../tools/core/render-utils";
 import type { TreeContext } from "./types";

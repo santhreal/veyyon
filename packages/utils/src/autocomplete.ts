@@ -350,7 +350,7 @@ function buildSlashCommandCompletions(
 }
 
 function hasPromptTextBeforeSlash(
-	lines: string[],
+	lines: readonly string[],
 	cursorLine: number,
 	textBeforeCursor: string,
 	slashStart: number,
@@ -397,6 +397,105 @@ function buildMidPromptSkillCompletions(commands: CommandEntry[], lowerPrefix: s
 		}),
 		lowerPrefix,
 	);
+}
+
+/** Extract @ prefix for fuzzy file suggestions */
+export function extractAtPrefix(text: string): string | null {
+	const quotedPrefix = extractQuotedPrefix(text);
+	if (quotedPrefix?.startsWith('@"')) {
+		return quotedPrefix;
+	}
+
+	const lastDelimiterIndex = findLastDelimiter(text);
+	const tokenStart = lastDelimiterIndex === -1 ? 0 : lastDelimiterIndex + 1;
+
+	if (text[tokenStart] === "@") {
+		return text.slice(tokenStart);
+	}
+
+	return null;
+}
+
+/**
+ * Pure stateless autocomplete insertion operation that replaces matched prefix/tokens
+ * with completed candidate values for slash commands, skills, file references, and path arguments.
+ */
+export function applyAutocompleteCompletion(
+	lines: readonly string[],
+	cursorLine: number,
+	cursorCol: number,
+	item: AutocompleteItem,
+	prefix: string,
+): { lines: string[]; cursorLine: number; cursorCol: number; onApplied?: () => void } {
+	const currentLine = lines[cursorLine] || "";
+	const textBeforeCursor = currentLine.slice(0, cursorCol);
+	const afterCursor = currentLine.slice(cursorCol);
+
+	const leadingSlashStart = findLeadingSlashCommandStart(textBeforeCursor);
+	const trailingSlashStart = findTrailingSlashCommandStart(textBeforeCursor);
+	const isMidPromptSkillLookup =
+		item.value.startsWith("skill:") &&
+		trailingSlashStart !== null &&
+		hasPromptTextBeforeSlash(lines, cursorLine, textBeforeCursor, trailingSlashStart) &&
+		findTrailingSlashCommandStart(prefix) !== null;
+
+	if (isMidPromptSkillLookup && trailingSlashStart !== null) {
+		const beforeSlash = currentLine.slice(0, trailingSlashStart);
+		const insert = `/${item.value} `;
+		const newLine = `${beforeSlash}${insert}${afterCursor}`;
+		const newLines = lines.slice();
+		newLines[cursorLine] = newLine;
+		return {
+			lines: newLines,
+			cursorLine,
+			cursorCol: beforeSlash.length + insert.length,
+		};
+	}
+
+	const isPathCompletionItem = item.value.startsWith("/") || item.value.startsWith('"');
+	if (findLeadingSlashCommandStart(prefix) !== null && leadingSlashStart !== null && !isPathCompletionItem) {
+		const slashPrefix = textBeforeCursor.slice(leadingSlashStart);
+		if (!slashPrefix.includes(" ") && !slashPrefix.slice(1).includes("/")) {
+			const beforeSlash = currentLine.slice(0, leadingSlashStart);
+			const newLine = `${beforeSlash}/${item.value} ${afterCursor}`;
+			const newLines = lines.slice();
+			newLines[cursorLine] = newLine;
+
+			return {
+				lines: newLines,
+				cursorLine,
+				cursorCol: beforeSlash.length + item.value.length + 2,
+			};
+		}
+	}
+
+	let beforePrefix = currentLine.slice(0, cursorCol - prefix.length);
+
+	if (prefix.startsWith("@")) {
+		const liveAtPrefix = extractAtPrefix(textBeforeCursor);
+		if (liveAtPrefix) {
+			beforePrefix = currentLine.slice(0, cursorCol - liveAtPrefix.length);
+		}
+		const newLine = `${beforePrefix + item.value} ${afterCursor}`;
+		const newLines = lines.slice();
+		newLines[cursorLine] = newLine;
+
+		return {
+			lines: newLines,
+			cursorLine,
+			cursorCol: beforePrefix.length + item.value.length + 1,
+		};
+	}
+
+	const newLine = beforePrefix + item.value + afterCursor;
+	const newLines = lines.slice();
+	newLines[cursorLine] = newLine;
+
+	return {
+		lines: newLines,
+		cursorLine,
+		cursorCol: beforePrefix.length + item.value.length,
+	};
 }
 
 // Combined provider that handles both slash commands and file paths.
@@ -511,8 +610,8 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		}
 
 		// Check for @ file reference (fuzzy search) - must be after a delimiter or at start
-		const atPrefix = this.#extractAtPrefix(textBeforeCursor);
-		if (atPrefix) {
+		const atPrefix = extractAtPrefix(textBeforeCursor);
+		if (atPrefix !== null) {
 			const { rawPrefix, isQuotedPrefix } = parsePathPrefix(atPrefix);
 			// Recursive fuzzy walks rooted outside the project (e.g. `@../`,
 			// `@~/`, `@/abs`) can be huge — a parent dir full of sibling
@@ -576,113 +675,12 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		cursorCol: number,
 		item: AutocompleteItem,
 		prefix: string,
-	): { lines: string[]; cursorLine: number; cursorCol: number } {
-		const currentLine = lines[cursorLine] || "";
-		const textBeforeCursor = currentLine.slice(0, cursorCol);
-		const afterCursor = currentLine.slice(cursorCol);
-
-		const leadingSlashStart = findLeadingSlashCommandStart(textBeforeCursor);
-		const trailingSlashStart = findTrailingSlashCommandStart(textBeforeCursor);
-		const isMidPromptSkillLookup =
-			item.value.startsWith("skill:") &&
-			trailingSlashStart !== null &&
-			hasPromptTextBeforeSlash(lines, cursorLine, textBeforeCursor, trailingSlashStart) &&
-			findTrailingSlashCommandStart(prefix) !== null;
-
-		if (isMidPromptSkillLookup && trailingSlashStart !== null) {
-			// Replace ONLY the partial slash token (e.g. "/sec") at the cursor with
-			// `/skill:<name> `; the rest of the user's draft — prose typed before
-			// the slash, text after the cursor, and any other lines — is preserved.
-			// The submit-time parser (`parseSkillInvocation` in coding-agent/skills)
-			// detects the mid-prompt `/skill:<name>` token and threads the surrounding
-			// prose through as `args`, so the skill still invokes (issue #3913, after
-			// the original mid-prompt autocomplete landed in #3654 wiped the draft).
-			const beforeSlash = currentLine.slice(0, trailingSlashStart);
-			const insert = `/${item.value} `;
-			const newLine = `${beforeSlash}${insert}${afterCursor}`;
-			const newLines = lines.slice();
-			newLines[cursorLine] = newLine;
-			return {
-				lines: newLines,
-				cursorLine,
-				cursorCol: beforeSlash.length + insert.length,
-			};
-		}
-
-		// Slash command suggestions can be accepted before the debounced refresh
-		// catches up to newly typed characters. Replace the live command token,
-		// not only the prefix captured when the suggestion list was rendered.
-		// Absolute-path completions share the leading-slash prefix shape but
-		// insert values starting with `/` (or `"` when quoted); those must take
-		// the path tail below instead of command-style `/<name> ` insertion.
-		const isPathCompletionItem = item.value.startsWith("/") || item.value.startsWith('"');
-		if (findLeadingSlashCommandStart(prefix) !== null && leadingSlashStart !== null && !isPathCompletionItem) {
-			const slashPrefix = textBeforeCursor.slice(leadingSlashStart);
-			if (!slashPrefix.includes(" ") && !slashPrefix.slice(1).includes("/")) {
-				const beforeSlash = currentLine.slice(0, leadingSlashStart);
-				const newLine = `${beforeSlash}/${item.value} ${afterCursor}`;
-				const newLines = lines.slice();
-				newLines[cursorLine] = newLine;
-
-				return {
-					lines: newLines,
-					cursorLine,
-					cursorCol: beforeSlash.length + item.value.length + 2, // +2 for "/" and space
-				};
-			}
-		}
-
-		let beforePrefix = currentLine.slice(0, cursorCol - prefix.length);
-
-		// Check if we're completing a file attachment (prefix starts with "@")
-		if (prefix.startsWith("@")) {
-			const liveAtPrefix = this.#extractAtPrefix(textBeforeCursor);
-			if (liveAtPrefix) {
-				beforePrefix = currentLine.slice(0, cursorCol - liveAtPrefix.length);
-			}
-			// This is a file attachment completion
-			const newLine = `${beforePrefix + item.value} ${afterCursor}`;
-			const newLines = lines.slice();
-			newLines[cursorLine] = newLine;
-
-			return {
-				lines: newLines,
-				cursorLine,
-				cursorCol: beforePrefix.length + item.value.length + 1, // +1 for space
-			};
-		}
-
-		// Slash command argument and plain file path completion both fall through
-		// to the path-completion tail below — `beforePrefix` already covers the
-		// rendered prefix, which preserves earlier arguments (e.g. accepting
-		// `package.json` for `/swarm run pac<Tab>` keeps the `run` token intact).
-		// For file paths, complete the path
-		const newLine = beforePrefix + item.value + afterCursor;
-		const newLines = lines.slice();
-		newLines[cursorLine] = newLine;
-
-		return {
-			lines: newLines,
-			cursorLine,
-			cursorCol: beforePrefix.length + item.value.length,
-		};
-	}
-
-	// Extract @ prefix for fuzzy file suggestions
-	#extractAtPrefix(text: string): string | null {
-		const quotedPrefix = extractQuotedPrefix(text);
-		if (quotedPrefix?.startsWith('@"')) {
-			return quotedPrefix;
-		}
-
-		const lastDelimiterIndex = findLastDelimiter(text);
-		const tokenStart = lastDelimiterIndex === -1 ? 0 : lastDelimiterIndex + 1;
-
-		if (text[tokenStart] === "@") {
-			return text.slice(tokenStart);
-		}
-
-		return null;
+	): {
+		lines: string[];
+		cursorLine: number;
+		cursorCol: number;
+	} {
+		return applyAutocompleteCompletion(lines, cursorLine, cursorCol, item, prefix);
 	}
 
 	// Extract a path-like prefix from the text before cursor
@@ -1022,7 +1020,10 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		lines: string[],
 		cursorLine: number,
 		cursorCol: number,
-	): Promise<{ items: AutocompleteItem[]; prefix: string } | null> {
+	): Promise<{
+		items: AutocompleteItem[];
+		prefix: string;
+	} | null> {
 		const currentLine = lines[cursorLine] || "";
 		const textBeforeCursor = currentLine.slice(0, cursorCol);
 
@@ -1082,7 +1083,10 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 
 		return command.getInlineHint(argumentText);
 	}
-	trySyncSlashCompletion(textBeforeCursor: string): { items: AutocompleteItem[]; prefix: string } | null {
+	trySyncSlashCompletion(textBeforeCursor: string): {
+		items: AutocompleteItem[];
+		prefix: string;
+	} | null {
 		const slashStart = findLeadingSlashCommandStart(textBeforeCursor);
 		if (slashStart === null) return null;
 		const commandText = textBeforeCursor.slice(slashStart);

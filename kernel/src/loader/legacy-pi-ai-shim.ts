@@ -28,7 +28,7 @@ import {
 } from "@veyyon/catalog/models";
 import { type TSchema, Type } from "../registry/typebox";
 
-export interface StringEnumOptions<T extends string> {
+export interface StringEnumOptions<T extends string = string> {
 	description?: string;
 	default?: T;
 	examples?: T[];
@@ -37,7 +37,7 @@ export interface StringEnumOptions<T extends string> {
 
 function stringEnumWireSchema<T extends string | number>(
 	values: readonly T[] | Record<string, T>,
-	options: StringEnumOptions<any> | undefined,
+	options: StringEnumOptions<string> | undefined,
 ) {
 	const enumValues = Array.isArray(values) ? values.slice() : Object.values(values);
 	const schema: Record<string, unknown> = {
@@ -55,7 +55,7 @@ function stringEnumWireSchema<T extends string | number>(
 
 export function StringEnum<T extends string | number>(
 	values: readonly T[] | Record<string, T>,
-	options?: StringEnumOptions<any>,
+	options?: StringEnumOptions<string>,
 ): TSchema {
 	const opts = {
 		description: options?.description ?? "Legacy string enum compatibility schema",

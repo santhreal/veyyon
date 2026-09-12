@@ -1,5 +1,5 @@
-import * as AIError from "../error";
-import type { OAuthController, OAuthLoginCallbacks } from "./oauth/types";
+import { createApiKeyLogin } from "./api-key-login";
+import type { OAuthLoginCallbacks } from "./oauth/types";
 import type { ProviderDefinition } from "./types";
 
 const AUTH_URL = "https://developers.cloudflare.com/ai-gateway/configuration/authentication/";
@@ -10,34 +10,14 @@ const AUTH_URL = "https://developers.cloudflare.com/ai-gateway/configuration/aut
  * Opens browser to Cloudflare AI Gateway authentication docs and prompts for a gateway token/API key.
  * Returns the API key directly (not OAuthCredentials - this isn't OAuth).
  */
-export async function loginCloudflareAiGateway(options: OAuthController): Promise<string> {
-	if (!options.onPrompt) {
-		throw new AIError.OnPromptRequiredError("Cloudflare AI Gateway");
-	}
-
-	options.onAuth?.({
-		url: AUTH_URL,
-		instructions:
-			"Copy your Cloudflare AI Gateway token/API key. Configure account/gateway base URL in models config.",
-	});
-
-	const apiKey = await options.onPrompt({
-		message: "Paste your Cloudflare AI Gateway token/API key",
-		placeholder: "cf-aig-...",
-		secret: true,
-	});
-
-	if (options.signal?.aborted) {
-		throw new AIError.LoginCancelledError();
-	}
-
-	const trimmed = apiKey.trim();
-	if (!trimmed) {
-		throw new AIError.ApiKeyRequiredError();
-	}
-
-	return trimmed;
-}
+export const loginCloudflareAiGateway = createApiKeyLogin({
+	providerLabel: "Cloudflare AI Gateway",
+	authUrl: AUTH_URL,
+	instructions: "Copy your Cloudflare AI Gateway token/API key. Configure account/gateway base URL in models config.",
+	promptMessage: "Paste your Cloudflare AI Gateway token/API key",
+	placeholder: "cf-aig-...",
+	validation: null,
+});
 
 export const cloudflareAiGatewayProvider = {
 	id: "cloudflare-ai-gateway",

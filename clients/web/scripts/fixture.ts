@@ -3,13 +3,13 @@
  *
  * One realistic host session (header + ~14 entries covering every renderer
  * branch), an agent registry (main + a running sub with ticking progress + a
- * parked sub with a transcript), a subagent transcript JSONL blob, and a
+ * parked sub with a transcript), an agent transcript JSONL blob, and a
  * scripted streaming turn the mock host replays on every guest prompt.
  */
 import type {
 	AgentEvent,
+	AgentProgressPayload,
 	AgentSnapshot,
-	SubagentProgressPayload,
 	ToolCallContent,
 	WireAssistantMessage,
 	WireModel,
@@ -391,7 +391,7 @@ const PROBE_TOOL_ARGS: Record<(typeof PROBE_TOOLS)[number], string> = {
 };
 
 /** Progress payload for the running sub; `tick` advances the counters. */
-export function makeProbeProgress(tick: number): SubagentProgressPayload {
+export function makeProbeProgress(tick: number): AgentProgressPayload {
 	const tool = PROBE_TOOLS[tick % PROBE_TOOLS.length]!;
 	const recentTools = [1, 2, 3].map(back => {
 		const prior = PROBE_TOOLS[(tick + PROBE_TOOLS.length * back - back) % PROBE_TOOLS.length]!;
@@ -428,11 +428,11 @@ export function makeProbeProgress(tick: number): SubagentProgressPayload {
 	};
 }
 
-// ─── subagent transcript ─────────────────────────────────────────────────────
+// ─── agent transcript ─────────────────────────────────────────────────────
 
 const SUB_T0 = NOW - 25 * MIN;
 
-const subagentTranscriptLines: unknown[] = [
+const agentTranscriptLines: unknown[] = [
 	{ type: "session", id: "mock-docsweep", timestamp: iso(SUB_T0), cwd: "/Users/kai/Projects/pi" },
 	// Unknown entry type — guests must skip it (tolerant default branch).
 	{ type: "session_init", id: "s00", parentId: null, timestamp: iso(SUB_T0), version: 3 },
@@ -556,9 +556,7 @@ const subagentTranscriptLines: unknown[] = [
 ];
 
 /** DocSweep's session file, served by the mock host's fetch-transcript handler. */
-export const subagentTranscriptJsonl: string = `${subagentTranscriptLines
-	.map(line => JSON.stringify(line))
-	.join("\n")}\n`;
+export const agentTranscriptJsonl: string = `${agentTranscriptLines.map(line => JSON.stringify(line)).join("\n")}\n`;
 
 // ─── scripted streaming turn ─────────────────────────────────────────────────
 

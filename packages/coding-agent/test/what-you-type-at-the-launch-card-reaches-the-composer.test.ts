@@ -319,6 +319,15 @@ describe("what you type at the launch card reaches the composer", () => {
 			expect(draft()).toBe("hello");
 		});
 
+		it("releases capture wrapper on terminal writes when input is collected", async () => {
+			const { frame } = card();
+			const originalWrite = Object.getPrototypeOf(frame.ui.terminal).write;
+			setImmediate(() => send("input"));
+			expect(await frame.settleQueuedInput()).toBe(true);
+			// Capture wrapper is stopped and terminal.write restored so subsequent session output is not captured
+			expect(frame.ui.terminal.write).toBe(originalWrite);
+		});
+
 		it("reports nothing to draw, and returns, when the operator typed nothing", async () => {
 			const { frame } = card();
 			expect(await frame.settleQueuedInput()).toBe(false);

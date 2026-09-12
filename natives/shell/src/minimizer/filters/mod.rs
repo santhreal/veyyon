@@ -38,64 +38,17 @@ pub mod ruby;
 pub mod rust_tools;
 pub mod system;
 
+pub mod spec;
 #[must_use]
 pub fn supports(program: &str, subcommand: Option<&str>) -> bool {
 	match program {
-		"git" | "yadm" => git::supports(subcommand),
-		"gt" => gt::supports(program, subcommand),
-		"bun" | "bunx" => bun::supports(program, subcommand),
-		"cargo" => cargo::supports(subcommand),
-		"go" | "golangci-lint" => go::supports(program, subcommand),
-		"cmake" | "ctest" | "ninja" | "gtest" | "gtest-parallel" => {
-			cpp::supports(program, subcommand)
-		},
-		program if cpp::is_gtest_binary_name(program) => cpp::supports(program, subcommand),
-		"dotnet" => dotnet::supports(program, subcommand),
-		// JVM build tools: phase is decided inside jvm::filter (never by
-		// ctx.subcommand, which mis-reports `mvn clean install` as `clean`), so
-		// supports() claims every subcommand. Defensive `.cmd`/`.bat` arms cover
-		// the case where normalize_program is bypassed.
-		"mvn" | "mvnw" | "mvnw.cmd" | "gradle" | "gradlew" | "gradlew.bat" => {
-			jvm::supports(program, subcommand)
-		},
-		"ls" | "tree" | "find" | "grep" | "rg" | "wc" | "cat" | "read" | "stat" | "du" | "df"
-		| "jq" | "json" => true,
-		"aws" | "curl" | "wget" | "psql" => cloud::supports(program, subcommand),
-		"docker" | "kubectl" | "helm" => docker::supports(subcommand),
-		"gh" => gh::supports(subcommand),
-		"glab" => glab::supports(subcommand),
-		"pytest" | "ruff" | "mypy" | "python" | "python3" | "py" => {
-			python::supports(program, subcommand)
-		},
-		"rspec" | "rake" | "rails" | "rubocop" => ruby::supports(program, subcommand),
-		"rustfmt" => rust_tools::supports(program, subcommand),
-		"xxd" | "strings" | "od" => binary_tools::supports(program, subcommand),
-		"tsc" | "eslint" | "biome" | "shellcheck" | "markdownlint" | "hadolint" | "yamllint"
-		| "oxlint" | "pyright" | "basedpyright" => {
-			lint::supports(subcommand) || lint::supports_program(program, subcommand)
-		},
-		"jest" | "vitest" | "playwright" => true,
-		"next" | "prettier" | "prisma" => js_tools::supports(program, subcommand),
 		"npx" => {
 			matches!(subcommand, Some("tsc" | "eslint" | "biome" | "jest" | "vitest" | "playwright"))
 				|| js_tools::supports(program, subcommand)
 		},
 		"pnpm" if matches!(subcommand, Some("dlx")) => true,
 		"uv" if matches!(subcommand, Some("run")) => true,
-		"npm" | "pnpm" | "yarn" | "pip" | "pip3" | "bundle" | "brew" | "composer" | "poetry" => {
-			pkg::supports(subcommand)
-		},
-		"uv" => {
-			// uv dispatch coverage (B1 / m4): admit additional subcommand forms
-			// that wrap a known tool. `uv run` is already handled above; this
-			// arm covers `uv pytest`, `uv -m pytest`, `uv ruff`, `uv mypy`,
-			// and other wrapped-tool forms that pre-PR fell through to the
-			// package-manager filter.
-			matches!(subcommand, Some("pytest" | "ruff" | "mypy" | "-m")) || pkg::supports(subcommand)
-		},
-		"env" | "log" | "deps" | "summary" | "err" | "test" | "diff" | "format" | "pipe" | "ps"
-		| "ping" | "ssh" | "sops" => system::supports(program),
-		_ => false,
+		_ => spec::find_spec(program, subcommand).is_some(),
 	}
 }
 
@@ -192,35 +145,6 @@ fn dispatch(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerOut
 	let _ = ctx.command;
 	let _ = ctx.config.per_command(ctx.program);
 	match ctx.program {
-		"git" | "yadm" => git::filter(ctx, input, exit_code),
-		"gt" => gt::filter(ctx, input, exit_code),
-		"bun" | "bunx" => bun::filter(ctx, input, exit_code),
-		"cargo" => cargo::filter(ctx, input, exit_code),
-		"go" | "golangci-lint" => go::filter(ctx, input, exit_code),
-		"dotnet" => dotnet::filter(ctx, input, exit_code),
-		"mvn" | "mvnw" | "mvnw.cmd" | "gradle" | "gradlew" | "gradlew.bat" => {
-			jvm::filter(ctx, input, exit_code)
-		},
-		"cmake" | "ctest" | "ninja" | "gtest" | "gtest-parallel" => {
-			cpp::filter(ctx, input, exit_code)
-		},
-		program if cpp::is_gtest_binary_name(program) => cpp::filter(ctx, input, exit_code),
-		"ls" | "tree" | "find" | "grep" | "rg" | "wc" | "cat" | "read" | "stat" | "du" | "df"
-		| "jq" | "json" => listing::filter(ctx, input, exit_code),
-		"aws" | "curl" | "wget" | "psql" => cloud::filter(ctx, input, exit_code),
-		"docker" | "kubectl" | "helm" => docker::filter(ctx, input, exit_code),
-		"gh" => gh::filter(ctx, input, exit_code),
-		"glab" => glab::filter(ctx, input, exit_code),
-		"pytest" | "ruff" | "mypy" | "python" | "python3" | "py" => {
-			python::filter(ctx, input, exit_code)
-		},
-		"rspec" | "rake" | "rails" | "rubocop" => ruby::filter(ctx, input, exit_code),
-		"rustfmt" => rust_tools::filter(ctx, input, exit_code),
-		"xxd" | "strings" | "od" => binary_tools::filter(ctx, input, exit_code),
-		"tsc" | "eslint" | "biome" | "shellcheck" | "markdownlint" | "hadolint" | "yamllint"
-		| "oxlint" | "pyright" | "basedpyright" => lint::filter(ctx, input, exit_code),
-		"jest" | "vitest" | "playwright" => node_tests::filter(ctx, input, exit_code),
-		"next" | "prettier" | "prisma" => js_tools::filter(ctx, input, exit_code),
 		"npx" => filter_js_wrapper(ctx, input, exit_code),
 		"pnpm" if matches!(ctx.subcommand, Some("dlx")) => filter_js_wrapper(ctx, input, exit_code),
 		"uv" if matches!(ctx.subcommand, Some("run" | "pytest" | "ruff" | "mypy" | "-m")) => {
@@ -238,12 +162,13 @@ fn dispatch(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerOut
 				pkg::filter(ctx, input, exit_code)
 			}
 		},
-		"pip" | "pip3" | "bundle" | "brew" | "composer" | "uv" | "poetry" => {
-			pkg::filter(ctx, input, exit_code)
+		_ => {
+			if let Some(spec) = spec::find_spec(ctx.program, ctx.subcommand) {
+				(spec.filter_fn)(ctx, input, exit_code)
+			} else {
+				generic::filter(ctx, input, exit_code)
+			}
 		},
-		"env" | "log" | "deps" | "summary" | "err" | "test" | "diff" | "format" | "pipe" | "ps"
-		| "ping" | "ssh" | "sops" => system::filter(ctx, input, exit_code),
-		_ => generic::filter(ctx, input, exit_code),
 	}
 }
 

@@ -6,25 +6,16 @@
  */
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
-import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../types";
-import { SearchProviderError } from "../types";
 import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
-import { SearchProvider } from "./base";
-import { classifyProviderHttpError } from "./utils";
+import { ApiKeySearchProvider } from "./base";
+import { handleProviderHttpError, RECENCY_TBS } from "./utils";
 
 const FIRECRAWL_SEARCH_URL = "https://api.firecrawl.dev/v2/search";
 const MAX_NUM_RESULTS = 100;
-
-const RECENCY_TBS: Record<NonNullable<SearchParams["recency"]>, string> = {
-	day: "qdr:d",
-	week: "qdr:w",
-	month: "qdr:m",
-	year: "qdr:y",
-};
 
 export interface FirecrawlSearchParams {
 	query: string;
@@ -58,7 +49,7 @@ export function findApiKey(
 	return authStorage.getApiKey("firecrawl", sessionId, { signal });
 }
 
-function buildRequestBody(params: FirecrawlSearchParams): Record<string, unknown> {
+export function buildRequestBody(params: FirecrawlSearchParams): Record<string, unknown> {
 	const body: Record<string, unknown> = {
 		query: params.query,
 		limit: clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS),
@@ -85,14 +76,7 @@ async function callFirecrawlSearch(apiKey: string, params: FirecrawlSearchParams
 		});
 
 		if (!response.ok) {
-			const errorText = await response.text();
-			const classified = classifyProviderHttpError("firecrawl", response.status, errorText);
-			if (classified) throw classified;
-			throw new SearchProviderError(
-				"firecrawl",
-				`Firecrawl API request failed (${response.status}).`,
-				response.status,
-			);
+			await handleProviderHttpError("firecrawl", response, `Firecrawl API request failed (${response.status}).`);
 		}
 
 		return (await response.json()) as FirecrawlSearchResponse;
@@ -120,7 +104,6 @@ export async function searchFirecrawl(params: SearchParams): Promise<SearchRespo
 			'Firecrawl credentials not found. Set FIRECRAWL_API_KEY or configure an API key for provider "firecrawl".',
 	});
 	const sources: SearchSource[] = [];
-
 	for (const result of data.data?.web ?? []) {
 		if (!result.url) continue;
 		sources.push({
@@ -139,13 +122,9 @@ export async function searchFirecrawl(params: SearchParams): Promise<SearchRespo
 }
 
 /** Search provider for Firecrawl web search. */
-export class FirecrawlProvider extends SearchProvider {
+export class FirecrawlProvider extends ApiKeySearchProvider {
 	readonly id = "firecrawl";
 	readonly label = "Firecrawl";
-
-	isAvailable(authStorage: AuthStorage): boolean {
-		return authStorage.hasAuth("firecrawl") || !!getEnvApiKey("firecrawl");
-	}
 
 	search(params: SearchParams): Promise<SearchResponse> {
 		return searchFirecrawl(params);

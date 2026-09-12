@@ -5,6 +5,7 @@ import {
 	loginGitLabDuoWorkflow,
 	refreshGitLabDuoWorkflowToken,
 } from "@veyyon/ai/registry/oauth/gitlab-duo-workflow";
+import type { GitLabTokenResponse } from "@veyyon/ai/registry/oauth/gitlab-token";
 import type { OAuthLoginCallbacks } from "@veyyon/ai/registry/oauth/types";
 import type { FetchImpl } from "@veyyon/ai/types";
 
@@ -90,5 +91,22 @@ describe("gitlab duo workflow OAuth", () => {
 		expect(body).toContain("refresh_token=old-refresh");
 		expect(credentials.access).toBe("fresh-access");
 		expect(credentials.refresh).toBe("fresh-refresh");
+	});
+
+	it("rejects a token response missing a field by the provider's name instead of storing a hole", async () => {
+		const withoutRefresh: GitLabTokenResponse = { access_token: "fresh-access", expires_in: 7200, created_at: 1000 };
+		const fetchMock: FetchImpl = async () =>
+			new Response(JSON.stringify(withoutRefresh), { status: 200, headers: { "Content-Type": "application/json" } });
+
+		const refresh = refreshGitLabDuoWorkflowToken(
+			{ access: "old-access", refresh: "old-refresh", expires: 0 },
+			fetchMock,
+		);
+
+		await expect(refresh).rejects.toMatchObject({
+			message: "GitLab Duo Workflow OAuth token response missing required fields",
+			kind: "validation",
+			provider: "gitlab-duo-workflow",
+		});
 	});
 });

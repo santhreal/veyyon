@@ -32,15 +32,15 @@ import type { CreateAgentSessionOptions } from "./factory-options";
 /**
  * Discover extensions from cwd.
  */
-export async function discoverExtensions(cwd?: string): Promise<LoadExtensionsResult> {
+export async function discoverExtensions(cwd?: string, agentDir?: string): Promise<LoadExtensionsResult> {
 	const resolvedCwd = cwd ?? getProjectDir();
 
-	return discoverAndLoadExtensions([], resolvedCwd);
+	return discoverAndLoadExtensions([], resolvedCwd, undefined, undefined, agentDir);
 }
 
 /**
  * Path-only counterpart of {@link loadSessionExtensions}: the FS-heavy scan
- * without the per-session module load. Subagents reuse the parent's path list
+ * without the per-session module load. Agents reuse the parent's path list
  * (cached on {@link ToolSession.extensionPaths}) and rebuild Extension
  * instances themselves so each session's `ExtensionAPI` (cwd, eventBus,
  * runtime) is its own.
@@ -165,6 +165,15 @@ export async function loadCliExtensionProviders(
 }
 
 /**
+ * The two roots every discovered layer resolves against: `cwd` defaulting to the project dir
+ * and `agentDir` defaulting to the booted profile, both FORWARDED so a session rooted in
+ * another profile reads that profile's files rather than the booted one's.
+ */
+function discoveryRoots(cwd: string | undefined, agentDir: string | undefined): { cwd: string; agentDir: string } {
+	return { cwd: cwd ?? getProjectDir(), agentDir: agentDir ?? getAgentDir() };
+}
+
+/**
  * Discover the skills for a session: the authored `<agentDir>/skills`, the
  * auto-learn `<agentDir>/managed-skills`, and any skills shipped by plugin packages
  * configured for the session.
@@ -182,11 +191,7 @@ export async function discoverSkills(
 	agentDir?: string,
 	settings?: SkillsSettings,
 ): Promise<{ skills: Skill[]; warnings: SkillWarning[] }> {
-	return await loadSkillsInternal({
-		...settings,
-		cwd: cwd ?? getProjectDir(),
-		agentDir: agentDir ?? getAgentDir(),
-	});
+	return await loadSkillsInternal({ ...settings, ...discoveryRoots(cwd, agentDir) });
 }
 
 /**
@@ -205,10 +210,7 @@ export async function discoverSkills(
  * and cannot be forgotten at a call site again.
  */
 export async function discoverRules(cwd?: string, agentDir?: string): Promise<CapabilityResult<Rule>> {
-	return await loadCapability<Rule>(ruleCapability.id, {
-		cwd: cwd ?? getProjectDir(),
-		agentDir: agentDir ?? getAgentDir(),
-	});
+	return await loadCapability<Rule>(ruleCapability.id, discoveryRoots(cwd, agentDir));
 }
 
 /**
@@ -229,20 +231,14 @@ export async function discoverRules(cwd?: string, agentDir?: string): Promise<Ca
  * signature without threading the value.
  */
 export async function discoverContextFiles(cwd?: string, agentDir?: string): Promise<ContextFileEntry[]> {
-	return await loadContextFilesInternal({
-		cwd: cwd ?? getProjectDir(),
-		agentDir: agentDir ?? getAgentDir(),
-	});
+	return await loadContextFilesInternal(discoveryRoots(cwd, agentDir));
 }
 
 /**
  * Discover prompt templates from cwd and agentDir.
  */
 export async function discoverPromptTemplates(cwd?: string, agentDir?: string): Promise<PromptTemplate[]> {
-	return await loadPromptTemplatesInternal({
-		cwd: cwd ?? getProjectDir(),
-		agentDir: agentDir ?? getAgentDir(),
-	});
+	return await loadPromptTemplatesInternal(discoveryRoots(cwd, agentDir));
 }
 
 /**
@@ -255,20 +251,14 @@ export async function discoverPromptTemplates(cwd?: string, agentDir?: string): 
  * templates but the booted profile's slash commands.
  */
 export async function discoverSlashCommands(cwd?: string, agentDir?: string): Promise<FileSlashCommand[]> {
-	return loadSlashCommandsInternal({ cwd: cwd ?? getProjectDir(), agentDir: agentDir ?? getAgentDir() });
+	return loadSlashCommandsInternal(discoveryRoots(cwd, agentDir));
 }
 
 /**
  * Discover custom commands (TypeScript slash commands) from cwd and agentDir.
  */
 export async function discoverCustomTSCommands(cwd?: string, agentDir?: string): Promise<CustomCommandsLoadResult> {
-	const resolvedCwd = cwd ?? getProjectDir();
-	const resolvedAgentDir = agentDir ?? getAgentDir();
-
-	return loadCustomCommandsInternal({
-		cwd: resolvedCwd,
-		agentDir: resolvedAgentDir,
-	});
+	return loadCustomCommandsInternal(discoveryRoots(cwd, agentDir));
 }
 
 /**

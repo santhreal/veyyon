@@ -288,7 +288,7 @@ export class HindsightApi {
 	}
 
 	/**
-	 * Register a live session transform. Shared parent/subagent clients keep
+	 * Register a live session transform. Shared parent/agent clients keep
 	 * every active transform so a delayed request is protected by the runtime
 	 * that owns its queued data, rather than whichever state registered last.
 	 */

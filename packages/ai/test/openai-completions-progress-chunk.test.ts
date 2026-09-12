@@ -253,7 +253,7 @@ describe("resolveOpenAICompat stream idle timeout", () => {
  * resets the idle-watchdog deadline in `iterateWithIdleTimeout`. A false
  * positive (counting a no-op chunk as progress) silently disables the
  * watchdog and is the root cause of the z.ai/GLM-via-OpenRouter hang where
- * a subagent stalled for hours with no error surfaced. A false negative is
+ * an agent stalled for hours with no error surfaced. A false negative is
  * cheap (delays the watchdog by at most the first-event window).
  */
 describe("isOpenAICompletionsProgressChunk", () => {

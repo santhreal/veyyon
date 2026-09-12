@@ -10,6 +10,11 @@
 # above this line should know which one is running. Everything else here --
 # typing, the composer, the waits, screen reads -- is already server-independent:
 # it goes through kitty's socket into the pty.
+if [ -z "${TMPDIR:-}" ]; then
+	echo "lib.sh: TMPDIR is not set; expected shared scratch directory exported by session launcher" >&2
+	exit 1
+fi
+
 SCENE_SERVER="${SCENE_SERVER:-x11}"
 # shellcheck disable=SC1090
 source "$(dirname "${BASH_SOURCE[0]}")/backend-${SCENE_SERVER}.sh"
@@ -17,7 +22,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/backend-${SCENE_SERVER}.sh"
 # The grid comes from the shell (`stty size`), and the pixel size of a cell from
 # the window divided by that grid. Asking the terminal directly (CSI 16t) only
 # works where window operations are enabled, which xterm disables by default.
-read -r TERM_ROWS TERM_COLS <<<"$(sed -n 's/^stty=//p' "${SCENE_RUNTIME_DIR:-/tmp}/geom" 2>/dev/null || true)"
+read -r TERM_ROWS TERM_COLS <<<"$(sed -n 's/^stty=//p' "${TMPDIR}/geom")"
 PAD="${SCENE_PADDING:-8}"
 : "${TERM_ROWS:=40}" "${TERM_COLS:=150}"
 read -r WIN_W WIN_H <<<"$(_be_window_px)"
@@ -111,7 +116,7 @@ key_repeat() { # key_repeat <key> <count> [delay]
 #
 # The xdotool path remains as a fallback for a terminal without the socket -- an xterm
 # scene, or an image built before this -- and it keeps the delay that behaved best.
-KITTY_SOCKET="${KITTY_SOCKET:-unix:${SCENE_RUNTIME_DIR:-/tmp}/kitty.sock}"
+KITTY_SOCKET="${KITTY_SOCKET:-unix:${TMPDIR}/kitty.sock}"
 
 # XTEST fallback used when kitty remote control does not answer. Named so a
 # missing binary fails as `_xdo: command not found` only if this function is
@@ -240,7 +245,7 @@ click_text_in_row() { # <row-needle> <text>
 
 # Click the row carrying a string, at a column.
 #
-# A COUNTED ROW IS HOW TAKES ARE WASTED. subagent-lanes.sh lost three to a list that
+# A COUNTED ROW IS HOW TAKES ARE WASTED. agent-settings-lanes.sh lost three to a list that
 # drifted one row, and the frame it produced looked like a feature that did nothing
 # rather than like a click into empty space. A row read off the glass cannot drift,
 # and a needle that is not there ends the take instead of clicking somewhere else.
@@ -354,7 +359,7 @@ wheel_down() { key_repeat_button 5 "${1:-3}"; }
 #   2 - goal finished early before the needle appeared
 #
 # WHY THIS EXISTS AND WHY IT IS NOT `scroll_to`. Some surfaces are only on screen while the
-# work is happening: the subagent lane list is live state, and the tool block of a search is
+# work is happening: the agent lane list is live state, and the tool block of a search is
 # followed by whatever the model writes about it. `scroll_to` was the answer to that and it
 # is the wrong one against a model that reports at length -- one fan-out turn ended with a
 # verification table, a smoke-test summary and two flagged risks, which put the lane list
@@ -410,10 +415,11 @@ scene_terminal_alive() {
 #
 # A scene used to record a miss in MISSED and walk on to the next guard. A take with five
 # model-dependent guards left after the first miss then spent every remaining ceiling in
-# series before anything reported: one run waited out 1200s on a subagent name and 1800s
+# series before anything reported: one run waited out 1200s on an agent name and 1800s
 # on an edit block, ran past an hour, and published two byte-identical frames under two
 # names. Abandoning at the first miss costs one ceiling, and the reason file is what the
 # host reads to decide whether the scene or the model is at fault.
+
 abandon_take() {
 	local guard="$1" reason="$2"
 	# A take whose terminal is gone was not a scene mistake: the product exited and
@@ -424,8 +430,8 @@ abandon_take() {
 	# first, so the product's own stderr is what gets reported.
 	if ! scene_terminal_alive; then
 		echo "scene: the terminal exited mid-take -- every frame after that is an empty screen" >&2
-		tail -20 /tmp/boot.err >&2 2>/dev/null || true
-		tail -10 /tmp/term.log >&2 2>/dev/null || true
+		tail -20 "${TMPDIR}/boot.err" >&2 2>/dev/null || true
+		tail -10 "${TMPDIR}/term.log" >&2 2>/dev/null || true
 		reason="the terminal exited mid-take, so: ${reason}"
 	fi
 	echo "scene: abandoning the take -- ${guard}: ${reason}" >&2
@@ -582,7 +588,7 @@ frames_differ_pixels() { # <png-a> <png-b>
 	if [ -z "${CROP_W:-}" ] || [ -z "${CROP_H:-}" ]; then
 		abandon_take "frames-comparable" "no crop was set, so the comparison would include the clock in the sidebar"
 	fi
-	local scratch="${SCENE_RUNTIME_DIR}/frame-compare"
+	local scratch="${TMPDIR}/frame-compare"
 	mkdir -p "${scratch}"
 	local crop="${CROP_W}x${CROP_H}+${CROP_X}+${CROP_Y}" differing
 	magick "$1" -crop "${crop}" +repage "${scratch}/a.png"
@@ -618,7 +624,7 @@ shots_differ_per_mille() { # <shot-a> <shot-b>
 # a control row beside it. `CROP_*` stays as the scene set it, so a readiness
 # probe cannot move what the evidence frames measure.
 frames_differ_pixels_at() { # <png-a> <png-b> <crop>
-	local scratch="${SCENE_RUNTIME_DIR}/frame-compare" differing
+	local scratch="${TMPDIR}/frame-compare" differing
 	mkdir -p "${scratch}"
 	magick "$1" -crop "$3" +repage "${scratch}/at-a.png"
 	magick "$2" -crop "$3" +repage "${scratch}/at-b.png"
@@ -637,7 +643,7 @@ frames_differ_pixels_at() { # <png-a> <png-b> <crop>
 # changed the transcript, a first streamed token changed it, and a click that
 # landed on prose changed nothing.
 screen_differs_from_frame_per_mille() { # <png>
-	local probe="${SCENE_RUNTIME_DIR}/frame-compare/probe.png"
+	local probe="${TMPDIR}/frame-compare/probe.png"
 	probe_frame "${probe}"
 	frames_differ_per_mille "$1" "${probe}"
 }
@@ -647,7 +653,7 @@ screen_differs_from_shot_per_mille() { # <shot>
 }
 
 screen_differs_from_frame_pixels_at() { # <png> <crop>
-	local probe="${SCENE_RUNTIME_DIR}/frame-compare/probe-at.png"
+	local probe="${TMPDIR}/frame-compare/probe-at.png"
 	probe_frame "${probe}"
 	frames_differ_pixels_at "$1" "${probe}" "$2"
 }
@@ -710,7 +716,7 @@ settle_idle() {
 	sleep "${floor}"
 	local prev="" now="" same=0 changed=0 waited="${floor}"
 	while [ "${waited}" -lt "${ceiling}" ]; do
-		now="$(kitty @ --to "${KITTY_SOCKET}" get-text 2>"${SCENE_OUT:-${SCENE_RUNTIME_DIR:-/tmp}}/get-text.err" | tr -d '0-9' || true)"
+		now="$(kitty @ --to "${KITTY_SOCKET}" get-text 2>"${SCENE_OUT:-${TMPDIR}}/get-text.err" | tr -d '0-9' || true)"
 		if [ -z "${now}" ]; then
 			# A WAIT THAT CANNOT SEE IS THE ONE FAILURE THAT MUST NOT BE QUIET. This
 			# branch used to spend the ceiling as a sleep and return without a word, so a
@@ -719,9 +725,9 @@ settle_idle() {
 			# and the reason was invisible in the log. One retry, because a single dump
 			# can lose a race with a redraw, and then the reason in the log.
 			sleep 2
-			now="$(kitty @ --to "${KITTY_SOCKET}" get-text 2>>"${SCENE_OUT:-${SCENE_RUNTIME_DIR:-/tmp}}/get-text.err" | tr -d '0-9' || true)"
+			now="$(kitty @ --to "${KITTY_SOCKET}" get-text 2>>"${SCENE_OUT:-${TMPDIR}}/get-text.err" | tr -d '0-9' || true)"
 			if [ -z "${now}" ]; then
-				echo "scene: get-text read nothing from ${KITTY_SOCKET}, falling back to a plain sleep: $(tail -1 "${SCENE_OUT:-${SCENE_RUNTIME_DIR:-/tmp}}/get-text.err" 2>/dev/null)" >&2
+				echo "scene: get-text read nothing from ${KITTY_SOCKET}, falling back to a plain sleep: $(tail -1 "${SCENE_OUT:-${TMPDIR}}/get-text.err" 2>/dev/null)" >&2
 				sleep "$((ceiling - waited))"
 				return 0
 			fi

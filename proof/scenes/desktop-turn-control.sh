@@ -49,7 +49,7 @@ import time
 
 profile = os.environ.get("VEYYON_PROFILE") or "default"
 endpoint = Path.home() / ".veyyon" / "profiles" / profile / "agent" / "gui-host.sock"
-created_path = Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json"
+created_path = Path(os.environ["TMPDIR"]) / "created-session.json"
 created_id = json.loads(created_path.read_text())
 mode = sys.argv[1]
 deadline = time.monotonic() + float(sys.argv[2])
@@ -141,7 +141,7 @@ import time
 
 profile = os.environ.get("VEYYON_PROFILE") or "default"
 endpoint = Path.home() / ".veyyon" / "profiles" / profile / "agent" / "gui-host.sock"
-created_path = Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json"
+created_path = Path(os.environ["TMPDIR"]) / "created-session.json"
 created_id = json.loads(created_path.read_text())
 wanted = sys.argv[1]
 deadline = time.monotonic() + float(sys.argv[2])
@@ -326,7 +326,7 @@ if ! native_turn_state started 30; then
 	abandon_take "native-turn-started" "the submitted prompt never reached the host as a persisted turn"
 fi
 transcript_crop
-BASELINE="${SCENE_RUNTIME_DIR}/before-the-first-token.png"
+BASELINE="${TMPDIR}/before-the-first-token.png"
 probe_frame "${BASELINE}"
 if ! streamed_into_the_transcript "${BASELINE}" 180; then
 	abandon_take "native-turn-generating" \
@@ -441,7 +441,7 @@ submit_prompt "${RUNNING_PROMPT}"
 # several, so it answers yes before this prompt reaches anything. What proves
 # this turn is running is the transcript repainting under it.
 transcript_crop
-ABORT_BASELINE="${SCENE_RUNTIME_DIR}/before-the-abort.png"
+ABORT_BASELINE="${TMPDIR}/before-the-abort.png"
 probe_frame "${ABORT_BASELINE}"
 if ! streamed_into_the_transcript "${ABORT_BASELINE}" 180; then
 	abandon_take "native-abort-turn-generating" \

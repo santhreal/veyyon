@@ -16,6 +16,7 @@ import type { AssistantMessage } from "@veyyon/ai";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { ProcessTerminal, TUI } from "@veyyon/tui";
+import type { AssistantMessageView } from "@veyyon/wire/presentation";
 import { sleep } from "bun";
 
 // Initialize dark theme with full color support
@@ -44,10 +45,11 @@ async function main() {
 	const tui = new TUI(terminal);
 
 	// Start with empty message
-	const message = {
-		role: "assistant",
-		content: [{ type: "thinking", thinking: "" }],
-	} as AssistantMessage;
+	const message: AssistantMessageView = {
+		segments: [{ kind: "thinking", text: "", redacted: false }],
+		model: "mock",
+		stopReason: "complete",
+	};
 
 	const component = new AssistantMessageComponent(message, false);
 	tui.addChild(component);
@@ -61,10 +63,11 @@ async function main() {
 		thinkingBuffer += fullThinkingText.slice(i, i + chunkSize);
 
 		// Update message content
-		const updatedMessage = {
-			role: "assistant",
-			content: [{ type: "thinking", thinking: thinkingBuffer }],
-		} as AssistantMessage;
+		const updatedMessage: AssistantMessageView = {
+			segments: [{ kind: "thinking", text: thinkingBuffer, redacted: false }],
+			model: "mock",
+			stopReason: "complete",
+		};
 
 		component.updateContent(updatedMessage);
 		tui.requestRender();
@@ -75,13 +78,14 @@ async function main() {
 	// Now add the text content
 	await sleep(500);
 
-	const finalMessage = {
-		role: "assistant",
-		content: [
-			{ type: "thinking", thinking: fullThinkingText },
-			{ type: "text", text: fullTextContent },
+	const finalMessage: AssistantMessageView = {
+		segments: [
+			{ kind: "thinking", text: fullThinkingText, redacted: false },
+			{ kind: "text", text: fullTextContent },
 		],
-	} as AssistantMessage;
+		model: "mock",
+		stopReason: "complete",
+	};
 
 	component.updateContent(finalMessage);
 	tui.requestRender();

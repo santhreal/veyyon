@@ -9,7 +9,7 @@ import time
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
-RUNTIME = Path(os.environ["SCENE_RUNTIME_DIR"])
+RUNTIME = Path(os.environ["TMPDIR"])
 PROBE = RUNTIME / "diff-review"
 
 

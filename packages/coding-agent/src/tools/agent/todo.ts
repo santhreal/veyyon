@@ -334,7 +334,7 @@ function cloneTask(task: TodoItem): TodoItem {
 	return { content: task.content, status: task.status };
 }
 
-function clonePhases(phases: TodoPhase[]): TodoPhase[] {
+export function clonePhases(phases: TodoPhase[]): TodoPhase[] {
 	return phases.map(phase => ({ name: phase.name, tasks: phase.tasks.map(cloneTask) }));
 }
 
@@ -604,7 +604,7 @@ function normalizeForTodoMatch(value: string): string {
 /**
  * Report whether `content` likely names the same work as any entry in
  * `descriptions`. Used by the sticky todo panel to light up a pending todo
- * when an in-flight subagent is doing the work for it, without requiring
+ * when an in-flight spawned agent is doing the work for it, without requiring
  * the caller to flip the todo's status.
  *
  * Matching is normalize-then-equal first (lowercased; punctuation and

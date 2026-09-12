@@ -9,7 +9,9 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import {
 	type BranchSummaryMessage,
 	type CompactionSummaryMessage,
+	type CustomMessage,
 	convertMessageToLlm,
+	type HookMessage,
 } from "@veyyon/agent-core/compaction/messages";
 // Owner, not the `@veyyon/agent-core` barrel: a value import of the barrel drags
 // the whole agent runtime and the `@veyyon/utils` barrel into `tools/read`.
@@ -31,7 +33,7 @@ import type {
 } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 import { isBlobRef, isTextBlobRef } from "@veyyon/kernel/session/blob-store";
-import { type CustomMessageContent, isCustomMessageContent } from "@veyyon/kernel/session/custom-message-payload";
+import { isCustomMessageContent } from "@veyyon/kernel/session/custom-message-payload";
 import { agentMessageKind } from "@veyyon/kernel/session/message-kinds";
 import { isRecord } from "@veyyon/utils/type-guards";
 // Owner, not the `@veyyon/utils` barrel: 1 module against 74.
@@ -41,9 +43,11 @@ import { imageDisplayStateForCall, imageVisibilityNotice, isImageVisibilityNotic
 export {
 	type BranchSummaryMessage,
 	type CompactionSummaryMessage,
+	type CustomMessage,
 	createBranchSummaryMessage,
 	createCompactionSummaryMessage,
 	createCustomMessage,
+	type HookMessage,
 } from "@veyyon/agent-core/compaction/messages";
 
 export {
@@ -554,34 +558,6 @@ export function replaceLostBlobPayloads(messages: Message[]): Message[] {
 		) as Message;
 	}
 	return out ?? messages;
-}
-
-/**
- * Message type for extension-injected messages via sendMessage().
- */
-export interface CustomMessage<T = unknown> {
-	role: "custom";
-	customType: string;
-	content: CustomMessageContent;
-	display: boolean;
-	details?: T;
-	/** Who initiated this message for billing/attribution semantics. */
-	attribution?: MessageAttribution;
-	timestamp: number;
-}
-
-/**
- * Legacy hook message type (pre-extensions). Kept for session migration.
- */
-export interface HookMessage<T = unknown> {
-	role: "hookMessage";
-	customType: string;
-	content: CustomMessageContent;
-	display: boolean;
-	details?: T;
-	/** Who initiated this message for billing/attribution semantics. */
-	attribution?: MessageAttribution;
-	timestamp: number;
 }
 
 /**

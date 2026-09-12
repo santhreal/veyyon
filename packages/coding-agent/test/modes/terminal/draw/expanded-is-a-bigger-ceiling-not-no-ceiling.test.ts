@@ -11,7 +11,7 @@
  *
  *   - `JSON_TREE_MAX_LINES_COLLAPSED` / `JSON_TREE_MAX_LINES_EXPANDED` (6 / 200) in `tools/core/json-tree-render.ts`,
  *     used by `mcp/view.ts`, `modes/terminal/components/transcript/tool-execution.ts` and `tools/shell/eval-view.ts`
- *   - `COLLAPSED_TEXT_LIMIT` / `EXPANDED_TEXT_LIMIT` in `tools/search/text-search.ts`
+ *   - `COLLAPSED_TEXT_LIMIT` / `EXPANDED_TEXT_LIMIT` in `tools/search/search-card-limits.ts`
  *   - `INSPECT_OUTPUT_COLLAPSED_LINES` / `INSPECT_OUTPUT_EXPANDED_LINES` (4 / 16)
  *   - `TV_OUTPUT_COLLAPSED` / `TV_OUTPUT_EXPANDED` (1 / 3) in `tools/agent/vibe-render.ts`
  *   - `PREVIEW_LIMITS.OUTPUT_COLLAPSED` / `PREVIEW_LIMITS.OUTPUT_EXPANDED` (3 / 10) in `tools/core/render-utils.ts`

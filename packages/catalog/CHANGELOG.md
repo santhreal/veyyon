@@ -8,6 +8,12 @@
 
 ### Changed
 
+- GitLab Duo Workflow discovery reads a record's declared root namespace (`root_namespace_id`, `rootNamespaceId`, or the id or path of its `root_namespace`/`rootAncestor` record) through one `declaredRootNamespaceId` for the explicit and nested lookups; no behavior change.
+- The Antigravity, Codex, Gemini and Ollama discovery readers report a non-ok status as the `status` stage and an unparseable body as the `body` stage through one exported `readDiscoveryJson` in `discovery/failure`; no behavior change.
+- Model spec rejection checks its string, cost and limit fields from ordered tables, reporting the same field names in the same order; no behavior change.
+- The canonical-id generator runs its multi-candidate expanders from one ordered table; no behavior change.
+- Canonical model normalization shares ordered transformation dispatch without changing identity resolution or cache precedence.
+- `Effort`, `ThinkingConfig` and the model and message types are re-exported from `@veyyon/model`, which is their single definition; the exported names and values are unchanged.
 - Bundled models resolve on demand per provider while explicitly installed full-registry snapshot stores remain supported.
 - Provider cache namespaces resolve without constructing discovery options; persisted cache keys are unchanged.
 - Bundled model snapshots use the shared integrity-framed format without repeated JSON serialization or durability flushes, and obsolete snapshots rebuild on load.
@@ -16,11 +22,16 @@
 - A comment on `OPENROUTER_BASE_URL` names the Perplexity auth module at `tools/web/search/providers/perplexity-auth.ts`. No behavior change.
 - A model reference candidate declares partial pricing, which is what bundled metadata carries; every reader already treated a missing per-token price as unknown. No user-visible behavior changes.
 - Ollama Cloud wire-effort normalization and discovery restrict effort ladders for GLM-5.2 specifically rather than all subsequent GLM point releases.
+- An OpenAI-compatible listing's model name falls back to its id through the shared non-empty-string reader; discovered names are unchanged.
 
 ### Fixed
 
 - Case-insensitive host classification no longer treats control characters as URL punctuation.
+## [1.4.1] - 2026-09-08
 
+### Fixed
+
+- OpenCode Zen and Go turns no longer fail with `400 only '"auto"' is supported for 'tool_choice'`. The gateways reject `"none"`, `"required"` and named function choices, so both OpenAI-shaped compat builders now declare `tool_choice` unsupported for them and omit the field, which is what `"auto"` means on that wire. The guided goal pins its `respond` tool by name and so failed on every interview turn; models reached under a custom provider id pointed at `opencode.ai` are covered by the same host match.
 
 ## [1.4.0] - 2026-09-04
 

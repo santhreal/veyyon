@@ -24,12 +24,8 @@ import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool
 import type { ThemeColor } from "@veyyon/coding-agent/theme/color";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import { formatExpandHint, replaceTabs } from "@veyyon/coding-agent/tools/core/render-utils";
-import {
-	COLLAPSED_TEXT_LIMIT,
-	EXPANDED_TEXT_LIMIT,
-	type TextSearchDetails,
-	type TextSearchRenderArgs,
-} from "@veyyon/coding-agent/tools/search/text-search";
+import { COLLAPSED_TEXT_LIMIT, EXPANDED_TEXT_LIMIT } from "@veyyon/coding-agent/tools/search/search-card-limits";
+import type { TextSearchDetails, TextSearchRenderArgs } from "@veyyon/coding-agent/tools/search/text-search";
 import { type TextSearchViewResult, textSearchToolView } from "@veyyon/coding-agent/tools/search/text-search-view";
 import type { ToolViewContext } from "@veyyon/view";
 import * as textSearchOracle from "../oracles/text-search-main-renderer";

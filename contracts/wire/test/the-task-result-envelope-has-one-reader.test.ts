@@ -1,7 +1,7 @@
 /**
  * WHY: one envelope, two surfaces, and until now two readers.
  *
- * THE DEFECT CLASS. A finished subagent returns the `<task-result>` envelope written by
+ * THE DEFECT CLASS. A finished agent returns the `<task-result>` envelope written by
  * `packages/coding-agent/src/prompts/tools/task-summary.md`. It is addressed to the MODEL —
  * status, duration, the `agent://` pointer — and a person reading a job row wants only the
  * body. Two surfaces strip it: the TUI job tool and the shared React renderer that draws the

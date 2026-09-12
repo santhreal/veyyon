@@ -249,7 +249,7 @@ function buildCmdExeCommand(command: string, args: readonly string[]): string {
  * Resolve the subprocess argv used to launch an MCP stdio server.
  *
  * On Windows, our PATH/PATHEXT walk may return `null` for a bare command
- * (e.g. `npx`) — `Bun.env.PATH` empty under a restricted parent process,
+ * (e.g. `npx`) — `process.env.PATH` empty under a restricted parent process,
  * UNC/network mounts that reject `fs.access`, locked-down shells. The
  * legacy fallback handed `Bun.spawn` the bare name, but `CreateProcess`
  * only appends `.exe` for extensionless names — `.cmd`/`.bat` are never

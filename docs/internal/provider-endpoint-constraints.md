@@ -182,7 +182,7 @@ Check these before adding or forwarding a field:
   `supportsLongCacheRetention` is keyed on the endpoint rather than the
   credential, so the key path could ask for 1h and does not. Both defaults are
   pinned by `packages/ai/test/anthropic-cache-retention-policy.test.ts`. Before
-  changing either, note that agent turns span tool calls and subagent batches: a
+  changing either, note that agent turns span tool calls and agent batches: a
   measured 469-turn session had gaps of 787s, 248s, 196s, 168s and 111s between
   turns, and every gap past the TTL costs a re-read of the prefix as fresh input
   plus another write, so 2x once can be cheaper than 1.25x repeatedly. Choose the
@@ -414,4 +414,4 @@ Before adding a branch or compat field, answer these in order:
    tier multipliers, and provider-specific counters such as Copilot
    `premiumRequests`?
 
-*Verified against `7e4c6374` on 2026-08-06.*
+*Verified against `63ffc8131ffb8d35ccbbb1c5de69531a7016eff4` on 2026-09-06.*

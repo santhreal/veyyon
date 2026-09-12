@@ -127,7 +127,7 @@ async function loadTool(
 }
 
 /** Tool path with optional source metadata, suitable for forwarding from a
- * parent session to a subagent so the subagent can re-bind tools to its own
+ * parent session to an agent so the agent can re-bind tools to its own
  * `CustomToolAPI` without redoing the filesystem scan. */
 export interface ToolPathWithSource {
 	path: string;
@@ -280,7 +280,7 @@ export async function loadCustomTools(
  * binding factories. Hot path on session startup — the scan walks
  * `.veyyon/tools/`, `.claude/tools/`, the plugin tree, and any configured paths.
  *
- * Subagents reuse the parent's collected paths via the SDK's
+ * Agents reuse the parent's collected paths via the SDK's
  * `preloadedCustomToolPaths` option, then call `loadCustomTools` themselves
  * so each session re-binds factories with its own session-scoped
  * `CustomToolAPI` (cwd, exec, pushPendingAction, UI).
@@ -343,7 +343,7 @@ export async function discoverCustomToolPaths(
  * 3. Explicitly configured paths from settings or CLI
  *
  * Composed of {@link discoverCustomToolPaths} (FS scan) + {@link loadCustomTools}
- * (per-session binding). Subagents skip the first step and just call
+ * (per-session binding). Agents skip the first step and just call
  * `loadCustomTools` against the parent's collected paths.
  *
  * @param configuredPaths - Explicit paths from settings.json and CLI --tool flags

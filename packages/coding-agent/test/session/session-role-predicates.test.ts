@@ -41,7 +41,7 @@ describe("isSubagentSession", () => {
 	/**
 	 * Either signal alone is enough. The task executor sets `taskDepth`, the IRC and
 	 * registry path sets `parentTaskPrefix`, and a session can arrive carrying one
-	 * and not the other, so requiring both would miss a real subagent.
+	 * and not the other, so requiring both would miss a real agent.
 	 */
 	it.each<[string, SessionRoleOptions]>([
 		["depth alone", { taskDepth: 1 }],
@@ -57,7 +57,7 @@ describe("isSubagentSession", () => {
 	 * to the depth check and reports top-level. Pinned because the prefix is a string
 	 * that reaches here from a session file and a spawn path, and a null-ish check
 	 * (`parentTaskPrefix !== undefined`) would read an empty one as a live parent and
-	 * make a top-level session behave as a subagent.
+	 * make a top-level session behave as an agent.
 	 */
 	it("does not treat an empty prefix as a parent", () => {
 		expect(isSubagentSession({ parentTaskPrefix: "" })).toBe(false);
@@ -81,8 +81,8 @@ describe("isInProcessChildSession", () => {
 describe("the two predicates are not interchangeable", () => {
 	/**
 	 * THE ONE INPUT THAT SEPARATES THEM, and the reason both exist. A session
-	 * carrying task depth but no parent prefix is a subagent by every other measure
-	 * in `sdk.ts` (it is displayed as "sub", it follows the subagent Argot policy, it
+	 * carrying task depth but no parent prefix is an agent by every other measure
+	 * in `sdk.ts` (it is displayed as "sub", it follows the agent Argot policy, it
 	 * may not re-root the process) and is still an OWNER of the process globals,
 	 * because no parent in this process installed any.
 	 *

@@ -5,27 +5,22 @@
  * Ruby runners via BaseKernel; this module supplies the Julia binary, runner
  * script, and the runner's TSV/Base64 wire protocol.
  */
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { $flag, errorMessage, isBunTestRuntime, Snowflake } from "@veyyon/utils";
+import { $flag } from "@veyyon/utils";
 import { $ } from "bun";
-import { Settings } from "../../config/settings";
 import {
 	BaseKernel,
+	createLanguageAvailabilityChecker,
+	createRunnerScriptPublisher,
 	DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
-	getRemainingTimeMs,
 	KERNEL_INTERRUPT_ESCALATION_MS,
 	KERNEL_SHUTDOWN_GRACE_MS,
 	type KernelEnvPatch,
 	type KernelExecuteOptions,
 	type KernelStartOptions,
 	kernelIpcTraceEnvVar,
-	kernelRunnerCacheDir,
-	releaseKernel,
+	launchKernelSubprocess,
 } from "../kernel-base";
 import type { KernelDisplayOutput } from "../py/display";
-import { hostHasInheritableConsole, shouldDetachKernel, shouldHideKernelWindow } from "../py/spawn-options";
 import { JULIA_PRELUDE } from "./prelude";
 import RUNNER_SCRIPT from "./runner.jl" with { type: "text" };
 import {
@@ -42,22 +37,7 @@ export type { KernelDisplayOutput };
 
 const TRACE_IPC = $flag(kernelIpcTraceEnvVar("JULIA"));
 
-// Cache the runner script on disk so the subprocess loads it normally. Cached
-// per script hash so installs don't race across versions.
-const RUNNER_CACHE_DIR = kernelRunnerCacheDir(os.tmpdir(), "julia");
-let RUNNER_SCRIPT_PATH: string | null = null;
-
-async function ensureRunnerScript(): Promise<string> {
-	if (RUNNER_SCRIPT_PATH) return RUNNER_SCRIPT_PATH;
-	await fs.promises.mkdir(RUNNER_CACHE_DIR, { recursive: true });
-	const hash = Bun.hash(RUNNER_SCRIPT).toString(36);
-	const target = path.join(RUNNER_CACHE_DIR, `runner-${hash}.jl`);
-	if (!fs.existsSync(target)) {
-		await Bun.write(target, RUNNER_SCRIPT);
-	}
-	RUNNER_SCRIPT_PATH = target;
-	return target;
-}
+const ensureRunnerScript = createRunnerScriptPublisher("julia", RUNNER_SCRIPT, "jl");
 
 // Julia compiles both the runner and the prelude on first load. Clean hosted
 // runners have taken more than 30 seconds before accepting their first cell, so
@@ -71,65 +51,19 @@ export interface JuliaKernelAvailability {
 	reason?: string;
 }
 
-// Cache successful probes per resolved cwd + explicit interpreter. Failures are
-// not cached so installing Julia mid-session is picked up on the next attempt.
-const availabilityCache = new Map<string, Promise<JuliaKernelAvailability>>();
-
-export async function checkJuliaKernelAvailability(
-	cwd: string,
-	interpreter?: string,
-): Promise<JuliaKernelAvailability> {
-	// Same fast path Python and Ruby have. Probing spawns the interpreter, so under `bun test` every suite
-	// that touches the executor paid a process spawn and then failed on machines without Julia, which is
-	// most of them: the executor's kernel lifecycle is what those suites are about, not whether this host
-	// can run Julia. Integration suites that need a real kernel reach the probe through the runner.
-	if (isBunTestRuntime() || $flag("VEYYON_JULIA_SKIP_CHECK")) {
-		return { ok: true };
-	}
-	const cacheKey = `${path.resolve(cwd)}::${interpreter ?? ""}`;
-	let cached = availabilityCache.get(cacheKey);
-	if (!cached) {
-		cached = probeJuliaKernelAvailability(cwd, interpreter);
-		availabilityCache.set(cacheKey, cached);
-	}
-	const result = await cached;
-	if (!result.ok) {
-		availabilityCache.delete(cacheKey);
-	}
-	return result;
-}
-
-async function probeJuliaKernelAvailability(cwd: string, interpreter?: string): Promise<JuliaKernelAvailability> {
-	const { env: shellEnv } = (await Settings.init()).getShellConfig();
-	const baseEnv = filterEnv(shellEnv);
-	const runtimes = enumerateJuliaRuntimes(cwd, baseEnv, interpreter);
-
-	if (runtimes.length === 0) {
-		return {
-			ok: false,
-			reason: "Julia executable not found on PATH. Please install Julia (https://julialang.org/).",
-		};
-	}
-
-	const failures: string[] = [];
-	for (const runtime of runtimes) {
-		try {
-			const probe = await $`${runtime.juliaPath} -e "exit(0)"`.quiet().nothrow().cwd(cwd).env(runtime.env);
-			if (probe.exitCode === 0) {
-				return { ok: true, juliaPath: runtime.juliaPath, runtime };
-			}
-			failures.push(`${runtime.juliaPath} (exit code ${probe.exitCode})`);
-		} catch (err) {
-			failures.push(`${runtime.juliaPath} (${errorMessage(err)})`);
-		}
-	}
-
-	return {
-		ok: false,
-		juliaPath: runtimes[0].juliaPath,
-		reason: `No working Julia interpreter found. Tried: ${failures.join("; ")}`,
-	};
-}
+export const checkJuliaKernelAvailability = createLanguageAvailabilityChecker<JuliaRuntime, "juliaPath">(
+	{
+		skipFlag: "VEYYON_JULIA_SKIP_CHECK",
+		filterEnv,
+		enumerateRuntimes: (cwd, baseEnv, interpreter) => enumerateJuliaRuntimes(cwd, baseEnv, interpreter),
+		missingReason: "Julia executable not found on PATH. Please install Julia (https://julialang.org/).",
+		probeRuntime: (runtime, cwd) => $`${runtime.juliaPath} -e "exit(0)"`.quiet().nothrow().cwd(cwd).env(runtime.env),
+		getExecutablePath: runtime => runtime.juliaPath,
+		includeFailedExecutablePath: true,
+		formatFailureReason: failures => `No working Julia interpreter found. Tried: ${failures.join("; ")}`,
+	},
+	"juliaPath",
+);
 
 export class JuliaKernel extends BaseKernel<KernelExecuteOptions> {
 	private constructor(id: string) {
@@ -169,61 +103,29 @@ export class JuliaKernel extends BaseKernel<KernelExecuteOptions> {
 	}
 
 	static async start(options: KernelStartOptions): Promise<JuliaKernel> {
-		const availability = await checkJuliaKernelAvailability(options.cwd, options.interpreter);
-		if (!availability.ok) {
-			throw new Error(availability.reason ?? "Julia kernel unavailable");
-		}
-
-		let runtime = availability.runtime;
-		if (!runtime) {
-			const { env: shellEnv } = (await Settings.init()).getShellConfig();
-			runtime = options.interpreter
-				? resolveExplicitJuliaRuntime(options.interpreter, options.cwd, filterEnv(shellEnv))
-				: resolveJuliaRuntime(options.cwd, filterEnv(shellEnv));
-		}
-		const spawnEnv: Record<string, string> = {};
-		for (const key in runtime.env) {
-			const value = runtime.env[key];
-			if (typeof value === "string") spawnEnv[key] = value;
-		}
-		for (const key in options.env) {
-			const value = options.env[key];
-			if (typeof value === "string") spawnEnv[key] = value;
-		}
-
-		const scriptPath = await ensureRunnerScript();
-		const kernel = new JuliaKernel(Snowflake.next());
-
-		const proc = Bun.spawn(
-			[runtime.juliaPath, "--startup-file=no", "--history-file=no", "--color=no", "--project=@.", scriptPath],
-			{
-				cwd: options.cwd,
-				detached: shouldDetachKernel(process.platform),
-				env: spawnEnv,
-				stdin: "pipe",
-				stdout: "pipe",
-				stderr: "pipe",
-				windowsHide: shouldHideKernelWindow({
-					platform: process.platform,
-					hostHasInheritableConsole: hostHasInheritableConsole(),
-				}),
-			},
-		);
-		options.adoptPid?.(proc.pid);
-		kernel.setProcess(proc);
-
-		const startup = { signal: options.signal, deadlineMs: options.deadlineMs };
-		const startupBudget = Math.min(getRemainingTimeMs(startup.deadlineMs) ?? STARTUP_TIMEOUT_MS, STARTUP_TIMEOUT_MS);
-
-		try {
-			const initScript = buildInitScript(options.cwd, options.env);
-			await kernel.executeWithBudget(initScript, startup.signal, startupBudget, "Julia kernel init");
-			await kernel.executeWithBudget(JULIA_PRELUDE, startup.signal, startupBudget, "Julia kernel prelude");
-			return kernel;
-		} catch (err) {
-			await releaseKernel(kernel, "julia-kernel-startup-failed", { timeoutMs: KERNEL_SHUTDOWN_GRACE_MS });
-			throw err;
-		}
+		return await launchKernelSubprocess({
+			languageName: "Julia",
+			options,
+			checkAvailability: checkJuliaKernelAvailability,
+			resolveRuntimeFallback: (cwd, interpreter, shellEnv) =>
+				interpreter
+					? resolveExplicitJuliaRuntime(interpreter, cwd, filterEnv(shellEnv))
+					: resolveJuliaRuntime(cwd, filterEnv(shellEnv)),
+			ensureRunnerScript,
+			createKernel: id => new JuliaKernel(id),
+			getExecutableCommand: (runtime, scriptPath) => [
+				runtime.juliaPath,
+				"--startup-file=no",
+				"--history-file=no",
+				"--color=no",
+				"--project=@.",
+				scriptPath,
+			],
+			startupTimeoutMs: STARTUP_TIMEOUT_MS,
+			initScript: buildInitScript(options.cwd, options.env),
+			preludeScript: JULIA_PRELUDE,
+			releaseReason: "julia-kernel-startup-failed",
+		});
 	}
 }
 

@@ -78,6 +78,12 @@ publish        Lanczos downsample to 1920x1080
 
 `proof/docker/scene-config.sh` is the single definition of every `SCENE_*` knob. The two session scripts and the two host recorders source it; none of them restates a default. Override a knob by exporting it, never by editing one of those four files, because a default written down twice is two defaults and the one a run gets depends on which file it entered through.
 
+`SCENE_SCRATCH_DIR` defaults to `.scratch` relative to the mounted output directory.
+Each recorder session allocates a unique child for temporary files and its kitty
+socket, then deletes that child on exit. Scratch parents outside the output
+directory are rejected. X11 capture requires `xdpyinfo` and rejects an already
+responsive display before allocating session scratch.
+
 The chrome — rounded corners, the shadow, the translucent window over the backdrop — is drawn after the take by `proof/compose-chrome.sh`, not by a compositor during it. The backdrop does not move, so blending it under the window every frame recomputes one static picture thousands of times, and it cost the capture: with picom's blur on, `ffmpeg` could grab only 69 of 360 frames, and opacity alone still cost a third. `xwallpaper` puts the backdrop in the capture for free as a root pixmap; the pass replaces the square-cornered inset with the same pixels rounded, blended and shadowed.
 
 `SCENE_CHROME=live` runs a compositor during the capture instead, for comparison. It is not the default and a take recorded that way is slower.
