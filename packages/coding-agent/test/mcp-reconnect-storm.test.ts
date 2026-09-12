@@ -18,7 +18,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { MCPManager } from "@veyyon/coding-agent/mcp/manager";
 import type { MCPStdioServerConfig } from "@veyyon/coding-agent/mcp/types";
-import { removeSyncWithRetries } from "@veyyon/utils";
+import { attachFaultSink, type Fault, removeSyncWithRetries } from "@veyyon/utils";
 
 const FIXTURE_PATH = path.join(import.meta.dir, "fixtures", "crash-after-init-mcp.ts");
 const BUN_EXEC = process.execPath;
@@ -51,6 +51,10 @@ describe("MCP reconnect storm (issue #1592)", () => {
 			env: { VEYYON_TEST_SPAWN_LOG: spawnLog },
 		};
 
+		const faults: Fault[] = [];
+		const detach = attachFaultSink(fault => {
+			if (fault.source === "mcp") faults.push(fault);
+		});
 		try {
 			await manager.connectServers({ crashy: config }, {});
 			// Wait for the circuit breaker to trip rather than blind-sleeping a
@@ -85,7 +89,15 @@ describe("MCP reconnect storm (issue #1592)", () => {
 			// dead transport. Tools stay registered in the manager's tool list
 			// so the user can recover via `/mcp reconnect`.
 			expect(manager.getConnectionStatus("crashy")).toBe("disconnected");
+
+			// The suspension used to be a file-log line only, so the tools stayed
+			// listed and every call failed with no word on the surface about why.
+			const suspended = faults.filter(fault => fault.text.includes("automatic reconnects are suspended"));
+			expect(suspended).toHaveLength(1);
+			expect(suspended[0]?.text).toContain('MCP server "crashy" exited');
+			expect(suspended[0]?.text).toContain("/mcp reconnect crashy");
 		} finally {
+			detach();
 			await manager.disconnectAll();
 		}
 	}, 15_000);

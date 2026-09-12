@@ -11,7 +11,7 @@ import { type AuthStorage, REMOTE_REFRESH_SENTINEL } from "@veyyon/ai/auth-stora
 // The owner, not the barrel: classifying an OAuth failure is a string test that
 // belongs to the flag it decides, and `error/flags.ts` is where that flag lives.
 import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/flags";
-import { errorMessage, logger } from "@veyyon/utils";
+import { errorMessage, logger, reportFault } from "@veyyon/utils";
 import { describeConfigEnvReference } from "../config/config-value-resolution";
 import { invalidateConfigValue, resolveConfigValue } from "../config/resolve-config-value";
 import { FOREIGN_PROVIDER_IDS } from "../discovery/capability";
@@ -1007,6 +1007,16 @@ export class MCPManager {
 				crashes: recent.length,
 				windowMs: RECONNECT_BURST_WINDOW_MS,
 			});
+			// The file log was the only record: the server's tools stayed listed, every
+			// call to them failed, and nothing on the surface said the server was gone.
+			reportFault({
+				source: "mcp",
+				text:
+					`MCP server "${name}" exited ${recent.length} times in ${RECONNECT_BURST_WINDOW_MS / 1000}s, so automatic ` +
+					"reconnects are suspended and its tools fail until it is reconnected. " +
+					`Fix: check the server's own output, then run /mcp reconnect ${name}.`,
+				context: { server: name, crashes: recent.length, windowMs: RECONNECT_BURST_WINDOW_MS },
+			});
 			// Tear down the stale connection so `getConnectionStatus()` no
 			// longer reports it as "connected" and `waitForConnection()` does
 			// not hand a closed transport to callers. Tools stay registered
@@ -1089,6 +1099,13 @@ export class MCPManager {
 					// remain selected. Calls will fail with MCP errors, which
 					// triggers the tool-level reconnect, or the user can run
 					// /mcp reconnect <name> manually.
+					reportFault({
+						source: "mcp",
+						text:
+							`MCP server "${name}" closed its connection and could not be reconnected after ${delays.length + 1} attempts: ` +
+							`${msg} Its tools stay listed and fail until it is back. Fix: run /mcp reconnect ${name} once the server starts again.`,
+						context: { server: name, attempts: delays.length + 1, error: msg },
+					});
 				}
 			}
 		}
