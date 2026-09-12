@@ -510,6 +510,8 @@
 
 ### Fixed
 
+- Print, JSON and RPC mode flush Bun's stdout sink before exiting, so a piped consumer receives the whole last frame instead of losing up to 1 MiB of queued output.
+- A spawned agent's card shows its resolved-model badge again on the live block, the registry path an extension wraps and the rebuilt transcript, per `agent.showResolvedModelBadge`.
 - Legacy `hindsight.dynamicBankId` and `hindsight.agentName` written as flat keys migrate to `hindsight.scoping` and `hindsight.bankId` and are dropped on rewrite instead of surviving as dead entries.
 - `accounts.loadBalancing` ships on again: a quota or rate-limit wall on the chosen account continues the turn on an idle account of the same provider, announced with both account names, instead of ending it on `Provider requested 1800000ms wait, exceeds retry.maxDelayMs`; the explicit account choice still leads while it has quota.
 - Removing the retired `providers.parallelFetch` key no longer leaves an empty `providers:` section in the rewritten config.
