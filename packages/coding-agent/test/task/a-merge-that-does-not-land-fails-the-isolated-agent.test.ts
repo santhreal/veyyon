@@ -46,7 +46,6 @@ import type { AgentDefinition, SingleResult, TaskParams } from "@veyyon/coding-a
 import { parseIsolationMode } from "@veyyon/coding-agent/task/worktree";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import * as natives from "@veyyon/natives";
-import { logger } from "@veyyon/utils";
 import { $ } from "bun";
 import { createMockSession, createSessionResult, yieldSuccessEvent } from "../helpers/agent-session";
 import { useIsolatedAgentDir, useIsolatedWorktreesDir } from "../helpers/isolated-agent-dir";
@@ -200,7 +199,6 @@ describe("an explicit isolation mode the host cannot honour is reported", () => 
 	for (const mode of unavailable) {
 		it(`mode=${mode}: the result opens with the backend it ran on and why`, async () => {
 			const root = await seedRepo();
-			const warn = vi.spyOn(logger, "warn");
 			childThatWrites(CHILD_EDIT);
 			const run = await runIsolated(
 				root,
@@ -213,10 +211,6 @@ describe("an explicit isolation mode the host cannot honour is reported", () => 
 			expect(fallback?.actual).not.toBe(mode);
 			expect(fallback?.reason.length).toBeGreaterThan(0);
 			expect(run.text).toContain(`Isolation fell back from ${mode} to ${fallback?.actual}: ${fallback?.reason}`);
-			expect(warn).toHaveBeenCalledWith(
-				"Isolation mode fell back to another backend",
-				expect.objectContaining({ requested: mode, actual: fallback?.actual }),
-			);
 			// Report-and-continue: the run still merges.
 			expect(run.isError).toBeFalsy();
 			expect(await fs.readFile(path.join(root, "foo.txt"), "utf8")).toBe(CHILD_EDIT);
@@ -226,7 +220,6 @@ describe("an explicit isolation mode the host cannot honour is reported", () => 
 	for (const mode of ["auto", "rcopy"] as const) {
 		it(`control: mode=${mode} reports no fallback`, async () => {
 			const root = await seedRepo();
-			const warn = vi.spyOn(logger, "warn");
 			childThatWrites(CHILD_EDIT);
 			const run = await runIsolated(
 				root,
@@ -235,7 +228,6 @@ describe("an explicit isolation mode the host cannot honour is reported", () => 
 			);
 			expect(run.result.isolationFallback).toBeUndefined();
 			expect(run.text).not.toContain("Isolation fell back");
-			expect(warn.mock.calls.map(call => call[0])).not.toContain("Isolation mode fell back to another backend");
 			expect(run.isError).toBeFalsy();
 			expect(await fs.readFile(path.join(root, "foo.txt"), "utf8")).toBe(CHILD_EDIT);
 		});

@@ -68,7 +68,7 @@ export * from "./extensibility/extensions";
 // Named rather than `export type *`: the hook API deliberately mirrors the
 // extension API, so eleven event-result type names are declared in both modules
 // and a star re-export is ambiguous. These two are what a hook file needs.
-export type { HookAPI, HookContext } from "./extensibility/hooks/types";
+export type { HookAPI, HookContext } from "./extensibility/hooks";
 // Skills
 export * from "./extensibility/skills";
 export * from "./goals";

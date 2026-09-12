@@ -89,11 +89,16 @@ const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
  * `session/account-format`, `slash-commands/helpers/mcp-args`, `subprocess/worker-request-client`,
  * `thinking/constants`).
  *
+ * RE-MEASURED 2026-09-11 at 1639, up from 1637: `@veyyon/view` grew its first value export,
+ * `UNICODE_SYMBOLS`, the glyph table the terminal, the GUI host and the HTML export draw from,
+ * so the walker now counts `contracts/view/src/index.ts` and `contracts/view/src/symbols.ts`,
+ * which it skipped while the package was reached by type only.
+ *
  * A ratchet, not a target: nothing breaks when it grows, which is exactly why it is pinned. There
  * is no margin left on purpose — the next module on this graph is a barrel someone reached for
  * and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1637;
+const LAUNCH_REACH_CEILING = 1639;
 
 /**
  * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The

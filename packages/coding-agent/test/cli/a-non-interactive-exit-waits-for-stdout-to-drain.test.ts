@@ -19,8 +19,7 @@ import * as path from "node:path";
  * exit-code suites for print and RPC mode drive those paths and own that wiring.
  */
 
-const repoRoot = path.resolve(import.meta.dir, "..", "..");
-const drainModule = path.join(repoRoot, "src", "cli", "stdout-drain.ts");
+const drainModule = path.resolve(import.meta.dir, "../../src/cli/stdout-drain.ts");
 
 /** Well past a 64 KiB or 128 KiB pipe buffer, so a truncated write is a visible loss. */
 const PAYLOAD_BYTES = 1024 * 1024;

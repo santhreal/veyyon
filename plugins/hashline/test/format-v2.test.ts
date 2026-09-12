@@ -85,9 +85,9 @@ describe("hashline format v4", () => {
 		expect(applyEdits("a\nb\n", edits).text).toBe("a\nB\n");
 	});
 
-	it("still allows inserts anchored on the trailing blank sentinel", () => {
+	it("appends an insert anchored on the trailing blank sentinel as a terminated line", () => {
 		const edits = parsePatch("INS.POST 3:\n+tail").edits;
-		expect(applyEdits("a\nb\n", edits).text).toBe("a\nb\n\ntail");
+		expect(applyEdits("a\nb\n", edits).text).toBe("a\nb\ntail\n");
 	});
 
 	it("still deletes a genuine empty last line of a non-newline-terminated file", () => {

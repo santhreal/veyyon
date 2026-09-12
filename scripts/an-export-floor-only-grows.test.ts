@@ -31,8 +31,9 @@ describe("an export floor only grows", () => {
 		for (const [specifier, names] of Object.entries(floor)) {
 			expect(names, specifier).toEqual([...names].sort());
 		}
-		// A contract package exports only types, so its row is empty and its entry point still swept.
-		expect(floor["@veyyon/view"]).toEqual([]);
+		// A contract package that exports only types has an empty row and its entry point is still
+		// swept. `@veyyon/view` left this set when it grew `UNICODE_SYMBOLS`; `@veyyon/host` is in it.
+		expect(floor["@veyyon/host"]).toEqual([]);
 	});
 
 	it("refuses a surface that drops a specifier", () => {

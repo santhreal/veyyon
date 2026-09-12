@@ -117,11 +117,12 @@ describe("@veyyon/tool-render registry", () => {
 		expect(readRenderer.Summary).toBeDefined();
 		expect(readRenderer.Body).toBeDefined();
 
-		// Summary without display: specialized PathText with range
+		// Summary without display: specialized PathText with the selector the tool read.
+		// The schema has no `offset`/`limit` window: a range travels in the path.
 		const summaryWithout = renderToStaticMarkup(
 			createElement(readRenderer.Summary, {
 				name: "read",
-				args: { path: "src/main.ts", offset: 10, limit: 20 },
+				args: { path: "src/main.ts:10-29" },
 			}),
 		);
 		expect(summaryWithout).toContain("src/main.ts");
@@ -142,17 +143,35 @@ describe("@veyyon/tool-render registry", () => {
 		expect(htmlWithout).toContain("src/main.ts");
 		expect(htmlWithout).toContain("const a = 1;");
 
-		// With display: canonical projection rendering
+		// With a projected view: the canonical projection draws the card.
 		const htmlWith = renderToStaticMarkup(
 			createElement(readRenderer.Body!, {
 				name: "read",
 				args: { path: "src/main.ts" },
 				display: {
-					generic: { icon: "done", outputText: "projected output text", isJson: false },
+					resultView: { kind: "statusRow", status: "success", title: "projected output text" },
 				},
 			}),
 		);
 		expect(htmlWith).toContain("projected output text");
+
+		// With a display that fell through to the generic key=value card: one owner per card, so
+		// the specialized descriptor draws from the result and the generic text is not repeated.
+		const htmlGeneric = renderToStaticMarkup(
+			createElement(readRenderer.Body!, {
+				name: "read",
+				args: { path: "src/main.ts" },
+				result: {
+					content: [{ type: "text", text: "const a = 1;" }],
+					details: { resolvedPath: "src/main.ts" },
+				},
+				display: {
+					generic: { icon: "done", outputText: "generic fallthrough text", isJson: false },
+				},
+			}),
+		);
+		expect(htmlGeneric).toContain("const a = 1;");
+		expect(htmlGeneric).not.toContain("generic fallthrough text");
 	});
 	it("keeps stripAnsi browser-safe (no Node deps in the util path)", () => {
 		expect(stripAnsi("plain\x1b[31mred\x1b[0m")).toBe("plainred");
