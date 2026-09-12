@@ -1,14 +1,9 @@
-//! What a prompt may carry beside its text: still images and video clips
-//! (§5.4), classified by their bytes rather than their names.
-//!
-//! The host forwards `image/png`, `image/jpeg`, `image/gif`, `image/webp`,
-//! `video/mp4`, `video/webm` and `video/quicktime`, up to 20 MiB per file and
-//! 20 MiB per prompt (the inline request limit of the providers that accept
-//! video). Everything else is refused here, before a byte crosses the wire,
-//! with a message naming the file and the reason.
+//! Attachment containers and bounded reads. Text uses the host's text input;
+//! binary documents can be inspected but cannot be submitted.
 
 use std::{
-	fmt, io,
+	fmt,
+	io::{self, Read},
 	path::{Path, PathBuf},
 	sync::Arc,
 };
@@ -26,15 +21,20 @@ pub const MAX_PROMPT_ATTACHMENT_BYTES: u64 = 20 * 1024 * 1024;
 pub enum MediaKind {
 	Image,
 	Video,
+	Text,
+	Binary,
 }
 
 impl MediaKind {
-	/// The model input the payload needs.
+	/// The model input the host can send; opaque documents have no input
+	/// mapping.
 	#[must_use]
-	pub const fn modality(self) -> InputModality {
+	pub const fn modality(self) -> Option<InputModality> {
 		match self {
-			Self::Image => InputModality::Image,
-			Self::Video => InputModality::Video,
+			Self::Image => Some(InputModality::Image),
+			Self::Video => Some(InputModality::Video),
+			Self::Text => Some(InputModality::Text),
+			Self::Binary => None,
 		}
 	}
 
@@ -44,12 +44,14 @@ impl MediaKind {
 		match self {
 			Self::Image => "image",
 			Self::Video => "video",
+			Self::Text => "text",
+			Self::Binary => "binary document",
 		}
 	}
 }
 
 /// One of the media types the host accepts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter)]
 pub enum MediaType {
 	Png,
 	Jpeg,
@@ -58,13 +60,12 @@ pub enum MediaType {
 	Mp4,
 	Webm,
 	QuickTime,
+	Text,
+	Pdf,
+	Binary,
 }
 
 impl MediaType {
-	/// Every accepted type, images first.
-	pub const ALL: [Self; 7] =
-		[Self::Png, Self::Jpeg, Self::Gif, Self::Webp, Self::Mp4, Self::Webm, Self::QuickTime];
-
 	/// The IANA media type the host is sent.
 	#[must_use]
 	pub const fn as_str(self) -> &'static str {
@@ -76,6 +77,9 @@ impl MediaType {
 			Self::Mp4 => "video/mp4",
 			Self::Webm => "video/webm",
 			Self::QuickTime => "video/quicktime",
+			Self::Text => "text/plain",
+			Self::Pdf => "application/pdf",
+			Self::Binary => "application/octet-stream",
 		}
 	}
 
@@ -90,6 +94,9 @@ impl MediaType {
 			Self::Mp4 => "MP4",
 			Self::Webm => "WebM",
 			Self::QuickTime => "MOV",
+			Self::Text => "UTF-8 text",
+			Self::Pdf => "PDF",
+			Self::Binary => "Binary",
 		}
 	}
 
@@ -99,6 +106,8 @@ impl MediaType {
 		match self {
 			Self::Png | Self::Jpeg | Self::Gif | Self::Webp => MediaKind::Image,
 			Self::Mp4 | Self::Webm | Self::QuickTime => MediaKind::Video,
+			Self::Text => MediaKind::Text,
+			Self::Pdf | Self::Binary => MediaKind::Binary,
 		}
 	}
 
@@ -110,7 +119,7 @@ impl MediaType {
 			Self::Jpeg => Some(ImageFormat::Jpeg),
 			Self::Gif => Some(ImageFormat::Gif),
 			Self::Webp => Some(ImageFormat::Webp),
-			Self::Mp4 | Self::Webm | Self::QuickTime => None,
+			Self::Mp4 | Self::Webm | Self::QuickTime | Self::Text | Self::Pdf | Self::Binary => None,
 		}
 	}
 
@@ -150,8 +159,9 @@ impl MediaType {
 		if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" {
 			return match &bytes[8..12] {
 				b"qt  " => Some(Self::QuickTime),
-				b"M4A " | b"M4B " | b"M4P " => None,
-				_ => Some(Self::Mp4),
+				b"isom" | b"iso2" | b"iso3" | b"iso4" | b"iso5" | b"iso6" | b"mp41" | b"mp42"
+				| b"avc1" | b"dash" | b"M4V " | b"MSNV" => Some(Self::Mp4),
+				_ => None,
 			};
 		}
 		if bytes.starts_with(b"\x1a\x45\xdf\xa3") {
@@ -163,6 +173,27 @@ impl MediaType {
 				.then_some(Self::Webm);
 		}
 		None
+	}
+
+	/// Classifies a non-empty attachment without trusting its file extension.
+	#[must_use]
+	pub fn classify(bytes: &[u8]) -> Option<Self> {
+		if bytes.is_empty() {
+			return None;
+		}
+		Some(Self::sniff(bytes).unwrap_or_else(|| {
+			if bytes.starts_with(b"%PDF-") {
+				Self::Pdf
+			} else if std::str::from_utf8(bytes).is_ok_and(|text| {
+				text
+					.chars()
+					.all(|ch| !ch.is_control() || matches!(ch, '\n' | '\r' | '\t'))
+			}) {
+				Self::Text
+			} else {
+				Self::Binary
+			}
+		}))
 	}
 }
 
@@ -183,6 +214,10 @@ pub enum AttachmentError {
 	TooLarge { path: PathBuf, bytes: u64 },
 	#[error("Cannot attach {name}: {} with the {} already attached exceeds the {} limit per prompt", human_bytes(*.bytes), human_bytes(*.attached), human_bytes(MAX_PROMPT_ATTACHMENT_BYTES))]
 	PromptFull { name: String, bytes: u64, attached: u64 },
+	#[error("Cannot attach {name}: at most {} files per prompt", super::preview::MAX_ATTACHMENTS)]
+	TrayFull { name: String },
+	#[error("Cannot attach {}: only regular files are supported", name_of(.path))]
+	NotFile { path: PathBuf },
 	#[error("Cannot attach the clipboard image: {format:?} is not an accepted format")]
 	ClipboardFormat { format: ImageFormat },
 }
@@ -201,6 +236,8 @@ pub enum Payload {
 	Image(Arc<Image>),
 	/// A clip; nothing on this side decodes it.
 	Video(Arc<[u8]>),
+	/// Text or opaque document bytes, never passed to an image decoder.
+	Data(Arc<[u8]>),
 }
 
 impl Payload {
@@ -209,7 +246,7 @@ impl Payload {
 	pub fn bytes(&self) -> &[u8] {
 		match self {
 			Self::Image(image) => image.bytes(),
-			Self::Video(bytes) => bytes,
+			Self::Video(bytes) | Self::Data(bytes) => bytes,
 		}
 	}
 
@@ -233,6 +270,7 @@ impl PartialEq for Payload {
 		match (self, other) {
 			(Self::Image(a), Self::Image(b)) => Arc::ptr_eq(a, b) || a.id() == b.id(),
 			(Self::Video(a), Self::Video(b)) => Arc::ptr_eq(a, b) || **a == **b,
+			(Self::Data(a), Self::Data(b)) => Arc::ptr_eq(a, b) || **a == **b,
 			_ => false,
 		}
 	}
@@ -245,6 +283,7 @@ impl fmt::Debug for Payload {
 		match self {
 			Self::Image(image) => write!(f, "Image({} bytes)", image.bytes().len()),
 			Self::Video(bytes) => write!(f, "Video({} bytes)", bytes.len()),
+			Self::Data(bytes) => write!(f, "Data({} bytes)", bytes.len()),
 		}
 	}
 }
@@ -254,7 +293,8 @@ impl fmt::Debug for Payload {
 pub fn payload_for(media: MediaType, bytes: Vec<u8>) -> Payload {
 	match media.image_format() {
 		Some(format) => Payload::Image(Arc::new(Image::from_bytes(format, bytes))),
-		None => Payload::Video(Arc::from(bytes)),
+		None if media.kind() == MediaKind::Video => Payload::Video(Arc::from(bytes)),
+		None => Payload::Data(Arc::from(bytes)),
 	}
 }
 
@@ -262,16 +302,38 @@ pub fn payload_for(media: MediaType, bytes: Vec<u8>) -> Payload {
 /// oversized file costs a `stat` and nothing more.
 pub fn read_media(path: &Path) -> Result<(MediaType, Payload), AttachmentError> {
 	let unreadable = |source| AttachmentError::Unreadable { path: path.to_path_buf(), source };
-	let bytes = std::fs::metadata(path).map_err(unreadable)?.len();
+	if !std::fs::metadata(path).map_err(unreadable)?.is_file() {
+		return Err(AttachmentError::NotFile { path: path.to_path_buf() });
+	}
+	let file = std::fs::File::open(path).map_err(unreadable)?;
+	let metadata = file.metadata().map_err(unreadable)?;
+	if !metadata.is_file() {
+		return Err(AttachmentError::NotFile { path: path.to_path_buf() });
+	}
+	let bytes = metadata.len();
 	if bytes == 0 {
 		return Err(AttachmentError::Empty { path: path.to_path_buf() });
 	}
 	if bytes > MAX_ATTACHMENT_BYTES {
 		return Err(AttachmentError::TooLarge { path: path.to_path_buf(), bytes });
 	}
-	let data = std::fs::read(path).map_err(unreadable)?;
-	let media = MediaType::sniff(&data)
-		.ok_or_else(|| AttachmentError::Unsupported { path: path.to_path_buf() })?;
+	// A growing file cannot outrun the metadata check or allocate without a bound.
+	let mut data = Vec::new();
+	file
+		.take(MAX_ATTACHMENT_BYTES + 1)
+		.read_to_end(&mut data)
+		.map_err(unreadable)?;
+	if data.len() as u64 > MAX_ATTACHMENT_BYTES {
+		return Err(AttachmentError::TooLarge {
+			path:  path.to_path_buf(),
+			bytes: data.len() as u64,
+		});
+	}
+	if data.is_empty() {
+		return Err(AttachmentError::Empty { path: path.to_path_buf() });
+	}
+	let media = MediaType::classify(&data)
+		.ok_or_else(|| AttachmentError::Empty { path: path.to_path_buf() })?;
 	Ok((media, payload_for(media, data)))
 }
 

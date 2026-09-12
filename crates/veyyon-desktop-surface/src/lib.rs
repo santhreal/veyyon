@@ -19,6 +19,7 @@ pub mod detail;
 pub mod diff;
 pub mod drawer;
 pub mod fixture;
+pub mod history;
 pub mod intent;
 pub mod keymap;
 pub mod layout;

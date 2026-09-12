@@ -1,7 +1,7 @@
 //! Native command entries for existing desktop surfaces and composer actions.
 
 use strum::{EnumIter, IntoEnumIterator};
-use veyyon_desktop_model::Capability;
+use veyyon_desktop_model::{Capability, SessionId, SurfaceId};
 
 use super::{PaletteItem, PaletteItemKind};
 use crate::{Command, Intent, navigation::SurfaceRoute, settings::SettingsPage};
@@ -18,6 +18,19 @@ pub enum ComposerCommand {
 }
 
 impl ComposerCommand {
+	/// The existing composer control used for both list selection and execution.
+	#[must_use]
+	pub fn surface(self, session: &SessionId) -> Option<SurfaceId> {
+		match self {
+			Self::AttachFiles => None,
+			Self::Models => Some(SurfaceId::ComposerModelSelector(session.clone())),
+			Self::Effort => Some(SurfaceId::ComposerThinkingSelector(session.clone())),
+			Self::QueueMode => Some(SurfaceId::ComposerQueueModeToggle(session.clone())),
+			Self::Steer => Some(SurfaceId::ComposerSteerButton(session.clone())),
+			Self::Queue => Some(SurfaceId::ComposerQueueButton(session.clone())),
+		}
+	}
+
 	#[must_use]
 	pub const fn name(self) -> &'static str {
 		match self {
@@ -111,6 +124,13 @@ pub fn command_items() -> Vec<PaletteItem> {
 			"/plan off",
 			Intent::SetPlanMode { on: false },
 			"Leave plan mode and take the tools back",
+			None,
+			Some(Capability::Sessions),
+		),
+		(
+			"/history",
+			Intent::FindSessions(String::new()),
+			"Search persisted sessions",
 			None,
 			Some(Capability::Sessions),
 		),

@@ -167,6 +167,7 @@ pub fn settings_surface(
 	fields: &FieldSlots,
 	back: Option<crate::navigation::SurfaceRoute>,
 	focus: Option<&FocusHandle>,
+	picker_scroll: &veyyon_gpui::ScrollHandle,
 	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
 	tokens: &TokenSet,
@@ -174,7 +175,18 @@ pub fn settings_surface(
 ) -> impl IntoElement {
 	if let Some(route) = state.route {
 		return focused::focused_surface(
-			state, list_state, appearance, fields, route, back, focus, controls, geometry, tokens, cx,
+			state,
+			list_state,
+			appearance,
+			fields,
+			route,
+			back,
+			focus,
+			picker_scroll,
+			controls,
+			geometry,
+			tokens,
+			cx,
 		);
 	}
 	let radius = tokens.radius(RadiusStep::Xl);
@@ -257,6 +269,7 @@ pub fn settings_surface(
 			.items_center()
 			.cursor_pointer()
 			.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
+				view.dispatch(Intent::PreviewAppearance(None), cx);
 				view.dispatch(
 					Intent::OpenOverlay(Box::new(crate::overlay::Overlay::Settings(Box::new(
 						SettingsState {
@@ -314,8 +327,17 @@ pub fn settings_surface(
 	content = content.children(settings_failure_row(state, tokens, cx));
 
 	// Page body rows container.
-	let body =
-		render_page_body(state, list_state, appearance, fields, controls, geometry, tokens, cx);
+	let body = render_page_body(
+		state,
+		list_state,
+		appearance,
+		fields,
+		picker_scroll,
+		controls,
+		geometry,
+		tokens,
+		cx,
+	);
 	content = content.child(body);
 	dialog.child(content)
 }

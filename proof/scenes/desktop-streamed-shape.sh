@@ -1,54 +1,48 @@
 #!/usr/bin/env bash
-# Ask a model for a markdown table and photograph the transcript while the
-# table is still arriving, then once it has settled.
+# Open a session whose reply carries a pipe table and photograph the
+# transcript drawing it.
 #
 # Records visual evidence for:
-#   1. grid-arriving   (the table drawn while the reply is still streaming)
-#   2. grid-settled    (the same table once the turn ended)
+#   1. table-empty     (the created session, holding nothing)
+#   2. table-grid      (the seeded session, holding a reply with a table)
 #
-# THIS IS THE AFTER ARM OF A PAIR. The before arm is the same driver against a
-# build of the commit before the table reader and the stream mend, so the two
-# frames differ by what the window makes of the same bytes and by nothing else:
+# Both arms use current navigation, protocol and tokens. The Before build
+# removes the table_at dispatch in the kit's Markdown block reader and draws
+# streaming_document as one unchanged selectable document, without mend or a
+# settled/arriving split. No navigation code is held back.
 #
 #   proof/docker/record-native.sh proof/scenes/desktop-streamed-shape.sh
 #
-#   SCENE_ARM=before PROOF_BASE_REF=<the commit before the reader> \
+#   SCENE_ARM=before PROOF_BASE_REF=HEAD \
+#     PROOF_NATIVE_BEFORE_BINARY=<current-chrome-build-without-reader> \
 #     proof/docker/record-native.sh proof/scenes/desktop-streamed-shape.sh
 #
-# WHAT THE ARMS DIFFER BY. The before arm reads no pipe table, so the reply is
-# drawn as the lines it is written in: `| tool | when |` with its pipes, and a
-# delimiter row of dashes among them. The after arm draws a grid -- columns set
-# against the edge the delimiter row states, the header apart under a hairline
-# rule -- and draws it while the reply is still arriving, because a block that
-# has not finished is closed at the shape it is becoming before it is drawn.
+# WHY THE REPLY IS SEEDED. The frame is a claim about how a table is set,
+# which means both arms have to draw the same table. A model asked for one
+# writes a different one each take -- a dropped delimiter, a reordered row --
+# and the pair then differs by the reply. The table is a committed fixture
+# instead (`proof/docker/seed-sessions/`), placed in the session store by
+# `proof/docker/seed-demo.sh` for this scene alone, and reached the way an
+# operator reaches yesterday's session: the rail's own search.
 #
-# WHY THE TURN IS REAL. The claim is about a reply arriving one delta at a
-# time, which a seeded transcript cannot make: a finished file has no arriving
-# block in it. So the table is asked for, from the local model, and the first
-# frame is taken while the row count is still climbing.
+# WHAT IS MEASURED. Three readings, none of which is the frame's own name. The
+# search overlay opened, the filter reached its field, and the transcript
+# column came to ink where an empty session had none. Then the host is asked,
+# on a second connection, what the session it opened actually holds: the raw
+# pipes and dashes the fixture carries. A window that drew a grid over a host
+# that had already made one is a pass on the pixels and proves nothing, so
+# both ends are read.
 #
-# WHAT IS MEASURED. Three readings, none of which is the frame's own name.
-#   * The queue's `Working` chip, so the arriving frame is a frame of a turn
-#     that is genuinely running rather than one taken after it ended.
-#   * The `[role] hairline` fill inside the transcript column. The rule under a
-#     grid's header is the only thing this reply can draw in it -- there is no
-#     fence in it and no tool card under it -- so the count separates a grid
-#     from the pipes it is written as. The after arm requires the rule; the
-#     before arm requires its absence, which is the same reading read the other
-#     way.
-#   * What the host handed the window, asked last, on a connection of its own:
-#     the reply's own text, which has to carry the raw pipes and the dashes and
-#     no fence at all. A window that drew a grid over a host that had already
-#     made one is a pass on the pixels and proves nothing about the reader, and
-#     a reply the model fenced would draw a code pane's border in the same ink
-#     the rule is counted in.
+# The `[role] hairline` fill inside the transcript column is the reading that
+# carries the frame: the rule under a grid's header is the only thing this
+# reply can draw in it, so the count separates a grid from the pipes it is
+# written as. The after arm requires the rule; the before arm requires its
+# absence, which is the same reading read the other way.
 #
-# NOT RECORDED HERE: which shapes the mend closes and what each one draws,
-# which is a sweep rather than a photograph and is asserted by
+# NOT RECORDED HERE: that a reply still arriving is drawn as the shape it is
+# becoming, which is a sweep rather than a photograph and is asserted by
 # `crates/veyyon-desktop-model/tests/streamed-markdown-is-closed-at-the-shape-it-is-becoming.rs`
-# and `crates/veyyon-desktop-surface/tests/a-reply-still-arriving-draws-the-shape-it-is-becoming.rs`;
-# and that the settled words stay selectable while the arriving block offers
-# nothing, which the same surface suite drives in a live window.
+# and `crates/veyyon-desktop-surface/tests/a-reply-still-arriving-draws-the-shape-it-is-becoming.rs`.
 #
 # Sourced by proof/docker/xsession.sh with SCENE_WINDOW, SCENE_NAME, SCENE_OUT
 # and SCENE_LIB already initialized.
@@ -58,30 +52,66 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 
 ARM="${SCENE_ARM:-after}"
 
-# ─── Where The Readings Are Taken ────────────────────────────────────────────
-# The queue is beside the transcript at this width, and collapses below it,
-# where the chip this scene reads is not on screen at all.
-if [ "${WIN_W}" -le 800 ]; then
-	abandon_take "queue-beside-transcript" \
-		"the queue is collapsed at ${WIN_W}px, so no running-turn chip is on screen to read"
+# ─── Where The Rail Puts Its Search ──────────────────────────────────────────
+# The titlebar, space row and session-tab row precede the rail. The search
+# header is a 32px row inside the rail's content inset. Both arms must use
+# this navigation layout; an older rail is not a matched Before surface.
+read -r CONTENT_INSET ROW_INSET FOOTER_PX < <(
+	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" <<'PY'
+from pathlib import Path
+import sys
+import tomllib
+
+tokens = Path(sys.argv[1])
+queue = tomllib.loads((tokens / "surface" / "queue.toml").read_text())["geometry"]
+scale = tomllib.loads((tokens / "scale.toml").read_text())
+
+print(
+    int(scale["spacing"][queue["insets"]["content_inset"]]),
+    int(scale["spacing"][queue["insets"]["row_inset"]]),
+    int(queue["footer"]["height_px"]),
+)
+PY
+)
+if [ -z "${FOOTER_PX:-}" ]; then
+	abandon_take "tokens-resolved" "could not read the queue layout tokens"
 fi
-QUEUE_CROP="${RAIL_W}x$(( WIN_H - TITLEBAR_H ))+${WIN_X}+$(( WIN_Y + TITLEBAR_H ))"
-TRANSCRIPT_CROP="${SESSION_REGION_W}x$(( WIN_H - TITLEBAR_H - COMPOSER_BAND_H ))+${SESSION_REGION_X}+$(( WIN_Y + TITLEBAR_H ))"
+if [ "${RAIL_W}" -le 0 ]; then
+	abandon_take "rail-drawn" "window width ${WIN_W}px draws no inline queue rail, so the search is unreachable"
+fi
+
+# Inside the search pill and clear of the new-session control at the row's
+# trailing edge: the pill is the row's leading child and takes every column the
+# 14px icon beside it leaves.
+SEARCH_X=$(( WIN_X + ROW_INSET + 32 ))
+SEARCH_Y=$(( WIN_Y + 3 * TITLEBAR_H + CONTENT_INSET + 16 ))
 WINDOW_CROP="${WIN_W}x${WIN_H}+${WIN_X}+${WIN_Y}"
+TRANSCRIPT_CROP="${SESSION_REGION_W}x$(( WIN_H - 3 * TITLEBAR_H - COMPOSER_BAND_H ))+${SESSION_REGION_X}+$(( WIN_Y + 3 * TITLEBAR_H ))"
+# The table expands upward from the live edge. The shared composer band is a
+# minimum; reserve three authored gutters beyond it to exclude the taller
+# empty card and its border from the table-rule measurement.
+REPLY_CROP="${SESSION_REGION_W}x$(( WIN_H - 3 * TITLEBAR_H - COMPOSER_BAND_H - 3 * GUTTER_PX ))+${SESSION_REGION_X}+$(( WIN_Y + 3 * TITLEBAR_H ))"
 PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
-# A chip is a 20px pill: measured at about a thousand pixels of tint over this
-# crop while a turn ran, and at a couple of hundred over a rail of prose with
-# no chip in it, so the floor sits between the two.
-CHIP_MIN_FILL=600
+# The overlay a palette of session rows draws, the ink a typed filter adds, and
+# the ink a page of prose brings to a column that was empty. The last is the
+# reading that carries the frame: an empty session draws its own empty state
+# and nothing else, so a settled reply is thousands of pixels away from it.
+OVERLAY_MIN_PIXELS=20000
+FILTER_MIN_PIXELS=800
+PROSE_MIN_PIXELS=3000
+PROSE_INK_MIN=120
+
 # The rule under a grid's header runs the width of the column it is drawn in.
 # A transcript of prose draws none of this ink at all, so the floor only has to
 # clear what a frame of text measures at this fuzz.
 RULE_MIN_FILL=200
-RULE_ABSENT_MAX=60
+RULE_ABSENT_MAX=0
+# The color mask excludes the ground; erosion below excludes short text-edge
+# matches. The crop ends above the composer's own border.
 
-hairline_pixels() { # <png> <crop> -> pixels of the hairline fill inside the crop
+hairline_run() { # <png> <crop> -> the longest run of hairline pixels in the crop
 	local png="$1" crop="$2" theme fill counted
 	theme="${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/themes/dark.toml"
 	fill="$(sed -n '/^\[role\]/,/^\[/ s/^hairline = "\(#[0-9a-fA-F]\{6\}\)".*/\1/p' \
@@ -89,8 +119,13 @@ hairline_pixels() { # <png> <crop> -> pixels of the hairline fill inside the cro
 	if [ -z "${fill}" ]; then
 		abandon_take "hairline-known" "no [role] hairline in ${theme}"
 	fi
+	# A rule is a run of consecutive hairline pixels; text anti-aliasing is a
+	# run of a dozen at most. Erode the mask with a 200x1 rectangle so only a
+	# run of 200 or more survives, then count what is left: a rule reads as
+	# hundreds of pixels, text edges read as zero.
 	counted="$(magick "${png}" -crop "${crop}" +repage \
 		-fuzz 6% -fill white -opaque "${fill}" -fill black +opaque white \
+		-morphology Erode 'Rectangle:200x1' \
 		-format '%[fx:round(mean*w*h)]' info: 2>/dev/null || true)"
 	case "${counted}" in
 		'' | *[!0-9]*)
@@ -101,161 +136,133 @@ hairline_pixels() { # <png> <crop> -> pixels of the hairline fill inside the cro
 	printf '%s' "${counted}"
 }
 
-# ─── The Session The Turn Runs On ────────────────────────────────────────────
-# Created and named by the preamble. The host is asked about this id at the
-# end, so the scene cannot read another session's reply back.
-TABLE_SESSION="$(python3 - <<'PY'
+# How tall the ink stands inside the transcript column, from the frame itself.
+transcript_ink_height() { # <frame> -> <height in pixels>
+	local box height
+	box="$(magick "$1" -crop "${TRANSCRIPT_CROP}" +repage -fuzz 8% -trim -format '%h' info: 2>/dev/null || true)"
+	height="${box%%[!0-9]*}"
+	echo "${height:-0}"
+}
+
+# ─── The Session The Fixture Seeded ──────────────────────────────────────────
+# Its id and its title come out of the fixture rather than being restated here,
+# so a re-seeded transcript cannot leave the scene searching for a title that
+# is no longer in the store.
+read -r TABLE_SESSION TABLE_TITLE < <(
+	python3 - <<'PY'
 import json
-import os
 from pathlib import Path
 
-print(json.loads((Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json").read_text()))
+seed = sorted(Path("/repo/proof/docker/seed-sessions").glob("*table*.jsonl"))
+if not seed:
+    seed = sorted(Path("/repo/proof/docker/seed-sessions").glob("*.jsonl"))
+    seed = [p for p in seed if "table" in p.read_text().lower()]
+if not seed:
+    raise SystemExit("no seeded table fixture")
+row = json.loads(seed[0].read_text().splitlines()[0])
+print(row["id"], row["title"])
 PY
-)"
-if [ -z "${TABLE_SESSION}" ]; then
-	abandon_take "the-session-is-named" \
-		"the preamble recorded no created session, so the reply cannot be read back from the host"
+)
+if [ -z "${TABLE_TITLE:-}" ]; then
+	abandon_take "the-fixture-names-its-session" "the seeded session fixture states no title to search for"
 fi
 
-# ─── The Model The Turn Runs On ──────────────────────────────────────────────
-# Named rather than left at whatever the composer opens on: a prompt submitted
-# with no model chosen is ended by the provider as an abort, and there is then
-# no arriving block to photograph.
-PICKER_CLOSED="${PROBE_DIR}/streamed-picker-closed.png"
-probe_frame "${PICKER_CLOSED}"
-move_px "${MODEL_CHIP_X}" "${MODEL_CHIP_Y}"
+# ─── 1. The Session Holding Nothing ──────────────────────────────────────────
+# The prelude left a session it created and a composer holding a dismissed
+# palette. The pointer is parked on the rail's search pill rather than the
+# composer: its hover fill is the one deterministic difference this frame has
+# from the palette-dismissed shot, since a palette that finished fading inside
+# the pause leaves the two byte-identical. The transcript column itself is
+# photographed before anything is opened over it.
+move_px "${SEARCH_X}" "${SEARCH_Y}"
+pause 0.5
+shot table-empty
+EMPTY_FRAME="${PROBE_DIR}/table-empty.png"
+probe_frame "${EMPTY_FRAME}"
+
+# ─── 2. The Rail's Own Search ────────────────────────────────────────────────
+# Opened from the control rather than by the `/` chord: the prelude dismisses a
+# palette before this scene starts, and a build whose dismissed overlay does not
+# hand the key context back answers no chord at all, which would type the title
+# into the composer and submit it as a prompt.
+move_px "${SEARCH_X}" "${SEARCH_Y}"
 pause 0.3
 click
 pause 0.8
-PICKER="$(screen_differs_from_frame_pixels_at "${PICKER_CLOSED}" "${WINDOW_CROP}")"
-if [ "${PICKER}" -lt 20000 ]; then
-	abandon_take "model-picker-open" \
-		"a press on the model chip changed ${PICKER} pixels of the window, under the 20000 an overlay of model rows draws, so the keys after it would land in the composer"
+OPENED="$(screen_differs_from_frame_pixels_at "${EMPTY_FRAME}" "${WINDOW_CROP}")"
+if [ "${OPENED}" -lt "${OVERLAY_MIN_PIXELS}" ]; then
+	abandon_take "the-search-opened" \
+		"a press on the rail's search at ${SEARCH_X},${SEARCH_Y} changed ${OPENED} pixels of the window, \
+under the ${OVERLAY_MIN_PIXELS} a palette of session rows draws, so the title after it would land in the composer"
 fi
-t "local/qwen2.5-1.5b"
-pause 0.6
-k "Return"
+SEARCH_OPEN="${PROBE_DIR}/table-search-open.png"
+probe_frame "${SEARCH_OPEN}"
+
+t "${TABLE_TITLE}"
 pause 0.8
+FILTERED="$(screen_differs_from_frame_pixels_at "${SEARCH_OPEN}" "${WINDOW_CROP}")"
+if [ "${FILTERED}" -lt "${FILTER_MIN_PIXELS}" ]; then
+	abandon_take "the-filter-reached-its-field" \
+		"typing the session's title changed ${FILTERED} pixels of the window, under the ${FILTER_MIN_PIXELS} \
+a line of prose inks, so the field never took it and the return would open whichever row was highlighted"
+fi
 
-# ─── A Table Long Enough To Be Caught Arriving ───────────────────────────────
-# The first two lines are dictated, because a 1.5b model asked for "a table"
-# writes a delimiter row four ways and one of them is no table at all. The row
-# count is what buys the arriving frame: twelve rows of a tool and a sentence
-# take this model several seconds, so the frame below is taken over a grid that
-# is still growing.
-TABLE_PROMPT="Reply with a markdown table and nothing else: no prose, no code fences, no backticks. \
-Do not use tools. Write the first line exactly as | tool | when | and the second line exactly as \
-|---|---| and then eight rows, each naming one unix tool and one short phrase saying when to reach for it."
-submit_prompt "${TABLE_PROMPT}"
-
-# The pointer is parked in the composer for every frame: over a queue row it
-# reveals that row's own actions, and over the transcript it would draw a
-# hovered turn's controls into the crop being counted.
+# ─── 3. The Transcript It Opened ─────────────────────────────────────────────
+k "Return"
+# The pointer goes back to the composer for the frame: a pointer left over the
+# rail reveals that row's hover actions, which ink the crop on their own.
 move_px "${COMPOSER_X}" "${COMPOSER_Y}"
-
-# A submit the host accepted is not a reply on screen. The observable is the
-# transcript column repainting under the prompt as the table arrives.
-transcript_region
-# A running turn fills the queue row's `Working` chip, and the prompt's own row
-# lands in the transcript before the first delta does, so the wait is on the
-# chip first: a frame difference taken straight after the submit is the
-# operator's own turn being drawn, not a reply.
-RUNNING=0
-for _ in $(seq 1 180); do
-	probe_frame "${PROBE_DIR}/streamed-chip.png"
-	if [ "$(working_tint_pixels "${PROBE_DIR}/streamed-chip.png" "${QUEUE_CROP}")" \
-		-ge "${CHIP_MIN_FILL}" ]; then
-		RUNNING=1
-		break
-	fi
-	sleep 1
-done
-if [ "${RUNNING}" -ne 1 ]; then
-	abandon_take "the-turn-is-running" \
-		"the queue never drew ${CHIP_MIN_FILL} pixels of working tint within 180s of the submit, so no turn is running and there is no arriving block to photograph"
-fi
-
-# ─── 1. The Grid While It Is Still Arriving ──────────────────────────────────
-# The frame is taken at the first moment two things hold together: the
-# transcript has grown well past the prompt that was already on it, so a header
-# and a row or two are drawn, and the chip still fills, so the turn is still
-# running. Polled rather than timed, because the first delta of a 1.5b model
-# arrives anywhere between one second and thirty.
-BEFORE_REPLY="${PROBE_DIR}/streamed-before-reply.png"
-probe_frame "${BEFORE_REPLY}"
-ARRIVING_CHIP=0
-ARRIVED=0
-for _ in $(seq 1 300); do
-	probe_frame "${PROBE_DIR}/streamed-arriving.png"
-	ARRIVING_CHIP="$(working_tint_pixels "${PROBE_DIR}/streamed-arriving.png" "${QUEUE_CROP}")"
-	if [ "${ARRIVING_CHIP}" -lt "${CHIP_MIN_FILL}" ]; then
-		break
-	fi
-	if [ "$(screen_differs_from_frame_per_mille "${BEFORE_REPLY}")" -ge 4 ]; then
-		ARRIVED=1
-		break
-	fi
-	sleep 0.4
-done
-if [ "${ARRIVED}" -ne 1 ]; then
-	abandon_take "the-frame-is-of-a-running-turn" \
-		"the reply never drew 4 per mille of the transcript column while the chip still filled (${ARRIVING_CHIP} pixels of working tint at the end of the wait), so no frame of an arriving block could be taken"
-fi
-shot grid-arriving
-ARRIVING_CHIP="$(working_tint_pixels "${SCENE_OUT}/${SCENE_NAME}-grid-arriving.png" "${QUEUE_CROP}")"
-if [ "${ARRIVING_CHIP}" -lt "${CHIP_MIN_FILL}" ]; then
-	abandon_take "the-frame-is-of-a-running-turn" \
-		"the queue drew ${ARRIVING_CHIP} pixels of working tint in the arriving frame, under the ${CHIP_MIN_FILL} a chip fills, so the turn ended between the reading and the frame"
-fi
-ARRIVING_RULE="$(hairline_pixels "${SCENE_OUT}/${SCENE_NAME}-grid-arriving.png" "${TRANSCRIPT_CROP}")"
-
-# ─── 2. The Same Table, Settled ──────────────────────────────────────────────
-# The turn is waited out on the chip clearing, so the settled frame is a frame
-# of a finished reply rather than one taken a fixed number of seconds in.
-SETTLED_CHIP="${CHIP_MIN_FILL}"
-for _ in $(seq 1 120); do
-	sleep 1
-	probe_frame "${PROBE_DIR}/streamed-chip.png"
-	SETTLED_CHIP="$(working_tint_pixels "${PROBE_DIR}/streamed-chip.png" "${QUEUE_CROP}")"
-	if [ "${SETTLED_CHIP}" -lt "${CHIP_MIN_FILL}" ]; then
+# The reply is below the fold: the transcript opens at the top of the session,
+# and the table is the last thing in it. `End` moves to the live edge.
+k "End"
+TABLE_DREW=0
+for _ in $(seq 1 40); do
+	pause 0.5
+	TABLE_DREW="$(screen_differs_from_frame_pixels_at "${EMPTY_FRAME}" "${TRANSCRIPT_CROP}")"
+	if [ "${TABLE_DREW}" -ge "${PROSE_MIN_PIXELS}" ]; then
 		break
 	fi
 done
-if [ "${SETTLED_CHIP}" -ge "${CHIP_MIN_FILL}" ]; then
-	abandon_take "the-turn-ended" \
-		"the queue still drew ${SETTLED_CHIP} pixels of working tint after 120s, so the reply never finished and no settled frame can be taken"
+if [ "${TABLE_DREW}" -lt "${PROSE_MIN_PIXELS}" ]; then
+	abandon_take "the-reply-reached-the-column" \
+		"the transcript column is ${TABLE_DREW} pixels from the empty session it opened over, under the \
+${PROSE_MIN_PIXELS} a page of prose inks, so the session never opened or its transcript never arrived"
 fi
-settle 2
-shot grid-settled
-SETTLED_RULE="$(hairline_pixels "${SCENE_OUT}/${SCENE_NAME}-grid-settled.png" "${TRANSCRIPT_CROP}")"
+pause 1.0
+shot table-grid
 
-echo "scene: the arriving frame drew ${ARRIVING_CHIP}px of working tint and ${ARRIVING_RULE}px of" \
-	"hairline, the settled frame ${SETTLED_RULE}px" >&2
+TABLE_INK="$(transcript_ink_height "${SCENE_OUT}/${SCENE_NAME}-table-grid.png")"
+if [ "${TABLE_INK}" -lt "${PROSE_INK_MIN}" ]; then
+	abandon_take "the-column-holds-a-turn" \
+		"the ink in the transcript column stands ${TABLE_INK}px, under the ${PROSE_INK_MIN} a settled \
+turn stands, so the frame is an empty session under another session's row"
+fi
+
+TABLE_RULE="$(hairline_run "${SCENE_OUT}/${SCENE_NAME}-table-grid.png" "${REPLY_CROP}")"
+echo "scene: the search opened ${OPENED}px, the filter drew ${FILTERED}px," \
+	"the reply drew ${TABLE_DREW}px and stands ${TABLE_INK}px tall," \
+	"with ${TABLE_RULE}px of hairline" >&2
 
 # Each arm requires the reading its own build makes. The before arm draws the
 # reply as the pipes it is written in, which inks none of this role at all; the
-# after arm draws the rule under the header, in both frames, because a block
-# still arriving is closed at the shape it is becoming.
+# after arm draws the rule under the header.
 if [ "${ARM}" = "before" ]; then
-	if [ "${SETTLED_RULE}" -gt "${RULE_ABSENT_MAX}" ]; then
+	if [ "${TABLE_RULE}" -gt "${RULE_ABSENT_MAX}" ]; then
 		abandon_take "no-grid-before-the-reader" \
-			"the settled frame drew ${SETTLED_RULE} pixels of hairline over the ${RULE_ABSENT_MAX} a transcript of prose measures, so this build already rules a grid and the pair states nothing"
+			"the frame drew ${TABLE_RULE} pixels of hairline over the ${RULE_ABSENT_MAX} a transcript of prose measures, so this build already rules a grid and the pair states nothing"
 	fi
 else
-	if [ "${SETTLED_RULE}" -lt "${RULE_MIN_FILL}" ]; then
-		abandon_take "the-settled-table-is-a-grid" \
-			"the settled frame drew ${SETTLED_RULE} pixels of hairline, under the ${RULE_MIN_FILL} the rule under a header runs, so the reply was drawn as its pipes"
-	fi
-	if [ "${ARRIVING_RULE}" -lt "${RULE_MIN_FILL}" ]; then
-		abandon_take "the-arriving-table-is-a-grid" \
-			"the arriving frame drew ${ARRIVING_RULE} pixels of hairline, under the ${RULE_MIN_FILL} the rule under a header runs, so a block still arriving was drawn as its own markers"
+	if [ "${TABLE_RULE}" -lt "${RULE_MIN_FILL}" ]; then
+		abandon_take "the-table-is-a-grid" \
+			"the frame drew ${TABLE_RULE} pixels of hairline, under the ${RULE_MIN_FILL} the rule under a header runs, so the reply was drawn as its pipes"
 	fi
 fi
 
-# ─── What The Host Handed The Window ─────────────────────────────────────────
-# Asked last, on a connection of its own, so this cannot be what put the grid
-# on screen. The pipes and the dashes are what the reply carries, and a fence
-# in it would draw a code pane's border in the ink the rule was counted in.
+# ─── 4. What The Host Handed The Window ──────────────────────────────────────
+# Asked last, on a connection of its own, so this cannot be what put the
+# transcript on screen. The pipes and the dashes are what the reply carries: a
+# host that had already made a grid would leave the window nothing to set, and
+# the frame above would prove nothing about the reader under test.
 if ! python3 - "${TABLE_SESSION}" <<'PY'
 import json
 import os
@@ -303,18 +310,14 @@ while time.monotonic() < deadline:
                     if not piped:
                         last = f"{len(text)} strings, none of them a pipe table"
                         break
-                    fenced = [held for held in piped if "```" in held]
-                    if fenced:
-                        last = "the reply fenced its table, so a code pane's border is in the count"
-                        break
                     print(f"the reply carries its pipes and dashes among {len(text)} strings")
                     raise SystemExit(0)
     except (OSError, ValueError, RuntimeError) as error:
         last = str(error)
     time.sleep(0.2)
-raise SystemExit(f"session {session} holds no unfenced pipe table ({last})")
+raise SystemExit(f"session {session} holds no pipe table ({last})")
 PY
 then
 	abandon_take "the-reply-carries-its-pipes" \
-		"the host's transcript for ${TABLE_SESSION} holds no unfenced pipe table, so the frames state nothing about the reader that sets one"
+		"the host's transcript for ${TABLE_SESSION} holds no pipe table, so the frame states nothing about the reader that sets one"
 fi

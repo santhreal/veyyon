@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use veyyon_gpui::{ClipboardItem, Context, Task, Window};
+use veyyon_gpui::{ClipboardEntry, ClipboardItem, Context, Task, Window};
 
 use super::{
 	Editor, EditorEvent, EditorMode,
@@ -104,14 +104,14 @@ impl Editor {
 		let Some(item) = cx.read_from_clipboard() else {
 			return;
 		};
-		let Some(text) = item.text() else {
-			// An image or a set of files: not the editor's to insert, but
-			// the owner may attach it (§5.4).
-			if !item.entries().is_empty() {
-				cx.emit(EditorEvent::PasteMedia(item));
-			}
+		if item.entries().iter().any(|entry| match entry {
+			ClipboardEntry::String(_) => false,
+			ClipboardEntry::Image(_) | ClipboardEntry::ExternalPaths(_) => true,
+		}) {
+			cx.emit(EditorEvent::PasteMedia(item));
 			return;
-		};
+		}
+		let Some(text) = item.text() else { return };
 		let clean = match self.mode {
 			EditorMode::SingleLine => text.replace(['\r', '\n'], ""),
 			EditorMode::Multiline { .. } => text.replace("\r\n", "\n"),

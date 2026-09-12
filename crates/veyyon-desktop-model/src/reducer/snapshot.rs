@@ -172,6 +172,14 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 			store.transcripts.insert(active_session.clone(), tree);
 			damage.insert(Damage::TranscriptFull(active_session));
 		},
+		SnapshotSection::SessionSearch(view) => {
+			store.domains.session_search = Some(view);
+			damage.insert(Damage::Titlebar);
+		},
+		SnapshotSection::SessionTranscript(view) => {
+			store.domains.session_preview = Some(view);
+			damage.insert(Damage::Titlebar);
+		},
 		SnapshotSection::Capabilities(caps) => {
 			for (cap, status) in caps {
 				store.capabilities.set(cap, status);

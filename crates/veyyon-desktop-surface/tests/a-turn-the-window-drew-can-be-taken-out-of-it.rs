@@ -220,12 +220,32 @@ fn drawn_region_centre(
 		.expect("read the boxes the frame recorded")
 }
 
-/// The centre of the box the last frame drew turn `index` in.
+/// Reveals a turn and targets its visible intersection with the transcript
+/// viewport.
 fn drawn_turn_centre(
 	session: &mut HeadlessSession<'_, ShellView>,
 	index: usize,
 ) -> Option<Point<Pixels>> {
-	drawn_region_centre(session, Region::Turn(index))
+	session
+		.update(|view, _, cx| {
+			view.state_mut().keymap.focused_turn = Some(index);
+			view.transcript_viewport().focus_turn(index);
+			cx.notify();
+		})
+		.expect("reveal the turn");
+	session.frame().expect("revealed turn frame");
+	session
+		.update(|view, _, _| {
+			let bounds = view.laid_out().drawn_bounds(Region::Turn(index))?;
+			let viewport = view.laid_out().drawn_bounds(Region::Transcript)?;
+			let left = f32::from(bounds.left()).max(f32::from(viewport.left()));
+			let right = f32::from(bounds.right()).min(f32::from(viewport.right()));
+			let top = f32::from(bounds.top()).max(f32::from(viewport.top()));
+			let bottom = f32::from(bounds.bottom()).min(f32::from(viewport.bottom()));
+			(left < right && top < bottom)
+				.then(|| Point { x: px(f32::midpoint(left, right)), y: px(f32::midpoint(top, bottom)) })
+		})
+		.expect("visible turn bounds")
 }
 
 #[test]
@@ -306,7 +326,7 @@ fn pressing_copy_takes_the_turn_the_pointer_was_over() {
 		);
 		pressed += 1;
 	}
-	assert!(pressed > 1, "more than one drawn turn was pressed, pressed {pressed}");
+	assert_eq!(pressed, turns.len(), "every turn is revealed and copied");
 }
 
 #[test]

@@ -8,39 +8,53 @@
 //! switch that restores the incoming session before the outgoing session's
 //! draft was recorded writes the wrong text under the wrong key.
 
+use std::collections::HashMap;
+
 use veyyon_desktop_model::{PersistedState, SessionId, Store};
 use veyyon_desktop_surface::ShellView;
 use veyyon_gpui::{Bounds, Context, Pixels, Point, Size, Window, px};
 
 use super::{
 	StateDir, StateTracker, StateWriter,
-	memory::{host_shape, record_geometry, record_host, record_session, session_shape},
+	memory::{
+		host_shape, record_geometry, record_host, record_session, record_space, session_shape,
+	},
 	writer::WriteFailure,
 };
 
 /// Holds what the window remembers between the drawn window and the disk.
 #[derive(Debug)]
 pub struct Keeper {
-	writer:          StateWriter,
-	tracker:         StateTracker,
+	writer:            StateWriter,
+	tracker:           StateTracker,
 	/// The session whose shape the drawn window is holding, which is what a
 	/// record writes under. `None` before the host has reported one.
-	session:         Option<SessionId>,
+	session:           Option<SessionId>,
+	space:             u64,
+	attachments:       HashMap<SessionId, Vec<veyyon_desktop_surface::Attachment>>,
+	empty_attachments: HashMap<u64, Vec<veyyon_desktop_surface::Attachment>>,
+	restored:          bool,
+	attachment_files:  super::attachment_files::AttachmentFiles,
 	/// Whether the remembered session has been resolved against the host's
 	/// list, so it is asked for once and not on every listing.
-	reopen_resolved: bool,
+	reopen_resolved:   bool,
 }
 
 impl Keeper {
 	/// A keeper over the directory the documents are in and the state the
 	/// window started from.
 	#[must_use]
-	pub const fn new(dir: StateDir, loaded: PersistedState) -> Self {
+	pub fn new(dir: StateDir, loaded: PersistedState) -> Self {
 		Self {
-			writer:          StateWriter::new(dir),
-			tracker:         StateTracker::new(loaded),
-			session:         None,
-			reopen_resolved: false,
+			space:             loaded.shell.navigation.active().id,
+			attachments:       HashMap::new(),
+			empty_attachments: HashMap::new(),
+			restored:          false,
+			attachment_files:  super::attachment_files::AttachmentFiles::default(),
+			writer:            StateWriter::new(dir),
+			tracker:           StateTracker::new(loaded),
+			session:           None,
+			reopen_resolved:   false,
 		}
 	}
 
@@ -58,30 +72,90 @@ impl Keeper {
 		now_ms: u64,
 		cx: &mut Context<ShellView>,
 	) -> Vec<WriteFailure> {
-		record_host(&mut store.persisted, &view.host_shape());
+		let drawn_host = view.host_shape();
+		let mut drawn_session = view.session_shape();
+		let mut failures = Vec::new();
+		let attachments_ready = !view.attachments_loading();
+		match self
+			.attachment_files
+			.paths(self.writer.dir().root(), &view.state().composer.attachments)
+		{
+			Ok(paths) => drawn_session.attachment_paths = paths,
+			Err(error) => failures.push(WriteFailure {
+				kind:   veyyon_desktop_model::StoreKind::Composer,
+				reason: format!("Clipboard draft attachment was not saved: {error}"),
+			}),
+		}
+		record_host(&mut store.persisted, &drawn_host);
+		store.persisted.reviews.clone_from(view.review_store());
 		record_geometry(
 			&mut store.persisted,
 			window.bounds(),
 			window.is_maximized(),
 			display_id(window, cx),
 		);
-		record_session(&mut store.persisted, self.session.as_ref(), &view.session_shape());
+		if failures.is_empty() && attachments_ready {
+			record_session(&mut store.persisted, self.session.as_ref(), &drawn_session);
+		}
+		if attachments_ready {
+			if let Some(session) = &self.session {
+				self
+					.attachments
+					.insert(session.clone(), view.state().composer.attachments.clone());
+			} else if self.restored {
+				self
+					.empty_attachments
+					.insert(self.space, view.state().composer.attachments.clone());
+			}
+		}
+		if (self.restored || !drawn_session.draft_text.is_empty())
+			&& failures.is_empty()
+			&& attachments_ready
+		{
+			record_space(
+				&mut store.persisted,
+				self.space,
+				self.session.as_ref(),
+				&drawn_host,
+				&drawn_session,
+			);
+		}
+		let host_active = store.persisted.shell.active_session.clone();
+		if !store.persisted.shell.navigation.is_initialized()
+			&& let Some(session) = &host_active
+		{
+			store.persisted.shell.navigation.opened(session.clone());
+		}
 
-		let active = store.persisted.shell.active_session.clone();
-		if active != self.session {
+		let space = store.persisted.shell.navigation.active().id;
+		let active = store.persisted.shell.navigation.active().selected.clone();
+		if active != self.session || space != self.space || !self.restored {
 			// The outgoing session's shape is already recorded above, so the
 			// incoming session's draft and layout replace it rather than
 			// landing under the session the operator just left.
-			if let Some(session) = &active {
-				let shape = session_shape(&store.persisted, Some(session));
-				view.restore_session_shape(&shape, cx);
+			if space != self.space {
+				view.restore_host_shape(&host_shape(&store.persisted));
 			}
+			let shape = session_shape(&store.persisted, active.as_ref());
+			let attachments = match &active {
+				Some(session) => self.attachments.get(session),
+				None => self.empty_attachments.get(&space),
+			};
+			view.restore_session_shape_with_attachments(&shape, attachments.map(Vec::as_slice), cx);
 			self.session = active;
+			self.space = space;
+			self.restored = true;
 		}
+		view
+			.state_mut()
+			.navigation
+			.clone_from(&store.persisted.shell.navigation);
 
-		let mut failures = self
-			.tracker
-			.sync(&store.persisted, &mut self.writer, now_ms);
+		failures.extend(
+			self
+				.tracker
+				.sync(&store.persisted, &mut self.writer, now_ms),
+		);
 		failures.extend(self.writer.flush_due(now_ms));
 		failures
 	}
@@ -90,6 +164,7 @@ impl Keeper {
 	/// the window, before a host has reported anything.
 	pub fn restore_host(&self, view: &mut ShellView) {
 		view.restore_host_shape(&host_shape(self.tracker.last()));
+		view.restore_review_store(&self.tracker.last().reviews);
 	}
 
 	/// The session to ask the host to reopen, once the host has listed what it
@@ -104,7 +179,13 @@ impl Keeper {
 		if self.reopen_resolved {
 			return None;
 		}
-		let Some(wanted) = self.tracker.last().shell.active_session.clone() else {
+		let shell = &self.tracker.last().shell;
+		let wanted = if shell.navigation.is_initialized() {
+			shell.navigation.active().selected.clone()
+		} else {
+			shell.active_session.clone()
+		};
+		let Some(wanted) = wanted else {
 			self.reopen_resolved = true;
 			return None;
 		};

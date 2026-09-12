@@ -14,6 +14,7 @@ pub mod actions;
 pub mod attachments;
 pub mod footer;
 pub mod media;
+pub mod preview;
 pub mod queued;
 pub mod state;
 pub mod turn;

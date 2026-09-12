@@ -12,6 +12,7 @@ use veyyon_desktop_model::{InputModality, QueueMode, SessionMode};
 
 use super::{
 	media::{AttachmentError, MAX_PROMPT_ATTACHMENT_BYTES, MediaKind, MediaType, Payload},
+	preview::{AttachmentPreview, MAX_ATTACHMENTS},
 	turn::ModelChoice,
 };
 
@@ -108,13 +109,24 @@ pub enum AttachmentSource {
 }
 
 /// One image or clip the next prompt carries, bytes and all.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub struct Attachment {
 	/// The chip's label: the file name, or `Pasted image N.png`.
 	pub name:    String,
 	pub source:  AttachmentSource,
 	pub media:   MediaType,
 	pub payload: Payload,
+	pub preview: AttachmentPreview,
+}
+
+impl PartialEq for Attachment {
+	fn eq(&self, other: &Self) -> bool {
+		// Preview pixels are derived and may have independent allocations.
+		self.name == other.name
+			&& self.source == other.source
+			&& self.media == other.media
+			&& self.payload == other.payload
+	}
 }
 
 impl Attachment {
@@ -124,7 +136,8 @@ impl Attachment {
 		let name = path
 			.file_name()
 			.map_or_else(|| path.display().to_string(), |name| name.to_string_lossy().into_owned());
-		Self { name, source: AttachmentSource::Path(path), media, payload }
+		let preview = AttachmentPreview::new(media, &payload);
+		Self { name, source: AttachmentSource::Path(path), media, payload, preview }
 	}
 
 	/// The `ordinal`th image pasted from the clipboard.
@@ -132,6 +145,7 @@ impl Attachment {
 	pub fn from_clipboard(ordinal: u32, media: MediaType, payload: Payload) -> Self {
 		let extension = media.as_str().rsplit('/').next().unwrap_or("bin");
 		Self {
+			preview: AttachmentPreview::new(media, &payload),
 			name: format!("Pasted image {ordinal}.{extension}"),
 			source: AttachmentSource::Clipboard(ordinal),
 			media,
@@ -227,6 +241,9 @@ impl ComposerState {
 
 	/// Checks `attachment` against the per-prompt ceiling without adding it.
 	pub fn admit(&self, attachment: &Attachment) -> Result<(), AttachmentError> {
+		if self.attachments.len() >= MAX_ATTACHMENTS {
+			return Err(AttachmentError::TrayFull { name: attachment.name.clone() });
+		}
 		let attached = self.attached_bytes();
 		let bytes = attachment.bytes();
 		if attached.saturating_add(bytes) > MAX_PROMPT_ATTACHMENT_BYTES {
@@ -261,14 +278,65 @@ impl ComposerState {
 		}
 	}
 
-	/// Whether the active model is known to reject `attachment`: the
-	/// catalog lists the model without its modality.
+	/// The visible reason an attachment cannot be dispatched.
+	#[must_use]
+	pub fn rejection_reason(&self, attachment: &Attachment) -> Option<String> {
+		let Some(modality) = attachment.kind().modality() else {
+			return Some(format!(
+				"{} attachments are not supported by the host; attach UTF-8 text instead",
+				attachment.media.spelling()
+			));
+		};
+		if let AttachmentPreview::Unavailable(reason) = &attachment.preview {
+			return Some(reason.clone());
+		}
+		let model = self.model.as_ref();
+		match model.and_then(|model| model.accepts(modality)) {
+			Some(true) => None,
+			Some(false) => Some(format!(
+				"{} does not accept {} attachments",
+				model
+					.and_then(ModelControl::label)
+					.unwrap_or("Selected model"),
+				attachment.kind().noun()
+			)),
+			None => {
+				Some(format!("Selected model's {} input support is unknown", attachment.kind().noun()))
+			},
+		}
+	}
+
+	/// First refusal in tray order, for the pre-dispatch submission check.
+	#[must_use]
+	pub fn submission_rejection(&self) -> Option<String> {
+		self.submission_rejection_for(&self.attachments)
+	}
+
+	/// Validates the actual send payload even when it differs from the visible
+	/// tray.
+	#[must_use]
+	pub fn submission_rejection_for(&self, attachments: &[Attachment]) -> Option<String> {
+		if attachments.len() > MAX_ATTACHMENTS {
+			return Some(format!("Cannot send more than {MAX_ATTACHMENTS} attachments"));
+		}
+		let total = attachments
+			.iter()
+			.fold(0_u64, |sum, item| sum.saturating_add(item.bytes()));
+		if total > MAX_PROMPT_ATTACHMENT_BYTES {
+			return Some("Cannot send attachments: total size exceeds the prompt limit".into());
+		}
+		attachments.iter().find_map(|attachment| {
+			if attachment.payload.is_empty() {
+				return Some(format!("Cannot send {}: it is empty", attachment.name));
+			}
+			self
+				.rejection_reason(attachment)
+				.map(|reason| format!("Cannot send {}: {reason}", attachment.name))
+		})
+	}
+
 	#[must_use]
 	pub fn unsupported(&self, attachment: &Attachment) -> bool {
-		self
-			.model
-			.as_ref()
-			.and_then(|model| model.accepts(attachment.kind().modality()))
-			== Some(false)
+		self.rejection_reason(attachment).is_some()
 	}
 }

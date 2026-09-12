@@ -177,6 +177,8 @@ describe("a transcript arrives behind the header that says whose it is", () => {
 			RetryConnection: "RetryConnection",
 			Shutdown: "Shutdown",
 			ListSessions: "ListSessions",
+			SearchSessions: { SearchSessions: { query: "" } },
+			PreviewSessionTranscript: { PreviewSessionTranscript: { session: beta } },
 			LoadTranscript: { LoadTranscript: { session: beta, before: null } },
 			OpenSession: { OpenSession: { session: alpha } },
 			CreateSession: { CreateSession: { title: "Swept" } },

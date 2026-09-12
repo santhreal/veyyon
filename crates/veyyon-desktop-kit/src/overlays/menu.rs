@@ -5,6 +5,7 @@ use std::sync::Arc;
 use veyyon_gpui::{App, ClickEvent, ElementId, IntoElement, RenderOnce, Window, div, prelude::*};
 
 use crate::{
+	Picker, PickerEvent, SelectionState,
 	icons::{Icon, IconSize},
 	state::{MenuItem, MenuRowTone},
 	token_set::{ColorRole, RadiusStep, SpacingStep, TextRamp, TokenSet},
@@ -62,8 +63,14 @@ impl RenderOnce for Menu {
 		// A menu whose rows carry icons keeps the gutter for the ones that do
 		// not, so every label starts on the same column (§8.25).
 		let icon_gutter = self.items.iter().any(|item| item.icon.is_some());
+		let selected = self
+			.items
+			.iter()
+			.position(|item| item.is_highlighted)
+			.unwrap_or(usize::MAX);
+		let picker = Picker::new(&self.items, selected);
 
-		for (idx, item) in self.items.into_iter().enumerate() {
+		for (idx, item) in self.items.iter().enumerate() {
 			if item.is_separator {
 				let sep = div()
 					.w_full()
@@ -103,16 +110,21 @@ impl RenderOnce for Menu {
 				left = left.child(div().w(IconSize::Size14.pixels()));
 			}
 
-			left = left.child(div().text_size(font_size).text_color(fg).child(item.label));
+			left = left.child(
+				div()
+					.text_size(font_size)
+					.text_color(fg)
+					.child(item.label.clone()),
+			);
 
 			row = row.child(left);
 
-			if let Some(shortcut) = item.shortcut {
+			if let Some(shortcut) = &item.shortcut {
 				row = row.child(
 					div()
 						.text_size(tokens.font_size(TextRamp::Small))
 						.text_color(tokens.color(ColorRole::Muted))
-						.child(shortcut),
+						.child(shortcut.clone()),
 				);
 			}
 
@@ -123,11 +135,15 @@ impl RenderOnce for Menu {
 			// Where the keyboard stands is the selected fill, not a mark beside
 			// the label: a walk moves it row to row the way a selection moves
 			// everywhere else in the window, and the icon slot stays the row's.
-			if item.is_highlighted && !item.is_disabled {
+			if picker.selection(idx, |row| !row.is_disabled && !row.is_separator)
+				== SelectionState::Selected
+			{
 				row = row.bg(tokens.row_selected());
 			}
-			if !item.is_disabled
-				&& let Some(handler) = &self.on_select
+			if matches!(
+				picker.pointer(idx, true, |row| !row.is_disabled && !row.is_separator),
+				PickerEvent::Confirm(_)
+			) && let Some(handler) = &self.on_select
 			{
 				let h = Arc::clone(handler);
 				row = row

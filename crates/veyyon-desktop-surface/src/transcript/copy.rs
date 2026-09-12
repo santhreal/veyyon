@@ -142,17 +142,20 @@ pub fn turn_menu_items(menu: &TurnMenu) -> Vec<(MenuItem, Intent)> {
 
 /// The layer drawn over the window while a turn menu is open: a scrim that
 /// takes the dismissing click, and the menu floated at the pointer.
-pub fn turn_menu_layer(menu: &TurnMenu, cx: &Context<ShellView>) -> impl IntoElement {
-	let (items, intents): (Vec<MenuItem>, Vec<Intent>) = turn_menu_items(menu).into_iter().unzip();
+pub fn turn_menu_layer(
+	menu: &TurnMenu,
+	selected: usize,
+	focus: &veyyon_gpui::FocusHandle,
+	cx: &Context<ShellView>,
+) -> impl IntoElement {
+	let items = turn_menu_items(menu)
+		.into_iter()
+		.enumerate()
+		.map(|(index, (item, _))| item.highlighted(index == selected));
 	let entity = cx.entity();
-	let rows = Menu::new(items).on_select(move |index, _event, _window, app| {
-		let intent = intents.get(index).cloned();
-		let () = entity.update(app, |view, cx| {
-			view.close_turn_menu();
-			if let Some(intent) = intent {
-				view.dispatch(intent, cx);
-			}
-			cx.notify();
+	let rows = Menu::new(items).on_select(move |index, _event, window, app| {
+		entity.update(app, |view, cx| {
+			view.menu_picker_pointer(crate::menu::MenuSource::Turn, index, window, cx);
 		});
 	});
 
@@ -162,17 +165,15 @@ pub fn turn_menu_layer(menu: &TurnMenu, cx: &Context<ShellView>) -> impl IntoEle
 		.inset_0()
 		.on_mouse_down(
 			MouseButton::Left,
-			cx.listener(|view, _event, _window, cx| {
-				view.close_turn_menu();
-				cx.notify();
+			cx.listener(|view, _event, window, cx| {
+				view.dismiss_picker_menu(window, cx);
 			}),
 		)
 		.on_mouse_down(
 			MouseButton::Right,
-			cx.listener(|view, _event, _window, cx| {
-				view.close_turn_menu();
-				cx.notify();
+			cx.listener(|view, _event, window, cx| {
+				view.dismiss_picker_menu(window, cx);
 			}),
 		)
-		.child(Popover::new(menu.origin, AnchorCorner::TopLeft, rows))
+		.child(Popover::new(menu.origin, AnchorCorner::TopLeft, rows).focus(focus))
 }

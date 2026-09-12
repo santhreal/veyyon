@@ -52,17 +52,20 @@ pub fn signal_menu_items(menu: &SignalMenu) -> Vec<(MenuItem, Intent)> {
 
 /// The layer drawn over the window while a signal menu is open: a scrim that
 /// takes the dismissing click, and the menu floated at the press.
-pub fn signal_menu_layer(menu: &SignalMenu, cx: &Context<ShellView>) -> impl IntoElement {
-	let (items, intents): (Vec<MenuItem>, Vec<Intent>) = signal_menu_items(menu).into_iter().unzip();
+pub fn signal_menu_layer(
+	menu: &SignalMenu,
+	selected: usize,
+	focus: &veyyon_gpui::FocusHandle,
+	cx: &Context<ShellView>,
+) -> impl IntoElement {
+	let items = signal_menu_items(menu)
+		.into_iter()
+		.enumerate()
+		.map(|(index, (item, _))| item.highlighted(index == selected));
 	let entity = cx.entity();
-	let rows = Menu::new(items).on_select(move |index, _event, _window, app| {
-		let intent = intents.get(index).cloned();
-		let () = entity.update(app, |view, cx| {
-			view.close_signal_menu();
-			if let Some(intent) = intent {
-				view.dispatch(intent, cx);
-			}
-			cx.notify();
+	let rows = Menu::new(items).on_select(move |index, _event, window, app| {
+		entity.update(app, |view, cx| {
+			view.menu_picker_pointer(crate::menu::MenuSource::Signal, index, window, cx);
 		});
 	});
 
@@ -72,17 +75,15 @@ pub fn signal_menu_layer(menu: &SignalMenu, cx: &Context<ShellView>) -> impl Int
 		.inset_0()
 		.on_mouse_down(
 			MouseButton::Left,
-			cx.listener(|view, _event, _window, cx| {
-				view.close_signal_menu();
-				cx.notify();
+			cx.listener(|view, _event, window, cx| {
+				view.dismiss_picker_menu(window, cx);
 			}),
 		)
 		.on_mouse_down(
 			MouseButton::Right,
-			cx.listener(|view, _event, _window, cx| {
-				view.close_signal_menu();
-				cx.notify();
+			cx.listener(|view, _event, window, cx| {
+				view.dismiss_picker_menu(window, cx);
 			}),
 		)
-		.child(Popover::new(menu.origin, AnchorCorner::TopLeft, rows))
+		.child(Popover::new(menu.origin, AnchorCorner::TopLeft, rows).focus(focus))
 }

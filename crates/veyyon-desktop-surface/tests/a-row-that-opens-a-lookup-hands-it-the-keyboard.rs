@@ -206,7 +206,7 @@ fn a_row_that_opens_a_lookup_hands_it_the_keyboard() {
 						// typed reports each keystroke's lookup; a mode that
 						// ranks the rows it already holds reports nothing.
 						let expected: Vec<Intent> = (1..=TYPED.len())
-							.map(|end| mode.query_intent(TYPED[..end].to_owned()))
+							.map(|end| palette.query_intent(TYPED[..end].to_owned()))
 							.filter(|intent| !intent.is_local())
 							.collect();
 						assert_eq!(
@@ -246,11 +246,9 @@ fn a_row_that_opens_a_lookup_hands_it_the_keyboard() {
 							.and_then(Overlay::as_palette)
 							.expect("the lookup stays open on an empty field");
 						assert!(palette.query().is_empty(), "{case}: the field emptied");
-						// A mode that fetches its rows per query has none for
-						// the empty one, and no answer on the way to replace
-						// what is drawn; a mode ranking rows it already holds
-						// draws all of them again.
-						if mode.query_intent(String::new()).is_local() {
+						// Host-backed searches discard the previous answer when
+						// their query changes; local lists retain their source rows.
+						if palette.query_intent(String::new()).is_local() {
 							assert!(
 								!palette.items().is_empty(),
 								"{case}: rows the window owns survive an emptied field"

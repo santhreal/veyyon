@@ -162,6 +162,12 @@ pub fn project_panel(
 		active_tab,
 		diff,
 		diff_status,
+		review_repository: domains.changes.get().and_then(|changes| {
+			changes
+				.repository
+				.as_ref()
+				.map(|repository| (repository.clone(), changes.scope))
+		}),
 		file,
 		tree,
 		diff_mode: previous.diff_mode,

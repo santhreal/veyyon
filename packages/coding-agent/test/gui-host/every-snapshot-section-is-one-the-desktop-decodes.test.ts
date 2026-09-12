@@ -86,6 +86,8 @@ const CORPUS = [
 			],
 		},
 	},
+	{ SessionSearch: { query: "needle", sessions: [] } },
+	{ SessionTranscript: { session: "history-1", transcript: { revision: 6, value: [] } } },
 	{
 		Capabilities: [
 			["Sessions", "Available"],

@@ -20,9 +20,9 @@ use veyyon_desktop_model::{
 	ContentMatch, ContentMatchesView, ContextBreakdownView, ContextCategory, ExportView,
 	FileContentView, FileKind, FileNode, FileTreeView, HostEvent, InputModality, KeybindingView,
 	McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView, ProcessView, ProviderView,
-	SearchResultsView, SessionId, SettingEntry, SettingKind, SettingsView, SnapshotSection,
-	SnapshotSectionKind, Store, TerminalStatus, TerminalView, ThemeView, ThemesView, UsageTotals,
-	UsageView, reduce,
+	SearchResultsView, SessionId, SessionSearchView, SessionTranscriptView, SettingEntry,
+	SettingKind, SettingsView, SnapshotSection, SnapshotSectionKind, Store, TerminalStatus,
+	TerminalView, ThemeView, ThemesView, UsageTotals, UsageView, Versioned, reduce,
 };
 
 fn changed(path: &str, status: ChangeStatus) -> ChangedFile {
@@ -266,6 +266,14 @@ fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 		| SnapshotSectionKind::ProcessLogs
 		// Held prompts are per-session state in `Store::queued`, not a domain view.
 		| SnapshotSectionKind::QueuedPrompts => return None,
+		SnapshotSectionKind::SessionSearch => ["first", "second"].map(|query| {
+			SnapshotSection::SessionSearch(SessionSearchView { query: query.into(), sessions: Vec::new() })
+		}),
+		SnapshotSectionKind::SessionTranscript => ["first", "second"].map(|session| {
+			SnapshotSection::SessionTranscript(SessionTranscriptView {
+				session: session.into(), transcript: Versioned { revision: 1, value: Vec::new() },
+			})
+		}),
 		SnapshotSectionKind::Settings => [
 			settings(&[("theme", "light".into())]),
 			settings(&[("theme", "dark".into()), ("argot.enabled", true.into())]),

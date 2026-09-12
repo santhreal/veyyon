@@ -10,7 +10,7 @@ fn test_all_actions_mapped_to_capabilities() {
 
 	// Pinned by exact count: a new action or a pruned one turns this red until
 	// its capability mapping below is decided.
-	assert_eq!(all_actions.len(), 70, "Expected 70 actions in HostActionKind");
+	assert_eq!(all_actions.len(), 72, "Expected 72 actions in HostActionKind");
 	assert_eq!(all_capabilities.len(), 30, "Expected 30 capabilities in Capability");
 
 	// Sweep every action kind and ensure total mapping to a valid capability.

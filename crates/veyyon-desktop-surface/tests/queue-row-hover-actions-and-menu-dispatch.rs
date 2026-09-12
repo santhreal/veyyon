@@ -275,33 +275,36 @@ fn disabled_card_menu_items_suppress_dispatch_on_click() {
 }
 
 #[test]
-fn keyboard_selection_moves_seamlessly_across_cards_deferred_and_parked_lines() {
-	let mut state = make_large_queue_state();
-	state.current_id = 3;
-	state.title = "Live 3".into();
-
-	// Select session in active card section
-	Intent::SelectSession(3).apply(&mut state);
-	assert_eq!(state.current_id, 3);
-
-	// Select session in deferred section
-	Intent::SelectSession(46).apply(&mut state);
-	assert_eq!(state.current_id, 46);
-	assert_eq!(state.title, "Deferred 46");
-
-	// Select session in parked section
-	Intent::SelectSession(71).apply(&mut state);
-	assert_eq!(state.current_id, 71);
-	assert_eq!(state.title, "Parked 71");
-
-	// Move queue selection with keyboard across partition lines
-	Intent::MoveQueueSelection(1).apply(&mut state);
-	assert_eq!(state.current_id, 72);
-	assert_eq!(state.title, "Parked 72");
-
-	Intent::MoveQueueSelection(-1).apply(&mut state);
-	assert_eq!(state.current_id, 71);
-	assert_eq!(state.title, "Parked 71");
+fn selection_requests_cross_partition_boundaries_without_switching_before_acknowledgement() {
+	let state = make_large_queue_state();
+	for (_, rows) in &state.sections {
+		let target = rows.first().expect("large fixture includes every section");
+		let mut requested = state.clone();
+		let mut intents = veyyon_desktop_surface::intent::Intents::new();
+		intents.dispatch(Intent::SelectSession(target.id), &mut requested);
+		assert_eq!(intents.pending(), &[Intent::SelectSession(target.id)]);
+		assert_eq!(requested.current_id, state.current_id);
+		assert_eq!(requested.title, state.title);
+	}
+	let rows: Vec<_> = state
+		.sections
+		.iter()
+		.flat_map(|(section, rows)| rows.iter().map(move |row| (*section, row)))
+		.collect();
+	for boundary in rows.windows(2).filter(|pair| pair[0].0 != pair[1].0) {
+		for (from, to, step) in
+			[(boundary[0].1, boundary[1].1, 1), (boundary[1].1, boundary[0].1, -1)]
+		{
+			let mut acknowledged = state.clone();
+			acknowledged.current_id = from.id;
+			acknowledged.title.clone_from(&from.title);
+			let mut intents = veyyon_desktop_surface::intent::Intents::new();
+			intents.dispatch(Intent::MoveQueueSelection(step), &mut acknowledged);
+			assert_eq!(intents.pending(), &[Intent::SelectSession(to.id)]);
+			assert_eq!(acknowledged.current_id, from.id);
+			assert_eq!(acknowledged.title, from.title);
+		}
+	}
 }
 
 #[test]

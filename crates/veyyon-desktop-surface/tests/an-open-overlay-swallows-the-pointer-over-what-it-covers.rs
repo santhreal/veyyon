@@ -50,10 +50,16 @@ fn every_overlay() -> Vec<(&'static str, Overlay)> {
 	let all = vec![
 		("palette", Overlay::Palette(PaletteState::commands())),
 		("settings", Overlay::Settings(Box::new(SettingsState::general(SettingsView::new())))),
+		(
+			"history",
+			Overlay::History(Box::new(veyyon_desktop_surface::history::HistoryState::loading(
+				"sessions/history.jsonl".into(),
+			))),
+		),
 	];
 	for (_name, overlay) in &all {
 		match overlay {
-			Overlay::Palette(_) | Overlay::Settings(_) => {},
+			Overlay::Palette(_) | Overlay::Settings(_) | Overlay::History(_) => {},
 		}
 	}
 	all

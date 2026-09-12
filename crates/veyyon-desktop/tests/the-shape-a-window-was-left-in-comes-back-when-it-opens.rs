@@ -83,7 +83,9 @@ fn every_field_a_window_holds_is_written_and_read_back() {
 	let host_back = support::memory::host_shape(&loaded);
 	let session_back = support::memory::session_shape(&loaded, Some(&SessionId::from(FIRST)));
 
-	let HostShape { queue_collapsed, collapsed_sections, parked_page, appearance } = &recorded.0;
+	let HostShape { navigation, queue_collapsed, collapsed_sections, parked_page, appearance } =
+		&recorded.0;
+	assert_eq!(&host_back.navigation, navigation);
 	assert!(*queue_collapsed, "the rail was collapsed by the chord");
 	assert_eq!(*parked_page, 2, "the operator paged in one more page of parked rows");
 	assert_eq!(appearance, "light", "the appearance the operator selected is the one recorded");
@@ -226,6 +228,11 @@ fn the_session_the_operator_left_keeps_the_draft_they_left_in_it() {
 				keeper.sync(view, &mut store, window, 0, cx);
 				view.set_composed("the first session's draft", cx);
 				store.persisted.shell.active_session = Some(SessionId::from(SECOND));
+				store
+					.persisted
+					.shell
+					.navigation
+					.opened(SessionId::from(SECOND));
 				keeper.sync(view, &mut store, window, 1, cx);
 			})
 			.expect("one sync records the session left and opens the session entered");

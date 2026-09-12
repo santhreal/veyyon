@@ -1,12 +1,6 @@
-//! The tray of images and clips the next prompt carries (§5.4), and the
-//! target the composer becomes while files are dragged over it.
-//!
-//! One card per attachment: a square thumbnail — the image itself, or a film
-//! glyph on the inset ground for a clip — beside the file's name and its type
-//! and size, with a remove control that appears on hover. A card whose media
-//! the active model is not known to take says so in the accent, in the place
-//! the size would go, rather than hiding the attachment or the fact.
+//! Bounded attachment previews, metadata, removal and submission refusals.
 
+use strum::IntoEnumIterator;
 use veyyon_desktop_kit::{
 	ColorRole, Icon, IconButton, IconButtonVariant, IconName, IconSize, SpacingStep, StrokeStep,
 	TextRamp, TokenSet,
@@ -14,12 +8,14 @@ use veyyon_desktop_kit::{
 use veyyon_desktop_tokens::ComposerSurfaceTokens;
 use veyyon_gpui::{
 	AnyElement, ClickEvent, Context, Div, ElementId, FontWeight, InteractiveElement, IntoElement,
-	ObjectFit, ParentElement, Stateful, Styled, StyledImage, div, img, px,
+	ObjectFit, ParentElement, Stateful, StatefulInteractiveElement, Styled, StyledImage, div, img,
+	px,
 };
 
 use super::{
 	TurnPhase,
-	media::{MediaKind, MediaType, Payload, human_bytes},
+	media::{MediaKind, MediaType},
+	preview::AttachmentPreview,
 	state::{Attachment, ComposerState},
 };
 use crate::{Intent, ShellView};
@@ -32,10 +28,11 @@ pub fn attachment_tray(
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> Stateful<Div> {
-	let model = composer.model.as_ref().and_then(|model| model.label());
 	div()
 		.id("composer-attachments")
 		.w_full()
+		.max_h(px(geometry.attachment_card_height_px * 2.0) + tokens.spacing(SpacingStep::S2))
+		.overflow_y_scroll()
 		.flex()
 		.flex_row()
 		.flex_wrap()
@@ -47,8 +44,8 @@ pub fn attachment_tray(
 				.iter()
 				.enumerate()
 				.map(|(index, attachment)| {
-					let unsupported = composer.unsupported(attachment).then_some(model).flatten();
-					attachment_card(index, attachment, unsupported, geometry, tokens, cx)
+					let refusal = composer.rejection_reason(attachment);
+					attachment_card(index, attachment, refusal.as_deref(), geometry, tokens, cx)
 				}),
 		)
 		.children(matches!(turn, TurnPhase::Running { .. }).then(|| {
@@ -84,7 +81,7 @@ fn attachment_card(
 	let caption = match unsupported_by {
 		Some(model) => caption_row(
 			Some(IconName::Warning),
-			format!("Not accepted by {model}"),
+			format!("{} · {model}", size_caption(attachment)),
 			ColorRole::Accent,
 			tokens,
 		),
@@ -94,6 +91,12 @@ fn attachment_card(
 	div()
 		.id(ElementId::NamedInteger("composer-attachment".into(), index as u64))
 		.group("composer-attachment")
+		.aria_label(format!(
+			"{} · {}{}",
+			attachment.name,
+			size_caption(attachment),
+			unsupported_by.map_or_else(String::new, |reason| format!(" · {reason}"))
+		))
 		.relative()
 		.h(px(geometry.attachment_card_height_px))
 		.max_w(px(geometry.attachment_card_max_width_px))
@@ -158,14 +161,14 @@ fn thumbnail(
 	tokens: &TokenSet,
 ) -> AnyElement {
 	let side = px(geometry.attachment_card_height_px);
-	match &attachment.payload {
-		Payload::Image(image) => img(image.clone())
+	match &attachment.preview {
+		AttachmentPreview::Image(image) => img(image.clone())
 			.w(side)
 			.h(side)
 			.flex_none()
 			.object_fit(ObjectFit::Cover)
 			.into_any_element(),
-		Payload::Video(_) => div()
+		AttachmentPreview::Video => div()
 			.w(side)
 			.h(side)
 			.flex_none()
@@ -178,6 +181,20 @@ fn thumbnail(
 					.size(IconSize::Size20)
 					.color(tokens.color(ColorRole::Secondary)),
 			)
+			.into_any_element(),
+		AttachmentPreview::Text(text)
+		| AttachmentPreview::Binary(text)
+		| AttachmentPreview::Unavailable(text) => div()
+			.w(side)
+			.h(side)
+			.flex_none()
+			.overflow_hidden()
+			.p(tokens.spacing(SpacingStep::S1))
+			.bg(tokens.color(ColorRole::Inset))
+			.text_size(tokens.font_size(TextRamp::Micro))
+			.line_height(tokens.line_height(TextRamp::Micro))
+			.text_color(tokens.color(ColorRole::Secondary))
+			.child(text.clone())
 			.into_any_element(),
 	}
 }
@@ -224,9 +241,10 @@ pub fn attachment_notice(
 		)
 }
 
-/// `PNG · 820 KB`: the type in the operator's spelling, then the size.
+/// The classified type and exact encoded byte count, including on refused
+/// cards.
 fn size_caption(attachment: &Attachment) -> String {
-	format!("{} · {}", attachment.media.spelling(), human_bytes(attachment.bytes()))
+	format!("{} · {} B", attachment.media.spelling(), attachment.bytes())
 }
 
 /// The card's second line, optionally led by a 12px glyph in the same ink.
@@ -287,7 +305,7 @@ pub fn drop_target(geometry: &ComposerSurfaceTokens, tokens: &TokenSet) -> State
 				.line_height(tokens.line_height(TextRamp::Body))
 				.font_weight(FontWeight::MEDIUM)
 				.text_color(tokens.color(ColorRole::Foreground))
-				.child("Drop images or video"),
+				.child("Drop images, video or UTF-8 text"),
 		)
 		.child(
 			div()
@@ -301,12 +319,15 @@ pub fn drop_target(geometry: &ComposerSurfaceTokens, tokens: &TokenSet) -> State
 /// `PNG, JPEG, GIF, WebP · MP4, WebM, MOV`, from the accepted set itself.
 fn accepted_line() -> String {
 	let spell = |kind: MediaKind| {
-		MediaType::ALL
-			.iter()
+		MediaType::iter()
 			.filter(|media| media.kind() == kind)
 			.map(|media| media.spelling())
 			.collect::<Vec<_>>()
 			.join(", ")
 	};
-	format!("{} · {}", spell(MediaKind::Image), spell(MediaKind::Video))
+	format!(
+		"{} · {} · UTF-8 text · other files: preview only",
+		spell(MediaKind::Image),
+		spell(MediaKind::Video)
+	)
 }

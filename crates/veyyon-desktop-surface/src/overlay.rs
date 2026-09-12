@@ -14,6 +14,8 @@ pub enum Overlay {
 	/// Settings overlay for host configuration, themes, and diagnostics.
 	/// Boxed: the settings state dwarfs the palette's and rides on the heap.
 	Settings(Box<SettingsState>),
+	/// Persisted session preview without changing the live session.
+	History(Box<crate::history::HistoryState>),
 }
 
 impl Overlay {
@@ -22,6 +24,7 @@ impl Overlay {
 		match self {
 			Self::Palette(state) => state.route(),
 			Self::Settings(state) => state.route,
+			Self::History(_) => None,
 		}
 	}
 
@@ -42,7 +45,7 @@ impl Overlay {
 	pub const fn as_palette(&self) -> Option<&PaletteState> {
 		match self {
 			Self::Palette(state) => Some(state),
-			Self::Settings(_) => None,
+			Self::Settings(_) | Self::History(_) => None,
 		}
 	}
 
@@ -51,7 +54,7 @@ impl Overlay {
 	pub const fn as_palette_mut(&mut self) -> Option<&mut PaletteState> {
 		match self {
 			Self::Palette(state) => Some(state),
-			Self::Settings(_) => None,
+			Self::Settings(_) | Self::History(_) => None,
 		}
 	}
 
@@ -60,7 +63,7 @@ impl Overlay {
 	pub const fn as_settings(&self) -> Option<&SettingsState> {
 		match self {
 			Self::Settings(state) => Some(state),
-			Self::Palette(_) => None,
+			Self::Palette(_) | Self::History(_) => None,
 		}
 	}
 
@@ -69,7 +72,7 @@ impl Overlay {
 	pub const fn as_settings_mut(&mut self) -> Option<&mut SettingsState> {
 		match self {
 			Self::Settings(state) => Some(state),
-			Self::Palette(_) => None,
+			Self::Palette(_) | Self::History(_) => None,
 		}
 	}
 }

@@ -241,6 +241,7 @@ pub(super) fn spanning_cells(
 pub fn unified_columns(
 	file_index: usize,
 	file: &DiffFile,
+	review_enabled: bool,
 	walk: &mut RowWalk,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
@@ -278,6 +279,20 @@ pub fn unified_columns(
 			_ => continue,
 		};
 		let (pinned, code) = line_cells(&line, geometry, tokens);
+		let side = if matches!(row, DiffRow::Removed { .. }) {
+			veyyon_desktop_model::review::ReviewSide::Old
+		} else {
+			veyyon_desktop_model::review::ReviewSide::New
+		};
+		let pinned = super::diff_rows::review_line_cell(
+			pinned,
+			review_enabled,
+			&file.path,
+			side,
+			line.number,
+			tokens,
+			cx,
+		);
 		pane.push(pinned, code);
 	}
 	pane

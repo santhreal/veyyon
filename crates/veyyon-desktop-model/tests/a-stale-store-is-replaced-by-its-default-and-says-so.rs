@@ -23,7 +23,9 @@ use strum::IntoEnumIterator as _;
 use veyyon_desktop_model::{
 	ComposerStore, DiffMode, PanelsStore, PersistedState, PersistenceError, QueueStore, ShellStore,
 	StoreKind, TranscriptAnchor, TranscriptStore, VersionedStore as _, WindowStore,
-	composer::QueueMode, connection::SessionId,
+	composer::QueueMode,
+	connection::SessionId,
+	review::{ReviewAnchor, ReviewLine, ReviewSide},
 };
 
 /// The two sessions a per-session document is written for.
@@ -48,12 +50,26 @@ fn populated() -> PersistedState {
 		queue_collapsed: true,
 		appearance:      Some("light".to_string()),
 		active_session:  Some(SessionId::from(FIRST)),
+		navigation:      veyyon_desktop_model::persistence::NavigationStore::default(),
 	};
 	state.queue = QueueStore {
 		version:            QueueStore::CURRENT_VERSION,
 		collapsed_sections: BTreeSet::from(["deferred".to_string(), "parked".to_string()]),
 		parked_page:        3,
 	};
+	let anchor = ReviewAnchor::capture(
+		"/repo",
+		"src/app.rs",
+		veyyon_desktop_model::ChangeScope::WorkingTree,
+		ReviewSide::New,
+		1,
+		&[ReviewLine { number: 1, text: "source" }],
+	)
+	.expect("source line");
+	state
+		.reviews
+		.create(anchor, "Review comment")
+		.expect("thread");
 	for session in [FIRST, SECOND] {
 		state.panels.insert(SessionId::from(session), PanelsStore {
 			version:             PanelsStore::CURRENT_VERSION,
@@ -100,6 +116,7 @@ fn holds_populated(state: &PersistedState, kind: StoreKind) -> bool {
 		StoreKind::Panels => state.panels == want.panels,
 		StoreKind::Transcript => state.transcripts == want.transcripts,
 		StoreKind::Composer => state.composer == want.composer,
+		StoreKind::Reviews => state.reviews == want.reviews,
 	}
 }
 
@@ -113,6 +130,7 @@ fn holds_default(state: &PersistedState, kind: StoreKind) -> bool {
 		StoreKind::Panels => state.panels.is_empty(),
 		StoreKind::Transcript => state.transcripts.is_empty(),
 		StoreKind::Composer => state.composer.is_empty(),
+		StoreKind::Reviews => state.reviews == fresh.reviews,
 	}
 }
 
@@ -346,7 +364,7 @@ fn every_store_the_table_names_is_in_the_sweep_and_has_its_own_file() {
 		.filter(|kind| kind.fsync())
 		.map(|kind| kind.file_name())
 		.collect();
-	assert_eq!(fsynced, vec!["composer.json"], "§8.10 fsyncs draft text and nothing else");
+	assert_eq!(fsynced, vec!["composer.json", "reviews.json"], "authored text is fsynced");
 }
 
 /// Whether a per-session store holds an entry for `session`.
@@ -356,6 +374,6 @@ fn session_present(state: &PersistedState, kind: StoreKind, session: &str) -> bo
 		StoreKind::Panels => state.panels.contains_key(&id),
 		StoreKind::Transcript => state.transcripts.contains_key(&id),
 		StoreKind::Composer => state.composer.contains_key(&id),
-		StoreKind::Window | StoreKind::Shell | StoreKind::Queue => false,
+		StoreKind::Window | StoreKind::Shell | StoreKind::Queue | StoreKind::Reviews => false,
 	}
 }

@@ -215,6 +215,10 @@ impl LaidOut {
 pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 	let ShellState {
 		title,
+		navigation,
+		navigation_pending,
+		session_tabs,
+		close_tab_prompt,
 		sections,
 		transcript,
 		// The entry ids beside the turns draw nothing: they are read when the
@@ -255,6 +259,10 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 	// reach the composer's footer and the titlebar's controls at once, and
 	// the keymap state reaches every focused control.
 	if current_id != &last.current_id
+		|| navigation != &last.navigation
+		|| navigation_pending != &last.navigation_pending
+		|| session_tabs != &last.session_tabs
+		|| close_tab_prompt != &last.close_tab_prompt
 		|| drawer_open != &last.drawer_open
 		|| panel.is_empty() != last.panel.is_empty()
 		|| cards.is_empty() != last.cards.is_empty()

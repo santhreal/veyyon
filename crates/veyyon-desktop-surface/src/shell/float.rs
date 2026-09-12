@@ -97,8 +97,37 @@ pub(super) fn overlay_layer(
 	geometry.max_height_px = geometry.max_height_px.min(max_available_height);
 	let back = view.back_route();
 	let content = match retained {
-		Overlay::Palette(state) => {
-			palette_surface(state, editor, back, &view.keymap, &geometry, tokens, cx)
+		Overlay::Palette(state) => palette_surface(
+			state,
+			editor,
+			back,
+			&view.keymap,
+			&geometry,
+			tokens,
+			|item| view.palette_item_enabled(item),
+			cx,
+		)
+		.into_any_element(),
+		Overlay::History(state) => {
+			let width = surface
+				.settings
+				.group_width_px
+				.min(f32::from(window.viewport_size().width - margin * 2.0));
+			div()
+				.track_focus(&dest_focus)
+				.w(px(width))
+				.h(px(surface.settings.sheet_height_px.min(max_available_height)))
+				.bg(tokens.color(veyyon_desktop_kit::ColorRole::Float))
+				.child(crate::history::history_surface(
+					state,
+					&surface.transcript,
+					view.installed.user_turn_ground,
+					tokens,
+					&view.installed.motion,
+					view.laid_out(),
+					width,
+					cx,
+				))
 				.into_any_element()
 		},
 		Overlay::Settings(state) => {
@@ -119,6 +148,7 @@ pub(super) fn overlay_layer(
 					&fields,
 					back,
 					Some(&dest_focus),
+					&view.palette_input.scroll,
 					&view.state.controls,
 					&surface.settings,
 					tokens,

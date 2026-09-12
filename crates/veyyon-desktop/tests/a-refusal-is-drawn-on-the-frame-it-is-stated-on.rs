@@ -1,16 +1,6 @@
-//! WHY THIS SUITE EXISTS:
-//! A field that refuses what was typed states the refusal in the attention
-//! strip and sends nothing. Sending nothing reached no `dispatch`, and nothing
-//! else marked the window dirty, so the strip was held in the state and drawn
-//! on whatever later frame some unrelated interaction happened to request.
-//! `desktop-settings-keybinding` caught it as an invalid chord that changed
-//! zero pixels in the strip band. Two defects stood behind that one. The
-//! refusal and the host's connection commentary wrote one field, so the strip
-//! drew a refusal for two frames and the next heartbeat — which reports a
-//! healthy socket and therefore no notice — erased it 67 milliseconds later.
-//! And the chord was read for validity by `KeyChord::parse`, which reads a
-//! chord for a chip to draw, so `ctrl-` was taken as a hyphen with a modifier
-//! and written to the keymap as a modifier with no key.
+//! WHY: Field rejection did not request a frame; host heartbeats erased local
+//! refusals; display-only chord parsing accepted a modifier without a key.
+//! The native keybinding scene reproduced an unchanged attention strip.
 //!
 //! THE CLASS THIS CLOSES:
 //! A line the attention strip is asked to carry and does not draw, from either
@@ -67,6 +57,7 @@ enum KeyShape {
 	Setting,
 	/// [`FieldKey::SessionRename`].
 	SessionRename,
+	SpaceRename,
 	/// [`FieldKey::Keybinding`].
 	Keybinding,
 	/// [`FieldKey::TaskPrompt`].
@@ -84,6 +75,7 @@ const fn key_shape(key: &FieldKey) -> KeyShape {
 		FieldKey::AuthSecret => KeyShape::AuthSecret,
 		FieldKey::Setting(_) => KeyShape::Setting,
 		FieldKey::SessionRename(_) => KeyShape::SessionRename,
+		FieldKey::SpaceRename(_) => KeyShape::SpaceRename,
 		FieldKey::Keybinding(_) => KeyShape::Keybinding,
 		FieldKey::TaskPrompt => KeyShape::TaskPrompt,
 		FieldKey::ProcessCommand => KeyShape::ProcessCommand,
@@ -112,6 +104,8 @@ struct Case {
 
 /// Every field that refuses, each seeded in a shell that draws it.
 fn cases() -> Vec<Case> {
+	let mut spaces = fixture::populated();
+	spaces.navigation.create("Research");
 	vec![
 		Case {
 			key:   FieldKey::AuthSecret,
@@ -133,6 +127,20 @@ fn cases() -> Vec<Case> {
 			text:  "",
 			says:  "A session name cannot be empty",
 			takes: "A name the operator typed",
+		},
+		Case {
+			key:   FieldKey::SpaceRename(1),
+			state: spaces.clone(),
+			text:  "",
+			says:  "Choose a nonempty, unique space name",
+			takes: "Reading",
+		},
+		Case {
+			key:   FieldKey::SpaceRename(1),
+			state: spaces,
+			text:  "Research",
+			says:  "Choose a nonempty, unique space name",
+			takes: "Reading",
 		},
 		Case {
 			key:   FieldKey::Keybinding(BOUND_ACTION.to_owned()),

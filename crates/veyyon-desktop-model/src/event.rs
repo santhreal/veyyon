@@ -72,6 +72,8 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Sessions",
 	"ActiveSession",
 	"Transcript",
+	"SessionSearch",
+	"SessionTranscript",
 	"Capabilities",
 	"Interactions",
 	"Settings",
@@ -115,6 +117,10 @@ pub enum SnapshotSection {
 	ActiveSession(Versioned<SessionHeaderView>),
 	/// Active session transcript entries.
 	Transcript(Versioned<Vec<TranscriptEntry>>),
+	/// Cross-repository persisted session search, independent of the live queue.
+	SessionSearch(crate::domain::SessionSearchView),
+	/// Read-only history transcript; never changes the active session.
+	SessionTranscript(crate::domain::SessionTranscriptView),
 	/// Protocol capabilities and status flags.
 	Capabilities(Vec<(Capability, CapabilityStatus)>),
 	/// Every decision a session is waiting on. Sent whenever one is raised or
@@ -180,6 +186,8 @@ impl SnapshotSection {
 			Self::Sessions(..) => "Sessions",
 			Self::ActiveSession(..) => "ActiveSession",
 			Self::Transcript(..) => "Transcript",
+			Self::SessionSearch(..) => "SessionSearch",
+			Self::SessionTranscript(..) => "SessionTranscript",
 			Self::Capabilities(..) => "Capabilities",
 			Self::Interactions { .. } => "Interactions",
 			Self::Settings(..) => "Settings",

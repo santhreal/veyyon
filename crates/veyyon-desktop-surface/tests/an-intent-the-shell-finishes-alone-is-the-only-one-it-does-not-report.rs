@@ -39,7 +39,9 @@ use veyyon_desktop_surface::{Intent, IntentDiscriminants};
 /// turns. The two appearance intents ARE here: which bundled theme the window
 /// draws in is the window's own, written to its own store, and `SelectTheme`
 /// beside them is the host's agent theme and is reported.
-const LOCAL: [IntentDiscriminants; 24] = [
+// Queue keyboard movement is reported as SelectSession and waits for host
+// acknowledgement.
+const LOCAL: [IntentDiscriminants; 23] = [
 	IntentDiscriminants::CopyText,
 	IntentDiscriminants::PreviewAppearance,
 	IntentDiscriminants::SelectAppearance,
@@ -52,7 +54,6 @@ const LOCAL: [IntentDiscriminants; 24] = [
 	IntentDiscriminants::PaletteMove,
 	IntentDiscriminants::PaletteQuery,
 	IntentDiscriminants::FilterQueue,
-	IntentDiscriminants::MoveQueueSelection,
 	IntentDiscriminants::ScrollTranscript,
 	IntentDiscriminants::FindInTranscript,
 	IntentDiscriminants::StepTurn,

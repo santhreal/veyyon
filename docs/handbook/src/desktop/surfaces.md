@@ -80,6 +80,33 @@ stays up with no window and the dock icon opens one again, in the placement,
 appearance and session the closed window left; everywhere else a process with
 no window has no way in, so it ends with the window.
 
+## Tabs and spaces
+
+The session-tab row is below the space row. Select a tab to open its session;
+drag a tab to reorder it. A session already open in the space selects its
+existing tab rather than creating a duplicate.
+
+**New space** creates a separate tab layout. Edit the space name and press
+`Enter` to rename it. Switching spaces restores the selected session, queue
+layout and workspace panels. Space order remains stable when selection changes.
+
+Unsent text and attachments remain associated with their session. Closing a tab
+with an unsent draft requires confirmation. **Cancel** retains the tab;
+**Close tab** closes it without deleting the saved draft. Closing and reopening
+the application restores the selected space, tabs and draft attachments.
+
+## History
+
+Use `/history` or **Open session** to search stored sessions. Results include
+content matches and are grouped by day and repository. Selecting a result opens
+a read-only transcript without switching the active session or replacing its
+draft.
+
+**Sessions** returns to search. **Close** or `Escape` dismisses the preview.
+**Resume session** opens the selected session for editing. Resuming a session
+already open in the current space selects its existing tab and restores its
+draft. Loading failures display **Retry loading** instead of a resume action.
+
 ## Queue
 
 The sidebar is a session queue. Its header contains session search and the
@@ -239,6 +266,13 @@ following. Switching sessions restores their saved scroll anchors.
 The find bar displays the selected matching block and total matching blocks.
 `Enter` advances to the next matching block; `Escape` closes the bar.
 
+### Markdown during arrival
+
+Pipe tables display as aligned columns with a header rule. Inline code, emphasis
+and strong emphasis display while a reply or thought is still arriving, including
+an opener received before its first content character. Completed literal
+punctuation remains visible. Display repair does not change the stored reply.
+
 ### Selecting text
 
 Drag across the transcript to select the text it drew. A drag crosses
@@ -396,14 +430,21 @@ Unrelated and duplicate acknowledgments do not consume content.
 
 ### Attachment tray
 
-What the next prompt carries is listed above the input, one card per
-attachment, wrapping onto as many rows as the cards need. A card is a square
-thumbnail — the image, or a film glyph on the inset ground for a clip — beside
-the file's name over a caption stating its type and size, inside a hairline box
-capped at `card_max_width_px` in
-`crates/veyyon-desktop-tokens/tokens/surface/composer.toml`. A name or a
-caption longer than the room left inside that cap ends in an ellipsis. A remove
-control appears in the card's upper-right corner under the pointer.
+Attachments display as cards above the footer. The tray wraps within two rows
+and scrolls vertically when more cards are present, up to eight attachments.
+Each card displays a preview, filename, classified type and byte count. Images
+use thumbnails; video uses a film glyph; UTF-8 text previews contain at most
+256 characters; binary previews contain the first 16 bytes in hexadecimal.
+An undecodable preview displays its error.
+
+Filenames and captions truncate inside the card width from
+`crates/veyyon-desktop-tokens/tokens/surface/composer.toml`. Hover a card to
+display its remove control. Removing a card preserves the remaining attachments
+and draft text.
+
+Use `/attach`, drop files onto the composer, or paste copied files or images.
+A file paste creates attachments rather than inserting filesystem paths into
+the draft. Preview generation does not change the stored attachment bytes.
 
 A card whose media the active model is not listed as taking draws
 `Not accepted by <model>` in the accent where the size goes, and keeps the
@@ -473,6 +514,11 @@ availability.
 `Escape` or a click outside closes the picker and returns focus to the composer.
 Opening, filtering, and dismissing it leaves the draft unchanged.
 
+Command, model, history-search and theme lists use the same keyboard selection
+rules. Unavailable rows are skipped and cannot be confirmed by pointer or
+`Enter`. Theme hover previews do not replace keyboard selection or commit the
+theme; dismissal restores the active appearance.
+
 The GUI host and SDK sessions load profile models from `models.yml`, with
 `models.yaml` as the fallback and migration from legacy `models.json`.
 Configured models are available before the first model selection.
@@ -484,6 +530,7 @@ Type `/` at the beginning of the composer to open the anchored command palette.
 | Command | Action |
 | --- | --- |
 | `/attach` | Select attachments |
+| `/history` | Search stored sessions and open a read-only preview |
 | `/model` | Open the model picker |
 | `/effort` | Select an available thinking level |
 | `/queue-mode` | Select steer or queue mode |
@@ -660,6 +707,22 @@ Click the panel to focus it for the keyboard.
 
 The tab walk wraps at both ends.
 
+### Local diff reviews
+
+Click a numbered line in a repository-backed diff to start a review thread.
+The review list is available for the repository and for each file. Threads
+support replies, resolution and reopening. Panel keyboard shortcuts remain
+available while the review list or editor has focus.
+
+Threads are stored locally by repository, working-tree or staged scope, file,
+side and line context. A refreshed diff moves an anchor when its context still
+identifies the line. Missing or ambiguous context marks the thread orphaned;
+restoring similar source later does not silently reattach it. Orphaned unresolved
+threads remain in the unresolved count.
+
+Review threads survive application restarts. They do not block applying changes
+or submitting prompts, and they are not posted to the repository hosting service.
+
 ## Detail popovers
 
 Three controls draw less than the session states about them. A secondary press
@@ -746,6 +809,18 @@ writable by the recorder container, including on NFS mounts.
 
 ```sh
 proof/docker/record-native.sh proof/scenes/desktop-composer.sh
+```
+
+The session-workflow scene submits a real prompt, pastes a file, reorders tabs,
+opens history, switches spaces and restores the draft after application restart.
+It requires a reachable model endpoint. The diff-review scene creates and
+replies to a thread, resolves and reopens it, restarts the application, and
+refreshes changed source to check relocated and orphaned anchors.
+
+```sh
+PROOF_LLM_BASE_URL=<provider-url> \
+  proof/docker/record-native.sh proof/scenes/desktop-session-workflows.sh
+proof/docker/record-native.sh proof/scenes/desktop-diff-review.sh
 ```
 
 `record-native.sh` runs the window rather than a terminal: it mounts the
@@ -1021,22 +1096,26 @@ SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
   proof/docker/record-native.sh proof/scenes/desktop-transcript-prose.sh
 ```
 
-Use `proof/scenes/desktop-streamed-shape.sh` to ask the local model for a
-markdown table and photograph the transcript twice: while the table is still
-arriving, and once the turn has ended. The turn is real, because a seeded
-transcript holds no arriving block. It reads the queue's `Working` chip, so the
-arriving frame is a frame of a running turn, counts the `[role] hairline` fill
-inside the transcript column, which the rule under a grid's header is the only
-thing this reply draws in it, and then asks the host on a second connection
-whether the reply carries the raw pipes and dashes with no fence around them.
-The after arm requires the rule in both frames; the before arm requires its
-absence, which is the same reading read the other way:
+Use `proof/scenes/desktop-streamed-shape.sh` to open a persisted pipe table through
+native session search and inspect its rendered grid. The scene checks the header
+rule and the original Markdown returned by the host.
+
+Use `proof/scenes/streamed-shape-diagnostic.sh` with a reachable model endpoint to
+record a live numbered reply. The scene requires transcript changes while the
+session reports Working and checks the persisted numbered bold items.
 
 ```sh
 proof/docker/record-native.sh proof/scenes/desktop-streamed-shape.sh
-SCENE_ARM=before PROOF_BASE_REF=<commit before the reader> \
+PROOF_LLM_BASE_URL=<provider-url> \
+  proof/docker/record-native.sh proof/scenes/streamed-shape-diagnostic.sh
+SCENE_ARM=before PROOF_BASE_REF=HEAD \
+  PROOF_NATIVE_BEFORE_BINARY=<matched-before-binary> \
   proof/docker/record-native.sh proof/scenes/desktop-streamed-shape.sh
 ```
+
+For a native Before arm, supply a separate executable with the same navigation,
+tokens and protocol. `PROOF_BASE_REF` alone does not replace the native executable.
+Inspect live recordings in motion; a completed reply does not show arrival.
 
 Use `proof/scenes/desktop-attachment.sh` to paste an image into the composer,
 send the prompt that carries it, and read back what the host received. The

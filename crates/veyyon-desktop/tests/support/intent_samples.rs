@@ -25,6 +25,19 @@ pub fn every_sample_intent() -> Vec<Intent> {
 pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent> {
 	match disc {
 		IntentDiscriminants::SelectSession => vec![Intent::SelectSession(1)],
+		IntentDiscriminants::OpenSession => vec![Intent::OpenSession("s2".into())],
+		IntentDiscriminants::CloseSessionTab => vec![Intent::CloseSessionTab("s1".into())],
+		IntentDiscriminants::ReorderSessionTab => {
+			vec![Intent::ReorderSessionTab { session: "s1".into(), target: "s2".into() }]
+		},
+		IntentDiscriminants::CreateSpace => vec![Intent::CreateSpace("Research".into())],
+		IntentDiscriminants::RenameSpace => {
+			vec![Intent::RenameSpace { id: 1, name: "Work".into() }]
+		},
+		IntentDiscriminants::SwitchSpace => vec![Intent::SwitchSpace(2)],
+		IntentDiscriminants::FindSessions => vec![Intent::FindSessions("needle".into())],
+		IntentDiscriminants::PreviewSession => vec![Intent::PreviewSession("s1".into())],
+		IntentDiscriminants::ResumeHistory => vec![Intent::ResumeHistory("s1".into())],
 		// Every tab, because each one re-states a different domain.
 		IntentDiscriminants::SelectTab => vec![
 			Intent::SelectTab(PanelTab::Diff),

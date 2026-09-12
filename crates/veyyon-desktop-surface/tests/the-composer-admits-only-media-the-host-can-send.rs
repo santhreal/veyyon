@@ -5,9 +5,9 @@
 //! drift, and a send could leave the tray behind for the next prompt.
 //!
 //! CLASS CLOSED: an admission decision that disagrees with what the host can
-//! send. The accepted set is swept from `MediaType::ALL` at run time, so a type
-//! added there fails here until its magic bytes and its wire spelling are
-//! recorded; a container that merely looks like one (an `M4A` in an `ISO BMFF`
+//! send. The media enum is swept at run time, so each variant requires its
+//! magic bytes and wire spelling in the exhaustive fixture match. A container
+//! that merely looks like one (an `M4A` in an `ISO BMFF`
 //! box, a `Matroska` that is not `WebM`, an `SVG`) is refused by its bytes.
 //!
 //! The suite defends:
@@ -32,6 +32,7 @@ use std::{
 	sync::Arc,
 };
 
+use strum::IntoEnumIterator;
 use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_scene::{
 	headless::{RenderOptions, headless_context},
@@ -51,22 +52,29 @@ use veyyon_test_scratch::scratch_dir;
 /// The leading bytes of one accepted container per `MediaType` member.
 fn magic_for(media: MediaType) -> Vec<u8> {
 	match media {
-		MediaType::Png => b"\x89PNG\r\n\x1a\nrest".to_vec(),
+		MediaType::Png => {
+			let mut bytes = std::io::Cursor::new(Vec::new());
+			image::DynamicImage::new_rgb8(1, 1)
+				.write_to(&mut bytes, image::ImageFormat::Png)
+				.expect("PNG fixture");
+			bytes.into_inner()
+		},
 		MediaType::Jpeg => b"\xff\xd8\xff\xe0rest".to_vec(),
 		MediaType::Gif => b"GIF89arest".to_vec(),
 		MediaType::Webp => b"RIFF\x10\x00\x00\x00WEBPrest".to_vec(),
 		MediaType::Mp4 => b"\x00\x00\x00\x18ftypisomrest".to_vec(),
 		MediaType::Webm => b"\x1a\x45\xdf\xa3....doctype:webm".to_vec(),
 		MediaType::QuickTime => b"\x00\x00\x00\x14ftypqt  rest".to_vec(),
+		MediaType::Text => "Text with λ\n".as_bytes().to_vec(),
+		MediaType::Pdf => b"%PDF-1.7".to_vec(),
+		MediaType::Binary => vec![0, 255, 17],
 	}
 }
 
 #[test]
 fn every_accepted_type_is_sniffed_from_its_bytes_and_spelled_for_the_wire() {
-	// One fixture per member, no more: a type added to `ALL` without its magic
-	// bytes recorded fails the sweep, and so does a fixture nobody classifies.
-	for media in MediaType::ALL {
-		assert_eq!(MediaType::sniff(&magic_for(media)), Some(media), "{media:?} not sniffed");
+	for media in MediaType::iter() {
+		assert_eq!(MediaType::classify(&magic_for(media)), Some(media), "{media:?} not classified");
 		let is_image = media.as_str().starts_with("image/");
 		assert_eq!(
 			media.kind() == MediaKind::Image,
@@ -88,8 +96,11 @@ fn every_accepted_type_is_sniffed_from_its_bytes_and_spelled_for_the_wire() {
 
 #[test]
 fn a_container_that_is_not_an_accepted_medium_is_refused_by_its_bytes() {
-	let cases: [(&str, Vec<u8>); 5] = [
+	let cases: [(&str, Vec<u8>); 8] = [
 		("an M4A is audio in a video's box", b"\x00\x00\x00\x18ftypM4A rest".to_vec()),
+		("an AVIF is not a video", b"\x00\x00\x00\x18ftypavifrest".to_vec()),
+		("an HEIC is not a supported image or video", b"\x00\x00\x00\x18ftypheicrest".to_vec()),
+		("an unknown brand is not assumed to be MP4", b"\x00\x00\x00\x18ftypxxxxrest".to_vec()),
 		("a Matroska that is not WebM", b"\x1a\x45\xdf\xa3....doctype:matroska".to_vec()),
 		("an SVG is markup, not a raster", b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>".to_vec()),
 		("random bytes", vec![0xde, 0xad, 0xbe, 0xef]),

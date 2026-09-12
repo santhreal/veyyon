@@ -12,6 +12,8 @@ pub mod file_view;
 pub mod mono_pane;
 pub mod pane_scroll;
 pub mod pane_window;
+pub mod review;
+pub mod review_controls;
 pub mod tabs;
 pub mod tree_view;
 pub mod usage_view;
@@ -48,6 +50,7 @@ use crate::{
 /// diff-mode toggle are listed in the keybindings page and do nothing.
 pub fn right_panel(
 	panel: &PanelContent,
+	reviews: &veyyon_desktop_model::review::ReviewsStore,
 	width: f32,
 	panes: &PaneScrolls,
 	geometry: &PanelsSurfaceTokens,
@@ -104,12 +107,14 @@ pub fn right_panel(
 			.into_any_element();
 	}
 
+	let review_counts = review_controls::ReviewCounts::of(panel, reviews);
 	let active_content = match panel.active_tab {
 		PanelTab::Diff => diff_view::diff_view(
 			&panel.diff,
 			panel.diff_status,
 			panel.withheld,
 			panel.diff_mode,
+			&review_counts,
 			panes,
 			geometry,
 			tokens,
@@ -123,14 +128,45 @@ pub fn right_panel(
 		PanelTab::Tree => tree_view(&panel.tree, geometry, tokens, cx).into_any_element(),
 		PanelTab::Usage => usage_view(panel.usage.as_ref(), geometry, tokens).into_any_element(),
 	};
+
+	// The container tracks the focus, so a press anywhere inside it hands the
+	// keyboard to the panel and its context reaches the focus path (§5.14).
+	with_panel_keys(
+		laid_out
+			.tracking(|index| (index == 0).then_some(Region::PanelChrome))
+			.id("right-panel")
+			.track_focus(focus),
+		panel,
+		cx,
+	)
+	.flex()
+	.flex_col()
+	.h_full()
+	.w(px(width))
+	.flex_shrink_0()
+	.bg(tokens.color(ColorRole::Rail))
+	// The leading edge is the container's: the split handle's line when
+	// the panel is docked, the sheet's frame when it overlays (§5.6).
+	.overflow_hidden()
+	.child(tab_strip(panel, geometry, tokens, cx))
+	.children(failure_row)
+	.child(active_content)
+	.into_any_element()
+}
+
+/// Keeps panel navigation available in descendants, including local review
+/// editors.
+pub(crate) fn with_panel_keys<E: InteractiveElement>(
+	element: E,
+	panel: &PanelContent,
+	cx: &Context<ShellView>,
+) -> E {
 	let tab_count = panel.tabs.len();
 	let current_tab_idx = panel
 		.tabs
 		.iter()
-		.position(|&t| t == panel.active_tab)
+		.position(|&tab| tab == panel.active_tab)
 		.unwrap_or(0);
-	// The chord moves by position and dispatches the tab it lands on; an empty
-	// tab list leaves the active one, which the apply then ignores.
 	let prev_tab = panel
 		.tabs
 		.get(if current_tab_idx == 0 {
@@ -149,19 +185,12 @@ pub fn right_panel(
 		})
 		.copied()
 		.unwrap_or(panel.active_tab);
-
 	let next_diff_mode = match panel.diff_mode {
 		veyyon_desktop_model::DiffMode::Unified => veyyon_desktop_model::DiffMode::Split,
 		veyyon_desktop_model::DiffMode::Split => veyyon_desktop_model::DiffMode::Unified,
 	};
-
-	// The container tracks the focus, so a press anywhere inside it hands the
-	// keyboard to the panel and its context reaches the focus path (§5.14).
-	laid_out
-		.tracking(|index| (index == 0).then_some(Region::PanelChrome))
-		.id("right-panel")
+	element
 		.key_context("Panel")
-		.track_focus(focus)
 		.on_action(cx.listener(move |view, _: &PreviousTab, _window, cx| {
 			view.dispatch(Intent::SelectTab(prev_tab), cx);
 		}))
@@ -171,17 +200,4 @@ pub fn right_panel(
 		.on_action(cx.listener(move |view, _: &ToggleDiffMode, _window, cx| {
 			view.dispatch(Intent::SetDiffMode(next_diff_mode), cx);
 		}))
-		.flex()
-		.flex_col()
-		.h_full()
-		.w(px(width))
-		.flex_shrink_0()
-		.bg(tokens.color(ColorRole::Rail))
-		// The leading edge is the container's: the split handle's line when
-		// the panel is docked, the sheet's frame when it overlays (§5.6).
-		.overflow_hidden()
-		.child(tab_strip(panel, geometry, tokens, cx))
-		.children(failure_row)
-		.child(active_content)
-		.into_any_element()
 }

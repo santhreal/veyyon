@@ -11,13 +11,13 @@
 //! 1. A name of any length: the sweep forces names shorter than the box, near
 //!    its edge and far past it, and asserts every drawn run ends inside the
 //!    card that holds it.
-//! 2. Both payload kinds, since a clip draws a glyph square where an image
-//!    draws its own pixels and the two size their card the same way.
+//! 2. Image and video thumbnails, which use the same bounded card layout.
 //! 3. Both captions, since the refusal line is longer than `PNG · 8 B` and is
 //!    the wider of the two to fit, and it carries a glyph the size caption does
 //!    not.
-//! 4. A tray that wraps: several cards at once, each asserted against the
-//!    composer's own inner edge, so a card cannot escape the card it sits in.
+//! 4. The admitted tray at normal and minimum window sizes: wheel scrolling
+//!    exposes every attachment, each remove click preserves the other payloads,
+//!    and visible card text stays inside the composer.
 //! 5. The box being closed: the border is read from the layout tree with its
 //!    per-side widths, so a card drawing three sides fails here.
 //! 6. The authored ceiling: the maximum comes from the token file rather than a
@@ -41,9 +41,12 @@ use veyyon_desktop_scene::{
 };
 use veyyon_desktop_surface::{
 	Attachment, ModelChoice, ShellState,
-	composer::{MediaType, ModelControl, ModelOption, TurnPhase, payload_for},
+	composer::{
+		MediaType, ModelControl, ModelOption, TurnPhase, payload_for, preview::MAX_ATTACHMENTS,
+	},
 	fixture,
 };
+use veyyon_gpui::{point, px};
 
 #[path = "support/composer-layout/mod.rs"]
 mod composer_layout;
@@ -55,10 +58,14 @@ use composer_layout::render_session;
 const WIDTH: u32 = 1180;
 const HEIGHT: u32 = 800;
 
-/// A single-signature PNG: the card measures its name and its size caption,
-/// never its pixels, so the smallest well-formed image is the honest fixture.
+/// A decodable image so the supported-caption arm exercises an accepted
+/// preview.
 fn image_bytes() -> Vec<u8> {
-	b"\x89PNG\r\n\x1a\n".to_vec()
+	let mut encoded = std::io::Cursor::new(Vec::new());
+	image::DynamicImage::new_rgb8(1, 1)
+		.write_to(&mut encoded, image::ImageFormat::Png)
+		.expect("PNG fixture");
+	encoded.into_inner()
 }
 
 fn attachment_named(name: &str, media: MediaType) -> Attachment {
@@ -225,50 +232,127 @@ fn every_card_closes_the_box_it_draws() {
 }
 
 #[test]
-fn a_wrapping_tray_keeps_every_card_inside_the_composer() {
-	// Distinct paths, since two attachments of one path are one attachment.
-	let attachments: Vec<Attachment> = swept_names()
-		.into_iter()
-		.chain(swept_names())
-		.enumerate()
-		.map(|(index, name)| attachment_named(&format!("{index}-{name}"), MediaType::Png))
-		.collect();
-	let count = attachments.len();
-	let captured = tray(attachments, false);
-	let drawn = cards(&captured);
-	assert_eq!(drawn.len(), count, "the tray drew {} of {count} cards", drawn.len());
+fn a_wrapping_tray_keeps_every_admitted_card_reachable_and_removable() {
+	let tokens = load_bundled_tokens().expect("bundled tokens load");
+	let shell = &tokens.surface.shell;
+	for (width, height) in [
+		(WIDTH, HEIGHT),
+		(shell.window_min_width_px as u32, HEIGHT),
+		(shell.window_min_width_px as u32, shell.window_min_height_px as u32),
+	] {
+		let mut state = fixture::populated();
+		state.turn = TurnPhase::Idle;
+		state.cards.clear();
+		state.keymap.panel_collapsed = true;
+		state.keymap.queue_collapsed = true;
+		let mut remaining: Vec<_> = (0..MAX_ATTACHMENTS)
+			.map(|index| {
+				attachment_named(
+					&format!("{index}-a-screenshot-of-the-window-taken-while-the-drawer-was-open.png"),
+					MediaType::Png,
+				)
+			})
+			.collect();
+		render_session(state, Some("a draft the attachments go with"), width, height, |session| {
+			session
+				.update(|view, _, cx| {
+					for attachment in &remaining {
+						view.attach(Ok(attachment.clone()), cx);
+					}
+					assert_eq!(view.state().composer.attachments, remaining);
+				})
+				.expect("the production admission path accepts the bounded tray");
+			let initial = session.frame().expect("the bounded tray draws");
+			assert!(
+				cards(&initial).len() < MAX_ATTACHMENTS,
+				"the fixture must overflow the two-row viewport at {width}x{height}"
+			);
 
-	// The composer's own float: the widest bordered box the frame drew below
-	// the transcript, which is the card the tray sits inside.
+			for _ in 0..MAX_ATTACHMENTS {
+				let before = session.frame().expect("the current tray draws");
+				let first = cards(&before)
+					.first()
+					.expect("a retained card remains visible")
+					.bounds;
+				session
+					.scroll(
+						point(px(first.left + first.width() / 2.0), px(first.top + first.height() / 2.0)),
+						MAX_ATTACHMENTS as f32 * 3.0,
+					)
+					.expect("the real wheel reaches the attachment viewport");
+				let scrolled = session.frame().expect("the scrolled tray draws");
+				assert_cards_inside_composer(&scrolled, width, height);
+				let last = cards(&scrolled)
+					.into_iter()
+					.max_by(|left, right| {
+						left
+							.bounds
+							.top
+							.total_cmp(&right.bounds.top)
+							.then_with(|| left.bounds.left.total_cmp(&right.bounds.left))
+					})
+					.expect("the final attachment can be scrolled into view")
+					.bounds;
+				session
+					.hover(point(px(last.left + last.width() / 2.0), px(last.top + last.height() / 2.0)))
+					.expect("the card receives hover");
+				let hovered = session.frame().expect("the removal control draws on hover");
+				let remove = hovered
+					.hitboxes
+					.iter()
+					.filter(|rect| {
+						f32::from(rect.left()) >= last.left + last.width() / 2.0
+							&& f32::from(rect.right()) <= last.right
+							&& f32::from(rect.top()) >= last.top
+							&& f32::from(rect.bottom()) <= last.bottom
+							&& f32::from(rect.size.width) < card_height()
+					})
+					.min_by(|left, right| {
+						f32::from(left.size.width).total_cmp(&f32::from(right.size.width))
+					})
+					.expect("the final card exposes a bounded remove control");
+				session
+					.click(remove.center())
+					.expect("the removal click reaches the card");
+				remaining.pop();
+				session
+					.update(|view, _, _| {
+						assert_eq!(
+							view.state().composer.attachments,
+							remaining,
+							"scrolling and clicking must remove only the final attachment at \
+							 {width}x{height}"
+						);
+					})
+					.expect("the remaining payloads can be read");
+			}
+			assert!(cards(&session.frame().expect("the emptied composer draws")).is_empty());
+		});
+	}
+}
+
+fn assert_cards_inside_composer(captured: &Captured, width: u32, height: u32) {
 	let composer = captured
 		.layout
 		.iter()
 		.filter(|node| node.visible && node.border.is_some())
 		.filter(|node| node.bounds.width() > card_max_width() * 2.0)
-		.max_by(|left, right| {
-			left
-				.bounds
-				.bottom
-				.partial_cmp(&right.bounds.bottom)
-				.expect("a box edge is a real number")
-		})
-		.map(|node| node.bounds)
-		.expect("the composer draws a bordered float");
-	for card in drawn {
+		.max_by(|left, right| left.bounds.bottom.total_cmp(&right.bounds.bottom))
+		.expect("the composer draws a bordered float")
+		.bounds;
+	for card in cards(captured) {
 		assert!(
-			card.bounds.left >= composer.left - 0.5 && card.bounds.right <= composer.right + 0.5,
-			"a card spanning {} to {} left the composer, which spans {} to {}",
-			card.bounds.left,
-			card.bounds.right,
-			composer.left,
-			composer.right
+			card.bounds.left >= composer.left && card.bounds.right <= composer.right,
+			"attachment escaped the composer at {width}x{height}"
 		);
-		let runs = runs_inside(&captured, card.bounds);
-		for (left, right) in runs {
+		assert!(
+			card.bounds.top >= 0.0 && card.bounds.bottom <= height as f32,
+			"attachment escaped the window at {width}x{height}"
+		);
+		for (_, right) in runs_inside(captured, card.bounds) {
 			assert!(
-				right <= composer.right + 0.5,
-				"a run from {left} to {right} left the composer's right edge at {}",
-				composer.right
+				right <= card.bounds.right + 0.5,
+				"attachment text escaped its card at {width}x{height}"
 			);
 		}
 	}

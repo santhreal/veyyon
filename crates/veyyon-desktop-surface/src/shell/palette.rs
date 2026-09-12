@@ -27,6 +27,9 @@ pub(super) struct PaletteInput {
 	pub retained:      Option<Overlay>,
 	pub parents:       Vec<PaletteState>,
 	pub motion:        crate::palette::motion::FloatMotion,
+	pub scroll:        veyyon_gpui::ScrollHandle,
+	pub menu_selected: usize,
+	pub menu_focused:  bool,
 }
 
 impl ShellView {
@@ -35,6 +38,10 @@ impl ShellView {
 	#[must_use]
 	pub fn palette_anchor(&self) -> Rc<Cell<Point<Pixels>>> {
 		self.palette_input.anchor.clone()
+	}
+
+	pub(crate) fn picker_scroll(&self) -> veyyon_gpui::ScrollHandle {
+		self.palette_input.scroll.clone()
 	}
 
 	/// The search editor for a non-slash palette.
@@ -100,10 +107,12 @@ impl ShellView {
 					// A mode whose rows are the host's answer to what was
 					// typed reports a lookup; every other mode ranks the rows
 					// it already holds (§5.8).
-					let intent = palette.mode.query_intent(query);
+					let intent = palette.query_intent(query);
 					view.dispatch(intent, cx);
 				},
-				EditorEvent::Submit => view.run_palette(cx),
+				EditorEvent::Submit => {
+					view.picker_key("enter", cx);
+				},
 				EditorEvent::Escape => view.back_surface(cx),
 				EditorEvent::PasteMedia(_) => {},
 			}
@@ -267,6 +276,7 @@ impl ShellView {
 		route: crate::navigation::SurfaceRoute,
 		cx: &mut Context<Self>,
 	) {
+		self.dispatch(Intent::PreviewAppearance(None), cx);
 		let returning = self.back_route() == Some(route);
 		let restored = if returning {
 			self.palette_input.parents.pop()
@@ -328,6 +338,7 @@ impl ShellView {
 			self.palette_input.dismissed = Some(self.composer_cache.clone());
 		}
 		self.palette_input.slash = false;
+		self.dispatch(Intent::PreviewAppearance(None), cx);
 		self.palette_input.restore_focus = true;
 		self.palette_input.parents.clear();
 		self.dispatch(Intent::CloseOverlay, cx);

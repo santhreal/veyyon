@@ -81,6 +81,8 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	ClearOutput: "Session",
 	GetContextBreakdown: "Session",
 	LoadTranscript: "Transcript",
+	PreviewSessionTranscript: "Transcript",
+	SearchSessions: "Session",
 	SubmitPrompt: "Session",
 	Steer: "Session",
 	FollowUp: "Session",

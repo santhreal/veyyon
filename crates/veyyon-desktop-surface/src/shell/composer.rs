@@ -20,9 +20,24 @@ pub(super) struct SubmittedDraft {
 impl ShellView {
 	/// Uses the same request availability for keyboard, menu, and pointer
 	/// actions.
-	pub(super) fn composer_action_allowed(&self, intent: &Intent) -> bool {
+	pub(crate) fn composer_action_allowed(&self, intent: &Intent) -> bool {
 		let session = SessionId::from(self.state.current_id.to_string());
-		crate::composer::actions::request_surface(intent, &session).is_none_or(|id| {
+		let request = crate::composer::actions::request_surface(intent, &session);
+		if self.state.navigation_pending
+			&& (request.is_some()
+				|| matches!(
+					intent,
+					Intent::Attach(_)
+						| Intent::RemoveAttachment(_)
+						| Intent::Reply { .. }
+						| Intent::Plan { .. }
+						| Intent::Approval { .. }
+						| Intent::Answer { .. }
+						| Intent::SetPlanMode { .. }
+				)) {
+			return false;
+		}
+		request.is_none_or(|id| {
 			availability_style(&self.state.controls.availability(&id), &self.installed.set).2
 		})
 	}
@@ -103,6 +118,13 @@ impl ShellView {
 		}
 		let text = self.composer_cache.clone();
 		let has_text = !text.trim().is_empty();
+		let (primary, _) = primary_action(&self.state.turn, has_text);
+		if matches!(primary, PrimaryAction::Send)
+			&& let Some(reason) = self.state.composer.submission_rejection()
+		{
+			self.set_composer_notice(reason, cx);
+			return;
+		}
 		let id = self
 			.state
 			.turn
@@ -110,7 +132,6 @@ impl ShellView {
 		if !availability_style(&self.state.controls.availability(&id), &self.installed.set).2 {
 			return;
 		}
-		let (primary, _) = primary_action(&self.state.turn, has_text);
 		let intent = match primary {
 			PrimaryAction::Send if has_text => {
 				Intent::Send { text, attachments: self.state.composer.attachments.clone() }

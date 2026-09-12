@@ -6597,64 +6597,77 @@ export class AgentSession {
 		// Clean up an empty session created by this session's /move so it doesn't accumulate.
 		await cleanupEmptyMoveSession(this.sessionManager, this.#movedFromEmptySessionFile);
 		this.#movedFromEmptySessionFile = undefined;
-		await this.sessionManager.close();
-		// beginDispose() stopped the advisor and captured its recorder close; await
-		// it so the final advisor turn is flushed before the process may exit.
-		await this.#advisorRecorderClosed;
-		this.#closeAllProviderSessions("dispose");
-		// Disconnect the MCP manager this session OWNS so its stdio servers are
-		// not orphaned at exit. Best-effort: a failure here must never throw out
-		// of dispose. Only owning (top-level) sessions provide this callback;
-		// subagents reuse a parent's manager and must not tear it down. Idempotent
-		// with the deferred-discovery disconnect in `createAgentSession`.
-		//
-		// BOUNDED: an owned manager may hold an HTTP/SSE server whose session-
-		// termination DELETE blocks up to the MCP request timeout (30s default,
-		// unbounded when VEYYON_MCP_TIMEOUT_MS=0), so awaiting `disconnectAll()`
-		// unbounded would stall /exit and print-mode shutdown on a broken remote
-		// endpoint. Race it against a short deadline — stdio close (the subprocess
-		// reap this targets) completes well within the bound; a slow transport
-		// close is left to finish detached. Mirrors the bounded async-job teardown.
-		if (this.#disconnectOwnedMcpManager) {
-			try {
-				await withTimeout(
-					this.#disconnectOwnedMcpManager(),
-					3_000,
-					"Timed out disconnecting owned MCP manager during dispose",
-				);
-			} catch (error) {
-				logger.warn("Failed to disconnect owned MCP manager during dispose", { error: errorMessage(error) });
+		let persistenceFailed = false;
+		let persistenceError: unknown;
+		try {
+			await this.sessionManager.close();
+		} catch (error) {
+			persistenceFailed = true;
+			persistenceError = error;
+		}
+		try {
+			// beginDispose() stopped the advisor and captured its recorder close; await
+			// it so the final advisor turn is flushed before the process may exit.
+			await this.#advisorRecorderClosed;
+			this.#closeAllProviderSessions("dispose");
+			// Disconnect the MCP manager this session OWNS so its stdio servers are
+			// not orphaned at exit. Best-effort: a failure here must never throw out
+			// of dispose. Only owning (top-level) sessions provide this callback;
+			// subagents reuse a parent's manager and must not tear it down. Idempotent
+			// with the deferred-discovery disconnect in `createAgentSession`.
+			//
+			// BOUNDED: an owned manager may hold an HTTP/SSE server whose session-
+			// termination DELETE blocks up to the MCP request timeout (30s default,
+			// unbounded when VEYYON_MCP_TIMEOUT_MS=0), so awaiting `disconnectAll()`
+			// unbounded would stall /exit and print-mode shutdown on a broken remote
+			// endpoint. Race it against a short deadline — stdio close (the subprocess
+			// reap this targets) completes well within the bound; a slow transport
+			// close is left to finish detached. Mirrors the bounded async-job teardown.
+			if (this.#disconnectOwnedMcpManager) {
+				try {
+					await withTimeout(
+						this.#disconnectOwnedMcpManager(),
+						3_000,
+						"Timed out disconnecting owned MCP manager during dispose",
+					);
+				} catch (error) {
+					logger.warn("Failed to disconnect owned MCP manager during dispose", { error: errorMessage(error) });
+				}
 			}
+			// Flush the retain queue BEFORE clearing the session's pointer so
+			// `HindsightRetainQueue.#doFlush` still sees `session.getHindsightSessionState() === state`.
+			// Reversed, the spliced batch survives just long enough to fail the
+			// identity check and get dropped with a `session vanished` warning.
+			const hindsightState = this.getHindsightSessionState();
+			await hindsightState?.flushRetainQueue();
+			this.setHindsightSessionState(undefined);
+			hindsightState?.dispose();
+			const mnemopiState = setMnemopiSessionState(this, undefined);
+			await mnemopiState?.dispose({ timeoutMs: options.mnemopiConsolidateTimeoutMs });
+			// Tear down the embeddings subprocess AFTER mnemopi state.dispose:
+			// consolidate-on-dispose may still call `embed()` to store the final
+			// memories, and that round-trips through the worker we are about to
+			// hard-kill (issue #3031).
+			await shutdownMnemopiEmbedClient();
+			this.#disconnectFromAgent();
+			if (this.#unsubscribeAppendOnly) {
+				this.#unsubscribeAppendOnly();
+				this.#unsubscribeAppendOnly = undefined;
+			}
+			if (this.#unsubscribeModelRoles) {
+				this.#unsubscribeModelRoles();
+				this.#unsubscribeModelRoles = undefined;
+			}
+			if (this.#unsubscribePromptSettings) {
+				this.#unsubscribePromptSettings();
+				this.#unsubscribePromptSettings = undefined;
+			}
+			this.#eventListeners = [];
+		} catch (error) {
+			if (!persistenceFailed) throw error;
 		}
-		// Flush the retain queue BEFORE clearing the session's pointer so
-		// `HindsightRetainQueue.#doFlush` still sees `session.getHindsightSessionState() === state`.
-		// Reversed, the spliced batch survives just long enough to fail the
-		// identity check and get dropped with a `session vanished` warning.
-		const hindsightState = this.getHindsightSessionState();
-		await hindsightState?.flushRetainQueue();
-		this.setHindsightSessionState(undefined);
-		hindsightState?.dispose();
-		const mnemopiState = setMnemopiSessionState(this, undefined);
-		await mnemopiState?.dispose({ timeoutMs: options.mnemopiConsolidateTimeoutMs });
-		// Tear down the embeddings subprocess AFTER mnemopi state.dispose:
-		// consolidate-on-dispose may still call `embed()` to store the final
-		// memories, and that round-trips through the worker we are about to
-		// hard-kill (issue #3031).
-		await shutdownMnemopiEmbedClient();
-		this.#disconnectFromAgent();
-		if (this.#unsubscribeAppendOnly) {
-			this.#unsubscribeAppendOnly();
-			this.#unsubscribeAppendOnly = undefined;
-		}
-		if (this.#unsubscribeModelRoles) {
-			this.#unsubscribeModelRoles();
-			this.#unsubscribeModelRoles = undefined;
-		}
-		if (this.#unsubscribePromptSettings) {
-			this.#unsubscribePromptSettings();
-			this.#unsubscribePromptSettings = undefined;
-		}
-		this.#eventListeners = [];
+		// Preserve the original persistence rejection after resource cleanup.
+		if (persistenceFailed) throw persistenceError;
 	}
 
 	#closeAllProviderSessions(reason: string): void {

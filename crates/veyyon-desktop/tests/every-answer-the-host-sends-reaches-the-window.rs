@@ -74,6 +74,8 @@ enum Prepare {
 	Palette(PaletteMode, &'static str),
 	/// The drawer, showing one process's output.
 	ProcessOutput(&'static str),
+	HistorySearch,
+	HistoryPreview,
 }
 
 /// Exhaustive over the section kinds: a variant added to the protocol fails to
@@ -91,6 +93,8 @@ const fn prepare_for(kind: SnapshotSectionKind) -> Prepare {
 		SnapshotSectionKind::SearchResults => Prepare::Palette(PaletteMode::Files, "app"),
 		SnapshotSectionKind::ContentMatches => Prepare::Palette(PaletteMode::ContentSearch, "todo"),
 		SnapshotSectionKind::ProcessLogs => Prepare::ProcessOutput(PROCESS),
+		SnapshotSectionKind::SessionSearch => Prepare::HistorySearch,
+		SnapshotSectionKind::SessionTranscript => Prepare::HistoryPreview,
 		SnapshotSectionKind::Sessions
 		| SnapshotSectionKind::ActiveSession
 		| SnapshotSectionKind::Transcript
@@ -163,6 +167,19 @@ fn prepared(store: &Store, prepare: &Prepare) -> (ShellState, SessionIndex) {
 	let overlay = match prepare {
 		Prepare::Rest | Prepare::ProcessOutput(_) => None,
 		Prepare::Settings => Some(Overlay::Settings(Box::default())),
+		Prepare::HistorySearch => {
+			let mut palette = PaletteState::history("needle".into());
+			palette.set_host_items(vec![veyyon_desktop_surface::PaletteItem::command(
+				1,
+				"Previous match",
+				Intent::PreviewSession("old".into()),
+				None,
+			)]);
+			Some(Overlay::Palette(palette))
+		},
+		Prepare::HistoryPreview => Some(Overlay::History(Box::new(
+			veyyon_desktop_surface::history::HistoryState::loading("history-1".into()),
+		))),
 		Prepare::Palette(mode, query) => {
 			let mut palette = PaletteState::new(*mode);
 			palette.set_query((*query).to_string());

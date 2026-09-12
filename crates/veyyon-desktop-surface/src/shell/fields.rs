@@ -33,6 +33,7 @@ pub enum FieldKey {
 	Setting(String),
 	/// The in-place name editor for the session with this row id.
 	SessionRename(u64),
+	SpaceRename(u64),
 	/// The alternatives bound to the keymap action this name states.
 	Keybinding(String),
 	/// The description of the task the Agents page spawns.
@@ -55,6 +56,7 @@ enum Commit {
 	SettingJson,
 	/// The text is the new session title.
 	SessionRename(u64),
+	SpaceRename(u64),
 	/// The text is the comma-separated alternatives bound to the keymap
 	/// action the field's key names.
 	Keybinding,
@@ -244,6 +246,21 @@ impl ShellView {
 				self.clear_refusal();
 				self.dispatch(Intent::RenameSession { session: id, title }, cx);
 			},
+			(Commit::SpaceRename(id), FieldKey::SpaceRename(_)) => {
+				let name = editor.read(cx).text().trim().to_owned();
+				if name.is_empty()
+					|| self
+						.state
+						.navigation
+						.spaces()
+						.any(|space| space.id != id && space.name == name)
+				{
+					self.refuse_field(cx, "Choose a nonempty, unique space name");
+					return;
+				}
+				self.clear_refusal();
+				self.dispatch(Intent::RenameSpace { id, name }, cx);
+			},
 			(Commit::Keybinding, FieldKey::Keybinding(action)) => {
 				let text = editor.read(cx).text().to_owned();
 				let keys = parse_chords(&text);
@@ -313,6 +330,16 @@ impl ShellView {
 					.state
 					.row(*id)
 					.map_or_else(|| self.state.title.clone(), |r| r.title.clone());
+				editor.update(cx, |editor, cx| editor.set_text(initial, cx));
+			},
+			FieldKey::SpaceRename(id) => {
+				let initial = self
+					.state
+					.navigation
+					.spaces()
+					.find(|space| space.id == *id)
+					.map(|space| space.name.clone())
+					.unwrap_or_default();
 				editor.update(cx, |editor, cx| editor.set_text(initial, cx));
 			},
 			FieldKey::Keybinding(action) => {

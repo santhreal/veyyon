@@ -18,7 +18,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use strum::IntoEnumIterator;
 use veyyon_desktop_kit::{
-	AnchorCorner, ColorRole, Menu, MenuItem, Popover, RadiusStep, SpacingStep, TextRamp, TokenSet,
+	AnchorCorner, ColorRole, Menu, Popover, RadiusStep, SpacingStep, TextRamp, TokenSet,
 };
 use veyyon_gpui::{
 	App, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, MouseButton,
@@ -29,8 +29,9 @@ use crate::{
 	Intent, ShellView,
 	keymap::{Command, build::build_action},
 	menu::{MenuSectionId, MenuState},
-	palette::PaletteMeta,
 };
+
+mod picker;
 
 /// Where the bar's words were laid out, one origin per section in bar order.
 ///
@@ -66,6 +67,13 @@ impl ShellView {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
+		if section.is_some() && self.palette_input.menu_focused {
+			self.close_signal_menu();
+			self.close_turn_menu();
+			self.close_row_menu();
+			self.return_menu_focus(window, cx);
+			self.palette_input.menu_focused = false;
+		}
 		let was_open = self.state.menu.open.is_some();
 		self.dispatch(Intent::SetMenuSection(section), cx);
 		let open = self.state.menu.open.is_some();
@@ -78,7 +86,7 @@ impl ShellView {
 
 	/// Records where the focus was and gives it to the open menu, so a bare
 	/// arrow or Return reaches the bar rather than the region under it.
-	fn take_menu_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+	pub(super) fn take_menu_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		let held = self.menu_focus.as_ref();
 		let focused = window.focused(cx);
 		if focused.as_ref() != held {
@@ -89,7 +97,7 @@ impl ShellView {
 	}
 
 	/// Gives the focus back to whatever held it before the bar took it.
-	fn return_menu_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+	pub(super) fn return_menu_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		if let Some(focus) = self.menu_return.take() {
 			window.focus(&focus, cx);
 		}
@@ -108,13 +116,6 @@ impl ShellView {
 		self.return_menu_focus(window, cx);
 		cx.notify();
 		true
-	}
-
-	/// Takes the verb the keyboard is on in the open menu.
-	pub fn run_menu_highlight(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-		if let Some(command) = self.state.menu.highlighted_command() {
-			self.run_menu_command(command, window, cx);
-		}
 	}
 
 	/// Closes the bar and dispatches `command` as the action its chord
@@ -158,16 +159,8 @@ pub(super) fn menu_keys(
 	cx: &Context<ShellView>,
 ) -> impl Fn(&KeyDownEvent, &mut Window, &mut App) + 'static {
 	cx.listener(|view, event: &KeyDownEvent, window, cx| {
-		if view.state().menu.open.is_none() {
+		if !view.menu_picker_key(event.keystroke.key.as_str(), window, cx) {
 			return;
-		}
-		match event.keystroke.key.as_str() {
-			"up" => view.dispatch(Intent::MoveMenuHighlight(-1), cx),
-			"down" => view.dispatch(Intent::MoveMenuHighlight(1), cx),
-			"left" => view.dispatch(Intent::MoveMenuSection(-1), cx),
-			"right" => view.dispatch(Intent::MoveMenuSection(1), cx),
-			"enter" | "return" => view.run_menu_highlight(window, cx),
-			_ => return,
 		}
 		cx.stop_propagation();
 		cx.notify();
@@ -244,32 +237,14 @@ pub(super) fn menu_layer(
 	cx: &mut Context<ShellView>,
 ) -> Option<impl IntoElement> {
 	let section = view.state().menu.open?;
-	let entries = section.entries();
-	let items: Vec<MenuItem> = {
-		let menu = &view.state().menu;
-		entries
-			.iter()
-			.enumerate()
-			.map(|(index, command)| {
-				let mut item = MenuItem::new(command.label()).disabled(!menu.enabled(*command));
-				if let Some(chord) = PaletteMeta::Chord(*command).chord(view.keymap()) {
-					item = item.shortcut(chord);
-				}
-				// The keyboard's place in the menu is drawn as the row's own
-				// selection, so a walk with no pointer in the window is visible.
-				item = item.highlighted(index == menu.highlighted && menu.enabled(*command));
-				item
-			})
-			.collect()
-	};
-	let commands: Vec<Command> = entries.to_vec();
+	let items = view
+		.menu_picker_rows(crate::menu::MenuSource::Bar)
+		.into_iter()
+		.map(|(item, _)| item);
 	let entity = cx.entity();
 	let picker = Menu::new(items).on_select(move |index, _event, window, app| {
-		let command = commands.get(index).copied();
-		let () = entity.update(app, |view, cx| {
-			if let Some(command) = command {
-				view.run_menu_command(command, window, cx);
-			}
+		entity.update(app, |view, cx| {
+			view.menu_picker_pointer(crate::menu::MenuSource::Bar, index, window, cx);
 		});
 	});
 

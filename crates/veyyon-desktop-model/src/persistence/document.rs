@@ -19,7 +19,7 @@ use super::{
 	ComposerStore, PanelsStore, PersistedState, PersistenceError, QueueStore, ShellStore,
 	TranscriptStore, VersionedStore, WindowStore, validate_and_deserialize,
 };
-use crate::connection::SessionId;
+use crate::{connection::SessionId, review::ReviewsStore};
 
 /// Every store §8.10 names, as the document the window keeps it in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, strum::EnumIter)]
@@ -36,12 +36,21 @@ pub enum StoreKind {
 	Transcript,
 	/// Draft text, attachments and queue mode, per session.
 	Composer,
+	/// Local review threads, partitioned by repository and file.
+	Reviews,
 }
 
 impl StoreKind {
 	/// Every kind, in the order §8.10's table states them.
-	pub const ALL: [Self; 6] =
-		[Self::Window, Self::Shell, Self::Queue, Self::Panels, Self::Transcript, Self::Composer];
+	pub const ALL: [Self; 7] = [
+		Self::Window,
+		Self::Shell,
+		Self::Queue,
+		Self::Panels,
+		Self::Transcript,
+		Self::Composer,
+		Self::Reviews,
+	];
 
 	/// The file name the document is kept under.
 	#[must_use]
@@ -53,6 +62,7 @@ impl StoreKind {
 			Self::Panels => "panels.json",
 			Self::Transcript => "transcript.json",
 			Self::Composer => "composer.json",
+			Self::Reviews => "reviews.json",
 		}
 	}
 
@@ -60,18 +70,18 @@ impl StoreKind {
 	#[must_use]
 	pub const fn per_session(self) -> bool {
 		match self {
-			Self::Window | Self::Shell | Self::Queue => false,
+			Self::Window | Self::Shell | Self::Queue | Self::Reviews => false,
 			Self::Panels | Self::Transcript | Self::Composer => true,
 		}
 	}
 
 	/// Whether a write is fsynced.
 	///
-	/// Draft text is the one store whose loss is the operator's own work, so
-	/// its document is fsynced and nothing else is (§8.10).
+	/// Draft text and local review comments contain authored text, so both
+	/// documents are fsynced.
 	#[must_use]
 	pub const fn fsync(self) -> bool {
-		matches!(self, Self::Composer)
+		matches!(self, Self::Composer | Self::Reviews)
 	}
 
 	/// The version this binary writes, for the warn line a refusal states.
@@ -84,6 +94,7 @@ impl StoreKind {
 			Self::Panels => PanelsStore::CURRENT_VERSION,
 			Self::Transcript => TranscriptStore::CURRENT_VERSION,
 			Self::Composer => ComposerStore::CURRENT_VERSION,
+			Self::Reviews => ReviewsStore::CURRENT_VERSION,
 		}
 	}
 }
@@ -143,6 +154,11 @@ impl PersistedState {
 				self.composer = map;
 				refused
 			},
+			StoreKind::Reviews => {
+				let (store, refused) = read_single(kind, text);
+				self.reviews = store;
+				refused.into_iter().collect()
+			},
 		}
 	}
 
@@ -155,6 +171,7 @@ impl PersistedState {
 			StoreKind::Panels => write_document(&self.panels),
 			StoreKind::Transcript => write_document(&self.transcripts),
 			StoreKind::Composer => write_document(&self.composer),
+			StoreKind::Reviews => write_document(&self.reviews),
 		}
 	}
 }

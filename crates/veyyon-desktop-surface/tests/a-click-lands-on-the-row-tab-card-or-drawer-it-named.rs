@@ -18,14 +18,15 @@ use support::{send, state};
 use veyyon_desktop_surface::{Card, Intent, PanelTab, composer::TurnPhase, intent::Intents};
 
 #[test]
-fn opening_a_session_moves_the_highlight_the_title_and_tells_the_host() {
+fn opening_a_session_requests_the_host_without_replacing_confirmed_selection() {
 	let mut state = state();
+	let before = state.clone();
 	let mut intents = Intents::new();
 
 	intents.dispatch(Intent::SelectSession(11), &mut state);
 
-	assert_eq!(state.current_id, 11, "the queue still draws the previous row as open");
-	assert_eq!(state.title, "third", "the titlebar still names the previous session");
+	assert_eq!(state.current_id, before.current_id, "selection awaits host acknowledgement");
+	assert_eq!(state.title, before.title, "a failed request cannot replace the title");
 	assert_eq!(
 		intents.pending(),
 		[Intent::SelectSession(11)],
@@ -36,11 +37,15 @@ fn opening_a_session_moves_the_highlight_the_title_and_tells_the_host() {
 #[test]
 fn opening_a_session_that_is_not_in_the_queue_keeps_the_title_it_had() {
 	let mut state = state();
+	let before = state.current_id;
 	let mut intents = Intents::new();
 
 	intents.dispatch(Intent::SelectSession(404), &mut state);
 
-	assert_eq!(state.current_id, 404, "the selection was refused rather than recorded");
+	assert_eq!(
+		state.current_id, before,
+		"an unknown session does not replace the confirmed selection"
+	);
 	assert_eq!(
 		state.title, "first",
 		"a session with no row invented a title instead of keeping the last one"

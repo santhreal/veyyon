@@ -15,6 +15,7 @@ use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_scene::{
 	frame::RgbaColor,
 	headless::{RenderOptions, distinct_pixel_values, headless_context, render_view, write_png},
+	session::HeadlessSession,
 };
 use veyyon_desktop_surface::{ShellView, fixture, install_tokens};
 use veyyon_gpui::{App, AppContext};
@@ -37,12 +38,54 @@ fn the_shell_draws_its_regions_where_the_tokens_put_them() {
 	let queue_width = tokens.surface.queue.width_default_px;
 	let titlebar = tokens.surface.shell.titlebar_height_px;
 
-	let frame = render_view(&mut cx, &options(), move |_window, app: &mut App| {
+	let mut session = HeadlessSession::open(&mut cx, &options(), move |_window, app: &mut App| {
 		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
 			.expect("the bundled tokens and theme install");
 		app.new(|_| ShellView::new(installed, fixture::populated()))
 	})
 	.expect("the shell renders offscreen");
+	let captured = session.frame().expect("the shell lays out");
+	let columns_top = session
+		.update(|view, _, _| {
+			f32::from(
+				view
+					.laid_out()
+					.drawn_bounds(veyyon_desktop_surface::damage::Region::Queue)
+					.expect("queue bounds")
+					.origin
+					.y,
+			)
+		})
+		.expect("column origin");
+	assert_eq!(
+		columns_top,
+		titlebar * 3.0,
+		"titlebar and both navigation rows use their token height"
+	);
+	for close_prompt in [Some("session-first".into()), None] {
+		let rows = if close_prompt.is_some() { 4.0 } else { 3.0 };
+		session
+			.update(|view, _, cx| {
+				view.state_mut().close_tab_prompt = close_prompt;
+				cx.notify();
+			})
+			.expect("change close confirmation");
+		session.frame().expect("navigation rows lay out");
+		let top = session
+			.update(|view, _, _| {
+				f32::from(
+					view
+						.laid_out()
+						.drawn_bounds(veyyon_desktop_surface::damage::Region::Queue)
+						.expect("queue bounds")
+						.origin
+						.y,
+				)
+			})
+			.expect("updated column origin");
+		assert_eq!(top, titlebar * rows, "navigation rows do not shrink when confirmation changes");
+	}
+	let frame = captured.frame;
 
 	// Written so the surface can be judged by looking at it, which is the only
 	// way a layout decision is actually reviewed.
@@ -62,7 +105,7 @@ fn the_shell_draws_its_regions_where_the_tokens_put_them() {
 	// ground. That is the value a region's width actually controls.
 	let ground_at = |x: f32| -> RgbaColor {
 		let mut counts: BTreeMap<[u8; 4], u32> = BTreeMap::new();
-		for y in (titlebar as u32 + 4)..(HEIGHT - 4) {
+		for y in (columns_top as u32 + 4)..(HEIGHT - 4) {
 			let pixel = frame
 				.pixel(x as u32, y)
 				.expect("the sample is inside the frame");
@@ -91,9 +134,7 @@ fn the_shell_draws_its_regions_where_the_tokens_put_them() {
 		outside_rail_edge, panel,
 		"the right panel is not distinguishable from the session surface"
 	);
-	// The titlebar is its own band: the ground across it differs from the
-	// ground of the row below it. Compared as a row rather than a pixel for
-	// the same reason as the columns above.
+	// The titlebar differs from the session columns below the navigation rows.
 	let row_ground = |y: u32| -> RgbaColor {
 		let mut counts: BTreeMap<[u8; 4], u32> = BTreeMap::new();
 		for x in 0..WIDTH {
@@ -111,7 +152,7 @@ fn the_shell_draws_its_regions_where_the_tokens_put_them() {
 
 	assert_ne!(
 		row_ground(titlebar as u32 / 2),
-		row_ground(titlebar as u32 + 40),
+		row_ground(columns_top as u32 + 40),
 		"the titlebar is not a distinct band"
 	);
 }

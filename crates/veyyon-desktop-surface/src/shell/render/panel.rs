@@ -39,6 +39,7 @@ pub fn panel_float(
 	let inset_px = f32::from(Sheet::inset(tokens));
 	let body = right_panel(
 		&view.state().panel,
+		view.review_store(),
 		inset_px.mul_add(-2.0, width_px),
 		view.pane_scrolls(),
 		panels,
@@ -83,6 +84,7 @@ pub fn docked_split(
 	let grip_px = panels.chrome_resize_handle_hit_px;
 	let body = right_panel(
 		&view.state().panel,
+		view.review_store(),
 		width_px - grip_px,
 		view.pane_scrolls(),
 		panels,

@@ -21,6 +21,18 @@ use super::{attachment, send};
 pub fn every_intent() -> Vec<Intent> {
 	let sample = vec![
 		Intent::SelectSession(9),
+		Intent::OpenSession("session-first".into()),
+		Intent::CloseSessionTab("session-first".into()),
+		Intent::ReorderSessionTab {
+			session: "session-first".into(),
+			target:  "session-second".into(),
+		},
+		Intent::CreateSpace("Research".into()),
+		Intent::RenameSpace { id: 1, name: "Work".into() },
+		Intent::SwitchSpace(2),
+		Intent::FindSessions("needle".into()),
+		Intent::PreviewSession("s1".into()),
+		Intent::ResumeHistory("s1".into()),
 		Intent::SelectTab(PanelTab::Diff),
 		Intent::SetDrawer { open: true },
 		Intent::SetDrawer { open: false },
@@ -143,6 +155,15 @@ pub fn every_intent() -> Vec<Intent> {
 	for intent in &sample {
 		match intent {
 			Intent::SelectSession(_)
+			| Intent::OpenSession(_)
+			| Intent::CloseSessionTab(_)
+			| Intent::ReorderSessionTab { .. }
+			| Intent::CreateSpace(_)
+			| Intent::RenameSpace { .. }
+			| Intent::SwitchSpace(_)
+			| Intent::FindSessions(_)
+			| Intent::PreviewSession(_)
+			| Intent::ResumeHistory(_)
 			| Intent::SelectTab(_)
 			| Intent::SetDrawer { .. }
 			| Intent::Approval { .. }

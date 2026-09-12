@@ -10,6 +10,8 @@ pub enum HostActionKind {
 	RetryConnection,
 	Shutdown,
 	ListSessions,
+	SearchSessions,
+	PreviewSessionTranscript,
 	OpenSession,
 	CreateSession,
 	RenameSession,
@@ -79,12 +81,14 @@ pub enum HostActionKind {
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 70] = [
+	pub const ALL: [Self; 72] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
 		Self::Shutdown,
 		Self::ListSessions,
+		Self::SearchSessions,
+		Self::PreviewSessionTranscript,
 		Self::OpenSession,
 		Self::CreateSession,
 		Self::RenameSession,
@@ -161,6 +165,8 @@ impl HostActionKind {
 			Self::RetryConnection => "RetryConnection",
 			Self::Shutdown => "Shutdown",
 			Self::ListSessions => "ListSessions",
+			Self::SearchSessions => "SearchSessions",
+			Self::PreviewSessionTranscript => "PreviewSessionTranscript",
 			Self::OpenSession => "OpenSession",
 			Self::CreateSession => "CreateSession",
 			Self::RenameSession => "RenameSession",

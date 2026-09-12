@@ -16,7 +16,7 @@ use veyyon_desktop_surface::{
 	ConnectionPhase, Intent, Keymap, ShellState, ShellView, composer::TurnPhase,
 	controls::Availability, install_tokens, resolve_chord,
 };
-use veyyon_gpui::{App, AppContext, Entity, Point, Window, px};
+use veyyon_gpui::{App, AppContext, Entity, Point, Window};
 
 #[derive(Default)]
 struct Observed {
@@ -97,15 +97,15 @@ fn retry_click_delivers_its_host_intent_without_another_frame() {
 			.expect("session opens");
 	let frame = session.frame().expect("banner frame");
 	let retry = frame
-		.hitboxes
+		.text_runs
 		.iter()
-		.find(|rect| {
-			let top = f32::from(rect.origin.y);
-			let right = f32::from(rect.origin.x + rect.size.width);
-			(48.0..=100.0).contains(&top) && right > 1200.0
-		})
-		.expect("banner retry hitbox");
-	let at = Point { x: retry.origin.x + px(10.0), y: retry.origin.y + px(10.0) };
+		.find(|run| run.text.as_ref() == "Re-attach")
+		.expect("banner retry label")
+		.bounds;
+	let at = Point {
+		x: retry.origin.x + retry.size.width / 2.0,
+		y: retry.origin.y + retry.size.height / 2.0,
+	};
 	*observed.borrow_mut() = Observed::default();
 
 	session.click(at).expect("retry click");

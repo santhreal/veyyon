@@ -37,7 +37,8 @@ use veyyon_desktop_scene::{
 	session::HeadlessSession,
 };
 use veyyon_desktop_surface::{
-	Keymap, SettingsPage, ShellState, ShellView, fixture, install_tokens, navigation::SurfaceRoute,
+	Keymap, Overlay, SettingsPage, ShellState, ShellView, fixture, install_tokens,
+	navigation::SurfaceRoute,
 };
 use veyyon_gpui::{
 	App, AppContext, Font, FontFeatures, FontStyle, FontWeight, SharedString, TextRun,
@@ -155,12 +156,16 @@ fn walk(session: &mut HeadlessSession<ShellView>, walked: &[SurfaceRoute]) -> Ca
 enum Shown {
 	Nothing,
 	Surface(Option<SurfaceRoute>),
+	History,
 }
 
 fn shown(session: &mut HeadlessSession<ShellView>) -> Shown {
 	session
 		.update(|view, _window, _cx| match view.state().overlay.as_ref() {
-			Some(overlay) => Shown::Surface(overlay.route()),
+			Some(overlay @ (Overlay::Palette(_) | Overlay::Settings(_))) => {
+				Shown::Surface(overlay.route())
+			},
+			Some(Overlay::History(_)) => Shown::History,
 			None => Shown::Nothing,
 		})
 		.expect("the overlay is readable")
@@ -314,5 +319,61 @@ fn a_surface_reached_directly_offers_no_way_back_to_one_never_opened() {
 			"{case}: the descended surface draws one more control -- the way back -- than the same \
 			 surface opened directly (direct {direct}, descended {descended})"
 		);
+	}
+}
+
+#[test]
+fn history_preview_has_no_route_and_escape_closes_without_resuming_a_session() {
+	for from_commands in [false, true] {
+		render_session(fixture::populated(), |session| {
+			session
+				.update(|view, window, cx| {
+					view.set_composed("retained draft", cx);
+					if from_commands {
+						view.open_command_palette(window, cx);
+						view
+							.state_mut()
+							.overlay
+							.as_mut()
+							.and_then(Overlay::as_palette_mut)
+							.expect("commands open")
+							.set_query("/history");
+						view.run_palette(cx);
+						assert_eq!(view.drain_intents(), vec![
+							veyyon_desktop_surface::Intent::FindSessions(String::new())
+						]);
+					}
+					view.state_mut().overlay = Some(Overlay::History(Box::new(
+						veyyon_desktop_surface::history::HistoryState::loading(
+							"sessions/history.jsonl".into(),
+						),
+					)));
+					assert_eq!(view.state().overlay.as_ref().and_then(Overlay::route), None);
+					assert_eq!(
+						view.back_route(),
+						None,
+						"a preview does not inherit a routed back target"
+					);
+					view.drain_intents();
+					cx.notify();
+				})
+				.expect("history preview opens");
+			session.frame().expect("history preview frame");
+			assert_eq!(shown(session), Shown::History);
+			session
+				.keystroke("escape")
+				.expect("Escape reaches the preview");
+			session.frame().expect("closed preview frame");
+			assert_eq!(shown(session), Shown::Nothing);
+			session
+				.update(|view, _, _| {
+					assert_eq!(view.composer_text(), "retained draft");
+					assert!(
+						view.drain_intents().is_empty(),
+						"closing a preview cannot resume a session"
+					);
+				})
+				.expect("preview close outcome");
+		});
 	}
 }

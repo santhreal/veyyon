@@ -131,9 +131,9 @@ pub fn seeded() -> (Store, SessionIndex) {
 /// Every action a sample intent sends that belongs to one of the sheet's
 /// capabilities, with the control the window registers it under.
 pub fn sheet_requests() -> Vec<(HostAction, SurfaceId)> {
-	let (mut store, index) = seeded();
 	let mut requests = Vec::new();
 	for intent in every_sample_intent() {
+		let (mut store, index) = seeded();
 		for action in actions_for(&intent, &index, &mut store) {
 			if !on_the_sheet(action_to_capability(action.kind())) {
 				continue;

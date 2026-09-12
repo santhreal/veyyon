@@ -1,21 +1,12 @@
-//! WHY: nothing in this window drew an announcement. A request refused behind
-//! a closed sheet and a decision waiting on a session that is not open both
-//! reached the store's queue and stopped there, so the operator's only way to
-//! learn of either was to go looking for it.
+//! WHY: Failed requests and decisions outside the active session reached the
+//! notification queue without becoming visible.
 //!
-//! CLASS CLOSED: the stack is drawn from the queue and from nothing else, it
-//! keeps a card inside its own border whatever the host wrote in it, it
-//! covers neither the composer it floats over nor the window's chrome, a press
-//! on a card takes that card and only that card down, the dismissal reaches
-//! the host so the next projection does not put it back, and a card at rest
-//! under reduced motion is drawn at rest in the first frame rather than
-//! sliding. Each case drives the real `render_shell` path and reads the boxes
-//! and runs the frame reported.
+//! CONTRACT: Real shell frames bound card content, avoid the composer and
+//! chrome, dismiss only the selected card, report dismissal to the host and
+//! apply reduced motion on the first frame.
 //!
-//! NOT CAUGHT: what raises an announcement, which is the model's reducer
-//! suite, and the queue's own dedupe, order, expiry and bound, which is the
-//! model's queue suite. A stack drawn correctly from a queue that holds the
-//! wrong thing passes here.
+//! GAP: Reducer tests cover notification creation and queue tests cover
+//! deduplication, ordering, expiry and bounds.
 
 #[path = "support/detail/mod.rs"]
 #[allow(dead_code, reason = "this binary uses a subset of the shared window helpers")]
@@ -319,7 +310,7 @@ fn an_announcement_waiting_on_an_answer_states_that_rather_than_nothing() {
 /// A card's words are read back from the frame rather than matched by name,
 /// because a card that cuts the line it was given no longer draws the text it
 /// holds, which is the whole of what this case is about.
-fn stack_lines(notices: Vec<Notification>) -> Vec<(String, Bounds<Pixels>)> {
+fn stack_lines(notices: Vec<Notification>) -> (Vec<(String, Bounds<Pixels>)>, f32) {
 	let mut bare: Vec<(u32, u32)> = Vec::new();
 	open_window(state_with(Vec::new()), |session| {
 		bare = settled_frame(session)
@@ -329,6 +320,7 @@ fn stack_lines(notices: Vec<Notification>) -> Vec<(String, Bounds<Pixels>)> {
 			.collect();
 	});
 	let mut added = Vec::new();
+	let mut composer_top = 0.0;
 	open_window(state_with(notices), |session| {
 		added = settled_frame(session)
 			.text_runs
@@ -336,9 +328,21 @@ fn stack_lines(notices: Vec<Notification>) -> Vec<(String, Bounds<Pixels>)> {
 			.filter(|run| !bare.contains(&origin_key(run.bounds)))
 			.map(|run| (run.text.as_ref().to_owned(), run.bounds))
 			.collect();
+		composer_top = session
+			.update(|view, _, _| {
+				f32::from(
+					view
+						.laid_out()
+						.drawn_bounds(veyyon_desktop_surface::damage::Region::Composer)
+						.expect("composer bounds")
+						.origin
+						.y,
+				)
+			})
+			.expect("composer position");
 	});
 	assert!(!added.is_empty(), "the stack drew nothing");
-	added
+	(added, composer_top)
 }
 
 fn origin_key(bounds: Bounds<Pixels>) -> (u32, u32) {
@@ -365,7 +369,7 @@ fn a_card_cuts_a_line_the_host_wrote_long_rather_than_growing_down_the_window() 
 			)
 		})
 		.collect();
-	let lines = stack_lines(notices);
+	let (lines, composer_top) = stack_lines(notices);
 
 	let titles: Vec<&(String, Bounds<Pixels>)> = lines
 		.iter()
@@ -388,7 +392,7 @@ fn a_card_cuts_a_line_the_host_wrote_long_rather_than_growing_down_the_window() 
 		.map(|(_, bounds)| f32::from(bounds.origin.y) + f32::from(bounds.size.height))
 		.fold(f32::MIN, f32::max);
 	assert!(
-		foot < f32::from(HEIGHT) * 0.75,
-		"a full stack of long refusals still ends above the composer it floats over: {foot}"
+		foot < composer_top,
+		"a full stack of long refusals ends at {foot}, over the composer starting at {composer_top}"
 	);
 }

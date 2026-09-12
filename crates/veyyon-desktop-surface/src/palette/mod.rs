@@ -4,6 +4,7 @@
 //! files, content search, and project directory browsing.
 
 pub mod commands;
+mod interaction;
 pub mod matcher;
 pub mod modes;
 pub mod motion;
@@ -44,6 +45,8 @@ pub struct PaletteState {
 	pub notice:   Option<String>,
 	/// Command group shown in the shared navigation surface.
 	route:        Option<crate::navigation::SurfaceRoute>,
+	/// Host-ranked results must not be filtered again against visible labels.
+	host_ranked:  bool,
 }
 impl Default for PaletteState {
 	fn default() -> Self {
@@ -63,6 +66,7 @@ impl PaletteState {
 			browse_root: None,
 			notice: None,
 			route: None,
+			host_ranked: false,
 		}
 	}
 
@@ -200,33 +204,12 @@ impl PaletteState {
 		row_height: f32,
 		header_height: f32,
 	) -> usize {
-		if items.is_empty() {
-			return 0;
-		}
-		let group = |index: usize| items[index].group.as_deref();
-		let top = |index: usize| {
-			if group(index).is_some() {
-				header_height
-			} else {
-				0.0
-			}
-		};
-		let selected = selected.min(items.len() - 1);
-		let mut start = selected;
-		let mut rows = row_height;
-		while start > 0 && selected - start < 7 {
-			let above = start - 1;
-			let mut next = rows + row_height;
-			if group(start) != group(above) {
-				next += header_height;
-			}
-			if next + top(above) > room {
-				break;
-			}
-			rows = next;
-			start = above;
-		}
-		start
+		veyyon_desktop_kit::Picker::new(items, selected).window_start(
+			room,
+			row_height,
+			header_height,
+			|item| item.group.as_deref(),
+		)
 	}
 
 	/// The query the rows are ranked against.
@@ -256,6 +239,36 @@ impl PaletteState {
 		self.rank();
 		if self.selected >= self.rows.len() {
 			self.selected = 0;
+		}
+	}
+
+	/// Installs results already matched and ordered by the host.
+	pub fn set_host_items(&mut self, items: Vec<PaletteItem>) {
+		self.host_ranked = true;
+		self.set_items(items);
+	}
+
+	/// Persisted-session search uses host matching, unlike queue session
+	/// filtering.
+	#[must_use]
+	pub fn history(query: String) -> Self {
+		let mut state = Self::new(PaletteMode::Sessions);
+		state.host_ranked = true;
+		state.set_query(query);
+		state
+	}
+
+	#[must_use]
+	pub fn is_history(&self) -> bool {
+		self.mode == PaletteMode::Sessions && self.host_ranked
+	}
+
+	#[must_use]
+	pub fn query_intent(&self, query: String) -> Intent {
+		if self.is_history() {
+			Intent::FindSessions(query)
+		} else {
+			self.mode.query_intent(query)
 		}
 	}
 
@@ -289,19 +302,17 @@ impl PaletteState {
 	/// Every write path ends here and a frame never does, which is what keeps
 	/// a catalogue of thousands of rows off the render path.
 	fn rank(&mut self) {
-		self.rows = rank::rank_rows(&self.query, &self.items, self.route);
+		self.rows =
+			rank::rank_rows(if self.host_ranked { "" } else { &self.query }, &self.items, self.route);
 	}
 
 	/// Adjusts the selection index by `delta`, wrapping within the ranked rows.
-	pub const fn move_selection(&mut self, delta: i32) {
-		let count = self.rows.len();
-		if count == 0 {
-			self.selected = 0;
-			return;
+	pub fn move_selection(&mut self, delta: i32) {
+		if let veyyon_desktop_kit::PickerEvent::Select(index) =
+			veyyon_desktop_kit::Picker::new(&self.rows, self.selected).step(delta, |_| true)
+		{
+			self.selected = index;
 		}
-		let current = self.selected as i32;
-		let next = (current + delta).rem_euclid(count as i32);
-		self.selected = next as usize;
 	}
 
 	/// The rows in ranked order, as the surface draws them.

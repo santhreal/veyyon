@@ -30,6 +30,7 @@ pub fn render_page_body(
 	list_state: &GeneralSettingsListState,
 	appearance: &AppearanceChoice,
 	fields: &FieldSlots,
+	picker_scroll: &veyyon_gpui::ScrollHandle,
 	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
 	tokens: &TokenSet,
@@ -46,9 +47,15 @@ pub fn render_page_body(
 		SettingsPage::General => {
 			general::render_general_page(state, list_state, controls, geometry, tokens, cx)
 		},
-		SettingsPage::Themes => {
-			themes::render_themes_page(state, appearance, controls, geometry, tokens, cx)
-		},
+		SettingsPage::Themes => themes::render_themes_page(
+			state,
+			appearance,
+			controls,
+			picker_scroll,
+			geometry,
+			tokens,
+			cx,
+		),
 		SettingsPage::Keybindings => {
 			keybindings::render_keybindings_page(state, fields, controls, geometry, tokens)
 		},
@@ -71,7 +78,7 @@ pub fn render_page_body(
 		},
 	};
 
-	if state.page == SettingsPage::General {
+	if matches!(state.page, SettingsPage::General | SettingsPage::Themes) {
 		return container.h_full().min_h_0().child(body_content);
 	}
 

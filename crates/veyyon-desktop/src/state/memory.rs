@@ -33,9 +33,16 @@ pub fn chosen_appearance(state: &PersistedState) -> &'static str {
 #[must_use]
 pub fn host_shape(state: &PersistedState) -> HostShape {
 	HostShape {
-		queue_collapsed:    state.shell.queue_collapsed,
-		collapsed_sections: state.queue.collapsed_sections.clone(),
-		parked_page:        state.queue.parked_page.max(1) as usize,
+		navigation:         state.shell.navigation.clone(),
+		queue_collapsed:    state.shell.navigation.active().queue_collapsed,
+		collapsed_sections: state
+			.shell
+			.navigation
+			.active()
+			.queue
+			.collapsed_sections
+			.clone(),
+		parked_page:        state.shell.navigation.active().queue.parked_page.max(1) as usize,
 		appearance:         chosen_appearance(state).to_string(),
 	}
 }
@@ -47,11 +54,24 @@ pub fn host_shape(state: &PersistedState) -> HostShape {
 #[must_use]
 pub fn session_shape(state: &PersistedState, session: Option<&SessionId>) -> SessionShape {
 	let panels = session
-		.and_then(|id| state.panels.get(id))
+		.and_then(|id| {
+			state
+				.shell
+				.navigation
+				.active()
+				.panels
+				.get(id)
+				.or_else(|| state.panels.get(id))
+		})
 		.cloned()
 		.unwrap_or_default();
 	let composer = session
 		.and_then(|id| state.composer.get(id))
+		.or_else(|| {
+			session
+				.is_none()
+				.then_some(&state.shell.navigation.active().empty_draft)
+		})
 		.cloned()
 		.unwrap_or_default();
 	let transcript = session
@@ -85,14 +105,11 @@ pub fn session_shape(state: &PersistedState, session: Option<&SessionId>) -> Ses
 
 /// Writes the shape the window holds for every session at once into the stores.
 pub fn record_host(state: &mut PersistedState, shape: &HostShape) {
-	state.shell = ShellStore {
-		version:         ShellStore::CURRENT_VERSION,
-		queue_collapsed: shape.queue_collapsed,
-		appearance:      Some(shape.appearance.clone()),
-		// The active session is the host's: it is set by the frame that
-		// reports one and is only read back to reopen it.
-		active_session:  state.shell.active_session.clone(),
-	};
+	state.shell.version = ShellStore::CURRENT_VERSION;
+	state.shell.queue_collapsed = shape.queue_collapsed;
+	state.shell.appearance = Some(shape.appearance.clone());
+	// Navigation and the host-confirmed session are committed by their transition
+	// paths.
 	state.queue = QueueStore {
 		version:            QueueStore::CURRENT_VERSION,
 		collapsed_sections: shape.collapsed_sections.clone(),
@@ -136,6 +153,32 @@ pub fn record_session(
 		attachments: shape.attachment_paths.clone(),
 		queue_mode:  shape.queue_mode,
 	});
+}
+
+/// Records a departing space before restoring the destination's layout.
+pub fn record_space(
+	state: &mut PersistedState,
+	space_id: u64,
+	session: Option<&SessionId>,
+	shape: &HostShape,
+	session_shape: &SessionShape,
+) {
+	let panel = session.and_then(|id| state.panels.get(id)).cloned();
+	if let Some(space) = state.shell.navigation.space_mut(space_id) {
+		space.queue_collapsed = shape.queue_collapsed;
+		space.queue = state.queue.clone();
+		if session.is_none() {
+			space.empty_draft = ComposerStore {
+				version:     ComposerStore::CURRENT_VERSION,
+				draft_text:  session_shape.draft_text.clone(),
+				attachments: session_shape.attachment_paths.clone(),
+				queue_mode:  session_shape.queue_mode,
+			};
+		}
+		if let (Some(id), Some(panel)) = (session, panel) {
+			space.panels.insert(id.clone(), panel);
+		}
+	}
 }
 
 /// Writes one session's draft into the store its composer is restored from.

@@ -3,6 +3,7 @@ import { changesActionHandlers } from "./changes";
 import { connectionActionHandlers } from "./connection";
 import { diagnosticsActionHandlers } from "./diagnostics";
 import { filesActionHandlers } from "./files";
+import { historyActionHandlers } from "./history";
 import { mcpActionHandlers } from "./mcp";
 import { modelsActionHandlers } from "./models";
 import { processesActionHandlers } from "./processes";
@@ -18,6 +19,7 @@ export * from "./changes";
 export * from "./connection";
 export * from "./diagnostics";
 export * from "./files";
+export * from "./history";
 export * from "./mcp";
 export * from "./models";
 export * from "./processes";
@@ -31,6 +33,7 @@ export * from "./types";
 export const allActionHandlers: ActionHandlersMap = {
 	...connectionActionHandlers,
 	...sessionsActionHandlers,
+	...historyActionHandlers,
 	...turnActionHandlers,
 	...filesActionHandlers,
 	...changesActionHandlers,

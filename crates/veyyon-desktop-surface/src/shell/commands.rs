@@ -1,6 +1,6 @@
 //! Secondary composer actions and their native selection surfaces.
 
-use veyyon_desktop_model::{QueueMode, SessionId, SurfaceId};
+use veyyon_desktop_model::{QueueMode, SessionId};
 use veyyon_gpui::Context;
 
 use crate::{
@@ -80,14 +80,7 @@ impl ShellView {
 
 	pub(super) fn run_composer_command(&mut self, command: ComposerCommand, cx: &mut Context<Self>) {
 		let session = SessionId::from(self.state.current_id.to_string());
-		let surface = match command {
-			ComposerCommand::AttachFiles => None,
-			ComposerCommand::Models => Some(SurfaceId::ComposerModelSelector(session)),
-			ComposerCommand::Effort => Some(SurfaceId::ComposerThinkingSelector(session)),
-			ComposerCommand::QueueMode => Some(SurfaceId::ComposerQueueModeToggle(session)),
-			ComposerCommand::Steer => Some(SurfaceId::ComposerSteerButton(session)),
-			ComposerCommand::Queue => Some(SurfaceId::ComposerQueueButton(session)),
-		};
+		let surface = command.surface(&session);
 		if surface.is_some_and(|id| {
 			!availability_style(&self.state.controls.availability(&id), &self.installed.set).2
 		}) {

@@ -19,7 +19,7 @@
 use std::path::Path;
 
 use strum::IntoEnumIterator;
-use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
+use veyyon_desktop_kit::load_bundled_theme;
 use veyyon_desktop_scene::{
 	headless::{RenderOptions, headless_context},
 	session::HeadlessSession,
@@ -30,12 +30,24 @@ use veyyon_desktop_surface::{
 };
 use veyyon_gpui::{App, AppContext, Context, Window};
 
+#[allow(dead_code, reason = "only the existing still-token fixture is needed")]
+#[path = "support/appearance/mod.rs"]
+mod appearance;
+#[path = "support/menu_bar_contract.rs"]
+mod menu_bar_contract;
+#[path = "support/menu_picker_contract.rs"]
+mod menu_picker_contract;
+#[path = "support/picker_availability.rs"]
+mod picker_availability;
+#[path = "support/picker_contract.rs"]
+mod picker_contract;
+
 fn render_session<R>(
 	state: ShellState,
 	test: impl FnOnce(&mut HeadlessSession<ShellView>) -> R,
 ) -> R {
 	let mut cx = headless_context().expect("headless context available");
-	let tokens = load_bundled_tokens().expect("tokens load");
+	let tokens = appearance::still_tokens();
 	let theme = load_bundled_theme("dark").expect("theme loads");
 	let options =
 		RenderOptions { width: 1440, height: 900, scale_factor: 1.0, ..RenderOptions::default() };
@@ -43,6 +55,15 @@ fn render_session<R>(
 		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
 			.expect("tokens and theme install");
 		app.bind_keys(Keymap::default().bindings());
+		let themes = veyyon_desktop_tokens::APPEARANCES
+			.into_iter()
+			.map(|name| load_bundled_theme(name).expect("bundled appearance"))
+			.collect();
+		app.set_global(veyyon_desktop_surface::ThemeLibrary::new(
+			&tokens,
+			themes,
+			Path::new("surface"),
+		));
 		veyyon_desktop_kit::input::ensure_editor_bindings_registered(app);
 		app.new(|_| ShellView::new(installed, state))
 	})
@@ -201,4 +222,167 @@ fn every_palette_mode_runs_its_selected_row_from_the_enter_key() {
 				.expect("enter outcome");
 		});
 	}
+}
+
+// WHY: New list overlays must not bypass the input contract when their data
+// adapter differs. This sweeps modes, composer commands and settings pages;
+// read-only history previews and non-picker settings dialogs are exact
+// opt-outs. GAPS: Host transport and X11 delivery are integration checks, not
+// simulated here.
+#[test]
+fn every_registered_picker_navigates_cancels_and_restores_the_draft_focus() {
+	for source in picker_contract::sources() {
+		render_session(fixture::populated(), |session| {
+			session
+				.update(|view, window, cx| {
+					view.set_composed("retained draft", cx);
+					picker_contract::open(source, view, window, cx);
+				})
+				.unwrap();
+			picker_contract::navigate(session, source);
+			if !matches!(source, picker_contract::Source::Themes) {
+				picker_contract::no_matches(session);
+			}
+			for _ in 0..3 {
+				session.frame().unwrap();
+				session.keystroke("escape").unwrap();
+				if session
+					.update(|view, _, _| view.state().overlay.is_none())
+					.unwrap()
+				{
+					break;
+				}
+			}
+			session.frame().unwrap();
+			session
+				.update(|view, window, cx| {
+					assert!(view.state().overlay.is_none(), "{source:?}: bounded Escape ascent");
+					assert_eq!(view.composer_text(), "retained draft", "{source:?}");
+					assert!(
+						view.state().appearance.previewed().is_none(),
+						"{source:?}: preview reverted"
+					);
+					assert!(
+						view
+							.ensure_composer(cx)
+							.read(cx)
+							.focus_handle()
+							.is_focused(window),
+						"{source:?}: composer focus restored"
+					);
+				})
+				.unwrap();
+		});
+	}
+}
+
+#[test]
+fn every_registered_picker_confirms_the_same_action_by_pointer_and_enter() {
+	for source in picker_contract::sources() {
+		let mut outcomes = Vec::new();
+		for pointer in [false, true] {
+			render_session(fixture::populated(), |session| {
+				session
+					.update(|view, window, cx| {
+						view.set_composed("retained draft", cx);
+						picker_contract::open(source, view, window, cx);
+					})
+					.unwrap();
+				session.frame().unwrap();
+				session.keystroke("end").unwrap();
+				let (title, expected) = session
+					.update(|view, _, cx| picker_contract::confirmation(view, cx))
+					.unwrap();
+				let frame = session.frame().unwrap();
+				if pointer {
+					let run = frame
+						.text_runs
+						.iter()
+						.find(|run| run.text.as_ref() == title)
+						.expect("row label is rendered");
+					session
+						.click(veyyon_gpui::Point {
+							x: run.bounds.origin.x + run.bounds.size.width / 2.0,
+							y: run.bounds.origin.y + run.bounds.size.height / 2.0,
+						})
+						.unwrap();
+				} else {
+					session.keystroke("enter").unwrap();
+				}
+				outcomes.push(
+					session
+						.update(|view, _, _| {
+							assert_eq!(view.composer_text(), "retained draft");
+							let reported = view.drain_intents();
+							picker_contract::confirmed(&expected, &reported, view);
+							(reported, view.state().overlay.clone(), view.state().appearance.clone())
+						})
+						.unwrap(),
+				);
+			});
+		}
+		assert_eq!(outcomes[0], outcomes[1], "{source:?}: keyboard and pointer use one action path");
+	}
+}
+
+#[test]
+fn shared_picker_never_confirms_disabled_or_absent_rows() {
+	use veyyon_desktop_kit::{Picker, PickerEvent, SelectionState};
+	for mask in 0_u8..16 {
+		let rows: Vec<bool> = (0..4).map(|index| mask & (1 << index) != 0).collect();
+		for selected in 0..rows.len() {
+			let picker = Picker::new(&rows, selected);
+			let confirm = picker.key("enter", |enabled| *enabled).unwrap();
+			assert_eq!(
+				confirm,
+				if rows[selected] {
+					PickerEvent::Confirm(selected)
+				} else {
+					PickerEvent::Handled
+				}
+			);
+			assert_eq!(picker.pointer(selected, true, |enabled| *enabled), confirm);
+			assert_eq!(
+				picker.selection(selected, |enabled| *enabled),
+				if rows[selected] {
+					SelectionState::Selected
+				} else {
+					SelectionState::None
+				}
+			);
+			for key in ["up", "down", "pageup", "pagedown", "home", "end"] {
+				match picker.key(key, |enabled| *enabled).unwrap() {
+					PickerEvent::Select(index) => {
+						assert!(rows[index], "{mask}: {key} selected disabled row");
+					},
+					PickerEvent::Handled => assert_eq!(mask, 0),
+					other => panic!("{key}: unexpected {other:?}"),
+				}
+			}
+		}
+	}
+	let empty: [bool; 0] = [];
+	for key in ["up", "down", "pageup", "pagedown", "home", "end", "enter"] {
+		assert_eq!(Picker::new(&empty, 0).key(key, |enabled| *enabled), Some(PickerEvent::Handled));
+	}
+	assert_eq!(Picker::new(&empty, 0).key("escape", |enabled| *enabled), Some(PickerEvent::Dismiss));
+	assert_eq!(Picker::new(&empty, 0).key("left", |enabled| *enabled), None);
+}
+
+#[test]
+fn persisted_session_matching_is_not_repeated_against_the_title() {
+	let mut state = PaletteState::history("text found only in transcript".into());
+	state.set_host_items(vec![PaletteItem::command(
+		1,
+		"Different title",
+		Intent::PreviewSession("history/session.jsonl".into()),
+		None,
+	)]);
+	assert_eq!(state.filtered_items().len(), 1);
+	assert_eq!(state.query_intent("next".into()), Intent::FindSessions("next".into()));
+	let mut queue = PaletteState::new(PaletteMode::Sessions);
+	queue.set_items(state.items().to_vec());
+	queue.set_query(state.query());
+	assert!(queue.filtered_items().is_empty());
+	assert_eq!(queue.query_intent("next".into()), Intent::PaletteQuery("next".into()));
 }

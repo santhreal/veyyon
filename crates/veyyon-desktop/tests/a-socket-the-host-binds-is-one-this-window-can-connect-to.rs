@@ -20,6 +20,9 @@
 //! processes is outside a single-process test. The spawn path is covered
 //! instead by the host printing the endpoint it bound.
 
+#[path = "support/socket_scratch.rs"]
+mod socket_scratch;
+
 use std::{
 	env,
 	os::unix::net::{UnixListener, UnixStream},
@@ -27,11 +30,11 @@ use std::{
 	sync::{Mutex, MutexGuard},
 };
 
+use socket_scratch::{SocketTree, scratch_dir};
 use veyyon_desktop::{
 	Endpoint, EndpointError, gui_host_socket_path, runtime_socket_path, unix_path_fits,
 	unix_path_limit,
 };
-use veyyon_test_scratch::{TempTree, scratch_dir};
 
 /// `XDG_RUNTIME_DIR` is process-wide, so the tests that set it take turns.
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -80,7 +83,7 @@ fn overlong_agent_dir(root: &Path) -> PathBuf {
 	dir
 }
 
-fn scratch(label: &str) -> TempTree {
+fn scratch(label: &str) -> SocketTree {
 	scratch_dir(label)
 }
 

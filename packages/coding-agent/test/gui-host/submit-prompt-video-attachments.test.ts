@@ -231,4 +231,78 @@ describe("GUI host video attachment validation and model input support", () => {
 		expect(submitted.outcome.RequestFailed?.error.message).toContain("20.0MB");
 		expect(submitted.outcome.RequestFailed?.error.message).toContain("huge.mp4");
 	});
+
+	test("UTF-8 text submits on a text-only model without claiming image support", async () => {
+		await client.request(3, { SelectModel: { provider: "test-provider", model: "text-model" } });
+		const submitted = await client.request(4, {
+			SubmitPrompt: {
+				session: sessionId,
+				text: "Read the attached text.",
+				attachments: [
+					{
+						id: "text",
+						name: "notes.txt",
+						media_type: "text/plain",
+						data: Buffer.from("λ\ntext").toString("base64"),
+					},
+				],
+			},
+		});
+		expect(submitted.outcome.RequestSucceeded).toBeDefined();
+	});
+
+	test.each([
+		{
+			name: "invalid UTF-8",
+			media_type: "text/plain",
+			data: Buffer.from([0xc3, 0x28]).toString("base64"),
+			reason: "UTF-8",
+		},
+		{
+			name: "binary control",
+			media_type: "text/plain",
+			data: Buffer.from([0, 65]).toString("base64"),
+			reason: "binary control",
+		},
+		{ name: "empty", media_type: "text/plain", data: "", reason: "empty" },
+		{ name: "bad base64", media_type: "text/plain", data: "!!!!", reason: "base64" },
+		{
+			name: "opaque binary",
+			media_type: "application/octet-stream",
+			data: "AA==",
+			reason: "application/octet-stream",
+		},
+		{ name: "image on text model", media_type: "image/png", data: "AA==", reason: "image input" },
+	])("$name is refused before starting a prompt", async ({ name, media_type, data, reason }) => {
+		await client.request(3, { SelectModel: { provider: "test-provider", model: "text-model" } });
+		const submitted = await client.request(4, {
+			SubmitPrompt: {
+				session: sessionId,
+				text: "Read the attachment.",
+				attachments: [{ id: "file", name, media_type, data }],
+			},
+		});
+		expect(submitted.outcome.RequestFailed?.error.code).toBe("INVALID_ARGUMENTS");
+		expect(submitted.outcome.RequestFailed?.error.message).toContain(reason);
+		expect(submitted.frames.some(frame => frame.TranscriptAppended !== undefined)).toBeFalse();
+	});
+
+	test("attachment count is bounded before dispatch", async () => {
+		await client.request(3, { SelectModel: { provider: "test-provider", model: "text-model" } });
+		const submitted = await client.request(4, {
+			SubmitPrompt: {
+				session: sessionId,
+				text: "Read the attachments.",
+				attachments: Array.from({ length: 9 }, (_, index) => ({
+					id: String(index),
+					name: `${index}.txt`,
+					media_type: "text/plain",
+					data: "YQ==",
+				})),
+			},
+		});
+		expect(submitted.outcome.RequestFailed?.error.code).toBe("INVALID_ARGUMENTS");
+		expect(submitted.outcome.RequestFailed?.error.message).toContain("at most 8");
+		expect(submitted.frames.some(frame => frame.TranscriptAppended !== undefined)).toBeFalse();
+	});
 });

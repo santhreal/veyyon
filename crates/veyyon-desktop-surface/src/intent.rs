@@ -15,6 +15,7 @@
 use veyyon_desktop_model::{SupervisorSignal, SurfaceId};
 
 mod apply;
+mod pending;
 
 use crate::{
 	composer::{Attachment, ModelChoice, QueueMode, ThinkingLevel},
@@ -22,7 +23,6 @@ use crate::{
 	menu::MenuSectionId,
 	model::ShellState,
 	overlay::Overlay,
-	palette::PaletteState,
 	right_panel::PanelTab,
 };
 
@@ -32,6 +32,22 @@ use crate::{
 #[strum_discriminants(vis(pub))]
 pub enum Intent {
 	SelectSession(u64),
+	/// Selects an existing session by its host identity, never a new runtime.
+	OpenSession(veyyon_desktop_model::SessionId),
+	CloseSessionTab(veyyon_desktop_model::SessionId),
+	ReorderSessionTab {
+		session: veyyon_desktop_model::SessionId,
+		target:  veyyon_desktop_model::SessionId,
+	},
+	CreateSpace(String),
+	RenameSpace {
+		id:   u64,
+		name: String,
+	},
+	SwitchSpace(u64),
+	FindSessions(String),
+	PreviewSession(String),
+	ResumeHistory(String),
 	/// The workspace tab the operator moved to. The tab travels rather than
 	/// its index, because the panel's tab list is window state a host never
 	/// sees, and what the tab draws is a domain the host has to re-state.
@@ -248,6 +264,26 @@ pub enum Intent {
 }
 
 impl Intent {
+	/// Navigation needs the outgoing draft recorded before its transition.
+	pub const fn changes_navigation(&self) -> bool {
+		matches!(
+			self,
+			Self::SelectSession(_)
+				| Self::OpenSession(_)
+				| Self::CloseSessionTab(_)
+				| Self::ReorderSessionTab { .. }
+				| Self::CreateSpace(_)
+				| Self::RenameSpace { .. }
+				| Self::SwitchSpace(_)
+				| Self::ResumeHistory(_)
+				| Self::MoveQueueSelection(_)
+				| Self::NewSession
+				| Self::BranchSession(_)
+				| Self::BranchTurn(_)
+				| Self::LoadTranscript(_)
+		)
+	}
+
 	/// Whether this intent moves a session between queue partitions.
 	///
 	/// The window owns the partitions, so nothing arrives from the host to
@@ -285,7 +321,6 @@ impl Intent {
 				| Self::PaletteMove(_)
 				| Self::PaletteQuery(_)
 				| Self::FilterQueue(_)
-				| Self::MoveQueueSelection(_)
 				| Self::ScrollTranscript(_)
 				| Self::CopyText(_)
 				| Self::FindInTranscript
@@ -313,55 +348,4 @@ impl Intent {
 #[derive(Debug, Default)]
 pub struct Intents {
 	pending: Vec<Intent>,
-}
-
-impl Intents {
-	/// An empty record.
-	pub const fn new() -> Self {
-		Self { pending: Vec::new() }
-	}
-
-	/// Applies what the operator did, and records what a host must answer.
-	///
-	/// Running a palette command is the command: the palette closes and the
-	/// command is dispatched as if its own control had been clicked, so one
-	/// that needs a host reaches the host.
-	pub fn dispatch(&mut self, intent: Intent, state: &mut ShellState) {
-		if match &intent {
-			Intent::Send { text, .. } | Intent::Steer(text) | Intent::Queue(text) => {
-				text.trim().is_empty()
-			},
-			_ => false,
-		} {
-			return;
-		}
-
-		if intent == Intent::PaletteRun
-			&& let Some(run) = state.overlay_palette().and_then(PaletteState::run_intent)
-		{
-			state.overlay = None;
-			self.dispatch(run, state);
-			return;
-		}
-
-		if intent == Intent::CloseTabOrPark && state.panel.tabs.len() <= 1 {
-			self.dispatch(Intent::ParkSession(state.current_id), state);
-			return;
-		}
-
-		intent.apply(state);
-		if !intent.is_local() {
-			self.pending.push(intent);
-		}
-	}
-
-	/// Takes the intents a host has not seen yet.
-	pub fn drain(&mut self) -> Vec<Intent> {
-		std::mem::take(&mut self.pending)
-	}
-
-	/// The intents recorded and not yet drained, in the order they happened.
-	pub fn pending(&self) -> &[Intent] {
-		&self.pending
-	}
 }

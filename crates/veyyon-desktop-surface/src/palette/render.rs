@@ -1,8 +1,7 @@
 //! Search input and selectable rows shared by command and model surfaces.
 
 use veyyon_desktop_kit::{
-	ColorRole, Dot, Kbd, KeyChord, ListRow, Palette, SearchField, SelectionState, SpacingStep,
-	TextRamp, TokenSet,
+	ColorRole, Dot, Kbd, KeyChord, Palette, Picker, SearchField, SpacingStep, TextRamp, TokenSet,
 	input::{Editor, editor::slot::EditorSlot},
 };
 use veyyon_desktop_tokens::PaletteSurfaceTokens;
@@ -20,6 +19,7 @@ pub fn palette_surface(
 	keymap: &Keymap,
 	geometry: &PaletteSurfaceTokens,
 	tokens: &TokenSet,
+	enabled: impl Fn(&super::PaletteItem) -> bool,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	let inset = px(geometry.input_inset);
@@ -32,6 +32,7 @@ pub fn palette_surface(
 		.height(px(geometry.input_row_height_px))
 		.flush(true);
 	let filtered = state.filtered_items();
+	let picker = Picker::new(&filtered, state.selected);
 	let mut body = div().w_full().flex().flex_col();
 	let mut input = div().flex().flex_col();
 	if let Some(route) = state.route {
@@ -111,13 +112,10 @@ pub fn palette_surface(
 					.child(heading.to_owned()),
 			);
 		}
-		let mut row = ListRow::new(("palette-result", item.id), item.title.clone())
-			.height(px(geometry.results_row_height_px))
-			.selection(if index == state.selected {
-				SelectionState::Selected
-			} else {
-				SelectionState::None
-			});
+		let active = enabled(item);
+		let mut row = picker
+			.row(index, ("palette-result", item.id), item.title.clone(), |_| active)
+			.height(px(geometry.results_row_height_px));
 		if let Some(subtitle) = &item.subtitle {
 			row = row.subtitle(subtitle.clone());
 		}
@@ -142,18 +140,18 @@ pub fn palette_surface(
 			},
 			None => {},
 		}
-		row = row.on_click(cx.listener(move |view, _event, _window, cx| {
-			if let Some(palette) = view
-				.state_mut()
-				.overlay
-				.as_mut()
-				.and_then(crate::Overlay::as_palette_mut)
-			{
-				palette.selected = index;
-			}
-			view.run_palette(cx);
-		}));
-		body = body.child(row);
+		if active {
+			row = row.on_click(cx.listener(move |view, _event, _window, cx| {
+				view.picker_pointer(index, true, cx);
+			}));
+		}
+		body = body.child(
+			div()
+				.w_full()
+				.flex_shrink_0()
+				.opacity(if active { 1.0 } else { 0.6 })
+				.child(row),
+		);
 	}
 	let footer = div()
 		.h(px(geometry.results_footer_height_px))

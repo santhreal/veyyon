@@ -548,6 +548,8 @@ export type SnapshotSection =
 	| { Sessions: [Versioned<SessionSummary[]>, SessionLoadError[]] }
 	| { ActiveSession: Versioned<SessionHeaderView> }
 	| { Transcript: Versioned<TranscriptEntry[]> }
+	| { SessionSearch: { query: string; sessions: SessionSummary[] } }
+	| { SessionTranscript: { session: string; transcript: Versioned<TranscriptEntry[]> } }
 	| { Capabilities: [Capability, CapabilityStatus][] }
 	| { Interactions: { session: string; pending: PendingDecisions } }
 	| { Settings: Record<string, SettingEntryView> }
@@ -577,6 +579,8 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"Sessions",
 	"ActiveSession",
 	"Transcript",
+	"SessionSearch",
+	"SessionTranscript",
 	"Capabilities",
 	"Interactions",
 	"Settings",
@@ -634,6 +638,8 @@ export type HostAction =
 	| "ListSessions"
 	| { Attach: { endpoint: string | null } }
 	| { OpenSession: { session: string } }
+	| { SearchSessions: { query: string } }
+	| { PreviewSessionTranscript: { session: string } }
 	| { LoadTranscript: { session: string; before: string | null } }
 	| { SubmitPrompt: { session: string; text: string; attachments: AttachmentSubmission[] } }
 	| { AbortTurn: { session: string } }
@@ -648,6 +654,8 @@ export const ALL_HOST_ACTIONS = [
 	"RetryConnection",
 	"Shutdown",
 	"ListSessions",
+	"SearchSessions",
+	"PreviewSessionTranscript",
 	"LoadTranscript",
 	"OpenSession",
 	"CreateSession",
@@ -723,6 +731,8 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	RetryConnection: "Lifecycle",
 	Shutdown: "Lifecycle",
 	ListSessions: "Sessions",
+	SearchSessions: "Sessions",
+	PreviewSessionTranscript: "Transcript",
 	OpenSession: "Sessions",
 	CreateSession: "Sessions",
 	RenameSession: "Sessions",

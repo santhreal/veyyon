@@ -35,6 +35,8 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 	match kind {
 		// Ephemeral read-only queries and inspectors (20 actions)
 		HostActionKind::ListSessions
+		| HostActionKind::SearchSessions
+		| HostActionKind::PreviewSessionTranscript
 		| HostActionKind::LoadTranscript
 		| HostActionKind::LoadFileTree
 		| HostActionKind::ReadFile

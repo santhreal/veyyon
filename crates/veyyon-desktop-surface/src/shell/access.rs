@@ -143,6 +143,7 @@ impl ShellView {
 
 	/// Opens the menu for a queue row at the pointer.
 	pub const fn open_row_menu(&mut self, menu: RowMenu) {
+		self.palette_input.menu_selected = 0;
 		self.row_menu = Some(menu);
 	}
 
@@ -159,6 +160,7 @@ impl ShellView {
 
 	/// Opens the menu for a transcript turn at the pointer.
 	pub fn open_turn_menu(&mut self, menu: TurnMenu) {
+		self.palette_input.menu_selected = 0;
 		self.turn_menu = Some(menu);
 	}
 
@@ -216,6 +218,7 @@ impl ShellView {
 
 	/// Opens the signal menu for a supervised process at the press.
 	pub fn open_signal_menu(&mut self, menu: SignalMenu) {
+		self.palette_input.menu_selected = 0;
 		self.signal_menu = Some(menu);
 	}
 
@@ -273,11 +276,26 @@ impl ShellView {
 
 	/// Applies what the operator did, and records what a host must answer.
 	pub fn dispatch(&mut self, intent: Intent, cx: &mut Context<Self>) {
-		if !self.composer_action_allowed(&intent) {
+		if let Intent::Send { attachments, .. } = &intent
+			&& let Some(reason) = self.state.composer.submission_rejection_for(attachments)
+		{
+			self.set_composer_notice(reason, cx);
 			return;
 		}
-		if matches!(intent, Intent::SelectSession(_)) {
-			self.rail_motion.request_scroll_to_selected();
+		if intent.changes_navigation()
+			&& let Some(reason) = self.navigation_rejection()
+		{
+			self.set_notice(Some(reason.into()), cx);
+			return;
+		}
+		if !self.composer_action_allowed(&intent) {
+			if self.state.navigation_pending {
+				self.set_composer_notice(
+					"Wait for the session to finish opening before changing its draft".into(),
+					cx,
+				);
+			}
+			return;
 		}
 		// The clipboard belongs to the platform, so the write happens here
 		// rather than in the state application, which has no window and no app.

@@ -63,7 +63,11 @@ fn the_footer_shows_the_model_thinking_and_context_the_host_reported() {
 	state.composer.attachments.push(Attachment::from_clipboard(
 		1,
 		MediaType::Png,
-		payload_for(MediaType::Png, vec![0x89, b'P', b'N', b'G']),
+		payload_for(
+			MediaType::Png,
+			include_bytes!("../../../packages/coding-agent/test/gui-host/fixtures/noise-48x48.png")
+				.to_vec(),
+		),
 	));
 	// One index across the projections: the row ids every session-scoped
 	// control is gated under come out of it, so a throwaway index would leave

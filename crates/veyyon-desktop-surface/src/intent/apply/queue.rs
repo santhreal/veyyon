@@ -2,19 +2,6 @@
 
 use crate::model::ShellState;
 
-/// True when a row's title or subtitle contains the needle.
-fn row_matches(state: &ShellState, id: u64, needle: &str) -> bool {
-	state
-		.sections
-		.iter()
-		.flat_map(|(_, rows)| rows.iter())
-		.any(|row| {
-			row.id == id
-				&& (row.title.to_lowercase().contains(needle)
-					|| row.subtitle.to_lowercase().contains(needle))
-		})
-}
-
 /// The needle a filter is matched by, or `None` when the filter is empty.
 fn needle(state: &ShellState) -> Option<String> {
 	state
@@ -25,7 +12,7 @@ fn needle(state: &ShellState) -> Option<String> {
 		.filter(|needle| !needle.is_empty())
 }
 
-/// Narrows the rail, and moves off a selection the filter no longer lists.
+/// Narrows the rail without changing the host-confirmed active session.
 pub fn filter(state: &mut ShellState, filter: &str) {
 	let trimmed = filter.trim();
 	state.keymap.queue_filter = if trimmed.is_empty() {
@@ -33,29 +20,14 @@ pub fn filter(state: &mut ShellState, filter: &str) {
 	} else {
 		Some(filter.to_string())
 	};
-	let Some(needle) = needle(state) else {
-		return;
-	};
-	if row_matches(state, state.current_id, &needle) {
-		return;
-	}
-	let first = state
-		.sections
-		.iter()
-		.flat_map(|(_, rows)| rows.iter())
-		.find(|row| {
-			row.title.to_lowercase().contains(&needle) || row.subtitle.to_lowercase().contains(&needle)
-		})
-		.map(|row| (row.id, row.title.clone()));
-	if let Some((id, title)) = first {
-		state.current_id = id;
-		state.title = title;
-	}
 }
 
-/// Steps the selection through the rows the filter lists, clamped to its ends.
-pub fn move_selection(state: &mut ShellState, delta: i32) {
-	state.keymap.selection_delta = delta;
+/// Resolves keyboard movement to a request target without changing acknowledged
+/// state.
+pub fn selection_target(state: &ShellState, delta: i32) -> Option<u64> {
+	if delta == 0 {
+		return None;
+	}
 	let needle = needle(state);
 	let listed: Vec<u64> = state
 		.sections
@@ -69,19 +41,16 @@ pub fn move_selection(state: &mut ShellState, delta: i32) {
 		})
 		.map(|row| row.id)
 		.collect();
-	let Some(last) = listed.len().checked_sub(1) else {
-		return;
+	let last = listed.len().checked_sub(1)?;
+	let current = listed.iter().position(|&id| id == state.current_id);
+	let stepped = match current {
+		Some(current) if delta < 0 => current.saturating_sub(delta.unsigned_abs() as usize),
+		Some(current) => current.saturating_add(delta as usize).min(last),
+		None if delta < 0 => last,
+		None => 0,
 	};
-	let current = listed
-		.iter()
-		.position(|&id| id == state.current_id)
-		.unwrap_or(0);
-	let stepped = ((current as i64 + delta as i64).max(0) as usize).min(last);
 	let next = listed[stepped];
-	state.current_id = next;
-	if let Some(title) = state.row(next).map(|row| row.title.clone()) {
-		state.title = title;
-	}
+	(next != state.current_id).then_some(next)
 }
 
 /// Closes one panel tab, or parks the session when it is the last one.

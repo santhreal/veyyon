@@ -69,12 +69,15 @@ pub fn project_controls(
 	state: &mut ShellState,
 ) {
 	state.controls.clear_availability();
-	let active_row = store
-		.persisted
-		.shell
-		.active_session
-		.as_ref()
-		.and_then(|id| index.row_id(id));
+	state.navigation_pending = [
+		HostActionKind::OpenSession,
+		HostActionKind::CreateSession,
+		HostActionKind::BranchSession,
+		HostActionKind::LoadTranscript,
+	]
+	.into_iter()
+	.any(|action| registry.find_pending_for_action(action).is_some());
+	let active_row = super::navigation::active_session(store).and_then(|id| index.row_id(id));
 	for (surface, action) in gated_controls(store, index, active_row) {
 		let gate = transport_gate(
 			action,

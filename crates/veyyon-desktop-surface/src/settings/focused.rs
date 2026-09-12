@@ -26,6 +26,7 @@ pub(super) fn focused_surface(
 	route: SurfaceRoute,
 	back: Option<SurfaceRoute>,
 	focus: Option<&FocusHandle>,
+	picker_scroll: &veyyon_gpui::ScrollHandle,
 	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
 	tokens: &TokenSet,
@@ -74,12 +75,20 @@ pub(super) fn focused_surface(
 		.flex_1()
 		.min_h_0()
 		.gap(px(geometry.row_gap));
-	if is_general {
+	if is_general || state.page == SettingsPage::Themes {
 		body_container = body_container.overflow_hidden();
 	} else {
 		body_container = body_container.overflow_y_scroll();
 	}
 	container.child(body_container.child(render_page_body(
-		state, list_state, appearance, fields, controls, geometry, tokens, cx,
+		state,
+		list_state,
+		appearance,
+		fields,
+		picker_scroll,
+		controls,
+		geometry,
+		tokens,
+		cx,
 	)))
 }

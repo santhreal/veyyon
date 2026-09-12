@@ -30,7 +30,19 @@ pub(super) fn rank_rows(
 			.collect();
 	}
 	let ranked = fuzzy_rank(query, items, targets);
-	let ordered: Vec<usize> = ranked.into_iter().map(|(index, ..)| index).collect();
+	let mut ordered: Vec<usize> = ranked.into_iter().map(|(index, ..)| index).collect();
+	// A complete slash-command name takes precedence over a description or alias.
+	if let Some(position) = ordered.iter().position(|index| {
+		let item = &items[*index];
+		matches!(item.kind, PaletteItemKind::Command { .. } | PaletteItemKind::Composer { .. })
+			&& item.title.starts_with('/')
+			&& item
+				.title
+				.trim_start_matches('/')
+				.eq_ignore_ascii_case(query.trim_start_matches('/'))
+	}) {
+		ordered[..=position].rotate_right(1);
+	}
 	regroup(&ordered, items)
 }
 

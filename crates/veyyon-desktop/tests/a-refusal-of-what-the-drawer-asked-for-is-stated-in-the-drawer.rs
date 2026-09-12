@@ -98,9 +98,9 @@ fn seeded() -> (Store, SessionIndex) {
 /// Every action a sample intent sends that belongs to one of the drawer's
 /// capabilities, with the control the window registers it under.
 fn drawer_requests() -> Vec<(HostAction, SurfaceId)> {
-	let (mut store, index) = seeded();
 	let mut requests = Vec::new();
 	for intent in every_sample_intent() {
+		let (mut store, index) = seeded();
 		for action in actions_for(&intent, &index, &mut store) {
 			let capability = action_to_capability(action.kind());
 			if !matches!(capability, Capability::Terminals | Capability::ProcessSupervisor) {

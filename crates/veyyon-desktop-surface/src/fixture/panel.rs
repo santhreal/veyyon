@@ -18,6 +18,7 @@ pub(super) fn fixture_panel() -> PanelContent {
 		tabs:               vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree, PanelTab::Usage],
 		active_tab:         PanelTab::Diff,
 		diff_status:        DiffStatus::Loaded,
+		review_repository:  None,
 		unavailable_reason: None,
 		// One answer for each domain the fixture states, as a host that sent
 		// this panel once would leave it.

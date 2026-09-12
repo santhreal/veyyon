@@ -7,7 +7,7 @@
 
 use strum::IntoEnumIterator;
 use veyyon_desktop_kit::{document_spans, load_bundled_tokens};
-use veyyon_desktop_surface::{Block, MenuSectionId, ShellState, Turn};
+use veyyon_desktop_surface::{Block, DiffRow, MenuSectionId, ShellState, Turn};
 
 /// The window height the count is taken at, which decides how many queue
 /// rows fit above the footer.
@@ -56,10 +56,9 @@ pub fn expected_controls(state: &ShellState) -> usize {
 
 	// An empty contextual panel still has its docked split, and the panel's own
 	// container answers a press because that is what puts its chords on the
-	// focus path. The split answers two rects of its own: the grip that takes
-	// the press, and the hairline inside it, whose tint turns on with the
-	// grip's hover group, so it is hit-tested for the same reason a card's
-	// revealed wrapper is. A diff has a scroll area, three toolbar controls and
+	// focus path. The split registers its resize-release container, the grip,
+	// and the hairline whose tint follows the grip's hover group. A diff has
+	// a scroll area, three toolbar controls and
 	// one mode toggle per file. Each mono tenant answers one more rect per pane
 	// it scrolls sideways (§5.11): the pinned gutter stays put and the code
 	// beside it is its own scroll region, so a unified diff adds one per file, a
@@ -78,9 +77,31 @@ pub fn expected_controls(state: &ShellState) -> usize {
 		.flat_map(|file| file.rows.iter())
 		.filter(|row| matches!(row, veyyon_desktop_surface::DiffRow::HunkHeader { .. }))
 		.count();
+	// Repository-backed reviews add the change-list entry, one file entry,
+	// and one control for each numbered side. Blank split cells are not controls.
+	let reviews = if state.panel.review_repository.is_some() {
+		1 + state.panel.diff.len()
+			+ state
+				.panel
+				.diff
+				.iter()
+				.flat_map(|file| &file.rows)
+				.map(|row| match row {
+					DiffRow::Context { .. } => panes,
+					DiffRow::Added { .. } | DiffRow::Removed { .. } => 1,
+					DiffRow::HunkHeader { .. }
+					| DiffRow::Collapsed { .. }
+					| DiffRow::Binary { .. }
+					| DiffRow::Unavailable { .. }
+					| DiffRow::Truncated { .. } => 0,
+				})
+				.sum::<usize>()
+	} else {
+		0
+	};
 	let tenant = match state.panel.active_tab {
 		veyyon_desktop_surface::PanelTab::Diff if !state.panel.is_empty() => {
-			4 + state.panel.diff.len() * (1 + panes) + hunk_headers
+			4 + state.panel.diff.len() * (1 + panes) + hunk_headers + reviews
 		},
 		veyyon_desktop_surface::PanelTab::File => usize::from(state.panel.file.is_some()),
 		_ => 0,
@@ -148,9 +169,10 @@ pub fn expected_controls(state: &ShellState) -> usize {
 	// Each attachment card answers three clicks: the card's own hover group,
 	// the wrapper whose paint turns on with that hover (a `group_hover` style
 	// is hit-tested so its reveal can be tracked), and the remove control the
-	// hover reveals. The tray itself answers nothing. The refusal notice is
-	// window-local state and so is counted by its own test below, not here.
-	let tray = state.composer.attachments.len() * 3;
+	// hover reveals. The nonempty tray also registers its bounded scroll area.
+	// The refusal notice is window-local state and is counted by its own test.
+	let tray =
+		state.composer.attachments.len() * 3 + usize::from(!state.composer.attachments.is_empty());
 
 	queue_controls + panel + answers + chrome + menu_bar + tray + transcript
 }

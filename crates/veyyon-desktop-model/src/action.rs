@@ -42,6 +42,12 @@ pub enum HostAction {
 
 	// Sessions family (10 actions)
 	ListSessions,
+	SearchSessions {
+		query: String,
+	},
+	PreviewSessionTranscript {
+		session: SessionId,
+	},
 	OpenSession {
 		session: SessionId,
 	},
@@ -298,6 +304,8 @@ impl HostAction {
 			Self::RetryConnection => HostActionKind::RetryConnection,
 			Self::Shutdown => HostActionKind::Shutdown,
 			Self::ListSessions => HostActionKind::ListSessions,
+			Self::SearchSessions { .. } => HostActionKind::SearchSessions,
+			Self::PreviewSessionTranscript { .. } => HostActionKind::PreviewSessionTranscript,
 			Self::OpenSession { .. } => HostActionKind::OpenSession,
 			Self::CreateSession { .. } => HostActionKind::CreateSession,
 			Self::RenameSession { .. } => HostActionKind::RenameSession,

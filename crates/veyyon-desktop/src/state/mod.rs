@@ -13,6 +13,7 @@ use std::{fs, io, path::PathBuf};
 
 use veyyon_desktop_model::{PersistedState, Rejection, StoreKind};
 
+pub mod attachment_files;
 mod keeper;
 mod memory;
 mod writer;

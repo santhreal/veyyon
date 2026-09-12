@@ -5,7 +5,7 @@ use std::{collections::BTreeSet, ops::Range};
 
 use serde::{Deserialize, Serialize};
 use veyyon_desktop_kit::ColorRole;
-use veyyon_desktop_model::{ChangeStatus, DiffMode, SurfaceId, UsageTotals};
+use veyyon_desktop_model::{ChangeScope, ChangeStatus, DiffMode, SurfaceId, UsageTotals};
 
 use crate::controls::ControlError;
 
@@ -137,6 +137,8 @@ pub struct PanelContent {
 	pub active_tab:         PanelTab,
 	/// Parsed diff files and hunks for the Changes tab.
 	pub diff:               Vec<DiffFile>,
+	/// Repository root and scope of the host's current diff snapshot.
+	pub review_repository:  Option<(String, ChangeScope)>,
 	/// Loading status of the diff.
 	pub diff_status:        DiffStatus,
 	/// Active file snapshot for the File tab.

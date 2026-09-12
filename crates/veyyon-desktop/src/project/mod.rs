@@ -22,7 +22,10 @@ mod connection;
 mod controls;
 mod drawer;
 mod failure;
+mod history;
 mod menu;
+pub mod navigation;
+pub mod navigation_request;
 mod notices;
 mod overlay;
 mod panel;
@@ -52,6 +55,7 @@ pub use self::{
 	},
 	drawer::{drawer_lines, project_drawer, resize_terminals, strip_control_sequences},
 	failure::land_failure,
+	history::{HistoryRequests, history_date, project_history},
 	menu::{command_declined, project_menu},
 	notices::{expire_notices, project_notices},
 	overlay::project_overlay,
@@ -145,7 +149,8 @@ pub fn project<S: std::hash::BuildHasher>(
 	now_ms: u64,
 	state: &mut ShellState,
 ) {
-	let active = store.persisted.shell.active_session.as_ref();
+	navigation::project_navigation(store, state);
+	let active = navigation::active_session(store);
 
 	// §0 orders the rail `Unsent`, `Pinned`, `Live`, `Deferred`, `Parked`, and
 	// `Unsent` is the one section no placement produces: it is every session
@@ -208,6 +213,7 @@ pub fn project<S: std::hash::BuildHasher>(
 	state.drawer_open = state.drawer_open && state.drawer.offered;
 	state.connection = connection_phase(store);
 	project_overlay(store, state);
+	project_history(store, state, now_ms);
 	project_menu(store, &mut state.menu);
 	state.reduced_motion = reduced_motion(store);
 	project_notices(store, now_ms, state);

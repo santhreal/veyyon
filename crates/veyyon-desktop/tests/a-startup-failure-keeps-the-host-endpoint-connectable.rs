@@ -7,6 +7,9 @@
 
 #![cfg(unix)]
 
+#[path = "support/socket_scratch.rs"]
+mod socket_scratch;
+
 use std::{
 	env, fs,
 	io::{BufRead, BufReader, Write},
@@ -17,11 +20,11 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use socket_scratch::scratch_dir;
 use veyyon_desktop::{
 	HostLink, HostSpawnError, SPAWN_WAIT_MS, connect_or_spawn, unix_path_fits, unix_path_limit,
 };
 use veyyon_desktop_model::{HostEvent, SnapshotSection};
-use veyyon_test_scratch::scratch_dir;
 
 const CASES: &[&str] =
 	&["ready", "late", "reported", "exited", "malformed", "missing", "no-binary"];
@@ -53,7 +56,7 @@ fn a_startup_outcome_preserves_recovery_and_its_diagnostic() {
 		command
 			.args(["--exact", "connection_probe", "--ignored", "--nocapture"])
 			.current_dir(&tree)
-			.env("HOME", ".")
+			.env("HOME", tree.path())
 			.env("VEYYON_PROFILE", "p")
 			.env_remove("VEYYON_GUI_ENDPOINT")
 			.env("VEYYON_STARTUP_TEST", &executable)
@@ -110,7 +113,7 @@ fn connection_probe() {
 	// does, so a host started in another directory binds the path this window
 	// connects to. The scratch profile has to stay inside `sun_path` for the
 	// comparison to be about that and not about the fallback.
-	let profile_socket = env::current_dir().expect("probe cwd").join(SOCKET);
+	let profile_socket = PathBuf::from(env::var_os("HOME").expect("probe home")).join(SOCKET);
 	assert!(
 		unix_path_fits(&profile_socket),
 		"scratch profile socket {} is over the {}-byte limit, so this case asserts the fallback",
@@ -178,7 +181,7 @@ fn gui_fixture() {
 	let target = if case == "reported" {
 		PathBuf::from("reported.sock")
 	} else {
-		env::current_dir().expect("fixture cwd").join(SOCKET)
+		PathBuf::from(env::var_os("HOME").expect("fixture home")).join(SOCKET)
 	};
 	let written = target.display();
 	if case == "reported" {

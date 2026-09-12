@@ -2,6 +2,7 @@
 
 mod panel;
 mod queue;
+pub(super) use queue::selection_target;
 
 use crate::{
 	attach::ConnectionPhase, composer::TurnPhase, controls::Availability, intent::Intent,
@@ -11,12 +12,14 @@ use crate::{
 /// Applies the part of an intent that the local shell owns.
 pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 	match intent {
-		Intent::SelectSession(id) => {
-			state.current_id = *id;
-			if let Some(title) = state.row(*id).map(|row| row.title.clone()) {
-				state.title = title;
-			}
-		},
+		// A rejected load leaves the displayed title, focus and draft on the confirmed session.
+		Intent::SelectSession(_)
+		| Intent::OpenSession(_)
+		| Intent::CloseSessionTab(_)
+		| Intent::ReorderSessionTab { .. }
+		| Intent::CreateSpace(_)
+		| Intent::RenameSpace { .. }
+		| Intent::SwitchSpace(_) => {},
 		Intent::SelectTab(tab) => {
 			if state.panel.tabs.contains(tab) {
 				state.panel.active_tab = *tab;
@@ -145,6 +148,15 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 				}
 			});
 		},
+		Intent::FindSessions(query) => {
+			state.overlay = Some(Overlay::Palette(crate::PaletteState::history(query.clone())));
+		},
+		Intent::PreviewSession(session) => {
+			state.overlay = Some(Overlay::History(Box::new(crate::history::HistoryState::loading(
+				session.clone(),
+			))));
+		},
+		Intent::ResumeHistory(_) => state.overlay = None,
 		Intent::SettingChanged { key, value } => {
 			if let Some(Overlay::Settings(settings)) = &mut state.overlay
 				&& let Some(entry) = settings.settings.get_mut(key)
@@ -285,12 +297,10 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		| Intent::LoadTranscript(_) => {},
 		Intent::FilterQueue(filter) => queue::filter(state, filter),
 		Intent::NewSession => {
-			state.current_id = 0;
-			state.title = "new session".to_string();
 			state.keymap.queue_filter = None;
 		},
 		Intent::CloseTabOrPark => queue::close_tab_or_park(state),
-		Intent::MoveQueueSelection(delta) => queue::move_selection(state, *delta),
+		Intent::MoveQueueSelection(_) => {},
 		Intent::ScrollTranscript(by) => {
 			state.keymap.transcript_scroll = Some(*by);
 		},

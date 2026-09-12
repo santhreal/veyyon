@@ -25,8 +25,14 @@ mod routes;
 /// drawer attaches to the terminal that is running, replaying its scrollback,
 /// or creates one when none is.
 pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> Vec<HostAction> {
-	let active = store.persisted.shell.active_session.clone();
+	let active = super::navigation::active_session(store).cloned();
 	match intent {
+		Intent::OpenSession(_)
+		| Intent::CloseSessionTab(_)
+		| Intent::ReorderSessionTab { .. }
+		| Intent::CreateSpace(_)
+		| Intent::RenameSpace { .. }
+		| Intent::SwitchSpace(_) => super::navigation::navigation_actions(intent, store),
 		Intent::SelectSession(row) => index.session_of(*row).map_or_else(Vec::new, |session| {
 			vec![HostAction::OpenSession { session: session.clone() }, HostAction::RefreshChanges]
 		}),
@@ -147,6 +153,18 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		// Ranking rows the window already holds asks the host for nothing; the
 		// modes whose rows come from the host report their own intent.
 		Intent::PaletteQuery(_) => Vec::new(),
+		Intent::FindSessions(query) => {
+			store.domains.session_search = None;
+			vec![HostAction::SearchSessions { query: query.clone() }]
+		},
+		Intent::PreviewSession(session) => {
+			store.domains.session_preview = None;
+			vec![HostAction::PreviewSessionTranscript { session: session.clone().into() }]
+		},
+		Intent::ResumeHistory(session) => vec![
+			HostAction::OpenSession { session: session.clone().into() },
+			HostAction::RefreshChanges,
+		],
 		// An empty query opens the mode on the workspace tree, which is where
 		// its rows come from until something is typed.
 		Intent::FindFile(query) if query.is_empty() => {

@@ -193,7 +193,7 @@ export class InteractionLedger {
 		fallback: T,
 		dialogOptions: ExtensionUIDialogOptions | undefined,
 	): Promise<T> {
-		if (dialogOptions?.signal?.aborted) return Promise.resolve(fallback);
+		if (this.socket.destroyed || dialogOptions?.signal?.aborted) return Promise.resolve(fallback);
 		this.#seq += 1;
 		const id = `${kind}-${this.#seq}`;
 		const { promise, resolve } = Promise.withResolvers<T>();

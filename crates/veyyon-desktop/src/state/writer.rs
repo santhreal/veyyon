@@ -215,5 +215,6 @@ fn changed(last: &PersistedState, next: &PersistedState, kind: StoreKind) -> boo
 		StoreKind::Panels => last.panels != next.panels,
 		StoreKind::Transcript => last.transcripts != next.transcripts,
 		StoreKind::Composer => last.composer != next.composer,
+		StoreKind::Reviews => last.reviews != next.reviews,
 	}
 }

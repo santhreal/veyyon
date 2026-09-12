@@ -566,7 +566,7 @@ fi
 # Seeded per scene rather than into proof/docker/home-seed, because every scene
 # shares that tree: a card added there moves the rail rows the queue scenes aim
 # at.
-if [ "${SCENE_NAME}" = "desktop-transcript-prose" ]; then
+if [ "${SCENE_NAME}" = "desktop-transcript-prose" ] || [ "${SCENE_NAME}" = "desktop-streamed-shape" ]; then
 	PROSE_SESSIONS="${HOME:-/sandbox/home}/.veyyon/profiles/${VEYYON_PROFILE:-default}/agent/sessions/-demo"
 	mkdir -p "${PROSE_SESSIONS}"
 	cp /repo/proof/docker/seed-sessions/*.jsonl "${PROSE_SESSIONS}/"

@@ -105,9 +105,9 @@ fn every_intent_maps_to_the_actions_the_host_answers_or_to_none_on_purpose() {
 			attachments: Vec::new(),
 		}]
 	);
-	// An attachment reaches the host with its bytes, its sniffed media type
-	// and an id that distinguishes two chips carrying the same file.
-	let png = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+	let png =
+		include_bytes!("../../../packages/coding-agent/test/gui-host/fixtures/noise-48x48.png")
+			.to_vec();
 	let picked = Attachment::from_path(
 		PathBuf::from("/repo/shot.png"),
 		MediaType::Png,

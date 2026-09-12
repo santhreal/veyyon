@@ -24,8 +24,11 @@ use std::{collections::BTreeSet, fs};
 use strum::IntoEnumIterator as _;
 use veyyon_desktop::state::{DEBOUNCE_MS, StateDir, StateTracker, StateWriter};
 use veyyon_desktop_model::{
-	ComposerStore, PersistedState, PersistenceError, StoreKind, TranscriptAnchor,
-	VersionedStore as _, composer::QueueMode, connection::SessionId,
+	ChangeScope, ComposerStore, PersistedState, PersistenceError, StoreKind, TranscriptAnchor,
+	VersionedStore as _,
+	composer::QueueMode,
+	connection::SessionId,
+	review::{ReviewAnchor, ReviewLine, ReviewSide},
 };
 use veyyon_test_scratch::{TempTree, scratch_dir};
 
@@ -60,6 +63,15 @@ fn populated() -> PersistedState {
 		attachments: Vec::new(),
 		queue_mode:  QueueMode::Queue,
 	});
+	let anchor =
+		ReviewAnchor::capture("repo", "src/app.rs", ChangeScope::WorkingTree, ReviewSide::New, 1, &[
+			ReviewLine { number: 1, text: "let value = 1;" },
+		])
+		.expect("visible source line");
+	state
+		.reviews
+		.create(anchor, "Check this value")
+		.expect("nonempty comment");
 	state
 }
 

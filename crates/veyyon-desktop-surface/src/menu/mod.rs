@@ -10,6 +10,15 @@ mod table;
 pub use self::table::{MENU_OPT_OUT, MenuSectionId, is_in_a_menu};
 use crate::keymap::Command;
 
+/// Every item-list menu overlay. Dialogs and transcript previews are not menus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumIter)]
+pub enum MenuSource {
+	Bar,
+	Queue,
+	Turn,
+	Signal,
+}
+
 /// Which section the bar has open, where the keyboard is inside it, and the
 /// verbs the host cannot currently take.
 ///
@@ -80,15 +89,11 @@ impl MenuState {
 		if entries.is_empty() || delta == 0 {
 			return;
 		}
-		let len = entries.len();
-		let step = if delta > 0 { 1 } else { len - 1 };
-		let mut at = self.highlighted.min(len - 1);
-		for _ in 0..len {
-			at = (at + step) % len;
-			if self.enabled(entries[at]) {
-				self.highlighted = at;
-				return;
-			}
+		if let veyyon_desktop_kit::PickerEvent::Select(index) =
+			veyyon_desktop_kit::Picker::new(entries, self.highlighted)
+				.step(delta.signum(), |command| self.enabled(*command))
+		{
+			self.highlighted = index;
 		}
 	}
 
@@ -101,16 +106,21 @@ impl MenuState {
 		let Some(at) = sections.iter().position(|section| *section == open) else {
 			return;
 		};
-		let len = sections.len();
-		let step = if delta > 0 { 1 } else { len - 1 };
-		self.open_section(sections[(at + step) % len]);
+		if let veyyon_desktop_kit::PickerEvent::Select(next) =
+			veyyon_desktop_kit::Picker::new(&sections, at)
+				.step(if delta > 0 { 1 } else { -1 }, |_| true)
+		{
+			self.open_section(sections[next]);
+		}
 	}
 
 	/// The first entry of `section` that can be taken.
 	fn first_offered(&self, section: MenuSectionId) -> Option<usize> {
-		section
-			.entries()
-			.iter()
-			.position(|command| self.enabled(*command))
+		match veyyon_desktop_kit::Picker::new(section.entries(), 0)
+			.key("home", |command| self.enabled(*command))
+		{
+			Some(veyyon_desktop_kit::PickerEvent::Select(index)) => Some(index),
+			_ => None,
+		}
 	}
 }

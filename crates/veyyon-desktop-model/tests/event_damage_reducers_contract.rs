@@ -123,6 +123,11 @@ fn test_damage_decision_for_every_snapshot_section_sweep() {
 			"Transcript" => {
 				assert!(damage.contains(&Damage::TranscriptFull(session_id.clone())));
 			},
+			"SessionSearch" | "SessionTranscript" => {
+				assert!(damage.contains(&Damage::Titlebar));
+				assert_eq!(store.persisted.shell.active_session.as_ref(), Some(&session_id));
+				assert!(store.transcripts.is_empty());
+			},
 			"Capabilities" => {
 				assert!(damage.contains(&Damage::Titlebar));
 				assert!(damage.contains(&Damage::Composer(session_id.clone())));

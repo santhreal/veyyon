@@ -1,5 +1,8 @@
 //! Domain-specific snapshot and state payload models (§5, §8).
 
+pub mod history;
+pub use history::*;
+
 pub mod agents;
 pub mod answered;
 pub mod changes;
@@ -38,6 +41,11 @@ use crate::{connection::SessionId, transcript::UsageTotals};
 /// Container for all panel-domain views received from the host.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Domains {
+	/// Latest search response; its query prevents stale results from being
+	/// drawn.
+	pub session_search:  Option<SessionSearchView>,
+	/// One read-only preview, separate from every live transcript.
+	pub session_preview: Option<SessionTranscriptView>,
 	/// Uncommitted repository changes. The panel parses this into rows, so it
 	/// states how many answers have arrived and the projection holds the rows
 	/// it built until that count moves.

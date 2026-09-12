@@ -131,13 +131,14 @@ fn a_press_on_the_chip_reopens_the_catalogue_it_just_dismissed_every_time() {
 	}
 }
 
-/// A queue row that opens a different session, the session that was open
-/// before it was pressed, and the one it opened.
+/// A queue row that requests a different session, the acknowledged session,
+/// and the requested target. A request alone must not change the displayed
+/// session.
 ///
 /// It is pressed here on a window with nothing open, so the row is known to
 /// answer a press at all before the suite asks whether a press it should not
 /// answer reaches it.
-fn a_queue_row_that_opens_a_session(
+fn a_queue_row_that_requests_a_session(
 	session: &mut HeadlessSession<'_, ShellView>,
 ) -> (Bounds<Pixels>, u64, u64) {
 	let captured = session.frame().expect("a frame is captured");
@@ -167,18 +168,34 @@ fn a_queue_row_that_opens_a_session(
 	});
 	for rect in rows {
 		session
+			.update(|view, _, _| view.drain_intents())
+			.expect("clear prior pointer intents");
+		session
 			.click(center(rect))
 			.expect("the press on the queue row is dispatched");
 		session.frame().expect("the frame after the press");
-		let after = session
-			.update(|view, _, _| view.state().current_id)
-			.expect("the open session is readable");
-		if after != before {
-			return (rect, before, after);
+		let requested = session
+			.update(|view, _, _| {
+				assert_eq!(
+					view.state().current_id,
+					before,
+					"a pointer request switched before acknowledgement"
+				);
+				view
+					.drain_intents()
+					.into_iter()
+					.find_map(|intent| match intent {
+						Intent::SelectSession(id) if id != before => Some(id),
+						_ => None,
+					})
+			})
+			.expect("the requested session is readable");
+		if let Some(requested) = requested {
+			return (rect, before, requested);
 		}
 	}
 	panic!(
-		"no press in the queue rail opened a different session, so this suite has no control \
+		"no press in the queue rail requested a different session, so this suite has no control \
 		 outside the popover whose activation it can observe"
 	);
 }
@@ -192,19 +209,13 @@ fn the_press_that_dismisses_a_popover_does_not_also_run_what_it_landed_on() {
 	let mut cx = headless_context().expect("a headless renderer is required");
 	let mut session = open_test_session(&mut cx);
 
-	let (row, before, opened) = a_queue_row_that_opens_a_session(&mut session);
-	// Back to the session the row was pressed from, so the press below has the
-	// same row to change and the same value to change it from.
-	session
-		.update(|view, _, cx| view.dispatch(Intent::SelectSession(before), cx))
-		.expect("the session the sweep started from reopens");
-	session.frame().expect("the frame with that session open");
+	let (row, before, opened) = a_queue_row_that_requests_a_session(&mut session);
 	assert_eq!(
 		session
 			.update(|view, _, _| view.state().current_id)
 			.expect("the open session is readable"),
 		before,
-		"the reset did not reopen the session the row was pressed from"
+		"an unacknowledged selection changed the displayed session"
 	);
 	assert_ne!(
 		before, opened,
@@ -221,6 +232,9 @@ fn the_press_that_dismisses_a_popover_does_not_also_run_what_it_landed_on() {
 		Some(PaletteMode::Models),
 		"the catalogue did not open, so there is no popover for the press to dismiss"
 	);
+	session
+		.update(|view, _, _| view.drain_intents())
+		.expect("drop palette opening intents");
 
 	session
 		.click(center(row))
@@ -236,6 +250,15 @@ fn the_press_that_dismisses_a_popover_does_not_also_run_what_it_landed_on() {
 		"the press that dismissed the popover also opened the session under it, so one press made \
 		 two decisions"
 	);
+	let intents = session
+		.update(|view, _, _| view.drain_intents())
+		.expect("read dismissing press intents");
+	assert!(
+		!intents
+			.iter()
+			.any(|intent| matches!(intent, Intent::SelectSession(_))),
+		"the dismissing press sent a session load: {intents:?}"
+	);
 }
 
 #[test]
@@ -248,11 +271,7 @@ fn a_press_on_the_scrim_dismisses_the_dialog_and_runs_nothing_behind_it() {
 	let mut cx = headless_context().expect("a headless renderer is required");
 	let mut session = open_test_session(&mut cx);
 
-	let (row, before, opened) = a_queue_row_that_opens_a_session(&mut session);
-	session
-		.update(|view, _, cx| view.dispatch(Intent::SelectSession(before), cx))
-		.expect("the session the sweep started from reopens");
-	session.frame().expect("the frame with that session open");
+	let (row, before, opened) = a_queue_row_that_requests_a_session(&mut session);
 	assert_ne!(
 		before, opened,
 		"the row opens the session that is already open, so the press below cannot be seen to have \
@@ -271,6 +290,9 @@ fn a_press_on_the_scrim_dismisses_the_dialog_and_runs_nothing_behind_it() {
 		Some(PaletteMode::Commands),
 		"the command palette did not open, so there is no scrim for the press to land on"
 	);
+	session
+		.update(|view, _, _| view.drain_intents())
+		.expect("drop palette opening intents");
 
 	session
 		.click(center(row))
@@ -288,6 +310,15 @@ fn a_press_on_the_scrim_dismisses_the_dialog_and_runs_nothing_behind_it() {
 			.expect("the open session is readable"),
 		before,
 		"the press on the scrim reached the queue row behind it, so the dialog is not modal"
+	);
+	let intents = session
+		.update(|view, _, _| view.drain_intents())
+		.expect("read scrim press intents");
+	assert!(
+		!intents
+			.iter()
+			.any(|intent| matches!(intent, Intent::SelectSession(_))),
+		"the scrim press sent a session load: {intents:?}"
 	);
 }
 

@@ -97,6 +97,11 @@ fn a_window_that_remembers_a_draft_opens_the_fork_holding_the_prompt() {
 				store.persisted.shell.active_session = Some(SessionId::from(FIRST));
 				keeper.sync(view, &mut store, win, 0, cx);
 				store.persisted.shell.active_session = Some(SessionId::from(SECOND));
+				store
+					.persisted
+					.shell
+					.navigation
+					.opened(SessionId::from(SECOND));
 				land_branched_draft(&mut store, &branch, true)
 			})
 			.expect("the settled branch is landed");

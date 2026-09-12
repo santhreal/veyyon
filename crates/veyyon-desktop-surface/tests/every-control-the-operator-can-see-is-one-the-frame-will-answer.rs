@@ -25,7 +25,7 @@ use veyyon_desktop_scene::headless::{
 	Captured, RenderOptions, headless_context, render_view_captured,
 };
 use veyyon_desktop_surface::{
-	Attachment, Intent, MediaType, ShellState, ShellView, Turn,
+	Attachment, Block, Intent, MediaType, ShellState, ShellView, Turn,
 	composer::{AttachmentError, payload_for},
 	fixture, install_tokens,
 };
@@ -37,6 +37,26 @@ const WIDTH: u32 = 1440;
 
 fn options() -> RenderOptions {
 	RenderOptions { width: WIDTH, height: HEIGHT, scale_factor: 1.0, ..RenderOptions::default() }
+}
+
+/// Keep every turn and block control inside the census viewport. Long prose
+/// changes which turns the virtual list paints when a panel or tray resizes it.
+fn census_state() -> ShellState {
+	let mut state = fixture::populated();
+	for turn in &mut state.transcript {
+		match turn {
+			Turn::Operator(text) => *text = "Inspect the changes.".into(),
+			Turn::Agent { blocks, .. } => {
+				for block in blocks {
+					if let Block::Prose(text) = block {
+						*text = "The changes are ready for review.".into();
+					}
+				}
+			},
+			Turn::OperatorArtifacts { .. } => {},
+		}
+	}
+	state
 }
 
 /// Renders one state and hands back everything the frame captured.
@@ -70,7 +90,7 @@ fn reachable(rect: &Bounds<Pixels>) -> bool {
 
 #[test]
 fn the_frame_answers_a_click_on_every_control_the_state_puts_on_screen() {
-	let state = fixture::populated();
+	let state = census_state();
 	let expected = expected_controls(&state);
 
 	let captured = capture(state);
@@ -94,15 +114,16 @@ fn the_frame_answers_a_click_on_every_control_the_state_puts_on_screen() {
 
 #[test]
 fn taking_the_cards_away_takes_exactly_their_answers_away() {
-	let with_cards = fixture::populated();
-	let answers = expected_controls(&with_cards)
-		- expected_controls(&ShellState { cards: Vec::new(), ..fixture::populated() });
+	// Changing the card stack changes the transcript viewport too; isolate
+	// decision controls from paragraphs exposed by that larger viewport.
+	let with_cards = ShellState { transcript: Vec::new(), ..fixture::populated() };
+	let mut without_cards = with_cards.clone();
+	without_cards.cards.clear();
+	let answers = expected_controls(&with_cards) - expected_controls(&without_cards);
 	assert!(answers > 0, "the fixture has no answerable card, so this proves nothing");
 
-	let before = capture(fixture::populated()).hitboxes.len();
-	let after = capture(ShellState { cards: Vec::new(), ..fixture::populated() })
-		.hitboxes
-		.len();
+	let before = capture(with_cards).hitboxes.len();
+	let after = capture(without_cards).hitboxes.len();
 
 	assert_eq!(
 		before - after,
@@ -115,7 +136,8 @@ fn taking_the_cards_away_takes_exactly_their_answers_away() {
 
 #[test]
 fn closing_the_right_panel_takes_its_tabs_out_of_reach() {
-	let open = fixture::populated();
+	// Isolate panel controls from turns exposed by the wider transcript.
+	let open = ShellState { transcript: Vec::new(), ..fixture::populated() };
 	assert!(!open.panel.is_empty(), "the fixture has no panel, so this proves nothing");
 
 	let mut closed = open.clone();
@@ -135,6 +157,26 @@ fn closing_the_right_panel_takes_its_tabs_out_of_reach() {
 		 owns, so a panel control still answers clicks off screen",
 		before - after
 	);
+}
+
+#[test]
+fn repository_backed_reviews_register_their_list_file_and_numbered_side_controls() {
+	for mode in [veyyon_desktop_model::DiffMode::Unified, veyyon_desktop_model::DiffMode::Split] {
+		let mut unavailable = census_state();
+		unavailable.panel.diff_mode = mode;
+		unavailable.panel.review_repository = None;
+		let mut available = unavailable.clone();
+		available.panel.review_repository =
+			Some(("/repo".into(), veyyon_desktop_model::ChangeScope::WorkingTree));
+		let expected = expected_controls(&available) - expected_controls(&unavailable);
+		assert!(expected > 0, "the fixture must contain reviewable lines");
+		let without = capture(unavailable).hitboxes.len();
+		let with = capture(available);
+		assert_eq!(with.hitboxes.len() - without, expected, "review inventory differs in {mode:?}");
+		for rect in &with.hitboxes {
+			assert!(reachable(rect), "review state in {mode:?} has an unreachable control: {rect:?}");
+		}
+	}
 }
 
 #[test]
@@ -186,9 +228,15 @@ fn a_dispatched_intent_reaches_the_frame_the_operator_then_looks_at() {
 	);
 }
 
-/// One image and one clip, so both thumbnail arms are drawn.
+/// A file and a clipboard image with valid decoded previews.
 fn tray() -> Vec<Attachment> {
-	let png = || payload_for(MediaType::Png, b"\x89PNG\r\n\x1a\nrest".to_vec());
+	let png = || {
+		payload_for(
+			MediaType::Png,
+			include_bytes!("../../../packages/coding-agent/test/gui-host/fixtures/noise-48x48.png")
+				.to_vec(),
+		)
+	};
 	vec![
 		Attachment::from_path(PathBuf::from("/repo/shot.png"), MediaType::Png, png()),
 		Attachment::from_clipboard(1, MediaType::Png, png()),
@@ -197,7 +245,8 @@ fn tray() -> Vec<Attachment> {
 
 #[test]
 fn the_tray_registers_each_card_and_the_remove_control_on_it() {
-	let bare = fixture::populated();
+	// Growing the tray changes the transcript viewport, not only its controls.
+	let bare = ShellState { transcript: Vec::new(), ..census_state() };
 	assert!(
 		bare.composer.attachments.is_empty(),
 		"the fixture carries a tray, so this proves nothing"
@@ -212,10 +261,9 @@ fn the_tray_registers_each_card_and_the_remove_control_on_it() {
 
 	assert_eq!(
 		captured.hitboxes.len() - before,
-		cards * 3,
-		"a tray of {cards} added {} hit rects rather than three per card — the card's hover group, \
-		 the wrapper whose paint turns on with that hover, and the remove control — so a chip shows \
-		 a close that answers no click",
+		cards * 3 + 1,
+		"a tray of {cards} added {} hit rects rather than its scroll viewport plus three per card \
+		 (hover group, hover wrapper and remove control)",
 		captured.hitboxes.len() - before
 	);
 	assert_eq!(
@@ -230,17 +278,10 @@ fn the_tray_registers_each_card_and_the_remove_control_on_it() {
 
 #[test]
 fn the_refusal_notice_registers_its_close_while_it_is_up() {
-	let stage = |mark: &str| {
-		if std::env::var_os("VEYYON_CENSUS_PROBE").is_some() {
-			eprintln!("refusal stage: {mark}");
-		}
-	};
-	stage("context");
 	let cx = headless_context().expect("a headless renderer is required to render the shell");
 	let tokens = load_bundled_tokens().expect("the bundled tokens load");
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
 
-	stage("render with notice");
 	// The context must drop before the baseline capture opens its own: two
 	// live headless contexts deadlock the renderer.
 	let with_notice = {
@@ -261,9 +302,7 @@ fn the_refusal_notice_registers_its_close_while_it_is_up() {
 		.expect("the shell renders offscreen")
 	};
 
-	stage("baseline capture");
 	let without = capture(fixture::populated()).hitboxes.len();
-	stage("assert");
 	assert_eq!(
 		with_notice.hitboxes.len() - without,
 		1,

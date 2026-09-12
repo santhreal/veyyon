@@ -18,7 +18,7 @@ use veyyon_desktop_scene::{
 	headless::{RenderOptions, headless_context},
 };
 use veyyon_desktop_surface::{ConnectionPhase, Intent, ShellState, ShellView, install_tokens};
-use veyyon_gpui::{App, AppContext, Point, px};
+use veyyon_gpui::{App, AppContext, Point};
 
 fn options() -> RenderOptions {
 	RenderOptions { width: 1440, height: 900, scale_factor: 1.0, ..RenderOptions::default() }
@@ -53,6 +53,12 @@ fn the_reconnect_banner_counts_down_and_answers_retry_click() {
 	// 1. Initial frame at now_ms = 6_000 (retrying in 4s).
 	let frame1 = session.frame().expect("frame 1 renders");
 	assert!(!frame1.hitboxes.is_empty(), "reconnecting banner must render interactive hitboxes");
+	assert!(
+		frame1
+			.text_runs
+			.iter()
+			.any(|run| run.text.contains("retrying in 4s"))
+	);
 
 	// 2. Update clock to now_ms = 12_000 (past retry_at_ms -> retrying now).
 	session
@@ -65,21 +71,22 @@ fn the_reconnect_banner_counts_down_and_answers_retry_click() {
 	let frame2 = session.frame().expect("frame 2 renders");
 	assert!(!frame2.hitboxes.is_empty(), "reconnecting banner must render hitboxes on second frame");
 
-	// 3. Find the retry button hitbox in the banner area (below titlebar y=52).
-	// Banner is near y=52..90, retry button on the right.
-	let retry_hitbox = frame2
-		.hitboxes
+	assert!(
+		frame2
+			.text_runs
+			.iter()
+			.any(|run| run.text.contains("retrying now"))
+	);
+	let retry = frame2
+		.text_runs
 		.iter()
-		.find(|rect| {
-			let top = f32::from(rect.origin.y);
-			let right = f32::from(rect.origin.x + rect.size.width);
-			(48.0..=100.0).contains(&top) && right > 1200.0
-		})
-		.copied()
-		.expect("retry button hitbox must exist in banner");
-
-	let click_point =
-		Point { x: retry_hitbox.origin.x + px(10.0), y: retry_hitbox.origin.y + px(10.0) };
+		.find(|run| run.text.as_ref() == "Retry Now")
+		.expect("the banner draws its retry button")
+		.bounds;
+	let click_point = Point {
+		x: retry.origin.x + retry.size.width / 2.0,
+		y: retry.origin.y + retry.size.height / 2.0,
+	};
 
 	session
 		.click(click_point)

@@ -16,8 +16,9 @@
 //!
 //! 1. A rename that sends the name the host last reported rather than the one
 //!    that was typed.
-//! 2. A rename that names another session — the first row, the previously open
-//!    one, or the row the field was first drawn for.
+//! 2. A rename that names a session other than the one displayed. Reuse across
+//!    host acknowledgements is exercised by the desktop acknowledged-session
+//!    suite.
 //! 3. An empty or blank name sent on to the host, which renames a session to
 //!    nothing, instead of being refused where it was typed (§9.3).
 //! 4. A refusal that is stated and then sends anyway, or sends and states
@@ -48,6 +49,7 @@ const fn proven_by(key: &FieldKey) -> &'static str {
 		FieldKey::AuthSecret => "a-field-sends-what-the-operator-typed-into-it",
 		FieldKey::Setting(_) => "a-setting-row-sends-the-value-its-field-holds",
 		FieldKey::SessionRename(_) => "the-titlebar-renames-the-session-it-is-naming",
+		FieldKey::SpaceRename(_) => "tabs-and-spaces-preserve-drafts-and-close-deliberately",
 		FieldKey::Keybinding(_) => "a-keybinding-override-that-shadows-nothing-is-reported",
 		FieldKey::TaskPrompt => "contextual-surfaces-intent-and-interaction-contracts",
 		FieldKey::ProcessCommand => "the-supervisor-starts-the-command-its-field-states",
@@ -150,54 +152,6 @@ fn the_name_that_was_typed_reaches_the_host_under_the_open_session() {
 		sent,
 		vec![Intent::RenameSession { session: row, title: TYPED.to_owned() }],
 		"the commit sent something other than the typed name for the open session"
-	);
-}
-
-#[test]
-fn a_rename_follows_the_session_the_window_opened() {
-	// Another row of the seeded rail, so the id under test is neither the one
-	// the field was first drawn for nor the first row of the queue.
-	let other = window(shell(), |session| {
-		session.frame().expect("the shell draws");
-		session
-			.update(|view, _window, _cx| {
-				view
-					.state()
-					.sections
-					.iter()
-					.flat_map(|(_, rows)| rows.iter())
-					.map(|row| row.id)
-					.find(|id| *id != view.state().current_id)
-					.expect("the seeded rail lists a second session")
-			})
-			.expect("the rail rows are read back")
-	});
-
-	let sent = window(shell(), |session| {
-		session.frame().expect("the shell draws");
-		session
-			.update(|view, _window, cx| {
-				view.dispatch(Intent::SelectSession(other), cx);
-				view.drain_intents();
-			})
-			.expect("the other session opens");
-		session.frame().expect("the opened session draws");
-		retype(session, other, TYPED);
-		assert!(
-			session
-				.keystroke("enter")
-				.expect("the return key dispatches"),
-			"the return key reached no handler over the field"
-		);
-		session
-			.update(|view, _window, _cx| view.drain_intents())
-			.expect("what the commit sent is read back")
-	});
-
-	assert_eq!(
-		sent,
-		vec![Intent::RenameSession { session: other, title: TYPED.to_owned() }],
-		"the commit named a session other than the one the window has open"
 	);
 }
 

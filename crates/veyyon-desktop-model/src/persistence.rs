@@ -6,8 +6,9 @@ use thiserror::Error;
 use crate::{composer::QueueMode, connection::SessionId};
 
 mod document;
-
+mod navigation;
 pub use document::{Rejection, StoreKind};
+pub use navigation::{NavigationStore, SpaceStore};
 
 /// Persistence error identifying corrupted, truncated, or incompatible state
 /// files.
@@ -75,6 +76,7 @@ pub struct ShellStore {
 	/// operator never chose one and the build's default stands.
 	pub appearance:      Option<String>,
 	pub active_session:  Option<SessionId>,
+	pub navigation:      NavigationStore,
 }
 
 impl Default for ShellStore {
@@ -84,16 +86,14 @@ impl Default for ShellStore {
 			queue_collapsed: false,
 			appearance:      None,
 			active_session:  None,
+			navigation:      NavigationStore::default(),
 		}
 	}
 }
 
 impl VersionedStore for ShellStore {
-	// Version 3 adds the appearance. A version 2 document is rejected rather
-	// than read with the field defaulted: the two shapes are one field apart,
-	// and a defaulted read would put the window back up in the build's
-	// default appearance while stating it restored what was left.
-	const CURRENT_VERSION: u32 = 3;
+	// Version 4 adds named spaces, stable tab membership and per-space layouts.
+	const CURRENT_VERSION: u32 = 4;
 
 	fn version(&self) -> u32 {
 		self.version
@@ -278,6 +278,7 @@ pub struct PersistedState {
 	pub transcripts: HashMap<SessionId, TranscriptStore>,
 	pub composer:    HashMap<SessionId, ComposerStore>,
 	pub queue:       QueueStore,
+	pub reviews:     crate::review::ReviewsStore,
 }
 
 impl PersistedState {
@@ -291,6 +292,7 @@ impl PersistedState {
 			transcripts: HashMap::new(),
 			composer:    HashMap::new(),
 			queue:       QueueStore::default(),
+			reviews:     crate::review::ReviewsStore::default(),
 		}
 	}
 }

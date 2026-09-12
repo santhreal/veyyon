@@ -226,6 +226,7 @@ fn rest_does_not_perpetually_redraw_at_rest() {
 fn queue_navigation_and_footer_controls_dispatch_valid_intents() {
 	let mut cx = headless_context().expect("headless renderer is required");
 	let state = fixture::populated();
+	let previous = (state.current_id, state.title.clone());
 	let mut session = open_session(&mut cx, state, 1440, 900);
 
 	session
@@ -233,8 +234,8 @@ fn queue_navigation_and_footer_controls_dispatch_valid_intents() {
 		.expect("dispatch new session");
 	session
 		.update(|view, _window, _cx| {
-			assert_eq!(view.state().current_id, 0);
-			assert_eq!(view.state().title, "new session");
+			assert_eq!((view.state().current_id, view.state().title.clone()), previous);
+			assert_eq!(view.pending(), &[Intent::NewSession]);
 		})
 		.expect("new session verified");
 	session
@@ -277,17 +278,16 @@ fn keyboard_selection_navigates_filtered_results_and_clamps_properly() {
 	assert_eq!(state.keymap.queue_filter.as_deref(), Some("Live"));
 	assert_eq!(state.current_id, 16);
 
-	Intent::MoveQueueSelection(1).apply(&mut state);
-	assert_eq!(state.current_id, 17);
-	assert_eq!(state.title, "Live 17");
-
-	Intent::MoveQueueSelection(50).apply(&mut state);
-	assert_eq!(state.current_id, 45);
-	assert_eq!(state.title, "Live 45");
-
-	Intent::MoveQueueSelection(-100).apply(&mut state);
-	assert_eq!(state.current_id, 16);
-	assert_eq!(state.title, "Live 16");
+	for (current, delta, target) in [(16, 1, 17), (17, 50, 45), (45, -100, 16)] {
+		let mut acknowledged = state.clone();
+		acknowledged.current_id = current;
+		acknowledged.title = format!("Live {current}");
+		let mut intents = veyyon_desktop_surface::intent::Intents::new();
+		intents.dispatch(Intent::MoveQueueSelection(delta), &mut acknowledged);
+		assert_eq!(intents.pending(), &[Intent::SelectSession(target)]);
+		assert_eq!(acknowledged.current_id, current);
+		assert_eq!(acknowledged.title, format!("Live {current}"));
+	}
 
 	Intent::FilterQueue("NonExistent".into()).apply(&mut state);
 	assert_eq!(state.keymap.queue_filter.as_deref(), Some("NonExistent"));
@@ -340,7 +340,7 @@ fn selection_in_collapsed_or_unpaged_section_ensures_visibility() {
 }
 
 #[test]
-fn queue_search_palette_selection_dispatches_select_session_and_activates_host() {
+fn queue_search_palette_selection_requests_the_matched_session_without_switching_locally() {
 	let sections = vec![(Section::Live, vec![
 		row(10, "Auth Flow".into(), "working", None, None),
 		row(20, "Database Migration".into(), "watching", None, None),
@@ -357,24 +357,26 @@ fn queue_search_palette_selection_dispatches_select_session_and_activates_host()
 	assert_eq!(intent, Some(Intent::SelectSession(20)));
 
 	let mut state = fixture::populated();
+	let acknowledged = (state.current_id, state.title.clone());
 	let mut intents = veyyon_desktop_surface::intent::Intents::new();
 	intents.dispatch(intent.unwrap(), &mut state);
 
-	assert_eq!(state.current_id, 20);
+	assert_eq!((state.current_id, state.title), acknowledged);
 	assert_eq!(intents.pending(), &[Intent::SelectSession(20)]);
 }
 
 #[test]
-fn new_session_clears_queue_filter_and_resets_current_id() {
+fn new_session_clears_queue_filter_without_replacing_the_acknowledged_session() {
 	let mut state = fixture::populated();
 	state.current_id = 42;
 	state.keymap.queue_filter = Some("Filter".into());
+	let acknowledged_title = state.title.clone();
 
 	let mut intents = veyyon_desktop_surface::intent::Intents::new();
 	intents.dispatch(Intent::NewSession, &mut state);
 
-	assert_eq!(state.current_id, 0);
-	assert_eq!(state.title, "new session");
+	assert_eq!(state.current_id, 42);
+	assert_eq!(state.title, acknowledged_title);
 	assert_eq!(state.keymap.queue_filter, None);
 	assert_eq!(intents.pending(), &[Intent::NewSession]);
 }

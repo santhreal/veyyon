@@ -5,7 +5,7 @@ import type { AuthStorage } from "@veyyon/ai";
 import { errorMessage, getAgentDir, logger } from "@veyyon/utils";
 import { discoverAuthStorage } from "../session/auth-broker-config";
 import { allActionHandlers } from "./actions";
-import { writeSessionList } from "./actions/active-session";
+import { activeCwd, writeSessionList } from "./actions/active-session";
 import type { ActionContext, ReplyHelper } from "./actions/types";
 import { FrameDecoder, MAX_FRAME_BYTES, writeFrame } from "./frames";
 import { PresentationLedger } from "./presentation";
@@ -111,7 +111,8 @@ export class GuiHostServer {
 	#cwd: string;
 	#agentDir: string;
 	#authStorage: Promise<AuthStorage> | null;
-	#isClosing = false;
+	#closeCall?: Promise<void>;
+	#pendingDisposals = new Set<Promise<void>>();
 
 	constructor(options: GuiHostServerOptions = {}) {
 		this.#cwd = options.cwd ?? process.cwd();
@@ -229,12 +230,12 @@ export class GuiHostServer {
 		clientState.refreshSessionList = async () => {
 			if (socket.destroyed) return;
 			try {
-				await writeSessionList(socket, clientState, this.#cwd, this.#agentDir);
+				await writeSessionList(socket, clientState, activeCwd(clientState, this.#cwd), this.#agentDir);
 			} catch (error) {
 				logger.warn("GUI host could not re-state the session index", { error: errorMessage(error) });
 			}
 		};
-		clientState.republishWorkspace = () => republishWorkspace(socket, clientState, this.#cwd);
+		clientState.republishWorkspace = () => republishWorkspace(socket, clientState, activeCwd(clientState, this.#cwd));
 		this.#clientStates.set(socket, clientState);
 		// 1. Write greeting frame first
 		writeFrame(socket, {
@@ -279,12 +280,19 @@ export class GuiHostServer {
 		this.#clients.delete(socket);
 		const state = this.#clientStates.get(socket);
 		if (state) {
-			void disposeClientState(state);
+			state.closed = true;
+			state.interactions?.cancelAll();
+			const disposal = disposeClientState(state).catch(error => {
+				logger.error("GUI host could not dispose client state", { error: errorMessage(error) });
+			});
+			this.#pendingDisposals.add(disposal);
+			void disposal.then(() => this.#pendingDisposals.delete(disposal));
 			this.#clientStates.delete(socket);
 		}
 	}
 
 	async #handleFrame(socket: net.Socket, clientState: ClientSessionState, rawFrame: unknown): Promise<void> {
+		if (clientState.closed) return;
 		if (!rawFrame || typeof rawFrame !== "object" || !("id" in rawFrame) || typeof rawFrame.id !== "number") {
 			logger.warn("GUI host received invalid request frame structure", { frame: rawFrame });
 			return;
@@ -373,10 +381,13 @@ export class GuiHostServer {
 			payload = (action as Record<string, unknown>)[actionTag];
 		}
 
+		const initialCwd = this.#cwd;
 		const ctx: ActionContext = {
 			socket,
 			clientState,
-			cwd: this.#cwd,
+			get cwd() {
+				return activeCwd(clientState, initialCwd);
+			},
 			agentDir: this.#agentDir,
 			authStorage: () => this.#resolveAuthStorage(),
 			requestId,
@@ -391,12 +402,12 @@ export class GuiHostServer {
 		}
 	}
 
-	async close(): Promise<void> {
-		if (this.#isClosing) {
-			return;
-		}
-		this.#isClosing = true;
+	close(): Promise<void> {
+		if (!this.#closeCall) this.#closeCall = this.#close();
+		return this.#closeCall;
+	}
 
+	async #close(): Promise<void> {
 		for (const client of this.#clients) {
 			this.#cleanupClient(client);
 			client.destroy();
@@ -411,6 +422,8 @@ export class GuiHostServer {
 			await promise;
 			this.#server = null;
 		}
+
+		await Promise.all(this.#pendingDisposals);
 
 		if (this.#parsedEndpoint.type === "unix" && this.#parsedEndpoint.path) {
 			try {

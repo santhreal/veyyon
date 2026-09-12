@@ -13,6 +13,37 @@ use veyyon_gpui::{
 
 use crate::{ShellView, intent::Intent, right_panel::content::DiffWithheld};
 
+/// A line-number control retains the source side even when split rows are
+/// paired.
+pub fn review_line_cell(
+	cell: Div,
+	enabled: bool,
+	path: &str,
+	side: veyyon_desktop_model::review::ReviewSide,
+	line: Option<usize>,
+	tokens: &TokenSet,
+	cx: &Context<ShellView>,
+) -> Div {
+	if !enabled {
+		return cell;
+	}
+	let Some(line) = line else {
+		return cell;
+	};
+	let path = path.to_owned();
+	cell
+		.cursor_pointer()
+		.hover(|style| style.bg(tokens.row_hover()))
+		.on_mouse_down(
+			veyyon_gpui::MouseButton::Left,
+			cx.listener(move |view, event: &veyyon_gpui::MouseDownEvent, window, cx| {
+				if view.open_review_line(&path, side, line, event.position, window, cx) {
+					cx.stop_propagation();
+				}
+			}),
+		)
+}
+
 /// The text a hunk header states: its ranges, and the symbol it sits in when
 /// the host named one.
 ///

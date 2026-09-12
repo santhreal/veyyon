@@ -49,6 +49,7 @@ pub fn render_shell(
 	let now = cx.background_executor().now();
 	view.sync_transcript_viewport(transcript_height, now);
 	let chrome_px = view.installed().surface.shell.titlebar_height_px
+		+ view.navigation_height()
 		+ if view.has_notice() {
 			attention_strip_height(&view.installed().set)
 		} else {
@@ -166,6 +167,7 @@ pub fn render_shell(
 		.laid_out()
 		.track_children(root, |index| (index == 0).then_some(Region::Titlebar));
 	let mut root = bind_global_keys(root, cx);
+	root = root.child(view.navigation_strip(window, cx));
 
 	if let Some(banner) = connection_banner(
 		&view.state().connection,
@@ -324,20 +326,33 @@ pub fn render_shell(
 	if let Some(overlay) = super::float::overlay_layer(view, widths.columns_px, window, cx) {
 		columns = columns.child(overlay);
 	}
+	view.sync_context_picker(window, cx);
+	let menu_focus = view.menu_focus(cx);
+	let menu_selected = view.menu_picker_selection(crate::menu::MenuSource::Queue);
 	if let Some(menu) = view.row_menu() {
-		columns = columns.child(row_menu_layer(menu, &view.state().controls, &tokens, cx));
+		columns = columns.child(row_menu_layer(
+			menu,
+			menu_selected,
+			&menu_focus,
+			&view.state().controls,
+			&tokens,
+			cx,
+		));
 	}
 	if let Some(menu) = view.turn_menu() {
-		columns = columns.child(turn_menu_layer(menu, cx));
+		columns = columns.child(turn_menu_layer(menu, menu_selected, &menu_focus, cx));
 	}
 	if let Some(menu) = view.signal_menu() {
-		columns = columns.child(signal_menu_layer(menu, cx));
+		columns = columns.child(signal_menu_layer(menu, menu_selected, &menu_focus, cx));
 	}
 	// Over every menu: a detail opened from a row the menu also lists is
 	// anchored to that row, and a menu drawn over it would cover the facts the
 	// popover was opened to read.
 	if let Some(popover) = super::detail::detail_float(view, window, cx) {
 		columns = columns.child(popover);
+	}
+	if let Some(layer) = view.review_layer(window, cx) {
+		columns = columns.child(layer);
 	}
 	// Over every float: an announcement is raised by something the operator is
 	// not looking at, so a menu or a popover they opened does not cover it.

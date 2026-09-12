@@ -24,6 +24,7 @@ use crate::{
 		diff_split::split_columns,
 		pane_scroll::{PaneId, PaneScrolls},
 		pane_window::{RowWalk, scrolled},
+		review_controls::{ReviewCounts, review_bar, review_button},
 	},
 };
 
@@ -37,6 +38,7 @@ pub fn diff_view(
 	diff_status: DiffStatus,
 	withheld: DiffWithheld,
 	diff_mode: DiffMode,
+	reviews: &ReviewCounts,
 	panes: &PaneScrolls,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
@@ -60,6 +62,9 @@ pub fn diff_view(
 		.restrict_scroll_to_axis();
 
 	container = container.child(diff_toolbar(diff_mode, geometry, tokens, cx));
+	if reviews.enabled {
+		container = container.child(review_bar(reviews, geometry, tokens, cx));
+	}
 
 	// What the host cut is chrome, not a row: it belongs above the first file
 	// rather than at the end of a scroll a reader of a truncated diff never
@@ -98,6 +103,9 @@ pub fn diff_view(
 	}
 	let mut walk = RowWalk::of(&scrolled(&rows, window));
 	walk.advance(geometry.chrome_row_height_px);
+	if reviews.enabled {
+		walk.advance(geometry.chrome_row_height_px);
+	}
 	// One row each, counted rather than multiplied: a usize scaled into the
 	// row height is a float conversion of a count for no gain.
 	for _ in &cut_notices {
@@ -111,12 +119,13 @@ pub fn diff_view(
 			container = container.child(Divider::horizontal());
 			walk.advance(hairline_px);
 		}
-		container = container.child(file_header(file, effective_mode, geometry, tokens, cx));
+		container = container.child(file_header(file, effective_mode, reviews, geometry, tokens, cx));
 		walk.advance(geometry.chrome_row_height_px);
 		container = container.child(file_body(
 			file_idx,
 			file,
 			effective_mode,
+			reviews.enabled,
 			panes,
 			&mut walk,
 			geometry,
@@ -132,6 +141,7 @@ pub fn diff_view(
 fn file_header(
 	file: &DiffFile,
 	diff_mode: DiffMode,
+	reviews: &ReviewCounts,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -145,6 +155,14 @@ fn file_header(
 		DiffMode::Split => "Split",
 	};
 
+	let review = reviews.enabled.then(|| {
+		review_button(
+			Some(file.path.clone()),
+			reviews.files.get(&file.path).copied().unwrap_or(0),
+			tokens,
+			cx,
+		)
+	});
 	div()
 		.h(px(geometry.chrome_row_height_px))
 		.w_full()
@@ -153,12 +171,14 @@ fn file_header(
 		.flex_row()
 		.items_center()
 		.justify_between()
+		.gap(tokens.spacing(SpacingStep::S2))
 		.px(tokens.spacing(SpacingStep::S3))
 		.bg(tokens.color(ColorRole::Inset))
 		.border_b(px(geometry.chrome_resize_handle_line_px))
 		.border_color(tokens.color(ColorRole::Hairline))
 		.child(
 			div()
+				.flex_1()
 				.flex()
 				.flex_row()
 				.items_center()
@@ -167,6 +187,8 @@ fn file_header(
 				.overflow_hidden()
 				.child(
 					div()
+						.flex_1()
+						.min_w_0()
 						.text_size(tokens.font_size(TextRamp::Micro))
 						.font_weight(tokens.font_weight(TextWeight::Medium))
 						.text_color(tokens.color(ColorRole::Foreground))
@@ -188,9 +210,11 @@ fn file_header(
 						.child(format!("-{}", file.deletions)),
 				),
 		)
+		.children(review)
 		.child(
 			div()
 				.id(ElementId::Name(format!("toggle-diff-mode-{}", file.path).into()))
+				.flex_shrink_0()
 				.on_click(cx.listener(move |view, _event, _window, cx| {
 					view.dispatch(Intent::SetDiffMode(next_mode), cx);
 				}))
@@ -212,6 +236,7 @@ fn file_body(
 	file_idx: usize,
 	file: &DiffFile,
 	diff_mode: DiffMode,
+	review_enabled: bool,
 	panes: &PaneScrolls,
 	walk: &mut RowWalk,
 	geometry: &PanelsSurfaceTokens,
@@ -221,7 +246,7 @@ fn file_body(
 ) -> impl IntoElement {
 	match diff_mode {
 		DiffMode::Unified => {
-			let columns = unified_columns(file_idx, file, walk, geometry, tokens, cx);
+			let columns = unified_columns(file_idx, file, review_enabled, walk, geometry, tokens, cx);
 			let scroll = panes.handle(PaneId::DiffUnified(file_idx));
 			div().w_full().flex().flex_col().child(
 				columns
@@ -238,7 +263,7 @@ fn file_body(
 			)
 		},
 		DiffMode::Split => {
-			let (old, new) = split_columns(file_idx, file, walk, geometry, tokens, cx);
+			let (old, new) = split_columns(file_idx, file, review_enabled, walk, geometry, tokens, cx);
 			// Both sides drew the same rows, so both take the same padding.
 			let padding = walk.take_padding();
 			let old_scroll = panes.handle(PaneId::DiffOld(file_idx));

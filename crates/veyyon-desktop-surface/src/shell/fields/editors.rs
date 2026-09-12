@@ -14,6 +14,29 @@ use super::{Commit, FieldKey, FieldSlots, FieldSpec};
 use crate::ShellView;
 
 impl ShellView {
+	/// Retains the name being edited while host frames arrive.
+	pub fn space_name_field_editor(
+		&mut self,
+		id: u64,
+		current: &str,
+		window: &Window,
+		cx: &mut Context<Self>,
+	) -> Entity<Editor> {
+		let editor = self.field_editor(
+			FieldSpec {
+				key:         FieldKey::SpaceRename(id),
+				commit:      Commit::SpaceRename(id),
+				placeholder: "Space name".into(),
+				mask:        false,
+				multiline:   false,
+				initial:     current.to_owned(),
+			},
+			cx,
+		);
+		Self::adopt_reported_value(&editor, current, window, cx);
+		editor
+	}
+
 	/// The retained editor for the secret a provider is waiting on: created
 	/// when a flow asks for one, dropped when no flow does, so the next flow
 	/// starts from an empty field.

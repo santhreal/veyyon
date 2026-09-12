@@ -25,11 +25,13 @@ mod float;
 pub mod keys;
 mod memory;
 mod menu;
+mod navigation;
 mod notice;
 pub mod overlay;
 mod palette;
 mod queue_search;
 mod render;
+mod review;
 mod session;
 mod split;
 pub mod titlebar;
@@ -185,6 +187,8 @@ pub struct ShellView {
 	menu_focus:            Option<FocusHandle>,
 	menu_return:           Option<FocusHandle>,
 	general_settings_list: GeneralSettingsListState,
+	review:                review::ReviewState,
+	navigation_ui:         navigation::NavigationUi,
 	now_ms:                u64,
 	subscriptions:         Vec<Subscription>,
 }
@@ -252,6 +256,8 @@ impl ShellView {
 			menu_focus: None,
 			menu_return: None,
 			general_settings_list: GeneralSettingsListState::new(),
+			review: review::ReviewState::default(),
+			navigation_ui: navigation::NavigationUi::default(),
 			now_ms: 0,
 			subscriptions: Vec::new(),
 		}

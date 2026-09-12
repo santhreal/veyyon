@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import type * as net from "node:net";
 import * as path from "node:path";
-import { listSessions } from "@veyyon/kernel/session/session-listing";
+import { listSessions, listSessionsReadOnly } from "@veyyon/kernel/session/session-listing";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
@@ -16,6 +16,7 @@ import {
 } from "../transcript-conversion";
 import { type ClientSessionState, disposeTurnSession, settleRunningTurn } from "../turns";
 import type { ErrorScope, TranscriptEntry } from "../wire";
+import { sessionFiles } from "./session-files";
 import type { ActionContext } from "./types";
 
 export const sessionStorage = new FileSessionStorage();
@@ -32,12 +33,36 @@ export async function findSessionPath(session: string, cwd: string, agentDir: st
 	} catch {
 		// Not a path: resolve it as a session id below.
 	}
-	const sessions = await listSessions(sessionDirFor(cwd, agentDir), sessionStorage);
-	return sessions.find(s => s.id === session || s.path === session)?.path;
+	const currentDir = sessionDirFor(cwd, agentDir);
+	const sessions = await listSessions(currentDir, sessionStorage);
+	const current = sessions.find(s => s.id === session || s.path === session)?.path;
+	if (current) return current;
+	const directories = new Set((await sessionFiles(agentDir)).map(file => path.dirname(file)));
+	for (const directory of directories) {
+		if (directory === currentDir) continue;
+		const found = (await listSessionsReadOnly(directory, sessionStorage)).find(
+			s => s.id === session || s.path === session,
+		);
+		if (found) return found.path;
+	}
+	return undefined;
 }
 
 export function activeManager(ctx: ActionContext): SessionManager | undefined {
 	return ctx.clientState.sessionManager ?? ctx.clientState.agentSession?.sessionManager;
+}
+
+export function activeCwd(state: ClientSessionState, fallback: string): string {
+	return (state.sessionManager ?? state.agentSession?.sessionManager)?.getCwd() ?? fallback;
+}
+
+function rescopeWorkspace(ctx: ActionContext, previousCwd: string, manager: SessionManager): void {
+	const cwd = manager.getCwd();
+	if (path.resolve(previousCwd) === path.resolve(cwd)) return;
+	if (ctx.clientState.fileTreeRoot !== undefined) ctx.clientState.fileTreeRoot = cwd;
+	// Process subscriptions are workspace-scoped; terminal instances remain independent.
+	for (const stop of ctx.clientState.processFollowers?.values() ?? []) stop();
+	ctx.clientState.processFollowers?.clear();
 }
 
 export function isActive(sm: SessionManager | undefined, session: string): sm is SessionManager {
@@ -177,6 +202,7 @@ export function wireSessionManager(ctx: ActionContext, sm: SessionManager): void
 export async function activateSession(ctx: ActionContext, session: string): Promise<SessionManager | undefined> {
 	const current = activeManager(ctx);
 	if (isActive(current, session)) return current;
+	const previousCwd = ctx.cwd;
 
 	const sessionPath = await findSessionPath(session, ctx.cwd, ctx.agentDir);
 	if (!sessionPath) {
@@ -200,6 +226,7 @@ export async function activateSession(ctx: ActionContext, session: string): Prom
 			});
 			return undefined;
 		}
+		rescopeWorkspace(ctx, previousCwd, agent.sessionManager);
 		return agent.sessionManager;
 	}
 
@@ -207,5 +234,6 @@ export async function activateSession(ctx: ActionContext, session: string): Prom
 	await disposeTurnSession(ctx.clientState);
 	const sm = await SessionManager.open(sessionPath, undefined, undefined, { suppressBreadcrumb: true });
 	wireSessionManager(ctx, sm);
+	rescopeWorkspace(ctx, previousCwd, sm);
 	return sm;
 }

@@ -94,12 +94,11 @@ fn seeded_store_and_index() -> (Store, SessionIndex) {
 
 #[test]
 fn every_action_the_host_answers_has_a_sender_or_is_pinned_unsent() {
-	let (mut store, index) = seeded_store_and_index();
-
 	let mut sent_kinds = BTreeSet::new();
 
 	// 1. Collect actions produced by driving every Intent through actions_for
 	for intent in every_sample_intent() {
+		let (mut store, index) = seeded_store_and_index();
 		let actions = actions_for(&intent, &index, &mut store);
 		for action in actions {
 			sent_kinds.insert(action.kind());

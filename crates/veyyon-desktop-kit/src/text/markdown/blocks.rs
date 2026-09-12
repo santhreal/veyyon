@@ -11,7 +11,7 @@
 
 /// One block of a Markdown document.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum MdBlock {
+pub enum MdBlock {
 	Heading {
 		level: u8,
 		text:  String,
@@ -40,7 +40,7 @@ pub(crate) enum MdBlock {
 
 /// Which edge a table column's cells are set against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CellAlign {
+pub enum CellAlign {
 	Start,
 	Center,
 	End,
@@ -136,7 +136,7 @@ fn table_at(lines: &[&str], at: usize) -> Option<(MdBlock, usize)> {
 }
 
 /// Reads `source` into blocks.
-pub(crate) fn blocks(source: &str) -> Vec<MdBlock> {
+pub fn blocks(source: &str) -> Vec<MdBlock> {
 	let lines: Vec<&str> = source.lines().collect();
 	let mut out = Vec::new();
 	let mut paragraph: Vec<&str> = Vec::new();

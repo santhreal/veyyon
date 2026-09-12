@@ -33,6 +33,8 @@ use crate::{
 /// The shape one window holds for every session at once (§8.10).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct HostShape {
+	/// The restored window navigation; drafts remain session-scoped.
+	pub navigation:         veyyon_desktop_model::persistence::NavigationStore,
 	/// Whether the queue rail is collapsed to its icon width.
 	pub queue_collapsed:    bool,
 	/// The sections the operator collapsed, by name.
@@ -94,6 +96,7 @@ impl ShellView {
 	#[must_use]
 	pub fn host_shape(&self) -> HostShape {
 		HostShape {
+			navigation:         self.state.navigation.clone(),
 			queue_collapsed:    self.state.keymap.queue_collapsed,
 			collapsed_sections: Section::all()
 				.into_iter()
@@ -189,6 +192,7 @@ impl ShellView {
 
 	/// Puts back the shape a previous window held for every session at once.
 	pub fn restore_host_shape(&mut self, shape: &HostShape) {
+		self.state.navigation.clone_from(&shape.navigation);
 		self.state.keymap.queue_collapsed = shape.queue_collapsed;
 		let sections = shape
 			.collapsed_sections
@@ -210,10 +214,20 @@ impl ShellView {
 	/// the shed bounds both on the next frame, so a height from a larger
 	/// window is cut to what this one can hold instead of being refused here.
 	pub fn restore_session_shape(&mut self, shape: &SessionShape, cx: &mut Context<Self>) {
+		self.restore_session_shape_with_attachments(shape, None, cx);
+	}
+
+	/// Restores retained clipboard bytes during window-local navigation and
+	/// reconnect.
+	pub fn restore_session_shape_with_attachments(
+		&mut self,
+		shape: &SessionShape,
+		attachments: Option<&[crate::composer::Attachment]>,
+		cx: &mut Context<Self>,
+	) {
 		self.state.keymap.panel_collapsed = !shape.panel_visible;
-		if let Some(width) = shape.panel_width_px {
-			self.set_panel_width(width);
-		}
+		self.panel_width = shape.panel_width_px;
+		self.split_motion = super::split::SplitMotions::default();
 		self.state.drawer_open = shape.drawer_visible && self.state.drawer.offered;
 		if let Some(height) = shape.drawer_height_px {
 			self.restore_drawer_height(height);
@@ -226,6 +240,14 @@ impl ShellView {
 		self.set_composed(shape.draft_text.clone(), cx);
 		self.state.composer.queue_mode = shape.queue_mode;
 		self.state.composer.attachments.clear();
+		if let Some(attachments) = attachments {
+			self
+				.state
+				.composer
+				.attachments
+				.extend_from_slice(attachments);
+			return;
+		}
 		let paths: Vec<PathBuf> = shape.attachment_paths.iter().map(PathBuf::from).collect();
 		// Read through the same path a drop takes, so a file that has since
 		// been deleted or grown past the ceiling states its refusal rather

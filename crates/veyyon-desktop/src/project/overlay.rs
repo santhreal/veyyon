@@ -22,7 +22,7 @@ pub fn project_overlay(store: &Store, state: &mut ShellState) {
 		Some(Overlay::Palette(palette_state)) => {
 			project_palette_domains(store, palette_state);
 		},
-		None => {},
+		Some(Overlay::History(_)) | None => {},
 	}
 }
 

@@ -17,7 +17,7 @@ use crate::{
 	controls::{Availability, ControlError, ControlStates, error_hairline_weak},
 };
 /// The partition kind of a queue row menu.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumIter)]
 pub enum RowMenuKind {
 	/// Active card row: park and defer.
 	Card,
@@ -160,21 +160,20 @@ pub fn row_menu_items(menu: &RowMenu, controls: &ControlStates) -> Vec<(MenuItem
 /// takes the dismissing click, and the menu floated at the pointer.
 pub fn row_menu_layer(
 	menu: RowMenu,
+	selected: usize,
+	focus: &veyyon_gpui::FocusHandle,
 	controls: &ControlStates,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
-	let (items, intents): (Vec<MenuItem>, Vec<Intent>) =
-		row_menu_items(&menu, controls).into_iter().unzip();
+	let items = row_menu_items(&menu, controls)
+		.into_iter()
+		.enumerate()
+		.map(|(index, (item, _))| item.highlighted(index == selected));
 	let entity = cx.entity();
-	let picker = Menu::new(items).on_select(move |index, _event, _window, app| {
-		let intent = intents.get(index).cloned();
-		let () = entity.update(app, |view, cx| {
-			view.close_row_menu();
-			if let Some(intent) = intent {
-				view.dispatch(intent, cx);
-			}
-			cx.notify();
+	let picker = Menu::new(items).on_select(move |index, _event, window, app| {
+		entity.update(app, |view, cx| {
+			view.menu_picker_pointer(crate::menu::MenuSource::Queue, index, window, cx);
 		});
 	});
 
@@ -203,17 +202,15 @@ pub fn row_menu_layer(
 		.inset_0()
 		.on_mouse_down(
 			MouseButton::Left,
-			cx.listener(|view, _event, _window, cx| {
-				view.close_row_menu();
-				cx.notify();
+			cx.listener(|view, _event, window, cx| {
+				view.dismiss_picker_menu(window, cx);
 			}),
 		)
 		.on_mouse_down(
 			MouseButton::Right,
-			cx.listener(|view, _event, _window, cx| {
-				view.close_row_menu();
-				cx.notify();
+			cx.listener(|view, _event, window, cx| {
+				view.dismiss_picker_menu(window, cx);
 			}),
 		)
-		.child(Popover::new(menu.origin, AnchorCorner::TopLeft, content))
+		.child(Popover::new(menu.origin, AnchorCorner::TopLeft, content).focus(focus))
 }

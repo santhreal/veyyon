@@ -15,9 +15,9 @@
 //! 4. Empty sections improperly rendering in the queue rail.
 //! 5. Non-empty collapsed sections failing to retain their header and chevron
 //!    toggle.
-//! 6. Selecting an already-current or newly selected row in any collapsed
-//!    section failing to expand that section when explicit selection is
-//!    requested.
+//!
+//! Acknowledged selection expansion is exercised in the desktop suite
+//! `an-acknowledged-session-selects-its-rail-section-and-rename-editor`.
 //!
 //! GAPS:
 //! Exact visual rasterization and rendered glyphs of badge/count text digits
@@ -31,7 +31,7 @@ use std::time::{Duration, Instant};
 use queue_scroll::{open_session, row};
 use veyyon_desktop_kit::load_bundled_tokens;
 use veyyon_desktop_scene::{HeadlessSession, headless::headless_context};
-use veyyon_desktop_surface::{Badge, Intent, Row, Section, ShellState, ShellView, fixture};
+use veyyon_desktop_surface::{Badge, Row, Section, ShellState, ShellView, fixture};
 use veyyon_gpui::{Bounds, Pixels, Point, px};
 
 fn section_header_px() -> f32 {
@@ -290,69 +290,4 @@ fn empty_sections_are_hidden_while_non_empty_collapsed_sections_retain_headers()
 		non_empty_count,
 		"collapsed non-empty section must retain its header in the rail"
 	);
-}
-
-#[test]
-fn selecting_row_in_any_collapsed_section_expands_only_that_section() {
-	let mut cx = headless_context().expect("headless renderer is required");
-	let state = make_compact_all_sections_state();
-	let all_sections = Section::all();
-	let section_count = all_sections.len();
-
-	for (target_ix, target_sec) in all_sections.into_iter().enumerate() {
-		let mut session = open_session(&mut cx, state.clone(), 1440, 900);
-		settle(&mut session);
-
-		session
-			.update(|view, _window, cx| {
-				for section in Section::all() {
-					view
-						.rail_motion_mut()
-						.toggle_collapsed(section, Instant::now());
-				}
-				cx.notify();
-			})
-			.expect("collapse all");
-
-		settle(&mut session);
-
-		session
-			.update(|view, _window, _cx| {
-				for section in Section::all() {
-					assert!(view.rail_motion().is_collapsed(section));
-				}
-				assert_eq!(view.rail_motion().list_state().item_count(), section_count);
-			})
-			.expect("all collapsed verified");
-
-		let target_id = (target_ix as u64) + 1;
-		session
-			.update(|view, _window, cx| {
-				view.rail_motion_mut().request_scroll_to_selected();
-				view.dispatch(Intent::SelectSession(target_id), cx);
-			})
-			.expect("select target session");
-
-		settle(&mut session);
-
-		session
-			.update(|view, _window, _cx| {
-				assert_eq!(view.state().current_id, target_id);
-				assert!(
-					!view.rail_motion().is_collapsed(target_sec),
-					"target section {target_sec:?} must expand when its row is selected"
-				);
-				for sibling in Section::all() {
-					if sibling != target_sec {
-						assert!(
-							view.rail_motion().is_collapsed(sibling),
-							"sibling section {sibling:?} must remain collapsed when selecting in \
-							 {target_sec:?}"
-						);
-					}
-				}
-				assert_eq!(view.rail_motion().list_state().item_count(), section_count + 1);
-			})
-			.expect("target expansion and sibling preservation verified");
-	}
 }

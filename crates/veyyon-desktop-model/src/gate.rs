@@ -26,6 +26,8 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::RetryConnection => Capability::Lifecycle,
 		HostActionKind::Shutdown => Capability::Lifecycle,
 		HostActionKind::ListSessions => Capability::Sessions,
+		HostActionKind::SearchSessions => Capability::Sessions,
+		HostActionKind::PreviewSessionTranscript => Capability::Transcript,
 		HostActionKind::OpenSession => Capability::Sessions,
 		HostActionKind::CreateSession => Capability::Sessions,
 		HostActionKind::RenameSession => Capability::Sessions,

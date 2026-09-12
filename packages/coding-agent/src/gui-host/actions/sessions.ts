@@ -37,9 +37,11 @@ const handleOpenSession: ActionHandler<SessionRef | undefined> = async (ctx, pay
 		return;
 	}
 	try {
+		const previousCwd = ctx.cwd;
 		const sm = await activate(ctx, payload.session);
 		if (!sm) return;
 		emitActiveSessionAndTranscript(ctx, sm);
+		if (previousCwd !== sm.getCwd()) await ctx.clientState.republishWorkspace?.();
 		ctx.reply.success();
 	} catch (error) {
 		failure(ctx, "OPEN_SESSION_FAILED", error);

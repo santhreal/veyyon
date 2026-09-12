@@ -70,13 +70,13 @@ fn refusal(request: RequestId, scope: ErrorScope, retryable: bool) -> BackendErr
 /// control's retry.
 #[test]
 fn a_refused_request_is_what_its_control_sends_again() {
-	let (mut store, index) = seeded();
-	let active = store.persisted.shell.active_session.clone();
 	let mut registry = RequestRegistry::new();
 	let mut next = 1_u64;
 	let mut swept = 0_usize;
 
 	for intent in every_sample_intent() {
+		let (mut store, index) = seeded();
+		let active = store.persisted.shell.active_session.clone();
 		for action in actions_for(&intent, &index, &mut store) {
 			let surface = surface_for_action(&intent, &action, active.as_ref());
 			// A retry re-sends the request, so a control whose own action IS a

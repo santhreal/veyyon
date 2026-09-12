@@ -2,38 +2,43 @@
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+mod intents;
 mod lifecycle;
 
 use veyyon_desktop::{
-	Attachment, DesktopCarrier, HostLink, NoticeDelivery, SessionIndex, actions_for,
-	current_timestamp_ms, expire_notices, land_failure,
+	Attachment, DesktopCarrier, HostLink, NoticeDelivery, SessionIndex, current_timestamp_ms,
+	expire_notices, land_failure,
 	launch::WindowSlot,
 	project,
-	project::{clear_sent_draft, connection_notice, land_branched_draft, restored_draft},
-	project_clock, project_controls, record_sent, request_frame, resize_terminals,
+	project::{
+		HistoryRequests, clear_sent_draft, connection_notice, land_branched_draft,
+		navigation_request::NavigationRequest, restored_draft,
+	},
+	project_clock, project_controls, record_sent, request_frame,
 	state::Keeper,
-	surface_for_action,
 };
 use veyyon_desktop_model::{
 	HostAction, HostEvent, PersistedState, RequestRegistry, SessionId, Store, SurfaceId, reduce,
 	text::terminal::TerminalEmulator,
 };
-use veyyon_desktop_surface::{Intent, ShellState, ShellView, damage::regions_changed};
+use veyyon_desktop_surface::{ShellState, ShellView, damage::regions_changed};
 use veyyon_gpui::{App, AsyncApp, Context, Window, WindowHandle};
 
 struct Host {
-	store:     Store,
-	index:     SessionIndex,
-	link:      HostLink,
-	registry:  RequestRegistry,
-	terminals: HashMap<String, TerminalEmulator>,
-	drawn:     ShellState,
+	store:      Store,
+	index:      SessionIndex,
+	link:       HostLink,
+	registry:   RequestRegistry,
+	terminals:  HashMap<String, TerminalEmulator>,
+	drawn:      ShellState,
 	/// What the window remembers, absent when there is no directory to keep it
 	/// in (§8.10).
-	keeper:    Option<Keeper>,
+	keeper:     Option<Keeper>,
 	/// Which announcements have already left the window, so the sound and
 	/// the desktop notification the operator asked for happen once each.
-	delivery:  NoticeDelivery,
+	delivery:   NoticeDelivery,
+	history:    HistoryRequests,
+	navigation: NavigationRequest,
 }
 
 impl Host {
@@ -47,6 +52,9 @@ impl Host {
 		now_ms: u64,
 		cx: &mut Context<ShellView>,
 	) {
+		if self.navigation.is_pending() {
+			return;
+		}
 		let Some(keeper) = self.keeper.as_mut() else {
 			return;
 		};
@@ -111,6 +119,8 @@ pub fn attach(
 		drawn: ShellState::default(),
 		keeper,
 		delivery: NoticeDelivery::new(),
+		history: HistoryRequests::default(),
+		navigation: NavigationRequest::default(),
 	}));
 
 	// A clean shutdown writes what the debounce is still holding, and the
@@ -130,53 +140,7 @@ pub fn attach(
 
 	// Intents the operator raised go to the host as actions. Every
 	// dispatch notifies the view, so observing it drains them at once.
-	if let Ok(view) = window.entity(cx) {
-		let host = Rc::clone(&host);
-		cx.observe(&view, move |view, cx| {
-			let intents = view.update(cx, |view, _| view.drain_intents());
-			if intents.is_empty() {
-				return;
-			}
-			let mut host = host.borrow_mut();
-			let host = &mut *host;
-			let active_session = Some(SessionId::from(view.read(cx).state().current_id.to_string()));
-			let now_ms = current_timestamp_ms();
-			for intent in &intents {
-				for action in actions_for(intent, &host.index, &mut host.store) {
-					let surface = surface_for_action(intent, &action, active_session.as_ref());
-					let req_id = host.link.send(action.clone());
-					record_sent(&mut host.store, &mut host.registry, req_id, &action, surface, now_ms);
-					view.update(cx, |view, _cx| view.track_submission(req_id, intent));
-				}
-			}
-			// Closing the window and ending the process are the window's own,
-			// so they are answered here rather than sent to a host.
-			if let Some(intent) = intents
-				.iter()
-				.find(|intent| matches!(intent, Intent::CloseWindow | Intent::Quit))
-			{
-				lifecycle::close(host, intent, &window, &slot, now_ms, cx);
-				return;
-			}
-			// The window measured its grid, so every terminal it holds is
-			// re-broken at that width before the frame that asked for it
-			// draws. The same intent went to the host above, which resizes
-			// the pty; this is what the operator sees until it answers.
-			let resized = resize_terminals(&mut host.terminals, &intents);
-			view.update(cx, |view, cx| {
-				if resized
-					|| intents
-						.iter()
-						.any(|intent| intent.moves_partition() || matches!(intent, Intent::Navigate(_)))
-				{
-					project(&host.store, &mut host.index, &host.terminals, now_ms, view.state_mut());
-				}
-				project_controls(&host.store, &host.registry, &host.index, view.state_mut());
-				cx.notify();
-			});
-		})
-		.detach();
-	}
+	intents::observe(Rc::clone(&host), window, slot, cx);
 
 	// One window-owned clock updates elapsed labels even without host traffic.
 	{
@@ -194,6 +158,30 @@ pub fn attach(
 							let mut host = host.borrow_mut();
 							let host = &mut *host;
 							let now_ms = current_timestamp_ms();
+							let navigation_expired = intents::expire_navigation(host, now_ms);
+							let history_expired =
+								host
+									.history
+									.expire(now_ms, &mut host.registry, view.state_mut());
+							if navigation_expired || history_expired {
+								project_controls(
+									&host.store,
+									&host.registry,
+									&host.index,
+									view.state_mut(),
+								);
+								cx.notify();
+							}
+							if navigation_expired {
+								view.set_notice(
+									Some(
+										"Opening the session timed out. Select the session to try again."
+											.into(),
+									),
+									cx,
+								);
+								cx.notify();
+							}
 							let changed =
 								project_clock(&host.store, &host.index, now_ms, view.state_mut())
 									| expire_notices(&mut host.store, now_ms, view.state_mut());
@@ -239,16 +227,25 @@ pub fn attach(
 				}
 				let startup_notice = startup_error.clone();
 				let host = Rc::clone(&host);
-				let _ = window.update(&mut async_cx, move |view, _window, cx| {
+				let _ = window.update(&mut async_cx, move |view, window, cx| {
 					let mut host = host.borrow_mut();
 					let host = &mut *host;
 					let mut notice: Option<Option<String>> = None;
+					let now_ms = current_timestamp_ms();
+					host.keep(view, window, now_ms, cx);
 					for event in batch {
 						match &event {
 							HostEvent::ConnectionChanged(state) => {
+								if !matches!(state, veyyon_desktop_model::ConnectionState::Connected { .. })
+								{
+									host.navigation.cancel(&mut host.registry);
+								}
 								notice = Some(connection_notice(state));
 							},
 							HostEvent::RequestFailed { request, error } => {
+								intents::finish_navigation(host, *request, false);
+								host.history.land_failure(error, view.state_mut());
+								host.history.finished(*request);
 								let active = (view.state().current_id > 0)
 									.then(|| SessionId::from(view.state().current_id.to_string()));
 								if let Some(line) =
@@ -260,10 +257,21 @@ pub fn attach(
 								view.finish_submission(*request, false, cx);
 							},
 							HostEvent::RequestSucceeded { request } => {
+								intents::finish_navigation(host, *request, true);
+								host.history.finished(*request);
 								if let Some(row) = view.finish_submission(*request, true, cx) {
 									clear_sent_draft(&mut host.store, &host.index, row);
 								}
 								if let Some(in_flight) = host.registry.complete(request) {
+									if matches!(
+										in_flight.action,
+										veyyon_desktop_model::HostActionKind::CreateSession
+											| veyyon_desktop_model::HostActionKind::BranchSession
+									) && let Some(session) =
+										host.store.persisted.shell.active_session.clone()
+									{
+										host.store.persisted.shell.navigation.opened(session);
+									}
 									view.state_mut().controls.clear_error(&in_flight.surface);
 									// A branch cut the operator's last prompt off the
 									// transcript it forked, so the words come back to
@@ -355,8 +363,12 @@ pub fn attach(
 					host
 						.delivery
 						.carry(&mut host.store, &DesktopCarrier, now_ms);
-					project(&host.store, &mut host.index, &host.terminals, now_ms, view.state_mut());
+					if !host.navigation.is_pending() {
+						project(&host.store, &mut host.index, &host.terminals, now_ms, view.state_mut());
+						view.reconcile_reviews();
+					}
 					project_controls(&host.store, &host.registry, &host.index, view.state_mut());
+					host.keep(view, window, now_ms, cx);
 					// The clock the queue's elapsed labels and the connection
 					// banner are measured against is the batch's, not the last
 					// frame's.

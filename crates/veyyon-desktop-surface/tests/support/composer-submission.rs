@@ -14,10 +14,14 @@ use veyyon_desktop_surface::{
 use super::render_session;
 
 fn attachment(sequence: u32) -> Attachment {
+	let mut encoded = std::io::Cursor::new(Vec::new());
+	image::DynamicImage::new_rgb8(1, 1)
+		.write_to(&mut encoded, image::ImageFormat::Png)
+		.expect("PNG fixture");
 	Attachment::from_clipboard(
 		sequence,
 		MediaType::Png,
-		payload_for(MediaType::Png, b"\x89PNG\r\n\x1a\n".to_vec()),
+		payload_for(MediaType::Png, encoded.into_inner()),
 	)
 }
 

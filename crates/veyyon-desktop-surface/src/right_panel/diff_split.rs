@@ -27,6 +27,7 @@ use crate::{
 pub fn split_columns(
 	file_index: usize,
 	file: &DiffFile,
+	review_enabled: bool,
 	walk: &mut RowWalk,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
@@ -40,7 +41,17 @@ pub fn split_columns(
 	while row_index < file.rows.len() {
 		let row = &file.rows[row_index];
 		if let DiffRow::Removed { .. } | DiffRow::Added { .. } = row {
-			row_index = push_change_chunk(file, row_index, &mut old, &mut new, walk, geometry, tokens);
+			row_index = push_change_chunk(
+				file,
+				review_enabled,
+				row_index,
+				&mut old,
+				&mut new,
+				walk,
+				geometry,
+				tokens,
+				cx,
+			);
 			continue;
 		}
 		let height = row_height(row, geometry);
@@ -65,8 +76,26 @@ pub fn split_columns(
 		}
 		if let DiffRow::Context { old_line, new_line, text } = row {
 			let (pinned, code) = line_cells(&Line::context(*old_line, text), geometry, tokens);
+			let pinned = super::diff_rows::review_line_cell(
+				pinned,
+				review_enabled,
+				&file.path,
+				veyyon_desktop_model::review::ReviewSide::Old,
+				Some(*old_line),
+				tokens,
+				cx,
+			);
 			old.push(pinned, code);
 			let (pinned, code) = line_cells(&Line::context(*new_line, text), geometry, tokens);
+			let pinned = super::diff_rows::review_line_cell(
+				pinned,
+				review_enabled,
+				&file.path,
+				veyyon_desktop_model::review::ReviewSide::New,
+				Some(*new_line),
+				tokens,
+				cx,
+			);
 			new.push(pinned, code);
 		}
 		row_index += 1;
@@ -83,12 +112,14 @@ pub fn split_columns(
 /// is padded with blank cells so the sides stay level.
 fn push_change_chunk(
 	file: &DiffFile,
+	review_enabled: bool,
 	from: usize,
 	old: &mut PaneColumns,
 	new: &mut PaneColumns,
 	walk: &mut RowWalk,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
+	cx: &Context<ShellView>,
 ) -> usize {
 	let mut row_index = from;
 	let mut removed = Vec::new();
@@ -121,6 +152,15 @@ fn push_change_chunk(
 			None => Line::blank(),
 		};
 		let (pinned, code) = line_cells(&line, geometry, tokens);
+		let pinned = super::diff_rows::review_line_cell(
+			pinned,
+			review_enabled,
+			&file.path,
+			veyyon_desktop_model::review::ReviewSide::Old,
+			line.number,
+			tokens,
+			cx,
+		);
 		old.push(pinned, code);
 
 		let line = match added.get(pair) {
@@ -135,6 +175,15 @@ fn push_change_chunk(
 			None => Line::blank(),
 		};
 		let (pinned, code) = line_cells(&line, geometry, tokens);
+		let pinned = super::diff_rows::review_line_cell(
+			pinned,
+			review_enabled,
+			&file.path,
+			veyyon_desktop_model::review::ReviewSide::New,
+			line.number,
+			tokens,
+			cx,
+		);
 		new.push(pinned, code);
 	}
 

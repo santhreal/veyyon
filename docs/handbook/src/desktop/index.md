@@ -57,15 +57,17 @@ over the limit, startup fails with the path, its size and the limit.
 
 ## What the window remembers
 
-The window reopens in the shape it was closed in. Six documents under
-`<agent-dir>/desktop/` hold it: `window.json` (position, size, maximised state
-and display), `shell.json` (rail collapse and the last open session),
-`queue.json` (collapsed queue sections and how far the parked section is paged
-in), and `panels.json`, `transcript.json` and `composer.json`, keyed by
-session. Per session that is the right panel and drawer visibility, the width
-and height they were dragged to, the tab each was showing, the diff mode, the
-disclosed tool cards, the turn the operator was reading, the queue mode, the
-attachments a draft carries and the draft text itself.
+State is stored under `<agent-dir>/desktop/`.
+
+| Document | Contents |
+|---|---|
+| `window.json` | Position, size, maximised state and display |
+| `shell.json` | Appearance, active session, ordered tabs, named spaces and each space's queue and panel layout |
+| `queue.json` | Collapsed queue sections and parked-section pagination |
+| `panels.json` | Per-session panel and drawer visibility, dimensions, selected tabs and diff mode |
+| `transcript.json` | Per-session disclosure state and reading position |
+| `composer.json` | Per-session draft text, attachments and queue mode |
+| `reviews.json` | Local review threads, line anchors and resolution state, partitioned by repository and file |
 
 A reading position is the transcript entry the top turn was opened by, not a
 turn index, so it survives the session paging in earlier turns. A transcript
@@ -78,8 +80,8 @@ build a profile path under, the window remembers nothing and writes nothing.
 
 A change reaches the disk 400 milliseconds after the first change of its
 window, and everything waiting is written on quit. Each document is written to a
-sibling `.json.writing` file and renamed over the previous one; `composer.json`
-is fsynced before that rename and the others are not.
+sibling `.json.writing` file and renamed over the previous one. `composer.json`
+and `reviews.json` are fsynced before that rename; the other documents are not.
 
 A document from a version this build does not write, a truncated document, and
 a document holding a key this build does not write are all replaced by the
@@ -100,6 +102,13 @@ afterwards stays closed.
 which tabs the panels offer, and no document holds token overrides. The rail
 has no draggable width, the tabs are the host's and come back with it, and
 tokens are read from their files.
+
+## Web inspection
+
+Browser automation runs through the runtime's `browser` tool in a separate
+browser. The native window does not embed web pages, an element picker or page
+annotations. The file inspector's external-open action accepts workspace files,
+not web URLs.
 
 ## Connection states
 

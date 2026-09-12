@@ -21,10 +21,13 @@ use veyyon_desktop_surface::{
 	drawer::{DrawerContent, DrawerTab, ProcessRow},
 };
 
-/// A one-signature PNG under a fixed name: enough for a reducer, which never
-/// decodes it, and small enough that a sweep of every intent stays cheap.
+/// A decodable PNG under a fixed name for reducers and submission checks.
 pub fn attachment() -> Attachment {
-	let bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+	let mut encoded = std::io::Cursor::new(Vec::new());
+	image::DynamicImage::new_rgb8(1, 1)
+		.write_to(&mut encoded, image::ImageFormat::Png)
+		.expect("PNG fixture");
+	let bytes = encoded.into_inner();
 	Attachment::from_path(
 		PathBuf::from("shot.png"),
 		MediaType::Png,
@@ -101,6 +104,7 @@ pub fn state() -> ShellState {
 				rows:      vec![DiffRow::Collapsed { hidden: 10, before_line: 0, after_line: 0 }],
 			}],
 			diff_status:        DiffStatus::Loaded,
+			review_repository:  None,
 			derived_from:       veyyon_desktop_surface::DerivedFrom {
 				changes: 1,
 				..Default::default()

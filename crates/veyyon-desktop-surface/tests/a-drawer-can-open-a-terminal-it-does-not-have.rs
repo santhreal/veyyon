@@ -116,7 +116,7 @@ fn driven<R>(state: ShellState, drive: impl FnOnce(&mut HeadlessSession<'_, Shel
 /// `anchor` is on. The anchor is the tab or caption at the row's left, so the
 /// row is read off the frame and a control added to it appears here without
 /// this suite naming a vocabulary.
-fn chrome_row_words(captured: &Captured, anchor: &str) -> Vec<String> {
+fn chrome_row_words(captured: &Captured, anchor: &str, span: (f32, f32)) -> Vec<String> {
 	let anchor_y = captured
 		.text_runs
 		.iter()
@@ -129,12 +129,28 @@ fn chrome_row_words(captured: &Captured, anchor: &str) -> Vec<String> {
 	let mut row: Vec<(f32, String)> = captured
 		.text_runs
 		.iter()
+		.filter(|run| {
+			let middle = f32::from(run.bounds.origin.x + run.bounds.size.width / 2.0);
+			middle >= span.0 && middle < span.1
+		})
 		.filter(|run| (f32::from(run.bounds.origin.y) - anchor_y).abs() <= ROW_TOLERANCE_PX)
 		.map(|run| (f32::from(run.bounds.origin.x), run.text.as_ref().trim().to_owned()))
 		.filter(|(_, text)| !text.is_empty())
 		.collect();
 	row.sort_by(|left, right| left.0.total_cmp(&right.0));
 	row.into_iter().map(|(_, text)| text).collect()
+}
+
+fn drawer_span(session: &mut HeadlessSession<'_, ShellView>) -> (f32, f32) {
+	session
+		.update(|view, _, _| {
+			let bounds = view
+				.laid_out()
+				.drawn_bounds(veyyon_desktop_surface::damage::Region::Drawer)
+				.expect("drawer is laid out");
+			(f32::from(bounds.origin.x), f32::from(bounds.origin.x + bounds.size.width))
+		})
+		.expect("drawer bounds")
 }
 
 /// Where the frame drew `label` in the drawer, as the centre of the one run
@@ -235,14 +251,14 @@ fn every_tab_the_drawer_can_show_states_what_it_offers() {
 		};
 		let words = driven(state, |session| {
 			let captured = session.frame().expect("the drawer renders");
-			chrome_row_words(&captured, anchor)
+			chrome_row_words(&captured, anchor, drawer_span(session))
 		});
 		assert_eq!(words, expected, "the chrome row of {tab:?}");
 	}
 
 	let empty = driven(emptied_drawer(), |session| {
 		let captured = session.frame().expect("the drawer renders");
-		chrome_row_words(&captured, "Terminal")
+		chrome_row_words(&captured, "Terminal", drawer_span(session))
 	});
 	assert_eq!(
 		empty,

@@ -1,22 +1,11 @@
-//! Themes settings page body rendering (§5.9, §6.9).
-//!
-//! Two listings, and they answer to different owners. The appearance rows are
-//! this build's bundled themes: the window draws one of them, so the choice is
-//! the window's and reaches the colours with no host in the loop. The rows
-//! under them are the themes a host reported for the agent it runs, which the
-//! window only relays.
-//!
-//! An appearance row previews on hover because a theme is judged by looking at
-//! it. The pointer arriving draws the whole window in that appearance and the
-//! pointer leaving puts the chosen one back, so nothing is committed by
-//! reading the page.
+//! Theme choices use the shared picker, with window-local appearance previews.
 
-use veyyon_desktop_kit::{Badge, Button, ButtonSize, TintRole, TokenSet};
+use veyyon_desktop_kit::{Badge, Button, ButtonSize, Picker, SelectionState, TintRole, TokenSet};
 use veyyon_desktop_model::SurfaceId;
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
 use veyyon_gpui::{
-	ClickEvent, Context, Div, ElementId, InteractiveElement, IntoElement, ParentElement, Stateful,
-	StatefulInteractiveElement, Styled, div,
+	Context, Div, ElementId, InteractiveElement, IntoElement, ParentElement,
+	StatefulInteractiveElement, Styled, div, px,
 };
 
 use crate::{
@@ -30,114 +19,141 @@ use crate::{
 	tokens::ThemeLibrary,
 };
 
-/// Renders the Themes page: the appearances this build draws, then the themes
-/// the host reported.
+/// The data adapter retains the distinction between local and host themes.
+pub(crate) struct ThemeChoice {
+	pub id:           String,
+	pub button_id:    String,
+	pub title:        String,
+	pub description:  String,
+	pub action:       Intent,
+	pub preview:      Option<String>,
+	pub active:       bool,
+	pub availability: Availability,
+}
+
+impl ThemeChoice {
+	pub const fn enabled(&self) -> bool {
+		matches!(self.availability, Availability::Enabled | Availability::Unknown)
+	}
+}
+
+pub(crate) fn theme_choices(
+	state: &SettingsState,
+	appearance: &AppearanceChoice,
+	controls: &ControlStates,
+	cx: &Context<ShellView>,
+) -> Vec<ThemeChoice> {
+	let mut rows = Vec::new();
+	if let Some(library) = cx.try_global::<ThemeLibrary>() {
+		rows.extend(library.themes().iter().map(|theme| ThemeChoice {
+			id:           format!("appearance-row-{}", theme.appearance),
+			button_id:    format!("appearance-opt-{}", theme.appearance),
+			title:        theme.name.clone(),
+			description:  describe(&theme.appearance),
+			action:       Intent::SelectAppearance(theme.appearance.clone()),
+			preview:      Some(theme.appearance.clone()),
+			active:       appearance.chosen() == theme.appearance,
+			availability: Availability::Enabled,
+		}));
+	}
+	if let Some(themes) = &state.themes {
+		let availability = controls.availability(&SurfaceId::ThemeSelector);
+		rows.extend(themes.themes.iter().map(|theme| {
+			ThemeChoice {
+				id:           format!("theme-row-{}", theme.id),
+				button_id:    format!("theme-opt-{}", theme.id),
+				title:        theme.name.clone(),
+				description:  if theme.dark {
+					"Dark ground theme"
+				} else {
+					"Light ground theme"
+				}
+				.to_owned(),
+				action:       Intent::SelectTheme(theme.id.clone()),
+				preview:      None,
+				active:       theme.id == themes.current,
+				availability: availability.clone(),
+			}
+		}));
+	}
+	rows
+}
+
 pub fn render_themes_page(
 	state: &SettingsState,
 	appearance: &AppearanceChoice,
 	controls: &ControlStates,
+	scroll: &veyyon_gpui::ScrollHandle,
 	geometry: &SettingsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> Div {
+	let rows = theme_choices(state, appearance, controls, cx);
+	let picker = Picker::new(&rows, state.selected_row.unwrap_or(0));
 	let mut container = div()
+		.id("theme-picker-results")
+		.track_scroll(scroll)
+		.h_full()
+		.min_h_0()
+		.overflow_y_scroll()
 		.flex()
 		.flex_col()
-		.gap(veyyon_gpui::px(geometry.row_gap))
-		.children(appearance_rows(appearance, geometry, tokens, cx));
-
-	let Some(themes_view) = &state.themes else {
-		return container.child(empty_state_row("No themes reported by host.", geometry, tokens));
-	};
-
-	if themes_view.themes.is_empty() {
-		return container.child(empty_state_row("No themes reported by host.", geometry, tokens));
-	}
-
-	let av = controls.availability(&SurfaceId::ThemeSelector);
-
-	for theme in &themes_view.themes {
-		let is_selected = theme.id == themes_view.current;
-		let theme_id_str = theme.id.clone();
-
-		let control_el = if is_selected {
+		.gap(px(geometry.row_gap));
+	for (index, choice) in rows.iter().enumerate() {
+		let control = if choice.active {
 			Badge::new("Active", TintRole::Done).into_any_element()
 		} else {
-			Button::new(ElementId::Name(format!("theme-opt-{}", theme.id).into()), "Select")
-				.size(ButtonSize::Small)
-				.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
-					view.dispatch(Intent::SelectTheme(theme_id_str.clone()), cx);
-				}))
-				.into_any_element()
+			let mut button = Button::new(ElementId::Name(choice.button_id.clone().into()), "Select")
+				.size(ButtonSize::Small);
+			if choice.enabled() {
+				button = button.on_click(cx.listener(move |view, _, _, cx| {
+					cx.stop_propagation();
+					view.picker_pointer(index, true, cx);
+				}));
+			}
+			button.into_any_element()
 		};
-
-		let desc = if theme.dark {
-			"Dark ground theme"
+		let description = choice.availability.reason().unwrap_or(&choice.description);
+		let mut row = setting_row(
+			&choice.title,
+			Some(description),
+			control,
+			&choice.availability,
+			geometry,
+			tokens,
+		)
+		.id(("theme-choice", index))
+		.bg(if picker.selection(index, ThemeChoice::enabled) == SelectionState::Selected {
+			tokens.row_selected()
 		} else {
-			"Light ground theme"
-		};
-
-		container =
-			container.child(setting_row(&theme.name, Some(desc), control_el, &av, geometry, tokens));
-	}
-
-	container
-}
-
-/// One row per bundled appearance, in the order the build loaded them.
-///
-/// Empty when no library is installed, which is a window rendered from a
-/// fixture rather than opened by the binary: there is nothing to preview and
-/// nothing to select, and drawing a row that selects nothing would be worse
-/// than drawing none.
-fn appearance_rows(
-	choice: &AppearanceChoice,
-	geometry: &SettingsSurfaceTokens,
-	tokens: &TokenSet,
-	cx: &Context<ShellView>,
-) -> Vec<Stateful<Div>> {
-	let Some(library) = cx.try_global::<ThemeLibrary>() else {
-		return Vec::new();
-	};
-	library
-		.themes()
-		.iter()
-		.map(|theme| {
-			let appearance = theme.appearance.clone();
-			let control = if choice.chosen() == appearance {
-				Badge::new("Active", TintRole::Done).into_any_element()
-			} else {
-				let selected = appearance.clone();
-				Button::new(ElementId::Name(format!("appearance-opt-{appearance}").into()), "Select")
-					.size(ButtonSize::Small)
-					.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
-						view.dispatch(Intent::SelectAppearance(selected.clone()), cx);
-					}))
-					.into_any_element()
-			};
-			// The hover listener is what registers the row's hit rect: an id
-			// alone paints no box to test the pointer against.
-			let previewed = appearance.clone();
+			tokens.transparent()
+		});
+		if choice.enabled() {
+			row = row.on_click(cx.listener(move |view, _, _, cx| {
+				view.picker_pointer(index, true, cx);
+			}));
+		}
+		container = container.child(
 			div()
-				.id(ElementId::Name(format!("appearance-row-{appearance}").into()))
+				.id(ElementId::Name(choice.id.clone().into()))
 				.w_full()
-				.on_hover(cx.listener(move |view, hovered: &bool, _w, cx| {
-					let wanted = hovered.then(|| previewed.clone());
-					view.dispatch(Intent::PreviewAppearance(wanted), cx);
+				.flex_shrink_0()
+				.on_hover(cx.listener(move |view, hovered: &bool, _, cx| {
+					view.picker_preview(hovered.then_some(index), cx);
 				}))
-				.child(setting_row(
-					&theme.name,
-					Some(&describe(&appearance)),
-					control,
-					&Availability::Enabled,
-					geometry,
-					tokens,
-				))
-		})
-		.collect()
+				.child(row),
+		);
+	}
+	if state
+		.themes
+		.as_ref()
+		.is_none_or(|themes| themes.themes.is_empty())
+	{
+		container = container.child(empty_state_row("No themes reported by host.", geometry, tokens));
+	}
+	div().h_full().min_h_0().child(container)
 }
 
-/// What an appearance row states under its name.
 fn describe(appearance: &str) -> String {
 	let mut described = String::with_capacity(appearance.len() + 12);
 	let mut characters = appearance.chars();

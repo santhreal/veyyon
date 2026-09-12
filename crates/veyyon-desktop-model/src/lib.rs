@@ -17,6 +17,7 @@ pub mod persistence;
 pub mod reducer;
 pub mod registry;
 pub mod retries;
+pub mod review;
 pub mod session;
 pub mod signal;
 pub mod store;
@@ -43,10 +44,10 @@ pub use domain::{
 	DiagnosticSource, Domains, ExportView, FileContentView, FileKind, FileNode, FileTreeView,
 	InputModality, KeybindingView, McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView,
 	PROCESS_LOG_CAPACITY_LINES, ProcessLogView, ProcessLogsChunk, ProcessView, ProviderView,
-	QueuedPrompts, QueuedPromptsView, SearchResultsView, SeqGap, SettingEntry, SettingKind,
-	SettingOption, SettingsView, TERMINAL_SCROLLBACK_CAPACITY_BYTES, TerminalOutputChunk,
-	TerminalScrollback, TerminalStatus, TerminalView, ThemeView, ThemesView, UsageView,
-	diagnostic_sources,
+	QueuedPrompts, QueuedPromptsView, SearchResultsView, SeqGap, SessionSearchView,
+	SessionTranscriptView, SettingEntry, SettingKind, SettingOption, SettingsView,
+	TERMINAL_SCROLLBACK_CAPACITY_BYTES, TerminalOutputChunk, TerminalScrollback, TerminalStatus,
+	TerminalView, ThemeView, ThemesView, UsageView, diagnostic_sources,
 };
 pub use error::{BackendError, ErrorScope, fallback_surface, is_scope_retryable, route_error};
 pub use event::{
