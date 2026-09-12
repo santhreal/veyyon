@@ -232,6 +232,11 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 		wired: false,
 		reason: "the operator's own interactive shell (veyyon shell), typed at by a human, not agent-spawned compute",
 	},
+	"packages/coding-agent/src/cli/profile-seed-smoke.ts": {
+		wired: false,
+		reason:
+			"`veyyon --smoke-test` runs `profile new --json` once in a throwaway profile to prove the worker entry boots; a CI probe, before any session exists",
+	},
 	"packages/coding-agent/src/config/model-registry.ts": {
 		wired: false,
 		reason: "execSync provider probes at CLI/model discovery time, before the first session registers",
