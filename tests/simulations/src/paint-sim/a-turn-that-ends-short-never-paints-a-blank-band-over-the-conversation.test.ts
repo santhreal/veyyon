@@ -8,7 +8,8 @@
  *
  *  1. `TranscriptContainer` compacted EVERY committed row out of the frame. The
  *     engine re-shows committed rows when a frame shrinks below the viewport
- *     ("duplication, never loss") and can only re-show rows the frame still
+ *     (the prompt never floats; the rows stay committed and are never appended
+ *     to native scrollback again) and can only re-show rows the frame still
  *     contains, so with them gone it had nothing to fill the screen with. That is
  *     the defect: the frame lied about how long the session was.
  *  2. `HomeAnchorLayout.sync` read that short frame and routed the difference
@@ -139,8 +140,9 @@ describe("a turn that ends short never paints a blank band over the conversation
 
 				// The stream itself. An erase mid-turn is the strobe and is banned
 				// outright; a whole-screen rewrite is allowed only for a frame the
-				// script itself made shorter (the HUD appearing and going), counted
-				// from the script so the engine is not being compared to itself.
+				// script itself made shorter (the HUD going) and the frames that grow
+				// it back while the re-shown rows are still on screen, counted from
+				// the script so the engine is not being compared to itself.
 				const stream = report.frames.reduce(
 					(sum, frame) => ({ redraws: sum.redraws + frame.fullRedraws, erases: sum.erases + frame.erases }),
 					{ redraws: 0, erases: 0 },
@@ -148,8 +150,8 @@ describe("a turn that ends short never paints a blank band over the conversation
 				expect({
 					arm: label(shape),
 					erases: stream.erases,
-					redrawsOverShrinks: stream.redraws > report.hudShrinks,
-				}).toEqual({ arm: label(shape), erases: 0, redrawsOverShrinks: false });
+					redrawsOverBudget: stream.redraws > report.slideRewrites,
+				}).toEqual({ arm: label(shape), erases: 0, redrawsOverBudget: false });
 				// The shrink frame, against the budget its event is allowed.
 				const budget = SHRINK_BUDGET[shape.shrink];
 				expect({

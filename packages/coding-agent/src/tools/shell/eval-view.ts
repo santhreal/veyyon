@@ -498,14 +498,24 @@ function agentFacts(event: EvalStatusEvent): ViewSpan[] {
  *
  * A running agent's row is followed by the tool it is in and the intent it stated, which is the one
  * thing a reader watching a spawned run wants; a settled agent's row is what it cost.
+ *
+ * One moving mark per call: the card's header spins while the cell runs, and an agent the cell
+ * spawned is part of that run rather than a second thing in flight, so its row carries the same
+ * settled accent mark the task card gives a running agent (`agentMark`) and never a spinner.
  */
+function agentMark(status: ViewStatus): ViewSpan {
+	return status === "running" || status === "pending"
+		? { text: "", symbol: "status.done", tone: "accent" }
+		: { text: "", status };
+}
+
 function agentSection(events: readonly EvalStatusEvent[]): ViewSection | undefined {
 	if (events.length === 0) return undefined;
 	const lines: ViewLine[] = [];
 	for (const event of events) {
 		const status = agentStatus(event.status);
 		const id = eventText(event.id) ?? "agent";
-		const line: ViewSpan[] = [{ text: "", status }, { text: " " }, { text: id, tone: "accent", bold: true }];
+		const line: ViewSpan[] = [agentMark(status), { text: " " }, { text: id, tone: "accent", bold: true }];
 		if (status === "error" || status === "aborted") {
 			line.push({ text: " " }, { text: status === "error" ? "failed" : "aborted", badge: true, tone: "error" });
 		}

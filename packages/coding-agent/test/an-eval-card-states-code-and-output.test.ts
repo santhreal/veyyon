@@ -312,7 +312,9 @@ describe("an eval card states code and output", () => {
 		expect(text).toContain("47K/200K");
 		expect(text).toContain("$0.42");
 		expect(text).toContain("read: reading src/auth.ts");
-		expect(agents?.lines[0]?.[0]?.status).toBe("running");
+		// The card's header is the one moving mark while the cell runs; a spawned agent's row carries
+		// the task card's settled accent mark, never a second spinner.
+		expect(agents?.lines[0]?.[0]).toEqual({ text: "", symbol: "status.done", tone: "accent" });
 		// A helper call in the same cell still lands in its own group rather than among the agents.
 		const both = framed({ cells: [cell({ statusEvents: [running, { op: "log", message: "spawned" }] })] });
 		expect(sectionText(section(both, "Status"))).toContain("spawned");

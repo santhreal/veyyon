@@ -100,12 +100,17 @@ export interface PaintReport {
 	/** Rows the engine believes it has handed to native scrollback. */
 	scrollTapeRows: number;
 	/**
-	 * Times THIS scenario shrank the HUD, counted from the script rather than
-	 * from the engine, so a test comparing repaints against it is not comparing
-	 * the engine to itself. A frame that gets shorter has to move every row on
-	 * screen, so it costs one in-place window rewrite; nothing else may.
+	 * Whole-screen rewrites THIS scenario's script entitles the stream to,
+	 * counted from the script rather than from the engine, so a test comparing
+	 * repaints against it is not comparing the engine to itself. A frame that
+	 * gets shorter has to move every row on screen, so it costs one in-place
+	 * window rewrite; and while the frame is still shorter than it was before
+	 * that shrink, every frame that grows it costs one more, because the rows
+	 * the shrink re-showed are already in native scrollback and sliding them
+	 * off the top again would append them there a second time. Nothing else
+	 * may repaint the screen.
 	 */
-	hudShrinks: number;
+	slideRewrites: number;
 	/**
 	 * The viewport after the shrink, ANSI stripped and right-trimmed: what a
 	 * reader is looking at when the screen settles.
@@ -307,7 +312,11 @@ export async function paintSim(shape: PaintShape): Promise<PaintReport> {
 	const erasesAtOpen = paints.erases();
 	const bytesAtOpen = paints.bytes();
 	const frames: PaintFrame[] = [];
-	let hudShrinks = 0;
+	let slideRewrites = 0;
+	// Rows the frame is short of its length before the last shrink. While it
+	// is positive the window sits below the committed boundary and a growth
+	// frame slides in place; a shrink frame adds to it.
+	let deficit = 0;
 	const live = new LiveBlock();
 	if (shape.streamFrames > 0) transcript.addChild(live);
 	for (let frame = 0; frame < shape.streamFrames; frame++) {
@@ -315,10 +324,18 @@ export async function paintSim(shape: PaintShape): Promise<PaintReport> {
 		live.grow();
 		// A HUD that appears and disappears is the other thing that moves every
 		// row under it, and it is what a running job or a todo list does.
+		let delta = 1;
 		if (shape.hudRows > 0 && frame % 7 === 6) {
 			const gone = frame % 14 === 6;
 			hud.setRows(gone ? 0 : shape.hudRows);
-			if (gone) hudShrinks++;
+			delta += gone ? -shape.hudRows : shape.hudRows;
+		}
+		if (delta < 0) {
+			deficit -= delta;
+			slideRewrites++;
+		} else if (deficit > 0) {
+			deficit = Math.max(0, deficit - delta);
+			slideRewrites++;
 		}
 		tui.requestRender();
 		await settleFrames(term, tui);
@@ -371,7 +388,7 @@ export async function paintSim(shape: PaintShape): Promise<PaintReport> {
 		bytes: paints.bytes() - bytesAtOpen,
 		lostTurns,
 		scrollTapeRows: tui.scrollTapeRows,
-		hudShrinks,
+		slideRewrites,
 		viewport,
 		blankBand: blankRun(viewport),
 		contentBlankRun: blankRun(scrolledOff),
