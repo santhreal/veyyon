@@ -144,8 +144,8 @@ pause 0.8
 # take this model several seconds, so the frame below is taken over a grid that
 # is still growing.
 TABLE_PROMPT="Reply with a markdown table and nothing else: no prose, no code fences, no backticks. \
-Write the first line exactly as | tool | when | and the second line exactly as |---|---| and then \
-twelve rows, each naming one unix tool and one short sentence saying when to reach for it."
+Do not use tools. Write the first line exactly as | tool | when | and the second line exactly as \
+|---|---| and then eight rows, each naming one unix tool and one short phrase saying when to reach for it."
 submit_prompt "${TABLE_PROMPT}"
 
 # The pointer is parked in the composer for every frame: over a queue row it
@@ -156,31 +156,56 @@ move_px "${COMPOSER_X}" "${COMPOSER_Y}"
 # A submit the host accepted is not a reply on screen. The observable is the
 # transcript column repainting under the prompt as the table arrives.
 transcript_region
-BEFORE_FIRST_TOKEN="${PROBE_DIR}/streamed-before-first-token.png"
-probe_frame "${BEFORE_FIRST_TOKEN}"
-STREAMED=0
+# A running turn fills the queue row's `Working` chip, and the prompt's own row
+# lands in the transcript before the first delta does, so the wait is on the
+# chip first: a frame difference taken straight after the submit is the
+# operator's own turn being drawn, not a reply.
+RUNNING=0
 for _ in $(seq 1 180); do
-	if [ "$(screen_differs_from_frame_per_mille "${BEFORE_FIRST_TOKEN}")" -ge 4 ]; then
-		STREAMED=1
+	probe_frame "${PROBE_DIR}/streamed-chip.png"
+	if [ "$(working_tint_pixels "${PROBE_DIR}/streamed-chip.png" "${QUEUE_CROP}")" \
+		-ge "${CHIP_MIN_FILL}" ]; then
+		RUNNING=1
 		break
 	fi
 	sleep 1
 done
-if [ "${STREAMED}" -ne 1 ]; then
-	abandon_take "the-table-is-arriving" \
-		"the host accepted the turn but nothing streamed into the transcript within 180s, so there is no arriving block to photograph"
+if [ "${RUNNING}" -ne 1 ]; then
+	abandon_take "the-turn-is-running" \
+		"the queue never drew ${CHIP_MIN_FILL} pixels of working tint within 180s of the submit, so no turn is running and there is no arriving block to photograph"
 fi
 
 # ─── 1. The Grid While It Is Still Arriving ──────────────────────────────────
-# Two seconds past the first delta: far enough in that the header and a row or
-# two are drawn, early enough that the turn is still running, which the chip
-# beside the frame is what proves.
-pause 2.0
+# The frame is taken at the first moment two things hold together: the
+# transcript has grown well past the prompt that was already on it, so a header
+# and a row or two are drawn, and the chip still fills, so the turn is still
+# running. Polled rather than timed, because the first delta of a 1.5b model
+# arrives anywhere between one second and thirty.
+BEFORE_REPLY="${PROBE_DIR}/streamed-before-reply.png"
+probe_frame "${BEFORE_REPLY}"
+ARRIVING_CHIP=0
+ARRIVED=0
+for _ in $(seq 1 300); do
+	probe_frame "${PROBE_DIR}/streamed-arriving.png"
+	ARRIVING_CHIP="$(working_tint_pixels "${PROBE_DIR}/streamed-arriving.png" "${QUEUE_CROP}")"
+	if [ "${ARRIVING_CHIP}" -lt "${CHIP_MIN_FILL}" ]; then
+		break
+	fi
+	if [ "$(screen_differs_from_frame_per_mille "${BEFORE_REPLY}")" -ge 4 ]; then
+		ARRIVED=1
+		break
+	fi
+	sleep 0.4
+done
+if [ "${ARRIVED}" -ne 1 ]; then
+	abandon_take "the-frame-is-of-a-running-turn" \
+		"the reply never drew 4 per mille of the transcript column while the chip still filled (${ARRIVING_CHIP} pixels of working tint at the end of the wait), so no frame of an arriving block could be taken"
+fi
 shot grid-arriving
 ARRIVING_CHIP="$(working_tint_pixels "${SCENE_OUT}/${SCENE_NAME}-grid-arriving.png" "${QUEUE_CROP}")"
 if [ "${ARRIVING_CHIP}" -lt "${CHIP_MIN_FILL}" ]; then
 	abandon_take "the-frame-is-of-a-running-turn" \
-		"the queue drew ${ARRIVING_CHIP} pixels of working tint in the arriving frame, under the ${CHIP_MIN_FILL} a chip fills, so the turn had already ended and the frame shows no arriving block"
+		"the queue drew ${ARRIVING_CHIP} pixels of working tint in the arriving frame, under the ${CHIP_MIN_FILL} a chip fills, so the turn ended between the reading and the frame"
 fi
 ARRIVING_RULE="$(hairline_pixels "${SCENE_OUT}/${SCENE_NAME}-grid-arriving.png" "${TRANSCRIPT_CROP}")"
 
