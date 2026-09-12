@@ -2,11 +2,15 @@
 //!
 //! Renders thought summaries collapsed to a single line, expanding to full
 //! thought prose with animated height reveal and markdown formatting.
+//!
+//! A thought arrives one delta at a time like a reply does, so the expanded
+//! prose is drawn through the same settled/arriving split: an unterminated
+//! shape reads as what it is becoming rather than as its own markers.
 
 use std::time::Instant;
 
 use veyyon_desktop_kit::{
-	ColorRole, Icon, IconName, IconSize, Markdown, SelectableProse, SpacingStep, TextRamp, TokenSet,
+	ColorRole, Icon, IconName, IconSize, SelectableProse, SpacingStep, TextRamp, TokenSet,
 	controls::button::{Button, ButtonSize},
 };
 use veyyon_desktop_motion::MotionTokens;
@@ -15,11 +19,8 @@ use veyyon_gpui::{
 	CursorStyle, Div, ElementId, InteractiveElement, ParentElement, Styled, WeakEntity, div, px,
 };
 
-use super::reveal::render_reveal_container;
-use crate::{
-	ShellView,
-	transcript::{selection::selectable_markdown, state::TranscriptViewportState},
-};
+use super::{prose::streaming_document, reveal::render_reveal_container};
+use crate::{ShellView, transcript::state::TranscriptViewportState};
 
 /// Reasoning / thinking block, collapsed to a 24px line, expanding to full
 /// thought prose.
@@ -28,6 +29,7 @@ pub fn render_reason_block(
 	block_ix: usize,
 	summary: &str,
 	is_expanded: bool,
+	is_streaming: bool,
 	geometry: &TranscriptSurfaceTokens,
 	tokens: &TokenSet,
 	motion_tokens: &MotionTokens,
@@ -107,11 +109,11 @@ pub fn render_reason_block(
 			div()
 				.italic()
 				.text_color(tokens.color(ColorRole::Secondary))
-				.child(selectable_markdown(
-					Markdown::new(summary.to_owned()).prose_size(
-						px(geometry.assistant_turn_type_size.size * 0.95),
-						px(geometry.assistant_turn_type_size.line_height * 0.95),
-					),
+				.child(streaming_document(
+					summary,
+					is_streaming,
+					px(geometry.assistant_turn_type_size.size * 0.95),
+					px(geometry.assistant_turn_type_size.line_height * 0.95),
 					selection,
 				)),
 		)

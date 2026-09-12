@@ -234,6 +234,7 @@ pub fn agent_turn(
 				block_ix,
 				summary,
 				is_expanded,
+				is_last_block && is_streaming,
 				geometry,
 				tokens,
 				motion_tokens,

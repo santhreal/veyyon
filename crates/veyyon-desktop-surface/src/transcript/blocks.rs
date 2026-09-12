@@ -16,6 +16,6 @@ pub use artifact::*;
 pub use invoke::render_invoke_block;
 pub use note::render_note_block;
 pub use pane::render_pane_block;
-pub use prose::render_prose_block;
+pub use prose::{render_prose_block, streaming_document};
 pub use reason::render_reason_block;
 pub use reveal::render_reveal_container;
