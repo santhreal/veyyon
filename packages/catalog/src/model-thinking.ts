@@ -31,6 +31,7 @@ import {
 import {
 	enforcesThinkingPrefixBinding,
 	findThinkingVariantToken,
+	isGlm52ModelId,
 	isGlm52ReasoningEffortModelId,
 	isMimoModelIdOrName,
 	isMinimaxM2FamilyModelId,
@@ -117,7 +118,7 @@ function normalizeOllamaWireEfforts<TApi extends Api>(
 ): readonly Effort[] {
 	if (spec.provider !== "ollama" && spec.provider !== "ollama-cloud") return efforts;
 	// Ollama Cloud's GLM-5.2 endpoint 400s on every level except high/max.
-	if (spec.provider === "ollama-cloud" && isGlm52ReasoningEffortModelId(spec.id)) {
+	if (spec.provider === "ollama-cloud" && isGlm52ModelId(spec.id)) {
 		return OLLAMA_CLOUD_GLM_52_WIRE_EFFORTS;
 	}
 	if (efforts.includes(Effort.Minimal) || efforts.includes(Effort.XHigh)) {

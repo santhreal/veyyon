@@ -1,0 +1,271 @@
+//! The shell: the window's titlebar and its layout regions (§4.2).
+//!
+//! The shell decides only where the regions go. It draws no content of its own
+//! beyond the titlebar and the attention strip, so a region can be replaced
+//! without touching layout, and layout can change without touching a region.
+//!
+//! Three columns, one row of chrome above them. The queue and the right panel
+//! are fixed measures that give way to the middle, because the middle is the
+//! surface being read; a window that gets narrower takes width from the panels
+//! and leaves the transcript's line length alone.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use veyyon_desktop_kit::{TextSelection, input::Editor};
+use veyyon_gpui::{Context, Entity, FocusHandle, IntoElement, Render, Subscription, Window};
+
+mod access;
+mod attach;
+mod commands;
+mod composer;
+pub mod connection;
+mod detail;
+pub mod fields;
+mod float;
+pub mod keys;
+mod memory;
+mod menu;
+mod navigation;
+mod notice;
+pub mod overlay;
+mod palette;
+mod queue_search;
+mod render;
+mod review;
+mod session;
+mod split;
+pub mod titlebar;
+mod toasts;
+mod transcript;
+mod transcript_find;
+
+pub use self::{
+	attach::AttachState,
+	connection::{connection_banner, error_hairline},
+	memory::{HostShape, ScrollAnchor, SessionShape},
+	overlay::overlay_scrim,
+	titlebar::{
+		TitlebarState, attention_strip, attention_strip_height, platform_inset_left_px, titlebar,
+	},
+};
+use crate::{
+	damage::LaidOut,
+	detail::Detail,
+	drawer::SignalMenu,
+	intent::Intents,
+	keymap::Keymap,
+	layout::LabelState,
+	model::ShellState,
+	queue::{RailMotion, RowMenu},
+	right_panel::PaneScrolls,
+	settings::GeneralSettingsListState,
+	tokens::InstalledTokens,
+	transcript::{TranscriptFindState, TranscriptViewportState, TurnMenu},
+};
+
+/// The window's root view.
+pub struct ShellView {
+	installed:             InstalledTokens,
+	state:                 ShellState,
+	notice:                Option<String>,
+	intents:               Intents,
+	/// What the last frame settled the composer's labels on. Carried because
+	/// the decision has hysteresis, so it is a function of the previous frame
+	/// as well as of this width (§5.4).
+	labels:                LabelState,
+	/// Where the last frame laid each region out, for a repaint scoped to
+	/// the regions a state change touched (P5).
+	laid_out:              LaidOut,
+	keymap:                Keymap,
+	composer:              Option<Entity<Editor>>,
+	composer_cache:        String,
+	/// The editor behind every other field a surface draws: the secret a
+	/// provider is waiting on, and the value of a setting whose kind is text.
+	/// Retained across frames, because a field that is rebuilt each frame
+	/// carries no keystroke (§8.25).
+	field_editors:         BTreeMap<fields::FieldKey, fields::Field>,
+	/// The refusal this window put up for a field whose value it would not
+	/// send, so it is withdrawn when the same window's field commits.
+	field_refusal:         Option<String>,
+	/// The field a frame created that has not taken focus yet.
+	field_focus:           Option<Entity<Editor>>,
+	palette_input:         palette::PaletteInput,
+	submitted:             Option<composer::SubmittedDraft>,
+	/// What the composer draws that is the window's: the drop target and
+	/// the refusal line.
+	attach:                AttachState,
+	rail_motion:           RailMotion,
+	transcript_viewport:   TranscriptViewportState,
+	find_state:            TranscriptFindState,
+	split_motion:          split::SplitMotions,
+	/// The queue row menu that is open, if one is (§5.1). Window-local,
+	/// like a hover: a snapshot never reopens one.
+	row_menu:              Option<RowMenu>,
+	/// The transcript turn menu that is open, if one is (§5.3). Window-local
+	/// on the same terms as the row menu.
+	turn_menu:             Option<TurnMenu>,
+	/// What the pointer has selected of the words the transcript drew, if
+	/// anything (§5.3). Window-local on the same terms as the turn menu: a
+	/// snapshot never brings a dropped selection back.
+	text_selection:        Option<TextSelection>,
+	/// The process signal menu that is open, if one is (§5.12). Window-local
+	/// on the same terms as the row menu.
+	signal_menu:           Option<SignalMenu>,
+	/// The anchored detail a row, a chip or a hunk header opened, if one is
+	/// open (§5.6). Window-local on the same terms as the row menu.
+	detail:                Option<Detail>,
+	/// The focus the detail popover took, and the focus it took it from: a
+	/// popover holds the window's keystrokes while it is drawn, and gives
+	/// them back to whatever had them when it closes.
+	detail_focus:          Option<FocusHandle>,
+	detail_return:         Option<FocusHandle>,
+	/// The float track the detail popover rises and fades on, named for the
+	/// surface that owns it (§7.1).
+	detail_motion:         crate::palette::motion::FloatMotion,
+	/// What the popover was opened on while it is fading out, so the closing
+	/// frames still have facts to draw.
+	detail_retained:       Option<Detail>,
+	/// One float track per slot in the announcement stack, named for the
+	/// surface that owns it and slotted by the position a card holds (§7.1).
+	///
+	/// Window-local because a transition is: a card is drawn from the queue
+	/// the host's model holds, and how far into its entrance it is belongs to
+	/// the window drawing it.
+	notice_motion:         Vec<veyyon_desktop_motion::FloatMotion>,
+	/// The width the operator dragged the docked right panel to. Window-local
+	/// like the row menu: a snapshot never moves the handle (§5.6).
+	panel_width:           Option<f32>,
+	/// Where each of the right panel's mono panes is scrolled to, which is
+	/// what states the rows and columns the next frame builds (§5.11).
+	/// Window-local for the same reason the dragged width is.
+	pane_scrolls:          PaneScrolls,
+	/// Disclosed tool cards a previous window remembered whose invocations
+	/// this one has not drawn yet, the drawer tenant it last looked at, which
+	/// the host has not reported yet, and where it was reading, which names an
+	/// entry the transcript has not arrived with (§8.10).
+	pending_expanded:      BTreeSet<String>,
+	pending_drawer_tab:    Option<String>,
+	pending_anchor:        Option<ScrollAnchor>,
+	focus_handle:          Option<FocusHandle>,
+	/// The focus the queue rail takes when the pointer lands in it, which is
+	/// what puts the `Queue` key context on the focus path so the scope's
+	/// chords resolve (§5.14).
+	queue_focus:           Option<FocusHandle>,
+	/// The same for the right panel: the `Panel` scope's chords — the tab
+	/// walk and the diff-mode toggle — resolve against the `Panel` key
+	/// context, which reaches the focus path only while the panel holds the
+	/// focus (§5.14).
+	panel_focus:           Option<FocusHandle>,
+	/// And for the transcript column, whose scope carries the scroll chords,
+	/// the find bar and the block toggle (§5.14).
+	transcript_focus:      Option<FocusHandle>,
+	/// And for the collapsed row the overflowing decision cards fold into,
+	/// which expands to state which decisions are waiting while it holds the
+	/// focus, so the count is readable without a pointer (§5.5).
+	cards_focus:           Option<FocusHandle>,
+	/// Whether the pointer is over that row. A hover style resolves at paint
+	/// and cannot change a box, so an expansion the pointer drives is state
+	/// the next frame lays out rather than a `hover` refinement (§5.5).
+	cards_hovered:         bool,
+	/// Whether the operator opened the queue over the transcript, at a width
+	/// whose row has no room for a rail beside it (§5.14). Window-local like
+	/// the row menu: a float that came back with a snapshot would cover the
+	/// transcript the window was opened to read.
+	queue_float_open:      bool,
+	/// Whether the width the last frame resolved floats the queue rather than
+	/// docking it, which is what decides whether the rail control toggles the
+	/// float or the standing collapsed state.
+	queue_floats:          bool,
+	destination_focus:     Option<FocusHandle>,
+	/// Where the last frame laid the menu bar's words out, one origin per
+	/// section, which is where the open menu is floated from (§4.1).
+	menu_anchors:          menu::MenuAnchors,
+	/// The focus the open menu holds, and the focus it took it from. A bare
+	/// arrow belongs to the queue and a bare Return to the composer, and a
+	/// binding is resolved before a keystroke listener runs, so the bar reads
+	/// its own keys only while it holds the focus (§4.1).
+	menu_focus:            Option<FocusHandle>,
+	menu_return:           Option<FocusHandle>,
+	general_settings_list: GeneralSettingsListState,
+	review:                review::ReviewState,
+	navigation_ui:         navigation::NavigationUi,
+	now_ms:                u64,
+	subscriptions:         Vec<Subscription>,
+}
+
+impl ShellView {
+	/// Builds the root view from an installed token set and a state to draw.
+	pub fn new(installed: InstalledTokens, state: ShellState) -> Self {
+		let mut palette_input = palette::PaletteInput::default();
+		if state.overlay.is_some() {
+			palette_input.motion = crate::palette::motion::FloatMotion::with_initial(
+				veyyon_desktop_motion::SurfaceId::Palette,
+				0,
+				true,
+			);
+			palette_input.retained.clone_from(&state.overlay);
+		}
+		Self {
+			installed,
+			state,
+			notice: None,
+			intents: Intents::new(),
+			labels: LabelState::default(),
+			laid_out: LaidOut::default(),
+			keymap: Keymap::default(),
+			composer: None,
+			composer_cache: String::new(),
+			field_editors: BTreeMap::new(),
+			field_refusal: None,
+			field_focus: None,
+			palette_input,
+			submitted: None,
+			attach: AttachState::default(),
+			rail_motion: RailMotion::new(),
+			transcript_viewport: TranscriptViewportState::new(),
+			find_state: TranscriptFindState::default(),
+			split_motion: split::SplitMotions::default(),
+			row_menu: None,
+			turn_menu: None,
+			text_selection: None,
+			signal_menu: None,
+			detail: None,
+			detail_focus: None,
+			detail_return: None,
+			detail_motion: crate::palette::motion::FloatMotion::new(
+				veyyon_desktop_motion::SurfaceId::RightPanel,
+				0,
+			),
+			detail_retained: None,
+			notice_motion: Vec::new(),
+			panel_width: None,
+			pending_expanded: BTreeSet::new(),
+			pending_drawer_tab: None,
+			pending_anchor: None,
+			focus_handle: None,
+			queue_focus: None,
+			pane_scrolls: PaneScrolls::default(),
+			panel_focus: None,
+			transcript_focus: None,
+			cards_focus: None,
+			cards_hovered: false,
+			queue_float_open: false,
+			queue_floats: false,
+			destination_focus: None,
+			menu_anchors: menu::MenuAnchors::default(),
+			menu_focus: None,
+			menu_return: None,
+			general_settings_list: GeneralSettingsListState::new(),
+			review: review::ReviewState::default(),
+			navigation_ui: navigation::NavigationUi::default(),
+			now_ms: 0,
+			subscriptions: Vec::new(),
+		}
+	}
+}
+
+impl Render for ShellView {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		render::render_shell(self, window, cx)
+	}
+}

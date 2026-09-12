@@ -253,10 +253,19 @@ export interface ChatCompletionContentPartRefusal {
 	type: "refusal";
 }
 
+/** Video content part. */
+export interface ChatCompletionContentPartVideo {
+	type: "video_url";
+	video_url: {
+		url: string;
+	};
+}
+
 /** User-message content part union. */
 export type ChatCompletionContentPart =
 	| ChatCompletionContentPartText
 	| ChatCompletionContentPartImage
+	| ChatCompletionContentPartVideo
 	| ChatCompletionContentPartInputAudio
 	| ChatCompletionContentPartFile;
 

@@ -1,0 +1,398 @@
+//! WHY: Failed requests and decisions outside the active session reached the
+//! notification queue without becoming visible.
+//!
+//! CONTRACT: Real shell frames bound card content, avoid the composer and
+//! chrome, dismiss only the selected card, report dismissal to the host and
+//! apply reduced motion on the first frame.
+//!
+//! GAP: Reducer tests cover notification creation and queue tests cover
+//! deduplication, ordering, expiry and bounds.
+
+#[path = "support/detail/mod.rs"]
+#[allow(dead_code, reason = "this binary uses a subset of the shared window helpers")]
+mod window;
+
+use veyyon_desktop_kit::load_bundled_tokens;
+use veyyon_desktop_model::{Notification, NotificationPriority, NotificationSource};
+use veyyon_desktop_scene::headless::Captured;
+use veyyon_desktop_surface::{Intent, ShellState, fixture};
+use veyyon_gpui::{Bounds, Pixels, Point, px};
+use window::{
+	HEIGHT, WIDTH, changed_pixels, inside_window, open_window, runs_labelled, settled_frame,
+};
+
+const NOW_MS: u64 = 1_700_000_000_000;
+
+/// The state every case opens on: the window as the fixture leaves it, with
+/// motion off unless the case is about motion.
+fn state_with(notices: Vec<Notification>) -> ShellState {
+	let mut state = fixture::populated();
+	state.reduced_motion = true;
+	state.notices = notices;
+	state
+}
+
+fn announcement(key: &str, title: &str, priority: NotificationPriority) -> Notification {
+	Notification {
+		key: key.to_owned(),
+		source: NotificationSource::RequestFailed,
+		priority,
+		title: title.to_owned(),
+		detail: Some("Settings".to_owned()),
+		raised_at_ms: NOW_MS,
+	}
+}
+
+/// The box of the one run of `label` the frame drew.
+fn run_box(captured: &Captured, label: &str) -> Bounds<Pixels> {
+	let mut found = captured
+		.text_runs
+		.iter()
+		.filter(|run| run.text.as_ref().trim() == label);
+	let run = found
+		.next()
+		.unwrap_or_else(|| panic!("the frame drew no run of {label}"));
+	assert!(found.next().is_none(), "{label} is drawn more than once");
+	run.bounds
+}
+
+fn centre(bounds: Bounds<Pixels>) -> Point<Pixels> {
+	Point {
+		x: bounds.origin.x + bounds.size.width / 2.0,
+		y: bounds.origin.y + bounds.size.height / 2.0,
+	}
+}
+
+#[test]
+fn an_empty_queue_draws_no_stack() {
+	open_window(state_with(Vec::new()), |session| {
+		let captured = settled_frame(session);
+		assert_eq!(
+			runs_labelled(&captured, "cannot write"),
+			0,
+			"a window with nothing announced draws nothing"
+		);
+	});
+}
+
+#[test]
+fn a_raised_announcement_is_drawn_at_the_trailing_edge_under_the_chrome() {
+	let notices =
+		vec![announcement("request-failed:Settings:-", "cannot write", NotificationPriority::Normal)];
+	open_window(state_with(notices), |session| {
+		let captured = settled_frame(session);
+		let title = run_box(&captured, "cannot write");
+		assert!(inside_window(title), "the card is drawn inside the window: {title:?}");
+
+		let detail = run_box(&captured, "Settings");
+		assert!(
+			f32::from(detail.origin.y) > f32::from(title.origin.y),
+			"the detail is drawn under the line it qualifies"
+		);
+		assert!(
+			runs_labelled(&captured, "Waiting for an answer") == 0,
+			"an announcement that expires on its own is not waiting on anybody"
+		);
+
+		let left = f32::from(title.origin.x);
+		assert!(
+			left > f32::from(px(f32::from(WIDTH) / 2.0)),
+			"the stack is at the trailing edge, clear of the rail: {left}"
+		);
+		let top = f32::from(title.origin.y);
+		let chrome = load_bundled_tokens()
+			.expect("the bundled tokens load")
+			.surface
+			.shell
+			.titlebar_height_px;
+		assert!(
+			top >= chrome,
+			"the stack begins under the chrome rather than over the titlebar: {top} < {chrome}"
+		);
+		assert!(
+			top < f32::from(HEIGHT) / 2.0,
+			"the stack grows down from the top, so the first card is in the upper half: {top}"
+		);
+	});
+}
+
+#[test]
+fn the_cards_are_stacked_in_the_order_the_queue_holds_them() {
+	let notices = vec![
+		announcement("first", "first refusal", NotificationPriority::Urgent),
+		announcement("second", "second refusal", NotificationPriority::Normal),
+		announcement("third", "third refusal", NotificationPriority::Low),
+	];
+	open_window(state_with(notices), |session| {
+		let captured = settled_frame(session);
+		let first = run_box(&captured, "first refusal");
+		let second = run_box(&captured, "second refusal");
+		let third = run_box(&captured, "third refusal");
+
+		assert!(
+			f32::from(first.origin.y) < f32::from(second.origin.y),
+			"the queue's order is the stack's order, top down"
+		);
+		assert!(f32::from(second.origin.y) < f32::from(third.origin.y));
+		assert_eq!(
+			f32::from(first.origin.x),
+			f32::from(third.origin.x),
+			"every card is the same width at the same edge"
+		);
+		for card in [first, second, third] {
+			assert!(inside_window(card), "a card was drawn off the window: {card:?}");
+		}
+	});
+}
+
+#[test]
+fn a_full_stack_stays_clear_of_the_composer_it_floats_over() {
+	let notices: Vec<Notification> = (0..veyyon_desktop_model::NOTIFICATION_CAPACITY)
+		.map(|slot| {
+			announcement(
+				&format!("slot-{slot}"),
+				&format!("refusal number {slot}"),
+				NotificationPriority::Normal,
+			)
+		})
+		.collect();
+	open_window(state_with(notices), |session| {
+		let captured = settled_frame(session);
+		let last = run_box(
+			&captured,
+			&format!("refusal number {}", veyyon_desktop_model::NOTIFICATION_CAPACITY - 1),
+		);
+		let bottom = f32::from(last.origin.y) + f32::from(last.size.height);
+		assert!(
+			bottom < f32::from(HEIGHT) * 0.75,
+			"a full stack ends well above the composer band: {bottom}"
+		);
+		assert!(inside_window(last));
+	});
+}
+
+#[test]
+fn a_press_on_a_card_takes_that_card_down_and_tells_the_host() {
+	let notices = vec![
+		announcement("keep-me", "another refusal", NotificationPriority::Normal),
+		announcement("press-me", "cannot write", NotificationPriority::Normal),
+	];
+	open_window(state_with(notices), |session| {
+		let captured = settled_frame(session);
+		let target = centre(run_box(&captured, "cannot write"));
+		session
+			.update(|view, _window, _cx| {
+				let _ = view.drain_intents();
+			})
+			.expect("the recorded intents are taken");
+
+		session.click(target).expect("the card takes the press");
+		let (intents, held) = session
+			.update(|view, _window, _cx| {
+				(
+					view.drain_intents(),
+					view
+						.state()
+						.notices
+						.iter()
+						.map(|notice| notice.key.clone())
+						.collect::<Vec<_>>(),
+				)
+			})
+			.expect("the view's state is read");
+
+		assert_eq!(
+			intents,
+			vec![Intent::DismissNotice("press-me".to_owned())],
+			"the press reports the card it was on, so the queue behind it is cleared too"
+		);
+		assert_eq!(held, ["keep-me"], "and the card beside it is left up");
+
+		let after = settled_frame(session);
+		assert_eq!(runs_labelled(&after, "cannot write"), 0, "the card is gone from the frame");
+		assert_eq!(runs_labelled(&after, "another refusal"), 1, "the other one is still drawn");
+	});
+}
+
+/// How much of a card's own text may be redrawn and still count as a card
+/// that was left alone.
+///
+/// The renderer does not produce two byte-identical frames of the same text --
+/// a settled card against itself measures around a tenth of its glyph area --
+/// and a card whose entrance restarted is redrawn from nothing, which measures
+/// above nine tenths. The two are an order of magnitude apart, so the bar sits
+/// between them rather than at either end.
+const LEFT_ALONE: f32 = 0.5;
+/// How much of a card arriving must be redrawn for its entrance to be running.
+const ARRIVING: f32 = 0.75;
+
+/// The fraction of `area` two frames disagree on.
+fn changed_fraction(before: &Captured, after: &Captured, area: Bounds<Pixels>) -> f32 {
+	let pixels = f32::from(area.size.width) * f32::from(area.size.height);
+	assert!(pixels > 0.0, "the box {area:?} holds no pixels");
+	changed_pixels(&before.frame, &after.frame, area) as f32 / pixels
+}
+
+#[test]
+fn a_card_arriving_leaves_the_transition_of_the_one_above_it_alone() {
+	// Each slot in the stack animates on its own track, named for the surface
+	// that owns the stack and slotted by the position the card holds. Two
+	// cards sharing a track is the defect this reads: the card already at rest
+	// would restart its entrance every time another arrived, which is a
+	// flicker at the top of the stack whenever anything fails twice.
+	let first = announcement("first", "first refusal", NotificationPriority::Normal);
+	let second = announcement("second", "second refusal", NotificationPriority::Normal);
+	let mut state = state_with(vec![first]);
+	state.reduced_motion = false;
+	open_window(state, |session| {
+		let at_rest = settled_frame(session);
+		let resting_box = run_box(&at_rest, "first refusal");
+
+		session
+			.update(move |view, _window, cx| {
+				view.state_mut().notices.push(second);
+				cx.notify();
+			})
+			.expect("the second announcement is raised");
+		let arriving = session
+			.frame()
+			.expect("the frame the second card arrives in");
+
+		assert_eq!(
+			f32::from(run_box(&arriving, "first refusal").origin.y),
+			f32::from(resting_box.origin.y),
+			"the card at rest does not move when another arrives under it"
+		);
+		let disturbed = changed_fraction(&at_rest, &arriving, resting_box);
+		assert!(
+			disturbed < LEFT_ALONE,
+			"the card at rest kept its own track: {disturbed} of it was redrawn"
+		);
+
+		let settled = settled_frame(session);
+		let second_box = run_box(&settled, "second refusal");
+		let entrance = changed_fraction(&arriving, &settled, second_box);
+		assert!(
+			entrance > ARRIVING,
+			"while the card that just arrived ran its own entrance: {entrance} of it was redrawn"
+		);
+		assert!(
+			f32::from(second_box.origin.y) > f32::from(resting_box.origin.y),
+			"and it is drawn under the one that was already up"
+		);
+	});
+}
+
+#[test]
+fn an_announcement_waiting_on_an_answer_states_that_rather_than_nothing() {
+	let mut waiting = announcement(
+		"decision-waiting:s:a-1",
+		"bash is waiting for approval",
+		NotificationPriority::Urgent,
+	);
+	waiting.detail = None;
+	open_window(state_with(vec![waiting]), |session| {
+		let captured = settled_frame(session);
+		let title = run_box(&captured, "bash is waiting for approval");
+		let line = run_box(&captured, "Waiting for an answer");
+		assert!(
+			f32::from(line.origin.y) > f32::from(title.origin.y),
+			"a card that stays until it is answered says so under its line, so it is not read as a \
+			 card that failed to go"
+		);
+		assert!(inside_window(line));
+	});
+}
+
+/// The lines `notices` adds to the frame, found by drawing the same window
+/// without them.
+///
+/// A card's words are read back from the frame rather than matched by name,
+/// because a card that cuts the line it was given no longer draws the text it
+/// holds, which is the whole of what this case is about.
+fn stack_lines(notices: Vec<Notification>) -> (Vec<(String, Bounds<Pixels>)>, f32) {
+	let mut bare: Vec<(u32, u32)> = Vec::new();
+	open_window(state_with(Vec::new()), |session| {
+		bare = settled_frame(session)
+			.text_runs
+			.iter()
+			.map(|run| origin_key(run.bounds))
+			.collect();
+	});
+	let mut added = Vec::new();
+	let mut composer_top = 0.0;
+	open_window(state_with(notices), |session| {
+		added = settled_frame(session)
+			.text_runs
+			.iter()
+			.filter(|run| !bare.contains(&origin_key(run.bounds)))
+			.map(|run| (run.text.as_ref().to_owned(), run.bounds))
+			.collect();
+		composer_top = session
+			.update(|view, _, _| {
+				f32::from(
+					view
+						.laid_out()
+						.drawn_bounds(veyyon_desktop_surface::damage::Region::Composer)
+						.expect("composer bounds")
+						.origin
+						.y,
+				)
+			})
+			.expect("composer position");
+	});
+	assert!(!added.is_empty(), "the stack drew nothing");
+	(added, composer_top)
+}
+
+fn origin_key(bounds: Bounds<Pixels>) -> (u32, u32) {
+	(f32::from(bounds.origin.x).to_bits(), f32::from(bounds.origin.y).to_bits())
+}
+
+#[test]
+fn a_card_cuts_a_line_the_host_wrote_long_rather_than_growing_down_the_window() {
+	// The host writes the announcement and can write a long one: a value it
+	// rejected is quoted back whole, and a tool's own output arrives whole.
+	// Unbounded, one card took as many lines as the sentence needed and a
+	// full stack of them reached the composer, so the operator could not see
+	// what was being announced about.
+	let long = concat!(
+		"the host rejected the value it was given and quoted it back whole, ",
+		"which is a sentence long enough to take a card several lines"
+	);
+	let notices: Vec<Notification> = (0..veyyon_desktop_model::NOTIFICATION_CAPACITY)
+		.map(|slot| {
+			announcement(
+				&format!("slot-{slot}"),
+				&format!("refusal number {slot}: {long}"),
+				NotificationPriority::Normal,
+			)
+		})
+		.collect();
+	let (lines, composer_top) = stack_lines(notices);
+
+	let titles: Vec<&(String, Bounds<Pixels>)> = lines
+		.iter()
+		.filter(|(text, _)| text != "Settings")
+		.collect();
+	assert_eq!(
+		titles.len(),
+		veyyon_desktop_model::NOTIFICATION_CAPACITY,
+		"every card in the stack draws its own line"
+	);
+	for (text, _) in &titles {
+		assert!(
+			text.ends_with('\u{2026}'),
+			"a card cuts the line it was given rather than drawing all of it: {text}"
+		);
+	}
+
+	let foot = lines
+		.iter()
+		.map(|(_, bounds)| f32::from(bounds.origin.y) + f32::from(bounds.size.height))
+		.fold(f32::MIN, f32::max);
+	assert!(
+		foot < composer_top,
+		"a full stack of long refusals ends at {foot}, over the composer starting at {composer_top}"
+	);
+}

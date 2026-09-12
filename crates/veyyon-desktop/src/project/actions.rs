@@ -1,0 +1,397 @@
+//! From what the operator asked to what the host is sent.
+
+use veyyon_desktop_model::{HostAction, SettableMode, Store, TerminalStatus};
+use veyyon_desktop_surface::Intent;
+
+use self::routes::{navigate_actions, retry_control_actions};
+use super::{
+	SessionIndex,
+	branch::{branch_point, branch_point_at, record_fork},
+	cards::take_interaction,
+	submission::submission_of,
+	workspace_asks::{open_actions, tab_actions},
+};
+
+mod routes;
+
+/// The host actions an intent asks for, in the order they are sent; empty
+/// for one the shell finished alone or one that no longer has a target.
+///
+/// `store` is mutated only for a decision, whose pending interaction is taken
+/// out so the next card's position still means the next card.
+///
+/// Opening a session also refreshes the changes the panel shows, since the
+/// host reports them for the workspace and nothing else asks. Opening the
+/// drawer attaches to the terminal that is running, replaying its scrollback,
+/// or creates one when none is.
+pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> Vec<HostAction> {
+	let active = super::navigation::active_session(store).cloned();
+	match intent {
+		Intent::OpenSession(_)
+		| Intent::CloseSessionTab(_)
+		| Intent::ReorderSessionTab { .. }
+		| Intent::CreateSpace(_)
+		| Intent::RenameSpace { .. }
+		| Intent::SwitchSpace(_) => super::navigation::navigation_actions(intent, store),
+		Intent::SelectSession(row) => index.session_of(*row).map_or_else(Vec::new, |session| {
+			vec![HostAction::OpenSession { session: session.clone() }, HostAction::RefreshChanges]
+		}),
+		Intent::Send { text, attachments } => active.map_or_else(Vec::new, |session| {
+			vec![HostAction::SubmitPrompt {
+				session,
+				text: text.clone(),
+				attachments: attachments.iter().enumerate().map(submission_of).collect(),
+			}]
+		}),
+		Intent::Steer(text) => active
+			.map_or_else(Vec::new, |session| vec![HostAction::Steer { session, text: text.clone() }]),
+		Intent::Queue(text) => active.map_or_else(Vec::new, |session| {
+			vec![HostAction::FollowUp { session, text: text.clone() }]
+		}),
+		Intent::AbortTurn => {
+			active.map_or_else(Vec::new, |session| vec![HostAction::AbortTurn { session }])
+		},
+		Intent::DequeueQueuedPrompt => {
+			active.map_or_else(Vec::new, |session| vec![HostAction::DequeueQueuedPrompt { session }])
+		},
+		Intent::SetToolViewExpanded { call_id, expanded } => {
+			active.map_or_else(Vec::new, |session| {
+				vec![HostAction::SetToolViewExpanded {
+					session,
+					call_id: call_id.clone(),
+					expanded: *expanded,
+				}]
+			})
+		},
+		Intent::OpenToolTarget(target) => match target {
+			veyyon_desktop_surface::ToolViewTarget::Url(url) => {
+				vec![HostAction::OpenExternal { path: url.clone() }]
+			},
+			veyyon_desktop_surface::ToolViewTarget::File { path, .. } => {
+				vec![HostAction::ReadFile { path: path.clone() }]
+			},
+		},
+		// The vocabulary crosses the wire as the type the window decodes it
+		// with, so a spelling the host rejects cannot be written here.
+		Intent::SetQueueMode(mode) => active
+			.map_or_else(Vec::new, |session| vec![HostAction::SetQueueMode { session, mode: *mode }]),
+		// Leaving a mode is the same action as entering one: the host reads
+		// `SettableMode::None` as the session running in no mode.
+		Intent::SetPlanMode { on } => active.map_or_else(Vec::new, |session| {
+			let mode = if *on {
+				SettableMode::Plan
+			} else {
+				SettableMode::None
+			};
+			vec![HostAction::SetSessionMode { session, mode }]
+		}),
+		Intent::SelectModel(choice) => {
+			vec![HostAction::SelectModel {
+				provider: choice.provider.clone(),
+				model:    choice.model.clone(),
+			}]
+		},
+		Intent::SetThinking(level) => {
+			vec![HostAction::SetThinkingLevel { level: level.level.clone() }]
+		},
+		Intent::Approval { card, .. }
+		| Intent::Answer { card, .. }
+		| Intent::Reply { card, .. }
+		| Intent::Plan { card, .. } => {
+			let Some(session) = active else {
+				return Vec::new();
+			};
+			let Some(pending) = store.interactions.get_mut(&session) else {
+				return Vec::new();
+			};
+			take_interaction(pending, *card, intent).map_or_else(Vec::new, |(id, response)| {
+				vec![HostAction::RespondToInteraction { session, interaction_id: id.0, response }]
+			})
+		},
+		Intent::SetDrawer { open: true } => {
+			let running = store
+				.domains
+				.terminals
+				.iter()
+				.rev()
+				.find(|terminal| terminal.status == TerminalStatus::Running);
+			vec![match running {
+				Some(terminal) => HostAction::AttachTerminal { terminal_id: terminal.id.clone() },
+				None => HostAction::CreateTerminal { cwd: None, shell: None },
+			}]
+		},
+		Intent::RetryConnection => vec![HostAction::RetryConnection],
+		Intent::StartProviderAuth(provider) => {
+			vec![HostAction::StartProviderAuth { provider: provider.clone() }]
+		},
+		Intent::SubmitAuthSecret { provider, secret } => {
+			vec![HostAction::SubmitAuthSecret { provider: provider.clone(), secret: secret.clone() }]
+		},
+		Intent::OpenAuthUrl(url) => vec![HostAction::OpenAuthUrl { url: url.clone() }],
+		Intent::CancelAuthFlow => {
+			let provider = store
+				.domains
+				.auth_flow
+				.as_ref()
+				.map_or_else(String::new, |f| f.provider.clone());
+			vec![HostAction::CancelAuthFlow { provider }]
+		},
+		Intent::RetryAuthFlow => {
+			let provider = store
+				.domains
+				.auth_flow
+				.as_ref()
+				.map_or_else(String::new, |f| f.provider.clone());
+			vec![HostAction::RetryAuthFlow { provider }]
+		},
+		Intent::RetryControl(id) => store
+			.retries
+			.take(id)
+			.map_or_else(|| retry_control_actions(id, active), |refused| vec![refused]),
+		Intent::Navigate(crate_route) => navigate_actions(*crate_route, active),
+		Intent::OpenOverlay(_) | Intent::CloseOverlay | Intent::PaletteMove(_) => Vec::new(),
+		// Ranking rows the window already holds asks the host for nothing; the
+		// modes whose rows come from the host report their own intent.
+		Intent::PaletteQuery(_) => Vec::new(),
+		Intent::FindSessions(query) => {
+			store.domains.session_search = None;
+			vec![HostAction::SearchSessions { query: query.clone() }]
+		},
+		Intent::PreviewSession(session) => {
+			store.domains.session_preview = None;
+			vec![HostAction::PreviewSessionTranscript { session: session.clone().into() }]
+		},
+		Intent::ResumeHistory(session) => vec![
+			HostAction::OpenSession { session: session.clone().into() },
+			HostAction::RefreshChanges,
+		],
+		// An empty query opens the mode on the workspace tree, which is where
+		// its rows come from until something is typed.
+		Intent::FindFile(query) if query.is_empty() => {
+			vec![HostAction::LoadFileTree { root: None }]
+		},
+		Intent::FindFile(query) => vec![HostAction::SearchFiles { query: query.clone() }],
+		// Nothing is searched for until something is typed: there is no
+		// listing of every line of the workspace to open the mode on.
+		Intent::FindText(query) if query.is_empty() => Vec::new(),
+		Intent::FindText(query) => vec![HostAction::SearchContent { query: query.clone() }],
+		Intent::PaletteRun => Vec::new(),
+		// The listing the operator asked for, which is what makes a descent
+		// visible: the rows of Browse mode are the host's children of `path`.
+		Intent::BrowseTo { path } => vec![HostAction::LoadFileTree { root: path.clone() }],
+		Intent::SettingChanged { key, value } => {
+			vec![HostAction::SetSetting { key: key.clone(), value: value.clone() }]
+		},
+		Intent::ResetSetting(key) => {
+			vec![HostAction::ResetSetting { key: key.clone() }]
+		},
+		Intent::KeybindingChanged { action, keys } => {
+			vec![HostAction::SetKeybinding { action: action.clone(), keys: keys.clone() }]
+		},
+		Intent::SpawnTask(task) => vec![HostAction::SpawnTask { task: task.clone() }],
+		Intent::SelectTheme(theme) => vec![
+			HostAction::SetSetting {
+				key:   "theme".to_string(),
+				value: serde_json::Value::String(theme.clone()),
+			},
+			HostAction::LoadThemes,
+		],
+		Intent::ReloadSettings => {
+			vec![HostAction::LoadSettings, HostAction::LoadThemes, HostAction::LoadKeybindings]
+		},
+		Intent::SetMcpEnabled { server, enabled } => {
+			vec![HostAction::SetMcpEnabled { server: server.clone(), enabled: *enabled }]
+		},
+		Intent::RefreshDiagnostics => vec![HostAction::RefreshDiagnostics],
+		Intent::RetryDiagnosticSource(source) => {
+			vec![HostAction::RetryDiagnosticSource { source: source.clone() }]
+		},
+		Intent::RefreshUsage | Intent::OpenUsage => {
+			let mut actions = vec![HostAction::GetUsage { session: active.clone() }];
+			if let Some(session) = active {
+				actions.push(HostAction::GetContextBreakdown { session });
+			}
+			actions
+		},
+		Intent::TerminalInput(data) => active_terminal(store).map_or_else(Vec::new, |term| {
+			vec![HostAction::WriteTerminal { terminal_id: term.id.clone(), data: data.clone() }]
+		}),
+		Intent::ResizeTerminal { cols, rows } => {
+			active_terminal(store).map_or_else(Vec::new, |term| {
+				vec![HostAction::ResizeTerminal {
+					terminal_id: term.id.clone(),
+					cols:        *cols,
+					rows:        *rows,
+				}]
+			})
+		},
+		Intent::ClearTerminal => active_terminal(store).map_or_else(Vec::new, |term| {
+			vec![HostAction::ClearTerminal { terminal_id: term.id.clone() }]
+		}),
+		Intent::RestartTerminal => active_terminal(store).map_or_else(Vec::new, |term| {
+			vec![HostAction::RestartTerminal { terminal_id: term.id.clone() }]
+		}),
+		Intent::CloseTerminal => active_terminal(store).map_or_else(Vec::new, |term| {
+			vec![HostAction::CloseTerminal { terminal_id: term.id.clone() }]
+		}),
+		// A drawer that is already open never re-runs the attach-or-create the
+		// opening did, so the strip's `New` is the only route to a second
+		// terminal, and to the first one after the last was closed (§5.12).
+		Intent::NewTerminal => vec![HostAction::CreateTerminal { cwd: None, shell: None }],
+		Intent::ClearOutput => {
+			active.map_or_else(Vec::new, |session| vec![HostAction::ClearOutput { session }])
+		},
+		Intent::CancelTool { call_id } => active.map_or_else(Vec::new, |session| {
+			vec![HostAction::CancelTool { session, tool_call_id: call_id.clone() }]
+		}),
+		Intent::ProcessStart { command, args } => {
+			vec![HostAction::ProcessStart { command: command.clone(), args: args.clone() }]
+		},
+		Intent::ProcessSend { process, data } => {
+			vec![HostAction::ProcessSend { process_id: process.clone(), data: data.clone() }]
+		},
+		Intent::SelectDrawerTab(_) => Vec::new(),
+		// Opening a process's output subscribes to it: `follow` keeps the
+		// chunks arriving while the tab is the one on screen, which is the
+		// only place they are drawn.
+		Intent::OpenProcessLogs(name) => {
+			vec![HostAction::ProcessLogs { process_id: name.clone(), follow: true }]
+		},
+		Intent::ProcessStop(name) => vec![HostAction::ProcessStop { process_id: name.clone() }],
+		Intent::ProcessRestart(name) => vec![HostAction::ProcessRestart { process_id: name.clone() }],
+		// The signal is the operator's: a process that ignored the polite ask
+		// is the reason the row offers the one nothing can catch.
+		Intent::ProcessSignal { process, signal } => {
+			vec![HostAction::ProcessSignal { process_id: process.clone(), signal: *signal }]
+		},
+		Intent::NewSession => vec![HostAction::CreateSession { workspace: None, title: None }],
+		Intent::CloseTabOrPark => {
+			active.map_or_else(Vec::new, |session| vec![HostAction::DeleteSession { session }])
+		},
+		Intent::PinSession(_)
+		| Intent::UnpinSession(_)
+		| Intent::DeferSession(_)
+		| Intent::ParkSession(_)
+		| Intent::UnparkSession(_)
+		| Intent::RecallSession(_) => {
+			mutate_partition(intent, index, store);
+			Vec::new()
+		},
+		Intent::DeleteSession(row) => index.session_of(*row).map_or_else(Vec::new, |session| {
+			vec![HostAction::DeleteSession { session: session.clone() }]
+		}),
+		// The window names the entry it forks at, so the prompt it hands back to
+		// the composer is the prompt the fork actually cut. A transcript the
+		// window has not loaded names none and the host picks the same entry
+		// itself.
+		Intent::BranchSession(row) => {
+			index
+				.session_of(*row)
+				.cloned()
+				.map_or_else(Vec::new, |session| {
+					let point = branch_point(store, &session);
+					if let Some(point) = point.as_ref() {
+						record_fork(store, *row, point);
+					}
+					vec![HostAction::BranchSession { session, entry: point.map(|point| point.entry) }]
+				})
+		},
+		// A fork cut at one turn names that turn's own prompt. The index is the
+		// transcript's, which is what the frame recorded its boxes under, so a
+		// press on a reply or on a turn no longer drawn asks for nothing rather
+		// than forking at the end.
+		Intent::BranchTurn(turn) => active
+			.and_then(|session| {
+				let row = index.row_id(&session)?;
+				let point = branch_point_at(store, &session, *turn)?;
+				Some((session, row, point))
+			})
+			.map_or_else(Vec::new, |(session, row, point)| {
+				record_fork(store, row, &point);
+				vec![HostAction::BranchSession { session, entry: Some(point.entry) }]
+			}),
+		Intent::RenameSession { session, title } => {
+			index.session_of(*session).map_or_else(Vec::new, |s| {
+				vec![HostAction::RenameSession { session: s.clone(), title: title.clone() }]
+			})
+		},
+		Intent::ExportSession(row) => row
+			.and_then(|r| index.session_of(r))
+			.cloned()
+			.or_else(|| active.clone())
+			.map_or_else(Vec::new, |s| {
+				vec![HostAction::ExportSession { session: s, format: "html".to_string() }]
+			}),
+		Intent::CompactSession(row) => row
+			.and_then(|r| index.session_of(r))
+			.cloned()
+			.or_else(|| active.clone())
+			.map_or_else(Vec::new, |s| vec![HostAction::CompactSession { session: s }]),
+		Intent::HandoffSession(row) => row
+			.and_then(|r| index.session_of(r))
+			.cloned()
+			.or_else(|| active.clone())
+			.map_or_else(Vec::new, |s| {
+				vec![HostAction::HandoffSession { session: s, target: String::new() }]
+			}),
+		Intent::LoadTranscript(row) => row
+			.and_then(|r| index.session_of(r))
+			.cloned()
+			.or(active)
+			.map_or_else(Vec::new, |s| vec![HostAction::LoadTranscript { session: s, before: None }]),
+		Intent::OpenFile(path) => vec![HostAction::ReadFile { path: path.clone() }],
+		Intent::SelectChangeScope(scope) => {
+			vec![HostAction::SelectChangeScope { scope: *scope }, HostAction::RefreshChanges]
+		},
+		// The tab the operator moved to draws a domain the host answers only
+		// when it is asked, and opening the panel is the same ask for the tab
+		// it opens on.
+		Intent::SelectTab(tab) => tab_actions(*tab, store, active),
+		Intent::SetPanel { open: true } => open_actions(store),
+		Intent::SetPanel { open: false }
+		| Intent::SetDiffMode(_)
+		| Intent::ToggleTreeNode(_)
+		| Intent::ExpandContext { .. } => Vec::new(),
+		// A press on a card takes the announcement off the queue the window
+		// draws from, so the next projection does not put it back. Nothing is
+		// sent: the host raised it, and reading it is the window's business.
+		Intent::DismissNotice(key) => {
+			store.notifications.dismiss(key);
+			Vec::new()
+		},
+		_ => Vec::new(),
+	}
+}
+
+fn mutate_partition(intent: &Intent, index: &SessionIndex, store: &mut Store) {
+	let now = crate::current_timestamp_ms();
+	let (session, op) = match intent {
+		Intent::PinSession(r) => (index.session_of(*r), 0),
+		Intent::UnpinSession(r) => (index.session_of(*r), 1),
+		Intent::DeferSession(r) => (index.session_of(*r), 2),
+		Intent::ParkSession(r) => (index.session_of(*r), 3),
+		Intent::UnparkSession(r) => (index.session_of(*r), 4),
+		Intent::RecallSession(r) => (index.session_of(*r), 5),
+		_ => return,
+	};
+	if let Some(s) = session {
+		match op {
+			0 => store.sessions.pin(s, None),
+			1 => store.sessions.unpin(s, now),
+			2 => store.sessions.defer(s, None),
+			3 => store.sessions.park(s, now),
+			4 => store.sessions.unpark(s, now),
+			_ => store.sessions.recall(s, now),
+		}
+	}
+}
+
+fn active_terminal(store: &Store) -> Option<&veyyon_desktop_model::TerminalView> {
+	store
+		.domains
+		.terminals
+		.iter()
+		.rev()
+		.find(|t| t.status == TerminalStatus::Running)
+		.or_else(|| store.domains.terminals.last())
+}

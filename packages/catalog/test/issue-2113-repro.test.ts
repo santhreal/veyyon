@@ -128,12 +128,12 @@ describe("issue #2113 — moonshot kimi-k2.6 discovery and wire format", () => {
 		// wire thinking block keys off `reasoning`, which stays true.
 		const k25 = byId.get("kimi-k2.5");
 		expect(k25?.reasoning).toBe(true);
-		expect(k25?.input).toEqual(["text", "image"]);
+		expect(k25?.input).toEqual(["text", "image", "video"]);
 		expect(k25?.thinking).toBeUndefined();
 
 		const k26 = byId.get("kimi-k2.6");
 		expect(k26?.reasoning).toBe(true);
-		expect(k26?.input).toEqual(["text", "image"]);
+		expect(k26?.input).toEqual(["text", "image", "video"]);
 		expect(k26?.thinking).toBeUndefined();
 
 		const thinkingOnly = byId.get("kimi-k2-thinking");

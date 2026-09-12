@@ -25,7 +25,7 @@ import {
 } from "../../../../presentation/transcript-builder";
 import type { CustomMessage } from "../../../../session/messages";
 import { theme } from "../../../../theme/theme";
-import { decodeStreamedToolArgs, streamingStringKeysForTool } from "../../controllers/tool-args-reveal";
+import { decodeStreamedToolArgs, streamingStringKeysForTool } from "../../../../tools/core/streamed-tool-args";
 import { isLiveBackgroundTask } from "../../utils/async-tool-state";
 import {
 	assistantHasVisibleContent,

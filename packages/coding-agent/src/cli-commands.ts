@@ -99,6 +99,12 @@ export const commands: CommandEntry[] = [
 		summary: { description: "View, clean, or push reported tool issues (auto-QA grievances)", devTool: true },
 	},
 	{
+		name: "gui",
+		load: () => import("./commands/gui").then(m => m.default),
+		aliases: ["gui-host"],
+		summary: { description: "Start the GUI engine host server for desktop clients" },
+	},
+	{
 		name: "install",
 		load: () => import("./commands/install").then(m => m.default),
 		summary: { description: "Install or link an extension package (alias of `plugin install`/`plugin link`)" },

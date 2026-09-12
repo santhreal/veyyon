@@ -7,6 +7,7 @@
 ### Added
 
 - `@veyyon/session` states what a session file is made of: the `SessionEntry` vocabulary, the `AgentMessage` union and the `CustomCompactionSessionEntries` and `CustomAgentMessages` hooks a package augments. It imports only types from `@veyyon/model`.
+- `CustomMessageEntry.content` admits `VideoContent` alongside text and images, so a stored extension message keeps a video attachment.
 
 ### Changed
 

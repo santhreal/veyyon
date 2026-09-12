@@ -200,7 +200,7 @@ function buildModelsConfigSchemas() {
 		"baseUrl?": "string",
 		"reasoning?": "boolean",
 		"thinking?": ModelThinkingSchema,
-		"input?": '("text" | "image")[]',
+		"input?": '("text" | "image" | "video")[]',
 		"supportsTools?": "boolean",
 		"cost?": {
 			input: "number",
@@ -223,7 +223,7 @@ function buildModelsConfigSchemas() {
 		"name?": "string",
 		"reasoning?": "boolean",
 		"thinking?": ModelThinkingSchema,
-		"input?": '("text" | "image")[]',
+		"input?": '("text" | "image" | "video")[]',
 		"supportsTools?": "boolean",
 		"cost?": {
 			"input?": "number",
@@ -359,7 +359,7 @@ export interface ModelDefinition {
 		type?: "enabled" | "disabled" | "thought-budget";
 		budgetTokens?: number;
 	};
-	input?: ("text" | "image")[];
+	input?: ("text" | "image" | "video")[];
 	supportsTools?: boolean;
 	cost?: {
 		input: number;
@@ -385,7 +385,7 @@ export interface ModelOverride {
 		type?: "enabled" | "disabled" | "thought-budget";
 		budgetTokens?: number;
 	};
-	input?: ("text" | "image")[];
+	input?: ("text" | "image" | "video")[];
 	supportsTools?: boolean;
 	cost?: ModelCost;
 	premiumMultiplier?: number;

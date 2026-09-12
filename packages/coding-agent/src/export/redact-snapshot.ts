@@ -7,7 +7,7 @@
  */
 
 import type { AgentMessage } from "@veyyon/agent-core";
-import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
+import type { AssistantMessage, ImageContent, TextContent, VideoContent } from "@veyyon/ai";
 import type { SessionEntry, SessionHeader } from "@veyyon/kernel/session/session-entries";
 import { mapJsonStrings } from "../json-transform";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";
@@ -95,8 +95,8 @@ function redactShareEntry(o: SecretObfuscator, entry: SessionEntry): SessionEntr
 
 function redactShareContent(
 	o: SecretObfuscator,
-	content: string | (TextContent | ImageContent)[],
-): string | (TextContent | ImageContent)[] {
+	content: string | (TextContent | ImageContent | VideoContent)[],
+): string | (TextContent | ImageContent | VideoContent)[] {
 	if (typeof content === "string") return o.obfuscate(content);
 	return content.map(block => (block.type === "text" ? { ...block, text: o.obfuscate(block.text) } : block));
 }
@@ -132,7 +132,7 @@ function redactShareMessage(o: SecretObfuscator, message: AgentMessage): AgentMe
 			return {
 				...message,
 				details: undefined,
-				content: redactShareContent(o, message.content) as (TextContent | ImageContent)[],
+				content: redactShareContent(o, message.content) as (TextContent | ImageContent | VideoContent)[],
 				display:
 					"display" in message && message.display
 						? mapJsonStrings(message.display, text => o.obfuscate(text))

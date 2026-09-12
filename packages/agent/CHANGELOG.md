@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Custom message, compaction summary and session entry content unions admit `VideoContent` alongside text and images.
+- An exported OpenTelemetry turn carries a video attachment as a `video` blob part; a video block was dropped from the export while images were kept.
+
+### Fixed
+
+- Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the route they are sent to.
+- Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
+
+## [1.3.0] - 2026-08-28
+
+### Breaking Changes
+
+- `AgentOptions.cursorRulesResolver` is removed: an agent no longer supplies a second, per-api rule channel beside its system prompt.
+
 ### Added
 
 - `AgentTool.view` takes a host-agnostic `ToolViewRenderer` from `@veyyon/view`, so a tool describes its call and result cards without receiving a theme or returning a host component; where a tool also declares `renderCall`/`renderResult`, the host-specific pair still wins.

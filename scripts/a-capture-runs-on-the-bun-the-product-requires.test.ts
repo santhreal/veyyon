@@ -10,20 +10,24 @@
 // `Bun runtime must be >= 1.4.0 (found v1.3.14)` from inside the container.
 //
 // THE CLASS THIS CLOSES. Not "that one image": any capture container named by a
-// tag that does not track the declared runtime. `packageManager` in the root
-// package.json is the declaration, `scripts/bun-version.sh` is its only reader,
-// and every recorder resolves its tag from that. Each recorder that spawns a
-// container is discovered on the filesystem and driven through a stub `docker`, so
-// the image it really names is asserted rather than read out of the source, and a
-// new recorder is swept the day it lands. A bump to `packageManager` moves every
-// expected tag at once, which is exactly what nothing did before.
+// tag that does not track what the image is built from. `packageManager` in the
+// root package.json declares the runtime, `scripts/bun-version.sh` is its only
+// reader, `RECORDER_REVISION` in proof/docker/recorder-image.sh declares what the
+// image contains beyond that runtime, and every recorder resolves its tag from
+// both. Each recorder that spawns a container is discovered on the filesystem and
+// driven through a stub `docker`, so the image it really names is asserted rather
+// than read out of the source, and a new recorder is swept the day it lands. A
+// bump to either declaration moves every expected tag at once, which is exactly
+// what nothing did before.
 //
 // WHAT IT DOES NOT CATCH. Whether an image with the right tag actually contains
-// that bun: only a docker daemon can answer that, and `build-recorder.sh` asks it
-// at the end of a build. This suite proves the name, and a missing image is then a
-// loud docker error instead of a dead take.
+// that bun and those packages: only a docker daemon can answer that, and
+// `build-recorder.sh` asks it at the end of a build. This suite proves the name,
+// and a missing image is then a loud docker error instead of a dead take. It also
+// cannot tell that a revision bump was warranted; it only requires the tag to
+// carry whatever revision the resolver declares.
 import { describe, expect, it } from "bun:test";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -41,7 +45,21 @@ const DECLARED_BUN = (() => {
 	return declared?.replace(/^bun@/, "") ?? "";
 })();
 
-const EXPECTED_IMAGE = `veyyon-proof-recorder:bun${DECLARED_BUN}`;
+/**
+ * What the image CONTAINS, beyond the bun it carries. `Dockerfile.recorder` grew
+ * the Vulkan ICD the desktop scenes open a device against, and every existing
+ * `bun1.4.0` image stayed valid by tag while missing the package, so a take died
+ * inside the container after the display server came up. The revision is read by
+ * running the resolver rather than by reading its text, so the tag it composes is
+ * asserted rather than restated.
+ */
+const RECORDER_REVISION = execFileSync(
+	"bash",
+	["-c", `source "${path.join(DOCKER_DIR, "recorder-image.sh")}"; printf '%s' "$RECORDER_REVISION"`],
+	{ encoding: "utf8", env: { ...process.env, RECORDER_IMAGE: "" } },
+);
+
+const EXPECTED_IMAGE = `veyyon-proof-recorder:bun${DECLARED_BUN}-r${RECORDER_REVISION}`;
 
 /**
  * Every script in `proof/docker/` that spawns a container, discovered at run time.
@@ -97,6 +115,10 @@ async function spawnerArgv(script: string): Promise<string[]> {
 describe("a capture runs on the bun the product requires", () => {
 	it("reads one declared version", () => {
 		expect(DECLARED_BUN).toMatch(/^\d+\.\d+\.\d+$/);
+	});
+
+	it("reads one image revision", () => {
+		expect(RECORDER_REVISION).toMatch(/^\d+$/);
 	});
 
 	it("derives the same version in the shell every image build reads", async () => {
@@ -166,11 +188,11 @@ describe("a capture runs on the bun the product requires", () => {
 	describe.each(["record-x11.sh", "record-wl.sh", "run-recorder.sh", "record-long-session.sh", "resume-probe.sh"])(
 		"%s",
 		script => {
-			it("names the image built for the declared bun", async () => {
+			it("names the image built for the declared bun and revision", async () => {
 				const argv = await spawnerArgv(script);
-				expect(argv).toContain(EXPECTED_IMAGE);
-				// No hand-numbered generation survives anywhere in the invocation.
-				expect(argv.filter(arg => /^veyyon-proof-recorder:\d+$/.test(arg))).toEqual([]);
+				// Every recorder image the invocation names is that one image: a
+				// second tag anywhere in the argv is a path that resolved its own.
+				expect(argv.filter(arg => arg.startsWith("veyyon-proof-recorder:"))).toEqual([EXPECTED_IMAGE]);
 			});
 		},
 	);

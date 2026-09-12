@@ -177,24 +177,38 @@ for sha in $shas; do
 		fi
 		book="$checkout/docs/handbook/book"
 		if [ -d "$book" ]; then
-			# A page references its assets relative to its own directory, so a nested
-			# page writes `../css/chrome-<hash>.css` for `book/css/chrome-<hash>.css`.
-			# Strip the climb and resolve against the book root.
+			# Each reference is relative to the page that carries it, so a page
+			# one directory down loads `../css/chrome-<hash>.css` for a file at
+			# `book/css/chrome-<hash>.css`. Resolving against the book root
+			# instead reported every nested page's stylesheets absent and
+			# refused every commit that edits one.
 			refs="${TMPDIR:-/tmp}/veyyon-prepush-refs-$$"
-			(shopt -s globstar nullglob; grep -ohE '"[^"]*-[0-9a-f]{8}\.(js|css)"' "$book"/**/*.html 2>/dev/null) | tr -d '"' | sort -u >"$refs" || true
-			absent=""
-			while read -r asset; do
-				[ -z "$asset" ] && continue
-				rel="$asset"
-				while [ "${rel#../}" != "$rel" ]; do rel="${rel#../}"; done
-				if [ ! -e "$book/$rel" ]; then
-					absent="$absent $asset"
-				fi
-			done <"$refs"
+			: >"$refs"
+			(
+				# `**/` matches no directory as well as several, so this reaches
+				# the book root and every depth under it, without a tool the
+				# hook does not already need.
+				shopt -s globstar nullglob
+				for page in "$book"/**/*.html; do
+					dir=$(dirname "$page")
+					grep -ohE '"[^"]*-[0-9a-f]{8}\.(js|css)"' "$page" 2>/dev/null |
+						tr -d '"' |
+						while read -r asset; do
+							[ -z "$asset" ] && continue
+							case "$asset" in *://*) continue ;; esac
+							resolved=$(cd "$dir/$(dirname "$asset")" 2>/dev/null && pwd)
+							if [ -z "$resolved" ] || [ ! -e "$resolved/$(basename "$asset")" ]; then
+								echo "$asset" >>"$refs"
+							fi
+						done
+				done
+			)
+			absent=$(sort -u "$refs" | tr '\n' ' ')
 			rm -f "$refs"
+			absent=${absent% }
 			if [ -n "$absent" ]; then
 				echo >&2
-				echo "pre-push: REFUSED. Commit $short generates handbook pages that load missing assets:$absent" >&2
+				echo "pre-push: REFUSED. Commit $short generates handbook pages that load missing assets: $absent" >&2
 				exit 1
 			fi
 		fi

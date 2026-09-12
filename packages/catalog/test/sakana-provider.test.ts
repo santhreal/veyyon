@@ -54,18 +54,30 @@ describe("Sakana AI provider support", () => {
 		expect(DEFAULT_MODEL_PER_PROVIDER.sakana).toBe("fugu");
 
 		const bundled = getBundledModels("sakana");
-		expect(bundled.map(model => model.id).sort()).toEqual(["fugu", "fugu-ultra", "fugu-ultra-20260615"]);
+		expect(bundled.map(model => model.id).sort()).toEqual([
+			"fugu",
+			"fugu-ultra",
+			"fugu-ultra-20260615",
+			"sakana-namazu",
+		]);
 		expect(bundled.find(model => model.id === "fugu")?.contextWindow).toBe(1_000_000);
 		expect(bundled.find(model => model.id === "fugu-ultra")?.contextWindow).toBe(1_000_000);
 		expect(bundled.find(model => model.id === "fugu-ultra-20260615")?.contextWindow).toBe(1_000_000);
+		expect(bundled.find(model => model.id === "sakana-namazu")?.contextWindow).toBe(262_144);
 		for (const model of bundled) {
 			expect(model.api).toBe("openai-responses");
-			// models.dev declares the Fugu effort pair as high/xhigh.
-			expect(model.thinking?.efforts).toEqual([Effort.High, Effort.XHigh]);
-			expect(model.thinking?.effortMap).toBeUndefined();
 			expect((model.compat as ResolvedOpenAIResponsesCompat).includeEncryptedReasoning).toBe(false);
 			expect((model.compat as ResolvedOpenAIResponsesCompat).streamIdleTimeoutMs).toBe(0);
 		}
+		for (const model of bundled.filter(model => model.id.startsWith("fugu"))) {
+			// models.dev declares the Fugu effort pair as high/xhigh.
+			expect(model.thinking?.efforts).toEqual([Effort.High, Effort.XHigh]);
+			expect(model.thinking?.effortMap).toBeUndefined();
+		}
+		const namazu = bundled.find(model => model.id === "sakana-namazu");
+		expect(namazu?.thinking).toBeUndefined();
+		expect(namazu?.reasoning).toBe(true);
+		expect(namazu?.reasoningOptions).toEqual({ noEffortControl: true });
 
 		const provider = getOAuthProviders().find(item => item.id === "sakana");
 		expect(provider?.name).toBe("Sakana AI");

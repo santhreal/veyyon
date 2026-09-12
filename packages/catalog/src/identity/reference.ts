@@ -12,8 +12,15 @@ import type { Api, Model } from "../types";
 import { getBracketStrippedModelIdCandidates, getLongestModelLikeIdSegment, getModelLikeIdSegments } from "./id";
 import { REFERENCE_TRAILING_MARKER_PATTERN } from "./markers";
 
-export type ModelReferenceCandidate = Pick<Model<Api>, "id" | "provider" | "cost"> &
-	Partial<Pick<Model<Api>, "contextWindow" | "maxTokens">>;
+export type ModelReferenceCandidate = Pick<Model<Api>, "id" | "provider"> &
+	Partial<Pick<Model<Api>, "contextWindow" | "maxTokens">> & {
+		/**
+		 * Bundled metadata carries per-token prices only where a provider
+		 * published them, so a reference is indexed with partial pricing or
+		 * none at all and every reader treats a missing field as unknown.
+		 */
+		cost?: Partial<Model<Api>["cost"]>;
+	};
 
 export interface ModelReferenceIndex<TCandidate extends ModelReferenceCandidate = Model<Api>> {
 	exact: Map<string, TCandidate>;
@@ -25,10 +32,10 @@ export interface ModelReferenceIndex<TCandidate extends ModelReferenceCandidate 
 export function isZeroCostXaiOAuthReference(candidate: ModelReferenceCandidate): boolean {
 	return (
 		candidate.provider === "xai-oauth" &&
-		candidate.cost.input === 0 &&
-		candidate.cost.output === 0 &&
-		candidate.cost.cacheRead === 0 &&
-		candidate.cost.cacheWrite === 0
+		(candidate.cost?.input ?? 0) === 0 &&
+		(candidate.cost?.output ?? 0) === 0 &&
+		(candidate.cost?.cacheRead ?? 0) === 0 &&
+		(candidate.cost?.cacheWrite ?? 0) === 0
 	);
 }
 
@@ -45,8 +52,8 @@ function shouldReplaceReference<TCandidate extends ModelReferenceCandidate>(
 	if (candidate.maxTokens !== existing.maxTokens) {
 		return (candidate.maxTokens ?? 0) > (existing.maxTokens ?? 0);
 	}
-	const existingHasCachePricing = existing.cost.cacheRead > 0 || existing.cost.cacheWrite > 0;
-	const candidateHasCachePricing = candidate.cost.cacheRead > 0 || candidate.cost.cacheWrite > 0;
+	const existingHasCachePricing = (existing.cost?.cacheRead ?? 0) > 0 || (existing.cost?.cacheWrite ?? 0) > 0;
+	const candidateHasCachePricing = (candidate.cost?.cacheRead ?? 0) > 0 || (candidate.cost?.cacheWrite ?? 0) > 0;
 	if (candidateHasCachePricing !== existingHasCachePricing) {
 		return candidateHasCachePricing;
 	}

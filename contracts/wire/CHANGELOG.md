@@ -20,6 +20,7 @@
 - `AgentProgressPayload` and `AgentLifecyclePayload` are the payloads on the `task:subagent:progress` and `task:subagent:lifecycle` bus channels; `SubagentProgressPayload` and `SubagentLifecyclePayload` remain exported as the same types, and the channel spellings are unchanged.
 - `generateRoomKey` and `generateWriteToken` return the filled random buffer directly; the key and token lengths are unchanged.
 
+- `VideoContent` joins the user, developer, tool-result and custom message content unions so collab guests receive video attachments.
 
 ## [16.3.0] - 2026-07-02
 

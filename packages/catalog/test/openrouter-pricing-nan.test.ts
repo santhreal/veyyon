@@ -40,7 +40,12 @@ async function mapOpenRouterEntry(pricing: unknown): Promise<{
 	const models = await options.fetchDynamicModels?.();
 	const cost = models?.[0]?.cost;
 	if (cost === undefined) throw new Error("expected a mapped OpenRouter model with a cost");
-	return cost;
+	return {
+		input: cost.input ?? 0,
+		output: cost.output ?? 0,
+		cacheRead: cost.cacheRead ?? 0,
+		cacheWrite: cost.cacheWrite ?? 0,
+	};
 }
 
 describe("OpenRouter pricing never produces a NaN cost", () => {

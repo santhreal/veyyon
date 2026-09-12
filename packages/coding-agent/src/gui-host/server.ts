@@ -1,0 +1,445 @@
+import * as fs from "node:fs/promises";
+import * as net from "node:net";
+import * as path from "node:path";
+import type { AuthStorage } from "@veyyon/ai";
+import { errorMessage, getAgentDir, logger } from "@veyyon/utils";
+import { discoverAuthStorage } from "../session/auth-broker-config";
+import { allActionHandlers } from "./actions";
+import { activeCwd, writeSessionList } from "./actions/active-session";
+import type { ActionContext, ReplyHelper } from "./actions/types";
+import { FrameDecoder, MAX_FRAME_BYTES, writeFrame } from "./frames";
+import { PresentationLedger } from "./presentation";
+import { buildCapabilitiesSnapshot, mapActionToErrorScope } from "./session-bridge";
+import { assertUnixPathFits, guiHostSocketPath } from "./socket-path";
+import { type ClientSessionState, disposeClientState } from "./turns";
+import {
+	type BackendError,
+	GUI_HOST_PROTOCOL_VERSION,
+	getActionTag,
+	type HostAction,
+	type HostActionTag,
+	type SnapshotSection,
+	snapshotSectionTag,
+} from "./wire";
+import { republishWorkspace } from "./workspace-republish";
+
+export class SocketInUseError extends Error {
+	readonly code = "EADDRINUSE";
+	constructor(socketPath: string) {
+		super(`Unix socket ${socketPath} is already in use by another active server`);
+		this.name = "SocketInUseError";
+	}
+}
+
+export interface GuiHostServerOptions {
+	endpoint?: string;
+	cwd?: string;
+	agentDir?: string;
+	/**
+	 * The credential store every action reads and writes. Default: the
+	 * profile's store through `discoverAuthStorage`, which follows credential
+	 * sharing to the machine-wide one. A test passes its own so a key it seeds
+	 * never lands there.
+	 */
+	authStorage?: AuthStorage;
+}
+
+interface ParsedEndpoint {
+	type: "unix" | "tcp";
+	path?: string;
+	host?: string;
+	port?: number;
+	formatted: string;
+}
+
+/**
+ * Parse an endpoint string in `unix:<path>` or `tcp:<host>:<port>` format.
+ */
+export function parseEndpoint(written: string, defaultAgentDir?: string): ParsedEndpoint {
+	if (written.startsWith("unix:")) {
+		const socketPath = written.slice(5);
+		if (socketPath.trim().length === 0) {
+			throw new Error("Unix endpoint path must not be empty");
+		}
+		const resolved = path.resolve(socketPath);
+		assertUnixPathFits(resolved);
+		return {
+			type: "unix",
+			path: resolved,
+			formatted: `unix:${resolved}`,
+		};
+	}
+
+	if (written.startsWith("tcp:")) {
+		const authority = written.slice(4);
+		const colonIndex = authority.lastIndexOf(":");
+		if (colonIndex === -1) {
+			throw new Error(`TCP endpoint must specify a port (e.g. tcp:127.0.0.1:7654): '${written}'`);
+		}
+		const host = authority.slice(0, colonIndex) || "127.0.0.1";
+		const portStr = authority.slice(colonIndex + 1);
+		const port = Number.parseInt(portStr, 10);
+		if (Number.isNaN(port) || port < 0 || port > 65535) {
+			throw new Error(`Invalid TCP port number: '${portStr}'`);
+		}
+		return {
+			type: "tcp",
+			host,
+			port,
+			formatted: `tcp:${host}:${port}`,
+		};
+	}
+
+	// Default fallback to unix socket if no scheme was provided
+	const resolvedAgentDir = defaultAgentDir ?? getAgentDir();
+	const defaultSocketPath = guiHostSocketPath(resolvedAgentDir);
+	return {
+		type: "unix",
+		path: defaultSocketPath,
+		formatted: `unix:${defaultSocketPath}`,
+	};
+}
+
+/**
+ * GUI host engine server speaking the desktop JSON wire protocol.
+ */
+export class GuiHostServer {
+	#parsedEndpoint: ParsedEndpoint;
+	#server: net.Server | null = null;
+	#clients = new Set<net.Socket>();
+	#clientStates = new Map<net.Socket, ClientSessionState>();
+	#cwd: string;
+	#agentDir: string;
+	#authStorage: Promise<AuthStorage> | null;
+	#closeCall?: Promise<void>;
+	#pendingDisposals = new Set<Promise<void>>();
+
+	constructor(options: GuiHostServerOptions = {}) {
+		this.#cwd = options.cwd ?? process.cwd();
+		this.#agentDir = options.agentDir ?? getAgentDir();
+		this.#authStorage = options.authStorage ? Promise.resolve(options.authStorage) : null;
+		this.#parsedEndpoint = parseEndpoint(options.endpoint ?? "", this.#agentDir);
+	}
+
+	/**
+	 * One store for the server's lifetime. A discovery that failed is not
+	 * cached, so the next action retries it rather than inheriting the failure.
+	 */
+	#resolveAuthStorage(): Promise<AuthStorage> {
+		if (!this.#authStorage) {
+			this.#authStorage = discoverAuthStorage(this.#agentDir).catch(error => {
+				this.#authStorage = null;
+				throw error;
+			});
+		}
+		return this.#authStorage;
+	}
+
+	get endpoint(): string {
+		if (this.#parsedEndpoint.type === "tcp" && this.#server?.listening) {
+			const addr = this.#server.address();
+			if (addr && typeof addr === "object") {
+				return `tcp:${this.#parsedEndpoint.host ?? "127.0.0.1"}:${addr.port}`;
+			}
+		}
+		return this.#parsedEndpoint.formatted;
+	}
+
+	async start(): Promise<void> {
+		if (this.#parsedEndpoint.type === "unix" && this.#parsedEndpoint.path) {
+			await this.#prepareUnixSocket(this.#parsedEndpoint.path);
+		}
+
+		const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+		this.#server = net.createServer(socket => {
+			this.#handleConnection(socket);
+		});
+
+		this.#server.on("error", error => {
+			if (!this.#server?.listening) {
+				reject(error);
+			} else {
+				logger.error("GUI host server error", { error: error.message });
+			}
+		});
+
+		if (this.#parsedEndpoint.type === "unix" && this.#parsedEndpoint.path) {
+			this.#server.listen(this.#parsedEndpoint.path, () => {
+				resolve();
+			});
+		} else if (this.#parsedEndpoint.type === "tcp" && typeof this.#parsedEndpoint.port === "number") {
+			this.#server.listen(this.#parsedEndpoint.port, this.#parsedEndpoint.host ?? "127.0.0.1", () => {
+				resolve();
+			});
+		}
+
+		await promise;
+	}
+
+	async #prepareUnixSocket(socketPath: string): Promise<void> {
+		await fs.mkdir(path.dirname(socketPath), { recursive: true });
+
+		let exists = false;
+		try {
+			await fs.access(socketPath);
+			exists = true;
+		} catch {
+			exists = false;
+		}
+
+		if (!exists) {
+			return;
+		}
+
+		const isLive = await new Promise<boolean>(resolve => {
+			const probe = net.createConnection(socketPath);
+			probe.on("connect", () => {
+				probe.destroy();
+				resolve(true);
+			});
+			probe.on("error", () => {
+				probe.destroy();
+				resolve(false);
+			});
+		});
+
+		if (isLive) {
+			throw new SocketInUseError(socketPath);
+		}
+
+		try {
+			await fs.unlink(socketPath);
+		} catch (error) {
+			if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+				return;
+			}
+			throw error;
+		}
+	}
+
+	#handleConnection(socket: net.Socket): void {
+		this.#clients.add(socket);
+		const clientState: ClientSessionState = {
+			revision: 0,
+			presentationLedger: new PresentationLedger(),
+		};
+		// A turn's own frames carry no status, so the index is what tells the
+		// rail a turn ended. It is re-stated for the connection rather than for
+		// a request, because the turn that ends may have no request in flight.
+		clientState.refreshSessionList = async () => {
+			if (socket.destroyed) return;
+			try {
+				await writeSessionList(socket, clientState, activeCwd(clientState, this.#cwd), this.#agentDir);
+			} catch (error) {
+				logger.warn("GUI host could not re-state the session index", { error: errorMessage(error) });
+			}
+		};
+		clientState.republishWorkspace = () => republishWorkspace(socket, clientState, activeCwd(clientState, this.#cwd));
+		this.#clientStates.set(socket, clientState);
+		// 1. Write greeting frame first
+		writeFrame(socket, {
+			ConnectionChanged: {
+				Connected: {
+					endpoint: this.endpoint,
+					protocol: GUI_HOST_PROTOCOL_VERSION,
+				},
+			},
+		});
+
+		// 2. Write capabilities snapshot
+		writeFrame(socket, {
+			Snapshot: {
+				Capabilities: buildCapabilitiesSnapshot(),
+			},
+		});
+
+		// 3. Attach frame decoder
+		const decoder = new FrameDecoder(
+			socket,
+			frame => {
+				void this.#handleFrame(socket, clientState, frame);
+			},
+			error => {
+				logger.debug("GUI host client connection closed on error", { error: error.message });
+			},
+		);
+
+		socket.on("close", () => {
+			decoder.detach();
+			this.#cleanupClient(socket);
+		});
+
+		socket.on("error", () => {
+			decoder.detach();
+			this.#cleanupClient(socket);
+		});
+	}
+
+	#cleanupClient(socket: net.Socket): void {
+		this.#clients.delete(socket);
+		const state = this.#clientStates.get(socket);
+		if (state) {
+			state.closed = true;
+			state.interactions?.cancelAll();
+			const disposal = disposeClientState(state).catch(error => {
+				logger.error("GUI host could not dispose client state", { error: errorMessage(error) });
+			});
+			this.#pendingDisposals.add(disposal);
+			void disposal.then(() => this.#pendingDisposals.delete(disposal));
+			this.#clientStates.delete(socket);
+		}
+	}
+
+	async #handleFrame(socket: net.Socket, clientState: ClientSessionState, rawFrame: unknown): Promise<void> {
+		if (clientState.closed) return;
+		if (!rawFrame || typeof rawFrame !== "object" || !("id" in rawFrame) || typeof rawFrame.id !== "number") {
+			logger.warn("GUI host received invalid request frame structure", { frame: rawFrame });
+			return;
+		}
+
+		const requestId = rawFrame.id;
+		const action = "action" in rawFrame ? (rawFrame.action as HostAction) : "";
+		const actionTag = getActionTag(action);
+
+		try {
+			await this.#dispatchAction(socket, clientState, requestId, action, actionTag);
+		} catch (error) {
+			logger.error("GUI host error executing action", { action: actionTag, error });
+			const backendError: BackendError = {
+				scope: mapActionToErrorScope(actionTag),
+				code: "ACTION_FAILED",
+				message: errorMessage(error),
+				retryable: false,
+				request: requestId,
+				occurred_at_ms: Date.now(),
+			};
+			writeFrame(socket, { RequestFailed: { request: requestId, error: backendError } });
+		}
+	}
+
+	async #dispatchAction(
+		socket: net.Socket,
+		clientState: ClientSessionState,
+		requestId: number,
+		action: HostAction,
+		actionTag: string,
+	): Promise<void> {
+		// A request has one outcome. A handler that fails partway and then
+		// reports success -- which a refused snapshot makes reachable, since
+		// the handler that asked for it carries on -- would otherwise send the
+		// window both, and the second erases the reason for the first.
+		let settled = false;
+		const failure: ReplyHelper["failure"] = err => {
+			if (settled) return;
+			settled = true;
+			const error: BackendError = {
+				scope: err.scope,
+				code: err.code ?? "ACTION_FAILED",
+				message: err.message,
+				retryable: err.retryable ?? false,
+				request: requestId,
+				occurred_at_ms: err.occurred_at_ms ?? Date.now(),
+			};
+			writeFrame(socket, { RequestFailed: { request: requestId, error } });
+		};
+		const reply: ReplyHelper = {
+			success: () => {
+				if (settled) return;
+				settled = true;
+				writeFrame(socket, { RequestSucceeded: { request: requestId } });
+			},
+			failure,
+			// A view the host built too large to send is refused by `writeFrame`
+			// rather than sent and fatal to the window's decoder. The request
+			// that asked for it fails instead, so the pane states a reason
+			// rather than waiting on a snapshot that will never arrive.
+			snapshot: (section: SnapshotSection) => {
+				if (writeFrame(socket, { Snapshot: section })) return;
+				failure({
+					scope: mapActionToErrorScope(actionTag),
+					code: "SNAPSHOT_TOO_LARGE",
+					message: `This host built a '${snapshotSectionTag(section)}' view too large to send (over ${MAX_FRAME_BYTES} bytes)`,
+					retryable: false,
+				});
+			},
+		};
+
+		const handler = allActionHandlers[actionTag as HostActionTag];
+		if (!handler) {
+			reply.failure({
+				scope: mapActionToErrorScope(actionTag),
+				code: "UNIMPLEMENTED_ACTION",
+				message: `Action '${actionTag}' is not implemented by this host`,
+				retryable: false,
+			});
+			return;
+		}
+
+		let payload: unknown;
+		if (typeof action === "object" && action !== null && actionTag in action) {
+			payload = (action as Record<string, unknown>)[actionTag];
+		}
+
+		const initialCwd = this.#cwd;
+		const ctx: ActionContext = {
+			socket,
+			clientState,
+			get cwd() {
+				return activeCwd(clientState, initialCwd);
+			},
+			agentDir: this.#agentDir,
+			authStorage: () => this.#resolveAuthStorage(),
+			requestId,
+			actionTag: actionTag as HostActionTag,
+			reply,
+		};
+
+		await handler(ctx, payload as never);
+
+		if (actionTag === "Shutdown") {
+			void this.close();
+		}
+	}
+
+	close(): Promise<void> {
+		if (!this.#closeCall) this.#closeCall = this.#close();
+		return this.#closeCall;
+	}
+
+	async #close(): Promise<void> {
+		for (const client of this.#clients) {
+			this.#cleanupClient(client);
+			client.destroy();
+		}
+		this.#clients.clear();
+
+		if (this.#server) {
+			const { promise, resolve } = Promise.withResolvers<void>();
+			this.#server.close(() => {
+				resolve();
+			});
+			await promise;
+			this.#server = null;
+		}
+
+		await Promise.all(this.#pendingDisposals);
+
+		if (this.#parsedEndpoint.type === "unix" && this.#parsedEndpoint.path) {
+			try {
+				await fs.unlink(this.#parsedEndpoint.path);
+			} catch {
+				// Ignore
+			}
+		}
+	}
+}
+
+/**
+ * Start a GUI host server on the given options.
+ */
+export async function startGuiHostServer(options: GuiHostServerOptions = {}): Promise<GuiHostServer> {
+	const server = new GuiHostServer(options);
+	await server.start();
+	return server;
+}

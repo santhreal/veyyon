@@ -36,6 +36,7 @@ import { Effort } from "./effort";
 import { stripThinkingVariantToken } from "./identity/family";
 import { resolveModelThinking } from "./model-thinking";
 import type { Api, Model, ModelSpec, Provider, ThinkingConfig } from "./types";
+import { normalizeModelCost } from "./utils";
 
 /**
  * Structural bound for collapse inputs: both raw `ModelSpec`s and built
@@ -814,8 +815,10 @@ export function deriveThinkingPairFamilies<TSpec extends VariantSpecLike>(
 			}
 		}
 		if (spec.api !== base.api) continue;
-		const specPriced = spec.cost.input !== 0 || spec.cost.output !== 0;
-		const basePriced = base.cost.input !== 0 || base.cost.output !== 0;
+		const specCost = normalizeModelCost(spec.cost);
+		const baseCost = normalizeModelCost(base.cost);
+		const specPriced = specCost.input !== 0 || specCost.output !== 0;
+		const basePriced = baseCost.input !== 0 || baseCost.output !== 0;
 		// Cache fields compare only when BOTH sides report one: a zero cache
 		// price on an aggregator means "not told", same as an all-zero row (the
 		// openrouter qwen3-max twin ships identical input/output but zero cache
@@ -824,10 +827,10 @@ export function deriveThinkingPairFamilies<TSpec extends VariantSpecLike>(
 		if (
 			specPriced &&
 			basePriced &&
-			(spec.cost.input !== base.cost.input ||
-				spec.cost.output !== base.cost.output ||
-				cacheFieldDiffers(spec.cost.cacheRead, base.cost.cacheRead) ||
-				cacheFieldDiffers(spec.cost.cacheWrite, base.cost.cacheWrite))
+			(specCost.input !== baseCost.input ||
+				specCost.output !== baseCost.output ||
+				cacheFieldDiffers(specCost.cacheRead, baseCost.cacheRead) ||
+				cacheFieldDiffers(specCost.cacheWrite, baseCost.cacheWrite))
 		) {
 			continue;
 		}
@@ -1082,9 +1085,10 @@ export function collapseEffortVariants<TSpec extends VariantSpecLike>(
 		if (hasRouting) thinking.effortRouting = routing;
 		if (family.suppressWhenOff) thinking.suppressWhenOff = true;
 
-		const input: ("text" | "image")[] = [];
+		const input: ("text" | "image" | "video")[] = [];
 		if (memberSpecs.some(spec => spec.input.includes("text"))) input.push("text");
 		if (memberSpecs.some(spec => spec.input.includes("image"))) input.push("image");
+		if (memberSpecs.some(spec => spec.input.includes("video"))) input.push("video");
 
 		const collapsed: TSpec = {
 			...(memberSpecs[0] as TSpec),

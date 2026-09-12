@@ -1,0 +1,103 @@
+//! Domain-specific snapshot and state payload models (§5, §8).
+
+pub mod history;
+pub use history::*;
+
+pub mod agents;
+pub mod answered;
+pub mod changes;
+pub mod diagnostics;
+pub mod files;
+pub mod mcp;
+pub mod models;
+pub mod process;
+pub mod providers;
+pub mod queued;
+pub mod settings;
+pub mod terminal;
+pub mod themes;
+pub mod usage;
+
+use std::collections::HashMap;
+
+pub use agents::*;
+pub use answered::*;
+pub use changes::*;
+pub use diagnostics::*;
+pub use files::*;
+pub use mcp::*;
+pub use models::*;
+pub use process::*;
+pub use providers::*;
+pub use queued::*;
+use serde::{Deserialize, Serialize};
+pub use settings::*;
+pub use terminal::*;
+pub use themes::*;
+pub use usage::*;
+
+use crate::{connection::SessionId, transcript::UsageTotals};
+
+/// Container for all panel-domain views received from the host.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Domains {
+	/// Latest search response; its query prevents stale results from being
+	/// drawn.
+	pub session_search:  Option<SessionSearchView>,
+	/// One read-only preview, separate from every live transcript.
+	pub session_preview: Option<SessionTranscriptView>,
+	/// Uncommitted repository changes. The panel parses this into rows, so it
+	/// states how many answers have arrived and the projection holds the rows
+	/// it built until that count moves.
+	pub changes:         Answered<ChangesView>,
+	/// Workspace directory file tree.
+	pub file_tree:       Option<FileTreeView>,
+	/// File content snapshot. Highlighted line by line, so it counts its
+	/// answers for the same reason `changes` does.
+	pub file_content:    Answered<FileContentView>,
+	/// Text search results.
+	pub search:          Option<SearchResultsView>,
+	/// The lines the host's last content search matched.
+	pub content_matches: Option<ContentMatchesView>,
+	/// Managed terminal instances.
+	pub terminals:       Vec<TerminalView>,
+	/// Terminal scrollback buffers indexed by terminal ID.
+	pub terminal_output: HashMap<String, TerminalScrollback>,
+	/// Supervised background processes.
+	pub processes:       Vec<ProcessView>,
+	/// Process log buffers indexed by process name.
+	pub process_logs:    HashMap<String, ProcessLogView>,
+	/// Model catalog and active model selection.
+	pub models:          Option<ModelsView>,
+	/// Configured AI providers.
+	pub providers:       Vec<ProviderView>,
+	/// Active OAuth authentication flow.
+	pub auth_flow:       Option<AuthFlowView>,
+	/// Model Context Protocol servers.
+	pub mcp:             Vec<McpServerView>,
+	/// Active background subagents.
+	pub agents:          Vec<AgentView>,
+	/// Session resource and token usage totals.
+	pub usage:           HashMap<SessionId, UsageTotals>,
+	/// Context window breakdown indexed by session.
+	pub context:         HashMap<SessionId, ContextBreakdownView>,
+	/// Transcript export snapshot, which holds the File tab while no file is
+	/// open and is highlighted the same way, so it counts its answers too.
+	pub export:          Answered<ExportView>,
+	/// UI color themes.
+	pub themes:          Option<ThemesView>,
+	/// Keyboard shortcuts.
+	pub keybindings:     Vec<KeybindingView>,
+	/// Every setting the host reports, keyed by schema key.
+	pub settings:        Option<SettingsView>,
+	/// Diagnostic sources payload.
+	pub diagnostics:     Option<serde_json::Value>,
+}
+
+impl Domains {
+	/// Creates an initialized domains container with empty sub-views.
+	#[must_use]
+	pub fn new() -> Self {
+		Self::default()
+	}
+}

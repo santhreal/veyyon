@@ -48,6 +48,7 @@ import {
 	type ToolCall,
 	type ToolResultMessage,
 	type Usage,
+	type VideoContent,
 } from "../types";
 import {
 	getOpenAIResponsesHistoryItems,
@@ -95,7 +96,12 @@ import type {
 	ResponseStreamEvent,
 } from "./openai-responses-wire";
 import { staleToolResultNote, transformMessages } from "./transform-messages";
-import { joinTextWithImagePlaceholder, NON_VISION_IMAGE_PLACEHOLDER, partitionVisionContent } from "./vision-guard";
+import {
+	joinTextWithImagePlaceholder,
+	NON_VIDEO_MODEL_PLACEHOLDER,
+	NON_VISION_IMAGE_PLACEHOLDER,
+	partitionVisionContent,
+} from "./vision-content";
 
 export interface OpenAIModelIdentity {
 	provider: string;
@@ -1363,7 +1369,7 @@ function clampResponsesImageDetail(
 }
 
 export function convertResponsesInputContent(
-	content: string | Array<TextContent | ImageContent>,
+	content: string | Array<TextContent | ImageContent | VideoContent>,
 	supportsImages: boolean,
 	supportsImageDetailOriginal: boolean,
 ): ResponseInputContent[] | undefined {
@@ -1373,6 +1379,7 @@ export function convertResponsesInputContent(
 	}
 
 	const { textBlocks, imageBlocks, omittedImages } = partitionVisionContent(content, supportsImages);
+	const hasVideos = content.some(item => item.type === "video");
 	const normalizedContent: ResponseInputContent[] = [];
 	for (const item of textBlocks) {
 		const text = item.text.toWellFormed();
@@ -1393,6 +1400,12 @@ export function convertResponsesInputContent(
 		normalizedContent.push({
 			type: "input_text",
 			text: NON_VISION_IMAGE_PLACEHOLDER,
+		} satisfies ResponseInputText);
+	}
+	if (hasVideos) {
+		normalizedContent.push({
+			type: "input_text",
+			text: NON_VIDEO_MODEL_PLACEHOLDER,
 		} satisfies ResponseInputText);
 	}
 	return normalizedContent.length > 0 ? normalizedContent : undefined;

@@ -1,0 +1,169 @@
+//! Fixtures for the suites that dispatch intents at a `ShellState`. Each suite
+//! pulls in only what it uses, so a helper unused by one binary is expected.
+#![allow(dead_code, reason = "each test binary uses a subset of these fixtures")]
+
+pub mod intent_samples;
+pub mod overlay_pointer;
+pub mod settings_seed;
+pub mod shed;
+pub mod tool_cards;
+
+use std::{collections::BTreeSet, path::PathBuf};
+
+use veyyon_desktop_model::{
+	ChangeStatus, DiffMode,
+	text::terminal::{Cell, CellStyle, Ink},
+};
+use veyyon_desktop_surface::{
+	Attachment, Badge, Card, DiffFile, DiffRow, DiffStatus, DiffWithheld, Intent, PanelContent,
+	PanelTab, Row, Section, ShellState, TreeContent, TreeRowItem, TreeStatus,
+	composer::{MediaType, TurnPhase, payload_for},
+	drawer::{DrawerContent, DrawerTab, ProcessRow},
+};
+
+/// A decodable PNG under a fixed name for reducers and submission checks.
+pub fn attachment() -> Attachment {
+	let mut encoded = std::io::Cursor::new(Vec::new());
+	image::DynamicImage::new_rgb8(1, 1)
+		.write_to(&mut encoded, image::ImageFormat::Png)
+		.expect("PNG fixture");
+	let bytes = encoded.into_inner();
+	Attachment::from_path(
+		PathBuf::from("shot.png"),
+		MediaType::Png,
+		payload_for(MediaType::Png, bytes),
+	)
+}
+
+/// A send carrying `text` and one image.
+pub fn send(text: &str) -> Intent {
+	Intent::Send { text: text.to_owned(), attachments: vec![attachment()] }
+}
+
+/// One drawn terminal cell, so a drawer has output to keep or to clear.
+pub const fn cell() -> Cell {
+	Cell {
+		c:      'x',
+		ink:    Ink::Default,
+		bg_ink: Ink::Default,
+		style:  CellStyle::new(),
+		width:  1,
+	}
+}
+
+/// A state with two sections, three tabs, three cards and a closed drawer.
+///
+/// Built here rather than taken from `fixture` because these assertions name
+/// exact positions and counts, and the fixture exists to be awkward to draw.
+pub fn state() -> ShellState {
+	ShellState {
+		title: "first".to_owned(),
+		sections: vec![
+			(Section::Live, vec![
+				Row {
+					id:        7,
+					title:     "first".to_owned(),
+					subtitle:  String::new(),
+					badge:     Some(Badge::Working),
+					meta:      None,
+					placement: Section::Live,
+				},
+				Row {
+					id:        9,
+					title:     "second".to_owned(),
+					subtitle:  String::new(),
+					badge:     None,
+					meta:      None,
+					placement: Section::Live,
+				},
+			]),
+			(Section::Parked, vec![Row {
+				id:        11,
+				title:     "third".to_owned(),
+				subtitle:  String::new(),
+				badge:     None,
+				meta:      None,
+				placement: Section::Parked,
+			}]),
+		],
+		transcript: Vec::new(),
+		turn: TurnPhase::Idle,
+		run_status: None,
+		panel: PanelContent {
+			tabs:               vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
+			active_tab:         PanelTab::Diff,
+			withheld:           DiffWithheld::default(),
+			// A host that answered every request the panel sent.
+			failure:            None,
+			diff:               vec![DiffFile {
+				path:      "src/main.rs".to_string(),
+				old_path:  None,
+				status:    ChangeStatus::Modified,
+				additions: 1,
+				deletions: 1,
+				rows:      vec![DiffRow::Collapsed { hidden: 10, before_line: 0, after_line: 0 }],
+			}],
+			diff_status:        DiffStatus::Loaded,
+			review_repository:  None,
+			derived_from:       veyyon_desktop_surface::DerivedFrom {
+				changes: 1,
+				..Default::default()
+			},
+			file:               None,
+			tree:               TreeContent {
+				rows:           vec![TreeRowItem {
+					path:        "src".to_string(),
+					name:        "src".to_string(),
+					depth:       0,
+					is_dir:      true,
+					is_expanded: false,
+					changed:     None,
+				}],
+				selected_path:  None,
+				expanded_paths: BTreeSet::new(),
+				status:         TreeStatus::Loaded,
+			},
+			diff_mode:          DiffMode::Unified,
+			usage:              None,
+			unavailable_reason: None,
+		},
+		cards: vec![
+			Card::Approval { tool: "bash".to_owned(), detail: vec!["rm -rf build".to_owned()] },
+			Card::Question {
+				prompt:  "Which target?".to_owned(),
+				options: vec!["debug".to_owned(), "release".to_owned()],
+			},
+			Card::Plan { title: "Split the loaders".to_owned(), body: vec!["four files".to_owned()] },
+		],
+		drawer: DrawerContent {
+			tabs:           vec![
+				DrawerTab::Terminal { id: "t1".to_owned(), title: "Terminal 1".to_owned() },
+				DrawerTab::Terminal { id: "t2".to_owned(), title: "Terminal 2".to_owned() },
+			],
+			active_tab:     0,
+			tab_chosen:     true,
+			grid_rows:      vec![vec![cell()]],
+			grid_cells:     (80, 24),
+			cursor_col:     0,
+			cursor_row:     0,
+			cursor_visible: true,
+			title:          "term".to_owned(),
+			scroll_offset:  1,
+			processes:      vec![ProcessRow {
+				name:          "build".to_owned(),
+				pid:           Some(123),
+				status:        "running".to_owned(),
+				elapsed_label: "10s".to_owned(),
+				terminated_by: None,
+				exit_code:     None,
+			}],
+			selection:      None,
+			search:         None,
+			offered:        true,
+			failure:        None,
+		},
+		drawer_open: false,
+		current_id: 7,
+		..ShellState::default()
+	}
+}

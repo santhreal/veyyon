@@ -17,6 +17,7 @@ import {
 } from "../../tools/core/approval";
 import { cwdEscapingTargets, formatCwdBoundaryReason } from "../../tools/core/cwd-boundary";
 import { secretUseApprovalReason } from "../../tools/core/secret-use-boundary";
+import { ToolAbortError } from "../../tools/core/tool-errors";
 import { normalizeToolEventInput, resolveToolEventInput } from "../tool-event-input";
 import type { ExtensionRunner } from "./runner";
 import type {
@@ -70,6 +71,14 @@ export const APPROVAL_SELECT_OPTIONS: ExtensionUISelectOption[] = [
 		description: "Refuse this and every later call to this tool, until you exit.",
 	},
 ];
+/**
+ * The presentation of the approval card. Every host draws it the same way, so
+ * it is stated once.
+ *
+ * It carries no `signal`: the signal belongs to one call, and `execute` adds
+ * the turn's own before it raises the card. Sharing one options object across
+ * calls is why it cannot live here.
+ */
 export const APPROVAL_DIALOG_OPTIONS: ExtensionUIDialogOptions = {
 	selectionMarker: "radio",
 	helpText: "↑/↓ navigate  enter confirm  esc cancel",
@@ -365,10 +374,9 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			// host presents one at a time and queues the rest. The standing grant was
 			// read once, above, BEFORE this call queued, so an answer of "Approve for
 			// session" given at the first card could never dismiss the cards already
-			// waiting behind it. Those cards are also built without a signal, so
-			// neither an abort nor the end of the turn drops them: they surface
-			// whenever the surface frees up, which is how an operator who answered
-			// once gets asked again for the same tool after the work is finished.
+			// waiting behind it: they surface whenever the surface frees up, which is
+			// how an operator who answered once gets asked again for the same tool
+			// after the work is finished.
 			//
 			// Waiting on the in-flight prompt instead of queueing a second card is
 			// what closes that window. The answer is re-read after the wait, so a
@@ -395,10 +403,18 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 				const { promise: promptSettled, resolve: releaseWaiters } = Promise.withResolvers<void>();
 				if (inFlightKey) IN_FLIGHT_APPROVALS.set(inFlightKey, promptSettled);
 				try {
+					// The turn's own signal, so stopping the turn takes the card with
+					// it. Without it the card outlived every stop: `abort()` aborts
+					// the tool signal and then awaits `waitForIdle()`, which waits on
+					// the prompt, which waits on this select, which nothing could
+					// settle -- so the stop control never answered, and neither did
+					// the actions that end a running turn before leaving a session.
+					// Measured on the desktop: `AbortTurn` and `OpenSession` both sent
+					// no reply at all while a `read` approval was up.
 					choice = await uiContext.select(
 						formatApprovalCard(this.tool, params, approvalReason, requester),
 						APPROVAL_SELECT_OPTIONS,
-						APPROVAL_DIALOG_OPTIONS,
+						signal ? { ...APPROVAL_DIALOG_OPTIONS, signal } : APPROVAL_DIALOG_OPTIONS,
 					);
 				} catch (err) {
 					await resolveApproval(false, err instanceof Error ? err.message : "approval aborted");
@@ -418,6 +434,17 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 					}
 					if (inFlightKey) IN_FLIGHT_APPROVALS.delete(inFlightKey);
 					releaseWaiters();
+				}
+				// A card the stop took away is not a refusal. Both resolve `choice`
+				// to `undefined`, and the difference decides what the agent loop
+				// does next: `isCancellation` is what stops the loop from reading a
+				// stopped call as a retryable failure and re-issuing the work the
+				// operator just cancelled, while "denied by user" is a decision the
+				// model is told about and reasons around. The operator answered
+				// nothing here, so nothing is recorded and no grant is inferred.
+				if (signal?.aborted) {
+					await resolveApproval(false, "the turn was stopped before this call was answered");
+					throw new ToolAbortError(`Tool call stopped before approval: ${this.tool.name}`);
 				}
 				const approved = choice === APPROVAL_CHOICE.approveOnce || choice === APPROVAL_CHOICE.approveSession;
 				await resolveApproval(approved, approved ? undefined : "denied by user");

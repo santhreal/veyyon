@@ -1,0 +1,588 @@
+#!/usr/bin/env bash
+# Drive the native GPUI desktop front end window and capture composer interactions.
+#
+# Records visual evidence for:
+#   1. idle (composer in initial idle state)
+#   2. typed-draft (draft text typed into composer)
+#   3. model-picker-open (model picker palette overlay open)
+#   4. model-picker-dismissed (model picker dismissed; draft retained in composer)
+#   5. slash-palette-open (slash commands palette overlay open)
+#   6. slash-palette-dismissed (slash palette dismissed)
+#
+# Sourced by proof/docker/xsession.sh with SCENE_WINDOW, SCENE_NAME, SCENE_OUT,
+# and SCENE_LIB already initialized.
+
+set -euo pipefail
+
+# ─── Bounded Window Readiness Check ──────────────────────────────────────────
+# Ensure the mapped GPUI desktop window is viewable on the container-private display.
+READY=0
+for _ in $(seq 1 40); do
+	if [ -n "${SCENE_WINDOW:-}" ] && xwininfo -id "${SCENE_WINDOW}" 2>/dev/null | grep -q "Map State: IsViewable"; then
+		READY=1
+		break
+	fi
+	sleep 0.25
+done
+
+if [ "${READY}" != "1" ]; then
+	abandon_take "native-window-viewable" "native desktop window (${SCENE_WINDOW:-none}) was not viewable within 10s"
+fi
+
+# Wait for host state without resending an interaction.
+native_session_ready() {
+python3 - "$1" "${2:-2}" <<'PY'
+import json
+import os
+from pathlib import Path
+import socket
+import time
+import sys
+
+profile = os.environ.get("VEYYON_PROFILE") or "default"
+endpoint = Path.home() / ".veyyon" / "profiles" / profile / "agent" / "gui-host.sock"
+baseline_path = Path(os.environ["TMPDIR"]) / "sessions-before.json"
+mode = sys.argv[1]
+minimum_messages = int(sys.argv[2])
+baseline = set(json.loads(baseline_path.read_text())) if mode != "before" else set()
+created_path = Path(os.environ["TMPDIR"]) / "created-session.json"
+created_id = json.loads(created_path.read_text()) if mode == "finished" else None
+deadline = time.monotonic() + (90 if mode == "finished" else 10)
+latest_row = None
+
+
+def report_provider_error(row):
+    # A failed turn carries the provider's own message in the transcript rather than in
+    # the session index, and a take is diagnosed from the recorder's log after the fact.
+    # A transcript that cannot be read is not the failure being reported, so it stays
+    # quiet rather than replacing the status this probe stopped on.
+    if not row:
+        return
+    try:
+        with Path(row["path"]).open() as transcript:
+            for entry_line in transcript:
+                message = json.loads(entry_line).get("message", {})
+                if message.get("role") == "assistant" and message.get("errorMessage"):
+                    print(f"Native provider error: {message['errorMessage']}", file=sys.stderr)
+    except (OSError, ValueError):
+        pass
+
+while time.monotonic() < deadline:
+    try:
+        with socket.socket(socket.AF_UNIX) as connection:
+            connection.settimeout(max(0.01, deadline - time.monotonic()))
+            connection.connect(str(endpoint))
+            connection.sendall(b'{"id":1,"action":"ListSessions"}\n')
+            with connection.makefile("rb") as stream:
+                for _ in range(32):
+                    connection.settimeout(max(0.01, deadline - time.monotonic()))
+                    line = stream.readline(8 * 1024 * 1024 + 1)
+                    if not line or len(line) > 8 * 1024 * 1024:
+                        raise RuntimeError("Missing or oversized host frame")
+                    snapshot = json.loads(line).get("Snapshot", {})
+                    if "Sessions" in snapshot:
+                        sessions, errors = snapshot["Sessions"]
+                        if errors:
+                            raise RuntimeError("Host session listing reported errors")
+                        identities = {session["id"] for session in sessions["value"]}
+                        if mode == "before":
+                            baseline_path.write_text(json.dumps(sorted(identities)))
+                            print("native host returned its session snapshot")
+                            raise SystemExit(0)
+                        if mode == "created" and identities - baseline:
+                            created_path.write_text(json.dumps(next(iter(identities - baseline))))
+                            print("native session-creation interaction reached the host")
+                            raise SystemExit(0)
+                        if mode == "finished":
+                            current = next((row for row in sessions["value"] if row["id"] == created_id), None)
+                            latest_row = current
+                            last_error = (
+                                f"session status={current.get('status')}, messages={current.get('message_count', 0)}"
+                                if current else "created session missing from host snapshot"
+                            )
+                            # A session whose last entry is an assistant turn holding an
+                            # unanswered tool call reads as `Interrupted`, and that is the state
+                            # every turn that calls a tool passes through while the tool runs. A
+                            # scene that read it as terminal abandoned a take of a prompt the
+                            # model chose to answer with a tool. Only `Error` and `Aborted` end
+                            # the wait; a turn that stays `Interrupted` ends on the deadline
+                            # below, which states the status it stopped at.
+                            if current and current.get("status") in {"Error", "Aborted"}:
+                                report_provider_error(current)
+                                raise SystemExit(f"Native turn ended with status {current['status']}")
+                            if current and current.get("message_count", 0) >= minimum_messages and current.get("status") == "Complete":
+                                print("native turn completed with persisted transcript messages")
+                                raise SystemExit(0)
+                        break
+    except (OSError, ValueError, RuntimeError) as error:
+        last_error = str(error)
+    time.sleep(0.1)
+report_provider_error(latest_row)
+raise SystemExit(f"Native session readiness timed out ({mode}): {locals().get('last_error', 'no new session')}")
+PY
+}
+
+# A tool call, not merely a finished turn: a turn that answered in prose drew
+# no card and touched no file, and a scene that waits on the turn alone
+# photographs whatever the prose left. The host names the session's
+# transcript, and the transcript states the block.
+#
+# A session whose last entry is an assistant turn holding an unanswered tool
+# call reads as `Interrupted`, and that is exactly the state a turn passes
+# through while the tool runs, so only `Error` and `Aborted` end the wait. What
+# the probe waits for is the completed shape: a `toolCall` block, the
+# `toolResult` that answered it, and the turn settled at `Complete`.
+native_tool_call_recorded() {
+python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+import socket
+import sys
+import time
+
+profile = os.environ.get("VEYYON_PROFILE") or "default"
+endpoint = Path.home() / ".veyyon" / "profiles" / profile / "agent" / "gui-host.sock"
+created = json.loads((Path(os.environ["TMPDIR"]) / "created-session.json").read_text())
+deadline = time.monotonic() + 240
+last = "no session snapshot"
+while time.monotonic() < deadline:
+    try:
+        with socket.socket(socket.AF_UNIX) as connection:
+            connection.settimeout(max(0.01, deadline - time.monotonic()))
+            connection.connect(str(endpoint))
+            connection.sendall(b'{"id":1,"action":"ListSessions"}\n')
+            with connection.makefile("rb") as stream:
+                for _ in range(32):
+                    connection.settimeout(max(0.01, deadline - time.monotonic()))
+                    line = stream.readline(8 * 1024 * 1024 + 1)
+                    if not line or len(line) > 8 * 1024 * 1024:
+                        raise RuntimeError("missing or oversized host frame")
+                    snapshot = json.loads(line).get("Snapshot", {})
+                    if "Sessions" not in snapshot:
+                        continue
+                    sessions, errors = snapshot["Sessions"]
+                    if errors:
+                        raise RuntimeError("host session listing reported errors")
+                    row = next((r for r in sessions["value"] if r["id"] == created), None)
+                    if not row:
+                        raise RuntimeError("created session missing from host snapshot")
+                    last = f"status={row.get('status')}, messages={row.get('message_count', 0)}"
+                    if row.get("status") in {"Error", "Aborted"}:
+                        raise SystemExit(f"native turn ended with status {row['status']}")
+                    calls = 0
+                    results = 0
+                    with Path(row["path"]).open() as transcript:
+                        for entry_line in transcript:
+                            message = json.loads(entry_line).get("message", {})
+                            if message.get("role") == "toolResult":
+                                results += 1
+                            content = message.get("content")
+                            if isinstance(content, list):
+                                calls += sum(
+                                    1
+                                    for block in content
+                                    if isinstance(block, dict) and block.get("type") == "toolCall"
+                                )
+                    last = f"{last}, calls={calls}, results={results}"
+                    if calls and results and row.get("status") == "Complete":
+                        print(f"native turn recorded {calls} tool call(s), {results} result(s)")
+                        raise SystemExit(0)
+                    break
+    except (OSError, ValueError, RuntimeError) as error:
+        last = str(error)
+    time.sleep(0.2)
+raise SystemExit(f"no completed tool call within 240s ({last})")
+PY
+}
+if ! native_session_ready before; then
+	abandon_take "native-host-ready" "native host returned no session snapshot within 10s"
+fi
+
+# Establish input focus on the native window on this private display.
+xdotool windowfocus --sync "${SCENE_WINDOW}"
+
+# ─── What The Window Sheds At This Width ─────────────────────────────────────
+# Every desktop scene crops by region, and where a region IS depends on the
+# breakpoint row the window's width resolves to: the rail is 256, 208 or gone,
+# and the panel is a column of 540 or 360 or a float over the session surface.
+# The rows are read from the token files this checkout ships rather than
+# restated here, so a scene recorded at a new width crops what the product
+# actually drew instead of what one width happened to make true.
+read -r RAIL_W QUEUE_MODE QUEUE_W PANEL_MODE PANEL_W DRAWER_PLACEMENT LABELS COMPOSER_MAX_W GUTTER_PX SHEET_INSET SHEET_PX COMPOSER_BAND_H TRANSCRIPT_MAX_W CARD_FOOT_PX CARD_PAD_H CARD_PAD_BOTTOM TITLEBAR_H RUN_BAR_H < <(
+	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" "${WIN_W}" <<'PY'
+from pathlib import Path
+import sys
+import tomllib
+
+tokens = Path(sys.argv[1])
+width = float(sys.argv[2])
+surface = tomllib.loads((tokens / "surface" / "breakpoints.toml").read_text())
+panels = tomllib.loads((tokens / "surface" / "panels.toml").read_text())["right_panel"]
+composer_tokens = tomllib.loads((tokens / "surface" / "composer.toml").read_text())
+composer = composer_tokens["geometry"]
+transcript = tomllib.loads((tokens / "surface" / "transcript.toml").read_text())["layout"]
+shell = tomllib.loads((tokens / "surface" / "shell.toml").read_text())
+# §5.4 measures the composer against the session surface it sits in, insetting
+# it by one spacing step on each side. Both numbers are authored, so the scene
+# reads them rather than deciding what a card should measure.
+scale = tomllib.loads((tokens / "scale.toml").read_text())
+gutter = scale["spacing"]["s4"]
+# A float draws as a sheet, which frames its body with one spacing step and a
+# hairline on every side; a column has no such frame. Every crop of an
+# overlaid panel starts inside it.
+sheet = scale["spacing"]["s4"] + scale["stroke"]["hairline"]
+# A floor on the band the composer owns at the window's lower edge: the card's
+# authored minimum, the gap under it, the run bar, and the column's own bottom
+# padding. `rest_height_px` is a minimum rather than a measure, and the card
+# draws taller than it -- 86px at rest against an authored 70 at scale 1, since
+# the editor line, the footer row and the card's padding are what decide it --
+# so this number lies strictly inside the card. A crop of the band therefore
+# omits its topmost rows, and a crop of the transcript above it takes a few of
+# the card's; both are conservative for a float that is entitled to the
+# transcript and nothing under it, which a generous band would read as a panel
+# drawn over the draft.
+band = (
+    composer["rest_height_px"]
+    + scale["spacing"]["s3"]
+    + composer_tokens["run_bar"]["height_px"]
+    + scale["spacing"]["s3"]
+)
+
+# What the session column places under the composer card, from the card's lower
+# edge to the window's: the gap, the run bar, and the column's own bottom
+# padding. A scene that aims at a control inside the card measures up from the
+# window's foot through this, since the card is bottom-anchored and its own
+# height is whatever its contents came to.
+foot = (
+    scale["spacing"]["s3"]
+    + composer_tokens["run_bar"]["height_px"]
+    + scale["spacing"]["s3"]
+)
+
+rows = sorted(surface["breakpoint"].values(), key=lambda row: row["min_width_px"])
+row = rows[0]
+for candidate in rows:
+    if width >= candidate["min_width_px"]:
+        row = candidate
+
+# The rail's declared measure, and the width it takes out of the columns row.
+# A row that floats the rail draws it over the transcript at that measure and
+# takes nothing, so every region left of it stays where a railless window puts
+# it: a scene that crops at RAIL_W crops the column, and one that aims at the
+# floated rail aims inside SHEET_PX..QUEUE_W.
+queue_mode = row["queue_mode"]
+queue = row["queue_width_px"]
+rail = queue if queue_mode == "inline" else 0
+share = width * panels["max_viewport_ratio"]
+overlay = max(min(panels["default_width_px"], share), min(panels["min_width_px"], width))
+mode = row["right_panel_mode"]
+if mode.startswith("inline_"):
+    asked = float(mode.removeprefix("inline_"))
+    ceiling = width - rail - panels["container_margin_px"]
+    inline = min(asked, share, ceiling)
+    if inline < panels["min_width_px"]:
+        placement, panel = "overlay", overlay
+    else:
+        placement, panel = "inline", inline
+else:
+    placement, panel = "overlay", overlay
+
+print(
+    int(rail),
+    queue_mode,
+    int(queue),
+    placement,
+    int(panel),
+    row["terminal_drawer_placement"],
+    "labels" if row["composer_footer_labels"] else "no-labels",
+    int(composer["max_width_px"]),
+    int(gutter),
+    int(sheet) if placement == "overlay" else 0,
+    int(sheet),
+    int(band),
+    int(transcript["column_width_px"]),
+    int(foot),
+    int(scale["spacing"][composer["padding_horizontal"]]),
+    int(scale["spacing"][composer["padding_bottom"]]),
+    int(shell["titlebar"]["height_px"]),
+    int(composer_tokens["run_bar"]["height_px"]),
+)
+PY
+)
+if [ -z "${PANEL_MODE:-}" ]; then
+	abandon_take "the-shed-is-known" "no breakpoint row resolved for a ${WIN_W}px window"
+fi
+echo "scene: ${WIN_W}px sheds to a ${QUEUE_MODE} queue of ${QUEUE_W}px taking ${RAIL_W}px," \
+	"panel ${PANEL_MODE} ${PANEL_W}px, drawer ${DRAWER_PLACEMENT}, ${LABELS}" >&2
+
+# Where the transcript's own column is, in root coordinates. Every turn draws
+# inside it: the operator's bubble, a tool card's chevron and a row's trailing
+# controls are all placed against its edges rather than the window's, so a
+# scene that aims at one of them aims here. The column is centred in the
+# session surface -- the window less the queue rail -- at the authored width,
+# or takes the whole surface when that is narrower.
+#
+# The panel is closed at the defaults a take starts from (§8.10), so the
+# surface is the whole row. A scene that opens the panel and then aims at a
+# turn recomputes this against the surface the panel leaves.
+TRANSCRIPT_SURFACE_W=$(( WIN_W - RAIL_W ))
+TRANSCRIPT_COLUMN_W=$(( TRANSCRIPT_MAX_W < TRANSCRIPT_SURFACE_W ? TRANSCRIPT_MAX_W : TRANSCRIPT_SURFACE_W ))
+TRANSCRIPT_COLUMN_LEFT=$(( WIN_X + RAIL_W + (TRANSCRIPT_SURFACE_W - TRANSCRIPT_COLUMN_W) / 2 ))
+TRANSCRIPT_COLUMN_RIGHT=$(( TRANSCRIPT_COLUMN_LEFT + TRANSCRIPT_COLUMN_W ))
+
+# Where the composer card is, in root coordinates. §5.4 insets the card by one
+# spacing step on each side of the session surface and centres it at the
+# authored measure, so its own edges follow the panel rather than the window.
+COMPOSER_CARD_MAX=$(( TRANSCRIPT_SURFACE_W - 2 * GUTTER_PX ))
+COMPOSER_CARD_W=$(( COMPOSER_MAX_W < COMPOSER_CARD_MAX ? COMPOSER_MAX_W : COMPOSER_CARD_MAX ))
+COMPOSER_CARD_LEFT=$(( WIN_X + RAIL_W + GUTTER_PX + (COMPOSER_CARD_MAX - COMPOSER_CARD_W) / 2 ))
+COMPOSER_CARD_BOTTOM=$(( WIN_Y + WIN_H - CARD_FOOT_PX ))
+
+# Where the run bar's own stop is, in root coordinates. The bar is the row the
+# session column places under the card, centred at the card's measure, so its
+# right edge is the card's; the stop is the bar's trailing child, and the aim
+# is one spacing step in from that edge, which is inside the word at any
+# authored label size rather than at a width this scene decides. Vertically
+# the aim is the middle of the authored bar height, measured down from the gap
+# the column leaves above it.
+RUN_BAR_Y=$(( WIN_Y + WIN_H - CARD_FOOT_PX + (CARD_FOOT_PX - RUN_BAR_H) / 2 + RUN_BAR_H / 2 ))
+RUN_BAR_STOP_X=$(( COMPOSER_CARD_LEFT + COMPOSER_CARD_W - GUTTER_PX ))
+if (( RUN_BAR_Y <= COMPOSER_CARD_BOTTOM || RUN_BAR_Y >= WIN_Y + WIN_H )); then
+	abandon_take "the-run-bar-is-locatable" \
+		"the derived run bar aim ${RUN_BAR_Y} is not between the card's lower edge ${COMPOSER_CARD_BOTTOM} and the window's foot"
+fi
+
+# The model chip: the leading control of the card's footer row, which is the
+# last row inside the card. Vertically the aim is one spacing step above the
+# row's own lower edge, which is inside a row of any authored control height
+# rather than at a height this scene decides. Horizontally it is one spacing
+# step into the chip, past its rounded corner and onto the model's name.
+MODEL_CHIP_X=$(( COMPOSER_CARD_LEFT + CARD_PAD_H + GUTTER_PX ))
+MODEL_CHIP_Y=$(( COMPOSER_CARD_BOTTOM - CARD_PAD_BOTTOM - GUTTER_PX ))
+
+# Where the draft is typed, in root coordinates. The card is bottom-anchored
+# and its own height is whatever its contents came to, so the aim measures up
+# from the window's foot: past what the session column puts under the card,
+# past the card's authored resting height to a point inside it, then one
+# spacing step back down. `rest_height_px` is a minimum and the card draws
+# taller, so that point is strictly inside the card and above the footer row
+# the chip sits in, which is the editor line.
+COMPOSER_EDITOR_X=$(( COMPOSER_CARD_LEFT + CARD_PAD_H + GUTTER_PX ))
+COMPOSER_EDITOR_Y=$(( COMPOSER_CARD_BOTTOM - COMPOSER_BAND_H + CARD_FOOT_PX + GUTTER_PX ))
+if (( COMPOSER_EDITOR_Y >= MODEL_CHIP_Y || COMPOSER_EDITOR_Y <= WIN_Y )); then
+	abandon_take "the-editor-line-is-locatable" \
+		"the derived editor aim ${COMPOSER_EDITOR_Y} is not above the footer row ${MODEL_CHIP_Y} inside the window"
+fi
+
+# ─── Scene Interactions & Captures ───────────────────────────────────────────
+
+# 1. Start a fresh session (primary-n -> ctrl+n) and capture composer idle state.
+k "ctrl+n"
+if ! native_session_ready created; then
+	abandon_take "native-session-created" "native session-creation interaction produced no session within 10s"
+fi
+pause 2.0
+COMPOSER_X="${COMPOSER_EDITOR_X}"
+COMPOSER_Y="${COMPOSER_EDITOR_Y}"
+move_px "${COMPOSER_X}" "${COMPOSER_Y}"
+click
+pause 0.5
+shot idle
+
+# 2. Type a realistic draft into the composer.
+t "Summarize the project structure."
+pause 1.2
+shot typed-draft
+
+# 3. Open the model picker overlay (primary-shift-m -> ctrl+shift+m).
+k "ctrl+shift+m"
+pause 0.8
+shot model-picker-open
+
+# 4. Dismiss the model picker (escape); verify the typed draft is retained.
+k "Escape"
+pause 0.8
+shot model-picker-dismissed
+
+# Exercise enter, exit, and reversal continuously rather than grading idle frames as motion.
+for _ in $(seq 1 24); do
+	k "ctrl+shift+m"
+	pause 0.2
+	k "Escape"
+	pause 0.2
+done
+
+# 5. Clear the composer and open the slash command palette.
+# In Editor context, ctrl+a selects all, backspace deletes.
+k "ctrl+a"
+pause 0.2
+k "BackSpace"
+pause 0.4
+t "/"
+pause 0.8
+shot slash-palette-open
+
+# 6. Dismiss the slash palette (escape).
+k "Escape"
+pause 0.8
+shot slash-palette-dismissed
+
+# ─── What These Frames State ─────────────────────────────────────────────────
+# Six frames named for a draft, an overlay over it and the draft surviving the
+# overlay, and until this block every one of those claims was left to whoever
+# opened the gallery. An overlay that never opened, a draft the picker's own
+# focus swallowed, and a palette still on screen after Escape all publish a
+# frame that looks like the state it is named for.
+#
+# Two rectangles, because the session list prints each row's age: the composer
+# band a draft is typed into, and the session surface above it, which is the
+# transcript together with whatever an overlay or a panel draws over it. Every
+# scene sourcing this preamble reads its own frames through them.
+SESSION_REGION_X=$(( WIN_X + RAIL_W ))
+SESSION_REGION_W=$(( WIN_W - RAIL_W ))
+composer_band_region() {
+	use_crop "${SESSION_REGION_X}" "$(( WIN_Y + WIN_H - COMPOSER_BAND_H ))" \
+		"${SESSION_REGION_W}" "${COMPOSER_BAND_H}"
+}
+transcript_region() {
+	use_crop "${SESSION_REGION_X}" "$(( WIN_Y + TITLEBAR_H ))" \
+		"${SESSION_REGION_W}" "$(( WIN_H - TITLEBAR_H - COMPOSER_BAND_H ))"
+}
+
+# The ink the typing drew. Counted in pixels rather than per mille: a line of
+# 13px text inside a 110px band rounds to nothing.
+composer_band_region
+DRAFT_PX="$(shots_differ_pixels idle typed-draft)"
+if [ "${DRAFT_PX}" -lt 150 ]; then
+	abandon_take "the-draft-reached-the-composer" \
+		"the composer band changed ${DRAFT_PX} pixels while a prompt was typed, so the keystrokes went somewhere else"
+fi
+
+# An overlay is read over the transcript, which is the region a picker and a
+# slash palette both draw across. A per-mille floor, since a palette is a
+# surface rather than a control; a ceiling derived from the open reading, since
+# a dismissed overlay returns the region to the frame it opened over and an
+# empty session's transcript is otherwise still.
+#
+# Read before the band, and that order is part of the guard: a picker still on
+# screen reaches the footer row the band covers, so a band reading taken first
+# reports a moved draft for an overlay that never closed.
+OVERLAID_PER_MILLE=40
+transcript_region
+PICKER_OPEN="$(shots_differ_per_mille typed-draft model-picker-open)"
+if [ "${PICKER_OPEN}" -lt "${OVERLAID_PER_MILLE}" ]; then
+	abandon_take "the-model-picker-opened" \
+		"the transcript changed ${PICKER_OPEN}/1000 on primary-shift-m, under the ${OVERLAID_PER_MILLE} an overlay draws"
+fi
+PICKER_GONE="$(shots_differ_per_mille typed-draft model-picker-dismissed)"
+if [ "${PICKER_GONE}" -ge "$(( PICKER_OPEN / 4 ))" ]; then
+	abandon_take "the-model-picker-closed" \
+		"the transcript is ${PICKER_GONE}/1000 from the frame the picker opened over, against ${PICKER_OPEN}/1000 while it was open"
+fi
+
+# The draft after the overlay closed, against the empty composer it was typed
+# into and against the frame it was typed in. Both readings are needed: a
+# cleared draft leaves the band back at idle, and a draft the overlay retyped
+# or shifted leaves it at neither.
+composer_band_region
+KEPT_PX="$(shots_differ_pixels idle model-picker-dismissed)"
+if [ "${KEPT_PX}" -lt "$(( DRAFT_PX / 2 ))" ]; then
+	abandon_take "the-draft-outlived-the-picker" \
+		"the band holds ${KEPT_PX} pixels of ink against the ${DRAFT_PX} the typing drew, so the model picker took the draft with it"
+fi
+MOVED_PX="$(shots_differ_pixels typed-draft model-picker-dismissed)"
+if [ "${MOVED_PX}" -gt "$(( DRAFT_PX / 4 ))" ]; then
+	abandon_take "the-draft-came-back-unchanged" \
+		"${MOVED_PX} pixels of the band differ from the frame the draft was typed in, over the ${DRAFT_PX} the typing drew"
+fi
+
+transcript_region
+SLASH_OPEN="$(shots_differ_per_mille model-picker-dismissed slash-palette-open)"
+if [ "${SLASH_OPEN}" -lt "${OVERLAID_PER_MILLE}" ]; then
+	abandon_take "a-slash-opened-the-commands" \
+		"the transcript changed ${SLASH_OPEN}/1000 when the draft opened with a slash, under the ${OVERLAID_PER_MILLE} an overlay draws"
+fi
+SLASH_GONE="$(shots_differ_per_mille model-picker-dismissed slash-palette-dismissed)"
+if [ "${SLASH_GONE}" -ge "$(( SLASH_OPEN / 4 ))" ]; then
+	abandon_take "the-slash-palette-closed" \
+		"the transcript is ${SLASH_GONE}/1000 from the frame the palette opened over, against ${SLASH_OPEN}/1000 while it was open"
+fi
+echo "scene: draft ${DRAFT_PX}px, kept ${KEPT_PX}px, moved ${MOVED_PX}px," \
+	"picker ${PICKER_OPEN}/1000 open ${PICKER_GONE}/1000 closed," \
+	"slash ${SLASH_OPEN}/1000 open ${SLASH_GONE}/1000 closed" >&2
+
+# ─── Typing A Prompt Where The Composer Actually Is ──────────────────────────
+# Every scene that runs a turn types a prompt into the composer, and the aim it
+# clicks first decides whether the keystrokes reach the editor at all. A click
+# that lands outside the card focuses the region it hit — the transcript
+# carries a key context of its own — and the typing then goes to a surface with
+# no draft, so `Return` submits nothing and the take fails ninety seconds later
+# reporting a turn that never ran. A scene that restated the aim as a number
+# recorded exactly that: a click 270px above the card, `status=Unknown,
+# messages=0`, and a composer still holding the slash the preamble left.
+#
+# So the aim is the one the preamble derived from the token files, the draft is
+# read back before it is sent, and the reading is what fails: the guard names
+# the keystrokes, not the model.
+COMPOSER_BAND_CROP="${SESSION_REGION_W}x${COMPOSER_BAND_H}+${SESSION_REGION_X}+$(( WIN_Y + WIN_H - COMPOSER_BAND_H ))"
+
+type_prompt() { # <text> [floor-pixels]
+	local text="$1" floor="${2:-400}" empty="${TMPDIR}/frame-compare/prompt-empty.png" drew
+	move_px "${COMPOSER_X}" "${COMPOSER_Y}"
+	click
+	k "ctrl+a"
+	k "BackSpace"
+	pause 0.3
+	probe_frame "${empty}"
+	t "${text}"
+	pause 0.6
+	drew="$(screen_differs_from_frame_pixels_at "${empty}" "${COMPOSER_BAND_CROP}")"
+	echo "scene: the prompt drew ${drew} pixels of draft" >&2
+	if [ "${drew}" -lt "${floor}" ]; then
+		abandon_take "the-prompt-reached-the-draft" \
+			"the composer band changed ${drew} pixels while the prompt was typed, under the ${floor} a line of prose inks, so the keystrokes reached something other than the editor"
+	fi
+}
+
+submit_prompt() { # <text> [floor-pixels]
+	type_prompt "$@"
+	k "Return"
+}
+
+# ─── The Tints A Surface Paints While It Holds Something ─────────────────────
+# A `[tint.<role>]` fill is painted by one thing and nothing else in the
+# window paints it, so a count of that fill inside a crop is a reading of how
+# many of them the crop is reporting: `tint.working` is the `Working` chip a
+# running turn carries, `tint.approve` is the edge of a decision card waiting
+# for an answer. The fill is read from the theme this checkout ships rather
+# than restated as a literal, so a retheme cannot make a scene silently stop
+# finding what it is counting, and the count is refused rather than defaulted
+# when the reading is not a number.
+tint_fill_pixels() { # <tint-section> <png> <crop> -> pixels of that fill inside the crop
+	local section="$1" png="$2" crop="$3" theme fill counted
+	theme="${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/themes/dark.toml"
+	fill="$(sed -n "/^\\[${section}\\]/,/^\\[/ s/^fill = \"\\(#[0-9a-fA-F]\\{6\\}\\)\".*/\\1/p" \
+		"${theme}" | head -1)"
+	if [ -z "${fill}" ]; then
+		abandon_take "tint-known" "no [${section}] fill in ${theme}"
+	fi
+	counted="$(magick "${png}" -crop "${crop}" +repage \
+		-fuzz 6% -fill white -opaque "${fill}" -fill black +opaque white \
+		-format '%[fx:round(mean*w*h)]' info: 2>/dev/null || true)"
+	case "${counted}" in
+		'' | *[!0-9]*)
+			abandon_take "tint-countable" \
+				"counting [${section}] in ${png} reported '${counted}' instead of a pixel count"
+			;;
+	esac
+	printf '%s' "${counted}"
+}
+
+working_tint_pixels() { # <png> <crop> -> pixels of the working fill inside the crop
+	tint_fill_pixels "tint.working" "$@"
+}
+
+approve_tint_pixels() { # <png> <crop> -> pixels of a waiting decision's edge inside the crop
+	tint_fill_pixels "tint.approve" "$@"
+}

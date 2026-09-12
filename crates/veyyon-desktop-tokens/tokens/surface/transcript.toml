@@ -1,0 +1,35 @@
+[meta]
+version = 1
+name = "surface_transcript"
+
+[layout]
+column_width_px = 768
+user_turn_width_ratio = 0.80
+
+[rhythm]
+adjacent_same_kind_gap = "s0"
+group_blocks_gap       = "s2"
+turn_groups_gap        = "s4"
+turns_gap              = "s8"
+
+[user_turn]
+ground = "inset"
+padding = "s6"
+radius_outer = "xl"
+radius_trailing = "xs"
+type_size = "read"
+
+[assistant_turn]
+type_size = "read"
+
+[chrome.collapsed]
+height_px = 24
+event_line_height_px = 12
+
+[chrome.caps]
+invoke_mono_pane_max_height_px = 240
+code_fence_max_height_px = 320
+image_max_height_px = 400
+plan_body_max_height_px = 400
+plan_fade_height_px = 64
+table_row_height_px = 18

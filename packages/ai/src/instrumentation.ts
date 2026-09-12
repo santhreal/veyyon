@@ -27,7 +27,7 @@ import {
 	type ToolCallMetrics,
 	type ToolCallStatus,
 } from "@veyyon/model/instrumentation";
-import type { ImageContent, TextContent } from "./types";
+import type { ImageContent, TextContent, VideoContent } from "./types";
 
 export {
 	type AssistantTurnMetrics,
@@ -138,7 +138,7 @@ export interface ToolCallMetricsInput {
 	signalAborted?: boolean;
 	/** Whether the tool explicitly marked this successful result as contextually useless. */
 	useless?: boolean;
-	resultContent?: readonly (TextContent | ImageContent)[];
+	resultContent?: readonly (TextContent | ImageContent | VideoContent)[];
 	args?: Record<string, unknown>;
 	/**
 	 * Token counter used at `rich`+ to weigh the result. Injected so this module

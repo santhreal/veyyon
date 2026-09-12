@@ -19,6 +19,7 @@
 
 ### Changed
 
+- A custom message payload and a stored session entry carry `VideoContent` beside text and images, so a video attachment survives `pi.sendMessage`, persistence and rehydration.
 - Settings mutations and session storage writers share implementations without changing persistence, hook ordering or error behavior.
 - Installed plugin registry readers share JSON validation while preserving numeric-version handling and malformed-file behavior.
 - Plugin runtime configuration uses the shared record validator; behavior is unchanged.
