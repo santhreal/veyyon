@@ -1,8 +1,8 @@
 /**
- * WHY: Symbol positions must render resolved glyphs as text, and compact headers must
- * omit only the complete repeated tool label. This exercises React's DOM output,
- * including inherited property names and markup-like symbols; it does not verify
- * terminal rendering, CSS geometry, or live pointer interaction.
+ * WHY: Symbol positions must render resolved glyphs as text, a key with no glyph must draw nothing
+ * rather than the key, and compact headers must omit only the complete repeated tool label. This
+ * exercises React's DOM output, including inherited property names and markup-like symbols; it does
+ * not verify terminal rendering, CSS geometry, or live pointer interaction.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -22,24 +22,46 @@ import {
 import { CANONICAL_SYMBOLS, safeHref } from "../src/view-core";
 
 describe("ToolView and Canonical View DOM integration", () => {
-	it.each([
-		...Object.entries(CANONICAL_SYMBOLS),
-		["<em>literal</em>", "<em>literal</em>"],
-		["constructor", "constructor"],
-		["__proto__", "__proto__"],
-	])("renders symbol %s consistently across symbol positions", (symbol, visible) => {
-		const views: CanonicalToolView[] = [
-			{ kind: "textBlock", spans: [{ text: "", symbol }] },
-			{ kind: "statusRow", title: "Operation", emblem: symbol },
-			{ kind: "notice", state: "warning", headline: [{ text: "Operation" }], mark: symbol },
-		];
-		for (const view of views) {
-			const html = renderToStaticMarkup(createElement(CanonicalViewRenderer, { view }));
-			const { document } = parseHTML(`<html><body>${html}</body></html>`);
-			expect(document.body.textContent).toContain(visible);
-			expect(document.querySelector("em")).toBeNull();
-		}
-	});
+	it.each(Object.entries(CANONICAL_SYMBOLS).filter(([, glyph]) => glyph !== ""))(
+		"renders symbol %s as its glyph across symbol positions",
+		(symbol, glyph) => {
+			const views: CanonicalToolView[] = [
+				{ kind: "textBlock", spans: [{ text: "", symbol }] },
+				{ kind: "statusRow", title: "Operation", emblem: symbol },
+				{ kind: "notice", state: "warning", headline: [{ text: "Operation" }], mark: symbol },
+			];
+			for (const view of views) {
+				const html = renderToStaticMarkup(createElement(CanonicalViewRenderer, { view }));
+				const { document } = parseHTML(`<html><body>${html}</body></html>`);
+				expect(document.body.textContent).toContain(glyph);
+				expect(document.body.textContent).not.toContain(symbol);
+				expect(document.querySelector("em")).toBeNull();
+			}
+		},
+	);
+
+	it.each(["<em>literal</em>", "constructor", "__proto__", "hint.tip"])(
+		"draws the span text and never the key for unknown symbol %s",
+		symbol => {
+			const views: CanonicalToolView[] = [
+				{ kind: "textBlock", spans: [{ text: "fallback", symbol }] },
+				{ kind: "statusRow", title: "Operation", emblem: symbol },
+				{ kind: "notice", state: "warning", headline: [{ text: "Operation" }], mark: symbol },
+			];
+			for (const view of views) {
+				const html = renderToStaticMarkup(createElement(CanonicalViewRenderer, { view }));
+				const { document } = parseHTML(`<html><body>${html}</body></html>`);
+				expect(document.body.textContent).not.toContain(symbol);
+				expect(document.querySelector("em")).toBeNull();
+			}
+			const span = renderToStaticMarkup(
+				createElement(CanonicalViewRenderer, {
+					view: { kind: "textBlock", spans: [{ text: "fallback", symbol }] },
+				}),
+			);
+			expect(parseHTML(`<html><body>${span}</body></html>`).document.body.textContent).toContain("fallback");
+		},
+	);
 
 	it.each([
 		{ label: "launch", title: "Launch start", summary: "start" },

@@ -136,6 +136,34 @@ describe("a job card states what is still running", () => {
 		expect(rows(details, { list: true }, context())[0]).toContain("2 jobs settled");
 	});
 
+	/**
+	 * A task batch past `agent.maxConcurrency` registers the rest of its agents as queued jobs: no
+	 * work has started, yet the card drew each one as a running row with a live label, so a reader
+	 * counted more agents at work than the ceiling allows. A queued row is pending, its elapsed time
+	 * is stated as time spent queued, it never animates, and the summary counts it apart.
+	 */
+	it("draws a queued job as pending and counts it apart from the jobs at work", () => {
+		const details: JobToolDetails = {
+			jobs: [
+				job({ label: "AuthLoader", id: "AuthLoader", type: "task" }),
+				job({ id: "Parser", label: "Parser", type: "task", queued: true, durationMs: 12_000 }),
+			],
+		};
+		const drawn = rows(details, { list: true }, context({ partial: true, frame: 3 }));
+		expect(drawn[0]).toContain("waiting on 2 jobs");
+		expect(drawn[0]).toContain("1 queued");
+		const runningRow = drawn.find(line => line.includes("AuthLoader")) ?? "";
+		const queuedRow = drawn.find(line => line.includes("Parser")) ?? "";
+		expect(queuedRow).toContain("queued 12.0s");
+		expect(queuedRow.trimStart().slice(0, 1)).not.toBe(runningRow.trimStart().slice(0, 1));
+
+		const card = view(details, { list: true }, context({ partial: true, frame: 3 }));
+		if (card.kind !== "headedBlock") throw new Error(`expected a card, got ${card.kind}`);
+		const spanFor = (label: string) => card.lines.flat().find(span => span.text === label);
+		expect(spanFor("AuthLoader")?.live).toBe(true);
+		expect(spanFor("Parser")?.live).toBeUndefined();
+	});
+
 	it("counts live agents outside the job counts, and says so when there are no jobs", () => {
 		const withJobs = rows({ jobs: [job()], agents: [agent(), agent({ id: "Reviewer" })] }, { list: true }, context());
 		expect(withJobs[0]).toContain("waiting on 1 job");

@@ -16,38 +16,11 @@ describe("a read or write call parses to a path and a range", () => {
 
 	describe("parseReadArgs", () => {
 		it("parses empty or non-record input without throwing", () => {
-			expect(parseReadArgs(null)).toEqual({
-				rawPath: "",
-				path: "",
-				sel: null,
-				from: null,
-				to: null,
-				rangeSuffix: "",
-			});
-			expect(parseReadArgs(undefined)).toEqual({
-				rawPath: "",
-				path: "",
-				sel: null,
-				from: null,
-				to: null,
-				rangeSuffix: "",
-			});
-			expect(parseReadArgs("not-a-record")).toEqual({
-				rawPath: "",
-				path: "",
-				sel: null,
-				from: null,
-				to: null,
-				rangeSuffix: "",
-			});
-			expect(parseReadArgs(123)).toEqual({
-				rawPath: "",
-				path: "",
-				sel: null,
-				from: null,
-				to: null,
-				rangeSuffix: "",
-			});
+			const empty = { rawPath: "", path: "", sel: null, depth: null, limit: null };
+			expect(parseReadArgs(null)).toEqual(empty);
+			expect(parseReadArgs(undefined)).toEqual(empty);
+			expect(parseReadArgs("not-a-record")).toEqual(empty);
+			expect(parseReadArgs(123)).toEqual(empty);
 		});
 
 		it("prefers path over file_path when both are present", () => {
@@ -55,17 +28,15 @@ describe("a read or write call parses to a path and a range", () => {
 				rawPath: "primary.ts",
 				path: "primary.ts",
 				sel: null,
-				from: null,
-				to: null,
-				rangeSuffix: "",
+				depth: null,
+				limit: null,
 			});
 			expect(parseReadArgs({ file_path: "fallback.ts" })).toEqual({
 				rawPath: "fallback.ts",
 				path: "fallback.ts",
 				sel: null,
-				from: null,
-				to: null,
-				rangeSuffix: "",
+				depth: null,
+				limit: null,
 			});
 		});
 
@@ -76,37 +47,36 @@ describe("a read or write call parses to a path and a range", () => {
 			expect(parsed.sel).toBe("10-50:raw");
 		});
 
-		it("parses numeric offset and limit into from, to, and rangeSuffix", () => {
-			expect(parseReadArgs({ path: "a.ts", offset: 10, limit: 20 })).toEqual({
-				rawPath: "a.ts",
-				path: "a.ts",
+		it("parses depth and limit as directory arguments and derives no line range from them", () => {
+			// `limit` caps directory entries and `depth` bounds recursion; the schema has no `offset`
+			// and no line window, so `{ path: ".", limit: 3 }` is a 3-entry listing, not lines 1-3.
+			expect(parseReadArgs({ path: ".", depth: 2, limit: 5 })).toEqual({
+				rawPath: ".",
+				path: ".",
 				sel: null,
-				from: 10,
-				to: 29,
-				rangeSuffix: ":10-29",
+				depth: 2,
+				limit: 5,
 			});
-			expect(parseReadArgs({ path: "a.ts", offset: 5 })).toEqual({
-				rawPath: "a.ts",
-				path: "a.ts",
+			expect(parseReadArgs({ path: ".", limit: 3 })).toEqual({
+				rawPath: ".",
+				path: ".",
 				sel: null,
-				from: 5,
-				to: null,
-				rangeSuffix: ":5",
+				depth: null,
+				limit: 3,
 			});
-			expect(parseReadArgs({ path: "a.ts", limit: 15 })).toEqual({
-				rawPath: "a.ts",
+			expect(parseReadArgs({ path: "a.ts:10-29", limit: 3 })).toEqual({
+				rawPath: "a.ts:10-29",
 				path: "a.ts",
-				sel: null,
-				from: 1,
-				to: 15,
-				rangeSuffix: ":1-15",
+				sel: "10-29",
+				depth: null,
+				limit: 3,
 			});
 		});
 
-		it("rejects non-number offset and limit", () => {
-			const parsed = parseReadArgs({ path: "a.ts", offset: "10", limit: "invalid" });
-			expect(parsed.from).toBeNull();
-			expect(parsed.to).toBeNull();
+		it("rejects non-number depth and limit", () => {
+			const parsed = parseReadArgs({ path: ".", depth: "2", limit: "invalid" });
+			expect(parsed.depth).toBeNull();
+			expect(parsed.limit).toBeNull();
 		});
 	});
 

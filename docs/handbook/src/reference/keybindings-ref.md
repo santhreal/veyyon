@@ -27,12 +27,16 @@ live list after your remaps. For the full guide on customizing, see
 | `alt+r` | Retry the last failed assistant turn (`app.retry`) |
 | `alt+up` | Dequeue a queued message back into the editor (`app.message.dequeue`) |
 | `alt+shift+p` | Toggle plan mode (`app.plan.toggle`) |
-| `alt+a` | Open the agent dashboard (`app.agents.hub`) |
+| `alt+a` or `ctrl+s` | Open the agent dashboard (`app.agents.hub` / `app.session.observe`); either key closes it again |
 | `ctrl+r` | Search prompt history (`app.history.search`) |
 | `alt+shift+l` | Copy the current line (`app.clipboard.copyLine`) |
 | `alt+shift+c` | Copy the whole prompt (`app.clipboard.copyPrompt`) |
 | `ctrl+v` (`alt+v` fallback on Windows, `super+v` on macOS) | Paste from the clipboard, image preferred (`app.clipboard.pasteImage`) |
 | `ctrl+shift+v` or `alt+shift+v` | Paste clipboard text raw, no collapse (`app.clipboard.pasteTextRaw`) |
+
+`app.session.new`, `app.session.tree`, `app.session.fork`, `app.session.resume` and
+`app.stt.toggle` ship with no default key; bind one in `keybindings.yml` to use them from the
+keyboard. Their slash commands are `/new`, `/tree`, `/fork` and `/resume`.
 
 You can also set the effort by name with the `/effort` command (its alias is `/thinking`). With no
 argument it opens a picker; `/effort high` sets the level directly. The choice lasts for this session; the saved default

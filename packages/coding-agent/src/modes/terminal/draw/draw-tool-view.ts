@@ -13,6 +13,7 @@
 
 import { Ellipsis } from "@veyyon/natives";
 import { type Component, Markdown, renderInlineMarkdown, TERMINAL, Text } from "@veyyon/tui";
+import { sanitizeText } from "@veyyon/utils";
 import { padding } from "@veyyon/utils/padding";
 import { sliceWithWidth, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
@@ -146,9 +147,19 @@ const THINKING_COLORS: Readonly<Record<string, ThemeColor>> = {
 	"thinking.max": "thinkingXhigh",
 };
 
-/** Normalize text content for terminal display by replacing tabs and shortening home directory paths. */
+/**
+ * The tool's words as the terminal shows them: control bytes out, the home directory as `~`, a tab as
+ * spaces.
+ *
+ * This is the one strip the contract promises: a host draws a span's text and "strips the rest",
+ * and the rest is every escape a tool did not mark `captured`. A tool that builds a span from a
+ * model-supplied reason or a file's contents cannot be trusted to have stripped it first, and a
+ * screen clear or an OSC hyperlink drawn verbatim reaches the terminal as an instruction. So every
+ * non-captured string a view carries passes through here, and a captured run through
+ * `styleTerminalRow`, which keeps the styles it trusts and drops the same bytes.
+ */
 function sanitizeViewText(text: string): string {
-	return replaceTabs(shortenEmbeddedPaths(text));
+	return replaceTabs(shortenEmbeddedPaths(sanitizeText(text)));
 }
 
 /** Extract multi-line plain text from an array of span lines. */
@@ -212,11 +223,13 @@ export function drawSpan(span: ViewSpan, theme: Theme, frame?: number): string {
 			formatStatusIcon(STATUS_ICONS[span.status], theme, span.status === "running" ? frame : undefined),
 		);
 	}
-	const spanText = span.captured ? span.text : sanitizeViewText(span.text);
+	// Replayed before any other treatment: a captured run is another program's bytes, and a badge or
+	// a shimmer wrapped around unstripped bytes would send them on as they are.
+	if (span.captured) return styleTerminalRow(span.text, theme.getFgAnsi(TONE_COLORS.output));
+	const spanText = sanitizeViewText(span.text);
 	if (span.badge === true) {
 		return linked(span, formatBadge(spanText, TONE_COLORS[span.tone ?? "accent"], theme));
 	}
-	if (span.captured) return styleTerminalRow(span.text, theme.getFgAnsi(TONE_COLORS.output));
 	// A live run of ANOTHER PROGRAM's output is the follow rather than a shimmer: the newest
 	// characters of a stream grade up to the accent and cool back into the output colour, which is the
 	// treatment every live tool row on this host already had. A shimmer sweeps a whole run, which
@@ -656,7 +669,9 @@ function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: T
 	) {
 		return codeMemo.rows;
 	}
-	const highlighted = highlightCode(shortenEmbeddedPaths(source), code.language);
+	// Stripped before the highlighter rather than after, so an escape inside the source is never
+	// tokenized into a row the highlighter then wraps in colour of its own.
+	const highlighted = highlightCode(shortenEmbeddedPaths(sanitizeText(source)), code.language);
 	let rows: string[];
 	if (numbers !== undefined) {
 		const gutter = codeGutterWidth(numbers, code.totalLines);
@@ -769,7 +784,7 @@ function drawItemList(
 			expanded: false,
 			maxCollapsed: drawn.length,
 			heldBack: hidden?.count ?? 0,
-			itemType: hidden?.noun?.one ?? "item",
+			itemType: hidden?.noun === undefined ? "item" : sanitizeViewText(hidden.noun.one),
 			renderItem: line => line,
 		},
 		theme,
@@ -960,7 +975,7 @@ function drawRowToWidth(line: ViewLine, theme: Theme, width: number, frame?: num
 /** The unit a held-back count is in, as the words that follow it, or nothing when the tool named none. */
 function nounSuffix(hidden: ViewHiddenCount): string {
 	if (hidden.noun === undefined) return "";
-	return ` ${hidden.count === 1 ? hidden.noun.one : hidden.noun.many}`;
+	return ` ${sanitizeViewText(hidden.count === 1 ? hidden.noun.one : hidden.noun.many)}`;
 }
 
 /**
@@ -1009,7 +1024,10 @@ function drawNoticeSpan(span: ViewSpan, theme: Theme): string {
 	if (span.symbol !== undefined && Object.hasOwn(UNICODE_SYMBOLS, span.symbol)) {
 		return theme.symbol(span.symbol as SymbolKey);
 	}
-	let text = span.captured ? span.text : sanitizeViewText(span.text);
+	// A captured run keeps the styles the terminal replays and loses the rest; with no base colour,
+	// since the plate colours the whole row and the run's own reset drops it at that column as a
+	// toned span's would.
+	let text = span.captured ? styleTerminalRow(span.text, "") : sanitizeViewText(span.text);
 	if (span.bold) text = theme.bold(text);
 	if (span.italic) text = theme.italic(text);
 	return text;

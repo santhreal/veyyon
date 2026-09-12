@@ -36,6 +36,8 @@ export interface JobSnapshot {
 	id: string;
 	type: AsyncJobType;
 	status: "running" | "completed" | "failed" | "cancelled";
+	/** Registered but parked behind the spawn semaphore: no work has started yet. */
+	queued?: true;
 	label: string;
 	durationMs: number;
 	resultText?: string;
@@ -435,6 +437,7 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 			startTime: number;
 			resultText?: string;
 			errorText?: string;
+			queued?: boolean;
 		}[],
 	): JobSnapshot[] {
 		const now = Date.now();
@@ -445,6 +448,7 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 				id: latest.id,
 				type: latest.type,
 				status: latest.status as JobSnapshot["status"],
+				...(latest.status === "running" && latest.queued === true ? { queued: true as const } : {}),
 				label: latest.label,
 				durationMs: Math.max(0, now - latest.startTime),
 				...(latest.resultText ? { resultText: latest.resultText } : {}),
@@ -507,7 +511,11 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		if (running.length > 0) {
 			lines.push(`## Still Running (${running.length})\n`);
 			for (const j of running) {
-				lines.push(`- \`${j.id}\` [${j.type}] — ${j.label} (up ${formatDuration(j.durationMs)})`);
+				lines.push(
+					j.queued
+						? `- \`${j.id}\` [${j.type}] — ${j.label} (queued ${formatDuration(j.durationMs)}, waiting for a concurrency slot)`
+						: `- \`${j.id}\` [${j.type}] — ${j.label} (up ${formatDuration(j.durationMs)})`,
+				);
 			}
 		}
 

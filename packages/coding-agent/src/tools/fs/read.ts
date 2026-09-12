@@ -69,7 +69,7 @@ import { type ArchiveReader, formatArchiveEntryLines, openArchive, parseArchiveP
 import { buildDirectoryTree, buildTopLevelDirectoryListing, type DirectoryTree } from "../../workspace-tree";
 import { applyListLimit } from "../core/list-limit";
 import { type InlinePricingSource, inlineBudgetFor } from "../core/output-artifact";
-import { type OutputMeta, resolveOutputMaxColumns } from "../core/output-meta";
+import { type OutputMeta, resolveOutputMaxColumns, type TruncationOptions } from "../core/output-meta";
 import {
 	type DelimitedPathSplitOptions,
 	expandDelimitedPathEntriesSync,
@@ -1650,7 +1650,11 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			immutable?: boolean;
 		},
 	): AgentToolResult<ReadToolDetails> {
-		const displayMode = resolveFileDisplayMode(this.session, { raw: options.raw, immutable: options.immutable });
+		const displayMode = resolveFileDisplayMode(this.session, {
+			raw: options.raw,
+			immutable: options.immutable,
+			ranged: offset !== undefined || limit !== undefined,
+		});
 		const details = options.details ?? {};
 		const allLines = text.split("\n");
 		const totalLines = allLines.length;
@@ -1740,9 +1744,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			});
 
 		let outputText: string;
-		let truncationInfo:
-			| { result: TruncationResult; options: { direction: "head"; startLine?: number; totalFileLines?: number } }
-			| undefined;
+		let truncationInfo: { result: TruncationResult; options: TruncationOptions } | undefined;
 
 		if (truncation.firstLineExceedsLimit) {
 			const firstLine = allLines[startLine] ?? "";
@@ -1844,7 +1846,11 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			immutable?: boolean;
 		},
 	): AgentToolResult<ReadToolDetails> {
-		const displayMode = resolveFileDisplayMode(this.session, { raw: options.raw, immutable: options.immutable });
+		const displayMode = resolveFileDisplayMode(this.session, {
+			raw: options.raw,
+			immutable: options.immutable,
+			ranged: true,
+		});
 		const details = options.details ?? {};
 		const allLines = text.split("\n");
 		const totalLines = allLines.length;
@@ -2869,9 +2875,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		let details: ReadToolDetails = {};
 		let sourcePath: string | undefined;
 		let columnTruncated = 0;
-		let truncationInfo:
-			| { result: TruncationResult; options: { direction: "head"; startLine?: number; totalFileLines?: number } }
-			| undefined;
+		let truncationInfo: { result: TruncationResult; options: TruncationOptions } | undefined;
 
 		if (mimeType) {
 			({ content, details, sourcePath } = await this.#loadImageContent({
@@ -3114,6 +3118,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 								direction: "head",
 								startLine: startLineDisplay,
 								totalFileLines: reachedEof ? totalFileLines : undefined,
+								totalLinesUnknown: !reachedEof,
 							},
 						};
 					} else if (truncation.truncated) {
@@ -3126,6 +3131,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 								direction: "head",
 								startLine: startLineDisplay,
 								totalFileLines: reachedEof ? totalFileLines : undefined,
+								totalLinesUnknown: !reachedEof,
 							},
 						};
 					} else if (startLine + userLimitedLines < totalFileLines || !reachedEof) {
@@ -3338,7 +3344,11 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		}
 
 		const rawSelector = isRawSelector(parsedSel);
-		const displayMode = resolveFileDisplayMode(this.session, { raw: rawSelector, immutable: true });
+		const displayMode = resolveFileDisplayMode(this.session, {
+			raw: rawSelector,
+			immutable: true,
+			ranged: parsedSel.kind === "lines",
+		});
 		if (isMultiRange(parsedSel) && parsedSel.kind === "lines") {
 			const read = await this.#readLocalFileMultiRange(
 				artifact.path,
@@ -3425,9 +3435,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		};
 
 		let outputText: string;
-		let truncationInfo:
-			| { result: TruncationResult; options: { direction: "head"; startLine?: number; totalFileLines?: number } }
-			| undefined;
+		let truncationInfo: { result: TruncationResult; options: TruncationOptions } | undefined;
 		if (truncation.firstLineExceedsLimit) {
 			const firstLineBytes = firstLineByteLength ?? 0;
 			const snippet = firstLinePreview ?? { text: "", bytes: 0 };
@@ -3443,6 +3451,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					direction: "head",
 					startLine: startLineDisplay,
 					totalFileLines: reachedEof ? totalFileLines : undefined,
+					totalLinesUnknown: !reachedEof,
 				},
 			};
 		} else {
@@ -3454,6 +3463,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 						direction: "head",
 						startLine: startLineDisplay,
 						totalFileLines: reachedEof ? totalFileLines : undefined,
+						totalLinesUnknown: !reachedEof,
 					},
 				};
 			} else if (startLine + collectedLines.length < totalFileLines || !reachedEof) {
@@ -3756,8 +3766,9 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 export interface ReadRenderArgs {
 	path?: unknown;
 	file_path?: unknown;
-	// Legacy fields from old schema — tolerated for in-flight tool calls during transition
-	offset?: number;
+	/** Directory listings only: recursion depth. */
+	depth?: number;
+	/** Directory listings only: the entry cap. Not a line count. */
 	limit?: number;
 	raw?: boolean;
 }

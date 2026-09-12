@@ -141,12 +141,74 @@ function unescapePartialJsonString(value: string): string {
 	return out;
 }
 
+/**
+ * The inside of the top-level `env` object, as far as it has arrived: from its opening brace to its
+ * closing brace, or to the end of the buffer while the object is still open. Nothing while no
+ * top-level `env` key has arrived, or while its value has not opened as an object.
+ *
+ * Walked as JSON rather than matched as text, tracking string state, escapes and depth. `"env"`
+ * inside a command's own string is a word and not a key; a `}` inside a value is a character and not
+ * the close; and every key after the object -- `cwd`, `timeout`, the intent -- lies outside the
+ * slice, so its value is never read as an assignment. The schema orders `command, env, timeout, cwd`,
+ * so a call with both `env` and `cwd` reaches that case on every stream.
+ */
+function partialEnvObjectBody(partialJson: string): string | undefined {
+	let depth = 0;
+	let inString = false;
+	let escaped = false;
+	let stringStart = 0;
+	// A string closed at the top level that spelled `env`, until the next byte says whether it was a
+	// key (a colon follows) or a value (anything else).
+	let envKeyClosed = false;
+	// The colon after the `env` key was read, so the next value opens the object or is not one.
+	let envValueNext = false;
+	let envBodyStart: number | undefined;
+	for (let index = 0; index < partialJson.length; index++) {
+		const char = partialJson[index];
+		if (inString) {
+			if (escaped) escaped = false;
+			else if (char === "\\") escaped = true;
+			else if (char === '"') {
+				inString = false;
+				if (depth === 1 && envBodyStart === undefined && partialJson.slice(stringStart, index) === "env") {
+					envKeyClosed = true;
+				}
+			}
+			continue;
+		}
+		if (char === " " || char === "\t" || char === "\n" || char === "\r") continue;
+		if (envKeyClosed) {
+			envKeyClosed = false;
+			if (char === ":") {
+				envValueNext = true;
+				continue;
+			}
+		}
+		if (envValueNext) {
+			if (char !== "{") return undefined;
+			envValueNext = false;
+			envBodyStart = index + 1;
+			depth++;
+			continue;
+		}
+		if (char === '"') {
+			inString = true;
+			stringStart = index + 1;
+		} else if (char === "{" || char === "[") {
+			depth++;
+		} else if (char === "}" || char === "]") {
+			depth--;
+			if (envBodyStart !== undefined && depth === 1) return partialJson.slice(envBodyStart, index);
+		}
+	}
+	return envBodyStart === undefined ? undefined : partialJson.slice(envBodyStart);
+}
+
 /** The `env` object of a call whose argument JSON is still arriving, as far as it has arrived. */
 function extractPartialBashEnv(partialJson: string | undefined): Record<string, string> | undefined {
 	if (!partialJson) return undefined;
-	const envKey = /"env"\s*:\s*\{/.exec(partialJson);
-	if (!envKey) return undefined;
-	const body = partialJson.slice(envKey.index + envKey[0].length);
+	const body = partialEnvObjectBody(partialJson);
+	if (body === undefined) return undefined;
 	const entries: Record<string, string> = {};
 	const pair = /"((?:[^"\\]|\\.)*)"\s*:\s*"((?:[^"\\]|\\.)*)"?/g;
 	let match = pair.exec(body);

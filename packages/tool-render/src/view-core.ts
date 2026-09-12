@@ -9,24 +9,25 @@
  * representations (HTML strings in GUI host, React nodes in web/export renderer).
  */
 
-import type {
-	FramedBlockView,
-	HeadedBlockView,
-	NoticeView,
-	StatusRowView,
-	TextBlockView,
-	ToolView,
-	ViewCodeLines,
-	ViewDiffLines,
-	ViewDiffSide,
-	ViewHiddenCount,
-	ViewLine,
-	ViewSection,
-	ViewSpan,
-	ViewStatus,
-	ViewTailWindow,
-	ViewTone,
-	ViewTreeLines,
+import {
+	type FramedBlockView,
+	type HeadedBlockView,
+	type NoticeView,
+	type StatusRowView,
+	type TextBlockView,
+	type ToolView,
+	UNICODE_SYMBOLS,
+	type ViewCodeLines,
+	type ViewDiffLines,
+	type ViewDiffSide,
+	type ViewHiddenCount,
+	type ViewLine,
+	type ViewSection,
+	type ViewSpan,
+	type ViewStatus,
+	type ViewTailWindow,
+	type ViewTone,
+	type ViewTreeLines,
 } from "@veyyon/view";
 import { Marked } from "marked";
 
@@ -170,22 +171,12 @@ export const DIFF_SIDE_CLASSES: Record<ViewDiffSide, string> = {
 	gap: "v-diff-gap",
 };
 
-/** Canonical symbol glyphs for web/collab views. */
-export const CANONICAL_SYMBOLS: Record<string, string> = {
-	"status.success": "✓",
-	"status.error": "✕",
-	"status.warning": "!",
-	"status.info": "i",
-	"status.pending": "⋯",
-	"status.disabled": "⊗",
-	"status.enabled": "●",
-	"status.running": "◐",
-	"status.connecting": "◦",
-	"status.active": "●",
-	"status.shadowed": "○",
-	"status.aborted": "■",
-	"status.done": "✓",
-};
+/**
+ * The glyph every web host draws a symbol, emblem or notice mark key from: the same Unicode table the
+ * terminal's plain preset uses, so a card names `tool.edit` and every host draws `✎`. A key with no
+ * row draws nothing here and the span's own text in its place; the key itself is never text.
+ */
+export const CANONICAL_SYMBOLS: Readonly<Record<string, string>> = UNICODE_SYMBOLS;
 
 export const VIEW_TONES: readonly ViewTone[] = Object.freeze(Object.keys(TONE_CLASSES) as ViewTone[]);
 export const VIEW_STATUSES: readonly ViewStatus[] = Object.freeze(Object.keys(STATUS_CLASSES) as ViewStatus[]);
@@ -244,10 +235,11 @@ export interface StatusRowProps<TOutput> {
 	status?: ViewStatus;
 	live?: boolean;
 	inline?: boolean;
+	/** Present only when the host resolved the emblem's glyph; an unknown emblem leaves the status mark. */
 	emblem?: {
 		name: string;
 		tone?: ViewTone;
-		element?: TOutput;
+		element: TOutput;
 	};
 	statusMark?: {
 		status: ViewStatus;
@@ -319,8 +311,8 @@ export interface ViewAdapter<TOutput> {
 	/** Wrap trailing runs in a line. */
 	trailing(child: TOutput): TOutput;
 
-	/** Symbol resolution hook. */
-	resolveSymbol?(symbol: string, text?: string): TOutput | undefined;
+	/** The element for a symbol key, or `undefined` for a key this host has no glyph for. */
+	resolveSymbol?(symbol: string): TOutput | undefined;
 	/** Status mark symbol resolution hook. */
 	resolveStatusMark?(status: ViewStatus): TOutput | undefined;
 
@@ -396,7 +388,7 @@ export interface ViewAdapter<TOutput> {
 export function renderSpan<T>(span: ViewSpan, adapter: ViewAdapter<T>): T {
 	let contentNode: T;
 	if (span.symbol !== undefined) {
-		const resolved = adapter.resolveSymbol?.(span.symbol, span.text);
+		const resolved = adapter.resolveSymbol?.(span.symbol);
 		if (resolved !== undefined) {
 			contentNode = resolved;
 		} else {
@@ -656,10 +648,8 @@ function toTonelessLine(line: ViewLine): ViewLine {
 /** Renders a NoticeView. */
 export function renderNotice<T>(view: NoticeView, adapter: ViewAdapter<T>): T {
 	const role: "alert" | "status" = view.state === "error" ? "alert" : "status";
-	let markElement: T | undefined;
-	if (view.mark !== undefined) {
-		markElement = adapter.resolveSymbol?.(view.mark) ?? adapter.text(view.mark);
-	}
+	// A mark the host has no glyph for is dropped, never drawn as its key.
+	const markElement = view.mark === undefined ? undefined : adapter.resolveSymbol?.(view.mark);
 	const headline = renderLine(toTonelessLine(view.headline), adapter);
 	const body =
 		view.body !== undefined && view.body.length > 0

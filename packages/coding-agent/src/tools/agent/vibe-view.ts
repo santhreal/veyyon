@@ -14,6 +14,7 @@
 
 import { formatDuration } from "@veyyon/utils/format";
 import { replaceTabs } from "@veyyon/utils/tab-width";
+import { finiteNumber, isRecord } from "@veyyon/utils/type-guards";
 import type {
 	HeadedBlockView,
 	StatusRowView,
@@ -234,6 +235,115 @@ function fallbackText(result: VibeToolResult, absent: string): string {
 	return extractResultText(result.content) || absent;
 }
 
+const VIBE_CLIS: readonly VibeCli[] = ["fast", "good"];
+const VIBE_STATES: readonly VibeSessionState[] = ["starting", "running", "idle", "dead"];
+const SETTLED_STATUSES = ["completed", "failed", "cancelled"] as const;
+
+function optionalString(value: unknown): string | undefined {
+	return typeof value === "string" ? value : undefined;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+	return finiteNumber(value) ?? undefined;
+}
+
+function stringList(value: unknown): string[] {
+	return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+}
+
+function oneOf<T extends string>(value: unknown, members: readonly T[]): T | undefined {
+	return typeof value === "string" && (members as readonly string[]).includes(value) ? (value as T) : undefined;
+}
+
+/** A worker snapshot from whatever a session file recorded, or nothing when it has no id or flavour. */
+function screenOf(raw: unknown): VibeScreenSnapshot | undefined {
+	if (!isRecord(raw)) return undefined;
+	const id = optionalString(raw.id);
+	const cli = oneOf(raw.cli, VIBE_CLIS);
+	const state = oneOf(raw.state, VIBE_STATES);
+	if (id === undefined || cli === undefined || state === undefined) return undefined;
+	return {
+		id,
+		cli,
+		state,
+		model: optionalString(raw.model),
+		turns: optionalNumber(raw.turns) ?? 0,
+		queued: optionalNumber(raw.queued) ?? 0,
+		turnStartedAt: optionalNumber(raw.turnStartedAt),
+		turnMessage: optionalString(raw.turnMessage),
+		currentTool: optionalString(raw.currentTool),
+		currentToolArgs: optionalString(raw.currentToolArgs),
+		lastIntent: optionalString(raw.lastIntent),
+		trace: stringList(raw.trace),
+		outputTail: stringList(raw.outputTail),
+		lastActivity: optionalString(raw.lastActivity),
+		lastActivityAt: optionalNumber(raw.lastActivityAt) ?? 0,
+	};
+}
+
+function waitOf(raw: unknown): VibeToolDetails["wait"] {
+	if (!isRecord(raw)) return undefined;
+	const settled: NonNullable<VibeToolDetails["wait"]>["settled"] = [];
+	if (Array.isArray(raw.settled)) {
+		for (const entry of raw.settled) {
+			if (!isRecord(entry)) continue;
+			const id = optionalString(entry.id);
+			const status = oneOf(entry.status, SETTLED_STATUSES);
+			if (id === undefined || status === undefined) continue;
+			settled.push({ id, jobId: optionalString(entry.jobId) ?? "", status });
+		}
+	}
+	return {
+		settled,
+		stillRunning: stringList(raw.stillRunning),
+		timedOut: raw.timedOut === true,
+		waiting: raw.waiting === true ? true : undefined,
+	};
+}
+
+/**
+ * The details a vibe card reads, from whatever the result carries.
+ *
+ * A result read back from a session file, a collab wire or an older build is not the shape the tool
+ * wrote today, and a card that indexes into it as if it were throws inside the host's draw. Every
+ * field is checked here and a malformed one is dropped, so the card states what it can and never
+ * fails. A payload that is not a record at all reads as no details, which is the text-only card.
+ */
+export function normalizeVibeDetails(raw: unknown): VibeToolDetails | undefined {
+	if (!isRecord(raw)) return undefined;
+	const op = oneOf(raw.op, ["spawn", "send", "wait", "kill", "list"] as const);
+	if (op === undefined) return undefined;
+	const screens: VibeScreenSnapshot[] = [];
+	if (Array.isArray(raw.screens)) {
+		for (const entry of raw.screens) {
+			const screen = screenOf(entry);
+			if (screen !== undefined) screens.push(screen);
+		}
+	}
+	const details: VibeToolDetails = { op, screens };
+	if (isRecord(raw.spawned)) {
+		const id = optionalString(raw.spawned.id);
+		const cli = oneOf(raw.spawned.cli, VIBE_CLIS);
+		if (id !== undefined && cli !== undefined) {
+			details.spawned = { id, cli, jobId: optionalString(raw.spawned.jobId) ?? "" };
+		}
+	}
+	if (isRecord(raw.send)) {
+		const id = optionalString(raw.send.id);
+		const mode = oneOf(raw.send.mode, ["turn", "steered", "queued"] as const);
+		if (id !== undefined && mode !== undefined) {
+			details.send = { id, mode, jobId: optionalString(raw.send.jobId) };
+		}
+	}
+	const wait = waitOf(raw.wait);
+	if (wait !== undefined) details.wait = wait;
+	if (isRecord(raw.killed)) {
+		const id = optionalString(raw.killed.id);
+		if (id !== undefined) details.killed = { id, cancelledTurn: raw.killed.cancelledTurn === true };
+	}
+	return details;
+}
+
 /**
  * The composer card: the message, and what became of it.
  *
@@ -307,7 +417,7 @@ export function createVibeToolView(op: VibeOp): Required<ToolViewRenderer<VibeRe
 		},
 
 		renderResult(result, context, args): ToolView {
-			const details = result.details;
+			const details = normalizeVibeDetails(result.details);
 			if (details === undefined || result.isError === true) {
 				const text = fallbackText(result, "");
 				const header: StatusRowView = {

@@ -24,24 +24,29 @@ import {
 	VIEW_KINDS_DRAWN,
 	type ViewAdapter,
 } from "@veyyon/tool-render/view-core";
-import type {
-	FramedBlockView,
-	HeadedBlockView,
-	NoticeView,
-	StatusRowView,
-	TextBlockView,
-	ToolView,
-	ToolViewContext,
-	ToolViewRenderer,
-	ViewLine,
-	ViewSpan,
+import {
+	type FramedBlockView,
+	type HeadedBlockView,
+	type NoticeView,
+	type StatusRowView,
+	type SymbolKey,
+	type TextBlockView,
+	type ToolView,
+	type ToolViewContext,
+	type ToolViewRenderer,
+	UNICODE_SYMBOLS,
+	type ViewLine,
+	type ViewSpan,
 } from "@veyyon/view";
 import { classes, element } from "./html";
 
 export { VIEW_KINDS_DRAWN };
 
 export interface GuiViewOptions {
-	/** Glyph or markup for a symbol, emblem or `status:<name>` key; an unknown key draws the text. */
+	/**
+	 * Markup for a symbol, emblem or `status:<name>` key, drawn ahead of the `UNICODE_SYMBOLS` glyph
+	 * the host draws without it. A key in neither draws the span's text and no emblem, never the key.
+	 */
 	symbols?: Readonly<Record<string, string>>;
 }
 
@@ -102,10 +107,11 @@ export function createHtmlAdapter(options: GuiViewOptions = NO_OPTIONS): ViewAda
 			return element("span", { class: "v-trailing" }, child);
 		},
 		resolveSymbol(symbol: string): string | undefined {
-			return options.symbols && Object.hasOwn(options.symbols, symbol) ? options.symbols[symbol] : undefined;
+			if (options.symbols && Object.hasOwn(options.symbols, symbol)) return options.symbols[symbol];
+			return Object.hasOwn(UNICODE_SYMBOLS, symbol) ? escapeHtml(UNICODE_SYMBOLS[symbol as SymbolKey]) : undefined;
 		},
-		resolveStatusMark(status): string | undefined {
-			return options.symbols?.[`status:${status}`] ?? "";
+		resolveStatusMark(status): string {
+			return options.symbols?.[`status:${status}`] ?? escapeHtml(UNICODE_SYMBOLS[`status.${status}`]);
 		},
 		statusRow(props: StatusRowProps<string>): string {
 			const parts: string[] = [];
@@ -117,7 +123,7 @@ export function createHtmlAdapter(options: GuiViewOptions = NO_OPTIONS): ViewAda
 							class: classes("v-emblem", props.emblem.tone ? TONE_CLASSES[props.emblem.tone] : undefined),
 							"data-emblem": props.emblem.name,
 						},
-						props.emblem.element ?? escapeHtml(props.emblem.name),
+						props.emblem.element,
 					),
 				);
 			} else if (props.statusMark) {

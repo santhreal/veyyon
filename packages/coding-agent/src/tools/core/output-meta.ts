@@ -56,6 +56,8 @@ export interface TruncationOptions {
 	direction: "head" | "tail" | "middle";
 	startLine?: number;
 	totalFileLines?: number;
+	/** The scan stopped after the shown window; `result.totalLines` is a lower bound, not the file length. */
+	totalLinesUnknown?: boolean;
 	artifactId?: string;
 }
 
@@ -91,7 +93,7 @@ export class OutputMetaBuilder {
 	truncation(result: TruncationResult, options: TruncationOptions): this {
 		if (!result.truncated) return this;
 
-		const { direction, startLine = 1, totalFileLines, artifactId } = options;
+		const { direction, startLine = 1, totalFileLines, totalLinesUnknown, artifactId } = options;
 		const outputLines = result.outputLines ?? result.totalLines;
 		const outputBytes = result.outputBytes ?? result.totalBytes;
 		const isMiddle = direction === "middle" || result.truncatedBy === "middle";
@@ -150,6 +152,7 @@ export class OutputMetaBuilder {
 			shownRange: { start: shownStart, end: shownEnd },
 			artifactId,
 			nextOffset: direction === "head" ? shownEnd + 1 : undefined,
+			...(totalLinesUnknown ? { totalLinesUnknown } : {}),
 		};
 
 		return this;

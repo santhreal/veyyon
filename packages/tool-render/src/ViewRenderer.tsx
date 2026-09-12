@@ -152,16 +152,8 @@ export function createReactAdapter(host?: ToolRenderHost, summaryLabel?: string)
 		trailing(child: ReactNode): ReactNode {
 			return <span className="v-trailing tv-trailing">{child}</span>;
 		},
-		resolveSymbol(symbol: string, text?: string): ReactNode {
-			const symbolGlyph = Object.hasOwn(CANONICAL_SYMBOLS, symbol) ? CANONICAL_SYMBOLS[symbol] : symbol;
-			if (text) {
-				return (
-					<>
-						<span className="v-symbol tv-symbol">{symbolGlyph}</span> {text}
-					</>
-				);
-			}
-			return symbolGlyph;
+		resolveSymbol(symbol: string): ReactNode {
+			return Object.hasOwn(CANONICAL_SYMBOLS, symbol) ? CANONICAL_SYMBOLS[symbol] : undefined;
 		},
 		statusRow(props: StatusRowProps<ReactNode>): ReactNode {
 			let emblemMark: ReactNode = null;
@@ -479,7 +471,7 @@ export function createReactAdapter(host?: ToolRenderHost, summaryLabel?: string)
 					data-state={props.state}
 					role={props.role}
 				>
-					{props.mark !== undefined && (
+					{props.markElement !== undefined && (
 						<span className="v-notice-mark tv-emblem" data-mark={props.mark}>
 							{props.markElement}
 						</span>
@@ -688,15 +680,7 @@ export function ToolExecutionBody({
 
 	return (
 		<>
-			{display.failures?.call && <Note tone="err">Call failure: {display.failures.call.error}</Note>}
-			{display.failures?.result && (
-				<>
-					<Note tone="err">{display.failures.result.error}</Note>
-					{display.failures.result.fallbackText && (
-						<Output text={display.failures.result.fallbackText} maxLines={10} />
-					)}
-				</>
-			)}
+			{/* A renderer that threw is logged by the projection; the card shows the raw output below, never the exception. */}
 			{hasNotExecuted && <Note tone="warn">{display.notExecutedReason}</Note>}
 
 			{hasMultiFile && (

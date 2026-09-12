@@ -20,12 +20,21 @@ const ALL_DESCRIPTORS: readonly ToolDescriptor[] = [
 	...memoryDescriptors,
 ];
 
+/**
+ * One owner per card: the projection's `display` draws it when a `ToolView` produced one, and the
+ * tool's own React descriptor draws it when the projection fell through to its generic key=value
+ * card, which is the case for a tool with no `ToolView` and for a `ToolView` that threw.
+ */
+function drawsFromDisplay(props: ToolRenderProps): boolean {
+	return props.display !== undefined && props.display.generic === undefined;
+}
+
 function wrapDescriptor(desc: ToolDescriptor): ToolDescriptor {
 	const SpecializedSummary = desc.Summary;
 	const SpecializedBody = desc.Body;
 
 	const Summary = (props: ToolRenderProps) => {
-		if (props.display) {
+		if (drawsFromDisplay(props)) {
 			return createElement(ToolExecutionSummary, { ...props, name: props.name || desc.name });
 		}
 		return createElement(SpecializedSummary, props);
@@ -33,7 +42,7 @@ function wrapDescriptor(desc: ToolDescriptor): ToolDescriptor {
 
 	const Body = SpecializedBody
 		? (props: ToolRenderProps) => {
-				if (props.display) {
+				if (drawsFromDisplay(props)) {
 					return createElement(ToolExecutionBody, { ...props, name: props.name || desc.name });
 				}
 				return createElement(SpecializedBody, props);

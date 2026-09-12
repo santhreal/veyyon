@@ -99,9 +99,17 @@ function firstSelectorLine(sel: string | undefined): number | undefined {
 	}
 }
 
-/** The range an `offset`/`limit` pair names, as the selector suffix a reader recognises. */
-function rangeSuffix(args: ReadRenderArgs | undefined): string {
-	return parseReadArgs(args).rangeSuffix;
+/**
+ * The directory arguments a call passed, stated as arguments rather than as a line range: `limit`
+ * caps the entries a listing returns and `depth` is how far it recurses, and neither is a window
+ * into a file.
+ */
+function listingSuffix(args: ReadRenderArgs | undefined): string {
+	const { depth, limit } = parseReadArgs(args);
+	const parts: string[] = [];
+	if (depth !== null) parts.push(`depth ${depth}`);
+	if (limit !== null) parts.push(`limit ${limit}`);
+	return parts.length === 0 ? "" : ` (${parts.join(", ")})`;
 }
 
 /**
@@ -117,7 +125,6 @@ function describeTarget(
 		resolvedPath?: string;
 		sourcePath?: string;
 		suffixResolution?: { from: string; to: string };
-		offset?: number;
 		fallbackLabel?: string;
 	},
 ): { label: string; target?: string; line?: number } {
@@ -129,7 +136,7 @@ function describeTarget(
 		: shortenPath(basePath || options.resolvedPath || options.fallbackLabel || rawPath);
 	const absoluteInput = path.isAbsolute(basePath) ? basePath : undefined;
 	const target = options.resolvedPath ?? options.sourcePath ?? tryResolveInternalUrlSync(basePath) ?? absoluteInput;
-	const line = firstSelectorLine(split.sel) ?? options.offset;
+	const line = firstSelectorLine(split.sel);
 	return {
 		label: `${plain}${selectorSuffix}`,
 		...(target === undefined ? {} : { target }),
@@ -160,10 +167,9 @@ function header(
 		...(options.resolvedPath === undefined ? {} : { resolvedPath: options.resolvedPath }),
 		...(options.sourcePath === undefined ? {} : { sourcePath: options.sourcePath }),
 		...(options.suffixResolution === undefined ? {} : { suffixResolution: options.suffixResolution }),
-		...(args?.offset === undefined ? {} : { offset: args.offset }),
 		...(options.fallbackLabel === undefined ? {} : { fallbackLabel: options.fallbackLabel }),
 	});
-	const description = `${described.label}${rangeSuffix(args)}`;
+	const description = `${described.label}${listingSuffix(args)}`;
 	return {
 		kind: "statusRow",
 		...(options.status === undefined ? {} : { status: options.status }),

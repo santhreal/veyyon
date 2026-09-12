@@ -26,7 +26,7 @@ The tool returns one text block plus `details`.
 - `content[0].text`: markdown-like plain text sections assembled by `#buildResult(...)`:
   - `## Cancelled (N)` for cancel outcomes.
   - `## Completed (N)` for non-running jobs, including stored `resultText` and `errorText`.
-  - `## Still Running (N)` for jobs still in `running`.
+  - `## Still Running (N)` for jobs still in `running`. A job that is registered but parked behind the spawn semaphore (a task batch past `agent.maxConcurrency`) is listed there as `(queued <duration>, waiting for a concurrency slot)` rather than `(up <duration>)`.
 - `details.jobs`: array of snapshots:
   - `id: string`
   - `type: "bash" | "task"`
@@ -34,6 +34,7 @@ The tool returns one text block plus `details`.
   - `label: string`
   - `durationMs: number`
   - optional `resultText`, `errorText`
+  - optional `queued: true` while a `running` job has not yet started; cleared when the job takes a slot
 - `details.cancelled` appears only when `cancel` was passed; each item is `{ id, status }` where status is `"cancelled" | "not_found" | "already_completed"`.
 
 Streaming behavior:

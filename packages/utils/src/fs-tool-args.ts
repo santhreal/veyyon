@@ -31,37 +31,31 @@ export interface ParsedReadArgs {
 	readonly rawPath: string;
 	readonly path: string;
 	readonly sel: string | null;
-	readonly from: number | null;
-	readonly to: number | null;
-	readonly rangeSuffix: string;
+	/** Directory listings only: recursion depth. `null` when the call did not pass one. */
+	readonly depth: number | null;
+	/** Directory listings only: the entry cap. `null` when the call did not pass one. Not a line count. */
+	readonly limit: number | null;
 }
 
+/**
+ * The `read` schema has one path argument, which carries any line selector inline, plus `depth`
+ * and `limit` for directory listings. Neither number is a line window, so no `:A-B` suffix is
+ * derived from them: a card that printed `.:1-3` for `{ path: ".", limit: 3 }` described a range the
+ * tool never read.
+ */
 export function parseReadArgs(args: unknown): ParsedReadArgs {
 	if (!isRecord(args)) {
-		return { rawPath: "", path: "", sel: null, from: null, to: null, rangeSuffix: "" };
+		return { rawPath: "", path: "", sel: null, depth: null, limit: null };
 	}
 	const rawPath = getStringProperty(args, "path") ?? getStringProperty(args, "file_path") ?? "";
 	const split = splitReadSelector(rawPath);
 	const sel = getStringProperty(args, "sel") ?? split.sel ?? null;
-	const offset = finiteNumber(args.offset);
-	const limit = finiteNumber(args.limit);
-	const from = offset !== null || limit !== null ? (offset ?? 1) : null;
-	const to = from !== null && limit !== null ? from + limit - 1 : null;
-
-	let rangeSuffix = "";
-	if (args.offset !== undefined || args.limit !== undefined) {
-		const startLine = args.offset !== undefined ? (finiteNumber(args.offset) ?? 1) : 1;
-		const endLine = args.limit === undefined ? "" : `-${startLine + (finiteNumber(args.limit) ?? 0) - 1}`;
-		rangeSuffix = `:${startLine}${endLine}`;
-	}
-
 	return {
 		rawPath,
 		path: split.path || rawPath,
 		sel,
-		from,
-		to,
-		rangeSuffix,
+		depth: finiteNumber(args.depth),
+		limit: finiteNumber(args.limit),
 	};
 }
 

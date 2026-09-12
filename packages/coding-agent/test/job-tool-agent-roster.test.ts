@@ -105,6 +105,50 @@ describe("job list snapshot", () => {
 		manager.cancel("vibe-1-t1");
 	});
 
+	/**
+	 * A queued job (registered with `queued: true`, parked behind the spawn
+	 * semaphore) has done no work. The list stated it as up-and-running with the
+	 * same words as a job at work, so a batch of 20 past a ceiling of 4 read as
+	 * 20 running agents. The snapshot carries the flag until `markRunning`
+	 * clears it, and the text says queued, not up.
+	 */
+	test("a queued job is listed as queued until it starts, then as running", async () => {
+		const manager = createManager();
+		const { promise: started, resolve: start } = Promise.withResolvers<void>();
+		manager.register(
+			"task",
+			"Parser",
+			async ({ markRunning }) => {
+				await started;
+				markRunning();
+				await neverResolves();
+				return "";
+			},
+			{ id: "Parser", agentId: "Parser", ownerId: "Main", queued: true },
+		);
+		manager.register("task", "AuthLoader", neverResolves, {
+			id: "AuthLoader",
+			agentId: "AuthLoader",
+			ownerId: "Main",
+		});
+		const tool = new JobTool(createToolSession({ manager, agentId: "Main" }));
+
+		const queued = await tool.execute("call", { list: true });
+		const queuedRows = Object.fromEntries((queued.details?.jobs ?? []).map(job => [job.id, job]));
+		expect(queuedRows.Parser?.queued).toBe(true);
+		expect(queuedRows.AuthLoader?.queued).toBeUndefined();
+		expect(resultText(queued)).toMatch(/`Parser` \[task\] — Parser \(queued \S+, waiting for a concurrency slot\)/);
+		expect(resultText(queued)).toMatch(/`AuthLoader` \[task\] — AuthLoader \(up \S+\)/);
+
+		start();
+		await Promise.resolve();
+		const running = await tool.execute("call", { list: true });
+		expect(running.details?.jobs.find(job => job.id === "Parser")?.queued).toBeUndefined();
+		expect(resultText(running)).toMatch(/`Parser` \[task\] — Parser \(up \S+\)/);
+		manager.cancel("Parser");
+		manager.cancel("AuthLoader");
+	});
+
 	test("a settled job in retention does not hide its re-woken agent", async () => {
 		const manager = createManager();
 		const registry = new AgentRegistry();

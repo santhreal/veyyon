@@ -60,6 +60,15 @@ export interface TruncationMeta {
 	 * it is looking at the whole output at the exact moment it is not.
 	 */
 	elidedAmountUnknown?: boolean;
+	/**
+	 * The source was not scanned past the shown window, so `totalLines` is the
+	 * window plus its context and not the file's length. Set by a `read` of a
+	 * file over the snapshot size cap, whose scan stops once the window is
+	 * collected. The notice then states the range and that the file was not
+	 * scanned to end, and prints no `of N`: a lower bound presented as a total
+	 * reads as "the file has N lines" to the agent.
+	 */
+	totalLinesUnknown?: boolean;
 }
 
 /**
@@ -223,16 +232,20 @@ export function formatTruncationMetaNotice(truncation: TruncationMeta): string {
 	}
 
 	const range = truncation.shownRange;
+	const total = truncation.totalLinesUnknown ? "" : ` of ${truncation.totalLines}`;
 	if (range && range.end >= range.start) {
-		notice = `Showing lines ${range.start}-${range.end} of ${truncation.totalLines}`;
+		notice = `Showing lines ${range.start}-${range.end}${total}`;
 	} else {
-		notice = `Showing ${truncation.outputLines} of ${truncation.totalLines} lines`;
+		notice = `Showing ${truncation.outputLines}${total} lines`;
 	}
 
+	const qualifiers: string[] = [];
+	if (truncation.totalLinesUnknown) qualifiers.push("file not scanned to end");
 	if (truncation.truncatedBy === "bytes") {
 		const maxBytes = truncation.maxBytes ?? truncation.outputBytes;
-		notice += ` (${formatBytes(maxBytes)} limit)`;
+		qualifiers.push(`${formatBytes(maxBytes)} limit`);
 	}
+	if (qualifiers.length > 0) notice += ` (${qualifiers.join("; ")})`;
 
 	if (truncation.nextOffset != null) {
 		notice += `. Use :${truncation.nextOffset} to continue`;

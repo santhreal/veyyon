@@ -412,18 +412,10 @@
 
       function formatToolCall(name, args) {
         switch (name) {
-          case 'read': {
-            const path = shortenPath(String(args.path || args.file_path || ''));
-            const offset = args.offset;
-            const limit = args.limit;
-            let display = path;
-            if (offset !== undefined || limit !== undefined) {
-              const start = offset ?? 1;
-              const end = limit !== undefined ? start + limit - 1 : '';
-              display += `:${start}${end ? `-${end}` : ''}`;
-            }
-            return `[read: ${display}]`;
-          }
+          case 'read':
+            // The line selector rides on the path itself (`src/app.ts:50-200`); `limit` is the
+            // directory entry cap, never a line window.
+            return `[read: ${shortenPath(String(args.path || args.file_path || ''))}]`;
           case 'write':
             return `[write: ${shortenPath(String(args.path || args.file_path || ''))}]`;
           case 'edit':

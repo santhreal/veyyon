@@ -40,8 +40,8 @@ import {
 // ============================================================================
 
 function ReadSummary(props: ToolRenderProps): ReactNode {
-	const { path, sel, from, to } = parseReadArgs(props.args);
-	return <PathText path={path || "…"} from={from} to={to} sel={sel} />;
+	const { path, sel } = parseReadArgs(props.args);
+	return <PathText path={path || "…"} sel={sel} />;
 }
 
 function ReadBody({ args, result }: ToolRenderProps): ReactNode {
