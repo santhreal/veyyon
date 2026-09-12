@@ -48,6 +48,7 @@
 - An inline image whose top has scrolled above the viewport, or which is taller than the terminal, is left undrawn until a repaint can reach its origin, instead of being stamped at full size over the top of the live transcript.
 - An inline image is handed pixels at exactly the cell box the terminal will scale it into, so the terminal's own scaler no longer smears a downscaled screenshot; the transmitted payload shrinks by more than half at the same size on screen.
 - The row shown in place of a picture names the setting that undoes the reason when there is one, instead of stating the reason alone.
+- A frame that shrinks below the committed boundary with the composer focused (an IRC card expiring, a displaced todo snapshot retracting, an agent sub-row or HUD row going, the ask dialog's inline editor collapsing) re-shows the frame tail without lowering the commit index, so the rows it re-shows are never appended to native scrollback a second time when the frame grows back; under a tall running tool card this appended the same rows on every insert/retract cycle and left thousands of copies of one status row in scrollback.
 
 ## [1.4.1] - 2026-09-08
 

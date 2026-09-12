@@ -2759,21 +2759,37 @@ export class TUI extends Container {
 			// below the committed boundary no longer fills the viewport while the
 			// focused cursor sits in it. Both happen when a tall transient block
 			// collapses — a streaming reply aborting after part of its
-			// declared-final prefix reached scrollback (the audit resyncs), or a
+			// declared-final prefix reached scrollback (the audit resyncs), a
 			// tall transient prompt (the ask dialog's inline editor) shrinking
-			// back to the one-line editor (no resync: the committed transcript
-			// rows never changed). Flooring windowTop at #committedRows would pin
-			// the editor mid-screen with blank rows underneath. The prompt NEVER
-			// floats, so the frame tail
-			// is re-shown even when the transcript still overflows the viewport.
-			// The stale committed copy stays in native history; duplicating a few
-			// rows is preferable to a live editor gap — "duplication, never loss"
-			// is the ED3-unsafe fallback contract.
-			committedPrefixResliced = true;
+			// back to the one-line editor, or an ephemeral card (an IRC message,
+			// a displaced todo snapshot) retracting from under a tall live block
+			// whose rows had already scrolled off. Flooring windowTop at
+			// #committedRows would pin the editor mid-screen with blank rows
+			// underneath. The prompt NEVER floats, so the frame tail is re-shown
+			// even when the transcript still overflows the viewport.
+			//
+			// Re-shown is not re-committed. The rows above the new window top
+			// are already in native history; the commit index stays where it is,
+			// so the next growth slides the window in place (`#emitUpdate`'s
+			// uncommitted-slide rewrite) until it passes the committed boundary,
+			// and only rows beyond that boundary ever scroll off into history.
+			// Lowering the index here is what made every insert/retract cycle
+			// under a tall running card append the same rows to native scrollback
+			// again — thousands of copies of one status row over a long turn.
 			windowTop = Math.max(0, frameLength - height);
-			chunkTo = Math.min(windowTop, historyEnd);
-			this.#committedRows = chunkTo;
-			this.#committedPrefix = rawFrame.slice(0, chunkTo);
+			if (this.#committedRows > frameLength) {
+				// Only a geometry frame arrives here with the index past the frame
+				// (the collapse rebase above skips those): a multiplexer pane
+				// reflowed its own history, and rows the frame no longer has cannot
+				// stay claimed.
+				this.#committedRows = frameLength;
+				this.#committedPrefixAuditRows = Math.min(this.#committedPrefixAuditRows, frameLength);
+			}
+			if (geometryChanged) {
+				committedPrefixResliced = true;
+				this.#committedPrefix = rawFrame.slice(0, this.#committedRows);
+			}
+			chunkTo = this.#committedRows;
 		} else {
 			// Re-anchor to the frame tail, floored at the committed boundary: a
 			// shrink (or overlay close) pulls the window back down, but never
