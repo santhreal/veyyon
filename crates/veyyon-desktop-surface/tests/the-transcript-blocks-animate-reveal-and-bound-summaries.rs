@@ -50,6 +50,7 @@ impl Render for BlockView {
 					0,
 					"Reasoning details on a measured line",
 					expanded,
+					false,
 					&geometry,
 					&tokens,
 					&motion,

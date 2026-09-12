@@ -15,7 +15,7 @@
 //! chosen prefix rather than driven by a transport, and the caret is drawn at
 //! zero opacity so the frame carries prose and nothing else.
 
-use std::path::Path;
+use std::{path::Path, time::Instant};
 
 use veyyon_desktop_kit::{TokenSet, document_spans, load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_model::text::markdown::{OpenShape, settled_prefix_len};
@@ -24,28 +24,21 @@ use veyyon_desktop_scene::headless::{
 	Captured, RenderOptions, headless_context, render_view_captured,
 };
 use veyyon_desktop_surface::{
-	composer::{QueueMode, TurnPhase},
 	damage::LaidOut,
 	install_tokens,
-	model::{Block, Turn},
+	model::Block,
 	transcript::{TranscriptViewportState, agent_turn},
 };
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{App, AppContext, Context, IntoElement, Render, Window};
 
-#[path = "support/text-selection/mod.rs"]
-#[allow(dead_code, reason = "this binary uses a subset of the shared selection helpers")]
-mod harness;
-
-use harness::{along, render_session, run_holding};
-
-/// The paragraph that has settled in the turn the drag case opens on.
-const SETTLED: &str = "The first paragraph settled and cannot change.";
-
-/// One agent turn of one prose block, drawn the way the transcript draws it.
+/// One agent turn of one block, drawn the way the transcript draws it. The
+/// block is a reply or an expanded thought, which are the two surfaces a
+/// model's markdown arrives on.
 struct TurnView {
 	text:      String,
 	streaming: bool,
+	thought:   bool,
 	geometry:  TranscriptSurfaceTokens,
 	tokens:    TokenSet,
 	motion:    MotionTokens,
@@ -54,9 +47,14 @@ struct TurnView {
 
 impl Render for TurnView {
 	fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+		let block = if self.thought {
+			Block::Reason(self.text.clone())
+		} else {
+			Block::Prose(self.text.clone())
+		};
 		agent_turn(
 			0,
-			&[Block::Prose(self.text.clone())],
+			&[block],
 			None,
 			true,
 			self.streaming,
@@ -65,7 +63,7 @@ impl Render for TurnView {
 			&self.geometry,
 			&self.tokens,
 			&self.motion,
-			false,
+			self.thought,
 			&LaidOut::default(),
 			None,
 			None,
@@ -76,10 +74,26 @@ impl Render for TurnView {
 /// Draws `text` as an agent turn and reports every run of text the frame set,
 /// in the order the frame set it.
 fn drawn(text: &str, streaming: bool) -> Vec<String> {
-	frame(text, streaming)
+	runs_of(frame(text, streaming))
+}
+
+/// Every run of text a captured frame set, in the order it was set.
+fn runs_of(frame: Captured) -> Vec<String> {
+	frame
 		.text_runs
 		.iter()
 		.map(|run| run.text.to_string())
+		.collect()
+}
+
+/// The runs of an expanded thought block still arriving, without the
+/// collapsed header line. The header states the summary as one truncated
+/// label rather than as markdown, so it carries the source's own bytes and is
+/// not a reading of the reader under test.
+fn thought_runs(text: &str, streaming: bool) -> Vec<String> {
+	runs_of(thought_frame(text, streaming))
+		.into_iter()
+		.filter(|run| !run.starts_with("Thought:"))
 		.collect()
 }
 
@@ -97,6 +111,39 @@ fn frame(text: &str, streaming: bool) -> Captured {
 			let installed =
 				install_tokens(app, &tokens, &theme, Path::new("surface")).expect("installed tokens");
 			app.new(|_| TurnView {
+				thought: false,
+				text: held,
+				streaming,
+				geometry: tokens.surface.transcript,
+				tokens: installed.set,
+				motion: installed.motion,
+				state,
+			})
+		},
+	)
+	.expect("rendered turn")
+}
+
+/// The captured frame of one turn whose thought block is expanded, which is
+/// the state an operator reads a thought in while it arrives.
+fn thought_frame(text: &str, streaming: bool) -> Captured {
+	let tokens = load_bundled_tokens().expect("bundled tokens");
+	let theme = load_bundled_theme("dark").expect("bundled theme");
+	let state = TranscriptViewportState::new();
+	let held = text.to_owned();
+	let mut cx = headless_context().expect("headless renderer");
+	render_view_captured(
+		&mut cx,
+		&RenderOptions { width: 720, height: 400, scale_factor: 1.0, ..RenderOptions::default() },
+		move |_, app: &mut App| {
+			let installed =
+				install_tokens(app, &tokens, &theme, Path::new("surface")).expect("installed tokens");
+			// Expanded with motion reduced, so the reveal stands at its own
+			// height in the first frame rather than growing into it.
+			state.set_block_expanded(0, 0, true, &installed.motion, true, Instant::now());
+			let _ = state.is_animating(Instant::now(), &installed.motion, true);
+			app.new(|_| TurnView {
+				thought: true,
 				text: held,
 				streaming,
 				geometry: tokens.surface.transcript,
@@ -144,6 +191,45 @@ fn every_arriving_shape_draws_without_its_markers() {
 				"{shape:?}: {inside:?} must be on the frame, drew {runs:?}"
 			);
 		}
+	}
+}
+
+/// A thought arrives one delta at a time the way a reply does, and the
+/// expanded thought prose goes through the same boundary: every shape a
+/// prefix leaves open reaches the frame as what it is becoming. The class is
+/// every block a model's markdown arrives on, not the reply alone.
+#[test]
+fn an_arriving_thought_draws_without_its_markers_too() {
+	for shape in OpenShape::all() {
+		let (source, marker, inside) = arriving(shape);
+		let runs = thought_runs(source, true);
+		for run in &runs {
+			assert!(
+				!run.contains(marker),
+				"{shape:?}: {marker:?} must be off the thought, drew {runs:?}"
+			);
+		}
+		if !inside.is_empty() {
+			assert!(
+				runs.iter().any(|run| run.contains(inside)),
+				"{shape:?}: {inside:?} must be on the thought, drew {runs:?}"
+			);
+		}
+	}
+}
+
+/// The thought's own negative control: a finished thought draws its markers,
+/// so the reading above is the boundary at work rather than a reader that
+/// drops punctuation.
+#[test]
+fn a_finished_thought_draws_its_own_markers() {
+	for shape in [OpenShape::Table, OpenShape::Strong] {
+		let (source, marker, _) = arriving(shape);
+		let runs = thought_runs(source, false);
+		assert!(
+			runs.iter().any(|run| run.contains(marker)),
+			"{shape:?}: a finished thought draws {marker:?}, drew {runs:?}"
+		);
 	}
 }
 
@@ -199,12 +285,7 @@ fn the_settled_text_is_drawn_the_same_when_the_next_delta_lands() {
 /// was drawn over.
 #[test]
 fn the_spans_of_the_two_pieces_are_the_spans_of_the_whole_block() {
-	for document in [
-		"# Report\n\nA paragraph with **strong** in it.\n\n| a | b |\n|--|--|\n| 1 | 2 |\n\n- \
-		 one\n- two\n",
-		"```rust\nlet held = 1;\n```\n\nprose after the fence\n",
-		"one line\nand another\n\n> a quote\n",
-	] {
+	for document in documents() {
 		for split in (0..=document.len()).filter(|at| document.is_char_boundary(*at)) {
 			let prefix = &document[..split];
 			let settled = settled_prefix_len(prefix);
@@ -216,51 +297,45 @@ fn the_spans_of_the_two_pieces_are_the_spans_of_the_whole_block() {
 	}
 }
 
-/// The turn the drag case opens on: one settled paragraph, then a block still
-/// arriving with an emphasis open in it.
-fn arriving_turn() -> Vec<Turn> {
-	vec![Turn::Agent {
-		blocks: vec![Block::Prose(format!("{SETTLED}\n\nand then **word"))],
-		model:  None,
-	}]
+/// The documents the split-point walks run over: a heading, a paragraph with
+/// inline markers, a grid, a list, a fence and a quote.
+fn documents() -> [&'static str; 3] {
+	[
+		"# Report\n\nA paragraph with **strong** in it.\n\n| a | b |\n|--|--|\n| 1 | 2 |\n\n- \
+		 one\n- two\n",
+		"```rust\nlet held = 1;\n```\n\nprose after the fence\n",
+		"one line\nand another\n\n> a quote\n",
+	]
 }
 
-/// A drag takes the settled words, and the arriving block offers nothing to
-/// take: its shape changes with the next delta, so a selection into it would
-/// name text that is about to be something else. This drives the live window,
-/// which is where the boundary decides which piece carries the spans.
+/// The words a frame has to carry: every run of three or more alphanumeric
+/// bytes in the source. A marker is punctuation, so closing a shape can move
+/// a word but cannot drop one.
+fn words(source: &str) -> Vec<String> {
+	source
+		.split(|byte: char| !byte.is_alphanumeric())
+		.filter(|word| word.len() >= 3)
+		.map(str::to_owned)
+		.collect()
+}
+
+/// Every prefix of a document renders, and every word in it is on the frame.
+/// This is the split-point fuzz: a shape closed mid-arrival is drawn as
+/// another shape, never as fewer characters, and no prefix panics the
+/// renderer.
 #[test]
-fn a_drag_takes_the_settled_words_and_the_arriving_block_offers_none() {
-	let (settled, arriving) = render_session(arriving_turn(), |session| {
-		session
-			.update(|view, _window, _cx| {
-				view.state_mut().turn = TurnPhase::Running { queue_mode: QueueMode::Steer };
-			})
-			.expect("the turn is running");
-		let frame = session.frame().expect("frame renders while the turn runs");
-		let first = run_holding(&frame, "settled and cannot");
-		session
-			.drag(along(first, 0.2), along(first, 0.9))
-			.expect("the drag crosses the settled paragraph");
-		let settled = session
-			.update(|view, _window, _cx| view.selected_text())
-			.expect("the view reads back its selection");
-		let frame = session.frame().expect("frame renders after the drag");
-		let word = run_holding(&frame, "word");
-		session
-			.drag(along(word, 0.1), along(word, 0.9))
-			.expect("the drag crosses the arriving block");
-		let arriving = session
-			.update(|view, _window, _cx| view.selected_text())
-			.expect("the view reads back its selection");
-		(settled, arriving)
-	});
-	assert!(
-		!settled.is_empty() && SETTLED.contains(settled.trim()),
-		"the settled paragraph is what the drag took, took {settled:?}"
-	);
-	assert!(
-		arriving.is_empty(),
-		"the arriving block offers no span to drag over, took {arriving:?}"
-	);
+fn every_prefix_renders_and_keeps_the_words_it_holds() {
+	for document in documents() {
+		for split in (0..=document.len()).filter(|at| document.is_char_boundary(*at)) {
+			let prefix = &document[..split];
+			let runs = drawn(prefix, true);
+			let frame = runs.join(" ");
+			for word in words(prefix) {
+				assert!(
+					frame.contains(&word),
+					"split {split} of {document:?} lost {word:?}, drew {runs:?}"
+				);
+			}
+		}
+	}
 }
