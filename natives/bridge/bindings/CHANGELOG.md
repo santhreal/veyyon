@@ -2,10 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- `PtyRunResult.signal` names the signal (`SIGTERM`, `SIGKILL`) that ended a PTY-run command, recovered from the wait status; a signal death also reports `exitCode` 1, so a consumer that attributes the death reads `signal` first.
+
 ### Fixed
 
 - Restored APFS isolation compilation on macOS and stale destination preparation for Windows block-clone isolation.
 - Plain isolation diffs classify binary contents on either side of a symlink transition without dereferencing links.
+- `IsoResolveResult.reason` is set only when `fellBack` is true; a resolution that honoured the preferred backend carried the first unavailable probe's text as if it explained a fallback.
 
 ### Changed
 

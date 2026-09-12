@@ -620,7 +620,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `agent.isolation.mode` | Isolation Mode | enum | `none` | Filesystem isolation for spawned agents. Auto picks the best backend available on this host: a copy-on-write filesystem, then overlayfs or ProjFS, then a git worktree or a recursive copy. Values: `none`, `auto`, `apfs`, `btrfs`, `zfs`, `reflink`, `overlayfs`, `projfs`, `block-clone`, `rcopy`. |
+| `agent.isolation.mode` | Isolation Mode | enum | `none` | Filesystem isolation for spawned agents. Auto picks the best backend available on this host: a copy-on-write filesystem, then overlayfs or ProjFS, then a git worktree or a recursive copy. A named backend the host cannot provide falls back the same way; the agent's result then opens with the backend it ran on and why, and the fallback is logged. Values: `none`, `auto`, `apfs`, `btrfs`, `zfs`, `reflink`, `overlayfs`, `projfs`, `block-clone`, `rcopy`. |
 | `agent.isolation.merge` | Isolation Merge Strategy | enum | `patch` | How an isolated agent's changes are brought back: as one applied patch, or as a merged branch. Values: `patch`, `branch`. |
 | `agent.isolation.commits` | Isolation Commit Style | enum | `generic` | Commit message style for changes made inside nested repositories. Values: `generic`, `ai`. |
 | `worktree.base` | Worktree Base Directory | string | _(unset)_ | Base directory for the worktrees this program manages: agent isolation copies, `github` PR checkouts and `veyyon worktree` cleanup. Unset: the active profile's `wt/` directory (~/.veyyon/profiles/\<name>/wt, or its XDG data equivalent). Absolute or ~-relative; a relative path is ignored. The VEYYON_WORKTREE_DIR environment variable overrides this. |
@@ -637,7 +637,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `accounts.loadBalancing` | Account Load Balancing | boolean | `false` | Off: only the account you chose is used, and a session waits out its quota window. On: when that account hits its quota or rate limit, continue on another account of the same provider and say so. A revoked account always fails over regardless, with a notice. |
+| `accounts.loadBalancing` | Account Load Balancing | boolean | `true` | On: when the account you chose hits its quota or rate limit, continue on another account of the same provider and say so. Off: only that account is used, and a session waits out its quota window. A revoked account always fails over regardless, with a notice. |
 
 ### Services
 

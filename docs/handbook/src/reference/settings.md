@@ -1077,8 +1077,8 @@ Applied whenever raw settings are loaded (profile config, `--config` overlays, a
 | `task.disabledAgents` | one row per agent in `agent.agents` |
 | `task.agentModelOverrides` | Dropped and reported; configure per-agent `model` and `thinkingLevel` under `agent.agents.<name>` with `agent.sharedModel: false`, or set `model:` in agent frontmatter. |
 | `modelRoles.task` | `agent.model` (the `task` role is retired) |
-| `hindsight.dynamicBankId: true` (nested or flat spelling) | `hindsight.scoping: per-project` when no scoping is set; `false` sets nothing; the key is dropped |
-| `hindsight.agentName` (nested or flat spelling) | `hindsight.bankId` when no bankId is set and the name is not the product default; the key is dropped |
+| `hindsight.dynamicBankId: true` (nested or flat spelling) | `hindsight.scoping: per-project` when no scoping is set; `false` sets nothing; the old key is dropped |
+| `hindsight.agentName` (nested or flat spelling) | `hindsight.bankId` when no bankId is set and the name is not the product default; the old key is dropped |
 | `providers.parallelFetch` | removed; an emptied `providers:` section is removed with it |
 | `lastChangelogVersion` | moved to a marker file and stripped from `config.yml` |
 | `collapseChangelog` | removed; startup no longer prints release notes, so there is nothing to collapse. Use `startup.updateNotice` to control the one-line notice that replaced it. |

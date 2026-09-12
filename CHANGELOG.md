@@ -26,9 +26,12 @@
 - `readSourceFsPath` is exported from `tools/fs/read-view` instead of `tools/fs/read` and remains available from the package root.
 - `metadataLine` is exported from `tools/core/render-utils` instead of `tools/web/search/view`.
 - Removed the unused `inheritedAgentDir` keybinding option and `ohMyPiXAIUserAgent` alias; xAI requests continue to use `veyyonXAIUserAgent`.
+- `@veyyon/coding-agent/extensibility/hooks` no longer exports `HookRunner`, `HookToolWrapper`, `discoverAndLoadHooks`, `loadHooks` and `execCommand`: the legacy hook runtime is removed, a plugin's `hooks` entry loads through the extension runner, and the subpath keeps the hook types.
+- `UNICODE_SYMBOLS` is `@veyyon/view`'s; `theme/symbols` re-exports it and keeps the terminal-only Nerd Font and ASCII presets, the spinner frames and the bar ramps.
 - Provider-specific test override setters are replaced by `setProviderModuleOverrideForTest(api, module)`.
 - `countLines`, `parseReadArgs`, `parseReadDetails`, `parseWriteArgs` and `parseWriteDetails` are `@veyyon/utils/fs-tool-args`; the package no longer exports them.
 - `num` is gone: the finite-number read is `finiteNumber` from `@veyyon/utils`, which `util` re-exports beside `isRecord`; `str` is defined in and exported from `util`, and the `scalars` module is removed.
+- `ViewAdapter.resolveSymbol(symbol)` takes the key only and returns `undefined` for a key the host has no glyph for; `StatusRowProps.emblem.element` is present exactly when the glyph resolved.
 - `@veyyon/tui` exports rendering only. The string, escape, keyboard, mouse, motion and layout-math primitives it also carried are now `@veyyon/utils` modules, imported by subpath: `@veyyon/utils/{ansi,autocomplete,bar,bracketed-paste,deccara,fuzzy,keybindings,keys,kill-ring,kitty-graphics,latex-block,latex-unicode,loop-watchdog,motion,mouse,padding,paint-columns,paint-ground,paint-surface,sgr,symbols,tab-width,text-sizing,tight-mode,tmux,width,word-nav,wrap}`. The barrel re-exports none of them.
 - `MOTION` and the grow, hover, paint and settle curve tables are one module, `@veyyon/utils/motion`.
 - `EditorComponent` is `@veyyon/tui/components/editor-component`.
@@ -36,6 +39,7 @@
 - `TUI.overlayStack` is private. The overlay stack's behavior is `OverlayStack` in `@veyyon/tui/core/overlay`.
 - `getTerminalId` is `@veyyon/utils/ttyid`, and `ImageFallbackReason` is `@veyyon/utils/image-fallback`. Neither is rendering, and a caller that needs a session id or the name of a cause no longer depends on the terminal renderer to get it.
 - `detectTerminalId` and `TerminalId` are exported from `@veyyon/utils/terminal-emulator` instead of `@veyyon/tui/terminal-capabilities`.
+- `ParsedReadArgs` from `@veyyon/utils/fs-tool-args` carries `depth` and `limit`, the `read` schema's directory-listing arguments, in place of `from`, `to` and `rangeSuffix`: the schema has no `offset`, its `limit` is an entry cap, and the line window rides on the path's own selector, so no `:A-B` is derived from either number.
 - Bumped `COLLAB_PROTO` to `4`: tool execution display projections (`ToolExecutionDisplay`) are carried on tool calls, tool results, and live execution events. Old guests speaking proto v3 or below are rejected with the protocol-mismatch error.
 
 ### Added
@@ -65,6 +69,11 @@
 - `runCommitAgentSession` reports its run through a `CommitAgentReporter` instead of writing to stdout itself, and `commit/agentic/agent-render.ts` is the only module that draws it, so the commit domain names neither the terminal engine nor chalk; `veyyon commit` prints the same thinking line, markdown, tool tree and totals it printed before.
 - The `/collab` QR block draws its own leading blank row instead of being presented behind a spacer, so the slash-command registry no longer imports the terminal engine; the transcript shows the same blank row above the code and above the too-narrow hint.
 - The compaction policy vocabulary (check outcomes, the bar a pass is measured against, the truncation edge budget, the prune cache window and idle flush, and the recovery band) lives in `@veyyon/kernel/session/agent-session-compaction-policy` rather than interleaved with shutdown timeouts and credential backoffs in `agent-session.ts`, with no behavior change.
+- `resolveSlashCommand` in `slash-commands/helpers/parse` resolves a parsed invocation against a command set, joining the first argument token back onto a namespaced plugin command name.
+- `SingleResult.isolationFallback` records the requested and actual isolation backends and the reason when an explicit mode was not honoured; `isolationModeName` in `task/worktree` states a backend's setting spelling.
+- `TruncationMeta.totalLinesUnknown` states that a read's scan stopped after the shown window, so the notice omits a total it does not have.
+- `PLUGIN_MANIFEST_ENTRY_KEYS` and `PluginManifestEntryKey` in `extensibility/plugins/loader` state the four manifest entry keys a plugin contributes through.
+- `cli/stdout-drain` exports `awaitStdoutDrain` and `exitAfterStdoutDrain`, the one way a non-interactive mode exits after its last frame is written.
 - `AgentTool.view` takes a host-agnostic `ToolViewRenderer` from `@veyyon/view`, so a tool describes its call and result cards without receiving a theme or returning a host component; where a tool also declares `renderCall`/`renderResult`, the host-specific pair still wins.
 - `closeModelCache()` closes the shared model-cache database and permits reopening it at the current cache path.
 - Exported `stripApplyPatchPathNoise` from `@veyyon/hashline` for shared header-path normalization across streaming and patch parsing.
@@ -80,6 +89,7 @@
 - `@veyyon/kernel/settings/schema` publishes the settings schema registry: `declareSettings` registers a package's table and rejects a path declared twice, `DeclaredSettings` merges each table's type so `SettingPath` and `SettingValue` span every registered table, and `getDefault`, `getType`, `getUi`, `hasUi`, `getPathsForTab`, `retiredBy`, `isSettingPath`, `getEnumValues`, `isUnsetNumberPath` and `describeSettingTypeMismatch` answer from the registry; a query before any table has registered, or for a path no table declares, throws naming the cause. `@veyyon/kernel/settings/optional-number` publishes the unset-number owner, moved from `@veyyon/coding-agent/config/optional-number` unchanged.
 - `@veyyon/kernel/settings/store` publishes `SettingsStore`, the layered settings store moved out of `@veyyon/coding-agent/config/settings`: the profile, overlay and runtime layers and their merge, `get`, `set`, `unset`, `override`, `getSource`, `isConfigured`, `layerValue`, the YAML load with quarantine and type-mismatch collection, the debounced locked text-preserving save with its failure report, `forkWithRuntimeOverrides`, `cloneForCwd`, `reloadForCwd` and the one-shot migration stamp (`stripLegacyUnsetSentinels`, `stampOwnedConfigMigrations`, `SETTINGS_MIGRATION_VERSION`), with `RawSettings`, `SettingsOptions`, `SettingSource`, `SettingsSaveFailure`, `InvalidSettingValue`, `QuarantinedSettingsFile`, `getByPath`, `setByPath`, `deleteByPath` and `deepMergeSettings`. The store takes a `SettingsStoreHooks` at construction (`globalBinding`, `migrate`, `loadLegacySources`, `afterOwnedConfigLoaded`, `resolveForCwd`, `applyHook`, `applyAllHooks`, `notifyEffectiveChange`, `mergedViewRebuilt`) and names no setting. `@veyyon/kernel/settings/signal` publishes `SettingSignal`, `clearSettingSignals` and `settingSignalListenerCounts`, moved unchanged.
 - `@veyyon/model` states the model and message vocabulary: the `Model` row with its thinking config and the `Effort` ladder, the `Message` envelope with its content blocks and the streamed `AssistantMessageEvent` union, the `ToolCallMetrics` and `AssistantTurnMetrics` study records, and the service-tier vocabulary. A provider implements a stream and a host reads a turn without importing the catalog that resolves the model or the client that drives it. The package has no dependencies.
+- `PtyRunResult.signal` names the signal (`SIGTERM`, `SIGKILL`) that ended a PTY-run command, recovered from the wait status; a signal death also reports `exitCode` 1, so a consumer that attributes the death reads `signal` first.
 - `@veyyon/plugin` states the plugin manifest vocabulary: `PluginManifest`, `PluginFeature`, `PluginSettingSchema` with its four setting kinds and `PluginSettingType`. A package declares what its `package.json` `veyyon` field contributes without importing the loader that installs it or the host that draws its settings. The package has no dependencies.
 - `@veyyon/session` states what a session file is made of: the `SessionEntry` vocabulary, the `AgentMessage` union and the `CustomCompactionSessionEntries` and `CustomAgentMessages` hooks a package augments. It imports only types from `@veyyon/model`.
 - `@veyyon/settings` states the setting declaration vocabulary: `SettingDef` and its seven definition kinds, `SettingType` with `SETTING_TYPES` and `isSettingType`, `SettingTab`, `AnyUiMetadata` and `SubmenuOption`. A package declares a setting in this vocabulary without importing the store that persists it or the host that draws it. The package has no dependencies.
@@ -128,6 +138,8 @@
 - `ViewSpan.live` states that the thing a run names is still in flight, so a host with a clock may animate that run alone while the settled columns beside it stand still, and a host with no clock draws it in its tone.
 - `StatusRowView.descriptionFits` states that a row must keep its description whole by shortening it inside itself, so a card whose description is the file it acted on keeps both the path and the counts after it, and a card whose description is prose is left for the host to clip at its own edge.
 - `ViewSpan.agentId` states a semantic agent identifier for subagent drill-down navigation in hosts that support it.
+- `UNICODE_SYMBOLS` and `SymbolKey` are the one table of glyphs every host draws a symbol, emblem or status mark from, moved here from the terminal's theme so the GUI and the web renderers draw the same `✎` for `tool.edit`.
+- `ToolViewContext.showResolvedModel` states whether the surface shows the model a spawned agent resolved to beside its name; the surface reads the setting and the view receives the answer, so a transcript export with no setting store draws the same card with the badge off.
 - The site scrapers behind the `fetch` tool are their own package: 79 site handlers, the shared page loader and the Parallel extraction client, moved out of `@veyyon/coding-agent` unchanged.
 - A scraper states the host capabilities it needs through `ScrapeServices` — the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch-provider preference — instead of importing the agent's settings, storage and process modules.
 - Tool execution display metadata includes per-call grouped-read status, paths, previews and line numbers.
@@ -436,6 +448,8 @@
 - `genericRenderer` is exported once, through the `generic` module, instead of also being re-exported by the registry. No user-visible behavior changes.
 - React list keys are derived from each item's own identity (id, path, label or text) through a `keyed` helper instead of the array index; rendered output is unchanged.
 - `react` and `react-dom` are named as literal `19.2.7` peer dependencies so a consumer outside the workspace resolves them; the version is the one the workspace catalog pins.
+- `CANONICAL_SYMBOLS` is `@veyyon/view`'s `UNICODE_SYMBOLS`, the table the terminal's plain preset draws from, so a card that names `tool.edit` draws `✎` in every host; the web-only status subset it was before is gone.
+- The `read` summary shows the path and its selector only; `limit` is the directory entry cap, not a line window, so no `:A-B` is derived from it.
 - `Editor.setCursor` clamps its line and column through `clampLow` from `@veyyon/utils/math`; no behavior change.
 - `Editor` and `Input` deliver a chunk's typed prefix, paste payload and remainder through `BracketedPasteHandler.route` with sinks built once per component; the bytes each part reaches are unchanged.
 - Input drain and terminal stop pop the kitty keyboard protocol, cancel the pending modifyOtherKeys probe and reset modifyOtherKeys through one `#disableKeyboardProtocols`; the bytes written at shutdown are unchanged.
@@ -474,6 +488,7 @@
 - `workspaceModuleReachResolution()` resolves every workspace member declared by the root manifest, at whatever depth it sits, instead of the direct children of `packages/`, so a cross-package specifier into `@veyyon/kernel`, `@veyyon/tui`, a contract or a plugin resolves again and every module-reach ceiling built on it measures what it claims.
 - `isKeyRelease` and `isKeyRepeat` classify a Kitty event through one check of the protocol state, the paste marker and the event pattern; the answers are unchanged.
 - Doc comments refer to the spawned-agent wall as the agent wall. No behavior change.
+- `ViewSpan.symbol` names a key of `UNICODE_SYMBOLS`; a key no host has draws the span's `text`, never the key.
 - The Hugging Face handler fetches a model, dataset or space record and its README through one `loadHfResource`, and the YouTube handler downloads the manual and auto-generated subtitle tracks through one `downloadSubtitleText`; no behavior change.
 - Consolidated specialized web scraper site handlers into parameterized domain engines and declarative site definitions.
 - The Discourse handler trims its base path with `trimTrailingSlashes` from `@veyyon/utils/url` rather than its own inline strip. No user-visible behavior changes.
@@ -489,10 +504,16 @@
 ### Removed
 
 - `WRITE_GUTTER_MIN_WIDTH` is no longer exported: the line-number gutter of a code card is the host's, stated once in `src/modes/terminal/draw/draw-tool-view.ts`, and no tool sets it.
+- `resolveModelFromSettings` is removed from `config/model-resolver`; the role chain a session starts from resolves through `resolveModelRoleValue`, which reports why a role failed.
+- `ReadRenderArgs` no longer carries `offset`: the `read` schema states a line window on the path itself (`src/app.ts:50-200`), and `limit` is the directory entry cap.
 - `@veyyon/kernel/session/content-text` is gone: the session spine calls the `contentText` owner in `@veyyon/utils`, which carries the separator, image, `trimBlocks` and `trimString` options that copy held.
 
 ### Fixed
 
+- Legacy `hindsight.dynamicBankId` and `hindsight.agentName` written as flat keys migrate to `hindsight.scoping` and `hindsight.bankId` and are dropped on rewrite instead of surviving as dead entries.
+- `accounts.loadBalancing` ships on again: a quota or rate-limit wall on the chosen account continues the turn on an idle account of the same provider, announced with both account names, instead of ending it on `Provider requested 1800000ms wait, exceeds retry.maxDelayMs`; the explicit account choice still leads while it has quota.
+- Removing the retired `providers.parallelFetch` key no longer leaves an empty `providers:` section in the rewritten config.
+- A nested legacy `task.isolation.enabled` no longer overrides an explicit `task.isolation.mode` during migration.
 - Corrected comments that named a distribution channel or runtime API the project does not use; no behavior change.
 - A subagent that inherits the session's model shows that model and effort in its Subagents row, the task widget and the `/agents` roster, and keeps the badge when a follow-up turn wakes it.
 - An inherited subagent model's badge prints the effort the session settled on, so a parent running `auto` shows the resolved level rather than `auto`.
@@ -583,6 +604,37 @@
 - A turn that calls a tool and then stops with text is treated as ending in text: the todo reminder fires again as the board changes instead of falling silent after the first one, and the rewind, plan-mode, verification and code-review checks run at that stop.
 - The goal report from `/goal show` and the goal detail menu states the goal's status once: a paused goal read `Status: paused (paused)`, and a finished one `Status: complete (paused)`. Goal mode being off is now named only where the status does not already carry it, as `active (mode off)`.
 - A goal objective reaches every surface that shows it as one plain line: the `/goal show` report, the `/goal` menu title, the warning a disabled Goal Mode prints over a stored goal, the `/goal` autocomplete row and the goal tool's own card each formatted the objective raw, so an escape sequence in one styled or moved the rest of the surface, a tab opened a hole in it, and a newline split it across two fields.
+- `veyyon profile new` runs in the compiled binary; 1.4.1 failed with `awaitPromise is not defined` from a mis-minified dynamic import, and `--smoke-test` and the installer CI now drive the profile seed path through the artifact.
+- `--export <path>` of a missing or non-file session exits non-zero with `Session file not found` or `Not a session file` instead of writing an empty transcript and reporting success.
+- `--mode json` exits `EXIT_FAILURE` on an errored turn and `EXIT_INTERRUPTED` on an aborted one, as text mode does; print and RPC mode wait for stdout to drain before exiting so a piped consumer receives the last frame.
+- RPC mode answers a malformed stdin line with the documented `parse` error frame and keeps reading; the previous chunk parser threw on the first bad line and ended the session.
+- `veyyon install` with no target exits 2 as a usage error, the same as a missing positional in every other subcommand.
+- `--help` lists every `--mode` value from the parser's own table, `acp` included; the export example and the `worktree` description state the profile paths (`~/.veyyon/profiles/<name>/…`).
+- `--no-extensions` disables discovery only: a path named with `-e` on the command line still loads, in a session and in `veyyon models`, as the flag's help text states.
+- A `--model @role` whose role is unset, unknown or cyclic is reported as that role failure; a model id no model matches is reported with the count of models with usable credentials and the nearest candidates, instead of `Model "x" not found. Run "veyyon models"`.
+- A plugin's slash command runs from `/<plugin>:<name>` and from `/<plugin> <name>`; the parser split the namespaced spelling at the colon, so an exact lookup never matched.
+- The `goal` tool is a `read`-tier tool: it prompted for approval in ask mode and was denied outright in plan mode, having no declared tier.
+- An explicit `agent.isolation.mode` the host cannot provide runs on the next backend, records `isolationFallback` on the result, opens the merge summary with a notification naming the requested and actual backends, and is logged; `auto` reports no fallback.
+- A spawned agent whose merge back into the parent tree does not land (a patch that does not apply, a branch that does not merge, a nested repository patch that fails) is reported as `merge-failed` instead of a clean completion whose work is not in the tree.
+- The task card's line and size counts describe the block the reader sees: when the child's output was empty and stderr or a placeholder stands in for it, the artifact's `0B` no longer labels that text.
+- Claude Code's `~/.claude/plugins/installed_plugins.json` is read only when `discovery.importForeignConfig` is on, and the plugin-roots cache is keyed on that setting; marketplace installs, `--plugin-dir` roots and a trusted project registry are the operator's own and load at the default, and their skills are part of the profile's skill set.
+- The `read` card states `depth` and `limit` by name after the path; `read { path: ".", limit: 3 }` drew `.:1-3`, a line range the tool never read, and the HTML export's call line did the same.
+- A ranged read of an immutable source (`archive.zip:src/a.ts:2-3`, `artifact://x:2-3`) numbers its lines whatever `readLineNumbers` is set to, so the requested lines are attributable.
+- A `read` of a file over the snapshot size cap states `Showing lines A-B (file not scanned to end)` and no `of N`: the scan stops once the window is collected, so `N` was a lower bound presented as the file's length.
+- The streaming `bash` preview reads the `env` object by walking the partial JSON, so `"env"` inside a command string is not an assignment list and a `cwd` or `timeout` after the object is not an entry.
+- No tool card text reaches the terminal with a control sequence in it: `drawToolView` strips escapes from every text field of every view kind, so a model-supplied reason, a file's contents or a generic argument carrying `\x1b[2J` or an OSC 8 link is drawn as text; a `captured` run keeps the styles the terminal replays and loses the rest.
+- A tool card whose renderer throws falls back to the generic arguments-and-output card, never to the exception's text; the `vibe` card reads a recorded session's details field by field, so a malformed record draws the generic card rather than failing the transcript.
+- The `job` card lists a queued job as queued, with its position, rather than as running.
+- A daemon the broker ran on a PTY that died to a signal reports that signal (`SIGTERM`, `SIGKILL`) instead of the shell's exit code 1; the addon recovers the signal from the wait status.
+- The launch broker's idle reaper stops `last-client-exit` daemons when the last client disconnects and a persistent sibling keeps the broker alive, and re-arms when that persistent daemon ends so the broker exits too.
+- A plugin whose `package.json` or `.claude-plugin/plugin.json` cannot be read or parsed costs that plugin and is reported through the operator channel and `veyyon plugin doctor`; it no longer aborts the session's plugin load.
+- A plugin manifest's `hooks` and `commands` entries load: hooks through the extension runner and commands as `plugin`-sourced custom commands; only `tools` and `extensions` were read before.
+- Two extensions registering the same tool or command name, and a custom tool or command that fails to load, are reported on the operator channel; the later registration wins and the earlier one was silently dropped.
+- An MCP tool that withholds arguments withholds values only; a key-only error was delivered as `undefined`.
+- An MCP server whose reconnects trip the breaker is reported on the operator channel with the server name and the suspension; the suspension was logged only.
+- A CommonJS extension (`module.exports = …`, or a transpiled module with `exports.__esModule`) runs instead of being reported as missing its default export; the wrapper mirrors Bun's `__esModule` interop.
+- A marketplace catalog entry the parser drops is reported with the plugin name, the failing field and the reason: `veyyon plugin marketplace add`/`update` print it to stderr and a session states it on the notice channel; the entry was skipped in silence and the cached catalog persisted without it.
+- `accounts.loadBalancing` ships on: with it off, a quota or rate-limit wall on the chosen account ended the turn on `Provider requested 1800000ms wait, exceeds retry.maxDelayMs` with an idle account of the same provider one row away; the explicit choice still leads while it has quota, and every move names both accounts.
 - `AgentTool.renderResult` accepts the optional call arguments already supported by custom and extension tool renderers.
 - A history summary whose single request times out, or does not fit the summarizing model's context window, is produced in stages: the span is summarized as consecutive segments of up to 32k tokens, four at a time, and the segment summaries are merged in rounds into one summary, so a 234k-token session on a model that never begins a whole-span answer still compacts; `compact()` reports the segment count in `summaryStages` and takes `summaryStaging: "staged"` to start staged.
 - A provider's server-side compaction runs under its own ten-minute deadline instead of the three-minute remote-summarizer deadline that cut every codex compaction of a large span.
@@ -595,6 +647,7 @@
 - Credential-store startup applies SQLite busy handling and WAL mode before initializing refresh leases, allowing concurrent launches to wait for database locks.
 - Case-insensitive host classification no longer treats control characters as URL punctuation.
 - `codingAgentDir()` resolves `packages/coding-agent` from the repository root, so the binary staleness preflight scans the coding agent's sources again after the package moved to `tests/evals`; it had resolved a sibling directory that does not exist and reported every binary current.
+- A plain `INS.POST` anchored on the trailing phantom line of a newline-terminated file appends the body as new terminated lines, like `INS.TAIL`; the rebuild emitted the phantom sentinel as an empty line and left the new last line without its newline.
 - Settings queries ignore inherited object properties.
 - `Type.Pick` emits the keys it was asked for in the order they were asked for, and keeps a picked key that is own-but-non-enumerable on the validated value.
 - A session whose recorded leaf id no longer names an entry reopens on its last entry instead of on an empty conversation.
@@ -603,10 +656,13 @@
 - `StringEnum` options in the legacy plugin shim avoid `any`.
 - Restored APFS isolation compilation on macOS and stale destination preparation for Windows block-clone isolation.
 - Plain isolation diffs classify binary contents on either side of a symlink transition without dereferencing links.
+- `IsoResolveResult.reason` is set only when `fellBack` is true; a resolution that honoured the preferred backend carried the first unavailable probe's text as if it explained a fallback.
 - Tool summary formatting resolves its string conversion helper before normalizing whitespace and truncating output.
 - Shared HTML and React view adapters preserve symbol glyphs and render unknown symbol identifiers as text.
 - Compact tool card headers omit repeated tool labels while preserving operation suffixes and unrelated titles.
 - Restored field and badge parity across consolidated React tool descriptors for launch, job, bash, read, write, edit, set_cwd, generate_image, inspect_image, search, and memory tools.
+- A tool whose `ToolView` renderer threw is drawn by its own React descriptor, or by the generic arguments-and-output card when it has none; the exception's text was shown as the card body.
+- A symbol, emblem or notice mark key no host has draws the span's text, or nothing, never the key itself.
 - Disposing a `Box` disposes its child components and their resources.
 - Enter submits the current message when an edit has invalidated the open file-completion popup.
 - Independent offscreen edits no longer accumulate into a false history rebuild, and changes to plain components preserve committed history until an explicit replay.

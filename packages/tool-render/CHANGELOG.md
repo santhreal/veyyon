@@ -8,6 +8,7 @@
 
 - `countLines`, `parseReadArgs`, `parseReadDetails`, `parseWriteArgs` and `parseWriteDetails` are `@veyyon/utils/fs-tool-args`; the package no longer exports them.
 - `num` is gone: the finite-number read is `finiteNumber` from `@veyyon/utils`, which `util` re-exports beside `isRecord`; `str` is defined in and exported from `util`, and the `scalars` module is removed.
+- `ViewAdapter.resolveSymbol(symbol)` takes the key only and returns `undefined` for a key the host has no glyph for; `StatusRowProps.emblem.element` is present exactly when the glyph resolved.
 
 ### Added
 
@@ -25,6 +26,8 @@
 - `genericRenderer` is exported once, through the `generic` module, instead of also being re-exported by the registry. No user-visible behavior changes.
 - React list keys are derived from each item's own identity (id, path, label or text) through a `keyed` helper instead of the array index; rendered output is unchanged.
 - `react` and `react-dom` are named as literal `19.2.7` peer dependencies so a consumer outside the workspace resolves them; the version is the one the workspace catalog pins.
+- `CANONICAL_SYMBOLS` is `@veyyon/view`'s `UNICODE_SYMBOLS`, the table the terminal's plain preset draws from, so a card that names `tool.edit` draws `✎` in every host; the web-only status subset it was before is gone.
+- The `read` summary shows the path and its selector only; `limit` is the directory entry cap, not a line window, so no `:A-B` is derived from it.
 
 ### Fixed
 
@@ -32,6 +35,8 @@
 - Shared HTML and React view adapters preserve symbol glyphs and render unknown symbol identifiers as text.
 - Compact tool card headers omit repeated tool labels while preserving operation suffixes and unrelated titles.
 - Restored field and badge parity across consolidated React tool descriptors for launch, job, bash, read, write, edit, set_cwd, generate_image, inspect_image, search, and memory tools.
+- A tool whose `ToolView` renderer threw is drawn by its own React descriptor, or by the generic arguments-and-output card when it has none; the exception's text was shown as the card body.
+- A symbol, emblem or notice mark key no host has draws the span's text, or nothing, never the key itself.
 
 ## [1.3.0] - 2026-08-28
 

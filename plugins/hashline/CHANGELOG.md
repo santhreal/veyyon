@@ -8,6 +8,10 @@
 
 - Exported `stripApplyPatchPathNoise` from `@veyyon/hashline` for shared header-path normalization across streaming and patch parsing.
 
+### Fixed
+
+- A plain `INS.POST` anchored on the trailing phantom line of a newline-terminated file appends the body as new terminated lines, like `INS.TAIL`; the rebuild emitted the phantom sentinel as an empty line and left the new last line without its newline.
+
 ### Changed
 
 - Unified patch operation definitions into a shared declarative operation table across tokenization and execution.
