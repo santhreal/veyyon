@@ -56,6 +56,7 @@ import {
 } from "../../../tools/core/render-utils";
 import type { ToolUIStatus } from "../../../tools/core/tool-ui-status";
 import type { ToolRenderer } from "../../../tools/renderers";
+import { sanitizeWithOptionalSixelPassthrough } from "../../../utils/sixel";
 import { paintHotTail, shimmerPhase } from "../components/chrome/follow";
 import { renderDiff } from "../components/transcript/diff";
 import { fileHyperlink, urlHyperlink } from "./hyperlink";
@@ -158,9 +159,14 @@ const THINKING_COLORS: Readonly<Record<string, ThemeColor>> = {
  * screen clear or an OSC hyperlink drawn verbatim reaches the terminal as an instruction. So every
  * non-captured string a view carries passes through here, and a captured run through
  * `styleTerminalRow`, which keeps the styles it trusts and drops the same bytes.
+ *
+ * The one payload that survives is a Sixel image, and only under the same pair of switches
+ * (`VEYYON_FORCE_IMAGE_PROTOCOL=sixel`, `VEYYON_ALLOW_SIXEL_PASSTHROUGH=1`) the tool read before
+ * it kept the bytes: an image protocol is a control sequence the operator asked to see, and a strip
+ * here after the tool's own would blank the row the image sits on.
  */
 function sanitizeViewText(text: string): string {
-	return replaceTabs(shortenEmbeddedPaths(sanitizeText(text)));
+	return sanitizeWithOptionalSixelPassthrough(text, plain => replaceTabs(shortenEmbeddedPaths(sanitizeText(plain))));
 }
 
 /** Extract multi-line plain text from an array of span lines. */
