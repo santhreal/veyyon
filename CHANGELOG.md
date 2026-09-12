@@ -28,6 +28,10 @@
 
 ### Added
 
+- The desktop restores named spaces, ordered session tabs and per-session drafts with attachment bytes across restarts.
+- Desktop history search opens read-only previews and resumes existing tabs without duplicating sessions or discarding drafts.
+- Repository-backed diffs support persistent local review threads, replies, resolution and context-based anchor relocation.
+- Desktop attachment cards show bounded text and binary previews with classified types, byte counts and individual removal controls.
 - The desktop announces what happened out of view on a card stack at the window's trailing edge: a request the host refused whose control is not drawn, and a decision waiting on a session that is not the open one, each deduplicated by what raised it, bounded at six, and taken down by a press or by opening the session it names. Two new settings state what else an announcement does -- `notify.sound` plays the desktop alert and `notify.system` posts to the desktop notification service, both off by default -- and a notifier that cannot run is announced on the same stack rather than dropped.
 - The desktop transcript selects the text it drew: a drag crosses inline runs, blocks and entries, a press with Shift held extends the selection, `Primary-A` takes the whole entry, `Primary-C` copies it, and `Escape` drops it.
 - The desktop states the mode its session runs in on the composer's footer, and sets it: `/plan` enters plan mode and `/plan off` leaves it, both refused while a turn is running, and leaving restores the tools plan mode took away.
@@ -292,6 +296,10 @@
 
 ### Fixed
 
+- Desktop replies render pipe tables as grids and preserve inline Markdown formatting during streaming without flashing empty delimiters.
+- Desktop command, model, history and theme lists share keyboard selection and availability checks.
+- Copied files remain typed attachments instead of inserting filesystem paths into the desktop draft.
+- GUI host shutdown waits for disconnected and initializing sessions to release resources, including after session-file persistence errors.
 - A desktop menu draws the row that destroys something in the error tint's ink rather than its fill, where `Delete` on a session card and `Kill (SIGKILL)` on a supervised process were set in the dark red a badge is filled with: the one row in either menu that cannot be undone was drawn at 1.12:1 against the menu's own ground and read as an empty row.
 - A desktop menu fills the row under the pointer and draws the pointing cursor over it, where eight rows one line apart were drawn identically wherever the pointer sat and a disabled row took the cursor of a control it would not answer.
 - A desktop row menu sets every label on one column, where `Open` and `Branch` carry no icon and so started a gutter to the left of the six rows beside them; a menu that draws an icon at all now keeps that gutter for the rows without one.
