@@ -86,15 +86,15 @@ fn runs_of(frame: Captured) -> Vec<String> {
 		.collect()
 }
 
-/// The runs of an expanded thought block still arriving, without the
-/// collapsed header line. The header states the summary as one truncated
-/// label rather than as markdown, so it carries the source's own bytes and is
-/// not a reading of the reader under test.
+/// The expanded thought's Markdown, excluding its summary header and final
+/// disclosure button. A body containing the word "Collapse" remains intact.
 fn thought_runs(text: &str, streaming: bool) -> Vec<String> {
-	runs_of(thought_frame(text, streaming))
+	let mut runs: Vec<String> = runs_of(thought_frame(text, streaming))
 		.into_iter()
 		.filter(|run| !run.starts_with("Thought:"))
-		.collect()
+		.collect();
+	assert_eq!(runs.pop().as_deref(), Some("Collapse"), "the disclosure footer is separate");
+	runs
 }
 
 /// The captured frame of one turn.
@@ -159,7 +159,7 @@ fn thought_frame(text: &str, streaming: bool) -> Captured {
 /// A prefix that leaves `shape` open, and the marker byte that must not reach
 /// the frame while it is open. Exhaustive: a shape added to the model states
 /// its frame reading here or this does not compile.
-fn arriving(shape: OpenShape) -> (&'static str, char, &'static str) {
+const fn arriving(shape: OpenShape) -> (&'static str, char, &'static str) {
 	match shape {
 		OpenShape::Fence => ("```rust\nlet held = 1;", '`', "let held = 1;"),
 		OpenShape::Table => ("| tool | when |", '|', "tool"),
@@ -299,7 +299,7 @@ fn the_spans_of_the_two_pieces_are_the_spans_of_the_whole_block() {
 
 /// The documents the split-point walks run over: a heading, a paragraph with
 /// inline markers, a grid, a list, a fence and a quote.
-fn documents() -> [&'static str; 3] {
+const fn documents() -> [&'static str; 3] {
 	[
 		"# Report\n\nA paragraph with **strong** in it.\n\n| a | b |\n|--|--|\n| 1 | 2 |\n\n- \
 		 one\n- two\n",
@@ -335,6 +335,61 @@ fn every_prefix_renders_and_keeps_the_words_it_holds() {
 					frame.contains(&word),
 					"split {split} of {document:?} lost {word:?}, drew {runs:?}"
 				);
+			}
+		}
+	}
+}
+
+/// Empty inline content occurs between an opening delimiter and its first
+/// word. Exercise every split, both delimiter spellings and both streaming
+/// surfaces; finished fragments must still retain their literal punctuation.
+#[test]
+fn inline_openers_do_not_flash_before_the_first_content_byte() {
+	for shape in OpenShape::all() {
+		let documents: &[&str] = match shape {
+			OpenShape::Strong => &[
+				"**Wørd**",
+				"__Wørd__",
+				"***Wørd***",
+				"___Wørd___",
+				"**Outer *Wørd***",
+				"__outer _Wørd___",
+			],
+			OpenShape::Emphasis => &["*Wørd*", "_Wørd_"],
+			OpenShape::CodeSpan => &["`Wørd`"],
+			OpenShape::Fence
+			| OpenShape::Table
+			| OpenShape::Item
+			| OpenShape::Heading
+			| OpenShape::LinkTarget => &[],
+		};
+		for document in documents {
+			for context in ["1. ", "prefix "] {
+				for split in (1..=document.len()).filter(|at| document.is_char_boundary(*at)) {
+					let source = format!("{context}{}", &document[..split]);
+					let expected: String = source.chars().filter(|c| c.is_alphanumeric()).collect();
+					for render in [drawn, thought_runs] {
+						let runs = render(&source, true);
+						assert!(
+							runs.iter().all(|run| !run.contains(['*', '_', '`'])),
+							"{shape:?}: arriving {source:?} drew raw delimiters: {runs:?}"
+						);
+						let actual: String = runs
+							.iter()
+							.flat_map(|run| run.chars())
+							.filter(|c| c.is_alphanumeric())
+							.collect();
+						assert_eq!(actual, expected, "{source:?}: the visible content is preserved");
+						if split == 1 {
+							assert!(
+								render(&source, false)
+									.iter()
+									.any(|run| run.contains(['*', '_', '`'])),
+								"finished {source:?} must retain literal punctuation"
+							);
+						}
+					}
+				}
 			}
 		}
 	}

@@ -20,6 +20,7 @@
 //! the reader that turns the mended text into blocks is the drawing kit's,
 //! and the surface applies these two before handing it over.
 
+mod inline;
 mod mend;
 mod veil;
 

@@ -20,7 +20,7 @@ use veyyon_desktop_model::text::markdown::{OpenShape, mend, open_shapes, settled
 
 /// A prefix that leaves `shape` open. Exhaustive by construction: a variant
 /// added to `OpenShape` fails to compile here until it has a prefix.
-fn prefix_leaving_open(shape: OpenShape) -> &'static str {
+const fn prefix_leaving_open(shape: OpenShape) -> &'static str {
 	match shape {
 		OpenShape::Fence => "before\n\n```rust\nlet held = 1;",
 		OpenShape::Table => "| tool | when |",
@@ -44,6 +44,10 @@ const FINISHED: &[&str] = &[
 	"a `code span`, a **strong** word, an *italic* one and [a link](docs/plan.md)\n",
 	"see [not a link] here\n",
 	"2 * 3 = 6 and snake_case_names\n",
+	"1. **Word**\n2. __Word__\n3. `Word`\n",
+	"***Nested*** and ___Nested___\n",
+	"**Outer *inner*** and __outer _inner___\n",
+	"***\n",
 ];
 
 /// Every shape is seen when it is open, and closed when it is mended.

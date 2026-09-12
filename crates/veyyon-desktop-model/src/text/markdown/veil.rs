@@ -35,7 +35,7 @@ fn is_one_line_block(line: &str) -> bool {
 		return true;
 	}
 	let digits = body.bytes().take_while(u8::is_ascii_digit).count();
-	(1..=9).contains(&digits) && matches!(body.get(digits..digits + 2), Some(". ") | Some(") "))
+	(1..=9).contains(&digits) && matches!(body.get(digits..digits + 2), Some(". " | ") "))
 }
 
 /// The length of the prefix of `source` that can no longer change shape: the
@@ -73,10 +73,7 @@ pub fn settled_prefix_len(source: &str) -> usize {
 			settled = at;
 			growing = false;
 			fenced = true;
-		} else if body.trim().is_empty() {
-			growing = false;
-			settled = end;
-		} else if is_one_line_block(body) {
+		} else if body.trim().is_empty() || is_one_line_block(body) {
 			growing = false;
 			settled = end;
 		} else {
