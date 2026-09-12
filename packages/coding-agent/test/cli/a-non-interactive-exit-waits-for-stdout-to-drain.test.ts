@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
+import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
 /**
  * A non-interactive mode's last frame reaches the pipe before the process exits.
@@ -32,13 +33,21 @@ async function runChild(code: number): Promise<{ exitCode: number; stdoutBytes: 
 		// Never reached: a helper that returned instead of exiting would fail the exit-code row.
 		"process.exit(99);",
 	].join("\n");
-	const proc = Bun.spawn([process.execPath, "-e", script], {
-		stdin: "ignore",
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).arrayBuffer(), proc.exited]);
-	return { exitCode, stdoutBytes: stdout.byteLength };
+	// The probe imports a package source, which resolves the config tree from the inherited
+	// env the way the CLI does; the hermetic env keeps it off the developer's real ~/.veyyon.
+	const { env, cleanup } = hermeticSpawnEnv();
+	try {
+		const proc = Bun.spawn([process.execPath, "-e", script], {
+			env,
+			stdin: "ignore",
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).arrayBuffer(), proc.exited]);
+		return { exitCode, stdoutBytes: stdout.byteLength };
+	} finally {
+		cleanup();
+	}
 }
 
 describe("a non-interactive exit waits for stdout to drain", () => {

@@ -3,6 +3,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import "@veyyon/coding-agent/discovery";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { setSettingsInstance } from "@veyyon/coding-agent/config/settings-instance";
 import { loadSkills, loadSkillsFromDir, parseSkillInvocation } from "@veyyon/coding-agent/extensibility/skills";
 import { removeWithRetries } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides, setAgentDir } from "@veyyon/utils/dirs";
@@ -168,6 +170,7 @@ describe("skills", () => {
 		});
 
 		afterEach(async () => {
+			setSettingsInstance(null);
 			homedirSpy.mockRestore();
 			restoreDirOverrides(dirOverrides);
 			await removeWithRetries(tempHome);
@@ -193,8 +196,9 @@ describe("skills", () => {
 			await writeSkill(path.join(pluginRoot, "skills"), "calendar", "Plugin calendar.");
 			// The `extensions` entry has to live in the PROFILE's settings: a repository's own
 			// `.veyyon/settings.json` grants no capabilities, so configuring the plugin there
-			// would load nothing and the collision this case is about would never happen.
-			await fs.writeFile(path.join(agentDir, "settings.json"), JSON.stringify({ extensions: [pluginRoot] }));
+			// would load nothing and the collision this case is about would never happen. The
+			// setting is read from the process store a session installs for its profile.
+			setSettingsInstance(Settings.isolated({ extensions: [pluginRoot] }));
 
 			const { skills, warnings } = await loadSkills({ cwd: tempCwd });
 			const calendar = skills.filter(skill => skill.name === "calendar");
@@ -218,7 +222,7 @@ describe("skills", () => {
 			await writeSkill(agentSkillsDir, "calendar", "Profile calendar.");
 			await fs.mkdir(pluginRoot, { recursive: true });
 			await fs.symlink(agentSkillsDir, path.join(pluginRoot, "skills"), "dir");
-			await fs.writeFile(path.join(agentDir, "settings.json"), JSON.stringify({ extensions: [pluginRoot] }));
+			setSettingsInstance(Settings.isolated({ extensions: [pluginRoot] }));
 
 			const { skills, warnings } = await loadSkills({ cwd: tempCwd });
 			expect(skills.filter(skill => skill.name === "calendar")).toHaveLength(1);
