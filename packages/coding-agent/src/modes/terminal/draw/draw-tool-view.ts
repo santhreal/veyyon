@@ -52,6 +52,7 @@ import {
 	previewWindowRows,
 	replaceTabs,
 	shortenEmbeddedPaths,
+	showResolvedModelDefault,
 } from "../../../tools/core/render-utils";
 import type { ToolUIStatus } from "../../../tools/core/tool-ui-status";
 import type { ToolRenderer } from "../../../tools/renderers";
@@ -1141,10 +1142,11 @@ export function viewToolRenderer<Args, Result>(
 	/**
 	 * What the surface knows, out of the loosely typed bag the registry path threads through.
 	 *
-	 * The live path builds a `ToolViewContext` directly and states both facts; this path is handed
-	 * the same two through `renderContext`, because the registry's signature predates the contract
-	 * and carries a record. A caller that states neither gets a context that omits both, which is
-	 * what a rebuilt transcript with no live block knows.
+	 * The live path builds a `ToolViewContext` directly and states every fact; this path is handed
+	 * the same ones through `renderContext`, because the registry's signature predates the contract
+	 * and carries a record. A caller that states neither `hasResult` nor `frozen` gets a context that
+	 * omits both, which is what a rebuilt transcript with no live block knows. `showResolvedModel`
+	 * falls back to the setting, so an extension that wraps the task tool draws the same card.
 	 */
 	const contextOf = (options: RegistryRenderOptions): ToolViewContext => {
 		const bag = options.renderContext;
@@ -1154,6 +1156,8 @@ export function viewToolRenderer<Args, Result>(
 			frame: options.spinnerFrame,
 			...(bag?.hasResult === undefined ? {} : { hasResult: bag.hasResult === true }),
 			...(bag?.frozen === undefined ? {} : { frozen: bag.frozen === true }),
+			showResolvedModel:
+				bag?.showResolvedModel === undefined ? showResolvedModelDefault() : bag.showResolvedModel === true,
 		};
 	};
 	return {

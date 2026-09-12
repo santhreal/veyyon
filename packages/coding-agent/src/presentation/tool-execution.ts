@@ -13,10 +13,14 @@ import type {
 	ToolExecutionPolicies,
 	ToolStatus,
 } from "@veyyon/wire/presentation";
-import { settingsOrNull } from "../config/settings-instance";
 import { asyncToolState } from "../modes/terminal/utils/async-tool-state";
 import { formatArgsInline } from "../tools/core/json-tree-render";
-import { DEFAULT_TERMINAL_PREVIEW_LINES, shortenEmbeddedPaths, shortenPath } from "../tools/core/render-utils";
+import {
+	DEFAULT_TERMINAL_PREVIEW_LINES,
+	shortenEmbeddedPaths,
+	shortenPath,
+	showResolvedModelDefault,
+} from "../tools/core/render-utils";
 import { isWaitingPollDetails } from "../tools/shell/job-view";
 import { type ToolViewDefinition, toolViewDefinitions } from "../tools/view-registry";
 import type { EditMode } from "../utils/edit-mode";
@@ -157,6 +161,7 @@ export function buildToolRenderContext(
 	}
 	context.hasResult = Boolean(result);
 	context.frozen = options.frozen ?? false;
+	context.showResolvedModel = showResolvedModelDefault();
 	return context;
 }
 
@@ -268,7 +273,7 @@ export function buildToolExecutionDisplay(params: ToolExecutionBuildParams): Too
 		frame: params.frame,
 		hasResult: Boolean(renderableResult),
 		frozen: backgroundTaskFrozen,
-		showResolvedModel: params.showResolvedModel ?? settingsOrNull()?.get("agent.showResolvedModelBadge") ?? false,
+		showResolvedModel: params.showResolvedModel ?? showResolvedModelDefault(),
 	};
 
 	// Tool view renderer resolution (tool's own view or registry definition's view)

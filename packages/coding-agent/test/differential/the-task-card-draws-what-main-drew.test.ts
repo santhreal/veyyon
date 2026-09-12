@@ -54,6 +54,7 @@ import { taskToolView } from "@veyyon/coding-agent/task/task-view";
 import type { AgentProgress, SingleResult, TaskParams, TaskToolDetails } from "@veyyon/coding-agent/task/types";
 import { UNICODE_SYMBOLS } from "@veyyon/coding-agent/theme/symbols";
 import { theme } from "@veyyon/coding-agent/theme/theme";
+import { showResolvedModelDefault } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { ToolViewContext } from "@veyyon/view";
 import * as taskOracle from "../oracles/task-main-renderer";
 import { renderCompLines, useDifferentialTheme, WIDTH } from "./harness";
@@ -222,8 +223,11 @@ describe("task tool differential", () => {
 		return renderCompLines(taskOracle.renderResult(card, options, theme, args), WIDTH);
 	}
 
+	// Main's renderer read `agent.showResolvedModelBadge` itself; the view is handed the same fact
+	// by the host, through the one reader every context builder shares.
 	function viewResult(card: TaskCardResult, context: ToolViewContext, args?: TaskParams): string[] {
-		return renderCompLines(drawToolView(taskToolView.renderResult(card, context, args), theme), WIDTH);
+		const stated: ToolViewContext = { ...context, showResolvedModel: showResolvedModelDefault() };
+		return renderCompLines(drawToolView(taskToolView.renderResult(card, stated, args), theme), WIDTH);
 	}
 
 	it("draws the call preview while the arguments are arriving", () => {

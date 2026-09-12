@@ -19,7 +19,7 @@ import { truncateToWidth } from "@veyyon/utils/width";
 import type { TextBlockView, ViewHiddenCount, ViewLine, ViewSection, ViewSpan, ViewTone } from "@veyyon/view";
 import { formatKeyHints, type KeyId } from "../../config/keybindings";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
-import { settings } from "../../config/settings-instance";
+import { settings, settingsOrNull } from "../../config/settings-instance";
 import type { Theme, ThemeColor } from "../../theme/theme";
 import { formatDimensionNote, type ResizedImage } from "../../utils/image-resize";
 import { isPathWithinCwd } from "./path-utils";
@@ -67,6 +67,16 @@ export function errorSection(message: string | undefined, defaultMessage?: strin
 // =============================================================================
 // Standardized Display Constants
 // =============================================================================
+
+/**
+ * Whether a spawned agent's card shows the model it resolved to when the caller states nothing:
+ * the `agent.showResolvedModelBadge` setting when a settings store is initialised, off otherwise,
+ * which is the transcript export run without one. Every tool-view context builder reads it here,
+ * so the live block, the registry path an extension wraps and the rebuilt transcript agree.
+ */
+export function showResolvedModelDefault(): boolean {
+	return settingsOrNull()?.get("agent.showResolvedModelBadge") ?? false;
+}
 
 /** Resolve inline image dimension caps from settings and viewport. */
 export function resolveImageOptions(): { maxWidthCells: number; maxHeightCells?: number } {
