@@ -17,7 +17,14 @@ Primary implementation:
 
 ```bash
 veyyon --mode rpc [regular CLI options]
+veyyon --mode rpc-ui [regular CLI options]
 ```
+
+`rpc-ui` is `rpc` for a host that answers UI requests. Extensions use the
+[Extension UI Sub-Protocol](#extension-ui-sub-protocol) in both modes; `rpc-ui` additionally
+hands that same request/response channel to the tool layer, so `hasUI` is true for tools and
+the `ask` tool is registered. Under plain `rpc` the `ask` tool is absent, the `ui` member of a
+tool's context is `undefined`, and `bash` runs in a PTY; `rpc-ui` disables the PTY.
 
 Behavior notes:
 
@@ -235,7 +242,10 @@ Local-only slash commands may emit `command_output` frames before completing via
 
 ### `set_todos` payload
 
-Replaces the in-memory todo state for the current session and returns the normalized phase list:
+Replaces the in-memory todo state for the current session and returns the normalized phase list.
+A phase is `{ name, tasks }` and a task is `{ content, status }`; `status` is one of `pending`,
+`in_progress`, `completed`, `abandoned`. Neither carries an `id`: a task is addressed by its
+`content` string, and any other field in a phase or task is dropped, not echoed back.
 
 ```json
 {
@@ -243,26 +253,17 @@ Replaces the in-memory todo state for the current session and returns the normal
   "type": "set_todos",
   "phases": [
     {
-      "id": "phase-1",
       "name": "Evaluation",
       "tasks": [
-        {
-          "id": "task-1",
-          "content": "Map the read tool surface",
-          "status": "in_progress"
-        },
-        {
-          "id": "task-2",
-          "content": "Exercise edit operations",
-          "status": "pending"
-        }
+        { "content": "Map the read tool surface", "status": "in_progress" },
+        { "content": "Exercise edit operations", "status": "pending" }
       ]
     }
   ]
 }
 ```
 
-This is useful for hosts that want to pre-seed a plan before the first prompt.
+Use it to pre-seed a plan before the first prompt.
 
 ### `set_host_tools` payload
 

@@ -1061,9 +1061,10 @@ export async function buildSessionOptions(
 			process.stderr.write(`${chalk.yellow(`Warning: ${resolved.warning}`)}\n`);
 		}
 		if (resolved.error) {
-			if (!parsed.provider && !parsed.model.includes(":")) {
-				// Model not found in built-in registry — defer resolution to after extensions load
-				// (extensions may register additional providers/models via registerProvider)
+			// A role failure (`@smol` unset, `@nope` unknown) is a settings fact no
+			// extension can change, so it is reported here; an unknown id is deferred
+			// until extensions have registered their providers and models.
+			if (!resolved.roleFailure && !parsed.provider && !parsed.model.includes(":")) {
 				options.modelPattern = parsed.model;
 			} else {
 				process.stderr.write(`${chalk.red(resolved.error)}\n`);
@@ -1252,15 +1253,17 @@ export async function buildSessionOptions(
 		options.rules = [];
 	}
 
-	// Additional extension paths from CLI
-	const cliExtensionPaths = parsed.noExtensions ? [] : [...(parsed.extensions ?? []), ...(parsed.hooks ?? [])];
+	// Additional extension paths from CLI. `--no-extensions` disables DISCOVERY
+	// only (its help text promises "explicit -e paths still work"): the paths the
+	// operator named on the command line load either way, and
+	// `discoverSessionExtensionPaths` returns exactly them when discovery is off.
+	const cliExtensionPaths = [...(parsed.extensions ?? []), ...(parsed.hooks ?? [])];
 	if (cliExtensionPaths.length > 0) {
 		options.additionalExtensionPaths = cliExtensionPaths;
 	}
 
 	if (parsed.noExtensions) {
 		options.disableExtensionDiscovery = true;
-		options.additionalExtensionPaths = [];
 	}
 
 	return options;
@@ -1380,12 +1383,11 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 	// Register CLI-provided extension package paths (`--extension`, `--hook`) so
 	// the `veyyon-plugins` discovery provider can surface their `skills/`, `hooks/`,
 	// `tools/`, `commands/`, `rules/`, `prompts/`, and `.mcp.json` sub-trees.
-	// `--no-extensions` short-circuits both the factory load and the sub-discovery.
-	if (!parsedArgs.noExtensions) {
-		const cliExtensions = [...(parsedArgs.extensions ?? []), ...(parsedArgs.hooks ?? [])];
-		if (cliExtensions.length > 0) {
-			injectVeyyonExtensionCliRoots(cliExtensions, home, getProjectDir());
-		}
+	// `--no-extensions` turns off discovery of extensions the operator did not
+	// name; a path named on the command line loads in full either way.
+	const cliExtensions = [...(parsedArgs.extensions ?? []), ...(parsedArgs.hooks ?? [])];
+	if (cliExtensions.length > 0) {
+		injectVeyyonExtensionCliRoots(cliExtensions, home, getProjectDir());
 	}
 
 	let cwd = getProjectDir();

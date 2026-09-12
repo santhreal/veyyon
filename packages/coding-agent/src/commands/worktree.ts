@@ -1,5 +1,5 @@
 /**
- * List and clean up agent-managed git worktrees under `~/.veyyon/wt`.
+ * List and clean up agent-managed git worktrees under `~/.veyyon/profiles/<name>/wt`.
  */
 import { getProjectDir } from "@veyyon/utils";
 import { Args, Command, Flags } from "@veyyon/utils/cli";
@@ -7,7 +7,7 @@ import { clearWorktrees, listWorktrees } from "../cli/worktree-cli";
 import { Settings } from "../config/settings";
 
 export default class Worktree extends Command {
-	static description = "List or clear agent-managed git worktrees (~/.veyyon/wt)";
+	static description = "List or clear agent-managed git worktrees (~/.veyyon/profiles/<name>/wt)";
 
 	static aliases = ["wt"];
 

@@ -6,6 +6,7 @@ import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { APP_NAME } from "@veyyon/utils/dirs";
 import * as logger from "@veyyon/utils/logger";
 import { type Args as ParsedArgs, parseArgs, reportCliUsageError } from "../cli/args";
+import { MODE_VALUES } from "../cli/flag-tables";
 import { CLI_THINKING_LEVELS } from "../thinking";
 
 export default class Index extends Command {
@@ -78,8 +79,10 @@ export default class Index extends Command {
 			description: "Directory to start in (overrides the launch cwd)",
 		}),
 		mode: Flags.string({
-			description: "Output mode: text (default), json, rpc, or rpc-ui",
-			options: ["text", "json", "rpc", "acp", "rpc-ui"],
+			// Both derived from the parser's own table so the help can never list a
+			// subset of what `--mode` accepts (it omitted `acp` for a release).
+			description: `Output mode: ${MODE_VALUES.map(mode => (mode === "text" ? "text (default)" : mode)).join(", ")}`,
+			options: [...MODE_VALUES],
 		}),
 		config: Flags.string({
 			description: "Load an extra config.yml-style overlay for this run (repeatable)",
@@ -210,7 +213,7 @@ export default class Index extends Command {
 		`# Create a shell shortcut for a work profile\n  ${APP_NAME} --profile work --alias ${APP_NAME}-work`,
 		`# Use different model (fuzzy matching)\n  ${APP_NAME} --model opus "Help me refactor this code"`,
 		`# Limit model cycling to specific models\n  ${APP_NAME} --models claude-sonnet,claude-haiku,gpt-4o`,
-		`# Export a session file to HTML\n  ${APP_NAME} --export ~/.veyyon/agent/sessions/--path--/session.jsonl`,
+		`# Export a session file to HTML\n  ${APP_NAME} --export ~/.veyyon/profiles/default/agent/sessions/--path--/session.jsonl`,
 	];
 
 	static strict = false;

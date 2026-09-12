@@ -1,3 +1,4 @@
+import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { setImmediate } from "node:timers/promises";
@@ -566,17 +567,26 @@ export async function exportSessionToHtml(
 	return finishExport(sessionFile, sessionData, opts);
 }
 
-/** Export session file to HTML (standalone). */
+/**
+ * Export session file to HTML (standalone).
+ *
+ * The input is checked before the session is opened: the loader reads a missing file as an empty
+ * session, which would export an empty transcript and report success, so a path that is not a
+ * file fails here and nothing is written.
+ */
 export async function exportFromFile(inputPath: string, options?: ExportOptions | string): Promise<string> {
 	const opts: ExportOptions = typeof options === "string" ? { outputPath: options } : options || {};
 
-	let sm: SessionManager;
+	let input: Stats | undefined;
 	try {
-		sm = await SessionManager.open(inputPath, undefined, undefined, { suppressBreadcrumb: true });
+		input = await fs.stat(inputPath);
 	} catch (err) {
-		if (isEnoent(err)) throw new Error(`File not found: ${inputPath}`);
-		throw err;
+		if (!isEnoent(err)) throw err;
 	}
+	if (input === undefined) throw new Error(`Session file not found: ${inputPath}`);
+	if (!input.isFile()) throw new Error(`Not a session file: ${inputPath}`);
+
+	const sm = await SessionManager.open(inputPath, undefined, undefined, { suppressBreadcrumb: true });
 
 	const sessionData: SessionData = {
 		header: sm.getHeader(),

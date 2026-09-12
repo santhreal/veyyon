@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { getExtraHelpText } from "@veyyon/coding-agent/cli/args";
-import { OPTIONAL_VALUE_FLAGS, STRING_VALUE_FLAGS, VALUELESS_FLAGS } from "@veyyon/coding-agent/cli/flag-tables";
+import {
+	MODE_VALUES,
+	OPTIONAL_VALUE_FLAGS,
+	STRING_VALUE_FLAGS,
+	VALUELESS_FLAGS,
+} from "@veyyon/coding-agent/cli/flag-tables";
 import LaunchCommand from "@veyyon/coding-agent/commands/launch";
 import { BUILTIN_TOOL_NAMES, isKnownToolName } from "@veyyon/coding-agent/tools/core/builtin-names";
 import type { FlagDescriptor } from "@veyyon/utils/cli";
@@ -178,6 +183,21 @@ describe("every documented flag carries a usable description", () => {
 
 		expect(flags.mode?.options?.length ?? 0).toBeGreaterThan(1);
 		expect(flags.thinking?.options?.length ?? 0).toBeGreaterThan(1);
+	});
+
+	/**
+	 * The description is the only place `veyyon --help` prints the accepted modes,
+	 * and it was hand-written: it read `text|json|rpc|rpc-ui` for a release in
+	 * which `--mode acp` was accepted. Every value the parser accepts appears in
+	 * the sentence a user reads, and the two come from the same table.
+	 */
+	it("names every accepted --mode value in the flag description", () => {
+		const mode = launchFlags().mode;
+		if (!mode) throw new Error("launch declares no --mode flag");
+		expect(mode.options).toEqual([...MODE_VALUES]);
+		for (const value of MODE_VALUES) {
+			expect(mode.description).toContain(value);
+		}
 	});
 });
 

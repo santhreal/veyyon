@@ -96,6 +96,47 @@ describe("a successful command exits 0", () => {
 	}, 60_000);
 });
 
+describe("a failure is never reported as 0", () => {
+	/**
+	 * `--export <path>` with no file at the path wrote an empty transcript and
+	 * exited 0, because the session loader reads a missing file as an empty
+	 * session. The doc row for `1` names "no such session" verbatim. A directory
+	 * is the sibling: it is not a session file either, and the loader would have
+	 * failed on it later with a less useful message. Both must exit 1 (the
+	 * invocation was valid, the attempt failed) and write nothing.
+	 */
+	it.each([
+		["a path with no file", (dir: string) => path.join(dir, "nothere.jsonl"), "Session file not found"],
+		["a directory", (dir: string) => dir, "Not a session file"],
+	])(
+		"exits 1 for --export of %s",
+		async (_label, target, diagnostic) => {
+			const { home, env, cleanup } = hermeticSpawnEnv();
+			try {
+				const input = target(home);
+				const proc = Bun.spawn([process.execPath, cliEntry, "--export", input], {
+					env,
+					stdin: "ignore",
+					stdout: "pipe",
+					stderr: "pipe",
+				});
+				const [stdout, stderr, code] = await Promise.all([
+					new Response(proc.stdout).text(),
+					new Response(proc.stderr).text(),
+					proc.exited,
+				]);
+
+				expect(code).toBe(EXIT_FAILURE);
+				expect(stderr).toContain(diagnostic);
+				expect(stdout).not.toContain("Exported to:");
+			} finally {
+				cleanup();
+			}
+		},
+		60_000,
+	);
+});
+
 describe("a usage error exits 2, distinct from a runtime failure", () => {
 	/**
 	 * THE CASE THE WHOLE DISTINCTION EXISTS FOR. An unrecognized flag can never
@@ -238,6 +279,9 @@ describe("a usage error exits 2, distinct from a runtime failure", () => {
 		["hand-rolled: missing argument with its own usage line", ["config", "get"], EXIT_USAGE],
 		["hand-rolled: unknown setting key", ["config", "get", "no.such.setting.key"], EXIT_USAGE],
 		["hand-rolled: no shared parse", ["models", "find"], EXIT_USAGE],
+		// `install` accepts zero-or-more targets so the framework cannot reject an
+		// empty list; its own guard printed `Usage:` and exited 1 (audit finding).
+		["hand-rolled: optional-multiple positional left empty", ["install"], EXIT_USAGE],
 		["control: runtime failure stays 1", ["--print", "--resume", "zzzzzzzzzz", "hi"], EXIT_FAILURE],
 	])(
 		"%s",

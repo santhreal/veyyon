@@ -14,7 +14,8 @@ import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { Model } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { isZodSchema, zodToWireSchema } from "@veyyon/ai/utils/schema";
-import { $env, errorMessage, isRecord, readJsonl, Snowflake } from "@veyyon/utils";
+import { $env, errorMessage, isRecord, readLines, Snowflake } from "@veyyon/utils";
+import { exitAfterStdoutDrain } from "../../cli/stdout-drain";
 import { reset as resetCapabilities } from "../../discovery/capability";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
 import {
@@ -57,6 +58,8 @@ import type {
 
 // Re-export types for consumers
 export type * from "./rpc-types";
+
+const LINE_DECODER = new TextDecoder();
 
 export type PendingExtensionRequest = {
 	resolve: (response: RpcExtensionUIResponse) => void;
@@ -354,6 +357,26 @@ export class RpcInputDispatcher {
 	constructor(options: { deps: RpcInputFrameDeps; afterSerialCommand?: () => Promise<void> }) {
 		this.#deps = options.deps;
 		this.#afterSerialCommand = options.afterSerialCommand;
+	}
+
+	/**
+	 * Accept one raw stdin line. A line that is not JSON answers with the
+	 * documented `parse` error frame and the reader continues; the JSONL
+	 * chunk parser this replaced threw out of the input loop on the first bad
+	 * line and took every later frame (and the process) with it.
+	 */
+	dispatchLine(line: Uint8Array): void {
+		const text = LINE_DECODER.decode(line);
+		if (text.trim().length === 0) return;
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(text);
+		} catch (err: unknown) {
+			const message = errorMessage(err);
+			this.#deps.output(this.#deps.errorResponse(undefined, "parse", `Failed to parse command: ${message}`));
+			return;
+		}
+		this.dispatch(parsed);
 	}
 
 	/** Accept a parsed input frame without blocking the stdin reader. */
@@ -1403,7 +1426,7 @@ export async function runRpcMode(
 			if (session.extensionRunner?.hasHandlers("session_shutdown")) {
 				await session.extensionRunner.emit({ type: "session_shutdown" });
 			}
-			process.exit(0);
+			await exitAfterStdoutDrain(0);
 		},
 	});
 
@@ -1425,9 +1448,10 @@ export async function runRpcMode(
 
 	// Keep the stdin reader moving: side-channel frames dispatch immediately,
 	// ordinary commands serialize through inputDispatcher, and bash remains
-	// background-dispatched so abort_bash can overtake it.
-	for await (const parsed of readJsonl(Bun.stdin.stream())) {
-		inputDispatcher.dispatch(parsed);
+	// background-dispatched so abort_bash can overtake it. Lines are parsed one
+	// at a time so a malformed line answers `parse` instead of ending the loop.
+	for await (const line of readLines(Bun.stdin.stream())) {
+		inputDispatcher.dispatchLine(line);
 	}
 
 	// stdin closed — RPC client is gone. Fail pending side-channel requests
@@ -1438,5 +1462,5 @@ export async function runRpcMode(
 	await inputDispatcher.drain();
 	await shutdownCoordinator.drain();
 	agentRegistry?.dispose();
-	process.exit(0);
+	return exitAfterStdoutDrain(0);
 }

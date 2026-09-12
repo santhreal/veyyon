@@ -22,6 +22,8 @@ Common launch options:
 | `--profile <name>` | Use an isolated profile agent directory |
 | `--model <id>` | Interactive model (`provider/model`) |
 | `--compaction-model <id>` | Model for context compaction |
+| `-p, --print` | Single-shot run: send the prompt, print the answer, exit |
+| `--mode <mode>` | Output mode: `text` (default), `json`, `rpc`, `rpc-ui` ([RPC](./rpc.md)), or `acp` ([ACP](./acp.md)) |
 
 Config precedence: CLI flags → `--config` overlays → profile config → defaults. See
 [Configuration](../using/configuration.md).

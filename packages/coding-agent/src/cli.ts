@@ -132,6 +132,7 @@ async function runSmokeTest(): Promise<void> {
 	const { smokeTestJsEvalWorker } = await import("./eval/js/context-manager");
 	// Smoke dependencies stay lazy so normal CLI startup does not load worker clients.
 	const { smokeTestDaemonBroker } = await import("./launch/client");
+	const { smokeTestProfileSeed } = await import("./cli/profile-seed-smoke");
 	await smokeTestSyncWorker();
 
 	const statsServer = await startServer(0);
@@ -152,6 +153,10 @@ async function runSmokeTest(): Promise<void> {
 	await smokeTestTtsWorker();
 	await smokeTestMnemopiEmbedWorker();
 	await smokeTestDaemonBroker();
+	// Re-enters this binary as `profile new` against a scratch config root: the
+	// profile chunk is loaded by no other probe, and a bundler regression confined
+	// to it (a mis-minified dynamic import) shipped in 1.4.1 past every check above.
+	await smokeTestProfileSeed();
 	process.stdout.write("smoke-test: ok\n");
 }
 

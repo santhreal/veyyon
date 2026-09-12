@@ -24,6 +24,7 @@ import {
 	syncYamlTextToSettings,
 	writeGlobalDefaultProfile,
 } from "@veyyon/utils";
+import { YAML } from "bun";
 import chalk from "chalk";
 import { seedKeybindingsFromAgentDir } from "../config/keybindings";
 import { ensureProfileAgentsFileAt } from "../discovery/agents-guidance";
@@ -289,7 +290,6 @@ export async function readProfileDisplayName(profile: string | undefined): Promi
 
 /** Remove `profile.displayName` from a freshly copied settings file, leaving every other key untouched. */
 async function clearCopiedDisplayName(agentDir: string): Promise<void> {
-	const { YAML } = await import("bun");
 	for (const filename of MAIN_CONFIG_FILENAMES) {
 		const filePath = path.join(agentDir, filename);
 		const file = Bun.file(filePath);

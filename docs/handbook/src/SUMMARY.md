@@ -104,6 +104,7 @@
   - [Skills](./reference/skills.md)
   - [The `/tree` command](./reference/tree-command.md)
   - [The RPC surface](./reference/rpc.md)
+  - [The ACP server](./reference/acp.md)
   - [The SDK](./reference/sdk.md)
   - [Exit codes](./reference/exit-codes.md)
   - [File locations](./reference/file-locations.md)

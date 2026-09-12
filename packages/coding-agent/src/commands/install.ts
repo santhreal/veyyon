@@ -20,7 +20,7 @@
 
 import { existsSync } from "node:fs";
 import * as path from "node:path";
-import { Args, Command, Flags } from "@veyyon/utils/cli";
+import { Args, CliUsageError, Command, Flags } from "@veyyon/utils/cli";
 import { type PluginAction, type PluginCommandArgs, runPluginCommand } from "../cli/plugin-cli";
 import { initTheme } from "../theme/theme";
 
@@ -69,8 +69,9 @@ export default class Install extends Command {
 		const targets = Array.isArray(args.targets) ? args.targets : args.targets ? [args.targets] : [];
 
 		if (targets.length === 0) {
-			process.stderr.write("Usage: veyyon install <path | npm-spec | git-url> [...]\n");
-			process.exit(1);
+			// A missing target is a usage error (exit 2), the same as a missing
+			// positional in every other subcommand; `run()` prints the usage line.
+			throw new CliUsageError("Missing required argument: <path | npm-spec | git-url>");
 		}
 
 		await initTheme();
