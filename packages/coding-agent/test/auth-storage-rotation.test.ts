@@ -88,9 +88,9 @@ describe("AuthStorage account rotation", () => {
 		}
 
 		// Every row in this describe is about a session MOVING between siblings of one provider, which
-		// is `accounts.loadBalancing`, and that ships off: the account selected is the account that
-		// spends, and a quota window is waited out on it. So the movement is asked for here rather
-		// than inherited, and each row states the policy it measures.
+		// is `accounts.loadBalancing`. The library option defaults off whatever the product setting
+		// says, so the movement is asked for here rather than inherited, and each row states the
+		// policy it measures.
 		authStorage = await AuthStorage.create(path.join(tempDir, "testauth.db"), {
 			usageProviderResolver: provider => (provider === "openai-codex" ? usageProvider : undefined),
 			loadBalancing: true,

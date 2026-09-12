@@ -150,9 +150,9 @@ describe("a feature that ships off hides its knobs", () => {
 	 * NON-VACUITY. Every assertion below walks a derived set, and an empty set
 	 * satisfies all of them. These are the numbers as measured, as floors.
 	 *
-	 * A floor moves with the roster of features that ship off. `accounts.loadBalancing` ships off
-	 * again -- the account chosen is the account that spends -- so it is back among the masters this
-	 * suite holds to hiding nothing it does not own, and the count is 69.
+	 * A floor moves with the roster of features that ship off. `accounts.loadBalancing` ships on,
+	 * so it is not among the masters this suite holds to hiding nothing it does not own; the floor
+	 * of 69 is met without it.
 	 */
 	it("finds the masters and the knobs that hang off them", () => {
 		const pairs = gatedKnobs();

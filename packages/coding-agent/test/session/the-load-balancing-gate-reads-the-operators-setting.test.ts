@@ -6,18 +6,18 @@
  * library-level test in `packages/ai` stays green, and the failure is invisible: the session simply
  * stops using an account, or starts using one, with nothing on screen either way.
  *
- * The product default is OFF: signing an account in does not hand it the bill, so the account the
- * operator selected is the one that spends and a quota window is waited out on it. Automation only
- * ever moves between accounts nobody named. So the rows below pin both directions explicitly —
- * a fresh install refuses the move, and the setting turned ON performs it — because a gate wired to
- * a constant of either polarity passes half of them.
+ * The product default is ON: signing an account in is the decision to use it, so a quota wall on
+ * the chosen account continues on an idle sibling instead of ending the turn on a wait the retry
+ * cap refuses. The operator turns it off to wall one account off. So the rows below pin both
+ * directions explicitly — a fresh install performs the move, and the setting turned OFF waits out
+ * the window — because a gate wired to a constant of either polarity passes half of them.
  *
  * So this file drives the REAL `discoverAuthStorage` against the REAL `Settings` and pins:
- *   - the product default keeps the session on the account it was spending, and it does so because
- *     the setting's declared default says so, not because a resolver nobody passed answered a
+ *   - the product default continues the session on an idle sibling, and it does so because the
+ *     setting's declared default says so, not because a resolver nobody passed answered a
  *     hardcoded polarity;
- *   - turning the setting on actually reaches the routing decision, so the session continues on an
- *     idle sibling instead of waiting out a window;
+ *   - turning the setting off actually reaches the routing decision, so the session waits out the
+ *     window on the account it was spending instead of moving;
  *   - the flip reaches the NEXT decision on a storage that already exists, in BOTH directions,
  *     because the operator flips it from `/settings` mid-session and a snapshot taken at
  *     construction would ignore them until relaunch;
@@ -115,27 +115,27 @@ describe("the load balancing gate reads the operator's setting", () => {
 		});
 	}
 
-	test("a fresh install keeps spending on the account the operator chose", async () => {
+	test("a fresh install continues the session on the idle sibling", async () => {
 		const { targetId } = await openStorageWithTwoAccounts();
-		// The refusal must come from the DECLARED default, not from a resolver nobody passed: read
+		// The move must come from the DECLARED default, not from a resolver nobody passed: read
 		// the schema here so this row fails if the shipped default and the behaviour ever disagree,
 		// in either direction, rather than restating a polarity and agreeing with itself.
-		expect(getDefault("accounts.loadBalancing")).toBe(false);
-		expect(settingsOrThrow().get("accounts.loadBalancing")).toBe(false);
+		expect(getDefault("accounts.loadBalancing")).toBe(true);
+		expect(settingsOrThrow().get("accounts.loadBalancing")).toBe(true);
+
+		const result = await exhaust(targetId);
+
+		expect(result).toEqual({ switched: true });
+	});
+
+	test("turning the setting off keeps spending on the account the operator chose", async () => {
+		const { targetId } = await openStorageWithTwoAccounts();
+		settingsOrThrow().set("accounts.loadBalancing", false);
 
 		const result = await exhaust(targetId);
 
 		expect(result.switched).toBe(false);
 		expect(result.retryAtMs).toBeGreaterThan(Date.now());
-	});
-
-	test("turning the setting on continues the session on the idle sibling", async () => {
-		const { targetId } = await openStorageWithTwoAccounts();
-		settingsOrThrow().set("accounts.loadBalancing", true);
-
-		const result = await exhaust(targetId);
-
-		expect(result).toEqual({ switched: true });
 	});
 
 	/**

@@ -41,29 +41,28 @@ export const PROVIDERS_SETTINGS = {
 	/**
 	 * Whether hitting a quota or rate limit may move a provider to one of your other accounts.
 	 *
-	 * OFF. Which account spends money is the operator's decision and nobody else's, and the
-	 * product does not get to make it on their behalf because a window ran down. This shipped ON
-	 * for one release on the argument that a signed-in account is one you meant to use; what that
-	 * produced was a session that walked off the account the operator had explicitly chosen,
-	 * announced it in a line above the composer, and offered no way back while a stored block on
-	 * the chosen account was still counting down. An account move nobody asked for is a surprise
-	 * on someone's bill.
+	 * ON. Signing an account in is the decision to use it. With this off, a quota wall on the
+	 * active account with an idle sibling one row away ended the turn on `Provider requested
+	 * 1800000ms wait, exceeds retry.maxDelayMs`, which is a hard stop the operator cannot act on
+	 * from inside the turn. Every move announces itself and names both accounts, so it is never
+	 * the silent kind, and an operator who wants one account walled off turns this off once.
 	 *
-	 * On, every move still announces itself and names both accounts. Off, a session waits out the
-	 * window of the account it was told to use.
+	 * The operator's explicit account choice still outranks every automatic decision on the
+	 * ordering side: this setting governs what the product does on its own initiative when the
+	 * chosen account is exhausted, never which account leads while it has quota.
 	 *
 	 * A revoked or disabled credential fails over regardless of this setting, because a dead
 	 * credential cannot serve the request no matter what this says.
 	 */
 	"accounts.loadBalancing": {
 		type: "boolean",
-		default: false,
+		default: true,
 		ui: {
 			tab: "providers",
 			group: "Accounts",
 			label: "Account Load Balancing",
 			description:
-				"Off: only the account you chose is used, and a session waits out its quota window. On: when that account hits its quota or rate limit, continue on another account of the same provider and say so. A revoked account always fails over regardless, with a notice",
+				"On: when the account you chose hits its quota or rate limit, continue on another account of the same provider and say so. Off: only that account is used, and a session waits out its quota window. A revoked account always fails over regardless, with a notice",
 		},
 	},
 

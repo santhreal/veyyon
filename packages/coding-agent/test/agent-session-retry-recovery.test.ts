@@ -153,8 +153,8 @@ describe("AgentSession retry recovery", () => {
 		}
 
 		// This run is ABOUT moving between two credentials of one provider, which is
-		// `accounts.loadBalancing`, and that ships OFF: the account selected is the account that
-		// spends. So the movement is opted into explicitly, on a storage rebuilt for it, rather than
+		// `accounts.loadBalancing`. The library option defaults off whatever the product setting
+		// says, so the movement is opted into explicitly, on a storage rebuilt for it, rather than
 		// inherited from a default this suite neither sets nor controls.
 		authStorage.close();
 		authStorage = await AuthStorage.create(path.join(tempDir.path(), "balanced-auth.db"), { loadBalancing: true });
