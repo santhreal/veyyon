@@ -62,6 +62,7 @@
 
 ### Changed
 
+- A running tool card animates one mark: the "… (streaming)" spinner row is drawn only under a header that carries no running spinner of its own, and an agent an eval cell spawned shows the task card's static accent mark instead of a second spinner.
 - The read and write cards parse their arguments and details through `@veyyon/utils/fs-tool-args`, so a terminal launch no longer evaluates `@veyyon/tool-render`; the cards draw the same rows.
 - The legacy `memories.enabled` key is no longer a declared or host-defaulted setting: a config that still holds it migrates to `memory.backend` on load, the key is dropped on the next rewrite, and the local memory pipeline is enabled by `memory.backend: local` only. The presentation module's error messages, read-target parsing and cursor clamping use the `@veyyon/utils` helpers; no behavior change.
 - Reworded the Include Model in Prompt, Max Retry Delay, Hindsight Bank ID, Subagents and Subagent Delegation setting descriptions shown in `/settings`.

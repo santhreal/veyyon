@@ -532,8 +532,12 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 	// commit boundary at the top of the block, so a long preview could never scroll-append while it
 	// streams. A row that reports `running` still animates its own icon, which is the other case —
 	// the last thing that happened is running, and the card itself is settled.
+	//
+	// One moving mark per card. A header that reports `running` itself is that mark, so the trailing
+	// row is not drawn beside it: a card with two spinners reads as two things in flight where one
+	// call is.
 	const arriving =
-		view.state === "running"
+		view.state === "running" && header?.status !== "running"
 			? `${spinnerFrame === undefined ? "" : `${formatStatusIcon("running", theme, spinnerFrame)} `}${theme.fg(
 					"dim",
 					"… (streaming)",

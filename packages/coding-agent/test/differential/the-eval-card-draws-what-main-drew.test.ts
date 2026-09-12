@@ -460,17 +460,18 @@ describe("eval tool differential", () => {
 		expect(words(drawn)).toEqual(words(oracle));
 	});
 
-	it("exception cell: a card that is still arriving carries the host's streaming row", () => {
+	it("exception cell: a card that is still arriving animates its head row and nothing else", () => {
 		const details: EvalToolDetails = {
 			cells: [cell({ status: "running", output: "partial", durationMs: undefined })],
 		};
 		const context: ToolViewContext = { expanded: false, partial: true, frame: 2 };
 		const drawn = unstyled(viewLines(result(details), context));
 		const oracle = unstyled(oracleLines(result(details), { expanded: false, isPartial: true, spinnerFrame: 2 }));
-		expect(drawn.at(-1)).toContain("… (streaming)");
+		// The head row spins while the cell runs, which is the card's one moving mark: no
+		// "… (streaming)" row is drawn beside it, on either side.
+		expect(drawn.some(line => line.includes("(streaming)"))).toBe(false);
 		expect(oracle.some(line => line.includes("(streaming)"))).toBe(false);
-		// Everything before it is main's card, and both head rows still animate the same glyph.
-		expect(body(viewLines(result(details), context)).slice(0, -1)).toEqual(
+		expect(body(viewLines(result(details), context))).toEqual(
 			body(oracleLines(result(details), { expanded: false, isPartial: true, spinnerFrame: 2 })),
 		);
 		expect(drawn[0]?.slice(0, 3)).toBe(oracle[0]?.slice(0, 3));

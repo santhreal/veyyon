@@ -148,6 +148,7 @@
 
 ### Changed
 
+- A running tool card animates one mark: the "… (streaming)" spinner row is drawn only under a header that carries no running spinner of its own, and an agent an eval cell spawned shows the task card's static accent mark instead of a second spinner.
 - The read and write cards parse their arguments and details through `@veyyon/utils/fs-tool-args`, so a terminal launch no longer evaluates `@veyyon/tool-render`; the cards draw the same rows.
 - The legacy `memories.enabled` key is no longer a declared or host-defaulted setting: a config that still holds it migrates to `memory.backend` on load, the key is dropped on the next rewrite, and the local memory pipeline is enabled by `memory.backend: local` only. The presentation module's error messages, read-target parsing and cursor clamping use the `@veyyon/utils` helpers; no behavior change.
 - Reworded the Include Model in Prompt, Max Retry Delay, Hindsight Bank ID, Subagents and Subagent Delegation setting descriptions shown in `/settings`.
@@ -650,6 +651,7 @@
 - The codex websocket watchdog message reports the time since the last progress as of the moment it fires, instead of a value computed before the wait.
 - Cursor and Devin protobuf regeneration invokes the workspace compiler, and Cursor output is written to the catalog package.
 - Credential-store startup applies SQLite busy handling and WAL mode before initializing refresh leases, allowing concurrent launches to wait for database locks.
+- Google's generic `RESOURCE_EXHAUSTED` 429 body ("Resource has been exhausted (e.g. check quota)") classifies as a per-minute throttle retried on the same account after 45-75 s, instead of a daily quota wall whose 30-minute wait exceeded the retry budget and ended the turn on the first 429; a body that states a quota keeps the quota classification.
 - Case-insensitive host classification no longer treats control characters as URL punctuation.
 - `codingAgentDir()` resolves `packages/coding-agent` from the repository root, so the binary staleness preflight scans the coding agent's sources again after the package moved to `tests/evals`; it had resolved a sibling directory that does not exist and reported every binary current.
 - A plain `INS.POST` anchored on the trailing phantom line of a newline-terminated file appends the body as new terminated lines, like `INS.TAIL`; the rebuild emitted the phantom sentinel as an empty line and left the new last line without its newline.
@@ -675,6 +677,7 @@
 - An inline image whose top has scrolled above the viewport, or which is taller than the terminal, is left undrawn until a repaint can reach its origin, instead of being stamped at full size over the top of the live transcript.
 - An inline image is handed pixels at exactly the cell box the terminal will scale it into, so the terminal's own scaler no longer smears a downscaled screenshot; the transmitted payload shrinks by more than half at the same size on screen.
 - The row shown in place of a picture names the setting that undoes the reason when there is one, instead of stating the reason alone.
+- A frame that shrinks below the committed boundary with the composer focused (an IRC card expiring, a displaced todo snapshot retracting, an agent sub-row or HUD row going, the ask dialog's inline editor collapsing) re-shows the frame tail without lowering the commit index, so the rows it re-shows are never appended to native scrollback a second time when the frame grows back; under a tall running tool card this appended the same rows on every insert/retract cycle and left thousands of copies of one status row in scrollback.
 - `stripAnsi` removes a CSI sequence written with colon subparameters. The parameter class was `[0-9;?]`, but the spec's parameter bytes are the whole `0x30-0x3f` range, so `:` `<` `=` `>` were not matched: a true-color SGR of the form `ESC [ 38:2:255:0:0 m`, which libvte and several test runners emit, left `38:2:255:0:0m` behind as visible text in captured output. The class is now the spec's, and the three byte classes are disjoint so the pattern accepts exactly what a greedy scanner accepts. The behaviour is pinned against `tests/fixtures/ansi-strip-corpus.json`, which the Rust `strip_ansi` in the shell minimizer reads too, so the two implementations answer the same cases instead of drifting apart.
 
 ## [1.4.1] - 2026-09-08
