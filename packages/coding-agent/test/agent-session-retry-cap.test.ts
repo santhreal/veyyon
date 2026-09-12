@@ -81,11 +81,11 @@ describe("AgentSession retry delay cap", () => {
 	 * Re-create the storage and the registry with account movement ON, and return the storage so a
 	 * test reads the same instance the registry holds.
 	 *
-	 * `AuthStorageOptions.loadBalancing` defaults to OFF at the library level; the product setting
-	 * `accounts.loadBalancing` ships on and the host passes it. The three tests that call this are
-	 * ABOUT the move between siblings, so they ask for it explicitly; a rotation assertion resting
-	 * on an ambient default is describing whatever the default happens to be, not the behavior it
-	 * names.
+	 * `AuthStorageOptions.loadBalancing` defaults to OFF, matching the `accounts.loadBalancing`
+	 * setting: off means a session waits out the window of the account it was told to use instead of
+	 * spending a sibling nobody offered. The three tests that call this are ABOUT the move between
+	 * siblings, so they have to ask for it; a rotation assertion resting on an ambient default is
+	 * describing whatever the default happens to be, not the behavior it names.
 	 */
 	async function withAccountMovement(): Promise<AuthStorage> {
 		authStorage.close();

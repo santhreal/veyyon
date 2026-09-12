@@ -637,7 +637,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `accounts.loadBalancing` | Account Load Balancing | boolean | `true` | On: when the account you chose hits its quota or rate limit, continue on another account of the same provider and say so. Off: only that account is used, and a session waits out its quota window. A revoked account always fails over regardless, with a notice. |
+| `accounts.loadBalancing` | Account Load Balancing | boolean | `false` | Off: only the account you chose is used, and a session waits out its quota window. On: when that account hits its quota or rate limit, continue on another account of the same provider and say so. A revoked account always fails over regardless, with a notice. |
 
 ### Services
 
