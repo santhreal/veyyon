@@ -3,6 +3,7 @@ import { buildModel } from "./build";
 import type { ModelReferenceCandidate } from "./identity/reference";
 import modelsSourceJson from "./models.json" with { type: "text" };
 import type { Api, Model, ModelSpec, Usage } from "./types";
+import { ZERO_MODEL_COST } from "./utils";
 
 /**
  * Static bundled model registry loaded from `models.json`.
@@ -36,7 +37,7 @@ const modelsSource = modelsSourceJson as unknown as string;
  * Bump this version whenever the resolved record's contract changes, the same
  * way `CACHE_SCHEMA_VERSION` is bumped in `model-cache.ts` for cached specs.
  */
-const ENRICHED_REGISTRY_FORMAT_VERSION = 4;
+const ENRICHED_REGISTRY_FORMAT_VERSION = 5;
 let fullRegistry: Map<string, Map<string, Model<Api>>> | undefined;
 const lazyProviderModels: Map<string, Map<string, Model<Api>>> = new Map();
 let parsedModels: BundledModelsJson | undefined;
@@ -231,11 +232,12 @@ export function getModelPricing<TApi extends Api>(
 }
 
 export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage): Usage["cost"] {
+	const cost = model.cost ?? ZERO_MODEL_COST;
 	const orchestration = usage.orchestration;
-	usage.cost.input = (model.cost.input / 1000000) * (usage.input + (orchestration?.input ?? 0));
-	usage.cost.output = (model.cost.output / 1000000) * (usage.output + (orchestration?.output ?? 0));
-	usage.cost.cacheRead = (model.cost.cacheRead / 1000000) * (usage.cacheRead + (orchestration?.cacheRead ?? 0));
-	usage.cost.cacheWrite = (model.cost.cacheWrite / 1000000) * usage.cacheWrite;
+	usage.cost.input = (cost.input / 1000000) * (usage.input + (orchestration?.input ?? 0));
+	usage.cost.output = (cost.output / 1000000) * (usage.output + (orchestration?.output ?? 0));
+	usage.cost.cacheRead = (cost.cacheRead / 1000000) * (usage.cacheRead + (orchestration?.cacheRead ?? 0));
+	usage.cost.cacheWrite = (cost.cacheWrite / 1000000) * usage.cacheWrite;
 	recomputeCostTotal(usage);
 	return usage.cost;
 }
@@ -367,13 +369,18 @@ export function emptyCost(): Usage["cost"] {
  * its extra `total`, and the stats row shape all pass. It had a copy in `catalog`'s generator and
  * another in `stats`, spelled identically down to the bucket order.
  */
-export function hasBillableCost(cost: {
-	input: number;
-	output: number;
-	cacheRead: number;
-	cacheWrite: number;
-}): boolean {
-	return cost.input !== 0 || cost.output !== 0 || cost.cacheRead !== 0 || cost.cacheWrite !== 0;
+export function hasBillableCost(
+	cost?: Partial<{
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+	}>,
+): boolean {
+	if (!cost) return false;
+	return (
+		(cost.input ?? 0) !== 0 || (cost.output ?? 0) !== 0 || (cost.cacheRead ?? 0) !== 0 || (cost.cacheWrite ?? 0) !== 0
+	);
 }
 
 /**

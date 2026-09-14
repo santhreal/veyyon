@@ -13,10 +13,12 @@ runs:
         run: |
            # Skip the package-manager round-trip when the runner already provides
            # these; otherwise install the same set so any runner still works.
+           platform="$(uname -s)"
            if command -v fd >/dev/null 2>&1 \
               && command -v rg >/dev/null 2>&1 \
               && command -v magick >/dev/null 2>&1 \
-              && pkg-config --exists cairo pango 2>/dev/null; then
+              && pkg-config --exists cairo pango 2>/dev/null \
+              && { [ "$platform" = Darwin ] || { pkg-config --exists fontconfig freetype2 wayland-client xkbcommon xkbcommon-x11 2>/dev/null && ldconfig -p | grep -q 'libvulkan\.so\.1' && test -f /usr/share/vulkan/icd.d/lvp_icd.json; }; }; then
              echo "System deps already present; skipping install."
              exit 0
            fi
@@ -26,7 +28,7 @@ runs:
            # "apt-get: command not found" and the job died before doing any work.
            # That is why no macOS job could use it, and why install.sh had never
            # been gated on the platform it also ships to.
-           case "$(uname -s)" in
+           case "$platform" in
              Darwin)
                # Homebrew ships on every GitHub macOS runner. `brew install` is
                # idempotent, so a partially provisioned runner self-heals.
@@ -39,7 +41,7 @@ runs:
                ;;
              *)
                sudo apt-get update
-               sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep imagemagick
+               sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep imagemagick pkg-config libfontconfig-dev libfreetype-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev libvulkan1 libvulkan-dev mesa-vulkan-drivers
                # Debian ships these under different names than every other distro
                # and than macOS; link them so callers can spell them one way.
                sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd

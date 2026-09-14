@@ -449,7 +449,14 @@ function openModelHubEffortStrip(model: Model<Api>): string {
 	// effort strip follows immediately.
 	hub.handleInput(ENTER);
 	hub.handleInput(ENTER);
-	return stripVTControlCharacters(hub.render(PANEL_WIDTH).join("\n"));
+	const frames: string[] = [stripVTControlCharacters(hub.render(PANEL_WIDTH).join("\n"))];
+	// Cycle through the strip so a model whose chips overflow the horizontal
+	// window renders every offered tier as the window scrolls right.
+	for (let i = 0; i < thinking.CONFIGURED_THINKING_LEVELS.length + 1; i++) {
+		hub.handleInput("\t");
+		frames.push(stripVTControlCharacters(hub.render(PANEL_WIDTH).join("\n")));
+	}
+	return frames.join("\n");
 }
 
 /** Levels RPC `set_thinking_level` accepts, minus `inherit`, which is how a client clears its choice. */

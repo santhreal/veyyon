@@ -62,6 +62,7 @@ import { deterministicUuid } from "../utils/deterministic-id";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { toolWireSchema } from "../utils/schema/wire";
 import { createInitialResponsesAssistantMessage } from "./initial-message";
+import { NON_VIDEO_MODEL_PLACEHOLDER } from "./vision-content";
 
 /**
  * Base host for Codeium/Windsurf's Cascade chat API (Connect protocol over HTTP/1.1).
@@ -642,6 +643,8 @@ function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMe
 						promptText += part.text;
 					} else if (part.type === "image") {
 						images.push(create(ImageDataSchema, { base64Data: part.data, mimeType: part.mimeType }));
+					} else if (part.type === "video") {
+						promptText += (promptText ? "\n" : "") + NON_VIDEO_MODEL_PLACEHOLDER;
 					}
 				}
 			}
@@ -693,6 +696,8 @@ function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMe
 					resultText += part.text;
 				} else if (part.type === "image") {
 					images.push(create(ImageDataSchema, { base64Data: part.data, mimeType: part.mimeType }));
+				} else if (part.type === "video") {
+					resultText += (resultText ? "\n" : "") + NON_VIDEO_MODEL_PLACEHOLDER;
 				}
 			}
 			prompts.push(
@@ -828,3 +833,5 @@ export function devinTrailerFailure(trailer: DevinTrailerError): Error {
 	if (status === undefined) return new AIError.ValidationError(trailer.text);
 	return new AIError.DevinApiError(trailer.text, status);
 }
+
+export { buildChatMessagePrompts as buildDevinChatMessagePrompts };

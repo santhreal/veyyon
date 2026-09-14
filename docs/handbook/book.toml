@@ -1,6 +1,6 @@
 [book]
 title = "The Veyyon Harness Handbook"
-description = "Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure."
+description = "Operator handbook for Veyyon: terminal and native desktop interfaces, installation, configuration, tools, approvals, edit formats, providers, and harness structure."
 authors = ["Veyyon"]
 language = "en"
 src = "src"

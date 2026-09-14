@@ -227,11 +227,9 @@ describe("the modules that were repointed stay cut", () => {
 		// used to spell `"\x1b"` inline and now takes `ESC` from that owner. The leaf adds no edge of
 		// its own, so nothing outside this closure was gained.
 		["coding-agent/src/config/api-key-resolver.ts", 56],
-		// Re-measured 2026-09-11 at 207, from 205: the two leaves named above. 205 was the three
-		// `@veyyon/model` leaves of 2026-09-04; 202 was one module from the catalog OpenCode discovery
-		// header leaf; 184 was the 2026-07-27 engine-call remeasure; 325 before that was the leak. The
-		// file still takes no name from the barrel.
-		["coding-agent/src/commit/shared-llm.ts", 207],
+		// The 207-module graph above also includes `ai/src/providers/vision-content.ts`
+		// for video partitioning. That module imports only types; the combined reach is 208.
+		["coding-agent/src/commit/shared-llm.ts", 208],
 		// The agent's hot loop and the `Agent` class. Both STREAM, so both reach the engine whatever
 		// specifier they use; the ceilings are what the other ten names cost when taken from the entry
 		// point. 378 -> 321 and 380 -> 323.

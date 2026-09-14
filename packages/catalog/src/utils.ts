@@ -1,4 +1,5 @@
 import { type FetchImpl, wrapFetchForExtraCa } from "@veyyon/utils/tls-fetch";
+import type { Api, Model } from "./types";
 
 export { isRecord } from "@veyyon/utils/type-guards";
 
@@ -125,4 +126,44 @@ const NOISE_TAGS = /\s*\((?:latest|Antigravity|\$+|>?\d+% off|retires [^)]*)\)/g
 export function cleanModelName(name: string): string {
 	const cleaned = name.replace(AUTHOR_PREFIX, "").replace(NOISE_TAGS, "").replace(/ {2,}/g, " ").trim();
 	return cleaned.length > 0 ? cleaned : name;
+}
+
+/**
+ * Shared immutable zeroed {@link Model.cost} instance.
+ * Used as a zero-allocation fallback in `calculateCost` when evaluating
+ * unpriced or raw model records without explicit pricing.
+ */
+export const ZERO_MODEL_COST: Readonly<Model<Api>["cost"]> = Object.freeze({
+	input: 0,
+	output: 0,
+	cacheRead: 0,
+	cacheWrite: 0,
+});
+
+/**
+ * A fresh, fully-zeroed {@link Model.cost}: all four pricing buckets set to 0.
+ */
+export function emptyModelCost(): Model<Api>["cost"] {
+	return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+}
+
+/**
+ * Normalize an optional or sparse model cost into a complete {@link Model.cost} record.
+ */
+export function normalizeModelCost(cost: Partial<Model<Api>["cost"]> | undefined): Model<Api>["cost"] {
+	if (!cost) return emptyModelCost();
+	if (
+		cost.input !== undefined &&
+		cost.output !== undefined &&
+		cost.cacheRead !== undefined &&
+		cost.cacheWrite !== undefined
+	) {
+		return cost as Model<Api>["cost"];
+	}
+	return {
+		input: cost.input ?? 0,
+		output: cost.output ?? 0,
+		cacheRead: cost.cacheRead ?? 0,
+		cacheWrite: cost.cacheWrite ?? 0,
+	};
 }

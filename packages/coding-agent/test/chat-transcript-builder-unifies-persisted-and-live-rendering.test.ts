@@ -15,6 +15,7 @@ import { UiHelpers, type UiHelpersContext } from "@veyyon/coding-agent/modes/ter
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { SessionContext } from "@veyyon/kernel/session/session-context";
 import { stripAnsi } from "@veyyon/utils";
+import { SUPPORTED_VIDEO_MIME_TYPES } from "@veyyon/utils/mime";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
 import { createToolExecution } from "./helpers/tool-execution";
 
@@ -118,6 +119,39 @@ describe("shared transcript replay preserves live state", () => {
 			expect(live).toContain(theme.fg(color, "first second"));
 			helpers.renderSessionContext(context([message]));
 			expect(ctx.chatContainer.render(120).join("\n")).toBe(live);
+		}
+	});
+
+	// Video labels must survive the shared projection in both live and replayed prompts.
+	// This covers every admitted MIME type and base64 padding width, not provider transport.
+	it.each([...SUPPORTED_VIDEO_MIME_TYPES])("preserves %s labels through live append and replay", mimeType => {
+		for (const role of ["user", "developer"] as const) {
+			for (const bytes of [1, 2, 3]) {
+				for (const [prefix, expectedPrefix] of [
+					["", ""],
+					["lead", "lead\n"],
+					["lead\n", "lead\n"],
+				] as const) {
+					const { ctx, helpers } = fixture();
+					const data = Buffer.alloc(bytes, 0xab).toString("base64");
+					const message: Extract<AgentMessage, { role: "user" | "developer" }> = {
+						role,
+						content: [
+							{ type: "text", text: prefix },
+							{ type: "video", mimeType, data },
+						],
+						timestamp: 0,
+					};
+					const label = `[${mimeType} · ${bytes}B]`;
+					if (role === "user") expect(helpers.getUserMessageText(message)).toBe(expectedPrefix + label);
+					helpers.addMessageToChat(message);
+					const live = text(ctx.chatContainer);
+					expect(live).toContain(label);
+					expect(live).not.toContain(data);
+					helpers.renderSessionContext(context([message]));
+					expect(text(ctx.chatContainer)).toBe(live);
+				}
+			}
 		}
 	});
 

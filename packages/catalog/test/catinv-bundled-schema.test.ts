@@ -21,34 +21,10 @@
  * suite can pin.
  */
 import { describe, expect, it } from "bun:test";
-import { buildModel } from "@veyyon/catalog/build";
-import { isEffort } from "@veyyon/catalog/effort";
-import MODELS from "@veyyon/catalog/models.json" with { type: "json" };
-import type { Api, ModelSpec } from "@veyyon/catalog/types";
-
-/**
- * The `KnownApi` union in `types.ts` is type-only; this is its runtime spelling
- * for the sweep. A new api lands in the union -> this set fails until updated,
- * which is the intended tripwire: a bundled row may never carry an api the
- * union does not know, because an unrecognized api falls through `buildCompat`
- * to `compat: undefined` and the wire layer then dispatches blind.
- */
-const KNOWN_APIS: Record<string, true> = {
-	"openai-completions": true,
-	"openai-responses": true,
-	openrouter: true,
-	"openai-codex-responses": true,
-	"azure-openai-responses": true,
-	"anthropic-messages": true,
-	"bedrock-converse-stream": true,
-	"google-generative-ai": true,
-	"google-gemini-cli": true,
-	"google-vertex": true,
-	"ollama-chat": true,
-	"cursor-agent": true,
-	"gitlab-duo-agent": true,
-	"devin-agent": true,
-};
+import { buildModel } from "../src/build";
+import { isEffort } from "../src/effort";
+import MODELS from "../src/models.json" with { type: "json" };
+import { type Api, KNOWN_APIS, type ModelSpec } from "../src/types";
 
 /**
  * The ModelSpec vocabulary (`types.ts`, the `Model` interface minus the
@@ -139,7 +115,7 @@ describe("every bundled row carries valid enum and scalar fields", () => {
 	it("api is a KnownApi, reasoning is boolean, name is non-empty", () => {
 		const offenders = allRows().flatMap(r => {
 			const problems: string[] = [];
-			if (typeof r.row.api !== "string" || KNOWN_APIS[r.row.api] !== true) {
+			if (typeof r.row.api !== "string" || !(KNOWN_APIS as readonly string[]).includes(r.row.api)) {
 				problems.push(`${label(r)}: api=${String(r.row.api)}`);
 			}
 			if (typeof r.row.reasoning !== "boolean") problems.push(`${label(r)}: reasoning=${String(r.row.reasoning)}`);
@@ -160,11 +136,11 @@ describe("every bundled row carries valid enum and scalar fields", () => {
 		expect(offenders).toEqual([]);
 	});
 
-	it("input is a non-empty array of text/image", () => {
+	it("input is a non-empty array of text/image/video", () => {
 		const offenders = allRows().flatMap(r => {
 			const input = r.row.input;
 			if (!Array.isArray(input) || input.length === 0) return [`${label(r)}: input=${JSON.stringify(input)}`];
-			if (input.some(v => v !== "text" && v !== "image")) {
+			if (input.some(v => v !== "text" && v !== "image" && v !== "video")) {
 				return [`${label(r)}: input=${JSON.stringify(input)}`];
 			}
 			return [];

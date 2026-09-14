@@ -22,6 +22,7 @@ import type {
 	ToolCall,
 	ToolResultMessage,
 	TSchema,
+	VideoContent,
 } from "../types";
 import { isServiceTier } from "../types";
 import {
@@ -182,10 +183,10 @@ function stringifyContent(content: string | OpenAIChatContentPart[] | undefined)
 
 function parseUserLikeContent(
 	content: string | OpenAIChatContentPart[] | undefined,
-): string | (TextContent | ImageContent)[] {
+): string | (TextContent | ImageContent | VideoContent)[] {
 	if (content === undefined) return "";
 	if (typeof content === "string") return content;
-	const parts: (TextContent | ImageContent)[] = [];
+	const parts: (TextContent | ImageContent | VideoContent)[] = [];
 	for (const part of content) {
 		if (part.type === "text") {
 			parts.push({ type: "text", text: part.text });

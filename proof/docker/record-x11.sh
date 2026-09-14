@@ -43,10 +43,12 @@ if [[ -n "${PROOF_AUTH_DIR:-}" ]]; then
 	AUTH_MOUNTS+=(--mount "type=bind,src=${PROOF_AUTH_DIR},dst=/host-auth,readonly")
 fi
 
-# Mandate GPU acceleration passthrough so the terminal and compositor run at full
-# hardware refresh rate with zero CPU-compositor frame jitter.
+# An explicit Docker device may be a CDI name, such as nvidia.com/gpu=all.
+# Without one, forward the host's DRM devices.
 GPU_ARGS=()
-if [ -d /dev/dri ]; then
+if [ -n "${PROOF_GPU_DEVICE:-}" ]; then
+	GPU_ARGS+=(--device "${PROOF_GPU_DEVICE}")
+elif [ -d /dev/dri ]; then
 	GPU_ARGS+=(--device /dev/dri)
 	if [ -e /dev/dri/renderD128 ]; then
 		RENDER_GID="$(stat -c %g /dev/dri/renderD128 2>/dev/null || echo 992)"

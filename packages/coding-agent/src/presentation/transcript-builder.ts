@@ -9,6 +9,7 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, Message, ToolResultMessage } from "@veyyon/ai";
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
+import { formatBytes } from "@veyyon/utils/format";
 import { replaceTabs } from "@veyyon/utils/tab-width";
 import { isRecord } from "@veyyon/utils/type-guards";
 import { truncateToWidth } from "@veyyon/utils/width";
@@ -27,6 +28,7 @@ import type {
 } from "@veyyon/wire/presentation";
 import { resolveAbortLabel, shouldRenderAbortReason } from "../session/messages";
 import { TRUNCATE_LENGTHS } from "../tools/core/render-limits";
+import { base64DecodedBytes } from "../utils/video-loading";
 import { contentToText } from "./content-text";
 import { projectCustomDisplay, readCustomLevel } from "./custom-display";
 import { toBranchSummaryView, toCompactionSummaryView } from "./summary-builder";
@@ -79,9 +81,19 @@ export function collectToolCallArgs(messages: readonly AgentMessage[]): Map<stri
 	return toolCallArgs;
 }
 
-/** Text chunks in a prompt concatenate without adding separators. */
+/** Text chunks concatenate; video chunks include their media type and decoded size. */
 export function userMessageText(message: Extract<AgentMessage, { role: "developer" | "user" }> | Message): string {
-	return contentToText(message.content, "");
+	if (typeof message.content === "string") return message.content;
+	let text = "";
+	for (const block of message.content) {
+		if (block.type === "text") {
+			text += block.text;
+		} else if (block.type === "video") {
+			if (text.length > 0 && !text.endsWith("\n")) text += "\n";
+			text += `[${block.mimeType} · ${formatBytes(base64DecodedBytes(block.data))}]`;
+		}
+	}
+	return text;
 }
 
 export function toUserMessageView(message: Extract<AgentMessage, { role: "developer" | "user" }>): UserMessageView {

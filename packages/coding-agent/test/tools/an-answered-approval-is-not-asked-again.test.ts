@@ -7,13 +7,14 @@
  * be on screen: the dialog host presents one and queues the rest. The standing
  * grant is read once, before a call queues, so "Approve for session" answered
  * at the first card could not dismiss the cards already waiting behind it.
- * Those cards are built with no abort signal either, so neither an interrupt
- * nor the end of the turn drops them. They surface whenever the surface frees
- * up, which is the operator-visible symptom: you answer once, the agent goes
- * off and finishes, and then it asks you again for the same tool after the
- * work is done. Nothing about it reaches the transcript, because no second
+ * They surface whenever the surface frees up, which is the operator-visible
+ * symptom: you answer once, the agent goes off and finishes, and then it asks
+ * you again for the same tool after the work is done. Nothing about it reaches
+ * the transcript, because no second
  * tool call was ever made, which is why it reads as the harness glitching
- * rather than the model repeating itself.
+ * rather than the model repeating itself. (A card now carries the turn's abort
+ * signal, so a stop takes the queue down; that half is pinned in
+ * `an-approval-nobody-answered-ends-with-the-turn.test.ts`.)
  *
  * The fix is that a second call waits on the prompt already open for that tool
  * instead of queueing its own card, then re-reads the answer. So the contract

@@ -473,13 +473,13 @@ describe("docs examples — documented env vars are consumed in source", () => {
 	});
 });
 
-describe("docs examples — documented slash commands exist in the shipped registry", () => {
+describe("docs examples — a documented command exists in the surface whose page names it", () => {
 	// A backticked single-token `/name` (optionally with subcommand/arg words
 	// after it). Multi-segment paths (`/etc/veyyon/skills`) never match because
 	// a second `/` breaks the token; the lookbehind stops a closing backtick
 	// glued to prose (`file.md`/custom …) from posing as an opening one.
 	// Scoped to the public handbook — elsewhere `/word` is usually a URL route
-	// or filesystem path, and only the handbook promises the TUI surface.
+	// or filesystem path, and only the handbook promises a command surface.
 	const SLASH_MENTION_RE = /(?<![\w.])`\/([a-z][a-z0-9_-]*)(?: [^`]*)?`/g;
 	// Denial mentions ("There is no `/clone` command", "`/import` is **not** in
 	// the registry", "(not `/side`)") are honest docs, not claims. So is a
@@ -529,6 +529,20 @@ describe("docs examples — documented slash commands exist in the shipped regis
 		// bundled extension that registers commands is added here too.
 		record(createAutoresearchExtension);
 	}
+	// The desktop command palette is a SECOND command surface, and the pages
+	// under `docs/handbook/src/desktop/` promise that one rather than the TUI's
+	// registry: `/attach`, `/queue-mode`, `/steer` and `/terminal` are palette
+	// entries the TUI never had. The names are read from the palette's own table
+	// at run time, so a command renamed or dropped in Rust turns this red instead
+	// of leaving a page pointing at a command the window does not offer.
+	const paletteCommands = new Set<string>();
+	{
+		const paletteSrc = fs.readFileSync(
+			path.join(REPO_ROOT, "crates/veyyon-desktop-surface/src/palette/commands.rs"),
+			"utf-8",
+		);
+		for (const m of paletteSrc.matchAll(/"\/([a-z][a-z0-9_-]*)(?: [a-z-]+)?"/g)) paletteCommands.add(m[1]);
+	}
 
 	/**
 	 * Anti-vacuity, per source. A scan that silently matched nothing would leave
@@ -539,13 +553,18 @@ describe("docs examples — documented slash commands exist in the shipped regis
 	it("the registry is alive", () => {
 		expect(registered.size).toBeGreaterThan(30);
 		expect(fromBundledFactory.size).toBeGreaterThan(0);
+		expect(paletteCommands.size).toBeGreaterThan(10);
+		expect([...paletteCommands].sort()).toContain("terminal");
 	});
 
-	it("every backticked /command in the handbook is a builtin, an alias, or a bundled-extension command", () => {
+	it("every backticked /command in the handbook is one the surface that page documents offers", () => {
 		const failures: string[] = [];
 		let mentions = 0;
 		for (const file of markdownFiles) {
 			if (!file.startsWith("docs/handbook/src/")) continue;
+			// A desktop page documents the window's palette; every other page documents the TUI.
+			const offered = file.startsWith("docs/handbook/src/desktop/") ? paletteCommands : registered;
+			const surface = offered === paletteCommands ? "desktop palette command" : "shipped command";
 			const lines = fs.readFileSync(path.join(REPO_ROOT, file), "utf-8").split("\n");
 			let specScope = false;
 			for (let i = 0; i < lines.length; i++) {
@@ -554,8 +573,8 @@ describe("docs examples — documented slash commands exist in the shipped regis
 				if (SLASH_NEGATION_RE.test(lines[i])) continue;
 				for (const match of lines[i].matchAll(SLASH_MENTION_RE)) {
 					mentions++;
-					if (!registered.has(match[1])) {
-						failures.push(`${file}:${i + 1}: slash command /${match[1]} is not a shipped command`);
+					if (!offered.has(match[1])) {
+						failures.push(`${file}:${i + 1}: /${match[1]} is not a ${surface}`);
 					}
 				}
 			}

@@ -125,6 +125,7 @@ describe("workspace member coverage in AGENTS.md", () => {
 			"apps",
 			"clients",
 			"contracts",
+			"crates",
 			"hosts",
 			"kernel",
 			"natives",

@@ -1,0 +1,313 @@
+//! Key context and action handlers for the window root and regions (§5.14).
+//!
+//! Registers the root `Global` key context along with global, queue and
+//! transcript action listeners that dispatch typed `Intent`s into the shell
+//! view.
+
+use veyyon_desktop_kit::input::editor::actions::{
+	Backspace, Enter, Escape, MoveDown, MoveLineEnd, MoveLineStart, MoveUp,
+};
+use veyyon_gpui::{Context, Div, InteractiveElement, KeyDownEvent};
+
+use crate::{
+	Intent, Overlay, Section, ShellView,
+	composer::{ThinkingControl, TurnPhase},
+	keymap::actions::{
+		AbortTurn, AttachFile, CloseTabOrPark, CloseWindow, CopySelection, Dismiss, FilterQueue,
+		FindInTranscript, FocusLive, ModelPicker, MoveSelection, NewSession, NextSession, NextTurn,
+		OpenMenu, OpenPalette, OpenSelectedSession, OpenSettings, PreviousSession, PreviousTurn,
+		Quit, Scroll, SelectEntryText, SelectOption, SplitHalf, TakeBackQueuedPrompt,
+		ThinkingLevel as CycleThinkingLevel, ToggleBlock, ToggleDeferSelected, ToggleDrawer,
+		TogglePanel, ToggleParkSelected, TogglePinSelected, ToggleQueue, ToggleQueueMode,
+	},
+};
+
+mod navigation;
+use navigation::{dismiss_topmost, partition_toggle};
+
+/// Binds the root `Shell` key context and registers action handlers.
+#[must_use]
+pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
+	root
+		.key_context("Shell")
+		.capture_action(cx.listener(|view, _: &MoveUp, window, cx| {
+			if view.menu_picker_key("up", window, cx) || view.picker_key("up", cx) {
+				cx.stop_propagation();
+				cx.notify();
+			} else {
+				cx.propagate();
+			}
+		}))
+		.capture_action(cx.listener(|view, _: &MoveDown, window, cx| {
+			if view.menu_picker_key("down", window, cx) || view.picker_key("down", cx) {
+				cx.stop_propagation();
+				cx.notify();
+			} else {
+				cx.propagate();
+			}
+		}))
+		.capture_action(cx.listener(|view, _: &MoveLineStart, window, cx| {
+			if view.menu_picker_key("home", window, cx) || view.picker_key("home", cx) {
+				cx.stop_propagation();
+			} else {
+				cx.propagate();
+			}
+		}))
+		.capture_action(cx.listener(|view, _: &MoveLineEnd, window, cx| {
+			if view.menu_picker_key("end", window, cx) || view.picker_key("end", cx) {
+				cx.stop_propagation();
+			} else {
+				cx.propagate();
+			}
+		}))
+		.capture_action(cx.listener(|view, _: &Enter, window, cx| {
+			if view.menu_picker_key("enter", window, cx) || view.picker_key("enter", cx) {
+				cx.stop_propagation();
+			} else {
+				cx.propagate();
+			}
+		}))
+		.capture_action(cx.listener(|view, _: &Dismiss, window, cx| {
+			dismiss_topmost(view, window, cx);
+		}))
+		.capture_action(cx.listener(|view, _: &Escape, window, cx| {
+			dismiss_topmost(view, window, cx);
+		}))
+		.capture_action(cx.listener(|view, _: &Backspace, _window, cx| {
+			if view.picker_is_occluded() {
+				cx.propagate();
+				return;
+			}
+			let empty = view
+				.state()
+				.overlay
+				.as_ref()
+				.and_then(Overlay::as_palette)
+				.is_some_and(|p| p.query().is_empty());
+			if empty {
+				view.back_surface(cx);
+				cx.stop_propagation();
+			} else {
+				cx.propagate();
+			}
+		}))
+		.capture_key_down(super::menu::menu_keys(cx))
+		.capture_key_down(cx.listener(|view, event: &KeyDownEvent, _window, cx| {
+			if view.picker_is_occluded() {
+				return;
+			}
+			let key = event.keystroke.key.as_str();
+			let empty_search = view
+				.state()
+				.overlay
+				.as_ref()
+				.and_then(Overlay::as_palette)
+				.is_some_and(|palette| palette.query().is_empty());
+			if key.eq_ignore_ascii_case("backspace") && empty_search {
+				view.back_surface(cx);
+				cx.stop_propagation();
+				cx.notify();
+				return;
+			}
+			// Escape follows the topmost-dialog path, and modified keys retain
+			// the editor's own selection/navigation bindings.
+			let modifiers = &event.keystroke.modifiers;
+			if key != "escape"
+				&& !modifiers.control
+				&& !modifiers.alt
+				&& !modifiers.platform
+				&& !modifiers.shift
+				&& view.picker_key(key, cx)
+			{
+				cx.stop_propagation();
+				cx.notify();
+			}
+		}))
+		.on_action(cx.listener(|view, _: &OpenPalette, window, cx| {
+			view.open_command_palette(window, cx);
+		}))
+		.on_action(cx.listener(|view, _: &NewSession, _window, cx| {
+			view.dispatch(Intent::NewSession, cx);
+		}))
+		.on_action(cx.listener(|view, _: &OpenSettings, _window, cx| {
+			view.navigate_surface(crate::navigation::SurfaceRoute::Settings, cx);
+		}))
+		.on_action(cx.listener(|view, _: &CloseWindow, _window, cx| {
+			view.dispatch(Intent::CloseWindow, cx);
+		}))
+		.on_action(cx.listener(|view, _: &Quit, _window, cx| {
+			view.dispatch(Intent::Quit, cx);
+		}))
+		.on_action(cx.listener(|view, _: &OpenMenu, window, cx| {
+			view.toggle_menu_section(Some(crate::MenuSectionId::Veyyon), window, cx);
+		}))
+		.on_action(cx.listener(|view, _: &ToggleQueue, _window, cx| {
+			view.toggle_queue(cx);
+		}))
+		.on_action(cx.listener(|view, _: &ToggleDrawer, _window, cx| {
+			let open = !view.state().drawer_open;
+			view.dispatch(Intent::SetDrawer { open }, cx);
+		}))
+		.on_action(cx.listener(|view, _: &TogglePanel, _window, cx| {
+			let open = view.state().keymap.panel_collapsed;
+			view.dispatch(Intent::SetPanel { open }, cx);
+		}))
+		.on_action(cx.listener(|view, action: &FocusLive, _window, cx| {
+			if let Some((_, rows)) = view
+				.state()
+				.sections
+				.iter()
+				.find(|(section, _)| *section == Section::Live)
+			{
+				let idx = (action.index as usize).saturating_sub(1);
+				if let Some(row) = rows.get(idx) {
+					view.dispatch(Intent::SelectSession(row.id), cx);
+				}
+			}
+		}))
+		.on_action(cx.listener(|view, _: &PreviousSession, _window, cx| {
+			view.dispatch(Intent::MoveQueueSelection(-1), cx);
+		}))
+		.on_action(cx.listener(|view, _: &NextSession, _window, cx| {
+			view.dispatch(Intent::MoveQueueSelection(1), cx);
+		}))
+		.on_action(cx.listener(|view, _: &CloseTabOrPark, window, cx| {
+			if let Some(session) = view.state().navigation.active().selected.clone() {
+				view.request_close_tab(session, window, cx);
+			}
+		}))
+		.on_action(cx.listener(|view, action: &MoveSelection, _window, cx| {
+			view.dispatch(Intent::MoveQueueSelection(action.delta), cx);
+		}))
+		.on_action(cx.listener(|view, _: &OpenSelectedSession, _window, cx| {
+			let current = view.state().current_id;
+			if current != 0 {
+				view.dispatch(Intent::SelectSession(current), cx);
+			}
+		}))
+		.on_action(cx.listener(|view, _: &TogglePinSelected, _window, cx| {
+			if let Some(intent) = partition_toggle(view, Section::Pinned) {
+				view.dispatch(intent, cx);
+			}
+		}))
+		.on_action(cx.listener(|view, _: &ToggleDeferSelected, _window, cx| {
+			if let Some(intent) = partition_toggle(view, Section::Deferred) {
+				view.dispatch(intent, cx);
+			}
+		}))
+		.on_action(cx.listener(|view, _: &ToggleParkSelected, _window, cx| {
+			if let Some(intent) = partition_toggle(view, Section::Parked) {
+				view.dispatch(intent, cx);
+			}
+		}))
+		.on_action(cx.listener(|view, _: &FilterQueue, window, cx| {
+			view.open_queue_search(window, cx);
+		}))
+		.on_action(cx.listener(|view, action: &Scroll, _window, cx| {
+			view.dispatch(Intent::ScrollTranscript(action.by), cx);
+		}))
+		.on_action(cx.listener(|view, _: &FindInTranscript, window, cx| {
+			view.open_transcript_find(window, cx);
+		}))
+		.on_action(cx.listener(|view, _: &PreviousTurn, _window, cx| {
+			view.dispatch(Intent::StepTurn(-1), cx);
+		}))
+		.on_action(cx.listener(|view, _: &NextTurn, _window, cx| {
+			view.dispatch(Intent::StepTurn(1), cx);
+		}))
+		.on_action(cx.listener(|view, _: &ToggleBlock, _window, cx| {
+			view.dispatch(Intent::ToggleBlock, cx);
+		}))
+		// Nothing selected is nothing to copy, so the chord belongs to whatever
+		// else claims it rather than putting an empty string on the clipboard
+		// over what was there.
+		.on_action(cx.listener(|view, _: &CopySelection, _window, cx| {
+			let text = view.selected_text();
+			if text.is_empty() {
+				cx.propagate();
+			} else {
+				view.dispatch(Intent::CopyText(text), cx);
+			}
+		}))
+		// The entry the chord takes is the turn the keyboard is on, and the
+		// last one when it is on none, which is the entry the transcript is
+		// scrolled to.
+		.on_action(cx.listener(|view, _: &SelectEntryText, _window, cx| {
+			let turns = view.state().transcript.len();
+			if turns == 0 {
+				cx.propagate();
+				return;
+			}
+			let turn_ix = view
+				.state()
+				.keymap
+				.focused_turn
+				.unwrap_or(turns - 1)
+				.min(turns - 1);
+			view.select_whole_entry(turn_ix);
+			cx.notify();
+		}))
+}
+
+/// Binds the composer-scope chords (§5.14) on the composer's key context.
+///
+/// Each chord does what the footer or the action row does for the same
+/// thing, and nothing the surface does not offer: a chord whose control is
+/// absent propagates, so the keystroke reaches the editor as text.
+#[must_use]
+pub fn bind_composer_keys(composer: Div, cx: &Context<ShellView>) -> Div {
+	composer
+		.on_action(cx.listener(|view, _: &AbortTurn, _window, cx| {
+			if view.state().turn.is_stoppable() {
+				view.dispatch(Intent::AbortTurn, cx);
+			} else {
+				cx.propagate();
+			}
+		}))
+		.on_action(cx.listener(|view, _: &ToggleQueueMode, _window, cx| {
+			view.toggle_queue_mode(cx);
+		}))
+		.on_action(cx.listener(|view, _: &SplitHalf, _window, cx| {
+			view.submit_alternate_turn_action(cx);
+		}))
+		// A digit answers the open question while the composer is empty;
+		// with text in it, the digit is text.
+		.on_action(cx.listener(|view, action: &SelectOption, _window, cx| {
+			let options = match &view.state().turn {
+				TurnPhase::QuestionPending { options, .. } => *options,
+				_ => 0,
+			};
+			let option = usize::from(action.index).wrapping_sub(1);
+			if view.has_composer_text() || option >= options {
+				cx.propagate();
+				return;
+			}
+			view.dispatch(Intent::Answer { card: 0, option }, cx);
+		}))
+		.on_action(cx.listener(|view, _: &ModelPicker, window, cx| {
+			view.open_model_picker(window, cx);
+		}))
+		.on_action(cx.listener(|view, _: &CycleThinkingLevel, _window, cx| {
+			let next = view
+				.state()
+				.composer
+				.thinking
+				.as_ref()
+				.and_then(ThinkingControl::next)
+				.map(crate::composer::ThinkingLevel::new);
+			match next {
+				Some(level) => view.dispatch(Intent::SetThinking(level), cx),
+				None => cx.propagate(),
+			}
+		}))
+		.on_action(cx.listener(|view, _: &AttachFile, _window, cx| view.pick_attachments(cx)))
+		.on_action(cx.listener(|view, _: &TakeBackQueuedPrompt, _window, cx| {
+			// Nothing held, nothing to take back: the chord belongs to whatever
+			// else claims it rather than emptying the queue of another surface.
+			if view.state().composer.queued.is_empty() {
+				cx.propagate();
+			} else {
+				view.dispatch(Intent::DequeueQueuedPrompt, cx);
+			}
+		}))
+}

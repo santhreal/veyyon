@@ -88,6 +88,7 @@ jobs:
           # branch restores from.
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           cache-workspace-crates: true
+      - uses: ./.github/actions/setup-system-deps
       - name: Format check and clippy
         run: bun run check:rs
 

@@ -323,7 +323,31 @@ glide() { # glide <row-from> <col-from> <row-to> <col-to> [steps] [delay]
 	done
 }
 click() { _be_click 1; }
+# The context menu of a row opens on the secondary button, so a scene that
+# reaches one presses button 3 rather than synthesizing a long press.
+right_click() { _be_click 3; }
 click_at() { point "$1" "$2"; pause 0.3; click; }
+
+# Press, travel and release: the gesture a reader selects text with.
+#
+# A selection is not a click and not a hover, and no composition of the two
+# produces one: the window reads the press for where the selection starts and
+# every motion with the button still down for where its head has reached, so a
+# scene that clicks twice states two collapsed selections and nothing in
+# between. The travel is interpolated in PIXELS and each step is a real motion
+# report, which is what the window is listening for.
+drag_px() { # drag_px <x-from> <y-from> <x-to> <y-to> [steps] [delay]
+	local x0="$1" y0="$2" x1="$3" y1="$4" steps="${5:-12}" delay="${6:-0.04}" i
+	move_px "${x0}" "${y0}"
+	pause 0.2
+	_be_button_down 1
+	for i in $(seq 1 "${steps}"); do
+		move_px "$((x0 + (x1 - x0) * i / steps))" "$((y0 + (y1 - y0) * i / steps))"
+		sleep "${delay}"
+	done
+	pause 0.2
+	_be_button_up 1
+}
 wheel_up() { key_repeat_button 4 "${1:-3}"; }
 wheel_down() { key_repeat_button 5 "${1:-3}"; }
 
@@ -527,6 +551,111 @@ shot() {
 			>>"${SCENE_OUT}/${SCENE_NAME}-marks.tsv"
 		SCENE_LAST_MARK_MS="${ms}"
 	fi
+}
+
+# ─── Comparing two frames ────────────────────────────────────────────────────
+# A shot's name is a claim about what is in it, and a scene that only writes
+# frames leaves that claim to whoever opens the gallery. Counting differing
+# pixels lets a scene assert the claim while it still has the window: a state
+# that never arrived ends the take here instead of publishing the frame that
+# was drawn instead of it.
+#
+# The count is over a rectangle, never a whole frame. The session list prints
+# each session's age and the composer blinks a caret, so two frames a second
+# apart differ outside the surface under test whatever that surface did.
+# `use_crop` sets the rectangle in root coordinates, and a scene moves it
+# between comparisons: one crop for the transcript, another for the run bar.
+use_crop() { # <x> <y> <w> <h>
+	CROP_X="$1"
+	CROP_Y="$2"
+	CROP_W="$3"
+	CROP_H="$4"
+}
+
+# The screen as it is now, written where a comparison can read it.
+probe_frame() { # <png>
+	mkdir -p "$(dirname "$1")"
+	if ! _be_capture "$1" 2>&1 || [ ! -s "$1" ]; then
+		abandon_take "frame-probed" "the probe capture wrote nothing or an empty file"
+	fi
+}
+
+# How many pixels of the crop differ. A per-mille reading loses a small
+# control: a 12px glyph inside a composer strip rounds to nothing, so a scene
+# asserting one control moved counts pixels and a scene asserting a surface
+# repainted reads per mille.
+frames_differ_pixels() { # <png-a> <png-b>
+	if [ -z "${CROP_W:-}" ] || [ -z "${CROP_H:-}" ]; then
+		abandon_take "frames-comparable" "no crop was set, so the comparison would include the clock in the sidebar"
+	fi
+	local scratch="${TMPDIR}/frame-compare"
+	mkdir -p "${scratch}"
+	local crop="${CROP_W}x${CROP_H}+${CROP_X}+${CROP_Y}" differing
+	magick "$1" -crop "${crop}" +repage "${scratch}/a.png"
+	magick "$2" -crop "${crop}" +repage "${scratch}/b.png"
+	# `compare` exits non-zero whenever the two images differ at all, which is
+	# the ordinary case here, so only the count it prints is read.
+	differing="$(compare -metric AE "${scratch}/a.png" "${scratch}/b.png" null: 2>&1 || true)"
+	case "${differing}" in
+		'' | *[!0-9]*)
+			abandon_take "frames-comparable" \
+				"comparing $(basename "$1") with $(basename "$2") reported '${differing}' instead of a pixel count"
+			;;
+	esac
+	echo "${differing}"
+}
+
+frames_differ_per_mille() { # <png-a> <png-b>
+	local differing
+	differing="$(frames_differ_pixels "$1" "$2")"
+	echo $(( differing * 1000 / (CROP_W * CROP_H) ))
+}
+
+shots_differ_pixels() { # <shot-a> <shot-b>
+	frames_differ_pixels "${SCENE_OUT}/${SCENE_NAME}-$1.png" "${SCENE_OUT}/${SCENE_NAME}-$2.png"
+}
+
+shots_differ_per_mille() { # <shot-a> <shot-b>
+	frames_differ_per_mille "${SCENE_OUT}/${SCENE_NAME}-$1.png" "${SCENE_OUT}/${SCENE_NAME}-$2.png"
+}
+
+# How many pixels of an explicit crop differ, for a probe whose subject is not
+# what the scene's shots are judged on: an overlay that draws outside the crop,
+# a control row beside it. `CROP_*` stays as the scene set it, so a readiness
+# probe cannot move what the evidence frames measure.
+frames_differ_pixels_at() { # <png-a> <png-b> <crop>
+	local scratch="${TMPDIR}/frame-compare" differing
+	mkdir -p "${scratch}"
+	magick "$1" -crop "$3" +repage "${scratch}/at-a.png"
+	magick "$2" -crop "$3" +repage "${scratch}/at-b.png"
+	differing="$(compare -metric AE "${scratch}/at-a.png" "${scratch}/at-b.png" null: 2>&1 || true)"
+	case "${differing}" in
+		'' | *[!0-9]*)
+			abandon_take "frames-comparable" \
+				"comparing $(basename "$1") with $(basename "$2") over $3 reported '${differing}' instead of a pixel count"
+			;;
+	esac
+	echo "${differing}"
+}
+
+# What is on screen now, against a frame taken earlier. This is how a scene
+# waits for a state only the window reports: a click that disclosed a card
+# changed the transcript, a first streamed token changed it, and a click that
+# landed on prose changed nothing.
+screen_differs_from_frame_per_mille() { # <png>
+	local probe="${TMPDIR}/frame-compare/probe.png"
+	probe_frame "${probe}"
+	frames_differ_per_mille "$1" "${probe}"
+}
+
+screen_differs_from_shot_per_mille() { # <shot>
+	screen_differs_from_frame_per_mille "${SCENE_OUT}/${SCENE_NAME}-$1.png"
+}
+
+screen_differs_from_frame_pixels_at() { # <png> <crop>
+	local probe="${TMPDIR}/frame-compare/probe-at.png"
+	probe_frame "${probe}"
+	frames_differ_pixels_at "$1" "${probe}" "$2"
 }
 
 # Wait out a turn. Every wait in every scene passes through here, so one knob

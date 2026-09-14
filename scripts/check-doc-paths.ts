@@ -76,6 +76,7 @@ export const SOURCE_ROOTS = [
 	"assets/",
 	"clients/",
 	"contracts/",
+	"crates/",
 	"demo/",
 	"docs/",
 	"hosts/",

@@ -75,6 +75,7 @@ import type {
 	ChatCompletionContentPart,
 	ChatCompletionContentPartImage,
 	ChatCompletionContentPartText,
+	ChatCompletionContentPartVideo,
 	ChatCompletionMessageParam,
 	ChatCompletionTool,
 	ChatCompletionToolMessageParam,
@@ -119,10 +120,11 @@ import {
 } from "./openai-shared";
 import { transformMessages } from "./transform-messages";
 import {
-	isDashscopeCompatibleModeTextOnlyQwen,
 	joinTextWithImagePlaceholder,
+	NON_VIDEO_MODEL_PLACEHOLDER,
 	NON_VISION_IMAGE_PLACEHOLDER,
-} from "./vision-guard";
+} from "./vision-content";
+import { isDashscopeCompatibleModeTextOnlyQwen } from "./vision-guard";
 
 export { applyOpenRouterRoutingVariant } from "./openai-shared";
 
@@ -1790,7 +1792,8 @@ function maybeAddAnthropicCacheControl(
 export function convertMessages(
 	model: Model<"openai-completions">,
 	context: Context,
-	compat: ResolvedOpenAICompat,
+	compat: ResolvedOpenAICompat = resolveOpenAICompatPolicy(model, { endpoint: "chat-completions" })
+		.compat as ResolvedOpenAICompat,
 ): ChatCompletionMessageParam[] {
 	const params: ChatCompletionMessageParam[] = [];
 
@@ -1905,8 +1908,10 @@ export function convertMessages(
 				});
 			} else {
 				const supportsImages = model.input.includes("image") && !isDashscopeCompatibleModeTextOnlyQwen(model);
+				const supportsVideos = model.input.includes("video");
 				const content: ChatCompletionContentPart[] = [];
 				let omittedImages = false;
+				let omittedVideos = false;
 				for (const item of msg.content) {
 					if (item.type === "text") {
 						const text = item.text.toWellFormed();
@@ -1915,17 +1920,30 @@ export function convertMessages(
 							type: "text",
 							text,
 						} satisfies ChatCompletionContentPartText);
-					} else if (supportsImages) {
-						content.push({
-							type: "image_url",
-							image_url: {
-								url: `data:${item.mimeType};base64,${item.data}`,
-								// Chat Completions has no "original"; omit it (provider default).
-								...(item.detail && item.detail !== "original" ? { detail: item.detail } : {}),
-							},
-						} satisfies ChatCompletionContentPartImage);
-					} else {
-						omittedImages = true;
+					} else if (item.type === "image") {
+						if (supportsImages) {
+							content.push({
+								type: "image_url",
+								image_url: {
+									url: `data:${item.mimeType};base64,${item.data}`,
+									// Chat Completions has no "original"; omit it (provider default).
+									...(item.detail && item.detail !== "original" ? { detail: item.detail } : {}),
+								},
+							} satisfies ChatCompletionContentPartImage);
+						} else {
+							omittedImages = true;
+						}
+					} else if (item.type === "video") {
+						if (supportsVideos) {
+							content.push({
+								type: "video_url",
+								video_url: {
+									url: `data:${item.mimeType};base64,${item.data}`,
+								},
+							} satisfies ChatCompletionContentPartVideo);
+						} else {
+							omittedVideos = true;
+						}
 					}
 				}
 				if (omittedImages) {
@@ -1934,8 +1952,18 @@ export function convertMessages(
 						text: NON_VISION_IMAGE_PLACEHOLDER,
 					} satisfies ChatCompletionContentPartText);
 				}
+				if (omittedVideos) {
+					content.push({
+						type: "text",
+						text: NON_VIDEO_MODEL_PLACEHOLDER,
+					} satisfies ChatCompletionContentPartText);
+				}
 				if (content.length === 0) continue;
-				if (msg.role === "developer" && role === "developer" && !msg.content.some(item => item.type === "image")) {
+				if (
+					msg.role === "developer" &&
+					role === "developer" &&
+					!msg.content.some(item => item.type === "image" || item.type === "video")
+				) {
 					params.push({
 						role: "developer",
 						content: content
@@ -2366,3 +2394,5 @@ function mapStopReason(reason: ChatCompletionChunk.Choice["finish_reason"] | str
 			};
 	}
 }
+
+export { convertMessages as convertOpenAICompletionsMessages };

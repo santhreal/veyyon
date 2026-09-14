@@ -234,6 +234,8 @@ runs:
       # Rust format and clippy now run as their own job in checks.yml, which
       # gates every push and PR to main before a native build starts. A native
       # job builds.
+      - uses: ./.github/actions/setup-system-deps
+        if: inputs.target == '' && inputs.platform == 'linux'
       - name: Test workspace (Rust)
         # macOS has no `#[cfg(target_os = "macos")]` tests in the workspace, and
         # Windows-only tests are no longer exercised in CI (win32-x64 cross-builds

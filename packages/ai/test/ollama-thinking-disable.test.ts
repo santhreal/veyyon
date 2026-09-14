@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { AssistantMessage, Context, Tool, ToolResultMessage, Usage } from "@veyyon/ai";
 import { streamOllama } from "@veyyon/ai/providers/ollama";
-import { NON_VISION_IMAGE_PLACEHOLDER } from "@veyyon/ai/providers/vision-guard";
+import { NON_VISION_IMAGE_PLACEHOLDER } from "@veyyon/ai/providers/vision-content";
 import { buildModel } from "@veyyon/catalog/build";
 
 interface OllamaChatMessagePayload {

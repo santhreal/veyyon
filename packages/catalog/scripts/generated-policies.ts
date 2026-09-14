@@ -21,6 +21,7 @@ import { resolveModelThinking } from "../src/model-thinking";
 import { PROVIDERS_PUBLISHING_OWN_MODEL_LIMITS } from "../src/provider-models/descriptors";
 import { resolveWaferServerlessThinkingFormat } from "../src/provider-models/openai-compat";
 import type { Api, Model, ModelSpec } from "../src/types";
+import { normalizeModelCost } from "../src/utils";
 import { isVariantCollapsedSpec } from "../src/variant-collapse";
 import { buildCanonicalModelIndex, buildCanonicalReferenceData } from "./equivalence";
 
@@ -324,14 +325,12 @@ function applyGeneratedModelPolicy(model: ModelSpec<Api>): void {
 function applyAnthropicCatalogPolicy(model: ModelSpec<Api>, parsedModel: AnthropicModel): void {
 	// Claude Opus 4.5: models.dev reports 3x the correct cache pricing.
 	if (model.provider === "anthropic" && parsedModel.kind === "opus" && semverEqual(parsedModel.version, "4.5")) {
-		model.cost.cacheRead = 0.5;
-		model.cost.cacheWrite = 6.25;
+		model.cost = { ...normalizeModelCost(model.cost), cacheRead: 0.5, cacheWrite: 6.25 };
 	}
 
 	// Bedrock Opus 4.6: upstream metadata is stale for cache pricing and context.
 	if (model.provider === "amazon-bedrock" && parsedModel.kind === "opus" && semverEqual(parsedModel.version, "4.6")) {
-		model.cost.cacheRead = 0.5;
-		model.cost.cacheWrite = 6.25;
+		model.cost = { ...normalizeModelCost(model.cost), cacheRead: 0.5, cacheWrite: 6.25 };
 		model.contextWindow = 1000000;
 		model.maxTokens = 128000;
 	}
@@ -343,10 +342,13 @@ function applyAnthropicCatalogPolicy(model: ModelSpec<Api>, parsedModel: Anthrop
 	if (model.provider === "anthropic" && isFableOrMythos(parsedModel.kind)) {
 		model.contextWindow = 1_000_000;
 		model.maxTokens = 128_000;
-		model.cost.input = 10;
-		model.cost.output = 50;
-		model.cost.cacheRead = 1;
-		model.cost.cacheWrite = 12.5;
+		model.cost = {
+			...normalizeModelCost(model.cost),
+			input: 10,
+			output: 50,
+			cacheRead: 1,
+			cacheWrite: 12.5,
+		};
 	}
 }
 

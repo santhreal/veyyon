@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import { STREAMING_REVEAL_FRAME_MS } from "@veyyon/coding-agent/modes/terminal/controllers/streaming-reveal";
-import {
-	decodeStreamedToolArgs,
-	streamingStringKeysForTool,
-	ToolArgsRevealController,
-} from "@veyyon/coding-agent/modes/terminal/controllers/tool-args-reveal";
+import { ToolArgsRevealController } from "@veyyon/coding-agent/modes/terminal/controllers/tool-args-reveal";
+import { decodeStreamedToolArgs, streamingStringKeysForTool } from "@veyyon/coding-agent/tools/core/streamed-tool-args";
 import { STREAMING_JSON_PARSE_MIN_GROWTH } from "@veyyon/utils";
 
 class RecordingArgsComponent {

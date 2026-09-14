@@ -1,5 +1,5 @@
 import type { CustomMessage } from "@veyyon/agent-core/compaction/messages";
-import type { AssistantMessage, ImageContent, MessageAttribution, TextContent } from "@veyyon/ai";
+import type { AssistantMessage, ImageContent, MessageAttribution, TextContent, VideoContent } from "@veyyon/ai";
 import { isRecord } from "@veyyon/utils/type-guards";
 
 /**
@@ -17,7 +17,7 @@ import { isRecord } from "@veyyon/utils/type-guards";
 export const DEFAULT_CUSTOM_MESSAGE_TYPE = "custom-message";
 
 /** Content shape accepted for extension-injected messages. */
-export type CustomMessageContent = string | (TextContent | ImageContent)[];
+export type CustomMessageContent = string | (TextContent | ImageContent | VideoContent)[];
 
 /** Public input accepted by `pi.sendMessage` and `AgentSession.sendCustomMessage`. */
 export type CustomMessagePayload<T = unknown> =

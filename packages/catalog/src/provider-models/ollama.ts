@@ -3,7 +3,7 @@ import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { type DiscoveryFailure, type DiscoveryHooks, readDiscoveryJson } from "../discovery/failure";
 import { Effort } from "../effort";
-import { isGlm52ReasoningEffortModelId } from "../identity/family";
+import { isGlm52ModelId } from "../identity/family";
 import type { ModelManagerOptions } from "../model-manager";
 import { OLLAMA_WIRE_EFFORTS } from "../model-thinking";
 import type { FetchImpl, ThinkingConfig } from "../types";
@@ -66,7 +66,7 @@ function getThinkingConfig(modelId: string, capabilities: string[] | undefined):
 	if (!capabilities?.includes("thinking")) {
 		return undefined;
 	}
-	if (isGlm52ReasoningEffortModelId(modelId)) {
+	if (isGlm52ModelId(modelId)) {
 		return OLLAMA_CLOUD_GLM_52_THINKING;
 	}
 	return { mode: "effort", efforts: OLLAMA_WIRE_EFFORTS.slice() };
@@ -154,9 +154,10 @@ export function ollamaCloudModelManagerOptions(
 					const thinking = capabilities ? getThinkingConfig(id, capabilities) : reference?.thinking;
 					const input = capabilities
 						? capabilities.includes("vision")
-							? (["text", "image"] as Array<"text" | "image">)
-							: (["text"] as Array<"text">)
-						: ((reference?.input as Array<"text" | "image"> | undefined) ?? (["text"] as Array<"text">));
+							? (["text", "image"] as Array<"text" | "image" | "video">)
+							: (["text"] as Array<"text" | "image" | "video">)
+						: ((reference?.input as Array<"text" | "image" | "video"> | undefined) ??
+							(["text"] as Array<"text" | "image" | "video">));
 					const resolvedName = entry.name && entry.name !== id ? entry.name : (reference?.name ?? id);
 					return {
 						id,

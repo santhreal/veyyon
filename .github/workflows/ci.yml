@@ -292,7 +292,12 @@ jobs:
       needs: [release_metadata, native_artifact_lookup]
       if: ${{ needs.release_metadata.outputs.is-release == 'true' || needs.native_artifact_lookup.outputs.linux-x64-run-id == '' }}
       runs-on: ubuntu-22.04
-      timeout-minutes: 45
+      # The baseline variant compiles for an older CPU target, so the lavapipe
+      # software rasterizer the headless tests draw through runs measurably
+      # slower there: the test phase alone passed 35 minutes on a 45-minute
+      # ceiling and was cancelled mid-suite. 90 minutes is the headroom the
+      # slower variant needs; the modern variant finishes well under it.
+      timeout-minutes: 90
       strategy:
          fail-fast: false
          matrix:

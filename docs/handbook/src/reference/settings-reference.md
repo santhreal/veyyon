@@ -193,6 +193,8 @@ veyyon config get compaction.threshold
 | `completion.notify` | Completion Notification | enum | `off` | Notify when the agent finishes a turn. Values: `on`, `off`. |
 | `ask.timeout` | Ask Timeout | number | `0` | Auto-select the recommended ask option after this many seconds (0 disables). |
 | `ask.notify` | Ask Notification | enum | `on` | Notify when the agent is blocked on a question you have not answered. Values: `on`, `off`. |
+| `notify.sound` | Announcement Sound | enum | `off` | Play the desktop alert sound when the window announces something. Values: `on`, `off`. |
+| `notify.system` | System Notification | enum | `off` | Post an announcement to the desktop notification service as well as the window. Values: `on`, `off`. |
 | `recap.enabled` | Idle Recap | boolean | `true` | Generate a brief LLM recap of where things stand after the terminal has been idle. |
 | `recap.idleSeconds` | Idle Recap Delay | number | `240` | Seconds to wait while idle before showing the recap. |
 
@@ -899,4 +901,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-353 settings in /settings, 120 configuration-file keys, 473 in all.
+355 settings in /settings, 120 configuration-file keys, 475 in all.

@@ -1,20 +1,23 @@
 import type { Effort } from "./effort";
 
-export type KnownApi =
-	| "openai-completions"
-	| "openai-responses"
-	| "openrouter"
-	| "openai-codex-responses"
-	| "azure-openai-responses"
-	| "anthropic-messages"
-	| "bedrock-converse-stream"
-	| "google-generative-ai"
-	| "google-gemini-cli"
-	| "google-vertex"
-	| "ollama-chat"
-	| "cursor-agent"
-	| "gitlab-duo-agent"
-	| "devin-agent";
+export const KNOWN_APIS = [
+	"openai-completions",
+	"openai-responses",
+	"openrouter",
+	"openai-codex-responses",
+	"azure-openai-responses",
+	"anthropic-messages",
+	"bedrock-converse-stream",
+	"google-generative-ai",
+	"google-gemini-cli",
+	"google-vertex",
+	"ollama-chat",
+	"cursor-agent",
+	"gitlab-duo-agent",
+	"devin-agent",
+] as const;
+
+export type KnownApi = (typeof KNOWN_APIS)[number];
 export type Api = KnownApi | (string & {});
 
 /**
@@ -829,7 +832,7 @@ export interface Model<TApi extends Api = Api> {
 	provider: Provider;
 	baseUrl: string;
 	reasoning: boolean;
-	input: ("text" | "image")[];
+	input: ("text" | "image" | "video")[];
 	/**
 	 * Decoder family used for image inputs when it has narrower format support
 	 * than Veyyon's general image pipeline. `stb` local backends reject WebP.
@@ -946,7 +949,9 @@ export interface Model<TApi extends Api = Api> {
  * vocabulary of `buildModel`. Identical to `Model` except `compat` carries the
  * sparse override shape and nothing is resolved yet.
  */
-export interface ModelSpec<TApi extends Api = Api> extends Omit<Model<TApi>, "compat" | "compatConfig"> {
+export interface ModelSpec<TApi extends Api = Api> extends Omit<Model<TApi>, "compat" | "compatConfig" | "cost"> {
+	/** Sparse model cost; normalized to {@link Model.cost} defaults by `buildModel`. */
+	cost?: Partial<Model<TApi>["cost"]>;
 	/** Sparse compatibility overrides; resolved into `Model.compat` by `buildModel`. */
 	compat?: CompatConfigOf<TApi>;
 }

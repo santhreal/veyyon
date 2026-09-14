@@ -19,6 +19,7 @@
 
 ### Changed
 
+- A custom message payload and a stored session entry carry `VideoContent` beside text and images, so a video attachment survives `pi.sendMessage`, persistence and rehydration.
 - Session listing reuses a per-directory index for files whose size and mtime are unchanged instead of rescanning every file, cutting a 4,825-session `/resume` list from 6.8 s to 185 ms when a session changed and 88 ms when none did.
 - Resolving a session id that no directory in the active profile holds reads the other profiles through the same per-directory index, cutting that lookup from 2.5 s to 126 ms.
 - Settings mutations and session storage writers share implementations without changing persistence, hook ordering or error behavior.

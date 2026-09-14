@@ -1,0 +1,30 @@
+# Shell chrome: the window and the titlebar (§4.1).
+#
+# Every value carries its derivation in §4.1. The titlebar is 52px because it
+# holds one 28px control row with 12px above and below; the minimum window is
+# 768px of prose plus 16px of gutters with the queue collapsed (§5.7).
+#
+# Platform control insets are not declared here. macOS traffic lights take 78px
+# and Windows reports its caption overlay width at run time, so the inset is the
+# declared value plus whatever the platform adds.
+
+[meta]
+version = 1
+name = "surface_shell"
+
+[window]
+min_width_px = 800
+min_height_px = 560
+
+[titlebar]
+height_px = 52
+control_px = 28
+control_gap_px = "s4"
+inset_left_px = "s6"
+inset_right_px = "s6"
+
+# Grain is level 0 only, never on canvas or float (§6.5). The tile is a 128x128
+# R8 blue-noise texture generated once at startup.
+[grain]
+tile_px = 128
+opacity = 0.025

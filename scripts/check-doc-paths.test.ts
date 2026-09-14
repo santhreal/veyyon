@@ -55,6 +55,7 @@ describe("looksLikeSourcePath", () => {
 		expect(looksLikeSourcePath("hosts/terminal/engine/src/box.ts")).toBe(true);
 		expect(looksLikeSourcePath("plugins/argot/package.json")).toBe(true);
 		expect(looksLikeSourcePath("natives/diff/kernel/tests/gnu_unified_differential.rs")).toBe(true);
+		expect(looksLikeSourcePath("crates/veyyon-desktop/src/main.rs")).toBe(true);
 		expect(looksLikeSourcePath("tests/conformance/README.md")).toBe(true);
 		// A directory, which has no extension to match on.
 		expect(looksLikeSourcePath("packages/coding-agent/test/fixtures/")).toBe(true);

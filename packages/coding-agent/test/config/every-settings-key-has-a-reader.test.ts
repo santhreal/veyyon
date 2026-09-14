@@ -59,6 +59,20 @@ const ASSEMBLED_AT_RUNTIME: Readonly<Record<string, string>> = {
 	"julia.kernelMode": "eval/backend-helpers.ts",
 };
 
+/**
+ * Keys the Rust desktop reads off the `Settings` snapshot section, with the file that
+ * reads them. The walk above covers TypeScript only; a setting the desktop honours is
+ * read by `store.domains.settings.get(key)` in a `.rs` file, which no pattern here can
+ * see. Listing one is a deliberate act with a place to justify it, and the staleness
+ * check below verifies the named file still contains the literal.
+ */
+const READ_BY_THE_DESKTOP: Readonly<Record<string, string>> = {
+	// `crates/veyyon-desktop/src/notify/mod.rs`: turned_on(store, SOUND_SETTING)
+	"notify.sound": "crates/veyyon-desktop/src/notify/mod.rs",
+	// `crates/veyyon-desktop/src/notify/mod.rs`: turned_on(store, SYSTEM_SETTING)
+	"notify.system": "crates/veyyon-desktop/src/notify/mod.rs",
+};
+
 /** Every `.ts` file under a directory, skipping dependencies and build output. */
 async function typescriptFiles(dir: string, out: string[] = []): Promise<string[]> {
 	let entries: Dirent[];
@@ -134,10 +148,11 @@ const GROUPS_READ = new Set(Array.from(SOURCE.matchAll(/getGroup\("([a-zA-Z0-9._
  * and `authBrokerToken` are wired exactly this way, and were invisible to the walk until the
  * key list started coming from the schema.
  */
-function readerOf(key: string): "literal" | "group" | "assembled" | "binding" | null {
+function readerOf(key: string): "literal" | "group" | "assembled" | "binding" | "desktop" | null {
 	if (SOURCE.includes(`"${key}"`) || SOURCE.includes(`'${key}'`)) return "literal";
 	if (key in GLOBAL_SETTING_BINDINGS) return "binding";
 	if (key in ASSEMBLED_AT_RUNTIME) return "assembled";
+	if (key in READ_BY_THE_DESKTOP) return "desktop";
 	const separator = key.lastIndexOf(".");
 	if (separator > 0) {
 		const group = key.slice(0, separator);
@@ -353,6 +368,21 @@ describe("every settings key", () => {
 		for (const [key, site] of Object.entries(ASSEMBLED_AT_RUNTIME)) {
 			expect(declared.has(key), `${key} is exempted but no longer declared`).toBe(true);
 			expect(SOURCE.includes(`"${key}"`), `${key} is exempted but now has a literal reader (${site})`).toBe(false);
+		}
+	});
+
+	/**
+	 * The desktop list stays honest in both directions. An entry for a key that has
+	 * since gained a TypeScript reader, that no longer exists, or whose named Rust
+	 * file no longer contains the literal is a standing exemption nobody is checking.
+	 */
+	it("does not carry a stale desktop exemption", async () => {
+		const declared = new Set(KEYS);
+		for (const [key, file] of Object.entries(READ_BY_THE_DESKTOP)) {
+			expect(declared.has(key), `${key} is exempted but no longer declared`).toBe(true);
+			expect(SOURCE.includes(`"${key}"`), `${key} is exempted but now has a literal reader`).toBe(false);
+			const rust = await readFile(path.join(REPO_ROOT, file), "utf8");
+			expect(rust.includes(`"${key}"`), `${key} is exempted but ${file} no longer reads it`).toBe(true);
 		}
 	});
 

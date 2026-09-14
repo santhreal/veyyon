@@ -1,6 +1,12 @@
+/**
+ * WHY: tool-result images must follow the endpoint's accepted content types.
+ * Conversion exercises `providers/vision-guard.ts` for DashScope text-only Qwen
+ * endpoints and preserves image content for supported multimodal models.
+ * These assertions inspect provider payloads; they do not call a remote endpoint.
+ */
 import { describe, expect, it } from "bun:test";
 import { convertMessages } from "@veyyon/ai/providers/openai-completions";
-import { NON_VISION_IMAGE_PLACEHOLDER } from "@veyyon/ai/providers/vision-guard";
+import { NON_VISION_IMAGE_PLACEHOLDER } from "@veyyon/ai/providers/vision-content";
 import type { AssistantMessage, Context, Model, ToolResultMessage, Usage } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 import { getBundledModel } from "@veyyon/catalog/models";

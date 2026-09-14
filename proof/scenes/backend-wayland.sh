@@ -110,9 +110,27 @@ _be_pointer_move() {
 	_WL_PTR_X="$1"
 	_WL_PTR_Y="$2"
 	swaymsg -- seat "${SCENE_SEAT:-seat0}" cursor set "$1" "$2" >/dev/null 2>&1 || true
-	# 32 marks a motion report and 3 means no button held: what a hand moving a
-	# mouse across the window produces, which is what a hover state is made of.
-	_wl_report 35 M
+	# 32 marks a motion report and the low bits name the button held: 3 for
+	# none, which is what a hand moving a mouse across the window produces and
+	# what a hover state is made of, and the button itself while it is down,
+	# which is what a drag is made of.
+	local cb=35
+	if [ -n "${_WL_PTR_HELD:-}" ]; then
+		cb=$((32 + _WL_PTR_HELD - 1))
+	fi
+	_wl_report "${cb}" M
+}
+
+# A press and a release on their own, with the held button remembered so the
+# motion between them reports as a drag rather than as a hover.
+_be_button_down() {
+	_WL_PTR_HELD="${1:-1}"
+	_wl_report $((_WL_PTR_HELD - 1)) M
+}
+_be_button_up() {
+	local button="${1:-${_WL_PTR_HELD:-1}}"
+	_WL_PTR_HELD=""
+	_wl_report $((button - 1)) m
 }
 
 _be_click() {

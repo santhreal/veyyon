@@ -7,6 +7,7 @@
  * here.
  */
 
+import type { SemVer } from "./classify";
 import {
 	bareModelId,
 	isAnthropicAdaptiveGenAtLeast,
@@ -15,6 +16,7 @@ import {
 	parseGlmModel,
 	parseKnownModel,
 	parseOpenAIModel,
+	semverEqual,
 	semverGte,
 } from "./classify";
 
@@ -215,33 +217,42 @@ export const statesOpenAIWireGeneration = memo((modelId: string): boolean => {
 export const supportsCodexReasoningSummary = isOpenAIWireGen54Plus;
 
 /**
- * Reasoning-capable GLM coding SKUs: glm-4.5 and up on the base / `-air` /
- * `-turbo` lines. Excludes the vision (`…v`) shape, the non-reasoning
- * `-flash`/`-flashx`/`-preview` variants, and pre-4.5 ids. Matching the family
- * keeps newly-bumped integers (`glm-5.3`, `glm-6`, …) covered without a per-id
+ * The version of a GLM coding SKU: the base / `-air` / `-turbo` lines.
+ * `undefined` for a non-GLM id, the vision (`…v`) shape and the non-reasoning
+ * `-flash`/`-flashx`/`-preview` variants. Matching the family keeps
+ * newly-bumped integers (`glm-5.3`, `glm-6`, …) covered without a per-id
  * allowlist.
  */
-export const isReasoningGlmModelId = memo((modelId: string): boolean => {
+function glmCodingVersion(modelId: string): SemVer | undefined {
 	const glm = parseGlmModel(bareModelId(modelId));
 	if (!glm || glm.vision) {
-		return false;
+		return undefined;
 	}
 	if (glm.variant !== "base" && glm.variant !== "air" && glm.variant !== "turbo") {
-		return false;
+		return undefined;
 	}
-	return semverGte(glm.version, "4.5");
+	return glm.version;
+}
+
+/** Reasoning-capable GLM coding SKUs: glm-4.5 and up. */
+export const isReasoningGlmModelId = memo((modelId: string): boolean => {
+	const version = glmCodingVersion(modelId);
+	return version !== undefined && semverGte(version, "4.5");
 });
 
 /** GLM-5.2+ coding SKUs accept `reasoning_effort` in addition to binary thinking. */
 export const isGlm52ReasoningEffortModelId = memo((modelId: string): boolean => {
-	const glm = parseGlmModel(bareModelId(modelId));
-	if (!glm || glm.vision) {
-		return false;
-	}
-	if (glm.variant !== "base" && glm.variant !== "air" && glm.variant !== "turbo") {
-		return false;
-	}
-	return semverGte(glm.version, "5.2");
+	const version = glmCodingVersion(modelId);
+	return version !== undefined && semverGte(version, "5.2");
+});
+
+/**
+ * GLM-5.2 coding SKUs exactly. Ollama Cloud's 5.2 endpoint answers 400 for
+ * every effort but high and max; 5.3 onwards accepts the declared ladder.
+ */
+export const isGlm52ModelId = memo((modelId: string): boolean => {
+	const version = glmCodingVersion(modelId);
+	return version !== undefined && semverEqual(version, "5.2");
 });
 
 /** GLM vision SKUs — the `v` that attaches to the version (`glm-4v`, `glm-4.5v`). */

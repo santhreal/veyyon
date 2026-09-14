@@ -6,6 +6,7 @@ import type {
 	TextContent,
 	ToolCall,
 	ToolResultMessage,
+	VideoContent,
 } from "../types";
 import { getDialectDefinition } from "./factory";
 import type { Dialect, DialectDefinition, DialectToolResult, InbandTool } from "./types";
@@ -58,12 +59,14 @@ function encodeAssistantMessage(
 function encodeToolResults(results: readonly ToolResultMessage[], definition: DialectDefinition): Message {
 	const dialectResults: DialectToolResult[] = [];
 	const images: ImageContent[] = [];
+	const videos: VideoContent[] = [];
 	for (let index = 0; index < results.length; index++) {
 		const result = results[index]!;
 		let text = "";
 		for (const block of result.content) {
 			if (block.type === "text") text += block.text;
 			else if (block.type === "image") images.push(block);
+			else if (block.type === "video") videos.push(block);
 		}
 		dialectResults.push({
 			id: result.toolCallId,
@@ -73,9 +76,10 @@ function encodeToolResults(results: readonly ToolResultMessage[], definition: Di
 			isError: result.isError,
 		});
 	}
-	const content: (TextContent | ImageContent)[] = [
+	const content: (TextContent | ImageContent | VideoContent)[] = [
 		{ type: "text", text: definition.renderToolResults(dialectResults) },
 		...images,
+		...videos,
 	];
 	return { role: "user", content, timestamp: results[0]?.timestamp ?? Date.now() };
 }

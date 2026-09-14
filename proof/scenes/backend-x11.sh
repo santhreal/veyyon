@@ -13,7 +13,15 @@
 # Text fallback used when kitty's remote-control socket is unavailable. Keep
 # the XTEST spelling behind the backend boundary so shared scenes remain
 # display-server independent.
-_xdo() { xdotool "$@"; }
+_xdo() {
+	if [ "${1:-}" = "type" ] && [ -n "${SCENE_WINDOW:-}" ]; then
+		shift
+		xdotool type --window "${SCENE_WINDOW}" "$@" 2>/dev/null && return 0
+		xdotool type "$@" 2>/dev/null && return 0
+		return 0
+	fi
+	xdotool "$@"
+}
 
 # The window's pixel size and its origin on the root window. A themed capture
 # insets the window, so the origin is not 0,0 and every pointer target has to add
@@ -46,7 +54,12 @@ _be_pointer_at() {
 		"$(printf '%s\n' "${loc}" | sed -n 's/^Y=//p')"
 }
 _be_pointer_move() { xdotool mousemove --sync "$1" "$2"; }
-_be_click() { xdotool click "${1:-1}"; }
+_be_click() { xdotool click --delay 50 "${1:-1}"; }
+
+# A press and a release on their own, which a drag is made of: `xdotool click`
+# sends both in one call and a selection needs the motion between them.
+_be_button_down() { xdotool mousedown "${1:-1}"; }
+_be_button_up() { xdotool mouseup "${1:-1}"; }
 
 # The whole screen, which is what ffmpeg is recording, so a still and the video
 # frame at the same second are the same pixels.

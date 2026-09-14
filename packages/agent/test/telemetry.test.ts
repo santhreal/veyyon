@@ -43,7 +43,7 @@ import {
 	startExecuteToolSpan,
 	startInvokeAgentSpan,
 } from "@veyyon/agent-core/telemetry";
-import type { AssistantMessage, Message, Model, ToolResultMessage, Usage } from "@veyyon/ai";
+import type { AssistantMessage, Message, Model, ToolResultMessage, Usage, UserMessage } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 
 const MODEL: Model = buildModel({
@@ -242,6 +242,95 @@ describe("full content capture serialization", () => {
 			{ type: "blob", modality: "image", mime_type: "image/png", content: "AAAA" },
 		]);
 		expect(input[1].parts).toEqual([{ type: "reasoning", content: "REDACTED" }]);
+	});
+});
+
+/**
+ * WHY: a video attachment reached an exported turn as nothing at all. The OTEL
+ * part conversion switched over the block kinds its author had in mind and let
+ * `default` drop the rest, so a prompt read back from a trace showed the text
+ * with no sign that a clip was sent with it. The fixture maps are typed by the
+ * content unions themselves, so a new block kind fails `check:types` until it
+ * is given a part here or recorded in the dropped set.
+ *
+ * Not covered: what a provider does with the block on the wire, and the
+ * capture modes other than `full`.
+ */
+type UserBlock = Exclude<UserMessage["content"], string>[number];
+type AssistantBlock = AssistantMessage["content"][number];
+
+const USER_BLOCKS: { [K in UserBlock["type"]]: Extract<UserBlock, { type: K }> } = {
+	text: { type: "text", text: "look" },
+	image: { type: "image", data: "SU1H", mimeType: "image/png" },
+	video: { type: "video", data: "VklE", mimeType: "video/mp4" },
+};
+
+const USER_PARTS: { [K in UserBlock["type"]]: OtelPartShape[] } = {
+	text: [{ type: "text", content: "look" }],
+	image: [{ type: "blob", modality: "image", mime_type: "image/png", content: "SU1H" }],
+	video: [{ type: "blob", modality: "video", mime_type: "video/mp4", content: "VklE" }],
+};
+
+const ASSISTANT_BLOCKS: { [K in AssistantBlock["type"]]: Extract<AssistantBlock, { type: K }> } = {
+	text: { type: "text", text: "done" },
+	thinking: { type: "thinking", thinking: "reasoned" },
+	redactedThinking: { type: "redactedThinking", data: "REDACTED" },
+	fallback: { type: "fallback", from: { model: "sonnet" }, to: { model: "haiku" } },
+	toolCall: { type: "toolCall", id: "call-7", name: "write", arguments: { path: "/b" } },
+};
+
+const ASSISTANT_PARTS: { [K in AssistantBlock["type"]]: OtelPartShape[] } = {
+	text: [{ type: "text", content: "done" }],
+	thinking: [{ type: "reasoning", content: "reasoned" }],
+	redactedThinking: [{ type: "reasoning", content: "REDACTED" }],
+	// The fallback marker is an Anthropic routing boundary, not content a
+	// reader of the turn can act on, and it carries no text to export.
+	fallback: [],
+	toolCall: [{ type: "tool_call", id: "call-7", name: "write", arguments: { path: "/b" } }],
+};
+
+interface OtelPartShape {
+	readonly type: string;
+	readonly [key: string]: unknown;
+}
+
+describe("every content block kind reaches an exported turn or is a recorded omission", () => {
+	function exportedParts(message: Message): OtelPartShape[] {
+		exporter.reset();
+		const telemetry = telemetryFor({ captureMessageContent: "full" });
+		const span = startChatSpan(telemetry, MODEL, { stepNumber: 1, request: { messages: [message] } });
+		span?.end();
+		const input = JSON.parse(onlySpan().attributes[GenAIAttr.InputMessages] as string);
+		return input[0].parts as OtelPartShape[];
+	}
+
+	it("exports every user block kind with its own part", () => {
+		const exported = Object.fromEntries(
+			Object.entries(USER_BLOCKS).map(([kind, block]) => [
+				kind,
+				exportedParts({ role: "user", content: [block], timestamp: 1 }),
+			]),
+		);
+		expect(exported).toEqual(USER_PARTS);
+	});
+
+	it("exports every assistant block kind with its own part", () => {
+		const exported = Object.fromEntries(
+			Object.entries(ASSISTANT_BLOCKS).map(([kind, block]) => [kind, exportedParts(assistant([block]))]),
+		);
+		expect(exported).toEqual(ASSISTANT_PARTS);
+	});
+
+	it("drops only the block kinds recorded as carrying nothing to export", () => {
+		const dropped = [
+			...Object.entries(USER_BLOCKS).map(([kind, block]) =>
+				exportedParts({ role: "user", content: [block], timestamp: 1 }).length === 0 ? `user:${kind}` : undefined,
+			),
+			...Object.entries(ASSISTANT_BLOCKS).map(([kind, block]) =>
+				exportedParts(assistant([block])).length === 0 ? `assistant:${kind}` : undefined,
+			),
+		].filter((kind): kind is string => kind !== undefined);
+		expect(dropped).toEqual(["assistant:fallback"]);
 	});
 });
 

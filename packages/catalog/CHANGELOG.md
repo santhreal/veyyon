@@ -4,10 +4,13 @@
 
 ### Added
 
+- Model input capability support includes `"video"` for video-capable models.
 - `closeModelCache()` closes the shared model-cache database and permits reopening it at the current cache path.
 
 ### Changed
 
+- A model reference candidate declares partial pricing, which is what bundled metadata carries; every reader already treated a missing per-token price as unknown. No user-visible behavior changes.
+- Ollama Cloud wire-effort normalization and discovery restrict effort ladders for GLM-5.2 specifically rather than all subsequent GLM point releases.
 - GitLab Duo Workflow discovery reads a record's declared root namespace (`root_namespace_id`, `rootNamespaceId`, or the id or path of its `root_namespace`/`rootAncestor` record) through one `declaredRootNamespaceId` for the explicit and nested lookups; no behavior change.
 - The Antigravity, Codex, Gemini and Ollama discovery readers report a non-ok status as the `status` stage and an unparseable body as the `body` stage through one exported `readDiscoveryJson` in `discovery/failure`; no behavior change.
 - Model spec rejection checks its string, cost and limit fields from ordered tables, reporting the same field names in the same order; no behavior change.
@@ -24,7 +27,9 @@
 
 ### Fixed
 
+- Normalized model pricing defaults at model construction and cost calculation so custom and discovery models without explicit cost fields do not throw on usage streaming.
 - Case-insensitive host classification no longer treats control characters as URL punctuation.
+
 ## [1.4.1] - 2026-09-08
 
 ### Fixed

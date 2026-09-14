@@ -36,16 +36,22 @@ const RUNTIME = `${SESSION_DIR}/agent-session.ts`;
 const FACADE = `${SESSION_DIR}/facade.ts`;
 
 /**
- * MEASURED at 18446 lines, down from 18604. Model target selection left — the role resolver, the
- * configured-target reader, the compaction candidate walk and its effort map — and it left because
- * not one of those members read or wrote a field of the runtime: every input was `settings`, a
- * model and the available list, so they sat in the class only because of where they were typed.
- * Four families have left since the declarations did: TTSR, the todo board and the thinking level
- * as collaborators under `runtime/`, and this one as a sibling. The number falls again when the
- * next one leaves. It ratchets: 54 lines of slack is what it takes to not fail on the next honest
- * edit, and a ceiling left far above a shrinking file stops being a bound.
+ * MEASURED at 18524 lines, up from 18446. The GUI host's dispose path grew: the
+ * session now tracks and awaits every client it served and every session-file
+ * persistence it started, so a host that closes mid-write cannot leave a turn
+ * half-persisted, and `UnsupportedModelInputError` arrived with the video-input
+ * guard. Model target selection had left before it — the role resolver, the
+ * configured-target reader, the compaction candidate walk and its effort map —
+ * and it left because not one of those members read or wrote a field of the
+ * runtime: every input was `settings`, a model and the available list, so they
+ * sat in the class only because of where they were typed. Four families have
+ * left since the declarations did: TTSR, the todo board and the thinking level
+ * as collaborators under `runtime/`, and that one as a sibling. The number
+ * falls again when the next one leaves. It ratchets: 26 lines of slack is what
+ * it takes to not fail on the next honest edit, and a ceiling left far above a
+ * shrinking file stops being a bound.
  */
-const RUNTIME_CEILING = 18_500;
+const RUNTIME_CEILING = 18_550;
 
 /** The one subdirectory `src/session/` holds: the collaborators. */
 const RUNTIME_DIR = "runtime";

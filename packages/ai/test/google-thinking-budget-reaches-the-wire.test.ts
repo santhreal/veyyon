@@ -89,7 +89,12 @@ describe("Google thinking budgets reach the wire", () => {
 		expect(model, `${provider}/${id} is missing from the bundled catalog`).toBeDefined();
 
 		for (const effort of EFFORTS) {
-			expect(() => budgetFor(model, effort)).toThrow(/does not accept a thinking budget/);
+			// Two refusal paths, one contract. An effort outside the row's declared
+			// ladder (gemini-flash-latest advertises low..high, so `minimal`) is
+			// refused by effort validation first; an effort on the ladder still
+			// reaches getGoogleBudget, which refuses rather than emit the dynamic
+			// sentinel. Both name why; neither lets an ignored effort through.
+			expect(() => budgetFor(model, effort)).toThrow(/does not accept a thinking budget|is not supported by/);
 		}
 		// The message has to be actionable, not just loud: it names the row and a way forward.
 		expect(() => budgetFor(model, Effort.High)).toThrow(new RegExp(`${provider}/${id}`));

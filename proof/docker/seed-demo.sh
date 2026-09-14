@@ -556,3 +556,21 @@ if [ "${SEED_KIND}" = "late-diagnostics" ]; then
 elif [ -n "${SEED_KIND}" ]; then
 	(cd /repo && bun proof/docker/seed-autoresearch.ts "${DEMO}" "${SEED_KIND}")
 fi
+
+# A TRANSCRIPT THAT ALREADY HOLDS THE MARKERS A REPLY CARRIES.
+#
+# The prose scene photographs how a reply's inline markdown is set, and no
+# model can be asked for an exact paragraph: a 1.5b reply drops a delimiter, a
+# reordered clause moves every span, and the two arms of a pair then differ by
+# the reply rather than by the renderer. The paragraph is a committed fixture
+# instead, written into the session store the way a resumed session is read
+# back, so both arms draw the same bytes.
+#
+# Seeded per scene rather than into proof/docker/home-seed, because every scene
+# shares that tree: a card added there moves the rail rows the queue scenes aim
+# at.
+if [ "${SCENE_NAME}" = "desktop-transcript-prose" ] || [ "${SCENE_NAME}" = "desktop-streamed-shape" ]; then
+	PROSE_SESSIONS="${HOME:-/sandbox/home}/.veyyon/profiles/${VEYYON_PROFILE:-default}/agent/sessions/-demo"
+	mkdir -p "${PROSE_SESSIONS}"
+	cp /repo/proof/docker/seed-sessions/*.jsonl "${PROSE_SESSIONS}/"
+fi

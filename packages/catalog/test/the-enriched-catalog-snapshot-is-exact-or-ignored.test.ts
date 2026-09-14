@@ -37,7 +37,7 @@ import { createEnrichedRegistrySnapshotStore } from "../src/registry-snapshot";
 import type { Api, Model } from "../src/types";
 
 /** Pinned so an unrecorded format change cannot silently reuse old snapshots. */
-const FORMAT_VERSION_PREFIX = "v4:";
+const FORMAT_VERSION_PREFIX = "v5:";
 
 function writeEnrichedRegistrySnapshot(
 	registry: Map<string, Map<string, Model<Api>>>,
@@ -100,8 +100,34 @@ describe("the enriched catalog snapshot is exact or ignored", () => {
 
 	it("rejects the previous resolved format even when catalog bytes are unchanged", () => {
 		const current = enrichedRegistryFingerprint();
-		writeEnrichedRegistrySnapshot(liveRegistry(), current.replace(/^v4:/, "v3:"), dbPath);
+		writeEnrichedRegistrySnapshot(liveRegistry(), current.replace(/^v5:/, "v4:"), dbPath);
 		expect(readEnrichedRegistrySnapshot(current, dbPath)).toBeNull();
+	});
+
+	it("refuses a stale v2 snapshot with sparse or unnormalized records", () => {
+		const snapshotPath = path.join(path.dirname(dbPath), "bundled-models.json");
+		fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
+		const registry = {
+			custom: {
+				"unpriced-model": {
+					id: "unpriced-model",
+					name: "Unpriced Model",
+					provider: "custom",
+					api: "openai-completions",
+					// v2 snapshot with undefined/sparse cost
+				},
+			},
+		};
+		fs.writeFileSync(
+			snapshotPath,
+			JSON.stringify({
+				fingerprint: "v2:catalog-digest-abc",
+				registryDigest: createHash("sha256").update(JSON.stringify(registry)).digest("hex"),
+				registry,
+			}),
+		);
+		// The current reader rejects the v2 snapshot.
+		expect(readEnrichedRegistrySnapshot(`${FORMAT_VERSION_PREFIX}catalog-digest-abc`, dbPath)).toBeNull();
 	});
 
 	it("refuses a corrupt file instead of serving partial records", () => {

@@ -53,7 +53,7 @@ import { signRequest } from "./aws-sigv4";
 import { supportsBedrockPromptCaching } from "./bedrock-prompt-cache";
 import { createInitialResponsesAssistantMessage } from "./initial-message";
 import { transformMessages } from "./transform-messages";
-
+import { NON_VIDEO_MODEL_PLACEHOLDER } from "./vision-content";
 export type BedrockThinkingDisplay = "summarized" | "omitted";
 
 export interface BedrockOptions extends StreamOptions {
@@ -851,6 +851,9 @@ function convertMessages(
 							case "image":
 								contentBlocks.push({ image: createImageBlock(c.mimeType, c.data) });
 								break;
+							case "video":
+								contentBlocks.push({ text: NON_VIDEO_MODEL_PLACEHOLDER });
+								break;
 							default:
 								throw new AIError.ValidationError("Unknown user content type");
 						}
@@ -922,7 +925,9 @@ function convertMessages(
 						content: m.content.map(c =>
 							c.type === "image"
 								? { image: createImageBlock(c.mimeType, c.data) }
-								: { text: c.text.toWellFormed() },
+								: c.type === "video"
+									? { text: NON_VIDEO_MODEL_PLACEHOLDER }
+									: { text: c.text.toWellFormed() },
 						),
 						status: m.isError ? "error" : "success",
 					},
@@ -937,7 +942,9 @@ function convertMessages(
 							content: nextMsg.content.map(c =>
 								c.type === "image"
 									? { image: createImageBlock(c.mimeType, c.data) }
-									: { text: c.text.toWellFormed() },
+									: c.type === "video"
+										? { text: NON_VIDEO_MODEL_PLACEHOLDER }
+										: { text: c.text.toWellFormed() },
 							),
 							status: nextMsg.isError ? "error" : "success",
 						},
@@ -1109,3 +1116,5 @@ function createImageBlock(mimeType: string, data: string): ImageBlockWire["image
 	}
 	return { source: { bytes: data }, format };
 }
+
+export { convertMessages as convertBedrockMessages };

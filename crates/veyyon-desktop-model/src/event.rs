@@ -1,0 +1,252 @@
+use serde::{Deserialize, Serialize};
+
+use crate::{
+	capabilities::{Capability, CapabilityStatus},
+	connection::{ConnectionState, RequestId, SessionId, Versioned},
+	domain::{
+		AgentView, AuthFlowView, ChangesView, ContentMatchesView, ContextBreakdownView, ExportView,
+		FileContentView, FileTreeView, KeybindingView, McpServerView, ModelsView, ProcessLogsChunk,
+		ProcessView, ProviderView, QueuedPromptsView, SearchResultsView, SettingsView,
+		TerminalOutputChunk, TerminalView, ThemesView, UsageView,
+	},
+	error::BackendError,
+	interaction::PendingDecisions,
+	streaming::StreamingMessageState,
+	transcript::TranscriptEntry,
+};
+
+/// Status summary for a session stored on disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
+pub enum SessionStatus {
+	Complete,
+	Interrupted,
+	Aborted,
+	Error,
+	Pending,
+	Unknown,
+}
+
+/// Lightweight session metadata returned in session directory listings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionSummary {
+	pub id:                  SessionId,
+	pub workspace:           String,
+	pub path:                String,
+	pub cwd:                 String,
+	pub title:               Option<String>,
+	pub parent_path:         Option<String>,
+	pub created_at_ms:       u64,
+	pub modified_at_ms:      u64,
+	pub message_count:       u32,
+	pub size_bytes:          u64,
+	pub first_message:       Option<String>,
+	pub searchable_messages: Option<String>,
+	pub status:              SessionStatus,
+}
+
+/// Error encountered when reading or parsing a session header file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionLoadError {
+	pub path:   String,
+	pub reason: String,
+}
+
+/// Detailed session header information for the active session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionHeaderView {
+	pub id:             SessionId,
+	pub schema_version: u32,
+	pub title:          Option<String>,
+	pub title_source:   Option<String>,
+	pub parent:         Option<SessionId>,
+	pub created_at_ms:  u64,
+	pub cwd:            String,
+	/// The mode the session is in as the host spells it (`plan`, `goal`,
+	/// `none`), absent from a host that reports no mode at all.
+	#[serde(default)]
+	pub mode:           Option<String>,
+}
+
+/// Complete list of all 27 snapshot section names defined by the protocol.
+pub const ALL_SECTION_NAMES: &[&str] = &[
+	"Sessions",
+	"ActiveSession",
+	"Transcript",
+	"SessionSearch",
+	"SessionTranscript",
+	"Capabilities",
+	"Interactions",
+	"Settings",
+	"Diagnostics",
+	"Changes",
+	"FileTree",
+	"FileContent",
+	"SearchResults",
+	"ContentMatches",
+	"Terminals",
+	"TerminalOutput",
+	"Processes",
+	"ProcessLogs",
+	"Models",
+	"Providers",
+	"AuthFlow",
+	"Mcp",
+	"Agents",
+	"Usage",
+	"ContextBreakdown",
+	"Export",
+	"Themes",
+	"Keybindings",
+	"QueuedPrompts",
+];
+
+/// Domain sections received during initial connection or snapshot
+/// synchronization.
+///
+/// Each section is the whole of its domain as the host holds it at that
+/// moment, so reducing one replaces rather than merges.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
+#[strum_discriminants(name(SnapshotSectionKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
+#[strum_discriminants(
+	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 27 section variants."
+)]
+pub enum SnapshotSection {
+	/// Session index metadata and deserialization failures.
+	Sessions(Versioned<Vec<SessionSummary>>, Vec<SessionLoadError>),
+	/// Active session header view.
+	ActiveSession(Versioned<SessionHeaderView>),
+	/// Active session transcript entries.
+	Transcript(Versioned<Vec<TranscriptEntry>>),
+	/// Cross-repository persisted session search, independent of the live queue.
+	SessionSearch(crate::domain::SessionSearchView),
+	/// Read-only history transcript; never changes the active session.
+	SessionTranscript(crate::domain::SessionTranscriptView),
+	/// Protocol capabilities and status flags.
+	Capabilities(Vec<(Capability, CapabilityStatus)>),
+	/// Every decision a session is waiting on. Sent whenever one is raised or
+	/// answered, and empty once none remain.
+	Interactions {
+		/// Target session identifier.
+		session: SessionId,
+		/// Pending decisions.
+		pending: PendingDecisions,
+	},
+	/// Every setting the host reports, with its schema and copy.
+	Settings(SettingsView),
+	/// Diagnostic sources payload.
+	Diagnostics(serde_json::Value),
+	/// Git changes view with unified diff.
+	Changes(ChangesView),
+	/// Directory hierarchy tree view.
+	FileTree(FileTreeView),
+	/// File text content view.
+	FileContent(FileContentView),
+	/// Text search results.
+	SearchResults(SearchResultsView),
+	/// The lines a content search matched.
+	ContentMatches(ContentMatchesView),
+	/// List of managed terminal sessions.
+	Terminals(Vec<TerminalView>),
+	/// Chunk of terminal output data.
+	TerminalOutput(TerminalOutputChunk),
+	/// List of supervised processes.
+	Processes(Vec<ProcessView>),
+	/// Chunk of process log lines.
+	ProcessLogs(ProcessLogsChunk),
+	/// Model catalog and active model selection.
+	Models(ModelsView),
+	/// Configured AI providers.
+	Providers(Vec<ProviderView>),
+	/// Active OAuth authentication flow.
+	AuthFlow(AuthFlowView),
+	/// Model Context Protocol servers.
+	Mcp(Vec<McpServerView>),
+	/// Background subagents.
+	Agents(Vec<AgentView>),
+	/// Session resource and token usage totals.
+	Usage(UsageView),
+	/// Context window breakdown by category.
+	ContextBreakdown(ContextBreakdownView),
+	/// Transcript export snapshot.
+	Export(ExportView),
+	/// Color themes.
+	Themes(ThemesView),
+	/// Keyboard shortcuts.
+	Keybindings(Vec<KeybindingView>),
+	/// The prompts a session holds behind a running turn, and the one a
+	/// `DequeueQueuedPrompt` handed back.
+	QueuedPrompts(QueuedPromptsView),
+}
+
+impl SnapshotSection {
+	/// Returns the variant name string.
+	#[must_use]
+	pub const fn name(&self) -> &'static str {
+		match self {
+			Self::Sessions(..) => "Sessions",
+			Self::ActiveSession(..) => "ActiveSession",
+			Self::Transcript(..) => "Transcript",
+			Self::SessionSearch(..) => "SessionSearch",
+			Self::SessionTranscript(..) => "SessionTranscript",
+			Self::Capabilities(..) => "Capabilities",
+			Self::Interactions { .. } => "Interactions",
+			Self::Settings(..) => "Settings",
+			Self::Diagnostics(..) => "Diagnostics",
+			Self::Changes(..) => "Changes",
+			Self::FileTree(..) => "FileTree",
+			Self::FileContent(..) => "FileContent",
+			Self::SearchResults(..) => "SearchResults",
+			Self::ContentMatches(..) => "ContentMatches",
+			Self::Terminals(..) => "Terminals",
+			Self::TerminalOutput(..) => "TerminalOutput",
+			Self::Processes(..) => "Processes",
+			Self::ProcessLogs(..) => "ProcessLogs",
+			Self::Models(..) => "Models",
+			Self::Providers(..) => "Providers",
+			Self::AuthFlow(..) => "AuthFlow",
+			Self::Mcp(..) => "Mcp",
+			Self::Agents(..) => "Agents",
+			Self::Usage(..) => "Usage",
+			Self::ContextBreakdown(..) => "ContextBreakdown",
+			Self::Export(..) => "Export",
+			Self::Themes(..) => "Themes",
+			Self::Keybindings(..) => "Keybindings",
+			Self::QueuedPrompts(..) => "QueuedPrompts",
+		}
+	}
+}
+
+/// Complete enumeration of the protocol event variants dispatched by host
+/// transport.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
+#[strum_discriminants(name(HostEventKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
+#[strum_discriminants(
+	doc = "Fieldless projection of `HostEvent`, so a sweep covers every event the host sends."
+)]
+pub enum HostEvent {
+	ConnectionChanged(ConnectionState),
+	Snapshot(SnapshotSection),
+	TranscriptAppended { revision: u64, entries: Vec<TranscriptEntry> },
+	TranscriptUpdated { revision: u64, entry: TranscriptEntry },
+	StreamingChanged(Option<StreamingMessageState>),
+	RequestSucceeded { request: RequestId },
+	RequestFailed { request: RequestId, error: BackendError },
+	FatalProtocolError { message: String },
+}
+
+impl HostEvent {
+	/// Returns the discriminator tag name for test sweeps.
+	#[must_use]
+	pub const fn tag(&self) -> &'static str {
+		match self {
+			Self::ConnectionChanged(_) => "ConnectionChanged",
+			Self::Snapshot(_) => "Snapshot",
+			Self::TranscriptAppended { .. } => "TranscriptAppended",
+			Self::TranscriptUpdated { .. } => "TranscriptUpdated",
+			Self::StreamingChanged(_) => "StreamingChanged",
+			Self::RequestSucceeded { .. } => "RequestSucceeded",
+			Self::RequestFailed { .. } => "RequestFailed",
+			Self::FatalProtocolError { .. } => "FatalProtocolError",
+		}
+	}
+}

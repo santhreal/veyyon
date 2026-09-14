@@ -4,11 +4,11 @@
  */
 
 import type { AgentMessage } from "@veyyon/agent-core";
-import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
+import type { AssistantMessage, ImageContent, TextContent, VideoContent } from "@veyyon/ai";
 import { type CustomMessage, readQueueChipText } from "./messages";
 
 /** Entry returned by {@link AgentSession.clearQueue} / {@link AgentSession.popLastQueuedMessage}. */
-export type RestoredQueuedMessage = { text: string; images?: ImageContent[] };
+export type RestoredQueuedMessage = { text: string; images?: ImageContent[]; videos?: VideoContent[] };
 
 export function queuedTextContent(message: AgentMessage): string | undefined {
 	if (!("content" in message)) return undefined;
@@ -24,6 +24,15 @@ export function queuedImageContent(message: AgentMessage): ImageContent[] | unde
 			part.type === "image" && typeof part.data === "string" && typeof part.mimeType === "string",
 	);
 	return images.length > 0 ? images : undefined;
+}
+
+function queuedVideoContent(message: AgentMessage): VideoContent[] | undefined {
+	if (!("content" in message) || typeof message.content === "string") return undefined;
+	const videos = message.content.filter(
+		(part): part is VideoContent =>
+			part.type === "video" && typeof part.data === "string" && typeof part.mimeType === "string",
+	);
+	return videos.length > 0 ? videos : undefined;
 }
 
 export function isDisplayableQueuedMessage(message: AgentMessage): boolean {
@@ -97,9 +106,15 @@ export function queueChipText(message: AgentMessage): string {
 	}
 	const text = queuedTextContent(message) ?? "";
 	if (text) return text;
-	return queuedImageContent(message) ? "[Image]" : "";
+	if (queuedImageContent(message)) return "[Image]";
+	if (queuedVideoContent(message)) return "[Video]";
+	return "";
 }
 
 export function toRestoredQueuedMessage(message: AgentMessage): RestoredQueuedMessage {
-	return { text: queueChipText(message), images: queuedImageContent(message) };
+	return {
+		text: queueChipText(message),
+		images: queuedImageContent(message),
+		videos: queuedVideoContent(message),
+	};
 }

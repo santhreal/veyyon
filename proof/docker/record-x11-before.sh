@@ -127,6 +127,43 @@ env = dict(os.environ, OUT_DIR=os.path.abspath(out), SCENE_ARM="before")
 # A file the branch deleted along with its directory needs the directory back, and the
 # restore takes back every directory it made rather than leaving an empty tree behind.
 made_dirs = []
+if env.get("SCENE_TERMINAL") == "native":
+    before_binary = env.get("PROOF_NATIVE_BEFORE_BINARY")
+    after_binary = env.get("PROOF_HOST_REPO_SOURCE")
+    if not after_binary or not env.get("PROOF_HOST_REPO_TARGET"):
+        raise SystemExit(
+            "native Before recording requires the "
+            "PROOF_HOST_REPO_SOURCE/PROOF_HOST_REPO_TARGET binary mount"
+        )
+    # A change the executable takes no part in — one that lives entirely in the
+    # TypeScript host the window talks to — has no second build to name, and the
+    # hold on that source is the whole differential. A hold that holds nothing
+    # has no differential at all, so an unnamed or identical binary there is a
+    # capture of one state photographed twice.
+    if not before_binary:
+        if not want:
+            raise SystemExit(
+                "native Before recording requires PROOF_NATIVE_BEFORE_BINARY when the "
+                "source hold is empty; name the before-state build"
+            )
+        before_binary = after_binary
+    before_binary = os.path.abspath(before_binary)
+    for binary in (before_binary, after_binary):
+        if not os.path.isfile(binary) or not os.access(binary, os.X_OK):
+            raise SystemExit("native capture binary is not an executable file: " + binary)
+    before_sha = sha(before_binary)
+    after_sha = sha(after_binary)
+    if before_sha == after_sha and not want:
+        raise SystemExit("native Before and After binaries are identical; provide the before-state build")
+    env["PROOF_HOST_REPO_SOURCE"] = before_binary
+    if before_sha == after_sha:
+        print(
+            f"native before and after run the same executable ({before_sha}); "
+            f"the hold on {len(want)} source file(s) is the differential",
+            flush=True,
+        )
+    else:
+        print(f"native before sha256: {before_sha}; after sha256: {after_sha}", flush=True)
 try:
     for path, content in want.items():
         if content is None:

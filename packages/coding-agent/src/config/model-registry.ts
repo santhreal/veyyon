@@ -581,7 +581,7 @@ interface ModelPatch {
 	name?: string;
 	reasoning?: boolean;
 	thinking?: ThinkingConfig;
-	input?: ("text" | "image")[];
+	input?: ("text" | "image" | "video")[];
 	supportsTools?: boolean;
 	cost?: Partial<Model<Api>["cost"]>;
 	contextWindow?: number;
@@ -607,7 +607,15 @@ function applyModelPatch(base: Model<Api>, patch: ModelPatch, transport: ModelTr
 	const result = { ...base };
 	if (patch.name !== undefined) result.name = patch.name;
 	if (patch.reasoning !== undefined) result.reasoning = patch.reasoning;
-	if (patch.thinking !== undefined) result.thinking = patch.thinking;
+	if (patch.thinking !== undefined) {
+		result.thinking = patch.thinking;
+		// An authored ladder replaces the endpoint's declared surface, which
+		// `resolveModelThinking` reads first: a row whose discovery reports
+		// `noEffortControl` (openrouter's `anthropic/claude-sonnet-4`) would
+		// otherwise drop the patch and leave the picker closed on a model the
+		// operator just described a ladder for.
+		delete result.reasoningOptions;
+	}
 	if (patch.input !== undefined) result.input = patch.input;
 	if (patch.supportsTools !== undefined) result.supportsTools = patch.supportsTools;
 	if (patch.contextWindow !== undefined) result.contextWindow = patch.contextWindow;
@@ -752,7 +760,7 @@ function finalizeCustomModel(model: CustomModelOverlay, options: CustomModelBuil
 		baseUrl: resolvedModel.baseUrl,
 		reasoning: resolvedModel.reasoning ?? reference?.reasoning ?? (options.useDefaults ? false : undefined),
 		thinking: resolvedModel.thinking ?? reference?.thinking,
-		input: input as ("text" | "image")[],
+		input: input as ("text" | "image" | "video")[],
 		...(supportsTools !== undefined ? { supportsTools } : {}),
 		cost,
 		contextWindow: resolvedModel.contextWindow ?? reference?.contextWindow ?? (options.useDefaults ? 128000 : null),

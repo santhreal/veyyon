@@ -39,7 +39,7 @@ export function slugify(heading: string): string {
 }
 
 /** Strip fenced code blocks and inline code spans so sample links are not scanned. */
-function stripCode(markdown: string): string {
+export function stripCode(markdown: string): string {
 	const lines = markdown.split("\n");
 	let inFence = false;
 	let fenceMarker = "";
@@ -48,16 +48,20 @@ function stripCode(markdown: string): string {
 		if (fence) {
 			if (!inFence) {
 				inFence = true;
-				fenceMarker = fence[1][0].repeat(3);
-			} else if (fence[1].startsWith(fenceMarker)) {
+				fenceMarker = fence[1];
+			} else if (
+				fence[1][0] === fenceMarker[0] &&
+				fence[1].length >= fenceMarker.length &&
+				line.slice(fence[0].length).trim() === ""
+			) {
 				inFence = false;
 			}
 			return "";
 		}
 		if (inFence) return "";
-		return line.replace(/`[^`]*`/g, "");
+		return line;
 	});
-	return out.join("\n");
+	return out.join("\n").replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, span => span.replace(/[^\n]/g, ""));
 }
 
 /** Collect every anchor a file exposes: heading slugs (deduped -1/-2…), {#custom-id}, and HTML id/name attributes.

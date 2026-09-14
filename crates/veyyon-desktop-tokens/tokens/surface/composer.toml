@@ -1,0 +1,46 @@
+[meta]
+version = 1
+name = "surface_composer"
+
+[geometry]
+max_width_px = 768
+rest_height_px = 70
+growth_cap_px = 200
+radius_outer = "xxl"
+radius_inner = "xl"
+padding_top = "s7"
+padding_bottom = "s6"
+padding_horizontal = "s8"
+hairline_stroke = "hairline"
+
+[material]
+blur_px = 16
+saturation = 1.08
+ground_opacity = 0.80
+shadow_x = 0
+shadow_y = -8
+shadow_blur = 24
+shadow_spread = -18
+shadow_opacity = 0.45
+
+[footer]
+max_controls = 5
+compact_threshold_px = 600
+hysteresis_px = 16
+
+[run_bar]
+height_px = 28
+max_controls = 4
+compact_threshold_px = 560
+label_size = "small"
+
+[opening_line]
+max_width_px = 768
+type_size = "lead"
+weight = "regular"
+
+# One card per attached image or clip: a square thumbnail at card_height beside the name and size.
+[attachments]
+card_height_px = 48
+card_max_width_px = 240
+card_radius = "md"

@@ -25,6 +25,7 @@ import { getSymbolTheme, theme } from "../../../theme/theme";
 import type { ResolveToolDetails } from "../../../tools/agent/resolve";
 import { nextActionableTask } from "../../../tools/agent/todo";
 import { previewLine, TRUNCATE_LENGTHS } from "../../../tools/core/render-utils";
+import { streamingStringKeysForTool } from "../../../tools/core/streamed-tool-args";
 import { canonicalizeMessage } from "../../../utils/thinking-display";
 import { formatRetryLine } from "../../retry-display";
 import { TodoReminderComponent } from "../components/dashboard/todo-reminder";
@@ -49,7 +50,7 @@ import {
 	splitAssistantMessageToolTimeline,
 } from "../utils/transcript-render-helpers";
 import { StreamingRevealController } from "./streaming-reveal";
-import { streamingStringKeysForTool, ToolArgsRevealController } from "./tool-args-reveal";
+import { ToolArgsRevealController } from "./tool-args-reveal";
 
 /**
  * The slice of the interactive context this controller uses: 51 members of the

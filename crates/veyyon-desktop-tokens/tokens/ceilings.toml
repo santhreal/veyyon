@@ -1,0 +1,55 @@
+[meta]
+version = 1
+name = "ceilings"
+
+[ceilings.queue_card]
+edges = 2
+distinct_gaps = 3
+text_sizes = 3
+interactive_elements = 3
+
+[ceilings.queue_line]
+edges = 1
+distinct_gaps = 2
+text_sizes = 2
+interactive_elements = 2
+
+[ceilings.transcript_turn]
+edges = 1
+distinct_gaps = 3
+text_sizes = 3
+interactive_elements = 4
+
+[ceilings.block_chrome]
+edges = 1
+distinct_gaps = 2
+text_sizes = 2
+interactive_elements = 2
+
+[ceilings.composer]
+edges = 3
+distinct_gaps = 4
+text_sizes = 3
+interactive_elements = 8
+
+[ceilings.right_panel_chrome]
+edges = 2
+distinct_gaps = 3
+text_sizes = 3
+interactive_elements = 6
+
+[ceilings.terminal_drawer_chrome]
+edges = 2
+distinct_gaps = 2
+text_sizes = 2
+interactive_elements = 5
+
+[ceilings.whole_window]
+edges = 16
+distinct_gaps = 8
+text_sizes = 6
+interactive_elements = 105
+
+[ceilings.density_region]
+sample_box_px = 100
+max_interactive_per_1000px2 = 2.08

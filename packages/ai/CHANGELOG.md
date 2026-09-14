@@ -6,6 +6,10 @@
 
 - Provider-specific test override setters are replaced by `setProviderModuleOverrideForTest(api, module)`.
 
+### Added
+
+- `VideoContent` support across provider serialization and fallback placeholder handling.
+
 ### Changed
 
 - The NVIDIA, Xiaomi, Xiaomi Token Plan and Alibaba Coding Plan logins take the pasted key through the same `promptApiKey` as every `createApiKeyLogin` provider: the key is trimmed, an empty paste is `ApiKeyRequiredError`, an abort during the paste is `LoginCancelledError`, and a host without `onPrompt` is `OnPromptRequiredError`; no behavior change.
@@ -43,6 +47,8 @@
 - Both streaming gateway routes (the format endpoints and the pi-native fast path) abort the upstream call on a closed client response through one SSE cancel hook; no behavior change.
 
 ### Fixed
+
+- ChatGPT Codex server-side compaction posts to the codex responses route instead of the retired `/responses/compact` route, which answered 404 and turned the session over to local compaction for the rest of its life.
 
 - Corrected comments that named a distribution channel or runtime API the project does not use; no behavior change.
 - A stream that stalls after its first event ("<provider> stream stalled while waiting for the next event") classifies as a timeout as well as transient, so auto-compaction moves to the next candidate model instead of re-sending the full context to the model that stalled up to `retry.maxRetries` times.

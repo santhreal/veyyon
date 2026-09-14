@@ -85,6 +85,10 @@ fi
 # they are asked for, and picom without them starts, stays alive, and never
 # claims the manager selection, which reads exactly like a theme that did not
 # apply.
+if xdpyinfo -display "${DISPLAY}" >/dev/null 2>&1; then
+	echo "display ${DISPLAY} is already in use" >&2
+	exit 1
+fi
 Xvfb "${DISPLAY}" -screen 0 "${W}x${H}x24" -nolisten tcp \
 	+extension COMPOSITE +extension RENDER +extension DAMAGE \
 	>"${TMPDIR}/xvfb.log" 2>&1 &
@@ -162,7 +166,9 @@ export COLORTERM=truecolor
 # vault through the environment never appears in the transcript at all, so what the
 # recording shows spending is a placeholder and nothing else.
 export RELEASE_SIGNATURE="${SCENE_SIGNING_NUMBER}"
-printf 'stty=%s\n' "$(stty size </dev/tty)" >"${TMPDIR:-/out/.scratch}/geom"
+# Each take has its own persisted native window, queue, panel and composer state.
+export VEYYON_DESKTOP_STATE_DIR="${TMPDIR}/desktop-state"
+printf 'stty=%s\n' "$(stty size </dev/tty 2>/dev/null || true)" >"${TMPDIR}/geom"
 cd "${SCENE_CWD}"
 exec ${SCENE_COMMAND:?}
 BOOT
@@ -344,6 +350,9 @@ xterm)
 		-xrm "XTerm*saveLines: 20000" \
 		-e "${TMPDIR}/bootstrap.sh" >"${TMPDIR}/term.log" 2>&1 &
 	;;
+native)
+	"${TMPDIR}/bootstrap.sh" >"${TMPDIR}/term.log" 2>&1 &
+	;;
 *)
 	kitty \
 		--override "font_family=JetBrains Mono" \
@@ -382,9 +391,30 @@ KITTY_PID=$!
 # resolved id, and the run is aborted rather than recorded if the window will not
 # sit where the theme needs it.
 pick_window() {
-	local found="" candidate
-	for candidate in $(xdotool search --class "kitty|XTerm" 2>/dev/null); do
-		if xdotool getwindowgeometry "${candidate}" 2>/dev/null | grep -qE "Geometry: [1-9][0-9]*x[1-9]"; then
+	local found="" candidate candidates="" width height
+	case "${SCENE_TERMINAL}" in
+	xterm)
+		candidates="$(xdotool search --class "XTerm" 2>/dev/null || true)"
+		;;
+	kitty)
+		candidates="$(xdotool search --class "kitty" 2>/dev/null || true)"
+		;;
+	native)
+		candidates="$(xwininfo -root -children | sed -n 's/^ *\(0x[0-9a-fA-F]*\) .*/\1/p')"
+		;;
+	*)
+		candidates="$(xdotool search --class "${SCENE_TERMINAL}" 2>/dev/null || xdotool search --onlyvisible --maxdepth 2 "" 2>/dev/null || true)"
+		;;
+	esac
+
+	if [ -z "${candidates}" ] && [ "${SCENE_TERMINAL}" != "native" ]; then
+		candidates="$(xdotool search --onlyvisible --maxdepth 2 "" 2>/dev/null || xdotool search --maxdepth 2 "" 2>/dev/null || true)"
+	fi
+
+	for candidate in ${candidates}; do
+		[ "${candidate}" = "0" ] && continue
+		read -r width height <<<"$(xdotool getwindowgeometry "${candidate}" 2>/dev/null | sed -n 's/.*Geometry: \([0-9]*\)x\([0-9]*\)/\1 \2/p')"
+		if [ "${width:-0}" -gt 1 ] && [ "${height:-0}" -gt 1 ]; then
 			found="${candidate}"
 		fi
 	done
@@ -416,13 +446,13 @@ for _ in $(seq 1 40); do
 	fi
 done
 if [ -z "${WINDOW}" ]; then
-	echo "no terminal window with a geometry appeared" >&2
+	echo "no window with a geometry appeared" >&2
 	tail -40 "${TMPDIR}/term.log" >&2 2>/dev/null || true
 	tail -40 "${TMPDIR}/boot.err" >&2 2>/dev/null || true
 	exit 1
 fi
 [ "${PLACED}" = "1" ] || {
-	echo "terminal window would not move to +${MARGIN}+${MARGIN} (last origin: ${WX:-none},${WY:-none})" >&2
+	echo "window would not move to +${MARGIN}+${MARGIN} (last origin: ${WX:-none},${WY:-none})" >&2
 	tail -20 "${TMPDIR}/term.log" >&2 2>/dev/null
 	exit 1
 }

@@ -158,7 +158,9 @@ function verifyShotNames(scene: string, findings: Finding[], name: string): void
 }
 
 function verifyMissedIsFatal(scene: string, findings: Finding[], name: string): void {
-	if (!scene.includes("MISSED")) return;
+	// The word boundary is what keeps a scene's own threshold out of this rule:
+	// `DISMISSED_PER_MILLE` carries the six letters and collects nothing.
+	if (!/\bMISSED\b/.test(scene)) return;
 	if (/if\s+\[\s+-n\s+"\$\{MISSED:-\}"\s+\]/.test(scene)) return;
 	findings.push({
 		scene: name,

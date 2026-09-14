@@ -1,0 +1,271 @@
+//! One intent of every kind, for the suites that sweep every interaction the
+//! surface offers.
+//!
+//! The match is exhaustive on purpose: adding a variant to `Intent` breaks
+//! this function, which is the only place that decides whether a new
+//! interaction is the shell's to finish or a host's to answer.
+
+use veyyon_desktop_model::SurfaceId;
+use veyyon_desktop_surface::{
+	Intent, MenuSectionId, Overlay, PaletteState, PanelTab, ScrollBy,
+	composer::{ModelChoice, QueueMode, ThinkingLevel},
+};
+
+use super::{attachment, send};
+
+/// One intent of every kind, with the two answers the suite checks.
+///
+/// The match is exhaustive on purpose: adding a variant to `Intent` breaks this
+/// function, which is the only place that decides whether a new interaction is
+/// the shell's to finish or a host's to answer.
+pub fn every_intent() -> Vec<Intent> {
+	let sample = vec![
+		Intent::SelectSession(9),
+		Intent::OpenSession("session-first".into()),
+		Intent::CloseSessionTab("session-first".into()),
+		Intent::ReorderSessionTab {
+			session: "session-first".into(),
+			target:  "session-second".into(),
+		},
+		Intent::CreateSpace("Research".into()),
+		Intent::RenameSpace { id: 1, name: "Work".into() },
+		Intent::SwitchSpace(2),
+		Intent::FindSessions("needle".into()),
+		Intent::PreviewSession("s1".into()),
+		Intent::ResumeHistory("s1".into()),
+		Intent::SelectTab(PanelTab::Diff),
+		Intent::SetDrawer { open: true },
+		Intent::SetDrawer { open: false },
+		Intent::Approval { card: 0, approved: true, standing: false },
+		Intent::Answer { card: 1, option: 1 },
+		Intent::Reply { card: 1, text: "ship it".to_owned() },
+		Intent::Plan { card: 2, accepted: false, feedback: "tighten step two".to_owned() },
+		Intent::Plan { card: 2, accepted: true, feedback: String::new() },
+		send("ship it"),
+		Intent::Steer("steer text".to_owned()),
+		Intent::Queue("queue text".to_owned()),
+		Intent::AbortTurn,
+		Intent::SetQueueMode(QueueMode::Queue),
+		Intent::SelectModel(ModelChoice::new("anthropic", "claude-sonnet-4-6")),
+		Intent::SetThinking(ThinkingLevel::new("medium")),
+		Intent::RemoveAttachment(0),
+		Intent::Attach(attachment()),
+		Intent::RetryConnection,
+		Intent::StartProviderAuth("anthropic".to_owned()),
+		Intent::SubmitAuthSecret {
+			provider: "anthropic".to_owned(),
+			secret:   "sk-ant-...".to_owned(),
+		},
+		Intent::OpenAuthUrl("https://auth.provider.com/oauth".to_owned()),
+		Intent::CancelAuthFlow,
+		Intent::RetryAuthFlow,
+		Intent::RetryControl(SurfaceId::ConnectionRetryButton),
+		Intent::DismissError(SurfaceId::ConnectionRetryButton),
+		Intent::OpenOverlay(Box::new(Overlay::Palette(PaletteState::default()))),
+		Intent::Navigate(veyyon_desktop_surface::navigation::SurfaceRoute::Account),
+		Intent::CloseOverlay,
+		Intent::PaletteQuery("find".to_owned()),
+		Intent::PaletteMove(1),
+		Intent::PaletteRun,
+		Intent::BrowseTo { path: Some("crates".to_owned()) },
+		Intent::SettingChanged { key: "font_size".to_owned(), value: serde_json::json!(14) },
+		Intent::SelectTheme("light".to_owned()),
+		Intent::PreviewAppearance(Some("light".to_owned())),
+		Intent::PreviewAppearance(None),
+		Intent::SelectAppearance("light".to_owned()),
+		Intent::ResetSetting("font_size".to_owned()),
+		Intent::ReloadSettings,
+		Intent::SetMcpEnabled { server: "fs".to_owned(), enabled: true },
+		Intent::RefreshDiagnostics,
+		Intent::RetryDiagnosticSource("github".to_owned()),
+		Intent::RefreshUsage,
+		Intent::PinSession(7),
+		Intent::UnpinSession(7),
+		Intent::DeferSession(7),
+		Intent::ParkSession(7),
+		Intent::UnparkSession(7),
+		Intent::RecallSession(7),
+		Intent::DeleteSession(7),
+		Intent::BranchSession(7),
+		Intent::BranchTurn(1),
+		Intent::FilterQueue("test".to_owned()),
+		Intent::NewSession,
+		Intent::CloseTabOrPark,
+		Intent::MoveQueueSelection(1),
+		Intent::ScrollTranscript(ScrollBy::PageDown),
+		Intent::FindInTranscript,
+		Intent::StepTurn(1),
+		Intent::ToggleBlock,
+		Intent::ToggleQueue,
+		Intent::SetPanel { open: true },
+		Intent::SetPanel { open: false },
+		Intent::SelectDrawerTab(1),
+		Intent::TerminalInput(vec![b'a']),
+		Intent::ResizeTerminal { cols: 80, rows: 24 },
+		Intent::ClearTerminal,
+		Intent::RestartTerminal,
+		Intent::ProcessStop("build".to_owned()),
+		Intent::ProcessRestart("build".to_owned()),
+		Intent::ProcessSignal {
+			process: "build".to_owned(),
+			signal:  veyyon_desktop_model::SupervisorSignal::Interrupt,
+		},
+		Intent::SetDiffMode(veyyon_desktop_model::DiffMode::Split),
+		Intent::OpenFile("src/lib.rs".to_owned()),
+		Intent::ToggleTreeNode("src".to_owned()),
+		Intent::ExpandContext { file: 0, row: 0 },
+		Intent::SelectChangeScope(veyyon_desktop_model::ChangeScope::Staged),
+		Intent::SetToolViewExpanded { call_id: "read-call".to_owned(), expanded: true },
+		Intent::OpenToolTarget(veyyon_desktop_surface::tool_view::ToolViewTarget::Url(
+			"https://example.com".to_owned(),
+		)),
+		Intent::OpenUsage,
+		Intent::OpenProcessLogs("web".to_owned()),
+		Intent::DequeueQueuedPrompt,
+		Intent::FindFile("lib".to_owned()),
+		Intent::FindText("todo".to_owned()),
+		Intent::RenameSession { session: 1, title: "renamed".to_owned() },
+		Intent::ExportSession(Some(1)),
+		Intent::CompactSession(Some(1)),
+		Intent::HandoffSession(Some(1)),
+		Intent::LoadTranscript(Some(1)),
+		Intent::CloseTerminal,
+		Intent::NewTerminal,
+		Intent::ClearOutput,
+		Intent::CancelTool { call_id: "tool-1".to_owned() },
+		Intent::ProcessStart { command: "cargo".to_owned(), args: vec!["run".to_owned()] },
+		Intent::ProcessSend { process: "web".to_owned(), data: vec![b'y'] },
+		Intent::KeybindingChanged {
+			action: "composer.send".to_owned(),
+			keys:   vec!["ctrl-enter".to_owned()],
+		},
+		Intent::SpawnTask("review the diff".to_owned()),
+		Intent::SetPlanMode { on: true },
+		Intent::CopyText("copied words".to_owned()),
+		Intent::DismissNotice("request-failed:transcript:-".to_owned()),
+		Intent::SetMenuSection(Some(MenuSectionId::Session)),
+		Intent::MoveMenuHighlight(1),
+		Intent::MoveMenuSection(1),
+		Intent::CloseWindow,
+		Intent::Quit,
+	];
+
+	// The exhaustive match is the gate. Every variant is named, so a new one
+	// turns this red rather than slipping through the sweep untested.
+	for intent in &sample {
+		match intent {
+			Intent::SelectSession(_)
+			| Intent::OpenSession(_)
+			| Intent::CloseSessionTab(_)
+			| Intent::ReorderSessionTab { .. }
+			| Intent::CreateSpace(_)
+			| Intent::RenameSpace { .. }
+			| Intent::SwitchSpace(_)
+			| Intent::FindSessions(_)
+			| Intent::PreviewSession(_)
+			| Intent::ResumeHistory(_)
+			| Intent::SelectTab(_)
+			| Intent::SetDrawer { .. }
+			| Intent::Approval { .. }
+			| Intent::Answer { .. }
+			| Intent::Reply { .. }
+			| Intent::Plan { .. }
+			| Intent::Send { .. }
+			| Intent::Steer(_)
+			| Intent::Queue(_)
+			| Intent::AbortTurn
+			| Intent::SetQueueMode(_)
+			| Intent::SetPlanMode { .. }
+			| Intent::SelectModel(_)
+			| Intent::SetThinking(_)
+			| Intent::RemoveAttachment(_)
+			| Intent::Attach(_)
+			| Intent::RetryConnection
+			| Intent::StartProviderAuth(_)
+			| Intent::SubmitAuthSecret { .. }
+			| Intent::OpenAuthUrl(_)
+			| Intent::CancelAuthFlow
+			| Intent::RetryAuthFlow
+			| Intent::RetryControl(_)
+			| Intent::DismissError(_)
+			| Intent::OpenOverlay(_)
+			| Intent::Navigate(_)
+			| Intent::CloseOverlay
+			| Intent::PaletteQuery(_)
+			| Intent::PaletteMove(_)
+			| Intent::PaletteRun
+			| Intent::BrowseTo { .. }
+			| Intent::FindFile(_)
+			| Intent::FindText(_)
+			| Intent::SettingChanged { .. }
+			| Intent::SelectTheme(_)
+			| Intent::PreviewAppearance(_)
+			| Intent::SelectAppearance(_)
+			| Intent::ResetSetting(_)
+			| Intent::ReloadSettings
+			| Intent::SetMcpEnabled { .. }
+			| Intent::RefreshDiagnostics
+			| Intent::RetryDiagnosticSource(_)
+			| Intent::RefreshUsage
+			| Intent::PinSession(_)
+			| Intent::UnpinSession(_)
+			| Intent::DeferSession(_)
+			| Intent::ParkSession(_)
+			| Intent::UnparkSession(_)
+			| Intent::RecallSession(_)
+			| Intent::DeleteSession(_)
+			| Intent::BranchSession(_)
+			| Intent::BranchTurn(_)
+			| Intent::FilterQueue(_)
+			| Intent::NewSession
+			| Intent::CloseTabOrPark
+			| Intent::MoveQueueSelection(_)
+			| Intent::ScrollTranscript(_)
+			| Intent::CopyText(_)
+			| Intent::FindInTranscript
+			| Intent::StepTurn(_)
+			| Intent::ToggleBlock
+			| Intent::ToggleQueue
+			| Intent::SetPanel { .. }
+			| Intent::SelectDrawerTab(_)
+			| Intent::TerminalInput(_)
+			| Intent::ResizeTerminal { .. }
+			| Intent::RestartTerminal
+			| Intent::ClearTerminal
+			| Intent::ProcessStop(_)
+			| Intent::ProcessRestart(_)
+			| Intent::ProcessSignal { .. }
+			| Intent::SetDiffMode(_)
+			| Intent::OpenFile(_)
+			| Intent::ToggleTreeNode(_)
+			| Intent::ExpandContext { .. }
+			| Intent::SelectChangeScope(_)
+			| Intent::SetToolViewExpanded { .. }
+			| Intent::OpenToolTarget(_)
+			| Intent::OpenUsage
+			| Intent::OpenProcessLogs(_)
+			| Intent::DequeueQueuedPrompt
+			| Intent::RenameSession { .. }
+			| Intent::ExportSession(_)
+			| Intent::CompactSession(_)
+			| Intent::HandoffSession(_)
+			| Intent::LoadTranscript(_)
+			| Intent::CloseTerminal
+			| Intent::NewTerminal
+			| Intent::ClearOutput
+			| Intent::CancelTool { .. }
+			| Intent::ProcessStart { .. }
+			| Intent::ProcessSend { .. }
+			| Intent::KeybindingChanged { .. }
+			| Intent::SpawnTask(_)
+			| Intent::DismissNotice(_)
+			| Intent::SetMenuSection(_)
+			| Intent::MoveMenuHighlight(_)
+			| Intent::MoveMenuSection(_)
+			| Intent::CloseWindow
+			| Intent::Quit => {},
+		}
+	}
+
+	sample
+}

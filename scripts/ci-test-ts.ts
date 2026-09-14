@@ -332,6 +332,7 @@ export const repoScriptTests = [
 	"scripts/every-workflow-pipeline-sets-pipefail.test.ts",
 	"scripts/every-workflow-runs-bun-test-in-the-sandbox.test.ts",
 	"scripts/gh-repo-context.test.ts",
+	"scripts/gpui-consumers-share-one-pinned-framework.test.ts",
 	"scripts/ci-build-native.test.ts",
 	"scripts/bun-install-action.test.ts",
 	"scripts/the-bun-pin-has-one-owner.test.ts",
@@ -499,6 +500,9 @@ export const repoScriptTests = [
 	// suite hashes the file, so editing it at all fails CI until an operator records
 	// the new hash.
 	"scripts/the-codex-compaction-route-is-locked.test.ts",
+	// No source file the build reads is ignored, and no unanchored pattern names
+	// a directory that holds source.
+	"scripts/every-source-file-the-build-reads-is-in-the-repository.test.ts",
 ];
 
 /**

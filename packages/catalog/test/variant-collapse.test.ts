@@ -638,7 +638,7 @@ describe("deriveThinkingPairFamilies", () => {
 		const out = collapseEffortVariants([base, twin], { families });
 		expect(out).toHaveLength(1);
 		expect(out[0]?.reasoning).toBe(true);
-		expect(out[0]?.cost.input).toBe(0.09);
+		expect(out[0]?.cost?.input).toBe(0.09);
 		expect(out[0]?.thinking?.effortRouting?.[Effort.XHigh]).toBe("xiaomi/mimo-v2-flash-thinking");
 		expect(out[0]?.thinking?.effortRouting?.off).toBe("xiaomi/mimo-v2-flash");
 	});

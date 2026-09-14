@@ -116,6 +116,8 @@ describe("check-doc-freshness keeps the other answer on purpose", () => {
 const NAMES_ONLY: Readonly<Record<string, string>> = {
 	"scripts/check-doc-paths.test.ts": "derives top-level directory names from the index, opens no listed path",
 	"scripts/check-doc-freshness.ts": "reports a listed doc that is gone, the asymmetry asserted above",
+	"scripts/every-source-file-the-build-reads-is-in-the-repository.test.ts":
+		"compares indexed path segments against ignore patterns, opens no indexed file",
 	"scripts/internal-docs-are-tracked.test.ts": "asserts which docs git tracks, opens no listed path",
 	"scripts/root-layout.test.ts": "counts tracked paths per directory, opens none",
 	"scripts/stray-output-path.test.ts": "matches path segments against unset-variable names",

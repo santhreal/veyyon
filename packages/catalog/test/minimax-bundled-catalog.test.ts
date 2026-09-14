@@ -16,7 +16,7 @@ describe("minimax bundled catalog", () => {
 			expect(model).toBeDefined();
 			expect(model.provider).toBe(provider.id);
 			expect(model.contextWindow).toBe(1_000_000);
-			expect(model.maxTokens).toBe(128_000);
+			expect(model.maxTokens).toBe(512_000);
 		}
 	});
 });

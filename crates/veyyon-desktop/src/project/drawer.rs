@@ -1,0 +1,279 @@
+//! The terminal drawer projection: tabs, process list, and visible terminal
+//! grid.
+
+use std::collections::HashMap;
+
+use veyyon_desktop_model::{
+	Capability, CapabilityMap, CapabilityStatus, Domains, TerminalStatus,
+	text::terminal::{Cell, TerminalEmulator},
+};
+use veyyon_desktop_surface::{DrawerContent, DrawerTab, Intent, ProcessRow};
+
+use super::{PANE_LINE_CEILING, elapsed_label};
+
+/// How many trailing log lines of a supervised process are fed to the grid.
+///
+/// The buffer retains `PROCESS_LOG_CAPACITY_LINES`, the grid draws what the
+/// window has room for, and the drawer offers no scrollback of its own, so
+/// feeding more than the tail costs parsing nothing can reach.
+const PROCESS_LOG_TAIL_LINES: usize = 200;
+
+/// Whether the host offers either of the drawer's tenants (§5.13).
+///
+/// A host that runs no terminal and supervises no process has no drawer: the
+/// titlebar control, the `Primary-J` chord and `/terminal` offer none, rather
+/// than opening an empty grid. `UnknownUntilAttached` offers nothing
+/// either, since a drawer that appears mid-attach is a surface the operator
+/// did not ask for.
+pub fn drawer_offered(capabilities: &CapabilityMap) -> bool {
+	[Capability::Terminals, Capability::ProcessSupervisor]
+		.into_iter()
+		.any(|capability| matches!(capabilities.get(capability), CapabilityStatus::Available))
+}
+
+/// Projects domain terminals and processes into the shell state's drawer
+/// content.
+pub fn project_drawer<S: std::hash::BuildHasher>(
+	domains: &Domains,
+	capabilities: &CapabilityMap,
+	emulators: &HashMap<String, TerminalEmulator, S>,
+	now_ms: u64,
+	drawer: &mut DrawerContent,
+) {
+	drawer.offered = drawer_offered(capabilities);
+	let mut tabs = Vec::new();
+	for term in &domains.terminals {
+		let title = emulators
+			.get(&term.id)
+			.map(|e| e.grid().title.clone())
+			.filter(|t| !t.is_empty())
+			.unwrap_or_else(|| {
+				if term.shell.is_empty() {
+					"Terminal".to_string()
+				} else {
+					term.shell.clone()
+				}
+			});
+		tabs.push(DrawerTab::Terminal { id: term.id.clone(), title });
+	}
+
+	// §5.12: the supervisor's tab is offered on the capability, not on the
+	// list. A tab that appears only once something is running cannot be the
+	// tab the first process is started from, and the list states its own
+	// emptiness.
+	if matches!(capabilities.get(Capability::ProcessSupervisor), CapabilityStatus::Available) {
+		tabs.push(DrawerTab::Processes);
+	}
+
+	// §5.12: a supervised process's output is the same terminal surface, one
+	// per process, tabbed. The tab is offered for every process the host
+	// lists, so the output is reachable before the first chunk arrives.
+	for process in &domains.processes {
+		tabs.push(DrawerTab::Process { name: process.name.clone() });
+	}
+
+	// The active tab follows its identity, not its index: a terminal that
+	// exited and left the list moves every tab after it. A tab nobody chose,
+	// or one that is gone, gives way to the last running terminal, which is
+	// the one a turn is most likely writing to, then to the last one opened.
+	//
+	// A tab is carried only once something chose it. The drawer's opening
+	// asks the host for a terminal, and until that answer arrives the index
+	// the drawer holds stands for whatever sits at zero -- the process list,
+	// on a host that supervises processes -- so carrying it forward left the
+	// drawer on the supervisor once the terminal it had asked for existed.
+	let carried = drawer
+		.tabs
+		.get(drawer.active_tab)
+		.and_then(|previous| tabs.iter().position(|tab| same_tab(tab, previous)));
+	drawer.active_tab = if drawer.tab_chosen {
+		carried.unwrap_or_else(|| default_tab(domains))
+	} else {
+		default_tab(domains)
+	};
+	drawer.tabs = tabs;
+
+	drawer.processes = domains
+		.processes
+		.iter()
+		.map(|p| ProcessRow {
+			name:          p.name.clone(),
+			pid:           p.pid,
+			status:        p.status.clone(),
+			elapsed_label: elapsed_label(now_ms.saturating_sub(p.started_at_ms)),
+			terminated_by: p.terminated_by.clone(),
+			exit_code:     p.exit_code,
+		})
+		.collect();
+
+	match drawer.tabs.get(drawer.active_tab) {
+		Some(DrawerTab::Terminal { id, .. }) => {
+			if let Some(emu) = emulators.get(id) {
+				copy_grid(emu, drawer);
+				drawer.selection = emu.grid().selection;
+			} else if let Some(output) = domains.terminal_output.get(id) {
+				let mut emu = emulator_for(drawer);
+				emu.feed(&output.data);
+				copy_grid(&emu, drawer);
+			}
+		},
+		Some(DrawerTab::Process { name }) => {
+			let name = name.clone();
+			let mut emu = emulator_for(drawer);
+			if let Some(logs) = domains.process_logs.get(&name) {
+				// The grid holds the rows the window has room for and the
+				// drawer has no scrollback of its own, so only the tail is
+				// reachable. Feeding the last
+				// PROCESS_LOG_TAIL_LINES bounds the work per projection at a
+				// buffer that retains PROCESS_LOG_CAPACITY_LINES.
+				let tail = logs.lines.len().saturating_sub(PROCESS_LOG_TAIL_LINES);
+				for line in &logs.lines[tail..] {
+					emu.feed(line.as_bytes());
+					emu.feed(b"\r\n");
+				}
+			}
+			copy_grid(&emu, drawer);
+			drawer.title = name;
+			drawer.selection = None;
+		},
+		Some(DrawerTab::Processes) | None => {
+			if drawer.grid_rows.is_empty() {
+				let (cols, rows) = drawer.grid_cells;
+				for _ in 0..rows {
+					drawer
+						.grid_rows
+						.push(vec![Cell::blank(); usize::from(cols)]);
+				}
+			}
+		},
+	}
+}
+
+/// Re-breaks every terminal the window holds at the size the window
+/// measured, and states whether any of them moved.
+///
+/// The same intent goes to the host, which resizes the pty; this is what the
+/// operator reads until the host answers. A window that measured nothing
+/// resizes nothing, so the caller re-projects only when this returns true.
+pub fn resize_terminals<S: std::hash::BuildHasher>(
+	terminals: &mut HashMap<String, TerminalEmulator, S>,
+	intents: &[Intent],
+) -> bool {
+	let mut resized = false;
+	for intent in intents {
+		if let Intent::ResizeTerminal { cols, rows } = intent {
+			for emulator in terminals.values_mut() {
+				emulator.resize(usize::from(*cols), usize::from(*rows));
+			}
+			resized = true;
+		}
+	}
+	resized
+}
+
+/// Whether two tabs stand for the same terminal, process or the process list.
+/// A terminal's title changes with every OSC it prints, so identity is its id,
+/// and a process's is its name.
+fn same_tab(a: &DrawerTab, b: &DrawerTab) -> bool {
+	match (a, b) {
+		(DrawerTab::Terminal { id: a, .. }, DrawerTab::Terminal { id: b, .. }) => a == b,
+		(DrawerTab::Process { name: a }, DrawerTab::Process { name: b }) => a == b,
+		(DrawerTab::Processes, DrawerTab::Processes) => true,
+		(DrawerTab::Terminal { .. } | DrawerTab::Process { .. }, DrawerTab::Processes)
+		| (DrawerTab::Processes, DrawerTab::Terminal { .. } | DrawerTab::Process { .. })
+		| (DrawerTab::Terminal { .. }, DrawerTab::Process { .. })
+		| (DrawerTab::Process { .. }, DrawerTab::Terminal { .. }) => false,
+	}
+}
+
+/// The tab the drawer opens on when nothing chose one: the last running
+/// terminal, else the last terminal, else the process list at index zero.
+/// Terminal tabs sit at their domain index, since they are pushed in order.
+fn default_tab(domains: &Domains) -> usize {
+	domains
+		.terminals
+		.iter()
+		.rposition(|terminal| terminal.status == TerminalStatus::Running)
+		.unwrap_or_else(|| domains.terminals.len().saturating_sub(1))
+}
+
+/// An emulator the size the window has room for, for output the window
+/// replays rather than holds: a terminal whose chunks arrived before it was
+/// opened, and a supervised process, whose log is text rather than a session.
+fn emulator_for(drawer: &DrawerContent) -> TerminalEmulator {
+	let (cols, rows) = drawer.grid_cells;
+	TerminalEmulator::new(usize::from(cols), usize::from(rows))
+}
+
+/// Copies the emulator's visible grid, cursor and title onto the drawer.
+fn copy_grid(emu: &TerminalEmulator, drawer: &mut DrawerContent) {
+	let grid = emu.grid();
+	drawer.grid_rows.clear();
+	for r in 0..grid.rows {
+		if let Some(row) = grid.visible_row(r) {
+			drawer.grid_rows.push(row.to_vec());
+		}
+	}
+	drawer.cursor_col = grid.cursor_col;
+	drawer.cursor_row = grid.cursor_row;
+	drawer.cursor_visible = grid.cursor_visible;
+	drawer.title.clone_from(&grid.title);
+}
+
+/// The drawer's lines as plain strings, extracted from the active or last
+/// running terminal.
+#[must_use]
+pub fn drawer_lines(domains: &Domains) -> Vec<String> {
+	let shown = domains
+		.terminals
+		.iter()
+		.rev()
+		.find(|terminal| terminal.status == TerminalStatus::Running)
+		.or_else(|| domains.terminals.last());
+	let Some(terminal) = shown else {
+		return Vec::new();
+	};
+	let Some(scrollback) = domains.terminal_output.get(&terminal.id) else {
+		return Vec::new();
+	};
+	let text = String::from_utf8_lossy(&scrollback.data);
+	let plain = strip_control_sequences(&text);
+	let mut lines: Vec<&str> = plain.lines().collect();
+	if lines.len() > PANE_LINE_CEILING {
+		lines.drain(..lines.len() - PANE_LINE_CEILING);
+	}
+	lines.into_iter().map(str::to_string).collect()
+}
+
+/// Text with its ANSI control sequences removed.
+#[must_use]
+pub fn strip_control_sequences(text: &str) -> String {
+	let mut out = String::with_capacity(text.len());
+	let mut chars = text.chars();
+	while let Some(c) = chars.next() {
+		match c {
+			'\u{1b}' => match chars.next() {
+				Some('[') => {
+					for next in chars.by_ref() {
+						if ('\u{40}'..='\u{7e}').contains(&next) {
+							break;
+						}
+					}
+				},
+				Some(']') => {
+					let mut previous = '\0';
+					for next in chars.by_ref() {
+						if next == '\u{07}' || (previous == '\u{1b}' && next == '\\') {
+							break;
+						}
+						previous = next;
+					}
+				},
+				_ => {},
+			},
+			'\r' => {},
+			_ => out.push(c),
+		}
+	}
+	out
+}
