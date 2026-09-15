@@ -257,6 +257,7 @@
 
 ### Fixed
 
+- Preserved concurrent in-progress tasks across todo phase transitions without demoting active tasks to pending.
 - A pasted OAuth callback typed after a slash command that takes no arguments is consumed instead of being sent to the model as a prompt.
 
 - Automatic maintenance cuts an oversized body until a summarization request fits a summarizer, instead of parking the session with "Compaction freed too little context to make progress" when every candidate was skipped for holding fewer tokens than the summary needed.
