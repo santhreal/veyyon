@@ -574,3 +574,21 @@ if [ "${SCENE_NAME}" = "desktop-transcript-prose" ] || [ "${SCENE_NAME}" = "desk
 	mkdir -p "${PROSE_SESSIONS}"
 	cp /repo/proof/docker/seed-sessions/*.jsonl "${PROSE_SESSIONS}/"
 fi
+
+# FOUR SESSIONS FOR THE RAIL TO NARROW.
+#
+# The rail lists the sessions the host read out of this workspace's session
+# store, so a scene that types into session search needs several of them and
+# needs them told apart by their titles. A title is written by the titling
+# model from a session's first prompt, which no scene can ask for twice and get
+# the same words back, so the four are committed fixtures read back the way a
+# resumed session is. One title carries "limiter" and no other does, and no
+# title or workspace path carries "zzz".
+#
+# Seeded per scene for the reason above: a card added to the shared home moves
+# the rows every other queue scene aims at.
+if [ "${SCENE_NAME}" = "desktop-rail-search" ]; then
+	RAIL_SESSIONS="${HOME:-/sandbox/home}/.veyyon/profiles/${VEYYON_PROFILE:-default}/agent/sessions/-demo"
+	mkdir -p "${RAIL_SESSIONS}"
+	cp /repo/proof/docker/seed-sessions-rail/*.jsonl "${RAIL_SESSIONS}/"
+fi
