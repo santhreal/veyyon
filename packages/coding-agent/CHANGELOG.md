@@ -14,6 +14,7 @@
 
 - A `/tree` mode change, title change, tier change, session header, injected-rules record or MCP selection no longer paints a selectable row with nothing on it: each states its own kind and value in `all`, and the default filter hides it with the other bookkeeping entries.
 - `/tree` search reaches a tool row's name and argument summary, and a bookkeeping row's mode, title, rule names and MCP tool names.
+- A `/tree` tool result whose call compaction dropped shows what came back instead of a row carrying only a tool name.
 
 ## [1.5.0] - 2026-09-18
 
