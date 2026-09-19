@@ -56,14 +56,17 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 # band is the authored anchored measure wide from the press point, and tall
 # enough to hold a popover of every fact this build states.
 POPOVER_W="$(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-root = Path(sys.argv[1])
-palette = tomllib.loads((root / "surface/palette.toml").read_text())
-print(int(palette["geometry"]["anchored_width_px"]))
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
+
+print(token_px.value_of("surface/palette.toml", "geometry.anchored_width_px"))
 PY
 )"
 BAND_H=260
@@ -126,16 +129,21 @@ resolve_float_ground() { # <resting-shot>
 	hist="$(magick "${png}" -crop "${BAND_CROP}" +repage -alpha off \
 		-format '%c' histogram:info: 2>/dev/null)" || return 1
 	python3 - \
-		"${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/themes" \
+		"${BASH_SOURCE[0]%/*}" \
 		"$(( BAND_W * BAND_H ))" \
 		"${hist}" <<'THEME'
 import re
 import sys
 from pathlib import Path
-import tomllib
+
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
 
 ELEVATIONS = ("ground", "rail", "canvas", "inset")
-themes, band, hist = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+band, hist = int(sys.argv[2]), sys.argv[3]
 rows = re.findall(r"(\d+):\s*\(\s*(\d+),\s*(\d+),\s*(\d+)", hist)
 if not rows:
     sys.exit(f"the resting band reported no histogram: {hist[:120]!r}")
@@ -153,8 +161,8 @@ def rgb(value):
     return tuple(int(value[i : i + 2], 16) for i in (1, 3, 5))
 
 
-for theme in sorted(Path(themes).glob("*.toml")):
-    role = tomllib.loads(theme.read_text())["role"]
+for theme in sorted(token_px.themes_dir().glob("*.toml")):
+    role = token_px.load(f"themes/{theme.name}")["role"]
     elevation = next((name for name in ELEVATIONS if rgb(role[name]) == dominant), None)
     if elevation is None:
         continue

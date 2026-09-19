@@ -213,7 +213,20 @@ pause 0.6
 shot transcript-second-turn
 
 # ─── Contextual File Panel Transitions ────────────────────────────────────────
-PANEL_OVERLAY_BREAKPOINT="$(python3 -c 'import sys, tomllib; print(tomllib.load(open(sys.argv[1], "rb"))["right_panel"]["overlay_breakpoint_px"])' "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens/surface/panels.toml")"
+PANEL_OVERLAY_BREAKPOINT="$(
+	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
+from pathlib import Path
+import sys
+
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
+
+print(token_px.value_of("surface/panels.toml", "right_panel.overlay_breakpoint_px"))
+PY
+)"
 if (( WIN_W < PANEL_OVERLAY_BREAKPOINT )); then
 	k "ctrl+backslash"
 	pause 0.5

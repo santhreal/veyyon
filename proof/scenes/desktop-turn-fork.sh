@@ -74,23 +74,24 @@ WINDOW_CROP="${WIN_W}x${WIN_H}+${WIN_X}+${WIN_Y}"
 # Read from the tokens this checkout ships rather than restated as literals, so
 # a retuned row height moves the rectangles the frames are read over.
 read -r CARD_PX FOOTER_PX CONTENT_INSET NAV_HEADER_PX < <(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-tokens = Path(sys.argv[1])
-queue = tomllib.loads((tokens / "surface" / "queue.toml").read_text())["geometry"]
-scale = tomllib.loads((tokens / "scale.toml").read_text())
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
 
-gap_below = scale["spacing"][queue["section_layout"]["gap_below"]]
-content_inset = scale["spacing"][queue["insets"]["content_inset"]]
+content_inset = token_px.value_of("surface/queue.toml", "geometry.insets.content_inset")
+gap_below = token_px.value_of("surface/queue.toml", "geometry.section_layout.gap_below")
 
 print(
-    int(queue["row_heights"]["card_px"]),
-    int(queue["footer"]["height_px"]),
-    int(content_inset),
-    int(content_inset + 32 + gap_below),
+    token_px.value_of("surface/queue.toml", "geometry.row_heights.card_px"),
+    token_px.value_of("surface/queue.toml", "geometry.footer.height_px"),
+    content_inset,
+    content_inset + 32 + gap_below,
 )
 PY
 )
@@ -138,14 +139,18 @@ SECOND_PROMPT="now answer in one short sentence: and what does an assembler do i
 # floated surface is drawn at, which is what a menu is. Both are read from the
 # theme this checkout ships rather than restated as literals.
 read -r USER_TURN_FILL MENU_FILL < <(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-root = Path(sys.argv[1])
-surface = tomllib.loads((root / "tokens" / "surface" / "transcript.toml").read_text())
-roles = tomllib.loads((root / "themes" / "dark.toml").read_text())["role"]
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
+
+surface = token_px.load("surface/transcript.toml")
+roles = token_px.load("themes/dark.toml")["role"]
 print(roles[surface["user_turn"]["ground"]], roles["float"])
 PY
 )

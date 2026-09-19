@@ -114,16 +114,20 @@ echo "scene: the composer preamble is done; the hunk is ${DIFF_SHAPE} rows in ${
 # the bands are found in the frame, because a row of chrome added above them
 # would silently shift a counted offset onto the wrong rows.
 read -r ROW_H TABS_H CHROME_H < <(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-panels = tomllib.loads((Path(sys.argv[1]) / "surface" / "panels.toml").read_text())
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
+
 print(
-    int(panels["diff"]["row_height_px"]),
-    int(panels["tabs"]["height_px"]),
-    int(panels["chrome"]["row_height_px"]),
+    token_px.value_of("surface/panels.toml", "diff.row_height_px"),
+    token_px.value_of("surface/panels.toml", "tabs.height_px"),
+    token_px.value_of("surface/panels.toml", "chrome.row_height_px"),
 )
 PY
 )

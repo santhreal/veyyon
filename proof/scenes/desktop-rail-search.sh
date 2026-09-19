@@ -110,6 +110,11 @@ SEARCH_Y=$(( WIN_Y + TITLEBAR_H + CONTENT_INSET + HEADER_PX / 2 ))
 
 OVERLAY_MIN_PIXELS=4000
 RAIL_DIFF_MIN=200
+# The overlay blurs what it draws over and dithers that blur per frame, so two
+# frames of the same blurred rail differ by thousands of pixels compared
+# exactly and by about a dozen compared at 5%. Every mark inside the rail is
+# read at that fuzz, or a list photographed twice reads as a list redrawn.
+RAIL_FUZZ="5%"
 ARM="${SCENE_ARM:-after}"
 
 PROBE_DIR="${TMPDIR}/frame-compare"
@@ -132,10 +137,21 @@ rail_ink_height() { # <shot> -> height of the inked bounding box in the rail lis
 }
 
 rail_differs() { # <shot-a> <shot-b> -> differing pixels inside the rail list
-	frames_differ_pixels_at \
-		"${SCENE_OUT}/${SCENE_NAME}-$1.png" \
-		"${SCENE_OUT}/${SCENE_NAME}-$2.png" \
-		"${RAIL_CROP}"
+	local scratch="${PROBE_DIR}/rail-diff" differing
+	mkdir -p "${scratch}"
+	magick "${SCENE_OUT}/${SCENE_NAME}-$1.png" \
+		-crop "${RAIL_CROP}" +repage "${scratch}/a.png"
+	magick "${SCENE_OUT}/${SCENE_NAME}-$2.png" \
+		-crop "${RAIL_CROP}" +repage "${scratch}/b.png"
+	differing="$(compare -metric AE -fuzz "${RAIL_FUZZ}" \
+		"${scratch}/a.png" "${scratch}/b.png" null: 2>&1 || true)"
+	case "${differing}" in
+		'' | *[!0-9]*)
+			abandon_take "rail-comparable" \
+				"comparing $1 with $2 over the rail list reported '${differing}' instead of a pixel count"
+			;;
+	esac
+	echo "${differing}"
 }
 
 # ─── 1. The Rail At Rest ─────────────────────────────────────────────────────
@@ -198,6 +214,14 @@ EMPTIED="$(rail_differs rail-search-narrowed rail-search-no-match)"
 # Escape closes the overlay. The query stays on the rail, because the header
 # states it and offers the control that clears it: a filter that left with the
 # palette would leave that control naming nothing.
+#
+# An unanchored overlay draws a scrim over the whole window, the rail included,
+# so every rail pixel differs between a frame with the search open and one
+# without it. Two marks read around that. The rail's inked height against the
+# frame taken under the query, which a uniform dimming moves by a few pixels,
+# is the rail listing the same nothing it listed with the search open; the same
+# height against the unfiltered rail, both frames taken with no overlay drawn,
+# is the filter still set once the surface it was typed into is gone.
 NO_MATCH_FRAME="${PROBE_DIR}/rail-no-match.png"
 probe_frame "${NO_MATCH_FRAME}"
 k "Escape"
@@ -209,7 +233,10 @@ if [ "${CLOSED}" -lt "${OVERLAY_MIN_PIXELS}" ]; then
 fi
 shot rail-search-filter-kept
 
-KEPT="$(rail_differs rail-search-no-match rail-search-filter-kept)"
+NO_MATCH_H="$(rail_ink_height rail-search-no-match)"
+KEPT_H="$(rail_ink_height rail-search-filter-kept)"
+KEPT_SHED=$(( AT_REST > KEPT_H ? AT_REST - KEPT_H : 0 ))
+KEPT_DELTA=$(( KEPT_H > NO_MATCH_H ? KEPT_H - NO_MATCH_H : NO_MATCH_H - KEPT_H ))
 
 # ─── 6. What The Arms Are Judged On ──────────────────────────────────────────
 if [ "${ARM}" = "before" ]; then
@@ -221,8 +248,13 @@ if [ "${ARM}" = "before" ]; then
 		abandon_take "before-rail-unchanged" \
 			"the before arm redrew ${EMPTIED} pixels of the rail for a query nothing matches"
 	fi
-	printf 'scene: before arm -- %s sessions listed through both queries, %s pixels of rail moved\n' \
-		"$(( AT_REST / LINE_PX ))" "${EMPTIED}"
+	BEFORE_KEPT_DELTA=$(( AT_REST > KEPT_H ? AT_REST - KEPT_H : KEPT_H - AT_REST ))
+	if [ "${BEFORE_KEPT_DELTA}" -ge "${LINE_PX}" ]; then
+		abandon_take "before-rail-unchanged" \
+			"the before arm drew ${KEPT_H}px of rows against ${AT_REST}px at rest, so something narrowed it"
+	fi
+	printf 'scene: before arm -- %spx of rows through both queries and after the search closed, %s pixels of rail moved\n' \
+		"${AT_REST}" "${EMPTIED}"
 else
 	if [ "${SHED}" -lt $(( LINE_PX * 2 )) ]; then
 		abandon_take "rail-narrowed" \
@@ -232,10 +264,14 @@ else
 		abandon_take "rail-states-the-step" \
 			"a query nothing matches redrew ${EMPTIED} pixels of the rail, so no empty state replaced the row"
 	fi
-	if [ "${KEPT}" -ge "${RAIL_DIFF_MIN}" ]; then
+	if [ "${KEPT_SHED}" -lt $(( LINE_PX * 2 )) ]; then
 		abandon_take "filter-kept" \
-			"closing the search redrew ${KEPT} pixels of the rail, so the filter did not outlive it"
+			"the rail drew ${KEPT_H}px of rows once the search closed, within two rows of the ${AT_REST}px it drew unfiltered, so the filter left with the surface it was typed into"
 	fi
-	printf 'scene: after arm -- %spx of rows -> %spx under `limiter` -> the step for `zzz`, %s pixels of rail moved on close\n' \
-		"${AT_REST}" "${NARROWED}" "${KEPT}"
+	if [ "${KEPT_DELTA}" -ge "${LINE_PX}" ]; then
+		abandon_take "filter-kept" \
+			"closing the search moved the rail's rows by ${KEPT_DELTA}px, so it stopped listing the nothing the query left it on"
+	fi
+	printf 'scene: after arm -- %spx of rows -> %spx under `limiter` -> the step for `zzz` at %spx, %spx of it after the search closed\n' \
+		"${AT_REST}" "${NARROWED}" "${NO_MATCH_H}" "${KEPT_H}"
 fi

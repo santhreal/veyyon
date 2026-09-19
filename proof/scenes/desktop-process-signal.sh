@@ -95,19 +95,21 @@ OFFERED_MIN_STRENGTH=40
 
 # ─── Where The Supervisor Draws Its Rows, And What A Menu Floats On ──────────
 read -r DRAWER_H GRIP_PX CHROME_H ROW_H S2 S3 MENU_FILL < <(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens" "${WIN_W}" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" "${WIN_W}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-root = Path(sys.argv[1])
-tokens = root / "tokens"
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
+
 width = float(sys.argv[2])
-panels = tomllib.loads((tokens / "surface" / "panels.toml").read_text())
-scale = tomllib.loads((tokens / "scale.toml").read_text())["spacing"]
-roles = tomllib.loads((root / "themes" / "dark.toml").read_text())["role"]
+roles = token_px.load("themes/dark.toml")["role"]
+breakpoints = token_px.load("surface/breakpoints.toml")
 rows = sorted(
-    tomllib.loads((tokens / "surface" / "breakpoints.toml").read_text())["breakpoint"].values(),
+    breakpoints["breakpoint"].values(),
     key=lambda row: row["min_width_px"],
 )
 row = rows[0]
@@ -115,12 +117,12 @@ for candidate in rows:
     if width >= candidate["min_width_px"]:
         row = candidate
 print(
-    int(row["terminal_drawer_height_px"]),
-    int(panels["chrome"]["resize_handle_hit_px"]),
-    int(panels["chrome"]["row_height_px"]),
-    int(panels["terminal_drawer"]["process_row_height_px"]),
-    int(scale["s2"]),
-    int(scale["s3"]),
+    token_px.px(row["terminal_drawer_height_px"]),
+    token_px.value_of("surface/panels.toml", "chrome.resize_handle_hit_px"),
+    token_px.value_of("surface/panels.toml", "chrome.row_height_px"),
+    token_px.value_of("surface/panels.toml", "terminal_drawer.process_row_height_px"),
+    token_px.value_of("scale.toml", "spacing.s2"),
+    token_px.value_of("scale.toml", "spacing.s3"),
     roles["float"],
 )
 PY

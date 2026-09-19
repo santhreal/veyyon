@@ -57,13 +57,11 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 ARM="${SCENE_ARM:-after}"
 echo "scene: recording the ${ARM} arm" >&2
 
-THEME="${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/themes/dark.toml"
-
 # The chip's ground, read from the theme rather than restated as a literal.
-CHIP_FILL="$(sed -n '/^\[tint.plan\]/,/^\[/ s/^fill = "\(#[0-9a-fA-F]\{6\}\)".*/\1/p' \
-	"${THEME}" | head -1)"
+CHIP_FILL="$(python3 "${BASH_SOURCE[0]%/*}/token_px.py" \
+	--text themes/dark.toml tint.plan.fill 2>/dev/null || true)"
 if [ -z "${CHIP_FILL}" ]; then
-	abandon_take "the-chip-colour-is-authored" "no [tint.plan] fill in ${THEME}"
+	abandon_take "the-chip-colour-is-authored" "the shipped dark theme states no [tint.plan] fill"
 fi
 echo "scene: a mode chip is filled with ${CHIP_FILL}" >&2
 

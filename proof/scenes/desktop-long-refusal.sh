@@ -57,24 +57,24 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 
 # ─── Where The Settings Page Draws, And In Which Colours ─────────────────────
 read -r PALETTE_W TITLEBAR_H MARGIN SHEET_H COLUMN_W BODY_INSET ERROR_FILL < <(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-root = Path(sys.argv[1])
-palette = tomllib.loads((root / "tokens/surface/palette.toml").read_text())
-shell = tomllib.loads((root / "tokens/surface/shell.toml").read_text())
-settings = tomllib.loads((root / "tokens/surface/settings.toml").read_text())
-scale = tomllib.loads((root / "tokens/scale.toml").read_text())
-theme = tomllib.loads((root / "themes/dark.toml").read_text())
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
+
+theme = token_px.load("themes/dark.toml")
 print(
-	palette["geometry"]["width_px"],
-	shell["titlebar"]["height_px"],
-	scale["spacing"]["s4"],
-	settings["layout"]["sheet_height_px"],
-	settings["layout"]["control_column_width_px"],
-	scale["spacing"]["s6"],
+	token_px.value_of("surface/palette.toml", "geometry.width_px"),
+	token_px.value_of("surface/shell.toml", "titlebar.height_px"),
+	token_px.value_of("scale.toml", "spacing.s4"),
+	token_px.value_of("surface/settings.toml", "layout.sheet_height_px"),
+	token_px.value_of("surface/settings.toml", "layout.control_column_width_px"),
+	token_px.value_of("scale.toml", "spacing.s6"),
 	theme["tint"]["error"]["fill"].lstrip("#").upper(),
 )
 PY

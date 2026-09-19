@@ -45,10 +45,10 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 # ─── The Accent The Button Fills With ────────────────────────────────────────
 # Read from the theme this checkout ships rather than restated as a literal, so
 # a retheme cannot make the scene silently stop finding the button.
-THEME_FILE="${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/themes/dark.toml"
-ACCENT="$(sed -n 's/^accent = "\(#[0-9a-fA-F]\{6\}\)".*/\1/p' "${THEME_FILE}" | head -1)"
+ACCENT="$(python3 "${BASH_SOURCE[0]%/*}/token_px.py" \
+	--text themes/dark.toml role.accent 2>/dev/null || true)"
 if [ -z "${ACCENT}" ]; then
-	abandon_take "accent-known" "no accent colour in ${THEME_FILE}"
+	abandon_take "accent-known" "the shipped dark theme states no [role] accent"
 fi
 
 # ─── Where The Column Is ─────────────────────────────────────────────────────

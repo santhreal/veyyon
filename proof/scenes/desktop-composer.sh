@@ -210,28 +210,33 @@ xdotool windowfocus --sync "${SCENE_WINDOW}"
 # restated here, so a scene recorded at a new width crops what the product
 # actually drew instead of what one width happened to make true.
 read -r RAIL_W QUEUE_MODE QUEUE_W PANEL_MODE PANEL_W DRAWER_PLACEMENT LABELS COMPOSER_MAX_W GUTTER_PX SHEET_INSET SHEET_PX COMPOSER_BAND_H TRANSCRIPT_MAX_W CARD_FOOT_PX CARD_PAD_H CARD_PAD_BOTTOM TITLEBAR_H RUN_BAR_H < <(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" "${WIN_W}" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" "${WIN_W}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-tokens = Path(sys.argv[1])
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
+
 width = float(sys.argv[2])
-surface = tomllib.loads((tokens / "surface" / "breakpoints.toml").read_text())
-panels = tomllib.loads((tokens / "surface" / "panels.toml").read_text())["right_panel"]
-composer_tokens = tomllib.loads((tokens / "surface" / "composer.toml").read_text())
+surface = token_px.load("surface/breakpoints.toml")
+panels = token_px.load("surface/panels.toml")["right_panel"]
+composer_tokens = token_px.load("surface/composer.toml")
 composer = composer_tokens["geometry"]
-transcript = tomllib.loads((tokens / "surface" / "transcript.toml").read_text())["layout"]
-shell = tomllib.loads((tokens / "surface" / "shell.toml").read_text())
+transcript = token_px.load("surface/transcript.toml")["layout"]
+shell = token_px.load("surface/shell.toml")
 # §5.4 measures the composer against the session surface it sits in, insetting
 # it by one spacing step on each side. Both numbers are authored, so the scene
-# reads them rather than deciding what a card should measure.
-scale = tomllib.loads((tokens / "scale.toml").read_text())
-gutter = scale["spacing"]["s4"]
+# reads them rather than deciding what a card should measure. A geometry value
+# states a scale name as often as a number, and token_px is where either one
+# becomes a measure.
+gutter = token_px.px("s4")
 # A float draws as a sheet, which frames its body with one spacing step and a
 # hairline on every side; a column has no such frame. Every crop of an
 # overlaid panel starts inside it.
-sheet = scale["spacing"]["s4"] + scale["stroke"]["hairline"]
+sheet = token_px.px("s4") + token_px.px("hairline")
 # A floor on the band the composer owns at the window's lower edge: the card's
 # authored minimum, the gap under it, the run bar, and the column's own bottom
 # padding. `rest_height_px` is a minimum rather than a measure, and the card
@@ -243,10 +248,10 @@ sheet = scale["spacing"]["s4"] + scale["stroke"]["hairline"]
 # transcript and nothing under it, which a generous band would read as a panel
 # drawn over the draft.
 band = (
-    composer["rest_height_px"]
-    + scale["spacing"]["s3"]
-    + composer_tokens["run_bar"]["height_px"]
-    + scale["spacing"]["s3"]
+    token_px.px(composer["rest_height_px"])
+    + token_px.px("s3")
+    + token_px.px(composer_tokens["run_bar"]["height_px"])
+    + token_px.px("s3")
 )
 
 # What the session column places under the composer card, from the card's lower
@@ -255,15 +260,17 @@ band = (
 # window's foot through this, since the card is bottom-anchored and its own
 # height is whatever its contents came to.
 foot = (
-    scale["spacing"]["s3"]
-    + composer_tokens["run_bar"]["height_px"]
-    + scale["spacing"]["s3"]
+    token_px.px("s3")
+    + token_px.px(composer_tokens["run_bar"]["height_px"])
+    + token_px.px("s3")
 )
 
-rows = sorted(surface["breakpoint"].values(), key=lambda row: row["min_width_px"])
+rows = sorted(
+    surface["breakpoint"].values(), key=lambda row: token_px.px(row["min_width_px"])
+)
 row = rows[0]
 for candidate in rows:
-    if width >= candidate["min_width_px"]:
+    if width >= token_px.px(candidate["min_width_px"]):
         row = candidate
 
 # The rail's declared measure, and the width it takes out of the columns row.
@@ -272,16 +279,19 @@ for candidate in rows:
 # it: a scene that crops at RAIL_W crops the column, and one that aims at the
 # floated rail aims inside SHEET_PX..QUEUE_W.
 queue_mode = row["queue_mode"]
-queue = row["queue_width_px"]
+queue = token_px.px(row["queue_width_px"])
 rail = queue if queue_mode == "inline" else 0
 share = width * panels["max_viewport_ratio"]
-overlay = max(min(panels["default_width_px"], share), min(panels["min_width_px"], width))
+overlay = max(
+    min(token_px.px(panels["default_width_px"]), share),
+    min(token_px.px(panels["min_width_px"]), width),
+)
 mode = row["right_panel_mode"]
 if mode.startswith("inline_"):
     asked = float(mode.removeprefix("inline_"))
-    ceiling = width - rail - panels["container_margin_px"]
+    ceiling = width - rail - token_px.px(panels["container_margin_px"])
     inline = min(asked, share, ceiling)
-    if inline < panels["min_width_px"]:
+    if inline < token_px.px(panels["min_width_px"]):
         placement, panel = "overlay", overlay
     else:
         placement, panel = "inline", inline
@@ -296,17 +306,17 @@ print(
     int(panel),
     row["terminal_drawer_placement"],
     "labels" if row["composer_footer_labels"] else "no-labels",
-    int(composer["max_width_px"]),
+    token_px.px(composer["max_width_px"]),
     int(gutter),
     int(sheet) if placement == "overlay" else 0,
     int(sheet),
     int(band),
-    int(transcript["column_width_px"]),
+    token_px.px(transcript["column_width_px"]),
     int(foot),
-    int(scale["spacing"][composer["padding_horizontal"]]),
-    int(scale["spacing"][composer["padding_bottom"]]),
-    int(shell["titlebar"]["height_px"]),
-    int(composer_tokens["run_bar"]["height_px"]),
+    token_px.px(composer["padding_horizontal"]),
+    token_px.px(composer["padding_bottom"]),
+    token_px.px(shell["titlebar"]["height_px"]),
+    token_px.px(composer_tokens["run_bar"]["height_px"]),
 )
 PY
 )
@@ -713,13 +723,16 @@ submit_prompt() { # <text> [floor-pixels]
 # finding what it is counting, and the count is refused rather than defaulted
 # when the reading is not a number.
 tint_fill_pixels() { # <tint-section> <png> <crop> -> pixels of that fill inside the crop
-	local section="$1" png="$2" crop="$3" theme fill counted
-	theme="${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/themes/dark.toml"
-	fill="$(sed -n "/^\\[${section}\\]/,/^\\[/ s/^fill = \"\\(#[0-9a-fA-F]\\{6\\}\\)\".*/\\1/p" \
-		"${theme}" | head -1)"
-	if [ -z "${fill}" ]; then
-		abandon_take "tint-known" "no [${section}] fill in ${theme}"
-	fi
+	local section="$1" png="$2" crop="$3" fill counted
+	fill="$(python3 "${BASH_SOURCE[0]%/*}/token_px.py" \
+		--text themes/dark.toml "${section}.fill" 2>/dev/null || true)"
+	case "${fill}" in
+		'#'[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;;
+		*)
+			abandon_take "tint-known" \
+				"the shipped dark theme states no [${section}] fill, and reported '${fill}'"
+			;;
+	esac
 	counted="$(magick "${png}" -crop "${crop}" +repage \
 		-fuzz 6% -fill white -opaque "${fill}" -fill black +opaque white \
 		-format '%[fx:round(mean*w*h)]' info: 2>/dev/null || true)"

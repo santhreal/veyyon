@@ -89,14 +89,18 @@ COPY_PROMPT="answer in one short sentence: what does a linker do?"
 # role the transcript tokens name for an operator's own turn, and the role a
 # floated surface is drawn at, which is what the menu is.
 read -r USER_TURN_ROLE USER_TURN_FILL MENU_FILL < <(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-root = Path(sys.argv[1])
-surface = tomllib.loads((root / "tokens" / "surface" / "transcript.toml").read_text())
-roles = tomllib.loads((root / "themes" / "dark.toml").read_text())["role"]
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
+
+surface = token_px.load("surface/transcript.toml")
+roles = token_px.load("themes/dark.toml")["role"]
 name = surface["user_turn"]["ground"]
 print(name, roles[name], roles["float"])
 PY

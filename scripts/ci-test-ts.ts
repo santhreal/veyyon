@@ -319,6 +319,7 @@ export const repoScriptTests = [
 	"scripts/an-export-floor-only-grows.test.ts",
 	"scripts/a-package-is-added-only-when-an-existing-one-cannot-serve.test.ts",
 	"scripts/a-shipped-module-arrives-with-a-test-that-names-it.test.ts",
+	"scripts/a-scene-reads-a-token-through-the-resolver.test.ts",
 	"scripts/a-suite-is-named-for-the-behavior-it-defends.test.ts",
 	"scripts/a-test-proves-behavior-not-that-a-spy-was-called.test.ts",
 	"scripts/a-test-preload-points-at-a-file-that-exists.test.ts",

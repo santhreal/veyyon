@@ -19,15 +19,21 @@ TAB_Y=$(( WIN_Y + 2 * TITLEBAR_H + TITLEBAR_H / 2 ))
 CLOSE_CROP="${WIN_W}x${TITLEBAR_H}+${WIN_X}+$(( WIN_Y + 3 * TITLEBAR_H ))"
 BODY_CROP="${SESSION_REGION_W}x$(( WIN_H - 3 * TITLEBAR_H ))+${SESSION_REGION_X}+$(( WIN_Y + 3 * TITLEBAR_H ))"
 read -r HISTORY_W HISTORY_H < <(
-python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens/surface/settings.toml" "${WIN_W}" "${WIN_H}" "${TITLEBAR_H}" "${GUTTER_PX}" <<'PY'
+python3 - "${BASH_SOURCE[0]%/*}" "${WIN_W}" "${WIN_H}" "${TITLEBAR_H}" "${GUTTER_PX}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-layout = tomllib.loads(Path(sys.argv[1]).read_text())['layout']
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
+
+group_width = token_px.value_of("surface/settings.toml", "layout.group_width_px")
+sheet_height = token_px.value_of("surface/settings.toml", "layout.sheet_height_px")
 width, height, titlebar, margin = map(int, sys.argv[2:])
-print(int(min(layout['group_width_px'], width - 2 * margin)),
-      int(min(layout['sheet_height_px'], height - 3 * titlebar - 2 * margin)))
+print(int(min(group_width, width - 2 * margin)),
+      int(min(sheet_height, height - 3 * titlebar - 2 * margin)))
 PY
 )
 if [ -z "${HISTORY_W:-}" ] || [ -z "${HISTORY_H:-}" ]; then

@@ -46,19 +46,20 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 # inset and offset by the rail's top padding. Both numbers are read from the
 # tokens this checkout ships, so a retuned rail moves the aim with it.
 read -r CONTENT_INSET ROW_INSET FOOTER_PX < <(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-tokens = Path(sys.argv[1])
-queue = tomllib.loads((tokens / "surface" / "queue.toml").read_text())["geometry"]
-scale = tomllib.loads((tokens / "scale.toml").read_text())
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
 
 print(
-    int(scale["spacing"][queue["insets"]["content_inset"]]),
-    int(scale["spacing"][queue["insets"]["row_inset"]]),
-    int(queue["footer"]["height_px"]),
+    token_px.value_of("surface/queue.toml", "geometry.insets.content_inset"),
+    token_px.value_of("surface/queue.toml", "geometry.insets.row_inset"),
+    token_px.value_of("surface/queue.toml", "geometry.footer.height_px"),
 )
 PY
 )

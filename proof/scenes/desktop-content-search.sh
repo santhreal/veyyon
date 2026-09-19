@@ -43,8 +43,8 @@
 #
 #   SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=9 \
 #     PROOF_NATIVE_BEFORE_BINARY=<base-build> \
-#     PROOF_TOKENS_DIR=/repo/.internal/before-tokens/<name>/crates/veyyon-desktop-tokens/tokens \
-#     PROOF_THEMES_DIR=/repo/.internal/before-tokens/<name>/crates/veyyon-desktop-tokens/themes \
+#     PROOF_TOKENS_DIR=/repo/.internal/before-tokens/<name>/tokens \
+#     PROOF_THEMES_DIR=/repo/.internal/before-tokens/<name>/themes \
 #     proof/docker/record-native.sh proof/scenes/desktop-content-search.sh
 set -euo pipefail
 

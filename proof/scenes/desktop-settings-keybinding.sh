@@ -57,29 +57,29 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 # Read from the tokens this checkout ships, so a retheme moves the crops with
 # the surfaces instead of leaving them measuring the backdrop.
 read -r DIALOG_W TITLEBAR_H MARGIN COLUMN_W BODY_INSET ROW_H ROW_GAP STRIP_H SHEET_H < <(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-root = Path(sys.argv[1])
-palette = tomllib.loads((root / "surface/palette.toml").read_text())
-shell = tomllib.loads((root / "surface/shell.toml").read_text())
-settings = tomllib.loads((root / "surface/settings.toml").read_text())
-scale = tomllib.loads((root / "scale.toml").read_text())
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
+
 # The attention strip is one line of the micro ramp with one spacing step above
 # and below it, which is what `attention_strip_height` comes to.
-strip = 2 * scale["spacing"]["s2"] + scale["type"]["size"]["micro"]["line_height"]
+strip = 2 * token_px.value_of("scale.toml", "spacing.s2") + token_px.value_of("scale.toml", "type.size.micro.line_height")
 print(
-	palette["geometry"]["width_px"],
-	shell["titlebar"]["height_px"],
-	scale["spacing"]["s4"],
-	settings["layout"]["control_column_width_px"],
-	scale["spacing"]["s6"],
-	settings["layout"]["row_height_px"],
-	scale["spacing"][settings["layout"]["row_gap"]],
+	token_px.value_of("surface/palette.toml", "geometry.width_px"),
+	token_px.value_of("surface/shell.toml", "titlebar.height_px"),
+	token_px.value_of("scale.toml", "spacing.s4"),
+	token_px.value_of("surface/settings.toml", "layout.control_column_width_px"),
+	token_px.value_of("scale.toml", "spacing.s6"),
+	token_px.value_of("surface/settings.toml", "layout.row_height_px"),
+	token_px.value_of("surface/settings.toml", "layout.row_gap"),
 	int(strip),
-	settings["layout"]["sheet_height_px"],
+	token_px.value_of("surface/settings.toml", "layout.sheet_height_px"),
 )
 PY
 )

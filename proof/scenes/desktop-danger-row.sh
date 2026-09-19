@@ -64,23 +64,24 @@ ARM="${SCENE_ARM:-after}"
 # Read from the tokens this checkout ships rather than restated as literals, so
 # a retuned row height moves the rectangles the frames are read over.
 read -r CARD_PX FOOTER_PX CONTENT_INSET NAV_HEADER_PX < <(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-tokens = Path(sys.argv[1])
-queue = tomllib.loads((tokens / "surface" / "queue.toml").read_text())["geometry"]
-scale = tomllib.loads((tokens / "scale.toml").read_text())
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
 
-gap_below = scale["spacing"][queue["section_layout"]["gap_below"]]
-content_inset = scale["spacing"][queue["insets"]["content_inset"]]
+content_inset = token_px.value_of("surface/queue.toml", "geometry.insets.content_inset")
+gap_below = token_px.value_of("surface/queue.toml", "geometry.section_layout.gap_below")
 
 print(
-    int(queue["row_heights"]["card_px"]),
-    int(queue["footer"]["height_px"]),
-    int(content_inset),
-    int(content_inset + 32 + gap_below),
+    token_px.value_of("surface/queue.toml", "geometry.row_heights.card_px"),
+    token_px.value_of("surface/queue.toml", "geometry.footer.height_px"),
+    content_inset,
+    content_inset + 32 + gap_below,
 )
 PY
 )

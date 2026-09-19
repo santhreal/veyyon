@@ -277,15 +277,17 @@ COMPOSER_Y="${COMPOSER_EDITOR_Y}"
 # on the transcript, no control named itself, and the mode pair measured
 # nothing.
 PRIMARY_PAD="$(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-tokens = Path(sys.argv[1])
-geometry = tomllib.loads((tokens / "surface/composer.toml").read_text())["geometry"]
-scale = tomllib.loads((tokens / "scale.toml").read_text())
-print(int(scale["spacing"][geometry["padding_horizontal"]]))
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
+
+print(token_px.value_of("surface/composer.toml", "geometry.padding_horizontal"))
 PY
 )"
 COMPOSER_SURFACE_W=$(( WIN_W - RAIL_W ))

@@ -52,20 +52,20 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 # Read from the tokens this checkout ships, so a retheme moves the crop with
 # the footer instead of leaving the scene measuring the rows above it.
 read -r FOOTER_H FOOTER_INSET GEAR_PX < <(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-tokens = Path(sys.argv[1])
-queue = tomllib.loads((tokens / "surface" / "queue.toml").read_text())["geometry"]
-scale = tomllib.loads((tokens / "scale.toml").read_text())
-footer = queue["footer"]
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
 
 print(
-    int(footer["height_px"]),
-    int(scale["spacing"][footer["inset"]]),
-    int(footer["gear_size_px"]),
+    token_px.value_of("surface/queue.toml", "geometry.footer.height_px"),
+    token_px.value_of("surface/queue.toml", "geometry.footer.inset"),
+    token_px.value_of("surface/queue.toml", "geometry.footer.gear_size_px"),
 )
 PY
 )

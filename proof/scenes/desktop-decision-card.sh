@@ -46,24 +46,25 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 # fold into is. A scene that restated any of them would keep passing after the
 # tokens moved.
 read -r ACCENT APPROVE_EDGE HAIRLINE CARD_PAD STACK_GAP STACK_MAX_VISIBLE FOLD_ROW DETAIL_CAP < <(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-root = Path(sys.argv[1])
-theme = tomllib.loads((root / "themes/dark.toml").read_text())
-cards = tomllib.loads((root / "tokens/surface/attached-cards.toml").read_text())
-scale = tomllib.loads((root / "tokens/scale.toml").read_text())
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
+theme = token_px.load("themes/dark.toml")
 print(
     theme["role"]["accent"],
     theme["tint"]["approve"]["fill"],
     theme["role"]["hairline"],
-    int(scale["spacing"][cards["approval"]["padding"]]),
-    int(scale["spacing"]["s2"]),
-    int(cards["stack"]["max_visible"]),
-    int(cards["stack"]["overflow_collapsed_height_px"]),
-    int(cards["approval"]["detail_mono_pane_cap_px"]),
+    token_px.value_of("surface/attached-cards.toml", "approval.padding"),
+    token_px.value_of("scale.toml", "spacing.s2"),
+    token_px.value_of("surface/attached-cards.toml", "stack.max_visible"),
+    token_px.value_of("surface/attached-cards.toml", "stack.overflow_collapsed_height_px"),
+    token_px.value_of("surface/attached-cards.toml", "approval.detail_mono_pane_cap_px"),
 )
 PY
 ) || true

@@ -77,27 +77,28 @@ echo "scene: recording the ${SEEDED_OFF}-reduced arm against ${CONFIG_YML}" >&2
 # Read from the tokens this checkout ships, so a retheme moves the aim with the
 # surface rather than leaving the scene pressing empty ground.
 read -r SECTION_HEADER_PX GAP_ABOVE GAP_BELOW CARD_PX FOOTER_PX CONTENT_INSET NAV_HEADER_PX < <(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-tokens = Path(sys.argv[1])
-queue = tomllib.loads((tokens / "surface" / "queue.toml").read_text())["geometry"]
-scale = tomllib.loads((tokens / "scale.toml").read_text())
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
 
-gap_above = scale["spacing"][queue["section_layout"]["gap_above"]]
-gap_below = scale["spacing"][queue["section_layout"]["gap_below"]]
-content_inset = scale["spacing"][queue["insets"]["content_inset"]]
+gap_above = token_px.value_of("surface/queue.toml", "geometry.section_layout.gap_above")
+gap_below = token_px.value_of("surface/queue.toml", "geometry.section_layout.gap_below")
+content_inset = token_px.value_of("surface/queue.toml", "geometry.insets.content_inset")
 
 print(
-    int(queue["row_heights"]["section_header_px"]),
-    int(gap_above),
-    int(gap_below),
-    int(queue["row_heights"]["card_px"]),
-    int(queue["footer"]["height_px"]),
-    int(content_inset),
-    int(content_inset + 32 + gap_below),
+    token_px.value_of("surface/queue.toml", "geometry.row_heights.section_header_px"),
+    gap_above,
+    gap_below,
+    token_px.value_of("surface/queue.toml", "geometry.row_heights.card_px"),
+    token_px.value_of("surface/queue.toml", "geometry.footer.height_px"),
+    content_inset,
+    content_inset + 32 + gap_below,
 )
 PY
 )

@@ -57,19 +57,20 @@ ARM="${SCENE_ARM:-after}"
 # header is a 32px row inside the rail's content inset. Both arms must use
 # this navigation layout; an older rail is not a matched Before surface.
 read -r CONTENT_INSET ROW_INSET FOOTER_PX < <(
-	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" <<'PY'
+	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
 
-tokens = Path(sys.argv[1])
-queue = tomllib.loads((tokens / "surface" / "queue.toml").read_text())["geometry"]
-scale = tomllib.loads((tokens / "scale.toml").read_text())
+scenes_dir = Path(sys.argv[1]).resolve()
+if scenes_dir.is_file():
+    scenes_dir = scenes_dir.parent
+sys.path.insert(0, str(scenes_dir))
+import token_px
 
 print(
-    int(scale["spacing"][queue["insets"]["content_inset"]]),
-    int(scale["spacing"][queue["insets"]["row_inset"]]),
-    int(queue["footer"]["height_px"]),
+    token_px.value_of("surface/queue.toml", "geometry.insets.content_inset"),
+    token_px.value_of("surface/queue.toml", "geometry.insets.row_inset"),
+    token_px.value_of("surface/queue.toml", "geometry.footer.height_px"),
 )
 PY
 )
@@ -112,12 +113,11 @@ RULE_ABSENT_MAX=0
 # matches. The crop ends above the composer's own border.
 
 hairline_run() { # <png> <crop> -> the longest run of hairline pixels in the crop
-	local png="$1" crop="$2" theme fill counted
-	theme="${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/themes/dark.toml"
-	fill="$(sed -n '/^\[role\]/,/^\[/ s/^hairline = "\(#[0-9a-fA-F]\{6\}\)".*/\1/p' \
-		"${theme}" | head -1)"
+	local png="$1" crop="$2" fill counted
+	fill="$(python3 "${BASH_SOURCE[0]%/*}/token_px.py" \
+		--text themes/dark.toml role.hairline 2>/dev/null || true)"
 	if [ -z "${fill}" ]; then
-		abandon_take "hairline-known" "no [role] hairline in ${theme}"
+		abandon_take "hairline-known" "the shipped dark theme states no [role] hairline"
 	fi
 	# A rule is a run of consecutive hairline pixels; text anti-aliasing is a
 	# run of a dozen at most. Erode the mask with a 200x1 rectangle so only a

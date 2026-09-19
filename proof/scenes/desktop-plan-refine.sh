@@ -55,22 +55,24 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 ARM="${SCENE_ARM:-after}"
 echo "scene: recording the ${ARM} arm" >&2
 
-THEME="${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/themes/dark.toml"
+theme_text() { # <dotted> -> the string the shipped dark theme states there
+	python3 "${BASH_SOURCE[0]%/*}/token_px.py" --text themes/dark.toml "$1" 2>/dev/null || true
+}
 
 role_colour() { # <name> -> the [role] colour of that name
 	local found
-	found="$(sed -n "/^\[role\]/,/^\[/ s/^$1 = \"\(#[0-9a-fA-F]\{6\}\)\".*/\1/p" "${THEME}" | head -1)"
+	found="$(theme_text "role.$1")"
 	if [ -z "${found}" ]; then
-		abandon_take "the-theme-is-readable" "no [role] $1 in ${THEME}"
+		abandon_take "the-theme-is-readable" "the shipped dark theme states no [role] $1"
 	fi
 	printf '%s' "${found}"
 }
 
 tint_colour() { # <section> -> the fill of that tint section
 	local found
-	found="$(sed -n "/^\[tint\.$1\]/,/^\[/ s/^fill = \"\(#[0-9a-fA-F]\{6\}\)\".*/\1/p" "${THEME}" | head -1)"
+	found="$(theme_text "tint.$1.fill")"
 	if [ -z "${found}" ]; then
-		abandon_take "the-theme-is-readable" "no [tint.$1] fill in ${THEME}"
+		abandon_take "the-theme-is-readable" "the shipped dark theme states no [tint.$1] fill"
 	fi
 	printf '%s' "${found}"
 }
