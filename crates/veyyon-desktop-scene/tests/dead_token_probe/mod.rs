@@ -1,9 +1,13 @@
-//! Sweep plumbing for the dead-token suite: enumerating the measures from the
+//! Sweep plumbing for the dead-token suites: enumerating the measures from the
 //! loaded token value, doubling one at a time, and reducing a render to
 //! something two runs can be compared by.
 //!
-//! The probe surfaces themselves are in `views`, so this file stays about the
-//! sweep and that one about what is drawn.
+//! One suite sweeps one group of measures against the states that draw them,
+//! because a palette measure is invisible until the palette is open and a
+//! whole-window render per key is not free. `GROUPS` is the registry those
+//! suites partition: every numeric measure belongs to exactly one group, and
+//! `a-every-measure-belongs-to-a-suite-that-sweeps-it.rs` fails when one
+//! belongs to none.
 
 #![expect(dead_code, reason = "each integration test target uses a subset of these helpers")]
 
@@ -14,7 +18,101 @@ use serde_json::Value;
 use veyyon_desktop_scene::{Headless, RgbaFrame, distinct_pixel_values};
 use veyyon_desktop_tokens::Tokens;
 
+pub mod shell;
 pub mod views;
+
+/// Every group of measures a suite sweeps, as the key prefix it claims.
+///
+/// A key belongs to the group with the longest matching prefix, so a table
+/// drawn by one surface is claimed by that surface's suite rather than by the
+/// file it happens to be authored in.
+pub const GROUPS: &[&str] = &[
+	"controls",
+	"elevation",
+	"surface.transcript.tool_view_",
+	"surface.transcript",
+	"surface.queue",
+	"surface.composer",
+	"surface.attached_cards",
+	"surface.panels",
+	"surface.palette",
+	"surface.settings",
+	"surface.breakpoints",
+	"surface.shell",
+	"motion",
+];
+
+/// What a suite renders a token set into.
+pub type ObserveFn = fn(&mut Headless, &Tokens) -> Vec<Observation>;
+
+/// Every numeric measure of `tokens`, as a dotted path.
+pub fn all_keys(tokens: &Tokens) -> Vec<String> {
+	let mut keys = number_keys("controls", &tokens.controls);
+	keys.extend(number_keys("elevation", &tokens.elevation));
+	keys.extend(number_keys("surface", &tokens.surface));
+	keys.extend(number_keys("motion", &tokens.motion));
+	keys
+}
+
+/// The group `key` belongs to: the longest registered prefix it starts with.
+pub fn group_of(key: &str) -> Option<&'static str> {
+	GROUPS
+		.iter()
+		.filter(|group| key.starts_with(*group))
+		.max_by_key(|group| group.len())
+		.copied()
+}
+
+/// Every measure `group` claims.
+pub fn keys_in(group: &str, tokens: &Tokens) -> Vec<String> {
+	all_keys(tokens)
+		.into_iter()
+		.filter(|key| group_of(key) == Some(group))
+		.collect()
+}
+
+/// Doubles each measure `group` claims in turn and names the ones no state
+/// `observe` renders reacted to.
+///
+/// The caller states the group rather than a key list, so a measure added to
+/// the struct enters its suite with no edit to the suite.
+pub fn sweep(group: &str, observe: ObserveFn, cx: &mut Headless, tokens: &Tokens) -> Vec<String> {
+	let baseline = Observed(observe(cx, tokens));
+	keys_in(group, tokens)
+		.into_iter()
+		.filter(|key| Observed(observe(cx, &mutate_number(tokens, key))) == baseline)
+		.collect()
+}
+
+/// Fails naming every measure of `group` that nothing drew.
+pub fn assert_every_measure_is_drawn(group: &str, observe: ObserveFn) {
+	let shipped = veyyon_desktop_tokens::load_bundled_tokens().expect("the tokens must load");
+	let claimed = keys_in(group, &shipped);
+	assert!(!claimed.is_empty(), "{group} claims no measure, so its suite sweeps nothing");
+
+	let mut cx = veyyon_desktop_scene::headless_context().expect("a Vulkan ICD is required");
+	let observed = Observed(observe(&mut cx, &shipped));
+	// A blank or uniform observation compares equal to every other one, so a
+	// sweep over it would pass while showing nothing.
+	for observation in observed.frames() {
+		match observation {
+			Observation::Frame { name, distinct_values, .. } => assert!(
+				*distinct_values > 1,
+				"probe frame {name} drew one colour, so no mutation of it could be seen"
+			),
+			Observation::Report { name, text } => {
+				assert!(!text.is_empty(), "probe report {name} is empty");
+			},
+		}
+	}
+
+	let dead = sweep(group, observe, &mut cx, &shipped);
+	assert!(
+		dead.is_empty(),
+		"these authored measures changed nothing the product produced, so nothing reads them: \
+		 {dead:?}"
+	);
+}
 
 /// One thing the product produced from a token set.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,18 +176,9 @@ pub fn mutate_number(tokens: &Tokens, key: &str) -> Tokens {
 	let (group, rest) = key.split_once('.').expect("a swept key names its group");
 	match group {
 		"controls" => mutated.controls = replace(&tokens.controls, rest),
-		"elevation" => match rest.split_once('.') {
-			Some(("float_shadow", field)) => {
-				mutated.elevation.float_shadow = replace(&tokens.elevation.float_shadow, field);
-			},
-			_ => mutated.elevation.overlay_blur_px = bump(tokens.elevation.overlay_blur_px),
-		},
-		"surface" => {
-			let field = rest
-				.strip_prefix("transcript.")
-				.expect("only transcript is swept");
-			mutated.surface.transcript = replace(&tokens.surface.transcript, field);
-		},
+		"elevation" => mutated.elevation = replace(&tokens.elevation, rest),
+		"surface" => mutated.surface = replace(&tokens.surface, rest),
+		"motion" => mutated.motion = replace(&tokens.motion, rest),
 		other => panic!("the sweep has no mutation for group {other}"),
 	}
 	mutated
@@ -118,15 +207,23 @@ fn replace<T: Serialize + DeserializeOwned>(value: &T, path: &str) -> T {
 				.unwrap_or_else(|| panic!("{path} is not a number"));
 			#[expect(clippy::cast_possible_truncation, reason = "a measure is authored as f32")]
 			let bumped = f64::from(bump(current as f32));
-			*child = serde_json::json!(bumped);
+			// A count is authored as an integer and deserializes as one, so a
+			// bumped count stays whole rather than arriving as a float the
+			// struct rejects.
+			*child = if child.is_f64() {
+				serde_json::json!(bumped)
+			} else {
+				#[expect(
+					clippy::cast_possible_truncation,
+					clippy::cast_sign_loss,
+					reason = "a bumped count is positive and far inside u64"
+				)]
+				let whole = bumped as u64;
+				serde_json::json!(whole)
+			};
 			break;
 		}
 		cursor = child;
 	}
 	serde_json::from_value(json).expect("a bumped token struct must deserialize")
-}
-
-/// Renders every probe surface against `tokens`.
-pub fn observe(cx: &mut Headless, tokens: &Tokens) -> Observed {
-	Observed(views::render_all(cx, tokens))
 }
