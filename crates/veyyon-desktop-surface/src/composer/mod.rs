@@ -20,8 +20,8 @@ pub mod state;
 pub mod turn;
 
 use veyyon_desktop_kit::{
-	Badge as BadgeChip, ColorRole, Icon, IconName, IconSize, SpacingStep, StrokeStep, TextRamp,
-	TokenSet, input::Editor,
+	Badge as BadgeChip, ButtonSize, ColorRole, Icon, IconName, IconSize, SpacingStep, StrokeStep,
+	TextRamp, TokenSet, control_height_px, input::Editor,
 };
 use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_desktop_tokens::ComposerSurfaceTokens;
@@ -125,12 +125,12 @@ pub fn composer(
 	let mut shadows = tokens.float_shadows();
 	if local.focused {
 		let mut focus_glow = tokens.color(ColorRole::Focus);
-		focus_glow.a = 0.28;
+		focus_glow.a = geometry.focus_glow_opacity;
 		shadows.push(BoxShadow {
 			color:         focus_glow,
 			offset:        point(px(0.0), px(0.0)),
-			blur_radius:   px(4.0),
-			spread_radius: px(1.0),
+			blur_radius:   px(geometry.focus_glow_blur_px),
+			spread_radius: px(geometry.focus_glow_spread_px),
 			inset:         false,
 		});
 	}
@@ -232,7 +232,7 @@ pub fn run_bar(
 ) -> impl IntoElement {
 	let mut bar = div()
 		.id("run-bar")
-		.h(px(geometry.run_bar_height_px))
+		.h(px(control_height_px(ButtonSize::Medium, tokens)))
 		.w(px(width))
 		.flex()
 		.flex_row()

@@ -1,0 +1,41 @@
+[meta]
+version = 1
+name = "controls"
+
+# A control is exactly as tall as its size states, whatever its padding, edge
+# or type, so two controls side by side share a height and a baseline (§6.10).
+# A chip sits at small, the composer action row and the run bar at medium, and
+# a line row at large.
+[height]
+small_px = 24
+medium_px = 28
+large_px = 36
+
+# The switch track is wider than it is tall so the knob has somewhere to
+# travel; the knob is the track's height less its inset.
+[toggle]
+track_width_px = 26
+
+# A scrolling region fades its content at the edge it can scroll toward, over
+# this distance.
+[scroll]
+fade_px = 16
+
+# A tooltip is placed before it is measured, so placement assumes one line of
+# body type whose width follows the character count at this fraction of the
+# type size, and corrects once the real size arrives.
+[tooltip]
+estimated_height_px = 24
+estimated_advance_ratio = 0.62
+
+# A popover is placed the same way, against the size its content reports on a
+# later frame.
+[popover]
+estimated_width_px = 240
+estimated_height_px = 160
+
+# The text cursor, and the width a wrapped editor falls back to before its
+# first layout pass reports one.
+[editor]
+caret_width_px = 1
+unmeasured_wrap_width_px = 100

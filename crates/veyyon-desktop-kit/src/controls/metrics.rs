@@ -2,9 +2,9 @@
 //!
 //! A control is exactly as tall as its size says, whatever its padding, edge or
 //! type, so two controls that sit side by side share a height and a baseline.
-//! The heights are the ones the surfaces are laid out on: 24 for a chip-sized
-//! control, 28 for the composer's action row and the run bar, 36 for a line
-//! row.
+//! The three heights are authored in `controls.toml` under `[height]`: small
+//! for a chip, medium for the composer action row and the run bar, large for
+//! a line row.
 
 use veyyon_gpui::Pixels;
 
@@ -34,20 +34,22 @@ pub struct ControlMetrics {
 	pub disabled_opacity: f32,
 }
 
-/// The exact height of a control at `size`, in pixels.
+/// The exact height of a control at `size`, in pixels, as authored in
+/// `controls.toml`.
 #[must_use]
-pub const fn control_height_px(size: ButtonSize) -> f32 {
+pub fn control_height_px(size: ButtonSize, tokens: &TokenSet) -> f32 {
+	let controls = tokens.controls();
 	match size {
-		ButtonSize::Small => 24.0,
-		ButtonSize::Medium => 28.0,
-		ButtonSize::Large => 36.0,
+		ButtonSize::Small => controls.height_small_px,
+		ButtonSize::Medium => controls.height_medium_px,
+		ButtonSize::Large => controls.height_large_px,
 	}
 }
 
 /// Resolves the metrics of a control at `size` against `tokens`.
 #[must_use]
 pub fn control_metrics(size: ButtonSize, tokens: &TokenSet) -> ControlMetrics {
-	let height = veyyon_gpui::px(control_height_px(size));
+	let height = veyyon_gpui::px(control_height_px(size, tokens));
 	let (inset, radius, ramp) = match size {
 		ButtonSize::Small => (SpacingStep::S4, RadiusStep::Sm, TextRamp::Small),
 		ButtonSize::Medium => (SpacingStep::S6, RadiusStep::Md, TextRamp::Body),

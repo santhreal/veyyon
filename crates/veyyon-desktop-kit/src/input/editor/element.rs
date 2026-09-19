@@ -59,6 +59,12 @@ impl Element for EditorElement {
 			},
 			EditorMode::Multiline { .. } => {
 				let text = editor.display_text();
+				// A measured layout runs outside the app context, so the width
+				// it falls back to before the first pass reports one is read
+				// here and moved into the closure.
+				let unmeasured_w = px(TokenSet::for_app(cx)
+					.controls()
+					.editor_unmeasured_wrap_width_px);
 				let placeholder = editor.placeholder.clone();
 				let mut style = veyyon_gpui::Style::default();
 				style.max_size.width = relative(1.).into();
@@ -127,7 +133,7 @@ impl Element for EditorElement {
 
 						let w = known_dimensions
 							.width
-							.unwrap_or_else(|| wrap_width.unwrap_or(px(100.0)));
+							.unwrap_or_else(|| wrap_width.unwrap_or(unmeasured_w));
 						Size::new(w, final_h)
 					},
 				);

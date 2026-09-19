@@ -2,9 +2,7 @@
 
 use veyyon_desktop_kit::{ColorRole, MonoSizeStep, MonoText, SpacingStep, TokenSet};
 use veyyon_desktop_model::tool_view::{ViewDiffLines, ViewDiffSide, ViewLine};
-use veyyon_gpui::{
-	CursorStyle, Div, InteractiveElement, MouseButton, ParentElement, Styled, div, px,
-};
+use veyyon_gpui::{CursorStyle, Div, InteractiveElement, MouseButton, ParentElement, Styled, div};
 
 use super::{
 	ToolViewCallbacks, ToolViewTarget, sanitize::sanitize_control_sequences, text_block::render_line,
@@ -60,7 +58,7 @@ pub fn render_diff_lines(
 			.items_center()
 			.w_full()
 			.px(tokens.spacing(SpacingStep::S1))
-			.py(px(1.0))
+			.py(tokens.tool_view().row_pad_y)
 			.bg(bg_color);
 
 		// Line number gutter if provided
@@ -68,7 +66,7 @@ pub fn render_diff_lines(
 			let num_str = line_num.map(|n| n.to_string()).unwrap_or_default();
 			row = row.child(
 				div()
-					.w(px(36.0))
+					.w(tokens.tool_view().line_number_gutter)
 					.flex_shrink_0()
 					.text_color(tokens.color(ColorRole::Muted))
 					.child(num_str),

@@ -5,7 +5,7 @@ use veyyon_desktop_kit::{
 	indicators::badge::Badge,
 };
 use veyyon_desktop_model::tool_view::NoticeView;
-use veyyon_gpui::{Div, ParentElement, Styled, div, px};
+use veyyon_gpui::{Div, ParentElement, Styled, div};
 
 use super::{
 	ToolViewCallbacks,
@@ -94,7 +94,7 @@ pub fn render_notice(view: &NoticeView, tokens: &TokenSet, callbacks: &ToolViewC
 			.flex_col()
 			.w_full()
 			.min_w_0()
-			.pl(px(22.0))
+			.pl(tokens.tool_view().notice_body_indent)
 			.gap(tokens.spacing(SpacingStep::S1));
 
 		for line in &view.body {

@@ -1,4 +1,5 @@
 pub mod color;
+pub mod controls;
 pub mod dumper;
 pub mod dumper_surface;
 pub mod dumper_surface_helpers;
@@ -8,6 +9,7 @@ pub mod elevation;
 pub mod error;
 pub mod loader;
 pub mod loader_ceilings;
+pub mod loader_controls;
 pub mod loader_elevation;
 pub mod loader_motion;
 pub mod loader_scale;
@@ -31,8 +33,9 @@ pub mod surface;
 pub mod watcher;
 
 pub use color::{ColorParseError, ColorRole, RgbColor, Theme};
+pub use controls::ControlTokens;
 pub use dumper::dump_to_dir;
-pub use elevation::{ElevationLevel, ElevationTokens};
+pub use elevation::{ElevationLevel, ElevationTokens, FloatShadowModel, ShadowCurve};
 pub use error::TokenError;
 pub use loader::{load_bundled_tokens, load_from_dir};
 pub use loader_theme::{
@@ -60,6 +63,7 @@ pub use watcher::{TokenReloadMessage, TokenWatcher};
 pub struct Tokens {
 	pub scale:     ScaleTokens,
 	pub elevation: ElevationTokens,
+	pub controls:  ControlTokens,
 	pub ceilings:  CeilingTokens,
 	pub motion:    MotionTokens,
 	pub surface:   SurfaceTokens,

@@ -16,7 +16,15 @@ pub fn load_transcript(
 	let text = read_file(path)?;
 	let val = parse_toml(path, &text)?;
 	let root = Section::root(path, &text, &val)?;
-	root.only(&["meta", "layout", "rhythm", "user_turn", "assistant_turn", "chrome"])?;
+	root.only(&[
+		"meta",
+		"layout",
+		"rhythm",
+		"user_turn",
+		"assistant_turn",
+		"chrome",
+		"tool_view",
+	])?;
 	root.meta("surface_transcript")?;
 
 	let layout = root.sub("layout")?;
@@ -44,6 +52,13 @@ pub fn load_transcript(
 		"plan_fade_height_px",
 		"table_row_height_px",
 	])?;
+	let tool_view = root.sub("tool_view")?;
+	tool_view.only(&[
+		"row_pad_y_px",
+		"line_number_gutter_px",
+		"notice_body_indent_px",
+		"result_summary_max_width_px",
+	])?;
 
 	Ok(TranscriptSurfaceTokens {
 		column_width_px: layout.number("column_width_px")?,
@@ -66,5 +81,9 @@ pub fn load_transcript(
 		chrome_plan_body_max_height_px: caps.number("plan_body_max_height_px")?,
 		chrome_plan_fade_height_px: caps.spacing("plan_fade_height_px", scale)?,
 		chrome_table_row_height_px: caps.number("table_row_height_px")?,
+		tool_view_row_pad_y_px: tool_view.number("row_pad_y_px")?,
+		tool_view_line_number_gutter_px: tool_view.number("line_number_gutter_px")?,
+		tool_view_notice_body_indent_px: tool_view.number("notice_body_indent_px")?,
+		tool_view_result_summary_max_width_px: tool_view.number("result_summary_max_width_px")?,
 	})
 }

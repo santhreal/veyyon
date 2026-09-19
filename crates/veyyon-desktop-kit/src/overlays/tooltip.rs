@@ -159,11 +159,17 @@ impl Tooltip {
 		viewport: veyyon_gpui::Size<Pixels>,
 		gap: Pixels,
 		margin: Pixels,
+		tokens: &TokenSet,
 	) -> (veyyon_gpui::Point<Pixels>, Anchor) {
-		let estimated_w = self
-			.wrap
-			.unwrap_or_else(|| px(self.text.len() as f32 * 7.5 + 16.0));
-		let estimated_h = px(24.0);
+		// The side is chosen before the tag is measured, so its width is the
+		// character count at the ramp's average advance plus the padding the
+		// tag draws, and its height is the authored estimate for one line.
+		let controls = tokens.controls();
+		let estimated_w = self.wrap.unwrap_or_else(|| {
+			let advance = tokens.font_size(TextRamp::Small) * controls.tooltip_estimated_advance_ratio;
+			advance * self.text.len() as f32 + tokens.spacing(SpacingStep::S2) * 2.0
+		});
+		let estimated_h = px(controls.tooltip_estimated_height_px);
 
 		let side = match self.side {
 			TooltipSide::Below => {
@@ -277,6 +283,7 @@ impl Element for Tooltip {
 			window.viewport_size(),
 			tokens.spacing(SpacingStep::S1),
 			tokens.spacing(SpacingStep::S2),
+			&tokens,
 		);
 		let mut tag = anchored()
 			.position(position)

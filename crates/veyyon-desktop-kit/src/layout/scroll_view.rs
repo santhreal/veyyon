@@ -17,7 +17,7 @@ pub struct ScrollView {
 	axis:       Option<Axis>,
 	child:      AnyElement,
 	edge_fade:  bool,
-	fade_size:  Pixels,
+	fade_size:  Option<Pixels>,
 	fade_color: Option<Hsla>,
 }
 
@@ -29,7 +29,7 @@ impl ScrollView {
 			axis:       None,
 			child:      child.into_any_element(),
 			edge_fade:  true,
-			fade_size:  px(16.0),
+			fade_size:  None,
 			fade_color: None,
 		}
 	}
@@ -51,7 +51,7 @@ impl ScrollView {
 	/// Sets the depth of the edge-fade falloff in pixels.
 	#[must_use]
 	pub fn fade_size(mut self, size: Pixels) -> Self {
-		self.fade_size = size;
+		self.fade_size = Some(size);
 		self
 	}
 
@@ -89,6 +89,9 @@ impl RenderOnce for ScrollView {
 		let fade_c = self
 			.fade_color
 			.unwrap_or_else(|| resolved_tokens.color(ColorRole::Canvas));
+		let fade_size = self
+			.fade_size
+			.unwrap_or_else(|| px(resolved_tokens.controls().scroll_fade_px));
 
 		let mut container = div()
 			.relative()
@@ -99,33 +102,28 @@ impl RenderOnce for ScrollView {
 
 		match self.axis {
 			Some(Axis::Vertical) | None => {
-				container = container
-					.child(
-						div()
-							.absolute()
-							.top_0()
-							.left_0()
-							.right_0()
-							.h(self.fade_size)
-							.bg(linear_gradient(
+				container =
+					container
+						.child(div().absolute().top_0().left_0().right_0().h(fade_size).bg(
+							linear_gradient(
 								180.0,
 								linear_color_stop(fade_c, 0.0),
 								linear_color_stop(fade_c.opacity(0.0), 1.0),
-							)),
-					)
-					.child(
-						div()
-							.absolute()
-							.bottom_0()
-							.left_0()
-							.right_0()
-							.h(self.fade_size)
-							.bg(linear_gradient(
-								180.0,
-								linear_color_stop(fade_c.opacity(0.0), 0.0),
-								linear_color_stop(fade_c, 1.0),
-							)),
-					);
+							),
+						))
+						.child(
+							div()
+								.absolute()
+								.bottom_0()
+								.left_0()
+								.right_0()
+								.h(fade_size)
+								.bg(linear_gradient(
+									180.0,
+									linear_color_stop(fade_c.opacity(0.0), 0.0),
+									linear_color_stop(fade_c, 1.0),
+								)),
+						);
 			},
 			Some(Axis::Horizontal) => {
 				container = container
@@ -135,7 +133,7 @@ impl RenderOnce for ScrollView {
 							.top_0()
 							.bottom_0()
 							.left_0()
-							.w(self.fade_size)
+							.w(fade_size)
 							.bg(linear_gradient(
 								90.0,
 								linear_color_stop(fade_c, 0.0),
@@ -148,7 +146,7 @@ impl RenderOnce for ScrollView {
 							.top_0()
 							.bottom_0()
 							.right_0()
-							.w(self.fade_size)
+							.w(fade_size)
 							.bg(linear_gradient(
 								90.0,
 								linear_color_stop(fade_c.opacity(0.0), 0.0),

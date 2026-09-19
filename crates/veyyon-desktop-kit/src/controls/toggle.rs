@@ -50,12 +50,12 @@ impl RenderOnce for Toggle {
 		let resolved_tokens = TokenSet::for_app(cx);
 		let tokens: &TokenSet = &resolved_tokens;
 
-		// §6.10: a 26 × 16 track with a 12px knob. On is an accent track with a
-		// foreground knob; off is a transparent track with a hairline edge and a
-		// secondary knob. The edge is drawn in both states so the track's
-		// outline never moves when it switches.
+		// §6.10: the authored track, a knob two steps inside it. On is an
+		// accent track with a foreground knob; off is a transparent track with
+		// a hairline edge and a secondary knob. The edge is drawn in both
+		// states so the track's outline never moves when it switches.
 		let stroke = tokens.stroke(StrokeStep::Hairline);
-		let track_w = px(26.0);
+		let track_w = px(tokens.controls().toggle_track_width_px);
 		let track_h = tokens.spacing(SpacingStep::S8);
 		let knob = tokens.spacing(SpacingStep::S6);
 		let radius = tokens.radius(RadiusStep::Full);

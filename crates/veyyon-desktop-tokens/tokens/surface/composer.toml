@@ -17,11 +17,13 @@ hairline_stroke = "hairline"
 blur_px = 16
 saturation = 1.08
 ground_opacity = 0.80
-shadow_x = 0
-shadow_y = -8
-shadow_blur = 24
-shadow_spread = -4
-shadow_opacity = 0.55
+
+# While the composer holds focus it carries a glow in the focus colour, tight
+# to the edge so it reads as a lit rim rather than a second shadow.
+[focus_glow]
+blur_px = 4
+spread_px = 1
+opacity = 0.28
 
 [footer]
 max_controls = 5
@@ -29,7 +31,6 @@ compact_threshold_px = 600
 hysteresis_px = 16
 
 [run_bar]
-height_px = 28
 max_controls = 4
 compact_threshold_px = 560
 label_size = "small"

@@ -192,11 +192,15 @@ pub fn render_invoke_block(
 		if let Some(res) = result {
 			let summary = res.lines().next().unwrap_or("").trim();
 			header = header.child(
-				div().flex_shrink_0().max_w(px(240.0)).min_w_0().child(
-					Truncate::new(summary.to_owned())
-						.ramp(TextRamp::Micro)
-						.color(ColorRole::Muted),
-				),
+				div()
+					.flex_shrink_0()
+					.max_w(tokens.tool_view().summary_max_width)
+					.min_w_0()
+					.child(
+						Truncate::new(summary.to_owned())
+							.ramp(TextRamp::Micro)
+							.color(ColorRole::Muted),
+					),
 			);
 		} else if viewport_state.is_streaming() && turn_ix + 1 == viewport_state.turn_count() {
 			header = header.child(

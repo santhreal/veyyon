@@ -43,7 +43,7 @@ pub fn render_code_lines(
 				.flex_row()
 				.items_center()
 				.px(tokens.spacing(SpacingStep::S1))
-				.py(px(1.0))
+				.py(tokens.tool_view().row_pad_y)
 				.child(
 					div()
 						.fit_primary()
@@ -74,7 +74,7 @@ pub fn render_code_lines(
 			.items_center()
 			.w_full()
 			.px(tokens.spacing(SpacingStep::S1))
-			.py(px(1.0));
+			.py(tokens.tool_view().row_pad_y);
 
 		if has_line_numbers {
 			let num_str = line_num.map(|n| n.to_string()).unwrap_or_default();

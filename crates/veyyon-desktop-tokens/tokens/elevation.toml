@@ -50,8 +50,45 @@ saturation = 1.06
 ground_opacity = 0.82
 edge = "hairline_plus_inset_top"
 has_shadow = true
-shadow_x = 0
-shadow_y = -8
-shadow_blur = 24
-shadow_spread = -18
 shadow_opacity = 0.45
+
+# A float casts two shadows, both following how far it sits off the ground: a
+# tight key shadow directly under it and a wide ambient one around it. Each
+# ratio multiplies the rise, the bounds hold the result inside the range the
+# design system draws, and the opacity factors split the level's shadow
+# opacity between the two on a dark and on a light ground.
+[float_shadow]
+default_rise_px = 24
+inner_highlight_y_px = 1
+inner_highlight_dark = 0.12
+inner_highlight_light = 0.85
+
+[float_shadow.key]
+y_ratio = 0.20
+y_min_px = 1
+y_max_px = 8
+blur_ratio = 0.40
+blur_min_px = 2
+blur_max_px = 16
+spread_ratio = 0.08
+spread_min_px = 0
+spread_max_px = 4
+dark_opacity = 0.55
+light_opacity = 0.22
+
+[float_shadow.ambient]
+y_ratio = 0.65
+y_min_px = 4
+y_max_px = 24
+blur_ratio = 1.50
+blur_min_px = 12
+blur_max_px = 48
+spread_ratio = 0.75
+spread_min_px = 2
+spread_max_px = 20
+dark_opacity = 0.45
+light_opacity = 0.18
+
+# A menu or a dialog frosts its backdrop harder than a resting float (§2.1).
+[frost]
+overlay_blur_px = 44

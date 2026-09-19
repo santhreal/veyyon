@@ -3,7 +3,7 @@ use std::path::Path;
 use toml::Value;
 
 use crate::{
-	elevation::{ElevationLevel, ElevationTokens},
+	elevation::{ElevationLevel, ElevationTokens, FloatShadowModel, ShadowCurve},
 	error::TokenError,
 	loader::{find_key_line_col, parse_toml, read_file},
 	section::Section,
@@ -12,8 +12,39 @@ use crate::{
 const ALWAYS: [&str; 6] = ["index", "role", "ground_role", "grain_enabled", "blur_px", "edge"];
 const GRAIN: [&str; 2] = ["grain_texture", "grain_opacity"];
 const GLASS: [&str; 2] = ["saturation", "ground_opacity"];
-const SHADOW: [&str; 5] =
-	["shadow_x", "shadow_y", "shadow_blur", "shadow_spread", "shadow_opacity"];
+const SHADOW: [&str; 1] = ["shadow_opacity"];
+const CURVE: [&str; 11] = [
+	"y_ratio",
+	"y_min_px",
+	"y_max_px",
+	"blur_ratio",
+	"blur_min_px",
+	"blur_max_px",
+	"spread_ratio",
+	"spread_min_px",
+	"spread_max_px",
+	"dark_opacity",
+	"light_opacity",
+];
+
+/// One curve of the float shadow model. Every key is required: a curve missing
+/// a bound would have to invent the range it draws inside.
+fn parse_curve(curve: &Section<'_>) -> Result<ShadowCurve, TokenError> {
+	curve.only(&CURVE)?;
+	Ok(ShadowCurve {
+		y_ratio:       curve.number("y_ratio")?,
+		y_min_px:      curve.number("y_min_px")?,
+		y_max_px:      curve.number("y_max_px")?,
+		blur_ratio:    curve.number("blur_ratio")?,
+		blur_min_px:   curve.number("blur_min_px")?,
+		blur_max_px:   curve.number("blur_max_px")?,
+		spread_ratio:  curve.number("spread_ratio")?,
+		spread_min_px: curve.number("spread_min_px")?,
+		spread_max_px: curve.number("spread_max_px")?,
+		dark_opacity:  curve.number("dark_opacity")?,
+		light_opacity: curve.number("light_opacity")?,
+	})
+}
 
 /// One `[[level]]` entry. A key is present when, and only when, the flag that
 /// gives it meaning is set: a shadow parameter on a level without a shadow is
@@ -74,10 +105,6 @@ fn parse_level(level: &Section<'_>, expected_index: u8) -> Result<ElevationLevel
 		ground_opacity: optional("ground_opacity", blur_px > 0.0)?,
 		edge: level.string("edge")?.to_string(),
 		has_shadow,
-		shadow_x: optional("shadow_x", has_shadow)?,
-		shadow_y: optional("shadow_y", has_shadow)?,
-		shadow_blur: optional("shadow_blur", has_shadow)?,
-		shadow_spread: optional("shadow_spread", has_shadow)?,
 		shadow_opacity: optional("shadow_opacity", has_shadow)?,
 	})
 }
@@ -87,7 +114,7 @@ pub fn load_elevation(path: &Path) -> Result<ElevationTokens, TokenError> {
 	let text = read_file(path)?;
 	let val = parse_toml(path, &text)?;
 	let root = Section::root(path, &text, &val)?;
-	root.only(&["meta", "level"])?;
+	root.only(&["meta", "level", "float_shadow", "frost"])?;
 	root.meta("elevation")?;
 
 	let levels_value = root.get("level")?;
@@ -126,5 +153,28 @@ pub fn load_elevation(path: &Path) -> Result<ElevationTokens, TokenError> {
 		key:     "level".to_string(),
 	})?;
 
-	Ok(ElevationTokens { levels: arr })
+	let shadow = root.sub("float_shadow")?;
+	shadow.only(&[
+		"default_rise_px",
+		"inner_highlight_y_px",
+		"inner_highlight_dark",
+		"inner_highlight_light",
+		"key",
+		"ambient",
+	])?;
+	let frost = root.sub("frost")?;
+	frost.only(&["overlay_blur_px"])?;
+
+	Ok(ElevationTokens {
+		levels:          arr,
+		float_shadow:    FloatShadowModel {
+			default_rise_px:       shadow.number("default_rise_px")?,
+			key:                   parse_curve(&shadow.sub("key")?)?,
+			ambient:               parse_curve(&shadow.sub("ambient")?)?,
+			inner_highlight_y_px:  shadow.number("inner_highlight_y_px")?,
+			inner_highlight_dark:  shadow.number("inner_highlight_dark")?,
+			inner_highlight_light: shadow.number("inner_highlight_light")?,
+		},
+		overlay_blur_px: frost.number("overlay_blur_px")?,
+	})
 }

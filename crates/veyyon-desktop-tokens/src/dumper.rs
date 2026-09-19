@@ -6,8 +6,9 @@ use crate::{
 		dump_attached_cards, dump_breakpoints, dump_composer, dump_palette, dump_panels, dump_queue,
 		dump_settings, dump_shell, dump_transcript,
 	},
+	elevation::ShadowCurve,
 	error::TokenError,
-	schema::SpacingStep,
+	schema::{SpacingStep, StrokeStep},
 };
 
 /// Serializes in-memory live token set into authored TOML files.
@@ -17,6 +18,7 @@ pub fn dump_to_dir(tokens: &Tokens, dir: &Path) -> Result<(), TokenError> {
 
 	dump_scale(tokens, &dir.join("scale.toml"))?;
 	dump_elevation(tokens, &dir.join("elevation.toml"))?;
+	dump_controls(tokens, &dir.join("controls.toml"))?;
 	dump_ceilings(tokens, &dir.join("ceilings.toml"))?;
 	dump_motion(tokens, &dir.join("motion.toml"))?;
 	dump_queue(tokens, &dir.join("surface/queue.toml"))?;
@@ -34,6 +36,51 @@ pub fn dump_to_dir(tokens: &Tokens, dir: &Path) -> Result<(), TokenError> {
 
 pub(crate) fn write_file(path: &Path, content: &str) -> Result<(), TokenError> {
 	fs::write(path, content).map_err(|e| TokenError::Io { path: path.to_path_buf(), source: e })
+}
+
+fn dump_controls(tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
+	let c = &tokens.controls;
+	let out = format!(
+		r#"[meta]
+version = 1
+name = "controls"
+
+[height]
+small_px = {}
+medium_px = {}
+large_px = {}
+
+[toggle]
+track_width_px = {}
+
+[scroll]
+fade_px = {}
+
+[tooltip]
+estimated_height_px = {}
+estimated_advance_ratio = {}
+
+[popover]
+estimated_width_px = {}
+estimated_height_px = {}
+
+[editor]
+caret_width_px = {}
+unmeasured_wrap_width_px = {}
+"#,
+		c.height_small_px as i64,
+		c.height_medium_px as i64,
+		c.height_large_px as i64,
+		c.toggle_track_width_px as i64,
+		c.scroll_fade_px as i64,
+		c.tooltip_estimated_height_px as i64,
+		c.tooltip_estimated_advance_ratio,
+		c.popover_estimated_width_px as i64,
+		c.popover_estimated_height_px as i64,
+		c.editor_caret_width_px as i64,
+		c.editor_unmeasured_wrap_width_px as i64
+	);
+	write_file(path, &out)
 }
 
 fn dump_scale(tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
@@ -66,7 +113,10 @@ fn dump_scale(tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
 		let _ = writeln!(out, "\t\"{family}\",");
 	}
 	out.push_str("]\n");
-	out.push_str("\n[stroke]\nhairline = 1.0\nicon     = 1.5\nheavy    = 2.0\n");
+	out.push_str("\n[stroke]\n");
+	for step in StrokeStep::all() {
+		let _ = writeln!(out, "{} = {}", step.as_token(), tokens.scale.stroke(step));
+	}
 	write_file(path, &out)
 }
 
@@ -92,24 +142,45 @@ fn dump_elevation(tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
 			let _ = writeln!(out, "ground_opacity = {gop}");
 		}
 		let _ = writeln!(out, "edge = \"{}\"\nhas_shadow = {}", lvl.edge, lvl.has_shadow);
-		if let Some(sx) = lvl.shadow_x {
-			let _ = writeln!(out, "shadow_x = {}", sx as i64);
-		}
-		if let Some(sy) = lvl.shadow_y {
-			let _ = writeln!(out, "shadow_y = {}", sy as i64);
-		}
-		if let Some(sb) = lvl.shadow_blur {
-			let _ = writeln!(out, "shadow_blur = {}", sb as i64);
-		}
-		if let Some(ss) = lvl.shadow_spread {
-			let _ = writeln!(out, "shadow_spread = {}", ss as i64);
-		}
 		if let Some(so) = lvl.shadow_opacity {
 			let _ = writeln!(out, "shadow_opacity = {so}");
 		}
 		out.push('\n');
 	}
+	let model = &tokens.elevation.float_shadow;
+	let _ = write!(
+		out,
+		"[float_shadow]\ndefault_rise_px = {}\ninner_highlight_y_px = {}\ninner_highlight_dark = \
+		 {}\ninner_highlight_light = {}\n",
+		model.default_rise_px,
+		model.inner_highlight_y_px,
+		model.inner_highlight_dark,
+		model.inner_highlight_light
+	);
+	dump_curve(&mut out, "key", &model.key);
+	dump_curve(&mut out, "ambient", &model.ambient);
+	let _ = write!(out, "[frost]\noverlay_blur_px = {}\n", tokens.elevation.overlay_blur_px);
 	write_file(path, &out)
+}
+
+fn dump_curve(out: &mut String, name: &str, curve: &ShadowCurve) {
+	let _ = write!(
+		out,
+		"\n[float_shadow.{name}]\ny_ratio = {}\ny_min_px = {}\ny_max_px = {}\nblur_ratio = \
+		 {}\nblur_min_px = {}\nblur_max_px = {}\nspread_ratio = {}\nspread_min_px = \
+		 {}\nspread_max_px = {}\ndark_opacity = {}\nlight_opacity = {}\n\n",
+		curve.y_ratio,
+		curve.y_min_px,
+		curve.y_max_px,
+		curve.blur_ratio,
+		curve.blur_min_px,
+		curve.blur_max_px,
+		curve.spread_ratio,
+		curve.spread_min_px,
+		curve.spread_max_px,
+		curve.dark_opacity,
+		curve.light_opacity
+	);
 }
 
 fn dump_ceilings(tokens: &Tokens, path: &Path) -> Result<(), TokenError> {

@@ -3,10 +3,13 @@
 
 use std::ops::Range;
 
-use veyyon_gpui::{Bounds, Context, EntityInputHandler, Pixels, Point, UTF16Selection, Window};
+use veyyon_gpui::{Bounds, Context, EntityInputHandler, Pixels, Point, UTF16Selection, Window, px};
 
 use super::{Editor, EditorEvent};
-use crate::input::buffer::{Selection, grapheme::snap_to_grapheme};
+use crate::{
+	input::buffer::{Selection, grapheme::snap_to_grapheme},
+	token_set::TokenSet,
+};
 
 pub(crate) fn offset_to_utf16(text: &str, byte_offset: usize) -> usize {
 	let clamped = snap_to_grapheme(text, byte_offset);
@@ -139,12 +142,13 @@ impl EntityInputHandler for Editor {
 		range_utf16: Range<usize>,
 		element_bounds: Bounds<Pixels>,
 		_window: &mut Window,
-		_cx: &mut Context<Self>,
+		cx: &mut Context<Self>,
 	) -> Option<Bounds<Pixels>> {
+		let caret_width = px(TokenSet::for_app(cx).controls().editor_caret_width_px);
 		let text = self.buffer.text();
 		let range = range_from_utf16(text, range_utf16);
 		let layout = self.last_layout.as_ref()?;
-		layout.bounds_for_range(range, element_bounds)
+		layout.bounds_for_range(range, element_bounds, caret_width)
 	}
 
 	fn character_index_for_point(

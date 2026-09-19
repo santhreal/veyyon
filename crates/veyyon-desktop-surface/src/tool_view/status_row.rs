@@ -5,9 +5,7 @@ use veyyon_desktop_kit::{
 	TextWeight, TokenSet, indicators::badge::Badge,
 };
 use veyyon_desktop_model::tool_view::StatusRowView;
-use veyyon_gpui::{
-	CursorStyle, Div, InteractiveElement, MouseButton, ParentElement, Styled, div, px,
-};
+use veyyon_gpui::{CursorStyle, Div, InteractiveElement, MouseButton, ParentElement, Styled, div};
 
 use super::{
 	ToolViewCallbacks, ToolViewTarget,
@@ -176,7 +174,7 @@ pub fn render_status_row(
 				div()
 					.fit_chrome()
 					.px(tokens.spacing(SpacingStep::S1))
-					.py(px(1.0))
+					.py(tokens.tool_view().row_pad_y)
 					.rounded(tokens.radius(RadiusStep::Sm))
 					.bg(tokens.color(ColorRole::Inset))
 					.mono_text(tokens, MonoSizeStep::Small)

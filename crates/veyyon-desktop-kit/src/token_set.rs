@@ -7,14 +7,19 @@
 use std::{borrow::Cow, path::PathBuf};
 
 pub use veyyon_desktop_tokens::{
-	ColorRole, ElevationTokens, MonoSizeStep, RadiusStep, RgbColor, ScaleTokens, SpacingStep,
-	StrokeStep, Theme, TokenError, Tokens, load_bundled_theme, load_bundled_tokens,
+	ColorRole, ControlTokens, ElevationTokens, MonoSizeStep, RadiusStep, RgbColor, ScaleTokens,
+	SpacingStep, StrokeStep, Theme, TokenError, Tokens, load_bundled_theme, load_bundled_tokens,
 };
 use veyyon_gpui::{App, FontWeight, Hsla, Pixels, SharedString, px};
 
 use crate::families::{MonoMetrics, first_family, present_family};
 
 mod float;
+mod metrics;
+mod rgb;
+
+pub use metrics::{GateStrengths, ToolViewMetrics};
+use rgb::rgb_to_hsla;
 
 /// Number of semantic colour roles defined in the system (§6.4).
 pub const COLOR_ROLE_COUNT: usize = 29;
@@ -88,52 +93,6 @@ pub struct TintPair {
 	pub ink:  Hsla,
 }
 
-/// Converts linear RGB color to GPUI HSLA representation.
-#[allow(
-	clippy::many_single_char_names,
-	reason = "r, g, b, h, s and l are the colour components this conversion is named for"
-)]
-fn rgb_to_hsla(rgb: RgbColor) -> Hsla {
-	let (r, g, b) = (rgb.r, rgb.g, rgb.b);
-	let (min, max) = (r.min(g.min(b)), r.max(g.max(b)));
-	let delta = max - min;
-	let l = f32::midpoint(max, min);
-	let s = if delta == 0.0 {
-		0.0
-	} else if l < 0.5 {
-		delta / (max + min)
-	} else {
-		delta / (2.0 - max - min)
-	};
-	let h = if delta == 0.0 {
-		0.0
-	} else if (max - r).abs() < f32::EPSILON {
-		let mut h = (g - b) / delta;
-		if h < 0.0 {
-			h += 6.0;
-		}
-		h / 6.0
-	} else if (max - g).abs() < f32::EPSILON {
-		((b - r) / delta + 2.0) / 6.0
-	} else {
-		((r - g) / delta + 4.0) / 6.0
-	};
-	Hsla { h, s, l, a: rgb.a }
-}
-
-/// Interactive strength an availability state renders at, authored in
-/// `surface/shell.toml` under `[gate]` (§4.3).
-///
-/// These are resolved once at construction so a primitive reads a strength
-/// from the installed token set rather than restating the ratio at each
-/// control, which is how two controls drift to different dimming for the same
-/// state.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct GateStrengths {
-	pub pending:     f32,
-	pub unavailable: f32,
-}
-
 /// Resolved design token set stored in GPUI context.
 #[derive(Debug, Clone)]
 pub struct TokenSet {
@@ -143,10 +102,12 @@ pub struct TokenSet {
 	row_active:   Hsla,
 	scrim:        Hsla,
 	scale:        ScaleTokens,
-	elevation:    Option<ElevationTokens>,
+	elevation:    ElevationTokens,
 	mono_family:  SharedString,
 	ui_family:    SharedString,
 	gate:         GateStrengths,
+	controls:     ControlTokens,
+	tool_view:    ToolViewMetrics,
 }
 
 impl Default for TokenSet {
@@ -212,12 +173,22 @@ impl TokenSet {
 			row_active,
 			scrim,
 			scale: tokens.scale.clone(),
-			elevation: Some(tokens.elevation.clone()),
+			elevation: tokens.elevation.clone(),
 			mono_family: SharedString::from(mono_family),
 			ui_family: SharedString::from(ui_family),
 			gate: GateStrengths {
 				pending:     tokens.surface.shell.gate_pending_strength,
 				unavailable: tokens.surface.shell.gate_unavailable_strength,
+			},
+			controls: tokens.controls,
+			tool_view: ToolViewMetrics {
+				row_pad_y:          px(tokens.surface.transcript.tool_view_row_pad_y_px),
+				line_number_gutter: px(tokens.surface.transcript.tool_view_line_number_gutter_px),
+				notice_body_indent: px(tokens.surface.transcript.tool_view_notice_body_indent_px),
+				summary_max_width:  px(tokens
+					.surface
+					.transcript
+					.tool_view_result_summary_max_width_px),
 			},
 		})
 	}
@@ -226,6 +197,18 @@ impl TokenSet {
 	#[must_use]
 	pub const fn gate(&self) -> GateStrengths {
 		self.gate
+	}
+
+	/// Returns the measures every control primitive is drawn against (§6.10).
+	#[must_use]
+	pub const fn controls(&self) -> ControlTokens {
+		self.controls
+	}
+
+	/// Returns the measures a tool view draws its dense rows against.
+	#[must_use]
+	pub const fn tool_view(&self) -> ToolViewMetrics {
+		self.tool_view
 	}
 
 	/// Selects the monospace family from the authored chain, given the families
@@ -257,10 +240,11 @@ impl TokenSet {
 		Ok(())
 	}
 
-	/// Returns elevation tokens if configured.
+	/// Returns the elevation and material specification every level draws
+	/// from.
 	#[must_use]
-	pub fn elevation(&self) -> Option<&ElevationTokens> {
-		self.elevation.as_ref()
+	pub const fn elevation(&self) -> &ElevationTokens {
+		&self.elevation
 	}
 
 	/// Resolves a color role to an HSLA color.

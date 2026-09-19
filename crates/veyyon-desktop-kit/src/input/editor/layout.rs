@@ -243,12 +243,15 @@ impl EditorLayoutState {
 		vl.start_offset + (closest_rel - vl.rel_start)
 	}
 
-	/// Computes visual bounds for a byte range in window coordinates.
+	/// Computes visual bounds for a byte range in window coordinates. A
+	/// collapsed range is the caret, which is `caret_width` wide so the
+	/// platform has a box to place an input method against.
 	#[must_use]
 	pub fn bounds_for_range(
 		&self,
 		range: Range<usize>,
 		element_bounds: Bounds<Pixels>,
+		caret_width: Pixels,
 	) -> Option<Bounds<Pixels>> {
 		let start_pt = self.position_for_offset(range.start)?;
 		let end_pt = if range.is_empty() {
@@ -260,7 +263,7 @@ impl EditorLayoutState {
 		let min_x = start_pt.x.min(end_pt.x);
 		let max_x = start_pt.x.max(end_pt.x);
 		let width = if min_x == max_x {
-			px(1.0)
+			caret_width
 		} else {
 			max_x - min_x
 		};

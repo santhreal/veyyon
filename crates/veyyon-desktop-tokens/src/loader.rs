@@ -3,8 +3,9 @@ use std::{fs, path::Path};
 use toml::Value;
 
 use crate::{
-	Tokens, error::TokenError, loader_ceilings::load_ceilings, loader_elevation::load_elevation,
-	loader_motion::load_motion, loader_scale::load_scale, loader_surface::load_surfaces,
+	Tokens, error::TokenError, loader_ceilings::load_ceilings, loader_controls::load_controls,
+	loader_elevation::load_elevation, loader_motion::load_motion, loader_scale::load_scale,
+	loader_surface::load_surfaces,
 };
 
 /// Helper to compute 1-based line and column from byte index or substring.
@@ -82,21 +83,23 @@ pub(crate) fn parse_toml(path: &Path, content: &str) -> Result<Value, TokenError
 	})
 }
 
-/// Loads and validates all 12 token files from the given root directory.
+/// Loads and validates every token file from the given root directory.
 pub fn load_from_dir(dir: &Path) -> Result<Tokens, TokenError> {
 	let scale_path = dir.join("scale.toml");
 	let elevation_path = dir.join("elevation.toml");
+	let controls_path = dir.join("controls.toml");
 	let ceilings_path = dir.join("ceilings.toml");
 	let motion_path = dir.join("motion.toml");
 
 	let scale = load_scale(&scale_path)?;
 	let elevation = load_elevation(&elevation_path)?;
+	let controls = load_controls(&controls_path)?;
 	let ceilings = load_ceilings(&ceilings_path)?;
 	let motion = load_motion(&motion_path)?;
 
 	let surface = load_surfaces(dir, &scale)?;
 
-	Ok(Tokens { scale, elevation, ceilings, motion, surface })
+	Ok(Tokens { scale, elevation, controls, ceilings, motion, surface })
 }
 
 /// Loads the bundled tokens shipped with this crate.

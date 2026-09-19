@@ -33,3 +33,13 @@ image_max_height_px = 400
 plan_body_max_height_px = 400
 plan_fade_height_px = "s13"
 table_row_height_px = 18
+
+# A tool view draws denser rows than prose: a code, diff or status line sits on
+# a one-pixel vertical rhythm, a diff line number occupies a fixed gutter, a
+# notice indents its body under the icon that headlines it, and a result
+# summary beside a call header stops before it crowds the name.
+[tool_view]
+row_pad_y_px = 1
+line_number_gutter_px = 36
+notice_body_indent_px = 22
+result_summary_max_width_px = 240

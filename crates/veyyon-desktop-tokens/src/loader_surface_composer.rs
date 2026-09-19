@@ -20,6 +20,7 @@ pub fn load_composer(
 		"meta",
 		"geometry",
 		"material",
+		"focus_glow",
 		"footer",
 		"run_bar",
 		"opening_line",
@@ -41,22 +42,16 @@ pub fn load_composer(
 	])?;
 
 	let mat = root.sub("material")?;
-	mat.only(&[
-		"blur_px",
-		"saturation",
-		"ground_opacity",
-		"shadow_x",
-		"shadow_y",
-		"shadow_blur",
-		"shadow_spread",
-		"shadow_opacity",
-	])?;
+	mat.only(&["blur_px", "saturation", "ground_opacity"])?;
+
+	let glow = root.sub("focus_glow")?;
+	glow.only(&["blur_px", "spread_px", "opacity"])?;
 
 	let footer = root.sub("footer")?;
 	footer.only(&["max_controls", "compact_threshold_px", "hysteresis_px"])?;
 
 	let run_bar = root.sub("run_bar")?;
-	run_bar.only(&["height_px", "max_controls", "compact_threshold_px", "label_size"])?;
+	run_bar.only(&["max_controls", "compact_threshold_px", "label_size"])?;
 
 	let opening = root.sub("opening_line")?;
 	opening.only(&["max_width_px", "type_size", "weight"])?;
@@ -77,15 +72,12 @@ pub fn load_composer(
 		blur_px: mat.number("blur_px")?,
 		saturation: mat.number("saturation")?,
 		ground_opacity: mat.ratio("ground_opacity")?,
-		shadow_x: mat.number("shadow_x")?,
-		shadow_y: mat.number("shadow_y")?,
-		shadow_blur: mat.number("shadow_blur")?,
-		shadow_spread: mat.number("shadow_spread")?,
-		shadow_opacity: mat.ratio("shadow_opacity")?,
+		focus_glow_blur_px: glow.number("blur_px")?,
+		focus_glow_spread_px: glow.number("spread_px")?,
+		focus_glow_opacity: glow.ratio("opacity")?,
 		footer_max_controls: footer.count("max_controls")?,
 		footer_compact_threshold_px: footer.number("compact_threshold_px")?,
 		footer_hysteresis_px: footer.number("hysteresis_px")?,
-		run_bar_height_px: run_bar.number("height_px")?,
 		run_bar_max_controls: run_bar.count("max_controls")?,
 		run_bar_compact_threshold_px: run_bar.number("compact_threshold_px")?,
 		run_bar_label_size: run_bar.type_size("label_size", scale)?,

@@ -133,9 +133,10 @@ impl RenderOnce for Popover {
 		// is inside the margin already, so the slide under it is the backstop
 		// for the one case the flip cannot answer, a card too large for either
 		// side of its origin.
-		let check_size = self
-			.size
-			.unwrap_or(veyyon_gpui::Size { width: px(240.0), height: px(160.0) });
+		let check_size = self.size.unwrap_or_else(|| veyyon_gpui::Size {
+			width:  px(tokens.controls().popover_estimated_width_px),
+			height: px(tokens.controls().popover_estimated_height_px),
+		});
 		let anchor =
 			flip_corner(self.anchor, self.origin, check_size, window.viewport_size(), margin);
 

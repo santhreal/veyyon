@@ -126,6 +126,12 @@ image_max_height_px = {}
 plan_body_max_height_px = {}
 plan_fade_height_px = "{}"
 table_row_height_px = {}
+
+[tool_view]
+row_pad_y_px = {}
+line_number_gutter_px = {}
+notice_body_indent_px = {}
+result_summary_max_width_px = {}
 "#,
 		t.column_width_px as i64,
 		t.user_turn_width_ratio,
@@ -146,7 +152,11 @@ table_row_height_px = {}
 		t.chrome_image_max_height_px as i64,
 		t.chrome_plan_body_max_height_px as i64,
 		step_spacing(s, t.chrome_plan_fade_height_px),
-		t.chrome_table_row_height_px as i64
+		t.chrome_table_row_height_px as i64,
+		t.tool_view_row_pad_y_px as i64,
+		t.tool_view_line_number_gutter_px as i64,
+		t.tool_view_notice_body_indent_px as i64,
+		t.tool_view_result_summary_max_width_px as i64
 	);
 	write_file(path, &out)
 }
@@ -175,11 +185,11 @@ hairline_stroke = "{}"
 blur_px = {}
 saturation = {:.2}
 ground_opacity = {:.2}
-shadow_x = {}
-shadow_y = {}
-shadow_blur = {}
-shadow_spread = {}
-shadow_opacity = {:.2}
+
+[focus_glow]
+blur_px = {}
+spread_px = {}
+opacity = {:.2}
 
 [footer]
 max_controls = {}
@@ -187,7 +197,6 @@ compact_threshold_px = {}
 hysteresis_px = {}
 
 [run_bar]
-height_px = {}
 max_controls = {}
 compact_threshold_px = {}
 label_size = "{}"
@@ -214,15 +223,12 @@ card_radius = "{}"
 		c.blur_px as i64,
 		c.saturation,
 		c.ground_opacity,
-		c.shadow_x as i64,
-		c.shadow_y as i64,
-		c.shadow_blur as i64,
-		c.shadow_spread as i64,
-		c.shadow_opacity,
+		c.focus_glow_blur_px as i64,
+		c.focus_glow_spread_px as i64,
+		c.focus_glow_opacity,
 		c.footer_max_controls,
 		c.footer_compact_threshold_px as i64,
 		c.footer_hysteresis_px as i64,
-		c.run_bar_height_px as i64,
 		c.run_bar_max_controls,
 		c.run_bar_compact_threshold_px as i64,
 		step_type_size(s, &c.run_bar_label_size),
