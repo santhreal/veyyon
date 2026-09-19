@@ -1298,6 +1298,39 @@ SCENE_ARM=before PROOF_BASE_REF=HEAD \
   proof/docker/record-native.sh proof/scenes/desktop-detail.sh
 ```
 
+Use `proof/scenes/desktop-rail-search.sh` to type into the rail's own session
+search and photograph the rail it was opened from. It reduces the rail's list
+crop to its inked height at rest, under a query one session matches, under one
+nothing matches, and after the search closes, because the overlay's blur falls
+across the rail and a frame difference cannot separate the two. The take is
+four still frames and declares a motion floor of 2. The change is inside the
+executable, so the before arm names a build of this tree whose search narrows
+nothing:
+
+```sh
+SCENE_MOTION_FLOOR=2 proof/docker/record-native.sh \
+  proof/scenes/desktop-rail-search.sh
+SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=2 \
+  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
+  proof/docker/record-native.sh proof/scenes/desktop-rail-search.sh
+```
+
+Use `proof/scenes/desktop-empty-copy.sh` to filter the rail to nothing and
+photograph the two sentences it draws. The search is closed before the shot, so
+the prose is read on the rail's own ground rather than through the overlay's
+blur. It segments the list crop into inked bands and takes the width of each:
+a line that restates the condition is no wider than the condition, and the step
+that replaced it is wider by at least a fifth of the list. The before arm names
+a build of this tree whose rail restates its condition:
+
+```sh
+SCENE_MOTION_FLOOR=2 proof/docker/record-native.sh \
+  proof/scenes/desktop-empty-copy.sh
+SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=2 \
+  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
+  proof/docker/record-native.sh proof/scenes/desktop-empty-copy.sh
+```
+
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.
