@@ -104,7 +104,6 @@ sheet_box() { # <shot> -> "<leading> <trailing> <sampled> <width>" or a reason
 from collections import Counter
 from pathlib import Path
 import sys
-import tomllib
 
 frame, scenes_dir = sys.argv[1], Path(sys.argv[2]).resolve()
 corner, step = int(sys.argv[3]), int(sys.argv[4])
@@ -152,11 +151,8 @@ def rgb_of(text):
 # The front end starts on the bundled dark theme: float is the ground a page
 # floating over the session stands on, and hairline is what a surface that
 # edges itself edges itself in.
-role = tomllib.loads((token_px.themes_dir() / "dark.toml").read_text()).get("role", {})
-if not role.get("hairline") or not role.get("float"):
-	print("no-theme")
-	raise SystemExit
-hairline, ground = rgb_of(role["hairline"]), rgb_of(role["float"])
+hairline = rgb_of(token_px.text_of("themes/dark.toml", "role.hairline"))
+ground = rgb_of(token_px.text_of("themes/dark.toml", "role.float"))
 run = bytes(ground) * 3
 
 
@@ -238,9 +234,9 @@ case "${LEADING}" in
 		abandon_take "page-found" \
 			"no block of the theme's float ground is tall enough to be the settings page"
 		;;
-	no-theme)
+	"")
 		abandon_take "theme-known" \
-			"the bundled dark theme states no hairline or float role, so the box has nothing to be read against"
+			"the resolver answered no colour for the dark theme's hairline or float role"
 		;;
 	frame-shape)
 		abandon_take "frame-read" "the frame did not decode as 8-bit RGB pixels"
