@@ -303,6 +303,9 @@ pub struct ShellSurfaceTokens {
 	pub titlebar_control_gap_px:   f32,
 	pub titlebar_inset_left_px:    f32,
 	pub titlebar_inset_right_px:   f32,
+	/// The width the title's rename field is capped at, so an editor opened
+	/// over a long name stays inside the titlebar's centre column.
+	pub titlebar_rename_width_px:  f32,
 	pub grain_tile_px:             f32,
 	pub grain_opacity:             f32,
 	pub gate_pending_strength:     f32,

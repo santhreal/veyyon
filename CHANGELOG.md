@@ -215,6 +215,7 @@
 
 ### Changed
 
+- The desktop reads the last of its compiled-in measures from its token files: the composer's abort square and the queue's search header take the medium control size, the drawer's active tab underline and the terminal grid's cursor take the heavy stroke, and the titlebar's rename field takes `surface/shell.toml`'s new `titlebar_rename_width_px`. All four draw at the sizes they drew before.
 - The GUI host reports a failed action through the shared `errorMessage` helper rather than its own inline error narrowing in each handler. No user-visible behavior changes.
 - A terminal the desktop opens starts its shell in the root session tree's CPU budget group, so a shell that outlives the session it was opened beside stays capped rather than uncapped.
 - The 860 lines of raw settings migrations moved out of `config/settings.ts` into `config/settings-migrations.ts`, which also drops the theme-classifier, builtin-tool-name and compaction-strategy imports from the module most of the product reaches for a setting. No setting, default, order or migration behavior changes.

@@ -246,7 +246,7 @@ fn apply_cursor_style<E: Styled>(
 			.text_color(tokens.color(ColorRole::AccentForeground)),
 		CursorShape::Bar => {
 			let mut res = el
-				.border_l(px(2.0))
+				.border_l(tokens.stroke(StrokeStep::Heavy))
 				.border_color(tokens.color(ColorRole::Accent))
 				.text_color(fg);
 			if let Some(bg_color) = bg {
@@ -256,7 +256,7 @@ fn apply_cursor_style<E: Styled>(
 		},
 		CursorShape::Underline => {
 			let mut res = el
-				.border_b(px(2.0))
+				.border_b(tokens.stroke(StrokeStep::Heavy))
 				.border_color(tokens.color(ColorRole::Accent))
 				.text_color(fg);
 			if let Some(bg_color) = bg {

@@ -227,6 +227,7 @@ control_px = {}
 control_gap_px = "{}"
 inset_left_px = "{}"
 inset_right_px = "{}"
+rename_width_px = {}
 
 [grain]
 tile_px = {}
@@ -243,6 +244,7 @@ unavailable_strength = {}
 		step_spacing(s, sh.titlebar_control_gap_px),
 		step_spacing(s, sh.titlebar_inset_left_px),
 		step_spacing(s, sh.titlebar_inset_right_px),
+		sh.titlebar_rename_width_px as i64,
 		sh.grain_tile_px as i64,
 		sh.grain_opacity,
 		sh.gate_pending_strength,

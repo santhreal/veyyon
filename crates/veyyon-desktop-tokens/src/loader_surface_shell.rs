@@ -33,6 +33,7 @@ pub fn load_shell(path: &Path, scale: &ScaleTokens) -> Result<ShellSurfaceTokens
 		"control_gap_px",
 		"inset_left_px",
 		"inset_right_px",
+		"rename_width_px",
 	])?;
 
 	let grain = root.sub("grain")?;
@@ -49,6 +50,7 @@ pub fn load_shell(path: &Path, scale: &ScaleTokens) -> Result<ShellSurfaceTokens
 		titlebar_control_gap_px:   titlebar.spacing("control_gap_px", scale)?,
 		titlebar_inset_left_px:    titlebar.spacing("inset_left_px", scale)?,
 		titlebar_inset_right_px:   titlebar.spacing("inset_right_px", scale)?,
+		titlebar_rename_width_px:  titlebar.dimension("rename_width_px")?,
 		grain_tile_px:             grain.dimension("tile_px")?,
 		grain_opacity:             grain.ratio("opacity")?,
 		gate_pending_strength:     gate.ratio("pending_strength")?,

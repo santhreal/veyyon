@@ -120,7 +120,7 @@ pub fn titlebar(
 			div()
 				.id("titlebar-title-edit")
 				.w_full()
-				.max_w(px(320.0))
+				.max_w(px(geometry.titlebar_rename_width_px))
 				.child(TextField::new("session-rename-field", editor))
 		} else {
 			div()

@@ -7,7 +7,7 @@ use veyyon_desktop_kit::{
 use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_gpui::{
 	AnyElement, ClickEvent, Context, ElementId, InteractiveElement, IntoElement, ParentElement,
-	SharedString, StatefulInteractiveElement, Styled, div, px,
+	SharedString, StatefulInteractiveElement, Styled, div,
 };
 
 use super::turn::{PrimaryAction, TurnPhase, primary_action};
@@ -53,6 +53,7 @@ pub fn turn_action_controls(
 	let av = controls.availability(&primary_id);
 	let (opacity, cursor, allowed) = availability_style(&av, tokens);
 
+	let metrics = control_metrics(ButtonSize::Medium, tokens);
 	let mut container = div()
 		.id(ElementId::from("composer-actions-container"))
 		.flex()
@@ -61,9 +62,10 @@ pub fn turn_action_controls(
 		.gap(tokens.spacing(SpacingStep::S2))
 		.flex_shrink_0();
 
-	// AbortTurn is an isolated 28px control, shown while a turn is in flight
-	// (§5.4) -- generating, or parked on a decision, which is a turn that has
-	// not ended and is exactly where an operator reaches for the stop.
+	// AbortTurn is an isolated control at the composer action row's size
+	// (§5.4), shown while a turn is in flight -- generating, or parked on a
+	// decision, which is a turn that has not ended and is exactly where an
+	// operator reaches for the stop.
 	if turn.is_stoppable() {
 		let abort_id = SurfaceId::ComposerAbortButton(sid.clone());
 		let cancel_tool_id = SurfaceId::ComposerCancelToolButton(sid, "bash".to_string());
@@ -78,8 +80,8 @@ pub fn turn_action_controls(
 
 		let mut abort_btn = div()
 			.id(ElementId::from("composer-abort-turn"))
-			.w(px(28.0))
-			.h(px(28.0))
+			.w(metrics.square)
+			.h(metrics.square)
 			.flex()
 			.items_center()
 			.justify_center()
@@ -118,7 +120,6 @@ pub fn turn_action_controls(
 	};
 
 	let active = allowed && actionable;
-	let metrics = control_metrics(ButtonSize::Medium, tokens);
 	let label = av.reason().unwrap_or_else(|| primary.label()).to_owned();
 	let mut button = div()
 		.id("composer-primary-action")

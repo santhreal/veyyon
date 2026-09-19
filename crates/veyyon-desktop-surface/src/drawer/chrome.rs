@@ -133,7 +133,7 @@ pub fn drawer_chrome(
 			if is_active {
 				tab_el = tab_el
 					.bg(tokens.color(ColorRole::Canvas))
-					.border_b(px(2.0))
+					.border_b(tokens.stroke(StrokeStep::Heavy))
 					.border_color(tokens.color(ColorRole::Accent));
 			} else {
 				tab_el = tab_el.hover(|s| {

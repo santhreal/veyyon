@@ -5,8 +5,8 @@
 //! and interactive paging controls for archival partitions.
 
 use veyyon_desktop_kit::{
-	ColorRole, RadiusStep, SpacingStep, TextRamp, TextWeight, TokenSet,
-	controls::{IconButton, IconButtonVariant},
+	ButtonSize, ColorRole, RadiusStep, SpacingStep, TextRamp, TextWeight, TokenSet,
+	controls::{IconButton, IconButtonVariant, control_metrics},
 	icons::{Icon, IconName, IconSize},
 	state::InteractiveState,
 };
@@ -31,6 +31,7 @@ pub fn queue_nav_header(
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
+	let search_height = control_metrics(ButtonSize::Medium, tokens).height;
 	let hover_bg = tokens.row_hover();
 	let search_content = if let Some(q) = filter_query.filter(|s| !s.trim().is_empty()) {
 		let current_q = q.to_string();
@@ -38,7 +39,7 @@ pub fn queue_nav_header(
 			.id("queue-search-active")
 			.flex_1()
 			.min_w_0()
-			.h(px(28.0))
+			.h(search_height)
 			.px(px(geometry.card_padding_horizontal))
 			.rounded(tokens.radius(RadiusStep::Sm))
 			.bg(tokens.row_selected())
@@ -88,7 +89,7 @@ pub fn queue_nav_header(
 			.cursor_pointer()
 			.flex_1()
 			.min_w_0()
-			.h(px(28.0))
+			.h(search_height)
 			.px(px(geometry.card_padding_horizontal))
 			.rounded(tokens.radius(RadiusStep::Sm))
 			.bg(tokens.transparent())
