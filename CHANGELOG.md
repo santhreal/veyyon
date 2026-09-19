@@ -611,6 +611,17 @@
 
 ### Fixed
 
+- A desktop surface that states a count states it in the singular when it is one, where the panel drew `1 more changed files are not listed`, the transcript drew `1 lines` and the terminal drawer drew `1 matches`.
+- The desktop run bar puts its status word and the line beside it on one centre line, where the line sat six pixels above the badge.
+- The desktop terminal drawer's chrome actions are the size of the tab strip they sit in, and its supervised-process rows draw actions that fit the row's height instead of overflowing it by four pixels.
+- A desktop diff pane's horizontal scroll rail spans the code it scrolls rather than the pinned gutter beside it.
+- The desktop session rail and supervised-process list centre their empty states in the space they have, as the right panel already did, instead of pinning them under the header.
+- The desktop right panel's chrome rows start their text on one column, where the tab strip, the diff toolbar, the file headers and the review controls each began at a different inset.
+- The desktop composer footer's model label lines up with the draft text above it.
+- A desktop scene capture is taken after the surface has settled: the eight frames it draws each step the clock, where they were drawn at one instant and left every animator at its start value, so the announcement stack was captured mid-entrance as a backdrop blur over the panel with no card on it.
+- The desktop run bar's label resolves the size and tracking of its type step and not its leading, which a single line centred in a row of authored height has no way to draw; no frame changes.
+- A desktop composer attachment states its own bounds: it draws on the inset ground with its thumbnail parted by a hairline, where it carried an edge the composer's float matched to within five values and read as loose text, and its full name and refusal are readable on hover instead of only ellipsised in the card.
+- The desktop composer does not take the keyboard on the first frame while no session is open, where it drew ringed in the focus accent and invited a prompt whose send, model selector and thinking selector were all held back.
 - The desktop terminal drawer no longer carries three offsets against its authored measures, the viewport ratio on the drawer's height and the minimum columns and rows on the grid's padding, each of which resolved to zero at the shipped values and drew nothing.
 - The desktop settings page draws in the box `surface/settings.toml` authors for it, on the float ground and inking its own hairline edge, where it borrowed the command palette's 576px box and truncated its rows in it.
 - The desktop General settings search field takes the keyboard and narrows the page as it is typed, where it drew the query as static text and discarded every keystroke; `Escape` widens a narrowed page before it leaves it.
