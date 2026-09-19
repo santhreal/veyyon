@@ -20,4 +20,5 @@ pub struct ControlTokens {
 	pub popover_estimated_height_px:     f32,
 	pub editor_caret_width_px:           f32,
 	pub editor_unmeasured_wrap_width_px: f32,
+	pub spinner_ring_alpha:              f32,
 }

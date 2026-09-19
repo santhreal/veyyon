@@ -24,6 +24,7 @@ pub fn load_transcript(
 		"assistant_turn",
 		"chrome",
 		"tool_view",
+		"reasoning",
 	])?;
 	root.meta("surface_transcript")?;
 
@@ -58,6 +59,9 @@ pub fn load_transcript(
 		"result_summary_max_width_px",
 	])?;
 
+	let reasoning = root.sub("reasoning")?;
+	reasoning.only(&["summary_alpha"])?;
+
 	Ok(TranscriptSurfaceTokens {
 		column_width_px: layout.number("column_width_px")?,
 		user_turn_width_ratio: layout.ratio("user_turn_width_ratio")?,
@@ -81,5 +85,6 @@ pub fn load_transcript(
 		tool_view_line_number_gutter_px: tool_view.number("line_number_gutter_px")?,
 		tool_view_notice_body_indent_px: tool_view.number("notice_body_indent_px")?,
 		tool_view_result_summary_max_width_px: tool_view.number("result_summary_max_width_px")?,
+		reasoning_summary_alpha: reasoning.ratio("summary_alpha")?,
 	})
 }

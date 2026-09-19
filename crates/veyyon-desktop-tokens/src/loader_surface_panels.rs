@@ -13,7 +13,16 @@ pub fn load_panels(path: &Path, scale: &ScaleTokens) -> Result<PanelsSurfaceToke
 	let text = read_file(path)?;
 	let val = parse_toml(path, &text)?;
 	let root = Section::root(path, &text, &val)?;
-	root.only(&["meta", "right_panel", "terminal_drawer", "tabs", "chrome", "tree", "diff"])?;
+	root.only(&[
+		"meta",
+		"right_panel",
+		"terminal_drawer",
+		"tabs",
+		"chrome",
+		"tree",
+		"diff",
+		"mono_pane",
+	])?;
 	root.meta("surface_panels")?;
 
 	let rp = root.sub("right_panel")?;
@@ -57,6 +66,15 @@ pub fn load_panels(path: &Path, scale: &ScaleTokens) -> Result<PanelsSurfaceToke
 		"intraline_alpha",
 	])?;
 
+	let mono_pane = root.sub("mono_pane")?;
+	mono_pane.only(&[
+		"overflow_width_px",
+		"edge_fade_alpha",
+		"scroll_track_alpha",
+		"scroll_thumb_alpha",
+		"scroll_thumb_ratio",
+	])?;
+
 	Ok(PanelsSurfaceTokens {
 		right_panel_min_width_px: rp.number("min_width_px")?,
 		right_panel_default_width_px: rp.number("default_width_px")?,
@@ -90,5 +108,10 @@ pub fn load_panels(path: &Path, scale: &ScaleTokens) -> Result<PanelsSurfaceToke
 		diff_hunk_header_height_px: diff.spacing("hunk_header_height_px", scale)?,
 		diff_added_removed_alpha: diff.ratio("added_removed_alpha")?,
 		diff_intraline_alpha: diff.ratio("intraline_alpha")?,
+		mono_pane_overflow_width_px: mono_pane.number("overflow_width_px")?,
+		mono_pane_edge_fade_alpha: mono_pane.ratio("edge_fade_alpha")?,
+		mono_pane_scroll_track_alpha: mono_pane.ratio("scroll_track_alpha")?,
+		mono_pane_scroll_thumb_alpha: mono_pane.ratio("scroll_thumb_alpha")?,
+		mono_pane_scroll_thumb_ratio: mono_pane.ratio("scroll_thumb_ratio")?,
 	})
 }

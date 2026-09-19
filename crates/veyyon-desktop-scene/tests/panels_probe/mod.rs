@@ -16,7 +16,7 @@ use veyyon_desktop_surface::{
 	fixture::{populated, with_drawer},
 	install_tokens,
 	layout::{LabelState, ShedInput, shell_widths},
-	right_panel::PanelTab,
+	right_panel::{DiffRow, PanelTab},
 };
 use veyyon_desktop_tokens::{Tokens, load_bundled_theme};
 use veyyon_gpui::{AppContext, Point};
@@ -107,10 +107,28 @@ fn seeded_long_tabs() -> Seeded {
 	Seeded { name: "drawer_long_tabs", options: wide(), state }
 }
 
+/// A diff whose longest line runs past the pane but not past twice the width
+/// the pane calls overflow, which is the one state the pane's own fade, scroll
+/// rail and thumb are drawn in and the width they start at is measurable.
+fn seeded_diff_overflowing() -> Seeded {
+	let mut state = populated();
+	state.keymap.panel_collapsed = false;
+	state.panel.active_tab = PanelTab::Diff;
+	if let Some(file) = state.panel.diff.first_mut() {
+		file.rows.push(DiffRow::Added {
+			new_line:  4,
+			text:      format!("let wide = {};", "x".repeat(40)),
+			intraline: Vec::new(),
+		});
+	}
+	Seeded { name: "panel_diff_overflowing", options: wide(), state }
+}
+
 /// Renders all seeded panel and drawer states against `tokens`.
 pub fn observations(cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
 	let states = vec![
 		seeded_diff_inline(),
+		seeded_diff_overflowing(),
 		seeded_tree_inline(),
 		seeded_panel_overlay(),
 		seeded_drawer_ratio(),

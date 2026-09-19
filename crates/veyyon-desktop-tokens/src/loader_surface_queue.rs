@@ -25,6 +25,7 @@ pub fn load_queue(path: &Path, scale: &ScaleTokens) -> Result<QueueSurfaceTokens
 		"section_layout",
 		"footer",
 		"limits",
+		"card_state",
 	])?;
 
 	let width = geom.sub("width")?;
@@ -63,6 +64,14 @@ pub fn load_queue(path: &Path, scale: &ScaleTokens) -> Result<QueueSurfaceTokens
 	let limits = geom.sub("limits")?;
 	limits.only(&["max_hover_actions", "parked_initial_page_size"])?;
 
+	let card_state = geom.sub("card_state")?;
+	card_state.only(&[
+		"open_edge_alpha",
+		"selected_edge_alpha",
+		"resting_edge_alpha",
+		"in_flight_title_alpha",
+	])?;
+
 	Ok(QueueSurfaceTokens {
 		width_default_px:            width.number("default_px")?,
 		width_min_px:                width.number("min_px")?,
@@ -89,5 +98,9 @@ pub fn load_queue(path: &Path, scale: &ScaleTokens) -> Result<QueueSurfaceTokens
 		gear_size_px:                footer.spacing("gear_size_px", scale)?,
 		section_gap_above:           section_layout.spacing("gap_above", scale)?,
 		section_gap_below:           section_layout.spacing("gap_below", scale)?,
+		card_open_edge_alpha:        card_state.number("open_edge_alpha")?,
+		card_selected_edge_alpha:    card_state.number("selected_edge_alpha")?,
+		card_resting_edge_alpha:     card_state.number("resting_edge_alpha")?,
+		card_in_flight_title_alpha:  card_state.number("in_flight_title_alpha")?,
 	})
 }

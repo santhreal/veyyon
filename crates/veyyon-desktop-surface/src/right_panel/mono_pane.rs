@@ -46,7 +46,7 @@ pub fn pinned_gutter_pane(
 	tokens: &TokenSet,
 ) -> Div {
 	let (lead_px, tail_px) = pane.padding;
-	let has_overflow = pane.content_width_px > 280.0;
+	let has_overflow = pane.content_width_px > geometry.mono_pane_overflow_width_px;
 
 	let code_scroll_area = div()
 		.id(pane.id)
@@ -69,20 +69,32 @@ pub fn pinned_gutter_pane(
 			.bottom_0()
 			.right_0()
 			.w(tokens.spacing(SpacingStep::S8))
-			.bg(tokens.color(ColorRole::Rail).opacity(0.85))
+			.bg(
+				tokens
+					.color(ColorRole::Rail)
+					.opacity(geometry.mono_pane_edge_fade_alpha),
+			)
 	});
 
 	let scroll_affordance = has_overflow.then(|| {
 		div()
 			.w_full()
 			.h(tokens.spacing(SpacingStep::S2))
-			.bg(tokens.color(ColorRole::Hairline).opacity(0.3))
+			.bg(
+				tokens
+					.color(ColorRole::Hairline)
+					.opacity(geometry.mono_pane_scroll_track_alpha),
+			)
 			.child(
 				div()
 					.h_full()
-					.w(relative(0.35))
+					.w(relative(geometry.mono_pane_scroll_thumb_ratio))
 					.rounded(tokens.radius(RadiusStep::Full))
-					.bg(tokens.color(ColorRole::Muted).opacity(0.6)),
+					.bg(
+						tokens
+							.color(ColorRole::Muted)
+							.opacity(geometry.mono_pane_scroll_thumb_alpha),
+					),
 			)
 	});
 

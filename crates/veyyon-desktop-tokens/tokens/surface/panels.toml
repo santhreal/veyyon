@@ -44,3 +44,12 @@ sign_width_px = "s6"
 hunk_header_height_px = "s10"
 added_removed_alpha = 0.85
 intraline_alpha = 0.35
+
+# A monospace pane fades the line that runs past its right edge, and draws its
+# own scroll rail under it.
+[mono_pane]
+overflow_width_px = 280
+edge_fade_alpha = 0.85
+scroll_track_alpha = 0.30
+scroll_thumb_alpha = 0.60
+scroll_thumb_ratio = 0.35

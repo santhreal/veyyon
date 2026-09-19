@@ -5,6 +5,8 @@
 //! rhythm gaps, and the expansion caps for mono panes, code fences, images, and
 //! plans.
 
+use std::time::Duration;
+
 use image::{ExtendedColorType, ImageBuffer, ImageEncoder, Rgba, codecs::png::PngEncoder};
 use veyyon_desktop_scene::Headless;
 use veyyon_desktop_surface::{
@@ -15,7 +17,7 @@ use veyyon_desktop_tokens::Tokens;
 
 use crate::dead_token_probe::{
 	Observation,
-	shell::{self, Seeded},
+	shell::{self, Prepared, Seeded},
 };
 
 fn make_png(width: u32, height: u32) -> Vec<u8> {
@@ -136,6 +138,21 @@ fn seeded_artifact() -> ShellState {
 	state
 }
 
+/// A single reasoning block, whose expanded summary is the only thing that
+/// draws the reasoning summary strength.
+fn seeded_reason() -> ShellState {
+	let mut state = fixture::populated();
+	state.transcript = vec![Turn::Agent {
+		blocks: vec![Block::Reason(
+			"Weighing the column clamp against the wrap width, then settling on the narrower of the \
+			 two so the summary keeps its own measure across the whole reveal."
+				.to_owned(),
+		)],
+		model:  None,
+	}];
+	state
+}
+
 fn seeded_code_pane() -> ShellState {
 	let mut state = fixture::populated();
 	let lines = (1..50)
@@ -187,5 +204,23 @@ pub fn observations(cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
 			state:   seeded_plan_pane(),
 		},
 	];
-	shell::render(cx, tokens, states)
+	let mut observations = shell::render(cx, tokens, states);
+	observations.extend(shell::render_prepared(cx, tokens, vec![Prepared {
+		name:    "transcript_reason_expanded",
+		options: shell::wide(),
+		state:   seeded_reason(),
+		// The reveal fades over 60ms even reduced, so it is started far enough
+		// in the past that the first frame samples it settled and the summary
+		// draws at its own strength rather than at the fade's.
+		prepare: |view, installed, now| {
+			// The first frame switches the viewport onto the session, which
+			// clears the expansion it restores for that id, so the switch
+			// happens here first and the frame's own is a no-op.
+			let viewport = view.transcript_viewport();
+			viewport.switch_session(view.state().current_id, view.state().transcript.len());
+			let settled = now.checked_sub(Duration::from_secs(1)).unwrap_or(now);
+			viewport.set_block_expanded(0, 0, true, &installed.motion, true, settled);
+		},
+	}]));
+	observations
 }

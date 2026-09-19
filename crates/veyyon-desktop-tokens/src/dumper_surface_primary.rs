@@ -54,6 +54,12 @@ gear_size_px = "{}"
 [geometry.limits]
 max_hover_actions = {}
 parked_initial_page_size = {}
+
+[geometry.card_state]
+open_edge_alpha = {}
+selected_edge_alpha = {}
+resting_edge_alpha = {}
+in_flight_title_alpha = {}
 "#,
 		q.width_default_px as i64,
 		q.width_min_px as i64,
@@ -79,7 +85,11 @@ parked_initial_page_size = {}
 		step_spacing(s, q.footer_inset),
 		step_spacing(s, q.gear_size_px),
 		q.max_hover_actions,
-		q.parked_initial_page_size
+		q.parked_initial_page_size,
+		q.card_open_edge_alpha,
+		q.card_selected_edge_alpha,
+		q.card_resting_edge_alpha,
+		q.card_in_flight_title_alpha
 	);
 	write_file(path, &out)
 }
@@ -128,6 +138,9 @@ row_pad_y_px = {}
 line_number_gutter_px = {}
 notice_body_indent_px = {}
 result_summary_max_width_px = {}
+
+[reasoning]
+summary_alpha = {}
 "#,
 		t.column_width_px as i64,
 		t.user_turn_width_ratio,
@@ -150,7 +163,8 @@ result_summary_max_width_px = {}
 		t.tool_view_row_pad_y_px as i64,
 		t.tool_view_line_number_gutter_px as i64,
 		t.tool_view_notice_body_indent_px as i64,
-		t.tool_view_result_summary_max_width_px as i64
+		t.tool_view_result_summary_max_width_px as i64,
+		t.reasoning_summary_alpha
 	);
 	write_file(path, &out)
 }

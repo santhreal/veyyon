@@ -67,6 +67,9 @@ estimated_height_px = {}
 [editor]
 caret_width_px = {}
 unmeasured_wrap_width_px = {}
+
+[spinner]
+ring_alpha = {}
 "#,
 		c.height_small_px as i64,
 		c.height_medium_px as i64,
@@ -78,7 +81,8 @@ unmeasured_wrap_width_px = {}
 		c.popover_estimated_width_px as i64,
 		c.popover_estimated_height_px as i64,
 		c.editor_caret_width_px as i64,
-		c.editor_unmeasured_wrap_width_px as i64
+		c.editor_unmeasured_wrap_width_px as i64,
+		c.spinner_ring_alpha
 	);
 	write_file(path, &out)
 }

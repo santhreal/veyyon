@@ -60,6 +60,13 @@ sign_width_px = "{}"
 hunk_header_height_px = "{}"
 added_removed_alpha = {}
 intraline_alpha = {}
+
+[mono_pane]
+overflow_width_px = {}
+edge_fade_alpha = {}
+scroll_track_alpha = {}
+scroll_thumb_alpha = {}
+scroll_thumb_ratio = {}
 "#,
 		p.right_panel_min_width_px as i64,
 		p.right_panel_default_width_px as i64,
@@ -92,7 +99,12 @@ intraline_alpha = {}
 		step_spacing(s, p.diff_sign_width_px),
 		step_spacing(s, p.diff_hunk_header_height_px),
 		p.diff_added_removed_alpha,
-		p.diff_intraline_alpha
+		p.diff_intraline_alpha,
+		p.mono_pane_overflow_width_px as i64,
+		p.mono_pane_edge_fade_alpha,
+		p.mono_pane_scroll_track_alpha,
+		p.mono_pane_scroll_thumb_alpha,
+		p.mono_pane_scroll_thumb_ratio
 	);
 	write_file(path, &out)
 }

@@ -202,11 +202,17 @@ pub fn card_row(
 		.rounded(tokens.radius(RadiusStep::Md))
 		.border(tokens.stroke(StrokeStep::Hairline))
 		.border_color(if is_open {
-			tokens.color(ColorRole::Focus).opacity(0.55)
+			tokens
+				.color(ColorRole::Focus)
+				.opacity(geometry.card_open_edge_alpha)
 		} else if selected {
-			tokens.color(ColorRole::Focus).opacity(0.40)
+			tokens
+				.color(ColorRole::Focus)
+				.opacity(geometry.card_selected_edge_alpha)
 		} else {
-			tokens.color(ColorRole::Hairline).opacity(0.45)
+			tokens
+				.color(ColorRole::Hairline)
+				.opacity(geometry.card_resting_edge_alpha)
 		})
 		.bg(ground)
 		.opacity(row_opacity)
@@ -232,7 +238,9 @@ pub fn card_row(
 						.line_height(tokens.line_height(TextRamp::Read))
 						.font_weight(tokens.font_weight(TextWeight::Medium))
 						.text_color(if in_flight && !is_open && !selected {
-							tokens.color(ColorRole::Foreground).opacity(0.70)
+							tokens
+								.color(ColorRole::Foreground)
+								.opacity(geometry.card_in_flight_title_alpha)
 						} else {
 							tokens.color(ColorRole::Foreground)
 						})

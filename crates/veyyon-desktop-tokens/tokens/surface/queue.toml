@@ -40,3 +40,11 @@ gear_size_px = "s8"
 [geometry.limits]
 max_hover_actions = 2
 parked_initial_page_size = 25
+
+# A card states open, selected, in flight and at rest with the strength it
+# draws a role at, rather than with a colour role per state (§6.4).
+[geometry.card_state]
+open_edge_alpha = 0.55
+selected_edge_alpha = 0.40
+resting_edge_alpha = 0.45
+in_flight_title_alpha = 0.70

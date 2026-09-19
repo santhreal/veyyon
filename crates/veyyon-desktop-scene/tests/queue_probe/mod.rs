@@ -62,6 +62,16 @@ pub fn observations(cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
 	let mut collapsed = populated.clone();
 	collapsed.keymap.queue_collapsed = true;
 
+	// The cursor on a row the host does not have open is the one state a card
+	// draws its selected edge in: on the open row the open edge wins.
+	let mut cursor_elsewhere = populated.clone();
+	let elsewhere = cursor_elsewhere
+		.listed_rows()
+		.map(|row| row.id)
+		.find(|id| *id != cursor_elsewhere.current_id)
+		.expect("the populated fixture lists a row that is not the open one");
+	cursor_elsewhere.keymap.queue_cursor = Some(elsewhere);
+
 	let states = vec![
 		Seeded { name: "queue_default_wide", options: shell::wide(), state: populated.clone() },
 		Seeded {
@@ -76,6 +86,11 @@ pub fn observations(cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
 			state:   seeded_parked_only(),
 		},
 		Seeded { name: "queue_collapsed", options: shell::wide(), state: collapsed },
+		Seeded {
+			name:    "queue_cursor_off_open_row",
+			options: shell::wide(),
+			state:   cursor_elsewhere,
+		},
 	];
 	let mut obs = shell::render(cx, tokens, states);
 

@@ -66,6 +66,6 @@ impl RenderOnce for Spinner {
 			.rounded(radius)
 			.border(tokens.stroke(StrokeStep::Heavy))
 			.border_color(color)
-			.opacity(0.85)
+			.opacity(tokens.controls().spinner_ring_alpha)
 	}
 }

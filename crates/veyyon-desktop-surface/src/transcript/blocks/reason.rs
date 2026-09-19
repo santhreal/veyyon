@@ -103,7 +103,7 @@ pub fn render_reason_block(
 			div()
 				.italic()
 				.text_color(tokens.color(ColorRole::Secondary))
-				.opacity(0.8)
+				.opacity(geometry.reasoning_summary_alpha)
 				.child(streaming_document(
 					summary,
 					is_streaming,

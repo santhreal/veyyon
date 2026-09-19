@@ -12,7 +12,7 @@ pub fn load_controls(path: &Path) -> Result<ControlTokens, TokenError> {
 	let text = read_file(path)?;
 	let val = parse_toml(path, &text)?;
 	let root = Section::root(path, &text, &val)?;
-	root.only(&["meta", "height", "toggle", "scroll", "tooltip", "popover", "editor"])?;
+	root.only(&["meta", "height", "toggle", "scroll", "tooltip", "popover", "editor", "spinner"])?;
 	root.meta("controls")?;
 
 	let height = root.sub("height")?;
@@ -27,6 +27,8 @@ pub fn load_controls(path: &Path) -> Result<ControlTokens, TokenError> {
 	popover.only(&["estimated_width_px", "estimated_height_px"])?;
 	let editor = root.sub("editor")?;
 	editor.only(&["caret_width_px", "unmeasured_wrap_width_px"])?;
+	let spinner = root.sub("spinner")?;
+	spinner.only(&["ring_alpha"])?;
 
 	Ok(ControlTokens {
 		height_small_px:                 height.number("small_px")?,
@@ -40,5 +42,6 @@ pub fn load_controls(path: &Path) -> Result<ControlTokens, TokenError> {
 		popover_estimated_height_px:     popover.number("estimated_height_px")?,
 		editor_caret_width_px:           editor.number("caret_width_px")?,
 		editor_unmeasured_wrap_width_px: editor.number("unmeasured_wrap_width_px")?,
+		spinner_ring_alpha:              spinner.ratio("ring_alpha")?,
 	})
 }

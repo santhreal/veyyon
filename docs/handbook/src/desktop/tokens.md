@@ -115,10 +115,10 @@ The `tokens/surface/` directory contains component geometry and behavior setting
 
 - `shell.toml`: Minimum window width (800px) and height (560px), titlebar height (52px), control box sizes (28px), titlebar control spacing (`s4`), horizontal padding insets (`s6`), the background grain tile size and opacity, and the `[gate]` interaction strengths.
 - `breakpoints.toml`: Threshold widths for `wide` (1440px), `standard` (1180px), `compact` (980px), and `collapsed` (800px). Sets queue presentation (`inline` or `overlay`), right panel presentation (`inline_540`, `inline_360`, or `overlay`), terminal drawer placement (`row` or `overlay`), drawer height, and button label visibility toggles.
-- `queue.toml`: Width bounds for the sidebar, content insets, row heights for card and line styles, badge layout spacing, section gaps, footer dimensions, and parked session pagination sizes.
+- `queue.toml`: Width bounds for the sidebar, content insets, row heights for card and line styles, badge layout spacing, section gaps, footer dimensions, parked session pagination sizes, and the strengths a card's edge and title draw at when it is open, selected, at rest, or in flight.
 - `transcript.toml`: Turn margins, message container widths, gutter dimensions, tool execution block styling, diff display options, and scroll bounds.
 - `composer.toml`: Text input maximum width (768px), resting height (70px), maximum height expansion (200px), outer and inner radii, backdrop blur and shadow properties, run bar dimensions, opening line typography, and attachment thumbnail dimensions.
-- `panels.toml`: Right panel and terminal drawer widths, minimum sizes, tab bar heights, and tab item limits.
+- `panels.toml`: Right panel and terminal drawer widths, minimum sizes, tab bar heights, tab item limits, and the monospace pane's overflow width, edge fade, scroll rail and thumb.
 - `palette.toml`: Command palette and picker widths, maximum vertical bounds, row heights, search input typography, and result list limits.
 - `attached-cards.toml`: Geometry, padding, corner radii, and badge limits for decision and approval cards.
 - `settings.toml`: Settings page content width, row height (44px), typography steps, and input control spacings.

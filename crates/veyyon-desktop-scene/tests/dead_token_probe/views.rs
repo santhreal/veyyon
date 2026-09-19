@@ -3,7 +3,7 @@
 //! input method is placed against.
 
 use veyyon_desktop_kit::{
-	AnchorCorner, Button, ButtonSize, ColorRole, Popover, SpacingStep, TokenSet, Tooltip,
+	AnchorCorner, Button, ButtonSize, ColorRole, Popover, SpacingStep, Spinner, TokenSet, Tooltip,
 	input::Editor,
 };
 use veyyon_desktop_model::tool_view::{
@@ -97,7 +97,8 @@ fn sized_controls() -> Div {
 	{
 		row = row.child(Button::new(id, "Run").size(size));
 	}
-	row
+	// The ring is the one place the spinner's own strength is drawn.
+	row.child(Spinner::new())
 }
 
 /// A popover declaring no size, at an origin the authored estimate fits at

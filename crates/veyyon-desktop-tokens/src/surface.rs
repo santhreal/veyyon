@@ -30,6 +30,10 @@ pub struct QueueSurfaceTokens {
 	pub gear_size_px:                f32,
 	pub section_gap_above:           f32,
 	pub section_gap_below:           f32,
+	pub card_open_edge_alpha:        f32,
+	pub card_selected_edge_alpha:    f32,
+	pub card_resting_edge_alpha:     f32,
+	pub card_in_flight_title_alpha:  f32,
 }
 
 /// Resolved transcript surface geometry tokens.
@@ -57,6 +61,7 @@ pub struct TranscriptSurfaceTokens {
 	pub tool_view_line_number_gutter_px: f32,
 	pub tool_view_notice_body_indent_px: f32,
 	pub tool_view_result_summary_max_width_px: f32,
+	pub reasoning_summary_alpha: f32,
 }
 
 /// Resolved composer surface geometry and glass material tokens.
@@ -147,6 +152,11 @@ pub struct PanelsSurfaceTokens {
 	pub diff_hunk_header_height_px: f32,
 	pub diff_added_removed_alpha: f32,
 	pub diff_intraline_alpha: f32,
+	pub mono_pane_overflow_width_px: f32,
+	pub mono_pane_edge_fade_alpha: f32,
+	pub mono_pane_scroll_track_alpha: f32,
+	pub mono_pane_scroll_thumb_alpha: f32,
+	pub mono_pane_scroll_thumb_ratio: f32,
 }
 
 /// Resolved command palette surface geometry tokens.

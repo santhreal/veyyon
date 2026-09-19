@@ -22,6 +22,11 @@ type_size = "read"
 [assistant_turn]
 type_size = "read"
 
+# A reasoning summary sits under the turn it belongs to, at the strength that
+# separates it from the answer without giving it a colour role of its own.
+[reasoning]
+summary_alpha = 0.80
+
 [chrome.collapsed]
 height_px = "s10"
 event_line_height_px = "s6"

@@ -39,3 +39,8 @@ estimated_height_px = 160
 [editor]
 caret_width_px = 1
 unmeasured_wrap_width_px = 100
+
+# The spinner ring, at the strength that keeps a small moving mark from reading
+# as an edge of the surface it spins on.
+[spinner]
+ring_alpha = 0.85
