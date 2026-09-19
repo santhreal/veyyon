@@ -70,7 +70,7 @@ describe("TreeSelectorComponent deep branching overflow", () => {
 		// instead of spending the whole viewport on branch gutters.
 		const selectedRow = bodyOf(root, leaf.entry.id, width).find(line => line.trimStart().startsWith("›"));
 		expect(selectedRow).toBeDefined();
-		expect(selectedRow!).toContain("user:");
+		expect(selectedRow!).toContain("user");
 		expect(selectedRow!).toMatch(/branch-\d+-b/);
 	});
 
@@ -79,6 +79,6 @@ describe("TreeSelectorComponent deep branching overflow", () => {
 		const width = 80;
 		const selectedRow = bodyOf(root, leaf.entry.id, width).find(line => line.trimStart().startsWith("›"));
 		expect(selectedRow).toBeDefined();
-		expect(selectedRow!).toContain("user:");
+		expect(selectedRow!).toContain("user");
 	});
 });

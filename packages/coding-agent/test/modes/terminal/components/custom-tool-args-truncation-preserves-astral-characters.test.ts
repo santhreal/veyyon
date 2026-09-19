@@ -126,26 +126,29 @@ describe("custom tool argument formatting in tree-selector", () => {
 		const alreadyJson = '{"query":"search term","limit":10}';
 		const rendered = renderTree(buildToolConversation("searcher", alreadyJson));
 
-		// Should show `{"query":"search term",...}` rather than `"{\"query\":\"search term\"...}"`
-		expect(rendered).toContain('[searcher: {"query":"search term"');
-		expect(rendered).not.toContain('[searcher: "{\\"query\\"');
+		// Shows `{"query":"search term",…}` rather than `"{\"query\":\"search term\"…}"`.
+		expect(rendered).toContain('{"query":"search term"');
+		expect(rendered).not.toContain('"{\\"query\\"');
 	});
 
 	it("truncates long args within TRUNCATE_LENGTHS.SHORT display width", () => {
 		const longPayload = { key: "x".repeat(100) };
 		const rendered = renderTree(buildToolConversation("my_tool", longPayload));
 
-		expect(rendered).toContain("[my_tool: ");
+		// The tool's name is the row's kind column; the argument is its text.
+		expect(rendered).toContain("my_tool");
 		expect(rendered).toContain("…");
-		// Ensure truncation keeps the display bounded
-		const toolLine = rendered.split("\n").find(line => line.includes("[my_tool:")) ?? "";
+		const toolLine = rendered.split("\n").find(line => line.includes("my_tool")) ?? "";
 		expect(toolLine.length).toBeGreaterThan(0);
+		expect(toolLine).not.toContain("x".repeat(45));
 	});
 
 	it("displays short arguments intact without unnecessary truncation", () => {
 		const shortPayload = { id: 42 };
 		const rendered = renderTree(buildToolConversation("getter", shortPayload));
 
-		expect(rendered).toContain('[getter: {"id":42}]');
+		// No string argument to name the call, so the row carries the arguments
+		// as they were recorded.
+		expect(rendered).toContain('{"id":42}');
 	});
 });

@@ -10,7 +10,7 @@ import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import type { TreeFilterMode } from "../../../../config/settings-schema";
 import { resolveAssistantErrorPresentation } from "../../../../presentation/transcript-builder";
-import { theme } from "../../../../theme/theme";
+import { type ThemeColor, theme } from "../../../../theme/theme";
 import { shortenPath, TRUNCATE_LENGTHS } from "../../../../tools/core/render-utils";
 import { canonicalizeMessage } from "../../../../utils/thinking-display";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
@@ -73,8 +73,26 @@ export const TREE_FILTER_MODES = [
  */
 const MARK_COLS = 2;
 
-/** Cells the right-hand age column occupies: a gap and three digits of age. */
-const AGE_COLS = 4;
+/**
+ * Cells the leading cursor lane occupies: a margin cell, the caret and a gap.
+ *
+ * The margin cell is why it is three and not two: the rail used to start on the
+ * card's first content column, so a root row's text sat against the border.
+ */
+const CURSOR_COLS = 3;
+
+/**
+ * Cells the entry-kind column occupies, and the gap between it and entry text.
+ *
+ * Ten because that is the longest tool name the column has to carry
+ * (`web_search`), and the kinds it carries besides a tool name — `user`,
+ * `assistant`, `developer`, `bash`, `summary` — are shorter.
+ */
+const KIND_COLS = 10;
+const KIND_GAP = 1;
+
+/** Cells the right-hand age column occupies: a gap and three glyphs of age. */
+const AGE_COLS = 6;
 
 /** Row width below which the age column is dropped for entry text. */
 const AGE_MIN_ROW_COLS = 48;
@@ -87,6 +105,119 @@ interface ToolCallInfo {
 	name: string;
 	arguments: Record<string, unknown>;
 }
+
+/**
+ * One row's content, split into the two columns that carry it.
+ *
+ * The kind is a column of its own rather than a prefix inside the text, so the
+ * entry text of every row at one depth starts at one offset and the kinds read
+ * down the card as a column. Spelling it into the text (`user: `, `[bash]: `,
+ * `[read: path]`) put the start of the content wherever the kind's own length
+ * left it, which is what made a card of mixed entries read as ragged.
+ */
+interface EntryCells {
+	/** The kind column's plain text: a role, a tool name, or an entry type. */
+	kind: string;
+	/** Colour the kind column carries. */
+	tone: ThemeColor;
+	/** Entry text, already styled. It never repeats the kind. */
+	text: string;
+}
+
+/**
+ * Cells a path may spend on a row before its leading directories are dropped.
+ */
+const PATH_TAIL_COLS = 44;
+
+/**
+ * A path as a row's text: the home directory collapsed to `~`, and the leading
+ * directories dropped behind `…/` once it runs past {@link PATH_TAIL_COLS}.
+ *
+ * A path on this card is read from its end. The file name is what distinguishes
+ * one row from the next, and the directories in front of it are shared with
+ * every other row in the same session, so a row-width path is cut from the
+ * LEFT. Cut from the right — which is what row truncation does to it otherwise
+ * — every deep row reads `packages/coding-agent/src/modes/terminal/compone…`
+ * and no two of them can be told apart.
+ */
+function tailPath(value: unknown): string {
+	const shortened = shortenPath(value);
+	if (visibleWidth(shortened) <= PATH_TAIL_COLS) return shortened;
+	const segments = shortened.split("/");
+	let tail = truncateToWidth(segments.pop() ?? shortened, PATH_TAIL_COLS - 2);
+	for (let i = segments.length - 1; i >= 0; i--) {
+		const wider = `${segments[i]}/${tail}`;
+		if (visibleWidth(wider) + 2 > PATH_TAIL_COLS) break;
+		tail = wider;
+	}
+	return `…/${tail}`;
+}
+
+/**
+ * Argument keys that name what a call was about, most telling first.
+ *
+ * A tool the card knows nothing else about gets one of these values as its row
+ * text, because a serialized argument object spends the row on braces, quotes
+ * and key names: `{"query":"terminal tree column ali…` says less in more cells
+ * than `terminal tree view column alignment`.
+ */
+const ARG_SUMMARY_KEYS = [
+	"command",
+	"query",
+	"input",
+	"path",
+	"url",
+	"expression",
+	"pattern",
+	"name",
+	"prompt",
+	"task",
+	"message",
+] as const;
+
+/** The one argument value that best names a call, or its serialized arguments. */
+function argSummary(args: Record<string, unknown>): string {
+	// A session can record arguments that were never parsed into an object: the
+	// raw JSON the provider streamed. It is returned as it stands, because
+	// `Object.entries` on a string walks its characters and answers `{`.
+	const raw: unknown = args;
+	if (typeof raw === "string") return raw;
+	for (const key of ARG_SUMMARY_KEYS) {
+		const value = args[key];
+		if (typeof value === "string" && value.trim() !== "") return value;
+	}
+	for (const [key, value] of Object.entries(args)) {
+		// `i` is the caller's own one-line intent, which every tool carries. It
+		// restates the row's kind column instead of naming what was operated on.
+		if (key === "i") continue;
+		if (typeof value === "string" && value.trim() !== "") return value;
+	}
+	return JSON.stringify(args ?? {});
+}
+
+/**
+ * Entry types the default filter hides: session bookkeeping rather than the
+ * conversation. `ctrl+O` to `all` shows them.
+ *
+ * A mode change, a title change, a tier change, a session header and an
+ * injected-rules record used to pass the default filter and paint a row with
+ * nothing on it, because the row builder had no case for them: a card of a real
+ * session carried blank rows a user could select and jump to. They are
+ * bookkeeping on the same footing as a model change, so they are hidden with
+ * it, and they now draw their own kind and text in `all`.
+ */
+const BOOKKEEPING_ENTRY_TYPES: ReadonlySet<string> = new Set([
+	"label",
+	"custom",
+	"model_change",
+	"thinking_level_change",
+	"service_tier_change",
+	"mode_change",
+	"title_change",
+	"session_init",
+	"ttsr_injection",
+	"mcp_tool_selection",
+]);
 
 class TreeList implements Component {
 	#flatNodes: FlatNode[] = [];
@@ -366,12 +497,7 @@ class TreeList implements Component {
 			}
 		}
 
-		// Entry types hidden in default view (settings/bookkeeping)
-		const isSettingsEntry =
-			entry.type === "label" ||
-			entry.type === "custom" ||
-			entry.type === "model_change" ||
-			entry.type === "thinking_level_change";
+		const isSettingsEntry = BOOKKEEPING_ENTRY_TYPES.has(entry.type);
 
 		switch (this.#filterMode) {
 			case "user-only":
@@ -412,6 +538,16 @@ class TreeList implements Component {
 					const bashMsg = msg as { command?: string };
 					if (bashMsg.command) parts.push(bashMsg.command);
 				}
+				if (msg.role === "toolResult") {
+					// The row shows the tool's name and its argument summary, so the
+					// search has to reach both: a card where `read` matches nothing is
+					// a card whose visible text the search cannot see.
+					const toolMsg = msg as { toolCallId?: string; toolName?: string };
+					const call = toolMsg.toolCallId ? this.#toolCallMap.get(toolMsg.toolCallId) : undefined;
+					const name = call?.name ?? toolMsg.toolName;
+					if (name) parts.push(name);
+					if (call) parts.push(this.#formatToolCall(call.name, call.arguments));
+				}
 				break;
 			}
 			case "custom_message": {
@@ -440,6 +576,24 @@ class TreeList implements Component {
 				break;
 			case "label":
 				parts.push("label", entry.label ?? "");
+				break;
+			case "mode_change":
+				parts.push("mode", entry.mode);
+				break;
+			case "title_change":
+				parts.push("title", entry.title);
+				break;
+			case "session_init":
+				parts.push("session");
+				break;
+			case "ttsr_injection":
+				parts.push("rules", ...entry.injectedRules);
+				break;
+			case "mcp_tool_selection":
+				parts.push("mcp", ...entry.selectedToolNames);
+				break;
+			case "service_tier_change":
+				parts.push("tier");
 				break;
 		}
 
@@ -642,7 +796,8 @@ class TreeList implements Component {
 		// is the recent one. A card too narrow to carry both spends its cells on the
 		// entry text instead.
 		const ageCols = rowWidth >= AGE_MIN_ROW_COLS ? AGE_COLS : 0;
-		const OVERHEAD_COLS = 4 + MARK_COLS + ageCols; // cursor (2) + mark + age + breathing room
+		// Every fixed column a row spends outside the rail and its text.
+		const OVERHEAD_COLS = CURSOR_COLS + MARK_COLS + KIND_COLS + KIND_GAP + ageCols;
 		const contentReserve = Math.max(MIN_CONTENT_COLS, Math.floor(rowWidth / 2));
 		const maxIndentLevels = Math.max(1, Math.floor((rowWidth - contentReserve - OVERHEAD_COLS) / 3));
 		const textWidth = rowWidth - ageCols;
@@ -655,8 +810,9 @@ class TreeList implements Component {
 			const entry = flatNode.node.entry;
 			const isSelected = i === this.#selectedIndex;
 
-			// Build line: cursor + prefix + path marker + label + content
-			const cursor = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
+			// Row shape, left to right: cursor lane, rail, node mark, kind column,
+			// label chip, entry text, age.
+			const cursor = isSelected ? theme.fg("accent", ` ${theme.nav.cursor} `) : padding(CURSOR_COLS);
 
 			// If multiple roots, shift display (roots at 0, not 1)
 			const displayIndent = this.#multipleRoots ? Math.max(0, flatNode.indent - 1) : flatNode.indent;
@@ -734,17 +890,32 @@ class TreeList implements Component {
 			// so entry text at one depth starts at one column. The bullet it replaces
 			// was painted only on active rows and shoved their text two cells right of
 			// their own siblings, which is what made the card read as ragged.
+			//
+			// The path bullet is muted where the leaf's dot is bold accent: two
+			// glyphs that differ by one pixel at a terminal's cell size are told
+			// apart by weight and colour before shape.
 			const mark =
 				entry.id === this.currentLeafId
 					? theme.bold(theme.fg("accent", `${theme.status.active} `))
 					: isOnActivePath
-						? theme.fg("accent", `${theme.md.bullet} `)
+						? theme.fg("muted", `${theme.md.bullet} `)
 						: padding(MARK_COLS);
 
-			const label = flatNode.node.label ? theme.fg("warning", `[${flatNode.node.label}] `) : "";
-			const content = this.#getEntryDisplayText(flatNode.node, isSelected);
+			// The kind column, then what the entry says. Both bold under the cursor.
+			const cells = this.#entryCells(flatNode.node);
+			const kindText = truncateToWidth(cells.kind, KIND_COLS);
+			const kindStyled = theme.fg(cells.tone, kindText);
+			const kind =
+				(isSelected ? theme.bold(kindStyled) : kindStyled) + padding(KIND_COLS - visibleWidth(kindText) + KIND_GAP);
 
-			const text = truncateToWidth(cursor + rail + mark + label + content, textWidth);
+			// A label is the user's own landmark, so it keeps its warning colour; its
+			// brackets are structure and recede.
+			const label = flatNode.node.label
+				? theme.fg("dim", "[") + theme.fg("warning", flatNode.node.label) + theme.fg("dim", "] ")
+				: "";
+			const content = isSelected ? theme.bold(cells.text) : cells.text;
+
+			const text = truncateToWidth(cursor + rail + mark + kind + label + content, textWidth);
 			const line = ageCols
 				? text + padding(Math.max(0, textWidth - visibleWidth(text))) + theme.fg("dim", this.#ageCell(entry))
 				: text;
@@ -764,7 +935,8 @@ class TreeList implements Component {
 
 	/**
 	 * The row's right-hand age cell, exactly {@link AGE_COLS} cells wide: a
-	 * leading gap and a right-aligned coarse age (`12m`, `4h`, `3d`, `2w`, `1y`).
+	 * three-cell gap and a right-aligned coarse age (`12m`, `4h`, `3d`, `2w`,
+	 * `1y`).
 	 *
 	 * Blank under a minute, and blank when the timestamp does not parse. The
 	 * column is orientation at a fork — which branch is the recent one — so a
@@ -793,10 +965,11 @@ class TreeList implements Component {
 		return ` ${label.padStart(AGE_COLS - 1)}`;
 	}
 
-	#getEntryDisplayText(node: SessionTreeNode, isSelected: boolean): string {
+	/**
+	 * Split one entry into its kind column and its text. See {@link EntryCells}.
+	 */
+	#entryCells(node: SessionTreeNode): EntryCells {
 		const entry = node.entry;
-		let result: string;
-
 		const normalize = (s: string) => s.replace(/[\n\t]/g, " ").trim();
 
 		switch (entry.type) {
@@ -805,45 +978,48 @@ class TreeList implements Component {
 				const role = msg.role;
 				if (role === "user") {
 					const msgWithContent = msg as { content?: unknown };
-					const content = normalize(this.#extractContent(msgWithContent.content));
-					result = theme.fg("accent", "user: ") + content;
-				} else if (role === "developer") {
+					return { kind: "user", tone: "accent", text: normalize(this.#extractContent(msgWithContent.content)) };
+				}
+				if (role === "developer") {
 					const msgWithContent = msg as { content?: unknown };
 					const content = normalize(this.#extractContent(msgWithContent.content));
-					result = theme.fg("dim", "developer: ") + theme.fg("muted", content);
-				} else if (role === "assistant") {
+					return { kind: "developer", tone: "dim", text: theme.fg("muted", content) };
+				}
+				if (role === "assistant") {
 					const presentation = resolveAssistantErrorPresentation(msg);
 					if (presentation.kind === "compact-recovered") {
-						result = theme.fg("success", "assistant: ") + theme.fg("dim", presentation.text);
-						break;
+						return { kind: "assistant", tone: "success", text: theme.fg("dim", presentation.text) };
 					}
-					const msgWithContent = msg as { content?: unknown; stopReason?: string; errorMessage?: string };
+					const msgWithContent = msg as { content?: unknown; stopReason?: string };
 					const textContent = normalize(this.#extractContent(msgWithContent.content));
-					if (textContent) {
-						result = theme.fg("success", "assistant: ") + textContent;
-					} else if (presentation.kind === "full") {
-						result =
-							theme.fg("success", "assistant: ") + theme.fg("error", normalize(presentation.text).slice(0, 80));
-					} else if (msgWithContent.stopReason === "aborted") {
-						result = theme.fg("success", "assistant: ") + theme.fg("muted", "(aborted)");
-					} else {
-						result = theme.fg("success", "assistant: ") + theme.fg("muted", "(no content)");
+					if (textContent) return { kind: "assistant", tone: "success", text: textContent };
+					if (presentation.kind === "full") {
+						return {
+							kind: "assistant",
+							tone: "success",
+							text: theme.fg("error", normalize(presentation.text).slice(0, 80)),
+						};
 					}
-				} else if (role === "toolResult") {
-					const toolMsg = msg as { toolCallId?: string; toolName?: string };
-					const toolCall = toolMsg.toolCallId ? this.#toolCallMap.get(toolMsg.toolCallId) : undefined;
-					if (toolCall) {
-						result = theme.fg("muted", this.#formatToolCall(toolCall.name, toolCall.arguments));
-					} else {
-						result = theme.fg("muted", `[${toolMsg.toolName ?? "tool"}]`);
-					}
-				} else if (role === "bashExecution") {
-					const bashMsg = msg as { command?: string };
-					result = theme.fg("dim", `[bash]: ${normalize(bashMsg.command ?? "")}`);
-				} else {
-					result = theme.fg("dim", `[${role}]`);
+					const empty = msgWithContent.stopReason === "aborted" ? "(aborted)" : "(no content)";
+					return { kind: "assistant", tone: "success", text: theme.fg("muted", empty) };
 				}
-				break;
+				if (role === "toolResult") {
+					const toolMsg = msg as { toolCallId?: string; toolName?: string };
+					const call = toolMsg.toolCallId ? this.#toolCallMap.get(toolMsg.toolCallId) : undefined;
+					// Without the call the arguments are gone, so the name is all the
+					// row can say — and it says it in the kind column, not in brackets.
+					if (!call) return { kind: toolMsg.toolName ?? "tool", tone: "muted", text: "" };
+					return {
+						kind: call.name,
+						tone: "muted",
+						text: theme.fg("muted", this.#formatToolCall(call.name, call.arguments)),
+					};
+				}
+				if (role === "bashExecution") {
+					const bashMsg = msg as { command?: string };
+					return { kind: "bash", tone: "dim", text: theme.fg("dim", normalize(bashMsg.command ?? "")) };
+				}
+				return { kind: role, tone: "dim", text: "" };
 			}
 			case "custom_message": {
 				const content =
@@ -853,34 +1029,49 @@ class TreeList implements Component {
 								.filter((c): c is { type: "text"; text: string } => c.type === "text")
 								.map(c => c.text)
 								.join("");
-				result = theme.fg("customMessageLabel", `[${entry.customType}]: `) + normalize(content);
-				break;
+				return { kind: entry.customType, tone: "customMessageLabel", text: normalize(content) };
 			}
 			case "compaction": {
 				const tokens = Math.round(entry.tokensBefore / 1000);
-				result = theme.fg("borderAccent", `[compaction: ${tokens}k tokens]`);
-				break;
+				return { kind: "compaction", tone: "borderAccent", text: theme.fg("borderAccent", `${tokens}k tokens`) };
 			}
 			case "branch_summary":
-				result = theme.fg("warning", `[branch summary]: `) + normalize(entry.summary);
-				break;
+				return { kind: "summary", tone: "warning", text: normalize(entry.summary) };
 			case "model_change":
-				result = theme.fg("dim", `[model: ${entry.model}]`);
-				break;
+				return { kind: "model", tone: "dim", text: theme.fg("dim", entry.model) };
 			case "thinking_level_change":
-				result = theme.fg("dim", `[thinking: ${entry.thinkingLevel ?? ThinkingLevel.Off}]`);
-				break;
+				return {
+					kind: "thinking",
+					tone: "dim",
+					text: theme.fg("dim", entry.thinkingLevel ?? ThinkingLevel.Off),
+				};
 			case "custom":
-				result = theme.fg("dim", `[custom: ${entry.customType}]`);
-				break;
+				return { kind: "custom", tone: "dim", text: theme.fg("dim", entry.customType) };
 			case "label":
-				result = theme.fg("dim", `[label: ${entry.label ?? "(cleared)"}]`);
-				break;
-			default:
-				result = "";
+				return { kind: "label", tone: "dim", text: theme.fg("dim", entry.label ?? "(cleared)") };
+			case "service_tier_change": {
+				const tier = entry.serviceTier;
+				const families = tier === null ? "(cleared)" : Object.values(tier).join(" ");
+				return { kind: "tier", tone: "dim", text: theme.fg("dim", families) };
+			}
+			case "mode_change":
+				return { kind: "mode", tone: "dim", text: theme.fg("dim", entry.mode) };
+			case "title_change":
+				return { kind: "title", tone: "dim", text: theme.fg("dim", normalize(entry.title)) };
+			case "session_init":
+				return { kind: "session", tone: "dim", text: theme.fg("dim", `${entry.tools.length} tools`) };
+			case "ttsr_injection":
+				return { kind: "rules", tone: "dim", text: theme.fg("dim", entry.injectedRules.join(" ")) };
+			case "mcp_tool_selection":
+				return { kind: "mcp", tone: "dim", text: theme.fg("dim", entry.selectedToolNames.join(" ")) };
+			default: {
+				// An entry kind this card was not written for — a package's own,
+				// merged into the union — still says WHICH kind it is. A blank row is
+				// unreadable and unsearchable, and `all` mode shows every row.
+				const unknown = entry as { type?: string };
+				return { kind: unknown.type ?? "entry", tone: "dim", text: "" };
+			}
 		}
-
-		return isSelected ? theme.bold(result) : result;
 	}
 
 	#extractContent(content: unknown): string {
@@ -912,52 +1103,49 @@ class TreeList implements Component {
 		return false;
 	}
 
+	/**
+	 * What one tool call did, as the row's text: its arguments, never its name.
+	 *
+	 * The name is the kind column, so repeating it here would spend the row's
+	 * first cells saying the same word twice.
+	 */
 	#formatToolCall(name: string, args: Record<string, unknown>): string {
 		switch (name) {
 			case "read": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
+				const path = tailPath(args.path || args.file_path || "");
 				const offset = args.offset as number | undefined;
 				const limit = args.limit as number | undefined;
-				let display = path;
-				if (offset !== undefined || limit !== undefined) {
-					const start = offset ?? 1;
-					const end = limit !== undefined ? start + limit - 1 : "";
-					display += `:${start}${end ? `-${end}` : ""}`;
-				}
-				return `[read: ${display}]`;
+				if (offset === undefined && limit === undefined) return path;
+				const start = offset ?? 1;
+				const end = limit !== undefined ? start + limit - 1 : "";
+				return `${path}:${start}${end ? `-${end}` : ""}`;
 			}
-			case "write": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
-				return `[write: ${path}]`;
-			}
-			case "edit": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
-				return `[edit: ${path}]`;
-			}
+			case "write":
+			case "edit":
+				return tailPath(args.path || args.file_path || "");
+			case "ls":
+				return tailPath(args.path || ".");
 			case "bash": {
 				const rawCmd = String(args.command || "");
 				const cmd = rawCmd
 					.replace(/[\n\t]/g, " ")
 					.trim()
 					.slice(0, 50);
-				return `[bash: ${cmd}${rawCmd.length > 50 ? "..." : ""}]`;
+				return `${cmd}${rawCmd.length > 50 ? "..." : ""}`;
 			}
 			case "search": {
 				const type = String(args.type || "?");
 				const input = String(args.input || "");
-				const scope = typeof args.path === "string" ? ` in ${shortenPath(args.path)}` : "";
-				return `[search:${type} ${input}${scope}]`;
+				const scope = typeof args.path === "string" ? ` in ${tailPath(args.path)}` : "";
+				return `${type} ${input}${scope}`;
 			}
-			case "ls": {
-				const path = shortenPath(String(args.path || "."));
-				return `[ls: ${path}]`;
-			}
-			default: {
-				// Custom tool - show name and truncated JSON args
-				const rawArgs = typeof args === "string" ? args : JSON.stringify(args ?? {});
-				const argsStr = truncateToWidth(rawArgs ?? "{}", TRUNCATE_LENGTHS.SHORT);
-				return `[${name}: ${argsStr}]`;
-			}
+			default:
+				return truncateToWidth(
+					argSummary(args)
+						.replace(/[\n\t]/g, " ")
+						.trim(),
+					TRUNCATE_LENGTHS.SHORT,
+				);
 		}
 	}
 

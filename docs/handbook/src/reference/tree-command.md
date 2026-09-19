@@ -35,23 +35,27 @@ Any of the following opens the same selector:
 The tree is rendered from session entry parent pointers (`id` / `parentId`).
 
 - The branch holding the current leaf is drawn first at every fork, so the live path reads top to bottom
-- Each row is `cursor`, tree rail, node mark, label, entry text, and a right-aligned age
+- Each row is `cursor`, tree rail, node mark, kind column, label, entry text, and a right-aligned age
 - The node mark is `●` at the current leaf, `•` elsewhere on the path from root to that leaf, and blank off it. Every row reserves the column, so entry text at one depth starts at one column
+- The kind column is ten columns wide and states what the row is: a message role (`user`, `assistant`, `developer`), a tool name (`read`, `bash`, `web_search`), or an entry type (`compaction`, `summary`, `model`, `mode`). The entry text beside it never repeats the kind
 - The rail is drawn in the accent colour on the active path and dimmed off it
 - The age is coarse (`12m`, `4h`, `3d`, `2w`, `1y`), blank under a minute, and dropped on a card narrower than 48 columns
-- Labels (if present) render as `[label]` before node text
+- Labels (if present) render as `[label]` before entry text
+- A tool row shows its arguments: the path for `read`, `write`, `edit` and `ls`, the command for `bash`, the type, pattern and scope for `search`. A path longer than 44 columns is cut from the left (`…/selectors/tree-selector.ts`), because the file name is what distinguishes one row from the next
+- A tool the card has no rule for shows the argument that names its target, preferring `command`, `query`, `input`, `path`, `url`, `expression`, `pattern`, `name`, `prompt`, `task`, `message`, and never the caller's `i` intent line. With no string argument it shows the arguments as recorded
 - If multiple roots exist (orphaned/broken parent chains), they are shown under a virtual branching root
 
 ```text
 Example tree view (current leaf `●`, rest of the active path `•`):
 
-  • user: Start task                                        3h
-  • assistant: Plan                                         3h
-  ├─ • user: Try approach A                                 1h
-  │     • assistant: A result                              20m
-  │     ● [milestone] user: Continue A                       4m
-  └─   user: Try approach B                                  3h
-       │  assistant: B result                                3h
+  • user       Start task                                    3h
+  • assistant  Plan                                          3h
+  • read       …/selectors/tree-selector.ts:640-759          3h
+  ├─ • user       Try approach A                             1h
+  │     • assistant  A result                               20m
+  │     ● [milestone] user  Continue A                        4m
+  └─   user       Try approach B                              3h
+       │  assistant  B result                                 3h
 ```
 
 The header row carries the search query on the left, and on the right the rows on screen out of every
@@ -97,14 +101,22 @@ Filter modes (`TreeList`):
 
 ### `default`
 
-Shows conversational nodes plus any entry types not explicitly suppressed. It hides these setting/bookkeeping entry types:
+Shows conversational nodes. It hides these session bookkeeping entry types:
 
 - `label`
 - `custom`
 - `model_change`
 - `thinking_level_change`
+- `service_tier_change`
+- `mode_change`
+- `title_change`
+- `session_init`
+- `ttsr_injection`
+- `mcp_tool_selection`
 
-Other internal entry types that are not rendered specially may appear as blank rows in current code.
+`all` shows each of them with its own kind and text (`mode`, `title`, `session`, `rules`, `mcp`,
+`tier`). An entry kind a package adds to the session vocabulary shows its type tag in the kind
+column.
 
 ### `no-tools`
 
@@ -120,7 +132,7 @@ Only entries that currently resolve to a label.
 
 ### `all`
 
-Everything in the session tree, including bookkeeping/custom entries.
+Everything in the session tree, including bookkeeping and custom entries.
 
 ### Tool-only assistant node behavior
 
@@ -134,7 +146,7 @@ Assistant messages that contain **only tool calls** (no text) are hidden by defa
 - Query is tokenized by spaces
 - Matching is fuzzy (subsequence) and case-insensitive (`fuzzyMatch`)
 - All tokens must match (AND semantics)
-- Searchable text includes label, role, and type-specific content (message text, branch summary text, custom type, tool command snippets, etc.)
+- Searchable text includes the label, the role, the tool name and its argument summary, and type-specific content (message text, branch summary text, custom type, mode and title values, injected rule names, MCP tool names)
 
 ## Selection outcomes (important)
 

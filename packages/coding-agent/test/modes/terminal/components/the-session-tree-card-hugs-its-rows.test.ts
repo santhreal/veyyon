@@ -9,17 +9,29 @@
  * row at the far end of the card, only while it was NOT `default`, so the one
  * view that hides entries without saying so was the view that said nothing.
  *
+ * Two more lived in the row's text. The kind was spelled into it (`user: `,
+ * `[bash]: `, `[read: path]`), so the entry text of each row started wherever
+ * the previous word's length left it and no two rows could be compared down the
+ * card. And six entry types the row builder had no case for — a mode change, a
+ * title change, a tier change, a session header, an injected-rules record and an
+ * MCP selection — passed the DEFAULT filter and painted a row with nothing on
+ * it, selectable and jumpable, saying neither what it was nor that it existed.
+ *
  * THE CLASS THIS CLOSES. A row column whose width depends on the row's state
- * (leaf, on-path, off-path), a card height that ignores its content, and a
- * narrowing control whose effect is not named on screen. The filter sweep is
- * driven from the `treeFilterMode` setting's declared values at run time, so a
- * sixth mode added to the setting turns this suite red until it is reachable
- * from `ctrl+O` and named in the header.
+ * (leaf, on-path, off-path) or on its content, a card height that ignores its
+ * content, a narrowing control whose effect is not named on screen, and an entry
+ * a row cannot describe. The filter sweep is driven from the `treeFilterMode`
+ * setting's declared values at run time, so a sixth mode added to the setting
+ * turns this suite red until it is reachable from `ctrl+O` and named in the
+ * header. The blank-row assertion goes through the row builder's fallback with
+ * an entry type that is in no union, so an entry kind a package merges in later
+ * is covered by the same invariant rather than by a list that would go stale.
  *
  * WHAT IT DOES NOT CATCH. Colour: the rail tints accent on the active path and
- * dim off it, and the assertions here read glyphs and columns, not SGR. It also
- * says nothing about the rail's own shape under `├─`/`└─`, which is pinned by
- * the #2298 and #2325 suites, nor about who mounts the card.
+ * dim off it, the kind column carries a tone per kind, and the assertions here
+ * read glyphs and columns, not SGR. It also says nothing about the rail's own
+ * shape under `├─`/`└─`, which is pinned by the #2298 and #2325 suites, nor
+ * about who mounts the card.
  */
 import { afterEach, beforeEach, describe, expect, it, setSystemTime } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
@@ -79,6 +91,46 @@ function assistant(text: string, parent: SessionTreeNode, agoMs = 0): SessionTre
 		timestamp: ++counter,
 	} as AgentMessage;
 	const child = node(message, parent.entry.id, agoMs);
+	parent.children.push(child);
+	return child;
+}
+
+/**
+ * A tool call and its result, chained under `parent`, the way a session records
+ * one: the arguments ride the assistant's call and the row is drawn for the
+ * result, so a row that shows them proves the pair was matched up.
+ */
+function toolPair(name: string, args: Record<string, unknown>, parent: SessionTreeNode, agoMs = 0): SessionTreeNode {
+	const callId = `call-${counter}`;
+	const call = {
+		role: "assistant",
+		content: [{ type: "toolCall", id: callId, name, arguments: args }],
+		stopReason: "toolUse",
+		timestamp: ++counter,
+	} as unknown as AgentMessage;
+	const callNode = node(call, parent.entry.id, agoMs);
+	parent.children.push(callNode);
+	const result = {
+		role: "toolResult",
+		toolCallId: callId,
+		toolName: name,
+		content: [{ type: "text", text: "ok" }],
+		timestamp: ++counter,
+	} as unknown as AgentMessage;
+	const resultNode = node(result, callNode.entry.id, agoMs);
+	callNode.children.push(resultNode);
+	return resultNode;
+}
+
+/** A non-message entry under `parent`, its `type`-specific fields supplied. */
+function bookkeeping(fields: Record<string, unknown>, parent: SessionTreeNode): SessionTreeNode {
+	const entry = {
+		id: `e${counter++}`,
+		parentId: parent.entry.id,
+		timestamp: new Date(NOW - 60_000).toISOString(),
+		...fields,
+	} as unknown as SessionEntry;
+	const child: SessionTreeNode = { entry, children: [] };
 	parent.children.push(child);
 	return child;
 }
@@ -202,10 +254,10 @@ describe("the session tree card hugs its rows", () => {
 		const onPath = rowOf(frame, "branch alpha stays live");
 		const offPath = rowOf(frame, "branch bravo was abandoned");
 
-		expect(onPath.indexOf("user:")).toBe(offPath.indexOf("user:"));
+		expect(onPath.indexOf("user")).toBe(offPath.indexOf("user"));
 		// The mark column is what differs: the on-path row spends it, the off-path
 		// row leaves it blank.
-		expect(onPath).toContain(`${theme.md.bullet} user:`);
+		expect(onPath).toContain(`${theme.md.bullet} user`);
 		expect(offPath).not.toContain(theme.md.bullet);
 	});
 
@@ -225,7 +277,7 @@ describe("the session tree card hugs its rows", () => {
 		const abandoned = rowOf(frame, "branch bravo was abandoned");
 
 		// One leaf glyph in the card, on the leaf row.
-		expect(leafRow).toContain(`${theme.status.active} assistant:`);
+		expect(leafRow).toContain(`${theme.status.active} assistant`);
 		expect(cardOf(frame).rows.filter(line => line.includes(theme.status.active))).toHaveLength(1);
 		// The rest of the path carries the plain bullet, never the leaf glyph.
 		for (const row of pathRows) {
@@ -297,6 +349,18 @@ describe("the session tree row dates itself", () => {
 		expect(row.length).toBeLessThanOrEqual(WIDTH);
 	});
 
+	it("keeps the age clear of the entry text it sits beside", () => {
+		counter = 0;
+		const root = user(`overlong prompt ${"x".repeat(400)}`, null, 30 * 60_000);
+		const leaf = assistant("short reply", root, 2 * 60 * 60_000);
+
+		const row = rowOf(card([root], leaf.entry.id), "overlong prompt");
+
+		// A truncated row ran its `…` up against the age, so the two read as one
+		// token. The age column keeps its own gap whatever the text does.
+		expect(row).toMatch(/\S {3,}30m$/);
+	});
+
 	it("spends the age cells on entry text when the card is narrow", () => {
 		counter = 0;
 		const root = user("three hours back", null, 3 * 60 * 60_000);
@@ -306,5 +370,184 @@ describe("the session tree row dates itself", () => {
 
 		expect(rowOf(frame, "three hours back").endsWith("3h")).toBe(false);
 		expect(frame.some(line => /\s3h\s*$/.test(line))).toBe(false);
+	});
+});
+
+describe("the session tree names what each row is in a column of its own", () => {
+	it("starts the entry text at one column whatever the row's kind", () => {
+		counter = 0;
+		const root = user("the first prompt", null, 60 * 60_000);
+		const reply = assistant("the assistant answer", root, 59 * 60_000);
+		const read = toolPair("read", { path: "src/alpha.ts" }, reply, 58 * 60_000);
+		const ran = toolPair("bash", { command: "bun test src" }, read, 57 * 60_000);
+		const leaf = user("the last prompt", ran, 56 * 60_000);
+
+		const frame = card([root], leaf.entry.id, WIDTH, "all");
+		const offsets = [
+			rowOf(frame, "the first prompt").indexOf("the first prompt"),
+			rowOf(frame, "the assistant answer").indexOf("the assistant answer"),
+			rowOf(frame, "src/alpha.ts").indexOf("src/alpha.ts"),
+			rowOf(frame, "bun test src").indexOf("bun test src"),
+			rowOf(frame, "the last prompt").indexOf("the last prompt"),
+		];
+
+		// One offset for five kinds of row, all at one depth. A kind spelled into
+		// the text instead of into its own column gives five different offsets.
+		expect(new Set(offsets).size).toBe(1);
+		// And the kind itself starts at one column too.
+		const kindOffsets = [
+			rowOf(frame, "the first prompt").indexOf("user"),
+			rowOf(frame, "the assistant answer").indexOf("assistant"),
+			rowOf(frame, "src/alpha.ts").indexOf("read"),
+			rowOf(frame, "bun test src").indexOf("bash"),
+		];
+		expect(new Set(kindOffsets).size).toBe(1);
+	});
+
+	it("names a tool in the kind column instead of bracketing it into the text", () => {
+		counter = 0;
+		const root = user("open a file", null, 60 * 60_000);
+		const leaf = toolPair("read", { path: "src/alpha.ts", offset: 10, limit: 20 }, root, 59 * 60_000);
+
+		const row = rowOf(card([root], leaf.entry.id, WIDTH, "all"), "src/alpha.ts");
+
+		expect(row).toContain("read");
+		expect(row).toContain("src/alpha.ts:10-29");
+		expect(row).not.toContain("[read");
+	});
+
+	it("cuts a long path from the left so the file name survives", () => {
+		counter = 0;
+		const root = user("edit something deep", null, 60 * 60_000);
+		const deep = "packages/coding-agent/src/modes/terminal/components/selectors/tree-selector.ts";
+		const leaf = toolPair("edit", { path: deep }, root, 59 * 60_000);
+
+		const row = rowOf(card([root], leaf.entry.id, WIDTH, "all"), "tree-selector.ts");
+
+		// The tail is what distinguishes one row from the next; the shared
+		// repository prefix is what a right-hand cut would keep.
+		expect(row).toContain("…/");
+		expect(row).not.toContain("packages/coding-agent");
+	});
+
+	it("summarizes an unfamiliar tool by an argument rather than by its JSON", () => {
+		counter = 0;
+		const root = user("look it up", null, 60 * 60_000);
+		const leaf = toolPair(
+			"web_search",
+			{ query: "terminal tree column alignment", i: "Searching for prior art" },
+			root,
+			59 * 60_000,
+		);
+
+		const row = rowOf(card([root], leaf.entry.id, WIDTH, "all"), "web_search");
+
+		expect(row).toContain("terminal tree column alignment");
+		expect(row).not.toContain('{"');
+		// The caller's own intent line restates the kind column, so a tool whose
+		// arguments carry nothing else the card knows by name still skips it.
+		expect(row).not.toContain("Searching for prior art");
+
+		counter = 0;
+		const other = user("restart it", null, 60 * 60_000);
+		const intentOnly = toolPair(
+			"deploy",
+			{ i: "Restarting the worker", service: "alpha-worker" },
+			other,
+			59 * 60_000,
+		);
+
+		const intentRow = rowOf(card([other], intentOnly.entry.id, WIDTH, "all"), "deploy");
+
+		expect(intentRow).toContain("alpha-worker");
+		expect(intentRow).not.toContain("Restarting the worker");
+	});
+});
+
+describe("the session tree paints no row it cannot describe", () => {
+	/** Every bookkeeping entry, with the text its row is expected to name. */
+	const BOOKKEEPING: readonly { fields: Record<string, unknown>; kind: string; text: string }[] = [
+		{ fields: { type: "mode_change", mode: "plan" }, kind: "mode", text: "plan" },
+		{ fields: { type: "title_change", title: "tree revamp", source: "user" }, kind: "title", text: "tree revamp" },
+		{
+			fields: { type: "session_init", systemPrompt: "p", task: "t", tools: ["read", "edit"] },
+			kind: "session",
+			text: "2 tools",
+		},
+		{ fields: { type: "ttsr_injection", injectedRules: ["no-any"] }, kind: "rules", text: "no-any" },
+		{ fields: { type: "mcp_tool_selection", selectedToolNames: ["fetch"] }, kind: "mcp", text: "fetch" },
+		{ fields: { type: "service_tier_change", serviceTier: null }, kind: "tier", text: "(cleared)" },
+		{ fields: { type: "model_change", model: "sonnet-4" }, kind: "model", text: "sonnet-4" },
+		{ fields: { type: "thinking_level_change", thinkingLevel: "high" }, kind: "thinking", text: "high" },
+		{ fields: { type: "label", targetId: "e0", label: "landmark" }, kind: "label", text: "landmark" },
+		{ fields: { type: "custom", customType: "note" }, kind: "custom", text: "note" },
+	];
+
+	it("names every bookkeeping entry in `all`, and hides it by default", () => {
+		for (const { fields, kind, text } of BOOKKEEPING) {
+			counter = 0;
+			const root = user("a prompt to hang it off", null, 60 * 60_000);
+			const entryNode = bookkeeping(fields, root);
+			const leaf = assistant("a reply", entryNode, 30 * 60_000);
+
+			const all = cardOf(card([root], leaf.entry.id, WIDTH, "all")).rows;
+			const row = all.find(line => line.includes(kind));
+			if (row === undefined) throw new Error(`no row names ${kind}: ${all.join("\n")}`);
+			expect(row).toContain(text);
+
+			// Bookkeeping is not conversation: the default filter drops it, rather
+			// than showing a row whose only content is a word for a state change.
+			const shown = cardOf(card([root], leaf.entry.id)).rows;
+			expect(shown.some(line => line.includes(text))).toBe(false);
+		}
+	});
+
+	it("names an entry kind it was never written for", () => {
+		counter = 0;
+		const root = user("a prompt to hang it off", null, 60 * 60_000);
+		// An entry type no union here declares: what a package that merges its own
+		// entry into the session vocabulary produces. The row builder's fallback
+		// is the reason such an entry cannot paint a blank, unreadable row.
+		const merged = bookkeeping({ type: "artifact", count: 3 }, root);
+		const leaf = assistant("a reply", merged, 30 * 60_000);
+
+		const rows = cardOf(card([root], leaf.entry.id, WIDTH, "all")).rows;
+
+		expect(rows.some(line => line.includes("artifact"))).toBe(true);
+		// A kind wider than the column is cut to it, and still names itself.
+		counter = 0;
+		const other = user("another prompt", null, 60 * 60_000);
+		const wide = bookkeeping({ type: "artifact_index_rebuild" }, other);
+		const wideLeaf = assistant("a reply", wide, 30 * 60_000);
+		const wideRows = cardOf(card([other], wideLeaf.entry.id, WIDTH, "all")).rows;
+		expect(wideRows.some(line => line.includes("artifact_"))).toBe(true);
+	});
+
+	it("leaves no body row blank between the first entry and the last", () => {
+		counter = 0;
+		const root = user("a prompt", null, 60 * 60_000);
+		let tail = root;
+		for (const { fields } of BOOKKEEPING) tail = bookkeeping(fields, tail);
+		// The merged kind rides the same chain: the fallback is part of the
+		// invariant, not a separate case.
+		tail = bookkeeping({ type: "artifact" }, tail);
+		const leaf = assistant("the last word", tail, 30 * 60_000);
+
+		const rows = cardOf(card([root], leaf.entry.id, WIDTH, "all")).rows;
+		const first = rows.findIndex(line => line.includes("a prompt"));
+		const last = rows.findIndex(line => line.includes("the last word"));
+
+		expect(first).toBeGreaterThanOrEqual(0);
+		expect(last).toBeGreaterThan(first);
+		for (const line of rows.slice(first, last + 1)) {
+			// What is read is the row's own words: the cursor lane, the rail, the
+			// node mark and the age are structure, and a row that carries only
+			// those says nothing about what its entry IS.
+			const words = line
+				.replace(/\s+\d+[mhdwy]$/, "")
+				.replace(/^[\s›│├└─●•…]+/, "")
+				.trim();
+			expect(words).not.toBe("");
+		}
 	});
 });
