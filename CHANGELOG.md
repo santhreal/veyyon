@@ -9,6 +9,8 @@
 - The `/tree` card sizes itself to the entries the filter admits, marks the current leaf with `●` and the rest of the active path with `•` in a column every row reserves, tints the tree rail on the active path, dates each row with a coarse age, and names the visible-of-total count and filter mode in its header row.
 - Every `/tree` row states its kind — a message role, a tool name or an entry type — in a fixed ten-column field, so entry text at one depth starts at one column and no row repeats its kind inside its text.
 - A `/tree` tool row shows its arguments without the tool name around them, cuts a path longer than 44 columns from the left so the file name survives, and summarizes an unfamiliar tool by the argument that names its target instead of its serialized arguments.
+- `/tree` paints the typed query gold wherever it occurs in a row, in the kind column as well as the entry text, and keeps the row's own colour on either side of the match.
+- `Home` and `End` move the `/tree` cursor to the first and last visible entries.
 
 ### Fixed
 
