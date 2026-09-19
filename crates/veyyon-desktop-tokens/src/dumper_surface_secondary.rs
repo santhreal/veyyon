@@ -159,6 +159,7 @@ control_column_width_px = {}
 tooltip_width_px = {}
 group_width_px = {}
 sheet_height_px = {}
+sidebar_width_px = {}
 
 [typography]
 label_size = "{}"
@@ -171,6 +172,7 @@ description_size = "{}"
 		set.tooltip_width_px as i64,
 		set.group_width_px as i64,
 		set.sheet_height_px as i64,
+		set.sidebar_width_px as i64,
 		step_type_size(s, &set.label_size),
 		step_type_size(s, &set.description_size)
 	);

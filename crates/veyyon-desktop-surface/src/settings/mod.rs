@@ -202,13 +202,17 @@ pub fn settings_surface(
 	if let Some(f) = focus {
 		dialog = dialog.track_focus(f);
 	}
+	// The float that opens this surface already sizes the sheet from
+	// `group_width_px` and `sheet_height_px` and clamps it to the viewport, so
+	// the dialog fills the box rather than restating either measure.
 	let mut dialog = dialog
 		.key_context("Settings")
-		.w(px(860.0))
-		.h(px(560.0))
+		.w_full()
+		.h_full()
 		.rounded(radius)
 		.bg(bg)
 		.border(stroke_px)
+		.border_color(tokens.color(ColorRole::Hairline))
 		.shadow_lg()
 		.flex()
 		.flex_row()
@@ -225,11 +229,11 @@ pub fn settings_surface(
 			cx.stop_propagation();
 			cx.notify();
 		}));
-	// Left sidebar (200px width).
 	let mut sidebar = div()
-		.w(px(200.0))
+		.w(px(geometry.sidebar_width_px))
 		.h_full()
 		.border_r(stroke_px)
+		.border_color(tokens.color(ColorRole::Hairline))
 		.p(tokens.spacing(SpacingStep::S4))
 		.flex()
 		.flex_col()

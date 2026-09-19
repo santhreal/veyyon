@@ -28,6 +28,7 @@ pub fn load_settings(
 		"tooltip_width_px",
 		"group_width_px",
 		"sheet_height_px",
+		"sidebar_width_px",
 	])?;
 
 	let typo = root.sub("typography")?;
@@ -41,6 +42,7 @@ pub fn load_settings(
 		tooltip_width_px:        layout.number("tooltip_width_px")?,
 		group_width_px:          layout.number("group_width_px")?,
 		sheet_height_px:         layout.number("sheet_height_px")?,
+		sidebar_width_px:        layout.number("sidebar_width_px")?,
 		label_size:              typo.type_size("label_size", scale)?,
 		description_size:        typo.type_size("description_size", scale)?,
 	})

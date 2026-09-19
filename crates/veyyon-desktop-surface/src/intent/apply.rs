@@ -117,16 +117,17 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 			state.overlay = None;
 		},
 		Intent::PaletteQuery(query) => {
-			let mut narrows_rail = false;
-			if let Some(Overlay::Palette(palette)) = &mut state.overlay {
+			let narrows_rail = if let Some(Overlay::Palette(palette)) = &mut state.overlay {
 				palette.set_query(query.clone());
 				// The rail's own session search narrows the rail as it is typed,
 				// which is what filtering the queue in place means and what the
 				// header's filter chip and its clear control act on. A history
 				// search ranks the persisted sessions the host holds and leaves
 				// the rail as it is.
-				narrows_rail = palette.mode == PaletteMode::Sessions && !palette.is_history();
-			}
+				palette.mode == PaletteMode::Sessions && !palette.is_history()
+			} else {
+				false
+			};
 			if narrows_rail {
 				queue::filter(state, query);
 			}

@@ -185,6 +185,9 @@ pub struct SettingsSurfaceTokens {
 	/// The height every settings sheet takes, group and focused page alike,
 	/// where the window leaves room for it.
 	pub sheet_height_px:         f32,
+	/// The width of the page sidebar the tabbed group sheet draws down its
+	/// left edge.
+	pub sidebar_width_px:        f32,
 	pub label_size:              TypeSize,
 	pub description_size:        TypeSize,
 }

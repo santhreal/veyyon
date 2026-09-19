@@ -596,6 +596,7 @@
 
 ### Fixed
 
+- The desktop settings sheet draws its outline and the divider beside its page list, both of which were left in the default transparent border colour, and takes its sheet box and page-list width from `surface/settings.toml` rather than from measures compiled into the render.
 - The desktop General settings search field takes the keyboard and narrows the page as it is typed, where it drew the query as static text and discarded every keystroke; `Escape` widens a narrowed page before it leaves it.
 - A desktop surface with nothing on it states a step an operator can take: the Usage tenant states the prompt that starts accounting, and a clean working tree the edit or the staged scope, where one predicted what would appear and the other restated its own condition.
 - The desktop session rail states a step over an empty list instead of its own condition twice: a filter that matched nothing states how to clear it, and a rail with no session states how to start one.

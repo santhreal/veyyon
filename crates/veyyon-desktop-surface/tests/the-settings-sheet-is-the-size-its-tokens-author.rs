@@ -13,22 +13,27 @@
 //! sheet is found by its position rather than by its size, so a frame drawing
 //! the wrong size is measured and reported rather than missed.
 //!
-//! Held shut against: a literal returning to either measure; the group sheet
-//! and the focused page sharing one measure when the tokens author two; a
-//! height that ignores the token while the width follows it; and a sheet
-//! sized off the viewport, which passes at one window size and fails at
-//! every other.
+//! Held shut against: a literal returning to any of the three measures; the
+//! group sheet and the focused page sharing one measure when the tokens author
+//! two; a height that ignores the token while the width follows it; a sheet
+//! sized off the viewport, which passes at one window size and fails at every
+//! other; a dialog that states its own box inside the one the float already
+//! sized, which drifts the moment the token moves; and a sidebar divider left
+//! in the default border colour, which is transparent, since the sidebar is
+//! found among the boxes that paint ink and an uninked column is not there.
 //!
 //! NOT CAUGHT: the clamp against a viewport too small to hold the authored
 //! sheet, which
 //! `the-rail-footer-gear-is-reachable-at-every-width-that-draws-a-rail` reaches
-//! from the other side, and what the sheet draws inside its box, which the row
-//! and page suites own.
+//! from the other side, and what the sheet draws inside the sidebar and the
+//! page beside it, which the row and page suites own.
 
 use std::path::Path;
 
 use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
-use veyyon_desktop_scene::{Captured, HeadlessSession, headless::RenderOptions, headless_context};
+use veyyon_desktop_scene::{
+	BoxBounds, Captured, HeadlessSession, headless::RenderOptions, headless_context,
+};
 use veyyon_desktop_surface::{
 	Overlay, SettingsPage, SettingsState, ShellView, fixture, install_tokens,
 	navigation::SurfaceRoute,
@@ -41,10 +46,11 @@ use veyyon_gpui::{App, AppContext, Bounds, Pixels};
 const WINDOW_W: u32 = 1440;
 const WINDOW_H: u32 = 900;
 
-/// The width and height chosen here, which no shipped token file states: an
-/// arm that passes at these values is reading the file.
+/// The measures chosen here, which no shipped token file states: an arm that
+/// passes at these values is reading the file.
 const OTHER_GROUP_W: f32 = 704.0;
 const OTHER_SHEET_H: f32 = 448.0;
+const OTHER_SIDEBAR_W: f32 = 172.0;
 
 /// The sheet the destination draws in, taken from the frame by where it sits
 /// rather than by how big it is.
@@ -76,9 +82,9 @@ fn sheet(frame: &Captured, window_w: f32) -> Bounds<Pixels> {
 		.unwrap_or_else(|| panic!("the window centres a sheet it does not span"))
 }
 
-/// Renders the shell with `overlay` open under `tokens` and returns the box
-/// the sheet drew in.
-fn sheet_box(tokens: Tokens, overlay: Overlay) -> Bounds<Pixels> {
+/// Renders the shell with `overlay` open under `tokens` and hands back
+/// everything the frame recorded.
+fn render(tokens: Tokens, overlay: Overlay) -> Captured {
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
 	let options = RenderOptions {
 		width: WINDOW_W,
@@ -97,8 +103,48 @@ fn sheet_box(tokens: Tokens, overlay: Overlay) -> Bounds<Pixels> {
 		})
 	})
 	.expect("the shell opens offscreen");
-	let frame = session.frame().expect("the destination renders");
-	sheet(&frame, WINDOW_W as f32)
+	session.frame().expect("the destination renders")
+}
+
+/// Renders the shell with `overlay` open under `tokens` and returns the box
+/// the sheet drew in.
+fn sheet_box(tokens: Tokens, overlay: Overlay) -> Bounds<Pixels> {
+	sheet(&render(tokens, overlay), WINDOW_W as f32)
+}
+
+/// Every painted box that starts on the sheet's left edge and runs its full
+/// height, widest first.
+///
+/// The dialog and its sidebar are the two: the dialog fills the box the float
+/// sized, and the sidebar is the column inside it, inset by the dialog's own
+/// hairline on the left and on both ends, which the tolerance here allows for.
+/// Selecting them by edge and height leaves both widths free to be asserted.
+fn full_height_columns(frame: &Captured, sheet: Bounds<Pixels>) -> Vec<BoxBounds> {
+	let left = f32::from(sheet.origin.x);
+	let height = f32::from(sheet.size.height);
+	let mut columns: Vec<BoxBounds> = frame
+		.layout
+		.painted_boxes()
+		.map(|painted| painted.bounds)
+		.filter(|bounds| (bounds.left - left).abs() < 2.0 && (bounds.height() - height).abs() < 4.0)
+		.collect();
+	columns.sort_by(|a, b| {
+		b.width()
+			.partial_cmp(&a.width())
+			.unwrap_or(std::cmp::Ordering::Equal)
+	});
+	columns
+}
+
+/// The sidebar the group sheet draws down its left edge: the widest full-height
+/// column narrower than the sheet, the sheet-wide ones being the dialog's own
+/// fill, border and shadow.
+fn sidebar_box(frame: &Captured, sheet: Bounds<Pixels>) -> BoxBounds {
+	let sheet_w = f32::from(sheet.size.width);
+	full_height_columns(frame, sheet)
+		.into_iter()
+		.find(|bounds| bounds.width() < sheet_w - 1.0)
+		.unwrap_or_else(|| panic!("the group sheet draws a sidebar down its left edge"))
 }
 
 /// The tabbed group, which is the settings surface with no page routed under
@@ -159,5 +205,45 @@ fn a_focused_page_takes_the_palette_width_and_the_settings_sheet_height() {
 		(f32::from(moved.size.width), f32::from(moved.size.height)),
 		(OTHER_GROUP_W, OTHER_SHEET_H),
 		"editing the token files resizes the focused page too"
+	);
+}
+
+#[test]
+fn the_dialog_fills_the_box_the_float_sized_rather_than_stating_a_measure_of_its_own() {
+	let mut other = load_bundled_tokens().expect("the bundled tokens load");
+	other.surface.settings.group_width_px = OTHER_GROUP_W;
+	other.surface.settings.sheet_height_px = OTHER_SHEET_H;
+	let frame = render(other, group());
+	let drawn = sheet(&frame, WINDOW_W as f32);
+	let columns = full_height_columns(&frame, drawn);
+	let dialog = columns
+		.first()
+		.copied()
+		.expect("the group sheet draws a dialog inside the box the float sized");
+	assert_eq!(
+		(dialog.width(), dialog.height()),
+		(f32::from(drawn.size.width), f32::from(drawn.size.height)),
+		"the dialog takes the box the float sized, so the sheet has one measure and not two"
+	);
+}
+
+#[test]
+fn the_group_sheet_sidebar_is_the_width_its_token_authors() {
+	let shipped = load_bundled_tokens().expect("the bundled tokens load");
+	let authored = shipped.surface.settings.sidebar_width_px;
+	let frame = render(shipped.clone(), group());
+	let drawn = sheet(&frame, WINDOW_W as f32);
+	let sidebar = sidebar_box(&frame, drawn);
+	assert_eq!(sidebar.width(), authored, "the sidebar draws the width its token states");
+
+	let mut other = shipped;
+	other.surface.settings.sidebar_width_px = OTHER_SIDEBAR_W;
+	let moved_frame = render(other, group());
+	let moved_sheet = sheet(&moved_frame, WINDOW_W as f32);
+	let moved = sidebar_box(&moved_frame, moved_sheet);
+	assert_eq!(
+		moved.width(),
+		OTHER_SIDEBAR_W,
+		"editing the token file resizes the sidebar, so its width is not compiled in"
 	);
 }
