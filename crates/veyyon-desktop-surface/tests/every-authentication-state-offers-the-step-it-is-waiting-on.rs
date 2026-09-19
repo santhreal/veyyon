@@ -10,7 +10,7 @@
 //! pixels the frame drew rather than dispatched by hand. The states are
 //! enumerated by a match with no wildcard arm, so a sixth state fails to
 //! compile here until its step is written down, and the controls are found by
-//! reading the frame's own hit rects inside the sheet the palette tokens size,
+//! reading the frame's own hit rects inside the sheet the settings tokens size,
 //! so a step that moves or is drawn outside its hitbox is caught too. Held
 //! shut against:
 //!
@@ -120,7 +120,7 @@ fn contains(outer: Bounds<Pixels>, inner: Bounds<Pixels>) -> bool {
 }
 
 /// The sheet the destination draws in: the tallest hit rect as wide as the
-/// palette geometry sizes an overlay (§5.8).
+/// settings tokens size the sheet (§5.9).
 ///
 /// Taken from the tokens rather than from a constant here, and taken from the
 /// frame rather than computed, so a sheet that moved or resized is followed
@@ -191,7 +191,7 @@ fn named(intents: &[Intent]) -> Vec<String> {
 #[test]
 fn every_authentication_state_draws_the_step_it_is_waiting_on_and_no_other() {
 	let tokens = load_bundled_tokens().expect("the bundled tokens load");
-	let sheet_px = tokens.surface.palette.width_px;
+	let sheet_px = tokens.surface.settings.group_width_px;
 	assert!(
 		sheet_px < WINDOW_W as f32,
 		"the sheet takes its authored width at {WINDOW_W}px rather than the viewport's"

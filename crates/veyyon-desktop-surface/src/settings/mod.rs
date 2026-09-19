@@ -11,18 +11,14 @@ pub mod pages;
 pub mod row;
 
 use serde_json::Value;
-use veyyon_desktop_kit::{
-	Button, ButtonSize, ButtonVariant, ColorRole, RadiusStep, SpacingStep, StrokeStep, TextRamp,
-	TextWeight, TokenSet,
-};
+use veyyon_desktop_kit::{SpacingStep, TokenSet};
 use veyyon_desktop_model::{
 	AgentView, AuthFlowView, ContextBreakdownView, KeybindingView, McpServerView, ProviderView,
 	SettingEntry, SettingsView, SurfaceId, ThemesView, UsageTotals,
 };
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
 use veyyon_gpui::{
-	ClickEvent, Context, FocusHandle, InteractiveElement, IntoElement, ParentElement,
-	StatefulInteractiveElement, Styled, div, px,
+	Context, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled, div,
 };
 
 pub use self::{
@@ -31,7 +27,7 @@ pub use self::{
 	row::*,
 };
 use crate::{
-	Intent, ShellView,
+	ShellView,
 	controls::{ControlError, ControlStates, error_hairline},
 	model::AppearanceChoice,
 	shell::fields::FieldSlots,
@@ -87,7 +83,8 @@ pub struct SettingsState {
 	pub reloading:    bool,
 	/// Selected row index for keyboard navigation.
 	pub selected_row: Option<usize>,
-	/// Focused command destination; absent for the complete settings dialog.
+	/// The page the operator routed to, when a route reached this state; a
+	/// state built without one names its own page.
 	pub route:        Option<crate::navigation::SurfaceRoute>,
 	/// The host's failure for one of the sheet's own controls, restated every
 	/// projection.
@@ -162,8 +159,8 @@ pub fn settings_failure_row(
 	})
 }
 
-/// Renders the complete settings overlay dialog with sidebar and page contents
-/// (§5.9).
+/// Renders the settings page the operator routed to, in the sheet the float
+/// sizes from `surface/settings.toml` (§5.9).
 pub fn settings_surface(
 	state: &SettingsState,
 	list_state: &GeneralSettingsListState,
@@ -177,208 +174,25 @@ pub fn settings_surface(
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
-	if let Some(route) = state.route {
-		return focused::focused_surface(
-			state,
-			list_state,
-			appearance,
-			fields,
-			route,
-			back,
-			focus,
-			picker_scroll,
-			controls,
-			geometry,
-			tokens,
-			cx,
-		);
-	}
-	let radius = tokens.radius(RadiusStep::Xl);
-	let bg = tokens.color(ColorRole::Float);
-	let stroke_px = tokens.stroke(StrokeStep::Hairline);
-	let pad = tokens.spacing(SpacingStep::S6);
-
-	let mut dialog = div().id("settings-dialog");
-	if let Some(f) = focus {
-		dialog = dialog.track_focus(f);
-	}
-	// The float that opens this surface already sizes the sheet from
-	// `group_width_px` and `sheet_height_px` and clamps it to the viewport, so
-	// the dialog fills the box rather than restating either measure.
-	let mut dialog = dialog
-		.key_context("Settings")
-		.w_full()
-		.h_full()
-		.rounded(radius)
-		.bg(bg)
-		.border(stroke_px)
-		.border_color(tokens.color(ColorRole::Hairline))
-		.shadow_lg()
-		.flex()
-		.flex_row()
-		.overflow_hidden()
-		.on_action(cx.listener(
-			|view, _: &veyyon_desktop_kit::input::editor::actions::Escape, _window, cx| {
-				view.back_surface(cx);
-				cx.stop_propagation();
-				cx.notify();
-			},
-		))
-		.on_action(cx.listener(|view, _: &crate::keymap::actions::Dismiss, _window, cx| {
-			view.back_surface(cx);
-			cx.stop_propagation();
-			cx.notify();
-		}));
-	let mut sidebar = div()
-		.w(px(geometry.sidebar_width_px))
-		.h_full()
-		.border_r(stroke_px)
-		.border_color(tokens.color(ColorRole::Hairline))
-		.p(tokens.spacing(SpacingStep::S4))
-		.flex()
-		.flex_col()
-		.gap(tokens.spacing(SpacingStep::S1))
-		.overflow_hidden();
-
-	sidebar = sidebar.child(
-		div()
-			.px(tokens.spacing(SpacingStep::S2))
-			.py(tokens.spacing(SpacingStep::S2))
-			.text_size(tokens.font_size(TextRamp::Head))
-			.font_weight(tokens.font_weight(TextWeight::Semibold))
-			.text_color(tokens.color(ColorRole::Foreground))
-			.child("Settings"),
-	);
-
-	use strum::IntoEnumIterator;
-	for page in SettingsPage::iter() {
-		let is_active = page == state.page;
-		let tab_bg = if is_active {
-			tokens.row_selected()
-		} else {
-			tokens.transparent()
-		};
-		let tab_text_color = if is_active {
-			tokens.color(ColorRole::Foreground)
-		} else {
-			tokens.color(ColorRole::Secondary)
-		};
-
-		let page_btn = div()
-			.id(("settings-tab", page as usize))
-			.h(tokens.spacing(SpacingStep::S11))
-			.px(tokens.spacing(SpacingStep::S3))
-			.rounded(tokens.radius(RadiusStep::Sm))
-			.bg(tab_bg)
-			.hover(move |s| s.bg(tokens.row_hover()))
-			.flex()
-			.items_center()
-			.cursor_pointer()
-			.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
-				view.dispatch(Intent::PreviewAppearance(None), cx);
-				view.dispatch(
-					Intent::OpenOverlay(Box::new(crate::overlay::Overlay::Settings(Box::new(
-						SettingsState {
-							page,
-							..view.state().overlay_settings().cloned().unwrap_or_default()
-						},
-					)))),
-					cx,
-				);
-			}))
-			.child(
-				div()
-					.text_size(tokens.font_size(TextRamp::Small))
-					.font_weight(if is_active {
-						tokens.font_weight(TextWeight::Medium)
-					} else {
-						tokens.font_weight(TextWeight::Regular)
-					})
-					.text_color(tab_text_color)
-					.child(page.title()),
-			);
-		sidebar = sidebar.child(page_btn);
-	}
-	dialog = dialog.child(sidebar);
-
-	// Right content area.
-	let mut content = div()
-		.flex_1()
-		.h_full()
-		.p(pad)
-		.flex()
-		.flex_col()
-		.overflow_hidden();
-
-	// Page Header.
-	let top_bar = div()
-		.w_full()
-		.flex()
-		.flex_row()
-		.items_center()
-		.justify_between()
-		.gap(tokens.spacing(SpacingStep::S2));
-
-	let title_block = div()
-		.flex_1()
-		.min_w_0()
-		.flex()
-		.flex_col()
-		.gap(tokens.spacing(SpacingStep::S1))
-		.child(
-			div()
-				.text_size(tokens.font_size(TextRamp::Head))
-				.font_weight(tokens.font_weight(TextWeight::Semibold))
-				.text_color(tokens.color(ColorRole::Foreground))
-				.child(state.page.title()),
-		)
-		.child(
-			div()
-				.text_size(tokens.font_size(TextRamp::Small))
-				.text_color(tokens.color(ColorRole::Muted))
-				.child(state.page.description()),
-		);
-
-	let mut action_bar = div()
-		.flex()
-		.flex_row()
-		.items_center()
-		.gap(tokens.spacing(SpacingStep::S2));
-
-	if let Some(parent) = back {
-		action_bar = action_bar.child(
-			Button::new("settings-dialog-back", "Back")
-				.size(ButtonSize::Small)
-				.variant(ButtonVariant::Ghost)
-				.on_click(cx.listener(move |view, _, _, cx| view.navigate_surface(parent, cx))),
-		);
-	}
-
-	action_bar = action_bar.child(
-		Button::new("settings-dialog-close", "Close")
-			.size(ButtonSize::Small)
-			.variant(ButtonVariant::Ghost)
-			.on_click(cx.listener(|view, _, _, cx| view.close_palette(cx))),
-	);
-
-	let header = div()
-		.mb(px(geometry.group_gap))
-		.child(top_bar.child(title_block).child(action_bar));
-	content = content.child(header);
-	content = content.children(settings_failure_row(state, tokens, cx));
-
-	// Page body rows container.
-	let body = render_page_body(
+	// Every path to this surface routes a page: the palette's settings row and
+	// `primary-,` both navigate `SurfaceRoute::Settings`, whose rows navigate
+	// `SurfaceRoute::Page`. A state carrying no route is one a caller built
+	// directly, and it names the page it was built for.
+	let route = state
+		.route
+		.unwrap_or(crate::navigation::SurfaceRoute::Page(state.page));
+	focused::focused_surface(
 		state,
 		list_state,
 		appearance,
 		fields,
+		route,
+		back,
+		focus,
 		picker_scroll,
 		controls,
 		geometry,
 		tokens,
 		cx,
-	);
-	content = content.child(body);
-	dialog.child(content)
+	)
 }

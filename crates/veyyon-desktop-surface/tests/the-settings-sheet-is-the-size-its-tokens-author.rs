@@ -1,36 +1,37 @@
 //! WHY: the settings sheet was `860.0` and `560.0` written into the render
-//! (`shell/float.rs`), so the one surface every configuration change is made
-//! on could not be resized by editing a token file. §9.3 rests the whole
-//! iteration loop on the opposite: a visual measure is authored in a token
-//! file and read from it, so a sweep of the file moves the window. A measure
-//! compiled in is invisible to the sweep, agrees with the authored number
-//! only by luck, and drifts from it silently.
+//! (`shell/float.rs`), and the sheet an operator actually reaches -- every path
+//! routes a page -- was drawn in the command palette's box instead of its own,
+//! with no edge of its own against the scrim. §9.3 rests the iteration loop on
+//! a visual measure being authored in a token file and read from it: a measure
+//! compiled in is invisible to a sweep of the file, and a surface drawn in
+//! another surface's box follows a token nobody edited for it.
 //!
-//! CLASS CLOSED: a settings sheet sized by anything but its tokens. Each arm
-//! renders twice — once at the shipped values and once at values chosen here —
-//! and reads the sheet's box back out of the frame, so a number restored to
-//! the render, or a token read for one arm and not the other, fails. The
-//! sheet is found by its position rather than by its size, so a frame drawing
-//! the wrong size is measured and reported rather than missed.
+//! CLASS CLOSED: a settings sheet sized or inked by anything but its own
+//! tokens. Each arm renders the overlay the way the palette opens it, reads the
+//! sheet's box back out of the frame, and renders again under edited tokens, so
+//! a literal restored to the render fails. One arm edits the palette's width
+//! alone and requires the sheet not to move, which is the defect this suite was
+//! extended for; another renders a state carrying no route and requires the
+//! same box, so the surface has one drawing and not a reachable one beside a
+//! dead twin.
 //!
-//! Held shut against: a literal returning to any of the three measures; the
-//! group sheet and the focused page sharing one measure when the tokens author
-//! two; a height that ignores the token while the width follows it; a sheet
-//! sized off the viewport, which passes at one window size and fails at every
-//! other; a dialog that states its own box inside the one the float already
-//! sized, which drifts the moment the token moves; and a sidebar divider left
-//! in the default border colour, which is transparent, since the sidebar is
-//! found among the boxes that paint ink and an uninked column is not there.
+//! Held shut against: a literal returning to either measure; a sheet sized off
+//! the viewport, which passes at one window size and fails at every other; a
+//! sheet that states its own box inside the one the float already sized; a
+//! sheet reading the palette's width, the history sheet's width, or any other
+//! surface's; and an edge left in the default border colour, which is
+//! transparent, since the arm reads the border's own width and alpha rather
+//! than whether a box is there.
 //!
 //! NOT CAUGHT: the clamp against a viewport too small to hold the authored
 //! sheet, which
 //! `the-rail-footer-gear-is-reachable-at-every-width-that-draws-a-rail` reaches
-//! from the other side, and what the sheet draws inside the sidebar and the
-//! page beside it, which the row and page suites own.
+//! from the other side, and what the sheet draws inside itself, which the row
+//! and page suites own.
 
 use std::path::Path;
 
-use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
+use veyyon_desktop_kit::{StrokeStep, load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_scene::{
 	BoxBounds, Captured, HeadlessSession, headless::RenderOptions, headless_context,
 };
@@ -48,9 +49,8 @@ const WINDOW_H: u32 = 900;
 
 /// The measures chosen here, which no shipped token file states: an arm that
 /// passes at these values is reading the file.
-const OTHER_GROUP_W: f32 = 704.0;
+const OTHER_SHEET_W: f32 = 704.0;
 const OTHER_SHEET_H: f32 = 448.0;
-const OTHER_SIDEBAR_W: f32 = 172.0;
 
 /// The sheet the destination draws in, taken from the frame by where it sits
 /// rather than by how big it is.
@@ -112,138 +112,107 @@ fn sheet_box(tokens: Tokens, overlay: Overlay) -> Bounds<Pixels> {
 	sheet(&render(tokens, overlay), WINDOW_W as f32)
 }
 
-/// Every painted box that starts on the sheet's left edge and runs its full
-/// height, widest first.
-///
-/// The dialog and its sidebar are the two: the dialog fills the box the float
-/// sized, and the sidebar is the column inside it, inset by the dialog's own
-/// hairline on the left and on both ends, which the tolerance here allows for.
-/// Selecting them by edge and height leaves both widths free to be asserted.
-fn full_height_columns(frame: &Captured, sheet: Bounds<Pixels>) -> Vec<BoxBounds> {
+/// The width and height of the sheet, as the frame recorded them.
+fn measures(bounds: Bounds<Pixels>) -> (f32, f32) {
+	(f32::from(bounds.size.width), f32::from(bounds.size.height))
+}
+
+/// The painted box that fills the sheet: the sheet's own drawing, inside the
+/// box the float sized for it.
+fn sheet_fill(frame: &Captured, sheet: Bounds<Pixels>) -> &veyyon_desktop_scene::LayoutBox {
 	let left = f32::from(sheet.origin.x);
-	let height = f32::from(sheet.size.height);
-	let mut columns: Vec<BoxBounds> = frame
+	let top = f32::from(sheet.origin.y);
+	let (width, height) = measures(sheet);
+	frame
 		.layout
 		.painted_boxes()
-		.map(|painted| painted.bounds)
-		.filter(|bounds| (bounds.left - left).abs() < 2.0 && (bounds.height() - height).abs() < 4.0)
-		.collect();
-	columns.sort_by(|a, b| {
-		b.width()
-			.partial_cmp(&a.width())
-			.unwrap_or(std::cmp::Ordering::Equal)
-	});
-	columns
-}
-
-/// The sidebar the group sheet draws down its left edge: the widest full-height
-/// column narrower than the sheet, the sheet-wide ones being the dialog's own
-/// fill, border and shadow.
-fn sidebar_box(frame: &Captured, sheet: Bounds<Pixels>) -> BoxBounds {
-	let sheet_w = f32::from(sheet.size.width);
-	full_height_columns(frame, sheet)
-		.into_iter()
-		.find(|bounds| bounds.width() < sheet_w - 1.0)
-		.unwrap_or_else(|| panic!("the group sheet draws a sidebar down its left edge"))
-}
-
-/// The tabbed group, which is the settings surface with no page routed under
-/// it.
-fn group() -> Overlay {
-	Overlay::Settings(Box::new(SettingsState::new(SettingsPage::General)))
+		.find(|painted| {
+			let b: BoxBounds = painted.bounds;
+			(b.left - left).abs() < 1.0
+				&& (b.top - top).abs() < 1.0
+				&& (b.width() - width).abs() < 1.0
+				&& (b.height() - height).abs() < 1.0
+		})
+		.unwrap_or_else(|| panic!("the sheet paints nothing in the box the float sized"))
 }
 
 /// One page, reached the way the command palette routes to it.
-fn focused_page() -> Overlay {
+fn routed_page() -> Overlay {
 	let mut state = SettingsState::new(SettingsPage::Themes);
 	state.route = Some(SurfaceRoute::Page(SettingsPage::Themes));
 	Overlay::Settings(Box::new(state))
 }
 
+/// A settings state a caller built without routing to it.
+fn unrouted() -> Overlay {
+	Overlay::Settings(Box::new(SettingsState::new(SettingsPage::General)))
+}
+
 #[test]
-fn the_group_sheet_takes_the_width_and_height_the_settings_tokens_author() {
+fn the_sheet_takes_the_width_and_height_the_settings_tokens_author() {
 	let shipped = load_bundled_tokens().expect("the bundled tokens load");
 	let authored = shipped.surface.settings.clone();
-	let drawn = sheet_box(shipped.clone(), group());
+	let drawn = sheet_box(shipped.clone(), routed_page());
 	assert_eq!(
-		(f32::from(drawn.size.width), f32::from(drawn.size.height)),
+		measures(drawn),
 		(authored.group_width_px, authored.sheet_height_px),
-		"the group sheet draws the box its tokens state"
+		"the settings sheet draws the box its tokens state"
 	);
 
 	let mut other = shipped;
-	other.surface.settings.group_width_px = OTHER_GROUP_W;
+	other.surface.settings.group_width_px = OTHER_SHEET_W;
 	other.surface.settings.sheet_height_px = OTHER_SHEET_H;
-	let moved = sheet_box(other, group());
+	let moved = sheet_box(other, routed_page());
 	assert_eq!(
-		(f32::from(moved.size.width), f32::from(moved.size.height)),
-		(OTHER_GROUP_W, OTHER_SHEET_H),
-		"editing the token file resizes the group sheet, so neither measure is compiled in"
+		measures(moved),
+		(OTHER_SHEET_W, OTHER_SHEET_H),
+		"editing the token file resizes the sheet, so neither measure is compiled in"
 	);
 }
 
 #[test]
-fn a_focused_page_takes_the_palette_width_and_the_settings_sheet_height() {
+fn the_sheet_is_not_drawn_in_the_palette_box() {
 	let shipped = load_bundled_tokens().expect("the bundled tokens load");
-	let palette_w = shipped.surface.palette.width_px;
-	let sheet_h = shipped.surface.settings.sheet_height_px;
-	let drawn = sheet_box(shipped.clone(), focused_page());
-	assert_eq!(
-		(f32::from(drawn.size.width), f32::from(drawn.size.height)),
-		(palette_w, sheet_h),
-		"a routed page is as wide as the palette geometry and as tall as the settings sheet"
+	let authored = shipped.surface.settings.clone();
+	assert_ne!(
+		shipped.surface.palette.width_px, authored.group_width_px,
+		"the palette and the sheet must state different widths for this arm to read anything"
 	);
 
-	// The group's width is the other arm's measure: a page that followed it
-	// would be reading the wrong token, and a page sized off the viewport
-	// would follow neither.
 	let mut other = shipped;
-	other.surface.palette.width_px = OTHER_GROUP_W;
-	other.surface.settings.sheet_height_px = OTHER_SHEET_H;
-	let moved = sheet_box(other, focused_page());
+	other.surface.palette.width_px = OTHER_SHEET_W;
+	let drawn = sheet_box(other, routed_page());
 	assert_eq!(
-		(f32::from(moved.size.width), f32::from(moved.size.height)),
-		(OTHER_GROUP_W, OTHER_SHEET_H),
-		"editing the token files resizes the focused page too"
+		measures(drawn),
+		(authored.group_width_px, authored.sheet_height_px),
+		"the palette's width moved and the sheet did not, so the sheet reads its own token"
 	);
 }
 
 #[test]
-fn the_dialog_fills_the_box_the_float_sized_rather_than_stating_a_measure_of_its_own() {
-	let mut other = load_bundled_tokens().expect("the bundled tokens load");
-	other.surface.settings.group_width_px = OTHER_GROUP_W;
-	other.surface.settings.sheet_height_px = OTHER_SHEET_H;
-	let frame = render(other, group());
-	let drawn = sheet(&frame, WINDOW_W as f32);
-	let columns = full_height_columns(&frame, drawn);
-	let dialog = columns
-		.first()
-		.copied()
-		.expect("the group sheet draws a dialog inside the box the float sized");
-	assert_eq!(
-		(dialog.width(), dialog.height()),
-		(f32::from(drawn.size.width), f32::from(drawn.size.height)),
-		"the dialog takes the box the float sized, so the sheet has one measure and not two"
-	);
-}
-
-#[test]
-fn the_group_sheet_sidebar_is_the_width_its_token_authors() {
+fn a_state_with_no_route_draws_the_same_sheet_as_a_routed_one() {
 	let shipped = load_bundled_tokens().expect("the bundled tokens load");
-	let authored = shipped.surface.settings.sidebar_width_px;
-	let frame = render(shipped.clone(), group());
-	let drawn = sheet(&frame, WINDOW_W as f32);
-	let sidebar = sidebar_box(&frame, drawn);
-	assert_eq!(sidebar.width(), authored, "the sidebar draws the width its token states");
-
-	let mut other = shipped;
-	other.surface.settings.sidebar_width_px = OTHER_SIDEBAR_W;
-	let moved_frame = render(other, group());
-	let moved_sheet = sheet(&moved_frame, WINDOW_W as f32);
-	let moved = sidebar_box(&moved_frame, moved_sheet);
+	let routed = sheet_box(shipped.clone(), routed_page());
+	let plain = sheet_box(shipped, unrouted());
 	assert_eq!(
-		moved.width(),
-		OTHER_SIDEBAR_W,
-		"editing the token file resizes the sidebar, so its width is not compiled in"
+		measures(plain),
+		measures(routed),
+		"a settings state draws one sheet however it was reached"
+	);
+}
+
+#[test]
+fn the_sheet_inks_its_own_edge_against_the_scrim() {
+	let shipped = load_bundled_tokens().expect("the bundled tokens load");
+	let hairline = shipped.scale.stroke(StrokeStep::Hairline);
+	let frame = render(shipped, routed_page());
+	let drawn = sheet(&frame, WINDOW_W as f32);
+	let border = sheet_fill(&frame, drawn)
+		.border
+		.unwrap_or_else(|| panic!("the sheet draws no border around itself"));
+	assert_eq!(border.width, hairline, "the sheet's edge is the hairline stroke its tokens state");
+	assert!(
+		!border.color.is_invisible(),
+		"the sheet's edge is transparent, so it has no boundary against the scrim"
 	);
 }

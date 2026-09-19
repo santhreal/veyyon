@@ -1,6 +1,6 @@
 //! Focused command destinations using the existing domain body renderers.
 
-use veyyon_desktop_kit::{ColorRole, RadiusStep, SpacingStep, TextRamp, TokenSet};
+use veyyon_desktop_kit::{ColorRole, RadiusStep, SpacingStep, StrokeStep, TextRamp, TokenSet};
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
 use veyyon_gpui::{
 	Context, Div, FocusHandle, InteractiveElement, ParentElement, Stateful,
@@ -43,6 +43,12 @@ pub(super) fn focused_surface(
 		.min_h_0()
 		.rounded(tokens.radius(RadiusStep::Xl))
 		.bg(tokens.color(ColorRole::Float))
+		// The sheet floats on the scrim, and a box with no edge of its own runs
+		// into whatever the scrim leaves showing behind it. The hairline role is
+		// the ink every floating surface draws its own boundary in.
+		.border(tokens.stroke(StrokeStep::Hairline))
+		.border_color(tokens.color(ColorRole::Hairline))
+		.shadow_lg()
 		.overflow_hidden()
 		.flex()
 		.flex_col()

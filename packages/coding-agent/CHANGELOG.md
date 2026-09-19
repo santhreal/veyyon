@@ -320,7 +320,7 @@
 
 ### Fixed
 
-- The desktop settings sheet draws its outline and the divider beside its page list, both of which were left in the default transparent border colour, and takes its sheet box and page-list width from `surface/settings.toml` rather than from measures compiled into the render.
+- The desktop settings page draws in the box `surface/settings.toml` authors for it and inks its own edge against the scrim, where it took the command palette's narrower box, truncated its rows in it, and drew no boundary at all.
 - The desktop General settings search field takes the keyboard and narrows the page as it is typed, where it drew the query as static text and discarded every keystroke; `Escape` widens a narrowed page before it leaves it.
 - A desktop surface with nothing on it states a step an operator can take: the Usage tenant states the prompt that starts accounting, and a clean working tree the edit or the staged scope, where one predicted what would appear and the other restated its own condition.
 - The desktop session rail states a step over an empty list instead of its own condition twice: a filter that matched nothing states how to clear it, and a rail with no session states how to start one.
@@ -603,6 +603,7 @@
 - The GUI host protocol drops the `ConnectMcp`, `DisconnectMcp` and `CallMcpTool` actions and the `McpToolResult` snapshot section: `SetMcpEnabled` connects, disconnects and reconnects a server, and an MCP tool reaches a session as an ordinary tool call through the agent rather than through a host action with no editor for its arguments.
 - The GUI host protocol drops the `RefreshAuth` action, which was `RefreshProviders` under a second name: both answered with the same `Providers` snapshot from the same credential store, and the provider its payload named was discarded.
 - Removed the unused desktop SplitButton primitive and its registered scene.
+- Removed the desktop's second drawing of the settings pages, a tabbed sheet with a page list down its left edge that no path in the product constructed, along with the `sidebar_width_px` token that sized it.
 - `WRITE_GUTTER_MIN_WIDTH` is no longer exported: the line-number gutter of a code card is the host's, stated once in `src/modes/terminal/draw/draw-tool-view.ts`, and no tool sets it.
 - `resolveModelFromSettings` is removed from `config/model-resolver`; the role chain a session starts from resolves through `resolveModelRoleValue`, which reports why a role failed.
 - `ReadRenderArgs` no longer carries `offset`: the `read` schema states a line window on the path itself (`src/app.ts:50-200`), and `limit` is the directory entry cap.

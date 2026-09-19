@@ -179,15 +179,12 @@ pub struct SettingsSurfaceTokens {
 	pub group_gap:               f32,
 	pub control_column_width_px: f32,
 	pub tooltip_width_px:        f32,
-	/// The width of the tabbed group sheet, which is the settings surface
-	/// reached with no page routed under it.
+	/// The width every settings sheet takes, where the window leaves room for
+	/// it.
 	pub group_width_px:          f32,
-	/// The height every settings sheet takes, group and focused page alike,
-	/// where the window leaves room for it.
+	/// The height every settings sheet takes, where the window leaves room for
+	/// it.
 	pub sheet_height_px:         f32,
-	/// The width of the page sidebar the tabbed group sheet draws down its
-	/// left edge.
-	pub sidebar_width_px:        f32,
 	pub label_size:              TypeSize,
 	pub description_size:        TypeSize,
 }

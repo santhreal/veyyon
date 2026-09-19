@@ -142,12 +142,13 @@ pub(super) fn overlay_layer(
 				.into_any_element()
 		},
 		Overlay::Settings(state) => {
-			let width = if state.route.is_some() {
-				geometry.width_px
-			} else {
-				surface.settings.group_width_px
-			};
-			let width = width.min(f32::from(window.viewport_size().width - margin * 2.0));
+			// The sheet is the settings surface's own box (§5.9), not the
+			// palette's: its rows carry a label, a description and a control
+			// column, which the palette's width truncates.
+			let width = surface
+				.settings
+				.group_width_px
+				.min(f32::from(window.viewport_size().width - margin * 2.0));
 			let height = surface.settings.sheet_height_px.min(max_available_height);
 			div()
 				.w(px(width))

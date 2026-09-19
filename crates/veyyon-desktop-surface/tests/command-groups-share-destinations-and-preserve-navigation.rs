@@ -33,42 +33,67 @@ fn open_test_session(cx: &mut Headless, width: u32, height: u32) -> HeadlessSess
 	.expect("session opens")
 }
 
-fn find_close_hitbox(hitboxes: &[Bounds<Pixels>], window_w: f32) -> Bounds<Pixels> {
-	let dialog_right = f32::midpoint(window_w, 560.0);
+/// The sheet the destination drew in, read from the frame: the widest box the
+/// window centres without spanning, so a resized sheet is still found.
+fn sheet_bounds(hitboxes: &[Bounds<Pixels>], window_w: f32) -> Bounds<Pixels> {
 	*hitboxes
 		.iter()
 		.filter(|hb| {
-			let (w, h, x) =
-				(f32::from(hb.size.width), f32::from(hb.size.height), f32::from(hb.origin.x));
-			(25.0..=90.0).contains(&w)
-				&& (20.0..=36.0).contains(&h)
-				&& (dialog_right - 140.0..=dialog_right).contains(&x)
+			let width = f32::from(hb.size.width);
+			let centre = f32::from(hb.origin.x) + width / 2.0;
+			width < window_w - 1.0 && (centre - window_w / 2.0).abs() < 1.0
 		})
 		.max_by(|a, b| {
-			f32::from(a.origin.x)
-				.partial_cmp(&f32::from(b.origin.x))
-				.unwrap()
+			let area = |hb: &&Bounds<Pixels>| f32::from(hb.size.width) * f32::from(hb.size.height);
+			area(a)
+				.partial_cmp(&area(b))
+				.unwrap_or(std::cmp::Ordering::Equal)
 		})
-		.expect("close button hitbox")
+		.expect("the window centres a sheet it does not span")
+}
+
+/// A short row of a button's height in the band at the top of the sheet:
+/// `Back` at its leading end, `Close` at its trailing one, and no page row's
+/// own control, which the band excludes.
+fn header_control(hitboxes: &[Bounds<Pixels>], window_w: f32, trailing: bool) -> Bounds<Pixels> {
+	let sheet = sheet_bounds(hitboxes, window_w);
+	let left = f32::from(sheet.origin.x);
+	let right = left + f32::from(sheet.size.width);
+	let span = if trailing {
+		right - 140.0..=right
+	} else {
+		left..=left + 140.0
+	};
+	let mut inside: Vec<&Bounds<Pixels>> = hitboxes
+		.iter()
+		.filter(|hb| {
+			let (w, h) = (f32::from(hb.size.width), f32::from(hb.size.height));
+			let (x, y) = (f32::from(hb.origin.x), f32::from(hb.origin.y));
+			(25.0..=90.0).contains(&w)
+				&& (20.0..=36.0).contains(&h)
+				&& span.contains(&x)
+				&& (f32::from(sheet.origin.y)..=f32::from(sheet.origin.y) + 80.0).contains(&y)
+		})
+		.collect();
+	inside.sort_by(|a, b| {
+		f32::from(a.origin.x)
+			.partial_cmp(&f32::from(b.origin.x))
+			.unwrap_or(std::cmp::Ordering::Equal)
+	});
+	let found = if trailing {
+		inside.last()
+	} else {
+		inside.first()
+	};
+	**found.expect("the sheet header draws its own control at that end")
+}
+
+fn find_close_hitbox(hitboxes: &[Bounds<Pixels>], window_w: f32) -> Bounds<Pixels> {
+	header_control(hitboxes, window_w, true)
 }
 
 fn find_back_hitbox(hitboxes: &[Bounds<Pixels>], window_w: f32) -> Bounds<Pixels> {
-	let dialog_left = (window_w - 560.0) / 2.0;
-	*hitboxes
-		.iter()
-		.filter(|hb| {
-			let (w, h, x) =
-				(f32::from(hb.size.width), f32::from(hb.size.height), f32::from(hb.origin.x));
-			(25.0..=90.0).contains(&w)
-				&& (20.0..=36.0).contains(&h)
-				&& (dialog_left..=dialog_left + 140.0).contains(&x)
-		})
-		.min_by(|a, b| {
-			f32::from(a.origin.x)
-				.partial_cmp(&f32::from(b.origin.x))
-				.unwrap()
-		})
-		.expect("back button hitbox")
+	header_control(hitboxes, window_w, false)
 }
 
 fn click_bounds(session: &mut HeadlessSession<'_, ShellView>, bounds: Bounds<Pixels>) {
