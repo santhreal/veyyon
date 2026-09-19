@@ -95,6 +95,7 @@ SCENE_MOTION_FLOOR=0 \
 
 - `Up` / `Down`: move selection (wraps)
 - `Left` / `Right`: page up / page down
+- `Home` / `End`: first / last visible entry
 - `Enter`: select node
 - `Esc`: clear search if active; otherwise close selector
 - `Ctrl+C`: close selector
@@ -163,6 +164,7 @@ Assistant messages that contain **only tool calls** (no text) are hidden by defa
 - Matching is fuzzy (subsequence) and case-insensitive (`fuzzyMatch`)
 - All tokens must match (AND semantics)
 - Searchable text includes the label, the role, the tool name and its argument summary, and type-specific content (message text, branch summary text, custom type, mode and title values, injected rule names, MCP tool names)
+- A row paints every case-insensitive occurrence of a token in the match colour, in the kind column and the label chip as well as the entry text. A row kept by a subsequence match with no literal occurrence paints nothing
 
 ## Selection outcomes (important)
 

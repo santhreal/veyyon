@@ -25,7 +25,14 @@ import {
 	sizingForArea,
 } from "../chrome/modal-shell";
 import { routeModalChrome } from "./select-list-mouse-routing";
-import { centeredWindow, hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
+import {
+	centeredWindow,
+	highlightTokens,
+	hoverBandAt,
+	renderScrollableList,
+	searchTokens,
+	selectionBand,
+} from "./selector-helpers";
 
 /** Gutter info: position (displayIndent where connector was) and whether to show │ */
 interface GutterInfo {
@@ -126,8 +133,16 @@ interface EntryCells {
 	kind: string;
 	/** Colour the kind column carries. */
 	tone: ThemeColor;
-	/** Entry text, already styled. It never repeats the kind. */
+	/**
+	 * Entry text, PLAIN and never repeating the kind.
+	 *
+	 * Plain because the row is what paints it: a search match is painted inside
+	 * this text, and a highlight nested in an already-coloured run ends the run
+	 * at its own reset, so the row's colour would stop at the first match.
+	 */
 	text: string;
+	/** Colour the entry text carries; the terminal's own foreground when absent. */
+	textTone?: ThemeColor;
 }
 
 /**
@@ -234,6 +249,12 @@ class TreeList implements Component {
 	#selectedIndex = 0;
 	#filterMode: FilterMode;
 	#searchQuery = "";
+	/**
+	 * The query as tokens, kept beside it because both the filter and the row
+	 * highlight read them and a per-row re-split would tokenize the same query
+	 * once per visible row, every frame.
+	 */
+	#searchTokens: string[] = [];
 	#toolCallMap: Map<string, ToolCallInfo> = new Map();
 	#multipleRoots = false;
 	#activePathIds: Set<string> = new Set();
@@ -457,7 +478,7 @@ class TreeList implements Component {
 			this.#lastSelectedId = this.#filteredNodes[this.#selectedIndex]?.node.entry.id ?? this.#lastSelectedId;
 		}
 
-		const searchTokens = this.#searchQuery.toLowerCase().split(/\s+/).filter(Boolean);
+		this.#searchTokens = searchTokens(this.#searchQuery);
 
 		// Two passes, because the card sizes itself against the first one. The rows
 		// the FILTER MODE admits are what the tree naturally wants to show; the
@@ -466,11 +487,11 @@ class TreeList implements Component {
 		const modeVisible = this.#flatNodes.filter(flatNode => this.#passesMode(flatNode));
 		this.#modeRowCount = modeVisible.length;
 		this.#filteredNodes =
-			searchTokens.length === 0
+			this.#searchTokens.length === 0
 				? modeVisible
 				: modeVisible.filter(flatNode => {
 						const nodeText = this.#getSearchableText(flatNode.node);
-						return searchTokens.every(token => fuzzyMatch(token, nodeText).matches);
+						return this.#searchTokens.every(token => fuzzyMatch(token, nodeText).matches);
 					});
 
 		// Try to preserve cursor on the same node, or find nearest visible ancestor
@@ -908,19 +929,35 @@ class TreeList implements Component {
 						? theme.fg("muted", `${theme.md.bullet} `)
 						: padding(MARK_COLS);
 
-			// The kind column, then what the entry says. Both bold under the cursor.
+			// The kind column, then what the entry says. Both bold under the cursor,
+			// and both carrying the search's own highlight: a query narrows the card
+			// to the rows it kept and says nothing about WHY it kept them, so the
+			// matched characters are painted gold — the product's colour for a
+			// filter hit — inside the row's own tone.
 			const cells = this.#entryCells(flatNode.node);
 			const kindText = truncateToWidth(cells.kind, KIND_COLS);
-			const kindStyled = theme.fg(cells.tone, kindText);
+			const kindStyled = highlightTokens(kindText, this.#searchTokens, {
+				base: cells.tone,
+				match: "matchHighlight",
+			});
 			const kind =
 				(isSelected ? theme.bold(kindStyled) : kindStyled) + padding(KIND_COLS - visibleWidth(kindText) + KIND_GAP);
 
 			// A label is the user's own landmark, so it keeps its warning colour; its
 			// brackets are structure and recede.
 			const label = flatNode.node.label
-				? theme.fg("dim", "[") + theme.fg("warning", flatNode.node.label) + theme.fg("dim", "] ")
+				? theme.fg("dim", "[") +
+					highlightTokens(flatNode.node.label, this.#searchTokens, {
+						base: "warning",
+						match: "matchHighlight",
+					}) +
+					theme.fg("dim", "] ")
 				: "";
-			const content = isSelected ? theme.bold(cells.text) : cells.text;
+			const painted = highlightTokens(cells.text, this.#searchTokens, {
+				base: cells.textTone,
+				match: "matchHighlight",
+			});
+			const content = isSelected ? theme.bold(painted) : painted;
 
 			const text = truncateToWidth(cursor + rail + mark + kind + label + content, textWidth);
 			const line = ageCols
@@ -990,12 +1027,12 @@ class TreeList implements Component {
 				if (role === "developer") {
 					const msgWithContent = msg as { content?: unknown };
 					const content = normalize(this.#extractContent(msgWithContent.content));
-					return { kind: "developer", tone: "dim", text: theme.fg("muted", content) };
+					return { kind: "developer", tone: "dim", text: content, textTone: "muted" };
 				}
 				if (role === "assistant") {
 					const presentation = resolveAssistantErrorPresentation(msg);
 					if (presentation.kind === "compact-recovered") {
-						return { kind: "assistant", tone: "success", text: theme.fg("dim", presentation.text) };
+						return { kind: "assistant", tone: "success", text: presentation.text, textTone: "dim" };
 					}
 					const msgWithContent = msg as { content?: unknown; stopReason?: string };
 					const textContent = normalize(this.#extractContent(msgWithContent.content));
@@ -1004,27 +1041,28 @@ class TreeList implements Component {
 						return {
 							kind: "assistant",
 							tone: "success",
-							text: theme.fg("error", normalize(presentation.text).slice(0, 80)),
+							text: normalize(presentation.text).slice(0, 80),
+							textTone: "error",
 						};
 					}
 					const empty = msgWithContent.stopReason === "aborted" ? "(aborted)" : "(no content)";
-					return { kind: "assistant", tone: "success", text: theme.fg("muted", empty) };
+					return { kind: "assistant", tone: "success", text: empty, textTone: "muted" };
 				}
 				if (role === "toolResult") {
-					const toolMsg = msg as { toolCallId?: string; toolName?: string };
+					const toolMsg = msg as { toolCallId?: string; toolName?: string; content?: unknown };
 					const call = toolMsg.toolCallId ? this.#toolCallMap.get(toolMsg.toolCallId) : undefined;
-					// Without the call the arguments are gone, so the name is all the
-					// row can say — and it says it in the kind column, not in brackets.
-					if (!call) return { kind: toolMsg.toolName ?? "tool", tone: "muted", text: "" };
-					return {
-						kind: call.name,
-						tone: "muted",
-						text: theme.fg("muted", this.#formatToolCall(call.name, call.arguments)),
-					};
+					// Compaction can carry the result across and drop the call that
+					// made it, and the arguments ride the call. The row then reports
+					// what came BACK, cut to the row's share, rather than spending a
+					// selectable row on a tool name and nothing else.
+					const text = call
+						? this.#formatToolCall(call.name, call.arguments)
+						: truncateToWidth(normalize(this.#extractContent(toolMsg.content)), TRUNCATE_LENGTHS.SHORT);
+					return { kind: call?.name ?? toolMsg.toolName ?? "tool", tone: "muted", text, textTone: "muted" };
 				}
 				if (role === "bashExecution") {
 					const bashMsg = msg as { command?: string };
-					return { kind: "bash", tone: "dim", text: theme.fg("dim", normalize(bashMsg.command ?? "")) };
+					return { kind: "bash", tone: "dim", text: normalize(bashMsg.command ?? ""), textTone: "dim" };
 				}
 				return { kind: role, tone: "dim", text: "" };
 			}
@@ -1040,37 +1078,38 @@ class TreeList implements Component {
 			}
 			case "compaction": {
 				const tokens = Math.round(entry.tokensBefore / 1000);
-				return { kind: "compaction", tone: "borderAccent", text: theme.fg("borderAccent", `${tokens}k tokens`) };
+				return { kind: "compaction", tone: "borderAccent", text: `${tokens}k tokens`, textTone: "borderAccent" };
 			}
 			case "branch_summary":
 				return { kind: "summary", tone: "warning", text: normalize(entry.summary) };
 			case "model_change":
-				return { kind: "model", tone: "dim", text: theme.fg("dim", entry.model) };
+				return { kind: "model", tone: "dim", text: entry.model, textTone: "dim" };
 			case "thinking_level_change":
 				return {
 					kind: "thinking",
 					tone: "dim",
-					text: theme.fg("dim", entry.thinkingLevel ?? ThinkingLevel.Off),
+					text: entry.thinkingLevel ?? ThinkingLevel.Off,
+					textTone: "dim",
 				};
 			case "custom":
-				return { kind: "custom", tone: "dim", text: theme.fg("dim", entry.customType) };
+				return { kind: "custom", tone: "dim", text: entry.customType, textTone: "dim" };
 			case "label":
-				return { kind: "label", tone: "dim", text: theme.fg("dim", entry.label ?? "(cleared)") };
+				return { kind: "label", tone: "dim", text: entry.label ?? "(cleared)", textTone: "dim" };
 			case "service_tier_change": {
 				const tier = entry.serviceTier;
 				const families = tier === null ? "(cleared)" : Object.values(tier).join(" ");
-				return { kind: "tier", tone: "dim", text: theme.fg("dim", families) };
+				return { kind: "tier", tone: "dim", text: families, textTone: "dim" };
 			}
 			case "mode_change":
-				return { kind: "mode", tone: "dim", text: theme.fg("dim", entry.mode) };
+				return { kind: "mode", tone: "dim", text: entry.mode, textTone: "dim" };
 			case "title_change":
-				return { kind: "title", tone: "dim", text: theme.fg("dim", normalize(entry.title)) };
+				return { kind: "title", tone: "dim", text: normalize(entry.title), textTone: "dim" };
 			case "session_init":
-				return { kind: "session", tone: "dim", text: theme.fg("dim", `${entry.tools.length} tools`) };
+				return { kind: "session", tone: "dim", text: `${entry.tools.length} tools`, textTone: "dim" };
 			case "ttsr_injection":
-				return { kind: "rules", tone: "dim", text: theme.fg("dim", entry.injectedRules.join(" ")) };
+				return { kind: "rules", tone: "dim", text: entry.injectedRules.join(" "), textTone: "dim" };
 			case "mcp_tool_selection":
-				return { kind: "mcp", tone: "dim", text: theme.fg("dim", entry.selectedToolNames.join(" ")) };
+				return { kind: "mcp", tone: "dim", text: entry.selectedToolNames.join(" "), textTone: "dim" };
 			default: {
 				// An entry kind this card was not written for — a package's own,
 				// merged into the union — still says WHICH kind it is. A blank row is
@@ -1179,6 +1218,12 @@ class TreeList implements Component {
 		} else if (matchesKey(keyData, "right")) {
 			// Page down
 			this.#selectedIndex = Math.min(this.#filteredNodes.length - 1, this.#selectedIndex + this.#maxVisibleLines);
+		} else if (matchesKey(keyData, "home")) {
+			// The root, in one key. Left/Right page through a long trunk a screen at
+			// a time, which is a poor way to reach the thing every path starts at.
+			this.#selectedIndex = 0;
+		} else if (matchesKey(keyData, "end")) {
+			this.#selectedIndex = Math.max(0, this.#filteredNodes.length - 1);
 		} else if (matchesKey(keyData, "enter") || matchesKey(keyData, "return") || keyData === "\n") {
 			const selected = this.#filteredNodes[this.#selectedIndex];
 			if (selected && this.onSelect) {
@@ -1242,6 +1287,7 @@ class TreeList implements Component {
 const TREE_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "move", keybindings: ["tui.select.up", "tui.select.down"] },
 	{ label: "left/right page" },
+	{ label: "home/end ends" },
 	{ label: "shift+L label" },
 	{ label: "ctrl+O filter" },
 	{ label: "enter jump", clickable: true, id: "confirm" },

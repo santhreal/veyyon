@@ -42,8 +42,10 @@ import {
 	TREE_FILTER_MODES,
 	TreeSelectorComponent,
 } from "@veyyon/coding-agent/modes/terminal/components/selectors/tree-selector";
+import type { ThemeColor } from "@veyyon/coding-agent/theme/theme";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/kernel/session/session-entries";
+import { getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../../helpers/stdout-geometry";
 
 const WIDTH = 110;
@@ -52,16 +54,24 @@ const ROWS = 40;
 const NOW = Date.parse("2025-03-04T12:00:00.000Z");
 
 let geometry: StubbedStdoutGeometry;
+/** The policy this file found, restored after each test so no later file inherits `full`. */
+let ansiPolicy = getAnsiPolicy();
 
 beforeEach(async () => {
 	await initTheme(false, undefined, undefined, "dark", "light");
 	geometry = stubStdoutGeometry({ columns: WIDTH, rows: ROWS });
 	setSystemTime(new Date(NOW));
+	// A test runner's stdout is not a terminal, so the detected policy is `plain`
+	// and every `theme.fg` returns its text unchanged. An assertion about a
+	// colour would then pass on a card that paints none.
+	ansiPolicy = getAnsiPolicy();
+	setAnsiPolicy("full");
 });
 
 afterEach(() => {
 	geometry.restore();
 	setSystemTime();
+	setAnsiPolicy(ansiPolicy);
 });
 
 let counter = 0;
@@ -142,11 +152,15 @@ function bookkeeping(fields: Record<string, unknown>, parent: SessionTreeNode): 
 	return child;
 }
 
-function card(
+/**
+ * The card as it is painted — escapes intact — after `keys` have been typed
+ * into it, which is how a query, a filter step or a jump reaches the component
+ * the way a user reaches it.
+ */
+function painted(
 	tree: SessionTreeNode[],
 	leafId: string,
-	width = WIDTH,
-	filter?: (typeof TREE_FILTER_MODES)[number],
+	options: { width?: number; filter?: (typeof TREE_FILTER_MODES)[number]; keys?: readonly string[] } = {},
 ): string[] {
 	const component = new TreeSelectorComponent(
 		tree,
@@ -154,9 +168,23 @@ function card(
 		() => {},
 		() => {},
 		undefined,
-		filter,
+		options.filter,
 	);
-	return component.render(width).map(line => Bun.stripANSI(line));
+	const width = options.width ?? WIDTH;
+	// One render before the keys: the card sizes its viewport from the frame it
+	// last drew, and a jump to the last row is a jump within that viewport.
+	component.render(width);
+	for (const key of options.keys ?? []) component.handleInput(key);
+	return [...component.render(width)];
+}
+
+function card(
+	tree: SessionTreeNode[],
+	leafId: string,
+	width = WIDTH,
+	filter?: (typeof TREE_FILTER_MODES)[number],
+): string[] {
+	return painted(tree, leafId, { width, filter }).map(line => Bun.stripANSI(line));
 }
 
 interface Card {
@@ -681,5 +709,136 @@ describe("the session tree reads arguments a session never parsed", () => {
 
 			expect(row).toContain("src/parser.ts");
 		}
+	});
+});
+
+/**
+ * The sequence `theme.fg(color, …)` OPENS with, so an assertion is about the
+ * colour in force at a span rather than about two adjacent bytes. Empty means
+ * the run has no colour at all, which would make every assertion below vacuous.
+ */
+function opens(color: ThemeColor): string {
+	const sequence = theme.fg(color, "x").split("x")[0];
+	expect(sequence, `the theme gave no foreground for ${color}`).not.toBe("");
+	return sequence;
+}
+
+/** The painted row carrying `needle` once its escapes are stripped. */
+function paintedRowOf(frame: readonly string[], needle: string): string {
+	const row = frame.find(line => Bun.stripANSI(line).includes(needle));
+	if (row === undefined) throw new Error(`no painted row carries ${JSON.stringify(needle)}`);
+	return row;
+}
+
+describe("the session tree says why a search kept a row", () => {
+	/**
+	 * The card over a tree whose rows share one word, with `query` typed into it.
+	 *
+	 * No entry here carries a label: the theme resolves `warning` and
+	 * `matchHighlight` to the same gold, so a label chip on a row would answer an
+	 * assertion about the highlight with its own colour.
+	 */
+	function searched(query: string): string[] {
+		counter = 0;
+		const root = user("harden the column layout", null, 60 * 60_000);
+		const reply = assistant("The kind column lands on one offset.", root, 59 * 60_000);
+		const ran = toolPair("bash", { command: "bun test src/columns.ts" }, reply, 58 * 60_000);
+		const model = bookkeeping({ type: "model_change", model: "sonnet-column-4" }, ran);
+		const leaf = user("keep the column", model, 57 * 60_000);
+		return painted([root], leaf.entry.id, { filter: "all", keys: [...query] });
+	}
+
+	it("paints the matched characters gold in the entry text and in the kind column", () => {
+		const frame = searched("column");
+		const gold = opens("matchHighlight");
+
+		// A card that narrows to four rows and says nothing about what it matched
+		// leaves the user to find the word themselves, on every row.
+		for (const needle of ["harden the column layout", "bun test src/columns.ts", "sonnet-column-4"]) {
+			expect(paintedRowOf(frame, needle)).toContain(`${gold}column`);
+		}
+
+		// The kind column is a row's own word too: `bash` names the tool there and
+		// nowhere else on the row.
+		expect(paintedRowOf(searched("bash"), "bun test")).toContain(`${gold}bash`);
+	});
+
+	it("keeps the row's own colour on both sides of a match", () => {
+		const row = paintedRowOf(searched("column"), "sonnet-column-4");
+		const gold = opens("matchHighlight");
+		const dim = opens("dim");
+
+		// A highlight nested inside a coloured run would end the run at its own
+		// reset, so the tail of a dim row would come back at the terminal's default
+		// foreground — brighter than the row it belongs to.
+		const at = row.indexOf(gold);
+		expect(at).toBeGreaterThan(0);
+		expect(row.lastIndexOf(dim, at)).toBeGreaterThanOrEqual(0);
+		expect(row.indexOf(dim, at)).toBeGreaterThan(at);
+	});
+
+	it("paints no highlight without a query, and none on a row no character of the query is in", () => {
+		const gold = opens("matchHighlight");
+		counter = 0;
+		const root = user("harden the column layout", null, 60 * 60_000);
+		const leaf = assistant("The kind column lands on one offset.", root, 59 * 60_000);
+		for (const line of painted([root], leaf.entry.id, { filter: "all" })) {
+			expect(line).not.toContain(gold);
+		}
+
+		// `clmn` keeps the column rows through the fuzzy filter without appearing
+		// in any of them. A highlight drawn from the filter's own idea of a match
+		// would paint characters the user never typed; drawn from the substring,
+		// there is simply nothing to paint.
+		const fuzzy = searched("clmn");
+		expect(fuzzy.some(line => Bun.stripANSI(line).includes("harden the column layout"))).toBe(true);
+		for (const line of fuzzy) expect(line).not.toContain(gold);
+	});
+});
+
+describe("the session tree reports a result whose call is gone", () => {
+	it("shows what came back when the call that made it was compacted away", () => {
+		counter = 0;
+		const root = user("run the suite", null, 60 * 60_000);
+		// A toolResult whose `toolCallId` matches no call in the tree: what
+		// compaction leaves behind when it carries a result across and drops the
+		// assistant turn that made it. The arguments ride the call, so the row
+		// used to carry a tool name and nothing else — selectable, and silent.
+		const orphan = {
+			role: "toolResult",
+			toolCallId: "call-that-was-compacted",
+			toolName: "bash",
+			content: [{ type: "text", text: "4 pass, 0 fail" }],
+			timestamp: ++counter,
+		} as unknown as AgentMessage;
+		const resultNode = node(orphan, root.entry.id, 59 * 60_000);
+		root.children.push(resultNode);
+		const leaf = assistant("The suite is green.", resultNode, 58 * 60_000);
+
+		const row = rowOf(card([root], leaf.entry.id, WIDTH, "all"), "bash");
+
+		expect(row).toContain("4 pass, 0 fail");
+	});
+});
+
+describe("the session tree reaches its own ends in one key", () => {
+	it("puts the cursor on the first row for home and the last for end", () => {
+		const { roots, leafId } = chainOf(30);
+		const cursor = theme.nav.cursor;
+
+		const home = cardOf(card(roots, leafId, WIDTH, "all").map(line => line)).rows;
+		// The card opens on the leaf, which is the end of a thirty-row chain, so
+		// the untouched frame proves the keys moved something.
+		expect(home.find(line => line.includes(cursor))).toContain("prompt 29");
+
+		const atHome = cardOf(
+			painted(roots, leafId, { filter: "all", keys: ["\x1b[H"] }).map(l => Bun.stripANSI(l)),
+		).rows;
+		expect(atHome.find(line => line.includes(cursor))).toContain("prompt 0");
+
+		const atEnd = cardOf(
+			painted(roots, leafId, { filter: "all", keys: ["\x1b[H", "\x1b[F"] }).map(l => Bun.stripANSI(l)),
+		).rows;
+		expect(atEnd.find(line => line.includes(cursor))).toContain("prompt 29");
 	});
 });
