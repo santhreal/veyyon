@@ -598,7 +598,7 @@
 
 ### Fixed
 
-- The desktop settings page draws in the box `surface/settings.toml` authors for it and inks its own edge against the scrim, where it took the command palette's narrower box, truncated its rows in it, and drew no boundary at all.
+- The desktop settings page draws in the box `surface/settings.toml` authors for it, on the float ground and inking its own hairline edge, where it borrowed the command palette's 576px box and truncated its rows in it.
 - The desktop General settings search field takes the keyboard and narrows the page as it is typed, where it drew the query as static text and discarded every keystroke; `Escape` widens a narrowed page before it leaves it.
 - A desktop surface with nothing on it states a step an operator can take: the Usage tenant states the prompt that starts accounting, and a clean working tree the edit or the staged scope, where one predicted what would appear and the other restated its own condition.
 - The desktop session rail states a step over an empty list instead of its own condition twice: a filter that matched nothing states how to clear it, and a rail with no session states how to start one.
