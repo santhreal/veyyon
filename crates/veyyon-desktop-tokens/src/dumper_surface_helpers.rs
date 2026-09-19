@@ -1,5 +1,5 @@
 use crate::{
-	scale::{ScaleTokens, TypeSize},
+	scale::{InlineType, ScaleTokens, TypeSize},
 	schema::{RadiusStep, SpacingStep, StrokeStep, TypeSizeStep},
 };
 
@@ -34,6 +34,16 @@ pub fn step_type_size(scale: &ScaleTokens, ts: &TypeSize) -> &'static str {
 	for step in TypeSizeStep::all() {
 		let s = scale.type_size(step);
 		if (s.size - ts.size).abs() < 1e-4 && (s.line_height - ts.line_height).abs() < 1e-4 {
+			return step.as_token();
+		}
+	}
+	"read"
+}
+
+pub fn step_inline_type(scale: &ScaleTokens, it: &InlineType) -> &'static str {
+	for step in TypeSizeStep::all() {
+		let s = scale.type_size(step);
+		if (s.size - it.size).abs() < 1e-4 && (s.tracking_em - it.tracking_em).abs() < 1e-4 {
 			return step.as_token();
 		}
 	}

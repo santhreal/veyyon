@@ -11,7 +11,7 @@
 //! corrupts and the run dies with a SIGSEGV or a shader that no longer parses.
 //! Swapping the root view leaves the device alone.
 
-use std::path::Path;
+use std::{path::Path, time::Duration};
 
 use veyyon_desktop_model::SurfaceId;
 use veyyon_desktop_scene::{
@@ -26,6 +26,12 @@ use super::{
 	build::{SceneBuildError, SceneRoot, build},
 	seed::SCENE_CLOCK_MS,
 };
+
+/// How far the clock moves between the frames a capture draws.
+///
+/// Eight of these is two seconds, which is past the longest transition the
+/// motion table authors, so every animator reads settled at the capture.
+const SETTLE_STEP: Duration = Duration::from_millis(250);
 
 /// Why a scene produced no frame.
 #[derive(Debug, thiserror::Error)]
@@ -176,7 +182,18 @@ impl<'cx> SceneWindow<'cx> {
 			.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
 		// `render_to_frame` reads the last drawn frame; the draw itself is the
 		// vsync this delivers, which the notify above left the window dirty for.
+		//
+		// The clock moves with each frame. A transition samples the executor's
+		// clock, which stands still in a headless context, so eight frames at
+		// one instant leave every animator at its start value: the toast stack
+		// drew its backdrop blur over the panel with the cards themselves at
+		// zero opacity. Stepping the clock also delivers the next-frame request
+		// a surface mid-transition makes, so each pass redraws at a later
+		// instant. `SETTLE_STEP` per frame carries the longest transition the
+		// design system authors well past its end, and the capture is of a
+		// surface at rest rather than of its first frame.
 		for _ in 0..8 {
+			self.cx.advance_clock(SETTLE_STEP);
 			self
 				.cx
 				.request_frame(self.window.into())

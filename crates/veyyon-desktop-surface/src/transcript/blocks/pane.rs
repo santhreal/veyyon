@@ -80,7 +80,7 @@ pub fn render_pane_block(
 				.flex_shrink_0()
 				.text_size(tokens.font_size(TextRamp::Micro))
 				.text_color(tokens.color(ColorRole::Muted))
-				.child(format!("{} lines", lines.len())),
+				.child(crate::text::counted(lines.len(), "line", "lines")),
 		);
 	let container = div().flex().flex_col().w_full().child(header);
 	let (progress, _) = viewport_state.current_reveal_frame(turn_ix, block_ix);

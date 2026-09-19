@@ -13,7 +13,7 @@ use crate::{
 	error::TokenError,
 	loader::{find_key_line_col, validate_table_keys},
 	loader_surface::{resolve_radius, resolve_spacing, resolve_stroke, resolve_type_size},
-	scale::{ScaleTokens, TypeSize},
+	scale::{InlineType, ScaleTokens, TypeSize},
 	schema::TypeWeightStep,
 };
 
@@ -276,6 +276,12 @@ impl<'a> Section<'a> {
 	/// A type ramp reference (`"body"`), resolved through the scale.
 	pub fn type_size(&self, key: &str, scale: &ScaleTokens) -> Result<TypeSize, TokenError> {
 		resolve_type_size(self.path, self.text, &self.name, key, self.get(key)?, scale)
+	}
+
+	/// A type ramp reference (`"small"`) a surface draws one line at, resolved
+	/// through the scale without the step's leading.
+	pub fn inline_type(&self, key: &str, scale: &ScaleTokens) -> Result<InlineType, TokenError> {
+		self.type_size(key, scale).map(|step| step.inline())
 	}
 
 	/// A type weight reference (`"medium"`), resolved through the scale.

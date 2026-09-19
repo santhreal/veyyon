@@ -215,7 +215,10 @@ pub fn render_terminal_grid(
 				.text_size(tokens.font_size(TextRamp::Micro))
 				.line_height(tokens.line_height(TextRamp::Micro))
 				.text_color(tokens.color(ColorRole::Muted))
-				.child(format!("Scrollback: -{} lines", content.scroll_offset)),
+				.child(format!(
+					"Scrollback: -{}",
+					crate::text::counted(content.scroll_offset, "line", "lines")
+				)),
 		);
 	}
 

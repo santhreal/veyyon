@@ -137,7 +137,7 @@ fn path_header(file: &FileView, geometry: &PanelsSurfaceTokens, tokens: &TokenSe
 			div()
 				.text_size(tokens.font_size(TextRamp::Micro))
 				.text_color(tokens.color(ColorRole::Muted))
-				.child(format!("{} lines", file.lines.len())),
+				.child(crate::text::counted(file.lines.len(), "line", "lines")),
 		)
 }
 

@@ -1,6 +1,12 @@
 //! The right panel (§5.6, §5.11).
 //!
 //! Owns the diff view, file view, and workspace tree tabs.
+//!
+//! Every chrome row above the content — the tab strip, the diff toolbar, a
+//! file's header and the review bar — insets its text by `s4` and sheds `s2`
+//! of that on a side whose outermost child is a control, because a control
+//! carries `s2` of its own. Four stacked rows then start their text on one
+//! line while their hover grounds keep a common edge of their own.
 
 pub mod content;
 pub mod diff_columns;

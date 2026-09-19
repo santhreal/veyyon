@@ -181,7 +181,10 @@ fn file_header(
 		.items_center()
 		.justify_between()
 		.gap(tokens.spacing(SpacingStep::S2))
-		.px(tokens.spacing(SpacingStep::S3))
+		// The path is text and the review count is a control, so only the
+		// trailing side sheds.
+		.pl(tokens.spacing(SpacingStep::S4))
+		.pr(tokens.spacing(SpacingStep::S2))
 		.bg(tokens.color(ColorRole::Inset))
 		.border_b(px(geometry.chrome_resize_handle_line_px))
 		.border_color(tokens.color(ColorRole::Hairline))

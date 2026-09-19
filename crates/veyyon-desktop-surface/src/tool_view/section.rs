@@ -136,7 +136,7 @@ pub fn render_section(
 		let label = if let Some(hidden) = &section.hidden {
 			hidden.format_label()
 		} else {
-			format!("{omitted_back} more lines")
+			crate::text::counted(omitted_back, "more line", "more lines")
 		};
 		let revealable = section.hidden.as_ref().is_none_or(|h| h.revealable);
 		container = container.child(render_disclosure(&label, revealable, tokens, callbacks));

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::scale::TypeSize;
+use crate::scale::{InlineType, TypeSize};
 
 /// Resolved queue surface geometry tokens.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -87,7 +87,7 @@ pub struct ComposerSurfaceTokens {
 	pub footer_hysteresis_px: f32,
 	pub run_bar_max_controls: usize,
 	pub run_bar_compact_threshold_px: f32,
-	pub run_bar_label_size: TypeSize,
+	pub run_bar_label_size: InlineType,
 	pub opening_line_max_width_px: f32,
 	pub opening_line_type_size: TypeSize,
 	pub opening_line_weight: u16,

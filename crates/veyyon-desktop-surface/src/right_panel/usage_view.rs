@@ -81,6 +81,7 @@ pub fn usage_view(
 			.flex_1()
 			.w_full()
 			.flex()
+			.flex_col()
 			.child(empty_surface(EmptySurface::Usage, tokens));
 	};
 

@@ -121,7 +121,10 @@ pub fn render_shell(
 				let dest_focus = view.destination_focus_handle(cx);
 				window.focus(&dest_focus, cx);
 			}
-		} else if let Some(editor) = view.composer() {
+		} else if let Some(editor) = view.composer().filter(|_| view.state().current_id > 0) {
+			// With no session open every composer control is unavailable and
+			// a draft sends nothing, so the keyboard stays on the shell and
+			// the float draws at rest rather than ringed and inviting.
 			let focus = editor.read(cx).focus_handle().clone();
 			window.focus(&focus, cx);
 		} else {

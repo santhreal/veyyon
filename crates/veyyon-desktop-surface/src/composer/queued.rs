@@ -27,12 +27,7 @@ pub fn queued_strip(
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> Stateful<Div> {
-	let count = composer.queued.len();
-	let count_label = if count == 1 {
-		"1 queued prompt".to_string()
-	} else {
-		format!("{count} queued prompts")
-	};
+	let count_label = crate::text::counted(composer.queued.len(), "queued prompt", "queued prompts");
 
 	let take_back_id = SurfaceId::ComposerQueuedTakeBack(SessionId::from(session_id.to_string()));
 	let availability = controls.availability(&take_back_id);

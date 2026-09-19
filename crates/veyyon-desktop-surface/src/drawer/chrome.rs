@@ -7,7 +7,7 @@
 
 use veyyon_desktop_kit::{
 	ColorRole, SpacingStep, StrokeStep, TextRamp, TextWeight, TokenSet,
-	controls::{Button, ButtonVariant},
+	controls::{Button, ButtonSize, ButtonVariant},
 	overlays::Tooltip,
 	state::InteractiveState,
 };
@@ -158,7 +158,7 @@ pub fn drawer_chrome(
 				.text_size(tokens.font_size(TextRamp::Micro))
 				.line_height(tokens.line_height(TextRamp::Micro))
 				.text_color(tokens.color(ColorRole::Muted))
-				.child(format!("{} matches", search.match_count)),
+				.child(crate::text::counted(search.match_count, "match", "matches")),
 		);
 	}
 
@@ -260,7 +260,7 @@ pub fn drawer_chrome(
 		.flex_row()
 		.items_center()
 		.justify_between()
-		.px(tokens.spacing(SpacingStep::S3))
+		.px(tokens.spacing(SpacingStep::S2))
 		.border_b(tokens.stroke(StrokeStep::Hairline))
 		.border_color(tokens.color(ColorRole::Hairline))
 		.child(tabs_strip)
@@ -276,7 +276,9 @@ fn action_button(
 	cx: &Context<ShellView>,
 	on_click: impl Fn(&mut ShellView, &ClickEvent, &mut Window, &mut Context<ShellView>) + 'static,
 ) -> AnyElement {
-	let mut btn = Button::new(id, label).variant(ButtonVariant::Ghost);
+	let mut btn = Button::new(id, label)
+		.variant(ButtonVariant::Ghost)
+		.size(ButtonSize::Small);
 	match av {
 		Availability::Enabled | Availability::Unknown => {
 			btn = btn.on_click(cx.listener(on_click));

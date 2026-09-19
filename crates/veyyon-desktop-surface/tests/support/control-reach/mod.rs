@@ -181,13 +181,15 @@ pub fn expected_controls(state: &ShellState) -> usize {
 			})
 			.sum::<usize>();
 
-	// Each attachment card answers three clicks: the card's own hover group,
+	// Each attachment card answers four clicks: the card's own hover group,
 	// the wrapper whose paint turns on with that hover (a `group_hover` style
-	// is hit-tested so its reveal can be tracked), and the remove control the
-	// hover reveals. The nonempty tray also registers its bounded scroll area.
-	// The refusal notice is window-local state and is counted by its own test.
+	// is hit-tested so its reveal can be tracked), the tooltip target that
+	// states in full the name and refusal the card ellipsises, and the remove
+	// control the hover reveals. The nonempty tray also registers its bounded
+	// scroll area. The refusal notice is window-local state and is counted by
+	// its own test.
 	let tray =
-		state.composer.attachments.len() * 3 + usize::from(!state.composer.attachments.is_empty());
+		state.composer.attachments.len() * 4 + usize::from(!state.composer.attachments.is_empty());
 
 	queue_controls + panel + answers + chrome + menu_bar + tray + transcript
 }

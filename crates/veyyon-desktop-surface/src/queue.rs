@@ -312,6 +312,8 @@ pub fn queue_rail(
 		};
 		div()
 			.id("queue-scroll-container")
+			.flex()
+			.flex_col()
 			.flex_1()
 			.min_h_0()
 			.w_full()

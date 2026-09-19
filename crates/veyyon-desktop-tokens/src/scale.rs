@@ -15,6 +15,27 @@ pub struct TypeSize {
 	pub tracking_em: f32,
 }
 
+impl TypeSize {
+	/// This step as a single line of chrome reads it.
+	pub const fn inline(&self) -> InlineType {
+		InlineType { size: self.size, tracking_em: self.tracking_em }
+	}
+}
+
+/// A type step as one line of chrome reads it: the size it is set at and its
+/// tracking.
+///
+/// Leading places a line inside a block of prose. A single line centred in a
+/// row whose height is authored elsewhere has none to place, and a surface
+/// that resolved a whole step for one label carried a line height no frame
+/// could differ by. A surface draws one line at a step by naming that step
+/// here, and the leading stays with the prose that uses it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct InlineType {
+	pub size:        f32,
+	pub tracking_em: f32,
+}
+
 /// Resolved scale token values.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScaleTokens {

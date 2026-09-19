@@ -246,7 +246,7 @@ pub fn render_text_block(
 	}
 
 	if omitted > 0 {
-		let label = format!("{omitted} more lines");
+		let label = crate::text::counted(omitted, "more line", "more lines");
 		if let Some(on_disclose) = &callbacks.on_disclose {
 			let cb = on_disclose.clone();
 			container = container.child(

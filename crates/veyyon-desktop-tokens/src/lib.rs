@@ -49,7 +49,7 @@ pub use motion::{
 	DirectThenSpringModel, DurationModel, EasingCurve, FlipModel, MotionModel, MotionRole,
 	MotionRoleConfig, MotionTokens, ReducedMotion, SpringFadeModel, SpringModel, TwoStepModel,
 };
-pub use scale::{ScaleTokens, TypeSize};
+pub use scale::{InlineType, ScaleTokens, TypeSize};
 pub use schema::{
 	IconSizeStep, MonoSizeStep, RadiusStep, SpacingStep, StrokeStep, TypeSizeStep, TypeWeightStep,
 };

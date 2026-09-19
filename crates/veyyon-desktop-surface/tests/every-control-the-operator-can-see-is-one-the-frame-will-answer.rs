@@ -261,9 +261,9 @@ fn the_tray_registers_each_card_and_the_remove_control_on_it() {
 
 	assert_eq!(
 		captured.hitboxes.len() - before,
-		cards * 3 + 1,
-		"a tray of {cards} added {} hit rects rather than its scroll viewport plus three per card \
-		 (hover group, hover wrapper and remove control)",
+		cards * 4 + 1,
+		"a tray of {cards} added {} hit rects rather than its scroll viewport plus four per card \
+		 (hover group, hover wrapper, tooltip target and remove control)",
 		captured.hitboxes.len() - before
 	);
 	assert_eq!(

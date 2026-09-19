@@ -159,11 +159,17 @@ pub fn footer_row(
 		.items_center()
 		.justify_between()
 		.gap(tokens.spacing(SpacingStep::S3))
+		// The leading control carries `s2` of its own, and the draft above it
+		// starts at the composer's padding. The row sheds that much on the
+		// leading side, so the model name and the first line of the draft
+		// start on one edge and the control's hover ground stays inside the
+		// composer.
 		.child(
 			div()
 				.flex()
 				.min_w_0()
 				.items_center()
+				.ml(-tokens.spacing(SpacingStep::S2))
 				.gap(tokens.spacing(SpacingStep::S2))
 				.children(mode)
 				.child(Tooltip::new(availability.reason().unwrap_or(label).to_owned(), model).above())

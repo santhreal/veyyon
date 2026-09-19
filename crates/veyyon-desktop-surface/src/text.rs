@@ -1,5 +1,5 @@
 //! The markdown a decision arrives in, flattened to the plain lines a card
-//! draws.
+//! draws, and the count nouns a surface states beside a number.
 //!
 //! WHY: a plan crosses the wire as `markdown_plan`, written for a markdown
 //! renderer, and a card draws one line per row. The plan card drew
@@ -64,5 +64,20 @@ fn strip_block_markers(line: &str) -> String {
 		format!("- {}", &body[2..])
 	} else {
 		body.to_owned()
+	}
+}
+
+/// `count` followed by `singular` when it is one and `plural` otherwise.
+///
+/// Every surface that states a count states it here, so one cannot draw
+/// `1 lines` while another draws `1 line`. Both forms are passed rather than
+/// an `s` suffixed to the singular, because `match` and `entry` do not take
+/// one and a guess would draw `1 matchs`.
+#[must_use]
+pub fn counted(count: usize, singular: &str, plural: &str) -> String {
+	if count == 1 {
+		format!("{count} {singular}")
+	} else {
+		format!("{count} {plural}")
 	}
 }

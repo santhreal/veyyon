@@ -14,12 +14,8 @@ use super::decoder::ImageStatus;
 use crate::{composer::human_bytes, model::Artifact};
 
 /// Formats line counts for display (e.g. "1 line", "42 lines").
-pub fn format_lines(lines: u32) -> String {
-	if lines == 1 {
-		"1 line".to_string()
-	} else {
-		format!("{lines} lines")
-	}
+fn format_lines(lines: u32) -> String {
+	crate::text::counted(lines as usize, "line", "lines")
 }
 
 /// The 24px row: an icon, the artefact's identity, and at most one summary.

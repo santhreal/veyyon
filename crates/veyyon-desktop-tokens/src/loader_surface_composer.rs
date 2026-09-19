@@ -80,7 +80,7 @@ pub fn load_composer(
 		footer_hysteresis_px: footer.number("hysteresis_px")?,
 		run_bar_max_controls: run_bar.count("max_controls")?,
 		run_bar_compact_threshold_px: run_bar.number("compact_threshold_px")?,
-		run_bar_label_size: run_bar.type_size("label_size", scale)?,
+		run_bar_label_size: run_bar.inline_type("label_size", scale)?,
 		opening_line_max_width_px: opening.number("max_width_px")?,
 		opening_line_type_size: opening.type_size("type_size", scale)?,
 		opening_line_weight: opening.weight("weight", scale)?,

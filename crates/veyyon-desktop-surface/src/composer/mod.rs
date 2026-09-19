@@ -252,7 +252,6 @@ pub fn run_bar(
 				div()
 					.flex_1()
 					.min_w_0()
-					.h_full()
 					.overflow_hidden()
 					.whitespace_nowrap()
 					.truncate()
@@ -260,7 +259,6 @@ pub fn run_bar(
 						geometry.run_bar_label_size.tracking_em * geometry.run_bar_label_size.size
 					))
 					.text_size(px(geometry.run_bar_label_size.size))
-					.line_height(px(geometry.run_bar_label_size.line_height))
 					.text_color(tokens.color(ColorRole::Secondary))
 					.child(line),
 			)
@@ -272,13 +270,14 @@ pub fn run_bar(
 					.id("run-bar-abort-turn")
 					.flex_shrink_0()
 					.h_full()
+					.flex()
+					.items_center()
 					.px(tokens.spacing(SpacingStep::S1))
 					.opacity(opacity)
 					.cursor(cursor);
 				stop = if labels {
 					stop
 						.text_size(px(geometry.run_bar_label_size.size))
-						.line_height(px(geometry.run_bar_label_size.line_height))
 						.text_color(tokens.color(ColorRole::Secondary))
 						.child("Stop")
 				} else {

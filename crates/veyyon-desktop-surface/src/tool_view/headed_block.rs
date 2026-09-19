@@ -111,7 +111,7 @@ pub fn render_headed_block(
 		let label = if let Some(hidden) = &view.hidden {
 			hidden.format_label()
 		} else {
-			format!("{omitted_back} more lines")
+			crate::text::counted(omitted_back, "more line", "more lines")
 		};
 		let revealable = view.hidden.as_ref().is_none_or(|h| h.revealable);
 		lines_container =

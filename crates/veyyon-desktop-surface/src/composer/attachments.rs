@@ -3,7 +3,7 @@
 use strum::IntoEnumIterator;
 use veyyon_desktop_kit::{
 	ColorRole, Icon, IconButton, IconButtonVariant, IconName, IconSize, SpacingStep, StrokeStep,
-	TextRamp, TokenSet,
+	TextRamp, TokenSet, Tooltip,
 };
 use veyyon_desktop_tokens::ComposerSurfaceTokens;
 use veyyon_gpui::{
@@ -69,7 +69,7 @@ fn attachment_card(
 	geometry: &ComposerSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
-) -> Stateful<Div> {
+) -> AnyElement {
 	let edge = if unsupported_by.is_some() {
 		tokens.color(ColorRole::Accent)
 	} else {
@@ -88,19 +88,27 @@ fn attachment_card(
 		None => caption_row(None, size_caption(attachment), ColorRole::Secondary, tokens),
 	};
 
-	div()
+	// The card is capped at its authored width, so a long name and a refusal
+	// both ellipsise in it. The tooltip states them in full, and is the same
+	// sentence the label reads out.
+	let statement = format!(
+		"{} · {}{}",
+		attachment.name,
+		size_caption(attachment),
+		unsupported_by.map_or_else(String::new, |reason| format!(" · {reason}"))
+	);
+	let card = div()
 		.id(ElementId::NamedInteger("composer-attachment".into(), index as u64))
 		.group("composer-attachment")
-		.aria_label(format!(
-			"{} · {}{}",
-			attachment.name,
-			size_caption(attachment),
-			unsupported_by.map_or_else(String::new, |reason| format!(" · {reason}"))
-		))
+		.aria_label(statement.clone())
 		.relative()
 		.h(px(geometry.attachment_card_height_px))
 		.max_w(px(geometry.attachment_card_max_width_px))
 		.rounded(px(geometry.attachment_card_radius))
+		// The card is an inset object on the composer's float, so it takes the
+		// inset ground: the hairline edge alone is the float's own colour at
+		// this elevation and leaves the card's bounds unreadable.
+		.bg(tokens.color(ColorRole::Inset))
 		.border(tokens.stroke(StrokeStep::Hairline))
 		.border_color(edge)
 		.overflow_hidden()
@@ -109,6 +117,7 @@ fn attachment_card(
 		.items_center()
 		.hover(move |style| style.bg(hover_wash))
 		.child(thumbnail(attachment, geometry, tokens))
+		.child(thumbnail_rule(tokens))
 		.child(
 			div()
 				.min_w_0()
@@ -151,10 +160,17 @@ fn attachment_card(
 						view.dispatch(Intent::RemoveAttachment(index), cx);
 					})),
 				),
-		)
+		);
+	Tooltip::new(statement, card).above().into_any_element()
 }
 
 /// The square at the card's leading edge: the image, or a film glyph.
+///
+/// The card carries the inset ground, so the square needs no ground of its
+/// own. It is parted from the name beside it by [`thumbnail_rule`], which is
+/// a line and not an edge: a one-sided border inside the composer's rounded
+/// clip is the shape of the renderer defect
+/// `a-bordered-box-inside-the-composer-draws-all-four-of-its-edges` reads for.
 fn thumbnail(
 	attachment: &Attachment,
 	geometry: &ComposerSurfaceTokens,
@@ -172,7 +188,6 @@ fn thumbnail(
 			.w(side)
 			.h(side)
 			.flex_none()
-			.bg(tokens.color(ColorRole::Inset))
 			.flex()
 			.items_center()
 			.justify_center()
@@ -190,13 +205,21 @@ fn thumbnail(
 			.flex_none()
 			.overflow_hidden()
 			.p(tokens.spacing(SpacingStep::S1))
-			.bg(tokens.color(ColorRole::Inset))
 			.text_size(tokens.font_size(TextRamp::Micro))
 			.line_height(tokens.line_height(TextRamp::Micro))
 			.text_color(tokens.color(ColorRole::Secondary))
 			.child(text.clone())
 			.into_any_element(),
 	}
+}
+
+/// The line between the square and the name it belongs to.
+fn thumbnail_rule(tokens: &TokenSet) -> Div {
+	div()
+		.w(tokens.stroke(StrokeStep::Hairline))
+		.h_full()
+		.flex_none()
+		.bg(tokens.color(ColorRole::Hairline))
 }
 
 /// Why the last attachment was refused, in the accent, with its own close.

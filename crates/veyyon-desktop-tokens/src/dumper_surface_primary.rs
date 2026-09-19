@@ -3,7 +3,9 @@ use std::path::Path;
 use crate::{
 	Tokens,
 	dumper::write_file,
-	dumper_surface_helpers::{step_radius, step_spacing, step_stroke, step_type_size, weight_str},
+	dumper_surface_helpers::{
+		step_inline_type, step_radius, step_spacing, step_stroke, step_type_size, weight_str,
+	},
 	error::TokenError,
 };
 
@@ -239,7 +241,7 @@ card_radius = "{}"
 		c.footer_hysteresis_px as i64,
 		c.run_bar_max_controls,
 		c.run_bar_compact_threshold_px as i64,
-		step_type_size(s, &c.run_bar_label_size),
+		step_inline_type(s, &c.run_bar_label_size),
 		c.opening_line_max_width_px as i64,
 		step_type_size(s, &c.opening_line_type_size),
 		weight_str(c.opening_line_weight),

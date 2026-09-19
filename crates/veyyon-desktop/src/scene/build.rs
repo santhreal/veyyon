@@ -14,7 +14,7 @@ pub use attachments_builder::composer_attachments;
 #[path = "error_scope.rs"]
 mod error_scope_builder;
 pub use error_scope_builder::{error_scope, error_scope_baseline};
-#[path = "whole_window.rs"]
+#[path = "whole_window/mod.rs"]
 mod whole_window_builder;
 pub use whole_window_builder::{
 	whole_window_both_open, whole_window_dialog_up, whole_window_disconnected,

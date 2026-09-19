@@ -220,12 +220,15 @@ pub fn render_collapsed_row(
 /// one, which shows as a row of the diff standing wider than the extent the
 /// pane can scroll to.
 pub fn collapsed_label(hidden: usize) -> String {
-	format!("Expand {hidden} lines")
+	format!("Expand {}", crate::text::counted(hidden, "line", "lines"))
 }
 
 /// What the row at the changed-line cap reads.
 pub fn truncated_notice(remaining: usize) -> String {
-	format!("2,000 changed lines cap reached ({remaining} more lines not shown)")
+	format!(
+		"2,000 changed lines cap reached ({} not shown)",
+		crate::text::counted(remaining, "more line", "more lines")
+	)
 }
 
 /// What the pane states when the host cut the snapshot these rows came from,
@@ -246,7 +249,10 @@ pub fn withheld_notices(withheld: DiffWithheld) -> Vec<String> {
 	}
 	if withheld.files_withheld > 0 {
 		let files = withheld.files_withheld;
-		lines.push(format!("{files} more changed files are not listed"));
+		lines.push(format!(
+			"{files} more changed {} not listed",
+			if files == 1 { "file is" } else { "files are" }
+		));
 	}
 	lines
 }

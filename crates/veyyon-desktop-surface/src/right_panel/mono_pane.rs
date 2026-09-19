@@ -100,25 +100,31 @@ pub fn pinned_gutter_pane(
 
 	let code_container = div()
 		.relative()
-		.flex_1()
+		.w_full()
 		.min_w_0()
 		.child(code_scroll_area)
 		.children(right_edge_fade);
 
-	div()
+	// The rail sits under the code and not under the gutter: the gutter is
+	// pinned, so a rail that spanned it would state that the line numbers
+	// scroll with the text they number.
+	let code_side = div()
 		.flex()
 		.flex_col()
-		.w_full()
-		.child(
-			div()
-				.flex()
-				.flex_row()
-				.items_start()
-				.mono_type(tokens, &geometry.diff_font_size)
-				.child(column(pane.gutter, lead_px, tail_px).flex_shrink_0())
-				.child(code_container),
-		)
-		.children(scroll_affordance)
+		.flex_1()
+		.min_w_0()
+		.child(code_container)
+		.children(scroll_affordance);
+
+	div().flex().flex_col().w_full().child(
+		div()
+			.flex()
+			.flex_row()
+			.items_start()
+			.mono_type(tokens, &geometry.diff_font_size)
+			.child(column(pane.gutter, lead_px, tail_px).flex_shrink_0())
+			.child(code_side),
+	)
 }
 
 /// What a pane is composed from: the columns, the region that scrolls them,

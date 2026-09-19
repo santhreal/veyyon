@@ -51,7 +51,8 @@ pub fn diff_toolbar(
 		.flex_row()
 		.items_center()
 		.justify_between()
-		.px(tokens.spacing(SpacingStep::S3))
+		// A control on each side, so the row sheds the padding they carry.
+		.px(tokens.spacing(SpacingStep::S2))
 		.bg(tokens.color(ColorRole::Inset))
 		.border_b(px(geometry.chrome_resize_handle_line_px))
 		.border_color(tokens.color(ColorRole::Hairline))

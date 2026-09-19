@@ -114,6 +114,8 @@ pub fn review_bar(
 		.flex()
 		.items_center()
 		.gap(tokens.spacing(SpacingStep::S2))
+		// A control on the leading side, so the row sheds what it carries.
+		.px(tokens.spacing(SpacingStep::S2))
 		.child(review_button(None, counts.unresolved, counts.resolved, tokens, cx))
 		.child(
 			div()
