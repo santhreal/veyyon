@@ -32,7 +32,7 @@ describe("TreeSelectorComponent developer message rendering", () => {
 		await themeModule.initTheme(false, undefined, undefined, "dark", "light");
 	});
 
-	it("renders developer messages with their content, not just [developer]", () => {
+	it("renders developer messages with their content, not just the kind", () => {
 		const planContent = "## Plan\n\n1. Fix the tree selector\n2. Update the HTML export";
 		const root = makeMessageNode({ role: "user", content: "/plan", timestamp: 1 });
 		const developer = makeMessageNode(
@@ -43,7 +43,7 @@ describe("TreeSelectorComponent developer message rendering", () => {
 
 		const rendered = render([root]);
 
-		expect(rendered).toContain("developer:");
+		expect(rendered).toContain("developer");
 		expect(rendered).toContain("Fix the tree selector");
 		expect(rendered).toContain("Update the HTML export");
 		expect(rendered).not.toMatch(/^\s*\[developer\]\s*$/m);

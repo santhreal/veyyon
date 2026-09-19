@@ -27,7 +27,13 @@ import {
 	sizingForArea,
 } from "../chrome/modal-shell";
 import { routeModalChrome } from "../selectors/select-list-mouse-routing";
-import { centeredWindow, hoverBandAt, renderScrollableList, selectionBand } from "../selectors/selector-helpers";
+import {
+	centeredWindow,
+	highlightTokens,
+	hoverBandAt,
+	renderScrollableList,
+	selectionBand,
+} from "../selectors/selector-helpers";
 
 /** Visible result rows; also the jump distance for PageUp/PageDown. */
 const MAX_VISIBLE = 10;
@@ -38,35 +44,6 @@ function queryTokens(query: string): string[] {
 		.toLowerCase()
 		.split(NON_ALNUM_RUN_RE)
 		.filter(tok => tok.length > 0);
-}
-
-/** Wrap every case-insensitive occurrence of any token in `text` with the accent color. */
-function highlightTokens(text: string, tokens: string[]): string {
-	if (tokens.length === 0) return text;
-
-	const lower = text.toLowerCase();
-	const ranges: Array<[number, number]> = [];
-	for (const tok of tokens) {
-		let from = lower.indexOf(tok);
-		while (from !== -1) {
-			ranges.push([from, from + tok.length]);
-			from = lower.indexOf(tok, from + tok.length);
-		}
-	}
-	if (ranges.length === 0) return text;
-
-	ranges.sort((a, b) => a[0] - b[0]);
-	let out = "";
-	let pos = 0;
-	for (const [start, end] of ranges) {
-		if (end <= pos) continue; // fully covered by a previous (merged) range
-		const from = Math.max(start, pos);
-		if (from > pos) out += text.slice(pos, from);
-		out += theme.fg("accent", text.slice(from, end));
-		pos = end;
-	}
-	if (pos < text.length) out += text.slice(pos);
-	return out;
 }
 
 /** Compact "time since" label (e.g. `now`, `5m`, `2h`, `3d`, `2w`, `6mo`, `1y`) from epoch seconds. */
@@ -175,7 +152,7 @@ class HistoryResultsList implements Component {
 						const promptBudget = Math.max(4, rowWidth - gutterWidth - (showTime ? timeWidth + 1 : 0));
 						const normalized = collapseWhitespace(entry.prompt);
 						const plain = truncateToWidth(normalized, promptBudget);
-						const highlighted = highlightTokens(plain, this.#tokens);
+						const highlighted = highlightTokens(plain, this.#tokens, { match: "accent" });
 
 						const cursor = isSelected ? theme.fg("accent", cursorSymbol) : padding(gutterWidth);
 						let line = cursor + (isSelected ? theme.bold(highlighted) : highlighted);

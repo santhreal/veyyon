@@ -11,8 +11,61 @@ import { ScrollView } from "@veyyon/tui";
 import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
 import { clampLow } from "@veyyon/utils/math";
 import { truncateToWidth } from "@veyyon/utils/width";
-import type { ThemeBg } from "../../../../theme/theme";
+import type { ThemeBg, ThemeColor } from "../../../../theme/theme";
 import { paintBand, theme } from "../../../../theme/theme";
+
+/**
+ * `text` with every case-insensitive occurrence of any token painted in
+ * `match`, and everything around it painted in `base` when one is given.
+ *
+ * `base` is a colour rather than a wrapper because `theme.fg` closes with a
+ * reset to the default foreground: a highlight nested inside a coloured run
+ * ends the run, so the tail of the row would lose its own colour at the first
+ * match. Painting each segment explicitly is what keeps a dim row dim on both
+ * sides of a match.
+ *
+ * Tokens are matched as substrings, which is what a user typed and can see. A
+ * row kept by a fuzzier rule than substring equality simply carries no
+ * highlight, rather than one drawn on characters the query never contained.
+ */
+export function highlightTokens(
+	text: string,
+	tokens: readonly string[],
+	tones: { base?: ThemeColor; match: ThemeColor },
+): string {
+	const paintBase = (value: string) => (tones.base ? theme.fg(tones.base, value) : value);
+	if (tokens.length === 0 || text.length === 0) return paintBase(text);
+
+	const lower = text.toLowerCase();
+	const ranges: [number, number][] = [];
+	for (const token of tokens) {
+		let from = lower.indexOf(token);
+		while (from !== -1) {
+			ranges.push([from, from + token.length]);
+			from = lower.indexOf(token, from + token.length);
+		}
+	}
+	if (ranges.length === 0) return paintBase(text);
+
+	ranges.sort((a, b) => a[0] - b[0]);
+	let out = "";
+	let pos = 0;
+	for (const [start, end] of ranges) {
+		// Fully covered by a previous, already-merged range.
+		if (end <= pos) continue;
+		const from = Math.max(start, pos);
+		if (from > pos) out += paintBase(text.slice(pos, from));
+		out += theme.fg(tones.match, text.slice(from, end));
+		pos = end;
+	}
+	if (pos < text.length) out += paintBase(text.slice(pos));
+	return out;
+}
+
+/** A search query as the tokens {@link highlightTokens} paints: lowercased, whitespace-split. */
+export function searchTokens(query: string): string[] {
+	return query.toLowerCase().split(/\s+/).filter(Boolean);
+}
 
 /**
  * Paint `line` as a selection or hover band that fills the whole row.

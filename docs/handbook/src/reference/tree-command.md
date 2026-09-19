@@ -34,31 +34,68 @@ Any of the following opens the same selector:
 
 The tree is rendered from session entry parent pointers (`id` / `parentId`).
 
-- Children are sorted by timestamp ascending (older first, newer lower)
-- Active branch (path from root to current leaf) is marked with a bullet
-- Labels (if present) render as `[label]` before node text
+- The branch holding the current leaf is drawn first at every fork, so the live path reads top to bottom
+- Each row is `cursor`, tree rail, node mark, kind column, label, entry text, and a right-aligned age
+- The node mark is `●` at the current leaf, `•` elsewhere on the path from root to that leaf, and blank off it. Every row reserves the column, so entry text at one depth starts at one column
+- The kind column is ten columns wide and states what the row is: a message role (`user`, `assistant`, `developer`), a tool name (`read`, `bash`, `web_search`), or an entry type (`compaction`, `summary`, `model`, `mode`). The entry text beside it never repeats the kind
+- The rail is drawn in the accent colour on the active path and dimmed off it
+- The age is coarse (`12m`, `4h`, `3d`, `2w`, `1y`), blank under a minute, and dropped on a card narrower than 48 columns
+- A label, when the entry resolves to one, renders as `[label]` after the kind column and before the entry text
+- A tool row shows its arguments: the path for `read`, `write`, `edit` and `ls`, the command for `bash`, the type, pattern and scope for `search`. A path longer than 44 columns is cut from the left (`…/selectors/tree-selector.ts`), because the file name is what distinguishes one row from the next
+- A tool the card has no rule for shows the argument that names its target, preferring `command`, `query`, `input`, `path`, `url`, `expression`, `pattern`, `name`, `prompt`, `task`, `message`, and never the caller's `i` intent line. With no string argument it shows the arguments as recorded
 - If multiple roots exist (orphaned/broken parent chains), they are shown under a virtual branching root
 
 ```text
-Example tree view (active path marked with •):
-
-├─ user: "Start task"
-│  └─ assistant: "Plan"
-│     ├─ • user: "Try approach A"
-│     │  └─ • assistant: "A result"
-│     │     └─ • [milestone] user: "Continue A"
-│     └─ user: "Try approach B"
-│        └─ assistant: "B result"
+┌── Session Tree ──────────────────────────────────────────────────────── [x] ┐
+│ Type to search                                          12/17  ·  default   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│    • user       [tree work] revamp the session tree card so it rea…    4h   │
+│    • assistant  Reading the row builder and the modal chrome first.    3h   │
+│    • read       …/components/selectors/tree-selector.ts:640-759        3h   │
+│    • search     structure theme.fg($$$) in packages/coding-agent/s…    3h   │
+│    • edit       …/components/selectors/tree-selector.ts                3h   │
+│    • bash       bun test packages/coding-agent/test/modes/terminal…    2h   │
+│    • assistant  Nine of nine pass; the kind column lands on one of…    1h   │
+│    ├─ • user       keep the age, widen the gutter                     30m   │
+│    │     • web_search terminal tree view column alignment             26m   │
+│  › │     ● assistant  Age sits three cells clear of the text now.      4m   │
+│    └─   user       try it without the age column                       1h   │
+│       │    assistant  Dropped it, and the fork lost its orientatio…    1h   │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│   up/down move  ·  left/right page  ·  shift+L label  ·  ctrl+O filter      │
+│                         enter jump  ·  esc close                            │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The selector recenters around current selection and shows up to:
+`›` marks the cursor, `●` the current leaf, `•` the rest of the active path; the abandoned branch
+under `└─` carries no mark.
 
-- `max(5, floor(terminalHeight / 2))` rows
+The header row carries the search query on the left, and on the right the rows on screen out of every
+entry in the tree plus the filter mode that decided it (`9/14 · no-tools`).
+
+The card asks for one body row per entry the filter mode admits, bounded by what the terminal can
+show, so a short session gets a short card. The search query does not resize it.
+
+## Recording the card
+
+`proof/scenes/session-tree-card.sh` drives the card on a branched session seeded by
+`proof/docker/seed-session-tree.ts`, which writes the fork, the abandoned attempt and the labeled
+entry the frames show. The card does not animate, so the take is still and the motion gate is set to
+accept it. Record it with:
+
+```sh
+SCENE_MOTION_FLOOR=0 \
+	SCENE_COMMAND="bun /repo/packages/coding-agent/src/cli.ts --continue --model local/qwen2.5-1.5b" \
+	proof/record.sh --pair proof/scenes/session-tree-card.sh
+```
 
 ## Keybindings inside tree selector
 
 - `Up` / `Down`: move selection (wraps)
 - `Left` / `Right`: page up / page down
+- `Home` / `End`: first / last visible entry
 - `Enter`: select node
 - `Esc`: clear search if active; otherwise close selector
 - `Ctrl+C`: close selector
@@ -81,14 +118,22 @@ Filter modes (`TreeList`):
 
 ### `default`
 
-Shows conversational nodes plus any entry types not explicitly suppressed. It hides these setting/bookkeeping entry types:
+Shows conversational nodes. It hides these session bookkeeping entry types:
 
 - `label`
 - `custom`
 - `model_change`
 - `thinking_level_change`
+- `service_tier_change`
+- `mode_change`
+- `title_change`
+- `session_init`
+- `ttsr_injection`
+- `mcp_tool_selection`
 
-Other internal entry types that are not rendered specially may appear as blank rows in current code.
+`all` shows each of them with its own kind and text (`mode`, `title`, `session`, `rules`, `mcp`,
+`tier`). An entry kind a package adds to the session vocabulary shows its type tag in the kind
+column.
 
 ### `no-tools`
 
@@ -104,7 +149,7 @@ Only entries that currently resolve to a label.
 
 ### `all`
 
-Everything in the session tree, including bookkeeping/custom entries.
+Everything in the session tree, including bookkeeping and custom entries.
 
 ### Tool-only assistant node behavior
 
@@ -118,7 +163,8 @@ Assistant messages that contain **only tool calls** (no text) are hidden by defa
 - Query is tokenized by spaces
 - Matching is fuzzy (subsequence) and case-insensitive (`fuzzyMatch`)
 - All tokens must match (AND semantics)
-- Searchable text includes label, role, and type-specific content (message text, branch summary text, custom type, tool command snippets, etc.)
+- Searchable text includes the label, the role, the tool name and its argument summary, and type-specific content (message text, branch summary text, custom type, mode and title values, injected rule names, MCP tool names)
+- A row paints every case-insensitive occurrence of a token in the match colour, in the kind column and the label chip as well as the entry text. A row kept by a subsequence match with no literal occurrence paints nothing
 
 ## Selection outcomes (important)
 
