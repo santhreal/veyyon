@@ -227,6 +227,10 @@ composer_tokens = token_px.load("surface/composer.toml")
 composer = composer_tokens["geometry"]
 transcript = token_px.load("surface/transcript.toml")["layout"]
 shell = token_px.load("surface/shell.toml")
+# The run bar is a row of medium controls and is exactly as tall as one
+# (§6.10), so its height is the control table's rather than a second copy of
+# the measure in the composer's own file.
+run_bar_h = token_px.px(token_px.load("controls.toml")["height"]["medium_px"])
 # §5.4 measures the composer against the session surface it sits in, insetting
 # it by one spacing step on each side. Both numbers are authored, so the scene
 # reads them rather than deciding what a card should measure. A geometry value
@@ -250,7 +254,7 @@ sheet = token_px.px("s4") + token_px.px("hairline")
 band = (
     token_px.px(composer["rest_height_px"])
     + token_px.px("s3")
-    + token_px.px(composer_tokens["run_bar"]["height_px"])
+    + run_bar_h
     + token_px.px("s3")
 )
 
@@ -261,7 +265,7 @@ band = (
 # height is whatever its contents came to.
 foot = (
     token_px.px("s3")
-    + token_px.px(composer_tokens["run_bar"]["height_px"])
+    + run_bar_h
     + token_px.px("s3")
 )
 
@@ -316,7 +320,7 @@ print(
     token_px.px(composer["padding_horizontal"]),
     token_px.px(composer["padding_bottom"]),
     token_px.px(shell["titlebar"]["height_px"]),
-    token_px.px(composer_tokens["run_bar"]["height_px"]),
+    run_bar_h,
 )
 PY
 )

@@ -1331,6 +1331,35 @@ SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=2 \
   proof/docker/record-native.sh proof/scenes/desktop-empty-copy.sh
 ```
 
+Use `proof/scenes/desktop-queue-resize.sh` to drag the handle on the queue
+rail's trailing edge and photograph the width it is left at. It measures the
+rail's own ground out of each frame, at the width its breakpoint row states,
+after a drag of the handle, and after a drag past the ceiling
+`surface/queue.toml` authors. The before arm names a build of this tree whose
+columns row holds no handle:
+
+```sh
+proof/docker/record-native.sh proof/scenes/desktop-queue-resize.sh
+SCENE_ARM=before PROOF_BASE_REF=HEAD \
+  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
+  proof/docker/record-native.sh proof/scenes/desktop-queue-resize.sh
+```
+
+Use `proof/scenes/desktop-panel-tab-close.sh` to close one tab of the right
+panel from its own edge. It reads two columns out of the tab strip: where the
+strip's ink ends, which is the trailing tab's edge, and the run the selected
+tab's pill fills. The close is revealed only under the pointer, the press takes
+a tab out of the strip, and the selection stays where it was. The before arm
+names a build of this tree whose tabs carry no close, where the same press
+selects the tab instead:
+
+```sh
+proof/docker/record-native.sh proof/scenes/desktop-panel-tab-close.sh
+SCENE_ARM=before PROOF_BASE_REF=HEAD \
+  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
+  proof/docker/record-native.sh proof/scenes/desktop-panel-tab-close.sh
+```
+
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.
