@@ -6,9 +6,13 @@
 //! render test asserts against.
 //!
 //! The fixture is deliberately awkward: titles longer than the rail is wide, a
-//! parked list longer than its page size, a section with nothing in it, and one
-//! row of every badge. A fixture full of short tidy strings proves only that
-//! the layout survives the easy case.
+//! parked list longer than its page size, a section with nothing in it, and a
+//! row of six of the eight badges. A fixture full of short tidy strings proves
+//! only that the layout survives the easy case.
+//!
+//! `Done` and `Failed` are the two it omits, though the host projects both
+//! onto a rail row. A suite that needs those tints seeds its own row rather
+//! than reading them here.
 
 use veyyon_desktop_model::{
 	InputModality, TerminalStatus,

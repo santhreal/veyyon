@@ -66,6 +66,9 @@ pub enum IconSize {
 }
 
 impl IconSize {
+	/// Every permitted size, smallest first.
+	pub const ALL: [Self; 4] = [Self::Size12, Self::Size14, Self::Size16, Self::Size20];
+
 	/// Resolves icon bounding box dimension in pixels.
 	#[must_use]
 	pub fn pixels(self) -> Pixels {
@@ -75,6 +78,23 @@ impl IconSize {
 			Self::Size16 => px(16.0),
 			Self::Size20 => px(20.0),
 		}
+	}
+
+	/// The permitted size nearest `pixels`.
+	///
+	/// A measure a token authors is a free number, and an icon is drawn at one
+	/// of four sizes, so this is where the two meet. The candidates are read
+	/// from `pixels`, so the sizes are stated once.
+	#[must_use]
+	pub fn from_px(pixels: f32) -> Self {
+		Self::ALL
+			.into_iter()
+			.min_by(|left, right| {
+				let left = (pixels - f32::from(left.pixels())).abs();
+				let right = (pixels - f32::from(right.pixels())).abs();
+				left.total_cmp(&right)
+			})
+			.unwrap_or_default()
 	}
 }
 

@@ -4,110 +4,71 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::TokenError;
 
-/// Semantic color roles defined across all surfaces and components.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum ColorRole {
-	Ground,
-	Rail,
-	Canvas,
-	Inset,
-	Float,
-	Hairline,
-	Foreground,
-	Secondary,
-	Muted,
-	Placeholder,
-	Accent,
-	AccentForeground,
-	Focus,
-	WorkingFill,
-	WorkingInk,
-	AttentionFill,
-	AttentionInk,
-	ApproveFill,
-	ApproveInk,
-	InputFill,
-	InputInk,
-	PlanFill,
-	PlanInk,
-	DueFill,
-	DueInk,
-	DoneFill,
-	DoneInk,
-	ErrorFill,
-	ErrorInk,
+/// Declares the semantic colour roles, in canonical order, with the name each
+/// carries in a theme file.
+///
+/// The variant list, the canonical order and the file names are one list here
+/// rather than three that agree by inspection. A role added to the design
+/// system is written once and enters `all` and `as_str` with it, so a sweep
+/// that walks `all` cannot miss a role and a theme file cannot pass its
+/// completeness check without declaring one.
+macro_rules! declare_roles {
+	($($variant:ident => $name:literal,)+) => {
+		/// Semantic color roles defined across all surfaces and components.
+		#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+		pub enum ColorRole {
+			$($variant,)+
+		}
+
+		impl ColorRole {
+			/// How many roles a theme declares.
+			pub const COUNT: usize = [$(Self::$variant,)+].len();
+
+			/// Returns all semantic color roles in canonical order.
+			pub const fn all() -> [Self; Self::COUNT] {
+				[$(Self::$variant,)+]
+			}
+
+			/// Returns the role identifier string.
+			pub const fn as_str(self) -> &'static str {
+				match self {
+					$(Self::$variant => $name,)+
+				}
+			}
+		}
+	};
 }
 
-impl ColorRole {
-	/// Returns all semantic color roles in canonical order.
-	pub const fn all() -> [Self; 29] {
-		[
-			Self::Ground,
-			Self::Rail,
-			Self::Canvas,
-			Self::Inset,
-			Self::Float,
-			Self::Hairline,
-			Self::Foreground,
-			Self::Secondary,
-			Self::Muted,
-			Self::Placeholder,
-			Self::Accent,
-			Self::AccentForeground,
-			Self::Focus,
-			Self::WorkingFill,
-			Self::WorkingInk,
-			Self::AttentionFill,
-			Self::AttentionInk,
-			Self::ApproveFill,
-			Self::ApproveInk,
-			Self::InputFill,
-			Self::InputInk,
-			Self::PlanFill,
-			Self::PlanInk,
-			Self::DueFill,
-			Self::DueInk,
-			Self::DoneFill,
-			Self::DoneInk,
-			Self::ErrorFill,
-			Self::ErrorInk,
-		]
-	}
-
-	/// Returns the role identifier string.
-	pub const fn as_str(self) -> &'static str {
-		match self {
-			Self::Ground => "ground",
-			Self::Rail => "rail",
-			Self::Canvas => "canvas",
-			Self::Inset => "inset",
-			Self::Float => "float",
-			Self::Hairline => "hairline",
-			Self::Foreground => "foreground",
-			Self::Secondary => "secondary",
-			Self::Muted => "muted",
-			Self::Placeholder => "placeholder",
-			Self::Accent => "accent",
-			Self::AccentForeground => "accent_foreground",
-			Self::Focus => "focus",
-			Self::WorkingFill => "working_fill",
-			Self::WorkingInk => "working_ink",
-			Self::AttentionFill => "attention_fill",
-			Self::AttentionInk => "attention_ink",
-			Self::ApproveFill => "approve_fill",
-			Self::ApproveInk => "approve_ink",
-			Self::InputFill => "input_fill",
-			Self::InputInk => "input_ink",
-			Self::PlanFill => "plan_fill",
-			Self::PlanInk => "plan_ink",
-			Self::DueFill => "due_fill",
-			Self::DueInk => "due_ink",
-			Self::DoneFill => "done_fill",
-			Self::DoneInk => "done_ink",
-			Self::ErrorFill => "error_fill",
-			Self::ErrorInk => "error_ink",
-		}
-	}
+declare_roles! {
+	Ground => "ground",
+	Rail => "rail",
+	Canvas => "canvas",
+	Inset => "inset",
+	Float => "float",
+	Hairline => "hairline",
+	Foreground => "foreground",
+	Secondary => "secondary",
+	Muted => "muted",
+	Placeholder => "placeholder",
+	Accent => "accent",
+	AccentForeground => "accent_foreground",
+	Focus => "focus",
+	WorkingFill => "working_fill",
+	WorkingInk => "working_ink",
+	AttentionFill => "attention_fill",
+	AttentionInk => "attention_ink",
+	ApproveFill => "approve_fill",
+	ApproveInk => "approve_ink",
+	InputFill => "input_fill",
+	InputInk => "input_ink",
+	PlanFill => "plan_fill",
+	PlanInk => "plan_ink",
+	DueFill => "due_fill",
+	DueInk => "due_ink",
+	DoneFill => "done_fill",
+	DoneInk => "done_ink",
+	ErrorFill => "error_fill",
+	ErrorInk => "error_ink",
 }
 
 /// Why a colour value was rejected. A theme file is edited by hand, so each
