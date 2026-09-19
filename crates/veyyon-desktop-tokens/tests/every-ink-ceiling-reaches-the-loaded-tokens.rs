@@ -22,7 +22,7 @@ use veyyon_desktop_tokens::{load_from_dir, schema::SurfaceCeilings};
 /// region, which states a pair of rates rather than a count.
 fn declared_surfaces(tokens_dir: &Path) -> Vec<String> {
 	let text = fs::read_to_string(tokens_dir.join("ceilings.toml")).expect("read ceilings.toml");
-	let value: Value = text.parse().expect("parse ceilings.toml");
+	let value: Value = toml::from_str(&text).expect("parse ceilings.toml");
 	let table = value
 		.get("ceilings")
 		.and_then(Value::as_table)

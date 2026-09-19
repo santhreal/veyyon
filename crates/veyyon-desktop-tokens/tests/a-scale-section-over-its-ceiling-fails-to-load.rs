@@ -13,9 +13,11 @@
 //! guard from `load_scale`.
 //!
 //! It does not catch a ceiling raised in both `load_scale` and the expected
-//! table in one edit, which is the reviewable diff the ceiling exists to force.
+//! table in one edit, which is the reviewable diff the ceiling exists to force,
+//! and it does not catch a stray entry in `spacing`, which sits at 14 of 16 and
+//! ignores an entry it does not read until the two free slots are used.
 
-use std::{fs, path::Path};
+use std::{fmt::Write as _, fs, path::Path};
 
 use toml::{Value, map::Map};
 use veyyon_desktop_tokens::{
@@ -67,7 +69,7 @@ fn with_surplus(text: &str, section: &str, extra: usize) -> String {
 		out.push('\n');
 		if line == header {
 			for index in 0..extra {
-				out.push_str(&format!("zz_surplus_{index} = 1\n"));
+				writeln!(out, "zz_surplus_{index} = 1").expect("write into a String");
 			}
 		}
 	}
@@ -155,7 +157,7 @@ fn a_section_over_its_ceiling_names_the_file_and_the_spec_section() {
 
 #[test]
 fn the_shipped_scale_holds_one_entry_per_declared_step() {
-	let value: Value = shipped_text().parse().expect("parse shipped scale.toml");
+	let value: Value = toml::from_str(&shipped_text()).expect("parse shipped scale.toml");
 	let sections = [
 		("spacing", SpacingStep::all().len()),
 		("radius", RadiusStep::all().len()),
