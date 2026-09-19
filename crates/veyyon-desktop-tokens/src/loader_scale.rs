@@ -87,6 +87,7 @@ pub fn load_scale(path: &Path) -> Result<ScaleTokens, TokenError> {
 	}
 
 	let mono_tbl = type_tbl.sub("mono")?;
+	ceiling(&mono_tbl, "mono sizes", 2, "6.3")?;
 	let mut mono_sizes = [TypeSize { size: 0.0, line_height: 0.0, tracking_em: 0.0 }; 2];
 	for step in MonoSizeStep::all() {
 		let entry = mono_tbl.sub(step.as_token())?;
@@ -104,6 +105,7 @@ pub fn load_scale(path: &Path) -> Result<ScaleTokens, TokenError> {
 	let ui_family = family_tbl.strings("ui")?;
 
 	let stroke_tbl = root.sub("stroke")?;
+	ceiling(&stroke_tbl, "stroke widths", 3, "6.8")?;
 	let mut strokes = [0.0f32; 3];
 	for step in StrokeStep::all() {
 		strokes[step as usize] = stroke_tbl.number(step.as_token())?;

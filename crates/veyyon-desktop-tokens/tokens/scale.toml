@@ -19,7 +19,7 @@ s11 = 32
 s12 = 48
 s13 = 64
 
-# Corner radii: 6 numeric steps + full. Hard ceiling: 7 numeric steps + full (§6.2).
+# Corner radii: none, 6 numeric steps and full. Hard ceiling: 8 entries (§6.2).
 [radius]
 none = 0
 xs   = 4
@@ -30,7 +30,7 @@ xl   = 14
 xxl  = 18
 full = 9999
 
-# Typographic scale: 6 sizes, 3 weights (§6.3). Hard ceiling: 6 sizes, 3 weights.
+# Typographic scale: 6 sizes, 3 weights, 2 mono sizes (§6.3). Those are the hard ceilings.
 [type.size]
 micro = { size = 11, line_height = 16, tracking_em = 0.05 }
 small = { size = 12, line_height = 16, tracking_em = 0.00 }
@@ -44,6 +44,7 @@ regular  = 400
 medium   = 500
 semibold = 600
 
+# Mono sizes: 2. Hard ceiling: 2 (§6.3).
 [type.mono]
 small = { size = 11, line_height = 16 }
 body  = { size = 12, line_height = 18 }
@@ -80,7 +81,7 @@ ui = [
 	"Arial",
 ]
 
-# Stroke widths for borders, rules, and icon geometry (§6.8).
+# Stroke widths for borders, rules, and icon geometry. Hard ceiling: 3 (§6.8).
 [stroke]
 hairline = 1.0
 icon     = 1.5
