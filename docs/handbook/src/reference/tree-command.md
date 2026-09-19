@@ -60,6 +60,17 @@ entry in the tree plus the filter mode that decided it (`9/14 · no-tools`).
 The card asks for one body row per entry the filter mode admits, bounded by what the terminal can
 show, so a short session gets a short card. The search query does not resize it.
 
+## Recording the card
+
+`proof/scenes/session-tree-card.sh` drives the card on a branched session seeded by
+`proof/docker/seed-session-tree.ts`, which writes the fork, the abandoned attempt and the labeled
+entry the frames show. Record it with:
+
+```sh
+SCENE_COMMAND="bun /repo/packages/coding-agent/src/cli.ts --continue --model local/qwen2.5-1.5b" \
+	proof/record.sh --pair proof/scenes/session-tree-card.sh
+```
+
 ## Keybindings inside tree selector
 
 - `Up` / `Down`: move selection (wraps)
