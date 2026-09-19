@@ -29,4 +29,6 @@ veyyon-desktop-tokens = { workspace = true }
 veyyon-gpui = { workspace = true }
 
 [dev-dependencies]
+# The transcript block the dead-token probe draws is handed resolved motion.
+veyyon-desktop-motion = { workspace = true }
 veyyon-desktop-surface = { workspace = true }

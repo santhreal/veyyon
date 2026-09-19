@@ -9983,6 +9983,7 @@ dependencies = [
  "unicode-segmentation",
  "veyyon-desktop-kit",
  "veyyon-desktop-model",
+ "veyyon-desktop-motion",
  "veyyon-desktop-surface",
  "veyyon-desktop-tokens",
  "veyyon-gpui",
