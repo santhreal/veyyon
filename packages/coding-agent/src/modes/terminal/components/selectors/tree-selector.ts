@@ -1,5 +1,5 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
-import type { SessionTreeNode } from "@veyyon/kernel/session/session-entries";
+import type { SessionEntry, SessionTreeNode } from "@veyyon/kernel/session/session-entries";
 import { type Component, Input } from "@veyyon/tui";
 import { HoverController } from "@veyyon/tui/utils/hover-controller";
 import { fuzzyMatch } from "@veyyon/utils/fuzzy";
@@ -7,7 +7,7 @@ import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
 import type { HoverFadeOptions } from "@veyyon/utils/motion";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
-import { truncateToWidth } from "@veyyon/utils/width";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import type { TreeFilterMode } from "../../../../config/settings-schema";
 import { resolveAssistantErrorPresentation } from "../../../../presentation/transcript-builder";
 import { theme } from "../../../../theme/theme";
@@ -52,6 +52,34 @@ interface FlatNode {
 type FilterMode = TreeFilterMode;
 
 /**
+ * The order `ctrl+O` steps through, forwards and backwards, and the one list of
+ * modes the card names in its header. Kept equal to the `treeFilterMode` setting's
+ * declared values by
+ * `test/modes/terminal/components/the-session-tree-card-hugs-its-rows.test.ts`, so a
+ * mode added to the setting cannot quietly be unreachable from the keybinding.
+ */
+export const TREE_FILTER_MODES = [
+	"default",
+	"no-tools",
+	"user-only",
+	"labeled-only",
+	"all",
+] as const satisfies readonly FilterMode[];
+
+/**
+ * Cells the node mark occupies on every row, on the active path or off it. The
+ * column is reserved unconditionally so entry text at one depth starts at one
+ * column whatever a row's state is.
+ */
+const MARK_COLS = 2;
+
+/** Cells the right-hand age column occupies: a gap and three digits of age. */
+const AGE_COLS = 4;
+
+/** Row width below which the age column is dropped for entry text. */
+const AGE_MIN_ROW_COLS = 48;
+
+/**
  * Tree list component with selection and ASCII art visualization
  */
 /** Tool call info for lookup */
@@ -63,6 +91,8 @@ interface ToolCallInfo {
 class TreeList implements Component {
 	#flatNodes: FlatNode[] = [];
 	#filteredNodes: FlatNode[] = [];
+	/** Rows the filter mode admits, search aside — what the card sizes itself against. */
+	#modeRowCount = 0;
 	#selectedIndex = 0;
 	#filterMode: FilterMode;
 	#searchQuery = "";
@@ -291,64 +321,19 @@ class TreeList implements Component {
 
 		const searchTokens = this.#searchQuery.toLowerCase().split(/\s+/).filter(Boolean);
 
-		this.#filteredNodes = this.#flatNodes.filter(flatNode => {
-			const entry = flatNode.node.entry;
-			const isCurrentLeaf = entry.id === this.currentLeafId;
-
-			// Skip assistant messages with only tool calls (no text) unless error/aborted
-			// Always show current leaf so active position is visible
-			if (entry.type === "message" && entry.message.role === "assistant" && !isCurrentLeaf) {
-				const msg = entry.message as { stopReason?: string; content?: unknown };
-				const hasText = this.#hasTextContent(msg.content);
-				const isErrorOrAborted = msg.stopReason && msg.stopReason !== "stop" && msg.stopReason !== "toolUse";
-				// Only hide if no text AND not an error/aborted message
-				if (!hasText && !isErrorOrAborted) {
-					return false;
-				}
-			}
-
-			// Apply filter mode
-			let passesFilter = true;
-			// Entry types hidden in default view (settings/bookkeeping)
-			const isSettingsEntry =
-				entry.type === "label" ||
-				entry.type === "custom" ||
-				entry.type === "model_change" ||
-				entry.type === "thinking_level_change";
-
-			switch (this.#filterMode) {
-				case "user-only":
-					// Just user messages
-					passesFilter = entry.type === "message" && entry.message.role === "user";
-					break;
-				case "no-tools":
-					// Default minus tool results
-					passesFilter = !isSettingsEntry && !(entry.type === "message" && entry.message.role === "toolResult");
-					break;
-				case "labeled-only":
-					// Just labeled entries
-					passesFilter = flatNode.node.label !== undefined;
-					break;
-				case "all":
-					// Show everything
-					passesFilter = true;
-					break;
-				default:
-					// Default mode: hide settings/bookkeeping entries
-					passesFilter = !isSettingsEntry;
-					break;
-			}
-
-			if (!passesFilter) return false;
-
-			// Apply fuzzy search filter
-			if (searchTokens.length > 0) {
-				const nodeText = this.#getSearchableText(flatNode.node);
-				return searchTokens.every(token => fuzzyMatch(token, nodeText).matches);
-			}
-
-			return true;
-		});
+		// Two passes, because the card sizes itself against the first one. The rows
+		// the FILTER MODE admits are what the tree naturally wants to show; the
+		// search narrows that live, and resizing the card per keystroke would be
+		// worse than the rows it saves.
+		const modeVisible = this.#flatNodes.filter(flatNode => this.#passesMode(flatNode));
+		this.#modeRowCount = modeVisible.length;
+		this.#filteredNodes =
+			searchTokens.length === 0
+				? modeVisible
+				: modeVisible.filter(flatNode => {
+						const nodeText = this.#getSearchableText(flatNode.node);
+						return searchTokens.every(token => fuzzyMatch(token, nodeText).matches);
+					});
 
 		// Try to preserve cursor on the same node, or find nearest visible ancestor
 		if (this.#lastSelectedId) {
@@ -361,6 +346,49 @@ class TreeList implements Component {
 		// Update lastSelectedId to the actual selection (may have changed due to parent walk)
 		if (this.#filteredNodes.length > 0) {
 			this.#lastSelectedId = this.#filteredNodes[this.#selectedIndex]?.node.entry.id ?? this.#lastSelectedId;
+		}
+	}
+
+	/** Whether the current filter mode admits this row, search aside. */
+	#passesMode(flatNode: FlatNode): boolean {
+		const entry = flatNode.node.entry;
+		const isCurrentLeaf = entry.id === this.currentLeafId;
+
+		// Skip assistant messages with only tool calls (no text) unless error/aborted
+		// Always show current leaf so active position is visible
+		if (entry.type === "message" && entry.message.role === "assistant" && !isCurrentLeaf) {
+			const msg = entry.message as { stopReason?: string; content?: unknown };
+			const hasText = this.#hasTextContent(msg.content);
+			const isErrorOrAborted = msg.stopReason && msg.stopReason !== "stop" && msg.stopReason !== "toolUse";
+			// Only hide if no text AND not an error/aborted message
+			if (!hasText && !isErrorOrAborted) {
+				return false;
+			}
+		}
+
+		// Entry types hidden in default view (settings/bookkeeping)
+		const isSettingsEntry =
+			entry.type === "label" ||
+			entry.type === "custom" ||
+			entry.type === "model_change" ||
+			entry.type === "thinking_level_change";
+
+		switch (this.#filterMode) {
+			case "user-only":
+				// Just user messages
+				return entry.type === "message" && entry.message.role === "user";
+			case "no-tools":
+				// Default minus tool results
+				return !isSettingsEntry && !(entry.type === "message" && entry.message.role === "toolResult");
+			case "labeled-only":
+				// Just labeled entries
+				return flatNode.node.label !== undefined;
+			case "all":
+				// Show everything
+				return true;
+			default:
+				// Default mode: hide settings/bookkeeping entries
+				return !isSettingsEntry;
 		}
 	}
 
@@ -422,6 +450,31 @@ class TreeList implements Component {
 
 	getSearchQuery(): string {
 		return this.#searchQuery;
+	}
+
+	/**
+	 * The card's height request: rows the filter mode admits, so a nine-entry
+	 * session gets a nine-row card instead of a twenty-row one with eleven blank
+	 * rows under the tree. Deliberately blind to the search query, which would
+	 * resize the card on every keystroke.
+	 */
+	naturalRowCount(): number {
+		return this.#modeRowCount;
+	}
+
+	/** Rows on screen right now (mode and search applied). */
+	visibleRowCount(): number {
+		return this.#filteredNodes.length;
+	}
+
+	/** Every entry in the session tree, whatever the filter hides. */
+	totalRowCount(): number {
+		return this.#flatNodes.length;
+	}
+
+	/** The active filter mode, named for the header row. */
+	filterName(): FilterMode {
+		return this.#filterMode;
 	}
 
 	/** Size the viewport to the rows the card can spare this frame. */
@@ -564,10 +617,9 @@ class TreeList implements Component {
 			),
 		);
 
-		const filterLabel = this.#getFilterLabel();
-		if (filterLabel) {
-			lines.push(truncateToWidth(theme.fg("muted", `  ${filterLabel.trim()}`), width));
-		}
+		// The filter name is not appended here: it rides the header row beside the
+		// counts, where the search query is, instead of spending a body row at the
+		// far end of the card from the control that changes it.
 
 		return lines;
 	}
@@ -586,9 +638,14 @@ class TreeList implements Component {
 		// text — or half the viewport, whichever is larger — and compress older gutter
 		// levels off-screen behind a leading ellipsis when the row would exceed budget.
 		const MIN_CONTENT_COLS = 24;
-		const OVERHEAD_COLS = 4; // cursor (2) + a touch of breathing room
+		// The age column is orientation, not content: at a fork it says which branch
+		// is the recent one. A card too narrow to carry both spends its cells on the
+		// entry text instead.
+		const ageCols = rowWidth >= AGE_MIN_ROW_COLS ? AGE_COLS : 0;
+		const OVERHEAD_COLS = 4 + MARK_COLS + ageCols; // cursor (2) + mark + age + breathing room
 		const contentReserve = Math.max(MIN_CONTENT_COLS, Math.floor(rowWidth / 2));
 		const maxIndentLevels = Math.max(1, Math.floor((rowWidth - contentReserve - OVERHEAD_COLS) / 3));
+		const textWidth = rowWidth - ageCols;
 
 		const rows: string[] = [];
 		this.#hitRows = [];
@@ -666,14 +723,31 @@ class TreeList implements Component {
 			}
 			const prefix = prefixChars.join("");
 
-			// Active path marker - shown right before the entry text
+			// The rail carries the active path in colour: accent while the row is on
+			// the path from root to the current leaf, dim off it. Colour costs no
+			// column, so the columns after it land at one offset on every row.
 			const isOnActivePath = this.#activePathIds.has(entry.id);
-			const pathMarker = isOnActivePath ? theme.fg("accent", `${theme.md.bullet} `) : "";
+			const rail = theme.fg(isOnActivePath ? "accent" : "dim", prefix);
+
+			// Fixed-width node mark: `●` the current leaf, `•` the rest of the active
+			// path, blank off it. Three states in one column that every row reserves,
+			// so entry text at one depth starts at one column. The bullet it replaces
+			// was painted only on active rows and shoved their text two cells right of
+			// their own siblings, which is what made the card read as ragged.
+			const mark =
+				entry.id === this.currentLeafId
+					? theme.bold(theme.fg("accent", `${theme.status.active} `))
+					: isOnActivePath
+						? theme.fg("accent", `${theme.md.bullet} `)
+						: padding(MARK_COLS);
 
 			const label = flatNode.node.label ? theme.fg("warning", `[${flatNode.node.label}] `) : "";
 			const content = this.#getEntryDisplayText(flatNode.node, isSelected);
 
-			const line = cursor + theme.fg("dim", prefix) + pathMarker + label + content;
+			const text = truncateToWidth(cursor + rail + mark + label + content, textWidth);
+			const line = ageCols
+				? text + padding(Math.max(0, textWidth - visibleWidth(text))) + theme.fg("dim", this.#ageCell(entry))
+				: text;
 			// The selection band is the ROW, not the text: pad to the full row width
 			// before tinting so the highlight has the same shape on every entry. The
 			// pointer borrows the same band; the cursor keeps its accent arrow, so
@@ -682,10 +756,41 @@ class TreeList implements Component {
 			this.#hitRows[i - startIndex] = i;
 			if (isSelected) rows.push(selectionBand(line, rowWidth));
 			else if (hoverStrength > 0) rows.push(hoverBandAt(line, rowWidth, hoverStrength));
-			else rows.push(truncateToWidth(line, rowWidth));
+			else rows.push(line);
 		}
 
 		return rows;
+	}
+
+	/**
+	 * The row's right-hand age cell, exactly {@link AGE_COLS} cells wide: a
+	 * leading gap and a right-aligned coarse age (`12m`, `4h`, `3d`, `2w`, `1y`).
+	 *
+	 * Blank under a minute, and blank when the timestamp does not parse. The
+	 * column is orientation at a fork — which branch is the recent one — so a
+	 * whole card of entries written seconds ago has nothing to say there, and a
+	 * missing timestamp is not worth a lie about when it happened.
+	 */
+	#ageCell(entry: SessionEntry): string {
+		const at = Date.parse(entry.timestamp);
+		if (Number.isNaN(at)) return padding(AGE_COLS);
+		const minutes = Math.floor(Math.max(0, Date.now() - at) / 60_000);
+		if (minutes < 1) return padding(AGE_COLS);
+		const hours = Math.floor(minutes / 60);
+		const days = Math.floor(hours / 24);
+		const weeks = Math.floor(days / 7);
+		const years = Math.floor(days / 365);
+		const label =
+			hours < 1
+				? `${minutes}m`
+				: days < 1
+					? `${hours}h`
+					: weeks < 1
+						? `${days}d`
+						: years < 1
+							? `${weeks}w`
+							: `${years}y`;
+		return ` ${label.padStart(AGE_COLS - 1)}`;
 	}
 
 	#getEntryDisplayText(node: SessionTreeNode, isSelected: boolean): string {
@@ -883,15 +988,13 @@ class TreeList implements Component {
 			this.onCancel?.();
 		} else if (matchesKey(keyData, "shift+ctrl+o") || matchesKey(keyData, "ctrl+shift+o")) {
 			// Cycle filter backwards
-			const modes: FilterMode[] = ["default", "no-tools", "user-only", "labeled-only", "all"];
-			const currentIndex = modes.indexOf(this.#filterMode);
-			this.#filterMode = modes[(currentIndex - 1 + modes.length) % modes.length];
+			const at = TREE_FILTER_MODES.indexOf(this.#filterMode);
+			this.#filterMode = TREE_FILTER_MODES[(at - 1 + TREE_FILTER_MODES.length) % TREE_FILTER_MODES.length];
 			this.#applyFilter();
 		} else if (matchesKey(keyData, "ctrl+o")) {
 			// Cycle filter forwards: default → no-tools → user-only → labeled-only → all → default
-			const modes: FilterMode[] = ["default", "no-tools", "user-only", "labeled-only", "all"];
-			const currentIndex = modes.indexOf(this.#filterMode);
-			this.#filterMode = modes[(currentIndex + 1) % modes.length];
+			const at = TREE_FILTER_MODES.indexOf(this.#filterMode);
+			this.#filterMode = TREE_FILTER_MODES[(at + 1) % TREE_FILTER_MODES.length];
 			this.#applyFilter();
 		} else if (matchesKey(keyData, "alt+d")) {
 			this.#filterMode = "default";
@@ -1101,6 +1204,26 @@ export class TreeSelectorComponent implements Component {
 		return true;
 	}
 
+	/**
+	 * The card's header row: the search query on the left, and on the right the
+	 * rows on screen out of the whole tree plus the filter mode that decided it.
+	 *
+	 * The filter used to be named on a body row at the bottom of the card, and
+	 * only while it was not `default`, so the one view where entries are missing
+	 * without explanation was the view that said nothing. Counts and mode sit
+	 * beside the search because those three are what narrow the tree.
+	 */
+	#headerLine(contentWidth: number): string {
+		const query = this.#treeList.getSearchQuery();
+		const left = query
+			? `${theme.fg("muted", "Search:")} ${theme.fg("accent", query)}`
+			: theme.fg("dim", "Type to search");
+		const status = `${this.#treeList.visibleRowCount()}/${this.#treeList.totalRowCount()}  ·  ${this.#treeList.filterName()}`;
+		const gap = contentWidth - visibleWidth(left) - visibleWidth(status);
+		if (gap < 2) return left;
+		return left + padding(gap) + theme.fg("muted", status);
+	}
+
 	render(width: number): readonly string[] {
 		const height = process.stdout.rows || 40;
 		const sizing = sizingForArea(MODAL_SIZING_LARGE, height);
@@ -1110,10 +1233,6 @@ export class TreeSelectorComponent implements Component {
 			return Array.from({ length: height }, () => padding(width));
 		}
 
-		const query = this.#treeList.getSearchQuery();
-		const searchLine = query
-			? `${theme.fg("muted", "Search:")} ${theme.fg("accent", query)}`
-			: theme.fg("dim", "Type to search");
 		const chrome = planModalChrome({
 			sizing,
 			modalHeight: dims.modalHeight,
@@ -1124,13 +1243,23 @@ export class TreeSelectorComponent implements Component {
 		});
 
 		let body: readonly string[];
+		// Rows the card asks for. The label editor is three rows; the tree asks for
+		// what its filter mode admits, so a short session gets a short card instead
+		// of one sized for twenty entries with blank rows under the last one. The
+		// list is then sized to the SAME number, because the shell truncates an
+		// overrun silently and the row it would eat is the one under the cursor.
+		//
+		// MIN_TREE_ROWS is the floor whatever the tree holds: an empty result is
+		// three rows of guidance (what hid the entries and which key widens it),
+		// and a card sized to one row would show only the first of them.
+		let bodyRows: number;
 		if (this.#labelInput) {
 			body = this.#labelInput.render(dims.contentWidth);
+			bodyRows = body.length;
 		} else {
-			// The tree owns the whole body minus the filter footer line the list
-			// appends for a non-default filter; the shell truncates an overrun
-			// silently, and the row it would eat is the one under the cursor.
-			this.#treeList.setMaxVisibleLines(Math.max(MIN_TREE_ROWS, chrome.maxBodyRows - 1));
+			const natural = Math.max(MIN_TREE_ROWS, this.#treeList.naturalRowCount());
+			bodyRows = Math.max(1, Math.min(chrome.maxBodyRows, natural));
+			this.#treeList.setMaxVisibleLines(bodyRows);
 			body = this.#treeList.render(dims.contentWidth);
 		}
 
@@ -1140,7 +1269,8 @@ export class TreeSelectorComponent implements Component {
 			areaWidth: width,
 			areaHeight: height,
 			body,
-			searchLine,
+			preferredBodyRows: bodyRows,
+			searchLine: this.#headerLine(dims.contentWidth),
 			shortcuts: TREE_SHORTCUTS,
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,

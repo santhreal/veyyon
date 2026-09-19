@@ -82,30 +82,38 @@ describe("issue #2325: connectors terminate at `└─` and chain columns stay s
 			return row;
 		};
 
+		// Every row reserves a two-cell node mark between the rail and its text:
+		// `●` at the current leaf, `•` elsewhere on the active path, blank off it.
+		// Every row asserted here is off the active path (the leaf is under b1), so
+		// those two cells are blank and fold into the whitespace runs below.
+		const MARK = 2;
+		const rail = (cols: number, glyph: string, gapAfter: number) =>
+			new RegExp(`^\\s{${cols}}${glyph}\\s{${gapAfter + MARK}}\\S`);
+
 		// b3 is the last sibling: its connector is `└─` at column 2.
-		expect(findRow("user: second review head")).toMatch(/^\s{2}└─ \S/);
+		expect(findRow("user: second review head")).toMatch(rail(2, "└─", 1));
 
 		// Chain rows under the `└─` head: the corner column (col 2) must stay
 		// blank — no `│` running down from the `└─` — and every chain row is
 		// anchored by `│` on the same column, one level right (below the head's
-		// content). Exact prefix: 5 spaces, `│`, 2 spaces, then content.
+		// content). Exact prefix: 5 spaces, `│`, 2 spaces, the mark, then content.
 		for (const needle of ["assistant: fix-asst", "user: fix it all", "assistant: rev-asst"]) {
 			const row = findRow(needle);
 			expect(row).not.toMatch(/^\s{2}│/);
-			expect(row).toMatch(/^\s{5}│\s{2}\S/);
+			expect(row).toMatch(rail(5, "│", 2));
 		}
 
 		// The deeper branch point keeps stable columns: connectors sit directly
 		// below the chain content column (col 8), with nothing dangling in the
 		// outer corner columns.
-		expect(findRow("user: review the fixes")).toMatch(/^\s{8}├─ \S/);
-		expect(findRow("user: other thread")).toMatch(/^\s{8}└─ \S/);
+		expect(findRow("user: review the fixes")).toMatch(rail(8, "├─", 1));
+		expect(findRow("user: other thread")).toMatch(rail(8, "└─", 1));
 
 		// Continuations of the non-last grandchild ride its sibling line at the
 		// same column (col 8) — no drift back into outer columns.
 		for (const needle of ["user: all findings done", "user: still have findings"]) {
 			const row = findRow(needle);
-			expect(row).toMatch(/^\s{8}│\s{5}\S/);
+			expect(row).toMatch(rail(8, "│", 5));
 		}
 	});
 });

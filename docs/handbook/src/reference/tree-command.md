@@ -34,26 +34,31 @@ Any of the following opens the same selector:
 
 The tree is rendered from session entry parent pointers (`id` / `parentId`).
 
-- Children are sorted by timestamp ascending (older first, newer lower)
-- Active branch (path from root to current leaf) is marked with a bullet
+- The branch holding the current leaf is drawn first at every fork, so the live path reads top to bottom
+- Each row is `cursor`, tree rail, node mark, label, entry text, and a right-aligned age
+- The node mark is `●` at the current leaf, `•` elsewhere on the path from root to that leaf, and blank off it. Every row reserves the column, so entry text at one depth starts at one column
+- The rail is drawn in the accent colour on the active path and dimmed off it
+- The age is coarse (`12m`, `4h`, `3d`, `2w`, `1y`), blank under a minute, and dropped on a card narrower than 48 columns
 - Labels (if present) render as `[label]` before node text
 - If multiple roots exist (orphaned/broken parent chains), they are shown under a virtual branching root
 
 ```text
-Example tree view (active path marked with •):
+Example tree view (current leaf `●`, rest of the active path `•`):
 
-├─ user: "Start task"
-│  └─ assistant: "Plan"
-│     ├─ • user: "Try approach A"
-│     │  └─ • assistant: "A result"
-│     │     └─ • [milestone] user: "Continue A"
-│     └─ user: "Try approach B"
-│        └─ assistant: "B result"
+  • user: Start task                                        3h
+  • assistant: Plan                                         3h
+  ├─ • user: Try approach A                                 1h
+  │     • assistant: A result                              20m
+  │     ● [milestone] user: Continue A                       4m
+  └─   user: Try approach B                                  3h
+       │  assistant: B result                                3h
 ```
 
-The selector recenters around current selection and shows up to:
+The header row carries the search query on the left, and on the right the rows on screen out of every
+entry in the tree plus the filter mode that decided it (`9/14 · no-tools`).
 
-- `max(5, floor(terminalHeight / 2))` rows
+The card asks for one body row per entry the filter mode admits, bounded by what the terminal can
+show, so a short session gets a short card. The search query does not resize it.
 
 ## Keybindings inside tree selector
 
