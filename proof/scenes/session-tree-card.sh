@@ -7,8 +7,13 @@
 # kept -- and the recorder is launched with `--continue`, so the CLI resumes it
 # and `/tree` opens on the tree the seeder left:
 #
-#   SCENE_COMMAND="bun /repo/packages/coding-agent/src/cli.ts --continue \
+#   SCENE_MOTION_FLOOR=0 \
+#     SCENE_COMMAND="bun /repo/packages/coding-agent/src/cli.ts --continue \
 #     --model local/qwen2.5-1.5b" proof/record.sh --pair proof/scenes/session-tree-card.sh
+#
+# The card does not animate, so every frame after the open is identical and the
+# motion gate reads the take as a stutter; SCENE_MOTION_FLOOR=0 accepts it. The
+# frames are the evidence here, and the clip only carries them.
 #
 # Three frames, each a state the card can be in: the card as it opens, one row
 # down from the leaf, and the same tree with tool rows filtered out. The keys are

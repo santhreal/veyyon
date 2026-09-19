@@ -34,6 +34,8 @@
  * about who mounts the card.
  */
 import { afterEach, beforeEach, describe, expect, it, setSystemTime } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { INTERACTION_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/interaction";
 import {
@@ -100,7 +102,12 @@ function assistant(text: string, parent: SessionTreeNode, agoMs = 0): SessionTre
  * one: the arguments ride the assistant's call and the row is drawn for the
  * result, so a row that shows them proves the pair was matched up.
  */
-function toolPair(name: string, args: Record<string, unknown>, parent: SessionTreeNode, agoMs = 0): SessionTreeNode {
+function toolPair(
+	name: string,
+	args: Record<string, unknown> | string,
+	parent: SessionTreeNode,
+	agoMs = 0,
+): SessionTreeNode {
 	const callId = `call-${counter}`;
 	const call = {
 		role: "assistant",
@@ -548,6 +555,131 @@ describe("the session tree paints no row it cannot describe", () => {
 				.replace(/^[\s›│├└─●•…]+/, "")
 				.trim();
 			expect(words).not.toBe("");
+		}
+	});
+});
+
+/**
+ * Every entry type the session vocabulary declares, read out of the contract at
+ * run time rather than listed here.
+ *
+ * The list below is what this suite knows how to build; the contract is what
+ * the product can hand the card. Comparing the two by exact equality is what
+ * makes an entry type added to `contracts/session/src/entry.ts` turn this suite
+ * red until someone decides what its row says — which a hardcoded list of types
+ * cannot do, because it goes stale in silence and the defect this closes WAS an
+ * entry type nobody had written a row for.
+ */
+function declaredEntryTypes(): string[] {
+	const contract = join(
+		import.meta.dirname,
+		"..",
+		"..",
+		"..",
+		"..",
+		"..",
+		"..",
+		"contracts",
+		"session",
+		"src",
+		"entry.ts",
+	);
+	const source = readFileSync(contract, "utf8");
+	const types = new Set<string>();
+	for (const match of source.matchAll(/^\ttype: "([a-z_]+)";$/gm)) types.add(match[1]);
+	return [...types].sort();
+}
+
+describe("the session tree describes every entry the session vocabulary declares", () => {
+	/** One buildable entry per declared type, with the kind and text its row owes. */
+	const ROWS_BY_TYPE: Readonly<Record<string, { fields: Record<string, unknown>; kind: string; text: string }>> = {
+		message: {
+			fields: { type: "message", message: { role: "user", content: "a swept prompt", timestamp: 1 } },
+			kind: "user",
+			text: "a swept prompt",
+		},
+		custom_message: {
+			fields: { type: "custom_message", customType: "note", content: "a swept note" },
+			kind: "note",
+			text: "a swept note",
+		},
+		compaction: {
+			fields: { type: "compaction", summary: "s", firstKeptEntryId: "e0", tokensBefore: 12_000 },
+			kind: "compaction",
+			text: "12k tokens",
+		},
+		branch_summary: {
+			fields: { type: "branch_summary", summary: "what the abandoned branch did" },
+			kind: "summary",
+			text: "what the abandoned branch did",
+		},
+		model_change: { fields: { type: "model_change", model: "sonnet-4" }, kind: "model", text: "sonnet-4" },
+		thinking_level_change: {
+			fields: { type: "thinking_level_change", thinkingLevel: "high" },
+			kind: "thinking",
+			text: "high",
+		},
+		service_tier_change: {
+			fields: { type: "service_tier_change", serviceTier: null },
+			kind: "tier",
+			text: "(cleared)",
+		},
+		mode_change: { fields: { type: "mode_change", mode: "plan" }, kind: "mode", text: "plan" },
+		title_change: {
+			fields: { type: "title_change", title: "tree revamp", source: "user" },
+			kind: "title",
+			text: "tree revamp",
+		},
+		session_init: {
+			fields: { type: "session_init", systemPrompt: "p", task: "t", tools: ["read", "edit"] },
+			kind: "session",
+			text: "2 tools",
+		},
+		ttsr_injection: { fields: { type: "ttsr_injection", injectedRules: ["no-any"] }, kind: "rules", text: "no-any" },
+		mcp_tool_selection: {
+			fields: { type: "mcp_tool_selection", selectedToolNames: ["fetch"] },
+			kind: "mcp",
+			text: "fetch",
+		},
+		label: { fields: { type: "label", targetId: "e0", label: "landmark" }, kind: "label", text: "landmark" },
+		custom: { fields: { type: "custom", customType: "note" }, kind: "custom", text: "note" },
+	};
+
+	it("covers the declared vocabulary and nothing else", () => {
+		expect(Object.keys(ROWS_BY_TYPE).sort()).toEqual(declaredEntryTypes());
+	});
+
+	it("gives each declared type a row that names its kind and its value", () => {
+		for (const [type, { fields, kind, text }] of Object.entries(ROWS_BY_TYPE)) {
+			counter = 0;
+			const root = user("a prompt to hang it off", null, 60 * 60_000);
+			const entryNode = bookkeeping(fields, root);
+			const leaf = assistant("a reply", entryNode, 30 * 60_000);
+
+			const rows = cardOf(card([root], leaf.entry.id, WIDTH, "all")).rows;
+			const row = rows.find(line => line.includes(text));
+			if (row === undefined) throw new Error(`no row carries ${type}'s text: ${rows.join("\n")}`);
+			expect(row).toContain(kind);
+		}
+	});
+});
+
+describe("the session tree reads arguments a session never parsed", () => {
+	// A turn that ends mid-call records the raw JSON the provider streamed rather
+	// than a parsed object. Reading `args.path` off a string answers `undefined`,
+	// so a per-tool rule would spend the row on an empty cell and the row would
+	// say only which tool ran.
+	const RAW = '{"path":"src/parser.ts","offset":10}';
+
+	it("shows the raw payload whatever the tool is", () => {
+		for (const name of ["read", "web_search"]) {
+			counter = 0;
+			const root = user("start it", null, 60 * 60_000);
+			const leaf = toolPair(name, RAW, root, 59 * 60_000);
+
+			const row = rowOf(card([root], leaf.entry.id, WIDTH, "all"), name);
+
+			expect(row).toContain("src/parser.ts");
 		}
 	});
 });

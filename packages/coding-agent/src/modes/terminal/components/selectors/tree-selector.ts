@@ -100,10 +100,16 @@ const AGE_MIN_ROW_COLS = 48;
 /**
  * Tree list component with selection and ASCII art visualization
  */
-/** Tool call info for lookup */
+/**
+ * One recorded tool call, for the row that reports it.
+ *
+ * The arguments are `unknown` because a session file holds whatever the
+ * provider streamed: the parsed object in the ordinary case, and the raw JSON
+ * string when the turn ended before it parsed.
+ */
 interface ToolCallInfo {
 	name: string;
-	arguments: Record<string, unknown>;
+	arguments: unknown;
 }
 
 /**
@@ -176,23 +182,24 @@ const ARG_SUMMARY_KEYS = [
 ] as const;
 
 /** The one argument value that best names a call, or its serialized arguments. */
-function argSummary(args: Record<string, unknown>): string {
+function argSummary(args: unknown): string {
 	// A session can record arguments that were never parsed into an object: the
 	// raw JSON the provider streamed. It is returned as it stands, because
 	// `Object.entries` on a string walks its characters and answers `{`.
-	const raw: unknown = args;
-	if (typeof raw === "string") return raw;
+	if (typeof args === "string") return args;
+	if (typeof args !== "object" || args === null) return JSON.stringify(args ?? {});
+	const fields: Record<string, unknown> = args as Record<string, unknown>;
 	for (const key of ARG_SUMMARY_KEYS) {
-		const value = args[key];
+		const value = fields[key];
 		if (typeof value === "string" && value.trim() !== "") return value;
 	}
-	for (const [key, value] of Object.entries(args)) {
+	for (const [key, value] of Object.entries(fields)) {
 		// `i` is the caller's own one-line intent, which every tool carries. It
 		// restates the row's kind column instead of naming what was operated on.
 		if (key === "i") continue;
 		if (typeof value === "string" && value.trim() !== "") return value;
 	}
-	return JSON.stringify(args ?? {});
+	return JSON.stringify(fields);
 }
 
 /**
@@ -374,7 +381,7 @@ class TreeList implements Component {
 				if (Array.isArray(content)) {
 					for (const block of content) {
 						if (typeof block === "object" && block !== null && "type" in block && block.type === "toolCall") {
-							const tc = block as { id: string; name: string; arguments: Record<string, unknown> };
+							const tc = block as { id: string; name: string; arguments: unknown };
 							this.#toolCallMap.set(tc.id, { name: tc.name, arguments: tc.arguments });
 						}
 					}
@@ -1108,13 +1115,20 @@ class TreeList implements Component {
 	 *
 	 * The name is the kind column, so repeating it here would spend the row's
 	 * first cells saying the same word twice.
+	 *
+	 * Arguments the session recorded unparsed — the raw JSON string of a turn
+	 * that ended mid-call — reach {@link argSummary} whatever the tool is,
+	 * because a per-tool rule reading `args.path` off a string answers
+	 * `undefined` and would spend the row on an empty cell.
 	 */
-	#formatToolCall(name: string, args: Record<string, unknown>): string {
+	#formatToolCall(name: string, args: unknown): string {
+		if (typeof args !== "object" || args === null) return this.#summarizeArgs(args);
+		const fields: Record<string, unknown> = args as Record<string, unknown>;
 		switch (name) {
 			case "read": {
-				const path = tailPath(args.path || args.file_path || "");
-				const offset = args.offset as number | undefined;
-				const limit = args.limit as number | undefined;
+				const path = tailPath(fields.path || fields.file_path || "");
+				const offset = typeof fields.offset === "number" ? fields.offset : undefined;
+				const limit = typeof fields.limit === "number" ? fields.limit : undefined;
 				if (offset === undefined && limit === undefined) return path;
 				const start = offset ?? 1;
 				const end = limit !== undefined ? start + limit - 1 : "";
@@ -1122,11 +1136,11 @@ class TreeList implements Component {
 			}
 			case "write":
 			case "edit":
-				return tailPath(args.path || args.file_path || "");
+				return tailPath(fields.path || fields.file_path || "");
 			case "ls":
-				return tailPath(args.path || ".");
+				return tailPath(fields.path || ".");
 			case "bash": {
-				const rawCmd = String(args.command || "");
+				const rawCmd = String(fields.command || "");
 				const cmd = rawCmd
 					.replace(/[\n\t]/g, " ")
 					.trim()
@@ -1134,19 +1148,24 @@ class TreeList implements Component {
 				return `${cmd}${rawCmd.length > 50 ? "..." : ""}`;
 			}
 			case "search": {
-				const type = String(args.type || "?");
-				const input = String(args.input || "");
-				const scope = typeof args.path === "string" ? ` in ${tailPath(args.path)}` : "";
+				const type = String(fields.type || "?");
+				const input = String(fields.input || "");
+				const scope = typeof fields.path === "string" ? ` in ${tailPath(fields.path)}` : "";
 				return `${type} ${input}${scope}`;
 			}
 			default:
-				return truncateToWidth(
-					argSummary(args)
-						.replace(/[\n\t]/g, " ")
-						.trim(),
-					TRUNCATE_LENGTHS.SHORT,
-				);
+				return this.#summarizeArgs(fields);
 		}
+	}
+
+	/** {@link argSummary} on one row: tabs flattened, and cut to the row's share. */
+	#summarizeArgs(args: unknown): string {
+		return truncateToWidth(
+			argSummary(args)
+				.replace(/[\n\t]/g, " ")
+				.trim(),
+			TRUNCATE_LENGTHS.SHORT,
+		);
 	}
 
 	handleInput(keyData: string): void {
