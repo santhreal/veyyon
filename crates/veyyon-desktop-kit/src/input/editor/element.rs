@@ -94,6 +94,9 @@ impl Element for EditorElement {
 							background_color: None,
 							underline:        None,
 							strikethrough:    None,
+							// Measured against the style the editor draws with, so a
+							// parent that sets tracking measures the width it renders.
+							tracking:         style.tracking,
 						};
 
 						let shaped = window
@@ -179,6 +182,7 @@ impl Element for EditorElement {
 			background_color: None,
 			underline:        None,
 			strikethrough:    None,
+			tracking:         style.tracking,
 		};
 
 		let shaped_lines = window

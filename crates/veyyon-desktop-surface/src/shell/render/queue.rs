@@ -6,8 +6,8 @@
 //! way to reach another session and a rail that shed its footer would strand
 //! every session but the open one (§5.14).
 
-use veyyon_desktop_kit::{Sheet, TokenSet};
-use veyyon_desktop_tokens::SurfaceTokens;
+use veyyon_desktop_kit::{Axis, Resizable, Sheet, TokenSet};
+use veyyon_desktop_tokens::{QueueSurfaceTokens, SurfaceTokens};
 use veyyon_gpui::{
 	AnyElement, Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
 	ParentElement, Styled, Window, div, px,
@@ -60,7 +60,10 @@ pub fn queue_column(
 			QueuePlacement::Overlay { width_px } => {
 				f32::from(Sheet::inset(tokens)).mul_add(-2.0, width_px)
 			},
-			QueuePlacement::Inline { width_px } => width_px,
+			// The grip at the rail's edge is part of the width the shed
+			// resolved for it, the way the docked panel's is part of the
+			// panel's, so the surfaces beside it keep what they were given.
+			QueuePlacement::Inline { width_px } => width_px - surface.queue.width_resize_handle_hit_px,
 			QueuePlacement::Absent => 0.0,
 		},
 		widths.columns_px,
@@ -131,5 +134,57 @@ fn float_over_row(
 				.child(sheet),
 			|index| (index == 0).then_some(Region::Queue),
 		)
+		.into_any_element()
+}
+
+/// The rail as the first pane of the split whose handle sets its width.
+///
+/// The rail and everything beside it are one container, because the travel a
+/// drag reports is a share of the box the two panes sit in (§5.1). The rail's
+/// own region is recorded inside the pane, the way the docked panel records
+/// its own, since the split is what the columns row sees.
+pub fn queue_split(
+	view: &ShellView,
+	rail: AnyElement,
+	rest: AnyElement,
+	widths: &ShellWidths,
+	queue: &QueueSurfaceTokens,
+	window: &Window,
+	cx: &Context<ShellView>,
+) -> AnyElement {
+	let grip_px = queue.width_resize_handle_hit_px;
+	let rail_px = widths.queue.inline_width();
+	// The row is the window's width: the share the split reports is of the
+	// box the panes sit in, not of what the shed left the surfaces inside
+	// them. The first pane is the rail less the grip drawn at its edge.
+	let row_px = f32::from(window.viewport_size().width).max(rail_px);
+	let tracked = view
+		.laid_out()
+		.track_children(div().h_full().flex().child(rail), |index| {
+			(index == 0).then_some(Region::Queue)
+		});
+	let shell = cx.weak_entity();
+	let release_shell = shell.clone();
+	let min_width = queue.width_min_px;
+	let max_width = (row_px - queue.width_max_viewport_delta_px)
+		.max(queue.width_floor_max_px)
+		.max(min_width);
+	Resizable::new("queue-split", Axis::Horizontal, px(grip_px), tracked, rest)
+		.ratio((rail_px - grip_px) / row_px)
+		.on_resize(move |ratio, _window, cx| {
+			let asked_px = ratio.mul_add(row_px, grip_px);
+			// A released view has no handle to move; the drag ends with the
+			// window.
+			let _ = shell.update(cx, |view, cx| {
+				view.drag_queue(asked_px, min_width, max_width, cx);
+				cx.notify();
+			});
+		})
+		.on_resize_end(move |_window, cx| {
+			let _ = release_shell.update(cx, |view, cx| {
+				view.release_queue(cx);
+				cx.notify();
+			});
+		})
 		.into_any_element()
 }

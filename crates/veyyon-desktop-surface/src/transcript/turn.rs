@@ -150,6 +150,7 @@ pub fn operator_turn(
 			.rounded_br(px(geometry.user_turn_radius_trailing))
 			.text_size(px(geometry.user_turn_type_size.size))
 			.line_height(px(geometry.user_turn_type_size.line_height))
+			.tracking(px(geometry.user_turn_type_size.tracking_em * geometry.user_turn_type_size.size))
 			.text_color(tokens.color(ColorRole::Foreground))
 			.child(drawn),
 	)

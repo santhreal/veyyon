@@ -73,6 +73,7 @@ fn a_resize_across_the_label_threshold_settles_instead_of_flickering() {
 				gutter_px: gutter,
 				queue_collapsed: false,
 				queue_float_open: false,
+				queue_width: None,
 				panel_open: true,
 				panel_width: None,
 				labels,

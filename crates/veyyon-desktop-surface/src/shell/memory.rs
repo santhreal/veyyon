@@ -54,6 +54,8 @@ pub struct SessionShape {
 	pub panel_visible:     bool,
 	/// The width the operator dragged the panel to, if they dragged it.
 	pub panel_width_px:    Option<f32>,
+	/// The width the operator dragged the queue rail to, if they dragged it.
+	pub queue_width_px:    Option<f32>,
 	/// Whether the terminal drawer is open.
 	pub drawer_visible:    bool,
 	/// The height the operator dragged the drawer to, if they dragged it.
@@ -114,6 +116,7 @@ impl ShellView {
 		SessionShape {
 			panel_visible:     !self.state.keymap.panel_collapsed,
 			panel_width_px:    self.panel_width,
+			queue_width_px:    self.queue_width,
 			drawer_visible:    self.state.drawer_open,
 			drawer_height_px:  self.split_motion.drawer_height(),
 			active_panel_tab:  self.state.panel.active_tab,
@@ -227,6 +230,7 @@ impl ShellView {
 	) {
 		self.state.keymap.panel_collapsed = !shape.panel_visible;
 		self.panel_width = shape.panel_width_px;
+		self.queue_width = shape.queue_width_px;
 		self.split_motion = super::split::SplitMotions::default();
 		self.state.drawer_open = shape.drawer_visible && self.state.drawer.offered;
 		if let Some(height) = shape.drawer_height_px {

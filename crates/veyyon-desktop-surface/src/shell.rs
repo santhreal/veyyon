@@ -30,7 +30,7 @@ mod notice;
 pub mod overlay;
 mod palette;
 mod queue_search;
-mod render;
+pub mod render;
 mod review;
 mod session;
 mod session_error;
@@ -66,131 +66,133 @@ use crate::{
 
 /// The window's root view.
 pub struct ShellView {
-	installed:             InstalledTokens,
-	state:                 ShellState,
-	notice:                Option<String>,
-	intents:               Intents,
+	installed:              InstalledTokens,
+	state:                  ShellState,
+	notice:                 Option<String>,
+	intents:                Intents,
 	/// What the last frame settled the composer's labels on. Carried because
 	/// the decision has hysteresis, so it is a function of the previous frame
 	/// as well as of this width (§5.4).
-	labels:                LabelState,
+	labels:                 LabelState,
 	/// Where the last frame laid each region out, for a repaint scoped to
 	/// the regions a state change touched (P5).
-	laid_out:              LaidOut,
-	keymap:                Keymap,
-	composer:              Option<Entity<Editor>>,
-	composer_cache:        String,
+	laid_out:               LaidOut,
+	keymap:                 Keymap,
+	composer:               Option<Entity<Editor>>,
+	composer_cache:         String,
 	/// The editor behind every other field a surface draws: the secret a
 	/// provider is waiting on, and the value of a setting whose kind is text.
 	/// Retained across frames, because a field that is rebuilt each frame
 	/// carries no keystroke (§8.25).
-	field_editors:         BTreeMap<fields::FieldKey, fields::Field>,
+	field_editors:          BTreeMap<fields::FieldKey, fields::Field>,
 	/// The refusal this window put up for a field whose value it would not
 	/// send, so it is withdrawn when the same window's field commits.
-	field_refusal:         Option<String>,
+	field_refusal:          Option<String>,
 	/// The field a frame created that has not taken focus yet.
-	field_focus:           Option<Entity<Editor>>,
-	palette_input:         palette::PaletteInput,
-	submitted:             Option<composer::SubmittedDraft>,
+	field_focus:            Option<Entity<Editor>>,
+	palette_input:          palette::PaletteInput,
+	submitted:              Option<composer::SubmittedDraft>,
 	/// What the composer draws that is the window's: the drop target and
 	/// the refusal line.
-	attach:                AttachState,
-	rail_motion:           RailMotion,
-	transcript_viewport:   TranscriptViewportState,
-	find_state:            TranscriptFindState,
-	split_motion:          split::SplitMotions,
+	attach:                 AttachState,
+	rail_motion:            RailMotion,
+	transcript_viewport:    TranscriptViewportState,
+	find_state:             TranscriptFindState,
+	split_motion:           split::SplitMotions,
 	/// The queue row menu that is open, if one is (§5.1). Window-local,
 	/// like a hover: a snapshot never reopens one.
-	row_menu:              Option<RowMenu>,
+	row_menu:               Option<RowMenu>,
 	/// The transcript turn menu that is open, if one is (§5.3). Window-local
 	/// on the same terms as the row menu.
-	turn_menu:             Option<TurnMenu>,
+	turn_menu:              Option<TurnMenu>,
 	/// What the pointer has selected of the words the transcript drew, if
 	/// anything (§5.3). Window-local on the same terms as the turn menu: a
 	/// snapshot never brings a dropped selection back.
-	text_selection:        Option<TextSelection>,
+	text_selection:         Option<TextSelection>,
 	/// The process signal menu that is open, if one is (§5.12). Window-local
 	/// on the same terms as the row menu.
-	signal_menu:           Option<SignalMenu>,
+	signal_menu:            Option<SignalMenu>,
 	/// The anchored detail a row, a chip or a hunk header opened, if one is
 	/// open (§5.6). Window-local on the same terms as the row menu.
-	detail:                Option<Detail>,
+	detail:                 Option<Detail>,
 	/// The focus the detail popover took, and the focus it took it from: a
 	/// popover holds the window's keystrokes while it is drawn, and gives
 	/// them back to whatever had them when it closes.
-	detail_focus:          Option<FocusHandle>,
-	detail_return:         Option<FocusHandle>,
+	detail_focus:           Option<FocusHandle>,
+	detail_return:          Option<FocusHandle>,
 	/// The float track the detail popover rises and fades on, named for the
 	/// surface that owns it (§7.1).
-	detail_motion:         crate::palette::motion::FloatMotion,
+	detail_motion:          crate::palette::motion::FloatMotion,
 	/// What the popover was opened on while it is fading out, so the closing
 	/// frames still have facts to draw.
-	detail_retained:       Option<Detail>,
+	detail_retained:        Option<Detail>,
 	/// One float track per slot in the announcement stack, named for the
 	/// surface that owns it and slotted by the position a card holds (§7.1).
 	///
 	/// Window-local because a transition is: a card is drawn from the queue
 	/// the host's model holds, and how far into its entrance it is belongs to
 	/// the window drawing it.
-	notice_motion:         Vec<veyyon_desktop_motion::FloatMotion>,
+	notice_motion:          Vec<veyyon_desktop_motion::FloatMotion>,
 	/// The width the operator dragged the docked right panel to. Window-local
 	/// like the row menu: a snapshot never moves the handle (§5.6).
-	panel_width:           Option<f32>,
+	panel_width:            Option<f32>,
+	/// The width the operator dragged the queue rail to. Window-local (§5.1).
+	pub(super) queue_width: Option<f32>,
 	/// Where each of the right panel's mono panes is scrolled to, which is
 	/// what states the rows and columns the next frame builds (§5.11).
 	/// Window-local for the same reason the dragged width is.
-	pane_scrolls:          PaneScrolls,
+	pane_scrolls:           PaneScrolls,
 	/// Disclosed tool cards a previous window remembered whose invocations
 	/// this one has not drawn yet, the drawer tenant it last looked at, which
 	/// the host has not reported yet, and where it was reading, which names an
 	/// entry the transcript has not arrived with (§8.10).
-	pending_expanded:      BTreeSet<String>,
-	pending_drawer_tab:    Option<String>,
-	pending_anchor:        Option<ScrollAnchor>,
-	focus_handle:          Option<FocusHandle>,
+	pending_expanded:       BTreeSet<String>,
+	pending_drawer_tab:     Option<String>,
+	pending_anchor:         Option<ScrollAnchor>,
+	focus_handle:           Option<FocusHandle>,
 	/// The focus the queue rail takes when the pointer lands in it, which is
 	/// what puts the `Queue` key context on the focus path so the scope's
 	/// chords resolve (§5.14).
-	queue_focus:           Option<FocusHandle>,
+	queue_focus:            Option<FocusHandle>,
 	/// The same for the right panel: the `Panel` scope's chords — the tab
 	/// walk and the diff-mode toggle — resolve against the `Panel` key
 	/// context, which reaches the focus path only while the panel holds the
 	/// focus (§5.14).
-	panel_focus:           Option<FocusHandle>,
+	panel_focus:            Option<FocusHandle>,
 	/// And for the transcript column, whose scope carries the scroll chords,
 	/// the find bar and the block toggle (§5.14).
-	transcript_focus:      Option<FocusHandle>,
+	transcript_focus:       Option<FocusHandle>,
 	/// And for the collapsed row the overflowing decision cards fold into,
 	/// which expands to state which decisions are waiting while it holds the
 	/// focus, so the count is readable without a pointer (§5.5).
-	cards_focus:           Option<FocusHandle>,
+	cards_focus:            Option<FocusHandle>,
 	/// Whether the pointer is over that row. A hover style resolves at paint
 	/// and cannot change a box, so an expansion the pointer drives is state
 	/// the next frame lays out rather than a `hover` refinement (§5.5).
-	cards_hovered:         bool,
+	cards_hovered:          bool,
 	/// Whether the operator opened the queue over the transcript, at a width
 	/// whose row has no room for a rail beside it (§5.14). Window-local like
 	/// the row menu: a float that came back with a snapshot would cover the
 	/// transcript the window was opened to read.
-	queue_float_open:      bool,
+	queue_float_open:       bool,
 	/// Whether the width the last frame resolved floats the queue rather than
 	/// docking it, which is what decides whether the rail control toggles the
 	/// float or the standing collapsed state.
-	queue_floats:          bool,
-	destination_focus:     Option<FocusHandle>,
+	queue_floats:           bool,
+	destination_focus:      Option<FocusHandle>,
 	/// Where the last frame laid the menu bar's words out, one origin per
 	/// section, which is where the open menu is floated from (§4.1).
-	menu_anchors:          menu::MenuAnchors,
+	menu_anchors:           menu::MenuAnchors,
 	/// The focus the open menu holds, and the focus it took it from. A bare
 	/// arrow belongs to the queue and a bare Return to the composer, and a
 	/// binding is resolved before a keystroke listener runs, so the bar reads
 	/// its own keys only while it holds the focus (§4.1).
-	menu_focus:            Option<FocusHandle>,
-	menu_return:           Option<FocusHandle>,
-	general_settings_list: GeneralSettingsListState,
-	review:                review::ReviewState,
-	now_ms:                u64,
-	subscriptions:         Vec<Subscription>,
+	menu_focus:             Option<FocusHandle>,
+	menu_return:            Option<FocusHandle>,
+	general_settings_list:  GeneralSettingsListState,
+	review:                 review::ReviewState,
+	now_ms:                 u64,
+	subscriptions:          Vec<Subscription>,
 }
 
 impl ShellView {
@@ -239,6 +241,7 @@ impl ShellView {
 			detail_retained: None,
 			notice_motion: Vec::new(),
 			panel_width: None,
+			queue_width: None,
 			pending_expanded: BTreeSet::new(),
 			pending_drawer_tab: None,
 			pending_anchor: None,

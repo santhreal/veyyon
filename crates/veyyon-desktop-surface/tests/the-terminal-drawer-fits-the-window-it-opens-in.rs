@@ -42,6 +42,7 @@ fn shed(viewport_px: f32, viewport_height_px: f32) -> ShedInput {
 		gutter_px: f32::from(TokenSet::default().spacing(SpacingStep::S4)),
 		queue_collapsed: false,
 		queue_float_open: false,
+		queue_width: None,
 		panel_open: true,
 		panel_width: None,
 		labels: LabelState::default(),

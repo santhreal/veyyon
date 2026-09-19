@@ -290,17 +290,24 @@ pub fn icon_svg_data(name: IconName, stroke_width_in_svg: f32) -> Vec<u8> {
 /// Icon element rendered via vector SVG asset.
 #[derive(IntoElement)]
 pub struct Icon {
-	name:   IconName,
-	size:   IconSize,
-	color:  Option<Hsla>,
-	stroke: Option<StrokeStep>,
+	name:       IconName,
+	size:       IconSize,
+	pixel_size: Option<Pixels>,
+	color:      Option<Hsla>,
+	stroke:     Option<StrokeStep>,
 }
 
 impl Icon {
 	/// Creates an icon element.
-	#[must_use]
 	pub fn new(name: IconName) -> Self {
-		Self { name, size: IconSize::default(), color: None, stroke: None }
+		Self { name, size: IconSize::default(), pixel_size: None, color: None, stroke: None }
+	}
+
+	/// Sets explicit pixel size override.
+	#[must_use]
+	pub fn pixel_size(mut self, size: Pixels) -> Self {
+		self.pixel_size = Some(size);
+		self
 	}
 
 	/// Sets the icon size.
@@ -334,7 +341,7 @@ impl RenderOnce for Icon {
 			.unwrap_or_else(|| tokens.color(ColorRole::Foreground));
 		let stroke_step = self.stroke.unwrap_or(StrokeStep::Icon);
 		let target_stroke = f32::from(tokens.stroke(stroke_step));
-		let size_px = self.size.pixels();
+		let size_px = self.pixel_size.unwrap_or_else(|| self.size.pixels());
 		let outer_d = f32::from(size_px);
 
 		let shape = icon_optical_shape(self.name);

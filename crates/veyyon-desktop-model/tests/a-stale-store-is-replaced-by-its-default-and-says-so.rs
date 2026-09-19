@@ -75,6 +75,7 @@ fn populated() -> PersistedState {
 			version:             PanelsStore::CURRENT_VERSION,
 			right_panel_visible: true,
 			right_panel_width:   Some(620),
+			queue_width:         None,
 			drawer_visible:      true,
 			drawer_height:       Some(320),
 			active_right_tab:    Some("file".to_string()),

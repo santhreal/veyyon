@@ -21,8 +21,12 @@ use veyyon_gpui::{Div, ParentElement, Pixels, Styled, div, px};
 use crate::transcript::selection::selectable_markdown;
 
 /// One piece of a document, set at the ramp its caller states.
-fn piece(text: String, size: Pixels, line_height: Pixels) -> Markdown {
-	Markdown::new(text).prose_size(size, line_height)
+fn piece(text: String, size: Pixels, line_height: Pixels, table_line: Option<Pixels>) -> Markdown {
+	let mut md = Markdown::new(text).prose_size(size, line_height);
+	if let Some(table_h) = table_line {
+		md = md.table_row_height(table_h);
+	}
+	md
 }
 
 /// A document a stream is still writing, drawn in its settled and arriving
@@ -30,12 +34,14 @@ fn piece(text: String, size: Pixels, line_height: Pixels) -> Markdown {
 ///
 /// Every surface that draws a model's markdown as it arrives goes through
 /// here, so a reply and a thought summary share one boundary rule rather than
-/// each carrying a copy of it.
+/// each carrying a copy of it. A caller whose surface authors a table row
+/// states it; one that draws no table passes `None`.
 pub fn streaming_document(
 	text: &str,
 	is_streaming: bool,
 	size: Pixels,
 	line_height: Pixels,
+	table_row_height: Option<Pixels>,
 	selection: Option<SelectableProse>,
 ) -> Div {
 	// A finished document has settled whole: the boundary is its end, and it
@@ -48,12 +54,12 @@ pub fn streaming_document(
 	let mut body = div().w_full().flex().flex_col();
 	if settled > 0 {
 		body = body.child(selectable_markdown(
-			piece(text[..settled].to_owned(), size, line_height),
+			piece(text[..settled].to_owned(), size, line_height, table_row_height),
 			selection,
 		));
 	}
 	if settled < text.len() {
-		body = body.child(piece(mend(&text[settled..]), size, line_height));
+		body = body.child(piece(mend(&text[settled..]), size, line_height, table_row_height));
 	}
 	body
 }
@@ -68,11 +74,14 @@ pub fn render_prose_block(
 	tokens: &TokenSet,
 	selection: Option<SelectableProse>,
 ) -> Div {
-	let mut block = div().w_full().child(streaming_document(
+	let tracking =
+		px(geometry.assistant_turn_type_size.tracking_em * geometry.assistant_turn_type_size.size);
+	let mut block = div().w_full().tracking(tracking).child(streaming_document(
 		text,
 		is_streaming,
 		px(geometry.assistant_turn_type_size.size),
 		px(geometry.assistant_turn_type_size.line_height),
+		Some(px(geometry.chrome_table_row_height_px)),
 		selection,
 	));
 

@@ -36,6 +36,7 @@ fn the_shell_draws_its_regions_where_the_tokens_put_them() {
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
 
 	let queue_width = tokens.surface.queue.width_default_px;
+	let grip = tokens.surface.queue.width_resize_handle_hit_px;
 	let titlebar = tokens.surface.shell.titlebar_height_px;
 
 	let mut session = HeadlessSession::open(&mut cx, &options(), move |_window, app: &mut App| {
@@ -93,12 +94,15 @@ fn the_shell_draws_its_regions_where_the_tokens_put_them() {
 		RgbaColor { r: bytes[0], g: bytes[1], b: bytes[2], a: bytes[3] }
 	};
 
-	let rail = ground_at(queue_width / 2.0);
-	let inside_rail_edge = ground_at(queue_width - 2.0);
+	let rail = ground_at((queue_width - grip) / 2.0);
+	// The grip the rail is dragged by is drawn inside the declared width, so
+	// the rail's own ground runs to the pane edge and the grip beside it
+	// carries the row's.
+	let inside_rail_edge = ground_at(queue_width - grip - 2.0);
 	let outside_rail_edge = ground_at(queue_width + 8.0);
 	let panel = ground_at((WIDTH as f32) - 8.0);
 
-	assert_eq!(rail, inside_rail_edge, "the queue rail is one ground up to its token width");
+	assert_eq!(rail, inside_rail_edge, "the queue rail is one ground up to its pane's edge");
 	assert_ne!(
 		rail, outside_rail_edge,
 		"the queue rail's ground continues past its token width, so its width is not the token's"

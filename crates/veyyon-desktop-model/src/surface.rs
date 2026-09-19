@@ -60,7 +60,6 @@ pub enum SurfaceId {
 	RightPanelPreviewTab(SessionId),
 	RightPanelSessionDetailTab(SessionId),
 	RightPanelUsageTab(SessionId),
-	RightPanelCloseTabButton(SessionId, String),
 	RightPanelChangeScopeSelector(SessionId),
 
 	// Terminal Drawer & Process Supervisor (§5.6, §5.12)
@@ -166,7 +165,6 @@ impl SurfaceId {
 			| Self::RightPanelPreviewTab(_)
 			| Self::RightPanelSessionDetailTab(_)
 			| Self::RightPanelUsageTab(_)
-			| Self::RightPanelCloseTabButton(..)
 			| Self::RightPanelChangeScopeSelector(_)
 			| Self::PaletteInput
 			| Self::PaletteItem(_)
@@ -275,7 +273,6 @@ impl SurfaceId {
 			| Self::RightPanelPreviewTab(_)
 			| Self::RightPanelSessionDetailTab(_)
 			| Self::RightPanelUsageTab(_)
-			| Self::RightPanelCloseTabButton(..)
 			| Self::RightPanelChangeScopeSelector(_)
 			| Self::PaletteInput
 			| Self::PaletteItem(_)

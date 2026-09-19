@@ -147,6 +147,17 @@ impl ControlStates {
 		})
 	}
 
+	/// What the projection set for `id`, or `None` where it set nothing.
+	///
+	/// A surface that draws a mark only while the host has a request in
+	/// flight reads this rather than [`Self::availability`]: the mark is
+	/// absent for a control the projection does not own, which is the
+	/// answer, not a read at rest to record against it.
+	#[must_use]
+	pub fn projected_availability(&self, id: &SurfaceId) -> Option<&Availability> {
+		self.availability.get(id)
+	}
+
 	/// Every id a surface read that no projection had set, in the order the
 	/// ids sort. Empty when every control drawn is one the projection owns.
 	#[must_use]

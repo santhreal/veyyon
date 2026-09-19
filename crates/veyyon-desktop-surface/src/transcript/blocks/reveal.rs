@@ -44,11 +44,11 @@ pub fn render_reveal_container(
 
 	let measured_child = content.flex_shrink_0().w_full();
 
-	let wrapper = div()
-		.w_full()
-		.overflow_hidden()
-		.opacity(opacity)
-		.h(px(clipped_height))
+	let mut wrapper = div().w_full().overflow_hidden().opacity(opacity);
+	if clamped_progress < 1.0 && clipped_height > 0.0 {
+		wrapper = wrapper.h(px(clipped_height));
+	}
+	let wrapper = wrapper
 		.on_children_prepainted(move |children, _window, cx| {
 			if let Some(bounds) = children.first() {
 				let height = f32::from(bounds.size.height);

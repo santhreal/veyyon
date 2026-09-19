@@ -52,7 +52,13 @@ pub fn footer_row(
 		.items_center()
 		.gap(metrics.gap)
 		.opacity(opacity)
-		.cursor(cursor)
+		.cursor(cursor);
+	// The label is truncated at a narrow width, never shed: §5.7 keeps a model
+	// name on the footer at every width down to the 800px floor, and a control
+	// that drew only a chevron is a 12px target with nothing in it to read.
+	// The chevron is drawn beside it whatever the host offers, so an
+	// unavailable selector is still a control with a reason on it (§4.3).
+	model = model
 		.child(
 			div()
 				.min_w_0()
@@ -61,11 +67,11 @@ pub fn footer_row(
 				.line_height(tokens.line_height(metrics.ramp))
 				.text_color(tokens.color(ColorRole::Secondary))
 				.child(label.to_owned()),
-		);
+		)
+		.child(Icon::new(IconName::ChevronDown).size(IconSize::Size12));
 	if allowed {
 		let hover = tokens.row_hover();
 		model = model
-			.child(Icon::new(IconName::ChevronDown).size(IconSize::Size12))
 			.hover(move |style| style.bg(hover))
 			.on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
 				view.open_model_picker(window, cx);
@@ -104,7 +110,8 @@ pub fn footer_row(
 			.items_center()
 			.gap(metrics.gap)
 			.opacity(t_opacity)
-			.cursor(t_cursor)
+			.cursor(t_cursor);
+		btn = btn
 			.child(
 				div()
 					.min_w_0()
@@ -113,11 +120,11 @@ pub fn footer_row(
 					.line_height(tokens.line_height(metrics.ramp))
 					.text_color(tokens.color(ColorRole::Secondary))
 					.child(format!("Thinking: {}", thinking.level)),
-			);
+			)
+			.child(Icon::new(IconName::ChevronDown).size(IconSize::Size12));
 		if t_allowed {
 			let hover = tokens.row_hover();
 			btn = btn
-				.child(Icon::new(IconName::ChevronDown).size(IconSize::Size12))
 				.hover(move |style| style.bg(hover))
 				.on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
 					view.open_thinking_picker(window, cx);

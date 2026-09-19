@@ -7,8 +7,7 @@ default_px = 256
 min_px = 208
 max_viewport_delta_px = 640
 floor_max_px = 208
-collapsed_px = 0
-outer_edge_stroke = "hairline"
+resize_handle_hit_px = "s4"
 
 [geometry.insets]
 content_inset = "s4"

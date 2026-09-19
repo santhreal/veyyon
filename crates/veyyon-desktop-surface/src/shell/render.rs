@@ -5,6 +5,8 @@
 //! the rail, inline or floated, and `panel` for the right panel, docked in a
 //! split or floated inside the session surface.
 
+pub mod blue_noise;
+pub mod grain;
 mod panel;
 mod queue;
 
@@ -24,7 +26,7 @@ use crate::{
 	attach::render_attach_screen,
 	damage::Region,
 	drawer::{SupervisorFields, signal_menu_layer},
-	layout::{RightPanelPlacement, ShedInput, shell_widths},
+	layout::{ShedInput, shell_widths},
 	queue::row_menu_layer,
 	transcript::turn_menu_layer,
 };
@@ -54,34 +56,36 @@ pub fn render_shell(
 		} else {
 			0.0
 		};
+	let viewport_w = f32::from(window.viewport_size().width);
+	let viewport_h = f32::from(window.viewport_size().height);
+	let floats = matches!(
+		view
+			.installed()
+			.surface
+			.breakpoints
+			.resolve(viewport_w)
+			.queue_mode,
+		QueueMode::Overlay
+	);
+	view.set_queue_floats(floats);
 	let keymap = &view.state().keymap;
 	let panel_available = view.state().connection.is_attached();
+	let float_open = view.queue_float_open;
 	let mut widths = shell_widths(
 		ShedInput {
-			viewport_px:        f32::from(window.viewport_size().width),
-			viewport_height_px: f32::from(window.viewport_size().height),
+			viewport_px:        viewport_w,
+			viewport_height_px: viewport_h,
 			chrome_height_px:   chrome_px,
 			gutter_px:          f32::from(view.installed().set.spacing(SpacingStep::S4)),
 			queue_collapsed:    keymap.queue_collapsed,
-			queue_float_open:   view.queue_float_open,
+			queue_float_open:   float_open,
+			queue_width:        view.queue_width(),
 			panel_open:         panel_available && !keymap.panel_collapsed,
 			panel_width:        view.panel_width(),
 			labels:             view.labels(),
 		},
 		&view.installed().surface,
 	);
-	// What the rail control does at this width, read from the row the shed
-	// resolved rather than from a width this module restates.
-	let floats = matches!(
-		view
-			.installed()
-			.surface
-			.breakpoints
-			.resolve(f32::from(window.viewport_size().width))
-			.queue_mode,
-		QueueMode::Overlay
-	);
-	view.set_queue_floats(floats);
 	if let Some(height) = view.split_motion.drawer_height() {
 		let panels = &view.installed().surface.panels;
 		let maximum = widths.columns_px * panels.terminal_drawer_max_viewport_ratio;
@@ -137,7 +141,7 @@ pub fn render_shell(
 		None
 	};
 
-	let root = div()
+	let mut root = div()
 		.track_focus(&focus_handle)
 		.key_context("Shell")
 		.flex()
@@ -152,30 +156,42 @@ pub fn render_shell(
 		.font_family(tokens.ui_family())
 		.text_size(tokens.font_size(TextRamp::Body))
 		.line_height(tokens.line_height(TextRamp::Body))
-		.overflow_hidden()
-		.child(titlebar(
-			TitlebarState {
-				title: &view.state().title,
-				rename_editor,
-				connection: &view.state().connection,
-				// Lit when a rail is on screen, whether docked beside the
-				// transcript or floated over it, rather than from the standing
-				// collapsed state alone, which a float leaves untouched.
-				queue_collapsed: !widths.queue.is_shown(),
-				panel_available,
-				panel_collapsed: view.state().keymap.panel_collapsed,
-				drawer_available: view.state().drawer.offered,
-				drawer_open: view.state().drawer_open,
-				menu: &view.state().menu,
-				menu_anchors: view.menu_anchors(),
-			},
-			&surface.shell,
-			&tokens,
-			cx,
-		));
+		.overflow_hidden();
+	// The grain is a child of the root, so it shifts every index after it.
+	// The titlebar's own position is carried rather than assumed, because a
+	// region recorded off a positional guess names whatever child moved into
+	// that slot: with the grain drawn first, `Titlebar` was the full-window
+	// grain layer, and a float over the transcript read as covering the
+	// titlebar.
+	let titlebar_ix = if let Some(grain) = grain::ground_grain(&surface.shell) {
+		root = root.child(grain);
+		1
+	} else {
+		0
+	};
+	let root = root.child(titlebar(
+		TitlebarState {
+			title: &view.state().title,
+			rename_editor,
+			connection: &view.state().connection,
+			// Lit when a rail is on screen, whether docked beside the
+			// transcript or floated over it, rather than from the standing
+			// collapsed state alone, which a float leaves untouched.
+			queue_collapsed: !widths.queue.is_shown(),
+			panel_available,
+			panel_collapsed: view.state().keymap.panel_collapsed,
+			drawer_available: view.state().drawer.offered,
+			drawer_open: view.state().drawer_open,
+			menu: &view.state().menu,
+			menu_anchors: view.menu_anchors(),
+		},
+		&surface.shell,
+		&tokens,
+		cx,
+	));
 	let root = view
 		.laid_out()
-		.track_children(root, |index| (index == 0).then_some(Region::Titlebar));
+		.track_children(root, move |index| (index == titlebar_ix).then_some(Region::Titlebar));
 	let mut root = bind_global_keys(root, cx);
 
 	if let Some(banner) = connection_banner(
@@ -232,15 +248,13 @@ pub fn render_shell(
 	// with nothing behind it.
 	//
 	// The columns' regions, in child order. The session column records its
-	// own regions, so its slot is empty here, and so is a floated rail's: the
-	// float records the sheet's own box from inside its scrim, because the
-	// scrim spans the whole row and the sheet is the rail.
-	let mut column_regions: Vec<Option<Region>> = Vec::with_capacity(3);
+	// own regions, so its slot is empty here; so is an inline rail's, which
+	// is the first pane of the split and records its box from inside it, and
+	// so is a floated rail's: the float records the sheet's own box from
+	// inside its scrim, because the scrim spans the whole row and the sheet
+	// is the rail.
+	let mut column_regions: Vec<Option<Region>> = Vec::with_capacity(2);
 	let queue = queue::queue_column(view, &widths, &surface, &tokens, window, cx);
-	if let Some(rail) = queue.inline {
-		columns = columns.child(rail);
-		column_regions.push(Some(Region::Queue));
-	}
 	column_regions.push(None);
 
 	let has_text = view.has_composer_text();
@@ -306,24 +320,23 @@ pub fn render_shell(
 		cx,
 	);
 
-	columns = match widths.right_panel {
-		// A float takes no width, so the row is the session surface alone and
-		// the panel is already inside it.
-		RightPanelPlacement::Absent | RightPanelPlacement::Overlay { .. } => columns.child(session),
-		// A docked panel is the second pane of a split whose handle the
-		// operator drags (§5.6), and the panel's own box is recorded from
-		// inside it.
-		RightPanelPlacement::Inline { width_px } => columns.child(panel::docked_split(
-			view,
-			&widths,
-			panels,
-			&tokens,
-			&panel_focus,
-			session.into_any_element(),
-			width_px,
-			window,
-			cx,
-		)),
+	let body = panel::session_body(
+		view,
+		&widths,
+		panels,
+		&tokens,
+		&panel_focus,
+		session.into_any_element(),
+		window,
+		cx,
+	);
+	// An inline rail is the first pane of the split that sets its width, so
+	// the row is that split and nothing beside it.
+	columns = match queue.inline {
+		Some(rail) => {
+			columns.child(queue::queue_split(view, rail, body, &widths, &surface.queue, window, cx))
+		},
+		None => columns.child(body),
 	};
 	if let Some(float) = queue.float {
 		columns = columns.child(float);

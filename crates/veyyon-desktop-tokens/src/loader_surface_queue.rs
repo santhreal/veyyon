@@ -33,8 +33,7 @@ pub fn load_queue(path: &Path, scale: &ScaleTokens) -> Result<QueueSurfaceTokens
 		"min_px",
 		"max_viewport_delta_px",
 		"floor_max_px",
-		"collapsed_px",
-		"outer_edge_stroke",
+		"resize_handle_hit_px",
 	])?;
 
 	let insets = geom.sub("insets")?;
@@ -69,8 +68,7 @@ pub fn load_queue(path: &Path, scale: &ScaleTokens) -> Result<QueueSurfaceTokens
 		width_min_px:                width.number("min_px")?,
 		width_max_viewport_delta_px: width.number("max_viewport_delta_px")?,
 		width_floor_max_px:          width.number("floor_max_px")?,
-		width_collapsed_px:          width.number("collapsed_px")?,
-		outer_edge_stroke:           width.stroke("outer_edge_stroke", scale)?,
+		width_resize_handle_hit_px:  width.spacing("resize_handle_hit_px", scale)?,
 		content_inset:               insets.spacing("content_inset", scale)?,
 		row_inset:                   insets.spacing("row_inset", scale)?,
 		card_px:                     row_h.number("card_px")?,

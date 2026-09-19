@@ -11,6 +11,7 @@ use super::ShellView;
 pub(super) struct SplitMotions {
 	panel:         Option<PanelMotion>,
 	drawer:        Option<PanelMotion>,
+	queue:         Option<PanelMotion>,
 	drawer_target: Option<f32>,
 }
 
@@ -35,9 +36,10 @@ impl ShellView {
 	pub(super) fn sample_split_motion(&mut self, window: &Window, cx: &Context<Self>) {
 		let now = cx.background_executor().now();
 		let mut animating = false;
-		for motion in [&mut self.split_motion.panel, &mut self.split_motion.drawer]
-			.into_iter()
-			.flatten()
+		for motion in
+			[&mut self.split_motion.panel, &mut self.split_motion.drawer, &mut self.split_motion.queue]
+				.into_iter()
+				.flatten()
 		{
 			let (_, settled) = motion.sample(now);
 			animating |= !settled && !motion.is_dragging();
@@ -50,6 +52,9 @@ impl ShellView {
 		}
 		if let Some(panel) = &self.split_motion.panel {
 			self.panel_width = Some(panel.current_width());
+		}
+		if let Some(queue) = &self.split_motion.queue {
+			self.queue_width = Some(queue.current_width());
 		}
 	}
 
@@ -65,6 +70,25 @@ impl ShellView {
 	pub(super) fn release_panel(&mut self, cx: &Context<Self>) {
 		SplitMotions::release(
 			&mut self.split_motion.panel,
+			&self.installed.motion,
+			self.rail_motion.is_reduced_motion(),
+			cx.background_executor().now(),
+		);
+	}
+
+	pub(crate) fn drag_queue(&mut self, width: f32, min: f32, max: f32, cx: &Context<Self>) {
+		let motion = self
+			.split_motion
+			.queue
+			.get_or_insert_with(|| PanelMotion::with_bounds(SurfaceId::Queue, 0, width, min, max));
+		motion.set_bounds(min, max);
+		motion.set_direct(width, cx.background_executor().now());
+		self.queue_width = Some(motion.current_width());
+	}
+
+	pub(crate) fn release_queue(&mut self, cx: &Context<Self>) {
+		SplitMotions::release(
+			&mut self.split_motion.queue,
 			&self.installed.motion,
 			self.rail_motion.is_reduced_motion(),
 			cx.background_executor().now(),

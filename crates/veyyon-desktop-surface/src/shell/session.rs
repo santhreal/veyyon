@@ -82,7 +82,7 @@ pub fn session_surface(
 				&installed.motion,
 				reduced_motion,
 				laid_out,
-				widths.composer_px,
+				widths.session_px,
 				0.0,
 				selection,
 				window,

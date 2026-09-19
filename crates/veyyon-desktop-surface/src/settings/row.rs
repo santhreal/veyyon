@@ -59,22 +59,24 @@ pub fn setting_row_with_secondary(
 		tokens.color(ColorRole::Muted)
 	};
 
+	let label_tracking = px(geometry.label_size.tracking_em * geometry.label_size.size);
 	let label_el = div()
 		.w_full()
 		.min_w_0()
 		.overflow_hidden()
 		.whitespace_nowrap()
 		.truncate()
-		.text_size(tokens.font_size(TextRamp::Read))
-		.line_height(tokens.spacing(SpacingStep::S9))
+		.text_size(px(geometry.label_size.size))
+		.line_height(px(geometry.label_size.line_height))
 		.font_weight(tokens.font_weight(TextWeight::Medium))
 		.text_color(label_color)
+		.tracking(label_tracking)
 		.child(one_line(label));
-
 	// The row is its declared height, so a description is the one 16px line
 	// under the label and the rest of the sentence is read on hover. A
 	// description that wrapped grew the row to the length of its prose, which
 	// is what turned a page of settings into a column of paragraphs.
+	let desc_tracking = px(geometry.description_size.tracking_em * geometry.description_size.size);
 	let desc_el = description.map(|desc| {
 		div()
 			.w_full()
@@ -82,12 +84,12 @@ pub fn setting_row_with_secondary(
 			.overflow_hidden()
 			.whitespace_nowrap()
 			.truncate()
-			.text_size(tokens.font_size(TextRamp::Small))
-			.line_height(tokens.spacing(SpacingStep::S8))
+			.text_size(px(geometry.description_size.size))
+			.line_height(px(geometry.description_size.line_height))
 			.text_color(tokens.color(ColorRole::Muted))
+			.tracking(desc_tracking)
 			.child(one_line(desc))
 	});
-
 	// The label and its description stack with no gap: the two line heights
 	// are the row's rhythm. The column around the stack takes the width the
 	// control column leaves, and centres the stack in the row's height.

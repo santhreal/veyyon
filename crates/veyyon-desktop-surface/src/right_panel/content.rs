@@ -5,7 +5,9 @@ use std::{collections::BTreeSet, ops::Range};
 
 use serde::{Deserialize, Serialize};
 use veyyon_desktop_kit::ColorRole;
-use veyyon_desktop_model::{ChangeScope, ChangeStatus, DiffMode, SurfaceId, UsageTotals};
+use veyyon_desktop_model::{
+	ChangeScope, ChangeStatus, DiffMode, SessionId, SurfaceId, UsageTotals,
+};
 
 use crate::controls::ControlError;
 
@@ -59,6 +61,17 @@ impl PanelTab {
 	#[must_use]
 	pub fn from_slug(slug: &str) -> Option<Self> {
 		Self::all().into_iter().find(|tab| tab.slug() == slug)
+	}
+
+	/// The control surface that gates and reports availability for this tab.
+	#[must_use]
+	pub fn surface_id(&self, session_id: impl Into<SessionId>) -> SurfaceId {
+		let sid = session_id.into();
+		match self {
+			Self::Diff => SurfaceId::RightPanelDiffTab(sid),
+			Self::File | Self::Tree => SurfaceId::RightPanelFileTab(sid),
+			Self::Usage => SurfaceId::RightPanelUsageTab(sid),
+		}
 	}
 }
 

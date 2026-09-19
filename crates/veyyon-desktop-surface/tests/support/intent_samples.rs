@@ -34,6 +34,7 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::PreviewSession("s1".into()),
 		Intent::ResumeHistory("s1".into()),
 		Intent::SelectTab(PanelTab::Diff),
+		Intent::CloseTab(PanelTab::Diff),
 		Intent::SetDrawer { open: true },
 		Intent::SetDrawer { open: false },
 		Intent::Approval { card: 0, approved: true, standing: false },
@@ -218,6 +219,7 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::BranchTurn(_)
 			| Intent::FilterQueue(_)
 			| Intent::NewSession
+			| Intent::CloseTab(_)
 			| Intent::CloseTabOrPark
 			| Intent::MoveQueueSelection(_)
 			| Intent::ScrollTranscript(_)

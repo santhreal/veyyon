@@ -7,7 +7,6 @@ min_width_px = 360
 default_width_px = 540
 max_viewport_ratio = 0.70
 container_margin_px = 360
-overlay_breakpoint_px = 980
 overlay_scrim_blur_px = 16
 
 [terminal_drawer]

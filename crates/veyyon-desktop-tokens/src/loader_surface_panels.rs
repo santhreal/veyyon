@@ -22,7 +22,6 @@ pub fn load_panels(path: &Path, scale: &ScaleTokens) -> Result<PanelsSurfaceToke
 		"default_width_px",
 		"max_viewport_ratio",
 		"container_margin_px",
-		"overlay_breakpoint_px",
 		"overlay_scrim_blur_px",
 	])?;
 
@@ -63,7 +62,6 @@ pub fn load_panels(path: &Path, scale: &ScaleTokens) -> Result<PanelsSurfaceToke
 		right_panel_default_width_px: rp.number("default_width_px")?,
 		right_panel_max_viewport_ratio: rp.ratio("max_viewport_ratio")?,
 		right_panel_container_margin_px: rp.number("container_margin_px")?,
-		right_panel_overlay_breakpoint_px: rp.number("overlay_breakpoint_px")?,
 		right_panel_overlay_scrim_blur_px: rp.number("overlay_scrim_blur_px")?,
 		terminal_drawer_min_height_px: td.number("min_height_px")?,
 		terminal_drawer_max_viewport_ratio: td.ratio("max_viewport_ratio")?,

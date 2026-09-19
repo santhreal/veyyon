@@ -31,8 +31,11 @@ pub fn expected_controls(state: &ShellState) -> usize {
 	let bottom = columns_px - queue.footer_height_px;
 	let mut y = queue.content_inset + 32.0 + queue.section_gap_below;
 	// The rail itself answers a click: it takes focus, which is what puts the
-	// queue chords on the focus path.
-	let mut queue_controls = 5; // Rail, search wrapper, search icon, new session, list
+	// queue chords on the focus path. The split it is the first pane of adds
+	// three of its own, the way the docked panel's does: the container that
+	// takes the release, the grip, and the hairline whose tint follows the
+	// grip's hover group.
+	let mut queue_controls = 5 + 3; // Rail, search wrapper, search icon, new session, list; split
 	for (section, rows) in &state.sections {
 		if rows.is_empty() {
 			continue;
@@ -106,10 +109,18 @@ pub fn expected_controls(state: &ShellState) -> usize {
 		veyyon_desktop_surface::PanelTab::File => usize::from(state.panel.file.is_some()),
 		_ => 0,
 	};
+	// A tab carries a close of its own only while the panel holds a tab to
+	// fall back to, and the reveal is a style on that one rect rather than a
+	// wrapper of its own.
+	let close_controls = if state.panel.tabs.len() > 1 {
+		state.panel.tabs.len()
+	} else {
+		0
+	};
 	let panel = if state.keymap.panel_collapsed {
 		0
 	} else {
-		4 + state.panel.tabs.len() + tenant
+		4 + state.panel.tabs.len() + close_controls + tenant
 	};
 
 	// The overflow summary is hover-tested; each question also has a text reply.
@@ -131,8 +142,15 @@ pub fn expected_controls(state: &ShellState) -> usize {
 	// transcript body, which takes the focus its scope's chords ride on, and
 	// the composer box, which hands the focus back to the editor whatever the
 	// press landed on.
-	let chrome =
-		1 + 1 + 1 + usize::from(!state.panel.is_empty()) + usize::from(state.drawer.offered) + 4 + 6;
+	//
+	// One more is the title itself, which answers the double-click that opens
+	// the rename editor over it.
+	let chrome = 1
+		+ 1 + 1
+		+ usize::from(!state.panel.is_empty())
+		+ usize::from(state.drawer.offered)
+		+ 4 + 6
+		+ 1;
 	// Each word of the menu bar answers a press of its own, counted from the
 	// sections the bar draws rather than as a literal, so a menu added to the
 	// table moves this with it.

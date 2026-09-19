@@ -56,6 +56,9 @@ pub(super) fn approval(
 				.overflow_hidden()
 				.whitespace_nowrap()
 				.truncate()
+				.tracking(px(
+					geometry.approval_tool_name_size.tracking_em * geometry.approval_tool_name_size.size
+				))
 				.text_size(px(geometry.approval_tool_name_size.size))
 				.line_height(px(geometry.approval_tool_name_size.line_height))
 				.font_weight(veyyon_gpui::FontWeight(f32::from(geometry.approval_tool_name_weight)))

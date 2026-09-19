@@ -30,8 +30,6 @@ event_line_height_px = "s6"
 invoke_mono_pane_max_height_px = 240
 code_fence_max_height_px = 320
 image_max_height_px = 400
-plan_body_max_height_px = 400
-plan_fade_height_px = "s13"
 table_row_height_px = 18
 
 # A tool view draws denser rows than prose: a code, diff or status line sits on

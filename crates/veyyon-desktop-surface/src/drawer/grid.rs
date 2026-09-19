@@ -95,6 +95,7 @@ pub fn render_terminal_grid(
 	let cell_width = geometry.terminal_cell_width_px;
 	let cell_height = geometry.terminal_cell_height_px;
 	let min_width = cell_width * geometry.terminal_min_columns as f32;
+	let min_height = cell_height * geometry.terminal_min_rows as f32;
 
 	let grid_el = div()
 		.id("terminal-grid")
@@ -104,7 +105,7 @@ pub fn render_terminal_grid(
 		.flex_col()
 		.w_full()
 		.min_w(px(min_width))
-		.flex_1()
+		.min_h(px(min_height))
 		.overflow_hidden()
 		.px(tokens.spacing(SpacingStep::S3))
 		.py(tokens.spacing(SpacingStep::S2))

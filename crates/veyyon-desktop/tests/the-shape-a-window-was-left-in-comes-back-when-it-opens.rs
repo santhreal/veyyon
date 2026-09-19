@@ -56,6 +56,7 @@ fn every_field_a_window_holds_is_written_and_read_back() {
 					cx.background_executor().now(),
 				);
 				view.set_panel_width(620.0);
+				view.set_queue_width(240.0);
 				view.rail_motion_mut().show_more_parked(1);
 				// Reading back through the transcript, which is what leaves an
 				// anchor: a view at the live edge holds none.
@@ -101,6 +102,7 @@ fn every_field_a_window_holds_is_written_and_read_back() {
 	let SessionShape {
 		panel_visible,
 		panel_width_px,
+		queue_width_px,
 		drawer_visible,
 		drawer_height_px,
 		active_panel_tab,
@@ -114,6 +116,7 @@ fn every_field_a_window_holds_is_written_and_read_back() {
 	} = &recorded.1;
 	assert!(*panel_visible, "the panel was docked open");
 	assert_eq!(*panel_width_px, Some(620.0));
+	assert_eq!(*queue_width_px, Some(240.0));
 	assert!(*drawer_visible, "the drawer was opened");
 	assert_eq!(*active_panel_tab, PanelTab::File);
 	assert_eq!(active_drawer_tab.as_deref(), Some("terminal:term-1"));
@@ -128,6 +131,7 @@ fn every_field_a_window_holds_is_written_and_read_back() {
 
 	assert_eq!(session_back.panel_visible, *panel_visible);
 	assert_eq!(session_back.panel_width_px, *panel_width_px);
+	assert_eq!(session_back.queue_width_px, *queue_width_px);
 	assert_eq!(session_back.drawer_visible, *drawer_visible);
 	assert_eq!(session_back.drawer_height_px, *drawer_height_px);
 	assert_eq!(session_back.active_panel_tab, *active_panel_tab);
@@ -346,12 +350,17 @@ fn a_measure_no_operator_dragged_leaves_the_breakpoint_ladder_alone() {
 			shape.panel_width_px, None,
 			"a width the operator never set is absent, so the shed decides it"
 		);
+		assert_eq!(
+			shape.queue_width_px, None,
+			"a queue width the operator never set is absent, so the shed decides it"
+		);
 		let panels = store
 			.persisted
 			.panels
 			.get(&SessionId::from(FIRST))
 			.expect("the session has an entry");
 		assert_eq!(panels.right_panel_width, None);
+		assert_eq!(panels.queue_width, None);
 		assert_eq!(panels.drawer_height, None);
 	});
 }

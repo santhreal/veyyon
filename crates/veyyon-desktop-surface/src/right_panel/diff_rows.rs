@@ -106,11 +106,13 @@ pub fn render_hunk_header(
 
 /// Renders a gutter cell containing a line number.
 pub fn gutter_cell(text: &str, geometry: &PanelsSurfaceTokens, tokens: &TokenSet) -> Div {
+	let tracking = px(geometry.diff_font_size.tracking_em * geometry.diff_font_size.size);
 	div()
 		.w(px(geometry.diff_gutter_width_px))
 		.flex_shrink_0()
 		.text_align(veyyon_gpui::TextAlign::Right)
-		.pr(tokens.spacing(SpacingStep::S2))
+		.pr(tokens.spacing(SpacingStep::S2) + tracking)
+		.tracking(tracking)
 		.text_color(tokens.color(ColorRole::Secondary))
 		.child(text.to_string())
 }

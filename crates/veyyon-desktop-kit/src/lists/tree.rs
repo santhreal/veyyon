@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use veyyon_gpui::{
 	AnyElement, App, ClickEvent, ElementId, IntoElement, MouseButton, MouseDownEvent, Pixels,
-	RenderOnce, SharedString, Window, div, prelude::*,
+	RenderOnce, SharedString, Window, div, prelude::*, px,
 };
 
 use crate::{
@@ -24,6 +24,8 @@ pub struct TreeNodeMetrics {
 	pub indent_step: Option<Pixels>,
 	/// Label size and line height.
 	pub font:        Option<(Pixels, Pixels)>,
+	/// Letter spacing the label is drawn with; unset draws it untracked.
+	pub tracking:    Option<Pixels>,
 }
 
 /// Hierarchical tree node element.
@@ -235,6 +237,7 @@ impl RenderOnce for TreeNode {
 				.whitespace_nowrap()
 				.truncate()
 				.text_size(font_size)
+				.tracking(self.metrics.tracking.unwrap_or(px(0.0)))
 				.line_height(line_height)
 				.text_color(tokens.color(if self.is_selected {
 					ColorRole::Foreground

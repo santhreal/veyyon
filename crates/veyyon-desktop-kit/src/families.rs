@@ -52,6 +52,7 @@ pub trait MonoText: veyyon_gpui::Styled + Sized {
 			.font_family(tokens.mono_family())
 			.text_size(px(size.size))
 			.line_height(px(size.line_height))
+			.tracking(px(size.tracking_em * size.size))
 	}
 }
 
@@ -88,7 +89,7 @@ pub(crate) fn present_family(
 }
 
 /// The width of one monospace cell at `size`, as the face this machine
-/// resolved shapes it.
+/// resolved shapes it, including the letter spacing `size` authors.
 ///
 /// A pane that scrolls sideways has to state how wide its widest line is
 /// before the frame is laid out, and a mono column's width is its cell count
@@ -104,6 +105,11 @@ pub fn mono_advance(window: &mut Window, tokens: &TokenSet, size: &TypeSize) -> 
 		weight:    FontWeight::NORMAL,
 		style:     FontStyle::Normal,
 	};
+	// One glyph, so the run itself carries no tracking: a shaped run of n
+	// glyphs widens by (n - 1) tracking, and a cell is one glyph. The column
+	// step is the glyph plus the spacing that follows it, which is what a
+	// caller multiplies by its cell count, so it is added to the measured
+	// advance here rather than shaped into it.
 	let run = TextRun {
 		len: 1,
 		font,
@@ -111,10 +117,11 @@ pub fn mono_advance(window: &mut Window, tokens: &TokenSet, size: &TypeSize) -> 
 		background_color: None,
 		underline: None,
 		strikethrough: None,
+		tracking: px(0.0),
 	};
 	let shaped =
 		window
 			.text_system()
 			.shape_line(SharedString::from("0"), px(size.size), &[run], None);
-	f32::from(shaped.width)
+	f32::from(shaped.width) + size.tracking_em * size.size
 }

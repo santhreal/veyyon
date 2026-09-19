@@ -36,7 +36,7 @@ use veyyon_gpui::{
 
 use crate::{
 	ShellView,
-	controls::error_hairline,
+	controls::{ControlStates, error_hairline},
 	damage::{LaidOut, Region},
 	empty::{EmptySurface, empty_unavailable},
 	intent::Intent,
@@ -55,6 +55,8 @@ pub fn right_panel(
 	reviews: &veyyon_desktop_model::review::ReviewsStore,
 	width: f32,
 	panes: &PaneScrolls,
+	controls: &ControlStates,
+	session_id: u64,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	focus: &FocusHandle,
@@ -91,7 +93,7 @@ pub fn right_panel(
 			.flex_shrink_0()
 			.bg(tokens.color(ColorRole::Rail))
 			.overflow_hidden()
-			.child(tab_strip(panel, geometry, tokens, cx))
+			.child(tab_strip(panel, controls, session_id, geometry, tokens, cx))
 			.children(failure_row)
 			.child(empty_unavailable(reason, tokens))
 			.into_any_element();
@@ -130,7 +132,6 @@ pub fn right_panel(
 	with_panel_keys(
 		laid_out
 			.tracking(|index| (index == 0).then_some(Region::PanelChrome))
-			.id("right-panel")
 			.track_focus(focus),
 		panel,
 		cx,
@@ -141,10 +142,9 @@ pub fn right_panel(
 	.w(px(width))
 	.flex_shrink_0()
 	.bg(tokens.color(ColorRole::Rail))
-	// The leading edge is the container's: the split handle's line when
 	// the panel is docked, the sheet's frame when it overlays (§5.6).
 	.overflow_hidden()
-	.child(tab_strip(panel, geometry, tokens, cx))
+	.child(tab_strip(panel, controls, session_id, geometry, tokens, cx))
 	.children(failure_row)
 	.child(active_content)
 	.into_any_element()

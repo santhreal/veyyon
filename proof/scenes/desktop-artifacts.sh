@@ -224,7 +224,7 @@ if scenes_dir.is_file():
 sys.path.insert(0, str(scenes_dir))
 import token_px
 
-print(token_px.value_of("surface/panels.toml", "right_panel.overlay_breakpoint_px"))
+print(token_px.value_of("surface/breakpoints.toml", "breakpoint.compact.min_width_px"))
 PY
 )"
 if (( WIN_W < PANEL_OVERLAY_BREAKPOINT )); then

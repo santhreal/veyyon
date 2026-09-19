@@ -43,7 +43,7 @@ use veyyon_desktop_kit::{ColorRole, TextRamp};
 use veyyon_desktop_scene::frame::RgbaFrame;
 use veyyon_desktop_surface::composer::{PrimaryAction, primary_action};
 use veyyon_gpui::{
-	Bounds, Font, FontFeatures, FontStyle, FontWeight, Pixels, Point, SharedString, TextRun,
+	Bounds, Font, FontFeatures, FontStyle, FontWeight, Pixels, Point, SharedString, TextRun, px,
 };
 
 /// Window size the sweep renders at. Height is deliberately modest: the tag's
@@ -176,6 +176,8 @@ fn hover_the_primary(discriminant: TurnPhaseDiscriminant) -> Hover {
 					background_color: None,
 					underline:        None,
 					strikethrough:    None,
+					// The tag is drawn untracked, so the oracle shapes it untracked.
+					tracking:         px(0.0),
 				};
 				let size = tokens.font_size(TextRamp::Small);
 				let shaped =

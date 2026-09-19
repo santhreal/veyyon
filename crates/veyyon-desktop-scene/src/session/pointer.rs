@@ -68,6 +68,49 @@ impl<V: Render + 'static> HeadlessSession<'_, V> {
 		Ok(())
 	}
 
+	/// Dispatches a double click at the given logical coordinates.
+	pub fn double_click(&mut self, at: Point<Pixels>) -> Result<(), RenderError> {
+		let mouse_down1 = PlatformInput::MouseDown(MouseDownEvent {
+			button:      MouseButton::Left,
+			position:    at,
+			modifiers:   Modifiers::default(),
+			click_count: 1,
+			first_mouse: false,
+		});
+		let mouse_up1 = PlatformInput::MouseUp(MouseUpEvent {
+			button:      MouseButton::Left,
+			position:    at,
+			modifiers:   Modifiers::default(),
+			click_count: 1,
+		});
+		let mouse_down2 = PlatformInput::MouseDown(MouseDownEvent {
+			button:      MouseButton::Left,
+			position:    at,
+			modifiers:   Modifiers::default(),
+			click_count: 2,
+			first_mouse: false,
+		});
+		let mouse_up2 = PlatformInput::MouseUp(MouseUpEvent {
+			button:      MouseButton::Left,
+			position:    at,
+			modifiers:   Modifiers::default(),
+			click_count: 2,
+		});
+
+		self
+			.cx
+			.update_window(self.window.into(), |_, window, cx| {
+				window.dispatch_event(mouse_down1, cx);
+				window.dispatch_event(mouse_up1, cx);
+				window.dispatch_event(mouse_down2, cx);
+				window.dispatch_event(mouse_up2, cx);
+			})
+			.map_err(|error| RenderError::Window { message: format!("{error:?}") })?;
+
+		self.cx.run_until_parked();
+		Ok(())
+	}
+
 	/// Clicks at `at` with Shift held, which is how a surface that extends a
 	/// selection from where it is rather than starting a new one is reached.
 	pub fn shift_click(&mut self, at: Point<Pixels>) -> Result<(), RenderError> {

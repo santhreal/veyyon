@@ -42,7 +42,7 @@ use veyyon_desktop_surface::{Intent, IntentDiscriminants};
 // `MoveQueueSelection` IS here: §5.14 gives the queue's arrows the cursor and
 // `Enter` the open, so a movement changes which row the next press acts on and
 // nothing the host holds. The open reaches the host as `SelectSession`.
-const LOCAL: [IntentDiscriminants; 24] = [
+const LOCAL: [IntentDiscriminants; 25] = [
 	IntentDiscriminants::MoveQueueSelection,
 	IntentDiscriminants::CopyText,
 	IntentDiscriminants::PreviewAppearance,
@@ -52,6 +52,7 @@ const LOCAL: [IntentDiscriminants; 24] = [
 	IntentDiscriminants::SelectDrawerTab,
 	IntentDiscriminants::OpenOverlay,
 	IntentDiscriminants::CloseOverlay,
+	IntentDiscriminants::CloseTab,
 	IntentDiscriminants::CloseTabOrPark,
 	IntentDiscriminants::PaletteMove,
 	IntentDiscriminants::PaletteQuery,

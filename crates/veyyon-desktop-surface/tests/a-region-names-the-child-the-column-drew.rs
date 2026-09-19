@@ -28,6 +28,12 @@
 //! than its child and is tracked from there, and the retention and reset of a
 //! box after the frame that drew it is asserted by
 //! `a-measured-frame-reads-only-the-boxes-it-laid-out`.
+//!
+//! The root above the column names its children the same way, and the ground
+//! grain is a child of it: with the grain drawn first, `Titlebar` named a
+//! layer the size of the window, and a float measured against that box read
+//! as covering the titlebar. The last test here holds the root to the same
+//! rule as the column.
 
 use std::path::Path;
 
@@ -289,6 +295,42 @@ fn the_box_a_region_names_holds_the_words_that_surface_draws() {
 			run_inside(&frame, &status, run_bar),
 			"{label}: the box recorded for the run bar does not hold the status line it states, so \
 			 the name is on another child"
+		);
+	}
+}
+
+#[test]
+fn the_titlebar_box_is_the_titlebar_and_not_the_layer_under_it() {
+	// The root's own child list: the ground grain draws before the titlebar
+	// and takes the whole window, so a name read off a position rather than
+	// off the child names the grain. The box is measured against the height
+	// the tokens declare for the titlebar, which a full-window layer fails by
+	// the height of the window.
+	let tokens = load_bundled_tokens().expect("the bundled tokens load");
+	let declared = tokens.surface.shell.titlebar_height_px;
+	assert!(
+		tokens.surface.shell.grain_opacity > 0.0 && tokens.surface.shell.grain_tile_px > 0.0,
+		"the bundled tokens draw no ground grain, so the root has one child and this proves nothing"
+	);
+
+	for shape in shapes() {
+		let label = shape.label();
+		let state = state_for(&shape);
+		let title = state.title.clone();
+		let mut cx = headless_context().expect("the headless context opens");
+		let (mut session, frame) = open_shape(&mut cx, &shape);
+		let titlebar = box_of(&mut session, Region::Titlebar).expect("the titlebar drew");
+
+		assert!(
+			(f32::from(titlebar.size.height) - declared).abs() <= 1.0,
+			"{label}: the box recorded for the titlebar is {:.1}px tall against the {declared:.1}px \
+			 the tokens declare, so the name is on another child of the root",
+			f32::from(titlebar.size.height)
+		);
+		assert!(
+			run_inside(&frame, &title, titlebar),
+			"{label}: the box recorded for the titlebar does not hold the session title it states \
+			 ({title}), so the name is on another child of the root"
 		);
 	}
 }

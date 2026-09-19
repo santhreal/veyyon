@@ -21,8 +21,7 @@ default_px = {}
 min_px = {}
 max_viewport_delta_px = {}
 floor_max_px = {}
-collapsed_px = {}
-outer_edge_stroke = "{}"
+resize_handle_hit_px = "{}"
 
 [geometry.insets]
 content_inset = "{}"
@@ -60,8 +59,7 @@ parked_initial_page_size = {}
 		q.width_min_px as i64,
 		q.width_max_viewport_delta_px as i64,
 		q.width_floor_max_px as i64,
-		q.width_collapsed_px as i64,
-		step_stroke(s, q.outer_edge_stroke),
+		step_spacing(s, q.width_resize_handle_hit_px),
 		step_spacing(s, q.content_inset),
 		step_spacing(s, q.row_inset),
 		q.card_px as i64,
@@ -123,8 +121,6 @@ event_line_height_px = "{}"
 invoke_mono_pane_max_height_px = {}
 code_fence_max_height_px = {}
 image_max_height_px = {}
-plan_body_max_height_px = {}
-plan_fade_height_px = "{}"
 table_row_height_px = {}
 
 [tool_view]
@@ -150,8 +146,6 @@ result_summary_max_width_px = {}
 		t.chrome_invoke_mono_pane_max_height_px as i64,
 		t.chrome_code_fence_max_height_px as i64,
 		t.chrome_image_max_height_px as i64,
-		t.chrome_plan_body_max_height_px as i64,
-		step_spacing(s, t.chrome_plan_fade_height_px),
 		t.chrome_table_row_height_px as i64,
 		t.tool_view_row_pad_y_px as i64,
 		t.tool_view_line_number_gutter_px as i64,

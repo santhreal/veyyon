@@ -20,9 +20,11 @@ use veyyon_desktop::state::{Keeper, StateDir, placement};
 use veyyon_desktop_model::{PersistedState, QueuePartition, SessionId, Store};
 use veyyon_gpui::{Bounds, Pixels, Point, Size, px};
 
-/// The floor the shell draws at, which is what a remembered size is raised to.
-const MIN_WIDTH: f32 = 800.0;
-const MIN_HEIGHT: f32 = 600.0;
+/// The floor the shell draws at, loaded from the bundled tokens.
+fn shell_floor() -> (f32, f32) {
+	let tokens = veyyon_desktop_tokens::load_bundled_tokens().expect("the bundled tokens load");
+	(tokens.surface.shell.window_min_width_px, tokens.surface.shell.window_min_height_px)
+}
 
 /// One display, at the origin, 1920 by 1080.
 const fn primary() -> Bounds<Pixels> {
@@ -45,7 +47,8 @@ fn remembered(x: i32, y: i32, width: u32, height: u32) -> PersistedState {
 #[test]
 fn a_window_on_a_display_this_machine_still_has_opens_where_it_was() {
 	let state = remembered(220, 140, 1480, 920);
-	let (bounds, maximized) = placement(&state, &[primary()], MIN_WIDTH, MIN_HEIGHT);
+	let (min_w, min_h) = shell_floor();
+	let (bounds, maximized) = placement(&state, &[primary()], min_w, min_h);
 	assert!(!maximized);
 	assert_eq!(f32::from(bounds.origin.x), 220.0);
 	assert_eq!(f32::from(bounds.origin.y), 140.0);
@@ -58,7 +61,8 @@ fn a_window_off_every_display_comes_back_centred_on_one_that_exists() {
 	// The rect a second monitor to the right left behind, after it was
 	// unplugged.
 	let state = remembered(3200, 400, 1480, 920);
-	let (bounds, _) = placement(&state, &[primary()], MIN_WIDTH, MIN_HEIGHT);
+	let (min_w, min_h) = shell_floor();
+	let (bounds, _) = placement(&state, &[primary()], min_w, min_h);
 	assert!(
 		primary().contains(&bounds.center()),
 		"the window opens on a display that exists: {bounds:?}"
@@ -74,7 +78,8 @@ fn a_window_off_every_display_comes_back_centred_on_one_that_exists() {
 #[test]
 fn a_window_the_platform_reports_no_display_for_still_opens() {
 	let state = remembered(3200, 400, 1480, 920);
-	let (bounds, _) = placement(&state, &[], MIN_WIDTH, MIN_HEIGHT);
+	let (min_w, min_h) = shell_floor();
+	let (bounds, _) = placement(&state, &[], min_w, min_h);
 	assert_eq!(f32::from(bounds.origin.x), 0.0);
 	assert_eq!(f32::from(bounds.origin.y), 0.0);
 	assert_eq!(f32::from(bounds.size.width), 1480.0);
@@ -83,20 +88,22 @@ fn a_window_the_platform_reports_no_display_for_still_opens() {
 #[test]
 fn a_remembered_size_under_the_floor_opens_at_the_floor() {
 	let state = remembered(10, 10, 320, 240);
-	let (bounds, _) = placement(&state, &[primary()], MIN_WIDTH, MIN_HEIGHT);
+	let (min_w, min_h) = shell_floor();
+	let (bounds, _) = placement(&state, &[primary()], min_w, min_h);
 	assert_eq!(
 		f32::from(bounds.size.width),
-		MIN_WIDTH,
+		min_w,
 		"a size below what the shell draws at is raised to it"
 	);
-	assert_eq!(f32::from(bounds.size.height), MIN_HEIGHT);
+	assert_eq!(f32::from(bounds.size.height), min_h);
 }
 
 #[test]
 fn a_window_left_maximised_comes_back_maximised() {
 	let mut state = remembered(220, 140, 1480, 920);
 	state.window.maximized = true;
-	let (bounds, maximized) = placement(&state, &[primary()], MIN_WIDTH, MIN_HEIGHT);
+	let (min_w, min_h) = shell_floor();
+	let (bounds, maximized) = placement(&state, &[primary()], min_w, min_h);
 	assert!(maximized);
 	assert_eq!(
 		f32::from(bounds.size.width),

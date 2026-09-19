@@ -22,7 +22,6 @@ min_width_px = {}
 default_width_px = {}
 max_viewport_ratio = {:.2}
 container_margin_px = {}
-overlay_breakpoint_px = {}
 overlay_scrim_blur_px = {}
 
 [terminal_drawer]
@@ -66,7 +65,6 @@ intraline_alpha = {}
 		p.right_panel_default_width_px as i64,
 		p.right_panel_max_viewport_ratio,
 		p.right_panel_container_margin_px as i64,
-		p.right_panel_overlay_breakpoint_px as i64,
 		p.right_panel_overlay_scrim_blur_px as i64,
 		p.terminal_drawer_min_height_px as i64,
 		p.terminal_drawer_max_viewport_ratio,

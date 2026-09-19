@@ -329,7 +329,8 @@ pub fn queue_rail(
 
 	// The rail tracks the focus, so a press anywhere in it -- a row, a header,
 	// the footer -- hands the keyboard to the rail and the `Queue` context
-	// reaches the focus path (§5.14).
+	// reaches the focus path (§5.14). Its right edge is the split's, drawn by
+	// the columns row around it, so the rail itself carries no handle.
 	div()
 		.id("queue-rail")
 		.key_context("Queue")
@@ -341,11 +342,9 @@ pub fn queue_rail(
 		.w(px(width))
 		.flex_shrink_0()
 		.bg(tokens.color(ColorRole::Rail))
-		.border_r(px(geometry.outer_edge_stroke))
-		.border_color(tokens.color(ColorRole::Hairline))
 		.pt(px(geometry.content_inset))
 		.overflow_hidden()
 		.child(nav_header)
 		.child(list_container)
-		.child(queue_footer(geometry, tokens, cx))
+		.child(queue_footer(geometry, cx))
 }

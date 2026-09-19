@@ -317,6 +317,7 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		Intent::NewSession => {
 			state.keymap.queue_filter = None;
 		},
+		Intent::CloseTab(tab) => queue::close_tab(state, *tab),
 		Intent::CloseTabOrPark => queue::close_tab_or_park(state),
 		Intent::MoveQueueSelection(delta) => queue::move_selection(state, *delta),
 		Intent::ScrollTranscript(by) => {

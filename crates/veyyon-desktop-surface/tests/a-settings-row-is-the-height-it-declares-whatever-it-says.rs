@@ -56,6 +56,18 @@ const PARAGRAPH: &str = "Off: only the account you chose is used, and a session 
 /// The declared row height (§5.9), which the bundled settings tokens author.
 const ROW_HEIGHT_PX: f32 = 44.0;
 
+/// The line a settings label and a settings description are set on, read from
+/// the tokens the row draws from: a suite that restated them measured the
+/// spacing steps the row used before it read its own typography, and stopped
+/// finding a row at all when the two disagreed.
+fn line_heights() -> (f32, f32) {
+	let tokens = load_bundled_tokens().expect("the bundled tokens load");
+	(
+		tokens.surface.settings.label_size.line_height,
+		tokens.surface.settings.description_size.line_height,
+	)
+}
+
 /// Whether the two frames differ inside a small patch with its top left corner
 /// at `(x, y)` in logical pixels: the tag's ground and text against whatever
 /// the resting frame drew there.
@@ -112,20 +124,22 @@ fn frames(page: SettingsPage, describe: impl Fn(&str) -> String) -> (Captured, C
 	(resting, hovered)
 }
 
-/// The centre of a row's description line: the 16px run that sits directly
-/// under a 20px label run at the same left edge, in the column where most such
-/// pairs are drawn, which is the settings body whatever width the overlay took.
+/// The centre of a row's description line: the description run that sits
+/// directly under a label run at the same left edge, in the column where most
+/// such pairs are drawn, which is the settings body whatever width the
+/// overlay took.
 fn description_centre(captured: &Captured) -> Option<Point<Pixels>> {
+	let (label_line, description_line) = line_heights();
 	let height = |run: &TextRunLayout| f32::from(run.bounds.bottom()) - f32::from(run.bounds.top());
 	let labels: Vec<&TextRunLayout> = captured
 		.text_runs
 		.iter()
-		.filter(|run| (19.0..=21.0).contains(&height(run)))
+		.filter(|run| (height(run) - label_line).abs() <= 1.0)
 		.collect();
 	let pairs: Vec<&TextRunLayout> = captured
 		.text_runs
 		.iter()
-		.filter(|run| (15.0..=17.0).contains(&height(run)))
+		.filter(|run| (height(run) - description_line).abs() <= 1.0)
 		.filter(|desc| {
 			labels.iter().any(|label| {
 				(f32::from(label.bounds.left()) - f32::from(desc.bounds.left())).abs() < 0.5

@@ -82,13 +82,14 @@ fn process_row(
 ) -> AnyElement {
 	let is_running = proc.status == "running";
 	let is_failed = proc.status == "failed" || proc.exit_code.is_some_and(|code| code != 0);
-	let dot = if is_running {
-		Dot::role(ColorRole::WorkingFill)
+	let dot_ink = if is_running {
+		ColorRole::WorkingFill
 	} else if is_failed {
-		Dot::role(ColorRole::ErrorFill)
+		ColorRole::ErrorFill
 	} else {
-		Dot::role(ColorRole::Muted)
+		ColorRole::Muted
 	};
+	let dot = Dot::role(dot_ink).sized(px(geometry.process_dot_px));
 
 	let name_for_stop = proc.name.clone();
 	let name_for_restart = proc.name.clone();

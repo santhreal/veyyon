@@ -48,8 +48,6 @@ pub fn load_transcript(
 		"invoke_mono_pane_max_height_px",
 		"code_fence_max_height_px",
 		"image_max_height_px",
-		"plan_body_max_height_px",
-		"plan_fade_height_px",
 		"table_row_height_px",
 	])?;
 	let tool_view = root.sub("tool_view")?;
@@ -78,8 +76,6 @@ pub fn load_transcript(
 		chrome_invoke_mono_pane_max_height_px: caps.number("invoke_mono_pane_max_height_px")?,
 		chrome_code_fence_max_height_px: caps.number("code_fence_max_height_px")?,
 		chrome_image_max_height_px: caps.number("image_max_height_px")?,
-		chrome_plan_body_max_height_px: caps.number("plan_body_max_height_px")?,
-		chrome_plan_fade_height_px: caps.spacing("plan_fade_height_px", scale)?,
 		chrome_table_row_height_px: caps.number("table_row_height_px")?,
 		tool_view_row_pad_y_px: tool_view.number("row_pad_y_px")?,
 		tool_view_line_number_gutter_px: tool_view.number("line_number_gutter_px")?,

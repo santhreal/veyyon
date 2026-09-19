@@ -128,6 +128,9 @@ pub struct PanelsStore {
 	/// panel at that measure and takes it out of the breakpoint ladder, so
 	/// "never dragged" is a value here rather than the wide row's number.
 	pub right_panel_width:   Option<u32>,
+	/// The width the operator dragged the queue rail to, absent when they never
+	/// dragged one (§5.1).
+	pub queue_width:         Option<u32>,
 	pub drawer_visible:      bool,
 	/// The height the operator dragged the drawer to, absent when they never
 	/// dragged one.
@@ -143,6 +146,7 @@ impl Default for PanelsStore {
 			version:             Self::CURRENT_VERSION,
 			right_panel_visible: false,
 			right_panel_width:   None,
+			queue_width:         None,
 			drawer_visible:      false,
 			drawer_height:       None,
 			active_right_tab:    None,
@@ -153,7 +157,7 @@ impl Default for PanelsStore {
 }
 
 impl VersionedStore for PanelsStore {
-	const CURRENT_VERSION: u32 = 2;
+	const CURRENT_VERSION: u32 = 3;
 
 	fn version(&self) -> u32 {
 		self.version

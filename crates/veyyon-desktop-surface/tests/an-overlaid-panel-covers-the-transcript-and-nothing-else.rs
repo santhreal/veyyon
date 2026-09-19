@@ -53,6 +53,7 @@ fn shed(panel_open: bool) -> ShedInput {
 		gutter_px: f32::from(TokenSet::default().spacing(SpacingStep::S4)),
 		queue_collapsed: false,
 		queue_float_open: false,
+		queue_width: None,
 		panel_open,
 		panel_width: None,
 		labels: LabelState::default(),

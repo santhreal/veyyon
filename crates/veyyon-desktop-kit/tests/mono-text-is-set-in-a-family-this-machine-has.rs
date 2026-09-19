@@ -24,8 +24,11 @@
 
 mod common;
 
+use std::{cell::Cell, rc::Rc};
+
 use common::{headless_context, render_frame};
-use veyyon_desktop_kit::{MonoSizeStep, MonoText, TextRamp, TokenSet};
+use veyyon_desktop_kit::{MonoSizeStep, MonoText, TextRamp, TokenSet, mono_advance};
+use veyyon_desktop_tokens::TypeSize;
 use veyyon_gpui::{
 	AppContext, Context, IntoElement, ParentElement, Render, Styled, Window, div, px, size,
 };
@@ -164,4 +167,76 @@ fn a_machine_without_any_authored_family_fails_and_names_the_chain() {
 		assert!(message.contains(family.as_str()), "the error omits {family:?}: {message}");
 	}
 	assert!(message.contains("type.family.mono"), "the error omits the key: {message}");
+}
+
+/// One row of mono cells drawn through `mono_type` at an authored tracking,
+/// beside the column step `mono_advance` reports for the same size.
+struct TrackedRun {
+	type_size: TypeSize,
+	advance:   Rc<Cell<f32>>,
+}
+
+impl Render for TrackedRun {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let resolved = TokenSet::for_app(cx);
+		let tokens: &TokenSet = &resolved;
+		self
+			.advance
+			.set(mono_advance(window, tokens, &self.type_size));
+		div().flex().items_start().child(
+			div()
+				.flex_shrink_0()
+				.mono_type(tokens, &self.type_size)
+				.child(NARROW),
+		)
+	}
+}
+
+/// A column of tracked mono text is as wide as the step `mono_advance`
+/// reports, less the spacing that follows the last cell.
+///
+/// The two are read by different callers of the same token: `mono_pane` states
+/// its scroll width as cells times the advance, and draws the text through
+/// `mono_type`. A tracking applied to one and not the other puts the pane's
+/// stated width and its own text at different sizes, which is a sideways
+/// scroll that stops short of the line it is scrolling to.
+#[test]
+fn a_tracked_mono_column_is_as_wide_as_the_advance_says() {
+	let type_size = TypeSize { size: 13.0, line_height: 18.0, tracking_em: 0.25 };
+	let tracking = type_size.tracking_em * type_size.size;
+	let advance = Rc::new(Cell::new(0.0));
+	let reported = Rc::clone(&advance);
+
+	let (mut cx, _permit) = headless_context();
+	let window = cx
+		.open_window(size(px(600.0), px(200.0)), |_window, app| {
+			let mut set = TokenSet::default();
+			let available = app.text_system().all_font_names();
+			set.resolve_mono_family(&available)
+				.expect("this machine must have one of the authored monospace families");
+			app.set_global(set);
+			app.new(|_cx| TrackedRun { type_size, advance: Rc::clone(&reported) })
+		})
+		.expect("headless window opens");
+	render_frame(&mut cx, &window);
+
+	let frame = cx
+		.capture_frame(window.into(), 1.0)
+		.expect("the frame rasterises");
+	let runs = frame.text_runs();
+	assert_eq!(runs.len(), 1, "the fixture draws exactly one text run");
+	let drawn = f32::from(runs[0].bounds.size.width);
+	let cells = NARROW.chars().count() as f32;
+	let expected = cells.mul_add(advance.get(), -tracking);
+	assert!(
+		(drawn - expected).abs() <= 1.0,
+		"a {cells}-cell tracked column drew {drawn}px against the {expected}px its advance of {} \
+		 states",
+		advance.get()
+	);
+	assert!(
+		advance.get() > tracking,
+		"the advance must be a glyph plus its spacing, not the spacing alone: {}",
+		advance.get()
+	);
 }

@@ -41,7 +41,7 @@ use veyyon_desktop_surface::{
 	navigation::SurfaceRoute,
 };
 use veyyon_gpui::{
-	App, AppContext, Font, FontFeatures, FontStyle, FontWeight, SharedString, TextRun,
+	App, AppContext, Font, FontFeatures, FontStyle, FontWeight, SharedString, TextRun, px,
 };
 
 fn render_session<R>(
@@ -252,6 +252,9 @@ fn hint_width(session: &mut HeadlessSession<ShellView>, text: &'static str) -> f
 	session
 		.update(|view, window, _cx| {
 			let tokens = &view.installed().set;
+			// The footer draws its hints tracked, and tracking widens a run, so a
+			// width shaped without it names no run the frame holds.
+			let hint = view.installed().surface.palette.results_key_hint_size;
 			let run = TextRun {
 				len:              text.len(),
 				font:             Font {
@@ -265,6 +268,7 @@ fn hint_width(session: &mut HeadlessSession<ShellView>, text: &'static str) -> f
 				background_color: None,
 				underline:        None,
 				strikethrough:    None,
+				tracking:         px(hint.tracking_em * hint.size),
 			};
 			let size = tokens.font_size(TextRamp::Micro);
 			let shaped = window

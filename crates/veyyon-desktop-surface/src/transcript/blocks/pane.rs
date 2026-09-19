@@ -89,7 +89,7 @@ pub fn render_pane_block(
 	}
 	let mut pane = CodeBlock::lines(lines.iter().map(|line| SharedString::from(line.clone())))
 		.size(MonoSizeStep::Small)
-		.max_height(px(geometry.chrome_invoke_mono_pane_max_height_px));
+		.max_height(px(geometry.chrome_code_fence_max_height_px));
 	// The lines are the pane's spans, one each, numbered from the block: the
 	// caption heads the row that opens the pane and is no span, so a drag over
 	// it does not fight the press that expands the body.

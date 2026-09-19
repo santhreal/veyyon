@@ -72,6 +72,7 @@ pub fn titlebar(
 			"titlebar-queue",
 			IconName::PanelLeft,
 			!state.queue_collapsed,
+			geometry.titlebar_control_px,
 			cx,
 			|view, cx| {
 				view.toggle_queue(cx);
@@ -90,6 +91,7 @@ pub fn titlebar(
 			"titlebar-panel",
 			IconName::PanelRight,
 			!state.panel_collapsed,
+			geometry.titlebar_control_px,
 			cx,
 			|view, cx| {
 				let open = view.state().keymap.panel_collapsed;
@@ -102,6 +104,7 @@ pub fn titlebar(
 			"titlebar-drawer",
 			IconName::Terminal,
 			state.drawer_open,
+			geometry.titlebar_control_px,
 			cx,
 			|view, cx| {
 				let open = !view.state().drawer_open;
@@ -134,6 +137,12 @@ pub fn titlebar(
 				.line_height(tokens.line_height(TextRamp::Small))
 				.font_weight(tokens.font_weight(TextWeight::Medium))
 				.text_color(tokens.color(ColorRole::Secondary))
+				.on_click(cx.listener(|view, event: &ClickEvent, window, cx| {
+					if event.click_count() == 2 {
+						cx.stop_propagation();
+						view.open_session_rename(window, cx);
+					}
+				}))
 				.child(state.title.to_owned())
 		});
 
@@ -166,12 +175,13 @@ pub fn titlebar(
 		.child(trailing)
 }
 
-/// One 28px titlebar control: ink alone at rest, the selected wash while what
-/// it controls is shown, the hover wash under the pointer.
+/// One titlebar control: ink alone at rest, the selected wash while what it
+/// controls is shown, the hover wash under the pointer.
 fn toggle_control(
 	id: &'static str,
 	icon: IconName,
 	shown: bool,
+	control_px: f32,
 	cx: &Context<ShellView>,
 	on_click: impl Fn(&mut ShellView, &mut Context<ShellView>) + 'static,
 ) -> impl IntoElement {
@@ -180,12 +190,21 @@ fn toggle_control(
 	} else {
 		IconButtonVariant::Ghost
 	};
-	IconButton::new(id, icon)
-		.size(IconSize::Size14)
-		.variant(variant)
-		.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-			on_click(view, cx);
-		}))
+	div()
+		.w(px(control_px))
+		.h(px(control_px))
+		.flex()
+		.items_center()
+		.justify_center()
+		.flex_shrink_0()
+		.child(
+			IconButton::new(id, icon)
+				.size(IconSize::Size14)
+				.variant(variant)
+				.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
+					on_click(view, cx);
+				})),
+		)
 }
 
 /// The connection state as a mark, with a word beside it only while something

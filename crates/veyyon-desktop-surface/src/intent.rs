@@ -52,6 +52,10 @@ pub enum Intent {
 	/// its index, because the panel's tab list is window state a host never
 	/// sees, and what the tab draws is a domain the host has to re-state.
 	SelectTab(PanelTab),
+	/// Closes the workspace tab in the right panel. The tab travels rather than
+	/// its index, because the panel's tab list is window state a host never
+	/// sees, and what the tab draws is a domain the host has to re-state.
+	CloseTab(PanelTab),
 	SetDrawer {
 		open: bool,
 	},
@@ -321,6 +325,7 @@ impl Intent {
 				| Self::SetPanel { open: false }
 				| Self::OpenOverlay(_)
 				| Self::CloseOverlay
+				| Self::CloseTab(_)
 				| Self::CloseTabOrPark
 				| Self::PaletteMove(_)
 				| Self::PaletteQuery(_)

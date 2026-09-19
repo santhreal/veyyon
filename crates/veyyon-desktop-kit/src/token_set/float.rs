@@ -123,4 +123,22 @@ impl TokenSet {
 	pub fn float_shadows(&self) -> Vec<BoxShadow> {
 		self.float_shadows_elevation(self.elevation().float_shadow.default_rise_px)
 	}
+
+	/// The shadows the elevation level at `index` declares: the float model at
+	/// its resting rise for a level that casts one, and none for a level that
+	/// does not. A surface states the level it sits at rather than a rise,
+	/// because the rise is the design system's and the level is the surface's
+	/// (§6.5).
+	#[must_use]
+	pub fn level_shadows(&self, index: u8) -> Vec<BoxShadow> {
+		let elevation = self.elevation();
+		let casts = elevation
+			.level(usize::from(index))
+			.is_some_and(|level| level.shadow_opacity() > 0.0);
+		if casts {
+			self.float_shadows()
+		} else {
+			Vec::new()
+		}
+	}
 }

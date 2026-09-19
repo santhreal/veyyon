@@ -109,6 +109,7 @@ pub fn render_reason_block(
 					is_streaming,
 					tokens.font_size(TextRamp::Body),
 					tokens.line_height(TextRamp::Body),
+					None,
 					selection,
 				)),
 		)

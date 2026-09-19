@@ -10,7 +10,7 @@ use std::path::Path;
 
 use veyyon_desktop_scene::{Appearance, Headless, RenderOptions, headless::render_view};
 use veyyon_desktop_surface::{ShellView, install_tokens, model::ShellState};
-use veyyon_desktop_tokens::{Tokens, load_bundled_theme};
+use veyyon_desktop_tokens::{Theme, Tokens, load_bundled_theme};
 use veyyon_gpui::AppContext;
 
 use super::{Observation, frame_observation};
@@ -45,9 +45,13 @@ pub const fn sized(width: u32, height: u32) -> RenderOptions {
 	RenderOptions { width, height, scale_factor: 1.0, appearance: Appearance::Dark, seed: 11 }
 }
 
-/// Renders each seeded state against `tokens`.
-pub fn render(cx: &mut Headless, tokens: &Tokens, seeded: Vec<Seeded>) -> Vec<Observation> {
-	let theme = load_bundled_theme("dark").expect("a bundled theme must load");
+/// Renders each seeded state against `tokens` with the provided `theme`.
+pub fn render_with_theme(
+	cx: &mut Headless,
+	tokens: &Tokens,
+	theme: &Theme,
+	seeded: Vec<Seeded>,
+) -> Vec<Observation> {
 	seeded
 		.into_iter()
 		.map(|Seeded { name, options, state }| {
@@ -62,4 +66,10 @@ pub fn render(cx: &mut Headless, tokens: &Tokens, seeded: Vec<Seeded>) -> Vec<Ob
 			frame_observation(name, &frame)
 		})
 		.collect()
+}
+
+/// Renders each seeded state against `tokens`.
+pub fn render(cx: &mut Headless, tokens: &Tokens, seeded: Vec<Seeded>) -> Vec<Observation> {
+	let theme = load_bundled_theme("dark").expect("a bundled theme must load");
+	render_with_theme(cx, tokens, &theme, seeded)
 }

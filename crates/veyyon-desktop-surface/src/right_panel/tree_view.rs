@@ -80,13 +80,16 @@ fn render_tree_row(
 		.expanded(row.is_expanded)
 		.selected(is_selected)
 		.metrics(TreeNodeMetrics {
-			row_height:  Some(px(geometry.tree_row_height_px)),
+			row_height:  Some(px(geometry
+				.tree_row_height_px
+				.max(geometry.tree_font_size.line_height))),
 			indent_base: Some(px(geometry.tree_indent_base_px)),
 			indent_step: Some(px(geometry.tree_indent_step_px)),
 			font:        Some((
 				px(geometry.tree_font_size.size),
 				px(geometry.tree_font_size.line_height),
 			)),
+			tracking:    Some(px(geometry.tree_font_size.tracking_em * geometry.tree_font_size.size)),
 		})
 		.on_click(move |_event, _window, app| {
 			let () = entity.update(app, |view, cx| {

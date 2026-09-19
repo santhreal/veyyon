@@ -7,11 +7,11 @@
 //! frame, so a keystroke survives the rebuild of the element that drew it.
 
 use veyyon_desktop_kit::input::Editor;
-use veyyon_desktop_model::SettingKind;
+use veyyon_desktop_model::{SessionId, SettingKind, SurfaceId};
 use veyyon_gpui::{Context, Entity, Window};
 
 use super::{Commit, FieldKey, FieldSlots, FieldSpec};
-use crate::ShellView;
+use crate::{ShellView, controls::availability_style};
 
 impl ShellView {
 	/// The retained editor for the secret a provider is waiting on: created
@@ -95,6 +95,26 @@ impl ShellView {
 		let key_entry = FieldKey::SessionRename(session_id);
 		self.adopt_reported_value(&key_entry, &editor, current, window, cx);
 		editor
+	}
+
+	/// Enters the session rename editing state for the current session if
+	/// available and gated by the `RenameSession` capability.
+	pub fn open_session_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		let current_id = self.state.current_id;
+		if current_id == 0 {
+			return;
+		}
+		let surface_id = SurfaceId::SessionRenameField(SessionId(current_id.to_string()));
+		let availability = self.state.controls.availability(&surface_id);
+		let (_, _, allowed) = availability_style(&availability, &self.installed.set);
+		if !allowed {
+			return;
+		}
+		let title = self.state.title.clone();
+		let editor = self.session_rename_field_editor(current_id, &title, window, cx);
+		let focus = editor.read(cx).focus_handle().clone();
+		window.focus(&focus, cx);
+		cx.notify();
 	}
 
 	/// The retained editor for the alternatives bound to the keymap action

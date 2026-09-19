@@ -113,7 +113,7 @@ pub fn card_row(
 			let _ = weak.update(app, |view, cx| view.dispatch(Intent::DeferSession(defer_id), cx));
 		});
 	}
-
+	let shown_actions = [park_btn, defer_btn];
 	// Hidden rather than transparent: a hidden subtree keeps its layout and is
 	// not painted, so its buttons attach no listener and a click on the space
 	// they reserve falls through to the card. An opacity-0 control is painted,
@@ -125,8 +125,7 @@ pub fn card_row(
 		.flex_row()
 		.items_center()
 		.gap(tokens.spacing(SpacingStep::S1))
-		.child(park_btn)
-		.child(defer_btn);
+		.children(shown_actions);
 	let meta_text = row.meta.clone().unwrap_or_default();
 	let meta_slot = div()
 		.flex_1()
@@ -184,10 +183,18 @@ pub fn card_row(
 			});
 	}
 
+	let card_height = geometry.card_padding_top
+		+ geometry.card_badge_height
+		+ geometry.card_header_gap
+		+ geometry.card_title_height
+		+ geometry.card_body_gap
+		+ geometry.card_subtitle_height
+		+ geometry.card_padding_bottom;
+
 	let mut card = card
 		.hover(move |style| style.bg(hover_bg))
 		.flex_shrink_0()
-		.h(px(geometry.card_px))
+		.h(px(card_height.max(geometry.card_px)))
 		.mx(px(geometry.row_inset))
 		.pt(px(geometry.card_padding_top))
 		.pb(px(geometry.card_padding_bottom))

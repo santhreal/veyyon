@@ -1,6 +1,6 @@
 //! What a queue intent changes in the session rail the window owns (§5.14).
 
-use crate::model::ShellState;
+use crate::{model::ShellState, right_panel::PanelTab};
 
 /// Narrows the rail without changing the host-confirmed active session.
 pub fn filter(state: &mut ShellState, filter: &str) {
@@ -48,21 +48,29 @@ pub fn move_selection(state: &mut ShellState, delta: i32) {
 	}
 }
 
+/// Closes the named panel tab when the panel holds more than one tab.
+pub fn close_tab(state: &mut ShellState, tab: PanelTab) {
+	if state.panel.tabs.len() <= 1 {
+		return;
+	}
+	let Some(closing) = state.panel.tabs.iter().position(|&t| t == tab) else {
+		return;
+	};
+	let was_active = state.panel.active_tab == tab;
+	state.panel.tabs.remove(closing);
+	if was_active {
+		let next = closing.min(state.panel.tabs.len().saturating_sub(1));
+		if let Some(&tab) = state.panel.tabs.get(next) {
+			state.panel.active_tab = tab;
+		}
+	}
+}
+
 /// Closes one panel tab, or parks the session when it is the last one.
 pub fn close_tab_or_park(state: &mut ShellState) {
 	if state.panel.tabs.len() <= 1 {
 		state.keymap.parked_session = Some(state.current_id);
 		return;
 	}
-	let closing = state
-		.panel
-		.tabs
-		.iter()
-		.position(|&tab| tab == state.panel.active_tab)
-		.unwrap_or(0);
-	state.panel.tabs.remove(closing);
-	let next = closing.min(state.panel.tabs.len().saturating_sub(1));
-	if let Some(&tab) = state.panel.tabs.get(next) {
-		state.panel.active_tab = tab;
-	}
+	close_tab(state, state.panel.active_tab);
 }

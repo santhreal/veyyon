@@ -42,6 +42,8 @@ pub fn panel_float(
 		view.review_store(),
 		inset_px.mul_add(-2.0, width_px),
 		view.pane_scrolls(),
+		&view.state().controls,
+		view.state().current_id,
 		panels,
 		tokens,
 		panel_focus,
@@ -63,6 +65,31 @@ pub fn panel_float(
 			|index| (index == 0).then_some(Region::Panel),
 		),
 	)
+}
+
+/// The session surface as the columns row takes it: on its own where the
+/// panel floats or has nothing to show, and docked into the split where the
+/// shed docks the panel beside it (§5.6).
+pub fn session_body(
+	view: &ShellView,
+	widths: &ShellWidths,
+	panels: &PanelsSurfaceTokens,
+	tokens: &TokenSet,
+	panel_focus: &FocusHandle,
+	session: AnyElement,
+	window: &mut Window,
+	cx: &Context<ShellView>,
+) -> AnyElement {
+	match widths.right_panel {
+		// A float takes no width, so the row is the session surface alone and
+		// the panel is already inside it.
+		RightPanelPlacement::Absent | RightPanelPlacement::Overlay { .. } => session,
+		// A docked panel is the second pane of a split whose handle the
+		// operator drags, and the panel's own box is recorded from inside it.
+		RightPanelPlacement::Inline { width_px } => {
+			docked_split(view, widths, panels, tokens, panel_focus, session, width_px, window, cx)
+		},
+	}
 }
 
 /// Builds the split whose second pane is the docked panel.
@@ -87,6 +114,8 @@ pub fn docked_split(
 		view.review_store(),
 		width_px - grip_px,
 		view.pane_scrolls(),
+		&view.state().controls,
+		view.state().current_id,
 		panels,
 		tokens,
 		panel_focus,

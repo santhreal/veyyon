@@ -154,10 +154,6 @@ fn shipped_surface_tokens_resolve_scale_references_accurately() {
 		tokens.surface.transcript.chrome_event_line_height_px,
 		tokens.scale.spacing(SpacingStep::S6)
 	);
-	assert_eq!(
-		tokens.surface.transcript.chrome_plan_fade_height_px,
-		tokens.scale.spacing(SpacingStep::S13)
-	);
 
 	// Composer: attachment card height
 	assert_eq!(

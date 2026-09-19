@@ -86,7 +86,7 @@ pub(super) fn focused_surface(
 	} else {
 		body_container = body_container.overflow_y_scroll();
 	}
-	container.child(body_container.child(render_page_body(
+	let body_view = body_container.child(render_page_body(
 		state,
 		list_state,
 		appearance,
@@ -96,5 +96,6 @@ pub(super) fn focused_surface(
 		geometry,
 		tokens,
 		cx,
-	)))
+	));
+	container.child(body_view)
 }

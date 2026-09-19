@@ -78,9 +78,28 @@ pub fn session_shape(state: &PersistedState, session: Option<&SessionId>) -> Ses
 		.and_then(|id| state.transcripts.get(id))
 		.cloned()
 		.unwrap_or_default();
+	// One load for the bounds a remembered width is read back against. Without
+	// it there is no authored bound, and a literal here would be a second copy
+	// of one, so the remembered width passes through as it was written.
+	let queue_bounds = veyyon_desktop_tokens::load_bundled_tokens()
+		.ok()
+		.map(|tokens| tokens.surface.queue);
 	SessionShape {
 		panel_visible:     panels.right_panel_visible,
 		panel_width_px:    panels.right_panel_width.map(|width| width as f32),
+		queue_width_px:    panels.queue_width.map(|width| {
+			let width = width as f32;
+			let Some(queue) = queue_bounds.as_ref() else {
+				return width;
+			};
+			let ceiling = if state.window.width > 0 {
+				(state.window.width as f32 - queue.width_max_viewport_delta_px)
+					.max(queue.width_floor_max_px)
+			} else {
+				f32::MAX
+			};
+			width.clamp(queue.width_min_px, ceiling.max(queue.width_min_px))
+		}),
 		drawer_visible:    panels.drawer_visible,
 		drawer_height_px:  panels.drawer_height.map(|height| height as f32),
 		// A tab name this binary draws no tab for leaves the default, which is
@@ -133,6 +152,7 @@ pub fn record_session(
 		version:             PanelsStore::CURRENT_VERSION,
 		right_panel_visible: shape.panel_visible,
 		right_panel_width:   shape.panel_width_px.map(round_px),
+		queue_width:         shape.queue_width_px.map(round_px),
 		drawer_visible:      shape.drawer_visible,
 		drawer_height:       shape.drawer_height_px.map(round_px),
 		active_right_tab:    Some(shape.active_panel_tab.slug().to_string()),

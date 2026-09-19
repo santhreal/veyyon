@@ -76,6 +76,11 @@ impl ShellView {
 		was_open
 	}
 
+	/// Sets whether the overlay queue float is open.
+	pub const fn set_queue_float_open(&mut self, open: bool) {
+		self.queue_float_open = open;
+	}
+
 	/// The handles the right panel's mono panes report their scroll offsets
 	/// through, so a pane builds the rows and columns its own box shows
 	/// (§5.11).
@@ -238,6 +243,17 @@ impl ShellView {
 	/// here.
 	pub const fn set_panel_width(&mut self, width_px: f32) {
 		self.panel_width = Some(width_px);
+	}
+
+	/// The width the operator dragged the queue rail to, if they have (§5.1).
+	#[must_use]
+	pub const fn queue_width(&self) -> Option<f32> {
+		self.queue_width
+	}
+
+	/// Records the width a drag of the queue split handle asked for (§5.1).
+	pub const fn set_queue_width(&mut self, width_px: f32) {
+		self.queue_width = Some(width_px);
 	}
 
 	/// Returns a reference to the active composer editor entity if initialized.

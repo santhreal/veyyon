@@ -9,8 +9,7 @@ pub struct QueueSurfaceTokens {
 	pub width_min_px:                f32,
 	pub width_max_viewport_delta_px: f32,
 	pub width_floor_max_px:          f32,
-	pub width_collapsed_px:          f32,
-	pub outer_edge_stroke:           f32,
+	pub width_resize_handle_hit_px:  f32,
 	pub content_inset:               f32,
 	pub row_inset:                   f32,
 	pub card_px:                     f32,
@@ -53,8 +52,6 @@ pub struct TranscriptSurfaceTokens {
 	pub chrome_invoke_mono_pane_max_height_px: f32,
 	pub chrome_code_fence_max_height_px: f32,
 	pub chrome_image_max_height_px: f32,
-	pub chrome_plan_body_max_height_px: f32,
-	pub chrome_plan_fade_height_px: f32,
 	pub chrome_table_row_height_px: f32,
 	pub tool_view_row_pad_y_px: f32,
 	pub tool_view_line_number_gutter_px: f32,
@@ -118,7 +115,6 @@ pub struct PanelsSurfaceTokens {
 	pub right_panel_default_width_px: f32,
 	pub right_panel_max_viewport_ratio: f32,
 	pub right_panel_container_margin_px: f32,
-	pub right_panel_overlay_breakpoint_px: f32,
 	pub right_panel_overlay_scrim_blur_px: f32,
 	/// The floor a drawer draws at, docked or overlaid. The height itself
 	/// belongs to the breakpoint row the window resolves.

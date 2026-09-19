@@ -29,6 +29,7 @@ pub(super) fn question(
 	let mut element = shell(TintRole::Input, geometry.question_padding, tokens).child(
 		div()
 			.w_full()
+			.tracking(px(geometry.question_size.tracking_em * geometry.question_size.size))
 			.text_size(px(geometry.question_size.size))
 			.line_height(px(geometry.question_size.line_height))
 			.text_color(tokens.color(ColorRole::Foreground))

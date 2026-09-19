@@ -59,6 +59,7 @@ fn shed(panel_width: Option<f32>) -> ShedInput {
 		gutter_px: 8.0,
 		queue_collapsed: false,
 		queue_float_open: false,
+		queue_width: None,
 		panel_open: true,
 		panel_width,
 		labels: LabelState::default(),

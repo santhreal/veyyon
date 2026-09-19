@@ -115,6 +115,7 @@ pub(super) fn overlay_layer(
 			&view.keymap,
 			&geometry,
 			tokens,
+			view.palette_input.anchored,
 			|item| view.palette_item_enabled(item),
 			cx,
 		)

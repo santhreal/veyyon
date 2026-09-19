@@ -25,9 +25,10 @@ use crate::{
 /// Markdown structured document renderer.
 #[derive(IntoElement)]
 pub struct Markdown {
-	source:    SharedString,
-	prose:     Option<(Pixels, Pixels)>,
-	selection: Option<SelectableProse>,
+	source:           SharedString,
+	prose:            Option<(Pixels, Pixels)>,
+	table_row_height: Option<Pixels>,
+	selection:        Option<SelectableProse>,
 }
 
 impl Markdown {
@@ -35,7 +36,19 @@ impl Markdown {
 	/// reading ramp unless [`Markdown::prose_size`] says otherwise.
 	#[must_use]
 	pub fn new(source: impl Into<SharedString>) -> Self {
-		Self { source: source.into(), prose: None, selection: None }
+		Self {
+			source:           source.into(),
+			prose:            None,
+			table_row_height: None,
+			selection:        None,
+		}
+	}
+
+	/// Overrides table row height for surfaces with dedicated table row tokens.
+	#[must_use]
+	pub const fn table_row_height(mut self, height: Pixels) -> Self {
+		self.table_row_height = Some(height);
+		self
 	}
 
 	/// The spans of this document are selectable, numbered from the id
@@ -221,9 +234,12 @@ impl RenderOnce for Markdown {
 					}
 					container.child(pane)
 				},
-				MdBlock::Table { head, align, rows } => container.child(table::table_block(
-					&head, &align, &rows, tokens, prose_size, prose_line, &mut index, selection,
-				)),
+				MdBlock::Table { head, align, rows } => {
+					let table_line = self.table_row_height.unwrap_or(prose_line);
+					container.child(table::table_block(
+						&head, &align, &rows, tokens, prose_size, table_line, &mut index, selection,
+					))
+				},
 			};
 		}
 

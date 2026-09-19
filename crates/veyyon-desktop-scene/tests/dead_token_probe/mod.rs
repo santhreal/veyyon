@@ -86,9 +86,31 @@ pub fn sweep(group: &str, observe: ObserveFn, cx: &mut Headless, tokens: &Tokens
 
 /// Fails naming every measure of `group` that nothing drew.
 pub fn assert_every_measure_is_drawn(group: &str, observe: ObserveFn) {
+	assert_every_measure_is_drawn_except(group, observe, &[]);
+}
+
+/// Fails naming every measure of `group` that nothing drew, except the ones
+/// `covered` records as reaching the product where no raster can see them.
+///
+/// A measure the window manager reads rather than the renderer — a window
+/// minimum handed to the platform before a frame exists — produces no pixel by
+/// construction, so a row here names it and the suite that does prove it. The
+/// comparison is exact in both directions: a newly dead measure fails, and a
+/// recorded one that starts moving a pixel fails until its row is dropped.
+pub fn assert_every_measure_is_drawn_except(
+	group: &str,
+	observe: ObserveFn,
+	covered: &[(&str, &str)],
+) {
 	let shipped = veyyon_desktop_tokens::load_bundled_tokens().expect("the tokens must load");
 	let claimed = keys_in(group, &shipped);
 	assert!(!claimed.is_empty(), "{group} claims no measure, so its suite sweeps nothing");
+	for (key, suite) in covered {
+		assert!(
+			claimed.iter().any(|claimed_key| claimed_key == key),
+			"{key} is recorded as covered by {suite}, but {group} claims no such measure"
+		);
+	}
 
 	let mut cx = veyyon_desktop_scene::headless_context().expect("a Vulkan ICD is required");
 	let observed = Observed(observe(&mut cx, &shipped));
@@ -106,11 +128,14 @@ pub fn assert_every_measure_is_drawn(group: &str, observe: ObserveFn) {
 		}
 	}
 
-	let dead = sweep(group, observe, &mut cx, &shipped);
-	assert!(
-		dead.is_empty(),
-		"these authored measures changed nothing the product produced, so nothing reads them: \
-		 {dead:?}"
+	let mut dead = sweep(group, observe, &mut cx, &shipped);
+	dead.sort();
+	let mut recorded: Vec<String> = covered.iter().map(|(key, _)| (*key).to_owned()).collect();
+	recorded.sort();
+	assert_eq!(
+		dead, recorded,
+		"a measure that changed nothing the product produced reads nowhere, and one recorded as \
+		 covered elsewhere that now moves a pixel is a row to drop: covered rows are {covered:?}"
 	);
 }
 
@@ -130,6 +155,16 @@ pub enum Observation {
 pub struct Observed(Vec<Observation>);
 
 impl Observed {
+	/// Everything one run produced, in the order the probe produced it.
+	///
+	/// A sibling probe that varies something other than a token — the colour
+	/// sweep varies the theme — compares runs the same way, so the wrapper is
+	/// constructed here rather than copied there.
+	#[must_use]
+	pub const fn new(observations: Vec<Observation>) -> Self {
+		Self(observations)
+	}
+
 	pub fn frames(&self) -> &[Observation] {
 		&self.0
 	}

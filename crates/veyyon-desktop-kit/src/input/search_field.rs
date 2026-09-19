@@ -22,6 +22,7 @@ pub struct SearchField {
 	placeholder: SharedString,
 	trailing:    Option<AnyElement>,
 	height:      Option<Pixels>,
+	icon_size:   Option<Pixels>,
 	flush:       bool,
 	on_clear:    Option<Arc<dyn Fn(&mut Window, &mut App) + Send + Sync + 'static>>,
 }
@@ -36,6 +37,7 @@ impl SearchField {
 			placeholder: "Search...".into(),
 			trailing:    None,
 			height:      None,
+			icon_size:   None,
 			flush:       false,
 			on_clear:    None,
 		}
@@ -53,6 +55,13 @@ impl SearchField {
 	#[must_use]
 	pub fn height(mut self, height: Pixels) -> Self {
 		self.height = Some(height);
+		self
+	}
+
+	/// Sets the icon size from a surface's tokens.
+	#[must_use]
+	pub fn icon_size(mut self, size: Pixels) -> Self {
+		self.icon_size = Some(size);
 		self
 	}
 
@@ -117,13 +126,15 @@ impl RenderOnce for SearchField {
 			.gap(metrics.gap)
 			.text_size(tokens.font_size(metrics.ramp))
 			.line_height(tokens.line_height(metrics.ramp))
-			.child(
-				div().flex_shrink_0().child(
-					Icon::new(IconName::Search)
-						.size(IconSize::Size14)
-						.color(tokens.color(ColorRole::Secondary)),
-				),
-			);
+			.child(div().flex_shrink_0().child({
+				let mut icon = Icon::new(IconName::Search).color(tokens.color(ColorRole::Secondary));
+				if let Some(size) = self.icon_size {
+					icon = icon.pixel_size(size);
+				} else {
+					icon = icon.size(IconSize::Size14);
+				}
+				icon
+			}));
 		if !self.flush {
 			container = container
 				.rounded(metrics.radius)

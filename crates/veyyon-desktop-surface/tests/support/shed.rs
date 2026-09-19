@@ -54,6 +54,7 @@ pub fn shed_with_queue(
 		gutter_px,
 		queue_collapsed,
 		queue_float_open,
+		queue_width: None,
 		panel_open,
 		panel_width: None,
 		labels: LabelState::default(),

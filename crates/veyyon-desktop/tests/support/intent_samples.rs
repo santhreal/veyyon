@@ -45,6 +45,12 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 			Intent::SelectTab(PanelTab::Tree),
 			Intent::SelectTab(PanelTab::Usage),
 		],
+		IntentDiscriminants::CloseTab => vec![
+			Intent::CloseTab(PanelTab::Diff),
+			Intent::CloseTab(PanelTab::File),
+			Intent::CloseTab(PanelTab::Tree),
+			Intent::CloseTab(PanelTab::Usage),
+		],
 		IntentDiscriminants::SetDrawer => vec![Intent::SetDrawer { open: true }],
 		IntentDiscriminants::Approval => {
 			vec![Intent::Approval { card: 0, approved: true, standing: false }]

@@ -85,6 +85,7 @@ pub fn docked_panel_width() -> f32 {
 		gutter_px:          8.0,
 		queue_collapsed:    false,
 		queue_float_open:   false,
+		queue_width:        None,
 		panel_open:         true,
 		panel_width:        None,
 		labels:             LabelState::default(),

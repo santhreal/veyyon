@@ -1,15 +1,19 @@
 //! The right panel's tab strip (§5.6).
 
 use veyyon_desktop_kit::{
-	ColorRole, RadiusStep, SpacingStep, TextRamp, TextWeight, TintRole, TokenSet,
+	ColorRole, Dot, Icon, IconName, IconSize, RadiusStep, SpacingStep, TextRamp, TextWeight,
+	TintRole, TokenSet,
 };
+use veyyon_desktop_model::SessionId;
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
-	Context, Div, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled, div, px,
+	Context, CursorStyle, Div, InteractiveElement, ParentElement, SharedString,
+	StatefulInteractiveElement, Styled, div, px,
 };
 
 use crate::{
 	ShellView,
+	controls::{Availability, ControlStates},
 	intent::Intent,
 	right_panel::{PanelContent, PanelTab},
 };
@@ -17,6 +21,8 @@ use crate::{
 /// Builds the right panel tab strip with stats and navigation intents.
 pub fn tab_strip(
 	panel: &PanelContent,
+	controls: &ControlStates,
+	session_id: u64,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -54,8 +60,10 @@ pub fn tab_strip(
 			tokens.transparent()
 		};
 
+		let group_name = SharedString::from(format!("panel-tab-{index}"));
 		let mut tab_el = div()
 			.id(("panel-tab", index))
+			.group(group_name.clone())
 			.on_click(cx.listener(move |view, _event, _window, cx| {
 				view.dispatch(Intent::SelectTab(tab), cx);
 			}))
@@ -92,6 +100,47 @@ pub fn tab_strip(
 							.child(format!("-{deletions}")),
 					);
 			}
+		}
+
+		// The mark is the host's request, not the tab's own state: a tab the
+		// projection does not own has nothing in flight and draws none.
+		let tab_sid = tab.surface_id(SessionId::from(session_id.to_string()));
+		if controls.projected_availability(&tab_sid) == Some(&Availability::Pending) {
+			tab_el =
+				tab_el.child(Dot::role(ColorRole::WorkingFill).sized(px(geometry.tabs_pending_dot_px)));
+		}
+
+		// Closing a tab is the window's own business, so the close carries no
+		// gate: it is drawn while there is a tab left to fall back to, and it
+		// answers whenever it is drawn. The reveal rides on the control
+		// itself rather than on a wrapper, because a wrapper carrying a
+		// group-hover style is hit-tested too and the strip would answer two
+		// rects for one close.
+		if panel.tabs.len() > 1 {
+			tab_el = tab_el.child(
+				div()
+					.id(("panel-tab-close", index))
+					.w(px(geometry.tabs_close_hit_px))
+					.h(px(geometry.tabs_close_hit_px))
+					.flex_shrink_0()
+					.flex()
+					.items_center()
+					.justify_center()
+					.rounded(tokens.radius(RadiusStep::Sm))
+					.cursor(CursorStyle::PointingHand)
+					.invisible()
+					.group_hover(group_name, |style| style.visible())
+					.hover(|style| style.bg(tokens.row_hover()))
+					.child(
+						Icon::new(IconName::Close)
+							.size(IconSize::Size12)
+							.color(tokens.color(ColorRole::Muted)),
+					)
+					.on_click(cx.listener(move |view, _event, _window, cx| {
+						cx.stop_propagation();
+						view.dispatch(Intent::CloseTab(tab), cx);
+					})),
+			);
 		}
 
 		strip = strip.child(tab_el);

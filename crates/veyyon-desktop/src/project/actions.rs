@@ -349,6 +349,7 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::SelectTab(tab) => tab_actions(*tab, store, active),
 		Intent::SetPanel { open: true } => open_actions(store),
 		Intent::SetPanel { open: false }
+		| Intent::CloseTab(_)
 		| Intent::SetDiffMode(_)
 		| Intent::ToggleTreeNode(_)
 		| Intent::ExpandContext { .. } => Vec::new(),

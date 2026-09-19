@@ -97,6 +97,7 @@ pub fn composer(
 		.id("composer-editor-wrap")
 		.w_full()
 		.flex_1()
+		.rounded(px(geometry.radius_inner))
 		.overflow_hidden()
 		.text_size(tokens.font_size(TextRamp::Read))
 		.line_height(tokens.line_height(TextRamp::Read));
@@ -251,9 +252,13 @@ pub fn run_bar(
 				div()
 					.flex_1()
 					.min_w_0()
+					.h_full()
 					.overflow_hidden()
 					.whitespace_nowrap()
 					.truncate()
+					.tracking(px(
+						geometry.run_bar_label_size.tracking_em * geometry.run_bar_label_size.size
+					))
 					.text_size(px(geometry.run_bar_label_size.size))
 					.line_height(px(geometry.run_bar_label_size.line_height))
 					.text_color(tokens.color(ColorRole::Secondary))
@@ -266,6 +271,7 @@ pub fn run_bar(
 				let mut stop = div()
 					.id("run-bar-abort-turn")
 					.flex_shrink_0()
+					.h_full()
 					.px(tokens.spacing(SpacingStep::S1))
 					.opacity(opacity)
 					.cursor(cursor);
@@ -307,6 +313,9 @@ pub fn opening_line(
 		div()
 			.id("composer-opening-line")
 			.max_w(px(geometry.opening_line_max_width_px))
+			.tracking(px(
+				geometry.opening_line_type_size.tracking_em * geometry.opening_line_type_size.size
+			))
 			.text_size(px(geometry.opening_line_type_size.size))
 			.line_height(px(geometry.opening_line_type_size.line_height))
 			.font_weight(veyyon_gpui::FontWeight(f32::from(geometry.opening_line_weight)))

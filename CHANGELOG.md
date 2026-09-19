@@ -44,6 +44,11 @@
 
 ### Added
 
+- The desktop queue rail is dragged to a width by the handle on its trailing edge, between the bounds `surface/queue.toml` authors, and the width it was left at comes back when the window opens again.
+- A desktop right panel tab closes from its own edge: the close is drawn on the tab the pointer is over while the panel holds more than one tab, closing a tab that is not the active one leaves the selection where it was, closing the active one selects a neighbour, and a tab whose content the host has not answered yet marks itself.
+- Every colour role a desktop theme declares is swept against the raster, so a role no surface inks fails the build instead of shipping as a setting that changes nothing.
+- A repository gate rejects a numeric literal added to, subtracted from, or compared against a token measure in the desktop's drawing crates, which is the shape a renderer takes when it restates an authored value instead of reading it.
+- A repository gate pairs each desktop measure group with the suite that sweeps it, so a group registered with no suite, or a suite sweeping a group nobody registered, fails instead of reporting a coverage that does not run. It also rejects a sweep exemption that names the suite it sits in, which proves nothing about the measure it excuses.
 - The desktop settings page omits a setting whose `ui.condition` is unmet, so an experimental feature's dependent knobs are absent while its master toggle is off rather than drawn inert.
 - The desktop General settings page searches its settings in place: the search field takes the keyboard as the page opens and narrows the rows on the frame each character lands on, groups matches under their section headers, states a query that matches nothing while keeping the field drawn over that row, draws every query's rows from the first of them, and widens a narrowed page on the first `Escape` before leaving on the next.
 - The desktop restores its open sessions, the selected one, and per-session drafts with attachment bytes across restarts.
@@ -215,6 +220,8 @@
 
 ### Changed
 
+- A desktop colour role is written once: the variant, its position in canonical order and the name it carries in a theme file come from one list, so a role added to the design system enters the role table and the theme completeness check with it. The desktop's four icon sizes are likewise read from the size table rather than restated where a pixel measure resolves to one. Neither changes what is drawn.
+- Desktop text is letter-spaced by the text system rather than by padding beside it: a surface that authors `tracking_em` now sets it on the run, so the spacing falls between the glyphs of the prose, the operator's turn, the palette hints and footer, an approval's tool name, a question, the diff gutter, the tree rows, the run bar label, the opening line and the settings rows, instead of as a margin on one side of the block. A monospace column drawn from an authored size takes the same spacing, and the cell advance a pane states its scroll width from includes it, so a tracked mono pane and its own text agree on how wide a line is.
 - The desktop reads the last of its compiled-in measures from its token files: the composer's abort square and the queue's search header take the medium control size, the drawer's active tab underline and the terminal grid's cursor take the heavy stroke, and the titlebar's rename field takes `surface/shell.toml`'s new `titlebar_rename_width_px`. All four draw at the sizes they drew before.
 - The desktop's control and tool-view measures come from token files: `controls.toml` states each control height, the switch track, the scroll fade, the tooltip and popover placement estimates and the caret, and `surface/transcript.toml` states a tool view's row padding, diff gutter, notice indent and result-summary width. Every one draws at the size it drew before.
 - A desktop float's rise comes from `elevation.toml`: `[float_shadow]` states the key and ambient curves every level scales, `[frost]` states the blur an overlay grounds itself with, and the composer's focus rim is `surface/composer.toml`'s new `[focus_glow]`. The kit carries no shadow or blur constant of its own, so editing either file moves what is drawn.
@@ -596,10 +603,13 @@
 - `WRITE_GUTTER_MIN_WIDTH` is no longer exported: the line-number gutter of a code card is the host's, stated once in `src/modes/terminal/draw/draw-tool-view.ts`, and no tool sets it.
 - `resolveModelFromSettings` is removed from `config/model-resolver`; the role chain a session starts from resolves through `resolveModelRoleValue`, which reports why a role failed.
 - `ReadRenderArgs` no longer carries `offset`: the `read` schema states a line window on the path itself (`src/app.ts:50-200`), and `limit` is the directory entry cap.
+- Removed `surface/panels.toml`'s `right_panel_overlay_breakpoint_px`, a second copy of the width at which the right panel overlays. The breakpoint table's `compact` row decides it, unchanged at 980px.
+- Removed `surface/queue.toml`'s `width_collapsed_px` and `outer_edge_stroke`, neither of which reached the raster: a collapsed rail is absent rather than drawn at a width, and the rail's trailing edge is the resize handle, whose hit square the file now states as `resize_handle_hit_px`.
 - `@veyyon/kernel/session/content-text` is gone: the session spine calls the `contentText` owner in `@veyyon/utils`, which carries the separator, image, `trimBlocks` and `trimString` options that copy held.
 
 ### Fixed
 
+- The desktop terminal drawer no longer carries three offsets against its authored measures, the viewport ratio on the drawer's height and the minimum columns and rows on the grid's padding, each of which resolved to zero at the shipped values and drew nothing.
 - The desktop settings page draws in the box `surface/settings.toml` authors for it, on the float ground and inking its own hairline edge, where it borrowed the command palette's 576px box and truncated its rows in it.
 - The desktop General settings search field takes the keyboard and narrows the page as it is typed, where it drew the query as static text and discarded every keystroke; `Escape` widens a narrowed page before it leaves it.
 - A desktop surface with nothing on it states a step an operator can take: the Usage tenant states the prompt that starts accounting, and a clean working tree the edit or the staged scope, where one predicted what would appear and the other restated its own condition.

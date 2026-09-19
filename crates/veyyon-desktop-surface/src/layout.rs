@@ -135,6 +135,9 @@ pub struct ShedInput {
 	pub queue_float_open:   bool,
 	/// Whether the right panel has anything to show and is not collapsed.
 	pub panel_open:         bool,
+	/// The width the operator dragged the queue rail to, when they have.
+	/// Window-local: a snapshot never moves the handle (§5.1).
+	pub queue_width:        Option<f32>,
 	/// The width the operator dragged the docked panel to, when they have.
 	/// Window-local: a snapshot never moves the handle. The breakpoint's own
 	/// width applies until the first drag, and the bounds below apply to
@@ -204,7 +207,14 @@ pub fn shell_widths(input: ShedInput, surface: &SurfaceTokens) -> ShellWidths {
 	};
 
 	let breakpoint = surface.breakpoints.resolve(viewport);
-	let queue = queue_placement(breakpoint, input.queue_collapsed, input.queue_float_open);
+	let queue = queue_placement(
+		breakpoint,
+		viewport,
+		input.queue_width,
+		input.queue_collapsed,
+		input.queue_float_open,
+		surface,
+	);
 	let right_panel = panel_placement(
 		viewport,
 		queue.inline_width(),
@@ -236,16 +246,29 @@ pub fn shell_widths(input: ShedInput, surface: &SurfaceTokens) -> ShellWidths {
 /// unless the operator collapsed it; an overlay row draws nothing until the
 /// operator asks for it, and then draws over the transcript. A row that
 /// declares no measure has no rail in either mode, which is what a window with
-/// no room at all resolves to.
+/// no room at all resolves to. A width the operator dragged the rail to
+/// replaces the row's, inside the same bounds (§5.1).
 fn queue_placement(
 	breakpoint: &BreakpointConfig,
+	viewport_px: f32,
+	dragged_px: Option<f32>,
 	collapsed: bool,
 	float_open: bool,
+	surface: &SurfaceTokens,
 ) -> QueuePlacement {
-	let width_px = breakpoint.queue_width_px;
-	if width_px <= 0.0 {
+	if breakpoint.queue_width_px <= 0.0 {
 		return QueuePlacement::Absent;
 	}
+	let queue = &surface.queue;
+	// The rail stops short of the width that would leave the transcript
+	// nothing, and the floor keeps that bound above the rail's own minimum in
+	// a window too narrow for the delta to clear it.
+	let max_px = (viewport_px - queue.width_max_viewport_delta_px)
+		.max(queue.width_floor_max_px)
+		.max(queue.width_min_px);
+	let width_px = dragged_px
+		.unwrap_or(breakpoint.queue_width_px)
+		.clamp(queue.width_min_px, max_px);
 	match breakpoint.queue_mode {
 		QueueMode::Inline if collapsed => QueuePlacement::Absent,
 		QueueMode::Inline => QueuePlacement::Inline { width_px },

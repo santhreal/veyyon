@@ -20,6 +20,8 @@ pub struct Palette {
 	footer:     Option<AnyElement>,
 	width:      Option<Pixels>,
 	max_height: Option<Pixels>,
+	radius:     Option<Pixels>,
+	elevation:  Option<u8>,
 }
 
 impl Palette {
@@ -33,6 +35,8 @@ impl Palette {
 			footer:     None,
 			width:      None,
 			max_height: None,
+			radius:     None,
+			elevation:  None,
 		}
 	}
 
@@ -63,6 +67,20 @@ impl Palette {
 		self.max_height = Some(max_height);
 		self
 	}
+
+	/// Sets explicit corner radius from surface tokens.
+	#[must_use]
+	pub fn radius(mut self, radius: Pixels) -> Self {
+		self.radius = Some(radius);
+		self
+	}
+
+	/// Sets elevation level from surface tokens.
+	#[must_use]
+	pub fn elevation(mut self, level: u8) -> Self {
+		self.elevation = Some(level);
+		self
+	}
 }
 
 impl RenderOnce for Palette {
@@ -73,7 +91,11 @@ impl RenderOnce for Palette {
 		let bg = tokens.float_ground();
 		let border_color = tokens.color(ColorRole::Hairline);
 		let stroke = tokens.stroke(StrokeStep::Hairline);
-		let radius = tokens.radius(RadiusStep::Xl);
+		let radius = self.radius.unwrap_or_else(|| tokens.radius(RadiusStep::Xl));
+		let shadows = match self.elevation {
+			Some(level) => tokens.level_shadows(level),
+			None => tokens.float_shadows(),
+		};
 		let mut el = div()
 			.max_w_full()
 			.overflow_hidden()
@@ -83,7 +105,7 @@ impl RenderOnce for Palette {
 			.rounded(radius)
 			.border(tokens.stroke(StrokeStep::Hairline))
 			.border_color(border_color)
-			.shadow(tokens.float_shadows())
+			.shadow(shadows)
 			.flex()
 			.flex_col();
 		el = match self.width {

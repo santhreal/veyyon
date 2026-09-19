@@ -212,6 +212,7 @@ pub fn composer_float_bounds(
 					gutter_px:          f32::from(view.installed().set.spacing(SpacingStep::S4)),
 					queue_collapsed:    keymap.queue_collapsed,
 					queue_float_open:   false,
+					queue_width:        None,
 					panel_open:         panel_available && !keymap.panel_collapsed,
 					panel_width:        view.panel_width(),
 					labels:             view.labels(),
