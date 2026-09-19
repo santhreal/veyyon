@@ -3,9 +3,9 @@ use std::path::Path;
 use crate::{
 	error::TokenError,
 	loader::{find_key_line_col, parse_toml, read_file},
+	scale::{ScaleTokens, TypeSize},
 	schema::{
-		MonoSizeStep, RadiusStep, ScaleTokens, SpacingStep, StrokeStep, TypeSize, TypeSizeStep,
-		TypeWeightStep,
+		IconSizeStep, MonoSizeStep, RadiusStep, SpacingStep, StrokeStep, TypeSizeStep, TypeWeightStep,
 	},
 	section::Section,
 };
@@ -35,7 +35,7 @@ pub fn load_scale(path: &Path) -> Result<ScaleTokens, TokenError> {
 	let text = read_file(path)?;
 	let val = parse_toml(path, &text)?;
 	let root = Section::root(path, &text, &val)?;
-	root.only(&["meta", "spacing", "radius", "type", "stroke"])?;
+	root.only(&["meta", "spacing", "radius", "type", "stroke", "icon"])?;
 	root.meta("scale")?;
 
 	let spacing_tbl = root.sub("spacing")?;
@@ -111,6 +111,15 @@ pub fn load_scale(path: &Path) -> Result<ScaleTokens, TokenError> {
 		strokes[step as usize] = stroke_tbl.number(step.as_token())?;
 	}
 
+	let icon_tbl = root.sub("icon")?;
+	icon_tbl.only(&["size"])?;
+	let icon_size_tbl = icon_tbl.sub("size")?;
+	ceiling(&icon_size_tbl, "icon sizes", 4, "6.8")?;
+	let mut icon_sizes = [0.0f32; 4];
+	for step in IconSizeStep::all() {
+		icon_sizes[step as usize] = icon_size_tbl.number(step.as_token())?;
+	}
+
 	Ok(ScaleTokens {
 		spacing,
 		radius,
@@ -120,5 +129,6 @@ pub fn load_scale(path: &Path) -> Result<ScaleTokens, TokenError> {
 		mono_family,
 		ui_family,
 		strokes,
+		icon_sizes,
 	})
 }

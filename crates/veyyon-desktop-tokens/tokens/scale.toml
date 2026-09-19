@@ -86,3 +86,12 @@ ui = [
 hairline = 1.0
 icon     = 1.5
 heavy    = 2.0
+
+# Icon bounding boxes: 4 sizes (§6.8). Hard ceiling: 4. The 12 and 14 boxes
+# are separately drawn rather than the 16 scaled, because a 1.5 stroke at
+# 0.75x is 1.125 and reads as grey.
+[icon.size]
+size12 = 12
+size14 = 14
+size16 = 16
+size20 = 20

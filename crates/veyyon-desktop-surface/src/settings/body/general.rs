@@ -57,7 +57,7 @@ impl GeneralSettingsListState {
 	/// Creates a new empty general settings list state.
 	#[must_use]
 	pub fn new() -> Self {
-		let list_state = ListState::new(0, ListAlignment::Top, px(44.0));
+		let list_state = ListState::new(0, ListAlignment::Top, px(crate::list_overdraw::SETTINGS_PX));
 		Self(Rc::new(RefCell::new(GeneralSettingsListStateInner {
 			list_state,
 			visible_keys: Vec::new(),

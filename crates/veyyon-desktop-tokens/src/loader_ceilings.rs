@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use crate::{
+	ceilings::{CeilingTokens, DensityRegionCeiling, SurfaceCeilings},
 	error::TokenError,
 	loader::{parse_toml, read_file},
-	schema::{CeilingTokens, DensityRegionCeiling, SurfaceCeilings},
 	section::Section,
 };
 

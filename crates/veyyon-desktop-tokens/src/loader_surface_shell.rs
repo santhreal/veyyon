@@ -10,7 +10,7 @@ use std::path::Path;
 use crate::{
 	error::TokenError,
 	loader::{parse_toml, read_file},
-	schema::ScaleTokens,
+	scale::ScaleTokens,
 	section::Section,
 	surface::ShellSurfaceTokens,
 };

@@ -8,7 +8,8 @@ use crate::{
 	loader_surface_primary::{load_attached_cards, load_composer, load_queue, load_transcript},
 	loader_surface_secondary::{load_breakpoints, load_palette, load_panels, load_settings},
 	loader_surface_shell::load_shell,
-	schema::{RadiusStep, ScaleTokens, SpacingStep, StrokeStep, TypeSize, TypeSizeStep},
+	scale::{ScaleTokens, TypeSize},
+	schema::{RadiusStep, SpacingStep, StrokeStep, TypeSizeStep},
 	surface::SurfaceTokens,
 };
 

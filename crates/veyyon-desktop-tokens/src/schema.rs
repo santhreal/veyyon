@@ -273,103 +273,40 @@ impl StrokeStep {
 	}
 }
 
-/// Resolved typographic properties.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct TypeSize {
-	pub size:        f32,
-	pub line_height: f32,
-	pub tracking_em: f32,
+/// Icon bounding box steps (§6.8).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum IconSizeStep {
+	Size12,
+	Size14,
+	#[default]
+	Size16,
+	Size20,
 }
 
-/// Resolved scale token values.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ScaleTokens {
-	pub spacing:      [f32; 14],
-	pub radius:       [f32; 8],
-	pub type_sizes:   [TypeSize; 6],
-	pub type_weights: [u16; 3],
-	pub mono_sizes:   [TypeSize; 2],
-	/// The families monospace text is set in, most wanted first. Mono text
-	/// carries column alignment, so a proportional substitute is a defect and
-	/// not a cosmetic difference; the chain states which faces are acceptable
-	/// and `mono_family` on the resolved set states which one the machine has.
-	pub mono_family:  Vec<String>,
-	/// The families every other text run is set in, most wanted first. An
-	/// unstated family reaches GPUI as `.SystemUIFont`, which its Linux text
-	/// system does not resolve, so the chain states the acceptable faces and
-	/// `ui_family` on the resolved set states which one the machine has.
-	pub ui_family:    Vec<String>,
-	pub strokes:      [f32; 3],
-}
-
-impl ScaleTokens {
-	/// Resolves spacing in pixels for the given discrete step.
-	pub const fn spacing(&self, step: SpacingStep) -> f32 {
-		self.spacing[step as usize]
+impl IconSizeStep {
+	/// Every icon box, smallest first.
+	pub const fn all() -> [Self; 4] {
+		[Self::Size12, Self::Size14, Self::Size16, Self::Size20]
 	}
 
-	/// Resolves radius in pixels for the given discrete step.
-	pub const fn radius(&self, step: RadiusStep) -> f32 {
-		self.radius[step as usize]
+	/// Parses an icon token string such as "size12".
+	pub fn from_token(token: &str) -> Option<Self> {
+		match token {
+			"size12" => Some(Self::Size12),
+			"size14" => Some(Self::Size14),
+			"size16" => Some(Self::Size16),
+			"size20" => Some(Self::Size20),
+			_ => None,
+		}
 	}
 
-	/// Resolves typographic sizing and tracking for the given size step.
-	pub const fn type_size(&self, step: TypeSizeStep) -> &TypeSize {
-		&self.type_sizes[step as usize]
+	/// Formats step name as token string.
+	pub const fn as_token(self) -> &'static str {
+		match self {
+			Self::Size12 => "size12",
+			Self::Size14 => "size14",
+			Self::Size16 => "size16",
+			Self::Size20 => "size20",
+		}
 	}
-
-	/// Resolves numeric font weight (e.g. 400, 500, 600).
-	pub const fn type_weight(&self, step: TypeWeightStep) -> u16 {
-		self.type_weights[step as usize]
-	}
-
-	/// Resolves monospace font sizing and line height.
-	pub const fn mono_size(&self, step: MonoSizeStep) -> &TypeSize {
-		&self.mono_sizes[step as usize]
-	}
-
-	/// The authored monospace family chain, most wanted first.
-	pub fn mono_family_chain(&self) -> &[String] {
-		&self.mono_family
-	}
-
-	/// The authored proportional family chain, most wanted first.
-	pub fn ui_family_chain(&self) -> &[String] {
-		&self.ui_family
-	}
-
-	/// Resolves stroke width in pixels.
-	pub const fn stroke(&self, step: StrokeStep) -> f32 {
-		self.strokes[step as usize]
-	}
-}
-
-/// Hard ink, gap, type, and interactive element ceilings per surface.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SurfaceCeilings {
-	pub edges:                usize,
-	pub distinct_gaps:        usize,
-	pub text_sizes:           usize,
-	pub interactive_elements: usize,
-}
-
-/// Density region limits for interactive controls.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct DensityRegionCeiling {
-	pub sample_box_px:               f32,
-	pub max_interactive_per_1000px2: f32,
-}
-
-/// All ceiling constraints loaded from ceilings.toml.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CeilingTokens {
-	pub queue_card:             SurfaceCeilings,
-	pub queue_line:             SurfaceCeilings,
-	pub transcript_turn:        SurfaceCeilings,
-	pub block_chrome:           SurfaceCeilings,
-	pub composer:               SurfaceCeilings,
-	pub right_panel_chrome:     SurfaceCeilings,
-	pub terminal_drawer_chrome: SurfaceCeilings,
-	pub whole_window:           SurfaceCeilings,
-	pub density_region:         DensityRegionCeiling,
 }

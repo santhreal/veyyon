@@ -120,7 +120,7 @@ impl RenderOnce for Menu {
 			if let Some(icon) = item.icon {
 				left = left.child(Icon::new(icon).size(IconSize::Size14).color(fg));
 			} else if icon_gutter {
-				left = left.child(div().w(IconSize::Size14.pixels()));
+				left = left.child(div().w(tokens.icon_size(IconSize::Size14)));
 			}
 
 			left = left.child(

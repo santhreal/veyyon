@@ -8,7 +8,7 @@ use crate::{
 	},
 	elevation::ShadowCurve,
 	error::TokenError,
-	schema::{SpacingStep, StrokeStep},
+	schema::{IconSizeStep, SpacingStep, StrokeStep},
 };
 
 /// Serializes in-memory live token set into authored TOML files.
@@ -116,6 +116,10 @@ fn dump_scale(tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
 	out.push_str("\n[stroke]\n");
 	for step in StrokeStep::all() {
 		let _ = writeln!(out, "{} = {}", step.as_token(), tokens.scale.stroke(step));
+	}
+	out.push_str("\n[icon.size]\n");
+	for step in IconSizeStep::all() {
+		let _ = writeln!(out, "{} = {}", step.as_token(), tokens.scale.icon_size(step));
 	}
 	write_file(path, &out)
 }

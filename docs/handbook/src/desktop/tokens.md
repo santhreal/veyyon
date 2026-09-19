@@ -44,6 +44,7 @@ The loader resolves the following token kinds:
 | Typography size | `[type.size]` | `micro`, `small`, `body`, `read`, `head`, `lead` | Numeric literals |
 | Typography weight | `[type.weight]` | `regular`, `medium`, `semibold` | Numeric literals |
 | Stroke width | `[stroke]` | `hairline`, `icon`, `heavy` | Numeric literals (`1.0`) |
+| Icon box | `[icon.size]` | `size12`, `size14`, `size16`, `size20` | Numeric literals (`16`) |
 
 When a surface configuration file specifies a raw integer or float for a key that
 requires a scale token, the loader rejects the file with a `NumericLiteralDisallowed`
@@ -66,6 +67,7 @@ Specifying an unrecognised step string reports an `UnresolvedReference` or
 - `[type.mono]`: Sets `size` and `line_height` for monospace type steps `small` and `body`.
 - `[type.family]`: Declares ordered fallback lists of font family names for monospace text (`mono`) and general UI text (`ui`). The first installed family found on the operating system is selected.
 - `[stroke]`: Sets line widths for `hairline`, `icon`, and `heavy` outlines.
+- `[icon.size]`: Sets the bounding box an icon draws in for `size12`, `size14`, `size16`, and `size20`. The ceiling is 4 boxes.
 
 ### elevation.toml
 

@@ -13,7 +13,8 @@ use crate::{
 	error::TokenError,
 	loader::{find_key_line_col, validate_table_keys},
 	loader_surface::{resolve_radius, resolve_spacing, resolve_stroke, resolve_type_size},
-	schema::{ScaleTokens, TypeSize, TypeWeightStep},
+	scale::{ScaleTokens, TypeSize},
+	schema::TypeWeightStep,
 };
 
 /// The kind of a TOML value, in the words the error prints.

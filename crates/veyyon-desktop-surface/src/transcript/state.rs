@@ -53,7 +53,8 @@ impl TranscriptViewportState {
 	/// enabled.
 	#[must_use]
 	pub fn new() -> Self {
-		let list_state = ListState::new(0, ListAlignment::Bottom, px(200.0));
+		let list_state =
+			ListState::new(0, ListAlignment::Bottom, px(crate::list_overdraw::TRANSCRIPT_PX));
 		list_state.set_follow_mode(FollowMode::Tail);
 
 		let inner = TranscriptViewportStateInner {
@@ -113,7 +114,8 @@ impl TranscriptViewportState {
 		let (saved_offset, blocks) = inner.store.restore_session(new_session_id);
 		inner.expanded_blocks = blocks;
 
-		let list_state = ListState::new(turn_count, ListAlignment::Bottom, px(200.0));
+		let list_state =
+			ListState::new(turn_count, ListAlignment::Bottom, px(crate::list_overdraw::TRANSCRIPT_PX));
 		if let Some(saved_offset) = saved_offset {
 			list_state.set_follow_mode(FollowMode::Normal);
 			list_state.scroll_to(saved_offset);

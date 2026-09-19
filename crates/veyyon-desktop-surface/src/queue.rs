@@ -346,5 +346,5 @@ pub fn queue_rail(
 		.overflow_hidden()
 		.child(nav_header)
 		.child(list_container)
-		.child(queue_footer(geometry, cx))
+		.child(queue_footer(geometry, tokens, cx))
 }

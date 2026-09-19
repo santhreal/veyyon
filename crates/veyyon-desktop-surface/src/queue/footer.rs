@@ -3,8 +3,9 @@
 //! Renders a 36px footer with the settings gear.
 
 use veyyon_desktop_kit::{
+	TokenSet,
 	controls::{IconButton, IconButtonVariant},
-	icons::{IconName, IconSize},
+	icons::IconName,
 };
 use veyyon_desktop_tokens::QueueSurfaceTokens;
 use veyyon_gpui::{
@@ -15,8 +16,12 @@ use crate::{ShellView, navigation::SurfaceRoute};
 
 /// Renders the queue rail's bottom-pinned footer containing the settings gear
 /// anchored in its own grounded container.
-pub fn queue_footer(geometry: &QueueSurfaceTokens, cx: &Context<ShellView>) -> impl IntoElement {
-	let gear_icon_size = IconSize::from_px(geometry.gear_size_px);
+pub fn queue_footer(
+	geometry: &QueueSurfaceTokens,
+	tokens: &TokenSet,
+	cx: &Context<ShellView>,
+) -> impl IntoElement {
+	let gear_icon_size = tokens.nearest_icon_size(geometry.gear_size_px);
 	div()
 		.id("queue-footer")
 		.flex_shrink_0()

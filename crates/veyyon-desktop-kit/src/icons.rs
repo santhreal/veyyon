@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use strum::{EnumIter, IntoEnumIterator};
 use veyyon_gpui::{App, Hsla, IntoElement, Pixels, RenderOnce, Window, div, prelude::*, px, svg};
 
+pub use crate::token_set::IconSize;
 use crate::token_set::{ColorRole, StrokeStep, TokenSet};
 
 /// System icon identifier.
@@ -53,49 +54,6 @@ pub enum IconName {
 	Film,
 	PanelLeft,
 	PanelRight,
-}
-
-/// Permitted standard icon sizes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum IconSize {
-	Size12,
-	Size14,
-	#[default]
-	Size16,
-	Size20,
-}
-
-impl IconSize {
-	/// Every permitted size, smallest first.
-	pub const ALL: [Self; 4] = [Self::Size12, Self::Size14, Self::Size16, Self::Size20];
-
-	/// Resolves icon bounding box dimension in pixels.
-	#[must_use]
-	pub fn pixels(self) -> Pixels {
-		match self {
-			Self::Size12 => px(12.0),
-			Self::Size14 => px(14.0),
-			Self::Size16 => px(16.0),
-			Self::Size20 => px(20.0),
-		}
-	}
-
-	/// The permitted size nearest `pixels`.
-	///
-	/// A measure a token authors is a free number, and an icon is drawn at one
-	/// of four sizes, so this is where the two meet. The candidates are read
-	/// from `pixels`, so the sizes are stated once.
-	#[must_use]
-	pub fn from_px(pixels: f32) -> Self {
-		Self::ALL
-			.into_iter()
-			.min_by(|left, right| {
-				let left = (pixels - f32::from(left.pixels())).abs();
-				let right = (pixels - f32::from(right.pixels())).abs();
-				left.total_cmp(&right)
-			})
-			.unwrap_or_default()
-	}
 }
 
 /// Semantic meaning mapping for icon uniqueness validation.
@@ -341,7 +299,9 @@ impl RenderOnce for Icon {
 			.unwrap_or_else(|| tokens.color(ColorRole::Foreground));
 		let stroke_step = self.stroke.unwrap_or(StrokeStep::Icon);
 		let target_stroke = f32::from(tokens.stroke(stroke_step));
-		let size_px = self.pixel_size.unwrap_or_else(|| self.size.pixels());
+		let size_px = self
+			.pixel_size
+			.unwrap_or_else(|| tokens.icon_size(self.size));
 		let outer_d = f32::from(size_px);
 
 		let shape = icon_optical_shape(self.name);

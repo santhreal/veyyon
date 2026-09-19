@@ -7,8 +7,9 @@
 use std::{borrow::Cow, path::PathBuf};
 
 pub use veyyon_desktop_tokens::{
-	ColorRole, ControlTokens, ElevationTokens, MonoSizeStep, RadiusStep, RgbColor, ScaleTokens,
-	SpacingStep, StrokeStep, Theme, TokenError, Tokens, load_bundled_theme, load_bundled_tokens,
+	ColorRole, ControlTokens, ElevationTokens, IconSizeStep as IconSize, MonoSizeStep, RadiusStep,
+	RgbColor, ScaleTokens, SpacingStep, StrokeStep, Theme, TokenError, Tokens, load_bundled_theme,
+	load_bundled_tokens,
 };
 use veyyon_gpui::{App, FontWeight, Hsla, Pixels, SharedString, px};
 
@@ -358,6 +359,18 @@ impl TokenSet {
 	#[must_use]
 	pub fn stroke(&self, step: StrokeStep) -> Pixels {
 		px(self.scale.stroke(step))
+	}
+
+	/// Resolves an icon's bounding box in pixels (§6.8).
+	#[must_use]
+	pub fn icon_size(&self, size: IconSize) -> Pixels {
+		px(self.scale.icon_size(size))
+	}
+
+	/// The authored icon box nearest `pixels`.
+	#[must_use]
+	pub fn nearest_icon_size(&self, pixels: f32) -> IconSize {
+		self.scale.nearest_icon_size(pixels)
 	}
 }
 

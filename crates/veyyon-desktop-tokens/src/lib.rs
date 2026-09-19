@@ -1,3 +1,4 @@
+pub mod ceilings;
 pub mod color;
 pub mod controls;
 pub mod dumper;
@@ -27,11 +28,13 @@ pub mod loader_surface_shell;
 pub mod loader_surface_transcript;
 pub mod loader_theme;
 pub mod motion;
+pub mod scale;
 pub mod schema;
 pub mod section;
 pub mod surface;
 pub mod watcher;
 
+pub use ceilings::{CeilingTokens, DensityRegionCeiling, SurfaceCeilings};
 pub use color::{ColorParseError, ColorRole, RgbColor, Theme};
 pub use controls::ControlTokens;
 pub use dumper::dump_to_dir;
@@ -46,9 +49,9 @@ pub use motion::{
 	DirectThenSpringModel, DurationModel, EasingCurve, FlipModel, MotionModel, MotionRole,
 	MotionRoleConfig, MotionTokens, ReducedMotion, SpringFadeModel, SpringModel, TwoStepModel,
 };
+pub use scale::{ScaleTokens, TypeSize};
 pub use schema::{
-	CeilingTokens, DensityRegionCeiling, MonoSizeStep, RadiusStep, ScaleTokens, SpacingStep,
-	StrokeStep, SurfaceCeilings, TypeSize, TypeSizeStep, TypeWeightStep,
+	IconSizeStep, MonoSizeStep, RadiusStep, SpacingStep, StrokeStep, TypeSizeStep, TypeWeightStep,
 };
 pub use surface::{
 	AttachedCardsSurfaceTokens, BreakpointConfig, BreakpointsSurfaceTokens, ComposerSurfaceTokens,

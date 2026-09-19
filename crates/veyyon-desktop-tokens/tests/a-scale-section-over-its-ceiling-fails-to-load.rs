@@ -21,8 +21,8 @@ use std::{fmt::Write as _, fs, path::Path};
 
 use toml::{Value, map::Map};
 use veyyon_desktop_tokens::{
-	ColorRole, MonoSizeStep, MotionRole, RadiusStep, SpacingStep, StrokeStep, TokenError,
-	TypeSizeStep, TypeWeightStep, loader_scale::load_scale,
+	ColorRole, IconSizeStep, MonoSizeStep, MotionRole, RadiusStep, SpacingStep, StrokeStep,
+	TokenError, TypeSizeStep, TypeWeightStep, loader_scale::load_scale,
 };
 use veyyon_test_scratch::scratch_dir;
 
@@ -132,6 +132,7 @@ fn every_scale_section_stops_a_surplus_entry() {
 		("type.mono", ceiling("mono sizes", 2, "6.3")),
 		("type.family", Guard::ClosedKeys),
 		("stroke", ceiling("stroke widths", 3, "6.8")),
+		("icon.size", ceiling("icon sizes", 4, "6.8")),
 	]
 	.into_iter()
 	.map(|(section, guard)| (section.to_string(), guard))
@@ -165,6 +166,7 @@ fn the_shipped_scale_holds_one_entry_per_declared_step() {
 		("type.weight", TypeWeightStep::all().len()),
 		("type.mono", MonoSizeStep::all().len()),
 		("stroke", StrokeStep::all().len()),
+		("icon.size", IconSizeStep::all().len()),
 	];
 
 	let mismatched: Vec<(&str, usize, usize)> = sections
@@ -187,6 +189,7 @@ fn every_declared_scale_sits_under_its_ceiling() {
 		("mono sizes (§6.3)", MonoSizeStep::all().len(), 2),
 		("colour roles (§6.4)", ColorRole::all().len(), 40),
 		("stroke widths (§6.8)", StrokeStep::all().len(), 3),
+		("icon boxes (§6.8)", IconSizeStep::all().len(), 4),
 		("motion roles (§7.1)", MotionRole::all().len(), 7),
 	];
 

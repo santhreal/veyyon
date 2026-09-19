@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::{
 	error::TokenError,
 	loader::{find_key_line_col, parse_toml, read_file},
-	schema::ScaleTokens,
+	scale::ScaleTokens,
 	section::Section,
 	surface::PaletteSurfaceTokens,
 };

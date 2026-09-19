@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::schema::TypeSize;
+use crate::scale::TypeSize;
 
 /// Resolved queue surface geometry tokens.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

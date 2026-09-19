@@ -56,7 +56,7 @@ impl RailMotion {
 	/// reduced-motion policy.
 	#[must_use]
 	pub fn with_tokens_and_reduced(tokens: MotionTokens, reduced_motion: bool) -> Self {
-		let list_state = ListState::new(0, ListAlignment::Top, px(100.0));
+		let list_state = ListState::new(0, ListAlignment::Top, px(crate::list_overdraw::QUEUE_PX));
 		Self {
 			registry: AnimatorRegistry::new(),
 			last_positions: HashMap::new(),

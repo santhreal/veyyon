@@ -16,7 +16,7 @@
 use std::{fs, path::Path};
 
 use toml::Value;
-use veyyon_desktop_tokens::{load_from_dir, schema::SurfaceCeilings};
+use veyyon_desktop_tokens::{SurfaceCeilings, load_from_dir};
 
 /// The surfaces of `ceilings.toml`, sorted by name, excluding the density
 /// region, which states a pair of rates rather than a count.
