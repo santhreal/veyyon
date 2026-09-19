@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The `/tree` card sizes itself to the entries the filter admits, marks the current leaf with `●` and the rest of the active path with `•` in a column every row reserves, tints the tree rail on the active path, dates each row with a coarse age, and names the visible-of-total count and filter mode in its header row.
+
 ## [1.5.0] - 2026-09-18
 
 ### Breaking Changes
