@@ -42,10 +42,13 @@
 # which also sweeps the palette modes that must leave the rail alone.
 #
 # Sourced by proof/docker/xsession.sh with SCENE_WINDOW, SCENE_NAME, SCENE_OUT
-# and SCENE_LIB already initialized. The window is still between keystrokes, so
-# the take declares its own motion floor. Record the after arm with:
+# and SCENE_LIB already initialized. The take is four still frames with long
+# pauses between them and one blurred overlay held open across most of it, so
+# it changes the screen about twice a second and declares its own motion floor
+# rather than the default 12. Both arms measured 2 fps of real change. Record
+# the after arm with:
 #
-#   SCENE_MOTION_FLOOR=4 \
+#   SCENE_MOTION_FLOOR=2 \
 #     proof/docker/record-native.sh proof/scenes/desktop-rail-search.sh
 #
 # The change is entirely inside the executable, so the before arm holds no
@@ -53,7 +56,7 @@
 #
 #   SANTH_BUILD_GOVERNED=1 python3 .internal/build-commit-before.py \
 #     --holdback .internal/before-edits/rail-search.patch rail-search
-#   SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=4 \
+#   SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=2 \
 #     PROOF_NATIVE_BEFORE_BINARY=.internal/captures/rail-search/veyyon-desktop \
 #     proof/docker/record-native.sh proof/scenes/desktop-rail-search.sh
 set -euo pipefail
