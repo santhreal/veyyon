@@ -98,8 +98,7 @@ const SCENE_READS: Record<string, number> = {
  * checked, and the count is pinned so a fourth one is a decision.
  */
 const SCENE_DYNAMIC_READS: Record<string, number> = {
-	"desktop-composer.sh": 1,
-	"desktop-plan-refine.sh": 1,
+	"desktop-composer.sh": 2,
 	"desktop-question-answer.sh": 1,
 };
 

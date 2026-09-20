@@ -125,6 +125,18 @@ pub enum HostAction {
 	RephraseReply {
 		session: SessionId,
 	},
+	/// Raises the plan the agent last wrote for review again.
+	///
+	/// A plan decision is ordinarily raised by the agent, from inside the
+	/// tool call that asks for approval. This asks for the same decision
+	/// without one: the newest plan file the session wrote is read and put
+	/// back in front of the operator, which is how a plan is reviewed after
+	/// the card was answered, or before the agent has asked at all. A
+	/// session that is not in plan mode, and one whose workspace holds no
+	/// plan file, refuse it.
+	ReviewPlan {
+		session: SessionId,
+	},
 	SetQueueMode {
 		session: SessionId,
 		mode:    QueueMode,

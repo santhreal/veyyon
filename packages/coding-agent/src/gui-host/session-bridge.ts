@@ -89,6 +89,7 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	AbortTurn: "Session",
 	RetryTurn: "Session",
 	RephraseReply: "Session",
+	ReviewPlan: "Session",
 	SetQueueMode: "Session",
 	SetSessionMode: "Session",
 	DequeueQueuedPrompt: "Session",

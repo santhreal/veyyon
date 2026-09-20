@@ -225,6 +225,9 @@ pub enum Intent {
 	RetryTurn,
 	/// Asks the agent for the reply it just gave again, in plainer prose.
 	RephraseReply,
+	/// Puts the plan the agent last wrote back in front of the operator,
+	/// without waiting for the agent to ask for it again.
+	ReviewPlan,
 	/// Freezes every agent the host runs, whatever session it belongs to.
 	PauseAgents,
 	/// Releases the freeze, waking every agent the host parked.

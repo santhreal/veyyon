@@ -77,6 +77,7 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::AbortTurn
 		| HostActionKind::RetryTurn
 		| HostActionKind::RephraseReply
+		| HostActionKind::ReviewPlan
 		| HostActionKind::SetQueueMode
 		| HostActionKind::SetSessionMode
 		| HostActionKind::CancelTool

@@ -682,6 +682,7 @@ export type HostAction =
 	| { AbortTurn: { session: string } }
 	| { RetryTurn: { session: string } }
 	| { RephraseReply: { session: string } }
+	| { ReviewPlan: { session: string } }
 	| { SetToolViewExpanded: { session: string; call_id: string; expanded: boolean } }
 	| { DequeueQueuedPrompt: { session: string } }
 	| { RunCommand: { session: string; text: string } }
@@ -713,6 +714,7 @@ export const ALL_HOST_ACTIONS = [
 	"AbortTurn",
 	"RetryTurn",
 	"RephraseReply",
+	"ReviewPlan",
 	"SetQueueMode",
 	"SetSessionMode",
 	"CancelTool",
@@ -796,6 +798,7 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	AbortTurn: "TurnControl",
 	RetryTurn: "TurnControl",
 	RephraseReply: "TurnControl",
+	ReviewPlan: "Approvals",
 	SetQueueMode: "TurnControl",
 	SetSessionMode: "Sessions",
 	CancelTool: "Tools",

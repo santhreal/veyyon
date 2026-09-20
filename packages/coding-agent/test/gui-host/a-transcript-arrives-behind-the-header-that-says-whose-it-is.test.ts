@@ -198,6 +198,7 @@ describe("a transcript arrives behind the header that says whose it is", () => {
 			RephraseReply: { RephraseReply: { session: alpha } },
 			SetQueueMode: { SetQueueMode: { session: alpha, mode: "steer" } },
 			SetSessionMode: { SetSessionMode: { session: alpha, mode: "none" } },
+			ReviewPlan: { ReviewPlan: { session: alpha } },
 			CancelTool: { CancelTool: { session: alpha, call_id: "call-1" } },
 			SetToolViewExpanded: { SetToolViewExpanded: { session: alpha, call_id: "call-1", expanded: true } },
 			DequeueQueuedPrompt: { DequeueQueuedPrompt: { session: alpha } },

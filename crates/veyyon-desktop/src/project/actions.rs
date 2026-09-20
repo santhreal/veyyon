@@ -294,6 +294,12 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::RephraseReply => {
 			active.map_or_else(Vec::new, |session| vec![HostAction::RephraseReply { session }])
 		},
+		// The plan is the session's, and which file holds it is the host's
+		// to resolve: the window names no path, so a session that wrote
+		// several plans reviews the newest one either front end would.
+		Intent::ReviewPlan => {
+			active.map_or_else(Vec::new, |session| vec![HostAction::ReviewPlan { session }])
+		},
 		// The freeze is the host's, not a session's, so neither carries one
 		// and neither needs a session to be open to be worth pressing.
 		Intent::PauseAgents => vec![HostAction::PauseAgents],

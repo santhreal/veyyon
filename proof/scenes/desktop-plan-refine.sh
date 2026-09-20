@@ -55,30 +55,8 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 ARM="${SCENE_ARM:-after}"
 echo "scene: recording the ${ARM} arm" >&2
 
-theme_text() { # <dotted> -> the string the shipped dark theme states there
-	python3 "${BASH_SOURCE[0]%/*}/token_px.py" --text themes/dark.toml "$1" 2>/dev/null || true
-}
-
-role_colour() { # <name> -> the [role] colour of that name
-	local found
-	found="$(theme_text "role.$1")"
-	if [ -z "${found}" ]; then
-		abandon_take "the-theme-is-readable" "the shipped dark theme states no [role] $1"
-	fi
-	printf '%s' "${found}"
-}
-
-tint_colour() { # <section> -> the fill of that tint section
-	local found
-	found="$(theme_text "tint.$1.fill")"
-	if [ -z "${found}" ]; then
-		abandon_take "the-theme-is-readable" "the shipped dark theme states no [tint.$1] fill"
-	fi
-	printf '%s' "${found}"
-}
-
-RING="$(tint_colour plan)"
-ACCENT="$(role_colour accent)"
+RING="$(theme_colour tint.plan.fill)"
+ACCENT="$(theme_colour role.accent)"
 echo "scene: a plan rings in ${RING} and affirms in ${ACCENT}" >&2
 
 # ─── Where A Plan Card Can Be Drawn ──────────────────────────────────────────
@@ -125,53 +103,10 @@ ACCENT_PIXELS_MIN=200
 DRAFT_PIXELS_MIN=300
 
 # One reading of one frame: the plan's ring edges and the accent-filled answer
-# between them. Everything is counted between the ring's own edges, so a
-# transcript block behind the card cannot be read as part of it.
+# between them, read by the preamble's own pass over the band, so this scene
+# and desktop-plan-review.sh count a card the same way.
 plan_reading() { # <png> -> "RING_PX TOP BOTTOM ACCENT_PX"
-	local dump="${TMPDIR}/frame-compare/plan-reading.txt"
-	mkdir -p "${TMPDIR}/frame-compare"
-	magick "$1" -crop "${CARD_BAND}" +repage txt:- >"${dump}"
-	python3 - "${dump}" "${RING#\#}" "${ACCENT#\#}" "${COMPOSER_CARD_W}" <<'PY'
-import re
-import sys
-
-PIXEL = re.compile(r"^(\d+),(\d+): \([^)]*\)\s+#([0-9A-Fa-f]{6})")
-
-
-def rgb(text):
-	return (int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16))
-
-
-def near(colour, wanted, tolerance):
-	return all(abs(a - b) <= tolerance for a, b in zip(colour, wanted))
-
-
-ring, accent = (rgb(argument.upper()) for argument in sys.argv[2:4])
-width = int(sys.argv[4])
-# The hairline sits seven steps from the plan ring on its nearest channel, so
-# three is under it and cannot collect the neighbour. The accent's nearest
-# neighbour is the focus colour, twenty-seven away on one channel.
-ring_rows, accent_rows, ring_total = {}, {}, 0
-for line in open(sys.argv[1], encoding="ascii"):
-	found = PIXEL.match(line)
-	if not found:
-		continue
-	row, colour = int(found.group(2)), rgb(found.group(3).upper())
-	if near(colour, ring, 3):
-		ring_rows[row] = ring_rows.get(row, 0) + 1
-		ring_total += 1
-	elif near(colour, accent, 10):
-		accent_rows[row] = accent_rows.get(row, 0) + 1
-
-edges = sorted(row for row, count in ring_rows.items() if count >= width // 2)
-if not edges:
-	print(f"{ring_total} 0 0 0")
-	raise SystemExit(0)
-
-top, bottom = edges[0], edges[-1]
-accent_pixels = sum(count for row, count in accent_rows.items() if top < row < bottom)
-print(f"{ring_total} {top} {bottom} {accent_pixels}")
-PY
+	plan_card_reading "$1" "${CARD_BAND}" "${COMPOSER_CARD_W}"
 }
 
 # Wait until a plan card is drawn, or say what was there instead. The agent

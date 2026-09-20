@@ -31,6 +31,7 @@ pub enum HostActionKind {
 	AbortTurn,
 	RetryTurn,
 	RephraseReply,
+	ReviewPlan,
 	SetQueueMode,
 	SetSessionMode,
 	CancelTool,
@@ -89,7 +90,7 @@ pub enum HostActionKind {
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 78] = [
+	pub const ALL: [Self; 79] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -114,6 +115,7 @@ impl HostActionKind {
 		Self::AbortTurn,
 		Self::RetryTurn,
 		Self::RephraseReply,
+		Self::ReviewPlan,
 		Self::SetQueueMode,
 		Self::SetSessionMode,
 		Self::CancelTool,
@@ -198,6 +200,7 @@ impl HostActionKind {
 			Self::AbortTurn => "AbortTurn",
 			Self::RetryTurn => "RetryTurn",
 			Self::RephraseReply => "RephraseReply",
+			Self::ReviewPlan => "ReviewPlan",
 			Self::SetQueueMode => "SetQueueMode",
 			Self::SetSessionMode => "SetSessionMode",
 			Self::CancelTool => "CancelTool",
@@ -285,6 +288,7 @@ impl HostAction {
 			Self::AbortTurn { .. } => HostActionKind::AbortTurn,
 			Self::RetryTurn { .. } => HostActionKind::RetryTurn,
 			Self::RephraseReply { .. } => HostActionKind::RephraseReply,
+			Self::ReviewPlan { .. } => HostActionKind::ReviewPlan,
 			Self::SetQueueMode { .. } => HostActionKind::SetQueueMode,
 			Self::SetSessionMode { .. } => HostActionKind::SetSessionMode,
 			Self::CancelTool { .. } => HostActionKind::CancelTool,

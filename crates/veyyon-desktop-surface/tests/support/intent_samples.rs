@@ -148,6 +148,7 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::SetSessionMode { mode: SettableMode::Plan },
 		Intent::RetryTurn,
 		Intent::RephraseReply,
+		Intent::ReviewPlan,
 		Intent::PauseAgents,
 		Intent::ResumeAgents,
 		Intent::CopyText("copied words".to_owned()),
@@ -227,6 +228,7 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::BranchTurn(_)
 			| Intent::RetryTurn
 			| Intent::RephraseReply
+			| Intent::ReviewPlan
 			| Intent::PauseAgents
 			| Intent::ResumeAgents
 			| Intent::FilterQueue(_)

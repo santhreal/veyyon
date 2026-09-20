@@ -756,3 +756,72 @@ working_tint_pixels() { # <png> <crop> -> pixels of the working fill inside the 
 approve_tint_pixels() { # <png> <crop> -> pixels of a waiting decision's edge inside the crop
 	tint_fill_pixels "tint.approve" "$@"
 }
+
+# ─── What A Plan Card Is On The Screen ───────────────────────────────────────
+# A plan card is ringed in `[tint.plan] fill` and offers its affirmative answer
+# filled with `[role] accent`, and nothing else attached above the composer
+# paints that pair. So one pass over the band a card can occupy reports both:
+# the rows where the ring crosses at least half the card's measure, which are
+# the card's own edges, and the accent between those edges, which is the answer
+# it offers. A band with no card reports no edges, which is how a scene reads
+# the absence of one rather than inferring it from a low count.
+#
+# Both colours are read from the theme this checkout ships, so a retheme moves
+# the reading with it.
+theme_colour() { # <dotted> -> the colour the shipped dark theme states there
+	local found
+	found="$(python3 "${BASH_SOURCE[0]%/*}/token_px.py" --text themes/dark.toml "$1" 2>/dev/null || true)"
+	if [ -z "${found}" ]; then
+		abandon_take "the-theme-is-readable" "the shipped dark theme states no $1"
+	fi
+	printf '%s' "${found}"
+}
+
+plan_card_reading() { # <png> <card-band-crop> <card-width> -> "RING_PX TOP BOTTOM ACCENT_PX"
+	local dump="${TMPDIR}/frame-compare/plan-card-reading.txt" ring accent
+	mkdir -p "${TMPDIR}/frame-compare"
+	ring="$(theme_colour tint.plan.fill)"
+	accent="$(theme_colour role.accent)"
+	magick "$1" -crop "$2" +repage txt:- >"${dump}"
+	python3 - "${dump}" "${ring#\#}" "${accent#\#}" "$3" <<'PY'
+import re
+import sys
+
+PIXEL = re.compile(r"^(\d+),(\d+): \([^)]*\)\s+#([0-9A-Fa-f]{6})")
+
+
+def rgb(text):
+	return (int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16))
+
+
+def near(colour, wanted, tolerance):
+	return all(abs(a - b) <= tolerance for a, b in zip(colour, wanted))
+
+
+ring, accent = (rgb(argument.upper()) for argument in sys.argv[2:4])
+width = int(sys.argv[4])
+# The hairline sits seven steps from the plan ring on its nearest channel, so
+# three is under it and cannot collect the neighbour. The accent's nearest
+# neighbour is the focus colour, twenty-seven away on one channel.
+ring_rows, accent_rows, ring_total = {}, {}, 0
+for line in open(sys.argv[1], encoding="ascii"):
+	found = PIXEL.match(line)
+	if not found:
+		continue
+	row, colour = int(found.group(2)), rgb(found.group(3).upper())
+	if near(colour, ring, 3):
+		ring_rows[row] = ring_rows.get(row, 0) + 1
+		ring_total += 1
+	elif near(colour, accent, 10):
+		accent_rows[row] = accent_rows.get(row, 0) + 1
+
+edges = sorted(row for row, count in ring_rows.items() if count >= width // 2)
+if not edges:
+	print(f"{ring_total} 0 0 0")
+	raise SystemExit(0)
+
+top, bottom = edges[0], edges[-1]
+accent_pixels = sum(count for row, count in accent_rows.items() if top < row < bottom)
+print(f"{ring_total} {top} {bottom} {accent_pixels}")
+PY
+}

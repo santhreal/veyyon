@@ -138,6 +138,10 @@ pub fn gated_controls(
 			(SurfaceId::RightPanelChangeScopeSelector(row.clone()), HostActionKind::SelectChangeScope),
 			(SurfaceId::TerminalCreateButton(row.clone()), HostActionKind::CreateTerminal),
 			(SurfaceId::ProcessStartButton(row.clone()), HostActionKind::ProcessStart),
+			// The plan belongs to the open session, and it is read again
+			// from the file the agent wrote rather than from a turn, so it
+			// is gated with the session's controls and not the turn menu's.
+			(SurfaceId::SessionPlanReviewButton(row.clone()), HostActionKind::ReviewPlan),
 		]);
 		// The turn menu's own two: both act on the session's last turn, so
 		// they are the active session's and not a rail row's.

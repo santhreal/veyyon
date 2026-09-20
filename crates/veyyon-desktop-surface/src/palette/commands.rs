@@ -130,6 +130,13 @@ pub fn command_items() -> Vec<PaletteItem> {
 			None,
 			Some(Capability::TurnControl),
 		),
+		(
+			"/plan-review",
+			Intent::ReviewPlan,
+			"Read the plan again and accept it or send it back",
+			None,
+			Some(Capability::Approvals),
+		),
 		// Two rows for the one freeze, for the reason the mode rows give: a
 		// list ranked against what was typed cannot show which way a toggle
 		// would go, and the host refuses the one that does not apply.

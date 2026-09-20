@@ -4,19 +4,60 @@ use veyyon_desktop_kit::{
 	Badge, ButtonSize, ColorRole, Icon, IconName, IconSize, SpacingStep, TintRole, TokenSet,
 	Tooltip, controls::control_metrics,
 };
-use veyyon_desktop_model::{SessionId, SurfaceId};
+use veyyon_desktop_model::{SessionId, SessionMode, SurfaceId};
 use veyyon_desktop_tokens::ComposerSurfaceTokens;
 use veyyon_gpui::{
-	ClickEvent, Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
+	AnyElement, ClickEvent, Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
 	ParentElement, StatefulInteractiveElement, Styled, div,
 };
 
 use super::{ComposerState, TurnPhase, turn_action_controls};
 use crate::{
-	ShellView,
+	Intent, ShellView,
 	controls::{ControlStates, availability_style},
 	detail::{Detail, DetailKind},
 };
+
+/// The mode chip, which in plan mode is also the control that re-opens the
+/// plan.
+///
+/// The plan is read again from the file the agent wrote rather than from a
+/// turn, so a session in plan mode can be asked for it at any point -- except
+/// while its card is already up, where the card is the review and a second
+/// one would answer the same plan twice.
+fn mode_chip(
+	turn: &TurnPhase,
+	mode: &SessionMode,
+	session: &SessionId,
+	states: &ControlStates,
+	tokens: &TokenSet,
+	cx: &Context<ShellView>,
+) -> AnyElement {
+	let badge = Badge::new(mode.label().to_owned(), TintRole::Plan);
+	if !matches!(mode, SessionMode::Plan) || matches!(turn, TurnPhase::PlanPending { .. }) {
+		return badge.into_any_element();
+	}
+	let availability = states.availability(&SurfaceId::SessionPlanReviewButton(session.clone()));
+	let (opacity, cursor, allowed) = availability_style(&availability, tokens);
+	let label = availability
+		.reason()
+		.unwrap_or("Review the plan")
+		.to_owned();
+	let mut chip = div()
+		.id("composer-footer-plan-review")
+		.aria_label(label.clone())
+		.flex()
+		.items_center()
+		.opacity(opacity)
+		.cursor(cursor)
+		.child(badge);
+	if allowed {
+		chip = chip.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+			view.dispatch(Intent::ReviewPlan, cx);
+		}));
+	}
+	Tooltip::new(label, chip).above().into_any_element()
+}
 
 /// The active model stays visible at every width, including before a catalogue
 /// arrives.
@@ -92,7 +133,7 @@ pub fn footer_row(
 	let mode = composer
 		.mode
 		.as_ref()
-		.map(|mode| Badge::new(mode.label().to_owned(), TintRole::Plan));
+		.map(|mode| mode_chip(turn, mode, &session, states, tokens, cx));
 
 	let thinking_control = composer.thinking.as_ref().map(|thinking| {
 		let id = SurfaceId::ComposerThinkingSelector(session.clone());

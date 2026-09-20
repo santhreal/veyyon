@@ -103,7 +103,8 @@ export async function exitPlanMode(session: AgentSession, memory: PlanModeMemory
 	return true;
 }
 
-function planPath(session: AgentSession, planFilePath: string): string {
+/** Where a `local://` plan URL is on disk for this session. */
+export function sessionPlanPath(session: AgentSession, planFilePath: string): string {
 	return resolvePlanFilePath(planFilePath, {
 		localProtocol: {
 			getArtifactsDir: () => session.sessionManager.getArtifactsDir(),
@@ -113,9 +114,10 @@ function planPath(session: AgentSession, planFilePath: string): string {
 	});
 }
 
-async function readPlan(session: AgentSession, planFilePath: string): Promise<string | null> {
+/** One plan file's text, or null when the session never wrote it. */
+export async function readSessionPlan(session: AgentSession, planFilePath: string): Promise<string | null> {
 	try {
-		return await fs.readFile(planPath(session, planFilePath), "utf8");
+		return await fs.readFile(sessionPlanPath(session, planFilePath), "utf8");
 	} catch (error) {
 		if (isEnoent(error)) return null;
 		throw error;
@@ -137,8 +139,8 @@ function resolvePlanApproval(
 			const { planFilePath, planContent, title } = await resolveApprovedPlan({
 				suppliedTitle: extra?.title,
 				statePlanFilePath: state.planFilePath,
-				readPlan: url => readPlan(session, url),
-				listPlanFiles: () => listLocalPlanFileUrls(planPath(session, "local://")),
+				readPlan: url => readSessionPlan(session, url),
+				listPlanFiles: () => listLocalPlanFileUrls(sessionPlanPath(session, "local://")),
 			});
 			const details: PlanApprovalDetails = { planFilePath, title, planExists: true };
 			const { accepted, feedback } = await ledger.plan(planContent);

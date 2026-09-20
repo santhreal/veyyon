@@ -45,6 +45,10 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::AbortTurn => Capability::TurnControl,
 		HostActionKind::RetryTurn => Capability::TurnControl,
 		HostActionKind::RephraseReply => Capability::TurnControl,
+		// What it asks for is a decision card, so it needs the capability
+		// that answers one: a host that cannot take an answer would raise a
+		// plan nobody could accept or send back.
+		HostActionKind::ReviewPlan => Capability::Approvals,
 		HostActionKind::SetQueueMode => Capability::TurnControl,
 		// A mode is the session's, not the turn's: it survives the turn that
 		// was running when it was entered, and a host with no turn in flight
