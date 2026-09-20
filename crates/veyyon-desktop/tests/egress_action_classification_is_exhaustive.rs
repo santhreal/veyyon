@@ -5,7 +5,7 @@ use veyyon_desktop_model::HostActionKind;
 
 #[test]
 fn all_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
-	assert_eq!(HostActionKind::ALL.len(), 79, "HostActionKind::ALL must contain exactly 79 actions");
+	assert_eq!(HostActionKind::ALL.len(), 81, "HostActionKind::ALL must contain exactly 81 actions");
 
 	let mut ephemeral_actions = HashSet::new();
 	let mut mutation_actions = HashSet::new();
@@ -21,7 +21,7 @@ fn all_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
 		}
 	}
 
-	assert_eq!(ephemeral_actions.len() + mutation_actions.len(), 79);
+	assert_eq!(ephemeral_actions.len() + mutation_actions.len(), 81);
 
 	// Pinned exact set of 21 ephemeral read-only actions (§8.13)
 	let expected_ephemeral: HashSet<HostActionKind> = [
@@ -55,5 +55,5 @@ fn all_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
 		"ephemeral action set must match exact pinned definition; any change must be recorded"
 	);
 	assert_eq!(ephemeral_actions.len(), 21);
-	assert_eq!(mutation_actions.len(), 58);
+	assert_eq!(mutation_actions.len(), 60);
 }

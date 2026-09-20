@@ -42,6 +42,8 @@ pub struct Store {
 	/// Single definition of the prompts each session holds behind a running
 	/// turn, as the host reported them.
 	pub queued:        HashMap<SessionId, QueuedPrompts>,
+	/// Single definition of the goal running for each session.
+	pub goals:         HashMap<SessionId, crate::domain::GoalView>,
 	/// Single definition of layout, geometry, panel visibility, and local client
 	/// persistence.
 	pub persisted:     PersistedState,
@@ -86,6 +88,7 @@ impl Store {
 			interactions:  HashMap::new(),
 			modes:         HashMap::new(),
 			queued:        HashMap::new(),
+			goals:         HashMap::new(),
 			persisted:     PersistedState::new(),
 			domains:       Domains::new(),
 			retries:       RetryMemory::new(),
@@ -101,5 +104,11 @@ impl Store {
 	#[must_use]
 	pub fn with_persisted(persisted: PersistedState) -> Self {
 		Self { persisted, ..Self::new() }
+	}
+
+	/// The goal view for a session if one is active.
+	#[must_use]
+	pub fn goal(&self, session: &SessionId) -> Option<&crate::domain::GoalView> {
+		self.goals.get(session)
 	}
 }

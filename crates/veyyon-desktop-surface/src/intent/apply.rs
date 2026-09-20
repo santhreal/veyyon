@@ -321,6 +321,8 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		| Intent::RetryTurn
 		| Intent::RephraseReply
 		| Intent::ReviewPlan
+		| Intent::SetGoal { .. }
+		| Intent::ControlGoal { .. }
 		| Intent::PauseAgents
 		| Intent::ResumeAgents
 		| Intent::ExportSession(_)
@@ -328,6 +330,7 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		| Intent::HandoffSession(_)
 		| Intent::RunCommand(_)
 		| Intent::LoadTranscript(_) => {},
+		Intent::ToggleGoalCard => crate::cards::toggle_goal_card(state),
 		Intent::FilterQueue(filter) => queue::filter(state, filter),
 		Intent::NewSession => {
 			state.keymap.queue_filter = None;

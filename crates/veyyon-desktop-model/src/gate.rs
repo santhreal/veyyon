@@ -106,6 +106,8 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::ClearOutput => Capability::Sessions,
 		HostActionKind::GetUsage => Capability::Usage,
 		HostActionKind::GetContextBreakdown => Capability::ContextBreakdown,
+		HostActionKind::SetGoal => Capability::Goals,
+		HostActionKind::ControlGoal => Capability::Goals,
 	}
 }
 

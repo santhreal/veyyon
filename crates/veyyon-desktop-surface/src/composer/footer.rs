@@ -28,11 +28,40 @@ use crate::{
 fn mode_chip(
 	turn: &TurnPhase,
 	mode: &SessionMode,
+	goal: Option<&veyyon_desktop_model::GoalView>,
 	session: &SessionId,
 	states: &ControlStates,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> AnyElement {
+	if matches!(mode, SessionMode::Goal) || goal.is_some() {
+		let availability = states.availability(&SurfaceId::ComposerGoalChip(session.clone()));
+		let (opacity, cursor, allowed) = availability_style(&availability, tokens);
+		let (base_label, tint) = if let Some(goal) = goal {
+			(goal.chip_text(), crate::cards::status_tint(goal.status))
+		} else {
+			(mode.label().to_owned(), TintRole::Working)
+		};
+		let label = availability
+			.reason()
+			.unwrap_or(&base_label)
+			.to_owned();
+		let badge = Badge::new(label.clone(), tint);
+		let mut chip = div()
+			.id("composer-footer-goal-chip")
+			.aria_label(label.clone())
+			.flex()
+			.items_center()
+			.opacity(opacity)
+			.cursor(cursor);
+		if allowed {
+			chip = chip.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+				view.dispatch(Intent::ToggleGoalCard, cx);
+			}));
+		}
+		chip = chip.child(badge);
+		return Tooltip::new(label, chip).above().into_any_element();
+	}
 	let badge = Badge::new(mode.label().to_owned(), TintRole::Plan);
 	if !matches!(mode, SessionMode::Plan) || matches!(turn, TurnPhase::PlanPending { .. }) {
 		return badge.into_any_element();
@@ -133,7 +162,12 @@ pub fn footer_row(
 	let mode = composer
 		.mode
 		.as_ref()
-		.map(|mode| mode_chip(turn, mode, &session, states, tokens, cx));
+		.map(|mode| mode_chip(turn, mode, composer.goal.as_ref(), &session, states, tokens, cx))
+		.or_else(|| {
+			composer.goal.as_ref().map(|goal| {
+				mode_chip(turn, &SessionMode::Goal, Some(goal), &session, states, tokens, cx)
+			})
+		});
 
 	let thinking_control = composer.thinking.as_ref().map(|thinking| {
 		let id = SurfaceId::ComposerThinkingSelector(session.clone());

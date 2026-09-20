@@ -114,6 +114,8 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::SetKeybinding
 		| HostActionKind::RetryDiagnosticSource
 		| HostActionKind::ClearOutput
+		| HostActionKind::SetGoal
+		| HostActionKind::ControlGoal
 		| HostActionKind::RunCommand => ActionClassification::Mutation,
 	}
 }

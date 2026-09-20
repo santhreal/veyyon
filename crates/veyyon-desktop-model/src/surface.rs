@@ -47,6 +47,7 @@ pub enum SurfaceId {
 	ComposerQueueModeToggle(SessionId),
 	ComposerQueuedTakeBack(SessionId),
 	ComposerCancelToolButton(SessionId, String),
+	ComposerGoalChip(SessionId),
 
 	// Decision Cards (§5.5)
 	ApprovalApproveButton(SessionId, InteractionId),
@@ -161,6 +162,7 @@ impl SurfaceId {
 			| Self::ComposerQueueModeToggle(_)
 			| Self::ComposerQueuedTakeBack(_)
 			| Self::ComposerCancelToolButton(..)
+			| Self::ComposerGoalChip(_)
 			| Self::ApprovalApproveButton(..)
 			| Self::ApprovalDeclineButton(..)
 			| Self::ApprovalAlwaysAllowButton(..)
@@ -274,6 +276,7 @@ impl SurfaceId {
 			| Self::ComposerQueueModeToggle(_)
 			| Self::ComposerQueuedTakeBack(_)
 			| Self::ComposerCancelToolButton(..)
+			| Self::ComposerGoalChip(_)
 			| Self::ApprovalApproveButton(..)
 			| Self::ApprovalDeclineButton(..)
 			| Self::ApprovalAlwaysAllowButton(..)

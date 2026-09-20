@@ -31,6 +31,7 @@ pub const fn action_of(capability: Capability) -> Option<HostActionKind> {
 		Capability::Usage => Some(HostActionKind::GetUsage),
 		Capability::ContextBreakdown => Some(HostActionKind::GetContextBreakdown),
 		Capability::AgentCommands => Some(HostActionKind::RunCommand),
+		Capability::Goals => Some(HostActionKind::ControlGoal),
 		Capability::Questions
 		| Capability::Plans
 		| Capability::Extensions
@@ -80,5 +81,6 @@ pub fn target_surface_of(capability: Capability, _session: &SessionId) -> Surfac
 		Capability::Usage => SurfaceId::UsageRefreshButton,
 		Capability::ContextBreakdown => SurfaceId::ContextBreakdownRefreshButton,
 		Capability::BackgroundSubmission => SurfaceId::ComposerQueueModeToggle(row),
+		Capability::Goals => SurfaceId::ComposerGoalChip(row),
 	}
 }

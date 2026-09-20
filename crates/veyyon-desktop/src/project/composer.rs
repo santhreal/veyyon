@@ -109,6 +109,7 @@ pub fn project_composer(store: &Store, session: Option<&SessionId>, composer: &m
 	// The mode is the host's, and a session in none of them removes the chip
 	// rather than drawing a mode nobody is in.
 	composer.mode = session.and_then(|id| store.modes.get(id).cloned());
+	composer.goal = session.and_then(|id| store.goals.get(id)).cloned();
 
 	composer.queue_mode = clamp_queue_mode(store, composer.queue_mode);
 }

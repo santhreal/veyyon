@@ -284,6 +284,8 @@ fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 		// The freeze is process-wide state in `Store::paused`, not a domain view;
 		// `crates/veyyon-desktop/tests/a-freeze-the-host-engaged-reaches-every-window.rs`
 		// proves it replaces and reaches the strip.
+		// Goals are per-session state in `Store::goals`, not a domain view.
+		| SnapshotSectionKind::Goal
 		| SnapshotSectionKind::AgentPause => return None,
 		SnapshotSectionKind::SessionSearch => ["first", "second"].map(|query| {
 			SnapshotSection::SessionSearch(SessionSearchView { query: query.into(), sessions: Vec::new() })
@@ -384,5 +386,6 @@ fn every_domain_section_replaces_its_domain_and_the_opt_outs_are_named() {
 		SnapshotSectionKind::ProcessLogs,
 		SnapshotSectionKind::QueuedPrompts,
 		SnapshotSectionKind::AgentPause,
+		SnapshotSectionKind::Goal,
 	]);
 }

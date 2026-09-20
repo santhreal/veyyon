@@ -29,6 +29,15 @@ pub struct HostRequest {
 	pub action: HostAction,
 }
 
+/// Operation applied to an autonomous goal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
+#[serde(rename_all = "snake_case")]
+pub enum GoalControl {
+	Pause,
+	Resume,
+	Drop,
+}
+
 /// Host actions across connection, session and interactive domains.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HostAction {
@@ -348,5 +357,16 @@ pub enum HostAction {
 	},
 	GetContextBreakdown {
 		session: SessionId,
+	},
+
+	// Goal mode family (2 actions)
+	SetGoal {
+		session:      SessionId,
+		objective:    String,
+		token_budget: Option<u64>,
+	},
+	ControlGoal {
+		session: SessionId,
+		op:      GoalControl,
 	},
 }

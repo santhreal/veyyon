@@ -197,11 +197,14 @@ pub fn project<S: std::hash::BuildHasher>(
 		.and_then(|id| session_badge(store, id, now_ms))
 		.and_then(|derived| run_status(store, active, Some(&derived)));
 
+	state.goal = active.and_then(|id| store.goals.get(id)).cloned();
 	state.cards = active
 		.and_then(|id| store.interactions.get(id))
 		.map(cards)
 		.unwrap_or_default();
-
+	if state.goal_card_open && let Some(goal) = &state.goal {
+		state.cards.push(veyyon_desktop_surface::Card::Goal { view: goal.clone() });
+	}
 	// The panel is handed what the window already has, by value: what it can
 	// hold rather than derive again is moved out of it.
 	state.panel =

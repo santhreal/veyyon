@@ -228,6 +228,14 @@ pub enum Intent {
 	/// Puts the plan the agent last wrote back in front of the operator,
 	/// without waiting for the agent to ask for it again.
 	ReviewPlan,
+	SetGoal {
+		objective:    String,
+		token_budget: Option<u64>,
+	},
+	ControlGoal {
+		op: veyyon_desktop_model::GoalControl,
+	},
+	ToggleGoalCard,
 	/// Freezes every agent the host runs, whatever session it belongs to.
 	PauseAgents,
 	/// Releases the freeze, waking every agent the host parked.
@@ -368,6 +376,7 @@ impl Intent {
 				| Self::SetMenuSection(_)
 				| Self::MoveMenuHighlight(_)
 				| Self::MoveMenuSection(_)
+				| Self::ToggleGoalCard
 		)
 	}
 

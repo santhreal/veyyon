@@ -52,6 +52,10 @@ pub struct ShellState {
 	/// Whether each kind of decision can be answered, which is what a card's
 	/// answer rows are gated by.
 	pub card_answers:       CardAnswers,
+	/// The open session's goal, if one is running.
+	pub goal:               Option<veyyon_desktop_model::GoalView>,
+	/// Whether the goal card is open above the composer.
+	pub goal_card_open:     bool,
 	/// Terminal drawer state and tenants.
 	pub drawer:             DrawerContent,
 	/// Whether the terminal drawer is open.
@@ -251,6 +255,8 @@ impl Default for ShellState {
 			panel:              PanelContent::default(),
 			cards:              Vec::new(),
 			card_answers:       CardAnswers::default(),
+			goal:               None,
+			goal_card_open:     false,
 			drawer:             DrawerContent::default(),
 			drawer_open:        false,
 			current_id:         0,

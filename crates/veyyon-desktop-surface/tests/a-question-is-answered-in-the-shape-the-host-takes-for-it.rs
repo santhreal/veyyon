@@ -275,6 +275,7 @@ fn answer_label(card: &Card) -> String {
 			.map_or_else(|| REPLY_ROW.to_owned(), |first| format!("1. {first}")),
 		Card::Plan { .. } => "Accept".to_owned(),
 		Card::Refusal { .. } => "Dismiss".to_owned(),
+		Card::Goal { .. } => "Pause".to_owned(),
 	}
 }
 
@@ -303,7 +304,7 @@ fn an_answer_the_host_cannot_take_is_drawn_and_answers_nothing() {
 				if refused {
 					let held = Availability::Unavailable { reason: "the host declined".to_owned() };
 					state.card_answers =
-						CardAnswers { approvals: held.clone(), questions: held.clone(), plans: held };
+						CardAnswers { approvals: held.clone(), questions: held.clone(), plans: held.clone(), goals: held };
 				}
 				let clicked = render_session(state, None, WIDTH, HEIGHT, |session| {
 					let captured = session.frame().expect("frame renders");

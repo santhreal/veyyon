@@ -241,6 +241,7 @@ fn every_field_the_window_owns_survives_the_frame() {
 			context:     None,
 			queued:      vec!["a prompt the host is not holding".to_string()],
 			mode:        Some(SessionMode::Plan),
+			goal:        None,
 		},
 		..ShellState::default()
 	};
@@ -257,6 +258,7 @@ fn every_field_the_window_owns_survives_the_frame() {
 	assert!(state.composer.model.is_none(), "no models view, no model control");
 	assert!(state.composer.thinking.is_none(), "no levels, no thinking control");
 	assert!(state.composer.context.is_none(), "no breakdown, no meter");
+	assert!(state.composer.goal.is_none(), "no goal view, no goal chip");
 	assert!(
 		state.composer.queued.is_empty(),
 		"the held prompts are the host's; a session holding none holds none on the strip"

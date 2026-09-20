@@ -263,6 +263,8 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		// The catalogue is read when a command surface opens and drawn from
 		// the overlay that opened, which is diffed above: a change to what
 		// the host can run repaints nothing on its own.
+		goal,
+		goal_card_open,
 		commands: _,
 	} = next;
 
@@ -288,6 +290,8 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		|| notices != &last.notices
 		|| paused != &last.paused
 		|| menu != &last.menu
+		|| goal != &last.goal
+		|| goal_card_open != &last.goal_card_open
 	{
 		return Invalidation::Full;
 	}

@@ -86,6 +86,16 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::SetSessionMode { mode } => active.map_or_else(Vec::new, |session| {
 			vec![HostAction::SetSessionMode { session, mode: *mode }]
 		}),
+		Intent::SetGoal { objective, token_budget } => active.map_or_else(Vec::new, |session| {
+			vec![HostAction::SetGoal {
+				session,
+				objective: objective.clone(),
+				token_budget: *token_budget,
+			}]
+		}),
+		Intent::ControlGoal { op } => active.map_or_else(Vec::new, |session| {
+			vec![HostAction::ControlGoal { session, op: *op }]
+		}),
 		Intent::SelectModel { choice, persist } => {
 			vec![HostAction::SelectModel {
 				provider: choice.provider.clone(),

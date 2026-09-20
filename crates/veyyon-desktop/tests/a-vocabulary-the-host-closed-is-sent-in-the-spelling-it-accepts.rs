@@ -33,15 +33,15 @@ use strum::IntoEnumIterator;
 use support::{intent_samples::every_sample_intent, session};
 use veyyon_desktop::{SessionIndex, actions_for};
 use veyyon_desktop_model::{
-	Capability, CapabilityStatus, ChangeScope, HostAction, QueueMode, QueuePartition, SessionId,
-	SettableMode, Store, SupervisorSignal,
+	Capability, CapabilityStatus, ChangeScope, GoalControl, HostAction, QueueMode, QueuePartition,
+	SessionId, SettableMode, Store, SupervisorSignal,
 };
 use veyyon_desktop_surface::Intent;
 
 /// Every string an action carries that is an operator's or the host's own
 /// value rather than a vocabulary: text, identifiers, paths and queries. A new
 /// entry here is a decision that the value is open.
-const OPEN_STRINGS: [&str; 65] = [
+const OPEN_STRINGS: [&str; 68] = [
 	"AbortTurn.session",
 	"BranchSession.session",
 	"CancelAuthFlow.provider",
@@ -50,6 +50,7 @@ const OPEN_STRINGS: [&str; 65] = [
 	"CancelTool.tool_call_id",
 	"ClearOutput.session",
 	"CompactSession.session",
+	"ControlGoal.session",
 	"DeleteSession.session",
 	"DequeueQueuedPrompt.session",
 	"ExportSession.format",
@@ -92,6 +93,8 @@ const OPEN_STRINGS: [&str; 65] = [
 	"SetKeybinding.action",
 	"SetKeybinding.keys[]",
 	"SetMcpEnabled.server",
+	"SetGoal.objective",
+	"SetGoal.session",
 	"SetQueueMode.session",
 	"SetSessionMode.session",
 	"SetSetting.key",
@@ -113,8 +116,13 @@ const OPEN_STRINGS: [&str; 65] = [
 /// of, and that the window carries as the type it decodes the same set with.
 /// A member here is round-tripped through that type below; a member added
 /// without one leaves the sweep proving nothing about it.
-const VOCABULARY_STRINGS: [&str; 4] =
-	["ProcessSignal.signal", "SelectChangeScope.scope", "SetQueueMode.mode", "SetSessionMode.mode"];
+const VOCABULARY_STRINGS: [&str; 5] = [
+	"ControlGoal.op",
+	"ProcessSignal.signal",
+	"SelectChangeScope.scope",
+	"SetQueueMode.mode",
+	"SetSessionMode.mode",
+];
 
 fn seeded() -> (Store, SessionIndex) {
 	let mut store = Store::new();
@@ -249,6 +257,22 @@ fn every_scope_and_every_mode_reaches_the_host_as_the_vocabulary_it_came_from() 
 		assert_eq!(sent, Value::String(expected.to_owned()));
 		proven.insert("ProcessSignal.signal".to_owned());
 	}
+	for op in GoalControl::iter() {
+		let (mut store, index) = seeded();
+		let actions = actions_for(&Intent::ControlGoal { op }, &index, &mut store);
+		let sent = payload_of(&actions, "ControlGoal")["op"].clone();
+		let decoded: GoalControl = serde_json::from_value(sent.clone())
+			.unwrap_or_else(|_| panic!("the host's GoalControl cannot read {sent}"));
+		assert_eq!(decoded, op, "the op sent for {op:?} decodes as {decoded:?}");
+		let expected = match op {
+			GoalControl::Pause => "pause",
+			GoalControl::Resume => "resume",
+			GoalControl::Drop => "drop",
+		};
+		assert_eq!(sent, Value::String(expected.to_owned()));
+		proven.insert("ControlGoal.op".to_owned());
+	}
+
 
 	// A vocabulary recorded and never round-tripped here is a claim with no
 	// evidence behind it, so the census and this sweep name the same set.

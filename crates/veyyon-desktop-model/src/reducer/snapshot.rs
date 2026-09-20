@@ -377,6 +377,14 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 			// its arrival and its departure move every region under it.
 			damage.insert(Damage::FullWindow);
 		},
+		SnapshotSection::Goal { session, goal } => {
+			if let Some(goal) = goal {
+				store.goals.insert(session.clone(), goal);
+			} else {
+				store.goals.remove(&session);
+			}
+			damage.insert(Damage::Composer(session));
+		},
 	}
 
 	damage

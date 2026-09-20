@@ -146,6 +146,14 @@ fn test_damage_decision_for_every_snapshot_section_sweep() {
 					"the section's two queues reach the store in delivery order"
 				);
 			},
+			"Goal" => {
+				assert!(damage.contains(&Damage::Composer(session_id.clone())));
+				assert_eq!(
+					store.goals.get(&session_id).map(|g| g.objective.as_str()),
+					Some("Ship the desktop parity work"),
+					"goal reaches store"
+				);
+			},
 			"Settings" | "Diagnostics" | "Models" | "Providers" | "AuthFlow" | "Mcp" | "Agents"
 			| "Themes" | "Keybindings" | "Commands" => {
 				assert!(damage.contains(&Damage::Palette), "{name} must emit Damage::Palette");

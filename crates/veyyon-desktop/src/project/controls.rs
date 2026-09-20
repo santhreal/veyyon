@@ -95,6 +95,7 @@ pub fn project_controls(
 		approvals: decision_answer(store, registry, Capability::Approvals),
 		questions: decision_answer(store, registry, Capability::Questions),
 		plans:     decision_answer(store, registry, Capability::Plans),
+		goals:     decision_answer(store, registry, Capability::Goals),
 	};
 	if let Some(active_id) = store.persisted.shell.active_session.as_ref()
 		&& let Some(row_id) = active_row

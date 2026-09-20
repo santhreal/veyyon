@@ -86,11 +86,13 @@ pub enum HostActionKind {
 	ClearOutput,
 	GetUsage,
 	GetContextBreakdown,
+	SetGoal,
+	ControlGoal,
 }
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 79] = [
+	pub const ALL: [Self; 81] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -170,6 +172,8 @@ impl HostActionKind {
 		Self::ClearOutput,
 		Self::GetUsage,
 		Self::GetContextBreakdown,
+		Self::SetGoal,
+		Self::ControlGoal,
 	];
 
 	/// Returns wire name identifier.
@@ -255,6 +259,8 @@ impl HostActionKind {
 			Self::ClearOutput => "ClearOutput",
 			Self::GetUsage => "GetUsage",
 			Self::GetContextBreakdown => "GetContextBreakdown",
+			Self::SetGoal => "SetGoal",
+			Self::ControlGoal => "ControlGoal",
 		}
 	}
 }
@@ -343,6 +349,8 @@ impl HostAction {
 			Self::ClearOutput { .. } => HostActionKind::ClearOutput,
 			Self::GetUsage { .. } => HostActionKind::GetUsage,
 			Self::GetContextBreakdown { .. } => HostActionKind::GetContextBreakdown,
+			Self::SetGoal { .. } => HostActionKind::SetGoal,
+			Self::ControlGoal { .. } => HostActionKind::ControlGoal,
 		}
 	}
 }

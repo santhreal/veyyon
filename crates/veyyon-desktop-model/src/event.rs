@@ -67,7 +67,7 @@ pub struct SessionHeaderView {
 	pub mode:           Option<String>,
 }
 
-/// Complete list of all 31 snapshot section names defined by the protocol.
+/// Complete list of all 32 snapshot section names defined by the protocol.
 pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Sessions",
 	"ActiveSession",
@@ -100,6 +100,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"QueuedPrompts",
 	"Commands",
 	"AgentPause",
+	"Goal",
 ];
 
 /// Domain sections received during initial connection or snapshot
@@ -110,7 +111,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
 #[strum_discriminants(name(SnapshotSectionKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
 #[strum_discriminants(
-	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 31 section variants."
+	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 32 section variants."
 )]
 pub enum SnapshotSection {
 	/// Session index metadata and deserialization failures.
@@ -182,6 +183,13 @@ pub enum SnapshotSection {
 	Commands(Vec<CommandView>),
 	/// Whether every agent in the host process is frozen, and since when.
 	AgentPause(crate::domain::AgentPauseView),
+	/// Goal mode state for a session.
+	Goal {
+		/// Target session identifier.
+		session: SessionId,
+		/// Goal view or None if cleared.
+		goal:    Option<crate::domain::GoalView>,
+	},
 }
 
 impl SnapshotSection {
@@ -220,7 +228,14 @@ impl SnapshotSection {
 			Self::QueuedPrompts(..) => "QueuedPrompts",
 			Self::Commands(..) => "Commands",
 			Self::AgentPause(..) => "AgentPause",
+			Self::Goal { .. } => "Goal",
 		}
+	}
+
+	/// Returns the section tag matching the wire protocol.
+	#[must_use]
+	pub const fn section_tag(&self) -> &'static str {
+		self.name()
 	}
 }
 

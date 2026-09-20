@@ -36,11 +36,12 @@ pub enum Capability {
 	Usage                = 27,
 	ContextBreakdown     = 28,
 	Lifecycle            = 29,
+	Goals                = 30,
 }
 
 impl Capability {
 	/// Complete list of all capability variants for runtime sweeps.
-	pub const ALL: [Self; 30] = [
+	pub const ALL: [Self; 31] = [
 		Self::Sessions,
 		Self::SessionDeletion,
 		Self::SessionTreeNavigation,
@@ -71,6 +72,7 @@ impl Capability {
 		Self::Usage,
 		Self::ContextBreakdown,
 		Self::Lifecycle,
+		Self::Goals,
 	];
 
 	/// Returns the stable string identifier matching the wire protocol.
@@ -107,6 +109,7 @@ impl Capability {
 			Self::Usage => "Usage",
 			Self::ContextBreakdown => "ContextBreakdown",
 			Self::Lifecycle => "Lifecycle",
+			Self::Goals => "Goals",
 		}
 	}
 }
@@ -125,7 +128,7 @@ pub enum CapabilityStatus {
 /// Fixed array map holding status values for all thirty protocol capabilities.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapabilityMap {
-	pub statuses: [CapabilityStatus; 30],
+	pub statuses: [CapabilityStatus; 31],
 }
 
 impl Default for CapabilityMap {
@@ -141,6 +144,7 @@ impl CapabilityMap {
 	pub const fn new() -> Self {
 		Self {
 			statuses: [
+				CapabilityStatus::UnknownUntilAttached,
 				CapabilityStatus::UnknownUntilAttached,
 				CapabilityStatus::UnknownUntilAttached,
 				CapabilityStatus::UnknownUntilAttached,

@@ -230,6 +230,8 @@ pub struct ComposerState {
 	/// A mode decides what the agent may do with the prompt about to be sent,
 	/// so the footer states it beside the model that will answer it.
 	pub mode:        Option<SessionMode>,
+	/// The goal running for this session, absent when none is active.
+	pub goal:        Option<veyyon_desktop_model::GoalView>,
 }
 
 impl ComposerState {

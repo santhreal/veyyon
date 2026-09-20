@@ -303,6 +303,10 @@ pub enum Card {
 		/// The refusal explanation or lines.
 		detail: Vec<String>,
 	},
+	/// An active goal with its progress and controls.
+	Goal {
+		view: veyyon_desktop_model::GoalView,
+	},
 }
 
 impl Card {
@@ -323,8 +327,9 @@ impl Card {
 				0 => 1,
 				offered => offered,
 			},
+			Self::Goal { view } => view.status.allowed_controls().len(),
 		}
-	}
+}
 }
 
 /// Whether each kind of decision can be answered at all, right now.
@@ -342,6 +347,8 @@ pub struct CardAnswers {
 	pub questions: Availability,
 	/// Whether a plan can be answered.
 	pub plans:     Availability,
+	/// Whether a goal's controls can be answered.
+	pub goals:     Availability,
 }
 
 impl CardAnswers {
@@ -353,6 +360,7 @@ impl CardAnswers {
 			Card::Question { .. } => &self.questions,
 			Card::Plan { .. } => &self.plans,
 			Card::Refusal { .. } => &Availability::Enabled,
+			Card::Goal { .. } => &self.goals,
 		}
 	}
 }

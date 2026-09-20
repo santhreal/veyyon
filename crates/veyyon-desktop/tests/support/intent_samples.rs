@@ -217,6 +217,16 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		IntentDiscriminants::RetryTurn => vec![Intent::RetryTurn],
 		IntentDiscriminants::RephraseReply => vec![Intent::RephraseReply],
 		IntentDiscriminants::ReviewPlan => vec![Intent::ReviewPlan],
+		IntentDiscriminants::SetGoal => vec![Intent::SetGoal {
+			objective: "Ship the desktop parity work".to_string(),
+			token_budget: Some(50000),
+		}],
+		IntentDiscriminants::ControlGoal => vec![
+			Intent::ControlGoal { op: veyyon_desktop_model::GoalControl::Pause },
+			Intent::ControlGoal { op: veyyon_desktop_model::GoalControl::Resume },
+			Intent::ControlGoal { op: veyyon_desktop_model::GoalControl::Drop },
+		],
+		IntentDiscriminants::ToggleGoalCard => vec![Intent::ToggleGoalCard],
 		IntentDiscriminants::PauseAgents => vec![Intent::PauseAgents],
 		IntentDiscriminants::ResumeAgents => vec![Intent::ResumeAgents],
 		IntentDiscriminants::RenameSession => {

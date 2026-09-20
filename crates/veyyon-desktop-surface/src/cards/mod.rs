@@ -17,6 +17,8 @@
 mod answers;
 mod approval;
 mod plan;
+mod goal;
+pub use goal::{format_duration, status_tint, toggle_goal_card};
 mod question;
 mod refusal;
 
@@ -74,6 +76,9 @@ pub fn card_stack(
 			},
 			Card::Refusal { title, detail } => {
 				refusal(index, title, detail, answer, geometry, tokens, cx).into_any_element()
+			},
+			Card::Goal { view } => {
+				goal::goal(index, view, answer, geometry, tokens, cx).into_any_element()
 			},
 		};
 
@@ -162,6 +167,7 @@ fn waiting_line(card: &Card) -> String {
 		Card::Question { prompt, .. } => format!("Question: {prompt}"),
 		Card::Plan { title, .. } => format!("Plan: {title}"),
 		Card::Refusal { title, .. } => format!("Refusal: {title}"),
+		Card::Goal { view, .. } => format!("Goal: {}", view.objective),
 	}
 }
 

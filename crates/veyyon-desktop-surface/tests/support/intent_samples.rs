@@ -149,6 +149,14 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::RetryTurn,
 		Intent::RephraseReply,
 		Intent::ReviewPlan,
+		Intent::SetGoal {
+			objective: "Ship the desktop parity work".to_owned(),
+			token_budget: Some(50000),
+		},
+		Intent::ControlGoal {
+			op: veyyon_desktop_model::GoalControl::Pause,
+		},
+		Intent::ToggleGoalCard,
 		Intent::PauseAgents,
 		Intent::ResumeAgents,
 		Intent::CopyText("copied words".to_owned()),
@@ -229,6 +237,9 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::RetryTurn
 			| Intent::RephraseReply
 			| Intent::ReviewPlan
+			| Intent::SetGoal { .. }
+			| Intent::ControlGoal { .. }
+			| Intent::ToggleGoalCard
 			| Intent::PauseAgents
 			| Intent::ResumeAgents
 			| Intent::FilterQueue(_)

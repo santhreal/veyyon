@@ -27,7 +27,7 @@ pub mod text;
 pub mod tool_view;
 pub mod transcript;
 
-pub use action::{AttachmentSubmission, HostAction, HostRequest};
+pub use action::{AttachmentSubmission, GoalControl, HostAction, HostRequest};
 pub use action_kind::HostActionKind;
 pub use badge::session_badge;
 pub use capabilities::{Capability, CapabilityMap, CapabilityStatus};
@@ -43,6 +43,7 @@ pub use domain::{
 	ChangedFile, ChangesView, CommandSource, CommandSubcommandView, CommandView, ContentMatch,
 	ContentMatchesView, ContextBreakdownView, ContextCategory, DiagnosticSource, Domains,
 	ExportView, FileContentView, FileKind, FileNode, FileTreeView, InputModality, KeybindingView,
+	GoalStatus, GoalView,
 	McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView, PROCESS_LOG_CAPACITY_LINES,
 	ProcessLogView, ProcessLogsChunk, ProcessView, ProviderView, QueuedPrompts, QueuedPromptsView,
 	SearchResultsView, SeqGap, SessionSearchView, SessionTranscriptView, SettingEntry, SettingKind,
