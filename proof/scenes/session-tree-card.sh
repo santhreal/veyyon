@@ -15,10 +15,11 @@
 # motion gate reads the take as a stutter; SCENE_MOTION_FLOOR=0 accepts it. The
 # frames are the evidence here, and the clip only carries them.
 #
-# Five frames, each a state the card can be in: the card as it opens, one row
+# Seven frames, each a state the card can be in: the card as it opens, one row
 # down from the leaf, the same tree with tool rows filtered out, a typed query
-# over every entry, and the cursor at the last row. The keys are the same in both
-# arms, so a pair differs only where the card does.
+# over every entry, a query only the kind column answers, a query nothing
+# answers, and the cursor at the last row. The keys are the same in both arms,
+# so a pair differs only where the card does.
 
 settle 20
 
@@ -66,6 +67,15 @@ settle 1
 t "read"
 settle 3
 shot search-kind
+
+# --- a query nothing answers ------------------------------------------------
+# The card with no rows left: the body says what emptied it and which key undoes
+# that, and the counts stay in the header.
+k Escape
+settle 1
+t "zzz"
+settle 3
+shot search-empty
 
 # --- the last row, in one key ------------------------------------------------
 # Escape clears the query and leaves the card open. End goes to the last visible
