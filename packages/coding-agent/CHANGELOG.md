@@ -143,6 +143,7 @@
 
 ### Changed
 
+- A streamed reply reaches the desktop window once per frame rather than once per provider delta: the first delta is written with no delay and the ones behind it coalesce, so a 44 KiB reply arriving at 250 deltas a second crosses the socket in 17.6 MiB instead of 70.1 MiB.
 - A desktop colour role is written once: the variant, its position in canonical order and the name it carries in a theme file come from one list, so a role added to the design system enters the role table and the theme completeness check with it. It changes nothing that is drawn.
 - The desktop's four icon boxes are authored in `scale.toml` under `[icon.size]`, with the same ceiling of four the other scale sections carry, so an icon draws at the size the token file states rather than at one compiled into the kit. Each draws at the size it drew before.
 - The desktop's last compiled-in strengths are authored: `surface/queue.toml` states the edge a card draws open, selected and at rest and the title strength of a session in flight, `surface/panels.toml` states a monospace pane's edge fade, scroll rail, thumb and the width past which it scrolls, `surface/transcript.toml` states the reasoning summary's strength, and `controls.toml` states the spinner ring's. Each draws at the strength it drew before.

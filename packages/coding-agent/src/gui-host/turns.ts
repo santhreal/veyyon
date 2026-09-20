@@ -29,10 +29,13 @@ import { enterPlanModeIfConfigured } from "./plan-approval";
 import type { PresentationLedger } from "./presentation";
 import { reportQueuedPrompts } from "./queued-prompts";
 import {
-	agentMessageToTranscriptEntry,
-	appendedEntryToTranscriptEntry,
-	seedFirstMessagePosition,
-} from "./transcript-conversion";
+	cancelStreamingFrame,
+	flushStreamingFrame,
+	pushStreamingFrame,
+	type StreamingChange,
+	type StreamingFrameState,
+} from "./streaming-frames";
+import { appendedEntryToTranscriptEntry, seedFirstMessagePosition } from "./transcript-conversion";
 import type { AttachmentSubmission, AuthFlowState, TerminalStatus, TranscriptEntry } from "./wire";
 
 export interface ActiveAuthFlow {
@@ -87,6 +90,8 @@ export interface ClientSessionState {
 	streamingToolCallId?: string;
 	/** The last accumulating entry sent, re-sent when only `tool` changes. */
 	streamingAccumulating?: TranscriptEntry;
+	/** What the session is holding for the next streaming frame. */
+	streamFrame?: StreamingFrameState;
 	presentationLedger: PresentationLedger;
 	/**
 	 * The decisions the session is waiting on: tool approvals, `ask`
@@ -323,17 +328,7 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 					state.streamingSeq = (state.streamingSeq ?? 0) + 1;
 					state.streamingEntry = `stream-${state.streamingSeq}`;
 				}
-				const accumulating = agentMessageToTranscriptEntry(event.message, state.revision, state.streamingEntry, {
-					ledger: state.presentationLedger,
-					session: state.agentSession,
-					isStreaming: true,
-				});
-				for (const block of accumulating.content) {
-					if ("ToolCall" in block) {
-						state.presentationLedger.recordCall(block.ToolCall.id, block.ToolCall.name, block.ToolCall.arguments);
-					}
-				}
-				writeStreaming(socket, state, accumulating);
+				pushStreaming(socket, state, { message: event.message });
 			}
 			break;
 		}
@@ -343,34 +338,19 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 			state.streamingTool = event.toolName;
 			state.streamingToolCallId = event.toolCallId;
 			state.presentationLedger.recordCall(event.toolCallId, event.toolName, event.args);
-			if (state.streamingAccumulating) writeStreaming(socket, state, state.streamingAccumulating);
+			pushStreaming(socket, state, { tool: true });
 			break;
 		}
 		case "tool_execution_update": {
 			state.presentationLedger.recordResult(event.toolCallId, event.partialResult, event.partialResult.isError);
-			if (state.streamingAccumulating) {
-				const updated = state.presentationLedger.regenerateCallEntryPresentation(
-					state.streamingAccumulating,
-					name => state.agentSession?.getToolByName(name),
-					{ partial: true },
-				);
-				if (updated) state.streamingAccumulating = updated;
-				writeStreaming(socket, state, state.streamingAccumulating);
-			}
+			pushStreaming(socket, state, { regenerate: "partial" });
 			break;
 		}
 		case "tool_execution_end": {
 			state.streamingTool = undefined;
 			state.streamingToolCallId = undefined;
 			state.presentationLedger.recordResult(event.toolCallId, event.result, event.isError);
-			if (state.streamingAccumulating) {
-				const updated = state.presentationLedger.regenerateCallEntryPresentation(
-					state.streamingAccumulating,
-					name => state.agentSession?.getToolByName(name),
-				);
-				if (updated) state.streamingAccumulating = updated;
-				writeStreaming(socket, state, state.streamingAccumulating);
-			}
+			pushStreaming(socket, state, { regenerate: "final", tool: true });
 			break;
 		}
 		case "message_end": {
@@ -409,20 +389,25 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 	}
 }
 
-function writeStreaming(socket: net.Socket, state: ClientSessionState, accumulating: TranscriptEntry): void {
-	if (!state.streamingEntry) return;
-	state.streamingAccumulating = accumulating;
-	writeFrame(socket, {
-		StreamingChanged: {
-			entry: state.streamingEntry,
-			tool: state.streamingTool ?? null,
-			accumulating,
-			revision: state.revision,
-		},
-	});
+/**
+ * Holds a streaming change for the next frame the window can draw.
+ *
+ * Every `StreamingChanged` carries the whole accumulating entry, so one per
+ * provider delta costs the square of the reply length to convert, serialise
+ * and decode. The coalescer writes the first change immediately and at most
+ * one per frame after it, which is all a window redrawing at the display's
+ * rate can show.
+ */
+function pushStreaming(socket: net.Socket, state: ClientSessionState, change: StreamingChange): void {
+	pushStreamingFrame(state, change, frame => writeFrame(socket, frame));
 }
 
 function clearStreaming(socket: net.Socket, state: ClientSessionState): void {
+	// The reply's last delta lands inside the frame the clear ends, so the
+	// held state is written before the clear rather than dropped with it: a
+	// window that never saw the final text would draw the reply short until
+	// the committed entry arrived.
+	flushStreamingFrame(state, frame => writeFrame(socket, frame));
 	if (!state.streamingEntry && !state.streamingTool) return;
 	state.streamingEntry = undefined;
 	state.streamingAccumulating = undefined;
@@ -698,6 +683,9 @@ export async function disposeClientState(state: ClientSessionState): Promise<voi
 	try {
 		await disposeTurnSession(state);
 	} finally {
+		// A frame scheduled for a window that is gone draws nothing and holds
+		// the entry it was converting alive until it fires.
+		cancelStreamingFrame(state);
 		state.goalDriver?.unsubscribeFromSession();
 		state.goalDriver?.cancelContinuation();
 		state.goalDriver = undefined;
