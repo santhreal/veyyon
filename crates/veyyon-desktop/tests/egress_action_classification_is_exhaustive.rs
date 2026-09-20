@@ -55,5 +55,5 @@ fn all_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
 		"ephemeral action set must match exact pinned definition; any change must be recorded"
 	);
 	assert_eq!(ephemeral_actions.len(), 21);
-	assert_eq!(mutation_actions.len(), 55);
+	assert_eq!(mutation_actions.len(), 57);
 }
