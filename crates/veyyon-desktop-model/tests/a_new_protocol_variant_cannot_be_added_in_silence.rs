@@ -1,12 +1,12 @@
 //! WHY THIS SUITE EXISTS
 //!
 //! Every sweep in this crate and in the scene gate walks a hand-written `ALL`
-//! array: 78 actions, 30 capabilities, 19 error scopes, 12 roles, 4 partitions.
-//! An array is not the enum. Add a 79th action to `HostActionKind` and forget
+//! array: 79 actions, 30 capabilities, 19 error scopes, 12 roles, 4 partitions.
+//! An array is not the enum. Add an 80th action to `HostActionKind` and forget
 //! to extend `HostActionKind::ALL`, and the sweeps do not fail — they iterate
-//! 78 of 79 variants and pass, which is exactly the failure mode of having no
+//! 79 of 80 variants and pass, which is exactly the failure mode of having no
 //! test at all. The count assertions elsewhere do not catch it either, because
-//! the array is still 78 long and still matches the pinned number.
+//! the array is still 79 long and still matches the pinned number.
 //!
 //! THE CLASS THIS CLOSES: a variant added to any protocol union that no sweep
 //! reaches. `strum::EnumIter` derives the variant space from the enum itself,
@@ -64,7 +64,7 @@ where
 
 #[test]
 fn every_action_capability_scope_role_and_partition_is_named_by_its_all_array() {
-	assert_all_is_the_whole_enum(&HostActionKind::ALL, 78, "HostActionKind");
+	assert_all_is_the_whole_enum(&HostActionKind::ALL, 79, "HostActionKind");
 	assert_all_is_the_whole_enum(&Capability::ALL, 30, "Capability");
 	assert_all_is_the_whole_enum(&ErrorScope::ALL, 19, "ErrorScope");
 	assert_all_is_the_whole_enum(&MessageRole::ALL, 12, "MessageRole");
