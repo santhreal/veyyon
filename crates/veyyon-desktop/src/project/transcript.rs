@@ -315,7 +315,7 @@ fn push_block(blocks: &mut Vec<Block>, block: &ContentBlock, entry: &TranscriptE
 			});
 		},
 		ContentBlock::ModeChange { mode } => {
-			blocks.push(Block::Note { label: "Mode", text: mode.clone(), boundary: false });
+			blocks.push(Block::Note { label: "Mode", text: mode_words(mode), boundary: false });
 		},
 		ContentBlock::Lifecycle { phase, reason } => blocks.push(Block::Note {
 			label:    "Lifecycle",
@@ -345,5 +345,18 @@ fn push_block(blocks: &mut Vec<Block>, block: &ContentBlock, entry: &TranscriptE
 			producer: format!("Unknown: {tag}"),
 			lines:    pane_lines(&value.to_string()),
 		}),
+	}
+}
+
+/// The words a recorded mode is stated in.
+///
+/// The record's own spelling is an identifier -- `goal_paused`, `plan_paused`,
+/// `none` -- and a transcript is read, not parsed. An unknown spelling is
+/// stated with its separators opened out rather than dropped, so a mode this
+/// window has not been taught still reads as words.
+fn mode_words(mode: &str) -> String {
+	match mode {
+		"none" => "off".to_owned(),
+		other => other.replace(['_', '-'], " "),
 	}
 }

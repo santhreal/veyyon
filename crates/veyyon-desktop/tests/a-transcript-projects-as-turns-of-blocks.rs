@@ -196,6 +196,39 @@ fn every_block_kind_preserves_its_display_register() {
 }
 
 #[test]
+fn a_mode_note_states_the_mode_in_words_whatever_the_record_spells_it() {
+	// The recorded spellings are identifiers the host writes: `none`, `plan`,
+	// `plan_paused`, `goal`, `goal_paused`, `loop`, `vibe`. The last row is
+	// the one that closes the class: the fallback is total, so a mode added
+	// over there reads as words here instead of drawing an underscore.
+	let stated = [
+		("none", "off"),
+		("plan", "plan"),
+		("plan_paused", "plan paused"),
+		("goal", "goal"),
+		("goal_paused", "goal paused"),
+		("loop", "loop"),
+		("vibe", "vibe"),
+		("a_mode-this_window-has_not-been_taught", "a mode this window has not been taught"),
+	];
+	for (recorded, words) in stated {
+		let mut store = Store::new();
+		store.persisted.shell.active_session = Some(SessionId::from("s"));
+		let tree = store.transcripts.entry(SessionId::from("s")).or_default();
+		tree.append(entry("a", None, MessageRole::Assistant, vec![ContentBlock::ModeChange {
+			mode: recorded.to_string(),
+		}]));
+		let mut state = ShellState::default();
+		project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
+		assert_eq!(
+			agent_blocks(&state.transcript[0]),
+			&[Block::Note { label: "Mode", text: words.to_string(), boundary: false }],
+			"the mode recorded as `{recorded}` must read as words"
+		);
+	}
+}
+
+#[test]
 fn the_active_branch_is_read_from_the_leaf_and_a_streaming_reply_is_the_last_turn() {
 	let mut store = Store::new();
 	store.persisted.shell.active_session = Some(SessionId::from("s"));

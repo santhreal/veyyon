@@ -22,6 +22,16 @@ export interface TranscriptConversionOptions {
 	 * surface and drawn nowhere at rest, so their entries draw either way.
 	 */
 	beforeFirstMessage?: boolean;
+	/**
+	 * The mode the last `mode_change` before this entry recorded.
+	 *
+	 * A goal writes its state back through a `mode_change` entry on every turn
+	 * it completes and every token it spends, so a session driving a goal
+	 * records a run of entries all naming the mode it is already in. The
+	 * transcript states a transition, so an entry naming the mode already in
+	 * force draws nothing.
+	 */
+	precedingMode?: string;
 }
 
 function mapContentBlocks(content: unknown, options?: TranscriptConversionOptions): ContentBlock[] {
@@ -389,7 +399,11 @@ export function sessionEntryToTranscriptEntry(
 			// A block of its own rather than a line of text, so the transcript
 			// states the mode the way it states a model or a thinking level
 			// instead of drawing it as a custom message.
-			content = [{ ModeChange: { mode: entry.mode } }];
+			//
+			// An entry naming the mode already in force is a state save, not a
+			// transition: the goal runtime writes one after every turn and
+			// every token reading, and each of those drew its own row.
+			content = entry.mode === options?.precedingMode ? [] : [{ ModeChange: { mode: entry.mode } }];
 			break;
 		// A title is chrome, not conversation: the titlebar and the rail row
 		// state the name, and a session is named from its own first prompt, so a
@@ -463,10 +477,20 @@ export function sessionEntriesToTranscript(
 	// conversation, so each entry is converted knowing which side of it it sits
 	// on.
 	const firstMessage = entries.findIndex(entry => entry.type === "message");
+	// The mode in force ahead of each entry, in one pass: a goal writes a
+	// `mode_change` after every turn, so reading backwards per entry would
+	// cost a scan of the transcript for each of them.
+	const precedingModes: (string | undefined)[] = [];
+	let mode: string | undefined;
+	for (const entry of entries) {
+		precedingModes.push(mode);
+		if (entry.type === "mode_change") mode = entry.mode;
+	}
 	const convert = (entry: SessionEntry, index: number): TranscriptEntry =>
 		sessionEntryToTranscriptEntry(entry, revision, {
 			...options,
 			beforeFirstMessage: firstMessage < 0 || index < firstMessage,
+			precedingMode: precedingModes[index],
 		});
 	if (!ledger) return entries.map(convert);
 	for (const entry of entries) recordEntryCalls(ledger, entry);
@@ -476,19 +500,25 @@ export function sessionEntriesToTranscript(
 }
 
 /**
- * Where a live entry sits relative to the session's first message.
+ * Where a live entry sits relative to the session's history.
  *
  * A stored transcript converts as a list, which states the position of every
- * entry in it. A live entry arrives one at a time, so the connection carries
- * one flag instead, seeded from the session's entries when it is attached.
+ * entry in it and the mode in force ahead of it. A live entry arrives one at
+ * a time, so the connection carries that much state instead, seeded from the
+ * session's entries when it is attached.
  */
 export interface FirstMessagePosition {
 	hasMessageEntry?: boolean;
+	lastMode?: string;
 }
 
-/** Read the flag off a session already holding entries. */
+/** Read the flags off a session already holding entries. */
 export function seedFirstMessagePosition(position: FirstMessagePosition, entries: readonly SessionEntry[]): void {
 	position.hasMessageEntry = entries.some(entry => entry.type === "message");
+	position.lastMode = undefined;
+	for (const entry of entries) {
+		if (entry.type === "mode_change") position.lastMode = entry.mode;
+	}
 }
 
 /** Convert one appended entry, advancing the position the first message sets. */
@@ -499,9 +529,12 @@ export function appendedEntryToTranscriptEntry(
 	options?: TranscriptConversionOptions,
 ): TranscriptEntry {
 	if (entry.type === "message") position.hasMessageEntry = true;
+	const precedingMode = position.lastMode;
+	if (entry.type === "mode_change") position.lastMode = entry.mode;
 	return sessionEntryToTranscriptEntry(entry, revision, {
 		...options,
 		beforeFirstMessage: !position.hasMessageEntry,
+		precedingMode,
 	});
 }
 
