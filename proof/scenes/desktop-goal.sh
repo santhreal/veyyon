@@ -36,16 +36,22 @@
 # veyyon-desktop` relinks it. Compare the two sha256 sums before recording:
 # the recorder refuses an arm whose executable is byte-identical to the other.
 #
-# WHAT IS MEASURED. The ink of the tint that names the goal's status, over two
-# bands of the window.
-#   * `tint.working.ink` is what an active goal is ringed and chipped with, so
-#     a row of it across half the card's measure is that card's own edge, and a
-#     cluster of it in the composer's footer is the chip.
-#   * `tint.attention.ink` is what a paused goal carries instead, so the third
-#     frame differs from the second in the colour of the card's edge rather
-#     than in text a reader has to take on trust.
-#   Both are read from the theme this checkout ships, through the preamble's
-#   own pass over each band, so a retheme moves every reading with it.
+# WHAT IS MEASURED. The tint that names the goal's status, over two bands of
+# the window, in the two ways that tint is drawn.
+#   * The chip is a filled pill, so it is read by `tint.working.fill` over the
+#     card's own footer row. Its ink is a label a few pixels wide once
+#     antialiasing has had it, which is under any floor that a stray glyph is
+#     also under; its fill is the pill itself. The row is the card's, not the
+#     composer band's, because the run bar under the card carries a `Working`
+#     badge in the same fill and a band over both counts one for the other.
+#   * The card is ringed in `tint.working.ink` (`cards::shell`), so a row of
+#     that ink across half the card's measure is the card's own edge.
+#   * `tint.attention` is what a paused goal carries instead, in both places,
+#     so the fourth frame differs from the third in the colour of the chip and
+#     the edge rather than in text a reader has to take on trust.
+#   Every colour is read from the theme this checkout ships, through the
+#   preamble's own pass over each band, so a retheme moves the readings with
+#   it.
 #
 # NOTHING HERE IS STAGED. The objective is typed into the palette, the goal
 # record is the session's own, and the pause is the host's. No file is seeded.
@@ -61,37 +67,48 @@ echo "scene: recording the ${ARM} arm" >&2
 
 OBJECTIVE="Keep the desktop parity ledger honest"
 
-# ─── Where A Goal Card Can Be Drawn ──────────────────────────────────────────
-# The attached cards share the composer's measure and stack directly above it
-# (§5.5), so the band a goal card can occupy is everything between the titlebar
-# and the composer band, at the composer card's own width and left edge.
-CARD_BAND_H=$(( WIN_H - TITLEBAR_H - COMPOSER_BAND_H ))
-if (( CARD_BAND_H < 160 )); then
-	abandon_take "a-card-has-room" \
-		"the window leaves ${CARD_BAND_H}px between the titlebar and the composer, which is \
+# ─── Where The Composer Is In The Frame Being Read ───────────────────────────
+# A goal drives turns, and turns fill the transcript: the card is centred
+# while the session holds few (§5.4) and at the foot once it holds many, so it
+# moves between one frame of this scene and the next. Each frame is therefore
+# measured in itself rather than against a band taken once, which is how a
+# chip read out of the first frame's geometry came back as no chip at all.
+#
+# Sets CARD_BAND, the band an attached card can occupy above the composer, and
+# CHIP_ROW_CROP, the card's own footer row where the chip is drawn beside the
+# model selector. The run bar under the card carries a `Working` badge in the
+# same fill as an active goal's chip, so the row stops at the card's foot.
+bands_from() { # <png>
+	measure_composer_card "$1"
+	local band_h=$(( CARD_TOP - WIN_Y - TITLEBAR_H ))
+	if (( band_h < 160 )); then
+		abandon_take "a-card-has-room" \
+			"the window leaves ${band_h}px between the titlebar and the composer, which is \
 less than a card is drawn in"
-fi
-CARD_BAND="${COMPOSER_CARD_W}x${CARD_BAND_H}+${COMPOSER_CARD_LEFT}+$(( WIN_Y + TITLEBAR_H ))"
-echo "scene: a goal card can occupy ${CARD_BAND}" >&2
+	fi
+	CARD_BAND="${COMPOSER_CARD_W}x${band_h}+${COMPOSER_CARD_LEFT}+$(( WIN_Y + TITLEBAR_H ))"
+	CHIP_ROW_CROP="${COMPOSER_CARD_W}x32+${COMPOSER_CARD_LEFT}+$(( MODEL_CHIP_Y - 16 ))"
+}
 
 # Somewhere with nothing under the pointer for every reading, so no hover fill
 # is in one frame and not another.
 PARK_X=$(( SESSION_REGION_X + SESSION_REGION_W / 2 ))
 PARK_Y=$(( WIN_Y + TITLEBAR_H + 24 ))
 
-# A chip is a filled pill carrying a word; a stray glyph inked near the same
-# colour is a handful of pixels. Under this and the footer states no goal.
-CHIP_PIXELS_MIN=60
+# A chip is a filled pill about a fifth of the footer row across; a rounded
+# corner blended against the card is a handful of pixels. Under this and the
+# footer states no goal.
+CHIP_PIXELS_MIN=400
 
 # ─── What The Frame States About The Goal ────────────────────────────────────
-# The status tint is read twice over: once in the footer, where the chip is the
-# window's persistent statement that a goal exists, and once over the card
-# band, where a ring across half the measure is the card's own edge.
-chip_reading() { # <png> <tint-ink-token> -> "COUNT CX CY" in the band's own coordinates
+# The status tint is read twice over: once in the card's footer row, where the
+# chip is the window's persistent statement that a goal exists, and once over
+# the card band, where a ring across half the measure is the card's own edge.
+chip_reading() { # <png> <tint-fill-token> -> "COUNT CX CY" in the row's own coordinates
 	local dump="${TMPDIR}/frame-compare/goal-chip.txt" ink
 	mkdir -p "${TMPDIR}/frame-compare"
 	ink="$(theme_colour "$2")"
-	magick "$1" -crop "${COMPOSER_BAND_CROP}" +repage txt:- >"${dump}"
+	magick "$1" -crop "${CHIP_ROW_CROP}" +repage txt:- >"${dump}"
 	python3 - "${dump}" "${ink#\#}" <<'PY'
 import re
 import sys
@@ -104,8 +121,8 @@ def rgb(text):
 
 
 wanted = rgb(sys.argv[2].upper())
-# The working ink's nearest neighbour in this theme is the focus colour,
-# thirty-eight steps away on the blue channel, so four cannot collect one.
+# The working fill's nearest neighbour in this theme is the attention fill,
+# thirteen steps away on the red channel, so four cannot collect one.
 columns, rows = [], []
 for line in open(sys.argv[1], encoding="ascii"):
 	pixel = PIXEL.match(line)
@@ -123,7 +140,7 @@ print(f"{len(columns)} {sum(columns) // len(columns)} {sum(rows) // len(rows)}")
 PY
 }
 
-chip_pixels() { # <png> <tint-ink-token> -> pixels of that ink in the composer's footer
+chip_pixels() { # <png> <tint-fill-token> -> pixels of that fill in the card's footer row
 	local count cx cy
 	read -r count cx cy < <(chip_reading "$1" "$2")
 	printf '%s' "${count}"
@@ -132,15 +149,17 @@ chip_pixels() { # <png> <tint-ink-token> -> pixels of that ink in the composer's
 # The middle of the chip, on the screen: the footer is laid out with the
 # composer and a chip appearing beside the model selector moves everything
 # after it, so where the chip is is a property of the frame it is in.
-chip_centre() { # <png> <tint-ink-token> -> "X Y" on the screen
+chip_centre() { # <png> <tint-fill-token> -> "X Y" on the screen
 	local count cx cy offsets
 	read -r count cx cy < <(chip_reading "$1" "$2")
 	if (( count < CHIP_PIXELS_MIN )); then
 		abandon_take "the-chip-is-on-the-screen" \
-			"the composer's footer carries ${count}px of $2, which is no chip to press"
+			"the card's footer row carries ${count}px of $2, which is no chip to press"
 	fi
-	offsets="${COMPOSER_BAND_CROP#*+}"
-	printf '%s %s' "$(( ${offsets%%+*} + cx ))" "$(( ${offsets##*+} + cy ))"
+	offsets="${CHIP_ROW_CROP#*+}"
+	# Newline-terminated: a caller reads this with `read`, which reports
+	# failure on an unterminated line and ends the take under `set -e`.
+	printf '%s %s\n' "$(( ${offsets%%+*} + cx ))" "$(( ${offsets##*+} + cy ))"
 }
 
 goal_reading() { # <png> <tint-ink-token> -> "RING_PX TOP BOTTOM ACCENT_PX"
@@ -176,7 +195,9 @@ run_command() { # <query>
 # ─── The Window With No Goal ─────────────────────────────────────────────────
 # The preamble left a slash in the draft and the editor focused, so the draft
 # is cleared: a goal set from the palette is the claim, and a draft under the
-# card is a different frame.
+# card is a different frame. The aim comes from the screen as it stands, since
+# the preamble measured the card before its own turns landed.
+measure_composer_card
 move_px "${COMPOSER_EDITOR_X}" "${COMPOSER_EDITOR_Y}"
 click
 k "ctrl+a"
@@ -185,9 +206,11 @@ pause 0.4
 move_px "${PARK_X}" "${PARK_Y}"
 pause 0.6
 shot goal-none
-NONE_CHIP="$(chip_pixels "${SCENE_OUT}/${SCENE_NAME}-goal-none.png" tint.working.ink)"
-NONE_CARD="$(card_state "${SCENE_OUT}/${SCENE_NAME}-goal-none.png" tint.working.ink)"
-echo "scene: with no goal the footer carries ${NONE_CHIP}px of the working ink" >&2
+NONE_FRAME="${SCENE_OUT}/${SCENE_NAME}-goal-none.png"
+bands_from "${NONE_FRAME}"
+NONE_CHIP="$(chip_pixels "${NONE_FRAME}" tint.working.fill)"
+NONE_CARD="$(card_state "${NONE_FRAME}" tint.working.ink)"
+echo "scene: with no goal the footer row carries ${NONE_CHIP}px of the working fill" >&2
 
 # ─── Setting One ─────────────────────────────────────────────────────────────
 run_command "goal ${OBJECTIVE}"
@@ -195,16 +218,17 @@ move_px "${PARK_X}" "${PARK_Y}"
 pause 1.5
 shot goal-chip
 CHIP_FRAME="${SCENE_OUT}/${SCENE_NAME}-goal-chip.png"
-DRIVING_CHIP="$(chip_pixels "${CHIP_FRAME}" tint.working.ink)"
+bands_from "${CHIP_FRAME}"
+DRIVING_CHIP="$(chip_pixels "${CHIP_FRAME}" tint.working.fill)"
 CHIP_CARD="$(card_state "${CHIP_FRAME}" tint.working.ink)"
-echo "scene: with a goal driving the footer carries ${DRIVING_CHIP}px of the working ink" >&2
+echo "scene: with a goal driving the footer row carries ${DRIVING_CHIP}px of the working fill" >&2
 
 # ─── Opening The Card It States ──────────────────────────────────────────────
 # The chip is pressed where the frame just taken says it is, rather than at a
 # point computed from the composer: the footer lays out with the composer, and
 # a chip that arrived with the goal moved everything drawn after it.
 if (( DRIVING_CHIP >= CHIP_PIXELS_MIN )); then
-	read -r CHIP_X CHIP_Y < <(chip_centre "${CHIP_FRAME}" tint.working.ink)
+	read -r CHIP_X CHIP_Y < <(chip_centre "${CHIP_FRAME}" tint.working.fill)
 	echo "scene: the goal chip is at ${CHIP_X},${CHIP_Y}" >&2
 	move_px "${CHIP_X}" "${CHIP_Y}"
 	pause 0.4
@@ -214,7 +238,9 @@ fi
 move_px "${PARK_X}" "${PARK_Y}"
 pause 0.8
 shot goal-open
-DRIVING_CARD="$(card_state "${SCENE_OUT}/${SCENE_NAME}-goal-open.png" tint.working.ink)"
+OPEN_FRAME="${SCENE_OUT}/${SCENE_NAME}-goal-open.png"
+bands_from "${OPEN_FRAME}"
+DRIVING_CARD="$(card_state "${OPEN_FRAME}" tint.working.ink)"
 
 # ─── Standing It Down ────────────────────────────────────────────────────────
 # From the palette rather than from the card's own control, because the claim
@@ -225,8 +251,14 @@ run_command "goal pause"
 move_px "${PARK_X}" "${PARK_Y}"
 pause 1.5
 shot goal-paused
-PAUSED_WORKING="$(card_state "${SCENE_OUT}/${SCENE_NAME}-goal-paused.png" tint.working.ink)"
-PAUSED_ATTENTION="$(card_state "${SCENE_OUT}/${SCENE_NAME}-goal-paused.png" tint.attention.ink)"
+PAUSED_FRAME="${SCENE_OUT}/${SCENE_NAME}-goal-paused.png"
+bands_from "${PAUSED_FRAME}"
+PAUSED_WORKING="$(card_state "${PAUSED_FRAME}" tint.working.ink)"
+PAUSED_ATTENTION="$(card_state "${PAUSED_FRAME}" tint.attention.ink)"
+PAUSED_CHIP_WORKING="$(chip_pixels "${PAUSED_FRAME}" tint.working.fill)"
+PAUSED_CHIP_ATTENTION="$(chip_pixels "${PAUSED_FRAME}" tint.attention.fill)"
+echo "scene: paused, the footer row carries ${PAUSED_CHIP_WORKING}px of the working fill and" \
+	"${PAUSED_CHIP_ATTENTION}px of the attention fill" >&2
 
 case "${ARM}" in
 after)
@@ -237,8 +269,8 @@ something other than the goal record"
 	fi
 	if (( DRIVING_CHIP < CHIP_PIXELS_MIN )); then
 		abandon_take "the-goal-reaches-the-footer" \
-			"the footer carries ${DRIVING_CHIP}px of the working ink after an objective was \
-set, so the goal reached no chip"
+			"the card's footer row carries ${DRIVING_CHIP}px of the working fill after an \
+objective was set, so the goal reached no chip"
 	fi
 	if [ "${CHIP_CARD}" = "1" ]; then
 		abandon_take "the-chip-is-not-the-card" \
@@ -259,6 +291,12 @@ reached the runtime without reaching the window"
 		abandon_take "a-paused-goal-is-not-driving" \
 			"the card is still ringed as driving after \`/goal pause\`, so the window states \
 two statuses at once"
+	fi
+	if (( PAUSED_CHIP_ATTENTION < CHIP_PIXELS_MIN )) || (( PAUSED_CHIP_WORKING > 0 )); then
+		abandon_take "a-paused-goal-says-so-in-the-footer" \
+			"the chip carries ${PAUSED_CHIP_WORKING}px of the working fill and \
+${PAUSED_CHIP_ATTENTION}px of the attention fill after \`/goal pause\`, so the line the \
+operator reads while the card is closed states the status it had before"
 	fi
 	echo "scene: after arm -- no goal, a goal in the footer, its card, then that card paused" >&2
 	;;

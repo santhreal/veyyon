@@ -431,9 +431,18 @@ PY
 # once the session is on screen, and again by a scene that changed what the
 # card holds -- an attachment row, an attached approval -- before it aims at
 # the card again.
-measure_composer_card() {
-	local probe="${TMPDIR}/composer-card.png"
-	probe_frame "${probe}"
+#
+# A frame named on the command line is measured instead of the screen, which
+# is how a scene reads a band out of the shot it just took: a session whose
+# turns arrive while the scene runs moves the card from the centre (§5.4) to
+# the foot between one shot and the next, and a band measured off a later
+# probe is not the band the earlier frame was drawn in.
+measure_composer_card() { # [png]
+	local probe="${1:-}"
+	if [ -z "${probe}" ]; then
+		probe="${TMPDIR}/composer-card.png"
+		probe_frame "${probe}"
+	fi
 	local strip_w=200
 	local surface_left=$(( WIN_X + RAIL_W ))
 	if (( strip_w > TRANSCRIPT_SURFACE_W / 3 )); then strip_w=$(( TRANSCRIPT_SURFACE_W / 3 )); fi

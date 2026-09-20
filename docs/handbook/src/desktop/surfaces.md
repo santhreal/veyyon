@@ -553,7 +553,9 @@ width, and press it again to close the card. The card states the objective, the
 status, the turns completed, the time the goal has run, and the tokens used
 against the budget when one is set. It carries `Pause`, `Resume` and `Drop`,
 each drawn only for the statuses that accept it: no `Resume` on an active goal,
-no `Pause` on a paused one.
+no `Pause` on a paused one. `Drop` ends the goal, so it is drawn in the error
+ink on the card's ground and the accent goes to `Pause` or `Resume` beside it.
+A completed goal offers `Drop` alone, with no accent on the row.
 
 The card's edge states the status in the tint that names it.
 
@@ -570,10 +572,28 @@ mode holding the session. A host that serves no goals withholds the capability,
 and the controls are drawn as a gate stating that instead of answering a press.
 
 Use `proof/scenes/desktop-goal.sh` to set a goal from the palette and pause it
-again. It reads the working and attention inks over the composer's footer and
-over the card band, so a chip drawn off something other than the goal record,
-a card that never arrives, and a pause that reaches the runtime without
-reaching the window are separate failures.
+again. It reads the status tint twice over: the fill of the chip in the card's
+footer row, and the ink of the card's own edge over the band above the
+composer. A chip drawn off something other than the goal record, a card that
+never arrives, and a pause that reaches the runtime without reaching the
+window are separate failures.
+
+## Loop
+
+`/loop` repeats the last prompt after each turn ends, and `/loop off` stops
+it. The window drives the same loop the terminal does, over the session mode
+the host records, so a loop started in either surface is the same loop with
+the same prompt and the same iteration and duration limits.
+
+While a loop runs, the composer footer carries a chip stating the mode. Press
+the chip to stop the loop, which is the same as `/loop off`. The next turn is
+opened through the prompt path a press takes, so a loop turn is a turn like
+any other: it streams, it is stopped by the run bar, and it is recorded in the
+transcript.
+
+A loop and a goal refuse each other rather than driving one session. Setting a
+goal while a loop runs is refused with the mode that holds the session, and so
+is the reverse.
 
 ## Model picker
 
