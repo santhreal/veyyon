@@ -6,7 +6,10 @@ import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { errorMessage } from "@veyyon/utils";
+import { goalFromModeData } from "../../goals/driver";
+import type { Goal } from "../../goals/state";
 import { writeFrame } from "../frames";
+import { goalSection } from "../goal-view";
 import { reportQueuedPrompts } from "../queued-prompts";
 import { sessionHeaderToView, sessionInfoToSummary } from "../session-bridge";
 import {
@@ -15,7 +18,7 @@ import {
 	sessionEntriesToTranscript,
 } from "../transcript-conversion";
 import { type ClientSessionState, disposeTurnSession, settleRunningTurn } from "../turns";
-import type { ErrorScope, TranscriptEntry } from "../wire";
+import type { ErrorScope, GoalStatus, GoalView, TranscriptEntry } from "../wire";
 import { sessionFiles } from "./session-files";
 import type { ActionContext } from "./types";
 
@@ -122,6 +125,47 @@ export function emitActiveSessionAndTranscript(
 		Transcript: { revision: ctx.clientState.revision, value: transcriptEntries },
 	});
 	reportQueuedPrompts(ctx.socket, ctx.clientState);
+	if (ctx.clientState.agentSession) {
+		ctx.reply.snapshot(
+			goalSection(ctx.clientState.agentSession, ctx.clientState.goalDriver, ctx.clientState.goalBridge?.stoodDown),
+		);
+	} else {
+		let goal: Goal | undefined;
+		let mode: string | undefined;
+		const entries = sm.getEntries();
+		for (let index = entries.length - 1; index >= 0; index -= 1) {
+			const entry = entries[index];
+			if (entry?.type === "mode_change") {
+				mode = entry.mode;
+				if (mode === "goal" || mode === "goal_paused") {
+					const payload =
+						("data" in entry ? entry.data : undefined) ?? ("modeData" in entry ? entry.modeData : undefined);
+					if (payload && typeof payload === "object") {
+						goal = goalFromModeData(payload as Record<string, unknown>);
+					}
+				}
+				break;
+			}
+		}
+		if (goal) {
+			const status: GoalStatus = goal.status === "budget-limited" ? "budget_limited" : goal.status;
+			const view: GoalView = {
+				objective: goal.objective,
+				status,
+				driving: mode === "goal",
+				tokens_used: goal.tokensUsed,
+				token_budget: goal.tokenBudget ?? null,
+				turns_completed: goal.turnsCompleted,
+				time_used_seconds: goal.timeUsedSeconds,
+				created_at_ms: goal.createdAt,
+				updated_at_ms: goal.updatedAt,
+				stood_down: null,
+			};
+			ctx.reply.snapshot({ Goal: { session: sm.getSessionId(), goal: view } });
+		} else {
+			ctx.reply.snapshot({ Goal: { session: sm.getSessionId(), goal: null } });
+		}
+	}
 }
 
 /**
@@ -225,6 +269,11 @@ export async function activateSession(ctx: ActionContext, session: string): Prom
 				retryable: true,
 			});
 			return undefined;
+		}
+		if (ctx.clientState.goalBridge) {
+			ctx.clientState.goalDriver?.unsubscribeFromSession();
+			ctx.clientState.goalBridge = undefined;
+			ctx.clientState.goalDriver = undefined;
 		}
 		rescopeWorkspace(ctx, previousCwd, agent.sessionManager);
 		return agent.sessionManager;

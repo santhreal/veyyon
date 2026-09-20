@@ -65,6 +65,7 @@ export const ALL_CAPABILITIES = [
 	"Usage",
 	"ContextBreakdown",
 	"Lifecycle",
+	"Goals",
 ] as const;
 
 export type Capability = (typeof ALL_CAPABILITIES)[number];
@@ -574,6 +575,31 @@ export interface AgentPauseView {
 	since_ms: number | null;
 }
 
+/**
+ * Every status a goal reports, as a value rather than a type alone, so a sweep reads the list
+ * instead of restating it and a status added here turns an incomplete suite red.
+ */
+export const ALL_GOAL_STATUSES = ["active", "paused", "budget_limited", "complete", "dropped"] as const;
+
+export type GoalStatus = (typeof ALL_GOAL_STATUSES)[number];
+
+export interface GoalView {
+	objective: string;
+	status: GoalStatus;
+	driving: boolean;
+	tokens_used: number;
+	token_budget: number | null;
+	turns_completed: number;
+	time_used_seconds: number;
+	created_at_ms: number;
+	updated_at_ms: number;
+	stood_down: string | null;
+}
+
+export const ALL_GOAL_CONTROLS = ["pause", "resume", "drop"] as const;
+
+export type GoalControl = (typeof ALL_GOAL_CONTROLS)[number];
+
 export type SnapshotSection =
 	| { Sessions: [Versioned<SessionSummary[]>, SessionLoadError[]] }
 	| { ActiveSession: Versioned<SessionHeaderView> }
@@ -605,7 +631,8 @@ export type SnapshotSection =
 	| { Keybindings: KeybindingView[] }
 	| { QueuedPrompts: QueuedPromptsView }
 	| { Commands: CommandView[] }
-	| { AgentPause: AgentPauseView };
+	| { AgentPause: AgentPauseView }
+	| { Goal: { session: string; goal: GoalView | null } };
 
 export const ALL_SNAPSHOT_SECTIONS = [
 	"Sessions",
@@ -639,6 +666,7 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"QueuedPrompts",
 	"Commands",
 	"AgentPause",
+	"Goal",
 ] as const;
 
 export type SnapshotSectionTag = (typeof ALL_SNAPSHOT_SECTIONS)[number];
@@ -686,6 +714,8 @@ export type HostAction =
 	| { SetToolViewExpanded: { session: string; call_id: string; expanded: boolean } }
 	| { DequeueQueuedPrompt: { session: string } }
 	| { RunCommand: { session: string; text: string } }
+	| { SetGoal: { session: string; objective: string; token_budget: number | null } }
+	| { ControlGoal: { session: string; op: GoalControl } }
 	| string
 	| Record<string, unknown>;
 
@@ -769,6 +799,8 @@ export const ALL_HOST_ACTIONS = [
 	"ClearOutput",
 	"GetUsage",
 	"GetContextBreakdown",
+	"SetGoal",
+	"ControlGoal",
 ] as const;
 
 export type HostActionTag = (typeof ALL_HOST_ACTIONS)[number];
@@ -853,6 +885,8 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	ClearOutput: "Sessions",
 	GetUsage: "Usage",
 	GetContextBreakdown: "ContextBreakdown",
+	SetGoal: "Goals",
+	ControlGoal: "Goals",
 };
 
 export interface HostRequest {

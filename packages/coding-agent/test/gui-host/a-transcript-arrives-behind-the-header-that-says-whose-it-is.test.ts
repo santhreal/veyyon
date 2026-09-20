@@ -190,6 +190,8 @@ describe("a transcript arrives behind the header that says whose it is", () => {
 			ExportSession: { ExportSession: { session: beta, format: "json" } },
 			CompactSession: { CompactSession: { session: alpha } },
 			HandoffSession: { HandoffSession: { session: alpha, target: "" } },
+			SetGoal: { SetGoal: { session: alpha, objective: "Swept", token_budget: null } },
+			ControlGoal: { ControlGoal: { session: alpha, op: "pause" } },
 			SubmitPrompt: { SubmitPrompt: { session: alpha, text: "", attachments: [] } },
 			Steer: { Steer: { session: alpha, text: "" } },
 			FollowUp: { FollowUp: { session: alpha, text: "" } },

@@ -29,6 +29,8 @@
 
 ### Added
 
+- Shared goal driver lifts host-agnostic goal continuation, session event bookkeeping, and tool swaps out of the terminal controller into GoalDriver and GoalDriverPort.
+- The desktop window reaches goal mode over the JSON protocol via SetGoal and ControlGoal actions, the Goal snapshot section, and the /goal palette commands driven by the shared GoalDriver.
 - The desktop palette runs `/switch`, which opens the model list and runs this session on the model chosen without writing it as the default role, as `/model` continues to do.
 - The desktop runs `/retry` and `/rephrase`, from the command palette or from the menu a right-click opens on the transcript's last answer: the first re-runs a turn that ended in an error or an abort, the second asks for that answer again in plainer prose as an ordinary turn, and each is refused when the session has nothing to run again or nothing finished to say again.
 - The desktop runs `/pause` and `/unpause`, freezing every agent in the host process -- the session on screen, spawned agents and the advisor, and any terminal sharing that process -- at its next action boundary and waking them again; while the freeze holds, every attached window draws a strip stating how long it has run with a control that releases it, including a window that attached after the freeze began.

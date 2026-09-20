@@ -18,7 +18,7 @@ interface AttachPayload {
  * pause.
  */
 async function emitInitialState(ctx: ActionContext): Promise<void> {
-	ctx.reply.snapshot({ Capabilities: buildCapabilitiesSnapshot() });
+	ctx.reply.snapshot({ Capabilities: buildCapabilitiesSnapshot(ctx.clientState.agentSession?.settings) });
 	await emitSessionList(ctx);
 	const sm = activeManager(ctx);
 	if (sm) emitActiveSessionAndTranscript(ctx, sm);

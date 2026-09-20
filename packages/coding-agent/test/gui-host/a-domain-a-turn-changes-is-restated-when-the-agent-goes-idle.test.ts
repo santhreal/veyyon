@@ -82,6 +82,7 @@ const AT_IDLE: Record<SnapshotSectionTag, "restated-at-idle" | "listed-at-idle" 
 	Sessions: "listed-at-idle",
 	ActiveSession: "during-turn",
 	Transcript: "during-turn",
+	Goal: "during-turn",
 	SessionSearch: "on-request",
 	SessionTranscript: "on-request",
 	Capabilities: "on-request",

@@ -1,5 +1,7 @@
 import type { SessionEntry, SessionHeader } from "@veyyon/kernel/session/session-entries";
 import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
+import type { Settings } from "../config/settings";
+import { settingsOrNull } from "../config/settings-instance";
 import {
 	ALL_CAPABILITIES,
 	type Capability,
@@ -40,6 +42,7 @@ export const SUPPORTED_CAPABILITIES: Partial<Record<Capability, true>> = {
 	Usage: true,
 	ContextBreakdown: true,
 	Lifecycle: true,
+	Goals: true,
 };
 
 /** Specific, truthful reasons why each unsupported capability is unavailable. */
@@ -50,9 +53,18 @@ export const UNAVAILABLE_CAPABILITY_REASONS: Record<"PendingEdits" | "Extensions
 
 /**
  * Construct the capabilities list covering every member of ALL_CAPABILITIES.
+ *
+ * `SUPPORTED_CAPABILITIES` states what this host implements. A capability the host implements can
+ * still be withheld by the state it runs under, which is what `goal.enabled` does to `Goals`: the
+ * window then draws the gate and its reason rather than a control that refuses.
  */
-export function buildCapabilitiesSnapshot(): [Capability, CapabilityStatus][] {
+export function buildCapabilitiesSnapshot(settings?: Settings): [Capability, CapabilityStatus][] {
+	const effectiveSettings = settings ?? settingsOrNull();
+	const goalEnabled = effectiveSettings ? effectiveSettings.get("goal.enabled") : true;
 	return ALL_CAPABILITIES.map(capability => {
+		if (capability === "Goals" && !goalEnabled) {
+			return [capability, { Unavailable: { reason: "Goal mode is disabled in settings (goal.enabled)" } }];
+		}
 		if (SUPPORTED_CAPABILITIES[capability]) {
 			return [capability, "Available"];
 		}
@@ -142,6 +154,8 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	RefreshDiagnostics: "Diagnostic",
 	RetryDiagnosticSource: "Diagnostic",
 	GetUsage: "Usage",
+	SetGoal: "Session",
+	ControlGoal: "Session",
 };
 
 export function mapActionToErrorScope(actionTag: string): ErrorScope {

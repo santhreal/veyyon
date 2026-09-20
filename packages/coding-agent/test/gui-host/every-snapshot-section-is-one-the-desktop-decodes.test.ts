@@ -376,6 +376,23 @@ const CORPUS = [
 		],
 	},
 	{ AgentPause: { paused: true, since_ms: 1717171717000 } },
+	{
+		Goal: {
+			session: "sess-1",
+			goal: {
+				objective: "Ship the desktop parity work",
+				status: "active",
+				driving: true,
+				tokens_used: 20000,
+				token_budget: 50000,
+				turns_completed: 3,
+				time_used_seconds: 420,
+				created_at_ms: 1700000000000,
+				updated_at_ms: 1700000002000,
+				stood_down: null,
+			},
+		},
+	},
 ] satisfies SnapshotSection[];
 
 describe("every snapshot section is one the desktop decodes", () => {

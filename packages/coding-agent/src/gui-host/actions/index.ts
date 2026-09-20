@@ -4,6 +4,7 @@ import { commandsActionHandlers } from "./commands";
 import { connectionActionHandlers } from "./connection";
 import { diagnosticsActionHandlers } from "./diagnostics";
 import { filesActionHandlers } from "./files";
+import { goalActionHandlers } from "./goals";
 import { historyActionHandlers } from "./history";
 import { mcpActionHandlers } from "./mcp";
 import { modelsActionHandlers } from "./models";
@@ -23,6 +24,7 @@ export * from "./commands";
 export * from "./connection";
 export * from "./diagnostics";
 export * from "./files";
+export * from "./goals";
 export * from "./history";
 export * from "./mcp";
 export * from "./models";
@@ -44,6 +46,7 @@ export const allActionHandlers: ActionHandlersMap = {
 	...turnActionHandlers,
 	...filesActionHandlers,
 	...changesActionHandlers,
+	...goalActionHandlers,
 	...terminalsActionHandlers,
 	...processesActionHandlers,
 	...modelsActionHandlers,
