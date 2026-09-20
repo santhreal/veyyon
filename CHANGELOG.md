@@ -44,11 +44,19 @@
 
 ### Added
 
+- Loop mode runs on the desktop window through the host-agnostic LoopDriver over the JSON protocol, displaying a composer mode chip and enforcing mutual exclusion with goal mode.
+- The desktop window draws an empty-session welcome surface offering controls to create, resume, or configure models when zero sessions exist or the last session closes.
+- The desktop queue rail draws branch hierarchies as an indented and collapsible tree from session parent paths, bounding depth to configured tokens and skipping collapsed subtrees during keyboard navigation.
+- The desktop queue rail folds and unfolds the branch under the cursor with the left and right arrows, and the fold is written per space so it survives the next projection and the next launch.
+- A desktop host that dies before it listens, reconnects or fails states the child's last stderr lines on the connection banner instead of reporting the transport error alone.
+- Shared goal driver lifts host-agnostic goal continuation, session event bookkeeping, and tool swaps out of the terminal controller into GoalDriver and GoalDriverPort.
+- The desktop window reaches goal mode over the JSON protocol via SetGoal and ControlGoal actions, the Goal snapshot section, and the /goal palette commands driven by the shared GoalDriver.
 - The desktop palette runs `/switch`, which opens the model list and runs this session on the model chosen without writing it as the default role, as `/model` continues to do.
 - The desktop runs `/retry` and `/rephrase`, from the command palette or from the menu a right-click opens on the transcript's last answer: the first re-runs a turn that ended in an error or an abort, the second asks for that answer again in plainer prose as an ordinary turn, and each is refused when the session has nothing to run again or nothing finished to say again.
 - The desktop runs `/pause` and `/unpause`, freezing every agent in the host process -- the session on screen, spawned agents and the advisor, and any terminal sharing that process -- at its next action boundary and waking them again; while the freeze holds, every attached window draws a strip stating how long it has run with a control that releases it, including a window that attached after the freeze began.
 - The desktop palette enters and leaves vibe mode with `/vibe` and `/vibe off`, leaving the agent reading and directing worker sessions and restoring the tool set the session held when it leaves; plan mode and vibe mode refuse each other rather than stacking two tool sets.
 - The desktop runs `/plan-review`, from the command palette or by pressing the plan chip in the composer, which raises the newest plan the session wrote for review again: approving it leaves plan mode and starts the work, sending it back carries the refinement typed under the card, and it is refused while a turn is running, when the session is not planning, and when no plan has been written.
+- The desktop runs `/btw`, asking a question of the session's own context beside a running turn: the question and its answer are drawn as their own pair in the transcript, neither is recorded in the conversation, and a question with nothing to ask is refused.
 - The desktop command palette lists every slash command the host runs, including this workspace's skills, extension commands, project command files and MCP prompts, runs one with the arguments typed after it, and holds the rows that would run another while the host answers.
 - The desktop queue rail is dragged to a width by the handle on its trailing edge, between the bounds `surface/queue.toml` authors, and the width it was left at comes back when the window opens again.
 - A desktop right panel tab closes from its own edge: the close is drawn on the tab the pointer is over while the panel holds more than one tab, closing a tab that is not the active one leaves the selection where it was, closing the active one selects a neighbour, and a tab whose content the host has not answered yet marks itself.
@@ -617,6 +625,7 @@
 
 ### Fixed
 
+- A desktop transcript keeps every earlier turn drawn when a record is written beside the conversation, where a side question left the window drawing its answer alone.
 - A desktop surface that states a count states it in the singular when it is one, where the panel drew `1 more changed files are not listed`, the transcript drew `1 lines` and the terminal drawer drew `1 matches`.
 - The desktop run bar puts its status word and the line beside it on one centre line, where the line sat six pixels above the badge.
 - The desktop terminal drawer's chrome actions are the size of the tab strip they sit in, and its supervised-process rows draw actions that fit the row's height instead of overflowing it by four pixels.
