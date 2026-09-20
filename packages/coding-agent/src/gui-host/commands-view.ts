@@ -6,7 +6,9 @@ import {
 	buildAvailableSlashCommands,
 	type InternalAvailableSlashCommand,
 } from "../slash-commands/available-commands";
+import type { BuiltinSlashCommandDeclaration } from "../slash-commands/builtin-declarations";
 import { TEXT_MODE_BUILTIN_DECLARATIONS } from "../slash-commands/text-mode-builtins";
+import { DESKTOP_HOST_COMMAND_DECLARATIONS } from "./desktop-commands";
 import { writeFrame } from "./frames";
 import type { ClientSessionState } from "./turns";
 import type { CommandSource, CommandSubcommandView, CommandView } from "./wire";
@@ -36,6 +38,19 @@ function toView(command: InternalAvailableSlashCommand): CommandView {
 	};
 }
 
+/** One declaration as the row a client draws. */
+function declarationView(declaration: BuiltinSlashCommandDeclaration): CommandView {
+	const hint = declaration.acpInputHint ?? declaration.inlineHint;
+	return toView({
+		name: declaration.name,
+		aliases: declaration.aliases ? Array.from(declaration.aliases) : undefined,
+		description: declaration.acpDescription ?? declaration.description,
+		input: hint ? { hint } : undefined,
+		subcommands: declaration.subcommands?.map(sub => ({ ...sub })),
+		source: "builtin",
+	});
+}
+
 /**
  * The commands a client can run before any session exists.
  *
@@ -46,28 +61,22 @@ function toView(command: InternalAvailableSlashCommand): CommandView {
  * catalogue replaces it the moment a session is created.
  */
 export function builtinCommandViews(): CommandView[] {
-	return TEXT_MODE_BUILTIN_DECLARATIONS.map(declaration => {
-		const hint = declaration.acpInputHint ?? declaration.inlineHint;
-		return toView({
-			name: declaration.name,
-			aliases: declaration.aliases ? Array.from(declaration.aliases) : undefined,
-			description: declaration.acpDescription ?? declaration.description,
-			input: hint ? { hint } : undefined,
-			subcommands: declaration.subcommands?.map(sub => ({ ...sub })),
-			source: "builtin",
-		});
-	});
+	return [...TEXT_MODE_BUILTIN_DECLARATIONS, ...DESKTOP_HOST_COMMAND_DECLARATIONS].map(declarationView);
 }
 
 /**
  * Every command the host will run for `state`: the builtins plus whatever the
  * workspace installed, when a session is there to read them off.
+ *
+ * The rows this host answers itself are appended rather than discovered:
+ * `buildAvailableSlashCommands` answers what a text client may see, which is
+ * the question every other client asks, and a window asks a wider one.
  */
 export async function buildCommandsView(state: ClientSessionState): Promise<CommandView[]> {
 	const session = state.agentSession;
 	if (!session) return builtinCommandViews();
 	const commands = await buildAvailableSlashCommands(session);
-	return commands.map(toView);
+	return [...commands.map(toView), ...DESKTOP_HOST_COMMAND_DECLARATIONS.map(declarationView)];
 }
 
 /** State the command catalogue to one client, without a request to answer. */

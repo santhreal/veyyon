@@ -20,6 +20,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { DESKTOP_HOST_COMMAND_NAMES } from "../../src/gui-host/desktop-commands";
 import { ALL_HOST_ACTIONS, type HostActionTag } from "../../src/gui-host/wire";
 import {
 	BUILTIN_SLASH_COMMAND_DECLARATIONS,
@@ -32,6 +33,8 @@ type Decision =
 	| { action: HostActionTag }
 	/** The window answers it alone: navigation, a local selection, the process. */
 	| { client: string }
+	/** The host answers it for the window, and lists it in the catalogue. */
+	| { host: string }
 	/** No desktop surface reaches it yet. */
 	| { gap: string };
 
@@ -65,7 +68,7 @@ const DECISIONS: Record<string, Decision> = {
 	new: { action: "CreateSession" },
 	drop: { action: "DeleteSession" },
 	resume: { action: "SearchSessions" },
-	btw: { gap: "no ephemeral side-question submission on the composer" },
+	btw: { host: "answered on the session's own context, drawn as a side pair" },
 	tan: { gap: "no background-agent submission on the composer" },
 	omfg: { gap: "no rule-forging surface" },
 	retry: { action: "RetryTurn" },
@@ -80,7 +83,6 @@ const DECISIONS: Record<string, Decision> = {
 /** The gaps as they stand, so closing one is a recorded change. */
 const RECORDED_GAPS = [
 	"agents",
-	"btw",
 	"collab",
 	"debug",
 	"goal",
@@ -117,6 +119,14 @@ describe("every command the terminal offers has a desktop decision", () => {
 		expect(named.length).toBeGreaterThan(0);
 		const unknown = named.filter(([, action]) => !(ALL_HOST_ACTIONS as readonly string[]).includes(action));
 		expect(unknown).toEqual([]);
+	});
+
+	test("a decision saying the host answers it names one the host declares", () => {
+		const answered = Object.entries(DECISIONS)
+			.filter(([, decision]) => "host" in decision)
+			.map(([name]) => name)
+			.sort();
+		expect(answered).toEqual([...DESKTOP_HOST_COMMAND_NAMES].sort());
 	});
 
 	test("the commands with no desktop surface are exactly the recorded gaps", () => {

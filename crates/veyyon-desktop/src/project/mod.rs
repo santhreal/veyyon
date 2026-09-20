@@ -34,6 +34,7 @@ mod requests;
 mod run_bar;
 mod submission;
 mod transcript;
+mod values;
 mod workspace_asks;
 use std::collections::HashMap;
 
@@ -62,7 +63,7 @@ pub use self::{
 	panel::project_panel,
 	queue::{clear_sent_draft, elapsed_label},
 	requests::{record_sent, surface_for_action},
-	transcript::PANE_LINE_CEILING,
+	values::PANE_LINE_CEILING,
 };
 use self::{
 	cards::cards,

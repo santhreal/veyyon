@@ -126,3 +126,41 @@ fn execution_and_summary_records_distinguish_their_protocol_roles() {
 		);
 	}
 }
+
+/// WHY: a side question and its answer arrive as `Custom` records, the role
+/// the protocol carries everything it has no role for, so both were drawn
+/// under the word "Custom" and the question could not be told from the
+/// answer. The label is read off the discriminator the producer stated, and
+/// a discriminator no surface has a name for keeps the role's own register.
+#[test]
+fn a_side_question_reads_under_its_own_name_and_an_unnamed_record_keeps_the_role() {
+	for (discriminator, expected) in [
+		("side_question", "Side question"),
+		("side_answer", "Side answer"),
+		("command_output", "Custom"),
+		("", "Custom"),
+	] {
+		let mut store = Store::new();
+		let session = SessionId::from("s");
+		store.persisted.shell.active_session = Some(session.clone());
+		let mut record = entry("record", None, MessageRole::Custom, vec![ContentBlock::Text {
+			text: "Recorded text".into(),
+		}]);
+		record.raw_discriminator = discriminator.to_string();
+		store.transcripts.entry(session).or_default().append(record);
+		let mut state = ShellState::default();
+		project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
+		assert_eq!(
+			state.transcript,
+			vec![Turn::Agent {
+				blocks: vec![Block::Note {
+					label:    expected,
+					text:     "Recorded text".to_string(),
+					boundary: false,
+				}],
+				model:  None,
+			}],
+			"{discriminator}"
+		);
+	}
+}

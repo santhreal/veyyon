@@ -6,12 +6,14 @@ import { executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins
 import { parseSlashCommand } from "../../slash-commands/helpers/parse";
 import { runSkillCommand } from "../../slash-commands/skill-dispatch";
 import { buildCommandsView } from "../commands-view";
+import { isDesktopHostCommand } from "../desktop-commands";
 import { writeFrame } from "../frames";
 import { publishModelsView } from "../models-view";
 import { reportQueuedPrompts } from "../queued-prompts";
 import { executePromptTurn, getOrCreateAgentSession } from "../turns";
 import type { TranscriptEntry } from "../wire";
 import { activateSession, emitActiveSession, replyError } from "./active-session";
+import { runDesktopHostCommand } from "./host-commands";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
 
 const handleListCommands: ActionHandler = async ctx => {
@@ -92,7 +94,8 @@ const handleRunCommand: ActionHandler<RunCommandPayload | undefined> = async (ct
 	// took a row off the catalogue sends it back. A client echoing what was
 	// typed sends the slash it was typed with, and both name one command.
 	const text = typed.startsWith("/") ? typed : `/${typed}`;
-	if (!parseSlashCommand(text)) {
+	const parsed = parseSlashCommand(text);
+	if (!parsed) {
 		ctx.reply.failure({
 			scope: "Session",
 			code: "NOT_A_COMMAND",
@@ -112,6 +115,14 @@ const handleRunCommand: ActionHandler<RunCommandPayload | undefined> = async (ct
 		if (await runSkillCommand(session, text, ctx.clientState.queueMode === "Queue" ? "followUp" : "steer")) {
 			reportQueuedPrompts(ctx.socket, ctx.clientState);
 			ctx.reply.success();
+			return;
+		}
+
+		// A command this host answers is answered before the builtin table,
+		// which holds the text-mode set and does not know this one. Its name
+		// is a builtin's, so a skill still cannot shadow it.
+		if (isDesktopHostCommand(parsed.name)) {
+			await runDesktopHostCommand(ctx, session, parsed.name, parsed.args);
 			return;
 		}
 
