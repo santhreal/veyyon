@@ -196,7 +196,7 @@ describe("session storage writers conform to lifecycle and error contracts", () 
 
 				await expect(writer.append('{"type":"message"}\n')).rejects.toThrow("Writer closed");
 			} finally {
-				if (writer && writer.isOpen()) {
+				if (writer?.isOpen()) {
 					await writer.close().catch(() => {});
 				}
 				await client.end();
@@ -235,7 +235,7 @@ describe("session storage writers conform to lifecycle and error contracts", () 
 				await writer.close();
 				expect(writer.isOpen()).toBe(false);
 			} finally {
-				if (writer && writer.isOpen()) {
+				if (writer?.isOpen()) {
 					await writer.close().catch(() => {});
 				}
 				await client.end();
