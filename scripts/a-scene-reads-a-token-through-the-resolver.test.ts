@@ -40,6 +40,7 @@ const RESOLVER = path.join(SCENES_DIR, "token_px.py");
 
 /** Scenes that resolve a literal token key, and how many reads each one makes. */
 const SCENE_READS: Record<string, number> = {
+	"desktop-agent-freeze.sh": 3,
 	"desktop-announcement.sh": 6,
 	"desktop-appearance.sh": 8,
 	"desktop-artifacts.sh": 1,
