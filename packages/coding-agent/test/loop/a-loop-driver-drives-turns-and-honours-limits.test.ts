@@ -35,7 +35,7 @@ describe("LoopDriver driving turns and honours limits", () => {
 	let submittedPrompts: string[];
 	let warnings: string[];
 	let canSubmitFlag: boolean;
-	let blockingModeValue: string | undefined;
+	let blockingModeValue: "plan" | "vibe" | "goal" | undefined;
 
 	beforeAll(() => {
 		initTheme();
@@ -71,7 +71,7 @@ describe("LoopDriver driving turns and honours limits", () => {
 			submitPrompt: (prompt: string) => {
 				submittedPrompts.push(prompt);
 				// Simulate prompt execution by triggering agent_end after prompt processing
-				void driver.handleSessionEvent({ type: "agent_end" });
+				void driver.handleSessionEvent({ type: "agent_end", messages: [] });
 			},
 			warn: (message: string) => {
 				warnings.push(message);
