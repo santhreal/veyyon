@@ -429,9 +429,11 @@ describe("a goal set from the window drives turns and states itself", () => {
 		expect(enterLoop.outcome).toEqual({ RequestSucceeded: { request: 2 } });
 
 		// Setting a goal while loop mode is active is refused with MODE_CONFLICT
-		const setReply = (await client.request(3, {
-			SetGoal: { session, objective: "Autonomous work", token_budget: null },
-		})).outcome as { RequestFailed?: { error: { code: string; message: string } } };
+		const setReply = (
+			await client.request(3, {
+				SetGoal: { session, objective: "Autonomous work", token_budget: null },
+			})
+		).outcome as { RequestFailed?: { error: { code: string; message: string } } };
 		expect(setReply.RequestFailed?.error.code).toBe("MODE_CONFLICT");
 		expect(setReply.RequestFailed?.error.message).toBe("Exit loop mode first.");
 
@@ -450,12 +452,12 @@ describe("a goal set from the window drives turns and states itself", () => {
 		expect(activeGoal?.driving).toBe(true);
 
 		// With active goal, entering loop mode is also refused
-		const loopRefused = (await client.request(6, {
-			SetSessionMode: { session, mode: "loop" },
-		})).outcome as { RequestFailed?: { error: { code: string; message: string } } };
+		const loopRefused = (
+			await client.request(6, {
+				SetSessionMode: { session, mode: "loop" },
+			})
+		).outcome as { RequestFailed?: { error: { code: string; message: string } } };
 		expect(loopRefused.RequestFailed?.error.code).toBe("MODE_CONFLICT");
-		expect(loopRefused.RequestFailed?.error.message).toBe(
-			"The session has an active goal; exit it before looping",
-		);
+		expect(loopRefused.RequestFailed?.error.message).toBe("The session has an active goal; exit it before looping");
 	});
 });

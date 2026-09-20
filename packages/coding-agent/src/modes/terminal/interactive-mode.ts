@@ -85,6 +85,7 @@ import { loadSlashCommands } from "../../extensibility/slash-commands";
 // The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
 // handler and reaches hundreds of modules.
 import { listLocalPlanFileUrls, resolveLocalUrlToPath } from "../../internal-urls/local-protocol";
+import { LoopDriver } from "../../loop";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "../../lsp/startup-events";
 import type { MCPManager } from "../../mcp";
 import {
@@ -146,13 +147,7 @@ import { getSessionAccentAnsi, getSessionAccentHex } from "../../utils/session-c
 import { messageHasDisplayableThinking } from "../../utils/thinking-display";
 import { popTerminalTitle, pushTerminalTitle, setSessionTerminalTitle } from "../../utils/title-generator";
 import { recordLaunchFacts } from "../launch-facts";
-import { LoopDriver } from "../../loop";
-import {
-	describeLoopLimit,
-	describeLoopLimitRuntime,
-	type LoopLimitRuntime,
-	parseLoopLimitArgs,
-} from "../loop-limit";
+import { describeLoopLimit, describeLoopLimitRuntime, type LoopLimitRuntime, parseLoopLimitArgs } from "../loop-limit";
 import { modalRevealGround, pointerMotionEnabled } from "./components/chrome/modal-shell";
 import { renderSunsetField } from "./components/chrome/sun";
 import {

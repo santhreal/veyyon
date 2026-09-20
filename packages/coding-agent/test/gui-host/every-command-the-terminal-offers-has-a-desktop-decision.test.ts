@@ -81,17 +81,7 @@ const DECISIONS: Record<string, Decision> = {
 };
 
 /** The gaps as they stand, so closing one is a recorded change. */
-const RECORDED_GAPS = [
-	"agents",
-	"collab",
-	"debug",
-	"guided-goal",
-	"join",
-	"leave",
-	"omfg",
-	"profile",
-	"tan",
-];
+const RECORDED_GAPS = ["agents", "collab", "debug", "guided-goal", "join", "leave", "omfg", "profile", "tan"];
 
 /**
  * The declarations through their declared interface. The table is `as const`,
