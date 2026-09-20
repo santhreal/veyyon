@@ -12,7 +12,7 @@ use super::{
 	DrawerContent, KeymapState, Overlay, PaletteState, PanelContent, Row, Section, SettingsState,
 	Turn, TurnPhase,
 };
-use crate::{PaletteMode, menu::MenuState};
+use crate::{HostCommands, PaletteMode, menu::MenuState};
 
 /// Everything one shell render draws.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,6 +91,30 @@ pub struct ShellState {
 	/// announcement is raised, deduped, expired and bounded in the model, so
 	/// what one frame shows is what the queue holds at that moment.
 	pub notices:            Vec<Notification>,
+	/// What the host states this workspace can run (§5.8).
+	///
+	/// Held whether or not a command surface is open, because a palette is
+	/// opened by a keystroke and the catalogue arrives with a host event:
+	/// a window that composed its rows only while one was open would list
+	/// what the binary was built knowing until the next unrelated event.
+	pub commands:           HostCommands,
+}
+
+impl ShellState {
+	/// Lists the host's commands on a command surface as it opens.
+	///
+	/// The window's own rows are already on it, and the host's go after
+	/// them, so a command this workspace installed is reachable from the
+	/// keystroke that opened the surface rather than from the next host
+	/// event (§5.8).
+	pub fn list_host_commands(&self, palette: &mut PaletteState) {
+		if self.commands.rows.is_empty() {
+			return;
+		}
+		let mut items = palette.items().to_vec();
+		items.extend(self.commands.rows.iter().cloned());
+		palette.set_items(items);
+	}
 }
 
 impl ShellState {
@@ -239,6 +263,7 @@ impl Default for ShellState {
 			appearance:         AppearanceChoice::default(),
 			menu:               MenuState::default(),
 			notices:            Vec::new(),
+			commands:           HostCommands::default(),
 		}
 	}
 }

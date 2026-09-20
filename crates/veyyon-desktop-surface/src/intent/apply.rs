@@ -111,6 +111,13 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 				next.page = page;
 				next.route = Some(*route);
 			}
+			// The command surface reached by a route lists what the host
+			// stated too, on the same terms as the one a keystroke opens.
+			if let Overlay::Palette(palette) = &mut destination
+				&& *route == crate::navigation::SurfaceRoute::Commands
+			{
+				state.list_host_commands(palette);
+			}
 			state.overlay = Some(destination);
 		},
 		Intent::CloseOverlay => {

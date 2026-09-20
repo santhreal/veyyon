@@ -15,7 +15,13 @@ pub mod rows;
 
 use veyyon_desktop_model::Capability;
 
-pub use self::{host_commands::host_command_items, matcher::*, modes::*, render::*, rows::*};
+pub use self::{
+	host_commands::{HostCommands, host_commands},
+	matcher::*,
+	modes::*,
+	render::*,
+	rows::*,
+};
 use crate::{
 	Intent,
 	model::{Row, Section},

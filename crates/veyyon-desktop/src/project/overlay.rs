@@ -10,7 +10,7 @@ use veyyon_desktop_surface::{
 	Intent, Overlay, PaletteItem, PaletteItemKind, PaletteMode, PaletteState, SettingsState,
 	ShellState,
 	navigation::SurfaceRoute,
-	palette::{PaletteMeta, commands::command_items, host_command_items},
+	palette::{HostCommands, PaletteMeta, commands::command_items, host_commands},
 };
 
 use super::menu::{command_declined, unavailable};
@@ -32,15 +32,39 @@ fn holds(state: &PaletteState, listed: &[PaletteItem]) -> bool {
 
 /// Projects domain store views onto active overlay state fields.
 pub fn project_overlay(store: &Store, state: &mut ShellState) {
+	project_commands(store, state);
 	match &mut state.overlay {
 		Some(Overlay::Settings(settings_state)) => {
 			project_settings_domains(store, settings_state);
 		},
 		Some(Overlay::Palette(palette_state)) => {
-			project_palette_domains(store, palette_state);
+			project_palette_domains(store, &state.commands, palette_state);
 		},
 		Some(Overlay::History(_)) | None => {},
 	}
+}
+
+/// Files the host's catalogue on the state, as the rows a command surface
+/// lists and the spellings that take a message after them.
+///
+/// Kept whether or not a surface is open: the catalogue arrives with a host
+/// event and a palette is opened by a keystroke, so composing the rows only
+/// while one is open leaves the surface listing the window's own rows until
+/// the next unrelated event (§5.8).
+///
+/// §5.13: a command whose capability the host declined is not listed rather
+/// than listed and refused, so the rows are pruned here, where the store
+/// states what the host offers.
+fn project_commands(store: &Store, state: &mut ShellState) {
+	let native = command_items();
+	let titles: Vec<&str> = native.iter().map(|item| item.title.as_str()).collect();
+	let mut listed = host_commands(&store.domains.commands, &titles);
+	listed.rows.retain(|item| {
+		item
+			.capability
+			.is_none_or(|capability| !unavailable(store, capability))
+	});
+	state.commands = listed;
 }
 
 /// Populates settings overlay categories from host domain snapshots.
@@ -80,7 +104,7 @@ fn project_settings_domains(store: &Store, state: &mut SettingsState) {
 }
 
 /// Populates palette items from file tree and search result domains.
-fn project_palette_domains(store: &Store, state: &mut PaletteState) {
+fn project_palette_domains(store: &Store, commands: &HostCommands, state: &mut PaletteState) {
 	match state.mode {
 		// What was typed is answered by the host's search, and the workspace
 		// tree is what the mode opened on: rows follow the query, so a lookup
@@ -159,12 +183,12 @@ fn project_palette_domains(store: &Store, state: &mut PaletteState) {
 					_ => None,
 				};
 			}
-			let native = command_items();
-			let titles: Vec<&str> = native.iter().map(|item| item.title.as_str()).collect();
-			let listed = host_command_items(&store.domains.commands, &titles);
-			if !holds(state, &listed) {
-				let mut items = native.clone();
-				items.extend(listed);
+			// A group under the command surface lists the pages beneath it,
+			// which the route put there; only the surface itself lists what
+			// the host can run.
+			if is_root && !holds(state, &commands.rows) {
+				let mut items = command_items();
+				items.extend(commands.rows.iter().cloned());
 				state.set_items(items);
 			}
 			// §5.13: a command whose action the host declines is a surface the

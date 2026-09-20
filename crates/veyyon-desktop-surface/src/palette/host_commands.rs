@@ -28,16 +28,44 @@ const fn source_note(source: CommandSource) -> Option<&'static str> {
 	}
 }
 
-/// One row per command the host lists, and one more per subcommand it names,
-/// skipping a command a native row already reaches.
+/// What the host states this workspace can run (§5.8).
+///
+/// The rows a command surface lists beside the window's own, and the
+/// spellings that take a message after them, resolved together because both
+/// are read off one `Commands` snapshot.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HostCommands {
+	/// One row per command the host lists, and one more per subcommand it
+	/// names.
+	pub rows:     Vec<PaletteItem>,
+	/// Every spelling — a name or an alias, lowercased — the host stated
+	/// takes arguments after it.
+	pub carrying: Vec<String>,
+}
+
+impl HostCommands {
+	/// Whether the host stated that `word` takes arguments after it.
+	///
+	/// A command that takes none is not answered here, because the words
+	/// written after such a command reach nothing and would be dropped.
+	#[must_use]
+	pub fn carries(&self, word: &str) -> bool {
+		self
+			.carrying
+			.iter()
+			.any(|spelling| spelling.eq_ignore_ascii_case(word))
+	}
+}
+
+/// The catalogue as rows, skipping a command a native row already reaches.
 ///
 /// `native` is the titles the window's own rows carry, spelled with their
 /// leading slash. A host command with the same spelling is the same command,
 /// and the native row runs it through the surface the window already draws
 /// for it, so listing both would offer one command twice.
 #[must_use]
-pub fn host_command_items(commands: &[CommandView], native: &[&str]) -> Vec<PaletteItem> {
-	let mut items: Vec<PaletteItem> = Vec::new();
+pub fn host_commands(commands: &[CommandView], native: &[&str]) -> HostCommands {
+	let mut listed = HostCommands::default();
 	for command in commands {
 		let spelled = format!("/{}", command.name);
 		if native
@@ -46,15 +74,24 @@ pub fn host_command_items(commands: &[CommandView], native: &[&str]) -> Vec<Pale
 		{
 			continue;
 		}
-		items.push(command_row(&spelled, command));
+		// What a command takes is the host's statement, not the window's
+		// guess: a hint is how the host says a message follows the name, and
+		// an alias reaches the same command, so it carries one too.
+		if command.input_hint.is_some() {
+			listed.carrying.push(command.name.to_lowercase());
+			listed
+				.carrying
+				.extend(command.aliases.iter().map(|alias| alias.to_lowercase()));
+		}
+		listed.rows.push(command_row(&spelled, command));
 		for sub in &command.subcommands {
-			items.push(subcommand_row(&spelled, command, sub));
+			listed.rows.push(subcommand_row(&spelled, command, sub));
 		}
 	}
-	for (index, item) in items.iter_mut().enumerate() {
+	for (index, item) in listed.rows.iter_mut().enumerate() {
 		item.id = ID_BASE + index as u64;
 	}
-	items
+	listed
 }
 
 /// The row a command itself carries.

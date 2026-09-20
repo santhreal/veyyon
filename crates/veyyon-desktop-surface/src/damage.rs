@@ -260,6 +260,10 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		// drawn from no box of its own, and the titlebar's own section words
 		// light with it.
 		menu,
+		// The catalogue is read when a command surface opens and drawn from
+		// the overlay that opened, which is diffed above: a change to what
+		// the host can run repaints nothing on its own.
+		commands: _,
 	} = next;
 
 	// Anything that moves layout, or changes a surface that records no box of

@@ -118,7 +118,7 @@ impl ShellView {
 	/// Opens the global command surface with the same input and selection
 	/// implementation.
 	pub fn open_command_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-		self.open_composer_options(PaletteState::commands(), cx);
+		self.open_composer_options(self.command_surface(), cx);
 		self.palette_input.anchored = false;
 		self.palette_input.restore_focus = false;
 		if let Some(editor) = self.palette_editor() {
@@ -180,17 +180,20 @@ impl ShellView {
 		};
 		// A command that carries a message is ranked on its first word, so the
 		// message after it is not scored against the row and cannot lose it.
-		// Which commands those are is read off the command table, and the
-		// spelling is compared the way the ranker compares, ignoring case:
-		// `/Steer hello` reaches the same row as `/steer hello`.
+		// Which commands those are is read off the command table and off the
+		// host's catalogue, and the spelling is compared the way the ranker
+		// compares, ignoring case: `/Steer hello` reaches the same row as
+		// `/steer hello`, and `/btw where is it` reaches the row the host
+		// stated takes a question.
 		let first = query.split_whitespace().next().unwrap_or("");
-		let carries = ComposerCommand::iter().any(|command| {
-			command.carries_draft()
-				&& command
-					.name()
-					.trim_start_matches('/')
-					.eq_ignore_ascii_case(first)
-		});
+		let carries = self.state.commands.carries(first)
+			|| ComposerCommand::iter().any(|command| {
+				command.carries_draft()
+					&& command
+						.name()
+						.trim_start_matches('/')
+						.eq_ignore_ascii_case(first)
+			});
 		let query = if carries { first } else { query };
 		let query = if query.eq_ignore_ascii_case("commands") {
 			""
@@ -206,7 +209,7 @@ impl ShellView {
 				.and_then(Overlay::as_palette)
 				.is_none()
 		{
-			self.state.overlay = Some(Overlay::Palette(PaletteState::commands()));
+			self.state.overlay = Some(Overlay::Palette(self.command_surface()));
 		}
 		self.palette_input.anchored = true;
 		self.palette_input.slash = true;
@@ -271,7 +274,17 @@ impl ShellView {
 			_ => intent,
 		};
 		if self.palette_input.slash {
-			self.consume_command_prefix(cx);
+			// A command that ran with the arguments written after it took the
+			// whole draft, so nothing of it is left to write; a row reached
+			// without them took only its own spelling.
+			if matches!(&intent, Intent::RunCommand(text)
+				if text.as_str() == self.composer_cache.trim_start_matches('/'))
+			{
+				self.palette_input.slash = false;
+				self.set_composed(String::new(), cx);
+			} else {
+				self.consume_command_prefix(cx);
+			}
 		}
 		self.close_palette(cx);
 		self.dispatch(intent, cx);
@@ -288,17 +301,31 @@ impl ShellView {
 		let typed = self.composer_cache.as_str().trim_start_matches('/');
 		// Sliced through `get`, since a command name is whatever the host
 		// spelled and a byte index into it need not land on a character.
-		let takes_arguments = typed
+		let named = typed
 			.get(..row.len())
 			.is_some_and(|head| head.eq_ignore_ascii_case(row))
 			&& typed
 				.get(row.len()..)
 				.is_some_and(|rest| rest.starts_with(char::is_whitespace));
-		if takes_arguments {
+		// An alias reaches the same command and the host resolves whichever
+		// spelling it is given, so a draft opening with a word the host
+		// stated takes arguments runs as it was typed.
+		let carried = typed
+			.split_once(char::is_whitespace)
+			.is_some_and(|(word, rest)| !rest.trim().is_empty() && self.state.commands.carries(word));
+		if named || carried {
 			typed.to_owned()
 		} else {
 			row.to_owned()
 		}
+	}
+
+	/// The command surface as it opens: the window's own rows, then the ones
+	/// the host listed for this workspace (§5.8).
+	fn command_surface(&self) -> PaletteState {
+		let mut palette = PaletteState::commands();
+		self.state.list_host_commands(&mut palette);
+		palette
 	}
 
 	/// Hands the keyboard to the query of the palette a row left open, off the

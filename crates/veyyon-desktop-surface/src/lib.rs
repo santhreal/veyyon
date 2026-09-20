@@ -52,7 +52,7 @@ pub use keymap::*;
 pub use menu::{MENU_OPT_OUT, MenuSectionId, MenuState, is_in_a_menu};
 pub use model::*;
 pub use overlay::*;
-pub use palette::{PaletteItem, PaletteItemKind, PaletteMode};
+pub use palette::{HostCommands, PaletteItem, PaletteItemKind, PaletteMode};
 pub use right_panel::*;
 pub use settings::{SettingsFailure, SettingsPage};
 pub use shell::{
