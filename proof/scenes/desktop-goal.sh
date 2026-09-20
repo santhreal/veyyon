@@ -49,6 +49,11 @@
 #   * `tint.attention` is what a paused goal carries instead, in both places,
 #     so the fourth frame differs from the third in the colour of the chip and
 #     the edge rather than in text a reader has to take on trust.
+#   * The card's answer row is read for two things at once: the accent, which
+#     is a filled pill, and the error tint's edge, which is the outline of the
+#     answer that ends the goal. Both are placed as well as counted, so a row
+#     that accents `Drop` is a different reading from one that accents `Pause`
+#     beside it rather than the same reading at a different count.
 #   Every colour is read from the theme this checkout ships, through the
 #   preamble's own pass over each band, so a retheme moves the readings with
 #   it.
@@ -181,6 +186,74 @@ card_state() { # <png> <tint-ink-token> -> "0" or "1", and the reading on stderr
 	fi
 }
 
+# ─── What The Card Invites ───────────────────────────────────────────────────
+# `Drop` ends the goal, so it is drawn as an edge in the error tint with no
+# fill behind it, and the accent goes to the control beside it. Both are read
+# between the card's own edges, counted and placed: the accent is a filled
+# pill of some hundreds of pixels and the destructive answer is a hairline
+# ring of some tens, and the two are told apart by where their middles sit.
+# An accent to the right of the error edge is the row accenting the answer
+# that discards the run, which is the reading this scene exists to refuse.
+answer_row_reading() { # <png> <tint-ink-token> -> "ACCENT_PX ACCENT_CX ERROR_PX ERROR_CX"
+	local dump="${TMPDIR}/frame-compare/goal-answers.txt" ring accent error
+	mkdir -p "${TMPDIR}/frame-compare"
+	ring="$(theme_colour "$2")"
+	accent="$(theme_colour role.accent)"
+	error="$(theme_colour tint.error.fill)"
+	magick "$1" -crop "${CARD_BAND}" +repage txt:- >"${dump}"
+	python3 - "${dump}" "${ring#\#}" "${accent#\#}" "${error#\#}" "${COMPOSER_CARD_W}" <<'PY'
+import re
+import sys
+
+PIXEL = re.compile(r"^(\d+),(\d+): \([^)]*\)\s+#([0-9A-Fa-f]{6})")
+
+
+def rgb(text):
+	return (int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16))
+
+
+def near(colour, wanted, tolerance):
+	return all(abs(a - b) <= tolerance for a, b in zip(colour, wanted))
+
+
+ring, accent, error = (rgb(argument.upper()) for argument in sys.argv[2:5])
+width = int(sys.argv[5])
+# The accent's nearest neighbour is the focus colour, twenty-seven steps away
+# on one channel; the error fill's is the card's own ground, forty-seven away
+# on the red channel. Neither collects the other.
+ring_rows, marks = {}, {"accent": [], "error": []}
+for line in open(sys.argv[1], encoding="ascii"):
+	found = PIXEL.match(line)
+	if not found:
+		continue
+	column, row, colour = int(found.group(1)), int(found.group(2)), rgb(found.group(3).upper())
+	if near(colour, ring, 3):
+		ring_rows[row] = ring_rows.get(row, 0) + 1
+	elif near(colour, accent, 10):
+		marks["accent"].append((column, row))
+	elif near(colour, error, 4):
+		marks["error"].append((column, row))
+
+edges = sorted(row for row, count in ring_rows.items() if count >= width // 2)
+if not edges:
+	print("0 0 0 0")
+	raise SystemExit(0)
+
+top, bottom = edges[0], edges[-1]
+reading = []
+for name in ("accent", "error"):
+	inside = [column for column, row in marks[name] if top < row < bottom]
+	reading += [len(inside), sum(inside) // len(inside) if inside else 0]
+print(" ".join(str(number) for number in reading))
+PY
+}
+
+# A filled pill against a hairline ring of the same shape: the fill is the
+# whole of it and the ring is its outline, so the two floors are an order
+# apart. Under either the card is drawing no such answer at all.
+ACCENT_PILL_MIN=400
+ERROR_EDGE_MIN=60
+
 # Run one row from the palette, by the query that names it, with whatever the
 # row takes after it typed in the same draft.
 run_command() { # <query>
@@ -241,6 +314,10 @@ shot goal-open
 OPEN_FRAME="${SCENE_OUT}/${SCENE_NAME}-goal-open.png"
 bands_from "${OPEN_FRAME}"
 DRIVING_CARD="$(card_state "${OPEN_FRAME}" tint.working.ink)"
+read -r OPEN_ACCENT OPEN_ACCENT_CX OPEN_ERROR OPEN_ERROR_CX \
+	< <(answer_row_reading "${OPEN_FRAME}" tint.working.ink)
+echo "scene: the driving card's answers carry ${OPEN_ACCENT}px of accent about column" \
+	"${OPEN_ACCENT_CX} and ${OPEN_ERROR}px of the error edge about column ${OPEN_ERROR_CX}" >&2
 
 # ─── Standing It Down ────────────────────────────────────────────────────────
 # From the palette rather than from the card's own control, because the claim
@@ -257,6 +334,11 @@ PAUSED_WORKING="$(card_state "${PAUSED_FRAME}" tint.working.ink)"
 PAUSED_ATTENTION="$(card_state "${PAUSED_FRAME}" tint.attention.ink)"
 PAUSED_CHIP_WORKING="$(chip_pixels "${PAUSED_FRAME}" tint.working.fill)"
 PAUSED_CHIP_ATTENTION="$(chip_pixels "${PAUSED_FRAME}" tint.attention.fill)"
+read -r PAUSED_ACCENT PAUSED_ACCENT_CX PAUSED_ERROR PAUSED_ERROR_CX \
+	< <(answer_row_reading "${PAUSED_FRAME}" tint.attention.ink)
+echo "scene: the paused card's answers carry ${PAUSED_ACCENT}px of accent about column" \
+	"${PAUSED_ACCENT_CX} and ${PAUSED_ERROR}px of the error edge about column" \
+	"${PAUSED_ERROR_CX}" >&2
 echo "scene: paused, the footer row carries ${PAUSED_CHIP_WORKING}px of the working fill and" \
 	"${PAUSED_CHIP_ATTENTION}px of the attention fill" >&2
 
@@ -298,6 +380,26 @@ two statuses at once"
 ${PAUSED_CHIP_ATTENTION}px of the attention fill after \`/goal pause\`, so the line the \
 operator reads while the card is closed states the status it had before"
 	fi
+	for state in "driving ${OPEN_ACCENT} ${OPEN_ACCENT_CX} ${OPEN_ERROR} ${OPEN_ERROR_CX}" \
+		"paused ${PAUSED_ACCENT} ${PAUSED_ACCENT_CX} ${PAUSED_ERROR} ${PAUSED_ERROR_CX}"; do
+		read -r which accent accent_cx error error_cx <<<"${state}"
+		if (( error < ERROR_EDGE_MIN )); then
+			abandon_take "the-answer-that-ends-the-goal-is-marked" \
+				"the ${which} card's answers carry ${error}px of the error edge, so the \
+control that discards the run is drawn as an ordinary answer"
+		fi
+		if (( accent < ACCENT_PILL_MIN )); then
+			abandon_take "the-card-invites-an-answer" \
+				"the ${which} card's answers carry ${accent}px of accent, so the card offers \
+nothing to press and the row it does draw reads as two refusals"
+		fi
+		if (( accent_cx >= error_cx )); then
+			abandon_take "the-accent-is-not-on-the-drop" \
+				"the ${which} card's accent sits about column ${accent_cx}, at or past the \
+error edge about column ${error_cx}, so the answer the card invites is the one that ends \
+the goal"
+		fi
+	done
 	echo "scene: after arm -- no goal, a goal in the footer, its card, then that card paused" >&2
 	;;
 before)
@@ -323,7 +425,9 @@ esac
 #
 # Frame 3 is that line pressed: the objective, the turns it has taken, the time
 # it has run and the budget it is spending against, with the controls the
-# status accepts.
+# status accepts. Its answer row states which press the card is for: `Pause`
+# carries the accent, and `Drop`, which ends the run, carries the error tint's
+# edge and no fill to invite it.
 #
 # Frame 4 is the same goal paused over the protocol. The card is still up and
 # still states the objective; its edge carries the attention tint instead of
