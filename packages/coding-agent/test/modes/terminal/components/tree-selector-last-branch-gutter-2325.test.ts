@@ -82,30 +82,42 @@ describe("issue #2325: connectors terminate at `└─` and chain columns stay s
 			return row;
 		};
 
-		// b3 is the last sibling: its connector is `└─` at column 2.
-		expect(findRow("user: second review head")).toMatch(/^\s{2}└─ \S/);
+		// Every row reserves a three-cell cursor lane, then the rail, then a
+		// two-cell node mark between the rail and its text: `●` at the current
+		// leaf, `•` elsewhere on the active path, blank off it. Every row asserted
+		// here is off the active path (the leaf is under b1), so the mark's cells
+		// are blank and fold into the whitespace runs below. After the mark comes
+		// the fixed-width kind column, which is where each `\S` below lands.
+		const MARK = 2;
+		const CURSOR = 3;
+		const rail = (indentCols: number, glyph: string, gapAfter: number) =>
+			new RegExp(`^\\s{${CURSOR + indentCols}}${glyph}\\s{${gapAfter + MARK}}\\S`);
 
-		// Chain rows under the `└─` head: the corner column (col 2) must stay
+		// b3 is the last sibling: its connector is `└─` on the first rail column.
+		expect(findRow("second review head")).toMatch(rail(0, "└─", 1));
+
+		// Chain rows under the `└─` head: the corner column must stay
 		// blank — no `│` running down from the `└─` — and every chain row is
 		// anchored by `│` on the same column, one level right (below the head's
-		// content). Exact prefix: 5 spaces, `│`, 2 spaces, then content.
-		for (const needle of ["assistant: fix-asst", "user: fix it all", "assistant: rev-asst"]) {
+		// content). Exact prefix: the cursor lane, 3 spaces, `│`, 2 spaces, the
+		// mark, then the kind column.
+		for (const needle of ["fix-asst", "fix it all", "rev-asst"]) {
 			const row = findRow(needle);
-			expect(row).not.toMatch(/^\s{2}│/);
-			expect(row).toMatch(/^\s{5}│\s{2}\S/);
+			expect(row).not.toMatch(/^\s{3}│/);
+			expect(row).toMatch(rail(3, "│", 2));
 		}
 
 		// The deeper branch point keeps stable columns: connectors sit directly
-		// below the chain content column (col 8), with nothing dangling in the
-		// outer corner columns.
-		expect(findRow("user: review the fixes")).toMatch(/^\s{8}├─ \S/);
-		expect(findRow("user: other thread")).toMatch(/^\s{8}└─ \S/);
+		// below the chain content column (two rail levels in), with nothing
+		// dangling in the outer corner columns.
+		expect(findRow("review the fixes")).toMatch(rail(6, "├─", 1));
+		expect(findRow("other thread")).toMatch(rail(6, "└─", 1));
 
 		// Continuations of the non-last grandchild ride its sibling line at the
-		// same column (col 8) — no drift back into outer columns.
-		for (const needle of ["user: all findings done", "user: still have findings"]) {
+		// same column — no drift back into outer columns.
+		for (const needle of ["all findings done", "still have findings"]) {
 			const row = findRow(needle);
-			expect(row).toMatch(/^\s{8}│\s{5}\S/);
+			expect(row).toMatch(rail(6, "│", 5));
 		}
 	});
 });

@@ -1,5 +1,5 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
-import type { SessionTreeNode } from "@veyyon/kernel/session/session-entries";
+import type { SessionEntry, SessionTreeNode } from "@veyyon/kernel/session/session-entries";
 import { type Component, Input } from "@veyyon/tui";
 import { HoverController } from "@veyyon/tui/utils/hover-controller";
 import { fuzzyMatch } from "@veyyon/utils/fuzzy";
@@ -7,10 +7,10 @@ import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
 import type { HoverFadeOptions } from "@veyyon/utils/motion";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
-import { truncateToWidth } from "@veyyon/utils/width";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import type { TreeFilterMode } from "../../../../config/settings-schema";
 import { resolveAssistantErrorPresentation } from "../../../../presentation/transcript-builder";
-import { theme } from "../../../../theme/theme";
+import { type ThemeColor, theme } from "../../../../theme/theme";
 import { shortenPath, TRUNCATE_LENGTHS } from "../../../../tools/core/render-utils";
 import { canonicalizeMessage } from "../../../../utils/thinking-display";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
@@ -25,7 +25,14 @@ import {
 	sizingForArea,
 } from "../chrome/modal-shell";
 import { routeModalChrome } from "./select-list-mouse-routing";
-import { centeredWindow, hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
+import {
+	centeredWindow,
+	highlightTokens,
+	hoverBandAt,
+	renderScrollableList,
+	searchTokens,
+	selectionBand,
+} from "./selector-helpers";
 
 /** Gutter info: position (displayIndent where connector was) and whether to show │ */
 interface GutterInfo {
@@ -52,20 +59,214 @@ interface FlatNode {
 type FilterMode = TreeFilterMode;
 
 /**
+ * The order `ctrl+O` steps through, forwards and backwards, and the one list of
+ * modes the card names in its header. Kept equal to the `treeFilterMode` setting's
+ * declared values by
+ * `test/modes/terminal/components/the-session-tree-card-hugs-its-rows.test.ts`, so a
+ * mode added to the setting cannot quietly be unreachable from the keybinding.
+ */
+export const TREE_FILTER_MODES = [
+	"default",
+	"no-tools",
+	"user-only",
+	"labeled-only",
+	"all",
+] as const satisfies readonly FilterMode[];
+
+/**
+ * Cells the node mark occupies on every row, on the active path or off it. The
+ * column is reserved unconditionally so entry text at one depth starts at one
+ * column whatever a row's state is.
+ */
+const MARK_COLS = 2;
+
+/**
+ * Cells the leading cursor lane occupies: a margin cell, the caret and a gap.
+ *
+ * The margin cell is why it is three and not two: the rail used to start on the
+ * card's first content column, so a root row's text sat against the border.
+ */
+const CURSOR_COLS = 3;
+
+/**
+ * Cells the entry-kind column occupies, and the gap between it and entry text.
+ *
+ * Ten because that is the longest tool name the column has to carry
+ * (`web_search`), and the kinds it carries besides a tool name — `user`,
+ * `assistant`, `developer`, `bash`, `summary` — are shorter.
+ */
+const KIND_COLS = 10;
+const KIND_GAP = 1;
+
+/** Cells the right-hand age column occupies: a gap and three glyphs of age. */
+const AGE_COLS = 6;
+
+/** Row width below which the age column is dropped for entry text. */
+const AGE_MIN_ROW_COLS = 48;
+
+/**
+ * Cells a label chip may occupy at the right of a row, brackets and leading gap
+ * included, and the narrowest chip worth drawing (`[…] `).
+ *
+ * A label used to sit between the kind column and the text, which moved a
+ * labeled row's text right of every sibling and broke the one thing the columns
+ * are for. On the right it reads down the card as a column of landmarks and
+ * costs the text a bounded number of cells instead of the label's own length.
+ */
+const LABEL_MAX_COLS = 18;
+const LABEL_MIN_COLS = 4;
+
+/**
  * Tree list component with selection and ASCII art visualization
  */
-/** Tool call info for lookup */
+/**
+ * One recorded tool call, for the row that reports it.
+ *
+ * The arguments are `unknown` because a session file holds whatever the
+ * provider streamed: the parsed object in the ordinary case, and the raw JSON
+ * string when the turn ended before it parsed.
+ */
 interface ToolCallInfo {
 	name: string;
-	arguments: Record<string, unknown>;
+	arguments: unknown;
 }
+
+/**
+ * One row's content, split into the two columns that carry it.
+ *
+ * The kind is a column of its own rather than a prefix inside the text, so the
+ * entry text of every row at one depth starts at one offset and the kinds read
+ * down the card as a column. Spelling it into the text (`user: `, `[bash]: `,
+ * `[read: path]`) put the start of the content wherever the kind's own length
+ * left it, which is what made a card of mixed entries read as ragged.
+ */
+interface EntryCells {
+	/** The kind column's plain text: a role, a tool name, or an entry type. */
+	kind: string;
+	/** Colour the kind column carries. */
+	tone: ThemeColor;
+	/**
+	 * Entry text, PLAIN and never repeating the kind.
+	 *
+	 * Plain because the row is what paints it: a search match is painted inside
+	 * this text, and a highlight nested in an already-coloured run ends the run
+	 * at its own reset, so the row's colour would stop at the first match.
+	 */
+	text: string;
+	/** Colour the entry text carries; the terminal's own foreground when absent. */
+	textTone?: ThemeColor;
+}
+
+/**
+ * Cells a path may spend on a row before its leading directories are dropped.
+ */
+const PATH_TAIL_COLS = 44;
+
+/**
+ * A path as a row's text: the home directory collapsed to `~`, and the leading
+ * directories dropped behind `…/` once it runs past {@link PATH_TAIL_COLS}.
+ *
+ * A path on this card is read from its end. The file name is what distinguishes
+ * one row from the next, and the directories in front of it are shared with
+ * every other row in the same session, so a row-width path is cut from the
+ * LEFT. Cut from the right — which is what row truncation does to it otherwise
+ * — every deep row reads `packages/coding-agent/src/modes/terminal/compone…`
+ * and no two of them can be told apart.
+ */
+function tailPath(value: unknown): string {
+	const shortened = shortenPath(value);
+	if (visibleWidth(shortened) <= PATH_TAIL_COLS) return shortened;
+	const segments = shortened.split("/");
+	let tail = truncateToWidth(segments.pop() ?? shortened, PATH_TAIL_COLS - 2);
+	for (let i = segments.length - 1; i >= 0; i--) {
+		const wider = `${segments[i]}/${tail}`;
+		if (visibleWidth(wider) + 2 > PATH_TAIL_COLS) break;
+		tail = wider;
+	}
+	return `…/${tail}`;
+}
+
+/**
+ * Argument keys that name what a call was about, most telling first.
+ *
+ * A tool the card knows nothing else about gets one of these values as its row
+ * text, because a serialized argument object spends the row on braces, quotes
+ * and key names: `{"query":"terminal tree column ali…` says less in more cells
+ * than `terminal tree view column alignment`.
+ */
+const ARG_SUMMARY_KEYS = [
+	"command",
+	"query",
+	"input",
+	"path",
+	"url",
+	"expression",
+	"pattern",
+	"name",
+	"prompt",
+	"task",
+	"message",
+] as const;
+
+/** The one argument value that best names a call, or its serialized arguments. */
+function argSummary(args: unknown): string {
+	// A session can record arguments that were never parsed into an object: the
+	// raw JSON the provider streamed. It is returned as it stands, because
+	// `Object.entries` on a string walks its characters and answers `{`.
+	if (typeof args === "string") return args;
+	if (typeof args !== "object" || args === null) return JSON.stringify(args ?? {});
+	const fields: Record<string, unknown> = args as Record<string, unknown>;
+	for (const key of ARG_SUMMARY_KEYS) {
+		const value = fields[key];
+		if (typeof value === "string" && value.trim() !== "") return value;
+	}
+	for (const [key, value] of Object.entries(fields)) {
+		// `i` is the caller's own one-line intent, which every tool carries. It
+		// restates the row's kind column instead of naming what was operated on.
+		if (key === "i") continue;
+		if (typeof value === "string" && value.trim() !== "") return value;
+	}
+	return JSON.stringify(fields);
+}
+
+/**
+ * Entry types the default filter hides: session bookkeeping rather than the
+ * conversation. `ctrl+O` to `all` shows them.
+ *
+ * A mode change, a title change, a tier change, a session header and an
+ * injected-rules record used to pass the default filter and paint a row with
+ * nothing on it, because the row builder had no case for them: a card of a real
+ * session carried blank rows a user could select and jump to. They are
+ * bookkeeping on the same footing as a model change, so they are hidden with
+ * it, and they now draw their own kind and text in `all`.
+ */
+const BOOKKEEPING_ENTRY_TYPES: ReadonlySet<string> = new Set([
+	"label",
+	"custom",
+	"model_change",
+	"thinking_level_change",
+	"service_tier_change",
+	"mode_change",
+	"title_change",
+	"session_init",
+	"ttsr_injection",
+	"mcp_tool_selection",
+]);
 
 class TreeList implements Component {
 	#flatNodes: FlatNode[] = [];
 	#filteredNodes: FlatNode[] = [];
+	/** Rows the filter mode admits, search aside — what the card sizes itself against. */
+	#modeRowCount = 0;
 	#selectedIndex = 0;
 	#filterMode: FilterMode;
 	#searchQuery = "";
+	/**
+	 * The query as tokens, kept beside it because both the filter and the row
+	 * highlight read them and a per-row re-split would tokenize the same query
+	 * once per visible row, every frame.
+	 */
+	#searchTokens: string[] = [];
 	#toolCallMap: Map<string, ToolCallInfo> = new Map();
 	#multipleRoots = false;
 	#activePathIds: Set<string> = new Set();
@@ -213,7 +414,7 @@ class TreeList implements Component {
 				if (Array.isArray(content)) {
 					for (const block of content) {
 						if (typeof block === "object" && block !== null && "type" in block && block.type === "toolCall") {
-							const tc = block as { id: string; name: string; arguments: Record<string, unknown> };
+							const tc = block as { id: string; name: string; arguments: unknown };
 							this.#toolCallMap.set(tc.id, { name: tc.name, arguments: tc.arguments });
 						}
 					}
@@ -289,66 +490,21 @@ class TreeList implements Component {
 			this.#lastSelectedId = this.#filteredNodes[this.#selectedIndex]?.node.entry.id ?? this.#lastSelectedId;
 		}
 
-		const searchTokens = this.#searchQuery.toLowerCase().split(/\s+/).filter(Boolean);
+		this.#searchTokens = searchTokens(this.#searchQuery);
 
-		this.#filteredNodes = this.#flatNodes.filter(flatNode => {
-			const entry = flatNode.node.entry;
-			const isCurrentLeaf = entry.id === this.currentLeafId;
-
-			// Skip assistant messages with only tool calls (no text) unless error/aborted
-			// Always show current leaf so active position is visible
-			if (entry.type === "message" && entry.message.role === "assistant" && !isCurrentLeaf) {
-				const msg = entry.message as { stopReason?: string; content?: unknown };
-				const hasText = this.#hasTextContent(msg.content);
-				const isErrorOrAborted = msg.stopReason && msg.stopReason !== "stop" && msg.stopReason !== "toolUse";
-				// Only hide if no text AND not an error/aborted message
-				if (!hasText && !isErrorOrAborted) {
-					return false;
-				}
-			}
-
-			// Apply filter mode
-			let passesFilter = true;
-			// Entry types hidden in default view (settings/bookkeeping)
-			const isSettingsEntry =
-				entry.type === "label" ||
-				entry.type === "custom" ||
-				entry.type === "model_change" ||
-				entry.type === "thinking_level_change";
-
-			switch (this.#filterMode) {
-				case "user-only":
-					// Just user messages
-					passesFilter = entry.type === "message" && entry.message.role === "user";
-					break;
-				case "no-tools":
-					// Default minus tool results
-					passesFilter = !isSettingsEntry && !(entry.type === "message" && entry.message.role === "toolResult");
-					break;
-				case "labeled-only":
-					// Just labeled entries
-					passesFilter = flatNode.node.label !== undefined;
-					break;
-				case "all":
-					// Show everything
-					passesFilter = true;
-					break;
-				default:
-					// Default mode: hide settings/bookkeeping entries
-					passesFilter = !isSettingsEntry;
-					break;
-			}
-
-			if (!passesFilter) return false;
-
-			// Apply fuzzy search filter
-			if (searchTokens.length > 0) {
-				const nodeText = this.#getSearchableText(flatNode.node);
-				return searchTokens.every(token => fuzzyMatch(token, nodeText).matches);
-			}
-
-			return true;
-		});
+		// Two passes, because the card sizes itself against the first one. The rows
+		// the FILTER MODE admits are what the tree naturally wants to show; the
+		// search narrows that live, and resizing the card per keystroke would be
+		// worse than the rows it saves.
+		const modeVisible = this.#flatNodes.filter(flatNode => this.#passesMode(flatNode));
+		this.#modeRowCount = modeVisible.length;
+		this.#filteredNodes =
+			this.#searchTokens.length === 0
+				? modeVisible
+				: modeVisible.filter(flatNode => {
+						const nodeText = this.#getSearchableText(flatNode.node);
+						return this.#searchTokens.every(token => fuzzyMatch(token, nodeText).matches);
+					});
 
 		// Try to preserve cursor on the same node, or find nearest visible ancestor
 		if (this.#lastSelectedId) {
@@ -361,6 +517,44 @@ class TreeList implements Component {
 		// Update lastSelectedId to the actual selection (may have changed due to parent walk)
 		if (this.#filteredNodes.length > 0) {
 			this.#lastSelectedId = this.#filteredNodes[this.#selectedIndex]?.node.entry.id ?? this.#lastSelectedId;
+		}
+	}
+
+	/** Whether the current filter mode admits this row, search aside. */
+	#passesMode(flatNode: FlatNode): boolean {
+		const entry = flatNode.node.entry;
+		const isCurrentLeaf = entry.id === this.currentLeafId;
+
+		// Skip assistant messages with only tool calls (no text) unless error/aborted
+		// Always show current leaf so active position is visible
+		if (entry.type === "message" && entry.message.role === "assistant" && !isCurrentLeaf) {
+			const msg = entry.message as { stopReason?: string; content?: unknown };
+			const hasText = this.#hasTextContent(msg.content);
+			const isErrorOrAborted = msg.stopReason && msg.stopReason !== "stop" && msg.stopReason !== "toolUse";
+			// Only hide if no text AND not an error/aborted message
+			if (!hasText && !isErrorOrAborted) {
+				return false;
+			}
+		}
+
+		const isSettingsEntry = BOOKKEEPING_ENTRY_TYPES.has(entry.type);
+
+		switch (this.#filterMode) {
+			case "user-only":
+				// Just user messages
+				return entry.type === "message" && entry.message.role === "user";
+			case "no-tools":
+				// Default minus tool results
+				return !isSettingsEntry && !(entry.type === "message" && entry.message.role === "toolResult");
+			case "labeled-only":
+				// Just labeled entries
+				return flatNode.node.label !== undefined;
+			case "all":
+				// Show everything
+				return true;
+			default:
+				// Default mode: hide settings/bookkeeping entries
+				return !isSettingsEntry;
 		}
 	}
 
@@ -383,6 +577,16 @@ class TreeList implements Component {
 				if (msg.role === "bashExecution") {
 					const bashMsg = msg as { command?: string };
 					if (bashMsg.command) parts.push(bashMsg.command);
+				}
+				if (msg.role === "toolResult") {
+					// The row shows the tool's name and its argument summary, so the
+					// search has to reach both: a card where `read` matches nothing is
+					// a card whose visible text the search cannot see.
+					const toolMsg = msg as { toolCallId?: string; toolName?: string };
+					const call = toolMsg.toolCallId ? this.#toolCallMap.get(toolMsg.toolCallId) : undefined;
+					const name = call?.name ?? toolMsg.toolName;
+					if (name) parts.push(name);
+					if (call) parts.push(this.#formatToolCall(call.name, call.arguments));
 				}
 				break;
 			}
@@ -413,6 +617,24 @@ class TreeList implements Component {
 			case "label":
 				parts.push("label", entry.label ?? "");
 				break;
+			case "mode_change":
+				parts.push("mode", entry.mode);
+				break;
+			case "title_change":
+				parts.push("title", entry.title);
+				break;
+			case "session_init":
+				parts.push("session");
+				break;
+			case "ttsr_injection":
+				parts.push("rules", ...entry.injectedRules);
+				break;
+			case "mcp_tool_selection":
+				parts.push("mcp", ...entry.selectedToolNames);
+				break;
+			case "service_tier_change":
+				parts.push("tier");
+				break;
 		}
 
 		return parts.join(" ");
@@ -422,6 +644,31 @@ class TreeList implements Component {
 
 	getSearchQuery(): string {
 		return this.#searchQuery;
+	}
+
+	/**
+	 * The card's height request: rows the filter mode admits, so a nine-entry
+	 * session gets a nine-row card instead of a twenty-row one with eleven blank
+	 * rows under the tree. Deliberately blind to the search query, which would
+	 * resize the card on every keystroke.
+	 */
+	naturalRowCount(): number {
+		return this.#modeRowCount;
+	}
+
+	/** Rows on screen right now (mode and search applied). */
+	visibleRowCount(): number {
+		return this.#filteredNodes.length;
+	}
+
+	/** Every entry in the session tree, whatever the filter hides. */
+	totalRowCount(): number {
+		return this.#flatNodes.length;
+	}
+
+	/** The active filter mode, named for the header row. */
+	filterName(): FilterMode {
+		return this.#filterMode;
 	}
 
 	/** Size the viewport to the rows the card can spare this frame. */
@@ -491,21 +738,6 @@ class TreeList implements Component {
 		}
 	}
 
-	#getFilterLabel(): string {
-		switch (this.#filterMode) {
-			case "no-tools":
-				return " [no-tools]";
-			case "user-only":
-				return " [user]";
-			case "labeled-only":
-				return " [labeled]";
-			case "all":
-				return " [all]";
-			default:
-				return "";
-		}
-	}
-
 	render(width: number): readonly string[] {
 		const lines: string[] = [];
 		// Cleared here, not only in `#buildRows`: an empty filter result returns
@@ -514,34 +746,32 @@ class TreeList implements Component {
 		this.#hitRows = [];
 
 		if (this.#filteredNodes.length === 0) {
-			// Three empty-state shapes:
-			//  - flatNodes empty               → no entries at all (truly fresh session).
-			//  - search query rejects everything → tell the user the search is the cause.
-			//  - filter mode rejects everything  → tell the user the filter is the cause and
-			//    how to widen it. Otherwise fresh sessions whose only persisted entries are
-			//    `model_change` + `thinking_level_change` (both hidden by the default filter)
-			//    read as "broken /tree" — see #1909.
+			// Three empty-state shapes, each naming the cause and the key that
+			// undoes it:
+			//  - flatNodes empty                 → no entries at all (truly fresh session).
+			//  - search query rejects everything → the search is the cause.
+			//  - filter mode rejects everything  → the filter is the cause. Otherwise fresh
+			//    sessions whose only persisted entries are `model_change` +
+			//    `thinking_level_change` (both hidden by the default filter) read as
+			//    "broken /tree" — see #1909.
+			//
+			// The counts and the mode are not repeated here: the header row carries
+			// `0/15 · all` on the same frame, and a second spelling of it in the body
+			// was the card disagreeing with itself about how it names a mode.
 			if (this.#flatNodes.length === 0) {
-				lines.push(truncateToWidth(theme.fg("muted", "  No entries found"), width));
-				lines.push(truncateToWidth(theme.fg("muted", `  (0/0)${this.#getFilterLabel()}`), width));
+				lines.push(truncateToWidth(theme.fg("muted", "  No entries yet"), width));
 			} else if (this.#searchQuery.length > 0) {
-				lines.push(truncateToWidth(theme.fg("muted", `  No entries match search "${this.#searchQuery}"`), width));
-				lines.push(truncateToWidth(theme.fg("muted", "  Press Backspace to clear the search"), width));
-				lines.push(
-					truncateToWidth(theme.fg("muted", `  (0/${this.#flatNodes.length})${this.#getFilterLabel()}`), width),
-				);
+				lines.push(truncateToWidth(theme.fg("muted", `  Nothing matches "${this.#searchQuery}"`), width));
+				lines.push(truncateToWidth(theme.fg("muted", "  Backspace clears the search"), width));
 			} else {
-				const filterLabel = this.#getFilterLabel().trim() || "[default]";
+				const hidden = this.#flatNodes.length;
 				lines.push(
 					truncateToWidth(
-						theme.fg("muted", `  ${this.#flatNodes.length} entries hidden by the current filter ${filterLabel}`),
+						theme.fg("muted", `  ${hidden} ${hidden === 1 ? "entry" : "entries"} hidden here`),
 						width,
 					),
 				);
-				lines.push(truncateToWidth(theme.fg("muted", "  Press Alt+A to show all, Alt+D for default"), width));
-				lines.push(
-					truncateToWidth(theme.fg("muted", `  (0/${this.#flatNodes.length})${this.#getFilterLabel()}`), width),
-				);
+				lines.push(truncateToWidth(theme.fg("muted", "  Alt+A shows all, Alt+D the default"), width));
 			}
 			return lines;
 		}
@@ -564,10 +794,9 @@ class TreeList implements Component {
 			),
 		);
 
-		const filterLabel = this.#getFilterLabel();
-		if (filterLabel) {
-			lines.push(truncateToWidth(theme.fg("muted", `  ${filterLabel.trim()}`), width));
-		}
+		// The filter name is not appended here: it rides the header row beside the
+		// counts, where the search query is, instead of spending a body row at the
+		// far end of the card from the control that changes it.
 
 		return lines;
 	}
@@ -586,9 +815,20 @@ class TreeList implements Component {
 		// text — or half the viewport, whichever is larger — and compress older gutter
 		// levels off-screen behind a leading ellipsis when the row would exceed budget.
 		const MIN_CONTENT_COLS = 24;
-		const OVERHEAD_COLS = 4; // cursor (2) + a touch of breathing room
+		// The age column is orientation, not content: at a fork it says which branch
+		// is the recent one. A card too narrow to carry both spends its cells on the
+		// entry text instead.
+		const ageCols = rowWidth >= AGE_MIN_ROW_COLS ? AGE_COLS : 0;
+		// Every fixed column a row spends outside the rail and its text.
+		const OVERHEAD_COLS = CURSOR_COLS + MARK_COLS + KIND_COLS + KIND_GAP + ageCols;
 		const contentReserve = Math.max(MIN_CONTENT_COLS, Math.floor(rowWidth / 2));
 		const maxIndentLevels = Math.max(1, Math.floor((rowWidth - contentReserve - OVERHEAD_COLS) / 3));
+		const textWidth = rowWidth - ageCols;
+		// What a label chip may take from the text, bounded twice: by its own cap,
+		// and by what is left once the text has its floor. Below a chip worth
+		// drawing the row spends every cell on the text, as it does with the age.
+		const labelRoom = Math.min(LABEL_MAX_COLS, textWidth - (OVERHEAD_COLS - ageCols) - MIN_CONTENT_COLS);
+		const labelBudget = labelRoom >= LABEL_MIN_COLS ? labelRoom : 0;
 
 		const rows: string[] = [];
 		this.#hitRows = [];
@@ -598,8 +838,9 @@ class TreeList implements Component {
 			const entry = flatNode.node.entry;
 			const isSelected = i === this.#selectedIndex;
 
-			// Build line: cursor + prefix + path marker + label + content
-			const cursor = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
+			// Row shape, left to right: cursor lane, rail, node mark, kind column,
+			// label chip, entry text, age.
+			const cursor = isSelected ? theme.fg("accent", ` ${theme.nav.cursor} `) : padding(CURSOR_COLS);
 
 			// If multiple roots, shift display (roots at 0, not 1)
 			const displayIndent = this.#multipleRoots ? Math.max(0, flatNode.indent - 1) : flatNode.indent;
@@ -666,14 +907,70 @@ class TreeList implements Component {
 			}
 			const prefix = prefixChars.join("");
 
-			// Active path marker - shown right before the entry text
+			// The rail carries the active path in colour: accent while the row is on
+			// the path from root to the current leaf, dim off it. Colour costs no
+			// column, so the columns after it land at one offset on every row.
 			const isOnActivePath = this.#activePathIds.has(entry.id);
-			const pathMarker = isOnActivePath ? theme.fg("accent", `${theme.md.bullet} `) : "";
+			const rail = theme.fg(isOnActivePath ? "accent" : "dim", prefix);
 
-			const label = flatNode.node.label ? theme.fg("warning", `[${flatNode.node.label}] `) : "";
-			const content = this.#getEntryDisplayText(flatNode.node, isSelected);
+			// Fixed-width node mark: `●` the current leaf, `•` the rest of the active
+			// path, blank off it. Three states in one column that every row reserves,
+			// so entry text at one depth starts at one column. The bullet it replaces
+			// was painted only on active rows and shoved their text two cells right of
+			// their own siblings, which is what made the card read as ragged.
+			//
+			// The path bullet is muted where the leaf's dot is bold accent: two
+			// glyphs that differ by one pixel at a terminal's cell size are told
+			// apart by weight and colour before shape.
+			const mark =
+				entry.id === this.currentLeafId
+					? theme.bold(theme.fg("accent", `${theme.status.active} `))
+					: isOnActivePath
+						? theme.fg("muted", `${theme.md.bullet} `)
+						: padding(MARK_COLS);
 
-			const line = cursor + theme.fg("dim", prefix) + pathMarker + label + content;
+			// The kind column, then what the entry says. Both bold under the cursor,
+			// and both carrying the search's own highlight: a query narrows the card
+			// to the rows it kept and says nothing about WHY it kept them, so the
+			// matched characters are painted gold — the product's colour for a
+			// filter hit — inside the row's own tone.
+			const cells = this.#entryCells(flatNode.node);
+			const kindText = truncateToWidth(cells.kind, KIND_COLS);
+			const kindStyled = highlightTokens(kindText, this.#searchTokens, {
+				base: cells.tone,
+				match: "matchHighlight",
+			});
+			const kind =
+				(isSelected ? theme.bold(kindStyled) : kindStyled) + padding(KIND_COLS - visibleWidth(kindText) + KIND_GAP);
+
+			const painted = highlightTokens(cells.text, this.#searchTokens, {
+				base: cells.textTone,
+				match: "matchHighlight",
+			});
+			const content = isSelected ? theme.bold(painted) : painted;
+
+			// A label is the user's own landmark, so it keeps its warning colour; its
+			// brackets are structure and recede. It sits at the right of the row,
+			// left of the age: between the kind column and the text it moved a
+			// labeled row's text right of every sibling, which is the one thing the
+			// columns exist to prevent.
+			const labelText = flatNode.node.label
+				? truncateToWidth(flatNode.node.label, Math.max(0, labelBudget - 3))
+				: "";
+			const labelCols = labelText ? visibleWidth(labelText) + 3 : 0;
+			const chip = labelText
+				? ` ${theme.fg("dim", "[")}${highlightTokens(labelText, this.#searchTokens, {
+						base: "warning",
+						match: "matchHighlight",
+					})}${theme.fg("dim", "]")}`
+				: "";
+
+			const textCols = textWidth - labelCols;
+			const text = truncateToWidth(cursor + rail + mark + kind + content, textCols);
+			const body = chip ? text + padding(Math.max(0, textCols - visibleWidth(text))) + chip : text;
+			const line = ageCols
+				? body + padding(Math.max(0, textWidth - visibleWidth(body))) + theme.fg("dim", this.#ageCell(entry))
+				: body;
 			// The selection band is the ROW, not the text: pad to the full row width
 			// before tinting so the highlight has the same shape on every entry. The
 			// pointer borrows the same band; the cursor keeps its accent arrow, so
@@ -682,16 +979,49 @@ class TreeList implements Component {
 			this.#hitRows[i - startIndex] = i;
 			if (isSelected) rows.push(selectionBand(line, rowWidth));
 			else if (hoverStrength > 0) rows.push(hoverBandAt(line, rowWidth, hoverStrength));
-			else rows.push(truncateToWidth(line, rowWidth));
+			else rows.push(line);
 		}
 
 		return rows;
 	}
 
-	#getEntryDisplayText(node: SessionTreeNode, isSelected: boolean): string {
-		const entry = node.entry;
-		let result: string;
+	/**
+	 * The row's right-hand age cell, exactly {@link AGE_COLS} cells wide: a
+	 * three-cell gap and a right-aligned coarse age (`12m`, `4h`, `3d`, `2w`,
+	 * `1y`).
+	 *
+	 * Blank under a minute, and blank when the timestamp does not parse. The
+	 * column is orientation at a fork — which branch is the recent one — so a
+	 * whole card of entries written seconds ago has nothing to say there, and a
+	 * missing timestamp is not worth a lie about when it happened.
+	 */
+	#ageCell(entry: SessionEntry): string {
+		const at = Date.parse(entry.timestamp);
+		if (Number.isNaN(at)) return padding(AGE_COLS);
+		const minutes = Math.floor(Math.max(0, Date.now() - at) / 60_000);
+		if (minutes < 1) return padding(AGE_COLS);
+		const hours = Math.floor(minutes / 60);
+		const days = Math.floor(hours / 24);
+		const weeks = Math.floor(days / 7);
+		const years = Math.floor(days / 365);
+		const label =
+			hours < 1
+				? `${minutes}m`
+				: days < 1
+					? `${hours}h`
+					: weeks < 1
+						? `${days}d`
+						: years < 1
+							? `${weeks}w`
+							: `${years}y`;
+		return ` ${label.padStart(AGE_COLS - 1)}`;
+	}
 
+	/**
+	 * Split one entry into its kind column and its text. See {@link EntryCells}.
+	 */
+	#entryCells(node: SessionTreeNode): EntryCells {
+		const entry = node.entry;
 		const normalize = (s: string) => s.replace(/[\n\t]/g, " ").trim();
 
 		switch (entry.type) {
@@ -700,45 +1030,49 @@ class TreeList implements Component {
 				const role = msg.role;
 				if (role === "user") {
 					const msgWithContent = msg as { content?: unknown };
-					const content = normalize(this.#extractContent(msgWithContent.content));
-					result = theme.fg("accent", "user: ") + content;
-				} else if (role === "developer") {
+					return { kind: "user", tone: "accent", text: normalize(this.#extractContent(msgWithContent.content)) };
+				}
+				if (role === "developer") {
 					const msgWithContent = msg as { content?: unknown };
 					const content = normalize(this.#extractContent(msgWithContent.content));
-					result = theme.fg("dim", "developer: ") + theme.fg("muted", content);
-				} else if (role === "assistant") {
+					return { kind: "developer", tone: "dim", text: content, textTone: "muted" };
+				}
+				if (role === "assistant") {
 					const presentation = resolveAssistantErrorPresentation(msg);
 					if (presentation.kind === "compact-recovered") {
-						result = theme.fg("success", "assistant: ") + theme.fg("dim", presentation.text);
-						break;
+						return { kind: "assistant", tone: "success", text: presentation.text, textTone: "dim" };
 					}
-					const msgWithContent = msg as { content?: unknown; stopReason?: string; errorMessage?: string };
+					const msgWithContent = msg as { content?: unknown; stopReason?: string };
 					const textContent = normalize(this.#extractContent(msgWithContent.content));
-					if (textContent) {
-						result = theme.fg("success", "assistant: ") + textContent;
-					} else if (presentation.kind === "full") {
-						result =
-							theme.fg("success", "assistant: ") + theme.fg("error", normalize(presentation.text).slice(0, 80));
-					} else if (msgWithContent.stopReason === "aborted") {
-						result = theme.fg("success", "assistant: ") + theme.fg("muted", "(aborted)");
-					} else {
-						result = theme.fg("success", "assistant: ") + theme.fg("muted", "(no content)");
+					if (textContent) return { kind: "assistant", tone: "success", text: textContent };
+					if (presentation.kind === "full") {
+						return {
+							kind: "assistant",
+							tone: "success",
+							text: normalize(presentation.text).slice(0, 80),
+							textTone: "error",
+						};
 					}
-				} else if (role === "toolResult") {
-					const toolMsg = msg as { toolCallId?: string; toolName?: string };
-					const toolCall = toolMsg.toolCallId ? this.#toolCallMap.get(toolMsg.toolCallId) : undefined;
-					if (toolCall) {
-						result = theme.fg("muted", this.#formatToolCall(toolCall.name, toolCall.arguments));
-					} else {
-						result = theme.fg("muted", `[${toolMsg.toolName ?? "tool"}]`);
-					}
-				} else if (role === "bashExecution") {
-					const bashMsg = msg as { command?: string };
-					result = theme.fg("dim", `[bash]: ${normalize(bashMsg.command ?? "")}`);
-				} else {
-					result = theme.fg("dim", `[${role}]`);
+					const empty = msgWithContent.stopReason === "aborted" ? "(aborted)" : "(no content)";
+					return { kind: "assistant", tone: "success", text: empty, textTone: "muted" };
 				}
-				break;
+				if (role === "toolResult") {
+					const toolMsg = msg as { toolCallId?: string; toolName?: string; content?: unknown };
+					const call = toolMsg.toolCallId ? this.#toolCallMap.get(toolMsg.toolCallId) : undefined;
+					// Compaction can carry the result across and drop the call that
+					// made it, and the arguments ride the call. The row then reports
+					// what came BACK, cut to the row's share, rather than spending a
+					// selectable row on a tool name and nothing else.
+					const text = call
+						? this.#formatToolCall(call.name, call.arguments)
+						: truncateToWidth(normalize(this.#extractContent(toolMsg.content)), TRUNCATE_LENGTHS.SHORT);
+					return { kind: call?.name ?? toolMsg.toolName ?? "tool", tone: "muted", text, textTone: "muted" };
+				}
+				if (role === "bashExecution") {
+					const bashMsg = msg as { command?: string };
+					return { kind: "bash", tone: "dim", text: normalize(bashMsg.command ?? ""), textTone: "dim" };
+				}
+				return { kind: role, tone: "dim", text: "" };
 			}
 			case "custom_message": {
 				const content =
@@ -748,34 +1082,50 @@ class TreeList implements Component {
 								.filter((c): c is { type: "text"; text: string } => c.type === "text")
 								.map(c => c.text)
 								.join("");
-				result = theme.fg("customMessageLabel", `[${entry.customType}]: `) + normalize(content);
-				break;
+				return { kind: entry.customType, tone: "customMessageLabel", text: normalize(content) };
 			}
 			case "compaction": {
 				const tokens = Math.round(entry.tokensBefore / 1000);
-				result = theme.fg("borderAccent", `[compaction: ${tokens}k tokens]`);
-				break;
+				return { kind: "compaction", tone: "borderAccent", text: `${tokens}k tokens`, textTone: "borderAccent" };
 			}
 			case "branch_summary":
-				result = theme.fg("warning", `[branch summary]: `) + normalize(entry.summary);
-				break;
+				return { kind: "summary", tone: "warning", text: normalize(entry.summary) };
 			case "model_change":
-				result = theme.fg("dim", `[model: ${entry.model}]`);
-				break;
+				return { kind: "model", tone: "dim", text: entry.model, textTone: "dim" };
 			case "thinking_level_change":
-				result = theme.fg("dim", `[thinking: ${entry.thinkingLevel ?? ThinkingLevel.Off}]`);
-				break;
+				return {
+					kind: "thinking",
+					tone: "dim",
+					text: entry.thinkingLevel ?? ThinkingLevel.Off,
+					textTone: "dim",
+				};
 			case "custom":
-				result = theme.fg("dim", `[custom: ${entry.customType}]`);
-				break;
+				return { kind: "custom", tone: "dim", text: entry.customType, textTone: "dim" };
 			case "label":
-				result = theme.fg("dim", `[label: ${entry.label ?? "(cleared)"}]`);
-				break;
-			default:
-				result = "";
+				return { kind: "label", tone: "dim", text: entry.label ?? "(cleared)", textTone: "dim" };
+			case "service_tier_change": {
+				const tier = entry.serviceTier;
+				const families = tier === null ? "(cleared)" : Object.values(tier).join(" ");
+				return { kind: "tier", tone: "dim", text: families, textTone: "dim" };
+			}
+			case "mode_change":
+				return { kind: "mode", tone: "dim", text: entry.mode, textTone: "dim" };
+			case "title_change":
+				return { kind: "title", tone: "dim", text: normalize(entry.title), textTone: "dim" };
+			case "session_init":
+				return { kind: "session", tone: "dim", text: `${entry.tools.length} tools`, textTone: "dim" };
+			case "ttsr_injection":
+				return { kind: "rules", tone: "dim", text: entry.injectedRules.join(" "), textTone: "dim" };
+			case "mcp_tool_selection":
+				return { kind: "mcp", tone: "dim", text: entry.selectedToolNames.join(" "), textTone: "dim" };
+			default: {
+				// An entry kind this card was not written for — a package's own,
+				// merged into the union — still says WHICH kind it is. A blank row is
+				// unreadable and unsearchable, and `all` mode shows every row.
+				const unknown = entry as { type?: string };
+				return { kind: unknown.type ?? "entry", tone: "dim", text: "" };
+			}
 		}
-
-		return isSelected ? theme.bold(result) : result;
 	}
 
 	#extractContent(content: unknown): string {
@@ -807,53 +1157,62 @@ class TreeList implements Component {
 		return false;
 	}
 
-	#formatToolCall(name: string, args: Record<string, unknown>): string {
+	/**
+	 * What one tool call did, as the row's text: its arguments, never its name.
+	 *
+	 * The name is the kind column, so repeating it here would spend the row's
+	 * first cells saying the same word twice.
+	 *
+	 * Arguments the session recorded unparsed — the raw JSON string of a turn
+	 * that ended mid-call — reach {@link argSummary} whatever the tool is,
+	 * because a per-tool rule reading `args.path` off a string answers
+	 * `undefined` and would spend the row on an empty cell.
+	 */
+	#formatToolCall(name: string, args: unknown): string {
+		if (typeof args !== "object" || args === null) return this.#summarizeArgs(args);
+		const fields: Record<string, unknown> = args as Record<string, unknown>;
 		switch (name) {
 			case "read": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
-				const offset = args.offset as number | undefined;
-				const limit = args.limit as number | undefined;
-				let display = path;
-				if (offset !== undefined || limit !== undefined) {
-					const start = offset ?? 1;
-					const end = limit !== undefined ? start + limit - 1 : "";
-					display += `:${start}${end ? `-${end}` : ""}`;
-				}
-				return `[read: ${display}]`;
+				const path = tailPath(fields.path || fields.file_path || "");
+				const offset = typeof fields.offset === "number" ? fields.offset : undefined;
+				const limit = typeof fields.limit === "number" ? fields.limit : undefined;
+				if (offset === undefined && limit === undefined) return path;
+				const start = offset ?? 1;
+				const end = limit !== undefined ? start + limit - 1 : "";
+				return `${path}:${start}${end ? `-${end}` : ""}`;
 			}
-			case "write": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
-				return `[write: ${path}]`;
-			}
-			case "edit": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
-				return `[edit: ${path}]`;
-			}
+			case "write":
+			case "edit":
+				return tailPath(fields.path || fields.file_path || "");
+			case "ls":
+				return tailPath(fields.path || ".");
 			case "bash": {
-				const rawCmd = String(args.command || "");
+				const rawCmd = String(fields.command || "");
 				const cmd = rawCmd
 					.replace(/[\n\t]/g, " ")
 					.trim()
 					.slice(0, 50);
-				return `[bash: ${cmd}${rawCmd.length > 50 ? "..." : ""}]`;
+				return `${cmd}${rawCmd.length > 50 ? "..." : ""}`;
 			}
 			case "search": {
-				const type = String(args.type || "?");
-				const input = String(args.input || "");
-				const scope = typeof args.path === "string" ? ` in ${shortenPath(args.path)}` : "";
-				return `[search:${type} ${input}${scope}]`;
+				const type = String(fields.type || "?");
+				const input = String(fields.input || "");
+				const scope = typeof fields.path === "string" ? ` in ${tailPath(fields.path)}` : "";
+				return `${type} ${input}${scope}`;
 			}
-			case "ls": {
-				const path = shortenPath(String(args.path || "."));
-				return `[ls: ${path}]`;
-			}
-			default: {
-				// Custom tool - show name and truncated JSON args
-				const rawArgs = typeof args === "string" ? args : JSON.stringify(args ?? {});
-				const argsStr = truncateToWidth(rawArgs ?? "{}", TRUNCATE_LENGTHS.SHORT);
-				return `[${name}: ${argsStr}]`;
-			}
+			default:
+				return this.#summarizeArgs(fields);
 		}
+	}
+
+	/** {@link argSummary} on one row: tabs flattened, and cut to the row's share. */
+	#summarizeArgs(args: unknown): string {
+		return truncateToWidth(
+			argSummary(args)
+				.replace(/[\n\t]/g, " ")
+				.trim(),
+			TRUNCATE_LENGTHS.SHORT,
+		);
 	}
 
 	handleInput(keyData: string): void {
@@ -867,6 +1226,12 @@ class TreeList implements Component {
 		} else if (matchesKey(keyData, "right")) {
 			// Page down
 			this.#selectedIndex = Math.min(this.#filteredNodes.length - 1, this.#selectedIndex + this.#maxVisibleLines);
+		} else if (matchesKey(keyData, "home")) {
+			// The root, in one key. Left/Right page through a long trunk a screen at
+			// a time, which is a poor way to reach the thing every path starts at.
+			this.#selectedIndex = 0;
+		} else if (matchesKey(keyData, "end")) {
+			this.#selectedIndex = Math.max(0, this.#filteredNodes.length - 1);
 		} else if (matchesKey(keyData, "enter") || matchesKey(keyData, "return") || keyData === "\n") {
 			const selected = this.#filteredNodes[this.#selectedIndex];
 			if (selected && this.onSelect) {
@@ -883,15 +1248,13 @@ class TreeList implements Component {
 			this.onCancel?.();
 		} else if (matchesKey(keyData, "shift+ctrl+o") || matchesKey(keyData, "ctrl+shift+o")) {
 			// Cycle filter backwards
-			const modes: FilterMode[] = ["default", "no-tools", "user-only", "labeled-only", "all"];
-			const currentIndex = modes.indexOf(this.#filterMode);
-			this.#filterMode = modes[(currentIndex - 1 + modes.length) % modes.length];
+			const at = TREE_FILTER_MODES.indexOf(this.#filterMode);
+			this.#filterMode = TREE_FILTER_MODES[(at - 1 + TREE_FILTER_MODES.length) % TREE_FILTER_MODES.length];
 			this.#applyFilter();
 		} else if (matchesKey(keyData, "ctrl+o")) {
 			// Cycle filter forwards: default → no-tools → user-only → labeled-only → all → default
-			const modes: FilterMode[] = ["default", "no-tools", "user-only", "labeled-only", "all"];
-			const currentIndex = modes.indexOf(this.#filterMode);
-			this.#filterMode = modes[(currentIndex + 1) % modes.length];
+			const at = TREE_FILTER_MODES.indexOf(this.#filterMode);
+			this.#filterMode = TREE_FILTER_MODES[(at + 1) % TREE_FILTER_MODES.length];
 			this.#applyFilter();
 		} else if (matchesKey(keyData, "alt+d")) {
 			this.#filterMode = "default";
@@ -932,6 +1295,7 @@ class TreeList implements Component {
 const TREE_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "move", keybindings: ["tui.select.up", "tui.select.down"] },
 	{ label: "left/right page" },
+	{ label: "home/end ends" },
 	{ label: "shift+L label" },
 	{ label: "ctrl+O filter" },
 	{ label: "enter jump", clickable: true, id: "confirm" },
@@ -1101,6 +1465,26 @@ export class TreeSelectorComponent implements Component {
 		return true;
 	}
 
+	/**
+	 * The card's header row: the search query on the left, and on the right the
+	 * rows on screen out of the whole tree plus the filter mode that decided it.
+	 *
+	 * The filter used to be named on a body row at the bottom of the card, and
+	 * only while it was not `default`, so the one view where entries are missing
+	 * without explanation was the view that said nothing. Counts and mode sit
+	 * beside the search because those three are what narrow the tree.
+	 */
+	#headerLine(contentWidth: number): string {
+		const query = this.#treeList.getSearchQuery();
+		const left = query
+			? `${theme.fg("muted", "Search:")} ${theme.fg("accent", query)}`
+			: theme.fg("dim", "Type to search");
+		const status = `${this.#treeList.visibleRowCount()}/${this.#treeList.totalRowCount()}  ·  ${this.#treeList.filterName()}`;
+		const gap = contentWidth - visibleWidth(left) - visibleWidth(status);
+		if (gap < 2) return left;
+		return left + padding(gap) + theme.fg("muted", status);
+	}
+
 	render(width: number): readonly string[] {
 		const height = process.stdout.rows || 40;
 		const sizing = sizingForArea(MODAL_SIZING_LARGE, height);
@@ -1110,10 +1494,6 @@ export class TreeSelectorComponent implements Component {
 			return Array.from({ length: height }, () => padding(width));
 		}
 
-		const query = this.#treeList.getSearchQuery();
-		const searchLine = query
-			? `${theme.fg("muted", "Search:")} ${theme.fg("accent", query)}`
-			: theme.fg("dim", "Type to search");
 		const chrome = planModalChrome({
 			sizing,
 			modalHeight: dims.modalHeight,
@@ -1124,13 +1504,23 @@ export class TreeSelectorComponent implements Component {
 		});
 
 		let body: readonly string[];
+		// Rows the card asks for. The label editor is three rows; the tree asks for
+		// what its filter mode admits, so a short session gets a short card instead
+		// of one sized for twenty entries with blank rows under the last one. The
+		// list is then sized to the SAME number, because the shell truncates an
+		// overrun silently and the row it would eat is the one under the cursor.
+		//
+		// MIN_TREE_ROWS is the floor whatever the tree holds: an empty result is
+		// three rows of guidance (what hid the entries and which key widens it),
+		// and a card sized to one row would show only the first of them.
+		let bodyRows: number;
 		if (this.#labelInput) {
 			body = this.#labelInput.render(dims.contentWidth);
+			bodyRows = body.length;
 		} else {
-			// The tree owns the whole body minus the filter footer line the list
-			// appends for a non-default filter; the shell truncates an overrun
-			// silently, and the row it would eat is the one under the cursor.
-			this.#treeList.setMaxVisibleLines(Math.max(MIN_TREE_ROWS, chrome.maxBodyRows - 1));
+			const natural = Math.max(MIN_TREE_ROWS, this.#treeList.naturalRowCount());
+			bodyRows = Math.max(1, Math.min(chrome.maxBodyRows, natural));
+			this.#treeList.setMaxVisibleLines(bodyRows);
 			body = this.#treeList.render(dims.contentWidth);
 		}
 
@@ -1140,7 +1530,8 @@ export class TreeSelectorComponent implements Component {
 			areaWidth: width,
 			areaHeight: height,
 			body,
-			searchLine,
+			preferredBodyRows: bodyRows,
+			searchLine: this.#headerLine(dims.contentWidth),
 			shortcuts: TREE_SHORTCUTS,
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,

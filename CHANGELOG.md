@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The `/tree` card sizes itself to the entries the filter admits, marks the current leaf with `●` and the rest of the active path with `•` in a column every row reserves, tints the tree rail on the active path, dates each row with a coarse age, and names the visible-of-total count and filter mode in its header row.
+- Every `/tree` row states its kind — a message role, a tool name or an entry type — in a fixed ten-column field, so entry text at one depth starts at one column and no row repeats its kind inside its text.
+- A `/tree` tool row shows its arguments without the tool name around them, cuts a path longer than 44 columns from the left so the file name survives, and summarizes an unfamiliar tool by the argument that names its target instead of its serialized arguments.
+- `/tree` paints the typed query gold wherever it occurs in a row, in the kind column as well as the entry text, and keeps the row's own colour on either side of the match.
+- `Home` and `End` move the `/tree` cursor to the first and last visible entries.
+- A `/tree` label hangs at the right of its row, left of the age and capped at 18 columns, so a labeled entry's text starts at the same column as every other row's.
+- An empty `/tree` card states the cause and the key that undoes it, and leaves the counts and the filter mode to the header row that already carries them.
+
+### Fixed
+
+- A `/tree` mode change, title change, tier change, session header, injected-rules record or MCP selection no longer paints a selectable row with nothing on it: each states its own kind and value in `all`, and the default filter hides it with the other bookkeeping entries.
+- `/tree` search reaches a tool row's name and argument summary, and a bookkeeping row's mode, title, rule names and MCP tool names.
+- A `/tree` tool result whose call compaction dropped shows what came back instead of a row carrying only a tool name.
+
 ## [1.5.0] - 2026-09-18
 
 ### Breaking Changes

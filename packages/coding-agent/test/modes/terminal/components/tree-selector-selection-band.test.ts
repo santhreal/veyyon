@@ -172,6 +172,8 @@ describe("The selected row's band", () => {
 
 		expect(rendered.some(line => BG_OPEN.test(line))).toBeFalse();
 		expect(rendered.filter(line => line.trimStart().startsWith("›"))).toHaveLength(1);
-		expect(rendered.find(line => line.trimStart().startsWith("›"))).toContain("user: x");
+		const cursorRow = rendered.find(line => line.trimStart().startsWith("›"));
+		expect(cursorRow).toContain("user");
+		expect(cursorRow).toContain("x");
 	});
 });

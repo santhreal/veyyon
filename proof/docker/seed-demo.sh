@@ -549,10 +549,11 @@ case "${SCENE_NAME}" in
 autoresearch-serial-*) SEED_KIND=serial ;;
 autoresearch-* | autoswarm-run-*) SEED_KIND=swarm ;;
 late-diagnostics*) SEED_KIND=late-diagnostics ;;
+session-tree-*) SEED_KIND=session-tree ;;
 *) SEED_KIND="" ;;
 esac
-if [ "${SEED_KIND}" = "late-diagnostics" ]; then
-	(cd /repo && bun proof/docker/seed-late-diagnostics.ts "${DEMO}")
-elif [ -n "${SEED_KIND}" ]; then
-	(cd /repo && bun proof/docker/seed-autoresearch.ts "${DEMO}" "${SEED_KIND}")
-fi
+case "${SEED_KIND}" in
+late-diagnostics) (cd /repo && bun proof/docker/seed-late-diagnostics.ts "${DEMO}") ;;
+session-tree) (cd /repo && bun proof/docker/seed-session-tree.ts "${DEMO}") ;;
+serial | swarm) (cd /repo && bun proof/docker/seed-autoresearch.ts "${DEMO}" "${SEED_KIND}") ;;
+esac
