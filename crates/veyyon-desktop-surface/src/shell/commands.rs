@@ -92,12 +92,12 @@ impl ShellView {
 				self.close_palette(cx);
 				self.pick_attachments(cx);
 			},
-			ComposerCommand::Models => {
-				let state =
-					self.state.composer.model.as_ref().map_or_else(
-						|| PaletteState::new(PaletteMode::Models),
-						PaletteState::from_models,
-					);
+			ComposerCommand::Models | ComposerCommand::SwitchModel => {
+				let persist = command == ComposerCommand::Models;
+				let state = self.state.composer.model.as_ref().map_or_else(
+					|| PaletteState::new(PaletteMode::Models),
+					|model| PaletteState::from_models(model, persist),
+				);
 				self.consume_command_prefix(cx);
 				self.open_composer_options(state, cx);
 			},

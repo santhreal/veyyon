@@ -125,7 +125,7 @@ fn every_producer() -> Vec<(&'static str, PaletteState)> {
 	vec![
 		("commands", PaletteState::commands()),
 		("sessions", PaletteState::from_sessions(&session_rows())),
-		("models", PaletteState::from_models(&model_control())),
+		("models", PaletteState::from_models(&model_control(), true)),
 		("files", lookup(PaletteMode::Files, "loader.ts", "src/host/loader.ts")),
 		(
 			"content-search",

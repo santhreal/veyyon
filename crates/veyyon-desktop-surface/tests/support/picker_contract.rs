@@ -29,7 +29,10 @@ pub fn sources() -> Vec<Source> {
 	let mut composer_actions = Vec::new();
 	for command in ComposerCommand::iter() {
 		match command {
-			ComposerCommand::Models | ComposerCommand::Effort | ComposerCommand::QueueMode => {
+			ComposerCommand::Models
+			| ComposerCommand::SwitchModel
+			| ComposerCommand::Effort
+			| ComposerCommand::QueueMode => {
 				sources.push(Source::Composer(command));
 			},
 			ComposerCommand::AttachFiles | ComposerCommand::Steer | ComposerCommand::Queue => {
@@ -114,6 +117,7 @@ pub fn open(
 						.model
 						.as_ref()
 						.expect("fixture models"),
+					true,
 				),
 				PaletteMode::Files | PaletteMode::ContentSearch | PaletteMode::Browse => {
 					PaletteState::new(mode)

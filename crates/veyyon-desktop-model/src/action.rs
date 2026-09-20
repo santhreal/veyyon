@@ -217,9 +217,15 @@ pub enum HostAction {
 
 	// Models family (3 actions)
 	RefreshModels,
+	/// Runs the session on a model.
+	///
+	/// `persist` writes it as the default role, which is what choosing a model
+	/// means; a session-only try sends `false`, and the host applies it to the
+	/// session without touching the operator's configuration.
 	SelectModel {
 		provider: String,
 		model:    String,
+		persist:  bool,
 	},
 	SetThinkingLevel {
 		level: String,

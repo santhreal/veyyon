@@ -146,7 +146,7 @@ pub fn composer_model_selector() -> Built {
 		current: Some(ModelChoice::new("anthropic".to_string(), "claude-sonnet-4.5".to_string())),
 		options: models,
 	};
-	built.state.overlay = Some(Overlay::Palette(PaletteState::from_models(&control)));
+	built.state.overlay = Some(Overlay::Palette(PaletteState::from_models(&control, true)));
 	built
 }
 

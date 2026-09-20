@@ -99,7 +99,12 @@ pub enum Intent {
 	SetSessionMode {
 		mode: SettableMode,
 	},
-	SelectModel(ModelChoice),
+	/// Runs the session on a model, saved as the default or tried for this
+	/// session alone.
+	SelectModel {
+		choice:  ModelChoice,
+		persist: bool,
+	},
 	SetThinking(ThinkingLevel),
 	/// Takes the newest queued prompt back out of the runtime into the composer.
 	DequeueQueuedPrompt,

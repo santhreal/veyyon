@@ -80,10 +80,10 @@ fn every_model_the_host_reported_is_chosen_by_the_row_that_names_it() {
 		});
 		assert_eq!(
 			sent,
-			vec![Intent::SelectModel(choice_of(title))],
+			vec![Intent::SelectModel { choice: choice_of(title), persist: true }],
 			"the row titled {title} sent another row's model"
 		);
-		if let Some(Intent::SelectModel(choice)) = sent.into_iter().next() {
+		if let Some(Intent::SelectModel { choice, persist: true }) = sent.into_iter().next() {
 			chosen.push(choice);
 		}
 	}
@@ -115,7 +115,7 @@ fn the_row_above_the_first_is_the_last_one_the_list_holds() {
 
 	assert_eq!(
 		sent,
-		vec![Intent::SelectModel(choice_of(&last))],
+		vec![Intent::SelectModel { choice: choice_of(&last), persist: true }],
 		"the up key from the first row left the list instead of wrapping to its last row"
 	);
 }
@@ -144,7 +144,7 @@ fn the_row_the_pointer_presses_chooses_what_the_keyboard_would() {
 		});
 		assert_eq!(
 			pressed,
-			vec![Intent::SelectModel(choice_of(title))],
+			vec![Intent::SelectModel { choice: choice_of(title), persist: true }],
 			"the pointer on row {index} chose a different model than the keyboard does"
 		);
 	}

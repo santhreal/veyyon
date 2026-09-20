@@ -60,12 +60,10 @@ impl ShellView {
 		if !availability_style(&availability, &self.installed.set).2 {
 			return;
 		}
-		let palette = self
-			.state
-			.composer
-			.model
-			.as_ref()
-			.map_or_else(|| PaletteState::new(PaletteMode::Models), PaletteState::from_models);
+		let palette = self.state.composer.model.as_ref().map_or_else(
+			|| PaletteState::new(PaletteMode::Models),
+			|model| PaletteState::from_models(model, true),
+		);
 		self.palette_input.anchored = true;
 		self.palette_input.slash = false;
 		self.palette_input.restore_focus = false;

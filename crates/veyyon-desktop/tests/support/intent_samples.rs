@@ -80,10 +80,19 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		IntentDiscriminants::SetSessionMode => SettableMode::iter()
 			.map(|mode| Intent::SetSessionMode { mode })
 			.collect(),
-		IntentDiscriminants::SelectModel => vec![Intent::SelectModel(ModelChoice {
-			provider: "anthropic".to_string(),
-			model:    "claude-3-5-sonnet".to_string(),
-		})],
+		// Both answers to the picker are sampled: /model writes the choice to
+		// settings and /switch holds it for the session, and the pair differs
+		// only by this field.
+		IntentDiscriminants::SelectModel => [true, false]
+			.into_iter()
+			.map(|persist| Intent::SelectModel {
+				choice: ModelChoice {
+					provider: "anthropic".to_string(),
+					model:    "claude-3-5-sonnet".to_string(),
+				},
+				persist,
+			})
+			.collect(),
 		IntentDiscriminants::SetThinking => {
 			vec![Intent::SetThinking(ThinkingLevel { level: "high".to_string() })]
 		},

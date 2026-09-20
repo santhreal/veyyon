@@ -28,7 +28,7 @@ use palette_rows::{captured, grouped_rows, model_control, text_run_count};
 #[test]
 fn a_model_row_does_not_restate_the_name_above_it() {
 	let control = model_control();
-	let state = PaletteState::from_models(&control);
+	let state = PaletteState::from_models(&control, true);
 	for item in state.items() {
 		let heading = item
 			.group
@@ -65,7 +65,7 @@ fn a_model_row_does_not_restate_the_name_above_it() {
 #[test]
 fn a_provider_is_stated_once_above_the_models_it_holds() {
 	let control = model_control();
-	let state = PaletteState::from_models(&control);
+	let state = PaletteState::from_models(&control, true);
 	let headings: Vec<&str> = state
 		.items()
 		.iter()
@@ -96,7 +96,7 @@ fn a_provider_is_stated_once_above_the_models_it_holds() {
 #[test]
 fn a_heading_reaches_the_frame_and_takes_its_room_from_the_rows() {
 	let mut cx = headless_context().expect("a headless renderer is required to render the shell");
-	let grouped = PaletteState::from_models(&model_control());
+	let grouped = PaletteState::from_models(&model_control(), true);
 	let mut flat = grouped.clone();
 	let mut items = grouped.items().to_vec();
 	for item in &mut items {
@@ -185,7 +185,7 @@ fn a_search_keeps_the_rows_under_one_heading_together() {
 			},
 		],
 	};
-	let mut grouped = PaletteState::from_models(&control);
+	let mut grouped = PaletteState::from_models(&control, true);
 	grouped.set_query("glm");
 
 	// The control arm: the same rows carrying no heading, ranked by score

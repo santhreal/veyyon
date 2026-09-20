@@ -87,28 +87,37 @@ pub fn palette_mode_models() -> Built {
 		PaletteItem::command(
 			1,
 			"Claude Sonnet 4.5",
-			Intent::SelectModel(veyyon_desktop_surface::composer::ModelChoice::new(
-				"anthropic".to_string(),
-				"claude-sonnet-4.5".to_string(),
-			)),
+			Intent::SelectModel {
+				choice:  veyyon_desktop_surface::composer::ModelChoice::new(
+					"anthropic".to_string(),
+					"claude-sonnet-4.5".to_string(),
+				),
+				persist: true,
+			},
 			None,
 		),
 		PaletteItem::command(
 			2,
 			"GPT-5",
-			Intent::SelectModel(veyyon_desktop_surface::composer::ModelChoice::new(
-				"openai".to_string(),
-				"gpt-5".to_string(),
-			)),
+			Intent::SelectModel {
+				choice:  veyyon_desktop_surface::composer::ModelChoice::new(
+					"openai".to_string(),
+					"gpt-5".to_string(),
+				),
+				persist: true,
+			},
 			None,
 		),
 		PaletteItem::command(
 			3,
 			"Gemini 2.5 Pro",
-			Intent::SelectModel(veyyon_desktop_surface::composer::ModelChoice::new(
-				"google".to_string(),
-				"gemini-2.5-pro".to_string(),
-			)),
+			Intent::SelectModel {
+				choice:  veyyon_desktop_surface::composer::ModelChoice::new(
+					"google".to_string(),
+					"gemini-2.5-pro".to_string(),
+				),
+				persist: true,
+			},
 			None,
 		),
 	]);

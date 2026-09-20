@@ -86,10 +86,11 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::SetSessionMode { mode } => active.map_or_else(Vec::new, |session| {
 			vec![HostAction::SetSessionMode { session, mode: *mode }]
 		}),
-		Intent::SelectModel(choice) => {
+		Intent::SelectModel { choice, persist } => {
 			vec![HostAction::SelectModel {
 				provider: choice.provider.clone(),
 				model:    choice.model.clone(),
+				persist:  *persist,
 			}]
 		},
 		Intent::SetThinking(level) => {

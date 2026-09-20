@@ -28,6 +28,12 @@ const handleRefreshModels: ActionHandler = async ctx => {
 interface SelectModelPayload {
 	provider?: string;
 	model?: string;
+	/**
+	 * Whether the choice becomes the default role in settings. `/model` sets
+	 * it, `/switch` leaves settings alone and holds the model for this session,
+	 * which is the one difference between the two commands.
+	 */
+	persist?: boolean;
 }
 
 const handleSelectModel: ActionHandler<SelectModelPayload | undefined> = async (ctx, payload) => {
@@ -79,7 +85,12 @@ const handleSelectModel: ActionHandler<SelectModelPayload | undefined> = async (
 			return;
 		}
 
-		await session.setModel(found, DEFAULT_MODEL_SLOT, { persist: true });
+		const thinkingLevel = session.resolveTemporaryModelThinkingLevel(found);
+		if (payload.persist === false) {
+			await session.setModelTemporary(found, thinkingLevel);
+		} else {
+			await session.setModel(found, DEFAULT_MODEL_SLOT, { thinkingLevel, persist: true });
+		}
 		const view = await buildModelsView(ctx);
 		ctx.clientState.revision += 1;
 		ctx.reply.snapshot({

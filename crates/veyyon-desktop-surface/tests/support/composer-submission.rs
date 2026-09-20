@@ -114,7 +114,10 @@ fn request_availability_applies_to_direct_and_palette_dispatch() {
 					(Intent::Queue("draft".to_owned()), SurfaceId::ComposerQueueButton(row.clone())),
 					(Intent::AbortTurn, SurfaceId::ComposerAbortButton(row.clone())),
 					(
-						Intent::SelectModel(ModelChoice::new("provider", "model")),
+						Intent::SelectModel {
+							choice:  ModelChoice::new("provider", "model"),
+							persist: true,
+						},
 						SurfaceId::ComposerModelSelector(row.clone()),
 					),
 					(
@@ -237,7 +240,10 @@ fn model_search_preserves_the_draft_and_requires_available_selection() {
 					.as_ref()
 					.and_then(Overlay::as_palette)
 					.expect("model picker");
-				assert_eq!(palette.run_intent(), Some(Intent::SelectModel(choice.clone())));
+				assert_eq!(
+					palette.run_intent(),
+					Some(Intent::SelectModel { choice: choice.clone(), persist: true })
+				);
 				let id = SurfaceId::ComposerModelSelector(SessionId::from(
 					view.state().current_id.to_string(),
 				));
@@ -257,7 +263,7 @@ fn model_search_preserves_the_draft_and_requires_available_selection() {
 					.controls
 					.set_availability(id, Availability::Enabled);
 				view.run_palette(cx);
-				assert_eq!(view.drain_intents(), vec![Intent::SelectModel(choice)]);
+				assert_eq!(view.drain_intents(), vec![Intent::SelectModel { choice, persist: true }]);
 				assert_eq!(view.state().composer.model, Some(previous));
 				assert_eq!(view.composer().expect("editor").read(cx).text(), "draft");
 			})

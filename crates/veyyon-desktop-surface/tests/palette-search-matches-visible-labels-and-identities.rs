@@ -12,18 +12,25 @@ use veyyon_desktop_surface::{
 #[test]
 fn a_model_identifier_selects_the_model_with_a_different_display_name() {
 	let choice = ModelChoice::new("local", "compact-model");
-	let mut palette = PaletteState::from_models(&ModelControl {
-		current: None,
-		options: vec![ModelOption {
-			choice:    choice.clone(),
-			name:      "Compact Model (local)".to_string(),
-			reasoning: false,
-			input:     vec![],
-		}],
-	});
+	let mut palette = PaletteState::from_models(
+		&ModelControl {
+			current: None,
+			options: vec![ModelOption {
+				choice:    choice.clone(),
+				name:      "Compact Model (local)".to_string(),
+				reasoning: false,
+				input:     vec![],
+			}],
+		},
+		true,
+	);
 	for query in ["local/compact-model", "LOCAL/COMPACT-MODEL", "Compact Model"] {
 		palette.set_query(query);
-		assert_eq!(palette.run_intent(), Some(Intent::SelectModel(choice.clone())), "{query}");
+		assert_eq!(
+			palette.run_intent(),
+			Some(Intent::SelectModel { choice: choice.clone(), persist: true }),
+			"{query}"
+		);
 	}
 }
 

@@ -121,8 +121,12 @@ impl PaletteState {
 	/// Creates a palette state listing the host's model catalog under a heading
 	/// per provider, the provider holding the model in effect first and that
 	/// model first within it (§5.4). Choosing a row asks the host to select it.
+	///
+	/// `persist` is the difference between choosing a model and trying one: a
+	/// chosen model is written as the default role, a tried one runs this
+	/// session and leaves the configuration alone.
 	#[must_use]
-	pub fn from_models(model: &crate::composer::ModelControl) -> Self {
+	pub fn from_models(model: &crate::composer::ModelControl, persist: bool) -> Self {
 		let mut providers: Vec<&str> = Vec::new();
 		for option in &model.options {
 			if !providers.contains(&option.choice.provider.as_str()) {
@@ -181,7 +185,7 @@ impl PaletteState {
 					meta:       PaletteMeta::note(&marks),
 					capability: Some(Capability::Models),
 					kind:       PaletteItemKind::Command {
-						intent: Box::new(Intent::SelectModel(option.choice.clone())),
+						intent: Box::new(Intent::SelectModel { choice: option.choice.clone(), persist }),
 					},
 				});
 			}

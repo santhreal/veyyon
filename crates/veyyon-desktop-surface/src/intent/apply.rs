@@ -67,7 +67,7 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		// drawn that the agent is not in.
 		Intent::SetSessionMode { .. } => {},
 		// Selection remains host-confirmed; a failed request cannot replace the displayed value.
-		Intent::SelectModel(_) | Intent::SetThinking(_) => {},
+		Intent::SelectModel { .. } | Intent::SetThinking(_) => {},
 		Intent::Attach(attachment) => state.composer.attach(attachment.clone()),
 		Intent::RemoveAttachment(index) => state.composer.detach(*index),
 		Intent::RetryConnection => {

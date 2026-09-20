@@ -11,6 +11,7 @@ use crate::{Command, Intent, navigation::SurfaceRoute, settings::SettingsPage};
 pub enum ComposerCommand {
 	AttachFiles,
 	Models,
+	SwitchModel,
 	Effort,
 	QueueMode,
 	Steer,
@@ -23,7 +24,9 @@ impl ComposerCommand {
 	pub fn surface(self, session: &SessionId) -> Option<SurfaceId> {
 		match self {
 			Self::AttachFiles => None,
-			Self::Models => Some(SurfaceId::ComposerModelSelector(session.clone())),
+			Self::Models | Self::SwitchModel => {
+				Some(SurfaceId::ComposerModelSelector(session.clone()))
+			},
 			Self::Effort => Some(SurfaceId::ComposerThinkingSelector(session.clone())),
 			Self::QueueMode => Some(SurfaceId::ComposerQueueModeToggle(session.clone())),
 			Self::Steer => Some(SurfaceId::ComposerSteerButton(session.clone())),
@@ -36,6 +39,7 @@ impl ComposerCommand {
 		match self {
 			Self::AttachFiles => "/attach",
 			Self::Models => "/model",
+			Self::SwitchModel => "/switch",
 			Self::Effort => "/effort",
 			Self::QueueMode => "/queue-mode",
 			Self::Steer => "/steer",
@@ -54,7 +58,9 @@ impl ComposerCommand {
 	pub const fn carries_draft(self) -> bool {
 		match self {
 			Self::Steer | Self::Queue => true,
-			Self::AttachFiles | Self::Models | Self::Effort | Self::QueueMode => false,
+			Self::AttachFiles | Self::Models | Self::SwitchModel | Self::Effort | Self::QueueMode => {
+				false
+			},
 		}
 	}
 
@@ -68,7 +74,7 @@ impl ComposerCommand {
 	pub const fn capability(self) -> Option<Capability> {
 		match self {
 			Self::AttachFiles | Self::Steer => None,
-			Self::Models => Some(Capability::Models),
+			Self::Models | Self::SwitchModel => Some(Capability::Models),
 			Self::Effort => Some(Capability::Models),
 			// A follow-up behind a running turn, and the mode that chooses it,
 			// are what background submission is.
@@ -268,18 +274,20 @@ pub fn command_items() -> Vec<PaletteItem> {
 	}
 	for command in ComposerCommand::iter() {
 		// The chord a command answers to, for the four that have one. Steering
-		// and queueing are what the composer's own arrow sends, so neither has
-		// a chord of its own to state.
+		// and queueing are what the composer's own arrow sends, and a
+		// session-only model is the picker again with a different answer, so
+		// none of the three has a chord of its own to state.
 		let chord = match command {
 			ComposerCommand::AttachFiles => Some(Command::AttachFile),
 			ComposerCommand::Models => Some(Command::ModelPicker),
 			ComposerCommand::Effort => Some(Command::ThinkingLevel),
 			ComposerCommand::QueueMode => Some(Command::ToggleQueueMode),
-			ComposerCommand::Steer | ComposerCommand::Queue => None,
+			ComposerCommand::SwitchModel | ComposerCommand::Steer | ComposerCommand::Queue => None,
 		};
 		let description = match command {
 			ComposerCommand::AttachFiles => Command::AttachFile.label(),
 			ComposerCommand::Models => Command::ModelPicker.label(),
+			ComposerCommand::SwitchModel => "Try a model for this session only",
 			ComposerCommand::Effort => Command::ThinkingLevel.label(),
 			ComposerCommand::QueueMode => Command::ToggleQueueMode.label(),
 			ComposerCommand::Steer => "Steer the running turn with a message",

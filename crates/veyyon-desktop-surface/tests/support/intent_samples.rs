@@ -47,7 +47,10 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::Queue("queue text".to_owned()),
 		Intent::AbortTurn,
 		Intent::SetQueueMode(QueueMode::Queue),
-		Intent::SelectModel(ModelChoice::new("anthropic", "claude-sonnet-4-6")),
+		Intent::SelectModel {
+			choice:  ModelChoice::new("anthropic", "claude-sonnet-4-6"),
+			persist: true,
+		},
 		Intent::SetThinking(ThinkingLevel::new("medium")),
 		Intent::RemoveAttachment(0),
 		Intent::Attach(attachment()),
@@ -178,7 +181,7 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::AbortTurn
 			| Intent::SetQueueMode(_)
 			| Intent::SetSessionMode { .. }
-			| Intent::SelectModel(_)
+			| Intent::SelectModel { .. }
 			| Intent::SetThinking(_)
 			| Intent::RemoveAttachment(_)
 			| Intent::Attach(_)

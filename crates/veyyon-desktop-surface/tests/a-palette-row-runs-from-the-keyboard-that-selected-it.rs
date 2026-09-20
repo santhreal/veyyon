@@ -129,10 +129,13 @@ fn case(mode: PaletteMode) -> (&'static str, Outcome) {
 		PaletteMode::Sessions => ("Backdrop", Outcome::Runs(Intent::SelectSession(8))),
 		PaletteMode::Models => (
 			"opus",
-			Outcome::Runs(Intent::SelectModel(veyyon_desktop_surface::composer::ModelChoice {
-				provider: "anthropic".to_owned(),
-				model:    "claude-opus-4.1".to_owned(),
-			})),
+			Outcome::Runs(Intent::SelectModel {
+				choice:  veyyon_desktop_surface::composer::ModelChoice {
+					provider: "anthropic".to_owned(),
+					model:    "claude-opus-4.1".to_owned(),
+				},
+				persist: true,
+			}),
 		),
 		PaletteMode::Files | PaletteMode::ContentSearch => {
 			("app", Outcome::Runs(Intent::OpenFile("src/app.rs".to_owned())))

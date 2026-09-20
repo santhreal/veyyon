@@ -29,7 +29,7 @@ pub fn request_surface(intent: &Intent, session: &SessionId) -> Option<SurfaceId
 			SurfaceId::ComposerCancelToolButton(session.clone(), call_id.clone())
 		},
 		Intent::SetQueueMode(_) => SurfaceId::ComposerQueueModeToggle(session.clone()),
-		Intent::SelectModel(_) => SurfaceId::ComposerModelSelector(session.clone()),
+		Intent::SelectModel { .. } => SurfaceId::ComposerModelSelector(session.clone()),
 		Intent::SetThinking(_) => SurfaceId::ComposerThinkingSelector(session.clone()),
 		Intent::DequeueQueuedPrompt => SurfaceId::ComposerQueuedTakeBack(session.clone()),
 		// Every command row the host lists runs through the one request the

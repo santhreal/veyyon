@@ -62,7 +62,7 @@ fn every_producer() -> Vec<(&'static str, PaletteState)> {
 	vec![
 		("commands", PaletteState::commands()),
 		("sessions", PaletteState::from_sessions(&session_rows())),
-		("models", PaletteState::from_models(&model_control())),
+		("models", PaletteState::from_models(&model_control(), true)),
 		("browse", browse),
 	]
 }
@@ -152,7 +152,7 @@ fn a_row_states_the_chord_the_operator_bound_not_the_one_shipped() {
 
 #[test]
 fn a_model_row_states_which_model_is_in_effect_and_which_reasons() {
-	let state = PaletteState::from_models(&model_control());
+	let state = PaletteState::from_models(&model_control(), true);
 	let current = state
 		.items()
 		.iter()
