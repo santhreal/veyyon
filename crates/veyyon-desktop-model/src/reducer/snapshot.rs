@@ -373,7 +373,9 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 			// holds rather than toggling it: a window that attaches mid-pause
 			// and a window that engaged the pause itself reach the same value.
 			store.paused = view;
-			damage.insert(Damage::Titlebar);
+			// The strip takes a band off the top for as long as it holds, so
+			// its arrival and its departure move every region under it.
+			damage.insert(Damage::FullWindow);
 		},
 	}
 

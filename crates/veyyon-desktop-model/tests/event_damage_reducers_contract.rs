@@ -206,6 +206,11 @@ fn test_damage_decision_for_every_snapshot_section_sweep() {
 					damage.contains(&Damage::RightPanelTab(session_id.clone(), "export".to_string()))
 				);
 			},
+			// The freeze strip is a band above the columns, so it moves every
+			// region under it rather than repainting one of them.
+			"AgentPause" => {
+				assert!(damage.contains(&Damage::FullWindow));
+			},
 			other => panic!("Unhandled snapshot section in damage test: {other}"),
 		}
 

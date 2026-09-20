@@ -94,8 +94,8 @@ fn a_freeze_the_window_never_asked_for_reaches_its_strip() {
 	let damage = reduce(&mut store, frozen_since(NOW_MS - 12_000));
 
 	assert!(
-		damage.contains(&Damage::Titlebar),
-		"the freeze draws above every session, so it repaints the chrome: {damage:?}"
+		damage.contains(&Damage::FullWindow),
+		"the strip takes a band off the top, so it moves every region under it: {damage:?}"
 	);
 	assert_eq!(
 		drawn(&store, &mut index, NOW_MS).paused,
