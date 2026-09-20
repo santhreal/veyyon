@@ -101,12 +101,13 @@ fn palette_state(mut palette: PaletteState, query: &str) -> ShellState {
 /// One session for the rail to hold, which a filter then narrows away.
 fn rail_row() -> Row {
 	Row {
-		id:        7,
-		title:     "first".to_owned(),
-		subtitle:  String::new(),
-		badge:     None,
-		meta:      None,
+		id: 7,
+		title: "first".to_owned(),
+		subtitle: String::new(),
+		badge: None,
+		meta: None,
 		placement: Section::Live,
+		..Default::default()
 	}
 }
 
@@ -182,6 +183,18 @@ fn state_for(surface: EmptySurface) -> ShellState {
 			state
 		},
 		EmptySurface::QueueEmpty => rail_state(Vec::new()),
+		EmptySurface::Welcome => {
+			let mut state = rail_state(Vec::new());
+			state.providers = vec![veyyon_desktop_model::ProviderView {
+				id:            "anthropic".to_owned(),
+				name:          "Anthropic".to_owned(),
+				authenticated: true,
+				oauth:         false,
+				api_key:       true,
+			}];
+			state
+		},
+		EmptySurface::WelcomeNoProvider => rail_state(Vec::new()),
 	}
 }
 
@@ -266,7 +279,7 @@ fn every_surface_draws_the_sentences_declared_for_it() {
 
 #[test]
 fn a_surface_with_rows_draws_neither_sentence() {
-	let cases: [(EmptySurface, ShellState); 3] = [
+	let cases: [(EmptySurface, ShellState); 4] = [
 		(
 			EmptySurface::TreeEmpty,
 			panel_with(PanelTab::Tree, PanelContent {
@@ -301,6 +314,7 @@ fn a_surface_with_rows_draws_neither_sentence() {
 			}),
 		),
 		(EmptySurface::PaletteNoMatch, palette_state(PaletteState::commands(), "")),
+		(EmptySurface::Welcome, rail_state(vec![(Section::Live, vec![rail_row()])])),
 	];
 	for (surface, state) in cases {
 		let text = drawn_text(&drawn(state, false));

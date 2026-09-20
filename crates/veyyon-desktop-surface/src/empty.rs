@@ -12,8 +12,14 @@
 //! there is one of a closed set the sheet sweeps by itself. Both tables are
 //! judged against one vocabulary, `tests/support/empty_prose.rs`.
 
-use veyyon_desktop_kit::{ColorRole, SpacingStep, TextRamp, TextWeight, TokenSet};
-use veyyon_gpui::{Div, InteractiveElement, IntoElement, ParentElement, Stateful, Styled, div};
+use veyyon_desktop_kit::{
+	Button, ButtonSize, ButtonVariant, ColorRole, SpacingStep, TextRamp, TextWeight, TokenSet,
+};
+use veyyon_gpui::{
+	ClickEvent, Context, Div, InteractiveElement, IntoElement, ParentElement, Stateful, Styled, div,
+};
+
+use crate::{Intent, Overlay, PaletteMode, PaletteState, ShellView, navigation::SurfaceRoute};
 
 /// The two sentences an empty surface draws: what is missing, and the step that
 /// puts something there.
@@ -69,6 +75,10 @@ pub enum EmptySurface {
 	QueueFiltered,
 	/// The host reported no session at all.
 	QueueEmpty,
+	/// The window holds no session and model providers are configured.
+	Welcome,
+	/// The window holds no session and no model provider is configured.
+	WelcomeNoProvider,
 }
 
 impl EmptySurface {
@@ -92,6 +102,8 @@ impl EmptySurface {
 			Self::ReviewThreads => "review-threads-empty",
 			Self::QueueFiltered => "queue-empty-after-filter",
 			Self::QueueEmpty => "queue-truly-empty",
+			Self::Welcome => "welcome-empty",
+			Self::WelcomeNoProvider => "welcome-no-provider",
 		}
 	}
 
@@ -175,6 +187,14 @@ impl EmptySurface {
 			Self::QueueEmpty => {
 				EmptyCopy { condition: "No sessions yet", action: "Select New Session to start one" }
 			},
+			Self::Welcome => EmptyCopy {
+				condition: "No active session",
+				action:    "Open a session, resume one, or set the model",
+			},
+			Self::WelcomeNoProvider => EmptyCopy {
+				condition: "No model provider configured",
+				action:    "Select Account to sign in to one",
+			},
 		}
 	}
 }
@@ -234,4 +254,73 @@ pub fn empty_surface(surface: EmptySurface, tokens: &TokenSet) -> impl IntoEleme
 pub fn empty_unavailable(reason: &str, tokens: &TokenSet) -> impl IntoElement {
 	let surface = EmptySurface::PanelUnavailable;
 	empty_state(surface.id(), reason, surface.copy().action, tokens)
+}
+
+/// Draws the welcome surface a window holding no session shows.
+///
+/// With a provider configured it draws the three controls that reach work:
+/// open a session, resume one, set the model. With none configured it states
+/// that condition first and draws the control that opens the account surface,
+/// because the other three reach nothing until a provider answers.
+///
+/// The condition decides the variant here rather than at the call site, so
+/// the two welcome surfaces cannot be drawn under each other's copy.
+#[must_use]
+pub fn welcome_surface(
+	providers_configured: bool,
+	tokens: &TokenSet,
+	cx: &Context<ShellView>,
+) -> impl IntoElement {
+	let surface = if providers_configured {
+		EmptySurface::Welcome
+	} else {
+		EmptySurface::WelcomeNoProvider
+	};
+	let EmptyCopy { condition, action } = surface.copy();
+	let state = empty_state(surface.id(), condition, action, tokens);
+	if !providers_configured {
+		return state.child(
+			Button::new("welcome-account-btn", "Account")
+				.variant(ButtonVariant::Primary)
+				.size(ButtonSize::Small)
+				.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+					view.dispatch(Intent::Navigate(SurfaceRoute::Account), cx);
+				})),
+		);
+	}
+	state.child(
+		div()
+			.flex()
+			.flex_row()
+			.items_center()
+			.gap(tokens.spacing(SpacingStep::S2))
+			.child(
+				Button::new("welcome-open-session-btn", "Open session")
+					.variant(ButtonVariant::Primary)
+					.size(ButtonSize::Small)
+					.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+						view.dispatch(Intent::NewSession, cx);
+					})),
+			)
+			.child(
+				Button::new("welcome-resume-session-btn", "Resume session")
+					.variant(ButtonVariant::Default)
+					.size(ButtonSize::Small)
+					.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+						view.dispatch(Intent::FindSessions(String::new()), cx);
+					})),
+			)
+			.child(
+				Button::new("welcome-set-model-btn", "Set model")
+					.variant(ButtonVariant::Default)
+					.size(ButtonSize::Small)
+					.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+						let palette = view.state().composer.model.as_ref().map_or_else(
+							|| PaletteState::new(PaletteMode::Models),
+							|model| PaletteState::from_models(model, true),
+						);
+						view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Palette(palette))), cx);
+					})),
+			),
+	)
 }

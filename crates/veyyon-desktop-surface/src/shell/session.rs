@@ -191,8 +191,24 @@ pub fn session_surface(
 	// it. The empty states below are reached only when there is no transcript,
 	// which keeps `regions` -- which records `Region::Transcript` for exactly
 	// this child -- naming the box that was actually drawn.
+	let has_sessions = state.has_sessions();
+	// The welcome surface is the one state with nothing to type into. A
+	// surface replaying turns draws the composer, so a frame scoped to the
+	// last turn has the box of the float below it to repaint.
+	let welcome = !has_transcript && !has_sessions;
 	if has_transcript {
 		column = column.child(body);
+		regions.push(Some(Region::Transcript));
+	} else if !has_sessions {
+		column = column.justify_center().child(
+			div()
+				.w_full()
+				.px(tokens.spacing(SpacingStep::S4))
+				.flex()
+				.flex_row()
+				.justify_center()
+				.child(crate::empty::welcome_surface(state.providers_configured(), tokens, cx)),
+		);
 		regions.push(Some(Region::Transcript));
 	} else if state.current_id == 0 {
 		column = column.justify_center().child(
@@ -218,7 +234,7 @@ pub fn session_surface(
 		regions.push(None);
 	}
 
-	if !state.cards.is_empty() {
+	if !welcome && !state.cards.is_empty() {
 		// The stack shares the composer's measure and sits directly above it,
 		// so a decision and the reply to it occupy one column.
 		column = column.child(
@@ -241,53 +257,55 @@ pub fn session_surface(
 		regions.push(Some(Region::Cards));
 	}
 
-	column = column.child(bind_composer_keys(
-		composer_input
-			.w_full()
-			.px(tokens.spacing(SpacingStep::S4))
-			.on_children_prepainted(move |children, _window, _cx| {
-				if let Some(bounds) = children.first() {
-					palette_anchor.set(point(
-						bounds.origin.x + (bounds.size.width - composer_width) / 2.0,
-						bounds.origin.y,
-					));
-				}
-			})
-			.child(composer(
-				editor,
-				&state.turn,
-				&state.composer,
-				local,
-				has_text,
-				state.current_id,
-				widths.composer_px,
-				widths.labels.footer,
-				&state.controls,
-				&surface.composer,
-				tokens,
-				cx,
-			)),
-		cx,
-	));
-	regions.push(Some(Region::Composer));
+	if !welcome {
+		column = column.child(bind_composer_keys(
+			composer_input
+				.w_full()
+				.px(tokens.spacing(SpacingStep::S4))
+				.on_children_prepainted(move |children, _window, _cx| {
+					if let Some(bounds) = children.first() {
+						palette_anchor.set(point(
+							bounds.origin.x + (bounds.size.width - composer_width) / 2.0,
+							bounds.origin.y,
+						));
+					}
+				})
+				.child(composer(
+					editor,
+					&state.turn,
+					&state.composer,
+					local,
+					has_text,
+					state.current_id,
+					widths.composer_px,
+					widths.labels.footer,
+					&state.controls,
+					&surface.composer,
+					tokens,
+					cx,
+				)),
+			cx,
+		));
+		regions.push(Some(Region::Composer));
 
-	column = column.child(
-		div()
-			.w_full()
-			.px(tokens.spacing(SpacingStep::S4))
-			.child(run_bar(
-				state.run_status.clone(),
-				clamped_composer_px,
-				widths.labels.run_bar,
-				state.turn.is_stoppable(),
-				state.current_id,
-				&state.controls,
-				&surface.composer,
-				tokens,
-				cx,
-			)),
-	);
-	regions.push(Some(Region::RunBar));
+		column = column.child(
+			div()
+				.w_full()
+				.px(tokens.spacing(SpacingStep::S4))
+				.child(run_bar(
+					state.run_status.clone(),
+					clamped_composer_px,
+					widths.labels.run_bar,
+					state.turn.is_stoppable(),
+					state.current_id,
+					&state.controls,
+					&surface.composer,
+					tokens,
+					cx,
+				)),
+		);
+		regions.push(Some(Region::RunBar));
+	}
 
 	// The drawer is a child here only where it is drawn over the session. In
 	// the row placement it is the column's sibling below, tracked from there,
