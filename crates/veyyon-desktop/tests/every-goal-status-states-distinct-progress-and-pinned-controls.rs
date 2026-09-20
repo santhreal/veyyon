@@ -9,10 +9,13 @@
 //!
 //! THE CLASS THIS CLOSES: a newly added `GoalStatus` variant rendering with
 //! ambiguous or duplicated progress copy, offering illegal state transitions,
-//! or silently slipping into the UI without an explicit control policy.
+//! or silently slipping into the UI without an explicit control policy; and a
+//! control that ends the goal drawn as the answer the card invites, which is
+//! how a press meant for `Resume` discards the run instead.
 //!
 //! WHAT IT DOES NOT CATCH: host-side timer ticks, continuation turn generation,
-//! or token accounting arithmetic in TypeScript runtime.
+//! or token accounting arithmetic in TypeScript runtime, and the inks the
+//! answer row paints, which the colour sweep over the rasterised frames holds.
 
 use std::collections::HashSet;
 
@@ -21,7 +24,7 @@ use veyyon_desktop_kit::TintRole;
 use veyyon_desktop_model::{GoalControl, GoalStatus, GoalView};
 use veyyon_desktop_surface::{
 	Card,
-	cards::{format_duration, status_tint},
+	cards::{affirmative, format_duration, status_tint},
 };
 
 #[test]
@@ -192,4 +195,53 @@ fn goal_card_duration_formatting_covers_ranges() {
 	assert_eq!(format_duration(125), "2m 5s");
 	assert_eq!(format_duration(3600), "1h 0m");
 	assert_eq!(format_duration(7325), "2h 2m");
+}
+
+#[test]
+fn every_goal_control_states_its_words_and_whether_it_ends_the_goal() {
+	// The sweep is the enum, so a control added to it arrives here without an
+	// edit and fails until its row is written.
+	let stated: Vec<(&str, bool)> = GoalControl::iter()
+		.map(|c| (c.label(), c.ends_the_goal()))
+		.collect();
+
+	assert_eq!(
+		stated,
+		vec![("Pause", false), ("Resume", false), ("Drop", true)],
+		"a control added to GoalControl must state its words and whether it ends the goal"
+	);
+}
+
+#[test]
+fn no_goal_status_hands_the_accent_to_a_control_that_ends_the_goal() {
+	for status in GoalStatus::iter() {
+		let controls = status.allowed_controls();
+		let invited = affirmative(controls.iter().map(|c| c.ends_the_goal()));
+
+		let expected = match status {
+			GoalStatus::Active => Some("Pause"),
+			GoalStatus::Paused | GoalStatus::BudgetLimited => Some("Resume"),
+			GoalStatus::Complete | GoalStatus::Dropped => None,
+		};
+		assert_eq!(
+			invited.map(|index| controls[index].label()),
+			expected,
+			"GoalStatus::{status:?} invites the wrong answer"
+		);
+
+		assert!(
+			invited.is_none_or(|index| !controls[index].ends_the_goal()),
+			"GoalStatus::{status:?} hands the accent to a control that ends the goal"
+		);
+	}
+}
+
+#[test]
+fn the_accent_falls_on_the_last_answer_that_does_not_end_the_subject() {
+	assert_eq!(affirmative([]), None, "an empty row invites nothing");
+	assert_eq!(affirmative([true]), None, "a row of one destructive answer invites nothing");
+	assert_eq!(affirmative([true, true]), None, "a row of destructive answers invites nothing");
+	assert_eq!(affirmative([false, true]), Some(0), "the accent skips back over the last answer");
+	assert_eq!(affirmative([false, false, true]), Some(1), "the accent takes the later quiet one");
+	assert_eq!(affirmative([true, false]), Some(1), "a quiet answer last takes the accent");
 }

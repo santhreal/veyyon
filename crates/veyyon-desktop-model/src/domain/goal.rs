@@ -52,6 +52,32 @@ impl GoalStatus {
 	}
 }
 
+impl GoalControl {
+	/// The words the control is drawn with.
+	#[must_use]
+	pub const fn label(self) -> &'static str {
+		match self {
+			Self::Pause => "Pause",
+			Self::Resume => "Resume",
+			Self::Drop => "Drop",
+		}
+	}
+
+	/// Whether pressing the control ends the goal.
+	///
+	/// A control that ends it is drawn in the error ink and is never a card's
+	/// affirmative, so the default reading of a goal card is never the press
+	/// that discards the run. Stated once here rather than at each card site,
+	/// so a control added to the enum decides it in one place.
+	#[must_use]
+	pub const fn ends_the_goal(self) -> bool {
+		match self {
+			Self::Pause | Self::Resume => false,
+			Self::Drop => true,
+		}
+	}
+}
+
 /// Snapshot view of an autonomous goal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GoalView {

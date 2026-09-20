@@ -8,7 +8,7 @@ use veyyon_desktop_tokens::AttachedCardsSurfaceTokens;
 use veyyon_gpui::{Context, Div, ParentElement, Styled, div, px};
 
 use super::{
-	answers::{Choice, answers},
+	answers::{Answer, Choice, answers},
 	shell,
 };
 use crate::{ShellView, controls::Availability, intent::Intent};
@@ -72,19 +72,19 @@ pub(super) fn approval(
 			// standing form asks again on the next call of the same tool,
 			// which is the answer an operator reaches for to stop it.
 			&[
-				(
+				Answer::new(
 					"Deny for session",
 					Choice::Fixed(Box::new(Intent::Approval { card, approved: false, standing: true })),
 				),
-				(
+				Answer::new(
 					"Deny",
 					Choice::Fixed(Box::new(Intent::Approval { card, approved: false, standing: false })),
 				),
-				(
+				Answer::new(
 					"Approve for session",
 					Choice::Fixed(Box::new(Intent::Approval { card, approved: true, standing: true })),
 				),
-				(
+				Answer::new(
 					"Approve",
 					Choice::Fixed(Box::new(Intent::Approval { card, approved: true, standing: false })),
 				),

@@ -7,7 +7,7 @@ use veyyon_gpui::{
 };
 
 use super::{
-	answers::{Choice, answers},
+	answers::{Answer, Choice, answers},
 	shell,
 };
 use crate::{
@@ -85,7 +85,7 @@ pub(super) fn question(
 	// options, and the card offers that reply only there (§5.5).
 	if options.is_empty() {
 		element = element.child(answers(
-			&[("Reply with the composer's text", Choice::Reply { card })],
+			&[Answer::new("Reply with the composer's text", Choice::Reply { card })],
 			answer,
 			tokens,
 			cx,

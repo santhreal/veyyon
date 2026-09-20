@@ -1,12 +1,12 @@
 //! The goal card: what autonomous goal is running, its progress, and controls.
 
 use veyyon_desktop_kit::{ColorRole, SpacingStep, TextRamp, TextWeight, TintRole, TokenSet};
-use veyyon_desktop_model::{GoalControl, GoalStatus, GoalView};
+use veyyon_desktop_model::{GoalStatus, GoalView};
 use veyyon_desktop_tokens::AttachedCardsSurfaceTokens;
 use veyyon_gpui::{Context, Div, ParentElement, Styled, div};
 
 use super::{
-	answers::{Choice, answers},
+	answers::{Answer, Choice, answers},
 	shell,
 };
 use crate::{ShellView, composer::state::thousands, controls::Availability, intent::Intent};
@@ -113,29 +113,24 @@ pub(super) fn goal(
 		);
 	}
 
-	let mut choices: Vec<(&'static str, Choice)> = Vec::new();
-	for &control in view.status.allowed_controls() {
-		match control {
-			GoalControl::Pause => {
-				choices.push((
-					"Pause",
-					Choice::Fixed(Box::new(Intent::ControlGoal { op: GoalControl::Pause })),
-				));
-			},
-			GoalControl::Resume => {
-				choices.push((
-					"Resume",
-					Choice::Fixed(Box::new(Intent::ControlGoal { op: GoalControl::Resume })),
-				));
-			},
-			GoalControl::Drop => {
-				choices.push((
-					"Drop",
-					Choice::Fixed(Box::new(Intent::ControlGoal { op: GoalControl::Drop })),
-				));
-			},
-		}
-	}
+	// In the order `allowed_controls` states them, each control stating its
+	// own words and whether it ends the goal: the answer row draws one that
+	// does in the error tint and hands the accent to the last answer that
+	// does not, so the control that ends the goal is never the one the card
+	// invites.
+	let choices: Vec<Answer<'static>> = view
+		.status
+		.allowed_controls()
+		.iter()
+		.map(|&control| {
+			let choice = Choice::Fixed(Box::new(Intent::ControlGoal { op: control }));
+			if control.ends_the_goal() {
+				Answer::danger(control.label(), choice)
+			} else {
+				Answer::new(control.label(), choice)
+			}
+		})
+		.collect();
 
 	shell(tint, geometry.plan_padding, tokens)
 		.child(

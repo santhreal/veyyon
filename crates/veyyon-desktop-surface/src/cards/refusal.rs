@@ -7,7 +7,7 @@ use veyyon_desktop_tokens::AttachedCardsSurfaceTokens;
 use veyyon_gpui::{Context, Div, ParentElement, Styled, div, px};
 
 use super::{
-	answers::{Choice, answers},
+	answers::{Answer, Choice, answers},
 	shell,
 };
 use crate::{ShellView, controls::Availability, intent::Intent};
@@ -62,7 +62,7 @@ pub(super) fn refusal(
 		)
 		.child(pane)
 		.child(answers(
-			&[(
+			&[Answer::new(
 				"Dismiss",
 				Choice::Fixed(Box::new(Intent::Approval { card, approved: false, standing: false })),
 			)],

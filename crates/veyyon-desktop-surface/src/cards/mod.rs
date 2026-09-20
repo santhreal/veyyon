@@ -15,6 +15,7 @@
 //! things every kind draws the same way.
 
 mod answers;
+pub use answers::affirmative;
 mod approval;
 mod goal;
 mod plan;

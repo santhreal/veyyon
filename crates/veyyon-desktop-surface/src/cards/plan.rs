@@ -8,7 +8,7 @@ use veyyon_gpui::{
 };
 
 use super::{
-	answers::{Choice, answers},
+	answers::{Answer, Choice, answers},
 	shell,
 };
 use crate::{ShellView, controls::Availability, intent::Intent};
@@ -88,8 +88,8 @@ pub(super) fn plan(
 		.child(markdown)
 		.child(answers(
 			&[
-				("Revise", Choice::Refine { card }),
-				(
+				Answer::new("Revise", Choice::Refine { card }),
+				Answer::new(
 					"Accept",
 					Choice::Fixed(Box::new(Intent::Plan {
 						card,
