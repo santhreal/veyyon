@@ -11,6 +11,8 @@
 - A `/tree` tool row shows its arguments without the tool name around them, cuts a path longer than 44 columns from the left so the file name survives, and summarizes an unfamiliar tool by the argument that names its target instead of its serialized arguments.
 - `/tree` paints the typed query gold wherever it occurs in a row, in the kind column as well as the entry text, and keeps the row's own colour on either side of the match.
 - `Home` and `End` move the `/tree` cursor to the first and last visible entries.
+- A `/tree` label hangs at the right of its row, left of the age and capped at 18 columns, so a labeled entry's text starts at the same column as every other row's.
+- An empty `/tree` card states the cause and the key that undoes it, and leaves the counts and the filter mode to the header row that already carries them.
 
 ### Fixed
 

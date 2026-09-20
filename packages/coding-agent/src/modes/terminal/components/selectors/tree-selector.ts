@@ -105,6 +105,18 @@ const AGE_COLS = 6;
 const AGE_MIN_ROW_COLS = 48;
 
 /**
+ * Cells a label chip may occupy at the right of a row, brackets and leading gap
+ * included, and the narrowest chip worth drawing (`[…] `).
+ *
+ * A label used to sit between the kind column and the text, which moved a
+ * labeled row's text right of every sibling and broke the one thing the columns
+ * are for. On the right it reads down the card as a column of landmarks and
+ * costs the text a bounded number of cells instead of the label's own length.
+ */
+const LABEL_MAX_COLS = 18;
+const LABEL_MIN_COLS = 4;
+
+/**
  * Tree list component with selection and ASCII art visualization
  */
 /**
@@ -726,21 +738,6 @@ class TreeList implements Component {
 		}
 	}
 
-	#getFilterLabel(): string {
-		switch (this.#filterMode) {
-			case "no-tools":
-				return " [no-tools]";
-			case "user-only":
-				return " [user]";
-			case "labeled-only":
-				return " [labeled]";
-			case "all":
-				return " [all]";
-			default:
-				return "";
-		}
-	}
-
 	render(width: number): readonly string[] {
 		const lines: string[] = [];
 		// Cleared here, not only in `#buildRows`: an empty filter result returns
@@ -749,34 +746,32 @@ class TreeList implements Component {
 		this.#hitRows = [];
 
 		if (this.#filteredNodes.length === 0) {
-			// Three empty-state shapes:
-			//  - flatNodes empty               → no entries at all (truly fresh session).
-			//  - search query rejects everything → tell the user the search is the cause.
-			//  - filter mode rejects everything  → tell the user the filter is the cause and
-			//    how to widen it. Otherwise fresh sessions whose only persisted entries are
-			//    `model_change` + `thinking_level_change` (both hidden by the default filter)
-			//    read as "broken /tree" — see #1909.
+			// Three empty-state shapes, each naming the cause and the key that
+			// undoes it:
+			//  - flatNodes empty                 → no entries at all (truly fresh session).
+			//  - search query rejects everything → the search is the cause.
+			//  - filter mode rejects everything  → the filter is the cause. Otherwise fresh
+			//    sessions whose only persisted entries are `model_change` +
+			//    `thinking_level_change` (both hidden by the default filter) read as
+			//    "broken /tree" — see #1909.
+			//
+			// The counts and the mode are not repeated here: the header row carries
+			// `0/15 · all` on the same frame, and a second spelling of it in the body
+			// was the card disagreeing with itself about how it names a mode.
 			if (this.#flatNodes.length === 0) {
-				lines.push(truncateToWidth(theme.fg("muted", "  No entries found"), width));
-				lines.push(truncateToWidth(theme.fg("muted", `  (0/0)${this.#getFilterLabel()}`), width));
+				lines.push(truncateToWidth(theme.fg("muted", "  No entries yet"), width));
 			} else if (this.#searchQuery.length > 0) {
-				lines.push(truncateToWidth(theme.fg("muted", `  No entries match search "${this.#searchQuery}"`), width));
-				lines.push(truncateToWidth(theme.fg("muted", "  Press Backspace to clear the search"), width));
-				lines.push(
-					truncateToWidth(theme.fg("muted", `  (0/${this.#flatNodes.length})${this.#getFilterLabel()}`), width),
-				);
+				lines.push(truncateToWidth(theme.fg("muted", `  Nothing matches "${this.#searchQuery}"`), width));
+				lines.push(truncateToWidth(theme.fg("muted", "  Backspace clears the search"), width));
 			} else {
-				const filterLabel = this.#getFilterLabel().trim() || "[default]";
+				const hidden = this.#flatNodes.length;
 				lines.push(
 					truncateToWidth(
-						theme.fg("muted", `  ${this.#flatNodes.length} entries hidden by the current filter ${filterLabel}`),
+						theme.fg("muted", `  ${hidden} ${hidden === 1 ? "entry" : "entries"} hidden here`),
 						width,
 					),
 				);
-				lines.push(truncateToWidth(theme.fg("muted", "  Press Alt+A to show all, Alt+D for default"), width));
-				lines.push(
-					truncateToWidth(theme.fg("muted", `  (0/${this.#flatNodes.length})${this.#getFilterLabel()}`), width),
-				);
+				lines.push(truncateToWidth(theme.fg("muted", "  Alt+A shows all, Alt+D the default"), width));
 			}
 			return lines;
 		}
@@ -829,6 +824,11 @@ class TreeList implements Component {
 		const contentReserve = Math.max(MIN_CONTENT_COLS, Math.floor(rowWidth / 2));
 		const maxIndentLevels = Math.max(1, Math.floor((rowWidth - contentReserve - OVERHEAD_COLS) / 3));
 		const textWidth = rowWidth - ageCols;
+		// What a label chip may take from the text, bounded twice: by its own cap,
+		// and by what is left once the text has its floor. Below a chip worth
+		// drawing the row spends every cell on the text, as it does with the age.
+		const labelRoom = Math.min(LABEL_MAX_COLS, textWidth - (OVERHEAD_COLS - ageCols) - MIN_CONTENT_COLS);
+		const labelBudget = labelRoom >= LABEL_MIN_COLS ? labelRoom : 0;
 
 		const rows: string[] = [];
 		this.#hitRows = [];
@@ -943,26 +943,34 @@ class TreeList implements Component {
 			const kind =
 				(isSelected ? theme.bold(kindStyled) : kindStyled) + padding(KIND_COLS - visibleWidth(kindText) + KIND_GAP);
 
-			// A label is the user's own landmark, so it keeps its warning colour; its
-			// brackets are structure and recede.
-			const label = flatNode.node.label
-				? theme.fg("dim", "[") +
-					highlightTokens(flatNode.node.label, this.#searchTokens, {
-						base: "warning",
-						match: "matchHighlight",
-					}) +
-					theme.fg("dim", "] ")
-				: "";
 			const painted = highlightTokens(cells.text, this.#searchTokens, {
 				base: cells.textTone,
 				match: "matchHighlight",
 			});
 			const content = isSelected ? theme.bold(painted) : painted;
 
-			const text = truncateToWidth(cursor + rail + mark + kind + label + content, textWidth);
+			// A label is the user's own landmark, so it keeps its warning colour; its
+			// brackets are structure and recede. It sits at the right of the row,
+			// left of the age: between the kind column and the text it moved a
+			// labeled row's text right of every sibling, which is the one thing the
+			// columns exist to prevent.
+			const labelText = flatNode.node.label
+				? truncateToWidth(flatNode.node.label, Math.max(0, labelBudget - 3))
+				: "";
+			const labelCols = labelText ? visibleWidth(labelText) + 3 : 0;
+			const chip = labelText
+				? ` ${theme.fg("dim", "[")}${highlightTokens(labelText, this.#searchTokens, {
+						base: "warning",
+						match: "matchHighlight",
+					})}${theme.fg("dim", "]")}`
+				: "";
+
+			const textCols = textWidth - labelCols;
+			const text = truncateToWidth(cursor + rail + mark + kind + content, textCols);
+			const body = chip ? text + padding(Math.max(0, textCols - visibleWidth(text))) + chip : text;
 			const line = ageCols
-				? text + padding(Math.max(0, textWidth - visibleWidth(text))) + theme.fg("dim", this.#ageCell(entry))
-				: text;
+				? body + padding(Math.max(0, textWidth - visibleWidth(body))) + theme.fg("dim", this.#ageCell(entry))
+				: body;
 			// The selection band is the ROW, not the text: pad to the full row width
 			// before tinting so the highlight has the same shape on every entry. The
 			// pointer borrows the same band; the cursor keeps its accent arrow, so

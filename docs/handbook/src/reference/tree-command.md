@@ -35,12 +35,12 @@ Any of the following opens the same selector:
 The tree is rendered from session entry parent pointers (`id` / `parentId`).
 
 - The branch holding the current leaf is drawn first at every fork, so the live path reads top to bottom
-- Each row is `cursor`, tree rail, node mark, kind column, label, entry text, and a right-aligned age
+- Each row is `cursor`, tree rail, node mark, kind column, entry text, label chip, and a right-aligned age
 - The node mark is `●` at the current leaf, `•` elsewhere on the path from root to that leaf, and blank off it. Every row reserves the column, so entry text at one depth starts at one column
 - The kind column is ten columns wide and states what the row is: a message role (`user`, `assistant`, `developer`), a tool name (`read`, `bash`, `web_search`), or an entry type (`compaction`, `summary`, `model`, `mode`). The entry text beside it never repeats the kind
 - The rail is drawn in the accent colour on the active path and dimmed off it
 - The age is coarse (`12m`, `4h`, `3d`, `2w`, `1y`), blank under a minute, and dropped on a card narrower than 48 columns
-- A label, when the entry resolves to one, renders as `[label]` after the kind column and before the entry text
+- A label, when the entry resolves to one, renders as `[label]` at the right of the row, left of the age. It is capped at 18 columns, gap and brackets included, and dropped when the row cannot spare them
 - A tool row shows its arguments: the path for `read`, `write`, `edit` and `ls`, the command for `bash`, the type, pattern and scope for `search`. A path longer than 44 columns is cut from the left (`…/selectors/tree-selector.ts`), because the file name is what distinguishes one row from the next
 - A tool the card has no rule for shows the argument that names its target, preferring `command`, `query`, `input`, `path`, `url`, `expression`, `pattern`, `name`, `prompt`, `task`, `message`, and never the caller's `i` intent line. With no string argument it shows the arguments as recorded
 - If multiple roots exist (orphaned/broken parent chains), they are shown under a virtual branching root
@@ -50,7 +50,7 @@ The tree is rendered from session entry parent pointers (`id` / `parentId`).
 │ Type to search                                          12/17  ·  default   │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│    • user       [tree work] revamp the session tree card so it rea…    4h   │
+│    • user       revamp the session tree card so it re…    [tree work]  4h   │
 │    • assistant  Reading the row builder and the modal chrome first.    3h   │
 │    • read       …/components/selectors/tree-selector.ts:640-759        3h   │
 │    • search     structure theme.fg($$$) in packages/coding-agent/s…    3h   │
@@ -64,8 +64,8 @@ The tree is rendered from session entry parent pointers (`id` / `parentId`).
 │       │    assistant  Dropped it, and the fork lost its orientatio…    1h   │
 │                                                                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│   up/down move  ·  left/right page  ·  shift+L label  ·  ctrl+O filter      │
-│                         enter jump  ·  esc close                            │
+│   up/down move  ·  left/right page  ·  home/end ends  ·  shift+L label      │
+│              ctrl+O filter  ·  enter jump  ·  esc close                     │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -165,6 +165,15 @@ Assistant messages that contain **only tool calls** (no text) are hidden by defa
 - All tokens must match (AND semantics)
 - Searchable text includes the label, the role, the tool name and its argument summary, and type-specific content (message text, branch summary text, custom type, mode and title values, injected rule names, MCP tool names)
 - A row paints every case-insensitive occurrence of a token in the match colour, in the kind column and the label chip as well as the entry text. A row kept by a subsequence match with no literal occurrence paints nothing
+
+### Nothing on screen
+
+The body names the cause and the key that undoes it, and states neither the counts nor the mode,
+which the header row carries on the same frame:
+
+- No entries at all: `No entries yet`
+- The query rejected everything: `Nothing matches "<query>"`, then `Backspace clears the search`
+- The filter rejected everything: `<n> entries hidden here`, then `Alt+A shows all, Alt+D the default`
 
 ## Selection outcomes (important)
 

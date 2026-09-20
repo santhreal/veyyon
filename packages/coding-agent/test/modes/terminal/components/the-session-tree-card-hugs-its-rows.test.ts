@@ -409,13 +409,13 @@ describe("the session tree row dates itself", () => {
 });
 
 describe("the session tree names what each row is in a column of its own", () => {
-	it("starts the entry text at one column whatever the row's kind", () => {
+	it("starts the entry text at one column whatever the row's kind, label and all", () => {
 		counter = 0;
 		const root = user("the first prompt", null, 60 * 60_000);
 		const reply = assistant("the assistant answer", root, 59 * 60_000);
 		const read = toolPair("read", { path: "src/alpha.ts" }, reply, 58 * 60_000);
 		const ran = toolPair("bash", { command: "bun test src" }, read, 57 * 60_000);
-		const leaf = user("the last prompt", ran, 56 * 60_000);
+		const leaf = user("the last prompt", ran, 56 * 60_000, "landmark");
 
 		const frame = card([root], leaf.entry.id, WIDTH, "all");
 		const offsets = [
@@ -426,8 +426,10 @@ describe("the session tree names what each row is in a column of its own", () =>
 			rowOf(frame, "the last prompt").indexOf("the last prompt"),
 		];
 
-		// One offset for five kinds of row, all at one depth. A kind spelled into
-		// the text instead of into its own column gives five different offsets.
+		// One offset for five kinds of row, all at one depth, and the fifth carries
+		// a label. A kind spelled into the text instead of into its own column gives
+		// five different offsets; a label chip drawn before the text gives the
+		// labeled row an offset of its own, which is the same defect one row wide.
 		expect(new Set(offsets).size).toBe(1);
 		// And the kind itself starts at one column too.
 		const kindOffsets = [
@@ -437,6 +439,38 @@ describe("the session tree names what each row is in a column of its own", () =>
 			rowOf(frame, "bun test src").indexOf("bash"),
 		];
 		expect(new Set(kindOffsets).size).toBe(1);
+	});
+
+	it("hangs the label off the right of its row, clear of the age", () => {
+		counter = 0;
+		const root = user("the trunk", null, 4 * 60 * 60_000);
+		const leaf = user("the attempt that was kept", root, 3 * 60 * 60_000, "regex attempt");
+
+		const row = rowOf(card([root], leaf.entry.id, WIDTH, "all"), "the attempt that was kept");
+
+		// The chip is to the RIGHT of the text it labels, and the age is right of
+		// the chip: three columns in a fixed order, so a card of labeled rows reads
+		// as a column of landmarks rather than as ragged text.
+		expect(row.indexOf("[regex attempt]")).toBeGreaterThan(row.indexOf("the attempt that was kept"));
+		expect(row.trimEnd().endsWith("3h")).toBe(true);
+		expect(row.indexOf("[regex attempt]")).toBeLessThan(row.lastIndexOf("3h"));
+	});
+
+	it("cuts a long label to its column instead of spending the row on it", () => {
+		counter = 0;
+		const root = user("the trunk", null, 4 * 60 * 60_000);
+		const leaf = user("the text this row is really about", root, 3 * 60 * 60_000, "a landmark named at some length");
+
+		const row = rowOf(card([root], leaf.entry.id, WIDTH, "all"), "the text this row is really about");
+
+		// The column is 18 cells, the leading gap included, so the chip itself is at
+		// most 17: a label is a landmark, and a landmark that eats the row it marks
+		// is not one.
+		const chip = row.slice(row.indexOf("["), row.indexOf("]") + 1);
+		expect(chip.length).toBeLessThanOrEqual(17);
+		expect(chip.startsWith("[a landmark")).toBe(true);
+		expect(chip).not.toContain("some length");
+		expect(row).toContain("the text this row is really about");
 	});
 
 	it("names a tool in the kind column instead of bracketing it into the text", () => {

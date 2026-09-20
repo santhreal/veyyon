@@ -49,6 +49,11 @@ function renderSelector(selector: TreeSelectorComponent): string {
 	return Bun.stripANSI(selector.render(120).join("\n"));
 }
 
+/** How many times `needle` occurs in `text`. */
+function occurrences(text: string, needle: string): number {
+	return text.split(needle).length - 1;
+}
+
 describe("issue #1909: tree-selector empty-state messaging", () => {
 	it("explains that the filter — not missing data — is hiding entries on a fresh session", () => {
 		const selector = new TreeSelectorComponent(
@@ -61,12 +66,16 @@ describe("issue #1909: tree-selector empty-state messaging", () => {
 
 		// Filter-hiding hint and recovery key must both be present so the user knows
 		// the panel isn't broken and can widen the view without leaving the screen.
-		expect(text).toContain("hidden by the current filter");
-		expect(text).toContain("[default]");
+		expect(text).toContain("2 entries hidden here");
 		expect(text.toLowerCase()).toContain("alt+a");
-		// Total count must reflect the real flatNodes count, not 0/0 (otherwise the
-		// "filter hides things" framing is unconvincing).
-		expect(text).toContain("(0/2)");
+		// The totals reflect the real flatNodes count, not 0/0 — otherwise the
+		// "filter hides things" framing is unconvincing — and they are stated ONCE,
+		// in the header, beside the mode they belong to. The body used to print its
+		// own `(0/2)[default]` under a header already saying `0/2 · default`.
+		expect(text).toContain("0/2");
+		expect(occurrences(text, "0/2")).toBe(1);
+		expect(text).toContain("default");
+		expect(text).not.toContain("[default]");
 	});
 
 	it("explains a zero-result search as a search problem, not a filter problem", () => {
@@ -80,13 +89,14 @@ describe("issue #1909: tree-selector empty-state messaging", () => {
 		selector.handleInput("z");
 		const text = renderSelector(selector);
 
-		expect(text).toContain('No entries match search "z"');
+		expect(text).toContain('Nothing matches "z"');
 		expect(text.toLowerCase()).toContain("backspace");
 		// Must NOT misattribute the empty result to the filter mode.
-		expect(text).not.toContain("hidden by the current filter");
+		expect(text).not.toContain("hidden here");
+		expect(occurrences(text, "0/1")).toBe(1);
 	});
 
-	it("falls back to the bare 'No entries found' line when the tree is genuinely empty", () => {
+	it("falls back to a bare 'no entries' line when the tree is genuinely empty", () => {
 		const selector = new TreeSelectorComponent(
 			[],
 			null,
@@ -95,9 +105,9 @@ describe("issue #1909: tree-selector empty-state messaging", () => {
 		);
 		const text = renderSelector(selector);
 
-		expect(text).toContain("No entries found");
-		expect(text).toContain("(0/0)");
+		expect(text).toContain("No entries yet");
+		expect(occurrences(text, "0/0")).toBe(1);
 		// Don't tell the user to widen the filter when there's nothing to widen to.
-		expect(text).not.toContain("hidden by the current filter");
+		expect(text).not.toContain("hidden here");
 	});
 });
