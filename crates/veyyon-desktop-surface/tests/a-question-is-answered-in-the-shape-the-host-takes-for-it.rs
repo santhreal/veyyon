@@ -303,8 +303,12 @@ fn an_answer_the_host_cannot_take_is_drawn_and_answers_nothing() {
 				let (mut state, _) = build_state_for_phase(discriminant);
 				if refused {
 					let held = Availability::Unavailable { reason: "the host declined".to_owned() };
-					state.card_answers =
-						CardAnswers { approvals: held.clone(), questions: held.clone(), plans: held.clone(), goals: held };
+					state.card_answers = CardAnswers {
+						approvals: held.clone(),
+						questions: held.clone(),
+						plans:     held.clone(),
+						goals:     held,
+					};
 				}
 				let clicked = render_session(state, None, WIDTH, HEIGHT, |session| {
 					let captured = session.frame().expect("frame renders");
