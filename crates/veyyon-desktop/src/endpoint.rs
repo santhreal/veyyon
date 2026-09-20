@@ -1,18 +1,19 @@
 use std::{
 	env, fmt,
-	io::{BufRead, BufReader, Read},
 	net::{TcpStream, ToSocketAddrs},
 	path::{Path, PathBuf},
-	process::{Command, Stdio},
-	sync::mpsc,
-	thread,
-	time::{Duration, Instant},
+	time::Duration,
 };
 
 use thiserror::Error;
 
+mod child;
 mod socket_path;
 
+pub use child::{
+	ChildHostHandle, HostSpawnError, HostStderr, SPAWN_WAIT_MS, VEYYON_BIN_ENV, last_words,
+	spawn_child_host, spawn_host_binary,
+};
 pub use socket_path::{
 	check_unix_path, gui_host_socket_path, runtime_directory, runtime_socket_path, unix_path_fits,
 	unix_path_limit,
@@ -47,37 +48,9 @@ pub enum EndpointError {
 	NoSocketPathFits { tried: String, limit: usize },
 }
 
-/// How long a spawned host is given to print its endpoint and accept a
-/// connection (§8.11).
-pub const SPAWN_WAIT_MS: u64 = 5000;
-
-/// Environment variable naming the `veyyon` binary to spawn as the host, for
-/// a checkout or an install that is not on `PATH`.
-pub const VEYYON_BIN_ENV: &str = "VEYYON_BIN";
-
 /// Environment variable naming the profile whose agent directory holds the
 /// default socket.
 pub const VEYYON_PROFILE_ENV: &str = "VEYYON_PROFILE";
-
-/// The line the host prints once it listens, followed by its endpoint.
-const LISTENING_PREFIX: &str = "GUI engine host listening at ";
-
-/// Errors encountered while spawning a child host process.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum HostSpawnError {
-	#[error("no `veyyon` binary on PATH; install veyyon or set {VEYYON_BIN_ENV} to the binary")]
-	NoBinary,
-	#[error("failed to spawn `{0} gui`: {1}")]
-	SpawnFailed(PathBuf, String),
-	#[error("`veyyon gui` exited before it listened: {0}")]
-	ExitedBeforeListening(String),
-	#[error("`veyyon gui` printed no endpoint within {SPAWN_WAIT_MS}ms")]
-	NoEndpointLine,
-	#[error("`veyyon gui` printed an endpoint that does not parse: {0}")]
-	BadEndpoint(#[from] EndpointError),
-	#[error("`veyyon gui` reported {endpoint} but it accepted no connection within {waited_ms}ms")]
-	NotListening { endpoint: Endpoint, waited_ms: u64 },
-}
 
 /// Target socket connection descriptor for the desktop transport.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,16 +150,6 @@ impl fmt::Display for Endpoint {
 	}
 }
 
-/// A host this window started.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChildHostHandle {
-	/// Where the host listens, as it reported.
-	pub endpoint: Endpoint,
-	/// The host's process id. The host outlives the window that started it,
-	/// so the next window attaches instead of starting another.
-	pub pid:      u32,
-}
-
 /// The active profile's agent directory, where the default socket is.
 ///
 /// Mirrors the host's layout: `~/.veyyon/profiles/<profile>/agent`, with the
@@ -208,17 +171,6 @@ pub fn default_agent_dir() -> Option<PathBuf> {
 	)
 }
 
-/// The `veyyon` binary to spawn: `VEYYON_BIN`, else the first `veyyon` on
-/// `PATH`.
-fn host_binary() -> Option<PathBuf> {
-	if let Some(bin) = env::var_os(VEYYON_BIN_ENV).filter(|b| !b.is_empty()) {
-		return Some(PathBuf::from(bin));
-	}
-	env::split_paths(&env::var_os("PATH")?)
-		.map(|dir| dir.join("veyyon"))
-		.find(|candidate| candidate.is_file())
-}
-
 /// Whether the endpoint accepts a connection right now.
 #[must_use]
 pub fn accepts_connection(endpoint: &Endpoint) -> bool {
@@ -238,107 +190,6 @@ pub fn accepts_connection(endpoint: &Endpoint) -> bool {
 			TcpStream::connect_timeout(&addr, Duration::from_millis(250)).is_ok()
 		},
 	}
-}
-
-/// Starts `veyyon gui` as a detached child in `cwd` and waits for it to
-/// listen.
-///
-/// The host prints the endpoint it bound; that line, not a path computed
-/// here, is what the window attaches to, so the host's own profile and layout
-/// rules decide where the socket is. The child's output is drained for its
-/// lifetime so a later write never blocks it.
-pub fn spawn_child_host(cwd: &Path) -> Result<ChildHostHandle, HostSpawnError> {
-	let bin = host_binary().ok_or(HostSpawnError::NoBinary)?;
-	let mut command = Command::new(&bin);
-	command
-		.arg("gui")
-		.current_dir(cwd)
-		.stdin(Stdio::null())
-		.stdout(Stdio::piped())
-		.stderr(Stdio::piped());
-	#[cfg(unix)]
-	{
-		use std::os::unix::process::CommandExt as _;
-		// Its own process group, so the window's terminal signals do not
-		// reach a host other windows will attach to.
-		command.process_group(0);
-	}
-	let mut child = command
-		.spawn()
-		.map_err(|err| HostSpawnError::SpawnFailed(bin.clone(), err.to_string()))?;
-	let pid = child.id();
-
-	let Some(stdout) = child.stdout.take() else {
-		return Err(HostSpawnError::SpawnFailed(bin, "stdout was not piped".to_string()));
-	};
-	let Some(stderr) = child.stderr.take() else {
-		return Err(HostSpawnError::SpawnFailed(bin, "stderr was not piped".to_string()));
-	};
-
-	let (lines_tx, lines_rx) = mpsc::channel::<String>();
-	thread::Builder::new()
-		.name("veyyon-gui-stdout".to_string())
-		.spawn(move || {
-			for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-				// The child may become ready after the startup deadline.
-				// Keep its pipe open even after the waiting caller returns.
-				let _ = lines_tx.send(line);
-			}
-		})
-		.map_err(|err| HostSpawnError::SpawnFailed(bin.clone(), err.to_string()))?;
-	let (stderr_tx, stderr_rx) = mpsc::channel::<String>();
-	thread::Builder::new()
-		.name("veyyon-gui-stderr".to_string())
-		.spawn(move || {
-			let mut text = String::new();
-			let _ = BufReader::new(stderr).read_to_string(&mut text);
-			let _ = stderr_tx.send(text);
-		})
-		.map_err(|err| HostSpawnError::SpawnFailed(bin.clone(), err.to_string()))?;
-
-	let started = Instant::now();
-	let deadline = started + Duration::from_millis(SPAWN_WAIT_MS);
-	let endpoint = loop {
-		let remaining = deadline.saturating_duration_since(Instant::now());
-		match lines_rx.recv_timeout(remaining) {
-			Ok(line) => {
-				if let Some(written) = line.strip_prefix(LISTENING_PREFIX) {
-					break Endpoint::parse(written.trim(), None)?;
-				}
-			},
-			Err(mpsc::RecvTimeoutError::Timeout) => return Err(HostSpawnError::NoEndpointLine),
-			Err(mpsc::RecvTimeoutError::Disconnected) => {
-				let status = child
-					.try_wait()
-					.ok()
-					.flatten()
-					.map_or_else(|| "output closed".to_string(), |s| s.to_string());
-				let stderr = stderr_rx
-					.recv_timeout(Duration::from_millis(250))
-					.unwrap_or_default();
-				return Err(HostSpawnError::ExitedBeforeListening(if stderr.trim().is_empty() {
-					status
-				} else {
-					format!("{status}: {}", stderr.trim())
-				}));
-			},
-		}
-	};
-
-	// Keep draining stdout after the endpoint line, for the host's lifetime.
-	thread::Builder::new()
-		.name("veyyon-gui-drain".to_string())
-		.spawn(move || for _ in lines_rx {})
-		.map_err(|err| HostSpawnError::SpawnFailed(bin, err.to_string()))?;
-
-	while !accepts_connection(&endpoint) {
-		if Instant::now() >= deadline {
-			return Err(HostSpawnError::NotListening { endpoint, waited_ms: SPAWN_WAIT_MS });
-		}
-		thread::sleep(Duration::from_millis(50));
-	}
-
-	Ok(ChildHostHandle { endpoint, pid })
 }
 
 /// Errors from resolving where the window attaches.

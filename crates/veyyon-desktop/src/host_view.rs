@@ -2,6 +2,7 @@
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+mod banner;
 mod intents;
 mod lifecycle;
 
@@ -87,26 +88,13 @@ pub fn attach(
 		Ok(started) => started,
 		Err(error) => {
 			let _ = window.update(cx, |view, _window, cx| {
-				view.set_notice(Some(format!("transport failed to start: {error}")), cx);
-				view.state_mut().connection = veyyon_desktop_surface::attach::ConnectionPhase::Fatal {
-					message: error.to_string(),
-				};
-				cx.notify();
+				banner::record_transport_failure(view, &error, cx);
 			});
 			return;
 		},
 	};
 	let _ = window.update(cx, |view, _window, cx| {
-		view.set_notice(
-			Some(match &attachment.spawned {
-				Ok(Some(child)) => {
-					format!("started veyyon gui (pid {}) at {}", child.pid, attachment.endpoint)
-				},
-				Ok(None) => format!("attaching to {}", attachment.endpoint),
-				Err(error) => format!("Host startup: {error}; connecting to {}", attachment.endpoint),
-			}),
-			cx,
-		);
+		view.set_notice(Some(banner::initial_notice(&attachment)), cx);
 		cx.notify();
 	});
 
@@ -204,7 +192,10 @@ pub fn attach(
 		})
 		.detach();
 	}
-	let mut startup_error = attachment.spawned.err().map(|error| error.to_string());
+	// A host this window started keeps its stderr, so a socket that drops
+	// states the host's own reason rather than "Socket connection lost"
+	// alone, which names the symptom and discards the cause.
+	let mut banner = banner::ConnectionBanner::new(&attachment);
 
 	// Events from the host reduce into the store and project onto the
 	// shell. Everything already queued is drained before one projection,
@@ -217,20 +208,12 @@ pub fn attach(
 				while let Ok(event) = events.try_recv() {
 					batch.push(event);
 				}
-				for event in &batch {
-					if let HostEvent::ConnectionChanged(
-						veyyon_desktop_model::ConnectionState::Connected { .. },
-					) = event
-					{
-						startup_error = None;
-					}
-				}
-				let startup_notice = startup_error.clone();
+				let startup_notice = banner.enrich_batch(&mut batch);
 				let host = Rc::clone(&host);
 				let _ = window.update(&mut async_cx, move |view, window, cx| {
 					let mut host = host.borrow_mut();
 					let host = &mut *host;
-					let mut notice: Option<Option<String>> = None;
+					let mut notice = banner::NoticeUpdate::Unchanged;
 					let now_ms = current_timestamp_ms();
 					host.keep(view, window, now_ms, cx);
 					for event in batch {
@@ -240,7 +223,7 @@ pub fn attach(
 								{
 									host.navigation.cancel(&mut host.registry);
 								}
-								notice = Some(connection_notice(state));
+								notice = banner::NoticeUpdate::Set(connection_notice(state));
 							},
 							HostEvent::RequestFailed { request, error } => {
 								intents::finish_navigation(host, *request, false);
@@ -251,7 +234,7 @@ pub fn attach(
 								if let Some(line) =
 									land_failure(error, &host.registry, active.as_ref(), view.state_mut())
 								{
-									notice = Some(Some(line));
+									notice = banner::NoticeUpdate::Set(Some(line));
 								}
 								host.registry.complete(request);
 								view.finish_submission(*request, false, cx);
@@ -286,7 +269,8 @@ pub fn attach(
 								}
 							},
 							HostEvent::FatalProtocolError { message } => {
-								notice = Some(Some(format!("protocol error: {message}")));
+								notice =
+									banner::NoticeUpdate::Set(Some(format!("protocol error: {message}")));
 							},
 							HostEvent::Snapshot(veyyon_desktop_model::SnapshotSection::Keybindings(
 								views,
@@ -329,12 +313,10 @@ pub fn attach(
 						}
 						let _damage = reduce(&mut host.store, event);
 					}
-					if let Some(error) = startup_notice {
-						let status = notice
-							.flatten()
-							.unwrap_or_else(|| "waiting for connection".to_string());
-						notice = Some(Some(format!("Host startup: {error}; {status}")));
-					}
+					banner::ConnectionBanner::apply_startup_error(
+						startup_notice.as_deref(),
+						&mut notice,
+					);
 					// A session the last window had open is reopened once the
 					// host has listed what it has, and dropped when the host no
 					// longer has it (§8.10).
@@ -379,11 +361,11 @@ pub fn attach(
 					let invalidation = regions_changed(&host.drawn, view.state());
 					host.drawn.clone_from(view.state());
 					match notice {
-						Some(notice) => {
+						banner::NoticeUpdate::Set(notice) => {
 							view.set_notice(notice, cx);
 							cx.notify();
 						},
-						None => {
+						banner::NoticeUpdate::Unchanged => {
 							request_frame(view, &invalidation, cx);
 						},
 					}
