@@ -16,7 +16,7 @@ pub mod providers;
 pub mod themes;
 pub mod usage;
 
-use veyyon_desktop_kit::{Axis, ScrollView, TokenSet};
+use veyyon_desktop_kit::{Axis, ColorRole, ScrollView, TokenSet};
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
 use veyyon_gpui::{Context, IntoElement, ParentElement, Styled, div, px};
 
@@ -80,11 +80,19 @@ pub fn render_page_body(
 	};
 
 	if matches!(state.page, SettingsPage::General | SettingsPage::Themes) {
-		return container.h_full().min_h_0().child(body_content);
+		return container.min_h_0().child(body_content);
 	}
 
 	// The body scrolls along one axis: a page longer than the overlay is
 	// reached by scrolling, never by a second column.
-	container = container.child(ScrollView::new(body_content).axis(Axis::Vertical));
+	// The fade states that content continues past the edge, so it falls off to
+	// the ground it is drawn on. The kit's default is the canvas, which is
+	// darker than the sheet: over this ground it draws two bars across a page
+	// that has nothing to scroll.
+	container = container.child(
+		ScrollView::new(body_content)
+			.axis(Axis::Vertical)
+			.fade_color(tokens.color(ColorRole::Float)),
+	);
 	container
 }

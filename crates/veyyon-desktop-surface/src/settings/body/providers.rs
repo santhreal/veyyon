@@ -28,7 +28,7 @@ pub fn render_providers_page(
 		.gap(veyyon_gpui::px(geometry.row_gap));
 
 	if state.providers.is_empty() {
-		return container.child(empty_state_row(
+		return container.h_full().child(empty_state_row(
 			empty::PROVIDERS.condition,
 			empty::PROVIDERS.action,
 			geometry,

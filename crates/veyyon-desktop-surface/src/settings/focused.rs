@@ -80,6 +80,8 @@ pub(super) fn focused_surface(
 		.id("command-destination-body")
 		.flex_1()
 		.min_h_0()
+		.flex()
+		.flex_col()
 		.gap(px(geometry.row_gap));
 	if is_general || state.page == SettingsPage::Themes {
 		body_container = body_container.overflow_hidden();

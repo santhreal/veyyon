@@ -213,7 +213,8 @@ pub fn render_general_page(
 		// missing instead.
 		return div()
 			.w_full()
-			.h_full()
+			.flex_1()
+			.min_h_0()
 			.flex()
 			.flex_col()
 			.gap(px(geometry.row_gap))

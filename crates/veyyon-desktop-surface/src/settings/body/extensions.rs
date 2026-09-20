@@ -63,7 +63,7 @@ pub fn render_extensions_page(
 	}
 
 	if state.extensions.is_empty() {
-		return container.child(empty_state_row(
+		return container.h_full().child(empty_state_row(
 			empty::EXTENSIONS.condition,
 			empty::EXTENSIONS.action,
 			geometry,

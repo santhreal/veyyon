@@ -45,7 +45,7 @@ pub fn render_usage_page(
 		.gap(veyyon_gpui::px(geometry.row_gap));
 
 	let Some(totals) = &state.usage else {
-		return container.child(empty_state_row(
+		return container.h_full().child(empty_state_row(
 			empty::USAGE.condition,
 			empty::USAGE.action,
 			geometry,

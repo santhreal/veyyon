@@ -48,7 +48,7 @@ pub fn render_auth_page(
 		.gap(veyyon_gpui::px(geometry.row_gap));
 
 	let Some(flow) = &state.auth_flow else {
-		return container.child(empty_state_row(
+		return container.h_full().child(empty_state_row(
 			empty::AUTHENTICATION.condition,
 			empty::AUTHENTICATION.action,
 			geometry,

@@ -30,7 +30,7 @@ pub fn render_mcp_page(
 		.gap(veyyon_gpui::px(geometry.row_gap));
 
 	if state.mcp.is_empty() {
-		return container.child(empty_state_row(
+		return container.h_full().child(empty_state_row(
 			empty::MCP.condition,
 			empty::MCP.action,
 			geometry,

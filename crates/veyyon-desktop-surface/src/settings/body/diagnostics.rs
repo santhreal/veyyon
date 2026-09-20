@@ -32,7 +32,7 @@ pub fn render_diagnostics_page(
 		.gap(veyyon_gpui::px(geometry.row_gap));
 
 	let Some(diag_json) = &state.diagnostics else {
-		return container.child(empty_state_row(
+		return container.h_full().child(empty_state_row(
 			empty::DIAGNOSTICS.condition,
 			empty::DIAGNOSTICS.action,
 			geometry,

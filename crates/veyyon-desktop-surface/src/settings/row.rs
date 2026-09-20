@@ -177,7 +177,7 @@ pub fn empty_state_row(
 ) -> Div {
 	div()
 		.w_full()
-		.flex_shrink_0()
+		.flex_1()
 		.flex()
 		.flex_col()
 		.items_center()

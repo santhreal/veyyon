@@ -39,7 +39,7 @@ pub fn render_context_page(
 		.gap(veyyon_gpui::px(geometry.row_gap));
 
 	let Some(ctx) = &state.context else {
-		return container.child(empty_state_row(
+		return container.h_full().child(empty_state_row(
 			empty::CONTEXT_BREAKDOWN.condition,
 			empty::CONTEXT_BREAKDOWN.action,
 			geometry,
