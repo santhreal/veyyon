@@ -306,12 +306,15 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 				row.title.clone_from(title);
 			}
 		},
+		// A command runs at the host and changes nothing the window holds
+		// until the host answers with what it did.
 		Intent::DeleteSession(_)
 		| Intent::BranchSession(_)
 		| Intent::BranchTurn(_)
 		| Intent::ExportSession(_)
 		| Intent::CompactSession(_)
 		| Intent::HandoffSession(_)
+		| Intent::RunCommand(_)
 		| Intent::LoadTranscript(_) => {},
 		Intent::FilterQueue(filter) => queue::filter(state, filter),
 		Intent::NewSession => {

@@ -66,6 +66,8 @@ pub enum HostActionKind {
 	ReviveAgent,
 	SpawnTask,
 	CancelTask,
+	ListCommands,
+	RunCommand,
 	LoadSettings,
 	SetSetting,
 	ResetSetting,
@@ -81,7 +83,7 @@ pub enum HostActionKind {
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 72] = [
+	pub const ALL: [Self; 74] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -143,6 +145,8 @@ impl HostActionKind {
 		Self::ReviveAgent,
 		Self::SpawnTask,
 		Self::CancelTask,
+		Self::ListCommands,
+		Self::RunCommand,
 		Self::LoadSettings,
 		Self::SetSetting,
 		Self::ResetSetting,
@@ -221,6 +225,8 @@ impl HostActionKind {
 			Self::ReviveAgent => "ReviveAgent",
 			Self::SpawnTask => "SpawnTask",
 			Self::CancelTask => "CancelTask",
+			Self::ListCommands => "ListCommands",
+			Self::RunCommand => "RunCommand",
 			Self::LoadSettings => "LoadSettings",
 			Self::SetSetting => "SetSetting",
 			Self::ResetSetting => "ResetSetting",

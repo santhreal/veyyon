@@ -543,6 +543,30 @@ export interface QueuedPromptsView {
 	follow_up: string[];
 	restored: string | null;
 }
+/**
+ * Where a command came from, so two rows with one name are told apart.
+ * Mirrors `CommandSource` in `crates/veyyon-desktop-model/src/domain/commands.rs`.
+ */
+export type CommandSource = "Builtin" | "Skill" | "Extension" | "Custom" | "McpPrompt" | "File";
+
+export interface CommandSubcommandView {
+	name: string;
+	description: string | null;
+	usage: string | null;
+}
+
+/**
+ * One slash command the host will run when it is sent back as a `RunCommand`.
+ * Mirrors `CommandView` in `crates/veyyon-desktop-model/src/domain/commands.rs`.
+ */
+export interface CommandView {
+	name: string;
+	aliases: string[];
+	description: string | null;
+	input_hint: string | null;
+	source: CommandSource;
+	subcommands: CommandSubcommandView[];
+}
 
 export type SnapshotSection =
 	| { Sessions: [Versioned<SessionSummary[]>, SessionLoadError[]] }
@@ -573,7 +597,8 @@ export type SnapshotSection =
 	| { Export: ExportView }
 	| { Themes: ThemesView }
 	| { Keybindings: KeybindingView[] }
-	| { QueuedPrompts: QueuedPromptsView };
+	| { QueuedPrompts: QueuedPromptsView }
+	| { Commands: CommandView[] };
 
 export const ALL_SNAPSHOT_SECTIONS = [
 	"Sessions",
@@ -605,6 +630,7 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"Themes",
 	"Keybindings",
 	"QueuedPrompts",
+	"Commands",
 ] as const;
 
 export type SnapshotSectionTag = (typeof ALL_SNAPSHOT_SECTIONS)[number];
@@ -636,6 +662,7 @@ export type HostAction =
 	| "RetryConnection"
 	| "Shutdown"
 	| "ListSessions"
+	| "ListCommands"
 	| { Attach: { endpoint: string | null } }
 	| { OpenSession: { session: string } }
 	| { SearchSessions: { query: string } }
@@ -645,6 +672,7 @@ export type HostAction =
 	| { AbortTurn: { session: string } }
 	| { SetToolViewExpanded: { session: string; call_id: string; expanded: boolean } }
 	| { DequeueQueuedPrompt: { session: string } }
+	| { RunCommand: { session: string; text: string } }
 	| string
 	| Record<string, unknown>;
 
@@ -710,6 +738,8 @@ export const ALL_HOST_ACTIONS = [
 	"ReviveAgent",
 	"SpawnTask",
 	"CancelTask",
+	"ListCommands",
+	"RunCommand",
 	"LoadSettings",
 	"SetSetting",
 	"ResetSetting",
@@ -787,6 +817,8 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	ReviveAgent: "Agents",
 	SpawnTask: "Tasks",
 	CancelTask: "Tasks",
+	ListCommands: "AgentCommands",
+	RunCommand: "AgentCommands",
 	LoadSettings: "Settings",
 	SetSetting: "Settings",
 	ResetSetting: "Settings",

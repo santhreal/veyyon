@@ -32,6 +32,11 @@ pub fn request_surface(intent: &Intent, session: &SessionId) -> Option<SurfaceId
 		Intent::SelectModel(_) => SurfaceId::ComposerModelSelector(session.clone()),
 		Intent::SetThinking(_) => SurfaceId::ComposerThinkingSelector(session.clone()),
 		Intent::DequeueQueuedPrompt => SurfaceId::ComposerQueuedTakeBack(session.clone()),
+		// Every command row the host lists runs through the one request the
+		// palette sends, so the field that spells it is the control a command
+		// in flight holds: a second command is not taken while the first is
+		// still being answered.
+		Intent::RunCommand(_) => SurfaceId::PaletteInput,
 		_ => return None,
 	})
 }

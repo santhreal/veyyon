@@ -364,6 +364,10 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 			}
 			damage.insert(Damage::Composer(view.session));
 		},
+		SnapshotSection::Commands(views) => {
+			store.domains.commands = views;
+			damage.insert(Damage::Palette);
+		},
 	}
 
 	damage

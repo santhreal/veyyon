@@ -4,6 +4,7 @@
 //! files, content search, and project directory browsing.
 
 pub mod commands;
+pub mod host_commands;
 mod interaction;
 pub mod matcher;
 pub mod modes;
@@ -14,7 +15,7 @@ pub mod rows;
 
 use veyyon_desktop_model::Capability;
 
-pub use self::{matcher::*, modes::*, render::*, rows::*};
+pub use self::{host_commands::host_command_items, matcher::*, modes::*, render::*, rows::*};
 use crate::{
 	Intent,
 	model::{Row, Section},

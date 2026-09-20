@@ -30,10 +30,10 @@ pub const fn action_of(capability: Capability) -> Option<HostActionKind> {
 		Capability::Diagnostics => Some(HostActionKind::RefreshDiagnostics),
 		Capability::Usage => Some(HostActionKind::GetUsage),
 		Capability::ContextBreakdown => Some(HostActionKind::GetContextBreakdown),
+		Capability::AgentCommands => Some(HostActionKind::RunCommand),
 		Capability::Questions
 		| Capability::Plans
 		| Capability::Extensions
-		| Capability::AgentCommands
 		| Capability::PendingEdits
 		| Capability::BackgroundSubmission => None,
 	}

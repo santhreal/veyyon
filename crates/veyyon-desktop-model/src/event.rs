@@ -4,10 +4,10 @@ use crate::{
 	capabilities::{Capability, CapabilityStatus},
 	connection::{ConnectionState, RequestId, SessionId, Versioned},
 	domain::{
-		AgentView, AuthFlowView, ChangesView, ContentMatchesView, ContextBreakdownView, ExportView,
-		FileContentView, FileTreeView, KeybindingView, McpServerView, ModelsView, ProcessLogsChunk,
-		ProcessView, ProviderView, QueuedPromptsView, SearchResultsView, SettingsView,
-		TerminalOutputChunk, TerminalView, ThemesView, UsageView,
+		AgentView, AuthFlowView, ChangesView, CommandView, ContentMatchesView, ContextBreakdownView,
+		ExportView, FileContentView, FileTreeView, KeybindingView, McpServerView, ModelsView,
+		ProcessLogsChunk, ProcessView, ProviderView, QueuedPromptsView, SearchResultsView,
+		SettingsView, TerminalOutputChunk, TerminalView, ThemesView, UsageView,
 	},
 	error::BackendError,
 	interaction::PendingDecisions,
@@ -67,7 +67,7 @@ pub struct SessionHeaderView {
 	pub mode:           Option<String>,
 }
 
-/// Complete list of all 27 snapshot section names defined by the protocol.
+/// Complete list of all 30 snapshot section names defined by the protocol.
 pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Sessions",
 	"ActiveSession",
@@ -98,6 +98,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Themes",
 	"Keybindings",
 	"QueuedPrompts",
+	"Commands",
 ];
 
 /// Domain sections received during initial connection or snapshot
@@ -108,7 +109,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
 #[strum_discriminants(name(SnapshotSectionKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
 #[strum_discriminants(
-	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 27 section variants."
+	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 30 section variants."
 )]
 pub enum SnapshotSection {
 	/// Session index metadata and deserialization failures.
@@ -176,6 +177,8 @@ pub enum SnapshotSection {
 	/// The prompts a session holds behind a running turn, and the one a
 	/// `DequeueQueuedPrompt` handed back.
 	QueuedPrompts(QueuedPromptsView),
+	/// Every slash command the host will run, which the palette ranks.
+	Commands(Vec<CommandView>),
 }
 
 impl SnapshotSection {
@@ -212,6 +215,7 @@ impl SnapshotSection {
 			Self::Themes(..) => "Themes",
 			Self::Keybindings(..) => "Keybindings",
 			Self::QueuedPrompts(..) => "QueuedPrompts",
+			Self::Commands(..) => "Commands",
 		}
 	}
 }

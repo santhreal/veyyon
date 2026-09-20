@@ -355,6 +355,26 @@ const CORPUS = [
 			restored: null,
 		},
 	},
+	{
+		Commands: [
+			{
+				name: "compact",
+				aliases: [],
+				description: "Compact the conversation",
+				input_hint: "mode",
+				source: "Builtin",
+				subcommands: [{ name: "focus", description: "Keep the current thread", usage: "/compact focus" }],
+			},
+			{
+				name: "review",
+				aliases: ["pr"],
+				description: "Review the working tree",
+				input_hint: null,
+				source: "Custom",
+				subcommands: [],
+			},
+		],
+	},
 ] satisfies SnapshotSection[];
 
 describe("every snapshot section is one the desktop decodes", () => {

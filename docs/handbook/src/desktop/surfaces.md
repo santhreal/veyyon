@@ -573,6 +573,18 @@ Type `/` at the beginning of the composer to open the anchored command palette.
 The palette also includes session, terminal, settings, provider, and other host
 commands. Attachment admission depends on the host and model input capabilities.
 
+Every command the host runs is listed beside these, including the ones this
+workspace installs: skills, extension commands, project command files and MCP
+prompts. A row states where its command came from, and a command that takes
+arguments states what it takes. Text typed after the command name is sent with
+it. A subcommand is its own row. The host states the list on connection and
+restates it when a plugin reload or a project switch changes it, so a command
+file added to the workspace appears without restarting the window.
+
+A command runs one at a time. While the host is answering one, the rows that
+run another are drawn dim and take no selection, and they return when the
+answer arrives.
+
 Command search matches slash names and action descriptions. For example,
 `Primary-K`, `new session`, then `Enter` creates a session.
 

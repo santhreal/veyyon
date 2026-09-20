@@ -1,12 +1,12 @@
 //! Surface seeding per capability (§1.2, §4.3, §9.5).
 
 use veyyon_desktop_model::{
-	AgentView, ApprovalInteraction, Capability, ChangeScope, ChangesView, ContextBreakdownView,
-	ContextCategory, EntryId, FileTreeView, InputModality, InteractionId, KeybindingView,
-	McpServerStatus, McpServerView, MessageRole, ModelRef, ModelView, ModelsView, PendingDecisions,
-	PlanInteraction, ProcessView, ProviderView, QuestionInteraction, QueueMode, QueuePartition,
-	SessionId, SettingEntry, SettingKind, StreamingMessageState, TerminalStatus, TerminalView,
-	ThemeView, ThemesView, TranscriptEntry, UsageTotals,
+	AgentView, ApprovalInteraction, Capability, ChangeScope, ChangesView, CommandSource,
+	CommandView, ContextBreakdownView, ContextCategory, EntryId, FileTreeView, InputModality,
+	InteractionId, KeybindingView, McpServerStatus, McpServerView, MessageRole, ModelRef, ModelView,
+	ModelsView, PendingDecisions, PlanInteraction, ProcessView, ProviderView, QuestionInteraction,
+	QueueMode, QueuePartition, SessionId, SettingEntry, SettingKind, StreamingMessageState,
+	TerminalStatus, TerminalView, ThemeView, ThemesView, TranscriptEntry, UsageTotals,
 };
 use veyyon_desktop_scene::FixtureText;
 use veyyon_desktop_surface::{
@@ -312,8 +312,24 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 				session:      None,
 			}];
 		},
+		// The list the window opens on is its own commands, which fill the
+		// surface before a host row is reached, so the scene stands on the
+		// query that names one: what this capability draws is the row for a
+		// command the workspace installed.
 		Capability::AgentCommands => {
-			seed.state.overlay = Some(SurfaceRoute::Commands.overlay());
+			seed.store.domains.commands = vec![CommandView {
+				name:        "review".to_string(),
+				aliases:     Vec::new(),
+				description: Some("Review the working tree".to_string()),
+				input_hint:  Some("[staged]".to_string()),
+				source:      CommandSource::Custom,
+				subcommands: Vec::new(),
+			}];
+			let mut overlay = SurfaceRoute::Commands.overlay();
+			if let Overlay::Palette(palette) = &mut overlay {
+				palette.set_query("review");
+			}
+			seed.state.overlay = Some(overlay);
 		},
 		Capability::Terminals => {
 			seed.exchange(session, Seed::prose());

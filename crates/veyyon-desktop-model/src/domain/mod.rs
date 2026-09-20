@@ -6,6 +6,7 @@ pub use history::*;
 pub mod agents;
 pub mod answered;
 pub mod changes;
+pub mod commands;
 pub mod diagnostics;
 pub mod files;
 pub mod mcp;
@@ -23,6 +24,7 @@ use std::collections::HashMap;
 pub use agents::*;
 pub use answered::*;
 pub use changes::*;
+pub use commands::*;
 pub use diagnostics::*;
 pub use files::*;
 pub use mcp::*;
@@ -88,6 +90,8 @@ pub struct Domains {
 	pub themes:          Option<ThemesView>,
 	/// Keyboard shortcuts.
 	pub keybindings:     Vec<KeybindingView>,
+	/// The slash commands the host advertises, in the order it sent them.
+	pub commands:        Vec<CommandView>,
 	/// Every setting the host reports, keyed by schema key.
 	pub settings:        Option<SettingsView>,
 	/// Diagnostic sources payload.

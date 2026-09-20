@@ -3,16 +3,19 @@
 use veyyon_desktop_model::{HostAction, SettableMode, Store, TerminalStatus};
 use veyyon_desktop_surface::Intent;
 
-use self::routes::{navigate_actions, retry_control_actions};
+use self::{
+	routes::{navigate_actions, retry_control_actions},
+	sessions::session_actions,
+};
 use super::{
 	SessionIndex,
-	branch::{branch_point, branch_point_at, record_fork},
 	cards::take_interaction,
 	submission::submission_of,
 	workspace_asks::{open_actions, tab_actions},
 };
 
 mod routes;
+mod sessions;
 
 /// The host actions an intent asks for, in the order they are sent; empty
 /// for one the shell finished alone or one that no longer has a target.
@@ -26,6 +29,9 @@ mod routes;
 /// or creates one when none is.
 pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> Vec<HostAction> {
 	let active = super::navigation::active_session(store).cloned();
+	if let Some(actions) = session_actions(intent, index, store, active.as_ref()) {
+		return actions;
+	}
 	match intent {
 		Intent::OpenSession(_)
 		| Intent::CloseSessionTab(_)
@@ -277,68 +283,12 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 			mutate_partition(intent, index, store);
 			Vec::new()
 		},
-		Intent::DeleteSession(row) => index.session_of(*row).map_or_else(Vec::new, |session| {
-			vec![HostAction::DeleteSession { session: session.clone() }]
+		// The command's text is what the operator wrote, so a command taking
+		// arguments carries them and the host parses one string rather than
+		// the window guessing which half is which.
+		Intent::RunCommand(text) => active.map_or_else(Vec::new, |session| {
+			vec![HostAction::RunCommand { session, text: text.clone() }]
 		}),
-		// The window names the entry it forks at, so the prompt it hands back to
-		// the composer is the prompt the fork actually cut. A transcript the
-		// window has not loaded names none and the host picks the same entry
-		// itself.
-		Intent::BranchSession(row) => {
-			index
-				.session_of(*row)
-				.cloned()
-				.map_or_else(Vec::new, |session| {
-					let point = branch_point(store, &session);
-					if let Some(point) = point.as_ref() {
-						record_fork(store, *row, point);
-					}
-					vec![HostAction::BranchSession { session, entry: point.map(|point| point.entry) }]
-				})
-		},
-		// A fork cut at one turn names that turn's own prompt. The index is the
-		// transcript's, which is what the frame recorded its boxes under, so a
-		// press on a reply or on a turn no longer drawn asks for nothing rather
-		// than forking at the end.
-		Intent::BranchTurn(turn) => active
-			.and_then(|session| {
-				let row = index.row_id(&session)?;
-				let point = branch_point_at(store, &session, *turn)?;
-				Some((session, row, point))
-			})
-			.map_or_else(Vec::new, |(session, row, point)| {
-				record_fork(store, row, &point);
-				vec![HostAction::BranchSession { session, entry: Some(point.entry) }]
-			}),
-		Intent::RenameSession { session, title } => {
-			index.session_of(*session).map_or_else(Vec::new, |s| {
-				vec![HostAction::RenameSession { session: s.clone(), title: title.clone() }]
-			})
-		},
-		Intent::ExportSession(row) => row
-			.and_then(|r| index.session_of(r))
-			.cloned()
-			.or_else(|| active.clone())
-			.map_or_else(Vec::new, |s| {
-				vec![HostAction::ExportSession { session: s, format: "html".to_string() }]
-			}),
-		Intent::CompactSession(row) => row
-			.and_then(|r| index.session_of(r))
-			.cloned()
-			.or_else(|| active.clone())
-			.map_or_else(Vec::new, |s| vec![HostAction::CompactSession { session: s }]),
-		Intent::HandoffSession(row) => row
-			.and_then(|r| index.session_of(r))
-			.cloned()
-			.or_else(|| active.clone())
-			.map_or_else(Vec::new, |s| {
-				vec![HostAction::HandoffSession { session: s, target: String::new() }]
-			}),
-		Intent::LoadTranscript(row) => row
-			.and_then(|r| index.session_of(r))
-			.cloned()
-			.or(active)
-			.map_or_else(Vec::new, |s| vec![HostAction::LoadTranscript { session: s, before: None }]),
 		Intent::OpenFile(path) => vec![HostAction::ReadFile { path: path.clone() }],
 		Intent::SelectChangeScope(scope) => {
 			vec![HostAction::SelectChangeScope { scope: *scope }, HostAction::RefreshChanges]

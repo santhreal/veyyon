@@ -58,6 +58,7 @@ pub fn initial_sync_actions(capabilities: &[(Capability, CapabilityStatus)]) -> 
 			Capability::ProcessSupervisor => Some(HostAction::RefreshProcesses),
 			Capability::Usage => Some(HostAction::GetUsage { session: None }),
 			Capability::Files => Some(HostAction::LoadFileTree { root: None }),
+			Capability::AgentCommands => Some(HostAction::ListCommands),
 			_ => None,
 		};
 

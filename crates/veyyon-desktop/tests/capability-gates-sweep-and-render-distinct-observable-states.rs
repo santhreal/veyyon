@@ -103,12 +103,11 @@ fn test_action_of_exhaustively_matches_model_mapping() {
 			Capability::Plans,
 			Capability::PendingEdits,
 			Capability::Extensions,
-			Capability::AgentCommands,
 		],
 		"exact set of actionless capabilities"
 	);
 	assert_eq!(Capability::ALL.len(), 30);
-	assert_eq!(gated.len(), 24);
+	assert_eq!(gated.len(), 25);
 }
 
 #[test]

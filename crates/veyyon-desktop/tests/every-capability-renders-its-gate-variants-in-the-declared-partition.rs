@@ -71,7 +71,6 @@ use veyyon_desktop_scene::{
 /// and `GateVariant::Pending` is unreachable. Their partition is
 /// `enabled=unknown | unavailable`.
 const DECLARED_PENDING_OPT_OUTS: &[Capability] = &[
-	Capability::AgentCommands,
 	Capability::BackgroundSubmission,
 	Capability::Extensions,
 	Capability::PendingEdits,

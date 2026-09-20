@@ -262,6 +262,19 @@ pub enum HostAction {
 		task_id: String,
 	},
 
+	// Commands family (2 actions)
+	/// Asks for every slash command the host will run, which is what the
+	/// palette lists: the window declares none of them itself.
+	ListCommands,
+	/// Runs one command line, spelled the way the composer accepts it:
+	/// `/compact focus`, leading slash and arguments included. The host
+	/// parses it, and a command that leaves a prompt behind runs that prompt
+	/// as the session's next turn.
+	RunCommand {
+		session: SessionId,
+		text:    String,
+	},
+
 	// Settings family (6 actions)
 	LoadSettings,
 	SetSetting {
@@ -360,6 +373,8 @@ impl HostAction {
 			Self::ReviveAgent { .. } => HostActionKind::ReviveAgent,
 			Self::SpawnTask { .. } => HostActionKind::SpawnTask,
 			Self::CancelTask { .. } => HostActionKind::CancelTask,
+			Self::ListCommands => HostActionKind::ListCommands,
+			Self::RunCommand { .. } => HostActionKind::RunCommand,
 			Self::LoadSettings => HostActionKind::LoadSettings,
 			Self::SetSetting { .. } => HostActionKind::SetSetting,
 			Self::ResetSetting { .. } => HostActionKind::ResetSetting,

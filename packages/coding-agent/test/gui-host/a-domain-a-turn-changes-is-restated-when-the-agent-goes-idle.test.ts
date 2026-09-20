@@ -108,6 +108,10 @@ const AT_IDLE: Record<SnapshotSectionTag, "restated-at-idle" | "listed-at-idle" 
 	Themes: "on-request",
 	Keybindings: "on-request",
 	QueuedPrompts: "during-turn",
+	// Stated when the session that holds the skills, extensions and command
+	// files is created, and again whenever one of them changes, both of
+	// which happen inside a turn. The idle re-statement owes it nothing.
+	Commands: "during-turn",
 };
 
 /** The section the host publishes last, which is what closes a re-statement. */

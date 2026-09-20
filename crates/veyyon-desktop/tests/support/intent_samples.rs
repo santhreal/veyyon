@@ -209,6 +209,7 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		IntentDiscriminants::CompactSession => vec![Intent::CompactSession(Some(1))],
 		IntentDiscriminants::HandoffSession => vec![Intent::HandoffSession(Some(1))],
 		IntentDiscriminants::LoadTranscript => vec![Intent::LoadTranscript(Some(1))],
+		IntentDiscriminants::RunCommand => vec![Intent::RunCommand("compact".to_string())],
 		IntentDiscriminants::FilterQueue => vec![Intent::FilterQueue("filter".to_string())],
 		IntentDiscriminants::NewSession => vec![Intent::NewSession],
 		IntentDiscriminants::CloseTabOrPark => vec![Intent::CloseTabOrPark],

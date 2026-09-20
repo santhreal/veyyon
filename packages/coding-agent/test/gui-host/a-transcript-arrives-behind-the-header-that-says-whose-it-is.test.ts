@@ -233,6 +233,8 @@ describe("a transcript arrives behind the header that says whose it is", () => {
 			ReviveAgent: { ReviveAgent: { agent: "a-1" } },
 			SpawnTask: { SpawnTask: { prompt: "" } },
 			CancelTask: { CancelTask: { task: "t-1" } },
+			ListCommands: "ListCommands",
+			RunCommand: { RunCommand: { session: alpha, text: "/tools" } },
 			LoadSettings: "LoadSettings",
 			SetSetting: { SetSetting: { key: "theme", value: "dark" } },
 			ResetSetting: { ResetSetting: { key: "theme" } },

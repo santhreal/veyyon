@@ -85,6 +85,8 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::ReviveAgent => Capability::Agents,
 		HostActionKind::SpawnTask => Capability::Tasks,
 		HostActionKind::CancelTask => Capability::Tasks,
+		HostActionKind::ListCommands => Capability::AgentCommands,
+		HostActionKind::RunCommand => Capability::AgentCommands,
 		HostActionKind::LoadSettings => Capability::Settings,
 		HostActionKind::SetSetting => Capability::Settings,
 		HostActionKind::ResetSetting => Capability::Settings,

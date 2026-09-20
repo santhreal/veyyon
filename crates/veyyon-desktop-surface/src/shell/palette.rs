@@ -1,5 +1,7 @@
 //! Palette input, composer anchoring, and focus transitions.
 
+mod route;
+
 use std::{cell::Cell, rc::Rc};
 
 use strum::IntoEnumIterator;
@@ -263,6 +265,13 @@ impl ShellView {
 			self.navigate_surface(route, cx);
 			return;
 		}
+		// A command taking arguments runs with the ones that were typed, and
+		// the row's own spelling runs when the draft holds no arguments for
+		// it, which is what a row reached by arrow key holds.
+		let intent = match (&intent, self.palette_input.slash) {
+			(Intent::RunCommand(row), true) => Intent::RunCommand(self.typed_command(row)),
+			_ => intent,
+		};
 		if self.palette_input.slash {
 			self.consume_command_prefix(cx);
 		}
@@ -273,6 +282,25 @@ impl ShellView {
 		// composer's. Which rows do that is read from what the row left open,
 		// not from a second list of the intents that open one (§5.8).
 		self.focus_palette_query(cx);
+	}
+
+	/// The command as the operator spelled it: the row's own text, or the
+	/// whole draft when the draft is that command with arguments after it.
+	fn typed_command(&self, row: &str) -> String {
+		let typed = self.composer_cache.as_str().trim_start_matches('/');
+		// Sliced through `get`, since a command name is whatever the host
+		// spelled and a byte index into it need not land on a character.
+		let takes_arguments = typed
+			.get(..row.len())
+			.is_some_and(|head| head.eq_ignore_ascii_case(row))
+			&& typed
+				.get(row.len()..)
+				.is_some_and(|rest| rest.starts_with(char::is_whitespace));
+		if takes_arguments {
+			typed.to_owned()
+		} else {
+			row.to_owned()
+		}
 	}
 
 	/// Hands the keyboard to the query of the palette a row left open, off the
@@ -293,94 +321,5 @@ impl ShellView {
 		let editor = self.ensure_palette_editor(cx);
 		editor.update(cx, |editor, cx| editor.set_text(query, cx));
 		self.palette_input.focus_search = true;
-	}
-
-	/// The surface an ascent returns to: the one the operator descended from,
-	/// not the route table's parent. A surface reached directly -- the rail
-	/// footer gear, a slash command, a keybinding -- has nothing above it, so
-	/// this is `None` there and `Escape` closes instead of opening a palette
-	/// that was never visited (§5.8).
-	#[must_use]
-	pub fn back_route(&self) -> Option<crate::navigation::SurfaceRoute> {
-		self
-			.palette_input
-			.parents
-			.last()
-			.and_then(PaletteState::route)
-	}
-
-	/// Replaces the visible route without closing or restarting its float
-	/// motion.
-	pub fn navigate_surface(
-		&mut self,
-		route: crate::navigation::SurfaceRoute,
-		cx: &mut Context<Self>,
-	) {
-		self.dispatch(Intent::PreviewAppearance(None), cx);
-		let returning = self.back_route() == Some(route);
-		let restored = if returning {
-			self.palette_input.parents.pop()
-		} else {
-			if let Some(parent) = self.state.overlay.as_ref().and_then(Overlay::as_palette)
-				&& parent.route() != Some(route)
-			{
-				self.palette_input.parents.push(parent.clone());
-			}
-			None
-		};
-		self.palette_input.slash = false;
-		self.palette_input.anchored = false;
-		self.palette_input.restore_focus = false;
-		self.dispatch(Intent::Navigate(route), cx);
-		if let Some(parent) = restored {
-			self.state.overlay = Some(Overlay::Palette(parent));
-		}
-		self.palette_input.focus_search = true;
-		if self.state.overlay.as_ref().is_some_and(Overlay::is_palette) {
-			let editor = self.ensure_palette_editor(cx);
-			let query = self
-				.state
-				.overlay
-				.as_ref()
-				.and_then(Overlay::as_palette)
-				.map_or_else(String::new, |palette| palette.query().to_owned());
-			editor.update(cx, |editor, cx| editor.set_text(query, cx));
-			self.palette_input.focus_search = true;
-		}
-		cx.notify();
-	}
-
-	/// Ascends the command hierarchy, or one browsed directory, before closing
-	/// its root (§5.8).
-	pub fn back_surface(&mut self, cx: &mut Context<Self>) {
-		if let Some(parent) = self
-			.state
-			.overlay
-			.as_ref()
-			.and_then(Overlay::as_palette)
-			.and_then(PaletteState::browse_parent)
-		{
-			self.dispatch(Intent::BrowseTo { path: parent }, cx);
-			cx.notify();
-			return;
-		}
-		match self.back_route() {
-			Some(parent) => self.navigate_surface(parent, cx),
-			None => self.close_palette(cx),
-		}
-		cx.notify();
-	}
-
-	/// Closes the menu without discarding the draft and restores focus on the
-	/// next frame.
-	pub fn close_palette(&mut self, cx: &mut Context<Self>) {
-		if self.palette_input.slash {
-			self.palette_input.dismissed = Some(self.composer_cache.clone());
-		}
-		self.palette_input.slash = false;
-		self.dispatch(Intent::PreviewAppearance(None), cx);
-		self.palette_input.restore_focus = true;
-		self.palette_input.parents.clear();
-		self.dispatch(Intent::CloseOverlay, cx);
 	}
 }

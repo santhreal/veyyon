@@ -58,7 +58,6 @@ import {
 } from "../../extensibility/extensions";
 import { runExtensionCompact, runExtensionSetModel } from "../../extensibility/extensions/compact-handler";
 import { getSessionSlashCommands } from "../../extensibility/extensions/get-commands-handler";
-import { buildSkillPromptMessage, parseSkillInvocation } from "../../extensibility/skills";
 import { loadSlashCommands } from "../../extensibility/slash-commands";
 // The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
 // handler and reaches hundreds of modules.
@@ -70,9 +69,10 @@ import { DEFAULT_PLAN_FILE_URL } from "../../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../../plan-mode/plan-path";
 import type { AgentSession } from "../../session/agent-session";
 import type { AgentSessionEvent } from "../../session/agent-session-types";
-import { isSilentAbort, SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../../session/messages";
+import { isSilentAbort, USER_INTERRUPT_LABEL } from "../../session/messages";
 import { executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins";
 import { buildAvailableSlashCommands, toAcpAvailableCommands } from "../../slash-commands/available-commands";
+import { runSkillCommand } from "../../slash-commands/skill-dispatch";
 import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "../../speech/stt/models";
 import {
 	DEFAULT_TTS_LOCAL_MODEL_KEY,
@@ -853,29 +853,7 @@ export class AcpAgent implements Agent {
 	}
 
 	async #tryRunSkillCommand(record: ManagedSessionRecord, text: string): Promise<boolean> {
-		if (!record.session.skillsSettings?.enableSkillCommands) {
-			return false;
-		}
-		const parsed = parseSkillInvocation(text);
-		if (!parsed) {
-			return false;
-		}
-		const skill = record.session.skills.find(candidate => candidate.name === parsed.name);
-		if (!skill) {
-			return false;
-		}
-		const built = await buildSkillPromptMessage(skill, parsed.args, "user");
-		await record.session.promptCustomMessage(
-			{
-				customType: SKILL_PROMPT_MESSAGE_TYPE,
-				content: built.message,
-				display: true,
-				details: built.details,
-				attribution: "user",
-			},
-			{ streamingBehavior: "steer" },
-		);
-		return true;
+		return runSkillCommand(record.session, text);
 	}
 
 	async cancel(params: { sessionId: string }): Promise<void> {

@@ -92,6 +92,9 @@ const fn prepare_for(kind: SnapshotSectionKind) -> Prepare {
 		| SnapshotSectionKind::Diagnostics => Prepare::Settings,
 		SnapshotSectionKind::SearchResults => Prepare::Palette(PaletteMode::Files, "app"),
 		SnapshotSectionKind::ContentMatches => Prepare::Palette(PaletteMode::ContentSearch, "todo"),
+		// The catalogue is rows of the command list, which is what the
+		// palette opens on.
+		SnapshotSectionKind::Commands => Prepare::Palette(PaletteMode::Commands, ""),
 		SnapshotSectionKind::ProcessLogs => Prepare::ProcessOutput(PROCESS),
 		SnapshotSectionKind::SessionSearch => Prepare::HistorySearch,
 		SnapshotSectionKind::SessionTranscript => Prepare::HistoryPreview,

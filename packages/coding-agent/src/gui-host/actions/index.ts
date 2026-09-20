@@ -1,5 +1,6 @@
 import { agentsActionHandlers } from "./agents";
 import { changesActionHandlers } from "./changes";
+import { commandsActionHandlers } from "./commands";
 import { connectionActionHandlers } from "./connection";
 import { diagnosticsActionHandlers } from "./diagnostics";
 import { filesActionHandlers } from "./files";
@@ -16,6 +17,7 @@ import type { ActionHandlersMap } from "./types";
 
 export * from "./agents";
 export * from "./changes";
+export * from "./commands";
 export * from "./connection";
 export * from "./diagnostics";
 export * from "./files";
@@ -43,6 +45,7 @@ export const allActionHandlers: ActionHandlersMap = {
 	...providersActionHandlers,
 	...mcpActionHandlers,
 	...agentsActionHandlers,
+	...commandsActionHandlers,
 	...settingsActionHandlers,
 	...diagnosticsActionHandlers,
 };

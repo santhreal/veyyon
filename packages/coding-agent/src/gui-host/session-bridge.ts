@@ -31,6 +31,7 @@ export const SUPPORTED_CAPABILITIES: Partial<Record<Capability, true>> = {
 	Authentication: true,
 	Mcp: true,
 	Agents: true,
+	AgentCommands: true,
 	Tasks: true,
 	Settings: true,
 	Themes: true,
@@ -42,10 +43,9 @@ export const SUPPORTED_CAPABILITIES: Partial<Record<Capability, true>> = {
 };
 
 /** Specific, truthful reasons why each unsupported capability is unavailable. */
-export const UNAVAILABLE_CAPABILITY_REASONS: Record<"PendingEdits" | "Extensions" | "AgentCommands", string> = {
+export const UNAVAILABLE_CAPABILITY_REASONS: Record<"PendingEdits" | "Extensions", string> = {
 	PendingEdits: "Pending edit inspection is not supported by this host version",
 	Extensions: "Extension management is handled directly through the extension host",
-	AgentCommands: "Agent command discovery is managed through the slash-command registry",
 };
 
 /**
@@ -128,6 +128,8 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	ReviveAgent: "Agent",
 	SpawnTask: "Task",
 	CancelTask: "Task",
+	ListCommands: "Session",
+	RunCommand: "Session",
 	LoadSettings: "Settings",
 	SetSetting: "Settings",
 	ResetSetting: "Settings",

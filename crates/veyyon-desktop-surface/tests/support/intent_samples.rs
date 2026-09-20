@@ -141,6 +141,7 @@ pub fn every_intent() -> Vec<Intent> {
 			keys:   vec!["ctrl-enter".to_owned()],
 		},
 		Intent::SpawnTask("review the diff".to_owned()),
+		Intent::RunCommand("brainstorm two options".to_owned()),
 		Intent::SetPlanMode { on: true },
 		Intent::CopyText("copied words".to_owned()),
 		Intent::DismissNotice("request-failed:transcript:-".to_owned()),
@@ -252,6 +253,7 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::CompactSession(_)
 			| Intent::HandoffSession(_)
 			| Intent::LoadTranscript(_)
+			| Intent::RunCommand(_)
 			| Intent::CloseTerminal
 			| Intent::NewTerminal
 			| Intent::ClearOutput

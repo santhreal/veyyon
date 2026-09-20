@@ -252,6 +252,11 @@ pub enum Intent {
 		row:  usize,
 	},
 	SelectChangeScope(veyyon_desktop_model::ChangeScope),
+	/// Runs one slash command the host advertises, spelled as the host reads
+	/// it: the command's own name and whatever was written after it. The
+	/// window holds no table of these, so a command a workspace installs is
+	/// run by the same path as a builtin (§5.8).
+	RunCommand(String),
 	/// Opens one menu of the bar, closes the bar when that menu is already
 	/// open, and closes it outright with `None`.
 	SetMenuSection(Option<MenuSectionId>),

@@ -17,12 +17,13 @@
 use strum::IntoEnumIterator as _;
 use veyyon_desktop_model::{
 	AgentView, AuthFlowState, AuthFlowView, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
-	ContentMatch, ContentMatchesView, ContextBreakdownView, ContextCategory, ExportView,
-	FileContentView, FileKind, FileNode, FileTreeView, HostEvent, InputModality, KeybindingView,
-	McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView, ProcessView, ProviderView,
-	SearchResultsView, SessionId, SessionSearchView, SessionTranscriptView, SettingEntry,
-	SettingKind, SettingsView, SnapshotSection, SnapshotSectionKind, Store, TerminalStatus,
-	TerminalView, ThemeView, ThemesView, UsageTotals, UsageView, Versioned, reduce,
+	CommandSource, CommandView, ContentMatch, ContentMatchesView, ContextBreakdownView,
+	ContextCategory, ExportView, FileContentView, FileKind, FileNode, FileTreeView, HostEvent,
+	InputModality, KeybindingView, McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView,
+	ProcessView, ProviderView, SearchResultsView, SessionId, SessionSearchView,
+	SessionTranscriptView, SettingEntry, SettingKind, SettingsView, SnapshotSection,
+	SnapshotSectionKind, Store, TerminalStatus, TerminalView, ThemeView, ThemesView, UsageTotals,
+	UsageView, Versioned, reduce,
 };
 
 fn changed(path: &str, status: ChangeStatus) -> ChangedFile {
@@ -253,6 +254,17 @@ fn settings(entries: &[(&str, serde_json::Value)]) -> SnapshotSection {
 	SnapshotSection::Settings(view)
 }
 
+fn command(name: &str, source: CommandSource) -> SnapshotSection {
+	SnapshotSection::Commands(vec![CommandView {
+		name: name.into(),
+		aliases: Vec::new(),
+		description: None,
+		input_hint: None,
+		source,
+		subcommands: Vec::new(),
+	}])
+}
+
 /// Two distinct sections of one kind, or `None` for a kind that does not
 /// land in `Domains`. The match is exhaustive on purpose.
 fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
@@ -320,6 +332,9 @@ fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 		SnapshotSectionKind::Themes => [themes("light", false), themes("dark", true)],
 		SnapshotSectionKind::Keybindings => {
 			[keybinding("app.quit", "ctrl+q"), keybinding("composer.submit", "enter")]
+		},
+		SnapshotSectionKind::Commands => {
+			[command("compact", CommandSource::Builtin), command("review", CommandSource::Custom)]
 		},
 	})
 }

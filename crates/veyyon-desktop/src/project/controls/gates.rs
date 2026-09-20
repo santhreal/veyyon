@@ -100,6 +100,9 @@ pub fn gated_controls(
 		(SurfaceId::TaskSpawnButton, HostActionKind::SpawnTask),
 		(SurfaceId::SettingsField("providers".to_string()), HostActionKind::RefreshProviders),
 		(SurfaceId::OutputClearButton, HostActionKind::ClearOutput),
+		// The palette's field is the control every host command rides on: one
+		// request runs a command, so the field states the gate of running one.
+		(SurfaceId::PaletteInput, HostActionKind::RunCommand),
 	];
 	// Every session the rail can draw a row for, and the active one, which the
 	// host may not have listed yet.

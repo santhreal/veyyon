@@ -33,7 +33,7 @@ fn test_enum_iteration_exhausts_all_protocol_domains() {
 	let gate_count = GateVariant::iter().count();
 	assert_eq!(gate_count, 4);
 	let gated_count = gated_capabilities().len();
-	assert_eq!(gated_count, 24);
+	assert_eq!(gated_count, 25);
 
 	let role_count = MessageRole::iter().count();
 	assert_eq!(role_count, 12);
@@ -72,7 +72,7 @@ fn test_enum_iteration_exhausts_all_protocol_domains() {
 		+ row_shape_count
 		+ primitive_count;
 
-	assert_eq!(total_expected, 223);
+	assert_eq!(total_expected, 224);
 	assert_eq!(required_states().len(), total_expected);
 }
 

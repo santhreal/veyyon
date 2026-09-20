@@ -77,7 +77,7 @@ describe("every host action has a dispatcher", () => {
 		}
 
 		// Pinned by exact equality: a new capability turns this red
-		expect(actualUnavailable).toEqual(["PendingEdits", "Extensions", "AgentCommands"]);
+		expect(actualUnavailable).toEqual(["PendingEdits", "Extensions"]);
 
 		client.destroy();
 	});

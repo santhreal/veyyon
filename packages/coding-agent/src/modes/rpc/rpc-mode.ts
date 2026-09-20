@@ -26,12 +26,12 @@ import {
 	type ExtensionWidgetOptions,
 	getExtensionUISelectOptionLabel,
 } from "../../extensibility/extensions";
-import { buildSkillPromptMessage, parseSkillInvocation } from "../../extensibility/skills";
 import { loadSlashCommands } from "../../extensibility/slash-commands";
 import type { AgentSession } from "../../session/agent-session";
-import { SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../../session/messages";
+import { USER_INTERRUPT_LABEL } from "../../session/messages";
 import { executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins";
 import { buildAvailableSlashCommands } from "../../slash-commands/available-commands";
+import { runSkillCommand, type SkillCommandSession } from "../../slash-commands/skill-dispatch";
 import { type Theme, theme } from "../../theme/theme";
 import { configuredThinkingLevelsForModel } from "../../thinking";
 import type { EventBus } from "../../utils/event-bus";
@@ -112,7 +112,7 @@ export type RpcSessionChangeResult =
 
 export type RpcSessionChangeSession = Pick<AgentSession, "newSession" | "switchSession" | "branch">;
 
-export type RpcSkillCommandSession = Pick<AgentSession, "promptCustomMessage" | "skills" | "skillsSettings">;
+export type RpcSkillCommandSession = SkillCommandSession;
 export type RpcSkillCommandResult = { agentInvoked: true };
 
 export async function tryRunRpcSkillCommand(
@@ -120,23 +120,7 @@ export async function tryRunRpcSkillCommand(
 	text: string,
 	streamingBehavior: "steer" | "followUp" = "steer",
 ): Promise<RpcSkillCommandResult | false> {
-	if (!session.skillsSettings?.enableSkillCommands) return false;
-	const parsed = parseSkillInvocation(text);
-	if (!parsed) return false;
-	const skill = session.skills.find(candidate => candidate.name === parsed.name);
-	if (!skill) return false;
-	const built = await buildSkillPromptMessage(skill, parsed.args, "user");
-	await session.promptCustomMessage(
-		{
-			customType: SKILL_PROMPT_MESSAGE_TYPE,
-			content: built.message,
-			display: true,
-			details: built.details,
-			attribution: "user",
-		},
-		{ streamingBehavior },
-	);
-	return { agentInvoked: true };
+	return (await runSkillCommand(session, text, streamingBehavior)) ? { agentInvoked: true } : false;
 }
 
 export function reportLocalOnlyPromptResult(input: {

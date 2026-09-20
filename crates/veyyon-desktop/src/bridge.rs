@@ -33,7 +33,7 @@ pub enum ActionClassification {
 #[must_use]
 pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 	match kind {
-		// Ephemeral read-only queries and inspectors (20 actions)
+		// Ephemeral read-only queries and inspectors (21 actions)
 		HostActionKind::ListSessions
 		| HostActionKind::SearchSessions
 		| HostActionKind::PreviewSessionTranscript
@@ -53,9 +53,10 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::LoadKeybindings
 		| HostActionKind::RefreshDiagnostics
 		| HostActionKind::GetUsage
-		| HostActionKind::GetContextBreakdown => ActionClassification::Ephemeral,
+		| HostActionKind::GetContextBreakdown
+		| HostActionKind::ListCommands => ActionClassification::Ephemeral,
 
-		// Mutations, lifecycle, session modifications, turns, terminals, processes (56 actions)
+		// Mutations, lifecycle, session modifications, turns, terminals, processes (53 actions)
 		HostActionKind::Attach
 		| HostActionKind::Detach
 		| HostActionKind::RetryConnection
@@ -107,7 +108,8 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::ResetSetting
 		| HostActionKind::SetKeybinding
 		| HostActionKind::RetryDiagnosticSource
-		| HostActionKind::ClearOutput => ActionClassification::Mutation,
+		| HostActionKind::ClearOutput
+		| HostActionKind::RunCommand => ActionClassification::Mutation,
 	}
 }
 

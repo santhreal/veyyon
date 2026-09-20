@@ -7,11 +7,28 @@
 
 use veyyon_desktop_model::{Capability, CapabilityStatus, FileKind, Store};
 use veyyon_desktop_surface::{
-	Overlay, PaletteItem, PaletteItemKind, PaletteMode, PaletteState, SettingsState, ShellState,
-	navigation::SurfaceRoute, palette::PaletteMeta,
+	Intent, Overlay, PaletteItem, PaletteItemKind, PaletteMode, PaletteState, SettingsState,
+	ShellState,
+	navigation::SurfaceRoute,
+	palette::{PaletteMeta, commands::command_items, host_command_items},
 };
 
 use super::menu::{command_declined, unavailable};
+
+/// Whether the palette already lists exactly the host rows in `listed`.
+///
+/// The rows a command list holds outlive one projection, so rebuilding them
+/// on every store change would re-rank the whole catalogue for a frame that
+/// changed nothing about it. A row that runs a host command is the one the
+/// window did not author, which is how they are told apart from the native
+/// rows they sit beside.
+fn holds(state: &PaletteState, listed: &[PaletteItem]) -> bool {
+	let held = state.items().iter().filter(|item| {
+		matches!(&item.kind, PaletteItemKind::Command { intent }
+			if matches!(**intent, Intent::RunCommand(_)))
+	});
+	held.eq(listed.iter())
+}
 
 /// Projects domain store views onto active overlay state fields.
 pub fn project_overlay(store: &Store, state: &mut ShellState) {
@@ -129,8 +146,11 @@ fn project_palette_domains(store: &Store, state: &mut PaletteState) {
 				state.set_items(items);
 			}
 		},
-		// Native navigation does not invoke the host's separate agent-command API,
-		// but reflects its availability notice on the root command surface when unavailable.
+		// The commands the host lists are rows beside the window's own, so a
+		// command this workspace installed is reachable from the same list.
+		// They are rebuilt only when the host's catalogue changes, because
+		// ranking a whole command list is the expensive part of the surface
+		// and the projection runs on every store change.
 		PaletteMode::Commands => {
 			let is_root = matches!(state.route(), None | Some(SurfaceRoute::Commands));
 			if is_root {
@@ -138,6 +158,14 @@ fn project_palette_domains(store: &Store, state: &mut PaletteState) {
 					CapabilityStatus::Unavailable { reason } => Some(reason.clone()),
 					_ => None,
 				};
+			}
+			let native = command_items();
+			let titles: Vec<&str> = native.iter().map(|item| item.title.as_str()).collect();
+			let listed = host_command_items(&store.domains.commands, &titles);
+			if !holds(state, &listed) {
+				let mut items = native.clone();
+				items.extend(listed);
+				state.set_items(items);
 			}
 			// §5.13: a command whose action the host declines is a surface the
 			// host does not offer, so it is not listed rather than listed and

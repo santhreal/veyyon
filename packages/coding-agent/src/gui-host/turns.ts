@@ -16,6 +16,7 @@ import type { AgentSessionEvent } from "../session/agent-session-types";
 import { USER_INTERRUPT_LABEL } from "../session/messages";
 import { MAX_IMAGE_INPUT_BYTES } from "../utils/image-loading";
 import { base64DecodedBytes, MAX_PROMPT_ATTACHMENT_BYTES, MAX_VIDEO_INPUT_BYTES } from "../utils/video-loading";
+import { publishCommandsView, watchCommandMetadata } from "./commands-view";
 import { writeFrame } from "./frames";
 import { GuiHostUIContext, InteractionLedger } from "./interactions";
 import { publishModelsView } from "./models-view";
@@ -145,6 +146,12 @@ export interface ClientSessionState {
 	 * operator's own exit gives the same tools back the accepted-plan exit does.
 	 */
 	planModePreviousTools?: string[];
+	/**
+	 * Drops the subscription that re-states the command catalogue. A command
+	 * list is read off the session, so it is taken with the session and let
+	 * go with it.
+	 */
+	unsubscribeCommands?: () => void;
 }
 
 /**
@@ -208,6 +215,11 @@ async function initializeAgentSession(
 		attachTurnListeners(session, socket, state);
 		// Publish the model resolved by the session, not a parallel config lookup.
 		await publishModelsView(socket, { clientState: state, ...options });
+		// The full catalogue replaces the builtins-only list a client got
+		// before any session existed, and follows every later change to it.
+		state.unsubscribeCommands?.();
+		state.unsubscribeCommands = watchCommandMetadata(socket, state, session);
+		await publishCommandsView(socket, state);
 		if (state.closed) throw new Error("The GUI client disconnected");
 		return session;
 	} finally {
@@ -616,6 +628,8 @@ export async function disposeTurnSession(state: ClientSessionState): Promise<voi
 	state.unsubscribeSession = undefined;
 	state.unsubscribeAgents?.();
 	state.unsubscribeAgents = undefined;
+	state.unsubscribeCommands?.();
+	state.unsubscribeCommands = undefined;
 	if (state.sessionManager) {
 		state.sessionManager.onEntryAppended = undefined;
 	}
