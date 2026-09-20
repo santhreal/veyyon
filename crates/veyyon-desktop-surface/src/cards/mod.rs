@@ -16,8 +16,8 @@
 
 mod answers;
 mod approval;
-mod plan;
 mod goal;
+mod plan;
 pub use goal::{format_duration, status_tint, toggle_goal_card};
 mod question;
 mod refusal;

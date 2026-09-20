@@ -4,7 +4,7 @@ use veyyon_desktop_kit::{
 	Badge, ButtonSize, ColorRole, Icon, IconName, IconSize, SpacingStep, TintRole, TokenSet,
 	Tooltip, controls::control_metrics,
 };
-use veyyon_desktop_model::{SessionId, SessionMode, SurfaceId};
+use veyyon_desktop_model::{SessionId, SessionMode, SettableMode, SurfaceId};
 use veyyon_desktop_tokens::ComposerSurfaceTokens;
 use veyyon_gpui::{
 	AnyElement, ClickEvent, Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
@@ -42,10 +42,7 @@ fn mode_chip(
 		} else {
 			(mode.label().to_owned(), TintRole::Working)
 		};
-		let label = availability
-			.reason()
-			.unwrap_or(&base_label)
-			.to_owned();
+		let label = availability.reason().unwrap_or(&base_label).to_owned();
 		let badge = Badge::new(label.clone(), tint);
 		let mut chip = div()
 			.id("composer-footer-goal-chip")
@@ -63,6 +60,22 @@ fn mode_chip(
 		return Tooltip::new(label, chip).above().into_any_element();
 	}
 	let badge = Badge::new(mode.label().to_owned(), TintRole::Plan);
+	if matches!(mode, SessionMode::Loop) {
+		let label = "Stop loop mode";
+		let mut chip = div()
+			.id("composer-footer-loop-stop")
+			.aria_label(label)
+			.flex()
+			.items_center()
+			.cursor(veyyon_gpui::CursorStyle::PointingHand)
+			.child(badge);
+		chip = chip.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+			view.dispatch(Intent::SetSessionMode { mode: SettableMode::None }, cx);
+		}));
+		return Tooltip::new(label.to_owned(), chip)
+			.above()
+			.into_any_element();
+	}
 	if !matches!(mode, SessionMode::Plan) || matches!(turn, TurnPhase::PlanPending { .. }) {
 		return badge.into_any_element();
 	}

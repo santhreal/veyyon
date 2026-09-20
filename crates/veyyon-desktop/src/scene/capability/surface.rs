@@ -362,18 +362,21 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 		},
 		Capability::Goals => {
 			seed.exchange(session, Seed::prose());
-			seed.store.goals.insert(session.clone(), veyyon_desktop_model::GoalView {
-				status: veyyon_desktop_model::GoalStatus::Active,
-				objective: "Ship goal mode".to_string(),
-				driving: true,
-				token_budget: Some(100_000),
-				tokens_used: 10_000,
-				turns_completed: 2,
-				time_used_seconds: 60,
-				created_at_ms: SCENE_CLOCK_MS - 60_000,
-				updated_at_ms: SCENE_CLOCK_MS,
-				stood_down: None,
-			});
+			seed
+				.store
+				.goals
+				.insert(session.clone(), veyyon_desktop_model::GoalView {
+					status:            veyyon_desktop_model::GoalStatus::Active,
+					objective:         "Ship goal mode".to_string(),
+					driving:           true,
+					token_budget:      Some(100_000),
+					tokens_used:       10_000,
+					turns_completed:   2,
+					time_used_seconds: 60,
+					created_at_ms:     SCENE_CLOCK_MS - 60_000,
+					updated_at_ms:     SCENE_CLOCK_MS,
+					stood_down:        None,
+				});
 		},
 	}
 }

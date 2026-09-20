@@ -29,6 +29,11 @@
 
 ### Added
 
+- Loop mode runs on the desktop window through the host-agnostic LoopDriver over the JSON protocol, displaying a composer mode chip and enforcing mutual exclusion with goal mode.
+- The desktop window draws an empty-session welcome surface offering controls to create, resume, or configure models when zero sessions exist or the last session closes.
+- The desktop queue rail draws branch hierarchies as an indented and collapsible tree from session parent paths, bounding depth to configured tokens and skipping collapsed subtrees during keyboard navigation.
+- The desktop queue rail folds and unfolds the branch under the cursor with the left and right arrows, and the fold is written per space so it survives the next projection and the next launch.
+- A desktop host that dies before it listens, reconnects or fails states the child's last stderr lines on the connection banner instead of reporting the transport error alone.
 - Shared goal driver lifts host-agnostic goal continuation, session event bookkeeping, and tool swaps out of the terminal controller into GoalDriver and GoalDriverPort.
 - The desktop window reaches goal mode over the JSON protocol via SetGoal and ControlGoal actions, the Goal snapshot section, and the /goal palette commands driven by the shared GoalDriver.
 - The desktop palette runs `/switch`, which opens the model list and runs this session on the model chosen without writing it as the default role, as `/model` continues to do.

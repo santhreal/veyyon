@@ -418,4 +418,44 @@ describe("a goal set from the window drives turns and states itself", () => {
 		const projectedDropped = goalView(mockSessionDropped as never);
 		expect(projectedDropped?.status).toBe("dropped");
 	});
+
+	test("goal mode declines to drive while loop mode is active", async () => {
+		const session = await openSession();
+
+		// Enter loop mode first
+		const enterLoop = await client.request(2, {
+			SetSessionMode: { session, mode: "loop" },
+		});
+		expect(enterLoop.outcome).toEqual({ RequestSucceeded: { request: 2 } });
+
+		// Setting a goal while loop mode is active is refused with MODE_CONFLICT
+		const setReply = (await client.request(3, {
+			SetGoal: { session, objective: "Autonomous work", token_budget: null },
+		})).outcome as { RequestFailed?: { error: { code: string; message: string } } };
+		expect(setReply.RequestFailed?.error.code).toBe("MODE_CONFLICT");
+		expect(setReply.RequestFailed?.error.message).toBe("Exit loop mode first.");
+
+		// Leaving loop mode clears blocking
+		const leaveLoop = await client.request(4, {
+			SetSessionMode: { session, mode: "none" },
+		});
+		expect(leaveLoop.outcome).toEqual({ RequestSucceeded: { request: 4 } });
+
+		// Setting a goal now succeeds
+		const setSuccess = await client.request(5, {
+			SetGoal: { session, objective: "Autonomous work", token_budget: null },
+		});
+		expect(setSuccess.outcome).toEqual({ RequestSucceeded: { request: 5 } });
+		const activeGoal = snapshotSections<GoalSnapshotPayload>(setSuccess.frames, "Goal").at(-1)?.goal;
+		expect(activeGoal?.driving).toBe(true);
+
+		// With active goal, entering loop mode is also refused
+		const loopRefused = (await client.request(6, {
+			SetSessionMode: { session, mode: "loop" },
+		})).outcome as { RequestFailed?: { error: { code: string; message: string } } };
+		expect(loopRefused.RequestFailed?.error.code).toBe("MODE_CONFLICT");
+		expect(loopRefused.RequestFailed?.error.message).toBe(
+			"The session has an active goal; exit it before looping",
+		);
+	});
 });

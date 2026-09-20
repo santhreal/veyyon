@@ -65,7 +65,8 @@ pub struct GoalView {
 	pub time_used_seconds: u64,
 	pub created_at_ms:     u64,
 	pub updated_at_ms:     u64,
-	/// Why the host stopped driving, in the operator's words; `None` while it drives.
+	/// Why the host stopped driving, in the operator's words; `None` while it
+	/// drives.
 	pub stood_down:        Option<String>,
 }
 

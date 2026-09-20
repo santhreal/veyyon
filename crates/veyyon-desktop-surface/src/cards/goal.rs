@@ -66,11 +66,7 @@ pub(super) fn goal(
 	};
 
 	let tokens_line = if let Some(budget) = view.token_budget {
-		format!(
-			"{} / {} tokens",
-			thousands(view.tokens_used),
-			thousands(budget)
-		)
+		format!("{} / {} tokens", thousands(view.tokens_used), thousands(budget))
 	} else {
 		format!("{} tokens used", thousands(view.tokens_used))
 	};
@@ -164,11 +160,16 @@ pub fn toggle_goal_card(state: &mut crate::model::ShellState) {
 	state.goal_card_open = !state.goal_card_open;
 	if state.goal_card_open {
 		if let Some(goal) = &state.goal
-			&& state.cards.iter().all(|c| !matches!(c, crate::Card::Goal { .. }))
+			&& state
+				.cards
+				.iter()
+				.all(|c| !matches!(c, crate::Card::Goal { .. }))
 		{
 			state.cards.push(crate::Card::Goal { view: goal.clone() });
 		}
 	} else {
-		state.cards.retain(|c| !matches!(c, crate::Card::Goal { .. }));
+		state
+			.cards
+			.retain(|c| !matches!(c, crate::Card::Goal { .. }));
 	}
 }

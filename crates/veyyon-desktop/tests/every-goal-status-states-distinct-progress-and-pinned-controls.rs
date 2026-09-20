@@ -1,10 +1,11 @@
 //! WHY THIS SUITE EXISTS
 //!
-//! Autonomous goal mode presents distinct operational phases (`Active`, `Paused`,
-//! `BudgetLimited`, `Complete`, `Dropped`) in both the compact composer footer chip
-//! and the expanded goal detail card. The operator must be able to tell at a
-//! glance which phase the goal is in, and only valid controls for that phase
-//! may be offered (e.g. no Pause on a paused goal, no Resume on an active one).
+//! Autonomous goal mode presents distinct operational phases (`Active`,
+//! `Paused`, `BudgetLimited`, `Complete`, `Dropped`) in both the compact
+//! composer footer chip and the expanded goal detail card. The operator must be
+//! able to tell at a glance which phase the goal is in, and only valid controls
+//! for that phase may be offered (e.g. no Pause on a paused goal, no Resume on
+//! an active one).
 //!
 //! THE CLASS THIS CLOSES: a newly added `GoalStatus` variant rendering with
 //! ambiguous or duplicated progress copy, offering illegal state transitions,
@@ -57,7 +58,8 @@ fn every_goal_status_states_distinct_progress_and_chip_text() {
 		let chip_text = view.chip_text();
 		assert!(
 			seen_chips.insert(chip_text.clone()),
-			"GoalStatus::{status:?} produced duplicate chip text '{chip_text}', which collides with another status"
+			"GoalStatus::{status:?} produced duplicate chip text '{chip_text}', which collides with \
+			 another status"
 		);
 
 		let label = status.label();
@@ -66,7 +68,8 @@ fn every_goal_status_states_distinct_progress_and_chip_text() {
 			"GoalStatus::{status:?} produced duplicate label '{label}'"
 		);
 
-		// Every status states whether it is active, paused, budget-limited, complete or dropped.
+		// Every status states whether it is active, paused, budget-limited, complete or
+		// dropped.
 		let lower = chip_text.to_lowercase();
 		match status {
 			GoalStatus::Active => assert!(lower.contains("active"), "chip text must state active"),
@@ -110,10 +113,7 @@ fn every_goal_status_control_set_is_pinned_by_exact_equality() {
 		// Verify invariants:
 		// 1. No Resume on an active goal.
 		if status == GoalStatus::Active {
-			assert!(
-				!allowed.contains(&GoalControl::Resume),
-				"an active goal must never offer Resume"
-			);
+			assert!(!allowed.contains(&GoalControl::Resume), "an active goal must never offer Resume");
 		}
 
 		// 2. No Pause on a paused or budget-limited goal.

@@ -33,6 +33,10 @@ The `goal.statusInFooter` setting no longer controls whether the token count app
 
 To see the full goal card, press the down arrow while the composer is empty. This opens the goal detail menu (the same menu `/goal` opens): objective, status, tokens used, completed turns, time spent, and the pause, resume, and drop actions. When `goal.modelBudgetsEnabled` is on, the card also shows budget progress and the adjust-budget action. The down arrow only opens this while a goal is active or paused, so it never interferes with normal editing.
 
+## In the native window
+
+The native desktop runs the same goal on the same session record. `/goal <objective>` sets it from the command palette, and `/goal pause`, `/goal resume` and `/goal drop` control it. The composer footer states a goal while one is set; press that chip for the card with the objective, status, turns, time and budget, and the controls the status accepts. Surface detail: [Surfaces and interactions](../desktop/surfaces.md).
+
 ## Context assembly
 
 Each turn combines system rules, goal injection (when active), active instructions, recent transcript, compaction prefix, and other session context. Compaction settings: [Compaction and project memory](./compaction-memory.md). Operator commands: [Plan mode and goals](../features/plan-mode.md).

@@ -49,6 +49,7 @@ fn sample(kind: SessionModeKind) -> SessionMode {
 		SessionModeKind::PlanPaused => SessionMode::PlanPaused,
 		SessionModeKind::Goal => SessionMode::Goal,
 		SessionModeKind::Vibe => SessionMode::Vibe,
+		SessionModeKind::Loop => SessionMode::Loop,
 		SessionModeKind::Other => SessionMode::Other("rehearsal".to_owned()),
 	}
 }
@@ -103,7 +104,7 @@ fn every_mode_the_client_spells_round_trips_through_its_wire_name() {
 	let kinds: Vec<SessionModeKind> = SessionModeKind::iter().collect();
 	assert_eq!(
 		kinds.len(),
-		5,
+		6,
 		"a mode added to the client decides its wire name and label here: {kinds:?}"
 	);
 
@@ -191,6 +192,8 @@ fn the_palette_offers_every_settable_mode_and_each_reaches_the_host() {
 			("/plan off", SettableMode::None),
 			("/vibe", SettableMode::Vibe),
 			("/vibe off", SettableMode::None),
+			("/loop", SettableMode::Loop),
+			("/loop off", SettableMode::None),
 		],
 		"every direction is offered by name"
 	);
@@ -227,4 +230,23 @@ fn a_mode_request_with_no_open_session_reaches_nothing() {
 	for mode in SettableMode::iter() {
 		assert!(actions_for(&Intent::SetSessionMode { mode }, &index, &mut store).is_empty());
 	}
+}
+
+#[test]
+fn the_composer_footer_states_loop_mode_and_the_row_turns_it_off() {
+	let (mut store, id) = attached_store();
+	reduce(&mut store, HostEvent::Snapshot(header(&id, Some("loop"), 2)));
+	assert_eq!(composer_mode(&store), Some(SessionMode::Loop));
+
+	let index = SessionIndex::new();
+	let actions =
+		actions_for(&Intent::SetSessionMode { mode: SettableMode::None }, &index, &mut store);
+	assert_eq!(
+		actions,
+		vec![HostAction::SetSessionMode { session: id.clone(), mode: SettableMode::None }],
+		"the leaving action tells the host to clear loop mode"
+	);
+
+	reduce(&mut store, HostEvent::Snapshot(header(&id, Some("none"), 3)));
+	assert_eq!(composer_mode(&store), None);
 }
