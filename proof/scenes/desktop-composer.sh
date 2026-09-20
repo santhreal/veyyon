@@ -781,17 +781,17 @@ approve_tint_pixels() { # <png> <crop> -> pixels of a waiting decision's edge in
 	tint_fill_pixels "tint.approve" "$@"
 }
 
-# ─── What A Plan Card Is On The Screen ───────────────────────────────────────
+# ─── What An Attached Card Is On The Screen ──────────────────────────────────
 # Every attached card is grounded in `[role] float` and bordered in the ink of
 # the tint that names its kind, so `[tint.plan] ink` is the colour a plan card
-# is ringed with and no other card kind carries. It offers its affirmative
-# answer filled with `[role] accent`, and nothing else attached above the
-# composer paints that pair. So one pass over the band a card can occupy
-# reports both: the rows where the ring crosses at least half the card's
-# measure, which are the card's own edges, and the accent between those edges,
-# which is the answer it offers. A band with no card reports no edges, which is
-# how a scene reads the absence of one rather than inferring it from a low
-# count.
+# is ringed with, `[tint.working] ink` the colour of a goal driving turns, and
+# no other card kind carries either. A card offers its affirmative answer
+# filled with `[role] accent`, and nothing else attached above the composer
+# paints that pair. So one pass over the band a card can occupy reports both:
+# the rows where the ring crosses at least half the card's measure, which are
+# the card's own edges, and the accent between those edges, which is the
+# answer it offers. A band with no card reports no edges, which is how a scene
+# reads the absence of one rather than inferring it from a low count.
 #
 # Both colours are read from the theme this checkout ships, so a retheme moves
 # the reading with it.
@@ -804,10 +804,10 @@ theme_colour() { # <dotted> -> the colour the shipped dark theme states there
 	printf '%s' "${found}"
 }
 
-plan_card_reading() { # <png> <card-band-crop> <card-width> -> "RING_PX TOP BOTTOM ACCENT_PX"
-	local dump="${TMPDIR}/frame-compare/plan-card-reading.txt" ring accent
+card_reading() { # <png> <card-band-crop> <card-width> <ring-token> -> "RING_PX TOP BOTTOM ACCENT_PX"
+	local dump="${TMPDIR}/frame-compare/card-reading.txt" ring accent
 	mkdir -p "${TMPDIR}/frame-compare"
-	ring="$(theme_colour tint.plan.ink)"
+	ring="$(theme_colour "$4")"
 	accent="$(theme_colour role.accent)"
 	magick "$1" -crop "$2" +repage txt:- >"${dump}"
 	python3 - "${dump}" "${ring#\#}" "${accent#\#}" "$3" <<'PY'
@@ -852,6 +852,10 @@ top, bottom = edges[0], edges[-1]
 accent_pixels = sum(count for row, count in accent_rows.items() if top < row < bottom)
 print(f"{ring_total} {top} {bottom} {accent_pixels}")
 PY
+}
+
+plan_card_reading() { # <png> <card-band-crop> <card-width> -> "RING_PX TOP BOTTOM ACCENT_PX"
+	card_reading "$1" "$2" "$3" tint.plan.ink
 }
 
 # Where the affirmative answer is drawn, so a scene presses the card's own
