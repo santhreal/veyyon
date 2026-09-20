@@ -46,10 +46,10 @@ const DECISIONS: Record<string, Decision> = {
 	logout: { client: "SettingsPage::Authentication" },
 	plan: { action: "SetSessionMode" },
 	"plan-review": { gap: "a plan card is answered once and not re-opened" },
-	vibe: { gap: "no session mode control beside plan" },
-	goal: { gap: "no session mode control beside plan" },
+	vibe: { action: "SetSessionMode" },
+	goal: { gap: "goal mode drives turns from a controller only the terminal runs" },
 	"guided-goal": { gap: "no goal interview surface" },
-	loop: { gap: "no session mode control beside plan" },
+	loop: { gap: "no loop control beside the mode rows" },
 	queue: { action: "FollowUp" },
 	switch: { gap: "the model selector saves the choice as the default" },
 	collab: { gap: "no share surface" },
@@ -97,7 +97,6 @@ const RECORDED_GAPS = [
 	"switch",
 	"tan",
 	"tree",
-	"vibe",
 	"welcome",
 ];
 

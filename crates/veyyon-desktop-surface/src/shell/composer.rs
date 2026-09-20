@@ -33,7 +33,7 @@ impl ShellView {
 						| Intent::Plan { .. }
 						| Intent::Approval { .. }
 						| Intent::Answer { .. }
-						| Intent::SetPlanMode { .. }
+						| Intent::SetSessionMode { .. }
 				)) {
 			return false;
 		}

@@ -44,6 +44,7 @@
 
 ### Added
 
+- The desktop palette enters and leaves vibe mode with `/vibe` and `/vibe off`, leaving the agent reading and directing worker sessions and restoring the tool set the session held when it leaves; plan mode and vibe mode refuse each other rather than stacking two tool sets.
 - The desktop command palette lists every slash command the host runs, including this workspace's skills, extension commands, project command files and MCP prompts, runs one with the arguments typed after it, and holds the rows that would run another while the host answers.
 - The desktop queue rail is dragged to a width by the handle on its trailing edge, between the bounds `surface/queue.toml` authors, and the width it was left at comes back when the window opens again.
 - A desktop right panel tab closes from its own edge: the close is drawn on the tab the pointer is over while the panel holds more than one tab, closing a tab that is not the active one leaves the selection where it was, closing the active one selects a neighbour, and a tab whose content the host has not answered yet marks itself.

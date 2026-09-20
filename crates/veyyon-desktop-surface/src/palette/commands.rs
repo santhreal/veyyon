@@ -1,7 +1,7 @@
 //! Native command entries for existing desktop surfaces and composer actions.
 
 use strum::{EnumIter, IntoEnumIterator};
-use veyyon_desktop_model::{Capability, SessionId, SurfaceId};
+use veyyon_desktop_model::{Capability, SessionId, SettableMode, SurfaceId};
 
 use super::{PaletteItem, PaletteItemKind};
 use crate::{Command, Intent, navigation::SurfaceRoute, settings::SettingsPage};
@@ -110,20 +110,38 @@ pub fn command_items() -> Vec<PaletteItem> {
 			Some(Command::AbortTurn),
 			Some(Capability::TurnControl),
 		),
-		// Two rows rather than one that toggles: a command list is ranked
-		// against what was typed, and a row whose action depends on state the
-		// operator cannot see from the list is a press with two outcomes.
+		// Two rows per mode rather than one that toggles: a command list is
+		// ranked against what was typed, and a row whose action depends on
+		// state the operator cannot see from the list is a press with two
+		// outcomes. Both leaving rows send the same request, since the host
+		// reads `None` as the session leaving whichever mode it is in; they
+		// are two rows so that the mode being left is the one the operator
+		// typed.
 		(
 			"/plan",
-			Intent::SetPlanMode { on: true },
+			Intent::SetSessionMode { mode: SettableMode::Plan },
 			"Plan this task before any of it is done",
 			None,
 			Some(Capability::Sessions),
 		),
 		(
 			"/plan off",
-			Intent::SetPlanMode { on: false },
+			Intent::SetSessionMode { mode: SettableMode::None },
 			"Leave plan mode and take the tools back",
+			None,
+			Some(Capability::Sessions),
+		),
+		(
+			"/vibe",
+			Intent::SetSessionMode { mode: SettableMode::Vibe },
+			"Read and direct worker sessions that do the writing",
+			None,
+			Some(Capability::Sessions),
+		),
+		(
+			"/vibe off",
+			Intent::SetSessionMode { mode: SettableMode::None },
+			"Leave vibe mode and stop every worker it started",
 			None,
 			Some(Capability::Sessions),
 		),

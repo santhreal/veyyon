@@ -26,11 +26,11 @@
  * NAME set is deliberately not the assertion: `resolve` is in the default set
  * already, so a mode that reached nothing would pass such a check.
  *
- * NOT CAUGHT: the desktop's own half -- that the palette offers both rows and
- * that the header's mode reaches the composer's chip -- is
+ * NOT CAUGHT: the desktop's own half -- that the palette offers a row per
+ * direction and that the header's mode reaches the composer's chip -- is
  * `crates/veyyon-desktop/tests/a-mode-the-session-runs-in-is-reachable-and-stated.rs`.
- * It also says nothing about `goal` or `vibe`: those are entered by the tools
- * that own them, and a request naming one is refused here rather than honoured.
+ * It also says nothing about `goal`, which drives turns of its own from a
+ * controller the terminal owns, so a request naming it is refused here.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
@@ -167,6 +167,8 @@ describe("a mode the operator set is the mode the agent runs in", () => {
 	let client: TestSocketClient;
 	/** Every turn the session has run, in order. */
 	let turns: string[][];
+	/** The tool names each of those turns was offered, in the same order. */
+	let toolSets: string[][];
 
 	beforeEach(async () => {
 		// `Settings` is process-wide and reads its file once, so plan mode has to
@@ -176,9 +178,13 @@ describe("a mode the operator set is the mode the agent runs in", () => {
 		sessionDir = computeDefaultSessionDir(tempDir, new FileSessionStorage(), path.join(tempDir, "sessions"));
 		await fs.mkdir(sessionDir, { recursive: true });
 		turns = [];
+		toolSets = [];
 		vi.spyOn(ai, "streamSimple").mockImplementation((_model, context) => {
 			const observed = observe(context);
-			if (observed) turns.push(observed);
+			if (observed) {
+				turns.push(observed);
+				toolSets.push((context.tools ?? []).map(tool => tool.name).sort());
+			}
 			return completedStream("Answered.");
 		});
 		// Plan mode enabled and NOT on at startup: the session opens
@@ -289,21 +295,90 @@ describe("a mode the operator set is the mode the agent runs in", () => {
 		expect(await turn(session, 5)).toBe(false);
 	});
 
+	test("entering vibe mode leaves the agent reading and directing, and restores what it held", async () => {
+		const session = await openSession();
+		expect(await turn(session, 2)).toBe(false);
+		const unrestricted = toolSets.at(-1) ?? [];
+		expect(unrestricted).not.toContain("vibe_spawn");
+
+		const entered = await client.request(3, { SetSessionMode: { session, mode: "vibe" } });
+		expect(entered.outcome).toEqual({ RequestSucceeded: { request: 3 } });
+		expect(activeSession(entered.frames)?.value.mode).toBe("vibe");
+		expect(await recordedModes(session, 1)).toEqual(["vibe"]);
+
+		// The mode IS the tool set: the director reads, and the five worker
+		// tools are the only other thing it holds. Exact equality, because a
+		// mode that left a writing tool in place is the defect.
+		await turn(session, 4);
+		expect(toolSets.at(-1)).toEqual(["read", "vibe_kill", "vibe_list", "vibe_send", "vibe_spawn", "vibe_wait"]);
+
+		const left = await client.request(5, { SetSessionMode: { session, mode: "none" } });
+		expect(left.outcome).toEqual({ RequestSucceeded: { request: 5 } });
+		expect(activeSession(left.frames)?.value.mode).toBe("none");
+		expect(await recordedModes(session, 2)).toEqual(["vibe", "none"]);
+
+		// The set the session held before the mode, restored to the tool: the
+		// memory of it lives on the session, so an exit reaches for the set
+		// this session actually had rather than one a host remembered.
+		await turn(session, 6);
+		expect(toolSets.at(-1)).toEqual(unrestricted);
+	});
+
+	test("entering vibe mode twice is the mode it already is, not a second entry", async () => {
+		const session = await openSession();
+		expect(await turn(session, 2)).toBe(false);
+		const unrestricted = toolSets.at(-1) ?? [];
+		await client.request(3, { SetSessionMode: { session, mode: "vibe" } });
+
+		const again = await client.request(4, { SetSessionMode: { session, mode: "vibe" } });
+		expect(again.outcome).toEqual({ RequestSucceeded: { request: 4 } });
+
+		// One `mode_change`, and one capture of the set to restore: a second
+		// entry would record the vibe tools as the session's own, and leaving
+		// would hand the director its worker tools back for good.
+		await sleep(100);
+		expect(await recordedModes(session, 1)).toEqual(["vibe"]);
+		await client.request(5, { SetSessionMode: { session, mode: "none" } });
+		await turn(session, 6);
+		expect(toolSets.at(-1)).toEqual(unrestricted);
+	});
+
+	test("the two modes refuse each other rather than stacking two tool sets", async () => {
+		const session = await openSession();
+		await client.request(2, { SetSessionMode: { session, mode: "plan" } });
+
+		const overPlan = (await client.request(3, { SetSessionMode: { session, mode: "vibe" } })).outcome as Failure;
+		expect(overPlan.RequestFailed?.error.code).toBe("MODE_CONFLICT");
+		expect(overPlan.RequestFailed?.error.message).toBe(
+			"The session is in plan mode; leave it before directing workers",
+		);
+
+		await client.request(4, { SetSessionMode: { session, mode: "none" } });
+		await client.request(5, { SetSessionMode: { session, mode: "vibe" } });
+
+		const overVibe = (await client.request(6, { SetSessionMode: { session, mode: "plan" } })).outcome as Failure;
+		expect(overVibe.RequestFailed?.error.code).toBe("MODE_CONFLICT");
+		expect(overVibe.RequestFailed?.error.message).toBe("The session is in vibe mode; leave it before planning");
+
+		// Neither refusal recorded a mode of its own.
+		expect(await recordedModes(session, 3)).toEqual(["plan", "none", "vibe"]);
+	});
+
 	test("a mode the operator does not own, and a name that is not a mode, are refused", async () => {
 		const session = await openSession();
 
 		// Swept together because they are one decision: the action carries a
-		// name, and every name outside the pair the operator owns is refused
-		// rather than half-applied. `goal` and `vibe` are real modes the host
-		// writes, which is exactly why a request naming one has to be refused
-		// here instead of reaching `enterPlanMode`.
+		// name, and every name outside the three the operator owns is refused
+		// rather than half-applied. `goal` is a real mode the host writes,
+		// which is exactly why a request naming it has to be refused here
+		// instead of reaching a transition nothing would then drive.
 		let request = 2;
-		for (const mode of ["goal", "vibe", "plan_paused", "PLAN", "", "off"]) {
+		for (const mode of ["goal", "plan_paused", "PLAN", "", "off"]) {
 			const refused = await client.request(request, { SetSessionMode: { session, mode } });
 			request += 1;
 			const failure = refused.outcome as Failure;
 			expect(failure.RequestFailed?.error.code).toBe("INVALID_ARGUMENTS");
-			expect(failure.RequestFailed?.error.message).toBe("SetSessionMode mode must be one of plan, none");
+			expect(failure.RequestFailed?.error.message).toBe("SetSessionMode mode must be one of plan, vibe, none");
 		}
 
 		expect(await turn(session, request)).toBe(false);

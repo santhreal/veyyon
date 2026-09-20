@@ -10,18 +10,19 @@
 //! sweep reads the mode vocabulary out of `SessionMode` at run time, so a mode
 //! added to the client is red here until someone decides its wire name, its
 //! label and whether the header carrying it reaches the composer. The
-//! reachability half is pinned the same way: the palette is asked for the rows
-//! that carry `Intent::SetPlanMode`, and each is dispatched through
-//! `actions_for` to the action the host answers, so a row that stops producing
-//! an action, or produces one naming the wrong mode, fails.
+//! reachability half is pinned the same way, from `SettableMode`: every mode a
+//! request may carry is asked for the palette rows that send it, and each is
+//! dispatched through `actions_for` to the action the host answers, so a mode
+//! with no row, a row that stops producing an action, or one producing an
+//! action naming a different mode, fails.
 //!
-//! NOT CAUGHT: whether the host honours the action -- that plan mode restricts
-//! the tool set and restores it on exit is
+//! NOT CAUGHT: whether the host honours the action -- that a mode swaps the
+//! tool set and restores it on exit is
 //! `packages/coding-agent/test/gui-host/
 //! a-mode-the-operator-set-is-the-mode-the-agent-runs-in.test.ts`. It also says
 //! nothing about how the chip reads on screen, which is a capture's business,
-//! and nothing about `Goal` or `Vibe`, which no operator gesture sets: the
-//! tools that own them do.
+//! and nothing about `Goal`, which runs turns of its own from a controller no
+//! desktop gesture reaches.
 
 mod support;
 
@@ -160,50 +161,52 @@ fn the_mode_on_the_header_reaches_the_composer_and_leaves_with_it() {
 }
 
 #[test]
-fn the_palette_offers_both_directions_and_each_reaches_the_host() {
+fn the_palette_offers_every_settable_mode_and_each_reaches_the_host() {
 	let (mut store, id) = attached_store();
 	let mut state = ShellState::default();
 	let mut index = SessionIndex::new();
 	project(&store, &mut index, &HashMap::new(), NOW_MS, &mut state);
 
-	let rows: Vec<(String, Intent)> = command_items()
+	let rows: Vec<(String, SettableMode)> = command_items()
 		.into_iter()
 		.filter_map(|item| match item.kind {
-			PaletteItemKind::Command { intent }
-				if matches!(intent.as_ref(), Intent::SetPlanMode { .. }) =>
-			{
-				Some((item.title, *intent))
+			PaletteItemKind::Command { ref intent } => match intent.as_ref() {
+				Intent::SetSessionMode { mode } => Some((item.title.clone(), *mode)),
+				_ => None,
 			},
 			_ => None,
 		})
 		.collect();
 
-	// Exact equality, not a count: a toggling row replacing the pair would
-	// leave a press whose outcome the list cannot state.
+	// Exact equality, not a count: a toggling row replacing a pair would leave
+	// a press whose outcome the list cannot state, and a row named for one
+	// mode sending another is the defect this pins.
 	assert_eq!(
 		rows
 			.iter()
-			.map(|(title, _)| title.as_str())
+			.map(|(title, mode)| (title.as_str(), *mode))
 			.collect::<Vec<_>>(),
-		vec!["/plan", "/plan off"],
-		"both directions are offered by name"
+		vec![
+			("/plan", SettableMode::Plan),
+			("/plan off", SettableMode::None),
+			("/vibe", SettableMode::Vibe),
+			("/vibe off", SettableMode::None),
+		],
+		"every direction is offered by name"
 	);
-	assert_eq!(rows[0].1, Intent::SetPlanMode { on: true });
-	assert_eq!(rows[1].1, Intent::SetPlanMode { on: false });
 
-	for (title, intent) in &rows {
-		let actions = actions_for(intent, &index, &mut store);
-		let on = matches!(intent, Intent::SetPlanMode { on: true });
+	for mode in SettableMode::iter() {
+		assert!(
+			rows.iter().any(|(_, row)| *row == mode),
+			"{mode:?} is a mode a request may carry and no row sends it"
+		);
+	}
+
+	for (title, mode) in &rows {
+		let actions = actions_for(&Intent::SetSessionMode { mode: *mode }, &index, &mut store);
 		assert_eq!(
 			actions,
-			vec![HostAction::SetSessionMode {
-				session: id.clone(),
-				mode:    if on {
-					SettableMode::Plan
-				} else {
-					SettableMode::None
-				},
-			}],
+			vec![HostAction::SetSessionMode { session: id.clone(), mode: *mode }],
 			"{title} reaches the host as the mode it names"
 		);
 	}
@@ -221,6 +224,7 @@ fn a_mode_request_with_no_open_session_reaches_nothing() {
 	};
 	let index = SessionIndex::new();
 
-	assert!(actions_for(&Intent::SetPlanMode { on: true }, &index, &mut store).is_empty());
-	assert!(actions_for(&Intent::SetPlanMode { on: false }, &index, &mut store).is_empty());
+	for mode in SettableMode::iter() {
+		assert!(actions_for(&Intent::SetSessionMode { mode }, &index, &mut store).is_empty());
+	}
 }

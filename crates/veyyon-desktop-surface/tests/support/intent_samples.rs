@@ -5,7 +5,7 @@
 //! this function, which is the only place that decides whether a new
 //! interaction is the shell's to finish or a host's to answer.
 
-use veyyon_desktop_model::SurfaceId;
+use veyyon_desktop_model::{SettableMode, SurfaceId};
 use veyyon_desktop_surface::{
 	Intent, MenuSectionId, Overlay, PaletteState, PanelTab, ScrollBy,
 	composer::{ModelChoice, QueueMode, ThinkingLevel},
@@ -142,7 +142,7 @@ pub fn every_intent() -> Vec<Intent> {
 		},
 		Intent::SpawnTask("review the diff".to_owned()),
 		Intent::RunCommand("brainstorm two options".to_owned()),
-		Intent::SetPlanMode { on: true },
+		Intent::SetSessionMode { mode: SettableMode::Plan },
 		Intent::CopyText("copied words".to_owned()),
 		Intent::DismissNotice("request-failed:transcript:-".to_owned()),
 		Intent::SetMenuSection(Some(MenuSectionId::Session)),
@@ -177,7 +177,7 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::Queue(_)
 			| Intent::AbortTurn
 			| Intent::SetQueueMode(_)
-			| Intent::SetPlanMode { .. }
+			| Intent::SetSessionMode { .. }
 			| Intent::SelectModel(_)
 			| Intent::SetThinking(_)
 			| Intent::RemoveAttachment(_)

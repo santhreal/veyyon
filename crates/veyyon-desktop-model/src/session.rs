@@ -44,16 +44,18 @@ pub enum SessionBadge {
 
 /// A mode the operator sets from the window, in the spelling the host accepts.
 ///
-/// Narrower than `SessionMode` on purpose: `goal` and `vibe` are entered by
-/// the tools that own them and `plan_paused` by the agent, so the only two
-/// this crosses the wire with are the two a request may carry. Sent as the
-/// type rather than as a literal beside the action, so the window and the
-/// host cannot drift apart on the bytes.
+/// Narrower than `SessionMode` on purpose: `goal` runs turns of its own from a
+/// controller no desktop gesture reaches, and `plan_paused` is the agent's,
+/// so the three this crosses the wire with are the three a request may carry.
+/// Sent as the type rather than as a literal beside the action, so the window
+/// and the host cannot drift apart on the bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::EnumIter)]
 #[serde(rename_all = "snake_case")]
 pub enum SettableMode {
 	/// Plan mode: read-only tools and a plan the operator resolves.
 	Plan,
+	/// Vibe mode: the agent reads and directs worker sessions that do the rest.
+	Vibe,
 	/// No mode: the agent runs with everything it has.
 	None,
 }

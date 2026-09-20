@@ -209,15 +209,16 @@ fn every_scope_and_every_mode_reaches_the_host_as_the_vocabulary_it_came_from() 
 
 	for mode in SettableMode::iter() {
 		let (mut store, index) = seeded();
-		let on = mode == SettableMode::Plan;
-		let actions = actions_for(&Intent::SetPlanMode { on }, &index, &mut store);
+		let actions = actions_for(&Intent::SetSessionMode { mode }, &index, &mut store);
 		let sent = payload_of(&actions, "SetSessionMode")["mode"].clone();
 		let decoded: SettableMode = serde_json::from_value(sent.clone())
 			.unwrap_or_else(|_| panic!("the host's SettableMode cannot read {sent}"));
 		assert_eq!(decoded, mode, "the mode sent for {mode:?} decodes as {decoded:?}");
-		// `SESSION_MODES` in `packages/coding-agent/src/gui-host/actions/turn.ts`.
+		// `SESSION_MODES` in
+		// `packages/coding-agent/src/gui-host/actions/session-mode.ts`.
 		let expected = match mode {
 			SettableMode::Plan => "plan",
+			SettableMode::Vibe => "vibe",
 			SettableMode::None => "none",
 		};
 		assert_eq!(sent, Value::String(expected.to_owned()));

@@ -45,13 +45,17 @@ import { formatDuration } from "../tools/core/render-utils";
 import { ToolError } from "../tools/core/tool-errors";
 
 /**
- * Vibe mode session-level state. A single flag rather than a discriminated union
- * like {@link ../plan-mode/state.ts}: vibe mode carries no per-session artifact
- * the way plan mode carries a plan file, so there is nothing for an ON state to
- * hold that an OFF state must not.
+ * Vibe mode session-level state: the flag, and the tool set the session held
+ * before the mode replaced it.
+ *
+ * The previous tools sit here rather than in the host that entered the mode so
+ * that the host which leaves it restores the set the session actually had,
+ * whichever one that is.
  */
 export interface VibeModeState {
 	enabled: boolean;
+	/** Active tool names from before the mode, restored on exit. */
+	previousTools?: string[];
 }
 
 /** The two worker CLI flavors the director drives. */

@@ -103,7 +103,7 @@ import { resolvePlanFilePath } from "../../plan-mode/plan-path";
 import { StatusPresentationProducer } from "../../presentation/status-producer";
 import { planModePrompts } from "../../prompts/plan-mode/rows";
 import { requestsPrompts } from "../../prompts/requests/rows";
-import { type AgentRegistry, MAIN_AGENT_ID } from "../../registry/agent-registry";
+import type { AgentRegistry } from "../../registry/agent-registry";
 import { formatProviderName } from "../../session/account-format";
 import type { AgentSession } from "../../session/agent-session";
 import { type ResolvedRoleModel, SHUTDOWN_CONSOLIDATE_BUDGET_MS } from "../../session/agent-session-types";
@@ -113,7 +113,7 @@ import {
 	type KeptSession,
 } from "../../session/background-sessions";
 import { setImageDisplayProbe } from "../../session/image-visibility";
-import { VibeSessionRegistry } from "../../session/vibe-runtime";
+import { enterVibeMode, exitVibeMode } from "../../session/vibe-mode";
 import {
 	BUILTIN_SLASH_COMMAND_RESERVED_NAMES,
 	buildTuiBuiltinSlashCommands,
@@ -463,7 +463,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	#signalTeardown?: SessionTeardown;
 	readonly #version: string;
 	#planModePreviousTools: string[] | undefined;
-	#vibeModePreviousTools: string[] | undefined;
 	#planModePreviousModelState: { model: Model; thinkingLevel?: ConfiguredThinkingLevel } | undefined;
 	#pendingModelSwitch: { model: Model; thinkingLevel?: ConfiguredThinkingLevel } | undefined;
 	#planModeHasEntered = false;
@@ -2475,14 +2474,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		await this.#goalMode.clearTransientState();
 
 		if (this.vibeModeEnabled) {
-			await this.session.deactivateVibeTools(this.#vibeModePreviousTools ?? []);
-			this.session.setVibeModeState(undefined);
+			// The mode entry is left alone: a resume reads it moments later to
+			// decide the mode this session comes back in.
+			await exitVibeMode(this.session, { record: false });
 			this.vibeModeEnabled = false;
-			this.#vibeModePreviousTools = undefined;
-			await VibeSessionRegistry.global().killAll(
-				this.session.getAgentId() ?? MAIN_AGENT_ID,
-				this.session.asyncJobManager,
-			);
 			this.#updateVibeModeStatus();
 		}
 	}
@@ -3224,19 +3219,12 @@ export class InteractiveMode implements InteractiveModeContext {
 			return;
 		}
 
-		const previousTools = this.session.getActiveToolNames();
-		await this.session.activateVibeTools(["read"]);
-		this.#vibeModePreviousTools = previousTools;
+		await enterVibeMode(this.session);
 		this.vibeModeEnabled = true;
 		// Suppress cache-miss marker on the next turn: vibe mode changes the
 		// injected context, which predictably invalidates the cache.
 		this.lastAssistantUsage = undefined;
-		this.session.setVibeModeState({ enabled: true });
-		if (this.session.isStreaming) {
-			await this.session.sendVibeModeContext({ deliverAs: "steer" });
-		}
 		this.#updateVibeModeStatus();
-		this.sessionManager.appendModeChange("vibe");
 		this.showStatus("Vibe mode enabled. You direct fast/good worker sessions; toolset is read + vibe tools.");
 	}
 
@@ -3244,17 +3232,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (!this.vibeModeEnabled) {
 			return;
 		}
-		await this.session.deactivateVibeTools(this.#vibeModePreviousTools ?? []);
-		this.session.setVibeModeState(undefined);
+		const { killed } = await exitVibeMode(this.session);
 		this.vibeModeEnabled = false;
-		this.#vibeModePreviousTools = undefined;
 		this.lastAssistantUsage = undefined;
-		const killed = await VibeSessionRegistry.global().killAll(
-			this.session.getAgentId() ?? MAIN_AGENT_ID,
-			this.session.asyncJobManager,
-		);
 		this.#updateVibeModeStatus();
-		this.sessionManager.appendModeChange("none");
 		this.showStatus(
 			killed > 0 ? `Vibe mode disabled. Killed ${formatCount("worker session", killed)}.` : "Vibe mode disabled.",
 		);

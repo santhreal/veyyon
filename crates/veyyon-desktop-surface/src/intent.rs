@@ -12,7 +12,7 @@
 //! talks to a host directly, which is what keeps every surface renderable with
 //! no host attached.
 
-use veyyon_desktop_model::{SupervisorSignal, SurfaceId};
+use veyyon_desktop_model::{SettableMode, SupervisorSignal, SurfaceId};
 
 mod apply;
 mod pending;
@@ -90,13 +90,14 @@ pub enum Intent {
 	Queue(String),
 	AbortTurn,
 	SetQueueMode(QueueMode),
-	/// Puts the session in plan mode, or takes it out of it.
+	/// Puts the session in a mode, or takes it out of one.
 	///
-	/// Plan mode was reachable only by starting a session with the setting for
-	/// it already on, which is a decision an operator makes about the next
-	/// task rather than about every session.
-	SetPlanMode {
-		on: bool,
+	/// A mode was reachable only by starting a session with the setting for it
+	/// already on, which is a decision an operator makes about the next task
+	/// rather than about every session. `SettableMode::None` leaves whichever
+	/// mode the session is in.
+	SetSessionMode {
+		mode: SettableMode,
 	},
 	SelectModel(ModelChoice),
 	SetThinking(ThinkingLevel),

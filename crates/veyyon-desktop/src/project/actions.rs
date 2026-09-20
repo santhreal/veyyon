@@ -1,6 +1,6 @@
 //! From what the operator asked to what the host is sent.
 
-use veyyon_desktop_model::{HostAction, SettableMode, Store, TerminalStatus};
+use veyyon_desktop_model::{HostAction, Store, TerminalStatus};
 use veyyon_desktop_surface::Intent;
 
 use self::{
@@ -83,13 +83,8 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 			.map_or_else(Vec::new, |session| vec![HostAction::SetQueueMode { session, mode: *mode }]),
 		// Leaving a mode is the same action as entering one: the host reads
 		// `SettableMode::None` as the session running in no mode.
-		Intent::SetPlanMode { on } => active.map_or_else(Vec::new, |session| {
-			let mode = if *on {
-				SettableMode::Plan
-			} else {
-				SettableMode::None
-			};
-			vec![HostAction::SetSessionMode { session, mode }]
+		Intent::SetSessionMode { mode } => active.map_or_else(Vec::new, |session| {
+			vec![HostAction::SetSessionMode { session, mode: *mode }]
 		}),
 		Intent::SelectModel(choice) => {
 			vec![HostAction::SelectModel {

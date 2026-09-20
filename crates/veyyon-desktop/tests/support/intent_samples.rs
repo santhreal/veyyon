@@ -6,7 +6,7 @@
 //! written down, so the sweep cannot silently stop covering it.
 
 use strum::IntoEnumIterator;
-use veyyon_desktop_model::{SupervisorSignal, SurfaceId};
+use veyyon_desktop_model::{SettableMode, SupervisorSignal, SurfaceId};
 use veyyon_desktop_surface::{
 	Attachment, Intent, IntentDiscriminants, MediaType, MenuSectionId, ModelChoice, Overlay,
 	PaletteState, PanelTab, Payload, QueueMode, ScrollBy, SettingsPage, ThinkingLevel,
@@ -74,9 +74,12 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		IntentDiscriminants::AbortTurn => vec![Intent::AbortTurn],
 		IntentDiscriminants::CopyText => vec![Intent::CopyText("copied words".to_string())],
 		IntentDiscriminants::SetQueueMode => vec![Intent::SetQueueMode(QueueMode::Steer)],
-		IntentDiscriminants::SetPlanMode => {
-			vec![Intent::SetPlanMode { on: true }, Intent::SetPlanMode { on: false }]
-		},
+		// Every mode a request may carry, read from the vocabulary rather than
+		// listed, so a mode added to it arrives in every sweep that samples
+		// intents.
+		IntentDiscriminants::SetSessionMode => SettableMode::iter()
+			.map(|mode| Intent::SetSessionMode { mode })
+			.collect(),
 		IntentDiscriminants::SelectModel => vec![Intent::SelectModel(ModelChoice {
 			provider: "anthropic".to_string(),
 			model:    "claude-3-5-sonnet".to_string(),
