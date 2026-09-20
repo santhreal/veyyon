@@ -7,6 +7,7 @@ import { filesActionHandlers } from "./files";
 import { historyActionHandlers } from "./history";
 import { mcpActionHandlers } from "./mcp";
 import { modelsActionHandlers } from "./models";
+import { pauseActionHandlers } from "./pause";
 import { processesActionHandlers } from "./processes";
 import { providersActionHandlers } from "./providers";
 import { sessionsActionHandlers } from "./sessions";
@@ -24,6 +25,7 @@ export * from "./files";
 export * from "./history";
 export * from "./mcp";
 export * from "./models";
+export * from "./pause";
 export * from "./processes";
 export * from "./providers";
 export * from "./sessions";
@@ -34,6 +36,7 @@ export * from "./types";
 
 export const allActionHandlers: ActionHandlersMap = {
 	...connectionActionHandlers,
+	...pauseActionHandlers,
 	...sessionsActionHandlers,
 	...historyActionHandlers,
 	...turnActionHandlers,

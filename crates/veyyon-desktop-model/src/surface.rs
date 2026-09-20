@@ -11,6 +11,8 @@ pub enum SurfaceId {
 	ConnectionDetachButton,
 	ConnectionRetryButton,
 	ShutdownButton,
+	AgentsPauseButton,
+	AgentsResumeButton,
 	GlobalTitlebarLine,
 
 	// Queue Controls (§5.2)
@@ -128,6 +130,8 @@ impl SurfaceId {
 			| Self::ConnectionDetachButton
 			| Self::ConnectionRetryButton
 			| Self::ShutdownButton
+			| Self::AgentsPauseButton
+			| Self::AgentsResumeButton
 			| Self::GlobalTitlebarLine
 			| Self::QueueSessionRow(_)
 			| Self::QueueParkButton(_)
@@ -238,6 +242,8 @@ impl SurfaceId {
 			| Self::ConnectionDetachButton
 			| Self::ConnectionRetryButton
 			| Self::ShutdownButton
+			| Self::AgentsPauseButton
+			| Self::AgentsResumeButton
 			| Self::GlobalTitlebarLine
 			| Self::QueueSessionRow(_)
 			| Self::QueueParkButton(_)

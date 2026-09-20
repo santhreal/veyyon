@@ -73,7 +73,7 @@ const DECISIONS: Record<string, Decision> = {
 	debug: { gap: "no debug tools surface" },
 	exit: { client: "Intent::Quit" },
 	profile: { gap: "no profile picker" },
-	pause: { gap: "no control freezing every agent" },
+	pause: { action: "PauseAgents" },
 	quit: { client: "Intent::Quit" },
 };
 
@@ -89,7 +89,6 @@ const RECORDED_GAPS = [
 	"leave",
 	"loop",
 	"omfg",
-	"pause",
 	"plan-review",
 	"profile",
 	"tan",

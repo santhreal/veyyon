@@ -60,6 +60,14 @@ pub struct ShellState {
 	pub current_id:         u64,
 	/// Active transport connectivity phase or authentication overlay state.
 	pub connection:         ConnectionPhase,
+	/// How long the host has held every agent frozen, absent while they run
+	/// (§4.1).
+	///
+	/// Process-wide rather than the open session's, so the strip that states
+	/// it sits above every surface the window draws. The duration is what the
+	/// strip prints, resolved where every other elapsed label is and moved by
+	/// the same clock tick, so one freeze reads the same as one working row.
+	pub paused:             Option<String>,
 	/// Control availability and error states for capability gate resolution.
 	pub controls:           ControlStates,
 	/// Modal floating overlay currently active (Palette or Settings).
@@ -223,6 +231,7 @@ impl Default for ShellState {
 			drawer_open:        false,
 			current_id:         0,
 			connection:         ConnectionPhase::default(),
+			paused:             None,
 			controls:           ControlStates::default(),
 			overlay:            None,
 			keymap:             KeymapState::default(),

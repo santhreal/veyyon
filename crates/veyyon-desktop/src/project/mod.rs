@@ -212,6 +212,10 @@ pub fn project<S: std::hash::BuildHasher>(
 	// standing open on an empty grid.
 	state.drawer_open = state.drawer_open && state.drawer.offered;
 	state.connection = connection_phase(store);
+	// The freeze is the host's own state, and the duration is resolved here
+	// with every other elapsed label so the tick that moves a working row's
+	// clock moves this one too.
+	state.paused = paused_label(store, now_ms);
 	project_overlay(store, state);
 	project_history(store, state, now_ms);
 	project_menu(store, &mut state.menu);
@@ -267,5 +271,21 @@ pub fn project_clock(
 			}
 		}
 	}
+	// The freeze runs while nothing arrives from the host, so its duration is
+	// the tick's to move: without this the strip states the second the pause
+	// landed on for as long as it holds.
+	let paused = paused_label(store, now_ms);
+	if state.paused != paused {
+		state.paused = paused;
+		changed = true;
+	}
 	changed
+}
+
+/// How long the host has held every agent frozen, absent while they run.
+///
+/// Read through the same `elapsed_label` a working row and a supervised
+/// process read, so one duration in the window is spelled one way.
+fn paused_label(store: &Store, now_ms: u64) -> Option<String> {
+	store.paused.elapsed_ms(now_ms).map(elapsed_label)
 }

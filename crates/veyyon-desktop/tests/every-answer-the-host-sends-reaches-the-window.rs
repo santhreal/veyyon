@@ -113,7 +113,10 @@ const fn prepare_for(kind: SnapshotSectionKind) -> Prepare {
 		| SnapshotSectionKind::Usage
 		| SnapshotSectionKind::ContextBreakdown
 		| SnapshotSectionKind::Export
-		| SnapshotSectionKind::QueuedPrompts => Prepare::Rest,
+		| SnapshotSectionKind::QueuedPrompts
+		// The freeze is chrome above every session, so the attached window at
+		// rest is where it draws.
+		| SnapshotSectionKind::AgentPause => Prepare::Rest,
 	}
 }
 

@@ -240,5 +240,11 @@
 				"subcommands": []
 			}
 		]
+	},
+	{
+		"AgentPause": {
+			"paused": true,
+			"since_ms": 1717171717000
+		}
 	}
 ]

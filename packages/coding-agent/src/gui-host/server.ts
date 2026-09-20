@@ -1,12 +1,14 @@
 import * as fs from "node:fs/promises";
 import * as net from "node:net";
 import * as path from "node:path";
+import { agentPauseGate } from "@veyyon/agent-core";
 import type { AuthStorage } from "@veyyon/ai";
 import { errorMessage, getAgentDir, logger } from "@veyyon/utils";
 import { discoverAuthStorage } from "../session/auth-broker-config";
 import { currentImageDisplayProbe, setImageDisplayProbe } from "../session/image-visibility";
 import { allActionHandlers } from "./actions";
 import { activeCwd, writeSessionList } from "./actions/active-session";
+import { agentPauseSection } from "./actions/pause";
 import type { ActionContext, ReplyHelper } from "./actions/types";
 import { FrameDecoder, MAX_FRAME_BYTES, writeFrame } from "./frames";
 import { PresentationLedger } from "./presentation";
@@ -121,6 +123,15 @@ export class GuiHostServer {
 	 */
 	#priorImageProbe: (() => boolean) | undefined;
 	#installedImageProbe = false;
+	/**
+	 * Unsubscribes this server from the process-global pause gate.
+	 *
+	 * The gate is one switch the terminal host drives too, so the freeze has
+	 * to reach a window that did not engage it. Held for the server's
+	 * lifetime and released on close, because the gate outlives the server
+	 * and a listener left on it would write to destroyed sockets.
+	 */
+	#pauseSubscription: (() => void) | undefined;
 
 	constructor(options: GuiHostServerOptions = {}) {
 		this.#cwd = options.cwd ?? process.cwd();
@@ -192,6 +203,15 @@ export class GuiHostServer {
 		this.#priorImageProbe = currentImageDisplayProbe();
 		this.#installedImageProbe = true;
 		setImageDisplayProbe(() => true);
+
+		// The freeze is one switch for the whole process, so a window learns
+		// of one it did not engage: a `/pause` typed in a terminal host in
+		// this process, or engaged from a second window. Subscribed once for
+		// the server rather than once per client, because the gate holds its
+		// listeners in a set that outlives any one socket.
+		this.#pauseSubscription = agentPauseGate.onChange(() => {
+			this.#broadcast({ AgentPause: agentPauseSection() });
+		});
 	}
 
 	async #prepareUnixSocket(socketPath: string): Promise<void> {
@@ -424,7 +444,35 @@ export class GuiHostServer {
 		return this.#closeCall;
 	}
 
+	/**
+	 * State one section to every attached window.
+	 *
+	 * For host state that belongs to no request and no session: a freeze
+	 * engaged elsewhere in the process is true of every window at once. A
+	 * socket that has gone is skipped rather than throwing, since a client
+	 * leaving is ordinary and this is not answering anybody.
+	 */
+	#broadcast(section: SnapshotSection): void {
+		for (const client of this.#clients) {
+			if (client.destroyed) continue;
+			try {
+				writeFrame(client, { Snapshot: section });
+			} catch (error) {
+				logger.warn("GUI host could not state a snapshot to a client", {
+					section: snapshotSectionTag(section),
+					error:   errorMessage(error),
+				});
+			}
+		}
+	}
+
 	async #close(): Promise<void> {
+		// Before the sockets go: the gate outlives this server, and a
+		// listener left on it would write frames into destroyed sockets on
+		// the next pause.
+		this.#pauseSubscription?.();
+		this.#pauseSubscription = undefined;
+
 		for (const client of this.#clients) {
 			this.#cleanupClient(client);
 			client.destroy();

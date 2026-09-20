@@ -112,6 +112,10 @@ const AT_IDLE: Record<SnapshotSectionTag, "restated-at-idle" | "listed-at-idle" 
 	// files is created, and again whenever one of them changes, both of
 	// which happen inside a turn. The idle re-statement owes it nothing.
 	Commands: "during-turn",
+	// A turn cannot freeze the process, and a freeze cannot end while a turn
+	// runs, so the section is owed to a window at the handshake and again on
+	// each transition of the gate, never at idle.
+	AgentPause: "on-request",
 };
 
 /** The section the host publishes last, which is what closes a re-statement. */

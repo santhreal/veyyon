@@ -25,6 +25,8 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::Detach => Capability::Lifecycle,
 		HostActionKind::RetryConnection => Capability::Lifecycle,
 		HostActionKind::Shutdown => Capability::Lifecycle,
+		HostActionKind::PauseAgents => Capability::Lifecycle,
+		HostActionKind::ResumeAgents => Capability::Lifecycle,
 		HostActionKind::ListSessions => Capability::Sessions,
 		HostActionKind::SearchSessions => Capability::Sessions,
 		HostActionKind::PreviewSessionTranscript => Capability::Transcript,

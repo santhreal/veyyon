@@ -32,13 +32,23 @@ pub struct HostRequest {
 /// Host actions across connection, session and interactive domains.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HostAction {
-	// Connection family (4 actions)
+	// Connection family (6 actions)
 	Attach {
 		endpoint: Option<String>,
 	},
 	Detach,
 	RetryConnection,
 	Shutdown,
+	/// Freeze every agent in the host process at its next action boundary.
+	///
+	/// Process-wide rather than per session: the host holds one gate, and a
+	/// turn already streaming finishes the call it is on before it parks, so
+	/// nothing is aborted and nothing is lost. Refused when a pause is
+	/// already engaged, so two windows pressing it never stack two releases.
+	PauseAgents,
+	/// Release the freeze, waking every parked agent. Refused when nothing is
+	/// paused, so a stale window cannot release a pause that already ended.
+	ResumeAgents,
 
 	// Sessions family (10 actions)
 	ListSessions,

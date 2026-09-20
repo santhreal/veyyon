@@ -313,6 +313,8 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		| Intent::BranchTurn(_)
 		| Intent::RetryTurn
 		| Intent::RephraseReply
+		| Intent::PauseAgents
+		| Intent::ResumeAgents
 		| Intent::ExportSession(_)
 		| Intent::CompactSession(_)
 		| Intent::HandoffSession(_)

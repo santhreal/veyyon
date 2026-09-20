@@ -12,7 +12,10 @@
 //! NOT CAUGHT: the sections that do not land in `Domains`. Sessions, the
 //! active session, the transcript, capabilities and interactions have their
 //! own suites; the two chunk kinds accumulate by design and are in
-//! `a-chunk-accumulates-resets-and-records-a-gap.rs`.
+//! `a-chunk-accumulates-resets-and-records-a-gap.rs`; the agent freeze is a
+//! field of its own, and replaces in
+//! `crates/veyyon-desktop/tests/a-freeze-the-host-engaged-reaches-every-window.
+//! rs`.
 
 use strum::IntoEnumIterator as _;
 use veyyon_desktop_model::{
@@ -277,7 +280,11 @@ fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 		| SnapshotSectionKind::TerminalOutput
 		| SnapshotSectionKind::ProcessLogs
 		// Held prompts are per-session state in `Store::queued`, not a domain view.
-		| SnapshotSectionKind::QueuedPrompts => return None,
+		| SnapshotSectionKind::QueuedPrompts
+		// The freeze is process-wide state in `Store::paused`, not a domain view;
+		// `crates/veyyon-desktop/tests/a-freeze-the-host-engaged-reaches-every-window.rs`
+		// proves it replaces and reaches the strip.
+		| SnapshotSectionKind::AgentPause => return None,
 		SnapshotSectionKind::SessionSearch => ["first", "second"].map(|query| {
 			SnapshotSection::SessionSearch(SessionSearchView { query: query.into(), sessions: Vec::new() })
 		}),
@@ -376,5 +383,6 @@ fn every_domain_section_replaces_its_domain_and_the_opt_outs_are_named() {
 		SnapshotSectionKind::TerminalOutput,
 		SnapshotSectionKind::ProcessLogs,
 		SnapshotSectionKind::QueuedPrompts,
+		SnapshotSectionKind::AgentPause,
 	]);
 }

@@ -18,6 +18,7 @@ use veyyon_gpui::{Context, InteractiveElement, IntoElement, ParentElement, Style
 use super::{
 	connection::connection_banner,
 	keys::bind_global_keys,
+	pause::{pause_strip, pause_strip_height},
 	session::session_surface,
 	titlebar::{TitlebarState, attention_strip, attention_strip_height, titlebar},
 };
@@ -55,7 +56,11 @@ pub fn render_shell(
 			attention_strip_height(&view.installed().set)
 		} else {
 			0.0
-		};
+		} + if view.state().paused.is_some() {
+		pause_strip_height(&view.installed().set)
+	} else {
+		0.0
+	};
 	let viewport_w = f32::from(window.viewport_size().width);
 	let viewport_h = f32::from(window.viewport_size().height);
 	let floats = matches!(
@@ -205,6 +210,13 @@ pub fn render_shell(
 		cx,
 	) {
 		root = root.child(banner);
+	}
+
+	// Below the banner and above the notice: a window that is not attached
+	// has no agents to have frozen, and a freeze outlasts anything the
+	// notice strip is reporting.
+	if let Some(elapsed) = view.state().paused.clone() {
+		root = root.child(pause_strip(&elapsed, &tokens, cx));
 	}
 
 	if let Some(notice) = view.notice() {

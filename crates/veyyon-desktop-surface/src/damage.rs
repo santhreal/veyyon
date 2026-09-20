@@ -250,6 +250,12 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		// records no box of its own, so a card arriving or going repaints
 		// what was under it.
 		notices,
+		// The freeze strip takes a line off the top of the window, so its
+		// arrival and departure move every region under it, and while it
+		// holds it draws from no box of its own. Its clock moves once a
+		// second against agents that are all parked, so the repaint it costs
+		// is a repaint of a window where nothing else is moving.
+		paused,
 		// The open menu is a float over the window with a scrim behind it,
 		// drawn from no box of its own, and the titlebar's own section words
 		// light with it.
@@ -276,6 +282,7 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		|| reduced_motion != &last.reduced_motion
 		|| appearance != &last.appearance
 		|| notices != &last.notices
+		|| paused != &last.paused
 		|| menu != &last.menu
 	{
 		return Invalidation::Full;

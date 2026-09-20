@@ -294,6 +294,10 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::RephraseReply => {
 			active.map_or_else(Vec::new, |session| vec![HostAction::RephraseReply { session }])
 		},
+		// The freeze is the host's, not a session's, so neither carries one
+		// and neither needs a session to be open to be worth pressing.
+		Intent::PauseAgents => vec![HostAction::PauseAgents],
+		Intent::ResumeAgents => vec![HostAction::ResumeAgents],
 		Intent::OpenFile(path) => vec![HostAction::ReadFile { path: path.clone() }],
 		Intent::SelectChangeScope(scope) => {
 			vec![HostAction::SelectChangeScope { scope: *scope }, HostAction::RefreshChanges]

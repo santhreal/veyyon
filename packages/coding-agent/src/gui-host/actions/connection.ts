@@ -2,6 +2,7 @@ import { buildCapabilitiesSnapshot } from "../session-bridge";
 import { disposeClientState } from "../turns";
 import { activeManager, emitActiveSessionAndTranscript, emitSessionList } from "./active-session";
 import { agentsSection } from "./agents";
+import { agentPauseSection } from "./pause";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
 
 interface AttachPayload {
@@ -11,7 +12,10 @@ interface AttachPayload {
 /**
  * Attach and RetryConnection deliver the state the shell reads on arrival:
  * what the host can do, the sessions in the store, the one that is open (if
- * any) with its transcript, and the agents the registry holds.
+ * any) with its transcript, the agents the registry holds, and whether the
+ * process is frozen -- a window that attaches into a freeze engaged before
+ * it started draws the strip on its first frame rather than on the next
+ * pause.
  */
 async function emitInitialState(ctx: ActionContext): Promise<void> {
 	ctx.reply.snapshot({ Capabilities: buildCapabilitiesSnapshot() });
@@ -19,6 +23,7 @@ async function emitInitialState(ctx: ActionContext): Promise<void> {
 	const sm = activeManager(ctx);
 	if (sm) emitActiveSessionAndTranscript(ctx, sm);
 	ctx.reply.snapshot({ Agents: agentsSection(ctx.cwd) });
+	ctx.reply.snapshot({ AgentPause: agentPauseSection() });
 }
 
 const handleAttach: ActionHandler<AttachPayload | undefined> = async (ctx, _payload) => {

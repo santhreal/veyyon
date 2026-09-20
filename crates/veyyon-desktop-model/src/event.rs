@@ -67,7 +67,7 @@ pub struct SessionHeaderView {
 	pub mode:           Option<String>,
 }
 
-/// Complete list of all 30 snapshot section names defined by the protocol.
+/// Complete list of all 31 snapshot section names defined by the protocol.
 pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Sessions",
 	"ActiveSession",
@@ -99,6 +99,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Keybindings",
 	"QueuedPrompts",
 	"Commands",
+	"AgentPause",
 ];
 
 /// Domain sections received during initial connection or snapshot
@@ -109,7 +110,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
 #[strum_discriminants(name(SnapshotSectionKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
 #[strum_discriminants(
-	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 30 section variants."
+	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 31 section variants."
 )]
 pub enum SnapshotSection {
 	/// Session index metadata and deserialization failures.
@@ -179,6 +180,8 @@ pub enum SnapshotSection {
 	QueuedPrompts(QueuedPromptsView),
 	/// Every slash command the host will run, which the palette ranks.
 	Commands(Vec<CommandView>),
+	/// Whether every agent in the host process is frozen, and since when.
+	AgentPause(crate::domain::AgentPauseView),
 }
 
 impl SnapshotSection {
@@ -216,6 +219,7 @@ impl SnapshotSection {
 			Self::Keybindings(..) => "Keybindings",
 			Self::QueuedPrompts(..) => "QueuedPrompts",
 			Self::Commands(..) => "Commands",
+			Self::AgentPause(..) => "AgentPause",
 		}
 	}
 }

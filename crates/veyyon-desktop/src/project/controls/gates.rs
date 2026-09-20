@@ -99,6 +99,11 @@ pub fn gated_controls(
 	let mut controls = vec![
 		(SurfaceId::NewSessionButton, HostActionKind::CreateSession),
 		(SurfaceId::ConnectionRetryButton, HostActionKind::RetryConnection),
+		// The freeze belongs to the host process, so both controls are gated
+		// whether or not a session is open: a window with nothing open can
+		// still be the one that releases agents running behind it.
+		(SurfaceId::AgentsPauseButton, HostActionKind::PauseAgents),
+		(SurfaceId::AgentsResumeButton, HostActionKind::ResumeAgents),
 		// The selector reads the catalogue's gate, which is the capability a
 		// host without themes withholds; a refused selection is stated on it
 		// by `settings_surface_for_action`, which the gate does not decide.

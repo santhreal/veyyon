@@ -29,6 +29,7 @@ mod navigation;
 mod notice;
 pub mod overlay;
 mod palette;
+pub mod pause;
 mod queue_search;
 pub mod render;
 mod review;
@@ -45,6 +46,7 @@ pub use self::{
 	connection::{connection_banner, error_hairline},
 	memory::{HostShape, ScrollAnchor, SessionShape},
 	overlay::overlay_scrim,
+	pause::{pause_strip, pause_strip_height},
 	titlebar::{
 		TitlebarState, attention_strip, attention_strip_height, platform_inset_left_px, titlebar,
 	},

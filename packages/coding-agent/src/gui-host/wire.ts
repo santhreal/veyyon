@@ -568,6 +568,12 @@ export interface CommandView {
 	subcommands: CommandSubcommandView[];
 }
 
+/** Whether the host has frozen every agent it runs, and since when. */
+export interface AgentPauseView {
+	paused: boolean;
+	since_ms: number | null;
+}
+
 export type SnapshotSection =
 	| { Sessions: [Versioned<SessionSummary[]>, SessionLoadError[]] }
 	| { ActiveSession: Versioned<SessionHeaderView> }
@@ -598,7 +604,8 @@ export type SnapshotSection =
 	| { Themes: ThemesView }
 	| { Keybindings: KeybindingView[] }
 	| { QueuedPrompts: QueuedPromptsView }
-	| { Commands: CommandView[] };
+	| { Commands: CommandView[] }
+	| { AgentPause: AgentPauseView };
 
 export const ALL_SNAPSHOT_SECTIONS = [
 	"Sessions",
@@ -631,6 +638,7 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"Keybindings",
 	"QueuedPrompts",
 	"Commands",
+	"AgentPause",
 ] as const;
 
 export type SnapshotSectionTag = (typeof ALL_SNAPSHOT_SECTIONS)[number];
@@ -661,6 +669,8 @@ export type HostAction =
 	| "Detach"
 	| "RetryConnection"
 	| "Shutdown"
+	| "PauseAgents"
+	| "ResumeAgents"
 	| "ListSessions"
 	| "ListCommands"
 	| { Attach: { endpoint: string | null } }
@@ -683,6 +693,8 @@ export const ALL_HOST_ACTIONS = [
 	"Detach",
 	"RetryConnection",
 	"Shutdown",
+	"PauseAgents",
+	"ResumeAgents",
 	"ListSessions",
 	"SearchSessions",
 	"PreviewSessionTranscript",
@@ -764,6 +776,8 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	Detach: "Lifecycle",
 	RetryConnection: "Lifecycle",
 	Shutdown: "Lifecycle",
+	PauseAgents: "Lifecycle",
+	ResumeAgents: "Lifecycle",
 	ListSessions: "Sessions",
 	SearchSessions: "Sessions",
 	PreviewSessionTranscript: "Transcript",

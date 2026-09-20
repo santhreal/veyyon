@@ -225,6 +225,10 @@ pub enum Intent {
 	RetryTurn,
 	/// Asks the agent for the reply it just gave again, in plainer prose.
 	RephraseReply,
+	/// Freezes every agent the host runs, whatever session it belongs to.
+	PauseAgents,
+	/// Releases the freeze, waking every agent the host parked.
+	ResumeAgents,
 	RenameSession {
 		session: u64,
 		title:   String,

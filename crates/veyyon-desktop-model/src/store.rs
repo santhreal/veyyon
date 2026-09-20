@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
 	capabilities::CapabilityMap,
 	connection::{ConnectionState, SessionId},
-	domain::{Domains, QueuedPrompts},
+	domain::{AgentPauseView, Domains, QueuedPrompts},
 	interaction::PendingDecisions,
 	notifications::NotificationQueue,
 	persistence::PersistedState,
@@ -21,6 +21,9 @@ pub struct Store {
 	/// Single definition of backend feature availability across all thirty
 	/// protocol capabilities.
 	pub capabilities:  CapabilityMap,
+	/// Single definition of whether the host's agents are frozen. Process-wide
+	/// rather than per session, so the chrome above every session reads it.
+	pub paused:        AgentPauseView,
 	/// Single definition of all known sessions partitioned across the five queue
 	/// segments.
 	pub sessions:      SessionCollection,
@@ -76,6 +79,7 @@ impl Store {
 		Self {
 			connection:    ConnectionState::Detached,
 			capabilities:  CapabilityMap::new(),
+			paused:        AgentPauseView::RUNNING,
 			sessions:      SessionCollection::new(),
 			transcripts:   HashMap::new(),
 			streaming:     HashMap::new(),

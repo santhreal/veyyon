@@ -130,6 +130,27 @@ pub fn command_items() -> Vec<PaletteItem> {
 			None,
 			Some(Capability::TurnControl),
 		),
+		// Two rows for the one freeze, for the reason the mode rows give: a
+		// list ranked against what was typed cannot show which way a toggle
+		// would go, and the host refuses the one that does not apply.
+		(
+			"/pause",
+			Intent::PauseAgents,
+			"Freeze every agent until you resume it",
+			None,
+			Some(Capability::Lifecycle),
+		),
+		// Spelled `/unpause` and not `/resume`, because the terminal's
+		// `/resume` opens a different session. One spelling meaning two things
+		// across the two front ends is the row an operator types from muscle
+		// memory and watches switch sessions under a frozen agent.
+		(
+			"/unpause",
+			Intent::ResumeAgents,
+			"Wake every agent the freeze parked",
+			None,
+			Some(Capability::Lifecycle),
+		),
 		// Two rows per mode rather than one that toggles: a command list is
 		// ranked against what was typed, and a row whose action depends on
 		// state the operator cannot see from the list is a press with two

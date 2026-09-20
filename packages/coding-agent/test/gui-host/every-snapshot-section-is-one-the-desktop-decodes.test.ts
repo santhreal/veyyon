@@ -375,6 +375,7 @@ const CORPUS = [
 			},
 		],
 	},
+	{ AgentPause: { paused: true, since_ms: 1717171717000 } },
 ] satisfies SnapshotSection[];
 
 describe("every snapshot section is one the desktop decodes", () => {

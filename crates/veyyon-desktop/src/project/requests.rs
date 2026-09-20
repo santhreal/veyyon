@@ -89,6 +89,8 @@ pub fn surface_for_action(
 				.cloned()
 				.unwrap_or_else(|| SessionId("0".into())),
 		),
+		Intent::PauseAgents => SurfaceId::AgentsPauseButton,
+		Intent::ResumeAgents => SurfaceId::AgentsResumeButton,
 		Intent::RenameSession { session, .. } => {
 			SurfaceId::SessionRenameField(SessionId(session.to_string()))
 		},
