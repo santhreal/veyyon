@@ -460,7 +460,7 @@ export class GuiHostServer {
 			} catch (error) {
 				logger.warn("GUI host could not state a snapshot to a client", {
 					section: snapshotSectionTag(section),
-					error:   errorMessage(error),
+					error: errorMessage(error),
 				});
 			}
 		}
