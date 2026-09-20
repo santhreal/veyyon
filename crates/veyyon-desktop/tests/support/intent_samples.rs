@@ -214,6 +214,8 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		IntentDiscriminants::DeleteSession => vec![Intent::DeleteSession(1)],
 		IntentDiscriminants::BranchSession => vec![Intent::BranchSession(1)],
 		IntentDiscriminants::BranchTurn => vec![Intent::BranchTurn(0)],
+		IntentDiscriminants::RetryTurn => vec![Intent::RetryTurn],
+		IntentDiscriminants::RephraseReply => vec![Intent::RephraseReply],
 		IntentDiscriminants::RenameSession => {
 			vec![Intent::RenameSession { session: 1, title: "Renamed Session".to_string() }]
 		},

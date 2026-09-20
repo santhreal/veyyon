@@ -33,6 +33,11 @@ pub struct TurnMenu {
 	pub text:     String,
 	/// Whether this turn is a prompt, which is the only place a fork is cut.
 	pub forkable: bool,
+	/// Whether this turn is the transcript's last answer, which is the only
+	/// turn a retry or a rephrase acts on: both address what the agent said
+	/// last, and offering them on an earlier answer would name a turn the
+	/// host does not reach.
+	pub last:     bool,
 }
 
 /// Which turn the last frame laid out over `at`, if any.
@@ -126,7 +131,9 @@ fn artifact_text(artifact: &Artifact) -> String {
 ///
 /// A fork is cut at a prompt, so the row that cuts one is offered on a prompt
 /// and on nothing else: an answer is no entry a branch can fork at, and a
-/// menu that offered the row there would name an entry the host refuses.
+/// menu that offered the row there would name an entry the host refuses. A
+/// retry and a rephrase both address the answer the agent gave last, so both
+/// are offered on the transcript's last turn and on nothing before it.
 #[must_use]
 pub fn turn_menu_items(menu: &TurnMenu) -> Vec<(MenuItem, Intent)> {
 	let mut rows =
@@ -135,6 +142,12 @@ pub fn turn_menu_items(menu: &TurnMenu) -> Vec<(MenuItem, Intent)> {
 		rows.push((
 			MenuItem::new("Branch from here").icon(IconName::Plus),
 			Intent::BranchTurn(menu.turn),
+		));
+	} else if menu.last {
+		rows.push((MenuItem::new("Run again").icon(IconName::Refresh), Intent::RetryTurn));
+		rows.push((
+			MenuItem::new("Say that in plainer prose").icon(IconName::Edit),
+			Intent::RephraseReply,
 		));
 	}
 	rows

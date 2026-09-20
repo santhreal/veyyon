@@ -1,3 +1,4 @@
+import { requestsPrompts } from "../../prompts/requests/rows";
 import { UnsupportedModelInputError } from "../../session/agent-session";
 import { ImageInputTooLargeError } from "../../utils/image-loading";
 import { VideoInputTooLargeError } from "../../utils/video-loading";
@@ -9,6 +10,9 @@ import type { AttachmentSubmission } from "../wire";
 import { activateSession, activeManager, isActive, replyError } from "./active-session";
 import { handleSetSessionMode } from "./session-mode";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
+
+/** The instruction `/rephrase` submits, shared with the terminal host. */
+const REPHRASE_REQUEST = requestsPrompts["requests/rephrase"].text.trim();
 
 const QUEUE_MODES = ["Steer", "Queue"] as const;
 type QueueMode = (typeof QUEUE_MODES)[number];
@@ -28,12 +32,18 @@ interface PromptPayload {
  * runs, the way `behavior` says. The request settles when the session has
  * accepted the prompt, not when the turn ends; the turn's own outcome
  * reaches the client through the transcript and streaming frames.
+ *
+ * `names` is false for a turn whose text the operator did not write: a fixed
+ * instruction titles the session after the instruction rather than after the
+ * work, and a session that stayed unnamed through its first turn is still
+ * waiting for a prompt worth naming it from.
  */
 async function deliver(
 	ctx: ActionContext,
 	payload: PromptPayload | undefined,
 	action: string,
 	behavior: "Steer" | "Queue" | undefined,
+	names = true,
 ): Promise<void> {
 	const text = payload?.text?.trim();
 	if (!payload?.session || !text) {
@@ -67,7 +77,7 @@ async function deliver(
 		// After the reply: the prompt is accepted either way, and the title takes
 		// a model call of its own. The name reaches the client as a snapshot of
 		// its own, the way a rename does.
-		void nameSessionFromFirstPrompt(ctx, session, text);
+		if (names) void nameSessionFromFirstPrompt(ctx, session, text);
 	} catch (error) {
 		if (
 			error instanceof UnsupportedModelInputError ||
@@ -116,6 +126,62 @@ const handleAbortTurn: ActionHandler<SessionRef | undefined> = async (ctx, _payl
 	} catch (error) {
 		replyError(ctx, "ABORT_FAILED", error);
 	}
+};
+
+/**
+ * Re-run the last turn after it ended in an error or an abort. The session
+ * drops the failed assistant message and continues with a fresh retry budget,
+ * so the transcript carries one attempt, not two. A session in which no turn
+ * has run has nothing to re-run and is refused for the same reason.
+ */
+const handleRetryTurn: ActionHandler<SessionRef | undefined> = async (ctx, payload) => {
+	if (payload?.session && !(await activateSession(ctx, payload.session))) return;
+	const session = ctx.clientState.agentSession;
+	if (!session) {
+		ctx.reply.failure({
+			scope: "Session",
+			code: "NOTHING_TO_RETRY",
+			message: "No turn has run in this session, so there is nothing to retry",
+			retryable: false,
+		});
+		return;
+	}
+	try {
+		if (!(await session.retry())) {
+			ctx.reply.failure({
+				scope: "Session",
+				code: "NOTHING_TO_RETRY",
+				message: "The last turn did not fail, so there is nothing to retry",
+				retryable: false,
+			});
+			return;
+		}
+		ctx.reply.success();
+	} catch (error) {
+		replyError(ctx, "PROMPT_REJECTED", error);
+	}
+};
+
+/**
+ * Ask for the reply on screen again, in plainer prose. It is an ordinary user
+ * turn carrying a fixed instruction, so the transcript shows what the model was
+ * asked and the answer lands in the conversation rather than beside it. It
+ * refuses unless a finished reply is there to work from: mid-turn, or after a
+ * turn that produced no text, there is nothing to say again.
+ */
+const handleRephraseReply: ActionHandler<SessionRef | undefined> = async (ctx, payload) => {
+	if (payload?.session && !(await activateSession(ctx, payload.session))) return;
+	const session = ctx.clientState.agentSession;
+	if (!session?.hasTerminalTextAnswerWithoutQueuedWork()) {
+		ctx.reply.failure({
+			scope: "Session",
+			code: "NOTHING_TO_REPHRASE",
+			message: "Rephrase needs a finished reply to work from",
+			retryable: false,
+		});
+		return;
+	}
+	await deliver(ctx, { session: payload?.session, text: REPHRASE_REQUEST }, "RephraseReply", undefined, false);
 };
 
 interface SetQueueModePayload {
@@ -326,6 +392,8 @@ export const turnActionHandlers: ActionHandlersMap = {
 	Steer: handleSteer as ActionHandler<never>,
 	FollowUp: handleFollowUp as ActionHandler<never>,
 	AbortTurn: handleAbortTurn as ActionHandler<never>,
+	RetryTurn: handleRetryTurn as ActionHandler<never>,
+	RephraseReply: handleRephraseReply as ActionHandler<never>,
 	SetQueueMode: handleSetQueueMode as ActionHandler<never>,
 	SetSessionMode: handleSetSessionMode as ActionHandler<never>,
 	DequeueQueuedPrompt: handleDequeueQueuedPrompt as ActionHandler<never>,

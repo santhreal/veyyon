@@ -55,6 +55,15 @@ pub fn composer_controls(row: &SessionId) -> [(SurfaceId, HostActionKind); 9] {
 	]
 }
 
+/// The rows the turn menu offers over the last turn, with the action each
+/// would send.
+pub fn turn_controls(row: &SessionId) -> [(SurfaceId, HostActionKind); 2] {
+	[
+		(SurfaceId::SessionRetryButton(row.clone()), HostActionKind::RetryTurn),
+		(SurfaceId::SessionRephraseButton(row.clone()), HostActionKind::RephraseReply),
+	]
+}
+
 /// The answers one queue row offers about its own session: its menu's
 /// management items, its delete action, and the field that renames it.
 ///
@@ -125,6 +134,9 @@ pub fn gated_controls(
 			(SurfaceId::TerminalCreateButton(row.clone()), HostActionKind::CreateTerminal),
 			(SurfaceId::ProcessStartButton(row.clone()), HostActionKind::ProcessStart),
 		]);
+		// The turn menu's own two: both act on the session's last turn, so
+		// they are the active session's and not a rail row's.
+		controls.extend(turn_controls(&row));
 		let pending = store
 			.persisted
 			.shell

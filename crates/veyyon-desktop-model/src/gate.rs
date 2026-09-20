@@ -41,6 +41,8 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::Steer => Capability::TurnControl,
 		HostActionKind::FollowUp => Capability::TurnControl,
 		HostActionKind::AbortTurn => Capability::TurnControl,
+		HostActionKind::RetryTurn => Capability::TurnControl,
+		HostActionKind::RephraseReply => Capability::TurnControl,
 		HostActionKind::SetQueueMode => Capability::TurnControl,
 		// A mode is the session's, not the turn's: it survives the turn that
 		// was running when it was entered, and a host with no turn in flight

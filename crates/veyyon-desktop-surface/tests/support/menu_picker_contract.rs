@@ -96,7 +96,12 @@ fn open_menu(
 				.collect()
 		},
 		Source::Turn(forkable) => {
-			let menu = TurnMenu { turn: 0, origin, text: "copied prompt".into(), forkable };
+			// The answer arm stands for the transcript's last turn, so the
+			// rows a retry and a rephrase add are walked by this contract
+			// too; the prompt arm is a turn in the middle, which offers the
+			// fork instead.
+			let menu =
+				TurnMenu { turn: 0, origin, text: "copied prompt".into(), forkable, last: !forkable };
 			let rows = turn_menu_items(&menu);
 			view.open_turn_menu(menu);
 			rows

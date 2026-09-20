@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::action::HostAction;
+
 /// Discriminant enum for host actions.
 #[derive(
 	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, strum::EnumIter,
@@ -25,6 +27,8 @@ pub enum HostActionKind {
 	Steer,
 	FollowUp,
 	AbortTurn,
+	RetryTurn,
+	RephraseReply,
 	SetQueueMode,
 	SetSessionMode,
 	CancelTool,
@@ -83,7 +87,7 @@ pub enum HostActionKind {
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 74] = [
+	pub const ALL: [Self; 76] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -104,6 +108,8 @@ impl HostActionKind {
 		Self::Steer,
 		Self::FollowUp,
 		Self::AbortTurn,
+		Self::RetryTurn,
+		Self::RephraseReply,
 		Self::SetQueueMode,
 		Self::SetSessionMode,
 		Self::CancelTool,
@@ -184,6 +190,8 @@ impl HostActionKind {
 			Self::Steer => "Steer",
 			Self::FollowUp => "FollowUp",
 			Self::AbortTurn => "AbortTurn",
+			Self::RetryTurn => "RetryTurn",
+			Self::RephraseReply => "RephraseReply",
 			Self::SetQueueMode => "SetQueueMode",
 			Self::SetSessionMode => "SetSessionMode",
 			Self::CancelTool => "CancelTool",
@@ -238,6 +246,91 @@ impl HostActionKind {
 			Self::ClearOutput => "ClearOutput",
 			Self::GetUsage => "GetUsage",
 			Self::GetContextBreakdown => "GetContextBreakdown",
+		}
+	}
+}
+
+impl HostAction {
+	/// Resolves the discriminant kind for this action.
+	#[must_use]
+	pub const fn kind(&self) -> HostActionKind {
+		match self {
+			Self::Attach { .. } => HostActionKind::Attach,
+			Self::Detach => HostActionKind::Detach,
+			Self::RetryConnection => HostActionKind::RetryConnection,
+			Self::Shutdown => HostActionKind::Shutdown,
+			Self::ListSessions => HostActionKind::ListSessions,
+			Self::SearchSessions { .. } => HostActionKind::SearchSessions,
+			Self::PreviewSessionTranscript { .. } => HostActionKind::PreviewSessionTranscript,
+			Self::OpenSession { .. } => HostActionKind::OpenSession,
+			Self::CreateSession { .. } => HostActionKind::CreateSession,
+			Self::RenameSession { .. } => HostActionKind::RenameSession,
+			Self::DeleteSession { .. } => HostActionKind::DeleteSession,
+			Self::BranchSession { .. } => HostActionKind::BranchSession,
+			Self::ExportSession { .. } => HostActionKind::ExportSession,
+			Self::CompactSession { .. } => HostActionKind::CompactSession,
+			Self::HandoffSession { .. } => HostActionKind::HandoffSession,
+			Self::LoadTranscript { .. } => HostActionKind::LoadTranscript,
+			Self::SubmitPrompt { .. } => HostActionKind::SubmitPrompt,
+			Self::Steer { .. } => HostActionKind::Steer,
+			Self::FollowUp { .. } => HostActionKind::FollowUp,
+			Self::AbortTurn { .. } => HostActionKind::AbortTurn,
+			Self::RetryTurn { .. } => HostActionKind::RetryTurn,
+			Self::RephraseReply { .. } => HostActionKind::RephraseReply,
+			Self::SetQueueMode { .. } => HostActionKind::SetQueueMode,
+			Self::SetSessionMode { .. } => HostActionKind::SetSessionMode,
+			Self::CancelTool { .. } => HostActionKind::CancelTool,
+			Self::SetToolViewExpanded { .. } => HostActionKind::SetToolViewExpanded,
+			Self::DequeueQueuedPrompt { .. } => HostActionKind::DequeueQueuedPrompt,
+			Self::RespondToInteraction { .. } => HostActionKind::RespondToInteraction,
+			Self::LoadFileTree { .. } => HostActionKind::LoadFileTree,
+			Self::ReadFile { .. } => HostActionKind::ReadFile,
+			Self::SearchFiles { .. } => HostActionKind::SearchFiles,
+			Self::SearchContent { .. } => HostActionKind::SearchContent,
+			Self::OpenExternal { .. } => HostActionKind::OpenExternal,
+			Self::RefreshChanges => HostActionKind::RefreshChanges,
+			Self::SelectChangeScope { .. } => HostActionKind::SelectChangeScope,
+			Self::CreateTerminal { .. } => HostActionKind::CreateTerminal,
+			Self::AttachTerminal { .. } => HostActionKind::AttachTerminal,
+			Self::WriteTerminal { .. } => HostActionKind::WriteTerminal,
+			Self::ResizeTerminal { .. } => HostActionKind::ResizeTerminal,
+			Self::RestartTerminal { .. } => HostActionKind::RestartTerminal,
+			Self::ClearTerminal { .. } => HostActionKind::ClearTerminal,
+			Self::CloseTerminal { .. } => HostActionKind::CloseTerminal,
+			Self::RefreshProcesses => HostActionKind::RefreshProcesses,
+			Self::ProcessLogs { .. } => HostActionKind::ProcessLogs,
+			Self::ProcessSend { .. } => HostActionKind::ProcessSend,
+			Self::ProcessSignal { .. } => HostActionKind::ProcessSignal,
+			Self::ProcessStop { .. } => HostActionKind::ProcessStop,
+			Self::ProcessRestart { .. } => HostActionKind::ProcessRestart,
+			Self::ProcessStart { .. } => HostActionKind::ProcessStart,
+			Self::RefreshModels => HostActionKind::RefreshModels,
+			Self::SelectModel { .. } => HostActionKind::SelectModel,
+			Self::SetThinkingLevel { .. } => HostActionKind::SetThinkingLevel,
+			Self::RefreshProviders => HostActionKind::RefreshProviders,
+			Self::StartProviderAuth { .. } => HostActionKind::StartProviderAuth,
+			Self::SubmitAuthSecret { .. } => HostActionKind::SubmitAuthSecret,
+			Self::OpenAuthUrl { .. } => HostActionKind::OpenAuthUrl,
+			Self::CancelAuthFlow { .. } => HostActionKind::CancelAuthFlow,
+			Self::RetryAuthFlow { .. } => HostActionKind::RetryAuthFlow,
+			Self::RefreshMcp => HostActionKind::RefreshMcp,
+			Self::SetMcpEnabled { .. } => HostActionKind::SetMcpEnabled,
+			Self::ReviveAgent { .. } => HostActionKind::ReviveAgent,
+			Self::SpawnTask { .. } => HostActionKind::SpawnTask,
+			Self::CancelTask { .. } => HostActionKind::CancelTask,
+			Self::ListCommands => HostActionKind::ListCommands,
+			Self::RunCommand { .. } => HostActionKind::RunCommand,
+			Self::LoadSettings => HostActionKind::LoadSettings,
+			Self::SetSetting { .. } => HostActionKind::SetSetting,
+			Self::ResetSetting { .. } => HostActionKind::ResetSetting,
+			Self::LoadThemes => HostActionKind::LoadThemes,
+			Self::LoadKeybindings => HostActionKind::LoadKeybindings,
+			Self::SetKeybinding { .. } => HostActionKind::SetKeybinding,
+			Self::RefreshDiagnostics => HostActionKind::RefreshDiagnostics,
+			Self::RetryDiagnosticSource { .. } => HostActionKind::RetryDiagnosticSource,
+			Self::ClearOutput { .. } => HostActionKind::ClearOutput,
+			Self::GetUsage { .. } => HostActionKind::GetUsage,
+			Self::GetContextBreakdown { .. } => HostActionKind::GetContextBreakdown,
 		}
 	}
 }

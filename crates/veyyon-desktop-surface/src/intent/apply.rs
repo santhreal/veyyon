@@ -311,6 +311,8 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		Intent::DeleteSession(_)
 		| Intent::BranchSession(_)
 		| Intent::BranchTurn(_)
+		| Intent::RetryTurn
+		| Intent::RephraseReply
 		| Intent::ExportSession(_)
 		| Intent::CompactSession(_)
 		| Intent::HandoffSession(_)

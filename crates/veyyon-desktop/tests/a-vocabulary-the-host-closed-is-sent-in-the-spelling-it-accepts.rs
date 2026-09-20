@@ -41,7 +41,7 @@ use veyyon_desktop_surface::Intent;
 /// Every string an action carries that is an operator's or the host's own
 /// value rather than a vocabulary: text, identifiers, paths and queries. A new
 /// entry here is a decision that the value is open.
-const OPEN_STRINGS: [&str; 62] = [
+const OPEN_STRINGS: [&str; 64] = [
 	"AbortTurn.session",
 	"BranchSession.session",
 	"CancelAuthFlow.provider",
@@ -74,10 +74,12 @@ const OPEN_STRINGS: [&str; 62] = [
 	"ProcessStop.process_id",
 	"ReadFile.path",
 	"RenameSession.session",
+	"RephraseReply.session",
 	"RenameSession.title",
 	"ResetSetting.key",
 	"RetryAuthFlow.provider",
 	"RetryDiagnosticSource.source",
+	"RetryTurn.session",
 	"ReviveAgent.agent_id",
 	"RunCommand.session",
 	"RunCommand.text",

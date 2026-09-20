@@ -146,6 +146,8 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::SpawnTask("review the diff".to_owned()),
 		Intent::RunCommand("brainstorm two options".to_owned()),
 		Intent::SetSessionMode { mode: SettableMode::Plan },
+		Intent::RetryTurn,
+		Intent::RephraseReply,
 		Intent::CopyText("copied words".to_owned()),
 		Intent::DismissNotice("request-failed:transcript:-".to_owned()),
 		Intent::SetMenuSection(Some(MenuSectionId::Session)),
@@ -221,6 +223,8 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::DeleteSession(_)
 			| Intent::BranchSession(_)
 			| Intent::BranchTurn(_)
+			| Intent::RetryTurn
+			| Intent::RephraseReply
 			| Intent::FilterQueue(_)
 			| Intent::NewSession
 			| Intent::CloseTab(_)

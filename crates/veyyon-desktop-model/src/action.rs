@@ -82,7 +82,7 @@ pub enum HostAction {
 		before:  Option<EntryId>,
 	},
 
-	// Turn control family (9 actions)
+	// Turn control family (11 actions)
 	SubmitPrompt {
 		session:     SessionId,
 		text:        String,
@@ -97,6 +97,22 @@ pub enum HostAction {
 		text:    String,
 	},
 	AbortTurn {
+		session: SessionId,
+	},
+	/// Runs the last turn again, after it failed or was stopped.
+	///
+	/// The turn is the session's last, so the request names no turn: a host
+	/// with nothing failed to run again refuses it, which is the same answer
+	/// the terminal's `/retry` prints.
+	RetryTurn {
+		session: SessionId,
+	},
+	/// Asks for the reply just given again, in plainer prose.
+	///
+	/// The host sends its own request as the next turn, so the window supplies
+	/// no text: the wording is the product's, and a session whose last turn is
+	/// not a finished reply refuses it.
+	RephraseReply {
 		session: SessionId,
 	},
 	SetQueueMode {
@@ -311,87 +327,4 @@ pub enum HostAction {
 	GetContextBreakdown {
 		session: SessionId,
 	},
-}
-
-impl HostAction {
-	/// Resolves the discriminant kind for this action.
-	#[must_use]
-	pub const fn kind(&self) -> HostActionKind {
-		match self {
-			Self::Attach { .. } => HostActionKind::Attach,
-			Self::Detach => HostActionKind::Detach,
-			Self::RetryConnection => HostActionKind::RetryConnection,
-			Self::Shutdown => HostActionKind::Shutdown,
-			Self::ListSessions => HostActionKind::ListSessions,
-			Self::SearchSessions { .. } => HostActionKind::SearchSessions,
-			Self::PreviewSessionTranscript { .. } => HostActionKind::PreviewSessionTranscript,
-			Self::OpenSession { .. } => HostActionKind::OpenSession,
-			Self::CreateSession { .. } => HostActionKind::CreateSession,
-			Self::RenameSession { .. } => HostActionKind::RenameSession,
-			Self::DeleteSession { .. } => HostActionKind::DeleteSession,
-			Self::BranchSession { .. } => HostActionKind::BranchSession,
-			Self::ExportSession { .. } => HostActionKind::ExportSession,
-			Self::CompactSession { .. } => HostActionKind::CompactSession,
-			Self::HandoffSession { .. } => HostActionKind::HandoffSession,
-			Self::LoadTranscript { .. } => HostActionKind::LoadTranscript,
-			Self::SubmitPrompt { .. } => HostActionKind::SubmitPrompt,
-			Self::Steer { .. } => HostActionKind::Steer,
-			Self::FollowUp { .. } => HostActionKind::FollowUp,
-			Self::AbortTurn { .. } => HostActionKind::AbortTurn,
-			Self::SetQueueMode { .. } => HostActionKind::SetQueueMode,
-			Self::SetSessionMode { .. } => HostActionKind::SetSessionMode,
-			Self::CancelTool { .. } => HostActionKind::CancelTool,
-			Self::SetToolViewExpanded { .. } => HostActionKind::SetToolViewExpanded,
-			Self::DequeueQueuedPrompt { .. } => HostActionKind::DequeueQueuedPrompt,
-			Self::RespondToInteraction { .. } => HostActionKind::RespondToInteraction,
-			Self::LoadFileTree { .. } => HostActionKind::LoadFileTree,
-			Self::ReadFile { .. } => HostActionKind::ReadFile,
-			Self::SearchFiles { .. } => HostActionKind::SearchFiles,
-			Self::SearchContent { .. } => HostActionKind::SearchContent,
-			Self::OpenExternal { .. } => HostActionKind::OpenExternal,
-			Self::RefreshChanges => HostActionKind::RefreshChanges,
-			Self::SelectChangeScope { .. } => HostActionKind::SelectChangeScope,
-			Self::CreateTerminal { .. } => HostActionKind::CreateTerminal,
-			Self::AttachTerminal { .. } => HostActionKind::AttachTerminal,
-			Self::WriteTerminal { .. } => HostActionKind::WriteTerminal,
-			Self::ResizeTerminal { .. } => HostActionKind::ResizeTerminal,
-			Self::RestartTerminal { .. } => HostActionKind::RestartTerminal,
-			Self::ClearTerminal { .. } => HostActionKind::ClearTerminal,
-			Self::CloseTerminal { .. } => HostActionKind::CloseTerminal,
-			Self::RefreshProcesses => HostActionKind::RefreshProcesses,
-			Self::ProcessLogs { .. } => HostActionKind::ProcessLogs,
-			Self::ProcessSend { .. } => HostActionKind::ProcessSend,
-			Self::ProcessSignal { .. } => HostActionKind::ProcessSignal,
-			Self::ProcessStop { .. } => HostActionKind::ProcessStop,
-			Self::ProcessRestart { .. } => HostActionKind::ProcessRestart,
-			Self::ProcessStart { .. } => HostActionKind::ProcessStart,
-			Self::RefreshModels => HostActionKind::RefreshModels,
-			Self::SelectModel { .. } => HostActionKind::SelectModel,
-			Self::SetThinkingLevel { .. } => HostActionKind::SetThinkingLevel,
-			Self::RefreshProviders => HostActionKind::RefreshProviders,
-			Self::StartProviderAuth { .. } => HostActionKind::StartProviderAuth,
-			Self::SubmitAuthSecret { .. } => HostActionKind::SubmitAuthSecret,
-			Self::OpenAuthUrl { .. } => HostActionKind::OpenAuthUrl,
-			Self::CancelAuthFlow { .. } => HostActionKind::CancelAuthFlow,
-			Self::RetryAuthFlow { .. } => HostActionKind::RetryAuthFlow,
-			Self::RefreshMcp => HostActionKind::RefreshMcp,
-			Self::SetMcpEnabled { .. } => HostActionKind::SetMcpEnabled,
-			Self::ReviveAgent { .. } => HostActionKind::ReviveAgent,
-			Self::SpawnTask { .. } => HostActionKind::SpawnTask,
-			Self::CancelTask { .. } => HostActionKind::CancelTask,
-			Self::ListCommands => HostActionKind::ListCommands,
-			Self::RunCommand { .. } => HostActionKind::RunCommand,
-			Self::LoadSettings => HostActionKind::LoadSettings,
-			Self::SetSetting { .. } => HostActionKind::SetSetting,
-			Self::ResetSetting { .. } => HostActionKind::ResetSetting,
-			Self::LoadThemes => HostActionKind::LoadThemes,
-			Self::LoadKeybindings => HostActionKind::LoadKeybindings,
-			Self::SetKeybinding { .. } => HostActionKind::SetKeybinding,
-			Self::RefreshDiagnostics => HostActionKind::RefreshDiagnostics,
-			Self::RetryDiagnosticSource { .. } => HostActionKind::RetryDiagnosticSource,
-			Self::ClearOutput { .. } => HostActionKind::ClearOutput,
-			Self::GetUsage { .. } => HostActionKind::GetUsage,
-			Self::GetContextBreakdown { .. } => HostActionKind::GetContextBreakdown,
-		}
-	}
 }

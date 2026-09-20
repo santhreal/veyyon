@@ -670,6 +670,8 @@ export type HostAction =
 	| { LoadTranscript: { session: string; before: string | null } }
 	| { SubmitPrompt: { session: string; text: string; attachments: AttachmentSubmission[] } }
 	| { AbortTurn: { session: string } }
+	| { RetryTurn: { session: string } }
+	| { RephraseReply: { session: string } }
 	| { SetToolViewExpanded: { session: string; call_id: string; expanded: boolean } }
 	| { DequeueQueuedPrompt: { session: string } }
 	| { RunCommand: { session: string; text: string } }
@@ -697,6 +699,8 @@ export const ALL_HOST_ACTIONS = [
 	"Steer",
 	"FollowUp",
 	"AbortTurn",
+	"RetryTurn",
+	"RephraseReply",
 	"SetQueueMode",
 	"SetSessionMode",
 	"CancelTool",
@@ -776,6 +780,8 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	Steer: "TurnControl",
 	FollowUp: "TurnControl",
 	AbortTurn: "TurnControl",
+	RetryTurn: "TurnControl",
+	RephraseReply: "TurnControl",
 	SetQueueMode: "TurnControl",
 	SetSessionMode: "Sessions",
 	CancelTool: "Tools",

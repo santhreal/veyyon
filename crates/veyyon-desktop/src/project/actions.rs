@@ -285,6 +285,15 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::RunCommand(text) => active.map_or_else(Vec::new, |session| {
 			vec![HostAction::RunCommand { session, text: text.clone() }]
 		}),
+		// Both act on the open session's last turn, so neither names one: the
+		// host reads its own tail and refuses when there is nothing there to
+		// run again or to say differently.
+		Intent::RetryTurn => {
+			active.map_or_else(Vec::new, |session| vec![HostAction::RetryTurn { session }])
+		},
+		Intent::RephraseReply => {
+			active.map_or_else(Vec::new, |session| vec![HostAction::RephraseReply { session }])
+		},
 		Intent::OpenFile(path) => vec![HostAction::ReadFile { path: path.clone() }],
 		Intent::SelectChangeScope(scope) => {
 			vec![HostAction::SelectChangeScope { scope: *scope }, HostAction::RefreshChanges]

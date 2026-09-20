@@ -31,6 +31,8 @@ pub enum SurfaceId {
 	SessionExportButton(SessionId),
 	SessionCompactButton(SessionId),
 	SessionHandoffButton(SessionId),
+	SessionRetryButton(SessionId),
+	SessionRephraseButton(SessionId),
 
 	// Composer & Turn Controls (§5.4)
 	ComposerSendButton(SessionId),
@@ -142,6 +144,8 @@ impl SurfaceId {
 			| Self::SessionExportButton(_)
 			| Self::SessionCompactButton(_)
 			| Self::SessionHandoffButton(_)
+			| Self::SessionRetryButton(_)
+			| Self::SessionRephraseButton(_)
 			| Self::ComposerSendButton(_)
 			| Self::ComposerSteerButton(_)
 			| Self::ComposerQueueButton(_)
@@ -250,6 +254,8 @@ impl SurfaceId {
 			| Self::SessionExportButton(_)
 			| Self::SessionCompactButton(_)
 			| Self::SessionHandoffButton(_)
+			| Self::SessionRetryButton(_)
+			| Self::SessionRephraseButton(_)
 			| Self::ComposerSendButton(_)
 			| Self::ComposerSteerButton(_)
 			| Self::ComposerQueueButton(_)

@@ -84,6 +84,8 @@ const PAYLOADS: Record<string, (other: string, onScreen: string) => unknown> = {
 	Steer: other => ({ session: other, text: "a steer for the other session" }),
 	FollowUp: other => ({ session: other, text: "a follow-up for the other session" }),
 	AbortTurn: (_other, onScreen) => ({ session: onScreen }),
+	RetryTurn: other => ({ session: other }),
+	RephraseReply: other => ({ session: other }),
 	SetQueueMode: (_other, onScreen) => ({ session: onScreen, mode: "Queue" }),
 	SetSessionMode: (_other, onScreen) => ({ session: onScreen, mode: "plan" }),
 	DequeueQueuedPrompt: other => ({ session: other }),
@@ -111,6 +113,8 @@ const LEAVES_THE_SESSION = [
 	"HandoffSession",
 	"LoadTranscript",
 	"OpenSession",
+	"RephraseReply",
+	"RetryTurn",
 	"Steer",
 	"SubmitPrompt",
 ];
@@ -290,7 +294,7 @@ describe("a turn the desktop leaves behind is ended and stated", () => {
 		throw new Error(`the probe for ${session} answered ${JSON.stringify(answer.outcome)}`);
 	}
 
-	// Nineteen actions, each driving a real turn to the point where the model has
+	// Twenty-one actions, each driving a real turn to the point where the model has
 	// produced something and then leaving it: past bun's unit-test budget, and
 	// bounded by the assertions rather than by the clock.
 	test("no action leaves a turn running on a session the client no longer holds", async () => {

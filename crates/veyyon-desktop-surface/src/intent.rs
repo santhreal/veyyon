@@ -220,6 +220,11 @@ pub enum Intent {
 	/// not taken is reachable from the turn that took the other one rather
 	/// than only from the transcript's last prompt.
 	BranchTurn(usize),
+	/// Runs the open session's last turn again, after it failed or was
+	/// stopped.
+	RetryTurn,
+	/// Asks the agent for the reply it just gave again, in plainer prose.
+	RephraseReply,
 	RenameSession {
 		session: u64,
 		title:   String,

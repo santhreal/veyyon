@@ -159,8 +159,9 @@ pub fn transcript_viewport(
 			};
 			let text = turn_text(drawn);
 			let forkable = matches!(drawn, Turn::Operator(_) | Turn::OperatorArtifacts { .. });
+			let last = turn + 1 == menu_turns.len();
 			let _ = menu_view.update(app, |view, cx| {
-				view.open_turn_menu(TurnMenu { turn, origin: event.position, text, forkable });
+				view.open_turn_menu(TurnMenu { turn, origin: event.position, text, forkable, last });
 				cx.notify();
 			});
 		})

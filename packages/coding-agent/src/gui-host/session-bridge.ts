@@ -87,6 +87,8 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	Steer: "Session",
 	FollowUp: "Session",
 	AbortTurn: "Session",
+	RetryTurn: "Session",
+	RephraseReply: "Session",
 	SetQueueMode: "Session",
 	SetSessionMode: "Session",
 	DequeueQueuedPrompt: "Session",

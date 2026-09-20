@@ -161,6 +161,11 @@ fn the_rows_a_turn_menu_offers_are_the_rows_it_answers() {
 		origin:   Point { x: px(0.0), y: px(0.0) },
 		text:     "what does a linker do?".to_owned(),
 		forkable: true,
+		// A turn in the middle of the transcript, so the rows the last answer
+		// offers are out of this reading;
+		// `veyyon-desktop/tests/a-reply-is-run-again-or-said-again-only-where-one-was-given.rs`
+		// owns them.
+		last:     false,
 	};
 	let rows: Vec<(String, Intent)> = turn_menu_items(&forkable)
 		.into_iter()
