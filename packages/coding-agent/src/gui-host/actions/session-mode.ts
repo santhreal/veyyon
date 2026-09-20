@@ -6,13 +6,14 @@
  * for it would enter a mode nothing would then run.
  */
 import { enterVibeMode, exitVibeMode } from "../../session/vibe-mode";
+import { attachLoopBridge, exitLoopMode } from "../loop-bridge";
 import { enterPlanMode, exitPlanMode } from "../plan-approval";
 import { getOrCreateAgentSession } from "../turns";
 import { activeManager, emitActiveSession, replyError } from "./active-session";
 import type { ActionHandler } from "./types";
 
 /** The wire spellings, matching `SettableMode` in `veyyon-desktop-model`. */
-export const SESSION_MODES = ["plan", "vibe", "none"] as const;
+export const SESSION_MODES = ["plan", "vibe", "loop", "none"] as const;
 
 interface SetSessionModePayload {
 	session?: string;
@@ -54,6 +55,7 @@ export const handleSetSessionMode: ActionHandler<SetSessionModePayload | undefin
 	}
 	const inPlan = session.getPlanModeState()?.enabled === true;
 	const inVibe = session.getVibeModeState()?.enabled === true;
+	const inLoop = ctx.clientState.loopDriver?.enabled === true;
 	try {
 		if (mode === "plan") {
 			if (inPlan) {
@@ -74,6 +76,15 @@ export const handleSetSessionMode: ActionHandler<SetSessionModePayload | undefin
 					scope: "Session",
 					code: "MODE_CONFLICT",
 					message: "The session is in vibe mode; leave it before planning",
+					retryable: false,
+				});
+				return;
+			}
+			if (inLoop) {
+				ctx.reply.failure({
+					scope: "Session",
+					code: "MODE_CONFLICT",
+					message: "The session is in loop mode; leave it before planning",
 					retryable: false,
 				});
 				return;
@@ -99,10 +110,58 @@ export const handleSetSessionMode: ActionHandler<SetSessionModePayload | undefin
 				});
 				return;
 			}
+			if (inLoop) {
+				ctx.reply.failure({
+					scope: "Session",
+					code: "MODE_CONFLICT",
+					message: "The session is in loop mode; leave it before directing workers",
+					retryable: false,
+				});
+				return;
+			}
 			// Entering the mode the session is already in is the mode it
 			// already is: `enterVibeMode` returns without a second entry.
 			await enterVibeMode(session);
-		} else if (!(await exitPlanMode(session, ctx.clientState)) && !(await exitVibeMode(session)).left) {
+		} else if (mode === "loop") {
+			if (inLoop) {
+				ctx.reply.success();
+				return;
+			}
+			if (inPlan) {
+				ctx.reply.failure({
+					scope: "Session",
+					code: "MODE_CONFLICT",
+					message: "The session is in plan mode; leave it before looping",
+					retryable: false,
+				});
+				return;
+			}
+			if (inVibe) {
+				ctx.reply.failure({
+					scope: "Session",
+					code: "MODE_CONFLICT",
+					message: "The session is in vibe mode; leave it before looping",
+					retryable: false,
+				});
+				return;
+			}
+			if (ctx.clientState.goalDriver?.active) {
+				ctx.reply.failure({
+					scope: "Session",
+					code: "MODE_CONFLICT",
+					message: "The session has an active goal; exit it before looping",
+					retryable: false,
+				});
+				return;
+			}
+			const driver = await attachLoopBridge(session, ctx.clientState, ctx.socket);
+			session.sessionManager.appendModeChange("loop");
+			driver.start();
+		} else if (
+			!(await exitPlanMode(session, ctx.clientState)) &&
+			!(await exitVibeMode(session)).left &&
+			!(await exitLoopMode(session, ctx.clientState))
+		) {
 			ctx.reply.failure({
 				scope: "Session",
 				code: "NOT_IN_MODE",

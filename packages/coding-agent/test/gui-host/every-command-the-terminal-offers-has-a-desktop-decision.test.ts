@@ -41,7 +41,7 @@ type Decision =
 const DECISIONS: Record<string, Decision> = {
 	settings: { client: "SurfaceRoute::Settings, from the /settings row" },
 	statusline: { client: "the settings sheet's own group" },
-	welcome: { gap: "no surface for a window holding no session" },
+	welcome: { client: "EmptySurface::Welcome, drawn by a window holding no session" },
 	lsp: { client: "SettingsPage::Diagnostics" },
 	setup: { client: "SurfaceRoute::Account" },
 	providers: { client: "SettingsPage::Providers" },
@@ -52,7 +52,7 @@ const DECISIONS: Record<string, Decision> = {
 	vibe: { action: "SetSessionMode" },
 	goal: { host: "answered by the host via GoalDriver, drawn in the goal card and status line" },
 	"guided-goal": { gap: "no goal interview surface" },
-	loop: { gap: "no loop control beside the mode rows" },
+	loop: { action: "SetSessionMode" },
 	queue: { action: "FollowUp" },
 	switch: { action: "SelectModel" },
 	collab: { gap: "no share surface" },
@@ -64,7 +64,7 @@ const DECISIONS: Record<string, Decision> = {
 	agents: { gap: "the extensions page draws extensions, not the agent roster" },
 	branch: { action: "BranchSession" },
 	fork: { action: "BranchSession" },
-	tree: { gap: "the queue rail is flat and draws no branch tree" },
+	tree: { client: "the queue rail's indented, collapsible branch tree" },
 	new: { action: "CreateSession" },
 	drop: { action: "DeleteSession" },
 	resume: { action: "SearchSessions" },
@@ -88,12 +88,9 @@ const RECORDED_GAPS = [
 	"guided-goal",
 	"join",
 	"leave",
-	"loop",
 	"omfg",
 	"profile",
 	"tan",
-	"tree",
-	"welcome",
 ];
 
 /**

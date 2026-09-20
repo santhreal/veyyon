@@ -134,7 +134,7 @@ export interface SessionHeaderView {
 	created_at_ms: number;
 	cwd: string;
 	/**
-	 * The mode the session runs in: `plan`, `plan_paused`, `goal`, `vibe`, or
+	 * The mode the session runs in: `plan`, `plan_paused`, `goal`, `vibe`, `loop`, or
 	 * `none` when the agent runs with everything it has. Read from the last
 	 * mode change the session recorded, so it survives a restart.
 	 */
@@ -692,6 +692,8 @@ export interface AttachmentSubmission {
 	media_type: string;
 	data: string;
 }
+export type SettableMode = "plan" | "vibe" | "loop" | "none";
+export const SETTABLE_MODES = ["plan", "vibe", "loop", "none"] as const;
 
 export type HostAction =
 	| "Detach"
@@ -716,6 +718,7 @@ export type HostAction =
 	| { RunCommand: { session: string; text: string } }
 	| { SetGoal: { session: string; objective: string; token_budget: number | null } }
 	| { ControlGoal: { session: string; op: GoalControl } }
+	| { SetSessionMode: { session: string; mode: SettableMode } }
 	| string
 	| Record<string, unknown>;
 

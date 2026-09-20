@@ -10,6 +10,7 @@ import { errorMessage, logger } from "@veyyon/utils";
 import { formatBytes } from "@veyyon/utils/format";
 import { SUPPORTED_IMAGE_MIME_TYPES, SUPPORTED_VIDEO_MIME_TYPES } from "@veyyon/utils/mime";
 import type { GoalDriver } from "../goals/driver";
+import type { LoopDriver } from "../loop/driver";
 import { initializeExtensions } from "../modes/runtime-init";
 import { createAgentSession } from "../sdk";
 import type { AgentSession } from "../session/agent-session";
@@ -22,6 +23,7 @@ import { writeFrame } from "./frames";
 import { attachGoalBridge, type DesktopGoalBridge } from "./goal-bridge";
 import { goalSection } from "./goal-view";
 import { GuiHostUIContext, InteractionLedger } from "./interactions";
+import { attachLoopBridge, type DesktopLoopBridge } from "./loop-bridge";
 import { publishModelsView } from "./models-view";
 import { enterPlanModeIfConfigured } from "./plan-approval";
 import type { PresentationLedger } from "./presentation";
@@ -97,6 +99,8 @@ export interface ClientSessionState {
 	processFollowers?: Map<string, () => void>;
 	goalDriver?: GoalDriver;
 	goalBridge?: DesktopGoalBridge;
+	loopDriver?: LoopDriver;
+	loopBridge?: DesktopLoopBridge;
 	/** `Steer` or `Queue`: how a prompt sent while a turn runs is delivered. */
 	queueMode?: "Steer" | "Queue";
 	selectedChangeScope?: string;
@@ -219,6 +223,7 @@ async function initializeAgentSession(
 		state.agentSession = session;
 		attachTurnListeners(session, socket, state);
 		await attachGoalBridge(session, state, socket);
+		await attachLoopBridge(session, state, socket);
 		// Publish the model resolved by the session, not a parallel config lookup.
 		await publishModelsView(socket, { clientState: state, ...options });
 		// The full catalogue replaces the builtins-only list a client got
@@ -651,6 +656,10 @@ export async function disposeTurnSession(state: ClientSessionState): Promise<voi
 			error: errorMessage(error),
 		});
 	}
+	state.loopDriver?.unsubscribeFromSession();
+	state.loopDriver?.cancelAutoSubmit();
+	state.goalDriver?.unsubscribeFromSession();
+	state.goalDriver?.cancelContinuation();
 	state.unsubscribeSession?.();
 	state.unsubscribeSession = undefined;
 	state.unsubscribeAgents?.();

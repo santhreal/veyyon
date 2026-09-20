@@ -146,12 +146,10 @@ import { getSessionAccentAnsi, getSessionAccentHex } from "../../utils/session-c
 import { messageHasDisplayableThinking } from "../../utils/thinking-display";
 import { popTerminalTitle, pushTerminalTitle, setSessionTerminalTitle } from "../../utils/title-generator";
 import { recordLaunchFacts } from "../launch-facts";
+import { LoopDriver } from "../../loop";
 import {
-	consumeLoopLimitIteration,
-	createLoopLimitRuntime,
 	describeLoopLimit,
 	describeLoopLimitRuntime,
-	isLoopDurationExpired,
 	type LoopLimitRuntime,
 	parseLoopLimitArgs,
 } from "../loop-limit";
@@ -351,10 +349,25 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 	vibeModeEnabled = false;
 	planModePlanFilePath: string | undefined = undefined;
-	loopModeEnabled = false;
-	loopPrompt: string | undefined = undefined;
-	loopLimit: LoopLimitRuntime | undefined = undefined;
-	#loopAutoSubmitTimer: NodeJS.Timeout | undefined;
+	readonly #loopDriver: LoopDriver;
+	get loopModeEnabled(): boolean {
+		return this.#loopDriver.enabled;
+	}
+	set loopModeEnabled(value: boolean) {
+		this.#loopDriver.enabled = value;
+	}
+	get loopPrompt(): string | undefined {
+		return this.#loopDriver.prompt;
+	}
+	set loopPrompt(value: string | undefined) {
+		this.#loopDriver.prompt = value;
+	}
+	get loopLimit(): LoopLimitRuntime | undefined {
+		return this.#loopDriver.limit;
+	}
+	set loopLimit(value: LoopLimitRuntime | undefined) {
+		this.#loopDriver.limit = value;
+	}
 	#todoAutoClearTimer: NodeJS.Timeout | undefined;
 	#modelCycleClearTimer: NodeJS.Timeout | undefined;
 	/**
@@ -896,6 +909,36 @@ export class InteractiveMode implements InteractiveModeContext {
 				this.#pendingSubmittedInput !== undefined && !this.#pendingSubmittedInput.customType,
 			withProgress: (label, work) => this.#withGuidedGoalProgress(label, work),
 		});
+		this.#loopDriver = new LoopDriver({
+			session: this.session,
+			blockingMode: () => {
+				if (this.planModeEnabled || this.planModePaused) return "plan";
+				if (this.vibeModeEnabled) return "vibe";
+				if (this.#goalMode.active) return "goal";
+				return undefined;
+			},
+			isAutoSubmitBlocked: () => this.#isAutoSubmitBlocked(),
+			loopAction: () => settings.get("loop.mode") as "prompt" | "compact" | "reset",
+			canSubmit: () => this.onInputCallback !== undefined,
+			submitPrompt: prompt => {
+				if (this.onInputCallback) {
+					this.onInputCallback(this.startPendingSubmission({ text: prompt }));
+				}
+			},
+			compact: async () => {
+				await this.handleCompactCommand();
+			},
+			clear: async () => {
+				await this.handleClearCommand();
+			},
+			warn: message => {
+				this.showStatus(message);
+			},
+			changed: () => {
+				this.statusLine.setLoopModeStatus(this.#loopDriver.enabled ? { enabled: true } : undefined);
+				this.ui.requestRender();
+			},
+		});
 		this.#workingLoader = new WorkingLoaderController(this);
 		this.#observerRegistry = new SessionObserverRegistry();
 	}
@@ -1268,11 +1311,13 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#subscribeToAgent();
 
 		this.#goalMode.subscribeToSession();
+		this.#loopDriver.subscribeToSession();
 
 		this.#eventBusUnsubscribers.push(
 			// The goal subscription is re-pointed on a session handoff, so dispose
 			// whichever one is current rather than capturing today's unsubscriber.
 			() => this.#goalMode.unsubscribeFromSession(),
+			() => this.#loopDriver.unsubscribeFromSession(),
 			onStatusLineSessionAccentChanged(() => {
 				this.#syncStatusLineSettings();
 				this.#handleSessionAccentInputsChanged();
@@ -1560,37 +1605,11 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.onInputCallback = undefined;
 			resolve(input);
 		};
-		this.#scheduleLoopAutoSubmit();
+		this.#loopDriver.scheduleAutoSubmit();
 		this.#goalMode.scheduleContinuation();
 
 		using _ = new EventLoopKeepalive();
 		return await promise;
-	}
-
-	#scheduleLoopAutoSubmit(): void {
-		this.#cancelLoopAutoSubmit();
-		if (!this.loopModeEnabled || !this.loopPrompt) return;
-		const prompt = this.loopPrompt;
-		const loopAction = settings.get("loop.mode");
-		this.#deferLoopAutoSubmit(() => {
-			void this.#runLoopIteration(loopAction, prompt);
-		});
-	}
-
-	#deferLoopAutoSubmit(callback: () => void): void {
-		// Brief delay so the user has a chance to press Esc between iterations.
-		this.#loopAutoSubmitTimer = setTimeout(() => {
-			this.#loopAutoSubmitTimer = undefined;
-			if (!this.loopModeEnabled || !this.onInputCallback) return;
-			callback();
-		}, 800);
-	}
-
-	#cancelLoopAutoSubmit(): void {
-		if (this.#loopAutoSubmitTimer) {
-			clearTimeout(this.#loopAutoSubmitTimer);
-			this.#loopAutoSubmitTimer = undefined;
-		}
 	}
 
 	#isAutoSubmitBlocked(): boolean {
@@ -1619,62 +1638,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 	}
 
-	#submitLoopPromptWhenReady(prompt: string): void {
-		if (!this.loopModeEnabled || this.loopPrompt !== prompt || !this.onInputCallback) return;
-		if (isLoopDurationExpired(this.loopLimit)) {
-			this.disableLoopMode("Loop time limit reached. Loop mode disabled.");
-			return;
-		}
-		if (this.#isAutoSubmitBlocked()) {
-			this.#deferLoopAutoSubmit(() => this.#submitLoopPromptWhenReady(prompt));
-			return;
-		}
-		this.onInputCallback(this.startPendingSubmission({ text: prompt }));
-	}
-
-	async #runLoopIteration(action: "prompt" | "compact" | "reset", prompt: string): Promise<void> {
-		if (!this.loopModeEnabled || this.loopPrompt !== prompt || !this.onInputCallback) return;
-		if (this.#isAutoSubmitBlocked()) {
-			this.#deferLoopAutoSubmit(() => {
-				void this.#runLoopIteration(action, prompt);
-			});
-			return;
-		}
-
-		if (!consumeLoopLimitIteration(this.loopLimit)) {
-			this.disableLoopMode("Loop limit reached. Loop mode disabled.");
-			return;
-		}
-
-		if (action === "compact") {
-			await this.handleCompactCommand();
-		} else if (action === "reset") {
-			await this.handleClearCommand();
-		}
-		this.#submitLoopPromptWhenReady(prompt);
-	}
-
 	disableLoopMode(message = "Loop mode disabled."): void {
-		const wasEnabled = this.loopModeEnabled;
-		this.loopModeEnabled = false;
-		this.loopPrompt = undefined;
-		this.loopLimit = undefined;
-		this.#cancelLoopAutoSubmit();
-		this.statusLine.setLoopModeStatus(undefined);
-		this.ui.requestRender();
-		if (wasEnabled) {
-			this.showStatus(message);
-		}
+		this.#loopDriver.stop(message);
 	}
 
-	/**
-	 * Pause the loop without exiting it: drops the captured prompt and any
-	 * pending auto-resubmit. Loop mode stays enabled — the next prompt the
-	 * user submits becomes the new loop prompt and resumes iteration.
-	 */
 	pauseLoop(): void {
-		this.loopPrompt = undefined;
-		this.#cancelLoopAutoSubmit();
+		this.#loopDriver.pause();
 	}
 
 	async handleLoopCommand(args = ""): Promise<string | undefined> {
@@ -1687,21 +1656,13 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.showError(parsed);
 			return undefined;
 		}
-		this.loopModeEnabled = true;
-		this.loopPrompt = undefined;
-		this.loopLimit = createLoopLimitRuntime(parsed.limit);
-		this.statusLine.setLoopModeStatus({ enabled: true });
-		this.ui.requestRender();
+		this.#loopDriver.start({ limit: parsed.limit, prompt: undefined });
 		const limitSuffix = parsed.limit ? ` Limited to ${describeLoopLimit(parsed.limit)}.` : "";
 		const remainingSuffix = this.loopLimit ? ` ${describeLoopLimitRuntime(this.loopLimit)}.` : "";
 		const tail = parsed.prompt ? "Repeating it after each turn." : "Your next prompt will repeat after each turn.";
 		this.showStatus(
 			`Loop mode enabled.${limitSuffix}${remainingSuffix} ${tail} Esc cancels the current iteration; /loop again to disable.`,
 		);
-		// Hand any inline prompt back to the dispatcher so the normal submit flow
-		// runs the first iteration — it records the text as the loop prompt and
-		// auto-resubmits it after each yield, identical to typing the prompt right
-		// after enabling loop mode.
 		return parsed.prompt;
 	}
 
@@ -2472,6 +2433,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 
 		await this.#goalMode.clearTransientState();
+		this.#loopDriver.stop();
 
 		if (this.vibeModeEnabled) {
 			// The mode entry is left alone: a resume reads it moments later to
@@ -2487,6 +2449,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		await this.#clearTransientModeState();
 		const sessionContext = this.sessionManager.buildSessionContext();
 		if ((await this.#goalMode.restoreFromSession(sessionContext, options)) === "handled") {
+			return;
+		}
+		if ((await this.#loopDriver.restoreFromSession(sessionContext)) === "handled") {
 			return;
 		}
 		this.session.goalRuntime.clearAccounting();
@@ -3485,6 +3450,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#cancelAnchoredMotionTimer();
 		this.#cancelObserverUiSyncTimer();
 		this.#goalMode.cancelContinuation();
+		this.#loopDriver.cancelAutoSubmit();
+		this.#loopDriver.unsubscribeFromSession();
 		this.#voiceController.dispose();
 		this.#extensionUiController.clearExtensionTerminalInputListeners();
 		this.#extensionUiController.clearHookWidgets();
@@ -4533,6 +4500,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
 		this.#goalMode.unsubscribeFromSession();
+		this.#loopDriver.unsubscribeFromSession();
 		this.session = next;
 		this.sessionManager = next.sessionManager;
 		this.settings = next.settings;
@@ -4540,6 +4508,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#eventController.resetTranscriptAnchors();
 		this.#subscribeToAgent();
 		this.#goalMode.subscribeToSession();
+		this.#loopDriver.subscribeToSession();
 		this.statusProducer.setSession(next);
 		this.statusLine.setSource(this.statusProducer);
 		if (next.isStreaming) void this.#eventController.handleEvent({ type: "agent_start" });

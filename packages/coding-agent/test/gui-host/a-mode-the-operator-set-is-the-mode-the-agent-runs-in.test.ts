@@ -364,6 +364,19 @@ describe("a mode the operator set is the mode the agent runs in", () => {
 		expect(await recordedModes(session, 3)).toEqual(["plan", "none", "vibe"]);
 	});
 
+	test("entering loop mode states loop mode on the header and leaving it clears it", async () => {
+		const session = await openSession();
+		const entered = await client.request(2, { SetSessionMode: { session, mode: "loop" } });
+		expect(entered.outcome).toEqual({ RequestSucceeded: { request: 2 } });
+
+		expect(activeSession(entered.frames)?.value.mode).toBe("loop");
+
+		// Leaving loop mode resets to none
+		const left = await client.request(3, { SetSessionMode: { session, mode: "none" } });
+		expect(left.outcome).toEqual({ RequestSucceeded: { request: 3 } });
+		expect(activeSession(left.frames)?.value.mode).toBe("none");
+	});
+
 	test("a mode the operator does not own, and a name that is not a mode, are refused", async () => {
 		const session = await openSession();
 
@@ -378,7 +391,7 @@ describe("a mode the operator set is the mode the agent runs in", () => {
 			request += 1;
 			const failure = refused.outcome as Failure;
 			expect(failure.RequestFailed?.error.code).toBe("INVALID_ARGUMENTS");
-			expect(failure.RequestFailed?.error.message).toBe("SetSessionMode mode must be one of plan, vibe, none");
+			expect(failure.RequestFailed?.error.message).toBe("SetSessionMode mode must be one of plan, vibe, loop, none");
 		}
 
 		expect(await turn(session, request)).toBe(false);

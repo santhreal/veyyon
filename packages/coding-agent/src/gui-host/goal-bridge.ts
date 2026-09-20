@@ -39,6 +39,7 @@ export class DesktopGoalBridge implements GoalDriverPort {
 	blockingMode(): "plan" | "vibe" | "loop" | undefined {
 		if (this.session.getPlanModeState()?.enabled) return "plan";
 		if (this.session.getVibeModeState()?.enabled) return "vibe";
+		if (this.clientState.loopDriver?.enabled) return "loop";
 		return undefined;
 	}
 
