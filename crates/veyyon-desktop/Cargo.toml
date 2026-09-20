@@ -38,6 +38,10 @@ veyyon-test-scratch.workspace = true
 name = "veyyon-desktop"
 path = "src/main.rs"
 [[bench]]
+name = "session_frame_cost"
+harness = false
+
+[[bench]]
 name = "streaming_turn_damage"
 harness = false
 
