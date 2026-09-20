@@ -6,21 +6,19 @@
 //! split or floated inside the session surface.
 
 pub mod blue_noise;
+mod chrome;
 pub mod grain;
 mod panel;
 mod queue;
 
 use veyyon_desktop_kit::{ColorRole, SpacingStep, TextRamp};
-use veyyon_desktop_model::SurfaceId;
 use veyyon_desktop_tokens::QueueMode;
 use veyyon_gpui::{Context, InteractiveElement, IntoElement, ParentElement, Styled, Window, div};
 
 use super::{
-	connection::connection_banner,
 	keys::bind_global_keys,
-	pause::{pause_strip, pause_strip_height},
 	session::session_surface,
-	titlebar::{TitlebarState, attention_strip, attention_strip_height, titlebar},
+	titlebar::{TitlebarState, titlebar},
 };
 use crate::{
 	ShellView,
@@ -51,16 +49,7 @@ pub fn render_shell(
 		.map_or(0.0, |bounds| f32::from(bounds.size.height));
 	let now = cx.background_executor().now();
 	view.sync_transcript_viewport(transcript_height, now);
-	let chrome_px = view.installed().surface.shell.titlebar_height_px
-		+ if view.has_notice() {
-			attention_strip_height(&view.installed().set)
-		} else {
-			0.0
-		} + if view.state().paused.is_some() {
-		pause_strip_height(&view.installed().set)
-	} else {
-		0.0
-	};
+	let chrome_px = chrome::chrome_height(view);
 	let viewport_w = f32::from(window.viewport_size().width);
 	let viewport_h = f32::from(window.viewport_size().height);
 	let floats = matches!(
@@ -202,28 +191,7 @@ pub fn render_shell(
 		.track_children(root, move |index| (index == titlebar_ix).then_some(Region::Titlebar));
 	let mut root = bind_global_keys(root, cx);
 
-	if let Some(banner) = connection_banner(
-		&view.state().connection,
-		&view.state().controls,
-		view.clock_ms(),
-		&tokens,
-		cx,
-	) {
-		root = root.child(banner);
-	}
-
-	// Below the banner and above the notice: a window that is not attached
-	// has no agents to have frozen, and a freeze outlasts anything the
-	// notice strip is reporting.
-	if let Some(elapsed) = view.state().paused.clone() {
-		root = root.child(pause_strip(&elapsed, &tokens, cx));
-	}
-
-	if let Some(notice) = view.notice() {
-		root = root.child(attention_strip(notice, &tokens));
-	} else if let Some(err) = view.state().controls.error(&SurfaceId::GlobalTitlebarLine) {
-		root = root.child(attention_strip(&err.message, &tokens));
-	}
+	root = chrome::chrome_strips(root, view, &tokens, cx);
 
 	// A phase answered by the banner keeps the cached queue and transcript
 	// behind it, so a dialog phase alone replaces the columns (§8.12).
