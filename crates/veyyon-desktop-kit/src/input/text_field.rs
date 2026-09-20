@@ -79,10 +79,15 @@ impl RenderOnce for TextField {
 			container = container.cursor_text();
 		}
 
+		// The editor wraps what it holds to as many lines as the text needs,
+		// and the field shows one of them: the one the caret is on. The box it
+		// draws in is a whole line tall, so the band cuts between lines rather
+		// than through the one below.
 		container.child(
 			div()
 				.flex_1()
 				.min_w_0()
+				.h(tokens.line_height(metrics.ramp))
 				.overflow_hidden()
 				.child(self.editor),
 		)

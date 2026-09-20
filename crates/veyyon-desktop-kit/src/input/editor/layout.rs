@@ -276,6 +276,13 @@ impl EditorLayoutState {
 
 	/// Computes the adjusted scroll offset to keep `caret_offset` visible within
 	/// `bounds` and clamps against `total_height`.
+	///
+	/// The offset is a whole number of lines. A viewport is rarely a whole
+	/// number of them, and an offset taken straight off the caret cuts the top
+	/// line through the middle of its glyphs against the field's own rim, which
+	/// reads as a misdraw rather than as text that continues above. The slack
+	/// that leaves sits at the bottom of the viewport, on the field's ground,
+	/// where there is nothing to cut.
 	#[must_use]
 	pub fn compute_scroll_top(&self, caret_offset: usize, current_scroll: Pixels) -> Pixels {
 		let viewport_height = self.bounds.size.height;
@@ -283,7 +290,7 @@ impl EditorLayoutState {
 			return Pixels::ZERO;
 		}
 
-		let max_scroll = (self.total_height - viewport_height).max(Pixels::ZERO);
+		let max_scroll = self.whole_lines(self.total_height - viewport_height);
 		let mut scroll = current_scroll.min(max_scroll).max(Pixels::ZERO);
 
 		let (caret_top, caret_bottom) = if self.visual_lines.is_empty() {
@@ -300,9 +307,19 @@ impl EditorLayoutState {
 		if caret_top < scroll {
 			scroll = caret_top;
 		} else if caret_bottom > scroll + viewport_height {
-			scroll = caret_bottom - viewport_height;
+			scroll = self.whole_lines(caret_bottom - viewport_height);
 		}
 
 		scroll.clamp(Pixels::ZERO, max_scroll)
+	}
+
+	/// `height` rounded up to the next whole line, never below zero.
+	fn whole_lines(&self, height: Pixels) -> Pixels {
+		let line_height = f32::from(self.line_height);
+		let height = f32::from(height);
+		if line_height <= 0.0 || height <= 0.0 {
+			return Pixels::ZERO;
+		}
+		px((height / line_height).ceil() * line_height)
 	}
 }
