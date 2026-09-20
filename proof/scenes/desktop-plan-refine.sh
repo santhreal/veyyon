@@ -36,7 +36,7 @@
 #     proof/docker/record-native.sh proof/scenes/desktop-plan-refine.sh
 #
 # WHAT IS MEASURED. Two authored colours and one band of the window.
-#   * `tint.plan.fill` is the ring a plan card is bordered with, so a row
+#   * `tint.plan.ink` is the colour a plan card is bordered with, so a row
 #     carrying it across half the card's measure is one of that card's edges.
 #   * `role.accent` fills the affirmative answer the card offers, which is the
 #     acceptance beside the revision.
@@ -55,7 +55,7 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 ARM="${SCENE_ARM:-after}"
 echo "scene: recording the ${ARM} arm" >&2
 
-RING="$(theme_colour tint.plan.fill)"
+RING="$(theme_colour tint.plan.ink)"
 ACCENT="$(theme_colour role.accent)"
 echo "scene: a plan rings in ${RING} and affirms in ${ACCENT}" >&2
 

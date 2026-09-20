@@ -36,7 +36,7 @@
 #     proof/docker/record-native.sh proof/scenes/desktop-plan-review.sh
 #
 # WHAT IS MEASURED. Two authored colours over one band of the window.
-#   * `tint.plan.fill` is the ring a plan card is bordered with, so a row
+#   * `tint.plan.ink` is the colour a plan card is bordered with, so a row
 #     carrying it across half the card's measure is one of that card's edges,
 #     and a band with no such row is a band with no card in it.
 #   * `role.accent` fills the affirmative answer the card offers, which is what
@@ -71,11 +71,13 @@ fi
 CARD_BAND="${COMPOSER_CARD_W}x${CARD_BAND_H}+${COMPOSER_CARD_LEFT}+$(( WIN_Y + TITLEBAR_H ))"
 echo "scene: a plan can occupy ${CARD_BAND}" >&2
 
-# The composer's primary control: the box in the card's footer against its
-# trailing inset, which reads `Accept` while a plan is up and no draft is under
-# it, and is the affirmative answer this scene presses.
-PRIMARY_X=$(( COMPOSER_CARD_LEFT + COMPOSER_CARD_W - CARD_PAD_H - GUTTER_PX ))
-PRIMARY_Y=$(( COMPOSER_CARD_BOTTOM - CARD_PAD_BOTTOM - GUTTER_PX ))
+# The affirmative answer this scene presses, read off the frame the card is in
+# rather than computed here: the stack the card joins is laid out with the
+# composer, so where the card's own answers are drawn is a property of the
+# frame with the card up.
+plan_answer_at() { # <png> -> "X Y" on the screen
+	plan_answer_centre "$1" "${CARD_BAND}" "${COMPOSER_CARD_W}"
+}
 
 # Somewhere with nothing under the pointer for every reading, so no hover fill
 # is in one frame and not another.
@@ -206,10 +208,12 @@ shot plan-raised
 RAISED="$(card_state "${SCENE_OUT}/${SCENE_NAME}-plan-raised.png")"
 
 # ─── Answering It ────────────────────────────────────────────────────────────
-# With nothing in the composer the control reads `Accept`, which is the answer
-# that leaves plan mode and starts the work.
+# The card's affirmative answer, which is the one that leaves plan mode and
+# starts the work. The frame just taken states where it is.
 if [ "${RAISED}" = "1" ]; then
-	move_px "${PRIMARY_X}" "${PRIMARY_Y}"
+	read -r ANSWER_X ANSWER_Y < <(plan_answer_at "${SCENE_OUT}/${SCENE_NAME}-plan-raised.png")
+	echo "scene: the plan's affirmative answer is at ${ANSWER_X},${ANSWER_Y}" >&2
+	move_px "${ANSWER_X}" "${ANSWER_Y}"
 	pause 0.4
 	click
 	pause 3.0

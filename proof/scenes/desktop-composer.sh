@@ -758,13 +758,16 @@ approve_tint_pixels() { # <png> <crop> -> pixels of a waiting decision's edge in
 }
 
 # ─── What A Plan Card Is On The Screen ───────────────────────────────────────
-# A plan card is ringed in `[tint.plan] fill` and offers its affirmative answer
-# filled with `[role] accent`, and nothing else attached above the composer
-# paints that pair. So one pass over the band a card can occupy reports both:
-# the rows where the ring crosses at least half the card's measure, which are
-# the card's own edges, and the accent between those edges, which is the answer
-# it offers. A band with no card reports no edges, which is how a scene reads
-# the absence of one rather than inferring it from a low count.
+# Every attached card is grounded in `[role] float` and bordered in the ink of
+# the tint that names its kind, so `[tint.plan] ink` is the colour a plan card
+# is ringed with and no other card kind carries. It offers its affirmative
+# answer filled with `[role] accent`, and nothing else attached above the
+# composer paints that pair. So one pass over the band a card can occupy
+# reports both: the rows where the ring crosses at least half the card's
+# measure, which are the card's own edges, and the accent between those edges,
+# which is the answer it offers. A band with no card reports no edges, which is
+# how a scene reads the absence of one rather than inferring it from a low
+# count.
 #
 # Both colours are read from the theme this checkout ships, so a retheme moves
 # the reading with it.
@@ -780,7 +783,7 @@ theme_colour() { # <dotted> -> the colour the shipped dark theme states there
 plan_card_reading() { # <png> <card-band-crop> <card-width> -> "RING_PX TOP BOTTOM ACCENT_PX"
 	local dump="${TMPDIR}/frame-compare/plan-card-reading.txt" ring accent
 	mkdir -p "${TMPDIR}/frame-compare"
-	ring="$(theme_colour tint.plan.fill)"
+	ring="$(theme_colour tint.plan.ink)"
 	accent="$(theme_colour role.accent)"
 	magick "$1" -crop "$2" +repage txt:- >"${dump}"
 	python3 - "${dump}" "${ring#\#}" "${accent#\#}" "$3" <<'PY'
@@ -800,9 +803,10 @@ def near(colour, wanted, tolerance):
 
 ring, accent = (rgb(argument.upper()) for argument in sys.argv[2:4])
 width = int(sys.argv[4])
-# The hairline sits seven steps from the plan ring on its nearest channel, so
-# three is under it and cannot collect the neighbour. The accent's nearest
-# neighbour is the focus colour, twenty-seven away on one channel.
+# The plan ring's nearest neighbour is the foreground, twenty steps away on
+# every channel, so three is far under it and cannot collect a glyph. The
+# accent's nearest neighbour is the focus colour, twenty-seven away on one
+# channel.
 ring_rows, accent_rows, ring_total = {}, {}, 0
 for line in open(sys.argv[1], encoding="ascii"):
 	found = PIXEL.match(line)
@@ -823,5 +827,69 @@ if not edges:
 top, bottom = edges[0], edges[-1]
 accent_pixels = sum(count for row, count in accent_rows.items() if top < row < bottom)
 print(f"{ring_total} {top} {bottom} {accent_pixels}")
+PY
+}
+
+# Where the affirmative answer is drawn, so a scene presses the card's own
+# control rather than a point it computed from the composer.
+#
+# The composer is not where it was. A card attaches above it and the stack is
+# laid out as one, so a session whose transcript is empty draws that stack
+# centred and the composer sits lower with a card up than without one: a press
+# aimed at the composer's trailing control from a measurement taken before the
+# card arrived lands in the gap between them and answers nothing. The accent
+# between the ring's own edges is the answer the card offers, and its middle is
+# the only point that moves with the card.
+plan_answer_centre() { # <png> <card-band-crop> <card-width> -> "X Y" on the screen
+	local dump="${TMPDIR}/frame-compare/plan-answer-centre.txt" accent ring offsets
+	mkdir -p "${TMPDIR}/frame-compare"
+	ring="$(theme_colour tint.plan.ink)"
+	accent="$(theme_colour role.accent)"
+	offsets="${2#*+}"
+	magick "$1" -crop "$2" +repage txt:- >"${dump}"
+	python3 - "${dump}" "${ring#\#}" "${accent#\#}" "$3" \
+		"${offsets%%+*}" "${offsets##*+}" <<'PY'
+import re
+import sys
+
+PIXEL = re.compile(r"^(\d+),(\d+): \([^)]*\)\s+#([0-9A-Fa-f]{6})")
+
+
+def rgb(text):
+	return (int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16))
+
+
+def near(colour, wanted, tolerance):
+	return all(abs(a - b) <= tolerance for a, b in zip(colour, wanted))
+
+
+ring, accent = (rgb(argument.upper()) for argument in sys.argv[2:4])
+width, left, top_offset = (int(argument) for argument in sys.argv[4:7])
+ring_rows, accent_pixels = {}, []
+for line in open(sys.argv[1], encoding="ascii"):
+	found = PIXEL.match(line)
+	if not found:
+		continue
+	column, row = int(found.group(1)), int(found.group(2))
+	colour = rgb(found.group(3).upper())
+	if near(colour, ring, 3):
+		ring_rows[row] = ring_rows.get(row, 0) + 1
+	elif near(colour, accent, 10):
+		accent_pixels.append((column, row))
+
+edges = sorted(row for row, count in ring_rows.items() if count >= width // 2)
+if not edges:
+	raise SystemExit("no ringed card in the band")
+
+inside = [(x, y) for x, y in accent_pixels if edges[0] < y < edges[-1]]
+if not inside:
+	raise SystemExit("the ringed card offers no accent-filled answer")
+
+columns = [x for x, _ in inside]
+rows = [y for _, y in inside]
+print(
+	(min(columns) + max(columns)) // 2 + left,
+	(min(rows) + max(rows)) // 2 + top_offset,
+)
 PY
 }
