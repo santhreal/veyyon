@@ -47,6 +47,8 @@ impl MenuSectionId {
 				Command::TogglePinSelected,
 				Command::ToggleDeferSelected,
 				Command::ToggleParkSelected,
+				Command::FoldSelectedBranch,
+				Command::UnfoldSelectedBranch,
 				Command::FilterQueue,
 				Command::CloseTabOrPark,
 			],

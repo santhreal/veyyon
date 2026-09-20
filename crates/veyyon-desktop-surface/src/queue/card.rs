@@ -78,13 +78,18 @@ pub fn card_row(
 			.child(badge.label())
 	});
 
+	let indent_px = super::tree::indent_px(row, geometry);
+	let depth_indicator = super::tree::depth_note(row, geometry, tokens);
+	let collapse_btn = super::tree::collapse_control("queue-card-collapse", row, view.as_ref());
 	let badge_slot = div()
 		.flex_shrink_0()
 		.flex()
 		.flex_row()
 		.items_center()
 		.gap(tokens.spacing(SpacingStep::S1))
-		.children(badge_element);
+		.children(collapse_btn)
+		.children(badge_element)
+		.children(depth_indicator);
 
 	let park_id = id;
 	let defer_id = id;
@@ -201,7 +206,8 @@ pub fn card_row(
 		.hover(move |style| style.bg(hover_bg))
 		.flex_shrink_0()
 		.h(px(card_height.max(geometry.card_px)))
-		.mx(px(geometry.row_inset))
+		.mr(px(geometry.row_inset))
+		.ml(px(geometry.row_inset + indent_px))
 		.pt(px(geometry.card_padding_top))
 		.pb(px(geometry.card_padding_bottom))
 		.px(px(geometry.card_padding_horizontal))

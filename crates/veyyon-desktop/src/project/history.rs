@@ -46,29 +46,30 @@ pub fn project_history(store: &Store, state: &mut ShellState, now_ms: u64) {
 					.into_iter()
 					.enumerate()
 					.map(|(index, session)| PaletteItem {
-						id:         index as u64 + 1,
-						title:      session
+						id:             index as u64 + 1,
+						title:          session
 							.title
 							.clone()
 							.or_else(|| session.first_message.clone())
 							.filter(|title| !title.is_empty())
 							.unwrap_or_else(|| "Untitled session".into()),
-						subtitle:   session.first_message.clone(),
-						group:      Some(format!(
+						subtitle:       session.first_message.clone(),
+						group:          Some(format!(
 							"{} · {}",
 							history_date(session.modified_at_ms, now_ms),
 							session.cwd
 						)),
-						search:     None,
-						badge:      None,
-						meta:       Some(PaletteMeta::Note(format!(
+						search:         None,
+						badge:          None,
+						meta:           Some(PaletteMeta::Note(format!(
 							"{} messages · Preview",
 							session.message_count
 						))),
-						capability: Some(Capability::Transcript),
-						kind:       PaletteItemKind::Command {
+						capability:     Some(Capability::Transcript),
+						kind:           PaletteItemKind::Command {
 							intent: Box::new(Intent::PreviewSession(session.id.0.clone())),
 						},
+						takes_argument: false,
 					})
 					.collect(),
 			);

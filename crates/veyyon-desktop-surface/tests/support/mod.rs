@@ -63,29 +63,32 @@ pub fn state() -> ShellState {
 		sections: vec![
 			(Section::Live, vec![
 				Row {
-					id:        7,
-					title:     "first".to_owned(),
-					subtitle:  String::new(),
-					badge:     Some(Badge::Working),
-					meta:      None,
+					id: 7,
+					title: "first".to_owned(),
+					subtitle: String::new(),
+					badge: Some(Badge::Working),
+					meta: None,
 					placement: Section::Live,
+					..Default::default()
 				},
 				Row {
-					id:        9,
-					title:     "second".to_owned(),
-					subtitle:  String::new(),
-					badge:     None,
-					meta:      None,
+					id: 9,
+					title: "second".to_owned(),
+					subtitle: String::new(),
+					badge: None,
+					meta: None,
 					placement: Section::Live,
+					..Default::default()
 				},
 			]),
 			(Section::Parked, vec![Row {
-				id:        11,
-				title:     "third".to_owned(),
-				subtitle:  String::new(),
-				badge:     None,
-				meta:      None,
+				id: 11,
+				title: "third".to_owned(),
+				subtitle: String::new(),
+				badge: None,
+				meta: None,
 				placement: Section::Parked,
+				..Default::default()
 			}]),
 		],
 		transcript: Vec::new(),

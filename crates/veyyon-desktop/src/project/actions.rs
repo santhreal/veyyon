@@ -42,6 +42,23 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::SelectSession(row) => index.session_of(*row).map_or_else(Vec::new, |session| {
 			vec![HostAction::OpenSession { session: session.clone() }, HostAction::RefreshChanges]
 		}),
+		// The fold is the window's own record of what it lists, so it is
+		// written to the store the rail is projected from and no action is
+		// sent. A path the host never listed is still recorded: the branch
+		// comes back folded when that session does.
+		Intent::ToggleQueueParent(path) => {
+			let folded = &mut store
+				.persisted
+				.shell
+				.navigation
+				.active_mut()
+				.queue
+				.collapsed_parents;
+			if !folded.remove(path) {
+				folded.insert(path.clone());
+			}
+			Vec::new()
+		},
 		Intent::Send { text, attachments } => active.map_or_else(Vec::new, |session| {
 			vec![HostAction::SubmitPrompt {
 				session,
@@ -93,9 +110,9 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 				token_budget: *token_budget,
 			}]
 		}),
-		Intent::ControlGoal { op } => active.map_or_else(Vec::new, |session| {
-			vec![HostAction::ControlGoal { session, op: *op }]
-		}),
+		Intent::ControlGoal { op } => {
+			active.map_or_else(Vec::new, |session| vec![HostAction::ControlGoal { session, op: *op }])
+		},
 		Intent::SelectModel { choice, persist } => {
 			vec![HostAction::SelectModel {
 				provider: choice.provider.clone(),

@@ -57,8 +57,15 @@ fn make_compact_all_sections_state() -> ShellState {
 			} else {
 				sec
 			};
-			let r =
-				Row { id, title, subtitle: "repo".into(), badge, meta: Some("2m".into()), placement };
+			let r = Row {
+				id,
+				title,
+				subtitle: "repo".into(),
+				badge,
+				meta: Some("2m".into()),
+				placement,
+				..Default::default()
+			};
 			(sec, vec![r])
 		})
 		.collect();

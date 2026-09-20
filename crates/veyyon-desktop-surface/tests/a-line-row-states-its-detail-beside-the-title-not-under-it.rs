@@ -166,20 +166,22 @@ fn bands_in(runs: &[(f32, f32, f32, f32)], row: Bounds<Pixels>) -> Vec<(f32, f32
 fn session_rows() -> Vec<(Section, Vec<Row>)> {
 	vec![(Section::Live, vec![
 		Row {
-			id:        7,
-			title:     "port the loader".into(),
-			subtitle:  "ws-default".into(),
-			badge:     Some(Badge::Working),
-			meta:      None,
+			id: 7,
+			title: "port the loader".into(),
+			subtitle: "ws-default".into(),
+			badge: Some(Badge::Working),
+			meta: None,
 			placement: Section::Live,
+			..Default::default()
 		},
 		Row {
-			id:        8,
-			title:     "rewrite the walker cache".into(),
-			subtitle:  "veyyon · feat/gui".into(),
-			badge:     None,
-			meta:      None,
+			id: 8,
+			title: "rewrite the walker cache".into(),
+			subtitle: "veyyon · feat/gui".into(),
+			badge: None,
+			meta: None,
 			placement: Section::Live,
+			..Default::default()
 		},
 	])]
 }
@@ -189,15 +191,16 @@ fn session_rows() -> Vec<(Section, Vec<Row>)> {
 fn overlong() -> PaletteState {
 	let mut state = PaletteState::new(PaletteMode::Commands);
 	state.set_items(vec![PaletteItem {
-		id:         1,
-		title:      "/".to_string() + &"a-command-with-a-name-nobody-would-type".repeat(4),
-		subtitle:   Some("a description at least as long as the name above it".repeat(3)),
-		group:      None,
-		search:     None,
-		badge:      None,
-		meta:       None,
-		capability: None,
-		kind:       PaletteItemKind::Command { intent: Box::new(Intent::NewSession) },
+		id:             1,
+		title:          "/".to_string() + &"a-command-with-a-name-nobody-would-type".repeat(4),
+		subtitle:       Some("a description at least as long as the name above it".repeat(3)),
+		group:          None,
+		search:         None,
+		badge:          None,
+		meta:           None,
+		capability:     None,
+		kind:           PaletteItemKind::Command { intent: Box::new(Intent::NewSession) },
+		takes_argument: false,
 	}]);
 	state
 }

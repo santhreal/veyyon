@@ -1,15 +1,15 @@
-//! WHY: The keyboard table declares seven chords in the `queue` scope (§5.14),
-//! and GPUI matches a chord against the key contexts on the focus path. The
+//! WHY: The keyboard table declares the `queue` scope's chords (§5.14), and
+//! GPUI matches a chord against the key contexts on the focus path. The
 //! rail declares `key_context("Queue")` but held no focus handle, so the
-//! context never entered the focus path and all seven chords resolved to
-//! nothing: park, defer, pin, open, filter and both selection moves were
-//! unreachable from the keyboard, while the same actions worked from the
-//! pointer.
+//! context never entered the focus path and all seven chords of the day
+//! resolved to nothing: park, defer, pin, open, filter and both selection
+//! moves were unreachable from the keyboard, while the same actions worked
+//! from the pointer.
 //!
 //! CLASS CLOSED: a chord declared in a region scope whose context no element
 //! can hold. The sweep reads the table at run time and requires every
-//! `Scope::Queue` row to reach the shell after the pointer focused the rail, so
-//! an eighth queue chord is covered the moment it is declared, and a scope
+//! `Scope::Queue` row to reach the shell after the pointer focused the rail,
+//! so the next queue chord is covered the moment it is declared, and a scope
 //! whose region stops taking focus fails here rather than in a user's hands.
 //!
 //! GAPS: it does not state which intent each chord dispatches -- that is the
@@ -29,7 +29,7 @@ use veyyon_desktop_scene::{
 	headless::{RenderOptions, headless_context},
 };
 use veyyon_desktop_surface::{
-	Keymap, Scope, ShellState, ShellView, install_tokens, model::Section,
+	Keymap, Row, Scope, ShellState, ShellView, install_tokens, model::Section,
 };
 use veyyon_gpui::{App, AppContext, Bounds, Pixels};
 
@@ -69,13 +69,30 @@ fn live_row(session: &mut HeadlessSession<'_, ShellView>) -> Bounds<Pixels> {
 	rows[live]
 }
 
+/// Seeds the row the cursor sits on for the verb about to be pressed.
+///
+/// A fold verb acts on a branch, and the per-section fixture has none, so the
+/// cursor's row is made a parent held open for the chord that folds it and
+/// folded for the chord that opens it. Every other verb reads the row as the
+/// fixture built it.
+fn seed_for(row: &mut Row, command: &str) {
+	let collapsed = match command {
+		"FoldSelectedBranch" => false,
+		"UnfoldSelectedBranch" => true,
+		_ => return,
+	};
+	row.is_parent = true;
+	row.collapsed = collapsed;
+	row.path = format!("branch/{}", row.id);
+}
+
 #[test]
 fn every_queue_chord_reaches_the_rail_the_pointer_focused() {
-	let queue_chords: Vec<String> = Keymap::default()
+	let queue_chords: Vec<(String, String)> = Keymap::default()
 		.rows()
 		.into_iter()
 		.filter(|row| row.scope == Scope::Queue)
-		.map(|row| row.chord)
+		.map(|row| (row.chord, row.command.name().to_owned()))
 		.collect();
 	assert!(
 		queue_chords.len() >= 7,
@@ -87,7 +104,7 @@ fn every_queue_chord_reaches_the_rail_the_pointer_focused() {
 	let row = live_row(&mut session);
 
 	let mut unreachable: Vec<String> = Vec::new();
-	for chord in &queue_chords {
+	for (chord, command) in &queue_chords {
 		// The pointer establishes the rail's scope, exactly as it does for the
 		// transcript, and the cursor is seeded on a row with a listed row on
 		// either side of it and with the open session somewhere else. That is
@@ -112,6 +129,15 @@ fn every_queue_chord_reaches_the_rail_the_pointer_focused() {
 					"the seeded cursor is the open session, so Enter has nothing to open"
 				);
 				view.state_mut().keymap.queue_cursor = Some(anchor);
+				if let Some(row) = view
+					.state_mut()
+					.sections
+					.iter_mut()
+					.flat_map(|(_, rows)| rows.iter_mut())
+					.find(|row| row.id == anchor)
+				{
+					seed_for(row, command);
+				}
 				let _ = view.drain_intents();
 				view.state().clone()
 			})

@@ -42,6 +42,13 @@ pub fn host_shape(state: &PersistedState) -> HostShape {
 			.queue
 			.collapsed_sections
 			.clone(),
+		collapsed_parents:  state
+			.shell
+			.navigation
+			.active()
+			.queue
+			.collapsed_parents
+			.clone(),
 		parked_page:        state.shell.navigation.active().queue.parked_page.max(1) as usize,
 		appearance:         chosen_appearance(state).to_string(),
 	}
@@ -132,6 +139,7 @@ pub fn record_host(state: &mut PersistedState, shape: &HostShape) {
 	state.queue = QueueStore {
 		version:            QueueStore::CURRENT_VERSION,
 		collapsed_sections: shape.collapsed_sections.clone(),
+		collapsed_parents:  shape.collapsed_parents.clone(),
 		parked_page:        u32::try_from(shape.parked_page.max(1)).unwrap_or(u32::MAX),
 	};
 }

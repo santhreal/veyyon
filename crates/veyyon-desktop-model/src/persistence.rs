@@ -252,6 +252,7 @@ impl VersionedStore for ComposerStore {
 pub struct QueueStore {
 	pub version:            u32,
 	pub collapsed_sections: BTreeSet<String>,
+	pub collapsed_parents:  BTreeSet<String>,
 	pub parked_page:        u32,
 }
 
@@ -260,13 +261,14 @@ impl Default for QueueStore {
 		Self {
 			version:            Self::CURRENT_VERSION,
 			collapsed_sections: BTreeSet::new(),
+			collapsed_parents:  BTreeSet::new(),
 			parked_page:        1,
 		}
 	}
 }
 
 impl VersionedStore for QueueStore {
-	const CURRENT_VERSION: u32 = 3;
+	const CURRENT_VERSION: u32 = 4;
 
 	fn version(&self) -> u32 {
 		self.version

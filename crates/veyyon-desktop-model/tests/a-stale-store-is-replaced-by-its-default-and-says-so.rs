@@ -55,6 +55,7 @@ fn populated() -> PersistedState {
 	state.queue = QueueStore {
 		version:            QueueStore::CURRENT_VERSION,
 		collapsed_sections: BTreeSet::from(["deferred".to_string(), "parked".to_string()]),
+		collapsed_parents:  BTreeSet::from(["/path/parent".to_string()]),
 		parked_page:        3,
 	};
 	let anchor = ReviewAnchor::capture(

@@ -42,7 +42,10 @@ use veyyon_desktop_surface::{Intent, IntentDiscriminants};
 // `MoveQueueSelection` IS here: §5.14 gives the queue's arrows the cursor and
 // `Enter` the open, so a movement changes which row the next press acts on and
 // nothing the host holds. The open reaches the host as `SelectSession`.
-const LOCAL: [IntentDiscriminants; 25] = [
+// `ToggleGoalCard` IS here: whether the goal card is expanded is drawn state
+// the shell writes; the goal itself is created, resumed and completed through
+// the goal intents beside it, which are reported.
+const LOCAL: [IntentDiscriminants; 26] = [
 	IntentDiscriminants::MoveQueueSelection,
 	IntentDiscriminants::CopyText,
 	IntentDiscriminants::PreviewAppearance,
@@ -68,6 +71,7 @@ const LOCAL: [IntentDiscriminants; 25] = [
 	IntentDiscriminants::SetMenuSection,
 	IntentDiscriminants::MoveMenuHighlight,
 	IntentDiscriminants::MoveMenuSection,
+	IntentDiscriminants::ToggleGoalCard,
 ];
 
 /// The two whose locality depends on the payload: closing a region is the

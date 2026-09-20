@@ -55,6 +55,12 @@ fn every_field_a_window_holds_is_written_and_read_back() {
 					veyyon_desktop_surface::Section::Parked,
 					cx.background_executor().now(),
 				);
+				// A branch parent the operator folded is part of the shape the
+				// rail was left in, the same as a folded section. It is held in
+				// the navigation the rows are projected from, which is where
+				// `Intent::ToggleQueueParent` writes it.
+				let queue = &mut view.state_mut().navigation.active_mut().queue;
+				queue.collapsed_parents.insert("main".to_string());
 				view.set_panel_width(620.0);
 				view.set_queue_width(240.0);
 				view.rail_motion_mut().show_more_parked(1);
@@ -84,8 +90,14 @@ fn every_field_a_window_holds_is_written_and_read_back() {
 	let host_back = support::memory::host_shape(&loaded);
 	let session_back = support::memory::session_shape(&loaded, Some(&SessionId::from(FIRST)));
 
-	let HostShape { navigation, queue_collapsed, collapsed_sections, parked_page, appearance } =
-		&recorded.0;
+	let HostShape {
+		navigation,
+		queue_collapsed,
+		collapsed_sections,
+		collapsed_parents,
+		parked_page,
+		appearance,
+	} = &recorded.0;
 	assert_eq!(&host_back.navigation, navigation);
 	assert!(*queue_collapsed, "the rail was collapsed by the chord");
 	assert_eq!(*parked_page, 2, "the operator paged in one more page of parked rows");
@@ -97,6 +109,18 @@ fn every_field_a_window_holds_is_written_and_read_back() {
 	assert!(
 		collapsed_sections.contains("parked"),
 		"the section the operator collapsed is named: {collapsed_sections:?}"
+	);
+	assert_eq!(
+		collapsed_parents
+			.iter()
+			.map(String::as_str)
+			.collect::<Vec<_>>(),
+		vec!["main"],
+		"the branch parent the operator folded is recorded"
+	);
+	assert_eq!(
+		&host_back.collapsed_parents, collapsed_parents,
+		"the folded branch parent came back off the disk"
 	);
 
 	let SessionShape {

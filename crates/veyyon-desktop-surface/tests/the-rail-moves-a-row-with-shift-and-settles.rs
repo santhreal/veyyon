@@ -236,12 +236,13 @@ fn rail_fill_subtracts_the_footer_height_so_higher_footer_fits_fewer_rows() {
 		Section::Live,
 		(0..10)
 			.map(|i| Row {
-				id:        i,
-				title:     format!("session {i}"),
-				subtitle:  "sub".to_string(),
-				badge:     None,
-				meta:      None,
+				id: i,
+				title: format!("session {i}"),
+				subtitle: "sub".to_string(),
+				badge: None,
+				meta: None,
 				placement: Section::Live,
+				..Default::default()
 			})
 			.collect::<Vec<_>>(),
 	)];

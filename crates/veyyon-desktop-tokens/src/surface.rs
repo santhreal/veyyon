@@ -34,6 +34,8 @@ pub struct QueueSurfaceTokens {
 	pub card_selected_edge_alpha:    f32,
 	pub card_resting_edge_alpha:     f32,
 	pub card_in_flight_title_alpha:  f32,
+	pub tree_indent_step_px:         f32,
+	pub tree_max_depth:              usize,
 }
 
 /// Resolved transcript surface geometry tokens.

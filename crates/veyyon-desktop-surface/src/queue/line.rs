@@ -58,6 +58,9 @@ pub fn line_row(
 		.badge
 		.map_or_else(Dot::empty, |badge| Dot::new(badge.tint()));
 
+	let indent_px = super::tree::indent_px(row, geometry);
+	let depth_indicator = super::tree::depth_note(row, geometry, tokens);
+	let collapse_btn = super::tree::collapse_control("queue-line-collapse", row, view.as_ref());
 	let weak_action = view.clone();
 	let action_btn = match section {
 		Section::Deferred => {
@@ -142,7 +145,8 @@ pub fn line_row(
 		.hover(move |style| style.bg(hover_bg))
 		.flex_shrink_0()
 		.h(px(geometry.line_px))
-		.mx(px(geometry.row_inset))
+		.mr(px(geometry.row_inset))
+		.ml(px(geometry.row_inset + indent_px))
 		.px(px(geometry.card_padding_horizontal))
 		.rounded(tokens.radius(RadiusStep::Sm))
 		.bg(ground)
@@ -153,6 +157,8 @@ pub fn line_row(
 		.gap(tokens.spacing(SpacingStep::S2))
 		.overflow_hidden()
 		.child(dot)
+		.children(collapse_btn)
+		.children(depth_indicator)
 		.child(
 			div()
 				.flex_1()

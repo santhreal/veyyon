@@ -175,6 +175,19 @@ readable text and usable pointer targets.
 A card states the title the host reports for that session, including a rename
 during a turn. A session with no title states `new session`.
 
+### Branches
+
+A session started from another one is drawn under it, indented one step per
+generation, in the section that holds it. A row with sessions under it carries
+a chevron on its leading edge: pressing the chevron folds the branch, and every
+generation under it leaves the rail until it is unfolded. Indentation stops at
+the depth `surface/queue.toml` authors, so a deep chain keeps its title
+readable.
+
+A fold belongs to the space it was made in and is written to the window's
+store, so it survives the next session index the host sends and returns with
+the next window.
+
 ### Row badges
 
 A row carries at most one badge, derived from the state the host reported for
@@ -238,6 +251,7 @@ Click the queue to focus it for the keyboard.
 | --- | --- |
 | `Up` / `Down` | Move the selection |
 | `Enter` | Open the selected session |
+| `Left` / `Right` | Fold the branch under the cursor, or unfold it |
 | `P` | Pin the selected session, or unpin it |
 | `D` | Defer the selected session, or recall it |
 | `K` | Park the selected session, or unpark it |
@@ -524,6 +538,42 @@ Two decisions are shown at once. Every decision past the second folds into one
 keyboard on it, opens it onto one line per folded decision, naming the kind and
 the subject of each. It closes when the pointer leaves and the keyboard moves
 on.
+
+## Goal
+
+`/goal <objective>` sets the session's goal from the command palette, and
+`/goal pause`, `/goal resume` and `/goal drop` control the one already set.
+The window drives the same goal record the terminal does, so a goal set in
+either surface is the same goal, with the same objective, budget and turn
+count.
+
+While a session holds a goal, the composer footer carries a chip stating it.
+Press the chip to open the goal card above the composer, in the composer's own
+width, and press it again to close the card. The card states the objective, the
+status, the turns completed, the time the goal has run, and the tokens used
+against the budget when one is set. It carries `Pause`, `Resume` and `Drop`,
+each drawn only for the statuses that accept it: no `Resume` on an active goal,
+no `Pause` on a paused one.
+
+The card's edge states the status in the tint that names it.
+
+| Status | Edge |
+| --- | --- |
+| `active` | `tint.working` |
+| `paused`, `budget-limited` | `tint.attention` |
+| `complete` | `tint.done` |
+| `dropped` | `tint.input` |
+
+A goal the host stopped driving states why on the card, in the words the host
+reported: a turn that failed three times in a row, a budget spent, or another
+mode holding the session. A host that serves no goals withholds the capability,
+and the controls are drawn as a gate stating that instead of answering a press.
+
+Use `proof/scenes/desktop-goal.sh` to set a goal from the palette and pause it
+again. It reads the working and attention inks over the composer's footer and
+over the card band, so a chip drawn off something other than the goal record,
+a card that never arrives, and a pause that reaches the runtime without
+reaching the window are separate failures.
 
 ## Model picker
 

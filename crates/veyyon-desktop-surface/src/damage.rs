@@ -266,6 +266,7 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		goal,
 		goal_card_open,
 		commands: _,
+		providers: _,
 	} = next;
 
 	// Anything that moves layout, or changes a surface that records no box of

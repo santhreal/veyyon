@@ -150,12 +150,10 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::RephraseReply,
 		Intent::ReviewPlan,
 		Intent::SetGoal {
-			objective: "Ship the desktop parity work".to_owned(),
+			objective:    "Ship the desktop parity work".to_owned(),
 			token_budget: Some(50000),
 		},
-		Intent::ControlGoal {
-			op: veyyon_desktop_model::GoalControl::Pause,
-		},
+		Intent::ControlGoal { op: veyyon_desktop_model::GoalControl::Pause },
 		Intent::ToggleGoalCard,
 		Intent::PauseAgents,
 		Intent::ResumeAgents,
@@ -166,6 +164,7 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::MoveMenuSection(1),
 		Intent::CloseWindow,
 		Intent::Quit,
+		Intent::ToggleQueueParent("/sessions/root".to_owned()),
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -247,6 +246,7 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::CloseTab(_)
 			| Intent::CloseTabOrPark
 			| Intent::MoveQueueSelection(_)
+			| Intent::ToggleQueueParent(_)
 			| Intent::ScrollTranscript(_)
 			| Intent::CopyText(_)
 			| Intent::FindInTranscript

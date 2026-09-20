@@ -11,12 +11,13 @@
 //! CLASS CLOSED: the split, from both sides. Every command §5.14 scopes to the
 //! queue is read out of the shipped keymap at run time rather than listed here,
 //! so a chord added to the queue scope fails this suite until it is classified
-//! as one that reaches a host or one that does not, and every command
-//! classified local is pressed as its own chord and observed to record nothing.
-//! The chords are sent to the real rail, focused the way an operator focuses
-//! it, so the scope that gates them and the action each name resolves to are
-//! carried by the press rather than restated here. The row every verb acts on
-//! is asserted with the cursor moved off the open session, which is the only
+//! as one that reaches a host, one that records nothing, or one that records a
+//! fold the window answers itself, and every command classified as recording
+//! nothing is pressed as its own chord and observed to record nothing. The
+//! chords are sent to the real rail, focused the way an operator focuses it, so
+//! the scope that gates them and the action each name resolves to are carried
+//! by the press rather than restated here. The row every verb acts on is
+//! asserted with the cursor moved off the open session, which is the only
 //! arrangement that tells the two apart, and the cursor is asserted to hold no
 //! row the rail has stopped drawing.
 //!
@@ -24,9 +25,7 @@
 //! the rail's scroll to the cursor, which the queue's motion suites measure. A
 //! binding moved out of the queue scope still reads as classified here; what
 //! fails then is the press, which reaches no handler. Which arrow steps which
-//! way is the keymap's argument rather than the row's, so a press test takes
-//! whichever arrow moves the cursor off the top row; what states the two
-//! directions apart is the delta sweep on the model.
+//! way is the keymap's argument, which the delta sweep on the model states.
 
 mod support;
 
@@ -46,12 +45,17 @@ use veyyon_gpui::{App, AppContext, Pixels, Point, point};
 /// The rows the fixture lists, in the order the rail lists them.
 const LISTED: [u64; 3] = [7, 9, 11];
 
-/// The commands that reach a host, and the commands that do not, for the scope
-/// §5.14 gives the queue. A queue chord added without a decision fails
-/// `every_command_the_queue_scopes_is_classified` until it is named here.
+/// The three decisions a command the queue scopes carries: it reaches a host,
+/// it records nothing at all, or it records a fold the window answers itself
+/// by writing its own store. A queue chord added without one fails
+/// `every_command_the_queue_scopes_is_classified`. What a fold records with a
+/// branch under the cursor is pinned by
+/// `the-queue-rail-draws-branch-hierarchies-as-an-indented-collapsible-tree.
+/// rs`, since this fixture lists three flat rows.
 const REACHES_A_HOST: [&str; 4] =
 	["OpenSelectedSession", "TogglePinSelected", "ToggleDeferSelected", "ToggleParkSelected"];
-const REACHES_NO_HOST: [&str; 2] = ["MoveSelection", "FilterQueue"];
+const RECORDS_NOTHING: [&str; 2] = ["MoveSelection", "FilterQueue"];
+const RECORDS_A_FOLD: [&str; 2] = ["FoldSelectedBranch", "UnfoldSelectedBranch"];
 
 /// The fixture with `current` open and the cursor wherever the arrows left it.
 ///
@@ -267,8 +271,8 @@ fn the_press_that_opens_is_enter_and_it_opens_the_row_the_cursor_is_on() {
 #[test]
 fn enter_on_the_row_that_is_already_open_reaches_no_host() {
 	// The cursor rests on the open session, so there is nothing to open. The
-	// old handler re-selected it here, which is an open and a transcript load
-	// for a press that changed nothing.
+	// old handler re-selected it here: an open and a transcript load for a
+	// press that changed nothing.
 	let mut cx = headless_context().expect("the headless context opens");
 	let mut session = open(&mut cx, state_open_at(LISTED[0]));
 	let focused = focus_rail(&mut session);
@@ -296,27 +300,26 @@ fn a_partition_chord_moves_the_row_the_cursor_is_on_not_the_one_that_is_open() {
 
 #[test]
 fn every_command_the_queue_scopes_is_classified() {
-	let classified: BTreeSet<&'static str> =
-		REACHES_A_HOST.into_iter().chain(REACHES_NO_HOST).collect();
+	let mut classified: BTreeSet<&'static str> = REACHES_A_HOST.into_iter().collect();
+	classified.extend(RECORDS_NOTHING);
+	classified.extend(RECORDS_A_FOLD);
 	assert_eq!(
 		queue_commands(),
 		classified,
-		"a command the queue scopes states neither that it reaches a host nor that it does not"
+		"a command the queue scopes states none of the three decisions"
 	);
 }
 
 #[test]
 fn a_command_classified_local_records_nothing_for_a_host() {
-	// Pressed with the cursor off the open session, which is where a verb that
-	// acts on the wrong row would have something to send, and pressed once per
-	// chord rather than once per command, so a second chord on a local verb is
-	// swept too.
+	// Pressed with the cursor off the open session, where a verb acting on the
+	// wrong row would have something to send, and once per chord, not command.
 	let mut cx = headless_context().expect("the headless context opens");
 	let mut session = open(&mut cx, state_open_at(LISTED[0]));
 	let focused = focus_rail(&mut session);
 	arrow_off(&mut session, focused);
 
-	for command in REACHES_NO_HOST {
+	for command in RECORDS_NOTHING {
 		for chord in chords_for(command) {
 			assert!(
 				press(&mut session, &chord).is_empty(),

@@ -93,12 +93,13 @@ fn runs_on(captured: &Captured, row: Bounds<Pixels>) -> Vec<(f32, f32)> {
 
 fn session_rows() -> Vec<(Section, Vec<Row>)> {
 	vec![(Section::Live, vec![Row {
-		id:        7,
-		title:     "port the loader".into(),
-		subtitle:  "ws-default".into(),
-		badge:     None,
-		meta:      None,
+		id: 7,
+		title: "port the loader".into(),
+		subtitle: "ws-default".into(),
+		badge: None,
+		meta: None,
 		placement: Section::Live,
+		..Default::default()
 	}])]
 }
 
@@ -107,15 +108,16 @@ fn session_rows() -> Vec<(Section, Vec<Row>)> {
 fn lookup(mode: PaletteMode, title: &str, subtitle: &str) -> PaletteState {
 	let mut state = PaletteState::new(mode);
 	state.set_items(vec![PaletteItem {
-		id:         1,
-		title:      title.to_string(),
-		subtitle:   Some(subtitle.to_string()),
-		group:      None,
-		search:     None,
-		badge:      None,
-		meta:       None,
-		capability: None,
-		kind:       PaletteItemKind::Command { intent: Box::new(Intent::NewSession) },
+		id:             1,
+		title:          title.to_string(),
+		subtitle:       Some(subtitle.to_string()),
+		group:          None,
+		search:         None,
+		badge:          None,
+		meta:           None,
+		capability:     None,
+		kind:           PaletteItemKind::Command { intent: Box::new(Intent::NewSession) },
+		takes_argument: false,
 	}]);
 	state
 }

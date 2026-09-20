@@ -39,6 +39,8 @@ pub struct HostShape {
 	pub queue_collapsed:    bool,
 	/// The sections the operator collapsed, by name.
 	pub collapsed_sections: BTreeSet<String>,
+	/// The parent session paths the operator collapsed in the tree, by path.
+	pub collapsed_parents:  BTreeSet<String>,
 	/// How many pages of the parked section the operator paged in, counted
 	/// from one.
 	pub parked_page:        usize,
@@ -105,6 +107,13 @@ impl ShellView {
 				.filter(|section| self.rail_motion.is_collapsed(*section))
 				.map(|section| section.slug().to_string())
 				.collect(),
+			collapsed_parents:  self
+				.state
+				.navigation
+				.active()
+				.queue
+				.collapsed_parents
+				.clone(),
 			parked_page:        self.rail_motion.parked_page(),
 			appearance:         self.state.appearance.chosen().to_string(),
 		}
@@ -202,6 +211,9 @@ impl ShellView {
 			.iter()
 			.filter_map(|slug| Section::from_slug(slug));
 		self.rail_motion.restore_collapsed(sections);
+		// The folds the navigation store carries came back with it above: a
+		// branch fold decides which rows a projection produces, so it is held
+		// there rather than beside the rail's own motion.
 		self.rail_motion.set_parked_page(shape.parked_page);
 		// A shape that names no appearance leaves the window in the one it
 		// opened in: the tokens are already installed by then, and clearing

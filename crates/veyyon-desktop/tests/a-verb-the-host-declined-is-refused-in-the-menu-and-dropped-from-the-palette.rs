@@ -243,6 +243,11 @@ fn the_menu_verbs_no_host_can_decline_are_exactly_these() {
 			"TogglePinSelected",
 			"ToggleDeferSelected",
 			"ToggleParkSelected",
+			// A fold is the window's own: the rows a rail draws under a branch
+			// are hidden and shown where the projection is read, and no host
+			// answers it.
+			"FoldSelectedBranch",
+			"UnfoldSelectedBranch",
 			"FilterQueue",
 			"CloseTabOrPark",
 			"ToggleQueue",

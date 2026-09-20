@@ -338,6 +338,11 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		Intent::CloseTab(tab) => queue::close_tab(state, *tab),
 		Intent::CloseTabOrPark => queue::close_tab_or_park(state),
 		Intent::MoveQueueSelection(delta) => queue::move_selection(state, *delta),
+		// A fold changes which rows exist, and the rows are projected. The
+		// window writes the fold where the projection reads it, so the frame
+		// it produces is the frame the next host event produces too; folding
+		// the drawn state here instead would come undone on that event.
+		Intent::ToggleQueueParent(_) => {},
 		Intent::ScrollTranscript(by) => {
 			state.keymap.transcript_scroll = Some(*by);
 		},

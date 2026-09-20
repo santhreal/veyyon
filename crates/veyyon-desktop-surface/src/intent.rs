@@ -252,6 +252,13 @@ pub enum Intent {
 	NewSession,
 	CloseTabOrPark,
 	MoveQueueSelection(i32),
+	/// Folds or unfolds the branch a rail row roots, named by the path the
+	/// session occupies.
+	///
+	/// A fold decides which rows exist, so it is written where a projection
+	/// reads it back rather than into the frame the window is drawing: a
+	/// fold held only in the drawn state is undone by the next host event.
+	ToggleQueueParent(String),
 	ScrollTranscript(ScrollBy),
 	/// Puts the text a surface states on the clipboard. The words travel with
 	/// the intent because they are the words that were drawn, not a second

@@ -45,6 +45,7 @@ pub fn make_per_section_state() -> ShellState {
 			} else {
 				section
 			},
+			..Default::default()
 		};
 		sections.push((section, vec![row]));
 	}

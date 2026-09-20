@@ -218,7 +218,7 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		IntentDiscriminants::RephraseReply => vec![Intent::RephraseReply],
 		IntentDiscriminants::ReviewPlan => vec![Intent::ReviewPlan],
 		IntentDiscriminants::SetGoal => vec![Intent::SetGoal {
-			objective: "Ship the desktop parity work".to_string(),
+			objective:    "Ship the desktop parity work".to_string(),
 			token_budget: Some(50000),
 		}],
 		IntentDiscriminants::ControlGoal => vec![
@@ -241,6 +241,9 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		IntentDiscriminants::NewSession => vec![Intent::NewSession],
 		IntentDiscriminants::CloseTabOrPark => vec![Intent::CloseTabOrPark],
 		IntentDiscriminants::MoveQueueSelection => vec![Intent::MoveQueueSelection(1)],
+		IntentDiscriminants::ToggleQueueParent => {
+			vec![Intent::ToggleQueueParent("/sessions/root".to_string())]
+		},
 		IntentDiscriminants::ScrollTranscript => vec![Intent::ScrollTranscript(ScrollBy::PageDown)],
 		IntentDiscriminants::FindInTranscript => vec![Intent::FindInTranscript],
 		IntentDiscriminants::StepTurn => vec![Intent::StepTurn(1)],

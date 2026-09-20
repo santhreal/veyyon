@@ -101,6 +101,10 @@ actions!([
 	#[derive(Eq)]
 	ToggleParkSelected,
 	#[derive(Eq)]
+	FoldSelectedBranch,
+	#[derive(Eq)]
+	UnfoldSelectedBranch,
+	#[derive(Eq)]
 	FilterQueue,
 	#[derive(Eq)]
 	FindInTranscript,

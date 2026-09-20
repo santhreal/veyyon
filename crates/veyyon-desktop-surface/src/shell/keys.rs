@@ -14,16 +14,17 @@ use crate::{
 	composer::{ThinkingControl, TurnPhase},
 	keymap::actions::{
 		AbortTurn, AttachFile, CloseTabOrPark, CloseWindow, CopySelection, Dismiss, FilterQueue,
-		FindInTranscript, FocusLive, ModelPicker, MoveSelection, NewSession, NextSession, NextTurn,
-		OpenMenu, OpenPalette, OpenSelectedSession, OpenSettings, PreviousSession, PreviousTurn,
-		Quit, Scroll, SelectEntryText, SelectOption, SplitHalf, TakeBackQueuedPrompt,
-		ThinkingLevel as CycleThinkingLevel, ToggleBlock, ToggleDeferSelected, ToggleDrawer,
-		TogglePanel, ToggleParkSelected, TogglePinSelected, ToggleQueue, ToggleQueueMode,
+		FindInTranscript, FocusLive, FoldSelectedBranch, ModelPicker, MoveSelection, NewSession,
+		NextSession, NextTurn, OpenMenu, OpenPalette, OpenSelectedSession, OpenSettings,
+		PreviousSession, PreviousTurn, Quit, Scroll, SelectEntryText, SelectOption, SplitHalf,
+		TakeBackQueuedPrompt, ThinkingLevel as CycleThinkingLevel, ToggleBlock, ToggleDeferSelected,
+		ToggleDrawer, TogglePanel, ToggleParkSelected, TogglePinSelected, ToggleQueue,
+		ToggleQueueMode, UnfoldSelectedBranch,
 	},
 };
 
 mod navigation;
-use navigation::{dismiss_topmost, partition_toggle};
+use navigation::{branch_fold, dismiss_topmost, partition_toggle};
 
 /// Binds the root `Shell` key context and registers action handlers.
 #[must_use]
@@ -199,6 +200,18 @@ pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 		}))
 		.on_action(cx.listener(|view, _: &ToggleParkSelected, _window, cx| {
 			if let Some(intent) = partition_toggle(view, Section::Parked) {
+				view.dispatch(intent, cx);
+			}
+		}))
+		// The arrows belong to the rail whatever the cursor is on: a row with
+		// no branch to fold is not a press to hand on to anything else.
+		.on_action(cx.listener(|view, _: &FoldSelectedBranch, _window, cx| {
+			if let Some(intent) = branch_fold(view, true) {
+				view.dispatch(intent, cx);
+			}
+		}))
+		.on_action(cx.listener(|view, _: &UnfoldSelectedBranch, _window, cx| {
+			if let Some(intent) = branch_fold(view, false) {
 				view.dispatch(intent, cx);
 			}
 		}))

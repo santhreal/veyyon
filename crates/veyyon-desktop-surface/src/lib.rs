@@ -47,6 +47,7 @@ pub use detail::{Detail, DetailFacts, DetailKind, DetailRow, DetailSource, detai
 pub use drawer::{
 	DrawerContent, DrawerFailure, DrawerTab, ProcessRow, SignalMenu, signal_menu_items,
 };
+pub use empty::{EmptyCopy, EmptySurface, empty_surface, empty_unavailable, welcome_surface};
 pub use intent::{Intent, IntentDiscriminants};
 pub use keymap::*;
 pub use menu::{MENU_OPT_OUT, MenuSectionId, MenuState, is_in_a_menu};

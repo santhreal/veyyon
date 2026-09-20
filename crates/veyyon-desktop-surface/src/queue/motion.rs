@@ -1,9 +1,4 @@
 //! Motion driver for the queue rail (§5.2, §7.1, §7.3).
-//!
-//! Tracks persistent layout positions and animated visual transitions keyed by
-//! row ID in the motion registry (`SurfaceId::Queue`), driving FLIP shift
-//! transitions, tint washes, and section reveal springs with interruption
-//! resilience.
 
 use std::{
 	collections::{HashMap, HashSet},
@@ -11,27 +6,30 @@ use std::{
 };
 
 use veyyon_desktop_motion::{
-	AnimatorKey, AnimatorRegistry, DurationModel, EasingCurve, FlipModel, MotionModel, MotionRole,
-	MotionTokens, ResolvedMotion, SurfaceId, resolve_motion,
+	AnimatorKey, AnimatorRegistry, MotionModel, MotionRole, MotionTokens, SurfaceId,
 };
 use veyyon_gpui::{ListAlignment, ListState, px};
 
 use crate::model::{Row, Section};
 
+pub mod resolve;
+pub mod shift;
+
+pub use self::{resolve::*, shift::*};
+
 /// Motion driver owning persistent queue animation states.
 pub struct RailMotion {
-	registry:                   AnimatorRegistry,
-	last_positions:             HashMap<u64, f32>,
-	current_positions:          HashMap<u64, f32>,
-	collapsed:                  HashSet<Section>,
-	parked_page:                usize,
-	selected_id:                Option<u64>,
-	last_ensured_id:            Option<u64>,
+	registry: AnimatorRegistry,
+	shift: ShiftChoreography,
+	collapsed: HashSet<Section>,
+	parked_page: usize,
+	selected_id: Option<u64>,
+	last_ensured_id: Option<u64>,
 	pending_scroll_to_selected: bool,
-	list_state:                 ListState,
-	item_count:                 usize,
-	reduced_motion:             bool,
-	tokens:                     MotionTokens,
+	list_state: ListState,
+	item_count: usize,
+	reduced_motion: bool,
+	tokens: MotionTokens,
 }
 
 impl Default for RailMotion {
@@ -56,17 +54,15 @@ impl RailMotion {
 	/// reduced-motion policy.
 	#[must_use]
 	pub fn with_tokens_and_reduced(tokens: MotionTokens, reduced_motion: bool) -> Self {
-		let list_state = ListState::new(0, ListAlignment::Top, px(crate::list_overdraw::QUEUE_PX));
 		Self {
 			registry: AnimatorRegistry::new(),
-			last_positions: HashMap::new(),
-			current_positions: HashMap::new(),
+			shift: ShiftChoreography::new(),
 			collapsed: HashSet::new(),
 			parked_page: 1,
 			selected_id: None,
 			last_ensured_id: None,
 			pending_scroll_to_selected: false,
-			list_state,
+			list_state: ListState::new(0, ListAlignment::Top, px(crate::list_overdraw::QUEUE_PX)),
 			item_count: 0,
 			reduced_motion,
 			tokens,
@@ -97,12 +93,7 @@ impl RailMotion {
 		self.collapsed.contains(&section)
 	}
 
-	/// Collapses exactly the sections a previous window left collapsed
-	/// (§8.10).
-	///
-	/// No animator is created, so a remembered collapse is drawn collapsed on
-	/// the first frame rather than playing the reveal the operator's own click
-	/// plays.
+	/// Collapses exactly the sections a previous window left collapsed (§8.10).
 	pub fn restore_collapsed(&mut self, sections: impl IntoIterator<Item = Section>) {
 		self.collapsed = sections.into_iter().collect();
 	}
@@ -118,8 +109,7 @@ impl RailMotion {
 		self.parked_page = page.max(1);
 	}
 
-	/// Returns the active row display limit for parked sessions given the
-	/// configured initial page size.
+	/// Returns the active row display limit for parked sessions.
 	#[must_use]
 	pub fn parked_limit(&self, initial_page_size: usize) -> usize {
 		self.parked_page.saturating_mul(initial_page_size.max(1))
@@ -133,8 +123,7 @@ impl RailMotion {
 		}
 	}
 
-	/// Returns a reference to the retained [`ListState`] for virtualized queue
-	/// rendering.
+	/// Returns a reference to the retained [`ListState`].
 	#[must_use]
 	pub const fn list_state(&self) -> &ListState {
 		&self.list_state
@@ -157,7 +146,7 @@ impl RailMotion {
 		self.last_ensured_id = None;
 	}
 
-	/// Synchronizes the list state item count, splicing if the count changed.
+	/// Synchronizes list item count.
 	pub fn sync_item_count(&mut self, new_count: usize) {
 		let old_count = self.item_count;
 		if new_count != old_count {
@@ -185,20 +174,7 @@ impl RailMotion {
 	}
 
 	const fn reveal_model(&self) -> MotionModel {
-		let resolved = resolve_motion(MotionRole::Reveal, &self.tokens, self.reduced_motion);
-		match resolved {
-			ResolvedMotion::Spring(s) => MotionModel::Spring(s),
-			ResolvedMotion::FadeOnly { duration_ms } => {
-				MotionModel::Duration(DurationModel { duration_ms, curve: EasingCurve::EaseOut })
-			},
-			ResolvedMotion::Duration { duration_ms, curve } => {
-				MotionModel::Duration(DurationModel { duration_ms, curve })
-			},
-			_ => MotionModel::Duration(DurationModel {
-				duration_ms: 0,
-				curve:       EasingCurve::Linear,
-			}),
-		}
+		reveal_model(&self.tokens, self.reduced_motion)
 	}
 
 	/// Expands a section if currently collapsed, starting a reveal animation.
@@ -246,7 +222,7 @@ impl RailMotion {
 	/// Returns the recorded vertical layout position of a row if measured.
 	#[must_use]
 	pub fn row_position(&self, id: u64) -> Option<f32> {
-		self.current_positions.get(&id).copied()
+		self.shift.row_position(id)
 	}
 
 	/// Increments the parked page limit to page in older archival sessions.
@@ -259,8 +235,7 @@ impl RailMotion {
 		self.parked_page = 1;
 	}
 
-	/// Toggles collapse state for a section (`Unsent`, `Pinned`, `Live`,
-	/// `Deferred`, or `Parked`).
+	/// Toggles collapse state for a section.
 	pub fn toggle_collapsed(&mut self, section: Section, now: Instant) {
 		let is_now_collapsed = if self.collapsed.contains(&section) {
 			self.collapsed.remove(&section);
@@ -281,60 +256,35 @@ impl RailMotion {
 			.get_or_create_with_initial(key, initial, target, model, now);
 	}
 
-	/// Records layout positions for the current frame, initiating FLIP shift
-	/// animations for rows whose vertical positions have moved.
+	/// Records layout positions for the current frame.
 	pub fn record_positions(&mut self, positions: &HashMap<u64, f32>, now: Instant) {
-		let resolved = resolve_motion(MotionRole::Shift, &self.tokens, self.reduced_motion);
-		for (&row_id, &curr_y) in positions {
-			if let Some(&prev_y) = self.last_positions.get(&row_id) {
-				let delta_y = prev_y - curr_y;
-				if delta_y.abs() > 0.001 {
-					let key = AnimatorKey::new(SurfaceId::Queue, MotionRole::Shift, row_id);
-					match resolved {
-						ResolvedMotion::Instant => {
-							let model = MotionModel::Flip(FlipModel {
-								duration_ms: 0,
-								curve:       EasingCurve::EaseOut,
-							});
-							let active = self.registry.get_or_create(key, 0.0, model, now);
-							active.start_value = 0.0;
-							active.current_value = 0.0;
-							active.target_value = 0.0;
-							active.is_at_rest = true;
-						},
-						ResolvedMotion::Duration { duration_ms, curve } => {
-							let model = MotionModel::Flip(FlipModel { duration_ms, curve });
-							let current_offset = if let Some(active) = self.registry.sample(&key, now) {
-								delta_y + active
-							} else {
-								delta_y
-							};
-							let active = self.registry.get_or_create(key, 0.0, model, now);
-							active.start_value = current_offset;
-							active.current_value = current_offset;
-							active.target_value = 0.0;
-							active.start_time = now;
-							active.model = model;
-							active.is_at_rest = false;
-						},
-						_ => {},
-					}
-				}
-			}
-		}
-		self.last_positions.clone_from(positions);
-		self.current_positions.clone_from(positions);
+		self.shift.record_positions(
+			&mut self.registry,
+			&self.tokens,
+			self.reduced_motion,
+			positions,
+			now,
+		);
 	}
 
 	/// Returns the FLIP translation Y offset for `row_id` at timestamp `now`.
 	#[must_use]
 	pub fn shift_offset(&self, row_id: u64, now: Instant) -> f32 {
-		let key = AnimatorKey::new(SurfaceId::Queue, MotionRole::Shift, row_id);
-		self.registry.sample(&key, now).unwrap_or(0.0)
+		self.shift.shift_offset(&self.registry, row_id, now)
 	}
 
-	/// Returns reveal animation progress (0.0 = collapsed, 1.0 = expanded) for
-	/// `section`.
+	/// Returns a reference to the underlying [`ShiftChoreography`].
+	#[must_use]
+	pub const fn shift(&self) -> &ShiftChoreography {
+		&self.shift
+	}
+
+	/// Returns a mutable reference to the underlying [`ShiftChoreography`].
+	pub const fn shift_mut(&mut self) -> &mut ShiftChoreography {
+		&mut self.shift
+	}
+
+	/// Returns reveal animation progress (0.0 = collapsed, 1.0 = expanded).
 	#[must_use]
 	pub fn reveal_progress(&self, section: Section, now: Instant) -> f32 {
 		let key = AnimatorKey::new(SurfaceId::Queue, MotionRole::Reveal, section as u64);
@@ -357,20 +307,7 @@ impl RailMotion {
 	/// Updates tint animation target value for `slot`.
 	pub fn set_tint(&mut self, slot: u64, target: f32, now: Instant) {
 		let key = AnimatorKey::new(SurfaceId::Queue, MotionRole::Tint, slot);
-		let resolved = resolve_motion(MotionRole::Tint, &self.tokens, self.reduced_motion);
-		let model = match resolved {
-			ResolvedMotion::Instant => MotionModel::Duration(DurationModel {
-				duration_ms: 0,
-				curve:       EasingCurve::Linear,
-			}),
-			ResolvedMotion::Duration { duration_ms, curve } => {
-				MotionModel::Duration(DurationModel { duration_ms, curve })
-			},
-			_ => MotionModel::Duration(DurationModel {
-				duration_ms: 120,
-				curve:       EasingCurve::EaseOut,
-			}),
-		};
+		let model = tint_model(&self.tokens, self.reduced_motion);
 		self.registry.update_target(key, target, model, now);
 	}
 

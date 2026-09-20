@@ -1,6 +1,8 @@
 //! The queue's rows: one per session, in the partition the store holds it in,
 //! under the derived `Unsent` section the drafts produce.
 
+use std::collections::{HashMap, HashSet};
+
 use veyyon_desktop_model::{
 	QueuePartition, Session, SessionBadge, SessionId, Store, session_badge,
 };
@@ -113,14 +115,88 @@ pub(super) const fn badge(badge: &SessionBadge) -> Badge {
 	}
 }
 
+/// The parent links the sessions of one partition form.
+///
+/// Built once for the partition and read by every row in it. A row that
+/// resolved its own depth and its own children walked the partition twice
+/// over, allocating a path map per row: a rail of a thousand sessions cost a
+/// million lookups and a thousand maps on every host event, and the rail is
+/// projected on every event.
+pub(super) struct Hierarchy<'a> {
+	/// The session each occupied path stands for.
+	by_path: HashMap<&'a str, &'a Session>,
+	/// Every path a session in this partition names as its parent.
+	parents: HashSet<&'a str>,
+}
+
+impl<'a> Hierarchy<'a> {
+	/// The links `ids` form, in one pass over them.
+	pub(super) fn of(store: &'a Store, ids: &'a [SessionId]) -> Self {
+		let mut by_path: HashMap<&'a str, &'a Session> = HashMap::with_capacity(ids.len());
+		let mut parents: HashSet<&'a str> = HashSet::with_capacity(ids.len());
+		for session in ids.iter().filter_map(|id| store.sessions.get(id)) {
+			if !session.path.is_empty() {
+				by_path.entry(session.path.as_str()).or_insert(session);
+			}
+			if let Some(parent) = session.parent_path.as_deref() {
+				parents.insert(parent);
+			}
+		}
+		Self { by_path, parents }
+	}
+
+	/// How deep a session sits, zero at a root.
+	///
+	/// A chain longer than the partition is a cycle in the paths the host
+	/// sent, which ends the walk rather than hanging the projection.
+	fn depth(&self, session: &Session) -> usize {
+		let mut depth = 0;
+		let mut current = session;
+		while let Some(parent) = current
+			.parent_path
+			.as_deref()
+			.and_then(|path| self.by_path.get(path).copied())
+		{
+			depth += 1;
+			if depth > self.by_path.len() {
+				break;
+			}
+			current = parent;
+		}
+		depth
+	}
+
+	/// Whether any session in the partition sits under this one.
+	fn holds_children(&self, session: &Session) -> bool {
+		!session.path.is_empty() && self.parents.contains(session.path.as_str())
+	}
+}
+
 /// One session's row, with the badge the host's state derives (§0).
-pub(super) fn row(store: &Store, session: &Session, id: u64, now_ms: u64) -> Row {
+pub(super) fn row(
+	store: &Store,
+	session: &Session,
+	id: u64,
+	hierarchy: &Hierarchy<'_>,
+	now_ms: u64,
+) -> Row {
 	let subtitle = if session.branch.is_empty() {
 		session.project_name.clone()
 	} else {
 		format!("{} · {}", session.project_name, session.branch)
 	};
 	let derived = session_badge(store, &session.id, now_ms);
+	let depth = hierarchy.depth(session);
+	let is_parent = hierarchy.holds_children(session);
+	let collapsed = !session.path.is_empty()
+		&& store
+			.persisted
+			.shell
+			.navigation
+			.active()
+			.queue
+			.collapsed_parents
+			.contains(&session.path);
 	Row {
 		id,
 		title: session.title.clone(),
@@ -128,6 +204,11 @@ pub(super) fn row(store: &Store, session: &Session, id: u64, now_ms: u64) -> Row
 		badge: derived.as_ref().map(badge),
 		meta: Some(row_meta(session, derived.as_ref(), now_ms)),
 		placement: section(session.partition),
+		depth,
+		is_parent,
+		collapsed,
+		path: session.path.clone(),
+		parent_path: session.parent_path.clone(),
 	}
 }
 

@@ -144,6 +144,7 @@ fn shipped_surface_tokens_resolve_scale_references_accurately() {
 	assert_eq!(tokens.surface.queue.card_title_height, tokens.scale.spacing(SpacingStep::S9));
 	assert_eq!(tokens.surface.queue.card_subtitle_height, tokens.scale.spacing(SpacingStep::S8));
 	assert_eq!(tokens.surface.queue.gear_size_px, tokens.scale.spacing(SpacingStep::S8));
+	assert_eq!(tokens.surface.queue.tree_indent_step_px, tokens.scale.spacing(SpacingStep::S7));
 
 	// Transcript: chrome collapsed height, event line height, plan fade
 	assert_eq!(

@@ -33,6 +33,19 @@ pub(super) fn partition_toggle(view: &ShellView, into: Section) -> Option<Intent
 	}
 }
 
+/// The fold the arrow keys ask for on the row the rail has selected.
+///
+/// Left folds and right unfolds, which is what a tree answers arrows with.
+/// The write is a toggle, so a press asking for the state the branch is
+/// already in raises nothing: left on a folded branch is not a second fold.
+/// A row with no children is never a subject either, since folding it would
+/// hide no row and leave a chevron-less row drawn as folded.
+pub(super) fn branch_fold(view: &ShellView, folded: bool) -> Option<Intent> {
+	let current = view.state().selected_row();
+	let row = view.state().row(current)?;
+	(row.is_parent && row.collapsed != folded).then(|| Intent::ToggleQueueParent(row.path.clone()))
+}
+
 /// Dismisses the topmost thing over the transcript, one rung per press.
 ///
 /// An anchored detail closes first, then a menu floated at the pointer, then

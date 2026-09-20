@@ -43,14 +43,13 @@ fn reduce_session_index(store: &mut Store, summaries: Vec<SessionSummary>) {
 			.filter(|t| !t.trim().is_empty())
 			.unwrap_or_else(|| "new session".to_string());
 		if let Some(known) = store.sessions.get_mut(&id) {
-			// `created_at_ms` and `last_recall_at_ms` are the Live anchor, and
-			// §5.2 re-anchors on unpark, recall and pin alone. A session that
-			// received a message has a newer `modified_at_ms`, so reading it
-			// as the anchor would reorder the partition on activity.
+			// Live anchor re-anchors on unpark, recall and pin alone (§5.2).
 			known.title = title;
 			known.project_name = summary.workspace;
 			known.status = summary.status;
 			known.modified_at_ms = summary.modified_at_ms;
+			known.path = summary.path;
+			known.parent_path = summary.parent_path;
 			if active.as_ref() == Some(&id) {
 				known.read_mark_ms = Some(summary.modified_at_ms);
 			}
@@ -70,6 +69,8 @@ fn reduce_session_index(store: &mut Store, summaries: Vec<SessionSummary>) {
 			defer_until_ms: None,
 			parked_at_ms: None,
 			pin_key: None,
+			path: summary.path,
+			parent_path: summary.parent_path,
 		});
 	}
 

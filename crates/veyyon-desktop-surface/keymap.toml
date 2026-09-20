@@ -121,7 +121,7 @@ scope = "global"
 chord = "f10"
 action = "OpenMenu"
 
-# Queue Scope (7 chords)
+# Queue Scope (9 chords)
 [[binding]]
 scope = "queue"
 chord = "up"
@@ -153,6 +153,16 @@ action = "ToggleDeferSelected"
 scope = "queue"
 chord = "k"
 action = "ToggleParkSelected"
+
+[[binding]]
+scope = "queue"
+chord = "left"
+action = "FoldSelectedBranch"
+
+[[binding]]
+scope = "queue"
+chord = "right"
+action = "UnfoldSelectedBranch"
 
 [[binding]]
 scope = "queue"

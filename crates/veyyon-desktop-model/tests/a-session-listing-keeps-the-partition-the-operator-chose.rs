@@ -42,6 +42,8 @@ fn seeded(id: &str, created_at_ms: u64) -> Session {
 		defer_until_ms: None,
 		parked_at_ms: None,
 		pin_key: None,
+		path: String::new(),
+		parent_path: None,
 	}
 }
 

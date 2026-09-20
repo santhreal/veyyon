@@ -67,7 +67,9 @@ pub use self::{
 };
 use self::{
 	cards::cards,
-	queue::{badge, holds_unsent_draft, partition_ids, row, row_meta, section, unsent_ids},
+	queue::{
+		Hierarchy, badge, holds_unsent_draft, partition_ids, row, row_meta, section, unsent_ids,
+	},
 	run_bar::run_status,
 	transcript::{push_entry, turns},
 };
@@ -157,21 +159,25 @@ pub fn project<S: std::hash::BuildHasher>(
 	// `Unsent` is the one section no placement produces: it is every session
 	// holding a draft the operator left, so it is built first and its rows are
 	// taken out of the partitions they are placed in.
-	let unsent_rows: Vec<Row> = unsent_ids(store, active)
+	let unsent_ids_list = unsent_ids(store, active);
+	let unsent_hierarchy = Hierarchy::of(store, &unsent_ids_list);
+	let unsent_rows: Vec<Row> = unsent_ids_list
 		.iter()
 		.filter_map(|id| store.sessions.get(id))
-		.map(|session| row(store, session, index.row_of(&session.id), now_ms))
+		.map(|session| row(store, session, index.row_of(&session.id), &unsent_hierarchy, now_ms))
 		.collect();
 
 	state.sections = (!unsent_rows.is_empty())
 		.then_some((Section::Unsent, unsent_rows))
 		.into_iter()
 		.chain(QueuePartition::ALL.iter().filter_map(|partition| {
-			let rows: Vec<Row> = partition_ids(store, *partition)
+			let p_ids = partition_ids(store, *partition);
+			let hierarchy = Hierarchy::of(store, p_ids);
+			let rows: Vec<Row> = p_ids
 				.iter()
 				.filter(|id| !holds_unsent_draft(store, active, id))
 				.filter_map(|id| store.sessions.get(id))
-				.map(|session| row(store, session, index.row_of(&session.id), now_ms))
+				.map(|session| row(store, session, index.row_of(&session.id), &hierarchy, now_ms))
 				.collect();
 			(!rows.is_empty()).then(|| (section(*partition), rows))
 		}))
@@ -202,8 +208,12 @@ pub fn project<S: std::hash::BuildHasher>(
 		.and_then(|id| store.interactions.get(id))
 		.map(cards)
 		.unwrap_or_default();
-	if state.goal_card_open && let Some(goal) = &state.goal {
-		state.cards.push(veyyon_desktop_surface::Card::Goal { view: goal.clone() });
+	if state.goal_card_open
+		&& let Some(goal) = &state.goal
+	{
+		state
+			.cards
+			.push(veyyon_desktop_surface::Card::Goal { view: goal.clone() });
 	}
 	// The panel is handed what the window already has, by value: what it can
 	// hold rather than derive again is moved out of it.
@@ -224,6 +234,7 @@ pub fn project<S: std::hash::BuildHasher>(
 	project_history(store, state, now_ms);
 	project_menu(store, &mut state.menu);
 	state.reduced_motion = reduced_motion(store);
+	state.providers.clone_from(&store.domains.providers);
 	project_notices(store, now_ms, state);
 }
 

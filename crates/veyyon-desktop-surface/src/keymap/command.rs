@@ -29,6 +29,8 @@ pub enum Command {
 	TogglePinSelected,
 	ToggleDeferSelected,
 	ToggleParkSelected,
+	FoldSelectedBranch,
+	UnfoldSelectedBranch,
 	FilterQueue,
 	Scroll,
 	FindInTranscript,
@@ -76,6 +78,8 @@ impl Command {
 			Self::TogglePinSelected => "TogglePinSelected",
 			Self::ToggleDeferSelected => "ToggleDeferSelected",
 			Self::ToggleParkSelected => "ToggleParkSelected",
+			Self::FoldSelectedBranch => "FoldSelectedBranch",
+			Self::UnfoldSelectedBranch => "UnfoldSelectedBranch",
 			Self::FilterQueue => "FilterQueue",
 			Self::Scroll => "Scroll",
 			Self::FindInTranscript => "FindInTranscript",
@@ -123,6 +127,8 @@ impl Command {
 			Self::TogglePinSelected => "Pin or unpin selected session",
 			Self::ToggleDeferSelected => "Defer or recall selected session",
 			Self::ToggleParkSelected => "Park or unpark selected session",
+			Self::FoldSelectedBranch => "Fold the selected branch",
+			Self::UnfoldSelectedBranch => "Unfold the selected branch",
 			Self::FilterQueue => "Filter queue in place",
 			Self::Scroll => "Scroll transcript",
 			Self::FindInTranscript => "Find in transcript",
@@ -171,6 +177,8 @@ impl Command {
 			| Self::TogglePinSelected
 			| Self::ToggleDeferSelected
 			| Self::ToggleParkSelected
+			| Self::FoldSelectedBranch
+			| Self::UnfoldSelectedBranch
 			| Self::FilterQueue => Scope::Queue,
 
 			Self::Scroll
@@ -231,6 +239,8 @@ impl Command {
 			| Self::TogglePinSelected
 			| Self::ToggleDeferSelected
 			| Self::ToggleParkSelected
+			| Self::FoldSelectedBranch
+			| Self::UnfoldSelectedBranch
 			| Self::FilterQueue
 			| Self::Scroll
 			| Self::FindInTranscript
@@ -273,6 +283,8 @@ impl Command {
 			"TogglePinSelected" | "PinSession" => Some(Self::TogglePinSelected),
 			"ToggleDeferSelected" | "DeferSession" => Some(Self::ToggleDeferSelected),
 			"ToggleParkSelected" | "ParkSession" => Some(Self::ToggleParkSelected),
+			"FoldSelectedBranch" => Some(Self::FoldSelectedBranch),
+			"UnfoldSelectedBranch" => Some(Self::UnfoldSelectedBranch),
 			"FilterQueue" | "FocusFilter" => Some(Self::FilterQueue),
 			"Scroll" | "ScrollTranscript" => Some(Self::Scroll),
 			"FindInTranscript" => Some(Self::FindInTranscript),

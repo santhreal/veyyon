@@ -5,7 +5,9 @@
 //! Held apart from the view models in `model.rs` so the shape a frame is
 //! handed is one file, and each field states which section owns it.
 
-use veyyon_desktop_model::Notification;
+use std::collections::{HashMap, HashSet};
+
+use veyyon_desktop_model::{Notification, ProviderView};
 
 use super::{
 	AppearanceChoice, Badge, Card, CardAnswers, ComposerState, ConnectionPhase, ControlStates,
@@ -102,6 +104,8 @@ pub struct ShellState {
 	/// a window that composed its rows only while one was open would list
 	/// what the binary was built knowing until the next unrelated event.
 	pub commands:           HostCommands,
+	/// Configured model providers from the host's settings domain.
+	pub providers:          Vec<ProviderView>,
 }
 
 impl ShellState {
@@ -119,6 +123,23 @@ impl ShellState {
 		items.extend(self.commands.rows.iter().cloned());
 		palette.set_items(items);
 	}
+
+	/// Whether the window holds any sessions across its queue sections.
+	#[must_use]
+	pub fn has_sessions(&self) -> bool {
+		self.sections.iter().any(|(_, rows)| !rows.is_empty())
+	}
+
+	/// Whether at least one AI model provider is authenticated or configured.
+	#[must_use]
+	pub fn providers_configured(&self) -> bool {
+		self.providers.iter().any(|provider| provider.authenticated)
+			|| self
+				.composer
+				.model
+				.as_ref()
+				.is_some_and(|m| !m.options.is_empty())
+	}
 }
 
 impl ShellState {
@@ -135,10 +156,22 @@ impl ShellState {
 			.find(|row| row.id == id)
 	}
 
-	/// The rows the rail lists, in rail order, with the queue filter applied.
+	/// The rows the rail lists, in rail order, with the queue filter applied
+	/// and every descendant of a folded branch dropped.
 	///
 	/// The row an arrow steps to and the row the cursor is allowed to sit on
 	/// are read from here, so the two cannot disagree about what is listed.
+	///
+	/// The rail is walked once for the parent of each path and the paths a
+	/// projection marked folded, then each row walks up its own chain: a rail
+	/// of one thousand rows costs two maps rather than a scan and a set for
+	/// every row, and this is read on every frame. A chain longer than the
+	/// rail is a cycle in the paths the host sent, which ends the walk rather
+	/// than hanging the frame.
+	///
+	/// A row states its own fold, which is what the projection read out of
+	/// the store, so the rows the arrow steps through are the rows the rail
+	/// drew from the same frame.
 	pub fn listed_rows(&self) -> impl Iterator<Item = &Row> {
 		let needle = self
 			.keymap
@@ -146,10 +179,36 @@ impl ShellState {
 			.as_ref()
 			.map(|filter| filter.trim().to_lowercase())
 			.filter(|needle| !needle.is_empty());
+		let mut parent_of: HashMap<&str, &str> = HashMap::new();
+		let mut folded: HashSet<&str> = HashSet::new();
+		for row in self.sections.iter().flat_map(|(_, rows)| rows.iter()) {
+			if let Some(parent) = row.parent_path.as_deref() {
+				parent_of.insert(row.path.as_str(), parent);
+			}
+			if row.collapsed {
+				folded.insert(row.path.as_str());
+			}
+		}
+		let depth_ceiling = parent_of.len();
 		self
 			.sections
 			.iter()
 			.flat_map(|(_, rows)| rows.iter())
+			.filter(move |row| {
+				let mut ancestor = parent_of.get(row.path.as_str()).copied();
+				let mut hops = 0;
+				while let Some(path) = ancestor {
+					if folded.contains(path) {
+						return false;
+					}
+					hops += 1;
+					if hops > depth_ceiling {
+						break;
+					}
+					ancestor = parent_of.get(path).copied();
+				}
+				true
+			})
 			.filter(move |row| {
 				needle.as_ref().is_none_or(|needle| {
 					row.title.to_lowercase().contains(needle)
@@ -270,6 +329,7 @@ impl Default for ShellState {
 			menu:               MenuState::default(),
 			notices:            Vec::new(),
 			commands:           HostCommands::default(),
+			providers:          Vec::new(),
 		}
 	}
 }

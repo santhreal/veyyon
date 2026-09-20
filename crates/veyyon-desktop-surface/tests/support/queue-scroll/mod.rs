@@ -32,6 +32,7 @@ pub fn row(
 		badge,
 		meta: meta.map(Into::into),
 		placement: Section::Live,
+		..Default::default()
 	}
 }
 

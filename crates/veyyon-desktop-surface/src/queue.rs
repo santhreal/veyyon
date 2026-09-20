@@ -24,6 +24,7 @@ pub mod line;
 pub mod menu;
 pub mod motion;
 pub mod rows;
+pub mod tree;
 
 pub use fill::{RailFill, paged_rail_fill, rail_fill, visible_rows, visible_rows_with_limit};
 pub use footer::queue_footer;
@@ -139,15 +140,21 @@ pub fn queue_rail(
 				0
 			};
 
+			let branches = tree::Branches::of(rows.iter());
 			for row in rows.iter().take(drawn_count) {
+				if branches.hidden(row) {
+					continue;
+				}
+
 				positions.insert(row.id, current_y);
 				current_y += row_h;
 				let selected = row.id == cursor;
 				if selected {
 					selected_item_ix = Some(items.len());
 				}
+				let row_item = row.clone();
 				items.push(QueueListItem::Row {
-					row: row.clone(),
+					row: row_item,
 					section: *section,
 					selected,
 					is_open: row.id == current,

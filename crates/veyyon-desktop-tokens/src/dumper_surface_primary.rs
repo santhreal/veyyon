@@ -62,6 +62,10 @@ open_edge_alpha = {}
 selected_edge_alpha = {}
 resting_edge_alpha = {}
 in_flight_title_alpha = {}
+
+[geometry.tree]
+indent_step_px = "{}"
+max_depth = {}
 "#,
 		q.width_default_px as i64,
 		q.width_min_px as i64,
@@ -91,7 +95,9 @@ in_flight_title_alpha = {}
 		q.card_open_edge_alpha,
 		q.card_selected_edge_alpha,
 		q.card_resting_edge_alpha,
-		q.card_in_flight_title_alpha
+		q.card_in_flight_title_alpha,
+		step_spacing(s, q.tree_indent_step_px),
+		q.tree_max_depth
 	);
 	write_file(path, &out)
 }

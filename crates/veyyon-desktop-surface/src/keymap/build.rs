@@ -12,12 +12,12 @@ use crate::keymap::{
 	KeymapError,
 	actions::{
 		AbortTurn, AttachFile, CloseTabOrPark, CloseWindow, CopySelection, Dismiss, FilterQueue,
-		FindInTranscript, FocusLive, ModelPicker, MoveSelection, NewSession, Newline, NextSession,
-		NextTab, NextTurn, OpenMenu, OpenPalette, OpenSelectedSession, OpenSettings, PreviousSession,
-		PreviousTab, PreviousTurn, Primary, Quit, Scroll, ScrollBy, SelectEntryText, SelectOption,
-		SplitHalf, TakeBackQueuedPrompt, ThinkingLevel, ToggleBlock, ToggleDeferSelected,
-		ToggleDiffMode, ToggleDrawer, TogglePanel, ToggleParkSelected, TogglePinSelected,
-		ToggleQueue, ToggleQueueMode,
+		FindInTranscript, FocusLive, FoldSelectedBranch, ModelPicker, MoveSelection, NewSession,
+		Newline, NextSession, NextTab, NextTurn, OpenMenu, OpenPalette, OpenSelectedSession,
+		OpenSettings, PreviousSession, PreviousTab, PreviousTurn, Primary, Quit, Scroll, ScrollBy,
+		SelectEntryText, SelectOption, SplitHalf, TakeBackQueuedPrompt, ThinkingLevel, ToggleBlock,
+		ToggleDeferSelected, ToggleDiffMode, ToggleDrawer, TogglePanel, ToggleParkSelected,
+		TogglePinSelected, ToggleQueue, ToggleQueueMode, UnfoldSelectedBranch,
 	},
 };
 
@@ -68,6 +68,8 @@ pub fn build_action(
 		"TogglePinSelected" | "PinSession" => Ok(Arc::new(TogglePinSelected)),
 		"ToggleDeferSelected" | "DeferSession" => Ok(Arc::new(ToggleDeferSelected)),
 		"ToggleParkSelected" | "ParkSession" => Ok(Arc::new(ToggleParkSelected)),
+		"FoldSelectedBranch" => Ok(Arc::new(FoldSelectedBranch)),
+		"UnfoldSelectedBranch" => Ok(Arc::new(UnfoldSelectedBranch)),
 		"FilterQueue" | "FocusFilter" => Ok(Arc::new(FilterQueue)),
 		"Scroll" | "ScrollTranscript" => {
 			let by = if let Some(arg) = arg {
