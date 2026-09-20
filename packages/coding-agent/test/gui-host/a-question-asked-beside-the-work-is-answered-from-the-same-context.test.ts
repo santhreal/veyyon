@@ -198,9 +198,7 @@ describe("a question asked beside the work is answered from the same context", (
 		// prompt nor the agent's reply, so neither role appears for it.
 		const written = sideEntries(res.frames);
 		expect(written.map(entry => entry.raw_discriminator)[0]).toBe("side_question");
-		expect(written.slice(1).map(entry => entry.raw_discriminator)).toEqual(
-			written.slice(1).map(() => "side_answer"),
-		);
+		expect(written.slice(1).map(entry => entry.raw_discriminator)).toEqual(written.slice(1).map(() => "side_answer"));
 		expect(written.length).toBeGreaterThan(1);
 		expect(entries(res.frames).filter(entry => entry.role !== "Custom")).toEqual([]);
 	});

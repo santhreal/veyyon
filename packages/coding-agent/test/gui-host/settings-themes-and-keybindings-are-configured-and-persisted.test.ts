@@ -154,7 +154,7 @@ describe("settings, themes, and keybindings action group behaviour", () => {
 		const settingsFrame: SettingsSnapshotFrame | undefined = res.frames.find(
 			f => f.Snapshot && "Settings" in f.Snapshot,
 		);
-		const entry = (settingsFrame?.Snapshot?.Settings ?? {})["display.transitions"];
+		const entry = settingsFrame?.Snapshot?.Settings?.["display.transitions"];
 		expect(entry?.values).toEqual(["on", "off"]);
 		expect(entry?.value).toBe("on");
 
