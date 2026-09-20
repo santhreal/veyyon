@@ -192,8 +192,19 @@ impl TranscriptTree {
 	}
 
 	/// Appends a new entry to the tree, updating child indexes and active leaf.
-	pub fn append(&mut self, entry: TranscriptEntry) {
+	///
+	/// An entry that states no parent continues the branch that is open. A
+	/// producer writing beside the conversation — a side question, a note a
+	/// command left — states what it wrote and not where the transcript had
+	/// reached, so a parentless entry is the next thing on the line rather
+	/// than a second line. Only the entry that opens an empty tree is a root,
+	/// and the active branch stays whole whichever producer wrote its last
+	/// entry.
+	pub fn append(&mut self, mut entry: TranscriptEntry) {
 		let entry_id = entry.id.clone();
+		if entry.parent.is_none() {
+			entry.parent = self.active_leaf.clone().filter(|leaf| leaf != &entry_id);
+		}
 		let parent_id = entry.parent.clone();
 		self.revision = self.revision.max(entry.revision);
 
@@ -213,9 +224,16 @@ impl TranscriptTree {
 
 	/// Updates an existing entry in place, refreshing revision and content
 	/// without altering topology.
-	pub fn update(&mut self, entry: TranscriptEntry) {
+	///
+	/// The parent the tree holds is kept: a producer restating an entry
+	/// restates its content, and an answer that grows a word at a time is the
+	/// same node of the branch every time it is sent.
+	pub fn update(&mut self, mut entry: TranscriptEntry) {
 		let entry_id = entry.id.clone();
 		self.revision = self.revision.max(entry.revision);
+		if let Some(held) = self.entries.get(&entry_id) {
+			entry.parent.clone_from(&held.parent);
+		}
 		self.entries.insert(entry_id, entry);
 	}
 

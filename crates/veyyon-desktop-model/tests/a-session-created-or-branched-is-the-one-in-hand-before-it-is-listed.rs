@@ -112,15 +112,28 @@ fn transcript(store: &mut Store, texts: &[&str]) {
 	);
 }
 
-/// The text of every entry held for `id`, in the order the tree roots them.
+/// The text of every entry held for `id`, oldest first.
+///
+/// Read along the branch the tree holds open, which is the walk the window
+/// draws from: entries arrive in the order the host sent them and each
+/// continues the one before it, so a transcript filed over another is a
+/// branch that lost entries rather than a root list that changed shape.
 fn texts_held_for(store: &Store, id: &SessionId) -> Vec<String> {
 	let Some(tree) = store.transcripts.get(id) else {
 		return Vec::new();
 	};
-	tree
-		.root_entries
-		.iter()
-		.filter_map(|entry_id| tree.get(entry_id))
+	let mut entries = Vec::new();
+	let mut cursor = tree.active_leaf.as_ref().and_then(|leaf| tree.get(leaf));
+	while let Some(held) = cursor {
+		entries.push(held);
+		if entries.len() == tree.len() {
+			break;
+		}
+		cursor = held.parent.as_ref().and_then(|parent| tree.get(parent));
+	}
+	entries.reverse();
+	entries
+		.into_iter()
 		.flat_map(|held| held.content.iter())
 		.filter_map(|block| match block {
 			ContentBlock::Text { text } => Some(text.clone()),

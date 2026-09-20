@@ -47,7 +47,13 @@ minimum_messages = int(sys.argv[2])
 baseline = set(json.loads(baseline_path.read_text())) if mode != "before" else set()
 created_path = Path(os.environ["TMPDIR"]) / "created-session.json"
 created_id = json.loads(created_path.read_text()) if mode == "finished" else None
-deadline = time.monotonic() + (90 if mode == "finished" else 10)
+# A turn's ceiling is a property of the machine recording it, not of the
+# product: the same prompt is processed in seconds where the model runs on an
+# accelerator and in minutes where it runs on cores. SCENE_SETTLE_SCALE is the
+# knob every other wait in these scenes is retimed by, so the ceiling reads it
+# rather than adding a second one.
+turn_ceiling = 90 * float(os.environ.get("SCENE_SETTLE_SCALE", "1") or "1")
+deadline = time.monotonic() + (turn_ceiling if mode == "finished" else 10)
 latest_row = None
 
 
@@ -488,6 +494,13 @@ measure_composer_card() {
 		abandon_take "the-editor-line-is-locatable" \
 			"the derived editor aim ${COMPOSER_EDITOR_Y} is not above the footer row ${MODEL_CHIP_Y} inside the card at +${COMPOSER_CARD_LEFT}+${CARD_TOP}"
 	fi
+
+	# The band a draft is read back through, taken where the card was just
+	# found. A session holding no turns centres the card (§5.4), and a band
+	# pinned to the window's foot then reads the ground under a composer that
+	# is not there: a prompt typed into the centred card reads as nothing
+	# typed, and the scene abandons the take naming the keystrokes.
+	COMPOSER_BAND_CROP="$(composer_band_crop)"
 }
 
 # ─── The Rectangles Every Frame Is Read Through ──────────────────────────────
@@ -517,6 +530,13 @@ composer_band_region() {
 	top="$(composer_band_top)"
 	bottom="$(composer_band_bottom)"
 	use_crop "${SESSION_REGION_X}" "${top}" "${SESSION_REGION_W}" "$(( bottom - top ))"
+}
+composer_band_crop() {
+	local top bottom
+	top="$(composer_band_top)"
+	bottom="$(composer_band_bottom)"
+	printf '%sx%s+%s+%s' \
+		"${SESSION_REGION_W}" "$(( bottom - top ))" "${SESSION_REGION_X}" "${top}"
 }
 transcript_region() {
 	local top
@@ -689,13 +709,17 @@ echo "scene: draft ${DRAFT_PX}px, kept ${KEPT_PX}px, moved ${MOVED_PX}px," \
 # recorded exactly that: a click 270px above the card, `status=Unknown,
 # messages=0`, and a composer still holding the slash the preamble left.
 #
-# So the aim is the one the preamble derived from the token files, the draft is
-# read back before it is sent, and the reading is what fails: the guard names
-# the keystrokes, not the model.
-COMPOSER_BAND_CROP="${SESSION_REGION_W}x${COMPOSER_BAND_H}+${SESSION_REGION_X}+$(( WIN_Y + WIN_H - COMPOSER_BAND_H ))"
+# So the aim is the one the preamble derived from the token files, the band is
+# the one the last measurement of the card reported, and the draft is read
+# back before it is sent: the guard names the keystrokes, not the model.
 
 type_prompt() { # <text> [floor-pixels]
 	local text="$1" floor="${2:-400}" empty="${TMPDIR}/frame-compare/prompt-empty.png" drew
+	# Where the card is now, because the reading below is of the band it
+	# occupies: a session that filled since the last measurement moved the
+	# card to the foot of the window, and a band left at the centre reports a
+	# draft that was typed as nothing typed.
+	measure_composer_card
 	move_px "${COMPOSER_X}" "${COMPOSER_Y}"
 	click
 	k "ctrl+a"

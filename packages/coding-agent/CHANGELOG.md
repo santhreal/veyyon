@@ -338,6 +338,7 @@
 
 ### Fixed
 
+- A desktop transcript keeps every earlier turn drawn when a record is written beside the conversation, where a side question left the window drawing its answer alone.
 - A desktop surface that states a count states it in the singular when it is one, where the panel drew `1 more changed files are not listed`, the transcript drew `1 lines` and the terminal drawer drew `1 matches`.
 - The desktop run bar puts its status word and the line beside it on one centre line, where the line sat six pixels above the badge.
 - The desktop terminal drawer's chrome actions are the size of the tab strip they sit in, and its supervised-process rows draw actions that fit the row's height instead of overflowing it by four pixels.

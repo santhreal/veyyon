@@ -40,6 +40,11 @@ fn active_path(tree: &TranscriptTree) -> Vec<&TranscriptEntry> {
 	let mut cursor = tree.get(leaf);
 	while let Some(entry) = cursor {
 		path.push(entry);
+		// A chain visits each entry once, so a parent link that closes a loop
+		// ends the walk rather than the window.
+		if path.len() == tree.len() {
+			break;
+		}
 		cursor = entry.parent.as_ref().and_then(|id| tree.get(id));
 	}
 	path.reverse();
