@@ -46,12 +46,13 @@ fn unmarked(state: &PaletteState) -> PaletteState {
 
 fn session_rows() -> Vec<(Section, Vec<Row>)> {
 	vec![(Section::Live, vec![Row {
-		id:        7,
-		title:     "port the loader".into(),
-		subtitle:  "ws-default".into(),
-		badge:     Some(Badge::Working),
-		meta:      None,
+		id: 7,
+		title: "port the loader".into(),
+		subtitle: "ws-default".into(),
+		badge: Some(Badge::Working),
+		meta: None,
 		placement: Section::Live,
+		..Default::default()
 	}])]
 }
 
@@ -105,15 +106,16 @@ fn every_kind_of_mark_is_drawn_as_its_own_kind() {
 
 		let mut state = PaletteState::new(PaletteMode::Commands);
 		state.set_items(vec![PaletteItem {
-			id:         1,
-			title:      "/new".into(),
-			subtitle:   Some("Create a new session".into()),
-			group:      None,
-			search:     None,
-			badge:      None,
-			meta:       Some(mark.clone()),
-			capability: None,
-			kind:       PaletteItemKind::Command { intent: Box::new(Intent::NewSession) },
+			id:             1,
+			title:          "/new".into(),
+			subtitle:       Some("Create a new session".into()),
+			group:          None,
+			search:         None,
+			badge:          None,
+			meta:           Some(mark.clone()),
+			capability:     None,
+			kind:           PaletteItemKind::Command { intent: Box::new(Intent::NewSession) },
+			takes_argument: false,
 		}]);
 		let with = text_run_count(&captured(&mut cx, state.clone()));
 		let without = text_run_count(&captured(&mut cx, unmarked(&state)));

@@ -230,6 +230,7 @@ fn every_scope_and_every_mode_reaches_the_host_as_the_vocabulary_it_came_from() 
 		let expected = match mode {
 			SettableMode::Plan => "plan",
 			SettableMode::Vibe => "vibe",
+			SettableMode::Loop => "loop",
 			SettableMode::None => "none",
 		};
 		assert_eq!(sent, Value::String(expected.to_owned()));
@@ -272,7 +273,6 @@ fn every_scope_and_every_mode_reaches_the_host_as_the_vocabulary_it_came_from() 
 		assert_eq!(sent, Value::String(expected.to_owned()));
 		proven.insert("ControlGoal.op".to_owned());
 	}
-
 
 	// A vocabulary recorded and never round-tripped here is a claim with no
 	// evidence behind it, so the census and this sweep name the same set.

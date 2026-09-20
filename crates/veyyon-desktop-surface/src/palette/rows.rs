@@ -5,9 +5,32 @@
 //! is in as a leading dot, and the chord that runs a command, or a one-word
 //! note about the row, at the trailing edge.
 
-use veyyon_desktop_model::Capability;
+use veyyon_desktop_model::{Capability, GoalControl};
 
 use crate::{Intent, keymap::command::Command, model::Badge};
+
+/// What the words after `/goal` mean, parsed the way the terminal parses
+/// them (`packages/coding-agent/src/goals/subcommands.ts`).
+///
+/// The first word is the subcommand when it is one `/goal` accepts, and the
+/// rest of the draft is the objective; a draft opening with any other word
+/// is an objective whole, so `/goal ship the parity work` sets that
+/// objective rather than failing on `ship`.
+fn goal_intent(remainder: &str) -> Intent {
+	let (first, rest) = remainder
+		.split_once(char::is_whitespace)
+		.map_or((remainder, ""), |(first, rest)| (first, rest.trim()));
+	let objective =
+		|text: &str| Intent::SetGoal { objective: text.to_owned(), token_budget: None };
+	match first.to_ascii_lowercase().as_str() {
+		"set" if !rest.is_empty() => objective(rest),
+		"show" => Intent::ToggleGoalCard,
+		"pause" => Intent::ControlGoal { op: GoalControl::Pause },
+		"resume" => Intent::ControlGoal { op: GoalControl::Resume },
+		"drop" => Intent::ControlGoal { op: GoalControl::Drop },
+		_ => objective(remainder),
+	}
+}
 
 /// The mark a row carries at its trailing edge.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,30 +95,33 @@ pub enum PaletteItemKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaletteItem {
 	/// Stable identifier for row selection and indexing.
-	pub id:         u64,
+	pub id:             u64,
 	/// Primary label shown in the row.
-	pub title:      String,
+	pub title:          String,
 	/// Secondary description or path text.
-	pub subtitle:   Option<String>,
+	pub subtitle:       Option<String>,
 	/// The heading this row sits under, for a list the surface groups. Rows
 	/// sharing a heading are contiguous, and the heading is drawn once above
 	/// the first of them.
-	pub group:      Option<String>,
+	pub group:          Option<String>,
 	/// A name the row is found by and does not draw, for an identity the row
 	/// states across two lines: a model's `provider/model` is one query even
 	/// though the heading holds the provider and the row holds the id.
-	pub search:     Option<String>,
+	pub search:         Option<String>,
 	/// Visual state badge mapped to a status dot.
-	pub badge:      Option<Badge>,
+	pub badge:          Option<Badge>,
 	/// The chord that runs the row, or a word about the row itself, drawn at
 	/// its trailing edge.
-	pub meta:       Option<PaletteMeta>,
+	pub meta:           Option<PaletteMeta>,
 	/// The capability the host must carry for this row's action, for a row the
 	/// projection prunes rather than lists and refuses (§5.13). `None` is a
 	/// row whose action the window carries itself, so no host can decline it.
-	pub capability: Option<Capability>,
+	pub capability:     Option<Capability>,
 	/// Target action classification.
-	pub kind:       PaletteItemKind,
+	pub kind:           PaletteItemKind,
+	/// Whether this row accepts a trailing argument typed after its command
+	/// name.
+	pub takes_argument: bool,
 }
 
 impl PaletteItem {
@@ -117,7 +143,53 @@ impl PaletteItem {
 			meta: chord.map(PaletteMeta::Chord),
 			capability: None,
 			kind: PaletteItemKind::Command { intent: Box::new(intent) },
+			takes_argument: false,
 		}
+	}
+
+	/// Marks whether this item accepts a trailing argument.
+	#[must_use]
+	pub const fn with_argument(mut self, takes: bool) -> Self {
+		self.takes_argument = takes;
+		self
+	}
+
+	/// The intent this row dispatches for the text typed into the composer.
+	///
+	/// A row that takes an argument reads the remainder written after the
+	/// command name verbatim and dispatches the intent that carries it. The
+	/// row the remainder belongs to is decided by the intent the row already
+	/// declares, not by the spelling of its title: `/goal` alone opens the
+	/// goal card, `/goal pause`, `/goal resume` and `/goal drop` control the
+	/// goal that is running, and anything else is an objective to set. The
+	/// three control words are the terminal's own spelling of `/goal`, so a
+	/// hand that learned them there reaches the same thing here.
+	///
+	/// A row that declares an argument and reaches no arm here would drop the
+	/// operator's words in silence, which
+	/// `a-slash-command-taking-an-argument-is-ranked-on-its-name-alone-and-dispatches-the-remainder.rs`
+	/// fails on: it sweeps every argument row and asserts the remainder
+	/// changes what is dispatched.
+	#[must_use]
+	pub fn intent_for_typed(&self, typed: &str) -> Option<Intent> {
+		let base = match &self.kind {
+			PaletteItemKind::Command { intent } => (**intent).clone(),
+			_ => return None,
+		};
+		if !self.takes_argument {
+			return Some(base);
+		}
+		let remainder = typed
+			.trim_start_matches('/')
+			.split_once(char::is_whitespace)
+			.map_or("", |(_, rest)| rest.trim());
+		if remainder.is_empty() {
+			return Some(base);
+		}
+		Some(match base {
+			Intent::ToggleGoalCard => goal_intent(remainder),
+			other => other,
+		})
 	}
 
 	/// Creates a session palette item from queue row attributes.
@@ -139,6 +211,7 @@ impl PaletteItem {
 			meta,
 			capability: None,
 			kind: PaletteItemKind::Session { id },
+			takes_argument: false,
 		}
 	}
 
@@ -156,6 +229,7 @@ impl PaletteItem {
 			meta: None,
 			capability: Some(Capability::Files),
 			kind: PaletteItemKind::File { path: p },
+			takes_argument: false,
 		}
 	}
 
@@ -177,6 +251,7 @@ impl PaletteItem {
 			meta: None,
 			capability: Some(Capability::Files),
 			kind: PaletteItemKind::ContentMatch { path: p, line: Some(line) },
+			takes_argument: false,
 		}
 	}
 
@@ -194,6 +269,7 @@ impl PaletteItem {
 			meta: Some(PaletteMeta::Note("Folder".to_string())),
 			capability: Some(Capability::Files),
 			kind: PaletteItemKind::Directory { path: p },
+			takes_argument: false,
 		}
 	}
 }

@@ -194,6 +194,27 @@ pub fn command_items() -> Vec<PaletteItem> {
 			Some(Capability::Sessions),
 		),
 		(
+			"/loop",
+			Intent::SetSessionMode { mode: SettableMode::Loop },
+			"Repeat the last prompt after each turn",
+			None,
+			Some(Capability::Sessions),
+		),
+		(
+			"/loop off",
+			Intent::SetSessionMode { mode: SettableMode::None },
+			"Stop repeating the prompt",
+			None,
+			Some(Capability::Sessions),
+		),
+		(
+			"/goal",
+			Intent::ToggleGoalCard,
+			"Set an autonomous goal or review the current one",
+			None,
+			Some(Capability::Goals),
+		),
+		(
 			"/history",
 			Intent::FindSessions(String::new()),
 			"Search persisted sessions",
@@ -271,6 +292,7 @@ pub fn command_items() -> Vec<PaletteItem> {
 		let mut item = PaletteItem::command(index as u64 + 1, name, intent, shortcut);
 		item.subtitle = Some(description.to_owned());
 		item.capability = capability;
+		item.takes_argument = name == "/goal";
 		item
 	})
 	.collect();
@@ -336,16 +358,29 @@ pub fn command_items() -> Vec<PaletteItem> {
 			ComposerCommand::Queue => "Queue a follow-up message",
 		};
 		items.push(PaletteItem {
-			id:         items.len() as u64 + 1,
-			title:      command.name().to_owned(),
-			subtitle:   Some(description.to_owned()),
-			group:      None,
-			search:     None,
-			badge:      None,
-			meta:       chord.map(super::PaletteMeta::Chord),
-			capability: command.capability(),
-			kind:       PaletteItemKind::Composer { command },
+			id:             items.len() as u64 + 1,
+			title:          command.name().to_owned(),
+			subtitle:       Some(description.to_owned()),
+			group:          None,
+			search:         None,
+			badge:          None,
+			meta:           chord.map(super::PaletteMeta::Chord),
+			capability:     command.capability(),
+			kind:           PaletteItemKind::Composer { command },
+			takes_argument: command.carries_draft(),
 		});
 	}
 	items
+}
+/// Whether a native command row takes a trailing argument.
+#[must_use]
+pub fn command_takes_argument(name: &str) -> bool {
+	let normalized = name.trim_start_matches('/');
+	command_items().iter().any(|item| {
+		item.takes_argument
+			&& item
+				.title
+				.trim_start_matches('/')
+				.eq_ignore_ascii_case(normalized)
+	})
 }

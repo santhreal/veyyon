@@ -193,7 +193,7 @@ impl ShellView {
 						.name()
 						.trim_start_matches('/')
 						.eq_ignore_ascii_case(first)
-			});
+			}) || crate::palette::command_takes_argument(first);
 		let query = if carries { first } else { query };
 		let query = if query.eq_ignore_ascii_case("commands") {
 			""
@@ -269,17 +269,50 @@ impl ShellView {
 		// A command taking arguments runs with the ones that were typed, and
 		// the row's own spelling runs when the draft holds no arguments for
 		// it, which is what a row reached by arrow key holds.
-		let intent = match (&intent, self.palette_input.slash) {
-			(Intent::RunCommand(row), true) => Intent::RunCommand(self.typed_command(row)),
-			_ => intent,
+		let takes_argument = self
+			.state
+			.overlay
+			.as_ref()
+			.and_then(Overlay::as_palette)
+			.and_then(PaletteState::selected_item)
+			.is_some_and(|item| item.takes_argument);
+		let with_argument = takes_argument
+			&& self.palette_input.slash
+			&& self
+				.composer_cache
+				.trim_start_matches('/')
+				.contains(char::is_whitespace);
+		let intent = if with_argument
+			&& let Some(item) = self
+				.state
+				.overlay
+				.as_ref()
+				.and_then(Overlay::as_palette)
+				.and_then(PaletteState::selected_item)
+		{
+			item
+				.intent_for_typed(self.composer_cache.as_str())
+				.unwrap_or(intent)
+		} else {
+			match (&intent, self.palette_input.slash) {
+				(Intent::RunCommand(row), true) => Intent::RunCommand(self.typed_command(row)),
+				_ => intent,
+			}
 		};
 		if self.palette_input.slash {
 			// A command that ran with the arguments written after it took the
 			// whole draft, so nothing of it is left to write; a row reached
-			// without them took only its own spelling.
-			if matches!(&intent, Intent::RunCommand(text)
-				if text.as_str() == self.composer_cache.trim_start_matches('/'))
-			{
+			// without them took only its own spelling. What the argument
+			// became is the row's business: `/goal pause` dispatches a
+			// control and `/goal ship it` an objective, and both consumed
+			// every word the operator wrote.
+			let consumed_all = match &intent {
+				Intent::RunCommand(text) => {
+					text.as_str() == self.composer_cache.trim_start_matches('/')
+				},
+				_ => with_argument,
+			};
+			if consumed_all {
 				self.palette_input.slash = false;
 				self.set_composed(String::new(), cx);
 			} else {

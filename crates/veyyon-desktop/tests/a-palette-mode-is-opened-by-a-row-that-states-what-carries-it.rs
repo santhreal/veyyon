@@ -147,6 +147,14 @@ fn a_command_row_states_the_capability_of_what_it_asks_the_host_for() {
 		if let Some(mode) = mode_opened_by(&intent) {
 			needed.extend(capabilities_of(&mode.query_intent("probe".to_owned()), &mut store));
 		}
+		// A row that takes a trailing argument rides on what the argument
+		// asks for: `/goal` alone opens the card and asks the host for
+		// nothing, and `/goal <objective>` is the row's reason to exist.
+		if item.takes_argument
+			&& let Some(carried) = item.intent_for_typed(&format!("{} probe", item.title))
+		{
+			needed.extend(capabilities_of(&carried, &mut store));
+		}
 		match item.capability {
 			Some(declared) => assert!(
 				needed.contains(&declared),
