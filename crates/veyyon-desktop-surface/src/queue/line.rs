@@ -97,17 +97,20 @@ pub fn line_row(
 		_ => None,
 	};
 
-	let mut actions = div()
-		.invisible()
-		.group_hover("queue-line-row", |style| style.visible())
-		.flex()
-		.flex_row()
-		.items_center()
-		.gap(tokens.spacing(SpacingStep::S1));
+	// A section with no row action reserves nothing: an empty slot would still
+	// take the row's gap and push the elapsed time off the edge every other
+	// row's time sits on.
+	let actions = action_btn.map(|btn| {
+		div()
+			.invisible()
+			.group_hover("queue-line-row", |style| style.visible())
+			.flex()
+			.flex_row()
+			.items_center()
+			.gap(tokens.spacing(SpacingStep::S1))
+			.child(btn)
+	});
 
-	if let Some(btn) = action_btn {
-		actions = actions.child(btn);
-	}
 	let mut line = div()
 		.group("queue-line-row")
 		.id(("queue-line", id as usize))
@@ -161,6 +164,13 @@ pub fn line_row(
 				})),
 		);
 
+	// The reserved slot sits ahead of the elapsed time, as it does on a card,
+	// so every time in the rail shares one trailing edge at rest and the
+	// controls reveal in the gap before it.
+	if let Some(actions) = actions {
+		line = line.child(actions);
+	}
+
 	if let Some(meta) = &row.meta {
 		line = line.child(
 			div().flex_shrink_0().child(
@@ -170,8 +180,6 @@ pub fn line_row(
 			),
 		);
 	}
-
-	line = line.child(actions);
 
 	if has_attention_strip {
 		let tint_ink = row

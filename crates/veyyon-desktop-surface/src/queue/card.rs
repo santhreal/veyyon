@@ -127,6 +127,11 @@ pub fn card_row(
 		.gap(tokens.spacing(SpacingStep::S1))
 		.children(shown_actions);
 	let meta_text = row.meta.clone().unwrap_or_default();
+	// The slot is reserved ahead of the elapsed time rather than outside it,
+	// so the time sits at the card's own trailing edge in every resting frame
+	// and the controls appear in the gap between the badge and it. A slot
+	// taken out of the row's flow would put the time at that edge too, and
+	// draw the controls over it.
 	let meta_slot = div()
 		.flex_1()
 		.min_w_0()
@@ -134,6 +139,8 @@ pub fn card_row(
 		.flex_row()
 		.items_center()
 		.justify_end()
+		.gap(tokens.spacing(SpacingStep::S2))
+		.child(actions)
 		.child(
 			div()
 				.overflow_hidden()
@@ -144,8 +151,7 @@ pub fn card_row(
 				.font_weight(tokens.font_weight(TextWeight::Regular))
 				.text_color(tokens.color(ColorRole::Muted))
 				.child(meta_text),
-		)
-		.child(actions);
+		);
 
 	header = header.child(badge_slot).child(meta_slot);
 

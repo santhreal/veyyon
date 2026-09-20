@@ -74,6 +74,10 @@ pub fn session_surface(
 			.overflow_hidden()
 			.px(tokens.spacing(SpacingStep::S4))
 			.pt(tokens.spacing(SpacingStep::S4))
+			// The same inset below: the composer's lit rim is drawn outside its
+			// border box, so a transcript that ended at the column's gap put
+			// the glow on the descenders of its last line.
+			.pb(tokens.spacing(SpacingStep::S4))
 			.child(transcript_viewport(
 				viewport,
 				&surface.transcript,

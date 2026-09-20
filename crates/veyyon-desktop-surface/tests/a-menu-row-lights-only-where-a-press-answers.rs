@@ -97,7 +97,7 @@ fn seeded_state(controls: ControlStates) -> ShellState {
 }
 
 fn render_session<R>(
-	menu: RowMenu,
+	menu: Option<RowMenu>,
 	controls: ControlStates,
 	test: impl FnOnce(&mut HeadlessSession<ShellView>) -> R,
 ) -> R {
@@ -114,7 +114,9 @@ fn render_session<R>(
 		veyyon_desktop_kit::input::ensure_editor_bindings_registered(app);
 		app.new(|_| {
 			let mut view = ShellView::new(installed, seeded_state(controls));
-			view.open_row_menu(menu);
+			if let Some(menu) = menu {
+				view.open_row_menu(menu);
+			}
 			view
 		})
 	})
@@ -150,12 +152,21 @@ fn centre(bounds: Bounds<Pixels>) -> Point<Pixels> {
 /// is what makes the drawn word a control rather than a caption: the pointing
 /// cursor and the hover fill are both painted from it.
 ///
-/// The box has to start inside the menu and be no taller than one row, so the
-/// queue card the menu floats over and the menu card itself are not mistaken
-/// for the row.
-fn row_answers_a_press(captured: &Captured, menu: RowMenu, word: Bounds<Pixels>) -> bool {
+/// The box has to start inside the menu, be no taller than one row, and be a
+/// box the window did not already register with no menu open. The menu floats
+/// over the rail, so the card under it registers its own rects inside the
+/// menu's bounds -- a hover slot among them is row-sized and lands on a row's
+/// word -- and `beneath` is what separates a box the menu drew from one the
+/// float merely covers.
+fn row_answers_a_press(
+	captured: &Captured,
+	menu: RowMenu,
+	word: Bounds<Pixels>,
+	beneath: &[Bounds<Pixels>],
+) -> bool {
 	captured.hitboxes.iter().any(|rect| {
-		f32::from(rect.size.height) <= ROW_CEILING_PX
+		!beneath.contains(rect)
+			&& f32::from(rect.size.height) <= ROW_CEILING_PX
 			&& rect.origin.x >= menu.origin.x
 			&& rect.origin.y >= menu.origin.y
 			&& rect.origin.x <= word.origin.x
@@ -189,6 +200,15 @@ fn changed_pixels(rest: &RgbaFrame, lit: &RgbaFrame, area: Bounds<Pixels>) -> us
 #[test]
 fn a_row_lights_under_the_pointer_only_where_a_press_answers() {
 	for (arm, controls) in arms() {
+		// Every rect the window registers with no menu open. The rail keeps
+		// drawing under the float, so this is what a rect has to be absent
+		// from to be one the menu itself put there.
+		let beneath = render_session(None, controls.clone(), |session| {
+			session
+				.frame()
+				.expect("the window renders with no menu open")
+				.hitboxes
+		});
 		for menu in every_menu() {
 			let kind = format!("{:?}", menu.kind);
 			let rows: Vec<(String, bool)> = row_menu_items(&menu, &controls)
@@ -198,7 +218,7 @@ fn a_row_lights_under_the_pointer_only_where_a_press_answers() {
 			assert!(!rows.is_empty(), "{kind} draws rows under {arm}");
 
 			for (label, refused) in rows {
-				let (changed, answers) = render_session(menu, controls.clone(), |session| {
+				let (changed, answers) = render_session(Some(menu), controls.clone(), |session| {
 					let rest = session.frame().expect("frame renders");
 					let word = drawn_label(&rest, &label);
 					session
@@ -207,7 +227,7 @@ fn a_row_lights_under_the_pointer_only_where_a_press_answers() {
 					let lit = session.frame().expect("frame renders under the pointer");
 					(
 						changed_pixels(&rest.frame, &lit.frame, word),
-						row_answers_a_press(&lit, menu, word),
+						row_answers_a_press(&lit, menu, word, &beneath),
 					)
 				});
 

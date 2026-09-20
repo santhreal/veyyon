@@ -208,7 +208,15 @@ pub(super) fn overlay_layer(
 			.into_any_element(),
 		)
 	} else {
-		Some(overlay_scrim(content, open, &surface.panels, tokens, cx).into_any_element())
+		// A palette resizes as its rows filter down, so centring it would move
+		// the field the operator is typing into between one keystroke and the
+		// next. The box it could fill is centred instead and the card is drawn
+		// at the top of it, which leaves the field where it was and grows the
+		// list downward.
+		let top_inset = retained.is_palette().then(|| {
+			px(((available_height_px - geometry.max_height_px) / 2.0).max(f32::from(margin)))
+		});
+		Some(overlay_scrim(content, open, top_inset, &surface.panels, tokens, cx).into_any_element())
 	}
 }
 
