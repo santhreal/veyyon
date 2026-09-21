@@ -21,6 +21,7 @@ use std::{
 	fs,
 	os::unix::fs::PermissionsExt as _,
 	path::{Path, PathBuf},
+	sync::{Mutex, MutexGuard},
 	time::Instant,
 };
 
@@ -54,10 +55,21 @@ fn host_that_dies(label: &str, said: &[&str], code: i32) -> (TempTree, HostSpawn
 	host_that_dies_saying(label, &owned, code)
 }
 
+/// Held while a fake host is written and spawned.
+///
+/// The tests run on threads of one process. A fork inherits every open
+/// descriptor until the exec clears it, so a host spawned on one thread holds
+/// the file another thread is still writing, and that thread's exec of its own
+/// host fails with `ETXTBSY`. Writing and spawning under one lock means no
+/// fork happens while a host file is open for writing.
+static SPAWNING: Mutex<()> = Mutex::new(());
+
 fn host_that_dies_saying(label: &str, said: &[String], code: i32) -> (TempTree, HostSpawnError) {
 	let tree = veyyon_test_scratch::scratch_dir(label);
+	let spawning: MutexGuard<'_, ()> = SPAWNING.lock().unwrap_or_else(|held| held.into_inner());
 	let bin = failing_host(tree.path(), said, code);
 	let failure = spawn_host_binary(&bin, tree.path()).expect_err("the fake host never listens");
+	drop(spawning);
 	(tree, failure)
 }
 
