@@ -50,14 +50,15 @@ fn every_badge_section() -> (Section, Vec<Row>) {
 		.enumerate()
 		.map(|(index, badge)| {
 			let id = 900 + index as u64;
-			Row {
+			let mut row = Row::new(
 				id,
-				title: format!("Row carrying the {badge:?} badge"),
-				subtitle: "veyyon/crates/veyyon-desktop-surface".to_owned(),
-				badge: Some(badge),
-				meta: Some("1m".to_owned()),
-				placement: Section::Live,
-			}
+				format!("Row carrying the {badge:?} badge"),
+				"veyyon/crates/veyyon-desktop-surface".to_owned(),
+				Section::Live,
+			);
+			row.badge = Some(badge);
+			row.meta = Some("1m".to_owned());
+			row
 		})
 		.collect();
 	(Section::Live, rows)
