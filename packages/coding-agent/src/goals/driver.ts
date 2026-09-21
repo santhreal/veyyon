@@ -25,6 +25,8 @@ export interface GoalDriverPort {
 	submitContinuation(prompt: string): void;
 	/** Say something to the operator in this host's register. */
 	warn(message: string): void;
+	/** State an outcome of the goal to the operator in this host's register. */
+	status(message: string): void;
 	/** The goal's flags or record moved: repaint whatever states them. */
 	changed(): void;
 }
@@ -90,6 +92,20 @@ export function goalTurnEndedInError(event: Extract<AgentSessionEvent, { type: "
 		.reverse()
 		.find((message): message is AssistantMessage => message.role === "assistant");
 	return lastAssistant?.stopReason === "error";
+}
+
+/** Every way goal mode stops driving, so a host can sweep them. */
+export const GOAL_EXIT_REASONS = ["completed", "paused", "dropped"] as const;
+
+/** Why goal mode stopped driving. */
+export type GoalExitReason = (typeof GOAL_EXIT_REASONS)[number];
+
+/** What leaving goal mode is called, one line per way out. */
+export function goalExitNotice(options?: { paused?: boolean; reason?: GoalExitReason }): string {
+	if (options?.reason === "completed") return "Goal mode completed.";
+	if (options?.reason === "dropped") return "Goal dropped.";
+	if (options?.reason === "paused" || options?.paused === true) return "Goal mode paused.";
+	return "Goal mode disabled.";
 }
 
 export function summarizeObjective(objective: string): string {
@@ -500,7 +516,11 @@ export class GoalDriver {
 		}
 	}
 
-	async exit(options?: { paused?: boolean; reason?: "completed" | "paused" | "dropped" }): Promise<void> {
+	async exit(options?: { paused?: boolean; reason?: GoalExitReason }): Promise<void> {
+		// A goal that is already out is left by more than one path: `drop()` exits, and the
+		// `goal_updated` event that drop raises reaches the session handler and exits again. The
+		// notice belongs to the exit that ended the driving, so the second call states nothing.
+		const wasDriving = this.enabled || this.paused;
 		const previousTools = this.#previousTools;
 		if (this.enabled && previousTools) {
 			await this.#port.session.setActiveToolsByName(previousTools);
@@ -524,6 +544,9 @@ export class GoalDriver {
 		this.#userTurnInFlight = false;
 		this.#cancelContinuation();
 		this.#port.changed();
+		if (wasDriving) {
+			this.#port.status(goalExitNotice(options));
+		}
 	}
 
 	async pause(): Promise<void> {

@@ -91,6 +91,16 @@ export class DesktopGoalBridge implements GoalDriverPort {
 		logger.warn(message);
 	}
 
+	/**
+	 * State an outcome of the goal to the operator in this host's register. The window draws the
+	 * goal card from the Goal snapshot section, which the repaint below carries, so the line is
+	 * recorded rather than pushed: the protocol has no notice frame.
+	 */
+	status(message: string): void {
+		logger.info(message);
+		this.changed();
+	}
+
 	/** The goal's flags or record moved: repaint whatever states them. */
 	changed(): void {
 		const section = goalSection(this.session, this.driver, this.stoodDown);

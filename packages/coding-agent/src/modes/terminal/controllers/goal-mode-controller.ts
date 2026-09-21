@@ -139,6 +139,10 @@ export class GoalModeController implements GoalDriverPort {
 		this.#context.showWarning(message);
 	}
 
+	status(message: string): void {
+		this.#context.showStatus(message);
+	}
+
 	changed(): void {
 		this.updateStatus();
 	}
@@ -424,7 +428,6 @@ export class GoalModeController implements GoalDriverPort {
 			return;
 		}
 		await this.#driver.pause();
-		this.#context.showStatus("Goal mode paused.");
 	}
 
 	async #resume(): Promise<void> {
@@ -447,7 +450,6 @@ export class GoalModeController implements GoalDriverPort {
 		);
 		if (!confirmed) return;
 		await this.#driver.drop();
-		this.#context.showStatus("Goal dropped.");
 	}
 
 	async #startFromObjective(objective: string): Promise<void> {

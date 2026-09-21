@@ -140,6 +140,7 @@
 - `TruncationMeta.totalLinesUnknown` states that a read's scan stopped after the shown window, so the notice omits a total it does not have.
 - `PLUGIN_MANIFEST_ENTRY_KEYS` and `PluginManifestEntryKey` in `extensibility/plugins/loader` state the four manifest entry keys a plugin contributes through.
 - `cli/stdout-drain` exports `awaitStdoutDrain` and `exitAfterStdoutDrain`, the one way a non-interactive mode exits after its last frame is written.
+- The desktop runs `/agents`, `/cockpit` and `/hub`, which open a dashboard listing the agents of the session in view, running first, with a session to open and a confirmed termination per row, beside a second view carrying the traffic those agents send each other as it lands.
 
 ### Changed
 
@@ -347,6 +348,7 @@
 
 ### Fixed
 
+- Goal mode states how it ended again -- `Goal mode completed.`, `Goal mode paused.`, `Goal dropped.` -- which the move to the shared goal driver had dropped from the terminal.
 - Desktop text is set in a font family the machine carries, so the semibold weights the type scale authors reach the screen: the chain resolved against GPUI's font list, which names Segoe UI, Helvetica and Arial whether or not they are installed, and every proportional run then missed and fell back at the default weight.
 - A desktop transcript keeps every earlier turn drawn when a record is written beside the conversation, where a side question left the window drawing its answer alone.
 - A desktop surface that states a count states it in the singular when it is one, where the panel drew `1 more changed files are not listed`, the transcript drew `1 lines` and the terminal drawer drew `1 matches`.

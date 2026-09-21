@@ -51,6 +51,7 @@ class FakeGoalDriverPort implements GoalDriverPort {
 	allowSubmit = true;
 	continuations: string[] = [];
 	warnings: string[] = [];
+	notices: string[] = [];
 	changeCount = 0;
 
 	constructor(session: AgentSession) {
@@ -89,6 +90,10 @@ class FakeGoalDriverPort implements GoalDriverPort {
 		this.warnings.push(message);
 	}
 
+	status(message: string): void {
+		this.notices.push(message);
+	}
+
 	changed(): void {
 		this.changeCount += 1;
 	}
@@ -102,6 +107,7 @@ class FakeGoalDriverPort implements GoalDriverPort {
 		this.allowSubmit = true;
 		this.continuations = [];
 		this.warnings = [];
+		this.notices = [];
 		this.changeCount = 0;
 	}
 }
