@@ -14,8 +14,8 @@ use veyyon_desktop_kit::{
 use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{
-	Context, Div, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement,
-	Styled, Window, div, list, px,
+	Bounds, Context, Div, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
+	ParentElement, Pixels, Styled, Window, div, list, px,
 };
 
 use super::{
@@ -25,7 +25,7 @@ use super::{
 };
 use crate::{
 	ShellView,
-	damage::{LaidOut, Region},
+	damage::{LaidOut, Region, request_motion_frame},
 	model::Turn,
 };
 
@@ -41,8 +41,8 @@ use crate::{
 ///   overlays.
 /// - Preservation of the 768px reading column and user/assistant visual
 ///   hierarchy.
-/// - Live animation frame scheduling via `Window::request_animation_frame`
-///   while streaming.
+/// - While an animation runs, the next frame is asked for inside
+///   `motion_damage`, the box that motion reaches.
 pub fn transcript_viewport(
 	state: &TranscriptViewportState,
 	geometry: &TranscriptSurfaceTokens,
@@ -51,6 +51,7 @@ pub fn transcript_viewport(
 	motion_tokens: &MotionTokens,
 	reduced_motion: bool,
 	laid_out: &LaidOut,
+	motion_damage: Option<Bounds<Pixels>>,
 	measure_px: f32,
 	bottom_inset_px: f32,
 	selection: Option<TextSelection>,
@@ -62,13 +63,8 @@ pub fn transcript_viewport(
 
 	let (caret_opacity, _) = state.sample_caret(now, motion_tokens, reduced_motion);
 
-	// Schedule the next frame on Window while caret, scroll, or reveal animations
-	// are active
 	if state.is_animating(now, motion_tokens, reduced_motion) {
-		let view = cx.weak_entity();
-		window.on_next_frame(move |_window, app| {
-			let _ = view.update(app, |_view, cx| cx.notify());
-		});
+		request_motion_frame(window, motion_damage);
 	}
 
 	let view = cx.weak_entity();

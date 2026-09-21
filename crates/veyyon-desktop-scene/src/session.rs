@@ -86,13 +86,17 @@ impl<'a, V: Render + 'static> HeadlessSession<'a, V> {
 	/// if it is dirty, so a transition or a spring advances by however far
 	/// [`advance`](Self::advance) moved the clock. A window with nothing pending
 	/// draws nothing, and the capture is the frame already on screen.
+	///
+	/// The capture reads the whole framebuffer back from the GPU, which costs
+	/// more than the draw and costs the same whatever the draw touched. A
+	/// measurement of what a frame costs times [`vsync`](Self::vsync) instead.
 	pub fn frame(&mut self) -> Result<Captured, RenderError> {
-		self.deliver_frame()?;
+		self.vsync()?;
 		capture_window(self.cx, self.window.into(), self.options.scale_factor)
 	}
 
-	/// One vsync without a capture.
-	fn deliver_frame(&mut self) -> Result<(), RenderError> {
+	/// One vsync without a capture: the draw, and nothing read back.
+	pub fn vsync(&mut self) -> Result<(), RenderError> {
 		self.cx.run_until_parked();
 		self
 			.cx

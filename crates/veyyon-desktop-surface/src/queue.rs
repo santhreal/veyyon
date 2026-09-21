@@ -37,7 +37,7 @@ use veyyon_desktop_model::{SessionId, SurfaceId};
 use crate::{
 	Intent, ShellView,
 	controls::{ControlStates, availability_style, hairline_for_weak},
-	damage::{LaidOut, Region},
+	damage::{LaidOut, Region, request_motion_frame},
 	empty::{EmptyCopy, EmptySurface, empty_state},
 	model::{Row, Section},
 };
@@ -180,10 +180,7 @@ pub fn queue_rail(
 	}
 
 	if motion.has_active_animations(now) {
-		let view = cx.weak_entity();
-		window.on_next_frame(move |_, app| {
-			let _ = view.update(app, |_, cx| cx.notify());
-		});
+		request_motion_frame(window, laid_out.bounds(Region::Queue));
 	}
 
 	let nav_header = queue_nav_header(filter_query, controls, geometry, tokens, cx);

@@ -23,7 +23,8 @@ use veyyon_desktop_surface::{ShellState, damage::regions_changed};
 const SESSION: &str = "bench-session";
 /// Exchanges already in the transcript when the reply starts streaming.
 const PRIOR_TURNS: usize = 120;
-/// Streamed deltas in the reply, which is how many times the window re-projects.
+/// Streamed deltas in the reply, which is how many times the window
+/// re-projects.
 const DELTAS: usize = 48;
 const WARMUP_RUNS: usize = 1;
 const MEASURE_RUNS: usize = 5;
@@ -35,7 +36,12 @@ struct Batch {
 	retain:  f64,
 }
 
-fn entry(id: &str, role: MessageRole, content: Vec<ContentBlock>, revision: u64) -> TranscriptEntry {
+fn entry(
+	id: &str,
+	role: MessageRole,
+	content: Vec<ContentBlock>,
+	revision: u64,
+) -> TranscriptEntry {
 	TranscriptEntry {
 		id: EntryId::from(id),
 		parent: None,
@@ -64,9 +70,12 @@ fn exchange(turn: usize) -> Vec<TranscriptEntry> {
 		);
 	}
 	vec![
-		entry(&format!("ask-{turn}"), MessageRole::User, vec![text(&format!(
-			"rewrite module {turn}"
-		))], turn as u64),
+		entry(
+			&format!("ask-{turn}"),
+			MessageRole::User,
+			vec![text(&format!("rewrite module {turn}"))],
+			turn as u64,
+		),
 		entry(
 			&format!("reply-{turn}"),
 			MessageRole::Assistant,
@@ -123,8 +132,8 @@ fn corpus() -> Vec<HostEvent> {
 			body.push_str("another sentence of the reply ");
 			let revision = PRIOR_TURNS as u64 + 1 + delta as u64;
 			HostEvent::StreamingChanged(Some(StreamingMessageState {
-				entry:        EntryId::from("reply"),
-				tool:         None,
+				entry: EntryId::from("reply"),
+				tool: None,
 				accumulating: entry("reply", MessageRole::Assistant, vec![text(&body)], revision),
 				revision,
 			}))

@@ -8,6 +8,9 @@ use serde::Serialize;
 
 #[derive(Debug, Clone, Copy)]
 pub struct FrameSample {
+	/// Event to drawn: projection, diff, layout and paint. The window's own
+	/// frame is delivered inside the update that marks it dirty, so this is
+	/// the whole frame and not the vsync behind it.
 	pub raster_time:         Duration,
 	pub repainted_device_px: u64,
 }
@@ -44,6 +47,16 @@ pub struct RepaintTally {
 	pub within: usize,
 	pub full: usize,
 	pub mean_scoped_device_pixels: f64,
+	/// Frames the window resolved to the whole viewport, whatever this batch
+	/// declared. A scoped declaration lands here when an invalidation naming
+	/// no bounds reached the same frame, which is what separates the rect the
+	/// diff asked for from the pixels the window actually repainted.
+	pub resolved_whole_viewport: usize,
+	/// Frames armed by a batch's own frame that resolved to the whole
+	/// viewport. A surface mid-animation asks for the next frame while
+	/// painting this one; asking without bounds repaints everything, and the
+	/// caret of a streaming reply asks on every frame of the turn.
+	pub armed_whole_viewport: usize,
 }
 
 impl RepaintTally {
@@ -196,7 +209,7 @@ pub fn print_report(summary: &BenchSummary) {
 			format!("{:.2}%", -cmp.pixel_savings_percent),
 		),
 		(
-			"Total Frame Raster Time (turn)",
+			"Total Frame Time (turn)",
 			format!("{:.2} ms", on.total_frame_raster_time_ms),
 			format!("{:.2} ms", off.total_frame_raster_time_ms),
 			format!(
@@ -205,25 +218,25 @@ pub fn print_report(summary: &BenchSummary) {
 			),
 		),
 		(
-			"Mean Frame Raster Time",
+			"Mean Frame Time (event to drawn)",
 			format!("{:.2} ms", on.mean_frame_raster_time_ms),
 			format!("{:.2} ms", off.mean_frame_raster_time_ms),
 			format!("{:.2}%", -cmp.raster_time_reduction_percent),
 		),
 		(
-			"p95 Frame Raster Time",
+			"p95 Frame Time",
 			format!("{:.2} ms", on.p95_frame_raster_time_ms),
 			format!("{:.2} ms", off.p95_frame_raster_time_ms),
 			format!("{p95_delta:.2}%"),
 		),
 		(
-			"Min Frame Raster Time",
+			"Min Frame Time",
 			format!("{:.2} ms", on.min_frame_raster_time_ms),
 			format!("{:.2} ms", off.min_frame_raster_time_ms),
 			"-".into(),
 		),
 		(
-			"Max Frame Raster Time",
+			"Max Frame Time",
 			format!("{:.2} ms", on.max_frame_raster_time_ms),
 			format!("{:.2} ms", off.max_frame_raster_time_ms),
 			"-".into(),
@@ -244,6 +257,29 @@ pub fn print_report(summary: &BenchSummary) {
 		format!("{} px", fmt_k(repaints.mean_scoped_device_pixels.round() as u64)),
 		format!("{} px", fmt_k(*viewport_device_pixels)),
 		format!("{} frames drew nothing", repaints.nothing),
+	);
+	println!(
+		"Resolved Whole Viewport           {:>18} {:>18} {:>18}",
+		format!("{} frames", repaints.resolved_whole_viewport),
+		format!("{} frames", on.frames_drawn),
+		format!(
+			"{:.1}% of scoped declarations widened",
+			if repaints.within == 0 {
+				0.0
+			} else {
+				(repaints
+					.resolved_whole_viewport
+					.saturating_sub(repaints.full)) as f64
+					/ repaints.within as f64
+					* 100.0
+			}
+		),
+	);
+	println!(
+		"Armed Frame Whole Viewport        {:>18} {:>18} {:>18}",
+		format!("{} frames", repaints.armed_whole_viewport),
+		format!("{} frames", on.frames_drawn),
+		"animation asked unscoped",
 	);
 	println!("{sep}");
 	if cmp.verified_damage_on_less_than_off {

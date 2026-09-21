@@ -17,7 +17,12 @@
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use veyyon_gpui::{Bounds, Div, Pixels, Size, Window, div, px};
+use veyyon_gpui::{Bounds, Div, Pixels, Point, Size, Window, div, px};
+
+mod changed;
+
+pub use self::changed::regions_changed;
+use crate::model::ShellState;
 
 /// How far past a region's laid-out box its paint can reach, in logical
 /// pixels. Text is set on line boxes tighter than the font's natural
@@ -54,8 +59,6 @@ fn without_raster_margin(bounds: Bounds<Pixels>) -> Bounds<Pixels> {
 		},
 	}
 }
-
-use crate::model::ShellState;
 
 /// A region of the shell a state change can confine its repaint to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -206,167 +209,49 @@ impl LaidOut {
 	}
 }
 
-/// The regions `next` draws differently from `last`.
+/// The box an animating transcript repaints inside.
 ///
-/// The destructure is exhaustive on purpose: a field added to `ShellState`
-/// fails to compile here until it is assigned a region or declared a full
-/// repaint, which is the decision a new field owes this diff. A field that
-/// went undiffed would change pixels a scoped frame never repaints.
-pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
-	let ShellState {
-		title,
-		navigation,
-		navigation_pending,
-		// The tab labels and draft markers reach no element since the tab
-		// strip went (§4.1): the projection is carried for the host's
-		// membership, so a change to it alone repaints nothing.
-		session_tabs: _,
-		sections,
-		transcript,
-		// The entry ids beside the turns draw nothing: they are read when the
-		// window records where it is, so a change to them alone repaints
-		// nothing.
-		turn_anchors: _,
-		turn,
-		run_status,
-		panel,
-		cards,
-		// A change in what a card's answers are gated by changes how every
-		// answer row on the stack is drawn, so it repaints with the stack.
-		card_answers,
-		drawer,
-		drawer_open,
-		current_id,
-		connection,
-		controls,
-		overlay,
-		keymap,
-		composer,
-		reduced_motion,
-		// Every ground, ink and tint is drawn from the theme, so a preview
-		// the pointer raised changes pixels in every region at once.
-		appearance,
-		// The stack is drawn in a deferred layer over every region and
-		// records no box of its own, so a card arriving or going repaints
-		// what was under it.
-		notices,
-		// The freeze strip takes a line off the top of the window, so its
-		// arrival and departure move every region under it, and while it
-		// holds it draws from no box of its own. Its clock moves once a
-		// second against agents that are all parked, so the repaint it costs
-		// is a repaint of a window where nothing else is moving.
-		paused,
-		// The open menu is a float over the window with a scrim behind it,
-		// drawn from no box of its own, and the titlebar's own section words
-		// light with it.
-		menu,
-		// The catalogue is read when a command surface opens and drawn from
-		// the overlay that opened, which is diffed above: a change to what
-		// the host can run repaints nothing on its own.
-		goal,
-		goal_card_open,
-		commands: _,
-		providers: _,
-	} = next;
-
-	// Anything that moves layout, or changes a surface that records no box of
-	// its own, repaints the window. The turn phase and the control states
-	// reach the composer's footer and the titlebar's controls at once, and
-	// the keymap state reaches every focused control.
-	if current_id != &last.current_id
-		|| navigation != &last.navigation
-		|| navigation_pending != &last.navigation_pending
-		|| drawer_open != &last.drawer_open
-		|| panel.is_empty() != last.panel.is_empty()
-		|| cards.is_empty() != last.cards.is_empty()
-		|| card_answers != &last.card_answers
-		|| turn != &last.turn
-		|| connection != &last.connection
-		|| controls != &last.controls
-		|| overlay != &last.overlay
-		|| keymap != &last.keymap
-		|| composer != &last.composer
-		|| reduced_motion != &last.reduced_motion
-		|| appearance != &last.appearance
-		|| notices != &last.notices
-		|| paused != &last.paused
-		|| menu != &last.menu
-		|| goal != &last.goal
-		|| goal_card_open != &last.goal_card_open
-	{
-		return Invalidation::Full;
+/// The caret of a streaming reply and a block's reveal both draw in the last
+/// turn, and that turn's tail is what the composer's float blurs, so the
+/// float and the card stack over it repaint with it for the reason
+/// [`regions_changed`] states. A scroll spring moves every turn, and each
+/// one declares the box it left along with the box it took as it re-records,
+/// so the turns above this one need no room here.
+///
+/// `None` when one of those has no box yet, which is the same answer that
+/// path gives: repaint the frame whole rather than guess where the motion
+/// lands.
+#[must_use]
+pub fn motion_damage(state: &ShellState, laid_out: &LaidOut) -> Option<Bounds<Pixels>> {
+	let last_turn = state.transcript.len().checked_sub(1)?;
+	let mut union = laid_out.bounds(Region::Turn(last_turn))?;
+	if !state.cards.is_empty() {
+		union = union.union(&laid_out.bounds(Region::Cards)?);
 	}
-
-	let mut regions = Vec::new();
-	if title != &last.title {
-		regions.push(Region::Titlebar);
-	}
-	if sections != &last.sections {
-		regions.push(Region::Queue);
-	}
-	transcript_regions(&last.transcript, transcript, &mut regions);
-	if run_status != &last.run_status {
-		regions.push(Region::RunBar);
-	}
-	if panel != &last.panel {
-		regions.push(Region::Panel);
-	}
-	if cards != &last.cards {
-		regions.push(Region::Cards);
-	}
-	if drawer != &last.drawer {
-		regions.push(Region::Drawer);
-	}
-
-	// The tail of the transcript is what the composer's float blurs: the
-	// float sits a hair below the last turn's box, and its backdrop blur
-	// samples the gap between them. A change confined to the last turn still
-	// changes pixels inside the float, so the regions below it repaint with
-	// it. Without this a scoped frame either leaves the float stale or its
-	// scissor slices the blur, which samples stale pixels across the cut.
-	if regions.iter().any(
-		|region| matches!(region, Region::Turn(index) if *index == transcript.len().saturating_sub(1)),
-	) {
-		if !cards.is_empty() {
-			regions.push(Region::Cards);
-		}
-		regions.push(Region::Composer);
-	}
-
-	if regions.is_empty() {
-		Invalidation::Nothing
-	} else if overlay.is_some() {
-		// The overlay's scrim blurs the whole columns row, so a change beneath
-		// it reaches pixels far outside its own region. A scissor through a
-		// blur samples stale pixels across the cut; the frame repaints whole.
-		Invalidation::Full
-	} else {
-		Invalidation::Within(regions)
-	}
+	Some(union.union(&laid_out.bounds(Region::Composer)?))
 }
 
-/// The transcript's changed turns, by index.
+/// Asks for the frame an animation needs, repainting `bounds` alone.
 ///
-/// A turn appended is its own region, and the turns it pushed up declare
-/// themselves when they are prepainted into new boxes. A turn removed leaves
-/// pixels no surviving turn is laid out over, so a shrink, and the switch from
-/// the opening line to a column, repaint the whole body.
-fn transcript_regions(
-	last: &[crate::model::Turn],
-	next: &[crate::model::Turn],
-	regions: &mut Vec<Region>,
-) {
-	if next.len() < last.len() || last.is_empty() != next.is_empty() {
-		if last != next {
-			regions.push(Region::Transcript);
-		}
-		return;
-	}
-	regions.extend(
-		next
-			.iter()
-			.enumerate()
-			.filter(|(index, turn)| last.get(*index) != Some(*turn))
-			.map(|(index, _)| Region::Turn(index)),
-	);
+/// A surface mid-animation asks for the next frame while painting this one.
+/// Asking without bounds repaints the window, and a caret that blinks for
+/// the length of a streamed reply asks on every frame of the turn, so the
+/// box the motion reaches is declared on this paint and the frame is scoped
+/// to it.
+///
+/// A frame draws into the buffer the window presented two frames ago, so it
+/// repaints what this frame changes and what the one before it changed; the
+/// window carries one frame of declared damage forward for exactly that. A
+/// frame that repaints everything therefore has to be followed by one that
+/// repaints everything, and a motion asking from inside such a frame states
+/// that as the viewport rectangle rather than as an unscoped notify. An
+/// unscoped notify leaves the next frame with nothing to carry, so the
+/// motion inside it asks unscoped again and every frame after it repaints
+/// the window; the rectangle carries once and the frame after it is scoped
+/// again.
+pub fn request_motion_frame(window: &mut Window, bounds: Option<Bounds<Pixels>>) {
+	let scoped = bounds.filter(|_| window.pending_damage().is_some());
+	let bounds = scoped.unwrap_or_else(|| Bounds::new(Point::default(), window.viewport_size()));
+	window.declare_damage(bounds);
+	window.request_animation_frame_at_paint();
 }

@@ -56,7 +56,12 @@ pub fn render_reveal_container(
 					&& state_measure.record_reveal_height(turn_ix, block_ix, height)
 					&& let Some(v) = &view_measure
 				{
-					let _ = v.update(cx, |_view, cx| cx.notify());
+					// The measure the reveal grew to changes this block and
+					// what sits under it, and each region below declares the
+					// box it leaves as it re-records, so the frame is asked
+					// for inside the block rather than over the window.
+					let bounds = *bounds;
+					let _ = v.update(cx, |_view, cx| cx.notify_within(bounds));
 				}
 			}
 		})

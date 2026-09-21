@@ -205,7 +205,7 @@ impl<V: Render + 'static> HeadlessSession<'_, V> {
 		self.dispatch(mouse_down)?;
 		for mouse_move in moves {
 			self.dispatch(mouse_move)?;
-			self.deliver_frame()?;
+			self.vsync()?;
 		}
 		self.dispatch(mouse_up)?;
 
@@ -248,7 +248,7 @@ impl<V: Render + 'static> HeadlessSession<'_, V> {
 		self.dispatch(mouse_down)?;
 		for mouse_move in moves {
 			self.dispatch(mouse_move)?;
-			self.deliver_frame()?;
+			self.vsync()?;
 		}
 
 		self.cx.run_until_parked();

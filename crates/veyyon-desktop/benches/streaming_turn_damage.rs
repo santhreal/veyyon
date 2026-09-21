@@ -5,7 +5,13 @@
 
 mod damage_report;
 
-use std::{collections::HashMap, fs, io::Write, path::PathBuf, time::Instant};
+use std::{
+	collections::HashMap,
+	fs,
+	io::Write,
+	path::PathBuf,
+	time::{Duration, Instant},
+};
 
 use damage_report::{
 	BenchComparison, BenchSummary, FrameSample, RepaintTally, compute_stats, detect_gpu_name,
@@ -28,6 +34,14 @@ const DELTAS: usize = 48;
 const PRIOR_ENTRIES: usize = 5;
 const WARMUP_RUNS: usize = 1;
 const MEASURE_RUNS: usize = 5;
+/// One display frame between batches.
+///
+/// The clock a motion sampler reads is the harness's, and it only moves when
+/// the harness moves it. A replay that leaves it still reports every spring
+/// and the streaming caret as settled, so the transcript never animates and
+/// the frame never carries what an animation costs: the arm measures a turn
+/// nobody watches.
+const FRAME: Duration = Duration::from_millis(16);
 const WORDS: &str = "# Damage Scoped Invalidation The renderer fork keeps previous frame pixels \
                      outside the declared damage rectangle so streaming turns save GPU fill rate \
                      bandwidth";
@@ -133,7 +147,16 @@ fn replay_arm(
 	let mut scoped_device_px = 0_u64;
 
 	for (batch, event) in corpus.iter().enumerate() {
-		let now_ms = 10_000 + batch as u64;
+		// The clock moves one frame per batch, so the caret the streaming turn
+		// draws blinks and the springs the transcript runs advance.
+		session.advance(FRAME);
+		let now_ms = 10_000 + (batch as u64 * FRAME.as_millis() as u64);
+		// The batch's own frame is drawn inside this call: marking the view
+		// dirty wakes the window, and the executor delivers that frame before
+		// the update returns. So this interval is the frame -- projection,
+		// diff, layout, paint -- and reading the damage after it reads what
+		// the batch declared rather than what the frame behind it armed.
+		let frame_start = Instant::now();
 		let repaint = session
 			.update(|view, _, cx| {
 				reduce(&mut store, event.clone());
@@ -151,6 +174,7 @@ fn replay_arm(
 				}
 			})
 			.expect("update view state");
+		let raster_time = frame_start.elapsed();
 		tally.frames += 1;
 		match repaint {
 			Repaint::Nothing => tally.nothing += 1,
@@ -164,15 +188,28 @@ fn replay_arm(
 			},
 		}
 
-		let raster_start = Instant::now();
-		let _ = session.frame().expect("rasterise frame");
-		let raster_time = raster_start.elapsed();
-
 		let (damage, viewport) = session
 			.update(|_, window, _| (window.last_frame_damage(), window.viewport_size()))
 			.expect("read frame damage");
+		// The frame this one armed. A surface that animates asks for the next
+		// frame while painting this one, and asking without bounds widens that
+		// frame to the viewport however tightly this one was scoped.
+		session.vsync().expect("deliver the armed frame");
+		if session
+			.update(|_, window, _| window.last_frame_damage())
+			.expect("read the armed frame's damage")
+			.is_none()
+		{
+			tally.armed_whole_viewport += 1;
+		}
 
 		let scale = f64::from(options.scale_factor);
+		// No resolved rect means the window repainted the whole viewport: the
+		// declaration this batch made was widened by an invalidation that
+		// named no bounds.
+		if damage.is_none() {
+			tally.resolved_whole_viewport += 1;
+		}
 		let repainted_device_px = damage.map_or_else(
 			|| device_area(f64::from(viewport.width) * f64::from(viewport.height), scale),
 			|rect| device_area(f64::from(rect.size.width) * f64::from(rect.size.height), scale),

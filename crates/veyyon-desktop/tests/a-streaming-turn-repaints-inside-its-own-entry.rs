@@ -27,14 +27,14 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use support::raster::{contains, device_area, differing_pixels, inside};
+use support::{
+	raster::{contains, device_area, differing_pixels, inside},
+	streaming_corpus::{DELTAS, SEED, corpus},
+};
 use veyyon_desktop::{
 	AssetPaths, Repaint, SessionIndex, StartupBundle, load_startup_bundle, project, request_frame,
 };
-use veyyon_desktop_model::{
-	ConnectionState, ContentBlock, EntryId, HostEvent, MessageRole, SessionId, Store,
-	StreamingMessageState, TranscriptEntry, reduce,
-};
+use veyyon_desktop_model::{SessionId, Store, reduce};
 use veyyon_desktop_scene::{HeadlessSession, RenderOptions, RgbaFrame, headless_context};
 use veyyon_desktop_surface::{
 	ShellState, ShellView,
@@ -43,32 +43,12 @@ use veyyon_desktop_surface::{
 };
 use veyyon_gpui::{AppContext, Bounds, Pixels};
 
-const SEED: u64 = 0x5eed_cafe;
-const DELTAS: usize = 48;
-const PRIOR_ENTRIES: usize = 5;
 /// A frame of this corpus, event to drawn, on a workstation GPU. Generous by
 /// an order of magnitude, so a hang shows as a failure and a slow machine
 /// does not.
 const FRAME_BUDGET: Duration = Duration::from_secs(2);
-
-const WORDS: [&str; 16] = [
-	"the",
-	"walker",
-	"caches",
-	"every",
-	"entry",
-	"it",
-	"visits",
-	"and",
-	"prunes",
-	"ignored",
-	"directories",
-	"before",
-	"descending",
-	"so",
-	"a",
-	"search",
-];
+/// One display frame between batches, so the streaming caret blinks.
+const FRAME: Duration = Duration::from_millis(16);
 
 /// Which invalidation path a run drives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,7 +64,14 @@ enum Arm {
 struct Sample {
 	repainted_device_px: u64,
 	elapsed:             Duration,
+	/// What the batch asked the window to repaint.
+	declared:            Repaint,
+	/// What the window resolved the frame to, `None` for the whole viewport.
 	damage:              Option<Bounds<Pixels>>,
+	/// What the frame BEHIND it resolved to. A surface that animates arms the
+	/// next frame while painting this one, so the repaint an animation costs
+	/// lands here and nowhere else.
+	armed_damage:        Option<Bounds<Pixels>>,
 	entry_box_before:    Option<Bounds<Pixels>>,
 	entry_box_after:     Option<Bounds<Pixels>>,
 	composer_box:        Option<Bounds<Pixels>>,
@@ -97,79 +84,6 @@ fn startup_assets() -> StartupBundle {
 		themes_dir: root.join("themes"),
 	})
 	.expect("load startup bundle")
-}
-
-fn entry(id: &str, role: MessageRole, text: &str, revision: u64) -> TranscriptEntry {
-	TranscriptEntry {
-		id: EntryId::from(id),
-		parent: None,
-		revision,
-		timestamp_ms: 1_000 + revision,
-		role,
-		content: vec![ContentBlock::Text { text: text.to_string() }],
-		meta: None,
-		raw_discriminator: "text".to_string(),
-		raw: serde_json::json!({}),
-	}
-}
-
-/// The corpus: the events a host sends while one assistant turn streams,
-/// after five settled entries. Deterministic in `SEED`; both arms replay
-/// exactly this sequence.
-fn corpus() -> Vec<HostEvent> {
-	let mut lcg = SEED;
-	let mut next = move || {
-		lcg = lcg
-			.wrapping_mul(6_364_136_223_846_793_005)
-			.wrapping_add(1_442_695_040_888_963_407);
-		(lcg >> 33) as usize
-	};
-
-	let prior = (0..PRIOR_ENTRIES)
-		.map(|index| {
-			let role = if index % 2 == 0 {
-				MessageRole::User
-			} else {
-				MessageRole::Assistant
-			};
-			let text = (0..12 + next() % 30)
-				.map(|i| WORDS[(i + index) % WORDS.len()])
-				.collect::<Vec<_>>();
-			entry(&format!("prior-{index}"), role, &text.join(" "), index as u64 + 1)
-		})
-		.collect();
-
-	let mut events = vec![
-		HostEvent::ConnectionChanged(ConnectionState::Connected {
-			endpoint: "bench".to_string(),
-			protocol: 1,
-		}),
-		HostEvent::TranscriptAppended { revision: PRIOR_ENTRIES as u64, entries: prior },
-	];
-
-	let mut accumulated = String::new();
-	for delta in 0..DELTAS {
-		for _ in 0..=(next() % 4) {
-			if !accumulated.is_empty() {
-				accumulated.push(' ');
-			}
-			accumulated.push_str(WORDS[next() % WORDS.len()]);
-		}
-		let revision = PRIOR_ENTRIES as u64 + 1 + delta as u64;
-		events.push(HostEvent::StreamingChanged(Some(StreamingMessageState {
-			entry: EntryId::from("streaming"),
-			tool: None,
-			accumulating: entry("streaming", MessageRole::Assistant, &accumulated, revision),
-			revision,
-		})));
-	}
-	let final_revision = PRIOR_ENTRIES as u64 + 2 + DELTAS as u64;
-	events.push(HostEvent::StreamingChanged(None));
-	events.push(HostEvent::TranscriptAppended {
-		revision: final_revision,
-		entries:  vec![entry("streaming", MessageRole::Assistant, &accumulated, final_revision)],
-	});
-	events
 }
 
 /// Replays the corpus through the production path under one arm, one event
@@ -192,7 +106,12 @@ fn replay(arm: Arm, options: &RenderOptions) -> Vec<(Sample, RgbaFrame)> {
 	let mut samples = Vec::with_capacity(DELTAS + 4);
 
 	for (batch, event) in corpus().into_iter().enumerate() {
-		let now_ms = 10_000 + batch as u64;
+		// One display frame per batch. The clock a motion sampler reads is the
+		// harness's: a replay that leaves it still reports the streaming
+		// caret and every spring as settled, so the transcript never animates
+		// and the arm never sees what an animating frame declares.
+		session.advance(FRAME);
+		let now_ms = 10_000 + (batch as u64 * FRAME.as_millis() as u64);
 		let started = Instant::now();
 		let (repaint, entry_box_before, last_turn) = session
 			.update(|view, _, cx| {
@@ -222,6 +141,14 @@ fn replay(arm: Arm, options: &RenderOptions) -> Vec<(Sample, RgbaFrame)> {
 			"batch {batch}: every event in the corpus changes pixels"
 		);
 
+		// The batch's own draw already ran: marking the view dirty wakes the
+		// window and the executor delivers that frame before `update`
+		// returns, so the damage read here is what the batch repainted. The
+		// vsync below is the frame the batch's own armed -- an animation
+		// re-arming itself -- which has to stay inside the same entry. The
+		// raster comes last, because a capture renders the window whole to
+		// read its pixels back and the damage of the frame it draws states
+		// what a readback costs rather than what the batch asked for.
 		let (damage, viewport, entry_box_after, composer_box) = session
 			.update(|view, window, _| {
 				(
@@ -232,17 +159,23 @@ fn replay(arm: Arm, options: &RenderOptions) -> Vec<(Sample, RgbaFrame)> {
 				)
 			})
 			.expect("read the frame's damage");
+		session.vsync().expect("deliver the armed frame");
+		let armed_damage = session
+			.update(|_, window, _| window.last_frame_damage())
+			.expect("read the armed frame's damage");
+		let raster = session.frame().expect("rasterise the drawn frame").frame;
 		let scale = f64::from(options.scale_factor);
 		let repainted_device_px = damage.map_or_else(
 			|| device_area(f64::from(viewport.width) * f64::from(viewport.height), scale),
 			|rect| device_area(f64::from(rect.size.width) * f64::from(rect.size.height), scale),
 		);
-		let raster = session.frame().expect("rasterise the drawn frame").frame;
 		samples.push((
 			Sample {
 				repainted_device_px,
 				elapsed,
+				declared: repaint,
 				damage,
+				armed_damage,
 				entry_box_before,
 				entry_box_after,
 				composer_box,
@@ -263,20 +196,61 @@ fn a_streaming_turn_repaints_inside_its_own_entry_and_the_bench_reports_the_delt
 	let viewport_px =
 		device_area(f64::from(options.width) * f64::from(options.height), f64::from(scale));
 
-	// Parity: the off arm is the pre-P5 baseline, one viewport per frame.
+	// Parity: the off arm is the pre-P5 baseline, one viewport per frame. A
+	// frame repaints the window whole under two spellings -- no damage at
+	// all, and damage that is the viewport rectangle, which is what a motion
+	// that cannot scope declares so the frame after it is scoped again. The
+	// area either one repaints is the baseline, and it is one viewport.
 	for (batch, (sample, _)) in off.iter().enumerate() {
 		assert_eq!(
-			sample.damage, None,
-			"off arm, batch {batch}: an unscoped notify repaints the viewport"
+			sample.repainted_device_px, viewport_px,
+			"off arm, batch {batch}: an unscoped notify repaints the viewport, and this frame \
+			 repainted {:?}",
+			sample.damage
 		);
-		assert_eq!(sample.repainted_device_px, viewport_px);
 	}
 	// Both arms draw the same pixels: the diff changes when a frame is
 	// requested, never what it contains.
-	for (batch, ((_, on_frame), (_, off_frame))) in on.iter().zip(&off).enumerate() {
+	for (batch, ((sample, on_frame), (_, off_frame))) in on.iter().zip(&off).enumerate() {
+		if on_frame.as_bytes() == off_frame.as_bytes() {
+			continue;
+		}
+		let differing = differing_pixels(off_frame, on_frame);
+		let (x0, y0, x1, y1) = differing
+			.iter()
+			.fold((u32::MAX, u32::MAX, 0u32, 0u32), |(x0, y0, x1, y1), (x, y)| {
+				(x0.min(*x), y0.min(*y), x1.max(*x), y1.max(*y))
+			});
+		panic!(
+			"batch {batch}: the arms drew different frames. {} device pixels differ, in x \
+			 {x0}..={x1}, y {y0}..={y1}; the scoped arm declared {:?} and the window resolved {:?}",
+			differing.len(),
+			sample.declared,
+			sample.damage
+		);
+	}
+
+	// A batch that scoped its frame has to reach the window scoped. Anything
+	// that notifies without bounds in the same frame -- an animation callback
+	// re-arming itself, a listener repainting on a state read -- widens the
+	// frame back to the viewport, and the arm still passes a pixel comparison
+	// against the unscoped baseline because both then repaint everything. The
+	// caret blinks for the length of every streamed reply, so one such call
+	// costs the whole mechanism.
+	for (batch, (sample, _)) in on.iter().enumerate() {
+		let Repaint::Within(declared) = sample.declared else {
+			continue;
+		};
+		let Some(resolved) = sample.damage else {
+			panic!(
+				"batch {batch}: the batch declared {declared:?} and the window repainted the whole \
+				 viewport"
+			);
+		};
 		assert!(
-			on_frame.as_bytes() == off_frame.as_bytes(),
-			"batch {batch}: the arms drew different frames"
+			contains(&resolved, &declared),
+			"batch {batch}: the window resolved {resolved:?}, which does not cover the declared \
+			 {declared:?}"
 		);
 	}
 
@@ -318,6 +292,21 @@ fn a_streaming_turn_repaints_inside_its_own_entry_and_the_bench_reports_the_delt
 			assert!(
 				contains(&reachable, &damage),
 				"batch {batch}: damage {damage:?} escapes what the entry reaches {reachable:?}"
+			);
+			// The frame this one armed. A transcript that animates -- the
+			// caret of a streaming reply, a scroll spring -- asks for the next
+			// frame while painting this one, and asking without bounds widens
+			// that frame to the viewport however tightly this one was scoped.
+			// The caret blinks for the length of every streamed reply, so an
+			// unscoped ask there repaints the window continuously through a
+			// turn while the arm still reports a saving, because the frame it
+			// samples is the one before the damage. A frame that moved layout
+			// is exempt: a remeasure slides every turn under the one that
+			// grew, and the boxes they vacate are not this frame's to name.
+			assert!(
+				sample.armed_damage.is_some(),
+				"batch {batch}: the batch scoped its frame to {damage:?} and the frame it armed \
+				 repainted the whole viewport"
 			);
 			contained_frames += 1;
 		}
