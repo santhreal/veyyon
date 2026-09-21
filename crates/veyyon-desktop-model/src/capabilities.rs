@@ -125,7 +125,7 @@ pub enum CapabilityStatus {
 	},
 }
 
-/// Fixed array map holding status values for all thirty protocol capabilities.
+/// Fixed array map holding status values for every protocol capability.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapabilityMap {
 	pub statuses: [CapabilityStatus; 31],
