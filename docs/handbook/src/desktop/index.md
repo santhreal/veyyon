@@ -34,9 +34,11 @@ Monospace text (the terminal drawer, diffs, code blocks, and file paths) is set
 in the first font family installed on the system from the ordered list under
 `[type.family]` in `crates/veyyon-desktop-tokens/tokens/scale.toml`:
 JetBrains Mono, DejaVu Sans Mono, Liberation Mono, Menlo, SF Mono, Consolas,
-Courier New. If none of these families is installed, startup fails and prints
-the list. Install one of the families, or append an installed monospace family
-to the list.
+Courier New. Every other run is set from the `ui` list in the same table:
+Inter, Segoe UI, SF Pro Text, Helvetica Neue, Cantarell, Noto Sans,
+DejaVu Sans, Arial. Both lists are matched against the system font database.
+If none of a list's families is installed, startup fails and prints the list.
+Install one of the families, or append an installed family to the list.
 
 ## Attach to a host
 

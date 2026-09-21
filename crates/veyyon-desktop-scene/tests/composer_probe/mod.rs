@@ -19,7 +19,7 @@ use veyyon_desktop_surface::{
 	model::{Badge, ShellState},
 };
 use veyyon_desktop_tokens::{ComposerSurfaceTokens, Tokens, load_bundled_theme};
-use veyyon_gpui::{AppContext, Context, IntoElement, Render, Window};
+use veyyon_gpui::{AppContext, Context, IntoElement, ParentElement, Render, Styled, Window};
 
 use crate::dead_token_probe::{
 	Observation, frame_observation,
@@ -140,12 +140,18 @@ struct LongOpeningLineView {
 
 impl Render for LongOpeningLineView {
 	fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-		opening_line(
-			"What should this session do when the operator presents a complex prompt designed to \
-			 test the maximum width constraints of the composer opening line header?",
-			&self.geometry,
-			&self.tokens,
-		)
+		// The family the shell sets on its root, which every run inside it
+		// inherits. Without it the run reaches GPUI as `.SystemUIFont`, which
+		// resolves through a fallback carrying the default weight, and the
+		// weight this line authors never reaches the raster.
+		veyyon_gpui::div()
+			.font_family(self.tokens.ui_family())
+			.child(opening_line(
+				"What should this session do when the operator presents a complex prompt designed to \
+				 test the maximum width constraints of the composer opening line header?",
+				&self.geometry,
+				&self.tokens,
+			))
 	}
 }
 

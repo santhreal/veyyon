@@ -9933,6 +9933,7 @@ name = "veyyon-desktop-kit"
 version = "1.4.1"
 dependencies = [
  "anyhow",
+ "fontdb",
  "gpui_platform",
  "gpui_wgpu",
  "parking_lot",

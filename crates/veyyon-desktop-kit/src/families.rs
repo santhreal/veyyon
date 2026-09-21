@@ -6,7 +6,7 @@
 //! miss, so selection happens once against the families the machine reports and
 //! fails naming the whole authored chain when it carries none of them (§9.3).
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::LazyLock};
 
 use veyyon_desktop_tokens::{MonoSizeStep, TokenError, TypeSize};
 use veyyon_gpui::{
@@ -14,6 +14,33 @@ use veyyon_gpui::{
 };
 
 use crate::token_set::TokenSet;
+
+/// Every family this machine carries, sorted and deduplicated.
+///
+/// Read from the system font database rather than from
+/// `TextSystem::all_font_names`, which appends GPUI's own fallback stack —
+/// Segoe UI, Helvetica, Ubuntu, Arial and the rest — to whatever the platform
+/// reported. A chain resolved against that list selects a family the machine
+/// has no face for: a Linux host with no Microsoft fonts resolves the UI
+/// chain to Segoe UI, every run then misses and walks the fallback stack, and
+/// the weight the run asked for is dropped with it, because a fallback
+/// carries the default one. Regular and semibold then draw the same face.
+///
+/// The scan runs once per process and is held for its life.
+pub fn installed_families() -> &'static [String] {
+	static FAMILIES: LazyLock<Vec<String>> = LazyLock::new(|| {
+		let mut database = fontdb::Database::new();
+		database.load_system_fonts();
+		let mut names: Vec<String> = database
+			.faces()
+			.flat_map(|face| face.families.iter().map(|(name, _)| name.clone()))
+			.collect();
+		names.sort_unstable();
+		names.dedup();
+		names
+	});
+	&FAMILIES
+}
 
 /// Monospace size and line height, in pixels.
 #[derive(Debug, Clone, Copy, PartialEq)]

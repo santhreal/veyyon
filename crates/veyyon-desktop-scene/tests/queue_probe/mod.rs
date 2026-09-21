@@ -21,13 +21,15 @@ use crate::dead_token_probe::{
 fn seeded_populated() -> ShellState {
 	let mut state = fixture::populated();
 	let parked_rows: Vec<Row> = (0..50)
-		.map(|idx| Row {
-			id:        100 + idx,
-			title:     format!("Parked session task {idx}"),
-			subtitle:  String::new(),
-			badge:     None,
-			meta:      Some("1h".to_owned()),
-			placement: Section::Parked,
+		.map(|idx| {
+			let mut row = Row::new(
+				100 + idx,
+				format!("Parked session task {idx}"),
+				String::new(),
+				Section::Parked,
+			);
+			row.meta = Some("1h".to_owned());
+			row
 		})
 		.collect();
 	if let Some((_, rows)) = state
@@ -44,16 +46,46 @@ fn seeded_populated() -> ShellState {
 fn seeded_parked_only() -> ShellState {
 	let mut state = fixture::populated();
 	let parked_rows: Vec<Row> = (0..50)
-		.map(|idx| Row {
-			id:        200 + idx,
-			title:     format!("Parked archival session {idx}"),
-			subtitle:  String::new(),
-			badge:     None,
-			meta:      Some("2h".to_owned()),
-			placement: Section::Parked,
+		.map(|idx| {
+			let mut row = Row::new(
+				200 + idx,
+				format!("Parked archival session {idx}"),
+				String::new(),
+				Section::Parked,
+			);
+			row.meta = Some("2h".to_owned());
+			row
 		})
 		.collect();
 	state.sections = vec![(Section::Parked, parked_rows)];
+	state
+}
+
+/// A single chain of branch rows running past the indent ceiling.
+///
+/// The indent step is only drawn by a row whose depth is at least one, and the
+/// ceiling only binds on a row past it, so a rail of flat rows draws neither
+/// measure whatever either is set to.
+fn seeded_branch_tree() -> ShellState {
+	let mut state = fixture::populated();
+	let mut rows = Vec::new();
+	let mut parent: Option<String> = None;
+	for depth in 0..7_usize {
+		let path = format!("branch/{depth}");
+		let mut row = Row::new(
+			300 + depth as u64,
+			format!("Branch row at depth {depth}"),
+			format!("nested work {depth}"),
+			Section::Live,
+		);
+		row.depth = depth;
+		row.is_parent = depth < 6;
+		row.path.clone_from(&path);
+		row.parent_path = parent.replace(path);
+		rows.push(row);
+	}
+	state.current_id = 300;
+	state.sections = vec![(Section::Live, rows)];
 	state
 }
 
@@ -90,6 +122,11 @@ pub fn observations(cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
 			name:    "queue_cursor_off_open_row",
 			options: shell::wide(),
 			state:   cursor_elsewhere,
+		},
+		Seeded {
+			name:    "queue_branch_tree",
+			options: shell::wide(),
+			state:   seeded_branch_tree(),
 		},
 	];
 	let mut obs = shell::render(cx, tokens, states);

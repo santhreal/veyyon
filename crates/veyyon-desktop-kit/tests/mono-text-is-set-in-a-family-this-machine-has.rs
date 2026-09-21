@@ -80,8 +80,8 @@ fn run_widths(face: Face) -> (f32, f32) {
 	let window = cx
 		.open_window(size(px(600.0), px(200.0)), |_window, app| {
 			let mut set = TokenSet::default();
-			let available = app.text_system().all_font_names();
-			set.resolve_mono_family(&available)
+			let available = veyyon_desktop_kit::installed_families();
+			set.resolve_mono_family(available)
 				.expect("this machine must have one of the authored monospace families");
 			app.set_global(set);
 			app.new(|_cx| TwoRuns { face })
@@ -211,8 +211,8 @@ fn a_tracked_mono_column_is_as_wide_as_the_advance_says() {
 	let window = cx
 		.open_window(size(px(600.0), px(200.0)), |_window, app| {
 			let mut set = TokenSet::default();
-			let available = app.text_system().all_font_names();
-			set.resolve_mono_family(&available)
+			let available = veyyon_desktop_kit::installed_families();
+			set.resolve_mono_family(available)
 				.expect("this machine must have one of the authored monospace families");
 			app.set_global(set);
 			app.new(|_cx| TrackedRun { type_size, advance: Rc::clone(&reported) })

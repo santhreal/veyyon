@@ -483,6 +483,11 @@ gpui = { git = "https://github.com/santhreal/gpui.git", rev = "b347573afc15be3bb
 # OS, and the wgpu crate, which supplies the text system.
 gpui_platform = { git = "https://github.com/santhreal/gpui.git", rev = "b347573afc15be3bb70d52136f087e6441340758" }
 gpui_wgpu = { git = "https://github.com/santhreal/gpui.git", rev = "b347573afc15be3bb70d52136f087e6441340758" }
+# The families the machine actually carries, for the desktop's font chain. GPUI's
+# `all_font_names` appends its own fallback stack to the platform's list, so it reports
+# Segoe UI on a host with no Microsoft fonts. Already in the lock at this version through
+# cosmic-text, which the wgpu text system shapes with.
+fontdb = "0.23"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Unsorted (added by `cargo add` - move into a section above)

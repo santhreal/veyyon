@@ -201,8 +201,8 @@ fn line_width(source: &'static str, read: bool) -> f32 {
 	let window = cx
 		.open_window(size(px(960.0), px(240.0)), |_window, app| {
 			let mut set = TokenSet::default();
-			let available = app.text_system().all_font_names();
-			set.resolve_mono_family(&available)
+			let available = veyyon_desktop_kit::installed_families();
+			set.resolve_mono_family(available)
 				.expect("this machine must have one of the authored monospace families");
 			app.set_global(set);
 			app.new(|_cx| Prose { source, read })

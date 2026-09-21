@@ -108,7 +108,11 @@ fn every_authored_family_chain_is_resolved_by_the_install() {
 		let tokens = load_bundled_tokens().expect("the bundled tokens load");
 		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
 			.expect("the shipped chains install");
-		let available = app.text_system().all_font_names();
+		// Not `TextSystem::all_font_names`, which appends GPUI's fallback stack
+		// to the platform's list and so reports Segoe UI on a host carrying no
+		// Microsoft face. Asserted against that list, this passed while the
+		// install had selected a family nothing on the machine could draw.
+		let available = veyyon_desktop_kit::installed_families();
 		for (key, resolved) in
 			[("mono", installed.set.mono_family()), ("ui", installed.set.ui_family())]
 		{

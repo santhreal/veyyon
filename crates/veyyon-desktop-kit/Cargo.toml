@@ -17,6 +17,7 @@ workspace = true
 headless = ["dep:anyhow", "dep:gpui_platform", "dep:gpui_wgpu"]
 
 [dependencies]
+fontdb = { workspace = true }
 strum = { workspace = true }
 parking_lot = { workspace = true }
 smallvec = { workspace = true }

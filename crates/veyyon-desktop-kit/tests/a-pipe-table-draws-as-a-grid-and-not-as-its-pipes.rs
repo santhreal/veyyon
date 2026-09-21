@@ -118,8 +118,8 @@ fn grid(source: &str) -> Grid {
 			// it is rasterised at the scale it was laid out at.
 			window.set_scale_factor(1.0);
 			let mut set = TokenSet::default();
-			let available = app.text_system().all_font_names();
-			set.resolve_mono_family(&available)
+			let available = veyyon_desktop_kit::installed_families();
+			set.resolve_mono_family(available)
 				.expect("this machine must have one of the authored monospace families");
 			app.set_global(set);
 			app.new(|_cx| Source(held))

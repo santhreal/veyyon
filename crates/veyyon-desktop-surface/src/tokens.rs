@@ -55,9 +55,9 @@ pub fn install_tokens(
 	surface_path: &Path,
 ) -> Result<InstalledTokens, TokenError> {
 	let mut set = TokenSet::from_tokens(tokens, theme)?;
-	let available = cx.text_system().all_font_names();
-	set.resolve_mono_family(&available)?;
-	set.resolve_ui_family(&available)?;
+	let available = veyyon_desktop_kit::installed_families();
+	set.resolve_mono_family(available)?;
+	set.resolve_ui_family(available)?;
 
 	let ground_name = &tokens.surface.transcript.user_turn_ground;
 	let user_turn_ground =

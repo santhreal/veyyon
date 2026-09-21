@@ -234,6 +234,8 @@
 
 ### Changed
 
+- A streaming reply repaints the desktop window inside the transcript it draws in rather than the whole window: the animation that carries the caret, the scroll spring and a block's reveal now asks for its next frame inside the box the motion reaches, and a frame that cannot be scoped states the viewport so the frame after it is scoped again, so a turn of 52 batches repaints 57.5 million device pixels where it previously repainted 196.4 million.
+- A streamed reply reaches the desktop window once per frame rather than once per provider delta: the first delta is written with no delay and the ones behind it coalesce, so a 44 KiB reply arriving at 250 deltas a second crosses the socket in 17.6 MiB instead of 70.1 MiB.
 - A desktop colour role is written once: the variant, its position in canonical order and the name it carries in a theme file come from one list, so a role added to the design system enters the role table and the theme completeness check with it. It changes nothing that is drawn.
 - The desktop's four icon boxes are authored in `scale.toml` under `[icon.size]`, with the same ceiling of four the other scale sections carry, so an icon draws at the size the token file states rather than at one compiled into the kit. Each draws at the size it drew before.
 - The desktop's last compiled-in strengths are authored: `surface/queue.toml` states the edge a card draws open, selected and at rest and the title strength of a session in flight, `surface/panels.toml` states a monospace pane's edge fade, scroll rail, thumb and the width past which it scrolls, `surface/transcript.toml` states the reasoning summary's strength, and `controls.toml` states the spinner ring's. Each draws at the strength it drew before.
@@ -625,6 +627,7 @@
 
 ### Fixed
 
+- Desktop text is set in a font family the machine carries, so the semibold weights the type scale authors reach the screen: the chain resolved against GPUI's font list, which names Segoe UI, Helvetica and Arial whether or not they are installed, and every proportional run then missed and fell back at the default weight.
 - A desktop transcript keeps every earlier turn drawn when a record is written beside the conversation, where a side question left the window drawing its answer alone.
 - A desktop surface that states a count states it in the singular when it is one, where the panel drew `1 more changed files are not listed`, the transcript drew `1 lines` and the terminal drawer drew `1 matches`.
 - The desktop run bar puts its status word and the line beside it on one centre line, where the line sat six pixels above the badge.
