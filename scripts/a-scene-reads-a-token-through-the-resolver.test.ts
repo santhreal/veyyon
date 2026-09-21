@@ -41,6 +41,7 @@ const RESOLVER = path.join(SCENES_DIR, "token_px.py");
 /** Scenes that resolve a literal token key, and how many reads each one makes. */
 const SCENE_READS: Record<string, number> = {
 	"desktop-agent-freeze.sh": 3,
+	"desktop-agent-roster.sh": 6,
 	"desktop-announcement.sh": 6,
 	"desktop-appearance.sh": 8,
 	"desktop-artifacts.sh": 1,
@@ -223,8 +224,15 @@ describe("a scene reads a token through the resolver", () => {
 	it("opens no token or theme file except through the resolver", () => {
 		const offenders: string[] = [];
 		for (const { scene, source } of SCENE_SOURCES) {
-			if (source.includes("tomllib")) offenders.push(`${scene}: parses a token file itself`);
-			if (source.includes("crates/veyyon-desktop-tokens")) {
+			// A comment opens nothing. The recorded command a scene documents names the before-tree
+			// it was captured against, tokens crate and all, and reporting that line as a direct
+			// read leaves the scene's own instructions unwritable.
+			const code = source
+				.split("\n")
+				.filter(line => !/^\s*#/.test(line))
+				.join("\n");
+			if (code.includes("tomllib")) offenders.push(`${scene}: parses a token file itself`);
+			if (code.includes("crates/veyyon-desktop-tokens")) {
 				offenders.push(`${scene}: names a path into the tokens crate`);
 			}
 		}
