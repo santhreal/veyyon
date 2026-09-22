@@ -58,17 +58,3 @@ export function createTerminalCollabHostSurface(ctx: TerminalSurfaceContext): Co
 		},
 	};
 }
-
-/**
- * Construct a CollabHostSurface with no-op implementations for testing.
- */
-export function createMockCollabHostSurface(overrides?: Partial<CollabHostSurface>): CollabHostSurface {
-	return {
-		setCollabStatus: () => {},
-		requestRender: () => {},
-		updatePendingMessagesDisplay: () => {},
-		showStatus: () => {},
-		getCachedContextBreakdown: () => null,
-		...overrides,
-	};
-}
