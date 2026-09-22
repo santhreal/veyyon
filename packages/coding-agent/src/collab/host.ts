@@ -12,6 +12,7 @@
 import { timingSafeEqual } from "node:crypto";
 import * as fs from "node:fs/promises";
 import type { ImageContent, TextContent } from "@veyyon/ai";
+import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { errorMessage, logger } from "@veyyon/utils";
 import type {
 	BusChannel,
@@ -20,12 +21,8 @@ import type {
 	CollabUiResponseValue,
 	WireSessionEntry,
 } from "@veyyon/wire";
-import { mapJsonStrings } from "../json-transform";
 import type { Settings } from "../config/settings";
-import type { AgentSession } from "../session/agent-session";
-import type { SessionManager } from "@veyyon/kernel/session/session-manager";
-import type { EventBus } from "../utils/event-bus";
-import type { CollabHostSurface } from "./host-surface";
+import { mapJsonStrings } from "../json-transform";
 import {
 	extractToolResultContent,
 	extractToolResultDetails,
@@ -35,11 +32,14 @@ import {
 } from "../presentation/web-tool-display";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { type AgentRef, AgentRegistry } from "../registry/agent-registry";
+import type { AgentSession } from "../session/agent-session";
 import type { AgentSessionEvent } from "../session/agent-session-types";
 import { stripImagesFromMessage, USER_INTERRUPT_LABEL } from "../session/messages";
 import { TASK_SUBAGENT_LIFECYCLE_CHANNEL, TASK_SUBAGENT_PROGRESS_CHANNEL } from "../task/types";
+import type { EventBus } from "../utils/event-bus";
 import { generateRoomKey, generateWriteToken, importRoomKey } from "./crypto";
 import { collabDisplayName } from "./display-name";
+import type { CollabHostSurface } from "./host-surface";
 import {
 	type AgentSnapshot,
 	COLLAB_PROMPT_MESSAGE_TYPE,

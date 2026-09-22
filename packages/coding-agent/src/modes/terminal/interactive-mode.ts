@@ -59,7 +59,7 @@ import { isTerminalTodoStatus, isTodoListDone } from "@veyyon/wire";
 import chalk from "chalk";
 import type { CollabGuestLink } from "../../collab/guest";
 import type { CollabHost } from "../../collab/host";
-import { createTerminalCollabHostSurface, type CollabHostSurface } from "../../collab/host-surface";
+import { type CollabHostSurface, createTerminalCollabHostSurface } from "../../collab/host-surface";
 import { KeybindingsManager } from "../../config/keybindings";
 import {
 	isSettingsInitialized,
