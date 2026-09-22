@@ -331,7 +331,7 @@ const CORPUS = [
 	{
 		Share: {
 			state: "hosting",
-			relay_url: "https://relay.example.com",
+			relay_url: "wss://relay.example.com",
 			link: "https://relay.example.com/room/room-1",
 			web_link: "https://relay.example.com/web/room-1",
 			view_link: "https://relay.example.com/room/room-1?read_only=true",
