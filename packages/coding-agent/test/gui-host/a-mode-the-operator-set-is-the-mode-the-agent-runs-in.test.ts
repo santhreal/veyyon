@@ -46,6 +46,7 @@ import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { resetSettingsForTest } from "../../src/config/settings";
+import { SESSION_MODES } from "../../src/gui-host/actions/session-mode";
 import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
 import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";
 import { type RequestFrame, snapshotSections, TestSocketClient } from "./test-client";
@@ -318,8 +319,9 @@ describe("a mode the operator set is the mode the agent runs in", () => {
 		expect(await recordedModes(session, 2)).toEqual(["vibe", "none"]);
 
 		// The set the session held before the mode, restored to the tool: the
-		// memory of it lives on the session, so an exit reaches for the set
-		// this session actually had rather than one a host remembered.
+		// memory of it lives on the session, so `session/vibe-mode.ts` reaches
+		// for the set this session actually had rather than one a host
+		// remembered.
 		await turn(session, 6);
 		expect(toolSets.at(-1)).toEqual(unrestricted);
 	});
@@ -375,6 +377,15 @@ describe("a mode the operator set is the mode the agent runs in", () => {
 		const left = await client.request(3, { SetSessionMode: { session, mode: "none" } });
 		expect(left.outcome).toEqual({ RequestSucceeded: { request: 3 } });
 		expect(activeSession(left.frames)?.value.mode).toBe("none");
+	});
+
+	// The set of accepted modes is read off the action at run time, so a fourth
+	// mode added to `gui-host/actions/session-mode.ts` turns this red until it is
+	// driven above and named in the refusal below. Each of the three drives a
+	// surface of its own: plan and vibe change the tool set, and loop is
+	// `gui-host/loop-bridge.ts`, whose exit the header restates.
+	test("every mode the action accepts is one this suite enters and leaves", () => {
+		expect([...SESSION_MODES].toSorted()).toEqual(["loop", "none", "plan", "vibe"]);
 	});
 
 	test("a mode the operator does not own, and a name that is not a mode, are refused", async () => {

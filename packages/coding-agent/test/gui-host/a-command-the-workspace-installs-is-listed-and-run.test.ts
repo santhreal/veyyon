@@ -2,8 +2,8 @@
  * WHY: the desktop drew sixteen commands compiled into its binary, so a skill,
  * an extension command, a project command file and an MCP prompt were
  * unreachable from the window while the terminal listed every one of them
- * under `/`. The catalogue is the host's, advertised as a `Commands` snapshot
- * and run back through `RunCommand`.
+ * under `/`. The catalogue is the host's, built by `gui-host/commands-view.ts`,
+ * advertised as a `Commands` snapshot and run back through `RunCommand`.
  *
  * THE CLASS THIS CLOSES: a command the host can run that never reaches a
  * client, and a `CommandView` a client cannot decode. The builtin sweep reads

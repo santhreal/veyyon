@@ -8,9 +8,10 @@
  * THE CLASS THIS CLOSES: a command the host answers for a window that is not
  * reachable, not ephemeral, or not answered. The sweep over
  * `DESKTOP_HOST_COMMAND_NAMES` fails when a name is added with no catalogue
- * row and no handler, and the ephemerality assertion reads the provider's own
- * context on a second question, which is where a recorded side turn would
- * appear.
+ * row and no handler in `gui-host/actions/host-commands.ts`, and the
+ * ephemerality assertion reads the provider's own context on a second
+ * question, which is where a side turn `gui-host/side-question.ts` recorded
+ * would appear.
  *
  * WHAT IT DOES NOT CATCH: a real provider request (`streamSimple` is stubbed),
  * how the window draws the two entries, which

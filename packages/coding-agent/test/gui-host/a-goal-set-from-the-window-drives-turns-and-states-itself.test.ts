@@ -3,7 +3,8 @@
  * Goal mode on the terminal runs autonomous continuation turns, tracks budget
  * usage, and allows the operator to pause, resume, or drop the goal. The native
  * desktop window reaches this functionality over the JSON wire protocol using
- * SetGoal and ControlGoal actions, and receives Goal snapshot section updates.
+ * SetGoal and ControlGoal actions, which `gui-host/goal-bridge.ts` drives, and
+ * receives Goal snapshot section updates.
  *
  * WHAT THIS SUITE DEFENDS:
  * 1. Setting a goal via SetGoal starts driving turns and emits the Goal snapshot
