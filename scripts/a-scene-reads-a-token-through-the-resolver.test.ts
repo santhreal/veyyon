@@ -71,6 +71,7 @@ const SCENE_READS: Record<string, number> = {
 	"desktop-rail-footer.sh": 3,
 	"desktop-rail-search.sh": 6,
 	"desktop-reduced-motion.sh": 6,
+	"desktop-share-session.sh": 6,
 	"desktop-session-mode.sh": 1,
 	"desktop-session-transcript.sh": 4,
 	"desktop-session-workflows.sh": 2,

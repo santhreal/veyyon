@@ -42,6 +42,12 @@ Reconnecting guests receive completed tool result text and display metadata with
 | `/join <link>` | Join a shared session as a guest |
 | `/leave` | Leave (guest) or stop sharing (host) |
 
+The desktop window hosts a share from a card of its own: `/collab` or `/share`
+opens it, and it draws the links, the parties on the relay and a control that
+stops the share. Joining somebody else's share is a terminal command, because a
+guest runs a replica of the host's transcript. The desktop surface is described
+in [Surfaces and interactions](../desktop/surfaces.md#sharing-a-session).
+
 ## Link format
 
 Accepted by `/join <link>` and `veyyon join "<link>"`:

@@ -28,6 +28,7 @@
  * also says nothing about what the window draws for a participant.
  */
 import {
+	COLLAB_PROTO,
 	encodeBase64Url,
 	formatCollabLink,
 	generateRoomId,
@@ -111,7 +112,6 @@ describe("a guest joins a share with the link it was given", () => {
 		expect(peerId).toBe(1);
 		expect(frame.t).toBe("hello");
 		expect(frame.name).toBe("Wren");
-		const { COLLAB_PROTO } = await import("@veyyon/wire");
 		expect(frame.proto).toBe(COLLAB_PROTO);
 	}, 30_000);
 

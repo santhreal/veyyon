@@ -796,6 +796,33 @@ arrive while the card is open.
 A session with no agent running states that, and a stream with nothing in it
 states that separately.
 
+## Sharing a session
+
+`/collab` opens a card over the session that shares it live over a relay.
+`/share` reaches the same card. The window hosts a share; joining somebody
+else's is `/join` in the terminal, which runs a replica of their transcript.
+
+A share runs on the relay named by the `collab.relayUrl` setting. With no relay
+configured the card names that setting and draws no control, because a control
+that cannot work is not drawn.
+
+With a relay configured and nothing shared, the card draws two controls: one
+starts a share anybody on the link can prompt through, the other starts one
+that is read-only. While a share is starting or stopping the card states that
+and draws no control, so a start cannot be pressed twice.
+
+While sharing, the card draws the link, the read-only link, a copy control
+beside each, and a control that stops the share. Copying is the window's own
+clipboard and reaches the host for nothing. Stopping ends the share for every
+guest on it.
+
+Each party on the relay is a row, the session's own included, stating the name
+that party joined under and whether it may prompt: a guest that arrived by the
+read-only link reads as a viewer. Rows arrive and leave while the card is open.
+
+A share that fails to start states why on the card and leaves the session
+unshared.
+
 ## Terminal and process output
 
 Click the terminal grid to focus it. Terminal input is sent to the host without
