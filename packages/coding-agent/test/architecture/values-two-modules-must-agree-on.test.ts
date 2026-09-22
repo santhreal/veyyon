@@ -22,9 +22,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { ANTHROPIC_WEB_SEARCH_TOOL } from "@veyyon/catalog/wire/anthropic";
 import { MCP_PROTOCOL_VERSION } from "@veyyon/coding-agent/mcp/protocol-version";
-import { MAIN_CALL_SIGN } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-activity";
 import { DEFAULT_PLAN_FILE_URL } from "@veyyon/coding-agent/plan-mode/plan-file-url";
 import { MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
+import { MAIN_CALL_SIGN } from "@veyyon/coding-agent/registry/live-roster";
 import { LEGACY_TOOL_DEFINITION_MARKER } from "@veyyon/kernel/registry/legacy-tool-marker";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
@@ -283,7 +283,7 @@ describe("each value is declared once", () => {
 	 * does not refile it.
 	 *
 	 * `registry/agent-registry.ts` declares `MAIN_AGENT_ID`, the name a driving agent answers to and the
-	 * name the model is told to write. `modes/terminal/components/dashboard/agent-activity.ts` declares `MAIN_CALL_SIGN`, the
+	 * name the model is told to write. `registry/live-roster.ts` declares `MAIN_CALL_SIGN`, the
 	 * label a person reads in the dashboard. They share five bytes and nothing else.
 	 *
 	 * Folding them would assert that renaming the label renames what the model addresses, and the label is
@@ -299,11 +299,9 @@ describe("each value is declared once", () => {
 	it("keeps the agent registry key and the displayed call sign apart", () => {
 		expect(MAIN_AGENT_ID).toBe("Main");
 		expect(MAIN_CALL_SIGN).toBe("Main");
-		expect(
-			moduleSpecifiersIn(
-				fs.readFileSync(path.join(SRC, "modes/terminal/components/dashboard/agent-activity.ts"), "utf-8"),
-			),
-		).not.toContain("../../registry/agent-registry");
+		expect(moduleSpecifiersIn(fs.readFileSync(path.join(SRC, "registry/live-roster.ts"), "utf-8"))).not.toContain(
+			"./agent-registry",
+		);
 	});
 
 	/**

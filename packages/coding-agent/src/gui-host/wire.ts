@@ -1,4 +1,5 @@
 import type { ToolView } from "@veyyon/view";
+import type { AgentDisplayState } from "../registry/live-roster";
 
 /**
  * TypeScript mirror of the Rust wire types the desktop client speaks,
@@ -449,12 +450,48 @@ export interface McpServerView {
 
 export interface AgentView {
 	id: string;
+	/**
+	 * The short name a person reads and says: `Main`, `Kestrel`, `Advisor-2`.
+	 * Assigned from spawn order by `registry/live-roster.ts`, so both hosts
+	 * call the same agent the same thing.
+	 */
+	call_sign: string;
+	/** The registry's own label, which for a spawned agent is the agent TYPE it was spawned from. */
 	display_name: string;
+	/** The registry's kind: `main`, `sub` or `advisor`. */
 	kind: string;
-	status: string;
+	/**
+	 * The state a surface names: `running`, `blocked`, `idle`, `waiting`,
+	 * `parked` or `aborted`. Finer than the registry's own status, which cannot
+	 * say that a running agent is stopped at an approval prompt or that a
+	 * stopped one is waiting on a peer. `registry/live-roster.ts` derives it,
+	 * and `AgentState` in `crates/veyyon-desktop-model/src/domain/agents.rs`
+	 * reads it.
+	 */
+	status: AgentDisplayState;
 	parent: string | null;
 	scope: string;
 	session: string | null;
+	/** Short gist of what the agent is doing right now; null when it has not said. */
+	activity: string | null;
+	/** The model it runs on as `provider/id`; null when the registry does not know. */
+	model: string | null;
+}
+
+/** How one line of agent traffic landed. */
+export type AgentMessageOutcome = "injected" | "woken" | "revived" | "failed";
+export const AGENT_MESSAGE_OUTCOMES = ["injected", "woken", "revived", "failed"] as const;
+
+/** One line of agent-to-agent traffic, oldest first, as the comms stream draws it. */
+export interface AgentMessageView {
+	id: string;
+	from: string;
+	to: string;
+	body: string;
+	at_ms: number;
+	reply_to: string | null;
+	outcome: AgentMessageOutcome;
+	error: string | null;
 }
 
 export interface ContextCategory {
@@ -624,6 +661,7 @@ export type SnapshotSection =
 	| { AuthFlow: AuthFlowView }
 	| { Mcp: McpServerView[] }
 	| { Agents: AgentView[] }
+	| { AgentComms: AgentMessageView[] }
 	| { Usage: UsageView }
 	| { ContextBreakdown: ContextBreakdownView }
 	| { Export: ExportView }
@@ -658,6 +696,7 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"AuthFlow",
 	"Mcp",
 	"Agents",
+	"AgentComms",
 	"Usage",
 	"ContextBreakdown",
 	"Export",
@@ -701,6 +740,7 @@ export type HostAction =
 	| "Shutdown"
 	| "PauseAgents"
 	| "ResumeAgents"
+	| "RefreshAgents"
 	| "ListSessions"
 	| "ListCommands"
 	| { Attach: { endpoint: string | null } }
@@ -787,6 +827,7 @@ export const ALL_HOST_ACTIONS = [
 	"RefreshMcp",
 	"SetMcpEnabled",
 	"ReviveAgent",
+	"RefreshAgents",
 	"SpawnTask",
 	"CancelTask",
 	"ListCommands",
@@ -873,6 +914,7 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	RefreshMcp: "Mcp",
 	SetMcpEnabled: "Mcp",
 	ReviveAgent: "Agents",
+	RefreshAgents: "Agents",
 	SpawnTask: "Tasks",
 	CancelTask: "Tasks",
 	ListCommands: "AgentCommands",

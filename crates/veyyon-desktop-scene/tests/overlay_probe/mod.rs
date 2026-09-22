@@ -131,7 +131,7 @@ pub fn observations(cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
 	settings_shell.overlay = Some(Overlay::Settings(Box::new(settings)));
 
 	let settings_tokens = tokens.clone();
-	let settings_theme = theme;
+	let settings_theme = theme.clone();
 	let options = shell::wide();
 	let mut session = HeadlessSession::open(cx, &options, move |_window, app| {
 		let installed = install_tokens(app, &settings_tokens, &settings_theme, Path::new("surface"))
@@ -149,6 +149,87 @@ pub fn observations(cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
 		.frame()
 		.expect("the hovered settings frame must capture");
 	out.push(frame_observation("settings_sheet_hovered", &captured.frame));
+	// The session holds the app for as long as it lives, and the dashboards
+	// below open their own, so this one is released before they do.
+	drop(session);
+
+	// 4. Agent dashboard overlay with agents and comms
+	let mut agents_shell = fixture::populated();
+	let mut agents_state = veyyon_desktop_surface::AgentsState::new();
+	agents_state.agents = vec![
+		veyyon_desktop_model::AgentView {
+			id:           "agent-1".into(),
+			call_sign:    "Kestrel".into(),
+			display_name: "Scout".into(),
+			kind:         "sub".into(),
+			status:       "running".into(),
+			parent:       None,
+			scope:        "s".into(),
+			session:      Some("sess-1".into()),
+			activity:     Some("reading files".into()),
+			model:        Some("anthropic/claude-3-5-sonnet".into()),
+		},
+		veyyon_desktop_model::AgentView {
+			id:           "agent-2".into(),
+			call_sign:    "Otter".into(),
+			display_name: "Reviewer".into(),
+			kind:         "sub".into(),
+			status:       "parked".into(),
+			parent:       None,
+			scope:        "s".into(),
+			session:      None,
+			activity:     None,
+			model:        None,
+		},
+	];
+	agents_shell.overlay = Some(Overlay::Agents(Box::new(agents_state)));
+	let agents_tokens = tokens.clone();
+	let agents_theme = theme.clone();
+	let agents_frame = render_view(cx, &shell::wide(), move |_window, app| {
+		let installed = install_tokens(app, &agents_tokens, &agents_theme, Path::new("surface"))
+			.expect("the bundled token set must install");
+		app.new(|_cx| ShellView::new(installed, agents_shell))
+	})
+	.expect("the agents dashboard must render");
+	out.push(frame_observation("agents_dashboard", &agents_frame));
+
+	// 5. The same dashboard on its comms stream, so the measures the traffic
+	// view draws are exercised beside the roster's.
+	let mut comms_shell = fixture::populated();
+	let mut comms_state = veyyon_desktop_surface::AgentsState::new();
+	comms_state.active_tab = veyyon_desktop_surface::AgentViewTab::Comms;
+	comms_state.agent_comms = vec![
+		veyyon_desktop_model::AgentMessageView {
+			id:       "msg-1".into(),
+			from:     "Scout".into(),
+			to:       "Reviewer".into(),
+			body:     "The parser drops the trailing newline.".into(),
+			at_ms:    0,
+			reply_to: None,
+			outcome:  veyyon_desktop_model::AgentMessageOutcome::Injected,
+			error:    None,
+		},
+		veyyon_desktop_model::AgentMessageView {
+			id:       "msg-2".into(),
+			from:     "Reviewer".into(),
+			to:       "Scout".into(),
+			body:     "Holding that file, take the fixture instead.".into(),
+			at_ms:    0,
+			reply_to: Some("msg-1".into()),
+			outcome:  veyyon_desktop_model::AgentMessageOutcome::Failed,
+			error:    Some("the recipient had been released".into()),
+		},
+	];
+	comms_shell.overlay = Some(Overlay::Agents(Box::new(comms_state)));
+	let comms_tokens = tokens.clone();
+	let comms_theme = theme;
+	let comms_frame = render_view(cx, &shell::wide(), move |_window, app| {
+		let installed = install_tokens(app, &comms_tokens, &comms_theme, Path::new("surface"))
+			.expect("the bundled token set must install");
+		app.new(|_cx| ShellView::new(installed, comms_shell))
+	})
+	.expect("the agents comms stream must render");
+	out.push(frame_observation("agents_comms", &comms_frame));
 
 	out
 }

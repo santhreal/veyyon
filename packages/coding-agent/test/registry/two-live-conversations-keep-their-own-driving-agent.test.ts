@@ -31,10 +31,6 @@
  * a string instead of asking for the role.
  */
 import { beforeEach, describe, expect, test, vi } from "bun:test";
-import {
-	collectLiveAgents,
-	MAIN_CALL_SIGN,
-} from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-activity";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import {
 	type AgentRef,
@@ -42,6 +38,7 @@ import {
 	MAIN_AGENT_ID,
 	mainAgentIdFor,
 } from "@veyyon/coding-agent/registry/agent-registry";
+import { collectLiveAgents, MAIN_CALL_SIGN } from "@veyyon/coding-agent/registry/live-roster";
 import * as logger from "@veyyon/utils/logger";
 
 const CONVERSATION_A = "session-a";

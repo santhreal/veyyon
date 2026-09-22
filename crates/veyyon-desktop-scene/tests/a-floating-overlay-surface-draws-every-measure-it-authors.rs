@@ -27,3 +27,8 @@ fn every_palette_measure_moves_a_pixel() {
 fn every_settings_measure_moves_a_pixel() {
 	assert_every_measure_is_drawn("surface.settings", overlay_probe::observations);
 }
+
+#[test]
+fn every_agents_measure_moves_a_pixel() {
+	assert_every_measure_is_drawn("surface.agents", overlay_probe::observations);
+}

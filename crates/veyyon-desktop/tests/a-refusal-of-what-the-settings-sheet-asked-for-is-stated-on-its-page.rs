@@ -44,18 +44,20 @@ const NOW_MS: u64 = 1_700_000_000_000;
 
 /// The actions of the sheet's capabilities that no control of the sheet
 /// presses: what the window reads when it opens a page, which is the window
-/// navigating rather than the operator pressing anything. Every one of these
-/// is also sent by a control -- a selector re-reading its catalogue, a
-/// refresh button -- and the sweep sees both, so a kind here is a kind that
-/// reached the titlebar under `Intent::Navigate` alone. Their failures are
-/// the window's and land on its line.
-const PINNED_NOT_A_PRESS: [HostActionKind; 8] = [
+/// navigating rather than the operator pressing anything. Most are also sent
+/// by a control -- a selector re-reading its catalogue, a refresh button --
+/// and the sweep sees both, so a kind here is a kind that reached the
+/// titlebar under `Intent::Navigate` alone. `RefreshAgents` is sent by
+/// arriving on the dashboard and by nothing else, so it is only ever here.
+/// Their failures are the window's and land on its line.
+const PINNED_NOT_A_PRESS: [HostActionKind; 9] = [
 	HostActionKind::LoadSettings,
 	HostActionKind::LoadThemes,
 	HostActionKind::LoadKeybindings,
 	HostActionKind::RefreshProviders,
 	HostActionKind::RefreshMcp,
 	HostActionKind::RefreshDiagnostics,
+	HostActionKind::RefreshAgents,
 	HostActionKind::GetUsage,
 	HostActionKind::GetContextBreakdown,
 ];

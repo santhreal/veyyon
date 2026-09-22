@@ -688,7 +688,8 @@ half the row.
 
 `/account` opens the Account group with Account manager and Sign in.
 `/settings` opens General, Themes, Keybindings, and Diagnostics.
-`/agents` opens the Agents surface.
+`/agents`, `/cockpit` and `/hub` open the agent dashboard.
+`/extensions` opens the Extensions page.
 
 The sidebar Settings gear and `/settings` use the same destination and navigation
 state.
@@ -705,7 +706,7 @@ preserve the scroll position. The page header remains visible at the minimum
 window height.
 
 Each focused page has its own command name: `/account manager`, `/account login`,
-`/hotkeys`, `/mcp`, `/agents`, `/usage`, `/context`, `/settings themes`, and
+`/hotkeys`, `/mcp`, `/extensions`, `/usage`, `/context`, `/settings themes`, and
 `/settings diagnostics`.
 
 The Themes page lists the appearances this build ships above the themes the
@@ -733,10 +734,15 @@ the host reports about its connection, until the field commits or is
 restored. A host that reports no keybindings shows the shipped defaults as
 chips, read-only.
 
-The Agents page runs a background task from the field above its listing:
+The Extensions page runs a background task from the field above its listing:
 `Enter`, or Run beside it, spawns the task as a subagent of the active
 session and empties the field. The task appears in the listing when the host
 answers with it.
+
+The listing draws the dashboard's rows: each states the call sign, the agent
+type it was spawned from, its status and its scope. Cancel is drawn on an agent
+inside a turn, and Revive on a parked one, which is the one state a revive
+brings back; an aborted agent is terminal and draws neither.
 
 The Sign in page draws the step the host's authentication flow waits on. A
 flow awaiting the browser draws Open Browser, which opens the URL the host
@@ -745,6 +751,50 @@ Submit and Cancel; Submit sends what the field holds, and an empty field is
 refused in the attention strip. A failed flow draws Retry and Dismiss. A
 cancelled flow draws Start Flow. A completed flow states the connected
 account and draws no control.
+
+## Agent dashboard
+
+`/agents` opens a card over the session, listing the agents of the session in
+view. `/cockpit` and `/hub` reach the same card. The list holds the agents the
+host reports for that conversation and nothing from another one, and it is
+replaced as the host reports it, so an agent that finished while the card is
+open leaves the list on the next report.
+
+A row states the agent's call sign, its kind, its status, the model it runs on
+and the gist of what it is doing. The call sign is the short name the terminal
+dashboard prints for the same agent: `Main` for the session's own agent, and
+`Kestrel`, `Otter`, `Juniper` and the rest, in spawn order, for the agents it
+spawns. A spawned agent also states the agent type it was spawned from, beside
+its kind, so three agents of one type read as three names rather than three
+copies of the type.
+
+The status is one of six words. `running` is an agent inside a turn. `blocked`
+is an agent inside a turn and stopped at an approval prompt, which is yours to
+answer. `idle` is a live agent out of work. `waiting` is an agent stopped on a
+peer that may never answer. `parked` is an agent whose session was disposed and
+whose transcript is on disk. `aborted` is an agent that was terminated, which is
+terminal.
+
+An agent inside a turn, which is `running` or `blocked`, is drawn above the
+rest; within each of those groups the order is the host's. Open beside a row
+opens that agent's own session, and a row holding no session draws no Open.
+Terminate is drawn on an agent inside a turn other than the session's own:
+pressing it replaces the row with the question and the two answers, and the
+termination is sent only from Terminate in that row. Revive is drawn on a
+parked row, and brings that agent's session back from its transcript.
+
+The card header holds two segments, `Live` and `Comms`, each stating in
+parentheses how many rows it holds, so the count is read before the view is
+opened. Pressing a segment draws that view in the card body.
+
+The Comms tab lists the traffic those agents send each other, oldest first,
+each line stating how long ago it landed, who sent it, who it reached, what it
+said, and what it answers when it is a reply. A line that was not an ordinary
+delivery carries what it was instead, and a line that failed states why. Lines
+arrive while the card is open.
+
+A session with no agent running states that, and a stream with nothing in it
+states that separately.
 
 ## Terminal and process output
 

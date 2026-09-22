@@ -25,7 +25,7 @@ pub enum ActionClassification {
 	Mutation,
 }
 
-/// Classifies any of the 79 [`HostActionKind`] variants into
+/// Classifies any of the 82 [`HostActionKind`] variants into
 /// [`ActionClassification`].
 ///
 /// Uses an exhaustive match without wildcard `_` to guarantee that new actions
@@ -33,7 +33,7 @@ pub enum ActionClassification {
 #[must_use]
 pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 	match kind {
-		// Ephemeral read-only queries and inspectors (21 actions)
+		// Ephemeral read-only queries and inspectors (22 actions)
 		HostActionKind::ListSessions
 		| HostActionKind::SearchSessions
 		| HostActionKind::PreviewSessionTranscript
@@ -52,11 +52,12 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::LoadThemes
 		| HostActionKind::LoadKeybindings
 		| HostActionKind::RefreshDiagnostics
+		| HostActionKind::RefreshAgents
 		| HostActionKind::GetUsage
 		| HostActionKind::GetContextBreakdown
 		| HostActionKind::ListCommands => ActionClassification::Ephemeral,
 
-		// Mutations, lifecycle, session modifications, turns, terminals, processes (58 actions)
+		// Mutations, lifecycle, session modifications, turns, terminals, processes (60 actions)
 		HostActionKind::Attach
 		| HostActionKind::Detach
 		| HostActionKind::RetryConnection

@@ -169,6 +169,28 @@ pub(super) fn overlay_layer(
 				))
 				.into_any_element()
 		},
+		Overlay::Agents(state) => {
+			let width = surface
+				.agents
+				.card_width_px
+				.min(f32::from(window.viewport_size().width - margin * 2.0));
+			let height = surface.agents.card_height_px.min(max_available_height);
+			div()
+				.w(px(width))
+				.h(px(height))
+				.bg(tokens.color(veyyon_desktop_kit::ColorRole::Float))
+				.child(crate::agents::agents_surface(
+					state,
+					back,
+					Some(&dest_focus),
+					&view.state.controls,
+					view.clock_ms(),
+					&surface.agents,
+					tokens,
+					cx,
+				))
+				.into_any_element()
+		},
 	};
 	let content = div()
 		.opacity(frame.opacity)

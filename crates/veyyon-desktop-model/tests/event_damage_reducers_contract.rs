@@ -155,7 +155,7 @@ fn test_damage_decision_for_every_snapshot_section_sweep() {
 				);
 			},
 			"Settings" | "Diagnostics" | "Models" | "Providers" | "AuthFlow" | "Mcp" | "Agents"
-			| "Themes" | "Keybindings" | "Commands" => {
+			| "AgentComms" | "Themes" | "Keybindings" | "Commands" => {
 				assert!(damage.contains(&Damage::Palette), "{name} must emit Damage::Palette");
 			},
 			"Changes" => {

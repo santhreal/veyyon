@@ -61,7 +61,7 @@ const DECISIONS: Record<string, Decision> = {
 	copy: { client: "Intent::CopyText, over the transcript selection" },
 	hotkeys: { client: "SettingsPage::Keybindings" },
 	extensions: { client: "SettingsPage::Extensions" },
-	agents: { gap: "the extensions page draws extensions, not the agent roster" },
+	agents: { client: "SurfaceRoute::Agents, the live roster and the comms stream, under /cockpit and /hub too" },
 	branch: { action: "BranchSession" },
 	fork: { action: "BranchSession" },
 	tree: { client: "the queue rail's indented, collapsible branch tree" },
@@ -81,7 +81,7 @@ const DECISIONS: Record<string, Decision> = {
 };
 
 /** The gaps as they stand, so closing one is a recorded change. */
-const RECORDED_GAPS = ["agents", "collab", "debug", "guided-goal", "join", "leave", "omfg", "profile", "tan"];
+const RECORDED_GAPS = ["collab", "debug", "guided-goal", "join", "leave", "omfg", "profile", "tan"];
 
 /**
  * The declarations through their declared interface. The table is `as const`,

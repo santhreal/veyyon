@@ -31,6 +31,7 @@ import type { KeyId } from "../../../../config/keybindings";
 import type { MessageRenderer } from "../../../../extensibility/extensions/types";
 import type { AgentLifecycleManager } from "../../../../registry/agent-lifecycle";
 import type { AgentRegistry } from "../../../../registry/agent-registry";
+import { type AgentDisplayState, agentDisplayState } from "../../../../registry/live-roster";
 import { getEditorTheme, theme } from "../../../../theme/theme";
 import { replaceTabs, shortenPath, truncateToWidth } from "../../../../tools/core/render-utils";
 import type { ObservableSession, SessionObserverRegistry } from "../../session-observer-registry";
@@ -47,7 +48,7 @@ import {
 import { COMPOSER_INSET_COLS } from "../composer/composer-chrome";
 import { routeModalChrome } from "../selectors/select-list-mouse-routing";
 import { ChatTranscriptBuilder } from "../transcript/chat-transcript-builder";
-import { type AgentDisplayState, agentDisplayState, agentStatusWord } from "./agent-status-display";
+import { agentStatusWord } from "./agent-status-display";
 
 // The whole transcript sits on ONE left rail (COMPOSER_INSET_COLS); the
 // viewer's chrome rows pad to the same rail so title, body, editor, and

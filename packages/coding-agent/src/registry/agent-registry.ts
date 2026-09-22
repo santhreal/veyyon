@@ -679,6 +679,11 @@ export class AgentRegistry {
 		return () => this.#listeners.delete(listener);
 	}
 
+	/** Number of active change listeners, for lifecycle and leak assertions. */
+	listenerCount(): number {
+		return this.#listeners.size;
+	}
+
 	#emit(event: RegistryEvent): void {
 		for (const listener of this.#listeners) {
 			try {

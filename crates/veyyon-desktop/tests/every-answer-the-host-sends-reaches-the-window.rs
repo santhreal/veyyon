@@ -68,6 +68,8 @@ enum Prepare {
 	Rest,
 	/// The settings overlay, open on its first page.
 	Settings,
+	/// The agent dashboard, which is where the traffic between agents draws.
+	Agents,
 	/// The palette, open in one mode, holding a query. A lookup mode lists
 	/// what the host answered for what was typed, so its rows are empty
 	/// until something is in the field.
@@ -90,6 +92,7 @@ const fn prepare_for(kind: SnapshotSectionKind) -> Prepare {
 		| SnapshotSectionKind::Mcp
 		| SnapshotSectionKind::Agents
 		| SnapshotSectionKind::Diagnostics => Prepare::Settings,
+		SnapshotSectionKind::AgentComms => Prepare::Agents,
 		SnapshotSectionKind::SearchResults => Prepare::Palette(PaletteMode::Files, "app"),
 		SnapshotSectionKind::ContentMatches => Prepare::Palette(PaletteMode::ContentSearch, "todo"),
 		// The catalogue is rows of the command list, which is what the
@@ -174,6 +177,7 @@ fn prepared(store: &Store, prepare: &Prepare) -> (ShellState, SessionIndex) {
 	let overlay = match prepare {
 		Prepare::Rest | Prepare::ProcessOutput(_) => None,
 		Prepare::Settings => Some(Overlay::Settings(Box::default())),
+		Prepare::Agents => Some(Overlay::Agents(Box::default())),
 		Prepare::HistorySearch => {
 			let mut palette = PaletteState::history("needle".into());
 			palette.set_host_items(vec![veyyon_desktop_surface::PaletteItem::command(

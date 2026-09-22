@@ -242,6 +242,13 @@ pub fn command_items() -> Vec<PaletteItem> {
 			None,
 			Some(Capability::Files),
 		),
+		(
+			"/agents",
+			Intent::Navigate(SurfaceRoute::Agents),
+			"The agents running in this session, and what they say to each other",
+			None,
+			Some(Capability::Agents),
+		),
 		("/account", Intent::Navigate(SurfaceRoute::Account), "Accounts and sign-in", None, None),
 		(
 			"/settings",
@@ -293,6 +300,12 @@ pub fn command_items() -> Vec<PaletteItem> {
 		item.subtitle = Some(description.to_owned());
 		item.capability = capability;
 		item.takes_argument = name == "/goal";
+		// The terminal reaches the same card under `/cockpit` and `/hub`, so
+		// both find this row. `search` is matched and not drawn, which keeps
+		// one row in the list rather than three that open the same surface.
+		if name == "/agents" {
+			item.search = Some("/cockpit /hub".to_owned());
+		}
 		item
 	})
 	.collect();
@@ -307,7 +320,7 @@ pub fn command_items() -> Vec<PaletteItem> {
 			SettingsPage::Providers => "/account manager",
 			SettingsPage::Authentication => "/account login",
 			SettingsPage::Mcp => "/mcp",
-			SettingsPage::Extensions => "/agents",
+			SettingsPage::Extensions => "/extensions",
 			SettingsPage::Diagnostics => "/settings diagnostics",
 			SettingsPage::Usage => "/usage",
 			SettingsPage::ContextBreakdown => "/context",

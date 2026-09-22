@@ -67,12 +67,15 @@ fn setting(value: &str) -> SettingEntry {
 fn agent(id: &str) -> AgentView {
 	AgentView {
 		id:           id.to_string(),
+		call_sign:    id.to_string(),
 		display_name: id.to_string(),
-		kind:         "task".to_string(),
+		kind:         "sub".to_string(),
 		status:       "running".to_string(),
 		parent:       None,
 		scope:        "/repo".to_string(),
 		session:      None,
+		activity:     None,
+		model:        None,
 	}
 }
 

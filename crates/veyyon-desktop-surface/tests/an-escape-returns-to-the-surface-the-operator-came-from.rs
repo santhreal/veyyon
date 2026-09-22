@@ -68,13 +68,19 @@ fn render_session<R>(
 /// `SettingsPage` at run time, and the match is exhaustive, so a fifth kind of
 /// route states how it is reached before this compiles.
 fn routes() -> Vec<SurfaceRoute> {
-	let mut routes = vec![SurfaceRoute::Commands, SurfaceRoute::Account, SurfaceRoute::Settings];
+	let mut routes = vec![
+		SurfaceRoute::Commands,
+		SurfaceRoute::Account,
+		SurfaceRoute::Settings,
+		SurfaceRoute::Agents,
+	];
 	routes.extend(SettingsPage::iter().map(SurfaceRoute::Page));
 	for route in &routes {
 		match route {
 			SurfaceRoute::Commands
 			| SurfaceRoute::Account
 			| SurfaceRoute::Settings
+			| SurfaceRoute::Agents
 			| SurfaceRoute::Page(_) => {},
 		}
 	}
@@ -162,7 +168,7 @@ enum Shown {
 fn shown(session: &mut HeadlessSession<ShellView>) -> Shown {
 	session
 		.update(|view, _window, _cx| match view.state().overlay.as_ref() {
-			Some(overlay @ (Overlay::Palette(_) | Overlay::Settings(_))) => {
+			Some(overlay @ (Overlay::Palette(_) | Overlay::Settings(_) | Overlay::Agents(_))) => {
 				Shown::Surface(overlay.route())
 			},
 			Some(Overlay::History(_)) => Shown::History,

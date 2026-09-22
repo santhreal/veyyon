@@ -1,6 +1,6 @@
 //! Native command hierarchy and shared intermediate surface chrome.
 
-use strum::IntoEnumIterator;
+use strum::{EnumIter, IntoEnumIterator};
 use veyyon_desktop_kit::{
 	Button, ButtonSize, ButtonVariant, ColorRole, SpacingStep, TextRamp, TextWeight, TokenSet,
 };
@@ -13,11 +13,13 @@ use crate::{
 };
 
 /// UI destinations over existing host domain renderers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
 pub enum SurfaceRoute {
 	Commands,
 	Account,
 	Settings,
+	Agents,
+	#[strum(disabled)]
 	Page(SettingsPage),
 }
 
@@ -28,18 +30,25 @@ impl SurfaceRoute {
 			Self::Commands => "Commands",
 			Self::Account => "Account",
 			Self::Settings => "Settings",
+			Self::Agents => "Agents",
 			Self::Page(SettingsPage::Providers) => "Account manager",
 			Self::Page(SettingsPage::Authentication) => "Sign in",
-			Self::Page(SettingsPage::Extensions) => "Agents",
+			Self::Page(SettingsPage::Extensions) => "Extensions",
 			Self::Page(page) => page.title(),
 		}
+	}
+
+	/// Every route the shell reaches: the variants this enum declares, then one
+	/// per settings page, so a route added to either side arrives swept.
+	pub fn every() -> impl Iterator<Item = Self> {
+		Self::iter().chain(SettingsPage::iter().map(Self::Page))
 	}
 
 	#[must_use]
 	pub const fn parent(self) -> Option<Self> {
 		match self {
 			Self::Commands => None,
-			Self::Account | Self::Settings => Some(Self::Commands),
+			Self::Account | Self::Settings | Self::Agents => Some(Self::Commands),
 			Self::Page(SettingsPage::Providers | SettingsPage::Authentication) => Some(Self::Account),
 			Self::Page(
 				SettingsPage::General
@@ -54,6 +63,7 @@ impl SurfaceRoute {
 	#[must_use]
 	pub const fn aliases(self) -> &'static [&'static str] {
 		match self {
+			Self::Agents => &["/cockpit", "/hub"],
 			Self::Page(SettingsPage::Providers) => &["/providers"],
 			Self::Page(SettingsPage::Authentication) => &["/login"],
 			Self::Page(SettingsPage::Extensions) => &["/extensions"],
@@ -63,6 +73,11 @@ impl SurfaceRoute {
 
 	#[must_use]
 	pub fn overlay(self) -> Overlay {
+		if self == Self::Agents {
+			let mut state = crate::agents::AgentsState::new();
+			state.route = Some(self);
+			return Overlay::Agents(Box::new(state));
+		}
 		if let Self::Page(page) = self {
 			let mut state = SettingsState::new(page);
 			state.route = Some(self);

@@ -56,10 +56,12 @@ fn every_overlay() -> Vec<(&'static str, Overlay)> {
 				"sessions/history.jsonl".into(),
 			))),
 		),
+		("agents", Overlay::Agents(Box::new(veyyon_desktop_surface::AgentsState::new()))),
 	];
 	for (_name, overlay) in &all {
 		match overlay {
-			Overlay::Palette(_) | Overlay::Settings(_) | Overlay::History(_) => {},
+			Overlay::Palette(_) | Overlay::Settings(_) | Overlay::History(_) | Overlay::Agents(_) => {
+			},
 		}
 	}
 	all

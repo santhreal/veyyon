@@ -68,6 +68,8 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::OpenOverlay(Box::new(Overlay::Palette(PaletteState::default()))),
 		Intent::Navigate(veyyon_desktop_surface::navigation::SurfaceRoute::Account),
 		Intent::CloseOverlay,
+		Intent::SetAgentsTab(veyyon_desktop_surface::AgentViewTab::Comms),
+		Intent::ConfirmTermination(Some("agent-1".to_owned())),
 		Intent::PaletteQuery("find".to_owned()),
 		Intent::PaletteMove(1),
 		Intent::PaletteRun,
@@ -165,6 +167,8 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::CloseWindow,
 		Intent::Quit,
 		Intent::ToggleQueueParent("/sessions/root".to_owned()),
+		Intent::SetAgentsTab(veyyon_desktop_surface::AgentViewTab::Comms),
+		Intent::ConfirmTermination(Some("runner".to_owned())),
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -291,6 +295,8 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::MoveMenuHighlight(_)
 			| Intent::MoveMenuSection(_)
 			| Intent::CloseWindow
+			| Intent::SetAgentsTab(_)
+			| Intent::ConfirmTermination(_)
 			| Intent::Quit => {},
 		}
 	}

@@ -182,7 +182,12 @@
 	},
 	{
 		"Agents": [
-			{ "id": "agent-1", "display_name": "HostCoverage", "kind": "sub", "status": "running", "parent": "main", "scope": "/repo", "session": "sess-1" }
+			{ "id": "agent-1", "call_sign": "Kestrel", "display_name": "HostCoverage", "kind": "sub", "status": "running", "parent": "main", "scope": "/repo", "session": "sess-1", "activity": null, "model": null }
+		]
+	},
+	{
+		"AgentComms": [
+			{ "id": "msg-1", "from": "agent-1", "to": "agent-2", "body": "hello", "at_ms": 1700000000000, "reply_to": null, "outcome": "injected", "error": null }
 		]
 	},
 	{

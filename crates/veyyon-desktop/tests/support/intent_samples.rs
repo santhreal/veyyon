@@ -9,8 +9,8 @@ use strum::IntoEnumIterator;
 use veyyon_desktop_model::{SettableMode, SupervisorSignal, SurfaceId};
 use veyyon_desktop_surface::{
 	Attachment, Intent, IntentDiscriminants, MediaType, MenuSectionId, ModelChoice, Overlay,
-	PaletteState, PanelTab, Payload, QueueMode, ScrollBy, SettingsPage, ThinkingLevel,
-	ToolViewTarget, navigation::SurfaceRoute,
+	PaletteState, PanelTab, Payload, QueueMode, ScrollBy, ThinkingLevel, ToolViewTarget,
+	navigation::SurfaceRoute,
 };
 
 /// Every sample intent, for the sweep that drives each through `actions_for`.
@@ -134,10 +134,14 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		IntentDiscriminants::OpenOverlay => {
 			vec![Intent::OpenOverlay(Box::new(Overlay::Palette(PaletteState::default())))]
 		},
-		IntentDiscriminants::Navigate => SettingsPage::iter()
-			.map(|page| Intent::Navigate(SurfaceRoute::Page(page)))
-			.collect(),
+		IntentDiscriminants::Navigate => SurfaceRoute::every().map(Intent::Navigate).collect(),
 		IntentDiscriminants::CloseOverlay => vec![Intent::CloseOverlay],
+		IntentDiscriminants::SetAgentsTab => {
+			vec![Intent::SetAgentsTab(veyyon_desktop_surface::AgentViewTab::Live)]
+		},
+		IntentDiscriminants::ConfirmTermination => {
+			vec![Intent::ConfirmTermination(Some("agent-1".to_string()))]
+		},
 		IntentDiscriminants::PaletteQuery => vec![Intent::PaletteQuery("query".to_string())],
 		IntentDiscriminants::PaletteMove => vec![Intent::PaletteMove(1)],
 		IntentDiscriminants::PaletteRun => vec![Intent::PaletteRun],

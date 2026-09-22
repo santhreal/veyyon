@@ -10,13 +10,12 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import {
 	AGENT_DISPLAY_STATES,
-	type AgentDisplayState,
-	agentDisplayState,
 	agentStatusColor,
 	agentStatusGlyph,
 	agentStatusWord,
 } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-status-display";
 import { AGENT_STATUSES } from "@veyyon/coding-agent/registry/agent-registry";
+import { type AgentDisplayState, agentDisplayState } from "@veyyon/coding-agent/registry/live-roster";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { useFullColor } from "../../../helpers/theme-assertions";
 

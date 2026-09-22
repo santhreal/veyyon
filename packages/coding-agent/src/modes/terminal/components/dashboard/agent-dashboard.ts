@@ -64,6 +64,7 @@ import type { KeyId } from "../../../../config/keybindings";
 import type { MessageRenderer } from "../../../../extensibility/extensions/types";
 import { AgentLifecycleManager } from "../../../../registry/agent-lifecycle";
 import { AgentRegistry } from "../../../../registry/agent-registry";
+import { agentDisplayState, agentType, collectLiveAgents, type LiveAgent } from "../../../../registry/live-roster";
 import { registerPersistedAgents } from "../../../../registry/persisted-agents";
 import { USER_INTERRUPT_LABEL } from "../../../../session/messages";
 import { IrcBus, type IrcLogEntry } from "../../../../task/irc-bus";
@@ -93,9 +94,8 @@ import {
 } from "../chrome/modal-shell";
 import { routeModalChrome } from "../selectors/select-list-mouse-routing";
 import { clampSelection, handleTabSwitchKey, selectionBand } from "../selectors/selector-helpers";
-import { agentType, collectLiveAgents, type LiveAgent } from "./agent-activity";
 import { modelBadgeFromSelector } from "./agent-model-badge";
-import { agentDisplayState, agentStatusGlyph, agentStatusWord } from "./agent-status-display";
+import { agentStatusGlyph, agentStatusWord } from "./agent-status-display";
 import { type AgentTranscriptRemote, AgentTranscriptViewer } from "./agent-transcript-viewer";
 import { AGENT_VIEW_AGE_TICK_MS, AGENT_VIEW_DATA_CHANGE_COALESCE_MS } from "./agent-view-timings";
 

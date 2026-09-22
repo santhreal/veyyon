@@ -10,6 +10,7 @@
 //! so the whole window renders from a fixture with no host attached, which is
 //! what makes it reviewable as a picture before any transport exists.
 
+pub mod agents;
 pub mod attach;
 pub mod cards;
 pub mod composer;
@@ -39,6 +40,7 @@ pub mod text;
 pub mod tokens;
 pub mod tool_view;
 pub mod transcript;
+pub use agents::{AgentViewTab, AgentsState};
 pub use composer::{
 	Attachment, AttachmentSource, MediaKind, MediaType, ModelChoice, Payload, PrimaryAction,
 	QueueMode, ThinkingLevel, TurnPhase,

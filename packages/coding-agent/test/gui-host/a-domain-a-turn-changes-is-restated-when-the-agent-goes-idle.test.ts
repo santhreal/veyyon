@@ -103,6 +103,7 @@ const AT_IDLE: Record<SnapshotSectionTag, "restated-at-idle" | "listed-at-idle" 
 	AuthFlow: "on-request",
 	Mcp: "on-request",
 	Agents: "on-request",
+	AgentComms: "on-request",
 	Usage: "restated-at-idle",
 	ContextBreakdown: "on-request",
 	Export: "on-request",

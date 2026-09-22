@@ -238,6 +238,7 @@ describe("a transcript arrives behind the header that says whose it is", () => {
 			RefreshMcp: "RefreshMcp",
 			SetMcpEnabled: { SetMcpEnabled: { server: "none", enabled: false } },
 			ReviveAgent: { ReviveAgent: { agent: "a-1" } },
+			RefreshAgents: "RefreshAgents",
 			SpawnTask: { SpawnTask: { prompt: "" } },
 			CancelTask: { CancelTask: { task: "t-1" } },
 			ListCommands: "ListCommands",

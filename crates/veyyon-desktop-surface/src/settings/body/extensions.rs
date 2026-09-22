@@ -2,7 +2,7 @@
 
 use veyyon_desktop_kit::{
 	Avatar, AvatarSize, Badge, Button, ButtonSize, InteractiveState, Row, SpacingStep, TextField,
-	TintRole, TokenSet,
+	TokenSet,
 };
 use veyyon_desktop_model::SurfaceId;
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
@@ -10,6 +10,7 @@ use veyyon_gpui::{ClickEvent, Context, Div, ElementId, ParentElement, Styled, di
 
 use crate::{
 	Intent, ShellView,
+	agents::live::{can_revive, can_terminate, row_kind, row_name, status_tint},
 	controls::{ControlStates, availability_style},
 	settings::{
 		SettingsState, empty,
@@ -72,36 +73,29 @@ pub fn render_extensions_page(
 	}
 
 	for agent in &state.extensions {
-		let is_task = agent.kind == "task";
-		let is_failed = agent.status == "error" || agent.status == "failed";
-		let is_running_task = is_task && matches!(agent.status.as_str(), "active" | "running");
-		let av = if is_failed {
+		// The page draws the roster's own rows, so an agent is named, described
+		// and tinted the same here as on the dashboard, and a control appears
+		// here only where the dashboard would offer it.
+		let revivable = can_revive(agent);
+		let endable = can_terminate(agent);
+		let av = if revivable {
 			controls.availability(&SurfaceId::AgentReviveButton(agent.id.clone()))
-		} else if is_running_task {
+		} else if endable {
 			controls.availability(&SurfaceId::TaskCancelButton(agent.id.clone()))
 		} else {
 			controls.availability(&SurfaceId::SettingsField("extensions".to_string()))
 		};
-		let tint = match agent.status.to_lowercase().as_str() {
-			"active" | "running" | "ready" => TintRole::Done,
-			"error" | "failed" => TintRole::Error,
-			_ => TintRole::Plan,
-		};
-		let label = if agent.display_name.is_empty() {
-			&agent.id
-		} else {
-			&agent.display_name
-		};
-		let desc = format!("Role: {} | Scope: {}", agent.kind, agent.scope);
+		let label = row_name(agent);
+		let desc = format!("{} | Scope: {}", row_kind(agent), agent.scope);
 
 		// The avatar shows the agent's initials, so a row is told apart from
 		// its neighbours at a glance; the badge beside it states its status.
 		let mut control = Row::new(SpacingStep::S2)
 			.child(Avatar::new(initials(label)).size(AvatarSize::Small))
-			.child(Badge::new(&agent.status, tint));
-		let action = if is_failed {
+			.child(Badge::new(&agent.status, status_tint(&agent.status)));
+		let action = if revivable {
 			Some(("Revive", SurfaceId::AgentReviveButton(agent.id.clone())))
-		} else if is_running_task {
+		} else if endable {
 			Some(("Cancel", SurfaceId::TaskCancelButton(agent.id.clone())))
 		} else {
 			None

@@ -7,8 +7,8 @@
 
 use veyyon_desktop_model::{Capability, CapabilityStatus, FileKind, Store};
 use veyyon_desktop_surface::{
-	Intent, Overlay, PaletteItem, PaletteItemKind, PaletteMode, PaletteState, SettingsState,
-	ShellState,
+	AgentsState, Intent, Overlay, PaletteItem, PaletteItemKind, PaletteMode, PaletteState,
+	SettingsState, ShellState,
 	navigation::SurfaceRoute,
 	palette::{HostCommands, PaletteMeta, commands::command_items, host_commands},
 };
@@ -40,6 +40,7 @@ pub fn project_overlay(store: &Store, state: &mut ShellState) {
 		Some(Overlay::Palette(palette_state)) => {
 			project_palette_domains(store, &state.commands, palette_state);
 		},
+		Some(Overlay::Agents(agents_state)) => project_agents_domains(store, agents_state),
 		Some(Overlay::History(_)) | None => {},
 	}
 }
@@ -65,6 +66,15 @@ fn project_commands(store: &Store, state: &mut ShellState) {
 			.is_none_or(|capability| !unavailable(store, capability))
 	});
 	state.commands = listed;
+}
+
+/// Populates the agent dashboard from the roster and the traffic the host
+/// sends. Each is replaced whole: the host states the whole roster and the
+/// whole stream every time, so an agent that left is gone rather than drawn
+/// from the last frame that held it.
+fn project_agents_domains(store: &Store, state: &mut AgentsState) {
+	state.agents.clone_from(&store.domains.agents);
+	state.agent_comms.clone_from(&store.domains.agent_comms);
 }
 
 /// Populates settings overlay categories from host domain snapshots.

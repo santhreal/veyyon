@@ -4,10 +4,10 @@ use crate::{
 	capabilities::{Capability, CapabilityStatus},
 	connection::{ConnectionState, RequestId, SessionId, Versioned},
 	domain::{
-		AgentView, AuthFlowView, ChangesView, CommandView, ContentMatchesView, ContextBreakdownView,
-		ExportView, FileContentView, FileTreeView, KeybindingView, McpServerView, ModelsView,
-		ProcessLogsChunk, ProcessView, ProviderView, QueuedPromptsView, SearchResultsView,
-		SettingsView, TerminalOutputChunk, TerminalView, ThemesView, UsageView,
+		AgentMessageView, AgentView, AuthFlowView, ChangesView, CommandView, ContentMatchesView,
+		ContextBreakdownView, ExportView, FileContentView, FileTreeView, KeybindingView,
+		McpServerView, ModelsView, ProcessLogsChunk, ProcessView, ProviderView, QueuedPromptsView,
+		SearchResultsView, SettingsView, TerminalOutputChunk, TerminalView, ThemesView, UsageView,
 	},
 	error::BackendError,
 	interaction::PendingDecisions,
@@ -67,7 +67,7 @@ pub struct SessionHeaderView {
 	pub mode:           Option<String>,
 }
 
-/// Complete list of all 32 snapshot section names defined by the protocol.
+/// Complete list of all 33 snapshot section names defined by the protocol.
 pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Sessions",
 	"ActiveSession",
@@ -92,6 +92,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"AuthFlow",
 	"Mcp",
 	"Agents",
+	"AgentComms",
 	"Usage",
 	"ContextBreakdown",
 	"Export",
@@ -111,7 +112,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
 #[strum_discriminants(name(SnapshotSectionKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
 #[strum_discriminants(
-	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 32 section variants."
+	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 33 section variants."
 )]
 pub enum SnapshotSection {
 	/// Session index metadata and deserialization failures.
@@ -166,6 +167,8 @@ pub enum SnapshotSection {
 	Mcp(Vec<McpServerView>),
 	/// Background subagents.
 	Agents(Vec<AgentView>),
+	/// Agent-to-agent IRC comms message stream.
+	AgentComms(Vec<AgentMessageView>),
 	/// Session resource and token usage totals.
 	Usage(UsageView),
 	/// Context window breakdown by category.
@@ -220,6 +223,7 @@ impl SnapshotSection {
 			Self::AuthFlow(..) => "AuthFlow",
 			Self::Mcp(..) => "Mcp",
 			Self::Agents(..) => "Agents",
+			Self::AgentComms(..) => "AgentComms",
 			Self::Usage(..) => "Usage",
 			Self::ContextBreakdown(..) => "ContextBreakdown",
 			Self::Export(..) => "Export",

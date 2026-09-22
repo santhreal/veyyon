@@ -280,36 +280,49 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Extensions).overlay());
 			seed.store.domains.agents = vec![AgentView {
 				id:           "cr".to_string(),
+				call_sign:    "Kestrel".to_string(),
 				display_name: "CR".to_string(),
-				kind:         "subagent".to_string(),
-				status:       "active".to_string(),
+				kind:         "sub".to_string(),
+				// Idle: a row that draws no control of its own reads the page's
+				// own availability, which is what this capability gates.
+				status:       "idle".to_string(),
 				parent:       None,
 				scope:        "ws".to_string(),
 				session:      None,
+				activity:     None,
+				model:        None,
 			}];
 		},
 		Capability::Agents => {
 			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Extensions).overlay());
 			seed.store.domains.agents = vec![AgentView {
 				id:           "cr".to_string(),
+				call_sign:    "Kestrel".to_string(),
 				display_name: "CR".to_string(),
-				kind:         "subagent".to_string(),
-				status:       "failed".to_string(),
+				kind:         "sub".to_string(),
+				// Parked is the one state a revive works on: its session is
+				// disposed and its transcript is still on disk.
+				status:       "parked".to_string(),
 				parent:       None,
 				scope:        "ws".to_string(),
 				session:      None,
+				activity:     None,
+				model:        None,
 			}];
 		},
 		Capability::Tasks => {
 			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Extensions).overlay());
 			seed.store.domains.agents = vec![AgentView {
 				id:           "runner".to_string(),
+				call_sign:    "Otter".to_string(),
 				display_name: "Runner".to_string(),
-				kind:         "task".to_string(),
+				kind:         "sub".to_string(),
 				status:       "running".to_string(),
 				parent:       None,
 				scope:        "ws".to_string(),
 				session:      None,
+				activity:     None,
+				model:        None,
 			}];
 		},
 		// The list the window opens on is its own commands, which fill the

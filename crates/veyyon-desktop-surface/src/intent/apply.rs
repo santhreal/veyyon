@@ -1,11 +1,13 @@
 //! Execution and local state application for operator intents (§4.1, §5.14).
 
+mod overlay;
 mod panel;
 mod queue;
+mod settings;
 
 use crate::{
 	attach::ConnectionPhase, composer::TurnPhase, controls::Availability, intent::Intent,
-	model::ShellState, overlay::Overlay, palette::PaletteMode,
+	model::ShellState, palette::PaletteMode,
 };
 
 /// Applies the part of an intent that the local shell owns.
@@ -101,122 +103,35 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		Intent::OpenOverlay(overlay) => {
 			state.overlay = Some(overlay.as_ref().clone());
 		},
-		Intent::Navigate(route) => {
-			let mut destination = route.overlay();
-			if let (Some(Overlay::Settings(current)), Overlay::Settings(next)) =
-				(&state.overlay, &mut destination)
-			{
-				let page = next.page;
-				next.clone_from(current);
-				next.page = page;
-				next.route = Some(*route);
-			}
-			// The command surface reached by a route lists what the host
-			// stated too, on the same terms as the one a keystroke opens.
-			if let Overlay::Palette(palette) = &mut destination
-				&& *route == crate::navigation::SurfaceRoute::Commands
-			{
-				state.list_host_commands(palette);
-			}
-			state.overlay = Some(destination);
-		},
+		Intent::Navigate(route) => overlay::navigate(state, *route),
 		Intent::CloseOverlay => {
 			state.overlay = None;
 		},
-		Intent::PaletteQuery(query) => {
-			let narrows_rail = if let Some(Overlay::Palette(palette)) = &mut state.overlay {
-				palette.set_query(query.clone());
-				// The rail's own session search narrows the rail as it is typed,
-				// which is what filtering the queue in place means and what the
-				// header's filter chip and its clear control act on. A history
-				// search ranks the persisted sessions the host holds and leaves
-				// the rail as it is.
-				palette.mode == PaletteMode::Sessions && !palette.is_history()
-			} else {
-				false
-			};
-			if narrows_rail {
-				queue::filter(state, query);
-			}
-		},
-		Intent::PaletteMove(delta) => {
-			if let Some(Overlay::Palette(palette)) = &mut state.overlay {
-				palette.move_selection(*delta);
-			}
-		},
+		Intent::SetAgentsTab(tab) => overlay::agents_tab(state, *tab),
+		Intent::ConfirmTermination(id) => overlay::confirm_termination(state, id.as_ref()),
+		Intent::PaletteQuery(query) => overlay::palette_query(state, query),
+		Intent::PaletteMove(delta) => overlay::palette_move(state, *delta),
 		// An action row is run by `Intents::dispatch`, which closes the
 		// palette and dispatches what the row stands for; a directory row
 		// stands for a listing, which the shell turns into `BrowseTo`.
 		Intent::PaletteRun => {},
 		// A listing opens the mode that draws it, since the command row that
 		// asked for one is run from another mode's list and closes it.
-		Intent::BrowseTo { path } => {
-			state.palette_in(PaletteMode::Browse, |palette| palette.browse_to(path.clone()));
-		},
-		// A lookup's rows are the host's answer to one query, so emptying the
-		// field drops them here rather than leaving them drawn until a frame
-		// arrives: an empty query asks for no search, so no answer is on its
-		// way to replace them (§5.8).
-		Intent::FindFile(query) => {
-			state.palette_in(PaletteMode::Files, |palette| {
-				palette.set_query(query.clone());
-				if query.is_empty() {
-					palette.set_items(Vec::new());
-				}
-			});
-		},
-		Intent::FindText(query) => {
-			state.palette_in(PaletteMode::ContentSearch, |palette| {
-				palette.set_query(query.clone());
-				if query.is_empty() {
-					palette.set_items(Vec::new());
-				}
-			});
-		},
-		Intent::FindSessions(query) => {
-			state.overlay = Some(Overlay::Palette(crate::PaletteState::history(query.clone())));
-		},
-		Intent::PreviewSession(session) => {
-			state.overlay = Some(Overlay::History(Box::new(crate::history::HistoryState::loading(
-				session.clone(),
-			))));
-		},
+		Intent::BrowseTo { path } => overlay::browse_to(state, path.as_ref()),
+		Intent::FindFile(query) => overlay::find_in(state, PaletteMode::Files, query),
+		Intent::FindText(query) => overlay::find_in(state, PaletteMode::ContentSearch, query),
+		Intent::FindSessions(query) => overlay::find_sessions(state, query),
+		Intent::PreviewSession(session) => overlay::preview_session(state, session),
 		Intent::ResumeHistory(_) => state.overlay = None,
-		Intent::SettingChanged { key, value } => {
-			if let Some(Overlay::Settings(settings)) = &mut state.overlay
-				&& let Some(entry) = settings.settings.get_mut(key)
-			{
-				entry.value = value.clone();
-			}
-		},
-		Intent::ResetSetting(key) => {
-			if let Some(Overlay::Settings(settings)) = &mut state.overlay
-				&& let Some(entry) = settings.settings.get_mut(key)
-			{
-				entry.value = entry.default.clone();
-			}
-		},
+		Intent::SettingChanged { key, value } => settings::setting_changed(state, key, value),
+		Intent::ResetSetting(key) => settings::reset_setting(state, key),
 		Intent::KeybindingChanged { action, keys } => {
-			if let Some(Overlay::Settings(settings)) = &mut state.overlay
-				&& let Some(binding) = settings
-					.keybindings
-					.iter_mut()
-					.find(|binding| binding.action == *action)
-			{
-				binding.keys.clone_from(keys);
-				"user".clone_into(&mut binding.source);
-			}
+			settings::keybinding_changed(state, action, keys);
 		},
 		// The agents listing is the host's: a spawned task appears in it when
 		// the host answers with it, never on the request that asked for it.
 		Intent::SpawnTask(_) => {},
-		Intent::SelectTheme(theme) => {
-			if let Some(Overlay::Settings(settings)) = &mut state.overlay
-				&& let Some(themes) = &mut settings.themes
-			{
-				themes.current.clone_from(theme);
-			}
-		},
+		Intent::SelectTheme(theme) => settings::select_theme(state, theme),
 		// The pointer resting on an appearance row draws that appearance, and
 		// leaving the row draws the choice again. Only the name is recorded
 		// here: the window re-installs the tokens when it sees the state
@@ -224,21 +139,13 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		// got.
 		Intent::PreviewAppearance(appearance) => state.appearance.preview(appearance.as_deref()),
 		Intent::SelectAppearance(appearance) => state.appearance.choose(appearance),
-		Intent::ReloadSettings => {
-			if let Some(Overlay::Settings(settings)) = &mut state.overlay {
-				settings.reloading = true;
-			}
-		},
+		Intent::ReloadSettings => settings::reload_settings(state),
 		// The card goes on the press that dismissed it. The queue the host's
 		// model holds is cleared by the same intent, so the next projection
 		// states the same stack this frame already drew.
 		Intent::DismissNotice(key) => state.notices.retain(|notice| &notice.key != key),
 		Intent::SetMcpEnabled { server, enabled } => {
-			if let Some(Overlay::Settings(settings)) = &mut state.overlay
-				&& let Some(view) = settings.mcp.iter_mut().find(|view| view.name == *server)
-			{
-				view.enabled = *enabled;
-			}
+			settings::set_mcp_enabled(state, server, *enabled);
 		},
 		// A refresh has nothing local to show until the host answers with the
 		// snapshot the projection draws.

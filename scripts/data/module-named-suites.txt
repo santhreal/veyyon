@@ -233,7 +233,6 @@ packages/coding-agent/test/model-registry.test.ts
 packages/coding-agent/test/model-resolver.test.ts
 packages/coding-agent/test/modes/terminal/components/account-manager-rows.test.ts
 packages/coding-agent/test/modes/terminal/components/account-manager.test.ts
-packages/coding-agent/test/modes/terminal/components/agent-activity.test.ts
 packages/coding-agent/test/modes/terminal/components/agent-status-display.test.ts
 packages/coding-agent/test/modes/terminal/components/agent-transcript-viewer.test.ts
 packages/coding-agent/test/modes/terminal/components/ask-dialog.test.ts

@@ -141,6 +141,7 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	RefreshMcp: "Mcp",
 	SetMcpEnabled: "Mcp",
 	ReviveAgent: "Agent",
+	RefreshAgents: "Agent",
 	SpawnTask: "Task",
 	CancelTask: "Task",
 	ListCommands: "Session",

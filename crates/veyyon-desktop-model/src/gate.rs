@@ -90,6 +90,7 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::RetryAuthFlow => Capability::Authentication,
 		HostActionKind::RefreshMcp => Capability::Mcp,
 		HostActionKind::SetMcpEnabled => Capability::Mcp,
+		HostActionKind::RefreshAgents => Capability::Agents,
 		HostActionKind::ReviveAgent => Capability::Agents,
 		HostActionKind::SpawnTask => Capability::Tasks,
 		HostActionKind::CancelTask => Capability::Tasks,

@@ -11,6 +11,8 @@
  * screenshot, so it is pinned here.
  */
 import { describe, expect, it } from "bun:test";
+import type { AgentKind, AgentRef, AgentStatus } from "@veyyon/coding-agent/registry/agent-registry";
+import { MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import {
 	ADVISOR_CALL_SIGN,
 	AGENT_CODE_NAMES,
@@ -19,9 +21,7 @@ import {
 	collectLiveAgents,
 	type LiveAgent,
 	MAIN_CALL_SIGN,
-} from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-activity";
-import type { AgentKind, AgentRef, AgentStatus } from "@veyyon/coding-agent/registry/agent-registry";
-import { MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
+} from "@veyyon/coding-agent/registry/live-roster";
 
 function ref(overrides: Partial<AgentRef> & { id: string; createdAt: number }): AgentRef {
 	return {

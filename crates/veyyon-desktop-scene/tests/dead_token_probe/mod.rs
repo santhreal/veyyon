@@ -37,6 +37,7 @@ pub const GROUPS: &[&str] = &[
 	"surface.panels",
 	"surface.palette",
 	"surface.settings",
+	"surface.agents",
 	"surface.breakpoints",
 	"surface.shell",
 	"motion",

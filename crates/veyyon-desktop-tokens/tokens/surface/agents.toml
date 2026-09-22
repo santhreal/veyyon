@@ -1,0 +1,10 @@
+[meta]
+version = 1
+name = "surface_agents"
+
+[layout]
+card_width_px = 860
+card_height_px = 560
+row_height_px = 44
+row_gap = "s2"
+padding = "s6"

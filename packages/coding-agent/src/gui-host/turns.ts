@@ -110,6 +110,9 @@ export interface ClientSessionState {
 	queueMode?: "Steer" | "Queue";
 	selectedChangeScope?: string;
 	unsubscribeAgents?: () => void;
+	unsubscribeAgentComms?: () => void;
+	agentsFrameTimer?: NodeJS.Timeout;
+	lastAgentsFrameMs?: number;
 	authFlow?: ActiveAuthFlow;
 	/**
 	 * Signature of the last queued prompts frame written for this session, used
@@ -647,8 +650,6 @@ export async function disposeTurnSession(state: ClientSessionState): Promise<voi
 	state.goalDriver?.cancelContinuation();
 	state.unsubscribeSession?.();
 	state.unsubscribeSession = undefined;
-	state.unsubscribeAgents?.();
-	state.unsubscribeAgents = undefined;
 	state.unsubscribeCommands?.();
 	state.unsubscribeCommands = undefined;
 	if (state.sessionManager) {
@@ -686,6 +687,14 @@ export async function disposeClientState(state: ClientSessionState): Promise<voi
 		// A frame scheduled for a window that is gone draws nothing and holds
 		// the entry it was converting alive until it fires.
 		cancelStreamingFrame(state);
+		if (state.agentsFrameTimer) {
+			clearTimeout(state.agentsFrameTimer);
+			state.agentsFrameTimer = undefined;
+		}
+		state.unsubscribeAgents?.();
+		state.unsubscribeAgents = undefined;
+		state.unsubscribeAgentComms?.();
+		state.unsubscribeAgentComms = undefined;
 		state.goalDriver?.unsubscribeFromSession();
 		state.goalDriver?.cancelContinuation();
 		state.goalDriver = undefined;

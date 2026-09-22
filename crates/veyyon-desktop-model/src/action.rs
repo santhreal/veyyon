@@ -304,7 +304,8 @@ pub enum HostAction {
 		enabled: bool,
 	},
 
-	// Agents and Tasks family (3 actions)
+	// Agents and Tasks family (4 actions)
+	RefreshAgents,
 	ReviveAgent {
 		agent_id: String,
 	},

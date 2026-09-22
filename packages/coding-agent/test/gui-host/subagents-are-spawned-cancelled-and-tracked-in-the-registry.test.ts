@@ -107,14 +107,14 @@ describe("subagents and tasks action group behaviour", () => {
 		});
 
 		expect(res.outcome).toEqual({ RequestSucceeded: { request: 8 } });
-		interface AgentsSnapshotFrame {
-			Snapshot?: {
-				Agents?: Array<{ id: string; status: string; display_name: string }>;
-			};
-		}
-		const agentsSnap: AgentsSnapshotFrame | undefined = res.frames.find(f => f.Snapshot && "Agents" in f.Snapshot);
-		expect(agentsSnap).toBeDefined();
-
+		// The reply restates the roster. Which roster frame in the window is the
+		// reply's is a race, because the client is also subscribed to the live
+		// one, so the assertion is that the reply carried a roster at all.
+		expect(res.frames.some(f => f.Snapshot && "Agents" in f.Snapshot)).toBe(true);
+		// The run itself is over by the time the reply lands -- the handler awaits
+		// the task tool -- so what the roster holds afterwards is the lifecycle's
+		// to decide, and the phantom-row case above is where a spawn that failed
+		// is held to leaving nothing behind.
 		client.destroy();
 	});
 
@@ -227,16 +227,13 @@ describe("subagents and tasks action group behaviour", () => {
 
 		expect(res.outcome).toEqual({ RequestSucceeded: { request: 7 } });
 
-		interface AgentsSnapshotFrame {
-			Snapshot?: {
-				Agents?: Array<{ id: string; status: string }>;
-			};
-		}
-		const agentsSnap: AgentsSnapshotFrame | undefined = res.frames.find(f => f.Snapshot && "Agents" in f.Snapshot);
-		expect(agentsSnap).toBeDefined();
-		const agentsList = agentsSnap?.Snapshot?.Agents ?? [];
-		const target = agentsList.find(a => a.id === testAgentId);
-		expect(target?.status === "aborted" || !target).toBe(true);
+		// The reply restates the roster, and the registry behind it no longer
+		// holds the agent. Asserted that way round rather than by reading one
+		// frame out of the window: the client is subscribed to the live roster,
+		// so registering the agent above pushes a frame of its own, and which of
+		// the two lands last is a race.
+		expect(res.frames.some(f => f.Snapshot && "Agents" in f.Snapshot)).toBe(true);
+		expect(AgentRegistry.global().get(testAgentId)).toBeUndefined();
 		client.destroy();
 	});
 });

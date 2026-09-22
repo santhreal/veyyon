@@ -83,6 +83,8 @@ pub struct Domains {
 	pub mcp:             Vec<McpServerView>,
 	/// Active background subagents.
 	pub agents:          Vec<AgentView>,
+	/// Agent-to-agent IRC comms message stream.
+	pub agent_comms:     Vec<AgentMessageView>,
 	/// Session resource and token usage totals.
 	pub usage:           HashMap<SessionId, UsageTotals>,
 	/// Context window breakdown indexed by session.

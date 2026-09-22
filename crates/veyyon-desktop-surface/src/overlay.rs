@@ -16,6 +16,8 @@ pub enum Overlay {
 	Settings(Box<SettingsState>),
 	/// Persisted session preview without changing the live session.
 	History(Box<crate::history::HistoryState>),
+	/// Agent dashboard overlay for live roster and comms.
+	Agents(Box<crate::agents::AgentsState>),
 }
 
 impl Overlay {
@@ -24,6 +26,7 @@ impl Overlay {
 		match self {
 			Self::Palette(state) => state.route(),
 			Self::Settings(state) => state.route,
+			Self::Agents(state) => state.route,
 			Self::History(_) => None,
 		}
 	}
@@ -45,7 +48,7 @@ impl Overlay {
 	pub const fn as_palette(&self) -> Option<&PaletteState> {
 		match self {
 			Self::Palette(state) => Some(state),
-			Self::Settings(_) | Self::History(_) => None,
+			Self::Settings(_) | Self::History(_) | Self::Agents(_) => None,
 		}
 	}
 
@@ -54,7 +57,7 @@ impl Overlay {
 	pub const fn as_palette_mut(&mut self) -> Option<&mut PaletteState> {
 		match self {
 			Self::Palette(state) => Some(state),
-			Self::Settings(_) | Self::History(_) => None,
+			Self::Settings(_) | Self::History(_) | Self::Agents(_) => None,
 		}
 	}
 
@@ -63,7 +66,7 @@ impl Overlay {
 	pub const fn as_settings(&self) -> Option<&SettingsState> {
 		match self {
 			Self::Settings(state) => Some(state),
-			Self::Palette(_) | Self::History(_) => None,
+			Self::Palette(_) | Self::History(_) | Self::Agents(_) => None,
 		}
 	}
 
@@ -72,7 +75,25 @@ impl Overlay {
 	pub const fn as_settings_mut(&mut self) -> Option<&mut SettingsState> {
 		match self {
 			Self::Settings(state) => Some(state),
-			Self::Palette(_) | Self::History(_) => None,
+			Self::Palette(_) | Self::History(_) | Self::Agents(_) => None,
+		}
+	}
+
+	/// Returns a reference to the agent dashboard state if active.
+	#[must_use]
+	pub const fn as_agents(&self) -> Option<&crate::agents::AgentsState> {
+		match self {
+			Self::Agents(state) => Some(state),
+			Self::Palette(_) | Self::Settings(_) | Self::History(_) => None,
+		}
+	}
+
+	/// Returns a mutable reference to the agent dashboard state if active.
+	#[must_use]
+	pub const fn as_agents_mut(&mut self) -> Option<&mut crate::agents::AgentsState> {
+		match self {
+			Self::Agents(state) => Some(state),
+			Self::Palette(_) | Self::Settings(_) | Self::History(_) => None,
 		}
 	}
 }

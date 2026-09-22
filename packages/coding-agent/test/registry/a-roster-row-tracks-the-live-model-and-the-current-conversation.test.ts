@@ -24,8 +24,8 @@
  * This suite is about what the roster row is handed.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { collectLiveAgents } from "../../src/modes/terminal/components/dashboard/agent-activity";
 import { AgentRegistry, MAIN_AGENT_ID } from "../../src/registry/agent-registry";
+import { collectLiveAgents } from "../../src/registry/live-roster";
 import type { AgentSession } from "../../src/session/agent-session";
 
 /** A session stands in for the live model read; nothing else on it is touched. */

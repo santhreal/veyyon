@@ -205,6 +205,31 @@ fn format_bp(out: &mut String, name: &str, c: &BreakpointConfig) {
 	);
 }
 
+/// Writes surface/agents.toml.
+pub fn dump_agents(tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
+	let a = &tokens.surface.agents;
+	let s = &tokens.scale;
+	let out = format!(
+		r#"[meta]
+version = 1
+name = "surface_agents"
+
+[layout]
+card_width_px = {}
+card_height_px = {}
+row_height_px = {}
+row_gap = "{}"
+padding = "{}"
+"#,
+		a.card_width_px as i64,
+		a.card_height_px as i64,
+		a.row_height_px as i64,
+		step_spacing(s, a.row_gap),
+		step_spacing(s, a.padding),
+	);
+	write_file(path, &out)
+}
+
 /// Writes surface/breakpoints.toml.
 pub fn dump_breakpoints(tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
 	let bp = &tokens.surface.breakpoints;

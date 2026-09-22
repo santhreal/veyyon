@@ -1,6 +1,5 @@
 /**
- * The live side of the agent dashboard: who is running and what each one
- * is called.
+ * The live roster every host lists: who is running and what each one is called.
  *
  * WHY THIS MODULE EXISTS. The Control Center used to open on a strip of source
  * tabs -- All, Project, User, Bundled -- which answered a question nobody asks.
@@ -10,12 +9,17 @@
  * What the card is actually opened to find out is the live picture, so that is
  * what this module computes.
  *
+ * WHY IT SITS HERE. The terminal dashboard draws these rows and the GUI host
+ * sends them to the desktop window, so an agent is called one thing wherever it
+ * is listed. A host deriving its own label named one agent `Kestrel` in the
+ * terminal and `deep` in the window.
+ *
  * Everything here is PURE and file-system free: it takes the process-global
  * {@link AgentRegistry}'s refs and returns plain rows, which keeps every rule
  * below directly assertable in a unit test with real values rather than through
  * a rendered frame.
  */
-import type { AgentKind, AgentRef, AgentStatus } from "../../../../registry/agent-registry";
+import type { AgentKind, AgentRef, AgentStatus } from "./agent-registry";
 
 /**
  * Call signs handed to spawned agents, in order.
@@ -212,4 +216,47 @@ export function agentType(agent: LiveAgent): string {
 	if (!type || type === agent.id) return "";
 	if (type.toLowerCase() === agent.callSign.toLowerCase()) return "";
 	return type;
+}
+
+/**
+ * The state a surface NAMES, which is finer than {@link AgentStatus}.
+ *
+ * `AgentStatus` says whether an agent is running or stopped and nothing about
+ * WHY, and the two states that most need attention are exactly the two it
+ * cannot express:
+ *
+ * - `blocked` is `running`. The agent is mid-turn, stopped at an approval
+ *   prompt, and a roster that draws it as `running` shows a spawn waiting on a
+ *   person as one grinding through a build. `AgentRef.pendingApproval` is the
+ *   discriminator and the only one: there is no status to read.
+ * - `waiting` is `idle` or `parked`. The agent stopped to let a peer answer,
+ *   which is also what an abandoned agent looks like, and it read exactly like
+ *   one that had simply finished. `AgentRef.waitingOnPeer` carries it, written
+ *   from the sign-off by `task/executor.ts`; the lifecycle manager already
+ *   spends it on a longer close budget, so the state was trusted everywhere
+ *   except on screen.
+ */
+export type AgentDisplayState = AgentStatus | "blocked" | "waiting";
+
+/**
+ * The state to render for one agent. Every surface derives it here, so no two
+ * can disagree about when an agent counts as blocked or waiting.
+ *
+ * An open approval outranks working while the agent is `running`, because it is
+ * the one state a person has to act on. Only a RUNNING agent can be `blocked`:
+ * `pendingApproval` is written during a turn, and once the agent stops, is aborted,
+ * or completes, the terminal state takes precedence.
+ *
+ * Only a STOPPED agent can be `waiting`: `waitingOnPeer` is written at the end of
+ * a run and left in place while the agent is woken again, so reading it on a
+ * `running` row would label a working agent with the reason it stopped last time.
+ */
+export function agentDisplayState(agent: {
+	status: AgentStatus;
+	waitingOnPeer?: boolean;
+	blockedOnApproval?: boolean;
+}): AgentDisplayState {
+	if (agent.status === "running" && agent.blockedOnApproval === true) return "blocked";
+	if (agent.waitingOnPeer !== true) return agent.status;
+	return agent.status === "idle" || agent.status === "parked" ? "waiting" : agent.status;
 }

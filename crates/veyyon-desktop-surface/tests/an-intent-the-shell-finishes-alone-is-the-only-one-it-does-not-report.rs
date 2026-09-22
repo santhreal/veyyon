@@ -45,7 +45,7 @@ use veyyon_desktop_surface::{Intent, IntentDiscriminants};
 // `ToggleGoalCard` IS here: whether the goal card is expanded is drawn state
 // the shell writes; the goal itself is created, resumed and completed through
 // the goal intents beside it, which are reported.
-const LOCAL: [IntentDiscriminants; 26] = [
+const LOCAL: [IntentDiscriminants; 28] = [
 	IntentDiscriminants::MoveQueueSelection,
 	IntentDiscriminants::CopyText,
 	IntentDiscriminants::PreviewAppearance,
@@ -72,6 +72,8 @@ const LOCAL: [IntentDiscriminants; 26] = [
 	IntentDiscriminants::MoveMenuHighlight,
 	IntentDiscriminants::MoveMenuSection,
 	IntentDiscriminants::ToggleGoalCard,
+	IntentDiscriminants::SetAgentsTab,
+	IntentDiscriminants::ConfirmTermination,
 ];
 
 /// The two whose locality depends on the payload: closing a region is the

@@ -335,6 +335,11 @@ export class IrcBus {
 		return () => this.#logListeners.delete(listener);
 	}
 
+	/** Number of active message listeners, for lifecycle and leak assertions. */
+	listenerCount(): number {
+		return this.#logListeners.size;
+	}
+
 	/**
 	 * Drop every trace of the named agents: their mailboxes, their pending
 	 * waiters, and every traffic line they took part in.

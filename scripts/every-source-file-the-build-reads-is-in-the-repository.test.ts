@@ -32,16 +32,19 @@ const repoRoot = path.join(import.meta.dir, "..");
 const SOURCE = [".rs", ".ts", ".tsx"];
 
 /**
- * Trees that are not source: a dependency install, a build directory, and the
- * scratch tree, which is deliberately outside every gate. Anything else that is
+ * Trees that are not source, so a file under one of them is nothing a clean
+ * clone misses: a dependency install, a build directory, the scratch tree and
+ * the review-only `.internal` tree, both of which are deliberately outside
+ * every gate, a downloaded dataset cache, and the eval run store, whose task
+ * directories a run writes rather than a build reads. Anything else that is
  * ignored and holds source is the defect this file is about.
  */
-const NOT_SOURCE = ["node_modules", "target", ".scratch"];
+const NOT_SOURCE = ["node_modules", "target", ".scratch", ".internal", ".cache", "runs"];
 
 /**
- * Those trees again as pathspecs, at every depth a workspace member reaches.
- * Without them the listing of what is ignored is the whole dependency install,
- * which is megabytes and gets the child process killed rather than answered.
+ * Those trees again as pathspecs, at every depth a workspace member reaches,
+ * so the walk skips a dependency install rather than listing it and throwing
+ * the answer away.
  */
 const OUTSIDE = NOT_SOURCE.flatMap(tree => ["", "*/", "*/*/", "*/*/*/"].map(depth => `:(exclude)${depth}${tree}`));
 
@@ -49,7 +52,12 @@ const OUTSIDE = NOT_SOURCE.flatMap(tree => ["", "*/", "*/*/", "*/*/*/"].map(dept
 const IGNORED_ON_PURPOSE: string[] = [];
 
 function git(...args: string[]): string[] {
-	const result = spawnSync("git", args, { cwd: repoRoot, encoding: "utf8" });
+	// 64MiB, because the default 1MiB is smaller than the listing of what a
+	// working tree ignores: a tree carrying recorded proof captures and scratch
+	// homes answers in several megabytes, and the child is killed on the buffer
+	// rather than on the question. A killed child reports no status, which read
+	// as a failure of this gate rather than of its harness.
+	const result = spawnSync("git", args, { cwd: repoRoot, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 	expect(result.status, `git ${args.join(" ")} failed: ${result.stderr}`).toBe(0);
 	return result.stdout.split("\n").filter(line => line.length > 0);
 }
