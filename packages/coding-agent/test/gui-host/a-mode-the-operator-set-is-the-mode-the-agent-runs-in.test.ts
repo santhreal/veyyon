@@ -46,8 +46,8 @@ import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { resetSettingsForTest } from "../../src/config/settings";
-import { SESSION_MODES } from "../../src/gui-host/actions/session-mode";
 import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
+import { SESSION_MODES } from "../../src/gui-host/actions/session-mode";
 import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";
 import { type RequestFrame, snapshotSections, TestSocketClient } from "./test-client";
 
