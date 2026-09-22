@@ -18,6 +18,7 @@ import type { AgentSessionEvent } from "../session/agent-session-types";
 import { USER_INTERRUPT_LABEL } from "../session/messages";
 import { MAX_IMAGE_INPUT_BYTES } from "../utils/image-loading";
 import { base64DecodedBytes, MAX_PROMPT_ATTACHMENT_BYTES, MAX_VIDEO_INPUT_BYTES } from "../utils/video-loading";
+import type { DesktopCollabBridge } from "./collab-bridge";
 import { publishCommandsView, watchCommandMetadata } from "./commands-view";
 import { writeFrame } from "./frames";
 import { attachGoalBridge, type DesktopGoalBridge } from "./goal-bridge";
@@ -106,6 +107,7 @@ export interface ClientSessionState {
 	goalBridge?: DesktopGoalBridge;
 	loopDriver?: LoopDriver;
 	loopBridge?: DesktopLoopBridge;
+	collabBridge?: DesktopCollabBridge;
 	/** `Steer` or `Queue`: how a prompt sent while a turn runs is delivered. */
 	queueMode?: "Steer" | "Queue";
 	selectedChangeScope?: string;
@@ -699,6 +701,10 @@ export async function disposeClientState(state: ClientSessionState): Promise<voi
 		state.goalDriver?.cancelContinuation();
 		state.goalDriver = undefined;
 		state.goalBridge = undefined;
+		if (state.collabBridge) {
+			void state.collabBridge.stop();
+			state.collabBridge = undefined;
+		}
 		if (state.terminals) {
 			for (const terminal of state.terminals.values()) {
 				terminal.killed = true;

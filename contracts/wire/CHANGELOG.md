@@ -13,6 +13,7 @@
 - Tool execution display metadata includes per-call grouped-read status, paths, previews and line numbers.
 - `@veyyon/wire/presentation` states the renderer contract: `PresentationContext`, the transcript, status, composer and overlay view-models, the `UIEvent` union and an abstract hex-colour theme. A renderer implementing it draws a session without importing coding-agent. The subpath adds no dependencies.
 - `@veyyon/wire/collab-link` owns the collab link grammar: `encodeBase64Url`, `decodeBase64Url`, `isLocalHostname`, `normalizeRelayOrigin`, `generateRoomId`, `formatCollabLinkPayload`, `formatCollabLink` and `parseCollabLink`, beside `ROOM_ID_BYTES`, `ROOM_KEY_BYTES`, `WRITE_TOKEN_BYTES`, `DEFAULT_RELAY_URL` and `ParsedCollabLink`, which moved there and are re-exported from the barrel unchanged; base64url goes through `atob`/`btoa` so the browser guest and the host run the same code.
+- `resolveRelayUrl` in `@veyyon/wire/collab-link` resolves a configured relay to the URL that is dialled, defaulting a value with no scheme to `wss://` and leaving an empty one empty.
 
 ### Changed
 

@@ -56,6 +56,13 @@ function makeHostContext(): InteractiveModeContext {
 		},
 		ui: { requestRender: () => {} },
 		showStatus: () => {},
+		surface: {
+			setCollabStatus: () => {},
+			requestRender: () => {},
+			updatePendingMessagesDisplay: () => {},
+			showStatus: () => {},
+			getCachedContextBreakdown: () => ({ usedTokens: 0, contextWindow: 0 }),
+		},
 		collabHost: undefined,
 		refreshComposerShortcuts: vi.fn(),
 		dismissWelcome: vi.fn(),

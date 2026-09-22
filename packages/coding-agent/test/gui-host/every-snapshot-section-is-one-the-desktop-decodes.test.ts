@@ -329,6 +329,25 @@ const CORPUS = [
 		],
 	},
 	{
+		Share: {
+			state: "hosting",
+			relay_url: "https://relay.example.com",
+			link: "https://relay.example.com/room/room-1",
+			web_link: "https://relay.example.com/web/room-1",
+			view_link: "https://relay.example.com/room/room-1?read_only=true",
+			web_view_link: "https://relay.example.com/web/room-1?read_only=true",
+			participants: [
+				{
+					id: 0,
+					name: "Host",
+					can_write: true,
+					is_host: true,
+				},
+			],
+			error: null,
+		},
+	},
+	{
 		Usage: {
 			session: "sess-1",
 			totals: {
@@ -360,7 +379,8 @@ const CORPUS = [
 				{ id: "dark", name: "Dark", dark: true },
 				{ id: "light", name: "Light", dark: false },
 			],
-			current: "dark",
+			dark: "dark",
+			light: "light",
 		},
 	},
 	{ Keybindings: [{ action: "composer.send", keys: ["ctrl+enter"], source: "default" }] },

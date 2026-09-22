@@ -59,6 +59,7 @@ import { isTerminalTodoStatus, isTodoListDone } from "@veyyon/wire";
 import chalk from "chalk";
 import type { CollabGuestLink } from "../../collab/guest";
 import type { CollabHost } from "../../collab/host";
+import { createTerminalCollabHostSurface, type CollabHostSurface } from "../../collab/host-surface";
 import { KeybindingsManager } from "../../config/keybindings";
 import {
 	isSettingsInitialized,
@@ -461,6 +462,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	oauthManualInput: OAuthManualInputManager = new OAuthManualInputManager();
 	collabHost?: CollabHost;
 	collabGuest?: CollabGuestLink;
+	surface: CollabHostSurface = createTerminalCollabHostSurface(this);
 
 	#pendingSlashCommands: SlashCommand[] = [];
 	/** Built-in editor autocomplete provider, before extension wrapping. */

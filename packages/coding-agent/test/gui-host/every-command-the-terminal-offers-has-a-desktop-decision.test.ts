@@ -55,7 +55,7 @@ const DECISIONS: Record<string, Decision> = {
 	loop: { action: "SetSessionMode" },
 	queue: { action: "FollowUp" },
 	switch: { action: "SelectModel" },
-	collab: { gap: "no share surface" },
+	collab: { client: "SurfaceRoute::Share, reached from /collab and /share in the palette" },
 	join: { gap: "no share surface" },
 	leave: { gap: "no share surface" },
 	copy: { client: "Intent::CopyText, over the transcript selection" },
@@ -81,7 +81,7 @@ const DECISIONS: Record<string, Decision> = {
 };
 
 /** The gaps as they stand, so closing one is a recorded change. */
-const RECORDED_GAPS = ["collab", "debug", "guided-goal", "join", "leave", "omfg", "profile", "tan"];
+const RECORDED_GAPS = ["debug", "guided-goal", "join", "leave", "omfg", "profile", "tan"];
 
 /**
  * The declarations through their declared interface. The table is `as const`,

@@ -456,6 +456,57 @@ describe("the collab link grammar", () => {
 	});
 });
 
+describe("the relay a configured value resolves to", () => {
+	/**
+	 * A relay is configured as a bare `host[:port]` at least as often as a full URL, so every caller
+	 * that dials one had to decide what a value with no scheme means, and each decided privately: the
+	 * `/collab` command, the link it prints, and the desktop share bridge. The failure that makes this
+	 * worth a suite is silent and points at the wrong component -- one copy dials `wss://host` while
+	 * another displays `host`, so the link handed to a guest names a relay nothing is listening on,
+	 * and it reads as a relay outage rather than as a scheme.
+	 *
+	 * What this does not catch: a caller that resolves correctly and then rewrites the result, and a
+	 * relay that is reachable on `ws://` only, which is a configuration this rule deliberately does
+	 * not guess at.
+	 */
+	it("takes wss for a scheme-less relay, keeps an explicit scheme, and leaves an absent one absent", () => {
+		expect(wire.resolveRelayUrl("relay.example.com")).toBe("wss://relay.example.com");
+		expect(wire.resolveRelayUrl("relay.example.com:8443")).toBe("wss://relay.example.com:8443");
+		expect(wire.resolveRelayUrl("  relay.example.com  ")).toBe("wss://relay.example.com");
+		expect(wire.resolveRelayUrl("ws://127.0.0.1:8787")).toBe("ws://127.0.0.1:8787");
+		expect(wire.resolveRelayUrl("wss://relay.example.com")).toBe("wss://relay.example.com");
+		expect(wire.resolveRelayUrl("")).toBe("");
+		expect(wire.resolveRelayUrl("   ")).toBe("");
+	});
+
+	/**
+	 * The rule the dialler uses is the rule the parser uses, stated once. A link minted against a
+	 * resolved relay parses back to a room on that same relay, for every shape a relay is configured
+	 * as -- which is the property a second private copy of the scheme default breaks.
+	 */
+	it("mints links a guest parses back to the relay that was dialled", () => {
+		const key = wire.generateRoomKey();
+		const roomId = wire.generateRoomId();
+		for (const configured of ["relay.example.com", "relay.example.com:8443", "ws://127.0.0.1:8787"]) {
+			const relayUrl = wire.resolveRelayUrl(configured);
+			const parsed = wire.parseCollabLink(wire.formatCollabLink(relayUrl, roomId, key));
+			if ("error" in parsed) throw new Error(`${configured}: ${parsed.error}`);
+			expect(parsed.wsUrl).toBe(`${relayUrl}/r/${roomId}`);
+		}
+	});
+
+	/**
+	 * And both surfaces that dial a relay reach the wire package for it. TypeScript refuses a module
+	 * that imports a binding and declares it, so the edge is also the absence of a private copy.
+	 */
+	it("is reached through @veyyon/wire by both the slash command and the desktop bridge", () => {
+		expect(packageImportsOf("packages/coding-agent/src/gui-host/collab-bridge.ts")).toContain("@veyyon/wire");
+		expect(packageImportsOf("packages/coding-agent/src/slash-commands/builtin-registry.ts")).toContain(
+			"@veyyon/wire",
+		);
+	});
+});
+
 describe("asStrictBytes", () => {
 	/**
 	 * Four packages seal, sign or hash bytes through WebCrypto, and each had a private copy of the same

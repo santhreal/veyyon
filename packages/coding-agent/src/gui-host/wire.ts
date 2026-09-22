@@ -67,6 +67,7 @@ export const ALL_CAPABILITIES = [
 	"ContextBreakdown",
 	"Lifecycle",
 	"Goals",
+	"Share",
 ] as const;
 
 export type Capability = (typeof ALL_CAPABILITIES)[number];
@@ -92,7 +93,8 @@ export type ErrorScope =
 	| "Diagnostic"
 	| "Usage"
 	| "Authentication"
-	| "Lifecycle";
+	| "Lifecycle"
+	| "Share";
 
 export interface BackendError {
 	scope: ErrorScope;
@@ -526,7 +528,10 @@ export interface ThemeView {
 
 export interface ThemesView {
 	themes: ThemeView[];
-	current: string;
+	/** The theme configured for a dark ground. */
+	dark: string;
+	/** The theme configured for a light ground. */
+	light: string;
 }
 
 export interface KeybindingView {
@@ -637,6 +642,37 @@ export const ALL_GOAL_CONTROLS = ["pause", "resume", "drop"] as const;
 
 export type GoalControl = (typeof ALL_GOAL_CONTROLS)[number];
 
+/** Where the share is: what the window draws and what a control may ask for. */
+export type SharePhase = "off" | "starting" | "hosting" | "stopping";
+export const SHARE_PHASES = ["off", "starting", "hosting", "stopping"] as const;
+
+/** One party on the relay, the hosting session included. */
+export interface ShareParticipantView {
+	/** Relay peer id. The hosting session is 0. */
+	id: number;
+	name: string;
+	/** False for a guest that arrived by the read-only link. */
+	can_write: boolean;
+	/** True for the row that is this window's own session. */
+	is_host: boolean;
+}
+
+export interface ShareView {
+	state: SharePhase;
+	/** The relay the share runs on; null when the settings name none. */
+	relay_url: string | null;
+	/** The link another veyyon opens. Null unless hosting. */
+	link: string | null;
+	/** The same room in a browser. */
+	web_link: string | null;
+	/** The two links above, read-only. */
+	view_link: string | null;
+	web_view_link: string | null;
+	participants: ShareParticipantView[];
+	/** Why the last attempt failed; null when nothing failed. */
+	error: string | null;
+}
+
 export type SnapshotSection =
 	| { Sessions: [Versioned<SessionSummary[]>, SessionLoadError[]] }
 	| { ActiveSession: Versioned<SessionHeaderView> }
@@ -670,7 +706,8 @@ export type SnapshotSection =
 	| { QueuedPrompts: QueuedPromptsView }
 	| { Commands: CommandView[] }
 	| { AgentPause: AgentPauseView }
-	| { Goal: { session: string; goal: GoalView | null } };
+	| { Goal: { session: string; goal: GoalView | null } }
+	| { Share: ShareView };
 
 export const ALL_SNAPSHOT_SECTIONS = [
 	"Sessions",
@@ -697,6 +734,7 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"Mcp",
 	"Agents",
 	"AgentComms",
+	"Share",
 	"Usage",
 	"ContextBreakdown",
 	"Export",
@@ -743,6 +781,9 @@ export type HostAction =
 	| "RefreshAgents"
 	| "ListSessions"
 	| "ListCommands"
+	| "StopShare"
+	| "RefreshShare"
+	| { StartShare: { read_only: boolean } }
 	| { Attach: { endpoint: string | null } }
 	| { OpenSession: { session: string } }
 	| { SearchSessions: { query: string } }
@@ -845,8 +886,10 @@ export const ALL_HOST_ACTIONS = [
 	"GetContextBreakdown",
 	"SetGoal",
 	"ControlGoal",
+	"StartShare",
+	"StopShare",
+	"RefreshShare",
 ] as const;
-
 export type HostActionTag = (typeof ALL_HOST_ACTIONS)[number];
 
 export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
@@ -932,6 +975,9 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	GetContextBreakdown: "ContextBreakdown",
 	SetGoal: "Goals",
 	ControlGoal: "Goals",
+	StartShare: "Share",
+	StopShare: "Share",
+	RefreshShare: "Share",
 };
 
 export interface HostRequest {

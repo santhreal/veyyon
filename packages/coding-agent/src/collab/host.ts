@@ -21,7 +21,11 @@ import type {
 	WireSessionEntry,
 } from "@veyyon/wire";
 import { mapJsonStrings } from "../json-transform";
-import type { InteractiveModeContext } from "../modes/terminal/types";
+import type { Settings } from "../config/settings";
+import type { AgentSession } from "../session/agent-session";
+import type { SessionManager } from "@veyyon/kernel/session/session-manager";
+import type { EventBus } from "../utils/event-bus";
+import type { CollabHostSurface } from "./host-surface";
 import {
 	extractToolResultContent,
 	extractToolResultDetails,
@@ -109,18 +113,14 @@ export type CollabGuestUiResult = { kind: "answered"; value: CollabUiResponseVal
  * a test) something it can actually satisfy, and makes the dependency legible:
  * the host talks to the session, the bus, and three pieces of chrome.
  */
-export type CollabHostContext = Pick<
-	InteractiveModeContext,
-	| "collabHost"
-	| "eventBus"
-	| "session"
-	| "sessionManager"
-	| "settings"
-	| "showStatus"
-	| "statusLine"
-	| "ui"
-	| "updatePendingMessagesDisplay"
->;
+export interface CollabHostContext {
+	collabHost?: CollabHost;
+	eventBus?: EventBus;
+	session: AgentSession;
+	sessionManager: SessionManager;
+	settings: Settings;
+	surface: CollabHostSurface;
+}
 
 export class CollabHost {
 	#ctx: CollabHostContext;
@@ -174,6 +174,10 @@ export class CollabHost {
 			list.push({ name: peer.name, role: "guest", readOnly: peer.canWrite ? undefined : true });
 		}
 		return list;
+	}
+
+	get peers(): ReadonlyMap<number, { name: string; canWrite: boolean }> {
+		return this.#peers;
 	}
 
 	requestGuestUi(request: CollabUiRequestDraft, signal?: AbortSignal): Promise<CollabGuestUiResult> | null {
@@ -272,7 +276,7 @@ export class CollabHost {
 				return;
 			}
 			if (willReconnect) {
-				this.#ctx.showStatus(`Collab relay connection lost (${reason}), reconnecting…`, { dim: true });
+				this.#ctx.surface.showStatus(`Collab relay connection lost (${reason}), reconnecting…`, { dim: true });
 			} else {
 				void this.#teardown();
 				this.#ctx.session.emitNotice("warning", `Collab ended: ${reason}`, "collab");
@@ -364,8 +368,8 @@ export class CollabHost {
 		this.#socket?.close();
 		this.#socket = null;
 		this.#ctx.collabHost = undefined;
-		this.#ctx.statusLine.setCollabStatus(null);
-		this.#ctx.ui.requestRender();
+		this.#ctx.surface.setCollabStatus(null);
+		this.#ctx.surface.requestRender();
 	}
 
 	#broadcast(frame: CollabFrame): void {
@@ -534,8 +538,8 @@ export class CollabHost {
 			images && images.length > 0 ? [{ type: "text", text }, ...images] : text;
 		const details: CollabPromptDetails = { from: name };
 		if (this.#ctx.session.isStreaming) {
-			this.#ctx.updatePendingMessagesDisplay();
-			this.#ctx.ui.requestRender();
+			this.#ctx.surface.updatePendingMessagesDisplay();
+			this.#ctx.surface.requestRender();
 			this.#scheduleStateBroadcast();
 		}
 		this.#ctx.session
@@ -588,7 +592,10 @@ export class CollabHost {
 			thinkingLevel: session.thinkingLevel,
 			// The status line's memoized breakdown, so a guest renders exactly the number
 			// the host's own footline shows.
-			contextUsage: contextUsageFrame(this.#ctx.statusLine.getCachedContextBreakdown()),
+			contextUsage: (() => {
+				const breakdown = this.#ctx.surface.getCachedContextBreakdown();
+				return breakdown ? contextUsageFrame(breakdown) : undefined;
+			})(),
 			participants: this.participants,
 		};
 	}
@@ -764,8 +771,7 @@ export class CollabHost {
 	}
 
 	#updateStatusSegment(): void {
-		this.#ctx.statusLine.setCollabStatus({ role: "host", participantCount: this.#peers.size + 1 });
-		this.#ctx.statusLine.invalidate();
-		this.#ctx.ui.requestRender();
+		this.#ctx.surface.setCollabStatus({ role: "host", participantCount: this.#peers.size + 1 });
+		this.#ctx.surface.requestRender();
 	}
 }

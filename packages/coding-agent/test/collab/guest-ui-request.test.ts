@@ -488,6 +488,13 @@ function makeHostContext(): InteractiveModeContext {
 		},
 		ui: { requestRender: () => {} },
 		showStatus: () => {},
+		surface: {
+			setCollabStatus: () => {},
+			requestRender: () => {},
+			updatePendingMessagesDisplay: () => {},
+			showStatus: () => {},
+			getCachedContextBreakdown: () => ({ usedTokens: 0, contextWindow: 0 }),
+		},
 		collabHost: undefined,
 		clearWorkingLoader: () => false,
 		// Required members of the context. Omitting them used to be tolerated by

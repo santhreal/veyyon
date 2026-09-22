@@ -14,6 +14,7 @@ import { processesActionHandlers } from "./processes";
 import { providersActionHandlers } from "./providers";
 import { sessionsActionHandlers } from "./sessions";
 import { settingsActionHandlers } from "./settings";
+import { shareActionHandlers } from "./share";
 import { terminalsActionHandlers } from "./terminals";
 import { turnActionHandlers } from "./turn";
 import type { ActionHandlersMap } from "./types";
@@ -34,6 +35,7 @@ export * from "./processes";
 export * from "./providers";
 export * from "./sessions";
 export * from "./settings";
+export * from "./share";
 export * from "./terminals";
 export * from "./turn";
 export * from "./types";
@@ -55,6 +57,7 @@ export const allActionHandlers: ActionHandlersMap = {
 	...agentsActionHandlers,
 	...commandsActionHandlers,
 	...settingsActionHandlers,
+	...shareActionHandlers,
 	...planReviewActionHandlers,
 	...diagnosticsActionHandlers,
 };

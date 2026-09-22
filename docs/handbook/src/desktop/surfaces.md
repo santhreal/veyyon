@@ -718,10 +718,14 @@ the appearance, which is written to the window's own state and restored the
 next time it opens. A remembered appearance this build does not ship resolves
 to the default one.
 
-The rows under them are the host's own themes for its agent, and selecting one
-sends the choice to the host. The two listings are independent: an appearance
-decides what the window draws, and a host theme decides what the agent
-reports.
+The rows under them are the host's own themes for its agent. Each row states
+the ground it applies to, and selecting one configures it as the theme for that
+ground: a dark theme becomes the dark-ground theme and a light one the
+light-ground theme, matching the `theme.dark` and `theme.light` settings. Two
+themes are configured at once, one per ground, so choosing a dark theme leaves
+the light one alone. The Active badge marks the configured theme within each
+ground. The two listings are independent: an appearance decides what the window
+draws, and a host theme decides what the agent reports.
 
 A Keybindings row is a field holding the chords bound to that action,
 separated by commas. `Enter` rebinds the action, `Escape` restores what the

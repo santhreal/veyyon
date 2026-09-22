@@ -159,6 +159,23 @@ export function formatCollabLinkPayload(
 }
 
 /**
+ * A configured relay as a URL to dial.
+ *
+ * A relay is configured as a bare `host[:port]` as often as a full URL, and
+ * the transport is WebSocket, so a value with no scheme takes `wss://`. The
+ * same rule already governs a link being parsed, and stating it twice is how
+ * a caller ends up dialling one address and displaying another.
+ *
+ * An empty input stays empty: the absence of a relay is the caller's to
+ * report, and `wss://` on its own is not an address.
+ */
+export function resolveRelayUrl(configured: string): string {
+	const relay = configured.trim();
+	if (!relay) return "";
+	return relay.includes("://") ? relay : `wss://${relay}`;
+}
+
+/**
  * Render the shareable link a human sees and pastes.
  *
  * When the link names a relay host, the secret rides in the fragment

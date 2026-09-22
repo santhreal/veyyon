@@ -127,6 +127,13 @@ function makeStreamingHostContext(): StreamingHostHarness {
 		ui: { requestRender: () => {} },
 		updatePendingMessagesDisplay: () => {},
 		showStatus: () => {},
+		surface: {
+			setCollabStatus: () => {},
+			requestRender: () => {},
+			updatePendingMessagesDisplay: () => {},
+			showStatus: () => {},
+			getCachedContextBreakdown: () => ({ usedTokens: 0, contextWindow: 0 }),
+		},
 		collabHost: undefined,
 		// Required members of the context. Omitting them used to be tolerated by
 		// `?.()` calls in the controller, which meant production silently skipped

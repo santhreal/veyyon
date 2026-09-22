@@ -197,6 +197,7 @@ export type TuiSlashCommandHostContext = CollabHostContext &
 		| "todoPhases"
 		| "ui"
 		| "updateEditorBorderColor"
+		| "updatePendingMessagesDisplay"
 		| "vibeModeEnabled"
 	>;
 

@@ -30,6 +30,7 @@
 
 ### Added
 
+- The desktop window hosts a session share reached by /collab and /share over a relay, displaying share links, participant write permissions, and stop controls.
 - Loop mode runs on the desktop window through the host-agnostic LoopDriver over the JSON protocol, displaying a composer mode chip and enforcing mutual exclusion with goal mode.
 - The desktop window draws an empty-session welcome surface offering controls to create, resume, or configure models when zero sessions exist or the last session closes.
 - The desktop queue rail draws branch hierarchies as an indented and collapsible tree from session parent paths, bounding depth to configured tokens and skipping collapsed subtrees during keyboard navigation.
@@ -350,6 +351,12 @@
 
 ### Fixed
 
+- A setting changed from the desktop window reaches the sessions already running in the process, where the change was written to disk and the running sessions went on acting on the values they had loaded, so a relay URL set and then shared with was ignored until a restart.
+- Starting a share while one is already running is refused instead of replacing it, which minted a second room and left every guest holding the first link on a room nothing was hosting.
+- A share whose start failed can be started again instead of being held in the phase it died in, which took sharing away from the session with no control to clear it.
+- A relay configured without a scheme resolves to `wss://` the same way wherever it is dialled or displayed: the rule is `resolveRelayUrl` in `@veyyon/wire`, where `/collab` and the desktop share both read it, instead of four copies that could drift into dialling one address and showing another.
+- The share card states the relay a start would dial before a session exists, where a window opened on a configured relay read as having none because the card answered out of a session that had not started yet.
+- Choosing a theme in the desktop window configures it, where the window wrote a setting key named `theme` that the schema does not have: the host refused every selection, the row never became active, and the theme list reported `dark` whatever was configured. A theme is now written to the ground it is drawn on, and the list states the theme configured for each ground.
 - Goal mode states how it ended again -- `Goal mode completed.`, `Goal mode paused.`, `Goal dropped.` -- which the move to the shared goal driver had dropped from the terminal.
 - The desktop agent dashboard names a row by the call sign the terminal dashboard prints for the same agent -- `Main`, `Kestrel`, `Otter` -- and states the agent type beside the kind, where a fan-out of one agent type drew rows all reading `deep (sub)`; each row also names the model the agent is running now rather than the one it registered with.
 - The desktop roster states what an agent is waiting on: an agent stopped at an approval prompt reads `blocked` rather than drawing as one grinding through a build, and one stopped on a peer reads `waiting` rather than as one that finished.

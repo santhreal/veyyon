@@ -27,6 +27,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { YAML } from "bun";
 import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 import { TestSocketClient } from "./test-client";
 
@@ -64,8 +65,16 @@ describe("settings, themes, and keybindings action group behaviour", () => {
 	let tempDir: string;
 	let agentDir: string;
 	let server: GuiHostServer | null = null;
+	let settingsState: SettingsTestState | undefined;
 
 	beforeEach(async () => {
+		// These cases assert against the config file under `agentDir`, which
+		// holds only while the actions load their own store. A settings action
+		// answers out of the process store whenever one is filled, so a suite
+		// that ran earlier and left the slot filled would send these writes to
+		// its directory instead of this one. Clearing it makes the precondition
+		// this suite asserts under its own rather than the run order's.
+		settingsState = beginSettingsTest();
 		tempDir = makeTempDir();
 		agentDir = path.join(tempDir, "agent");
 		await fs.mkdir(agentDir, { recursive: true });
@@ -76,6 +85,8 @@ describe("settings, themes, and keybindings action group behaviour", () => {
 			await server.close();
 			server = null;
 		}
+		restoreSettingsTestState(settingsState);
+		settingsState = undefined;
 	});
 
 	test("LoadSettings returns effective settings with value, default, and source", async () => {

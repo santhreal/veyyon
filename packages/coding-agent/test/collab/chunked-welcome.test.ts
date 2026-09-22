@@ -83,6 +83,13 @@ function makeHostContext(snapshot: SizedSnapshot): InteractiveModeContext {
 		},
 		ui: { requestRender: () => {} },
 		showStatus: () => {},
+		surface: {
+			setCollabStatus: () => {},
+			requestRender: () => {},
+			updatePendingMessagesDisplay: () => {},
+			showStatus: () => {},
+			getCachedContextBreakdown: () => ({ usedTokens: 0, contextWindow: 0 }),
+		},
 		collabHost: undefined,
 	};
 	return ctx as unknown as InteractiveModeContext;

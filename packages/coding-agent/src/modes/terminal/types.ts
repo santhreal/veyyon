@@ -10,6 +10,7 @@ import type { ShakeMode } from "@veyyon/kernel/session/shake-types";
 import type { Component, Container, EditorTheme, Loader, OverlayOptions, Spacer, Text, TUI } from "@veyyon/tui";
 import type { CollabGuestLink } from "../../collab/guest";
 import type { CollabHost } from "../../collab/host";
+import type { CollabHostSurface } from "../../collab/host-surface";
 import type { KeybindingsManager } from "../../config/keybindings";
 import type { QuarantinedSettingsFile, Settings, SettingsSaveFailure } from "../../config/settings";
 import type {
@@ -145,6 +146,7 @@ export interface InteractiveModeContext {
 	lspServers?: LspStartupServerInfo[];
 	collabHost?: CollabHost;
 	collabGuest?: CollabGuestLink;
+	surface: CollabHostSurface;
 	eventController: EventController;
 	eventBus?: EventBus;
 

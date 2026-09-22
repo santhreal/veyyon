@@ -43,6 +43,7 @@ export const SUPPORTED_CAPABILITIES: Partial<Record<Capability, true>> = {
 	ContextBreakdown: true,
 	Lifecycle: true,
 	Goals: true,
+	Share: true,
 };
 
 /** Specific, truthful reasons why each unsupported capability is unavailable. */
@@ -157,6 +158,9 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	GetUsage: "Usage",
 	SetGoal: "Session",
 	ControlGoal: "Session",
+	StartShare: "Session",
+	StopShare: "Session",
+	RefreshShare: "Session",
 };
 
 export function mapActionToErrorScope(actionTag: string): ErrorScope {

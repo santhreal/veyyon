@@ -118,6 +118,7 @@ const AT_IDLE: Record<SnapshotSectionTag, "restated-at-idle" | "listed-at-idle" 
 	// runs, so the section is owed to a window at the handshake and again on
 	// each transition of the gate, never at idle.
 	AgentPause: "on-request",
+	Share: "on-request",
 };
 
 /** The section the host publishes last, which is what closes a re-statement. */

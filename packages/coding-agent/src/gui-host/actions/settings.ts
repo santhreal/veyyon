@@ -6,7 +6,7 @@ import { syncYamlTextToSettings } from "@veyyon/utils/yaml-sync";
 import { YAML } from "bun";
 import { KEYBINDINGS, KeybindingsManager } from "../../config/keybindings";
 import { SETTING_CONDITIONS, type SettingCondition } from "../../config/setting-conditions";
-import { Settings } from "../../config/settings";
+import type { Settings } from "../../config/settings";
 import {
 	describeSettingTypeMismatch,
 	getDefault,
@@ -15,6 +15,7 @@ import {
 	type SettingPath,
 } from "../../config/settings-schema";
 import { getAvailableThemes, isLightTheme } from "../../theme/theme";
+import { actingSettings } from "../acting-settings";
 import type { KeybindingView, SettingEntryView, ThemesView, ThemeView } from "../wire";
 import type { ActionHandler, ActionHandlersMap } from "./types";
 
@@ -135,9 +136,7 @@ export function saveKeybindingToAgentDir(agentDir: string, action: string, keys:
 
 const handleLoadSettings: ActionHandler = async ctx => {
 	try {
-		const settings =
-			ctx.clientState.agentSession?.settings ??
-			(await Settings.loadIsolated({ cwd: ctx.cwd, agentDir: ctx.agentDir }));
+		const settings = await actingSettings(ctx);
 		ctx.clientState.revision += 1;
 		ctx.reply.snapshot({
 			Settings: dumpSettings(settings),
@@ -191,9 +190,7 @@ const handleSetSetting: ActionHandler<SetSettingPayload | undefined> = async (ct
 	}
 
 	try {
-		const settings =
-			ctx.clientState.agentSession?.settings ??
-			(await Settings.loadIsolated({ cwd: ctx.cwd, agentDir: ctx.agentDir }));
+		const settings = await actingSettings(ctx);
 		settings.set(payload.key as never, payload.value as never);
 		await settings.flush();
 
@@ -237,9 +234,7 @@ const handleResetSetting: ActionHandler<ResetSettingPayload | undefined> = async
 	}
 
 	try {
-		const settings =
-			ctx.clientState.agentSession?.settings ??
-			(await Settings.loadIsolated({ cwd: ctx.cwd, agentDir: ctx.agentDir }));
+		const settings = await actingSettings(ctx);
 		settings.unset(payload.key as never);
 		await settings.flush();
 
@@ -260,20 +255,17 @@ const handleResetSetting: ActionHandler<ResetSettingPayload | undefined> = async
 const handleLoadThemes: ActionHandler = async ctx => {
 	try {
 		const themeNames = await getAvailableThemes();
-		const settings =
-			ctx.clientState.agentSession?.settings ??
-			(await Settings.loadIsolated({ cwd: ctx.cwd, agentDir: ctx.agentDir }));
+		const settings = await actingSettings(ctx);
 
 		const themes: ThemeView[] = themeNames.map(name => ({
 			id: name,
 			name,
 			dark: !isLightTheme(name),
 		}));
-		const current = (settings.get("theme" as never) as string) ?? "dark";
-
 		const themesView: ThemesView = {
 			themes,
-			current,
+			dark: settings.get("theme.dark") ?? SETTINGS_SCHEMA["theme.dark"].default,
+			light: settings.get("theme.light") ?? SETTINGS_SCHEMA["theme.light"].default,
 		};
 
 		ctx.clientState.revision += 1;

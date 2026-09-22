@@ -22,10 +22,12 @@ import {
 } from "@veyyon/utils";
 import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
 import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
+import { resolveRelayUrl } from "@veyyon/wire";
 import { advisorStatusNextStep, describeAdvisorToggle } from "../advisor/messages";
 import { runTrustSlashCommand } from "../cli/trust-cli";
 import { COLLAB_GUEST_ALLOWED_COMMANDS } from "../collab/guest-commands";
 import type { CollabHost } from "../collab/host";
+import { createTerminalCollabHostSurface } from "../collab/host-surface";
 import { DEFAULT_EFFORT_POINTER } from "../config/effort-resolver";
 import { credentialRemedySentence, missingCredentialsMessage } from "../config/missing-credentials";
 import { modelResolutionFailureMessage } from "../config/model-resolution-failure";
@@ -1647,13 +1649,12 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				);
 				return;
 			}
-			// Scheme-less relay args default to wss (ws:// must be spelled out for localhost).
-			const relayUrl = relayInput.includes("://") ? relayInput : `wss://${relayInput}`;
+			const relayUrl = resolveRelayUrl(relayInput);
 			const webUrl = ctx.settings.get("collab.webUrl") || "";
 			// The host client (relay socket, room crypto, wire codecs) loads here
 			// rather than at startup: a session that never hosts never evaluates it.
 			const { CollabHost } = await import("../collab/host");
-			const host = new CollabHost(ctx);
+			const host = new CollabHost({ ...ctx, surface: createTerminalCollabHostSurface(ctx) });
 			try {
 				await host.start(relayUrl, webUrl);
 			} catch (err) {

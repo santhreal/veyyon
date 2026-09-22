@@ -61,6 +61,14 @@ function makeHostContext(listeners?: Set<SessionListener>): InteractiveModeConte
 		ui: {
 			requestRender: () => {},
 		},
+		showStatus: () => {},
+		surface: {
+			setCollabStatus: () => {},
+			requestRender: () => {},
+			updatePendingMessagesDisplay: () => {},
+			showStatus: () => {},
+			getCachedContextBreakdown: () => ({ usedTokens: 0, contextWindow: 0 }),
+		},
 		sessionManager: {
 			getSessionId: () => "sess-test",
 			getCwd: () => "/workspace",
