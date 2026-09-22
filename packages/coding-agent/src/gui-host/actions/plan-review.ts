@@ -1,5 +1,5 @@
 /**
- * `ReviewPlan`: the plan the agent wrote, raised for review on the operator's ask.
+ * `ReviewPlan`: the plan the agent wrote, raised for review when a window asks.
  *
  * A plan decision is ordinarily raised from inside the agent's `resolve` call,
  * which is the one moment the agent chooses. This raises the same decision
