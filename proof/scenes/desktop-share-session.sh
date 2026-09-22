@@ -13,11 +13,12 @@
 # nobody, and a session on this front end could not be put in front of anybody.
 # Both arms type the same word into the same palette and press Return on it.
 #
-#   SCENE_MOTION_FLOOR=5 proof/docker/record-native.sh \
-#     proof/scenes/desktop-share-session.sh
+#   SCENE_MOTION_FLOOR=5 SCENE_SETTINGS='collab.relayUrl: ws://127.0.0.1:7466' \
+#     proof/docker/record-native.sh proof/scenes/desktop-share-session.sh
 #
-#   SCENE_ARM=before PROOF_BASE_REF=<before-ref> SCENE_MOTION_FLOOR=5 \
-#     PROOF_NATIVE_BEFORE_BINARY=.internal/proof-bins/before \
+#   SCENE_ARM=before PROOF_BASE_REF=bc300a571b SCENE_MOTION_FLOOR=5 \
+#     SCENE_SETTINGS='collab.relayUrl: ws://127.0.0.1:7466' \
+#     PROOF_NATIVE_BEFORE_BINARY=.internal/proof-bins/share-before \
 #     proof/docker/record-native.sh proof/scenes/desktop-share-session.sh
 #
 # The take is a still one: a palette opens over a session and a card replaces
@@ -65,7 +66,10 @@ RELAY_URL="ws://127.0.0.1:${RELAY_PORT}"
 RELAY_LOG="${TMPDIR}/local-relay.log"
 bun /repo/clients/web/scripts/local-relay.ts --port="${RELAY_PORT}" >"${RELAY_LOG}" 2>&1 &
 RELAY_PID=$!
-trap 'kill "${RELAY_PID}" 2>/dev/null || true; kill "${GUEST_PID:-0}" 2>/dev/null || true' EXIT
+# No exit trap: the scene is sourced by the session driver, so a trap set here
+# is the driver's for the rest of the take. The relay and the guest are killed
+# where they are finished with, and the container ends either of them that a
+# take abandons before it gets there.
 RELAY_UP=0
 for _ in $(seq 1 40); do
 	if grep -q "listening on" "${RELAY_LOG}" 2>/dev/null; then
@@ -279,6 +283,12 @@ if [ -n "${LINK}" ]; then
 	GUEST_PX_SEEN="$(shots_differ_pixels share-hosting share-guest)"
 	PARTIES="$(share_participants 15)"
 fi
+
+# The readings are taken, so the fixtures go. A share the host still holds
+# would keep reconnecting to a relay that is no longer there and write that
+# into the window while the session is torn down.
+kill "${GUEST_PID:-0}" 2>/dev/null || true
+kill "${RELAY_PID}" 2>/dev/null || true
 
 if [ "${ARM}" = before ]; then
 	if [ -n "${LINK}" ]; then
