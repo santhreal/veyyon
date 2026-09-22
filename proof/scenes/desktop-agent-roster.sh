@@ -42,8 +42,10 @@
 #   * The body the spawns changed. Two agents enter a session while the card
 #     is closed; the card is reopened and its body is compared with the body
 #     it drew before them. The after arm requires that band to change by more
-#     than a roster of two rows can be drawn in; the before arm requires it to
-#     stay under that, since the page it opens reads no roster.
+#     than a roster of two rows can be drawn in. The before arm reports the
+#     number rather than bounding it: the page it opens lists the tasks the
+#     field ran, so it moves for two agents too, and what it never draws is a
+#     row's name, kind, model and controls, which the frames carry.
 #   * The choice of view the card offers, read as the hairline-edged control in
 #     its header. The after arm requires one, presses its trailing segment and
 #     requires the body to change; the before arm requires the header to carry
@@ -254,7 +256,10 @@ ROSTER_PX=1500
 # hairline-edged box in the header row, so its own edge states where it is. The
 # card's own frame is that colour too, so the columns at its edges are left out
 # of the reading, and a band that still spans most of the card is a rule rather
-# than a control and is reported as no control at all.
+# than a control and is reported as no control at all. A band narrower than a
+# pair of labels is neither: a single hairline column sits in a header that
+# offers no choice at all, and reading one as a control fails an arm for the
+# wrong reason. The control this card draws measures 147px.
 HAIRLINE="$(theme_colour role.hairline)"
 segment_band() { # <png> -> "<left> <right>" on the screen, or "" for no control
 	local dump="${TMPDIR}/frame-compare/header-band.txt"
@@ -283,8 +288,9 @@ columns = [
 if not columns:
 	raise SystemExit(0)
 first, last = min(columns), max(columns)
-# A control is a box inside the header; a rule under it runs the card's measure.
-if last - first > width * 3 // 5:
+# A control is a box inside the header; a rule under it runs the card's measure,
+# and a column or two of hairline is a rule's end or an edge, not a box.
+if last - first > width * 3 // 5 or last - first < 48:
 	raise SystemExit(0)
 print(first + left, last + left)
 PY
@@ -393,10 +399,10 @@ if [ -n "${RUNNING_BAND}" ]; then
 fi
 
 if [ "${ARM}" = before ]; then
-	if [ "${SPAWNED_PX}" -ge "${ROSTER_PX}" ]; then
-		abandon_take "agents-running" \
-			"the baseline's body changed ${SPAWNED_PX} pixels when two agents entered the session, at or over the ${ROSTER_PX} a roster of two draws, so this arm proves nothing about the surface"
-	fi
+	# The body the spawns moved is reported, not bounded. The page `/agents`
+	# opened draws a listing of the tasks the sheet's field ran, so it moves for
+	# two agents as well; what it does not draw is a roster row's name, kind,
+	# model and controls, which the frames carry and a pixel count cannot.
 	if [ -n "${RUNNING_BAND}" ]; then
 		abandon_take "agents-running" \
 			"the baseline's header carries a hairline-edged control at ${RUNNING_BAND}, so this arm proves nothing about the choice of view"
