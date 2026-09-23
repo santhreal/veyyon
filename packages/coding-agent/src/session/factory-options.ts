@@ -237,6 +237,12 @@ export interface CreateAgentSessionOptions {
 	 * top-level "Main" session, which has no parent.
 	 */
 	parentAgentId?: string;
+	/**
+	 * Room the driving agent joins at registration, for a conversation the
+	 * terminal opens beside the one it is displaying. Undefined for the first
+	 * session in a process and for every spawned agent. See `AgentRef.room`.
+	 */
+	agentRoom?: string;
 	/** Inherited eval executor session id for agents sharing parent eval state. */
 	parentEvalSessionId?: string;
 

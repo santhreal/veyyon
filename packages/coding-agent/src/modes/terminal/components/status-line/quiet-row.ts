@@ -64,7 +64,9 @@ export type QuietPart = { id: string; content: string; pin?: number };
  * looking at, and a handed-off conversation is spending somewhere they cannot look at all. It
  * renders nothing at zero, so on the overwhelmingly common single-conversation line it costs
  * the width it is worth, and the older contract below never observes it because that fixture
- * has no background conversation.
+ * has no background conversation. `room` is its neighbour in every preset and is deliberately
+ * unranked: a peer conversation is spending in a transcript the operator can switch to, and
+ * `/room` lists it at any width, so the chip is the first thing a narrow row gives up.
  *
  * `agents` (5) is the persistent running count. It is the last thing standing by an older
  * contract than any of the rest: `status-line-running-agents.test.ts` narrows the footline

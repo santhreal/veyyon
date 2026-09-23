@@ -38,12 +38,14 @@ const ROOT = "tui.ts";
  * The modules a non-root sibling may depend on.
  *
  * `component-types.ts` is the component and frame vocabulary every part speaks,
- * and `container.ts` is the tree the renderer walks. Pinned by exact equality
- * rather than as a ceiling: a third shared module is the moment the layering
- * stops being describable in one sentence, and a count would let one be swapped
- * for another silently.
+ * `container.ts` is the tree the renderer walks, and `render-scheduler.ts` is
+ * the clock and timer a part that paces itself (the viewport slide) schedules
+ * on, so a test can step every timed path of the engine from one manual
+ * scheduler. Pinned by exact equality rather than as a ceiling: a further
+ * shared module is the moment the layering stops being describable in one
+ * sentence, and a count would let one be swapped for another silently.
  */
-const SHARED = ["component-types.ts", "container.ts"] as const;
+const SHARED = ["component-types.ts", "container.ts", "render-scheduler.ts"] as const;
 
 /** `./name` → `name.ts`, for the sibling edges of one file. */
 function siblingEdges(file: string): string[] {

@@ -82,6 +82,7 @@ export class StatusLineComponent implements Component {
 	#hookStatuses: Map<string, string> = new Map();
 	#agentCount: number = 0;
 	#backgroundSessionCount: number = 0;
+	#roomPeerCount: number = 0;
 	#planModeStatus: { enabled: boolean; paused: boolean } | null = null;
 	#loopModeStatus: { enabled: boolean } | null = null;
 	#goalModeStatus: { enabled: boolean; paused: boolean } | null = null;
@@ -256,6 +257,18 @@ export class StatusLineComponent implements Component {
 	/** Conversations still running that no screen is showing. */
 	get backgroundSessionCount(): number {
 		return this.#backgroundSessionCount;
+	}
+
+	setRoomPeerCount(count: number): void {
+		const next = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
+		if (next === this.#roomPeerCount) return;
+		this.#roomPeerCount = next;
+		this.invalidate();
+	}
+
+	/** Driving agents beside the displayed one in this terminal's room. */
+	get roomPeerCount(): number {
+		return this.#roomPeerCount;
 	}
 
 	resetActiveTime(): void {
@@ -729,6 +742,7 @@ export class StatusLineComponent implements Component {
 			autoCompactEnabled: this.#autoCompactEnabled,
 			agentCount: this.#agentCount,
 			backgroundSessionCount: this.#backgroundSessionCount,
+			roomPeerCount: this.#roomPeerCount,
 			activeMs: this.getActiveMs(),
 			git: {
 				branch: gitBranch,

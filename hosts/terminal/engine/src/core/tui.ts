@@ -16,7 +16,6 @@
  * throwing. See `docs/internal/tui-core-renderer.md`.
  */
 import * as fs from "node:fs";
-import { performance } from "node:perf_hooks";
 import { planDeccaraFills } from "@veyyon/utils/deccara";
 import { getDebugLogPath } from "@veyyon/utils/dirs";
 import { $flag } from "@veyyon/utils/env";
@@ -66,6 +65,7 @@ import {
 	type OverlayOptions,
 	OverlayStack,
 } from "./overlay";
+import { DEFAULT_RENDER_SCHEDULER, RenderCadence, type RenderScheduler, type RenderTimer } from "./render-scheduler";
 import {
 	auditCommittedPrefix,
 	extractCursorMarkers,
@@ -111,16 +111,12 @@ import {
 	SixelProbe,
 	type StartListener,
 } from "./terminal-session";
-
-export interface RenderTimer {
-	cancel(): void;
-}
-
-export interface RenderScheduler {
-	now(): number;
-	scheduleImmediate(callback: () => void): void;
-	scheduleRender(callback: () => void, delayMs: number): RenderTimer;
-}
+import {
+	ViewportSlide,
+	type ViewportSlideDirection,
+	type ViewportSlideOptions,
+	type ViewportSnapshot,
+} from "./viewport-slide";
 
 export interface TUIOptions {
 	renderScheduler?: RenderScheduler;
@@ -130,21 +126,6 @@ export interface TUIStartOptions {
 	/** Clear saved native scrollback before the first paint. */
 	clearScrollback?: boolean;
 }
-
-const DEFAULT_RENDER_SCHEDULER: RenderScheduler = {
-	now: () => performance.now(),
-	scheduleImmediate: callback => {
-		setImmediate(callback);
-	},
-	scheduleRender: (callback, delayMs) => {
-		const timer = setTimeout(callback, delayMs);
-		return {
-			cancel: () => {
-				clearTimeout(timer);
-			},
-		};
-	},
-};
 
 /**
 
@@ -218,42 +199,8 @@ export class TUI extends Container {
 	#renderRequested = false;
 	#renderTimer: RenderTimer | undefined;
 	#renderScheduler: RenderScheduler;
-	#lastRenderAt = 0;
-	/**
-	 * Decayed estimate of what a frame costs, in milliseconds. `#scheduleRender`
-	 * derives the adaptive floor from it to hold the render loop near a 50%
-	 * duty cycle: without one the throttle collapses to zero as soon as
-	 * `elapsed >= MIN_RENDER_INTERVAL_MS`, and a run of slow frames (large
-	 * transcript diffs, huge assistant text wrap, component-tree walks) turns
-	 * the loop into a busy loop at 40-50% CPU (see #4145).
-	 *
-	 * A duty cycle is a property of a window, not of one frame, and reading the
-	 * previous frame alone conflated two different situations. A loop that
-	 * paints slowly on every frame converges here and is held to half the CPU,
-	 * which is what #4145 asked for. A single expensive paint among cheap ones
-	 * moves the estimate by a fraction of itself, so the frame after it still
-	 * arrives at the cadence: a scrolled viewport leaves the diff nothing to
-	 * reuse and costs a full paint, and putting a 66ms floor under the cheap
-	 * diff that followed it is how a session that painted on time 68% of the
-	 * time published at 14.2 fps against a 30 fps capture.
-	 */
-	#frameCostEstimateMs = 0;
-	/**
-	 * Weight of the newest frame in `#frameCostEstimateMs`. At 0.3 a sustained
-	 * change in frame cost is ~90% absorbed within seven frames, so the loop
-	 * reaches its duty-cycle floor inside a quarter second of going slow, while
-	 * an isolated spike lifts the floor by under a third of itself.
-	 */
-	static readonly #FRAME_COST_SMOOTHING = 0.3;
-	static readonly #MIN_RENDER_INTERVAL_MS = 1000 / 30;
-	static readonly #INPUT_RENDER_GRACE_MS = TUI.#MIN_RENDER_INTERVAL_MS;
-	/**
-	 * Cap on the adaptive floor derived from `#frameCostEstimateMs`. Bounds the
-	 * UI responsiveness at ~5 fps under sustained heavy renders — anything
-	 * slower feels dead to the user and no longer justifies further CPU savings.
-	 */
-	static readonly #MAX_ADAPTIVE_RENDER_MS = 200;
-	#inputRenderGraceUntilMs = 0;
+	// Frame pacing: cadence, adaptive backpressure and the input grace window.
+	readonly #cadence = new RenderCadence();
 	// Pane-reflow settle window for tmux/screen/zellij. The host process gets
 	// SIGWINCH (and `process.stdout` already reports the new geometry) before
 	// the multiplexer finishes repainting the pane at the new size, and
@@ -506,6 +453,10 @@ export class TUI extends Container {
 	// resize frames so width changes truncate the transient viewport instead of
 	// pushing wrapped fragments into native scrollback.
 	#resizeAltActive = false;
+	// The sideways viewport slide (`core/viewport-slide.ts`). While one is in
+	// flight every `#doRender` returns without painting, the same way the resize
+	// fast path keeps the commit ledger untouched.
+	readonly #slide: ViewportSlide;
 	#stopped = false;
 	// Always-on event-loop lag probe. The high default threshold keeps it quiet;
 	// it only logs `ui.loop-blocked` (with the current loop phase) when a frame
@@ -580,6 +531,35 @@ export class TUI extends Container {
 		this.terminal = terminal;
 		this.#overlays = new OverlayStack(terminal);
 		this.#renderScheduler = options?.renderScheduler ?? DEFAULT_RENDER_SCHEDULER;
+		this.#slide = new ViewportSlide({
+			scheduler: this.#renderScheduler,
+			size: () => ({ width: this.terminal.columns, height: this.terminal.rows }),
+			ready: () =>
+				!this.#stopped &&
+				this.#hasEverRendered &&
+				!this.#altActive &&
+				!this.#resizeViewportActive &&
+				this.#multiplexerResizeTimer === undefined &&
+				this.#overlays.topmostVisible() === undefined &&
+				!resizeRepaintsInPlace(),
+			stopped: () => this.#stopped,
+			overlayVisible: () => this.#overlays.topmostVisible() !== undefined,
+			committed: () => ({
+				rows: this.#previousWindow.slice(),
+				width: this.#previousWidth,
+				height: this.#previousHeight,
+			}),
+			compose: (width, height) => {
+				// The image budget pass is a stable one for the same reason the drag's is.
+				this.#imageBudget.beginPass(true);
+				return this.#composeResizeViewport(width, height).window;
+			},
+			paint: (window, width, height) => this.#emitResizeViewport(window, height, height, width),
+			settle: () => {
+				this.#resizeEventPending = true;
+				this.requestRender(true, { clearScrollback: true });
+			},
+		});
 		if (showHardwareCursor !== undefined) this.#cursor.setShow(showHardwareCursor);
 		this.#watchdog = new LoopWatchdog();
 	}
@@ -928,6 +908,16 @@ export class TUI extends Container {
 	/** Whether a non-multiplexer resize drag is currently in flight. */
 	get resizeViewportActive(): boolean {
 		return this.#resizeViewportActive;
+	}
+
+	/** Throwaway frames painted by viewport slides. Counted apart from {@link fullRedraws}. */
+	get viewportSlideFrames(): number {
+		return this.#slide.frames;
+	}
+
+	/** Whether a viewport slide is in flight. */
+	get viewportSlideActive(): boolean {
+		return this.#slide.active;
 	}
 
 	/** Shared budget that caps how many inline images render as live graphics. */
@@ -1538,6 +1528,7 @@ export class TUI extends Container {
 			this.#resizeViewportSettleTimer = undefined;
 		}
 		this.#resizeViewportActive = false;
+		this.#slide.cancel();
 		this.#clearPostFullPaintSettle();
 		this.#deferredForcedClearScrollback = false;
 		// A resident alt-buffer session holds the transcript nowhere the terminal can
@@ -2048,21 +2039,7 @@ export class TUI extends Container {
 		if (this.#multiplexerResizeTimer) {
 			return;
 		}
-		const now = this.#renderScheduler.now();
-		const elapsed = now - this.#lastRenderAt;
-		const cadenceDelay = Math.max(0, TUI.#MIN_RENDER_INTERVAL_MS - elapsed);
-		// Adaptive backpressure — target ~50% render duty cycle: the next frame
-		// starts no sooner than `frame_end + estimated_cost`, i.e.
-		// `frame_start + 2 × estimated_cost`. So `elapsed` (which counts from
-		// the last frame's start) must already exceed twice the estimate before
-		// we allow the follow-up render to fire. The estimate is decayed rather
-		// than the previous sample, so a sustained slow loop is held to half the
-		// CPU (#4145) and an isolated expensive paint is not charged to the
-		// cheap frame behind it. Capped so a pathological cost cannot lock the UI.
-		const adaptiveFloor = Math.min(TUI.#MAX_ADAPTIVE_RENDER_MS, this.#frameCostEstimateMs * 2);
-		const adaptiveDelay = Math.max(0, adaptiveFloor - elapsed);
-		const inputGraceDelay = Math.max(0, this.#inputRenderGraceUntilMs - now);
-		const delay = Math.max(cadenceDelay, adaptiveDelay, inputGraceDelay);
+		const delay = this.#cadence.delayFor(this.#renderScheduler.now());
 		this.#renderTimer = this.#renderScheduler.scheduleRender(() => {
 			this.#renderTimer = undefined;
 			if (this.#stopped || !this.#renderRequested) {
@@ -2078,8 +2055,8 @@ export class TUI extends Container {
 
 	/**
 	 * Wrap `#doRender()` so every path records the wall-clock frame cost that
-	 * feeds adaptive backpressure. Set `#lastRenderAt` first (some render code
-	 * reads it re-entrantly) and compute the cost once the paint returns.
+	 * feeds adaptive backpressure. Mark the start first (some render code
+	 * reads the cadence re-entrantly) and fold the cost in once the paint returns.
 	 *
 	 * The phase is what a blocked frame is reported as. A compose walks every
 	 * component, wraps every line of the transcript and diffs the frame, and it
@@ -2089,14 +2066,13 @@ export class TUI extends Container {
 	 */
 	#executeRender(): void {
 		const start = this.#renderScheduler.now();
-		this.#lastRenderAt = start;
+		this.#cadence.frameStarted(start);
 		pushLoopPhase("ui.render");
 		try {
 			this.#doRender();
 		} finally {
 			popLoopPhase();
-			const costMs = this.#renderScheduler.now() - start;
-			this.#frameCostEstimateMs += TUI.#FRAME_COST_SMOOTHING * (costMs - this.#frameCostEstimateMs);
+			this.#cadence.frameEnded(start, this.#renderScheduler.now());
 		}
 	}
 
@@ -2166,7 +2142,7 @@ export class TUI extends Container {
 		// key would make idle navigation pay a full frame of latency.
 		const c0 = data.charCodeAt(0);
 		if ((c0 === 3 || c0 === 27) && (matchesKey(data, "ctrl+c") || matchesKey(data, "escape"))) {
-			this.#inputRenderGraceUntilMs = this.#renderScheduler.now() + TUI.#INPUT_RENDER_GRACE_MS;
+			this.#cadence.graceInput(this.#renderScheduler.now());
 		}
 		if (this.#inputListeners.size > 0) {
 			let current = data;
@@ -2356,6 +2332,10 @@ export class TUI extends Container {
 	 */
 	#doRender(): void {
 		if (this.#stopped) return;
+		// A slide owns the screen until its settle paint; a frame requested
+		// meanwhile is folded into that one. The forced flags are not consumed
+		// here, so the fold keeps every caller's intent.
+		if (this.#slide.active) return;
 		const width = this.terminal.columns;
 		const height = this.terminal.rows;
 
@@ -3364,6 +3344,16 @@ export class TUI extends Container {
 		}
 		extractCursorMarkers(window);
 		return { window: prepareLinesArray(window, width), contentRows: count };
+	}
+
+	/** Snapshot the window for {@link slideViewport}; see `core/viewport-slide.ts`. */
+	captureViewport(): ViewportSnapshot | undefined {
+		return this.#slide.capture();
+	}
+
+	/** Slide from `from` to the window the children compose now; see `core/viewport-slide.ts`. */
+	slideViewport(from: ViewportSnapshot, direction: ViewportSlideDirection, options?: ViewportSlideOptions): boolean {
+		return this.#slide.slide(from, direction, options);
 	}
 
 	/**

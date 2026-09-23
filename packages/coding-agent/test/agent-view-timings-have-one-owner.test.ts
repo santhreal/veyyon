@@ -37,8 +37,8 @@ const CONSUMERS = [
 		specifier: "./agent-view-timings",
 	},
 	{
-		file: path.join(SRC_DIR, "modes/terminal/controllers/input-controller.ts"),
-		proves: "class InputController",
+		file: path.join(SRC_DIR, "modes/terminal/controllers/arrow-double-tap.ts"),
+		proves: "class ArrowDoubleTap",
 		names: ["AGENT_VIEW_LEFT_TAP_WINDOW_MS"],
 		specifier: "../components/dashboard/agent-view-timings",
 	},

@@ -9,17 +9,19 @@
  * a recorded reason, not a target. Two of them are far above the 800-line figure
  * the plan asked for, and that is stated rather than hidden:
  *
- * `core/tui.ts` is 3734 lines. MEASURED 2026-08-31, up from 3612 at the split:
+ * `core/tui.ts` is 3782 lines. MEASURED 2026-09-07, up from 3612 at the split:
  * the growth arrived with upstream edits to the pre-split monolith and carries
- * no new subsystem. The nine sibling modules were carved out of a 5415-line
- * file, and what remains is the `TUI` class itself: one object holding about
- * sixty private fields that the compose, paint, scroll-isolation, cursor,
+ * no new subsystem; the two subsystems carved out since (the render clock and
+ * frame pacing in `render-scheduler.ts`, the sideways viewport slide in
+ * `viewport-slide.ts`) paid for the room switch that would otherwise have
+ * pushed it over. What remains is the `TUI` class itself: one object holding
+ * about sixty private fields that the compose, paint, scroll-isolation, cursor,
  * overlay and input paths all mutate within a single frame. Splitting it
  * further means passing that state between collaborating objects in the
  * highest-risk file in the product, where the failure mode is a corrupted frame
  * on someone's terminal rather than a failing test. So the ceiling records where
  * it is and stops it growing, and the further split is a separate change with
- * its own render-oracle evidence. Its headroom is roughly two percent rather
+ * its own render-oracle evidence. Its headroom is under one percent rather
  * than the table's ten, because this is the module the ratchet exists for.
  *
  * `core/renderer.ts` is 611 lines and holds the frame preparation the engine
@@ -45,6 +47,8 @@ import { isDirectory, lineCount, repoPath, repoRelative, typeScriptFiles } from 
 const CORE_CEILINGS: Record<string, number> = {
 	"core/tui.ts": 3800,
 	"core/renderer.ts": 700,
+	"core/viewport-slide.ts": 220,
+	"core/render-scheduler.ts": 130,
 	"core/overlay.ts": 560,
 	"core/image-budget.ts": 330,
 	"core/component-types.ts": 320,

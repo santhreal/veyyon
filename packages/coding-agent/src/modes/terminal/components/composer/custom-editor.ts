@@ -877,6 +877,8 @@ export class CustomEditor extends Editor {
 	onCapsLock?: () => void;
 	/** Called when left-arrow is pressed while the editor is empty (cursor necessarily at start). */
 	onLeftAtStart?: () => void;
+	/** Called when right-arrow is pressed while the editor is empty (cursor necessarily at end). */
+	onRightAtEnd?: () => void;
 
 	/** Fired when a sustained space-bar hold is recognized — the push-to-talk STT start. The
 	 *  optimistically-typed spaces have already been deleted by the time this runs. */
@@ -1212,12 +1214,26 @@ export class CustomEditor extends Editor {
 		const parsedKey = parseKey(data);
 		const canonical = parsedKey !== undefined ? canonicalKeyId(parsedKey) : undefined;
 
-		// Left-arrow on an empty editor: surface for the agent-hub double-tap
-		// gesture. Plain "left" only — modified arrows and any in-text cursor
-		// movement fall through to normal handling.
+		// Arrows on an empty editor: surface for the double-tap gestures (←← the
+		// agent hub, →→ the room strip). Plain arrows only — modified arrows and
+		// any in-text cursor movement fall through to normal handling. A draft of
+		// only spaces still counts as empty for the gesture, but only with the
+		// caret on the boundary the arrow points past: mid-draft the key moves
+		// the caret instead.
 		if (canonical === "left" && this.onLeftAtStart && this.getText().trim() === "") {
-			this.onLeftAtStart();
-			return;
+			const cursor = this.getCursor();
+			if (cursor.line === 0 && cursor.col === 0) {
+				this.onLeftAtStart();
+				return;
+			}
+		}
+		if (canonical === "right" && this.onRightAtEnd && this.getText().trim() === "") {
+			const lines = this.getLines();
+			const cursor = this.getCursor();
+			if (cursor.line === lines.length - 1 && cursor.col === (lines[lines.length - 1] ?? "").length) {
+				this.onRightAtEnd();
+				return;
+			}
 		}
 
 		// Space-hold push-to-talk: a sustained space bar starts/stops STT instead of typing spaces.

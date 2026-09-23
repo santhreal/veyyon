@@ -72,6 +72,11 @@
 
 ### Added
 
+- `/room new` opens a second driving conversation beside the one on screen, `/room` lists the room and `/room <n>` or `/room <id>` switches to a member; `→→` on an empty composer opens an anchored strip above the composer where `←`/`→` move between members and Enter switches, and a switched-away conversation keeps running under the background keeper.
+- Two driving conversations of one room are `irc` peers: each lists the other under `irc list` marked as a room peer and can message it by id, while `to: "all"` reaches the sender's own spawns only and a spawn cannot reach the conversation next door.
+- The status line carries a `room` segment counting the peer conversations beside the displayed one, in every preset and hidden at zero.
+- A room switch slides the screen sideways toward the peer, later members entering from the right and earlier ones from the left, and settles in the same full repaint `/resume` performs; under a multiplexer, an overlay or a resize the repaint alone stands.
+- `AgentRegistry.peers` and `roomMembers` resolve the caller once and walk the registry in one pass, so the per-turn `<session-state>` build and each room-strip redraw cost 0.45µs instead of 3.6µs against a registry of 400 spawns.
 - Exported `projectToolDisplay` from `presentation/web-tool-display.ts`, projecting canonical tool execution displays for collab live sessions and HTML export.
 - `tools/view-registry.ts` exports `toolViewDefinitions`, the host-agnostic `ToolViewDefinition` for every tool card the terminal drew, and `tools/renderers.ts` derives the terminal adapters from it; the set of cards and their chrome are unchanged.
 - A tool card value-imports no tool: the search card limits are `tools/search/search-card-limits.ts`, the web search provider label is `tools/web/search/types.ts`, and the launch card owns `callMeta` and `readyPendingSummary`; each name is exported from that one module only. Print mode and the HTML export load a card without the tool behind it, and no output changes.

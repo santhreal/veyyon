@@ -25,7 +25,10 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 		// signal a preset can drop is not a signal. It leads for the same reason
 		// `profile` does — a chip that a narrow terminal sheds says nothing on the
 		// terminal most likely to be running unattended.
-		leftSegments: ["profile", "background", "model", "account", "mode", "path", "git", "context_pct"],
+		// `room` follows it on the same terms: silent at zero, in every preset,
+		// because a peer conversation the operator cannot see is one they cannot
+		// switch to.
+		leftSegments: ["profile", "background", "room", "model", "account", "mode", "path", "git", "context_pct"],
 		rightSegments: ["session_name"],
 		segmentOptions: {
 			model: { showThinkingLevel: true },
@@ -35,7 +38,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	},
 
 	minimal: {
-		leftSegments: ["profile", "background", "account", "path", "git"],
+		leftSegments: ["profile", "background", "room", "account", "path", "git"],
 		rightSegments: ["session_name", "mode", "context_pct"],
 		segmentOptions: {
 			path: { abbreviate: true, maxLength: 30 },
@@ -44,7 +47,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	},
 
 	compact: {
-		leftSegments: ["profile", "background", "model", "account", "mode", "git", "pr"],
+		leftSegments: ["profile", "background", "room", "model", "account", "mode", "git", "pr"],
 		rightSegments: ["session_name", "cost", "context_pct"],
 		segmentOptions: {
 			model: { showThinkingLevel: false },
@@ -58,6 +61,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 			"hostname",
 			"profile",
 			"background",
+			"room",
 			"model",
 			"account",
 			"mode",
@@ -93,6 +97,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 			"hostname",
 			"profile",
 			"background",
+			"room",
 			"model",
 			"account",
 			"mode",
@@ -125,7 +130,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 
 	ascii: {
 		// No Nerd Font dependencies
-		leftSegments: ["profile", "background", "model", "account", "mode", "path", "git", "pr"],
+		leftSegments: ["profile", "background", "room", "model", "account", "mode", "path", "git", "pr"],
 		rightSegments: ["session_name", "token_total", "cost", "context_pct"],
 		segmentOptions: {
 			model: { showThinkingLevel: true },
@@ -136,7 +141,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 
 	custom: {
 		// User-defined - these are just defaults that get overridden
-		leftSegments: ["profile", "background", "model", "account", "mode", "path", "git", "pr"],
+		leftSegments: ["profile", "background", "room", "model", "account", "mode", "path", "git", "pr"],
 		rightSegments: ["session_name", "token_total", "cost", "context_pct"],
 		segmentOptions: {},
 	},
