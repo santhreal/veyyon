@@ -12,23 +12,29 @@
 # refusal, so the row went on drawing its Select and no row ever carried an
 # Active badge. Both arms open the same page and press Select on the same row.
 #
-#   proof/docker/record-native.sh proof/scenes/desktop-theme-ground.sh
+#   SCENE_MOTION_FLOOR=3 proof/docker/record-native.sh \
+#     proof/scenes/desktop-theme-ground.sh
 #
-# The change is in both the window and the host, so the before arm takes the
-# pre-change build and holds the source with it:
+# The change is in both the window and the host, so the before arm takes a
+# build from the base ref and holds the source at the same ref, which is a
+# revision before the fix rather than its parent when the binary at hand was
+# built there:
 #
-#   SCENE_ARM=before PROOF_BASE_REF=<fix>^ \
-#     PROOF_NATIVE_BEFORE_BINARY=.internal/proof-bins/theme-before \
+#   SCENE_ARM=before PROOF_BASE_REF=bc300a571b SCENE_MOTION_FLOOR=3 \
+#     PROOF_NATIVE_BEFORE_BINARY=.internal/proof-bins/share-before \
 #     proof/docker/record-native.sh proof/scenes/desktop-theme-ground.sh
 #
-# WHAT IS MEASURED. A row's control column, which draws either a Select button
-# or an Active badge and never both. The reading is the count of rows whose
-# control band lies inside the host's own listing, and the width of the band on
-# the row that was pressed: a badge is narrower than the button it replaces, so
-# a press that settled moves that one band and leaves the rest of the column
-# where it was. A mean over the whole page would answer for the elapsed times
-# ticking in the rail behind the sheet, and a single pixel would answer for the
-# hover the pointer leaves.
+# The take is a still one -- a sheet opens and one row's control is replaced --
+# so both arms are recorded under the 5 fps floor the driver defaults to.
+#
+# WHAT IS MEASURED. The control column of the rows, one cell per row, between
+# the frame the page opened on and the frame after the press. A row draws
+# either a Select button or an Active badge and never both, so a press that
+# settled repaints the cell it landed in — a filled badge where a ghost button
+# was — and leaves every other cell byte-identical. The reading is the count of
+# changed pixels in the pressed row's cell and the count in all the others. A
+# width of lit ink cannot tell the two apart: `Select` and `Active` are the
+# same length in glyphs, and the badge's fill is darker than its letters.
 #
 # WHAT IT DOES NOT SHOW. Which ground the window is drawing in: that is the
 # appearance choice, photographed by `desktop-appearance.sh`, and a theme chosen
@@ -40,9 +46,12 @@ set -euo pipefail
 
 source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 
-# ─── Where The Dialog And Its Rows Draw ─────────────────────────────────────
+# ─── Where The Sheet And Its Rows Draw ──────────────────────────────────────
 # Read from the tokens this checkout ships, so a retheme moves the crops with
-# the surfaces instead of leaving them measuring the backdrop.
+# the surfaces instead of leaving them measuring the backdrop. The settings
+# sheet is the settings surface's own box rather than the palette's: its rows
+# carry a label, a description and a control column, and a crop taken at the
+# palette's width lands between the label and the control and reads no ink.
 read -r DIALOG_W TITLEBAR_H MARGIN COLUMN_W BODY_INSET ROW_H ROW_GAP SHEET_H < <(
 	python3 - "${BASH_SOURCE[0]%/*}" <<'PY'
 from pathlib import Path
@@ -55,7 +64,7 @@ sys.path.insert(0, str(scenes_dir))
 import token_px
 
 print(
-	token_px.value_of("surface/palette.toml", "geometry.width_px"),
+	token_px.value_of("surface/settings.toml", "layout.group_width_px"),
 	token_px.value_of("surface/shell.toml", "titlebar.height_px"),
 	token_px.value_of("scale.toml", "spacing.s4"),
 	token_px.value_of("surface/settings.toml", "layout.control_column_width_px"),
@@ -134,11 +143,10 @@ row_bands() { # <shot>
 	printf '%s\n' "${bands}"
 }
 
-# The lit width of one band's control, and the middle of that ink. A button is
-# set against the far end of the column and a badge is narrower than it, so a
-# press is aimed at the ink rather than at the middle of the column, and the
-# width states which of the two is drawn.
-band_ink() { # <shot> <top> <bottom> -> "<width> <middle-x>"
+# Where a row's control is pressed: the middle of the column's lit ink, which
+# is a button set against the far end of the column rather than the column's
+# own middle, so the press lands on the control and not beside it.
+control_point() { # <shot> <top> <bottom> -> "<x> <y>"
 	local png="${SCENE_OUT}/${SCENE_NAME}-$1.png"
 	local trimmed offset width
 	trimmed="$(magick "${png}" -crop "${COLUMN_W}x$(( $3 - $2 ))+${COLUMN_LEFT}+$2" +repage \
@@ -151,7 +159,33 @@ band_ink() { # <shot> <top> <bottom> -> "<width> <middle-x>"
 	esac
 	width="${trimmed%% *}"
 	offset="${trimmed#* }"
-	printf '%s %s' "${width}" "$(( COLUMN_LEFT + offset + width / 2 ))"
+	# Newline-terminated: `read` reports failure on a last line without one, and
+	# under `set -e` that ends the take rather than the reading.
+	printf '%s %s\n' "$(( COLUMN_LEFT + offset + width / 2 ))" "$(( ($2 + $3) / 2 ))"
+}
+
+# How many pixels of one row's control cell the two frames disagree on. A cell
+# is the whole column at the row's height, so a button replaced by a filled
+# badge is thousands and a cell nothing touched is none.
+CELL_DIFF_PY="${TMPDIR}/theme-cell-diff.py"
+cat >"${CELL_DIFF_PY}" <<'PY'
+import sys
+
+left, right = (open(path, "rb").read() for path in sys.argv[1:3])
+if len(left) != len(right):
+	raise SystemExit(f"the two crops read {len(left)} and {len(right)} bytes")
+# 6 of 255 is the antialiasing either frame puts on the same glyph edge.
+print(sum(1 for a, b in zip(left, right) if abs(a - b) > 6))
+PY
+
+cell_changes() { # <shot> <shot> <top> <bottom> -> <changed pixels>
+	local height=$(( $4 - $3 ))
+	local crop="${COLUMN_W}x${height}+${COLUMN_LEFT}+$3"
+	magick "${SCENE_OUT}/${SCENE_NAME}-$1.png" -crop "${crop}" +repage \
+		-colorspace Gray -depth 8 gray:- >"${TMPDIR}/cell-left.gray"
+	magick "${SCENE_OUT}/${SCENE_NAME}-$2.png" -crop "${crop}" +repage \
+		-colorspace Gray -depth 8 gray:- >"${TMPDIR}/cell-right.gray"
+	python3 "${CELL_DIFF_PY}" "${TMPDIR}/cell-left.gray" "${TMPDIR}/cell-right.gray"
 }
 
 # ─── Open The Themes Page ───────────────────────────────────────────────────
@@ -189,8 +223,7 @@ if (( PITCH < AUTHORED_PITCH - 4 || PITCH > AUTHORED_PITCH + 4 )); then
 fi
 TARGET_TOP="$(printf '%s\n' "${ROW_BANDS}" | tail -n 1 | cut -d: -f1)"
 TARGET_BOTTOM="$(printf '%s\n' "${ROW_BANDS}" | tail -n 1 | cut -d: -f2)"
-TARGET_MID=$(( (TARGET_TOP + TARGET_BOTTOM) / 2 ))
-read -r OPENED_WIDTH TARGET_CONTROL < <(band_ink theme-page "${TARGET_TOP}" "${TARGET_BOTTOM}")
+read -r TARGET_CONTROL TARGET_MID < <(control_point theme-page "${TARGET_TOP}" "${TARGET_BOTTOM}")
 
 # ─── The Row's Select Pressed, And The Pointer Taken Away ───────────────────
 # The press lands on the control the row's own band drew, and the pointer is
@@ -209,24 +242,38 @@ if [ "${CHOSEN_COUNT}" -ne "${ROW_COUNT}" ]; then
 	abandon_take "theme-chosen" \
 		"the page drew ${CHOSEN_COUNT} control bands after the press and ${ROW_COUNT} before it: the press changed which rows are listed rather than which one is settled"
 fi
-read -r CHOSEN_WIDTH _ < <(band_ink theme-chosen "${TARGET_TOP}" "${TARGET_BOTTOM}")
 
-# A badge and the button it replaces differ by more than the antialiasing on
-# either one's edge.
-SAME_CONTROL_MAX=4
-DELTA=$(( CHOSEN_WIDTH - OPENED_WIDTH ))
-if [ "${DELTA}" -lt 0 ]; then DELTA=$(( -DELTA )); fi
+TARGET_CHANGED="$(cell_changes theme-page theme-chosen "${TARGET_TOP}" "${TARGET_BOTTOM}")"
+OTHERS_CHANGED=0
+while IFS=: read -r BAND_TOP BAND_BOTTOM; do
+	if [ "${BAND_TOP}" = "${TARGET_TOP}" ]; then
+		continue
+	fi
+	OTHERS_CHANGED=$(( OTHERS_CHANGED + $(cell_changes theme-page theme-chosen "${BAND_TOP}" "${BAND_BOTTOM}") ))
+done <<<"${ROW_BANDS}"
+
+# A badge drawn where a button was fills its own box and letters a word in it,
+# which is hundreds of pixels; a cell the press did not reach is none, and the
+# few a glyph's antialiasing can differ by are not a control.
+SETTLED_PX=200
+UNTOUCHED_PX=8
 
 if [ "${SCENE_ARM:-after}" = "before" ]; then
-	if [ "${DELTA}" -gt "${SAME_CONTROL_MAX}" ]; then
+	if [ "${TARGET_CHANGED}" -gt "${UNTOUCHED_PX}" ]; then
 		abandon_take "theme-chosen" \
-			"the baseline changed the pressed row's control: ${OPENED_WIDTH}px of ink became ${CHOSEN_WIDTH}px, so this arm proves nothing about a refused choice"
+			"the baseline repainted ${TARGET_CHANGED} pixels of the pressed row's control, so this arm proves nothing about a refused choice"
 	fi
-	echo "scene: before arm -- the pressed row's control held ${OPENED_WIDTH}px of ink and still holds ${CHOSEN_WIDTH}px: the host refused the key the window wrote, and the row draws its Select as though nothing was pressed" >&2
+	echo "scene: before arm -- the press left the row's control at ${TARGET_CHANGED} changed pixels:" \
+		"the host refused the key the window wrote, and the row draws its Select as though nothing was pressed" >&2
 else
-	if [ "${DELTA}" -le "${SAME_CONTROL_MAX}" ]; then
+	if [ "${TARGET_CHANGED}" -lt "${SETTLED_PX}" ]; then
 		abandon_take "theme-chosen" \
-			"the pressed row's control is unchanged at ${CHOSEN_WIDTH}px of ink: the choice never settled on the row, so the page draws the same Select it drew before the press"
+			"the pressed row's control changed ${TARGET_CHANGED} pixels, under the ${SETTLED_PX} a badge drawn over a button changes, so the choice never settled on the row"
 	fi
-	echo "scene: after arm -- the pressed row's control went from ${OPENED_WIDTH}px of ink to ${CHOSEN_WIDTH}px: the choice settled on the row it was pressed on" >&2
+	if [ "${OTHERS_CHANGED}" -gt "${UNTOUCHED_PX}" ]; then
+		abandon_take "theme-chosen" \
+			"the press changed ${OTHERS_CHANGED} pixels in the controls of the rows it did not land on, so the page moved more than the row that was chosen"
+	fi
+	echo "scene: after arm -- the pressed row's control changed ${TARGET_CHANGED} pixels and every other" \
+		"row's control changed ${OTHERS_CHANGED}: the choice settled on the row it was pressed on" >&2
 fi

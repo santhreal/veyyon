@@ -36,8 +36,11 @@
 # THE GUEST IS A REAL ONE. `proof/lib/collab-guest.ts` joins with the link the
 # host minted, sealing its greeting with the room key, so the participant row
 # in the last frame is a party the host admitted rather than a row this scene
-# drew. The link is read from the host's own `Share` section over a second
-# socket: it never reaches the relay, which is the point of sealing it.
+# drew. The link is taken the way a user takes one: the card's own copy control
+# is pressed and the X11 clipboard is read, because an address is 80 characters
+# of base64url and no reading of pixels recovers it. A share is held by the
+# session the window opened, so a second connection to the host is a second
+# session and holds no share to ask about.
 #
 # WHAT IS MEASURED, in the card's own body rather than the whole frame, whose
 # queue rail states an elapsed time that ticks between any two shots:
@@ -46,9 +49,11 @@
 #     nothing shared. Four links, their copy controls and a participant row ink
 #     far more than the two controls they replace.
 #   * The body a guest changed, against the body drawn while hosting alone.
-#   * What the host holds, in its own vocabulary over a second socket, so a
-#     body that drew no link is the window's doing rather than a share that
-#     never started.
+#   * What the copy control put on the clipboard, over the sentinel this scene
+#     put there first, so a body that drew no link is the window's doing rather
+#     than a share that never started.
+#   * The guest's own log, which states `welcome` only for a frame the host
+#     sealed, so the roster row is a party admitted rather than a relay echo.
 #
 # Sourced by proof/docker/xsession.sh with SCENE_WINDOW, SCENE_NAME, SCENE_OUT
 # and SCENE_LIB already initialized.
@@ -84,63 +89,42 @@ if [ "${RELAY_UP}" != "1" ]; then
 fi
 echo "scene: the offline relay is listening on ${RELAY_URL}" >&2
 
-host_call() { # <action-json> <section> <seconds> [<word>] -> the section's JSON, or ""
-python3 - "$1" "$2" "$3" "${4-}" <<'PY'
-import json
-import os
-from pathlib import Path
-import socket
-import sys
-import time
+# ─── What The Clipboard Held Before The Card Was Asked ───────────────────────
+# A sentinel is put on the CLIPBOARD selection first, so the address read back
+# afterwards is one the card put there rather than whatever a previous take,
+# the compositor or an empty selection left behind. xclip holds the selection
+# in the background until another owner takes it, which is what the window does
+# when the copy control answers.
+SENTINEL="no-link-was-copied"
 
-action, section, seconds, word = sys.argv[1], sys.argv[2], float(sys.argv[3]), sys.argv[4]
-profile = os.environ.get("VEYYON_PROFILE") or "default"
-endpoint = Path.home() / ".veyyon" / "profiles" / profile / "agent" / "gui-host.sock"
-deadline = time.monotonic() + seconds
-# One connection and one send, and no session created on it: a client the host
-# has opened no session for is told the whole process roster, which is how this
-# take reads the session the window is driving from outside it.
-seen = []
-try:
-	with socket.socket(socket.AF_UNIX) as connection:
-		connection.settimeout(seconds)
-		connection.connect(str(endpoint))
-		connection.sendall(action.encode("utf-8") + b"\n")
-		with connection.makefile("rb") as stream:
-			while time.monotonic() < deadline:
-				line = stream.readline(8 * 1024 * 1024 + 1)
-				if not line or len(line) > 8 * 1024 * 1024:
-					seen.append("the host closed the connection")
-					break
-				frame = json.loads(line)
-				snapshot = frame.get("Snapshot")
-				if isinstance(snapshot, dict) and section in snapshot:
-					answer = json.dumps(snapshot[section])
-					if not word or word in answer:
-						print(answer)
-						sys.exit(0)
-					seen.append(f"{section} without {word}: {answer[:200]}")
-					continue
-				seen.append(line[:300].decode("utf-8", "replace").strip())
-except Exception as refusal:  # reported below: a take says why it read nothing
-	seen.append(repr(refusal))
-for note in seen[-4:]:
-	print("scene: the host answered", note, file=sys.stderr)
-print("")
-PY
+seed_clipboard() {
+	printf '%s' "${SENTINEL}" | xclip -selection clipboard -i
 }
 
-# The link the host minted, read from its own section rather than from the
-# frame: a link is 80 characters of base64url and no reading of pixels recovers
-# it, which is why the guest is given the host's answer instead.
-share_link() { # <seconds> -> the full link, or ""
-	host_call '{"id":3,"action":"RefreshShare"}' Share "$1" '"link"' |
-		python3 -c 'import json,sys; body=sys.stdin.read().strip(); print((json.loads(body).get("link") or "") if body else "")'
+clipboard_now() { # -> whatever owns the CLIPBOARD selection, or ""
+	xclip -selection clipboard -o 2>/dev/null || true
 }
 
-share_participants() { # <seconds> -> a count
-	host_call '{"id":4,"action":"RefreshShare"}' Share "$1" |
-		python3 -c 'import json,sys; body=sys.stdin.read().strip(); print(len(json.loads(body).get("participants") or []) if body else 0)'
+# What the copy control put on the clipboard, waited for rather than read once:
+# the press travels to the window, the window asks the host for nothing and
+# writes the selection from the link it already holds, and the selection owner
+# changes a frame or two later.
+copied_link() { # <seconds> -> the address, or ""
+	local waited=0 held
+	while [ "${waited}" -lt "$(( $1 * 4 ))" ]; do
+		held="$(clipboard_now)"
+		case "${held}" in
+			"${SENTINEL}" | "") ;;
+			*)
+				printf '%s' "${held}"
+				return
+				;;
+		esac
+		sleep 0.25
+		waited=$(( waited + 1 ))
+	done
+	echo "scene: the clipboard still held '${SENTINEL}' after $1s" >&2
+	printf ''
 }
 
 # ─── Where The Share Card Draws ──────────────────────────────────────────────
@@ -259,11 +243,51 @@ print(left + sum(column for column, _ in band) // len(band), top + sum(row for _
 PY
 }
 
+# Where the card's own copy control is drawn, found the way the start control
+# is: by the role it is lettered in rather than by a count of rows. A ghost
+# control letters in `role.secondary` and nothing else in the card's body does
+# — a label is the foreground, an address is muted — so the topmost run of that
+# ink is the copy control on the first link row, which is the writable address
+# a guest joins with.
+SECONDARY="$(theme_colour role.secondary)"
+copy_control_point() { # <png> -> "<x> <y>" to press, or "" for a body with no copy control
+	local dump="${TMPDIR}/frame-compare/share-copy.txt"
+	mkdir -p "${TMPDIR}/frame-compare"
+	magick "$1" -crop "${BODY_W}x${BODY_H}+${BODY_LEFT}+${BODY_TOP}" +repage txt:- >"${dump}"
+	python3 - "${dump}" "${SECONDARY#\#}" "${BODY_LEFT}" "${BODY_TOP}" <<'PY'
+import re
+import sys
+
+PIXEL = re.compile(r"^(\d+),(\d+): \([^)]*\)\s+#([0-9A-Fa-f]{6})")
+dump, wanted = sys.argv[1], sys.argv[2].upper()
+left, top = int(sys.argv[3]), int(sys.argv[4])
+want = tuple(int(wanted[at : at + 2], 16) for at in (0, 2, 4))
+ink = []
+for line in open(dump, encoding="ascii"):
+	found = PIXEL.match(line)
+	if not found:
+		continue
+	colour = found.group(3).upper()
+	got = tuple(int(colour[at : at + 2], 16) for at in (0, 2, 4))
+	if all(abs(a - b) <= 12 for a, b in zip(got, want)):
+		ink.append((int(found.group(1)), int(found.group(2))))
+# A four-letter label at the small ramp inks scores of pixels at its core. A
+# handful is an antialiased edge of something else, and its centroid is
+# nowhere in particular.
+if len(ink) < 40:
+	raise SystemExit(0)
+first = min(row for _, row in ink)
+band = [(column, row) for column, row in ink if first <= row < first + 20]
+print(left + sum(column for column, _ in band) // len(band), top + sum(row for _, row in band) // len(band))
+PY
+}
+
 START_POINT="$(start_control_point "${SCENE_OUT}/${SCENE_NAME}-share-idle.png")"
 HOSTING_PX_SEEN=0
 GUEST_PX_SEEN=0
+COPY_POINT=""
 LINK=""
-PARTIES=0
+ADMITTED=""
 if [ -n "${START_POINT}" ]; then
 	read -r START_X START_Y <<<"${START_POINT}"
 	move_px "${START_X}" "${START_Y}"
@@ -271,23 +295,49 @@ if [ -n "${START_POINT}" ]; then
 	settle 2.5
 	shot share-hosting
 	HOSTING_PX_SEEN="$(shots_differ_pixels share-idle share-hosting)"
-	LINK="$(share_link 20)"
+	seed_clipboard
+	COPY_POINT="$(copy_control_point "${SCENE_OUT}/${SCENE_NAME}-share-hosting.png")"
+fi
+
+if [ -n "${COPY_POINT}" ]; then
+	read -r COPY_X COPY_Y <<<"${COPY_POINT}"
+	move_px "${COPY_X}" "${COPY_Y}"
+	click
+	pause 0.6
+	LINK="$(copied_link 10)"
+	# The pointer goes back where it rested for the hosting shot, so the two
+	# frames the guest is measured between differ by the guest and not by a
+	# control under the pointer in one of them.
+	move_px "${START_X}" "${START_Y}"
+	pause 0.4
 fi
 
 if [ -n "${LINK}" ]; then
-	echo "scene: the host minted a link for room ${LINK##*/r/}" >&2
+	echo "scene: the card copied a link for room ${LINK##*/r/}" >&2
 	bun /repo/proof/lib/collab-guest.ts "${LINK}" --name=Wren >"${TMPDIR}/collab-guest.log" 2>&1 &
 	GUEST_PID=$!
 	settle 3.0
 	shot share-guest
 	GUEST_PX_SEEN="$(shots_differ_pixels share-hosting share-guest)"
-	PARTIES="$(share_participants 15)"
+	# `welcome` is the guest's first frame back, and only the host can seal
+	# one: the relay forwards what it cannot read.
+	if grep -qx welcome "${TMPDIR}/collab-guest.log" 2>/dev/null; then
+		ADMITTED=welcome
+	fi
 fi
 
 # The readings are taken, so the fixtures go. A share the host still holds
 # would keep reconnecting to a relay that is no longer there and write that
 # into the window while the session is torn down.
-kill "${GUEST_PID:-0}" 2>/dev/null || true
+#
+# A guest that never ran is skipped rather than defaulted: `kill 0` is the whole
+# process group, which is the session driver, the compositor and the container's
+# own shell. A take that minted no link reached that line, killed the session it
+# was recording, and left no reason behind -- the guard below was written to
+# report exactly that failure and never ran.
+if [ -n "${GUEST_PID:-}" ]; then
+	kill "${GUEST_PID}" 2>/dev/null || true
+fi
 kill "${RELAY_PID}" 2>/dev/null || true
 
 if [ "${ARM}" = before ]; then
@@ -306,18 +356,29 @@ else
 		abandon_take "share-hosting" \
 			"the card's body changed ${HOSTING_PX_SEEN} pixels when the share started, under the ${HOSTING_PX} two links and a participant row draw, so the surface did not read the share the host started"
 	fi
+	if [ -z "${COPY_POINT}" ]; then
+		abandon_take "share-hosting" \
+			"the card drew no copy control in its body while hosting, so the link it states cannot be taken off the window at all"
+	fi
 	if [ -z "${LINK}" ]; then
 		abandon_take "share-hosting" \
-			"the host answered with no link after the start control was pressed, so this take photographed a card rather than a share"
+			"the copy control was pressed and the clipboard still held the sentinel, so this take photographed a card rather than a share"
 	fi
+	case "${LINK}" in
+		*"/r/"*) ;;
+		*)
+			abandon_take "share-hosting" \
+				"the copy control put '${LINK}' on the clipboard, which names no room, so the address the card states is not the one it copies"
+			;;
+	esac
 	if [ "${GUEST_PX_SEEN}" -lt "${GUEST_PX}" ]; then
 		abandon_take "share-guest" \
 			"the card's body changed ${GUEST_PX_SEEN} pixels when a guest joined, under the ${GUEST_PX} a participant row draws, so the surface did not read the party the host admitted"
 	fi
-	if [ "${PARTIES}" -lt 2 ]; then
+	if [ "${ADMITTED}" != welcome ]; then
 		abandon_take "share-guest" \
-			"the host holds ${PARTIES} parties on the relay after a guest joined: $(tail -3 "${TMPDIR}/collab-guest.log" 2>/dev/null)"
+			"the guest never read a frame the host sealed, so the roster row is not a party on the relay: $(tail -3 "${TMPDIR}/collab-guest.log" 2>/dev/null)"
 	fi
-	echo "scene: after arm -- the share drew ${HOSTING_PX_SEEN} pixels, the guest drew" \
-		"${GUEST_PX_SEEN} more, and the host holds ${PARTIES} parties on the relay" >&2
+	echo "scene: after arm -- the share drew ${HOSTING_PX_SEEN} pixels, its copy control handed" \
+		"over a link, and the guest the host admitted drew ${GUEST_PX_SEEN} more" >&2
 fi
