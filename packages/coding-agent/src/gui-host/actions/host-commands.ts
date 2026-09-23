@@ -16,6 +16,7 @@ import { appendCommandOutput } from "../command-output";
 import type { DesktopHostCommandName } from "../desktop-commands";
 import { attachGoalBridge } from "../goal-bridge";
 import { goalSection } from "../goal-view";
+import { interviewGuidedGoal } from "../guided-goal";
 import { answerSideQuestion } from "../side-question";
 import type { ActionContext } from "./types";
 
@@ -285,7 +286,70 @@ const goal: HostCommand = async (ctx, session, args) => {
 	ctx.reply.success();
 };
 
-const HANDLERS: Record<DesktopHostCommandName, HostCommand> = { btw, debug, goal, tan };
+/**
+ * `/guided-goal`: an objective interviewed into shape before goal mode is
+ * entered on it.
+ *
+ * The interview is answered in the window, so it needs the ledger that raises
+ * a decision there; a client that carries none is told so rather than left
+ * waiting on a card nothing draws. The preconditions are goal mode's own and
+ * are checked before the first question, because an interview that ends in a
+ * goal that cannot be entered wastes every answer given to it.
+ */
+const guidedGoal: HostCommand = async (ctx, session, args) => {
+	const refuse = (code: string, message: string): void => {
+		ctx.reply.failure({ scope: "Session", code, message, retryable: false });
+	};
+	if (!session.settings.get("goal.enabled")) {
+		refuse("MODE_DISABLED", "Goal mode is disabled. Enable it in settings (goal.enabled).");
+		return;
+	}
+	if (session.getPlanModeState()?.enabled) {
+		refuse("MODE_CONFLICT", "Exit plan mode first.");
+		return;
+	}
+	if (session.getVibeModeState()?.enabled) {
+		refuse("MODE_CONFLICT", "Exit vibe mode first.");
+		return;
+	}
+	const objective = args.trim();
+	const ledger = ctx.clientState.interactions;
+	if (!ledger) {
+		refuse("INVALID_ARGUMENTS", "This client answers no questions, so a goal cannot be interviewed here.");
+		return;
+	}
+	const driver = await attachGoalBridge(session, ctx.clientState, ctx.socket);
+	if (driver.enabled) {
+		refuse("MODE_CONFLICT", "Goal mode is already active. Use /goal to manage it, or /goal drop to start over.");
+		return;
+	}
+	const opening = objective || (await ledger.text("What is the goal?"))?.trim();
+	if (!opening) {
+		ctx.reply.success();
+		return;
+	}
+	const outcome = await interviewGuidedGoal(ledger, session, opening);
+	if (outcome.kind === "unresolved") {
+		refuse(
+			"GOAL_UNRESOLVED",
+			"Guided goal setup needs more detail. Run /guided-goal again with a narrower objective.",
+		);
+		return;
+	}
+	if (outcome.kind === "objective") {
+		await driver.enter({ objective: outcome.objective });
+		driver.scheduleContinuation();
+	}
+	ctx.reply.success();
+};
+
+const HANDLERS: Record<DesktopHostCommandName, HostCommand> = {
+	btw,
+	debug,
+	goal,
+	"guided-goal": guidedGoal,
+	tan,
+};
 
 /** Runs `name` against `session`, replying to the request it arrived on. */
 export async function runDesktopHostCommand(

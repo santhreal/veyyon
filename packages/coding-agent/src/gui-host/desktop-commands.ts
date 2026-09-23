@@ -18,7 +18,13 @@ import {
 } from "../slash-commands/builtin-declarations";
 
 /** Every command the host answers itself when a window runs it. */
-const ANSWERED = { btw: true, debug: true, goal: true, tan: true } as const satisfies Record<string, true>;
+const ANSWERED = {
+	btw: true,
+	debug: true,
+	goal: true,
+	"guided-goal": true,
+	tan: true,
+} as const satisfies Record<string, true>;
 
 export type DesktopHostCommandName = keyof typeof ANSWERED;
 

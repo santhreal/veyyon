@@ -26,6 +26,13 @@ const RESPOND_TOOL: Tool = {
 	strict: false,
 };
 
+/**
+ * How many interview turns a guided goal is given before its latest draft is
+ * put to the operator as it stands. Both hosts run the same interview, so the
+ * bound on it is stated once here.
+ */
+export const GUIDED_GOAL_TURN_LIMIT = 6;
+
 export interface GuidedGoalMessage {
 	role: "user" | "assistant";
 	content: string;

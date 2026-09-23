@@ -2,7 +2,12 @@ import type { SessionContext } from "@veyyon/kernel/session/session-context";
 import { errorMessage } from "@veyyon/utils";
 import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 import { type GoalContinuationBlock, GoalDriver, type GoalDriverPort, summarizeObjective } from "../../../goals/driver";
-import { type GuidedGoalMessage, newGuidedGoalSessionId, runGuidedGoalTurn } from "../../../goals/guided-setup";
+import {
+	GUIDED_GOAL_TURN_LIMIT,
+	type GuidedGoalMessage,
+	newGuidedGoalSessionId,
+	runGuidedGoalTurn,
+} from "../../../goals/guided-setup";
 import type { GoalStatus } from "../../../goals/state";
 import { GOAL_SUBCOMMANDS, type GoalSubcommand, parseGoalSubcommand } from "../../../goals/subcommands";
 import { formatDurationCoarse } from "../../../session/account-format";
@@ -54,9 +59,6 @@ export interface GoalModeHost {
 	/** Run `work` behind a spinner in the status area. */
 	withProgress<T>(label: string, work: () => Promise<T>): Promise<T>;
 }
-
-/** Interview turns a guided goal takes before it gives up and salvages the draft. */
-const GUIDED_GOAL_TURN_LIMIT = 6;
 
 /**
  * The status field of the goal report: the goal's own status, and the mode's state only when the

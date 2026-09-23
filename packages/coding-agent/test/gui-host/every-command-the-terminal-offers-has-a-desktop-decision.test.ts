@@ -51,7 +51,7 @@ const DECISIONS: Record<string, Decision> = {
 	"plan-review": { action: "ReviewPlan" },
 	vibe: { action: "SetSessionMode" },
 	goal: { host: "answered by the host via GoalDriver, drawn in the goal card and status line" },
-	"guided-goal": { gap: "no goal interview surface" },
+	"guided-goal": { host: "the same interview, asked as decision cards, ending in the goal it drafted" },
 	loop: { action: "SetSessionMode" },
 	queue: { action: "FollowUp" },
 	switch: { action: "SelectModel" },
@@ -83,7 +83,7 @@ const DECISIONS: Record<string, Decision> = {
 };
 
 /** The gaps as they stand, so closing one is a recorded change. */
-const RECORDED_GAPS = ["guided-goal", "join", "leave", "omfg"];
+const RECORDED_GAPS = ["join", "leave", "omfg"];
 
 /**
  * The declarations through their declared interface. The table is `as const`,
