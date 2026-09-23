@@ -7,19 +7,21 @@
 
 use std::path::Path;
 
-use veyyon_desktop_model::{SettingEntry, SettingKind, SettingsView};
+use veyyon_desktop_model::{
+	SettingEntry, SettingKind, SettingsView, ShareParticipantView, SharePhase, ShareView,
+};
 use veyyon_desktop_scene::{Headless, HeadlessSession, headless::render_view};
 use veyyon_desktop_surface::{
 	Intent, Overlay, PaletteItem, PaletteMode, PaletteState, SettingsPage, SettingsState, ShellView,
-	fixture, install_tokens, palette::PaletteMeta,
+	fixture, install_tokens, palette::PaletteMeta, share::ShareState,
 };
 use veyyon_desktop_tokens::{Tokens, load_bundled_theme};
 use veyyon_gpui::{AppContext, point, px};
 
 use crate::dead_token_probe::{Observation, frame_observation, shell};
 
-/// Renders the floating overlay states that exercise the palette and settings
-/// surface tokens.
+/// Renders the floating overlay states that exercise the palette, settings,
+/// agents and share surface tokens.
 pub fn observations(cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
 	let mut out = Vec::new();
 	let theme = load_bundled_theme("dark").expect("a bundled theme must load");
@@ -222,7 +224,7 @@ pub fn observations(cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
 	];
 	comms_shell.overlay = Some(Overlay::Agents(Box::new(comms_state)));
 	let comms_tokens = tokens.clone();
-	let comms_theme = theme;
+	let comms_theme = theme.clone();
 	let comms_frame = render_view(cx, &shell::wide(), move |_window, app| {
 		let installed = install_tokens(app, &comms_tokens, &comms_theme, Path::new("surface"))
 			.expect("the bundled token set must install");
@@ -230,6 +232,45 @@ pub fn observations(cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
 	})
 	.expect("the agents comms stream must render");
 	out.push(frame_observation("agents_comms", &comms_frame));
+
+	// 6. The share card hosting a room, which is the only state that draws
+	// every measure `surface/share.toml` authors: the card's own box, the
+	// padding inside it, and a participant row with a second row under it, so
+	// the row's height and the gap between rows are both on the frame.
+	let mut share_state = ShareState::new();
+	share_state.share = Some(ShareView {
+		state:         SharePhase::Hosting.as_str().to_owned(),
+		relay_url:     Some("ws://127.0.0.1:7466".to_owned()),
+		link:          Some("ws://127.0.0.1:7466/r/room#key".to_owned()),
+		web_link:      Some("http://127.0.0.1:7466/#ws://127.0.0.1:7466/r/room.key".to_owned()),
+		view_link:     Some("ws://127.0.0.1:7466/r/room".to_owned()),
+		web_view_link: Some("http://127.0.0.1:7466/#ws://127.0.0.1:7466/r/room".to_owned()),
+		participants:  vec![
+			ShareParticipantView {
+				id:        0,
+				name:      "Rowan".to_owned(),
+				can_write: true,
+				is_host:   true,
+			},
+			ShareParticipantView {
+				id:        1,
+				name:      "Wren".to_owned(),
+				can_write: false,
+				is_host:   false,
+			},
+		],
+		error:         None,
+	});
+	let mut share_shell = fixture::populated();
+	share_shell.overlay = Some(Overlay::Share(Box::new(share_state)));
+	let share_tokens = tokens.clone();
+	let share_frame = render_view(cx, &shell::wide(), move |_window, app| {
+		let installed = install_tokens(app, &share_tokens, &theme, Path::new("surface"))
+			.expect("the bundled token set must install");
+		app.new(|_cx| ShellView::new(installed, share_shell))
+	})
+	.expect("the share card must render");
+	out.push(frame_observation("share_hosting", &share_frame));
 
 	out
 }

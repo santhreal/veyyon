@@ -60,6 +60,13 @@ pub fn link_rows(view: &ShareView) -> Vec<(&'static str, &'static str, &str)> {
 /// under it, and a copy control at the end — so the row is built once and the
 /// card states all four (§5): the two a veyyon opens and the two a browser
 /// does, each in a writable and a read-only spelling.
+///
+/// An address is 80 characters of base64url and a card is narrower than that,
+/// so the address column is the part that gives: it takes the width left over
+/// and truncates, while the copy control keeps its own. Laid out the other way
+/// the address pushed the control past the card's edge, where the card's own
+/// clip erased it — four links drawn with no way to take any of them, since
+/// the address is too long to read off the screen and retype.
 fn link_row(
 	key: &'static str,
 	label: &'static str,
@@ -73,11 +80,15 @@ fn link_row(
 		.flex()
 		.items_center()
 		.justify_between()
+		.gap(tokens.spacing(SpacingStep::S2))
 		.p(tokens.spacing(SpacingStep::S2))
 		.child(
 			div()
 				.flex()
 				.flex_col()
+				.flex_1()
+				.min_w_0()
+				.overflow_hidden()
 				.gap(tokens.spacing(SpacingStep::S1))
 				.child(
 					div()
@@ -88,6 +99,8 @@ fn link_row(
 				)
 				.child(
 					div()
+						.w_full()
+						.truncate()
 						.text_size(tokens.font_size(TextRamp::Small))
 						.line_height(tokens.line_height(TextRamp::Small))
 						.text_color(tokens.color(ColorRole::Muted))
@@ -95,12 +108,14 @@ fn link_row(
 				),
 		)
 		.child(
-			Button::new(ElementId::Name(format!("share-copy-{key}").into()), "Copy")
-				.size(ButtonSize::Small)
-				.variant(ButtonVariant::Ghost)
-				.on_click(cx.listener(move |view, _, _, cx| {
-					view.dispatch(Intent::CopyText(copied.clone()), cx);
-				})),
+			div().flex_shrink_0().child(
+				Button::new(ElementId::Name(format!("share-copy-{key}").into()), "Copy")
+					.size(ButtonSize::Small)
+					.variant(ButtonVariant::Ghost)
+					.on_click(cx.listener(move |view, _, _, cx| {
+						view.dispatch(Intent::CopyText(copied.clone()), cx);
+					})),
+			),
 		)
 }
 

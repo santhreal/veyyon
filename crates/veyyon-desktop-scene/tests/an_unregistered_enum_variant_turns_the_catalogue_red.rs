@@ -27,13 +27,13 @@ fn test_enum_iteration_exhausts_all_protocol_domains() {
 	assert_eq!(connection_count, 6);
 
 	let capability_count = Capability::iter().count();
-	assert_eq!(capability_count, 31);
+	assert_eq!(capability_count, 32);
 
 	// Pending is required only for a capability some action reaches.
 	let gate_count = GateVariant::iter().count();
 	assert_eq!(gate_count, 4);
 	let gated_count = gated_capabilities().len();
-	assert_eq!(gated_count, 26);
+	assert_eq!(gated_count, 27);
 
 	let role_count = MessageRole::iter().count();
 	assert_eq!(role_count, 12);
@@ -72,7 +72,7 @@ fn test_enum_iteration_exhausts_all_protocol_domains() {
 		+ row_shape_count
 		+ primitive_count;
 
-	assert_eq!(total_expected, 228);
+	assert_eq!(total_expected, 232);
 	assert_eq!(required_states().len(), total_expected);
 }
 
