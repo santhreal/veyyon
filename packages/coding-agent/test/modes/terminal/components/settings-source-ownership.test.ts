@@ -192,7 +192,7 @@ describe("Settings selector source ownership", () => {
 		const component = createSelector(fixture.cwd, changes);
 
 		const rendered = component.render(120).map(stripVTControlCharacters).join("\n");
-		expect(rendered).toMatch(/Auto-Promote Context\s+‹ false ›/);
+		expect(rendered).toMatch(/Auto-Promote Context\s+‹ Off ›/);
 		expect(rendered).not.toContain("project config");
 		expect(rendered).not.toContain("read-only");
 		component.handleInput("\n");
@@ -216,8 +216,8 @@ describe("Settings selector source ownership", () => {
 		component.handleInput("\x1b[C");
 		const frame = component.render(120);
 		const rendered = frame.map(stripVTControlCharacters).join("\n");
-		expect(rendered).toMatch(/Auto-Promote Context\s+runtime override · true/);
-		expect(rendered).toContain("Effective value comes from runtime override; this");
+		expect(rendered).toMatch(/Auto-Promote Context\s+runtime override · On/);
+		expect(rendered).toContain("Effective value comes from runtime override;");
 		expect(rendered).toContain("profile control is read-only.");
 		component.handleInput(leftClick(frame, SETTING_LABEL));
 		await Settings.instance.flush();

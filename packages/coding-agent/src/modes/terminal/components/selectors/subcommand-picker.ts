@@ -1,8 +1,26 @@
-import type { SelectItem } from "@veyyon/tui";
+import type { SelectItem, SelectListTruncatePrimaryContext } from "@veyyon/tui";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import type { SubcommandDef } from "../../../../slash-commands/types";
 import { getSelectListTheme } from "../../../../theme/theme";
 import { ModalSelectListComponent } from "./modal-select-list";
 import { ModalSelectWrapper } from "./select-list-mouse-routing";
+
+/** Cells between the name column and the description, as `SelectList` lays it out. */
+const NAME_COLUMN_GAP = 2;
+
+/**
+ * A usage cut short at a word, never inside one.
+ *
+ * `add <name> [http|sse` reads as a malformed usage; `add <name> …` reads as one with more
+ * arguments than the row holds. The cut falls after the subcommand name at the latest, since the
+ * name is what gets typed.
+ */
+function truncateUsageAtToken({ text, maxWidth }: SelectListTruncatePrimaryContext): string {
+	if (visibleWidth(text) <= maxWidth) return text;
+	const head = truncateToWidth(text, maxWidth - 1, "");
+	const cut = head.lastIndexOf(" ");
+	return cut > 0 ? `${head.slice(0, cut)} …` : truncateToWidth(text, maxWidth);
+}
 
 /**
  * The card a bare `/cmd` opens when the command has subcommands.
@@ -37,10 +55,14 @@ export class SubcommandPickerComponent extends ModalSelectWrapper {
 					title: `/${commandName}`,
 					items,
 					theme: getSelectListTheme(),
-					// The name column is sized to the names. Left at its default it took a third of the
-					// card for a six-letter verb and truncated the description that says what the verb
-					// does, which is the same dead end as not listing the subcommand at all.
-					layout: { maxPrimaryColumnWidth: 22 },
+					// The name column is as wide as the widest usage, so `reset [openai-codex|anthropic]`
+					// shows whole; the card widens to hold it and the descriptions beside it. A usage cut
+					// mid-token read as a malformed command.
+					layout: {
+						maxPrimaryColumnWidth:
+							items.reduce((widest, item) => Math.max(widest, visibleWidth(item.label)), 0) + NAME_COLUMN_GAP,
+						truncatePrimary: truncateUsageAtToken,
+					},
 				},
 				{
 					onSelect: item => {

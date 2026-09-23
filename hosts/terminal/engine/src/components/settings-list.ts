@@ -577,7 +577,8 @@ export class SettingsList implements Component {
 		const isSelected = index === this.#selectedIndex && !this.#sectionFocus;
 		const prefix = isSelected ? this.#theme.cursor : "  ";
 		const prefixWidth = visibleWidth(prefix);
-		const labelPadded = item.label + padding(Math.max(0, maxLabelWidth - visibleWidth(item.label)));
+		const labelTruncated = truncateToWidth(item.label, maxLabelWidth);
+		const labelPadded = labelTruncated + padding(Math.max(0, maxLabelWidth - visibleWidth(labelTruncated)));
 		const separator = "  ";
 		const valueMaxWidth = rowWidth - prefixWidth - maxLabelWidth - visibleWidth(separator) - 2;
 		// The selected boolean/enum row shows ‹ value › so the Left/Right
@@ -650,7 +651,10 @@ export class SettingsList implements Component {
 				!selectedForDesc.heading &&
 				this.#options.expandedIds?.has(selectedForDesc.id)
 			) {
-				const wrappedDesc = wrapTextWithAnsi(selectedForDesc.description, Math.max(1, width - 4));
+				// Reserve 4 columns for the indent ('    ') plus 2 columns for the scrollbar gutter
+				// so text never overflows contentWidth when a scrollbar is present.
+				const descWrapWidth = Math.max(1, width - 4 - 2);
+				const wrappedDesc = wrapTextWithAnsi(selectedForDesc.description, descWrapWidth);
 				const cap = Math.min(8, Math.max(1, this.#maxVisible - 4));
 				for (const line of wrappedDesc.slice(0, cap)) {
 					inlineDesc.push(this.#theme.description(`    ${line}`));
@@ -676,7 +680,11 @@ export class SettingsList implements Component {
 				}
 			}
 			const labelWidths = this.#filteredItems.filter(item => !item.heading).map(item => visibleWidth(item.label));
-			const maxLabelWidth = Math.min(30, labelWidths.length > 0 ? Math.max(...labelWidths) : 0);
+			const rawMaxLabel = labelWidths.length > 0 ? Math.max(...labelWidths) : 0;
+			const preOverflow = this.#filteredItems.length > viewportHeight;
+			const preRowWidth = Math.max(0, width - (preOverflow ? 2 : 0));
+			const labelCap = Math.max(30, Math.min(42, preRowWidth - 22));
+			const maxLabelWidth = Math.min(labelCap, rawMaxLabel);
 			// Reserved fold/cursor gutter (2) + label column + separator (2) —
 			// the always-aligned start of the value column for this frame.
 			this.#valueColStart = 2 + maxLabelWidth + 2;
@@ -815,13 +823,15 @@ export class SettingsList implements Component {
 			Math.min(this.#selectedIndex - Math.floor(viewportHeight / 2), this.#filteredItems.length - viewportHeight),
 		);
 		// Label column width spans all items so the layout stays stable across sections.
+		const overflow = this.#filteredItems.length > viewportHeight;
+		const rowWidth = Math.max(0, paneWidth - (overflow ? 2 : 0));
 		const labelWidths = this.#filteredItems.filter(item => !item.heading).map(item => visibleWidth(item.label));
-		const maxLabelWidth = Math.min(30, labelWidths.length > 0 ? Math.max(...labelWidths) : 0);
+		const rawMaxLabel = labelWidths.length > 0 ? Math.max(...labelWidths) : 0;
+		const labelCap = Math.max(30, Math.min(42, rowWidth - 22));
+		const maxLabelWidth = Math.min(labelCap, rawMaxLabel);
 		// Sidebar + "│ " separator (2) + reserved fold/cursor gutter (2) + label
 		// column + separator (2) — the always-aligned start of the value column.
 		this.#valueColStart = sidebarWidth + 2 + 2 + maxLabelWidth + 2;
-		const overflow = this.#filteredItems.length > viewportHeight;
-		const rowWidth = Math.max(0, paneWidth - (overflow ? 2 : 0));
 		const itemRows: string[] = [];
 		for (let r = 0; r < viewportHeight; r++) {
 			const index = startRow + r;

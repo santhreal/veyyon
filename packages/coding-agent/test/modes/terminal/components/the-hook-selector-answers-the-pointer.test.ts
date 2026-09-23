@@ -160,7 +160,7 @@ describe("the hook selector card answers the pointer", () => {
 		expect(frame.some(line => line.includes("[x]"))).toBe(true);
 		// Pinned by equality: a new chip must come with a decision about what a
 		// click on it does, and this is what forces that decision.
-		expect(chipLabels(harness)).toEqual(["up/down navigate", "enter select", "esc/ctrl+c close"]);
+		expect(chipLabels(harness)).toEqual(["up/down navigate", "enter select", "esc close"]);
 	});
 
 	it("takes the caller's helpText as the chips, because the caller named its own keys", () => {

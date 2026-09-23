@@ -37,7 +37,7 @@ import { formatUsageWindowLine, usageWindowLabelColumn } from "../../../../slash
 export const USAGE_BAR_WIDTH = 10;
 
 /** Annotation a sidebar entry carries when the provider holds no credentials at all. */
-export const NO_ACCOUNTS_ANNOTATION = "—";
+export const NO_ACCOUNTS_ANNOTATION = "";
 
 /**
  * One line of display text, made safe for a single terminal row.

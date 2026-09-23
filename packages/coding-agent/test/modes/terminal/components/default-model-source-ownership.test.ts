@@ -123,13 +123,18 @@ describe("default model source ownership", () => {
 	});
 
 	/** /settings must name both owners so the saved launch selector is not presented as the active session selector. */
-	it("renders the saved selector beside the active runtime selector", () => {
+	it("renders the effective model plainly and explains the source in the description", () => {
 		setSavedAWithRuntimeB();
 
-		const row = defaultModelRow(createSelector());
+		const selector = createSelector();
+		const row = defaultModelRow(selector);
 		expect(row).not.toBe("");
-		expect(row).toContain(OVERRIDE_SUMMARY);
-		expect(row).toContain("Default Model · runtime");
+		expect(row).toContain("Default Model");
+		expect(row).toContain("test/runtime-model-b");
+		expect(row).not.toContain("Default Model · runtime");
+		expect(row).not.toContain(OVERRIDE_SUMMARY);
+		const fullRender = selector.render(160).map(stripVTControlCharacters).join("\n");
+		expect(fullRender).toContain("runtime override");
 	});
 
 	/** Opening on saved A, choosing C, and clearing must all write the profile layer without replacing runtime B. */

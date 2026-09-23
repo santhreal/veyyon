@@ -644,7 +644,11 @@ class SessionList implements Component {
 			const dim = (s: string) => theme.fg("dim", s);
 			const dot = dim(theme.sep.dot);
 			const modified = formatDate(session.modified);
-			let metadata = `  ${dim(modified)} ${dot} ${dim(formatBytes(session.size))}`;
+			let metadata = `  ${dim(modified)}`;
+			// An empty session's byte count is header overhead, not content: it reads as noise.
+			if (session.messageCount > 0) {
+				metadata += ` ${dot} ${dim(formatBytes(session.size))}`;
+			}
 			const status = formatSessionStatus(session.status);
 			if (status) {
 				metadata += ` ${dot} ${status}`;

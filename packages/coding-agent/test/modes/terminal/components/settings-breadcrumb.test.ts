@@ -207,8 +207,8 @@ describe("settings column alignment", () => {
 		// length, but their default values ("titanium" / "auto") must still
 		// land in the same column — proof the label gutter is computed once
 		// across every visible row, not per-row.
-		const darkThemeValueCol = darkThemeLine!.indexOf("titanium");
-		const hyperlinksValueCol = hyperlinksLine!.indexOf("auto");
+		const darkThemeValueCol = darkThemeLine!.indexOf("Titanium");
+		const hyperlinksValueCol = hyperlinksLine!.indexOf("Auto");
 		expect(darkThemeValueCol).toBeGreaterThan(0);
 		expect(darkThemeValueCol).toBe(hyperlinksValueCol);
 	});

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `SelectList` adds `naturalWidth()`, `isSearchable()` and `cancel()`, a `searchPrompt` layout option that hides the idle "Type to search" row, and a `scrollbar` theme slot.
+
+### Changed
+
+- Settings list adapts label width dynamically with clean truncation and wraps inline descriptions to fit within the visible viewport width.
+
 ## [1.5.0] - 2026-09-18
 
 ### Breaking Changes

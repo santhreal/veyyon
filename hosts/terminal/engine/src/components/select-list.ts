@@ -12,7 +12,7 @@ import { sanitizeSingleLine, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type { Component } from "../tui";
 import { HoverController } from "../utils/hover-controller";
 import { handleSearchKeyInput } from "../utils/search-filter";
-import { ScrollView } from "./scroll-view";
+import { ScrollView, type ScrollViewTheme } from "./scroll-view";
 
 const DEFAULT_PRIMARY_COLUMN_WIDTH = 32;
 const PRIMARY_COLUMN_GAP = 2;
@@ -90,6 +90,11 @@ export interface SelectListTheme {
 	 * opt in).
 	 */
 	groupHeader?: (text: string) => string;
+	/**
+	 * Paint for the scrollbar a long list draws on its right edge. Omit to draw the track in
+	 * {@link scrollInfo} and the thumb in {@link selectedPrefix}.
+	 */
+	scrollbar?: ScrollViewTheme;
 }
 
 export interface SelectListTruncatePrimaryContext {
@@ -123,6 +128,13 @@ export interface SelectListLayoutOptions {
 	 * the built-in "esc close" contradicted the footer on the same screen.
 	 */
 	statusLegend?: boolean;
+	/**
+	 * Print "Type to search" on the status row before anything is typed. Defaults to true.
+	 *
+	 * Set false when the host names the search in its own footer. The status row then appears only
+	 * once a query exists, where it shows that query.
+	 */
+	searchPrompt?: boolean;
 }
 
 type SelectItemLayout =
@@ -273,6 +285,52 @@ export class SelectList implements Component, MouseRoutable {
 	 */
 	hasActiveFilter(): boolean {
 		return this.#canClearFilter();
+	}
+
+	/**
+	 * Whether typing filters this list: it overflows its window and the host left search on. A
+	 * host that names the search in its own footer (see {@link SelectListLayoutOptions.searchPrompt})
+	 * shows that affordance only while this holds.
+	 */
+	isSearchable(): boolean {
+		return this.#canEditSearch();
+	}
+
+	/**
+	 * Run the cancel key's ladder: clear a live query first, close on the next.
+	 *
+	 * A host that offers cancel as a clickable chip calls this rather than its own close, so the
+	 * chip and the key it labels do the same thing.
+	 */
+	cancel(): void {
+		if (this.#canClearFilter()) {
+			this.#setFilter("", true);
+			return;
+		}
+		this.onCancel?.();
+	}
+
+	/**
+	 * Cells a row needs to show every label and every description whole, scrollbar included.
+	 *
+	 * Measured over the unfiltered items, so a host that sizes its frame from it keeps one width
+	 * while the reader types a filter. A width at or above this truncates nothing.
+	 */
+	naturalWidth(): number {
+		const cursor = this.theme.symbols?.cursor ?? DEFAULT_CURSOR_SYMBOL;
+		const prefixWidth = visibleWidth(cursor) + 1;
+		const primaryColumnWidth = this.#getPrimaryColumnWidth(this.items);
+		let widestRow = 0;
+		for (const item of this.items) {
+			const description = item.description ? sanitizeSingleLine(item.description) : "";
+			const row = description
+				? primaryColumnWidth + visibleWidth(description)
+				: visibleWidth(this.#getDisplayValue(item));
+			widestRow = Math.max(widestRow, row);
+		}
+		// Two cells of right margin, the same two `#computeItemLayout` holds back from each row.
+		const scrollbarWidth = this.items.length > this.maxVisible ? 1 : 0;
+		return prefixWidth + widestRow + 2 + scrollbarWidth;
 	}
 
 	setSelectedIndex(index: number): void {
@@ -445,7 +503,10 @@ export class SelectList implements Component, MouseRoutable {
 			height: rows.length,
 			scrollbar: "auto",
 			totalRows: visualTotal,
-			theme: { track: t => this.theme.scrollInfo(t), thumb: t => this.theme.selectedPrefix(t) },
+			theme: this.theme.scrollbar ?? {
+				track: t => this.theme.scrollInfo(t),
+				thumb: t => this.theme.selectedPrefix(t),
+			},
 		});
 		sv.setScrollOffset(visualOffset);
 		const svLines = sv.render(width);
@@ -468,13 +529,7 @@ export class SelectList implements Component, MouseRoutable {
 		// browser cleared the query — the same key doing different things in two
 		// pickers.
 		if (kb.matches(keyData, "tui.select.cancel")) {
-			if (this.#canClearFilter()) {
-				this.#setFilter("", true);
-				return;
-			}
-			if (this.onCancel) {
-				this.onCancel();
-			}
+			this.cancel();
 			return;
 		}
 
@@ -718,9 +773,9 @@ export class SelectList implements Component, MouseRoutable {
 		};
 	}
 
-	#getPrimaryColumnWidth(): number {
+	#getPrimaryColumnWidth(items: ReadonlyArray<SelectItem> = this.#filteredItems): number {
 		const { min, max } = this.#getPrimaryColumnBounds();
-		const widestPrimary = this.#filteredItems.reduce((widest, item) => {
+		const widestPrimary = items.reduce((widest, item) => {
 			return Math.max(widest, visibleWidth(this.#getDisplayValue(item)) + PRIMARY_COLUMN_GAP);
 		}, 0);
 
@@ -780,7 +835,7 @@ export class SelectList implements Component, MouseRoutable {
 		return (
 			this.#statusRowFitsBudget &&
 			this.layout.overflowSearch !== false &&
-			(this.items.length > this.maxVisible || this.#filterQuery.length > 0)
+			(this.#filterQuery.length > 0 || (this.layout.searchPrompt !== false && this.items.length > this.maxVisible))
 		);
 	}
 

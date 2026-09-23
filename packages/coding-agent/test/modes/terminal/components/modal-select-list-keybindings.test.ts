@@ -46,6 +46,20 @@ describe("select-list modal footer keybindings", () => {
 		expect(footer).not.toContain("esc close");
 	});
 
+	/** An action bound to several keys names only its first, the one a remap puts first. */
+	it("names only the first key of an action bound to several", () => {
+		setKeybindings(
+			new KeybindingsManager({
+				"tui.select.confirm": ["space", "enter"],
+				"tui.select.cancel": ["ctrl+g", "escape", "ctrl+c"],
+			}),
+		);
+
+		const chips = layoutShortcutRows(SELECT_LIST_SHORTCUTS, 100).flatMap(row => row.plain.split("  ·  "));
+
+		expect(chips).toEqual(["up/down navigate", "space select", "ctrl+g close"]);
+	});
+
 	/** Unbound actions must disappear before chip width and row wrapping are computed. */
 	it("omits unbound actions before measuring and wrapping footer chips", () => {
 		setKeybindings(

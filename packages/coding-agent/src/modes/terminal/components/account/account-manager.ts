@@ -796,11 +796,13 @@ export class AccountManagerComponent implements Component {
 						? theme.fg("dim", entry.label)
 						: entry.label;
 				const annotation = entry.hasFailure
-					? `${theme.fg("dim", entry.annotation)} ${theme.fg("warning", theme.status.warning)}`
-					: `${theme.fg("dim", entry.annotation)}  `;
+					? `${entry.annotation ? `${theme.fg("dim", entry.annotation)} ` : ""}${theme.fg("warning", theme.status.warning)}`
+					: entry.annotation
+						? `${theme.fg("dim", entry.annotation)}  `
+						: "";
 				const left = `${cursor} ${label}`;
-				const gap = Math.max(1, width - visibleWidth(left) - visibleWidth(annotation));
-				let line = `${left}${" ".repeat(gap)}${annotation}`;
+				const gap = annotation.length > 0 ? Math.max(1, width - visibleWidth(left) - visibleWidth(annotation)) : 0;
+				let line = annotation.length > 0 ? `${left}${" ".repeat(gap)}${annotation}` : left;
 				const hoverStrength = this.#sidebarHover.strength(i);
 				if (hoverStrength > 0) line = hoverBandAt(line, width, hoverStrength);
 				lines.push(line);
@@ -972,7 +974,9 @@ export class AccountManagerComponent implements Component {
 		const addCursor = addSelected && this.#focus === "body" ? theme.fg("accent", theme.nav.cursor) : " ";
 		// No `(a)` hint: the footer chip two rows below already says `a add`, and naming the key
 		// twice on one card reads as two different affordances.
-		const addLabel = `+ add another ${sanitizeAccountText(entry.label)} account`;
+		// No article on the first account: provider names are brands and initialisms ("xAI",
+		// "AIML API") whose article follows pronunciation, which no letter test predicts.
+		const addLabel = `+ add ${rows.length > 0 ? "another " : ""}${sanitizeAccountText(entry.label)} account`;
 		let addText = truncateToWidth(
 			` ${addCursor} ${addSelected ? theme.bold(theme.fg("accent", addLabel)) : theme.fg("accent", addLabel)}`,
 			width,

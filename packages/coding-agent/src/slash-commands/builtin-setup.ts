@@ -517,7 +517,10 @@ export const SETUP_HANDLERS = {
 					];
 					runtime.ctx.showReport("Language Servers", lines.join("\n"));
 				} else {
-					runtime.ctx.showStatus("No language servers configured for this project.");
+					runtime.ctx.showReport(
+						"Language Servers",
+						theme.fg("dim", "No language servers configured for this project."),
+					);
 				}
 			} else {
 				const glyph = (status: string) =>
@@ -836,19 +839,19 @@ export const SETUP_HANDLERS = {
 				const npm = new PluginManager();
 				const npmPlugins = await npm.list();
 				if (npmPlugins.length === 0) {
-					runtime.ctx.showStatus("No plugins installed");
+					runtime.ctx.showReport("Plugins", theme.fg("dim", "No plugins installed"));
 					return;
 				}
 				const lines = [
-					"npm plugins:",
+					theme.fg("dim", "npm plugins:"),
 					...npmPlugins.map(p => {
 						const status = p.enabled === false ? " (disabled)" : "";
 						return `  ${p.name}@${p.version}${status}`;
 					}),
 				];
-				runtime.ctx.showStatus(lines.join("\n"));
+				runtime.ctx.showReport("Plugins", lines.join("\n"));
 			} catch (err) {
-				runtime.ctx.showStatus(`Plugin error: ${errorMessage(err)}`);
+				runtime.ctx.showError(`Plugin error: ${errorMessage(err)}`);
 			}
 		},
 	},

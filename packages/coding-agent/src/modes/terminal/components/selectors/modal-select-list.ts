@@ -15,12 +15,27 @@ import {
 	computeModalDims,
 	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
+	type ModalShortcut,
+	type ModalSizing,
+	modalWidthForContent,
 	pointerMotionEnabled,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
 	sizingForArea,
 } from "../chrome/modal-shell";
 import { routeModalCardMouse } from "./select-list-mouse-routing";
+
+/**
+ * Footer for a list that filters as you type. The list's own status row stays silent until a
+ * query exists, so this chip is the one place the search is named, and the key legend that row
+ * used to repeat lives only here.
+ */
+const SEARCHABLE_LIST_SHORTCUTS: readonly ModalShortcut[] = [{ label: "type to search" }, ...SELECT_LIST_SHORTCUTS];
+
+/** Footer while a query is live: the cancel key clears the query before it closes the card. */
+const FILTERED_LIST_SHORTCUTS: readonly ModalShortcut[] = SELECT_LIST_SHORTCUTS.map(shortcut =>
+	shortcut.id === "close" ? { ...shortcut, label: "clear" } : shortcut,
+);
 
 export interface ModalSelectListCallbacks {
 	onSelect: (item: SelectItem) => void;
@@ -90,7 +105,14 @@ export class ModalSelectListComponent implements Component {
 		this.#onCancel = callbacks.onCancel;
 
 		const maxVisible = options.maxVisible ?? Math.min(12, Math.max(5, options.items.length));
-		this.#list = new SelectList(options.items, maxVisible, options.theme, options.layout);
+		// The footer names every key and the search, so the list's status row carries only a live
+		// query. Left on, it printed a second legend (`↑↓ move · ↵ select · esc close`) directly
+		// above the footer's own.
+		this.#list = new SelectList(options.items, maxVisible, options.theme, {
+			statusLegend: false,
+			searchPrompt: false,
+			...options.layout,
+		});
 		if (options.selectedIndex !== undefined && options.selectedIndex >= 0) {
 			this.#list.setSelectedIndex(options.selectedIndex);
 		}
@@ -141,6 +163,7 @@ export class ModalSelectListComponent implements Component {
 				this.#onRequestRender?.();
 			},
 			onCancel: () => this.#onCancel(),
+			onCloseChip: () => this.#list.cancel(),
 			onConfirm: () => this.#list.handleInput("\n"),
 			onWheel: delta => {
 				if (geo && event.row >= geo.bodyRowStart && event.row < geo.bodyRowStart + geo.bodyRowCount) {
@@ -165,9 +188,28 @@ export class ModalSelectListComponent implements Component {
 		});
 	}
 
+	/**
+	 * The medium card, widened until every row fits whole.
+	 *
+	 * The medium card is 60% of the terminal, which cut `/mcp`'s usage hints and descriptions while
+	 * a third of the screen stood empty. Only the floor rises, to the width the list reports it
+	 * needs, so a list that already fits keeps the shared proportions and `computeModalDims` still
+	 * caps the card at the sizing's maximum and the terminal's edge.
+	 */
+	#sizing(termHeight: number): ModalSizing {
+		const base = sizingForArea(MODAL_SIZING_MEDIUM, termHeight);
+		const needed = modalWidthForContent(this.#list.naturalWidth(), base);
+		return needed <= base.minWidth ? base : { ...base, minWidth: needed };
+	}
+
+	#shortcuts(): readonly ModalShortcut[] {
+		if (this.#list.hasActiveFilter()) return FILTERED_LIST_SHORTCUTS;
+		return this.#list.isSearchable() ? SEARCHABLE_LIST_SHORTCUTS : SELECT_LIST_SHORTCUTS;
+	}
+
 	render(width: number): string[] {
 		const termHeight = Math.max(14, this.#getTerminalRows());
-		const sizing = sizingForArea(MODAL_SIZING_MEDIUM, termHeight);
+		const sizing = this.#sizing(termHeight);
 		const dims = computeModalDims(width, termHeight, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
@@ -188,7 +230,7 @@ export class ModalSelectListComponent implements Component {
 			body,
 			preferredBodyRows: this.#bodyRowsHighWater,
 			tipCandidates: this.#tipCandidates,
-			shortcuts: SELECT_LIST_SHORTCUTS,
+			shortcuts: this.#shortcuts(),
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,
 		});

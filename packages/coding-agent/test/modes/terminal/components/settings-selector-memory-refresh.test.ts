@@ -213,7 +213,7 @@ describe("SettingsSelectorComponent memory tab", () => {
 
 	it("formats model roles value correctly when unassigned or assigned", () => {
 		const comp = createSelector();
-		expect(comp.formatModelRolesValue()).toBe("all inherit");
+		expect(comp.formatModelRolesValue()).toBe("All inherit");
 		settings.setModelRole("smol", "anthropic/claude-3-5-haiku");
 		expect(comp.formatModelRolesValue()).toBe("1 assigned");
 	});
@@ -221,13 +221,13 @@ describe("SettingsSelectorComponent memory tab", () => {
 	it("formats rules value correctly for built-in, disabled, and experimental rules", () => {
 		const comp = createSelector();
 		settings.set("ttsr.builtinRules", true);
-		expect(comp.formatRulesValue()).toBe("all on");
+		expect(comp.formatRulesValue()).toBe("All on");
 		settings.set("ttsr.disabledRules", ["rule1", "rule2"]);
 		expect(comp.formatRulesValue()).toBe("2 off");
 		settings.set("ttsr.experimentalRules", ["exp1"]);
 		expect(comp.formatRulesValue()).toBe("2 off, 1 experimental on");
 		settings.set("ttsr.builtinRules", false);
-		expect(comp.formatRulesValue()).toBe("built-ins off, 2 more off, 1 experimental on");
+		expect(comp.formatRulesValue()).toBe("Built-ins off, 2 more off, 1 experimental on");
 	});
 
 	it("redraws model picker on mouse hover with dynamic submenu receiver binding", () => {

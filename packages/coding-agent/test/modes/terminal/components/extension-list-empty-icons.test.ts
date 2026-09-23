@@ -40,13 +40,15 @@ describe("ExtensionList empty Unicode icons", () => {
 		const groupedLines = grouped.render(80).map(line => Bun.stripANSI(line));
 		const kindHeader = groupedLines.find(line => line.includes("Tools"));
 
-		expect(kindHeader).toBe("Tools (1)");
+		// Every row opens with the three-cell cursor gutter (` › ` on the selected row), and the
+		// label follows it directly: an empty icon adds no fourth cell.
+		expect(kindHeader).toBe("   Tools (1)");
 
 		const provider = new ExtensionList([extension], { masterSwitchProvider: "acme" });
 		const providerLines = provider.render(80).map(line => Bun.stripANSI(line));
 		const master = providerLines.find(line => line.includes("Master Switch"));
 
-		expect(master).toMatch(/^\S+ Enable Acme {2}\(Master Switch\)$/);
+		expect(master).toMatch(/^ [\S ] \S+ Enable Acme {2}\(Master Switch\)$/);
 		expect(master).not.toContain("  Enable Acme");
 	});
 

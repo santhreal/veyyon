@@ -52,7 +52,16 @@
  * - Esc, or the key that opened it: close
  */
 import type { AgentTool } from "@veyyon/agent-core";
-import { type Component, Container, type OverlayHandle, ScrollView, Spacer, Text, type TUI } from "@veyyon/tui";
+import {
+	type Component,
+	Container,
+	getAnsiPolicy,
+	type OverlayHandle,
+	ScrollView,
+	Spacer,
+	Text,
+	type TUI,
+} from "@veyyon/tui";
 import { clampLow, errorMessage, formatAge, formatMoreLines, getProjectDir, logger } from "@veyyon/utils";
 import { matchesKey } from "@veyyon/utils/keys";
 import { routeSgrMouseInput } from "@veyyon/utils/mouse";
@@ -1546,7 +1555,8 @@ export class AgentDashboard extends Container {
 		for (const tab of this.#viewTabs()) {
 			const isActive = tab.id === this.#activeView;
 			const text = `${tab.label} (${tab.count})`;
-			const label = isActive ? `[${text}]` : ` ${text} `;
+			const useBrackets = getAnsiPolicy() === "plain";
+			const label = isActive ? (useBrackets ? `[${text}]` : ` ${text} `) : ` ${text} `;
 			this.#tabHits.push({ id: tab.id, start: column, end: column + visibleWidth(label) });
 			column += visibleWidth(label);
 			parts.push(isActive ? tabTheme.activeTab(label) : tabTheme.inactiveTab(label));

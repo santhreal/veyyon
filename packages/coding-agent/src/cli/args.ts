@@ -11,7 +11,12 @@ import { pluralize } from "@veyyon/utils/format";
 import { nearestNames } from "@veyyon/utils/levenshtein";
 import chalk from "chalk";
 import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseCliThinkingLevel } from "../thinking";
-import { BUILTIN_TOOL_NAMES, type BuiltinToolName, normalizeToolNames } from "../tools/core/builtin-names";
+import {
+	BUILTIN_TOOL_NAMES,
+	BUILTIN_TOOL_SUMMARIES,
+	type BuiltinToolName,
+	normalizeToolNames,
+} from "../tools/core/builtin-names";
 import {
 	OPTIONAL_FLAGS,
 	OPTIONAL_VALUE_FLAGS,
@@ -417,38 +422,8 @@ function envSection(title: string, rows: ReadonlyArray<readonly [string, string]
  * That is the property the literal list could not have.
  */
 const BUILTIN_TOOL_HELP: Record<BuiltinToolName, string> = {
-	argot_load: "Load a folder's Argot shorthand so its paths can be written as short handles",
-	argot_unload: "Stop being taught a folder's Argot shorthand",
-	ask: "Ask the user a clarifying question",
-	ast_edit: "Perform AST-aware code edits (structural refactoring)",
-	bash: "Run a shell command",
-	browser: "Control a headless browser to navigate and interact with web pages",
-	checkpoint: "Create a git-based checkpoint to save and restore session state",
-	debug: "Debug a running process with DAP (debug adapter protocol)",
-	edit: "Apply line-anchored patches to existing files",
+	...BUILTIN_TOOL_SUMMARIES,
 	eval: `Run code in a persistent Python or JavaScript kernel (Python needs: ${APP_NAME} setup python)`,
-	github: "Interact with GitHub issues, pull requests, and repositories",
-	search: "Search workspace files, text, and code structure",
-	inspect_image: "Describe or analyze an image file",
-	irc: "Send and receive messages between agents",
-	job: "Manage long-running background jobs",
-	launch: "Launch and control shared long-running project processes",
-	learn: "Capture a reusable lesson to memory, and optionally a managed skill",
-	lsp: "Query LSP (language server) for diagnostics, hover info, and references",
-	manage_skill: "Create, update, or delete an isolated managed skill",
-	memory_edit: "Update, forget, or invalidate Mnemopi memories",
-	read: "Read files, directories (optionally bounded by depth/limit), archives, documents, images, and URLs",
-	recall: "Search memory for relevant prior context",
-	reflect: "Synthesize an answer from long-term memory",
-	retain: "Store important facts in long-term memory",
-	rewind: "Rewind to a previously created checkpoint",
-	search_tool_bm25: "Search the descriptions of tools that have not been loaded yet",
-	set_cwd: "Change the session's working directory for the rest of the session",
-	ssh: "Execute a command on a remote host over SSH",
-	task: "Spawn agents to complete delegated tasks",
-	todo: "Write a structured todo list to track progress within a session",
-	web_search: "Search the web",
-	write: "Write files (creates/overwrites)",
 };
 
 export function getExtraHelpText(): string {

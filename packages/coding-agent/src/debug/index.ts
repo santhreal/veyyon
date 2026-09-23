@@ -110,7 +110,9 @@ export class DebugSelectorComponent {
 	) {
 		this.#inner = new ModalSelectListComponent(
 			{
-				title: "Debug Tools",
+				// Named for the command that opened it, like every other bare-command card (`/mcp`,
+				// `/usage`), rather than a second name for the same thing.
+				title: "/debug",
 				items: DEBUG_MENU_ITEMS,
 				theme: getSelectListTheme(),
 				maxVisible: 10,

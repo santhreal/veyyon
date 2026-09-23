@@ -417,12 +417,16 @@ export class CommandController {
 
 		const now = Date.now();
 		const lineWidth = Math.max(24, (this.ctx.ui.terminal.columns ?? 100) - 24);
-		let info = `${theme.bold("Background Jobs")}\n\n`;
-		info += `${theme.fg("dim", "Running:")} ${snapshot.running.length}\n`;
+		let info = `${theme.fg("dim", "Running:")} ${snapshot.running.length}\n`;
 
 		if (snapshot.running.length === 0 && snapshot.recent.length === 0) {
 			info += `\n${theme.fg("dim", "No async jobs yet.")}\n`;
-			this.ctx.present([new Spacer(1), new Text(info, 1, 0)]);
+			const block = new TranscriptBlock();
+			mountTranscriptBlock(block, {
+				header: theme.bold(theme.fg("accent", "Background Jobs")),
+				body: transcriptBlockText(info.trimEnd()),
+			});
+			this.ctx.present(block);
 			return;
 		}
 
@@ -442,7 +446,12 @@ export class CommandController {
 			}
 		}
 
-		this.ctx.present([new Spacer(1), new Text(info.trimEnd(), 1, 0)]);
+		const block = new TranscriptBlock();
+		mountTranscriptBlock(block, {
+			header: theme.bold(theme.fg("accent", "Background Jobs")),
+			body: transcriptBlockText(info.trimEnd()),
+		});
+		this.ctx.present(block);
 	}
 
 	async handleUsageCommand(reports?: UsageReport[] | null): Promise<void> {

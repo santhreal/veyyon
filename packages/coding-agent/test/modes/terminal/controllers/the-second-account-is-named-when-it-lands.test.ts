@@ -165,7 +165,7 @@ describe("the second account is named when it lands", () => {
 		expect(frame).toContain("Name this Groq account (optional)");
 		// The prompt is a card now: its keys are footer chips carrying the live
 		// binding, not the hand-built hint line ("Enter  save    Esc  skip").
-		expect(frame).toContain("enter save  ·  esc/ctrl+c skip");
+		expect(frame).toContain("enter save  ·  esc skip");
 
 		h.dialog()?.pasteText?.("work laptop");
 		h.dialog()?.handleInput?.("\r");

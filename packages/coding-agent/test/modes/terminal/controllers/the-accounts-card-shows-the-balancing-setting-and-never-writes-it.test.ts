@@ -210,8 +210,7 @@ describe("the accounts card and the balancing setting", () => {
 			.map(line => stripVTControlCharacters(line))
 			.join("\n");
 
-		expect(screen).toContain("Account Load Balancing");
-		expect(screen).toContain("true");
+		expect(screen).toMatch(/Account Load Balancing\s+‹? ?On\b/);
 		expect((await openCard(true)).text()).toContain("quota load balancing on");
 	});
 });

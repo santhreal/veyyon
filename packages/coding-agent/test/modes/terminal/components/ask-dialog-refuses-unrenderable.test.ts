@@ -60,6 +60,7 @@ const MAXIMAL_QUESTION = {
 	multi: true,
 	recommended: 0,
 	preselected: ["A"],
+	allowOther: true,
 } satisfies Required<ExtensionAskDialogQuestion>;
 
 /** Compile-time exhaustiveness: a new question field fails `check:ts` here. */
@@ -82,6 +83,7 @@ const FIELD_POLICY: Record<keyof typeof MAXIMAL_QUESTION, { required: boolean; w
 	multi: { required: false, wrongType: "yes" },
 	recommended: { required: false, wrongType: "0" },
 	preselected: { required: false, wrongType: "A" },
+	allowOther: { required: false, wrongType: "yes" },
 };
 
 const OPTION_FIELD_POLICY: Record<keyof ExtensionAskDialogOption, { required: boolean; wrongType: unknown }> = {

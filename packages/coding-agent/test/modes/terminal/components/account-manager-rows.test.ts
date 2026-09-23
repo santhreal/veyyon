@@ -73,8 +73,10 @@ describe("buildSidebarEntries", () => {
 		expect(entries.map(entry => `${entry.label}:${entry.annotation}`)).toEqual([
 			"Anthropic:1",
 			"GitHub Copilot:1",
-			"Groq:—",
-			"xAI:—",
+			// A provider holding nothing prints no count at all: a dash beside it read as a zero
+			// that had failed to load.
+			"Groq:",
+			"xAI:",
 		]);
 	});
 

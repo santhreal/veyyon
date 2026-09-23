@@ -1268,6 +1268,12 @@ export function getSelectListTheme(): SelectListTheme {
 		// label with a short rule tail, so the list reads as a map of sections.
 		groupHeader: (name: string) =>
 			theme.fg("borderAccent", `  ${name.toUpperCase()} ${"─".repeat(Math.max(4, 30 - name.length))}`),
+		// The settings list's scrollbar: a dim track and a silver thumb. The molten cursor paint
+		// on a thumb as tall as half the list outshouted the row it pointed at.
+		scrollbar: {
+			track: (text: string) => theme.fg("dim", text),
+			thumb: (text: string) => theme.fg("accent", text),
+		},
 	};
 }
 

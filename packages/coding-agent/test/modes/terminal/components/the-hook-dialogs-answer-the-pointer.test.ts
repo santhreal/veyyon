@@ -129,13 +129,13 @@ describe("the hook input card answers the pointer", () => {
 
 		expect(frame.some(line => line.includes("Paste your API key"))).toBe(true);
 		expect(frame.some(line => line.includes("[x]"))).toBe(true);
-		expect(chipLabels(frame)).toEqual(["enter submit", "esc/ctrl+c cancel"]);
+		expect(chipLabels(frame)).toEqual(["enter submit", "esc cancel"]);
 	});
 
 	it("leads the chips with the field's own hint, because that describes THIS field", () => {
 		const h = makeInput({ hint: "stored in the OS keychain" });
 
-		expect(chipLabels(h.frame())).toEqual(["stored in the OS keychain", "enter submit", "esc/ctrl+c cancel"]);
+		expect(chipLabels(h.frame())).toEqual(["stored in the OS keychain", "enter submit", "esc cancel"]);
 	});
 
 	it("submits what is typed from the submit chip, exactly as Enter does", () => {

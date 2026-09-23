@@ -77,6 +77,7 @@ const MAXIMAL_QUESTION: Required<ExtensionAskDialogQuestion> = {
 	multi: true,
 	recommended: 0,
 	preselected: ["A"],
+	allowOther: true,
 };
 
 interface MountedOverlay {

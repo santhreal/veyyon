@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
+import { stripVTControlCharacters } from "node:util";
 import { SubcommandPickerComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/subcommand-picker";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
@@ -13,6 +14,7 @@ import type {
 	TuiSlashCommandRuntime,
 } from "@veyyon/coding-agent/slash-commands/types";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { escapeRegExp } from "@veyyon/utils/regex";
 
 /**
  * `docs/internal/slash-command-internals.md` section 9: a command that declares `subcommands` must
@@ -336,6 +338,102 @@ describe("the picker card", () => {
 
 		expect(rows.find(row => row.includes("manager"))).toContain("Open the account manager");
 		expect(rows.find(row => row.includes("switch"))).toContain("switch [provider]");
+	});
+
+	/**
+	 * Every bare-command card shows each subcommand's usage and description whole on a 131-column
+	 * terminal. The card used to be 60% of the screen with a 22-cell name column, which printed
+	 * `reset [openai-codex|` and `add <name> [http|sse` and cut descriptions beside a third of the
+	 * screen standing empty. Swept over every declaration, so a command that gains a longer usage
+	 * is checked on arrival.
+	 */
+	it("shows every usage and description whole on a wide terminal", () => {
+		const cut: string[] = [];
+		for (const declaration of PICKER_COMMANDS) {
+			const picker = new SubcommandPickerComponent(
+				declaration.name,
+				declaration.subcommands,
+				() => {},
+				() => {},
+			);
+			const rows = new Set<string>();
+			for (let step = 0; step < declaration.subcommands.length; step++) {
+				for (const line of picker.render(131)) rows.add(stripVTControlCharacters(line));
+				picker.handleInput("\x1b[B");
+			}
+			for (const sub of declaration.subcommands) {
+				const label = sub.usage ? `${sub.name} ${sub.usage}` : sub.name;
+				const whole = [...rows].some(row =>
+					new RegExp(`${escapeRegExp(label)} +${escapeRegExp(sub.description)} `).test(row),
+				);
+				if (!whole) cut.push(`/${declaration.name} ${label}`);
+			}
+		}
+		expect(cut).toEqual([]);
+	});
+
+	/** Out of room, a usage is cut after a whole word and marked, never inside an argument. */
+	it("cuts a usage that cannot fit after a whole word", () => {
+		const usage = "<name> [http|sse|stdio] [--url <address>] [--header <key=value>] [--scope project|global]";
+		const picker = new SubcommandPickerComponent(
+			"mcp",
+			[{ name: "add", description: "Add a server", usage }],
+			() => {},
+			() => {},
+		);
+
+		const row = picker
+			.render(60)
+			.map(line => stripVTControlCharacters(line))
+			.find(line => line.includes("add <name>"));
+
+		const shown = row?.match(/add (.*?) …/)?.[1];
+		expect(shown).toBeDefined();
+		expect(usage.startsWith(`${shown} `)).toBe(true);
+	});
+
+	/**
+	 * One key legend per card. The list's status row repeated `↑↓ move · ↵ select · esc close`
+	 * directly above a footer naming the same keys as `esc/ctrl+c close`. The footer is now the only
+	 * legend: it names the search while the list is searchable, and while a query is live it says
+	 * the cancel key clears it, which is what that key does next.
+	 */
+	it("names the keys once, in the footer, and follows the search", () => {
+		const subcommands = Array.from({ length: 20 }, (_, index) => ({
+			name: `sub-${index}`,
+			description: `Subcommand number ${index}`,
+		}));
+		const cancelled: number[] = [];
+		const picker = new SubcommandPickerComponent(
+			"many",
+			subcommands,
+			() => {},
+			() => cancelled.push(1),
+		);
+		const text = () =>
+			picker
+				.render(131)
+				.map(line => stripVTControlCharacters(line))
+				.join("\n");
+
+		const idle = text();
+		expect(idle).not.toContain("↑↓ move");
+		expect(idle).not.toContain("Type to search");
+		expect(idle.match(/type to search/g)).toHaveLength(1);
+		expect(idle.match(/esc close/g)).toHaveLength(1);
+
+		picker.handleInput("1");
+		picker.handleInput("7");
+		const filtered = text();
+		expect(filtered).toContain("Search: 17");
+		expect(filtered).toContain("esc clear");
+		expect(filtered).not.toContain("esc close");
+		expect(filtered).not.toContain("↑↓ move");
+		expect(filtered.match(/esc clear/g)).toHaveLength(1);
+
+		picker.handleInput("\x1b");
+		expect(cancelled).toEqual([]);
+		expect(text().match(/esc close/g)).toHaveLength(1);
 	});
 });
 

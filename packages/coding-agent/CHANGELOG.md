@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Slash-command reports (`/tools`, `/hotkeys`, `/context`, `/jobs`, `/todo`, `/lsp`, `/plugins`, `/effort`) format with clean human summaries, consistent headers and indentation, and without raw XML tags or run-on bullet sequences.
+- The extension dashboard aligns list cursor bands to avoid text overlap, keeps the provider tab strip on a single scrollable line, and adopts the shared search input style.
+- The account manager displays quieter empty provider states without trailing dashes and phrases initial account addition cleanly.
+- The profile picker presents a dedicated Profiles title, drops the redundant other option, and cleans up the create-profile label glyph.
+- The resume session selector omits file size metadata when displaying empty sessions without messages.
+- The agent dashboard renders active tabs with standard theme highlight styling without hardcoded bracket characters.
+- Settings panel presents booleans as On/Off, humanizes enum and status labels, displays the selected setting description in the footer, simplifies default model display, and aligns the value column.
+- Bare-command pickers (`/mcp`, `/usage`, `/account`, `/debug` and the rest) widen to show every usage hint and description whole, cut a usage that cannot fit after a whole word, print one key legend in the footer with `esc close` instead of `esc/ctrl+c close`, name the search there while the list is searchable, and draw a dim scrollbar with a silver thumb.
+- The `/debug` card is titled `/debug`, matching the other bare-command cards.
+
 ## [1.5.3] - 2026-09-22
 
 ### Fixed

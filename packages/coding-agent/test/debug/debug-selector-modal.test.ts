@@ -43,7 +43,7 @@ describe("DebugSelectorComponent — ModalShell migration", () => {
 
 		// Title lives inside the top border row (ModalShell), not a bare line
 		// below a horizontal rule (the old DynamicBorder + Text + Spacer stack).
-		expect(text).toContain("Debug Tools");
+		expect(text).toContain("┌── /debug ");
 		expect(text).toContain("[x]");
 		// Every visible menu item still renders inside the card body.
 		expect(text).toContain("Report: dump session");

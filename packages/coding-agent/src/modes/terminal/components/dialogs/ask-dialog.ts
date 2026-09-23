@@ -423,6 +423,9 @@ function assertRenderableAskQuestions(questions: readonly ExtensionAskDialogQues
 				throw new Error(`${where} has a preselected label that is ${describeAskValue(label)}, not a string.`);
 			}
 		}
+		if (question.allowOther !== undefined && typeof question.allowOther !== "boolean") {
+			throw new Error(`${where} has allowOther set to ${describeAskValue(question.allowOther)}, not a boolean.`);
+		}
 	}
 }
 
@@ -711,7 +714,8 @@ export class AskDialogComponent implements Component {
 	}
 
 	#titleText(): string {
-		return this.#remainingSeconds === undefined ? "Ask" : `Ask (${this.#remainingSeconds}s)`;
+		const base = this.questions.length === 1 && this.questions[0]?.header ? this.questions[0].header : "Ask";
+		return this.#remainingSeconds === undefined ? base : `${base} (${this.#remainingSeconds}s)`;
 	}
 
 	#hasSubmitTab(): boolean {
@@ -773,7 +777,9 @@ export class AskDialogComponent implements Component {
 			label: this.#optionLabel(question, option.label, index),
 			optionIndex: index,
 		}));
-		rows.push({ kind: "other", key: "other", label: ASK_OTHER_OPTION_LABEL, optionIndex: undefined });
+		if (question.allowOther !== false) {
+			rows.push({ kind: "other", key: "other", label: ASK_OTHER_OPTION_LABEL, optionIndex: undefined });
+		}
 		return rows;
 	}
 

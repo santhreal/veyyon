@@ -23,7 +23,7 @@ import type {
 } from "../extensibility/extensions";
 
 /** Label of the picker row that starts a fresh profile. */
-export const CREATE_NEW_LABEL = "＋ Create new profile";
+export const CREATE_NEW_LABEL = "+ Create new profile";
 
 /**
  * A parsed `/profile` invocation. `parseProfileCommand` maps raw argument text
@@ -248,6 +248,7 @@ async function runRemove(name: string, port: ProfileCommandPort): Promise<void> 
 			question: `Delete profile "${resolved}"? This removes it from disk and cannot be undone.`,
 			options: [{ label: deleteLabel }, { label: "Cancel" }],
 			multi: false,
+			allowOther: false,
 		},
 	]);
 	if (confirm?.kind !== "submit" || confirm.results[0]?.selectedOptions[0] !== deleteLabel) {
@@ -310,6 +311,7 @@ async function runPicker(port: ProfileCommandPort): Promise<void> {
 			question: "Select a profile to manage, or create a new one.",
 			options,
 			multi: false,
+			allowOther: false,
 		},
 	]);
 	if (result?.kind !== "submit") return;
@@ -352,7 +354,14 @@ async function runProfileActionMenu(
 	options.push({ label: "Cancel" });
 
 	const result = await port.askDialog([
-		{ id: "action", header: dirName, question: `Manage profile "${dirName}".`, options, multi: false },
+		{
+			id: "action",
+			header: dirName,
+			question: `Manage profile "${dirName}".`,
+			options,
+			multi: false,
+			allowOther: false,
+		},
 	]);
 	if (result?.kind !== "submit") return;
 	const choice = result.results[0]?.selectedOptions[0];

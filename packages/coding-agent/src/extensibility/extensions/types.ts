@@ -130,6 +130,8 @@ export interface ExtensionAskDialogQuestion {
 	recommended?: number;
 	/** Option labels selected when the dialog opens (multi questions only). */
 	preselected?: string[];
+	/** Whether to append an 'Other (type your own)' option. Default true. */
+	allowOther?: boolean;
 }
 
 export interface ExtensionAskDialogResultItem {

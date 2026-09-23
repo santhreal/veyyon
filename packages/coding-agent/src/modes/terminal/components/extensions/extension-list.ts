@@ -5,7 +5,7 @@
  * that toggles the entire provider. All items below are dimmed when the
  * master switch is off.
  */
-import type { Component } from "@veyyon/tui";
+import { type Component, Input } from "@veyyon/tui";
 import { HoverController } from "@veyyon/tui/utils/hover-controller";
 import { matchesKey } from "@veyyon/utils/keys";
 import type { HoverFadeOptions } from "@veyyon/utils/motion";
@@ -52,6 +52,7 @@ export class ExtensionList implements Component {
 	#focused = false;
 	#masterSwitchProvider: string | null = null;
 	#maxVisible: number;
+	#searchInput = new Input();
 	/**
 	 * Pointer hover controller and cross-fade, once the dashboard has lent this list a repaint ({@link setHoverMotion}).
 	 * Absent, the band is switched.
@@ -67,6 +68,7 @@ export class ExtensionList implements Component {
 	) {
 		this.#masterSwitchProvider = callbacks.masterSwitchProvider ?? null;
 		this.#maxVisible = maxVisible ?? DEFAULT_MAX_VISIBLE;
+		this.#searchInput.prompt = "";
 		this.#rebuildList();
 	}
 
@@ -113,6 +115,7 @@ export class ExtensionList implements Component {
 
 	setSearchQuery(query: string): void {
 		this.#searchQuery = query;
+		this.#searchInput.setValue(query);
 		this.#rebuildList();
 		this.#selectedIndex = 0;
 		this.#scrollOffset = 0;
@@ -130,10 +133,14 @@ export class ExtensionList implements Component {
 		this.#visibleCount = 0;
 
 		// Search bar
-		const searchPrefix = theme.fg("muted", "Search: ");
-		const searchText = this.#searchQuery || (this.#focused ? "" : theme.fg("dim", "type to filter"));
-		const cursor = this.#focused ? theme.fg("accent", "_") : "";
-		lines.push(searchPrefix + searchText + cursor);
+		const searchIcon = theme.fg(this.#focused ? "accent" : "dim", theme.symbol("icon.search"));
+		const inputWidth = Math.max(4, width - visibleWidth(theme.symbol("icon.search")) - 2);
+		this.#searchInput.focused = this.#focused;
+		const searchContent =
+			this.#searchQuery.length === 0 && !this.#focused
+				? theme.fg("dim", "type to filter")
+				: (this.#searchInput.render(inputWidth)[0] ?? "");
+		lines.push(` ${searchIcon} ${searchContent}`);
 		lines.push("");
 
 		if (this.#listItems.length === 0) {
@@ -190,8 +197,8 @@ export class ExtensionList implements Component {
 		const label = withIcon(theme.icon.package, `Enable ${item.providerName}`);
 		const badge = theme.fg("warning", "(Master Switch)");
 
-		let line = `${checkbox} ${label}  ${badge}`;
-
+		const cursor = isSelected ? theme.fg("accent", theme.nav.cursor) : " ";
+		let line = ` ${cursor} ${checkbox} ${label}  ${badge}`;
 		if (isSelected) {
 			return selectionBand(theme.bold(theme.fg("accent", line)), width);
 		}
@@ -204,8 +211,8 @@ export class ExtensionList implements Component {
 
 	#renderKindHeader(item: ListItem & { type: "kind-header" }, isSelected: boolean, width: number): string {
 		const countBadge = theme.fg("muted", `(${item.count})`);
-		const line = `${withIcon(item.icon, item.label)} ${countBadge}`;
-
+		const cursor = isSelected ? theme.fg("accent", theme.nav.cursor) : " ";
+		const line = ` ${cursor} ${withIcon(item.icon, item.label)} ${countBadge}`;
 		if (isSelected) {
 			return selectionBand(theme.bold(theme.fg("accent", line)), width);
 		}
@@ -225,7 +232,8 @@ export class ExtensionList implements Component {
 		const nameWidth = Math.min(24, width - 16);
 
 		// Build the line with indentation (visually "inside" the master switch)
-		let line = `   ${stateIcon} `;
+		const cursor = isSelected ? theme.fg("accent", theme.nav.cursor) : " ";
+		let line = `   ${cursor} ${stateIcon} `;
 
 		if (isSelected && !masterDisabled) {
 			name = theme.bold(theme.fg("accent", name));

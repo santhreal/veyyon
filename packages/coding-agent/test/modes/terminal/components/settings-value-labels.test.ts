@@ -181,6 +181,65 @@ describe("settings rows show option labels, not stored values", () => {
 		expect(panel).toContain("--config file · 1 hour");
 		expect(panel).not.toContain("3600000");
 	});
+
+	it("renders boolean settings as On/Off while writing boolean to storage", async () => {
+		const component = new SettingsSelectorComponent(
+			{
+				availableThinkingLevels: [],
+				thinkingLevel: undefined,
+				availableThemes: ["titanium"],
+				availablePersonalities: ["default"],
+				providers: [],
+				cwd: process.cwd(),
+			},
+			{ onChange: () => {}, onCancel: () => {} },
+		);
+		component.openTab("appearance");
+		expect(component.selectSetting("colorBlindMode")).toBe(true);
+
+		let panel = component.render(100).map(stripVTControlCharacters).join("\n");
+		expect(panel).toMatch(/Color-Blind Mode\s+‹?\s*Off\s*›?/);
+		expect(Settings.instance.get("colorBlindMode")).toBe(false);
+
+		component.handleInput("\r");
+		panel = component.render(100).map(stripVTControlCharacters).join("\n");
+		expect(panel).toMatch(/Color-Blind Mode\s+‹?\s*On\s*›?/);
+		expect(Settings.instance.get("colorBlindMode")).toBe(true);
+
+		component.handleInput("\r");
+		panel = component.render(100).map(stripVTControlCharacters).join("\n");
+		expect(panel).toMatch(/Color-Blind Mode\s+‹?\s*Off\s*›?/);
+		expect(Settings.instance.get("colorBlindMode")).toBe(false);
+	});
+
+	it("renders enum settings with humanized labels while writing raw enum to storage", async () => {
+		const component = new SettingsSelectorComponent(
+			{
+				availableThinkingLevels: [],
+				thinkingLevel: undefined,
+				availableThemes: ["titanium"],
+				availablePersonalities: ["default"],
+				providers: [],
+				cwd: process.cwd(),
+			},
+			{ onChange: () => {}, onCancel: () => {} },
+		);
+		component.openTab("appearance");
+		expect(component.selectSetting("symbolPreset")).toBe(true);
+
+		let panel = component.render(100).map(stripVTControlCharacters).join("\n");
+		expect(panel).toMatch(/Symbol Preset\s+Unicode/);
+		expect(Settings.instance.get("symbolPreset")).toBe("unicode");
+
+		// Open submenu and pick Nerd Font
+		component.handleInput("\r");
+		component.handleInput("\x1b[B");
+		component.handleInput("\r");
+
+		panel = component.render(100).map(stripVTControlCharacters).join("\n");
+		expect(panel).toMatch(/Symbol Preset\s+Nerd Font/);
+		expect(Settings.instance.get("symbolPreset")).toBe("nerd");
+	});
 });
 
 /**

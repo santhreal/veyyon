@@ -326,7 +326,6 @@ class SelectSubmenu extends MouseRoutedSubmenu {
 			description,
 			headerExtra,
 			body: selectList,
-			footerHint: "  Enter to select · Esc to go back",
 			footerExtra: footer,
 		});
 
@@ -434,7 +433,28 @@ function formatThresholdShort(raw: string): string {
 		return String(spec.tokens);
 	}
 	if (spec.kind === "percent") return `${spec.percent}%`;
-	return raw;
+	return humanizeValue(raw);
+}
+
+/**
+ * Render a raw machine enum or value id as something a human reads:
+ * converts hyphens and underscores to spaces, capitalizes in sentence case,
+ * and maps booleans to On/Off.
+ */
+export function humanizeValue(value: string): string {
+	if (!value) return value;
+	if (value === "true") return "On";
+	if (value === "false") return "Off";
+	const withSpaces = value.replace(/[-_]+/g, " ");
+	return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1);
+}
+
+export function humanizeOptionLabel(label: string | undefined, value: string): string {
+	if (!label || label.trim().length === 0) return humanizeValue(value);
+	if (label.toLowerCase() === value.toLowerCase() || (label === label.toLowerCase() && !/^\d/.test(label))) {
+		return humanizeValue(label);
+	}
+	return label;
 }
 
 class CompactionThresholdSubmenu extends MouseRoutedSubmenu {
@@ -2270,18 +2290,22 @@ export const SETTING_KIND_HANDLERS: SettingKindHandlers = {
 			label: def.label,
 			description: def.description,
 			currentValue: currentValue ? "true" : "false",
+			labelForValue: value => (value === "true" ? "On" : "Off"),
 			values: ["true", "false"],
 			changed,
 		}),
 	},
 	enum: {
 		formatValue: (_self, _def, currentValue) => String(currentValue ?? ""),
+		labelForValue: (_self, _def) => value => humanizeValue(value),
 		createSubmenu: (self, def, currentValue, done) => self.createEnumSubmenu(def, currentValue, done),
 	},
 	submenu: {
 		formatValue: (self, def, currentValue) => self.getSubmenuCurrentValue(def.path, currentValue),
-		labelForValue: (self, def) => value =>
-			self.submenuOptions(def).find(option => option.value === value)?.label ?? value,
+		labelForValue: (self, def) => value => {
+			const option = self.submenuOptions(def).find(opt => opt.value === value);
+			return humanizeOptionLabel(option?.label, value);
+		},
 		createSubmenu: (self, def, currentValue, done) => self.createSubmenu(def, currentValue, done),
 	},
 	compactionThreshold: {
@@ -2291,7 +2315,11 @@ export const SETTING_KIND_HANDLERS: SettingKindHandlers = {
 	},
 	text: {
 		formatValue: (self, def, currentValue) => self.formatTextInputValue(def.path, currentValue),
-		labelForValue: () => value => (value.length === 0 ? theme.fg("dim", "(unset)") : value),
+		labelForValue: () => value => {
+			if (value.length === 0) return theme.fg("dim", "(unset)");
+			if (value === "default") return "Default";
+			return value;
+		},
 		createSubmenu: (self, def, currentValue, done) => self.createTextInput(def, currentValue, done),
 	},
 	providerLimits: {
@@ -2336,16 +2364,17 @@ export const SETTING_KIND_HANDLERS: SettingKindHandlers = {
 				(source === "config-file" || source === "runtime") &&
 				typeof active === "string" &&
 				active.trim() !== currentValue;
-			if (overridden) self.expandId(def.path);
+			const effectiveModel = typeof active === "string" && active.trim().length > 0 ? active : currentValue;
+			const effectiveFormatted = self.formatModelSelectorValue(effectiveModel);
+			const currentFormatted = self.formatModelSelectorValue(currentValue);
+			const description = overridden
+				? `${def.description} Active model ${effectiveFormatted} comes from ${SETTING_SOURCE_LABELS[source]}; this row changes the saved profile default (${currentFormatted}).`
+				: def.description;
 			return {
 				id: def.path,
-				label: overridden ? `${def.label} · ${source}` : def.label,
-				description: overridden
-					? `${def.description} Active ${self.formatModelSelectorValue(active)} comes from ${SETTING_SOURCE_LABELS[source]}; this row changes the saved profile default.`
-					: def.description,
-				currentValue: overridden
-					? `${self.formatCompactModelSelectorValue(currentValue)} → ${self.formatCompactModelSelectorValue(active)}`
-					: self.formatModelSelectorValue(currentValue),
+				label: def.label,
+				description,
+				currentValue: effectiveFormatted,
 				submenu: (_cv, done) => self.createDefaultModelInput(done),
 				changed,
 			};
@@ -2545,7 +2574,13 @@ export class SettingsSelectorComponent implements Component {
 		if (this.#currentList?.hasOpenSubmenu()) return SETTINGS_SUBPANE_SHORTCUTS;
 		if (this.#sidebarFocused) return SETTINGS_SIDEBAR_SHORTCUTS;
 		if (this.#pluginComponent) return this.#pluginComponent.shortcuts();
-		if (this.#currentList?.getSelectedItem()?.readOnly) return SETTINGS_READ_ONLY_SHORTCUTS;
+		const selected = this.#currentList?.getSelectedItem();
+		const canChange =
+			selected !== undefined &&
+			!selected.readOnly &&
+			!selected.heading &&
+			(Boolean(selected.submenu) || (selected.values !== undefined && selected.values.length > 0));
+		if (!canChange) return SETTINGS_READ_ONLY_SHORTCUTS;
 		return SETTINGS_BROWSE_SHORTCUTS;
 	}
 
@@ -2603,6 +2638,10 @@ export class SettingsSelectorComponent implements Component {
 		this.#viewportTooSmall = false;
 
 		const contentWidth = dims.contentWidth;
+		const list = this.#searchList ?? this.#currentList;
+		const selectedItem = !this.#sidebarFocused ? list?.getSelectedItem() : undefined;
+		const selectedDescription = selectedItem && !selectedItem.heading ? selectedItem.description : undefined;
+		const tipCandidates = selectedDescription ? [truncateToWidth(selectedDescription, contentWidth)] : SETTINGS_TIPS;
 		const settingsShortcuts = this.#settingsShortcuts();
 		const maxBodyRows = planModalChrome({
 			sizing,
@@ -2610,7 +2649,7 @@ export class SettingsSelectorComponent implements Component {
 			contentWidth,
 			shortcuts: settingsShortcuts,
 			hoveredShortcutId: this.#hoveredShortcutId,
-			tipCandidates: SETTINGS_TIPS,
+			tipCandidates,
 			hasSearch: true,
 		}).maxBodyRows;
 		if (maxBodyRows < 1) return this.#renderTooSmall(width, termHeight);
@@ -2633,7 +2672,6 @@ export class SettingsSelectorComponent implements Component {
 
 		const estimatedBody = maxBodyRows;
 		const previewLines = estimatedBody >= 8 ? requestedPreviewLines : [];
-		const list = this.#searchList ?? this.#currentList;
 		let listLines: readonly string[] = [];
 		if (list) {
 			list.setMaxVisible(Math.max(1, estimatedBody - previewLines.length));
@@ -2669,7 +2707,7 @@ export class SettingsSelectorComponent implements Component {
 			areaHeight: termHeight,
 			body,
 			searchLine: this.#searchChromeLine(contentWidth),
-			tipCandidates: SETTINGS_TIPS,
+			tipCandidates,
 			shortcuts: settingsShortcuts,
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,
@@ -3027,7 +3065,7 @@ export class SettingsSelectorComponent implements Component {
 		currentValue: string,
 		done: (value?: string) => void,
 	): Container {
-		const options: SelectItem[] = def.values.map(value => ({ value, label: value }));
+		const options: SelectItem[] = def.values.map(value => ({ value, label: humanizeValue(value) }));
 		return new SelectSubmenu(
 			def.label,
 			def.description,
@@ -3161,7 +3199,7 @@ export class SettingsSelectorComponent implements Component {
 		const selectors =
 			typeof value === "string" || Array.isArray(value) ? normalizeModelPatternList(value as string | string[]) : [];
 		const primary = selectors[0];
-		if (!primary) return "inherit";
+		if (!primary) return "Inherit";
 		return formatModelSummaryWithFallbacks(primary, selectors.length - 1);
 	}
 
@@ -3174,7 +3212,7 @@ export class SettingsSelectorComponent implements Component {
 	formatModelRolesValue(): string {
 		const roles = settings.getModelRoles();
 		const assigned = SELECTABLE_MODEL_ROLE_IDS.filter(role => roles[role]?.trim()).length;
-		return assigned === 0 ? "all inherit" : `${assigned} assigned`;
+		return assigned === 0 ? "All inherit" : `${assigned} assigned`;
 	}
 
 	createModelSelectorInput(path: SettingPath, done: (value?: string) => void): Container {
@@ -3337,9 +3375,9 @@ export class SettingsSelectorComponent implements Component {
 			: 0;
 		const experimentSuffix = experiments === 0 ? "" : `, ${experiments} experimental on`;
 		if (settings.get("ttsr.builtinRules") !== true) {
-			return (off === 0 ? "built-ins off" : `built-ins off, ${off} more off`) + experimentSuffix;
+			return (off === 0 ? "Built-ins off" : `Built-ins off, ${off} more off`) + experimentSuffix;
 		}
-		return (off === 0 ? "all on" : `${off} off`) + experimentSuffix;
+		return (off === 0 ? "All on" : `${off} off`) + experimentSuffix;
 	}
 
 	createRulesInput(done: (value?: string) => void): Container {
@@ -3439,6 +3477,11 @@ export class SettingsSelectorComponent implements Component {
 
 	formatTextInputValue(path: SettingPath, value: unknown): string {
 		if (path === "providers.maxInFlightRequests") return this.formatProviderLimitsValue(value);
+		if (path === "tools.approval") {
+			if (!value || typeof value !== "object" || Array.isArray(value)) return "None";
+			const count = Object.keys(value as Record<string, unknown>).length;
+			return count === 0 ? "None" : `${count} ${count === 1 ? "tool" : "tools"}`;
+		}
 		return this.#formatTextInputEditValue(path, value);
 	}
 

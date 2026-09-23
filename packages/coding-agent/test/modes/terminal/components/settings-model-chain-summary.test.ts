@@ -89,6 +89,6 @@ describe("settings model-chain summaries", () => {
 		await Settings.instance.set("compaction.model", []);
 		const component = createSelector();
 
-		expect(rowText(component, "model", "Compaction Model")).toContain("inherit");
+		expect(rowText(component, "model", "Compaction Model")).toContain("Inherit");
 	});
 });

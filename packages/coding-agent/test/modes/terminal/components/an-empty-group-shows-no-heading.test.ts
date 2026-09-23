@@ -178,19 +178,25 @@ describe("a group with every row hidden", () => {
 });
 
 /**
- * The RESULTS of a global settings search, with the search bar itself removed.
+ * The RESULTS of a global settings search: the rows between the search bar's divider and the
+ * footer's divider.
  *
- * The bar echoes the query, so a frame that contains the label proves nothing while
- * the label IS the query: every assertion below would have been trivially true.
+ * The bar echoes the query, so a frame that contains the label proves nothing while the label IS
+ * the query. The footer tip prints the selected row's description, and a master toggle's
+ * description may name the knobs it reveals ("switch to Prewalk Cheap Model"), which is prose
+ * about a hidden row, not the row. Both sit outside the two dividers.
  */
 function searchResults(query: string): string {
 	const comp = createSelector();
 	for (const ch of query) comp.handleInput(ch);
-	return comp
-		.render(120)
-		.map(line => stripVTControlCharacters(line))
-		.filter(line => !line.includes("⌕"))
-		.join("\n");
+	const lines = comp.render(120).map(line => stripVTControlCharacters(line));
+	const dividers = lines.flatMap((line, index) => (line.trimStart().startsWith("├") ? [index] : []));
+	const first = dividers[0];
+	const last = dividers.at(-1);
+	if (first === undefined || last === undefined || first === last) {
+		throw new Error(`settings frame has no search and footer dividers:\n${lines.join("\n")}`);
+	}
+	return lines.slice(first + 1, last).join("\n");
 }
 
 describe("a knob its feature hides", () => {

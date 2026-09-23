@@ -12,13 +12,13 @@
  * top. This is not a full-screen TUI conversion.
  */
 import { TERMINAL } from "@veyyon/tui";
-import type { Keybinding } from "@veyyon/utils/keybindings";
+import { getKeybindings, type Keybinding } from "@veyyon/utils/keybindings";
 import { clamp, clampLow } from "@veyyon/utils/math";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { transitionsEnabled } from "../../../../theme/shimmer";
 import { theme, visibleGroundHex } from "../../../../theme/theme";
-import { actionKeyHint } from "../../utils/key-hint";
+import { keyHint } from "../../utils/key-hint";
 import { emberTick } from "../composer/composer-chrome";
 import { bottomBorder, divider, fit, row, topBorder } from "./overlay-box";
 
@@ -362,7 +362,14 @@ export interface ShortcutLayoutRow {
 	chips: { id?: string; clickable: boolean; offset: number; width: number }[];
 }
 
-/** Chip labels with live keybindings resolved. A chip whose every action is unbound disappears. */
+/**
+ * Chip labels with live keybindings resolved. A chip whose every action is unbound disappears.
+ *
+ * Each action contributes its FIRST bound key only. `tui.select.cancel` is bound to both escape
+ * and ctrl+c, and printing both made every list footer read `esc/ctrl+c close` beside cards whose
+ * hand-written footers say `esc close`. The first key is the one a remap puts first, so a user who
+ * rebinds cancel still sees the key they chose.
+ */
 function resolveShortcutLabels(shortcuts: readonly ModalShortcut[]): ModalShortcut[] {
 	const resolved: ModalShortcut[] = [];
 	for (const shortcut of shortcuts) {
@@ -370,7 +377,9 @@ function resolveShortcutLabels(shortcuts: readonly ModalShortcut[]): ModalShortc
 			resolved.push(shortcut);
 			continue;
 		}
-		const keys = shortcut.keybindings.map(actionKeyHint).filter(Boolean);
+		const keys = shortcut.keybindings
+			.map(action => keyHint(getKeybindings().getKeys(action).slice(0, 1)))
+			.filter(Boolean);
 		if (keys.length === 0) continue;
 		resolved.push({ ...shortcut, label: `${keys.join("/")} ${shortcut.label}` });
 	}

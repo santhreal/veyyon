@@ -129,7 +129,9 @@ function buildLegendLines(breakdown: ContextBreakdown, theme: typeof Theme): str
 	const windowLabel = formatNumber(contextWindow).toLowerCase();
 
 	lines.push(theme.bold(`${modelName}`) + theme.fg("dim", ` (${windowLabel} context)`));
-	lines.push(theme.fg("muted", `${modelId}[${windowLabel}]`));
+	if (model?.id && model.name && model.id !== model.name) {
+		lines.push(theme.fg("muted", modelId));
+	}
 	lines.push(
 		`${theme.bold(formatNumber(usedTokens))}${theme.fg("dim", `/${windowLabel} tokens`)}` +
 			theme.fg("muted", ` (${percentString(usedTokens, contextWindow)})`),
