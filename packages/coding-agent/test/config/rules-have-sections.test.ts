@@ -465,7 +465,8 @@ describe("the rule list is a section index you drill into", () => {
 		// The whole card, not one located line: the row's own label is `Rules`, which
 		// is also the sidebar entry and the card title, so a line search for it is
 		// three ways to pick the wrong line.
-		expect(frame(component)).toContain("all on, 1 experimental on");
+		// Settings values print in sentence case, so the summary opens `All on`.
+		expect(frame(component)).toContain("All on, 1 experimental on");
 	});
 
 	/**
