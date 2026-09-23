@@ -818,9 +818,10 @@ and draws no control, so a start cannot be pressed twice.
 While sharing, the card draws four links: the one another veyyon opens, the same
 room in a browser, and both of those again read-only. A copy control sits beside
 each, with a control that asks the host for the share as it stands and a control
-that stops the share. A read-only share mints only the read-only pair. Copying
-is the window's own clipboard and reaches the host for nothing. Stopping ends
-the share for every guest on it.
+that stops the share. An address wider than the card is shortened where it is
+drawn, and the copy control hands over the whole one. A read-only share mints
+only the read-only pair. Copying is the window's own clipboard and reaches the
+host for nothing. Stopping ends the share for every guest on it.
 
 Each party on the relay is a row, the session's own included, stating the name
 that party joined under and whether it may prompt: a guest that arrived by the
