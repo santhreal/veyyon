@@ -43,8 +43,8 @@
 # queue rail states an elapsed time that ticks between any two shots:
 #
 #   * The body a started share changed, against the body the card drew with
-#     nothing shared. A link, its read-only twin and a participant row ink far
-#     more than the two controls they replace.
+#     nothing shared. Four links, their copy controls and a participant row ink
+#     far more than the two controls they replace.
 #   * The body a guest changed, against the body drawn while hosting alone.
 #   * What the host holds, in its own vocabulary over a second socket, so a
 #     body that drew no link is the window's doing rather than a share that
@@ -188,7 +188,7 @@ fi
 echo "scene: the share card is ${CARD_W}x${CARD_H} at +${CARD_LEFT}+${CARD_TOP}," \
 	"its body ${BODY_W}x${BODY_H} at +${BODY_LEFT}+${BODY_TOP}" >&2
 
-# How much of the card's body a running share may draw in. Two links, their
+# How much of the card's body a running share may draw in. Four links, their
 # copy controls and a participant row ink thousands of pixels; a card that only
 # swapped a word moves a few hundred.
 HOSTING_PX=1200

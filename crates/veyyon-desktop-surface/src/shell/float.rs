@@ -191,6 +191,27 @@ pub(super) fn overlay_layer(
 				))
 				.into_any_element()
 		},
+		Overlay::Share(state) => {
+			let width = surface
+				.share
+				.card_width_px
+				.min(f32::from(window.viewport_size().width - margin * 2.0));
+			let height = surface.share.card_height_px.min(max_available_height);
+			div()
+				.w(px(width))
+				.h(px(height))
+				.bg(tokens.color(veyyon_desktop_kit::ColorRole::Float))
+				.child(crate::share::share_surface(
+					state,
+					back,
+					Some(&dest_focus),
+					&view.state.controls,
+					&surface.share,
+					tokens,
+					cx,
+				))
+				.into_any_element()
+		},
 	};
 	let content = div()
 		.opacity(frame.opacity)

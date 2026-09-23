@@ -4,6 +4,7 @@
 //! files, content search, and project directory browsing.
 
 pub mod commands;
+pub mod composer_commands;
 pub mod host_commands;
 mod interaction;
 pub mod matcher;

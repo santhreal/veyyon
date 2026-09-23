@@ -220,8 +220,17 @@ pub fn export(format: &str) -> SnapshotSection {
 
 pub fn themes(current: &str, dark: bool) -> SnapshotSection {
 	SnapshotSection::Themes(ThemesView {
-		themes:  vec![ThemeView { id: current.into(), name: current.into(), dark }],
-		current: current.into(),
+		themes: vec![ThemeView { id: current.into(), name: current.into(), dark }],
+		dark:   if dark {
+			current.into()
+		} else {
+			"titanium".to_owned()
+		},
+		light:  if dark {
+			"light".to_owned()
+		} else {
+			current.into()
+		},
 	})
 }
 
@@ -348,5 +357,32 @@ pub fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 		SnapshotSectionKind::Commands => {
 			[command("compact", CommandSource::Builtin), command("review", CommandSource::Custom)]
 		},
+		SnapshotSectionKind::Share => [
+			SnapshotSection::Share(veyyon_desktop_model::ShareView {
+				state: "off".into(),
+				relay_url: Some("https://relay.example.com".into()),
+				link: None,
+				web_link: None,
+				view_link: None,
+				web_view_link: None,
+				participants: Vec::new(),
+				error: None,
+			}),
+			SnapshotSection::Share(veyyon_desktop_model::ShareView {
+				state: "hosting".into(),
+				relay_url: Some("https://relay.example.com".into()),
+				link: Some("https://relay.example.com/r1".into()),
+				web_link: Some("https://relay.example.com/web/r1".into()),
+				view_link: Some("https://relay.example.com/r1?ro=1".into()),
+				web_view_link: Some("https://relay.example.com/web/r1?ro=1".into()),
+				participants: vec![veyyon_desktop_model::ShareParticipantView {
+					id: 0,
+					name: "HostNode".into(),
+					can_write: true,
+					is_host: true,
+				}],
+				error: None,
+			}),
+		],
 	})
 }

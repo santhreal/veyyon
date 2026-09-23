@@ -127,11 +127,12 @@ fn host_theme_withdrawal_clears_selection_styling_and_blocks_activation() {
 						panic!("themes open")
 					};
 					state.themes = Some(ThemesView {
-						themes:  vec![
+						themes: vec![
 							ThemeView { id: "first".into(), name: "Host first".into(), dark: true },
 							ThemeView { id: "second".into(), name: "Host second".into(), dark: false },
 						],
-						current: "second".into(),
+						dark:   "first".into(),
+						light:  "second".into(),
 					});
 					view.picker_pointer(index + 1, false, cx);
 					view.drain_intents();
@@ -161,7 +162,10 @@ fn host_theme_withdrawal_clears_selection_styling_and_blocks_activation() {
 						.controls
 						.set_availability(SurfaceId::ThemeSelector, Availability::Enabled);
 					view.picker_pointer(index, true, cx);
-					assert_eq!(view.drain_intents(), vec![Intent::SelectTheme("first".into())]);
+					assert_eq!(view.drain_intents(), vec![Intent::SelectTheme {
+						id:   "first".into(),
+						dark: true,
+					}]);
 				})
 				.unwrap();
 		});

@@ -89,11 +89,14 @@ pub enum HostActionKind {
 	GetContextBreakdown,
 	SetGoal,
 	ControlGoal,
+	StartShare,
+	StopShare,
+	RefreshShare,
 }
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 82] = [
+	pub const ALL: [Self; 85] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -176,6 +179,9 @@ impl HostActionKind {
 		Self::GetContextBreakdown,
 		Self::SetGoal,
 		Self::ControlGoal,
+		Self::StartShare,
+		Self::StopShare,
+		Self::RefreshShare,
 	];
 
 	/// Returns wire name identifier.
@@ -264,6 +270,9 @@ impl HostActionKind {
 			Self::GetContextBreakdown => "GetContextBreakdown",
 			Self::SetGoal => "SetGoal",
 			Self::ControlGoal => "ControlGoal",
+			Self::StartShare => "StartShare",
+			Self::StopShare => "StopShare",
+			Self::RefreshShare => "RefreshShare",
 		}
 	}
 }
@@ -355,6 +364,9 @@ impl HostAction {
 			Self::GetContextBreakdown { .. } => HostActionKind::GetContextBreakdown,
 			Self::SetGoal { .. } => HostActionKind::SetGoal,
 			Self::ControlGoal { .. } => HostActionKind::ControlGoal,
+			Self::StartShare { .. } => HostActionKind::StartShare,
+			Self::StopShare => HostActionKind::StopShare,
+			Self::RefreshShare => HostActionKind::RefreshShare,
 		}
 	}
 }

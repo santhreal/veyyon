@@ -30,7 +30,7 @@ use veyyon_desktop::{SessionIndex, project};
 use veyyon_desktop_model::{Capability, CapabilityStatus, ConnectionState, QueuePartition, Store};
 use veyyon_desktop_surface::{
 	Overlay, PaletteItemKind, PaletteMode, PaletteState, ShellState,
-	palette::commands::ComposerCommand,
+	palette::composer_commands::ComposerCommand,
 };
 
 /// An attached host carrying everything, so one withdrawn capability is the

@@ -18,6 +18,8 @@ pub enum Overlay {
 	History(Box<crate::history::HistoryState>),
 	/// Agent dashboard overlay for live roster and comms.
 	Agents(Box<crate::agents::AgentsState>),
+	/// Session sharing overlay for relay link and participants.
+	Share(Box<crate::share::ShareState>),
 }
 
 impl Overlay {
@@ -27,6 +29,7 @@ impl Overlay {
 			Self::Palette(state) => state.route(),
 			Self::Settings(state) => state.route,
 			Self::Agents(state) => state.route,
+			Self::Share(state) => state.route,
 			Self::History(_) => None,
 		}
 	}
@@ -48,7 +51,7 @@ impl Overlay {
 	pub const fn as_palette(&self) -> Option<&PaletteState> {
 		match self {
 			Self::Palette(state) => Some(state),
-			Self::Settings(_) | Self::History(_) | Self::Agents(_) => None,
+			Self::Settings(_) | Self::History(_) | Self::Agents(_) | Self::Share(_) => None,
 		}
 	}
 
@@ -57,7 +60,7 @@ impl Overlay {
 	pub const fn as_palette_mut(&mut self) -> Option<&mut PaletteState> {
 		match self {
 			Self::Palette(state) => Some(state),
-			Self::Settings(_) | Self::History(_) | Self::Agents(_) => None,
+			Self::Settings(_) | Self::History(_) | Self::Agents(_) | Self::Share(_) => None,
 		}
 	}
 
@@ -66,7 +69,7 @@ impl Overlay {
 	pub const fn as_settings(&self) -> Option<&SettingsState> {
 		match self {
 			Self::Settings(state) => Some(state),
-			Self::Palette(_) | Self::History(_) | Self::Agents(_) => None,
+			Self::Palette(_) | Self::History(_) | Self::Agents(_) | Self::Share(_) => None,
 		}
 	}
 
@@ -75,7 +78,7 @@ impl Overlay {
 	pub const fn as_settings_mut(&mut self) -> Option<&mut SettingsState> {
 		match self {
 			Self::Settings(state) => Some(state),
-			Self::Palette(_) | Self::History(_) | Self::Agents(_) => None,
+			Self::Palette(_) | Self::History(_) | Self::Agents(_) | Self::Share(_) => None,
 		}
 	}
 
@@ -84,7 +87,7 @@ impl Overlay {
 	pub const fn as_agents(&self) -> Option<&crate::agents::AgentsState> {
 		match self {
 			Self::Agents(state) => Some(state),
-			Self::Palette(_) | Self::Settings(_) | Self::History(_) => None,
+			Self::Palette(_) | Self::Settings(_) | Self::History(_) | Self::Share(_) => None,
 		}
 	}
 
@@ -93,7 +96,25 @@ impl Overlay {
 	pub const fn as_agents_mut(&mut self) -> Option<&mut crate::agents::AgentsState> {
 		match self {
 			Self::Agents(state) => Some(state),
-			Self::Palette(_) | Self::Settings(_) | Self::History(_) => None,
+			Self::Palette(_) | Self::Settings(_) | Self::History(_) | Self::Share(_) => None,
+		}
+	}
+
+	/// Returns a reference to the share state if active.
+	#[must_use]
+	pub const fn as_share(&self) -> Option<&crate::share::ShareState> {
+		match self {
+			Self::Share(state) => Some(state),
+			Self::Palette(_) | Self::Settings(_) | Self::History(_) | Self::Agents(_) => None,
+		}
+	}
+
+	/// Returns a mutable reference to the share state if active.
+	#[must_use]
+	pub const fn as_share_mut(&mut self) -> Option<&mut crate::share::ShareState> {
+		match self {
+			Self::Share(state) => Some(state),
+			Self::Palette(_) | Self::Settings(_) | Self::History(_) | Self::Agents(_) => None,
 		}
 	}
 }

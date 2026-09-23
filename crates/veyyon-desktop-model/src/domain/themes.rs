@@ -11,13 +11,19 @@ pub struct ThemeView {
 	pub dark: bool,
 }
 
-/// Available themes and currently active theme identifier.
+/// Installed themes, and the theme configured for each ground.
+///
+/// Two themes are configured at once, one per ground, which is the shape the
+/// settings hold. Which of them is drawn is the window's own ground, so the
+/// choice is made where that is known rather than stated here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ThemesView {
 	/// List of all installed themes.
-	pub themes:  Vec<ThemeView>,
-	/// Identifier of the currently active theme.
-	pub current: String,
+	pub themes: Vec<ThemeView>,
+	/// Identifier of the theme configured for a dark ground.
+	pub dark:   String,
+	/// Identifier of the theme configured for a light ground.
+	pub light:  String,
 }
 
 /// Keyboard shortcut binding configuration.

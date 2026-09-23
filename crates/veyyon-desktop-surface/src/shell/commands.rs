@@ -7,7 +7,7 @@ use crate::{
 	Intent, Overlay, PaletteState, ShellView,
 	composer::ThinkingLevel,
 	controls::availability_style,
-	palette::{PaletteItem, PaletteMode, commands::ComposerCommand},
+	palette::{PaletteItem, PaletteMode, composer_commands::ComposerCommand},
 };
 
 /// The draft past `prefix`, when the draft opens with that spelling in any

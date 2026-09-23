@@ -69,25 +69,27 @@ fn theme_selection_dispatches_and_reaches_host() {
 	let mut state = ShellState::default();
 	let mut settings = SettingsState::new(SettingsPage::Themes);
 	settings.themes = Some(ThemesView {
-		themes:  vec![
+		themes: vec![
 			ThemeView { id: "dark".to_string(), name: "Dark".to_string(), dark: true },
 			ThemeView { id: "light".to_string(), name: "Light".to_string(), dark: false },
 		],
-		current: "dark".to_string(),
+		dark:   "dark".to_string(),
+		light:  "light".to_string(),
 	});
 	state.overlay = Some(Overlay::Settings(Box::new(settings)));
 
-	let intent = Intent::SelectTheme("light".to_string());
+	let intent = Intent::SelectTheme { id: "solarized".to_string(), dark: false };
 	let mut intents = Intents::new();
 	intents.dispatch(intent, &mut state);
 
-	assert_eq!(
-		state
-			.overlay_settings()
-			.and_then(|s| s.themes.as_ref())
-			.map(|t| t.current.as_str()),
-		Some("light")
-	);
+	// A selection lands on the ground it was made for, and leaves the other
+	// ground as it was: the two are configured separately, and a light choice
+	// that rewrote the dark theme would change what a dark window draws.
+	let grounds = state
+		.overlay_settings()
+		.and_then(|s| s.themes.as_ref())
+		.map(|t| (t.dark.as_str(), t.light.as_str()));
+	assert_eq!(grounds, Some(("dark", "solarized")));
 	assert_eq!(intents.pending().len(), 1);
 }
 

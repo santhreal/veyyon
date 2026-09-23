@@ -23,6 +23,9 @@ pub fn navigate(state: &mut ShellState, route: SurfaceRoute) {
 	if let Overlay::Agents(agents) = &mut destination {
 		agents.route = Some(route);
 	}
+	if let Overlay::Share(share) = &mut destination {
+		share.route = Some(route);
+	}
 	// The command surface reached by a route lists what the host stated too,
 	// on the same terms as the one a keystroke opens.
 	if let Overlay::Palette(palette) = &mut destination

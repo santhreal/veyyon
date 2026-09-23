@@ -78,7 +78,7 @@ pub enum PaletteItemKind {
 	/// Action executable directly by the shell or host.
 	Command { intent: Box<Intent> },
 	/// Editor-local action exposed through command search.
-	Composer { command: super::commands::ComposerCommand },
+	Composer { command: super::composer_commands::ComposerCommand },
 	/// Session navigation target.
 	Session { id: u64 },
 	/// File lookup match in the workspace.

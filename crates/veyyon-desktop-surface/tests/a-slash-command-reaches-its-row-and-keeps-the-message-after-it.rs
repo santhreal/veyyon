@@ -37,10 +37,7 @@ use veyyon_desktop_surface::{
 	composer::TurnPhase,
 	fixture, install_tokens,
 	navigation::SurfaceRoute,
-	palette::{
-		PaletteItemKind,
-		commands::{ComposerCommand, command_items},
-	},
+	palette::{PaletteItemKind, commands::command_items, composer_commands::ComposerCommand},
 	settings::SettingsPage,
 };
 use veyyon_gpui::{App, AppContext, Entity, Window};

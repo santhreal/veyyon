@@ -158,7 +158,14 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 			keys:   vec!["ctrl-enter".to_string()],
 		}],
 		IntentDiscriminants::SpawnTask => vec![Intent::SpawnTask("review the diff".to_string())],
-		IntentDiscriminants::SelectTheme => vec![Intent::SelectTheme("dark".to_string())],
+		// Both grounds: a theme is configured per ground, so a sweep that saw
+		// one of them would grade half the pair.
+		IntentDiscriminants::SelectTheme => {
+			vec![Intent::SelectTheme { id: "dark".to_string(), dark: true }, Intent::SelectTheme {
+				id:   "light".to_string(),
+				dark: false,
+			}]
+		},
 		// Both arms of the preview: the pointer arriving on a row, and the
 		// pointer leaving every row.
 		IntentDiscriminants::PreviewAppearance => {
@@ -233,6 +240,11 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		IntentDiscriminants::ToggleGoalCard => vec![Intent::ToggleGoalCard],
 		IntentDiscriminants::PauseAgents => vec![Intent::PauseAgents],
 		IntentDiscriminants::ResumeAgents => vec![Intent::ResumeAgents],
+		IntentDiscriminants::StartShare => {
+			vec![Intent::StartShare { read_only: false }, Intent::StartShare { read_only: true }]
+		},
+		IntentDiscriminants::StopShare => vec![Intent::StopShare],
+		IntentDiscriminants::RefreshShare => vec![Intent::RefreshShare],
 		IntentDiscriminants::RenameSession => {
 			vec![Intent::RenameSession { session: 1, title: "Renamed Session".to_string() }]
 		},

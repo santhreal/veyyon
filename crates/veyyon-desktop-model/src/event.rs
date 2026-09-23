@@ -67,7 +67,7 @@ pub struct SessionHeaderView {
 	pub mode:           Option<String>,
 }
 
-/// Complete list of all 33 snapshot section names defined by the protocol.
+/// Complete list of all 34 snapshot section names defined by the protocol.
 pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Sessions",
 	"ActiveSession",
@@ -93,6 +93,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Mcp",
 	"Agents",
 	"AgentComms",
+	"Share",
 	"Usage",
 	"ContextBreakdown",
 	"Export",
@@ -112,7 +113,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
 #[strum_discriminants(name(SnapshotSectionKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
 #[strum_discriminants(
-	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 33 section variants."
+	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 34 section variants."
 )]
 pub enum SnapshotSection {
 	/// Session index metadata and deserialization failures.
@@ -169,6 +170,8 @@ pub enum SnapshotSection {
 	Agents(Vec<AgentView>),
 	/// Agent-to-agent IRC comms message stream.
 	AgentComms(Vec<AgentMessageView>),
+	/// Relay session sharing status and link bundle.
+	Share(crate::domain::ShareView),
 	/// Session resource and token usage totals.
 	Usage(UsageView),
 	/// Context window breakdown by category.
@@ -224,6 +227,7 @@ impl SnapshotSection {
 			Self::Mcp(..) => "Mcp",
 			Self::Agents(..) => "Agents",
 			Self::AgentComms(..) => "AgentComms",
+			Self::Share(..) => "Share",
 			Self::Usage(..) => "Usage",
 			Self::ContextBreakdown(..) => "ContextBreakdown",
 			Self::Export(..) => "Export",

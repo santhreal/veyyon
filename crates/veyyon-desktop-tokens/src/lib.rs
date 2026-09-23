@@ -25,6 +25,7 @@ pub mod loader_surface_primary;
 pub mod loader_surface_queue;
 pub mod loader_surface_secondary;
 pub mod loader_surface_settings;
+pub mod loader_surface_share;
 pub mod loader_surface_shell;
 pub mod loader_surface_transcript;
 pub mod loader_theme;
@@ -57,8 +58,8 @@ pub use schema::{
 pub use surface::{
 	AgentsSurfaceTokens, AttachedCardsSurfaceTokens, BreakpointConfig, BreakpointsSurfaceTokens,
 	ComposerSurfaceTokens, DrawerPlacement, PaletteSurfaceTokens, PanelsSurfaceTokens, QueueMode,
-	QueueSurfaceTokens, RightPanelMode, SettingsSurfaceTokens, ShellSurfaceTokens, SurfaceTokens,
-	TranscriptSurfaceTokens,
+	QueueSurfaceTokens, RightPanelMode, SettingsSurfaceTokens, ShareSurfaceTokens,
+	ShellSurfaceTokens, SurfaceTokens, TranscriptSurfaceTokens,
 };
 pub use watcher::{TokenReloadMessage, TokenWatcher};
 

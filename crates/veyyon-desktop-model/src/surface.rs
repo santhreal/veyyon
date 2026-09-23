@@ -104,6 +104,12 @@ pub enum SurfaceId {
 	OutputClearButton,
 	UsageRefreshButton,
 	ContextBreakdownRefreshButton,
+
+	// Session Sharing (§5.14)
+	ShareStartButton,
+	ShareStartReadOnlyButton,
+	ShareStopButton,
+	ShareRefreshButton,
 }
 
 impl SurfaceId {
@@ -198,7 +204,11 @@ impl SurfaceId {
 			| Self::DiagnosticRetrySourceButton(_)
 			| Self::OutputClearButton
 			| Self::UsageRefreshButton
-			| Self::ContextBreakdownRefreshButton => false,
+			| Self::ContextBreakdownRefreshButton
+			| Self::ShareStartButton
+			| Self::ShareStartReadOnlyButton
+			| Self::ShareStopButton
+			| Self::ShareRefreshButton => false,
 		}
 	}
 
@@ -294,7 +304,11 @@ impl SurfaceId {
 			| Self::RightPanelChangeScopeSelector(_)
 			| Self::PaletteInput
 			| Self::PaletteItem(_)
-			| Self::OutputClearButton => false,
+			| Self::OutputClearButton
+			| Self::ShareStartButton
+			| Self::ShareStartReadOnlyButton
+			| Self::ShareStopButton
+			| Self::ShareRefreshButton => false,
 		}
 	}
 }

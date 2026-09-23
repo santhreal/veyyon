@@ -370,4 +370,11 @@ pub enum HostAction {
 		session: SessionId,
 		op:      GoalControl,
 	},
+
+	// Share family (3 actions)
+	StartShare {
+		read_only: bool,
+	},
+	StopShare,
+	RefreshShare,
 }

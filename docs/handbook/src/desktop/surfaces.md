@@ -815,17 +815,24 @@ starts a share anybody on the link can prompt through, the other starts one
 that is read-only. While a share is starting or stopping the card states that
 and draws no control, so a start cannot be pressed twice.
 
-While sharing, the card draws the link, the read-only link, a copy control
-beside each, and a control that stops the share. Copying is the window's own
-clipboard and reaches the host for nothing. Stopping ends the share for every
-guest on it.
+While sharing, the card draws four links: the one another veyyon opens, the same
+room in a browser, and both of those again read-only. A copy control sits beside
+each, with a control that asks the host for the share as it stands and a control
+that stops the share. A read-only share mints only the read-only pair. Copying
+is the window's own clipboard and reaches the host for nothing. Stopping ends
+the share for every guest on it.
 
 Each party on the relay is a row, the session's own included, stating the name
 that party joined under and whether it may prompt: a guest that arrived by the
 read-only link reads as a viewer. Rows arrive and leave while the card is open.
+A room nobody has joined states that instead of drawing an empty column.
 
 A share that fails to start states why on the card and leaves the session
-unshared.
+unshared, which leaves both start controls pressable again.
+
+Every control on the card is drawn at the availability the host set for it: a
+host that does not offer sharing leaves them unpressable, and a control whose
+request is in flight is drawn as such rather than taking a second press.
 
 ## Terminal and process output
 

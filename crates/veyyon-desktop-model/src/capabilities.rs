@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-/// Enumeration of all thirty protocol capabilities with explicit discriminants.
+/// Enumeration of all thirty-two protocol capabilities with explicit
+/// discriminants.
 #[derive(
 	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, strum::EnumIter,
 )]
@@ -37,11 +38,12 @@ pub enum Capability {
 	ContextBreakdown     = 28,
 	Lifecycle            = 29,
 	Goals                = 30,
+	Share                = 31,
 }
 
 impl Capability {
 	/// Complete list of all capability variants for runtime sweeps.
-	pub const ALL: [Self; 31] = [
+	pub const ALL: [Self; 32] = [
 		Self::Sessions,
 		Self::SessionDeletion,
 		Self::SessionTreeNavigation,
@@ -73,6 +75,7 @@ impl Capability {
 		Self::ContextBreakdown,
 		Self::Lifecycle,
 		Self::Goals,
+		Self::Share,
 	];
 
 	/// Returns the stable string identifier matching the wire protocol.
@@ -110,6 +113,7 @@ impl Capability {
 			Self::ContextBreakdown => "ContextBreakdown",
 			Self::Lifecycle => "Lifecycle",
 			Self::Goals => "Goals",
+			Self::Share => "Share",
 		}
 	}
 }
@@ -128,7 +132,7 @@ pub enum CapabilityStatus {
 /// Fixed array map holding status values for every protocol capability.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapabilityMap {
-	pub statuses: [CapabilityStatus; 31],
+	pub statuses: [CapabilityStatus; 32],
 }
 
 impl Default for CapabilityMap {
@@ -144,6 +148,7 @@ impl CapabilityMap {
 	pub const fn new() -> Self {
 		Self {
 			statuses: [
+				CapabilityStatus::UnknownUntilAttached,
 				CapabilityStatus::UnknownUntilAttached,
 				CapabilityStatus::UnknownUntilAttached,
 				CapabilityStatus::UnknownUntilAttached,

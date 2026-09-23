@@ -208,6 +208,16 @@ pub struct AgentsSurfaceTokens {
 	pub padding:        f32,
 }
 
+/// Resolved share card surface layout tokens.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ShareSurfaceTokens {
+	pub card_width_px:  f32,
+	pub card_height_px: f32,
+	pub row_height_px:  f32,
+	pub row_gap:        f32,
+	pub padding:        f32,
+}
+
 /// How the right panel occupies the window at a given width (§5.7).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum RightPanelMode {
@@ -339,6 +349,7 @@ pub struct SurfaceTokens {
 	pub palette:        PaletteSurfaceTokens,
 	pub settings:       SettingsSurfaceTokens,
 	pub agents:         AgentsSurfaceTokens,
+	pub share:          ShareSurfaceTokens,
 	pub breakpoints:    BreakpointsSurfaceTokens,
 	pub shell:          ShellSurfaceTokens,
 }

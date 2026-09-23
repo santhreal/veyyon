@@ -131,7 +131,8 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		// The agents listing is the host's: a spawned task appears in it when
 		// the host answers with it, never on the request that asked for it.
 		Intent::SpawnTask(_) => {},
-		Intent::SelectTheme(theme) => settings::select_theme(state, theme),
+		Intent::StartShare { .. } | Intent::StopShare | Intent::RefreshShare => {},
+		Intent::SelectTheme { id, dark } => settings::select_theme(state, id, *dark),
 		// The pointer resting on an appearance row draws that appearance, and
 		// leaving the row draws the choice again. Only the name is recorded
 		// here: the window re-installs the tokens when it sees the state

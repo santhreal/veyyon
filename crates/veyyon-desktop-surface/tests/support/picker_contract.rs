@@ -8,8 +8,8 @@ use veyyon_desktop_surface::{
 	Intent, Overlay, PaletteState, ShellView,
 	navigation::SurfaceRoute,
 	palette::{
-		PaletteItem, PaletteItemKind, PaletteMode,
-		commands::{ComposerCommand, command_items},
+		PaletteItem, PaletteItemKind, PaletteMode, commands::command_items,
+		composer_commands::ComposerCommand,
 	},
 	settings::SettingsPage,
 };
@@ -81,9 +81,10 @@ pub fn sources() -> Vec<Source> {
 							routes.push(route);
 						}
 					},
-					// A page and the agent dashboard are surfaces of controls
-					// rather than list selectors, so neither is a picker.
-					SurfaceRoute::Page(_) | SurfaceRoute::Agents => {},
+					// A page, the agent dashboard and the share card are
+					// surfaces of controls rather than list selectors, so none
+					// of them is a picker.
+					SurfaceRoute::Page(_) | SurfaceRoute::Agents | SurfaceRoute::Share => {},
 				},
 				Intent::FindSessions(_) => sources.push(Source::History),
 				_ => {},
@@ -210,7 +211,7 @@ pub fn selection(overlay: &Overlay) -> usize {
 			state.selected_row.unwrap_or(0)
 		},
 		Overlay::History(_) => panic!("read-only transcript preview is not a picker"),
-		Overlay::Agents(_) => panic!("the agent dashboard is a card of controls, not a picker"),
+		Overlay::Agents(_) | Overlay::Share(_) => panic!("neither is a picker"),
 	}
 }
 
@@ -223,7 +224,9 @@ pub fn navigate(session: &mut HeadlessSession<'_, ShellView>, source: Source) {
 				.unwrap()
 				.themes()
 				.len(),
-			Overlay::History(_) | Overlay::Agents(_) => panic!("neither is a picker"),
+			Overlay::History(_) | Overlay::Agents(_) | Overlay::Share(_) => {
+				panic!("neither is a picker")
+			},
 		})
 		.unwrap();
 	assert!(count > 1, "{source:?}: keyboard boundary needs multiple rows");
@@ -306,7 +309,7 @@ pub fn confirmation(view: &ShellView, cx: &Context<ShellView>) -> (String, Inten
 			let theme = &library.themes()[state.selected_row.unwrap_or(0)];
 			(theme.name.clone(), Intent::SelectAppearance(theme.appearance.clone()))
 		},
-		Overlay::History(_) | Overlay::Agents(_) => panic!("neither is a picker"),
+		Overlay::History(_) | Overlay::Agents(_) | Overlay::Share(_) => panic!("neither is a picker"),
 	}
 }
 

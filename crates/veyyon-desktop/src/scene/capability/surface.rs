@@ -2,25 +2,22 @@
 
 use veyyon_desktop_model::{
 	AgentView, ApprovalInteraction, Capability, ChangeScope, ChangesView, CommandSource,
-	CommandView, ContextBreakdownView, ContextCategory, EntryId, FileTreeView, InputModality,
-	InteractionId, KeybindingView, McpServerStatus, McpServerView, MessageRole, ModelRef, ModelView,
-	ModelsView, PendingDecisions, PlanInteraction, ProcessView, ProviderView, QuestionInteraction,
-	QueueMode, QueuePartition, SessionId, SettingEntry, SettingKind, StreamingMessageState,
-	TerminalStatus, TerminalView, ThemeView, ThemesView, TranscriptEntry, UsageTotals,
+	CommandView, EntryId, FileTreeView, InputModality, InteractionId, MessageRole, ModelRef,
+	ModelView, ModelsView, PendingDecisions, PlanInteraction, ProcessView, QuestionInteraction,
+	QueueMode, QueuePartition, SessionId, ShareView, StreamingMessageState, TerminalStatus,
+	TerminalView, TranscriptEntry,
 };
-use veyyon_desktop_scene::FixtureText;
 use veyyon_desktop_surface::{
-	Overlay, PaletteState, PanelTab, SettingsPage, navigation::SurfaceRoute,
+	Overlay, PaletteState, PanelTab, SettingsPage, navigation::SurfaceRoute, share::ShareState,
 };
 
+use super::sheet::seed_sheet_page;
 use crate::scene::seed::{SCENE_CLOCK_MS, Seed};
 
 /// Seeds the reachable desktop surface for one capability.
 pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability: Capability) {
 	match capability {
-		Capability::Lifecycle => {
-			seed.exchange(session, Seed::prose());
-		},
+		Capability::Lifecycle => seed.exchange(session, Seed::prose()),
 		Capability::Sessions | Capability::Transcript => {
 			seed.exchange(session, Seed::prose());
 			seed.state.keymap.queue_collapsed = false;
@@ -182,117 +179,16 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 					revision:     1,
 				});
 		},
-		Capability::Settings => {
-			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::General).overlay());
-			let mut s = veyyon_desktop_model::SettingsView::new();
-			s.insert("ui.compact".to_string(), SettingEntry {
-				value:       serde_json::Value::Bool(true),
-				default:     serde_json::Value::Bool(true),
-				source:      "default".to_string(),
-				kind:        SettingKind::Boolean,
-				label:       Some("Compact".to_string()),
-				description: Some(FixtureText::MESSAGE_TYPICAL.to_string()),
-				tab:         Some("General".to_string()),
-				group:       None,
-				values:      Vec::new(),
-				options:     Vec::new(),
-				min:         None,
-				max:         None,
-				global:      false,
-				advanced:    false,
-				hidden:      false,
-			});
-			seed.store.domains.settings = Some(s);
-		},
-		Capability::Themes => {
-			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Themes).overlay());
-			seed.store.domains.themes = Some(ThemesView {
-				current: "dark".to_string(),
-				themes:  vec![ThemeView {
-					id:   "dark".to_string(),
-					name: "Dark".to_string(),
-					dark: true,
-				}],
-			});
-		},
-		Capability::Keybindings => {
-			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Keybindings).overlay());
-			seed.store.domains.keybindings = vec![KeybindingView {
-				action: "NewSession".to_string(),
-				keys:   vec!["Cmd+N".to_string()],
-				source: "default".to_string(),
-			}];
-		},
-		Capability::Diagnostics => {
-			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Diagnostics).overlay());
-			seed.store.domains.diagnostics =
-				Some(serde_json::json!({ "sources": [{ "name": "lsp", "status": "ok" }] }));
-		},
-		Capability::Usage => {
-			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Usage).overlay());
-			seed
-				.store
-				.domains
-				.usage
-				.insert(session.clone(), UsageTotals {
-					input_tokens:         15_000,
-					output_tokens:        2_500,
-					cache_read_tokens:    0,
-					cache_write_tokens:   0,
-					orchestration_tokens: 0,
-					premium_requests:     0,
-					cost_microusd:        Some(15_000),
-				});
-		},
-		Capability::ContextBreakdown => {
-			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::ContextBreakdown).overlay());
-			seed
-				.store
-				.domains
-				.context
-				.insert(session.clone(), ContextBreakdownView {
-					session:      session.clone(),
-					total_tokens: 82_400,
-					limit_tokens: Some(200_000),
-					categories:   vec![ContextCategory { name: "Msgs".to_string(), tokens: 82_400 }],
-				});
-		},
-		Capability::Mcp => {
-			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Mcp).overlay());
-			seed.store.domains.mcp = vec![McpServerView {
-				name:    "filesystem".to_string(),
-				enabled: true,
-				status:  McpServerStatus::Connected,
-				tools:   vec!["read".to_string()],
-			}];
-		},
-		Capability::Providers | Capability::Authentication => {
-			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Providers).overlay());
-			seed.store.domains.providers = vec![ProviderView {
-				id:            "anthropic".to_string(),
-				name:          "Anthropic".to_string(),
-				authenticated: false,
-				oauth:         false,
-				api_key:       true,
-			}];
-		},
-		Capability::Extensions => {
-			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Extensions).overlay());
-			seed.store.domains.agents = vec![AgentView {
-				id:           "cr".to_string(),
-				call_sign:    "Kestrel".to_string(),
-				display_name: "CR".to_string(),
-				kind:         "sub".to_string(),
-				// Idle: a row that draws no control of its own reads the page's
-				// own availability, which is what this capability gates.
-				status:       "idle".to_string(),
-				parent:       None,
-				scope:        "ws".to_string(),
-				session:      None,
-				activity:     None,
-				model:        None,
-			}];
-		},
+		Capability::Settings
+		| Capability::Themes
+		| Capability::Keybindings
+		| Capability::Diagnostics
+		| Capability::Usage
+		| Capability::ContextBreakdown
+		| Capability::Mcp
+		| Capability::Providers
+		| Capability::Authentication
+		| Capability::Extensions => seed_sheet_page(seed, session, capability),
 		Capability::Agents => {
 			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Extensions).overlay());
 			seed.store.domains.agents = vec![AgentView {
@@ -390,6 +286,32 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 					updated_at_ms:     SCENE_CLOCK_MS,
 					stood_down:        None,
 				});
+		},
+		Capability::Share => {
+			// The capability's reachable surface is the share card, not the
+			// command row that opens it: a frame of the palette proves the
+			// command is listed and nothing about the controls the capability
+			// gates. The card is seeded unshared, with a relay configured,
+			// because that is the phase the start controls are drawn in and a
+			// start is what this capability answers for: a hosting card draws
+			// Stop and Refresh, and a gate on the start control would change
+			// no pixel of it.
+			//
+			// The view goes on the store rather than on the card: the card is
+			// filled from `store.domains.share` at every projection, so a view
+			// written straight onto the overlay is replaced by the domain
+			// before the first frame.
+			seed.store.domains.share = Some(ShareView {
+				state:         "off".to_owned(),
+				relay_url:     Some("wss://relay.example.com".to_owned()),
+				link:          None,
+				web_link:      None,
+				view_link:     None,
+				web_view_link: None,
+				participants:  Vec::new(),
+				error:         None,
+			});
+			seed.state.overlay = Some(Overlay::Share(Box::new(ShareState::new())));
 		},
 	}
 }

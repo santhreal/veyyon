@@ -17,6 +17,7 @@ pub mod process;
 pub mod providers;
 pub mod queued;
 pub mod settings;
+pub mod share;
 pub mod terminal;
 pub mod themes;
 pub mod usage;
@@ -38,6 +39,7 @@ pub use providers::*;
 pub use queued::*;
 use serde::{Deserialize, Serialize};
 pub use settings::*;
+pub use share::*;
 pub use terminal::*;
 pub use themes::*;
 pub use usage::*;
@@ -102,6 +104,8 @@ pub struct Domains {
 	pub settings:        Option<SettingsView>,
 	/// Diagnostic sources payload.
 	pub diagnostics:     Option<serde_json::Value>,
+	/// Relay session sharing status and link bundle.
+	pub share:           Option<ShareView>,
 }
 
 impl Domains {

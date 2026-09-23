@@ -334,6 +334,10 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 			store.domains.agent_comms = views;
 			damage.insert(Damage::Palette);
 		},
+		SnapshotSection::Share(view) => {
+			store.domains.share = Some(view);
+			damage.insert(Damage::Palette);
+		},
 		SnapshotSection::Usage(view) => {
 			let session = view.session;
 			store.domains.usage.insert(session.clone(), view.totals);

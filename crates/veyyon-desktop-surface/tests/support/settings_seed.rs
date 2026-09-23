@@ -103,7 +103,7 @@ pub fn seed_state_for_page(page: SettingsPage) -> SettingsState {
 		},
 		SettingsPage::Themes => {
 			state.themes = Some(ThemesView {
-				themes:  vec![
+				themes: vec![
 					ThemeView { id: "dark".to_string(), name: "Dark Ground".to_string(), dark: true },
 					ThemeView {
 						id:   "light".to_string(),
@@ -111,7 +111,8 @@ pub fn seed_state_for_page(page: SettingsPage) -> SettingsState {
 						dark: false,
 					},
 				],
-				current: "dark".to_string(),
+				dark:   "dark".to_string(),
+				light:  "light".to_string(),
 			});
 		},
 		SettingsPage::Keybindings => {

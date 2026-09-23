@@ -35,6 +35,7 @@ pub mod panel;
 pub mod queue;
 pub mod right_panel;
 pub mod settings;
+pub mod share;
 pub mod shell;
 pub mod text;
 pub mod tokens;
@@ -58,6 +59,7 @@ pub use overlay::*;
 pub use palette::{HostCommands, PaletteItem, PaletteItemKind, PaletteMode};
 pub use right_panel::*;
 pub use settings::{SettingsFailure, SettingsPage};
+pub use share::ShareState;
 pub use shell::{
 	HostShape, ScrollAnchor, SessionShape, ShellView,
 	fields::{FieldKey, FieldSlots},

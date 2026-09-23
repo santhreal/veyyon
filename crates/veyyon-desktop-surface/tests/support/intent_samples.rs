@@ -75,7 +75,7 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::PaletteRun,
 		Intent::BrowseTo { path: Some("crates".to_owned()) },
 		Intent::SettingChanged { key: "font_size".to_owned(), value: serde_json::json!(14) },
-		Intent::SelectTheme("light".to_owned()),
+		Intent::SelectTheme { id: "light".to_owned(), dark: false },
 		Intent::PreviewAppearance(Some("light".to_owned())),
 		Intent::PreviewAppearance(None),
 		Intent::SelectAppearance("light".to_owned()),
@@ -169,6 +169,9 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::ToggleQueueParent("/sessions/root".to_owned()),
 		Intent::SetAgentsTab(veyyon_desktop_surface::AgentViewTab::Comms),
 		Intent::ConfirmTermination(Some("runner".to_owned())),
+		Intent::StartShare { read_only: false },
+		Intent::StopShare,
+		Intent::RefreshShare,
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -219,7 +222,7 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::FindFile(_)
 			| Intent::FindText(_)
 			| Intent::SettingChanged { .. }
-			| Intent::SelectTheme(_)
+			| Intent::SelectTheme { .. }
 			| Intent::PreviewAppearance(_)
 			| Intent::SelectAppearance(_)
 			| Intent::ResetSetting(_)
@@ -297,6 +300,9 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::CloseWindow
 			| Intent::SetAgentsTab(_)
 			| Intent::ConfirmTermination(_)
+			| Intent::StartShare { .. }
+			| Intent::StopShare
+			| Intent::RefreshShare
 			| Intent::Quit => {},
 		}
 	}

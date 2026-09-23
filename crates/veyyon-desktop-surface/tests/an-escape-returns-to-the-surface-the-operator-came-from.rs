@@ -18,9 +18,12 @@
 //! fails an implementation that consults the table. The pages come from
 //! `SettingsPage::iter()` and the roots from an exhaustive match, so a new page
 //! joins the sweep by existing and a fifth kind of route stops this compiling.
-//! The chrome is measured in the same frames: a directly opened surface
-//! registers exactly one hit rect fewer than the same surface descended into,
-//! which is the `Back` control that must not be offered.
+//! The chrome is read in the same frames: a directly opened surface registers
+//! exactly one hit rect fewer than the same surface descended into, which is
+//! the `Back` control that must not be offered, and the words the surface drew
+//! state the same thing -- footer hints on a palette, header controls on a
+//! card. The words are compared as the frame recorded them, not as a shaped
+//! width, because a width is a value any other run in the frame can hold.
 //!
 //! WHAT IT DOES NOT CATCH: the browsed-directory ascent inside
 //! `PaletteMode::Browse`, which `a-browse-row-lists-the-directory-it-opened`
@@ -31,7 +34,7 @@
 use std::path::Path;
 
 use strum::{EnumIter, IntoEnumIterator};
-use veyyon_desktop_kit::{ColorRole, TextRamp, load_bundled_theme, load_bundled_tokens};
+use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_scene::{
 	headless::{Captured, RenderOptions, headless_context},
 	session::HeadlessSession,
@@ -40,9 +43,7 @@ use veyyon_desktop_surface::{
 	Keymap, Overlay, SettingsPage, ShellState, ShellView, fixture, install_tokens,
 	navigation::SurfaceRoute,
 };
-use veyyon_gpui::{
-	App, AppContext, Font, FontFeatures, FontStyle, FontWeight, SharedString, TextRun, px,
-};
+use veyyon_gpui::{App, AppContext};
 
 fn render_session<R>(
 	state: ShellState,
@@ -73,6 +74,7 @@ fn routes() -> Vec<SurfaceRoute> {
 		SurfaceRoute::Account,
 		SurfaceRoute::Settings,
 		SurfaceRoute::Agents,
+		SurfaceRoute::Share,
 	];
 	routes.extend(SettingsPage::iter().map(SurfaceRoute::Page));
 	for route in &routes {
@@ -81,6 +83,7 @@ fn routes() -> Vec<SurfaceRoute> {
 			| SurfaceRoute::Account
 			| SurfaceRoute::Settings
 			| SurfaceRoute::Agents
+			| SurfaceRoute::Share
 			| SurfaceRoute::Page(_) => {},
 		}
 	}
@@ -168,9 +171,12 @@ enum Shown {
 fn shown(session: &mut HeadlessSession<ShellView>) -> Shown {
 	session
 		.update(|view, _window, _cx| match view.state().overlay.as_ref() {
-			Some(overlay @ (Overlay::Palette(_) | Overlay::Settings(_) | Overlay::Agents(_))) => {
-				Shown::Surface(overlay.route())
-			},
+			Some(
+				overlay @ (Overlay::Palette(_)
+				| Overlay::Settings(_)
+				| Overlay::Agents(_)
+				| Overlay::Share(_)),
+			) => Shown::Surface(overlay.route()),
 			Some(Overlay::History(_)) => Shown::History,
 			None => Shown::Nothing,
 		})
@@ -245,53 +251,52 @@ fn an_escape_returns_to_the_surface_the_operator_came_from() {
 	}
 }
 
-/// A focused page draws the settings surface, which carries no palette footer
-/// and promises nothing about Escape; a group's palette carries one.
-const fn draws_a_palette_footer(route: SurfaceRoute) -> bool {
-	!matches!(route, SurfaceRoute::Page(_))
+/// Where a surface states the way out. A palette prints it as a footer hint
+/// beside the key that performs it; a card -- the settings sheet, the agent
+/// dashboard, the share card -- draws it as a header control. Which one a
+/// route uses is read off the overlay the walk left open, so a route that
+/// changes its surface is swept as the surface it now draws.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Chrome {
+	Footer,
+	Header,
 }
 
-/// The width of `text` as the window's own text system shapes it at the size
-/// the palette footer draws its hints in, so the assertion holds on whatever
-/// face this machine resolved the authored chain to.
-fn hint_width(session: &mut HeadlessSession<ShellView>, text: &'static str) -> f32 {
+impl Chrome {
+	/// The words drawn when the surface has a way back to the one above it.
+	const fn back(self) -> &'static str {
+		match self {
+			Self::Footer => "Esc Back",
+			Self::Header => "Back",
+		}
+	}
+
+	/// The words drawn when leaving the surface closes it.
+	const fn close(self) -> &'static str {
+		match self {
+			Self::Footer => "Esc Close",
+			Self::Header => "Close",
+		}
+	}
+}
+
+fn chrome_of(session: &mut HeadlessSession<ShellView>) -> Chrome {
 	session
-		.update(|view, window, _cx| {
-			let tokens = &view.installed().set;
-			// The footer draws its hints tracked, and tracking widens a run, so a
-			// width shaped without it names no run the frame holds.
-			let hint = view.installed().surface.palette.results_key_hint_size;
-			let run = TextRun {
-				len:              text.len(),
-				font:             Font {
-					family:    tokens.ui_family(),
-					features:  FontFeatures::default(),
-					fallbacks: None,
-					weight:    FontWeight::default(),
-					style:     FontStyle::default(),
-				},
-				color:            tokens.color(ColorRole::Muted),
-				background_color: None,
-				underline:        None,
-				strikethrough:    None,
-				tracking:         px(hint.tracking_em * hint.size),
-			};
-			let size = tokens.font_size(TextRamp::Micro);
-			let shaped = window
-				.text_system()
-				.shape_line(SharedString::from(text), size, &[run], None);
-			f32::from(shaped.width)
+		.update(|view, _window, _cx| match view.state().overlay.as_ref() {
+			Some(Overlay::Palette(_)) => Chrome::Footer,
+			_ => Chrome::Header,
 		})
-		.expect("the hint shapes in the window's text system")
+		.expect("the overlay kind is readable")
 }
 
-/// True when the frame drew a run of that width, which is the hint the footer
-/// is promising.
-fn drew_run_of_width(captured: &Captured, width: f32) -> bool {
+/// True when the frame drew exactly those words. The frame records the string
+/// each run shaped, so the assertion reads what the surface said rather than a
+/// width another run in the same frame can hold.
+fn drew_text(captured: &Captured, text: &str) -> bool {
 	captured
 		.text_runs
 		.iter()
-		.any(|run| (f32::from(run.bounds.size.width) - width).abs() < 0.5)
+		.any(|run| run.text.as_str() == text)
 }
 
 #[test]
@@ -303,24 +308,29 @@ fn a_surface_reached_directly_offers_no_way_back_to_one_never_opened() {
 		let case = route.title();
 		let direct = render_session(fixture::populated(), |session| {
 			let captured = walk(session, &[route]);
-			if draws_a_palette_footer(route) {
-				let close = hint_width(session, "Esc Close");
-				assert!(
-					drew_run_of_width(&captured, close),
-					"{case}: the footer of a surface with nothing above it promises to close"
-				);
-			}
+			let chrome = chrome_of(session);
+			assert!(
+				drew_text(&captured, chrome.close()),
+				"{case}: a surface with nothing above it states that leaving closes it"
+			);
+			assert!(
+				!drew_text(&captured, chrome.back()),
+				"{case}: a surface entered directly offers no way back to one never opened"
+			);
 			captured.hitboxes.len()
 		});
 		let descended = render_session(fixture::populated(), |session| {
 			let captured = walk(session, &[SurfaceRoute::Commands, route]);
-			if draws_a_palette_footer(route) {
-				let back = hint_width(session, "Esc Back");
-				assert!(
-					drew_run_of_width(&captured, back),
-					"{case}: the footer of a descended surface promises the way back it has"
-				);
-			}
+			let chrome = chrome_of(session);
+			assert!(
+				drew_text(&captured, chrome.back()),
+				"{case}: a descended surface states the way back it has"
+			);
+			assert_eq!(
+				drew_text(&captured, chrome.close()),
+				chrome == Chrome::Header,
+				"{case}: the footer hint is spent on the way back, the header keeps its close"
+			);
 			captured.hitboxes.len()
 		});
 		assert_eq!(

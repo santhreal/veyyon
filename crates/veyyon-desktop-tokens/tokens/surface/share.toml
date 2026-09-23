@@ -1,0 +1,10 @@
+[meta]
+version = 1
+name = "surface_share"
+
+[layout]
+card_width_px = 560
+card_height_px = 420
+row_height_px = 36
+row_gap = "s2"
+padding = "s6"

@@ -4,7 +4,7 @@ use crate::{
 	Tokens,
 	dumper_surface::{
 		dump_agents, dump_attached_cards, dump_breakpoints, dump_composer, dump_palette, dump_panels,
-		dump_queue, dump_settings, dump_shell, dump_transcript,
+		dump_queue, dump_settings, dump_share, dump_shell, dump_transcript,
 	},
 	elevation::ShadowCurve,
 	error::TokenError,
@@ -30,6 +30,7 @@ pub fn dump_to_dir(tokens: &Tokens, dir: &Path) -> Result<(), TokenError> {
 	dump_settings(tokens, &dir.join("surface/settings.toml"))?;
 	dump_breakpoints(tokens, &dir.join("surface/breakpoints.toml"))?;
 	dump_agents(tokens, &dir.join("surface/agents.toml"))?;
+	dump_share(tokens, &dir.join("surface/share.toml"))?;
 	dump_shell(tokens, &dir.join("surface/shell.toml"))?;
 
 	Ok(())

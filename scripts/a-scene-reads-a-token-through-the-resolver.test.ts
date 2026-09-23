@@ -87,6 +87,7 @@ const SCENE_READS: Record<string, number> = {
 	"desktop-surface-navigation.sh": 4,
 	"desktop-tab-restate.sh": 2,
 	"desktop-terminal-width.sh": 6,
+	"desktop-theme-ground.sh": 8,
 	"desktop-transcript-prose.sh": 3,
 	"desktop-turn-control.sh": 1,
 	"desktop-turn-fork.sh": 4,

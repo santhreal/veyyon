@@ -119,6 +119,18 @@ pub fn surface_for_action(
 				.or_else(|| active_session.cloned())
 				.unwrap_or_else(|| SessionId("0".into())),
 		),
+		// A share is refused on the card, not on the window's line: the two
+		// start controls are separate ids because a host that refuses a
+		// writable share may take a read-only one.
+		Intent::StartShare { read_only } => {
+			if *read_only {
+				SurfaceId::ShareStartReadOnlyButton
+			} else {
+				SurfaceId::ShareStartButton
+			}
+		},
+		Intent::StopShare => SurfaceId::ShareStopButton,
+		Intent::RefreshShare => SurfaceId::ShareRefreshButton,
 		_ => SurfaceId::GlobalTitlebarLine,
 	}
 }
@@ -146,7 +158,7 @@ fn settings_surface_for_action(intent: &Intent, action: &HostAction) -> Option<S
 	if matches!(intent, Intent::Navigate(_)) {
 		return None;
 	}
-	if matches!(intent, Intent::SelectTheme(_)) {
+	if matches!(intent, Intent::SelectTheme { .. }) {
 		return Some(SurfaceId::ThemeSelector);
 	}
 	Some(match action {

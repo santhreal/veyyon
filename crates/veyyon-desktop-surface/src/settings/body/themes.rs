@@ -69,9 +69,18 @@ pub(crate) fn theme_choices(
 					"Light ground theme"
 				}
 				.to_owned(),
-				action:       Intent::SelectTheme(theme.id.clone()),
+				action:       Intent::SelectTheme { id: theme.id.clone(), dark: theme.dark },
 				preview:      None,
-				active:       theme.id == themes.current,
+				// A row is drawn against the ground it configures, so the
+				// configured dark theme reads active among the dark rows and
+				// the configured light one among the light rows. Which of the
+				// two the window is drawing is the appearance choice, not this.
+				active:       theme.id
+					== *if theme.dark {
+						&themes.dark
+					} else {
+						&themes.light
+					},
 				availability: availability.clone(),
 			}
 		}));

@@ -36,6 +36,9 @@ fn every_destination_refreshes_only_its_domain_with_and_without_an_active_sessio
 			assert_eq!(store.persisted.shell.active_session, active);
 			assert!(store.domains.auth_flow.is_none());
 		}
+		assert_eq!(actions_for(&Intent::Navigate(SurfaceRoute::Share), &index, &mut store), vec![
+			HostAction::RefreshShare
+		],);
 		for route in [SurfaceRoute::Commands, SurfaceRoute::Account, SurfaceRoute::Settings] {
 			assert!(actions_for(&Intent::Navigate(route), &index, &mut store).is_empty());
 		}

@@ -40,13 +40,18 @@ pub fn keybinding_changed(state: &mut ShellState, action: &str, keys: &[String])
 	}
 }
 
-/// Draws the theme list settled on `theme`.
-pub fn select_theme(state: &mut ShellState, theme: &str) {
+/// Draws the theme list settled on `theme` for the ground it applies to.
+pub fn select_theme(state: &mut ShellState, theme: &str, dark: bool) {
 	if let Some(Overlay::Settings(settings)) = &mut state.overlay
 		&& let Some(themes) = &mut settings.themes
 	{
-		themes.current.clear();
-		themes.current.push_str(theme);
+		let ground = if dark {
+			&mut themes.dark
+		} else {
+			&mut themes.light
+		};
+		ground.clear();
+		ground.push_str(theme);
 	}
 }
 

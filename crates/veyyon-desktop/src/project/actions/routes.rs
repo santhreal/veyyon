@@ -41,6 +41,7 @@ pub(super) fn retry_control_actions(id: &SurfaceId, active: Option<SessionId>) -
 pub(super) fn navigate_actions(route: SurfaceRoute, active: Option<SessionId>) -> Vec<HostAction> {
 	match route {
 		SurfaceRoute::Agents => vec![HostAction::RefreshAgents],
+		SurfaceRoute::Share => vec![HostAction::RefreshShare],
 		SurfaceRoute::Page(SettingsPage::General) => vec![HostAction::LoadSettings],
 		SurfaceRoute::Page(SettingsPage::Themes) => vec![HostAction::LoadThemes],
 		SurfaceRoute::Page(SettingsPage::Keybindings) => vec![HostAction::LoadKeybindings],

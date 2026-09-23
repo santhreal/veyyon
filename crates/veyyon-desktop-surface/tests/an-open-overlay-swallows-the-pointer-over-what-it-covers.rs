@@ -57,11 +57,15 @@ fn every_overlay() -> Vec<(&'static str, Overlay)> {
 			))),
 		),
 		("agents", Overlay::Agents(Box::new(veyyon_desktop_surface::AgentsState::new()))),
+		("share", Overlay::Share(Box::new(veyyon_desktop_surface::share::ShareState::new()))),
 	];
 	for (_name, overlay) in &all {
 		match overlay {
-			Overlay::Palette(_) | Overlay::Settings(_) | Overlay::History(_) | Overlay::Agents(_) => {
-			},
+			Overlay::Palette(_)
+			| Overlay::Settings(_)
+			| Overlay::History(_)
+			| Overlay::Agents(_)
+			| Overlay::Share(_) => {},
 		}
 	}
 	all

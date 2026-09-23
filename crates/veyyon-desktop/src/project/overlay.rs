@@ -8,7 +8,7 @@
 use veyyon_desktop_model::{Capability, CapabilityStatus, FileKind, Store};
 use veyyon_desktop_surface::{
 	AgentsState, Intent, Overlay, PaletteItem, PaletteItemKind, PaletteMode, PaletteState,
-	SettingsState, ShellState,
+	SettingsState, ShareState, ShellState,
 	navigation::SurfaceRoute,
 	palette::{HostCommands, PaletteMeta, commands::command_items, host_commands},
 };
@@ -41,6 +41,7 @@ pub fn project_overlay(store: &Store, state: &mut ShellState) {
 			project_palette_domains(store, &state.commands, palette_state);
 		},
 		Some(Overlay::Agents(agents_state)) => project_agents_domains(store, agents_state),
+		Some(Overlay::Share(share_state)) => project_share_domains(store, share_state),
 		Some(Overlay::History(_)) | None => {},
 	}
 }
@@ -75,6 +76,11 @@ fn project_commands(store: &Store, state: &mut ShellState) {
 fn project_agents_domains(store: &Store, state: &mut AgentsState) {
 	state.agents.clone_from(&store.domains.agents);
 	state.agent_comms.clone_from(&store.domains.agent_comms);
+}
+
+/// Populates share overlay state from the host's share domain snapshot.
+fn project_share_domains(store: &Store, state: &mut ShareState) {
+	state.share.clone_from(&store.domains.share);
 }
 
 /// Populates settings overlay categories from host domain snapshots.

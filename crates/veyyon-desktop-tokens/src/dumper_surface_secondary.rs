@@ -230,6 +230,31 @@ padding = "{}"
 	write_file(path, &out)
 }
 
+/// Writes surface/share.toml.
+pub fn dump_share(tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
+	let s_tokens = &tokens.surface.share;
+	let s = &tokens.scale;
+	let out = format!(
+		r#"[meta]
+version = 1
+name = "surface_share"
+
+[layout]
+card_width_px = {}
+card_height_px = {}
+row_height_px = {}
+row_gap = "{}"
+padding = "{}"
+"#,
+		s_tokens.card_width_px as i64,
+		s_tokens.card_height_px as i64,
+		s_tokens.row_height_px as i64,
+		step_spacing(s, s_tokens.row_gap),
+		step_spacing(s, s_tokens.padding),
+	);
+	write_file(path, &out)
+}
+
 /// Writes surface/breakpoints.toml.
 pub fn dump_breakpoints(tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
 	let bp = &tokens.surface.breakpoints;

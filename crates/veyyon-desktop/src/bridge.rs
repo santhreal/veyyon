@@ -25,7 +25,7 @@ pub enum ActionClassification {
 	Mutation,
 }
 
-/// Classifies any of the 82 [`HostActionKind`] variants into
+/// Classifies any of the 85 [`HostActionKind`] variants into
 /// [`ActionClassification`].
 ///
 /// Uses an exhaustive match without wildcard `_` to guarantee that new actions
@@ -33,7 +33,7 @@ pub enum ActionClassification {
 #[must_use]
 pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 	match kind {
-		// Ephemeral read-only queries and inspectors (22 actions)
+		// Ephemeral read-only queries and inspectors (23 actions)
 		HostActionKind::ListSessions
 		| HostActionKind::SearchSessions
 		| HostActionKind::PreviewSessionTranscript
@@ -55,9 +55,10 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::RefreshAgents
 		| HostActionKind::GetUsage
 		| HostActionKind::GetContextBreakdown
+		| HostActionKind::RefreshShare
 		| HostActionKind::ListCommands => ActionClassification::Ephemeral,
 
-		// Mutations, lifecycle, session modifications, turns, terminals, processes (60 actions)
+		// Mutations, lifecycle, session modifications, turns, terminals, processes (62 actions)
 		HostActionKind::Attach
 		| HostActionKind::Detach
 		| HostActionKind::RetryConnection
@@ -117,6 +118,8 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::ClearOutput
 		| HostActionKind::SetGoal
 		| HostActionKind::ControlGoal
+		| HostActionKind::StartShare
+		| HostActionKind::StopShare
 		| HostActionKind::RunCommand => ActionClassification::Mutation,
 	}
 }

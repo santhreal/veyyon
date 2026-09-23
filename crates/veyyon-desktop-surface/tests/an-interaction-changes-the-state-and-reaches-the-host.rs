@@ -83,6 +83,12 @@ fn every_intent_either_changes_the_state_or_is_reported_and_never_neither() {
 		if matches!(&intent, Intent::CloseOverlay) {
 			before.overlay = Some(Overlay::Palette(PaletteState::default()));
 		}
+		// The dashboard is open for the two intents that act on it: a tab moved
+		// or an agent named for termination with no dashboard drawn is not the
+		// interaction being swept.
+		if let Intent::SetAgentsTab(_) | Intent::ConfirmTermination(_) = &intent {
+			before.overlay = Some(Overlay::Agents(Box::default()));
+		}
 		if matches!(&intent, Intent::ClearTerminal) {
 			before.drawer.grid_rows = vec![vec![cell()]];
 		}
@@ -149,14 +155,15 @@ fn every_intent_either_changes_the_state_or_is_reported_and_never_neither() {
 			});
 			before.overlay = Some(Overlay::Settings(Box::new(s)));
 		}
-		if let Intent::SelectTheme(_) = &intent {
+		if let Intent::SelectTheme { .. } = &intent {
 			before.overlay = Some(Overlay::Settings(Box::new(SettingsState {
 				themes: Some(ThemesView {
-					themes:  vec![
+					themes: vec![
 						ThemeView { id: "dark".to_string(), name: "Dark".to_string(), dark: true },
 						ThemeView { id: "light".to_string(), name: "Light".to_string(), dark: false },
 					],
-					current: "dark".to_string(),
+					dark:   "dark".to_string(),
+					light:  "light".to_string(),
 				}),
 				..SettingsState::default()
 			})));

@@ -12,7 +12,7 @@ use veyyon_gpui::{AppContext, Context, Entity, Pixels, Point, Window};
 use crate::{
 	Intent, Overlay, PaletteState, ShellView,
 	controls::availability_style,
-	palette::{PaletteMode, commands::ComposerCommand},
+	palette::{PaletteMode, composer_commands::ComposerCommand},
 };
 
 /// Window-local input state; host snapshots do not replace the query editor or

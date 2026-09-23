@@ -151,12 +151,15 @@ fn a_control_a_request_lands_on_names_what_the_action_acts_on() {
 		if !surface.in_settings_sheet() {
 			continue;
 		}
-		// A theme chosen writes the `theme` setting and re-reads the
-		// catalogue, and both are the selector's own request: the press was
-		// the selector rather than the field that setting is drawn as.
+		// A theme chosen writes the theme configured for one ground and
+		// re-reads the catalogue, and both are the selector's own request: the
+		// press was the selector rather than the field either setting is drawn
+		// as. The two keys are named here, so a selector that starts writing a
+		// third setting, or the bare `theme` key the host has no schema for,
+		// fails rather than passing as the selector's business.
 		if matches!(surface, SurfaceId::ThemeSelector) {
 			assert!(
-				matches!(target_of_action(&action), None | Some("theme")),
+				matches!(target_of_action(&action), None | Some("theme.dark" | "theme.light")),
 				"the theme selector sent {:?}, which acts on something else",
 				action.kind()
 			);

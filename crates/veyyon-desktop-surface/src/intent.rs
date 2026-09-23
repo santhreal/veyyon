@@ -159,7 +159,14 @@ pub enum Intent {
 	/// Runs `task` as a background subagent of the active session, from the
 	/// field the Agents page draws above its listing.
 	SpawnTask(String),
-	SelectTheme(String),
+	/// Configures `id` as the theme for the ground it is drawn on. A dark theme
+	/// becomes the dark-ground theme and a light one the light-ground theme,
+	/// which is the pair the settings hold; choosing a theme never changes
+	/// which ground the window is on.
+	SelectTheme {
+		id:   String,
+		dark: bool,
+	},
 	/// Draws the window in the appearance the pointer is resting on, and puts
 	/// the chosen one back when it carries nothing (§6.9).
 	PreviewAppearance(Option<String>),
@@ -243,6 +250,14 @@ pub enum Intent {
 	PauseAgents,
 	/// Releases the freeze, waking every agent the host parked.
 	ResumeAgents,
+	/// Starts sharing this session over the configured relay.
+	StartShare {
+		read_only: bool,
+	},
+	/// Stops sharing this session.
+	StopShare,
+	/// Asks the host for the share as it stands, participants included.
+	RefreshShare,
 	RenameSession {
 		session: u64,
 		title:   String,

@@ -8,6 +8,7 @@ use crate::{
 	loader_surface_agents::load_agents,
 	loader_surface_primary::{load_attached_cards, load_composer, load_queue, load_transcript},
 	loader_surface_secondary::{load_breakpoints, load_palette, load_panels, load_settings},
+	loader_surface_share::load_share,
 	loader_surface_shell::load_shell,
 	scale::{ScaleTokens, TypeSize},
 	schema::{RadiusStep, SpacingStep, StrokeStep, TypeSizeStep},
@@ -280,6 +281,7 @@ pub fn load_surfaces(dir: &Path, scale: &ScaleTokens) -> Result<SurfaceTokens, T
 		palette:        load_palette(&surface_dir.join("palette.toml"), scale)?,
 		settings:       load_settings(&surface_dir.join("settings.toml"), scale)?,
 		agents:         load_agents(&surface_dir.join("agents.toml"), scale)?,
+		share:          load_share(&surface_dir.join("share.toml"), scale)?,
 		breakpoints:    load_breakpoints(&surface_dir.join("breakpoints.toml"))?,
 		shell:          load_shell(&surface_dir.join("shell.toml"), scale)?,
 	})

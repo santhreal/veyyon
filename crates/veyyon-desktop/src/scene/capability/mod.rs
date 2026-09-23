@@ -1,6 +1,7 @@
 //! Capability gate scene construction (§1.2, §4.3, §9.5).
 
 pub mod mapping;
+pub mod sheet;
 pub mod surface;
 
 pub use mapping::{action_of, target_surface_of};

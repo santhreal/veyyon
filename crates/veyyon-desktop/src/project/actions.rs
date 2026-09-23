@@ -218,10 +218,10 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 			vec![HostAction::SetKeybinding { action: action.clone(), keys: keys.clone() }]
 		},
 		Intent::SpawnTask(task) => vec![HostAction::SpawnTask { task: task.clone() }],
-		Intent::SelectTheme(theme) => vec![
+		Intent::SelectTheme { id, dark } => vec![
 			HostAction::SetSetting {
-				key:   "theme".to_string(),
-				value: serde_json::Value::String(theme.clone()),
+				key:   if *dark { "theme.dark" } else { "theme.light" }.to_string(),
+				value: serde_json::Value::String(id.clone()),
 			},
 			HostAction::LoadThemes,
 		],
@@ -331,6 +331,9 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		// and neither needs a session to be open to be worth pressing.
 		Intent::PauseAgents => vec![HostAction::PauseAgents],
 		Intent::ResumeAgents => vec![HostAction::ResumeAgents],
+		Intent::StartShare { read_only } => vec![HostAction::StartShare { read_only: *read_only }],
+		Intent::StopShare => vec![HostAction::StopShare],
+		Intent::RefreshShare => vec![HostAction::RefreshShare],
 		Intent::OpenFile(path) => vec![HostAction::ReadFile { path: path.clone() }],
 		Intent::SelectChangeScope(scope) => {
 			vec![HostAction::SelectChangeScope { scope: *scope }, HostAction::RefreshChanges]
