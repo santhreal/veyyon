@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -6,6 +6,7 @@ import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { AsyncJobManager } from "@veyyon/coding-agent/async/job-manager";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
@@ -215,6 +216,29 @@ describe("AsyncJobManager singleton across concurrent top-level sessions", () =>
 			expect(AsyncJobManager.instance()).toBe(stranger);
 		} finally {
 			await stranger.dispose({ timeoutMs: 3_000 });
+		}
+	}, 60000);
+
+	/**
+	 * The process-wide agent lifecycle (park timers, adopted spawned sessions, revivers) belongs to the
+	 * same owner as the manager. A second driving session disposing it would release the spawned agents
+	 * of every other conversation in the process: closing one room peer would park the launch
+	 * conversation's agents. The owner still tears it down when it disposes.
+	 */
+	it("leaves the agent lifecycle to the session that owns the manager", async () => {
+		const lifecycleDispose = vi.spyOn(AgentLifecycleManager.global(), "dispose").mockResolvedValue(undefined);
+		try {
+			const primary = await spawnTopLevelSession();
+			try {
+				const secondary = await spawnTopLevelSession();
+				await secondary.dispose();
+				expect(lifecycleDispose).toHaveBeenCalledTimes(0);
+			} finally {
+				await primary.dispose();
+			}
+			expect(lifecycleDispose).toHaveBeenCalledTimes(1);
+		} finally {
+			lifecycleDispose.mockRestore();
 		}
 	}, 60000);
 

@@ -3607,11 +3607,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 							// begins — the lifecycle await below opens an async gap before
 							// AgentSession.dispose() would otherwise set its guards.
 							session.beginDispose();
-							if (agentKind === "main") {
-								// Top-level teardown owns the global agent lifecycle: park timers,
+							if (asyncJobManager) {
+								// The first top-level session in the process, the one that owns its
+								// async job manager, also owns the global agent lifecycle: park timers,
 								// adopted spawned agent sessions, revivers. Tear it down while shared
-								// resources (kernels, MCP, LSP) are still live. Spawned agent disposal
-								// must NOT touch the global lifecycle.
+								// resources (kernels, MCP, LSP) are still live. A spawned agent, and a
+								// second driving session opened in the same process (a room peer, a
+								// `/new` hand-off, the agent-creation architect), must NOT touch it:
+								// closing one would release every other conversation's agents.
 								await AgentLifecycleManager.global().dispose();
 							}
 							await originalDispose(options);
