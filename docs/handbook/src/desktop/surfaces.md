@@ -800,6 +800,18 @@ arrive while the card is open.
 A session with no agent running states that, and a stream with nothing in it
 states that separately.
 
+## Tangential work
+
+`/tan <work>` sends work to a background agent instead of to the session in
+view. The session is forked at the point the command ran, so the agent starts
+with the same conversation, model and tools and then follows the work it was
+given; the conversation records that the work was sent and names the job it was
+sent as, and the turn in progress is not steered.
+
+The agent is a row in the dashboard above, named `tan`, and its transcript is
+opened from that row. Work with nothing after the command is refused rather
+than dispatched, and a session that cannot run background jobs states that.
+
 ## Sharing a session
 
 `/collab` opens a card over the session that shares it live over a relay.

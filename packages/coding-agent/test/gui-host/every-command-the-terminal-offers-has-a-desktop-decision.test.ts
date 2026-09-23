@@ -69,7 +69,7 @@ const DECISIONS: Record<string, Decision> = {
 	drop: { action: "DeleteSession" },
 	resume: { action: "SearchSessions" },
 	btw: { host: "answered on the session's own context, drawn as a side pair" },
-	tan: { gap: "no background-agent submission on the composer" },
+	tan: { host: "forked to a background agent, drawn in the transcript and the agent roster" },
 	omfg: { gap: "no rule-forging surface" },
 	retry: { action: "RetryTurn" },
 	rephrase: { action: "RephraseReply" },
@@ -81,7 +81,7 @@ const DECISIONS: Record<string, Decision> = {
 };
 
 /** The gaps as they stand, so closing one is a recorded change. */
-const RECORDED_GAPS = ["debug", "guided-goal", "join", "leave", "omfg", "profile", "tan"];
+const RECORDED_GAPS = ["debug", "guided-goal", "join", "leave", "omfg", "profile"];
 
 /**
  * The declarations through their declared interface. The table is `as const`,

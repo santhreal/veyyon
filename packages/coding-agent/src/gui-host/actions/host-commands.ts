@@ -7,7 +7,9 @@
  * how it reports a failure the caller should state as one.
  */
 import { parseGoalSubcommand } from "../../goals/subcommands";
+import { mcpManagerInstance } from "../../mcp/manager-instance";
 import type { AgentSession } from "../../session/agent-session";
+import { dispatchTan } from "../../task/tan";
 import type { DesktopHostCommandName } from "../desktop-commands";
 import { attachGoalBridge } from "../goal-bridge";
 import { goalSection } from "../goal-view";
@@ -35,6 +37,36 @@ const btw: HostCommand = async (ctx, session, args) => {
 		return;
 	}
 	await answerSideQuestion(ctx.socket, ctx.clientState, session, question);
+	ctx.reply.success();
+};
+
+/**
+ * `/tan`: tangential work dispatched to a background agent.
+ *
+ * The dispatch is what is awaited, not the work: the request completes when
+ * the fork is registered and the transcript states it, and the agent itself
+ * runs on in the roster the Agents surface draws.
+ */
+const tan: HostCommand = async (ctx, session, args) => {
+	const dispatch = await dispatchTan(
+		{
+			session,
+			sessionManager: session.sessionManager,
+			settings: session.settings,
+			mcpManager: mcpManagerInstance(),
+		},
+		args,
+	);
+	if (!dispatch.ok) {
+		const usage = dispatch.reason === "usage";
+		ctx.reply.failure({
+			scope: usage ? "Session" : "Task",
+			code: usage ? "INVALID_ARGUMENTS" : "DISPATCH_FAILED",
+			message: dispatch.message,
+			retryable: false,
+		});
+		return;
+	}
 	ctx.reply.success();
 };
 
@@ -186,7 +218,7 @@ const goal: HostCommand = async (ctx, session, args) => {
 	ctx.reply.success();
 };
 
-const HANDLERS: Record<DesktopHostCommandName, HostCommand> = { btw, goal };
+const HANDLERS: Record<DesktopHostCommandName, HostCommand> = { btw, goal, tan };
 
 /** Runs `name` against `session`, replying to the request it arrived on. */
 export async function runDesktopHostCommand(

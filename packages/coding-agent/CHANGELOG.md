@@ -143,6 +143,7 @@
 - `PLUGIN_MANIFEST_ENTRY_KEYS` and `PluginManifestEntryKey` in `extensibility/plugins/loader` state the four manifest entry keys a plugin contributes through.
 - `cli/stdout-drain` exports `awaitStdoutDrain` and `exitAfterStdoutDrain`, the one way a non-interactive mode exits after its last frame is written.
 - The desktop runs `/agents`, `/cockpit` and `/hub`, which open a dashboard listing the agents of the session in view, running first, with a session to open and a confirmed termination per row, beside a second view carrying the traffic those agents send each other as it lands.
+- The desktop runs `/tan <work>`, which forks the session to a background agent that carries the tangential work, states the dispatch in the transcript, and lists the agent in the dashboard the window opens.
 
 ### Changed
 
