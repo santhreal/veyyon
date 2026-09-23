@@ -55,7 +55,7 @@ pub fn render_profiles_page(
 		.map(|profiles| profiles.entries.as_slice())
 		.unwrap_or_default();
 	if entries.is_empty() {
-		return container.child(empty_state_row(
+		return container.h_full().child(empty_state_row(
 			empty::PROFILES.condition,
 			empty::PROFILES.action,
 			geometry,

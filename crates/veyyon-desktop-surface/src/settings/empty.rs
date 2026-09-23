@@ -83,8 +83,8 @@ pub const CONTEXT_BREAKDOWN: EmptyCopy = EmptyCopy {
 /// out unless the listing never arrived.
 pub const PROFILES: EmptyCopy = EmptyCopy {
 	condition: "No profiles reported by host",
-	action:    "Reopen this page to ask again: the Profiles capability reported no profile, not \
-	            even the one this host runs under",
+	action:    "Open this page again to ask the host: the Profiles capability reported no profile, \
+	            not even the one this host runs under",
 };
 
 /// What `page` draws when it has nothing, or `None` for a page that draws rows
