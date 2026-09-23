@@ -23,7 +23,12 @@
 
 ### Fixed
 
+- The ask dialog rejects a question with no options and no free-text answer instead of opening a dialog that cannot be answered.
+- A collab guest answering an ask question is offered `Other` only when the question allows a free-text answer, and a guest reply of `Other` to a closed question records no custom answer.
+- The extension dashboard's overflowing tab strip reserves room for the paging arrows and stays on one row at every width.
+- A bare-command picker on a narrow terminal narrows a long usage column so every subcommand keeps its description.
 - Fixed Cursor running a tool twice and leaving an unanswered `<id>_2` tool call when the server re-sent an exec request for a call it already dispatched; the repeat is now answered from the first run's result.
+- `SelectList.naturalWidth()` counts the description column's minimum width, so a list sized to it shows every description whole.
 
 ## [1.5.3] - 2026-09-22
 

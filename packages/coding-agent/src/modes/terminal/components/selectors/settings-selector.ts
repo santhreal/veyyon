@@ -3478,8 +3478,8 @@ export class SettingsSelectorComponent implements Component {
 	formatTextInputValue(path: SettingPath, value: unknown): string {
 		if (path === "providers.maxInFlightRequests") return this.formatProviderLimitsValue(value);
 		if (path === "tools.approval") {
-			if (!value || typeof value !== "object" || Array.isArray(value)) return "None";
-			const count = Object.keys(value as Record<string, unknown>).length;
+			if (!isRecord(value)) return "None";
+			const count = Object.keys(value).length;
 			return count === 0 ? "None" : `${count} ${count === 1 ? "tool" : "tools"}`;
 		}
 		return this.#formatTextInputEditValue(path, value);

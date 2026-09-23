@@ -683,7 +683,7 @@ export class SettingsList implements Component {
 			const rawMaxLabel = labelWidths.length > 0 ? Math.max(...labelWidths) : 0;
 			const preOverflow = this.#filteredItems.length > viewportHeight;
 			const preRowWidth = Math.max(0, width - (preOverflow ? 2 : 0));
-			const labelCap = Math.max(30, Math.min(42, preRowWidth - 22));
+			const labelCap = clampLow(preRowWidth - 22, 30, 42);
 			const maxLabelWidth = Math.min(labelCap, rawMaxLabel);
 			// Reserved fold/cursor gutter (2) + label column + separator (2) —
 			// the always-aligned start of the value column for this frame.
@@ -818,16 +818,17 @@ export class SettingsList implements Component {
 		// section's heading row belongs to its dim-exempt range.
 		const activeStart = active.name ? active.firstItemIndex - 1 : active.firstItemIndex;
 		const viewportHeight = Math.min(this.#maxVisible, this.#filteredItems.length);
-		const startRow = Math.max(
+		const startRow = clampLow(
+			this.#selectedIndex - Math.floor(viewportHeight / 2),
 			0,
-			Math.min(this.#selectedIndex - Math.floor(viewportHeight / 2), this.#filteredItems.length - viewportHeight),
+			this.#filteredItems.length - viewportHeight,
 		);
 		// Label column width spans all items so the layout stays stable across sections.
 		const overflow = this.#filteredItems.length > viewportHeight;
 		const rowWidth = Math.max(0, paneWidth - (overflow ? 2 : 0));
 		const labelWidths = this.#filteredItems.filter(item => !item.heading).map(item => visibleWidth(item.label));
 		const rawMaxLabel = labelWidths.length > 0 ? Math.max(...labelWidths) : 0;
-		const labelCap = Math.max(30, Math.min(42, rowWidth - 22));
+		const labelCap = clampLow(rowWidth - 22, 30, 42);
 		const maxLabelWidth = Math.min(labelCap, rawMaxLabel);
 		// Sidebar + "│ " separator (2) + reserved fold/cursor gutter (2) + label
 		// column + separator (2) — the always-aligned start of the value column.

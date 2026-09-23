@@ -17,6 +17,8 @@ import { ScrollView, type ScrollViewTheme } from "./scroll-view";
 const DEFAULT_PRIMARY_COLUMN_WIDTH = 32;
 const PRIMARY_COLUMN_GAP = 2;
 const MIN_DESCRIPTION_WIDTH = 10;
+/** A row lays out a description column only when it is wider than this. */
+const DESCRIPTION_LAYOUT_MIN_WIDTH = 40;
 
 const DEFAULT_CURSOR_SYMBOL = ">";
 
@@ -311,26 +313,35 @@ export class SelectList implements Component, MouseRoutable {
 	}
 
 	/**
-	 * Cells a row needs to show every label and every description whole, scrollbar included.
+	 * Cells past which a wider list shows no more of any item, scrollbar included: every description whole
+	 * and every label as whole as its column allows. A label longer than `maxPrimaryColumnWidth` is
+	 * cut at any width, so it is measured at that cap.
 	 *
 	 * Measured over the unfiltered items, so a host that sizes its frame from it keeps one width
-	 * while the reader types a filter. A width at or above this truncates nothing.
+	 * while the reader types a filter.
 	 */
 	naturalWidth(): number {
 		const cursor = this.theme.symbols?.cursor ?? DEFAULT_CURSOR_SYMBOL;
 		const prefixWidth = visibleWidth(cursor) + 1;
 		const primaryColumnWidth = this.#getPrimaryColumnWidth(this.items);
 		let widestRow = 0;
+		let described = false;
 		for (const item of this.items) {
 			const description = item.description ? sanitizeSingleLine(item.description) : "";
-			const row = description
-				? primaryColumnWidth + visibleWidth(description)
-				: visibleWidth(this.#getDisplayValue(item));
-			widestRow = Math.max(widestRow, row);
+			if (description) {
+				described = true;
+				// `#computeItemLayout` drops a description it can give no more than MIN_DESCRIPTION_WIDTH cells.
+				const descriptionWidth = Math.max(visibleWidth(description), MIN_DESCRIPTION_WIDTH + 1);
+				widestRow = Math.max(widestRow, primaryColumnWidth + descriptionWidth);
+			} else {
+				widestRow = Math.max(widestRow, visibleWidth(this.#getDisplayValue(item)));
+			}
 		}
 		// Two cells of right margin, the same two `#computeItemLayout` holds back from each row.
+		let rowWidth = prefixWidth + widestRow + 2;
+		if (described) rowWidth = Math.max(rowWidth, DESCRIPTION_LAYOUT_MIN_WIDTH + 1);
 		const scrollbarWidth = this.items.length > this.maxVisible ? 1 : 0;
-		return prefixWidth + widestRow + 2 + scrollbarWidth;
+		return rowWidth + scrollbarWidth;
 	}
 
 	setSelectedIndex(index: number): void {
@@ -453,6 +464,9 @@ export class SelectList implements Component, MouseRoutable {
 		// every count is 1, so visualTotal == #filteredItems and overflow falls
 		// back to the original `N > maxVisible` predicate exactly.
 		const conservativeRowWidth = Math.max(0, width - 1);
+		const conservativePrimaryColumnWidth = wrapEnabled
+			? this.#fitPrimaryColumnWidth(primaryColumnWidth, conservativeRowWidth)
+			: primaryColumnWidth;
 		const rowCounts = new Array<number>(this.#filteredItems.length);
 		let visualTotal = 0;
 		for (let i = 0; i < this.#filteredItems.length; i++) {
@@ -461,7 +475,9 @@ export class SelectList implements Component, MouseRoutable {
 				rowCounts[i] = 0;
 				continue;
 			}
-			rowCounts[i] = wrapEnabled ? this.#computeItemRowCount(item, conservativeRowWidth, primaryColumnWidth) : 1;
+			rowCounts[i] = wrapEnabled
+				? this.#computeItemRowCount(item, conservativeRowWidth, conservativePrimaryColumnWidth)
+				: 1;
 			// A group header rides on its group's first surviving item, so the
 			// window/scroll math counts it as part of that item's rows.
 			if (this.#headerBefore(i)) rowCounts[i] = (rowCounts[i] ?? 1) + 1;
@@ -470,6 +486,7 @@ export class SelectList implements Component, MouseRoutable {
 
 		const overflow = visualTotal > visualBudget;
 		const rowWidth = Math.max(0, width - (overflow ? 1 : 0));
+		const rowPrimaryColumnWidth = this.#fitPrimaryColumnWidth(primaryColumnWidth, rowWidth);
 
 		// Pick a window centered on the selected item that fits in visualBudget
 		// rows. Falls through to the original item-count window when every row
@@ -491,7 +508,7 @@ export class SelectList implements Component, MouseRoutable {
 			}
 			const band = this.theme.hovered;
 			const strength = this.#hoverStrength(i);
-			const itemRows = this.#renderItem(item, i === this.#selectedIndex, rowWidth, primaryColumnWidth);
+			const itemRows = this.#renderItem(item, i === this.#selectedIndex, rowWidth, rowPrimaryColumnWidth);
 			for (const row of itemRows) {
 				if (rows.length >= visualBudget) break;
 				this.#hitRows[rows.length] = i;
@@ -741,7 +758,7 @@ export class SelectList implements Component, MouseRoutable {
 		const prefixWidth = visibleWidth(prefix);
 		const descriptionSingleLine = item.description ? sanitizeSingleLine(item.description) : undefined;
 
-		if (descriptionSingleLine && width > 40) {
+		if (descriptionSingleLine && width > DESCRIPTION_LAYOUT_MIN_WIDTH) {
 			const effectivePrimaryColumnWidth = clamp(primaryColumnWidth, 1, width - prefixWidth - 4);
 			const maxPrimaryWidth = Math.max(1, effectivePrimaryColumnWidth - PRIMARY_COLUMN_GAP);
 			const truncatedValue = this.#truncatePrimary(item, isSelected, maxPrimaryWidth, effectivePrimaryColumnWidth);
@@ -771,6 +788,31 @@ export class SelectList implements Component, MouseRoutable {
 			truncatedValue,
 			spacing: "",
 		};
+	}
+
+	/**
+	 * The name column for a row of `width` cells. A column set wider than the default gives cells
+	 * back when the descriptions would not fit whole beside it, down to three fifths of the row and
+	 * never below the default width, so one long label does not squeeze the description off every
+	 * row of a narrow list. At `naturalWidth()` and above it yields nothing.
+	 */
+	#fitPrimaryColumnWidth(primaryColumnWidth: number, width: number): number {
+		if (primaryColumnWidth <= DEFAULT_PRIMARY_COLUMN_WIDTH) return primaryColumnWidth;
+		let widestDescription = 0;
+		for (const item of this.#filteredItems) {
+			if (!item.description) continue;
+			widestDescription = Math.max(widestDescription, visibleWidth(sanitizeSingleLine(item.description)));
+		}
+		if (widestDescription === 0) return primaryColumnWidth;
+		const cursor = this.theme.symbols?.cursor ?? DEFAULT_CURSOR_SYMBOL;
+		const labelRoom = width - (visibleWidth(cursor) + 1);
+		const room = labelRoom - Math.max(widestDescription, MIN_DESCRIPTION_WIDTH + 1) - 2;
+		if (room >= primaryColumnWidth) return primaryColumnWidth;
+		const floor = Math.min(
+			primaryColumnWidth,
+			Math.max(DEFAULT_PRIMARY_COLUMN_WIDTH, Math.floor((labelRoom * 3) / 5)),
+		);
+		return Math.max(floor, room);
 	}
 
 	#getPrimaryColumnWidth(items: ReadonlyArray<SelectItem> = this.#filteredItems): number {

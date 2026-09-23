@@ -22,10 +22,10 @@ k Down
 settle 1
 k Down
 settle 1
-shot settings-row-light-theme
+shot settings-row-symbol-preset
 k Return
 settle 2
-shot settings-submenu-light-theme
+shot settings-submenu-symbol-preset
 k Escape
 settle 1
 k Left
@@ -48,7 +48,7 @@ k Down
 settle 1
 k Right
 settle 2
-shot settings-context
+shot settings-rules
 k Left
 k Down
 k Down
@@ -62,7 +62,7 @@ k Down
 settle 1
 k Right
 settle 2
-shot settings-tools
+shot settings-global
 k Escape
 settle 2
 k Escape

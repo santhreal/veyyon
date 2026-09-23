@@ -14,6 +14,13 @@
 - Bare-command pickers (`/mcp`, `/usage`, `/account`, `/debug` and the rest) widen to show every usage hint and description whole, cut a usage that cannot fit after a whole word, print one key legend in the footer with `esc close` instead of `esc/ctrl+c close`, name the search there while the list is searchable, and draw a dim scrollbar with a silver thumb.
 - The `/debug` card is titled `/debug`, matching the other bare-command cards.
 
+### Fixed
+
+- The ask dialog rejects a question with no options and no free-text answer instead of opening a dialog that cannot be answered.
+- A collab guest answering an ask question is offered `Other` only when the question allows a free-text answer, and a guest reply of `Other` to a closed question records no custom answer.
+- The extension dashboard's overflowing tab strip reserves room for the paging arrows and stays on one row at every width.
+- A bare-command picker on a narrow terminal narrows a long usage column so every subcommand keeps its description.
+
 ## [1.5.3] - 2026-09-22
 
 ### Fixed

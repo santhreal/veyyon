@@ -426,6 +426,9 @@ function assertRenderableAskQuestions(questions: readonly ExtensionAskDialogQues
 		if (question.allowOther !== undefined && typeof question.allowOther !== "boolean") {
 			throw new Error(`${where} has allowOther set to ${describeAskValue(question.allowOther)}, not a boolean.`);
 		}
+		if (question.options.length === 0 && question.allowOther === false) {
+			throw new Error(`${where} has no options and allowOther set to false, so it has no answer to select.`);
+		}
 	}
 }
 

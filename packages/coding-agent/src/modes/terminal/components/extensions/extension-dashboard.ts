@@ -71,6 +71,58 @@ export function buildTabBarTabs(tabs: ProviderTab[]): Tab[] {
 	});
 }
 
+/** TabBar draws each tab as ` label ` and puts this many cells between neighbours. */
+const TAB_SEPARATOR = 2;
+const PREV_TAB: Tab = { id: "__prev_tab", label: "◀", short: "◀" };
+const NEXT_TAB: Tab = { id: "__next_tab", label: "▶", short: "▶" };
+
+/**
+ * The run of tabs around `activeIndex` that fits on one {@link TabBar} row of
+ * `contentWidth` cells, with a `◀` / `▶` paging tab on each side that has more.
+ * Every tab and paging tab is costed as TabBar draws it, separators included,
+ * so a window reported as fitting never wraps onto a second row.
+ */
+export function visibleTabWindow(allTabs: readonly Tab[], activeIndex: number, contentWidth: number): Tab[] {
+	if (allTabs.length === 0) return [];
+	const tabWidth = (t: Tab) => visibleWidth(t.label) + 2;
+	const totalAllWidth = allTabs.reduce((sum, t) => sum + tabWidth(t), 0) + TAB_SEPARATOR * (allTabs.length - 1);
+	if (totalAllWidth <= contentWidth) return [...allTabs];
+
+	const active = clampLow(activeIndex, 0, allTabs.length - 1);
+	let start = active;
+	let end = active + 1;
+	const widthForRange = (s: number, e: number): number => {
+		let w = 0;
+		if (s > 0) w += tabWidth(PREV_TAB) + TAB_SEPARATOR;
+		for (let i = s; i < e; i++) {
+			w += tabWidth(allTabs[i]!) + (i > s ? TAB_SEPARATOR : 0);
+		}
+		if (e < allTabs.length) w += TAB_SEPARATOR + tabWidth(NEXT_TAB);
+		return w;
+	};
+
+	while (true) {
+		let expanded = false;
+		if (end < allTabs.length && widthForRange(start, end + 1) <= contentWidth) {
+			end++;
+			expanded = true;
+		}
+		if (start > 0 && widthForRange(start - 1, end) <= contentWidth) {
+			start--;
+			expanded = true;
+		}
+		if (!expanded) break;
+	}
+
+	const result: Tab[] = [];
+	if (start > 0) result.push(PREV_TAB);
+	for (let i = start; i < end; i++) {
+		result.push(allTabs[i]!);
+	}
+	if (end < allTabs.length) result.push(NEXT_TAB);
+	return result;
+}
+
 export class ExtensionDashboard implements Component {
 	#state!: DashboardState;
 	#mainList!: ExtensionList;
@@ -184,54 +236,6 @@ export class ExtensionDashboard implements Component {
 		if (tab) this.#selectProviderById(tab.id);
 	}
 
-	#computeVisibleTabs(contentWidth: number): Tab[] {
-		const allTabs = buildTabBarTabs(this.#state.tabs);
-		if (allTabs.length === 0) return [];
-
-		const tabWidth = (t: Tab) => visibleWidth(t.label) + 2;
-		const totalAllWidth = allTabs.reduce((sum, t) => sum + tabWidth(t), 0) + 2 * (allTabs.length - 1);
-		if (totalAllWidth <= contentWidth) return allTabs;
-
-		const active = clampLow(this.#state.activeTabIndex, 0, allTabs.length - 1);
-		let start = active;
-		let end = active + 1;
-
-		const widthForRange = (s: number, e: number): number => {
-			let w = 0;
-			if (s > 0) w += 3;
-			for (let i = s; i < e; i++) {
-				w += tabWidth(allTabs[i]!) + (i > s ? 2 : 0);
-			}
-			if (e < allTabs.length) w += 3;
-			return w;
-		};
-
-		while (true) {
-			let expanded = false;
-			if (end < allTabs.length && widthForRange(start, end + 1) <= contentWidth) {
-				end++;
-				expanded = true;
-			}
-			if (start > 0 && widthForRange(start - 1, end) <= contentWidth) {
-				start--;
-				expanded = true;
-			}
-			if (!expanded) break;
-		}
-
-		const result: Tab[] = [];
-		if (start > 0) {
-			result.push({ id: "__prev_tab", label: "◀", short: "◀" });
-		}
-		for (let i = start; i < end; i++) {
-			result.push(allTabs[i]!);
-		}
-		if (end < allTabs.length) {
-			result.push({ id: "__next_tab", label: "▶", short: "▶" });
-		}
-		return result;
-	}
-
 	#getActiveProviderId(): string | null {
 		const tab = this.#state.tabs[this.#state.activeTabIndex];
 		return tab && tab.id !== "all" ? tab.id : null;
@@ -256,7 +260,7 @@ export class ExtensionDashboard implements Component {
 		}
 		const contentWidth = dims.contentWidth;
 
-		const visibleTabs = this.#computeVisibleTabs(contentWidth);
+		const visibleTabs = visibleTabWindow(buildTabBarTabs(this.#state.tabs), this.#state.activeTabIndex, contentWidth);
 		const activeId = this.#state.tabs[this.#state.activeTabIndex]?.id;
 		this.#tabBar.setTabs(visibleTabs, activeId);
 		const tabLines = this.#tabBar.render(contentWidth).slice(0, 1);

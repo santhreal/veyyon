@@ -345,6 +345,19 @@ describe("the ask dialog refuses a question it cannot render", () => {
 		expect(() => build([question({ options: [{ label: " " }] })])).toThrow(/option 0 has no label/);
 	});
 
+	it("refuses a question with no options and no free-text answer, single or multi, because nothing can be selected", () => {
+		for (const multi of [false, true]) {
+			expect(() => build([question({ options: [], allowOther: false, multi })]), `multi ${multi}`).toThrow(
+				/has no options and allowOther set to false/,
+			);
+			expect(() => build([question({ options: [], allowOther: true, multi })]), `multi ${multi}`).not.toThrow();
+			expect(
+				() => build([question({ options: [{ label: "A" }], allowOther: false, multi })]),
+				`multi ${multi}`,
+			).not.toThrow();
+		}
+	});
+
 	it("names the offending question by index when an earlier one is fine", () => {
 		const good = question({ id: "first" });
 		const bad = withoutField("question");

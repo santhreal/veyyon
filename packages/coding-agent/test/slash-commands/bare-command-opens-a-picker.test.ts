@@ -393,6 +393,37 @@ describe("the picker card", () => {
 	});
 
 	/**
+	 * A narrow terminal keeps every description on screen. The name column is as wide as the
+	 * widest usage, so on 80 columns `/mcp`'s `add` usage left the descriptions fewer cells than
+	 * the list lays out a description column for, and every row of the card dropped its
+	 * description. The name column now yields to the descriptions before they go.
+	 */
+	it("keeps every description on screen on a narrow terminal", () => {
+		const dropped: string[] = [];
+		for (const width of [60, 80, 100]) {
+			for (const declaration of PICKER_COMMANDS) {
+				const picker = new SubcommandPickerComponent(
+					declaration.name,
+					declaration.subcommands,
+					() => {},
+					() => {},
+				);
+				const rows: string[] = [];
+				for (let step = 0; step < declaration.subcommands.length; step++) {
+					for (const line of picker.render(width)) rows.push(stripVTControlCharacters(line));
+					picker.handleInput("\x1b[B");
+				}
+				for (const sub of declaration.subcommands) {
+					const opening = sub.description.slice(0, 8);
+					const row = new RegExp(`\\b${escapeRegExp(sub.name)}\\b.* {2,}${escapeRegExp(opening)}`);
+					if (!rows.some(line => row.test(line))) dropped.push(`${width} cols: /${declaration.name} ${sub.name}`);
+				}
+			}
+		}
+		expect(dropped).toEqual([]);
+	});
+
+	/**
 	 * One key legend per card. The list's status row repeated `↑↓ move · ↵ select · esc close`
 	 * directly above a footer naming the same keys as `esc/ctrl+c close`. The footer is now the only
 	 * legend: it names the search while the list is searchable, and while a query is live it says

@@ -59,6 +59,8 @@ Two rules cover the corners:
 
 Use the interactive `/settings` panel inside a session, or the `veyyon config` command from a shell. Both operate on the merged effective settings, and every persistent write lands in the **global** profile file, with one exception: the machine-global values on the **Global** tab (`defaultProfile`, `profileSharing`) write to `~/.veyyon/config.yml` so they apply to every profile.
 
+The panel displays a boolean as `On` or `Off` and any value that has an option list by that option's label, so a duration row reads `5 minutes` or `Unlimited` rather than a millisecond count. The stored value is unchanged. The footer prints the description of the selected row. Type to search every tab; escape clears the search before it closes the panel.
+
 ```bash
 veyyon config list                 # all settings with current effective values
 veyyon config list --json          # same, machine-readable

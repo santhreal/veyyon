@@ -1,3 +1,4 @@
+import { collapseWhitespace } from "@veyyon/utils";
 import { escapeMarkdownTableCell } from "@veyyon/utils/markdown-table";
 import type { Tool } from "../../../tools";
 import { BUILTIN_TOOL_SUMMARIES, type BuiltinToolName } from "../../../tools/core/builtin-names";
@@ -26,7 +27,7 @@ export function extractToolSummary(tool: Pick<Tool, "description" | "name"> & { 
 	// Strip XML-like tags such as <instruction> and <critical>, then markdown headings.
 	const strippedTags = (tool.description ?? "").replace(/<[^>]+>/g, " ");
 	const strippedHeaders = strippedTags.replace(/^#+\s+[^\n]+/gm, " ");
-	const flattened = strippedHeaders.replace(/\s+/g, " ").trim();
+	const flattened = collapseWhitespace(strippedHeaders);
 	const match = flattened.match(/^(.+?[.!?])(?:\s|$)/);
 	return (match ? match[1] : flattened).trim() || "No description provided.";
 }

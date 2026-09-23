@@ -713,6 +713,9 @@ export class ExtensionUiController {
 		const baseOptions: CollabUiSelectItem[] = question.options.map(option =>
 			option.description?.trim() ? { label: option.label, description: option.description.trim() } : option.label,
 		);
+		// Mirror the local dialog: `allowOther: false` offers no free-text row, so a
+		// guest cannot return an answer outside the listed options.
+		const otherOption: CollabUiSelectItem[] = question.allowOther === false ? [] : [ASK_OTHER_OPTION_LABEL];
 		if (question.multi) {
 			while (true) {
 				const checkedIndices = question.options
@@ -724,7 +727,7 @@ export class ExtensionUiController {
 				// (PRRT_kwDOQxs0bc6OFbDW). The remote select has no "disabled" row
 				// concept, so we omit rather than dim it.
 				const hasAnswer = selected.size > 0 || customInput !== undefined;
-				const options = baseOptions.concat([ASK_OTHER_OPTION_LABEL]);
+				const options = baseOptions.concat(otherOption);
 				if (hasAnswer) options.push(ASK_NEXT_OPTION_LABEL);
 				options.push(ASK_CHAT_OPTION_LABEL);
 				const choice = await this.#requestGuestUiString(
@@ -745,7 +748,7 @@ export class ExtensionUiController {
 				if (choice.kind === "cancelled") return undefined;
 				if (choice.value === ASK_CHAT_OPTION_LABEL) return "chat";
 				if (choice.value === ASK_NEXT_OPTION_LABEL) break;
-				if (choice.value === ASK_OTHER_OPTION_LABEL) {
+				if (otherOption.length > 0 && choice.value === ASK_OTHER_OPTION_LABEL) {
 					const input = await this.#requestGuestUiString(
 						{ kind: "editor", title: boundPromptTitle("Custom answer: ", question.question) },
 						signal,
@@ -771,7 +774,7 @@ export class ExtensionUiController {
 					{
 						kind: "select",
 						title: question.question,
-						options: baseOptions.concat([ASK_OTHER_OPTION_LABEL, ASK_CHAT_OPTION_LABEL]),
+						options: baseOptions.concat(otherOption, [ASK_CHAT_OPTION_LABEL]),
 						initialIndex,
 						selectionMarker: "radio",
 						markableCount: question.options.length,
@@ -782,7 +785,7 @@ export class ExtensionUiController {
 				if (choice.kind === "unavailable") return "unavailable";
 				if (choice.kind === "cancelled") return undefined;
 				if (choice.value === ASK_CHAT_OPTION_LABEL) return "chat";
-				if (choice.value === ASK_OTHER_OPTION_LABEL) {
+				if (otherOption.length > 0 && choice.value === ASK_OTHER_OPTION_LABEL) {
 					const input = await this.#requestGuestUiString(
 						{ kind: "editor", title: boundPromptTitle("Custom answer: ", question.question) },
 						signal,

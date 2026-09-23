@@ -10,6 +10,10 @@
 
 - Settings list adapts label width dynamically with clean truncation and wraps inline descriptions to fit within the visible viewport width.
 
+### Fixed
+
+- `SelectList.naturalWidth()` counts the description column's minimum width, so a list sized to it shows every description whole.
+
 ## [1.5.0] - 2026-09-18
 
 ### Breaking Changes
