@@ -245,6 +245,14 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		},
 		IntentDiscriminants::StopShare => vec![Intent::StopShare],
 		IntentDiscriminants::RefreshShare => vec![Intent::RefreshShare],
+		IntentDiscriminants::JoinShare => vec![
+			Intent::JoinShare { session: None, link: "https://relay.example.com/r1".to_string() },
+			Intent::JoinShare {
+				session: Some(1),
+				link:    "https://relay.example.com/r1".to_string(),
+			},
+		],
+		IntentDiscriminants::LeaveShare => vec![Intent::LeaveShare],
 		IntentDiscriminants::RefreshProfiles => vec![Intent::RefreshProfiles],
 		// Both ends of what a create copies: every item the page listed, and
 		// none of them, which is the blank profile.

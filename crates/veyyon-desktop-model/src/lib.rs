@@ -47,8 +47,8 @@ pub use domain::{
 	McpServerView, ModelRef, ModelView, ModelsView, PROCESS_LOG_CAPACITY_LINES, ProcessLogView,
 	ProcessLogsChunk, ProcessView, ProfileCopyItemView, ProfileView, ProfilesView, ProviderView,
 	QueuedPrompts, QueuedPromptsView, SearchResultsView, SeqGap, SessionSearchView,
-	SessionTranscriptView, SettingEntry, SettingKind, SettingOption, SettingsView,
-	ShareParticipantView, SharePhase, ShareView, TERMINAL_SCROLLBACK_CAPACITY_BYTES,
+	SessionTranscriptView, SettingEntry, SettingKind, SettingOption, SettingsView, ShareGuestView,
+	ShareParticipantView, SharePhase, ShareRole, ShareView, TERMINAL_SCROLLBACK_CAPACITY_BYTES,
 	TerminalOutputChunk, TerminalScrollback, TerminalStatus, TerminalView, ThemeView, ThemesView,
 	UsageView, diagnostic_sources,
 };

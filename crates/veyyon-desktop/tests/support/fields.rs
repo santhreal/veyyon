@@ -16,7 +16,7 @@ use veyyon_desktop_model::{
 use veyyon_desktop_scene::{Appearance, HeadlessSession, RenderOptions, headless_context};
 use veyyon_desktop_surface::{
 	ConnectionPhase, DrawerContent, DrawerTab, Intent, Keymap, Overlay, ProcessRow, SettingsPage,
-	SettingsState, ShellState, ShellView, ThemeLibrary, fixture, install_appearances,
+	SettingsState, ShareState, ShellState, ShellView, ThemeLibrary, fixture, install_appearances,
 };
 use veyyon_desktop_tokens::DEFAULT_APPEARANCE;
 use veyyon_gpui::{App, AppContext, Window};
@@ -116,6 +116,16 @@ pub fn settings_page_open(page: SettingsPage) -> ShellState {
 	ShellState {
 		connection: ConnectionPhase::Attached,
 		overlay: Some(Overlay::Settings(Box::new(SettingsState::new(page)))),
+		..fixture::populated()
+	}
+}
+
+/// A shell with the share card open on a window hosting nothing, which is the
+/// one state that draws the link field a `Join` beside it reads.
+pub fn share_card_open() -> ShellState {
+	ShellState {
+		connection: ConnectionPhase::Attached,
+		overlay: Some(Overlay::Share(Box::new(ShareState::new()))),
 		..fixture::populated()
 	}
 }

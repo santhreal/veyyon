@@ -181,6 +181,14 @@ pub fn command_items() -> Vec<PaletteItem> {
 			Some(Capability::Share),
 		),
 		(
+			"/join",
+			Intent::Navigate(SurfaceRoute::Share),
+			"Join the shared session a link names",
+			None,
+			Some(Capability::Share),
+		),
+		("/leave", Intent::LeaveShare, "Leave the shared session", None, Some(Capability::Share)),
+		(
 			"/settings",
 			Intent::Navigate(SurfaceRoute::Settings),
 			"Preferences and appearance",
@@ -229,7 +237,7 @@ pub fn command_items() -> Vec<PaletteItem> {
 		let mut item = PaletteItem::command(index as u64 + 1, name, intent, shortcut);
 		item.subtitle = Some(description.to_owned());
 		item.capability = capability;
-		item.takes_argument = name == "/goal";
+		item.takes_argument = matches!(name, "/goal" | "/join");
 		// The terminal reaches the same card under another spelling, so that
 		// spelling finds this row. `search` is matched and not drawn, which
 		// keeps one row in the list rather than several that open the one
@@ -320,6 +328,7 @@ pub fn command_items() -> Vec<PaletteItem> {
 	}
 	items
 }
+
 /// Whether a native command row takes a trailing argument.
 #[must_use]
 pub fn command_takes_argument(name: &str) -> bool {

@@ -14,6 +14,8 @@ mod editors;
 mod parse;
 mod profile;
 mod query;
+mod revert;
+mod share;
 mod supervisor;
 
 use serde_json::Value;
@@ -36,6 +38,7 @@ pub enum FieldKey {
 	ProcessInput,
 	SettingsQuery,
 	ProfileName,
+	ShareLink,
 }
 
 /// What a field's submit sends.
@@ -51,6 +54,7 @@ enum Commit {
 	ProcessSend,
 	SettingsQuery,
 	ProfileCreate,
+	ShareJoin,
 }
 /// A retained field: its editor, and what a submit of it sends.
 pub(super) struct Field {
@@ -85,6 +89,8 @@ pub struct FieldSlots {
 	pub task:        Option<Entity<Editor>>,
 	/// The editor for the name a new profile is created under.
 	pub profile:     Option<Entity<Editor>>,
+	/// The editor for the link to join another share.
+	pub share_link:  Option<Entity<Editor>>,
 	/// The editor for the query the General page's rows are narrowed by.
 	/// Every frame that can draw the page retains one, so the field it draws
 	/// is typeable rather than a picture of the query it holds.
@@ -300,73 +306,23 @@ impl ShellView {
 			(Commit::ProfileCreate, FieldKey::ProfileName) => {
 				profile::commit_create(self, &editor, cx);
 			},
+			(Commit::ShareJoin, FieldKey::ShareLink) => {
+				share::commit_join(self, &editor, cx);
+			},
 			// A query is already applied on the frame each character landed
 			// on, so a submit of it sends nothing and leaves the page as the
 			// typing left it.
 			(Commit::SettingsQuery, FieldKey::SettingsQuery) => {},
+			// A commit is raised by the field it belongs to, so a pair that
+			// does not match is a field whose editor outlived the surface
+			// that opened it: nothing is sent for it.
 			_ => {},
 		}
 	}
 
-	/// Drops what the field holds: a secret is discarded, and a setting's
-	/// field returns to the value the host reports on the next frame.
+	/// Drops what the field holds, per [`revert`].
 	fn revert_field(&mut self, key: &FieldKey, cx: &mut Context<Self>) {
-		let Some(field) = self.field_editors.get(key) else {
-			return;
-		};
-		let editor = field.editor.clone();
-		if let Some(field) = self.field_editors.get_mut(key) {
-			field.dirty = false;
-		}
-		match key {
-			FieldKey::AuthSecret => {
-				editor.update(cx, |editor, cx| editor.set_text(String::new(), cx));
-				self.field_editors.remove(key);
-				self.dispatch(Intent::CancelAuthFlow, cx);
-			},
-			FieldKey::Setting(k) => {
-				let initial = self
-					.active_settings()
-					.and_then(|s| s.entry(k))
-					.map(|e| match &e.value {
-						Value::String(s) => s.clone(),
-						other => other.to_string(),
-					})
-					.unwrap_or_default();
-				editor.update(cx, |editor, cx| editor.set_text(initial, cx));
-			},
-			FieldKey::SessionRename(id) => {
-				let initial = self
-					.state
-					.row(*id)
-					.map_or_else(|| self.state.title.clone(), |r| r.title.clone());
-				editor.update(cx, |editor, cx| editor.set_text(initial, cx));
-			},
-			FieldKey::Keybinding(action) => {
-				let initial = self
-					.active_settings()
-					.and_then(|settings| {
-						settings
-							.keybindings
-							.iter()
-							.find(|binding| &binding.action == action)
-					})
-					.map(|binding| binding.keys.join(", "))
-					.unwrap_or_default();
-				editor.update(cx, |editor, cx| editor.set_text(initial, cx));
-			},
-			FieldKey::TaskPrompt
-			| FieldKey::ProcessCommand
-			| FieldKey::ProcessInput
-			| FieldKey::ProfileName => {
-				editor.update(cx, |editor, cx| editor.set_text(String::new(), cx));
-			},
-			// The window captures Escape above the editor and widens the page
-			// there, one rung per press, so this arm is what a revert from
-			// anywhere else does: empty the query and the filter behind it.
-			FieldKey::SettingsQuery => self.clear_settings_query(cx),
-		}
-		self.clear_refusal();
+		revert::revert_field(self, key, cx);
 	}
 
 	/// States a refusal in the attention strip, where the operator is looking.

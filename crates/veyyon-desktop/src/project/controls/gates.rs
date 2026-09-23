@@ -124,6 +124,8 @@ pub fn gated_controls(
 		(SurfaceId::ShareStartReadOnlyButton, HostActionKind::StartShare),
 		(SurfaceId::ShareStopButton, HostActionKind::StopShare),
 		(SurfaceId::ShareRefreshButton, HostActionKind::RefreshShare),
+		(SurfaceId::ShareJoinButton, HostActionKind::JoinShare),
+		(SurfaceId::ShareLeaveButton, HostActionKind::LeaveShare),
 		// A profile is the process's, not a session's: the page is reached
 		// with nothing open, and the host serves the profile it was started
 		// under whatever the window has in front of it.

@@ -258,6 +258,14 @@ pub enum Intent {
 	StopShare,
 	/// Asks the host for the share as it stands, participants included.
 	RefreshShare,
+	/// Joins a share another veyyon hosts over the relay.
+	JoinShare {
+		session: Option<u64>,
+		link:    String,
+	},
+	/// Leaves the share this window joined. The window is what left it, so
+	/// the intent names no session, exactly as stopping a share names none.
+	LeaveShare,
 	RenameSession {
 		session: u64,
 		title:   String,

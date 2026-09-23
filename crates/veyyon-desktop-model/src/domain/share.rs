@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 pub struct ShareView {
 	/// Where the share is: what the window draws and what a control may ask for.
 	pub state:         String,
+	/// Whether this window hosts a share, is in one, or is in neither.
+	#[serde(default)]
+	pub role:          ShareRole,
 	/// The relay the share runs on; null when the settings name none.
 	pub relay_url:     Option<String>,
 	/// The link another veyyon opens. Null unless hosting.
@@ -18,10 +21,33 @@ pub struct ShareView {
 	pub web_view_link: Option<String>,
 	/// The parties connected to the relay.
 	pub participants:  Vec<ShareParticipantView>,
+	/// The room this window joined, or null when it joined none.
+	pub guest:         Option<ShareGuestView>,
 	/// Why the last attempt failed; null when nothing failed.
 	pub error:         Option<String>,
 }
 
+/// Which side of a share this window is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, strum::EnumIter)]
+pub enum ShareRole {
+	#[default]
+	Off,
+	Hosting,
+	Guest,
+}
+
+/// The room this window joined, present only while it is in one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShareGuestView {
+	/// The relay room the link named.
+	pub room:      String,
+	/// What the hosting session calls itself, or null before the first state.
+	pub host_name: Option<String>,
+	/// True when the link that was joined carries no write token.
+	pub read_only: bool,
+	/// False while the socket is down and the guest is reconnecting.
+	pub connected: bool,
+}
 /// One party on the relay, the hosting session included.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ShareParticipantView {
@@ -45,6 +71,12 @@ pub enum SharePhase {
 	Hosting,
 	/// Terminating relay connection.
 	Stopping,
+	/// Connecting to the relay room a join link named.
+	Joining,
+	/// In a room another veyyon hosts.
+	Joined,
+	/// Disconnecting from the room joined as guest.
+	Leaving,
 	/// A word from a host on a newer protocol. The card draws without claiming
 	/// anything.
 	Unknown,
@@ -59,6 +91,9 @@ impl SharePhase {
 			Self::Starting => "starting",
 			Self::Hosting => "hosting",
 			Self::Stopping => "stopping",
+			Self::Joining => "joining",
+			Self::Joined => "joined",
+			Self::Leaving => "leaving",
 			Self::Unknown => "unknown",
 		}
 	}
@@ -71,6 +106,9 @@ impl From<&str> for SharePhase {
 			"starting" => Self::Starting,
 			"hosting" => Self::Hosting,
 			"stopping" => Self::Stopping,
+			"joining" => Self::Joining,
+			"joined" => Self::Joined,
+			"leaving" => Self::Leaving,
 			_ => Self::Unknown,
 		}
 	}

@@ -15,9 +15,21 @@ export function clientSessionScope(state: ClientSessionState): string | undefine
 	return (state.sessionManager ?? state.agentSession?.sessionManager)?.getSessionId();
 }
 
-export function agentsSection(scope?: string): AgentView[] {
-	const registry = AgentRegistry.global();
-	const refs = scope !== undefined ? registry.listInScope(scope) : registry.list();
+/** The host's registry while this window is a guest in a share, else none. */
+export function clientAgentMirror(state: ClientSessionState): AgentRegistry | undefined {
+	return state.collabGuestLink?.agentRegistry;
+}
+
+/**
+ * The agents a window lists.
+ *
+ * `mirror` is the registry a collab guest holds: it carries the host's agents
+ * under the host's scope, which no local session id matches, so a mirror is
+ * listed whole and `scope` applies only to the local registry.
+ */
+export function agentsSection(scope?: string, mirror?: AgentRegistry): AgentView[] {
+	const registry = mirror ?? AgentRegistry.global();
+	const refs = mirror ? mirror.list() : scope !== undefined ? registry.listInScope(scope) : registry.list();
 	const byId = new Map(refs.map(ref => [ref.id, ref]));
 	// The roster rows carry the call sign, the spawn order a reader scans in and
 	// the model the agent is running right now, which the ref records once at
@@ -80,7 +92,7 @@ export function subscribeClientAgents(socket: net.Socket, state: ClientSessionSt
 		const currentScope = clientSessionScope(state);
 		if (agentsDirty) {
 			agentsDirty = false;
-			writeFrame(socket, { Snapshot: { Agents: agentsSection(currentScope) } });
+			writeFrame(socket, { Snapshot: { Agents: agentsSection(currentScope, clientAgentMirror(state)) } });
 		}
 		if (commsDirty) {
 			commsDirty = false;
@@ -156,7 +168,7 @@ const handleReviveAgent: ActionHandler<ReviveAgentPayload | undefined> = async (
 	try {
 		await AgentLifecycleManager.global().ensureLive(payload.agent_id);
 		ctx.reply.snapshot({
-			Agents: agentsSection(clientSessionScope(ctx.clientState)),
+			Agents: agentsSection(clientSessionScope(ctx.clientState), clientAgentMirror(ctx.clientState)),
 		});
 		ctx.reply.success();
 	} catch (error) {
@@ -227,7 +239,7 @@ const handleSpawnTask: ActionHandler<SpawnTaskPayload | undefined> = async (ctx,
 		}
 
 		ctx.reply.snapshot({
-			Agents: agentsSection(clientSessionScope(ctx.clientState)),
+			Agents: agentsSection(clientSessionScope(ctx.clientState), clientAgentMirror(ctx.clientState)),
 		});
 		ctx.reply.success();
 	} catch (error) {
@@ -273,7 +285,7 @@ const handleCancelTask: ActionHandler<CancelTaskPayload | undefined> = async (ct
 			ctx.clientState.agentSession.asyncJobManager.cancel(payload.task_id);
 		}
 		ctx.reply.snapshot({
-			Agents: agentsSection(clientSessionScope(ctx.clientState)),
+			Agents: agentsSection(clientSessionScope(ctx.clientState), clientAgentMirror(ctx.clientState)),
 		});
 		ctx.reply.success();
 	} catch (error) {
@@ -290,7 +302,7 @@ const handleRefreshAgents: ActionHandler = async ctx => {
 	try {
 		const scope = clientSessionScope(ctx.clientState);
 		ctx.reply.snapshot({
-			Agents: agentsSection(scope),
+			Agents: agentsSection(scope, clientAgentMirror(ctx.clientState)),
 		});
 		ctx.reply.snapshot({
 			AgentComms: agentCommsSection(scope),

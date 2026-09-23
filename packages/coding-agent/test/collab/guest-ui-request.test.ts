@@ -14,6 +14,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn, vi } from "bun:test";
 import { generateRoomKey, importRoomKey } from "@veyyon/coding-agent/collab/crypto";
 import { CollabGuestLink } from "@veyyon/coding-agent/collab/guest";
+import type { CollabGuestSurface } from "@veyyon/coding-agent/collab/guest-surface";
 import { CollabHost } from "@veyyon/coding-agent/collab/host";
 import {
 	COLLAB_PROTO,
@@ -190,14 +191,13 @@ async function makeHarness(opts?: { readOnly?: boolean }): Promise<GuestUiHarnes
 	hostSocket.connect();
 	await hostOpen.promise;
 
-	const ctx = {
-		collabGuest: undefined as CollabGuestLink | undefined,
-		settings: { get: () => "" },
+	const surface: CollabGuestSurface = {
+		settings: { get: () => "" } as unknown as CollabGuestSurface["settings"],
 		sessionManager: {
 			getSessionFile: () => null,
 			getSessionName: () => "local session",
 			getCwd: () => "/local",
-		},
+		} as unknown as CollabGuestSurface["sessionManager"],
 		session: {
 			messages: [],
 			switchSession: () => Promise.resolve(),
@@ -208,34 +208,17 @@ async function makeHarness(opts?: { readOnly?: boolean }): Promise<GuestUiHarnes
 				setThinkingLevel: () => {},
 				setDisableReasoning: () => {},
 			},
-		},
-		statusContainer: { clear: () => {} },
-		pendingMessagesContainer: { clear: () => {} },
-		compactionQueuedMessages: [],
-		streamingComponent: undefined,
-		streamingMessage: undefined,
-		pendingTools: new Map(),
-		settledToolCalls: new Set<string>(),
-		loadingAnimation: undefined as { stop(): void } | undefined,
-		clearWorkingLoader(): boolean {
-			const self = this as { loadingAnimation?: { stop(): void } };
-			if (!self.loadingAnimation) return false;
-			self.loadingAnimation.stop();
-			self.loadingAnimation = undefined;
-			return true;
-		},
-		statusLine: {
-			setCollabStatus: () => {},
-			invalidate: () => {},
-			resetActiveTime: () => {},
-			markActivityStart: () => {},
-			markActivityEnd: () => {},
-		},
-		ui: { requestRender: () => {} },
-		chatContainer: { clear: () => {} },
-		resetObserverRegistry: () => {},
-		renderInitialMessages: () => {},
-		reloadTodos: () => Promise.resolve(),
+		} as unknown as CollabGuestSurface["session"],
+		handleEvent: () => {},
+		setGuestLink: () => {},
+		redrawSession: () => Promise.resolve(),
+		setSessionTitle: () => {},
+		clearTransientState: () => {},
+		resetObservers: () => {},
+		agentsChanged: () => {},
+		setHostStreaming: () => {},
+		setCollabStatus: () => {},
+		setConnected: () => {},
 		showStatus: () => {},
 		showError: (message: string) => {
 			// The guest prefixes host error frames ("Collab host: <message>");
@@ -248,28 +231,33 @@ async function makeHarness(opts?: { readOnly?: boolean }): Promise<GuestUiHarnes
 				}
 			}
 		},
-		updateEditorBorderColor: () => {},
-		eventController: { handleEvent: () => Promise.resolve() },
-		syncRunningAgentBadge: () => {},
-		showHookSelector: (
-			title: string,
-			options: ExtensionUISelectItem[],
-			dialogOptions?: InteractiveSelectorDialogOptions,
-		): Promise<string | undefined> => presentStub({ kind: "select", title, options, dialogOptions }),
-		showHookEditor: (
-			title: string,
-			prefill?: string,
-			dialogOptions?: ExtensionUIDialogOptions,
-		): Promise<string | undefined> => presentStub({ kind: "editor", title, prefill, dialogOptions }),
-		// Required members of the context. Omitting them used to be tolerated by
-		// `?.()` calls in the controller, which meant production silently skipped
-		// the composer refresh and the welcome dismissal whenever either was
-		// missing. The calls are unconditional now, so the stub supplies them.
-		refreshComposerShortcuts: vi.fn(),
-		dismissWelcome: vi.fn(),
-	} as unknown as InteractiveModeContext;
+		askGuest: async (request, signal) => {
+			if (request.kind === "select") {
+				return presentStub({
+					kind: "select",
+					title: request.title,
+					options: request.options,
+					dialogOptions: {
+						signal,
+						initialIndex: request.initialIndex,
+						selectionMarker: request.selectionMarker,
+						checkedIndices: request.checkedIndices,
+						markableCount: request.markableCount,
+						helpText: request.helpText,
+					},
+				});
+			}
+			return presentStub({
+				kind: "editor",
+				title: request.title,
+				prefill: request.prefill,
+				dialogOptions: { signal },
+			});
+		},
+		restoreSession: () => Promise.resolve(),
+	};
 
-	const guest = new CollabGuestLink(ctx);
+	const guest = new CollabGuestLink(surface);
 	await guest.join(link);
 
 	return {
@@ -611,17 +599,11 @@ describe("collab proto handshake (#4049)", () => {
 		hostSocket.connect();
 		await hostOpen.promise;
 
-		const ctx = {
+		const surface = {
 			settings: { get: () => "" },
 			sessionManager: { getSessionFile: () => null },
-			// Required members of the context. Omitting them used to be tolerated by
-			// `?.()` calls in the controller, which meant production silently skipped
-			// the composer refresh and the welcome dismissal whenever either was
-			// missing. The calls are unconditional now, so the stub supplies them.
-			refreshComposerShortcuts: vi.fn(),
-			dismissWelcome: vi.fn(),
-		} as unknown as InteractiveModeContext;
-		const guest = new CollabGuestLink(ctx);
+		} as unknown as CollabGuestSurface;
+		const guest = new CollabGuestLink(surface);
 		try {
 			await expect(guest.join(link)).rejects.toThrow(/protocol mismatch/);
 		} finally {

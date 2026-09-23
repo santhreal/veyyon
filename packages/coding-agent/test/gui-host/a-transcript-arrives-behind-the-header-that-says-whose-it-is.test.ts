@@ -195,6 +195,8 @@ describe("a transcript arrives behind the header that says whose it is", () => {
 			StartShare: { StartShare: { read_only: false } },
 			StopShare: "StopShare",
 			RefreshShare: "RefreshShare",
+			JoinShare: { JoinShare: { session: alpha, link: "not-a-link" } },
+			LeaveShare: "LeaveShare",
 			SubmitPrompt: { SubmitPrompt: { session: alpha, text: "", attachments: [] } },
 			Steer: { Steer: { session: alpha, text: "" } },
 			FollowUp: { FollowUp: { session: alpha, text: "" } },

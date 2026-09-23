@@ -7,7 +7,7 @@
 //! THE CLASS THIS CLOSES: a share action reachable from a control that no
 //! projection covers. The sweep is over the gate table rather than a list
 //! written here: every `HostActionKind` whose capability is `Capability::Share`
-//! must be carried by at least one control in `gated_controls`, so a fourth
+//! must be carried by at least one control in `gated_controls`, so a seventh
 //! share action turns this red until it has a control, and a control removed
 //! from the projection turns it red too.
 //!
@@ -57,7 +57,7 @@ fn every_share_action_is_carried_by_a_control_the_window_projects() {
 }
 
 #[test]
-fn the_share_controls_are_the_four_the_card_draws() {
+fn the_share_controls_are_the_six_the_card_draws() {
 	let projected = projected_by_action();
 	let mut share_controls: Vec<SurfaceId> = share_actions()
 		.into_iter()
@@ -70,6 +70,8 @@ fn the_share_controls_are_the_four_the_card_draws() {
 		SurfaceId::ShareStartReadOnlyButton,
 		SurfaceId::ShareStopButton,
 		SurfaceId::ShareRefreshButton,
+		SurfaceId::ShareJoinButton,
+		SurfaceId::ShareLeaveButton,
 	]);
 }
 

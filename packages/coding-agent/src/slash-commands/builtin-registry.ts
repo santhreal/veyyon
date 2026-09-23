@@ -1684,7 +1684,8 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			}
 			try {
 				const { CollabGuestLink } = await import("../collab/guest");
-				await new CollabGuestLink(ctx).join(link);
+				const { createTerminalCollabGuestSurface } = await import("../collab/guest-surface");
+				await new CollabGuestLink(createTerminalCollabGuestSurface(ctx)).join(link);
 			} catch (err) {
 				ctx.showError(`Failed to join collab session: ${errorMessage(err)}`);
 			}

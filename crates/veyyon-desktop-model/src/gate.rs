@@ -109,9 +109,11 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::GetContextBreakdown => Capability::ContextBreakdown,
 		HostActionKind::SetGoal => Capability::Goals,
 		HostActionKind::ControlGoal => Capability::Goals,
-		HostActionKind::StartShare | HostActionKind::StopShare | HostActionKind::RefreshShare => {
-			Capability::Share
-		},
+		HostActionKind::StartShare
+		| HostActionKind::StopShare
+		| HostActionKind::RefreshShare
+		| HostActionKind::JoinShare
+		| HostActionKind::LeaveShare => Capability::Share,
 		HostActionKind::RefreshProfiles
 		| HostActionKind::CreateProfile
 		| HostActionKind::RenameProfile

@@ -12,6 +12,8 @@ import { parseGoalSubcommand } from "../../goals/subcommands";
 import { mcpManagerInstance } from "../../mcp/manager-instance";
 import type { AgentSession } from "../../session/agent-session";
 import { dispatchTan } from "../../task/tan";
+import { shareSection } from "../collab-bridge";
+import { attachCollabGuestBridge, joinRefusal, leaveShareOnWindow } from "../collab-guest-bridge";
 import { appendCommandOutput } from "../command-output";
 import type { DesktopHostCommandName } from "../desktop-commands";
 import { attachGoalBridge } from "../goal-bridge";
@@ -355,11 +357,60 @@ const omfg: HostCommand = async (ctx, session, args) => {
 	await forgeRuleForWindow(ctx, session, args);
 };
 
+/**
+ * `/join <link>`: the window joins the share the link names.
+ *
+ * The share card sends `JoinShare` for the same work. Both land on the same
+ * bridge, so a room joined from the composer is the room the card states, and
+ * a link typed with no room behind it fails the request rather than reaching
+ * the model as a prompt.
+ */
+const join: HostCommand = async (ctx, session, args) => {
+	const link = args.trim();
+	if (!link) {
+		ctx.reply.failure({
+			scope: "Session",
+			code: "INVALID_ARGUMENTS",
+			message: "Usage: /join <link>",
+			retryable: false,
+		});
+		return;
+	}
+	const refusal = joinRefusal(ctx.clientState);
+	if (refusal) {
+		ctx.reply.failure({
+			scope: "Session",
+			code: "ALREADY_HOSTING",
+			message: refusal,
+			retryable: false,
+		});
+		return;
+	}
+	const bridge = attachCollabGuestBridge(session, ctx.clientState, ctx.socket);
+	await bridge.join(link);
+	ctx.reply.snapshot(bridge.currentSection());
+	ctx.reply.success();
+};
+
+/**
+ * `/leave`: out of the share this window is in, either side of it.
+ *
+ * The terminal's `/leave` ends a hosted share too, so this does: a window
+ * that typed it means the share it is in, whichever side it joined from.
+ */
+const leave: HostCommand = async (ctx, session) => {
+	await leaveShareOnWindow(ctx.clientState);
+	ctx.reply.snapshot(shareSection(ctx.clientState, session.settings));
+	ctx.reply.success();
+};
+
 const HANDLERS: Record<DesktopHostCommandName, HostCommand> = {
 	btw,
 	debug,
 	goal,
 	"guided-goal": guidedGoal,
+	join,
+	leave,
 	omfg,
 	tan,
 };

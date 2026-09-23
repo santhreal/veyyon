@@ -131,6 +131,8 @@ pub fn surface_for_action(
 		},
 		Intent::StopShare => SurfaceId::ShareStopButton,
 		Intent::RefreshShare => SurfaceId::ShareRefreshButton,
+		Intent::JoinShare { .. } => SurfaceId::ShareJoinButton,
+		Intent::LeaveShare => SurfaceId::ShareLeaveButton,
 		_ => SurfaceId::GlobalTitlebarLine,
 	}
 }

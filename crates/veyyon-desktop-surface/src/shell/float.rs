@@ -64,6 +64,11 @@ pub(super) fn overlay_layer(
 			// which is what the terminal screen does with it.
 			let focus = fields.query.read(cx).focus_handle().clone();
 			window.focus(&focus, cx);
+		} else if view.share_link_is_drawn()
+			&& let Some(link) = &fields.share_link
+		{
+			let focus = link.read(cx).focus_handle().clone();
+			window.focus(&focus, cx);
 		} else {
 			window.focus(&dest_focus, cx);
 		}
@@ -203,6 +208,7 @@ pub(super) fn overlay_layer(
 				.bg(tokens.color(veyyon_desktop_kit::ColorRole::Float))
 				.child(crate::share::share_surface(
 					state,
+					fields.share_link,
 					back,
 					Some(&dest_focus),
 					&view.state.controls,

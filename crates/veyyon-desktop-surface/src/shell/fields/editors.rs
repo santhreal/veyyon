@@ -249,6 +249,26 @@ impl ShellView {
 		super::profile::commit_rename(self, &editor, name, cx);
 	}
 
+	/// The retained editor for the share link field on the share card.
+	pub fn share_link_field_editor(&mut self, cx: &mut Context<Self>) -> Entity<Editor> {
+		self.field_editor(
+			FieldSpec {
+				key:         FieldKey::ShareLink,
+				commit:      Commit::ShareJoin,
+				placeholder: "collab link, then press Join".into(),
+				mask:        false,
+				multiline:   false,
+				initial:     String::new(),
+			},
+			cx,
+		)
+	}
+
+	/// Joins the share the link field holds, for the button beside it.
+	pub fn submit_share_join(&mut self, cx: &mut Context<Self>) {
+		self.commit_field(&FieldKey::ShareLink, cx);
+	}
+
 	/// The editors the settings pages draw their own fields from, created
 	/// here because a page renders from a shared view that cannot create one.
 	pub fn field_slots(&mut self, window: &Window, cx: &mut Context<Self>) -> FieldSlots {
@@ -256,6 +276,7 @@ impl ShellView {
 		let task = self.task_prompt_field_editor(cx);
 		let query = self.settings_query_field_editor(cx);
 		let profile = self.profile_name_field_editor(cx);
+		let share_link = self.share_link_field_editor(cx);
 		// The bindings are cloned out first: the editor for one is created
 		// through the same view the listing is read from.
 		let reported: Vec<(String, Vec<String>)> = self
@@ -275,7 +296,14 @@ impl ShellView {
 				(action, editor)
 			})
 			.collect();
-		FieldSlots { secret, keybindings, task: Some(task), profile: Some(profile), query }
+		FieldSlots {
+			secret,
+			keybindings,
+			task: Some(task),
+			profile: Some(profile),
+			share_link: Some(share_link),
+			query,
+		}
 	}
 
 	/// Replaces what an unfocused field draws with the value the host

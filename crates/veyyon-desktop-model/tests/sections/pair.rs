@@ -97,6 +97,8 @@ pub fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 		SnapshotSectionKind::Share => [
 			SnapshotSection::Share(veyyon_desktop_model::ShareView {
 				state: "off".into(),
+				role: veyyon_desktop_model::ShareRole::Off,
+				guest: None,
 				relay_url: Some("https://relay.example.com".into()),
 				link: None,
 				web_link: None,
@@ -107,6 +109,8 @@ pub fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 			}),
 			SnapshotSection::Share(veyyon_desktop_model::ShareView {
 				state: "hosting".into(),
+				role: veyyon_desktop_model::ShareRole::Hosting,
+				guest: None,
 				relay_url: Some("https://relay.example.com".into()),
 				link: Some("https://relay.example.com/r1".into()),
 				web_link: Some("https://relay.example.com/web/r1".into()),

@@ -644,8 +644,12 @@ export const ALL_GOAL_CONTROLS = ["pause", "resume", "drop"] as const;
 export type GoalControl = (typeof ALL_GOAL_CONTROLS)[number];
 
 /** Where the share is: what the window draws and what a control may ask for. */
-export type SharePhase = "off" | "starting" | "hosting" | "stopping";
-export const SHARE_PHASES = ["off", "starting", "hosting", "stopping"] as const;
+export type SharePhase = "off" | "starting" | "hosting" | "stopping" | "joining" | "joined" | "leaving";
+export const SHARE_PHASES = ["off", "starting", "hosting", "stopping", "joining", "joined", "leaving"] as const;
+
+/** Which side of a share this window is on. */
+export type ShareRole = "Off" | "Hosting" | "Guest";
+export const SHARE_ROLES = ["Off", "Hosting", "Guest"] as const;
 
 /** One party on the relay, the hosting session included. */
 export interface ShareParticipantView {
@@ -658,8 +662,22 @@ export interface ShareParticipantView {
 	is_host: boolean;
 }
 
+/** The room this window joined, present only while it is in one. */
+export interface ShareGuestView {
+	/** The relay room the link named. */
+	room: string;
+	/** What the hosting session calls itself, or null before the first state. */
+	host_name: string | null;
+	/** True when the link that was joined carries no write token. */
+	read_only: boolean;
+	/** False while the socket is down and the guest is reconnecting. */
+	connected: boolean;
+}
+
 export interface ShareView {
 	state: SharePhase;
+	/** Whether this window hosts a share, is in one, or is in neither. */
+	role: ShareRole;
 	/** The relay the share runs on; null when the settings name none. */
 	relay_url: string | null;
 	/** The link another veyyon opens. Null unless hosting. */
@@ -670,6 +688,8 @@ export interface ShareView {
 	view_link: string | null;
 	web_view_link: string | null;
 	participants: ShareParticipantView[];
+	/** The room this window joined, or null when it joined none. */
+	guest: ShareGuestView | null;
 	/** Why the last attempt failed; null when nothing failed. */
 	error: string | null;
 }
@@ -817,8 +837,10 @@ export type HostAction =
 	| "ListCommands"
 	| "StopShare"
 	| "RefreshShare"
+	| "LeaveShare"
 	| "RefreshProfiles"
 	| { StartShare: { read_only: boolean } }
+	| { JoinShare: { session?: string; link: string } }
 	| { Attach: { endpoint: string | null } }
 	| { OpenSession: { session: string } }
 	| { SearchSessions: { query: string } }
@@ -927,6 +949,8 @@ export const ALL_HOST_ACTIONS = [
 	"StartShare",
 	"StopShare",
 	"RefreshShare",
+	"JoinShare",
+	"LeaveShare",
 	"RefreshProfiles",
 	"CreateProfile",
 	"RenameProfile",
@@ -1020,6 +1044,8 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	StartShare: "Share",
 	StopShare: "Share",
 	RefreshShare: "Share",
+	JoinShare: "Share",
+	LeaveShare: "Share",
 	RefreshProfiles: "Profiles",
 	CreateProfile: "Profiles",
 	RenameProfile: "Profiles",

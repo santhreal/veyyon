@@ -12,7 +12,7 @@
  * creates, renames or deletes a directory; the handlers in `actions/profiles`
  * call that store.
  */
-import { getActiveProfile, listProfiles } from "@veyyon/utils";
+import { errorMessage, getActiveProfile, listProfiles } from "@veyyon/utils";
 import { PROFILE_COPY_ITEMS, readProfileDisplayName } from "../cli/profile-cli";
 import { guiHostSocketPath } from "./socket-path";
 import type { ProfileCopyItemView, ProfilesView, ProfileView } from "./wire";
@@ -32,7 +32,7 @@ function endpointFor(agentDir: string): Pick<ProfileView, "endpoint" | "endpoint
 	try {
 		return { endpoint: `unix:${guiHostSocketPath(agentDir)}`, endpoint_error: null };
 	} catch (error) {
-		return { endpoint: null, endpoint_error: error instanceof Error ? error.message : String(error) };
+		return { endpoint: null, endpoint_error: errorMessage(error) };
 	}
 }
 

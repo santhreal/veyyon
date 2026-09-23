@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
-import { errorMessage, getNonBlankStringProperty } from "@veyyon/utils";
+import { errorMessage, getNonBlankStringProperty, isRecord } from "@veyyon/utils";
 import type { Rule } from "../discovery/capability/rule";
 import { buildRuleFromMarkdown, createSourceMeta } from "../discovery/helpers";
 import { TtsrManager, type TtsrMatchContext } from "../export/ttsr";
@@ -265,11 +265,11 @@ function parseGeneratedRulePayload(jsonText: string): GeneratedRulePayload | { e
 		return { error: `Generated rule JSON is invalid: ${message}` };
 	}
 
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+	if (!isRecord(parsed)) {
 		return { error: "Generated rule JSON must be an object" };
 	}
 
-	const object = parsed as Record<string, unknown>;
+	const object = parsed;
 	const rawName = stringField(object, "name");
 	if (!rawName) {
 		return { error: "Generated rule JSON must include a non-empty name" };
@@ -764,13 +764,13 @@ function stringifyToolArguments(args: unknown): string {
 }
 
 function extractArgPaths(args: unknown): string[] | undefined {
-	if (!args || typeof args !== "object" || Array.isArray(args)) {
+	if (!isRecord(args)) {
 		return undefined;
 	}
 
 	const paths: string[] = [];
-	for (const key in args as Record<string, unknown>) {
-		const value = (args as Record<string, unknown>)[key];
+	for (const key in args) {
+		const value = args[key];
 		const normalizedKey = key.toLowerCase();
 		if (typeof value === "string" && (normalizedKey === "path" || normalizedKey.endsWith("path"))) {
 			paths.push(value);

@@ -41,7 +41,7 @@ use veyyon_desktop_surface::Intent;
 /// Every string an action carries that is an operator's or the host's own
 /// value rather than a vocabulary: text, identifiers, paths and queries. A new
 /// entry here is a decision that the value is open.
-const OPEN_STRINGS: [&str; 73] = [
+const OPEN_STRINGS: [&str; 75] = [
 	"AbortTurn.session",
 	"BranchSession.session",
 	"CancelAuthFlow.provider",
@@ -66,6 +66,10 @@ const OPEN_STRINGS: [&str; 73] = [
 	"GetUsage.session",
 	"HandoffSession.session",
 	"HandoffSession.target",
+	// A join link is minted by the relay the room is on, and the session it
+	// names is the one the window is joining from.
+	"JoinShare.link",
+	"JoinShare.session",
 	"LoadTranscript.session",
 	"OpenAuthUrl.url",
 	"OpenExternal.path",

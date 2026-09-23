@@ -10,9 +10,10 @@
  * forwarding contract exactly; only the TUI context and the network transport
  * are stubbed.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn, vi } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { importRoomKey } from "@veyyon/coding-agent/collab/crypto";
 import { CollabGuestLink } from "@veyyon/coding-agent/collab/guest";
+import type { CollabGuestSurface } from "@veyyon/coding-agent/collab/guest-surface";
 import { CollabHost } from "@veyyon/coding-agent/collab/host";
 import { COLLAB_PROTO, type CollabFrame, parseCollabLink } from "@veyyon/coding-agent/collab/protocol";
 import { CollabSocket } from "@veyyon/coding-agent/collab/relay-client";
@@ -95,53 +96,32 @@ function makeHostContext(snapshot: SizedSnapshot): InteractiveModeContext {
 	return ctx as unknown as InteractiveModeContext;
 }
 
-function makeFailingGuestContext(failure: Error): InteractiveModeContext {
-	const ctx = {
-		settings: { get: () => "" },
+function makeFailingGuestSurface(failure: Error): CollabGuestSurface {
+	return {
+		settings: { get: () => "" } as unknown as CollabGuestSurface["settings"],
 		sessionManager: {
 			getSessionFile: () => null,
-			switchSession: () => Promise.reject(failure),
-		},
+		} as unknown as CollabGuestSurface["sessionManager"],
 		session: {
+			switchSession: () => Promise.reject(failure),
 			newSession: () => Promise.resolve(),
 			messages: [],
-		},
-		statusContainer: { clear: () => {} },
-		pendingMessagesContainer: { clear: () => {} },
-		compactionQueuedMessages: [],
-		streamingComponent: undefined,
-		streamingMessage: undefined,
-		pendingTools: new Map(),
-		settledToolCalls: new Set<string>(),
-		loadingAnimation: undefined as { stop(): void } | undefined,
-		clearWorkingLoader(): boolean {
-			const self = this as { loadingAnimation?: { stop(): void } };
-			if (!self.loadingAnimation) return false;
-			self.loadingAnimation.stop();
-			self.loadingAnimation = undefined;
-			return true;
-		},
-		statusLine: {
-			setCollabStatus: () => {},
-			invalidate: () => {},
-			resetActiveTime: () => {},
-		},
-		ui: { requestRender: () => {} },
-		chatContainer: { clear: () => {} },
-		resetObserverRegistry: () => {},
-		renderInitialMessages: () => {},
-		reloadTodos: () => Promise.resolve(),
+		} as unknown as CollabGuestSurface["session"],
+		handleEvent: () => {},
+		setGuestLink: () => {},
+		redrawSession: () => Promise.resolve(),
+		setSessionTitle: () => {},
+		clearTransientState: () => {},
+		resetObservers: () => {},
+		agentsChanged: () => {},
+		setHostStreaming: () => {},
+		setCollabStatus: () => {},
+		setConnected: () => {},
 		showStatus: () => {},
-		updateEditorBorderColor: () => {},
-		collabGuest: undefined,
-		// Required members of the context. Omitting them used to be tolerated by
-		// `?.()` calls in the controller, which meant production silently skipped
-		// the composer refresh and the welcome dismissal whenever either was
-		// missing. The calls are unconditional now, so the stub supplies them.
-		refreshComposerShortcuts: vi.fn(),
-		dismissWelcome: vi.fn(),
-	} as unknown as InteractiveModeContext;
-	return ctx;
+		showError: () => {},
+		askGuest: () => Promise.resolve(undefined),
+		restoreSession: () => Promise.resolve(),
+	};
 }
 
 // ── Shared host/relay ───────────────────────────────────────────────────────
@@ -224,7 +204,7 @@ describe("collab chunked welcome (#3144)", () => {
 	it("rejects the pending join when snapshot resume fails", async () => {
 		const failure = new Error("replica write failed during snapshot resume");
 		const writeSpy = spyOn(Bun, "write").mockRejectedValue(failure);
-		const guest = new CollabGuestLink(makeFailingGuestContext(failure));
+		const guest = new CollabGuestLink(makeFailingGuestSurface(failure));
 		const joinAttempt = guest.join(host.link);
 		try {
 			await expect(

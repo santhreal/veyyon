@@ -172,6 +172,8 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::StartShare { read_only: false },
 		Intent::StopShare,
 		Intent::RefreshShare,
+		Intent::JoinShare { session: None, link: "https://relay.example.com/r1".to_string() },
+		Intent::LeaveShare,
 		Intent::RefreshProfiles,
 		Intent::CreateProfile { name: "review".to_owned(), copy: vec!["settings".to_owned()] },
 		Intent::RenameProfile {
@@ -311,6 +313,8 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::StartShare { .. }
 			| Intent::StopShare
 			| Intent::RefreshShare
+			| Intent::JoinShare { .. }
+			| Intent::LeaveShare
 			| Intent::RefreshProfiles
 			| Intent::CreateProfile { .. }
 			| Intent::RenameProfile { .. }

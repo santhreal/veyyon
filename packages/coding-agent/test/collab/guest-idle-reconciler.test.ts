@@ -13,11 +13,10 @@
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, type Mock, mock, vi } from "bun:test";
 import {
-	type GuestIdleReconcilerCtx,
-	type GuestSnapshotActivityReconcilerCtx,
-	reconcileGuestIdleHostState,
-	reconcileGuestSnapshotHostState,
-} from "@veyyon/coding-agent/collab/guest";
+	type CollabGuestSurface,
+	createTerminalCollabGuestSurface,
+	type TerminalGuestSurfaceContext,
+} from "@veyyon/coding-agent/collab/guest-surface";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
 import type { StatusDataSource } from "@veyyon/wire/presentation";
@@ -37,13 +36,15 @@ afterEach(() => {
 });
 
 interface Fixture {
-	ctx: GuestIdleReconcilerCtx;
+	surface: CollabGuestSurface;
+	markActivityStart: Mock<() => void>;
 	markActivityEnd: Mock<() => void>;
 	loaderStop: Mock<() => void>;
 	isLoaderArmed: () => boolean;
 }
 
 function makeCtx(hasLoader: boolean): Fixture {
+	const markActivityStart: Mock<() => void> = mock(() => {});
 	const markActivityEnd: Mock<() => void> = mock(() => {});
 	const loaderStop: Mock<() => void> = mock(() => {});
 	// The real one-owner clear no-ops when no loader is armed and drops the
@@ -54,30 +55,32 @@ function makeCtx(hasLoader: boolean): Fixture {
 		loaderStop();
 		loaderArmed = false;
 	});
-	const ctx: GuestIdleReconcilerCtx = {
-		statusLine: { markActivityEnd },
+	const ctx = {
+		statusLine: { markActivityStart, markActivityEnd },
 		clearWorkingLoader,
-	};
-	return { ctx, markActivityEnd, loaderStop, isLoaderArmed: () => loaderArmed };
+	} as unknown as TerminalGuestSurfaceContext;
+	const surface = createTerminalCollabGuestSurface(ctx);
+	return { surface, markActivityStart, markActivityEnd, loaderStop, isLoaderArmed: () => loaderArmed };
 }
 
 function makeSession(): StatusDataSource {
 	return makeStatusLineProducer({ sessionName: "collab guest idle test" });
 }
 
-describe("reconcileGuestIdleHostState", () => {
+describe("setHostStreaming", () => {
 	it("closes the active-time window and stops the loader when the host reports idle", () => {
-		const { ctx, markActivityEnd, loaderStop, isLoaderArmed } = makeCtx(true);
-		reconcileGuestIdleHostState(ctx, false);
+		const { surface, markActivityEnd, loaderStop, isLoaderArmed } = makeCtx(true);
+		surface.setHostStreaming(false);
 		expect(markActivityEnd).toHaveBeenCalledTimes(1);
 		expect(loaderStop).toHaveBeenCalledTimes(1);
 		// Loader is cleared so a second reconciliation does not re-stop it.
 		expect(isLoaderArmed()).toBe(false);
 	});
 
-	it("is a no-op while the host is still streaming so live turns keep the meter open", () => {
-		const { ctx, markActivityEnd, loaderStop, isLoaderArmed } = makeCtx(true);
-		reconcileGuestIdleHostState(ctx, true);
+	it("marks activity start when the host is streaming so live turns keep the meter open", () => {
+		const { surface, markActivityStart, markActivityEnd, loaderStop, isLoaderArmed } = makeCtx(true);
+		surface.setHostStreaming(true);
+		expect(markActivityStart).toHaveBeenCalledTimes(1);
 		expect(markActivityEnd).not.toHaveBeenCalled();
 		expect(loaderStop).not.toHaveBeenCalled();
 		expect(isLoaderArmed()).toBe(true);
@@ -87,8 +90,8 @@ describe("reconcileGuestIdleHostState", () => {
 		// The `time_spent` leak (#3681 review follow-up) does not require a
 		// live loader: a state frame can arrive after the loader is already
 		// stopped while the meter is still open.
-		const { ctx, markActivityEnd } = makeCtx(false);
-		reconcileGuestIdleHostState(ctx, false);
+		const { surface, markActivityEnd } = makeCtx(false);
+		surface.setHostStreaming(false);
 		expect(markActivityEnd).toHaveBeenCalledTimes(1);
 	});
 
@@ -96,14 +99,12 @@ describe("reconcileGuestIdleHostState", () => {
 		// markActivityEnd is idempotent on the StatusLineComponent side, but
 		// the loader is cleared after the first close so a stale state frame
 		// arriving later does not call `.stop()` on a disposed loader.
-		const { ctx, loaderStop } = makeCtx(true);
-		reconcileGuestIdleHostState(ctx, false);
-		reconcileGuestIdleHostState(ctx, false);
+		const { surface, loaderStop } = makeCtx(true);
+		surface.setHostStreaming(false);
+		surface.setHostStreaming(false);
 		expect(loaderStop).toHaveBeenCalledTimes(1);
 	});
-});
 
-describe("reconcileGuestSnapshotHostState", () => {
 	it("stops the active meter when an idle welcome snapshot finalizes after reconnect", () => {
 		const statusLine = new StatusLineComponent(makeSession());
 		let now = 10_000_000;
@@ -112,11 +113,12 @@ describe("reconcileGuestSnapshotHostState", () => {
 		now += 5_000;
 		expect(statusLine.getActiveMs()).toBe(5_000);
 
-		const ctx: GuestSnapshotActivityReconcilerCtx = {
+		const ctx = {
 			statusLine,
 			clearWorkingLoader: () => {},
-		};
-		reconcileGuestSnapshotHostState(ctx, false);
+		} as unknown as TerminalGuestSurfaceContext;
+		const surface = createTerminalCollabGuestSurface(ctx);
+		surface.setHostStreaming(false);
 		const stoppedAt = statusLine.getActiveMs();
 		now += 60_000;
 		expect(statusLine.getActiveMs()).toBe(stoppedAt);

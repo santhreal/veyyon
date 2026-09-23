@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use veyyon_desktop_model::{
-	SettingEntry, SettingKind, SettingsView, ShareParticipantView, SharePhase, ShareView,
+	SettingEntry, SettingKind, SettingsView, ShareParticipantView, SharePhase, ShareRole, ShareView,
 };
 use veyyon_desktop_scene::{Headless, HeadlessSession, headless::render_view};
 use veyyon_desktop_surface::{
@@ -240,6 +240,8 @@ pub fn observations(cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
 	let mut share_state = ShareState::new();
 	share_state.share = Some(ShareView {
 		state:         SharePhase::Hosting.as_str().to_owned(),
+		role:          ShareRole::Hosting,
+		guest:         None,
 		relay_url:     Some("ws://127.0.0.1:7466".to_owned()),
 		link:          Some("ws://127.0.0.1:7466/r/room#key".to_owned()),
 		web_link:      Some("http://127.0.0.1:7466/#ws://127.0.0.1:7466/r/room.key".to_owned()),

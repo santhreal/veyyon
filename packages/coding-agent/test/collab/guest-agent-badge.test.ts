@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, spyOn, vi } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { generateRoomKey, importRoomKey } from "@veyyon/coding-agent/collab/crypto";
 import { CollabGuestLink } from "@veyyon/coding-agent/collab/guest";
+import type { CollabGuestSession, CollabGuestSurface } from "@veyyon/coding-agent/collab/guest-surface";
 import {
 	type AgentSnapshot,
 	COLLAB_PROTO,
@@ -12,7 +13,6 @@ import {
 	countRunningAgentBadgeAgents,
 	getRunningAgentBadgeRegistry,
 } from "@veyyon/coding-agent/modes/terminal/running-agent-badge";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { installInMemoryRelay, uninstallInMemoryRelay } from "./helpers/in-memory-relay";
 
@@ -42,16 +42,21 @@ function makeAgents(ids: string[]): AgentSnapshot[] {
 	}));
 }
 
-function makeGuestContext(counts: number[]): InteractiveModeContext {
+function makeGuestSurface(counts: number[]): {
+	surface: CollabGuestSurface;
+	getAgentCount: () => number;
+	getCollabGuest: () => CollabGuestSession | undefined;
+	onSecondSnapshot: () => Promise<void>;
+} {
 	let statusLineCount = 0;
-	const ctx = {
-		collabGuest: undefined as CollabGuestLink | undefined,
-		settings: { get: () => "" },
+	let collabGuest: CollabGuestSession | undefined;
+	const { promise: secondSnapshotPromise, resolve: secondSnapshotResolve } = Promise.withResolvers<void>();
+
+	const surface: CollabGuestSurface = {
+		settings: { get: () => "" } as unknown as CollabGuestSurface["settings"],
 		sessionManager: {
 			getSessionFile: () => null,
-			getSessionName: () => "local session",
-			getCwd: () => "/local",
-		},
+		} as unknown as CollabGuestSurface["sessionManager"],
 		session: {
 			messages: [],
 			switchSession: () => Promise.resolve(),
@@ -62,58 +67,37 @@ function makeGuestContext(counts: number[]): InteractiveModeContext {
 				setThinkingLevel: () => {},
 				setDisableReasoning: () => {},
 			},
+		} as unknown as CollabGuestSurface["session"],
+		handleEvent: () => {},
+		setGuestLink: link => {
+			collabGuest = link;
 		},
-		statusContainer: { clear: () => {} },
-		pendingMessagesContainer: { clear: () => {} },
-		compactionQueuedMessages: [],
-		streamingComponent: undefined,
-		streamingMessage: undefined,
-		pendingTools: new Map(),
-		settledToolCalls: new Set<string>(),
-		loadingAnimation: undefined as { stop(): void } | undefined,
-		clearWorkingLoader(): boolean {
-			const self = this as { loadingAnimation?: { stop(): void } };
-			if (!self.loadingAnimation) return false;
-			self.loadingAnimation.stop();
-			self.loadingAnimation = undefined;
-			return true;
+		redrawSession: () => Promise.resolve(),
+		setSessionTitle: () => {},
+		clearTransientState: () => {},
+		resetObservers: () => {},
+		agentsChanged: () => {
+			const registry = getRunningAgentBadgeRegistry(collabGuest as CollabGuestLink | undefined);
+			const count = countRunningAgentBadgeAgents(registry);
+			statusLineCount = count;
+			counts.push(count);
+			if (count === 2) secondSnapshotResolve();
 		},
-		statusLine: {
-			setAgentCount: (count: number) => {
-				statusLineCount = count;
-			},
-			get agentCount() {
-				return statusLineCount;
-			},
-			setCollabStatus: () => {},
-			invalidate: () => {},
-			resetActiveTime: () => {},
-			markActivityStart: () => {},
-			markActivityEnd: () => {},
-		},
-		ui: { requestRender: () => {} },
-		chatContainer: { clear: () => {} },
-		resetObserverRegistry: () => {},
-		renderInitialMessages: () => {},
-		reloadTodos: () => Promise.resolve(),
+		setHostStreaming: () => {},
+		setCollabStatus: () => {},
+		setConnected: () => {},
 		showStatus: () => {},
 		showError: () => {},
-		updateEditorBorderColor: () => {},
-		eventController: { handleEvent: () => Promise.resolve() },
-		syncRunningAgentBadge: () => {
-			const registry = getRunningAgentBadgeRegistry(ctx.collabGuest);
-			const count = countRunningAgentBadgeAgents(registry);
-			ctx.statusLine.setAgentCount(count);
-			counts.push(count);
-		},
-		// Required members of the context. Omitting them used to be tolerated by
-		// `?.()` calls in the controller, which meant production silently skipped
-		// the composer refresh and the welcome dismissal whenever either was
-		// missing. The calls are unconditional now, so the stub supplies them.
-		refreshComposerShortcuts: vi.fn(),
-		dismissWelcome: vi.fn(),
-	} as unknown as InteractiveModeContext;
-	return ctx;
+		askGuest: () => Promise.resolve(undefined),
+		restoreSession: () => Promise.resolve(),
+	};
+
+	return {
+		surface,
+		getAgentCount: () => statusLineCount,
+		getCollabGuest: () => collabGuest,
+		onSecondSnapshot: () => secondSnapshotPromise,
+	};
 }
 
 beforeEach(() => {
@@ -154,29 +138,24 @@ describe("collab guest running-agents badge", () => {
 		await hostOpen.promise;
 
 		const counts: number[] = [];
-		const ctx = makeGuestContext(counts);
-		const guest = new CollabGuestLink(ctx);
+		const { surface, getAgentCount, getCollabGuest, onSecondSnapshot } = makeGuestSurface(counts);
+		const guest = new CollabGuestLink(surface);
 
 		try {
 			await guest.join(link);
-			expect(ctx.collabGuest).toBe(guest);
+			expect(getCollabGuest()).toBe(guest);
 			expect(counts).toEqual([0, 1]);
-			expect(ctx.statusLine.agentCount).toBe(1);
+			expect(getAgentCount()).toBe(1);
 
 			nextWelcomeAgents = makeAgents(["remote-one", "remote-two"]);
-			const secondSnapshot = Promise.withResolvers<void>();
-			const originalSync = ctx.syncRunningAgentBadge.bind(ctx);
-			ctx.syncRunningAgentBadge = () => {
-				originalSync();
-				if (ctx.statusLine.agentCount === 2) secondSnapshot.resolve();
-			};
+			const secondSnapshot = onSecondSnapshot();
 			sendWelcome(nextWelcomeAgents);
-			await secondSnapshot.promise;
-			expect(ctx.statusLine.agentCount).toBe(2);
+			await secondSnapshot;
+			expect(getAgentCount()).toBe(2);
 
 			await guest.leave("test cleanup");
-			expect(ctx.collabGuest).toBeUndefined();
-			expect(ctx.statusLine.agentCount).toBe(0);
+			expect(getCollabGuest()).toBeUndefined();
+			expect(getAgentCount()).toBe(0);
 			expect(counts.at(-1)).toBe(0);
 		} finally {
 			hostSocket.close();

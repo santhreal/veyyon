@@ -14,7 +14,7 @@ use veyyon_desktop_surface::{
 };
 
 use super::fields::{
-	SETTING_KEY, general_page_holds, keybindings_page_binds, settings_page_open,
+	SETTING_KEY, general_page_holds, keybindings_page_binds, settings_page_open, share_card_open,
 	supervisor_tab_open, supervisor_tab_running, transport_asks_for_a_secret,
 };
 
@@ -43,6 +43,8 @@ pub enum KeyShape {
 	SettingsQuery,
 	/// [`FieldKey::ProfileName`].
 	ProfileName,
+	/// [`FieldKey::ShareLink`].
+	ShareLink,
 }
 
 /// The exhaustive match that makes a new `FieldKey` fail to compile here until
@@ -58,6 +60,7 @@ pub const fn key_shape(key: &FieldKey) -> KeyShape {
 		FieldKey::ProcessInput => KeyShape::ProcessInput,
 		FieldKey::SettingsQuery => KeyShape::SettingsQuery,
 		FieldKey::ProfileName => KeyShape::ProfileName,
+		FieldKey::ShareLink => KeyShape::ShareLink,
 	}
 }
 
@@ -161,6 +164,15 @@ pub fn cases() -> Vec<Case> {
 			text:  "",
 			says:  "Sending to a process needs something to send",
 			takes: "y",
+		},
+		Case {
+			key:   FieldKey::ShareLink,
+			// The share card draws the link field only while the window is
+			// hosting nothing, which is the state a join is reached from.
+			state: share_card_open(),
+			text:  "",
+			says:  "A link is required to join a share",
+			takes: "https://relay.example/s/abc123",
 		},
 	]
 }

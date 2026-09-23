@@ -331,6 +331,7 @@ const CORPUS = [
 	{
 		Share: {
 			state: "hosting",
+			role: "Hosting",
 			relay_url: "wss://relay.example.com",
 			link: "https://relay.example.com/room/room-1",
 			web_link: "https://relay.example.com/web/room-1",
@@ -344,6 +345,7 @@ const CORPUS = [
 					is_host: true,
 				},
 			],
+			guest: null,
 			error: null,
 		},
 	},

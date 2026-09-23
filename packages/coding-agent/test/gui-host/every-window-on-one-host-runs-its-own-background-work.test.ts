@@ -258,12 +258,22 @@ describe("every window on one host runs its own background work", () => {
 		await runTurn(first, "warm the first window");
 		await dispatch(second, "rebuild the index");
 		await parkedTan(second);
-
-		// A completion is delivered on the conversation's next turn, so the
-		// request each window sent states where the result landed.
-		await runTurn(first, "ask from the first window");
-		await runTurn(second, "ask from the second window");
-		expect(requestAsking("ask from the first window")).not.toContain(ANSWER);
-		expect(requestAsking("ask from the second window")).toContain(ANSWER);
+		// A roster lists the tan parked while its completion is still being
+		// queued, so the turn that carries the delivery is whichever one
+		// follows the queue rather than a fixed one. Both windows are asked on
+		// every pass, so the first window is read on every turn the delivery
+		// could have reached it, and the pass the second window carries it on
+		// ends the sweep.
+		let carried: string | undefined;
+		for (let pass = 0; pass < 20 && carried === undefined; pass++) {
+			const askedFirst = `ask from the first window ${pass}`;
+			await runTurn(first, askedFirst);
+			expect(requestAsking(askedFirst)).not.toContain(ANSWER);
+			const askedSecond = `ask from the second window ${pass}`;
+			await runTurn(second, askedSecond);
+			const body = requestAsking(askedSecond);
+			if (body.includes(ANSWER)) carried = body;
+		}
+		expect(carried).toContain(ANSWER);
 	});
 });

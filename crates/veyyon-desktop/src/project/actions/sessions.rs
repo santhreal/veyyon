@@ -78,7 +78,11 @@ pub(super) fn session_actions(
 
 /// The session a command acts on: the row it was taken on, or the open one
 /// for a command reached from the palette, which names no row.
-fn named(row: Option<u64>, index: &SessionIndex, active: Option<&SessionId>) -> Option<SessionId> {
+pub(super) fn named(
+	row: Option<u64>,
+	index: &SessionIndex,
+	active: Option<&SessionId>,
+) -> Option<SessionId> {
 	row.and_then(|row| index.session_of(row))
 		.or(active)
 		.cloned()

@@ -1,5 +1,5 @@
 import type * as net from "node:net";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { GoalDriver, type GoalDriverPort } from "../goals/driver";
 import type { AgentSession } from "../session/agent-session";
 import { writeFrame } from "./frames";
@@ -80,7 +80,7 @@ export class DesktopGoalBridge implements GoalDriverPort {
 			display: false,
 		}).catch(error => {
 			logger.warn("Goal continuation turn rejected", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		});
 	}

@@ -111,6 +111,10 @@ pub fn render_shell(
 				let editor = view.settings_query_field_editor(cx);
 				let focus = editor.read(cx).focus_handle().clone();
 				window.focus(&focus, cx);
+			} else if view.share_link_is_drawn() {
+				let editor = view.share_link_field_editor(cx);
+				let focus = editor.read(cx).focus_handle().clone();
+				window.focus(&focus, cx);
 			} else {
 				let dest_focus = view.destination_focus_handle(cx);
 				window.focus(&dest_focus, cx);

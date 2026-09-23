@@ -1,42 +1,16 @@
+mod request;
+
 use serde::{Deserialize, Serialize};
 
+pub use self::request::{AttachmentSubmission, GoalControl, HostRequest};
 pub use crate::action_kind::{HostActionKind, HostActionKind as Kind};
 use crate::{
 	composer::QueueMode,
-	connection::{EntryId, RequestId, SessionId},
+	connection::{EntryId, SessionId},
 	domain::changes::ChangeScope,
 	session::SettableMode,
 	signal::SupervisorSignal,
 };
-
-/// Binary attachment descriptor for prompt submission.
-///
-/// `media_type` is one of the image or video types the host accepts;
-/// `data` crosses the wire as base64 (see [`crate::base64_bytes`]).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AttachmentSubmission {
-	pub id:         String,
-	pub name:       String,
-	pub media_type: String,
-	#[serde(with = "crate::base64_bytes")]
-	pub data:       Vec<u8>,
-}
-
-/// Request wrapper carrying a unique identifier and action payload.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HostRequest {
-	pub id:     RequestId,
-	pub action: HostAction,
-}
-
-/// Operation applied to an autonomous goal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
-#[serde(rename_all = "snake_case")]
-pub enum GoalControl {
-	Pause,
-	Resume,
-	Drop,
-}
 
 /// Host actions across connection, session and interactive domains.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -371,13 +345,18 @@ pub enum HostAction {
 		op:      GoalControl,
 	},
 
-	// Share family (3 actions)
+	// Share family (5 actions)
 	StartShare {
 		read_only: bool,
 	},
 	StopShare,
 	RefreshShare,
-
+	JoinShare {
+		#[serde(skip_serializing_if = "Option::is_none")]
+		session: Option<SessionId>,
+		link:    String,
+	},
+	LeaveShare,
 	// Profile family (4 actions)
 	RefreshProfiles,
 	CreateProfile {

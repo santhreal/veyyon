@@ -1,5 +1,5 @@
 import type * as net from "node:net";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { resolveRelayUrl } from "@veyyon/wire";
 import { collabDisplayName } from "../collab/display-name";
 import { CollabHost } from "../collab/host";
@@ -37,12 +37,14 @@ export class DesktopCollabBridge implements CollabHostSurface {
 		if (!this.collabHost || this.phase === "off") {
 			return {
 				state: this.phase,
+				role: this.phase === "off" ? "Off" : "Hosting",
 				relay_url: relayUrl,
 				link: null,
 				web_link: null,
 				view_link: null,
 				web_view_link: null,
 				participants: [],
+				guest: null,
 				error: this.error,
 			};
 		}
@@ -62,12 +64,14 @@ export class DesktopCollabBridge implements CollabHostSurface {
 
 		return {
 			state: this.phase,
+			role: "Hosting",
 			relay_url: relayUrl,
 			link: this.readOnly ? null : host.link || null,
 			web_link: this.readOnly ? null : host.webLink || null,
 			view_link: host.viewLink || null,
 			web_view_link: host.webViewLink || null,
 			participants,
+			guest: null,
 			error: this.error,
 		};
 	}
@@ -141,7 +145,7 @@ export class DesktopCollabBridge implements CollabHostSurface {
 			this.changed();
 		} catch (err) {
 			this.phase = "off";
-			this.error = err instanceof Error ? err.message : String(err);
+			this.error = errorMessage(err);
 			this.collabHost = undefined;
 			this.changed();
 			throw err;
@@ -176,26 +180,31 @@ export function attachCollabBridge(
 }
 
 /**
- * The share a window is shown, hosted or not.
+ * The share a window is shown: the one it hosts, the one it joined, or none.
  *
- * With no bridge there is no share, and the card still states the relay a
- * start would dial, resolved from the settings the action acts on rather than
- * from a session that need not exist yet.
+ * A window is on one side at a time — hosting refuses a join and a guest
+ * refuses a start — so whichever bridge is off yields to the other. With
+ * neither there is no share, and the card still states the relay a start
+ * would dial, resolved from the settings the action acts on rather than from
+ * a session that need not exist yet.
  */
-export function shareSection(bridge?: DesktopCollabBridge, settings?: Settings): SnapshotSection {
-	if (bridge) {
-		return bridge.currentSection();
-	}
+export function shareSection(state?: ClientSessionState, settings?: Settings): SnapshotSection {
+	const guest = state?.collabGuestBridge;
+	if (guest && guest.phase !== "off") return guest.currentSection();
+	const host = state?.collabBridge;
+	if (host) return host.currentSection();
 	const relayUrl = resolveRelayUrl(settings?.get("collab.relayUrl") || "") || null;
 	return {
 		Share: {
 			state: "off",
+			role: "Off",
 			relay_url: relayUrl,
 			link: null,
 			web_link: null,
 			view_link: null,
 			web_view_link: null,
 			participants: [],
+			guest: null,
 			error: null,
 		},
 	};

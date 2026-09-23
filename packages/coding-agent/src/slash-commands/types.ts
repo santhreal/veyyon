@@ -1,5 +1,5 @@
 import type { SessionManager } from "@veyyon/kernel/session/session-manager";
-import type { CollabGuestContext } from "../collab/guest";
+import type { CollabGuestContext } from "../collab/guest-surface";
 import type { CollabHostContext } from "../collab/host";
 import type { Settings } from "../config/settings";
 import type { InteractiveModeContext } from "../modes/terminal/types";

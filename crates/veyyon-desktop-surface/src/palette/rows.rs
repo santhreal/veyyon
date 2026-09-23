@@ -7,7 +7,7 @@
 
 use veyyon_desktop_model::{Capability, GoalControl};
 
-use crate::{Intent, keymap::command::Command, model::Badge};
+use crate::{Intent, keymap::command::Command, model::Badge, navigation::SurfaceRoute};
 
 /// What the words after `/goal` mean, parsed the way the terminal parses
 /// them (`packages/coding-agent/src/goals/subcommands.ts`).
@@ -188,6 +188,12 @@ impl PaletteItem {
 		}
 		Some(match base {
 			Intent::ToggleGoalCard => goal_intent(remainder),
+			// `/join` with nothing after it opens the share card, which is the
+			// only place a link can be typed; the words after it are the link,
+			// so the row joins the room they name without the card in between.
+			Intent::Navigate(SurfaceRoute::Share) => {
+				Intent::JoinShare { session: None, link: remainder.to_owned() }
+			},
 			other => other,
 		})
 	}

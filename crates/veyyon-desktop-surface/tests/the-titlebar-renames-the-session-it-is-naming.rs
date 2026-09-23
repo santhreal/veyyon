@@ -34,6 +34,8 @@
 #[allow(dead_code, reason = "this binary uses the window helper alone")]
 mod model_picker;
 
+use std::path::Path;
+
 use model_picker::window;
 use veyyon_desktop_surface::{FieldKey, Intent, ShellState, fixture};
 
@@ -55,6 +57,7 @@ const fn proven_by(key: &FieldKey) -> &'static str {
 		FieldKey::ProcessInput => "a-line-a-process-receives-is-the-line-the-field-states",
 		FieldKey::SettingsQuery => "typing-in-the-settings-query-narrows-the-rows-the-page-draws",
 		FieldKey::ProfileName => "a-profile-control-sends-the-profile-the-page-names",
+		FieldKey::ShareLink => "a-link-typed-into-the-share-card-joins-the-room-it-names",
 	}
 }
 
@@ -107,10 +110,16 @@ fn retype(
 	session.frame().expect("the typed field draws");
 }
 
+/// The two crates a named suite is a file of: the surface's own tests and the
+/// window's, which is where the fields the transport drives are proven.
+const SUITE_DIRS: [&str; 2] = [".", "../veyyon-desktop"];
+
 #[test]
 fn every_field_the_window_draws_states_the_suite_that_proves_its_commit() {
 	// The payloads are stand-ins: what is asserted is that each variant of the
-	// union names a suite, which the match above cannot do for a new one.
+	// union names a suite that exists, which the match above cannot do for a
+	// new one. A suite renamed without this map following it is a field whose
+	// commit is claimed by nothing.
 	for key in [
 		FieldKey::AuthSecret,
 		FieldKey::Setting("theme".to_owned()),
@@ -120,8 +129,20 @@ fn every_field_the_window_draws_states_the_suite_that_proves_its_commit() {
 		FieldKey::ProcessCommand,
 		FieldKey::ProcessInput,
 		FieldKey::SettingsQuery,
+		FieldKey::ProfileName,
+		FieldKey::ShareLink,
 	] {
-		assert!(!proven_by(&key).is_empty(), "{key:?} names no suite that proves its commit");
+		let suite = proven_by(&key);
+		assert!(!suite.is_empty(), "{key:?} names no suite that proves its commit");
+		let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+		let found = SUITE_DIRS.iter().any(|dir| {
+			root
+				.join(dir)
+				.join("tests")
+				.join(format!("{suite}.rs"))
+				.is_file()
+		});
+		assert!(found, "{key:?} names {suite}, which is a suite in neither crate");
 	}
 }
 

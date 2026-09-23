@@ -1,38 +1,16 @@
 //! Active session hosting share card views (§5).
 
 use veyyon_desktop_kit::{
-	Badge, Button, ButtonSize, ButtonVariant, ColorRole, SpacingStep, TextRamp, TextWeight,
-	TintRole, TokenSet,
+	Button, ButtonSize, ButtonVariant, ColorRole, SpacingStep, TextRamp, TextWeight, TokenSet,
 };
-use veyyon_desktop_model::{ShareParticipantView, ShareView, SurfaceId};
+use veyyon_desktop_model::{ShareView, SurfaceId};
 use veyyon_desktop_tokens::ShareSurfaceTokens;
 use veyyon_gpui::{
-	AnyElement, Context, ElementId, InteractiveElement, IntoElement, ParentElement,
-	StatefulInteractiveElement, Styled, div, px,
+	AnyElement, Context, ElementId, InteractiveElement, IntoElement, ParentElement, Styled, div,
 };
 
-use super::{ShareState, gated_control};
+use super::{ShareState, gated_control, participants::participants_section};
 use crate::{Intent, ShellView, controls::ControlStates};
-
-/// What a participant row states about write permissions.
-#[must_use]
-pub const fn participant_write_label(participant: &ShareParticipantView) -> &'static str {
-	if participant.can_write {
-		"can write"
-	} else {
-		"read-only"
-	}
-}
-
-/// The tint for a participant's write permission badge.
-#[must_use]
-pub const fn participant_write_tint(participant: &ShareParticipantView) -> TintRole {
-	if participant.can_write {
-		TintRole::Done
-	} else {
-		TintRole::Plan
-	}
-}
 
 /// Every link the room offers, in the order the card states them.
 ///
@@ -146,87 +124,8 @@ pub fn render_hosting_view(
 
 	container = container.child(links_col);
 
-	let participants = share.map_or(&[][..], |s| s.participants.as_slice());
-
-	let mut part_section = div()
-		.id("share-participants-section")
-		.flex()
-		.flex_col()
-		.gap(px(geometry.row_gap))
-		.flex_1();
-
-	part_section = part_section.child(
-		div()
-			.text_size(tokens.font_size(TextRamp::Small))
-			.font_weight(tokens.font_weight(TextWeight::Medium))
-			.text_color(tokens.color(ColorRole::Foreground))
-			.child(format!("Participants ({})", participants.len())),
-	);
-
-	let mut part_list = div()
-		.id("share-participants-list")
-		.flex()
-		.flex_col()
-		.gap(px(geometry.row_gap))
-		.overflow_y_scroll()
-		.flex_1();
-
-	for p in participants {
-		let write_label = participant_write_label(p);
-		let write_tint = participant_write_tint(p);
-
-		let mut row = div()
-			.id(ElementId::Name(format!("share-participant-{}", p.id).into()))
-			.h(px(geometry.row_height_px))
-			.flex()
-			.items_center()
-			.justify_between()
-			.px(tokens.spacing(SpacingStep::S3))
-			.child(
-				div()
-					.flex()
-					.items_center()
-					.gap(tokens.spacing(SpacingStep::S2))
-					.child(
-						div()
-							.text_size(tokens.font_size(TextRamp::Body))
-							.font_weight(tokens.font_weight(TextWeight::Medium))
-							.text_color(tokens.color(ColorRole::Foreground))
-							.child(p.name.clone()),
-					),
-			);
-
-		let mut badges = div()
-			.flex()
-			.items_center()
-			.gap(tokens.spacing(SpacingStep::S2));
-
-		if p.is_host {
-			badges = badges.child(Badge::new("host", TintRole::Approve));
-		}
-		badges = badges.child(Badge::new(write_label, write_tint));
-
-		row = row.child(badges);
-		part_list = part_list.child(row);
-	}
-
-	if participants.is_empty() {
-		// A room with the host alone is the state a share spends its first
-		// seconds in, and an empty column reads as a roster that failed to
-		// arrive.
-		part_list = part_list.child(
-			div()
-				.id("share-participants-empty")
-				.px(tokens.spacing(SpacingStep::S3))
-				.text_size(tokens.font_size(TextRamp::Small))
-				.line_height(tokens.line_height(TextRamp::Small))
-				.text_color(tokens.color(ColorRole::Muted))
-				.child("No guests have joined yet."),
-		);
-	}
-
-	part_section = part_section.child(part_list);
-	container = container.child(part_section);
+	let participants = share.map_or(&[][..], |view| view.participants.as_slice());
+	container = container.child(participants_section(participants, geometry, tokens));
 
 	let footer = div()
 		.id("share-footer")

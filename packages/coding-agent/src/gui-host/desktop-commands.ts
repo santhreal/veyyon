@@ -23,6 +23,8 @@ const ANSWERED = {
 	debug: true,
 	goal: true,
 	"guided-goal": true,
+	join: true,
+	leave: true,
 	omfg: true,
 	tan: true,
 } as const satisfies Record<string, true>;

@@ -162,6 +162,8 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	StartShare: "Session",
 	StopShare: "Session",
 	RefreshShare: "Session",
+	JoinShare: "Session",
+	LeaveShare: "Session",
 	RefreshProfiles: "Settings",
 	CreateProfile: "Settings",
 	RenameProfile: "Settings",

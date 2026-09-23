@@ -59,6 +59,19 @@ export class CollabSocket {
 		this.#openSocket();
 	}
 
+	/**
+	 * Wait for every frame sent so far to reach the socket.
+	 *
+	 * `send` seals on a chain, so a frame handed over in one synchronous block
+	 * is still unsealed when that block ends. A caller that closes in the same
+	 * block — a host saying `bye` before it tears the room down — would drop
+	 * the last thing it said, and the party it said it to would sit on a room
+	 * that is gone, retrying a relay that no longer holds it.
+	 */
+	async flush(): Promise<void> {
+		await this.#sendChain;
+	}
+
 	send(frame: CollabFrame, targetPeer = 0): void {
 		this.#sendChain = this.#sendChain
 			.then(async () => {

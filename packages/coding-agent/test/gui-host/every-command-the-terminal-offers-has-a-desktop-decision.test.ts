@@ -56,8 +56,8 @@ const DECISIONS: Record<string, Decision> = {
 	queue: { action: "FollowUp" },
 	switch: { action: "SelectModel" },
 	collab: { client: "SurfaceRoute::Share, reached from /collab and /share in the palette" },
-	join: { gap: "the window hosts a share rather than joining one" },
-	leave: { gap: "nothing to leave: the window joins no room" },
+	join: { host: "the room the link names, joined on the window that asked; the share card sends JoinShare" },
+	leave: { host: "out of the share this window is in, either side of it; the card sends LeaveShare" },
 	copy: { client: "Intent::CopyText, over the transcript selection" },
 	hotkeys: { client: "SettingsPage::Keybindings" },
 	extensions: { client: "SettingsPage::Extensions" },
@@ -83,7 +83,7 @@ const DECISIONS: Record<string, Decision> = {
 };
 
 /** The gaps as they stand, so closing one is a recorded change. */
-const RECORDED_GAPS = ["join", "leave"];
+const RECORDED_GAPS: string[] = [];
 
 /**
  * The declarations through their declared interface. The table is `as const`,

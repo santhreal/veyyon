@@ -30,7 +30,7 @@
 
 use std::path::Path;
 
-use veyyon_desktop_model::{ShareParticipantView, SharePhase, ShareView};
+use veyyon_desktop_model::{ShareParticipantView, SharePhase, ShareRole, ShareView};
 use veyyon_desktop_scene::{
 	Appearance, Headless, RenderOptions, RgbaFrame, headless_context, render_view,
 };
@@ -71,6 +71,8 @@ fn hosting(room: &str, key: &str) -> ShellState {
 	let mut state = ShareState::new();
 	state.share = Some(ShareView {
 		state:         SharePhase::Hosting.as_str().to_owned(),
+		role:          ShareRole::Hosting,
+		guest:         None,
 		relay_url:     Some("ws://127.0.0.1:7466".to_owned()),
 		link:          Some(link),
 		web_link:      Some(web_link),

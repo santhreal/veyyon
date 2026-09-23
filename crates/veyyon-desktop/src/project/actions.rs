@@ -6,7 +6,7 @@ use veyyon_desktop_surface::Intent;
 use self::{
 	accounts::account_actions,
 	routes::{navigate_actions, retry_control_actions},
-	sessions::session_actions,
+	sessions::{named, session_actions},
 };
 use super::{
 	SessionIndex,
@@ -316,6 +316,17 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::StartShare { read_only } => vec![HostAction::StartShare { read_only: *read_only }],
 		Intent::StopShare => vec![HostAction::StopShare],
 		Intent::RefreshShare => vec![HostAction::RefreshShare],
+		// The room is joined on a session when the window is on one, resolved
+		// exactly as every other intent naming a row resolves it: the row it
+		// was taken on, else the open session. A window on no session names
+		// none, and the host opens one for the replica to land in.
+		Intent::JoinShare { session, link } => vec![HostAction::JoinShare {
+			session: named(*session, index, active.as_ref()),
+			link:    link.clone(),
+		}],
+		// The window is what is in the share, so leaving names no session: it
+		// is the connection's own, exactly as `StopShare` is.
+		Intent::LeaveShare => vec![HostAction::LeaveShare],
 		Intent::OpenFile(path) => vec![HostAction::ReadFile { path: path.clone() }],
 		Intent::SelectChangeScope(scope) => {
 			vec![HostAction::SelectChangeScope { scope: *scope }, HostAction::RefreshChanges]

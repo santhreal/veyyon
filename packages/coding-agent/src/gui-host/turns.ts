@@ -9,6 +9,7 @@ import type { PtySession } from "@veyyon/natives";
 import { errorMessage, logger } from "@veyyon/utils";
 import { formatBytes } from "@veyyon/utils/format";
 import { SUPPORTED_IMAGE_MIME_TYPES, SUPPORTED_VIDEO_MIME_TYPES } from "@veyyon/utils/mime";
+import type { CollabGuestSession } from "../collab/guest-surface";
 import type { GoalDriver } from "../goals/driver";
 import type { LoopDriver } from "../loop/driver";
 import { initializeExtensions } from "../modes/runtime-init";
@@ -19,6 +20,7 @@ import { USER_INTERRUPT_LABEL } from "../session/messages";
 import { MAX_IMAGE_INPUT_BYTES } from "../utils/image-loading";
 import { base64DecodedBytes, MAX_PROMPT_ATTACHMENT_BYTES, MAX_VIDEO_INPUT_BYTES } from "../utils/video-loading";
 import type { DesktopCollabBridge } from "./collab-bridge";
+import type { DesktopCollabGuestBridge } from "./collab-guest-bridge";
 import { publishCommandsView, watchCommandMetadata } from "./commands-view";
 import { writeFrame } from "./frames";
 import { attachGoalBridge, type DesktopGoalBridge } from "./goal-bridge";
@@ -108,6 +110,13 @@ export interface ClientSessionState {
 	loopDriver?: LoopDriver;
 	loopBridge?: DesktopLoopBridge;
 	collabBridge?: DesktopCollabBridge;
+	/** The share this window joined, absent unless it is a guest in one. */
+	collabGuestBridge?: DesktopCollabGuestBridge;
+	/**
+	 * The live guest link, held beside its bridge because the roster reads the
+	 * host's mirrored agents off it while a window is in a share.
+	 */
+	collabGuestLink?: CollabGuestSession;
 	/** `Steer` or `Queue`: how a prompt sent while a turn runs is delivered. */
 	queueMode?: "Steer" | "Queue";
 	selectedChangeScope?: string;
@@ -704,6 +713,13 @@ export async function disposeClientState(state: ClientSessionState): Promise<voi
 		if (state.collabBridge) {
 			void state.collabBridge.stop();
 			state.collabBridge = undefined;
+		}
+		if (state.collabGuestBridge) {
+			// A guest that is not told to leave holds its relay socket and stays
+			// on the host's participant list after the window that joined is gone.
+			void state.collabGuestBridge.leave("window closed");
+			state.collabGuestBridge = undefined;
+			state.collabGuestLink = undefined;
 		}
 		if (state.terminals) {
 			for (const terminal of state.terminals.values()) {

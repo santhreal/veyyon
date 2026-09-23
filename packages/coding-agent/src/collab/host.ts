@@ -341,6 +341,10 @@ export class CollabHost {
 	async stop(reason: string): Promise<void> {
 		if (this.#stopped) return;
 		this.#socket?.send(this.#redact({ t: "bye", reason }));
+		// Sealed on a chain, so the frame is still unsent when this block ends
+		// and `#teardown` closes the socket. Without the wait every guest is
+		// left retrying a room that is gone rather than being told it ended.
+		await this.#socket?.flush();
 		await this.#teardown();
 	}
 

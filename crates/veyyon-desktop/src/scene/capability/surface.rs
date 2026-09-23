@@ -4,8 +4,8 @@ use veyyon_desktop_model::{
 	AgentView, ApprovalInteraction, Capability, ChangeScope, ChangesView, CommandSource,
 	CommandView, EntryId, FileTreeView, InputModality, InteractionId, MessageRole, ModelRef,
 	ModelView, ModelsView, PendingDecisions, PlanInteraction, ProcessView, QuestionInteraction,
-	QueueMode, QueuePartition, SessionId, ShareView, StreamingMessageState, TerminalStatus,
-	TerminalView, TranscriptEntry,
+	QueueMode, QueuePartition, SessionId, ShareRole, ShareView, StreamingMessageState,
+	TerminalStatus, TerminalView, TranscriptEntry,
 };
 use veyyon_desktop_surface::{
 	Overlay, PaletteState, PanelTab, SettingsPage, navigation::SurfaceRoute, share::ShareState,
@@ -304,6 +304,8 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 			// before the first frame.
 			seed.store.domains.share = Some(ShareView {
 				state:         "off".to_owned(),
+				role:          ShareRole::Off,
+				guest:         None,
 				relay_url:     Some("wss://relay.example.com".to_owned()),
 				link:          None,
 				web_link:      None,

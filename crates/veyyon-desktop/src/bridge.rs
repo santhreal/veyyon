@@ -121,6 +121,8 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::ControlGoal
 		| HostActionKind::StartShare
 		| HostActionKind::StopShare
+		| HostActionKind::JoinShare
+		| HostActionKind::LeaveShare
 		| HostActionKind::CreateProfile
 		| HostActionKind::RenameProfile
 		| HostActionKind::DeleteProfile

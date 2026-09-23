@@ -1,5 +1,5 @@
 import type * as net from "node:net";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { LoopDriver, type LoopDriverPort } from "../loop/driver";
 import type { AgentSession } from "../session/agent-session";
 import { writeFrame } from "./frames";
@@ -56,7 +56,7 @@ export class DesktopLoopBridge implements LoopDriverPort {
 	submitPrompt(prompt: string): void {
 		void executePromptTurn(this.session, this.clientState, prompt).catch(error => {
 			logger.warn("Loop prompt submission rejected", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		});
 	}

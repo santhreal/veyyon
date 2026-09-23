@@ -7,7 +7,7 @@
  * profile by attaching to that profile's host, at the endpoint each row
  * carries.
  */
-import { getActiveProfile } from "@veyyon/utils";
+import { errorMessage, getActiveProfile } from "@veyyon/utils";
 import { createProfile, PROFILE_COPY_ITEMS, removeProfile, writeProfileDisplayName } from "../../cli/profile-cli";
 import { profilesSection } from "../profiles-view";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
@@ -43,7 +43,7 @@ function refuseFromStore(ctx: ActionContext, code: string, error: unknown): void
 	ctx.reply.failure({
 		scope: "Settings",
 		code,
-		message: error instanceof Error ? error.message : String(error),
+		message: errorMessage(error),
 		retryable: false,
 	});
 }

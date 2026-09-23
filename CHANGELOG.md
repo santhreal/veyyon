@@ -45,6 +45,7 @@
 
 ### Added
 
+- A desktop window joins a share another window is hosting with `/join` or the share card, replicating that session's transcript and answering its questions as decision cards, and `/leave` returns the window to its own session.
 - `/omfg` runs from a desktop window: the forged rule is reviewed as a decision card offering save, amend and discard, an amendment re-forges it with that feedback, and a rule the conversation does not confirm is saved only after the card that states so.
 - `/guided-goal` runs from a desktop window: the interview asks each question as a decision card, puts the drafted objective up for review, and enters goal mode on the objective that is accepted.
 - The desktop settings sheet holds a Profiles page, reached from `/profile`, which lists the profile directories on disk with the host address each is reached at and creates, renames and deletes them.
@@ -243,6 +244,8 @@
 
 ### Changed
 
+- The share card draws one roster whether the window hosts the room or joined it, so a participant row stands at the height, text size and badges the surface tokens state rather than at a second set of measures on the guest card.
+- The desktop host's bridges and the rule forge read an error's text through `errorMessage` and a record through `isRecord` from `@veyyon/utils` rather than through copies of those predicates. It changes nothing that is reported.
 - A streaming reply repaints the desktop window inside the transcript it draws in rather than the whole window: the animation that carries the caret, the scroll spring and a block's reveal now asks for its next frame inside the box the motion reaches, and a frame that cannot be scoped states the viewport so the frame after it is scoped again, so a turn of 52 batches repaints 57.5 million device pixels where it previously repainted 196.4 million.
 - The GUI host's `Agents` snapshot section carries `call_sign` beside `display_name`, so a window states the name a person reads without deriving one of its own.
 - A streamed reply reaches the desktop window once per frame rather than once per provider delta: the first delta is written with no delay and the ones behind it coalesce, so a 44 KiB reply arriving at 250 deltas a second crosses the socket in 17.6 MiB instead of 70.1 MiB.
@@ -638,6 +641,8 @@
 
 ### Fixed
 
+- Stopping a share sends the closing frame before the socket closes, where the frame was queued behind the close and dropped, leaving each guest reconnecting to a room that no longer exists.
+- Joining a share replies once the guest's own session is stored, where a second join arriving during the first restored the session twice and could reply against a session that was not open yet.
 - Every window a desktop host serves runs its own background work, where only the first session in the process held an async job manager and every window after it refused `/tan`, an async bash job and a task delivery outright; each window now owns a manager, and a completion is delivered into the conversation that asked for it.
 - A setting changed from the desktop window reaches the sessions already running in the process, where the change was written to disk and the running sessions went on acting on the values they had loaded, so a relay URL set and then shared with was ignored until a restart.
 - Starting a share while one is already running is refused instead of replacing it, which minted a second room and left every guest holding the first link on a room nothing was hosting.

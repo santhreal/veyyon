@@ -2,17 +2,20 @@
 //!
 //! Renders the share hosting controls, links, and relay participants.
 
+pub mod guest;
 pub mod hosting;
 pub mod off;
+pub mod participants;
 
 use veyyon_desktop_kit::{
 	Button, ButtonSize, ButtonVariant, ColorRole, InteractiveState, SpacingStep, TextRamp,
-	TextWeight, TintRole, TokenSet,
+	TextWeight, TintRole, TokenSet, input::Editor,
 };
 use veyyon_desktop_model::{SharePhase, ShareView, SurfaceId};
 use veyyon_desktop_tokens::ShareSurfaceTokens;
 use veyyon_gpui::{
-	Context, ElementId, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled, div, px,
+	Context, ElementId, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled,
+	div, px,
 };
 
 use crate::{
@@ -56,6 +59,7 @@ impl ShareState {
 /// Renders the session sharing card surface.
 pub fn share_surface(
 	state: &ShareState,
+	link_editor: Option<Entity<Editor>>,
 	back: Option<SurfaceRoute>,
 	focus: Option<&FocusHandle>,
 	controls: &ControlStates,
@@ -139,13 +143,20 @@ pub fn share_surface(
 	let phase = state.phase();
 	let body = match phase {
 		SharePhase::Off => {
-			off::render_off_view(state, controls, geometry, tokens, cx).into_any_element()
+			off::render_off_view(state, link_editor, controls, tokens, cx).into_any_element()
 		},
-		SharePhase::Starting | SharePhase::Stopping => {
+		SharePhase::Starting | SharePhase::Stopping | SharePhase::Joining | SharePhase::Leaving => {
 			off::render_transition_view(phase, tokens).into_any_element()
 		},
 		SharePhase::Hosting => {
 			hosting::render_hosting_view(state, controls, geometry, tokens, cx).into_any_element()
+		},
+		SharePhase::Joined => {
+			if let Some(guest_view) = state.share.as_ref().and_then(|s| s.guest.as_ref()) {
+				guest::render_guest_view(state, guest_view, controls, geometry, tokens, cx)
+			} else {
+				off::render_unknown_view(state, tokens).into_any_element()
+			}
 		},
 		SharePhase::Unknown => off::render_unknown_view(state, tokens).into_any_element(),
 	};
