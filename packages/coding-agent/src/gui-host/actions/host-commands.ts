@@ -17,6 +17,7 @@ import type { DesktopHostCommandName } from "../desktop-commands";
 import { attachGoalBridge } from "../goal-bridge";
 import { goalSection } from "../goal-view";
 import { interviewGuidedGoal } from "../guided-goal";
+import { forgeRuleForWindow } from "../rule-forge";
 import { answerSideQuestion } from "../side-question";
 import type { ActionContext } from "./types";
 
@@ -343,11 +344,23 @@ const guidedGoal: HostCommand = async (ctx, session, args) => {
 	ctx.reply.success();
 };
 
+/**
+ * `/omfg`: a rule forged from a complaint and reviewed in the window.
+ *
+ * The forge runs to a card rather than to a panel, so the request stays open
+ * until the rule is saved or left, which is what a window draws a spinner
+ * against.
+ */
+const omfg: HostCommand = async (ctx, session, args) => {
+	await forgeRuleForWindow(ctx, session, args);
+};
+
 const HANDLERS: Record<DesktopHostCommandName, HostCommand> = {
 	btw,
 	debug,
 	goal,
 	"guided-goal": guidedGoal,
+	omfg,
 	tan,
 };
 

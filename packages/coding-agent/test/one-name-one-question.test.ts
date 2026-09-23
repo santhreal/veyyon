@@ -10,7 +10,7 @@
  *     has `role === "assistant"`. Structural, no other requirement.
  *   - `presentation/token-rate.ts` additionally requires a numeric
  *     `timestamp` and a `usage.output`, because it is about to compute a rate.
- *   - `modes/terminal/controllers/omfg-rule.ts` additionally requires `content` to be an ARRAY,
+ *   - `rules/omfg-rule.ts` additionally requires `content` to be an ARRAY,
  *     because it is about to walk the blocks looking for tool calls.
  *   - `stats/src/parser.ts` additionally requires a non-empty `id`, because a legacy entry
  *     without one violates the `messages.entry_id NOT NULL` constraint downstream.
@@ -125,7 +125,7 @@ describe("no two modules answer different questions under one name", () => {
 			path.join("coding-agent", "src", "modes", "acp", "acp-event-mapper.ts"),
 		]);
 		expect(await declarersOf("isAssistantMessageWithBlocks")).toEqual([
-			path.join("coding-agent", "src", "modes", "terminal", "controllers", "omfg-rule.ts"),
+			path.join("coding-agent", "src", "rules", "omfg-rule.ts"),
 		]);
 		expect(await declarersOf("isLinkableAssistantEntry")).toEqual([path.join("apps", "stats", "src", "parser.ts")]);
 		expect(await declarersOf("isRateableAssistantTurn")).toEqual([

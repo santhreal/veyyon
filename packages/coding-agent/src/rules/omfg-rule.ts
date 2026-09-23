@@ -2,9 +2,9 @@ import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
 import { errorMessage, getNonBlankStringProperty } from "@veyyon/utils";
-import type { Rule } from "../../../discovery/capability/rule";
-import { buildRuleFromMarkdown, createSourceMeta } from "../../../discovery/helpers";
-import { TtsrManager, type TtsrMatchContext } from "../../../export/ttsr";
+import type { Rule } from "../discovery/capability/rule";
+import { buildRuleFromMarkdown, createSourceMeta } from "../discovery/helpers";
+import { TtsrManager, type TtsrMatchContext } from "../export/ttsr";
 
 export interface ParsedGeneratedRule {
 	rule: Rule;

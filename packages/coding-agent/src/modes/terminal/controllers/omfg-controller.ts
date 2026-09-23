@@ -1,18 +1,14 @@
-import * as path from "node:path";
-import { errorMessage, prompt } from "@veyyon/utils";
-import type { Rule } from "../../../discovery/capability/rule";
-import { sideChannelPrompts } from "../../../prompts/side-channel/rows";
+import { errorMessage } from "@veyyon/utils";
+import {
+	type ForgeCandidate,
+	forgedRuleExists,
+	forgedRuleTarget,
+	forgeRule,
+	saveForgedRule,
+} from "../../../rules/forge";
 import { shortenPath } from "../../../tools/core/render-utils";
 import { OmfgPanelComponent } from "../components/dialogs/omfg-panel";
 import type { InteractiveModeContext } from "../types";
-import {
-	buildOmfgRuleForPath,
-	extractGeneratedRuleJson,
-	type OmfgRuleSourceLevel,
-	type ParsedGeneratedRule,
-	parseGeneratedRule,
-	validateParsedRuleAgainstAssistantHistory,
-} from "./omfg-rule";
 
 /**
  * The slice of the interactive context this controller uses: 10 members of the
@@ -41,10 +37,6 @@ interface OmfgRequest {
 	complaint: string;
 }
 
-interface OmfgCandidate extends ParsedGeneratedRule {
-	validated: boolean;
-}
-
 interface GenerateCandidateOptions {
 	initialFeedback?: string;
 	previousRule?: string;
@@ -52,7 +44,6 @@ interface GenerateCandidateOptions {
 
 type SaveCandidateResult = { kind: "saved" | "aborted" | "rejected" } | { kind: "amend"; feedback: string };
 
-const MAX_ATTEMPTS = 3;
 const PROFILE_OPTION = "This profile — every project";
 const AMEND_OPTION = "Amend with feedback…";
 
@@ -151,66 +142,27 @@ export class OmfgController {
 	async #generateCandidate(
 		request: OmfgRequest,
 		options: GenerateCandidateOptions = {},
-	): Promise<OmfgCandidate | undefined> {
-		const failedAttempts = options.initialFeedback ? [options.initialFeedback] : [];
-		let previousRule = options.previousRule;
-		let lastCandidate: ParsedGeneratedRule | undefined;
-
-		for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-			if (this.#shouldStop(request)) return undefined;
-			request.component.setRule("");
-			request.component.setStatus("generating", `Attempt ${attempt}/${MAX_ATTEMPTS} · generating…`);
-			const promptText = prompt.render(sideChannelPrompts["side-channel/omfg-user"].text, {
-				complaint: request.complaint,
-				feedback: failedAttempts.length > 0 ? failedAttempts.join("\n\n") : undefined,
-				previousRule,
-			});
-			const { replyText } = await this.ctx.session.runEphemeralTurn({
-				promptText,
-				dedupeReply: false,
-				onTextDelta: delta => {
-					if (this.#isActiveRequest(request)) {
-						request.component.appendDraft(delta);
-					}
+	): Promise<ForgeCandidate | undefined> {
+		if (this.#shouldStop(request)) return undefined;
+		return await forgeRule(this.ctx.session, request.complaint, {
+			feedback: options.initialFeedback,
+			previousRule: options.previousRule,
+			signal: request.abortController.signal,
+			progress: {
+				stage: (stage, _attempt, detail) => {
+					if (this.#isActiveRequest(request)) request.component.setStatus(stage, detail);
 				},
-				signal: request.abortController.signal,
-			});
-			if (this.#shouldStop(request)) return undefined;
-
-			const parsed = parseGeneratedRule(replyText);
-			if ("error" in parsed) {
-				const failedRule = extractGeneratedRuleJson(replyText) ?? replyText.trim();
-				failedAttempts.push(
-					`Attempt ${attempt} failed: invalid rule (${parsed.error}).\nFailed candidate:\n${failedRule}`,
-				);
-				previousRule = failedRule;
-				request.component.setStatus("validating", `Attempt ${attempt}/${MAX_ATTEMPTS} · ${parsed.error}`);
-				continue;
-			}
-
-			request.component.setRule(parsed.fileContent);
-			request.component.setStatus("validating", `Attempt ${attempt}/${MAX_ATTEMPTS} · validating…`);
-			const validated = await validateParsedRuleAgainstAssistantHistory(parsed, this.ctx.session.messages);
-			if (validated.repairedCondition) {
-				request.component.setRule(validated.candidate.fileContent);
-			}
-			if (validated.validation.matched) {
-				return { ...validated.candidate, validated: true };
-			}
-
-			lastCandidate = validated.candidate;
-			const failure =
-				validated.validation.feedback ?? "The rule condition did not match any earlier assistant output.";
-			failedAttempts.push(
-				`Attempt ${attempt} failed validation:\n${failure}\nFailed candidate:\n${validated.candidate.fileContent}`,
-			);
-			previousRule = validated.candidate.fileContent;
-		}
-
-		return lastCandidate ? { ...lastCandidate, validated: false } : undefined;
+				draft: delta => {
+					if (this.#isActiveRequest(request)) request.component.appendDraft(delta);
+				},
+				rule: fileContent => {
+					if (this.#isActiveRequest(request)) request.component.setRule(fileContent);
+				},
+			},
+		});
 	}
 
-	async #saveCandidate(request: OmfgRequest, candidate: OmfgCandidate): Promise<SaveCandidateResult> {
+	async #saveCandidate(request: OmfgRequest, candidate: ForgeCandidate): Promise<SaveCandidateResult> {
 		if (this.#shouldStop(request)) return { kind: "aborted" };
 		request.component.setStatus("saving", "Choose where to save or amend the TTSR rule…");
 		const location = await this.ctx.showHookSelector("Save TTSR rule where?", [PROFILE_OPTION, AMEND_OPTION]);
@@ -237,8 +189,8 @@ export class OmfgController {
 			return { kind: "amend", feedback };
 		}
 
-		const target = this.#resolveTarget(candidate.rule.name);
-		if (await Bun.file(target.filePath).exists()) {
+		const target = forgedRuleTarget(this.ctx.settings.getAgentDir(), candidate.rule.name);
+		if (await forgedRuleExists(target.filePath)) {
 			const shouldOverwrite = await this.ctx.showHookConfirm(
 				"Overwrite TTSR rule?",
 				`${shortenPath(target.filePath)} already exists. Overwrite it?`,
@@ -251,36 +203,10 @@ export class OmfgController {
 		}
 
 		request.component.setStatus("saving", `Saving ${candidate.rule.name}…`);
-		await Bun.write(target.filePath, candidate.fileContent);
+		const filePath = await saveForgedRule(this.ctx.session, this.ctx.settings.getAgentDir(), candidate);
 		if (!this.#isActiveRequest(request)) return { kind: "aborted" };
-
-		const savedRule = buildOmfgRuleForPath(candidate.rule.name, candidate.fileContent, target.filePath, target.level);
-		this.#registerLive(savedRule);
-		request.component.markSaved(shortenPath(target.filePath));
+		request.component.markSaved(shortenPath(filePath));
 		return { kind: "saved" };
-	}
-
-	/**
-	 * The only save target: the active profile's rules directory.
-	 *
-	 * A project `.veyyon/rules/` target used to sit beside this one, but nothing
-	 * discovers that directory — rule discovery reads the HOME-side profile and
-	 * foreign-tool conventions only, deliberately, because a checked-out working
-	 * tree is untrusted input. A rule saved there was live for this session and
-	 * gone at the next launch, and never reached the settings list. The profile
-	 * directory is the location discovery reads, so a forged rule persists,
-	 * appears under "User created" in Settings → Stream Interrupts (TTSR), and is
-	 * toggleable there like any other rule.
-	 */
-	#resolveTarget(ruleName: string): { filePath: string; level: OmfgRuleSourceLevel } {
-		return {
-			filePath: path.join(this.ctx.settings.getAgentDir(), "rules", `${ruleName}.md`),
-			level: "user",
-		};
-	}
-
-	#registerLive(rule: Rule): void {
-		this.ctx.session.ttsrManager?.addRule(rule);
 	}
 
 	#closeActiveRequest(options: { abort: boolean }): void {

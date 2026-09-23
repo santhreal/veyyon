@@ -482,6 +482,10 @@
       "types": "./src/prompts/*.ts",
       "import": "./src/prompts/*.ts"
     },
+    "./rules/*": {
+      "types": "./src/rules/*.ts",
+      "import": "./src/rules/*.ts"
+    },
     "./secrets": {
       "types": "./src/secrets/index.ts",
       "import": "./src/secrets/index.ts"

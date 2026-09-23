@@ -72,7 +72,6 @@ const LEGACY_RUNTIME_READERS: readonly string[] = [
 	"controllers/extension-ui-controller.ts",
 	"controllers/goal-mode-controller.ts",
 	"controllers/input-controller.ts",
-	"controllers/omfg-rule.ts",
 	"controllers/selector-controller.ts",
 	"controllers/session-focus-controller.ts",
 	"controllers/transcript-composer.ts",
