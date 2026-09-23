@@ -45,6 +45,7 @@
 
 ### Added
 
+- `/debug` runs from a desktop window: the ten debug tools that read nothing of the terminal are chosen in a question or named after the command, and what each one did is drawn as command output.
 - The desktop window hosts a session share reached by /collab and /share over a relay, displaying share links, participant write permissions, and stop controls.
 - Loop mode runs on the desktop window through the host-agnostic LoopDriver over the JSON protocol, displaying a composer mode chip and enforcing mutual exclusion with goal mode.
 - The desktop window draws an empty-session welcome surface offering controls to create, resume, or configure models when zero sessions exist or the last session closes.

@@ -5,13 +5,12 @@ import { loadSlashCommands } from "../../extensibility/slash-commands";
 import { executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins";
 import { parseSlashCommand } from "../../slash-commands/helpers/parse";
 import { runSkillCommand } from "../../slash-commands/skill-dispatch";
+import { appendCommandOutput } from "../command-output";
 import { buildCommandsView } from "../commands-view";
 import { isDesktopHostCommand } from "../desktop-commands";
-import { writeFrame } from "../frames";
 import { publishModelsView } from "../models-view";
 import { reportQueuedPrompts } from "../queued-prompts";
 import { executePromptTurn, getOrCreateAgentSession } from "../turns";
-import type { TranscriptEntry } from "../wire";
 import { activateSession, emitActiveSession, replyError } from "./active-session";
 import { runDesktopHostCommand } from "./host-commands";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
@@ -34,33 +33,6 @@ const handleListCommands: ActionHandler = async ctx => {
 interface RunCommandPayload {
 	session?: string;
 	text?: string;
-}
-
-/**
- * What a command printed, drawn where the terminal draws it: in the
- * conversation, under the command that produced it.
- *
- * The entry is sent and not recorded. A command's output is what the terminal
- * writes to its status line, so it is neither part of the session file nor of
- * the context the next turn is built from; reloading the transcript drops it,
- * exactly as leaving the terminal screen does.
- */
-function appendCommandOutput(ctx: ActionContext, command: string, text: string): void {
-	ctx.clientState.revision += 1;
-	const entry: TranscriptEntry = {
-		id: `command-output-${ctx.clientState.revision}`,
-		parent: null,
-		revision: ctx.clientState.revision,
-		timestamp_ms: Date.now(),
-		role: "Custom",
-		content: [{ Text: { text } }],
-		meta: null,
-		raw_discriminator: "command_output",
-		raw: { command, text },
-	};
-	writeFrame(ctx.socket, {
-		TranscriptAppended: { revision: ctx.clientState.revision, entries: [entry] },
-	});
 }
 
 /**

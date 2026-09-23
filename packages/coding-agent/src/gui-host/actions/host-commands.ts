@@ -6,10 +6,13 @@
  * declarations. A handler either answers the request or fails it; throwing is
  * how it reports a failure the caller should state as one.
  */
+import { errorMessage } from "@veyyon/utils";
+import { debugTool, HOST_DEBUG_TOOLS, runDebugTool } from "../../debug/host-tools";
 import { parseGoalSubcommand } from "../../goals/subcommands";
 import { mcpManagerInstance } from "../../mcp/manager-instance";
 import type { AgentSession } from "../../session/agent-session";
 import { dispatchTan } from "../../task/tan";
+import { appendCommandOutput } from "../command-output";
 import type { DesktopHostCommandName } from "../desktop-commands";
 import { attachGoalBridge } from "../goal-bridge";
 import { goalSection } from "../goal-view";
@@ -68,6 +71,70 @@ const tan: HostCommand = async (ctx, session, args) => {
 		return;
 	}
 	ctx.reply.success();
+};
+
+/**
+ * `/debug`: the debug tools a host outside the terminal can answer.
+ *
+ * With no argument the window is asked which tool to run, so the command
+ * reaches the same list the terminal's selector draws; with one it runs that
+ * tool outright, which is how a keybinding or a script reaches one. What the
+ * tool states is drawn as the command's output, under the command that ran
+ * it, and the three terminal-only tools are refused by name rather than
+ * silently listed.
+ */
+const debug: HostCommand = async (ctx, session, args) => {
+	const ledger = ctx.clientState.interactions;
+	let id = args.trim();
+	if (!id) {
+		if (!ledger) {
+			ctx.reply.failure({
+				scope: "Session",
+				code: "INVALID_ARGUMENTS",
+				message: `Usage: /debug <${HOST_DEBUG_TOOLS.map(tool => tool.id).join(" | ")}>`,
+				retryable: false,
+			});
+			return;
+		}
+		const chosen = await ledger.choice(
+			"Debug tools",
+			HOST_DEBUG_TOOLS.map(tool => ({ label: tool.label, description: tool.description })),
+		);
+		if (chosen === undefined) {
+			ctx.reply.success();
+			return;
+		}
+		id = HOST_DEBUG_TOOLS.find(tool => tool.label === chosen)?.id ?? "";
+	}
+	const tool = debugTool(id);
+	if (tool?.hosts !== "any") {
+		ctx.reply.failure({
+			scope: "Session",
+			code: "INVALID_ARGUMENTS",
+			message: tool
+				? `The ${tool.label.toLowerCase()} tool reads the terminal itself, so a window cannot run it.`
+				: `No debug tool is spelled "${id}". Tools: ${HOST_DEBUG_TOOLS.map(entry => entry.id).join(", ")}`,
+			retryable: false,
+		});
+		return;
+	}
+	try {
+		const stated = await runDebugTool(id, {
+			session,
+			sessionManager: session.sessionManager,
+			confirm: async (title, message, affirmative) =>
+				(await ledger?.choice(`${title}\n\n${message}`, [affirmative, "Cancel"])) === affirmative,
+		});
+		appendCommandOutput(ctx, `debug ${id}`, stated);
+		ctx.reply.success();
+	} catch (error) {
+		ctx.reply.failure({
+			scope: "Session",
+			code: "DEBUG_TOOL_FAILED",
+			message: `The ${tool.label.toLowerCase()} tool failed: ${errorMessage(error)}`,
+			retryable: false,
+		});
+	}
 };
 
 /**
@@ -218,7 +285,7 @@ const goal: HostCommand = async (ctx, session, args) => {
 	ctx.reply.success();
 };
 
-const HANDLERS: Record<DesktopHostCommandName, HostCommand> = { btw, goal, tan };
+const HANDLERS: Record<DesktopHostCommandName, HostCommand> = { btw, debug, goal, tan };
 
 /** Runs `name` against `session`, replying to the request it arrived on. */
 export async function runDesktopHostCommand(

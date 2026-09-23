@@ -73,7 +73,9 @@ const DECISIONS: Record<string, Decision> = {
 	omfg: { gap: "no rule-forging surface" },
 	retry: { action: "RetryTurn" },
 	rephrase: { action: "RephraseReply" },
-	debug: { gap: "no debug tools surface" },
+	debug: {
+		host: "the debug tools that read nothing of the terminal, chosen in a question and drawn as command output",
+	},
 	exit: { client: "Intent::Quit" },
 	profile: { gap: "no profile picker" },
 	pause: { action: "PauseAgents" },
@@ -81,7 +83,7 @@ const DECISIONS: Record<string, Decision> = {
 };
 
 /** The gaps as they stand, so closing one is a recorded change. */
-const RECORDED_GAPS = ["debug", "guided-goal", "join", "leave", "omfg", "profile"];
+const RECORDED_GAPS = ["guided-goal", "join", "leave", "omfg", "profile"];
 
 /**
  * The declarations through their declared interface. The table is `as const`,

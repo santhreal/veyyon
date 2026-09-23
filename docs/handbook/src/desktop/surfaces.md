@@ -812,6 +812,27 @@ The agent is a row in the dashboard above, named `tan`, and its transcript is
 opened from that row. Work with nothing after the command is refused rather
 than dispatched, and a session that cannot run background jobs states that.
 
+## Debug tools
+
+`/debug` asks which tool to run and lists the ten that read nothing of the
+terminal: open the session's artifact folder, profile the CPU and bundle the
+result, open the work-scheduling flamegraph of the last 30 seconds, write a
+report bundle, write a heap snapshot with one, show the recent log entries,
+show the system details, show the provider frames captured in this session,
+start the JavaScriptCore remote inspector, and clear the artifact cache.
+
+`/debug <tool>` runs one by name, spelled as the tool's own word: `dump`,
+`memory`, `performance`, `work`, `logs`, `system`, `raw-sse`, `open-artifacts`,
+`remote-debugger`, `clear-cache`. The output is drawn in the conversation under
+the command, and is sent rather than recorded, so reloading the transcript
+drops it.
+
+Two tools ask before they act: the CPU profile runs until the issue has been
+reproduced, and clearing the cache deletes artifacts older than 30 days. The
+terminal protocol probe, the terminal's own state and the TUI transcript export
+read the terminal itself, so `/debug` refuses them by name here and they stay
+in the terminal's selector.
+
 ## Sharing a session
 
 `/collab` opens a card over the session that shares it live over a relay.
