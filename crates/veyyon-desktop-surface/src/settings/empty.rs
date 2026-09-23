@@ -79,6 +79,14 @@ pub const CONTEXT_BREAKDOWN: EmptyCopy = EmptyCopy {
 	            capability reported no data",
 };
 
+/// The host listed no profile at all, which the profile it runs under rules
+/// out unless the listing never arrived.
+pub const PROFILES: EmptyCopy = EmptyCopy {
+	condition: "No profiles reported by host",
+	action:    "Reopen this page to ask again: the Profiles capability reported no profile, not \
+	            even the one this host runs under",
+};
+
 /// What `page` draws when it has nothing, or `None` for a page that draws rows
 /// instead of an empty state.
 ///
@@ -99,5 +107,6 @@ pub const fn empty_copy(page: SettingsPage) -> Option<EmptyCopy> {
 		SettingsPage::Diagnostics => DIAGNOSTICS,
 		SettingsPage::Usage => USAGE,
 		SettingsPage::ContextBreakdown => CONTEXT_BREAKDOWN,
+		SettingsPage::Profiles => PROFILES,
 	})
 }

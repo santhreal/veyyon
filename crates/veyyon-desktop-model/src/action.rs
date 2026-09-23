@@ -377,4 +377,20 @@ pub enum HostAction {
 	},
 	StopShare,
 	RefreshShare,
+
+	// Profile family (4 actions)
+	RefreshProfiles,
+	CreateProfile {
+		name: String,
+		/// Copy-item keys seeded from the active profile; empty makes a blank
+		/// profile.
+		copy: Vec<String>,
+	},
+	RenameProfile {
+		name:         String,
+		display_name: String,
+	},
+	DeleteProfile {
+		name: String,
+	},
 }

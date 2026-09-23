@@ -216,12 +216,46 @@ impl ShellView {
 		)
 	}
 
+	/// The retained editor for the name a new profile is created under.
+	/// Nothing the host reports replaces it: a name is typed here and a
+	/// create empties the field, so the listing that comes back never writes
+	/// over what is being typed next.
+	pub fn profile_name_field_editor(&mut self, cx: &mut Context<Self>) -> Entity<Editor> {
+		self.field_editor(
+			FieldSpec {
+				key:         FieldKey::ProfileName,
+				commit:      Commit::ProfileCreate,
+				placeholder: "New profile name, then press Create".into(),
+				mask:        false,
+				multiline:   false,
+				initial:     String::new(),
+			},
+			cx,
+		)
+	}
+
+	/// Creates the profile the Profiles page's field names, for the button
+	/// beside it. A submit empties the field.
+	pub fn submit_profile_create(&mut self, cx: &mut Context<Self>) {
+		self.commit_field(&FieldKey::ProfileName, cx);
+	}
+
+	/// Writes what the profile `name` shows as, taking the new name from the
+	/// page's one name field.
+	pub fn submit_profile_rename(&mut self, name: &str, cx: &mut Context<Self>) {
+		let Some(editor) = self.retained_field(&FieldKey::ProfileName) else {
+			return;
+		};
+		super::profile::commit_rename(self, &editor, name, cx);
+	}
+
 	/// The editors the settings pages draw their own fields from, created
 	/// here because a page renders from a shared view that cannot create one.
 	pub fn field_slots(&mut self, window: &Window, cx: &mut Context<Self>) -> FieldSlots {
 		let secret = self.secret_field_editor(cx);
 		let task = self.task_prompt_field_editor(cx);
 		let query = self.settings_query_field_editor(cx);
+		let profile = self.profile_name_field_editor(cx);
 		// The bindings are cloned out first: the editor for one is created
 		// through the same view the listing is read from.
 		let reported: Vec<(String, Vec<String>)> = self
@@ -241,7 +275,7 @@ impl ShellView {
 				(action, editor)
 			})
 			.collect();
-		FieldSlots { secret, keybindings, task: Some(task), query }
+		FieldSlots { secret, keybindings, task: Some(task), profile: Some(profile), query }
 	}
 
 	/// Replaces what an unfocused field draws with the value the host

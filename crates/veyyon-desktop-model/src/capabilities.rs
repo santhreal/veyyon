@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Enumeration of all thirty-two protocol capabilities with explicit
+/// Enumeration of all thirty-three protocol capabilities with explicit
 /// discriminants.
 #[derive(
 	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, strum::EnumIter,
@@ -39,11 +39,12 @@ pub enum Capability {
 	Lifecycle            = 29,
 	Goals                = 30,
 	Share                = 31,
+	Profiles             = 32,
 }
 
 impl Capability {
 	/// Complete list of all capability variants for runtime sweeps.
-	pub const ALL: [Self; 32] = [
+	pub const ALL: [Self; 33] = [
 		Self::Sessions,
 		Self::SessionDeletion,
 		Self::SessionTreeNavigation,
@@ -76,6 +77,7 @@ impl Capability {
 		Self::Lifecycle,
 		Self::Goals,
 		Self::Share,
+		Self::Profiles,
 	];
 
 	/// Returns the stable string identifier matching the wire protocol.
@@ -114,6 +116,7 @@ impl Capability {
 			Self::Lifecycle => "Lifecycle",
 			Self::Goals => "Goals",
 			Self::Share => "Share",
+			Self::Profiles => "Profiles",
 		}
 	}
 }
@@ -130,9 +133,15 @@ pub enum CapabilityStatus {
 }
 
 /// Fixed array map holding status values for every protocol capability.
+///
+/// The array is as long as [`Capability::ALL`] rather than a literal count.
+/// A literal went stale when the thirty-third capability was declared: `set`
+/// and `get` bounds-check the discriminant against the array, so the row past
+/// the end read back `UnknownUntilAttached` whatever the host reported, and a
+/// surface gated on it was drawn for a host that had declined it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapabilityMap {
-	pub statuses: [CapabilityStatus; 32],
+	pub statuses: [CapabilityStatus; Capability::ALL.len()],
 }
 
 impl Default for CapabilityMap {
@@ -146,42 +155,7 @@ impl CapabilityMap {
 	/// `UnknownUntilAttached`.
 	#[must_use]
 	pub const fn new() -> Self {
-		Self {
-			statuses: [
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-				CapabilityStatus::UnknownUntilAttached,
-			],
-		}
+		Self { statuses: [const { CapabilityStatus::UnknownUntilAttached }; Capability::ALL.len()] }
 	}
 
 	/// Retrieves the status for a given capability.

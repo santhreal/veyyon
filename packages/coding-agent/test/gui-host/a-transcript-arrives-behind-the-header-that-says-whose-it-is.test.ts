@@ -257,6 +257,13 @@ describe("a transcript arrives behind the header that says whose it is", () => {
 			ClearOutput: { ClearOutput: { session: alpha } },
 			GetUsage: "GetUsage",
 			GetContextBreakdown: { GetContextBreakdown: { session: alpha } },
+			RefreshProfiles: "RefreshProfiles",
+			// Named so the store refuses: the sweep drives every action against
+			// a live host, and a create that succeeded would leave a profile
+			// directory behind in whatever config root the run holds.
+			CreateProfile: { CreateProfile: { name: "", copy: [] } },
+			RenameProfile: { RenameProfile: { name: "", display_name: "" } },
+			DeleteProfile: { DeleteProfile: { name: "profile-that-is-not-here" } },
 		};
 
 		const swept = ALL_HOST_ACTIONS.filter(tag => tag !== ENDS_THE_CONNECTION && tag !== REATTACHES);

@@ -1009,9 +1009,9 @@ facts under it.
 ## Settings
 
 `Primary-,` opens the settings dialog, as do the command palette's `settings`
-row and the gear on the rail footer. It holds ten pages: General, Themes,
+row and the gear on the rail footer. It holds eleven pages: General, Themes,
 Keybindings, Providers, Authentication, MCP Servers, Extensions, Diagnostics,
-Usage & Costs, and Context Breakdown.
+Usage & Costs, Context Breakdown, and Profiles.
 
 Every page draws one row shape: a 44px row with a 14/20 label, one 16px line of
 description truncated to the row's width, and a 240px control column at the
@@ -1070,6 +1070,25 @@ A value the host rejects is stated in one row above the page, which the list
 cannot scroll out of sight, and the control that sent it is marked invalid
 while it holds what was typed. A refusal whose row is out of view is announced
 on the card stack.
+
+### Profiles
+
+The Profiles page lists the profile directories on disk and is reached from
+`/profile` in the palette. Each row states the directory the profile is at and
+the address of the host that serves it, or, for a profile with no addressable
+endpoint, why it has none. The profile the attached host runs under carries an
+`Active` badge in place of `Delete`.
+
+A host process serves the one profile it was started under, so the page changes
+the set of profiles rather than switching between them. A window reaches
+another profile by attaching to that profile's host, at the address the row
+states.
+
+The first row names a new profile. `Create` makes the directory, seeded with
+the items the switches under it leave on; turning every switch off makes an
+empty profile. `Rename` on a row writes what that profile shows as, taking the
+new name from the same field, and leaves the directory name it is stored under.
+`Delete` removes a profile directory and everything in it.
 
 ## Announcements
 

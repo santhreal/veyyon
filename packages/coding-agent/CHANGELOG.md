@@ -30,6 +30,7 @@
 
 ### Added
 
+- The desktop settings sheet holds a Profiles page, reached from `/profile`, which lists the profile directories on disk with the host address each is reached at and creates, renames and deletes them.
 - `/debug` runs from a desktop window: the ten debug tools that read nothing of the terminal are chosen in a question or named after the command, and what each one did is drawn as command output.
 - The desktop window hosts a session share reached by /collab and /share over a relay, displaying share links, participant write permissions, and stop controls.
 - Loop mode runs on the desktop window through the host-agnostic LoopDriver over the JSON protocol, displaying a composer mode chip and enforcing mutual exclusion with goal mode.

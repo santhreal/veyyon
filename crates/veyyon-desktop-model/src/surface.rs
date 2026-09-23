@@ -110,6 +110,12 @@ pub enum SurfaceId {
 	ShareStartReadOnlyButton,
 	ShareStopButton,
 	ShareRefreshButton,
+
+	// Profiles (§5.9)
+	ProfileCreateButton,
+	ProfileRenameButton(String),
+	ProfileDeleteButton(String),
+	ProfileRefreshButton,
 }
 
 impl SurfaceId {
@@ -208,7 +214,11 @@ impl SurfaceId {
 			| Self::ShareStartButton
 			| Self::ShareStartReadOnlyButton
 			| Self::ShareStopButton
-			| Self::ShareRefreshButton => false,
+			| Self::ShareRefreshButton
+			| Self::ProfileCreateButton
+			| Self::ProfileRenameButton(_)
+			| Self::ProfileDeleteButton(_)
+			| Self::ProfileRefreshButton => false,
 		}
 	}
 
@@ -241,7 +251,11 @@ impl SurfaceId {
 			| Self::DiagnosticRefreshButton
 			| Self::DiagnosticRetrySourceButton(_)
 			| Self::UsageRefreshButton
-			| Self::ContextBreakdownRefreshButton => true,
+			| Self::ContextBreakdownRefreshButton
+			| Self::ProfileCreateButton
+			| Self::ProfileRenameButton(_)
+			| Self::ProfileDeleteButton(_)
+			| Self::ProfileRefreshButton => true,
 			Self::TerminalCreateButton(_)
 			| Self::TerminalCloseButton(..)
 			| Self::TerminalRestartButton(..)

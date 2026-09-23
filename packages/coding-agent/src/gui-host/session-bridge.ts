@@ -44,6 +44,7 @@ export const SUPPORTED_CAPABILITIES: Partial<Record<Capability, true>> = {
 	Lifecycle: true,
 	Goals: true,
 	Share: true,
+	Profiles: true,
 };
 
 /** Specific, truthful reasons why each unsupported capability is unavailable. */
@@ -161,6 +162,10 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	StartShare: "Session",
 	StopShare: "Session",
 	RefreshShare: "Session",
+	RefreshProfiles: "Settings",
+	CreateProfile: "Settings",
+	RenameProfile: "Settings",
+	DeleteProfile: "Settings",
 };
 
 export function mapActionToErrorScope(actionTag: string): ErrorScope {

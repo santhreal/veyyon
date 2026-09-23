@@ -68,6 +68,7 @@ export const ALL_CAPABILITIES = [
 	"Lifecycle",
 	"Goals",
 	"Share",
+	"Profiles",
 ] as const;
 
 export type Capability = (typeof ALL_CAPABILITIES)[number];
@@ -673,6 +674,37 @@ export interface ShareView {
 	error: string | null;
 }
 
+/** One item a new profile copies from the profile it is seeded off. */
+export interface ProfileCopyItemView {
+	/** The key `createProfile` copies under; what a window sends back. */
+	key: string;
+	label: string;
+	description: string;
+}
+
+/** One profile directory under the base config root. */
+export interface ProfileView {
+	/** Directory name. The default profile is the literal `default`. */
+	name: string;
+	/** What the profile shows as; the directory name when none was written. */
+	display_name: string;
+	root_dir: string;
+	/** The endpoint a window attaches to for this profile, null when none fits. */
+	endpoint: string | null;
+	/** Why this profile has no addressable endpoint; null when it has one. */
+	endpoint_error: string | null;
+	/** True for the profile this host process runs under. */
+	is_active: boolean;
+}
+
+export interface ProfilesView {
+	/** Directory name of the profile this host runs under. */
+	active: string;
+	entries: ProfileView[];
+	/** What a new profile may copy, in the order a window offers them. */
+	copy_items: ProfileCopyItemView[];
+}
+
 export type SnapshotSection =
 	| { Sessions: [Versioned<SessionSummary[]>, SessionLoadError[]] }
 	| { ActiveSession: Versioned<SessionHeaderView> }
@@ -707,7 +739,8 @@ export type SnapshotSection =
 	| { Commands: CommandView[] }
 	| { AgentPause: AgentPauseView }
 	| { Goal: { session: string; goal: GoalView | null } }
-	| { Share: ShareView };
+	| { Share: ShareView }
+	| { Profiles: ProfilesView };
 
 export const ALL_SNAPSHOT_SECTIONS = [
 	"Sessions",
@@ -735,6 +768,7 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"Agents",
 	"AgentComms",
 	"Share",
+	"Profiles",
 	"Usage",
 	"ContextBreakdown",
 	"Export",
@@ -783,6 +817,7 @@ export type HostAction =
 	| "ListCommands"
 	| "StopShare"
 	| "RefreshShare"
+	| "RefreshProfiles"
 	| { StartShare: { read_only: boolean } }
 	| { Attach: { endpoint: string | null } }
 	| { OpenSession: { session: string } }
@@ -800,6 +835,9 @@ export type HostAction =
 	| { SetGoal: { session: string; objective: string; token_budget: number | null } }
 	| { ControlGoal: { session: string; op: GoalControl } }
 	| { SetSessionMode: { session: string; mode: SettableMode } }
+	| { CreateProfile: { name: string; copy: string[] } }
+	| { RenameProfile: { name: string; display_name: string } }
+	| { DeleteProfile: { name: string } }
 	| string
 	| Record<string, unknown>;
 
@@ -889,6 +927,10 @@ export const ALL_HOST_ACTIONS = [
 	"StartShare",
 	"StopShare",
 	"RefreshShare",
+	"RefreshProfiles",
+	"CreateProfile",
+	"RenameProfile",
+	"DeleteProfile",
 ] as const;
 export type HostActionTag = (typeof ALL_HOST_ACTIONS)[number];
 
@@ -978,6 +1020,10 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	StartShare: "Share",
 	StopShare: "Share",
 	RefreshShare: "Share",
+	RefreshProfiles: "Profiles",
+	CreateProfile: "Profiles",
+	RenameProfile: "Profiles",
+	DeleteProfile: "Profiles",
 };
 
 export interface HostRequest {

@@ -245,6 +245,23 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		},
 		IntentDiscriminants::StopShare => vec![Intent::StopShare],
 		IntentDiscriminants::RefreshShare => vec![Intent::RefreshShare],
+		IntentDiscriminants::RefreshProfiles => vec![Intent::RefreshProfiles],
+		// Both ends of what a create copies: every item the page listed, and
+		// none of them, which is the blank profile.
+		IntentDiscriminants::CreateProfile => vec![
+			Intent::CreateProfile { name: "review".to_string(), copy: vec!["settings".to_string()] },
+			Intent::CreateProfile { name: "blank".to_string(), copy: Vec::new() },
+		],
+		IntentDiscriminants::RenameProfile => vec![Intent::RenameProfile {
+			name:         "review".to_string(),
+			display_name: "Second Look".to_string(),
+		}],
+		IntentDiscriminants::DeleteProfile => {
+			vec![Intent::DeleteProfile("review".to_string())]
+		},
+		IntentDiscriminants::ToggleProfileCopy => {
+			vec![Intent::ToggleProfileCopy("settings".to_string())]
+		},
 		IntentDiscriminants::RenameSession => {
 			vec![Intent::RenameSession { session: 1, title: "Renamed Session".to_string() }]
 		},

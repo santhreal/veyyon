@@ -106,6 +106,9 @@ fn project_settings_domains(store: &Store, state: &mut SettingsState) {
 	if !store.domains.agents.is_empty() {
 		state.extensions.clone_from(&store.domains.agents);
 	}
+	if let Some(profiles) = &store.domains.profiles {
+		state.profiles = Some(profiles.clone());
+	}
 	if let Some(diagnostics) = &store.domains.diagnostics {
 		state.diagnostics = Some(diagnostics.clone());
 	}

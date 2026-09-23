@@ -11,6 +11,7 @@ import { modelsActionHandlers } from "./models";
 import { pauseActionHandlers } from "./pause";
 import { planReviewActionHandlers } from "./plan-review";
 import { processesActionHandlers } from "./processes";
+import { profileActionHandlers } from "./profiles";
 import { providersActionHandlers } from "./providers";
 import { sessionsActionHandlers } from "./sessions";
 import { settingsActionHandlers } from "./settings";
@@ -32,6 +33,7 @@ export * from "./models";
 export * from "./pause";
 export * from "./plan-review";
 export * from "./processes";
+export * from "./profiles";
 export * from "./providers";
 export * from "./sessions";
 export * from "./settings";
@@ -58,6 +60,7 @@ export const allActionHandlers: ActionHandlersMap = {
 	...commandsActionHandlers,
 	...settingsActionHandlers,
 	...shareActionHandlers,
+	...profileActionHandlers,
 	...planReviewActionHandlers,
 	...diagnosticsActionHandlers,
 };

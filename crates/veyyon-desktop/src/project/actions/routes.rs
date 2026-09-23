@@ -30,6 +30,8 @@ pub(super) fn retry_control_actions(id: &SurfaceId, active: Option<SessionId>) -
 		SurfaceId::DiagnosticRetrySourceButton(s) => {
 			vec![HostAction::RetryDiagnosticSource { source: s.clone() }]
 		},
+		SurfaceId::ProfileRefreshButton => vec![HostAction::RefreshProfiles],
+		SurfaceId::ProfileDeleteButton(p) => vec![HostAction::DeleteProfile { name: p.clone() }],
 		SurfaceId::AgentReviveButton(a) => vec![HostAction::ReviveAgent { agent_id: a.clone() }],
 		SurfaceId::TaskCancelButton(t) => vec![HostAction::CancelTask { task_id: t.clone() }],
 		_ => Vec::new(),
@@ -46,6 +48,7 @@ pub(super) fn navigate_actions(route: SurfaceRoute, active: Option<SessionId>) -
 		SurfaceRoute::Page(SettingsPage::Themes) => vec![HostAction::LoadThemes],
 		SurfaceRoute::Page(SettingsPage::Keybindings) => vec![HostAction::LoadKeybindings],
 		SurfaceRoute::Page(SettingsPage::Providers) => vec![HostAction::RefreshProviders],
+		SurfaceRoute::Page(SettingsPage::Profiles) => vec![HostAction::RefreshProfiles],
 		SurfaceRoute::Page(SettingsPage::Mcp) => vec![HostAction::RefreshMcp],
 		SurfaceRoute::Page(SettingsPage::Diagnostics) => vec![HostAction::RefreshDiagnostics],
 		SurfaceRoute::Page(SettingsPage::Usage) => vec![HostAction::GetUsage { session: active }],

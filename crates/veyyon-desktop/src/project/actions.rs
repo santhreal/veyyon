@@ -4,6 +4,7 @@ use veyyon_desktop_model::{HostAction, Store, TerminalStatus};
 use veyyon_desktop_surface::Intent;
 
 use self::{
+	accounts::account_actions,
 	routes::{navigate_actions, retry_control_actions},
 	sessions::session_actions,
 };
@@ -14,6 +15,7 @@ use super::{
 	workspace_asks::{open_actions, tab_actions},
 };
 
+mod accounts;
 mod routes;
 mod sessions;
 
@@ -30,6 +32,9 @@ mod sessions;
 pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> Vec<HostAction> {
 	let active = super::navigation::active_session(store).cloned();
 	if let Some(actions) = session_actions(intent, index, store, active.as_ref()) {
+		return actions;
+	}
+	if let Some(actions) = account_actions(intent, store) {
 		return actions;
 	}
 	match intent {
@@ -150,29 +155,6 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 			}]
 		},
 		Intent::RetryConnection => vec![HostAction::RetryConnection],
-		Intent::StartProviderAuth(provider) => {
-			vec![HostAction::StartProviderAuth { provider: provider.clone() }]
-		},
-		Intent::SubmitAuthSecret { provider, secret } => {
-			vec![HostAction::SubmitAuthSecret { provider: provider.clone(), secret: secret.clone() }]
-		},
-		Intent::OpenAuthUrl(url) => vec![HostAction::OpenAuthUrl { url: url.clone() }],
-		Intent::CancelAuthFlow => {
-			let provider = store
-				.domains
-				.auth_flow
-				.as_ref()
-				.map_or_else(String::new, |f| f.provider.clone());
-			vec![HostAction::CancelAuthFlow { provider }]
-		},
-		Intent::RetryAuthFlow => {
-			let provider = store
-				.domains
-				.auth_flow
-				.as_ref()
-				.map_or_else(String::new, |f| f.provider.clone());
-			vec![HostAction::RetryAuthFlow { provider }]
-		},
 		Intent::RetryControl(id) => store
 			.retries
 			.take(id)

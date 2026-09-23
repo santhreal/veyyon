@@ -191,6 +191,10 @@ fn settings_surface_for_action(intent: &Intent, action: &HostAction) -> Option<S
 		HostAction::RetryAuthFlow { provider } => {
 			SurfaceId::ProviderAuthRetryButton(provider.clone())
 		},
+		HostAction::RefreshProfiles => SurfaceId::ProfileRefreshButton,
+		HostAction::CreateProfile { .. } => SurfaceId::ProfileCreateButton,
+		HostAction::RenameProfile { name, .. } => SurfaceId::ProfileRenameButton(name.clone()),
+		HostAction::DeleteProfile { name } => SurfaceId::ProfileDeleteButton(name.clone()),
 		_ => return None,
 	})
 }

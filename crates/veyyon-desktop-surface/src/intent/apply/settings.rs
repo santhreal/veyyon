@@ -55,6 +55,15 @@ pub fn select_theme(state: &mut ShellState, theme: &str, dark: bool) {
 	}
 }
 
+/// Adds or drops one item from what a new profile is seeded with.
+pub fn toggle_profile_copy(state: &mut ShellState, key: &str) {
+	if let Some(Overlay::Settings(settings)) = &mut state.overlay
+		&& !settings.profile_copy_off.remove(key)
+	{
+		settings.profile_copy_off.insert(key.to_string());
+	}
+}
+
 /// States that the sheet is being read again from disk.
 pub fn reload_settings(state: &mut ShellState) {
 	if let Some(Overlay::Settings(settings)) = &mut state.overlay {

@@ -1,13 +1,13 @@
 //! Seeds the settings sheet page one capability is reached on (§1.2, §9.5).
 //!
-//! A sheet page is one overlay and one domain the host fills, and ten of the
-//! capabilities land on one. They live here rather than beside the surfaces
+//! A sheet page is one overlay and one domain the host fills, and eleven of
+//! the capabilities land on one. They live here rather than beside the surfaces
 //! that compose their own state, so neither file carries the other's bulk.
 
 use veyyon_desktop_model::{
 	AgentView, Capability, ContextBreakdownView, ContextCategory, KeybindingView, McpServerStatus,
-	McpServerView, ProviderView, SessionId, SettingEntry, SettingKind, SettingsView, ThemeView,
-	ThemesView, UsageTotals,
+	McpServerView, ProfileCopyItemView, ProfileView, ProfilesView, ProviderView, SessionId,
+	SettingEntry, SettingKind, SettingsView, ThemeView, ThemesView, UsageTotals,
 };
 use veyyon_desktop_scene::FixtureText;
 use veyyon_desktop_surface::{SettingsPage, navigation::SurfaceRoute};
@@ -115,6 +115,25 @@ pub fn seed_sheet_page(seed: &mut Seed, session: &SessionId, capability: Capabil
 				oauth:         false,
 				api_key:       true,
 			}];
+		},
+		Capability::Profiles => {
+			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Profiles).overlay());
+			seed.store.domains.profiles = Some(ProfilesView {
+				active:     "default".to_string(),
+				entries:    vec![ProfileView {
+					name:           "default".to_string(),
+					display_name:   "default".to_string(),
+					root_dir:       "/repo/.veyyon/profiles/default".to_string(),
+					endpoint:       Some("/repo/.veyyon/profiles/default/host.sock".to_string()),
+					endpoint_error: None,
+					is_active:      true,
+				}],
+				copy_items: vec![ProfileCopyItemView {
+					key:         "settings".to_string(),
+					label:       "Settings".to_string(),
+					description: FixtureText::MESSAGE_TYPICAL.to_string(),
+				}],
+			});
 		},
 		Capability::Extensions => {
 			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Extensions).overlay());

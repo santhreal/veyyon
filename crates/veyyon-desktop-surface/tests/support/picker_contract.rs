@@ -57,7 +57,8 @@ pub fn sources() -> Vec<Source> {
 			| SettingsPage::Extensions
 			| SettingsPage::Diagnostics
 			| SettingsPage::Usage
-			| SettingsPage::ContextBreakdown => dialogs.push(page),
+			| SettingsPage::ContextBreakdown
+			| SettingsPage::Profiles => dialogs.push(page),
 		}
 	}
 	assert_eq!(dialogs, vec![
@@ -69,7 +70,8 @@ pub fn sources() -> Vec<Source> {
 		SettingsPage::Extensions,
 		SettingsPage::Diagnostics,
 		SettingsPage::Usage,
-		SettingsPage::ContextBreakdown
+		SettingsPage::ContextBreakdown,
+		SettingsPage::Profiles
 	]);
 	let mut routes = Vec::new();
 	for item in command_items() {

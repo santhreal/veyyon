@@ -1,6 +1,6 @@
 //! Settings pages enumeration and metadata (§5.9).
 //!
-//! Exposes the ten protocol-driven settings and diagnostic categories.
+//! Exposes the eleven protocol-driven settings and diagnostic categories.
 
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
@@ -30,6 +30,8 @@ pub enum SettingsPage {
 	Usage,
 	/// Active session context window token allocation.
 	ContextBreakdown,
+	/// Profile directories, and the host each one is reached at.
+	Profiles,
 }
 
 impl SettingsPage {
@@ -47,6 +49,7 @@ impl SettingsPage {
 			Self::Diagnostics => "Diagnostics",
 			Self::Usage => "Usage & Costs",
 			Self::ContextBreakdown => "Context Breakdown",
+			Self::Profiles => "Profiles",
 		}
 	}
 
@@ -64,6 +67,7 @@ impl SettingsPage {
 			Self::Diagnostics => "System health checks, connection status, and error telemetry.",
 			Self::Usage => "Aggregated input, output, cache tokens, and session expenditures.",
 			Self::ContextBreakdown => "Token allocation by category within the model context window.",
+			Self::Profiles => "Profile directories, what each holds, and the host it is reached at.",
 		}
 	}
 }

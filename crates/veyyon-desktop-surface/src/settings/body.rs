@@ -12,6 +12,7 @@ pub mod general;
 pub mod general_control;
 pub mod keybindings;
 pub mod mcp;
+pub mod profiles;
 pub mod providers;
 pub mod themes;
 pub mod usage;
@@ -76,6 +77,9 @@ pub fn render_page_body(
 		SettingsPage::Usage => usage::render_usage_page(state, controls, geometry, tokens, cx),
 		SettingsPage::ContextBreakdown => {
 			context::render_context_page(state, controls, geometry, tokens)
+		},
+		SettingsPage::Profiles => {
+			profiles::render_profiles_page(state, fields, controls, geometry, tokens, cx)
 		},
 	};
 

@@ -41,7 +41,7 @@ use veyyon_desktop_surface::Intent;
 /// Every string an action carries that is an operator's or the host's own
 /// value rather than a vocabulary: text, identifiers, paths and queries. A new
 /// entry here is a decision that the value is open.
-const OPEN_STRINGS: [&str; 68] = [
+const OPEN_STRINGS: [&str; 73] = [
 	"AbortTurn.session",
 	"BranchSession.session",
 	"CancelAuthFlow.provider",
@@ -50,8 +50,13 @@ const OPEN_STRINGS: [&str; 68] = [
 	"CancelTool.tool_call_id",
 	"ClearOutput.session",
 	"CompactSession.session",
+	// A profile is named by whoever creates it, and the items a create copies
+	// are the keys the host itself listed for the page to draw.
+	"CreateProfile.copy[]",
+	"CreateProfile.name",
 	"ControlGoal.session",
 	"DeleteSession.session",
+	"DeleteProfile.name",
 	"DequeueQueuedPrompt.session",
 	"ExportSession.format",
 	"ExportSession.session",
@@ -77,6 +82,8 @@ const OPEN_STRINGS: [&str; 68] = [
 	"RenameSession.session",
 	"RephraseReply.session",
 	"RenameSession.title",
+	"RenameProfile.display_name",
+	"RenameProfile.name",
 	"ResetSetting.key",
 	"RetryAuthFlow.provider",
 	"RetryDiagnosticSource.source",

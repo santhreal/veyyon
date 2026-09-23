@@ -93,7 +93,8 @@ const fn prepare_for(kind: SnapshotSectionKind) -> Prepare {
 		| SnapshotSectionKind::AuthFlow
 		| SnapshotSectionKind::Mcp
 		| SnapshotSectionKind::Agents
-		| SnapshotSectionKind::Diagnostics => Prepare::Settings,
+		| SnapshotSectionKind::Diagnostics
+		| SnapshotSectionKind::Profiles => Prepare::Settings,
 		SnapshotSectionKind::AgentComms => Prepare::Agents,
 		SnapshotSectionKind::Share => Prepare::Share,
 		SnapshotSectionKind::SearchResults => Prepare::Palette(PaletteMode::Files, "app"),

@@ -124,7 +124,27 @@ pub fn gated_controls(
 		(SurfaceId::ShareStartReadOnlyButton, HostActionKind::StartShare),
 		(SurfaceId::ShareStopButton, HostActionKind::StopShare),
 		(SurfaceId::ShareRefreshButton, HostActionKind::RefreshShare),
+		// A profile is the process's, not a session's: the page is reached
+		// with nothing open, and the host serves the profile it was started
+		// under whatever the window has in front of it.
+		(SurfaceId::ProfileCreateButton, HostActionKind::CreateProfile),
+		(SurfaceId::ProfileRefreshButton, HostActionKind::RefreshProfiles),
 	];
+	// One rename and one delete per profile the host listed, keyed by the
+	// directory they act on, so a refusal lands on the row that sent it.
+	controls.extend(
+		store
+			.domains
+			.profiles
+			.iter()
+			.flat_map(|profiles| profiles.entries.iter())
+			.flat_map(|entry| {
+				[
+					(SurfaceId::ProfileRenameButton(entry.name.clone()), HostActionKind::RenameProfile),
+					(SurfaceId::ProfileDeleteButton(entry.name.clone()), HostActionKind::DeleteProfile),
+				]
+			}),
+	);
 	// Every session the rail can draw a row for, and the active one, which the
 	// host may not have listed yet.
 	controls.extend(

@@ -56,9 +56,10 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::GetUsage
 		| HostActionKind::GetContextBreakdown
 		| HostActionKind::RefreshShare
+		| HostActionKind::RefreshProfiles
 		| HostActionKind::ListCommands => ActionClassification::Ephemeral,
 
-		// Mutations, lifecycle, session modifications, turns, terminals, processes (62 actions)
+		// Mutations, lifecycle, session modifications, turns, terminals, processes (65 actions)
 		HostActionKind::Attach
 		| HostActionKind::Detach
 		| HostActionKind::RetryConnection
@@ -120,6 +121,9 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::ControlGoal
 		| HostActionKind::StartShare
 		| HostActionKind::StopShare
+		| HostActionKind::CreateProfile
+		| HostActionKind::RenameProfile
+		| HostActionKind::DeleteProfile
 		| HostActionKind::RunCommand => ActionClassification::Mutation,
 	}
 }

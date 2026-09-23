@@ -1,8 +1,8 @@
 //! Settings surface layout, pages, and control presentation (§5.9).
 //!
-//! Renders the modal settings overlay across ten categorical pages: General,
+//! Renders the modal settings overlay across eleven categorical pages: General,
 //! Themes, Keybindings, Providers, Authentication, MCP, Extensions,
-//! Diagnostics, Usage, and `ContextBreakdown`.
+//! Diagnostics, Usage, `ContextBreakdown`, and Profiles.
 
 pub mod body;
 pub mod empty;
@@ -10,11 +10,13 @@ mod focused;
 pub mod pages;
 pub mod row;
 
+use std::collections::BTreeSet;
+
 use serde_json::Value;
 use veyyon_desktop_kit::{SpacingStep, TokenSet};
 use veyyon_desktop_model::{
-	AgentView, AuthFlowView, ContextBreakdownView, KeybindingView, McpServerView, ProviderView,
-	SettingEntry, SettingsView, SurfaceId, ThemesView, UsageTotals,
+	AgentView, AuthFlowView, ContextBreakdownView, KeybindingView, McpServerView, ProfilesView,
+	ProviderView, SettingEntry, SettingsView, SurfaceId, ThemesView, UsageTotals,
 };
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
 use veyyon_gpui::{
@@ -57,38 +59,44 @@ pub struct SettingsFailure {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsState {
 	/// Currently selected settings category page.
-	pub page:         SettingsPage,
+	pub page:             SettingsPage,
 	/// Every setting the host reports, keyed by schema key; empty until
 	/// `LoadSettings` answers.
-	pub settings:     SettingsView,
+	pub settings:         SettingsView,
 	/// Available UI color themes.
-	pub themes:       Option<ThemesView>,
+	pub themes:           Option<ThemesView>,
 	/// Keymap shortcut definitions.
-	pub keybindings:  Vec<KeybindingView>,
+	pub keybindings:      Vec<KeybindingView>,
 	/// Configured AI model providers.
-	pub providers:    Vec<ProviderView>,
+	pub providers:        Vec<ProviderView>,
 	/// Active OAuth authorization flow state.
-	pub auth_flow:    Option<AuthFlowView>,
+	pub auth_flow:        Option<AuthFlowView>,
 	/// Model Context Protocol servers and tools.
-	pub mcp:          Vec<McpServerView>,
+	pub mcp:              Vec<McpServerView>,
 	/// Registered subagents and task execution extensions.
-	pub extensions:   Vec<AgentView>,
+	pub extensions:       Vec<AgentView>,
 	/// Telemetry and subsystem diagnostic entries.
-	pub diagnostics:  Option<Value>,
+	pub diagnostics:      Option<Value>,
 	/// Token usage metrics and accumulated costs.
-	pub usage:        Option<UsageTotals>,
+	pub usage:            Option<UsageTotals>,
 	/// Context window allocation breakdown.
-	pub context:      Option<ContextBreakdownView>,
+	pub context:          Option<ContextBreakdownView>,
+	/// The profiles on disk, and where each one's host is.
+	pub profiles:         Option<ProfilesView>,
+	/// The copy items a new profile is *not* seeded with. A create copies
+	/// every item the host listed except these, so the page opens on the
+	/// seeded default and an item is dropped by turning it off.
+	pub profile_copy_off: BTreeSet<String>,
 	/// Reloading / refreshing indicator.
-	pub reloading:    bool,
+	pub reloading:        bool,
 	/// Selected row index for keyboard navigation.
-	pub selected_row: Option<usize>,
+	pub selected_row:     Option<usize>,
 	/// The page the operator routed to, when a route reached this state; a
 	/// state built without one names its own page.
-	pub route:        Option<crate::navigation::SurfaceRoute>,
+	pub route:            Option<crate::navigation::SurfaceRoute>,
 	/// The host's failure for one of the sheet's own controls, restated every
 	/// projection.
-	pub failure:      Option<SettingsFailure>,
+	pub failure:          Option<SettingsFailure>,
 }
 
 impl Default for SettingsState {
@@ -113,6 +121,8 @@ impl SettingsState {
 			diagnostics: None,
 			usage: None,
 			context: None,
+			profiles: None,
+			profile_copy_off: BTreeSet::new(),
 			reloading: false,
 			selected_row: None,
 			route: None,
@@ -126,6 +136,20 @@ impl SettingsState {
 		let mut state = Self::new(SettingsPage::General);
 		state.settings = settings;
 		state
+	}
+
+	/// The copy-item keys a create sends: every item the host listed, less
+	/// the ones turned off. A host that listed none sends none, which is the
+	/// blank profile.
+	#[must_use]
+	pub fn profile_copy_keys(&self) -> Vec<String> {
+		self
+			.profiles
+			.iter()
+			.flat_map(|profiles| profiles.copy_items.iter())
+			.filter(|item| !self.profile_copy_off.contains(&item.key))
+			.map(|item| item.key.clone())
+			.collect()
 	}
 
 	/// Looks up a setting by key.

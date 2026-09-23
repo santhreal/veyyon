@@ -119,6 +119,9 @@ const AT_IDLE: Record<SnapshotSectionTag, "restated-at-idle" | "listed-at-idle" 
 	// each transition of the gate, never at idle.
 	AgentPause: "on-request",
 	Share: "on-request",
+	// A turn writes inside one profile and never mints, renames or removes
+	// one, so the set on disk is what the window last asked for.
+	Profiles: "on-request",
 };
 
 /** The section the host publishes last, which is what closes a re-statement. */

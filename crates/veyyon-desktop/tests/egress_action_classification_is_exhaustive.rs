@@ -5,7 +5,7 @@ use veyyon_desktop_model::HostActionKind;
 
 #[test]
 fn all_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
-	assert_eq!(HostActionKind::ALL.len(), 85, "HostActionKind::ALL must contain exactly 85 actions");
+	assert_eq!(HostActionKind::ALL.len(), 89, "HostActionKind::ALL must contain exactly 89 actions");
 
 	let mut ephemeral_actions = HashSet::new();
 	let mut mutation_actions = HashSet::new();
@@ -21,11 +21,12 @@ fn all_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
 		}
 	}
 
-	assert_eq!(ephemeral_actions.len() + mutation_actions.len(), 85);
+	assert_eq!(ephemeral_actions.len() + mutation_actions.len(), 89);
 
-	// Pinned exact set of 23 ephemeral read-only actions (§8.13). A share read
-	// again is one of them: it asks the host for the share as it stands and
-	// alters nothing, so a full buffer drops it rather than blocking a press.
+	// Pinned exact set of 24 ephemeral read-only actions (§8.13). A share read
+	// again is one of them, and so is a profile listing: each asks the host for
+	// what it holds now and alters nothing, so a full buffer drops it rather
+	// than blocking a press.
 	let expected_ephemeral: HashSet<HostActionKind> = [
 		HostActionKind::ListSessions,
 		HostActionKind::SearchSessions,
@@ -36,6 +37,7 @@ fn all_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
 		HostActionKind::SearchFiles,
 		HostActionKind::SearchContent,
 		HostActionKind::RefreshChanges,
+		HostActionKind::RefreshProfiles,
 		HostActionKind::RefreshProcesses,
 		HostActionKind::ProcessLogs,
 		HostActionKind::RefreshModels,
@@ -58,6 +60,6 @@ fn all_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
 		ephemeral_actions, expected_ephemeral,
 		"ephemeral action set must match exact pinned definition; any change must be recorded"
 	);
-	assert_eq!(ephemeral_actions.len(), 23);
-	assert_eq!(mutation_actions.len(), 62);
+	assert_eq!(ephemeral_actions.len(), 24);
+	assert_eq!(mutation_actions.len(), 65);
 }

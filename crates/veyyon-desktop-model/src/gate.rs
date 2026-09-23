@@ -112,6 +112,10 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::StartShare | HostActionKind::StopShare | HostActionKind::RefreshShare => {
 			Capability::Share
 		},
+		HostActionKind::RefreshProfiles
+		| HostActionKind::CreateProfile
+		| HostActionKind::RenameProfile
+		| HostActionKind::DeleteProfile => Capability::Profiles,
 	}
 }
 

@@ -537,6 +537,36 @@
 		}
 	},
 	{
+		"Profiles": {
+			"active": "default",
+			"entries": [
+				{
+					"name": "default",
+					"display_name": "default",
+					"root_dir": "/home/dev/.veyyon/profiles/default",
+					"endpoint": "unix:/home/dev/.veyyon/profiles/default/agent/gui-host.sock",
+					"endpoint_error": null,
+					"is_active": true
+				},
+				{
+					"name": "work",
+					"display_name": "Work laptop",
+					"root_dir": "/home/dev/.veyyon/profiles/work",
+					"endpoint": null,
+					"endpoint_error": "No GUI host socket path fits this platform's 107-byte limit",
+					"is_active": false
+				}
+			],
+			"copy_items": [
+				{
+					"key": "agents",
+					"label": "AGENTS.md",
+					"description": "Profile-specific agent instructions"
+				}
+			]
+		}
+	},
+	{
 		"Usage": {
 			"session": "sess-1",
 			"totals": {

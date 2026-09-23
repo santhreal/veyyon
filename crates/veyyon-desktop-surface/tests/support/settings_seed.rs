@@ -4,8 +4,8 @@
 use serde_json::Value;
 use veyyon_desktop_model::{
 	AgentView, AuthFlowState, AuthFlowView, ContextBreakdownView, ContextCategory, KeybindingView,
-	McpServerStatus, McpServerView, ProviderView, SessionId, SettingEntry, SettingKind,
-	SettingOption, ThemesView, UsageTotals, domain::ThemeView,
+	McpServerStatus, McpServerView, ProfileCopyItemView, ProfileView, ProfilesView, ProviderView,
+	SessionId, SettingEntry, SettingKind, SettingOption, ThemesView, UsageTotals, domain::ThemeView,
 };
 use veyyon_desktop_surface::{SettingsPage, SettingsState};
 
@@ -243,6 +243,34 @@ pub fn seed_state_for_page(page: SettingsPage) -> SettingsState {
 					ContextCategory { name: "Conversation History".to_string(), tokens: 30000 },
 					ContextCategory { name: "Tool Declarations".to_string(), tokens: 5000 },
 				],
+			});
+		},
+		SettingsPage::Profiles => {
+			state.profiles = Some(ProfilesView {
+				active:     "default".to_string(),
+				entries:    vec![
+					ProfileView {
+						name:           "default".to_string(),
+						display_name:   "default".to_string(),
+						root_dir:       "/repo/.veyyon/profiles/default".to_string(),
+						endpoint:       Some("/repo/.veyyon/profiles/default/host.sock".to_string()),
+						endpoint_error: None,
+						is_active:      true,
+					},
+					ProfileView {
+						name:           "review".to_string(),
+						display_name:   "Review".to_string(),
+						root_dir:       "/repo/.veyyon/profiles/review".to_string(),
+						endpoint:       None,
+						endpoint_error: Some("no socket directory on this platform".to_string()),
+						is_active:      false,
+					},
+				],
+				copy_items: vec![ProfileCopyItemView {
+					key:         "settings".to_string(),
+					label:       "Settings".to_string(),
+					description: "The settings file the active profile holds".to_string(),
+				}],
 			});
 		},
 	}

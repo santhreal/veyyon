@@ -316,6 +316,24 @@ pub enum Intent {
 	/// Moves the open menu along the bar, by sections.
 	MoveMenuSection(i32),
 	/// Takes the verb the keyboard is on in the open menu.
+	/// Asks the host for the profiles on disk again.
+	RefreshProfiles,
+	/// Makes a profile directory, seeded with the items whose keys travel
+	/// here; an empty set makes a blank profile.
+	CreateProfile {
+		name: String,
+		copy: Vec<String>,
+	},
+	/// Writes what a profile directory shows as, leaving its directory name.
+	RenameProfile {
+		name:         String,
+		display_name: String,
+	},
+	/// Removes a profile directory and everything under it.
+	DeleteProfile(String),
+	/// Adds or drops one item from what a new profile is seeded with. The
+	/// set is this window's, so nothing is asked of the host.
+	ToggleProfileCopy(String),
 	/// Closes this window, leaving the process up where something can bring
 	/// a window back.
 	CloseWindow,

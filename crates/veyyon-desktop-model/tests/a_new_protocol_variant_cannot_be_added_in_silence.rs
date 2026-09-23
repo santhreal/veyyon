@@ -64,8 +64,8 @@ where
 
 #[test]
 fn every_action_capability_scope_role_and_partition_is_named_by_its_all_array() {
-	assert_all_is_the_whole_enum(&HostActionKind::ALL, 85, "HostActionKind");
-	assert_all_is_the_whole_enum(&Capability::ALL, 32, "Capability");
+	assert_all_is_the_whole_enum(&HostActionKind::ALL, 89, "HostActionKind");
+	assert_all_is_the_whole_enum(&Capability::ALL, 33, "Capability");
 	assert_all_is_the_whole_enum(&ErrorScope::ALL, 19, "ErrorScope");
 	assert_all_is_the_whole_enum(&MessageRole::ALL, 12, "MessageRole");
 	// Four placements, not the five sections the rail draws: `Unsent` is derived
@@ -81,8 +81,8 @@ fn the_field_carrying_unions_project_to_a_sweepable_kind() {
 	let sections: Vec<SnapshotSectionKind> = SnapshotSectionKind::iter().collect();
 	assert_eq!(
 		sections.len(),
-		34,
-		"wire.ts defines 34 snapshot sections. This count is pinned here so additions cannot occur \
+		35,
+		"wire.ts defines 35 snapshot sections. This count is pinned here so additions cannot occur \
 		 in silence."
 	);
 	assert_eq!(

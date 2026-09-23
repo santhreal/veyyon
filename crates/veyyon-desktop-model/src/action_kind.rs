@@ -92,11 +92,15 @@ pub enum HostActionKind {
 	StartShare,
 	StopShare,
 	RefreshShare,
+	RefreshProfiles,
+	CreateProfile,
+	RenameProfile,
+	DeleteProfile,
 }
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 85] = [
+	pub const ALL: [Self; 89] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -182,6 +186,10 @@ impl HostActionKind {
 		Self::StartShare,
 		Self::StopShare,
 		Self::RefreshShare,
+		Self::RefreshProfiles,
+		Self::CreateProfile,
+		Self::RenameProfile,
+		Self::DeleteProfile,
 	];
 
 	/// Returns wire name identifier.
@@ -273,6 +281,10 @@ impl HostActionKind {
 			Self::StartShare => "StartShare",
 			Self::StopShare => "StopShare",
 			Self::RefreshShare => "RefreshShare",
+			Self::RefreshProfiles => "RefreshProfiles",
+			Self::CreateProfile => "CreateProfile",
+			Self::RenameProfile => "RenameProfile",
+			Self::DeleteProfile => "DeleteProfile",
 		}
 	}
 }
@@ -367,6 +379,10 @@ impl HostAction {
 			Self::StartShare { .. } => HostActionKind::StartShare,
 			Self::StopShare => HostActionKind::StopShare,
 			Self::RefreshShare => HostActionKind::RefreshShare,
+			Self::RefreshProfiles => HostActionKind::RefreshProfiles,
+			Self::CreateProfile { .. } => HostActionKind::CreateProfile,
+			Self::RenameProfile { .. } => HostActionKind::RenameProfile,
+			Self::DeleteProfile { .. } => HostActionKind::DeleteProfile,
 		}
 	}
 }

@@ -12,6 +12,7 @@
 
 mod editors;
 mod parse;
+mod profile;
 mod query;
 mod supervisor;
 
@@ -34,6 +35,7 @@ pub enum FieldKey {
 	ProcessCommand,
 	ProcessInput,
 	SettingsQuery,
+	ProfileName,
 }
 
 /// What a field's submit sends.
@@ -48,6 +50,7 @@ enum Commit {
 	ProcessStart,
 	ProcessSend,
 	SettingsQuery,
+	ProfileCreate,
 }
 /// A retained field: its editor, and what a submit of it sends.
 pub(super) struct Field {
@@ -80,6 +83,8 @@ pub struct FieldSlots {
 	pub keybindings: Vec<(String, Entity<Editor>)>,
 	/// The editor for the task the Agents page spawns.
 	pub task:        Option<Entity<Editor>>,
+	/// The editor for the name a new profile is created under.
+	pub profile:     Option<Entity<Editor>>,
 	/// The editor for the query the General page's rows are narrowed by.
 	/// Every frame that can draw the page retains one, so the field it draws
 	/// is typeable rather than a picture of the query it holds.
@@ -292,6 +297,9 @@ impl ShellView {
 			// A submit from inside the field names no row, so the process it
 			// reaches is resolved from what is running.
 			(Commit::ProcessSend, FieldKey::ProcessInput) => self.send_process_input(None, cx),
+			(Commit::ProfileCreate, FieldKey::ProfileName) => {
+				profile::commit_create(self, &editor, cx);
+			},
 			// A query is already applied on the frame each character landed
 			// on, so a submit of it sends nothing and leaves the page as the
 			// typing left it.
@@ -347,7 +355,10 @@ impl ShellView {
 					.unwrap_or_default();
 				editor.update(cx, |editor, cx| editor.set_text(initial, cx));
 			},
-			FieldKey::TaskPrompt | FieldKey::ProcessCommand | FieldKey::ProcessInput => {
+			FieldKey::TaskPrompt
+			| FieldKey::ProcessCommand
+			| FieldKey::ProcessInput
+			| FieldKey::ProfileName => {
 				editor.update(cx, |editor, cx| editor.set_text(String::new(), cx));
 			},
 			// The window captures Escape above the editor and widens the page

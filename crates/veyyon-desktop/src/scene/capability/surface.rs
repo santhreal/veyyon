@@ -188,7 +188,8 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 		| Capability::Mcp
 		| Capability::Providers
 		| Capability::Authentication
-		| Capability::Extensions => seed_sheet_page(seed, session, capability),
+		| Capability::Extensions
+		| Capability::Profiles => seed_sheet_page(seed, session, capability),
 		Capability::Agents => {
 			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Extensions).overlay());
 			seed.store.domains.agents = vec![AgentView {

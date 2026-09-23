@@ -94,6 +94,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Agents",
 	"AgentComms",
 	"Share",
+	"Profiles",
 	"Usage",
 	"ContextBreakdown",
 	"Export",
@@ -172,6 +173,8 @@ pub enum SnapshotSection {
 	AgentComms(Vec<AgentMessageView>),
 	/// Relay session sharing status and link bundle.
 	Share(crate::domain::ShareView),
+	/// The profiles on disk, and where each one's host is.
+	Profiles(crate::domain::ProfilesView),
 	/// Session resource and token usage totals.
 	Usage(UsageView),
 	/// Context window breakdown by category.
@@ -228,6 +231,7 @@ impl SnapshotSection {
 			Self::Agents(..) => "Agents",
 			Self::AgentComms(..) => "AgentComms",
 			Self::Share(..) => "Share",
+			Self::Profiles(..) => "Profiles",
 			Self::Usage(..) => "Usage",
 			Self::ContextBreakdown(..) => "ContextBreakdown",
 			Self::Export(..) => "Export",

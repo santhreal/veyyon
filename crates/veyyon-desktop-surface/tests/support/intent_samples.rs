@@ -172,6 +172,14 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::StartShare { read_only: false },
 		Intent::StopShare,
 		Intent::RefreshShare,
+		Intent::RefreshProfiles,
+		Intent::CreateProfile { name: "review".to_owned(), copy: vec!["settings".to_owned()] },
+		Intent::RenameProfile {
+			name:         "review".to_owned(),
+			display_name: "Second Look".to_owned(),
+		},
+		Intent::DeleteProfile("review".to_owned()),
+		Intent::ToggleProfileCopy("settings".to_owned()),
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -303,6 +311,11 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::StartShare { .. }
 			| Intent::StopShare
 			| Intent::RefreshShare
+			| Intent::RefreshProfiles
+			| Intent::CreateProfile { .. }
+			| Intent::RenameProfile { .. }
+			| Intent::DeleteProfile(_)
+			| Intent::ToggleProfileCopy(_)
 			| Intent::Quit => {},
 		}
 	}

@@ -26,6 +26,7 @@ fn every_destination_refreshes_only_its_domain_with_and_without_an_active_sessio
 				SettingsPage::ContextBreakdown => active
 					.clone()
 					.map_or_else(Vec::new, |session| vec![HostAction::GetContextBreakdown { session }]),
+				SettingsPage::Profiles => vec![HostAction::RefreshProfiles],
 				SettingsPage::Authentication | SettingsPage::Extensions => Vec::new(),
 			};
 			assert_eq!(

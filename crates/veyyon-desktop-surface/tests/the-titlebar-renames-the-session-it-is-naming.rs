@@ -42,7 +42,7 @@ const TYPED: &str = "Reticulating splines";
 
 /// Which suite proves the commit of each field the window draws.
 ///
-/// An exhaustive match with no wildcard arm: a ninth `FieldKey` stops this
+/// An exhaustive match with no wildcard arm: a tenth `FieldKey` stops this
 /// compiling until its commit is proven somewhere and named here.
 const fn proven_by(key: &FieldKey) -> &'static str {
 	match key {
@@ -54,6 +54,7 @@ const fn proven_by(key: &FieldKey) -> &'static str {
 		FieldKey::ProcessCommand => "the-supervisor-starts-the-command-its-field-states",
 		FieldKey::ProcessInput => "a-line-a-process-receives-is-the-line-the-field-states",
 		FieldKey::SettingsQuery => "typing-in-the-settings-query-narrows-the-rows-the-page-draws",
+		FieldKey::ProfileName => "a-profile-control-sends-the-profile-the-page-names",
 	}
 }
 

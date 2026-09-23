@@ -14,6 +14,7 @@ pub mod mcp;
 pub mod models;
 pub mod pause;
 pub mod process;
+pub mod profiles;
 pub mod providers;
 pub mod queued;
 pub mod settings;
@@ -35,6 +36,7 @@ pub use mcp::*;
 pub use models::*;
 pub use pause::*;
 pub use process::*;
+pub use profiles::*;
 pub use providers::*;
 pub use queued::*;
 use serde::{Deserialize, Serialize};
@@ -106,6 +108,8 @@ pub struct Domains {
 	pub diagnostics:     Option<serde_json::Value>,
 	/// Relay session sharing status and link bundle.
 	pub share:           Option<ShareView>,
+	/// The profiles on disk, and where each one's host is.
+	pub profiles:        Option<ProfilesView>,
 }
 
 impl Domains {

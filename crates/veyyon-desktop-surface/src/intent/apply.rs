@@ -148,6 +148,15 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		Intent::SetMcpEnabled { server, enabled } => {
 			settings::set_mcp_enabled(state, server, *enabled);
 		},
+		Intent::ToggleProfileCopy(key) => settings::toggle_profile_copy(state, key),
+		// What the page draws is the host's listing, so a create, a rename and
+		// a delete change nothing here until the listing comes back with the
+		// change in it. A row that changed on the press would state a profile
+		// the store had refused to write.
+		Intent::RefreshProfiles
+		| Intent::CreateProfile { .. }
+		| Intent::RenameProfile { .. }
+		| Intent::DeleteProfile(_) => {},
 		// A refresh has nothing local to show until the host answers with the
 		// snapshot the projection draws.
 		Intent::RefreshDiagnostics | Intent::RetryDiagnosticSource(_) | Intent::RefreshUsage => {},

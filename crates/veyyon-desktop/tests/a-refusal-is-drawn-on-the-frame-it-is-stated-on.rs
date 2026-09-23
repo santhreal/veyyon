@@ -34,151 +34,13 @@ mod support;
 
 use std::collections::BTreeSet;
 
-use serde_json::json;
-use strum::{EnumIter, IntoEnumIterator};
-use support::fields::{
-	SETTING_KEY, driven, general_page_holds, keybindings_page_binds, settings_page_open,
-	supervisor_tab_open, supervisor_tab_running, transport_asks_for_a_secret,
+use strum::IntoEnumIterator;
+use support::{
+	fields::{driven, settings_page_open},
+	refusals::{KeyShape, cases, hold, key_shape},
 };
-use veyyon_desktop_model::SettingKind;
-use veyyon_desktop_scene::{HeadlessSession, RgbaFrame};
-use veyyon_desktop_surface::{
-	ConnectionPhase, FieldKey, SettingsPage, ShellState, ShellView, fixture,
-};
-
-/// The keymap action a seeded Keybindings page reports a binding for.
-const BOUND_ACTION: &str = "shell::Submit";
-
-/// A field, without the value that names which one, so the sweep can be
-/// checked against the set of fields that exist.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, EnumIter)]
-enum KeyShape {
-	/// [`FieldKey::AuthSecret`].
-	AuthSecret,
-	/// [`FieldKey::Setting`].
-	Setting,
-	/// [`FieldKey::SessionRename`].
-	SessionRename,
-	/// [`FieldKey::Keybinding`].
-	Keybinding,
-	/// [`FieldKey::TaskPrompt`].
-	TaskPrompt,
-	/// [`FieldKey::ProcessCommand`].
-	ProcessCommand,
-	/// [`FieldKey::ProcessInput`].
-	ProcessInput,
-	/// [`FieldKey::SettingsQuery`].
-	SettingsQuery,
-}
-
-/// The exhaustive match that makes a new `FieldKey` fail to compile here until
-/// its refusal is recorded.
-const fn key_shape(key: &FieldKey) -> KeyShape {
-	match key {
-		FieldKey::AuthSecret => KeyShape::AuthSecret,
-		FieldKey::Setting(_) => KeyShape::Setting,
-		FieldKey::SessionRename(_) => KeyShape::SessionRename,
-		FieldKey::Keybinding(_) => KeyShape::Keybinding,
-		FieldKey::TaskPrompt => KeyShape::TaskPrompt,
-		FieldKey::ProcessCommand => KeyShape::ProcessCommand,
-		FieldKey::ProcessInput => KeyShape::ProcessInput,
-		FieldKey::SettingsQuery => KeyShape::SettingsQuery,
-	}
-}
-
-/// One field, the shell it is drawn in, and the text a return on it refuses.
-struct Case {
-	/// The field the seeded surface draws.
-	key:   FieldKey,
-	/// The shell the field is drawn in.
-	state: ShellState,
-	/// What the field is left holding before the return. Empty text is what a
-	/// field cleared by the operator holds, which every field but the keymap
-	/// one refuses; a keymap field refuses anything that states no chord.
-	text:  &'static str,
-	/// What the attention strip has to say, in full or as its opening, since
-	/// a JSON refusal quotes the parser.
-	says:  &'static str,
-	/// What the same field takes, so the refusal it put up is withdrawn on
-	/// the frame that takes it rather than left standing over a value that
-	/// was accepted.
-	takes: &'static str,
-}
-
-/// Every field that refuses, each seeded in a shell that draws it.
-fn cases() -> Vec<Case> {
-	vec![
-		Case {
-			key:   FieldKey::AuthSecret,
-			state: transport_asks_for_a_secret(),
-			text:  "",
-			says:  "A secret is required to authenticate",
-			takes: "sk-typed-by-the-operator",
-		},
-		Case {
-			key:   FieldKey::Setting(SETTING_KEY.to_owned()),
-			state: general_page_holds(SettingKind::Record, json!({})),
-			text:  "not json at all",
-			says:  "settings.seeded is not valid JSON",
-			takes: "{\"seeded\":true}",
-		},
-		Case {
-			key:   FieldKey::SessionRename(fixture::populated().current_id),
-			state: ShellState { connection: ConnectionPhase::Attached, ..fixture::populated() },
-			text:  "",
-			says:  "A session name cannot be empty",
-			takes: "A name the operator typed",
-		},
-		Case {
-			key:   FieldKey::Keybinding(BOUND_ACTION.to_owned()),
-			state: keybindings_page_binds(BOUND_ACTION, &["ctrl-enter"]),
-			// Modifiers with no key after them: the keymap grammar reads no
-			// chord out of it, so no key press would ever match what it would
-			// have been bound to.
-			text:  "ctrl-",
-			says:  "shell::Submit needs at least one chord",
-			takes: "ctrl-enter",
-		},
-		Case {
-			key:   FieldKey::Keybinding(BOUND_ACTION.to_owned()),
-			state: keybindings_page_binds(BOUND_ACTION, &["ctrl-enter"]),
-			// Modifiers spelled apart: one token of the grammar carries no
-			// space inside it, so this states no chord either.
-			text:  "ctrl alt",
-			says:  "shell::Submit needs at least one chord",
-			takes: "ctrl-enter, cmd-enter",
-		},
-		Case {
-			key:   FieldKey::TaskPrompt,
-			// The Agents page is the one that draws the task field, and a
-			// field the surface never drew takes no return.
-			state: settings_page_open(SettingsPage::Extensions),
-			text:  "",
-			says:  "A task needs a description to run",
-			takes: "Read the tokens and report what is unauthored",
-		},
-		Case {
-			key:   FieldKey::ProcessCommand,
-			// The supervisor's tab is the one that draws the command field,
-			// and it is offered before anything is running, which is the
-			// state the first process is started from.
-			state: supervisor_tab_open(),
-			text:  "",
-			says:  "A process needs a command to run",
-			takes: "bun run dev",
-		},
-		Case {
-			key:   FieldKey::ProcessInput,
-			// A row's `Send` is the only thing that reads this field, so the
-			// state that draws it is a supervisor with a process running in
-			// it.
-			state: supervisor_tab_running(),
-			text:  "",
-			says:  "Sending to a process needs something to send",
-			takes: "y",
-		},
-	]
-}
+use veyyon_desktop_scene::RgbaFrame;
+use veyyon_desktop_surface::SettingsPage;
 
 /// The pixels two frames disagree on.
 fn differing_pixels(before: &RgbaFrame, after: &RgbaFrame) -> usize {
@@ -194,23 +56,6 @@ fn differing_pixels(before: &RgbaFrame, after: &RgbaFrame) -> usize {
 /// a window that redrew nothing draws none. Well under a strip's own area, so
 /// the assertion is about a strip appearing rather than about its exact glyphs.
 const PROSE: usize = 2_000;
-
-/// Focuses the editor the drawn surface registered under `key` and leaves it
-/// holding `text`, so the return that follows submits exactly that.
-fn hold(session: &mut HeadlessSession<'_, ShellView>, key: &FieldKey, text: &str) {
-	let key = key.clone();
-	let text = text.to_owned();
-	session
-		.update(move |view, window, cx| {
-			let editor = view.retained_field(&key).unwrap_or_else(|| {
-				panic!("the drawn surface registered no editor under {key:?}, which it holds")
-			});
-			let focus = editor.read(cx).focus_handle().clone();
-			window.focus(&focus, cx);
-			editor.update(cx, |editor, cx| editor.set_text(text, cx));
-		})
-		.expect("the field takes focus and the text it is asked to hold");
-}
 
 /// The fields that refuse nothing, so a case here would have nothing to
 /// assert. A query narrows the page it is typed on and is sent nowhere, so no

@@ -257,6 +257,7 @@ pub fn command_items() -> Vec<PaletteItem> {
 			SettingsPage::Diagnostics => "/settings diagnostics",
 			SettingsPage::Usage => "/usage",
 			SettingsPage::ContextBreakdown => "/context",
+			SettingsPage::Profiles => "/profile",
 		};
 		// The page's own data is what the row asks the host for, so the row
 		// rides on the capability that answers it. The two pages the window
@@ -270,6 +271,7 @@ pub fn command_items() -> Vec<PaletteItem> {
 			SettingsPage::Diagnostics => Some(Capability::Diagnostics),
 			SettingsPage::Usage => Some(Capability::Usage),
 			SettingsPage::ContextBreakdown => Some(Capability::ContextBreakdown),
+			SettingsPage::Profiles => Some(Capability::Profiles),
 			SettingsPage::Authentication | SettingsPage::Extensions => None,
 		};
 		let mut item = PaletteItem::command(

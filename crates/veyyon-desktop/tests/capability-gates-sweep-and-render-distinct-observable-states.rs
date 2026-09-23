@@ -93,7 +93,7 @@ fn test_action_of_exhaustively_matches_model_mapping() {
 		}
 	}
 
-	// Assert exactly 6 actionless capabilities and 24 gated capabilities
+	// Assert exactly 5 actionless capabilities and 28 gated capabilities
 	let actionless: Vec<Capability> = Capability::iter().filter(|c| !gated.contains(c)).collect();
 	assert_eq!(
 		actionless,
@@ -106,8 +106,8 @@ fn test_action_of_exhaustively_matches_model_mapping() {
 		],
 		"exact set of actionless capabilities"
 	);
-	assert_eq!(Capability::ALL.len(), 32);
-	assert_eq!(gated.len(), 27);
+	assert_eq!(Capability::ALL.len(), 33);
+	assert_eq!(gated.len(), 28);
 }
 
 #[test]
@@ -234,7 +234,7 @@ fn test_all_gated_capabilities_render_distinct_pending_bytes() {
 	assert_eq!(
 		invisible,
 		Vec::<Capability>::new(),
-		"all 24 gated capabilities must render distinct bytes when Pending"
+		"every gated capability must render distinct bytes when Pending"
 	);
 }
 

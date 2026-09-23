@@ -7,6 +7,7 @@ pub mod fields;
 pub mod intent_samples;
 pub mod memory;
 pub mod raster;
+pub mod refusals;
 pub mod settings_sheet;
 pub mod streaming_corpus;
 

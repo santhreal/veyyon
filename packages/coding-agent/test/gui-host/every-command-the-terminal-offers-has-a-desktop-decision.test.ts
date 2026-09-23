@@ -77,13 +77,13 @@ const DECISIONS: Record<string, Decision> = {
 		host: "the debug tools that read nothing of the terminal, chosen in a question and drawn as command output",
 	},
 	exit: { client: "Intent::Quit" },
-	profile: { gap: "no profile picker" },
+	profile: { client: "SettingsPage::Profiles, reached from /profile in the palette" },
 	pause: { action: "PauseAgents" },
 	quit: { client: "Intent::Quit" },
 };
 
 /** The gaps as they stand, so closing one is a recorded change. */
-const RECORDED_GAPS = ["guided-goal", "join", "leave", "omfg", "profile"];
+const RECORDED_GAPS = ["guided-goal", "join", "leave", "omfg"];
 
 /**
  * The declarations through their declared interface. The table is `as const`,
