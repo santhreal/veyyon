@@ -33,10 +33,13 @@ const bench = makeBench(ITERATIONS);
 
 // ─── Registry population ────────────────────────────────────────────────────
 
-function populate(drivers: number, room: string | undefined): AgentRegistry {
+function populate(drivers: number, inRoom: boolean): AgentRegistry {
 	AgentRegistry.resetGlobalForTests();
 	const registry = AgentRegistry.global();
 	const driverIds: string[] = [];
+	// A room is opened by its first driver and joined by the rest; a string
+	// nobody holds is refused at registration.
+	let room: string | undefined;
 	for (let d = 0; d < drivers; d++) {
 		const id = d === 0 ? MAIN_AGENT_ID : `main:${d}`;
 		driverIds.push(id);
@@ -49,16 +52,17 @@ function populate(drivers: number, room: string | undefined): AgentRegistry {
 			room,
 			status: "running",
 		});
+		if (inRoom && d === 0) room = registry.ensureRoom(id);
 	}
 	for (let s = 0; s < SPAWNS; s++) {
 		const parentId = driverIds[s % drivers] ?? MAIN_AGENT_ID;
 		registry.register({
 			id: `spawn-${s}`,
 			displayName: `worker-${s}`,
-			kind: "task",
+			kind: "sub",
 			parentId,
 			session: null,
-			status: s % 3 === 0 ? "completed" : "running",
+			status: s % 3 === 0 ? "parked" : "running",
 		});
 	}
 	return registry;
@@ -88,10 +92,10 @@ function renderBlock(peers: { id: string }[]): string {
 console.log(`\nBenchmark: room-peers (${SPAWNS} spawns in the registry, ${ITERATIONS} iterations per arm)\n`);
 
 for (const arm of [
-	{ label: "off: 1 driver, no room ", drivers: 1, room: undefined },
-	{ label: "on:  4 drivers, one room", drivers: 4, room: "room:bench" },
+	{ label: "off: 1 driver, no room ", drivers: 1, inRoom: false },
+	{ label: "on:  4 drivers, one room", drivers: 4, inRoom: true },
 ]) {
-	const registry = populate(arm.drivers, arm.room);
+	const registry = populate(arm.drivers, arm.inRoom);
 	const expectedPeers = arm.drivers - 1;
 
 	const before = peersBefore(registry, MAIN_AGENT_ID);

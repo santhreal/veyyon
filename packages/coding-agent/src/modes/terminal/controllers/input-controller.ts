@@ -140,7 +140,7 @@ const TINY_TITLE_PROGRESS_DONE_TTL_MS = 3_000;
 // events for seconds. Only reveal the bar once a still-incomplete event arrives after
 // this grace window, so an already-downloaded model never flashes the bar.
 const TINY_TITLE_PROGRESS_REVEAL_DELAY_MS = 1_000;
-// The arrow double-tap gestures (←← the agent hub, →→ the room strip) share
+// The arrow double-tap gestures (←← the agent hub, →→ the room view) share
 // one detector class, `ArrowDoubleTap`, which owns the window and the burst
 // rejection; see its doc comment for the bounds.
 
@@ -562,6 +562,15 @@ export class InputController {
 		for (const key of hubKeys) {
 			this.ctx.editor.setCustomKeyHandler(key, () => this.ctx.showAgentsDashboard());
 		}
+		for (const key of this.ctx.keybindings.getKeys("app.room.view")) {
+			this.ctx.editor.setCustomKeyHandler(key, () => void this.ctx.room.openView());
+		}
+		for (const key of this.ctx.keybindings.getKeys("app.room.next")) {
+			this.ctx.editor.setCustomKeyHandler(key, () => void this.ctx.room.cycle(1));
+		}
+		for (const key of this.ctx.keybindings.getKeys("app.room.previous")) {
+			this.ctx.editor.setCustomKeyHandler(key, () => void this.ctx.room.cycle(-1));
+		}
 
 		// Double-tap left arrow on an empty editor: opens the agent dashboard
 		// from the main session, or returns the focused agent view to the main
@@ -581,15 +590,13 @@ export class InputController {
 			}
 		};
 		// Double-tap right arrow on an empty editor: the sideways axis. Opens the
-		// room strip with the cursor on the next peer conversation; with no peer
-		// the controller says so on the status line and the gesture is otherwise
-		// inert. Once the strip is open its own listener owns the arrows, so a
-		// third → moves the cursor rather than restarting the gesture. Inert in a
+		// room view, every conversation in this terminal as a window, with or
+		// without a peer (the view is also where a new one is opened). Inert in a
 		// focused agent view: a spawn is not a room member and has nothing beside it.
 		this.ctx.editor.onRightAtEnd = () => {
 			this.#leftTap.reset();
 			if (this.ctx.focusedAgentId) return;
-			if (this.#rightTap.tap()) this.ctx.room.open();
+			if (this.#rightTap.tap()) void this.ctx.room.openView();
 		};
 
 		this.#setupEnhancedPaste();

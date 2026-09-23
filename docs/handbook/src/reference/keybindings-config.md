@@ -44,6 +44,9 @@ app.history.search: []
 | `app.clipboard.copyLine`    | `Alt+Shift+L`                          | Copy the current line                         |
 | `app.clipboard.copyPrompt`  | `Alt+Shift+C`                          | Copy the whole prompt                         |
 | `app.clipboard.pasteImage`  | `Ctrl+V` (`Alt+V` fallback on Windows, `Super+V` on macOS) | Paste from the clipboard (image preferred, text fallback) |
+| `app.room.view`             | `Alt+W`                                | Open the room view: every conversation in this terminal as a window |
+| `app.room.next`             | `Alt+.`                                | Switch to the next conversation in the room   |
+| `app.room.previous`         | `Alt+,`                                | Switch to the previous conversation in the room |
 | `app.stt.toggle`            | Unbound (hold `Space`)                 | Toggle speech-to-text. By default there is no key chord, hold the space bar to record (push-to-talk) and release to transcribe; bind a chord here for a press-to-toggle alternative |
 
 On Windows Terminal, `Ctrl+V` may be handled by the terminal paste command before `veyyon` sees it; use the `Alt+V` fallback when clipboard image paste appears to do nothing. When the clipboard holds no image, `app.clipboard.pasteImage` pastes the clipboard text instead, so hosts that deliver only this chord (VS Code's integrated terminal when configured to forward `Ctrl+V`, Windows clipboard history via `Win+V`) work for both payload kinds. Windows Terminal also swallows `Ctrl+Enter`, so the `app.message.followUp` chord also binds `Ctrl+Q`, the same chord GitHub Copilot CLI uses, and the same chord submits the agent dashboard's new-agent description and hook-editor prompts. If your existing `keybindings.yml` already assigns `Ctrl+Q` to another action, that user remap wins and follow-up keeps `Ctrl+Enter` unless you explicitly bind `app.message.followUp`.
@@ -60,4 +63,4 @@ A few arrow gestures act on the status line when the composer is empty. They are
 | ------------------- | ----------------------------- | ------------------------------------------------------------ |
 | Down arrow          | A goal is active or paused    | Open the goal detail menu (same as `/goal`): objective, tokens against budget, completed turns, time spent, and pause/resume/adjust-budget/drop |
 | Double-tap ← (left) | Composer empty                | Open the agent dashboard, or return a focused agent view to the main session |
-| Double-tap → (right) | Composer empty, a peer conversation open | Open the room strip with the cursor on the next peer; `←`/`→` move it, Enter switches, Esc or any other key closes it |
+| Double-tap → (right) | Composer empty                | Open the room view with every conversation in this terminal as a window; see [Rooms](../features/cockpit.md#rooms-conversations-side-by-side) |

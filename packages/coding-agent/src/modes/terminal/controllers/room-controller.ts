@@ -7,7 +7,8 @@
  * per process, `attachMainSession` re-points the screen at any live session
  * and hands the displayed one to `BackgroundSessions`, and the irc bus
  * delivers by registry id. What this adds is the room (`AgentRef.room`), the
- * command that opens a peer, the strip that lists them and the switch.
+ * room view (`components/room/room-stage.ts`), the quick switch, the commands,
+ * and the one transaction that puts a conversation on screen.
  *
  * A switch is a full attach, not a focus. `SessionFocusController` proxies the
  * view onto a spawn while `ctx.session` stays the driver, and the editor is a
@@ -15,20 +16,26 @@
  * driver, so after a switch it is `ctx.session` outright and every command,
  * keybinding and status surface works on it as on the first session.
  *
- * One cwd for the room. `getProjectDir()` is process-global at several sites,
- * so a peer opens in the displayed session's cwd; a peer that later moved its
- * own cwd is re-rooted on switch the way `/resume` re-roots.
+ * One process scope for the room. `getProjectDir()`, the shared settings scope
+ * and the capability caches are process-global, so the conversation on screen
+ * holds them (`AgentSession.claimForeground`) and a conversation off screen
+ * that changes directory defers its re-scope until it is back on screen.
  */
 
-import { Text, type ViewportSnapshot } from "@veyyon/tui";
-import { errorMessage, normalizePathForComparison } from "@veyyon/utils";
+import type { OverlayHandle } from "@veyyon/tui";
+import { normalizePathForComparison } from "@veyyon/utils";
 import { matchesKey } from "@veyyon/utils/keys";
-import { AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from "../../../registry/agent-registry";
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { type AgentRef, AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from "../../../registry/agent-registry";
 import type { AgentSession } from "../../../session/agent-session";
 import { BackgroundSessions } from "../../../session/background-sessions";
 import { setSessionTerminalTitle } from "../../../utils/title-generator";
-import { type RoomStripMember, renderRoomStripLine, roomMemberLabel } from "../components/dashboard/room-strip";
+import { pointerMotionEnabled } from "../components/chrome/modal-shell";
+import { type RoomLayout, RoomStage, type RoomStageHost, type RoomStageMode } from "../components/room/room-stage";
+import type { RoomStageMember } from "../components/room/room-view-model";
 import type { InteractiveModeContext } from "../types";
+import { RoomWindowFeed } from "./room-window-feed";
 
 export type RoomControllerContext = Pick<
 	InteractiveModeContext,
@@ -36,30 +43,58 @@ export type RoomControllerContext = Pick<
 	| "attachMainSession"
 	| "clearTransientSessionUi"
 	| "createNextSession"
+	| "editor"
+	| "eventController"
 	| "focusedAgentId"
+	| "hostSession"
+	| "keybindings"
+	| "launchSession"
+	| "onWaitingDialogsChange"
+	| "releaseHostedSession"
 	| "reloadTodos"
 	| "renderInitialMessages"
 	| "resetObserverRegistry"
-	| "roomContainer"
 	| "session"
 	| "sessionManager"
+	| "settings"
 	| "showError"
 	| "showStatus"
+	| "showWarning"
 	| "statusLine"
 	| "ui"
 	| "unfocusSession"
 	| "updateEditorBorderColor"
+	| "waitingDialogs"
 >;
 
-/** Horizontal padding of the anchored strip, matching the other anchored blocks. */
-const STRIP_PADDING_X = 1;
+/** A room member's label: its name, else its first prompt, else its position. */
+function memberLabel(ordinal: number, title: string | undefined, lead: string | undefined): string {
+	const name = title ?? lead;
+	return name ? `${ordinal} · ${name.length > 40 ? `${name.slice(0, 39)}…` : name}` : `conversation ${ordinal}`;
+}
+
+/**
+ * A room member with a session attached. The registry lists a driving agent
+ * from the moment it registers, and its session attaches after, so a row can
+ * be a member for a render or two before it has anything to show.
+ */
+type LiveMember = AgentRef & { readonly session: AgentSession };
+
+function isLive(ref: AgentRef): ref is LiveMember {
+	return ref.session !== null;
+}
 
 export class RoomController {
-	/** Id under the strip's cursor; undefined while the strip is closed. */
-	#selectedId: string | undefined;
 	#registryUnsubscribe: (() => void) | undefined;
-	#inputUnsubscribe: (() => void) | undefined;
-	/** Serializes switches: a second switch while one is attaching is dropped. */
+	#waitingUnsubscribe: (() => void) | undefined;
+	/** One feed per room member, keyed by registry id; built as members arrive, disposed as they leave. */
+	readonly #feeds = new Map<string, RoomWindowFeed>();
+	/** The unsent draft each off-screen conversation had in the composer when it left the screen. */
+	readonly #drafts = new Map<AgentSession, string>();
+	/** Held-dialog counts last seen, so a conversation that starts waiting is announced once. */
+	readonly #lastWaiting = new Map<AgentSession, number>();
+	#stage: { readonly component: RoomStage; readonly overlay: OverlayHandle; readonly originId: string } | undefined;
+	/** Serializes screen changes: a second one while one is in flight is dropped. */
 	#switching = false;
 
 	constructor(
@@ -67,23 +102,27 @@ export class RoomController {
 		private readonly registry: AgentRegistry = AgentRegistry.global(),
 	) {}
 
-	/** Subscribe to the registry and the input stream. Idempotent. */
+	/** Subscribe to the registry and the dialog counts. Idempotent. */
 	install(): void {
 		this.#registryUnsubscribe ??= this.registry.onChange(event => this.#onRegistryEvent(event));
-		this.#inputUnsubscribe ??= this.ctx.ui.addInputListener(data => this.#onInput(data));
-		this.#syncPeerCount();
+		this.#waitingUnsubscribe ??= this.ctx.onWaitingDialogsChange(() => this.#onWaitingChange());
+		this.#syncFeeds();
+		this.#syncStatus();
 	}
 
 	dispose(): void {
 		this.#registryUnsubscribe?.();
 		this.#registryUnsubscribe = undefined;
-		this.#inputUnsubscribe?.();
-		this.#inputUnsubscribe = undefined;
-		this.#selectedId = undefined;
+		this.#waitingUnsubscribe?.();
+		this.#waitingUnsubscribe = undefined;
+		this.#closeStage();
+		for (const feed of this.#feeds.values()) feed.dispose();
+		this.#feeds.clear();
 	}
 
-	get isOpen(): boolean {
-		return this.#selectedId !== undefined;
+	/** Whether the room view is on screen. */
+	get viewOpen(): boolean {
+		return this.#stage !== undefined;
 	}
 
 	/** Registry id of the driving agent on screen. */
@@ -91,266 +130,405 @@ export class RoomController {
 		return this.ctx.session.getAgentId() ?? MAIN_AGENT_ID;
 	}
 
-	/** Every driving agent in the room including the one on screen, oldest first. */
-	members(): RoomStripMember[] {
-		return this.registry.roomMembers(this.ownId).map(ref => ({
-			ref,
-			title: ref.session?.sessionManager.getSessionName(),
-		}));
+	/** Every driving agent in the room with a live session, the one on screen included, oldest first. */
+	#refs(): LiveMember[] {
+		return this.registry.roomMembers(this.ownId).filter(isLive);
 	}
 
-	/** The other driving agents in the room. */
-	peers(): RoomStripMember[] {
-		return this.members().filter(member => member.ref.id !== this.ownId);
+	/** The room as the stage draws it. */
+	members(): RoomStageMember[] {
+		const originId = this.#stage?.originId ?? this.ownId;
+		return this.#refs().map(ref => {
+			const feed = this.#feedFor(ref);
+			const session = ref.session;
+			return {
+				id: ref.id,
+				snapshot: () => feed.snapshot(),
+				waitingDialogs: this.ctx.waitingDialogs(session),
+				origin: ref.id === originId,
+			};
+		});
+	}
+
+	#feedFor(ref: LiveMember): RoomWindowFeed {
+		let feed = this.#feeds.get(ref.id);
+		if (!feed || feed.session !== ref.session) {
+			feed?.dispose();
+			feed = new RoomWindowFeed(ref.session, event => this.#onFeedEvent(event));
+			this.#feeds.set(ref.id, feed);
+		}
+		return feed;
+	}
+
+	/** Build feeds for arriving members and drop those of members that left. */
+	#syncFeeds(): void {
+		const refs = this.#refs();
+		const live = new Set(refs.map(ref => ref.id));
+		for (const [id, feed] of this.#feeds) {
+			if (!live.has(id)) {
+				feed.dispose();
+				this.#feeds.delete(id);
+			}
+		}
+		if (refs.length > 1) for (const ref of refs) this.#feedFor(ref);
+	}
+
+	#onFeedEvent(event: string): void {
+		if (this.#stage) this.ctx.ui.requestRender();
+		if (event === "agent_start" || event === "agent_end") this.#syncStatus();
+	}
+
+	#onRegistryEvent(event: RegistryEvent): void {
+		if (event.ref.kind !== "main") return;
+		this.#syncFeeds();
+		this.#syncStatus();
+		if (this.#stage) this.ctx.ui.requestRender();
 	}
 
 	/**
-	 * Open a conversation beside the one on screen and attach the screen to it.
-	 * The displayed conversation keeps running: it is handed to the background
-	 * keeper exactly as `/new` hands over a streaming turn, and it stays a live
-	 * registry row this controller can switch back to.
+	 * A conversation off screen started holding a question: say so on the
+	 * status line, once, with the way to it. The room chip keeps counting it
+	 * until the operator gets there.
 	 */
-	async openPeer(): Promise<void> {
-		const createNextSession = this.ctx.createNextSession;
-		if (!createNextSession) {
-			this.ctx.showError("This host cannot open a second conversation.");
-			return;
+	#onWaitingChange(): void {
+		const refs = this.#refs();
+		for (const [index, ref] of refs.entries()) {
+			const session = ref.session;
+			const now = this.ctx.waitingDialogs(session);
+			const before = this.#lastWaiting.get(session) ?? 0;
+			this.#lastWaiting.set(session, now);
+			if (now > before && session !== this.ctx.session && !this.#stage) {
+				const snapshot = this.#feedFor(ref).snapshot();
+				this.ctx.showStatus(
+					`${memberLabel(index + 1, snapshot.title, snapshot.lead)} needs you — press → twice on an empty composer to open the room`,
+				);
+			}
 		}
-		if (this.#switching) return;
-		if (this.ctx.focusedAgentId) await this.ctx.unfocusSession();
-		const room = this.registry.ensureRoom(this.ownId);
-		if (room === undefined) {
-			this.ctx.showError("The current session is not registered as a driving agent, so it cannot open a room.");
-			return;
+		this.#syncStatus();
+		if (this.#stage) this.ctx.ui.requestRender();
+	}
+
+	#syncStatus(): void {
+		const peers = this.#refs().filter(ref => ref.id !== this.ownId);
+		let working = 0;
+		let waiting = 0;
+		for (const ref of peers) {
+			const session = ref.session;
+			if (this.ctx.waitingDialogs(session) > 0) waiting++;
+			else if (session.isStreaming) working++;
 		}
-		this.#switching = true;
-		try {
-			// A new peer joins at the end of the room, so it enters from the right.
-			const from = this.ctx.ui.captureViewport();
-			const next = await createNextSession({ room });
-			await this.#attach(next, from, "left");
-			this.ctx.showStatus(
-				`Opened a peer conversation beside ${this.#labelOf(this.registry.get(this.ownId)?.id)} — →→ switches between them`,
-			);
-		} catch (error) {
-			this.ctx.showError(`Could not open a peer conversation: ${errorMessage(error)}`);
-		} finally {
-			this.#switching = false;
-		}
+		this.ctx.statusLine.setRoomPeers({ peers: peers.length, working, waiting });
 	}
 
 	/**
-	 * Attach the screen to peer `id`. Refuses a stranger: only a driving agent
-	 * the registry lists as a peer of this room (which excludes a killed one),
-	 * and only one with a live session, is a valid target.
+	 * Conversations running off screen that the room chip does not already
+	 * count: the kept ones outside the room on screen. A peer that leaves the
+	 * screen mid-turn is kept like any other, and counting it here too would
+	 * put one turn on the status line twice, as `bg` and as `working`.
+	 */
+	unwatchedOutsideRoom(): number {
+		const room = new Set<AgentSession>(this.#refs().map(ref => ref.session));
+		let count = 0;
+		for (const entry of BackgroundSessions.global().kept) if (!room.has(entry.session)) count++;
+		return count;
+	}
+
+	// ------------------------------------------------------------ the room view
+
+	/**
+	 * Open the room view: the screen pulls back into its window beside every
+	 * other conversation in the room. Available with no peers too, where it
+	 * shows the one window and the slot that opens another.
+	 */
+	async openView(): Promise<void> {
+		if (this.#stage || this.#switching) return;
+		if (this.ctx.focusedAgentId) await this.ctx.unfocusSession();
+		this.#showStage({ kind: "overview" });
+	}
+
+	/**
+	 * Move to the member `steps` after the one on screen, wrapping: the screen
+	 * pulls back, the row slides and the next conversation pushes in.
+	 */
+	async cycle(steps: 1 | -1): Promise<void> {
+		const refs = this.#refs();
+		if (refs.length < 2) {
+			this.ctx.showStatus("No other conversation in this terminal — /room new opens one beside this");
+			return;
+		}
+		const index = refs.findIndex(ref => ref.id === this.ownId);
+		const next = refs[(index + steps + refs.length) % refs.length];
+		if (next) await this.switchTo(next.id);
+	}
+
+	/**
+	 * Put peer `id` on screen with the quick switch. Refuses a stranger: only a
+	 * driving agent the registry lists as a member of this room, with a live
+	 * session, is a valid target.
 	 */
 	async switchTo(id: string): Promise<void> {
 		if (id === this.ownId) return;
 		const target = this.registry.peers(this.ownId).find(ref => ref.id === id);
 		if (!target) {
-			this.ctx.showError(`"${id}" is not a peer of this conversation. Run /room to list the room.`);
+			this.ctx.showError(`"${id}" is not a peer of this conversation. Run /room list to see the room.`);
 			return;
 		}
 		if (!target.session) {
 			this.ctx.showError(`Peer "${id}" has no live session to switch to.`);
 			return;
 		}
-		if (this.#switching) return;
+		if (this.#stage || this.#switching) return;
+		if (this.ctx.focusedAgentId) await this.ctx.unfocusSession();
+		const travel: RoomStageMode = { kind: "travel", targetId: id };
+		if (pointerMotionEnabled()) {
+			this.#showStage(travel);
+			return;
+		}
+		// No motion to play: the switch is the attach and one forced repaint, with
+		// no alternate screen borrowed for a frame nobody sees move.
+		try {
+			await this.#putOnScreen(target.session);
+		} catch (error) {
+			this.ctx.showError(`Could not switch: ${errorMessage(error)}`);
+			return;
+		}
+		this.#announce(id, travel);
+		this.#land();
+	}
+
+	/** Open a conversation beside the one on screen and slide to it. */
+	async openPeer(): Promise<void> {
+		if (this.#stage || this.#switching) return;
+		let id: string;
+		try {
+			id = await this.#createPeer();
+		} catch (error) {
+			this.ctx.showError(`Could not open a peer conversation: ${errorMessage(error)}`);
+			return;
+		}
+		await this.switchTo(id);
+	}
+
+	#showStage(mode: RoomStageMode): void {
+		const originId = this.ownId;
+		const host: RoomStageHost = {
+			requestRender: () => this.ctx.ui.requestRender(),
+			rows: () => this.ctx.ui.terminal.rows,
+			members: () => this.members(),
+			prepare: id => this.#prepare(id, mode),
+			land: (_id, failure) => this.#land(failure),
+			create: () => this.#createPeer(),
+			close: id => this.close(id),
+			isToggle: data => this.ctx.keybindings.getKeys("app.room.view").some(key => matchesKey(data, key)),
+		};
+		const layout: RoomLayout = this.ctx.settings.get("room.view");
+		const component = new RoomStage(host, {
+			originId,
+			originScreen: this.ctx.ui.captureViewport()?.rows,
+			layout,
+			mode,
+		});
+		const overlay = this.ctx.ui.showOverlay(component, {
+			anchor: "top-left",
+			width: "100%",
+			maxHeight: "100%",
+			margin: 0,
+			fullscreen: true,
+		});
+		this.#stage = { component, overlay, originId };
+		this.ctx.ui.setFocus(component);
+		this.ctx.ui.requestRender();
+	}
+
+	#closeStage(): void {
+		const stage = this.#stage;
+		if (!stage) return;
+		this.#stage = undefined;
+		stage.component.dispose();
+		stage.overlay.hide();
+		this.ctx.ui.setFocus(this.ctx.editor);
+	}
+
+	/**
+	 * The stage reached full size: lift it, onto the screen it drew last.
+	 * `failure` is why a quick switch came back to where it started.
+	 */
+	#land(failure?: unknown): void {
+		this.#closeStage();
+		// The new conversation's history belongs in scrollback, not the last one's.
+		this.ctx.ui.requestRender(true, { clearScrollback: true });
+		if (failure !== undefined) this.ctx.showError(`Could not switch: ${errorMessage(failure)}`);
+	}
+
+	/** Say which conversation is on screen now, and whether it is still working. */
+	#announce(id: string, mode: RoomStageMode): void {
+		const refs = this.#refs();
+		const index = refs.findIndex(ref => ref.id === id);
+		const ref = refs[index];
+		if (!ref) return;
+		const snapshot = this.#feedFor(ref).snapshot();
+		const label = memberLabel(index + 1, snapshot.title, snapshot.lead);
+		const suffix = ref.session.isStreaming ? " — it is still working" : "";
+		this.ctx.showStatus(`${mode.kind === "travel" ? "Switched to" : "Now on"} ${label}${suffix}`);
+	}
+
+	/**
+	 * Put member `id` on the screen under the stage, say so, then compose what
+	 * it draws there, so the stage's last frame is that screen exactly: an
+	 * announcement written after the stage lifts would push the screen up a
+	 * row under the operator's eyes.
+	 */
+	async #prepare(id: string, mode: RoomStageMode): Promise<readonly string[] | undefined> {
+		const ref = this.registry.get(id);
+		const session = ref?.session;
+		if (!session || ref?.kind !== "main") throw new Error("That conversation has closed.");
+		if (session !== this.ctx.session) {
+			await this.#putOnScreen(session);
+			this.#announce(id, mode);
+		}
+		return this.ctx.ui.composeViewport()?.rows;
+	}
+
+	/**
+	 * The one transaction that puts a room member on screen. The process scope
+	 * moves first, because it is the step that can fail: a claim that throws
+	 * gives the scope back to the conversation on screen and leaves it, its
+	 * background accounting and its transcript exactly as they were.
+	 * Everything after the claim is the synchronous swap `/new` and `/resume`
+	 * perform, the turn the member is in the middle of, and the terminal's own
+	 * cwd-derived chrome, whose failure is reported without undoing a switch
+	 * the operator can already see.
+	 */
+	async #putOnScreen(next: AgentSession): Promise<void> {
+		if (this.#switching) throw new Error("Another switch is in progress.");
 		this.#switching = true;
 		try {
-			if (this.ctx.focusedAgentId) await this.ctx.unfocusSession();
-			const label = this.#labelOf(id);
-			const members = this.members();
-			const direction =
-				members.findIndex(member => member.ref.id === id) >
-				members.findIndex(member => member.ref.id === this.ownId)
-					? "left"
-					: "right";
-			await this.#attach(target.session, this.ctx.ui.captureViewport(), direction);
-			this.ctx.showStatus(
-				target.session.isStreaming ? `Switched to ${label} — it is still running` : `Switched to ${label}`,
-			);
+			const previous = this.ctx.session;
+			const previousCwd = this.ctx.sessionManager.getCwd();
+			await next.takeForegroundFrom(previous);
+			const draft = this.ctx.editor.getText();
+			if (draft.trim()) this.#drafts.set(previous, draft);
+			else this.#drafts.delete(previous);
+			// A peer still finishing a turn is in the background set from the
+			// switch that left it; it is on screen again now, so it leaves that set
+			// before the one being left enters it.
+			BackgroundSessions.global().release(next);
+			this.ctx.attachMainSession(next);
+			this.ctx.editor.setText(this.#drafts.get(next) ?? "");
+			this.#drafts.delete(next);
+			this.ctx.resetObserverRegistry();
+			setSessionTerminalTitle(this.ctx.sessionManager.getSessionName(), this.ctx.sessionManager.getCwd());
+			this.ctx.statusLine.invalidate();
+			this.ctx.statusLine.resetActiveTime();
+			this.ctx.updateEditorBorderColor();
+			this.ctx.clearTransientSessionUi();
+			this.ctx.renderInitialMessages({ clearTerminalHistory: true });
+			await this.ctx.eventController.resumeTurn();
+			const nextCwd = next.sessionManager.getCwd();
+			if (normalizePathForComparison(nextCwd) !== normalizePathForComparison(previousCwd)) {
+				try {
+					await this.ctx.applyCwdChange(nextCwd);
+				} catch (error) {
+					logger.warn("Room switch: cwd chrome refresh failed", { error: errorMessage(error) });
+					this.ctx.showWarning(
+						`Switched, but the command list for ${nextCwd} could not be loaded: ${errorMessage(error)}`,
+					);
+				}
+			}
+			await this.ctx.reloadTodos();
+			this.#syncStatus();
 		} finally {
 			this.#switching = false;
 		}
 	}
 
-	/** Switch to the member `steps` after the one on screen, wrapping. */
-	async cycle(steps: 1 | -1): Promise<void> {
-		const members = this.members();
-		if (members.length < 2) return;
-		const index = members.findIndex(member => member.ref.id === this.ownId);
-		const next = members[(index + steps + members.length) % members.length];
-		if (next) await this.switchTo(next.ref.id);
+	/** Build a conversation in this room, off screen until the operator enters it. */
+	async #createPeer(): Promise<string> {
+		const createNextSession = this.ctx.createNextSession;
+		if (!createNextSession) throw new Error("This terminal cannot open a second conversation.");
+		const room = this.registry.ensureRoom(this.ownId);
+		if (room === undefined) {
+			throw new Error("The current session is not registered as a driving agent, so it cannot open a room.");
+		}
+		const hosted = await createNextSession({ room });
+		// Built for the room, not for the screen: until it is entered, a directory
+		// it moves to must not re-scope the conversation the operator is reading.
+		hosted.session.releaseForeground();
+		await this.ctx.hostSession(hosted);
+		const id = hosted.session.getAgentId();
+		if (id === undefined) throw new Error("The new conversation did not register as a driving agent.");
+		this.#syncFeeds();
+		this.#syncStatus();
+		return id;
 	}
 
 	/**
-	 * Open the strip with the cursor on the next peer, so `→→ Enter` is the
-	 * fastest path to the conversation beside this one. With no peer to show
-	 * the strip stays closed and the status line says how to get one.
+	 * End conversation `id` and take it out of the room. Resolves with the
+	 * reason when it is refused. The turn it is running, if any, is stopped and
+	 * its transcript flushed; its unsent draft is kept beside the transcript.
 	 */
-	open(): void {
-		const members = this.members();
-		if (members.length < 2) {
-			this.ctx.showStatus("No peer conversations — /room new opens one beside this");
-			return;
+	async close(id: string): Promise<string | undefined> {
+		const session = this.registry.get(id)?.session;
+		if (!session) return "That conversation has already closed.";
+		if (session === this.ctx.session)
+			return "That is the conversation on screen. Enter another one, then close it from there.";
+		if (session === this.ctx.launchSession) {
+			return "The first conversation holds the MCP servers and background jobs the others share, so it stays open until you exit.";
 		}
-		const index = members.findIndex(member => member.ref.id === this.ownId);
-		const next = members[(index + 1) % members.length];
-		this.#selectedId = next?.ref.id ?? members[0]?.ref.id;
-		this.render();
-	}
-
-	close(): void {
-		if (this.#selectedId === undefined) return;
-		this.#selectedId = undefined;
-		this.render();
-	}
-
-	/** Move the strip cursor by `steps`, wrapping. No-op while closed. */
-	moveSelection(steps: 1 | -1): void {
-		if (this.#selectedId === undefined) return;
-		const members = this.members();
-		if (members.length === 0) return;
-		const index = Math.max(
-			0,
-			members.findIndex(member => member.ref.id === this.#selectedId),
-		);
-		this.#selectedId = members[(index + steps + members.length) % members.length]?.ref.id;
-		this.render();
-	}
-
-	/** Close the strip and switch to the member under the cursor. */
-	async confirm(): Promise<void> {
-		const id = this.#selectedId;
-		this.close();
-		if (id !== undefined) await this.switchTo(id);
-	}
-
-	/** Redraw the anchored strip from the registry; clears it while closed. */
-	render(): void {
-		this.ctx.roomContainer.clear();
-		if (this.#selectedId === undefined) {
-			this.ctx.ui.requestRender();
-			return;
+		try {
+			if (session.isStreaming) await session.abort();
+			const draft = this.#drafts.get(session);
+			if (draft) await session.sessionManager.saveDraft(draft);
+			this.#drafts.delete(session);
+			this.#lastWaiting.delete(session);
+			BackgroundSessions.global().release(session);
+			await session.dispose();
+			this.ctx.releaseHostedSession(session);
+		} catch (error) {
+			return `Could not close that conversation: ${errorMessage(error)}`;
 		}
-		const line = renderRoomStripLine(this.members(), {
-			columns: Math.max(1, this.ctx.ui.terminal.columns - STRIP_PADDING_X * 2),
-			currentId: this.ownId,
-			selectedId: this.#selectedId,
-		});
-		if (line === undefined) {
-			// The room shrank to one member under an open strip.
-			this.#selectedId = undefined;
-		} else {
-			this.ctx.roomContainer.addChild(new Text(line, STRIP_PADDING_X, 0));
-		}
-		this.ctx.ui.requestRender();
+		this.#syncFeeds();
+		this.#syncStatus();
+		return undefined;
 	}
 
-	/** One-line summary for `/room`. */
+	/** Write every off-screen conversation's unsent draft beside its transcript. Shutdown calls this. */
+	async persistDrafts(): Promise<void> {
+		for (const [session, draft] of this.#drafts) {
+			if (session === this.ctx.session || !draft.trim()) continue;
+			try {
+				await session.sessionManager.saveDraft(draft);
+			} catch (error) {
+				logger.warn("Could not save a room member's draft", { error: errorMessage(error) });
+			}
+		}
+		this.#drafts.clear();
+	}
+
+	// ------------------------------------------------------------ /room
+
+	/** The room as text, for `/room list`. */
 	describe(): string {
-		const members = this.members();
-		if (members.length < 2) return "No peer conversations. /room new opens one beside this.";
-		const rows = members.map((member, index) => {
-			const mark = member.ref.id === this.ownId ? "*" : " ";
-			return `${mark} ${index + 1}. ${roomMemberLabel(member, index)} [${member.ref.status}] ${member.ref.id}`;
+		const refs = this.#refs();
+		if (refs.length < 2) return "No other conversation in this terminal. /room new opens one beside this.";
+		const rows = refs.map((ref, index) => {
+			const mark = ref.id === this.ownId ? "*" : " ";
+			const snapshot = this.#feedFor(ref).snapshot();
+			const session = ref.session;
+			const waiting = this.ctx.waitingDialogs(session);
+			const state = waiting > 0 ? "needs you" : snapshot.state.kind;
+			return `${mark} ${memberLabel(index + 1, snapshot.title, snapshot.lead)} [${state}] ${ref.id}`;
 		});
-		return `Room (${members.length}):\n${rows.join("\n")}\n/room <n> switches · →→ opens the strip`;
+		return `Room (${refs.length}):\n${rows.join("\n")}\n/room <n> switches · → twice on an empty composer opens the room view`;
 	}
 
 	/** Resolve a `/room <n>` or `/room <id>` argument to a member id. */
 	resolveArgument(argument: string): string | undefined {
-		const members = this.members();
+		const refs = this.#refs();
 		const ordinal = Number.parseInt(argument, 10);
 		if (Number.isInteger(ordinal) && String(ordinal) === argument) {
-			return members[ordinal - 1]?.ref.id;
+			return refs[ordinal - 1]?.id;
 		}
-		return members.find(member => member.ref.id === argument)?.ref.id;
-	}
-
-	#labelOf(id: string | undefined): string {
-		const members = this.members();
-		const index = members.findIndex(member => member.ref.id === id);
-		const member = members[index];
-		return member ? roomMemberLabel(member, index) : (id ?? "the session");
-	}
-
-	/**
-	 * Keys the open strip owns. Everything else closes it and falls through, so
-	 * a user who starts typing never has to dismiss the strip first.
-	 */
-	#onInput(data: string): { consume: true } | undefined {
-		if (this.#selectedId === undefined) return undefined;
-		if (matchesKey(data, "escape")) {
-			this.close();
-			return { consume: true };
-		}
-		if (matchesKey(data, "left")) {
-			this.moveSelection(-1);
-			return { consume: true };
-		}
-		if (matchesKey(data, "right")) {
-			this.moveSelection(1);
-			return { consume: true };
-		}
-		if (matchesKey(data, "return") || matchesKey(data, "enter") || data === "\n") {
-			void this.confirm();
-			return { consume: true };
-		}
-		this.close();
-		return undefined;
-	}
-
-	#onRegistryEvent(event: RegistryEvent): void {
-		if (event.ref.kind !== "main") return;
-		this.#syncPeerCount();
-		if (this.#selectedId !== undefined) this.render();
-	}
-
-	#syncPeerCount(): void {
-		this.ctx.statusLine.setRoomPeerCount(this.registry.peers(this.ownId).length);
-	}
-
-	/**
-	 * Point the screen at `next`. The sequence is the one `/new`'s hand-off and
-	 * `/resume`'s live re-attach already perform, in their order: attach, re-root
-	 * if the peer's cwd differs, then rebuild every session-derived surface.
-	 *
-	 * `from` is the window the caller captured before anything changed. With
-	 * it, the transition is a viewport slide: the screen on show moves off in
-	 * `direction` and the peer's window follows it in, ending in the same
-	 * authoritative paint a switch without one performs. The slide is started
-	 * in the same tick as the rebuild so no render queued by the rebuild
-	 * reaches the screen before it; each one is folded into the slide's last
-	 * frame. A re-root is awaited before the rebuild, so on that path alone the
-	 * status line may repaint for the new cwd before the transcript slides; the
-	 * transcript itself is unchanged until the rebuild. Without `from`, or
-	 * where the engine refuses the slide (a resize since the capture, an
-	 * overlay, a multiplexer), the plain repaint stands.
-	 */
-	async #attach(next: AgentSession, from: ViewportSnapshot | undefined, direction: "left" | "right"): Promise<void> {
-		const previousCwd = this.ctx.sessionManager.getCwd();
-		this.close();
-		// A peer still finishing a turn is in the background set from the switch
-		// that left it; it is on screen again now, so it leaves that set before
-		// the one being left enters it.
-		BackgroundSessions.global().release(next);
-		this.ctx.attachMainSession(next);
-		const nextCwd = next.sessionManager.getCwd();
-		if (normalizePathForComparison(nextCwd) !== normalizePathForComparison(previousCwd)) {
-			await this.ctx.applyCwdChange(nextCwd);
-		}
-		this.ctx.resetObserverRegistry();
-		setSessionTerminalTitle(this.ctx.sessionManager.getSessionName(), this.ctx.sessionManager.getCwd());
-		this.ctx.statusLine.invalidate();
-		this.ctx.statusLine.resetActiveTime();
-		this.ctx.updateEditorBorderColor();
-		this.ctx.clearTransientSessionUi();
-		this.ctx.renderInitialMessages({ clearTerminalHistory: true });
-		const sliding = from !== undefined && this.ctx.ui.slideViewport(from, direction);
-		await this.ctx.reloadTodos();
-		this.#syncPeerCount();
-		if (!sliding) this.ctx.ui.requestRender(true, { clearScrollback: true });
+		return refs.find(ref => ref.id === argument)?.id;
 	}
 }

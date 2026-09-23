@@ -110,13 +110,19 @@ import {
 	resizeRepaintsInPlace,
 	SixelProbe,
 	type StartListener,
+	SYNC_OUTPUT_BEGIN,
+	SYNC_OUTPUT_END,
 } from "./terminal-session";
-import {
-	ViewportSlide,
-	type ViewportSlideDirection,
-	type ViewportSlideOptions,
-	type ViewportSnapshot,
-} from "./viewport-slide";
+
+/**
+ * One window of the screen: `height` rows, each fitted to `width` cells. What
+ * {@link TUI.captureViewport} and {@link TUI.composeViewport} return.
+ */
+export interface ViewportSnapshot {
+	readonly rows: readonly string[];
+	readonly width: number;
+	readonly height: number;
+}
 
 export interface TUIOptions {
 	renderScheduler?: RenderScheduler;
@@ -453,10 +459,6 @@ export class TUI extends Container {
 	// resize frames so width changes truncate the transient viewport instead of
 	// pushing wrapped fragments into native scrollback.
 	#resizeAltActive = false;
-	// The sideways viewport slide (`core/viewport-slide.ts`). While one is in
-	// flight every `#doRender` returns without painting, the same way the resize
-	// fast path keeps the commit ledger untouched.
-	readonly #slide: ViewportSlide;
 	#stopped = false;
 	// Always-on event-loop lag probe. The high default threshold keeps it quiet;
 	// it only logs `ui.loop-blocked` (with the current loop phase) when a frame
@@ -489,6 +491,11 @@ export class TUI extends Container {
 	#altOverlayBorrow = false;
 	#altEnterWidth = 0;
 	#altEnterHeight = 0;
+	// True from the frame that leaves an overlay's alt buffer, when synchronized
+	// output is on, until that frame ends: the exit opened a DEC 2026 update so
+	// the `1049l` and the normal-screen repaint after it present as one, and
+	// `#executeRender` closes it however the frame returned.
+	#altExitUpdateOpen = false;
 
 	// Persistent composed frame. The render override splices only rows at/after
 	// the stable prefix each frame; cursor markers are stripped at ingestion so
@@ -531,35 +538,6 @@ export class TUI extends Container {
 		this.terminal = terminal;
 		this.#overlays = new OverlayStack(terminal);
 		this.#renderScheduler = options?.renderScheduler ?? DEFAULT_RENDER_SCHEDULER;
-		this.#slide = new ViewportSlide({
-			scheduler: this.#renderScheduler,
-			size: () => ({ width: this.terminal.columns, height: this.terminal.rows }),
-			ready: () =>
-				!this.#stopped &&
-				this.#hasEverRendered &&
-				!this.#altActive &&
-				!this.#resizeViewportActive &&
-				this.#multiplexerResizeTimer === undefined &&
-				this.#overlays.topmostVisible() === undefined &&
-				!resizeRepaintsInPlace(),
-			stopped: () => this.#stopped,
-			overlayVisible: () => this.#overlays.topmostVisible() !== undefined,
-			committed: () => ({
-				rows: this.#previousWindow.slice(),
-				width: this.#previousWidth,
-				height: this.#previousHeight,
-			}),
-			compose: (width, height) => {
-				// The image budget pass is a stable one for the same reason the drag's is.
-				this.#imageBudget.beginPass(true);
-				return this.#composeResizeViewport(width, height).window;
-			},
-			paint: (window, width, height) => this.#emitResizeViewport(window, height, height, width),
-			settle: () => {
-				this.#resizeEventPending = true;
-				this.requestRender(true, { clearScrollback: true });
-			},
-		});
 		if (showHardwareCursor !== undefined) this.#cursor.setShow(showHardwareCursor);
 		this.#watchdog = new LoopWatchdog();
 	}
@@ -908,16 +886,6 @@ export class TUI extends Container {
 	/** Whether a non-multiplexer resize drag is currently in flight. */
 	get resizeViewportActive(): boolean {
 		return this.#resizeViewportActive;
-	}
-
-	/** Throwaway frames painted by viewport slides. Counted apart from {@link fullRedraws}. */
-	get viewportSlideFrames(): number {
-		return this.#slide.frames;
-	}
-
-	/** Whether a viewport slide is in flight. */
-	get viewportSlideActive(): boolean {
-		return this.#slide.active;
 	}
 
 	/** Shared budget that caps how many inline images render as live graphics. */
@@ -1528,7 +1496,6 @@ export class TUI extends Container {
 			this.#resizeViewportSettleTimer = undefined;
 		}
 		this.#resizeViewportActive = false;
-		this.#slide.cancel();
 		this.#clearPostFullPaintSettle();
 		this.#deferredForcedClearScrollback = false;
 		// A resident alt-buffer session holds the transcript nowhere the terminal can
@@ -2071,6 +2038,15 @@ export class TUI extends Container {
 		try {
 			this.#doRender();
 		} finally {
+			// A frame that left an overlay's alt buffer opened a synchronized update
+			// (see `#doRender`). Its paint's own end already presented the exit and
+			// the repaint together, and a second DECRST 2026 is a no-op; this close
+			// is what keeps a frame that painted nothing, or threw, from leaving the
+			// terminal holding its output.
+			if (this.#altExitUpdateOpen) {
+				this.#altExitUpdateOpen = false;
+				this.terminal.write(SYNC_OUTPUT_END);
+			}
 			popLoopPhase();
 			this.#cadence.frameEnded(start, this.#renderScheduler.now());
 		}
@@ -2332,10 +2308,6 @@ export class TUI extends Container {
 	 */
 	#doRender(): void {
 		if (this.#stopped) return;
-		// A slide owns the screen until its settle paint; a frame requested
-		// meanwhile is folded into that one. The forced flags are not consumed
-		// here, so the fold keeps every caller's intent.
-		if (this.#slide.active) return;
 		const width = this.terminal.columns;
 		const height = this.terminal.rows;
 
@@ -2392,7 +2364,17 @@ export class TUI extends Container {
 			this.#altPreviousCursor = undefined;
 		} else if (!wantAlt && this.#altActive) {
 			const enhancementExit = this.#keyboardEnhancementExit();
-			this.terminal.write(`${MOUSE_TRACKING_OFF}${enhancementExit}${ALT_SCREEN_EXIT}`);
+			// The terminal restores the saved normal screen on `1049l`, which still
+			// shows whatever was there when the overlay opened, and this frame's
+			// repaint is a separate write. Under synchronized output, open the
+			// update here so the exit and the repaint present as one frame: a
+			// terminal that draws between the two writes shows the old screen for
+			// a frame, which is a different conversation when the room view zooms
+			// into one.
+			// `#executeRender` closes the update when the frame ends.
+			const updateBegin = this.#synchronizedOutputEnabled ? SYNC_OUTPUT_BEGIN : "";
+			this.#altExitUpdateOpen = this.#synchronizedOutputEnabled;
+			this.terminal.write(`${updateBegin}${MOUSE_TRACKING_OFF}${enhancementExit}${ALT_SCREEN_EXIT}`);
 			setAltScreenActive(false);
 			this.#cursor.forget();
 			this.#altActive = false;
@@ -3346,14 +3328,53 @@ export class TUI extends Container {
 		return { window: prepareLinesArray(window, width), contentRows: count };
 	}
 
-	/** Snapshot the window for {@link slideViewport}; see `core/viewport-slide.ts`. */
+	/**
+	 * The window the terminal shows right now, as last committed: the screen a
+	 * transition starts from. Undefined before the first paint, after
+	 * {@link stop}, while an overlay or a resident alternate-screen transcript
+	 * is up, and during a resize drag, when the committed window is not what is
+	 * on screen.
+	 */
 	captureViewport(): ViewportSnapshot | undefined {
-		return this.#slide.capture();
+		if (
+			this.#stopped ||
+			!this.#hasEverRendered ||
+			this.#altActive ||
+			this.#resizeViewportActive ||
+			this.#multiplexerResizeTimer !== undefined ||
+			this.#overlays.topmostVisible() !== undefined
+		) {
+			return undefined;
+		}
+		return { rows: this.#previousWindow.slice(), width: this.#previousWidth, height: this.#previousHeight };
 	}
 
-	/** Slide from `from` to the window the children compose now; see `core/viewport-slide.ts`. */
-	slideViewport(from: ViewportSnapshot, direction: ViewportSlideDirection, options?: ViewportSlideOptions): boolean {
-		return this.#slide.slide(from, direction, options);
+	/**
+	 * Compose the window the root children would show at the terminal's current
+	 * size, without painting it: the same visible tail a resize-drag frame
+	 * composes, rows width-fitted. Overlays are not part of it.
+	 *
+	 * This is how a host previews the screen an overlay will close onto. The room
+	 * view attaches another conversation under its fullscreen overlay, composes
+	 * what that conversation shows, and zooms into those exact rows before the
+	 * overlay closes, so the repaint that follows lands on what the zoom ended on.
+	 *
+	 * Nothing is committed: no commit, window or diff field advances and nothing
+	 * is written, so the next frame paints as if this call never ran. Returns
+	 * undefined before the first render and after {@link stop}.
+	 */
+	composeViewport(): ViewportSnapshot | undefined {
+		if (this.#stopped || !this.#hasEverRendered) return undefined;
+		const width = this.terminal.columns;
+		const height = this.terminal.rows;
+		// Size the sibling-dependent layout against the children as they are now,
+		// as the next frame will, or the preview composes the fills the previous
+		// children sized and differs from the paint that follows it.
+		this.onBeforeCompose?.();
+		// A stable image-budget pass, as a drag frame uses: a partial walk must
+		// not reorder or demote inline images.
+		this.#imageBudget.beginPass(true);
+		return { rows: this.#composeResizeViewport(width, height).window, width, height };
 	}
 
 	/**

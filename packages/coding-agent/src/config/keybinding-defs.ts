@@ -49,6 +49,9 @@ interface AppKeybindings {
 	"app.session.fork": true;
 	"app.session.resume": true;
 	"app.session.observe": true;
+	"app.room.view": true;
+	"app.room.next": true;
+	"app.room.previous": true;
 	"app.plan.toggle": true;
 	"app.history.search": true;
 	"app.stt.toggle": true;
@@ -188,6 +191,24 @@ export const KEYBINDINGS = {
 	"app.session.observe": {
 		defaultKeys: "ctrl+s",
 		description: "Open the agent dashboard",
+	},
+	// The room: every conversation in this terminal as a window. `→→` on an empty
+	// composer opens the view as well; these work with a draft in the composer.
+	// Next and previous sit on the keys under `>` and `<`. The arrow chords are all
+	// taken: Ctrl and Alt arrows move the caret by word, macOS takes Ctrl+arrows
+	// for Spaces, kitty takes Ctrl+Shift+arrows for its tabs, and Windows Terminal
+	// takes Alt+Shift+arrows to resize panes.
+	"app.room.view": {
+		defaultKeys: "alt+w",
+		description: "Open the room view: every conversation in this terminal as a window",
+	},
+	"app.room.next": {
+		defaultKeys: "alt+.",
+		description: "Switch to the next conversation in the room",
+	},
+	"app.room.previous": {
+		defaultKeys: "alt+,",
+		description: "Switch to the previous conversation in the room",
 	},
 	// SEVEN IDS USED TO SIT HERE AND NOTHING READ ANY OF THEM. `app.session.rename`,
 	// `togglePath`, `toggleSort` and `deleteNoninvasive` named actions the session

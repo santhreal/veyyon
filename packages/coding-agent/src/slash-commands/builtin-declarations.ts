@@ -570,8 +570,9 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 	{
 		name: "room",
-		description: "Peer conversations beside this one: list, `new` opens one, a number or id switches",
-		inlineHint: "[new | <n> | <id>]",
+		description:
+			"The conversations in this terminal: bare opens the room view, `list` prints them, `new` opens one beside this, a number or id switches",
+		inlineHint: "[list | new | <n> | <id>]",
 		allowArgs: true,
 	},
 	{

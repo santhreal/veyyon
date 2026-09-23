@@ -11,6 +11,16 @@ import type { SessionFacts } from "./session-facts";
 
 export type { StatusLinePreset, StatusLineSegmentId, StatusLineSeparatorStyle };
 
+/** The room beside the displayed conversation, as the status line counts it. */
+export interface RoomPeerSummary {
+	readonly peers: number;
+	readonly working: number;
+	readonly waiting: number;
+}
+
+/** A terminal with no room. */
+export const NO_ROOM_PEERS: RoomPeerSummary = { peers: 0, working: 0, waiting: 0 };
+
 /** Collab session indicator + (guest-only) host-state override for segments. */
 export type CollabStatus = StatusCollabStatus;
 
@@ -130,7 +140,7 @@ export interface SegmentContext {
 	agentCount: number;
 	/**
 	 * Conversations this process is still running that no screen is showing —
-	 * `/new` handoffs that have not settled.
+	 * `/new` handoffs that have not settled — outside the room on screen.
 	 *
 	 * Separate from {@link agentCount}, which counts spawns INSIDE the
 	 * conversation on screen. A handed-off conversation is a peer of the one
@@ -140,12 +150,14 @@ export interface SegmentContext {
 	 */
 	backgroundSessionCount: number;
 	/**
-	 * Driving agents beside the displayed one in this terminal's room: the
-	 * conversations `→→` switches to. Not the same count as
-	 * {@link backgroundSessionCount}: a peer is a member whether or not it is
-	 * spending, and a handed-off `/new` that never joined a room is not a peer.
+	 * The room beside the displayed conversation: how many driving agents share
+	 * this terminal with it, and how many of those are working or holding a
+	 * question for the operator. Disjoint from {@link backgroundSessionCount}:
+	 * a peer is a member whether or not it is spending, a handed-off `/new` that
+	 * never joined a room is not a peer, and a peer running off screen is
+	 * counted here and not there.
 	 */
-	roomPeerCount: number;
+	roomPeers: RoomPeerSummary;
 	/**
 	 * Active processing time accumulated this session, in ms — the union of
 	 * every `agent_start`→`agent_end` window plus the currently-streaming

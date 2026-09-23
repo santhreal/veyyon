@@ -28,7 +28,7 @@ import type { MCPManager } from "../../mcp";
 import type { PlanApprovalDetails } from "../../plan-mode/approved-plan";
 import type { StatusPresentationProducer } from "../../presentation/status-producer";
 import type { AgentSession } from "../../session/agent-session";
-import type { InteractiveSessionFactory, KeptSession } from "../../session/background-sessions";
+import type { HostedSession, InteractiveSessionFactory, KeptSession } from "../../session/background-sessions";
 import type { SubcommandDef } from "../../slash-commands/types";
 import type { Theme } from "../../theme/theme";
 import type { LspStartupServerInfo } from "../../tools";
@@ -106,8 +106,6 @@ export interface InteractiveModeContext {
 	omfgContainer: Container;
 	errorBannerContainer: Container;
 	modelCycleContainer: Container;
-	/** Anchored strip listing the driving conversations in this terminal's room; empty while closed. */
-	roomContainer: Container;
 	editor: CustomEditor;
 	editorContainer: Container;
 	hookWidgetContainerAbove: Container;
@@ -130,14 +128,29 @@ export interface InteractiveModeContext {
 	focusParentSession(): Promise<void>;
 	/** Return the view to the main session (delegates to SessionFocusController.unfocus). */
 	unfocusSession(): Promise<void>;
-	/** The sideways axis: the driving conversations beside this one and the switch between them. */
+	/** The sideways axis: the driving conversations beside this one and the room view between them. */
 	readonly room: RoomController;
+	/** The conversation the terminal launched with; it owns the MCP and job managers the others share. */
+	readonly launchSession: AgentSession;
 	/**
 	 * Build the session `/new` moves to while the displayed one finishes its
-	 * turn. Absent in a host that cannot create a second session, which makes
-	 * `/new` reset the current session in place as it always has.
+	 * turn, or a room opens beside the displayed one. Absent in a host that
+	 * cannot create a second session, which makes `/new` reset the current
+	 * session in place as it always has.
 	 */
 	createNextSession?: InteractiveSessionFactory;
+	/**
+	 * Take a session the factory built into this terminal: bind its tools and
+	 * extensions to the terminal UI (gated on it being on screen), and dispose it
+	 * at shutdown with the rest.
+	 */
+	hostSession(hosted: HostedSession): Promise<void>;
+	/** Stop tracking a session this terminal disposed early. The launch session is never released. */
+	releaseHostedSession(session: AgentSession): void;
+	/** Dialogs `session` is holding until it is on screen. */
+	waitingDialogs(session: AgentSession): number;
+	/** Watch the held-dialog counts. Returns the unsubscribe. */
+	onWaitingDialogsChange(listener: () => void): () => void;
 	/** Display `next` and hand the session being displayed to the background keeper. */
 	attachMainSession(next: AgentSession): KeptSession;
 	/** Clear loader, transient HUD/pending containers, streaming state, and pending tools. */

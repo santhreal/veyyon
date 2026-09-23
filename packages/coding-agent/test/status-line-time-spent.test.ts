@@ -15,6 +15,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:te
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { NO_ROOM_PEERS } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
@@ -69,7 +70,7 @@ function createCtx(activeMs: number): SegmentContext {
 		autoCompactEnabled: false,
 		agentCount: 0,
 		backgroundSessionCount: 0,
-		roomPeerCount: 0,
+		roomPeers: NO_ROOM_PEERS,
 		activeMs,
 		activeRepo: null,
 		worktree: null,

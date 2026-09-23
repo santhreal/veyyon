@@ -95,7 +95,8 @@ export class AgentTransitionError extends Error {
  *   attribution and Control Center observability, but never a peer — hidden from
  *   agent-facing rosters (`irc`, `history://`) and not messageable/revivable.
  */
-export type AgentKind = "main" | "sub" | "advisor";
+export const AGENT_KINDS = ["main", "sub", "advisor"] as const;
+export type AgentKind = (typeof AGENT_KINDS)[number];
 
 /**
  * A tool call that has stopped and is waiting for a human to answer it.
@@ -263,6 +264,13 @@ export class AgentRegistry {
 	 * scope makes a whole spawn tree one scope, however deep it nests.
 	 */
 	register(input: RegisterInput): AgentRef {
+		// A room is joined, never named into being: an id nobody opened with
+		// {@link ensureRoom} is a caller's mistake or a guess, and accepting it
+		// would put this driver in a room with strangers or in a room of one that
+		// the next caller who repeats the string walks into.
+		if (input.kind === "main" && input.room !== undefined && !this.#roomHeld(input.room)) {
+			throw new Error(`Room "${input.room}" is not open in this process; open one with AgentRegistry.ensureRoom.`);
+		}
 		const now = Date.now();
 		const ref: AgentRef = {
 			id: input.id,
@@ -585,7 +593,7 @@ export class AgentRegistry {
 	 *
 	 * One pass over the refs with `id` resolved once, rather than `isPeer` per
 	 * ref: this runs on every turn (`<session-state>`) and on every registry
-	 * event the room strip redraws for, against a registry that holds every
+	 * event the room view redraws for, against a registry that holds every
 	 * spawn of every conversation in the process.
 	 */
 	peers(id: string): AgentRef[] {
@@ -594,8 +602,8 @@ export class AgentRegistry {
 
 	/**
 	 * Every driving agent in `id`'s room including `id` itself, oldest first;
-	 * `[id]` alone when it is in no room. The order a room strip shows and the
-	 * order the sideways chord cycles, so both read one definition. Built by
+	 * `[id]` alone when it is in no room. The order the room view shows and the
+	 * order the next and previous keys cycle, so both read one definition. Built by
 	 * filtering the registry's own order rather than by prepending `id`, so two
 	 * members registered in the same millisecond keep registration order and
 	 * the list reads the same from every member's point of view.
@@ -626,15 +634,27 @@ export class AgentRegistry {
 	 * it, so the first session pays nothing until a peer exists and a host that
 	 * never opens one never joins a room. Returns undefined for an unknown id or
 	 * a ref that is not a driver: only a driving agent can hold a room.
+	 *
+	 * The id is random, not derived from the driver: a room is reached by being
+	 * handed its id by a member, and a derivable one could be named into by any
+	 * host that registers a driver in this process.
 	 */
 	ensureRoom(id: string): string | undefined {
 		const ref = this.#refs.get(id);
 		if (ref?.kind !== "main") return undefined;
 		if (ref.room === undefined) {
-			ref.room = `room:${ref.id}`;
+			ref.room = `room:${crypto.randomUUID()}`;
 			this.#emit({ type: "status_changed", ref });
 		}
 		return ref.room;
+	}
+
+	/** Whether a live driving agent holds `room`. */
+	#roomHeld(room: string): boolean {
+		for (const ref of this.#refs.values()) {
+			if (ref.kind === "main" && ref.room === room && ref.status !== "aborted") return true;
+		}
+		return false;
 	}
 
 	/**

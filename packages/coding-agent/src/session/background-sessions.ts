@@ -32,7 +32,9 @@
  */
 
 import * as path from "node:path";
+import type { HostNotifier } from "@veyyon/host";
 import { errorMessage, logger } from "@veyyon/utils";
+import type { ExtensionUIContext } from "../extensibility/extensions";
 import type { AgentSession } from "./agent-session";
 
 /**
@@ -42,6 +44,23 @@ import type { AgentSession } from "./agent-session";
  * cannot strand quit forever.
  */
 export const SHUTDOWN_DRAIN_TIMEOUT_MS = 5_000;
+
+/**
+ * The capability setters `createAgentSession` returns beside a session: how a
+ * host hands that session's tools a UI and a way to reach the operator. Each
+ * session has its own, bound to its own tool context, so a host that runs
+ * several conversations binds each one rather than the first.
+ */
+export interface SessionHostBindings {
+	setToolUIContext(uiContext: ExtensionUIContext, hasUI: boolean): void;
+	setToolNotifier(notify: HostNotifier): void;
+}
+
+/** A session a host created, with the bindings its tools read their UI through. */
+export interface HostedSession {
+	readonly session: AgentSession;
+	readonly bindings: SessionHostBindings;
+}
 
 /**
  * Creates the session a screen attaches to when the one it was displaying is
@@ -54,7 +73,7 @@ export const SHUTDOWN_DRAIN_TIMEOUT_MS = 5_000;
  * `/new` hand-off passes none: the conversation it leaves behind is finishing
  * a turn, not standing beside the new one, and it is not a peer.
  */
-export type InteractiveSessionFactory = (options?: { room?: string }) => Promise<AgentSession>;
+export type InteractiveSessionFactory = (options?: { room?: string }) => Promise<HostedSession>;
 
 /** A session that is still running after the UI attached to a different one. */
 export interface KeptSession {

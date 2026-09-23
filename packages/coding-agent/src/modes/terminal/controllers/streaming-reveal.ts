@@ -236,7 +236,12 @@ export class StreamingRevealController {
 		);
 	}
 
-	begin(component: StreamingRevealComponent, message: AssistantMessageView): void {
+	/**
+	 * Start revealing `message` into `component`. `caughtUp` starts with every
+	 * unit the message already has shown, for a message the screen joins
+	 * partway through; the units that arrive after it still reveal smoothly.
+	 */
+	begin(component: StreamingRevealComponent, message: AssistantMessageView, options?: { caughtUp?: boolean }): void {
 		this.stop();
 		this.#component = component;
 		this.#target = message;
@@ -250,6 +255,7 @@ export class StreamingRevealController {
 			return;
 		}
 		const total = this.#visibleUnits(message);
+		if (options?.caughtUp) this.#revealed = total;
 		if (message.segments.some(block => block.kind === "tool-call")) {
 			// A tool call is a transcript-order boundary: finish any leading
 			// assistant text before EventController renders the separate tool card.

@@ -164,6 +164,12 @@ export class EventController {
 	#backgroundTaskCallIds = new Set<string>();
 	#projection: SessionProjectionEngine;
 	#attachedSession: AgentSession | undefined;
+	/**
+	 * Whether the assistant message the attached session is writing has a
+	 * component. False from an attach until a `message_start` arrives, the
+	 * orphan-delta guard synthesizes one, or {@link resumeTurn} opens it.
+	 */
+	#assistantStreamSynced = false;
 	#readToolCallAssistantComponents = new Map<string, AssistantMessageComponent>();
 	#toolTimelineComponents = new Map<string, Component>();
 	#postToolAssistantComponents = new Map<string, AssistantMessageComponent>();
@@ -447,16 +453,39 @@ export class EventController {
 	attachTo(target: AgentSession): void {
 		this.#attachedSession = target;
 		this.#projection.seedMessages();
-		let assistantStreamSynced = false;
+		this.#assistantStreamSynced = false;
 		this.ctx.unsubscribe = target.subscribe(async (event: AgentSessionEvent) => {
 			if (event.type === "message_start" && event.message.role === "assistant") {
-				assistantStreamSynced = true;
-			} else if (event.type === "message_update" && event.message.role === "assistant" && !assistantStreamSynced) {
-				assistantStreamSynced = true;
+				this.#assistantStreamSynced = true;
+			} else if (
+				event.type === "message_update" &&
+				event.message.role === "assistant" &&
+				!this.#assistantStreamSynced
+			) {
+				this.#assistantStreamSynced = true;
 				await this.handleEvent({ type: "message_start", message: event.message });
 			}
 			await this.handleEvent(event);
 		});
+	}
+
+	/**
+	 * Arm the turn the attached session is in the middle of. A screen that
+	 * attaches mid-turn missed the turn's `agent_start` and the `message_start`
+	 * of the message being written, and a transcript rebuild holds finished
+	 * messages only, so this arms the loader and opens that message at the
+	 * text it already has, without replaying its reveal. Call it after the
+	 * rebuild, which clears the transcript the message is drawn in. A session
+	 * that is not streaming is left as it is.
+	 */
+	async resumeTurn(): Promise<void> {
+		const session = this.#attachedSession;
+		if (!session?.isStreaming) return;
+		await this.handleEvent({ type: "agent_start" });
+		const partial = session.agent.state.streamMessage;
+		if (partial?.role !== "assistant") return;
+		this.#assistantStreamSynced = true;
+		this.#openStreamingMessage(partial, true);
 	}
 
 	/**
@@ -707,15 +736,26 @@ export class EventController {
 			this.ctx.addMessageToChat(event.message);
 			this.ctx.ui.requestRender();
 		} else if (event.message.role === "assistant") {
-			this.#lastVisibleBlockCount = 0;
-			this.#projection.recordAssistantMessageToolCalls(event.message);
-			this.ctx.streamingComponent = createAssistantMessageComponent(this.ctx);
-			this.ctx.streamingMessage = event.message;
-			this.ctx.chatContainer.addChild(this.ctx.streamingComponent);
-			const timeline = splitAssistantMessageToolTimeline(this.ctx.streamingMessage);
-			this.#streamingReveal.begin(this.ctx.streamingComponent, toAssistantMessageView(timeline.beforeTools));
-			this.ctx.ui.requestRender();
+			this.#openStreamingMessage(event.message, false);
 		}
+	}
+
+	/**
+	 * Give the assistant message being written its transcript component.
+	 * `caughtUp` shows the text it already has at once, for a message the
+	 * screen joins partway through; otherwise the reveal starts from nothing.
+	 */
+	#openStreamingMessage(message: AssistantMessage, caughtUp: boolean): void {
+		this.#lastVisibleBlockCount = 0;
+		this.#projection.recordAssistantMessageToolCalls(message);
+		this.ctx.streamingComponent = createAssistantMessageComponent(this.ctx);
+		this.ctx.streamingMessage = message;
+		this.ctx.chatContainer.addChild(this.ctx.streamingComponent);
+		const timeline = splitAssistantMessageToolTimeline(message);
+		this.#streamingReveal.begin(this.ctx.streamingComponent, toAssistantMessageView(timeline.beforeTools), {
+			caughtUp,
+		});
+		this.ctx.ui.requestRender();
 	}
 
 	async #handleIrcMessage(event: Extract<AgentSessionEvent, { type: "irc_message" }>): Promise<void> {

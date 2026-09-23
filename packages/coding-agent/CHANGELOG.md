@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- The room view shows every conversation in the terminal as a live window, side by side or all at once, opened with `→→` on an empty composer, `alt+w` or `/room`; Enter zooms into a window, `n` opens a new conversation, `x` closes one and Tab switches layouts ([#951](https://github.com/santhreal/veyyon/issues/951)).
+- `alt+.` and `alt+,` (`app.room.next`, `app.room.previous`) switch to the next or previous conversation in the room with a pull-back, slide and push-in.
+- `/room new` opens a driving conversation beside the one on screen, `/room list` prints the room, and `/room <n>` or `/room <id>` switches to a member.
+- The `room.view` setting selects whether the room view opens side by side or with all windows.
+- Conversations in one room are `irc` peers: each lists the others under `irc list` and can message them by id, while `to: "all"` reaches only the sender's own spawns.
+- The status line's `room` segment counts the other conversations in the room and names how many are working or waiting for an answer; a room member running off screen is counted there and not again by the `background` segment.
+
 ### Changed
 
 - Slash-command reports (`/tools`, `/hotkeys`, `/context`, `/jobs`, `/todo`, `/lsp`, `/plugins`, `/effort`) format with clean human summaries, consistent headers and indentation, and without raw XML tags or run-on bullet sequences.
@@ -20,6 +29,14 @@
 - A collab guest answering an ask question is offered `Other` only when the question allows a free-text answer, and a guest reply of `Other` to a closed question records no custom answer.
 - The extension dashboard's overflowing tab strip reserves room for the paging arrows and stays on one row at every width.
 - A bare-command picker on a narrow terminal narrows a long usage column so every subcommand keeps its description.
+- A dialog opened by a conversation that is off screen waits until that conversation is entered instead of appearing over the one on screen.
+- A conversation opened by `/new` while a turn streams gives its tools and extensions the terminal UI, so its `ask` calls and extension dialogs work.
+- Extension actions run on the conversation that registered them after a `/new` hand-off or a room switch, not on whichever one is on screen.
+- The terminal title and session accent follow a rename of the conversation on screen after a `/new` hand-off or a room switch.
+- A conversation that changes directory while off screen no longer re-scopes the settings, project directory and capabilities of the one on screen; the move applies when it comes back on screen.
+- Exit flushes and disposes every conversation the terminal ran, not only the one on screen, and saves each one's unsent draft.
+- Entering a conversation mid-answer, by a room switch, a `/resume` of a running session or viewing an agent, shows the answer so far at once instead of when its next token arrives.
+- Disposing a second top-level session in the same process, such as the agent-creation architect, no longer disposes the process's agent lifecycle and with it the spawned agents of every other conversation.
 
 ## [1.5.3] - 2026-09-22
 
@@ -72,11 +89,6 @@
 
 ### Added
 
-- `/room new` opens a second driving conversation beside the one on screen, `/room` lists the room and `/room <n>` or `/room <id>` switches to a member; `→→` on an empty composer opens an anchored strip above the composer where `←`/`→` move between members and Enter switches, and a switched-away conversation keeps running under the background keeper.
-- Two driving conversations of one room are `irc` peers: each lists the other under `irc list` marked as a room peer and can message it by id, while `to: "all"` reaches the sender's own spawns only and a spawn cannot reach the conversation next door.
-- The status line carries a `room` segment counting the peer conversations beside the displayed one, in every preset and hidden at zero.
-- A room switch slides the screen sideways toward the peer, later members entering from the right and earlier ones from the left, and settles in the same full repaint `/resume` performs; under a multiplexer, an overlay or a resize the repaint alone stands.
-- `AgentRegistry.peers` and `roomMembers` resolve the caller once and walk the registry in one pass, so the per-turn `<session-state>` build and each room-strip redraw cost 0.45µs instead of 3.6µs against a registry of 400 spawns.
 - Exported `projectToolDisplay` from `presentation/web-tool-display.ts`, projecting canonical tool execution displays for collab live sessions and HTML export.
 - `tools/view-registry.ts` exports `toolViewDefinitions`, the host-agnostic `ToolViewDefinition` for every tool card the terminal drew, and `tools/renderers.ts` derives the terminal adapters from it; the set of cards and their chrome are unchanged.
 - A tool card value-imports no tool: the search card limits are `tools/search/search-card-limits.ts`, the web search provider label is `tools/web/search/types.ts`, and the launch card owns `callMeta` and `readyPendingSummary`; each name is exported from that one module only. Print mode and the HTML export load a card without the tool behind it, and no output changes.

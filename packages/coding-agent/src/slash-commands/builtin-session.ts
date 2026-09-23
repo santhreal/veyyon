@@ -214,6 +214,10 @@ export const SESSION_HANDLERS = {
 			const argument = command.args.trim();
 			runtime.ctx.editor.setText("");
 			if (!argument) {
+				await runtime.ctx.room.openView();
+				return;
+			}
+			if (argument === "list") {
 				runtime.ctx.showStatus(runtime.ctx.room.describe());
 				return;
 			}
@@ -223,7 +227,7 @@ export const SESSION_HANDLERS = {
 			}
 			const id = runtime.ctx.room.resolveArgument(argument);
 			if (id === undefined) {
-				runtime.ctx.showError(`"${argument}" is not a member of this room. Run /room to list it.`);
+				runtime.ctx.showError(`"${argument}" is not a member of this room. Run /room list to see it.`);
 				return;
 			}
 			await runtime.ctx.room.switchTo(id);

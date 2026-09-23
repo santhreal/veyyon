@@ -68,6 +68,7 @@ function makeController(registry: AgentRegistry, lifecycle: AgentLifecycleManage
 		unsubscribe: () => {},
 		eventController: {
 			handleEvent: async () => {},
+			resumeTurn: async () => {},
 			attachTo: () => {},
 			resetTranscriptAnchors: () => {},
 		},

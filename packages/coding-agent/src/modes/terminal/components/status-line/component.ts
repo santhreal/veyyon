@@ -32,7 +32,14 @@ import {
 } from "./quiet-row";
 import { focusExitBadge, type SegmentContext } from "./segments";
 import { stateSeparator } from "./state-grammar";
-import type { CollabStatus, EffectiveStatusLineSettings, StatusLineSegmentId, StatusLineSettings } from "./types";
+import {
+	type CollabStatus,
+	type EffectiveStatusLineSettings,
+	NO_ROOM_PEERS,
+	type RoomPeerSummary,
+	type StatusLineSegmentId,
+	type StatusLineSettings,
+} from "./types";
 
 export { messageFingerprint } from "../../../../presentation/status-producer";
 
@@ -82,7 +89,7 @@ export class StatusLineComponent implements Component {
 	#hookStatuses: Map<string, string> = new Map();
 	#agentCount: number = 0;
 	#backgroundSessionCount: number = 0;
-	#roomPeerCount: number = 0;
+	#roomPeers: RoomPeerSummary = NO_ROOM_PEERS;
 	#planModeStatus: { enabled: boolean; paused: boolean } | null = null;
 	#loopModeStatus: { enabled: boolean } | null = null;
 	#goalModeStatus: { enabled: boolean; paused: boolean } | null = null;
@@ -259,16 +266,19 @@ export class StatusLineComponent implements Component {
 		return this.#backgroundSessionCount;
 	}
 
-	setRoomPeerCount(count: number): void {
-		const next = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
-		if (next === this.#roomPeerCount) return;
-		this.#roomPeerCount = next;
+	/** The room beside the displayed conversation: peers, and how many are working or waiting on the operator. */
+	setRoomPeers(summary: RoomPeerSummary): void {
+		const clean = (value: number): number => (Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0);
+		const next = { peers: clean(summary.peers), working: clean(summary.working), waiting: clean(summary.waiting) };
+		const current = this.#roomPeers;
+		if (next.peers === current.peers && next.working === current.working && next.waiting === current.waiting) return;
+		this.#roomPeers = next;
 		this.invalidate();
 	}
 
-	/** Driving agents beside the displayed one in this terminal's room. */
-	get roomPeerCount(): number {
-		return this.#roomPeerCount;
+	/** The room beside the displayed conversation. */
+	get roomPeers(): RoomPeerSummary {
+		return this.#roomPeers;
 	}
 
 	resetActiveTime(): void {
@@ -742,7 +752,7 @@ export class StatusLineComponent implements Component {
 			autoCompactEnabled: this.#autoCompactEnabled,
 			agentCount: this.#agentCount,
 			backgroundSessionCount: this.#backgroundSessionCount,
-			roomPeerCount: this.#roomPeerCount,
+			roomPeers: this.#roomPeers,
 			activeMs: this.getActiveMs(),
 			git: {
 				branch: gitBranch,

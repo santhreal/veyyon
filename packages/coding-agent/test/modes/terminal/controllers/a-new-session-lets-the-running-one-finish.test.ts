@@ -20,7 +20,11 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { CommandController } from "@veyyon/coding-agent/modes/terminal/controllers/command-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { BackgroundSessions, SHUTDOWN_DRAIN_TIMEOUT_MS } from "@veyyon/coding-agent/session/background-sessions";
+import {
+	BackgroundSessions,
+	type HostedSession,
+	SHUTDOWN_DRAIN_TIMEOUT_MS,
+} from "@veyyon/coding-agent/session/background-sessions";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 
 function createContainer() {
@@ -97,6 +101,8 @@ interface Harness {
 	current: FakeSession;
 	next: FakeSession;
 	attached: string[];
+	/** Sessions handed to the host to keep until exit, in order. */
+	hosted: string[];
 	counts: { factoryCalls: number };
 	/** Every line the flow presented, VT stripped, in order. */
 	presented(): string[];
@@ -106,11 +112,15 @@ function harness(options: { streaming: boolean; withFactory?: boolean; keepBackg
 	const current = makeSession("session-a", options.streaming);
 	const next = makeSession("session-b", false);
 	const attached: string[] = [];
+	const hosted: string[] = [];
 	const counts = { factoryCalls: 0 };
 	const lines: string[] = [];
-	const createNextSession = async (): Promise<AgentSession> => {
+	const createNextSession = async (): Promise<HostedSession> => {
 		counts.factoryCalls++;
-		return next as unknown as AgentSession;
+		return {
+			session: next as unknown as AgentSession,
+			bindings: { setToolUIContext: () => {}, setToolNotifier: () => {} },
+		};
 	};
 	const ctx = {
 		session: current,
@@ -127,6 +137,9 @@ function harness(options: { streaming: boolean; withFactory?: boolean; keepBackg
 			},
 		},
 		createNextSession: options.withFactory === false ? undefined : createNextSession,
+		hostSession: async (session: HostedSession) => {
+			hosted.push((session.session as unknown as FakeSession).id);
+		},
 		attachMainSession: (session: AgentSession) => {
 			attached.push((session as unknown as FakeSession).id);
 			return BackgroundSessions.global().keep(current as unknown as AgentSession);
@@ -155,6 +168,7 @@ function harness(options: { streaming: boolean; withFactory?: boolean; keepBackg
 		current,
 		next,
 		attached,
+		hosted,
 		counts,
 		presented: () => lines.filter(line => line.length > 0),
 	};
@@ -189,6 +203,8 @@ describe("/new while a turn is running", () => {
 		expect(h.current.calls.abort).toBe(0);
 		expect(h.counts.factoryCalls).toBe(1);
 		expect(h.attached).toEqual(["session-b"]);
+		// The host keeps the new conversation, so exit flushes and disposes it too.
+		expect(h.hosted).toEqual(["session-b"]);
 	});
 
 	it("resets in place when nothing is running, so an idle /new costs no extra session", async () => {

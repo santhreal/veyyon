@@ -21,6 +21,8 @@ function click(col: number, overrides: Partial<SgrMouseEvent> = {}): SgrMouseEve
 		row: 0,
 		release: false,
 		wheel: null,
+		hwheel: null,
+		shift: false,
 		motion: false,
 		leftClick: true,
 		...overrides,

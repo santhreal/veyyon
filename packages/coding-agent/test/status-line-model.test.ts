@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { NO_ROOM_PEERS } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { NO_SESSION_FACTS } from "../src/modes/terminal/components/status-line/session-facts";
 
@@ -45,7 +46,7 @@ function createModelContext(advisorActive: boolean): SegmentContext {
 		autoCompactEnabled: false,
 		agentCount: 0,
 		backgroundSessionCount: 0,
-		roomPeerCount: 0,
+		roomPeers: NO_ROOM_PEERS,
 		activeMs: 0,
 		activeRepo: null,
 		worktree: null,

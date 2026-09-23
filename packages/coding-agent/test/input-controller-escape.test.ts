@@ -825,7 +825,7 @@ describe("InputController double-tap ← gesture", () => {
 });
 
 /**
- * `→→` on an empty composer is the sideways gesture: it opens the room strip.
+ * `→→` on an empty composer is the sideways gesture: it opens the room view.
  * Same detector class as `←←`, so the burst rejection is the same, but a
  * separate detector instance: a → after a ← is never the second tap of one.
  */
@@ -834,14 +834,14 @@ describe("InputController double-tap → gesture", () => {
 		const { ctx, editor } = createContext();
 		(ctx as { focusedAgentId?: string }).focusedAgentId = focusedAgentId;
 		// The room is a counter rather than a spy: the assertion is how many times
-		// the strip opened, read as a value.
+		// the view opened, read as a value.
 		const room = {
 			opens: 0,
-			open() {
+			async openView() {
 				this.opens++;
 			},
 		};
-		(ctx as { room: { open: () => void } }).room = room;
+		(ctx as unknown as { room: { openView: () => Promise<void> } }).room = room;
 		const controller = new InputController(ctx);
 		controller.setupKeyHandlers();
 		return {
@@ -852,7 +852,7 @@ describe("InputController double-tap → gesture", () => {
 		};
 	}
 
-	it("opens the room strip on a deliberate double-tap", () => {
+	it("opens the room view on a deliberate double-tap", () => {
 		const now = vi.spyOn(Date, "now");
 		const { room, dashboardCalls, right } = setup();
 		now.mockReturnValue(1_000);

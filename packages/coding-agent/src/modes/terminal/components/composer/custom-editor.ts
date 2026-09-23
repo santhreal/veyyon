@@ -1215,7 +1215,7 @@ export class CustomEditor extends Editor {
 		const canonical = parsedKey !== undefined ? canonicalKeyId(parsedKey) : undefined;
 
 		// Arrows on an empty editor: surface for the double-tap gestures (←← the
-		// agent hub, →→ the room strip). Plain arrows only — modified arrows and
+		// agent hub, →→ the room view). Plain arrows only — modified arrows and
 		// any in-text cursor movement fall through to normal handling. A draft of
 		// only spaces still counts as empty for the gesture, but only with the
 		// caret on the boundary the arrow points past: mid-draft the key moves

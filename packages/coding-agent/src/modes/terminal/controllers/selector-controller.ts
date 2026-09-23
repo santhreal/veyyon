@@ -114,6 +114,7 @@ export type SelectorControllerContext = Pick<
 	| "editor"
 	| "editorContainer"
 	| "effectiveHideThinkingBlock"
+	| "eventController"
 	| "focusAgentSession"
 	| "handleDebugTranscriptCommand"
 	| "handleUsageCommand"
@@ -1401,6 +1402,18 @@ export class SelectorController {
 		const live = BackgroundSessions.global().take(sessionPath);
 		if (live) {
 			const liveCwd = live.sessionManager.getCwd();
+			// The kept session left the screen without the process scope; take it
+			// back before the swap, so a failed re-scope leaves the screen, and the
+			// scope, as they were.
+			try {
+				await live.takeForegroundFrom(this.ctx.session);
+			} catch (error) {
+				BackgroundSessions.global().keep(live);
+				this.ctx.showError(
+					`Could not resume the running session in ${shortenPath(liveCwd)}: ${errorMessage(error)}`,
+				);
+				return;
+			}
 			this.ctx.attachMainSession(live);
 			if (normalizePathForComparison(liveCwd) !== normalizePathForComparison(previousCwd)) {
 				await this.ctx.applyCwdChange(liveCwd);
@@ -1408,6 +1421,7 @@ export class SelectorController {
 			this.#refreshSessionTerminalTitle();
 			this.ctx.updateEditorBorderColor();
 			this.ctx.renderInitialMessages({ clearTerminalHistory: true });
+			await this.ctx.eventController.resumeTurn();
 			await this.ctx.reloadTodos();
 			this.ctx.showStatus(live.isStreaming ? "Resumed a session that is still running" : "Resumed session");
 			return;

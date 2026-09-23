@@ -85,9 +85,10 @@ beforeEach(() => {
 		});
 	};
 	// One terminal, one room, two drivers side by side, each with a running spawn.
-	register("main:a", "main", undefined, "room:main:a");
+	// The room is opened the one way a room is: by the first driver.
+	register("main:a", "main");
 	register("Scout-A", "sub", "main:a");
-	register("main:b", "main", undefined, "room:main:a");
+	register("main:b", "main", undefined, registry.ensureRoom("main:a"));
 	register("Scout-B", "sub", "main:b");
 	// A third driver in the same process that never joined the room: an ACP session.
 	register("acp:c", "main");

@@ -479,6 +479,36 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	/**
+	 * Which arrangement the room view opens in. Tab flips between the two inside
+	 * the view; this is only where it starts. Read at each open, so a change
+	 * applies to the next `→→` without a restart.
+	 */
+	"room.view": {
+		type: "enum",
+		values: ["side-by-side", "all-windows"] as const,
+		default: "side-by-side",
+		ui: {
+			tab: "interaction",
+			group: "Session",
+			label: "Room View",
+			description:
+				"How the room view arranges the conversations in this terminal when it opens (→ twice on an empty composer, or the room view key, alt+w by default). Tab switches between the two while it is open.",
+			options: [
+				{
+					value: "side-by-side",
+					label: "Side By Side",
+					description: "One conversation in front, its neighbours receding to either side; ←→ scrolls the row.",
+				},
+				{
+					value: "all-windows",
+					label: "All Windows",
+					description: "Every conversation tiled at once; the arrows move between windows.",
+				},
+			],
+		},
+	},
+
 	"share.serverUrl": {
 		type: "string",
 		default: DEFAULT_SHARE_URL,

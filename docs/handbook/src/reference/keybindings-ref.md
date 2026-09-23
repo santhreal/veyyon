@@ -28,6 +28,8 @@ live list after your remaps. For the full guide on customizing, see
 | `alt+up` | Dequeue a queued message back into the editor (`app.message.dequeue`) |
 | `alt+shift+p` | Toggle plan mode (`app.plan.toggle`) |
 | `alt+a` or `ctrl+s` | Open the agent dashboard (`app.agents.hub` / `app.session.observe`); either key closes it again |
+| `alt+w` | Open the room view, every conversation in this terminal as a window (`app.room.view`); also `→` twice on an empty composer |
+| `alt+.` / `alt+,` | Switch to the next / previous conversation in the room (`app.room.next` / `app.room.previous`) |
 | `ctrl+r` | Search prompt history (`app.history.search`) |
 | `alt+shift+l` | Copy the current line (`app.clipboard.copyLine`) |
 | `alt+shift+c` | Copy the whole prompt (`app.clipboard.copyPrompt`) |

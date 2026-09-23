@@ -97,8 +97,13 @@ function primaryArgValue(value: unknown): string {
 	return "";
 }
 
-/** Pick the most informative scalar argument of a tool call. */
-function primaryArg(name: string, args: Record<string, unknown> | undefined): string {
+/**
+ * Pick the most informative scalar argument of a tool call: the path, command,
+ * pattern, url or query it acts on, collapsed to one line of at most 120
+ * characters. Shared by the `history://` transcript and the room's windows, so
+ * one call reads the same wherever it is summarized.
+ */
+export function toolCallPrimaryArg(name: string, args: Record<string, unknown> | undefined): string {
 	if (!args || typeof args !== "object") return "";
 	// Advisor note is the most informative summary; preserve severity too.
 	if (name === "advise") {
@@ -161,7 +166,7 @@ function toolCallLine(
 	includeToolIntent?: boolean,
 	expandEditDiffs?: boolean,
 ): string {
-	const head = `→ ${name}(${primaryArg(name, args)})`;
+	const head = `→ ${name}(${toolCallPrimaryArg(name, args)})`;
 	let base: string;
 	if (!result) {
 		base = `${head} ⇒ pending`;

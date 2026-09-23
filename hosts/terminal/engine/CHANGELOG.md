@@ -5,6 +5,7 @@
 ### Added
 
 - `SelectList` adds `naturalWidth()`, `isSearchable()` and `cancel()`, a `searchPrompt` layout option that hides the idle "Type to search" row, and a `scrollbar` theme slot.
+- `TUI.captureViewport()` returns the window last committed to the screen and `TUI.composeViewport()` returns the window the children compose now, without painting either.
 
 ### Changed
 
@@ -13,6 +14,7 @@
 ### Fixed
 
 - `SelectList.naturalWidth()` counts the description column's minimum width, so a list sized to it shows every description whole.
+- Closing the last fullscreen overlay leaves the alternate screen and repaints in one synchronized update, so the previous screen never shows for a frame between the two.
 
 ## [1.5.0] - 2026-09-18
 
@@ -73,8 +75,6 @@
 - `Form`: a component of labelled fields — `text` with an in-field caret, `stepper` with `◂`/`▸` arrows and typed digits, `toggle`, `segmented`, `button` and `note` — that lays every value out at one column after the widest label, moves a ring with `↑↓`/`tab`, routes a click to the caret, arrow, option, switch or button under the pointer, windows a `segmented` strip wider than its row around the chosen option, and moves the ring on from a text field whose Enter nothing takes.
 - `Input` routes a click to the caret position under it (`routeMouse`) and reports the caret with `getCursor()`.
 - A `MouseRoutable` overlay drawn over the transcript on the normal screen receives the wheel and click reports inside its bounds; reports outside it keep scrolling the transcript and reaching the pinned footer.
-- `TUI.captureViewport()` and `TUI.slideViewport(from, direction)` move the screen sideways from the window on show to the one the children compose now, one throwaway frame per step on the borrowed alternate screen the resize drag already paints on, ending in the same authoritative full paint a drag settles with; a render requested mid-slide is folded into that paint, and the slide is refused wherever that screen is not available (an overlay, a resize since the capture, a multiplexer session).
-- `@veyyon/tui/core/render-scheduler` holds the render clock (`RenderScheduler`, `RenderTimer`, `DEFAULT_RENDER_SCHEDULER`) and the frame pacing (`RenderCadence`) the engine schedules frames on, and `@veyyon/tui/core/viewport-slide` holds the slide itself; both are re-exported from `@veyyon/tui` and `@veyyon/tui/tui`, so an existing import keeps resolving.
 
 ### Changed
 

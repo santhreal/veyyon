@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- `SgrMouseEvent` reports `hwheel` for horizontal wheel reports (buttons 66 and 67) and `shift` for the Shift modifier.
+- `MOTION.zoom` and `MOTION.travel` are the curves of a screen pulling back into a window and of a switch between two screens.
+
+### Fixed
+
+- A horizontal trackpad swipe is no longer reported as a vertical wheel notch.
+
 ## [1.5.0] - 2026-09-18
 
 ### Breaking Changes

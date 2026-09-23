@@ -3,7 +3,7 @@
  *
  * Two gestures share it: `←←` on an empty composer opens the agent dashboard
  * (the downward axis) or returns a focused agent view to the main session,
- * and `→→` opens the room strip (the sideways axis). One detector per arrow,
+ * and `→→` opens the room view (the sideways axis). One detector per arrow,
  * one rhythm for both: a user who learns the timing going down uses the same
  * timing going sideways, and a second copy of the window is how one gesture
  * grows two feels.

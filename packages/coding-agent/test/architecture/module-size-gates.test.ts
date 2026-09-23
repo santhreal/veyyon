@@ -9,12 +9,12 @@
  * a recorded reason, not a target. Two of them are far above the 800-line figure
  * the plan asked for, and that is stated rather than hidden:
  *
- * `core/tui.ts` is 3782 lines. MEASURED 2026-09-07, up from 3612 at the split:
- * the growth arrived with upstream edits to the pre-split monolith and carries
- * no new subsystem; the two subsystems carved out since (the render clock and
- * frame pacing in `render-scheduler.ts`, the sideways viewport slide in
- * `viewport-slide.ts`) paid for the room switch that would otherwise have
- * pushed it over. What remains is the `TUI` class itself: one object holding
+ * `core/tui.ts` is 3767 lines. MEASURED 2026-09-23, down from 3782: the room
+ * view replaced the sideways viewport slide with a fullscreen overlay, so the
+ * slide's module and its hooks here were deleted, and the engine gained two
+ * small reads for the overlay (`captureViewport`, `composeViewport`). The
+ * render clock and frame pacing live in `render-scheduler.ts`. What remains is
+ * the `TUI` class itself: one object holding
  * about sixty private fields that the compose, paint, scroll-isolation, cursor,
  * overlay and input paths all mutate within a single frame. Splitting it
  * further means passing that state between collaborating objects in the
@@ -47,7 +47,6 @@ import { isDirectory, lineCount, repoPath, repoRelative, typeScriptFiles } from 
 const CORE_CEILINGS: Record<string, number> = {
 	"core/tui.ts": 3800,
 	"core/renderer.ts": 700,
-	"core/viewport-slide.ts": 220,
 	"core/render-scheduler.ts": 130,
 	"core/overlay.ts": 560,
 	"core/image-budget.ts": 330,

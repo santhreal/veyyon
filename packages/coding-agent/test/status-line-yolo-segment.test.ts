@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { NO_ROOM_PEERS } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/core/approval";
 import { AUTONOMY_LABEL, DEFAULT_APPROVAL_MODE } from "@veyyon/coding-agent/tools/core/approval-modes";
@@ -60,7 +61,7 @@ function createModeContext(opts: {
 		autoCompactEnabled: false,
 		agentCount: 0,
 		backgroundSessionCount: 0,
-		roomPeerCount: 0,
+		roomPeers: NO_ROOM_PEERS,
 		activeMs: 0,
 		activeRepo: null,
 		worktree: null,

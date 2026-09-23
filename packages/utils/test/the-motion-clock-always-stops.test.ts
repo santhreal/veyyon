@@ -69,6 +69,8 @@ const RENDERS_PER_SETTLE: Record<string, number> = {
 	reflow: 20,
 	move: 28,
 	settle: 39,
+	zoom: 26,
+	travel: 22,
 };
 
 interface Run {

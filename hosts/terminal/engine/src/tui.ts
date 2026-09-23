@@ -12,4 +12,3 @@ export * from "./core/render-scheduler";
 export { coalesceAdjacentSgr, findCommittedPrefixResync } from "./core/renderer";
 export type { ScrollTransport } from "./core/scroll";
 export * from "./core/tui";
-export * from "./core/viewport-slide";

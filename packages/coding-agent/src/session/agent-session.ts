@@ -225,12 +225,14 @@ import {
 	formatDuration,
 	getActiveAuthDbPath,
 	getInstallId,
+	getProjectDir,
 	getStringProperty,
 	isAbortError,
 	isBunTestRuntime,
 	isEnoent,
 	isRecord,
 	logger,
+	normalizePathForComparison,
 	postmortem,
 	prompt,
 	Snowflake,
@@ -1036,9 +1038,22 @@ export class AgentSession {
 	/**
 	 * Directory {@link AgentSession.rescopeToCwd} last re-scoped to, so the two
 	 * callers of one move (this session, then the TUI's `cwd_changed` handler) do
-	 * the work once between them.
+	 * the work once between them. Cleared while a re-scope is deferred, and before a
+	 * rollback or a foreground claim, so the re-scope that follows is never skipped
+	 * as a repeat.
 	 */
 	#lastRescopedCwd: string | undefined;
+	/**
+	 * Whether this session drives process-wide project scope. A top-level session
+	 * starts foreground; a spawned session is never foreground. Several top-level
+	 * sessions share one process, and only the foreground one re-scopes it.
+	 */
+	#isForeground: boolean;
+	/**
+	 * A cwd change arrived while this top-level session was in the background, so
+	 * its re-scope waits for {@link AgentSession.claimForeground}.
+	 */
+	#rescopePending = false;
 	/**
 	 * Whole cwd/rescope/switch transaction queue. Work is appended synchronously,
 	 * so commits and rollbacks occur in monotonic initiation order.
@@ -1759,6 +1774,7 @@ export class AgentSession {
 		this.#parentEvalSessionId = config.parentEvalSessionId;
 		this.#ownedAsyncJobManager = config.ownedAsyncJobManager;
 		this.#isSpawned = config.isSpawned === true;
+		this.#isForeground = !this.#isSpawned;
 		this.#asyncJobManager = config.asyncJobManager ?? config.ownedAsyncJobManager;
 		this.#scopedModels = config.scopedModels ?? [];
 		this.#thinking = new ThinkingRuntime({
@@ -6114,8 +6130,16 @@ export class AgentSession {
 	 * prompt-cache key when the content changes, so the stale prefix is not re-served.
 	 *
 	 * WHOSE STATE MOVES depends on who is asking. The process-global half lives in
-	 * `#rescopeProcessToCwd` and runs only for the session that owns the process; a
-	 * spawned agent re-roots itself and leaves its parent and its siblings where they are.
+	 * `#rescopeProcessToCwd` and runs only for a top-level session; a spawned agent
+	 * re-roots itself and leaves its parent and its siblings where they are.
+	 *
+	 * ONLY THE FOREGROUND SESSION RE-SCOPES. Several top-level sessions can share
+	 * one process and one Settings instance, and one of them is on screen. For a
+	 * top-level session in the background this call re-scopes nothing: no settings
+	 * reload, no process state, no secrets, ssh tool or prompt refresh. It marks the
+	 * re-scope pending, and {@link AgentSession.claimForeground} runs it in full
+	 * when the session is brought back. A spawned session is never foreground and
+	 * always re-scopes its own half.
 	 *
 	 * REPEATING A DIRECTORY IS SKIPPED, and that is not an optimization: the TUI
 	 * reaches this twice for one move. `setCwd` calls it and then emits
@@ -6125,15 +6149,90 @@ export class AgentSession {
 	 * prompt-cache invalidation. The guard remembers the LAST directory rescoped,
 	 * not every directory seen, so moving away and back still rescopes: what makes
 	 * the second call redundant is that nothing changed in between, and something
-	 * did change if another directory was rescoped meanwhile.
+	 * did change if another directory was rescoped meanwhile. The guard belongs to
+	 * one session and the process scope is shared, so a deferred re-scope clears it
+	 * and a foreground claim clears it again: another session may have moved the
+	 * process since this one last re-scoped.
 	 */
 	rescopeToCwd(cwd: string): Promise<void> {
 		return this.#runScopeTransition(() => this.#rescopeToCwd(cwd));
 	}
 
-	async #rescopeToCwd(cwd: string): Promise<void> {
+	/** Whether this session currently drives the process-wide project scope. Spawned sessions: always false. */
+	get isForeground(): boolean {
+		return this.#isForeground;
+	}
+
+	/**
+	 * Make this session the one whose cwd drives process-wide project scope (shared Settings scope,
+	 * project dir, provider globals, plugin roots, capabilities, and this session's own prompt refresh).
+	 * Re-scopes when the process project dir (`getProjectDir()`) differs from this session's cwd, or when
+	 * a cwd change was deferred while the session was in the background; otherwise does nothing.
+	 * On failure the session is left NOT foreground and the error is thrown, so the caller can keep the
+	 * previous session on screen. No-op for spawned sessions. Serialized through #runScopeTransition.
+	 */
+	claimForeground(): Promise<void> {
+		if (this.#isSpawned) return Promise.resolve();
+		return this.#runScopeTransition(() => this.#claimForeground());
+	}
+
+	async #claimForeground(): Promise<void> {
+		const cwd = this.sessionManager.getCwd();
+		if (this.#rescopePending || normalizePathForComparison(getProjectDir()) !== normalizePathForComparison(cwd)) {
+			// Foreground only once the process scope is this session's, so a throw
+			// leaves the session in the background. Pending until the re-scope
+			// completes, so the next claim redoes a partial one in full even when the
+			// project dir already moved.
+			this.#isForeground = false;
+			this.#rescopePending = true;
+			this.#lastRescopedCwd = undefined;
+			await this.#rescopeToCwd(cwd, { claim: true });
+			this.#rescopePending = false;
+		}
+		this.#isForeground = true;
+	}
+
+	/**
+	 * Take the foreground from `holder`, the session that has it. A claim that
+	 * fails partway has already moved part of the process scope (the project
+	 * dir, the shared Settings scope), so `holder` claims it back before the
+	 * error is thrown: the conversation that stays on screen stays the one the
+	 * process is scoped to. A restore that fails too throws both errors.
+	 */
+	async takeForegroundFrom(holder: AgentSession): Promise<void> {
+		try {
+			await this.claimForeground();
+		} catch (error) {
+			if (holder === this) throw error;
+			try {
+				await holder.claimForeground();
+			} catch (restoreError) {
+				throw new AggregateError(
+					[error, restoreError],
+					`Failed to scope the process to ${this.sessionManager.getCwd()} and to restore ${holder.sessionManager.getCwd()}.`,
+				);
+			}
+			throw error;
+		}
+	}
+
+	/** Stop driving process-wide scope. Synchronous. No-op for spawned sessions. */
+	releaseForeground(): void {
+		this.#isForeground = false;
+	}
+
+	/**
+	 * @param options.claim Set by {@link AgentSession.claimForeground}, whose re-scope
+	 * runs before the session is foreground and so is never deferred.
+	 */
+	async #rescopeToCwd(cwd: string, options?: { claim?: boolean }): Promise<void> {
 		const normalizedCwd = path.resolve(cwd);
 		if (this.#lastRescopedCwd === normalizedCwd) return;
+		if (!this.#isSpawned && !this.#isForeground && options?.claim !== true) {
+			this.#rescopePending = true;
+			this.#lastRescopedCwd = undefined;
+			return;
+		}
 
 		// Re-scope the Settings instance owned by THIS session before loading any
 		// runtime candidate. The process singleton may be a different instance
@@ -6153,11 +6252,11 @@ export class AgentSession {
 	 * The half of a re-root that belongs to the PROCESS, not to one session.
 	 *
 	 * Every line here writes state shared by everything running in this process,
-	 * which is why only the session that owns the process runs it. Kept as its own
-	 * method so that boundary is a thing you can see rather than a comment you have
-	 * to trust: anything added here is process-global by construction, and anything
-	 * session-scoped belongs in {@link AgentSession.rescopeToCwd} beside the prompt
-	 * refresh.
+	 * which is why only the top-level session that holds or is claiming the
+	 * foreground runs it. Kept as its own method so that boundary is a thing you can
+	 * see rather than a comment you have to trust: anything added here is
+	 * process-global by construction, and anything session-scoped belongs in
+	 * {@link AgentSession.rescopeToCwd} beside the prompt refresh.
 	 *
 	 * ORDER IS LOAD-BEARING with the caller's: the base system prompt is assembled
 	 * from settings, capabilities and plugin roots, so it is rebuilt after all of
@@ -6178,8 +6277,11 @@ export class AgentSession {
 	 * Re-root the live session working directory for this session only.
 	 * Updates SessionManager cwd + header, aligns process project dir, re-scopes
 	 * settings/capabilities/plugins/prompt via {@link AgentSession.rescopeToCwd},
-	 * emits `cwd_changed`, and injects a visible/context system note. Never writes
-	 * profile `session.workdir` or other persisted settings.
+	 * emits `cwd_changed`, and injects a visible/context system note. A top-level
+	 * session in the background updates the header, the note and the event now and
+	 * defers the re-scope to {@link AgentSession.claimForeground}; nothing is
+	 * re-scoped, so nothing is rolled back. Never writes profile `session.workdir`
+	 * or other persisted settings.
 	 */
 	setCwd(newCwd: string, options?: { validate?: boolean }): Promise<string> {
 		return this.#runScopeTransition(() => this.#setCwd(newCwd, options));
@@ -6211,7 +6313,9 @@ export class AgentSession {
 
 	/**
 	 * Atomically relocate session storage/artifacts and the complete cwd-derived
-	 * runtime. A failed re-scope moves storage back before exposing the error.
+	 * runtime. A failed re-scope moves storage back before exposing the error. A
+	 * top-level session in the background moves storage now and defers the
+	 * re-scope to {@link AgentSession.claimForeground}.
 	 */
 	moveToCwd(newCwd: string, targetSessionDir?: string): Promise<string> {
 		return this.#runScopeTransition(async () => {
@@ -8652,11 +8756,7 @@ export class AgentSession {
 	 * prefix intact.
 	 */
 	#buildSessionStateMessage(): CustomMessage | null {
-		const peers = this.#agentId
-			? this.#agentRegistry
-					.peers(this.#agentId)
-					.map(ref => ({ id: ref.id }))
-			: [];
+		const peers = this.#agentId ? this.#agentRegistry.peers(this.#agentId).map(ref => ({ id: ref.id })) : [];
 		const content = prompt
 			.render(sessionPrompts["session/session-state"].text, {
 				date: formatLocalCalendarDate(),

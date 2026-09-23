@@ -1916,7 +1916,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 		const createNextSession: InteractiveSessionFactory = async ({ room } = {}) => {
 			const activeCwd = getProjectDir();
 			const nextSessionManager = SessionManager.create(activeCwd, parsedArgs.sessionDir);
-			const { session: next } = await createSession({
+			const next = await createSession({
 				...sessionOptions,
 				cwd: activeCwd,
 				eventBus,
@@ -1929,7 +1929,12 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				providerPromptCacheKey: undefined,
 				providerPromptCacheKeySource: undefined,
 			});
-			return next;
+			// The new session's own setters: its tools read their UI through its own
+			// tool context, so the host binds this session, not the launch one.
+			return {
+				session: next.session,
+				bindings: { setToolUIContext: next.setToolUIContext, setToolNotifier: next.setToolNotifier },
+			};
 		};
 
 		if (modelFallbackMessage) {

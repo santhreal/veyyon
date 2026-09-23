@@ -27,7 +27,7 @@ import { isKnownApprovalMode } from "../../../../tools/core/approval-modes";
 import { readLaunchFacts } from "../../../launch-facts";
 import { launchModelLabel } from "../../launch-formatting";
 import type { LocationContext } from "./location-context";
-import type { SegmentContext, StatusLineSegmentOptions } from "./types";
+import { NO_ROOM_PEERS, type SegmentContext, type StatusLineSegmentOptions } from "./types";
 
 /**
  * The active model, reduced to what the row prints.
@@ -176,7 +176,7 @@ export function launchSegmentContext(request: LaunchContextRequest): SegmentCont
 		autoCompactEnabled: request.autoCompactEnabled,
 		agentCount: 0,
 		backgroundSessionCount: 0,
-		roomPeerCount: 0,
+		roomPeers: NO_ROOM_PEERS,
 		activeMs: 0,
 		git: { branch: request.branch, status: launchFacts.gitStatus, pr: null },
 		worktree: request.location?.worktree ?? null,

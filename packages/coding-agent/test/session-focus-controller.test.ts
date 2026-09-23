@@ -62,6 +62,7 @@ function makeHarness(): Harness {
 	let resetTranscriptAnchors = 0;
 	let renderInitialMessages = 0;
 	let mainUnsubscribe = 0;
+	let attached: AgentSession | undefined;
 
 	const ctx = {
 		session: main.session,
@@ -73,6 +74,7 @@ function makeHarness(): Harness {
 				handledEvents.push(event);
 			},
 			attachTo: (target: AgentSession) => {
+				attached = target;
 				let assistantStreamSynced = false;
 				ctx.unsubscribe = target.subscribe(async (event: AgentSessionEvent) => {
 					if (event.type === "message_start" && event.message.role === "assistant") {
@@ -87,6 +89,10 @@ function makeHarness(): Harness {
 					}
 					await ctx.eventController.handleEvent(event);
 				});
+			},
+			// The real one also opens the message in flight; these stubs stream none.
+			resumeTurn: async () => {
+				if (attached?.isStreaming) await ctx.eventController.handleEvent({ type: "agent_start" });
 			},
 			resetTranscriptAnchors: () => {
 				resetTranscriptAnchors++;
