@@ -61,7 +61,7 @@ impl ProfileView {
 	/// Whether a window can be opened on this profile: it is another profile
 	/// than the attached one, and it states an endpoint to attach to.
 	#[must_use]
-	pub fn reachable(&self) -> bool {
+	pub const fn reachable(&self) -> bool {
 		!self.is_active && self.endpoint.is_some()
 	}
 
