@@ -45,6 +45,7 @@
 
 ### Added
 
+- `/omfg` runs from a desktop window: the forged rule is reviewed as a decision card offering save, amend and discard, an amendment re-forges it with that feedback, and a rule the conversation does not confirm is saved only after the card that states so.
 - `/guided-goal` runs from a desktop window: the interview asks each question as a decision card, puts the drafted objective up for review, and enters goal mode on the objective that is accepted.
 - The desktop settings sheet holds a Profiles page, reached from `/profile`, which lists the profile directories on disk with the host address each is reached at and creates, renames and deletes them.
 - `/debug` runs from a desktop window: the ten debug tools that read nothing of the terminal are chosen in a question or named after the command, and what each one did is drawn as command output.
