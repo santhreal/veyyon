@@ -1388,30 +1388,32 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 			return preview;
 		};
-		// Only the first top-level session in a process owns an AsyncJobManager.
-		// Spawned agents inherit the parent's manager via `AsyncJobManager.instance()`
-		// (set below), and any additional top-level session spun up in-process
-		// (e.g. the agent-creation architect in `agent-dashboard.ts`) must share
-		// the live singleton — otherwise its dispose path would clobber the
-		// owning session's manager and break the `task`/`bash` async paths
-		// (issue #1923). The `instance()` guard means later sessions also skip
-		// constructing an orphaned manager that nothing would ever route to.
-		asyncJobManager =
-			!isInProcessChildSession(options) && !AsyncJobManager.instance()
-				? new AsyncJobManager({
-						maxRunningJobs: asyncMaxJobs,
-						onJobComplete: async (jobId, result, job) => {
-							if (!session || asyncJobManager!.isDeliverySuppressed(jobId)) return;
-							const formattedResult = await formatAsyncResultForFollowUp(result);
-							if (asyncJobManager!.isDeliverySuppressed(jobId)) return;
+		// Every top-level session owns a manager, and a child registers on the one
+		// its spawn handed it (`options.asyncJobManager`, the parent's), so a
+		// completion is delivered into the conversation that registered it.
+		//
+		// One process holds several top-level sessions at once: a desktop host
+		// serves every window of a profile over one socket, and each window opens
+		// a session of its own. A session with no manager refuses async work
+		// outright, which is what left every window after the first unable to run
+		// a background job, and sharing the first one's manager would deliver the
+		// result into the first window's conversation instead (issue #1923).
+		// The singleton stays the first manager installed, which is what a child
+		// spawned without an explicit one falls back to.
+		asyncJobManager = !isInProcessChildSession(options)
+			? new AsyncJobManager({
+					maxRunningJobs: asyncMaxJobs,
+					onJobComplete: async (jobId, result, job) => {
+						if (!session || asyncJobManager!.isDeliverySuppressed(jobId)) return;
+						const formattedResult = await formatAsyncResultForFollowUp(result);
+						if (asyncJobManager!.isDeliverySuppressed(jobId)) return;
 
-							session.deliverAsyncJobResult(jobId, formattedResult, job);
-						},
-					})
-				: undefined;
+						session.deliverAsyncJobResult(jobId, formattedResult, job);
+					},
+				})
+			: undefined;
 
-		const scopedAsyncJobManager =
-			asyncJobManager ?? (isInProcessChildSession(options) ? AsyncJobManager.instance() : undefined);
+		const scopedAsyncJobManager = asyncJobManager ?? options.asyncJobManager ?? AsyncJobManager.instance();
 
 		const agentRegistry = options.agentRegistry ?? AgentRegistry.global();
 		// A driving agent is named for the conversation it starts, so two live
@@ -1609,12 +1611,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			authStorage,
 			modelRegistry,
 			getTelemetry: () => agent?.telemetry,
-			// Spawned agents inherit the singleton (the parent's manager) so their bash/task
-			// completions still flow into the spawning conversation's yieldQueue.
-			// Secondary in-process top-level sessions (no parentTaskPrefix, no
-			// constructed manager because the singleton was already installed) leave
-			// this undefined so tools and session job snapshots refuse async work
-			// instead of silently routing into the owning session (issue #1923).
+			// A child registers on the manager its spawn handed it, so its bash and
+			// task completions flow into the conversation that spawned it; a
+			// top-level session registers on the one it owns.
 			asyncJobManager: scopedAsyncJobManager,
 		};
 
@@ -1632,7 +1631,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// so without this a TTSR-only rule (e.g. a triggered builtin) is not
 			// addressable and `rule://` reports "Available: none".
 			setActiveRules(rulebookRules.concat(alwaysApplyRules, ttsrManager.getRules()));
-			if (asyncJobManager) AsyncJobManager.setInstance(asyncJobManager);
+			// The singleton is what a child spawned with no explicit manager falls
+			// back to, so it stays the first one installed: a second window taking
+			// it would capture the first window's children.
+			if (asyncJobManager && !AsyncJobManager.instance()) AsyncJobManager.setInstance(asyncJobManager);
 		}
 		const localProtocolOptions = options.localProtocolOptions ?? {
 			getArtifactsDir,

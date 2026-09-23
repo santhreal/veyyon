@@ -1714,6 +1714,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				// The child joins THIS session's budget group instead of opening a
 				// second one, so a resource limit cannot be multiplied by delegating.
 				parentSessionId: this.session.getSessionId?.() ?? undefined,
+				// The child registers its background work on this conversation's own
+				// manager, so a completion is delivered where it was asked for.
+				parentAsyncJobManager: this.session.asyncJobManager,
 				// Live source of truth for `tier.agent: inherit`. When the session
 				// exposes a tier accessor, pass the per-family map or null (null =
 				// explicit none, e.g. /fast off); otherwise leave undefined so inherit

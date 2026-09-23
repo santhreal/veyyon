@@ -352,6 +352,7 @@
 
 ### Fixed
 
+- Every window a desktop host serves runs its own background work, where only the first session in the process held an async job manager and every window after it refused `/tan`, an async bash job and a task delivery outright; each window now owns a manager, and a completion is delivered into the conversation that asked for it.
 - A setting changed from the desktop window reaches the sessions already running in the process, where the change was written to disk and the running sessions went on acting on the values they had loaded, so a relay URL set and then shared with was ignored until a restart.
 - Starting a share while one is already running is refused instead of replacing it, which minted a second room and left every guest holding the first link on a room nothing was hosting.
 - A share whose start failed can be started again instead of being held in the phase it died in, which took sharing away from the session with no control to clear it.

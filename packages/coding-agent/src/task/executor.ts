@@ -36,6 +36,7 @@ import {
 import { sessionFileName } from "@veyyon/utils/session-file";
 import type { ArgotSession, StreamDecoder } from "argot";
 import { createAgentStreamDecoder, expandAgentReturn } from "../argot-wire";
+import type { AsyncJobManager } from "../async";
 import { ModelRegistry } from "../config/model-registry";
 import {
 	formatModelSelectorValue,
@@ -528,6 +529,16 @@ export interface ExecutorOptions {
 	 * tree and no tree is a better guess than the first one.
 	 */
 	parentSessionId?: string;
+	/**
+	 * The manager this agent's background work registers on: the spawner's own.
+	 *
+	 * A process can hold one top-level session per window of a desktop host, each
+	 * owning a manager that delivers completions into its own conversation, so an
+	 * agent that took the process-wide one would deliver its bash and task
+	 * results into whichever window opened first. Omitted falls back to that
+	 * singleton, which is correct for a process holding one session.
+	 */
+	parentAsyncJobManager?: AsyncJobManager;
 	/**
 	 * Keep the finished agent addressable in the registry for IRC/revival.
 	 * Defaults to true. Eval bridge agents are programmatic one-shot helpers and
@@ -3162,6 +3173,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				parentArgot: options.parentArgot,
 				parentTaskPrefix: id,
 				parentAgentId: options.parentAgentId,
+				asyncJobManager: options.parentAsyncJobManager,
 				agentId: id,
 				agentDisplayName: agent.name,
 				enableLsp: lspEnabled,

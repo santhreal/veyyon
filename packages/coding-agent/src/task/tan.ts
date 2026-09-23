@@ -143,6 +143,9 @@ export async function dispatchTan(ctx: TanDispatchContext, work: string): Promis
 						parentAgentId: ownerId,
 						agentRegistry,
 						disableExtensionDiscovery: true,
+						// The fork registers on the manager this session owns, so its own
+						// background work is delivered into this conversation.
+						asyncJobManager: manager,
 					});
 					clone = created.session;
 					clone.sessionManager?.appendSessionInit?.({

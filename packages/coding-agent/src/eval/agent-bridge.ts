@@ -558,6 +558,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		parentTelemetry: options.session.getTelemetry?.(),
 		parentAgentId: options.session.getAgentId?.() ?? MAIN_AGENT_ID,
 		parentSessionId: options.session.getSessionId?.() ?? undefined,
+		parentAsyncJobManager: options.session.asyncJobManager,
 		// Live source of truth for `tier.agent: inherit` (null = explicit none).
 		parentServiceTier: options.session.getServiceTierByFamily
 			? (options.session.getServiceTierByFamily() ?? null)

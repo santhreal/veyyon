@@ -12,6 +12,7 @@ import type { HostNotifier } from "@veyyon/host";
 import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { ArgotSession } from "argot";
+import type { AsyncJobManager } from "../async";
 import type { EffortSource } from "../config/effort-resolver";
 import type { ModelRegistry } from "../config/model-registry";
 import type { PromptTemplate } from "../config/prompt-templates";
@@ -239,6 +240,16 @@ export interface CreateAgentSessionOptions {
 	parentAgentId?: string;
 	/** Inherited eval executor session id for agents sharing parent eval state. */
 	parentEvalSessionId?: string;
+	/**
+	 * The manager a child session registers its background work on.
+	 *
+	 * A child takes its parent's rather than the process-wide one, because a
+	 * process can hold several top-level sessions at once — one per window of a
+	 * desktop host — and each owns a manager that delivers completions into its
+	 * own conversation. Left undefined, a child falls back to the installed
+	 * singleton, which is the first top-level session's.
+	 */
+	asyncJobManager?: AsyncJobManager;
 
 	/** Session manager. Default: session stored under the configured agentDir sessions root */
 	sessionManager?: SessionManager;

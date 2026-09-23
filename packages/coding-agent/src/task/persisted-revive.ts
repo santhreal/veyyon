@@ -121,6 +121,9 @@ export function createPersistedAgentReviverFactory(ctx: PersistedAgentReviveCont
 				agentDisplayName: ref.displayName,
 				parentTaskPrefix: ref.id,
 				parentAgentId: ref.parentId,
+				// The revived agent registers its background work where it was
+				// revived from, not on whichever session opened first.
+				asyncJobManager: ctx.session.asyncJobManager,
 				taskDepth,
 				// Older files did not persist the resolved per-agent cap. Revive
 				// them as leaves rather than silently granting new spawn capacity.
