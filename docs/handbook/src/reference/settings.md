@@ -121,9 +121,10 @@ This prevents an accepted-looking profile edit from remaining hidden until the
 higher layer disappears.
 
 **Default Model** is intentionally profile-owned. If `--model` or another
-higher layer selects a different active model, the row shows both the saved
-profile model and the active override. Editing the row changes the model used
-by the next session; it does not replace the current session override.
+higher layer selects a different active model, the row shows the active model,
+and the footer description states its source and the saved profile model the
+row edits. Editing the row changes the model used by the next session; it does
+not replace the current session override.
 
 Within one open panel, each category remembers its last selected row. Switch to
 another sidebar category and back to resume where you left off. If a condition
