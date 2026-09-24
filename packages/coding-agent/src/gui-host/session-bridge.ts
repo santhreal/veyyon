@@ -67,7 +67,7 @@ export const UNAVAILABLE_CAPABILITY_REASONS: Record<"PendingEdits" | "Extensions
  * microphone as reachable on every fresh connection, since `stt.enabled` is
  * declared off. `Attach` re-states the list from the session's own store.
  */
-const SETTING_GATED_CAPABILITIES: readonly {
+export const SETTING_GATED_CAPABILITIES: readonly {
 	capability: Capability;
 	path: "goal.enabled" | "stt.enabled";
 	reason: string;
@@ -83,6 +83,20 @@ const SETTING_GATED_CAPABILITIES: readonly {
 		reason: "Speech to text is disabled in settings (stt.enabled)",
 	},
 ];
+
+/**
+ * The settings a gated capability is decided by, read off the declarations
+ * above rather than restated here, so a capability added to
+ * `SETTING_GATED_CAPABILITIES` is covered without a second list to update.
+ *
+ * A window connects before this process has loaded settings, so the snapshot
+ * it receives on connect answers from the schema defaults. Every later write
+ * to one of these paths changes what the gate should read, and the snapshot
+ * is sent again for it.
+ */
+export const CAPABILITY_GATING_SETTINGS: ReadonlySet<string> = new Set(
+	SETTING_GATED_CAPABILITIES.map(gate => gate.path),
+);
 
 /**
  * Construct the capabilities list covering every member of ALL_CAPABILITIES.

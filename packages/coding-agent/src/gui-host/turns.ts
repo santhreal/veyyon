@@ -32,6 +32,7 @@ import { publishModelsView } from "./models-view";
 import { enterPlanModeIfConfigured } from "./plan-approval";
 import type { PresentationLedger } from "./presentation";
 import { reportQueuedPrompts } from "./queued-prompts";
+import { buildCapabilitiesSnapshot } from "./session-bridge";
 import {
 	cancelStreamingFrame,
 	flushStreamingFrame,
@@ -243,6 +244,11 @@ async function initializeAgentSession(
 		await enterPlanModeIfConfigured(session, ledger, state);
 		if (state.closed) throw new Error("The GUI client disconnected");
 		state.agentSession = session;
+		// The connect-time snapshot was written from the schema defaults,
+		// because no session existed to read settings from. The session
+		// carries them, so a capability a setting withholds is stated again
+		// under the values that are now in effect.
+		writeFrame(socket, { Snapshot: { Capabilities: buildCapabilitiesSnapshot(session.settings) } });
 		attachTurnListeners(session, socket, state);
 		await attachGoalBridge(session, state, socket);
 		await attachLoopBridge(session, state, socket);

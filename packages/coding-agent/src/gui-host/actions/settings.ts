@@ -16,6 +16,7 @@ import {
 } from "../../config/settings-schema";
 import { getAvailableThemes, isLightTheme } from "../../theme/theme";
 import { actingSettings } from "../acting-settings";
+import { buildCapabilitiesSnapshot, CAPABILITY_GATING_SETTINGS } from "../session-bridge";
 import type { KeybindingView, SettingEntryView, ThemesView, ThemeView } from "../wire";
 import type { ActionHandler, ActionHandlersMap } from "./types";
 
@@ -197,6 +198,12 @@ const handleSetSetting: ActionHandler<SetSettingPayload | undefined> = async (ct
 		ctx.reply.snapshot({
 			Settings: dumpSettings(settings),
 		});
+		// A setting that withholds a capability moves the gate the window
+		// draws on every control that capability covers, and the window reads
+		// that from the capability snapshot rather than from the setting.
+		if (CAPABILITY_GATING_SETTINGS.has(payload.key)) {
+			ctx.reply.snapshot({ Capabilities: buildCapabilitiesSnapshot(settings) });
+		}
 		ctx.reply.success();
 	} catch (error) {
 		ctx.reply.failure({
@@ -241,6 +248,9 @@ const handleResetSetting: ActionHandler<ResetSettingPayload | undefined> = async
 		ctx.reply.snapshot({
 			Settings: dumpSettings(settings),
 		});
+		if (CAPABILITY_GATING_SETTINGS.has(payload.key)) {
+			ctx.reply.snapshot({ Capabilities: buildCapabilitiesSnapshot(settings) });
+		}
 		ctx.reply.success();
 	} catch (error) {
 		ctx.reply.failure({
