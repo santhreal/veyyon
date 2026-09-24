@@ -153,8 +153,9 @@ fn which_capabilities_gate_no_control_in_this_window_is_recorded() {
 	// (`Extensions`, `Mcp`), a bound key (`Keybindings`), a settings field
 	// (`Settings`), a roster row (`Agents`), an edit awaiting review
 	// (`PendingEdits`), a decision the session is waiting on (`Plans`,
-	// `Questions`), and the queue toggle, which this window gates through
-	// `SetQueueMode` and withholds for `BackgroundSubmission` separately.
+	// `Questions`), a row of an open swarm console (`Autoswarm`), and the
+	// queue toggle, which this window gates through `SetQueueMode` and
+	// withholds for `BackgroundSubmission` separately.
 	let mut unreached: Vec<String> = Vec::new();
 	for refused in Capability::ALL {
 		let (_, controls) = projected(refused);
@@ -169,6 +170,7 @@ fn which_capabilities_gate_no_control_in_this_window_is_recorded() {
 	assert_eq!(unreached, [
 		"Agents",
 		"Authentication",
+		"Autoswarm",
 		"BackgroundSubmission",
 		"Extensions",
 		"Keybindings",

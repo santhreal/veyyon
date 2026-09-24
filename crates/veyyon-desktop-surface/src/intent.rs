@@ -275,6 +275,25 @@ pub enum Intent {
 	/// Leaves the share this window joined. The window is what left it, so
 	/// the intent names no session, exactly as stopping a share names none.
 	LeaveShare,
+	/// Sets one row of the autoswarm console. The row takes one of the three
+	/// values by the control it draws; the other two are absent, and the host
+	/// refuses a value of the wrong kind rather than coercing it.
+	SetAutoswarmField {
+		field:  String,
+		text:   Option<String>,
+		number: Option<i64>,
+		on:     Option<bool>,
+	},
+	/// Runs one of the actions the console offers.
+	RunAutoswarmAction(veyyon_desktop_model::AutoswarmAction),
+	/// Saves the setup the console holds under the name its preset row states.
+	SaveAutoswarmPreset(String),
+	/// Removes the saved preset the console's rows currently equal.
+	DeleteAutoswarmPreset,
+	/// Closes the console, leaving the swarm exactly as it stands. The command
+	/// that opened it is waiting on this, so it is sent rather than dropped
+	/// with the overlay.
+	CloseAutoswarmConsole,
 	/// Opens the microphone, or closes it and writes what was said into the
 	/// composer. The microphone belongs to the window, so the intent names no
 	/// session, exactly as leaving a share names none.

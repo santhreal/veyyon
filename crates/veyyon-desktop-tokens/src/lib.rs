@@ -17,6 +17,7 @@ pub mod loader_scale;
 pub mod loader_surface;
 pub mod loader_surface_agents;
 pub mod loader_surface_attached_cards;
+pub mod loader_surface_autoswarm;
 pub mod loader_surface_breakpoints;
 pub mod loader_surface_composer;
 pub mod loader_surface_palette;
@@ -56,10 +57,10 @@ pub use schema::{
 	IconSizeStep, MonoSizeStep, RadiusStep, SpacingStep, StrokeStep, TypeSizeStep, TypeWeightStep,
 };
 pub use surface::{
-	AgentsSurfaceTokens, AttachedCardsSurfaceTokens, BreakpointConfig, BreakpointsSurfaceTokens,
-	ComposerSurfaceTokens, DrawerPlacement, PaletteSurfaceTokens, PanelsSurfaceTokens, QueueMode,
-	QueueSurfaceTokens, RightPanelMode, SettingsSurfaceTokens, ShareSurfaceTokens,
-	ShellSurfaceTokens, SurfaceTokens, TranscriptSurfaceTokens,
+	AgentsSurfaceTokens, AttachedCardsSurfaceTokens, AutoswarmSurfaceTokens, BreakpointConfig,
+	BreakpointsSurfaceTokens, ComposerSurfaceTokens, DrawerPlacement, PaletteSurfaceTokens,
+	PanelsSurfaceTokens, QueueMode, QueueSurfaceTokens, RightPanelMode, SettingsSurfaceTokens,
+	ShareSurfaceTokens, ShellSurfaceTokens, SurfaceTokens, TranscriptSurfaceTokens,
 };
 pub use watcher::{TokenReloadMessage, TokenWatcher};
 

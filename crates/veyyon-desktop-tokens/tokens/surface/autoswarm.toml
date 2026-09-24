@@ -1,0 +1,11 @@
+[meta]
+version = 1
+name = "surface_autoswarm"
+
+[layout]
+card_width_px = 920
+card_height_px = 620
+row_height_px = 40
+row_gap = "s2"
+padding = "s6"
+ledger_row_height_px = 52

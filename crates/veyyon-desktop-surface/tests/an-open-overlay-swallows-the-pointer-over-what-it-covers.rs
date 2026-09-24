@@ -58,6 +58,7 @@ fn every_overlay() -> Vec<(&'static str, Overlay)> {
 		),
 		("agents", Overlay::Agents(Box::new(veyyon_desktop_surface::AgentsState::new()))),
 		("share", Overlay::Share(Box::new(veyyon_desktop_surface::share::ShareState::new()))),
+		("autoswarm", Overlay::Autoswarm(Box::new(veyyon_desktop_surface::AutoswarmState::new()))),
 	];
 	for (_name, overlay) in &all {
 		match overlay {
@@ -65,7 +66,8 @@ fn every_overlay() -> Vec<(&'static str, Overlay)> {
 			| Overlay::Settings(_)
 			| Overlay::History(_)
 			| Overlay::Agents(_)
-			| Overlay::Share(_) => {},
+			| Overlay::Share(_)
+			| Overlay::Autoswarm(_) => {},
 		}
 	}
 	all

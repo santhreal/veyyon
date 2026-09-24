@@ -280,5 +280,44 @@ pub fn gated_controls(
 			(SurfaceId::TaskCancelButton(agent.id.clone()), HostActionKind::CancelTask),
 		]
 	}));
+	// The console's own controls, keyed by the rail row the card draws under,
+	// which is the key the card reads its gate back from. A host that declines
+	// the capability withdraws every row and every action of the card, and the
+	// close with them: a console the host cannot be told about is one it
+	// cannot be told to close either.
+	if let Some(row_id) = active_row {
+		let row = composer_row(Some(row_id));
+		let console = store
+			.persisted
+			.shell
+			.active_session
+			.as_ref()
+			.and_then(|session| domains.autoswarm.get(session));
+		controls.extend(console.into_iter().flat_map(|console| {
+			let fields = console.fields.iter().map(|field| {
+				(
+					SurfaceId::AutoswarmField(row.clone(), field.id.clone()),
+					HostActionKind::SetAutoswarmField,
+				)
+			});
+			let actions = console.actions.iter().map(|action| {
+				(
+					SurfaceId::AutoswarmActionButton(row.clone(), action.action.as_str().to_owned()),
+					HostActionKind::RunAutoswarmAction,
+				)
+			});
+			fields.chain(actions).chain([
+				(
+					SurfaceId::AutoswarmPresetSaveButton(row.clone()),
+					HostActionKind::SaveAutoswarmPreset,
+				),
+				(
+					SurfaceId::AutoswarmPresetDeleteButton(row.clone()),
+					HostActionKind::DeleteAutoswarmPreset,
+				),
+				(SurfaceId::AutoswarmCloseButton(row.clone()), HostActionKind::CloseAutoswarmConsole),
+			])
+		}));
+	}
 	controls
 }

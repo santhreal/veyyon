@@ -218,6 +218,19 @@ pub struct ShareSurfaceTokens {
 	pub padding:        f32,
 }
 
+/// Resolved autoswarm console surface layout tokens.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AutoswarmSurfaceTokens {
+	pub card_width_px:        f32,
+	pub card_height_px:       f32,
+	pub row_height_px:        f32,
+	pub row_gap:              f32,
+	pub padding:              f32,
+	/// A ledger row states a run over two lines, so it is taller than a setup
+	/// row.
+	pub ledger_row_height_px: f32,
+}
+
 /// How the right panel occupies the window at a given width (§5.7).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum RightPanelMode {
@@ -350,6 +363,7 @@ pub struct SurfaceTokens {
 	pub settings:       SettingsSurfaceTokens,
 	pub agents:         AgentsSurfaceTokens,
 	pub share:          ShareSurfaceTokens,
+	pub autoswarm:      AutoswarmSurfaceTokens,
 	pub breakpoints:    BreakpointsSurfaceTokens,
 	pub shell:          ShellSurfaceTokens,
 }

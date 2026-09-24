@@ -176,17 +176,21 @@ pub struct AutoswarmSwarmView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AutoswarmConsoleView {
 	/// The session the console belongs to.
-	pub session: String,
+	pub session:    String,
 	/// The swarm on this branch, or None before the first start.
-	pub swarm:   Option<AutoswarmSwarmView>,
+	pub swarm:      Option<AutoswarmSwarmView>,
 	/// The setup rows, in the order the console states them.
-	pub fields:  Vec<AutoswarmFieldView>,
+	pub fields:     Vec<AutoswarmFieldView>,
 	/// What the setup costs, stated under the rows.
-	pub notes:   Vec<AutoswarmNoteView>,
+	pub notes:      Vec<AutoswarmNoteView>,
 	/// The actions the swarm's state allows, primary first.
-	pub actions: Vec<AutoswarmActionView>,
+	pub actions:    Vec<AutoswarmActionView>,
 	/// The runs logged so far, newest first.
-	pub runs:    Vec<AutoswarmRunView>,
+	pub runs:       Vec<AutoswarmRunView>,
+	/// The id of the row a preset is named in, or None on a console that
+	/// saves none. The row is an ordinary text row of `fields`; this states
+	/// which one the save control beside it reads.
+	pub save_field: Option<String>,
 }
 
 impl AutoswarmConsoleView {
@@ -198,7 +202,7 @@ impl AutoswarmConsoleView {
 
 	/// True while the console takes no change: the ledger without its setup.
 	#[must_use]
-	pub fn is_read_only(&self) -> bool {
+	pub const fn is_read_only(&self) -> bool {
 		self.fields.is_empty() && self.actions.is_empty()
 	}
 }

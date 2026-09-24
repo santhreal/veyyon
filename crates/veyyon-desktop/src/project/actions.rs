@@ -5,6 +5,7 @@ use veyyon_desktop_surface::Intent;
 
 use self::{
 	accounts::account_actions,
+	autoswarm::autoswarm_actions,
 	routes::{navigate_actions, retry_control_actions},
 	sessions::{named, session_actions},
 	turns::turn_actions,
@@ -16,6 +17,7 @@ use super::{
 };
 
 mod accounts;
+mod autoswarm;
 mod routes;
 mod sessions;
 mod turns;
@@ -39,6 +41,9 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		return actions;
 	}
 	if let Some(actions) = turn_actions(intent, active.clone()) {
+		return actions;
+	}
+	if let Some(actions) = autoswarm_actions(intent, active.clone()) {
 		return actions;
 	}
 	match intent {

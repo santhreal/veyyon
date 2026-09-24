@@ -20,6 +20,7 @@ pub enum SurfaceRoute {
 	Settings,
 	Agents,
 	Share,
+	Autoswarm,
 	#[strum(disabled)]
 	Page(SettingsPage),
 }
@@ -33,6 +34,7 @@ impl SurfaceRoute {
 			Self::Settings => "Settings",
 			Self::Agents => "Agents",
 			Self::Share => "Share",
+			Self::Autoswarm => "Autoswarm",
 			Self::Page(SettingsPage::Providers) => "Account manager",
 			Self::Page(SettingsPage::Authentication) => "Sign in",
 			Self::Page(SettingsPage::Extensions) => "Extensions",
@@ -50,7 +52,9 @@ impl SurfaceRoute {
 	pub const fn parent(self) -> Option<Self> {
 		match self {
 			Self::Commands => None,
-			Self::Account | Self::Settings | Self::Agents | Self::Share => Some(Self::Commands),
+			Self::Account | Self::Settings | Self::Agents | Self::Share | Self::Autoswarm => {
+				Some(Self::Commands)
+			},
 			Self::Page(SettingsPage::Providers | SettingsPage::Authentication) => Some(Self::Account),
 			Self::Page(
 				SettingsPage::General
@@ -67,6 +71,7 @@ impl SurfaceRoute {
 		match self {
 			Self::Agents => &["/cockpit", "/hub"],
 			Self::Share => &["/collab", "/share"],
+			Self::Autoswarm => &["/autoresearch", "/swarm"],
 			Self::Page(SettingsPage::Providers) => &["/providers"],
 			Self::Page(SettingsPage::Authentication) => &["/login"],
 			Self::Page(SettingsPage::Extensions) => &["/extensions"],
@@ -85,6 +90,11 @@ impl SurfaceRoute {
 			let mut state = crate::share::ShareState::new();
 			state.route = Some(self);
 			return Overlay::Share(Box::new(state));
+		}
+		if self == Self::Autoswarm {
+			let mut state = crate::autoswarm::AutoswarmState::new();
+			state.route = Some(self);
+			return Overlay::Autoswarm(Box::new(state));
 		}
 		if let Self::Page(page) = self {
 			let mut state = SettingsState::new(page);

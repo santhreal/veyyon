@@ -121,6 +121,13 @@ pub enum SurfaceId {
 	ProfileRenameButton(String),
 	ProfileDeleteButton(String),
 	ProfileRefreshButton,
+
+	// Autoswarm console (§5.8)
+	AutoswarmField(SessionId, String),
+	AutoswarmActionButton(SessionId, String),
+	AutoswarmPresetSaveButton(SessionId),
+	AutoswarmPresetDeleteButton(SessionId),
+	AutoswarmCloseButton(SessionId),
 }
 
 impl SurfaceId {
@@ -229,7 +236,12 @@ impl SurfaceId {
 			| Self::ProfileCreateButton
 			| Self::ProfileRenameButton(_)
 			| Self::ProfileDeleteButton(_)
-			| Self::ProfileRefreshButton => false,
+			| Self::ProfileRefreshButton
+			| Self::AutoswarmField(..)
+			| Self::AutoswarmActionButton(..)
+			| Self::AutoswarmPresetSaveButton(_)
+			| Self::AutoswarmPresetDeleteButton(_)
+			| Self::AutoswarmCloseButton(_) => false,
 		}
 	}
 
@@ -339,7 +351,12 @@ impl SurfaceId {
 			| Self::ShareRefreshButton
 			| Self::ShareJoinButton
 			| Self::ShareLeaveButton
-			| Self::ShareLinkField => false,
+			| Self::ShareLinkField
+			| Self::AutoswarmField(..)
+			| Self::AutoswarmActionButton(..)
+			| Self::AutoswarmPresetSaveButton(_)
+			| Self::AutoswarmPresetDeleteButton(_)
+			| Self::AutoswarmCloseButton(_) => false,
 		}
 	}
 }

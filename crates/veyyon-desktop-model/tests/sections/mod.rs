@@ -91,12 +91,12 @@ pub fn autoswarm(session: &str, goal: Option<&str>) -> SnapshotSection {
 	SnapshotSection::AutoswarmConsole {
 		session: SessionId::from(session),
 		console: goal.map(|goal| AutoswarmConsoleView {
-			session: session.to_owned(),
-			swarm:   None,
-			fields:  Vec::new(),
-			notes:   Vec::new(),
-			actions: Vec::new(),
-			runs:    vec![AutoswarmRunView {
+			session:    session.to_owned(),
+			swarm:      None,
+			fields:     Vec::new(),
+			notes:      Vec::new(),
+			actions:    Vec::new(),
+			runs:       vec![AutoswarmRunView {
 				label:   "run 1".to_owned(),
 				arm:     None,
 				metric:  goal.to_owned(),
@@ -105,6 +105,7 @@ pub fn autoswarm(session: &str, goal: Option<&str>) -> SnapshotSection {
 				best:    true,
 				detail:  Vec::new(),
 			}],
+			save_field: None,
 		}),
 	}
 }

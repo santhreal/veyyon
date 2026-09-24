@@ -296,12 +296,14 @@ impl ShellView {
 				(action, editor)
 			})
 			.collect();
+		let autoswarm = self.autoswarm_row_editors(window, cx);
 		FieldSlots {
 			secret,
 			keybindings,
 			task: Some(task),
 			profile: Some(profile),
 			share_link: Some(share_link),
+			autoswarm,
 			query,
 		}
 	}
@@ -309,7 +311,7 @@ impl ShellView {
 	/// Replaces what an unfocused field draws with the value the host
 	/// reports, and leaves a focused or dirty one alone so a snapshot never eats
 	/// a keystroke or uncommitted draft.
-	fn adopt_reported_value(
+	pub(super) fn adopt_reported_value(
 		&self,
 		key: &FieldKey,
 		editor: &Entity<Editor>,

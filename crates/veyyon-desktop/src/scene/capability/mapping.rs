@@ -37,6 +37,7 @@ pub const fn action_of(capability: Capability) -> Option<HostActionKind> {
 		Capability::Dictation => Some(HostActionKind::ToggleDictation),
 		Capability::PromptHistory => Some(HostActionKind::SearchPromptHistory),
 		Capability::ForegroundCommand => Some(HostActionKind::BackgroundCommand),
+		Capability::Autoswarm => Some(HostActionKind::RunAutoswarmAction),
 		Capability::Questions
 		| Capability::Plans
 		| Capability::Extensions
@@ -92,5 +93,6 @@ pub fn target_surface_of(capability: Capability, _session: &SessionId) -> Surfac
 		Capability::Dictation => SurfaceId::ComposerDictateButton(row),
 		Capability::PromptHistory => SurfaceId::ComposerHistoryButton(row),
 		Capability::ForegroundCommand => SurfaceId::ComposerBackgroundButton(row),
+		Capability::Autoswarm => SurfaceId::AutoswarmActionButton(row, "start".to_string()),
 	}
 }

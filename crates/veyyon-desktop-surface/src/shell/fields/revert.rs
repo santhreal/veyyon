@@ -9,7 +9,7 @@ use serde_json::Value;
 use veyyon_gpui::Context;
 
 use super::FieldKey;
-use crate::{Intent, ShellView};
+use crate::{Intent, ShellView, overlay::Overlay};
 
 /// Drops what the field holds: a secret is discarded, and a setting's field
 /// returns to the value the host reports on the next frame.
@@ -55,6 +55,21 @@ pub(super) fn revert_field(view: &mut ShellView, key: &FieldKey, cx: &mut Contex
 						.find(|binding| &binding.action == action)
 				})
 				.map(|binding| binding.keys.join(", "))
+				.unwrap_or_default();
+			editor.update(cx, |editor, cx| editor.set_text(initial, cx));
+		},
+		// The console states what a row holds, so an escape returns the row to
+		// the value the host reports rather than emptying it: the typing is
+		// dropped, not the setup.
+		FieldKey::AutoswarmField(field) => {
+			let initial = view
+				.state
+				.overlay
+				.as_ref()
+				.and_then(Overlay::as_autoswarm)
+				.and_then(|state| state.console.as_ref())
+				.and_then(|console| console.fields.iter().find(|row| &row.id == field))
+				.and_then(|row| row.text.clone())
 				.unwrap_or_default();
 			editor.update(cx, |editor, cx| editor.set_text(initial, cx));
 		},

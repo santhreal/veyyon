@@ -7,8 +7,8 @@
 
 use veyyon_desktop_model::{Capability, CapabilityStatus, FileKind, Store};
 use veyyon_desktop_surface::{
-	AgentsState, Intent, Overlay, PaletteItem, PaletteItemKind, PaletteMode, PaletteState,
-	SettingsState, ShareState, ShellState,
+	AgentsState, AutoswarmState, Intent, Overlay, PaletteItem, PaletteItemKind, PaletteMode,
+	PaletteState, SettingsState, ShareState, ShellState,
 	cards::line_age,
 	navigation::SurfaceRoute,
 	palette::{HostCommands, PaletteMeta, commands::command_items, host_commands},
@@ -35,6 +35,7 @@ fn holds(state: &PaletteState, listed: &[PaletteItem]) -> bool {
 /// the frame's clock, which states how long ago a prompt was submitted.
 pub fn project_overlay(store: &Store, now_ms: u64, state: &mut ShellState) {
 	project_commands(store, state);
+	project_autoswarm_console(store, state);
 	match &mut state.overlay {
 		Some(Overlay::Settings(settings_state)) => {
 			project_settings_domains(store, settings_state);
@@ -44,7 +45,45 @@ pub fn project_overlay(store: &Store, now_ms: u64, state: &mut ShellState) {
 		},
 		Some(Overlay::Agents(agents_state)) => project_agents_domains(store, agents_state),
 		Some(Overlay::Share(share_state)) => project_share_domains(store, share_state),
-		Some(Overlay::History(_)) | None => {},
+		Some(Overlay::Autoswarm(_) | Overlay::History(_)) | None => {},
+	}
+}
+
+/// Opens the console the host states is open, and closes it when the host
+/// states none.
+///
+/// The console is the host's surface rather than the window's: the command
+/// that opened it is waiting on it, so a window that opened one of its own
+/// would draw a console no command is behind, and one that kept the overlay
+/// after the command returned would draw a setup nothing reads. A console
+/// that arrives while another overlay is open replaces it, because the
+/// operator's own command is what asked for it.
+fn project_autoswarm_console(store: &Store, state: &mut ShellState) {
+	let console = store
+		.persisted
+		.shell
+		.active_session
+		.as_ref()
+		.and_then(|session| store.domains.autoswarm.get(session));
+	match console {
+		Some(console) => {
+			if let Some(open) = state.overlay.as_mut().and_then(Overlay::as_autoswarm_mut) {
+				open.console = Some(console.clone());
+				return;
+			}
+			let mut opened = AutoswarmState::new();
+			opened.console = Some(console.clone());
+			state.overlay = Some(Overlay::Autoswarm(Box::new(opened)));
+		},
+		None => {
+			if state
+				.overlay
+				.as_ref()
+				.is_some_and(|overlay| overlay.as_autoswarm().is_some())
+			{
+				state.overlay = None;
+			}
+		},
 	}
 }
 

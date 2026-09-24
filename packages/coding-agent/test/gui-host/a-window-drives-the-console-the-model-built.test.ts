@@ -172,6 +172,23 @@ describe("a window drives the console the model built", () => {
 		expect(rowOf(view ?? null, "breadth").display).toBe("3 arms");
 	});
 
+	test("the console names the row a preset is saved under", () => {
+		const { socket, consoles } = wire();
+		const { model } = drive(situation());
+		const surface = new AutoswarmConsole(socket, () => SESSION);
+
+		void surface.open(runtimeWithRuns(), model);
+
+		const view = consoles.at(-1) ?? null;
+		// The save row is an ordinary text row; what `save_field` adds is
+		// which one it is, so the window draws the save control beside that
+		// row rather than matching on a name it hardcoded.
+		expect(view?.save_field).toBe("save");
+		expect(rowOf(view, "save").kind).toBe("Text");
+		expect(surface.setField("save", { text: "nightly" })).toBeNull();
+		expect(rowOf(consoles.at(-1) ?? null, "save").text).toBe("nightly");
+	});
+
 	test("a row set from the window is a row the host persists", () => {
 		const { socket, consoles } = wire();
 		const { model, applied } = drive(situation());
@@ -215,12 +232,13 @@ describe("a window drives the console the model built", () => {
 		const { model } = drive(situation());
 		const surface = new AutoswarmConsole(socket, () => SESSION);
 		void surface.open(runtimeWithRuns(), model);
-		const bounds = rowOf(consoles.at(-1) ?? null, "breadth");
+		const { min, max } = rowOf(consoles.at(-1) ?? null, "breadth");
+		if (min === null || max === null) throw new Error("the stepper row states no bounds");
 
 		expect(surface.setField("breadth", { number: 9999 })).toBeNull();
-		expect(model.breadth).toBe(bounds.max);
+		expect(model.breadth).toBe(max);
 		expect(surface.setField("breadth", { number: -4 })).toBeNull();
-		expect(model.breadth).toBe(bounds.min);
+		expect(model.breadth).toBe(min);
 	});
 
 	test("an action the model blocks is refused with the model's own reason", () => {

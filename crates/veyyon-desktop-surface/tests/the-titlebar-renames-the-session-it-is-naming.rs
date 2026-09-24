@@ -44,8 +44,9 @@ const TYPED: &str = "Reticulating splines";
 
 /// Which suite proves the commit of each field the window draws.
 ///
-/// An exhaustive match with no wildcard arm: a tenth `FieldKey` stops this
-/// compiling until its commit is proven somewhere and named here.
+/// An exhaustive match with no wildcard arm: a `FieldKey` added to the
+/// registry stops this compiling until its commit is proven somewhere and
+/// named here.
 const fn proven_by(key: &FieldKey) -> &'static str {
 	match key {
 		FieldKey::AuthSecret => "a-field-sends-what-the-operator-typed-into-it",
@@ -58,6 +59,7 @@ const fn proven_by(key: &FieldKey) -> &'static str {
 		FieldKey::SettingsQuery => "typing-in-the-settings-query-narrows-the-rows-the-page-draws",
 		FieldKey::ProfileName => "a-profile-control-sends-the-profile-the-page-names",
 		FieldKey::ShareLink => "a-link-typed-into-the-share-card-joins-the-room-it-names",
+		FieldKey::AutoswarmField(_) => "a-console-row-sends-the-setup-value-its-field-holds",
 	}
 }
 

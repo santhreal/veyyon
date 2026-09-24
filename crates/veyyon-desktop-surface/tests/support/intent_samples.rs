@@ -174,6 +174,16 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::RefreshShare,
 		Intent::JoinShare { session: None, link: "https://relay.example.com/r1".to_string() },
 		Intent::LeaveShare,
+		Intent::SetAutoswarmField {
+			field:  "goal".to_owned(),
+			text:   Some("lower p50 latency".to_owned()),
+			number: None,
+			on:     None,
+		},
+		Intent::RunAutoswarmAction(veyyon_desktop_model::AutoswarmAction::Start),
+		Intent::SaveAutoswarmPreset("balanced".to_owned()),
+		Intent::DeleteAutoswarmPreset,
+		Intent::CloseAutoswarmConsole,
 		Intent::RefreshProfiles,
 		Intent::CreateProfile { name: "review".to_owned(), copy: vec!["settings".to_owned()] },
 		Intent::RenameProfile {
@@ -323,6 +333,11 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::RefreshShare
 			| Intent::JoinShare { .. }
 			| Intent::LeaveShare
+			| Intent::SetAutoswarmField { .. }
+			| Intent::RunAutoswarmAction(_)
+			| Intent::SaveAutoswarmPreset(_)
+			| Intent::DeleteAutoswarmPreset
+			| Intent::CloseAutoswarmConsole
 			| Intent::RefreshProfiles
 			| Intent::CreateProfile { .. }
 			| Intent::RenameProfile { .. }

@@ -218,6 +218,29 @@ pub(super) fn overlay_layer(
 				))
 				.into_any_element()
 		},
+		Overlay::Autoswarm(state) => {
+			let width = surface
+				.autoswarm
+				.card_width_px
+				.min(f32::from(window.viewport_size().width - margin * 2.0));
+			let height = surface.autoswarm.card_height_px.min(max_available_height);
+			div()
+				.w(px(width))
+				.h(px(height))
+				.bg(tokens.color(veyyon_desktop_kit::ColorRole::Float))
+				.child(crate::autoswarm::autoswarm_surface(
+					state,
+					&veyyon_desktop_model::SessionId::from(view.state.current_id.to_string()),
+					&fields.autoswarm,
+					back,
+					Some(&dest_focus),
+					&view.state.controls,
+					&surface.autoswarm,
+					tokens,
+					cx,
+				))
+				.into_any_element()
+		},
 	};
 	let content = div()
 		.opacity(frame.opacity)

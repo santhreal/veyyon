@@ -4,6 +4,7 @@
 
 pub mod agents_dashboard;
 pub mod empty_prose;
+pub mod escape_walk;
 pub mod general_settings_list;
 pub mod intent_samples;
 pub mod overlay_pointer;

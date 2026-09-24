@@ -55,9 +55,12 @@ pub(super) fn navigate_actions(route: SurfaceRoute, active: Option<SessionId>) -
 		SurfaceRoute::Page(SettingsPage::ContextBreakdown) => {
 			active.map_or_else(Vec::new, |session| vec![HostAction::GetContextBreakdown { session }])
 		},
+		// The console is filled by the section the host pushes when the swarm
+		// command runs, so arriving on the route asks for nothing.
 		SurfaceRoute::Page(SettingsPage::Extensions | SettingsPage::Authentication)
 		| SurfaceRoute::Commands
 		| SurfaceRoute::Account
+		| SurfaceRoute::Autoswarm
 		| SurfaceRoute::Settings => Vec::new(),
 	}
 }

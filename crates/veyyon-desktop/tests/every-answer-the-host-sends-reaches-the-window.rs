@@ -133,6 +133,9 @@ const fn prepare_for(kind: SnapshotSectionKind) -> Prepare {
 		// The freeze is chrome above every session, so the attached window at
 		// rest is where it draws.
 		| SnapshotSectionKind::Goal
+		// A console the host opens opens the card that draws it, so the
+		// section arrives at a window at rest and puts the overlay up itself.
+		| SnapshotSectionKind::AutoswarmConsole
 		| SnapshotSectionKind::AgentPause => Prepare::Rest,
 	}
 }

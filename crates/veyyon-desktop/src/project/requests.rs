@@ -133,6 +133,17 @@ pub fn surface_for_action(
 		Intent::RefreshShare => SurfaceId::ShareRefreshButton,
 		Intent::JoinShare { .. } => SurfaceId::ShareJoinButton,
 		Intent::LeaveShare => SurfaceId::ShareLeaveButton,
+		// A console request is refused on the control that sent it: a row that
+		// took a value of the wrong kind, an action the swarm's state blocks,
+		// or the preset that cannot be removed. The console belongs to the
+		// open session, which is the row resolved above.
+		Intent::SetAutoswarmField { field, .. } => SurfaceId::AutoswarmField(row, field.clone()),
+		Intent::RunAutoswarmAction(action) => {
+			SurfaceId::AutoswarmActionButton(row, action.as_str().to_owned())
+		},
+		Intent::SaveAutoswarmPreset(_) => SurfaceId::AutoswarmPresetSaveButton(row),
+		Intent::DeleteAutoswarmPreset => SurfaceId::AutoswarmPresetDeleteButton(row),
+		Intent::CloseAutoswarmConsole => SurfaceId::AutoswarmCloseButton(row),
 		_ => SurfaceId::GlobalTitlebarLine,
 	}
 }

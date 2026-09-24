@@ -11,12 +11,14 @@ use std::path::PathBuf;
 use serde_json::Value;
 use veyyon_desktop::{AssetPaths, StartupBundle, load_startup_bundle};
 use veyyon_desktop_model::{
-	AuthFlowState, AuthFlowView, KeybindingView, SettingEntry, SettingKind, SettingsView,
+	AuthFlowState, AuthFlowView, AutoswarmConsoleView, AutoswarmFieldKind, AutoswarmFieldView,
+	KeybindingView, SettingEntry, SettingKind, SettingsView,
 };
 use veyyon_desktop_scene::{Appearance, HeadlessSession, RenderOptions, headless_context};
 use veyyon_desktop_surface::{
-	ConnectionPhase, DrawerContent, DrawerTab, Intent, Keymap, Overlay, ProcessRow, SettingsPage,
-	SettingsState, ShareState, ShellState, ShellView, ThemeLibrary, fixture, install_appearances,
+	AutoswarmState, ConnectionPhase, DrawerContent, DrawerTab, Intent, Keymap, Overlay, ProcessRow,
+	SettingsPage, SettingsState, ShareState, ShellState, ShellView, ThemeLibrary, fixture,
+	install_appearances,
 };
 use veyyon_desktop_tokens::DEFAULT_APPEARANCE;
 use veyyon_gpui::{App, AppContext, Window};
@@ -127,6 +129,43 @@ pub fn share_card_open() -> ShellState {
 		connection: ConnectionPhase::Attached,
 		overlay: Some(Overlay::Share(Box::new(ShareState::new()))),
 		..fixture::populated()
+	}
+}
+
+/// The row a preset is named in on the seeded console.
+pub const SAVE_ROW: &str = "save";
+
+/// A shell with the swarm console open on a setup whose save row is empty,
+/// which is the state a preset is named from.
+pub fn autoswarm_console_open() -> ShellState {
+	let shell = fixture::populated();
+	let mut state = AutoswarmState::new();
+	state.console = Some(AutoswarmConsoleView {
+		session:    shell.current_id.to_string(),
+		swarm:      None,
+		fields:     vec![AutoswarmFieldView {
+			id:          SAVE_ROW.to_owned(),
+			kind:        AutoswarmFieldKind::Text,
+			label:       "Save as".to_owned(),
+			hint:        "The name this setup is saved under".to_owned(),
+			display:     String::new(),
+			text:        Some(String::new()),
+			placeholder: Some("preset name".to_owned()),
+			number:      None,
+			min:         None,
+			max:         None,
+			on:          None,
+			options:     Vec::new(),
+		}],
+		notes:      Vec::new(),
+		actions:    Vec::new(),
+		runs:       Vec::new(),
+		save_field: Some(SAVE_ROW.to_owned()),
+	});
+	ShellState {
+		connection: ConnectionPhase::Attached,
+		overlay: Some(Overlay::Autoswarm(Box::new(state))),
+		..shell
 	}
 }
 

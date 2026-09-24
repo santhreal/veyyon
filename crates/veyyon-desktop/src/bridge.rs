@@ -25,7 +25,7 @@ pub enum ActionClassification {
 	Mutation,
 }
 
-/// Classifies any of the 95 [`HostActionKind`] variants into
+/// Classifies any of the 100 [`HostActionKind`] variants into
 /// [`ActionClassification`].
 ///
 /// Uses an exhaustive match without wildcard `_` to guarantee that new actions
@@ -130,7 +130,12 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::DeleteProfile
 		| HostActionKind::ToggleDictation
 		| HostActionKind::CancelDictation
-		| HostActionKind::RunCommand => ActionClassification::Mutation,
+		| HostActionKind::RunCommand
+		| HostActionKind::SetAutoswarmField
+		| HostActionKind::RunAutoswarmAction
+		| HostActionKind::SaveAutoswarmPreset
+		| HostActionKind::DeleteAutoswarmPreset
+		| HostActionKind::CloseAutoswarmConsole => ActionClassification::Mutation,
 	}
 }
 

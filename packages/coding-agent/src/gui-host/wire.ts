@@ -471,6 +471,12 @@ export interface AutoswarmConsoleView {
 	notes: AutoswarmNoteView[];
 	actions: AutoswarmActionView[];
 	runs: AutoswarmRunView[];
+	/**
+	 * The id of the row a preset is named in, or null on a console that saves
+	 * none. The row is an ordinary text row of `fields`; this states which one
+	 * the save control beside it reads.
+	 */
+	save_field: string | null;
 }
 
 /**

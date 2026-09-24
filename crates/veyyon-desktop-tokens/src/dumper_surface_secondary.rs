@@ -255,6 +255,33 @@ padding = "{}"
 	write_file(path, &out)
 }
 
+/// Writes surface/autoswarm.toml.
+pub fn dump_autoswarm(tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
+	let a = &tokens.surface.autoswarm;
+	let s = &tokens.scale;
+	let out = format!(
+		r#"[meta]
+version = 1
+name = "surface_autoswarm"
+
+[layout]
+card_width_px = {}
+card_height_px = {}
+row_height_px = {}
+row_gap = "{}"
+padding = "{}"
+ledger_row_height_px = {}
+"#,
+		a.card_width_px as i64,
+		a.card_height_px as i64,
+		a.row_height_px as i64,
+		step_spacing(s, a.row_gap),
+		step_spacing(s, a.padding),
+		a.ledger_row_height_px as i64,
+	);
+	write_file(path, &out)
+}
+
 /// Writes surface/breakpoints.toml.
 pub fn dump_breakpoints(tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
 	let bp = &tokens.surface.breakpoints;

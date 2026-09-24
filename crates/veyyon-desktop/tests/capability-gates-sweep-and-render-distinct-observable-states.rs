@@ -108,7 +108,7 @@ fn test_action_of_exhaustively_matches_model_mapping() {
 		],
 		"exact set of actionless capabilities"
 	);
-	assert_eq!(Capability::ALL.len(), 36);
+	assert_eq!(Capability::ALL.len(), 37);
 }
 
 #[test]

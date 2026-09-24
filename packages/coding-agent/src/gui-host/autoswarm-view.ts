@@ -10,7 +10,13 @@
  * `state` helpers the terminal's screen composes it from.
  */
 import type { FormField } from "@veyyon/tui";
-import { ACTION_LABELS, ACTION_VERBS, type ConsoleAction, type LoopConsoleModel } from "../autoresearch/console";
+import {
+	ACTION_LABELS,
+	ACTION_VERBS,
+	type ConsoleAction,
+	type LoopConsoleModel,
+	SAVE_FIELD,
+} from "../autoresearch/console";
 import { formatElapsed, formatPercentChange } from "../autoresearch/helpers";
 import { loadPresets } from "../autoresearch/presets";
 import {
@@ -227,5 +233,8 @@ export function autoswarmConsoleView(
 		notes,
 		actions: model === null ? [] : actionViews(model),
 		runs: runtime === null ? [] : runViews(runtime),
+		// The console's own save row, named so the window draws its save
+		// control beside that row rather than guessing which one it is.
+		save_field: rows.some(row => row.id === SAVE_FIELD) ? SAVE_FIELD : null,
 	};
 }

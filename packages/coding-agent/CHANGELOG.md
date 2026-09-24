@@ -30,7 +30,7 @@
 
 ### Added
 
-- `/autoresearch` opens its console in a desktop window: the setup rows, the cost notes, the actions the swarm's state allows and the run ledger are projected from the same console model the terminal draws, so a run logged in one is stated the same way in the other.
+- `/autoresearch` opens its console in a desktop window: the setup rows, the cost notes, the actions the swarm's state allows and the run ledger are projected from the same console model the terminal draws, so a run logged in one is stated the same way in the other. The setup is saved as a preset from the row it is named in, and a saved preset is deleted from the row that offers it.
 - A desktop window moves the command its turn waits on to the background from the composer control, `/background`, the Turn menu or `primary-shift-b`, and the control is drawn only while a command waits; a bash wait is registered per session, so one window's control never releases another window's command.
 - A desktop window recalls a prompt submitted earlier from the composer's history control, `/prompts` or `primary-r`, listing the most recent prompts before anything is typed, filtering them as the query is typed, and restoring the chosen one into the composer as an unsent draft.
 - A desktop window dictates into its composer from the Edit menu, the microphone control or `primary-shift-space`, showing the phrase in flight beside the words already heard, trimming a spoken submit phrase and sending the turn; the control states `stt.enabled` while speech to text is off.

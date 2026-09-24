@@ -144,6 +144,15 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		| Intent::RefreshShare
 		| Intent::JoinShare { .. }
 		| Intent::LeaveShare => {},
+		// The console is the host's: every row, note and action arrives from
+		// it, so a change is sent and the frame that answers it is what
+		// redraws the row. The console closes on the host's word too, which
+		// is the null console it publishes when the command returns.
+		Intent::SetAutoswarmField { .. }
+		| Intent::RunAutoswarmAction(_)
+		| Intent::SaveAutoswarmPreset(_)
+		| Intent::DeleteAutoswarmPreset
+		| Intent::CloseAutoswarmConsole => {},
 		Intent::SelectTheme { id, dark } => settings::select_theme(state, id, *dark),
 		// The pointer resting on an appearance row draws that appearance, and
 		// leaving the row draws the choice again. Only the name is recorded

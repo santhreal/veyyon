@@ -254,6 +254,37 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 			},
 		],
 		IntentDiscriminants::LeaveShare => vec![Intent::LeaveShare],
+		// Each kind of row a console draws, so a change of the wrong shape is
+		// one the table states rather than one nothing sampled.
+		IntentDiscriminants::SetAutoswarmField => vec![
+			Intent::SetAutoswarmField {
+				field:  "goal".to_string(),
+				text:   Some("lower p50 latency".to_string()),
+				number: None,
+				on:     None,
+			},
+			Intent::SetAutoswarmField {
+				field:  "arms".to_string(),
+				text:   None,
+				number: Some(4),
+				on:     None,
+			},
+			Intent::SetAutoswarmField {
+				field:  "worktrees".to_string(),
+				text:   None,
+				number: None,
+				on:     Some(true),
+			},
+		],
+		IntentDiscriminants::RunAutoswarmAction => veyyon_desktop_model::AutoswarmAction::ALL
+			.iter()
+			.map(|action| Intent::RunAutoswarmAction(*action))
+			.collect(),
+		IntentDiscriminants::SaveAutoswarmPreset => {
+			vec![Intent::SaveAutoswarmPreset("balanced".to_string())]
+		},
+		IntentDiscriminants::DeleteAutoswarmPreset => vec![Intent::DeleteAutoswarmPreset],
+		IntentDiscriminants::CloseAutoswarmConsole => vec![Intent::CloseAutoswarmConsole],
 		IntentDiscriminants::RefreshProfiles => vec![Intent::RefreshProfiles],
 		// Both ends of what a create copies: every item the page listed, and
 		// none of them, which is the blank profile.

@@ -12,6 +12,7 @@
 
 pub mod agents;
 pub mod attach;
+pub mod autoswarm;
 pub mod cards;
 pub mod composer;
 pub mod controls;
@@ -42,6 +43,7 @@ pub mod tokens;
 pub mod tool_view;
 pub mod transcript;
 pub use agents::{AgentViewTab, AgentsState};
+pub use autoswarm::AutoswarmState;
 pub use composer::{
 	Attachment, AttachmentSource, MediaKind, MediaType, ModelChoice, Payload, PrimaryAction,
 	QueueMode, ThinkingLevel, TurnPhase,

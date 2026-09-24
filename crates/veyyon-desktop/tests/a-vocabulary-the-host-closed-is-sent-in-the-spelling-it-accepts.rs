@@ -33,15 +33,15 @@ use strum::IntoEnumIterator;
 use support::{intent_samples::every_sample_intent, session};
 use veyyon_desktop::{SessionIndex, actions_for};
 use veyyon_desktop_model::{
-	Capability, CapabilityStatus, ChangeScope, GoalControl, HostAction, QueueMode, QueuePartition,
-	SessionId, SettableMode, Store, SupervisorSignal,
+	AutoswarmAction, Capability, CapabilityStatus, ChangeScope, GoalControl, HostAction, QueueMode,
+	QueuePartition, SessionId, SettableMode, Store, SupervisorSignal,
 };
 use veyyon_desktop_surface::Intent;
 
 /// Every string an action carries that is an operator's or the host's own
 /// value rather than a vocabulary: text, identifiers, paths and queries. A new
 /// entry here is a decision that the value is open.
-const OPEN_STRINGS: [&str; 77] = [
+const OPEN_STRINGS: [&str; 85] = [
 	"AbortTurn.session",
 	"BackgroundCommand.session",
 	"BranchSession.session",
@@ -50,12 +50,17 @@ const OPEN_STRINGS: [&str; 77] = [
 	"CancelTool.session",
 	"CancelTool.tool_call_id",
 	"ClearOutput.session",
+	// A console belongs to the session it was opened in, its rows are named by
+	// the console model that declared them, and a preset is named by whoever
+	// saves it.
+	"CloseAutoswarmConsole.session",
 	"CompactSession.session",
 	// A profile is named by whoever creates it, and the items a create copies
 	// are the keys the host itself listed for the page to draw.
 	"CreateProfile.copy[]",
 	"CreateProfile.name",
 	"ControlGoal.session",
+	"DeleteAutoswarmPreset.session",
 	"DeleteSession.session",
 	"DeleteProfile.name",
 	"DequeueQueuedPrompt.session",
@@ -95,14 +100,20 @@ const OPEN_STRINGS: [&str; 77] = [
 	"RetryTurn.session",
 	"ReviewPlan.session",
 	"ReviveAgent.agent_id",
+	"RunAutoswarmAction.session",
 	"RunCommand.session",
 	"RunCommand.text",
+	"SaveAutoswarmPreset.name",
+	"SaveAutoswarmPreset.session",
 	"SearchContent.query",
 	"SearchFiles.query",
 	"SearchPromptHistory.query",
 	"SearchSessions.query",
 	"SelectModel.model",
 	"SelectModel.provider",
+	"SetAutoswarmField.field",
+	"SetAutoswarmField.session",
+	"SetAutoswarmField.text",
 	"SetKeybinding.action",
 	"SetKeybinding.keys[]",
 	"SetMcpEnabled.server",
@@ -129,9 +140,10 @@ const OPEN_STRINGS: [&str; 77] = [
 /// of, and that the window carries as the type it decodes the same set with.
 /// A member here is round-tripped through that type below; a member added
 /// without one leaves the sweep proving nothing about it.
-const VOCABULARY_STRINGS: [&str; 5] = [
+const VOCABULARY_STRINGS: [&str; 6] = [
 	"ControlGoal.op",
 	"ProcessSignal.signal",
+	"RunAutoswarmAction.action",
 	"SelectChangeScope.scope",
 	"SetQueueMode.mode",
 	"SetSessionMode.mode",
@@ -285,6 +297,19 @@ fn every_scope_and_every_mode_reaches_the_host_as_the_vocabulary_it_came_from() 
 		};
 		assert_eq!(sent, Value::String(expected.to_owned()));
 		proven.insert("ControlGoal.op".to_owned());
+	}
+	for action in AutoswarmAction::ALL {
+		let (mut store, index) = seeded();
+		let intent = Intent::RunAutoswarmAction(action);
+		let actions = actions_for(&intent, &index, &mut store);
+		let sent = payload_of(&actions, "RunAutoswarmAction")["action"].clone();
+		let decoded: AutoswarmAction = serde_json::from_value(sent.clone())
+			.unwrap_or_else(|_| panic!("the host's AutoswarmAction cannot read {sent}"));
+		assert_eq!(decoded, action, "the action sent for {action:?} decodes as {decoded:?}");
+		// The names the console model's own actions carry, which the host
+		// matches on before it reaches the loop.
+		assert_eq!(sent, Value::String(action.as_str().to_owned()));
+		proven.insert("RunAutoswarmAction.action".to_owned());
 	}
 
 	// A vocabulary recorded and never round-tripped here is a claim with no

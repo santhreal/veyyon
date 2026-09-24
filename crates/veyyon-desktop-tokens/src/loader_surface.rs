@@ -6,6 +6,7 @@ use crate::{
 	error::TokenError,
 	loader::find_key_line_col,
 	loader_surface_agents::load_agents,
+	loader_surface_autoswarm::load_autoswarm,
 	loader_surface_primary::{load_attached_cards, load_composer, load_queue, load_transcript},
 	loader_surface_secondary::{load_breakpoints, load_palette, load_panels, load_settings},
 	loader_surface_share::load_share,
@@ -269,7 +270,7 @@ pub fn resolve_stroke(
 	}
 }
 
-/// Loads all 10 surface files from `dir/surface/*.toml`.
+/// Loads all 12 surface files from `dir/surface/*.toml`.
 pub fn load_surfaces(dir: &Path, scale: &ScaleTokens) -> Result<SurfaceTokens, TokenError> {
 	let surface_dir = dir.join("surface");
 	Ok(SurfaceTokens {
@@ -282,6 +283,7 @@ pub fn load_surfaces(dir: &Path, scale: &ScaleTokens) -> Result<SurfaceTokens, T
 		settings:       load_settings(&surface_dir.join("settings.toml"), scale)?,
 		agents:         load_agents(&surface_dir.join("agents.toml"), scale)?,
 		share:          load_share(&surface_dir.join("share.toml"), scale)?,
+		autoswarm:      load_autoswarm(&surface_dir.join("autoswarm.toml"), scale)?,
 		breakpoints:    load_breakpoints(&surface_dir.join("breakpoints.toml"))?,
 		shell:          load_shell(&surface_dir.join("shell.toml"), scale)?,
 	})

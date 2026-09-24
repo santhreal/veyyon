@@ -10,6 +10,7 @@
 //! through [`ShellView::field_editor`], which creates the editor entity once,
 //! subscribes to it, and hands back the same handle on every later frame.
 
+mod autoswarm;
 mod editors;
 mod parse;
 mod profile;
@@ -39,6 +40,8 @@ pub enum FieldKey {
 	SettingsQuery,
 	ProfileName,
 	ShareLink,
+	/// One text row of the autoswarm console, named by the row's own id.
+	AutoswarmField(String),
 }
 
 /// What a field's submit sends.
@@ -55,6 +58,8 @@ enum Commit {
 	SettingsQuery,
 	ProfileCreate,
 	ShareJoin,
+	AutoswarmText,
+	AutoswarmPreset,
 }
 /// A retained field: its editor, and what a submit of it sends.
 pub(super) struct Field {
@@ -91,6 +96,9 @@ pub struct FieldSlots {
 	pub profile:     Option<Entity<Editor>>,
 	/// The editor for the link to join another share.
 	pub share_link:  Option<Entity<Editor>>,
+	/// The editor for each text row of the open autoswarm console, paired
+	/// with the row id a change names.
+	pub autoswarm:   Vec<(String, Entity<Editor>)>,
 	/// The editor for the query the General page's rows are narrowed by.
 	/// Every frame that can draw the page retains one, so the field it draws
 	/// is typeable rather than a picture of the query it holds.
@@ -106,6 +114,17 @@ impl FieldSlots {
 			.keybindings
 			.iter()
 			.find(|(name, _)| name == action)
+			.map(|(_, editor)| editor.clone())
+	}
+
+	/// The editor for the console row `field`, and `None` where no open
+	/// console draws one.
+	#[must_use]
+	pub fn autoswarm(&self, field: &str) -> Option<Entity<Editor>> {
+		self
+			.autoswarm
+			.iter()
+			.find(|(id, _)| id == field)
 			.map(|(_, editor)| editor.clone())
 	}
 }
@@ -308,6 +327,30 @@ impl ShellView {
 			},
 			(Commit::ShareJoin, FieldKey::ShareLink) => {
 				share::commit_join(self, &editor, cx);
+			},
+			// The console holds what a row is worth, so a text row sends its
+			// text and nothing else: the host formats the display the row is
+			// drawn from and sends it back on the next frame.
+			(Commit::AutoswarmText, FieldKey::AutoswarmField(field)) => {
+				let text = editor.read(cx).text().to_owned();
+				let intent = crate::autoswarm::change::text_change(field, &text);
+				self.clear_refusal();
+				self.dispatch(intent, cx);
+			},
+			// The save row names a preset rather than holding a value, so a
+			// submit of it saves the setup under the typed name. An empty one
+			// is refused where it was typed: the host answers it with
+			// `INVALID_ARGUMENTS`, so sending it would spend a round trip to
+			// learn what the row already states.
+			(Commit::AutoswarmPreset, FieldKey::AutoswarmField(_)) => {
+				let name = editor.read(cx).text().trim().to_owned();
+				if name.is_empty() {
+					self.refuse_field(cx, "A preset needs a name to save the setup under");
+					return;
+				}
+				editor.update(cx, |editor, cx| editor.set_text(String::new(), cx));
+				self.clear_refusal();
+				self.dispatch(Intent::SaveAutoswarmPreset(name), cx);
 			},
 			// A query is already applied on the frame each character landed
 			// on, so a submit of it sends nothing and leaves the page as the

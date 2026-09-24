@@ -14,8 +14,9 @@ use veyyon_desktop_surface::{
 };
 
 use super::fields::{
-	SETTING_KEY, general_page_holds, keybindings_page_binds, settings_page_open, share_card_open,
-	supervisor_tab_open, supervisor_tab_running, transport_asks_for_a_secret,
+	SAVE_ROW, SETTING_KEY, autoswarm_console_open, general_page_holds, keybindings_page_binds,
+	settings_page_open, share_card_open, supervisor_tab_open, supervisor_tab_running,
+	transport_asks_for_a_secret,
 };
 
 /// The keymap action a seeded Keybindings page reports a binding for.
@@ -45,6 +46,8 @@ pub enum KeyShape {
 	ProfileName,
 	/// [`FieldKey::ShareLink`].
 	ShareLink,
+	/// [`FieldKey::AutoswarmField`].
+	AutoswarmField,
 }
 
 /// The exhaustive match that makes a new `FieldKey` fail to compile here until
@@ -61,6 +64,7 @@ pub const fn key_shape(key: &FieldKey) -> KeyShape {
 		FieldKey::SettingsQuery => KeyShape::SettingsQuery,
 		FieldKey::ProfileName => KeyShape::ProfileName,
 		FieldKey::ShareLink => KeyShape::ShareLink,
+		FieldKey::AutoswarmField(_) => KeyShape::AutoswarmField,
 	}
 }
 
@@ -173,6 +177,16 @@ pub fn cases() -> Vec<Case> {
 			text:  "",
 			says:  "A link is required to join a share",
 			takes: "https://relay.example/s/abc123",
+		},
+		Case {
+			key:   FieldKey::AutoswarmField(SAVE_ROW.to_owned()),
+			// The save row is the one console row a value is refused on: it
+			// names a preset rather than holding a setup value, and every
+			// other row is answered by the host that owns the setup.
+			state: autoswarm_console_open(),
+			text:  "   ",
+			says:  "A preset needs a name to save the setup under",
+			takes: "tuned",
 		},
 	]
 }

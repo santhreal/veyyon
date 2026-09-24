@@ -1,5 +1,6 @@
 //! Capability gate scene construction (§1.2, §4.3, §9.5).
 
+pub mod console;
 pub mod mapping;
 pub mod sheet;
 pub mod surface;

@@ -747,7 +747,22 @@
 					"best": "41 ms",
 					"running": null
 				},
-				"fields": [],
+				"fields": [
+					{
+						"id": "save",
+						"kind": "Text",
+						"label": "Save as",
+						"hint": "The name this setup is saved under",
+						"display": "",
+						"text": "",
+						"placeholder": "preset name",
+						"number": null,
+						"min": null,
+						"max": null,
+						"on": null,
+						"options": []
+					}
+				],
 				"notes": [],
 				"actions": [],
 				"runs": [
@@ -760,7 +775,8 @@
 						"best": true,
 						"detail": []
 					}
-				]
+				],
+				"save_field": "save"
 			}
 		}
 	}
