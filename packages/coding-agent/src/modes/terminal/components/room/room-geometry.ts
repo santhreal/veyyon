@@ -79,6 +79,10 @@ const STRENGTH_BY_STEP = [1, 0.62, 0.34, 0] as const;
 const GRID_REST_STRENGTH = 0.8;
 /** How much an all-windows window shrinks around its centre as the chosen one zooms to fill the screen. */
 const GRID_RECEDE_SCALE = 0.9;
+/** The narrowest an all-windows window reads: below it a line of text is a word. */
+const MIN_GRID_WIDTH = 14;
+/** The shortest an all-windows window is drawn: its frame and one row of text. */
+const MIN_GRID_HEIGHT = 3;
 
 function lerp(a: number, b: number, t: number): number {
 	return a + (b - a) * t;
@@ -215,7 +219,11 @@ function fullScreen(
 	};
 }
 
-/** Columns and rows of the all-windows grid for `count` windows. */
+/**
+ * Columns and rows of the all-windows grid for `count` windows. When no shape
+ * fits every row on the card area at a readable size, the grid takes as many
+ * readable columns as the width holds and its rows page (see {@link gridRect}).
+ */
 export function roomGridShape(viewport: RoomViewport, count: number): { columns: number; rows: number } {
 	if (count <= 0) return { columns: 1, rows: 1 };
 	const area = roomCardArea(viewport);
@@ -229,29 +237,47 @@ export function roomGridShape(viewport: RoomViewport, count: number): { columns:
 		const rows = Math.ceil(count / columns);
 		const w = (viewport.width - 2 * WINDOW_GAP - (columns - 1) * WINDOW_GAP) / columns;
 		const h = (area.height - (rows - 1)) / rows;
-		if (w < 14 || h < 5) continue;
+		if (w < MIN_GRID_WIDTH || h < 5) continue;
 		const score = Math.abs(Math.log(w / h / target));
 		if (score < best.score) best = { columns, rows, score };
 	}
 	if (best.score === Number.POSITIVE_INFINITY) {
-		// Nothing fits the minimums: one column, as many rows as fit.
-		return { columns: 1, rows: count };
+		const fit = Math.floor((viewport.width - WINDOW_GAP) / (MIN_GRID_WIDTH + WINDOW_GAP));
+		const columns = clamp(fit, 1, count);
+		return { columns, rows: Math.ceil(count / columns) };
 	}
 	return { columns: best.columns, rows: best.rows };
 }
 
-/** All-windows rectangle of `slot`. The last row is centred when it is short. */
-function gridRect(viewport: RoomViewport, slot: number, count: number): RoomRect {
+/**
+ * All-windows rectangle of `slot`. The last row is centred when it is short.
+ * When the rows do not all fit on the card area at the shortest window, the
+ * page of rows around `selected`'s row is shown and a window off that page is
+ * placed beside it with `onPage` false, so the selected window is always drawn
+ * whole.
+ */
+function gridRect(
+	viewport: RoomViewport,
+	slot: number,
+	count: number,
+	selected: number,
+): { rect: RoomRect; onPage: boolean } {
 	const area = roomCardArea(viewport);
 	const { columns, rows } = roomGridShape(viewport, count);
+	const shown = clamp(Math.floor((area.height + 1) / (MIN_GRID_HEIGHT + 1)), 1, rows);
 	const w = (viewport.width - 2 * WINDOW_GAP - (columns - 1) * WINDOW_GAP) / columns;
-	const h = Math.max(3, (area.height - (rows - 1)) / rows);
+	const h = (area.height - (shown - 1)) / shown;
+	const selectedRow = Math.floor(clamp(selected, 0, count - 1) / columns);
+	const firstRow = clamp(selectedRow - Math.floor((shown - 1) / 2), 0, rows - shown);
 	const row = Math.floor(slot / columns);
 	const column = slot % columns;
 	const inRow = row === rows - 1 ? count - row * columns : columns;
 	const rowWidth = inRow * w + (inRow - 1) * WINDOW_GAP;
 	const left = (viewport.width - rowWidth) / 2;
-	return { x: left + column * (w + WINDOW_GAP), y: area.top + row * (h + 1), w, h };
+	return {
+		rect: { x: left + column * (w + WINDOW_GAP), y: area.top + (row - firstRow) * (h + 1), w, h },
+		onPage: row >= firstRow && row < firstRow + shown,
+	};
 }
 
 /** Scale a rectangle around its own centre. */
@@ -292,11 +318,13 @@ export function placeRoomWindows(viewport: RoomViewport, state: RoomFrameState):
 		const sideStrength = lerp(side.strength, sideFull.strength, zoom);
 
 		const chosen = slot === state.selected;
-		const grid = gridRect(viewport, slot, state.count);
+		const { rect: grid, onPage } = gridRect(viewport, slot, state.count, state.selected);
 		const gridFull: RoomRect = chosen
 			? { x: 0, y: 0, w: viewport.width, h: viewport.height }
 			: scaleAround(grid, GRID_RECEDE_SCALE);
-		const gridRestStrength = chosen ? 1 : GRID_REST_STRENGTH;
+		// A window off the grid's page fades out as the grid comes in, rather than
+		// drawing over the chrome above or below the card area.
+		const gridRestStrength = chosen ? 1 : onPage ? GRID_REST_STRENGTH : 0;
 		const gridRectNow = lerpRect(grid, gridFull, zoom);
 		const gridStrength = lerp(gridRestStrength, chosen ? 1 : 0, zoom);
 
