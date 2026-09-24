@@ -110,6 +110,9 @@ pub fn project_composer(store: &Store, session: Option<&SessionId>, composer: &m
 	// rather than drawing a mode nobody is in.
 	composer.mode = session.and_then(|id| store.modes.get(id).cloned());
 	composer.goal = session.and_then(|id| store.goals.get(id)).cloned();
+	// The microphone is the window's rather than a session's, so every row
+	// draws the one dictation this window is running.
+	composer.dictation.clone_from(&store.domains.dictation);
 
 	composer.queue_mode = clamp_queue_mode(store, composer.queue_mode);
 }

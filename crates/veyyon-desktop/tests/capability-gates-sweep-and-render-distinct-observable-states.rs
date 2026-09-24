@@ -93,7 +93,9 @@ fn test_action_of_exhaustively_matches_model_mapping() {
 		}
 	}
 
-	// Assert exactly 5 actionless capabilities and 28 gated capabilities
+	// The actionless set is pinned by exact equality and the union by length, so
+	// a capability added without a gate decision turns this red. The gated count
+	// is the complement of those two and is not restated here.
 	let actionless: Vec<Capability> = Capability::iter().filter(|c| !gated.contains(c)).collect();
 	assert_eq!(
 		actionless,
@@ -106,8 +108,7 @@ fn test_action_of_exhaustively_matches_model_mapping() {
 		],
 		"exact set of actionless capabilities"
 	);
-	assert_eq!(Capability::ALL.len(), 33);
-	assert_eq!(gated.len(), 28);
+	assert_eq!(Capability::ALL.len(), 34);
 }
 
 #[test]

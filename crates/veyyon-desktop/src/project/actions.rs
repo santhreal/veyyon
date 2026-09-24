@@ -327,6 +327,10 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		// The window is what is in the share, so leaving names no session: it
 		// is the connection's own, exactly as `StopShare` is.
 		Intent::LeaveShare => vec![HostAction::LeaveShare],
+		// The microphone is the window's, so neither toggling it nor discarding
+		// what it heard names a session, exactly as leaving a share names none.
+		Intent::ToggleDictation => vec![HostAction::ToggleDictation],
+		Intent::CancelDictation => vec![HostAction::CancelDictation],
 		Intent::OpenFile(path) => vec![HostAction::ReadFile { path: path.clone() }],
 		Intent::SelectChangeScope(scope) => {
 			vec![HostAction::SelectChangeScope { scope: *scope }, HostAction::RefreshChanges]

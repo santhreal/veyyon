@@ -250,7 +250,9 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		| Intent::CompactSession(_)
 		| Intent::HandoffSession(_)
 		| Intent::RunCommand(_)
-		| Intent::LoadTranscript(_) => {},
+		| Intent::LoadTranscript(_)
+		| Intent::ToggleDictation
+		| Intent::CancelDictation => {},
 		Intent::ToggleGoalCard => crate::cards::toggle_goal_card(state),
 		Intent::FilterQueue(filter) => queue::filter(state, filter),
 		Intent::NewSession => {

@@ -22,6 +22,7 @@ import { base64DecodedBytes, MAX_PROMPT_ATTACHMENT_BYTES, MAX_VIDEO_INPUT_BYTES 
 import type { DesktopCollabBridge } from "./collab-bridge";
 import type { DesktopCollabGuestBridge } from "./collab-guest-bridge";
 import { publishCommandsView, watchCommandMetadata } from "./commands-view";
+import type { DesktopDictationBridge } from "./dictation-bridge";
 import { writeFrame } from "./frames";
 import { attachGoalBridge, type DesktopGoalBridge } from "./goal-bridge";
 import { goalSection } from "./goal-view";
@@ -117,6 +118,8 @@ export interface ClientSessionState {
 	 * host's mirrored agents off it while a window is in a share.
 	 */
 	collabGuestLink?: CollabGuestSession;
+	/** Speech this window is dictating, made on the first toggle. */
+	dictation?: DesktopDictationBridge;
 	/** `Steer` or `Queue`: how a prompt sent while a turn runs is delivered. */
 	queueMode?: "Steer" | "Queue";
 	selectedChangeScope?: string;
@@ -720,6 +723,12 @@ export async function disposeClientState(state: ClientSessionState): Promise<voi
 			void state.collabGuestBridge.leave("window closed");
 			state.collabGuestBridge = undefined;
 			state.collabGuestLink = undefined;
+		}
+		if (state.dictation) {
+			// A dictation left running holds the microphone open after the window
+			// that opened it is gone.
+			state.dictation.dispose();
+			state.dictation = undefined;
 		}
 		if (state.terminals) {
 			for (const terminal of state.terminals.values()) {

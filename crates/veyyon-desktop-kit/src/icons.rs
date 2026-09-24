@@ -54,6 +54,7 @@ pub enum IconName {
 	Film,
 	PanelLeft,
 	PanelRight,
+	Mic,
 }
 
 /// Semantic meaning mapping for icon uniqueness validation.
@@ -103,6 +104,7 @@ pub fn icon_meanings() -> Vec<(IconName, &'static str)> {
 		(IconName::Film, "video clip attachment"),
 		(IconName::PanelLeft, "queue rail visibility"),
 		(IconName::PanelRight, "right panel visibility"),
+		(IconName::Mic, "speech dictated into the composer"),
 	]
 }
 
@@ -175,6 +177,7 @@ pub const fn icon_bytes(name: IconName) -> &'static [u8] {
 		IconName::Film => include_bytes!("../assets/icons/film.svg"),
 		IconName::PanelLeft => include_bytes!("../assets/icons/panel-left.svg"),
 		IconName::PanelRight => include_bytes!("../assets/icons/panel-right.svg"),
+		IconName::Mic => include_bytes!("../assets/icons/mic.svg"),
 	}
 }
 

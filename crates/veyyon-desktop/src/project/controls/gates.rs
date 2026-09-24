@@ -38,7 +38,7 @@ pub fn composer_row(active_row: Option<u64>) -> SessionId {
 }
 
 /// The composer's own controls, with the action each would send.
-pub fn composer_controls(row: &SessionId) -> [(SurfaceId, HostActionKind); 10] {
+pub fn composer_controls(row: &SessionId) -> [(SurfaceId, HostActionKind); 11] {
 	[
 		(SurfaceId::ComposerSendButton(row.clone()), HostActionKind::SubmitPrompt),
 		(SurfaceId::ComposerSteerButton(row.clone()), HostActionKind::Steer),
@@ -53,6 +53,7 @@ pub fn composer_controls(row: &SessionId) -> [(SurfaceId, HostActionKind); 10] {
 		(SurfaceId::ComposerThinkingSelector(row.clone()), HostActionKind::SetThinkingLevel),
 		(SurfaceId::ComposerQueuedTakeBack(row.clone()), HostActionKind::DequeueQueuedPrompt),
 		(SurfaceId::ComposerGoalChip(row.clone()), HostActionKind::ControlGoal),
+		(SurfaceId::ComposerDictateButton(row.clone()), HostActionKind::ToggleDictation),
 	]
 }
 

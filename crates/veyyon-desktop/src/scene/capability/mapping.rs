@@ -34,6 +34,7 @@ pub const fn action_of(capability: Capability) -> Option<HostActionKind> {
 		Capability::Goals => Some(HostActionKind::ControlGoal),
 		Capability::Share => Some(HostActionKind::StartShare),
 		Capability::Profiles => Some(HostActionKind::CreateProfile),
+		Capability::Dictation => Some(HostActionKind::ToggleDictation),
 		Capability::Questions
 		| Capability::Plans
 		| Capability::Extensions
@@ -86,5 +87,6 @@ pub fn target_surface_of(capability: Capability, _session: &SessionId) -> Surfac
 		Capability::Goals => SurfaceId::ComposerGoalChip(row),
 		Capability::Share => SurfaceId::ShareStartButton,
 		Capability::Profiles => SurfaceId::ProfileCreateButton,
+		Capability::Dictation => SurfaceId::ComposerDictateButton(row),
 	}
 }

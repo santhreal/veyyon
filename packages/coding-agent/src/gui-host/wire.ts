@@ -69,6 +69,7 @@ export const ALL_CAPABILITIES = [
 	"Goals",
 	"Share",
 	"Profiles",
+	"Dictation",
 ] as const;
 
 export type Capability = (typeof ALL_CAPABILITIES)[number];
@@ -643,6 +644,42 @@ export const ALL_GOAL_CONTROLS = ["pause", "resume", "drop"] as const;
 
 export type GoalControl = (typeof ALL_GOAL_CONTROLS)[number];
 
+/**
+ * Where a dictation is: `idle` before the microphone opens and after the
+ * words have landed, `recording` while it is open, `transcribing` while the
+ * recogniser finishes the last of it.
+ */
+export type DictationState = "idle" | "recording" | "transcribing";
+export const DICTATION_STATES = ["idle", "recording", "transcribing"] as const;
+
+/**
+ * What the window draws while it is being dictated to, and the text the
+ * recogniser has settled on.
+ *
+ * `utterance` is the whole of what this dictation has committed, already
+ * trimmed of a spoken submit phrase, so the window writes it after the draft
+ * the dictation started on rather than reconstructing it from segments.
+ * `partial` is the phrase still being said, which no draft holds until the
+ * recogniser commits it.
+ */
+export interface DictationView {
+	state: DictationState;
+	utterance: string;
+	partial: string;
+	/** The spoken submit phrase fired, so the window sends what it now holds. */
+	submit: boolean;
+	/**
+	 * What the dictation is doing that takes long enough to state: provisioning
+	 * a recorder, downloading the speech model, or reporting that the recording
+	 * held no speech. Null once there is nothing to state.
+	 */
+	status: string | null;
+	/** Why the last dictation stopped short, stated until the next one starts. */
+	error: string | null;
+	/** Rises once per committed change, so a window applies each one once. */
+	revision: number;
+}
+
 /** Where the share is: what the window draws and what a control may ask for. */
 export type SharePhase = "off" | "starting" | "hosting" | "stopping" | "joining" | "joined" | "leaving";
 export const SHARE_PHASES = ["off", "starting", "hosting", "stopping", "joining", "joined", "leaving"] as const;
@@ -760,7 +797,8 @@ export type SnapshotSection =
 	| { AgentPause: AgentPauseView }
 	| { Goal: { session: string; goal: GoalView | null } }
 	| { Share: ShareView }
-	| { Profiles: ProfilesView };
+	| { Profiles: ProfilesView }
+	| { Dictation: DictationView };
 
 export const ALL_SNAPSHOT_SECTIONS = [
 	"Sessions",
@@ -798,6 +836,7 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"Commands",
 	"AgentPause",
 	"Goal",
+	"Dictation",
 ] as const;
 
 export type SnapshotSectionTag = (typeof ALL_SNAPSHOT_SECTIONS)[number];
@@ -839,6 +878,8 @@ export type HostAction =
 	| "RefreshShare"
 	| "LeaveShare"
 	| "RefreshProfiles"
+	| "ToggleDictation"
+	| "CancelDictation"
 	| { StartShare: { read_only: boolean } }
 	| { JoinShare: { session?: string; link: string } }
 	| { Attach: { endpoint: string | null } }
@@ -955,6 +996,8 @@ export const ALL_HOST_ACTIONS = [
 	"CreateProfile",
 	"RenameProfile",
 	"DeleteProfile",
+	"ToggleDictation",
+	"CancelDictation",
 ] as const;
 export type HostActionTag = (typeof ALL_HOST_ACTIONS)[number];
 
@@ -1050,6 +1093,8 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	CreateProfile: "Profiles",
 	RenameProfile: "Profiles",
 	DeleteProfile: "Profiles",
+	ToggleDictation: "Dictation",
+	CancelDictation: "Dictation",
 };
 
 export interface HostRequest {

@@ -139,6 +139,8 @@ actions!([
 	#[derive(Eq)]
 	TakeBackQueuedPrompt,
 	#[derive(Eq)]
+	ToggleDictation,
+	#[derive(Eq)]
 	PreviousTab,
 	#[derive(Eq)]
 	NextTab,

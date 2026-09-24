@@ -456,6 +456,17 @@ const CORPUS = [
 			},
 		},
 	},
+	{
+		Dictation: {
+			state: "recording",
+			utterance: "ship the desktop parity work",
+			partial: " and then",
+			submit: false,
+			status: null,
+			error: null,
+			revision: 7,
+		},
+	},
 ] satisfies SnapshotSection[];
 
 describe("every snapshot section is one the desktop decodes", () => {

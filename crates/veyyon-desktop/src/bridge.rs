@@ -126,6 +126,8 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::CreateProfile
 		| HostActionKind::RenameProfile
 		| HostActionKind::DeleteProfile
+		| HostActionKind::ToggleDictation
+		| HostActionKind::CancelDictation
 		| HostActionKind::RunCommand => ActionClassification::Mutation,
 	}
 }

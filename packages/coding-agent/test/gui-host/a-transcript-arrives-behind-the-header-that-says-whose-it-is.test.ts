@@ -266,6 +266,12 @@ describe("a transcript arrives behind the header that says whose it is", () => {
 			CreateProfile: { CreateProfile: { name: "", copy: [] } },
 			RenameProfile: { RenameProfile: { name: "", display_name: "" } },
 			DeleteProfile: { DeleteProfile: { name: "profile-that-is-not-here" } },
+			// Refused rather than run: `stt.enabled` is off in the config root
+			// this sweep holds, so the toggle states the setting instead of
+			// provisioning a recorder and opening the microphone of whatever
+			// machine the run is on.
+			ToggleDictation: "ToggleDictation",
+			CancelDictation: "CancelDictation",
 		};
 
 		const swept = ALL_HOST_ACTIONS.filter(tag => tag !== ENDS_THE_CONNECTION && tag !== REATTACHES);

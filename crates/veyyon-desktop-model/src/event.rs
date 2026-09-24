@@ -104,6 +104,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Commands",
 	"AgentPause",
 	"Goal",
+	"Dictation",
 ];
 
 /// Domain sections received during initial connection or snapshot
@@ -199,6 +200,8 @@ pub enum SnapshotSection {
 		/// Goal view or None if cleared.
 		goal:    Option<crate::domain::GoalView>,
 	},
+	/// The speech this window is dictating.
+	Dictation(crate::domain::DictationView),
 }
 
 impl SnapshotSection {
@@ -241,6 +244,7 @@ impl SnapshotSection {
 			Self::Commands(..) => "Commands",
 			Self::AgentPause(..) => "AgentPause",
 			Self::Goal { .. } => "Goal",
+			Self::Dictation(..) => "Dictation",
 		}
 	}
 

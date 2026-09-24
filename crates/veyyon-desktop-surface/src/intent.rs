@@ -266,6 +266,12 @@ pub enum Intent {
 	/// Leaves the share this window joined. The window is what left it, so
 	/// the intent names no session, exactly as stopping a share names none.
 	LeaveShare,
+	/// Opens the microphone, or closes it and writes what was said into the
+	/// composer. The microphone belongs to the window, so the intent names no
+	/// session, exactly as leaving a share names none.
+	ToggleDictation,
+	/// Closes the microphone and discards what it heard.
+	CancelDictation,
 	RenameSession {
 		session: u64,
 		title:   String,

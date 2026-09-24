@@ -33,8 +33,8 @@ use std::collections::HashMap;
 use support::{NOW_MS, fields::driven_with_keys, session};
 use veyyon_desktop::{SessionIndex, project, project_controls, project_turn_phase};
 use veyyon_desktop_model::{
-	BadgeKind, Capability, CapabilityStatus, ConnectionState, PROTOCOL_VERSION, QueueMode,
-	QueuePartition, RequestRegistry, SessionId, SessionMode, Store,
+	BadgeKind, Capability, CapabilityStatus, ConnectionState, DictationState, DictationView,
+	PROTOCOL_VERSION, QueueMode, QueuePartition, RequestRegistry, SessionId, SessionMode, Store,
 };
 use veyyon_desktop_surface::{
 	Intent, ShellState,
@@ -242,6 +242,10 @@ fn every_field_the_window_owns_survives_the_frame() {
 			queued:      vec!["a prompt the host is not holding".to_string()],
 			mode:        Some(SessionMode::Plan),
 			goal:        None,
+			dictation:   Some(DictationView {
+				state: DictationState::Recording,
+				..DictationView::default()
+			}),
 		},
 		..ShellState::default()
 	};
@@ -259,6 +263,11 @@ fn every_field_the_window_owns_survives_the_frame() {
 	assert!(state.composer.thinking.is_none(), "no levels, no thinking control");
 	assert!(state.composer.context.is_none(), "no breakdown, no meter");
 	assert!(state.composer.goal.is_none(), "no goal view, no goal chip");
+	assert!(
+		state.composer.dictation.is_none(),
+		"the dictation is the host's; speech is recognised there, so a window with no frame for it \
+		 draws a control at rest rather than one that says a microphone is open"
+	);
 	assert!(
 		state.composer.queued.is_empty(),
 		"the held prompts are the host's; a session holding none holds none on the strip"

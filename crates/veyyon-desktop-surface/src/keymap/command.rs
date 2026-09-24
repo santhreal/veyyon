@@ -50,6 +50,7 @@ pub enum Command {
 	ThinkingLevel,
 	AttachFile,
 	TakeBackQueuedPrompt,
+	ToggleDictation,
 	PreviousTab,
 	NextTab,
 	ToggleDiffMode,
@@ -99,6 +100,7 @@ impl Command {
 			Self::ThinkingLevel => "ThinkingLevel",
 			Self::AttachFile => "AttachFile",
 			Self::TakeBackQueuedPrompt => "TakeBackQueuedPrompt",
+			Self::ToggleDictation => "ToggleDictation",
 			Self::PreviousTab => "PreviousTab",
 			Self::NextTab => "NextTab",
 			Self::ToggleDiffMode => "ToggleDiffMode",
@@ -148,6 +150,7 @@ impl Command {
 			Self::ThinkingLevel => "Cycle thinking level",
 			Self::AttachFile => "Attach file to composer",
 			Self::TakeBackQueuedPrompt => "Take back queued message",
+			Self::ToggleDictation => "Start or stop dictating",
 			Self::PreviousTab => "Select previous panel tab",
 			Self::NextTab => "Select next panel tab",
 			Self::ToggleDiffMode => "Toggle unified or split diff mode",
@@ -199,7 +202,8 @@ impl Command {
 			| Self::ModelPicker
 			| Self::ThinkingLevel
 			| Self::AttachFile
-			| Self::TakeBackQueuedPrompt => Scope::Composer,
+			| Self::TakeBackQueuedPrompt
+			| Self::ToggleDictation => Scope::Composer,
 			Self::PreviousTab | Self::NextTab | Self::ToggleDiffMode => Scope::Panel,
 			Self::CloseWindow | Self::Quit | Self::OpenMenu => Scope::Global,
 		}
@@ -226,6 +230,7 @@ impl Command {
 				Some(Capability::BackgroundSubmission)
 			},
 			Self::ModelPicker | Self::ThinkingLevel => Some(Capability::Models),
+			Self::ToggleDictation => Some(Capability::Dictation),
 			// The drawer's two tenants are resolved where a surface is
 			// projected, because either a terminal or a supervised process
 			// carries it.
@@ -304,6 +309,7 @@ impl Command {
 			"ThinkingLevel" => Some(Self::ThinkingLevel),
 			"AttachFile" => Some(Self::AttachFile),
 			"TakeBackQueuedPrompt" => Some(Self::TakeBackQueuedPrompt),
+			"ToggleDictation" => Some(Self::ToggleDictation),
 			"PreviousTab" => Some(Self::PreviousTab),
 			"NextTab" => Some(Self::NextTab),
 			"ToggleDiffMode" => Some(Self::ToggleDiffMode),

@@ -64,7 +64,12 @@ impl MenuSectionId {
 				Command::NextTurn,
 				Command::ToggleBlock,
 			],
-			Self::Edit => &[Command::CopySelection, Command::SelectEntryText, Command::AttachFile],
+			Self::Edit => &[
+				Command::CopySelection,
+				Command::SelectEntryText,
+				Command::AttachFile,
+				Command::ToggleDictation,
+			],
 			Self::Turn => &[
 				Command::AbortTurn,
 				Command::ToggleQueueMode,

@@ -698,5 +698,16 @@
 				"stood_down": null
 			}
 		}
+	},
+	{
+		"Dictation": {
+			"state": "recording",
+			"utterance": "ship the desktop parity work",
+			"partial": " and then",
+			"submit": false,
+			"status": null,
+			"error": null,
+			"revision": 7
+		}
 	}
 ]

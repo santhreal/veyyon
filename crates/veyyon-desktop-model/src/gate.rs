@@ -118,6 +118,7 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		| HostActionKind::CreateProfile
 		| HostActionKind::RenameProfile
 		| HostActionKind::DeleteProfile => Capability::Profiles,
+		HostActionKind::ToggleDictation | HostActionKind::CancelDictation => Capability::Dictation,
 	}
 }
 

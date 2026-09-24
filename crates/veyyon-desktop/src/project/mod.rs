@@ -20,6 +20,7 @@ mod cards;
 mod composer;
 mod connection;
 mod controls;
+mod dictation;
 mod drawer;
 mod failure;
 mod history;
@@ -54,6 +55,7 @@ pub use self::{
 		ANSWERED_BY_OPTION, NO_SESSION_OPEN, contextual_surface_for_action, gated_controls,
 		project_controls, session_row_controls,
 	},
+	dictation::{DictationDraft, DictationLanding},
 	drawer::{drawer_lines, project_drawer, resize_terminals, strip_control_sequences},
 	failure::land_failure,
 	history::{HistoryRequests, history_date, project_history},

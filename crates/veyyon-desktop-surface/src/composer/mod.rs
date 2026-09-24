@@ -12,6 +12,7 @@
 
 pub mod actions;
 pub mod attachments;
+pub mod dictate;
 pub mod footer;
 pub mod media;
 pub mod preview;
@@ -30,7 +31,9 @@ use veyyon_gpui::{
 	IntoElement, ParentElement, StatefulInteractiveElement, Styled, div, point, px,
 };
 
-pub use self::{actions::*, attachments::*, footer::*, media::*, queued::*, state::*, turn::*};
+pub use self::{
+	actions::*, attachments::*, dictate::*, footer::*, media::*, queued::*, state::*, turn::*,
+};
 use crate::{
 	Intent, ShellView,
 	controls::{ControlStates, availability_style, hairline_for},

@@ -232,6 +232,8 @@ pub struct ComposerState {
 	pub mode:        Option<SessionMode>,
 	/// The goal running for this session, absent when none is active.
 	pub goal:        Option<veyyon_desktop_model::GoalView>,
+	/// The dictation this window is running, absent until it dictates.
+	pub dictation:   Option<veyyon_desktop_model::DictationView>,
 }
 
 impl ComposerState {

@@ -18,8 +18,8 @@ use crate::{
 		NextSession, NextTurn, OpenMenu, OpenPalette, OpenSelectedSession, OpenSettings,
 		PreviousSession, PreviousTurn, Quit, Scroll, SelectEntryText, SelectOption, SplitHalf,
 		TakeBackQueuedPrompt, ThinkingLevel as CycleThinkingLevel, ToggleBlock, ToggleDeferSelected,
-		ToggleDrawer, TogglePanel, ToggleParkSelected, TogglePinSelected, ToggleQueue,
-		ToggleQueueMode, UnfoldSelectedBranch,
+		ToggleDictation, ToggleDrawer, TogglePanel, ToggleParkSelected, TogglePinSelected,
+		ToggleQueue, ToggleQueueMode, UnfoldSelectedBranch,
 	},
 };
 
@@ -324,5 +324,8 @@ pub fn bind_composer_keys(composer: Div, cx: &Context<ShellView>) -> Div {
 			} else {
 				view.dispatch(Intent::DequeueQueuedPrompt, cx);
 			}
+		}))
+		.on_action(cx.listener(|view, _: &ToggleDictation, _window, cx| {
+			view.dispatch(Intent::ToggleDictation, cx);
 		}))
 }

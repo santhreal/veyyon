@@ -12,7 +12,7 @@ use veyyon_desktop::{
 	launch::WindowSlot,
 	project,
 	project::{
-		HistoryRequests, clear_sent_draft, connection_notice, land_branched_draft,
+		DictationDraft, HistoryRequests, clear_sent_draft, connection_notice, land_branched_draft,
 		navigation_request::NavigationRequest, restored_draft,
 	},
 	project_clock, project_controls, record_sent, request_frame,
@@ -40,6 +40,9 @@ struct Host {
 	delivery:   NoticeDelivery,
 	history:    HistoryRequests,
 	navigation: NavigationRequest,
+	/// The draft the running dictation opened on, so recognised words replace
+	/// what they revise instead of stacking up.
+	dictation:  DictationDraft,
 }
 
 impl Host {
@@ -109,6 +112,7 @@ pub fn attach(
 		delivery: NoticeDelivery::new(),
 		history: HistoryRequests::default(),
 		navigation: NavigationRequest::default(),
+		dictation: DictationDraft::default(),
 	}));
 
 	// A clean shutdown writes what the debounce is still holding, and the
@@ -307,6 +311,20 @@ pub fn attach(
 									restored_draft(&host.index, view.state().current_id, queued)
 								{
 									view.set_composed(text.to_owned(), cx);
+								}
+							},
+							HostEvent::Snapshot(veyyon_desktop_model::SnapshotSection::Dictation(
+								view_frame,
+							)) => {
+								// The host holds no draft, so the window writes the
+								// field from the one the dictation opened on and the
+								// words the recogniser has settled on.
+								if let Some(landing) = host.dictation.land(view_frame, view.composer_text())
+								{
+									view.set_composed(landing.draft, cx);
+									if landing.submit {
+										view.submit_primary_turn_action(cx);
+									}
 								}
 							},
 							_ => {},

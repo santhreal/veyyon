@@ -289,6 +289,16 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 			}
 			damage.insert(Damage::Composer(session));
 		},
+		SnapshotSection::Dictation(view) => {
+			// The microphone belongs to the window, so the section carries no
+			// session and the composer of the active session is what redraws.
+			store.domains.dictation = Some(view);
+			if let Some(session) = store.persisted.shell.active_session.clone() {
+				damage.insert(Damage::Composer(session));
+			} else {
+				damage.insert(Damage::FullWindow);
+			}
+		},
 	}
 
 	damage

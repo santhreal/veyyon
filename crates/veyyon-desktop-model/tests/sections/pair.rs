@@ -125,5 +125,28 @@ pub fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 				error: None,
 			}),
 		],
+		// One phrase in flight, then that phrase committed and the microphone
+		// closed: the second carries an empty `partial`, so a reducer that
+		// merged rather than replaced would still be drawing the first's.
+		SnapshotSectionKind::Dictation => [
+			SnapshotSection::Dictation(veyyon_desktop_model::DictationView {
+				state:     veyyon_desktop_model::DictationState::Recording,
+				utterance: "ship the desktop".into(),
+				partial:   " parity work".into(),
+				submit:    false,
+				status:    None,
+				error:     None,
+				revision:  1,
+			}),
+			SnapshotSection::Dictation(veyyon_desktop_model::DictationView {
+				state:     veyyon_desktop_model::DictationState::Idle,
+				utterance: "ship the desktop parity work".into(),
+				partial:   String::new(),
+				submit:    true,
+				status:    None,
+				error:     None,
+				revision:  2,
+			}),
+		],
 	})
 }

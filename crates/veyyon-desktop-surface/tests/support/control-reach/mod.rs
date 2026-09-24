@@ -145,12 +145,16 @@ pub fn expected_controls(state: &ShellState) -> usize {
 	//
 	// One more is the title itself, which answers the double-click that opens
 	// the rename editor over it.
+	//
+	// The microphone is drawn whatever the host answered about the capability,
+	// greyed with the reason on it rather than withheld (§4.3), so the footer
+	// carries it and the tooltip stating that reason in every state.
 	let chrome = 1
 		+ 1 + 1
 		+ usize::from(!state.panel.is_empty())
 		+ usize::from(state.drawer.offered)
 		+ 4 + 6
-		+ 1;
+		+ 2 + 1;
 	// Each word of the menu bar answers a press of its own, counted from the
 	// sections the bar draws rather than as a literal, so a menu added to the
 	// table moves this with it.

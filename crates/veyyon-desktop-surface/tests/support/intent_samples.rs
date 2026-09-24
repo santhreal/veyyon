@@ -182,6 +182,8 @@ pub fn every_intent() -> Vec<Intent> {
 		},
 		Intent::DeleteProfile("review".to_owned()),
 		Intent::ToggleProfileCopy("settings".to_owned()),
+		Intent::ToggleDictation,
+		Intent::CancelDictation,
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -320,6 +322,8 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::RenameProfile { .. }
 			| Intent::DeleteProfile(_)
 			| Intent::ToggleProfileCopy(_)
+			| Intent::ToggleDictation
+			| Intent::CancelDictation
 			| Intent::Quit => {},
 		}
 	}

@@ -2,6 +2,7 @@ import type { SessionEntry, SessionHeader } from "@veyyon/kernel/session/session
 import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
 import type { Settings } from "../config/settings";
 import { settingsOrNull } from "../config/settings-instance";
+import { SETTINGS_SCHEMA } from "../config/settings-schema";
 import {
 	ALL_CAPABILITIES,
 	type Capability,
@@ -45,6 +46,7 @@ export const SUPPORTED_CAPABILITIES: Partial<Record<Capability, true>> = {
 	Goals: true,
 	Share: true,
 	Profiles: true,
+	Dictation: true,
 };
 
 /** Specific, truthful reasons why each unsupported capability is unavailable. */
@@ -52,6 +54,35 @@ export const UNAVAILABLE_CAPABILITY_REASONS: Record<"PendingEdits" | "Extensions
 	PendingEdits: "Pending edit inspection is not supported by this host version",
 	Extensions: "Extension management is handled directly through the extension host",
 };
+
+/**
+ * A capability this host implements that a setting withholds, with the setting
+ * that governs it and the sentence the window draws on the gate.
+ *
+ * The state each one falls back to is read from the declaration rather than
+ * written here. A window can connect before this process has loaded settings,
+ * because the greeting frames are written from the connection listener while
+ * the store is filled by the first session, and a restated fallback answers
+ * for whichever setting it was written against: a literal `true` reported the
+ * microphone as reachable on every fresh connection, since `stt.enabled` is
+ * declared off. `Attach` re-states the list from the session's own store.
+ */
+const SETTING_GATED_CAPABILITIES: readonly {
+	capability: Capability;
+	path: "goal.enabled" | "stt.enabled";
+	reason: string;
+}[] = [
+	{
+		capability: "Goals",
+		path: "goal.enabled",
+		reason: "Goal mode is disabled in settings (goal.enabled)",
+	},
+	{
+		capability: "Dictation",
+		path: "stt.enabled",
+		reason: "Speech to text is disabled in settings (stt.enabled)",
+	},
+];
 
 /**
  * Construct the capabilities list covering every member of ALL_CAPABILITIES.
@@ -62,10 +93,15 @@ export const UNAVAILABLE_CAPABILITY_REASONS: Record<"PendingEdits" | "Extensions
  */
 export function buildCapabilitiesSnapshot(settings?: Settings): [Capability, CapabilityStatus][] {
 	const effectiveSettings = settings ?? settingsOrNull();
-	const goalEnabled = effectiveSettings ? effectiveSettings.get("goal.enabled") : true;
+	const withheld = new Map<Capability, string>();
+	for (const gate of SETTING_GATED_CAPABILITIES) {
+		const enabled = effectiveSettings ? effectiveSettings.get(gate.path) : SETTINGS_SCHEMA[gate.path].default;
+		if (!enabled) withheld.set(gate.capability, gate.reason);
+	}
 	return ALL_CAPABILITIES.map(capability => {
-		if (capability === "Goals" && !goalEnabled) {
-			return [capability, { Unavailable: { reason: "Goal mode is disabled in settings (goal.enabled)" } }];
+		const withheldReason = withheld.get(capability);
+		if (withheldReason) {
+			return [capability, { Unavailable: { reason: withheldReason } }];
 		}
 		if (SUPPORTED_CAPABILITIES[capability]) {
 			return [capability, "Available"];
@@ -168,6 +204,8 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	CreateProfile: "Settings",
 	RenameProfile: "Settings",
 	DeleteProfile: "Settings",
+	ToggleDictation: "Session",
+	CancelDictation: "Session",
 };
 
 export function mapActionToErrorScope(actionTag: string): ErrorScope {

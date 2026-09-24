@@ -3,6 +3,7 @@ import { changesActionHandlers } from "./changes";
 import { commandsActionHandlers } from "./commands";
 import { connectionActionHandlers } from "./connection";
 import { diagnosticsActionHandlers } from "./diagnostics";
+import { dictationActionHandlers } from "./dictation";
 import { filesActionHandlers } from "./files";
 import { goalActionHandlers } from "./goals";
 import { historyActionHandlers } from "./history";
@@ -25,6 +26,7 @@ export * from "./changes";
 export * from "./commands";
 export * from "./connection";
 export * from "./diagnostics";
+export * from "./dictation";
 export * from "./files";
 export * from "./goals";
 export * from "./history";
@@ -63,4 +65,5 @@ export const allActionHandlers: ActionHandlersMap = {
 	...profileActionHandlers,
 	...planReviewActionHandlers,
 	...diagnosticsActionHandlers,
+	...dictationActionHandlers,
 };

@@ -328,6 +328,14 @@ scope = "composer"
 chord = "alt-up"
 action = "TakeBackQueuedPrompt"
 
+# The terminal opens a dictation by holding space; a window has no hold
+# gesture, so the chord names the same key under the two modifiers the
+# composer's own verbs use.
+[[binding]]
+scope = "composer"
+chord = "primary-shift-space"
+action = "ToggleDictation"
+
 # Panel Scope (3 chords)
 [[binding]]
 scope = "panel"

@@ -219,6 +219,11 @@ fn test_damage_decision_for_every_snapshot_section_sweep() {
 			"AgentPause" => {
 				assert!(damage.contains(&Damage::FullWindow));
 			},
+			// The microphone belongs to the window rather than to one session, so
+			// the chip redraws in the composer of whichever session is active.
+			"Dictation" => {
+				assert!(damage.contains(&Damage::Composer(session_id.clone())));
+			},
 			other => panic!("Unhandled snapshot section in damage test: {other}"),
 		}
 
@@ -228,7 +233,7 @@ fn test_damage_decision_for_every_snapshot_section_sweep() {
 
 		match name {
 			"Changes" | "FileTree" | "FileContent" | "SearchResults" | "Terminals"
-			| "TerminalOutput" | "Processes" | "ProcessLogs" => {
+			| "TerminalOutput" | "Processes" | "ProcessLogs" | "Dictation" => {
 				assert!(
 					damage_no_session.contains(&Damage::FullWindow),
 					"{name} without active session must fallback to Damage::FullWindow"

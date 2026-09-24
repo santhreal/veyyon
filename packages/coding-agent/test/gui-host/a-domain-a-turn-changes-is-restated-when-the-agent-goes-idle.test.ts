@@ -122,6 +122,10 @@ const AT_IDLE: Record<SnapshotSectionTag, "restated-at-idle" | "listed-at-idle" 
 	// A turn writes inside one profile and never mints, renames or removes
 	// one, so the set on disk is what the window last asked for.
 	Profiles: "on-request",
+	// A dictation is opened from the window and answered as it is recognised,
+	// so the section arrives on the toggle that started it and never on the
+	// turn boundary.
+	Dictation: "on-request",
 };
 
 /** The section the host publishes last, which is what closes a re-statement. */

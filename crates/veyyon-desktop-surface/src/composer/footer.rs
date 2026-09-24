@@ -262,6 +262,13 @@ pub fn footer_row(
 				.children(mode)
 				.child(Tooltip::new(availability.reason().unwrap_or(label).to_owned(), model).above())
 				.children(thinking_control)
+				.child(super::dictate::dictate_control(
+					composer.dictation.as_ref(),
+					&session,
+					states,
+					tokens,
+					cx,
+				))
 				.children(context_meter),
 		)
 		.child(turn_action_controls(turn, has_text, session_id, states, tokens, cx))

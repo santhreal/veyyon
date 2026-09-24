@@ -372,4 +372,9 @@ pub enum HostAction {
 	DeleteProfile {
 		name: String,
 	},
+	// Dictation family (2 actions)
+	/// Open the microphone, or close it and hand back what was said.
+	ToggleDictation,
+	/// Close the microphone and discard what it heard.
+	CancelDictation,
 }

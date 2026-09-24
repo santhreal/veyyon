@@ -16,8 +16,8 @@ use crate::keymap::{
 		Newline, NextSession, NextTab, NextTurn, OpenMenu, OpenPalette, OpenSelectedSession,
 		OpenSettings, PreviousSession, PreviousTab, PreviousTurn, Primary, Quit, Scroll, ScrollBy,
 		SelectEntryText, SelectOption, SplitHalf, TakeBackQueuedPrompt, ThinkingLevel, ToggleBlock,
-		ToggleDeferSelected, ToggleDiffMode, ToggleDrawer, TogglePanel, ToggleParkSelected,
-		TogglePinSelected, ToggleQueue, ToggleQueueMode, UnfoldSelectedBranch,
+		ToggleDeferSelected, ToggleDictation, ToggleDiffMode, ToggleDrawer, TogglePanel,
+		ToggleParkSelected, TogglePinSelected, ToggleQueue, ToggleQueueMode, UnfoldSelectedBranch,
 	},
 };
 
@@ -121,6 +121,7 @@ pub fn build_action(
 		"ThinkingLevel" => Ok(Arc::new(ThinkingLevel)),
 		"AttachFile" => Ok(Arc::new(AttachFile)),
 		"TakeBackQueuedPrompt" => Ok(Arc::new(TakeBackQueuedPrompt)),
+		"ToggleDictation" => Ok(Arc::new(ToggleDictation)),
 		"PreviousTab" => Ok(Arc::new(PreviousTab)),
 		"NextTab" => Ok(Arc::new(NextTab)),
 		"ToggleDiffMode" => Ok(Arc::new(ToggleDiffMode)),

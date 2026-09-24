@@ -8,6 +8,7 @@ pub mod answered;
 pub mod changes;
 pub mod commands;
 pub mod diagnostics;
+pub mod dictation;
 pub mod files;
 pub mod goal;
 pub mod mcp;
@@ -30,6 +31,7 @@ pub use answered::*;
 pub use changes::*;
 pub use commands::*;
 pub use diagnostics::*;
+pub use dictation::*;
 pub use files::*;
 pub use goal::*;
 pub use mcp::*;
@@ -110,6 +112,8 @@ pub struct Domains {
 	pub share:           Option<ShareView>,
 	/// The profiles on disk, and where each one's host is.
 	pub profiles:        Option<ProfilesView>,
+	/// The speech this window is dictating, absent until it dictates.
+	pub dictation:       Option<DictationView>,
 }
 
 impl Domains {

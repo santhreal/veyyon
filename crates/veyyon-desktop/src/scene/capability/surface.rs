@@ -316,5 +316,25 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 			});
 			seed.state.overlay = Some(Overlay::Share(Box::new(ShareState::new())));
 		},
+		Capability::Dictation => {
+			// The reachable surface is the microphone control in the composer
+			// footer, which is drawn whether or not a dictation is running. It
+			// is seeded mid-dictation so the frame carries the chip as well as
+			// the control: an idle frame draws the word the control carries at
+			// rest and states nothing about what the capability reaches.
+			//
+			// The view goes on the store rather than on the composer, because
+			// the footer reads `store.domains.dictation` at every projection.
+			seed.exchange(session, Seed::prose());
+			seed.store.domains.dictation = Some(veyyon_desktop_model::DictationView {
+				state:     veyyon_desktop_model::DictationState::Recording,
+				utterance: "Ship the desktop parity work".to_owned(),
+				partial:   " and then".to_owned(),
+				submit:    false,
+				status:    None,
+				error:     None,
+				revision:  1,
+			});
+		},
 	}
 }

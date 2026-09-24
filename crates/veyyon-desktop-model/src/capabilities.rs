@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Enumeration of all thirty-three protocol capabilities with explicit
+/// Enumeration of all thirty-four protocol capabilities with explicit
 /// discriminants.
 #[derive(
 	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, strum::EnumIter,
@@ -40,11 +40,12 @@ pub enum Capability {
 	Goals                = 30,
 	Share                = 31,
 	Profiles             = 32,
+	Dictation            = 33,
 }
 
 impl Capability {
 	/// Complete list of all capability variants for runtime sweeps.
-	pub const ALL: [Self; 33] = [
+	pub const ALL: [Self; 34] = [
 		Self::Sessions,
 		Self::SessionDeletion,
 		Self::SessionTreeNavigation,
@@ -78,6 +79,7 @@ impl Capability {
 		Self::Goals,
 		Self::Share,
 		Self::Profiles,
+		Self::Dictation,
 	];
 
 	/// Returns the stable string identifier matching the wire protocol.
@@ -117,6 +119,7 @@ impl Capability {
 			Self::Goals => "Goals",
 			Self::Share => "Share",
 			Self::Profiles => "Profiles",
+			Self::Dictation => "Dictation",
 		}
 	}
 }

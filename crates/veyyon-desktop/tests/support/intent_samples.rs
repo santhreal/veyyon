@@ -320,6 +320,10 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		IntentDiscriminants::MoveMenuSection => {
 			vec![Intent::MoveMenuSection(1), Intent::MoveMenuSection(-1)]
 		},
+		// No session on either: the microphone and the draft it fills belong to
+		// the window, so a second window dictates into its own composer.
+		IntentDiscriminants::ToggleDictation => vec![Intent::ToggleDictation],
+		IntentDiscriminants::CancelDictation => vec![Intent::CancelDictation],
 		IntentDiscriminants::CloseWindow => vec![Intent::CloseWindow],
 		IntentDiscriminants::Quit => vec![Intent::Quit],
 	}

@@ -192,6 +192,12 @@ class TestSocketClient {
 	}
 }
 
+// A capability this host implements can still be withheld by the state it
+// runs under. These servers run on the defaults, where `stt.enabled` is off
+// and holds dictation back. Pinned by exact equality, so a second settings
+// gate turns both sweeps below red until it is recorded here.
+const WITHHELD_AT_DEFAULTS: Capability[] = ["Dictation"];
+
 describe("GUI host server protocol", () => {
 	let tempDir: string;
 	let socketPath: string;
@@ -258,15 +264,25 @@ describe("GUI host server protocol", () => {
 			expect(reportedMap.has(cap)).toBeTrue();
 		}
 
-		// Supported capabilities must be "Available"
+		expect(WITHHELD_AT_DEFAULTS.every(cap => SUPPORTED_CAPABILITIES[cap])).toBeTrue();
+
+		// Supported capabilities nothing withholds must be "Available"
 		for (const [cap, supported] of Object.entries(SUPPORTED_CAPABILITIES)) {
-			if (supported) {
+			if (supported && !WITHHELD_AT_DEFAULTS.includes(cap as Capability)) {
 				expect(reportedMap.get(cap as Capability)).toBe("Available");
 			}
 		}
 
+		// A withheld capability states why rather than reading as unimplemented
+		for (const cap of WITHHELD_AT_DEFAULTS) {
+			const status = reportedMap.get(cap);
+			expect(typeof status === "object" && status !== null && "Unavailable" in status).toBeTrue();
+		}
+
 		// The opted-out set must match exact equality
-		const expectedOptedOut: Capability[] = ALL_CAPABILITIES.filter(cap => !SUPPORTED_CAPABILITIES[cap]);
+		const expectedOptedOut: Capability[] = ALL_CAPABILITIES.filter(
+			cap => !SUPPORTED_CAPABILITIES[cap] || WITHHELD_AT_DEFAULTS.includes(cap),
+		);
 		const actualOptedOut: Capability[] = [];
 
 		for (const [cap, status] of capabilitiesList) {
@@ -428,11 +444,17 @@ describe("GUI host server protocol", () => {
 			}
 		}
 
-		// Supported capabilities must be reported Available
+		// Supported capabilities nothing withholds must be reported Available
 		for (const [cap, supported] of Object.entries(SUPPORTED_CAPABILITIES)) {
-			if (supported) {
+			if (supported && !WITHHELD_AT_DEFAULTS.includes(cap as Capability)) {
 				expect(capMap.get(cap as Capability)).toBe("Available");
 			}
+		}
+
+		// A withheld capability states why rather than reading as unimplemented
+		for (const cap of WITHHELD_AT_DEFAULTS) {
+			const status = capMap.get(cap);
+			expect(typeof status === "object" && status !== null && "Unavailable" in status).toBeTrue();
 		}
 
 		client.destroy();
