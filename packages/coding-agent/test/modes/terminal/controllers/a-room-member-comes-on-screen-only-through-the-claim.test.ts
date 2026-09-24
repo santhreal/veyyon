@@ -353,7 +353,8 @@ function harness(launch: Conversation): Harness {
 				steps.push("resume");
 			},
 		} as unknown as EventController,
-		// What the interactive mode's attach does to the fields the controller reads.
+		// What the interactive mode's attach does to the fields the controller
+		// reads, and the draft carry it makes on every attach.
 		attachMainSession: next => {
 			const previous = ctx.session;
 			if (next === previous) return BackgroundSessions.global().describeAttached(previous);
@@ -362,6 +363,7 @@ function harness(launch: Conversation): Harness {
 			ctx.session = next;
 			ctx.sessionManager = next.sessionManager;
 			ctx.settings = next.settings;
+			room.carryDraft(previous, next);
 			return BackgroundSessions.global().keep(previous);
 		},
 		createNextSession: async options => {

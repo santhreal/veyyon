@@ -4569,8 +4569,9 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * reference, so reassigning the four session-derived fields re-points the
 	 * whole UI at once. The two event subscriptions, the status line and the
 	 * title listener are the only holders of a session reference that must be
-	 * moved by hand; the dialogs `next` held while it was off screen are
-	 * presented now that it is on screen.
+	 * moved by hand; the composer's draft leaves with the conversation that typed
+	 * it and `next`'s comes back, whichever path attached it; the dialogs `next`
+	 * held while it was off screen are presented now that it is on screen.
 	 *
 	 * `next` may already be streaming — that is what re-attaching a session
 	 * handed off earlier looks like. The caller rebuilds the transcript and
@@ -4605,6 +4606,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#handleSessionAccentInputsChanged();
 		// Extension autocomplete applies for the conversation on screen only.
 		this.#applyAutocompleteProvider();
+		this.#roomController.carryDraft(previous, next);
 		const kept = BackgroundSessions.global().keep(previous);
 		this.#extensionUiController.sessionAttached(next, previous);
 		return kept;

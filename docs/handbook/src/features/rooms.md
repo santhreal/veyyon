@@ -114,7 +114,8 @@ the one you are reading. The question waits until you go into that conversation.
 ## Drafts, closing and exit
 
 Text and images you leave in the composer stay with their conversation and come back when you
-return to it.
+return to it, whichever way you leave: a room switch, `/resume` of a running session, or a `/new`
+that keeps the running turn.
 
 `n` or `/room new` while a new conversation is still opening says so and opens no second one. A
 conversation that fails to join the room is closed rather than left running where nothing lists

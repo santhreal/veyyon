@@ -462,9 +462,6 @@ export class RoomController {
 			const previous = this.ctx.session;
 			const previousCwd = this.ctx.sessionManager.getCwd();
 			await next.takeForegroundFrom(previous);
-			const draft = this.#takeDraft();
-			if (draft) this.#drafts.set(previous, draft);
-			else this.#drafts.delete(previous);
 			// A peer still finishing a turn is in the background set from the
 			// switch that left it; it is on screen again now, so it leaves that set
 			// before the one being left enters it.
@@ -474,10 +471,6 @@ export class RoomController {
 			// reported, and the switch still stands: a stage told the switch was
 			// refused would reopen over a screen that already changed.
 			try {
-				const arriving = this.#drafts.get(next);
-				this.#putDraft(arriving);
-				this.#drafts.delete(next);
-				this.#composerDraft = arriving?.preview;
 				this.ctx.resetObserverRegistry();
 				setSessionTerminalTitle(this.ctx.sessionManager.getSessionName(), this.ctx.sessionManager.getCwd());
 				this.ctx.statusLine.invalidate();
@@ -505,6 +498,23 @@ export class RoomController {
 		} finally {
 			this.#switching = false;
 		}
+	}
+
+	/**
+	 * The composer is one editor every conversation shares, so the draft on it
+	 * belongs to whichever conversation is on screen. `attachMainSession` calls
+	 * this on every attach, whichever path made it (a room switch, `/resume` of
+	 * a running session, a `/new` hand-off): the draft is kept for `previous`,
+	 * and `next` gets its own back, or a clear composer.
+	 */
+	carryDraft(previous: AgentSession, next: AgentSession): void {
+		const leaving = this.#takeDraft();
+		if (leaving) this.#drafts.set(previous, leaving);
+		else this.#drafts.delete(previous);
+		const arriving = this.#drafts.get(next);
+		this.#putDraft(arriving);
+		this.#drafts.delete(next);
+		this.#composerDraft = arriving?.preview;
 	}
 
 	/** The composer's draft, or nothing when it holds no text and no attachment. */
