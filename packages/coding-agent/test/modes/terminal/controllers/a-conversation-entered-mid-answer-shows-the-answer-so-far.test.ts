@@ -25,6 +25,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { stripVTControlCharacters } from "node:util";
 import { Agent } from "@veyyon/agent-core";
 import type { AssistantMessage, AssistantMessageEvent, Usage } from "@veyyon/ai";
 import { AuthStorage } from "@veyyon/ai/auth-storage";
@@ -269,8 +270,13 @@ function assistantBlocks(chatContainer: TranscriptContainer): number {
 	return chatContainer.children.filter(child => child instanceof AssistantMessageComponent).length;
 }
 
+/**
+ * The transcript's visible text. Colours are stripped: under a truecolor theme
+ * the live tail of a streaming answer is painted a character at a time, and
+ * what this suite defends is the text on screen, not its paint.
+ */
 function screen(chatContainer: TranscriptContainer): string {
-	return chatContainer.render(100).join("\n");
+	return stripVTControlCharacters(chatContainer.render(100).join("\n"));
 }
 
 describe("a conversation entered mid-answer", () => {
