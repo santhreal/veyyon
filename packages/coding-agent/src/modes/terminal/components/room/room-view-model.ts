@@ -55,6 +55,28 @@ export interface RoomWindowSnapshot {
 	readonly cwd: string;
 }
 
+/** Two flat records with the same fields holding the same values. */
+function sameFields<T extends object>(a: T, b: T): boolean {
+	if (a === b) return true;
+	for (const key in a) if (a[key] !== b[key]) return false;
+	for (const key in b) if (!(key in a)) return false;
+	return true;
+}
+
+/**
+ * Whether two snapshots show the same thing. A rebuild after an event that
+ * changes nothing a window draws, such as a thinking delta under `Thinking…`,
+ * equals the snapshot before it, and the feed keeps that one so everything
+ * keyed on its identity stays as it was.
+ */
+export function roomSnapshotsEqual(a: RoomWindowSnapshot, b: RoomWindowSnapshot): boolean {
+	if (a === b) return true;
+	if (a.title !== b.title || a.model !== b.model || a.cwd !== b.cwd) return false;
+	if (!sameFields(a.state, b.state) || a.blocks.length !== b.blocks.length) return false;
+	for (let i = 0; i < a.blocks.length; i++) if (!sameFields(a.blocks[i]!, b.blocks[i]!)) return false;
+	return true;
+}
+
 /** A conversation's unsent draft as its window shows it. Display-safe. */
 export interface RoomDraft {
 	/** The first line of its text that has anything on it; empty when the draft is only attachments. */

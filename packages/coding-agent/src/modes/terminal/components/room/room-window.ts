@@ -375,18 +375,27 @@ function cardBody(snapshot: RoomWindowSnapshot, width: number, height: number, i
 		}
 		bodyStart = 1;
 	}
-	const body: string[] = [];
-	let previous: RoomFeedBlock["kind"] | undefined;
-	for (let i = bodyStart; i < blocks.length; i++) {
+	// A window shows only the tail of what followed the prompt, so it is read
+	// from the end and nothing above the last `height` rows is wrapped: the
+	// cost of a paint is the rows it shows, however long the exchange.
+	const chunks: string[][] = [];
+	let count = 0;
+	let later: RoomFeedBlock["kind"] | undefined;
+	for (let i = blocks.length - 1; i >= bodyStart && count < height; i--) {
 		const block = blocks[i]!;
 		// A paragraph of prose is set off from the tool rows around it, the way
 		// the transcript sets them off; tool rows stack tight.
-		if (previous !== undefined && (block.kind === "text" || previous === "text") && block.kind !== previous) {
-			body.push("");
+		if (later !== undefined && (block.kind === "text" || later === "text") && block.kind !== later) {
+			chunks.push([""]);
+			count++;
 		}
-		body.push(...blockRows(block, width, ink, working));
-		previous = block.kind;
+		const rows = blockRows(block, width, ink, working);
+		chunks.push(rows);
+		count += rows.length;
+		later = block.kind;
 	}
+	const body: string[] = [];
+	for (let c = chunks.length - 1; c >= 0; c--) body.push(...chunks[c]!);
 	if (head.length === 0) return body.slice(-height);
 	const spacer = body.length > 0 ? 1 : 0;
 	if (head.length + spacer + body.length <= height) return [...head, ...(spacer ? [""] : []), ...body];
@@ -475,6 +484,38 @@ function draftRow(draft: RoomDraft, width: number, ink: RoomInk): string {
 	return `${ink.token("accent", glyph)}${ink.token("muted", ` draft${line}${tail}`)}`;
 }
 
+/**
+ * A framed window's top edge: its ordinal, its name and its state chip. It is
+ * the one row of a window wide enough for an edge chip that reads the clock
+ * (the spinner, its colour and the turn's time).
+ */
+function windowTopEdge(paint: RoomWindowPaint, ink: RoomInk, frame: FrameColours): string {
+	const compact = paint.width < COMPACT_WIDTH;
+	const label = titleLabel(paint, ink, !compact);
+	const chip = stateChip(paint.snapshot, paint.waitingDialogs, ink, paint.now, !compact);
+	const chipGlyph = stateChip(paint.snapshot, paint.waitingDialogs, ink, paint.now, false);
+	return topEdge(paint.width, label, chip, chipGlyph, frame);
+}
+
+/**
+ * `rows`, a paint of `paint` at another instant, brought to `paint.now`: the
+ * rows `paintRoomWindow(paint)` returns, for the cost of the rows the clock
+ * moved. A window wide enough for an edge chip reads the clock on its top edge
+ * alone, so only that row is painted again; a narrower one carries its state
+ * glyph in its body and is painted whole; the whole-terminal crop reads no
+ * clock. `paint` must equal the paint `rows` came from in everything but `now`.
+ */
+export function repaintRoomWindowClock(paint: RoomWindowPaint, rows: readonly string[]): readonly string[] {
+	const { width, height, screen } = paint;
+	if (screen !== undefined && !paint.framed && screen.mix >= 0.999) return rows;
+	if (height < 3 || width < TINY_WIDTH) return paintRoomWindow(paint);
+	const ground = theme.visibleGroundHex();
+	const ink = new RoomInk(paint.strength, ground);
+	const next = rows.slice();
+	next[0] = windowTopEdge(paint, ink, frameColours(ink, paint.selected, paint.waitingDialogs > 0, ground));
+	return next;
+}
+
 /** Paint one conversation window: exactly `height` rows of exactly `width` cells. */
 export function paintRoomWindow(paint: RoomWindowPaint): string[] {
 	const { width, height } = paint;
@@ -517,10 +558,7 @@ export function paintRoomWindow(paint: RoomWindowPaint): string[] {
 	}
 
 	const compact = width < COMPACT_WIDTH;
-	const label = titleLabel(paint, ink, !compact);
-	const chip = stateChip(paint.snapshot, paint.waitingDialogs, ink, paint.now, !compact);
-	const chipGlyph = stateChip(paint.snapshot, paint.waitingDialogs, ink, paint.now, false);
-	const top = topEdge(width, label, chip, chipGlyph, frame);
+	const top = windowTopEdge(paint, ink, frame);
 	const meta = [paint.snapshot.model, paint.snapshot.cwd].filter(Boolean).join(theme.sep.dot);
 	const bottom = bottomEdge(width, compact ? "" : meta, ink, frame);
 

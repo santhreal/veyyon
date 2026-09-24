@@ -23,7 +23,13 @@ import type { AgentSession } from "../../../session/agent-session";
 import type { AgentSessionEvent } from "../../../session/agent-session-types";
 import { toolCallPrimaryArg } from "../../../session/session-history-format";
 import { shortenPath } from "../../../tools/core/shorten-path";
-import type { RoomDraft, RoomFeedBlock, RoomWindowSnapshot, RoomWindowState } from "../components/room/room-view-model";
+import {
+	type RoomDraft,
+	type RoomFeedBlock,
+	type RoomWindowSnapshot,
+	type RoomWindowState,
+	roomSnapshotsEqual,
+} from "../components/room/room-view-model";
 
 /** A window shows at most this many blocks after its prompt; it draws the tail of them anyway. */
 const MAX_FEED_BLOCKS = 48;
@@ -286,15 +292,18 @@ export class RoomWindowFeed {
 	 * The turn's clock and the message being written are the session's own
 	 * (`turnStartedAt`, `displayedStreamMessage`), the ones the footline and a
 	 * mid-answer arrival read, so a window and the screen it zooms into agree.
+	 * A rebuild that shows what the last one showed returns the last one, so a
+	 * stream of events that moves nothing on the window repaints nothing.
 	 */
 	snapshot(): RoomWindowSnapshot {
 		const model = this.session.model;
 		if (this.#snapshot === undefined || this.#built !== this.#version || this.#builtModel !== model) {
-			this.#snapshot = buildRoomWindowSnapshot(
+			const next = buildRoomWindowSnapshot(
 				this.session,
 				{ startedAt: this.session.turnStartedAt, stream: this.session.displayedStreamMessage },
 				this.#blocks,
 			);
+			if (this.#snapshot === undefined || !roomSnapshotsEqual(this.#snapshot, next)) this.#snapshot = next;
 			this.#built = this.#version;
 			this.#builtModel = model;
 		}

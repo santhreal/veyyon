@@ -22,7 +22,11 @@
  * A feed rebuilds on every token a conversation streams: each stored message
  * is read through the display transform once for the life of the feed, and
  * the message being written every time, so a window neither redoes its whole
- * exchange per token nor freezes on the first token it saw.
+ * exchange per token nor freezes on the first token it saw. A rebuild that
+ * shows what the last one showed hands back the last snapshot, since the room
+ * view keys each window's paint on it; the equality is swept field by field,
+ * so a field added to the snapshot, its state or a block is compared without
+ * anyone listing it.
  *
  * NOT CAUGHT. How a window paints the snapshot (the room window suites). The
  * `cwd` field is read straight from the session and not asserted beyond being
@@ -43,6 +47,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	type RoomFeedBlock,
 	type RoomWindowSnapshot,
+	type RoomWindowState,
+	roomSnapshotsEqual,
 	roomWindowName,
 } from "@veyyon/coding-agent/modes/terminal/components/room/room-view-model";
 import {
@@ -492,6 +498,46 @@ describe("a running turn", () => {
 	});
 
 	/**
+	 * The room view keys each window's paint on its snapshot's identity. A
+	 * thinking stream sends a delta per token while the window says only
+	 * `Thinking…`; a rebuild per delta that handed back a new, equal snapshot
+	 * would repaint that window on every token and show nothing new.
+	 */
+	it("keeps its snapshot through an event that changes nothing it shows, and replaces it on one that does", async () => {
+		const live = await open([]);
+		const { session, push } = live;
+		let events = 0;
+		const feed = new RoomWindowFeed(session, () => {
+			events++;
+		});
+		const turn = session.prompt("look at the database");
+		try {
+			await Promise.race([live.called, turn]);
+			push({ type: "start", partial: assistant([]) });
+			const thinking = assistant([{ type: "thinking", thinking: "which" }]);
+			push({ type: "thinking_start", contentIndex: 0, partial: thinking });
+			push({ type: "thinking_delta", contentIndex: 0, delta: "which", partial: thinking });
+			await until(() => feed.snapshot().blocks.at(-1)?.kind === "thinking", "thinking");
+			const before = feed.snapshot();
+
+			const seen = events;
+			const further = assistant([{ type: "thinking", thinking: "which table" }]);
+			push({ type: "thinking_delta", contentIndex: 0, delta: " table", partial: further });
+			await until(() => events > seen, "the delta to reach the feed");
+			expect(feed.snapshot()).toBe(before);
+
+			const writing = assistant([...further.content, { type: "text", text: "Reading it now." }]);
+			push({ type: "text_delta", contentIndex: 1, delta: "Reading it now.", partial: writing });
+			await until(() => feed.snapshot() !== before, "the text to replace the snapshot");
+			expect(textBlocks(feed.snapshot())).toEqual(["Reading it now."]);
+		} finally {
+			feed.dispose();
+			if (session.isStreaming) await session.abort();
+			await turn;
+		}
+	});
+
+	/**
 	 * The cache is what the window shows and no more: a long session's older
 	 * exchanges, or a compaction's dropped messages, would otherwise stay held
 	 * as display copies for as long as the room lives.
@@ -585,5 +631,79 @@ describe("the argot seam", () => {
 			if (session.isStreaming) await session.abort();
 			await turn;
 		}
+	});
+});
+
+describe("which rebuild is the same snapshot", () => {
+	/** `value` changed: a string grows a mark, a number moves, anything else becomes a string. */
+	function changed(value: unknown): unknown {
+		if (typeof value === "string") return `${value}!`;
+		if (typeof value === "number") return value + 1;
+		return "set";
+	}
+
+	/** A copy of `record` with each own field changed in turn, named by the field. */
+	function eachFieldChanged<T extends object>(record: T): Array<[string, T]> {
+		return Object.keys(record).map(key => [key, { ...record, [key]: changed(Reflect.get(record, key)) }]);
+	}
+
+	const STATES: readonly RoomWindowState[] = [
+		{ kind: "new" },
+		{ kind: "working", since: 1_000, activity: "tool" },
+		{ kind: "done", at: 2_000 },
+		{ kind: "failed", reason: "overloaded" },
+		{ kind: "stopped" },
+	];
+	const BLOCKS: readonly RoomFeedBlock[] = [
+		{ kind: "prompt", text: "look at the database" },
+		{ kind: "text", text: "Reading it now." },
+		{ kind: "tool", label: "Read", detail: DB, state: "running" },
+		{ kind: "thinking" },
+		{ kind: "note", text: "retrying", tone: "muted" },
+	];
+	function snapshot(state: RoomWindowState, blocks: readonly RoomFeedBlock[] = BLOCKS): RoomWindowSnapshot {
+		return { state, blocks: blocks.map(block => ({ ...block })), title: "tables", model: "Sonnet", cwd: "~/repo" };
+	}
+
+	it("is a rebuild equal in every field, and never one with any field of it, its state or a block changed", () => {
+		const wrong: string[] = [];
+		for (const state of STATES) {
+			const base = snapshot(state);
+			if (!roomSnapshotsEqual(base, snapshot({ ...state }))) wrong.push(`${state.kind}: an equal rebuild differs`);
+			for (const [field, other] of eachFieldChanged(base)) {
+				if (field === "state" || field === "blocks") continue;
+				if (roomSnapshotsEqual(base, other)) wrong.push(`${state.kind}: ${field} changed and it stayed equal`);
+			}
+			for (const [field, other] of eachFieldChanged(state)) {
+				if (roomSnapshotsEqual(base, snapshot(other))) wrong.push(`${state.kind}: state.${field} changed`);
+			}
+			for (const [index, block] of BLOCKS.entries()) {
+				for (const [field, other] of eachFieldChanged(block)) {
+					const blocks = BLOCKS.map((original, i) => (i === index ? other : original));
+					if (roomSnapshotsEqual(base, snapshot(state, blocks))) {
+						wrong.push(`${state.kind}: block ${index}.${field} changed`);
+					}
+				}
+				// A field one side has and the other lacks, as an optional field added later would be.
+				const extended = { ...block, added: "set" } as RoomFeedBlock;
+				const withAdded = snapshot(
+					state,
+					BLOCKS.map((original, i) => (i === index ? extended : original)),
+				);
+				if (roomSnapshotsEqual(base, withAdded) || roomSnapshotsEqual(withAdded, base)) {
+					wrong.push(`${state.kind}: block ${index} gained a field`);
+				}
+			}
+			if (roomSnapshotsEqual(base, snapshot(state, BLOCKS.slice(1)))) wrong.push(`${state.kind}: a block removed`);
+			if (roomSnapshotsEqual(base, snapshot(state, [...BLOCKS, { kind: "thinking" }]))) {
+				wrong.push(`${state.kind}: a block added`);
+			}
+			for (const other of STATES) {
+				if (other !== state && roomSnapshotsEqual(base, snapshot(other))) {
+					wrong.push(`${state.kind}: equal to ${other.kind}`);
+				}
+			}
+		}
+		expect(wrong).toEqual([]);
 	});
 });

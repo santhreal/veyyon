@@ -21,6 +21,7 @@
 ### Changed
 
 - A room window rebuilt while its conversation streams reads only the message being written, keeping each stored message's display text and tool rows from the rebuild before.
+- The open room view repaints only the top edge of a working window on a spinner tick, wraps only the rows a window shows, and repaints nothing for a stream event that leaves a window as it was, such as a thinking delta.
 
 ### Fixed
 

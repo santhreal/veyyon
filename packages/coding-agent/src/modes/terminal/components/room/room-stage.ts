@@ -42,7 +42,13 @@ import {
 } from "./room-geometry";
 import { paintRoomGuide, type RoomGuide } from "./room-guide";
 import { type RoomDraft, type RoomStageMember, roomUnread } from "./room-view-model";
-import { paintRoomNewSlot, paintRoomWindow, RoomInk } from "./room-window";
+import {
+	paintRoomNewSlot,
+	paintRoomWindow,
+	RoomInk,
+	type RoomWindowPaint,
+	repaintRoomWindowClock,
+} from "./room-window";
 
 /** The two arrangements of the room view; `room.view` selects the one it opens in. */
 export type RoomLayout = "side-by-side" | "all-windows";
@@ -249,8 +255,10 @@ export class RoomStage implements Component, OverlayFocusOwner {
 	#width = 0;
 	/**
 	 * Each slot's last paint, reused while its snapshot, its screen rows and its
-	 * draft (both by identity: a prepare that lands a new screen of the same
-	 * height is a new array) and its geometry key are all unchanged.
+	 * draft (all by identity: a prepare that lands a new screen of the same
+	 * height is a new array) and its geometry key are all unchanged. A working
+	 * window's spinner frame moves on its own; a new frame repaints only the
+	 * rows the clock moved.
 	 */
 	readonly #paintCache = new Map<
 		number,
@@ -259,7 +267,8 @@ export class RoomStage implements Component, OverlayFocusOwner {
 			screen: readonly string[] | undefined;
 			draft: RoomDraft | undefined;
 			key: string;
-			rows: string[];
+			tick: number;
+			rows: readonly string[];
 		}
 	>();
 
@@ -408,8 +417,8 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		return this.#members().findIndex(member => member.id === id);
 	}
 
-	#slotCount(): number {
-		return this.#members().length + (this.#phase === "travel" ? 0 : 1);
+	#slotCount(members: readonly RoomStageMember[] = this.#members()): number {
+		return members.length + (this.#phase === "travel" ? 0 : 1);
 	}
 
 	// ---------------------------------------------------------------- gestures
@@ -710,10 +719,10 @@ export class RoomStage implements Component, OverlayFocusOwner {
 	}
 
 	/** Keep the spinner ticking while, and only while, a conversation on the stage is working. */
-	#syncSpinner(): void {
+	#syncSpinner(members: readonly RoomStageMember[] = this.#members()): void {
 		const live =
 			this.#phase === "overview" &&
-			(this.#creating || this.#members().some(member => member.snapshot().state.kind === "working"));
+			(this.#creating || members.some(member => member.snapshot().state.kind === "working"));
 		if (live && !this.#spinnerTimer) {
 			this.#spinnerTimer = setInterval(() => this.#host.requestRender(), SPINNER_REPAINT_MS);
 			this.#spinnerTimer.unref?.();
@@ -729,7 +738,7 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		viewport: RoomViewport,
 		now: number,
 		backdrop: number,
-	): string[] {
+	): readonly string[] {
 		const { rect, slot, framed } = placement;
 		const strength = placement.strength * backdrop;
 		const selected = slot === this.#selected && this.#phase !== "travel";
@@ -740,20 +749,20 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		const snapshot = member.snapshot();
 		const rows = this.#screens.get(member.id);
 		const screenMix = rows ? screenMixAt(rect.w / Math.max(1, viewport.width)) : 0;
-		const working = snapshot.state.kind === "working";
-		const key = `${rect.w}x${rect.h}|${strength.toFixed(3)}|${selected}|${framed}|${member.waitingDialogs}|${screenMix.toFixed(3)}|${slot}|${working ? Math.floor(now / SPINNER_REPAINT_MS) : 0}`;
-		const cached = this.#paintCache.get(slot);
+		const key = `${rect.w}x${rect.h}|${strength.toFixed(3)}|${selected}|${framed}|${member.waitingDialogs}|${screenMix.toFixed(3)}|${slot}`;
+		const tick = snapshot.state.kind === "working" ? Math.floor(now / SPINNER_REPAINT_MS) : 0;
 		const draft = member.draft;
-		if (
+		const cached = this.#paintCache.get(slot);
+		const still =
 			cached &&
 			cached.snapshot === snapshot &&
 			cached.screen === rows &&
 			cached.draft === draft &&
 			cached.key === key
-		) {
-			return cached.rows;
-		}
-		const painted = paintRoomWindow({
+				? cached
+				: undefined;
+		if (still && still.tick === tick) return still.rows;
+		const paint: RoomWindowPaint = {
 			width: rect.w,
 			height: rect.h,
 			snapshot,
@@ -765,8 +774,14 @@ export class RoomStage implements Component, OverlayFocusOwner {
 			draft,
 			screen: rows ? { rows, mix: screenMix } : undefined,
 			now,
-		});
-		this.#paintCache.set(slot, { snapshot, screen: rows, draft, key, rows: painted });
+		};
+		if (still) {
+			still.rows = repaintRoomWindowClock(paint, still.rows);
+			still.tick = tick;
+			return still.rows;
+		}
+		const painted = paintRoomWindow(paint);
+		this.#paintCache.set(slot, { snapshot, screen: rows, draft, key, tick, rows: painted });
 		return painted;
 	}
 
@@ -789,7 +804,7 @@ export class RoomStage implements Component, OverlayFocusOwner {
 			zoomNow = 1;
 		}
 		const placements = placeRoomWindows(viewport, {
-			count: this.#slotCount(),
+			count: this.#slotCount(members),
 			scroll: this.#scroll.value,
 			selected: this.#selected,
 			zoom: zoomNow,
@@ -821,7 +836,7 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		}
 		const { rows, covered } = compositeRoomLayers(layers, this.#width, height);
 		if (this.#phase !== "travel") this.#paintChrome(rows, covered, chrome, members, now);
-		this.#syncSpinner();
+		this.#syncSpinner(members);
 		return rows;
 	}
 
@@ -872,7 +887,7 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		} else {
 			const ticks: string[] = [];
 			let tickWidth = 0;
-			const count = this.#slotCount();
+			const count = this.#slotCount(members);
 			for (let slot = 0; slot < count; slot++) {
 				const label = slot < members.length ? String(slot + 1) : "+";
 				const member = members[slot];

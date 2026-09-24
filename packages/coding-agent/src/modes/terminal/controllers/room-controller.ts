@@ -125,13 +125,18 @@ export class RoomController {
 	 * the composer; the composer does not take input while the view is open.
 	 */
 	#composerDraft: RoomDraft | undefined;
-	/** Held-dialog counts last seen, so a conversation that starts waiting is announced once. */
-	readonly #lastWaiting = new Map<AgentSession, number>();
+	/**
+	 * Held-dialog counts last seen, so a conversation that starts waiting is
+	 * announced once. Weak, like `#unread`: a session that leaves the room
+	 * without the room closing it (a `/new` that ends the one on screen) is not
+	 * held here after it goes.
+	 */
+	readonly #lastWaiting = new WeakMap<AgentSession, number>();
 	/**
 	 * Conversations whose turn ended off screen and that have not been on screen
 	 * since: an answer, or a failure, nobody has read. Entering one reads it.
 	 */
-	readonly #unread = new Set<AgentSession>();
+	readonly #unread = new WeakSet<AgentSession>();
 	#stage: { readonly component: RoomStage; readonly overlay: OverlayHandle; readonly originId: string } | undefined;
 	/** Serializes screen changes: a second one while one is in flight is dropped. */
 	#switching = false;
