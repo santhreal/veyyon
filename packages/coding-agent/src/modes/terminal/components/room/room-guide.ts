@@ -68,7 +68,7 @@ export function roomGuide(keys: RoomGuideKeys): RoomGuide {
 					{ keys: "working 0:41", text: "its turn so far" },
 					{
 						keys: `${theme.status.success} ${theme.status.error}`,
-						text: "finished or failed while you were elsewhere, until you go in",
+						text: "unread: finished or failed while you were away",
 					},
 					{ keys: "✎ draft", text: "what you typed there and did not send" },
 				],

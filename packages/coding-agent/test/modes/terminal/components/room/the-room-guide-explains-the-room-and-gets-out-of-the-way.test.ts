@@ -89,9 +89,13 @@ describe("the room guide", () => {
 		const shown = text((await stage()).lastFrame);
 		expect(shown).toContain("The room");
 		expect(shown).toContain("A room is every conversation in this terminal.");
+		// At full size the card cuts nothing: every key and every meaning reads whole.
 		for (const section of guide().sections) {
 			expect(shown).toContain(section.title);
-			for (const row of section.rows) expect(shown).toContain(row.keys);
+			for (const row of section.rows) {
+				expect(shown).toContain(row.keys);
+				expect(shown).toContain(row.text);
+			}
 		}
 		expect(shown).toContain(CLOSES);
 		// While it shows, the key row says the one thing a key does.
