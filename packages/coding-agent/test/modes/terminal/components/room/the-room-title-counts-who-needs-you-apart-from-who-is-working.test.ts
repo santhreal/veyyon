@@ -8,8 +8,9 @@
  * The contract: a waiting conversation is counted once, as needing you, ahead
  * of the working ones, the way the status line reads it; the key row names the
  * digit jump with the digits the room takes, only when there is somewhere to
- * jump; and Enter reads `answer` while the window in front holds a question,
- * `open` otherwise, following the selection.
+ * jump; Enter reads `answer` while the window in front holds a question,
+ * `open` otherwise, following the selection; and Esc names the conversation
+ * the view was opened from, wherever the selection has gone.
  *
  * What it does NOT catch: the colours of either row, or which hints a narrow
  * terminal drops (the frame sweeps pin that every row fits).
@@ -85,5 +86,29 @@ describe("the room view's key row", () => {
 		expect(keys()).toContain("enter answer");
 		await driver.press(KEY.right);
 		expect(keys()).toContain("enter open");
+	});
+
+	it("names the conversation Esc goes back to, wherever the selection moves, and only says back in a room of one", async () => {
+		const driver = new StageDriver({
+			width: 160,
+			height: 40,
+			members: [
+				new FakeMember("m1", DONE),
+				new FakeMember("m2", DONE, { origin: true }),
+				new FakeMember("m3", DONE),
+			],
+			originId: "m2",
+			motion: false,
+		});
+		const keys = (): string => stripVTControlCharacters(driver.render().at(-1) ?? "");
+		expect(keys()).toContain("esc back to 2");
+		await driver.press(KEY.right);
+		expect(keys()).toContain("esc back to 2");
+		await driver.press(KEY.home);
+		expect(keys()).toContain("esc back to 2");
+
+		const alone = settledRows([new FakeMember("m1", DONE, { origin: true })]).at(-1) ?? "";
+		expect(alone).toContain("esc back");
+		expect(alone).not.toContain("back to");
 	});
 });

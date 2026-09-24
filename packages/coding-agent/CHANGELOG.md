@@ -4,7 +4,7 @@
 
 ### Added
 
-- The room view shows every conversation in the terminal as a live window, side by side or all at once, opened with `→→` on an empty composer, `alt+w` or `/room`; each window names what its conversation is doing (`thinking`, `writing`, `running <tool>`) or when it finished, Enter or a digit zooms into a window (the key row reads `enter answer` on a window holding a question), `n` opens a new conversation, `x` closes one and Tab switches layouts ([#951](https://github.com/santhreal/veyyon/issues/951)).
+- The room view shows every conversation in the terminal as a live window, side by side or all at once, opened with `→→` on an empty composer, `alt+w` or `/room`; each window names what its conversation is doing (`thinking`, `writing`, `running <tool>`) or when it finished, Enter or a digit zooms into a window (the key row reads `enter answer` on a window holding a question), `n` opens a new conversation, `x` closes one, Tab switches layouts and Esc goes back to the conversation the view was opened from, which the key row names ([#951](https://github.com/santhreal/veyyon/issues/951)).
 - `alt+.` and `alt+,` (`app.room.next`, `app.room.previous`) switch to the next or previous conversation in the room with a pull-back, slide and push-in.
 - `/room new` opens a driving conversation beside the one on screen, `/room list` prints the room, and `/room <n>` or `/room <id>` switches to a member.
 - The `room.view` setting selects whether the room view opens side by side or with all windows.

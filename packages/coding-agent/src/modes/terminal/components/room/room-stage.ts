@@ -815,16 +815,23 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		// Keys, dropped from the right until the row fits. Enter answers a window
 		// holding a question, since that is what going into it shows. The digit
 		// jump is named only when there is somewhere to jump, with the digits the
-		// room takes.
+		// room takes. Esc names the conversation it goes back to, which the
+		// selection may have left several windows behind.
 		const grid = this.#layout === "all-windows";
 		const jumpable = Math.min(9, members.length);
 		const asking = (members[this.#selected]?.waitingDialogs ?? 0) > 0;
+		const origin = members.findIndex(member => member.id === this.#originId);
 		const hints: Array<[string, string]> = [
 			[grid ? "←↑↓→" : "←→", "move"],
 			["enter", asking ? "answer" : "open"],
 		];
 		if (jumpable > 1) hints.push([`1–${jumpable}`, "jump"]);
-		hints.push(["n", "new"], ["x", "close"], ["tab", grid ? "side by side" : "all windows"], ["esc", "back"]);
+		hints.push(
+			["n", "new"],
+			["x", "close"],
+			["tab", grid ? "side by side" : "all windows"],
+			["esc", origin >= 0 && members.length > 1 ? `back to ${origin + 1}` : "back"],
+		);
 		const sep = ink.token("dim", SEPARATOR);
 		let shown = hints.length;
 		const plainWidth = (n: number): number =>

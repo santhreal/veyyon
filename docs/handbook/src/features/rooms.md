@@ -32,7 +32,7 @@ the room view shows all of them at once.
 
                                   1   2   3!  +
 
-      ←→ move · enter open · 1–3 jump · n new · x close · tab all windows · esc back
+   ←→ move · enter open · 1–3 jump · n new · x close · tab all windows · esc back to 2
 ```
 
 The view has two layouts:
@@ -80,7 +80,7 @@ shows its ordinal and a state glyph.
 | `n` | Open a new conversation and go into it |
 | `x`, Delete | Close the selected conversation; press it twice while the conversation is working |
 | Tab | Switch layouts |
-| Esc, `alt+w` | Go back to the conversation the view was opened from |
+| Esc, `alt+w` | Go back to the conversation the view was opened from; the key row names its number |
 
 ## Moving between conversations
 
