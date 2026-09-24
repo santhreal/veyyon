@@ -34,7 +34,7 @@ import { NO_SESSION_FACTS } from "@veyyon/coding-agent/modes/terminal/components
 import type { RoomPeerSummary } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import { withIcon } from "@veyyon/coding-agent/theme/icon-label";
 import { theme } from "@veyyon/coding-agent/theme/theme";
-import { useTruecolorTheme } from "../../../../helpers/theme-assertions";
+import { useFullColor, useTruecolorTheme } from "../../../../helpers/theme-assertions";
 
 function contextWith(roomPeers: RoomPeerSummary): SegmentContext {
 	return {
@@ -149,16 +149,20 @@ describe("the room chip", () => {
 	 * The ember a waiting prompt takes is `borderAccent`; `accent` is the
 	 * colour of work. The two escapes differ under this theme, so a chip that
 	 * paints the question in accent fails here rather than passing on bytes
-	 * that happen to agree.
+	 * that happen to agree. The policy is pinned to full colour, so neither the
+	 * presence nor the absence of a colour holds vacuously under `NO_COLOR`.
 	 */
-	it("paints the waiting text in borderAccent and the working text in accent", () => {
-		expect(theme.getFgAnsi("borderAccent")).not.toBe(theme.getFgAnsi("accent"));
-		const waiting = chip({ peers: 2, working: 1, waiting: 1 }).painted;
-		expect(waiting).toContain(theme.fg("borderAccent", `${theme.status.warning} 1 needs you`));
-		const working = chip({ peers: 2, working: 1, waiting: 0 }).painted;
-		expect(working).toContain(theme.fg("accent", "1 working"));
-		expect(working).not.toContain(theme.fg("borderAccent", "1 working"));
-		expect(waiting).not.toContain(theme.fg("accent", `${theme.status.warning} 1 needs you`));
+	describe("colours", () => {
+		useFullColor();
+		it("paints the waiting text in borderAccent and the working text in accent", () => {
+			expect(theme.getFgAnsi("borderAccent")).not.toBe(theme.getFgAnsi("accent"));
+			const waiting = chip({ peers: 2, working: 1, waiting: 1 }).painted;
+			expect(waiting).toContain(theme.fg("borderAccent", `${theme.status.warning} 1 needs you`));
+			const working = chip({ peers: 2, working: 1, waiting: 0 }).painted;
+			expect(working).toContain(theme.fg("accent", "1 working"));
+			expect(working).not.toContain(theme.fg("borderAccent", "1 working"));
+			expect(waiting).not.toContain(theme.fg("accent", `${theme.status.warning} 1 needs you`));
+		});
 	});
 });
 
