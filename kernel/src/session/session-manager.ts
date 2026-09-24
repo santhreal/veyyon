@@ -7,7 +7,6 @@ import { allowsSessionTelemetry, type InstrumentationLevel } from "@veyyon/ai/in
 import {
 	directoryExists,
 	errorMessage,
-	getBlobsDir,
 	getProjectDir,
 	getSessionsDir,
 	isEnoent,
@@ -18,7 +17,7 @@ import {
 import { pathStateSync } from "@veyyon/utils/fs-optional";
 import { sessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
 import { ArtifactManager } from "./artifacts";
-import { type BlobPutOptions, type BlobPutResult, BlobStore } from "./blob-store";
+import { type BlobPutOptions, type BlobPutResult, BlobStore, blobsDirForSessionDir } from "./blob-store";
 import {
 	normalizeCustomMessagePayload,
 	sanitizeRehydratedOpenAIResponsesAssistantMessage,
@@ -481,7 +480,10 @@ export class SessionManager {
 	#sessionDir: string;
 	readonly #persist: boolean;
 	readonly #storage: SessionStorage;
-	readonly #blobs: BlobStore;
+	// The store beside the current session file (see blobsDirForSessionDir), rebuilt
+	// when the file or the directory it would be created in changes.
+	#blobStore: BlobStore | undefined;
+	#blobStoreKey: string | undefined;
 	#operatorNotices: OperatorNotices | undefined;
 
 	#sessionId = "";
@@ -642,9 +644,18 @@ export class SessionManager {
 		this.#storage = storage;
 		this.#operatorNotices = operatorNotices;
 		this.#instrumentation = instrumentation;
-		this.#blobs = new BlobStore(getBlobsDir());
 
 		if (persist && sessionDir) this.#storage.ensureDirSync(sessionDir);
+	}
+
+	get #blobs(): BlobStore {
+		const key = this.#sessionFile ?? this.#sessionDir;
+		if (this.#blobStore === undefined || this.#blobStoreKey !== key) {
+			const dir = this.#sessionFile === undefined ? this.#sessionDir : path.dirname(this.#sessionFile);
+			this.#blobStore = new BlobStore(blobsDirForSessionDir(dir));
+			this.#blobStoreKey = key;
+		}
+		return this.#blobStore;
 	}
 
 	#rememberBreadcrumb(cwd: string, sessionFile: string): void {
@@ -1590,10 +1601,14 @@ export class SessionManager {
 		let adoptedCwd: string | undefined;
 		if (fileEntries.length > 0) {
 			migrated = migrateToCurrentVersion(fileEntries);
-			await resolveBlobRefsInEntries(fileEntries, this.#blobs, {
-				source: resolvedSessionFile,
-				operatorNotices: this.#operatorNotices,
-			});
+			await resolveBlobRefsInEntries(
+				fileEntries,
+				new BlobStore(blobsDirForSessionDir(path.dirname(resolvedSessionFile))),
+				{
+					source: resolvedSessionFile,
+					operatorNotices: this.#operatorNotices,
+				},
+			);
 			// loadEntriesFromFile guarantees entries[0] is a valid session header.
 			header = fileEntries[0] as SessionHeader;
 			const headerCwd = header.cwd ? path.resolve(header.cwd) : undefined;
@@ -2873,7 +2888,7 @@ export class SessionManager {
 			await loadEntriesFromFile(sourcePath, storage, { operatorNotices: options?.operatorNotices }),
 		) as FileEntry[];
 		migrateToCurrentVersion(sourceEntries);
-		await resolveBlobRefsInEntries(sourceEntries, manager.#blobs, {
+		await resolveBlobRefsInEntries(sourceEntries, new BlobStore(blobsDirForSessionDir(path.dirname(sourcePath))), {
 			source: sourcePath,
 			operatorNotices: options?.operatorNotices,
 		});

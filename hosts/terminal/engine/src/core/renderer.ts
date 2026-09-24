@@ -42,15 +42,42 @@ const LINE_FIT_SOURCE_WIDTH_MULTIPLIER = 64;
 const CONPTY_FRAME_TRUNCATE_THRESHOLD_BYTES = 512 * 1024;
 const CONPTY_FRAME_RETAIN_BYTES = 64 * 1024;
 
-/** Depth-first identity search through `Container`-shaped children. */
-export function subtreeContains(root: Component, target: Component): boolean {
-	if (root === target) return true;
+/**
+ * The chain of components from `root` down to `target`, both included, or null when
+ * `target` is not in `root`'s `Container`-shaped subtree.
+ *
+ * Children are searched newest first. The component asking for a scoped frame is
+ * nearly always a spinner or a streaming block at the tail of a transcript, and an
+ * oldest-first search visited every block of a long session's history to reach it:
+ * a 58,000-turn transcript spent 94% of an idle process's CPU here, once per
+ * animation frame.
+ */
+export function pathToDescendant(root: Component, target: Component): Component[] | null {
+	if (root === target) return [root];
 	const children = (root as Partial<Container>).children;
-	if (!Array.isArray(children)) return false;
-	for (let i = 0; i < children.length; i++) {
-		if (subtreeContains(children[i]!, target)) return true;
+	if (!Array.isArray(children)) return null;
+	for (let i = children.length - 1; i >= 0; i--) {
+		const path = pathToDescendant(children[i]!, target);
+		if (path !== null) {
+			path.unshift(root);
+			return path;
+		}
 	}
-	return false;
+	return null;
+}
+
+/**
+ * Whether every link of a chain from {@link pathToDescendant} still holds: each
+ * component is still a child of the one before it. Exact under any mutation of a
+ * `children` array, including a direct one that bypasses `Container` methods, and it
+ * costs one membership scan per link instead of a walk of the whole subtree.
+ */
+export function isPathIntact(path: readonly Component[]): boolean {
+	for (let i = 1; i < path.length; i++) {
+		const children = (path[i - 1] as Partial<Container>).children;
+		if (!Array.isArray(children) || children.lastIndexOf(path[i]!) === -1) return false;
+	}
+	return true;
 }
 
 export interface PreparedLine {

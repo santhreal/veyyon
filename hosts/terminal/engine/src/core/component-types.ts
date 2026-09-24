@@ -179,6 +179,33 @@ export function setNativeScrollbackRetainRows(component: Component, rows: number
 }
 
 /**
+ * A container that re-renders only the children a component-scoped frame names.
+ *
+ * `TUI.requestComponentRender(target)` promises that nothing outside the requested
+ * components changed since the previous frame: every content mutation routes through
+ * a render request, and any full request turns the frame into a full one. The engine
+ * already uses that promise to reuse whole root children; this hook passes it one
+ * level down, so a root holding a long list (a transcript) re-derives the children
+ * that contain a target instead of every child it holds.
+ *
+ * Contract:
+ * - The engine calls the setter immediately before the root's `render()`, with the
+ *   root's direct children that contain a requested component, or `null` for a full
+ *   render. A non-null set is never empty.
+ * - The hint applies to the next `render()` only. The implementer consumes it there,
+ *   so an out-of-band render (an exporter walking the tree) is always a full one.
+ * - An implementer that cannot prove its previous render still stands (a width
+ *   change, an invalidation, a structural change to its children) ignores the hint.
+ */
+export interface ComponentScopedRender {
+	setComponentScopedRenderChildren(children: ReadonlySet<Component> | null): void;
+}
+
+export function setComponentScopedRenderChildren(component: Component, children: ReadonlySet<Component> | null): void {
+	(component as Component & Partial<ComponentScopedRender>).setComponentScopedRenderChildren?.(children);
+}
+
+/**
  * Opt-in stability report for components that mutate their returned render
  * array in place across frames (instead of returning a fresh array per
  * change). The engine reads it right after the component's `render()` returns:

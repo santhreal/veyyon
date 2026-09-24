@@ -12,29 +12,8 @@
 - The status line's `room` segment counts the other conversations in the room, how many are waiting for an answer and how many are working, and with `tui.scrollIsolation` on a click on it opens the room view; a room member running off screen is counted there and not again by the `background` segment.
 - A room window shows the unsent draft its conversation's composer holds at its foot, with its first line and what it has attached.
 
-### Changed
-
-- Slash-command reports (`/tools`, `/hotkeys`, `/context`, `/jobs`, `/todo`, `/lsp`, `/plugins`, `/effort`) format with clean human summaries, consistent headers and indentation, and without raw XML tags or run-on bullet sequences.
-- The extension dashboard aligns list cursor bands to avoid text overlap, keeps the provider tab strip on a single scrollable line, and adopts the shared search input style.
-- The account manager displays quieter empty provider states without trailing dashes and phrases initial account addition cleanly.
-- The profile picker presents a dedicated Profiles title, drops the redundant other option, and cleans up the create-profile label glyph.
-- The resume session selector omits file size metadata when displaying empty sessions without messages.
-- The agent dashboard renders active tabs with standard theme highlight styling without hardcoded bracket characters.
-- Settings panel presents booleans as On/Off, humanizes enum and status labels, displays the selected setting description in the footer, simplifies default model display, and aligns the value column.
-- Bare-command pickers (`/mcp`, `/usage`, `/account`, `/debug` and the rest) widen to show every usage hint and description whole, cut a usage that cannot fit after a whole word, print one key legend in the footer with `esc close` instead of `esc/ctrl+c close`, name the search there while the list is searchable, and draw a dim scrollbar with a silver thumb.
-- The `/debug` card is titled `/debug`, matching the other bare-command cards.
-- Provider request shaping (secret redaction, Anthropic metadata, tool-order check) moved from `session/agent-session` to `session/agent-session-provider-request`; no user-visible change.
-- Home-path shortening in tool cards compiles its pattern once per home directory instead of on every call; no user-visible change.
-
 ### Fixed
 
-- Tool-result preview lines replace tabs with spaces, so a tab-indented line no longer opens a gap in the rendered preview.
-- Shutting down an LSP client releases callers still waiting for its project to load, and the LSP idle checker no longer keeps the process alive.
-- Timeout timers in MCP HTTP startup, the eval kernel exit wait, the lspmux liveness probe, stdin reading, ACP cancel cleanup, browser user-agent overrides and the interactive closing frame are cleared once the awaited operation settles; no other behavior change.
-- The ask dialog rejects a question with no options and no free-text answer instead of opening a dialog that cannot be answered.
-- A collab guest answering an ask question is offered `Other` only when the question allows a free-text answer, and a guest reply of `Other` to a closed question records no custom answer.
-- The extension dashboard's overflowing tab strip reserves room for the paging arrows and stays on one row at every width.
-- A bare-command picker on a narrow terminal narrows a long usage column so every subcommand keeps its description.
 - A dialog opened by a conversation that is off screen waits until that conversation is entered instead of appearing over the one on screen.
 - A conversation opened by `/new` while a turn streams gives its tools and extensions the terminal UI, so its `ask` calls and extension dialogs work.
 - Extension actions run on the conversation that registered them after a `/new` hand-off or a room switch, not on whichever one is on screen.
@@ -56,9 +35,38 @@
 - A room window whose screen is composed again at the same height draws the new screen instead of the one it drew before.
 - Extension status text and widgets belong to the conversation that set them: the terminal shows the on-screen conversation's, including ones set while it was off screen, and a room switch takes the previous conversation's away.
 - All windows on a short terminal shows the rows around the selected window instead of laying rows out past the bottom of the room view.
+
+## [1.5.4] - 2026-09-24
+
+### Changed
+
+- Slash-command reports (`/tools`, `/hotkeys`, `/context`, `/jobs`, `/todo`, `/lsp`, `/plugins`, `/effort`) format with clean human summaries, consistent headers and indentation, and without raw XML tags or run-on bullet sequences.
+- The extension dashboard aligns list cursor bands to avoid text overlap, keeps the provider tab strip on a single scrollable line, and adopts the shared search input style.
+- The account manager displays quieter empty provider states without trailing dashes and phrases initial account addition cleanly.
+- The profile picker presents a dedicated Profiles title, drops the redundant other option, and cleans up the create-profile label glyph.
+- The resume session selector omits file size metadata when displaying empty sessions without messages.
+- The agent dashboard renders active tabs with standard theme highlight styling without hardcoded bracket characters.
+- Settings panel presents booleans as On/Off, humanizes enum and status labels, displays the selected setting description in the footer, simplifies default model display, and aligns the value column.
+- Bare-command pickers (`/mcp`, `/usage`, `/account`, `/debug` and the rest) widen to show every usage hint and description whole, cut a usage that cannot fit after a whole word, print one key legend in the footer with `esc close` instead of `esc/ctrl+c close`, name the search there while the list is searchable, and draw a dim scrollbar with a silver thumb.
+- The `/debug` card is titled `/debug`, matching the other bare-command cards.
+- Provider request shaping (secret redaction, Anthropic metadata, tool-order check) moved from `session/agent-session` to `session/agent-session-provider-request`; no user-visible change.
+- Home-path shortening in tool cards compiles its pattern once per home directory instead of on every call; no user-visible change.
+- A spinner or rail tick in the transcript re-renders only the blocks from the animating one down, so an idle resumed session with a long transcript no longer spends a core re-walking every block.
+
+### Fixed
+
+- Tool-result preview lines replace tabs with spaces, so a tab-indented line no longer opens a gap in the rendered preview.
+- Shutting down an LSP client releases callers still waiting for its project to load, and the LSP idle checker no longer keeps the process alive.
+- Timeout timers in MCP HTTP startup, the eval kernel exit wait, the lspmux liveness probe, stdin reading, ACP cancel cleanup, browser user-agent overrides and the interactive closing frame are cleared once the awaited operation settles; no other behavior change.
+- The ask dialog rejects a question with no options and no free-text answer instead of opening a dialog that cannot be answered.
+- A collab guest answering an ask question is offered `Other` only when the question allows a free-text answer, and a guest reply of `Other` to a closed question records no custom answer.
+- The extension dashboard's overflowing tab strip reserves room for the paging arrows and stays on one row at every width.
+- A bare-command picker on a narrow terminal narrows a long usage column so every subcommand keeps its description.
 - Switching to a model on another provider after a server-side compaction no longer resends the whole session history: before the next prompt, the session asks the model that minted the compaction to summarize it and continues from that summary, reported as an auto-compaction with reason `provider_switch`.
 - A prompt or idle compaction on a session that switched providers after a server-side compaction ports that compaction first, instead of summarizing the re-expanded history on the new provider in hundreds of staged requests.
 - A staged compaction summary that fails part way resumes on the next attempt from the segments that never completed instead of restarting from the first segment.
+- A background task card restored from a resumed session stops its rail animation once it scrolls above the live region, instead of repainting the transcript every 100 ms for the rest of the process.
+- A displaceable tool preview sealed during an animation frame releases the live region at that frame instead of holding it open until the next full render.
 
 ## [1.5.3] - 2026-09-22
 

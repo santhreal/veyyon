@@ -590,6 +590,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			this.#backgroundTaskFrozen = true;
 			this.#syncBlock();
 			this.#updateSpinnerAnimation();
+			this.#updateRailMotion();
 			this.#updateDisplay();
 			this.#requestScopedRender();
 			return true;
@@ -608,6 +609,11 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			if (this.#railIdleInterval) return;
 			this.#railIdleLive = true;
 			this.#railIdleInterval = setInterval(() => {
+				// A background task above the seam settles like the spinner does: its rows
+				// are native-scrollback history, and a card rebuilt from a session whose
+				// agent reported "running" when it was saved otherwise animates for the
+				// rest of the process, re-rendering the transcript at the rail rate.
+				if (this.#maybeFreezeBackgroundTask()) return;
 				if (this.#railRowsPresent !== true) return;
 				this.#requestScopedRender();
 			}, RAIL_IDLE_STEP_MS);

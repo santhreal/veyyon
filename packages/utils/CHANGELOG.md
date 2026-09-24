@@ -12,6 +12,9 @@
 ### Fixed
 
 - A horizontal trackpad swipe is no longer reported as a vertical wheel notch.
+
+## [1.5.4] - 2026-09-24
+
 ### Fixed
 
 - Replacing or rebinding log transports closes the old transports, so their file streams and timers no longer stay open.

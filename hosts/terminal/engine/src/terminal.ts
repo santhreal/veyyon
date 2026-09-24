@@ -920,6 +920,14 @@ export class ProcessTerminal implements Terminal {
 	 * to handle the case where the response arrives split across multiple events.
 	 */
 	#setupStdinBuffer(): void {
+		// A start() over a running terminal replaces the reader instead of stacking a
+		// second one on stdin, whose handler would outlive stop() and parse into a
+		// destroyed buffer.
+		this.#stdinBuffer?.destroy();
+		if (this.#stdinDataHandler) {
+			process.stdin.removeListener("data", this.#stdinDataHandler);
+			this.#stdinDataHandler = undefined;
+		}
 		// 50ms balances two failure modes: a bare ESC keypress on legacy
 		// terminals waits this long before it is delivered, while a CSI key
 		// escape split across stdin reads (laggy ssh/tmux links) leaks as

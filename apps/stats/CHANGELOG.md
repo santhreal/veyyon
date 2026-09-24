@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.5.4] - 2026-09-24
+
 ### Fixed
 
 - Closed database connections and active sockets when stopping the stats dashboard server, and stopped server on interrupt signal.

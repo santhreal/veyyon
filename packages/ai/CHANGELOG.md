@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.5.4] - 2026-09-24
+
 ### Fixed
 
 - Fixed Cursor running a tool twice and leaving an unanswered `<id>_2` tool call when the server re-sent an exec request for a call it already dispatched; the repeat is now answered from the first run's result.

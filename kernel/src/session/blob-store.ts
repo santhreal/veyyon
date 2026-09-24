@@ -1,8 +1,9 @@
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
+// Owners, not the `@veyyon/utils` barrel: 4 modules against 74.
+import { getBlobsDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
-// Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 
@@ -220,6 +221,30 @@ export class BlobStore {
 		} catch {
 			return false;
 		}
+	}
+}
+
+/**
+ * The blob store a session file in `sessionDir` was written against: the `blobs`
+ * directory beside the `sessions` root holding it. A session file opened from another
+ * profile keeps reading and writing that profile's store, where its payloads are and
+ * where that profile's garbage collection counts them as referenced. A directory
+ * outside any `sessions` root, or one whose root has no `blobs` beside it, uses the
+ * active profile's store.
+ */
+export function blobsDirForSessionDir(sessionDir: string): string {
+	const active = getBlobsDir();
+	if (sessionDir.length === 0) return active;
+	let dir = path.resolve(sessionDir);
+	for (;;) {
+		if (path.basename(dir) === "sessions") {
+			const sibling = path.join(path.dirname(dir), "blobs");
+			if (sibling === active) return active;
+			return fs.statSync(sibling, { throwIfNoEntry: false })?.isDirectory() ? sibling : active;
+		}
+		const parent = path.dirname(dir);
+		if (parent === dir) return active;
+		dir = parent;
 	}
 }
 

@@ -139,4 +139,29 @@ describe("ToolExecutionComponent detached task freeze", () => {
 		const final = stripVTControlCharacters(component.render(100).join("\n"));
 		expect(final).toContain("found it in src/auth.ts");
 	});
+
+	// A card rebuilt from a saved session is appended while it is the transcript's
+	// last block, so it starts inside the live region and its rail idles. Once the
+	// blocks after it arrive it sits above the seam, and every idle tick used to
+	// request a render regardless: a long session holding many such cards re-derived
+	// the transcript at the rail rate for as long as the process ran.
+	it("stops its rail and its redraw driver once it sits above the seam", () => {
+		vi.useFakeTimers();
+		let live = true;
+		const { component, requestRender, requestComponentRender } = makeComponent(() => live);
+		component.updateResult(asyncSnapshot("scouting the auth flow"), true);
+		component.render(100);
+
+		live = false;
+		requestRender.mockClear();
+		requestComponentRender.mockClear();
+		vi.advanceTimersByTime(5_000);
+		// One request repaints the frozen card; nothing drives frames after it.
+		expect(requestRender.mock.calls.length + requestComponentRender.mock.calls.length).toBeLessThanOrEqual(1);
+
+		const clock = vi.spyOn(performance, "now").mockReturnValue(1_000);
+		const early = component.render(100).join("\n");
+		clock.mockReturnValue(9_000);
+		expect(component.render(100).join("\n")).toBe(early);
+	});
 });

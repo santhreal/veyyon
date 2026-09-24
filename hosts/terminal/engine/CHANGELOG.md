@@ -4,20 +4,31 @@
 
 ### Added
 
-- `SelectList` adds `naturalWidth()`, `isSearchable()` and `cancel()`, a `searchPrompt` layout option that hides the idle "Type to search" row, and a `scrollbar` theme slot.
 - `TUI.captureViewport()` returns the window last committed to the screen and `TUI.composeViewport()` returns the window the children compose now, without painting either.
+
+### Fixed
+
+- Closing the last fullscreen overlay leaves the alternate screen and repaints in one synchronized update, so the previous screen never shows for a frame between the two.
+- Leaving a fullscreen overlay gives footer click targets button reporting back, so with scroll isolation on the status line's chips answer a click after settings or the room view closes instead of staying inert until the transcript scrolls.
+
+## [1.5.4] - 2026-09-24
+
+### Added
+
+- `SelectList` adds `naturalWidth()`, `isSearchable()` and `cancel()`, a `searchPrompt` layout option that hides the idle "Type to search" row, and a `scrollbar` theme slot.
+- `ComponentScopedRender` lets a root child that holds many blocks re-derive only the children containing a component-scoped render requester.
 
 ### Changed
 
 - Settings list adapts label width dynamically with clean truncation and wraps inline descriptions to fit within the visible viewport width.
+- A component-scoped render finds its requester by searching the newest children first and reuses the found path while it stays intact, instead of walking the whole component tree on every frame.
 
 ### Fixed
 
 - `SelectList.naturalWidth()` counts the description column's minimum width, so a list sized to it shows every description whole.
-- Closing the last fullscreen overlay leaves the alternate screen and repaints in one synchronized update, so the previous screen never shows for a frame between the two.
-- Leaving a fullscreen overlay gives footer click targets button reporting back, so with scroll isolation on the status line's chips answer a click after settings or the room view closes instead of staying inert until the transcript scrolls.
 - A line longer than the renderer's source limit keeps its ANSI styling, and a run of styling escapes long enough to fill that limit no longer hides the visible text after it.
 - Removed stale stdout resize and error listeners in ProcessTerminal to prevent listener leaks.
+- Calling `ProcessTerminal.start()` on a running terminal replaces its stdin reader instead of adding a second one that stayed attached after `stop()` and threw on the next input.
 
 ## [1.5.0] - 2026-09-18
 

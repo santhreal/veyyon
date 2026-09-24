@@ -1,5 +1,6 @@
 import {
 	type Component,
+	type ComponentScopedRender,
 	Container,
 	type NativeScrollbackCommittedRows,
 	type NativeScrollbackCompaction,
@@ -133,6 +134,60 @@ const EMPTY_SEGMENTS: BlockSegment[] = [];
 const EMPTY_TAIL: readonly string[] = [];
 
 /**
+ * The segment `previous` when it already records exactly these values, else a new one.
+ *
+ * Almost every block of a long transcript is reused unchanged from one frame to the
+ * next, and allocating a fresh record for each of them was most of the frame's cost
+ * once the blocks themselves stopped rendering. A reused record is safe to share with
+ * the previous frame's array: that array is read only during this render, and the
+ * in-place edits compaction makes afterwards apply to the current frame.
+ */
+function reuseOrCreateSegment(
+	previous: BlockSegment | undefined,
+	component: Component,
+	rawRef: readonly string[],
+	contribution: readonly string[],
+	width: number,
+	generation: number,
+	startRow: number,
+	rowCount: number,
+	sep: number,
+	finalized: boolean,
+	compactable: boolean,
+	version: number | undefined,
+): BlockSegment {
+	if (
+		previous !== undefined &&
+		previous.component === component &&
+		previous.rawRef === rawRef &&
+		previous.contribution === contribution &&
+		previous.width === width &&
+		previous.generation === generation &&
+		previous.startRow === startRow &&
+		previous.rowCount === rowCount &&
+		previous.sep === sep &&
+		previous.finalized === finalized &&
+		previous.compactable === compactable &&
+		previous.version === version
+	) {
+		return previous;
+	}
+	return {
+		component,
+		rawRef,
+		contribution,
+		width,
+		generation,
+		startRow,
+		rowCount,
+		sep,
+		finalized,
+		compactable,
+		version,
+	};
+}
+
+/**
  * Transcript container that renders every block's current content each frame
  * and reports the native-scrollback exactness boundary
  * (`NativeScrollbackLiveRegion`): the frame row below which every rendered
@@ -160,6 +215,7 @@ const EMPTY_TAIL: readonly string[] = [];
 export class TranscriptContainer
 	extends Container
 	implements
+		ComponentScopedRender,
 		NativeScrollbackLiveRegion,
 		NativeScrollbackCommittedRows,
 		NativeScrollbackCompaction,
@@ -203,6 +259,35 @@ export class TranscriptContainer
 	// consumes the report and re-bases the baseline). Out-of-band renders
 	// between engine frames lower it; they can never inflate it.
 	#stableRowsFloor = 0;
+	// Children a component-scoped frame named for the next render (see
+	// ComponentScopedRender); null renders every child. Consumed by render().
+	#scopedChildren: ReadonlySet<Component> | null = null;
+	// A child was added or removed since the last completed render, so segment
+	// indices may no longer line up with children and no render may reuse them
+	// without walking.
+	#childrenChanged = true;
+	// Generation the last completed render ran under.
+	#renderedGeneration = -1;
+	// First unfinalized child of the last completed render, or -1 when none.
+	#liveStartIndex = -1;
+	// First child whose segment the last seal pass found uncommitted: every
+	// child before it was checked for sealing while its rows were on the tape.
+	#sealScanFrom = 0;
+
+	override addChild(component: Component): void {
+		super.addChild(component);
+		this.#childrenChanged = true;
+	}
+
+	override removeChild(component: Component): void {
+		super.removeChild(component);
+		this.#childrenChanged = true;
+	}
+
+	setComponentScopedRenderChildren(children: ReadonlySet<Component> | null): void {
+		this.#scopedChildren = children;
+	}
+
 	override invalidate(): void {
 		// Theme/global invalidation: retire every diff snapshot so stale styling
 		// is not diffed against the recolored render.
@@ -214,6 +299,7 @@ export class TranscriptContainer
 		this.#generation++;
 		super.clear();
 		this.#compactedChildStart = 0;
+		this.#childrenChanged = true;
 		this.#droppedRows = 0;
 		this.#replayPending = false;
 	}
@@ -361,25 +447,49 @@ export class TranscriptContainer
 
 	override render(width: number): readonly string[] {
 		width = Math.max(1, width);
+		const scoped = this.#scopedChildren;
+		this.#scopedChildren = null;
+		const previousLiveRegionStart = this.#nativeScrollbackLiveRegionStart;
 		this.#nativeScrollbackLiveRegionStart = undefined;
 
 		const count = this.children.length;
 		if (this.#compactedChildStart > count) this.#compactedChildStart = count;
+		const firstChild = this.#compactedChildStart;
+		// A component-scoped frame re-derives from its earliest requested child:
+		// every child above it is unchanged since the last render, so its segment,
+		// its rows and the rows under it all stand as they are.
+		let resume = this.#scopedResumeIndex(scoped, width, count);
+		let scopedFrame = resume > firstChild;
 
 		// Seal displaceable snapshots whose rows are already on the tape (per the
 		// previous frame's segments — the geometry the committed count was
 		// computed against): immutable history can no longer be retracted, and
 		// left unfinalized such a block would pin the live-region seam open below
 		// it. Runs before the live-block scan so the seam unpins in this same
-		// frame, and every frame so a block that BECAME displaceable after its
-		// pending-preview rows committed (late result on a scrolled-off call) is
-		// caught too.
-		for (let i = this.#compactedChildStart; i < count && i < this.#segments.length; i++) {
-			const previous = this.#segments[i];
+		// frame, and every full frame so a block that BECAME displaceable after
+		// its pending-preview rows committed (late result on a scrolled-off call)
+		// is caught too. A scoped frame starts where the last pass stopped: a
+		// child above that was checked while committed and has not changed since.
+		let seal = scopedFrame ? Math.max(firstChild, Math.min(this.#sealScanFrom, resume)) : firstChild;
+		for (; seal < count && seal < this.#segments.length; seal++) {
+			const previous = this.#segments[seal];
 			if (previous === undefined) continue;
 			if (previous.startRow >= this.#committedRows) break;
-			if (previous.rowCount === 0 || previous.component !== this.children[i]) continue;
+			if (previous.rowCount === 0 || previous.component !== this.children[seal]) continue;
 			sealCommittedSnapshot(previous.component);
+		}
+		this.#sealScanFrom = seal;
+		// The seal pass can finalize the block that set the last render's seam. A
+		// scoped frame re-derives from that block then, so the walk finds the next
+		// live block instead of keeping the seam pinned on a sealed one.
+		if (
+			scopedFrame &&
+			this.#liveStartIndex >= firstChild &&
+			this.#liveStartIndex < resume &&
+			isBlockFinalized(this.children[this.#liveStartIndex]!)
+		) {
+			resume = this.#liveStartIndex;
+			scopedFrame = resume > firstChild;
 		}
 
 		// The commit boundary stops at the earliest still-mutating block. A
@@ -387,20 +497,24 @@ export class TranscriptContainer
 		// (TTSR/todo cards) can append a finalized block *below* a tool that is
 		// still awaiting its result, and committing rows there would strand the
 		// tool's history rows on a mid-stream preview the late result never
-		// reaches.
+		// reaches. The walk below visits blocks in order and reads the boundary
+		// only at the block that sets it, so it records the first unfinalized
+		// block as it passes: a separate scan asked every block of a long
+		// transcript whether it had finalized twice per frame. A live block the
+		// scoped frame skips over keeps the boundary it produced last render.
 		let liveStartIndex = -1;
 		let hasLiveBlock = false;
-		for (let i = this.#compactedChildStart; i < count; i++) {
-			if (!isBlockFinalized(this.children[i]!)) {
-				liveStartIndex = i;
-				hasLiveBlock = true;
-				break;
-			}
+		if (scopedFrame && this.#liveStartIndex >= firstChild && this.#liveStartIndex < resume) {
+			liveStartIndex = this.#liveStartIndex;
+			hasLiveBlock = true;
+			this.#nativeScrollbackLiveRegionStart = previousLiveRegionStart;
 		}
 
 		const lines = this.#lines;
 		const previousSegments = this.#segments;
-		const segments: BlockSegment[] = new Array(count);
+		// A scoped frame keeps every segment above `resume` and overwrites the rest
+		// in place: the walk reads each index before writing it.
+		const segments: BlockSegment[] = scopedFrame ? previousSegments : new Array(count);
 		// Poisoned until the walk completes: a block render throwing mid-walk
 		// leaves the persistent array half-rebuilt, and the next render must
 		// not trust stale segments against it. Restored at the end.
@@ -419,10 +533,11 @@ export class TranscriptContainer
 		// invariant — otherwise re-pushed rows land after the stale frame.
 		if (!chainStable) lines.length = 0;
 
-		// Frame row cursor: rows emitted (reused or pushed) so far.
-		let row = 0;
-		let stableRows = 0;
-		for (let i = this.#compactedChildStart; i < count; i++) {
+		// Frame row cursor: rows emitted (reused or pushed) so far. The rows above
+		// a scoped frame's first requested child are reused whole.
+		let row = scopedFrame ? previousSegments[resume]!.startRow : 0;
+		let stableRows = row;
+		for (let i = resume; i < count; i++) {
 			const child = this.children[i]!;
 
 			// This child's contribution: its current render with plain-blank
@@ -434,6 +549,10 @@ export class TranscriptContainer
 			// post-finalize re-layouts, and expand toggles remain visible.
 			const previous = previousSegments[i];
 			const finalized = isBlockFinalized(child);
+			if (!hasLiveBlock && !finalized) {
+				hasLiveBlock = true;
+				liveStartIndex = i;
+			}
 			const version = getBlockVersion(child);
 			const committedReusable =
 				previous !== undefined &&
@@ -478,19 +597,20 @@ export class TranscriptContainer
 					lines.length = row;
 				}
 				if (chainStable) stableRows = row;
-				segments[i] = {
-					component: child,
-					rawRef: raw,
+				segments[i] = reuseOrCreateSegment(
+					previous,
+					child,
+					raw,
 					contribution,
 					width,
-					generation: this.#generation,
-					startRow: row,
-					rowCount: 0,
-					sep: 0,
+					this.#generation,
+					row,
+					0,
+					0,
 					finalized,
 					compactable,
 					version,
-				};
+				);
 				continue;
 			}
 
@@ -498,8 +618,17 @@ export class TranscriptContainer
 			// blank row — skipped when it opens the transcript or the prior row is
 			// already a plain blank (a fragment's own trailing pad), never doubling.
 			// `lines[row - 1]` is valid in both modes: reused rows are still present
-			// in the persistent array, re-pushed rows were just written.
-			const sep = row > 0 && !isPlainBlank(lines[row - 1]!) ? 1 : 0;
+			// in the persistent array, re-pushed rows were just written. While the
+			// chain is stable that row is byte-identical to the one the reused
+			// segment measured, so its separator stands without re-testing it: the
+			// test ran once per block per frame and was most of a long transcript's
+			// frame once every block above the tail was reused.
+			const sep =
+				chainStable && reusable && previous.startRow === row
+					? previous.sep
+					: row > 0 && !isPlainBlank(lines[row - 1]!)
+						? 1
+						: 0;
 
 			// The separator before the first live block stays in the committed
 			// prefix (it is deterministic once the prior block's body is
@@ -530,25 +659,29 @@ export class TranscriptContainer
 				for (let j = 0; j < contribution.length; j++) lines.push(contribution[j]!);
 			}
 
-			segments[i] = {
-				component: child,
-				rawRef: raw,
+			segments[i] = reuseOrCreateSegment(
+				previous,
+				child,
+				raw,
 				contribution,
 				width,
-				generation: this.#generation,
-				startRow: row,
+				this.#generation,
+				row,
 				rowCount,
 				sep,
 				finalized,
 				compactable,
 				version,
-			};
+			);
 			row += rowCount;
 		}
 		// Trailing shrink: blocks removed from the tail leave stale rows behind
 		// when every surviving segment was reused.
 		if (lines.length !== row) lines.length = row;
 		this.#segments = segments;
+		this.#childrenChanged = false;
+		this.#renderedGeneration = this.#generation;
+		this.#liveStartIndex = liveStartIndex;
 		this.#stableRowsFloor = Math.min(stableFloorBefore, stableRows, row);
 		if (this.#replayPending) {
 			this.#replayPending = false;
@@ -556,6 +689,38 @@ export class TranscriptContainer
 			this.#compactCommittedPrefix();
 		}
 		return lines;
+	}
+
+	/**
+	 * Index of the first child this render must re-derive. For a component-scoped
+	 * frame that is the earliest named child, when the previous render still stands
+	 * for every child above it: same width, same generation (an invalidation or a
+	 * replay bumps it), no child added or removed, and that child's segment where
+	 * the last render left it. Any other frame starts at the first uncompacted child.
+	 */
+	#scopedResumeIndex(scoped: ReadonlySet<Component> | null, width: number, count: number): number {
+		const first = this.#compactedChildStart;
+		if (
+			scoped === null ||
+			this.#childrenChanged ||
+			this.#renderWidth !== width ||
+			this.#renderedGeneration !== this.#generation ||
+			this.#segments.length !== count
+		) {
+			return first;
+		}
+		const children = this.children;
+		let resume = count;
+		for (const child of scoped) {
+			// Named children sit near the tail (the block animating under the
+			// composer), so the search from the end stops within a few steps.
+			const index = children.lastIndexOf(child);
+			if (index < 0) return first;
+			if (index < resume) resume = index;
+		}
+		if (resume <= first) return first;
+		const segment = this.#segments[resume];
+		return segment !== undefined && segment.component === children[resume] ? resume : first;
 	}
 
 	#compactCommittedPrefix(): void {

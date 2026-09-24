@@ -49,6 +49,7 @@ import {
 	type NativeScrollbackCommittedRows,
 	prepareNativeScrollbackReplay,
 	type RenderRequestOptions,
+	setComponentScopedRenderChildren,
 	setNativeScrollbackCommittedRows,
 	setNativeScrollbackRetainRows,
 	takeNativeScrollbackDroppedRows,
@@ -73,12 +74,13 @@ import {
 	extractLineCursorMarker,
 	findVisibleCursorMarker,
 	firstRowDivergence,
+	isPathIntact,
 	LINE_TERMINATOR,
 	lineRewriteSequence,
 	PreparedFrameCache,
+	pathToDescendant,
 	prepareLine,
 	prepareLinesArray,
-	subtreeContains,
 	terminalLine,
 	truncateLargeConptyFrame,
 } from "./renderer";
@@ -513,9 +515,14 @@ export class TUI extends Container {
 	// render() call inside #doRender (the scratch set below, reused per frame).
 	#partialComposeRoots: Set<Component> | null = null;
 	#partialComposeRootsScratch = new Set<Component>();
-	// Target component -> containing root child, so animation-rate requests do
-	// not re-walk a huge transcript subtree every frame.
-	#componentRootCache = new WeakMap<Component, Component>();
+	// Target component -> its chain from the containing root child down to it, so
+	// an animation-rate request is resolved by checking that chain's links instead
+	// of walking a long transcript's whole subtree every frame.
+	#componentRootPaths = new WeakMap<Component, Component[]>();
+	// Root child -> its direct children on a requested component's path for the
+	// current component-scoped frame; null when the root itself was requested.
+	// Refilled with the partial roots each frame (see ComponentScopedRender).
+	#partialComposeChildren = new Map<Component, Set<Component> | null>();
 
 	// Row-aligned prepared frame carried between paints; see `core/renderer.ts`.
 	#prepared = new PreparedFrameCache();
@@ -586,6 +593,12 @@ export class TUI extends Container {
 				// shrink can re-show it instead of painting blank rows (see
 				// NativeScrollbackCompaction.setNativeScrollbackRetainRows).
 				setNativeScrollbackRetainRows(child, this.terminal.rows);
+				// Name the children a component-scoped frame requested, or none: the hint
+				// is consumed by this render, so a full frame must clear a stale one.
+				setComponentScopedRenderChildren(
+					child,
+					partialRoots !== null ? (this.#partialComposeChildren.get(child) ?? null) : null,
+				);
 				childLines = child.render(width);
 				// A virtualized child drops rows DURING this render, so the report
 				// is read straight after it. Only rows the engine itself reported
@@ -1833,27 +1846,43 @@ export class TUI extends Container {
 		if (!this.#canReuseComposedLayout(width, height)) return null;
 		const roots = this.#partialComposeRootsScratch;
 		roots.clear();
+		const scoped = this.#partialComposeChildren;
+		scoped.clear();
 		for (const target of this.#componentRenderTargets) {
 			const root = this.#resolveComponentRoot(target);
 			if (root === null) return null;
 			roots.add(root);
+			// The root's direct child on the target's path, which a root implementing
+			// ComponentScopedRender re-derives in place of its whole child list. A target
+			// that IS the root re-renders all of it.
+			const via = this.#componentRootPaths.get(target)?.[1];
+			const children = scoped.get(root);
+			if (via === undefined) {
+				scoped.set(root, null);
+			} else if (children === undefined) {
+				scoped.set(root, new Set([via]));
+			} else if (children !== null) {
+				children.add(via);
+			}
 		}
 		return roots;
 	}
 
-	/** Root child whose subtree contains `target`, memoized per component. */
+	/** Root child whose subtree contains `target`, memoized per component as a checked path. */
 	#resolveComponentRoot(target: Component): Component | null {
-		const cached = this.#componentRootCache.get(target);
-		if (cached !== undefined && this.children.includes(cached) && subtreeContains(cached, target)) {
-			return cached;
+		const cached = this.#componentRootPaths.get(target);
+		if (cached !== undefined && this.children.includes(cached[0]!) && isPathIntact(cached)) {
+			return cached[0]!;
 		}
-		for (const child of this.children) {
-			if (subtreeContains(child, target)) {
-				this.#componentRootCache.set(target, child);
-				return child;
+		const children = this.children;
+		for (let i = children.length - 1; i >= 0; i--) {
+			const path = pathToDescendant(children[i]!, target);
+			if (path !== null) {
+				this.#componentRootPaths.set(target, path);
+				return children[i]!;
 			}
 		}
-		this.#componentRootCache.delete(target);
+		this.#componentRootPaths.delete(target);
 		return null;
 	}
 
@@ -2455,6 +2484,7 @@ export class TUI extends Container {
 				rawFrame = this.render(width);
 			} finally {
 				this.#partialComposeRoots = null;
+				this.#partialComposeChildren.clear();
 			}
 		} else {
 			this.#imageBudget.beginPass();
