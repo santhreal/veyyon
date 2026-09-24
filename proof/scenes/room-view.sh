@@ -24,7 +24,9 @@
 #      foot, and `n` opens conversation 3 from the view and zooms into it.
 #   9. Conversation 3 is asked a short question and left at once with alt+, ;
 #      its turn ends off screen and the status line says it finished, naming
-#      it and the key that opens the room.
+#      it and the key that opens the room; the room chip counts it unread.
+#  10. `→→` opens the view: the title counts it unread and the ordinal under
+#      window 3 carries how its turn ended.
 #
 # Off arm (--before): the same keys on the base branch, where `/room` is an
 # unknown command and `→→` moves nothing. Each guard is written for the arm it
@@ -133,3 +135,12 @@ after && k alt+comma
 after && expect_screen "finished —" 120
 sleep 1
 shot finished-off-screen
+
+# --- 10. the room keeps it unread until it is entered -----------------------
+clear_composer
+k Right
+pause 0.25
+k Right
+after && expect_screen "side by side" 10
+pause 0.9
+shot room-unread
