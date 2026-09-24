@@ -614,10 +614,35 @@ export function paintRoomWindow(paint: RoomWindowPaint): string[] {
 	return [top, ...framedBody(rows, width, innerHeight, frame, pad), bottom];
 }
 
-/** Paint the new-conversation slot. */
+/**
+ * The new-conversation slot is a tile no larger than this, centred in the room
+ * the layout gives the slot: a button beside the windows, not an empty window.
+ */
+const NEW_TILE_WIDTH = 30;
+const NEW_TILE_HEIGHT = 7;
+
+/** Paint the new-conversation slot: exactly `height` rows of exactly `width` cells, the tile centred in them. */
 export function paintRoomNewSlot(paint: RoomNewSlotPaint): string[] {
 	const { width, height } = paint;
 	if (width <= 0 || height <= 0) return [];
+	const tileWidth = Math.min(width, NEW_TILE_WIDTH);
+	const tileHeight = Math.min(height, NEW_TILE_HEIGHT);
+	const tile = paintNewTile(paint, tileWidth, tileHeight);
+	if (tileWidth === width && tileHeight === height) return tile;
+	const left = " ".repeat(Math.floor((width - tileWidth) / 2));
+	const right = " ".repeat(width - tileWidth - left.length);
+	const top = Math.floor((height - tileHeight) / 2);
+	const blank = " ".repeat(width);
+	const rows: string[] = [];
+	for (let y = 0; y < height; y++) {
+		const row = tile[y - top];
+		rows.push(row === undefined ? blank : `${left}${row}${right}`);
+	}
+	return rows;
+}
+
+/** The tile itself at `width`×`height`: a frame round the `+`, or the spinner while one opens. */
+function paintNewTile(paint: RoomNewSlotPaint, width: number, height: number): string[] {
 	if (height < 3 || width < 4) return new Array(height).fill(" ".repeat(width));
 	const ground = theme.visibleGroundHex();
 	const ink = new RoomInk(paint.strength, ground);
