@@ -64,6 +64,7 @@ import {
 	type OverlayHandle,
 	type OverlayOptions,
 	OverlayStack,
+	type ViewportSnapshot,
 } from "./overlay";
 import { DEFAULT_RENDER_SCHEDULER, RenderCadence, type RenderScheduler, type RenderTimer } from "./render-scheduler";
 import {
@@ -113,16 +114,6 @@ import {
 	SYNC_OUTPUT_BEGIN,
 	SYNC_OUTPUT_END,
 } from "./terminal-session";
-
-/**
- * One window of the screen: `height` rows, each fitted to `width` cells. What
- * {@link TUI.captureViewport} and {@link TUI.composeViewport} return.
- */
-export interface ViewportSnapshot {
-	readonly rows: readonly string[];
-	readonly width: number;
-	readonly height: number;
-}
 
 export interface TUIOptions {
 	renderScheduler?: RenderScheduler;

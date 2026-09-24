@@ -9,12 +9,12 @@
  * a recorded reason, not a target. Two of them are far above the 800-line figure
  * the plan asked for, and that is stated rather than hidden:
  *
- * `core/tui.ts` is 3767 lines. MEASURED 2026-09-23, down from 3782: the room
+ * `core/tui.ts` is 3765 lines. MEASURED 2026-09-24, down from 3782: the room
  * view replaced the sideways viewport slide with a fullscreen overlay, so the
  * slide's module and its hooks here were deleted, and the engine gained two
- * small reads for the overlay (`captureViewport`, `composeViewport`). The
- * render clock and frame pacing live in `render-scheduler.ts`. What remains is
- * the `TUI` class itself: one object holding
+ * small reads for the overlay (`captureViewport`, `composeViewport`) whose
+ * snapshot type lives in `overlay.ts`. The render clock and frame pacing live
+ * in `render-scheduler.ts`. What remains is the `TUI` class itself: one object holding
  * about sixty private fields that the compose, paint, scroll-isolation, cursor,
  * overlay and input paths all mutate within a single frame. Splitting it
  * further means passing that state between collaborating objects in the
