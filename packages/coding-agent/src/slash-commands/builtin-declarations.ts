@@ -570,6 +570,7 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 	{
 		name: "room",
+		aliases: ["rooms"],
 		description:
 			"The conversations in this terminal: bare opens the room view, `list` prints them, `new` opens one beside this, `help` explains the room, a number or id switches",
 		inlineHint: "[list | new | help | <n> | <id>]",

@@ -107,7 +107,7 @@ shows its ordinal and a state glyph.
 | A conversation by number or id | `/room <n>`, `/room <id>` |
 | Open a conversation beside this one | `/room new`, or `n` in the room view |
 | Print the room | `/room list` |
-| Explain the room | `/room help`, or `?` in the room view |
+| Explain the room | `/room help` (`/rooms` is an alias of `/room`), or `?` in the room view |
 
 Going into a window zooms it forward until it is the screen. The next and previous keys do the
 same without the view: the screen pulls back, the row slides, and the next conversation pushes
