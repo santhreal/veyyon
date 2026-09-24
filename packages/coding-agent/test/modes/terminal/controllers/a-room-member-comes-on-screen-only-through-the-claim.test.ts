@@ -11,14 +11,18 @@
  *   that fails leaves the screen on a conversation whose project the process
  *   is not in, or leaves the one on screen half-detached (its draft cleared,
  *   its background accounting moved) with nothing said;
- * - a draft typed for one conversation shown in another, or lost on the way;
+ * - a draft typed for one conversation shown in another, or lost on the way,
+ *   its attached images included;
  * - terminal chrome re-rooted for nothing, or a chrome failure undoing a
- *   switch the operator already sees;
+ *   switch the operator already sees; any step after the attach that fails
+ *   reported as a refused switch, motion on or off;
  * - a new peer built on screen (holding the process scope) or never hosted, so
- *   its dialogs have nowhere to wait;
+ *   its dialogs have nowhere to wait; a second peer built while one opens; a
+ *   peer that failed to join left running where nothing lists it;
  * - closing the launch conversation or the one on screen, or closing a peer
  *   without stopping its turn, keeping its draft, disposing it and dropping it
- *   from the room;
+ *   from the room; a close that fails forgetting the conversation, so exit
+ *   never disposes it;
  * - a question asked off screen that nobody is told about, or told twice;
  * - a cycle that does not wrap, or a row the registry lists before its session
  *   attaches taken for a member and dereferenced.
@@ -104,6 +108,10 @@ interface Harness {
 	warnings: string[];
 	/** Make the next `applyCwdChange` throw with `message`. */
 	failNextCwdChange(message: string): void;
+	/** Make the next `reloadTodos` reject with `message`, as a step after the attach failing. */
+	failNextTodosReload(message: string): void;
+	/** Make the next `hostSession` reject with `message`, as a new conversation failing to join. */
+	failNextHost(message: string): void;
 	/** Set how many dialogs `session` is holding, and tell the listeners, as the dialog gate does. */
 	hold(session: AgentSession, count: number): void;
 }
@@ -149,6 +157,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+	vi.restoreAllMocks();
 	for (const h of harnesses) {
 		h.room.dispose();
 		h.ui.stop();
@@ -324,6 +333,8 @@ function harness(launch: Conversation): Harness {
 	const waiting = new Map<AgentSession, number>();
 	const waitingListeners = new Set<() => void>();
 	let cwdFailure: string | undefined;
+	let todosFailure: string | undefined;
+	let hostFailure: string | undefined;
 	const ctx: RoomControllerContext = {
 		ui,
 		editor: new CustomEditor(getEditorTheme()),
@@ -360,6 +371,12 @@ function harness(launch: Conversation): Harness {
 		},
 		hostSession: async hosted => {
 			steps.push(`host:${hosted.session.getAgentId()}:${hosted.session.isForeground ? "foreground" : "background"}`);
+			const failure = hostFailure;
+			hostFailure = undefined;
+			if (failure) throw new Error(failure);
+		},
+		dismissHeldUi: session => {
+			steps.push(`dismiss:${session.getAgentId()}`);
 		},
 		releaseHostedSession: session => {
 			steps.push(`release:${session.getAgentId()}`);
@@ -372,6 +389,9 @@ function harness(launch: Conversation): Harness {
 		},
 		reloadTodos: async () => {
 			steps.push("todos");
+			const failure = todosFailure;
+			todosFailure = undefined;
+			if (failure) throw new Error(failure);
 		},
 		clearTransientSessionUi: () => {},
 		renderInitialMessages: () => {
@@ -406,6 +426,12 @@ function harness(launch: Conversation): Harness {
 		warnings,
 		failNextCwdChange: message => {
 			cwdFailure = message;
+		},
+		failNextTodosReload: message => {
+			todosFailure = message;
+		},
+		failNextHost: message => {
+			hostFailure = message;
 		},
 		hold: (session, count) => {
 			waiting.set(session, count);
@@ -562,6 +588,43 @@ describe("drafts", () => {
 		}).toEqual({ a: "draft for a", b: "draft for b", c: null });
 		expect(h.ctx.editor.getText()).toBe("draft for c, on screen");
 	});
+
+	/**
+	 * A draft is its text and its attachments. An image left on the shared
+	 * composer by a switch could be sent from the conversation that did not
+	 * attach it, and the one that did would come back without it.
+	 */
+	it("an attached image leaves the screen with its conversation and comes back with it", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		const editor = h.ctx.editor;
+		const image = {
+			kind: "image" as const,
+			name: "diagram.png",
+			data: "aGVsbG8=",
+			mimeType: "image/png",
+			uri: "file:///repo/diagram.png",
+		};
+		editor.setText("explain this");
+		editor.attachments = [image];
+		await h.room.switchTo(b!.id);
+		expect({ text: editor.getText(), attachments: editor.attachments }).toEqual({ text: "", attachments: [] });
+		await h.room.switchTo(a.id);
+		expect({ text: editor.getText(), attachments: editor.attachments }).toEqual({
+			text: "explain this",
+			attachments: [image],
+		});
+
+		// An image with no text is a draft too.
+		editor.setText("");
+		await h.room.switchTo(b!.id);
+		expect(editor.attachments).toEqual([]);
+		await h.room.switchTo(a.id);
+		expect({ text: editor.getText(), attachments: editor.attachments }).toEqual({ text: "", attachments: [image] });
+	});
 });
 
 describe("the terminal's chrome", () => {
@@ -593,6 +656,23 @@ describe("the terminal's chrome", () => {
 		expect(steps.slice(steps.indexOf(`chrome:${dirB}`))).toEqual([`chrome:${dirB}`, "todos"]);
 		expect(h.statuses.at(-1)).toBe(`Switched to conversation 2${TEACH}`);
 	});
+
+	/**
+	 * Once the target is attached the screen has changed, whatever fails after
+	 * it. A failure reported as a refused switch would leave the room believing
+	 * the old conversation is on screen.
+	 */
+	it("a step after the attach that fails is a warning, and the switch stands", async () => {
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		h.failNextTodosReload("todo store unreadable");
+		await h.room.switchTo(b!.id);
+		expect(h.ctx.session).toBe(b!.session);
+		expect(h.errors).toEqual([]);
+		expect(h.warnings).toEqual(["Switched, but the screen did not finish loading: todo store unreadable"]);
+	});
 });
 
 describe("a new peer", () => {
@@ -617,6 +697,35 @@ describe("a new peer", () => {
 		expect(registry.get(created.id)?.room).toBe(room);
 		expect(h.ctx.session).toBe(created.session);
 		expect(h.room.members().map(member => member.id)).toEqual([a.id, created.id]);
+	});
+
+	it("is built once when asked for twice while it opens; the second request is told so", async () => {
+		const { h } = openRoom();
+		const first = h.room.openPeer();
+		await h.room.openPeer();
+		await first;
+		expect(steps.filter(step => step === "create")).toEqual(["create"]);
+		expect(h.statuses).toContain("A new conversation is already opening");
+		expect(h.errors).toEqual([]);
+	});
+
+	/**
+	 * A conversation that was built but could not join the room is one nothing
+	 * lists and nothing can enter: it is closed, not left running unseen.
+	 */
+	it("that fails to join is closed rather than left running, and the screen stays where it was", async () => {
+		const { h, a } = openRoom();
+		h.failNextHost("bind failed");
+		await h.room.openPeer();
+		const created = conversations.at(-1)!;
+		expect(created).not.toBe(a);
+		expect(h.errors).toEqual(["Could not open a peer conversation: bind failed"]);
+		expect(steps.filter(step => step.startsWith("dismiss:") || step.startsWith("release:"))).toEqual([
+			`dismiss:${created.id}`,
+			`release:${created.id}`,
+		]);
+		expect(registry.get(created.id)).toBeUndefined();
+		expect(h.ctx.session).toBe(a.session);
 	});
 });
 
@@ -662,6 +771,27 @@ describe("closing a conversation", () => {
 		expect(kept()).not.toContain(c!.session);
 		expect(h.room.members().map(member => member.id)).toEqual([a.id, b!.id]);
 		expect(h.statusLine.roomPeers).toEqual({ peers: 1, working: 0, waiting: 0 });
+	});
+
+	/**
+	 * Its held UI is dismissed before the turn is stopped, but it stays hosted
+	 * until it is disposed: a close that fails leaves it for exit to dispose.
+	 */
+	it("that fails keeps the conversation hosted and in the room, and says why", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		await h.room.switchTo(b!.id);
+		h.ctx.editor.setText("draft for b");
+		await h.room.switchTo(a.id);
+		vi.spyOn(b!.session.sessionManager, "saveDraft").mockRejectedValue(new Error("disk full"));
+		expect(await h.room.close(b!.id)).toBe("Could not close that conversation: disk full");
+		expect(steps.filter(step => step.startsWith("dismiss:") || step.startsWith("release:"))).toEqual([
+			`dismiss:${b!.id}`,
+		]);
+		expect(registry.get(b!.id)?.session).toBe(b!.session);
 	});
 });
 
@@ -817,5 +947,18 @@ describe("with motion on, the quick switch travels through the stage", () => {
 		await until(() => !h.room.viewOpen, "the stage to lift after the failed claim");
 		expect(h.ctx.session).toBe(a.session);
 		expect(h.errors.join("\n")).toContain(`prompt build failed for ${dirB}`);
+	});
+
+	it("a step after the attach that fails lands the stage on the new conversation, with a warning", async () => {
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		h.failNextTodosReload("todo store unreadable");
+		await h.room.switchTo(b!.id);
+		await until(() => !h.room.viewOpen, "the stage to land");
+		expect(h.ctx.session).toBe(b!.session);
+		expect(h.errors).toEqual([]);
+		expect(h.warnings).toEqual(["Switched, but the screen did not finish loading: todo store unreadable"]);
 	});
 });

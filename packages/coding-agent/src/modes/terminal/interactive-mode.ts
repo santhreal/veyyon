@@ -4606,7 +4606,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Extension autocomplete applies for the conversation on screen only.
 		this.#applyAutocompleteProvider();
 		const kept = BackgroundSessions.global().keep(previous);
-		this.#extensionUiController.sessionAttached(next);
+		this.#extensionUiController.sessionAttached(next, previous);
 		return kept;
 	}
 
@@ -4630,8 +4630,14 @@ export class InteractiveMode implements InteractiveModeContext {
 		await this.#extensionUiController.bindSession(hosted.session, hosted.bindings);
 	}
 
+	dismissHeldUi(session: AgentSession): void {
+		if (session === this.session) return;
+		this.#extensionUiController.sessionReleased(session);
+	}
+
 	releaseHostedSession(session: AgentSession): void {
 		if (session === this.launchSession) return;
+		// Idempotent after `dismissHeldUi`, and what settles the UI of a caller that skipped it.
 		this.#extensionUiController.sessionReleased(session);
 		this.#hostedSessions.delete(session);
 	}

@@ -146,11 +146,17 @@ export interface InteractiveModeContext {
 	 */
 	hostSession(hosted: HostedSession): Promise<void>;
 	/**
-	 * Stop hosting a session this terminal is closing early: its held dialogs
+	 * Settle what an off-screen session holds on this terminal: its held dialogs
 	 * settle to their fallbacks, a takeover waiting for the screen rejects, its
-	 * autocomplete providers leave the editor, and exit no longer disposes it.
-	 * Call it before stopping the session's turn. The launch session is never
-	 * released.
+	 * autocomplete providers leave the editor, and a UI request it makes later
+	 * gets the off-screen answer at once. Call it before stopping the turn of a
+	 * session being closed, since a tool waiting on one of these holds the stop.
+	 */
+	dismissHeldUi(session: AgentSession): void;
+	/**
+	 * Stop tracking a session this terminal disposed early, so exit does not
+	 * dispose it again. Call it once the session's dispose has completed. The
+	 * launch session is never released.
 	 */
 	releaseHostedSession(session: AgentSession): void;
 	/** Dialogs `session` is holding until it is on screen. */

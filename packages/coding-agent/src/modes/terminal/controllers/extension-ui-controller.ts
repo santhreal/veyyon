@@ -126,6 +126,12 @@ function toWireSelectOptions(options: ExtensionUISelectItem[]): CollabUiSelectIt
 	);
 }
 
+/** The chrome one conversation's extensions set: footer status text and widgets, by key. */
+interface ConversationChrome {
+	readonly statuses: Map<string, string>;
+	readonly widgets: Map<string, { content: TerminalWidgetContent; options: ExtensionWidgetOptions | undefined }>;
+}
+
 export class ExtensionUiController {
 	#extensionTerminalInputUnsubscribers = new Set<() => void>();
 	#hookWidgetsAbove = new Map<string, ExtensionUiComponent>();
@@ -155,6 +161,8 @@ export class ExtensionUiController {
 	readonly #releasedSessions = new WeakSet<AgentSession>();
 	/** Per conversation, the autocomplete factories its extensions stacked on the editor. */
 	readonly #autocompleteFactories = new Map<AgentSession, AutocompleteProviderFactory[]>();
+	/** Per conversation, the status text and widgets its extensions set; the terminal shows the on-screen one's. */
+	readonly #chrome = new WeakMap<AgentSession, ConversationChrome>();
 	readonly #waitingListeners = new Set<() => void>();
 	constructor(private ctx: ExtensionUiControllerContext) {}
 
@@ -225,9 +233,10 @@ export class ExtensionUiController {
 	 * a conversation opens while it is off screen waits for the operator to come
 	 * to it instead of appearing over another conversation's transcript, where an
 	 * answer would read as answering the wrong question; the wait is counted in
-	 * {@link waitingDialogs} so the room can say who is waiting. Chrome an
-	 * off-screen conversation sets (status text, widgets, the working message,
-	 * the editor) describes a screen nobody is looking at and is dropped.
+	 * {@link waitingDialogs} so the room can say who is waiting. Status text and
+	 * widgets are kept per conversation and drawn while it is on screen (see
+	 * {@link sessionAttached}). The working message and the editor describe a
+	 * screen nobody is looking at and are dropped.
 	 */
 	async bindSession(session: AgentSession, bindings: SessionHostBindings): Promise<void> {
 		const base = this.#uiContext;
@@ -281,8 +290,14 @@ export class ExtensionUiController {
 		};
 	}
 
-	/** `session` is on screen now: present the dialogs it was holding, oldest first. */
-	sessionAttached(session: AgentSession): void {
+	/**
+	 * `session` is on screen now, in place of `previous`: the status text and
+	 * widgets `previous` set leave the terminal, the ones `session` set come
+	 * back (a component widget is built again from its factory), and the
+	 * dialogs it was holding are presented, oldest first.
+	 */
+	sessionAttached(session: AgentSession, previous: AgentSession): void {
+		this.#swapChrome(previous, session);
 		const waiting = this.#offscreenDialogs.get(session);
 		if (!waiting) return;
 		this.#offscreenDialogs.delete(session);
@@ -290,12 +305,34 @@ export class ExtensionUiController {
 		this.#emitWaiting();
 	}
 
+	#chromeOf(session: AgentSession): ConversationChrome {
+		let chrome = this.#chrome.get(session);
+		if (!chrome) {
+			chrome = { statuses: new Map(), widgets: new Map() };
+			this.#chrome.set(session, chrome);
+		}
+		return chrome;
+	}
+
+	#swapChrome(leaving: AgentSession, arriving: AgentSession): void {
+		const left = this.#chrome.get(leaving);
+		const shown = this.#chrome.get(arriving);
+		if (left) {
+			for (const key of left.statuses.keys()) if (!shown?.statuses.has(key)) this.setHookStatus(key, undefined);
+			for (const key of left.widgets.keys()) if (!shown?.widgets.has(key)) this.setHookWidget(key, undefined);
+		}
+		if (!shown) return;
+		for (const [key, text] of shown.statuses) this.setHookStatus(key, text);
+		for (const [key, { content, options }] of shown.widgets) this.setHookWidget(key, content, options);
+	}
+
 	/**
 	 * This terminal no longer hosts `session`. The dialogs it holds settle to
 	 * their fallbacks, a takeover waiting for the screen rejects, its
-	 * autocomplete providers leave the editor, and a UI request it makes from
-	 * now on gets the off-screen answer at once. Call it before stopping the
-	 * conversation's turn: a tool waiting on one of these holds the stop.
+	 * autocomplete providers leave the editor, the status text and widgets it
+	 * set are forgotten, and a UI request it makes from now on gets the
+	 * off-screen answer at once. Call it before stopping the conversation's
+	 * turn: a tool waiting on one of these holds the stop.
 	 */
 	sessionReleased(session: AgentSession): void {
 		this.#releasedSessions.add(session);
@@ -310,6 +347,7 @@ export class ExtensionUiController {
 			this.#autocompleteFactories.delete(session);
 			for (const factory of factories) this.ctx.removeAutocompleteProvider(factory);
 		}
+		this.#chrome.delete(session);
 	}
 
 	#emitWaiting(): void {
@@ -384,12 +422,17 @@ export class ExtensionUiController {
 			},
 			onTerminalInput: handler => base.onTerminalInput(data => (onScreen() ? handler(data) : undefined)),
 			setStatus: (key, text) => {
+				if (this.#releasedSessions.has(session)) return;
+				const statuses = this.#chromeOf(session).statuses;
+				if (text === undefined) statuses.delete(key);
+				else statuses.set(key, text);
 				if (onScreen()) base.setStatus(key, text);
 			},
 			setWorkingMessage: message => {
 				if (onScreen()) base.setWorkingMessage(message);
 			},
 			setWidget: (key, content, options) => {
+				this.#recordWidget(session, key, content, options);
 				if (onScreen()) base.setWidget(key, content, options);
 			},
 			setTitle: title => {
@@ -406,6 +449,7 @@ export class ExtensionUiController {
 							return terminal.custom(factory, options);
 						},
 						setWidgetComponent: (key, factory, options) => {
+							this.#recordWidget(session, key, factory, options);
 							if (onScreen()) terminal.setWidgetComponent(key, factory, options);
 						},
 						setEditorComponent: factory => {
@@ -440,6 +484,18 @@ export class ExtensionUiController {
 			getToolsExpanded: () => base.getToolsExpanded(),
 			setToolsExpanded: expanded => base.setToolsExpanded(expanded),
 		};
+	}
+
+	#recordWidget(
+		session: AgentSession,
+		key: string,
+		content: TerminalWidgetContent,
+		options: ExtensionWidgetOptions | undefined,
+	): void {
+		if (this.#releasedSessions.has(session)) return;
+		const widgets = this.#chromeOf(session).widgets;
+		if (content === undefined) widgets.delete(key);
+		else widgets.set(key, { content, options });
 	}
 
 	setHookWidget(key: string, content: TerminalWidgetContent, options?: ExtensionWidgetOptions): void {
@@ -598,8 +654,8 @@ export class ExtensionUiController {
 				if (onScreen()) {
 					this.ctx.clearTransientSessionUi();
 					this.clearExtensionTerminalInputListeners();
-					this.clearHookWidgets();
 				}
+				this.#clearWidgetsOf(session);
 				const success = await session.newSession({ parentSession: options?.parentSession });
 				if (!success) {
 					return { cancelled: true };
@@ -661,7 +717,7 @@ export class ExtensionUiController {
 					? this.#handleInteractiveCompact(instructionsOrOptions)
 					: this.#compactSession(session, instructionsOrOptions),
 			switchSession: async sessionPath => {
-				if (onScreen()) this.clearHookWidgets();
+				this.#clearWidgetsOf(session);
 				const result = await session.switchSession(sessionPath);
 				if (!result) {
 					return { cancelled: true };
@@ -1367,6 +1423,13 @@ export class ExtensionUiController {
 		};
 	}
 
+	/** Drop the widgets `session` set, and take them off the terminal while it is on screen. */
+	#clearWidgetsOf(session: AgentSession): void {
+		if (this.ctx.session === session) this.clearHookWidgets();
+		else this.#chrome.get(session)?.widgets.clear();
+	}
+
+	/** Take every widget off the terminal; the conversation on screen no longer holds any. */
 	clearHookWidgets(): void {
 		for (const widget of this.#hookWidgetsAbove.values()) {
 			widget.dispose?.();
@@ -1376,6 +1439,7 @@ export class ExtensionUiController {
 		}
 		this.#hookWidgetsAbove.clear();
 		this.#hookWidgetsBelow.clear();
+		this.#chrome.get(this.ctx.session)?.widgets.clear();
 		this.#rebuildHookWidgets();
 	}
 

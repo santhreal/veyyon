@@ -28,6 +28,7 @@ import { matchesKey } from "@veyyon/utils/keys";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { truncateToWidth } from "@veyyon/utils/width";
+import type { Attachment } from "@veyyon/wire/presentation";
 import { type AgentRef, AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from "../../../registry/agent-registry";
 import type { AgentSession } from "../../../session/agent-session";
 import { BackgroundSessions } from "../../../session/background-sessions";
@@ -49,6 +50,7 @@ export type RoomControllerContext = Pick<
 	| "attachMainSession"
 	| "clearTransientSessionUi"
 	| "createNextSession"
+	| "dismissHeldUi"
 	| "editor"
 	| "eventController"
 	| "focusedAgentId"
@@ -80,6 +82,19 @@ function memberLabel(ordinal: number, snapshot: RoomWindowSnapshot): string {
 }
 
 /**
+ * A conversation's unsent composer draft: the text, where the cursor was, and
+ * what was attached, images included. The composer is one editor the room
+ * shares, so a switch carries the whole draft away with the conversation that
+ * typed it or leaves every part of it behind.
+ */
+interface ComposerDraft {
+	readonly text: string;
+	readonly cursorOffset: number;
+	readonly attachments: readonly Attachment[];
+	readonly imageLinks: readonly (string | undefined)[] | undefined;
+}
+
+/**
  * A room member with a session attached. The registry lists a driving agent
  * from the moment it registers, and its session attaches after, so a row can
  * be a member for a render or two before it has anything to show.
@@ -96,12 +111,14 @@ export class RoomController {
 	/** One feed per room member, keyed by registry id; built as members arrive, disposed as they leave. */
 	readonly #feeds = new Map<string, RoomWindowFeed>();
 	/** The unsent draft each off-screen conversation had in the composer when it left the screen. */
-	readonly #drafts = new Map<AgentSession, string>();
+	readonly #drafts = new Map<AgentSession, ComposerDraft>();
 	/** Held-dialog counts last seen, so a conversation that starts waiting is announced once. */
 	readonly #lastWaiting = new Map<AgentSession, number>();
 	#stage: { readonly component: RoomStage; readonly overlay: OverlayHandle; readonly originId: string } | undefined;
 	/** Serializes screen changes: a second one while one is in flight is dropped. */
 	#switching = false;
+	/** A new conversation is being built: a second request waits for nothing and is refused. */
+	#creating = false;
 	/**
 	 * Whether the room view has been opened, or its key shown, in this process.
 	 * The first arrival in another conversation says how to see them all, once.
@@ -318,6 +335,10 @@ export class RoomController {
 	/** Open a conversation beside the one on screen and slide to it. */
 	async openPeer(): Promise<void> {
 		if (this.#stage || this.#switching) return;
+		if (this.#creating) {
+			this.ctx.showStatus("A new conversation is already opening");
+			return;
+		}
 		let id: string;
 		try {
 			id = await this.#createPeer();
@@ -429,59 +450,104 @@ export class RoomController {
 			const previous = this.ctx.session;
 			const previousCwd = this.ctx.sessionManager.getCwd();
 			await next.takeForegroundFrom(previous);
-			const draft = this.ctx.editor.getText();
-			if (draft.trim()) this.#drafts.set(previous, draft);
+			const draft = this.#takeDraft();
+			if (draft) this.#drafts.set(previous, draft);
 			else this.#drafts.delete(previous);
 			// A peer still finishing a turn is in the background set from the
 			// switch that left it; it is on screen again now, so it leaves that set
 			// before the one being left enters it.
 			BackgroundSessions.global().release(next);
 			this.ctx.attachMainSession(next);
-			this.ctx.editor.setText(this.#drafts.get(next) ?? "");
-			this.#drafts.delete(next);
-			this.ctx.resetObserverRegistry();
-			setSessionTerminalTitle(this.ctx.sessionManager.getSessionName(), this.ctx.sessionManager.getCwd());
-			this.ctx.statusLine.invalidate();
-			this.ctx.updateEditorBorderColor();
-			this.ctx.clearTransientSessionUi();
-			this.ctx.renderInitialMessages({ clearTerminalHistory: true });
-			await this.ctx.eventController.resumeTurn();
-			const nextCwd = next.sessionManager.getCwd();
-			if (normalizePathForComparison(nextCwd) !== normalizePathForComparison(previousCwd)) {
-				try {
-					await this.ctx.applyCwdChange(nextCwd);
-				} catch (error) {
-					logger.warn("Room switch: cwd chrome refresh failed", { error: errorMessage(error) });
-					this.ctx.showWarning(
-						`Switched, but the command list for ${nextCwd} could not be loaded: ${errorMessage(error)}`,
-					);
+			// The conversation is on screen from here. A step below that fails is
+			// reported, and the switch still stands: a stage told the switch was
+			// refused would reopen over a screen that already changed.
+			try {
+				this.#putDraft(this.#drafts.get(next));
+				this.#drafts.delete(next);
+				this.ctx.resetObserverRegistry();
+				setSessionTerminalTitle(this.ctx.sessionManager.getSessionName(), this.ctx.sessionManager.getCwd());
+				this.ctx.statusLine.invalidate();
+				this.ctx.updateEditorBorderColor();
+				this.ctx.clearTransientSessionUi();
+				this.ctx.renderInitialMessages({ clearTerminalHistory: true });
+				await this.ctx.eventController.resumeTurn();
+				const nextCwd = next.sessionManager.getCwd();
+				if (normalizePathForComparison(nextCwd) !== normalizePathForComparison(previousCwd)) {
+					try {
+						await this.ctx.applyCwdChange(nextCwd);
+					} catch (error) {
+						logger.warn("Room switch: cwd chrome refresh failed", { error: errorMessage(error) });
+						this.ctx.showWarning(
+							`Switched, but the command list for ${nextCwd} could not be loaded: ${errorMessage(error)}`,
+						);
+					}
 				}
+				await this.ctx.reloadTodos();
+			} catch (error) {
+				logger.warn("Room switch: the arrival did not finish", { error: errorMessage(error) });
+				this.ctx.showWarning(`Switched, but the screen did not finish loading: ${errorMessage(error)}`);
 			}
-			await this.ctx.reloadTodos();
 			this.#syncStatus();
 		} finally {
 			this.#switching = false;
 		}
 	}
 
+	/** The composer's draft, or nothing when it holds no text and no attachment. */
+	#takeDraft(): ComposerDraft | undefined {
+		const editor = this.ctx.editor;
+		const text = editor.getText();
+		const attachments = editor.attachments;
+		if (!text.trim() && attachments.length === 0) return undefined;
+		return { text, cursorOffset: editor.getCursorOffset(), attachments, imageLinks: editor.imageLinks };
+	}
+
+	/** Put `draft` in the composer, replacing every part of what it held; nothing clears it. */
+	#putDraft(draft: ComposerDraft | undefined): void {
+		const editor = this.ctx.editor;
+		editor.clearDraft();
+		if (!draft) return;
+		editor.setText(draft.text);
+		editor.attachments = draft.attachments;
+		editor.imageLinks = draft.imageLinks;
+		editor.setCursorOffset(draft.cursorOffset);
+	}
+
 	/** Build a conversation in this room, off screen until the operator enters it. */
 	async #createPeer(): Promise<string> {
 		const createNextSession = this.ctx.createNextSession;
 		if (!createNextSession) throw new Error("This terminal cannot open a second conversation.");
+		if (this.#creating) throw new Error("A new conversation is already opening.");
 		const room = this.registry.ensureRoom(this.ownId);
 		if (room === undefined) {
 			throw new Error("The current session is not registered as a driving agent, so it cannot open a room.");
 		}
-		const hosted = await createNextSession({ room });
-		// Built for the room, not for the screen: until it is entered, a directory
-		// it moves to must not re-scope the conversation the operator is reading.
-		hosted.session.releaseForeground();
-		await this.ctx.hostSession(hosted);
-		const id = hosted.session.getAgentId();
-		if (id === undefined) throw new Error("The new conversation did not register as a driving agent.");
-		this.#syncFeeds();
-		this.#syncStatus();
-		return id;
+		this.#creating = true;
+		try {
+			const hosted = await createNextSession({ room });
+			try {
+				// Built for the room, not for the screen: until it is entered, a directory
+				// it moves to must not re-scope the conversation the operator is reading.
+				hosted.session.releaseForeground();
+				await this.ctx.hostSession(hosted);
+				const id = hosted.session.getAgentId();
+				if (id === undefined) throw new Error("The new conversation did not register as a driving agent.");
+				this.#syncFeeds();
+				this.#syncStatus();
+				return id;
+			} catch (error) {
+				// A conversation that did not join the room is one nothing can reach:
+				// close it rather than leave it running unseen.
+				this.ctx.dismissHeldUi(hosted.session);
+				await hosted.session.dispose().catch((disposeError: unknown) => {
+					logger.warn("A conversation that failed to open did not dispose", { error: errorMessage(disposeError) });
+				});
+				this.ctx.releaseHostedSession(hosted.session);
+				throw error;
+			}
+		} finally {
+			this.#creating = false;
+		}
 	}
 
 	/**
@@ -497,17 +563,19 @@ export class RoomController {
 		if (session === this.ctx.launchSession) {
 			return "The first conversation holds the MCP servers and background jobs the others share, so it stays open until you exit.";
 		}
-		// Released first: a tool waiting on a dialog this conversation holds off
-		// screen would otherwise hold the stop below forever.
-		this.ctx.releaseHostedSession(session);
+		// Its held UI goes first: a tool waiting on a dialog this conversation holds
+		// off screen would otherwise hold the stop below forever. It stays hosted
+		// until it is disposed, so a close that fails leaves it for exit to dispose.
+		this.ctx.dismissHeldUi(session);
 		try {
 			if (session.isStreaming) await session.abort();
 			const draft = this.#drafts.get(session);
-			if (draft) await session.sessionManager.saveDraft(draft);
+			if (draft?.text.trim()) await session.sessionManager.saveDraft(draft.text);
 			this.#drafts.delete(session);
 			this.#lastWaiting.delete(session);
 			BackgroundSessions.global().release(session);
 			await session.dispose();
+			this.ctx.releaseHostedSession(session);
 		} catch (error) {
 			return `Could not close that conversation: ${errorMessage(error)}`;
 		}
@@ -516,12 +584,16 @@ export class RoomController {
 		return undefined;
 	}
 
-	/** Write every off-screen conversation's unsent draft beside its transcript. Shutdown calls this. */
+	/**
+	 * Write every off-screen conversation's unsent draft text beside its
+	 * transcript. Shutdown calls this. Attached images live in the composer
+	 * only, so they end with the process.
+	 */
 	async persistDrafts(): Promise<void> {
 		for (const [session, draft] of this.#drafts) {
-			if (session === this.ctx.session || !draft.trim()) continue;
+			if (session === this.ctx.session || !draft.text.trim()) continue;
 			try {
-				await session.sessionManager.saveDraft(draft);
+				await session.sessionManager.saveDraft(draft.text);
 			} catch (error) {
 				logger.warn("Could not save a room member's draft", { error: errorMessage(error) });
 			}

@@ -20,8 +20,11 @@
  * count, and the abandoned question is never raised later. A conversation the
  * terminal releases (closed from the room, or at exit) settles every dialog it
  * holds, `terminal.custom` included, and a dialog it asks afterwards settles at
- * once. Every chrome member is dropped from off screen and reaches the terminal
- * from on screen, decided at call time rather than at bind time. An
+ * once. Status text and widgets are kept per conversation: set from off screen
+ * they wait, and each switch takes the leaving conversation's off the terminal
+ * and puts the arriving one's on; a released conversation's are forgotten.
+ * Every other chrome member is dropped from off screen and reaches the
+ * terminal from on screen, decided at call time rather than at bind time. An
  * autocomplete provider applies only while its conversation is on screen and
  * leaves the editor when the conversation is released. Binding a conversation
  * off screen does not wait on its `session_start`, whose handler may ask a
@@ -40,7 +43,8 @@
  * `sessionReleased` on every close: the room controller suite drives
  * `attachMainSession` and `releaseHostedSession`, which the interactive mode
  * wires to them. That the interactive mode recomposes the editor's provider
- * on every attach.
+ * on every attach. That a conversation starting or switching sessions drops
+ * its widgets: that runs through its extension runner's actions.
  */
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
@@ -50,6 +54,7 @@ import type {
 	ExtensionUIContext,
 	TerminalInputHandler,
 } from "@veyyon/coding-agent/extensibility/extensions";
+import type { TerminalWidgetContent } from "@veyyon/coding-agent/extensibility/terminal-capability";
 import { CustomEditor } from "@veyyon/coding-agent/modes/terminal/components/composer/custom-editor";
 import {
 	ExtensionUiController,
@@ -96,6 +101,10 @@ interface Harness {
 	editor: CustomEditor;
 	/** Chrome writes that reached the terminal, as `member:tag`. */
 	log: string[];
+	/** The terminal's footer status slots, by key, as the status line holds them. */
+	statuses: Map<string, string>;
+	/** The terminal's widget slots, by key: text rows or a component factory. */
+	widgets: Map<string, TerminalWidgetContent>;
 	/** Deliver raw terminal input to every listener registered with the terminal. */
 	type(data: string): void;
 	/** Put `session` on screen the way the host does: re-point `ctx.session`, then attach. */
@@ -113,6 +122,8 @@ async function harness(): Promise<Harness> {
 	const b = { extensionRunner: undefined } as unknown as AgentSession;
 	const editor = new CustomEditor(getEditorTheme());
 	const log: string[] = [];
+	const statuses = new Map<string, string>();
+	const widgets = new Map<string, TerminalWidgetContent>();
 	const inputListeners: TerminalInputHandler[] = [];
 	const factoryTags = new Map<unknown, string>();
 	let aUi: ExtensionUIContext | undefined;
@@ -155,11 +166,15 @@ async function harness(): Promise<Harness> {
 	vi.spyOn(controller, "showHookNotify").mockImplementation(message => {
 		log.push(`notify:${message}`);
 	});
-	vi.spyOn(controller, "setHookStatus").mockImplementation((_key, text) => {
+	vi.spyOn(controller, "setHookStatus").mockImplementation((key, text) => {
 		log.push(`setStatus:${text}`);
+		if (text === undefined) statuses.delete(key);
+		else statuses.set(key, text);
 	});
-	vi.spyOn(controller, "setHookWidget").mockImplementation(key => {
+	vi.spyOn(controller, "setHookWidget").mockImplementation((key, content) => {
 		log.push(`widget:${key}`);
+		if (content === undefined) widgets.delete(key);
+		else widgets.set(key, content);
 	});
 	vi.spyOn(titleGenerator, "setTerminalTitle").mockImplementation(title => {
 		log.push(`setTitle:${title}`);
@@ -180,12 +195,15 @@ async function harness(): Promise<Harness> {
 		b,
 		editor,
 		log,
+		statuses,
+		widgets,
 		type: data => {
 			for (const listener of inputListeners) listener(data);
 		},
 		bring: session => {
+			const previous = ctx.session;
 			ctx.session = session;
-			controller.sessionAttached(session);
+			controller.sessionAttached(session, previous);
 		},
 		editorFactory: tag => {
 			const factory = () => new CustomEditor(getEditorTheme());
@@ -312,9 +330,7 @@ function logged(member: string): ChromeDecision["reached"] {
 
 const CHROME: Record<string, ChromeDecision> = {
 	notify: { invoke: (_h, ui, tag) => ui.notify(tag, "info"), reached: logged("notify") },
-	setStatus: { invoke: (_h, ui, tag) => ui.setStatus("room-test", tag), reached: logged("setStatus") },
 	setWorkingMessage: { invoke: (_h, ui, tag) => ui.setWorkingMessage(tag), reached: logged("setWorkingMessage") },
-	setWidget: { invoke: (_h, ui, tag) => ui.setWidget(tag, ["row"]), reached: logged("widget") },
 	setTitle: { invoke: (_h, ui, tag) => ui.setTitle(tag), reached: logged("setTitle") },
 	setEditorText: { invoke: (_h, ui, tag) => ui.setEditorText(tag), reached: (h, tag) => h.editor.getText() === tag },
 	pasteToEditor: {
@@ -323,10 +339,6 @@ const CHROME: Record<string, ChromeDecision> = {
 			ui.pasteToEditor(tag);
 		},
 		reached: (h, tag) => h.editor.getText().includes(tag),
-	},
-	"terminal.setWidgetComponent": {
-		invoke: (_h, ui, tag) => ui.terminal?.setWidgetComponent(tag, () => new Container()),
-		reached: logged("widget"),
 	},
 	"terminal.setEditorComponent": {
 		invoke: (h, ui, tag) => ui.terminal?.setEditorComponent(h.editorFactory(tag)),
@@ -342,6 +354,43 @@ const CHROME: Record<string, ChromeDecision> = {
 			h.type("x");
 		},
 		reached: logged("onTerminalInput"),
+	},
+};
+
+/**
+ * A kept chrome member: a slot on the terminal, by key, that each conversation
+ * fills for itself. The terminal shows the on-screen conversation's value.
+ */
+interface KeptDecision {
+	/** Set `key` to `value` through `ui`; undefined clears it. */
+	put(ui: ExtensionUIContext, key: string, value: string | undefined): void;
+	/** The value the terminal shows under `key`, or undefined when the slot is empty. */
+	shown(h: Harness, key: string): string | undefined;
+}
+
+const componentTags = new WeakMap<object, string>();
+
+function taggedComponent(tag: string): () => Container {
+	const factory = () => new Container();
+	componentTags.set(factory, tag);
+	return factory;
+}
+
+function shownWidget(h: Harness, key: string): string | undefined {
+	const content = h.widgets.get(key);
+	return typeof content === "function" ? componentTags.get(content) : content?.[0];
+}
+
+const KEPT: Record<string, KeptDecision> = {
+	setStatus: { put: (ui, key, value) => ui.setStatus(key, value), shown: (h, key) => h.statuses.get(key) },
+	setWidget: {
+		put: (ui, key, value) => ui.setWidget(key, value === undefined ? undefined : [value]),
+		shown: shownWidget,
+	},
+	"terminal.setWidgetComponent": {
+		put: (ui, key, value) =>
+			ui.terminal?.setWidgetComponent(key, value === undefined ? undefined : taggedComponent(value)),
+		shown: shownWidget,
 	},
 };
 
@@ -383,6 +432,7 @@ describe("every member of the bound context has a recorded decision", () => {
 		const decided = [
 			...Object.keys(DIALOGS),
 			...Object.keys(CHROME),
+			...Object.keys(KEPT),
 			...SCREEN_READS,
 			...SCOPED_TO_SCREEN,
 			...SHARED,
@@ -564,6 +614,51 @@ describe("chrome from a conversation off screen", () => {
 			expect(decision.reached(h, "from-b-on-screen")).toBe(true);
 			decision.invoke(h, h.aUi, "from-a-off-screen");
 			expect(decision.reached(h, "from-a-off-screen")).toBe(false);
+		});
+	}
+});
+
+describe("status text and widgets are each conversation's own", () => {
+	for (const [member, decision] of Object.entries(KEPT)) {
+		it(`${member}: set off screen waits, and each switch shows the arriving conversation's and takes the leaving one's off`, async () => {
+			const h = await harness();
+			const on = (...keys: string[]) => Object.fromEntries(keys.map(key => [key, decision.shown(h, key)]));
+			decision.put(h.aUi, "shared", "a-shared");
+			decision.put(h.aUi, "only-a", "a-only");
+			decision.put(h.bUi, "shared", "b-shared");
+			decision.put(h.bUi, "only-b", "b-only");
+			expect(on("shared", "only-a", "only-b")).toEqual({
+				shared: "a-shared",
+				"only-a": "a-only",
+				"only-b": undefined,
+			});
+
+			h.bring(h.b);
+			expect(on("shared", "only-a", "only-b")).toEqual({
+				shared: "b-shared",
+				"only-a": undefined,
+				"only-b": "b-only",
+			});
+
+			// Changed and cleared while off screen: the terminal shows the latest.
+			decision.put(h.aUi, "shared", "a-shared-later");
+			decision.put(h.aUi, "only-a", undefined);
+			expect(on("shared", "only-a")).toEqual({ shared: "b-shared", "only-a": undefined });
+			h.bring(h.a);
+			expect(on("shared", "only-a", "only-b")).toEqual({
+				shared: "a-shared-later",
+				"only-a": undefined,
+				"only-b": undefined,
+			});
+		});
+
+		it(`${member}: a released conversation's are forgotten, and one it sets afterwards is never shown`, async () => {
+			const h = await harness();
+			decision.put(h.bUi, "held", "b-held");
+			h.controller.sessionReleased(h.b);
+			decision.put(h.bUi, "late", "b-late");
+			h.bring(h.b);
+			expect([decision.shown(h, "held"), decision.shown(h, "late")]).toEqual([undefined, undefined]);
 		});
 	}
 });

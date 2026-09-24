@@ -41,7 +41,8 @@ The view has two layouts:
   either side, smaller and fainter the further away they are. `←` and `→`, a horizontal swipe
   or the wheel glide the row.
 - **All windows** lays every conversation out in a grid at one size. The arrow keys move between
-  windows, and the pointer selects the window under it.
+  windows, and the pointer selects the window under it. When the terminal is too short for every
+  row, the grid shows the rows around the selected window and moves with the selection.
 
 Tab switches between the two. The `room.view` setting (Settings → Interaction → Session) selects
 the one the view opens in.
@@ -110,15 +111,21 @@ the one you are reading. The question waits until you go into that conversation.
 
 ## Drafts, closing and exit
 
-Text you leave in the composer stays with its conversation and comes back when you return to it.
+Text and images you leave in the composer stay with their conversation and come back when you
+return to it.
+
+`n` or `/room new` while a new conversation is still opening says so and opens no second one. A
+conversation that fails to join the room is closed rather than left running where nothing lists
+it.
 
 `x` in the room view closes a conversation: a question it was holding is dismissed, its turn is
-stopped, its draft is saved beside its transcript, and it leaves the room. The first conversation
-in the terminal holds the MCP servers and background jobs the others share, so it closes only
-when you exit.
+stopped, its draft text is saved beside its transcript, and it leaves the room. A close that fails
+says why and leaves the conversation in the room; exit closes it. The first conversation in the
+terminal holds the MCP servers and background jobs the others share, so it closes only when you
+exit.
 
-At exit every conversation's transcript is flushed, each unsent draft is saved, and the questions
-held by conversations off screen are dismissed.
+At exit every conversation's transcript is flushed, each unsent draft's text is saved, and the
+questions held by conversations off screen are dismissed. Draft images are not saved.
 
 ## The status line
 
@@ -142,10 +149,15 @@ into that conversation.
 
 ## Extensions
 
-Each conversation loads its own extensions. An extension's questions, status text, widgets,
-title, editor text and autocomplete reach the screen only while its conversation is on it. A
-question waits, as above; the rest is dropped while the conversation is off screen, and its
-autocomplete applies again when you go back into it.
+Each conversation loads its own extensions. An extension's questions, title, editor text and
+autocomplete reach the screen only while its conversation is on it. A question waits, as above;
+the title and editor text are dropped while the conversation is off screen, and its autocomplete
+applies again when you go back into it.
+
+Status text and widgets belong to the conversation that set them. The terminal shows the ones the
+conversation on screen set, including those set while it was off screen, and going into another
+conversation replaces them with that one's. A component widget is built again from its factory
+each time its conversation comes back on screen.
 
 A conversation opens without waiting for its extensions' `session_start` handlers, so a handler
 that asks a question asks it when you go into the new conversation.

@@ -47,6 +47,14 @@
 - Closing a room conversation, or exiting, dismisses the questions and extension screens it held off screen instead of leaving them waiting, so a tool waiting on one no longer holds the close.
 - Extension autocomplete applies for the conversation on screen only, so each provider runs once rather than once per room conversation, and a closed conversation's providers leave the editor.
 - Entering a conversation mid-turn starts the status line's run clock at the turn's start, and a room switch keeps each conversation's run clock and time spent instead of zeroing them.
+- A room switch keeps a draft's attached images with the conversation they were attached in.
+- A room switch whose screen fails to finish loading after the conversation is attached shows a warning and keeps the switch instead of reporting it refused.
+- `/room new` or `n` while a conversation is still opening says so instead of opening a second one, and a conversation that fails to join the room is closed rather than left running unlisted.
+- A room close that fails leaves the conversation in the room for exit to close instead of forgetting it.
+- A room window names the model its conversation switched to between turns without waiting for the next turn.
+- A room window whose screen is composed again at the same height draws the new screen instead of the one it drew before.
+- Extension status text and widgets belong to the conversation that set them: the terminal shows the on-screen conversation's, including ones set while it was off screen, and a room switch takes the previous conversation's away.
+- All windows on a short terminal shows the rows around the selected window instead of laying rows out past the bottom of the room view.
 - Switching to a model on another provider after a server-side compaction no longer resends the whole session history: before the next prompt, the session asks the model that minted the compaction to summarize it and continues from that summary, reported as an auto-compaction with reason `provider_switch`.
 - A prompt or idle compaction on a session that switched providers after a server-side compaction ports that compaction first, instead of summarizing the re-expanded history on the new provider in hundreds of staged requests.
 - A staged compaction summary that fails part way resumes on the next attempt from the segments that never completed instead of restarting from the first segment.
