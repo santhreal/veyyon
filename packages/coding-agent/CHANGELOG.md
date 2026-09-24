@@ -13,6 +13,7 @@
 - A room window shows the unsent draft its conversation's composer holds at its foot, with its first line and what it has attached.
 - A room window holding a question draws its frame in the ember a waiting prompt takes, quieter than the selected window's, so a glance at the room finds who is waiting.
 - A room conversation that finishes or fails its turn off screen says so once on the status line with the key that opens the room, and with `completion.notify` on a finished one sends a desktop notification titled with its number and name.
+- A tool's desktop notification from a room conversation off screen, such as an `ask` waiting for an answer, is titled with the conversation's number and name.
 
 ### Fixed
 

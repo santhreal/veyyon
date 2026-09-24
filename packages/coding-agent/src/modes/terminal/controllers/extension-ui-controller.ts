@@ -82,6 +82,7 @@ export type ExtensionUiControllerContext = Pick<
 	| "removeAutocompleteProvider"
 	| "renderInitialMessages"
 	| "resetTranscript"
+	| "room"
 	| "session"
 	| "sessionManager"
 	| "setEditorComponent"
@@ -247,9 +248,12 @@ export class ExtensionUiController {
 		// This host CAN reach an operator who is looking elsewhere, so it installs
 		// the delivery a tool's notification rides. TerminalNotification extends
 		// HostNotification, which is what makes this a pass-through rather than a
-		// translation, and a GUI host installs its own here instead.
+		// translation, and a GUI host installs its own here instead. A room
+		// conversation off screen titles it with the room's name for it, so the
+		// notification says which conversation is waiting.
 		bindings.setToolNotifier(notification => {
-			TERMINAL.sendNotification(notification);
+			const label = session === this.ctx.session ? undefined : this.ctx.room.labelOf(session);
+			TERMINAL.sendNotification(label === undefined ? notification : { ...notification, title: label });
 		});
 
 		this.initializeHookRunner(uiContext, true, session);

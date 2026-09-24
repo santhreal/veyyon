@@ -110,7 +110,9 @@ the one you are reading. The question waits until you go into that conversation.
 - the room view's title and the ordinal under the windows mark it with `!`, and the key row reads
   `enter answer` while its window is selected;
 - the status line's `room` chip counts it ahead of the working ones: `3 peers · ! 1 needs you · 1 working`;
-- the status line says once which conversation is waiting and which key opens the room.
+- the status line says once which conversation is waiting and which key opens the room;
+- a question from the `ask` tool sends its desktop notification (`ask.notify`) titled with the
+  conversation's number and name, where the conversation on screen sends one titled `Veyyon`.
 
 ## When a conversation finishes
 

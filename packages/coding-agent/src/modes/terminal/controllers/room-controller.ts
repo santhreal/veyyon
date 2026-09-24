@@ -190,6 +190,19 @@ export class RoomController {
 		});
 	}
 
+	/**
+	 * How the room names `session` in a line of text (`2 · refactor auth`, or
+	 * `conversation 2` while it goes by nothing), or nothing when it is not in
+	 * the room of the conversation on screen with at least one other.
+	 */
+	labelOf(session: AgentSession): string | undefined {
+		const refs = this.#refs();
+		if (refs.length < 2) return undefined;
+		const index = refs.findIndex(ref => ref.session === session);
+		const ref = refs[index];
+		return ref ? memberLabel(index + 1, this.#feedFor(ref).snapshot()) : undefined;
+	}
+
 	#feedFor(ref: LiveMember): RoomWindowFeed {
 		let feed = this.#feeds.get(ref.id);
 		if (!feed || feed.session !== ref.session) {

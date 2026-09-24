@@ -29,6 +29,8 @@
  * leaves the editor when the conversation is released. Binding a conversation
  * off screen does not wait on its `session_start`, whose handler may ask a
  * question that cannot be shown until the conversation exists and is entered.
+ * A tool notification from a conversation off screen is titled with the
+ * room's name for it; one from the conversation on screen keeps its own.
  *
  * The controller is real. What stands in for the terminal is the controller's
  * own presentation methods, spied so a presented dialog resolves at once, and
@@ -64,7 +66,8 @@ import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { SessionHostBindings } from "@veyyon/coding-agent/session/background-sessions";
 import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import * as titleGenerator from "@veyyon/coding-agent/utils/title-generator";
-import { Container } from "@veyyon/tui";
+import type { HostNotification, HostNotifier } from "@veyyon/host";
+import { Container, TERMINAL } from "@veyyon/tui";
 import type { AutocompleteProvider } from "@veyyon/utils/autocomplete";
 
 type Outcome = { value: unknown } | { rejects: string } | { stillWaitingAfterMs: number };
@@ -115,6 +118,8 @@ interface Harness {
 	factories: AutocompleteProviderFactory[];
 	/** The item values the editor's provider suggests, composed from the stack now. */
 	suggestions(): Promise<string[]>;
+	/** A tool notification sent through the notifier `session` was bound with. */
+	notifyFrom(session: AgentSession, notification: HostNotification): void;
 }
 
 async function harness(): Promise<Harness> {
@@ -129,6 +134,7 @@ async function harness(): Promise<Harness> {
 	let aUi: ExtensionUIContext | undefined;
 	let bUi: ExtensionUIContext | undefined;
 	const factories: AutocompleteProviderFactory[] = [];
+	const notifiers = new Map<AgentSession, HostNotifier>();
 	const ctx = {
 		editor,
 		session: a,
@@ -143,7 +149,14 @@ async function harness(): Promise<Harness> {
 		setToolUIContext: (context: ExtensionUIContext) => {
 			aUi = context;
 		},
-		setToolNotifier: () => {},
+		setToolNotifier: (notify: HostNotifier) => {
+			notifiers.set(a, notify);
+		},
+		// The room's name for each conversation, as the room view numbers them.
+		room: {
+			labelOf: (session: AgentSession) =>
+				session === a ? "1 · launch" : session === b ? "2 · parser rewrite" : undefined,
+		},
 		setWorkingMessage: (message?: string) => {
 			log.push(`setWorkingMessage:${message}`);
 		},
@@ -184,7 +197,9 @@ async function harness(): Promise<Harness> {
 		setToolUIContext: context => {
 			bUi = context;
 		},
-		setToolNotifier: () => {},
+		setToolNotifier: notify => {
+			notifiers.set(b, notify);
+		},
 	});
 	if (!aUi || !bUi) throw new Error("Expected both conversations to be handed a UI context");
 	return {
@@ -215,6 +230,11 @@ async function harness(): Promise<Harness> {
 			let provider = BASE_PROVIDER;
 			for (const factory of factories) provider = factory(provider);
 			return (await provider.getSuggestions([""], 0, 0))?.items.map(item => item.value) ?? [];
+		},
+		notifyFrom: (session, notification) => {
+			const notify = notifiers.get(session);
+			if (!notify) throw new Error("That conversation was bound with no notifier.");
+			notify(notification);
 		},
 	};
 }
@@ -765,5 +785,29 @@ describe("binding a conversation", () => {
 		started.resolve();
 		await binding;
 		expect(bound).toBe(true);
+	});
+});
+
+describe("a tool notification", () => {
+	/**
+	 * An `ask` from a conversation off screen sends its desktop notification at
+	 * once while its question waits; titled `Veyyon`, it would not say which
+	 * conversation to go to.
+	 */
+	it("from a conversation off screen is titled with the room's name for it, and from the one on screen is not", async () => {
+		const sent = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
+		const h = await harness();
+		const ask = { title: "Veyyon", body: "Waiting for input", type: "ask", actions: "focus" } as const;
+		h.notifyFrom(h.b, ask);
+		h.notifyFrom(h.a, ask);
+		h.bring(h.b);
+		h.notifyFrom(h.b, ask);
+		h.notifyFrom(h.a, ask);
+		expect(sent.mock.calls).toEqual([
+			[{ ...ask, title: "2 · parser rewrite" }],
+			[ask],
+			[ask],
+			[{ ...ask, title: "1 · launch" }],
+		]);
 	});
 });

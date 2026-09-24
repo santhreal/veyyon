@@ -1051,6 +1051,26 @@ describe("an attach from outside the room", () => {
 	});
 });
 
+describe("the room's name for a conversation", () => {
+	it("is its number and name in the room on screen, and nothing outside it or in a room of one", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		const outside = openConversation("outside", dirA);
+		outside.session.releaseForeground();
+		await b!.session.sessionManager.setSessionName("Refactor parser", "user");
+		expect([a.session, b!.session, outside.session].map(session => h.room.labelOf(session))).toEqual([
+			"conversation 1",
+			"2 · Refactor parser",
+			undefined,
+		]);
+		registry.unregister(b!.id);
+		expect(h.room.labelOf(a.session)).toBeUndefined();
+	});
+});
+
 describe("cycling", () => {
 	it("moves to the next member in room order and wraps in both directions", async () => {
 		const {
