@@ -348,7 +348,8 @@ export interface InteractiveModeContext {
 	flushPendingModelSwitch(): Promise<void>;
 	setWorkingMessage(message?: string): void;
 	applyPendingWorkingMessage(): void;
-	ensureLoadingAnimation(): void;
+	/** Mount the working line; `startedAt` anchors its clock at a turn already running. */
+	ensureLoadingAnimation(startedAt?: number): void;
 	startPendingSubmission(input: {
 		text: string;
 		images?: ImageContent[];

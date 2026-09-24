@@ -3869,8 +3869,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 	}
 
-	ensureLoadingAnimation(): void {
-		this.#workingLoader.ensure();
+	ensureLoadingAnimation(startedAt?: number): void {
+		this.#workingLoader.ensure(startedAt);
 		// The board's motion is owed by the agent moving, and this is the edge
 		// where it starts. Nothing else on this path touches the anchored
 		// regions, so without it a board that was still when the turn began

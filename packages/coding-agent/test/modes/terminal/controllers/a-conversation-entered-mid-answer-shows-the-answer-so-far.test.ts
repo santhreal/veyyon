@@ -11,9 +11,10 @@
  * contract of the one method those paths share: the answer so far is on screen
  * at once (not re-typed by the smooth reveal), the turn is armed, the next delta
  * extends the same block rather than opening a second, a session that is not
- * mid-answer gets nothing, the footline clock reads the turn's age rather than
- * the time since the screen arrived (re-anchoring one left open by an earlier
- * turn), and the answer so far is the display form the event stream shows: a
+ * mid-answer gets nothing, the footline clock and the working line's clock
+ * read the turn's age rather than the time since the screen arrived
+ * (re-anchoring a footline window left open by an earlier turn), and the
+ * answer so far is the display form the event stream shows: a
  * real session with an argot vocabulary, whose raw stream message still holds
  * the `§handle`, opens with the handle expanded.
  *
@@ -37,12 +38,13 @@ import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/compone
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
 import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
+import { WorkingLoaderController } from "@veyyon/coding-agent/modes/terminal/controllers/working-loader";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
-import type { TUI } from "@veyyon/tui";
+import { Container, type TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { ArgotSession, type Vocabulary } from "argot";
 import {
@@ -181,8 +183,12 @@ interface Fixture {
 	chatContainer: TranscriptContainer;
 	/** The footline the controller starts its clock on. */
 	statusLine: StatusLineComponent;
+	/** The working line's text, once something mounted it. */
+	workingLine(): string | undefined;
 	/** The turn events the controller armed itself with. */
 	armed: string[];
+	/** Stop the working line's spinner. */
+	dispose(): void;
 }
 
 interface StubSession {
@@ -228,6 +234,11 @@ function stubSession(options: {
 function attached(session: StubSession | AgentSession): Fixture {
 	const chatContainer = new TranscriptContainer();
 	const statusLine = new StatusLineComponent(makeStatusLineProducer());
+	const workingLoader = new WorkingLoaderController({
+		sessionManager: { getSessionName: () => undefined } as unknown as SessionManager,
+		statusContainer: new Container(),
+		ui: { requestRender: () => {}, requestDirectWrite: () => {}, requestComponentRender: () => {} } as unknown as TUI,
+	});
 	const ctx = {
 		isInitialized: true,
 		init: vi.fn(async () => {}),
@@ -241,7 +252,7 @@ function attached(session: StubSession | AgentSession): Fixture {
 		proseOnlyThinking: true,
 		statusLine,
 		noteDisplayableThinkingContent: vi.fn(() => false),
-		ensureLoadingAnimation: vi.fn(),
+		ensureLoadingAnimation: (startedAt?: number) => workingLoader.ensure(startedAt),
 		session,
 		viewSession: session,
 		sessionManager: { getCwd: () => process.cwd() },
@@ -263,7 +274,14 @@ function attached(session: StubSession | AgentSession): Fixture {
 		await handle(event);
 	};
 	controller.attachTo(session as unknown as AgentSession);
-	return { controller, chatContainer, statusLine, armed };
+	return {
+		controller,
+		chatContainer,
+		statusLine,
+		workingLine: () => workingLoader.loader?.getText(),
+		armed,
+		dispose: () => workingLoader.clear(),
+	};
 }
 
 function assistantBlocks(chatContainer: TranscriptContainer): number {
@@ -296,6 +314,7 @@ describe("a conversation entered mid-answer", () => {
 
 	afterEach(() => {
 		fixture?.controller.resetTranscriptAnchors();
+		fixture?.dispose();
 		fixture = undefined;
 		vi.restoreAllMocks();
 		restoreSettingsTestState(settingsState);
@@ -323,6 +342,20 @@ describe("a conversation entered mid-answer", () => {
 		await fixture.controller.resumeTurn();
 
 		expect(fixture.statusLine.getRunClock().runningMs).toBe(41_000);
+	});
+
+	/**
+	 * The working line over the composer counts too. Mounted on arrival, it
+	 * read `Working… · 0:01` beside a footline that said the turn had run for
+	 * seventeen seconds.
+	 */
+	it("starts the working line's clock where the turn started", async () => {
+		vi.spyOn(Date, "now").mockReturnValue(100_000);
+		fixture = attached(stubSession({ streaming: true, partial: answer(SO_FAR), turnStartedAt: 59_000 }));
+
+		await fixture.controller.resumeTurn();
+
+		expect(fixture.workingLine()).toContain("Working… · 0:41");
 	});
 
 	it("re-anchors a clock left open by an earlier turn at the running one", async () => {

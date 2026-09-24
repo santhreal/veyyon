@@ -5,12 +5,15 @@
  * to the code deciding what may enter scrollback — so a leaked loader does not
  * look like a bug, it looks like history. The per-task clock has the mirror
  * problem: a clock that does not restart when the label changes reports the
- * previous task's elapsed time under the new task's name.
+ * previous task's elapsed time under the new task's name, and a line mounted
+ * for a turn already running that counts from the arrival reports less than
+ * the footline beside it.
  *
  * Closes the class: every mutation of the loader goes through this controller,
  * so each of its lifecycle verbs (`ensure`, `clear`, `stop`, `abandon`) is
  * asserted on what it leaves in the status container, and the clock is asserted
- * to restart on a label change and to keep counting when the same label repeats.
+ * to restart on a label change, to keep counting when the same label repeats,
+ * and to count the default phase from the turn's start when one is given.
  *
  * Does NOT catch: the shimmer palette the label is drawn in, nor the 1s
  * heartbeat that calls `refreshTaskClock` — the caller owns that timer.
@@ -166,6 +169,43 @@ describe("the working line clock restarts with its task", () => {
 		controller.ensure();
 
 		expect(controller.loader?.getText()).toContain("0:00");
+	});
+
+	it("counts the default phase from the turn's start when it is mounted for a turn already running", () => {
+		const { controller } = makeController();
+
+		controller.ensure(Date.now() - 17_000);
+		expect(controller.loader?.getText()).toContain("Working… · 0:17");
+
+		vi.advanceTimersByTime(2_000);
+		controller.refreshTaskClock();
+		expect(controller.loader?.getText()).toContain("0:19");
+
+		controller.setMessage("Reading src/app.ts");
+		expect(controller.loader?.getText()).toContain("Reading src/app.ts · 0:00");
+	});
+
+	it("re-anchors a mounted default phase at the turn's start, never past now, and leaves a named task alone", () => {
+		const working = makeController();
+		working.controller.ensure();
+		vi.advanceTimersByTime(1_000);
+		working.controller.ensure(Date.now() - 30_000);
+		expect(working.controller.loader?.getText()).toContain("Working… · 0:30");
+		// A turn start past now (a clock that moved) counts from now, so the line
+		// still moves second by second instead of holding at zero.
+		working.controller.ensure(Date.now() + 5_000);
+		expect(working.controller.loader?.getText()).toContain("Working… · 0:00");
+		vi.advanceTimersByTime(2_000);
+		working.controller.refreshTaskClock();
+		expect(working.controller.loader?.getText()).toContain("Working… · 0:02");
+
+		const named = makeController();
+		named.controller.ensure();
+		named.controller.setMessage("Reading src/app.ts");
+		vi.advanceTimersByTime(3_000);
+		named.controller.ensure(Date.now() - 30_000);
+		named.controller.refreshTaskClock();
+		expect(named.controller.loader?.getText()).toContain("Reading src/app.ts · 0:03");
 	});
 
 	it("reports whether there was a loader to clear, and unmounts only its own child", () => {

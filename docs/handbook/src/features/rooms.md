@@ -137,7 +137,8 @@ and is in every preset. With `tui.scrollIsolation` on, clicking it opens the roo
 off the terminal keeps the mouse and the chip is text.
 
 The run clock beside the location keeps each conversation's own time. Going into a conversation
-that is working shows how long its turn has run, including the time it ran off screen.
+that is working shows how long its turn has run, including the time it ran off screen, on the run
+clock and on the working line above the composer.
 
 The `background` segment counts conversations running with nothing drawing them that are not in
 the room, such as a turn handed off by `/new`. A room member running off screen is counted by

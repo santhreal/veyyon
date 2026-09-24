@@ -47,7 +47,7 @@
 - A conversation opened off screen by `/room new` or `/new` no longer waits for its extensions' `session_start` handlers, so a handler that asks a question no longer stalls the open until it times out.
 - Closing a room conversation, or exiting, dismisses the questions and extension screens it held off screen instead of leaving them waiting, so a tool waiting on one no longer holds the close.
 - Extension autocomplete applies for the conversation on screen only, so each provider runs once rather than once per room conversation, and a closed conversation's providers leave the editor.
-- Entering a conversation mid-turn starts the status line's run clock at the turn's start, and a room switch keeps each conversation's run clock and time spent instead of zeroing them.
+- Entering a conversation mid-turn starts the status line's run clock and the working line's clock at the turn's start, and a room switch keeps each conversation's run clock and time spent instead of zeroing them.
 - A room switch keeps a draft's attached images with the conversation they were attached in.
 - A room switch whose screen fails to finish loading after the conversation is attached shows a warning and keeps the switch instead of reporting it refused.
 - `/room new` or `n` while a conversation is still opening says so instead of opening a second one, and a conversation that fails to join the room is closed rather than left running unlisted.

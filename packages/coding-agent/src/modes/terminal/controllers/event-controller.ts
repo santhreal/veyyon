@@ -473,17 +473,18 @@ export class EventController {
 	 * Arm the turn the attached session is in the middle of. A screen that
 	 * attaches mid-turn missed the turn's `agent_start` and the `message_start`
 	 * of the message being written, and a transcript rebuild holds finished
-	 * messages only, so this arms the loader, starts the footline clock at the
-	 * turn's start, and opens that message at the text it already has, without
-	 * replaying its reveal. Call it after the rebuild, which clears the
-	 * transcript the message is drawn in. A session that is not streaming is
-	 * left as it is.
+	 * messages only, so this arms the loader, starts the footline clock and the
+	 * working line's clock at the turn's start, and opens that message at the
+	 * text it already has, without replaying its reveal. Call it after the
+	 * rebuild, which clears the transcript the message is drawn in. A session
+	 * that is not streaming is left as it is.
 	 */
 	async resumeTurn(): Promise<void> {
 		const session = this.#attachedSession;
 		if (!session?.isStreaming) return;
 		this.ctx.statusLine.markActivityStart(session.turnStartedAt);
 		await this.handleEvent({ type: "agent_start" });
+		if (session.turnStartedAt !== undefined) this.ctx.ensureLoadingAnimation(session.turnStartedAt);
 		const partial = session.displayedStreamMessage;
 		if (partial === undefined) return;
 		this.#assistantStreamSynced = true;
