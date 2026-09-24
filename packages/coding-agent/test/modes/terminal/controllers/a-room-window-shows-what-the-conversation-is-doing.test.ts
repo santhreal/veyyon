@@ -389,8 +389,11 @@ describe("a running turn", () => {
 				{ kind: "tool", label: "Read", detail: "src/app.ts", state: "running" },
 			]);
 
+			// The window's clock is the session's turn clock, the one the footline
+			// and the working line read after a switch into this conversation.
 			const running = feed.snapshot().state;
-			expect(running.kind === "working" && running.since > 0).toBe(true);
+			expect(session.turnStartedAt).toBeGreaterThan(0);
+			expect(running.kind === "working" ? running.since : undefined).toBe(session.turnStartedAt);
 
 			Object.defineProperty(session, "isCompacting", { configurable: true, get: () => true });
 			expect(buildRoomWindowSnapshot(session).state).toMatchObject({ kind: "working", activity: "compacting" });

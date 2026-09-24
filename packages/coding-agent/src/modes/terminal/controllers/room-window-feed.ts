@@ -75,15 +75,16 @@ function promptText(message: AgentMessage): string {
 	return displayText(contentText(message.content, { image: "[image]" }));
 }
 
-/** What the feed saw of the turn in flight, from the session's display-form events. */
+/** The turn in flight, as the session reports it for display. */
 export interface RoomLiveTurn {
-	/** When the running turn started, in ms since epoch. */
+	/** When the running turn started, in ms since epoch (`AgentSession.turnStartedAt`). */
 	readonly startedAt?: number;
 	/**
 	 * The assistant message being streamed, as the session's `message_update`
-	 * events carry it: already expanded for display, with a handle split across
-	 * two deltas held back until it is whole. The raw `state.streamMessage` is
-	 * never read, because it carries the model's own handles.
+	 * events carry it (`AgentSession.displayedStreamMessage`): already expanded
+	 * for display, with a handle split across two deltas held back until it is
+	 * whole. The raw `state.streamMessage` is never read, because it carries the
+	 * model's own handles.
 	 */
 	readonly stream?: AssistantMessage;
 }
@@ -202,8 +203,6 @@ export class RoomWindowFeed {
 	#built = -1;
 	#builtModel: Model | undefined;
 	#snapshot: RoomWindowSnapshot | undefined;
-	#startedAt: number | undefined;
-	#stream: AssistantMessage | undefined;
 	readonly #unsubscribe: () => void;
 	readonly #unsubscribeName: () => void;
 
@@ -211,15 +210,6 @@ export class RoomWindowFeed {
 		this.session = session;
 		this.#unsubscribe = session.subscribe(event => {
 			if (!FEED_EVENTS.has(event.type)) return;
-			if (event.type === "agent_start") this.#startedAt = Date.now();
-			if (
-				(event.type === "message_start" || event.type === "message_update") &&
-				event.message.role === "assistant"
-			) {
-				this.#stream = event.message;
-			} else if (event.type === "message_end" || event.type === "agent_end") {
-				this.#stream = undefined;
-			}
 			this.#version++;
 			onChange(event.type);
 		});
@@ -229,10 +219,18 @@ export class RoomWindowFeed {
 		});
 	}
 
+	/**
+	 * The turn's clock and the message being written are the session's own
+	 * (`turnStartedAt`, `displayedStreamMessage`), the ones the footline and a
+	 * mid-answer arrival read, so a window and the screen it zooms into agree.
+	 */
 	snapshot(): RoomWindowSnapshot {
 		const model = this.session.model;
 		if (this.#snapshot === undefined || this.#built !== this.#version || this.#builtModel !== model) {
-			this.#snapshot = buildRoomWindowSnapshot(this.session, { startedAt: this.#startedAt, stream: this.#stream });
+			this.#snapshot = buildRoomWindowSnapshot(this.session, {
+				startedAt: this.session.turnStartedAt,
+				stream: this.session.displayedStreamMessage,
+			});
 			this.#built = this.#version;
 			this.#builtModel = model;
 		}
