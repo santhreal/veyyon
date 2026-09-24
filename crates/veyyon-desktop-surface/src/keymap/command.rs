@@ -51,6 +51,7 @@ pub enum Command {
 	AttachFile,
 	TakeBackQueuedPrompt,
 	ToggleDictation,
+	PromptHistory,
 	PreviousTab,
 	NextTab,
 	ToggleDiffMode,
@@ -101,6 +102,7 @@ impl Command {
 			Self::AttachFile => "AttachFile",
 			Self::TakeBackQueuedPrompt => "TakeBackQueuedPrompt",
 			Self::ToggleDictation => "ToggleDictation",
+			Self::PromptHistory => "PromptHistory",
 			Self::PreviousTab => "PreviousTab",
 			Self::NextTab => "NextTab",
 			Self::ToggleDiffMode => "ToggleDiffMode",
@@ -151,6 +153,7 @@ impl Command {
 			Self::AttachFile => "Attach file to composer",
 			Self::TakeBackQueuedPrompt => "Take back queued message",
 			Self::ToggleDictation => "Start or stop dictating",
+			Self::PromptHistory => "Recall a prompt submitted earlier",
 			Self::PreviousTab => "Select previous panel tab",
 			Self::NextTab => "Select next panel tab",
 			Self::ToggleDiffMode => "Toggle unified or split diff mode",
@@ -203,7 +206,8 @@ impl Command {
 			| Self::ThinkingLevel
 			| Self::AttachFile
 			| Self::TakeBackQueuedPrompt
-			| Self::ToggleDictation => Scope::Composer,
+			| Self::ToggleDictation
+			| Self::PromptHistory => Scope::Composer,
 			Self::PreviousTab | Self::NextTab | Self::ToggleDiffMode => Scope::Panel,
 			Self::CloseWindow | Self::Quit | Self::OpenMenu => Scope::Global,
 		}
@@ -231,6 +235,7 @@ impl Command {
 			},
 			Self::ModelPicker | Self::ThinkingLevel => Some(Capability::Models),
 			Self::ToggleDictation => Some(Capability::Dictation),
+			Self::PromptHistory => Some(Capability::PromptHistory),
 			// The drawer's two tenants are resolved where a surface is
 			// projected, because either a terminal or a supervised process
 			// carries it.
@@ -310,6 +315,7 @@ impl Command {
 			"AttachFile" => Some(Self::AttachFile),
 			"TakeBackQueuedPrompt" => Some(Self::TakeBackQueuedPrompt),
 			"ToggleDictation" => Some(Self::ToggleDictation),
+			"PromptHistory" => Some(Self::PromptHistory),
 			"PreviousTab" => Some(Self::PreviousTab),
 			"NextTab" => Some(Self::NextTab),
 			"ToggleDiffMode" => Some(Self::ToggleDiffMode),

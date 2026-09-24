@@ -40,6 +40,7 @@ in `crates/veyyon-desktop-surface/keymap.toml`.
 | `Primary-J` | Toggle the terminal drawer |
 | `Primary-\` | Toggle the right panel |
 | `Primary-K` | Open the command palette |
+| `Primary-R` | Open prompt history |
 | `Primary-,` | Open settings |
 | `Primary-Shift-W` | Close the window |
 | `Primary-Q` | Quit |
@@ -445,6 +446,24 @@ Successful submission removes attachments included in that request. Attachments
 added afterward remain unless they compare equal to a submitted attachment.
 Unrelated and duplicate acknowledgments do not consume content.
 
+### Prompt history
+
+`Primary-R`, the history control in the composer footer, and `/prompts` open
+the prompts submitted earlier, most recent first. The listing is the same store
+the terminal reads, so a prompt typed in either front end is recalled in both.
+
+Opening the mode with an empty query lists the most recent prompts. Typing
+narrows the listing to the prompts that hold the query. Each row states the
+prompt on one line and when it was submitted under it.
+
+Selecting a row closes the mode and puts the prompt in the composer as an
+unsent draft, replacing whatever the draft held. Editing before sending is the
+point of the recall; the row sends nothing on its own.
+
+A prompt is recorded when the window submits, steers, or queues typed text.
+Text a command supplies is not a prompt anyone typed and is not recorded, and a
+prompt submitted twice in a row is one row.
+
 ### Attachment tray
 
 Attachments display as cards above the footer. The tray wraps within two rows
@@ -635,6 +654,7 @@ Type `/` at the beginning of the composer to open the anchored command palette.
 | `/files` | Find a file in the workspace by name |
 | `/project` | Browse the workspace one directory at a time |
 | `/search` | Search the workspace for text |
+| `/prompts` | Recall a prompt submitted earlier |
 | `/export` | Export the active session to HTML |
 | `/compact` | Compact the active session transcript |
 | `/handoff` | Hand off the active session to a new agent |
@@ -669,14 +689,16 @@ that take a payload, so text after the name is the message they send. Every
 other command matches on the whole text typed after `/`, and words after its
 name list no row rather than a row that would discard them.
 
-`/files`, `/project` and `/search` open a lookup instead of closing the
-palette. The palette stays open in the mode the command named, at the centred
-width, and the field prompts for what that mode looks up. The keyboard goes to
-that field, so the next keystroke filters the lookup rather than editing the
-draft. Typing filters files by name in `/files`, and searches the workspace for
-the literal text in `/search`. Emptying the field drops the rows the host
-answered with, since an empty query looks nothing up. In `/project`, `Enter` on
-a directory row lists that directory and `Escape` returns to the one above it.
+`/files`, `/project`, `/search` and `/prompts` open a lookup instead of closing
+the palette. The palette stays open in the mode the command named, at the
+centred width, and the field prompts for what that mode looks up. The keyboard
+goes to that field, so the next keystroke filters the lookup rather than
+editing the draft. Typing filters files by name in `/files`, searches the
+workspace for the literal text in `/search`, and narrows the prompts submitted
+earlier in `/prompts`. Emptying the field drops the rows the host answered
+with, since an empty query looks nothing up; `/prompts` is the exception, and
+lists the most recent prompts on an empty query. In `/project`, `Enter` on a
+directory row lists that directory and `Escape` returns to the one above it.
 
 A result row states its text on one line, with its detail beside it: the file
 and line number of a search hit, the path of a file, the description of a

@@ -99,6 +99,9 @@ const fn prepare_for(kind: SnapshotSectionKind) -> Prepare {
 		SnapshotSectionKind::Share => Prepare::Share,
 		SnapshotSectionKind::SearchResults => Prepare::Palette(PaletteMode::Files, "app"),
 		SnapshotSectionKind::ContentMatches => Prepare::Palette(PaletteMode::ContentSearch, "todo"),
+		SnapshotSectionKind::PromptHistory => {
+			Prepare::Palette(PaletteMode::PromptHistory, "refactor")
+		},
 		// The catalogue is rows of the command list, which is what the
 		// palette opens on.
 		SnapshotSectionKind::Commands => Prepare::Palette(PaletteMode::Commands, ""),

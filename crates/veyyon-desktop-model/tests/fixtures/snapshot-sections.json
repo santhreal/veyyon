@@ -315,6 +315,21 @@
 		}
 	},
 	{
+		"PromptHistory": {
+			"query": "refactor",
+			"entries": [
+				{
+					"id": 41,
+					"prompt": "refactor the loader",
+					"submitted_at_ms": 1730000000000,
+					"cwd": "/repo",
+					"session": "s1",
+					"truncated": false
+				}
+			]
+		}
+	},
+	{
 		"Terminals": [
 			{
 				"id": "term-1",

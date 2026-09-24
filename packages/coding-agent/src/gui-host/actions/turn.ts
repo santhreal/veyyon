@@ -8,6 +8,7 @@ import { nameSessionFromFirstPrompt } from "../session-title";
 import { AttachmentValidationError, abortTurn, executePromptTurn, getOrCreateAgentSession } from "../turns";
 import type { AttachmentSubmission } from "../wire";
 import { activateSession, activeManager, isActive, replyError } from "./active-session";
+import { recordSubmittedPrompt } from "./history";
 import { handleSetSessionMode } from "./session-mode";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
 
@@ -74,10 +75,16 @@ async function deliver(
 		await executePromptTurn(session, ctx.clientState, text, attachments, streaming);
 		reportQueuedPrompts(ctx.socket, ctx.clientState);
 		ctx.reply.success();
-		// After the reply: the prompt is accepted either way, and the title takes
-		// a model call of its own. The name reaches the client as a snapshot of
-		// its own, the way a rename does.
-		if (names) void nameSessionFromFirstPrompt(ctx, session, text);
+		// Both after the reply: the prompt is accepted either way, the title
+		// takes a model call of its own, and the history row is a disk write.
+		// The name reaches the client as a snapshot of its own, the way a
+		// rename does. Both are held to `names`, which states the text was
+		// typed: a fixed instruction is neither worth a title nor worth
+		// recalling.
+		if (names) {
+			void nameSessionFromFirstPrompt(ctx, session, text);
+			recordSubmittedPrompt(text, payload.session);
+		}
 	} catch (error) {
 		if (
 			error instanceof UnsupportedModelInputError ||

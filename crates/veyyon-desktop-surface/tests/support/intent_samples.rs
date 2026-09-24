@@ -184,6 +184,8 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::ToggleProfileCopy("settings".to_owned()),
 		Intent::ToggleDictation,
 		Intent::CancelDictation,
+		Intent::FindPrompt("parity".to_owned()),
+		Intent::RecallPrompt("Ship the desktop parity work".to_owned()),
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -233,6 +235,8 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::BrowseTo { .. }
 			| Intent::FindFile(_)
 			| Intent::FindText(_)
+			| Intent::FindPrompt(_)
+			| Intent::RecallPrompt(_)
 			| Intent::SettingChanged { .. }
 			| Intent::SelectTheme { .. }
 			| Intent::PreviewAppearance(_)

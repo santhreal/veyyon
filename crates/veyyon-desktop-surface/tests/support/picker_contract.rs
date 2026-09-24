@@ -124,9 +124,10 @@ pub fn open(
 						.expect("fixture models"),
 					true,
 				),
-				PaletteMode::Files | PaletteMode::ContentSearch | PaletteMode::Browse => {
-					PaletteState::new(mode)
-				},
+				PaletteMode::Files
+				| PaletteMode::ContentSearch
+				| PaletteMode::Browse
+				| PaletteMode::PromptHistory => PaletteState::new(mode),
 			};
 			match mode {
 				PaletteMode::Files => state.set_items(vec![PaletteItem::file(1, "src/app.rs")]),
@@ -139,6 +140,9 @@ pub fn open(
 					)]);
 				},
 				PaletteMode::Browse => state.set_items(vec![PaletteItem::directory(1, "src")]),
+				PaletteMode::PromptHistory => {
+					state.set_items(vec![PaletteItem::prompt(1, "rebuild the index", "2m ago")]);
+				},
 				PaletteMode::Commands | PaletteMode::Sessions | PaletteMode::Models => {},
 			}
 			view.state_mut().overlay = Some(Overlay::Palette(state));

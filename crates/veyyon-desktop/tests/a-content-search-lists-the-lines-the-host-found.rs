@@ -99,6 +99,9 @@ fn every_mode_states_the_lookup_its_keystrokes_report() {
 			PaletteMode::ContentSearch => {
 				vec![HostAction::SearchContent { query: "todo".to_owned() }]
 			},
+			PaletteMode::PromptHistory => {
+				vec![HostAction::SearchPromptHistory { query: "todo".to_owned() }]
+			},
 			PaletteMode::Commands
 			| PaletteMode::Sessions
 			| PaletteMode::Browse

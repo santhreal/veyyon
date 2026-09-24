@@ -6,8 +6,9 @@ use crate::{
 	domain::{
 		AgentMessageView, AgentView, AuthFlowView, ChangesView, CommandView, ContentMatchesView,
 		ContextBreakdownView, ExportView, FileContentView, FileTreeView, KeybindingView,
-		McpServerView, ModelsView, ProcessLogsChunk, ProcessView, ProviderView, QueuedPromptsView,
-		SearchResultsView, SettingsView, TerminalOutputChunk, TerminalView, ThemesView, UsageView,
+		McpServerView, ModelsView, ProcessLogsChunk, ProcessView, PromptHistoryView, ProviderView,
+		QueuedPromptsView, SearchResultsView, SettingsView, TerminalOutputChunk, TerminalView,
+		ThemesView, UsageView,
 	},
 	error::BackendError,
 	interaction::PendingDecisions,
@@ -67,7 +68,7 @@ pub struct SessionHeaderView {
 	pub mode:           Option<String>,
 }
 
-/// Complete list of all 34 snapshot section names defined by the protocol.
+/// Complete list of all 35 snapshot section names defined by the protocol.
 pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Sessions",
 	"ActiveSession",
@@ -83,6 +84,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"FileContent",
 	"SearchResults",
 	"ContentMatches",
+	"PromptHistory",
 	"Terminals",
 	"TerminalOutput",
 	"Processes",
@@ -115,7 +117,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
 #[strum_discriminants(name(SnapshotSectionKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
 #[strum_discriminants(
-	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 34 section variants."
+	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 35 section variants."
 )]
 pub enum SnapshotSection {
 	/// Session index metadata and deserialization failures.
@@ -152,6 +154,8 @@ pub enum SnapshotSection {
 	SearchResults(SearchResultsView),
 	/// The lines a content search matched.
 	ContentMatches(ContentMatchesView),
+	/// The prompts a history lookup matched.
+	PromptHistory(PromptHistoryView),
 	/// List of managed terminal sessions.
 	Terminals(Vec<TerminalView>),
 	/// Chunk of terminal output data.
@@ -223,6 +227,7 @@ impl SnapshotSection {
 			Self::FileContent(..) => "FileContent",
 			Self::SearchResults(..) => "SearchResults",
 			Self::ContentMatches(..) => "ContentMatches",
+			Self::PromptHistory(..) => "PromptHistory",
 			Self::Terminals(..) => "Terminals",
 			Self::TerminalOutput(..) => "TerminalOutput",
 			Self::Processes(..) => "Processes",

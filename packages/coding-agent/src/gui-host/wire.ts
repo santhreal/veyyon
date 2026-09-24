@@ -70,6 +70,7 @@ export const ALL_CAPABILITIES = [
 	"Share",
 	"Profiles",
 	"Dictation",
+	"PromptHistory",
 ] as const;
 
 export type Capability = (typeof ALL_CAPABILITIES)[number];
@@ -344,6 +345,27 @@ export interface SearchResultsView {
 	query: string;
 	paths: string[];
 	truncated: boolean;
+}
+
+/**
+ * One prompt submitted earlier, as the history store recorded it. Mirrors
+ * `PromptHistoryEntry` in `crates/veyyon-desktop-model/src/domain/history.rs`.
+ */
+export interface PromptHistoryEntryView {
+	id: number;
+	prompt: string;
+	submitted_at_ms: number;
+	/** Null rather than absent: the window's decoder requires the field. */
+	cwd: string | null;
+	/** Null rather than absent: the window's decoder requires the field. */
+	session: string | null;
+	truncated: boolean;
+}
+
+/** The prompts a history lookup matched, most recent first. */
+export interface PromptHistoryView {
+	query: string;
+	entries: PromptHistoryEntryView[];
 }
 
 /**
@@ -777,6 +799,7 @@ export type SnapshotSection =
 	| { FileContent: FileContentView }
 	| { SearchResults: SearchResultsView }
 	| { ContentMatches: ContentMatchesView }
+	| { PromptHistory: PromptHistoryView }
 	| { Terminals: TerminalView[] }
 	| { TerminalOutput: TerminalOutputChunk }
 	| { Processes: ProcessView[] }
@@ -815,6 +838,7 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"FileContent",
 	"SearchResults",
 	"ContentMatches",
+	"PromptHistory",
 	"Terminals",
 	"TerminalOutput",
 	"Processes",
@@ -940,6 +964,7 @@ export const ALL_HOST_ACTIONS = [
 	"ReadFile",
 	"SearchFiles",
 	"SearchContent",
+	"SearchPromptHistory",
 	"OpenExternal",
 	"RefreshChanges",
 	"SelectChangeScope",
@@ -1037,6 +1062,7 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	ReadFile: "Files",
 	SearchFiles: "Files",
 	SearchContent: "Files",
+	SearchPromptHistory: "PromptHistory",
 	OpenExternal: "Files",
 	RefreshChanges: "Changes",
 	SelectChangeScope: "Changes",

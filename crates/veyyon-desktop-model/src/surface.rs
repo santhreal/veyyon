@@ -49,6 +49,7 @@ pub enum SurfaceId {
 	ComposerCancelToolButton(SessionId, String),
 	ComposerGoalChip(SessionId),
 	ComposerDictateButton(SessionId),
+	ComposerHistoryButton(SessionId),
 
 	// Decision Cards (§5.5)
 	ApprovalApproveButton(SessionId, InteractionId),
@@ -179,6 +180,7 @@ impl SurfaceId {
 			| Self::ComposerCancelToolButton(..)
 			| Self::ComposerGoalChip(_)
 			| Self::ComposerDictateButton(_)
+			| Self::ComposerHistoryButton(_)
 			| Self::ApprovalApproveButton(..)
 			| Self::ApprovalDeclineButton(..)
 			| Self::ApprovalAlwaysAllowButton(..)
@@ -309,6 +311,7 @@ impl SurfaceId {
 			| Self::ComposerCancelToolButton(..)
 			| Self::ComposerGoalChip(_)
 			| Self::ComposerDictateButton(_)
+			| Self::ComposerHistoryButton(_)
 			| Self::ApprovalApproveButton(..)
 			| Self::ApprovalDeclineButton(..)
 			| Self::ApprovalAlwaysAllowButton(..)

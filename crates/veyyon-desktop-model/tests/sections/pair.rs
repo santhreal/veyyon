@@ -9,8 +9,8 @@ use veyyon_desktop_model::{
 
 use super::{
 	agent, auth_flow, changed, changes, command, comms, content_matches, context, export,
-	file_content, file_tree, keybinding, mcp, models, node, process, profiles, provider, search,
-	settings, terminal, themes, usage,
+	file_content, file_tree, keybinding, mcp, models, node, process, profiles, prompt_history,
+	provider, search, settings, terminal, themes, usage,
 };
 
 /// Two distinct sections of one kind, or `None` for a kind that does not
@@ -63,6 +63,10 @@ pub fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 		SnapshotSectionKind::ContentMatches => [
 			content_matches("foo", &[("a.rs", 3)]),
 			content_matches("bar", &[("b.rs", 9), ("c.rs", 12)]),
+		],
+		SnapshotSectionKind::PromptHistory => [
+			prompt_history("foo", &[(1, "run the foo pass")]),
+			prompt_history("bar", &[(2, "run the bar pass"), (3, "undo the bar pass")]),
 		],
 		SnapshotSectionKind::Terminals => [
 			terminal("t1", TerminalStatus::Running),

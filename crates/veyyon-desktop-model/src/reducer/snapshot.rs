@@ -157,6 +157,12 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 			store.domains.content_matches = Some(view);
 			damage.insert(Damage::FullWindow);
 		},
+		// The prompts a history lookup matched are rows of the palette that
+		// asked for them, which floats over the whole window.
+		SnapshotSection::PromptHistory(view) => {
+			store.domains.prompt_history = Some(view);
+			damage.insert(Damage::FullWindow);
+		},
 		SnapshotSection::Terminals(views) => {
 			store.domains.terminals = views;
 			if let Some(session_id) = &store.persisted.shell.active_session {

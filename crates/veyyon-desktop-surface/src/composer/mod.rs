@@ -14,6 +14,7 @@ pub mod actions;
 pub mod attachments;
 pub mod dictate;
 pub mod footer;
+pub mod history;
 pub mod media;
 pub mod preview;
 pub mod queued;
@@ -32,7 +33,8 @@ use veyyon_gpui::{
 };
 
 pub use self::{
-	actions::*, attachments::*, dictate::*, footer::*, media::*, queued::*, state::*, turn::*,
+	actions::*, attachments::*, dictate::*, footer::*, history::*, media::*, queued::*, state::*,
+	turn::*,
 };
 use crate::{
 	Intent, ShellView,

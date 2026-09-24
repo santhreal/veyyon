@@ -91,8 +91,8 @@ impl PaletteState {
 
 	/// The intent running the highlighted row dispatches, for a row that is
 	/// an action rather than a step of navigation: a command runs itself, a
-	/// session opens, a file or a match opens its file. A directory row
-	/// descends instead and returns `None`.
+	/// session opens, a file or a match opens its file, and a prompt goes back
+	/// into the composer. A directory row descends instead and returns `None`.
 	///
 	/// A command row that takes a trailing argument runs with what was typed
 	/// after its name, so `/goal pause` reaches the goal that is running
@@ -110,6 +110,7 @@ impl PaletteState {
 			PaletteItemKind::File { path } | PaletteItemKind::ContentMatch { path, .. } => {
 				Some(Intent::OpenFile(path.clone()))
 			},
+			PaletteItemKind::Prompt { text } => Some(Intent::RecallPrompt(text.clone())),
 			PaletteItemKind::Directory { .. }
 			| PaletteItemKind::Project { .. }
 			| PaletteItemKind::Composer { .. } => None,

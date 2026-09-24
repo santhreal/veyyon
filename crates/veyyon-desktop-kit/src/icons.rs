@@ -55,6 +55,7 @@ pub enum IconName {
 	PanelLeft,
 	PanelRight,
 	Mic,
+	History,
 }
 
 /// Semantic meaning mapping for icon uniqueness validation.
@@ -105,6 +106,7 @@ pub fn icon_meanings() -> Vec<(IconName, &'static str)> {
 		(IconName::PanelLeft, "queue rail visibility"),
 		(IconName::PanelRight, "right panel visibility"),
 		(IconName::Mic, "speech dictated into the composer"),
+		(IconName::History, "prompts submitted earlier"),
 	]
 }
 
@@ -178,6 +180,7 @@ pub const fn icon_bytes(name: IconName) -> &'static [u8] {
 		IconName::PanelLeft => include_bytes!("../assets/icons/panel-left.svg"),
 		IconName::PanelRight => include_bytes!("../assets/icons/panel-right.svg"),
 		IconName::Mic => include_bytes!("../assets/icons/mic.svg"),
+		IconName::History => include_bytes!("../assets/icons/history.svg"),
 	}
 }
 
@@ -229,7 +232,8 @@ pub const fn icon_optical_shape(name: IconName) -> IconOpticalShape {
 		| IconName::Refresh
 		| IconName::Eye
 		| IconName::EyeOff
-		| IconName::Gauge => IconOpticalShape::Circular,
+		| IconName::Gauge
+		| IconName::History => IconOpticalShape::Circular,
 
 		_ => IconOpticalShape::Slender,
 	}

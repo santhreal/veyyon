@@ -40,6 +40,14 @@ pub fn format_duration(seconds: u64) -> String {
 	}
 }
 
+/// How long before `now_ms` something at `at_ms` happened. A wall clock would
+/// be this machine's UTC rather than the reader's, and every elapsed measure
+/// on this front end is stated the same way.
+#[must_use]
+pub fn line_age(now_ms: u64, at_ms: u64) -> String {
+	format!("{} ago", format_duration(now_ms.saturating_sub(at_ms) / 1000))
+}
+
 /// A goal card stating the objective, status, turns, tokens against budget,
 /// elapsed duration, stand-down notice if any, and control choices.
 pub(super) fn goal(

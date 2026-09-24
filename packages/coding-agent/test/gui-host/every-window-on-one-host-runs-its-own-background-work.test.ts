@@ -162,15 +162,25 @@ describe("every window on one host runs its own background work", () => {
 		return run.outcome;
 	}
 
-	/** The roster this window's own session carries, once it lists `expected` tans. */
+	/**
+	 * The roster this window's own session carries, once it lists `expected`
+	 * tans.
+	 *
+	 * The wait is in time rather than in refreshes: a roster is populated when
+	 * the spawned agent registers, and forty requests issued back to back are
+	 * answered in a few milliseconds, so a count alone gives up before the
+	 * agent exists and fails whenever the machine is busy. Bounded at sixty
+	 * attempts, which is a second and a half end to end.
+	 */
 	async function tans(window: Window, expected: number): Promise<AgentView[]> {
-		for (let attempt = 0; attempt < 40; attempt++) {
+		for (let attempt = 0; attempt < 60; attempt++) {
 			const frames = (await window.client.request(window.next++, "RefreshAgents")).frames;
 			const listed = snapshotSections<AgentView[]>(frames, "Agents");
 			const rows = (listed[listed.length - 1] ?? []).filter(agent => agent.display_name === "tan");
 			if (rows.length >= expected) return rows;
+			await delay(25);
 		}
-		throw new Error(`the roster never listed ${expected} tans within 40 refreshes`);
+		throw new Error(`the roster never listed ${expected} tans within a second and a half`);
 	}
 
 	/** The roster row for this window's tan, once it has stopped running. */

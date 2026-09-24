@@ -247,6 +247,15 @@ impl ShellView {
 				cx.notify();
 				return;
 			},
+			// A recalled prompt is put back into the composer unsent, so it can
+			// be edited before it runs again. The palette closes, since the row
+			// that was picked has been answered.
+			Some(crate::palette::PaletteItemKind::Prompt { text }) => {
+				self.close_palette(cx);
+				self.set_composed(text, cx);
+				cx.notify();
+				return;
+			},
 			_ => {},
 		}
 		let Some(intent) = self

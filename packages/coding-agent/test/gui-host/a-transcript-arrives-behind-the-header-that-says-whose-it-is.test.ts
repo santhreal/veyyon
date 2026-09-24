@@ -272,6 +272,8 @@ describe("a transcript arrives behind the header that says whose it is", () => {
 			// machine the run is on.
 			ToggleDictation: "ToggleDictation",
 			CancelDictation: "CancelDictation",
+			// An empty query, which is the listing the recall mode opens on.
+			SearchPromptHistory: { SearchPromptHistory: { query: "" } },
 		};
 
 		const swept = ALL_HOST_ACTIONS.filter(tag => tag !== ENDS_THE_CONNECTION && tag !== REATTACHES);

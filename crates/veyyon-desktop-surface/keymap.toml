@@ -328,6 +328,13 @@ scope = "composer"
 chord = "alt-up"
 action = "TakeBackQueuedPrompt"
 
+# The terminal recalls a prompt with ctrl+r; the window names the same key
+# under the modifier its own composer verbs use.
+[[binding]]
+scope = "composer"
+chord = "primary-r"
+action = "PromptHistory"
+
 # The terminal opens a dictation by holding space; a window has no hold
 # gesture, so the chord names the same key under the two modifiers the
 # composer's own verbs use.

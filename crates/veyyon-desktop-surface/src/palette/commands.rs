@@ -145,6 +145,13 @@ pub fn command_items() -> Vec<PaletteItem> {
 			Some(Capability::Sessions),
 		),
 		(
+			"/prompts",
+			Intent::FindPrompt(String::new()),
+			"Recall a prompt submitted earlier",
+			None,
+			Some(Capability::PromptHistory),
+		),
+		(
 			"/files",
 			Intent::FindFile(String::new()),
 			"Find a file by name",

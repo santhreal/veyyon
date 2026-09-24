@@ -62,6 +62,7 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::ReadFile => Capability::Files,
 		HostActionKind::SearchFiles => Capability::Files,
 		HostActionKind::SearchContent => Capability::Files,
+		HostActionKind::SearchPromptHistory => Capability::PromptHistory,
 		HostActionKind::OpenExternal => Capability::Files,
 		HostActionKind::RefreshChanges => Capability::Changes,
 		HostActionKind::SelectChangeScope => Capability::Changes,

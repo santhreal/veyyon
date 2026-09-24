@@ -12,7 +12,7 @@ use veyyon_gpui::{
 };
 
 use super::AgentsState;
-use crate::{cards::format_duration, empty::empty_state};
+use crate::{cards::line_age, empty::empty_state};
 
 /// What a line states about how it landed, beside who spoke. An ordinary
 /// delivery states nothing: a badge on every row is a badge on none.
@@ -24,14 +24,6 @@ pub const fn outcome_badge(outcome: AgentMessageOutcome) -> Option<(&'static str
 		AgentMessageOutcome::Revived => Some(("revived", TintRole::Done)),
 		AgentMessageOutcome::Failed => Some(("failed", TintRole::Error)),
 	}
-}
-
-/// How long before `now_ms` the line landed. A wall clock would be this
-/// machine's UTC rather than the reader's, and every other elapsed measure on
-/// this front end is stated the same way.
-#[must_use]
-pub fn line_age(now_ms: u64, at_ms: u64) -> String {
-	format!("{} ago", format_duration(now_ms.saturating_sub(at_ms) / 1000))
 }
 
 /// Renders the comms stream view.

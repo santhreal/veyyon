@@ -16,7 +16,8 @@ use crate::{
 		AbortTurn, AttachFile, CloseTabOrPark, CloseWindow, CopySelection, Dismiss, FilterQueue,
 		FindInTranscript, FocusLive, FoldSelectedBranch, ModelPicker, MoveSelection, NewSession,
 		NextSession, NextTurn, OpenMenu, OpenPalette, OpenSelectedSession, OpenSettings,
-		PreviousSession, PreviousTurn, Quit, Scroll, SelectEntryText, SelectOption, SplitHalf,
+		PreviousSession, PreviousTurn, PromptHistory, Quit, Scroll, SelectEntryText, SelectOption,
+		SplitHalf,
 		TakeBackQueuedPrompt, ThinkingLevel as CycleThinkingLevel, ToggleBlock, ToggleDeferSelected,
 		ToggleDictation, ToggleDrawer, TogglePanel, ToggleParkSelected, TogglePinSelected,
 		ToggleQueue, ToggleQueueMode, UnfoldSelectedBranch,
@@ -327,5 +328,8 @@ pub fn bind_composer_keys(composer: Div, cx: &Context<ShellView>) -> Div {
 		}))
 		.on_action(cx.listener(|view, _: &ToggleDictation, _window, cx| {
 			view.dispatch(Intent::ToggleDictation, cx);
+		}))
+		.on_action(cx.listener(|view, _: &PromptHistory, _window, cx| {
+			view.dispatch(Intent::FindPrompt(String::new()), cx);
 		}))
 }

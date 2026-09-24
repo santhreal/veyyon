@@ -12,7 +12,8 @@ use veyyon_desktop_model::{
 	ContentMatchesView, ContextBreakdownView, ContextCategory, ExportView, FileContentView,
 	FileKind, FileNode, FileTreeView, InputModality, KeybindingView, McpServerStatus, McpServerView,
 	ModelRef, ModelView, ModelsView, ProcessView, ProfileCopyItemView, ProfileView, ProfilesView,
-	ProviderView, SearchResultsView, SessionId, SettingEntry, SettingKind, SettingsView,
+	ProviderView, PromptHistoryEntry, PromptHistoryView, SearchResultsView, SessionId, SettingEntry,
+	SettingKind, SettingsView,
 	SnapshotSection, TerminalStatus, TerminalView, ThemeView, ThemesView, UsageTotals, UsageView,
 };
 
@@ -57,6 +58,23 @@ pub fn search(query: &str, paths: &[&str]) -> SnapshotSection {
 		query:     query.into(),
 		paths:     paths.iter().map(|p| (*p).to_owned()).collect(),
 		truncated: false,
+	})
+}
+
+pub fn prompt_history(query: &str, prompts: &[(i64, &str)]) -> SnapshotSection {
+	SnapshotSection::PromptHistory(PromptHistoryView {
+		query:   query.into(),
+		entries: prompts
+			.iter()
+			.map(|(id, prompt)| PromptHistoryEntry {
+				id:              *id,
+				prompt:          (*prompt).to_owned(),
+				submitted_at_ms: 1_730_000_000_000 + id.unsigned_abs(),
+				cwd:             Some("/repo".to_owned()),
+				session:         Some(SessionId::from("s1")),
+				truncated:       false,
+			})
+			.collect(),
 	})
 }
 

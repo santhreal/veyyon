@@ -186,6 +186,14 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		// listing of every line of the workspace to open the mode on.
 		Intent::FindText(query) if query.is_empty() => Vec::new(),
 		Intent::FindText(query) => vec![HostAction::SearchContent { query: query.clone() }],
+		// The empty query opens the mode on the most recent prompts, so unlike
+		// a content search it asks the host on the opening keystroke too.
+		Intent::FindPrompt(query) => {
+			vec![HostAction::SearchPromptHistory { query: query.clone() }]
+		},
+		// The recalled text is put into the composer by the shell and reaches
+		// the host only when it is sent.
+		Intent::RecallPrompt(_) => Vec::new(),
 		Intent::PaletteRun => Vec::new(),
 		// The listing the operator asked for, which is what makes a descent
 		// visible: the rows of Browse mode are the host's children of `path`.

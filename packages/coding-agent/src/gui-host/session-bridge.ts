@@ -47,6 +47,7 @@ export const SUPPORTED_CAPABILITIES: Partial<Record<Capability, true>> = {
 	Share: true,
 	Profiles: true,
 	Dictation: true,
+	PromptHistory: true,
 };
 
 /** Specific, truthful reasons why each unsupported capability is unavailable. */
@@ -164,6 +165,7 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	ReadFile: "File",
 	SearchFiles: "File",
 	SearchContent: "File",
+	SearchPromptHistory: "Session",
 	OpenExternal: "File",
 	RefreshChanges: "Change",
 	SelectChangeScope: "Change",

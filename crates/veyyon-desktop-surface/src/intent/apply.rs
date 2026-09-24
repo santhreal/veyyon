@@ -120,6 +120,10 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		Intent::BrowseTo { path } => overlay::browse_to(state, path.as_ref()),
 		Intent::FindFile(query) => overlay::find_in(state, PaletteMode::Files, query),
 		Intent::FindText(query) => overlay::find_in(state, PaletteMode::ContentSearch, query),
+		Intent::FindPrompt(query) => overlay::find_in(state, PaletteMode::PromptHistory, query),
+		// The recalled text reaches the composer through the shell, which owns
+		// the editor; the palette it was picked from closes here.
+		Intent::RecallPrompt(_) => state.overlay = None,
 		Intent::FindSessions(query) => overlay::find_sessions(state, query),
 		Intent::PreviewSession(session) => overlay::preview_session(state, session),
 		Intent::ResumeHistory(_) => state.overlay = None,

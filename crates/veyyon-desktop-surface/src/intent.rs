@@ -145,6 +145,12 @@ pub enum Intent {
 	/// The empty query opens the mode, which lists nothing until something
 	/// is typed, since there is no whole-workspace listing of lines.
 	FindText(String),
+	/// Looks a prompt submitted earlier up in Prompt History mode. The empty
+	/// query is answered with the most recent prompts, so the mode opens on a
+	/// listing rather than on nothing.
+	FindPrompt(String),
+	/// Puts a prompt submitted earlier back into the composer, unsent.
+	RecallPrompt(String),
 	SettingChanged {
 		key:   String,
 		value: serde_json::Value,

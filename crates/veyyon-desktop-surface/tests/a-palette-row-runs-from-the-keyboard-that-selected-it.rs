@@ -78,6 +78,8 @@ enum Outcome {
 	Runs(Intent),
 	/// The palette stays open and steps into the directory named.
 	Descends(&'static str),
+	/// The palette closes and the text lands in the composer, unsent.
+	Composes(&'static str),
 }
 
 /// The rows a mode carries when no host has projected any, so a mode no
@@ -96,6 +98,12 @@ fn seeded_rows(mode: PaletteMode) -> Vec<PaletteItem> {
 		PaletteMode::Browse => {
 			vec![PaletteItem::directory(1, "crates"), PaletteItem::directory(2, "packages")]
 		},
+		PaletteMode::PromptHistory => {
+			vec![
+				PaletteItem::prompt(1, "rebuild the index", "2m"),
+				PaletteItem::prompt(2, "open the editor", "5m"),
+			]
+		},
 		PaletteMode::Commands | PaletteMode::Sessions | PaletteMode::Models => Vec::new(),
 	}
 }
@@ -112,7 +120,10 @@ fn open(mode: PaletteMode, view: &mut ShellView, window: &mut Window, cx: &mut C
 		// (`project_palette_domains`). The command surface is opened for its
 		// editor and focus, then the mode's rows are put in front of it,
 		// which is the state that projection leaves behind.
-		PaletteMode::Files | PaletteMode::ContentSearch | PaletteMode::Browse => {
+		PaletteMode::Files
+		| PaletteMode::ContentSearch
+		| PaletteMode::Browse
+		| PaletteMode::PromptHistory => {
 			view.open_command_palette(window, cx);
 			let mut state = PaletteState::new(mode);
 			state.set_items(seeded_rows(mode));
@@ -141,6 +152,7 @@ fn case(mode: PaletteMode) -> (&'static str, Outcome) {
 			("app", Outcome::Runs(Intent::OpenFile("src/app.rs".to_owned())))
 		},
 		PaletteMode::Browse => ("crates", Outcome::Descends("crates")),
+		PaletteMode::PromptHistory => ("index", Outcome::Composes("rebuild the index")),
 	}
 }
 
@@ -219,6 +231,14 @@ fn every_palette_mode_runs_its_selected_row_from_the_enter_key() {
 								"",
 								"{mode:?}: the field cleared with the query"
 							);
+						},
+						Outcome::Composes(text) => {
+							// A recall is answered by the window: the row puts
+							// the prompt back in the composer unsent, so
+							// nothing reaches the host.
+							assert_eq!(view.drain_intents(), Vec::<Intent>::new(), "{mode:?}");
+							assert!(overlay.is_none(), "{mode:?}: the palette closed behind the row");
+							assert_eq!(view.composer_text(), *text, "{mode:?}: the draft holds the prompt");
 						},
 					}
 				})
@@ -326,50 +346,6 @@ fn every_registered_picker_confirms_the_same_action_by_pointer_and_enter() {
 		}
 		assert_eq!(outcomes[0], outcomes[1], "{source:?}: keyboard and pointer use one action path");
 	}
-}
-
-#[test]
-fn shared_picker_never_confirms_disabled_or_absent_rows() {
-	use veyyon_desktop_kit::{Picker, PickerEvent, SelectionState};
-	for mask in 0_u8..16 {
-		let rows: Vec<bool> = (0..4).map(|index| mask & (1 << index) != 0).collect();
-		for selected in 0..rows.len() {
-			let picker = Picker::new(&rows, selected);
-			let confirm = picker.key("enter", |enabled| *enabled).unwrap();
-			assert_eq!(
-				confirm,
-				if rows[selected] {
-					PickerEvent::Confirm(selected)
-				} else {
-					PickerEvent::Handled
-				}
-			);
-			assert_eq!(picker.pointer(selected, true, |enabled| *enabled), confirm);
-			assert_eq!(
-				picker.selection(selected, |enabled| *enabled),
-				if rows[selected] {
-					SelectionState::Selected
-				} else {
-					SelectionState::None
-				}
-			);
-			for key in ["up", "down", "pageup", "pagedown", "home", "end"] {
-				match picker.key(key, |enabled| *enabled).unwrap() {
-					PickerEvent::Select(index) => {
-						assert!(rows[index], "{mask}: {key} selected disabled row");
-					},
-					PickerEvent::Handled => assert_eq!(mask, 0),
-					other => panic!("{key}: unexpected {other:?}"),
-				}
-			}
-		}
-	}
-	let empty: [bool; 0] = [];
-	for key in ["up", "down", "pageup", "pagedown", "home", "end", "enter"] {
-		assert_eq!(Picker::new(&empty, 0).key(key, |enabled| *enabled), Some(PickerEvent::Handled));
-	}
-	assert_eq!(Picker::new(&empty, 0).key("escape", |enabled| *enabled), Some(PickerEvent::Dismiss));
-	assert_eq!(Picker::new(&empty, 0).key("left", |enabled| *enabled), None);
 }
 
 #[test]

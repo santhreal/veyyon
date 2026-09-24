@@ -141,6 +141,8 @@ actions!([
 	#[derive(Eq)]
 	ToggleDictation,
 	#[derive(Eq)]
+	PromptHistory,
+	#[derive(Eq)]
 	PreviousTab,
 	#[derive(Eq)]
 	NextTab,

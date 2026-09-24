@@ -96,7 +96,7 @@ fn openers() -> Vec<(String, Intent, PaletteMode)> {
 }
 
 /// The rows a mode is answered with, so an emptied field has something to
-/// clear or to keep. Exhaustive, so a seventh mode states its own rows before
+/// clear or to keep. Exhaustive, so an eighth mode states its own rows before
 /// this compiles.
 fn answer_rows(mode: PaletteMode) -> Vec<PaletteItem> {
 	match mode {
@@ -110,6 +110,10 @@ fn answer_rows(mode: PaletteMode) -> Vec<PaletteItem> {
 		PaletteMode::Browse => {
 			vec![PaletteItem::directory(1, "crates"), PaletteItem::directory(2, "packages")]
 		},
+		PaletteMode::PromptHistory => vec![
+			PaletteItem::prompt(1, "rebuild the index", "2m"),
+			PaletteItem::prompt(2, "open the loader", "5m"),
+		],
 		PaletteMode::Commands | PaletteMode::Sessions | PaletteMode::Models => Vec::new(),
 	}
 }

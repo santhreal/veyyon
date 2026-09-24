@@ -336,5 +336,23 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 				revision:  1,
 			});
 		},
+		Capability::PromptHistory => {
+			// The reachable surface is the history control in the composer
+			// footer, drawn whether or not a lookup has run. The prompts go on
+			// the store because the palette reads them at every projection,
+			// so the frame carries rows once the control opens the mode.
+			seed.exchange(session, Seed::prose());
+			seed.store.domains.prompt_history = Some(veyyon_desktop_model::PromptHistoryView {
+				query:   String::new(),
+				entries: vec![veyyon_desktop_model::PromptHistoryEntry {
+					id:              1,
+					prompt:          "Ship the desktop parity work".to_owned(),
+					submitted_at_ms: SCENE_CLOCK_MS - 90_000,
+					cwd:             Some("/repo".to_owned()),
+					session:         Some(session.clone()),
+					truncated:       false,
+				}],
+			});
+		},
 	}
 }

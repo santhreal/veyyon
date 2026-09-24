@@ -173,6 +173,13 @@ pub enum HostAction {
 		path: String,
 	},
 
+	// Prompt history family (1 action)
+	/// The prompts submitted earlier that carry `query`. An empty query asks
+	/// for the most recent prompts, which is what the mode opens on.
+	SearchPromptHistory {
+		query: String,
+	},
+
 	// Changes family (2 actions)
 	RefreshChanges,
 	SelectChangeScope {

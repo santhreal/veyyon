@@ -126,6 +126,10 @@ const AT_IDLE: Record<SnapshotSectionTag, "restated-at-idle" | "listed-at-idle" 
 	// so the section arrives on the toggle that started it and never on the
 	// turn boundary.
 	Dictation: "on-request",
+	// A turn does append the prompt that started it to the history store, but
+	// the window reads that store when the recall mode opens, not at the turn
+	// boundary: a re-statement at idle would push rows nothing is drawing.
+	PromptHistory: "on-request",
 };
 
 /** The section the host publishes last, which is what closes a re-statement. */

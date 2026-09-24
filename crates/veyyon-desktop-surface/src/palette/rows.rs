@@ -89,6 +89,8 @@ pub enum PaletteItemKind {
 	Directory { path: String },
 	/// Project root selection.
 	Project { path: String },
+	/// A prompt submitted earlier, recalled into the composer unsent.
+	Prompt { text: String },
 }
 
 /// One actionable item in the command palette (§5.8).
@@ -257,6 +259,28 @@ impl PaletteItem {
 			meta: None,
 			capability: Some(Capability::Files),
 			kind: PaletteItemKind::ContentMatch { path: p, line: Some(line) },
+			takes_argument: false,
+		}
+	}
+
+	/// Creates a row for one prompt submitted earlier. The row draws the
+	/// prompt and states when it was submitted under it, and `search` carries
+	/// the prompt so ranking reads the whole of it even once the title is cut
+	/// to the drawable width.
+	#[must_use]
+	pub fn prompt(id: u64, text: impl Into<String>, when: impl Into<String>) -> Self {
+		let text = text.into();
+		let title = text.replace('\n', " ");
+		Self {
+			id,
+			title,
+			subtitle: Some(when.into()),
+			group: None,
+			search: Some(text.clone()),
+			badge: None,
+			meta: None,
+			capability: Some(Capability::PromptHistory),
+			kind: PaletteItemKind::Prompt { text },
 			takes_argument: false,
 		}
 	}

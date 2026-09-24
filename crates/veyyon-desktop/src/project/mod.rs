@@ -232,7 +232,7 @@ pub fn project<S: std::hash::BuildHasher>(
 	// with every other elapsed label so the tick that moves a working row's
 	// clock moves this one too.
 	state.paused = paused_label(store, now_ms);
-	project_overlay(store, state);
+	project_overlay(store, now_ms, state);
 	project_history(store, state, now_ms);
 	project_menu(store, &mut state.menu);
 	state.reduced_motion = reduced_motion(store);

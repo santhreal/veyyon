@@ -216,6 +216,21 @@ const CORPUS = [
 		},
 	},
 	{
+		PromptHistory: {
+			query: "refactor",
+			entries: [
+				{
+					id: 41,
+					prompt: "refactor the loader",
+					submitted_at_ms: 1730000000000,
+					cwd: "/repo",
+					session: "s1",
+					truncated: false,
+				},
+			],
+		},
+	},
+	{
 		Terminals: [
 			{ id: "term-1", cwd: "/repo", shell: "/bin/bash", cols: 80, rows: 24, status: "Running" },
 			{ id: "term-2", cwd: "/repo", shell: "/bin/bash", cols: 80, rows: 24, status: { Exited: { code: 0 } } },

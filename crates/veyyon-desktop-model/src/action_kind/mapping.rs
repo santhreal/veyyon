@@ -42,6 +42,7 @@ impl HostAction {
 			Self::ReadFile { .. } => HostActionKind::ReadFile,
 			Self::SearchFiles { .. } => HostActionKind::SearchFiles,
 			Self::SearchContent { .. } => HostActionKind::SearchContent,
+			Self::SearchPromptHistory { .. } => HostActionKind::SearchPromptHistory,
 			Self::OpenExternal { .. } => HostActionKind::OpenExternal,
 			Self::RefreshChanges => HostActionKind::RefreshChanges,
 			Self::SelectChangeScope { .. } => HostActionKind::SelectChangeScope,

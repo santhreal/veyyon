@@ -42,6 +42,7 @@ pub enum HostActionKind {
 	ReadFile,
 	SearchFiles,
 	SearchContent,
+	SearchPromptHistory,
 	OpenExternal,
 	RefreshChanges,
 	SelectChangeScope,
@@ -104,7 +105,7 @@ pub enum HostActionKind {
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 93] = [
+	pub const ALL: [Self; 94] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -140,6 +141,7 @@ impl HostActionKind {
 		Self::ReadFile,
 		Self::SearchFiles,
 		Self::SearchContent,
+		Self::SearchPromptHistory,
 		Self::OpenExternal,
 		Self::RefreshChanges,
 		Self::SelectChangeScope,
@@ -239,6 +241,7 @@ impl HostActionKind {
 			Self::ReadFile => "ReadFile",
 			Self::SearchFiles => "SearchFiles",
 			Self::SearchContent => "SearchContent",
+			Self::SearchPromptHistory => "SearchPromptHistory",
 			Self::OpenExternal => "OpenExternal",
 			Self::RefreshChanges => "RefreshChanges",
 			Self::SelectChangeScope => "SelectChangeScope",

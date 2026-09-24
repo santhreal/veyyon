@@ -71,6 +71,8 @@ pub struct Domains {
 	pub search:          Option<SearchResultsView>,
 	/// The lines the host's last content search matched.
 	pub content_matches: Option<ContentMatchesView>,
+	/// The prompts the host's last history lookup matched.
+	pub prompt_history:  Option<PromptHistoryView>,
 	/// Managed terminal instances.
 	pub terminals:       Vec<TerminalView>,
 	/// Terminal scrollback buffers indexed by terminal ID.

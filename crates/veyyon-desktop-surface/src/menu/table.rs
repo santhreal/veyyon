@@ -69,6 +69,7 @@ impl MenuSectionId {
 				Command::SelectEntryText,
 				Command::AttachFile,
 				Command::ToggleDictation,
+				Command::PromptHistory,
 			],
 			Self::Turn => &[
 				Command::AbortTurn,

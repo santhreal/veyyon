@@ -1,8 +1,9 @@
 //! Palette modes and navigation (§5.8).
 //!
-//! The command palette operates in six modes: commands, open sessions,
+//! The command palette operates in seven modes: commands, open sessions,
 //! workspace files, text content search, directory browsing for project
-//! selection, and the model catalog the composer's model control opens.
+//! selection, the model catalog the composer's model control opens, and the
+//! prompts submitted earlier.
 
 use strum::EnumIter;
 
@@ -23,6 +24,8 @@ pub enum PaletteMode {
 	Browse,
 	/// The host's model catalog, opened from the composer's model control.
 	Models,
+	/// Prompts submitted earlier, recalled into the composer.
+	PromptHistory,
 }
 
 impl PaletteMode {
@@ -36,6 +39,7 @@ impl PaletteMode {
 			Self::ContentSearch => "Content Search",
 			Self::Browse => "Browse Project",
 			Self::Models => "Models",
+			Self::PromptHistory => "Prompt History",
 		}
 	}
 
@@ -49,6 +53,7 @@ impl PaletteMode {
 			Self::ContentSearch => "Search file contents...",
 			Self::Browse => "Navigate directories (Enter descends, Backspace ascends)...",
 			Self::Models => "Search models by name or provider...",
+			Self::PromptHistory => "Search prompts submitted earlier...",
 		}
 	}
 
@@ -66,6 +71,7 @@ impl PaletteMode {
 	pub const fn query_intent(self, query: String) -> Intent {
 		match self {
 			Self::Files => Intent::FindFile(query),
+			Self::PromptHistory => Intent::FindPrompt(query),
 			Self::ContentSearch => Intent::FindText(query),
 			Self::Commands | Self::Sessions | Self::Browse | Self::Models => {
 				Intent::PaletteQuery(query)

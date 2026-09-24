@@ -269,6 +269,7 @@ pub fn footer_row(
 					tokens,
 					cx,
 				))
+				.child(super::history::history_control(&session, states, tokens, cx))
 				.children(context_meter),
 		)
 		.child(turn_action_controls(turn, has_text, session_id, states, tokens, cx))

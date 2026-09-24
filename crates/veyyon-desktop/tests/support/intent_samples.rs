@@ -324,6 +324,14 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		// the window, so a second window dictates into its own composer.
 		IntentDiscriminants::ToggleDictation => vec![Intent::ToggleDictation],
 		IntentDiscriminants::CancelDictation => vec![Intent::CancelDictation],
+		// A lookup and a recall, because the empty query is the listing the
+		// mode opens on and a typed one is the filter over it.
+		IntentDiscriminants::FindPrompt => {
+			vec![Intent::FindPrompt(String::new()), Intent::FindPrompt("parity".into())]
+		},
+		IntentDiscriminants::RecallPrompt => {
+			vec![Intent::RecallPrompt("Ship the desktop parity work".into())]
+		},
 		IntentDiscriminants::CloseWindow => vec![Intent::CloseWindow],
 		IntentDiscriminants::Quit => vec![Intent::Quit],
 	}

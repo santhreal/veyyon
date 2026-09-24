@@ -9,6 +9,7 @@ use veyyon_desktop_model::{Capability, CapabilityStatus, FileKind, Store};
 use veyyon_desktop_surface::{
 	AgentsState, Intent, Overlay, PaletteItem, PaletteItemKind, PaletteMode, PaletteState,
 	SettingsState, ShareState, ShellState,
+	cards::line_age,
 	navigation::SurfaceRoute,
 	palette::{HostCommands, PaletteMeta, commands::command_items, host_commands},
 };
@@ -30,15 +31,16 @@ fn holds(state: &PaletteState, listed: &[PaletteItem]) -> bool {
 	held.eq(listed.iter())
 }
 
-/// Projects domain store views onto active overlay state fields.
-pub fn project_overlay(store: &Store, state: &mut ShellState) {
+/// Projects domain store views onto active overlay state fields. `now_ms` is
+/// the frame's clock, which states how long ago a prompt was submitted.
+pub fn project_overlay(store: &Store, now_ms: u64, state: &mut ShellState) {
 	project_commands(store, state);
 	match &mut state.overlay {
 		Some(Overlay::Settings(settings_state)) => {
 			project_settings_domains(store, settings_state);
 		},
 		Some(Overlay::Palette(palette_state)) => {
-			project_palette_domains(store, &state.commands, palette_state);
+			project_palette_domains(store, &state.commands, now_ms, palette_state);
 		},
 		Some(Overlay::Agents(agents_state)) => project_agents_domains(store, agents_state),
 		Some(Overlay::Share(share_state)) => project_share_domains(store, share_state),
@@ -122,8 +124,15 @@ fn project_settings_domains(store: &Store, state: &mut SettingsState) {
 	}
 }
 
-/// Populates palette items from file tree and search result domains.
-fn project_palette_domains(store: &Store, commands: &HostCommands, state: &mut PaletteState) {
+/// Populates palette items from file tree, search result and prompt history
+/// domains. `now_ms` is the window's clock, which states how long ago a
+/// prompt was submitted.
+fn project_palette_domains(
+	store: &Store,
+	commands: &HostCommands,
+	now_ms: u64,
+	state: &mut PaletteState,
+) {
 	match state.mode {
 		// What was typed is answered by the host's search, and the workspace
 		// tree is what the mode opened on: rows follow the query, so a lookup
@@ -167,6 +176,27 @@ fn project_palette_domains(store: &Store, commands: &HostCommands, state: &mut P
 					.enumerate()
 					.map(|(idx, m)| {
 						PaletteItem::content_match(idx as u64 + 2000, m.path.clone(), m.line, &m.preview)
+					})
+					.collect();
+				state.set_items(items);
+			}
+		},
+		// Rows are the prompts the host reported, for the empty query as much
+		// as for a typed one: the mode opens on the most recent prompts, and
+		// what is typed narrows them. A host that reported none leaves the
+		// rows empty rather than keeping a previous query's answer drawn.
+		PaletteMode::PromptHistory => {
+			if let Some(found) = &store.domains.prompt_history {
+				let items = found
+					.entries
+					.iter()
+					.enumerate()
+					.map(|(idx, entry)| {
+						PaletteItem::prompt(
+							idx as u64 + 4000,
+							entry.prompt.clone(),
+							line_age(now_ms, entry.submitted_at_ms),
+						)
 					})
 					.collect();
 				state.set_items(items);
