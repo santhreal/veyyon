@@ -18,6 +18,8 @@
 #
 # Off arm (--before): the base branch has no room, so `/room` is an unknown
 # command, the prompt runs in the one conversation, and its card opens at once.
+# That arm stops at `held-off-screen`: the room shots after it would photograph
+# the same card again.
 #
 # Model: llama.cpp serving qwen2.5-1.5b on the recorder's network (see
 # `new-session-keeps-running.sh` for the sidecar). The session carries only the
@@ -63,17 +65,17 @@ after && k alt+w
 # needle-source: 2 conversations -- room-stage.ts #paintChrome counts the room on its title row
 after && expect_screen "2 conversations" 15
 pause 1
-shot room-opened
+after && shot room-opened
 # Bring window 2 to the front: wide enough to say it in words.
 after && k Right
 # needle-source: waiting for your answer -- room-window.ts paints it at the foot of a waiting window
 after && expect_screen "waiting for your answer" 15
 pause 1
-shot room-needs-you
+after && shot room-needs-you
 
 # --- 5. going into it shows the card ----------------------------------------
 after && k Return
 # needle-source: Permission required -- the approval card's title
 expect_screen "Permission required" 60 "card"
 sleep 1.5
-shot card-on-arrival
+if after; then shot card-on-arrival; fi

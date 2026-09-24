@@ -18,8 +18,8 @@
 #   5. `←` glides the row to window 1; Tab flips to all windows; Tab back.
 #   6. Enter zooms into conversation 1, with its answer so far on screen at once.
 #   7. alt+. is the quick switch: pull back, slide, push in to 2.
-#   8. A click on the status line's `1 peer` chip opens the view, and `n` opens
-#      conversation 3 from it and zooms into it.
+#   8. `→→` opens the view again, and `n` opens conversation 3 from it and
+#      zooms into it.
 #
 # Off arm (--before): the same keys on the base branch, where `/room` is an
 # unknown command and `→→` moves nothing. Each guard is written for the arm it
@@ -100,16 +100,12 @@ sleep 1.5
 shot quick-switched
 
 # --- 8. a third conversation from the view ----------------------------------
-# The view opens from a click on the status line's room chip this time; the
-# base branch has no chip, so its arm presses the keys the chip stands for.
+# Keys, not the room chip: a footline click reaches the terminal only with
+# `tui.scrollIsolation` on, and this scene records the defaults.
 clear_composer
-if after; then
-	click_text_in_row "1 peer" "1 peer"
-else
-	k Right
-	pause 0.25
-	k Right
-fi
+k Right
+pause 0.25
+k Right
 pause 1
 k n
 # needle-source: Now on -- room-controller.ts #announce after entering a member from the overview

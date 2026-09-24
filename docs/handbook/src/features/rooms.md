@@ -83,7 +83,7 @@ shows its ordinal and a state glyph.
 
 | Action | Keys |
 | --- | --- |
-| Open the room view | `alt+w` (`app.room.view`), `→` twice on an empty composer, `/room`, or a click on the status line's room chip |
+| Open the room view | `alt+w` (`app.room.view`), `→` twice on an empty composer, `/room`, or, with `tui.scrollIsolation` on, a click on the status line's room chip |
 | Next or previous conversation | `alt+.` / `alt+,` (`app.room.next`, `app.room.previous`) |
 | A conversation by number or id | `/room <n>`, `/room <id>` |
 | Open a conversation beside this one | `/room new`, or `n` in the room view |
@@ -124,7 +124,8 @@ held by conversations off screen are dismissed.
 
 The `room` segment counts the other conversations in the room, then how many are waiting for you
 and how many are working: `2 peers · ! 1 needs you · 1 working`. It is hidden while you are alone
-and is in every preset. Clicking it opens the room view.
+and is in every preset. With `tui.scrollIsolation` on, clicking it opens the room view; with it
+off the terminal keeps the mouse and the chip is text.
 
 The run clock beside the location keeps each conversation's own time. Going into a conversation
 that is working shows how long its turn has run, including the time it ran off screen.
