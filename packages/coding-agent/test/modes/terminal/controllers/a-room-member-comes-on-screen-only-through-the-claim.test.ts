@@ -79,6 +79,7 @@ import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { type Component, TERMINAL, TUI } from "@veyyon/tui";
 import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
+import { matchesKey } from "@veyyon/utils/keys";
 import { VirtualTerminal } from "../../../../../../hosts/terminal/engine/test/virtual-terminal";
 import {
 	beginSettingsTest,
@@ -507,6 +508,17 @@ async function until(read: () => boolean, what: string, ms = 4_000): Promise<voi
 		if (Date.now() > deadline) throw new Error(`Timed out after ${ms}ms waiting for ${what}`);
 		await sleep(5);
 	}
+}
+
+/**
+ * The bytes a terminal sends for the room's next key, legacy or through the
+ * kitty keyboard protocol: whichever the key matcher reads as the bound key.
+ */
+function nextKeyBytes(h: Harness): string {
+	const [next] = h.ctx.keybindings.getKeys("app.room.next");
+	const bytes = ["\x1b.", "\x1b[46;3u"].find(candidate => next !== undefined && matchesKey(candidate, next));
+	if (bytes === undefined) throw new Error(`no encoding of ${next} reads as the next key`);
+	return bytes;
 }
 
 /**
@@ -1206,6 +1218,76 @@ describe("cycling", () => {
 		expect(h.ctx.session).toBe(a.session);
 		expect(screenSteps()).toEqual([]);
 	});
+
+	/**
+	 * A press while a switch was in flight used to be dropped, so a quick run of
+	 * presses moved one conversation however many were pressed. The presses add
+	 * up and are taken up when the switch lands, and the conversations passed
+	 * over are never put on screen: nothing claims them, and an answer waiting
+	 * in one stays unread.
+	 */
+	it("adds up presses made while a switch is in flight and goes that far, entering nothing in between", async () => {
+		const {
+			h,
+			peers: [b, , d],
+		} = openRoom({ name: "b", dir: dirA }, { name: "c", dir: dirA }, { name: "d", dir: dirA });
+		const first = h.room.cycle(1);
+		void h.room.cycle(1);
+		void h.room.cycle(1);
+		await first;
+		await until(() => h.ctx.session === d!.session, "the run of presses to land");
+		expect(screenSteps().filter(step => step.startsWith("attach:"))).toEqual([`attach:${b!.id}`, `attach:${d!.id}`]);
+	});
+
+	it("lets a next and a previous press made in flight cancel out", async () => {
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirA }, { name: "c", dir: dirA });
+		const first = h.room.cycle(1);
+		void h.room.cycle(1);
+		void h.room.cycle(-1);
+		await first;
+		await Promise.resolve();
+		expect(h.ctx.session).toBe(b!.session);
+		expect(screenSteps().filter(step => step.startsWith("attach:"))).toEqual([`attach:${b!.id}`]);
+	});
+
+	it("wraps a run longer than the room, backwards as well as forwards", async () => {
+		const {
+			h,
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirA }, { name: "c", dir: dirA });
+		const first = h.room.cycle(1);
+		for (let press = 0; press < 5; press++) void h.room.cycle(-1);
+		await first;
+		// From 2, five back in a room of three is 3.
+		await until(() => h.ctx.session === c!.session, "the run to wrap backwards");
+		expect(screenSteps().filter(step => step.startsWith("attach:"))).toEqual([`attach:${b!.id}`, `attach:${c!.id}`]);
+	});
+
+	/**
+	 * A switch that fails did not arrive anywhere to go on from; the presses
+	 * made while it tried go with it, and none is left over to carry the next
+	 * switch further than it was asked to go.
+	 */
+	it("drops the presses made while a switch that fails was in flight", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		b!.failNextPromptBuild();
+		const first = h.room.cycle(1);
+		void h.room.cycle(1);
+		await first;
+		expect(h.ctx.session).toBe(a.session);
+		await h.room.cycle(1);
+		// Long enough for a left-over press to start a second switch, which would attach c.
+		await sleep(100);
+		expect(h.ctx.session).toBe(b!.session);
+		expect(screenSteps().filter(step => step.startsWith("attach:"))).toEqual([`attach:${b!.id}`]);
+	});
 });
 
 describe("the first arrival in another conversation", () => {
@@ -1304,6 +1386,44 @@ describe("with motion on, the quick switch travels through the stage", () => {
 		await until(() => !h.room.viewOpen, "the stage to lift after the failed claim");
 		expect(h.ctx.session).toBe(a.session);
 		expect(h.errors.join("\n")).toContain(`prompt build failed for ${dirB}`);
+	});
+
+	/**
+	 * The stage holds the keyboard while the screen moves, so the next and
+	 * previous keys reach it rather than the composer. It hands them to the
+	 * room, which goes on as far as they add up once the switch lands; any
+	 * other key pressed in flight does nothing.
+	 */
+	it("a run of next presses while it moves carries it on, entering nothing in between", async () => {
+		const {
+			h,
+			peers: [b, , d],
+		} = openRoom({ name: "b", dir: dirA }, { name: "c", dir: dirA }, { name: "d", dir: dirA });
+		const bytes = nextKeyBytes(h);
+		await h.room.cycle(1);
+		const stage = h.ui.getFocused();
+		if (!stage || !h.room.viewOpen) throw new Error("the quick switch did not show its stage");
+		stage.handleInput?.(bytes);
+		stage.handleInput?.("x");
+		stage.handleInput?.(bytes);
+		await until(() => h.ctx.session === d!.session && !h.room.viewOpen, "the run of presses to land", 8_000);
+		expect(screenSteps().filter(step => step.startsWith("attach:"))).toEqual([`attach:${b!.id}`, `attach:${d!.id}`]);
+	});
+
+	it("a switch that fails drops the presses made while it moved", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		const bytes = nextKeyBytes(h);
+		b!.failNextPromptBuild();
+		await h.room.cycle(1);
+		h.ui.getFocused()?.handleInput?.(bytes);
+		await until(() => !h.room.viewOpen, "the stage to lift after the failed claim");
+		// Long enough for a left-over press to open a second switch.
+		await sleep(100);
+		expect({ open: h.room.viewOpen, onScreen: h.ctx.session === a.session }).toEqual({ open: false, onScreen: true });
 	});
 
 	it("a step after the attach that fails lands the stage on the new conversation, with a warning", async () => {

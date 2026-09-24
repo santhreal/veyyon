@@ -138,8 +138,13 @@ export class RoomController {
 	 */
 	readonly #unread = new WeakSet<AgentSession>();
 	#stage: { readonly component: RoomStage; readonly overlay: OverlayHandle; readonly originId: string } | undefined;
-	/** Serializes screen changes: a second one while one is in flight is dropped. */
+	/** Serializes screen changes: a second one while one is in flight is dropped, save the queued steps below. */
 	#switching = false;
+	/**
+	 * Members the next and previous keys moved while a switch was in flight,
+	 * next positive; the switch takes them up when it lands.
+	 */
+	#pendingSteps = 0;
 	/** A new conversation is being built: a second request waits for nothing and is refused. */
 	#creating = false;
 	/**
@@ -376,17 +381,31 @@ export class RoomController {
 
 	/**
 	 * Move to the member `steps` after the one on screen, wrapping: the screen
-	 * pulls back, the row slides and the next conversation pushes in.
+	 * pulls back, the row slides and the next conversation pushes in. A press
+	 * while a switch is still in flight is taken up when it lands, so a run of
+	 * presses goes as far as it was pressed, and the conversations it passes
+	 * over are never entered.
 	 */
-	async cycle(steps: 1 | -1): Promise<void> {
+	async cycle(steps: number): Promise<void> {
+		if (this.#switching || this.#stage?.component.destination !== undefined) {
+			this.#pendingSteps += steps;
+			return;
+		}
 		const refs = this.#refs();
 		if (refs.length < 2) {
 			this.ctx.showStatus("No other conversation in this terminal — /room new opens one beside this");
 			return;
 		}
 		const index = refs.findIndex(ref => ref.id === this.ownId);
-		const next = refs[(index + steps + refs.length) % refs.length];
+		const next = refs[(((index + steps) % refs.length) + refs.length) % refs.length];
 		if (next) await this.switchTo(next.id);
+	}
+
+	/** How many members a next or previous key moves: 1, -1, or none for any other key. */
+	#cycleStep(data: string): number {
+		const bound = (action: "app.room.next" | "app.room.previous"): boolean =>
+			this.ctx.keybindings.getKeys(action).some(key => matchesKey(data, key));
+		return bound("app.room.next") ? 1 : bound("app.room.previous") ? -1 : 0;
 	}
 
 	/**
@@ -417,6 +436,7 @@ export class RoomController {
 		try {
 			await this.#putOnScreen(target.session);
 		} catch (error) {
+			this.#pendingSteps = 0;
 			this.ctx.showError(`Could not switch: ${errorMessage(error)}`);
 			return;
 		}
@@ -454,6 +474,9 @@ export class RoomController {
 			close: id => this.close(id),
 			rename: (id, name) => this.rename(id, name),
 			isToggle: data => this.ctx.keybindings.getKeys("app.room.view").some(key => matchesKey(data, key)),
+			keyInFlight: data => {
+				this.#pendingSteps += this.#cycleStep(data);
+			},
 		};
 		const layout: RoomLayout = this.ctx.settings.get("room.view");
 		// The first room view this profile opens explains itself; `?` brings the
@@ -497,7 +520,13 @@ export class RoomController {
 		this.#closeStage();
 		// The new conversation's history belongs in scrollback, not the last one's.
 		this.ctx.ui.requestRender(true, { clearScrollback: true });
-		if (failure !== undefined) this.ctx.showError(`Could not switch: ${errorMessage(failure)}`);
+		const pending = this.#pendingSteps;
+		this.#pendingSteps = 0;
+		if (failure !== undefined) {
+			this.ctx.showError(`Could not switch: ${errorMessage(failure)}`);
+			return;
+		}
+		if (pending !== 0) void this.cycle(pending);
 	}
 
 	/** Say which conversation is on screen now, and whether it is still working. */

@@ -112,7 +112,9 @@ shows its ordinal and a state glyph.
 Going into a window zooms it forward until it is the screen. The next and previous keys do the
 same without the view: the screen pulls back, the row slides, and the next conversation pushes
 in. The line under the transcript names the conversation you arrived in and says whether it is
-still working.
+still working. Pressing the next or previous key again while the screen moves goes on as far as
+the presses add up once it lands; the conversations passed over are not entered, so an answer
+waiting in one stays unread.
 
 With `display.transitions` off, or on a terminal without 24-bit colour, the view opens and
 switches without motion.

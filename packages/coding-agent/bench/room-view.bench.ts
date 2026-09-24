@@ -179,6 +179,7 @@ async function roomSwitch(
 		close: async () => "the room bench never closes a conversation",
 		rename: async () => "the room bench never names a conversation",
 		isToggle: () => false,
+		keyInFlight: () => {},
 	};
 
 	const bytes = terminal.bytes;

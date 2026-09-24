@@ -145,6 +145,7 @@ function run(grid: { columns: number; rows: number }, layout: RoomLayout, stream
 		close: async () => "the overview bench never closes a conversation",
 		rename: async () => "the overview bench never names a conversation",
 		isToggle: () => false,
+		keyInFlight: () => {},
 	};
 	const stage = new RoomStage(host, {
 		originId: "c1",

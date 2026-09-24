@@ -99,6 +99,12 @@ export interface RoomStageHost {
 	rename(id: string, name: string): Promise<string | undefined>;
 	/** Whether `data` is the key that opened the view, which closes it the same way. */
 	isToggle(data: string): boolean;
+	/**
+	 * A key pressed during a quick switch, which the stage does not act on. The
+	 * host keeps the next and previous keys for the switch after the land and
+	 * drops the rest.
+	 */
+	keyInFlight(data: string): void;
 }
 
 export type RoomStageMode = { readonly kind: "overview" } | { readonly kind: "travel"; readonly targetId: string };
@@ -732,6 +738,11 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		}
 		// Keys wait while the stage is in flight: the gesture under way lands
 		// first, and a key meant for the conversation must not reach the stage.
+		// During a quick switch the host keeps the ones it acts on after the land.
+		if (this.#phase === "travel") {
+			this.#host.keyInFlight(data);
+			return;
+		}
 		if (this.#phase !== "overview") return;
 		// Any key takes the guide away, and does nothing else: a reader who
 		// presses Enter to dismiss it must not be carried into a window.

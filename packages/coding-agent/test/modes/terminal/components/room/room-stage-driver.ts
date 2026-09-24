@@ -172,6 +172,12 @@ export class FakeRoomHost implements RoomStageHost {
 	isToggle(data: string): boolean {
 		return data === KEY.toggle;
 	}
+
+	readonly keysInFlight: string[] = [];
+
+	keyInFlight(data: string): void {
+		this.keysInFlight.push(data);
+	}
 }
 
 export interface StageDriverOptions {
