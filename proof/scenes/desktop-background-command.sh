@@ -13,12 +13,18 @@
 # Both arms run this same scene against the same prompt and the same command,
 # and the window is the differential.
 #
-#   SCENE_MOTION_FLOOR=5 proof/docker/record-native.sh \
-#     proof/scenes/desktop-background-command.sh
-#
-#   SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=5 \
-#     PROOF_NATIVE_BEFORE_BINARY=.internal/captures/background-command/veyyon-desktop \
+#   SCENE_MOTION_FLOOR=5 SCENE_SETTINGS='bash.stallDetection.enabled: false' \
 #     proof/docker/record-native.sh proof/scenes/desktop-background-command.sh
+#
+#   SCENE_ARM=before PROOF_BASE_REF=02d9c63be1^ SCENE_MOTION_FLOOR=5 \
+#     SCENE_SETTINGS='bash.stallDetection.enabled: false' \
+#     PROOF_NATIVE_BEFORE_BINARY=.internal/bin/veyyon-desktop-background-before \
+#     proof/docker/record-native.sh proof/scenes/desktop-background-command.sh
+#
+# The before arm holds the host at the same ref as the binary, not at HEAD. The
+# wire carries a capability, an action and a snapshot section this change adds,
+# and a base binary that receives them closes the socket, so a run with
+# PROOF_BASE_REF=HEAD photographs a reconnect banner instead of a composer.
 #
 # The take is a still one: a control appears in a footer and leaves it, which
 # is under the 12 fps default floor, so both arms are recorded at 5.
@@ -33,11 +39,15 @@
 # the nothing that arm records belongs to the window rather than to a session
 # that never ran anything.
 #
-# THE COMMAND OUTLIVES THE TAKE. `sleep 240` is longer than the take and
-# shorter than the 300s wall-clock threshold that backgrounds a command on its
-# own, so a frame photographed here is of a wait that is open because nothing
-# has released it, and a backgrounded result inside the take can have no other
-# cause than the press.
+# THE COMMAND OUTLIVES THE TAKE, AND NOTHING ELSE MOVES IT. `sleep 240` is
+# longer than the take and shorter than the 300s wall-clock threshold that
+# backgrounds a command on its own. It also prints nothing, and the stall
+# watcher moves a silent command after 30s with a result that reads like the
+# press's, so both arms run with `bash.stallDetection.enabled: false`: with it
+# on, the after arm passes on a mover it never pressed and the before arm
+# records a control that left the footer by itself. A backgrounded result
+# inside the take then has no cause but the press, which is what the reading
+# below requires by the sentence the manual path writes.
 #
 # NOT RECORDED HERE: the control's own press, which
 # `crates/veyyon-desktop-surface/tests/a-command-the-turn-waits-on-is-moved-from-the-composer.rs`
@@ -61,6 +71,17 @@ ARM="${SCENE_ARM:-after}"
 # which is the same wording `desktop-tool-view.sh` drives a tool call with.
 WAIT_COMMAND="sleep 240"
 PROMPT_TEXT="run this shell command for me with your bash tool: ${WAIT_COMMAND}"
+
+# The session runs with the stall watcher off, and the take says so before it
+# spends four minutes proving it: the watcher moves a silent command after 30s
+# with a result that reads like the press's, which grades a window that did
+# nothing as green. The seed the recorder wrote is what is read, since that is
+# the file the session ahead is about to load.
+SEEDED_CONFIG="${HOME}/.veyyon/profiles/${VEYYON_PROFILE:-default}/agent/config.yml"
+if ! grep -qs '^bash.stallDetection.enabled: false' "${SEEDED_CONFIG}"; then
+	abandon_take "the-stall-watcher-is-off" \
+		"the session was seeded without 'bash.stallDetection.enabled: false', so a silent command moves itself after 30s and neither arm reads the press; pass it in SCENE_SETTINGS"
+fi
 
 # The control is an icon and a cut command line in a 28px footer row. Two
 # settled frames of one state measured well under this on this renderer.
@@ -142,11 +163,34 @@ def reading(path):
 	return calls, requested
 
 
+def tail(path, rows=6):
+	"""The last few messages, as role and the opening of their text.
+
+	A take that ends here ended because the transcript never carried what the
+	press should have written, and the next question is always which sentence
+	it carried instead. Printing it costs one read of a file already open.
+	"""
+	seen = []
+	try:
+		with Path(path).open() as transcript:
+			for entry_line in transcript:
+				message = json.loads(entry_line).get("message", {})
+				role = message.get("role")
+				if not role:
+					continue
+				seen.append(f"{role}: {json.dumps(message.get('content'))[:180]}")
+	except (OSError, ValueError):
+		return "the transcript could not be read"
+	return " | ".join(seen[-rows:]) or "the transcript carries no messages"
+
+
+held = "no transcript"
 while time.monotonic() < deadline:
 	try:
 		path, status = transcript_path()
 		calls, requested = reading(path)
 		last = f"status={status}, calls={calls}, backgrounded={requested}"
+		held = tail(path)
 		if want == "waiting" and calls and status not in {"Complete", "Error", "Aborted"}:
 			print(f"the turn is waiting on {command}")
 			raise SystemExit(0)
@@ -156,7 +200,7 @@ while time.monotonic() < deadline:
 	except (OSError, ValueError, RuntimeError) as error:
 		last = str(error)
 	time.sleep(0.5)
-raise SystemExit(f"the transcript never reached '{want}' within {budget:.0f}s ({last})")
+raise SystemExit(f"the transcript never reached '{want}' within {budget:.0f}s ({last}); it held {held}")
 PY
 }
 
@@ -176,7 +220,13 @@ shot background-command-waiting
 # `primary-shift-b` is the chord the composer binds while a command waits. At
 # the base it reaches no action at all, and the same keystroke is pressed there
 # so the arms differ by the window rather than by what was typed.
-move_px "${COMPOSER_X}" "${COMPOSER_Y}"
+#
+# The aim is the editor line the measure above just found, not the one the
+# session was opened at: a turn that has drawn a prompt and a tool call has
+# moved the card down the window, and a press at the opening position lands in
+# the transcript, which takes the keyboard off the composer and leaves the
+# chord resolving against nothing.
+move_px "${COMPOSER_EDITOR_X}" "${COMPOSER_EDITOR_Y}"
 click
 pause 0.3
 k "ctrl+shift+b"
