@@ -143,6 +143,7 @@ function run(grid: { columns: number; rows: number }, layout: RoomLayout, stream
 		land: () => benchFail("the overview bench never lands"),
 		create: () => Promise.reject(new Error("the overview bench never opens a conversation")),
 		close: async () => "the overview bench never closes a conversation",
+		rename: async () => "the overview bench never names a conversation",
 		isToggle: () => false,
 	};
 	const stage = new RoomStage(host, {

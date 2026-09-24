@@ -1118,6 +1118,24 @@ describe("the room's name for a conversation", () => {
 		registry.unregister(b!.id);
 		expect(h.room.labelOf(a.session)).toBeUndefined();
 	});
+
+	it("is the one `r` in the room view gives it, off screen or on, and a conversation gone says so", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		expect(await h.room.rename(b!.id, "Refactor parser")).toBeUndefined();
+		expect(await h.room.rename(a.id, "Tests")).toBeUndefined();
+		expect({
+			stored: [a.session, b!.session].map(session => session.sessionManager.getSessionName()),
+			labels: [a.session, b!.session].map(session => h.room.labelOf(session)),
+		}).toEqual({
+			stored: ["Tests", "Refactor parser"],
+			labels: ["1 · Tests", "2 · Refactor parser"],
+		});
+		expect(await h.room.rename("main:gone", "Anything")).toBe("That conversation has already closed.");
+	});
 });
 
 describe("the room guide", () => {

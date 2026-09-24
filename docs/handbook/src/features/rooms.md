@@ -41,7 +41,7 @@ its own key.
 
                                   1   2   3!  +
 
-   ←→ move · enter open · 1–3 jump · n new · x close · tab all windows · esc back to 2 · ? guide
+     ←→ move · enter open · n new · x close · tab all windows · esc back to 2 · ? guide
 ```
 
 The view has two layouts:
@@ -58,6 +58,10 @@ the one the view opens in.
 
 The last slot is always `+`, which opens a new conversation.
 
+The key row under the windows drops the keys it has no room for, least used first: the digit
+jump, then `r`, `x`, Tab and `n`. The arrows, Enter, `?` and Esc stay longest; `?` lists every
+key.
+
 ## A window
 
 Each window streams its conversation while the view is open:
@@ -72,8 +76,9 @@ Each window streams its conversation while the view is open:
 - The bottom edge has the model and the working directory.
 
 A conversation with no name has no name on its top edge; its prompt is the first thing in its
-body. A session is named from its first substantial prompt when a title model is available, and
-`/rename` names one by hand.
+body. A session is named from its first substantial prompt when a title model is available.
+`/rename` names the conversation on screen by hand, and `r` in the room view names the selected
+one.
 
 A window narrower than the edge text keeps its state and drops its name. A very narrow window
 shows its ordinal and a state glyph.
@@ -88,6 +93,7 @@ shows its ordinal and a state glyph.
 | Home, End | Select the first window, or the `+` slot |
 | `n` | Open a new conversation and go into it |
 | `x`, Delete | Close the selected conversation; press it twice while the conversation is working |
+| `r` | Name the selected conversation on a line under the windows. The line holds its name selected: typing replaces it, and an arrow, Home or End keeps it to edit. Enter saves; Esc or an empty name keeps the old name |
 | Tab | Switch layouts |
 | Esc, `alt+w` | Go back to the conversation the view was opened from; the key row names its number |
 | `?` | Show the guide; any key closes it |
@@ -110,6 +116,19 @@ still working.
 
 With `display.transitions` off, or on a terminal without 24-bit colour, the view opens and
 switches without motion.
+
+## Settings
+
+| Setting | Effect |
+| --- | --- |
+| `room.view` | The layout the room view opens in: side by side or all windows (Settings → Interaction → Session) |
+| `display.transitions` | Off: the view opens, and the conversations switch, without motion |
+| `completion.notify` | A finished turn sends a desktop notification |
+| `ask.notify` | A question from the `ask` tool sends a desktop notification at once, from a conversation off screen too |
+| `tui.scrollIsolation` | On: a click on the status line's room chip opens the room view |
+| `app.room.view`, `app.room.next`, `app.room.previous` | The keys that open the view and move to the next and previous conversation (`/hotkeys` lists them) |
+
+The guide shows once per profile; `?` in the view and `/room help` show it after that.
 
 ## When a conversation needs you
 
@@ -217,7 +236,7 @@ agent cannot reach the conversation next door or its spawns.
 ## Recording
 
 `proof/scenes/room-view.sh` drives three conversations through the room view with a local model,
-from the guide on its first open to one finishing off screen. `proof/scenes/room-needs-you.sh`
+from the guide on its first open to naming one. `proof/scenes/room-needs-you.sh`
 holds an approval asked by a conversation off screen until it is entered, and
 `proof/scenes/settings-room-view.sh` records the `room.view` setting both ways:
 

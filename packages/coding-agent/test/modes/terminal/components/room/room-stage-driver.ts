@@ -108,6 +108,9 @@ export class FakeRoomHost implements RoomStageHost {
 	readonly closes: string[] = [];
 	/** What `close` answers; undefined closes. */
 	closeRefusal: string | undefined;
+	readonly renames: Array<{ readonly id: string; readonly name: string }> = [];
+	/** What `rename` answers; undefined renames, and the window shows the new name as a real feed would. */
+	renameRefusal: string | undefined;
 	/** Set by the driver so a land records where in the frame sequence it came. */
 	framesRendered: () => number = () => 0;
 	#nextId = 0;
@@ -155,6 +158,14 @@ export class FakeRoomHost implements RoomStageHost {
 		if (this.closeRefusal !== undefined) return this.closeRefusal;
 		const index = this.roster.findIndex(member => member.id === id);
 		if (index >= 0) this.roster.splice(index, 1);
+		return undefined;
+	}
+
+	async rename(id: string, name: string): Promise<string | undefined> {
+		this.renames.push({ id, name });
+		if (this.renameRefusal !== undefined) return this.renameRefusal;
+		const member = this.roster.find(candidate => candidate.id === id);
+		member?.set({ ...member.snapshot(), title: name });
 		return undefined;
 	}
 

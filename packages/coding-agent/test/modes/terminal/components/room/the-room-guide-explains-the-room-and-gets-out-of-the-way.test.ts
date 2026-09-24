@@ -7,11 +7,11 @@
  * of the way the moment it is read. The defect class is a guide that acts as
  * part of the room: a key that dismisses it and also does what it does in the
  * room (Enter carrying the reader into a window, Esc leaving the view, `n`
- * opening a conversation, `x` arming a close), a click that closes it and picks
- * the window under it, a guide that cannot be brought back or that `?` opens on
- * a stage with nothing to show, a card that overflows a small terminal, a key
- * row that still offers keys that no longer do anything, and a quick switch that
- * opens behind a guide.
+ * opening a conversation, `x` arming a close, `r` opening a name to type), a
+ * click that closes it and picks the window under it, a guide that cannot be
+ * brought back or that `?` opens on a stage with nothing to show, a card that
+ * overflows a small terminal, a key row that still offers keys that no longer
+ * do anything, and a quick switch that opens behind a guide.
  *
  * Every key the room answers is swept against a stage opened with its guide,
  * each on a fresh stage, and checked for exactly one effect: the guide is gone
@@ -134,6 +134,7 @@ describe("the room guide", () => {
 			digit: "2",
 			n: "n",
 			x: "x",
+			r: "r",
 			question: "?",
 		};
 		const outcomes: Record<string, unknown> = {};
@@ -143,6 +144,7 @@ describe("the room guide", () => {
 			await driver.settle();
 			outcomes[name] = {
 				guide: text(driver.lastFrame).includes(CLOSES),
+				naming: text(driver.lastFrame).includes("Name conversation"),
 				// Entering starts with the host asked to put a conversation on screen.
 				entering: driver.host.prepares.length + driver.host.lands.length,
 				creates: driver.host.creates.length,
@@ -151,7 +153,15 @@ describe("the room guide", () => {
 				selected: pagerSelection(driver.lastFrame, 3),
 			};
 		}
-		const untouched = { guide: false, entering: 0, creates: 0, closes: 0, layout: "side-by-side", selected: 0 };
+		const untouched = {
+			guide: false,
+			naming: false,
+			entering: 0,
+			creates: 0,
+			closes: 0,
+			layout: "side-by-side",
+			selected: 0,
+		};
 		expect(outcomes).toEqual(Object.fromEntries(Object.keys(keys).map(name => [name, untouched])));
 	});
 

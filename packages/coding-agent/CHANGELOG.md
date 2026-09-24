@@ -17,6 +17,8 @@
 - In a room, every desktop notification, such as an `ask` waiting for an answer or a finished turn under `completion.notify`, is titled with its conversation's number and name, on screen or off.
 - The first room view a profile opens shows a guide over the dimmed windows: what a room is, its keys and what each mark on a window means; any key or click closes it without acting, `?` in the room view opens it again, and `/room help` prints it.
 - `/hotkeys` lists the room keys: the room view key with the `→→` gesture, and next and previous conversation.
+- `r` in the room view names the selected conversation on a line under the windows: the line holds its name selected, typing replaces it, an arrow, Home or End keeps it to edit, and Enter saves it.
+- The room view's key row drops the keys it has no room for least used first, the digit jump first, and keeps the arrows, Enter, `?` and Esc longest.
 
 ### Changed
 

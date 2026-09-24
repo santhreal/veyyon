@@ -28,6 +28,8 @@
 #      it and the key that opens the room; the room chip counts it unread.
 #  10. `→→` opens the view: the title counts it unread and the ordinal under
 #      window 3 carries how its turn ended.
+#  11. `r` names window 2: the line holds the name the title model gave it,
+#      selected, and what is typed replaces it; Enter writes it on the edge.
 #
 # Off arm (--before): the same keys on the base branch, where `/room` is an
 # unknown command and `→→` moves nothing. Each guard is written for the arm it
@@ -150,3 +152,18 @@ k Right
 after && expect_screen "side by side" 10
 pause 0.9
 shot room-unread
+
+# --- 11. r names the selected conversation -----------------------------------
+# The title model's name for a conversation is its answer's first line; `r`
+# holds that name selected, and what is typed replaces it.
+k r
+# needle-source: Name conversation -- room-stage.ts #paintChrome's naming line
+after && expect_screen "Name conversation" 10
+pause 0.9
+shot room-naming
+t "text editor facts"
+if after; then k Return; else clear_composer; fi
+# needle-source: 2  text editor facts -- typed in step 11; room-window.ts titleLabel writes the ordinal and the name on the window's top edge
+after && expect_screen "2  text editor facts" 10
+pause 0.9
+shot room-named

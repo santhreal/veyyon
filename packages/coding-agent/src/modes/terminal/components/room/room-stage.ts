@@ -23,8 +23,9 @@
  * it is working: an overview of idle conversations is byte-stable.
  */
 
-import type { Component, OverlayFocusOwner } from "@veyyon/tui";
-import { decodePrintableKey, matchesKey } from "@veyyon/utils/keys";
+import { type Component, Input, type OverlayFocusOwner } from "@veyyon/tui";
+import { PASTE_START } from "@veyyon/utils/bracketed-paste";
+import { decodePrintableKey, extractPrintableText, matchesKey } from "@veyyon/utils/keys";
 import { clamp, clamp01 } from "@veyyon/utils/math";
 import { type Animation, type AnimationCurve, MOTION, type MotionClock, motionClock } from "@veyyon/utils/motion";
 import { parseSgrMouse, type SgrMouseEvent } from "@veyyon/utils/mouse";
@@ -94,6 +95,8 @@ export interface RoomStageHost {
 	create(): Promise<string>;
 	/** End conversation `id` and take it out of the room; resolves with the reason when refused. */
 	close(id: string): Promise<string | undefined>;
+	/** Give conversation `id` the name `name`; resolves with the reason when refused. */
+	rename(id: string, name: string): Promise<string | undefined>;
 	/** Whether `data` is the key that opened the view, which closes it the same way. */
 	isToggle(data: string): boolean;
 }
@@ -136,7 +139,16 @@ const NOTICE_MS = 4000;
 const CLOSE_CONFIRM_MS = 3000;
 /** How much ink the windows keep behind the guide, so the card reads over them. */
 const GUIDE_BACKDROP = 0.4;
+/** The widest the line a name is typed on gets: a name, not a paragraph. */
+const NAME_FIELD_WIDTH = 40;
 const SEPARATOR = "  ·  ";
+
+/** A key the key row offers, and how long it holds on as the row narrows: the lowest goes first. */
+interface KeyHint {
+	readonly key: string;
+	readonly label: string;
+	readonly keep: number;
+}
 
 /** Where the screen's rows dissolve into a card, by how much of the terminal's width a window spans. */
 function screenMixAt(scale: number): number {
@@ -252,6 +264,14 @@ export class RoomStage implements Component, OverlayFocusOwner {
 	readonly #guide: RoomGuide | undefined;
 	/** Whether the guide card is over the room; any key or click takes it away. */
 	#guideShown: boolean;
+	/**
+	 * The conversation being named and the line its name is typed on; keys go to
+	 * the line until Enter or Esc. `held` while the line holds the name it opened
+	 * with, untouched: the way a rename field holds a selected name, the first
+	 * character typed or pasted replaces it, the first backspace clears it, and
+	 * a key that moves the caret keeps it to edit.
+	 */
+	#naming: { readonly id: string; readonly input: Input; held: boolean } | undefined;
 	#width = 0;
 	/**
 	 * Each slot's last paint, reused while its snapshot, its screen rows and its
@@ -350,6 +370,7 @@ export class RoomStage implements Component, OverlayFocusOwner {
 
 	dispose(): void {
 		this.#phase = "landed";
+		this.#naming = undefined;
 		clearTimeout(this.#wheelTimer);
 		clearInterval(this.#spinnerTimer);
 		clearTimeout(this.#noticeTimer);
@@ -654,6 +675,47 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		this.#host.requestRender();
 	}
 
+	/** Start naming the selected conversation, on a line that holds its name now. */
+	#startNaming(): void {
+		const member = this.#members()[this.#selected];
+		if (!member) return;
+		const input = new Input();
+		input.prompt = "";
+		const name = member.snapshot().title ?? "";
+		input.setValue(name);
+		this.#naming = { id: member.id, input, held: name !== "" };
+	}
+
+	/** A key while a name is being typed: Enter keeps it, Esc drops it, anything else edits it. */
+	#nameKey(data: string): void {
+		const naming = this.#naming;
+		if (!naming) return;
+		if (matchesKey(data, "escape")) {
+			this.#naming = undefined;
+		} else if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "\n") {
+			this.#naming = undefined;
+			void this.#rename(naming.id, naming.input.getValue().trim());
+		} else if (naming.held && (matchesKey(data, "backspace") || matchesKey(data, "delete"))) {
+			naming.held = false;
+			naming.input.setValue("");
+		} else {
+			if (naming.held && (extractPrintableText(data) !== undefined || data.startsWith(PASTE_START))) {
+				naming.input.setValue("");
+			}
+			naming.held = false;
+			naming.input.handleInput(data);
+		}
+		this.#host.requestRender();
+	}
+
+	/** Name conversation `id`; an empty name, or the one it has, changes nothing. */
+	async #rename(id: string, name: string): Promise<void> {
+		const member = this.#members().find(candidate => candidate.id === id);
+		if (name === "" || (member && member.snapshot().title === name)) return;
+		const refusal = await this.#host.rename(id, name);
+		if (refusal) this.#flash(refusal, "error");
+	}
+
 	handleInput(data: string): void {
 		if (data.startsWith("\x1b[<")) {
 			const event = parseSgrMouse(data);
@@ -663,6 +725,8 @@ export class RoomStage implements Component, OverlayFocusOwner {
 				if (event.leftClick) this.#hideGuide();
 				return;
 			}
+			// While a name is being typed the pointer moves nothing: the name belongs to the window it started on.
+			if (this.#naming) return;
 			this.#mouse(event);
 			return;
 		}
@@ -673,6 +737,10 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		// presses Enter to dismiss it must not be carried into a window.
 		if (this.#guideShown) {
 			this.#hideGuide();
+			return;
+		}
+		if (this.#naming) {
+			this.#nameKey(data);
 			return;
 		}
 		if (this.#guide && (decodePrintableKey(data) ?? data) === "?") {
@@ -705,6 +773,8 @@ export class RoomStage implements Component, OverlayFocusOwner {
 			void this.#create();
 		} else if (matchesKey(data, "x") || matchesKey(data, "delete")) {
 			void this.#close();
+		} else if (matchesKey(data, "r")) {
+			this.#startNaming();
 		} else if (/^[1-9]$/.test(data)) {
 			const slot = Number(data) - 1;
 			if (slot < this.#members().length) this.#enterSlot(slot);
@@ -878,9 +948,26 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		const gap = width - visibleWidth(left) - visibleWidth(right);
 		put(0, gap >= 2 ? `${left}${" ".repeat(gap)}${right}` : left);
 
-		// Pager: every window's ordinal, the selected one lit; or the notice, while one stands.
+		// Pager: every window's ordinal, the selected one lit; the line a name is
+		// typed on, while one is; or the notice, while one stands.
+		const naming = this.#naming;
 		const notice = this.#notice && now < this.#notice.until ? this.#notice : undefined;
-		if (notice) {
+		if (naming) {
+			const ordinal = members.findIndex(member => member.id === naming.id) + 1;
+			const label = ordinal > 0 ? `Name conversation ${ordinal}` : "Name";
+			const fieldWidth = clamp(width - visibleWidth(label) - 8, 8, NAME_FIELD_WIDTH);
+			// A held name reads as selected, with no caret: what is typed replaces it.
+			const held = naming.held ? truncateToWidth(naming.input.getValue(), fieldWidth - 1) : undefined;
+			const field =
+				held !== undefined
+					? `\x1b[7m${held}\x1b[27m${" ".repeat(Math.max(0, fieldWidth - visibleWidth(held)))}`
+					: (naming.input.render(fieldWidth)[0] ?? "");
+			const w = visibleWidth(label) + 2 + fieldWidth;
+			put(
+				height - 3,
+				`${" ".repeat(Math.max(0, Math.floor((width - w) / 2)))}${ink.token("accent", label)}  ${ink.token("text", field)}`,
+			);
+		} else if (notice) {
 			const text = ink.token(notice.tone === "error" ? "error" : "warning", notice.text);
 			const w = Math.min(width, visibleWidth(notice.text));
 			put(height - 3, `${" ".repeat(Math.max(0, Math.floor((width - w) / 2)))}${text}`);
@@ -908,41 +995,51 @@ export class RoomStage implements Component, OverlayFocusOwner {
 			put(height - 3, `${" ".repeat(Math.max(0, Math.floor((width - w) / 2)))}${joined}`);
 		}
 
-		// Keys, dropped from the right until the row fits. Enter answers a window
-		// holding a question, since that is what going into it shows. The digit
-		// jump is named only when there is somewhere to jump, with the digits the
-		// room takes. Esc names the conversation it goes back to, which the
-		// selection may have left several windows behind.
+		// Keys, in the order they read. Enter answers a window holding a question,
+		// since that is what going into it shows. The digit jump is named only
+		// when there is somewhere to jump, with the digits the room takes. Esc
+		// names the conversation it goes back to, which the selection may have
+		// left several windows behind. A row too wide for the terminal drops the
+		// key that matters least first, the rightmost of two that matter as
+		// little: moving and going in hold on longest, then `?`, whose guide
+		// names every key the row dropped, then Esc.
 		const grid = this.#layout === "all-windows";
 		const jumpable = Math.min(9, members.length);
 		const asking = (members[this.#selected]?.waitingDialogs ?? 0) > 0;
 		const origin = members.findIndex(member => member.id === this.#originId);
-		const hints: Array<[string, string]> = [];
+		const hints: KeyHint[] = [];
 		if (this.#guideShown) {
 			// While the guide is up, a key does one thing: take it away.
-			hints.push(["any key", "close the guide"]);
+			hints.push({ key: "any key", label: "close the guide", keep: 9 });
+		} else if (naming) {
+			hints.push({ key: "enter", label: "save", keep: 9 }, { key: "esc", label: "cancel", keep: 8 });
 		} else {
-			hints.push([grid ? "←↑↓→" : "←→", "move"], ["enter", asking ? "answer" : "open"]);
-			if (jumpable > 1) hints.push([`1–${jumpable}`, "jump"]);
 			hints.push(
-				["n", "new"],
-				["x", "close"],
-				["tab", grid ? "side by side" : "all windows"],
-				["esc", origin >= 0 && members.length > 1 ? `back to ${origin + 1}` : "back"],
+				{ key: grid ? "←↑↓→" : "←→", label: "move", keep: 9 },
+				{ key: "enter", label: asking ? "answer" : "open", keep: 8 },
 			);
-			if (this.#guide) hints.push(["?", "guide"]);
+			if (jumpable > 1) hints.push({ key: `1–${jumpable}`, label: "jump", keep: 1 });
+			hints.push(
+				{ key: "n", label: "new", keep: 5 },
+				{ key: "x", label: "close", keep: 3 },
+				{ key: "r", label: "rename", keep: 2 },
+				{ key: "tab", label: grid ? "side by side" : "all windows", keep: 4 },
+				{ key: "esc", label: origin >= 0 && members.length > 1 ? `back to ${origin + 1}` : "back", keep: 6 },
+			);
+			if (this.#guide) hints.push({ key: "?", label: "guide", keep: 7 });
 		}
-		const sep = ink.token("dim", SEPARATOR);
-		let shown = hints.length;
-		const plainWidth = (n: number): number =>
-			hints.slice(0, n).reduce((sum, [key, label]) => sum + visibleWidth(key) + 1 + visibleWidth(label), 0) +
-			Math.max(0, n - 1) * SEPARATOR.length;
-		while (shown > 1 && plainWidth(shown) > width - 4) shown--;
+		const rowWidth = (list: readonly KeyHint[]): number =>
+			list.reduce((sum, hint) => sum + visibleWidth(hint.key) + 1 + visibleWidth(hint.label), 0) +
+			Math.max(0, list.length - 1) * SEPARATOR.length;
+		while (hints.length > 1 && rowWidth(hints) > width - 4) {
+			let drop = hints.length - 1;
+			for (let i = hints.length - 2; i >= 0; i--) if (hints[i]!.keep < hints[drop]!.keep) drop = i;
+			hints.splice(drop, 1);
+		}
 		const hintText = hints
-			.slice(0, shown)
-			.map(([key, label]) => `${ink.token("dim", key)} ${ink.token("muted", label)}`)
-			.join(sep);
-		const hintWidth = plainWidth(shown);
+			.map(hint => `${ink.token("dim", hint.key)} ${ink.token("muted", hint.label)}`)
+			.join(ink.token("dim", SEPARATOR));
+		const hintWidth = rowWidth(hints);
 		put(height - 1, `${" ".repeat(Math.max(0, Math.floor((width - hintWidth) / 2)))}${hintText}`);
 	}
 }

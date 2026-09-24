@@ -53,7 +53,7 @@ export function roomGuide(keys: RoomGuideKeys): RoomGuide {
 		{ keys: "/room new · n", text: "start a conversation beside this one" },
 		{ keys: "enter · 1–9 · click", text: "go into a window" },
 		{ keys: "←→ · tab", text: "move between windows · lay them all out" },
-		{ keys: "x", text: "close a conversation" },
+		{ keys: "r · x", text: "name a conversation · close it" },
 		{ keys: "esc", text: "back to the conversation you came from" },
 	];
 	if (cycle) getAround.push({ keys: cycle, text: "next or previous conversation, without the room" });

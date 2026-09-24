@@ -177,6 +177,7 @@ async function roomSwitch(
 		},
 		create: () => Promise.reject(new Error("the room bench never opens a conversation")),
 		close: async () => "the room bench never closes a conversation",
+		rename: async () => "the room bench never names a conversation",
 		isToggle: () => false,
 	};
 

@@ -452,6 +452,7 @@ export class RoomController {
 			land: (_id, failure) => this.#land(failure),
 			create: () => this.#createPeer(),
 			close: id => this.close(id),
+			rename: (id, name) => this.rename(id, name),
 			isToggle: data => this.ctx.keybindings.getKeys("app.room.view").some(key => matchesKey(data, key)),
 		};
 		const layout: RoomLayout = this.ctx.settings.get("room.view");
@@ -704,6 +705,23 @@ export class RoomController {
 		}
 		this.#syncFeeds();
 		this.#syncStatus();
+		return undefined;
+	}
+
+	/**
+	 * Name conversation `id`, on screen or off, the way `/rename` names the one
+	 * on screen. Resolves with the reason when it is refused. Its window, the
+	 * room's labels and, on screen, the terminal title follow the session's
+	 * name-change event.
+	 */
+	async rename(id: string, name: string): Promise<string | undefined> {
+		const session = this.registry.get(id)?.session;
+		if (!session) return "That conversation has already closed.";
+		try {
+			if (!(await session.sessionManager.setSessionName(name, "user"))) return "A name cannot be empty.";
+		} catch (error) {
+			return `Could not name that conversation: ${errorMessage(error)}`;
+		}
 		return undefined;
 	}
 
