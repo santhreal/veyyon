@@ -24,6 +24,10 @@
  *   from the room; a close that fails forgetting the conversation, so exit
  *   never disposes it;
  * - a question asked off screen that nobody is told about, or told twice;
+ * - a turn that ends off screen with nothing said, or said for the one on
+ *   screen, for a stopped turn, over the open room view, or when a retry takes
+ *   it up; a failed turn notified as complete, or a finished one notified
+ *   under a title that does not say which conversation;
  * - a cycle that does not wrap, or a row the registry lists before its session
  *   attaches taken for a member and dereferenced.
  *
@@ -42,6 +46,8 @@
  * painting and its keys are the stage suites'. The sdk's dispose wrapper,
  * which is what removes a closed peer from the registry in production, is
  * reproduced here rather than run.
+ * The event controller's notification for the conversation on screen is the
+ * toast suites'.
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
@@ -55,7 +61,7 @@ import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
-import { Settings } from "@veyyon/coding-agent/config/settings";
+import { Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { CustomEditor } from "@veyyon/coding-agent/modes/terminal/components/composer/custom-editor";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
 import type { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
@@ -84,6 +90,8 @@ const terminalCaps: { trueColor: boolean } = TERMINAL;
 const NO_PEER = "No other conversation in this terminal — /room new opens one beside this";
 /** What the first arrival in another conversation adds: the room view's key, with the default bindings. */
 const TEACH = " · alt+w shows every conversation";
+/** A provider failure the session retries, after the 50 ms the provider asks for. */
+const OVERLOADED_RETRY_AFTER_50MS = "503 service unavailable: overloaded_error retry-after-ms=50";
 
 interface Conversation {
 	id: string;
@@ -92,8 +100,16 @@ interface Conversation {
 	failNextPromptBuild(): void;
 	/** Hold this conversation's next claim until the returned release is called. */
 	holdNextClaim(): () => void;
-	/** Start a turn that runs until it is aborted; resolves once the provider is asked. */
+	/** Start a turn that runs until it is aborted or ended; resolves once the provider is asked. */
 	startTurn(): Promise<void>;
+	/**
+	 * Answer the provider request in flight: `stop` ends the turn with an answer, `error` with a
+	 * failure no retry takes up, `overloaded` with one a retry does. Resolves at once; the turn's
+	 * end reaches listeners after.
+	 */
+	endTurn(ending: "stop" | "error" | "overloaded"): void;
+	/** Resolves when the provider is next asked, as a retry asks it again. */
+	nextRequest(): Promise<void>;
 	/** Whether the last turn started has settled. */
 	turnSettled(): boolean;
 }
@@ -227,12 +243,14 @@ function openConversation(name: string, dir: string, room?: string): Conversatio
 	let failNext = false;
 	let claimGate: Promise<void> | undefined;
 	let called = Promise.withResolvers<void>();
+	let live: AssistantMessageEventStream | undefined;
 	let settled = true;
 	const agent = new Agent({
 		getApiKey: () => "test-key",
 		initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
 		streamFn: (_model, _context, options) => {
 			const stream = new AssistantMessageEventStream();
+			live = stream;
 			options?.signal?.addEventListener(
 				"abort",
 				() => stream.push({ type: "error", reason: "aborted", error: finishedTurn("aborted") }),
@@ -297,6 +315,26 @@ function openConversation(name: string, dir: string, room?: string): Conversatio
 			});
 			turns.push(turn);
 			await Promise.race([called.promise, turn]);
+		},
+		endTurn: ending => {
+			const stream = live;
+			if (!stream) throw new Error(`${id} has no provider request in flight`);
+			live = undefined;
+			if (ending === "stop") {
+				stream.push({
+					type: "done",
+					reason: "stop",
+					message: { ...finishedTurn("stop"), content: [{ type: "text", text: "all done" }] },
+				});
+				return;
+			}
+			const errorMessage =
+				ending === "error" ? "400 invalid_request_error: malformed request" : OVERLOADED_RETRY_AFTER_50MS;
+			stream.push({ type: "error", reason: "error", error: { ...finishedTurn("error"), errorMessage } });
+		},
+		nextRequest: () => {
+			called = Promise.withResolvers<void>();
+			return called.promise;
 		},
 		turnSettled: () => settled,
 	};
@@ -460,6 +498,18 @@ async function until(read: () => boolean, what: string, ms = 4_000): Promise<voi
 		if (Date.now() > deadline) throw new Error(`Timed out after ${ms}ms waiting for ${what}`);
 		await sleep(5);
 	}
+}
+
+/**
+ * Count the `agent_end` events `session` emits. Subscribed after the room built
+ * its feeds, so a count that moved means the room has handled that end.
+ */
+function countEnds(session: AgentSession): () => number {
+	let ends = 0;
+	session.subscribe(event => {
+		if (event.type === "agent_end") ends++;
+	});
+	return () => ends;
 }
 
 // ---------------------------------------------------------------- the claim
@@ -851,6 +901,117 @@ describe("a question asked off screen", () => {
 
 		h.hold(b!.session, 0);
 		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 1 });
+	});
+});
+
+describe("a turn that ends off screen", () => {
+	const OPENS = "— alt+w opens the room";
+	const COMPLETE = { body: "Complete", type: "completion", actions: "focus" } as const;
+
+	it("is said once on the status line, naming the conversation and how it ended", async () => {
+		const notify = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
+		const {
+			h,
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		await c!.session.sessionManager.setSessionName("Refactor parser", "user");
+		const bEnds = countEnds(b!.session);
+		const cEnds = countEnds(c!.session);
+		await b!.startTurn();
+		await c!.startTurn();
+		b!.endTurn("stop");
+		await until(() => bEnds() === 1, "b's turn to end");
+		c!.endTurn("error");
+		await until(() => cEnds() === 1, "c's turn to end");
+		// Named by the prompt it is on when it has no name.
+		expect(h.statuses).toEqual([`2 · keep working finished ${OPENS}`, `3 · Refactor parser failed ${OPENS}`]);
+		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 0 });
+		// `completion.notify` is off by default.
+		expect(notify.mock.calls).toEqual([]);
+	});
+
+	it("with completion.notify on, notifies a finished turn titled with the conversation, and not a failed one", async () => {
+		const notify = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
+		settings.override("completion.notify", "on");
+		const {
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		const bEnds = countEnds(b!.session);
+		const cEnds = countEnds(c!.session);
+		await b!.startTurn();
+		await c!.startTurn();
+		c!.endTurn("error");
+		await until(() => cEnds() === 1, "c's turn to end");
+		b!.endTurn("stop");
+		await until(() => bEnds() === 1, "b's turn to end");
+		expect(notify.mock.calls).toEqual([[{ title: "2 · keep working", ...COMPLETE }]]);
+	});
+
+	/** The conversation on screen is the event controller's to announce; a stopped turn is no news. */
+	it("says nothing for the conversation on screen or for a stopped turn", async () => {
+		const notify = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
+		settings.override("completion.notify", "on");
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		const aEnds = countEnds(a.session);
+		const bEnds = countEnds(b!.session);
+		await a.startTurn();
+		await b!.startTurn();
+		a.endTurn("stop");
+		await until(() => aEnds() === 1, "a's turn to end");
+		await b!.session.abort();
+		await until(() => bEnds() === 1, "b's turn to end");
+		expect(h.statuses).toEqual([]);
+		expect(notify.mock.calls).toEqual([]);
+	});
+
+	it("while the room view is open, is left to the window and still notified", async () => {
+		const notify = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
+		settings.override("completion.notify", "on");
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		const bEnds = countEnds(b!.session);
+		await b!.startTurn();
+		await h.room.openView();
+		b!.endTurn("stop");
+		await until(() => bEnds() === 1, "b's turn to end");
+		expect(h.statuses).toEqual([]);
+		expect(
+			h.room
+				.members()
+				.find(member => member.id === b!.id)
+				?.snapshot().state.kind,
+		).toBe("done");
+		expect(notify.mock.calls).toEqual([[{ title: "2 · keep working", ...COMPLETE }]]);
+	});
+
+	/**
+	 * A retried turn fails once and is taken up again; the session holds the end
+	 * its listeners see until the retry settles. Announcing the failed attempt
+	 * would say `failed` for a turn still running, then `finished`.
+	 */
+	it("is said once when a retried turn ends, not when the retry takes it up", async () => {
+		shared.set("retry.baseDelayMs", 5);
+		shared.set("retry.maxRetries", 1);
+		shared.set("retry.modelFallback", false);
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		const bEnds = countEnds(b!.session);
+		await b!.startTurn();
+		const retried = b!.nextRequest();
+		b!.endTurn("overloaded");
+		await retried;
+		expect(h.statuses).toEqual([]);
+		b!.endTurn("stop");
+		await until(() => bEnds() === 1 && b!.turnSettled(), "the retried turn to end");
+		expect(h.statuses).toEqual([`2 · keep working finished ${OPENS}`]);
 	});
 });
 

@@ -43,6 +43,7 @@ import {
 	roomWindowName,
 } from "../components/room/room-view-model";
 import type { InteractiveModeContext } from "../types";
+import { notifyTurnComplete } from "./event-controller";
 import { RoomWindowFeed, roomDraftPreview } from "./room-window-feed";
 
 export type RoomControllerContext = Pick<
@@ -193,7 +194,7 @@ export class RoomController {
 		let feed = this.#feeds.get(ref.id);
 		if (!feed || feed.session !== ref.session) {
 			feed?.dispose();
-			feed = new RoomWindowFeed(ref.session, event => this.#onFeedEvent(event));
+			feed = new RoomWindowFeed(ref.session, event => this.#onFeedEvent(ref.session, event));
 			this.#feeds.set(ref.id, feed);
 		}
 		return feed;
@@ -212,9 +213,37 @@ export class RoomController {
 		if (refs.length > 1) for (const ref of refs) this.#feedFor(ref);
 	}
 
-	#onFeedEvent(event: string): void {
+	#onFeedEvent(session: AgentSession, event: string): void {
 		if (this.#stage) this.ctx.ui.requestRender();
+		if (event === "agent_end") this.#onTurnEnd(session);
 		if (event === "agent_start" || event === "agent_end") this.#syncStatus();
+	}
+
+	/**
+	 * A conversation off screen ended its turn: say so on the status line, once,
+	 * with the way to it, and send the completion notification titled with its
+	 * label. The window's state decides what ended: a stopped turn says nothing,
+	 * and an end that a retry or a continuation has already taken up reads as
+	 * working and says nothing either. The room view's windows show the end
+	 * themselves, so the status line stays quiet while it is open.
+	 */
+	#onTurnEnd(session: AgentSession): void {
+		if (session === this.ctx.session) return;
+		const refs = this.#refs();
+		const index = refs.findIndex(ref => ref.session === session);
+		const ref = refs[index];
+		if (!ref) return;
+		const snapshot = this.#feedFor(ref).snapshot();
+		const ended = snapshot.state.kind;
+		if (ended !== "done" && ended !== "failed") return;
+		const label = memberLabel(index + 1, snapshot);
+		if (!this.#stage) {
+			this.ctx.showStatus(
+				`${label} ${ended === "done" ? "finished" : "failed"} — ${this.#viewKey()} opens the room`,
+			);
+		}
+		// A failed turn is not a completion; the notification's own gate says so.
+		notifyTurnComplete(session, label);
 	}
 
 	#onRegistryEvent(event: RegistryEvent): void {

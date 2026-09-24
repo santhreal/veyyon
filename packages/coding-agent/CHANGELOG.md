@@ -12,6 +12,7 @@
 - The status line's `room` segment counts the other conversations in the room, how many are waiting for an answer and how many are working, and with `tui.scrollIsolation` on a click on it opens the room view; a room member running off screen is counted there and not again by the `background` segment.
 - A room window shows the unsent draft its conversation's composer holds at its foot, with its first line and what it has attached.
 - A room window holding a question draws its frame in the ember a waiting prompt takes, quieter than the selected window's, so a glance at the room finds who is waiting.
+- A room conversation that finishes or fails its turn off screen says so once on the status line with the key that opens the room, and with `completion.notify` on a finished one sends a desktop notification titled with its number and name.
 
 ### Fixed
 

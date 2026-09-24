@@ -112,6 +112,17 @@ the one you are reading. The question waits until you go into that conversation.
 - the status line's `room` chip counts it ahead of the working ones: `3 peers · ! 1 needs you · 1 working`;
 - the status line says once which conversation is waiting and which key opens the room.
 
+## When a conversation finishes
+
+A conversation that ends its turn while it is off screen says so once on the status line, with
+the key that opens the room: `2 · parser rewrite finished — alt+w opens the room`, or `failed`
+when the turn ended on an error. A stopped turn says nothing, and while the room view is open the
+window's edge says it instead of the status line.
+
+With `completion.notify` on, a turn that finishes off screen also sends a desktop notification
+titled with the conversation's number and name, the way the conversation on screen sends one
+titled with its name. Neither is sent while the terminal has focus.
+
 ## Drafts, closing and exit
 
 Text and images you leave in the composer stay with their conversation and come back when you
