@@ -499,15 +499,17 @@ const backgroundSegment: StatusLineSegment = {
  * `alt+w` and `→→` open the room view. This chip is the one place the screen
  * shows that the room has other conversations and what state they are in: the
  * ones holding a question are counted in the ember a waiting prompt takes,
- * ahead of the ones that are working, as the room view's title counts them, so
- * a question asked off screen is on the status line the moment it is asked.
- * Hidden at zero. Distinct from `background`: a peer that is idle costs nothing
- * and is still a peer.
+ * ahead of the ones that are working, then the idle ones whose turn ended off
+ * screen and that nobody has gone into since, as the room view's title counts
+ * them. Each peer is counted once, by the first of those it is. A question
+ * asked off screen is on the status line the moment it is asked, and an answer
+ * stays counted until someone goes to read it. Hidden at zero. Distinct from
+ * `background`: a peer that is idle costs nothing and is still a peer.
  */
 const roomSegment: StatusLineSegment = {
 	id: "room",
 	render(ctx) {
-		const { peers, working, waiting } = ctx.roomPeers;
+		const { peers, working, waiting, unread } = ctx.roomPeers;
 		if (peers === 0) {
 			return { content: "", visible: false };
 		}
@@ -518,6 +520,7 @@ const roomSegment: StatusLineSegment = {
 		const dot = theme.fg("dim", theme.sep.dot);
 		if (waiting > 0) content += `${dot}${theme.fg("borderAccent", `${theme.status.warning} ${waiting} needs you`)}`;
 		if (working > 0) content += `${dot}${theme.fg("accent", `${working} working`)}`;
+		if (unread > 0) content += `${dot}${theme.fg("success", `${unread} unread`)}`;
 		return { content, visible: true };
 	},
 };

@@ -11,12 +11,15 @@
  * idle apart from the question when two others are running), the question
  * painted in the quiet accent instead of the ember a waiting prompt takes, a
  * wrong count or a wrong plural, or a preset that drops the chip so an
- * operator who picked it never learns a peer is waiting.
+ * operator who picked it never learns a peer is waiting. An answer that ended
+ * off screen and waits to be read is counted after the work, in the colour a
+ * finished window takes, and never ahead of a question or of work.
  *
- * Every combination of peers, working and waiting in a small grid is rendered
- * through `renderSegment("room")` and compared, ANSI stripped, with the rule;
- * the colour is asserted on the painted bytes under a truecolor theme, and the
- * preset table is swept at run time with opt-outs pinned by exact equality.
+ * Every combination of peers, working, waiting and unread in a small grid is
+ * rendered through `renderSegment("room")` and compared, ANSI stripped, with
+ * the rule; the colour is asserted on the painted bytes under a truecolor
+ * theme, and the preset table is swept at run time with opt-outs pinned by
+ * exact equality.
  *
  * NOT CAUGHT. That the counts the chip receives are right: the room
  * controller suite owns `setRoomPeers`. Width shedding of the footline at a
@@ -90,56 +93,58 @@ describe("the room chip", () => {
 
 	it("is hidden when no conversation is beside this one, whatever the other counts say", () => {
 		for (const summary of [
-			{ peers: 0, working: 0, waiting: 0 },
-			{ peers: 0, working: 2, waiting: 0 },
-			{ peers: 0, working: 0, waiting: 1 },
+			{ peers: 0, working: 0, waiting: 0, unread: 0 },
+			{ peers: 0, working: 2, waiting: 0, unread: 0 },
+			{ peers: 0, working: 0, waiting: 1, unread: 0 },
+			{ peers: 0, working: 0, waiting: 0, unread: 1 },
 		]) {
 			expect(chip(summary)).toEqual({ visible: false, painted: "", text: "" });
 		}
 	});
 
-	it("names the peers alone when none is working or waiting, singular for one", () => {
-		expect(chip({ peers: 1, working: 0, waiting: 0 }).text).toBe(withIcon(theme.icon.agents, "1 peer"));
-		expect(chip({ peers: 3, working: 0, waiting: 0 }).text).toBe(withIcon(theme.icon.agents, "3 peers"));
+	it("names the peers alone when none is working, waiting or unread, singular for one", () => {
+		expect(chip({ peers: 1, working: 0, waiting: 0, unread: 0 }).text).toBe(withIcon(theme.icon.agents, "1 peer"));
+		expect(chip({ peers: 3, working: 0, waiting: 0, unread: 0 }).text).toBe(withIcon(theme.icon.agents, "3 peers"));
 	});
 
 	it("adds how many are working", () => {
-		expect(chip({ peers: 2, working: 1, waiting: 0 }).text).toBe(
+		expect(chip({ peers: 2, working: 1, waiting: 0, unread: 0 }).text).toBe(
 			`${withIcon(theme.icon.agents, "2 peers")}${theme.sep.dot}1 working`,
 		);
 	});
 
 	/**
-	 * A question is rarer and more urgent than work: with both, the chip names
-	 * the question first and the work after it, as the room view's title does.
+	 * A question is rarer and more urgent than work, and work than an answer
+	 * that waits to be read: with all three, the chip names the question first,
+	 * the work after it and the unread answers last, as the room view's title
+	 * does.
 	 */
-	it("names who needs you ahead of who is working, and keeps the work", () => {
-		const text = chip({ peers: 3, working: 2, waiting: 1 }).text;
+	it("names who needs you ahead of who is working, and the unread answers after both", () => {
+		const text = chip({ peers: 5, working: 2, waiting: 1, unread: 2 }).text;
 		expect(text).toBe(
-			`${withIcon(theme.icon.agents, "3 peers")}${theme.sep.dot}${theme.status.warning} 1 needs you${theme.sep.dot}2 working`,
+			`${withIcon(theme.icon.agents, "5 peers")}${theme.sep.dot}${theme.status.warning} 1 needs you${theme.sep.dot}2 working${theme.sep.dot}2 unread`,
 		);
 	});
 
 	/**
-	 * The whole grid against the rule, so no combination the three counts can
+	 * The whole grid against the rule, so no combination the four counts can
 	 * take reads differently from its neighbours by accident.
 	 */
-	it("reads every combination of peers, working and waiting by one rule", () => {
+	it("reads every combination of peers, working, waiting and unread by one rule", () => {
 		for (const peers of [0, 1, 2, 5]) {
 			for (const working of [0, 1, 3]) {
 				for (const waiting of [0, 1, 2]) {
-					const parts = [
-						withIcon(theme.icon.agents, `${peers} ${peers === 1 ? "peer" : "peers"}`),
-						...(waiting > 0 ? [`${theme.status.warning} ${waiting} needs you`] : []),
-						...(working > 0 ? [`${working} working`] : []),
-					];
-					const expected = peers === 0 ? "" : parts.join(theme.sep.dot);
-					expect({ peers, working, waiting, text: chip({ peers, working, waiting }).text }).toEqual({
-						peers,
-						working,
-						waiting,
-						text: expected,
-					});
+					for (const unread of [0, 1, 2]) {
+						const parts = [
+							withIcon(theme.icon.agents, `${peers} ${peers === 1 ? "peer" : "peers"}`),
+							...(waiting > 0 ? [`${theme.status.warning} ${waiting} needs you`] : []),
+							...(working > 0 ? [`${working} working`] : []),
+							...(unread > 0 ? [`${unread} unread`] : []),
+						];
+						const expected = peers === 0 ? "" : parts.join(theme.sep.dot);
+						const summary = { peers, working, waiting, unread };
+						expect({ ...summary, text: chip(summary).text }).toEqual({ ...summary, text: expected });
+					}
 				}
 			}
 		}
@@ -147,21 +152,26 @@ describe("the room chip", () => {
 
 	/**
 	 * The ember a waiting prompt takes is `borderAccent`; `accent` is the
-	 * colour of work. The two escapes differ under this theme, so a chip that
-	 * paints the question in accent fails here rather than passing on bytes
-	 * that happen to agree. The policy is pinned to full colour, so neither the
-	 * presence nor the absence of a colour holds vacuously under `NO_COLOR`.
+	 * colour of work, and `success` the colour of a finished window. The
+	 * escapes differ under this theme, so a chip that paints one count in
+	 * another's colour fails here rather than passing on bytes that happen to
+	 * agree. The policy is pinned to full colour, so neither the presence nor
+	 * the absence of a colour holds vacuously under `NO_COLOR`.
 	 */
 	describe("colours", () => {
 		useFullColor();
-		it("paints the waiting text in borderAccent and the working text in accent", () => {
-			expect(theme.getFgAnsi("borderAccent")).not.toBe(theme.getFgAnsi("accent"));
-			const waiting = chip({ peers: 2, working: 1, waiting: 1 }).painted;
+		it("paints the waiting text in borderAccent, the working text in accent and the unread text in success", () => {
+			const inks = new Set((["borderAccent", "accent", "success"] as const).map(token => theme.getFgAnsi(token)));
+			expect(inks.size).toBe(3);
+			const waiting = chip({ peers: 2, working: 1, waiting: 1, unread: 0 }).painted;
 			expect(waiting).toContain(theme.fg("borderAccent", `${theme.status.warning} 1 needs you`));
-			const working = chip({ peers: 2, working: 1, waiting: 0 }).painted;
+			const working = chip({ peers: 2, working: 1, waiting: 0, unread: 0 }).painted;
 			expect(working).toContain(theme.fg("accent", "1 working"));
 			expect(working).not.toContain(theme.fg("borderAccent", "1 working"));
 			expect(waiting).not.toContain(theme.fg("accent", `${theme.status.warning} 1 needs you`));
+			const unread = chip({ peers: 2, working: 0, waiting: 0, unread: 1 }).painted;
+			expect(unread).toContain(theme.fg("success", "1 unread"));
+			expect(unread).not.toContain(theme.fg("accent", "1 unread"));
 		});
 	});
 });

@@ -84,8 +84,24 @@ export interface RoomStageMember {
 	readonly waitingDialogs: number;
 	/** What the composer holds unsent for this conversation, when anything. */
 	readonly draft: RoomDraft | undefined;
+	/**
+	 * Its turn ended while it was off screen and it has not been on screen
+	 * since: an answer, or a failure, nobody has read.
+	 */
+	readonly unread: boolean;
 	/** The conversation the room was opened from. */
 	readonly origin: boolean;
+}
+
+/**
+ * How an answer nobody has read ended, for an idle window whose turn ended off
+ * screen: `done` or `failed`. Nothing for a window that is working again,
+ * holding a question, or read.
+ */
+export function roomUnread(member: RoomStageMember): "done" | "failed" | undefined {
+	if (!member.unread || member.waitingDialogs > 0) return undefined;
+	const kind = member.snapshot().state.kind;
+	return kind === "done" || kind === "failed" ? kind : undefined;
 }
 
 /**

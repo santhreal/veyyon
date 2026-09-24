@@ -266,12 +266,24 @@ export class StatusLineComponent implements Component {
 		return this.#backgroundSessionCount;
 	}
 
-	/** The room beside the displayed conversation: peers, and how many are working or waiting on the operator. */
+	/** The room beside the displayed conversation: peers, and how many are working, waiting on the operator or unread. */
 	setRoomPeers(summary: RoomPeerSummary): void {
 		const clean = (value: number): number => (Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0);
-		const next = { peers: clean(summary.peers), working: clean(summary.working), waiting: clean(summary.waiting) };
+		const next = {
+			peers: clean(summary.peers),
+			working: clean(summary.working),
+			waiting: clean(summary.waiting),
+			unread: clean(summary.unread),
+		};
 		const current = this.#roomPeers;
-		if (next.peers === current.peers && next.working === current.working && next.waiting === current.waiting) return;
+		if (
+			next.peers === current.peers &&
+			next.working === current.working &&
+			next.waiting === current.waiting &&
+			next.unread === current.unread
+		) {
+			return;
+		}
 		this.#roomPeers = next;
 		this.invalidate();
 	}

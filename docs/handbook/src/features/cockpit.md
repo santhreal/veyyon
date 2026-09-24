@@ -17,7 +17,7 @@ Configure under **Settings → Appearance → Status Line** (`/statusline` jumps
 
 Built-in segment IDs include: `pi` (legacy product mark segment), `profile`, `model`, `account`, `mode`, `path`, `git`, `pr`, `agents`, `background`, `room`, `token_in`, `token_out`, `token_total`, `token_rate`, `cost`, `context_pct`, `context_total`, `time_spent`, `time`, `session`, `hostname`, `cache_read`, `cache_write`, `cache_hit`, `session_name`, `usage`, `collab`.
 
-`background` counts conversations that run with nothing drawing them, such as a turn handed off by `/new`. `room` counts the other conversations in the room of the conversation on screen, then how many are waiting for your answer and how many are working; `alt+w` or `→→` opens the room view, and so does a click on the segment with `tui.scrollIsolation` on ([Rooms](./rooms.md)). A room member running off screen is counted by `room` and not by `background`. Both are hidden at zero and are in every preset.
+`background` counts conversations that run with nothing drawing them, such as a turn handed off by `/new`. `room` counts the other conversations in the room of the conversation on screen, then how many are waiting for your answer, how many are working and how many ended a turn off screen and have not been entered since (`unread`); `alt+w` or `→→` opens the room view, and so does a click on the segment with `tui.scrollIsolation` on ([Rooms](./rooms.md)). A room member running off screen is counted by `room` and not by `background`. Both are hidden at zero and are in every preset.
 
 The `model` segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:
 

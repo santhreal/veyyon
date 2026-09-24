@@ -837,7 +837,7 @@ describe("closing a conversation", () => {
 		h.ctx.editor.setText("draft for c");
 		await h.room.switchTo(a.id);
 		expect(kept()).toContain(c!.session);
-		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 1, waiting: 0 });
+		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 1, waiting: 0, unread: 0 });
 
 		expect(await h.room.close(c!.id)).toBeUndefined();
 
@@ -848,7 +848,7 @@ describe("closing a conversation", () => {
 		expect(steps.filter(step => step.startsWith("release:"))).toEqual([`release:${c!.id}`]);
 		expect(kept()).not.toContain(c!.session);
 		expect(h.room.members().map(member => member.id)).toEqual([a.id, b!.id]);
-		expect(h.statusLine.roomPeers).toEqual({ peers: 1, working: 0, waiting: 0 });
+		expect(h.statusLine.roomPeers).toEqual({ peers: 1, working: 0, waiting: 0, unread: 0 });
 	});
 
 	/**
@@ -885,7 +885,7 @@ describe("a question asked off screen", () => {
 
 		h.hold(b!.session, 1);
 		expect(h.statuses).toEqual([`2 · Refactor parser ${hint}`]);
-		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 1 });
+		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 1, unread: 0 });
 
 		h.hold(b!.session, 1);
 		h.hold(a.session, 1);
@@ -897,10 +897,10 @@ describe("a question asked off screen", () => {
 		// Named by the prompt it is on, since it has no name.
 		expect(h.statuses).toEqual([`2 · Refactor parser ${hint}`, `3 · keep working ${hint}`]);
 		// A peer both working and waiting counts as waiting: the question is the news.
-		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 2 });
+		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 2, unread: 0 });
 
 		h.hold(b!.session, 0);
-		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 1 });
+		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 1, unread: 0 });
 	});
 });
 
@@ -925,9 +925,47 @@ describe("a turn that ends off screen", () => {
 		await until(() => cEnds() === 1, "c's turn to end");
 		// Named by the prompt it is on when it has no name.
 		expect(h.statuses).toEqual([`2 · keep working finished ${OPENS}`, `3 · Refactor parser failed ${OPENS}`]);
-		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 0 });
+		// Both are idle with an answer nobody has read.
+		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 0, unread: 2 });
 		// `completion.notify` is off by default.
 		expect(notify.mock.calls).toEqual([]);
+	});
+
+	/**
+	 * The status line says it once; the chip, the view and `/room list` keep
+	 * saying it until the conversation is entered, so an answer that ended
+	 * while nobody watched is still findable after the line has moved on.
+	 */
+	it("stays unread in the chip, the view and /room list until it is entered", async () => {
+		const {
+			h,
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		const bEnds = countEnds(b!.session);
+		const cEnds = countEnds(c!.session);
+		await b!.startTurn();
+		await c!.startTurn();
+		b!.endTurn("stop");
+		c!.endTurn("error");
+		await until(() => bEnds() === 1 && cEnds() === 1, "both turns to end");
+		const unread = () =>
+			h.room
+				.members()
+				.filter(member => member.unread)
+				.map(member => member.id);
+		expect(unread()).toEqual([b!.id, c!.id]);
+		expect(h.room.describe()).toMatch(/2 · keep working \[done [^\]]*, unread\]/);
+		expect(h.room.describe()).toMatch(/3 · keep working \[failed[^\]]*, unread\]/);
+
+		await h.room.switchTo(b!.id);
+		expect(unread()).toEqual([c!.id]);
+		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 0, unread: 1 });
+		expect(h.room.describe()).not.toMatch(/2 · keep working \[[^\]]*unread\]/);
+
+		// Asked again (an `irc` message from a peer can do this off screen), it counts as working.
+		await c!.startTurn();
+		await until(() => h.statusLine.roomPeers.working === 1, "c's new turn to be counted");
+		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 1, waiting: 0, unread: 0 });
 	});
 
 	it("with completion.notify on, notifies a finished turn titled with the conversation, and not a failed one", async () => {
@@ -966,6 +1004,8 @@ describe("a turn that ends off screen", () => {
 		await until(() => bEnds() === 1, "b's turn to end");
 		expect(h.statuses).toEqual([]);
 		expect(notify.mock.calls).toEqual([]);
+		expect(h.room.members().filter(member => member.unread)).toEqual([]);
+		expect(h.statusLine.roomPeers.unread).toBe(0);
 	});
 
 	it("while the room view is open, is left to the window and still notified", async () => {
@@ -1142,7 +1182,7 @@ describe("a row the registry lists before its session attaches", () => {
 		expect(h.room.members().map(member => member.id)).toEqual([a.id, b!.id]);
 		expect(h.room.describe()).not.toContain("main:pending");
 		h.hold(b!.session, 1);
-		expect(h.statusLine.roomPeers).toEqual({ peers: 1, working: 0, waiting: 1 });
+		expect(h.statusLine.roomPeers).toEqual({ peers: 1, working: 0, waiting: 1, unread: 0 });
 		expect(h.room.resolveArgument("3")).toBeUndefined();
 		await h.room.cycle(1);
 		expect(h.ctx.session).toBe(b!.session);

@@ -124,6 +124,11 @@ export class RoomController {
 	#composerDraft: RoomDraft | undefined;
 	/** Held-dialog counts last seen, so a conversation that starts waiting is announced once. */
 	readonly #lastWaiting = new Map<AgentSession, number>();
+	/**
+	 * Conversations whose turn ended off screen and that have not been on screen
+	 * since: an answer, or a failure, nobody has read. Entering one reads it.
+	 */
+	readonly #unread = new Set<AgentSession>();
 	#stage: { readonly component: RoomStage; readonly overlay: OverlayHandle; readonly originId: string } | undefined;
 	/** Serializes screen changes: a second one while one is in flight is dropped. */
 	#switching = false;
@@ -185,6 +190,7 @@ export class RoomController {
 				waitingDialogs: this.ctx.waitingDialogs(session),
 				draft:
 					this.#drafts.get(session)?.preview ?? (session === this.ctx.session ? this.#composerDraft : undefined),
+				unread: this.#unread.has(session),
 				origin: ref.id === originId,
 			};
 		});
@@ -234,11 +240,12 @@ export class RoomController {
 
 	/**
 	 * A conversation off screen ended its turn: say so on the status line, once,
-	 * with the way to it, and send the completion notification titled with its
-	 * label. The window's state decides what ended: a stopped turn says nothing,
-	 * and an end that a retry or a continuation has already taken up reads as
-	 * working and says nothing either. The room view's windows show the end
-	 * themselves, so the status line stays quiet while it is open.
+	 * with the way to it, count it as unread until it is entered, and send the
+	 * completion notification titled with its label. The window's state decides
+	 * what ended: a stopped turn says nothing, and an end that a retry or a
+	 * continuation has already taken up reads as working and says nothing
+	 * either. The room view's windows show the end themselves, so the status
+	 * line stays quiet while it is open.
 	 */
 	#onTurnEnd(session: AgentSession): void {
 		if (session === this.ctx.session) return;
@@ -249,6 +256,7 @@ export class RoomController {
 		const snapshot = this.#feedFor(ref).snapshot();
 		const ended = snapshot.state.kind;
 		if (ended !== "done" && ended !== "failed") return;
+		this.#unread.add(session);
 		const label = memberLabel(index + 1, snapshot);
 		if (!this.#stage) {
 			this.ctx.showStatus(
@@ -291,12 +299,14 @@ export class RoomController {
 		const peers = this.#refs().filter(ref => ref.id !== this.ownId);
 		let working = 0;
 		let waiting = 0;
+		let unread = 0;
 		for (const ref of peers) {
 			const session = ref.session;
 			if (this.ctx.waitingDialogs(session) > 0) waiting++;
 			else if (session.isStreaming) working++;
+			else if (this.#unread.has(session)) unread++;
 		}
-		this.ctx.statusLine.setRoomPeers({ peers: peers.length, working, waiting });
+		this.ctx.statusLine.setRoomPeers({ peers: peers.length, working, waiting, unread });
 	}
 
 	/**
@@ -547,9 +557,9 @@ export class RoomController {
 	 *
 	 * The composer is one editor every conversation shares, so the draft on it
 	 * belongs to whichever conversation is on screen: it is kept for `previous`,
-	 * and `next` gets its own back, or a clear composer. The room is read again
-	 * from `next`'s seat: the chip counts `next`'s room, and none for a
-	 * conversation outside every room.
+	 * and `next` gets its own back, or a clear composer. `next` is on screen, so
+	 * its answer is read. The room is read again from `next`'s seat: the chip
+	 * counts `next`'s room, and none for a conversation outside every room.
 	 */
 	sessionAttached(previous: AgentSession, next: AgentSession): void {
 		const leaving = this.#takeDraft();
@@ -559,6 +569,7 @@ export class RoomController {
 		this.#putDraft(arriving);
 		this.#drafts.delete(next);
 		this.#composerDraft = arriving?.preview;
+		this.#unread.delete(next);
 		this.#syncFeeds();
 		this.#syncStatus();
 	}
@@ -649,6 +660,7 @@ export class RoomController {
 			if (draft?.text.trim()) await session.sessionManager.saveDraft(draft.text);
 			this.#drafts.delete(session);
 			this.#lastWaiting.delete(session);
+			this.#unread.delete(session);
 			BackgroundSessions.global().release(session);
 			await session.dispose();
 			this.ctx.releaseHostedSession(session);
@@ -688,7 +700,10 @@ export class RoomController {
 			const mark = ref.id === this.ownId ? "*" : " ";
 			const snapshot = this.#feedFor(ref).snapshot();
 			const { word, time } = roomStateWords(snapshot, now);
-			const state = this.ctx.waitingDialogs(ref.session) > 0 ? "needs you" : time ? `${word} ${time}` : word;
+			const waiting = this.ctx.waitingDialogs(ref.session) > 0;
+			const ended = snapshot.state.kind === "done" || snapshot.state.kind === "failed";
+			const said = time ? `${word} ${time}` : word;
+			const state = waiting ? "needs you" : ended && this.#unread.has(ref.session) ? `${said}, unread` : said;
 			return `${mark} ${memberLabel(index + 1, snapshot)} [${state}] ${ref.id}`;
 		});
 		return `Room (${refs.length}):\n${rows.join("\n")}\n/room <n> switches · ${this.#viewKey()} opens the room view`;

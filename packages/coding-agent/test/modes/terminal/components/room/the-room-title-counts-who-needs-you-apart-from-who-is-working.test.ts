@@ -10,10 +10,13 @@
  * digit jump with the digits the room takes, only when there is somewhere to
  * jump; Enter reads `answer` while the window in front holds a question,
  * `open` otherwise, following the selection; Esc names the conversation the
- * view was opened from, wherever the selection has gone; and a window holding
+ * view was opened from, wherever the selection has gone; a window holding
  * a question keeps the ember of a waiting prompt in its frame, a blend toward
  * the ground short of the selection's full ember, so it stands apart from both
- * the selected window and a quiet one.
+ * the selected window and a quiet one; and an idle window whose answer nobody
+ * has read is counted after the work and marks its ordinal with how its turn
+ * ended, while one that is working again or holding a question is counted as
+ * that instead.
  *
  * What it does NOT catch: the colours of the title and key rows, or which hints
  * a narrow terminal drops (the frame sweeps pin that every row fits).
@@ -34,6 +37,18 @@ const WORKING = snapshotOf({ kind: "working", since: START_MS, activity: "writin
 	{ kind: "prompt", text: "write the migration" },
 ]);
 const DONE = snapshotOf({ kind: "done", at: START_MS }, [{ kind: "prompt", text: "list the tables" }]);
+const FAILED = snapshotOf({ kind: "failed", reason: "overloaded" }, [{ kind: "prompt", text: "run the suite" }]);
+
+/** Every read state an unread flag can meet: finished, failed, working again, holding a question. */
+function unreadRoom(): FakeMember[] {
+	return [
+		new FakeMember("m1", DONE, { origin: true }),
+		new FakeMember("m2", DONE, { unread: true }),
+		new FakeMember("m3", FAILED, { unread: true }),
+		new FakeMember("m4", WORKING, { unread: true }),
+		new FakeMember("m5", DONE, { unread: true, waitingDialogs: 1 }),
+	];
+}
 
 function settledRows(members: FakeMember[]): string[] {
 	const driver = new StageDriver({ width: 160, height: 40, members, motion: false });
@@ -58,6 +73,23 @@ describe("the room view's title row", () => {
 		const rows = settledRows([new FakeMember("m1", DONE, { origin: true }), new FakeMember("m2", DONE)]);
 		expect(rows[0]).not.toContain("needs you");
 		expect(rows[0]).not.toContain("working");
+	});
+
+	it("counts an unread answer after the work, and a window working again or holding a question as that", () => {
+		const rows = settledRows(unreadRoom());
+		expect(rows[0]).toMatch(/5 conversations {2}· {2}\S+ 1 needs you {2}· {2}1 working {2}· {2}2 unread/);
+	});
+
+	it("marks the ordinal under an unread window with how its turn ended", () => {
+		const pager = settledRows(unreadRoom())[37]?.trim().split(/\s+/);
+		expect(pager).toEqual([
+			"1",
+			`2${theme.status.success}`,
+			`3${theme.status.error}`,
+			"4",
+			`5${theme.status.warning}`,
+			"+",
+		]);
 	});
 });
 

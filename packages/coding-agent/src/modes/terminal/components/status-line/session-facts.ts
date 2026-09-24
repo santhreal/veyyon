@@ -42,7 +42,7 @@ import type { RoomPeerSummary, SegmentContext, StatusLineSegmentOptions } from "
 export type { ModelFact, SessionFacts, StatusModelFact };
 
 /** A terminal with no room. Defined here rather than beside its type so `types.ts` stays type-only. */
-export const NO_ROOM_PEERS: RoomPeerSummary = { peers: 0, working: 0, waiting: 0 };
+export const NO_ROOM_PEERS: RoomPeerSummary = { peers: 0, working: 0, waiting: 0, unread: 0 };
 
 /** What the row knows before a session exists and before config is read. */
 export const NO_SESSION_FACTS: SessionFacts = {

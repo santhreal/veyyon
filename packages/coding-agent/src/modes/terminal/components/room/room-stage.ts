@@ -30,7 +30,7 @@ import { type Animation, type AnimationCurve, MOTION, type MotionClock, motionCl
 import { parseSgrMouse, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { sliceByColumn, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
-import { theme } from "../../../../theme/theme";
+import { type ThemeColor, theme } from "../../../../theme/theme";
 import { pointerMotionEnabled } from "../chrome/modal-shell";
 import {
 	moveGridSelection,
@@ -40,11 +40,30 @@ import {
 	roomChromeStrength,
 	roomSlotAt,
 } from "./room-geometry";
-import type { RoomDraft, RoomStageMember } from "./room-view-model";
+import { type RoomDraft, type RoomStageMember, roomUnread } from "./room-view-model";
 import { paintRoomNewSlot, paintRoomWindow, RoomInk } from "./room-window";
 
 /** The two arrangements of the room view; `room.view` selects the one it opens in. */
 export type RoomLayout = "side-by-side" | "all-windows";
+
+/** A glyph an ordinal carries under the windows, in the colour of the state it marks. */
+interface RoomMark {
+	readonly glyph: string;
+	readonly token: ThemeColor;
+}
+
+/**
+ * What an ordinal under the windows carries: a question first, then the end
+ * of an answer nobody has read, finished or failed.
+ */
+function pagerMark(member: RoomStageMember | undefined): RoomMark | undefined {
+	if (!member) return undefined;
+	if (member.waitingDialogs > 0) return { glyph: theme.status.warning, token: "borderAccent" };
+	const unread = roomUnread(member);
+	if (unread === "done") return { glyph: theme.status.success, token: "success" };
+	if (unread === "failed") return { glyph: theme.status.error, token: "error" };
+	return undefined;
+}
 
 /** What the stage asks of the terminal that hosts it. */
 export interface RoomStageHost {
@@ -766,17 +785,20 @@ export class RoomStage implements Component, OverlayFocusOwner {
 
 		// Title: what this is, how many, and what needs attention. A conversation
 		// holding a question is counted as needing you and not also as working,
-		// and it comes first, the way the status line's room segment reads.
+		// and it comes first; an idle one whose answer nobody has read comes
+		// last, the way the status line's room segment reads.
 		const waiting = members.filter(member => member.waitingDialogs > 0).length;
 		const working = members.filter(
 			member => member.waitingDialogs === 0 && member.snapshot().state.kind === "working",
 		).length;
+		const unread = members.filter(member => roomUnread(member) !== undefined).length;
 		const parts = [
 			ink.bold(ink.token("text", "Room")),
 			ink.token("muted", `${members.length} conversation${members.length === 1 ? "" : "s"}`),
 		];
 		if (waiting > 0) parts.push(ink.token("borderAccent", `${theme.status.warning} ${waiting} needs you`));
 		if (working > 0) parts.push(ink.token("accent", `${working} working`));
+		if (unread > 0) parts.push(ink.token("success", `${unread} unread`));
 		const left = `  ${parts.join(ink.token("dim", SEPARATOR))}`;
 		const layoutName = this.#layout === "side-by-side" ? "side by side" : "all windows";
 		const right = `${ink.token("dim", layoutName)}  `;
@@ -796,13 +818,14 @@ export class RoomStage implements Component, OverlayFocusOwner {
 			for (let slot = 0; slot < count; slot++) {
 				const label = slot < members.length ? String(slot + 1) : "+";
 				const member = members[slot];
-				const mark = member && member.waitingDialogs > 0 ? theme.status.warning : "";
+				const marked = pagerMark(member);
+				const mark = marked?.glyph ?? "";
 				const plain = `${label}${mark}`;
 				const styled =
 					slot === this.#selected
 						? ink.bold(ink.token("borderAccent", plain))
-						: mark
-							? `${ink.token("muted", label)}${ink.token("borderAccent", mark)}`
+						: marked
+							? `${ink.token("muted", label)}${ink.token(marked.token, marked.glyph)}`
 							: ink.token(slot < members.length ? "muted" : "dim", label);
 				ticks.push(styled);
 				tickWidth += visibleWidth(plain);

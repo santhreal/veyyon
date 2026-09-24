@@ -64,18 +64,20 @@ export class FakeMember implements RoomStageMember {
 	readonly origin: boolean;
 	waitingDialogs: number;
 	draft: RoomDraft | undefined;
+	unread: boolean;
 	#snapshot: RoomWindowSnapshot;
 
 	constructor(
 		id: string,
 		snapshot: RoomWindowSnapshot,
-		options: { origin?: boolean; waitingDialogs?: number; draft?: RoomDraft } = {},
+		options: { origin?: boolean; waitingDialogs?: number; draft?: RoomDraft; unread?: boolean } = {},
 	) {
 		this.id = id;
 		this.#snapshot = snapshot;
 		this.origin = options.origin ?? false;
 		this.waitingDialogs = options.waitingDialogs ?? 0;
 		this.draft = options.draft;
+		this.unread = options.unread ?? false;
 	}
 
 	snapshot(): RoomWindowSnapshot {

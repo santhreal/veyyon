@@ -120,6 +120,16 @@ the key that opens the room: `2 · parser rewrite finished — alt+w opens the r
 when the turn ended on an error. A stopped turn says nothing, and while the room view is open the
 window's edge says it instead of the status line.
 
+Until you go into it, a conversation whose turn ended off screen is unread:
+
+- the status line's `room` chip counts it after the working ones:
+  `2 peers · 1 working · 1 unread`;
+- the room view's title counts it, and the ordinal under its window carries `✓` when it
+  finished or `✗` when it failed;
+- `/room list` marks it: `2 · parser rewrite [done 14:05, unread]`.
+
+A conversation that starts working again, or holds a question, is counted as that instead.
+
 With `completion.notify` on, a finished turn also sends a desktop notification, from the
 conversation on screen and from one off screen alike.
 
@@ -152,10 +162,11 @@ questions held by conversations off screen are dismissed. Draft images are not s
 ## The status line
 
 The `room` segment counts the other conversations in the room of the conversation on screen, then
-how many are waiting for you and how many are working: `2 peers · ! 1 needs you · 1 working`. It
-is hidden while you are alone, and while a conversation outside every room is on screen, such as
-one `/new` opened. It is in every preset. With `tui.scrollIsolation` on, clicking it opens the
-room view; with it off the terminal keeps the mouse and the chip is text.
+how many are waiting for you, how many are working and how many are unread:
+`3 peers · ! 1 needs you · 1 working · 1 unread`. It is hidden while you are alone, and while a
+conversation outside every room is on screen, such as one `/new` opened. It is in every preset.
+With `tui.scrollIsolation` on, clicking it opens the room view; with it off the terminal keeps the
+mouse and the chip is text.
 
 The run clock beside the location keeps each conversation's own time. Going into a conversation
 that is working shows how long its turn has run, including the time it ran off screen, on the run
