@@ -2,7 +2,7 @@ mod request;
 
 use serde::{Deserialize, Serialize};
 
-pub use self::request::{AttachmentSubmission, GoalControl, HostRequest};
+pub use self::request::{AttachmentSubmission, AutoswarmRequest, GoalControl, HostRequest};
 pub use crate::action_kind::{HostActionKind, HostActionKind as Kind};
 use crate::{
 	composer::QueueMode,
@@ -394,4 +394,7 @@ pub enum HostAction {
 	ToggleDictation,
 	/// Close the microphone and discard what it heard.
 	CancelDictation,
+	// Autoswarm family (5 actions), each tagged by `AutoswarmRequest` itself.
+	#[serde(untagged)]
+	Autoswarm(AutoswarmRequest),
 }

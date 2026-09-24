@@ -161,6 +161,29 @@ export function findBestKeptResult(
 	return best;
 }
 
+/**
+ * What a logged run is worth, in one word.
+ *
+ * The first four words state why a run is neither the baseline nor the leader;
+ * a run that was kept and is neither is `kept`. `base` outranks `best` on the
+ * run that is both: early in a segment the baseline is also the leader, and
+ * tagging it `best` puts a winner on a list that has not produced one, while
+ * with no row tagged `best` the absence is the true reading.
+ *
+ * Each word is four characters, which is what lets the terminal's column
+ * survive its shed ladder, and both hosts state the same verdict because both
+ * read this.
+ */
+export function runTag(result: ExperimentResult, isBest: boolean, isBaseline: boolean): string {
+	if (result.flagged) return "flag";
+	if (result.status === "crash") return "crash";
+	if (result.status === "checks_failed") return "fail";
+	if (result.status === "discard") return "drop";
+	if (isBaseline) return "base";
+	if (isBest) return "best";
+	return "kept";
+}
+
 export function findBestKeptMetric(
 	results: ExperimentResult[],
 	segment: number,

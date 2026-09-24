@@ -8,7 +8,7 @@ use veyyon_desktop_model::{
 };
 
 use super::{
-	agent, auth_flow, changed, changes, command, comms, content_matches, context, export,
+	agent, auth_flow, autoswarm, changed, changes, command, comms, content_matches, context, export,
 	file_content, file_tree, foreground, keybinding, mcp, models, node, process, profiles,
 	prompt_history, provider, search, settings, terminal, themes, usage,
 };
@@ -73,6 +73,12 @@ pub fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 			// The second states the wait settled, which is the replacement
 			// that matters: a merge would keep drawing the finished command.
 			foreground("s1", None),
+		],
+		SnapshotSectionKind::AutoswarmConsole => [
+			autoswarm("s1", Some("p50 latency")),
+			// The console closes, which drops the ledger with it: a merge
+			// would keep drawing runs of a console nothing has open.
+			autoswarm("s1", None),
 		],
 		SnapshotSectionKind::Terminals => [
 			terminal("t1", TerminalStatus::Running),

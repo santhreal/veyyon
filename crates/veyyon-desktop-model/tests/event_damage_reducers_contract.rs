@@ -220,6 +220,11 @@ fn test_damage_decision_for_every_snapshot_section_sweep() {
 			"AgentPause" => {
 				assert!(damage.contains(&Damage::FullWindow));
 			},
+			// The console is drawn over the session it belongs to, so opening or
+			// closing it relays the window rather than one band of it.
+			"AutoswarmConsole" => {
+				assert!(damage.contains(&Damage::FullWindow));
+			},
 			// The microphone belongs to the window rather than to one session, so
 			// the chip redraws in the composer of whichever session is active, and
 			// a waiting command's control redraws the composer of the session it

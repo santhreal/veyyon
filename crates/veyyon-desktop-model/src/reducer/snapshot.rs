@@ -316,6 +316,17 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 			}
 			damage.insert(Damage::Composer(session));
 		},
+		SnapshotSection::AutoswarmConsole { session, console } => {
+			// The console is a surface of its own, drawn over the session it
+			// belongs to, so opening or closing it relays the window rather
+			// than one band of it.
+			if let Some(console) = console {
+				store.domains.autoswarm.insert(session, console);
+			} else {
+				store.domains.autoswarm.remove(&session);
+			}
+			damage.insert(Damage::FullWindow);
+		},
 	}
 
 	damage

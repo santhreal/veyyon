@@ -72,6 +72,7 @@ export const ALL_CAPABILITIES = [
 	"Dictation",
 	"PromptHistory",
 	"ForegroundCommand",
+	"Autoswarm",
 ] as const;
 
 export type Capability = (typeof ALL_CAPABILITIES)[number];
@@ -377,6 +378,99 @@ export interface PromptHistoryView {
 export interface ForegroundCommandView {
 	command: string;
 	truncated: boolean;
+}
+
+/** The actions an autoswarm console offers, as `ConsoleAction` names them. */
+export type AutoswarmAction = "start" | "resume" | "pause" | "new" | "stop" | "clear" | "reset";
+
+export const ALL_AUTOSWARM_ACTIONS = ["start", "resume", "pause", "new", "stop", "clear", "reset"] as const;
+
+/** The control a console row draws, from the kind the console's own form declares. */
+export type AutoswarmFieldKind = "Text" | "Stepper" | "Toggle" | "Segmented";
+
+export const ALL_AUTOSWARM_FIELD_KINDS = ["Text", "Stepper", "Toggle", "Segmented"] as const;
+
+/** One preset a segmented row offers. `removable` is false on a built-in one. */
+export interface AutoswarmOptionView {
+	value: string;
+	label: string;
+	selected: boolean;
+	removable: boolean;
+}
+
+/**
+ * One row of the console, projected from the form the console model builds,
+ * so the window draws a value it never computed: a stepper arrives as the
+ * text the model formats it to, beside the number a step sends back. Mirrors
+ * `AutoswarmFieldView` in `crates/veyyon-desktop-model/src/domain/autoswarm.rs`.
+ */
+export interface AutoswarmFieldView {
+	id: string;
+	kind: AutoswarmFieldKind;
+	label: string;
+	hint: string;
+	/** The value as the console states it, for every kind of row. */
+	display: string;
+	/** Null rather than absent on a row that holds no text. */
+	text: string | null;
+	placeholder: string | null;
+	number: number | null;
+	min: number | null;
+	max: number | null;
+	on: boolean | null;
+	options: AutoswarmOptionView[];
+}
+
+/** A line the console states under its rows: the cost, the arms, the harness. */
+export interface AutoswarmNoteView {
+	id: string;
+	text: string;
+}
+
+/** One action the swarm's state allows, with what stops it when something does. */
+export interface AutoswarmActionView {
+	action: AutoswarmAction;
+	label: string;
+	verb: string;
+	primary: boolean;
+	blocker: string | null;
+}
+
+/** One run of the ledger: a logged experiment, or the one measuring now. */
+export interface AutoswarmRunView {
+	label: string;
+	arm: string | null;
+	metric: string;
+	delta: string | null;
+	outcome: string;
+	best: boolean;
+	detail: string[];
+}
+
+/** The swarm recorded on this branch, once one has started. */
+export interface AutoswarmSwarmView {
+	/** Null rather than absent: a swarm carries no name until `init_experiment` records one. */
+	name: string | null;
+	branch: string | null;
+	goal: string;
+	runs: number;
+	best: string | null;
+	/** The command measuring now, or null when nothing is. */
+	running: string | null;
+}
+
+/**
+ * The autoswarm console as one window holds it: the setup rows, what they
+ * cost, the actions the swarm's state allows and the runs it has logged.
+ * Mirrors `AutoswarmConsoleView` in the same module.
+ */
+export interface AutoswarmConsoleView {
+	session: string;
+	swarm: AutoswarmSwarmView | null;
+	fields: AutoswarmFieldView[];
+	notes: AutoswarmNoteView[];
+	actions: AutoswarmActionView[];
+	runs: AutoswarmRunView[];
 }
 
 /**
@@ -833,7 +927,8 @@ export type SnapshotSection =
 	| { Share: ShareView }
 	| { Profiles: ProfilesView }
 	| { Dictation: DictationView }
-	| { ForegroundCommand: { session: string; command: ForegroundCommandView | null } };
+	| { ForegroundCommand: { session: string; command: ForegroundCommandView | null } }
+	| { AutoswarmConsole: { session: string; console: AutoswarmConsoleView | null } };
 
 export const ALL_SNAPSHOT_SECTIONS = [
 	"Sessions",
@@ -874,6 +969,7 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"Goal",
 	"Dictation",
 	"ForegroundCommand",
+	"AutoswarmConsole",
 ] as const;
 
 export type SnapshotSectionTag = (typeof ALL_SNAPSHOT_SECTIONS)[number];
@@ -939,6 +1035,11 @@ export type HostAction =
 	| { CreateProfile: { name: string; copy: string[] } }
 	| { RenameProfile: { name: string; display_name: string } }
 	| { DeleteProfile: { name: string } }
+	| { SetAutoswarmField: { session: string; field: string; text?: string; number?: number; on?: boolean } }
+	| { RunAutoswarmAction: { session: string; action: AutoswarmAction } }
+	| { SaveAutoswarmPreset: { session: string; name: string } }
+	| { DeleteAutoswarmPreset: { session: string } }
+	| { CloseAutoswarmConsole: { session: string } }
 	| string
 	| Record<string, unknown>;
 
@@ -1038,6 +1139,11 @@ export const ALL_HOST_ACTIONS = [
 	"DeleteProfile",
 	"ToggleDictation",
 	"CancelDictation",
+	"SetAutoswarmField",
+	"RunAutoswarmAction",
+	"SaveAutoswarmPreset",
+	"DeleteAutoswarmPreset",
+	"CloseAutoswarmConsole",
 ] as const;
 export type HostActionTag = (typeof ALL_HOST_ACTIONS)[number];
 
@@ -1137,6 +1243,11 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	DeleteProfile: "Profiles",
 	ToggleDictation: "Dictation",
 	CancelDictation: "Dictation",
+	SetAutoswarmField: "Autoswarm",
+	RunAutoswarmAction: "Autoswarm",
+	SaveAutoswarmPreset: "Autoswarm",
+	DeleteAutoswarmPreset: "Autoswarm",
+	CloseAutoswarmConsole: "Autoswarm",
 };
 
 export interface HostRequest {

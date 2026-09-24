@@ -102,11 +102,16 @@ pub enum HostActionKind {
 	DeleteProfile,
 	ToggleDictation,
 	CancelDictation,
+	SetAutoswarmField,
+	RunAutoswarmAction,
+	SaveAutoswarmPreset,
+	DeleteAutoswarmPreset,
+	CloseAutoswarmConsole,
 }
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 95] = [
+	pub const ALL: [Self; 100] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -202,6 +207,11 @@ impl HostActionKind {
 		Self::DeleteProfile,
 		Self::ToggleDictation,
 		Self::CancelDictation,
+		Self::SetAutoswarmField,
+		Self::RunAutoswarmAction,
+		Self::SaveAutoswarmPreset,
+		Self::DeleteAutoswarmPreset,
+		Self::CloseAutoswarmConsole,
 	];
 
 	/// Returns wire name identifier.
@@ -303,6 +313,11 @@ impl HostActionKind {
 			Self::DeleteProfile => "DeleteProfile",
 			Self::ToggleDictation => "ToggleDictation",
 			Self::CancelDictation => "CancelDictation",
+			Self::SetAutoswarmField => "SetAutoswarmField",
+			Self::RunAutoswarmAction => "RunAutoswarmAction",
+			Self::SaveAutoswarmPreset => "SaveAutoswarmPreset",
+			Self::DeleteAutoswarmPreset => "DeleteAutoswarmPreset",
+			Self::CloseAutoswarmConsole => "CloseAutoswarmConsole",
 		}
 	}
 }

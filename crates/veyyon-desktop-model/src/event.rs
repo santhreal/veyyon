@@ -108,6 +108,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Goal",
 	"Dictation",
 	"ForegroundCommand",
+	"AutoswarmConsole",
 ];
 
 /// Domain sections received during initial connection or snapshot
@@ -215,6 +216,14 @@ pub enum SnapshotSection {
 		/// The command being waited on, or None once nothing is.
 		command: Option<crate::domain::ForegroundCommandView>,
 	},
+	/// The autoswarm console a session has open, or its absence once it
+	/// closes.
+	AutoswarmConsole {
+		/// Target session identifier.
+		session: SessionId,
+		/// The console as the host holds it, or None once none is open.
+		console: Option<crate::domain::AutoswarmConsoleView>,
+	},
 }
 
 impl SnapshotSection {
@@ -260,6 +269,7 @@ impl SnapshotSection {
 			Self::Goal { .. } => "Goal",
 			Self::Dictation(..) => "Dictation",
 			Self::ForegroundCommand { .. } => "ForegroundCommand",
+			Self::AutoswarmConsole { .. } => "AutoswarmConsole",
 		}
 	}
 

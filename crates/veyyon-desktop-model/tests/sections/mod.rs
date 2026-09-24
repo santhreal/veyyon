@@ -7,14 +7,15 @@
 mod pair;
 
 use veyyon_desktop_model::{
-	AgentMessageOutcome, AgentMessageView, AgentView, AuthFlowState, AuthFlowView, ChangeScope,
-	ChangeStatus, ChangedFile, ChangesView, CommandSource, CommandView, ContentMatch,
-	ContentMatchesView, ContextBreakdownView, ContextCategory, ExportView, FileContentView,
-	FileKind, FileNode, FileTreeView, ForegroundCommandView, InputModality, KeybindingView,
-	McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView, ProcessView,
-	ProfileCopyItemView, ProfileView, ProfilesView, PromptHistoryEntry, PromptHistoryView,
-	ProviderView, SearchResultsView, SessionId, SettingEntry, SettingKind, SettingsView,
-	SnapshotSection, TerminalStatus, TerminalView, ThemeView, ThemesView, UsageTotals, UsageView,
+	AgentMessageOutcome, AgentMessageView, AgentView, AuthFlowState, AuthFlowView,
+	AutoswarmConsoleView, AutoswarmRunView, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
+	CommandSource, CommandView, ContentMatch, ContentMatchesView, ContextBreakdownView,
+	ContextCategory, ExportView, FileContentView, FileKind, FileNode, FileTreeView,
+	ForegroundCommandView, InputModality, KeybindingView, McpServerStatus, McpServerView, ModelRef,
+	ModelView, ModelsView, ProcessView, ProfileCopyItemView, ProfileView, ProfilesView,
+	PromptHistoryEntry, PromptHistoryView, ProviderView, SearchResultsView, SessionId, SettingEntry,
+	SettingKind, SettingsView, SnapshotSection, TerminalStatus, TerminalView, ThemeView, ThemesView,
+	UsageTotals, UsageView,
 };
 
 pub use self::pair::pair;
@@ -83,6 +84,28 @@ pub fn foreground(session: &str, command: Option<&str>) -> SnapshotSection {
 		session: SessionId::from(session),
 		command: command
 			.map(|line| ForegroundCommandView { command: line.to_owned(), truncated: false }),
+	}
+}
+
+pub fn autoswarm(session: &str, goal: Option<&str>) -> SnapshotSection {
+	SnapshotSection::AutoswarmConsole {
+		session: SessionId::from(session),
+		console: goal.map(|goal| AutoswarmConsoleView {
+			session: session.to_owned(),
+			swarm:   None,
+			fields:  Vec::new(),
+			notes:   Vec::new(),
+			actions: Vec::new(),
+			runs:    vec![AutoswarmRunView {
+				label:   "run 1".to_owned(),
+				arm:     None,
+				metric:  goal.to_owned(),
+				delta:   None,
+				outcome: "kept".to_owned(),
+				best:    true,
+				detail:  Vec::new(),
+			}],
+		}),
 	}
 }
 

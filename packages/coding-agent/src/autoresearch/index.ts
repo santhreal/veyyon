@@ -9,7 +9,7 @@ import { autoresearchPrompts } from "../prompts/autoresearch/rows";
 import * as git from "../utils/git";
 import { closeModels, leaveArm } from "./arm-model";
 import { type ConsoleAction, type ConsoleHost, LoopConsoleModel, type LoopSetup } from "./console";
-import { createDashboardController } from "./dashboard";
+import { autoresearchUiFor, createDashboardController } from "./dashboard";
 import { ensureAutoresearchBranch, parseWorkDirDirtyPaths } from "./git";
 import { formatNum, gitStatusPorcelain, gitWorkDirPrefix } from "./helpers";
 import { deletePreset, type LoopPreset, loadPresets, savePreset } from "./presets";
@@ -357,8 +357,9 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			},
 		};
 		const model = new LoopConsoleModel(initial, host);
-		if (!ctx.hasUI) {
-			// No terminal to draw the console in (`-p`, a pipe).
+		if (!autoresearchUiFor(ctx)) {
+			// Nothing draws the console here: a piped run, `-p`, or a host with
+			// no window open for this session.
 			ctx.ui.notify(
 				"The autoswarm console needs an interactive terminal. `/autoresearch <goal>` starts the serial loop without one.",
 				"warning",

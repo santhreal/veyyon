@@ -1255,6 +1255,7 @@ export class ExtensionUiController {
 }
 /** The terminal host's autoresearch surfaces: the run screen and the launcher, each a `custom` overlay. */
 export const terminalAutoresearchUi: AutoresearchUiDelegate = {
+	claims: ctx => ctx.hasUI && ctx.ui.terminal !== undefined,
 	async showScreen(ctx, runtime, model, options) {
 		const terminal = ctx.ui.terminal;
 		if (!terminal) {

@@ -49,6 +49,7 @@ export const SUPPORTED_CAPABILITIES: Partial<Record<Capability, true>> = {
 	Dictation: true,
 	PromptHistory: true,
 	ForegroundCommand: true,
+	Autoswarm: true,
 };
 
 /** Specific, truthful reasons why each unsupported capability is unavailable. */

@@ -5,6 +5,7 @@ pub use history::*;
 
 pub mod agents;
 pub mod answered;
+pub mod autoswarm;
 pub mod changes;
 pub mod commands;
 pub mod diagnostics;
@@ -29,6 +30,7 @@ use std::collections::HashMap;
 
 pub use agents::*;
 pub use answered::*;
+pub use autoswarm::*;
 pub use changes::*;
 pub use commands::*;
 pub use diagnostics::*;
@@ -121,6 +123,10 @@ pub struct Domains {
 	/// The command each session is waiting on in the foreground, keyed by
 	/// session. A session waiting on none holds no entry.
 	pub foreground:      HashMap<SessionId, ForegroundCommandView>,
+	/// The autoswarm console each session has open, keyed by session. A
+	/// session with none open holds no entry, which is what lets the surface
+	/// be drawn from the entry's presence.
+	pub autoswarm:       HashMap<SessionId, AutoswarmConsoleView>,
 }
 
 impl Domains {

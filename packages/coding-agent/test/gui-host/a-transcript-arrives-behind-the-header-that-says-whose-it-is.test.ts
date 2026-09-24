@@ -275,6 +275,14 @@ describe("a transcript arrives behind the header that says whose it is", () => {
 			CancelDictation: "CancelDictation",
 			// An empty query, which is the listing the recall mode opens on.
 			SearchPromptHistory: { SearchPromptHistory: { query: "" } },
+			// Refused rather than run: this window has no console open, which is
+			// what every one of these states back. Opening one needs a turn, and
+			// the sweep drives actions against a host that is not running one.
+			SetAutoswarmField: { SetAutoswarmField: { session: alpha, field: "goal", text: "" } },
+			RunAutoswarmAction: { RunAutoswarmAction: { session: alpha, action: "start" } },
+			SaveAutoswarmPreset: { SaveAutoswarmPreset: { session: alpha, name: "" } },
+			DeleteAutoswarmPreset: { DeleteAutoswarmPreset: { session: alpha } },
+			CloseAutoswarmConsole: { CloseAutoswarmConsole: { session: alpha } },
 		};
 
 		const swept = ALL_HOST_ACTIONS.filter(tag => tag !== ENDS_THE_CONNECTION && tag !== REATTACHES);

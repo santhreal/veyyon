@@ -1,6 +1,9 @@
 //! Mapping from each `HostAction` variant to its discriminant.
 
-use crate::{action::HostAction, action_kind::HostActionKind};
+use crate::{
+	action::{AutoswarmRequest, HostAction},
+	action_kind::HostActionKind,
+};
 
 impl HostAction {
 	/// Resolves the discriminant kind for this action.
@@ -102,6 +105,21 @@ impl HostAction {
 			Self::DeleteProfile { .. } => HostActionKind::DeleteProfile,
 			Self::ToggleDictation => HostActionKind::ToggleDictation,
 			Self::CancelDictation => HostActionKind::CancelDictation,
+			Self::Autoswarm(request) => request.kind(),
+		}
+	}
+}
+
+impl AutoswarmRequest {
+	/// Resolves the discriminant kind for this console request.
+	#[must_use]
+	pub const fn kind(&self) -> HostActionKind {
+		match self {
+			Self::SetAutoswarmField { .. } => HostActionKind::SetAutoswarmField,
+			Self::RunAutoswarmAction { .. } => HostActionKind::RunAutoswarmAction,
+			Self::SaveAutoswarmPreset { .. } => HostActionKind::SaveAutoswarmPreset,
+			Self::DeleteAutoswarmPreset { .. } => HostActionKind::DeleteAutoswarmPreset,
+			Self::CloseAutoswarmConsole { .. } => HostActionKind::CloseAutoswarmConsole,
 		}
 	}
 }

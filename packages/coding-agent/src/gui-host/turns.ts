@@ -19,6 +19,7 @@ import type { AgentSessionEvent } from "../session/agent-session-types";
 import { USER_INTERRUPT_LABEL } from "../session/messages";
 import { MAX_IMAGE_INPUT_BYTES } from "../utils/image-loading";
 import { base64DecodedBytes, MAX_PROMPT_ATTACHMENT_BYTES, MAX_VIDEO_INPUT_BYTES } from "../utils/video-loading";
+import { AutoswarmConsole, attachAutoswarmConsole } from "./autoswarm-bridge";
 import type { DesktopCollabBridge } from "./collab-bridge";
 import type { DesktopCollabGuestBridge } from "./collab-guest-bridge";
 import { publishCommandsView, watchCommandMetadata } from "./commands-view";
@@ -121,6 +122,11 @@ export interface ClientSessionState {
 	collabGuestLink?: CollabGuestSession;
 	/** Speech this window is dictating, made on the first toggle. */
 	dictation?: DesktopDictationBridge;
+	/**
+	 * The autoswarm console this window has open, made with the session so a
+	 * `/autoswarm` run in it has a surface to draw on.
+	 */
+	autoswarm?: AutoswarmConsole;
 	/** `Steer` or `Queue`: how a prompt sent while a turn runs is delivered. */
 	queueMode?: "Steer" | "Queue";
 	selectedChangeScope?: string;
@@ -235,6 +241,12 @@ async function initializeAgentSession(
 		const ledger = new InteractionLedger(socket, () => sm.getSessionId());
 		state.interactions = ledger;
 		const uiContext = new GuiHostUIContext(ledger);
+		// The console is attached before extension startup for the same reason
+		// the ledger is: an extension that opens one while initialization runs
+		// finds the surface already there.
+		const autoswarm = new AutoswarmConsole(socket, () => sm.getSessionId());
+		attachAutoswarmConsole(uiContext, autoswarm);
+		state.autoswarm = autoswarm;
 		setToolUIContext(uiContext, true);
 		await initializeExtensions(session, {
 			uiContext,
@@ -682,6 +694,10 @@ export async function disposeTurnSession(state: ClientSessionState): Promise<voi
 	// record the result, rather than hanging on a client that is gone.
 	state.interactions?.cancelAll();
 	state.interactions = undefined;
+	// A console open on the window is closed for the same reason: the command
+	// that opened it waits on the close, and nothing is left to answer it.
+	state.autoswarm?.close();
+	state.autoswarm = undefined;
 	state.presentationLedger?.clear();
 	if (state.agentSession) {
 		const session = state.agentSession;

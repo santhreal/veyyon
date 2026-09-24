@@ -21,6 +21,13 @@ import { currentResults, effectiveBreadth, findBaselineMetric, findBestKeptResul
 import type { AutoresearchRuntime, DashboardController } from "./types";
 
 export interface AutoresearchUiDelegate {
+	/**
+	 * True when this delegate draws the console for `ctx`. A host serving
+	 * several sessions from one process claims only the sessions it holds a
+	 * window for; a delegate that omits this is taken to draw wherever the
+	 * context reports an interactive terminal.
+	 */
+	claims?(ctx: ExtensionContext): boolean;
 	showScreen(
 		ctx: ExtensionContext,
 		runtime: AutoresearchRuntime,
@@ -33,10 +40,38 @@ export interface AutoresearchUiDelegate {
 	showLauncher(ctx: ExtensionContext, model: LoopConsoleModel): Promise<void>;
 }
 
-let activeUiDelegate: AutoresearchUiDelegate | null = null;
+/**
+ * Every host that can draw the console, in registration order. A process runs
+ * one host, but the modules that register are reached by imports rather than
+ * by the mode in force, so the surface is chosen per context rather than by
+ * whichever module loaded last.
+ */
+const uiDelegates: AutoresearchUiDelegate[] = [];
 
 export function registerAutoresearchUi(delegate: AutoresearchUiDelegate): void {
-	activeUiDelegate = delegate;
+	if (!uiDelegates.includes(delegate)) uiDelegates.push(delegate);
+}
+
+/** True when `delegate` draws for `ctx`. */
+function claims(delegate: AutoresearchUiDelegate, ctx: ExtensionContext): boolean {
+	return delegate.claims ? delegate.claims(ctx) : ctx.hasUI;
+}
+
+/**
+ * The delegate that draws the console for `ctx`, or null when nothing does:
+ * a piped run, or a host whose window has gone. The last registered claimant
+ * wins, so a host installed over another draws what it opened.
+ */
+export function autoresearchUiFor(
+	ctx: ExtensionContext,
+	delegate?: AutoresearchUiDelegate,
+): AutoresearchUiDelegate | null {
+	if (delegate) return claims(delegate, ctx) ? delegate : null;
+	for (let index = uiDelegates.length - 1; index >= 0; index -= 1) {
+		const candidate = uiDelegates[index];
+		if (candidate && claims(candidate, ctx)) return candidate;
+	}
+	return null;
 }
 
 export function createDashboardController(delegate?: AutoresearchUiDelegate): DashboardController {
@@ -122,10 +157,9 @@ export function createDashboardController(delegate?: AutoresearchUiDelegate): Da
 			requestRender();
 		},
 		async showScreen(ctx, runtime, model: LoopConsoleModel | null): Promise<void> {
-			if (!ctx.hasUI) return;
-			const ui = delegate ?? activeUiDelegate;
+			const ui = autoresearchUiFor(ctx, delegate);
 			if (!ui) {
-				ctx.ui.notify("Autoresearch screen requires an interactive terminal", "warning");
+				if (ctx.hasUI) ctx.ui.notify("Autoresearch screen requires an interactive terminal", "warning");
 				return;
 			}
 			try {
@@ -143,10 +177,9 @@ export function createDashboardController(delegate?: AutoresearchUiDelegate): Da
 			}
 		},
 		async showLauncher(ctx, model: LoopConsoleModel): Promise<void> {
-			if (!ctx.hasUI) return;
-			const ui = delegate ?? activeUiDelegate;
+			const ui = autoresearchUiFor(ctx, delegate);
 			if (!ui) {
-				ctx.ui.notify("Autoswarm launcher requires an interactive terminal", "warning");
+				if (ctx.hasUI) ctx.ui.notify("Autoswarm launcher requires an interactive terminal", "warning");
 				return;
 			}
 			await ui.showLauncher(ctx, model);

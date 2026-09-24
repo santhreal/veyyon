@@ -27,7 +27,7 @@ pub mod text;
 pub mod tool_view;
 pub mod transcript;
 
-pub use action::{AttachmentSubmission, GoalControl, HostAction, HostRequest};
+pub use action::{AttachmentSubmission, AutoswarmRequest, GoalControl, HostAction, HostRequest};
 pub use action_kind::HostActionKind;
 pub use badge::session_badge;
 pub use capabilities::{Capability, CapabilityMap, CapabilityStatus};
@@ -40,18 +40,20 @@ pub use connection::{
 pub use damage::{Damage, DamageSet};
 pub use domain::{
 	AgentMessageOutcome, AgentMessageView, AgentPauseView, AgentState, AgentView, Answered,
-	AuthFlowState, AuthFlowView, ChangeScope, ChangeStatus, ChangedFile, ChangesView, CommandSource,
-	CommandSubcommandView, CommandView, ContentMatch, ContentMatchesView, ContextBreakdownView,
-	ContextCategory, DiagnosticSource, DictationState, DictationView, Domains, ExportView,
-	FileContentView, FileKind, FileNode, FileTreeView, ForegroundCommandView, GoalStatus, GoalView,
-	InputModality, KeybindingView, McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView,
-	PROCESS_LOG_CAPACITY_LINES, ProcessLogView, ProcessLogsChunk, ProcessView, ProfileCopyItemView,
-	ProfileView, ProfilesView, PromptHistoryEntry, PromptHistoryView, ProviderView, QueuedPrompts,
-	QueuedPromptsView, SearchResultsView, SeqGap, SessionSearchView, SessionTranscriptView,
-	SettingEntry, SettingKind, SettingOption, SettingsView, ShareGuestView, ShareParticipantView,
-	SharePhase, ShareRole, ShareView, TERMINAL_SCROLLBACK_CAPACITY_BYTES, TerminalOutputChunk,
-	TerminalScrollback, TerminalStatus, TerminalView, ThemeView, ThemesView, UsageView,
-	diagnostic_sources,
+	AuthFlowState, AuthFlowView, AutoswarmAction, AutoswarmActionView, AutoswarmConsoleView,
+	AutoswarmFieldKind, AutoswarmFieldView, AutoswarmNoteView, AutoswarmOptionView,
+	AutoswarmRunView, AutoswarmSwarmView, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
+	CommandSource, CommandSubcommandView, CommandView, ContentMatch, ContentMatchesView,
+	ContextBreakdownView, ContextCategory, DiagnosticSource, DictationState, DictationView, Domains,
+	ExportView, FileContentView, FileKind, FileNode, FileTreeView, ForegroundCommandView,
+	GoalStatus, GoalView, InputModality, KeybindingView, McpServerStatus, McpServerView, ModelRef,
+	ModelView, ModelsView, PROCESS_LOG_CAPACITY_LINES, ProcessLogView, ProcessLogsChunk,
+	ProcessView, ProfileCopyItemView, ProfileView, ProfilesView, PromptHistoryEntry,
+	PromptHistoryView, ProviderView, QueuedPrompts, QueuedPromptsView, SearchResultsView, SeqGap,
+	SessionSearchView, SessionTranscriptView, SettingEntry, SettingKind, SettingOption,
+	SettingsView, ShareGuestView, ShareParticipantView, SharePhase, ShareRole, ShareView,
+	TERMINAL_SCROLLBACK_CAPACITY_BYTES, TerminalOutputChunk, TerminalScrollback, TerminalStatus,
+	TerminalView, ThemeView, ThemesView, UsageView, diagnostic_sources,
 };
 pub use error::{BackendError, ErrorScope, fallback_surface, is_scope_retryable, route_error};
 pub use event::{

@@ -1,4 +1,5 @@
 import { agentsActionHandlers } from "./agents";
+import { autoswarmActionHandlers } from "./autoswarm";
 import { changesActionHandlers } from "./changes";
 import { commandsActionHandlers } from "./commands";
 import { connectionActionHandlers } from "./connection";
@@ -23,6 +24,7 @@ import { turnActionHandlers } from "./turn";
 import type { ActionHandlersMap } from "./types";
 
 export * from "./agents";
+export * from "./autoswarm";
 export * from "./changes";
 export * from "./commands";
 export * from "./connection";
@@ -69,4 +71,5 @@ export const allActionHandlers: ActionHandlersMap = {
 	...planReviewActionHandlers,
 	...diagnosticsActionHandlers,
 	...dictationActionHandlers,
+	...autoswarmActionHandlers,
 };

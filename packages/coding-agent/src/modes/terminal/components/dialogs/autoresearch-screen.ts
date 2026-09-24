@@ -41,6 +41,7 @@ import {
 	findBestKeptResult,
 	measuredMetric,
 	metricLabel,
+	runTag,
 } from "../../../../autoresearch/state";
 import type { AutoresearchRuntime, ExperimentResult, ExperimentState } from "../../../../autoresearch/types";
 import { getSelectListTheme, type ThemeColor, theme } from "../../../../theme/theme";
@@ -150,32 +151,6 @@ export function screenTitle(runtime: AutoresearchRuntime, budget = Number.POSITI
 	const head = name ? `${label} · ${name}` : label;
 	if (visibleWidth(head) + mode.length <= budget) return head + mode;
 	return `${truncateToWidth(head, Math.max(0, budget - mode.length))}${mode}`;
-}
-
-/**
- * The tag a run row carries: what that run is worth to the reader.
- *
- * `best` and `base` are the two rows the whole segment is read against, and
- * the other four state why a run is in neither of those roles. A run that was
- * kept and is neither is `kept`.
- *
- * Four characters each but one, which is what lets the column survive the shed
- * ladder on an ordinary terminal: `dropped` and `flagged` cost the whole column
- * two more, and a verdict nobody sees is worth less than an abbreviated one.
- *
- * `base` outranks `best` on the run that is both. Early in a segment the
- * baseline is also the leader, and tagging it `best` puts a winner on a list
- * that has not produced one; with no row tagged `best`, the absence is the
- * reading, and it is the true one.
- */
-function runTag(result: ExperimentResult, isBest: boolean, isBaseline: boolean): string {
-	if (result.flagged) return "flag";
-	if (result.status === "crash") return "crash";
-	if (result.status === "checks_failed") return "fail";
-	if (result.status === "discard") return "drop";
-	if (isBaseline) return "base";
-	if (isBest) return "best";
-	return "kept";
 }
 
 /** A run row before it is measured against its neighbours and padded to them. */

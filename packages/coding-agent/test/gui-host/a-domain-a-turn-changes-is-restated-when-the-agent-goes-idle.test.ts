@@ -134,6 +134,10 @@ const AT_IDLE: Record<SnapshotSectionTag, "restated-at-idle" | "listed-at-idle" 
 	// inside the turn the command runs in: by the time the turn ends the wait
 	// has settled and the section that cleared it has already been sent.
 	ForegroundCommand: "during-turn",
+	// The console is drawn while the command that opened it runs, and every
+	// edit to it is answered with the console the model produced. A turn that
+	// ends has closed it, so the idle re-statement owes it nothing.
+	AutoswarmConsole: "during-turn",
 };
 
 /** The section the host publishes last, which is what closes a re-statement. */

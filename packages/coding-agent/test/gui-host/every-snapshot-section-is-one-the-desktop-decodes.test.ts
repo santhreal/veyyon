@@ -488,6 +488,36 @@ const CORPUS = [
 			command: { command: "bun test packages/coding-agent", truncated: false },
 		},
 	},
+	{
+		AutoswarmConsole: {
+			session: "sess-1",
+			console: {
+				session: "sess-1",
+				swarm: {
+					name: "latency",
+					branch: "swarm/latency",
+					goal: "lower p50",
+					runs: 2,
+					best: "41 ms",
+					running: null,
+				},
+				fields: [],
+				notes: [],
+				actions: [],
+				runs: [
+					{
+						label: "run 2",
+						arm: null,
+						metric: "41 ms",
+						delta: "-3 ms",
+						outcome: "kept",
+						best: true,
+						detail: [],
+					},
+				],
+			},
+		},
+	},
 ] satisfies SnapshotSection[];
 
 describe("every snapshot section is one the desktop decodes", () => {

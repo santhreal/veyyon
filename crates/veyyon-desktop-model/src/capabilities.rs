@@ -43,11 +43,12 @@ pub enum Capability {
 	Dictation            = 33,
 	PromptHistory        = 34,
 	ForegroundCommand    = 35,
+	Autoswarm            = 36,
 }
 
 impl Capability {
 	/// Complete list of all capability variants for runtime sweeps.
-	pub const ALL: [Self; 36] = [
+	pub const ALL: [Self; 37] = [
 		Self::Sessions,
 		Self::SessionDeletion,
 		Self::SessionTreeNavigation,
@@ -84,6 +85,7 @@ impl Capability {
 		Self::Dictation,
 		Self::PromptHistory,
 		Self::ForegroundCommand,
+		Self::Autoswarm,
 	];
 
 	/// Returns the stable string identifier matching the wire protocol.
@@ -126,6 +128,7 @@ impl Capability {
 			Self::Dictation => "Dictation",
 			Self::PromptHistory => "PromptHistory",
 			Self::ForegroundCommand => "ForegroundCommand",
+			Self::Autoswarm => "Autoswarm",
 		}
 	}
 }

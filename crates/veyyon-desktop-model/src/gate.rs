@@ -125,6 +125,15 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		| HostActionKind::RenameProfile
 		| HostActionKind::DeleteProfile => Capability::Profiles,
 		HostActionKind::ToggleDictation | HostActionKind::CancelDictation => Capability::Dictation,
+		// The console is one surface: a host that draws none of it withholds
+		// the capability, and every request that reaches into it is held back
+		// together rather than a row being settable on a console that cannot
+		// be run.
+		HostActionKind::SetAutoswarmField
+		| HostActionKind::RunAutoswarmAction
+		| HostActionKind::SaveAutoswarmPreset
+		| HostActionKind::DeleteAutoswarmPreset
+		| HostActionKind::CloseAutoswarmConsole => Capability::Autoswarm,
 	}
 }
 
