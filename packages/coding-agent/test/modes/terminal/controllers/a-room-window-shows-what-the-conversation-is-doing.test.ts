@@ -685,7 +685,7 @@ describe("which rebuild is the same snapshot", () => {
 					}
 				}
 				// A field one side has and the other lacks, as an optional field added later would be.
-				const extended = { ...block, added: "set" } as RoomFeedBlock;
+				const extended: RoomFeedBlock = Object.assign({ added: "set" }, block);
 				const withAdded = snapshot(
 					state,
 					BLOCKS.map((original, i) => (i === index ? extended : original)),
