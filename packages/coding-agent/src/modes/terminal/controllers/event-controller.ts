@@ -92,6 +92,7 @@ export type EventControllerContext = Pick<
 	| "renderInitialMessages"
 	| "replaceOptimisticUserMessage"
 	| "retryLoader"
+	| "room"
 	| "session"
 	| "sessionManager"
 	| "setTodos"
@@ -1868,27 +1869,28 @@ export class EventController {
 	}
 
 	sendCompletionNotification(): void {
-		notifyTurnComplete(this.ctx.viewSession, this.ctx.sessionManager.getSessionName());
+		const session = this.ctx.viewSession;
+		notifyTurnComplete(session, () => this.ctx.room.labelOf(session) ?? this.ctx.sessionManager.getSessionName());
 	}
 }
 
 /**
- * Send the desktop notification that `session` finished its turn, titled
- * `title` (the session's name for the conversation on screen, the room's label
- * for one off screen). Gated by `completion.notify`; the terminal withholds it
- * while it has focus.
+ * Send the desktop notification that `session` finished its turn, titled by
+ * `title` (in a room, the room's name for the conversation; else the session's
+ * name), which is read only once the notification is going out. Gated by
+ * `completion.notify`; the terminal withholds it while it has focus.
  *
  * Skipped when the turn was aborted (e.g. ask cancelled with Ctrl+C) or
  * errored — those are not "Task complete" events. Mirrors the gate already used
  * by #currentContextTokens, #handleMessageEnd, and the retry / TTSR /
  * compaction skip paths across agent-session.ts.
  */
-export function notifyTurnComplete(session: AgentSession, title: string | undefined): void {
+export function notifyTurnComplete(session: AgentSession, title: () => string | undefined): void {
 	if (settings.get("completion.notify") === "off") return;
 	const last = session.getLastAssistantMessage?.();
 	if (last?.stopReason === "aborted" || last?.stopReason === "error") return;
 	TERMINAL.sendNotification({
-		title: title || "Veyyon",
+		title: title() || "Veyyon",
 		body: "Complete",
 		type: "completion",
 		actions: "focus",

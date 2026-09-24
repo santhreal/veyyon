@@ -111,8 +111,7 @@ the one you are reading. The question waits until you go into that conversation.
   `enter answer` while its window is selected;
 - the status line's `room` chip counts it ahead of the working ones: `3 peers · ! 1 needs you · 1 working`;
 - the status line says once which conversation is waiting and which key opens the room;
-- a question from the `ask` tool sends its desktop notification (`ask.notify`) titled with the
-  conversation's number and name, where the conversation on screen sends one titled `Veyyon`.
+- a question from the `ask` tool sends its desktop notification (`ask.notify`) at once.
 
 ## When a conversation finishes
 
@@ -121,9 +120,15 @@ the key that opens the room: `2 · parser rewrite finished — alt+w opens the r
 when the turn ended on an error. A stopped turn says nothing, and while the room view is open the
 window's edge says it instead of the status line.
 
-With `completion.notify` on, a turn that finishes off screen also sends a desktop notification
-titled with the conversation's number and name, the way the conversation on screen sends one
-titled with its name. Neither is sent while the terminal has focus.
+With `completion.notify` on, a finished turn also sends a desktop notification, from the
+conversation on screen and from one off screen alike.
+
+## Desktop notifications
+
+In a room, every desktop notification is titled with its conversation's number and name
+(`2 · parser rewrite`, or `conversation 2` while it has none), whichever conversation is on
+screen, so the notification says which one to go to. Alone, a notification keeps its own title.
+None is sent while the terminal has focus.
 
 ## Drafts, closing and exit
 

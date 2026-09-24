@@ -256,7 +256,7 @@ export class RoomController {
 			);
 		}
 		// A failed turn is not a completion; the notification's own gate says so.
-		notifyTurnComplete(session, label);
+		notifyTurnComplete(session, () => label);
 	}
 
 	#onRegistryEvent(event: RegistryEvent): void {

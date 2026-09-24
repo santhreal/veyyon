@@ -29,8 +29,8 @@
  * leaves the editor when the conversation is released. Binding a conversation
  * off screen does not wait on its `session_start`, whose handler may ask a
  * question that cannot be shown until the conversation exists and is entered.
- * A tool notification from a conversation off screen is titled with the
- * room's name for it; one from the conversation on screen keeps its own.
+ * A tool notification from a conversation in a room is titled with the room's
+ * name for it, on screen or off; one from a conversation alone keeps its own.
  *
  * The controller is real. What stands in for the terminal is the controller's
  * own presentation methods, spied so a presented dialog resolves at once, and
@@ -120,6 +120,8 @@ interface Harness {
 	suggestions(): Promise<string[]>;
 	/** A tool notification sent through the notifier `session` was bound with. */
 	notifyFrom(session: AgentSession, notification: HostNotification): void;
+	/** The room's name for each conversation, as the room view numbers them; empty outside a room. */
+	labels: Map<AgentSession, string>;
 }
 
 async function harness(): Promise<Harness> {
@@ -135,6 +137,10 @@ async function harness(): Promise<Harness> {
 	let bUi: ExtensionUIContext | undefined;
 	const factories: AutocompleteProviderFactory[] = [];
 	const notifiers = new Map<AgentSession, HostNotifier>();
+	const labels = new Map<AgentSession, string>([
+		[a, "1 · launch"],
+		[b, "2 · parser rewrite"],
+	]);
 	const ctx = {
 		editor,
 		session: a,
@@ -152,11 +158,7 @@ async function harness(): Promise<Harness> {
 		setToolNotifier: (notify: HostNotifier) => {
 			notifiers.set(a, notify);
 		},
-		// The room's name for each conversation, as the room view numbers them.
-		room: {
-			labelOf: (session: AgentSession) =>
-				session === a ? "1 · launch" : session === b ? "2 · parser rewrite" : undefined,
-		},
+		room: { labelOf: (session: AgentSession) => labels.get(session) },
 		setWorkingMessage: (message?: string) => {
 			log.push(`setWorkingMessage:${message}`);
 		},
@@ -231,6 +233,7 @@ async function harness(): Promise<Harness> {
 			for (const factory of factories) provider = factory(provider);
 			return (await provider.getSuggestions([""], 0, 0))?.items.map(item => item.value) ?? [];
 		},
+		labels,
 		notifyFrom: (session, notification) => {
 			const notify = notifiers.get(session);
 			if (!notify) throw new Error("That conversation was bound with no notifier.");
@@ -791,23 +794,23 @@ describe("binding a conversation", () => {
 describe("a tool notification", () => {
 	/**
 	 * An `ask` from a conversation off screen sends its desktop notification at
-	 * once while its question waits; titled `Veyyon`, it would not say which
-	 * conversation to go to.
+	 * once while its question waits, and a toast reaches someone looking at
+	 * another window whichever conversation is on screen; titled `Veyyon`, it
+	 * would not say which conversation to go to.
 	 */
-	it("from a conversation off screen is titled with the room's name for it, and from the one on screen is not", async () => {
+	it("in a room is titled with the room's name for its conversation, on screen or off, and alone keeps its own", async () => {
 		const sent = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
 		const h = await harness();
 		const ask = { title: "Veyyon", body: "Waiting for input", type: "ask", actions: "focus" } as const;
 		h.notifyFrom(h.b, ask);
 		h.notifyFrom(h.a, ask);
-		h.bring(h.b);
-		h.notifyFrom(h.b, ask);
+		// The room closes around the launch conversation: it has no room name.
+		h.labels.clear();
 		h.notifyFrom(h.a, ask);
 		expect(sent.mock.calls).toEqual([
 			[{ ...ask, title: "2 · parser rewrite" }],
-			[ask],
-			[ask],
 			[{ ...ask, title: "1 · launch" }],
+			[ask],
 		]);
 	});
 });
