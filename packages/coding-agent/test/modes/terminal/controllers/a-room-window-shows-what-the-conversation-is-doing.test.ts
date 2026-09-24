@@ -403,6 +403,37 @@ describe("a running turn", () => {
 			await turn;
 		}
 	});
+
+	/**
+	 * The room builds a conversation's feed when a second conversation joins,
+	 * which can be in the middle of an answer. A feed that learned the answer
+	 * only from the events it saw would show nothing of it until the provider
+	 * sent another token.
+	 */
+	it("a feed opened mid-answer shows the answer so far and the turn's clock at once", async () => {
+		const live = await open([]);
+		const { session, push } = live;
+		const turn = session.prompt("look at the database");
+		try {
+			await Promise.race([live.called, turn]);
+			push({ type: "start", partial: assistant([]) });
+			const writing = assistant([{ type: "text", text: "First half" }]);
+			push({ type: "text_delta", contentIndex: 0, delta: "First half", partial: writing });
+			await until(() => session.displayedStreamMessage !== undefined, "the streamed text to reach the session");
+
+			const feed = new RoomWindowFeed(session, () => {});
+			try {
+				expect(textBlocks(feed.snapshot())).toEqual(["First half"]);
+				const state = feed.snapshot().state;
+				expect(state.kind === "working" ? state.since : undefined).toBe(session.turnStartedAt);
+			} finally {
+				feed.dispose();
+			}
+		} finally {
+			if (session.isStreaming) await session.abort();
+			await turn;
+		}
+	});
 });
 
 describe("between turns", () => {
