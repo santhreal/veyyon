@@ -246,10 +246,12 @@ holds an approval asked by a conversation off screen until it is entered, and
 SCENE_COMMAND='bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b --no-tools' \
 	SCENE_MOTION_FLOOR=1 proof/record.sh proof/scenes/room-view.sh
 SCENE_COMMAND='bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b --tools bash --approval-mode ask-command' \
-	SCENE_MOTION_FLOOR=1 proof/record.sh proof/scenes/room-needs-you.sh
+	SCENE_MOTION_FLOOR=0 proof/record.sh proof/scenes/room-needs-you.sh
 SCENE_MOTION_FLOOR=0 proof/record.sh proof/scenes/settings-room-view.sh
 SCENE_MOTION_FLOOR=0 proof/record.sh --settings 'room.view: all-windows' proof/scenes/settings-room-view.sh
 ```
 
 Both model scenes need the llama.cpp sidecar; `proof/scenes/new-session-keeps-running.sh` states
-how it is started. Add `--before` to record the base branch's arm of either one.
+how it is started. Add `--before` to record the base branch's arm of either one. The needs-you
+scene is a held dialog and a waiting model, still by design, so it records with the motion floor
+off.
