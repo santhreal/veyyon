@@ -285,8 +285,9 @@ export class StatusLineComponent implements Component {
 		this.#source.resetActiveTime?.();
 	}
 
-	markActivityStart(): void {
-		this.#source.markActivityStart?.();
+	/** Open the running window; see {@link StatusDataSource.markActivityStart} for `startedAt`. */
+	markActivityStart(startedAt?: number): void {
+		this.#source.markActivityStart?.(startedAt);
 	}
 
 	markActivityEnd(): void {

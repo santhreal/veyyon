@@ -17,35 +17,65 @@
  * conversation off screen: does not present, is counted in `waitingDialogs`,
  * fires the waiting listener, and presents once that conversation is on
  * screen and attached; its abort signal settles it to the fallback, drops the
- * count, and the abandoned question is never raised later. Every chrome
- * member is dropped from off screen and reaches the terminal from on screen,
- * decided at call time rather than at bind time.
+ * count, and the abandoned question is never raised later. A conversation the
+ * terminal releases (closed from the room, or at exit) settles every dialog it
+ * holds, `terminal.custom` included, and a dialog it asks afterwards settles at
+ * once. Every chrome member is dropped from off screen and reaches the terminal
+ * from on screen, decided at call time rather than at bind time. An
+ * autocomplete provider applies only while its conversation is on screen and
+ * leaves the editor when the conversation is released. Binding a conversation
+ * off screen does not wait on its `session_start`, whose handler may ask a
+ * question that cannot be shown until the conversation exists and is entered.
  *
  * The controller is real. What stands in for the terminal is the controller's
  * own presentation methods, spied so a presented dialog resolves at once, and
- * the context fields those methods write through. The two conversations are
+ * the context fields those methods write through; the autocomplete stack is
+ * composed the way the interactive mode composes it. The two conversations are
  * identities only: the gate compares `ctx.session` against the bound session
  * and reads nothing else of it, and an absent extension runner is the case
  * `bindSession` takes when no extension is loaded.
  *
  * NOT CAUGHT. That a presented dialog draws correctly (the dialog suites own
- * that). That the host calls `sessionAttached` on every switch: the room
- * controller suite drives `attachMainSession`, which the interactive mode
- * wires to it. `terminal.custom` takes no signal, so an abandoned custom
- * screen waits until its conversation comes back.
+ * that). That the host calls `sessionAttached` on every switch and
+ * `sessionReleased` on every close: the room controller suite drives
+ * `attachMainSession` and `releaseHostedSession`, which the interactive mode
+ * wires to them. That the interactive mode recomposes the editor's provider
+ * on every attach.
  */
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import type { ExtensionUIContext, TerminalInputHandler } from "@veyyon/coding-agent/extensibility/extensions";
+import { setTimeout as sleep } from "node:timers/promises";
+import type {
+	AutocompleteProviderFactory,
+	ExtensionUIContext,
+	TerminalInputHandler,
+} from "@veyyon/coding-agent/extensibility/extensions";
 import { CustomEditor } from "@veyyon/coding-agent/modes/terminal/components/composer/custom-editor";
 import {
 	ExtensionUiController,
 	type ExtensionUiControllerContext,
 } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { SessionHostBindings } from "@veyyon/coding-agent/session/background-sessions";
 import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import * as titleGenerator from "@veyyon/coding-agent/utils/title-generator";
 import { Container } from "@veyyon/tui";
+import type { AutocompleteProvider } from "@veyyon/utils/autocomplete";
+
+type Outcome = { value: unknown } | { rejects: string } | { stillWaitingAfterMs: number };
+
+/**
+ * How `pending` settled: its value, or the message it rejected with. A wait
+ * that has not settled within `ms` is reported as such rather than hanging the
+ * suite until its timeout.
+ */
+function outcome(pending: Promise<unknown>, ms = 1_000): Promise<Outcome> {
+	const settled = pending.then(
+		(value): Outcome => ({ value }),
+		(error: unknown): Outcome => ({ rejects: error instanceof Error ? error.message : String(error) }),
+	);
+	return Promise.race([settled, sleep(ms).then((): Outcome => ({ stillWaitingAfterMs: ms }))]);
+}
 
 beforeAll(async () => {
 	await initTheme();
@@ -72,6 +102,10 @@ interface Harness {
 	bring(session: AgentSession): void;
 	/** An editor factory tagged so the call that sent it is named when it reaches the terminal. */
 	editorFactory(tag: string): () => CustomEditor;
+	/** The terminal's autocomplete stack, in registration order. */
+	factories: AutocompleteProviderFactory[];
+	/** The item values the editor's provider suggests, composed from the stack now. */
+	suggestions(): Promise<string[]>;
 }
 
 async function harness(): Promise<Harness> {
@@ -83,6 +117,7 @@ async function harness(): Promise<Harness> {
 	const factoryTags = new Map<unknown, string>();
 	let aUi: ExtensionUIContext | undefined;
 	let bUi: ExtensionUIContext | undefined;
+	const factories: AutocompleteProviderFactory[] = [];
 	const ctx = {
 		editor,
 		session: a,
@@ -107,8 +142,12 @@ async function harness(): Promise<Harness> {
 		setToolsExpanded: (expanded: boolean) => {
 			log.push(`setToolsExpanded:${expanded}`);
 		},
-		addAutocompleteProvider: () => {
-			log.push("addAutocompleteProvider:");
+		addAutocompleteProvider: (factory: AutocompleteProviderFactory) => {
+			factories.push(factory);
+		},
+		removeAutocompleteProvider: (factory: AutocompleteProviderFactory) => {
+			const index = factories.indexOf(factory);
+			if (index !== -1) factories.splice(index, 1);
 		},
 	};
 	const controller = new ExtensionUiController(ctx as unknown as ExtensionUiControllerContext);
@@ -153,7 +192,30 @@ async function harness(): Promise<Harness> {
 			factoryTags.set(factory, tag);
 			return factory;
 		},
+		factories,
+		suggestions: async () => {
+			let provider = BASE_PROVIDER;
+			for (const factory of factories) provider = factory(provider);
+			return (await provider.getSuggestions([""], 0, 0))?.items.map(item => item.value) ?? [];
+		},
 	};
+}
+
+const BASE_PROVIDER: AutocompleteProvider = {
+	getSuggestions: async () => ({ items: [], prefix: "" }),
+	applyCompletion: (lines, cursorLine, cursorCol) => ({ lines, cursorLine, cursorCol }),
+};
+
+/** A provider factory that adds `tag` to whatever the provider it wraps suggests. */
+function suggesting(tag: string): AutocompleteProviderFactory {
+	return current => ({
+		getSuggestions: async (lines, cursorLine, cursorCol) => {
+			const base = await current.getSuggestions(lines, cursorLine, cursorCol);
+			return { items: [...(base?.items ?? []), { value: tag, label: tag }], prefix: base?.prefix ?? "" };
+		},
+		applyCompletion: (lines, cursorLine, cursorCol, item, prefix) =>
+			current.applyCompletion(lines, cursorLine, cursorCol, item, prefix),
+	});
 }
 
 // ---------------------------------------------------------------- decisions
@@ -166,6 +228,8 @@ interface DialogDecision {
 	answer: unknown;
 	/** The value a cancelled wait resolves with; absent for a member that takes no signal. */
 	fallback?: { value: unknown };
+	/** How the wait settles when the terminal releases the conversation: a value, or a rejection message. */
+	released: { value: unknown } | { rejects: string };
 }
 
 const DIALOGS: Record<string, DialogDecision> = {
@@ -177,6 +241,7 @@ const DIALOGS: Record<string, DialogDecision> = {
 		call: (ui, signal) => ui.select("Pick one", ["picked", "other"], { signal }),
 		answer: "picked",
 		fallback: { value: undefined },
+		released: { value: undefined },
 	},
 	confirm: {
 		present: c => {
@@ -186,6 +251,7 @@ const DIALOGS: Record<string, DialogDecision> = {
 		call: (ui, signal) => ui.confirm("Proceed?", "It writes a file", { signal }),
 		answer: true,
 		fallback: { value: false },
+		released: { value: false },
 	},
 	input: {
 		present: c => {
@@ -195,6 +261,7 @@ const DIALOGS: Record<string, DialogDecision> = {
 		call: (ui, signal) => ui.input("Name", "placeholder", { signal }),
 		answer: "typed",
 		fallback: { value: undefined },
+		released: { value: undefined },
 	},
 	askDialog: {
 		present: c => {
@@ -207,6 +274,7 @@ const DIALOGS: Record<string, DialogDecision> = {
 		},
 		answer: { kind: "chat" },
 		fallback: { value: undefined },
+		released: { value: undefined },
 	},
 	editor: {
 		present: c => {
@@ -216,6 +284,7 @@ const DIALOGS: Record<string, DialogDecision> = {
 		call: (ui, signal) => ui.editor("Edit", "prefill", { signal }),
 		answer: "edited",
 		fallback: { value: undefined },
+		released: { value: undefined },
 	},
 	"terminal.custom": {
 		present: c => {
@@ -227,6 +296,7 @@ const DIALOGS: Record<string, DialogDecision> = {
 			return ui.terminal.custom(() => new Container());
 		},
 		answer: "custom-result",
+		released: { rejects: "The conversation closed before it came on screen." },
 	},
 };
 
@@ -279,12 +349,17 @@ const CHROME: Record<string, ChromeDecision> = {
 const SCREEN_READS = ["getEditorText"];
 
 /**
+ * Members that add to the editor, which belongs to the conversation on screen:
+ * each takes effect only while its conversation is on it.
+ */
+const SCOPED_TO_SCREEN = ["addAutocompleteProvider"];
+
+/**
  * Members that are not screen state of one conversation and pass through from
- * any conversation: the theme, autocomplete stacking, the tool expansion
- * toggle, and the static presentation flag.
+ * any conversation: the theme, the tool expansion toggle, and the static
+ * presentation flag.
  */
 const SHARED = [
-	"addAutocompleteProvider",
 	"getAllThemes",
 	"getTheme",
 	"getToolsExpanded",
@@ -305,7 +380,13 @@ function membersOf(ui: ExtensionUIContext): string[] {
 describe("every member of the bound context has a recorded decision", () => {
 	it("the context each conversation holds has exactly the members decided here", async () => {
 		const h = await harness();
-		const decided = [...Object.keys(DIALOGS), ...Object.keys(CHROME), ...SCREEN_READS, ...SHARED].sort();
+		const decided = [
+			...Object.keys(DIALOGS),
+			...Object.keys(CHROME),
+			...SCREEN_READS,
+			...SCOPED_TO_SCREEN,
+			...SHARED,
+		].sort();
 		expect(membersOf(h.bUi)).toEqual(decided);
 		expect(membersOf(h.aUi)).toEqual(decided);
 	});
@@ -353,6 +434,38 @@ describe("a dialog from a conversation off screen", () => {
 			expect({ shown: shown(), waitingA: h.controller.waitingDialogs(h.a), fired }).toEqual({
 				shown: 1,
 				waitingA: 0,
+				fired: 0,
+			});
+		});
+
+		it(`${member}: settles when the terminal releases its conversation while it waits, drops the count, and is never raised`, async () => {
+			const h = await harness();
+			const shown = decision.present(h.controller);
+			let fired = 0;
+			h.controller.onWaitingDialogsChange(() => fired++);
+
+			const pending = outcome(decision.call(h.bUi));
+			expect(h.controller.waitingDialogs(h.b)).toBe(1);
+			h.controller.sessionReleased(h.b);
+			expect(await pending).toEqual(decision.released);
+			expect({ waitingB: h.controller.waitingDialogs(h.b), fired }).toEqual({ waitingB: 0, fired: 2 });
+
+			h.bring(h.b);
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(shown()).toBe(0);
+		});
+
+		it(`${member}: from a conversation already released settles at once without counting`, async () => {
+			const h = await harness();
+			const shown = decision.present(h.controller);
+			let fired = 0;
+			h.controller.onWaitingDialogsChange(() => fired++);
+			h.controller.sessionReleased(h.b);
+			expect(await outcome(decision.call(h.bUi))).toEqual(decision.released);
+			expect({ shown: shown(), waitingB: h.controller.waitingDialogs(h.b), fired }).toEqual({
+				shown: 0,
+				waitingB: 0,
 				fired: 0,
 			});
 		});
@@ -468,9 +581,86 @@ describe("members shared by every conversation", () => {
 	it("pass through from off screen", async () => {
 		const h = await harness();
 		h.bUi.setToolsExpanded(true);
-		h.bUi.addAutocompleteProvider(current => current);
-		expect(h.log).toEqual(["setToolsExpanded:true", "addAutocompleteProvider:"]);
+		expect(h.log).toEqual(["setToolsExpanded:true"]);
 		expect(h.bUi.getToolsExpanded()).toBe(false);
 		expect(h.bUi.theme).toBe(h.aUi.theme);
+	});
+});
+
+describe("autocomplete from a conversation", () => {
+	it("applies only while its conversation is on screen, decided when the editor's provider is composed", async () => {
+		const h = await harness();
+		h.aUi.addAutocompleteProvider(suggesting("from-a"));
+		h.bUi.addAutocompleteProvider(suggesting("from-b"));
+		expect(await h.suggestions()).toEqual(["from-a"]);
+		h.bring(h.b);
+		expect(await h.suggestions()).toEqual(["from-b"]);
+	});
+
+	it("leaves the editor when its conversation is released, and one added afterwards never joins", async () => {
+		const h = await harness();
+		h.aUi.addAutocompleteProvider(suggesting("from-a"));
+		h.bUi.addAutocompleteProvider(suggesting("from-b"));
+		h.bUi.addAutocompleteProvider(suggesting("from-b-again"));
+		h.controller.sessionReleased(h.b);
+		h.bUi.addAutocompleteProvider(suggesting("from-b-after-release"));
+		// On screen, a released conversation would show every provider still stacked.
+		h.bring(h.b);
+		expect(await h.suggestions()).toEqual([]);
+		h.bring(h.a);
+		expect(await h.suggestions()).toEqual(["from-a"]);
+	});
+});
+
+const BINDINGS: SessionHostBindings = { setToolUIContext: () => {}, setToolNotifier: () => {} };
+
+describe("binding a conversation", () => {
+	it("off screen, a session_start that asks a question does not hold the binding; the question waits for the conversation", async () => {
+		const h = await harness();
+		const shown = DIALOGS.confirm!.present(h.controller);
+		let context: ExtensionUIContext | undefined;
+		let handler: Promise<boolean> | undefined;
+		const c = {
+			extensionRunner: {
+				initialize: (_actions: unknown, _context: unknown, _commands: unknown, ui: ExtensionUIContext) => {
+					context = ui;
+				},
+				onError: () => {},
+				emit: async () => {
+					if (!context) throw new Error("Expected the runner to be initialized before session_start");
+					handler = context.confirm("Trust this project?", "asked from session_start");
+					await handler;
+				},
+			},
+		} as unknown as AgentSession;
+
+		const bound = await Promise.race([
+			h.controller.bindSession(c, BINDINGS).then(() => "bound"),
+			sleep(1_000).then(() => "still waiting after 1s"),
+		]);
+		expect(bound).toBe("bound");
+		expect({ shown: shown(), waiting: h.controller.waitingDialogs(c) }).toEqual({ shown: 0, waiting: 1 });
+
+		h.bring(c);
+		expect(await handler).toBe(true);
+		expect(shown()).toBe(1);
+	});
+
+	it("on screen, the binding resolves only once session_start has finished", async () => {
+		const h = await harness();
+		const started = Promise.withResolvers<void>();
+		const d = {
+			extensionRunner: { initialize: () => {}, onError: () => {}, emit: () => started.promise },
+		} as unknown as AgentSession;
+		h.bring(d);
+		let bound = false;
+		const binding = h.controller.bindSession(d, BINDINGS).then(() => {
+			bound = true;
+		});
+		await sleep(20);
+		expect(bound).toBe(false);
+		started.resolve();
+		await binding;
+		expect(bound).toBe(true);
 	});
 });

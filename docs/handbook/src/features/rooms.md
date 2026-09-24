@@ -103,25 +103,31 @@ A conversation that asks you something while it is off screen does not open the 
 the one you are reading. The question waits until you go into that conversation. Until then:
 
 - its window shows `needs you` on its edge and `waiting for your answer` at its foot;
-- the room view's title and the ordinal under the windows mark it with `!`;
-- the status line's `room` chip counts it ahead of the working ones: `2 peers · ! 1 needs you`;
+- the room view's title and the ordinal under the windows mark it with `!`, and the key row reads
+  `enter answer` while its window is selected;
+- the status line's `room` chip counts it ahead of the working ones: `3 peers · ! 1 needs you · 1 working`;
 - the status line says once which conversation is waiting and which key opens the room.
 
 ## Drafts, closing and exit
 
 Text you leave in the composer stays with its conversation and comes back when you return to it.
 
-`x` in the room view closes a conversation: its turn is stopped, its draft is saved beside its
-transcript, and it leaves the room. The first conversation in the terminal holds the MCP servers
-and background jobs the others share, so it closes only when you exit.
+`x` in the room view closes a conversation: a question it was holding is dismissed, its turn is
+stopped, its draft is saved beside its transcript, and it leaves the room. The first conversation
+in the terminal holds the MCP servers and background jobs the others share, so it closes only
+when you exit.
 
-At exit every conversation's transcript is flushed and each unsent draft is saved.
+At exit every conversation's transcript is flushed, each unsent draft is saved, and the questions
+held by conversations off screen are dismissed.
 
 ## The status line
 
-The `room` segment counts the other conversations in the room and how many are working or
-waiting for you. It is hidden while you are alone and is in every preset. Clicking it opens the
-room view.
+The `room` segment counts the other conversations in the room, then how many are waiting for you
+and how many are working: `2 peers · ! 1 needs you · 1 working`. It is hidden while you are alone
+and is in every preset. Clicking it opens the room view.
+
+The run clock beside the location keeps each conversation's own time. Going into a conversation
+that is working shows how long its turn has run, including the time it ran off screen.
 
 The `background` segment counts conversations running with nothing drawing them that are not in
 the room, such as a turn handed off by `/new`. A room member running off screen is counted by
@@ -132,6 +138,16 @@ the room, such as a turn handed off by `/new`. A room member running off screen 
 The process working directory follows the conversation on screen. A conversation that changes
 directory while it is off screen records the move, and the terminal re-roots to it when you go
 into that conversation.
+
+## Extensions
+
+Each conversation loads its own extensions. An extension's questions, status text, widgets,
+title, editor text and autocomplete reach the screen only while its conversation is on it. A
+question waits, as above; the rest is dropped while the conversation is off screen, and its
+autocomplete applies again when you go back into it.
+
+A conversation opens without waiting for its extensions' `session_start` handlers, so a handler
+that asks a question asks it when you go into the new conversation.
 
 ## Messaging between conversations
 

@@ -442,7 +442,6 @@ export class RoomController {
 			this.ctx.resetObserverRegistry();
 			setSessionTerminalTitle(this.ctx.sessionManager.getSessionName(), this.ctx.sessionManager.getCwd());
 			this.ctx.statusLine.invalidate();
-			this.ctx.statusLine.resetActiveTime();
 			this.ctx.updateEditorBorderColor();
 			this.ctx.clearTransientSessionUi();
 			this.ctx.renderInitialMessages({ clearTerminalHistory: true });
@@ -498,6 +497,9 @@ export class RoomController {
 		if (session === this.ctx.launchSession) {
 			return "The first conversation holds the MCP servers and background jobs the others share, so it stays open until you exit.";
 		}
+		// Released first: a tool waiting on a dialog this conversation holds off
+		// screen would otherwise hold the stop below forever.
+		this.ctx.releaseHostedSession(session);
 		try {
 			if (session.isStreaming) await session.abort();
 			const draft = this.#drafts.get(session);
@@ -506,7 +508,6 @@ export class RoomController {
 			this.#lastWaiting.delete(session);
 			BackgroundSessions.global().release(session);
 			await session.dispose();
-			this.ctx.releaseHostedSession(session);
 		} catch (error) {
 			return `Could not close that conversation: ${errorMessage(error)}`;
 		}

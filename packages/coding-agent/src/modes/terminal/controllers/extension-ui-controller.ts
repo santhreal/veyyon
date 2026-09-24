@@ -16,6 +16,7 @@ import type { CollabUiRequestDraft, CollabUiSelectItem } from "@veyyon/wire";
 import { type AutoresearchUiDelegate, registerAutoresearchUi } from "../../../autoresearch/dashboard";
 import { KeybindingsManager } from "../../../config/keybindings";
 import type {
+	AutocompleteProviderFactory,
 	CompactOptions,
 	ExtensionActions,
 	ExtensionAskDialogQuestion,
@@ -55,10 +56,9 @@ import { HookSelectorComponent, type HookSelectorSlider } from "../components/se
 import type { InteractiveModeContext, InteractiveSelectorDialogOptions } from "../types";
 
 /**
- * The slice of the interactive context this uses: 31 members of the 215
- * `InteractiveModeContext` requires. Still a slice, and naming it is what lets a
- * test construct one without the `as unknown as InteractiveModeContext` cast the
- * full interface forces (see `CollabHostContext`).
+ * The slice of the interactive context this uses. Naming it is what lets a
+ * test construct one without the `as unknown as InteractiveModeContext` cast
+ * the full interface forces (see `CollabHostContext`).
  */
 export type ExtensionUiControllerContext = Pick<
 	InteractiveModeContext,
@@ -79,6 +79,7 @@ export type ExtensionUiControllerContext = Pick<
 	| "present"
 	| "rebuildChatFromMessages"
 	| "reloadTodos"
+	| "removeAutocompleteProvider"
 	| "renderInitialMessages"
 	| "resetTranscript"
 	| "session"
@@ -148,8 +149,12 @@ export class ExtensionUiController {
 	#uiContext: ExtensionUIContext | undefined;
 	/** Conversations whose tools and extensions already hold their UI context. */
 	readonly #boundSessions = new WeakSet<AgentSession>();
-	/** Per off-screen conversation, the dialogs waiting for it to come on screen. */
-	readonly #offscreenDialogs = new Map<AgentSession, Set<() => void>>();
+	/** Per off-screen conversation, the dialogs waiting for it; each settles with whether it came on screen. */
+	readonly #offscreenDialogs = new Map<AgentSession, Set<(onScreen: boolean) => void>>();
+	/** Conversations this terminal no longer hosts: a UI request from one gets the off-screen answer at once. */
+	readonly #releasedSessions = new WeakSet<AgentSession>();
+	/** Per conversation, the autocomplete factories its extensions stacked on the editor. */
+	readonly #autocompleteFactories = new Map<AgentSession, AutocompleteProviderFactory[]>();
 	readonly #waitingListeners = new Set<() => void>();
 	constructor(private ctx: ExtensionUiControllerContext) {}
 
@@ -248,9 +253,18 @@ export class ExtensionUiController {
 			this.showExtensionError(error.extensionPath, error.error);
 		});
 
-		// Emit session_start event
-		await extensionRunner.emit({
-			type: "session_start",
+		const started = extensionRunner.emit({ type: "session_start" });
+		// A handler may open a dialog, and a dialog from a conversation off screen
+		// waits for it to come on screen. Awaiting that here holds the
+		// conversation's creation until the handler times out, and a conversation
+		// cannot come on screen before it exists. The one on screen still has its
+		// handlers finish before it is used.
+		if (this.ctx.session === session) {
+			await started;
+			return;
+		}
+		started.catch((error: unknown) => {
+			logger.warn("session_start of an off-screen conversation failed", { error: errorMessage(error) });
 		});
 	}
 
@@ -272,8 +286,30 @@ export class ExtensionUiController {
 		const waiting = this.#offscreenDialogs.get(session);
 		if (!waiting) return;
 		this.#offscreenDialogs.delete(session);
-		for (const release of waiting) release();
+		for (const settle of waiting) settle(true);
 		this.#emitWaiting();
+	}
+
+	/**
+	 * This terminal no longer hosts `session`. The dialogs it holds settle to
+	 * their fallbacks, a takeover waiting for the screen rejects, its
+	 * autocomplete providers leave the editor, and a UI request it makes from
+	 * now on gets the off-screen answer at once. Call it before stopping the
+	 * conversation's turn: a tool waiting on one of these holds the stop.
+	 */
+	sessionReleased(session: AgentSession): void {
+		this.#releasedSessions.add(session);
+		const waiting = this.#offscreenDialogs.get(session);
+		if (waiting) {
+			this.#offscreenDialogs.delete(session);
+			for (const settle of waiting) settle(false);
+			this.#emitWaiting();
+		}
+		const factories = this.#autocompleteFactories.get(session);
+		if (factories) {
+			this.#autocompleteFactories.delete(session);
+			for (const factory of factories) this.ctx.removeAutocompleteProvider(factory);
+		}
 	}
 
 	#emitWaiting(): void {
@@ -287,12 +323,13 @@ export class ExtensionUiController {
 	}
 
 	/**
-	 * Resolve true once `session` is on screen, or false if `signal` aborts first.
-	 * Immediately true for the conversation already on screen.
+	 * Resolve true once `session` is on screen, or false if `signal` aborts or
+	 * the terminal releases `session` first. Immediately true for the
+	 * conversation already on screen, and immediately false for one released.
 	 */
 	#untilOnScreen(session: AgentSession, signal: AbortSignal | undefined): Promise<boolean> {
 		if (this.ctx.session === session) return Promise.resolve(true);
-		if (signal?.aborted) return Promise.resolve(false);
+		if (signal?.aborted || this.#releasedSessions.has(session)) return Promise.resolve(false);
 		const { promise, resolve } = Promise.withResolvers<boolean>();
 		let waiting = this.#offscreenDialogs.get(session);
 		if (!waiting) {
@@ -301,16 +338,16 @@ export class ExtensionUiController {
 		}
 		const set = waiting;
 		const onAbort = (): void => {
-			set.delete(release);
+			set.delete(settle);
 			if (set.size === 0) this.#offscreenDialogs.delete(session);
 			this.#emitWaiting();
 			resolve(false);
 		};
-		const release = (): void => {
+		const settle = (onScreen: boolean): void => {
 			signal?.removeEventListener("abort", onAbort);
-			resolve(true);
+			resolve(onScreen);
 		};
-		set.add(release);
+		set.add(settle);
 		signal?.addEventListener("abort", onAbort, { once: true });
 		this.#emitWaiting();
 		return promise;
@@ -361,7 +398,11 @@ export class ExtensionUiController {
 			terminal: terminal
 				? {
 						custom: async (factory, options) => {
-							await this.#untilOnScreen(session, undefined);
+							// No signal and no fallback value: a takeover from a conversation that
+							// closes before it comes on screen can only fail.
+							if (!(await this.#untilOnScreen(session, undefined))) {
+								throw new Error("The conversation closed before it came on screen.");
+							}
 							return terminal.custom(factory, options);
 						},
 						setWidgetComponent: (key, factory, options) => {
@@ -379,7 +420,17 @@ export class ExtensionUiController {
 				if (onScreen()) base.pasteToEditor(text);
 			},
 			getEditorText: () => (onScreen() ? base.getEditorText() : ""),
-			addAutocompleteProvider: factory => base.addAutocompleteProvider(factory),
+			addAutocompleteProvider: factory => {
+				if (this.#releasedSessions.has(session)) return;
+				// The editor belongs to the conversation on screen, and every
+				// conversation's extensions register their own copy: unscoped, each
+				// provider would run once per conversation the terminal hosts.
+				const scoped: AutocompleteProviderFactory = current => (onScreen() ? factory(current) : current);
+				const factories = this.#autocompleteFactories.get(session);
+				if (factories) factories.push(scoped);
+				else this.#autocompleteFactories.set(session, [scoped]);
+				base.addAutocompleteProvider(scoped);
+			},
 			get theme() {
 				return base.theme;
 			},

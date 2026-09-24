@@ -31,6 +31,7 @@ import { loadExtensions } from "../src/extensibility/extensions/loader";
 import { ExtensionRunner } from "../src/extensibility/extensions/runner";
 import { InteractiveMode } from "../src/modes/terminal/interactive-mode";
 import { AgentSession } from "../src/session/agent-session";
+import { BackgroundSessions } from "../src/session/background-sessions";
 import { initTheme } from "../src/theme/theme";
 
 function makeTool(name: string): AgentTool {
@@ -255,5 +256,58 @@ export default function (pi) {
 		expect(warnSpy.mock.calls.some(([message]) => String(message).includes("autocomplete provider factory"))).toBe(
 			true,
 		);
+	});
+
+	it("takes a removed factory back off the editor and keeps the rest of the chain", async () => {
+		const created = createHarness();
+		const slot = captureAutocompleteProvider(created.mode);
+		const first = makeWrappingFactory("##first");
+		created.mode.addAutocompleteProvider(first);
+		created.mode.addAutocompleteProvider(makeWrappingFactory("##second"));
+		await created.mode.refreshSlashCommandState(tempDir.path());
+
+		created.mode.removeAutocompleteProvider(first);
+
+		const values = (await slot.current!.getSuggestions(["##"], 0, 2))?.items.map(item => item.value) ?? [];
+		expect(values).toContain("##second");
+		expect(values).not.toContain("##first");
+		const slash = await slot.current!.getSuggestions(["/"], 0, 1);
+		expect(slash?.items.map(item => item.value)).toContain("model");
+	});
+
+	/**
+	 * A room conversation's providers are scoped to it being on screen, and the
+	 * scope is read when the chain is composed. Attaching another conversation
+	 * recomposes it; without that, the editor keeps the chain of the one that
+	 * left.
+	 */
+	it("recomposes the chain when another conversation comes on screen", async () => {
+		const created = createHarness();
+		const slot = captureAutocompleteProvider(created.mode);
+		const onScreenOnly: typeof makeWrappingFactory = tag => current =>
+			created.mode.session === created.session ? makeWrappingFactory(tag)(current) : current;
+		created.mode.addAutocompleteProvider(onScreenOnly("##first-conversation"));
+		await created.mode.refreshSlashCommandState(tempDir.path());
+		const before = await slot.current!.getSuggestions(["##"], 0, 2);
+		expect(before?.items.map(item => item.value)).toContain("##first-conversation");
+
+		const next = new AgentSession({
+			agent: new Agent({ initialState: { model, systemPrompt: ["Test"], tools, messages: [] } }),
+			sessionManager: SessionManager.inMemory(tempDir.path()),
+			settings: Settings.isolated({ "compaction.enabled": false }),
+			modelRegistry: registry,
+			toolRegistry: new Map(tools.map(tool => [tool.name, tool])),
+			promptTemplates: [],
+		});
+		try {
+			created.mode.attachMainSession(next);
+			const after = await slot.current!.getSuggestions(["##"], 0, 2);
+			expect(after?.items.map(item => item.value) ?? []).not.toContain("##first-conversation");
+		} finally {
+			BackgroundSessions.global().release(created.session);
+			created.mode.attachMainSession(created.session);
+			BackgroundSessions.global().release(next);
+			await next.dispose();
+		}
 	});
 });

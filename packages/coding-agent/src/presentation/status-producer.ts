@@ -329,8 +329,12 @@ export class StatusPresentationProducer implements StatusDataSource {
 		meter.lastRunMs = 0;
 	}
 
-	markActivityStart(): void {
+	markActivityStart(startedAt?: number): void {
 		const meter = this.#meter();
+		if (startedAt !== undefined) {
+			meter.activeStartedAt = startedAt;
+			return;
+		}
 		if (meter.activeStartedAt !== null) return;
 		meter.activeStartedAt = Date.now();
 	}

@@ -145,7 +145,13 @@ export interface InteractiveModeContext {
 	 * at shutdown with the rest.
 	 */
 	hostSession(hosted: HostedSession): Promise<void>;
-	/** Stop tracking a session this terminal disposed early. The launch session is never released. */
+	/**
+	 * Stop hosting a session this terminal is closing early: its held dialogs
+	 * settle to their fallbacks, a takeover waiting for the screen rejects, its
+	 * autocomplete providers leave the editor, and exit no longer disposes it.
+	 * Call it before stopping the session's turn. The launch session is never
+	 * released.
+	 */
 	releaseHostedSession(session: AgentSession): void;
 	/** Dialogs `session` is holding until it is on screen. */
 	waitingDialogs(session: AgentSession): number;
@@ -276,6 +282,8 @@ export interface InteractiveModeContext {
 	initializeHookRunner(uiContext: ExtensionUIContext, hasUI: boolean): void;
 	/** Stack extension autocomplete behavior on top of the built-in editor provider. */
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;
+	/** Take a factory {@link addAutocompleteProvider} stacked back off the editor. */
+	removeAutocompleteProvider(factory: AutocompleteProviderFactory): void;
 	setEditorComponent(
 		factory: ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor) | undefined,
 	): void;

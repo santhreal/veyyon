@@ -4,12 +4,12 @@
 
 ### Added
 
-- The room view shows every conversation in the terminal as a live window, side by side or all at once, opened with `→→` on an empty composer, `alt+w` or `/room`; each window names what its conversation is doing (`thinking`, `writing`, `running <tool>`) or when it finished, Enter or a digit zooms into a window, `n` opens a new conversation, `x` closes one and Tab switches layouts ([#951](https://github.com/santhreal/veyyon/issues/951)).
+- The room view shows every conversation in the terminal as a live window, side by side or all at once, opened with `→→` on an empty composer, `alt+w` or `/room`; each window names what its conversation is doing (`thinking`, `writing`, `running <tool>`) or when it finished, Enter or a digit zooms into a window (the key row reads `enter answer` on a window holding a question), `n` opens a new conversation, `x` closes one and Tab switches layouts ([#951](https://github.com/santhreal/veyyon/issues/951)).
 - `alt+.` and `alt+,` (`app.room.next`, `app.room.previous`) switch to the next or previous conversation in the room with a pull-back, slide and push-in.
 - `/room new` opens a driving conversation beside the one on screen, `/room list` prints the room, and `/room <n>` or `/room <id>` switches to a member.
 - The `room.view` setting selects whether the room view opens side by side or with all windows.
 - Conversations in one room are `irc` peers: each lists the others under `irc list` and can message them by id, while `to: "all"` reaches only the sender's own spawns.
-- The status line's `room` segment counts the other conversations in the room and names how many are working or waiting for an answer, and a click on it opens the room view; a room member running off screen is counted there and not again by the `background` segment.
+- The status line's `room` segment counts the other conversations in the room, how many are waiting for an answer and how many are working, and a click on it opens the room view; a room member running off screen is counted there and not again by the `background` segment.
 
 ### Changed
 
@@ -35,9 +35,13 @@
 - The terminal title and session accent follow a rename of the conversation on screen after a `/new` hand-off or a room switch.
 - A conversation that changes directory while off screen no longer re-scopes the settings, project directory and capabilities of the one on screen; the move applies when it comes back on screen.
 - Exit flushes and disposes every conversation the terminal ran, not only the one on screen, and saves each one's unsent draft.
-- Entering a conversation mid-answer, by a room switch, a `/resume` of a running session or viewing an agent, shows the answer so far at once instead of when its next token arrives.
+- Entering a conversation mid-answer, by a room switch, a `/resume` of a running session or viewing an agent, shows the answer so far at once, with its argot handles expanded, instead of when its next token arrives.
 - Disposing a second top-level session in the same process, such as the agent-creation architect, no longer disposes the process's agent lifecycle and with it the spawned agents of every other conversation.
 - A generated session title names the conversation its prompt was sent to, not the one on screen when the title arrives after a `/new` hand-off or a room switch.
+- A conversation opened off screen by `/room new` or `/new` no longer waits for its extensions' `session_start` handlers, so a handler that asks a question no longer stalls the open until it times out.
+- Closing a room conversation, or exiting, dismisses the questions and extension screens it held off screen instead of leaving them waiting, so a tool waiting on one no longer holds the close.
+- Extension autocomplete applies for the conversation on screen only, so each provider runs once rather than once per room conversation, and a closed conversation's providers leave the editor.
+- Entering a conversation mid-turn starts the status line's run clock at the turn's start, and a room switch keeps each conversation's run clock and time spent instead of zeroing them.
 
 ## [1.5.3] - 2026-09-22
 

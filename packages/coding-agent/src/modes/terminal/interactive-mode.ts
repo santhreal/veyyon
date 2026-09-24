@@ -1533,6 +1533,13 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#applyAutocompleteProvider();
 	}
 
+	removeAutocompleteProvider(factory: AutocompleteProviderFactory): void {
+		const index = this.#autocompleteProviderFactories.indexOf(factory);
+		if (index === -1) return;
+		this.#autocompleteProviderFactories.splice(index, 1);
+		this.#applyAutocompleteProvider();
+	}
+
 	/**
 	 * Re-point the process and every cwd-derived cache at `newCwd` after the
 	 * active session's working directory changed (`/move` relocation or resuming
@@ -4595,6 +4602,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.statusLine.setSource(this.statusProducer);
 		this.#subscribeSessionName();
 		this.#handleSessionAccentInputsChanged();
+		// Extension autocomplete applies for the conversation on screen only.
+		this.#applyAutocompleteProvider();
 		const kept = BackgroundSessions.global().keep(previous);
 		this.#extensionUiController.sessionAttached(next);
 		return kept;
@@ -4622,6 +4631,7 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	releaseHostedSession(session: AgentSession): void {
 		if (session === this.launchSession) return;
+		this.#extensionUiController.sessionReleased(session);
 		this.#hostedSessions.delete(session);
 	}
 
@@ -4643,6 +4653,10 @@ export class InteractiveMode implements InteractiveModeContext {
 	async #disposeHostedSessions(reason?: postmortem.Reason): Promise<void> {
 		const options = { mnemopiConsolidateTimeoutMs: SHUTDOWN_CONSOLIDATE_BUDGET_MS, reason };
 		await this.#roomController.persistDrafts();
+		// A tool waiting on a dialog of a conversation off screen holds its dispose.
+		for (const session of this.#hostedSessions) {
+			if (session !== this.session) this.#extensionUiController.sessionReleased(session);
+		}
 		const others = [...this.#hostedSessions].filter(session => session !== this.launchSession);
 		await Promise.all(
 			others.map(session =>

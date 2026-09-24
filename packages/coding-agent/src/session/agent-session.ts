@@ -1245,6 +1245,10 @@ export class AgentSession {
 	#argot: ArgotSession | undefined;
 	/** Per-streaming-message argot display decoder (seam 3); reset on each assistant message_start. */
 	#argotStreamDisplay: ArgotStreamDisplayDecoder | undefined;
+	/** The streaming assistant message as listeners last received it; cleared when the message ends. */
+	#displayedStreamMessage: AssistantMessage | undefined;
+	/** When the running turn's `agent_start` reached listeners, in ms since epoch; cleared at `agent_end`. */
+	#turnStartedAt: number | undefined;
 	/** Resolves the active model's inline-descriptor policy for session dumps. */
 	#resolvePruneToolDescriptions: (model: Model) => boolean = () => false;
 	#checkpointState: CheckpointState | undefined = undefined;
@@ -4610,6 +4614,21 @@ export class AgentSession {
 			}
 		}
 
+		// What a screen attaching mid-turn opens with: when the turn began, and the
+		// message this event shows, never the model-form `agent.state.streamMessage`.
+		if (displayEvent.type === "agent_start") {
+			this.#turnStartedAt = Date.now();
+		} else if (
+			(displayEvent.type === "message_start" || displayEvent.type === "message_update") &&
+			displayEvent.message.role === "assistant"
+		) {
+			this.#displayedStreamMessage = displayEvent.message;
+		} else if (displayEvent.type === "message_end") {
+			this.#displayedStreamMessage = undefined;
+		} else if (displayEvent.type === "agent_end") {
+			this.#displayedStreamMessage = undefined;
+			this.#turnStartedAt = undefined;
+		}
 		try {
 			await this.#emitSessionEvent(displayEvent);
 		} catch (error) {
@@ -6931,6 +6950,24 @@ export class AgentSession {
 	/** Whether agent is currently streaming a response */
 	get isStreaming(): boolean {
 		return this.agent.state.isStreaming || this.#promptInFlightCount > 0;
+	}
+
+	/**
+	 * The assistant message streaming right now, in the display form listeners
+	 * received: argot handles decoded. A screen that attaches mid-answer opens
+	 * its live row from this, so it shows the same text the event stream shows.
+	 * `undefined` between messages.
+	 */
+	get displayedStreamMessage(): AssistantMessage | undefined {
+		return this.#displayedStreamMessage;
+	}
+
+	/**
+	 * When the running turn started, in ms since epoch; `undefined` between
+	 * turns. A screen that attaches mid-turn starts its clock here.
+	 */
+	get turnStartedAt(): number | undefined {
+		return this.#turnStartedAt;
 	}
 
 	get isAborting(): boolean {
