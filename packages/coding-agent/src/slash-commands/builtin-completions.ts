@@ -16,19 +16,24 @@ import type { SubcommandDef } from "./types";
 /**
  * Build getArgumentCompletions from declarative subcommand definitions.
  * Returns subcommand names filtered by prefix in the dropdown.
+ *
+ * A subcommand typed in full that takes no argument offers nothing: with the
+ * list open, Enter accepts the highlighted item instead of submitting, so
+ * `/room new` followed by Enter would only add a space and wait for a second
+ * Enter. With nothing offered, the one Enter runs it.
  */
 export function buildArgumentCompletions(subcommands: SubcommandDef[]): (prefix: string) => AutocompleteItem[] | null {
 	return (argumentPrefix: string) => {
 		if (argumentPrefix.includes(" ")) return null; // past the subcommand
 		const lower = argumentPrefix.toLowerCase();
-		const matches = subcommands
-			.filter(s => s.name.startsWith(lower))
-			.map(s => ({
-				value: `${s.name} `,
-				label: s.name,
-				description: s.description,
-				hint: s.usage,
-			}));
+		const matching = subcommands.filter(s => s.name.startsWith(lower));
+		if (matching.length === 1 && matching[0]!.name === lower && !matching[0]!.usage) return null;
+		const matches = matching.map(s => ({
+			value: `${s.name} `,
+			label: s.name,
+			description: s.description,
+			hint: s.usage,
+		}));
 		return matches.length > 0 ? matches : null;
 	};
 }
