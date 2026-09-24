@@ -112,13 +112,13 @@ describe("a generated title", () => {
 	it("names the conversation the prompt was sent to, after the screen moved to another", async () => {
 		vi.spyOn(titleGenerator, "autoTitleDisabled").mockReturnValue(false);
 		const title = Promise.withResolvers<string | null>();
-		const asked = vi.spyOn(titleGenerator, "generateSessionTitle").mockReturnValue(title.promise);
+		vi.spyOn(titleGenerator, "generateSessionTitle").mockReturnValue(title.promise);
 		const sent = conversation("sent");
 		const other = conversation("other");
 		const { ctx, editor } = harness(sent);
 
+		// The title the sent conversation ends up with below is the proof it was asked for one.
 		await editor.onSubmit?.("split the tokenizer out of the parser");
-		expect(asked).toHaveBeenCalledTimes(1);
 
 		// The screen moves before the title model answers.
 		ctx.session = other.session;

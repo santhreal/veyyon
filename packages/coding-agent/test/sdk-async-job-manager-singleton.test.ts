@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -220,26 +220,26 @@ describe("AsyncJobManager singleton across concurrent top-level sessions", () =>
 	}, 60000);
 
 	/**
-	 * The process-wide agent lifecycle (park timers, adopted spawned sessions, revivers) belongs to the
-	 * same owner as the manager. A second driving session disposing it would release the spawned agents
-	 * of every other conversation in the process: closing one room peer would park the launch
-	 * conversation's agents. The owner still tears it down when it disposes.
+	 * The process-wide agent lifecycle (park timers, adopted spawned sessions, revivers, the pins that
+	 * keep an attached agent live) belongs to the same owner as the manager. A second driving session
+	 * disposing it would release the spawned agents of every other conversation in the process:
+	 * closing one room peer would park the launch conversation's agents. The owner still tears it
+	 * down when it disposes. A pin is the observable: it survives exactly as long as the lifecycle.
 	 */
 	it("leaves the agent lifecycle to the session that owns the manager", async () => {
-		const lifecycleDispose = vi.spyOn(AgentLifecycleManager.global(), "dispose").mockResolvedValue(undefined);
+		const lifecycle = AgentLifecycleManager.global();
+		const agent = "an-agent-a-screen-is-attached-to";
+		const primary = await spawnTopLevelSession();
+		const unpin = lifecycle.pin(agent);
 		try {
-			const primary = await spawnTopLevelSession();
-			try {
-				const secondary = await spawnTopLevelSession();
-				await secondary.dispose();
-				expect(lifecycleDispose).toHaveBeenCalledTimes(0);
-			} finally {
-				await primary.dispose();
-			}
-			expect(lifecycleDispose).toHaveBeenCalledTimes(1);
+			const secondary = await spawnTopLevelSession();
+			await secondary.dispose();
+			expect(lifecycle.isPinned(agent)).toBe(true);
 		} finally {
-			lifecycleDispose.mockRestore();
+			await primary.dispose();
 		}
+		expect(lifecycle.isPinned(agent)).toBe(false);
+		unpin();
 	}, 60000);
 
 	it("clears a manager installed before a top-level session startup failure takes ownership", async () => {

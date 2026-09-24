@@ -87,14 +87,43 @@ function workingRoster(): FakeMember[] {
 	];
 }
 
-/** Watch the timers the stage schedules; the spies call through, so the timers are real. */
-function watchTimers() {
-	const clears = vi.spyOn(globalThis, "clearInterval");
+/** A timer the stage armed: its callback, its delay or period, and the handle it got back. */
+interface ArmedTimer {
+	readonly callback: unknown;
+	readonly ms: number;
+	readonly handle: unknown;
+}
+
+interface TimerLedger {
+	/** Every interval armed while the ledger watched, in order. */
+	readonly intervals: ArmedTimer[];
+	/** Every timeout armed while the ledger watched, in order. */
+	readonly timeouts: ArmedTimer[];
+	/** Whether `handle`, as an interval returned it, has been passed to `clearInterval`. */
+	cleared(handle: unknown): boolean;
+}
+
+/** Record the timers the stage schedules. The spies call through, so the timers are real. */
+function watchTimers(): TimerLedger {
+	const intervalSpy = vi.spyOn(globalThis, "setInterval");
+	const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
+	const clearSpy = vi.spyOn(globalThis, "clearInterval");
 	return {
-		intervals: vi.spyOn(globalThis, "setInterval"),
-		timeouts: vi.spyOn(globalThis, "setTimeout"),
-		/** Whether `handle`, as `setInterval` returned it, has been passed to `clearInterval`. */
-		cleared: (handle: unknown): boolean => clears.mock.calls.some(call => call[0] === handle),
+		get intervals() {
+			return intervalSpy.mock.calls.map((call, index) => ({
+				callback: call[0],
+				ms: call[1] ?? 0,
+				handle: intervalSpy.mock.results[index]?.value,
+			}));
+		},
+		get timeouts() {
+			return timeoutSpy.mock.calls.map((call, index) => ({
+				callback: call[0],
+				ms: call[1] ?? 0,
+				handle: timeoutSpy.mock.results[index]?.value,
+			}));
+		},
+		cleared: handle => clearSpy.mock.calls.some(call => call[0] === handle),
 	};
 }
 
@@ -121,8 +150,8 @@ describe("an idle room draws nothing new", () => {
 				stage.now = START_MS + later;
 				expect({ later, frame: [...stage.render()] }).toEqual({ later, frame: first });
 			}
-			expect(timers.intervals).not.toHaveBeenCalled();
-			expect(timers.timeouts).not.toHaveBeenCalled();
+			expect(timers.intervals).toEqual([]);
+			expect(timers.timeouts).toEqual([]);
 			expect(stage.clock.liveCount).toBe(0);
 		});
 	}
@@ -134,9 +163,9 @@ describe("an idle room draws nothing new", () => {
 		// x on the conversation on screen is refused with a notice, which expires on a timeout.
 		await stage.press("x");
 		expect(stage.render()).not.toEqual(before);
-		expect(timers.timeouts).toHaveBeenCalledTimes(1);
-		const [expire, delay] = timers.timeouts.mock.calls[0]!;
-		stage.now += delay ?? 0;
+		expect(timers.timeouts).toHaveLength(1);
+		const { callback: expire, ms: delay } = timers.timeouts[0]!;
+		stage.now += delay;
 		const requests = stage.host.renderRequests;
 		if (typeof expire !== "function") throw new Error("the notice timer has no handler");
 		expire();
@@ -144,7 +173,7 @@ describe("an idle room draws nothing new", () => {
 		expect(stage.render()).toEqual(before);
 		stage.now += 60_000;
 		expect(stage.render()).toEqual(before);
-		expect(timers.intervals).not.toHaveBeenCalled();
+		expect(timers.intervals).toEqual([]);
 	});
 });
 
@@ -154,10 +183,8 @@ describe("a working conversation keeps one repaint at the spinner's rate, and on
 			const timers = watchTimers();
 			const stage = await openRoom(workingRoster());
 			for (let i = 0; i < 3; i++) stage.render();
-			expect(timers.intervals).toHaveBeenCalledTimes(1);
-			const [tick, period] = timers.intervals.mock.calls[0]!;
-			expect(period).toBe(SPINNER_REPAINT_MS);
-			const handle = timers.intervals.mock.results[0]!.value;
+			expect(timers.intervals.map(timer => timer.ms)).toEqual([SPINNER_REPAINT_MS]);
+			const { callback: tick, handle } = timers.intervals[0]!;
 
 			// Its tick asks for a frame, and the frame it gets has moved.
 			const requests = stage.host.renderRequests;
@@ -174,14 +201,14 @@ describe("a working conversation keeps one repaint at the spinner's rate, and on
 			expect(timers.cleared(handle)).toBe(true);
 			stage.now += 10 * SPINNER_REPAINT_MS;
 			expect(stage.render()).toEqual(still);
-			expect(timers.intervals).toHaveBeenCalledTimes(1);
+			expect(timers.intervals).toHaveLength(1);
 		});
 	}
 
 	it("is cleared when the stage is disposed", async () => {
 		const timers = watchTimers();
 		const stage = await openRoom(workingRoster());
-		const handle = timers.intervals.mock.results[0]!.value;
+		const handle = timers.intervals[0]!.handle;
 		stage.stage.dispose();
 		expect(timers.cleared(handle)).toBe(true);
 	});
@@ -189,11 +216,11 @@ describe("a working conversation keeps one repaint at the spinner's rate, and on
 	it("is cleared when the stage leaves the overview to enter a conversation, and not started again", async () => {
 		const timers = watchTimers();
 		const stage = await openRoom(workingRoster());
-		const handle = timers.intervals.mock.results[0]!.value;
+		const handle = timers.intervals[0]!.handle;
 		await stage.press(KEY.enter);
 		for (let i = 0; i < 5; i++) await stage.step();
 		expect(timers.cleared(handle)).toBe(true);
-		expect(timers.intervals).toHaveBeenCalledTimes(1);
+		expect(timers.intervals).toHaveLength(1);
 	});
 
 	it("is never started by the quick switch, which has no overview", async () => {
@@ -205,6 +232,6 @@ describe("a working conversation keeps one repaint at the spinner's rate, and on
 			mode: { kind: "travel", targetId: "m1" },
 		});
 		for (let i = 0; i < 20; i++) await stage.step();
-		expect(timers.intervals).not.toHaveBeenCalled();
+		expect(timers.intervals).toEqual([]);
 	});
 });

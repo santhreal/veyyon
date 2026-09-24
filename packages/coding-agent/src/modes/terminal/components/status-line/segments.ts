@@ -496,12 +496,13 @@ const backgroundSegment: StatusLineSegment = {
 /**
  * Driving conversations beside this one in the terminal's room.
  *
- * `alt+w` and `→→` open the room view; this chip is what tells the operator
- * there is anything in it, and what it wants: the conversations holding a
- * question are counted in the ember a waiting prompt takes, ahead of the ones
- * that are working, as the room view's title counts them, so a question asked
- * off screen is never a surprise found later. Hidden at zero. Distinct from
- * `background`: a peer that is idle costs nothing and is still a peer.
+ * `alt+w` and `→→` open the room view. This chip is the one place the screen
+ * shows that the room has other conversations and what state they are in: the
+ * ones holding a question are counted in the ember a waiting prompt takes,
+ * ahead of the ones that are working, as the room view's title counts them, so
+ * a question asked off screen is on the status line the moment it is asked.
+ * Hidden at zero. Distinct from `background`: a peer that is idle costs nothing
+ * and is still a peer.
  */
 const roomSegment: StatusLineSegment = {
 	id: "room",
