@@ -6,9 +6,10 @@
  * though the digits have always worked.
  *
  * The contract: a waiting conversation is counted once, as needing you, ahead
- * of the working ones, the way the status line reads it; and the key row names
- * the digit jump with the digits the room takes, only when there is somewhere
- * to jump.
+ * of the working ones, the way the status line reads it; the key row names the
+ * digit jump with the digits the room takes, only when there is somewhere to
+ * jump; and Enter reads `answer` while the window in front holds a question,
+ * `open` otherwise, following the selection.
  *
  * What it does NOT catch: the colours of either row, or which hints a narrow
  * terminal drops (the frame sweeps pin that every row fits).
@@ -17,7 +18,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { useTruecolorTheme } from "../../../../helpers/theme-assertions";
-import { disposeStages, FakeMember, START_MS, StageDriver, snapshotOf } from "./room-stage-driver";
+import { disposeStages, FakeMember, KEY, START_MS, StageDriver, snapshotOf } from "./room-stage-driver";
 
 useTruecolorTheme("dark");
 
@@ -69,5 +70,20 @@ describe("the room view's key row", () => {
 	it("does not offer a jump in a room of one", () => {
 		const rows = settledRows([new FakeMember("m1", DONE, { origin: true })]);
 		expect(rows.at(-1)).not.toContain("jump");
+	});
+
+	it("says enter answers while the window in front holds a question, and opens otherwise", async () => {
+		const driver = new StageDriver({
+			width: 160,
+			height: 40,
+			members: [new FakeMember("m1", DONE, { origin: true }), new FakeMember("m2", WORKING, { waitingDialogs: 1 })],
+			motion: false,
+		});
+		const keys = (): string => stripVTControlCharacters(driver.render().at(-1) ?? "");
+		expect(keys()).toContain("enter open");
+		await driver.press(KEY.right);
+		expect(keys()).toContain("enter answer");
+		await driver.press(KEY.right);
+		expect(keys()).toContain("enter open");
 	});
 });

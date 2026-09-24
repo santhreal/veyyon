@@ -6,10 +6,12 @@
  * operator comes to it. The `room` status segment is the one place that says
  * so. The defect class is the chip reading wrong for the room it describes:
  * shown for an empty room, silent for a room with peers, a question hidden
- * behind "working" (the rarer, more urgent state losing to the common one),
- * the question painted in the quiet accent instead of the ember a waiting
- * prompt takes, a wrong count or a wrong plural, or a preset that drops the
- * chip so an operator who picked it never learns a peer is waiting.
+ * behind "working" or placed after it (the rarer, more urgent state losing to
+ * the common one), work dropped while a question is shown (a room that reads
+ * idle apart from the question when two others are running), the question
+ * painted in the quiet accent instead of the ember a waiting prompt takes, a
+ * wrong count or a wrong plural, or a preset that drops the chip so an
+ * operator who picked it never learns a peer is waiting.
  *
  * Every combination of peers, working and waiting in a small grid is rendered
  * through `renderSegment("room")` and compared, ANSI stripped, with the rule;
@@ -109,12 +111,13 @@ describe("the room chip", () => {
 
 	/**
 	 * A question is rarer and more urgent than work: with both, the chip names
-	 * the question and says nothing of the work.
+	 * the question first and the work after it, as the room view's title does.
 	 */
-	it("names who needs you ahead of who is working", () => {
+	it("names who needs you ahead of who is working, and keeps the work", () => {
 		const text = chip({ peers: 3, working: 2, waiting: 1 }).text;
-		expect(text).toBe(`${withIcon(theme.icon.agents, "3 peers")}${theme.sep.dot}${theme.status.warning} 1 needs you`);
-		expect(text).not.toContain("working");
+		expect(text).toBe(
+			`${withIcon(theme.icon.agents, "3 peers")}${theme.sep.dot}${theme.status.warning} 1 needs you${theme.sep.dot}2 working`,
+		);
 	});
 
 	/**
@@ -125,15 +128,12 @@ describe("the room chip", () => {
 		for (const peers of [0, 1, 2, 5]) {
 			for (const working of [0, 1, 3]) {
 				for (const waiting of [0, 1, 2]) {
-					const base = withIcon(theme.icon.agents, `${peers} ${peers === 1 ? "peer" : "peers"}`);
-					const expected =
-						peers === 0
-							? ""
-							: waiting > 0
-								? `${base}${theme.sep.dot}${theme.status.warning} ${waiting} needs you`
-								: working > 0
-									? `${base}${theme.sep.dot}${working} working`
-									: base;
+					const parts = [
+						withIcon(theme.icon.agents, `${peers} ${peers === 1 ? "peer" : "peers"}`),
+						...(waiting > 0 ? [`${theme.status.warning} ${waiting} needs you`] : []),
+						...(working > 0 ? [`${working} working`] : []),
+					];
+					const expected = peers === 0 ? "" : parts.join(theme.sep.dot);
 					expect({ peers, working, waiting, text: chip({ peers, working, waiting }).text }).toEqual({
 						peers,
 						working,

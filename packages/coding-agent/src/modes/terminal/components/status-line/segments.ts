@@ -496,12 +496,12 @@ const backgroundSegment: StatusLineSegment = {
 /**
  * Driving conversations beside this one in the terminal's room.
  *
- * `→→` opens the room view; this chip is what tells the operator there is
- * anything in it, and what it wants: a conversation holding a question for the
- * operator is named here in the ember a waiting prompt takes, ahead of the
- * ones that are only working, so a question asked off screen is never a
- * surprise found later. Hidden at zero. Distinct from `background`: a peer
- * that is idle costs nothing and is still a peer.
+ * `alt+w` and `→→` open the room view; this chip is what tells the operator
+ * there is anything in it, and what it wants: the conversations holding a
+ * question are counted in the ember a waiting prompt takes, ahead of the ones
+ * that are working, as the room view's title counts them, so a question asked
+ * off screen is never a surprise found later. Hidden at zero. Distinct from
+ * `background`: a peer that is idle costs nothing and is still a peer.
  */
 const roomSegment: StatusLineSegment = {
 	id: "room",
@@ -510,21 +510,14 @@ const roomSegment: StatusLineSegment = {
 		if (peers === 0) {
 			return { content: "", visible: false };
 		}
-		const base = theme.fg(
+		let content = theme.fg(
 			"statusLineSubagents",
 			withIcon(theme.icon.agents, `${peers} peer${peers === 1 ? "" : "s"}`),
 		);
 		const dot = theme.fg("dim", theme.sep.dot);
-		if (waiting > 0) {
-			return {
-				content: `${base}${dot}${theme.fg("borderAccent", `${theme.status.warning} ${waiting} needs you`)}`,
-				visible: true,
-			};
-		}
-		if (working > 0) {
-			return { content: `${base}${dot}${theme.fg("accent", `${working} working`)}`, visible: true };
-		}
-		return { content: base, visible: true };
+		if (waiting > 0) content += `${dot}${theme.fg("borderAccent", `${theme.status.warning} ${waiting} needs you`)}`;
+		if (working > 0) content += `${dot}${theme.fg("accent", `${working} working`)}`;
+		return { content, visible: true };
 	},
 };
 
