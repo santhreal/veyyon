@@ -867,6 +867,7 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `modelTags` | record | `{}` |  |
 | `retry.baseDelayMs` | number | `500` |  |
 | `retry.enabled` | boolean | `true` |  |
+| `room.guideShown` | boolean | `false` |  |
 | `searxng.basicPassword` | string | _(unset)_ |  |
 | `searxng.basicUsername` | string | _(unset)_ |  |
 | `searxng.categories` | string | _(unset)_ |  |
@@ -900,4 +901,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-354 settings in /settings, 120 configuration-file keys, 474 in all.
+354 settings in /settings, 121 configuration-file keys, 475 in all.
