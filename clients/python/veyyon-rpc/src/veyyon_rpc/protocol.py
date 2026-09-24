@@ -117,7 +117,7 @@ _ASSISTANT_DONE_REASON_VALUES: Final[frozenset[str]] = frozenset(
 )
 _ASSISTANT_ERROR_REASON_VALUES: Final[frozenset[str]] = frozenset({"aborted", "error"})
 _AUTO_COMPACTION_REASON_VALUES: Final[frozenset[str]] = frozenset(
-    {"threshold", "overflow", "idle"}
+    {"threshold", "overflow", "idle", "incomplete", "provider_switch"}
 )
 _AUTO_COMPACTION_ACTION_VALUES: Final[frozenset[str]] = frozenset(
     {"context-full", "handoff"}
@@ -967,7 +967,7 @@ class ToolExecutionEndEvent:
 
 @dataclass(slots=True, frozen=True)
 class AutoCompactionStartEvent:
-    reason: Literal["threshold", "overflow", "idle"]
+    reason: Literal["threshold", "overflow", "idle", "incomplete", "provider_switch"]
     action: Literal["context-full", "handoff"]
     type: Literal["auto_compaction_start"] = "auto_compaction_start"
 
@@ -1592,7 +1592,7 @@ def parse_notification(payload: JsonObject) -> RpcNotification:
     if event_type == "auto_compaction_start":
         return AutoCompactionStartEvent(
             reason=cast(
-                Literal["threshold", "overflow", "idle"],
+                Literal["threshold", "overflow", "idle", "incomplete", "provider_switch"],
                 _require_literal(
                     payload.get("reason", "threshold"),
                     _AUTO_COMPACTION_REASON_VALUES,

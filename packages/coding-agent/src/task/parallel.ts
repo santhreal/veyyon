@@ -42,10 +42,7 @@ export async function mapWithConcurrencyLimit<T, R>(
 	const workerSignal = signal ? AbortSignal.any([signal, abortController.signal]) : abortController.signal;
 
 	// Promise that rejects on first error - used to fail fast (not for abort)
-	let rejectFirst: (error: unknown) => void;
-	const firstErrorPromise = new Promise<never>((_, reject) => {
-		rejectFirst = reject;
-	});
+	const { promise: firstErrorPromise, reject: rejectFirst } = Promise.withResolvers<never>();
 
 	const worker = async (): Promise<void> => {
 		while (true) {

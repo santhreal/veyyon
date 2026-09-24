@@ -203,6 +203,26 @@ export function remoteCompactionProviderPayload(
 }
 
 /**
+ * Whether a session running on `activeProvider` can replay this entry's stored
+ * window in place of the span it compacted.
+ *
+ * The window's `compaction` item is an opaque blob only its minting provider can
+ * decrypt, so replay is provider identity, not the presence of a window: a session
+ * that switched providers holds a payload the encoder drops, and counting it as
+ * replayable emits an empty summary that hides the span. An `activeProvider` of
+ * undefined is a branch that records no model yet; it replays, since nothing on
+ * the branch names a provider the window would be foreign to.
+ */
+export function remoteCompactionReplayableBy(
+	preserveData: Record<string, unknown> | undefined,
+	activeProvider: string | undefined,
+): boolean {
+	const data = getRemoteCompactionPreserveData(preserveData);
+	if (!data || !REMOTE_COMPACTION_REPLAY_APIS[data.api]) return false;
+	return activeProvider === undefined || activeProvider === data.provider;
+}
+
+/**
  * Display attribution for a remote compaction, e.g. `openai/gpt-5.6-sol`.
  * Anything that names the compaction model must use this: the provider did
  * the compaction server-side, so a configured local compaction model did not

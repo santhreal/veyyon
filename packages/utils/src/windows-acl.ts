@@ -128,77 +128,77 @@ async function defaultWindowsAclRunner(
 	}
 	const systemRoot = path.win32.normalize(configuredSystemRoot);
 	const powershell = path.win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-	return await new Promise<WindowsAclCommandResult>((resolve, reject) => {
-		const child = spawnProcess(
-			powershell,
-			["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
-			{
-				env: { SystemRoot: systemRoot, VEYYON_OWNER_ONLY_ACL_PATH: filePath },
-				stdio: ["ignore", "pipe", "pipe"],
-				windowsHide: true,
-			},
-		);
-		const stdout: Buffer[] = [];
-		const stderr: Buffer[] = [];
-		let totalBytes = 0;
-		let settled = false;
-		let timer: NodeJS.Timeout | undefined;
-		const stopCollecting = (destroy: boolean): void => {
-			child.stdout.off("data", onStdout);
-			child.stderr.off("data", onStderr);
-			if (destroy) {
-				child.stdout.destroy();
-				child.stderr.destroy();
-			}
-		};
-		const fail = (error: Error, terminate: boolean): void => {
-			if (settled) return;
-			settled = true;
-			clearTimeout(timer);
-			if (terminate) {
-				try {
-					child.kill();
-				} catch {}
-			}
-			stopCollecting(true);
-			stdout.length = 0;
-			stderr.length = 0;
-			reject(error);
-		};
-		const collect = (destination: Buffer[], chunk: Buffer): void => {
-			if (settled) return;
-			totalBytes += chunk.length;
-			if (totalBytes > MAX_COMMAND_OUTPUT_BYTES) {
-				fail(new Error("The Windows ACL command produced excessive output."), true);
-				return;
-			}
-			destination.push(chunk);
-		};
-		const onStdout = (chunk: Buffer): void => collect(stdout, chunk);
-		const onStderr = (chunk: Buffer): void => collect(stderr, chunk);
-		const decode = (chunks: Buffer[]): string => {
-			if (chunks.length === 0) return "";
-			const bytes = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
-			return bytes.toString("utf8").trim();
-		};
-		child.stdout.on("data", onStdout);
-		child.stderr.on("data", onStderr);
-		child.once("error", error => fail(error, false));
-		child.once("close", code => {
-			if (settled) return;
-			settled = true;
-			clearTimeout(timer);
-			stopCollecting(false);
-			resolve({
-				exitCode: code ?? -1,
-				stdout: decode(stdout),
-				stderr: decode(stderr),
-			});
+	const { promise, resolve, reject } = Promise.withResolvers<WindowsAclCommandResult>();
+	const child = spawnProcess(
+		powershell,
+		["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
+		{
+			env: { SystemRoot: systemRoot, VEYYON_OWNER_ONLY_ACL_PATH: filePath },
+			stdio: ["ignore", "pipe", "pipe"],
+			windowsHide: true,
+		},
+	);
+	const stdout: Buffer[] = [];
+	const stderr: Buffer[] = [];
+	let totalBytes = 0;
+	let settled = false;
+	let timer: NodeJS.Timeout | undefined;
+	const stopCollecting = (destroy: boolean): void => {
+		child.stdout.off("data", onStdout);
+		child.stderr.off("data", onStderr);
+		if (destroy) {
+			child.stdout.destroy();
+			child.stderr.destroy();
+		}
+	};
+	const fail = (error: Error, terminate: boolean): void => {
+		if (settled) return;
+		settled = true;
+		clearTimeout(timer);
+		if (terminate) {
+			try {
+				child.kill();
+			} catch {}
+		}
+		stopCollecting(true);
+		stdout.length = 0;
+		stderr.length = 0;
+		reject(error);
+	};
+	const collect = (destination: Buffer[], chunk: Buffer): void => {
+		if (settled) return;
+		totalBytes += chunk.length;
+		if (totalBytes > MAX_COMMAND_OUTPUT_BYTES) {
+			fail(new Error("The Windows ACL command produced excessive output."), true);
+			return;
+		}
+		destination.push(chunk);
+	};
+	const onStdout = (chunk: Buffer): void => collect(stdout, chunk);
+	const onStderr = (chunk: Buffer): void => collect(stderr, chunk);
+	const decode = (chunks: Buffer[]): string => {
+		if (chunks.length === 0) return "";
+		const bytes = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
+		return bytes.toString("utf8").trim();
+	};
+	child.stdout.on("data", onStdout);
+	child.stderr.on("data", onStderr);
+	child.once("error", error => fail(error, false));
+	child.once("close", code => {
+		if (settled) return;
+		settled = true;
+		clearTimeout(timer);
+		stopCollecting(false);
+		resolve({
+			exitCode: code ?? -1,
+			stdout: decode(stdout),
+			stderr: decode(stderr),
 		});
-		timer = setTimeout(() => {
-			fail(new Error("The Windows ACL command timed out."), true);
-		}, WINDOWS_ACL_TIMEOUT_MS);
 	});
+	timer = setTimeout(() => {
+		fail(new Error("The Windows ACL command timed out."), true);
+	}, WINDOWS_ACL_TIMEOUT_MS);
+	return await promise;
 }
 
 function boundedDiagnostic(value: string): string {

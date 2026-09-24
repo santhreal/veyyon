@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Re-throw caller cancellation in GitHub and Mastodon scrapers so user abort signals are not swallowed and fallen back to generic fetch.
+
+### Changed
+
+- Replaced `any` types in `getNested` scraper utility with `unknown`; no user-visible behavior change.
+
 ## [1.5.0] - 2026-09-18
 
 ### Added

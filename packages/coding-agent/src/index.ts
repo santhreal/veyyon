@@ -98,6 +98,7 @@ export {
 export * from "./session/agent-session";
 export * from "./session/agent-session-message-shapes";
 export * from "./session/agent-session-permissions";
+export * from "./session/agent-session-provider-request";
 export * from "./session/agent-session-queue";
 export * from "./session/agent-session-retry-fallback";
 export * from "./session/agent-session-types";

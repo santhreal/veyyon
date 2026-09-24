@@ -120,15 +120,11 @@ async function checkServerRunning(binaryPath: string): Promise<boolean> {
 		// The timer has to be cancelled when the process wins the race. Left
 		// pending it holds its resolve closure and keeps the loop scheduled for the
 		// rest of the timeout on every probe of an already-dead server.
-		let timer: NodeJS.Timeout | undefined;
+		const { promise: timeoutPromise, resolve: resolveTimeout } = Promise.withResolvers<null>();
+		const timer = setTimeout(() => resolveTimeout(null), LIVENESS_TIMEOUT_MS);
 		let exited: number | null;
 		try {
-			exited = await Promise.race([
-				proc.exited,
-				new Promise<null>(resolve => {
-					timer = setTimeout(() => resolve(null), LIVENESS_TIMEOUT_MS);
-				}),
-			]);
+			exited = await Promise.race([proc.exited, timeoutPromise]);
 		} finally {
 			clearTimeout(timer);
 		}

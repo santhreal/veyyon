@@ -96,9 +96,10 @@ describe("a corrupt credential store fails loudly instead of looking logged out"
 		}
 
 		try {
-			// Observed contract: SQLite recovers the leading pages, so the credential is
-			// still there. The forbidden outcome is opening cleanly and reporting zero
-			// credentials, which the user experiences as being logged out.
+			// Observed contract: the store keeps its WAL file on close, and that file still
+			// holds the credential's pages, so the credential survives a severed main file.
+			// The forbidden outcome is opening cleanly and reporting zero credentials,
+			// which the user experiences as being logged out.
 			expect(openError).toBeUndefined();
 			const rows = store?.listAuthCredentials("anthropic") ?? [];
 			expect(rows).toHaveLength(1);

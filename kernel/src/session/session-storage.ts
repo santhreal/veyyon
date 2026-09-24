@@ -697,7 +697,7 @@ export class FileSessionStorage implements SessionStorage {
 		await this.unlink(sessionPath);
 
 		// Compute artifacts directory: /path/to/session.jsonl -> /path/to/session
-		const artifactsDir = sessionPath.slice(0, -6);
+		const artifactsDir = sessionFileStem(sessionPath);
 
 		// Delete artifacts directory if it exists. Missing directories are fine, but
 		// surface real cleanup failures because the session file is already gone.

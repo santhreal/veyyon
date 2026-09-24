@@ -117,13 +117,13 @@ export function partialIsoDate(
 	}
 	return out;
 }
-export function getNested(obj: any, path: string): any {
+export function getNested(obj: unknown, path: string): unknown {
 	if (!obj || typeof obj !== "object" || !path) return undefined;
 	const parts = path.split(".");
-	let curr = obj;
+	let curr: unknown = obj;
 	for (const part of parts) {
 		if (curr === null || curr === undefined || typeof curr !== "object") return undefined;
-		curr = curr[part];
+		curr = (curr as Record<string, unknown>)[part];
 	}
 	return curr;
 }

@@ -216,7 +216,7 @@ export interface TurnEndEvent {
 /** Fired when auto-compaction starts */
 export interface AutoCompactionStartEvent {
 	type: "auto_compaction_start";
-	reason: "threshold" | "overflow" | "idle" | "incomplete";
+	reason: "threshold" | "overflow" | "idle" | "incomplete" | "provider_switch";
 	action: CompactionEngineAction;
 }
 

@@ -620,13 +620,11 @@ async function applyTargetUserAgentOverride(target: Target, override: UserAgentO
 }
 
 async function withSoftTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T | undefined> {
-	let timeout: NodeJS.Timeout | undefined;
-	const timeoutPromise = new Promise<undefined>(resolve => {
-		timeout = setTimeout(() => {
-			logger.debug(`Timed out applying ${label}`);
-			resolve(undefined);
-		}, timeoutMs);
-	});
+	const { promise: timeoutPromise, resolve } = Promise.withResolvers<undefined>();
+	const timeout = setTimeout(() => {
+		logger.debug(`Timed out applying ${label}`);
+		resolve(undefined);
+	}, timeoutMs);
 	try {
 		return await Promise.race([
 			promise.catch(error => {
@@ -636,7 +634,7 @@ async function withSoftTimeout<T>(promise: Promise<T>, timeoutMs: number, label:
 			timeoutPromise,
 		]);
 	} finally {
-		if (timeout) clearTimeout(timeout);
+		clearTimeout(timeout);
 	}
 }
 

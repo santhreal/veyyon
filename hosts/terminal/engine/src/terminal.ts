@@ -283,6 +283,10 @@ function registerStdoutErrorHandler(handler: (err: Error) => void): () => void {
 	}
 	return () => {
 		stdoutErrorHandlers.delete(handler);
+		if (stdoutErrorHandlers.size === 0 && stdoutErrorListenerInstalled) {
+			process.stdout.removeListener("error", onStdoutError);
+			stdoutErrorListenerInstalled = false;
+		}
 	};
 }
 
@@ -789,6 +793,10 @@ export class ProcessTerminal implements Terminal {
 		// Set up resize handler immediately. The OS refreshes process.stdout
 		// dimensions before firing `resize`, so it is authoritative for geometry:
 		// reconcile any stale cached DEC 2048 report before notifying the renderer.
+		if (this.#stdoutResizeListener) {
+			process.stdout.removeListener("resize", this.#stdoutResizeListener);
+			this.#stdoutResizeListener = undefined;
+		}
 		this.#stdoutResizeListener = () => {
 			this.#reconcileInBandGeometryOnResize();
 			this.#resizeHandler?.();

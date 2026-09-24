@@ -278,17 +278,27 @@ export function modelCacheStamp(dbPath?: string, options?: { ttlMs?: number; now
 	const now = options?.now ?? Date.now;
 	try {
 		return withModelCacheDb(dbPath, db => {
-			const rows = db
-				.query("SELECT provider_id, content_fingerprint, updated_at FROM model_cache ORDER BY provider_id")
-				.all() as Array<Pick<CacheRow, "provider_id" | "content_fingerprint" | "updated_at">>;
+			const rowsStmt = db.query(
+				"SELECT provider_id, content_fingerprint, updated_at FROM model_cache ORDER BY provider_id",
+			);
+			let rows: Array<Pick<CacheRow, "provider_id" | "content_fingerprint" | "updated_at">>;
+			try {
+				rows = rowsStmt.all() as Array<Pick<CacheRow, "provider_id" | "content_fingerprint" | "updated_at">>;
+			} finally {
+				rowsStmt.finalize();
+			}
 			const at = now();
 			const stamped = rows.map(row => {
 				const ageMs = at - row.updated_at;
 				return [row.provider_id, row.content_fingerprint, Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= ttlMs];
 			});
-			const revision = db.query("SELECT value FROM model_cache_meta WHERE key = 'revision'").get() as {
-				value: number;
-			} | null;
+			const revisionStmt = db.query("SELECT value FROM model_cache_meta WHERE key = 'revision'");
+			let revision: { value: number } | null;
+			try {
+				revision = revisionStmt.get() as { value: number } | null;
+			} finally {
+				revisionStmt.finalize();
+			}
 			return createHash("sha256")
 				.update(JSON.stringify({ revision: revision?.value ?? 0, rows: stamped }))
 				.digest("hex");

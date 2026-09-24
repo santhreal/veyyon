@@ -21,6 +21,7 @@ import {
 	getLspBatchRequest,
 	getPreviewLines,
 	previewLine,
+	replaceTabs,
 	shortenPath,
 	truncateDiffByHunk,
 } from "@veyyon/coding-agent/tools/core/render-utils";
@@ -401,6 +402,9 @@ describe("previewLine / getPreviewLines", () => {
 
 	it("keeps only the first maxLines non-blank lines, trimmed", () => {
 		expect(getPreviewLines("  one  \n\n  two  \nthree", 2, 10)).toEqual(["one", "two"]);
+	});
+	it("replaces tabs with spaces before truncation to prevent visual holes", () => {
+		expect(getPreviewLines("col1\tcol2", 1, 20)).toEqual([replaceTabs("col1\tcol2")]);
 	});
 });
 

@@ -322,6 +322,15 @@ Prompt selection:
 - split-turn second pass: `compaction-turn-prefix.md`
 - handoff document: `handoff-document.md` (used only by explicit `generateHandoff(...)`, not serialized compaction)
 
+Staged summaries: when the single summary request does not fit the model's context window, or
+times out, `compact(...)` summarizes the span as consecutive segments, four requests at a time, and
+merges the segment summaries in rounds into one summary. `summaryStaging: "staged"` starts staged
+without the single request; the session sets it for a model whose last summary took more than one
+stage. `stagedSummaryCheckpoints` is a map of completed segment and merge answers keyed by a SHA-256
+digest of the model, output budget and request text. When a staged summary fails part way, the next
+attempt with the same map sends only the requests that never completed. The session keeps one map
+and clears it when a compaction is committed.
+
 ### Short summary
 
 `CompactionEntry.shortSummary` is a display-only, pull-request-style line. `compact()` no longer
@@ -354,27 +363,30 @@ A re-pointed `openai` model also stays out, since another vendor's host does not
 that path. Turning `compaction.remote` off is the only thing that disables it; leaving
 it unset leaves it on.
 
-**A server-side compaction stores no summary text, and that is deliberate.** The window
-it returns is an `encrypted_content` blob minted under the provider's key. There is
-nothing in it to read, and nothing to decrypt: it is the compacted context itself, meant
-to be handed straight back to the same provider. The path used to run a full local
-summarization of the same span alongside the remote call and store both, which cost the
-remote call plus the exact summary the remote call was supposed to replace, and only one
-of the two was ever read. Writing readable text here is not a missing feature that could
-be added later. The only way to produce it is to pay a second model to describe a span,
-which is the local strategy with an extra network round trip in front of it, and any text
-derived from the blob rather than the span would be invented. An empty summary
-records what happened.
+**A server-side compaction stores no summary text.** The window it returns is an
+`encrypted_content` blob minted under the provider's key and replayed to the same provider on
+every rebuild. No local summarization of the same span runs alongside the remote call.
 
-Because the entry cannot explain itself, the rebuild will not trust it outside the
-provider that minted it. `buildSessionContext` treats a compaction as usable only when the
-stored window replays on the active provider, or when there is real summary text. When
-neither holds, which is a fork or resume onto a different provider, it re-expands every
-message the compaction hid. Nothing was lost to recover: compaction only advances
-`firstKeptEntryId`, so the discarded span is still in the session file.
+A rebuild applies the newest compaction on the branch that the active provider can use: one whose
+stored window replays on that provider, or one with summary text (`getEffectiveCompactionEntry` in
+`kernel/src/session/session-context.ts`). After a fork, resume or model switch onto a different
+provider, a newer server-side compaction is skipped, and the rebuild starts from the previous
+usable compaction and re-expands only the messages after it. A branch with no usable compaction
+re-expands from its first entry. No history is lost: compaction advances `firstKeptEntryId`, and the
+hidden span stays in the session file.
 
-Sessions compacted by the earlier, removed path (`preserveData.openaiRemoteCompaction`,
-whose summary field held a fixed placeholder) load through the same rule and re-expand.
+Before the next prompt on the new provider, and before any compaction check of that prompt or an
+idle compaction measures the context, the session ports the unreadable compaction. It sends
+the window to the model that minted it with the summarization instruction appended as one user turn
+(`summarizeRemoteCompactionWindow`), and appends the answer as a local compaction with the same
+`firstKeptEntryId`. The request covers the compacted window, not the raw span, so it stays small on
+a long session. The port emits `auto_compaction_start` with reason `provider_switch`, then
+`auto_compaction_end`. A successful port satisfies an idle compaction, which then sends nothing more.
+When the minting model has no credentials or the request fails, the fallback rebuild stands and the
+next compaction on the active provider summarizes the span.
+
+Sessions compacted by the earlier, removed path (`preserveData.openaiRemoteCompaction`, whose
+summary field held a fixed placeholder) load through the same rule and are never ported.
 
 ### Handoff generation
 

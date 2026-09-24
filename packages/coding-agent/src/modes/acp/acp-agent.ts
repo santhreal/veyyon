@@ -916,14 +916,15 @@ export class AcpAgent implements Agent {
 	}
 
 	async #runCancelCleanup(record: ManagedSessionRecord, promptTurn: PromptTurnState): Promise<void> {
-		let timer: NodeJS.Timeout | undefined;
-		const timeout = new Promise<never>((_, reject) => {
-			timer = setTimeout(() => reject(new Error("ACP cancel cleanup timed out")), this.#cancelCleanupTimeoutMs);
-		});
+		const timeout = Promise.withResolvers<never>();
+		const timer = setTimeout(
+			() => timeout.reject(new Error("ACP cancel cleanup timed out")),
+			this.#cancelCleanupTimeoutMs,
+		);
 		try {
-			await Promise.race([record.session.abort({ reason: USER_INTERRUPT_LABEL }), timeout]);
+			await Promise.race([record.session.abort({ reason: USER_INTERRUPT_LABEL }), timeout.promise]);
 		} finally {
-			if (timer) clearTimeout(timer);
+			clearTimeout(timer);
 			// Order matters: clear `cleanup` before evicting the slot so the slot-eviction
 			// branch matches what `#finishPrompt` saw if it ran first.
 			promptTurn.cleanup = undefined;

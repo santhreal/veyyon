@@ -145,18 +145,19 @@ export class HttpTransport implements MCPTransport {
 			headers,
 			signal: connection.signal,
 		});
-		const timeoutPromise =
-			startupTimeoutMs > 0
-				? new Promise<null>(resolve => {
-						setTimeout(() => {
-							if (!startupFinished) {
-								timedOut = true;
-								connection.abort();
-							}
-							resolve(null);
-						}, startupTimeoutMs);
-					})
-				: null;
+		let timer: NodeJS.Timeout | undefined;
+		let timeoutPromise: Promise<null> | null = null;
+		if (startupTimeoutMs > 0) {
+			const { promise, resolve } = Promise.withResolvers<null>();
+			timeoutPromise = promise;
+			timer = setTimeout(() => {
+				if (!startupFinished) {
+					timedOut = true;
+					connection.abort();
+				}
+				resolve(null);
+			}, startupTimeoutMs);
+		}
 		try {
 			response = timeoutPromise === null ? await fetchPromise : await Promise.race([fetchPromise, timeoutPromise]);
 		} catch (error) {
@@ -167,6 +168,7 @@ export class HttpTransport implements MCPTransport {
 			return;
 		} finally {
 			startupFinished = true;
+			clearTimeout(timer);
 		}
 		if (response === null) {
 			if (this.#sseConnection === connection) this.#sseConnection = null;

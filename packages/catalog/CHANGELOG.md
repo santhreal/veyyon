@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Finalized SQLite statement handles in modelCacheStamp, preventing statement handle accumulation on shared databases.
+
 ## [1.5.1] - 2026-09-22
 
 ### Fixed

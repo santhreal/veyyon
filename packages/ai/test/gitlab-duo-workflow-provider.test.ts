@@ -5475,4 +5475,54 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 		expect(gitLabDuoWorkflowErrorText(withPat)).toBe(withPat);
 		expect(gitLabDuoWorkflowErrorText(42)).toBe("42");
 	});
+
+	it("detaches abort listener from options.signal when socket settles", async () => {
+		const controller = new AbortController();
+		const socket: GitLabDuoWorkflowWebSocketLike = {
+			onopen: null,
+			onmessage: null,
+			onerror: null,
+			onclose: null,
+			send() {},
+			close() {},
+		};
+		const output: AssistantMessage = {
+			role: "assistant",
+			content: [],
+			api: model.api,
+			provider: model.provider,
+			model: model.id,
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 0,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			stopReason: "stop",
+			timestamp: Date.now(),
+		};
+
+		const streamPromise = runGitLabDuoWorkflowSocket(
+			socket,
+			buildGitLabDuoWorkflowStartRequest("workflow-abort-test", model, context),
+			{ stream: new AssistantMessageEventStream(), output, started: true },
+			{ apiKey: "redacted", signal: controller.signal },
+		);
+
+		// Simulate socket close
+		socket.onclose?.(new CloseEvent("close", { code: 1000 }));
+		const outcome = await streamPromise;
+		expect(outcome).toBe("closed");
+
+		// Aborting the controller after settle must not trigger an unhandled rejection
+		// or call close() on the socket again.
+		let closeCalls = 0;
+		socket.close = () => {
+			closeCalls++;
+		};
+		controller.abort();
+		expect(closeCalls).toBe(0);
+	});
 });

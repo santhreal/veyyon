@@ -5,6 +5,7 @@
  * and after compaction the session is reloaded.
  */
 
+import { createHash } from "node:crypto";
 import type {
 	Api,
 	ApiKey,
@@ -49,10 +50,17 @@ import { KEEP_NOTHING_ENTRY_ID } from "./entries";
 import { CompactionCancelledError } from "./errors";
 import { LEGACY_REMOTE_PRESERVE_KEYS } from "./legacy-provider-native";
 import { hasLegacyArchive, legacyArchiveSourceText, stripLegacyArchive } from "./legacy-snapcompact-archive";
-import { type ConvertToLlm, createBranchSummaryMessage, createCustomMessage, defaultConvertToLlm } from "./messages";
+import {
+	type ConvertToLlm,
+	createBranchSummaryMessage,
+	createCompactionSummaryMessage,
+	createCustomMessage,
+	defaultConvertToLlm,
+} from "./messages";
 import {
 	getRemoteCompactionPreserveData,
 	REMOTE_COMPACTION_PRESERVE_KEY,
+	remoteCompactionProviderPayload,
 	stripRemoteCompactionPreserveData,
 } from "./remote-compaction-entry";
 import { requestRemoteCompaction } from "./remote-summarizer";
@@ -711,6 +719,17 @@ export interface SummaryOptions {
 	 * {@link CompactionResult.summaryStages}).
 	 */
 	summaryStaging?: "auto" | "staged";
+	/**
+	 * Segment and merge summaries a staged summary already produced, keyed by a
+	 * digest of the model, output budget and request text. A staged summary of a
+	 * long span is hundreds of requests, and one failure (a timeout, an overflow, a
+	 * cancelled turn) discarded every completed one, so the next attempt restarted
+	 * from the first segment and could fail at the same place again. With a map the
+	 * next attempt sends only the requests that never completed. An entry is reused
+	 * only for a byte-identical request to the same model; the caller owns the map
+	 * and clears it once a summary is committed.
+	 */
+	stagedSummaryCheckpoints?: Map<string, string>;
 }
 
 function localCodexCompaction(options: SummaryOptions | undefined) {
@@ -1049,16 +1068,30 @@ async function generateStagedSummary(
 	previousSummary: string | undefined,
 	options: SummaryOptions | undefined,
 ): Promise<GeneratedSummary> {
-	const segmentBudget = segmentOutputBudget(model, reserveTokens);
-	let summaries = await mapWithConcurrency(segments, STAGED_SUMMARY_CONCURRENCY, segment =>
-		requestSummary(
+	const checkpoints = options?.stagedSummaryCheckpoints;
+	const request = async (promptText: string, maxTokens: number, what: string): Promise<string> => {
+		const key = checkpoints
+			? createHash("sha256").update(`${model.provider}/${model.id}\n${maxTokens}\n${promptText}`).digest("hex")
+			: undefined;
+		const saved = key === undefined ? undefined : checkpoints?.get(key);
+		if (saved !== undefined) return saved;
+		const summary = await requestSummary(
 			model,
-			() =>
-				buildCompactionProviderContext(SUMMARIZATION_SYSTEM_PROMPT, buildSegmentPrompt(segment, options), options),
-			segmentBudget,
+			() => buildCompactionProviderContext(SUMMARIZATION_SYSTEM_PROMPT, promptText, options),
+			maxTokens,
 			apiKey,
 			signal,
 			options,
+			what,
+		);
+		if (key !== undefined) checkpoints?.set(key, summary);
+		return summary;
+	};
+	const segmentBudget = segmentOutputBudget(model, reserveTokens);
+	let summaries = await mapWithConcurrency(segments, STAGED_SUMMARY_CONCURRENCY, segment =>
+		request(
+			buildSegmentPrompt(segment, options),
+			segmentBudget,
 			`Segment ${segment.index} of ${segment.count} summarization`,
 		),
 	);
@@ -1072,23 +1105,14 @@ async function generateStagedSummary(
 		// instruction, because its answer is the summary that replaces the span.
 		const final = groups.length === 1;
 		summaries = await mapWithConcurrency(groups, STAGED_SUMMARY_CONCURRENCY, (group, position) =>
-			requestSummary(
-				model,
-				() =>
-					buildCompactionProviderContext(
-						SUMMARIZATION_SYSTEM_PROMPT,
-						buildMergePrompt(
-							group,
-							final ? previousSummary : undefined,
-							final ? customInstructions : undefined,
-							final ? options : { ...options, promptOverride: undefined },
-						),
-						options,
-					),
+			request(
+				buildMergePrompt(
+					group,
+					final ? previousSummary : undefined,
+					final ? customInstructions : undefined,
+					final ? options : { ...options, promptOverride: undefined },
+				),
 				mergeBudget,
-				apiKey,
-				signal,
-				options,
 				`Merge round ${round} group ${position + 1} of ${groups.length}`,
 			),
 		);
@@ -1203,6 +1227,59 @@ export async function generateSummary(
 		});
 		return staged("the single request timed out");
 	}
+}
+
+/**
+ * Readable summary text for the span a server-side compaction entry hid, for a
+ * session that has moved to a provider which cannot replay the entry's window.
+ *
+ * The window's `compaction` item is an opaque blob only its minting provider can
+ * decrypt, so `model` must be a model on that provider. The window is replayed to
+ * it the way a live rebuild replays it, and the summarization instruction is
+ * appended as one new user turn. One request over the compacted window is small by
+ * construction; the alternative is re-expanding every raw message the window
+ * stood in for and summarizing that on the new provider, which on a long session
+ * is millions of tokens and a staged summary of hundreds of segments.
+ *
+ * Throws when `model` cannot replay the entry, rather than asking a model that
+ * would receive the summary message with its window dropped and summarize nothing.
+ */
+export async function summarizeRemoteCompactionWindow(
+	entry: CompactionEntry,
+	model: Model,
+	reserveTokens: number,
+	apiKey: ApiKey,
+	signal?: AbortSignal,
+	options?: SummaryOptions,
+): Promise<string> {
+	const data = getRemoteCompactionPreserveData(entry.preserveData);
+	const providerPayload = remoteCompactionProviderPayload(entry.preserveData);
+	if (!data || !providerPayload || data.provider !== model.provider) {
+		throw new Error(
+			`Compaction ${entry.id} holds no server-side window ${model.provider}/${model.id} can replay; ` +
+				"summarize it with the model on the provider that compacted it.",
+		);
+	}
+	const windowMessages = (options?.convertToLlm ?? defaultConvertToLlm)([
+		createCompactionSummaryMessage(entry.summary, entry.tokensBefore, entry.timestamp, undefined, providerPayload),
+	]);
+	const { promptText, maxTokens } = buildSummaryPrompt([], model, reserveTokens, undefined, undefined, options, true);
+	return requestSummary(
+		model,
+		() =>
+			buildCacheAlignedCompactionContext({
+				sessionSystemPrompt: options?.sessionSystemPrompt ?? [SUMMARIZATION_SYSTEM_PROMPT],
+				sessionMessages: windowMessages,
+				tools: options?.tools,
+				instruction: promptText,
+				sanitize: text => sanitizeCompactionProviderText(text, options),
+			}),
+		maxTokens,
+		apiKey,
+		signal,
+		options,
+		"Compaction port",
+	);
 }
 
 // ============================================================================
@@ -2111,34 +2188,12 @@ export async function compact(
 
 	const reserveTokens = settings.reserveTokens ?? DEFAULT_RESERVE_TOKENS;
 
-	const summaryOptions: SummaryOptions = {
-		promptOverride: options?.promptOverride,
-		extraContext: options?.extraContext,
-		remoteEndpoint: settings.remoteEndpoint,
-		remoteInstructions: options?.remoteInstructions,
-		initiatorOverride: options?.initiatorOverride,
-		metadata: options?.metadata,
-		convertToLlm: options?.convertToLlm,
-		telemetry: options?.telemetry,
-		// Honor /model thinking selection on every fan-out summarizer.
-		// Without this propagation, generateSummary / generateTurnPrefixSummary
-		// see options?.thinkingLevel === undefined and resolveCompactionEffort
-		// silently falls back to Effort.High — the same defect e07b47ee4 fixed
-		// at the call sites, leaked back in here. See resolveCompactionEffort.
-		thinkingLevel: options?.thinkingLevel,
-		sessionId: options?.sessionId,
-		promptCacheKey: options?.promptCacheKey,
-		serviceTier: options?.serviceTier,
-		providerSessionState: options?.providerSessionState,
-		codexCompaction: options?.codexCompaction,
-		tools: options?.tools,
-		sessionSystemPrompt: options?.sessionSystemPrompt,
-		sessionMessages: options?.sessionMessages,
-		fetch: options?.fetch,
-		completeImpl: options?.completeImpl,
-		obfuscateProviderText: options?.obfuscateProviderText,
-		summaryStaging: options?.summaryStaging,
-	};
+	// Every caller option reaches the fan-out summarizers. A field-by-field copy
+	// dropped each option added after it was written (thinkingLevel once, the
+	// staged-summary checkpoints later), and the summarizer then ran on its
+	// defaults without error. The remote endpoint is the one field compaction
+	// settings own.
+	const summaryOptions: SummaryOptions = { ...options, remoteEndpoint: settings.remoteEndpoint };
 
 	const previousLegacyArchiveText = legacyArchiveSourceText(previousPreserveData);
 	const previousSummaryForCompaction = mergePreviousSummaryWithLegacyArchive(

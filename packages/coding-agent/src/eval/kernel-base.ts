@@ -1051,13 +1051,19 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 	 * escalate to SIGKILL while reporting `confirmed: false` (BACKLOG
 	 * KERNEL-EXIT-CONFIRM).
 	 */
-	#waitForExitWithTimeout(timeoutMs: number): Promise<KernelExitObservation | null> {
-		if (!this.#exitedPromise) return Promise.resolve({ code: 0 });
+	async #waitForExitWithTimeout(timeoutMs: number): Promise<KernelExitObservation | null> {
+		if (!this.#exitedPromise) return { code: 0 };
 		const exitedPromise = this.#exitedPromise;
-		const timeout = new Promise<null>(resolve => {
-			const timer = setTimeout(() => resolve(null), Math.max(0, timeoutMs));
-			timer.unref?.();
-		});
-		return Promise.race([exitedPromise.then(code => ({ code: (code as number | null) ?? null })), timeout]);
+		const { promise: timeoutPromise, resolve: resolveTimeout } = Promise.withResolvers<null>();
+		const timer = setTimeout(() => resolveTimeout(null), Math.max(0, timeoutMs));
+		timer.unref?.();
+		try {
+			return await Promise.race([
+				exitedPromise.then(code => ({ code: (code as number | null) ?? null })),
+				timeoutPromise,
+			]);
+		} finally {
+			clearTimeout(timer);
+		}
 	}
 }

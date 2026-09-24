@@ -233,7 +233,8 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 
 	applyHook(path: SettingPath, next: unknown, prev: unknown): void {
 		const hook = SETTING_HOOKS[path];
-		if (hook) hook(next, prev);
+		if (hook)
+			(hook as SettingHook<SettingPath>)(next as SettingValue<SettingPath>, prev as SettingValue<SettingPath>);
 	}
 
 	applyAllHooks(store: SettingsStore): void {
@@ -241,7 +242,7 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 			const hook = SETTING_HOOKS[key];
 			if (hook) {
 				const value = store.get(key);
-				hook(value, value);
+				(hook as SettingHook<SettingPath>)(value, value);
 			}
 		}
 	}
@@ -652,7 +653,7 @@ function themeSlotHook(slot: "dark" | "light"): SettingHook<"theme.dark" | "them
 	};
 }
 
-const SETTING_HOOKS: Partial<Record<SettingPath, SettingHook<any>>> = {
+const SETTING_HOOKS: { [P in SettingPath]?: SettingHook<P> } = {
 	"theme.dark": themeSlotHook("dark"),
 	"theme.light": themeSlotHook("light"),
 	symbolPreset: value => {

@@ -1585,7 +1585,9 @@ export class EventController {
 					? "Response incomplete, "
 					: event.reason === "idle"
 						? "Idle "
-						: "";
+						: event.reason === "provider_switch"
+							? "Provider switch, "
+							: "";
 		const actionLabel = compactionActionLabel(true, resolveCompactionKind(this.ctx.viewSession));
 		this.ctx.autoCompactionLoader = new Loader(
 			this.ctx.ui,

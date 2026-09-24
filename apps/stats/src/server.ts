@@ -17,6 +17,7 @@ import {
 	getTotalMessageCount,
 	syncAllSessions,
 } from "./aggregator";
+import { closeDb } from "./db";
 import { decodeEmbeddedClientArchive } from "./embedded-client";
 import embeddedClientArchiveTxt from "./embedded-client.generated.txt";
 
@@ -213,13 +214,18 @@ async function handleApi(req: Request): Promise<Response> {
 	const limitRead = Object.hasOwn(LIMIT_READS, path) ? LIMIT_READS[path] : undefined;
 	if (limitRead) {
 		const limit = url.searchParams.get("limit");
-		return Response.json(await limitRead(limit ? parseInt(limit, 10) : undefined));
+		const parsedLimit = limit ? parseInt(limit, 10) : undefined;
+		return Response.json(
+			await limitRead(parsedLimit !== undefined && !Number.isNaN(parsedLimit) ? parsedLimit : undefined),
+		);
 	}
 
 	if (path.startsWith("/api/request/")) {
 		const id = path.split("/").pop();
 		if (!id) return new Response("Bad Request", { status: 400 });
-		const details = await getRequestDetails(parseInt(id, 10));
+		const parsedId = parseInt(id, 10);
+		if (Number.isNaN(parsedId)) return new Response("Bad Request", { status: 400 });
+		const details = await getRequestDetails(parsedId);
 		if (!details) return new Response("Not Found", { status: 404 });
 		return Response.json(details);
 	}
@@ -258,7 +264,9 @@ async function handleStatic(requestPath: string): Promise<Response> {
 /**
  * Start the HTTP server.
  */
-export async function startServer(port = 3847): Promise<{ port: number; stop: () => void }> {
+export async function startServer(
+	port = 3847,
+): Promise<{ port: number; stop: (closeActiveConnections?: boolean) => void }> {
 	await ensureClientBuild();
 
 	const server = Bun.serve({
@@ -309,6 +317,9 @@ export async function startServer(port = 3847): Promise<{ port: number; stop: ()
 
 	return {
 		port: server.port ?? port,
-		stop: () => server.stop(),
+		stop: (closeActiveConnections = true) => {
+			server.stop(closeActiveConnections);
+			closeDb();
+		},
 	};
 }

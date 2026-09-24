@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import type { CustomToolContext } from "@veyyon/coding-agent/extensibility/custom-tools";
 import { MCPTool } from "@veyyon/coding-agent/mcp/tool-bridge";
 import { HttpTransport, resolveSSEConnectTimeoutMs } from "@veyyon/coding-agent/mcp/transports/http";
@@ -202,5 +202,48 @@ describe("resolveSSEConnectTimeoutMs", () => {
 		// 1 / 4 = 0.25 -> floor 0 -> clamped up to 1.
 		expect(resolveSSEConnectTimeoutMs(1)).toBe(1);
 		expect(resolveSSEConnectTimeoutMs(4)).toBe(1);
+	});
+});
+
+describe("MCP Streamable HTTP SSE listener startup", () => {
+	// An armed startup timeout holds the process open for its full duration after
+	// the stream it guarded has already opened. The server writes one SSE comment so
+	// the response headers reach the client; without a byte the startup race is won
+	// by the timeout itself and the stream-opened path is never exercised.
+	it("leaves no startup timeout holding the event loop once the stream opens", async () => {
+		server = Bun.serve({
+			port: 0,
+			fetch() {
+				const opened = new ReadableStream<Uint8Array>({
+					start: controller => controller.enqueue(encoder.encode(": open\n\n")),
+				});
+				return new Response(opened, {
+					headers: { "Content-Type": "text/event-stream" },
+				});
+			},
+		});
+		const requestTimeoutMs = 2_000;
+		const startupDelayMs = resolveSSEConnectTimeoutMs(requestTimeoutMs);
+		const transport = new HttpTransport({
+			type: "http",
+			url: `http://127.0.0.1:${server.port}/mcp`,
+			timeout: requestTimeoutMs,
+		});
+		await transport.connect();
+		const setTimeoutSpy = spyOn(globalThis, "setTimeout");
+		try {
+			const started = performance.now();
+			await transport.startSSEListener();
+			expect(performance.now() - started).toBeLessThan(startupDelayMs);
+			const startupTimers = setTimeoutSpy.mock.calls.flatMap((call, index) => {
+				const result = setTimeoutSpy.mock.results[index];
+				return call[1] === startupDelayMs && result?.type === "return" ? [result.value as NodeJS.Timeout] : [];
+			});
+			expect(startupTimers).toHaveLength(1);
+			expect(startupTimers.filter(timer => timer.hasRef())).toEqual([]);
+		} finally {
+			setTimeoutSpy.mockRestore();
+			await transport.close();
+		}
 	});
 });

@@ -149,7 +149,7 @@ export type CustomToolSessionEvent =
 	  }
 	| {
 			reason: "auto_compaction_start";
-			trigger: "threshold" | "overflow" | "idle" | "incomplete";
+			trigger: "threshold" | "overflow" | "idle" | "incomplete" | "provider_switch";
 			action: CompactionEngineAction;
 	  }
 	| {

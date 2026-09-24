@@ -107,22 +107,59 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 		}
 	}
 
-	async *[Symbol.asyncIterator](): AsyncIterator<T> {
-		while (true) {
-			if (this.queue.length > 0) {
-				yield this.queue.shift()!;
-			} else if (this.#failed) {
-				throw this.#error;
-			} else if (this.done) {
-				return;
-			} else {
-				const result = await new Promise<IteratorResult<T, undefined>>((resolve, reject) =>
-					this.waiting.push({ resolve, reject }),
-				);
-				if (result.done) return;
-				yield result.value;
+	[Symbol.asyncIterator](): AsyncIterableIterator<T> {
+		let currentWaiter: {
+			resolve: (value: IteratorResult<T, undefined>) => void;
+			reject: (err: unknown) => void;
+		} | null = null;
+
+		const gen = async function* (this: EventStream<T, R>) {
+			while (true) {
+				if (this.queue.length > 0) {
+					yield this.queue.shift()!;
+				} else if (this.#failed) {
+					throw this.#error;
+				} else if (this.done) {
+					return;
+				} else {
+					const { promise, resolve, reject } = Promise.withResolvers<IteratorResult<T, undefined>>();
+					currentWaiter = { resolve, reject };
+					this.waiting.push(currentWaiter);
+					let result: IteratorResult<T, undefined>;
+					try {
+						result = await promise;
+					} finally {
+						const idx = this.waiting.indexOf(currentWaiter);
+						if (idx !== -1) {
+							this.waiting.splice(idx, 1);
+						}
+						currentWaiter = null;
+					}
+					if (result.done) return;
+					yield result.value;
+				}
 			}
-		}
+		}.call(this);
+
+		const iterator: AsyncIterableIterator<T> = {
+			next: (...args) => gen.next(...args),
+			return: async (value?: unknown) => {
+				if (currentWaiter) {
+					currentWaiter.resolve({ value: undefined, done: true });
+				}
+				return gen.return(value as void);
+			},
+			throw: async (err?: unknown) => {
+				if (currentWaiter) {
+					currentWaiter.reject(err);
+				}
+				return gen.throw(err);
+			},
+			[Symbol.asyncIterator]() {
+				return this;
+			},
+		};
+		return iterator;
 	}
 
 	result(): Promise<R> {

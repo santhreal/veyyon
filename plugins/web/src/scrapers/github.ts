@@ -1,6 +1,7 @@
 import { $env, formatCount } from "@veyyon/utils";
 import { escapeMarkdownTableCell } from "@veyyon/utils/markdown-table";
 import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
+import { throwIfCancelled } from "../abort";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatMediaDuration, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -141,6 +142,7 @@ export async function fetchGitHubApi(
 
 		return { data: await response.json(), ok: true };
 	} catch {
+		throwIfCancelled(signal);
 		return { data: null, ok: false };
 	} finally {
 		requestTimeout.cancel();

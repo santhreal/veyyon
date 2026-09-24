@@ -45,7 +45,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { loadExtensions } from "@veyyon/coding-agent/extensibility/extensions/loader";
 import { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { MAX_JSON_TRANSFORM_STRING_BYTES, SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
-import { AgentSession, obfuscateProviderPayload } from "@veyyon/coding-agent/session/agent-session";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { obfuscateProviderPayload } from "@veyyon/coding-agent/session/agent-session-provider-request";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { getProjectAgentDir, TempDir } from "@veyyon/utils";
 

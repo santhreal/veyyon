@@ -231,15 +231,15 @@ export async function readStdinWithFirstByteBound(
 			let timer: NodeJS.Timeout | undefined;
 			const result =
 				chunks.length === 0
-					? await Promise.race([
-							next,
-							new Promise<"timeout">(resolve => {
-								timer = setTimeout(() => resolve("timeout"), waitMs);
-								timer.unref?.();
-							}),
-						])
+					? await (() => {
+							const timeout = Promise.withResolvers<"timeout">();
+							timer = setTimeout(() => timeout.resolve("timeout"), waitMs);
+							timer.unref?.();
+							return Promise.race([next, timeout.promise]).finally(() => {
+								clearTimeout(timer);
+							});
+						})()
 					: await next;
-			if (timer !== undefined) clearTimeout(timer);
 			if (result === "timeout") {
 				process.stderr.write(
 					`${chalk.yellow(`No piped input arrived within ${Math.round(waitMs / 1000)}s`)}: ${chalk.dim(

@@ -232,9 +232,21 @@ function rebindFileTransportIfMoved(logger: winston.Logger): void {
 		return;
 	}
 	failedRebindTarget = undefined;
+	for (const transport of logger.transports) closeTransport(transport);
 	logger.clear();
 	for (const transport of rebuilt) logger.add(transport);
 	logger.silent = rebuilt.length === 0;
+}
+
+function closeTransport(transport: unknown): void {
+	if (transport && typeof transport === "object" && "close" in transport) {
+		const closeFn = transport.close;
+		if (typeof closeFn === "function") {
+			try {
+				closeFn.call(transport);
+			} catch {}
+		}
+	}
 }
 
 function makeConsoleTransport(): winston.transport {
@@ -290,6 +302,7 @@ function getWinstonLogger(): winston.Logger {
 export function setTransports(opts: { console?: boolean; file?: boolean | string }): void {
 	transportOpts = opts;
 	if (!winstonLogger) return; // applied lazily when the logger is first built
+	for (const transport of winstonLogger.transports) closeTransport(transport);
 	winstonLogger.clear();
 	const transports = buildTransports(opts);
 	for (const transport of transports) winstonLogger.add(transport);

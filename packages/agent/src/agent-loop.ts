@@ -2301,7 +2301,7 @@ async function executeToolCalls(
 			// span rather than a fabricated one.
 			startedAt: undefined as number | undefined,
 			concurrency: undefined as "shared" | "exclusive" | undefined,
-			result: undefined as AgentToolResult<any> | undefined,
+			result: undefined as AgentToolResult<unknown> | undefined,
 			isError: false,
 			skipped: false,
 			terminalStatus: undefined as ToolCallStatus | undefined,
@@ -2356,7 +2356,11 @@ async function executeToolCalls(
 		}
 	};
 
-	const emitToolResult = (record: (typeof records)[number], result: AgentToolResult<any>, isError: boolean): void => {
+	const emitToolResult = (
+		record: (typeof records)[number],
+		result: AgentToolResult<unknown>,
+		isError: boolean,
+	): void => {
 		if (record.resultEmitted) return;
 		const { toolCall } = record;
 		if (!record.started) {
@@ -2627,7 +2631,7 @@ async function executeToolCalls(
 			toolSpan.setAttribute(PiGenAIAttr.ToolCallIntent, toolCall.intent);
 		}
 
-		let result: AgentToolResult<any> = { content: [], details: {} };
+		let result: AgentToolResult<unknown> = { content: [], details: {} };
 		let isError = false;
 		let caughtError: unknown;
 		let completedToolExecution = false;
@@ -3200,7 +3204,7 @@ function createSkippedToolResult(
 	source: SteeringInterruptSource | "irc" | "cancelled-run" | undefined,
 	entered: boolean,
 	batchLedger?: ToolBatchLedger,
-): AgentToolResult<any> {
+): AgentToolResult<SkippedToolResultDetails> {
 	let reason = "pending steering message";
 	let blocker = "queued message";
 	if (source === "user") {

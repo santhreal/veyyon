@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- `summarizeRemoteCompactionWindow` turns a server-side compaction window into summary text by replaying it to the model on the provider that minted it, and `remoteCompactionReplayableBy` reports whether a compaction's window replays on a given provider.
+- `SummaryOptions.stagedSummaryCheckpoints` keeps completed segment and merge answers of a staged summary, so an attempt after a partial failure sends only the requests that never completed.
+
+### Fixed
+
+- `compact()` forwards every `SummaryOptions` field to the summarizers instead of a fixed list that dropped fields added later.
+
+### Changed
+
+- Replaced `AgentToolResult<any>` with `AgentToolResult<unknown>` and concrete result details across agent loop tool dispatch; no user-visible change.
+
 ## [1.5.0] - 2026-09-18
 
 ### Added

@@ -160,14 +160,14 @@ Examples:
 
 		// Start server
 		const port = parseInt(values.port || "3847", 10);
-		const { port: actualPort } = await startServer(port);
+		const { port: actualPort, stop } = await startServer(port);
 		console.log(`Dashboard available at: http://localhost:${actualPort}`);
 		console.log("Press Ctrl+C to stop\n");
 
 		// Keep process running
 		process.on("SIGINT", () => {
 			console.log("\nShutting down...");
-			closeDb();
+			stop();
 			process.exit(0);
 		});
 	} catch (error) {

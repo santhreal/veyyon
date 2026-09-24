@@ -366,7 +366,7 @@ export class IndexedSessionStorage implements SessionStorage {
 		const sessionEntry = this.#index.get(sessionPath);
 		if (!sessionEntry) throw enoentError(sessionPath);
 
-		const artifactsDir = sessionPath.slice(0, -6);
+		const artifactsDir = sessionFileStem(sessionPath);
 		const prefix = artifactsDir.endsWith("/") ? artifactsDir : `${artifactsDir}/`;
 		const paths = [sessionPath];
 		for (const key of this.#index.keys()) {

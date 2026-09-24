@@ -62,7 +62,12 @@ export type AgentSessionEvent =
 	| AgentEvent
 	| {
 			type: "auto_compaction_start";
-			reason: "threshold" | "overflow" | "idle" | "incomplete";
+			/**
+			 * `provider_switch`: the newest compaction holds a server-side window the
+			 * active provider cannot read, and the provider that minted it is summarizing
+			 * it into text the active one can.
+			 */
+			reason: "threshold" | "overflow" | "idle" | "incomplete" | "provider_switch";
 			action: CompactionEngineAction;
 	  }
 	| {

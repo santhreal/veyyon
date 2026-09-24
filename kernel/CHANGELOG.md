@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A session rebuilt on a provider that cannot replay its newest server-side compaction starts from the newest compaction that provider can use (`getEffectiveCompactionEntry`) instead of re-expanding the branch from its first entry.
+- Deleting a session removes its artifacts directory at the path `sessionFileStem` resolves, the same path the session created it at, instead of cutting a fixed six characters off the file name.
+- A session file whose append failed on disk is rewritten in full on the next write instead of being treated as current, and `ensureOnDisk` retries after a disk failure instead of returning without writing.
+- Resuming a long session walks its active branch once instead of once per startup reader: `SessionManager` keeps the root-to-leaf path and extends it on append, which cut a 214,000-entry resume from 3.5 s to 3.0 s.
+
 ## [1.5.0] - 2026-09-18
 
 ### Added

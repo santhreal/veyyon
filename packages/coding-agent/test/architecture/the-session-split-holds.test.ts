@@ -36,14 +36,14 @@ const RUNTIME = `${SESSION_DIR}/agent-session.ts`;
 const FACADE = `${SESSION_DIR}/facade.ts`;
 
 /**
- * MEASURED at 18446 lines, down from 18604. Model target selection left — the role resolver, the
- * configured-target reader, the compaction candidate walk and its effort map — and it left because
- * not one of those members read or wrote a field of the runtime: every input was `settings`, a
- * model and the available list, so they sat in the class only because of where they were typed.
- * Four families have left since the declarations did: TTSR, the todo board and the thinking level
- * as collaborators under `runtime/`, and this one as a sibling. The number falls again when the
- * next one leaves. It ratchets: 54 lines of slack is what it takes to not fail on the next honest
- * edit, and a ceiling left far above a shrinking file stops being a bound.
+ * MEASURED at 18482 lines. Model target selection left earlier — the role resolver, the
+ * configured-target reader, the compaction candidate walk and its effort map — and provider request
+ * shaping (payload redaction, the Anthropic metadata block, the tool-order permutation check) left
+ * after it, because not one of those members read or wrote a field of the runtime: every input was
+ * a parameter, so they sat in the class only because of where they were typed. TTSR, the todo board
+ * and the thinking level left as collaborators under `runtime/`. The number falls again when the
+ * next one leaves. It ratchets: slack is what it takes to not fail on the next honest edit, and a
+ * ceiling left far above a shrinking file stops being a bound.
  */
 const RUNTIME_CEILING = 18_500;
 
@@ -68,7 +68,7 @@ const FACADE_CEILING = 500;
 
 /**
  * The concerns that left the runtime and still sit beside it, pinned by exact
- * equality. A seventh sibling, or one renamed, fails here before it fails anywhere
+ * equality. An eighth sibling, or one renamed, fails here before it fails anywhere
  * useful. The compaction policy was one of them and is no longer here: it moved to
  * `@veyyon/kernel/session/agent-session-compaction-policy` with the session spine,
  * so a copy reappearing under `src/session/` is a drift this cell reports.
@@ -77,6 +77,7 @@ const SIBLINGS = [
 	"agent-session-message-shapes.ts",
 	"agent-session-model-targets.ts",
 	"agent-session-permissions.ts",
+	"agent-session-provider-request.ts",
 	"agent-session-queue.ts",
 	"agent-session-retry-fallback.ts",
 	"agent-session-types.ts",

@@ -87,10 +87,7 @@ describe("BaseKernel.shutdown exit confirmation", () => {
 	it("escalates a hung kernel through SIGTERM then SIGKILL and confirms once the kill lands", async () => {
 		const kernel = new TestKernel("k-hung", testOptions(40));
 		// Never exits on the graceful path; resolves only after SIGKILL is sent.
-		let resolveExit: (code: number | null) => void = () => {};
-		const exited = new Promise<number | null>(resolve => {
-			resolveExit = resolve;
-		});
+		const { promise: exited, resolve: resolveExit } = Promise.withResolvers<number | null>();
 		const { proc, killSignals } = makeFakeProc(exited, signal => {
 			if (signal === "SIGKILL") resolveExit(null);
 		});

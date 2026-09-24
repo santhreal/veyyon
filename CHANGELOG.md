@@ -6,6 +6,8 @@
 
 ### Added
 
+- `summarizeRemoteCompactionWindow` turns a server-side compaction window into summary text by replaying it to the model on the provider that minted it, and `remoteCompactionReplayableBy` reports whether a compaction's window replays on a given provider.
+- `SummaryOptions.stagedSummaryCheckpoints` keeps completed segment and merge answers of a staged summary, so an attempt after a partial failure sends only the requests that never completed.
 - `SelectList` adds `naturalWidth()`, `isSearchable()` and `cancel()`, a `searchPrompt` layout option that hides the idle "Type to search" row, and a `scrollbar` theme slot.
 
 ### Changed
@@ -19,16 +21,44 @@
 - Settings panel presents booleans as On/Off, humanizes enum and status labels, displays the selected setting description in the footer, simplifies default model display, and aligns the value column.
 - Bare-command pickers (`/mcp`, `/usage`, `/account`, `/debug` and the rest) widen to show every usage hint and description whole, cut a usage that cannot fit after a whole word, print one key legend in the footer with `esc close` instead of `esc/ctrl+c close`, name the search there while the list is searchable, and draw a dim scrollbar with a silver thumb.
 - The `/debug` card is titled `/debug`, matching the other bare-command cards.
+- Provider request shaping (secret redaction, Anthropic metadata, tool-order check) moved from `session/agent-session` to `session/agent-session-provider-request`; no user-visible change.
+- Home-path shortening in tool cards compiles its pattern once per home directory instead of on every call; no user-visible change.
+- Replaced `AgentToolResult<any>` with `AgentToolResult<unknown>` and concrete result details across agent loop tool dispatch; no user-visible change.
 - Settings list adapts label width dynamically with clean truncation and wraps inline descriptions to fit within the visible viewport width.
+- Replaced `any` types in `getNested` scraper utility with `unknown`; no user-visible behavior change.
 
 ### Fixed
 
+- Tool-result preview lines replace tabs with spaces, so a tab-indented line no longer opens a gap in the rendered preview.
+- Shutting down an LSP client releases callers still waiting for its project to load, and the LSP idle checker no longer keeps the process alive.
+- Timeout timers in MCP HTTP startup, the eval kernel exit wait, the lspmux liveness probe, stdin reading, ACP cancel cleanup, browser user-agent overrides and the interactive closing frame are cleared once the awaited operation settles; no other behavior change.
 - The ask dialog rejects a question with no options and no free-text answer instead of opening a dialog that cannot be answered.
 - A collab guest answering an ask question is offered `Other` only when the question allows a free-text answer, and a guest reply of `Other` to a closed question records no custom answer.
 - The extension dashboard's overflowing tab strip reserves room for the paging arrows and stays on one row at every width.
 - A bare-command picker on a narrow terminal narrows a long usage column so every subcommand keeps its description.
+- Switching to a model on another provider after a server-side compaction no longer resends the whole session history: before the next prompt, the session asks the model that minted the compaction to summarize it and continues from that summary, reported as an auto-compaction with reason `provider_switch`.
+- A prompt or idle compaction on a session that switched providers after a server-side compaction ports that compaction first, instead of summarizing the re-expanded history on the new provider in hundreds of staged requests.
+- A staged compaction summary that fails part way resumes on the next attempt from the segments that never completed instead of restarting from the first segment.
+- `compact()` forwards every `SummaryOptions` field to the summarizers instead of a fixed list that dropped fields added later.
 - Fixed Cursor running a tool twice and leaving an unanswered `<id>_2` tool call when the server re-sent an exec request for a call it already dispatched; the repeat is now answered from the first run's result.
+- Fixed EventStream leaking waiting resolvers and hanging when async iteration is terminated early or aborted.
+- Fixed GitLab Duo Workflow socket leaking its abort signal listener when the connection settles.
+- Finalized all prepared statements upon closing the SQLite auth credential store, preventing handle leaks.
+- Fixed the credential store failing to open with `SQLITE_READONLY_DIRECTORY` in a read-only credential directory after a clean close; the store keeps its WAL files on close.
+- Converted idle iterator grace timeout race to Promise.withResolvers and typed Google tool call arguments cleanly; no user-visible change.
+- Finalized SQLite statement handles in modelCacheStamp, preventing statement handle accumulation on shared databases.
+- A session rebuilt on a provider that cannot replay its newest server-side compaction starts from the newest compaction that provider can use (`getEffectiveCompactionEntry`) instead of re-expanding the branch from its first entry.
+- Deleting a session removes its artifacts directory at the path `sessionFileStem` resolves, the same path the session created it at, instead of cutting a fixed six characters off the file name.
+- A session file whose append failed on disk is rewritten in full on the next write instead of being treated as current, and `ensureOnDisk` retries after a disk failure instead of returning without writing.
+- Resuming a long session walks its active branch once instead of once per startup reader: `SessionManager` keeps the root-to-leaf path and extends it on append, which cut a 214,000-entry resume from 3.5 s to 3.0 s.
+- Closed database connections and active sockets when stopping the stats dashboard server, and stopped server on interrupt signal.
+- Validated request identifier and limit parameters in API routes against non-numeric inputs.
 - `SelectList.naturalWidth()` counts the description column's minimum width, so a list sized to it shows every description whole.
+- A line longer than the renderer's source limit keeps its ANSI styling, and a run of styling escapes long enough to fill that limit no longer hides the visible text after it.
+- Removed stale stdout resize and error listeners in ProcessTerminal to prevent listener leaks.
+- Replacing or rebinding log transports closes the old transports, so their file streams and timers no longer stay open.
+- `defaultWindowsAclRunner` builds its result promise with `Promise.withResolvers()`; no behavior change.
+- Re-throw caller cancellation in GitHub and Mastodon scrapers so user abort signals are not swallowed and fallen back to generic fetch.
 
 ## [1.5.3] - 2026-09-22
 

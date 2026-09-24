@@ -117,7 +117,7 @@ export function expandKeyHint(): string {
  */
 export function getPreviewLines(text: string, maxLines: number, maxLineLen: number, ellipsis?: Ellipsis): string[] {
 	const lines = text.split("\n").filter(l => l.trim());
-	return lines.slice(0, maxLines).map(l => truncateToWidth(l.trim(), maxLineLen, ellipsis));
+	return lines.slice(0, maxLines).map(l => truncateToWidth(replaceTabs(l.trim()), maxLineLen, ellipsis));
 }
 
 /**
@@ -745,6 +745,18 @@ export function scopeMetaLine(paths: string | readonly string[]): ViewLine {
 	return [{ text: formatScopeMeta(paths) }];
 }
 
+let embeddedHomePattern: { home: string; regex: RegExp } | undefined;
+
+/** The embedded-home matcher for `home`, compiled once per home directory rather than per call. */
+function embeddedHomeRegex(home: string): RegExp {
+	if (embeddedHomePattern?.home === home) return embeddedHomePattern.regex;
+	const escapedHome = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const normalizedHomePattern = escapedHome.replace(/\\\\/g, "[/\\\\]");
+	const regex = new RegExp(`(^|[^a-zA-Z0-9_])(${normalizedHomePattern})((?:[/\\\\][^\\s"'\`)\\]}>]*?)?)`, "g");
+	embeddedHomePattern = { home, regex };
+	return regex;
+}
+
 /**
  * Shorten home-directory paths embedded within a larger string (error messages,
  * command previews, tool output descriptions). Words surrounded by quotes,
@@ -754,10 +766,8 @@ export function scopeMetaLine(paths: string | readonly string[]): ViewLine {
 export function shortenEmbeddedPaths(text: string, homeDir?: string): string {
 	const home = homeDir ?? os.homedir();
 	if (!home) return text;
-	const escapedHome = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const normalizedHomePattern = escapedHome.replace(/\\\\/g, "[/\\\\]");
-	const regex = new RegExp(`(^|[^a-zA-Z0-9_])(${normalizedHomePattern})((?:[/\\\\][^\\s"'\`)\\]}>]*?)?)`, "g");
-	return text.replace(regex, (_match, prefix, _h, suffix) => {
+	// `replace` with a global regex starts at index 0 whatever `lastIndex` holds, so the shared instance is safe to reuse.
+	return text.replace(embeddedHomeRegex(home), (_match, prefix, _h, suffix) => {
 		const rawSuffix = suffix ?? "";
 		const trailingPunctMatch = rawSuffix.match(/[)"'`,.;:\]]+$/);
 		const trailingPunct = trailingPunctMatch ? trailingPunctMatch[0] : "";

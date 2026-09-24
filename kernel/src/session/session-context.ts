@@ -22,9 +22,9 @@ import {
 // server-side compaction's stored window back into the provider payload the
 // Responses-family request builder replays, and names who compacted for display.
 import {
-	getRemoteCompactionPreserveData,
 	remoteCompactionAttribution,
 	remoteCompactionProviderPayload,
+	remoteCompactionReplayableBy,
 } from "@veyyon/agent-core/compaction/remote-compaction-entry";
 import type { TextContent } from "@veyyon/ai";
 // From the module that DEFINES the coercion, not the barrel that re-exports it.
@@ -89,6 +89,42 @@ export function getLatestCompactionEntry(entries: SessionEntry[]): CompactionEnt
 		if (entries[i].type === "compaction") {
 			return entries[i] as CompactionEntry;
 		}
+	}
+	return null;
+}
+
+/**
+ * Whether a compaction entry can stand in for the span it hid when the branch
+ * runs on `activeProvider`: a window that provider can replay, or real summary
+ * text. A server-side entry carries no readable summary by construction, and a
+ * legacy provider-native entry carries only a placeholder sentence, so neither
+ * stands in for anything once its provider cannot read it.
+ */
+function isUsableCompaction(entry: CompactionEntry, activeProvider: string | undefined): boolean {
+	if (hasLegacyProviderNativeCompaction(entry.preserveData)) return false;
+	return remoteCompactionReplayableBy(entry.preserveData, activeProvider) || entry.summary.trim().length > 0;
+}
+
+/**
+ * The compaction a context rebuild applies to `path` on `activeProvider` (the
+ * `provider` half of the branch's default model): the NEWEST entry that can stand
+ * in for the span it hid, or null when none can.
+ *
+ * Newest usable, not newest. A server-side compaction minted by one provider is
+ * unreadable to the next, and treating the latest entry as the only candidate made
+ * a provider switch re-expand the branch from its first entry, although an earlier
+ * local summary covered all but the tail since it. That is the difference between
+ * resuming from the last readable summary and resending the whole session. This is
+ * the read-side twin of the walk in `prepareCompaction`, which already builds on
+ * the newest reusable entry rather than the newest entry.
+ */
+export function getEffectiveCompactionEntry(
+	path: readonly SessionEntry[],
+	activeProvider: string | undefined,
+): CompactionEntry | null {
+	for (let i = path.length - 1; i >= 0; i--) {
+		const entry = path[i];
+		if (entry.type === "compaction" && isUsableCompaction(entry, activeProvider)) return entry;
 	}
 	return null;
 }
@@ -197,14 +233,30 @@ export function buildSessionContext(
 	const leaf = (leafId ? byId.get(leafId) : undefined) ?? entries[entries.length - 1];
 	if (!leaf) return emptySessionContext();
 
-	// Walk from leaf to root, collecting path
-	const path = walkBranchPath(byId, leaf);
+	return buildSessionContextFromPath(walkBranchPath(byId, leaf), options);
+}
+
+/**
+ * Build the session context from an already-resolved root→leaf `path`, as
+ * {@link walkBranchPath} returns it. A caller that holds the active branch
+ * (the session manager's index) skips the leaf→root walk, which is linear in
+ * the length of the session and dominated resume on long sessions when every
+ * startup reader repeated it.
+ */
+export function buildSessionContextFromPath(
+	path: readonly SessionEntry[],
+	options?: BuildSessionContextOptions,
+): SessionContext {
 	// Extract settings and find compaction
 	let thinkingLevel: string | undefined = "off";
 	let configuredThinkingLevel: string | undefined;
 	let serviceTier: ServiceTierByFamily | undefined;
 	const models: Record<string, string> = {};
-	let compaction: CompactionEntry | null = null;
+	// Newest compaction on the path that is not a legacy provider-native entry. The
+	// rebuild applies the newest USABLE one (see getEffectiveCompactionEntry); this
+	// one is used only when none is usable, so a collapsed transcript still shows
+	// where the unreadable compaction fired.
+	let latestCompaction: CompactionEntry | null = null;
 	const injectedTtsrRulesSet = new Set<string>();
 	let selectedMCPToolNames: string[] = [];
 	let hasPersistedMCPToolSelection = false;
@@ -260,7 +312,7 @@ export function buildSessionContext(
 			// makes in `prepareCompaction`, which re-expands the messages behind
 			// exactly these entries. An earlier real compaction on the branch, if
 			// any, still wins and still applies its own cut.
-			compaction = entry;
+			latestCompaction = entry;
 		} else if (entry.type === "ttsr_injection") {
 			// Collect injected TTSR rule names
 			for (const ruleName of entry.injectedRules) {
@@ -276,6 +328,8 @@ export function buildSessionContext(
 	}
 
 	const injectedTtsrRules = Array.from(injectedTtsrRulesSet);
+	const activeProvider = models.default?.split("/")[0];
+	const compaction = getEffectiveCompactionEntry(path, activeProvider) ?? latestCompaction;
 
 	// Build messages and collect corresponding entries
 	// When there's a compaction, we need to:
@@ -393,32 +447,18 @@ export function buildSessionContext(
 		// A remote compaction entry carries the provider's window and NO readable
 		// summary: the window is the compacted context, and billing a second model
 		// to paraphrase the same span is the cost that path used to pay (see
-		// remote-compaction.ts). Legacy provider-native entries are the same shape
-		// for a worse reason: their summary is a placeholder.
+		// remote-compaction.ts).
 		//
-		// So an entry is only usable as a compaction when it can actually stand in
-		// for the span it hid: either a provider that can replay its window, or
-		// real summary text. When it is neither, treating it as a compaction would
-		// drop the span from context entirely while its messages sit on disk
-		// untouched. Re-expanding them costs context on a provider switch and
-		// nothing on the normal path, and the next compaction on the new provider
-		// summarizes them locally (see hasReusableSummary in compaction.ts).
-		//
-		// "Can replay" is provider identity, not merely the presence of a window.
-		// The window's `compaction` item is an opaque blob only its minting host
-		// can decrypt, so a session that switched to another provider holds a
-		// payload the encoder will drop. Counting that as usable would emit an
-		// empty summary and silently hide the span, which is the exact loss this
-		// gate exists to prevent. `models.default` is resolved by the walk above,
-		// so the active provider is known here.
+		// So an entry is only usable as a compaction when it can stand in for the
+		// span it hid: a window the active provider can replay, or real summary
+		// text. `compaction` is the newest such entry whenever one exists, and is
+		// unusable only when none on the branch is. Treating an unusable entry as a
+		// compaction would drop the span from context entirely while its messages
+		// sit on disk untouched, so the branch is re-expanded instead, and the next
+		// compaction on the new provider summarizes it locally (see
+		// hasReusableSummary in compaction.ts).
 		const remotePayload = remoteCompactionProviderPayload(compaction.preserveData);
-		const remoteData = getRemoteCompactionPreserveData(compaction.preserveData);
-		const activeProvider = models.default?.split("/")[0];
-		const replayable =
-			remotePayload !== undefined &&
-			remoteData !== undefined &&
-			(activeProvider === undefined || activeProvider === remoteData.provider);
-		const usableCompaction = replayable || compaction.summary.trim().length > 0;
+		const usableCompaction = isUsableCompaction(compaction, activeProvider);
 
 		// Re-attach any legacy archived history as text so the model can keep
 		// reading it after every context rebuild (old sessions only).

@@ -3566,26 +3566,27 @@ export class InteractiveMode implements InteractiveModeContext {
 	 */
 	#commitClosingFrame(): Promise<void> {
 		if (!this.isInitialized) return Promise.resolve();
-		return new Promise<void>(resolve => {
-			const previous = this.ui.onFrameComposed;
-			let settled = false;
-			const finish = () => {
-				if (settled) return;
-				settled = true;
-				clearTimeout(timer);
-				this.ui.onFrameComposed = previous;
-				resolve();
-			};
-			const timer = setTimeout(finish, 250);
-			this.ui.onFrameComposed = () => {
-				try {
-					previous?.();
-				} finally {
-					finish();
-				}
-			};
-			this.ui.requestRender(true);
-		});
+		const { promise, resolve } = Promise.withResolvers<void>();
+		const previous = this.ui.onFrameComposed;
+		let settled = false;
+		let timer: NodeJS.Timeout | undefined;
+		const finish = () => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			this.ui.onFrameComposed = previous;
+			resolve();
+		};
+		timer = setTimeout(finish, 250);
+		this.ui.onFrameComposed = () => {
+			try {
+				previous?.();
+			} finally {
+				finish();
+			}
+		};
+		this.ui.requestRender(true);
+		return promise;
 	}
 
 	async shutdown(): Promise<void> {

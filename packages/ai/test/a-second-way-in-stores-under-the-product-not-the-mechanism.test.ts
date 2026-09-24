@@ -165,4 +165,11 @@ describe("a second way in stores under the product, not the mechanism", () => {
 
 		expect(providersWithRows(db)).toEqual(["command-code"]);
 	});
+
+	it("closes cleanly by finalizing all prepared statements", () => {
+		const tempDb = new Database(":memory:");
+		const tempStore = new SqliteAuthCredentialStore(tempDb);
+		expect(() => tempStore.close()).not.toThrow();
+		expect(() => tempStore.close()).not.toThrow();
+	});
 });

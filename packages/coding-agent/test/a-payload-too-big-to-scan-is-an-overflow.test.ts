@@ -24,7 +24,7 @@ import { describe, expect, it } from "bun:test";
 import * as AIError from "@veyyon/ai/error";
 import { isProviderPayloadOversize, ProviderTransformError } from "@veyyon/coding-agent/provider-boundary";
 import { MAX_JSON_TRANSFORM_STRING_BYTES, SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
-import { obfuscateProviderPayload } from "@veyyon/coding-agent/session/agent-session";
+import { obfuscateProviderPayload } from "@veyyon/coding-agent/session/agent-session-provider-request";
 
 const SECRET = "PROVIDER_PAYLOAD_OVERFLOW_SECRET";
 

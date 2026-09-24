@@ -60,6 +60,7 @@ function startIdleChecker(): void {
 			}
 		}
 	}, IDLE_CHECK_INTERVAL_MS);
+	idleCheckInterval.unref?.();
 }
 
 function stopIdleChecker(): void {
@@ -673,16 +674,12 @@ export async function getOrCreateClient(
 			onSpawnPid: primarySessionCpuAdoption(),
 		});
 
-		let resolveProjectLoaded!: () => void;
-		const projectLoaded = new Promise<void>(resolve => {
-			resolveProjectLoaded = resolve;
-		});
+		const { promise: projectLoaded, resolve: settleProjectLoaded } = Promise.withResolvers<void>();
 		// Auto-resolve after timeout in case server doesn't use progress tokens
-		const projectLoadTimeout = setTimeout(resolveProjectLoaded, PROJECT_LOAD_TIMEOUT_MS);
-		const originalResolve = resolveProjectLoaded;
-		resolveProjectLoaded = () => {
+		const projectLoadTimeout = setTimeout(settleProjectLoaded, PROJECT_LOAD_TIMEOUT_MS);
+		const resolveProjectLoaded = () => {
 			clearTimeout(projectLoadTimeout);
-			originalResolve();
+			settleProjectLoaded();
 		};
 
 		const client: LspClient = {
@@ -877,17 +874,13 @@ export async function waitForProjectLoaded(client: LspClient, signal?: AbortSign
 		// normally won by an already-settled `projectLoaded`, so without an explicit
 		// removal every LSP feature call leaves one more listener on a signal that
 		// lives as long as the turn, and all of them run when it finally aborts.
-		let onAbort: (() => void) | undefined;
+		const { promise: abortPromise, resolve: abortResolve } = Promise.withResolvers<void>();
+		const onAbort = () => abortResolve();
+		signal.addEventListener("abort", onAbort, { once: true });
 		try {
-			await Promise.race([
-				client.projectLoaded,
-				new Promise<void>(resolve => {
-					onAbort = () => resolve();
-					signal.addEventListener("abort", onAbort, { once: true });
-				}),
-			]);
+			await Promise.race([client.projectLoaded, abortPromise]);
 		} finally {
-			if (onAbort) signal.removeEventListener("abort", onAbort);
+			signal.removeEventListener("abort", onAbort);
 		}
 	}
 	// The race above resolves on abort, so the signal has to be read again before the second
@@ -1132,6 +1125,7 @@ async function waitForExit(client: LspClient, timeoutMs: number): Promise<boolea
  * Shutdown a specific client instance using the LSP shutdown/exit handshake.
  */
 async function shutdownClientInstance(client: LspClient): Promise<void> {
+	client.resolveProjectLoaded();
 	const err = new Error("LSP client shutdown");
 	for (const pending of Array.from(client.pendingRequests.values())) {
 		pending.reject(err);

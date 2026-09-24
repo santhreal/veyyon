@@ -22,9 +22,14 @@
 - Settings panel presents booleans as On/Off, humanizes enum and status labels, displays the selected setting description in the footer, simplifies default model display, and aligns the value column.
 - Bare-command pickers (`/mcp`, `/usage`, `/account`, `/debug` and the rest) widen to show every usage hint and description whole, cut a usage that cannot fit after a whole word, print one key legend in the footer with `esc close` instead of `esc/ctrl+c close`, name the search there while the list is searchable, and draw a dim scrollbar with a silver thumb.
 - The `/debug` card is titled `/debug`, matching the other bare-command cards.
+- Provider request shaping (secret redaction, Anthropic metadata, tool-order check) moved from `session/agent-session` to `session/agent-session-provider-request`; no user-visible change.
+- Home-path shortening in tool cards compiles its pattern once per home directory instead of on every call; no user-visible change.
 
 ### Fixed
 
+- Tool-result preview lines replace tabs with spaces, so a tab-indented line no longer opens a gap in the rendered preview.
+- Shutting down an LSP client releases callers still waiting for its project to load, and the LSP idle checker no longer keeps the process alive.
+- Timeout timers in MCP HTTP startup, the eval kernel exit wait, the lspmux liveness probe, stdin reading, ACP cancel cleanup, browser user-agent overrides and the interactive closing frame are cleared once the awaited operation settles; no other behavior change.
 - The ask dialog rejects a question with no options and no free-text answer instead of opening a dialog that cannot be answered.
 - A collab guest answering an ask question is offered `Other` only when the question allows a free-text answer, and a guest reply of `Other` to a closed question records no custom answer.
 - The extension dashboard's overflowing tab strip reserves room for the paging arrows and stays on one row at every width.
@@ -42,6 +47,9 @@
 - Closing a room conversation, or exiting, dismisses the questions and extension screens it held off screen instead of leaving them waiting, so a tool waiting on one no longer holds the close.
 - Extension autocomplete applies for the conversation on screen only, so each provider runs once rather than once per room conversation, and a closed conversation's providers leave the editor.
 - Entering a conversation mid-turn starts the status line's run clock at the turn's start, and a room switch keeps each conversation's run clock and time spent instead of zeroing them.
+- Switching to a model on another provider after a server-side compaction no longer resends the whole session history: before the next prompt, the session asks the model that minted the compaction to summarize it and continues from that summary, reported as an auto-compaction with reason `provider_switch`.
+- A prompt or idle compaction on a session that switched providers after a server-side compaction ports that compaction first, instead of summarizing the re-expanded history on the new provider in hundreds of staged requests.
+- A staged compaction summary that fails part way resumes on the next attempt from the segments that never completed instead of restarting from the first segment.
 
 ## [1.5.3] - 2026-09-22
 
