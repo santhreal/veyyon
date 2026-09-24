@@ -64,6 +64,10 @@ shot held-off-screen
 after && k alt+w
 # needle-source: 2 conversations -- room-stage.ts #paintChrome counts the room on its title row
 after && expect_screen "2 conversations" 15
+# The first room view in a profile opens with its guide; a key takes it away.
+# needle-source: any key closes this -- room-guide.ts paintRoomGuide's last line
+after && expect_screen "any key closes this" 10
+after && k Escape
 pause 1
 after && shot room-opened
 # Bring window 2 to the front: wide enough to say it in words.

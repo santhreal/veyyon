@@ -225,6 +225,10 @@ export const SESSION_HANDLERS = {
 				await runtime.ctx.room.openPeer();
 				return;
 			}
+			if (argument === "help") {
+				runtime.ctx.room.showHelp();
+				return;
+			}
 			const id = runtime.ctx.room.resolveArgument(argument);
 			if (id === undefined) {
 				runtime.ctx.showError(`"${argument}" is not a member of this room. Run /room list to see it.`);

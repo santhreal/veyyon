@@ -15,6 +15,12 @@
 - A room conversation that finishes or fails its turn off screen says so once on the status line with the key that opens the room, and a finished one sends the completion notification when `completion.notify` is on.
 - A room conversation whose turn ended off screen counts as unread until it is entered: the status line's `room` chip and the room view's title count it after the working ones, the ordinal under its window carries how the turn ended, and `/room list` marks it.
 - In a room, every desktop notification, such as an `ask` waiting for an answer or a finished turn under `completion.notify`, is titled with its conversation's number and name, on screen or off.
+- The first room view a profile opens shows a guide over the dimmed windows: what a room is, its keys and what each mark on a window means; any key or click closes it without acting, `?` in the room view opens it again, and `/room help` prints it.
+- `/hotkeys` lists the room keys: the room view key with the `→→` gesture, and next and previous conversation.
+
+### Changed
+
+- A room window rebuilt while its conversation streams reads only the message being written, keeping each stored message's display text and tool rows from the rebuild before.
 
 ### Fixed
 

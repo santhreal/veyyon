@@ -9,8 +9,8 @@
 # Frames:
 #   room-view-setting   Settings searched to the Room View row, showing the value
 #                       the arm seeded (Side By Side / All Windows)
-#   room-view-opened    `→→` on the empty composer: the view opens in that layout
-#                       without a key pressed inside it
+#   room-view-opened    `→→` on the empty composer: the view opens in that layout;
+#                       the one key pressed inside it closes the first-open guide
 #
 # The search lands on the row by name rather than by counting sidebar rows, and
 # the scene stops at the filtered list: Return would open the row's editor.
@@ -46,5 +46,10 @@ pause 0.25
 k Right
 # needle-source: side by side / all windows -- room-stage.ts names the layout on its title row
 expect_screen "$layout" 15
+# The first room view in a profile opens with its guide over it; Escape takes
+# it away and leaves the layout the arm seeded.
+# needle-source: any key closes this -- room-guide.ts paintRoomGuide's last line
+expect_screen "any key closes this" 10
+k Escape
 pause 1
 shot room-view-opened

@@ -14,7 +14,8 @@
 #   3. Conversation 2 gets its own long list.
 #   4. `→→` on the empty composer opens the room view side by side: the screen
 #      pulls back into window 2 with window 1 receding to its left, both
-#      streaming.
+#      streaming. This first open shows the room guide over the dimmed windows;
+#      Escape takes it away.
 #   5. `←` glides the row to window 1; Tab flips to all windows; Tab back.
 #   6. Enter zooms into conversation 1, with its answer so far on screen at once,
 #      and a follow-up is typed there and left unsent.
@@ -72,13 +73,18 @@ submit "write a numbered list of forty short facts about text editors, one line 
 sleep 5
 shot two-streaming
 
-# --- 4. →→ opens the room view ----------------------------------------------
+# --- 4. →→ opens the room view, with its guide the first time ---------------
 clear_composer
 k Right
 pause 0.25
 k Right
 # needle-source: side by side -- room-stage.ts #paintChrome names the layout on the title row
 after && expect_screen "side by side" 10
+# needle-source: any key closes this -- room-guide.ts paintRoomGuide's last line
+after && expect_screen "any key closes this" 10
+pause 0.8
+shot room-guide
+after && k Escape
 pause 0.8
 shot room-side-by-side
 

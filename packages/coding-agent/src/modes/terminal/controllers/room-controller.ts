@@ -34,6 +34,7 @@ import type { AgentSession } from "../../../session/agent-session";
 import { BackgroundSessions } from "../../../session/background-sessions";
 import { setSessionTerminalTitle } from "../../../utils/title-generator";
 import { pointerMotionEnabled } from "../components/chrome/modal-shell";
+import { type RoomGuide, roomGuide, roomGuideMarkdown } from "../components/room/room-guide";
 import { type RoomLayout, RoomStage, type RoomStageHost, type RoomStageMode } from "../components/room/room-stage";
 import {
 	type RoomDraft,
@@ -43,6 +44,7 @@ import {
 	roomWindowName,
 } from "../components/room/room-view-model";
 import type { InteractiveModeContext } from "../types";
+import { showMarkdownPanel } from "./command-controller-shared";
 import { notifyTurnComplete } from "./event-controller";
 import { RoomWindowFeed, roomDraftPreview } from "./room-window-feed";
 
@@ -60,6 +62,7 @@ export type RoomControllerContext = Pick<
 	| "keybindings"
 	| "launchSession"
 	| "onWaitingDialogsChange"
+	| "present"
 	| "releaseHostedSession"
 	| "reloadTodos"
 	| "renderInitialMessages"
@@ -166,6 +169,11 @@ export class RoomController {
 	/** Whether the room view is on screen. */
 	get viewOpen(): boolean {
 		return this.#stage !== undefined;
+	}
+
+	/** Whether the room view is open with its guide over it. */
+	get guideShown(): boolean {
+		return this.#stage?.component.guideShown ?? false;
 	}
 
 	/** Registry id of the driving agent on screen. */
@@ -345,6 +353,22 @@ export class RoomController {
 		return this.ctx.keybindings.getKeys("app.room.view")[0] ?? "→ twice on an empty composer";
 	}
 
+	/** The room guide, with the room's keys as they are bound now. */
+	#guide(): RoomGuide {
+		const first = (action: "app.room.view" | "app.room.next" | "app.room.previous"): string | undefined =>
+			this.ctx.keybindings.getKeys(action)[0];
+		return roomGuide({
+			view: first("app.room.view"),
+			next: first("app.room.next"),
+			previous: first("app.room.previous"),
+		});
+	}
+
+	/** `/room help`: the room guide as a panel in the transcript. */
+	showHelp(): void {
+		showMarkdownPanel(this.ctx, "Rooms", roomGuideMarkdown(this.#guide()));
+	}
+
 	/**
 	 * Move to the member `steps` after the one on screen, wrapping: the screen
 	 * pulls back, the row slides and the next conversation pushes in.
@@ -426,11 +450,17 @@ export class RoomController {
 			isToggle: data => this.ctx.keybindings.getKeys("app.room.view").some(key => matchesKey(data, key)),
 		};
 		const layout: RoomLayout = this.ctx.settings.get("room.view");
+		// The first room view this profile opens explains itself; `?` brings the
+		// guide back any time after, and `/room help` prints it.
+		const firstOpen = mode.kind === "overview" && !this.ctx.settings.get("room.guideShown");
+		if (firstOpen) this.ctx.settings.set("room.guideShown", true);
 		const component = new RoomStage(host, {
 			originId,
 			originScreen: this.ctx.ui.captureViewport()?.rows,
 			layout,
 			mode,
+			guide: this.#guide(),
+			showGuide: firstOpen,
 		});
 		const overlay = this.ctx.ui.showOverlay(component, {
 			anchor: "top-left",

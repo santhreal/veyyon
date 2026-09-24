@@ -24,7 +24,7 @@
  */
 
 import type { Component, OverlayFocusOwner } from "@veyyon/tui";
-import { matchesKey } from "@veyyon/utils/keys";
+import { decodePrintableKey, matchesKey } from "@veyyon/utils/keys";
 import { clamp, clamp01 } from "@veyyon/utils/math";
 import { type Animation, type AnimationCurve, MOTION, type MotionClock, motionClock } from "@veyyon/utils/motion";
 import { parseSgrMouse, type SgrMouseEvent } from "@veyyon/utils/mouse";
@@ -40,6 +40,7 @@ import {
 	roomChromeStrength,
 	roomSlotAt,
 } from "./room-geometry";
+import { paintRoomGuide, type RoomGuide } from "./room-guide";
 import { type RoomDraft, type RoomStageMember, roomUnread } from "./room-view-model";
 import { paintRoomNewSlot, paintRoomWindow, RoomInk } from "./room-window";
 
@@ -105,6 +106,10 @@ export interface RoomStageOptions {
 	readonly motion?: boolean;
 	/** Defaults to `Date.now`. */
 	readonly now?: () => number;
+	/** What `?` shows over the room; without it `?` does nothing and the key row does not offer it. */
+	readonly guide?: RoomGuide;
+	/** Open with the guide showing, as the room view does the first time it opens. */
+	readonly showGuide?: boolean;
 }
 
 type Phase = "overview" | "entering" | "travel" | "landed";
@@ -123,6 +128,8 @@ const SPINNER_REPAINT_MS = 80;
 const NOTICE_MS = 4000;
 /** How long a first `x` on a working conversation waits for the second. */
 const CLOSE_CONFIRM_MS = 3000;
+/** How much ink the windows keep behind the guide, so the card reads over them. */
+const GUIDE_BACKDROP = 0.4;
 const SEPARATOR = "  ·  ";
 
 /** Where the screen's rows dissolve into a card, by how much of the terminal's width a window spans. */
@@ -236,6 +243,9 @@ export class RoomStage implements Component, OverlayFocusOwner {
 	#spinnerTimer: NodeJS.Timeout | undefined;
 	#noticeTimer: NodeJS.Timeout | undefined;
 	#placements: readonly RoomPlacement[] = [];
+	readonly #guide: RoomGuide | undefined;
+	/** Whether the guide card is over the room; any key or click takes it away. */
+	#guideShown: boolean;
 	#width = 0;
 	/**
 	 * Each slot's last paint, reused while its snapshot, its screen rows and its
@@ -260,6 +270,8 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		this.#now = options.now ?? Date.now;
 		this.#originId = options.originId;
 		this.#layout = options.layout;
+		this.#guide = options.guide;
+		this.#guideShown = options.guide !== undefined && options.showGuide === true;
 		if (options.originScreen) this.#screens.set(options.originId, options.originScreen);
 		const originSlot = Math.max(0, this.#slotOf(options.originId));
 		this.#selected = originSlot;
@@ -312,6 +324,11 @@ export class RoomStage implements Component, OverlayFocusOwner {
 
 	get layout(): RoomLayout {
 		return this.#layout;
+	}
+
+	/** Whether the guide card is over the room. */
+	get guideShown(): boolean {
+		return this.#guideShown;
 	}
 
 	ownsOverlayFocusTarget(component: Component): boolean {
@@ -623,15 +640,37 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		if (event.leftClick && slot !== undefined) this.#enterSlot(slot);
 	}
 
+	#hideGuide(): void {
+		this.#guideShown = false;
+		this.#host.requestRender();
+	}
+
 	handleInput(data: string): void {
 		if (data.startsWith("\x1b[<")) {
 			const event = parseSgrMouse(data);
-			if (event) this.#mouse(event);
+			if (!event) return;
+			// A click anywhere takes the guide away; nothing under it is chosen by that click.
+			if (this.#guideShown) {
+				if (event.leftClick) this.#hideGuide();
+				return;
+			}
+			this.#mouse(event);
 			return;
 		}
 		// Keys wait while the stage is in flight: the gesture under way lands
 		// first, and a key meant for the conversation must not reach the stage.
 		if (this.#phase !== "overview") return;
+		// Any key takes the guide away, and does nothing else: a reader who
+		// presses Enter to dismiss it must not be carried into a window.
+		if (this.#guideShown) {
+			this.#hideGuide();
+			return;
+		}
+		if (this.#guide && (decodePrintableKey(data) ?? data) === "?") {
+			this.#guideShown = true;
+			this.#host.requestRender();
+			return;
+		}
 		if (matchesKey(data, "escape") || this.#host.isToggle(data)) {
 			this.#enter(this.#originId);
 			return;
@@ -689,8 +728,10 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		members: readonly RoomStageMember[],
 		viewport: RoomViewport,
 		now: number,
+		backdrop: number,
 	): string[] {
-		const { rect, slot, strength, framed } = placement;
+		const { rect, slot, framed } = placement;
+		const strength = placement.strength * backdrop;
 		const selected = slot === this.#selected && this.#phase !== "travel";
 		if (slot >= members.length) {
 			return paintRoomNewSlot({ width: rect.w, height: rect.h, strength, selected, starting: this.#creating, now });
@@ -755,14 +796,31 @@ export class RoomStage implements Component, OverlayFocusOwner {
 			mix: this.#mix.value,
 		});
 		this.#placements = placements;
+		// Behind the guide the windows fade toward the ground, as far as the
+		// chrome has come in: the card and its backdrop arrive together.
+		const chrome = this.#phase === "travel" ? 0 : roomChromeStrength(zoomNow);
+		const guide = this.#guideShown && this.#guide ? this.#guide : undefined;
+		const backdrop = guide ? 1 - (1 - GUIDE_BACKDROP) * chrome : 1;
 		const layers: Layer[] = placements.map(placement => ({
 			x: placement.rect.x,
 			y: placement.rect.y,
 			width: placement.rect.w,
-			rows: this.#paintSlot(placement, members, viewport, now),
+			rows: this.#paintSlot(placement, members, viewport, now, backdrop),
 		}));
+		if (guide && chrome > 0.01) {
+			const card = paintRoomGuide(guide, this.#width - 4, height - 6, new RoomInk(chrome, theme.visibleGroundHex()));
+			const cardWidth = card.length > 0 ? visibleWidth(card[0]!) : 0;
+			if (card.length > 0) {
+				layers.push({
+					x: Math.floor((this.#width - cardWidth) / 2),
+					y: Math.max(1, Math.floor((height - card.length) / 2)),
+					width: cardWidth,
+					rows: card,
+				});
+			}
+		}
 		const { rows, covered } = compositeRoomLayers(layers, this.#width, height);
-		if (this.#phase !== "travel") this.#paintChrome(rows, covered, roomChromeStrength(zoomNow), members, now);
+		if (this.#phase !== "travel") this.#paintChrome(rows, covered, chrome, members, now);
 		this.#syncSpinner();
 		return rows;
 	}
@@ -844,17 +902,21 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		const jumpable = Math.min(9, members.length);
 		const asking = (members[this.#selected]?.waitingDialogs ?? 0) > 0;
 		const origin = members.findIndex(member => member.id === this.#originId);
-		const hints: Array<[string, string]> = [
-			[grid ? "←↑↓→" : "←→", "move"],
-			["enter", asking ? "answer" : "open"],
-		];
-		if (jumpable > 1) hints.push([`1–${jumpable}`, "jump"]);
-		hints.push(
-			["n", "new"],
-			["x", "close"],
-			["tab", grid ? "side by side" : "all windows"],
-			["esc", origin >= 0 && members.length > 1 ? `back to ${origin + 1}` : "back"],
-		);
+		const hints: Array<[string, string]> = [];
+		if (this.#guideShown) {
+			// While the guide is up, a key does one thing: take it away.
+			hints.push(["any key", "close the guide"]);
+		} else {
+			hints.push([grid ? "←↑↓→" : "←→", "move"], ["enter", asking ? "answer" : "open"]);
+			if (jumpable > 1) hints.push([`1–${jumpable}`, "jump"]);
+			hints.push(
+				["n", "new"],
+				["x", "close"],
+				["tab", grid ? "side by side" : "all windows"],
+				["esc", origin >= 0 && members.length > 1 ? `back to ${origin + 1}` : "back"],
+			);
+			if (this.#guide) hints.push(["?", "guide"]);
+		}
 		const sep = ink.token("dim", SEPARATOR);
 		let shown = hints.length;
 		const plainWidth = (n: number): number =>

@@ -509,6 +509,11 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	// Whether the room view has shown its guide in this profile: the first open
+	// shows it, `?` in the view and `/room help` show it after. State the room
+	// view writes, not a knob, so it has no `ui`.
+	"room.guideShown": { type: "boolean", default: false },
+
 	"share.serverUrl": {
 		type: "string",
 		default: DEFAULT_SHARE_URL,

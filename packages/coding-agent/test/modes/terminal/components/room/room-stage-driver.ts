@@ -9,6 +9,7 @@
  */
 
 import { setImmediate as nextMacrotask } from "node:timers/promises";
+import type { RoomGuide } from "@veyyon/coding-agent/modes/terminal/components/room/room-guide";
 import {
 	type RoomLayout,
 	RoomStage,
@@ -173,6 +174,10 @@ export interface StageDriverOptions {
 	readonly mode?: RoomStageMode;
 	/** Defaults to true: the stage animates on the driver's clock. */
 	readonly motion?: boolean;
+	/** The guide `?` shows; absent, the stage has none. */
+	readonly guide?: RoomGuide;
+	/** Open with the guide showing. */
+	readonly showGuide?: boolean;
 }
 
 /** Every stage a driver built and has not disposed; a working member keeps a real spinner interval. */
@@ -207,6 +212,8 @@ export class StageDriver {
 			clock: this.clock,
 			motion: options.motion ?? true,
 			now: () => this.now,
+			guide: options.guide,
+			showGuide: options.showGuide,
 		});
 		liveStages.add(this.stage);
 	}

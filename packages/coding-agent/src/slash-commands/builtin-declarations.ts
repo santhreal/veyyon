@@ -571,9 +571,15 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	{
 		name: "room",
 		description:
-			"The conversations in this terminal: bare opens the room view, `list` prints them, `new` opens one beside this, a number or id switches",
-		inlineHint: "[list | new | <n> | <id>]",
+			"The conversations in this terminal: bare opens the room view, `list` prints them, `new` opens one beside this, `help` explains the room, a number or id switches",
+		inlineHint: "[list | new | help | <n> | <id>]",
 		allowArgs: true,
+		bareAction: "distinct",
+		subcommands: [
+			{ name: "list", description: "Print every conversation in the room and what it is doing" },
+			{ name: "new", description: "Open a conversation beside this one and go into it" },
+			{ name: "help", description: "Explain the room: its keys and what each mark on a window means" },
+		],
 	},
 	{
 		name: "branch",

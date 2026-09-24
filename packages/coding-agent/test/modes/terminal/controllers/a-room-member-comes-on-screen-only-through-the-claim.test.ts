@@ -54,6 +54,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { stripVTControlCharacters } from "node:util";
 import { Agent } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
 import { AuthStorage } from "@veyyon/ai/auth-storage";
@@ -76,7 +77,7 @@ import type { AgentSessionDisposeOptions } from "@veyyon/coding-agent/session/ag
 import { BackgroundSessions } from "@veyyon/coding-agent/session/background-sessions";
 import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
-import { TERMINAL, TUI } from "@veyyon/tui";
+import { type Component, TERMINAL, TUI } from "@veyyon/tui";
 import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 import { VirtualTerminal } from "../../../../../../hosts/terminal/engine/test/virtual-terminal";
 import {
@@ -130,6 +131,8 @@ interface Harness {
 	failNextHost(message: string): void;
 	/** Set how many dialogs `session` is holding, and tell the listeners, as the dialog gate does. */
 	hold(session: AgentSession, count: number): void;
+	/** What the controller put on the transcript rail, as the interactive mode's `present` receives it. */
+	presented: Component[];
 }
 
 let settingsState: SettingsTestState | undefined;
@@ -368,6 +371,7 @@ function harness(launch: Conversation): Harness {
 	const statuses: string[] = [];
 	const errors: string[] = [];
 	const warnings: string[] = [];
+	const presented: Component[] = [];
 	const waiting = new Map<AgentSession, number>();
 	const waitingListeners = new Set<() => void>();
 	let cwdFailure: string | undefined;
@@ -450,6 +454,10 @@ function harness(launch: Conversation): Harness {
 		showError: message => {
 			errors.push(message);
 		},
+		present: content => {
+			if ("render" in content) presented.push(content);
+			else presented.push(...content);
+		},
 		showWarning: message => {
 			warnings.push(message);
 		},
@@ -464,6 +472,7 @@ function harness(launch: Conversation): Harness {
 		statuses,
 		errors,
 		warnings,
+		presented,
 		failNextCwdChange: message => {
 			cwdFailure = message;
 		},
@@ -1108,6 +1117,51 @@ describe("the room's name for a conversation", () => {
 		]);
 		registry.unregister(b!.id);
 		expect(h.room.labelOf(a.session)).toBeUndefined();
+	});
+});
+
+describe("the room guide", () => {
+	/**
+	 * The first room view a profile opens explains the room; later ones do not,
+	 * in this process or the next. A quick switch travels through a stage too,
+	 * and is not the room view: it neither shows the guide nor spends it.
+	 */
+	it("shows the first time the room view opens in a profile, and not after", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		terminalCaps.trueColor = true;
+		await h.room.switchTo(b!.id);
+		expect({ guide: h.room.guideShown, spent: shared.get("room.guideShown") }).toEqual({
+			guide: false,
+			spent: false,
+		});
+		await until(() => !h.room.viewOpen, "the quick switch to land");
+		terminalCaps.trueColor = false;
+
+		await h.room.openView();
+		expect({ guide: h.room.guideShown, spent: shared.get("room.guideShown") }).toEqual({ guide: true, spent: true });
+
+		// The next terminal on this profile opens the room without it.
+		const next = harness(a);
+		await next.room.openView();
+		expect(next.room.guideShown).toBe(false);
+	});
+
+	it("prints as a panel on /room help, naming the room's keys as they are bound", () => {
+		const { h } = openRoom({ name: "b", dir: dirB });
+		h.room.showHelp();
+		expect(h.presented).toHaveLength(1);
+		const panel = h.presented[0]!.render(120)
+			.map(row => stripVTControlCharacters(row))
+			.join("\n");
+		expect(panel).toContain("Rooms");
+		expect(panel).toContain("Getting around");
+		expect(panel).toContain("Reading a window");
+		expect(panel).toContain("alt+w");
+		expect(panel).toContain("alt+.");
 	});
 });
 

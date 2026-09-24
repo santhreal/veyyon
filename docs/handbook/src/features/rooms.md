@@ -10,10 +10,19 @@ the room view shows all of them at once.
 2. Type `/room new`. A second conversation opens and the screen moves to it; the first one keeps
    answering.
 3. Press `alt+w`, or `→` twice on an empty composer. The screen pulls back into a window beside
-   the other conversation.
+   the other conversation. The first time, a guide to the room opens over it; any key closes it.
 4. Press `1` or `2`, or click a window, to go into it.
 
 `alt+.` and `alt+,` move to the next and previous conversation without opening the view.
+
+## The guide
+
+The first room view a profile opens shows a card over the dimmed windows: what a room is, the
+keys that move through it, and what each mark on a window means. Any key or a click closes it,
+and does nothing else, so Enter or Esc pressed to dismiss it neither goes into a window nor leaves
+the view. `?` in the room view opens it again, and `/room help` prints the same guide into the
+transcript. The guide names the room keys as they are bound, so a rebound `app.room.view` shows
+its own key.
 
 ## The room view
 
@@ -32,7 +41,7 @@ the room view shows all of them at once.
 
                                   1   2   3!  +
 
-   ←→ move · enter open · 1–3 jump · n new · x close · tab all windows · esc back to 2
+   ←→ move · enter open · 1–3 jump · n new · x close · tab all windows · esc back to 2 · ? guide
 ```
 
 The view has two layouts:
@@ -81,6 +90,7 @@ shows its ordinal and a state glyph.
 | `x`, Delete | Close the selected conversation; press it twice while the conversation is working |
 | Tab | Switch layouts |
 | Esc, `alt+w` | Go back to the conversation the view was opened from; the key row names its number |
+| `?` | Show the guide; any key closes it |
 
 ## Moving between conversations
 
@@ -91,6 +101,7 @@ shows its ordinal and a state glyph.
 | A conversation by number or id | `/room <n>`, `/room <id>` |
 | Open a conversation beside this one | `/room new`, or `n` in the room view |
 | Print the room | `/room list` |
+| Explain the room | `/room help`, or `?` in the room view |
 
 Going into a window zooms it forward until it is the screen. The next and previous keys do the
 same without the view: the screen pulls back, the row slides, and the next conversation pushes
