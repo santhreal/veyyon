@@ -948,29 +948,34 @@ export class InputController {
 		// chance, so titling defers past "hi" instead of latching onto it.
 		if (!this.ctx.sessionManager.getSessionName() && !autoTitleDisabled() && !isLowSignalTitleInput(text)) {
 			this.#showTinyTitleDownloadProgress(this.ctx.settings.get("providers.tinyModel"));
-			const registry = this.ctx.session.modelRegistry;
+			// The title belongs to the conversation this prompt was sent to. The
+			// screen can move to another one before the title model answers (a room
+			// switch, a `/new` hand-off), and `ctx` follows the screen, so both are
+			// read now rather than when the title arrives.
+			const session = this.ctx.session;
+			const sessionManager = this.ctx.sessionManager;
 			generateSessionTitle(
 				text,
-				registry,
+				session.modelRegistry,
 				this.ctx.settings,
-				this.ctx.session.sessionId,
-				this.ctx.session.model,
-				provider => this.ctx.session.agent.metadataForProvider(provider),
-				this.ctx.session.titleSystemPrompt,
-				providerText => this.ctx.session.obfuscateProviderText(providerText),
-				this.ctx.session.sideComplete,
+				session.sessionId,
+				session.model,
+				provider => session.agent.metadataForProvider(provider),
+				session.titleSystemPrompt,
+				providerText => session.obfuscateProviderText(providerText),
+				session.sideComplete,
 			)
 				.then(async title => {
 					// Re-check: a concurrent attempt for an earlier message may have
 					// already named the session. Don't clobber it. Terminal title and
 					// accent updates fire from the onSessionNameChanged listener.
-					if (title && !this.ctx.sessionManager.getSessionName()) {
-						await this.ctx.sessionManager.setSessionName(title, "auto");
+					if (title && !sessionManager.getSessionName()) {
+						await sessionManager.setSessionName(title, "auto");
 					}
 				})
 				.catch(err => {
 					logger.warn("title-generator: uncaught auto-title error", {
-						sessionId: this.ctx.session.sessionId,
+						sessionId: session.sessionId,
 						reason: "uncaught-auto-title-error",
 						error: errorMessage(err),
 					});
