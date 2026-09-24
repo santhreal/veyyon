@@ -105,7 +105,8 @@ switches without motion.
 A conversation that asks you something while it is off screen does not open the question over
 the one you are reading. The question waits until you go into that conversation. Until then:
 
-- its window shows `needs you` on its edge and `waiting for your answer` at its foot;
+- its window shows `needs you` on its edge and `waiting for your answer` at its foot, and its
+  frame keeps the ember of a waiting prompt, quieter than the selected window's;
 - the room view's title and the ordinal under the windows mark it with `!`, and the key row reads
   `enter answer` while its window is selected;
 - the status line's `room` chip counts it ahead of the working ones: `3 peers · ! 1 needs you · 1 working`;

@@ -222,8 +222,18 @@ interface FrameColours {
 	readonly edge: (text: string) => string;
 }
 
-function frameColours(ink: RoomInk, selected: boolean): FrameColours {
+/** How much of the ember a waiting window's frame keeps: enough to find at a glance, short of the selection's. */
+const WAITING_FRAME_STRENGTH = 0.6;
+
+function frameColours(ink: RoomInk, selected: boolean, waiting: boolean, ground: string): FrameColours {
 	if (selected) return { edge: text => ink.token("borderAccent", text) };
+	// A window holding a question keeps the ember of a waiting prompt in its
+	// frame, quieter than the selection's, so a glance across the room finds
+	// who is waiting even where the edge chip is cut to a glyph.
+	if (waiting) {
+		const ember = new RoomInk(ink.strength * WAITING_FRAME_STRENGTH, ground);
+		return { edge: text => ember.token("borderAccent", text) };
+	}
 	const derived = groundFrameHex();
 	if (derived !== undefined && TERMINAL.trueColor) return { edge: text => ink.hex(derived, text) };
 	return { edge: text => ink.token("borderMuted", text) };
@@ -481,7 +491,7 @@ export function paintRoomWindow(paint: RoomWindowPaint): string[] {
 		return new Array(height).fill(" ".repeat(width));
 	}
 
-	const frame = frameColours(ink, paint.selected);
+	const frame = frameColours(ink, paint.selected, paint.waitingDialogs > 0, ground);
 	const innerHeight = height - 2;
 
 	if (width < TINY_WIDTH) {
@@ -571,8 +581,9 @@ export function paintRoomNewSlot(paint: RoomNewSlotPaint): string[] {
 	const { width, height } = paint;
 	if (width <= 0 || height <= 0) return [];
 	if (height < 3 || width < 4) return new Array(height).fill(" ".repeat(width));
-	const ink = new RoomInk(paint.strength, theme.visibleGroundHex());
-	const frame = frameColours(ink, paint.selected);
+	const ground = theme.visibleGroundHex();
+	const ink = new RoomInk(paint.strength, ground);
+	const frame = frameColours(ink, paint.selected, false, ground);
 	const box = theme.boxRound;
 	const innerWidth = width - 2;
 	const innerHeight = height - 2;
