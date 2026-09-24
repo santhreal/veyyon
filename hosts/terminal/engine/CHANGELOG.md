@@ -15,6 +15,7 @@
 
 - `SelectList.naturalWidth()` counts the description column's minimum width, so a list sized to it shows every description whole.
 - Closing the last fullscreen overlay leaves the alternate screen and repaints in one synchronized update, so the previous screen never shows for a frame between the two.
+- Leaving a fullscreen overlay gives footer click targets button reporting back, so the status line's chips answer a click after settings or the room view closes instead of staying inert until the transcript scrolls.
 
 ## [1.5.0] - 2026-09-18
 

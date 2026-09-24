@@ -2378,8 +2378,10 @@ export class TUI extends Container {
 			setAltScreenActive(false);
 			this.#cursor.forget();
 			this.#altActive = false;
-			// Scroll isolation re-arms its wheel/button tracking after the
-			// overlay's full tracking set is torn down.
+			// The write above tore down every tracking mode, the wheel grab's
+			// included, so the grab is not held now whatever it was before the
+			// overlay: scroll isolation and a footer click target re-arm it here.
+			this.#wheelTrackingActive = false;
 			this.#syncWheelTracking();
 			this.#altPreviousLines = [];
 			this.#altPreviousCursor = undefined;
