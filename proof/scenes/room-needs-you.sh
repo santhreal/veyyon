@@ -52,7 +52,9 @@ pause 1.5
 # --- 2. back to conversation 1 before the call arrives ----------------------
 after && k alt+comma
 pause 1
-shot left-for-one
+# A fast model asks before this frame, and then this frame is the next one;
+# the recorder refuses two identical shots, so the earlier one is left out.
+if ! after || ! screen_has "needs you"; then shot left-for-one; fi
 
 # --- 3. the call is held, and the status line says who is waiting -----------
 # needle-source: needs you -- room-controller.ts #onWaitingChange names the waiting member
