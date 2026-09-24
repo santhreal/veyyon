@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
-import { NO_ROOM_PEERS } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
+import { NO_ROOM_PEERS } from "@veyyon/coding-agent/modes/terminal/components/status-line/session-facts";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { NO_SESSION_FACTS } from "../src/modes/terminal/components/status-line/session-facts";
 

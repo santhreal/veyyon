@@ -31,14 +31,14 @@ import {
 	statusLineSettingsFromConfig,
 } from "./quiet-row";
 import { focusExitBadge, type SegmentContext } from "./segments";
+import { NO_ROOM_PEERS } from "./session-facts";
 import { stateSeparator } from "./state-grammar";
-import {
-	type CollabStatus,
-	type EffectiveStatusLineSettings,
-	NO_ROOM_PEERS,
-	type RoomPeerSummary,
-	type StatusLineSegmentId,
-	type StatusLineSettings,
+import type {
+	CollabStatus,
+	EffectiveStatusLineSettings,
+	RoomPeerSummary,
+	StatusLineSegmentId,
+	StatusLineSettings,
 } from "./types";
 
 export { messageFingerprint } from "../../../../presentation/status-producer";

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
-import { NO_ROOM_PEERS } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
+import { NO_ROOM_PEERS } from "@veyyon/coding-agent/modes/terminal/components/status-line/session-facts";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { getProjectDir, setProjectDir } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";

@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { NO_ROOM_PEERS } from "@veyyon/coding-agent/modes/terminal/components/status-line/session-facts";
 import { stateSeparator } from "@veyyon/coding-agent/modes/terminal/components/status-line/state-grammar";
-import { NO_ROOM_PEERS } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import { initTheme, type ThemeColor, theme } from "@veyyon/coding-agent/theme/theme";
 import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/core/approval";
 import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/core/approval-modes";

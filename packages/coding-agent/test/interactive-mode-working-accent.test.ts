@@ -49,6 +49,8 @@ async function createHarness(sessionName: string): Promise<Harness> {
 		state: { model: undefined },
 		model: undefined,
 		thinkingLevel: undefined,
+		// Not a registered driving agent: the room controller reads the id to find its room.
+		getAgentId: () => undefined,
 	} as unknown as AgentSession;
 	const mode = new InteractiveMode(session, "test");
 	const harness = { mode, sessionManager, tempDir };

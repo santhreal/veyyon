@@ -18,9 +18,6 @@ export interface RoomPeerSummary {
 	readonly waiting: number;
 }
 
-/** A terminal with no room. */
-export const NO_ROOM_PEERS: RoomPeerSummary = { peers: 0, working: 0, waiting: 0 };
-
 /** Collab session indicator + (guest-only) host-state override for segments. */
 export type CollabStatus = StatusCollabStatus;
 
