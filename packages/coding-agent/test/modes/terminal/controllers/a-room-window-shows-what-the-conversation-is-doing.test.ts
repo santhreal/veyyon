@@ -19,13 +19,18 @@
  * thing stubbed is `isCompacting`, set on the session instance, because an
  * auto-compaction in flight is internal to the session and has its own suites.
  *
+ * A feed rebuilds on every token a conversation streams: each stored message
+ * is read through the display transform once for the life of the feed, and
+ * the message being written every time, so a window neither redoes its whole
+ * exchange per token nor freezes on the first token it saw.
+ *
  * NOT CAUGHT. How a window paints the snapshot (the room window suites). The
  * `cwd` field is read straight from the session and not asserted beyond being
  * display-safe. A handle split across two deltas is the stream decoder's
  * contract (`argot-stream-event-display`), not repeated here.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Agent, type AgentMessage, type AgentTool } from "@veyyon/agent-core";
@@ -42,6 +47,7 @@ import {
 } from "@veyyon/coding-agent/modes/terminal/components/room/room-view-model";
 import {
 	buildRoomWindowSnapshot,
+	type RoomBlockCache,
 	RoomWindowFeed,
 	roomDraftPreview,
 } from "@veyyon/coding-agent/modes/terminal/controllers/room-window-feed";
@@ -433,6 +439,73 @@ describe("a running turn", () => {
 			if (session.isStreaming) await session.abort();
 			await turn;
 		}
+	});
+
+	it("reads each stored message once across rebuilds, and the message being written on every one", async () => {
+		const live = await open([
+			user("list the tables"),
+			assistant([{ type: "text", text: "Reading." }, call("c1", "read", { path: DB })]),
+			result("c1", "read", false),
+			assistant([{ type: "text", text: "Two tables." }]),
+		]);
+		const { session, push } = live;
+		const reads = vi.spyOn(session, "displayAssistantContent");
+		const feed = new RoomWindowFeed(session, () => {});
+		try {
+			const first = feed.snapshot();
+			expect(reads.mock.calls.length).toBe(2);
+			// A rename is an event: the snapshot is rebuilt, from the blocks already read.
+			await session.sessionManager.setSessionName("tables", "user");
+			const renamed = feed.snapshot();
+			expect(renamed).not.toBe(first);
+			expect(reads.mock.calls.length).toBe(2);
+			expect({ text: textBlocks(renamed), tools: toolRows(renamed).map(row => row.state) }).toEqual({
+				text: ["Reading.", "Two tables."],
+				tools: ["ok"],
+			});
+
+			const turn = session.prompt("and the columns?");
+			try {
+				await Promise.race([live.called, turn]);
+				push({ type: "start", partial: assistant([]) });
+				push({
+					type: "text_delta",
+					contentIndex: 0,
+					delta: "First",
+					partial: assistant([{ type: "text", text: "First" }]),
+				});
+				await until(() => textBlocks(feed.snapshot()).join() === "First", "the first token");
+				push({
+					type: "text_delta",
+					contentIndex: 0,
+					delta: " half",
+					partial: assistant([{ type: "text", text: "First half" }]),
+				});
+				await until(() => textBlocks(feed.snapshot()).join() === "First half", "the second token");
+			} finally {
+				if (session.isStreaming) await session.abort();
+				await turn;
+			}
+		} finally {
+			feed.dispose();
+		}
+	});
+
+	/**
+	 * The cache is what the window shows and no more: a long session's older
+	 * exchanges, or a compaction's dropped messages, would otherwise stay held
+	 * as display copies for as long as the room lives.
+	 */
+	it("keeps the blocks of the exchange it shows, and none from the exchange before it", async () => {
+		const earlier = [user("list the tables"), assistant([{ type: "text", text: "Two tables." }])];
+		const { session } = await open([...earlier]);
+		const cache: RoomBlockCache = { blocks: new Map() };
+		buildRoomWindowSnapshot(session, {}, cache);
+		expect([...cache.blocks.keys()]).toEqual(earlier);
+		const later = [user("and the columns?"), assistant([{ type: "text", text: "Three columns." }])];
+		for (const message of later) session.agent.appendMessage(message);
+		expect(textBlocks(buildRoomWindowSnapshot(session, {}, cache))).toEqual(["Three columns."]);
+		expect([...cache.blocks.keys()]).toEqual(later);
 	});
 });
 

@@ -89,11 +89,75 @@ export interface RoomLiveTurn {
 	readonly stream?: AssistantMessage;
 }
 
+/** A tool call as a stored message shows it, before it is known how the call ended. */
+interface StoredCall {
+	readonly kind: "call";
+	readonly id: string;
+	readonly name: string;
+	readonly detail: string;
+}
+
+/** What one message contributes to a window: its blocks, with each tool call still to be resolved. */
+type MessageBlocks = ReadonlyArray<RoomFeedBlock | StoredCall>;
+
+/**
+ * Each stored message's blocks, by message, for the exchange a window shows. A
+ * stored message never changes, so its display transform (secrets, argot), its
+ * sanitizing and its tool-call arguments are worked out once; a rebuild while
+ * a turn streams redoes only the message being written. Each rebuild keeps
+ * only the messages of the exchange it built, so a message a new prompt moves
+ * out of the window, or compaction drops, takes its blocks with it: the cache
+ * never holds more than the window's own exchange.
+ */
+export interface RoomBlockCache {
+	blocks: Map<AgentMessage, MessageBlocks>;
+}
+
+/** The blocks one message contributes, read afresh. */
+function messageBlocks(session: AgentSession, message: AgentMessage, isLive: boolean): MessageBlocks {
+	if (message.role === "user") {
+		const text = promptText(message);
+		return text && message.synthetic !== true ? [{ kind: "prompt", text }] : [];
+	}
+	if (message.role !== "assistant") return [];
+	const blocks: Array<RoomFeedBlock | StoredCall> = [];
+	// Stored messages keep secrets obfuscated and handles unexpanded; the live
+	// one arrived in display form already.
+	const content = isLive ? message.content : session.displayAssistantContent(message.content);
+	for (let i = 0; i < content.length; i++) {
+		const block = content[i]!;
+		if (block.type === "text") {
+			const text = displayText(block.text);
+			if (text) blocks.push({ kind: "text", text });
+		} else if (block.type === "thinking") {
+			// Reasoning is shown only while it is the thing being written.
+			if (isLive && i === content.length - 1) blocks.push({ kind: "thinking" });
+		} else if (block.type === "toolCall") {
+			blocks.push({
+				kind: "call",
+				id: block.id,
+				name: block.name,
+				detail: sanitizeSingleLine(displayText(toolCallPrimaryArg(block.name, block.arguments))),
+			});
+		}
+	}
+	if (message.stopReason === "error" && message.errorMessage) {
+		blocks.push({ kind: "note", text: firstLine(message.errorMessage), tone: "error" });
+	}
+	return blocks;
+}
+
 /**
  * Build one conversation's snapshot. Exported for the stage's tests, which
- * build sessions and read what their windows would show.
+ * build sessions and read what their windows would show. `cache` carries each
+ * stored message's blocks from one build to the next; without it every
+ * message is read afresh.
  */
-export function buildRoomWindowSnapshot(session: AgentSession, live: RoomLiveTurn = {}): RoomWindowSnapshot {
+export function buildRoomWindowSnapshot(
+	session: AgentSession,
+	live: RoomLiveTurn = {},
+	cache?: RoomBlockCache,
+): RoomWindowSnapshot {
 	const messages = session.messages;
 	let start = -1;
 	for (let i = messages.length - 1; i >= 0; i--) {
@@ -112,46 +176,43 @@ export function buildRoomWindowSnapshot(session: AgentSession, live: RoomLiveTur
 	for (const message of exchange) {
 		if (message.role === "toolResult") results.set(message.toolCallId, message.isError);
 	}
+	const tools = session.agent.state.tools;
 	const labels = new Map<string, string>();
-	for (const tool of session.agent.state.tools) labels.set(tool.name, tool.label);
+	const labelOf = (name: string): string => {
+		let label = labels.get(name);
+		if (label === undefined) {
+			const raw = tools.find(tool => tool.name === name)?.label ?? name;
+			label = sanitizeSingleLine(displayText(raw));
+			labels.set(name, label);
+		}
+		return label;
+	};
 
 	const streaming = session.isStreaming;
 	const blocks: RoomFeedBlock[] = [];
+	const kept = cache ? new Map<AgentMessage, MessageBlocks>() : undefined;
 	let lastAssistant: AgentMessage | undefined;
 	for (const message of exchange) {
-		if (message.role === "user") {
-			const text = promptText(message);
-			if (text && message.synthetic !== true) blocks.push({ kind: "prompt", text });
-			continue;
-		}
-		if (message.role !== "assistant") continue;
-		lastAssistant = message;
+		if (message.role === "assistant") lastAssistant = message;
 		const isLive = message === stream;
-		// Stored messages keep secrets obfuscated and handles unexpanded; the live
-		// one arrived in display form already.
-		const content = isLive ? message.content : session.displayAssistantContent(message.content);
-		for (let i = 0; i < content.length; i++) {
-			const block = content[i]!;
-			if (block.type === "text") {
-				const text = displayText(block.text);
-				if (text) blocks.push({ kind: "text", text });
-			} else if (block.type === "thinking") {
-				// Reasoning is shown only while it is the thing being written.
-				if (isLive && i === content.length - 1) blocks.push({ kind: "thinking" });
-			} else if (block.type === "toolCall") {
-				const failed = results.get(block.id);
-				blocks.push({
-					kind: "tool",
-					label: sanitizeSingleLine(displayText(labels.get(block.name) ?? block.name)),
-					detail: sanitizeSingleLine(displayText(toolCallPrimaryArg(block.name, block.arguments))),
-					state: failed === undefined ? (streaming ? "running" : "error") : failed ? "error" : "ok",
-				});
+		let own = isLive ? undefined : cache?.blocks.get(message);
+		if (own === undefined) own = messageBlocks(session, message, isLive);
+		if (!isLive) kept?.set(message, own);
+		for (const block of own) {
+			if (block.kind !== "call") {
+				blocks.push(block);
+				continue;
 			}
-		}
-		if (message.stopReason === "error" && message.errorMessage) {
-			blocks.push({ kind: "note", text: firstLine(message.errorMessage), tone: "error" });
+			const failed = results.get(block.id);
+			blocks.push({
+				kind: "tool",
+				label: labelOf(block.name),
+				detail: block.detail,
+				state: failed === undefined ? (streaming ? "running" : "error") : failed ? "error" : "ok",
+			});
 		}
 	}
+	if (cache && kept) cache.blocks = kept;
 	const head = blocks[0]?.kind === "prompt" ? [blocks[0]] : [];
 	const tail = blocks.slice(head.length).slice(-MAX_FEED_BLOCKS);
 
@@ -203,6 +264,8 @@ export class RoomWindowFeed {
 	#built = -1;
 	#builtModel: Model | undefined;
 	#snapshot: RoomWindowSnapshot | undefined;
+	/** The stored messages of the exchange this feed last built, by message. */
+	readonly #blocks: RoomBlockCache = { blocks: new Map() };
 	readonly #unsubscribe: () => void;
 	readonly #unsubscribeName: () => void;
 
@@ -227,10 +290,11 @@ export class RoomWindowFeed {
 	snapshot(): RoomWindowSnapshot {
 		const model = this.session.model;
 		if (this.#snapshot === undefined || this.#built !== this.#version || this.#builtModel !== model) {
-			this.#snapshot = buildRoomWindowSnapshot(this.session, {
-				startedAt: this.session.turnStartedAt,
-				stream: this.session.displayedStreamMessage,
-			});
+			this.#snapshot = buildRoomWindowSnapshot(
+				this.session,
+				{ startedAt: this.session.turnStartedAt, stream: this.session.displayedStreamMessage },
+				this.#blocks,
+			);
 			this.#built = this.#version;
 			this.#builtModel = model;
 		}
