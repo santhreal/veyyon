@@ -974,9 +974,10 @@ export class RoomStage implements Component, OverlayFocusOwner {
 					? `\x1b[7m${held}\x1b[27m${" ".repeat(Math.max(0, fieldWidth - visibleWidth(held)))}`
 					: (naming.input.render(fieldWidth)[0] ?? "");
 			const w = visibleWidth(label) + 2 + fieldWidth;
+			// The field is underlined across its width, so an empty name still reads as a place to type.
 			put(
 				height - 3,
-				`${" ".repeat(Math.max(0, Math.floor((width - w) / 2)))}${ink.token("accent", label)}  ${ink.token("text", field)}`,
+				`${" ".repeat(Math.max(0, Math.floor((width - w) / 2)))}${ink.token("accent", label)}  \x1b[4m${ink.token("text", field)}\x1b[24m`,
 			);
 		} else if (notice) {
 			const text = ink.token(notice.tone === "error" ? "error" : "warning", notice.text);
