@@ -11,14 +11,14 @@ use veyyon_gpui::Action;
 use crate::keymap::{
 	KeymapError,
 	actions::{
-		AbortTurn, AttachFile, CloseTabOrPark, CloseWindow, CopySelection, Dismiss, FilterQueue,
-		FindInTranscript, FocusLive, FoldSelectedBranch, ModelPicker, MoveSelection, NewSession,
-		Newline, NextSession, NextTab, NextTurn, OpenMenu, OpenPalette, OpenSelectedSession,
-		OpenSettings, PreviousSession, PreviousTab, PreviousTurn, Primary, PromptHistory, Quit,
-		Scroll, ScrollBy,
-		SelectEntryText, SelectOption, SplitHalf, TakeBackQueuedPrompt, ThinkingLevel, ToggleBlock,
-		ToggleDeferSelected, ToggleDictation, ToggleDiffMode, ToggleDrawer, TogglePanel,
-		ToggleParkSelected, TogglePinSelected, ToggleQueue, ToggleQueueMode, UnfoldSelectedBranch,
+		AbortTurn, AttachFile, BackgroundCommand, CloseTabOrPark, CloseWindow, CopySelection,
+		Dismiss, FilterQueue, FindInTranscript, FocusLive, FoldSelectedBranch, ModelPicker,
+		MoveSelection, NewSession, Newline, NextSession, NextTab, NextTurn, OpenMenu, OpenPalette,
+		OpenSelectedSession, OpenSettings, PreviousSession, PreviousTab, PreviousTurn, Primary,
+		PromptHistory, Quit, Scroll, ScrollBy, SelectEntryText, SelectOption, SplitHalf,
+		TakeBackQueuedPrompt, ThinkingLevel, ToggleBlock, ToggleDeferSelected, ToggleDictation,
+		ToggleDiffMode, ToggleDrawer, TogglePanel, ToggleParkSelected, TogglePinSelected,
+		ToggleQueue, ToggleQueueMode, UnfoldSelectedBranch,
 	},
 };
 
@@ -106,6 +106,7 @@ pub fn build_action(
 		"SplitHalf" => Ok(Arc::new(SplitHalf)),
 		"Dismiss" => Ok(Arc::new(Dismiss)),
 		"AbortTurn" => Ok(Arc::new(AbortTurn)),
+		"BackgroundCommand" => Ok(Arc::new(BackgroundCommand)),
 		"ToggleQueueMode" => Ok(Arc::new(ToggleQueueMode)),
 		"SelectOption" => {
 			let index = arg

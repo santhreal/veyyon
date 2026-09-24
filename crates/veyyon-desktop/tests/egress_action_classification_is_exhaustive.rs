@@ -5,7 +5,7 @@ use veyyon_desktop_model::HostActionKind;
 
 #[test]
 fn all_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
-	assert_eq!(HostActionKind::ALL.len(), 94, "HostActionKind::ALL must contain exactly 94 actions");
+	assert_eq!(HostActionKind::ALL.len(), 95, "HostActionKind::ALL must contain exactly 95 actions");
 
 	let mut ephemeral_actions = HashSet::new();
 	let mut mutation_actions = HashSet::new();
@@ -21,7 +21,7 @@ fn all_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
 		}
 	}
 
-	assert_eq!(ephemeral_actions.len() + mutation_actions.len(), 94);
+	assert_eq!(ephemeral_actions.len() + mutation_actions.len(), 95);
 
 	// Pinned exact set of 25 ephemeral read-only actions (§8.13). A share read
 	// again is one of them, and so is a profile listing: each asks the host for

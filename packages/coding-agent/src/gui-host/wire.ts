@@ -71,6 +71,7 @@ export const ALL_CAPABILITIES = [
 	"Profiles",
 	"Dictation",
 	"PromptHistory",
+	"ForegroundCommand",
 ] as const;
 
 export type Capability = (typeof ALL_CAPABILITIES)[number];
@@ -366,6 +367,16 @@ export interface PromptHistoryEntryView {
 export interface PromptHistoryView {
 	query: string;
 	entries: PromptHistoryEntryView[];
+}
+
+/**
+ * The command a session's turn is waiting on, while it can still be moved to
+ * a background job. Mirrors `ForegroundCommandView` in
+ * `crates/veyyon-desktop-model/src/domain/foreground.rs`.
+ */
+export interface ForegroundCommandView {
+	command: string;
+	truncated: boolean;
 }
 
 /**
@@ -821,7 +832,8 @@ export type SnapshotSection =
 	| { Goal: { session: string; goal: GoalView | null } }
 	| { Share: ShareView }
 	| { Profiles: ProfilesView }
-	| { Dictation: DictationView };
+	| { Dictation: DictationView }
+	| { ForegroundCommand: { session: string; command: ForegroundCommandView | null } };
 
 export const ALL_SNAPSHOT_SECTIONS = [
 	"Sessions",
@@ -861,6 +873,7 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"AgentPause",
 	"Goal",
 	"Dictation",
+	"ForegroundCommand",
 ] as const;
 
 export type SnapshotSectionTag = (typeof ALL_SNAPSHOT_SECTIONS)[number];
@@ -913,6 +926,7 @@ export type HostAction =
 	| { LoadTranscript: { session: string; before: string | null } }
 	| { SubmitPrompt: { session: string; text: string; attachments: AttachmentSubmission[] } }
 	| { AbortTurn: { session: string } }
+	| { BackgroundCommand: { session: string } }
 	| { RetryTurn: { session: string } }
 	| { RephraseReply: { session: string } }
 	| { ReviewPlan: { session: string } }
@@ -951,6 +965,7 @@ export const ALL_HOST_ACTIONS = [
 	"Steer",
 	"FollowUp",
 	"AbortTurn",
+	"BackgroundCommand",
 	"RetryTurn",
 	"RephraseReply",
 	"ReviewPlan",
@@ -1049,6 +1064,7 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	Steer: "TurnControl",
 	FollowUp: "TurnControl",
 	AbortTurn: "TurnControl",
+	BackgroundCommand: "ForegroundCommand",
 	RetryTurn: "TurnControl",
 	RephraseReply: "TurnControl",
 	ReviewPlan: "Approvals",

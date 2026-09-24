@@ -508,8 +508,8 @@ export class InputController {
 		this.ctx.editor.onExit = () => this.handleCtrlD();
 		this.ctx.editor.onSuspend = () => this.handleCtrlZ();
 		// Conditional: consumes the key only while a foreground command is
-		// waiting; otherwise ctrl+b stays readline cursor-left.
-		this.ctx.editor.onBashBackground = () => requestManualBackground();
+		// waiting in this session; otherwise ctrl+b stays readline cursor-left.
+		this.ctx.editor.onBashBackground = () => requestManualBackground(this.ctx.session.sessionManager.getSessionId());
 		this.ctx.editor.onCycleThinkingLevel = () => this.cycleThinkingLevel();
 		this.ctx.editor.onCycleModelForward = () => this.cycleRoleModel("forward");
 		this.ctx.editor.onCycleModelBackward = () => this.cycleRoleModel("backward");

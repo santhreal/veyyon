@@ -6,7 +6,7 @@ import type { AuthStorage } from "@veyyon/ai";
 import { errorMessage, getAgentDir, logger } from "@veyyon/utils";
 import { discoverAuthStorage } from "../session/auth-broker-config";
 import { currentImageDisplayProbe, setImageDisplayProbe } from "../session/image-visibility";
-import { allActionHandlers } from "./actions";
+import { allActionHandlers, subscribeClientForeground } from "./actions";
 import { activeCwd, writeSessionList } from "./actions/active-session";
 import { agentPauseSection } from "./actions/pause";
 import type { ActionContext, ReplyHelper } from "./actions/types";
@@ -274,6 +274,11 @@ export class GuiHostServer {
 		};
 		clientState.republishWorkspace = () => republishWorkspace(socket, clientState, activeCwd(clientState, this.#cwd));
 		this.#clientStates.set(socket, clientState);
+		// The wait is reported for whatever session this connection is on, so
+		// the subscription belongs to the connection rather than to the action
+		// that opened the session: a window is told about a command already
+		// running whichever request it sends first.
+		subscribeClientForeground(socket, clientState);
 		// 1. Write greeting frame first
 		writeFrame(socket, {
 			ConnectionChanged: {

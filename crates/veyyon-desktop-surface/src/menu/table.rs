@@ -73,6 +73,7 @@ impl MenuSectionId {
 			],
 			Self::Turn => &[
 				Command::AbortTurn,
+				Command::BackgroundCommand,
 				Command::ToggleQueueMode,
 				Command::TakeBackQueuedPrompt,
 				Command::ModelPicker,

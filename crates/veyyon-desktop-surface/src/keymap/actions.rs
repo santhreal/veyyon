@@ -129,6 +129,8 @@ actions!([
 	#[derive(Eq)]
 	AbortTurn,
 	#[derive(Eq)]
+	BackgroundCommand,
+	#[derive(Eq)]
 	ToggleQueueMode,
 	#[derive(Eq)]
 	ModelPicker,

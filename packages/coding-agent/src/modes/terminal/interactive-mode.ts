@@ -1616,7 +1616,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	#refreshComposerShortcuts(): void {
 		const busy = this.#isAutoSubmitBlocked();
 		const focused = this.focusedAgentId !== undefined;
-		const canBackgroundBash = hasForegroundBashWait();
+		const canBackgroundBash = hasForegroundBashWait(this.session.sessionManager.getSessionId());
 		const hasQueue = this.session.queuedMessageCount > 0;
 		if (!busy && !hasQueue && !canBackgroundBash && this.composerShortcuts.shortcuts.length === 0) {
 			return;

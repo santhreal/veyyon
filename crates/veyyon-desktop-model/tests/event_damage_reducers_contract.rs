@@ -221,8 +221,10 @@ fn test_damage_decision_for_every_snapshot_section_sweep() {
 				assert!(damage.contains(&Damage::FullWindow));
 			},
 			// The microphone belongs to the window rather than to one session, so
-			// the chip redraws in the composer of whichever session is active.
-			"Dictation" => {
+			// the chip redraws in the composer of whichever session is active, and
+			// a waiting command's control redraws the composer of the session it
+			// runs in.
+			"Dictation" | "ForegroundCommand" => {
 				assert!(damage.contains(&Damage::Composer(session_id.clone())));
 			},
 			other => panic!("Unhandled snapshot section in damage test: {other}"),

@@ -130,6 +130,10 @@ const AT_IDLE: Record<SnapshotSectionTag, "restated-at-idle" | "listed-at-idle" 
 	// the window reads that store when the recall mode opens, not at the turn
 	// boundary: a re-statement at idle would push rows nothing is drawing.
 	PromptHistory: "on-request",
+	// The section is published on the two edges of a wait, which both fall
+	// inside the turn the command runs in: by the time the turn ends the wait
+	// has settled and the section that cleared it has already been sent.
+	ForegroundCommand: "during-turn",
 };
 
 /** The section the host publishes last, which is what closes a re-statement. */

@@ -10,6 +10,7 @@ pub mod commands;
 pub mod diagnostics;
 pub mod dictation;
 pub mod files;
+pub mod foreground;
 pub mod goal;
 pub mod mcp;
 pub mod models;
@@ -33,6 +34,7 @@ pub use commands::*;
 pub use diagnostics::*;
 pub use dictation::*;
 pub use files::*;
+pub use foreground::*;
 pub use goal::*;
 pub use mcp::*;
 pub use models::*;
@@ -116,6 +118,9 @@ pub struct Domains {
 	pub profiles:        Option<ProfilesView>,
 	/// The speech this window is dictating, absent until it dictates.
 	pub dictation:       Option<DictationView>,
+	/// The command each session is waiting on in the foreground, keyed by
+	/// session. A session waiting on none holds no entry.
+	pub foreground:      HashMap<SessionId, ForegroundCommandView>,
 }
 
 impl Domains {

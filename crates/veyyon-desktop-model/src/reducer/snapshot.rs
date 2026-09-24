@@ -305,6 +305,17 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 				damage.insert(Damage::FullWindow);
 			}
 		},
+		SnapshotSection::ForegroundCommand { session, command } => {
+			// The control sits in that session's composer, so only its band
+			// redraws: another session's command starting or finishing leaves
+			// this one alone.
+			if let Some(command) = command {
+				store.domains.foreground.insert(session.clone(), command);
+			} else {
+				store.domains.foreground.remove(&session);
+			}
+			damage.insert(Damage::Composer(session));
+		},
 	}
 
 	damage

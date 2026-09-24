@@ -724,5 +724,14 @@
 			"error": null,
 			"revision": 7
 		}
+	},
+	{
+		"ForegroundCommand": {
+			"session": "sess-1",
+			"command": {
+				"command": "bun test packages/coding-agent",
+				"truncated": false
+			}
+		}
 	}
 ]

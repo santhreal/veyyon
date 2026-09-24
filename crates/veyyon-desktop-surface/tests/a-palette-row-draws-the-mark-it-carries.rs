@@ -194,7 +194,16 @@ fn a_command_the_keymap_binds_states_its_chord_and_one_it_does_not_states_none()
 		.collect();
 	assert_eq!(
 		bound,
-		vec!["/new", "/terminal", "/abort", "/attach", "/model", "/effort", "/queue-mode"],
+		vec![
+			"/new",
+			"/terminal",
+			"/abort",
+			"/background",
+			"/attach",
+			"/model",
+			"/effort",
+			"/queue-mode"
+		],
 		"exactly the commands the keymap binds state a chord"
 	);
 }

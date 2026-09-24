@@ -341,6 +341,12 @@ pub fn confirmed(expected: &Intent, reported: &[Intent], view: &ShellView) {
 				path.as_deref()
 			);
 		},
+		// Recalling a prompt is the window's own: the shell puts the text back
+		// in the editor and closes the palette, and the host is asked nothing.
+		Intent::RecallPrompt(_) => {
+			assert!(reported.is_empty(), "a recalled prompt asks the host for nothing");
+			assert!(view.state().overlay.is_none());
+		},
 		Intent::PreviewSession(session) => {
 			assert_eq!(reported, std::slice::from_ref(expected));
 			let Some(Overlay::History(preview)) = view.state().overlay.as_ref() else {

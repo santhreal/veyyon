@@ -43,6 +43,11 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::Steer => Capability::TurnControl,
 		HostActionKind::FollowUp => Capability::TurnControl,
 		HostActionKind::AbortTurn => Capability::TurnControl,
+		// Moving a running command off the turn needs a host that supervises
+		// background jobs, which a host answering turns need not do: one that
+		// runs every command to completion honours the rest of the family and
+		// withholds this.
+		HostActionKind::BackgroundCommand => Capability::ForegroundCommand,
 		HostActionKind::RetryTurn => Capability::TurnControl,
 		HostActionKind::RephraseReply => Capability::TurnControl,
 		// What it asks for is a decision card, so it needs the capability

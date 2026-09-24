@@ -44,6 +44,9 @@ import { useFullColor } from "../../../helpers/theme-assertions";
 
 await initTheme(false, "unicode", false, "titanium", "light");
 
+/** The session the chip's window is on. A wait is keyed by it. */
+const SESSION = "composer-chip-session";
+
 /** Every state combination that is not about a waiting bash command. */
 const NON_BASH_STATES = [
 	{ busy: false, hasDraft: false, hasQueue: false },
@@ -147,14 +150,15 @@ describe("composer background chip", () => {
 	});
 
 	it("tracks the registry on both edges, which is what the subscription is for", () => {
-		// The gate value comes from `hasForegroundBashWait()`, and a wait can start
-		// and settle without any draft/busy/queue transition to piggyback on. If
-		// this ever reported a stale value the chip would linger over a dead key.
-		expect(hasForegroundBashWait()).toBe(false);
-		const unregister = registerForegroundBashWait(() => {});
-		expect(hasForegroundBashWait()).toBe(true);
+		// The gate value comes from `hasForegroundBashWait(session)`, and a wait
+		// can start and settle without any draft/busy/queue transition to
+		// piggyback on. If this ever reported a stale value the chip would linger
+		// over a dead key.
+		expect(hasForegroundBashWait(SESSION)).toBe(false);
+		const unregister = registerForegroundBashWait(SESSION, "sleep 60", () => {});
+		expect(hasForegroundBashWait(SESSION)).toBe(true);
 		unregister();
-		expect(hasForegroundBashWait()).toBe(false);
+		expect(hasForegroundBashWait(SESSION)).toBe(false);
 	});
 
 	it("notifies its subscriber on register, unregister and manual background", () => {
@@ -162,9 +166,9 @@ describe("composer background chip", () => {
 		// has to clear the chip, and it does so through the unregister the bash
 		// tool runs when the wait settles.
 		const seen: boolean[] = [];
-		onForegroundBashWaitChange(() => seen.push(hasForegroundBashWait()));
-		const unregister = registerForegroundBashWait(() => {});
-		expect(requestManualBackground()).toBe(true);
+		onForegroundBashWaitChange(() => seen.push(hasForegroundBashWait(SESSION)));
+		const unregister = registerForegroundBashWait(SESSION, "sleep 60", () => {});
+		expect(requestManualBackground(SESSION)).toBe(true);
 		unregister();
 		expect(seen).toEqual([true, false]);
 	});
@@ -176,10 +180,10 @@ describe("composer background chip", () => {
 		const unsubscribe = onForegroundBashWaitChange(() => {
 			calls++;
 		});
-		registerForegroundBashWait(() => {})();
+		registerForegroundBashWait(SESSION, "sleep 60", () => {})();
 		expect(calls).toBe(2);
 		unsubscribe();
-		registerForegroundBashWait(() => {})();
+		registerForegroundBashWait(SESSION, "sleep 60", () => {})();
 		expect(calls).toBe(2);
 	});
 });

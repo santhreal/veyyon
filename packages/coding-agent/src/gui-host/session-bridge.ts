@@ -48,6 +48,7 @@ export const SUPPORTED_CAPABILITIES: Partial<Record<Capability, true>> = {
 	Profiles: true,
 	Dictation: true,
 	PromptHistory: true,
+	ForegroundCommand: true,
 };
 
 /** Specific, truthful reasons why each unsupported capability is unavailable. */
@@ -152,6 +153,7 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	Steer: "Session",
 	FollowUp: "Session",
 	AbortTurn: "Session",
+	BackgroundCommand: "Session",
 	RetryTurn: "Session",
 	RephraseReply: "Session",
 	ReviewPlan: "Session",

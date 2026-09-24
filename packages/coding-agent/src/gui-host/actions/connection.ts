@@ -2,6 +2,7 @@ import { buildCapabilitiesSnapshot } from "../session-bridge";
 import { disposeClientState } from "../turns";
 import { activeManager, emitActiveSessionAndTranscript, emitSessionList } from "./active-session";
 import { agentCommsSection, agentsSection, clientSessionScope, subscribeClientAgents } from "./agents";
+import { subscribeClientForeground } from "./foreground";
 import { agentPauseSection } from "./pause";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
 
@@ -30,6 +31,7 @@ async function emitInitialState(ctx: ActionContext): Promise<void> {
 
 const handleAttach: ActionHandler<AttachPayload | undefined> = async (ctx, _payload) => {
 	subscribeClientAgents(ctx.socket, ctx.clientState);
+	subscribeClientForeground(ctx.socket, ctx.clientState);
 	await emitInitialState(ctx);
 	ctx.reply.success();
 };
@@ -42,6 +44,7 @@ const handleDetach: ActionHandler = async ctx => {
 
 const handleRetryConnection: ActionHandler = async ctx => {
 	subscribeClientAgents(ctx.socket, ctx.clientState);
+	subscribeClientForeground(ctx.socket, ctx.clientState);
 	await emitInitialState(ctx);
 	ctx.reply.success();
 };

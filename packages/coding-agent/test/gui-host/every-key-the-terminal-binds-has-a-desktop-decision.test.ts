@@ -39,11 +39,13 @@ type Decision =
 
 const DECISIONS: Record<string, Decision> = {
 	"app.agents.hub": { client: "SurfaceRoute::Agents, from the /agents palette row" },
-	"app.bash.background": { gap: "no window control sends a running command to the background" },
+	"app.bash.background": { action: "BackgroundCommand" },
 	"app.clear": { action: "ClearOutput" },
 	"app.clipboard.copyLine": { chord: "CopySelection" },
 	"app.clipboard.copyPrompt": { gap: "no window control copies the composer's draft" },
-	"app.clipboard.pasteImage": { gap: "an image on the clipboard is not attached by a paste" },
+	"app.clipboard.pasteImage": {
+		client: "the composer's own paste, which attaches each image the clipboard holds",
+	},
 	"app.clipboard.pasteTextRaw": { client: "the window's own text field, which pastes what the clipboard holds" },
 	"app.display.reset": { terminalOnly: "redraws a terminal whose screen state was corrupted" },
 	"app.editor.external": { gap: "the draft cannot be opened in an external editor and read back" },
@@ -72,9 +74,7 @@ const DECISIONS: Record<string, Decision> = {
 
 /** The verbs with no desktop surface, as they stand. */
 const RECORDED_GAPS = [
-	"app.bash.background",
 	"app.clipboard.copyPrompt",
-	"app.clipboard.pasteImage",
 	"app.editor.external",
 	"app.model.cycleBackward",
 	"app.model.cycleForward",

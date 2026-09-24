@@ -92,6 +92,16 @@ pub enum HostAction {
 	AbortTurn {
 		session: SessionId,
 	},
+	/// Moves the command running in this session's foreground to a background
+	/// job, handing the turn back without stopping the command.
+	///
+	/// The request names no command: the one the session is waiting on is the
+	/// one it moves, and a session waiting on none refuses it, which is the
+	/// same answer the terminal's key gives when it stays readline
+	/// cursor-left.
+	BackgroundCommand {
+		session: SessionId,
+	},
 	/// Runs the last turn again, after it failed or was stopped.
 	///
 	/// The turn is the session's last, so the request names no turn: a host

@@ -25,7 +25,7 @@ pub enum ActionClassification {
 	Mutation,
 }
 
-/// Classifies any of the 85 [`HostActionKind`] variants into
+/// Classifies any of the 95 [`HostActionKind`] variants into
 /// [`ActionClassification`].
 ///
 /// Uses an exhaustive match without wildcard `_` to guarantee that new actions
@@ -79,6 +79,7 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::Steer
 		| HostActionKind::FollowUp
 		| HostActionKind::AbortTurn
+		| HostActionKind::BackgroundCommand
 		| HostActionKind::RetryTurn
 		| HostActionKind::RephraseReply
 		| HostActionKind::ReviewPlan

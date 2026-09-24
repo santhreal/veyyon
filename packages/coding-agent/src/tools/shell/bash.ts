@@ -826,9 +826,9 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	 */
 	async #waitForManagedBashJob(
 		job: ManagedBashJobHandle,
-		opts: { thresholdMs: number; stallMs: number; signal?: AbortSignal },
+		opts: { thresholdMs: number; stallMs: number; command: string; signal?: AbortSignal },
 	): Promise<ManagedBashJobCompletion | { kind: "background"; reason: BackgroundReason } | { kind: "aborted" }> {
-		const { thresholdMs, stallMs, signal } = opts;
+		const { thresholdMs, stallMs, command, signal } = opts;
 		if (signal?.aborted) {
 			return { kind: "aborted" };
 		}
@@ -847,12 +847,13 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		if (stallMs > 0) {
 			waiters.push(this.#watchStall(job, stallMs, internal.signal));
 		}
-		// The operator's manual "background this now" key: the TUI resolves this
-		// waiter through the foreground-wait registry. Registered for exactly the
-		// duration of the race (the finally below), so the composer hint only
-		// advertises the key while it can actually win.
+		// The operator's manual "background this now" request: a host resolves
+		// this waiter through the foreground-wait registry. Registered for
+		// exactly the duration of the race (the finally below) and under this
+		// session's id, so a control advertises the key only while it can win
+		// and only in the session the command is running in.
 		const manual = Promise.withResolvers<{ kind: "background"; reason: BackgroundReason }>();
-		const unregisterManual = registerForegroundBashWait(() =>
+		const unregisterManual = registerForegroundBashWait(this.session.getSessionId?.() ?? null, command, () =>
 			manual.resolve({ kind: "background", reason: "manual" }),
 		);
 		waiters.push(manual.promise);
@@ -1134,7 +1135,12 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			// foreground-wait cannot also be injected by the delivery loop. Lifted
 			// via resumeDeliveries() if we end up backgrounding after all.
 			autoBgManager.acknowledgeDeliveries([job.jobId]);
-			const waitResult = await this.#waitForManagedBashJob(job, { thresholdMs: wallThresholdMs, stallMs, signal });
+			const waitResult = await this.#waitForManagedBashJob(job, {
+				thresholdMs: wallThresholdMs,
+				stallMs,
+				command,
+				signal,
+			});
 			if (waitResult.kind === "completed") {
 				autoBgManager.acknowledgeDeliveries([job.jobId]);
 				return waitResult.result;

@@ -29,6 +29,7 @@ impl HostAction {
 			Self::Steer { .. } => HostActionKind::Steer,
 			Self::FollowUp { .. } => HostActionKind::FollowUp,
 			Self::AbortTurn { .. } => HostActionKind::AbortTurn,
+			Self::BackgroundCommand { .. } => HostActionKind::BackgroundCommand,
 			Self::RetryTurn { .. } => HostActionKind::RetryTurn,
 			Self::RephraseReply { .. } => HostActionKind::RephraseReply,
 			Self::ReviewPlan { .. } => HostActionKind::ReviewPlan,

@@ -127,6 +127,9 @@ const fn prepare_for(kind: SnapshotSectionKind) -> Prepare {
 		// The microphone control sits in the composer footer of whatever
 		// session is in hand, so the attached window at rest is where it draws.
 		| SnapshotSectionKind::Dictation
+		// The background control sits in the composer footer of whatever
+		// session is in hand, so the attached window at rest is where it draws.
+		| SnapshotSectionKind::ForegroundCommand
 		// The freeze is chrome above every session, so the attached window at
 		// rest is where it draws.
 		| SnapshotSectionKind::Goal

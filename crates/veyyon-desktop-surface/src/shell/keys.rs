@@ -13,14 +13,13 @@ use crate::{
 	Intent, Overlay, Section, ShellView,
 	composer::{ThinkingControl, TurnPhase},
 	keymap::actions::{
-		AbortTurn, AttachFile, CloseTabOrPark, CloseWindow, CopySelection, Dismiss, FilterQueue,
-		FindInTranscript, FocusLive, FoldSelectedBranch, ModelPicker, MoveSelection, NewSession,
-		NextSession, NextTurn, OpenMenu, OpenPalette, OpenSelectedSession, OpenSettings,
-		PreviousSession, PreviousTurn, PromptHistory, Quit, Scroll, SelectEntryText, SelectOption,
-		SplitHalf,
-		TakeBackQueuedPrompt, ThinkingLevel as CycleThinkingLevel, ToggleBlock, ToggleDeferSelected,
-		ToggleDictation, ToggleDrawer, TogglePanel, ToggleParkSelected, TogglePinSelected,
-		ToggleQueue, ToggleQueueMode, UnfoldSelectedBranch,
+		AbortTurn, AttachFile, BackgroundCommand, CloseTabOrPark, CloseWindow, CopySelection,
+		Dismiss, FilterQueue, FindInTranscript, FocusLive, FoldSelectedBranch, ModelPicker,
+		MoveSelection, NewSession, NextSession, NextTurn, OpenMenu, OpenPalette, OpenSelectedSession,
+		OpenSettings, PreviousSession, PreviousTurn, PromptHistory, Quit, Scroll, SelectEntryText,
+		SelectOption, SplitHalf, TakeBackQueuedPrompt, ThinkingLevel as CycleThinkingLevel,
+		ToggleBlock, ToggleDeferSelected, ToggleDictation, ToggleDrawer, TogglePanel,
+		ToggleParkSelected, TogglePinSelected, ToggleQueue, ToggleQueueMode, UnfoldSelectedBranch,
 	},
 };
 
@@ -276,6 +275,15 @@ pub fn bind_composer_keys(composer: Div, cx: &Context<ShellView>) -> Div {
 		.on_action(cx.listener(|view, _: &AbortTurn, _window, cx| {
 			if view.state().turn.is_stoppable() {
 				view.dispatch(Intent::AbortTurn, cx);
+			} else {
+				cx.propagate();
+			}
+		}))
+		// Nothing is waiting, so the chord belongs to the editor: it moves the
+		// caret a column rather than advertising a verb that would do nothing.
+		.on_action(cx.listener(|view, _: &BackgroundCommand, _window, cx| {
+			if view.state().composer.foreground.is_some() {
+				view.dispatch(Intent::BackgroundCommand, cx);
 			} else {
 				cx.propagate();
 			}

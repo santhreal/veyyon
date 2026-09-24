@@ -125,6 +125,8 @@ export interface ClientSessionState {
 	queueMode?: "Steer" | "Queue";
 	selectedChangeScope?: string;
 	unsubscribeAgents?: () => void;
+	/** Publishes this window's foreground command while one is waiting. */
+	unsubscribeForeground?: () => void;
 	unsubscribeAgentComms?: () => void;
 	agentsFrameTimer?: NodeJS.Timeout;
 	lastAgentsFrameMs?: number;
@@ -715,6 +717,8 @@ export async function disposeClientState(state: ClientSessionState): Promise<voi
 		state.unsubscribeAgents = undefined;
 		state.unsubscribeAgentComms?.();
 		state.unsubscribeAgentComms = undefined;
+		state.unsubscribeForeground?.();
+		state.unsubscribeForeground = undefined;
 		state.goalDriver?.unsubscribeFromSession();
 		state.goalDriver?.cancelContinuation();
 		state.goalDriver = undefined;

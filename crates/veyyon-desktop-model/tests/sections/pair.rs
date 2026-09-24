@@ -9,8 +9,8 @@ use veyyon_desktop_model::{
 
 use super::{
 	agent, auth_flow, changed, changes, command, comms, content_matches, context, export,
-	file_content, file_tree, keybinding, mcp, models, node, process, profiles, prompt_history,
-	provider, search, settings, terminal, themes, usage,
+	file_content, file_tree, foreground, keybinding, mcp, models, node, process, profiles,
+	prompt_history, provider, search, settings, terminal, themes, usage,
 };
 
 /// Two distinct sections of one kind, or `None` for a kind that does not
@@ -67,6 +67,12 @@ pub fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 		SnapshotSectionKind::PromptHistory => [
 			prompt_history("foo", &[(1, "run the foo pass")]),
 			prompt_history("bar", &[(2, "run the bar pass"), (3, "undo the bar pass")]),
+		],
+		SnapshotSectionKind::ForegroundCommand => [
+			foreground("s1", Some("bun test")),
+			// The second states the wait settled, which is the replacement
+			// that matters: a merge would keep drawing the finished command.
+			foreground("s1", None),
 		],
 		SnapshotSectionKind::Terminals => [
 			terminal("t1", TerminalStatus::Running),

@@ -238,7 +238,11 @@ fn every_palette_mode_runs_its_selected_row_from_the_enter_key() {
 							// nothing reaches the host.
 							assert_eq!(view.drain_intents(), Vec::<Intent>::new(), "{mode:?}");
 							assert!(overlay.is_none(), "{mode:?}: the palette closed behind the row");
-							assert_eq!(view.composer_text(), *text, "{mode:?}: the draft holds the prompt");
+							assert_eq!(
+								view.composer_text(),
+								*text,
+								"{mode:?}: the draft holds the prompt"
+							);
 						},
 					}
 				})
@@ -335,7 +339,15 @@ fn every_registered_picker_confirms_the_same_action_by_pointer_and_enter() {
 				outcomes.push(
 					session
 						.update(|view, _, _| {
-							assert_eq!(view.composer_text(), "retained draft");
+							// A picker leaves the draft where it was, except the
+							// one whose row IS a draft: recalling a prompt puts
+							// that prompt in the composer unsent.
+							match &expected {
+								Intent::RecallPrompt(prompt) => {
+									assert_eq!(&view.composer_text(), prompt);
+								},
+								_ => assert_eq!(view.composer_text(), "retained draft"),
+							}
 							let reported = view.drain_intents();
 							picker_contract::confirmed(&expected, &reported, view);
 							(reported, view.state().overlay.clone(), view.state().appearance.clone())

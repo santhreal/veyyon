@@ -146,14 +146,19 @@ pub fn expected_controls(state: &ShellState) -> usize {
 	// One more is the title itself, which answers the double-click that opens
 	// the rename editor over it.
 	//
-	// The microphone is drawn whatever the host answered about the capability,
-	// greyed with the reason on it rather than withheld (§4.3), so the footer
-	// carries it and the tooltip stating that reason in every state.
+	// The microphone and the prompt-history control are drawn whatever the host
+	// answered about their capabilities, greyed with the reason on them rather
+	// than withheld (§4.3), so the footer carries each of them and the tooltip
+	// stating that reason in every state. The control that moves a waiting
+	// command is the exception: it is drawn from the command the composer is
+	// waiting on, so a session waiting on nothing carries neither it nor its
+	// tooltip.
 	let chrome = 1
 		+ 1 + 1
 		+ usize::from(!state.panel.is_empty())
 		+ usize::from(state.drawer.offered)
-		+ 4 + 6
+		+ 4 + 8
+		+ usize::from(state.composer.foreground.is_some()) * 2
 		+ 2 + 1;
 	// Each word of the menu bar answers a press of its own, counted from the
 	// sections the bar draws rather than as a literal, so a menu added to the

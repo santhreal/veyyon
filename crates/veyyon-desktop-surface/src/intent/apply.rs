@@ -54,6 +54,10 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		| Intent::Steer(_)
 		| Intent::Queue(_)
 		| Intent::AbortTurn
+		// The control clears when the host states the wait settled, not when
+		// the request is sent: a refused request leaves the command running
+		// and the control drawn, which is what the operator sees.
+		| Intent::BackgroundCommand
 		| Intent::DequeueQueuedPrompt => {},
 		// The clipboard is the platform's, not the shell's: the write happens
 		// where the intent is dispatched, and no state changes here.

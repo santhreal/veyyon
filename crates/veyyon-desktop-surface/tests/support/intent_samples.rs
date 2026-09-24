@@ -186,6 +186,7 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::CancelDictation,
 		Intent::FindPrompt("parity".to_owned()),
 		Intent::RecallPrompt("Ship the desktop parity work".to_owned()),
+		Intent::BackgroundCommand,
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -212,6 +213,7 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::Steer(_)
 			| Intent::Queue(_)
 			| Intent::AbortTurn
+			| Intent::BackgroundCommand
 			| Intent::SetQueueMode(_)
 			| Intent::SetSessionMode { .. }
 			| Intent::SelectModel { .. }

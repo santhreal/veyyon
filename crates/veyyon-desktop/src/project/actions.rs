@@ -7,17 +7,18 @@ use self::{
 	accounts::account_actions,
 	routes::{navigate_actions, retry_control_actions},
 	sessions::{named, session_actions},
+	turns::turn_actions,
 };
 use super::{
 	SessionIndex,
 	cards::take_interaction,
-	submission::submission_of,
 	workspace_asks::{open_actions, tab_actions},
 };
 
 mod accounts;
 mod routes;
 mod sessions;
+mod turns;
 
 /// The host actions an intent asks for, in the order they are sent; empty
 /// for one the shell finished alone or one that no longer has a target.
@@ -35,6 +36,9 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		return actions;
 	}
 	if let Some(actions) = account_actions(intent, store) {
+		return actions;
+	}
+	if let Some(actions) = turn_actions(intent, active.clone()) {
 		return actions;
 	}
 	match intent {
@@ -63,24 +67,6 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 				folded.insert(path.clone());
 			}
 			Vec::new()
-		},
-		Intent::Send { text, attachments } => active.map_or_else(Vec::new, |session| {
-			vec![HostAction::SubmitPrompt {
-				session,
-				text: text.clone(),
-				attachments: attachments.iter().enumerate().map(submission_of).collect(),
-			}]
-		}),
-		Intent::Steer(text) => active
-			.map_or_else(Vec::new, |session| vec![HostAction::Steer { session, text: text.clone() }]),
-		Intent::Queue(text) => active.map_or_else(Vec::new, |session| {
-			vec![HostAction::FollowUp { session, text: text.clone() }]
-		}),
-		Intent::AbortTurn => {
-			active.map_or_else(Vec::new, |session| vec![HostAction::AbortTurn { session }])
-		},
-		Intent::DequeueQueuedPrompt => {
-			active.map_or_else(Vec::new, |session| vec![HostAction::DequeueQueuedPrompt { session }])
 		},
 		Intent::SetToolViewExpanded { call_id, expanded } => {
 			active.map_or_else(Vec::new, |session| {

@@ -44,6 +44,7 @@ pub enum Command {
 	SplitHalf,
 	Dismiss,
 	AbortTurn,
+	BackgroundCommand,
 	ToggleQueueMode,
 	SelectOption,
 	ModelPicker,
@@ -95,6 +96,7 @@ impl Command {
 			Self::SplitHalf => "SplitHalf",
 			Self::Dismiss => "Dismiss",
 			Self::AbortTurn => "AbortTurn",
+			Self::BackgroundCommand => "BackgroundCommand",
 			Self::ToggleQueueMode => "ToggleQueueMode",
 			Self::SelectOption => "SelectOption",
 			Self::ModelPicker => "ModelPicker",
@@ -146,6 +148,7 @@ impl Command {
 			Self::SplitHalf => "Non-primary half of split action",
 			Self::Dismiss => "Dismiss topmost card or blur composer",
 			Self::AbortTurn => "Abort in-flight turn",
+			Self::BackgroundCommand => "Move the waiting command to the background",
 			Self::ToggleQueueMode => "Toggle queue mode",
 			Self::SelectOption => "Select question option",
 			Self::ModelPicker => "Open model picker",
@@ -200,6 +203,7 @@ impl Command {
 			| Self::SplitHalf
 			| Self::Dismiss
 			| Self::AbortTurn
+			| Self::BackgroundCommand
 			| Self::ToggleQueueMode
 			| Self::SelectOption
 			| Self::ModelPicker
@@ -230,6 +234,7 @@ impl Command {
 			| Self::NextSession
 			| Self::OpenSelectedSession => Some(Capability::Sessions),
 			Self::AbortTurn => Some(Capability::TurnControl),
+			Self::BackgroundCommand => Some(Capability::ForegroundCommand),
 			Self::ToggleQueueMode | Self::TakeBackQueuedPrompt => {
 				Some(Capability::BackgroundSubmission)
 			},
@@ -308,6 +313,7 @@ impl Command {
 			"SplitHalf" => Some(Self::SplitHalf),
 			"Dismiss" => Some(Self::Dismiss),
 			"AbortTurn" => Some(Self::AbortTurn),
+			"BackgroundCommand" => Some(Self::BackgroundCommand),
 			"ToggleQueueMode" => Some(Self::ToggleQueueMode),
 			"SelectOption" => Some(Self::SelectOption),
 			"ModelPicker" => Some(Self::ModelPicker),

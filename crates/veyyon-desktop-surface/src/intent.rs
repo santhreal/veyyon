@@ -90,6 +90,9 @@ pub enum Intent {
 	Steer(String),
 	Queue(String),
 	AbortTurn,
+	/// Moves the command this session is waiting on to a background job,
+	/// handing the turn back without stopping the command.
+	BackgroundCommand,
 	SetQueueMode(QueueMode),
 	/// Puts the session in a mode, or takes it out of one.
 	///

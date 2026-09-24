@@ -234,6 +234,9 @@ pub struct ComposerState {
 	pub goal:        Option<veyyon_desktop_model::GoalView>,
 	/// The dictation this window is running, absent until it dictates.
 	pub dictation:   Option<veyyon_desktop_model::DictationView>,
+	/// The command this session waits on in the foreground, absent while it
+	/// waits on none.
+	pub foreground:  Option<veyyon_desktop_model::ForegroundCommandView>,
 }
 
 impl ComposerState {

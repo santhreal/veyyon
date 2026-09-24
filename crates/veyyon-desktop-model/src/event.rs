@@ -107,6 +107,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"AgentPause",
 	"Goal",
 	"Dictation",
+	"ForegroundCommand",
 ];
 
 /// Domain sections received during initial connection or snapshot
@@ -206,6 +207,14 @@ pub enum SnapshotSection {
 	},
 	/// The speech this window is dictating.
 	Dictation(crate::domain::DictationView),
+	/// The command a session is waiting on in the foreground, or its absence
+	/// once the wait settles.
+	ForegroundCommand {
+		/// Target session identifier.
+		session: SessionId,
+		/// The command being waited on, or None once nothing is.
+		command: Option<crate::domain::ForegroundCommandView>,
+	},
 }
 
 impl SnapshotSection {
@@ -250,6 +259,7 @@ impl SnapshotSection {
 			Self::AgentPause(..) => "AgentPause",
 			Self::Goal { .. } => "Goal",
 			Self::Dictation(..) => "Dictation",
+			Self::ForegroundCommand { .. } => "ForegroundCommand",
 		}
 	}
 

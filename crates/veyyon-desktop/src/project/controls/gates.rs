@@ -38,12 +38,13 @@ pub fn composer_row(active_row: Option<u64>) -> SessionId {
 }
 
 /// The composer's own controls, with the action each would send.
-pub fn composer_controls(row: &SessionId) -> [(SurfaceId, HostActionKind); 12] {
+pub fn composer_controls(row: &SessionId) -> [(SurfaceId, HostActionKind); 13] {
 	[
 		(SurfaceId::ComposerSendButton(row.clone()), HostActionKind::SubmitPrompt),
 		(SurfaceId::ComposerSteerButton(row.clone()), HostActionKind::Steer),
 		(SurfaceId::ComposerQueueButton(row.clone()), HostActionKind::FollowUp),
 		(SurfaceId::ComposerAbortButton(row.clone()), HostActionKind::AbortTurn),
+		(SurfaceId::ComposerBackgroundButton(row.clone()), HostActionKind::BackgroundCommand),
 		(
 			SurfaceId::ComposerCancelToolButton(row.clone(), "bash".to_string()),
 			HostActionKind::CancelTool,

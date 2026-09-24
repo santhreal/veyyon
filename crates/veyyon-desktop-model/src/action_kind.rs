@@ -29,6 +29,7 @@ pub enum HostActionKind {
 	Steer,
 	FollowUp,
 	AbortTurn,
+	BackgroundCommand,
 	RetryTurn,
 	RephraseReply,
 	ReviewPlan,
@@ -105,7 +106,7 @@ pub enum HostActionKind {
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 94] = [
+	pub const ALL: [Self; 95] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -128,6 +129,7 @@ impl HostActionKind {
 		Self::Steer,
 		Self::FollowUp,
 		Self::AbortTurn,
+		Self::BackgroundCommand,
 		Self::RetryTurn,
 		Self::RephraseReply,
 		Self::ReviewPlan,
@@ -228,6 +230,7 @@ impl HostActionKind {
 			Self::Steer => "Steer",
 			Self::FollowUp => "FollowUp",
 			Self::AbortTurn => "AbortTurn",
+			Self::BackgroundCommand => "BackgroundCommand",
 			Self::RetryTurn => "RetryTurn",
 			Self::RephraseReply => "RephraseReply",
 			Self::ReviewPlan => "ReviewPlan",

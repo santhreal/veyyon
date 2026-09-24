@@ -5,6 +5,7 @@ import { connectionActionHandlers } from "./connection";
 import { diagnosticsActionHandlers } from "./diagnostics";
 import { dictationActionHandlers } from "./dictation";
 import { filesActionHandlers } from "./files";
+import { foregroundActionHandlers } from "./foreground";
 import { goalActionHandlers } from "./goals";
 import { historyActionHandlers } from "./history";
 import { mcpActionHandlers } from "./mcp";
@@ -28,6 +29,7 @@ export * from "./connection";
 export * from "./diagnostics";
 export * from "./dictation";
 export * from "./files";
+export * from "./foreground";
 export * from "./goals";
 export * from "./history";
 export * from "./mcp";
@@ -50,6 +52,7 @@ export const allActionHandlers: ActionHandlersMap = {
 	...sessionsActionHandlers,
 	...historyActionHandlers,
 	...turnActionHandlers,
+	...foregroundActionHandlers,
 	...filesActionHandlers,
 	...changesActionHandlers,
 	...goalActionHandlers,

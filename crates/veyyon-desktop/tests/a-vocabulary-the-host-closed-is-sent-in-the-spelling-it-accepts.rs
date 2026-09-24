@@ -41,8 +41,9 @@ use veyyon_desktop_surface::Intent;
 /// Every string an action carries that is an operator's or the host's own
 /// value rather than a vocabulary: text, identifiers, paths and queries. A new
 /// entry here is a decision that the value is open.
-const OPEN_STRINGS: [&str; 76] = [
+const OPEN_STRINGS: [&str; 77] = [
 	"AbortTurn.session",
+	"BackgroundCommand.session",
 	"BranchSession.session",
 	"CancelAuthFlow.provider",
 	"CancelTask.task_id",

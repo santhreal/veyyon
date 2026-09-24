@@ -201,6 +201,7 @@ describe("a transcript arrives behind the header that says whose it is", () => {
 			Steer: { Steer: { session: alpha, text: "" } },
 			FollowUp: { FollowUp: { session: alpha, text: "" } },
 			AbortTurn: { AbortTurn: { session: alpha } },
+			BackgroundCommand: { BackgroundCommand: { session: alpha } },
 			RetryTurn: { RetryTurn: { session: alpha } },
 			RephraseReply: { RephraseReply: { session: alpha } },
 			SetQueueMode: { SetQueueMode: { session: alpha, mode: "steer" } },

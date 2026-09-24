@@ -224,7 +224,7 @@ scope = "transcript"
 chord = "primary-a"
 action = "SelectEntryText"
 
-# Composer Scope (19 chords)
+# Composer Scope (22 chords)
 [[binding]]
 scope = "composer"
 chord = "enter"
@@ -334,6 +334,14 @@ action = "TakeBackQueuedPrompt"
 scope = "composer"
 chord = "primary-r"
 action = "PromptHistory"
+
+# The terminal backgrounds a waiting command with ctrl+b. `primary-b` is the
+# queue rail in every scope, so the window names the same key under the two
+# modifiers its composer verbs use.
+[[binding]]
+scope = "composer"
+chord = "primary-shift-b"
+action = "BackgroundCommand"
 
 # The terminal opens a dictation by holding space; a window has no hold
 # gesture, so the chord names the same key under the two modifiers the

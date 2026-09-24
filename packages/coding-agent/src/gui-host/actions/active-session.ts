@@ -8,6 +8,7 @@ import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { errorMessage } from "@veyyon/utils";
 import { goalFromModeData } from "../../goals/driver";
 import type { Goal } from "../../goals/state";
+import { foregroundSection } from "../foreground-view";
 import { writeFrame } from "../frames";
 import { goalSection } from "../goal-view";
 import { reportQueuedPrompts } from "../queued-prompts";
@@ -125,6 +126,15 @@ export function emitActiveSessionAndTranscript(
 		Transcript: { revision: ctx.clientState.revision, value: transcriptEntries },
 	});
 	reportQueuedPrompts(ctx.socket, ctx.clientState);
+	// A window that opens a session mid-wait draws the control from this
+	// section; the subscription only reports the edges, so without it the
+	// control stays absent until the command exits.
+	const openSession = sm.getSessionId();
+	if (openSession) {
+		ctx.reply.snapshot({
+			ForegroundCommand: { session: openSession, command: foregroundSection(openSession) },
+		});
+	}
 	if (ctx.clientState.agentSession) {
 		ctx.reply.snapshot(
 			goalSection(ctx.clientState.agentSession, ctx.clientState.goalDriver, ctx.clientState.goalBridge?.stoodDown),

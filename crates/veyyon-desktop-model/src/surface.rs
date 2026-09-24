@@ -42,6 +42,7 @@ pub enum SurfaceId {
 	ComposerSteerButton(SessionId),
 	ComposerQueueButton(SessionId),
 	ComposerAbortButton(SessionId),
+	ComposerBackgroundButton(SessionId),
 	ComposerModelSelector(SessionId),
 	ComposerThinkingSelector(SessionId),
 	ComposerQueueModeToggle(SessionId),
@@ -173,6 +174,7 @@ impl SurfaceId {
 			| Self::ComposerSteerButton(_)
 			| Self::ComposerQueueButton(_)
 			| Self::ComposerAbortButton(_)
+			| Self::ComposerBackgroundButton(_)
 			| Self::ComposerModelSelector(_)
 			| Self::ComposerThinkingSelector(_)
 			| Self::ComposerQueueModeToggle(_)
@@ -304,6 +306,7 @@ impl SurfaceId {
 			| Self::ComposerSteerButton(_)
 			| Self::ComposerQueueButton(_)
 			| Self::ComposerAbortButton(_)
+			| Self::ComposerBackgroundButton(_)
 			| Self::ComposerModelSelector(_)
 			| Self::ComposerThinkingSelector(_)
 			| Self::ComposerQueueModeToggle(_)

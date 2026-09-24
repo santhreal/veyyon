@@ -113,6 +113,11 @@ pub fn project_composer(store: &Store, session: Option<&SessionId>, composer: &m
 	// The microphone is the window's rather than a session's, so every row
 	// draws the one dictation this window is running.
 	composer.dictation.clone_from(&store.domains.dictation);
+	// A wait belongs to the session whose turn opened it, so a row the
+	// operator is not looking at draws no control for it.
+	composer.foreground = session
+		.and_then(|id| store.domains.foreground.get(id))
+		.cloned();
 
 	composer.queue_mode = clamp_queue_mode(store, composer.queue_mode);
 }

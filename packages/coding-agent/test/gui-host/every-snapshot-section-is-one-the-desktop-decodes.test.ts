@@ -482,6 +482,12 @@ const CORPUS = [
 			revision: 7,
 		},
 	},
+	{
+		ForegroundCommand: {
+			session: "sess-1",
+			command: { command: "bun test packages/coding-agent", truncated: false },
+		},
+	},
 ] satisfies SnapshotSection[];
 
 describe("every snapshot section is one the desktop decodes", () => {

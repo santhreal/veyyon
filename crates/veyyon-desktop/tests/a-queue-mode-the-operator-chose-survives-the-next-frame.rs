@@ -34,7 +34,8 @@ use support::{NOW_MS, fields::driven_with_keys, session};
 use veyyon_desktop::{SessionIndex, project, project_controls, project_turn_phase};
 use veyyon_desktop_model::{
 	BadgeKind, Capability, CapabilityStatus, ConnectionState, DictationState, DictationView,
-	PROTOCOL_VERSION, QueueMode, QueuePartition, RequestRegistry, SessionId, SessionMode, Store,
+	ForegroundCommandView, PROTOCOL_VERSION, QueueMode, QueuePartition, RequestRegistry, SessionId,
+	SessionMode, Store,
 };
 use veyyon_desktop_surface::{
 	Intent, ShellState,
@@ -246,6 +247,10 @@ fn every_field_the_window_owns_survives_the_frame() {
 				state: DictationState::Recording,
 				..DictationView::default()
 			}),
+			foreground:  Some(ForegroundCommandView {
+				command:   "bun test".to_string(),
+				truncated: false,
+			}),
 		},
 		..ShellState::default()
 	};
@@ -275,5 +280,10 @@ fn every_field_the_window_owns_survives_the_frame() {
 	assert!(
 		state.composer.mode.is_none(),
 		"the mode is the host's; a session it reports no mode for draws no mode chip"
+	);
+	assert!(
+		state.composer.foreground.is_none(),
+		"the wait is the host's; a session it reports no command for draws no background control, \
+		 rather than one naming a command that has already exited"
 	);
 }

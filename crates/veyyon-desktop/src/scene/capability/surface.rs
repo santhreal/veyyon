@@ -2,10 +2,10 @@
 
 use veyyon_desktop_model::{
 	AgentView, ApprovalInteraction, Capability, ChangeScope, ChangesView, CommandSource,
-	CommandView, EntryId, FileTreeView, InputModality, InteractionId, MessageRole, ModelRef,
-	ModelView, ModelsView, PendingDecisions, PlanInteraction, ProcessView, QuestionInteraction,
-	QueueMode, QueuePartition, SessionId, ShareRole, ShareView, StreamingMessageState,
-	TerminalStatus, TerminalView, TranscriptEntry,
+	CommandView, EntryId, FileTreeView, ForegroundCommandView, InputModality, InteractionId,
+	MessageRole, ModelRef, ModelView, ModelsView, PendingDecisions, PlanInteraction, ProcessView,
+	QuestionInteraction, QueueMode, QueuePartition, SessionId, ShareRole, ShareView,
+	StreamingMessageState, TerminalStatus, TerminalView, TranscriptEntry,
 };
 use veyyon_desktop_surface::{
 	Overlay, PaletteState, PanelTab, SettingsPage, navigation::SurfaceRoute, share::ShareState,
@@ -353,6 +353,20 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 					truncated:       false,
 				}],
 			});
+		},
+		Capability::ForegroundCommand => {
+			// The control is drawn from the wait's presence, so the seed opens
+			// one: an idle frame draws no control at all and states nothing
+			// about what the capability reaches.
+			seed.exchange(session, Seed::prose());
+			seed
+				.store
+				.domains
+				.foreground
+				.insert(session.clone(), ForegroundCommandView {
+					command:   "bun test packages/coding-agent".to_owned(),
+					truncated: false,
+				});
 		},
 	}
 }

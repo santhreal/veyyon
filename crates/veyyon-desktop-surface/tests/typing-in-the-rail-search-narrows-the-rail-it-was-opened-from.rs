@@ -51,6 +51,7 @@ fn leaves_the_rail_alone() -> Vec<PaletteMode> {
 		PaletteMode::ContentSearch,
 		PaletteMode::Browse,
 		PaletteMode::Models,
+		PaletteMode::PromptHistory,
 	]
 }
 

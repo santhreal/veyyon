@@ -40,6 +40,13 @@ pub fn command_items() -> Vec<PaletteItem> {
 			Some(Capability::TurnControl),
 		),
 		(
+			"/background",
+			Intent::BackgroundCommand,
+			Command::BackgroundCommand.label(),
+			Some(Command::BackgroundCommand),
+			Some(Capability::ForegroundCommand),
+		),
+		(
 			"/retry",
 			Intent::RetryTurn,
 			"Run the last turn again after it failed",

@@ -10,10 +10,10 @@ use veyyon_desktop_model::{
 	AgentMessageOutcome, AgentMessageView, AgentView, AuthFlowState, AuthFlowView, ChangeScope,
 	ChangeStatus, ChangedFile, ChangesView, CommandSource, CommandView, ContentMatch,
 	ContentMatchesView, ContextBreakdownView, ContextCategory, ExportView, FileContentView,
-	FileKind, FileNode, FileTreeView, InputModality, KeybindingView, McpServerStatus, McpServerView,
-	ModelRef, ModelView, ModelsView, ProcessView, ProfileCopyItemView, ProfileView, ProfilesView,
-	ProviderView, PromptHistoryEntry, PromptHistoryView, SearchResultsView, SessionId, SettingEntry,
-	SettingKind, SettingsView,
+	FileKind, FileNode, FileTreeView, ForegroundCommandView, InputModality, KeybindingView,
+	McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView, ProcessView,
+	ProfileCopyItemView, ProfileView, ProfilesView, PromptHistoryEntry, PromptHistoryView,
+	ProviderView, SearchResultsView, SessionId, SettingEntry, SettingKind, SettingsView,
 	SnapshotSection, TerminalStatus, TerminalView, ThemeView, ThemesView, UsageTotals, UsageView,
 };
 
@@ -76,6 +76,14 @@ pub fn prompt_history(query: &str, prompts: &[(i64, &str)]) -> SnapshotSection {
 			})
 			.collect(),
 	})
+}
+
+pub fn foreground(session: &str, command: Option<&str>) -> SnapshotSection {
+	SnapshotSection::ForegroundCommand {
+		session: SessionId::from(session),
+		command: command
+			.map(|line| ForegroundCommandView { command: line.to_owned(), truncated: false }),
+	}
 }
 
 pub fn content_matches(query: &str, lines: &[(&str, u32)]) -> SnapshotSection {

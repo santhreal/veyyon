@@ -43,12 +43,20 @@ useIsolatedGlobalSettings();
 
 let artifactCounter = 0;
 
+/**
+ * The session every command in this suite runs in. A foreground wait is keyed
+ * by it, so the assertions name it rather than reaching for whatever bucket
+ * an id-less session would land in.
+ */
+const SESSION = "bash-stall-session";
+
 function makeSession(cwd: string, manager: AsyncJobManager, overrides: Partial<Record<string, unknown>>): ToolSession {
 	const sessionDir = path.join(cwd, "session");
 	return makeToolSession({
 		cwd,
 		hasUI: false,
 		getSessionFile: () => path.join(cwd, "session.jsonl"),
+		getSessionId: () => SESSION,
 		getSessionSpawns: () => "*",
 		getArtifactsDir: () => sessionDir,
 		allocateOutputArtifact: async (toolType: string) => {
@@ -192,7 +200,7 @@ describe("bash stall detection and wall-clock auto-background", () => {
 		const pending = tool.execute("manual-1", { command: "sleep 5", timeout: 30 });
 		// Fire the keystroke once the wait registers (same signal the hint uses).
 		await waitForForegroundWait();
-		expect(requestManualBackground()).toBe(true);
+		expect(requestManualBackground(SESSION)).toBe(true);
 		const result = await pending;
 		const async = asyncDetails(result);
 		const text = resultText(result);
@@ -216,13 +224,13 @@ describe("bash stall detection and wall-clock auto-background", () => {
 		const result = await tool.execute("manual-2", { command: "echo done", timeout: 30 });
 		expect(result.details?.async).toBeUndefined();
 		expect(resultText(result)).toContain("done");
-		expect(requestManualBackground()).toBe(false);
+		expect(requestManualBackground(SESSION)).toBe(false);
 	});
 	/**
 	 * THE STOCK INSTALL. Both auto levers off is what a fresh profile used to
 	 * look like, and the managed-job route was gated on one of them being on.
 	 * The foreground wait is what publishes the registry entry, so with both off
-	 * nothing registered: `hasForegroundBashWait()` stayed false, the composer
+	 * nothing registered: `hasForegroundBashWait(SESSION)` stayed false, the composer
 	 * never raised the `ctrl+b background` chip, and the keybinding fell through
 	 * to readline cursor-left. A documented shortcut that silently did nothing.
 	 *
@@ -239,8 +247,8 @@ describe("bash stall detection and wall-clock auto-background", () => {
 
 		// The chip's gate. False here is the bug the operator saw as a missing hint.
 		await waitForForegroundWait();
-		expect(hasForegroundBashWait()).toBe(true);
-		expect(requestManualBackground()).toBe(true);
+		expect(hasForegroundBashWait(SESSION)).toBe(true);
+		expect(requestManualBackground(SESSION)).toBe(true);
 
 		const result = await pending;
 		const async = asyncDetails(result);
@@ -327,7 +335,7 @@ describe("bash stall detection and wall-clock auto-background", () => {
  * registers within the execute() call's first ticks). */
 async function waitForForegroundWait(): Promise<void> {
 	const deadline = Date.now() + 2_000;
-	while (!hasForegroundBashWait()) {
+	while (!hasForegroundBashWait(SESSION)) {
 		if (Date.now() > deadline) throw new Error("foreground bash wait never registered");
 		await Bun.sleep(10);
 	}
