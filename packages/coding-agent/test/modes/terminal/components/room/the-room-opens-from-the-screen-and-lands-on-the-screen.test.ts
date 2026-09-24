@@ -273,6 +273,33 @@ describe("entering a member lands on the screen its host composed", () => {
 			expect(screenDifference(stage.frames.at(-1)!, composed)).toBeUndefined();
 		});
 
+		/**
+		 * A screen the host composes again for a window that already showed one has
+		 * the same height, so a paint cache keyed on the row count redrew the old
+		 * screen at any frame whose geometry had not moved. The control stage opened
+		 * from the screen that arrives, so the two frames differ only if the stale
+		 * paint survives.
+		 */
+		it(`${layout}: a screen composed again at the hold is the one drawn, not the one the window showed before`, async () => {
+			const arrival = (): string[] => screenRows(WIDTH, HEIGHT, "arrival");
+			const reentered = driver({ layout });
+			const control = driver({ layout, originScreen: arrival() });
+			const atHold: string[][] = [];
+			for (const stage of [reentered, control]) {
+				await overviewOn(stage, 0);
+				await stage.press(KEY.enter);
+				for (let i = 0; i < framesFor(MOTION.zoom.duration) + 5; i++) await stage.step();
+				expect(stage.clock.liveCount).toBe(0);
+				atHold.push([...stage.lastFrame]);
+				stage.host.prepares[0]!.resolve(arrival());
+				await stage.flush();
+				// The resumed zoom has not moved yet: the window's rect is the hold's.
+				stage.render();
+			}
+			expect(atHold[0]).not.toEqual(atHold[1]);
+			expect(reentered.lastFrame).toEqual(control.lastFrame);
+		});
+
 		it(`${layout}: a conversation that comes on screen before the zoom reaches the hold lands when the zoom does`, async () => {
 			const stage = driver({ layout });
 			await overviewOn(stage, 2);

@@ -218,7 +218,15 @@ export class RoomStage implements Component, OverlayFocusOwner {
 	#noticeTimer: NodeJS.Timeout | undefined;
 	#placements: readonly RoomPlacement[] = [];
 	#width = 0;
-	readonly #paintCache = new Map<number, { snapshot: unknown; key: string; rows: string[] }>();
+	/**
+	 * Each slot's last paint, reused while its snapshot, its screen rows (by
+	 * identity: a prepare that lands a new screen of the same height is a new
+	 * array) and its geometry key are all unchanged.
+	 */
+	readonly #paintCache = new Map<
+		number,
+		{ snapshot: unknown; screen: readonly string[] | undefined; key: string; rows: string[] }
+	>();
 
 	constructor(host: RoomStageHost, options: RoomStageOptions) {
 		this.#host = host;
@@ -667,9 +675,9 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		const rows = this.#screens.get(member.id);
 		const screenMix = rows ? screenMixAt(rect.w / Math.max(1, viewport.width)) : 0;
 		const working = snapshot.state.kind === "working";
-		const key = `${rect.w}x${rect.h}|${strength.toFixed(3)}|${selected}|${framed}|${member.waitingDialogs}|${screenMix.toFixed(3)}|${slot}|${working ? Math.floor(now / SPINNER_REPAINT_MS) : 0}|${rows ? rows.length : 0}`;
+		const key = `${rect.w}x${rect.h}|${strength.toFixed(3)}|${selected}|${framed}|${member.waitingDialogs}|${screenMix.toFixed(3)}|${slot}|${working ? Math.floor(now / SPINNER_REPAINT_MS) : 0}`;
 		const cached = this.#paintCache.get(slot);
-		if (cached && cached.snapshot === snapshot && cached.key === key) return cached.rows;
+		if (cached && cached.snapshot === snapshot && cached.screen === rows && cached.key === key) return cached.rows;
 		const painted = paintRoomWindow({
 			width: rect.w,
 			height: rect.h,
@@ -682,7 +690,7 @@ export class RoomStage implements Component, OverlayFocusOwner {
 			screen: rows ? { rows, mix: screenMix } : undefined,
 			now,
 		});
-		this.#paintCache.set(slot, { snapshot, key, rows: painted });
+		this.#paintCache.set(slot, { snapshot, screen: rows, key, rows: painted });
 		return painted;
 	}
 

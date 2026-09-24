@@ -13,7 +13,7 @@
  */
 
 import type { AgentMessage } from "@veyyon/agent-core";
-import type { AssistantMessage } from "@veyyon/ai";
+import type { AssistantMessage, Model } from "@veyyon/ai";
 import { contentText } from "@veyyon/utils/content-text";
 import { sanitizeText } from "@veyyon/utils/sanitize-text";
 import { replaceTabs } from "@veyyon/utils/tab-width";
@@ -178,12 +178,15 @@ export function buildRoomWindowSnapshot(session: AgentSession, live: RoomLiveTur
 
 /**
  * One conversation's feed: its snapshot, rebuilt after the session events that
- * change it, and a callback the room uses to repaint and recount.
+ * change it, and a callback the room uses to repaint and recount. A model set
+ * between turns emits no event, so the snapshot is also rebuilt when the
+ * session's model is no longer the one it was built with.
  */
 export class RoomWindowFeed {
 	readonly session: AgentSession;
 	#version = 0;
 	#built = -1;
+	#builtModel: Model | undefined;
 	#snapshot: RoomWindowSnapshot | undefined;
 	#startedAt: number | undefined;
 	#stream: AssistantMessage | undefined;
@@ -213,9 +216,11 @@ export class RoomWindowFeed {
 	}
 
 	snapshot(): RoomWindowSnapshot {
-		if (this.#snapshot === undefined || this.#built !== this.#version) {
+		const model = this.session.model;
+		if (this.#snapshot === undefined || this.#built !== this.#version || this.#builtModel !== model) {
 			this.#snapshot = buildRoomWindowSnapshot(this.session, { startedAt: this.#startedAt, stream: this.#stream });
 			this.#built = this.#version;
+			this.#builtModel = model;
 		}
 		return this.#snapshot;
 	}

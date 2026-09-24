@@ -20,9 +20,9 @@
  * auto-compaction in flight is internal to the session and has its own suites.
  *
  * NOT CAUGHT. How a window paints the snapshot (the room window suites). The
- * `model` and `cwd` fields are read straight from the session and not
- * asserted beyond being display-safe. A handle split across two deltas is the
- * stream decoder's contract (`argot-stream-event-display`), not repeated here.
+ * `cwd` field is read straight from the session and not asserted beyond being
+ * display-safe. A handle split across two deltas is the stream decoder's
+ * contract (`argot-stream-event-display`), not repeated here.
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
@@ -380,6 +380,30 @@ describe("a running turn", () => {
 			feed.dispose();
 			if (session.isStreaming) await session.abort();
 			await turn;
+		}
+	});
+});
+
+describe("between turns", () => {
+	/**
+	 * A model set between turns emits no session event, and the stage repaints a
+	 * window only when its snapshot is a new object: a feed that rebuilt on
+	 * events alone would name the old model until the next turn.
+	 */
+	it("a model set with no turn running names the new model, and an unchanged feed keeps its snapshot", async () => {
+		const { session } = await open([user("hi"), assistant([{ type: "text", text: "Hello." }])]);
+		const feed = new RoomWindowFeed(session, () => {});
+		try {
+			const before = feed.snapshot();
+			expect(before.model).toBe(getBundledModel("anthropic", "claude-sonnet-4-5")?.name);
+			expect(feed.snapshot()).toBe(before);
+			const opus = getBundledModel("anthropic", "claude-opus-4-1");
+			if (!opus) throw new Error("Expected bundled anthropic/claude-opus-4-1 to exist");
+			await session.setModelTemporary(opus);
+			expect(feed.snapshot().model).toBe(opus.name);
+			expect(feed.snapshot().blocks).toEqual(before.blocks);
+		} finally {
+			feed.dispose();
 		}
 	});
 });
