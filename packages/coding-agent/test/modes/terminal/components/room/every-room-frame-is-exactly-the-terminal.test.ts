@@ -113,9 +113,9 @@ const FEED: readonly RoomFeedBlock[] = [
 		.flatMap(kind => BLOCKS[kind]),
 ];
 
-const NAMES: ReadonlyArray<{ title?: string; lead?: string }> = [
+const NAMES: ReadonlyArray<{ title?: string }> = [
 	{ title: "refactor 認証 flow for the whole service layer and its tests" },
-	{ lead: "why does the build fail on the second run" },
+	{ title: "a" },
 	{},
 ];
 

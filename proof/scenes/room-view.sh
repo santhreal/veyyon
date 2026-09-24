@@ -8,16 +8,18 @@
 # between them is a zoom and a slide rather than a cut:
 #
 #   1. Conversation 1 is asked for a long list and starts streaming.
-#   2. `/room new` opens conversation 2 beside it; the screen slides to it and
-#      the status line carries the `1 peer` chip with `1 working`.
+#   2. `/room new` opens conversation 2 beside it; the screen slides to it, the
+#      arrival line names the key that shows every conversation, and the status
+#      line carries the `1 peer` chip with `1 working`.
 #   3. Conversation 2 gets its own long list.
 #   4. `→→` on the empty composer opens the room view side by side: the screen
 #      pulls back into window 2 with window 1 receding to its left, both
 #      streaming.
 #   5. `←` glides the row to window 1; Tab flips to all windows; Tab back.
-#   6. Enter zooms into conversation 1, whose answer has moved on.
+#   6. Enter zooms into conversation 1, with its answer so far on screen at once.
 #   7. alt+. is the quick switch: pull back, slide, push in to 2.
-#   8. `→→` then `n` opens conversation 3 from the view and zooms into it.
+#   8. A click on the status line's `1 peer` chip opens the view, and `n` opens
+#      conversation 3 from it and zooms into it.
 #
 # Off arm (--before): the same keys on the base branch, where `/room` is an
 # unknown command and `→→` moves nothing. Each guard is written for the arm it
@@ -98,13 +100,19 @@ sleep 1.5
 shot quick-switched
 
 # --- 8. a third conversation from the view ----------------------------------
+# The view opens from a click on the status line's room chip this time; the
+# base branch has no chip, so its arm presses the keys the chip stands for.
 clear_composer
-k Right
-pause 0.25
-k Right
+if after; then
+	click_text_in_row "1 peer" "1 peer"
+else
+	k Right
+	pause 0.25
+	k Right
+fi
 pause 1
 k n
-# needle-source: Now on -- #land after entering a member from the overview
+# needle-source: Now on -- room-controller.ts #announce after entering a member from the overview
 after && expect_screen "Now on" 60
 sleep 1.5
 shot three-opened

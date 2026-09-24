@@ -35,9 +35,10 @@ import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type {
-	RoomFeedBlock,
-	RoomWindowSnapshot,
+import {
+	type RoomFeedBlock,
+	type RoomWindowSnapshot,
+	roomWindowName,
 } from "@veyyon/coding-agent/modes/terminal/components/room/room-view-model";
 import {
 	buildRoomWindowSnapshot,
@@ -248,10 +249,11 @@ describe("the state a window reports", () => {
 
 	/**
 	 * The exchange starts at the operator's last prompt; a message the harness
-	 * injected after it is neither the prompt nor shown. The lead (the title a
-	 * nameless conversation goes by) is the first prompt.
+	 * injected after it is neither the prompt nor shown. A nameless conversation
+	 * goes by that prompt, not its first one: a session opened with a greeting
+	 * would otherwise be called by it forever.
 	 */
-	it("the prompt is the last non-synthetic user message, and the lead is the first", async () => {
+	it("the prompt is the last non-synthetic user message, and a nameless conversation goes by it", async () => {
 		const { session } = await open([
 			user("first question"),
 			assistant([{ type: "text", text: "first answer" }]),
@@ -261,12 +263,15 @@ describe("the state a window reports", () => {
 			assistant([{ type: "text", text: "continued" }]),
 		]);
 		const snapshot = buildRoomWindowSnapshot(session);
-		expect(snapshot.lead).toBe("first question");
+		expect(roomWindowName(snapshot)).toBe("second question");
 		expect(snapshot.blocks).toEqual([
 			{ kind: "prompt", text: "second question" },
 			{ kind: "text", text: "second answer" },
 			{ kind: "text", text: "continued" },
 		]);
+
+		await session.sessionManager.setSessionName("parser rewrite", "user");
+		expect(roomWindowName(buildRoomWindowSnapshot(session))).toBe("parser rewrite");
 	});
 });
 

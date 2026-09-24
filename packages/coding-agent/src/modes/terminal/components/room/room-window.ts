@@ -23,7 +23,6 @@
 
 import { TERMINAL } from "@veyyon/tui";
 import { sgrSequence } from "@veyyon/utils/ansi";
-import { formatClock } from "@veyyon/utils/format";
 import { clamp01 } from "@veyyon/utils/math";
 import { blendHex, fadeLineTowards } from "@veyyon/utils/motion";
 import { sliceByColumn, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
@@ -32,7 +31,7 @@ import { groundFrameHex } from "../../../../theme/ground-tints";
 import { lavaAnsi } from "../../../../theme/shimmer";
 import { type ThemeColor, theme } from "../../../../theme/theme";
 import { sharedSpinnerFrame } from "../transcript/tool-execution";
-import type { RoomFeedBlock, RoomWindowSnapshot } from "./room-view-model";
+import { type RoomFeedBlock, type RoomWindowSnapshot, roomStateWords } from "./room-view-model";
 
 /** Below this width a window is a frame, its ordinal and its state glyph. */
 const TINY_WIDTH = 12;
@@ -164,6 +163,8 @@ function stateChip(
 		return { text: parts.join(""), width };
 	}
 	const state = snapshot.state;
+	const { word, time } = roomStateWords(snapshot, now);
+	const clock = time ? ` ${time}` : "";
 	switch (state.kind) {
 		case "working": {
 			const frames = theme.getSpinnerFrames("status");
@@ -171,35 +172,40 @@ function stateChip(
 			const lava = ink.full ? lavaAnsi(theme, TERMINAL.trueColor, now) : undefined;
 			push(lava ? `${lava}${glyph}\x1b[39m` : ink.token("borderAccent", glyph), glyph);
 			if (words) {
-				const word = ` ${state.activity === "starting" ? "starting" : "working"}`;
-				push(ink.token("accent", word), word);
-				const clock = ` ${formatClock(now - state.since)}`;
+				push(ink.token("accent", ` ${word}`), ` ${word}`);
 				push(ink.token("dim", clock), clock);
 			}
 			break;
 		}
 		case "done":
 			push(ink.token("success", theme.status.success), theme.status.success);
-			if (words) push(ink.token("muted", " done"), " done");
+			if (words) {
+				push(ink.token("muted", ` ${word}`), ` ${word}`);
+				push(ink.token("dim", clock), clock);
+			}
 			break;
 		case "failed":
 			push(ink.token("error", theme.status.error), theme.status.error);
-			if (words) push(ink.token("error", " failed"), " failed");
+			if (words) push(ink.token("error", ` ${word}`), ` ${word}`);
 			break;
 		case "stopped":
 			push(ink.token("muted", theme.status.aborted), theme.status.aborted);
-			if (words) push(ink.token("muted", " stopped"), " stopped");
+			if (words) push(ink.token("muted", ` ${word}`), ` ${word}`);
 			break;
 		case "new":
-			if (words) push(ink.token("dim", "new"), "new");
+			if (words) push(ink.token("dim", word), word);
 			break;
 	}
 	return { text: parts.join(""), width };
 }
 
-/** The window's title: its name, else its first prompt, else what it is. */
-function windowTitle(snapshot: RoomWindowSnapshot): string {
-	return snapshot.title ?? snapshot.lead ?? "New conversation";
+/**
+ * The name on a window's top edge: the session's name when it has one. A
+ * conversation with no name goes by its prompt, which the body leads with, so
+ * the edge does not repeat it; a conversation nothing was asked of says so.
+ */
+function windowTitle(snapshot: RoomWindowSnapshot): string | undefined {
+	return snapshot.title ?? (snapshot.state.kind === "new" ? "New conversation" : undefined);
 }
 
 interface FrameColours {

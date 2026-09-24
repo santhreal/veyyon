@@ -845,7 +845,11 @@ export class InteractiveMode implements InteractiveModeContext {
 			}
 			if (segmentId === "context_pct" || segmentId === "context_total") {
 				this.handleContextCommand();
+				return;
 			}
+			// The room chip is the one place the other conversations are counted, so
+			// it is the handle for seeing them.
+			if (segmentId === "room") void this.#roomController.openView();
 		};
 
 		this.hideThinkingBlock = settings.get("hideThinkingBlock");

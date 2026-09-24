@@ -81,17 +81,9 @@ export interface RoomLiveTurn {
 export function buildRoomWindowSnapshot(session: AgentSession, live: RoomLiveTurn = {}): RoomWindowSnapshot {
 	const messages = session.messages;
 	let start = -1;
-	let lead: string | undefined;
 	for (let i = messages.length - 1; i >= 0; i--) {
 		if (isPrompt(messages[i]!)) {
 			start = i;
-			break;
-		}
-	}
-	for (const message of messages) {
-		if (isPrompt(message)) {
-			const text = firstLine(promptText(message));
-			if (text) lead = text;
 			break;
 		}
 	}
@@ -179,7 +171,6 @@ export function buildRoomWindowSnapshot(session: AgentSession, live: RoomLiveTur
 		state,
 		blocks: [...head, ...tail],
 		title: session.sessionManager.getSessionName() || undefined,
-		lead,
 		model: model ? model.name || model.id : undefined,
 		cwd: shortenPath(session.sessionManager.getCwd()),
 	};

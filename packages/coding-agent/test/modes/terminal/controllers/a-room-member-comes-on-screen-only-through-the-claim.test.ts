@@ -78,6 +78,8 @@ import {
 // `TERMINAL` declares the capability readonly; the switch reads it for motion.
 const terminalCaps: { trueColor: boolean } = TERMINAL;
 const NO_PEER = "No other conversation in this terminal — /room new opens one beside this";
+/** What the first arrival in another conversation adds: the room view's key, with the default bindings. */
+const TEACH = " · alt+w shows every conversation";
 
 interface Conversation {
 	id: string;
@@ -459,7 +461,7 @@ describe("the switch claims the process scope before it attaches", () => {
 		expect(h.ctx.session).toBe(b!.session);
 		expect({ b: b!.session.isForeground, a: a.session.isForeground }).toEqual({ b: true, a: false });
 		expect(getProjectDir()).toBe(dirB);
-		expect(h.statuses.at(-1)).toBe("Switched to conversation 2");
+		expect(h.statuses.at(-1)).toBe(`Switched to conversation 2${TEACH}`);
 		expect(h.errors).toEqual([]);
 	});
 
@@ -495,8 +497,9 @@ describe("the switch claims the process scope before it attaches", () => {
 		await h.room.switchTo(b!.id);
 		expect(h.ctx.session).toBe(b!.session);
 		expect(kept()).not.toContain(b!.session);
-		// Named by its first prompt, since it has no name.
-		expect(h.statuses.at(-1)).toBe("Switched to 2 · keep working — it is still working");
+		// Named by the prompt it is on, since it has no name; the failed switch said
+		// nothing, so this is the first arrival and teaches the room key.
+		expect(h.statuses.at(-1)).toBe(`Switched to 2 · keep working — it is still working${TEACH}`);
 	});
 
 	it("refuses a stranger by name, and moves nothing", async () => {
@@ -588,7 +591,7 @@ describe("the terminal's chrome", () => {
 		]);
 		expect(h.errors).toEqual([]);
 		expect(steps.slice(steps.indexOf(`chrome:${dirB}`))).toEqual([`chrome:${dirB}`, "todos"]);
-		expect(h.statuses.at(-1)).toBe("Switched to conversation 2");
+		expect(h.statuses.at(-1)).toBe(`Switched to conversation 2${TEACH}`);
 	});
 });
 
@@ -670,7 +673,7 @@ describe("a question asked off screen", () => {
 			peers: [b, c],
 		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
 		await b!.session.sessionManager.setSessionName("Refactor parser", "user");
-		const hint = "needs you — press → twice on an empty composer to open the room";
+		const hint = "needs you — alt+w opens the room";
 
 		h.hold(b!.session, 1);
 		expect(h.statuses).toEqual([`2 · Refactor parser ${hint}`]);
@@ -683,7 +686,7 @@ describe("a question asked off screen", () => {
 		await c!.startTurn();
 		await until(() => h.statusLine.roomPeers.working === 1, "the working peer to be counted");
 		h.hold(c!.session, 1);
-		// Named by its first prompt, since it has no name.
+		// Named by the prompt it is on, since it has no name.
 		expect(h.statuses).toEqual([`2 · Refactor parser ${hint}`, `3 · keep working ${hint}`]);
 		// A peer both working and waiting counts as waiting: the question is the news.
 		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 2 });
@@ -715,6 +718,29 @@ describe("cycling", () => {
 		expect(h.statuses).toEqual([NO_PEER, NO_PEER]);
 		expect(h.ctx.session).toBe(a.session);
 		expect(screenSteps()).toEqual([]);
+	});
+});
+
+describe("the first arrival in another conversation", () => {
+	/**
+	 * A room of two is where the view is first needed, and the arrival line is
+	 * what is on screen when it is. It names the key once; every later arrival
+	 * only says where the screen is, so the line does not become noise.
+	 */
+	it("says how to see every conversation, once", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirA });
+		await h.room.switchTo(b!.id);
+		await h.room.switchTo(a.id);
+		await h.room.switchTo(b!.id);
+		expect(h.statuses).toEqual([
+			`Switched to conversation 2${TEACH}`,
+			"Switched to conversation 1",
+			"Switched to conversation 2",
+		]);
 	});
 });
 
@@ -771,8 +797,8 @@ describe("with motion on, the quick switch travels through the stage", () => {
 		await until(() => !h.room.viewOpen, "the stage to land");
 		expect(screenSteps()).toEqual([`claim:${b!.id}`, `claimed:${b!.id}`, `attach:${b!.id}`]);
 		expect(h.ctx.session).toBe(b!.session);
-		expect(h.statuses.at(-1)).toBe("Switched to conversation 2");
-		expect(shownWhenComposed.at(-1)).toEqual(["Switched to conversation 2"]);
+		expect(h.statuses.at(-1)).toBe(`Switched to conversation 2${TEACH}`);
+		expect(shownWhenComposed.at(-1)).toEqual([`Switched to conversation 2${TEACH}`]);
 	});
 
 	/**

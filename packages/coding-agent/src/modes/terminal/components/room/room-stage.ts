@@ -740,15 +740,19 @@ export class RoomStage implements Component, OverlayFocusOwner {
 			rows[row] = truncateToWidth(text, width);
 		};
 
-		// Title: what this is, how many, and what needs attention.
-		const working = members.filter(member => member.snapshot().state.kind === "working").length;
+		// Title: what this is, how many, and what needs attention. A conversation
+		// holding a question is counted as needing you and not also as working,
+		// and it comes first, the way the status line's room segment reads.
 		const waiting = members.filter(member => member.waitingDialogs > 0).length;
+		const working = members.filter(
+			member => member.waitingDialogs === 0 && member.snapshot().state.kind === "working",
+		).length;
 		const parts = [
 			ink.bold(ink.token("text", "Room")),
 			ink.token("muted", `${members.length} conversation${members.length === 1 ? "" : "s"}`),
 		];
+		if (waiting > 0) parts.push(ink.token("borderAccent", `${theme.status.warning} ${waiting} needs you`));
 		if (working > 0) parts.push(ink.token("accent", `${working} working`));
-		if (waiting > 0) parts.push(ink.token("borderAccent", `${waiting} needs you`));
 		const left = `  ${parts.join(ink.token("dim", SEPARATOR))}`;
 		const layoutName = this.#layout === "side-by-side" ? "side by side" : "all windows";
 		const right = `${ink.token("dim", layoutName)}  `;
@@ -784,16 +788,16 @@ export class RoomStage implements Component, OverlayFocusOwner {
 			put(height - 3, `${" ".repeat(Math.max(0, Math.floor((width - w) / 2)))}${joined}`);
 		}
 
-		// Keys, dropped from the right until the row fits.
+		// Keys, dropped from the right until the row fits. The digit jump is named
+		// only when there is somewhere to jump, with the digits the room takes.
 		const grid = this.#layout === "all-windows";
+		const jumpable = Math.min(9, members.length);
 		const hints: Array<[string, string]> = [
 			[grid ? "←↑↓→" : "←→", "move"],
 			["enter", "open"],
-			["n", "new"],
-			["x", "close"],
-			["tab", grid ? "side by side" : "all windows"],
-			["esc", "back"],
 		];
+		if (jumpable > 1) hints.push([`1–${jumpable}`, "jump"]);
+		hints.push(["n", "new"], ["x", "close"], ["tab", grid ? "side by side" : "all windows"], ["esc", "back"]);
 		const sep = ink.token("dim", SEPARATOR);
 		let shown = hints.length;
 		const plainWidth = (n: number): number =>

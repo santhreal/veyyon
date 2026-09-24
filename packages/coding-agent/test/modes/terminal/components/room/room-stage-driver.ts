@@ -53,9 +53,9 @@ export function sgrMouse(button: number, col: number, row: number): string {
 export function snapshotOf(
 	state: RoomWindowState,
 	blocks: readonly RoomFeedBlock[] = [],
-	names: { title?: string; lead?: string } = {},
+	names: { title?: string } = {},
 ): RoomWindowSnapshot {
-	return { state, blocks, title: names.title, lead: names.lead, model: "model-x", cwd: "~/repo" };
+	return { state, blocks, title: names.title, model: "model-x", cwd: "~/repo" };
 }
 
 export class FakeMember implements RoomStageMember {

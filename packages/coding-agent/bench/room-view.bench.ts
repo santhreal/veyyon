@@ -82,7 +82,6 @@ function conversation(id: string, blocks: number, seed: number): Conversation {
 			state: { kind: "done", at: 0 },
 			blocks: [{ kind: "prompt", text: `conversation ${id}` }],
 			title: `conversation ${id}`,
-			lead: undefined,
 			model: "model-x",
 			cwd: "~/repo",
 		},

@@ -27,13 +27,19 @@ import { normalizePathForComparison } from "@veyyon/utils";
 import { matchesKey } from "@veyyon/utils/keys";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
+import { truncateToWidth } from "@veyyon/utils/width";
 import { type AgentRef, AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from "../../../registry/agent-registry";
 import type { AgentSession } from "../../../session/agent-session";
 import { BackgroundSessions } from "../../../session/background-sessions";
 import { setSessionTerminalTitle } from "../../../utils/title-generator";
 import { pointerMotionEnabled } from "../components/chrome/modal-shell";
 import { type RoomLayout, RoomStage, type RoomStageHost, type RoomStageMode } from "../components/room/room-stage";
-import type { RoomStageMember } from "../components/room/room-view-model";
+import {
+	type RoomStageMember,
+	type RoomWindowSnapshot,
+	roomStateWords,
+	roomWindowName,
+} from "../components/room/room-view-model";
 import type { InteractiveModeContext } from "../types";
 import { RoomWindowFeed } from "./room-window-feed";
 
@@ -67,10 +73,10 @@ export type RoomControllerContext = Pick<
 	| "waitingDialogs"
 >;
 
-/** A room member's label: its name, else its first prompt, else its position. */
-function memberLabel(ordinal: number, title: string | undefined, lead: string | undefined): string {
-	const name = title ?? lead;
-	return name ? `${ordinal} · ${name.length > 40 ? `${name.slice(0, 39)}…` : name}` : `conversation ${ordinal}`;
+/** A room member's label: `2 · refactor auth`, or `conversation 2` while it goes by nothing yet. */
+function memberLabel(ordinal: number, snapshot: RoomWindowSnapshot): string {
+	const name = roomWindowName(snapshot);
+	return name ? `${ordinal} · ${truncateToWidth(name, 40)}` : `conversation ${ordinal}`;
 }
 
 /**
@@ -96,6 +102,11 @@ export class RoomController {
 	#stage: { readonly component: RoomStage; readonly overlay: OverlayHandle; readonly originId: string } | undefined;
 	/** Serializes screen changes: a second one while one is in flight is dropped. */
 	#switching = false;
+	/**
+	 * Whether the room view has been opened, or its key shown, in this process.
+	 * The first arrival in another conversation says how to see them all, once.
+	 */
+	#viewKnown = false;
 
 	constructor(
 		private readonly ctx: RoomControllerContext,
@@ -199,9 +210,7 @@ export class RoomController {
 			this.#lastWaiting.set(session, now);
 			if (now > before && session !== this.ctx.session && !this.#stage) {
 				const snapshot = this.#feedFor(ref).snapshot();
-				this.ctx.showStatus(
-					`${memberLabel(index + 1, snapshot.title, snapshot.lead)} needs you — press → twice on an empty composer to open the room`,
-				);
+				this.ctx.showStatus(`${memberLabel(index + 1, snapshot)} needs you — ${this.#viewKey()} opens the room`);
 			}
 		}
 		this.#syncStatus();
@@ -243,7 +252,17 @@ export class RoomController {
 	async openView(): Promise<void> {
 		if (this.#stage || this.#switching) return;
 		if (this.ctx.focusedAgentId) await this.ctx.unfocusSession();
+		this.#viewKnown = true;
 		this.#showStage({ kind: "overview" });
+	}
+
+	/**
+	 * The key that opens the room view, as a status line says it: the first
+	 * binding of `app.room.view`, which works with text in the composer, else
+	 * the double tap, which does not.
+	 */
+	#viewKey(): string {
+		return this.ctx.keybindings.getKeys("app.room.view")[0] ?? "→ twice on an empty composer";
 	}
 
 	/**
@@ -367,9 +386,13 @@ export class RoomController {
 		const ref = refs[index];
 		if (!ref) return;
 		const snapshot = this.#feedFor(ref).snapshot();
-		const label = memberLabel(index + 1, snapshot.title, snapshot.lead);
+		const label = memberLabel(index + 1, snapshot);
 		const suffix = ref.session.isStreaming ? " — it is still working" : "";
-		this.ctx.showStatus(`${mode.kind === "travel" ? "Switched to" : "Now on"} ${label}${suffix}`);
+		// The first arrival in another conversation says how to see all of them;
+		// every later one only says where the screen is now.
+		const teach = this.#viewKnown ? "" : ` · ${this.#viewKey()} shows every conversation`;
+		this.#viewKnown = true;
+		this.ctx.showStatus(`${mode.kind === "travel" ? "Switched to" : "Now on"} ${label}${suffix}${teach}`);
 	}
 
 	/**
@@ -511,15 +534,15 @@ export class RoomController {
 	describe(): string {
 		const refs = this.#refs();
 		if (refs.length < 2) return "No other conversation in this terminal. /room new opens one beside this.";
+		const now = Date.now();
 		const rows = refs.map((ref, index) => {
 			const mark = ref.id === this.ownId ? "*" : " ";
 			const snapshot = this.#feedFor(ref).snapshot();
-			const session = ref.session;
-			const waiting = this.ctx.waitingDialogs(session);
-			const state = waiting > 0 ? "needs you" : snapshot.state.kind;
-			return `${mark} ${memberLabel(index + 1, snapshot.title, snapshot.lead)} [${state}] ${ref.id}`;
+			const { word, time } = roomStateWords(snapshot, now);
+			const state = this.ctx.waitingDialogs(ref.session) > 0 ? "needs you" : time ? `${word} ${time}` : word;
+			return `${mark} ${memberLabel(index + 1, snapshot)} [${state}] ${ref.id}`;
 		});
-		return `Room (${refs.length}):\n${rows.join("\n")}\n/room <n> switches · → twice on an empty composer opens the room view`;
+		return `Room (${refs.length}):\n${rows.join("\n")}\n/room <n> switches · ${this.#viewKey()} opens the room view`;
 	}
 
 	/** Resolve a `/room <n>` or `/room <id>` argument to a member id. */

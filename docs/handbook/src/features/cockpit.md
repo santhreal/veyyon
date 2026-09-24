@@ -17,7 +17,7 @@ Configure under **Settings → Appearance → Status Line** (`/statusline` jumps
 
 Built-in segment IDs include: `pi` (legacy product mark segment), `profile`, `model`, `account`, `mode`, `path`, `git`, `pr`, `agents`, `background`, `room`, `token_in`, `token_out`, `token_total`, `token_rate`, `cost`, `context_pct`, `context_total`, `time_spent`, `time`, `session`, `hostname`, `cache_read`, `cache_write`, `cache_hit`, `session_name`, `usage`, `collab`.
 
-`background` counts conversations that run with nothing drawing them, such as a turn handed off by `/new`. `room` counts the other conversations in this terminal's room and how many of them are working, or waiting for your answer, which it names first; `→→` opens the room view. A room member running off screen is counted by `room` and not by `background`. Both are hidden at zero and are in every preset.
+`background` counts conversations that run with nothing drawing them, such as a turn handed off by `/new`. `room` counts the other conversations in this terminal's room and how many of them are working, or waiting for your answer, which it names first; clicking it, or `→→`, opens the room view ([Rooms](./rooms.md)). A room member running off screen is counted by `room` and not by `background`. Both are hidden at zero and are in every preset.
 
 The `model` segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:
 
@@ -149,65 +149,11 @@ the transcripts it opens are that conversation's. A conversation this process is
 still running off-screen is counted by the status line's background chip and has no
 card of its own.
 
-### Rooms: conversations side by side
+### Rooms
 
-A room is every driving conversation in one terminal. Each is a full session:
-its own transcript, its own spawns, its own draft in the composer and every
-slash command. A conversation you leave keeps running.
-
-| Action | Keys |
-| --- | --- |
-| Open the room view | `→` twice on an empty composer, `alt+w` (`app.room.view`), or `/room` |
-| Next or previous conversation | `alt+.` / `alt+,` (`app.room.next`, `app.room.previous`), or `/room <n>` |
-| Open a conversation beside this one | `n` in the room view, or `/room new` |
-| Print the room | `/room list` |
-
-The room view pulls the screen back into a window and shows every
-conversation beside it. Each window streams its own conversation: the prompt it
-is on, a row per tool call with its state, and the tail of the answer. The top
-edge names the window and its state (working with a clock, done, failed,
-stopped, or needs you); the bottom edge names the model and the directory.
-
-Two layouts are available. **Side by side** puts one window in front and its
-neighbours receding to either side; `←` and `→` glide the row, and a
-horizontal swipe or the wheel scrolls it. **All windows** tiles every
-conversation; the arrow keys move between windows and the pointer selects the
-window under it. Tab switches between the two. `room.view` under Settings →
-Interaction → Session selects the one the view opens in.
-
-| Key in the room view | Effect |
-| --- | --- |
-| Enter, Space, click | Enter the selected window |
-| `1`–`9` | Enter that window |
-| `n` | Open a new conversation and enter it |
-| `x` | Close the selected conversation (twice while it is working) |
-| Tab | Switch layouts |
-| Esc, `alt+w` | Return to the conversation you came from |
-
-Entering a window zooms it forward until it is the screen. The next or
-previous key does the same without the view: the screen pulls back, the row
-slides, and the next conversation pushes in. With `display.transitions` off, or
-on a terminal without 24-bit colour, the view opens and switches without
-motion.
-
-A conversation that asks you something while it is off screen does not open
-the question over the one you are reading. The question waits until you enter
-that conversation, its window says it is waiting for your answer, the status
-line's `room` segment counts it as needing you, and the status line names it
-once when it starts waiting.
-
-The first conversation in the terminal holds the MCP servers and background
-jobs the others share, so it closes only when you exit. At exit every
-conversation's transcript is flushed and its unsent draft is saved beside it.
-
-The process working directory follows the conversation on screen. A
-conversation that changes directory while it is off screen records the move,
-and the terminal re-roots to it when you enter it.
-
-Conversations in one room are `irc` peers: each lists the others under
-`irc list` marked as room peers and can message them by id. `to: "all"` reaches
-the sender's own spawns only, and a spawn cannot reach the conversation next
-door or its spawns.
+A terminal can run several conversations side by side, each with its own card. `/room new`
+opens one beside the one on screen, and `alt+w` shows them all as windows. See
+[Rooms](./rooms.md).
 
 ### The Live roster
 

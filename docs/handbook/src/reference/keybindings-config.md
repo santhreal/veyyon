@@ -63,4 +63,4 @@ A few arrow gestures act on the status line when the composer is empty. They are
 | ------------------- | ----------------------------- | ------------------------------------------------------------ |
 | Down arrow          | A goal is active or paused    | Open the goal detail menu (same as `/goal`): objective, tokens against budget, completed turns, time spent, and pause/resume/adjust-budget/drop |
 | Double-tap ← (left) | Composer empty                | Open the agent dashboard, or return a focused agent view to the main session |
-| Double-tap → (right) | Composer empty                | Open the room view with every conversation in this terminal as a window; see [Rooms](../features/cockpit.md#rooms-conversations-side-by-side) |
+| Double-tap → (right) | Composer empty                | Open the room view with every conversation in this terminal as a window; see [Rooms](../features/rooms.md) |
