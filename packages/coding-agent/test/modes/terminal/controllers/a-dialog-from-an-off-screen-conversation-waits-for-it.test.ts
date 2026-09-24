@@ -475,12 +475,20 @@ describe("a dialog from a conversation off screen", () => {
 			});
 		});
 
-		it(`${member}: from the conversation on screen presents at once and is never counted`, async () => {
+		/**
+		 * The gate must cost the conversation on screen nothing: its dialog is on
+		 * the screen when the call returns, as it was before any conversation
+		 * could be off screen. A caller that asks and then reads the overlay in
+		 * the same turn found nothing when the gate deferred it by a microtask.
+		 */
+		it(`${member}: from the conversation on screen presents in the same turn and is never counted`, async () => {
 			const h = await harness();
 			const shown = decision.present(h.controller);
 			let fired = 0;
 			h.controller.onWaitingDialogsChange(() => fired++);
-			expect(await decision.call(h.aUi)).toEqual(decision.answer);
+			const pending = decision.call(h.aUi);
+			expect(shown()).toBe(1);
+			expect(await pending).toEqual(decision.answer);
 			expect({ shown: shown(), waitingA: h.controller.waitingDialogs(h.a), fired }).toEqual({
 				shown: 1,
 				waitingA: 0,

@@ -398,8 +398,21 @@ export class ExtensionUiController {
 	 */
 	#onScreenContext(session: AgentSession, base: ExtensionUIContext): ExtensionUIContext {
 		const onScreen = (): boolean => this.ctx.session === session;
-		const dialog = async <T>(signal: AbortSignal | undefined, show: () => Promise<T>, fallback: T): Promise<T> =>
-			(await this.#untilOnScreen(session, signal)) ? show() : fallback;
+		// The conversation on screen presents at once, in the same turn of the event
+		// loop as the call, the way a dialog did before any conversation could be
+		// off screen; only one off screen waits. A presenter that throws still
+		// answers with a rejection, never a throw out of the call.
+		const presentNow = <T>(show: () => Promise<T>): Promise<T> => {
+			try {
+				return show();
+			} catch (error) {
+				return Promise.reject(error);
+			}
+		};
+		const dialog = <T>(signal: AbortSignal | undefined, show: () => Promise<T>, fallback: T): Promise<T> =>
+			onScreen()
+				? presentNow(show)
+				: this.#untilOnScreen(session, signal).then(cameOnScreen => (cameOnScreen ? show() : fallback));
 		const terminal = base.terminal;
 		const askDialog = base.askDialog;
 		return {
@@ -440,13 +453,14 @@ export class ExtensionUiController {
 			},
 			terminal: terminal
 				? {
-						custom: async (factory, options) => {
+						custom: (factory, options) => {
+							if (onScreen()) return presentNow(() => terminal.custom(factory, options));
 							// No signal and no fallback value: a takeover from a conversation that
 							// closes before it comes on screen can only fail.
-							if (!(await this.#untilOnScreen(session, undefined))) {
-								throw new Error("The conversation closed before it came on screen.");
-							}
-							return terminal.custom(factory, options);
+							return this.#untilOnScreen(session, undefined).then(cameOnScreen => {
+								if (!cameOnScreen) throw new Error("The conversation closed before it came on screen.");
+								return terminal.custom(factory, options);
+							});
 						},
 						setWidgetComponent: (key, factory, options) => {
 							this.#recordWidget(session, key, factory, options);
