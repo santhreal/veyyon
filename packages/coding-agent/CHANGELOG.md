@@ -20,6 +20,7 @@
 - `r` in the room view names the selected conversation on a line under the windows: the line holds its name selected, typing replaces it, an arrow, Home or End keeps it to edit, and Enter saves it.
 - The room view's key row drops the keys it has no room for least used first, the digit jump first, and keeps the arrows, Enter, `?` and Esc longest.
 - Pressing `alt+.` or `alt+,` again while a room switch is still moving goes on as far as the presses add up once it lands, without entering the conversations it passes.
+- `/rooms` is an alias of `/room`, so `/rooms help` prints the room guide.
 
 ### Changed
 
