@@ -31,6 +31,7 @@
 - Entering a conversation mid-turn starts the status line's run clock and the working line's clock at the turn's start, and a room switch keeps each conversation's run clock and time spent instead of zeroing them.
 - A room switch keeps a draft's attached images with the conversation they were attached in.
 - `/resume` of a running session and a `/new` hand-off keep the composer's unsent draft with the conversation that typed it and bring back the arriving conversation's own draft, the way a room switch does.
+- The status line's `room` chip counts the room of the conversation on screen after a `/resume` or a `/new` hand-off, instead of the room of the one that left, and a room entered that way announces its conversations' turns again.
 - A room switch whose screen fails to finish loading after the conversation is attached shows a warning and keeps the switch instead of reporting it refused.
 - `/room new` or `n` while a conversation is still opening says so instead of opening a second one, and a conversation that fails to join the room is closed rather than left running unlisted.
 - A room close that fails leaves the conversation in the room for exit to close instead of forgetting it.

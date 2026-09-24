@@ -144,10 +144,11 @@ questions held by conversations off screen are dismissed. Draft images are not s
 
 ## The status line
 
-The `room` segment counts the other conversations in the room, then how many are waiting for you
-and how many are working: `2 peers · ! 1 needs you · 1 working`. It is hidden while you are alone
-and is in every preset. With `tui.scrollIsolation` on, clicking it opens the room view; with it
-off the terminal keeps the mouse and the chip is text.
+The `room` segment counts the other conversations in the room of the conversation on screen, then
+how many are waiting for you and how many are working: `2 peers · ! 1 needs you · 1 working`. It
+is hidden while you are alone, and while a conversation outside every room is on screen, such as
+one `/new` opened. It is in every preset. With `tui.scrollIsolation` on, clicking it opens the
+room view; with it off the terminal keeps the mouse and the chip is text.
 
 The run clock beside the location keeps each conversation's own time. Going into a conversation
 that is working shows how long its turn has run, including the time it ran off screen, on the run

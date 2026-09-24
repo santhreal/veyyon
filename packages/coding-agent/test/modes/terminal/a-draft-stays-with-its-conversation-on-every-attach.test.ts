@@ -1,17 +1,21 @@
 /**
- * WHY: the composer is one editor every conversation in the terminal shares.
- * A room switch carried the unsent draft away with the conversation that typed
- * it, but `/resume` of a running session and a `/new` hand-off attach another
- * conversation through `InteractiveMode.attachMainSession` directly, so the
- * draft stayed on the composer and the next room switch saved it under the
- * conversation that had arrived, leaving the one that typed it with nothing.
+ * WHY: the composer is one editor every conversation in the terminal shares,
+ * and the status line's room chip counts the room of the conversation on
+ * screen. A room switch carried the unsent draft away with the conversation
+ * that typed it and recounted the room, but `/resume` of a running session and
+ * a `/new` hand-off attach another conversation through
+ * `InteractiveMode.attachMainSession` directly: the draft stayed on the
+ * composer, and the next room switch saved it under the conversation that had
+ * arrived; the chip kept counting the room of the conversation that had left.
  *
  * The class: every path that puts another conversation on screen goes through
- * `attachMainSession`, so the draft moves there. Driven through a real
- * `InteractiveMode` and real sessions: the draft (text and an attached image)
- * leaves with the conversation that typed it, the arriving conversation gets
- * its own draft or a clear composer, and attaching back restores it whole.
- * Re-attaching the conversation already on screen leaves the composer alone.
+ * `attachMainSession`, so the draft moves and the room is read again there.
+ * Driven through a real `InteractiveMode` and real sessions: the draft (text
+ * and an attached image) leaves with the conversation that typed it, the
+ * arriving conversation gets its own draft or a clear composer, and attaching
+ * back restores it whole; the chip counts the arriving conversation's room,
+ * and none for one outside every room. Re-attaching the conversation already
+ * on screen leaves the composer alone.
  *
  * What it does NOT catch: a path that swaps sessions without
  * `attachMainSession` (an in-place `switchSession` keeps the same session
@@ -28,6 +32,7 @@ import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { BackgroundSessions } from "@veyyon/coding-agent/session/background-sessions";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
@@ -50,6 +55,7 @@ describe("a draft stays with its conversation on every attach", () => {
 	let originalHome: string | undefined;
 	let mode: InteractiveMode | undefined;
 	const sessions: AgentSession[] = [];
+	const registered: string[] = [];
 
 	beforeAll(async () => {
 		initTheme();
@@ -79,6 +85,7 @@ describe("a draft stays with its conversation on every attach", () => {
 			BackgroundSessions.global().release(session);
 			await session.dispose();
 		}
+		for (const id of registered.splice(0)) AgentRegistry.global().unregister(id);
 	});
 
 	afterAll(() => {
@@ -98,6 +105,41 @@ describe("a draft stays with its conversation on every attach", () => {
 			toolRegistry: new Map(),
 			promptTemplates: [],
 		});
+		sessions.push(session);
+		return session;
+	}
+
+	/**
+	 * A driving conversation registered the way the sdk registers one, in
+	 * `room` when given; the registry is the process's, which the terminal's
+	 * room reads.
+	 */
+	function driver(name: string, room?: string): AgentSession {
+		const agents = AgentRegistry.global();
+		const id = `main:attach-${name}`;
+		const sessionManager = SessionManager.inMemory(tempDir.path());
+		agents.register({
+			id,
+			displayName: "main",
+			kind: "main",
+			session: null,
+			sessionFile: null,
+			scope: sessionManager.getSessionId(),
+			room,
+			status: "running",
+		});
+		registered.push(id);
+		const session = new AgentSession({
+			agent: new Agent({ initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] } }),
+			sessionManager,
+			settings: Settings.isolated({ "compaction.enabled": false }),
+			modelRegistry: registry,
+			toolRegistry: new Map(),
+			promptTemplates: [],
+			agentId: id,
+			agentRegistry: agents,
+		});
+		agents.attachSession(id, session, null);
 		sessions.push(session);
 		return session;
 	}
@@ -134,5 +176,25 @@ describe("a draft stays with its conversation on every attach", () => {
 		mode.editor.setText("still typing");
 		mode.attachMainSession(a);
 		expect(composer(mode)).toEqual({ text: "still typing", attachments: [] });
+	});
+
+	it("counts the room of the conversation that arrives, and none for one outside every room", () => {
+		const a = driver("a");
+		const room = AgentRegistry.global().ensureRoom("main:attach-a");
+		const peer = driver("peer", room);
+		const outside = driver("outside");
+		mode = new InteractiveMode(a, "test");
+		const peers = () => mode!.statusLine.roomPeers.peers;
+
+		mode.attachMainSession(peer);
+		expect(peers()).toBe(1);
+		// What a `/new` hand-off does: a conversation outside the room arrives.
+		BackgroundSessions.global().release(outside);
+		mode.attachMainSession(outside);
+		expect(peers()).toBe(0);
+		// What `/resume` of the room's first conversation does.
+		BackgroundSessions.global().release(a);
+		mode.attachMainSession(a);
+		expect(peers()).toBe(1);
 	});
 });

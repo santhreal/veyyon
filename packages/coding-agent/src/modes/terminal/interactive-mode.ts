@@ -4606,7 +4606,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#handleSessionAccentInputsChanged();
 		// Extension autocomplete applies for the conversation on screen only.
 		this.#applyAutocompleteProvider();
-		this.#roomController.carryDraft(previous, next);
+		this.#roomController.sessionAttached(previous, next);
 		const kept = BackgroundSessions.global().keep(previous);
 		this.#extensionUiController.sessionAttached(next, previous);
 		return kept;

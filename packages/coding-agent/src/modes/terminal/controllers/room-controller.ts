@@ -523,20 +523,22 @@ export class RoomController {
 				logger.warn("Room switch: the arrival did not finish", { error: errorMessage(error) });
 				this.ctx.showWarning(`Switched, but the screen did not finish loading: ${errorMessage(error)}`);
 			}
-			this.#syncStatus();
 		} finally {
 			this.#switching = false;
 		}
 	}
 
 	/**
+	 * `attachMainSession` calls this on every attach, whichever path made it (a
+	 * room switch, `/resume` of a running session, a `/new` hand-off).
+	 *
 	 * The composer is one editor every conversation shares, so the draft on it
-	 * belongs to whichever conversation is on screen. `attachMainSession` calls
-	 * this on every attach, whichever path made it (a room switch, `/resume` of
-	 * a running session, a `/new` hand-off): the draft is kept for `previous`,
-	 * and `next` gets its own back, or a clear composer.
+	 * belongs to whichever conversation is on screen: it is kept for `previous`,
+	 * and `next` gets its own back, or a clear composer. The room is read again
+	 * from `next`'s seat: the chip counts `next`'s room, and none for a
+	 * conversation outside every room.
 	 */
-	carryDraft(previous: AgentSession, next: AgentSession): void {
+	sessionAttached(previous: AgentSession, next: AgentSession): void {
 		const leaving = this.#takeDraft();
 		if (leaving) this.#drafts.set(previous, leaving);
 		else this.#drafts.delete(previous);
@@ -544,6 +546,8 @@ export class RoomController {
 		this.#putDraft(arriving);
 		this.#drafts.delete(next);
 		this.#composerDraft = arriving?.preview;
+		this.#syncFeeds();
+		this.#syncStatus();
 	}
 
 	/** The composer's draft, or nothing when it holds no text and no attachment. */

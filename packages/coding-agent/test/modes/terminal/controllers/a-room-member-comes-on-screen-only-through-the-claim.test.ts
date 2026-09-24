@@ -392,7 +392,7 @@ function harness(launch: Conversation): Harness {
 			},
 		} as unknown as EventController,
 		// What the interactive mode's attach does to the fields the controller
-		// reads, and the draft carry it makes on every attach.
+		// reads, and the room's own attach hook it calls on every attach.
 		attachMainSession: next => {
 			const previous = ctx.session;
 			if (next === previous) return BackgroundSessions.global().describeAttached(previous);
@@ -401,7 +401,7 @@ function harness(launch: Conversation): Harness {
 			ctx.session = next;
 			ctx.sessionManager = next.sessionManager;
 			ctx.settings = next.settings;
-			room.carryDraft(previous, next);
+			room.sessionAttached(previous, next);
 			return BackgroundSessions.global().keep(previous);
 		},
 		createNextSession: async options => {
@@ -1012,6 +1012,42 @@ describe("a turn that ends off screen", () => {
 		b!.endTurn("stop");
 		await until(() => bEnds() === 1 && b!.turnSettled(), "the retried turn to end");
 		expect(h.statuses).toEqual([`2 · keep working finished ${OPENS}`]);
+	});
+});
+
+describe("an attach from outside the room", () => {
+	/**
+	 * `/new` and `/resume` attach through `attachMainSession` without a room
+	 * switch. The chip then counts the room of the conversation that left, and
+	 * a registry event while a conversation outside the room is on screen drops
+	 * the room's feeds, so coming back without reading the room again leaves
+	 * its turns unheard.
+	 */
+	it("reads the room again from the conversation that arrives", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		const outside = openConversation("outside", dirA);
+		outside.session.releaseForeground();
+		const bEnds = countEnds(b!.session);
+		expect(h.statusLine.roomPeers.peers).toBe(1);
+
+		// What a `/new` hand-off does: a conversation outside the room arrives.
+		h.ctx.attachMainSession(outside.session);
+		expect(h.statusLine.roomPeers.peers).toBe(0);
+		// Another conversation opens meanwhile; the registry says so.
+		openConversation("later", dirA).session.releaseForeground();
+
+		// What `/resume` of the room's first conversation does.
+		BackgroundSessions.global().release(a.session);
+		h.ctx.attachMainSession(a.session);
+		expect(h.statusLine.roomPeers.peers).toBe(1);
+		await b!.startTurn();
+		b!.endTurn("stop");
+		await until(() => bEnds() === 1, "b's turn to end");
+		expect(h.statuses).toEqual(["2 · keep working finished — alt+w opens the room"]);
 	});
 });
 
