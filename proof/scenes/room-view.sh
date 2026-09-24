@@ -16,10 +16,12 @@
 #      pulls back into window 2 with window 1 receding to its left, both
 #      streaming.
 #   5. `←` glides the row to window 1; Tab flips to all windows; Tab back.
-#   6. Enter zooms into conversation 1, with its answer so far on screen at once.
-#   7. alt+. is the quick switch: pull back, slide, push in to 2.
-#   8. `→→` opens the view again, and `n` opens conversation 3 from it and
-#      zooms into it.
+#   6. Enter zooms into conversation 1, with its answer so far on screen at once,
+#      and a follow-up is typed there and left unsent.
+#   7. alt+. is the quick switch: pull back, slide, push in to 2. The unsent
+#      text stays with conversation 1.
+#   8. `→→` opens the view again; `←` shows window 1 carrying its draft at its
+#      foot, and `n` opens conversation 3 from the view and zooms into it.
 #
 # Off arm (--before): the same keys on the base branch, where `/room` is an
 # unknown command and `→→` moves nothing. Each guard is written for the arm it
@@ -92,6 +94,8 @@ k Return
 after && expect_screen "terminal emulators" 30
 sleep 1.5
 shot entered-one
+t "now compare these with the text editor facts"
+pause 0.8
 
 # --- 7. the quick switch ------------------------------------------------------
 k alt+period
@@ -107,6 +111,11 @@ k Right
 pause 0.25
 k Right
 pause 1
+k Left
+# needle-source: compare these -- typed in step 6; room-window.ts draftRow writes the kept draft at window 1's foot
+after && expect_screen "compare these" 10
+pause 0.9
+shot room-draft-kept
 k n
 # needle-source: Now on -- room-controller.ts #announce after entering a member from the overview
 after && expect_screen "Now on" 60

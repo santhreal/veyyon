@@ -40,7 +40,7 @@ import {
 	roomChromeStrength,
 	roomSlotAt,
 } from "./room-geometry";
-import type { RoomStageMember } from "./room-view-model";
+import type { RoomDraft, RoomStageMember } from "./room-view-model";
 import { paintRoomNewSlot, paintRoomWindow, RoomInk } from "./room-window";
 
 /** The two arrangements of the room view; `room.view` selects the one it opens in. */
@@ -219,13 +219,19 @@ export class RoomStage implements Component, OverlayFocusOwner {
 	#placements: readonly RoomPlacement[] = [];
 	#width = 0;
 	/**
-	 * Each slot's last paint, reused while its snapshot, its screen rows (by
-	 * identity: a prepare that lands a new screen of the same height is a new
-	 * array) and its geometry key are all unchanged.
+	 * Each slot's last paint, reused while its snapshot, its screen rows and its
+	 * draft (both by identity: a prepare that lands a new screen of the same
+	 * height is a new array) and its geometry key are all unchanged.
 	 */
 	readonly #paintCache = new Map<
 		number,
-		{ snapshot: unknown; screen: readonly string[] | undefined; key: string; rows: string[] }
+		{
+			snapshot: unknown;
+			screen: readonly string[] | undefined;
+			draft: RoomDraft | undefined;
+			key: string;
+			rows: string[];
+		}
 	>();
 
 	constructor(host: RoomStageHost, options: RoomStageOptions) {
@@ -677,7 +683,16 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		const working = snapshot.state.kind === "working";
 		const key = `${rect.w}x${rect.h}|${strength.toFixed(3)}|${selected}|${framed}|${member.waitingDialogs}|${screenMix.toFixed(3)}|${slot}|${working ? Math.floor(now / SPINNER_REPAINT_MS) : 0}`;
 		const cached = this.#paintCache.get(slot);
-		if (cached && cached.snapshot === snapshot && cached.screen === rows && cached.key === key) return cached.rows;
+		const draft = member.draft;
+		if (
+			cached &&
+			cached.snapshot === snapshot &&
+			cached.screen === rows &&
+			cached.draft === draft &&
+			cached.key === key
+		) {
+			return cached.rows;
+		}
 		const painted = paintRoomWindow({
 			width: rect.w,
 			height: rect.h,
@@ -687,10 +702,11 @@ export class RoomStage implements Component, OverlayFocusOwner {
 			selected,
 			framed,
 			waitingDialogs: member.waitingDialogs,
+			draft,
 			screen: rows ? { rows, mix: screenMix } : undefined,
 			now,
 		});
-		this.#paintCache.set(slot, { snapshot, screen: rows, key, rows: painted });
+		this.#paintCache.set(slot, { snapshot, screen: rows, draft, key, rows: painted });
 		return painted;
 	}
 

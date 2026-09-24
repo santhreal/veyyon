@@ -29,7 +29,8 @@
  * - The two painters are swept at every width 0..160 and height 0..40, over
  *   every window state (a `Record` keyed by the state union, so a new state
  *   fails the type check until it is given a sample) with and without a
- *   waiting dialog: a window with area is exactly `height` rows of exactly
+ *   waiting dialog and with and without a draft of wide glyphs and
+ *   attachments: a window with area is exactly `height` rows of exactly
  *   `width` cells, closed; a window with no area is no rows.
  *
  * WHAT IT DOES NOT CATCH.
@@ -48,6 +49,7 @@ import {
 } from "@veyyon/coding-agent/modes/terminal/components/room/room-geometry";
 import { compositeRoomLayers, type RoomLayout } from "@veyyon/coding-agent/modes/terminal/components/room/room-stage";
 import type {
+	RoomDraft,
 	RoomFeedBlock,
 	RoomWindowSnapshot,
 	RoomWindowState,
@@ -119,6 +121,9 @@ const NAMES: ReadonlyArray<{ title?: string }> = [
 	{},
 ];
 
+/** A draft whose line is wide glyphs and whose attachments take the rest of the row. */
+const DRAFT: RoomDraft = { line: "認証の流れを直して、テストも全部書き直す", images: 2, files: 1 };
+
 function roster(count: number): FakeMember[] {
 	return Array.from(
 		{ length: count },
@@ -130,7 +135,7 @@ function roster(count: number): FakeMember[] {
 					i % 3 === 2 ? [] : FEED,
 					NAMES[i % NAMES.length],
 				),
-				{ origin: i === 0, waitingDialogs: i === 2 ? 1 : 0 },
+				{ origin: i === 0, waitingDialogs: i === 2 ? 1 : 0, draft: i % 3 === 1 ? DRAFT : undefined },
 			),
 	);
 }
@@ -434,8 +439,13 @@ function paintProblems(rows: readonly string[], width: number, height: number): 
 
 describe("a window is exactly the size it is painted at", () => {
 	for (const kind of STATE_KINDS) {
-		for (const waitingDialogs of [0, 1]) {
-			it(`${kind}, ${waitingDialogs} waiting dialog${waitingDialogs === 1 ? "" : "s"}, at every width 0..160 and height 0..40`, () => {
+		for (const [waitingDialogs, draft] of [
+			[0, undefined],
+			[1, undefined],
+			[0, DRAFT],
+			[1, DRAFT],
+		] as const) {
+			it(`${kind}, ${waitingDialogs} waiting dialog${waitingDialogs === 1 ? "" : "s"}, ${draft ? "a draft" : "no draft"}, at every width 0..160 and height 0..40`, () => {
 				const problems: string[] = [];
 				for (let width = 0; width <= 160; width++) {
 					const screen = screenRows(width, 30, "crop");
@@ -454,6 +464,7 @@ describe("a window is exactly the size it is painted at", () => {
 							selected: index % 2 === 0,
 							framed: way !== 3,
 							waitingDialogs,
+							draft,
 							screen: way === 0 ? undefined : { rows: screen, mix: way === 1 ? 0.3 : way === 2 ? 0.7 : 1 },
 							now: PAINT_NOW,
 						});

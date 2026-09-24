@@ -55,6 +55,25 @@ export interface RoomWindowSnapshot {
 	readonly cwd: string;
 }
 
+/** A conversation's unsent draft as its window shows it. Display-safe. */
+export interface RoomDraft {
+	/** The first line of its text that has anything on it; empty when the draft is only attachments. */
+	readonly line: string;
+	/** Images attached to it. */
+	readonly images: number;
+	/** Other files attached to it. */
+	readonly files: number;
+}
+
+/** `["1 image", "2 files"]`: what a draft has attached, in words. */
+export function roomDraftAttachments(draft: RoomDraft): string[] {
+	const count = (n: number, one: string): string => (n === 1 ? `1 ${one}` : `${n} ${one}s`);
+	const parts: string[] = [];
+	if (draft.images > 0) parts.push(count(draft.images, "image"));
+	if (draft.files > 0) parts.push(count(draft.files, "file"));
+	return parts;
+}
+
 /** One member of the room as the stage sees it. */
 export interface RoomStageMember {
 	/** Registry id of the driving agent. */
@@ -63,6 +82,8 @@ export interface RoomStageMember {
 	snapshot(): RoomWindowSnapshot;
 	/** Dialogs this conversation is holding until it is on screen. */
 	readonly waitingDialogs: number;
+	/** What the composer holds unsent for this conversation, when anything. */
+	readonly draft: RoomDraft | undefined;
 	/** The conversation the room was opened from. */
 	readonly origin: boolean;
 }

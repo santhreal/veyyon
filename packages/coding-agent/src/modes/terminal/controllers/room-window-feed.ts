@@ -18,11 +18,12 @@ import { contentText } from "@veyyon/utils/content-text";
 import { sanitizeText } from "@veyyon/utils/sanitize-text";
 import { replaceTabs } from "@veyyon/utils/tab-width";
 import { sanitizeSingleLine } from "@veyyon/utils/wrap";
+import type { Attachment } from "@veyyon/wire/presentation";
 import type { AgentSession } from "../../../session/agent-session";
 import type { AgentSessionEvent } from "../../../session/agent-session-types";
 import { toolCallPrimaryArg } from "../../../session/session-history-format";
 import { shortenPath } from "../../../tools/core/shorten-path";
-import type { RoomFeedBlock, RoomWindowSnapshot, RoomWindowState } from "../components/room/room-view-model";
+import type { RoomDraft, RoomFeedBlock, RoomWindowSnapshot, RoomWindowState } from "../components/room/room-view-model";
 
 /** A window shows at most this many blocks after its prompt; it draws the tail of them anyway. */
 const MAX_FEED_BLOCKS = 48;
@@ -49,6 +50,19 @@ function displayText(text: string): string {
 
 function firstLine(text: string): string {
 	return sanitizeSingleLine(displayText(text).split("\n", 1)[0] ?? "");
+}
+
+/**
+ * A composer draft as a window shows it: the first line of its text that has
+ * anything on it, display-safe, and how many images and other files it has
+ * attached. Nothing when it holds none of them.
+ */
+export function roomDraftPreview(text: string, attachments: readonly Attachment[]): RoomDraft | undefined {
+	const line = firstLine(text);
+	let images = 0;
+	for (const attachment of attachments) if (attachment.kind === "image") images++;
+	const files = attachments.length - images;
+	return line === "" && attachments.length === 0 ? undefined : { line, images, files };
 }
 
 /** An operator's prompt: a user message the harness did not inject. */

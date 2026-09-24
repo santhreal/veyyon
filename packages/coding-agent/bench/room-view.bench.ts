@@ -155,6 +155,7 @@ async function roomSwitch(
 		id: c.id,
 		snapshot: () => c.snapshot,
 		waitingDialogs: 0,
+		draft: undefined,
 		origin: c === from,
 	}));
 	const host: RoomStageHost = {

@@ -43,6 +43,7 @@ import {
 import {
 	buildRoomWindowSnapshot,
 	RoomWindowFeed,
+	roomDraftPreview,
 } from "@veyyon/coding-agent/modes/terminal/controllers/room-window-feed";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
@@ -331,6 +332,23 @@ describe("display safety", () => {
 		// The words survive; only the bytes that would drive the terminal go.
 		expect(snapshot.blocks[0]).toMatchObject({ kind: "prompt" });
 		expect(snapshot.blocks[0]?.kind === "prompt" && snapshot.blocks[0].text.includes("red")).toBe(true);
+	});
+});
+
+describe("a composer draft as a window shows it", () => {
+	const image = { kind: "image" as const, name: "diagram.png" };
+	const file = { kind: "file" as const, name: "notes.md" };
+
+	it("is the first line with anything on it, with no control byte, escape or tab, and counts what is attached", () => {
+		const nasty = "\n \n\tfix the \x1b[31mred\x1b[0m\tbug\x07 now\nsecond line";
+		const preview = roomDraftPreview(nasty, [image, file, image]);
+		expect(preview).toMatchObject({ images: 2, files: 1 });
+		expect(preview?.line).toMatch(/^fix the red +bug now$/);
+	});
+
+	it("is only what is attached when the text is blank, and nothing when there is neither", () => {
+		expect(roomDraftPreview(" \n\t", [image])).toEqual({ line: "", images: 1, files: 0 });
+		expect(roomDraftPreview(" \n\t", [])).toBeUndefined();
 	});
 });
 

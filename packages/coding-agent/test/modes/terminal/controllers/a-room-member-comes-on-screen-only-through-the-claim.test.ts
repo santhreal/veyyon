@@ -625,6 +625,32 @@ describe("drafts", () => {
 		await h.room.switchTo(a.id);
 		expect({ text: editor.getText(), attachments: editor.attachments }).toEqual({ text: "", attachments: [image] });
 	});
+
+	/**
+	 * The room view shows what each conversation's composer holds: the draft
+	 * kept for one off screen, and the composer's own for the one on screen. A
+	 * member reporting nothing, or another conversation's draft, would hide the
+	 * text the room is keeping for it.
+	 */
+	it("each member reports its own draft to the room view, the one on screen included", async () => {
+		const {
+			h,
+			a,
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		const editor = h.ctx.editor;
+		editor.setText("\n  draft for a\nits second line");
+		editor.attachments = [{ kind: "image", name: "diagram.png", data: "aGVsbG8=", mimeType: "image/png" }];
+		await h.room.switchTo(b!.id);
+		editor.setText("draft for b");
+		await h.room.openView();
+		expect(h.room.viewOpen).toBe(true);
+		expect(Object.fromEntries(h.room.members().map(member => [member.id, member.draft]))).toEqual({
+			[a.id]: { line: "draft for a", images: 1, files: 0 },
+			[b!.id]: { line: "draft for b", images: 0, files: 0 },
+			[c!.id]: undefined,
+		});
+	});
 });
 
 describe("the terminal's chrome", () => {
@@ -960,5 +986,26 @@ describe("with motion on, the quick switch travels through the stage", () => {
 		expect(h.ctx.session).toBe(b!.session);
 		expect(h.errors).toEqual([]);
 		expect(h.warnings).toEqual(["Switched, but the screen did not finish loading: todo store unreadable"]);
+	});
+
+	/**
+	 * The stage opens with the composer's draft as the one on screen's; once
+	 * the switch has moved the drafts, the conversation that arrived owns the
+	 * composer. A stage that kept the old reading would draw the draft left in
+	 * one conversation on the window of the one that arrived.
+	 */
+	it("each window keeps its own draft through the switch", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		h.ctx.editor.setText("draft for a");
+		await h.room.switchTo(b!.id);
+		await until(() => !h.room.viewOpen, "the stage to land");
+		expect(Object.fromEntries(h.room.members().map(member => [member.id, member.draft]))).toEqual({
+			[a.id]: { line: "draft for a", images: 0, files: 0 },
+			[b!.id]: undefined,
+		});
 	});
 });

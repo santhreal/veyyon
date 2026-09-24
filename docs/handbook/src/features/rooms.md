@@ -58,6 +58,8 @@ Each window streams its conversation while the view is open:
   time it finished, `failed`, `stopped`, or `needs you`.
 - The body starts with the prompt the conversation is working on. A row for each tool call
   follows, then the tail of the answer. A `⋯` row marks where the middle was cut.
+- A conversation with an unsent draft shows it at the foot: `✎ draft · explain the second fact ·
+  1 image`. A question waiting for an answer takes the last row, under the draft.
 - The bottom edge has the model and the working directory.
 
 A conversation with no name has no name on its top edge; its prompt is the first thing in its

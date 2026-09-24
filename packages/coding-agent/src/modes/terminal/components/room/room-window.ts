@@ -31,7 +31,13 @@ import { groundFrameHex } from "../../../../theme/ground-tints";
 import { lavaAnsi } from "../../../../theme/shimmer";
 import { type ThemeColor, theme } from "../../../../theme/theme";
 import { sharedSpinnerFrame } from "../transcript/tool-execution";
-import { type RoomFeedBlock, type RoomWindowSnapshot, roomStateWords } from "./room-view-model";
+import {
+	type RoomDraft,
+	type RoomFeedBlock,
+	type RoomWindowSnapshot,
+	roomDraftAttachments,
+	roomStateWords,
+} from "./room-view-model";
 
 /** Below this width a window is a frame, its ordinal and its state glyph. */
 const TINY_WIDTH = 12;
@@ -39,6 +45,8 @@ const TINY_WIDTH = 12;
 const COMPACT_WIDTH = 28;
 /** The prompt at the head of a window never takes more rows than this. */
 const PROMPT_HEAD_ROWS = 2;
+/** A window narrower inside than this has no room for its draft's words. */
+const MIN_DRAFT_WIDTH = 10;
 
 /** How a window is drawn on one frame. */
 export interface RoomWindowPaint {
@@ -54,6 +62,8 @@ export interface RoomWindowPaint {
 	readonly framed: boolean;
 	/** Dialogs held until this conversation is on screen. */
 	readonly waitingDialogs: number;
+	/** What the composer holds unsent for this conversation, when anything. */
+	readonly draft?: RoomDraft;
 	/**
 	 * The conversation's real screen and how much of it to show instead of the
 	 * card: 1 shows only the crop, 0 only the card, and the band between them
@@ -441,6 +451,20 @@ function screenCrop(rows: readonly string[], width: number, height: number, ink:
 	return out;
 }
 
+/**
+ * `✎ draft · explain this · 1 image` in `width` cells: what the composer
+ * holds for this conversation. The line is cut first, so what is attached stays.
+ */
+function draftRow(draft: RoomDraft, width: number, ink: RoomInk): string {
+	const glyph = theme.symbol("tool.edit");
+	const tail = roomDraftAttachments(draft)
+		.map(part => `${theme.sep.dot}${part}`)
+		.join("");
+	const room = width - visibleWidth(`${glyph} draft${theme.sep.dot}${tail}`);
+	const line = draft.line !== "" && room >= 4 ? `${theme.sep.dot}${truncateToWidth(draft.line, room)}` : "";
+	return `${ink.token("accent", glyph)}${ink.token("muted", ` draft${line}${tail}`)}`;
+}
+
 /** Paint one conversation window: exactly `height` rows of exactly `width` cells. */
 export function paintRoomWindow(paint: RoomWindowPaint): string[] {
 	const { width, height } = paint;
@@ -509,19 +533,35 @@ export function paintRoomWindow(paint: RoomWindowPaint): string[] {
 		rows.push(paint.selected ? cardInk.bold(cardInk.token("text", title)) : cardInk.token("text", title));
 		rows.push("");
 	}
-	// A conversation holding a question says so at the foot of its window, where
-	// the eye lands after reading what it did, not only in the edge chip.
-	const waitingRow =
-		paint.waitingDialogs > 0 && innerHeight - rows.length >= 4
-			? cardInk.token(
-					"borderAccent",
-					`${theme.status.warning} ${innerWidth >= 26 ? "waiting for your answer" : "needs you"}`,
-				)
-			: undefined;
-	rows.push(...cardBody(paint.snapshot, innerWidth, innerHeight - rows.length - (waitingRow ? 2 : 0), cardInk));
-	if (waitingRow) {
-		while (rows.length < innerHeight - 1) rows.push("");
-		rows.push(waitingRow);
+	// What the conversation is holding goes at the foot of its window, where the
+	// eye lands after reading what it did: an unsent draft, then a question
+	// waiting for an answer, which is the last to give way. The body keeps at
+	// least two rows.
+	const foot: string[] = [];
+	if (paint.draft !== undefined && innerWidth >= MIN_DRAFT_WIDTH) {
+		foot.push(draftRow(paint.draft, innerWidth, cardInk));
+	}
+	if (paint.waitingDialogs > 0) {
+		foot.push(
+			cardInk.token(
+				"borderAccent",
+				`${theme.status.warning} ${innerWidth >= 26 ? "waiting for your answer" : "needs you"}`,
+			),
+		);
+	}
+	const footRoom = Math.max(0, innerHeight - rows.length - 3);
+	const shownFoot = foot.slice(Math.max(0, foot.length - footRoom));
+	rows.push(
+		...cardBody(
+			paint.snapshot,
+			innerWidth,
+			innerHeight - rows.length - (shownFoot.length > 0 ? shownFoot.length + 1 : 0),
+			cardInk,
+		),
+	);
+	if (shownFoot.length > 0) {
+		while (rows.length < innerHeight - shownFoot.length) rows.push("");
+		rows.push(...shownFoot);
 	}
 	return [top, ...framedBody(rows, width, innerHeight, frame, pad), bottom];
 }

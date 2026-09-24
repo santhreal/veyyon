@@ -16,6 +16,7 @@ import {
 	type RoomStageMode,
 } from "@veyyon/coding-agent/modes/terminal/components/room/room-stage";
 import type {
+	RoomDraft,
 	RoomFeedBlock,
 	RoomStageMember,
 	RoomWindowSnapshot,
@@ -62,13 +63,19 @@ export class FakeMember implements RoomStageMember {
 	readonly id: string;
 	readonly origin: boolean;
 	waitingDialogs: number;
+	draft: RoomDraft | undefined;
 	#snapshot: RoomWindowSnapshot;
 
-	constructor(id: string, snapshot: RoomWindowSnapshot, options: { origin?: boolean; waitingDialogs?: number } = {}) {
+	constructor(
+		id: string,
+		snapshot: RoomWindowSnapshot,
+		options: { origin?: boolean; waitingDialogs?: number; draft?: RoomDraft } = {},
+	) {
 		this.id = id;
 		this.#snapshot = snapshot;
 		this.origin = options.origin ?? false;
 		this.waitingDialogs = options.waitingDialogs ?? 0;
+		this.draft = options.draft;
 	}
 
 	snapshot(): RoomWindowSnapshot {

@@ -10,6 +10,7 @@
 - The `room.view` setting selects whether the room view opens side by side or with all windows.
 - Conversations in one room are `irc` peers: each lists the others under `irc list` and can message them by id, while `to: "all"` reaches only the sender's own spawns.
 - The status line's `room` segment counts the other conversations in the room, how many are waiting for an answer and how many are working, and with `tui.scrollIsolation` on a click on it opens the room view; a room member running off screen is counted there and not again by the `background` segment.
+- A room window shows the unsent draft its conversation's composer holds at its foot, with its first line and what it has attached.
 
 ### Changed
 

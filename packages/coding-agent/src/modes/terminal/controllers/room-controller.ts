@@ -36,13 +36,14 @@ import { setSessionTerminalTitle } from "../../../utils/title-generator";
 import { pointerMotionEnabled } from "../components/chrome/modal-shell";
 import { type RoomLayout, RoomStage, type RoomStageHost, type RoomStageMode } from "../components/room/room-stage";
 import {
+	type RoomDraft,
 	type RoomStageMember,
 	type RoomWindowSnapshot,
 	roomStateWords,
 	roomWindowName,
 } from "../components/room/room-view-model";
 import type { InteractiveModeContext } from "../types";
-import { RoomWindowFeed } from "./room-window-feed";
+import { RoomWindowFeed, roomDraftPreview } from "./room-window-feed";
 
 export type RoomControllerContext = Pick<
 	InteractiveModeContext,
@@ -92,6 +93,8 @@ interface ComposerDraft {
 	readonly cursorOffset: number;
 	readonly attachments: readonly Attachment[];
 	readonly imageLinks: readonly (string | undefined)[] | undefined;
+	/** The draft as the conversation's window shows it. */
+	readonly preview: RoomDraft | undefined;
 }
 
 /**
@@ -112,6 +115,12 @@ export class RoomController {
 	readonly #feeds = new Map<string, RoomWindowFeed>();
 	/** The unsent draft each off-screen conversation had in the composer when it left the screen. */
 	readonly #drafts = new Map<AgentSession, ComposerDraft>();
+	/**
+	 * The draft the composer holds for the conversation on screen, as its window
+	 * shows it. Read when the room view opens and when a switch puts a draft in
+	 * the composer; the composer does not take input while the view is open.
+	 */
+	#composerDraft: RoomDraft | undefined;
 	/** Held-dialog counts last seen, so a conversation that starts waiting is announced once. */
 	readonly #lastWaiting = new Map<AgentSession, number>();
 	#stage: { readonly component: RoomStage; readonly overlay: OverlayHandle; readonly originId: string } | undefined;
@@ -173,6 +182,8 @@ export class RoomController {
 				id: ref.id,
 				snapshot: () => feed.snapshot(),
 				waitingDialogs: this.ctx.waitingDialogs(session),
+				draft:
+					this.#drafts.get(session)?.preview ?? (session === this.ctx.session ? this.#composerDraft : undefined),
 				origin: ref.id === originId,
 			};
 		});
@@ -351,6 +362,7 @@ export class RoomController {
 
 	#showStage(mode: RoomStageMode): void {
 		const originId = this.ownId;
+		this.#composerDraft = this.#takeDraft()?.preview;
 		const host: RoomStageHost = {
 			requestRender: () => this.ctx.ui.requestRender(),
 			rows: () => this.ctx.ui.terminal.rows,
@@ -462,8 +474,10 @@ export class RoomController {
 			// reported, and the switch still stands: a stage told the switch was
 			// refused would reopen over a screen that already changed.
 			try {
-				this.#putDraft(this.#drafts.get(next));
+				const arriving = this.#drafts.get(next);
+				this.#putDraft(arriving);
 				this.#drafts.delete(next);
+				this.#composerDraft = arriving?.preview;
 				this.ctx.resetObserverRegistry();
 				setSessionTerminalTitle(this.ctx.sessionManager.getSessionName(), this.ctx.sessionManager.getCwd());
 				this.ctx.statusLine.invalidate();
@@ -499,7 +513,13 @@ export class RoomController {
 		const text = editor.getText();
 		const attachments = editor.attachments;
 		if (!text.trim() && attachments.length === 0) return undefined;
-		return { text, cursorOffset: editor.getCursorOffset(), attachments, imageLinks: editor.imageLinks };
+		return {
+			text,
+			cursorOffset: editor.getCursorOffset(),
+			attachments,
+			imageLinks: editor.imageLinks,
+			preview: roomDraftPreview(text, attachments),
+		};
 	}
 
 	/** Put `draft` in the composer, replacing every part of what it held; nothing clears it. */
