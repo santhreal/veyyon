@@ -189,9 +189,10 @@ agent cannot reach the conversation next door or its spawns.
 
 ## Recording
 
-`proof/scenes/room-view.sh` drives three conversations through the room view with a local model,
-`proof/scenes/room-needs-you.sh` holds an approval asked by a conversation off screen until it is
-entered, and `proof/scenes/settings-room-view.sh` records the `room.view` setting both ways:
+`proof/scenes/room-view.sh` drives three conversations through the room view with a local model
+and ends with one finishing off screen, `proof/scenes/room-needs-you.sh` holds an approval asked by
+a conversation off screen until it is entered, and `proof/scenes/settings-room-view.sh` records
+the `room.view` setting both ways:
 
 ```sh
 SCENE_COMMAND='bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b --no-tools' \

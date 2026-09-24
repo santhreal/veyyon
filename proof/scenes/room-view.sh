@@ -22,6 +22,9 @@
 #      text stays with conversation 1.
 #   8. `→→` opens the view again; `←` shows window 1 carrying its draft at its
 #      foot, and `n` opens conversation 3 from the view and zooms into it.
+#   9. Conversation 3 is asked a short question and left at once with alt+, ;
+#      its turn ends off screen and the status line says it finished, naming
+#      it and the key that opens the room.
 #
 # Off arm (--before): the same keys on the base branch, where `/room` is an
 # unknown command and `→→` moves nothing. Each guard is written for the arm it
@@ -121,3 +124,12 @@ k n
 after && expect_screen "Now on" 60
 sleep 1.5
 shot three-opened
+
+# --- 9. a turn that ends off screen says so ---------------------------------
+submit "name three terminal multiplexers, one line each"
+pause 0.5
+after && k alt+comma
+# needle-source: finished — -- room-controller.ts #onTurnEnd states a turn that ended off screen
+after && expect_screen "finished —" 120
+sleep 1
+shot finished-off-screen
