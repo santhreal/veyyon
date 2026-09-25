@@ -27,6 +27,7 @@ describe("a typed subcommand", () => {
 		expect(DECLARED.find(command => command.name === "room")?.subcommands?.map(sub => sub.name)).toEqual([
 			"list",
 			"new",
+			"say",
 			"help",
 		]);
 	});

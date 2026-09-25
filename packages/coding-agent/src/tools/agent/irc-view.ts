@@ -20,7 +20,7 @@ import type {
 	ViewStatus,
 	ViewTone,
 } from "@veyyon/view";
-import type { IrcDeliveryReceipt } from "../../task/irc-bus";
+import type { IrcDeliveryReceipt, IrcRoomReceipt } from "../../task/irc-bus";
 import {
 	Ellipsis,
 	errorViewLines,
@@ -73,6 +73,16 @@ function outcomeTone(outcome: IrcDeliveryReceipt["outcome"]): ViewTone {
 			return "error";
 	}
 }
+
+/** When a conversation reads a room post, as the card words it, and the tone it draws in. */
+const ROOM_OUTCOME_VIEW: Record<IrcRoomReceipt["outcome"], { readonly text: string; readonly tone: ViewTone }> = {
+	working: { text: "next step", tone: "accent" },
+	idle: { text: "next turn", tone: "muted" },
+	woken: { text: "woken", tone: "success" },
+	failed: { text: "failed", tone: "error" },
+};
+
+const CONVERSATION_NOUN = { one: "conversation", many: "conversations" } as const;
 
 /** A peer's state as its mark and the word for it, which a host draws from one tone. */
 function peerStatusSpans(status: string): ViewSpan[] {
@@ -174,6 +184,50 @@ function errorCard(result: IrcViewResult, args: IrcViewArgs | undefined): Framed
 	]);
 }
 
+/**
+ * A post to the room's channel: what was said, and when each conversation reads it. A room post has
+ * no reply to wait for, so the card ends at the conversations it reached.
+ */
+function roomPostCard(
+	result: IrcViewResult,
+	receipts: readonly IrcRoomReceipt[],
+	to: string,
+	args: IrcViewArgs | undefined,
+	expanded: boolean,
+): FramedBlockView {
+	const title = `IRC to ${to}`;
+	const woken = receipts.filter(receipt => receipt.outcome === "woken").length;
+	const failed = receipts.filter(receipt => receipt.outcome === "failed").length;
+	const meta: ViewLine[] = [
+		receipts.length === 0
+			? [{ text: "no other conversation", tone: "muted" }]
+			: [{ text: `${receipts.length} ${receipts.length === 1 ? CONVERSATION_NOUN.one : CONVERSATION_NOUN.many}` }],
+	];
+	if (woken > 0) meta.push([{ text: `${woken} woken`, tone: "success" }]);
+	if (failed > 0) meta.push([{ text: `${failed} failed`, tone: "error" }]);
+	const header: StatusRowView = result.isError
+		? { kind: "statusRow", status: "error", title, meta }
+		: { kind: "statusRow", emblem: "tool.irc", title, meta };
+	const sections: (ViewSection | undefined)[] = [];
+	const sent = args?.message?.trim();
+	if (sent) sections.push(bodySection(sent, expanded, { tone: "dim" }));
+	const shown = shownItems(receipts.length, expanded);
+	const lines: ViewLine[] = [];
+	for (let i = 0; i < shown; i++) {
+		const receipt = receipts[i]!;
+		const outcome = ROOM_OUTCOME_VIEW[receipt.outcome];
+		const line: ViewSpan[] = [
+			{ text: replaceTabs(receipt.label), tone: "output" },
+			{ text: " " },
+			{ text: outcome.text, tone: outcome.tone },
+		];
+		if (receipt.error) line.push({ text: " " }, { text: replaceTabs(receipt.error), tone: "error" });
+		lines.push(line);
+	}
+	if (lines.length > 0) sections.push({ lines, hidden: heldBack(receipts.length - shown, CONVERSATION_NOUN) });
+	return messageCard(header, result.isError ? "error" : "success", sections);
+}
+
 function sendCard(
 	result: IrcViewResult,
 	details: Partial<IrcDetails>,
@@ -182,6 +236,7 @@ function sendCard(
 ): FramedBlockView {
 	const receipts = details.receipts ?? [];
 	const to = details.to ?? args?.to?.trim() ?? "?";
+	if (details.room) return roomPostCard(result, details.room, to, args, expanded);
 	const title = `IRC to ${to}`;
 
 	// Pre-delivery failures (validation) and empty broadcasts carry no receipts.
@@ -352,9 +407,16 @@ function peersCard(details: Partial<IrcDetails>, expanded: boolean): FramedBlock
 		if (age) line.push({ text: " " }, { text: age, tone: "dim" });
 		lines.push(line);
 	}
-	return messageCard({ kind: "statusRow", emblem: "tool.irc", title: "IRC peers", meta }, "success", [
-		{ lines, hidden: heldBack(peers.length - shown, PEER_NOUN) },
-	]);
+	const sections: ViewSection[] = [{ lines, hidden: heldBack(peers.length - shown, PEER_NOUN) }];
+	// The room's channel reaches every conversation in the room, this one included, by seat.
+	const seats = details.seats;
+	if (seats && seats.length > 0) {
+		const reach = seats.map(seat => `${replaceTabs(seat.label)}${seat.self ? " (you)" : ""}`).join(" · ");
+		sections.push({
+			lines: [[{ text: "#room", tone: "accent" }, { text: " " }, { text: reach, tone: "dim" }]],
+		});
+	}
+	return messageCard({ kind: "statusRow", emblem: "tool.irc", title: "IRC peers", meta }, "success", sections);
 }
 
 function resultCard(result: IrcViewResult, args: IrcViewArgs | undefined, expanded: boolean): FramedBlockView {

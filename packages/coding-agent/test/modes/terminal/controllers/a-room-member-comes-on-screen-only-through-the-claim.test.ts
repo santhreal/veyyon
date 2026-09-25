@@ -75,6 +75,8 @@ import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionDisposeOptions } from "@veyyon/coding-agent/session/agent-session-types";
 import { BackgroundSessions } from "@veyyon/coding-agent/session/background-sessions";
+import { IRC_ROOM_MESSAGE_TYPE } from "@veyyon/coding-agent/session/messages";
+import { IrcBus } from "@veyyon/coding-agent/task/irc-bus";
 import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { type Component, TERMINAL, TUI } from "@veyyon/tui";
@@ -119,6 +121,8 @@ interface Conversation {
 interface Harness {
 	ctx: RoomControllerContext;
 	room: RoomController;
+	/** The irc bus over this suite's registry: the room's channel. */
+	bus: IrcBus;
 	ui: TUI;
 	statusLine: StatusLineComponent;
 	statuses: string[];
@@ -468,11 +472,13 @@ function harness(launch: Conversation): Harness {
 			warnings.push(message);
 		},
 	};
-	const room = new RoomController(ctx, registry);
+	const bus = new IrcBus(registry);
+	const room = new RoomController(ctx, registry, bus);
 	room.install();
 	const h: Harness = {
 		ctx,
 		room,
+		bus,
 		ui,
 		statusLine,
 		statuses,
@@ -830,6 +836,33 @@ describe("a new peer", () => {
 		]);
 		expect(registry.get(created.id)).toBeUndefined();
 		expect(h.ctx.session).toBe(a.session);
+	});
+
+	/**
+	 * What the room said before a conversation had a seat is in its context
+	 * before its first turn, once; the members already in the room took the
+	 * line live, once each.
+	 */
+	it("is handed what the room said before it joined, once, before its first turn", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		h.bus.postToRoom({ member: a.id, byOperator: true, body: "freeze main until the release is cut" });
+		await h.room.openPeer();
+		const created = conversations.at(-1)!;
+		const lines = (session: AgentSession) =>
+			session.agent.state.messages.filter(
+				message => message.role === "custom" && message.customType === IRC_ROOM_MESSAGE_TYPE,
+			);
+		const backlog = lines(created.session);
+		expect(backlog).toHaveLength(1);
+		expect(backlog[0]).toMatchObject({ details: { backlog: true } });
+		expect(JSON.stringify(backlog[0])).toContain("freeze main until the release is cut");
+		expect(lines(a.session)).toHaveLength(1);
+		expect(lines(b!.session)).toHaveLength(1);
+		expect(h.bus.joinRoom(created.id)).toBe(0);
 	});
 });
 

@@ -65,6 +65,12 @@ export {
 export const SKILL_PROMPT_MESSAGE_TYPE = "skill-prompt";
 export const LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE = "lsp-late-diagnostic";
 export const BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE = "background-tan-dispatch";
+/**
+ * Custom message type for lines of a room's `#room` channel in a member's context. Its details are
+ * `{ lines: IrcRoomLine[], backlog?: true }`: one line as it was posted, or the lines posted before
+ * the member joined the room.
+ */
+export const IRC_ROOM_MESSAGE_TYPE = "irc:room";
 
 /** Custom message type for hidden interrupted-thinking continuity context. */
 export const INTERRUPTED_THINKING_MESSAGE_TYPE = "interrupted-thinking";

@@ -134,6 +134,7 @@ export const PROMPT_IDS: readonly string[] = [
 	"side-channel/btw-user",
 	"side-channel/irc-autoreply",
 	"side-channel/irc-incoming",
+	"side-channel/irc-room",
 	"side-channel/omfg-user",
 	"side-channel/recap-user",
 	"side-channel/side-channel-no-tools",

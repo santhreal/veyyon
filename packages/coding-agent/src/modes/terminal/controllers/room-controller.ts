@@ -28,14 +28,27 @@ import { matchesKey } from "@veyyon/utils/keys";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { truncateToWidth } from "@veyyon/utils/width";
+import { sanitizeSingleLine } from "@veyyon/utils/wrap";
 import type { Attachment } from "@veyyon/wire/presentation";
-import { type AgentRef, AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from "../../../registry/agent-registry";
+import {
+	AgentRegistry,
+	MAIN_AGENT_ID,
+	type RegistryEvent,
+	type SeatedAgentRef,
+} from "../../../registry/agent-registry";
 import type { AgentSession } from "../../../session/agent-session";
 import { BackgroundSessions } from "../../../session/background-sessions";
+import { IrcBus, ROOM_CHANNEL } from "../../../task/irc-bus";
 import { setSessionTerminalTitle } from "../../../utils/title-generator";
 import { pointerMotionEnabled } from "../components/chrome/modal-shell";
 import { type RoomGuide, roomGuide, roomGuideMarkdown } from "../components/room/room-guide";
-import { type RoomLayout, RoomStage, type RoomStageHost, type RoomStageMode } from "../components/room/room-stage";
+import {
+	type RoomChannelLine,
+	type RoomLayout,
+	RoomStage,
+	type RoomStageHost,
+	type RoomStageMode,
+} from "../components/room/room-stage";
 import {
 	type RoomDraft,
 	type RoomStageMember,
@@ -102,20 +115,12 @@ interface ComposerDraft {
 	readonly preview: RoomDraft | undefined;
 }
 
-/**
- * A room member with a session attached. The registry lists a driving agent
- * from the moment it registers, and its session attaches after, so a row can
- * be a member for a render or two before it has anything to show.
- */
-type LiveMember = AgentRef & { readonly session: AgentSession };
-
-function isLive(ref: AgentRef): ref is LiveMember {
-	return ref.session !== null;
-}
-
 export class RoomController {
 	#registryUnsubscribe: (() => void) | undefined;
 	#waitingUnsubscribe: (() => void) | undefined;
+	#roomLineUnsubscribe: (() => void) | undefined;
+	/** The channel line the view shows, sanitized once per line rather than once per frame. */
+	#channelShown: { readonly id: string; readonly line: RoomChannelLine } | undefined;
 	/** One feed per room member, keyed by registry id; built as members arrive, disposed as they leave. */
 	readonly #feeds = new Map<string, RoomWindowFeed>();
 	/** The unsent draft each off-screen conversation had in the composer when it left the screen. */
@@ -157,12 +162,14 @@ export class RoomController {
 	constructor(
 		private readonly ctx: RoomControllerContext,
 		private readonly registry: AgentRegistry = AgentRegistry.global(),
+		private readonly bus: IrcBus = IrcBus.global(),
 	) {}
 
-	/** Subscribe to the registry and the dialog counts. Idempotent. */
+	/** Subscribe to the registry, the dialog counts and the room's channel. Idempotent. */
 	install(): void {
 		this.#registryUnsubscribe ??= this.registry.onChange(event => this.#onRegistryEvent(event));
 		this.#waitingUnsubscribe ??= this.ctx.onWaitingDialogsChange(() => this.#onWaitingChange());
+		this.#roomLineUnsubscribe ??= this.bus.onRoomLine(room => this.#onRoomLine(room));
 		this.#syncFeeds();
 		this.#syncStatus();
 	}
@@ -172,6 +179,8 @@ export class RoomController {
 		this.#registryUnsubscribe = undefined;
 		this.#waitingUnsubscribe?.();
 		this.#waitingUnsubscribe = undefined;
+		this.#roomLineUnsubscribe?.();
+		this.#roomLineUnsubscribe = undefined;
 		this.#closeStage();
 		for (const feed of this.#feeds.values()) feed.dispose();
 		this.#feeds.clear();
@@ -192,9 +201,9 @@ export class RoomController {
 		return this.ctx.session.getAgentId() ?? MAIN_AGENT_ID;
 	}
 
-	/** Every driving agent in the room with a live session, the one on screen included, oldest first. */
-	#refs(): LiveMember[] {
-		return this.registry.roomMembers(this.ownId).filter(isLive);
+	/** Every driving agent in the room with a seat, the one on screen included, in seat order. */
+	#refs(): SeatedAgentRef[] {
+		return this.registry.roomSeats(this.ownId);
 	}
 
 	/** The room as the stage draws it. */
@@ -228,7 +237,7 @@ export class RoomController {
 		return ref ? memberLabel(index + 1, this.#feedFor(ref).snapshot()) : undefined;
 	}
 
-	#feedFor(ref: LiveMember): RoomWindowFeed {
+	#feedFor(ref: SeatedAgentRef): RoomWindowFeed {
 		let feed = this.#feeds.get(ref.id);
 		if (!feed || feed.session !== ref.session) {
 			feed?.dispose();
@@ -291,6 +300,24 @@ export class RoomController {
 		this.#syncFeeds();
 		this.#syncStatus();
 		if (this.#stage) this.ctx.ui.requestRender();
+	}
+
+	/** A line was posted to a room's channel: the view redraws when it is this room's. */
+	#onRoomLine(room: string): void {
+		if (this.#stage && room === this.registry.get(this.ownId)?.room) this.ctx.ui.requestRender();
+	}
+
+	/** The newest line of this room's channel, as the view shows it under its title. */
+	#channelLine(): RoomChannelLine | undefined {
+		const line = this.bus.latestRoomLine(this.ownId);
+		if (!line) return undefined;
+		if (this.#channelShown?.id !== line.id) {
+			this.#channelShown = {
+				id: line.id,
+				line: { label: sanitizeSingleLine(line.label), body: sanitizeSingleLine(line.body) },
+			};
+		}
+		return this.#channelShown.line;
 	}
 
 	/**
@@ -478,6 +505,7 @@ export class RoomController {
 			keyInFlight: data => {
 				this.#pendingSteps += this.#cycleStep(data);
 			},
+			channel: () => this.#channelLine(),
 		};
 		const layout: RoomLayout = this.ctx.settings.get("room.view");
 		// The first room view this profile opens explains itself; `?` brings the
@@ -690,6 +718,8 @@ export class RoomController {
 				await this.ctx.hostSession(hosted);
 				const id = hosted.session.getAgentId();
 				if (id === undefined) throw new Error("The new conversation did not register as a driving agent.");
+				// What the room said before this conversation had a seat is in its context before its first turn.
+				this.bus.joinRoom(id);
 				this.#syncFeeds();
 				this.#syncStatus();
 				return id;
@@ -778,6 +808,34 @@ export class RoomController {
 	}
 
 	// ------------------------------------------------------------ /room
+
+	/**
+	 * `/room say`: post `text` to the room's `#room` channel as the operator.
+	 * Every conversation in the room reads it, the one on screen included, and
+	 * one it names with `@2` is woken when it is idle.
+	 */
+	say(text: string): void {
+		const body = text.trim();
+		if (!body) {
+			this.ctx.showError(
+				`/room say <message> posts the message to every conversation in the room (${ROOM_CHANNEL}).`,
+			);
+			return;
+		}
+		const post = this.bus.postToRoom({ member: this.ownId, byOperator: true, body });
+		if (!post.posted) {
+			this.ctx.showStatus("No other conversation in this terminal — /room new opens one beside this");
+			return;
+		}
+		const failed = post.receipts.filter(receipt => receipt.outcome === "failed");
+		if (failed.length > 0) {
+			const missed = failed.map(receipt => `${receipt.label} (${receipt.error ?? "unknown error"})`).join(", ");
+			this.ctx.showWarning(`Posted to ${ROOM_CHANNEL}, but it did not reach ${missed}`);
+			return;
+		}
+		const woken = post.receipts.filter(receipt => receipt.outcome === "woken").map(receipt => receipt.label);
+		this.ctx.showStatus(`Posted to ${ROOM_CHANNEL}${woken.length > 0 ? ` · woke ${woken.join(", ")}` : ""}`);
+	}
 
 	/** The room as text, for `/room list`. */
 	describe(): string {

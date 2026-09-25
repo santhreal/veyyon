@@ -105,7 +105,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/new`, `/fresh` | New session (fresh may reset provider stream state) |
 | `/resume` | Resume another saved session |
 | `/fork`, `/branch`, `/tree` | Branching and session tree UI |
-| `/room [list \| new \| help \| <n> \| <id>]`, `/rooms` | The conversations in this terminal: bare opens the room view, `list` prints them, `new` opens one beside this and switches to it, `help` explains the room's keys and marks, a number or id switches to it. Each keeps its own transcript, model, tools and draft |
+| `/room [list \| new \| say <message> \| help \| <n> \| <id>]`, `/rooms` | The conversations in this terminal: bare opens the room view, `list` prints them, `new` opens one beside this and switches to it, `say` posts the message to every one of them on `#room`, `help` explains the room's keys and marks, a number or id switches to it. Each keeps its own transcript, model, tools and draft |
 | `/rename <title>` | Rename session |
 | `/move <dir>` | Relocate the session (including its saved session file) to another working directory and re-root path-scoped settings, secrets, capabilities, and the system-prompt project framing there |
 | `/cwd [path]` | Bare prints the current session cwd; with a path, re-roots the live session at that directory after validating it exists. Reloads the same cwd-scoped state as `/move` (path-scoped settings, secrets, capabilities, the ssh tool, system-prompt framing) but does not relocate the session file. Session-scoped only; does not write profile `session.workdir` |
@@ -219,7 +219,7 @@ own page; typing the bare command lists them with their descriptions.
 | `/browser` | `headless`, `visible` |
 | `/todo` | `edit`, `copy`, `export`, `import`, `append`, `start`, `done`, `drop`, `rm` |
 | `/session` | `info`, `delete` |
-| `/room` | `list`, `new`, `help` |
+| `/room` | `list`, `new`, `say`, `help` |
 | `/usage` | `show`, `reset` |
 | `/mcp` | `add`, `list`, `remove`, `test`, `reauth`, `unauth`, `enable`, `disable`, `smithery-search`, `smithery-login`, `smithery-logout`, `reconnect`, `reload`, `resources`, `prompts`, `notifications`, `help` |
 | `/ssh` | `add`, `list`, `remove`, `help` |

@@ -146,6 +146,7 @@ function run(grid: { columns: number; rows: number }, layout: RoomLayout, stream
 		rename: async () => "the overview bench never names a conversation",
 		isToggle: () => false,
 		keyInFlight: () => {},
+		channel: () => undefined,
 	};
 	const stage = new RoomStage(host, {
 		originId: "c1",

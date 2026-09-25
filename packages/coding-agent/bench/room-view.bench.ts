@@ -180,6 +180,7 @@ async function roomSwitch(
 		rename: async () => "the room bench never names a conversation",
 		isToggle: () => false,
 		keyInFlight: () => {},
+		channel: () => undefined,
 	};
 
 	const bytes = terminal.bytes;

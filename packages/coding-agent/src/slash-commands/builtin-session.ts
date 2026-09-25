@@ -229,6 +229,11 @@ export const SESSION_HANDLERS = {
 				runtime.ctx.room.showHelp();
 				return;
 			}
+			const say = /^say(?:\s+([\s\S]*))?$/.exec(argument);
+			if (say) {
+				runtime.ctx.room.say(say[1] ?? "");
+				return;
+			}
 			const id = runtime.ctx.room.resolveArgument(argument);
 			if (id === undefined) {
 				runtime.ctx.showError(`"${argument}" is not a member of this room. Run /room list to see it.`);

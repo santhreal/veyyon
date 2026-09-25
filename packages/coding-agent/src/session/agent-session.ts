@@ -426,6 +426,8 @@ import {
 	type IrcMessage,
 	type IrcPersistedDeliveryFacts,
 	type IrcPersistedDeliveryTelemetry,
+	type IrcRoomDelivery,
+	type IrcRoomLine,
 	projectIrcDeliveryTelemetry,
 } from "../task/irc-bus";
 import { usesCodexTaskPrompt } from "../task/prompt-policy";
@@ -582,6 +584,7 @@ import {
 	type HookMessage,
 	INTERRUPTED_THINKING_MESSAGE_TYPE,
 	type InterruptedThinkingDetails,
+	IRC_ROOM_MESSAGE_TYPE,
 	isEmptyErrorTurn,
 	isUserInterruptAbort,
 	normalizeCustomMessagePayload,
@@ -692,6 +695,12 @@ function createHandoffFileName(date = new Date()): string {
 }
 
 const REPLAN_TITLE_CONTEXT_TURN_LIMIT = 6;
+
+/** A `#room` line that reached this conversation mid-turn, and whether it named it with a wake. */
+interface PendingRoomLine {
+	readonly record: CustomMessage;
+	readonly wake: boolean;
+}
 
 export class AgentSession {
 	readonly agent: Agent;
@@ -883,6 +892,11 @@ export class AgentSession {
 	// asides at the next boundary; passive IRC records stay in the aside queue.
 	#pendingIrcInterrupts: CustomMessage[] = [];
 	#pendingIrcAsides: CustomMessage[] = [];
+	// Room lines (`#room`) received mid-turn, read at the next step boundary like
+	// asides. Kept apart because a line that reaches the stop boundary, or strands
+	// past it, is folded into context for the next turn and buys no model call,
+	// save a line that named this conversation (`wake`).
+	#pendingRoomLines: PendingRoomLine[] = [];
 	// Agent identity (registry id) used for IRC routing and job ownership.
 	#agentId: string | undefined;
 	#agentRegistry: AgentRegistry;
@@ -1274,30 +1288,47 @@ export class AgentSession {
 	 *  poll — land in pending IRC queues with no loop left to drain them; the queued-message drain's
 	 *  gate (agent.hasQueuedMessages()) does not count peer IRC interrupts. Once idle, wake a turn so
 	 *  the agent responds to the peer. Skip only when a queued steer/follow-up will itself drive a
-	 *  resume turn whose aside poll already consumes these (no double-wake). */
+	 *  resume turn whose aside poll already consumes these (no double-wake). A stranded room line
+	 *  wakes nothing unless it named this conversation: it is folded into context for the next turn,
+	 *  the way it would have been had it arrived idle. */
 	#resumeStrandedIrcAsides(): void {
 		if (this.#isDisposed || this.isStreaming) return;
-		if (this.#pendingIrcInterrupts.length === 0 && this.#pendingIrcAsides.length === 0) return;
+		if (
+			this.#pendingIrcInterrupts.length === 0 &&
+			this.#pendingIrcAsides.length === 0 &&
+			this.#pendingRoomLines.length === 0
+		) {
+			return;
+		}
 		if (this.#canAutoContinueForFollowUp() && this.agent.hasQueuedMessages()) return;
 		const records = this.#pendingIrcInterrupts.concat(this.#pendingIrcAsides);
+		const roomLines = this.#pendingRoomLines;
 		this.#pendingIrcInterrupts = [];
 		this.#pendingIrcAsides = [];
+		this.#pendingRoomLines = [];
+		for (const { record, wake } of roomLines) {
+			if (wake) records.push(record);
+			else this.#foldIntoContext(record);
+		}
 		if (this.#planModeState?.enabled) {
 			// Plan mode: fold stranded IRC asides into context without waking an
 			// autonomous turn. Convergence to ask/resolve stays user-driven.
-			for (const record of records) {
-				this.agent.appendMessage(record);
-				this.sessionManager.appendCustomMessageEntry(
-					record.customType,
-					record.content,
-					record.display,
-					record.details,
-					record.attribution ?? "agent",
-				);
-			}
+			for (const record of records) this.#foldIntoContext(record);
 			return;
 		}
-		this.#wakeForIrc(records);
+		if (records.length > 0) this.#wakeForIrc(records);
+	}
+
+	/** Record `record` into context and the transcript for the next turn, starting none. */
+	#foldIntoContext(record: CustomMessage): void {
+		this.agent.appendMessage(record);
+		this.sessionManager.appendCustomMessageEntry(
+			record.customType,
+			record.content,
+			record.display,
+			record.details,
+			record.attribution ?? "agent",
+		);
 	}
 
 	/** Fire-and-forget wake turn for incoming IRC — idle delivery and stranded-aside resume both
@@ -1935,10 +1966,20 @@ export class AgentSession {
 		// injection boundary, but also expose a non-consuming interrupt peek so
 		// `job poll` / `irc wait` can return early before the boundary drains them.
 		this.agent.hasIrcInterrupts = () => this.#pendingIrcInterrupts.length > 0;
-		this.agent.setAsideMessageProvider(() => {
+		this.agent.setAsideMessageProvider(boundary => {
 			const pendingIrc = this.#pendingIrcInterrupts.concat(this.#pendingIrcAsides);
+			// A room line is read at the next step. Taken at the stop boundary it
+			// would buy the run another model call, so there only a line that named
+			// this conversation is taken; the rest stay pending and are folded into
+			// context for the next turn when the run settles.
+			const heldRoomLines: PendingRoomLine[] = [];
+			for (const pending of this.#pendingRoomLines) {
+				if (boundary === "stop" && !pending.wake) heldRoomLines.push(pending);
+				else pendingIrc.push(pending.record);
+			}
 			this.#pendingIrcInterrupts = [];
 			this.#pendingIrcAsides = [];
+			this.#pendingRoomLines = heldRoomLines;
 			const thunks: AsideMessage[] = pendingIrc.map(record => () => record);
 			thunks.push(...this.yieldQueue.drainLazy());
 			// Mid-run todo reconciliation — evaluated at injection time so a turn
@@ -8691,11 +8732,14 @@ export class AgentSession {
 	 * prefix intact.
 	 */
 	#buildSessionStateMessage(): CustomMessage | null {
-		const peers = this.#agentId ? this.#agentRegistry.peers(this.#agentId).map(ref => ({ id: ref.id })) : [];
+		// Numbered by seat, as the room view, `/room` and `@2` on `#room` number them.
+		const seats = this.#agentId ? this.#agentRegistry.roomSeats(this.#agentId) : [];
+		const peers = seats.flatMap((ref, index) => (ref.id === this.#agentId ? [] : [{ seat: index + 1, id: ref.id }]));
 		const content = prompt
 			.render(sessionPrompts["session/session-state"].text, {
 				date: formatLocalCalendarDate(),
 				cwd: shortenPath(normalizePromptPath(this.sessionManager.getCwd())),
+				seat: seats.findIndex(ref => ref.id === this.#agentId) + 1,
 				peers,
 			})
 			.trim();
@@ -16617,18 +16661,60 @@ export class AgentSession {
 		}
 		// Plan mode: record into context but do not wake an autonomous turn.
 		if (this.#planModeState?.enabled) {
-			this.agent.appendMessage(record);
-			this.sessionManager.appendCustomMessageEntry(
-				record.customType,
-				record.content,
-				record.display,
-				record.details,
-				record.attribution ?? "agent",
-			);
+			this.#foldIntoContext(record);
 			if (autoReply) void this.#runIrcAutoReply(msg);
 			return "injected";
 		}
 		// Idle: wake a real turn so the recipient responds (shared with the stranded-aside resume).
+		this.#wakeForIrc([record]);
+		return "woken";
+	}
+
+	/**
+	 * Take lines of this conversation's room channel (`#room`, see
+	 * `IrcBus.postToRoom`) into context; called by the IrcBus.
+	 *
+	 * - mid-turn → read at the next step boundary, like an aside → "working";
+	 * - idle → recorded into context for the next turn, and no turn starts
+	 *   → "idle";
+	 * - idle, and the line named this conversation with `wake` set → a turn
+	 *   starts with it → "woken". Plan mode never wakes.
+	 *
+	 * The room is several conversations each driven on its own, so a line
+	 * starts a turn only where it asked for one. `named` words the record as
+	 * addressed to this conversation whether or not it wakes it; `backlog`
+	 * words it as what the room said before this conversation joined.
+	 */
+	deliverRoomLines(
+		lines: readonly IrcRoomLine[],
+		opts: { named: boolean; wake: boolean; backlog?: boolean },
+	): IrcRoomDelivery {
+		if (this.#isDisposed) {
+			throw new Error("Recipient session is disposed.");
+		}
+		const last = lines.at(-1);
+		const record: CustomMessage = {
+			role: "custom",
+			customType: IRC_ROOM_MESSAGE_TYPE,
+			content: prompt.render(sideChannelPrompts["side-channel/irc-room"].text, {
+				lines,
+				named: opts.named,
+				backlog: opts.backlog === true,
+			}),
+			display: true,
+			details: { lines: lines.slice(), ...(opts.backlog ? { backlog: true } : {}) },
+			attribution: "agent",
+			timestamp: opts.backlog || !last ? Date.now() : last.ts,
+		};
+		void this.#emitSessionEvent({ type: "irc_message", message: record });
+		if (this.isStreaming) {
+			this.#pendingRoomLines.push({ record, wake: opts.wake });
+			return "working";
+		}
+		if (!opts.wake || this.#planModeState?.enabled) {
+			this.#foldIntoContext(record);
+			return "idle";
+		}
 		this.#wakeForIrc([record]);
 		return "woken";
 	}
@@ -16874,10 +16960,18 @@ export class AgentSession {
 	 * of the next prompt so the model still sees them.
 	 */
 	#flushPendingIrcAsides(): void {
-		if (this.#pendingIrcInterrupts.length === 0 && this.#pendingIrcAsides.length === 0) return;
+		if (
+			this.#pendingIrcInterrupts.length === 0 &&
+			this.#pendingIrcAsides.length === 0 &&
+			this.#pendingRoomLines.length === 0
+		) {
+			return;
+		}
 		const records = [...this.#pendingIrcInterrupts, ...this.#pendingIrcAsides];
+		for (const { record } of this.#pendingRoomLines) records.push(record);
 		this.#pendingIrcInterrupts = [];
 		this.#pendingIrcAsides = [];
+		this.#pendingRoomLines = [];
 		for (const record of records) {
 			// emitExternalEvent on message_end appends to agent state and dispatches
 			// to all session listeners, which in turn handle TUI rendering and

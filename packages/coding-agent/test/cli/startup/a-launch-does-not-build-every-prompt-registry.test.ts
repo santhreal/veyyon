@@ -131,11 +131,15 @@ const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
  * render scheduler split out of `core/tui.ts` to hold the engine under its line ceiling. A leaf
  * over modules already here, so the launch runs no new code — the same split-raises-the-count case.
  *
+ * 1550 to 1551: `prompts/side-channel/irc-room.md`, the prompt a `#room` line reaches a
+ * conversation in, a row of `prompts/side-channel/rows.ts`, which the launch already reaches
+ * through the session. A text leaf: the launch runs no new code.
+ *
  * A ratchet, not a target: nothing breaks when it grows, which is exactly why it is pinned. There
  * is no margin left on purpose — the next module on this graph is a barrel someone reached for
  * and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1550;
+const LAUNCH_REACH_CEILING = 1551;
 
 /**
  * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The

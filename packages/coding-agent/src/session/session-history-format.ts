@@ -264,6 +264,13 @@ function customOneLiner(msg: CustomMessage | HookMessage): string {
 			return `[irc] ${str("from") || "?"} → me: ${oneLine(str("message"))}`;
 		case "irc:relay":
 			return `[irc] ${str("from") || "?"} → ${str("to") || "?"}: ${oneLine(str("body"))}`;
+		case "irc:room": {
+			const lines = (Array.isArray(details.lines) ? details.lines : []).map(line => {
+				const l = (line ?? {}) as Record<string, unknown>;
+				return `${typeof l.label === "string" ? l.label : "?"}: ${typeof l.body === "string" ? l.body : ""}`;
+			});
+			return `[#room] ${oneLine(lines.join(" · "))}`;
+		}
 		case "async-result": {
 			const jobs = Array.isArray(details.jobs) && details.jobs.length > 0 ? details.jobs : [details];
 			const labels = jobs

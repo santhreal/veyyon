@@ -30,6 +30,10 @@
 #      window 3 carries how its turn ended.
 #  11. `r` names window 2: the line holds the name the title model gave it,
 #      selected, and what is typed replaces it; Enter writes it on the edge.
+#  12. Esc goes back to conversation 3, and `/room say` posts to `#room`: every
+#      conversation takes the line, this transcript shows its `#room` card and
+#      the status line says it was posted.
+#  13. `→→` opens the view with the post under its title.
 #
 # Off arm (--before): the same keys on the base branch, where `/room` is an
 # unknown command and `→→` moves nothing. Each guard is written for the arm it
@@ -167,3 +171,25 @@ if after; then k Return; else clear_composer; fi
 after && expect_screen "2  text editor facts" 10
 pause 0.9
 shot room-named
+
+# --- 12. /room say posts to every conversation --------------------------------
+after && k Escape
+sleep 1
+clear_composer
+t "/room say the text editor list is final, keep it as it is"
+pause 0.7
+k Return
+# needle-source: Posted to #room -- room-controller.ts say reports the post on the status line
+expect_screen "$(arm_key 'Posted to #room' 'Unknown command')" 20
+sleep 1
+shot room-said
+
+# --- 13. the room view shows what the room last said -------------------------
+clear_composer
+k Right
+pause 0.25
+k Right
+# needle-source: #room  you: -- room-stage.ts #paintChrome's channel row under the title
+after && expect_screen "#room  you:" 10
+pause 0.9
+shot room-channel

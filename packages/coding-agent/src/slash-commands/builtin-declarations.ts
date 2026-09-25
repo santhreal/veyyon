@@ -572,13 +572,19 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		name: "room",
 		aliases: ["rooms"],
 		description:
-			"The conversations in this terminal: bare opens the room view, `list` prints them, `new` opens one beside this, `help` explains the room, a number or id switches",
-		inlineHint: "[list | new | help | <n> | <id>]",
+			"The conversations in this terminal: bare opens the room view, `list` prints them, `new` opens one beside this, `say` posts to every one of them, `help` explains the room, a number or id switches",
+		inlineHint: "[list | new | say <message> | help | <n> | <id>]",
 		allowArgs: true,
 		bareAction: "distinct",
 		subcommands: [
 			{ name: "list", description: "Print every conversation in the room and what it is doing" },
 			{ name: "new", description: "Open a conversation beside this one and go into it" },
+			{
+				name: "say",
+				description:
+					"Post a message to #room: every conversation in the room reads it, and @2 wakes conversation 2",
+				usage: "<message>",
+			},
 			{ name: "help", description: "Explain the room: its keys and what each mark on a window means" },
 		],
 	},

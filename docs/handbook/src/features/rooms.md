@@ -58,6 +58,9 @@ the one the view opens in.
 
 The last slot is always `+`, which opens a new conversation.
 
+The row under the title shows the room's newest [`#room`](#the-room-channel) post: `#room`, who
+posted it, and the message. The row is empty while the room has said nothing.
+
 The key row under the windows drops the keys it has no room for, least used first: the digit
 jump, then `r`, `x`, Tab and `n`. The arrows, Enter, `?` and Esc stay longest; `?` lists every
 key.
@@ -107,6 +110,7 @@ shows its ordinal and a state glyph.
 | A conversation by number or id | `/room <n>`, `/room <id>` |
 | Open a conversation beside this one | `/room new`, or `n` in the room view |
 | Print the room | `/room list` |
+| Post to every conversation | `/room say <message>` |
 | Explain the room | `/room help` (`/rooms` is an alias of `/room`), or `?` in the room view |
 
 Going into a window zooms it forward until it is the screen. The next and previous keys do the
@@ -231,18 +235,44 @@ each time its conversation comes back on screen.
 A conversation opens without waiting for its extensions' `session_start` handlers, so a handler
 that asks a question asks it when you go into the new conversation.
 
+## The room channel
+
+`#room` is the room's channel. Every conversation in the room reads it.
+
+- A conversation posts with `irc` `send` and `to: "#room"`. Every other conversation in the room
+  receives the post.
+- `/room say <message>` posts as you. Every conversation receives it, including the one on screen.
+- A working conversation reads a post at its next step; a post that arrives as it finishes its
+  turn waits for the next one. An idle conversation reads a post at its next turn: the post waits
+  in its context and starts no turn.
+- A post that names an idle conversation wakes it. `@2` names conversation 2, by the number the
+  room view shows; `@<id>` names a conversation by its registry id. Once 16 posts in a row by
+  conversations have woken one, a name wakes nobody until you post to the room; the posts still
+  reach every conversation.
+- A spawned agent does not post to `#room` and does not receive it. It reports to its parent,
+  which decides what the room hears.
+- A conversation that joins the room later, with `/room new` or `n`, receives the room's last 20
+  posts before its first turn.
+- A post appears in each transcript as `#room ⟵ 2 · parser rewrite` followed by the message, and
+  the room view shows the newest post under its title.
+- `irc list` lists `#room` with every conversation it reaches, by number and id.
+
+Each conversation is told its own number and the ids of the others, and to post to `#room` what
+changes another conversation's work: an interface it changed, a file it moved, a decision another
+depends on.
+
 ## Messaging between conversations
 
-Conversations in one room are `irc` peers. Each lists the others under `irc list`, marked as room
-peers, and can message them by id. `to: "all"` reaches only the sender's own spawns, and a spawned
-agent cannot reach the conversation next door or its spawns.
+Conversations in one room are also `irc` peers. Each lists the others under `irc list`, marked as
+room peers, and can message one by id. `to: "all"` reaches only the sender's own spawns, and a
+spawned agent cannot reach the conversation next door or its spawns.
 
 ## Recording
 
 `proof/scenes/room-view.sh` drives three conversations through the room view with a local model,
-from the guide on its first open to naming one. `proof/scenes/room-needs-you.sh`
-holds an approval asked by a conversation off screen until it is entered, and
-`proof/scenes/settings-room-view.sh` records the `room.view` setting both ways:
+from the guide on its first open to naming one and posting to `#room`.
+`proof/scenes/room-needs-you.sh` holds an approval asked by a conversation off screen until it is
+entered, and `proof/scenes/settings-room-view.sh` records the `room.view` setting both ways:
 
 ```sh
 SCENE_COMMAND='bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b --no-tools' \
@@ -260,10 +290,14 @@ off.
 
 `proof/scenes/room-tour.sh` tours the room with real agents: three conversations working in the
 demo repository, naming each window, and a command answered in the conversation that asked it.
-It runs against any model with tools and a signed-in provider, the sign-in given as a directory
-holding its `agent.db`:
+`proof/scenes/room-channel.sh` shows `#room` with real agents: one conversation renames a function
+that the conversation beside it is calling, the room view and the other transcript show the post,
+and `/room say` posts to both. Each runs against any model with tools and a signed-in provider,
+the sign-in given as a directory holding its `agent.db`:
 
 ```sh
 SCENE_COMMAND='bun /repo/packages/coding-agent/src/cli.ts --model <provider/model> --approval-mode ask-command' \
 	PROOF_AUTH_DIR=<auth dir> SCENE_MOTION_FLOOR=0 proof/record.sh proof/scenes/room-tour.sh
+SCENE_COMMAND='bun /repo/packages/coding-agent/src/cli.ts --model <provider/model> --approval-mode ask-command' \
+	PROOF_AUTH_DIR=<auth dir> SCENE_MOTION_FLOOR=0 proof/record.sh proof/scenes/room-channel.sh
 ```

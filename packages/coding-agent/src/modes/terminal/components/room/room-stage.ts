@@ -73,6 +73,13 @@ function pagerMark(member: RoomStageMember | undefined): RoomMark | undefined {
 	return undefined;
 }
 
+/** A line of the room's `#room` channel as the view shows it. Display-safe: one line each, sanitized. */
+export interface RoomChannelLine {
+	/** The poster as the room numbered it when it posted, or `you`. */
+	readonly label: string;
+	readonly body: string;
+}
+
 /** What the stage asks of the terminal that hosts it. */
 export interface RoomStageHost {
 	requestRender(): void;
@@ -105,6 +112,8 @@ export interface RoomStageHost {
 	 * drops the rest.
 	 */
 	keyInFlight(data: string): void;
+	/** The newest line of the room's `#room` channel, or nothing while the room has said nothing. */
+	channel(): RoomChannelLine | undefined;
 }
 
 export type RoomStageMode = { readonly kind: "overview" } | { readonly kind: "travel"; readonly targetId: string };
@@ -958,6 +967,16 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		const right = `${ink.token("dim", layoutName)}  `;
 		const gap = width - visibleWidth(left) - visibleWidth(right);
 		put(0, gap >= 2 ? `${left}${" ".repeat(gap)}${right}` : left);
+
+		// The room's channel: its newest line, in the row of air under the title,
+		// so the view says what the conversations last told each other.
+		const said = this.#host.channel();
+		if (said) {
+			put(
+				1,
+				`  ${ink.token("borderAccent", "#room")}  ${ink.token("muted", `${said.label}:`)} ${ink.token("text", said.body)}`,
+			);
+		}
 
 		// Pager: every window's ordinal, the selected one lit; the line a name is
 		// typed on, while one is; or the notice, while one stands.

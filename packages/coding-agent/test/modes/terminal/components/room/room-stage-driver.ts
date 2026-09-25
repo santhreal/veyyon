@@ -11,6 +11,7 @@
 import { setImmediate as nextMacrotask } from "node:timers/promises";
 import type { RoomGuide } from "@veyyon/coding-agent/modes/terminal/components/room/room-guide";
 import {
+	type RoomChannelLine,
 	type RoomLayout,
 	RoomStage,
 	type RoomStageHost,
@@ -177,6 +178,13 @@ export class FakeRoomHost implements RoomStageHost {
 
 	keyInFlight(data: string): void {
 		this.keysInFlight.push(data);
+	}
+
+	/** The newest `#room` line the view shows; none until a test posts one. */
+	channelLine: RoomChannelLine | undefined;
+
+	channel(): RoomChannelLine | undefined {
+		return this.channelLine;
 	}
 }
 

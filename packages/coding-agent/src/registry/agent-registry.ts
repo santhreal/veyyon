@@ -199,6 +199,13 @@ export interface AgentRef {
 	approvalWaitedMs?: number;
 }
 
+/** A room member with a session attached: one that holds a seat. See {@link AgentRegistry.roomSeats}. */
+export type SeatedAgentRef = AgentRef & { readonly session: AgentSession };
+
+function isSeated(ref: AgentRef): ref is SeatedAgentRef {
+	return ref.session !== null;
+}
+
 export type RegistryEvent =
 	| { type: "registered"; ref: AgentRef }
 	| { type: "status_changed"; ref: AgentRef }
@@ -610,6 +617,17 @@ export class AgentRegistry {
 	 */
 	roomMembers(id: string): AgentRef[] {
 		return this.#room(id, true);
+	}
+
+	/**
+	 * `id`'s room as it is numbered: {@link roomMembers} with a session
+	 * attached, so seat 2 is the second of them. The room view, `/room` and
+	 * the `#room` channel all count from this list, so `2` names the same
+	 * conversation in each. A member that registered and has no session yet is
+	 * still being built and holds no seat.
+	 */
+	roomSeats(id: string): SeatedAgentRef[] {
+		return this.#room(id, true).filter(isSeated);
 	}
 
 	/** The peers of `id` per {@link isPeer}, with `id` itself included when `self` is set. */

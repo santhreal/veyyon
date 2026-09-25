@@ -33,6 +33,7 @@ function liveSession(delivered: string[], id: string): AgentSession {
 			return "delivered";
 		},
 		emitIrcRelayObservation: () => {},
+		sessionManager: { getSessionName: () => undefined },
 	} as unknown as AgentSession;
 }
 

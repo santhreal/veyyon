@@ -21,6 +21,8 @@
 - The room view's key row drops the keys it has no room for least used first, the digit jump first, and keeps the arrows, Enter, `?` and Esc longest.
 - Pressing `alt+.` or `alt+,` again while a room switch is still moving goes on as far as the presses add up once it lands, without entering the conversations it passes.
 - `/rooms` is an alias of `/room`, so `/rooms help` prints the room guide.
+- `irc` `send` with `to: "#room"` posts to every driving conversation in the room: a working one reads the post at its next step, an idle one at its next turn, and one the post names with `@2` or its id is woken; spawned agents neither post nor receive, and a conversation that joins later receives the room's last 20 posts.
+- `/room say <message>` posts to `#room` as the operator, every room transcript shows a post as a `#room` card, the room view shows the newest post under its title, and `irc list` lists `#room` with the conversations it reaches by number.
 
 ### Changed
 
