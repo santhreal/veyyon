@@ -30,9 +30,9 @@
 #      window 3 carries how its turn ended.
 #  11. `r` names window 2: the line holds the name the title model gave it,
 #      selected, and what is typed replaces it; Enter writes it on the edge.
-#  12. Esc goes back to conversation 3, and `/room say` posts to `#room`: every
-#      conversation takes the line, this transcript shows its `#room` card and
-#      the status line says it was posted.
+#  12. Esc goes back to conversation 2, where the view was opened, and
+#      `/room say` posts to `#room`: every conversation takes the line, this
+#      transcript shows its `#room` card and the status line says it was posted.
 #  13. `→→` opens the view with the post under its title.
 #
 # Off arm (--before): the same keys on the base branch, where `/room` is an
