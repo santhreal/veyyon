@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `SessionManager.open` parses the session file once instead of twice, cutting a 700 MB resume from 2.83 s to 1.62 s and peak RSS from 3.4 GB to 1.95 GB.
+
 ## [1.5.4] - 2026-09-24
 
 ### Fixed

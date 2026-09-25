@@ -116,14 +116,14 @@ describe("cleanupStaleNativeVersions", () => {
 		const keep = seedCache("1.0.37");
 		const result = prune("1.0.37", root);
 		expect(fs.existsSync(keep)).toBe(true);
-		expect(result).toEqual({ removed: [], failed: [] });
+		expect(result).toEqual({ removed: [], failed: [], inUse: [] });
 	});
 
 	it("treats a missing cache root as nothing to do, not as a failure", () => {
 		// A first install has no natives root yet. Reporting a failure there would
 		// print an error on the one run where everything is fine.
 		const result = prune("1.0.37", path.join(root, "does-not-exist"));
-		expect(result).toEqual({ removed: [], failed: [] });
+		expect(result).toEqual({ removed: [], failed: [], inUse: [] });
 	});
 
 	it("reports a cache it cannot remove instead of throwing", () => {

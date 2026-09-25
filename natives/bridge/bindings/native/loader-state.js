@@ -318,20 +318,56 @@ export function staleNativeVersionDirs({ nativesDir, currentVersion }) {
  * never comes back.
  *
  * @param {{ nativesDir: string; currentVersion: string }} input
- * @returns {{ removed: string[], failed: { dir: string, reason: string }[] }}
+ * @returns {NativeCachePruneReport}
  */
 export function cleanupStaleNativeVersions({ nativesDir, currentVersion }) {
-	/** @type {{ removed: string[], failed: { dir: string, reason: string }[] }} */
-	const result = { removed: [], failed: [] };
+	/** @type {NativeCachePruneReport} */
+	const result = { removed: [], failed: [], inUse: [] };
 	for (const targetPath of staleNativeVersionDirs({ nativesDir, currentVersion })) {
 		try {
 			fs.rmSync(targetPath, { recursive: true, force: true });
 			result.removed.push(targetPath);
 		} catch (err) {
-			result.failed.push({ dir: targetPath, reason: err instanceof Error ? err.message : String(err) });
+			recordPruneFailure(result, targetPath, err);
 		}
 	}
 	return result;
+}
+
+/**
+ * @typedef {{
+ *   removed: string[];
+ *   failed: { dir: string; reason: string }[];
+ *   inUse: { dir: string; reason: string }[];
+ * }} NativeCachePruneReport
+ */
+
+/**
+ * Whether a removal failed because a running process still has the addon mapped.
+ *
+ * Windows refuses to unlink a DLL any process has loaded, and reports it as EPERM (or EBUSY), so an
+ * older veyyon that is still open keeps its own version's cache pinned until it exits. That is not a
+ * stuck directory: the next launch after it exits removes it. POSIX unlinks a mapped file, so the
+ * condition cannot arise there and every failure is a real one.
+ *
+ * @param {unknown} err
+ * @param {string} [platform]
+ */
+export function isAddonHeldByRunningProcess(err, platform = process.platform) {
+	if (platform !== "win32") return false;
+	const code = err !== null && typeof err === "object" && "code" in err ? err.code : undefined;
+	return code === "EPERM" || code === "EBUSY";
+}
+
+/**
+ * @param {NativeCachePruneReport} result
+ * @param {string} dir
+ * @param {unknown} err
+ */
+function recordPruneFailure(result, dir, err) {
+	const failure = { dir, reason: err instanceof Error ? err.message : String(err) };
+	if (isAddonHeldByRunningProcess(err)) result.inUse.push(failure);
+	else result.failed.push(failure);
 }
 
 /**
@@ -339,20 +375,74 @@ export function cleanupStaleNativeVersions({ nativesDir, currentVersion }) {
  * thread that is trying to draw a frame. Same selection, same report shape.
  *
  * @param {{ nativesDir: string; currentVersion: string }} input
- * @returns {Promise<{ removed: string[], failed: { dir: string, reason: string }[] }>}
+ * @returns {Promise<NativeCachePruneReport>}
  */
 export async function reclaimStaleNativeVersions({ nativesDir, currentVersion }) {
-	/** @type {{ removed: string[], failed: { dir: string, reason: string }[] }} */
-	const result = { removed: [], failed: [] };
+	/** @type {NativeCachePruneReport} */
+	const result = { removed: [], failed: [], inUse: [] };
 	for (const targetPath of staleNativeVersionDirs({ nativesDir, currentVersion })) {
 		try {
 			await fs.promises.rm(targetPath, { recursive: true, force: true });
 			result.removed.push(targetPath);
 		} catch (err) {
-			result.failed.push({ dir: targetPath, reason: err instanceof Error ? err.message : String(err) });
+			recordPruneFailure(result, targetPath, err);
 		}
 	}
 	return result;
+}
+
+/** @type {Set<(message: string) => void>} */
+const nativeNoticeSinks = new Set();
+/**
+ * Notices raised before any surface attached. The prune fires on the first tick after the addon
+ * loads, which is before a session exists to show anything, so a notice with nowhere to go waits
+ * here instead of being lost or written over the terminal.
+ * @type {string[]}
+ */
+const pendingNativeNotices = [];
+
+/**
+ * Deliver a loader notice to every attached surface, or hold it until one attaches.
+ *
+ * Never `console.error`: the loader runs inside the interactive UI, and a raw write to the terminal
+ * lands between frames, pushes the composer down and leaves the renderer drawing against rows that
+ * moved. A surface that owns the screen decides where the notice goes.
+ *
+ * @param {string} message
+ */
+export function publishNativeNotice(message) {
+	if (nativeNoticeSinks.size === 0) {
+		pendingNativeNotices.push(message);
+		return;
+	}
+	for (const sink of Array.from(nativeNoticeSinks)) {
+		try {
+			sink(message);
+		} catch {
+			// A surface that fails to show a notice must not break the prune that raised it.
+		}
+	}
+}
+
+/**
+ * Point loader notices at a surface. Notices raised before any surface attached are delivered to it
+ * at once. Returns the detach for this sink only; safe to call more than once.
+ *
+ * @param {(message: string) => void} sink
+ * @returns {() => void}
+ */
+export function attachNativeNoticeSink(sink) {
+	nativeNoticeSinks.add(sink);
+	for (const message of pendingNativeNotices.splice(0)) {
+		try {
+			sink(message);
+		} catch {
+			// Same contract as publishNativeNotice.
+		}
+	}
+	return () => {
+		nativeNoticeSinks.delete(sink);
+	};
 }
 
 /**
@@ -373,27 +463,30 @@ export async function reclaimStaleNativeVersions({ nativesDir, currentVersion })
  *   nativesDir: string;
  *   currentVersion: string;
  *   schedule?: (callback: () => void, delayMs: number) => unknown;
- *   reclaim?: (input: { nativesDir: string; currentVersion: string }) => Promise<{ removed: string[], failed: { dir: string, reason: string }[] }>;
+ *   reclaim?: (input: { nativesDir: string; currentVersion: string }) => Promise<NativeCachePruneReport>;
  *   report?: (message: string) => void;
  * }} input
- * @returns {{ handle: unknown, settled: Promise<{ removed: string[], failed: { dir: string, reason: string }[] }> }}
+ * @returns {{ handle: unknown, settled: Promise<NativeCachePruneReport> }}
  */
 export function scheduleStaleNativeCleanup({
 	nativesDir,
 	currentVersion,
 	schedule = setTimeout,
 	reclaim = reclaimStaleNativeVersions,
-	report = message => console.error(message),
+	report = publishNativeNotice,
 }) {
-	/** @type {PromiseWithResolvers<{ removed: string[], failed: { dir: string, reason: string }[] }>} */
+	/** @type {PromiseWithResolvers<NativeCachePruneReport>} */
 	const settled = Promise.withResolvers();
 	const handle = schedule(() => {
 		void reclaim({ nativesDir, currentVersion }).then(pruned => {
 			if (pruned.removed.length > 0) startupMarker(`native:cleanupStaleVersions:removed:${pruned.removed.length}`);
+			// A cache pinned by an older veyyon that is still running is removed by a later launch once
+			// it exits. It is not something to act on, so it is not reported.
+			if (pruned.inUse.length > 0) startupMarker(`native:cleanupStaleVersions:inUse:${pruned.inUse.length}`);
 			// A cache that cannot be removed never comes back on its own, and the user is the only one
 			// who can fix it. Saying nothing is how ~150MB per past version went missing without a word.
 			for (const failure of pruned.failed) {
-				report(`veyyon natives: could not remove the stale addon cache at ${failure.dir}: ${failure.reason}`);
+				report(`could not remove the stale addon cache at ${failure.dir}: ${failure.reason}`);
 			}
 			settled.resolve(pruned);
 		});

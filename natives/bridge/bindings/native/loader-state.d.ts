@@ -80,12 +80,10 @@ export interface CleanupStaleNativeVersionsInput {
 
 /**
  * Remove every per-version native cache except the current one. Never throws;
- * a directory that could not be removed comes back in `failed`.
+ * a directory that could not be removed comes back in `failed`, or in `inUse`
+ * when a running process still holds its addon.
  */
-export function cleanupStaleNativeVersions(input: CleanupStaleNativeVersionsInput): {
-	removed: string[];
-	failed: { dir: string; reason: string }[];
-};
+export function cleanupStaleNativeVersions(input: CleanupStaleNativeVersionsInput): NativeCachePruneReport;
 
 /** Every per-version cache under the root that is not the current version. The single owner of "which directory is dead". */
 export function staleNativeVersionDirs(input: CleanupStaleNativeVersionsInput): string[];
@@ -93,11 +91,24 @@ export function staleNativeVersionDirs(input: CleanupStaleNativeVersionsInput): 
 /** The same prune with the unlink work off the calling thread. Never rejects; failures come back in `failed`. */
 export function reclaimStaleNativeVersions(input: CleanupStaleNativeVersionsInput): Promise<NativeCachePruneReport>;
 
-/** What a prune did: the caches it reclaimed, and the ones it could not, with the reason. */
+/**
+ * What a prune did: the caches it reclaimed, the ones it could not, and the ones a running
+ * process still holds, which a later launch removes once that process exits.
+ */
 export interface NativeCachePruneReport {
 	removed: string[];
 	failed: { dir: string; reason: string }[];
+	inUse: { dir: string; reason: string }[];
 }
+
+/** Whether a removal failed because a running process still has the addon mapped (Windows EPERM/EBUSY). */
+export function isAddonHeldByRunningProcess(err: unknown, platform?: NodeJS.Platform): boolean;
+
+/** Deliver a loader notice to every attached sink, or hold it until one attaches. Never writes to the terminal. */
+export function publishNativeNotice(message: string): void;
+
+/** Point loader notices at a surface; held notices are delivered at once. Returns the detach for this sink. */
+export function attachNativeNoticeSink(sink: (message: string) => void): () => void;
 
 export interface ScheduleStaleNativeCleanupInput extends CleanupStaleNativeVersionsInput {
 	schedule?: (callback: () => void, delayMs: number) => unknown;

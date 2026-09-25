@@ -125,7 +125,11 @@ describe("the stale addon cache is reclaimed off the launch path", () => {
 				nativesDir: root,
 				currentVersion: "1.2.0",
 				schedule: scheduler.schedule,
-				reclaim: async () => ({ removed: [], failed: [{ dir: stuck, reason: "EPERM: operation not permitted" }] }),
+				reclaim: async () => ({
+					removed: [],
+					failed: [{ dir: stuck, reason: "EPERM: operation not permitted" }],
+					inUse: [],
+				}),
 				report: message => reported.push(message),
 			});
 			scheduler.fire();
@@ -179,10 +183,12 @@ describe("the stale addon cache is reclaimed off the launch path", () => {
 		expect(cleanupStaleNativeVersions({ nativesDir: absent, currentVersion: "1.2.0" })).toEqual({
 			removed: [],
 			failed: [],
+			inUse: [],
 		});
 		expect(await reclaimStaleNativeVersions({ nativesDir: absent, currentVersion: "1.2.0" })).toEqual({
 			removed: [],
 			failed: [],
+			inUse: [],
 		});
 	});
 

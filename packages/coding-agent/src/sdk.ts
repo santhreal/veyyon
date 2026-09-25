@@ -24,6 +24,7 @@ import { disposeOwnedResources } from "@veyyon/kernel/session/owned-resources";
 import { getRestorableSessionModels } from "@veyyon/kernel/session/session-context";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { optionalNumber } from "@veyyon/kernel/settings/optional-number";
+import { attachNativeNoticeSink } from "@veyyon/natives/loader-state";
 import {
 	attachFaultSink,
 	errorMessage,
@@ -583,7 +584,16 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		//
 		// Detached on dispose, and on the startup-failure path below, by the handle this returns. The
 		// sink closes over `operatorNotices`, so leaving it attached outlives the session it reports to.
-		detachFaultSink = attachFaultSink(fault => operatorNotices.warn(fault.source, fault.text));
+		//
+		// The native loader reports the same way and for the same reason: it runs before any session
+		// exists and inside the interactive UI, so a raw terminal write lands between frames and moves
+		// the composer. Its notices wait in the loader until this sink attaches, and share its detach.
+		const detachMachineFaults = attachFaultSink(fault => operatorNotices.warn(fault.source, fault.text));
+		const detachNativeNotices = attachNativeNoticeSink(text => operatorNotices.warn("natives", text));
+		detachFaultSink = () => {
+			detachMachineFaults();
+			detachNativeNotices();
+		};
 
 		// There is one loader for startup, runtime toggles, command reconciliation, and
 		// cwd moves. Replacing the complete runtime prevents project-scoped names and

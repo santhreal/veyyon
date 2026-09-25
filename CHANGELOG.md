@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `SessionManager.open` parses the session file once instead of twice, cutting a 700 MB resume from 2.83 s to 1.62 s and peak RSS from 3.4 GB to 1.95 GB.
+
+### Fixed
+
+- Running two veyyon versions at once on Windows no longer prints `could not remove the stale addon cache ... EPERM` over the interactive UI and pushes the composer down; a real removal failure shows as a `natives` warning notice.
+- The launch-time prune of old addon caches no longer writes to stderr; a directory it cannot remove is reported through `attachNativeNoticeSink`, and on Windows a cache still mapped by a running veyyon (`EPERM`/`EBUSY`) is returned in `inUse` and not reported.
+
 ## [1.5.4] - 2026-09-24
 
 ### Added

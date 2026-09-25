@@ -30,6 +30,7 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { type OperatorNotice, OperatorNotices } from "@veyyon/kernel/session/operator-notices";
+import { publishNativeNotice } from "@veyyon/natives/loader-state";
 import { faultSinkCount, removeSyncWithRetries, reportFault, Snowflake } from "@veyyon/utils";
 
 describe("the fault sink follows the session that installed it", () => {
@@ -137,6 +138,41 @@ describe("the fault sink follows the session that installed it", () => {
 		shown.length = 0;
 		reportFault({ source: "filesystem", text: "raised after dispose" });
 		expect(shown).toEqual([]);
+	});
+
+	/**
+	 * The native loader's notices take the same route, so a stale-cache prune that fails while the
+	 * interactive UI is drawn becomes a `natives` warning instead of a raw stderr line between frames.
+	 * Detached with the fault sink: after dispose, the notice waits in the loader for the next session.
+	 */
+	it("delivers a native loader notice into the live session's notices and stops after dispose", async () => {
+		const { notices, shown } = collectingNotices();
+		const { session } = await openSession(notices);
+		shown.length = 0;
+		try {
+			publishNativeNotice("could not remove the stale addon cache at /natives/1.0.0: EACCES");
+			expect(shown.map(notice => [notice.severity, notice.source, notice.text])).toEqual([
+				["warning", "natives", "could not remove the stale addon cache at /natives/1.0.0: EACCES"],
+			]);
+		} finally {
+			await session.dispose();
+		}
+
+		shown.length = 0;
+		publishNativeNotice("raised after dispose");
+		expect(shown).toEqual([]);
+
+		// The held notice reaches the next session instead of the terminal.
+		const next = collectingNotices();
+		const { session: nextSession } = await openSession(next.notices);
+		try {
+			expect(next.shown.map(notice => [notice.source, notice.text])).toContainEqual([
+				"natives",
+				"raised after dispose",
+			]);
+		} finally {
+			await nextSession.dispose();
+		}
 	});
 
 	/**

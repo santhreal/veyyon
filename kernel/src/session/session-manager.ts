@@ -1592,10 +1592,19 @@ export class SessionManager {
 	/** Switch to a different session file (resume / branch). */
 	async setSessionFile(sessionFile: string): Promise<void> {
 		const resolvedSessionFile = path.resolve(sessionFile);
-		const titleSlot = await readTitleSlotFromFile(resolvedSessionFile, this.#storage);
 		const fileEntries = await loadEntriesFromFile(resolvedSessionFile, this.#storage, {
 			operatorNotices: this.#operatorNotices,
 		});
+		await this.#switchToLoadedFile(resolvedSessionFile, fileEntries);
+	}
+
+	/**
+	 * Adopt entries already parsed from `resolvedSessionFile`. {@link open} parses the file once to
+	 * read the header's cwd before the manager exists, and hands the same entries here rather than
+	 * parsing a second time.
+	 */
+	async #switchToLoadedFile(resolvedSessionFile: string, fileEntries: FileEntry[]): Promise<void> {
+		const titleSlot = await readTitleSlotFromFile(resolvedSessionFile, this.#storage);
 		let migrated = false;
 		let header: SessionHeader | undefined;
 		let adoptedCwd: string | undefined;
@@ -2960,7 +2969,7 @@ export class SessionManager {
 			options?.instrumentation,
 		);
 		manager.#suppressBreadcrumb = options?.suppressBreadcrumb === true;
-		await manager.setSessionFile(filePath);
+		await manager.#switchToLoadedFile(path.resolve(filePath), loaded);
 		return manager;
 	}
 
