@@ -878,8 +878,9 @@ export class AgentSession {
 	/**
 	 * AsyncJobManager scoped to this session for introspection/cancellation.
 	 *
-	 * This differs from `#ownedAsyncJobManager`: agents can inherit a parent
-	 * manager for their own owner id, while secondary top-level sessions are left
+	 * This differs from `#ownedAsyncJobManager`: agents inherit a parent manager
+	 * for their own owner id, and a top-level session the host handed the owner's
+	 * manager shares it the same way. Any other secondary top-level session is left
 	 * undefined to avoid reading the primary's jobs.
 	 */
 	readonly #asyncJobManager: AsyncJobManager | undefined;
@@ -3403,10 +3404,10 @@ export class AgentSession {
 	 *
 	 * Cancellation runs against this session's scoped manager. Spawned agents have
 	 * unique agent ids and inherit the parent's manager to clean up their own
-	 * jobs. A secondary in-process top-level session gets no scoped manager,
-	 * because it defaults to `MAIN_AGENT_ID`; reaching through the global
-	 * singleton would tear down the owning primary session's bash/task jobs at
-	 * dispose time (issue #1923).
+	 * jobs, and a top-level session sharing the owner's manager is refused unless
+	 * it has an id of its own (`createAgentSession`), so `cancelAll` by owner cannot
+	 * reach the owning primary session's bash/task jobs (issue #1923). A secondary
+	 * top-level session that was handed no manager has none to cancel through.
 	 *
 	 * No-op when no manager is reachable or this session has no agent id.
 	 */

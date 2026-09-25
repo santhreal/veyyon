@@ -550,6 +550,39 @@ export class AgentRegistry {
 	}
 
 	/**
+	 * The driving agent of `id`'s conversation: `id` itself when it drives one,
+	 * else the `kind: "main"` ref of the same scope, the conversation a spawn at
+	 * any depth belongs to. A spawn with no scope belongs to whatever driver its
+	 * parent chain leads to. Undefined for an unknown id, or one whose
+	 * conversation has no driver any more: a spawn of a conversation that closed,
+	 * or one a driver left behind when it re-rooted to another transcript
+	 * ({@link rescope}), which still names that driver as its parent.
+	 *
+	 * Exact scope, not {@link sameScope}: an unattributed scope matches every
+	 * conversation, and a job's result handed to whichever driver came first is
+	 * the misdelivery this answers for.
+	 */
+	driverOf(id: string): AgentRef | undefined {
+		const ref = this.#refs.get(id);
+		if (ref === undefined) return undefined;
+		if (ref.kind === "main") return ref;
+		const scope = ref.scope;
+		if (scope !== undefined) {
+			for (const candidate of this.#refs.values()) {
+				if (candidate.kind === "main" && candidate.scope === scope) return candidate;
+			}
+			return undefined;
+		}
+		// Bounded by the registry's size, so a parent loop ends.
+		let step: AgentRef | undefined = ref;
+		for (let depth = 0; step !== undefined && depth <= this.#refs.size; depth++) {
+			if (step.kind === "main") return step;
+			step = step.parentId === undefined ? undefined : this.#refs.get(step.parentId);
+		}
+		return undefined;
+	}
+
+	/**
 	 * The conversation-boundary decision, for every caller holding two agent ids that needs to know
 	 * whether one may reach the other. `irc send`, `irc list`, `irc wait`'s liveness watch and the
 	 * job tool's roster route through this, or through the two list methods below, which are defined
