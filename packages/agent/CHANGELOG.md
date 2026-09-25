@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `AgentLoopConfig.getAsideMessages` and `Agent.setAsideMessageProvider` receive the boundary being drained, `step` between a tool batch and the next model call or `stop` where the run would end, so a producer can hold back an aside that is not worth another model call.
+
 ## [1.5.4] - 2026-09-24
 
 ### Added

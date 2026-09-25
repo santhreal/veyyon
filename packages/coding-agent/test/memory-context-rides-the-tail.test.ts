@@ -19,7 +19,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import type { AgentMessage, AsideMessage } from "@veyyon/agent-core";
+import type { AgentMessage, AsideBoundary, AsideMessage } from "@veyyon/agent-core";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { AuthStorage } from "@veyyon/ai/auth-storage";
@@ -87,7 +87,7 @@ async function harness(): Promise<Harness> {
 	});
 	// The provider is private on the Agent, so capture the function the session installs.
 	// Wrapping the setter keeps this test at the real seam without adding test-only API.
-	let provider: (() => AsideMessage[] | Promise<AsideMessage[]>) | undefined;
+	let provider: ((boundary: AsideBoundary) => AsideMessage[] | Promise<AsideMessage[]>) | undefined;
 	const install = agent.setAsideMessageProvider.bind(agent);
 	agent.setAsideMessageProvider = fn => {
 		provider = fn ?? undefined;
@@ -119,7 +119,7 @@ async function harness(): Promise<Harness> {
 	return {
 		session,
 		drainAsides() {
-			const thunks = provider?.();
+			const thunks = provider?.("step");
 			if (!thunks || thunks instanceof Promise) return [];
 			return thunks
 				.map(entry => (typeof entry === "function" ? entry() : entry))

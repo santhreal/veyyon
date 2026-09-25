@@ -51,6 +51,14 @@ export type StreamFn = (
  */
 export type AsideMessage = AgentMessage | (() => AgentMessage | null);
 
+/**
+ * Where the loop drains asides. `step`: between a tool batch and the next model call, which
+ * happens anyway. `stop`: where the run would end, so an aside taken there keeps the run going
+ * for another model call. A producer may hold back an aside at `stop` that is not worth that call;
+ * it stays pending for the producer to deliver another way.
+ */
+export type AsideBoundary = "step" | "stop";
+
 export interface AgentTurnEndContext {
 	/** Assistant/user message that just completed this turn boundary. */
 	message: AgentMessage;
@@ -275,13 +283,14 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * Returns non-interrupting "aside" messages to inject at a step boundary.
 	 *
 	 * Polled after each tool batch (before the next LLM call) AND at the yield
-	 * check. Unlike steering, these NEVER abort in-flight tools — they are passive
-	 * notifications (e.g. background-job completions, late LSP diagnostics) that
-	 * should reach the model between requests without waiting for the agent to
-	 * fully stop. Returned messages are appended to the context with normal
-	 * message events and keep the loop running so the model can react.
+	 * check, named by `boundary`. Unlike steering, these NEVER abort in-flight
+	 * tools — they are passive notifications (e.g. background-job completions,
+	 * late LSP diagnostics) that should reach the model between requests without
+	 * waiting for the agent to fully stop. Returned messages are appended to the
+	 * context with normal message events and keep the loop running so the model
+	 * can react.
 	 */
-	getAsideMessages?: () => Promise<AsideMessage[]>;
+	getAsideMessages?: (boundary: AsideBoundary) => Promise<AsideMessage[]>;
 	/**
 	 * Hook fired right before the loop would exit.
 	 *
