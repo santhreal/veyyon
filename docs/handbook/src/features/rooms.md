@@ -255,3 +255,13 @@ Both model scenes need the llama.cpp sidecar; `proof/scenes/new-session-keeps-ru
 how it is started. Add `--before` to record the base branch's arm of either one. The needs-you
 scene is a held dialog and a waiting model, still by design, so it records with the motion floor
 off.
+
+`proof/scenes/room-tour.sh` tours the room with real agents: three conversations working in the
+demo repository, naming each window, and a command answered in the conversation that asked it.
+It runs against any model with tools and a signed-in provider, the sign-in given as a directory
+holding its `agent.db`:
+
+```sh
+SCENE_COMMAND='bun /repo/packages/coding-agent/src/cli.ts --model <provider/model> --approval-mode ask-command' \
+	PROOF_AUTH_DIR=<auth dir> SCENE_MOTION_FLOOR=0 proof/record.sh proof/scenes/room-tour.sh
+```
