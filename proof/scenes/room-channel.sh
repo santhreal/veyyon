@@ -8,7 +8,8 @@
 #   2. `alt+,` goes back to conversation 1, which renames `parse`. It is told
 #      that another conversation calls `parse`, and not how to tell it: each
 #      conversation in a room is told what `#room` is for.
-#   3. The room view shows the post in the row under its title.
+#   3. The room view opens with its guide the first time; Escape closes it, and
+#      the view shows the post in the row under its title.
 #   4. `2` goes into conversation 2, where the post is a `#room` card.
 #   5. `/room say` posts as you to both conversations.
 #   6. The room at the end.
@@ -73,7 +74,15 @@ sleep 8
 shot one-renaming
 
 # --- 3. the room hears it ----------------------------------------------------------
+# The first room view a profile opens shows the guide; any key closes it and does
+# nothing else, so it goes before a key that should enter a window.
 open_room
+# needle-source: any key closes this -- room-guide.ts paintRoomGuide's last line
+expect_screen "any key closes this" 10
+pause 1.5
+shot room-guide
+k Escape
+pause 1
 if room_heard 180; then
 	pause 1.5
 	shot room-heard
