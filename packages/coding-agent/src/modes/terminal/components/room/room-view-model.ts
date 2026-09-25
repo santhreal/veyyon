@@ -41,7 +41,13 @@ export type RoomFeedBlock =
 	  }
 	| { readonly kind: "text"; readonly text: string }
 	| { readonly kind: "thinking" }
-	| { readonly kind: "note"; readonly text: string; readonly tone: "error" | "muted" };
+	| { readonly kind: "note"; readonly text: string; readonly tone: "error" | "muted" }
+	/**
+	 * A post the conversation took from the room's `#room` channel: who posted
+	 * it and what it said, or, for what the room said before the conversation
+	 * joined, `before it joined` and how many posts.
+	 */
+	| { readonly kind: "room"; readonly label: string; readonly body: string };
 
 /** A conversation as its window shows it. Display-safe: every string is already sanitized and expanded. */
 export interface RoomWindowSnapshot {

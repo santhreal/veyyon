@@ -108,17 +108,29 @@ function projectIrcDisplay(customType: string, details: unknown, timestamp: numb
 }
 
 /**
- * A `#room` record as its card: one line as its poster and body, or the lines posted before the
- * conversation joined as one `poster: body` row each. Read field by field, since the details come
- * back from a session file that another build may have written.
+ * The lines of a `#room` record, each its poster's label and its body, and whether they are what
+ * the room said before the conversation joined. Read field by field, since the details come back
+ * from a session file that another build may have written.
  */
-function projectRoomDisplay(details: unknown, timestamp: number): IrcMessageCustomDisplay {
+export function readRoomRecord(details: unknown): {
+	readonly lines: ReadonlyArray<{ readonly label: string; readonly body: string }>;
+	readonly backlog: boolean;
+} {
 	const d = isRecord(details) ? details : {};
 	const lines = (Array.isArray(d.lines) ? d.lines : []).filter(isRecord).map(line => ({
 		label: typeof line.label === "string" ? line.label : "?",
 		body: typeof line.body === "string" ? line.body : "",
 	}));
-	if (d.backlog === true) {
+	return { lines, backlog: d.backlog === true };
+}
+
+/**
+ * A `#room` record as its card: one line as its poster and body, or the lines posted before the
+ * conversation joined as one `poster: body` row each.
+ */
+function projectRoomDisplay(details: unknown, timestamp: number): IrcMessageCustomDisplay {
+	const { lines, backlog } = readRoomRecord(details);
+	if (backlog) {
 		return {
 			variant: "irc",
 			kind: "room",

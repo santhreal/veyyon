@@ -11,7 +11,8 @@
  * The class: every body height from one row up to past the exchange's full
  * length, over an exchange that holds every block kind and every kind of
  * boundary between them (prose to tool, tool to tool, tool to prose, prose
- * running over two rows, a tool to reasoning). The expected rows are the
+ * running over two rows, a tool to reasoning, prose to a `#room` post and the
+ * post to the prose that answers it). The expected rows are the
  * exchange as the transcript sets it, written out once below; each height's
  * body must be that list's head, cut and tail exactly.
  *
@@ -40,14 +41,16 @@ const BLOCKS: readonly RoomFeedBlock[] = [
 	{ kind: "tool", label: "Edit", detail: "src/tokenizer.ts", state: "ok" },
 	{ kind: "thinking" },
 	{ kind: "text", text: "Done: the tokenizer stands alone." },
+	{ kind: "room", label: "you", body: "@1 move the tests too" },
+	{ kind: "text", text: "Moving the tests." },
 ];
 
 /** The body rows of a window `height` rows tall, without its frame or its padding. */
-function body(height: number): string[] {
+function body(height: number, blocks: readonly RoomFeedBlock[] = BLOCKS): string[] {
 	const rows = paintRoomWindow({
 		width: WIDTH,
 		height,
-		snapshot: snapshotOf({ kind: "done", at: START_MS }, BLOCKS),
+		snapshot: snapshotOf({ kind: "done", at: START_MS }, blocks),
 		ordinal: 1,
 		strength: 1,
 		selected: false,
@@ -78,6 +81,10 @@ describe("a window's body", () => {
 			"Thinking…",
 			"",
 			"Done: the tokenizer stands alone.",
+			"",
+			"#room you: @1 move the tests too",
+			"",
+			"Moving the tests.",
 		];
 		const cut = `  ${theme.status.pending}`;
 		const mismatches: Array<{ inner: number; got: string[]; want: string[] }> = [];
@@ -91,5 +98,23 @@ describe("a window's body", () => {
 			if (got.join("\n") !== want.join("\n")) mismatches.push({ inner, got, want });
 		}
 		expect(mismatches).toEqual([]);
+	});
+
+	/**
+	 * A post can hold 4,000 characters. As rows it would fill the window and
+	 * push out the answer it started, so it is one row, cut at the window's
+	 * edge, the way a tool call is.
+	 */
+	it("draws a long #room post as one row cut at the edge, and the answer under it", () => {
+		const long = `@1 ${"move every test beside the module it covers ".repeat(20)}`;
+		const rows = body(8, [
+			{ kind: "prompt", text: "split the tokenizer" },
+			{ kind: "room", label: "you", body: long },
+			{ kind: "text", text: "Moving the tests." },
+		]).filter(row => row !== "");
+		expect(rows).toHaveLength(3);
+		expect(rows[1]!.startsWith("#room you: @1 move every test")).toBe(true);
+		expect(rows[1]!.endsWith("…")).toBe(true);
+		expect(rows[2]).toBe("Moving the tests.");
 	});
 });

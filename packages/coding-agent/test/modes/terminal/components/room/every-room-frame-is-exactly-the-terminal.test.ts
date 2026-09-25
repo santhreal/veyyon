@@ -107,6 +107,14 @@ const BLOCKS: Record<RoomFeedBlock["kind"], readonly RoomFeedBlock[]> = {
 		{ kind: "note", text: "Compacted the conversation: 42 messages folded", tone: "muted" },
 		{ kind: "note", text: "The provider refused: rate limited", tone: "error" },
 	],
+	room: [
+		{
+			kind: "room",
+			label: "2 · 認証 rewrite",
+			body: "@3 the session reader moved to src/auth/漢字-session.ts; import it from there and drop the 🙂 shim",
+		},
+		{ kind: "room", label: "before it joined", body: "20 posts" },
+	],
 };
 const FEED: readonly RoomFeedBlock[] = [
 	...BLOCKS.prompt,

@@ -74,6 +74,10 @@ Each window streams its conversation while the view is open:
   time it finished, `failed`, `stopped`, or `needs you`.
 - The body starts with the prompt the conversation is working on. A row for each tool call
   follows, then the tail of the answer. A `⋯` row marks where the middle was cut.
+- Each [`#room`](#the-room-channel) post the conversation took is one row: `#room`, who posted
+  it, and the message. A turn a post started shows the post above its answer. The posts the room
+  made before the conversation joined are one row that counts them. A conversation you never
+  prompted shows everything it did.
 - A conversation with an unsent draft shows it at the foot: `✎ draft · explain the second fact ·
   1 image`. A question waiting for an answer takes the last row, under the draft.
 - The bottom edge has the model and the working directory.

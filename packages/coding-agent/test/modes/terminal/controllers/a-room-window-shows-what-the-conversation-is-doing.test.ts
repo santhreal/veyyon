@@ -58,6 +58,7 @@ import {
 	roomDraftPreview,
 } from "@veyyon/coding-agent/modes/terminal/controllers/room-window-feed";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { IrcRoomLine } from "@veyyon/coding-agent/task/irc-bus";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 import { ArgotSession, type Vocabulary } from "argot";
@@ -555,6 +556,107 @@ describe("a running turn", () => {
 	});
 });
 
+/**
+ * A post from the room's `#room` channel reaches a conversation off screen
+ * without any prompt from the operator: taken while idle it starts nothing,
+ * and one that names the conversation starts a turn. A window that showed
+ * only the operator's prompts would show a stale prompt over an answer to the
+ * post, or nothing at all for a conversation only the room ever spoke to.
+ */
+describe("a post the conversation took from the room's channel", () => {
+	const post = (body: string, label = "2 · schema"): IrcRoomLine => ({
+		id: `line-${++clock}`,
+		label,
+		body,
+		ts: ++clock,
+	});
+	const activity = (feed: RoomWindowFeed): string => {
+		const state = feed.snapshot().state;
+		return state.kind === "working" ? state.activity : state.kind;
+	};
+
+	it("shows after the answer as one display-safe row, the window still done when the answer was", async () => {
+		const answer = assistant([{ type: "text", text: "Three tables." }]);
+		const { session } = await open([user("list the tables"), answer]);
+		const events: string[] = [];
+		const feed = new RoomWindowFeed(session, event => events.push(event));
+		try {
+			expect(feed.snapshot().blocks.map(block => block.kind)).toEqual(["prompt", "text"]);
+			const taken = session.deliverRoomLines([post("the users table\tmoved\nto \x1b[31mauth")], {
+				named: false,
+				wake: false,
+			});
+			expect(taken).toBe("idle");
+			// The session reports the post after it is in context; the feed rebuilds on that report.
+			await until(() => events.includes("irc_message"), "the session to report the post");
+			expect(events).toEqual(["irc_message"]);
+			const snapshot = feed.snapshot();
+			const row = snapshot.blocks.at(-1);
+			if (row?.kind !== "room") throw new Error(`the last row is ${row?.kind}, not the post`);
+			expect(row.label).toBe("2 · schema");
+			expect(row.body).toContain("the users table");
+			expect(row.body).toContain("auth");
+			expect(row.body).not.toMatch(/[\u0000-\u001f\u007f]/);
+			expect(snapshot.state).toEqual({ kind: "done", at: answer.timestamp });
+		} finally {
+			feed.dispose();
+		}
+	});
+
+	it("that woke the conversation shows above its answer, and the window reads starting until the answer streams", async () => {
+		const live = await open([user("list the tables"), assistant([{ type: "text", text: "Three tables." }])]);
+		const { session, push } = live;
+		const feed = new RoomWindowFeed(session, () => {});
+		const woke = { kind: "room", label: "you", body: "@2 add the sizes" } as const;
+		try {
+			expect(session.deliverRoomLines([post("@2 add the sizes", "you")], { named: true, wake: true })).toBe("woken");
+			await live.called;
+			await until(() => activity(feed) === "starting", "the woken turn to start");
+			expect(feed.snapshot().blocks.at(-1)).toEqual(woke);
+
+			push({ type: "start", partial: assistant([]) });
+			const writing = assistant([{ type: "text", text: "Sizes added." }]);
+			push({ type: "text_delta", contentIndex: 0, delta: "Sizes added.", partial: writing });
+			await until(() => activity(feed) === "writing", "the answer to stream");
+			expect(feed.snapshot().blocks.slice(-2)).toEqual([woke, { kind: "text", text: "Sizes added." }]);
+		} finally {
+			feed.dispose();
+			if (session.isStreaming) await session.abort();
+		}
+	});
+
+	it("in a conversation the operator never prompted, shows the post that woke it and what it did", async () => {
+		const live = await open([]);
+		const { session, push } = live;
+		expect(session.deliverRoomLines([post("@3 add the year", "you")], { named: true, wake: true })).toBe("woken");
+		await live.called;
+		const answer = assistant([{ type: "text", text: "Years added." }]);
+		push({ type: "start", partial: answer });
+		push({ type: "done", reason: "stop", message: answer });
+		await until(() => !session.isStreaming, "the woken turn to end");
+		const snapshot = buildRoomWindowSnapshot(session);
+		expect(snapshot.blocks).toEqual([
+			{ kind: "room", label: "you", body: "@3 add the year" },
+			{ kind: "text", text: "Years added." },
+		]);
+		expect(snapshot.state.kind).toBe("done");
+	});
+
+	/**
+	 * What the room said before a conversation joined is counted, not listed:
+	 * twenty posts would fill the window before the conversation did anything.
+	 * A conversation holding only them has not run, and is new.
+	 */
+	it("before the conversation joined, is one row counting the posts, and leaves the conversation new", async () => {
+		const { session } = await open([]);
+		session.deliverRoomLines([post("a"), post("b"), post("c")], { named: false, wake: false, backlog: true });
+		expect(buildRoomWindowSnapshot(session)).toMatchObject({
+			state: { kind: "new" },
+			blocks: [{ kind: "room", label: "before it joined", body: "3 posts" }],
+		});
+	});
+});
+
 describe("between turns", () => {
 	/**
 	 * A model set between turns emits no session event, and the stage repaints a
@@ -660,6 +762,7 @@ describe("which rebuild is the same snapshot", () => {
 		{ kind: "tool", label: "Read", detail: DB, state: "running" },
 		{ kind: "thinking" },
 		{ kind: "note", text: "retrying", tone: "muted" },
+		{ kind: "room", label: "you", body: "freeze main" },
 	];
 	function snapshot(state: RoomWindowState, blocks: readonly RoomFeedBlock[] = BLOCKS): RoomWindowSnapshot {
 		return { state, blocks: blocks.map(block => ({ ...block })), title: "tables", model: "Sonnet", cwd: "~/repo" };

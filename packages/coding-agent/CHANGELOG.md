@@ -24,6 +24,7 @@
 - `irc` `send` with `to: "#room"` posts to every driving conversation in the room: a working one reads the post at its next step, an idle one at its next turn, and one the post names with `@2` or its id is woken; spawned agents neither post nor receive, a post holds at most 4,000 characters, and a conversation that joins later receives the room's last 20 posts.
 - `/room say <message>` posts to `#room` as the operator, every room transcript shows a post as a `#room` card, the room view shows the newest post under its title, and `irc list` lists `#room` with the conversations it reaches by number.
 - `s` in the room view posts to `#room` as the operator from a line under the windows; Esc or a refused post keeps the text for the next `s` while the view is open.
+- A room window shows each `#room` post its conversation took as one row, so a turn a post started shows the post above its answer, and a conversation only the room ever spoke to shows what it did instead of reading as new.
 
 ### Changed
 

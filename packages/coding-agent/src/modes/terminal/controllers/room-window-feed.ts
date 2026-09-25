@@ -3,9 +3,12 @@
  *
  * A window shows the exchange the conversation is on: the last prompt the
  * operator gave it and everything that followed, with each tool call folded to
- * one line and its state. The feed rebuilds that snapshot only when the session
- * reports something that changes it, so a stage drawing sixty frames a second
- * reads the same object between two events and its painter can cache on it.
+ * one line and its state, and each post it took from the room's `#room`
+ * channel as one line, so a turn a post started shows what started it. A
+ * conversation the operator never prompted shows everything it did. The feed
+ * rebuilds that snapshot only when the session reports something that changes
+ * it, so a stage drawing sixty frames a second reads the same object between
+ * two events and its painter can cache on it.
  *
  * Every string leaves here display-safe: assistant content goes through the
  * session's own display transform (secrets deobfuscated, argot expanded), and
@@ -19,8 +22,10 @@ import { sanitizeText } from "@veyyon/utils/sanitize-text";
 import { replaceTabs } from "@veyyon/utils/tab-width";
 import { sanitizeSingleLine } from "@veyyon/utils/wrap";
 import type { Attachment } from "@veyyon/wire/presentation";
+import { readRoomRecord } from "../../../presentation/custom-display";
 import type { AgentSession } from "../../../session/agent-session";
 import type { AgentSessionEvent } from "../../../session/agent-session-types";
+import { IRC_ROOM_MESSAGE_TYPE } from "../../../session/messages";
 import { toolCallPrimaryArg } from "../../../session/session-history-format";
 import { shortenPath } from "../../../tools/core/shorten-path";
 import {
@@ -48,6 +53,8 @@ const FEED_EVENTS: ReadonlySet<AgentSessionEvent["type"]> = new Set([
 	"auto_retry_start",
 	"auto_retry_end",
 	"cwd_changed",
+	// A `#room` post an idle conversation took: it starts no turn, so no other event says it came.
+	"irc_message",
 ]);
 
 function displayText(text: string): string {
@@ -79,6 +86,30 @@ function isPrompt(message: AgentMessage): boolean {
 function promptText(message: AgentMessage): string {
 	if (message.role !== "user") return "";
 	return displayText(contentText(message.content, { image: "[image]" }));
+}
+
+function isRoomRecord(message: AgentMessage): boolean {
+	return message.role === "custom" && message.customType === IRC_ROOM_MESSAGE_TYPE;
+}
+
+/**
+ * A `#room` record as a window's rows: one per post, or one for the posts the
+ * room made before the conversation joined, which a window counts rather than
+ * lists so they do not push out what the conversation did.
+ */
+function roomBlocks(details: unknown): RoomFeedBlock[] {
+	const { lines, backlog } = readRoomRecord(details);
+	if (lines.length === 0) return [];
+	if (backlog) {
+		return [
+			{ kind: "room", label: "before it joined", body: `${lines.length} post${lines.length === 1 ? "" : "s"}` },
+		];
+	}
+	return lines.map(line => ({
+		kind: "room",
+		label: sanitizeSingleLine(displayText(line.label)),
+		body: sanitizeSingleLine(displayText(line.body)),
+	}));
 }
 
 /** The turn in flight, as the session reports it for display. */
@@ -125,6 +156,7 @@ function messageBlocks(session: AgentSession, message: AgentMessage, isLive: boo
 		const text = promptText(message);
 		return text && message.synthetic !== true ? [{ kind: "prompt", text }] : [];
 	}
+	if (message.role === "custom" && message.customType === IRC_ROOM_MESSAGE_TYPE) return roomBlocks(message.details);
 	if (message.role !== "assistant") return [];
 	const blocks: Array<RoomFeedBlock | StoredCall> = [];
 	// Stored messages keep secrets obfuscated and handles unexpanded; the live
@@ -173,7 +205,8 @@ export function buildRoomWindowSnapshot(
 		}
 	}
 	const stream = session.isStreaming ? live.stream : undefined;
-	const exchange: AgentMessage[] = start >= 0 ? messages.slice(start) : [];
+	// A conversation the operator never prompted, such as one a room post woke, shows everything it did.
+	const exchange: AgentMessage[] = start >= 0 ? messages.slice(start) : messages.slice();
 	if (stream && !exchange.some(message => message.role === "assistant" && message.timestamp === stream.timestamp)) {
 		exchange.push(stream);
 	}
@@ -234,7 +267,7 @@ export function buildRoomWindowSnapshot(
 					? "writing"
 					: last?.type === "toolCall" || session.state.pendingToolCalls.size > 0
 						? "tool"
-						: tail.length === 0
+						: tail.length === 0 || tail[tail.length - 1]!.kind === "room"
 							? "starting"
 							: "tool";
 		state = { kind: "working", since, activity };
@@ -242,8 +275,13 @@ export function buildRoomWindowSnapshot(
 		state = { kind: "failed", reason: firstLine(lastAssistant.errorMessage ?? "") };
 	} else if (lastAssistant?.role === "assistant" && lastAssistant.stopReason === "aborted") {
 		state = { kind: "stopped" };
-	} else if (exchange.length > 0) {
-		state = { kind: "done", at: exchange[exchange.length - 1]!.timestamp };
+	} else if (start >= 0 || lastAssistant !== undefined) {
+		// A post taken while idle is not an end: the turn ended where the message before it did.
+		let ended: AgentMessage | undefined;
+		for (let i = exchange.length - 1; i >= 0 && ended === undefined; i--) {
+			if (!isRoomRecord(exchange[i]!)) ended = exchange[i];
+		}
+		state = ended ? { kind: "done", at: ended.timestamp } : { kind: "new" };
 	} else {
 		state = { kind: "new" };
 	}

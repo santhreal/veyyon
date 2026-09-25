@@ -338,6 +338,14 @@ function blockRows(block: RoomFeedBlock, width: number, ink: RoomInk, working: b
 			return [theme.italic(ink.token("thinkingText", "Thinking…"))];
 		case "note":
 			return wrapPlain(block.text, width).map(line => ink.token(block.tone === "error" ? "error" : "muted", line));
+		case "room":
+			// One row, like a tool call: a long post must not push the answer it started out of the window.
+			return [
+				truncateToWidth(
+					`${ink.token("borderAccent", "#room")} ${ink.token("muted", `${block.label}:`)} ${ink.token("text", block.body)}`,
+					width,
+				),
+			];
 	}
 }
 
