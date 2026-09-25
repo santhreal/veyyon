@@ -2,6 +2,7 @@
 
 pub mod console;
 pub mod mapping;
+pub mod plan;
 pub mod sheet;
 pub mod surface;
 

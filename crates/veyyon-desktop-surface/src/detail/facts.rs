@@ -51,6 +51,7 @@ pub fn detail_facts(kind: &DetailKind, state: &ShellState) -> Option<DetailFacts
 			let file = state.panel.diff.iter().find(|file| file.path == *path)?;
 			hunk_facts(file, *row)
 		},
+		DetailKind::Plan => plan_facts(state),
 	}
 }
 
@@ -93,6 +94,31 @@ fn model_facts(state: &ShellState) -> Option<DetailFacts> {
 		},
 	}
 	Some(DetailFacts { heading, rows })
+}
+
+/// The plan the composer's chip tallies: the task the run is on, then every
+/// phase with its own tally.
+///
+/// The phase list is the board's, in the order it records them, so the
+/// popover reads as the plan does and a phase the run has left is still
+/// counted rather than dropped.
+fn plan_facts(state: &ShellState) -> Option<DetailFacts> {
+	let board = state.composer.todo.as_ref()?;
+	let mut rows = Vec::with_capacity(board.phases.len() + 1);
+	rows.push(match board.current.as_ref() {
+		Some(task) => DetailRow::new("Now", task.content.clone()),
+		None if board.finished() => DetailRow::new("Now", "Every task closed"),
+		None => DetailRow::new("Now", "No task open"),
+	});
+	for phase in &board.phases {
+		let label = if phase.active {
+			"Phase, active"
+		} else {
+			"Phase"
+		};
+		rows.push(DetailRow { label, value: format!("{} · {}", phase.name, phase.tally()) });
+	}
+	Some(DetailFacts { heading: format!("Plan {}", board.tally()), rows })
 }
 
 /// The inputs a catalog row declares, in the order it declared them. An empty

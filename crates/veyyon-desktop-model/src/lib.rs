@@ -53,7 +53,8 @@ pub use domain::{
 	SessionSearchView, SessionTranscriptView, SettingEntry, SettingKind, SettingOption,
 	SettingsView, ShareGuestView, ShareParticipantView, SharePhase, ShareRole, ShareView,
 	TERMINAL_SCROLLBACK_CAPACITY_BYTES, TerminalOutputChunk, TerminalScrollback, TerminalStatus,
-	TerminalView, ThemeView, ThemesView, UsageView, diagnostic_sources,
+	TerminalView, ThemeView, ThemesView, TodoBoardView, TodoPhaseView, TodoStatus, TodoTaskView,
+	UsageView, diagnostic_sources,
 };
 pub use error::{BackendError, ErrorScope, fallback_surface, is_scope_retryable, route_error};
 pub use event::{

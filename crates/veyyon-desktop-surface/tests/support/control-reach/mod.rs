@@ -149,16 +149,18 @@ pub fn expected_controls(state: &ShellState) -> usize {
 	// The microphone and the prompt-history control are drawn whatever the host
 	// answered about their capabilities, greyed with the reason on them rather
 	// than withheld (§4.3), so the footer carries each of them and the tooltip
-	// stating that reason in every state. The control that moves a waiting
-	// command is the exception: it is drawn from the command the composer is
-	// waiting on, so a session waiting on nothing carries neither it nor its
-	// tooltip.
+	// stating that reason in every state. Two are drawn from the session's own
+	// state instead: the control that moves a waiting command comes from the
+	// command the composer is waiting on, and the plan chip from the board the
+	// host stated, so a session waiting on nothing and running no plan carries
+	// neither control nor its tooltip.
 	let chrome = 1
 		+ 1 + 1
 		+ usize::from(!state.panel.is_empty())
 		+ usize::from(state.drawer.offered)
 		+ 4 + 8
 		+ usize::from(state.composer.foreground.is_some()) * 2
+		+ usize::from(state.composer.todo.is_some()) * 2
 		+ 2 + 1;
 	// Each word of the menu bar answers a press of its own, counted from the
 	// sections the bar draws rather than as a literal, so a menu added to the

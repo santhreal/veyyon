@@ -50,6 +50,7 @@ export const SUPPORTED_CAPABILITIES: Partial<Record<Capability, true>> = {
 	PromptHistory: true,
 	ForegroundCommand: true,
 	Autoswarm: true,
+	Todo: true,
 };
 
 /** Specific, truthful reasons why each unsupported capability is unavailable. */
@@ -72,7 +73,7 @@ export const UNAVAILABLE_CAPABILITY_REASONS: Record<"PendingEdits" | "Extensions
  */
 export const SETTING_GATED_CAPABILITIES: readonly {
 	capability: Capability;
-	path: "goal.enabled" | "stt.enabled";
+	path: "goal.enabled" | "stt.enabled" | "todo.enabled";
 	reason: string;
 }[] = [
 	{
@@ -84,6 +85,11 @@ export const SETTING_GATED_CAPABILITIES: readonly {
 		capability: "Dictation",
 		path: "stt.enabled",
 		reason: "Speech to text is disabled in settings (stt.enabled)",
+	},
+	{
+		capability: "Todo",
+		path: "todo.enabled",
+		reason: "The todo tool is disabled in settings (todo.enabled)",
 	},
 ];
 

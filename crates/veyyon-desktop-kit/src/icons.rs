@@ -56,6 +56,7 @@ pub enum IconName {
 	PanelRight,
 	Mic,
 	History,
+	Checklist,
 }
 
 /// Semantic meaning mapping for icon uniqueness validation.
@@ -107,6 +108,7 @@ pub fn icon_meanings() -> Vec<(IconName, &'static str)> {
 		(IconName::PanelRight, "right panel visibility"),
 		(IconName::Mic, "speech dictated into the composer"),
 		(IconName::History, "prompts submitted earlier"),
+		(IconName::Checklist, "the plan a run is working"),
 	]
 }
 
@@ -181,6 +183,7 @@ pub const fn icon_bytes(name: IconName) -> &'static [u8] {
 		IconName::PanelRight => include_bytes!("../assets/icons/panel-right.svg"),
 		IconName::Mic => include_bytes!("../assets/icons/mic.svg"),
 		IconName::History => include_bytes!("../assets/icons/history.svg"),
+		IconName::Checklist => include_bytes!("../assets/icons/checklist.svg"),
 	}
 }
 

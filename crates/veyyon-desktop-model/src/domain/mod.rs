@@ -24,6 +24,7 @@ pub mod settings;
 pub mod share;
 pub mod terminal;
 pub mod themes;
+pub mod todo;
 pub mod usage;
 
 use std::collections::HashMap;
@@ -50,6 +51,7 @@ pub use settings::*;
 pub use share::*;
 pub use terminal::*;
 pub use themes::*;
+pub use todo::*;
 pub use usage::*;
 
 use crate::{connection::SessionId, transcript::UsageTotals};
@@ -127,6 +129,10 @@ pub struct Domains {
 	/// session with none open holds no entry, which is what lets the surface
 	/// be drawn from the entry's presence.
 	pub autoswarm:       HashMap<SessionId, AutoswarmConsoleView>,
+	/// The plan each session is working, keyed by session. A session whose
+	/// board holds no task holds no entry, so the card is drawn from the
+	/// entry's presence and never from an empty board.
+	pub todo:            HashMap<SessionId, TodoBoardView>,
 }
 
 impl Domains {

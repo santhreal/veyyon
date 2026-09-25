@@ -76,6 +76,7 @@ const DECLARED_PENDING_OPT_OUTS: &[Capability] = &[
 	Capability::PendingEdits,
 	Capability::Plans,
 	Capability::Questions,
+	Capability::Todo,
 ];
 
 fn startup_assets() -> StartupBundle {

@@ -136,6 +136,9 @@ const fn prepare_for(kind: SnapshotSectionKind) -> Prepare {
 		// A console the host opens opens the card that draws it, so the
 		// section arrives at a window at rest and puts the overlay up itself.
 		| SnapshotSectionKind::AutoswarmConsole
+		// The plan chip sits in the composer footer of whatever session is in
+		// hand, so the attached window at rest is where it draws.
+		| SnapshotSectionKind::Todo
 		| SnapshotSectionKind::AgentPause => Prepare::Rest,
 	}
 }

@@ -30,6 +30,7 @@
 
 ### Added
 
+- A desktop window draws the plan the `todo` tool is working as a chip in the composer footer, stating the closed-of-total tally and the phase in flight, and opening the task in flight and every phase tally beside it; the board is re-stated at each `todo` result and when the agent goes idle, and the chip states `todo.enabled` while the tool is off.
 - `/autoresearch` opens its console in a desktop window: the setup rows, the cost notes, the actions the swarm's state allows and the run ledger are projected from the same console model the terminal draws, so a run logged in one is stated the same way in the other. The setup is saved as a preset from the row it is named in, and a saved preset is deleted from the row that offers it.
 - A desktop window moves the command its turn waits on to the background from the composer control, `/background`, the Turn menu or `primary-shift-b`, and the control is drawn only while a command waits; a bash wait is registered per session, so one window's control never releases another window's command.
 - A desktop window recalls a prompt submitted earlier from the composer's history control, `/prompts` or `primary-r`, listing the most recent prompts before anything is typed, filtering them as the query is typed, and restoring the chosen one into the composer as an unsent draft.

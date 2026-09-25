@@ -1,4 +1,5 @@
 import type { ToolView } from "@veyyon/view";
+import type { TodoStatus } from "@veyyon/wire";
 import type { AgentDisplayState } from "../registry/live-roster";
 
 /**
@@ -73,6 +74,7 @@ export const ALL_CAPABILITIES = [
 	"PromptHistory",
 	"ForegroundCommand",
 	"Autoswarm",
+	"Todo",
 ] as const;
 
 export type Capability = (typeof ALL_CAPABILITIES)[number];
@@ -778,6 +780,50 @@ export const ALL_GOAL_CONTROLS = ["pause", "resume", "drop"] as const;
 export type GoalControl = (typeof ALL_GOAL_CONTROLS)[number];
 
 /**
+ * One task of the plan a session is working. Mirrors `TodoTaskView` in
+ * `crates/veyyon-desktop-model/src/domain/todo.rs`.
+ *
+ * `status` is the shared vocabulary of `@veyyon/wire`, not a second one: a
+ * status added there arrives here without an edit, and the window draws a mark
+ * per status rather than one per phase.
+ */
+export interface TodoTaskView {
+	content: string;
+	status: TodoStatus;
+}
+
+/** One phase of the plan, with its own tally. */
+export interface TodoPhaseView {
+	/** The phase as the board states it, numbered: `II. Shared`. */
+	name: string;
+	/** The phase's tasks, open work first. */
+	tasks: TodoTaskView[];
+	/** Tasks of this phase that are finished with: done or abandoned. */
+	closed: number;
+	/** The next actionable task belongs to this phase. */
+	active: boolean;
+}
+
+/**
+ * The plan a session is working, as the window draws it.
+ *
+ * Every count is the host's, taken from the session's own board through
+ * `tools/agent/todo`, so a tally the window states and a tally the terminal
+ * states cannot disagree. A session whose board holds no task publishes no
+ * view at all rather than a board of nothing.
+ */
+export interface TodoBoardView {
+	/** The phases in the order the board records them. */
+	phases: TodoPhaseView[];
+	/** Tasks closed across every phase. */
+	closed: number;
+	/** Tasks recorded across every phase. */
+	total: number;
+	/** The task in flight, or the first one waiting, or null once none is. */
+	current: TodoTaskView | null;
+}
+
+/**
  * Where a dictation is: `idle` before the microphone opens and after the
  * words have landed, `recording` while it is open, `transcribing` while the
  * recogniser finishes the last of it.
@@ -934,7 +980,8 @@ export type SnapshotSection =
 	| { Profiles: ProfilesView }
 	| { Dictation: DictationView }
 	| { ForegroundCommand: { session: string; command: ForegroundCommandView | null } }
-	| { AutoswarmConsole: { session: string; console: AutoswarmConsoleView | null } };
+	| { AutoswarmConsole: { session: string; console: AutoswarmConsoleView | null } }
+	| { Todo: { session: string; board: TodoBoardView | null } };
 
 export const ALL_SNAPSHOT_SECTIONS = [
 	"Sessions",
@@ -976,6 +1023,7 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"Dictation",
 	"ForegroundCommand",
 	"AutoswarmConsole",
+	"Todo",
 ] as const;
 
 export type SnapshotSectionTag = (typeof ALL_SNAPSHOT_SECTIONS)[number];

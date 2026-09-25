@@ -15,23 +15,21 @@
 //! than reading them here.
 
 use veyyon_desktop_model::{
-	InputModality, TerminalStatus,
+	TerminalStatus,
 	text::terminal::{Cell, CellStyle, Ink},
 };
 
 use crate::{
-	composer::{
-		ComposerState, ContextMeter, ModelChoice, ModelControl, ModelOption, ThinkingControl,
-	},
 	drawer::{DEFAULT_COLUMNS, DEFAULT_ROWS, DrawerContent, DrawerTab},
 	model::{
 		Badge, Block, Card, ConnectionPhase, Row, Section, ShellState, ToolInvocationViews, Turn,
 	},
 };
 
+mod composer;
 mod panel;
 
-use self::panel::fixture_panel;
+use self::{composer::fixture_composer, panel::fixture_panel};
 
 /// Builds a shell state exercising every section, badge and block kind.
 pub fn populated() -> ShellState {
@@ -168,40 +166,6 @@ pub fn populated() -> ShellState {
 		current_id: 3,
 		connection: ConnectionPhase::Attached,
 		..ShellState::default()
-	}
-}
-
-/// A footer with every control the host can report: a model the operator
-/// can change, a thinking level with somewhere to go, and a context meter.
-fn fixture_composer() -> ComposerState {
-	let sonnet =
-		ModelChoice { provider: "anthropic".to_owned(), model: "claude-sonnet-4.5".to_owned() };
-	let opus =
-		ModelChoice { provider: "anthropic".to_owned(), model: "claude-opus-4.1".to_owned() };
-	ComposerState {
-		model: Some(ModelControl {
-			current: Some(sonnet.clone()),
-			options: vec![
-				ModelOption {
-					choice:    sonnet,
-					name:      "Claude Sonnet 4.5".to_owned(),
-					reasoning: true,
-					input:     vec![InputModality::Text, InputModality::Image],
-				},
-				ModelOption {
-					choice:    opus,
-					name:      "Claude Opus 4.1".to_owned(),
-					reasoning: true,
-					input:     vec![InputModality::Text, InputModality::Image],
-				},
-			],
-		}),
-		thinking: Some(ThinkingControl {
-			level:  "high".to_owned(),
-			levels: ["off", "low", "medium", "high"].map(str::to_owned).to_vec(),
-		}),
-		context: Some(ContextMeter { used_tokens: 82_400, limit_tokens: Some(200_000) }),
-		..ComposerState::default()
 	}
 }
 

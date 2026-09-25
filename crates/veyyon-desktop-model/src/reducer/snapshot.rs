@@ -327,6 +327,16 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 			}
 			damage.insert(Damage::FullWindow);
 		},
+		SnapshotSection::Todo { session, board } => {
+			// The plan is drawn in that session's composer band, so a board
+			// moving redraws one band and leaves another session's alone.
+			if let Some(board) = board {
+				store.domains.todo.insert(session.clone(), board);
+			} else {
+				store.domains.todo.remove(&session);
+			}
+			damage.insert(Damage::Composer(session));
+		},
 	}
 
 	damage

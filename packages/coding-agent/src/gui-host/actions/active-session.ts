@@ -13,6 +13,7 @@ import { writeFrame } from "../frames";
 import { goalSection } from "../goal-view";
 import { reportQueuedPrompts } from "../queued-prompts";
 import { sessionHeaderToView, sessionInfoToSummary } from "../session-bridge";
+import { todoSection } from "../todo-view";
 import {
 	appendedEntryToTranscriptEntry,
 	seedFirstMessagePosition,
@@ -134,6 +135,14 @@ export function emitActiveSessionAndTranscript(
 		ctx.reply.snapshot({
 			ForegroundCommand: { session: openSession, command: foregroundSection(openSession) },
 		});
+	}
+	// A session resumed with a plan on it holds that plan before any turn
+	// runs, so the card is drawn from the board the file recorded rather than
+	// waiting for the next `todo` call to state one.
+	if (ctx.clientState.agentSession) {
+		const section = todoSection(ctx.clientState.agentSession);
+		ctx.clientState.lastTodoSignature = JSON.stringify(section);
+		ctx.reply.snapshot(section);
 	}
 	if (ctx.clientState.agentSession) {
 		ctx.reply.snapshot(

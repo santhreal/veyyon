@@ -369,5 +369,6 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 				});
 		},
 		Capability::Autoswarm => super::console::seed_autoswarm_console(seed, session),
+		Capability::Todo => super::plan::seed_todo_board(seed, session),
 	}
 }

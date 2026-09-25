@@ -237,6 +237,9 @@ pub struct ComposerState {
 	/// The command this session waits on in the foreground, absent while it
 	/// waits on none.
 	pub foreground:  Option<veyyon_desktop_model::ForegroundCommandView>,
+	/// The plan this session is working, absent while its board records no
+	/// task.
+	pub todo:        Option<veyyon_desktop_model::TodoBoardView>,
 }
 
 impl ComposerState {

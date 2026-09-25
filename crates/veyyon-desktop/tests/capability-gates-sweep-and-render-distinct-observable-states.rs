@@ -105,10 +105,14 @@ fn test_action_of_exhaustively_matches_model_mapping() {
 			Capability::Plans,
 			Capability::PendingEdits,
 			Capability::Extensions,
+			// The window draws the plan and never moves a task: the board is
+			// the agent's, written by the `todo` tool, and an action here
+			// would be a second writer of it.
+			Capability::Todo,
 		],
 		"exact set of actionless capabilities"
 	);
-	assert_eq!(Capability::ALL.len(), 37);
+	assert_eq!(Capability::ALL.len(), 38);
 }
 
 #[test]

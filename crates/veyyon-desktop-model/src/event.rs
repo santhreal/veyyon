@@ -68,7 +68,7 @@ pub struct SessionHeaderView {
 	pub mode:           Option<String>,
 }
 
-/// Complete list of all 35 snapshot section names defined by the protocol.
+/// Every snapshot section name the protocol defines, in variant order.
 pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Sessions",
 	"ActiveSession",
@@ -109,6 +109,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Dictation",
 	"ForegroundCommand",
 	"AutoswarmConsole",
+	"Todo",
 ];
 
 /// Domain sections received during initial connection or snapshot
@@ -119,7 +120,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
 #[strum_discriminants(name(SnapshotSectionKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
 #[strum_discriminants(
-	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 35 section variants."
+	doc = "Fieldless projection of `SnapshotSection`, so a sweep covers every section variant."
 )]
 pub enum SnapshotSection {
 	/// Session index metadata and deserialization failures.
@@ -224,6 +225,13 @@ pub enum SnapshotSection {
 		/// The console as the host holds it, or None once none is open.
 		console: Option<crate::domain::AutoswarmConsoleView>,
 	},
+	/// The plan a session is working, or its absence once the board empties.
+	Todo {
+		/// Target session identifier.
+		session: SessionId,
+		/// The board as the host holds it, or None once it records no task.
+		board:   Option<crate::domain::TodoBoardView>,
+	},
 }
 
 impl SnapshotSection {
@@ -270,6 +278,7 @@ impl SnapshotSection {
 			Self::Dictation(..) => "Dictation",
 			Self::ForegroundCommand { .. } => "ForegroundCommand",
 			Self::AutoswarmConsole { .. } => "AutoswarmConsole",
+			Self::Todo { .. } => "Todo",
 		}
 	}
 

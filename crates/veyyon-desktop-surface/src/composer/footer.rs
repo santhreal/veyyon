@@ -270,6 +270,13 @@ pub fn footer_row(
 					cx,
 				))
 				.child(super::history::history_control(&session, states, tokens, cx))
+				.children(super::plan::plan_control(
+					composer.todo.as_ref(),
+					&session,
+					states,
+					tokens,
+					cx,
+				))
 				.children(super::background::background_control(
 					composer.foreground.as_ref(),
 					&session,

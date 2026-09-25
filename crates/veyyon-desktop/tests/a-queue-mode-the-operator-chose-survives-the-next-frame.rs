@@ -35,7 +35,7 @@ use veyyon_desktop::{SessionIndex, project, project_controls, project_turn_phase
 use veyyon_desktop_model::{
 	BadgeKind, Capability, CapabilityStatus, ConnectionState, DictationState, DictationView,
 	ForegroundCommandView, PROTOCOL_VERSION, QueueMode, QueuePartition, RequestRegistry, SessionId,
-	SessionMode, Store,
+	SessionMode, Store, TodoBoardView,
 };
 use veyyon_desktop_surface::{
 	Intent, ShellState,
@@ -251,6 +251,12 @@ fn every_field_the_window_owns_survives_the_frame() {
 				command:   "bun test".to_string(),
 				truncated: false,
 			}),
+			todo:        Some(TodoBoardView {
+				phases:  Vec::new(),
+				closed:  0,
+				total:   0,
+				current: None,
+			}),
 		},
 		..ShellState::default()
 	};
@@ -285,5 +291,10 @@ fn every_field_the_window_owns_survives_the_frame() {
 		state.composer.foreground.is_none(),
 		"the wait is the host's; a session it reports no command for draws no background control, \
 		 rather than one naming a command that has already exited"
+	);
+	assert!(
+		state.composer.todo.is_none(),
+		"the board is the host's; a session it reports no plan for draws no plan chip, rather than \
+		 one tallying a plan the run has left"
 	);
 }

@@ -17,6 +17,7 @@ import { createAgentSession } from "../sdk";
 import type { AgentSession } from "../session/agent-session";
 import type { AgentSessionEvent } from "../session/agent-session-types";
 import { USER_INTERRUPT_LABEL } from "../session/messages";
+import { TOOL } from "../tools/core/builtin-names";
 import { MAX_IMAGE_INPUT_BYTES } from "../utils/image-loading";
 import { base64DecodedBytes, MAX_PROMPT_ATTACHMENT_BYTES, MAX_VIDEO_INPUT_BYTES } from "../utils/video-loading";
 import { AutoswarmConsole, attachAutoswarmConsole } from "./autoswarm-bridge";
@@ -41,6 +42,7 @@ import {
 	type StreamingChange,
 	type StreamingFrameState,
 } from "./streaming-frames";
+import { todoSection } from "./todo-view";
 import { appendedEntryToTranscriptEntry, seedFirstMessagePosition } from "./transcript-conversion";
 import type { AttachmentSubmission, AuthFlowState, TerminalStatus, TranscriptEntry } from "./wire";
 
@@ -142,6 +144,13 @@ export interface ClientSessionState {
 	 * to suppress redundant frames when the queues have not changed.
 	 */
 	lastQueuedPromptsSignature?: string;
+	/**
+	 * Signature of the last todo board written for this session, so a turn
+	 * that touched the board without changing it writes no frame. The board is
+	 * re-projected at each tool result and at idle, and most of those are the
+	 * same plan.
+	 */
+	lastTodoSignature?: string;
 	/**
 	 * Re-state the session index to this client, installed per connection.
 	 *
@@ -388,6 +397,11 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 			state.streamingToolCallId = undefined;
 			state.presentationLedger.recordResult(event.toolCallId, event.result, event.isError);
 			pushStreaming(socket, state, { regenerate: "final", tool: true });
+			// A plan moves on a `todo` call and on nothing else in a turn, so
+			// the board is re-stated where it can have changed rather than on
+			// every result. The write itself is suppressed when the projection
+			// matches the last one sent.
+			if (event.toolName === TOOL.todo) publishTodoBoard(socket, state);
 			break;
 		}
 		case "message_end": {
@@ -411,6 +425,10 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 			// created, the processes it launched and the tokens it spent stop
 			// changing, and nothing else asks for any of them again.
 			void state.republishWorkspace?.();
+			// A plan the operator edited from a command rather than from the
+			// tool, and a plan a phase auto-promoted at the end of a run, both
+			// land by the time the agent goes idle.
+			publishTodoBoard(socket, state);
 			break;
 		}
 		case "goal_updated": {
@@ -424,6 +442,24 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 		default:
 			break;
 	}
+}
+
+/**
+ * State this client's plan, when it differs from the one last stated.
+ *
+ * The board is re-projected at each `todo` result and at idle, and a plan
+ * whose task the agent re-read rather than moved is the same board: writing it
+ * again would redraw the card and re-run its motion for no change. The
+ * signature is the projection itself, so a tally, an order or a phase name
+ * that moved is a write and nothing else is.
+ */
+export function publishTodoBoard(socket: net.Socket, state: ClientSessionState): void {
+	if (state.closed || socket.destroyed || !state.agentSession) return;
+	const section = todoSection(state.agentSession);
+	const signature = JSON.stringify(section);
+	if (signature === state.lastTodoSignature) return;
+	state.lastTodoSignature = signature;
+	writeFrame(socket, { Snapshot: section });
 }
 
 /**

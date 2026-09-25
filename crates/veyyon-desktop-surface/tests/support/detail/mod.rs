@@ -45,6 +45,8 @@ pub const FILE_NAME: &str = "panel.rs";
 pub const HUNK_RANGE: &str = "@@ -1,5 +1,6 @@";
 /// The display name the composer's model chip draws.
 pub const MODEL_NAME: &str = "Claude Sonnet 4.5";
+/// The words the composer's plan chip draws, which is where its press lands.
+pub const PLAN_CHIP: &str = "1/3 · II. Surface";
 
 /// The state every case opens on: the panel docked open on `tab`, motion off
 /// so a popover is at its settled opacity in the frame the press produced.
@@ -88,7 +90,7 @@ pub const fn tab_for(source: DetailSource) -> PanelTab {
 		DetailSource::TreeRow => PanelTab::Tree,
 		// The chip is on the composer's footer row, which every tab draws
 		// beside; the fixture opens on Diff.
-		DetailSource::Model | DetailSource::DiffHunk => PanelTab::Diff,
+		DetailSource::Model | DetailSource::DiffHunk | DetailSource::Plan => PanelTab::Diff,
 	}
 }
 
@@ -98,6 +100,7 @@ pub const fn control_label(source: DetailSource) -> &'static str {
 		DetailSource::TreeRow => FILE_NAME,
 		DetailSource::Model => MODEL_NAME,
 		DetailSource::DiffHunk => HUNK_RANGE,
+		DetailSource::Plan => PLAN_CHIP,
 	}
 }
 
@@ -110,6 +113,7 @@ pub fn detail_for(source: DetailSource, origin: Point<Pixels>) -> Detail {
 		DetailSource::DiffHunk => {
 			Detail::below(DetailKind::DiffHunk { path: FILE_PATH.to_owned(), row: 0 }, origin)
 		},
+		DetailSource::Plan => Detail::above(DetailKind::Plan, origin),
 	}
 }
 
@@ -125,6 +129,7 @@ pub const fn stated_fact(source: DetailSource) -> (&'static str, &'static str) {
 		DetailSource::TreeRow => ("Path", FILE_PATH),
 		DetailSource::Model => ("Provider", "anthropic"),
 		DetailSource::DiffHunk => ("Before", "lines 1-5"),
+		DetailSource::Plan => ("Now", "Draw the plan in the composer band"),
 	}
 }
 

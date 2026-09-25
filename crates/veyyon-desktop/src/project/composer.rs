@@ -118,6 +118,9 @@ pub fn project_composer(store: &Store, session: Option<&SessionId>, composer: &m
 	composer.foreground = session
 		.and_then(|id| store.domains.foreground.get(id))
 		.cloned();
+	// A plan belongs to the session that recorded it, so a row the operator
+	// is not looking at draws no chip for it.
+	composer.todo = session.and_then(|id| store.domains.todo.get(id)).cloned();
 
 	composer.queue_mode = clamp_queue_mode(store, composer.queue_mode);
 }

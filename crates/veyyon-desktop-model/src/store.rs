@@ -111,4 +111,10 @@ impl Store {
 	pub fn goal(&self, session: &SessionId) -> Option<&crate::domain::GoalView> {
 		self.goals.get(session)
 	}
+
+	/// The plan a session is working, if its board records a task.
+	#[must_use]
+	pub fn todo(&self, session: &SessionId) -> Option<&crate::domain::TodoBoardView> {
+		self.domains.todo.get(session)
+	}
 }

@@ -26,7 +26,7 @@ use crate::{
 const fn detail_owner(source: DetailSource) -> SurfaceId {
 	match source {
 		DetailSource::TreeRow | DetailSource::DiffHunk => SurfaceId::RightPanel,
-		DetailSource::Model => SurfaceId::Composer,
+		DetailSource::Model | DetailSource::Plan => SurfaceId::Composer,
 	}
 }
 

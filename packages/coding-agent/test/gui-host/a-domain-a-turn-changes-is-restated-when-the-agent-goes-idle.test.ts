@@ -138,6 +138,10 @@ const AT_IDLE: Record<SnapshotSectionTag, "restated-at-idle" | "listed-at-idle" 
 	// edit to it is answered with the console the model produced. A turn that
 	// ends has closed it, so the idle re-statement owes it nothing.
 	AutoswarmConsole: "during-turn",
+	// The board is published at each `todo` result and again when the agent
+	// goes idle, both of which the turn's own frames carry, and a turn that
+	// left the plan where it was writes nothing at either point.
+	Todo: "during-turn",
 };
 
 /** The section the host publishes last, which is what closes a re-statement. */

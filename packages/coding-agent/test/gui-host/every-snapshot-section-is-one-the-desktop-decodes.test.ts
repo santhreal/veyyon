@@ -534,6 +534,37 @@ const CORPUS = [
 			},
 		},
 	},
+	{
+		Todo: {
+			session: "sess-1",
+			board: {
+				phases: [
+					{
+						name: "I. Wire",
+						tasks: [
+							{ content: "Publish the board at each todo result", status: "in_progress" },
+							{ content: "Project the phases the session records", status: "completed" },
+						],
+						closed: 1,
+						active: true,
+					},
+					{
+						name: "II. Surface",
+						tasks: [
+							{ content: "Draw the plan in the composer band", status: "pending" },
+							{ content: "Shed the phase name on a narrow window", status: "pending" },
+							{ content: "Sweep every measure the card authors", status: "abandoned" },
+						],
+						closed: 1,
+						active: false,
+					},
+				],
+				closed: 2,
+				total: 5,
+				current: { content: "Publish the board at each todo result", status: "in_progress" },
+			},
+		},
+	},
 ] satisfies SnapshotSection[];
 
 describe("every snapshot section is one the desktop decodes", () => {

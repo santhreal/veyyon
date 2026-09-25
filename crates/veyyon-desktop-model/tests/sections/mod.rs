@@ -15,7 +15,7 @@ use veyyon_desktop_model::{
 	ModelView, ModelsView, ProcessView, ProfileCopyItemView, ProfileView, ProfilesView,
 	PromptHistoryEntry, PromptHistoryView, ProviderView, SearchResultsView, SessionId, SettingEntry,
 	SettingKind, SettingsView, SnapshotSection, TerminalStatus, TerminalView, ThemeView, ThemesView,
-	UsageTotals, UsageView,
+	TodoBoardView, TodoPhaseView, TodoStatus, TodoTaskView, UsageTotals, UsageView,
 };
 
 pub use self::pair::pair;
@@ -106,6 +106,26 @@ pub fn autoswarm(session: &str, goal: Option<&str>) -> SnapshotSection {
 				detail:  Vec::new(),
 			}],
 			save_field: None,
+		}),
+	}
+}
+
+pub fn todo(session: &str, task: Option<&str>) -> SnapshotSection {
+	SnapshotSection::Todo {
+		session: SessionId::from(session),
+		board:   task.map(|task| {
+			let current = TodoTaskView { content: task.to_owned(), status: TodoStatus::InProgress };
+			TodoBoardView {
+				phases:  vec![TodoPhaseView {
+					name:   "I. Wire".to_owned(),
+					tasks:  vec![current.clone()],
+					closed: 0,
+					active: true,
+				}],
+				closed:  0,
+				total:   1,
+				current: Some(current),
+			}
 		}),
 	}
 }

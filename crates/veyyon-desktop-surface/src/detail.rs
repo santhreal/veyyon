@@ -35,6 +35,8 @@ pub enum DetailSource {
 	Model,
 	/// One hunk of one changed file in the diff pane.
 	DiffHunk,
+	/// The plan chip in the composer footer.
+	Plan,
 }
 
 /// What a detail popover was opened on.
@@ -46,6 +48,8 @@ pub enum DetailKind {
 	Model,
 	/// The hunk header at this row index of this file's rows.
 	DiffHunk { path: String, row: usize },
+	/// The plan the open session is working.
+	Plan,
 }
 
 impl DetailKind {
@@ -56,6 +60,7 @@ impl DetailKind {
 			Self::TreeRow(_) => DetailSource::TreeRow,
 			Self::Model => DetailSource::Model,
 			Self::DiffHunk { .. } => DetailSource::DiffHunk,
+			Self::Plan => DetailSource::Plan,
 		}
 	}
 }

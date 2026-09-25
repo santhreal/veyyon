@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-/// Enumeration of all thirty-six protocol capabilities with explicit
-/// discriminants.
+/// Every protocol capability, with explicit discriminants so the wire value of
+/// one never shifts when another is declared.
 #[derive(
 	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, strum::EnumIter,
 )]
@@ -44,11 +44,12 @@ pub enum Capability {
 	PromptHistory        = 34,
 	ForegroundCommand    = 35,
 	Autoswarm            = 36,
+	Todo                 = 37,
 }
 
 impl Capability {
 	/// Complete list of all capability variants for runtime sweeps.
-	pub const ALL: [Self; 37] = [
+	pub const ALL: [Self; 38] = [
 		Self::Sessions,
 		Self::SessionDeletion,
 		Self::SessionTreeNavigation,
@@ -86,6 +87,7 @@ impl Capability {
 		Self::PromptHistory,
 		Self::ForegroundCommand,
 		Self::Autoswarm,
+		Self::Todo,
 	];
 
 	/// Returns the stable string identifier matching the wire protocol.
@@ -129,6 +131,7 @@ impl Capability {
 			Self::PromptHistory => "PromptHistory",
 			Self::ForegroundCommand => "ForegroundCommand",
 			Self::Autoswarm => "Autoswarm",
+			Self::Todo => "Todo",
 		}
 	}
 }

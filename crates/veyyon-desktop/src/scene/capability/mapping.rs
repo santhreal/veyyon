@@ -42,7 +42,10 @@ pub const fn action_of(capability: Capability) -> Option<HostActionKind> {
 		| Capability::Plans
 		| Capability::Extensions
 		| Capability::PendingEdits
-		| Capability::BackgroundSubmission => None,
+		| Capability::BackgroundSubmission
+		// The board is the agent's, written by the `todo` tool. The window
+		// draws it and moves no task, so no action is gated by it.
+		| Capability::Todo => None,
 	}
 }
 
@@ -94,5 +97,6 @@ pub fn target_surface_of(capability: Capability, _session: &SessionId) -> Surfac
 		Capability::PromptHistory => SurfaceId::ComposerHistoryButton(row),
 		Capability::ForegroundCommand => SurfaceId::ComposerBackgroundButton(row),
 		Capability::Autoswarm => SurfaceId::AutoswarmActionButton(row, "start".to_string()),
+		Capability::Todo => SurfaceId::ComposerPlanChip(row),
 	}
 }

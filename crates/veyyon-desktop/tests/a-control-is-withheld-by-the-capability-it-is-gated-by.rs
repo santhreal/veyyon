@@ -155,7 +155,9 @@ fn which_capabilities_gate_no_control_in_this_window_is_recorded() {
 	// (`PendingEdits`), a decision the session is waiting on (`Plans`,
 	// `Questions`), a row of an open swarm console (`Autoswarm`), and the
 	// queue toggle, which this window gates through `SetQueueMode` and
-	// withholds for `BackgroundSubmission` separately.
+	// withholds for `BackgroundSubmission` separately. `Todo` is reached from
+	// no action at all: the board is written by the `todo` tool, the plan chip
+	// opens a fact popover, and the window sends nothing back.
 	let mut unreached: Vec<String> = Vec::new();
 	for refused in Capability::ALL {
 		let (_, controls) = projected(refused);
@@ -179,5 +181,6 @@ fn which_capabilities_gate_no_control_in_this_window_is_recorded() {
 		"Plans",
 		"Questions",
 		"Settings",
+		"Todo",
 	]);
 }

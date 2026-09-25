@@ -165,6 +165,22 @@ pub fn project_controls(
 		SurfaceId::SettingsField("extensions".to_string()),
 		Availability::from(ext_gate),
 	);
+	// The board is the agent's and no action moves a task, so the chip reads
+	// the capability rather than an action's gate: a host that carries no
+	// board still draws the chip it already has, greyed with the host's
+	// reason, rather than dropping a tally the operator was reading.
+	if let Some(row_id) = active_row {
+		let todo_gate = transport_gate_capability(
+			&store.connection,
+			veyyon_desktop_model::gate_capability(Capability::Todo, &store.capabilities, registry),
+		);
+		state
+			.controls
+			.set_availability(
+				SurfaceId::ComposerPlanChip(composer_row(Some(row_id))),
+				Availability::from(todo_gate),
+			);
+	}
 	if matches!(
 		store.capabilities.get(Capability::BackgroundSubmission),
 		CapabilityStatus::Unavailable { .. }

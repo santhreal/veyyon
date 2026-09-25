@@ -10,7 +10,7 @@ use veyyon_desktop_model::{
 use super::{
 	agent, auth_flow, autoswarm, changed, changes, command, comms, content_matches, context, export,
 	file_content, file_tree, foreground, keybinding, mcp, models, node, process, profiles,
-	prompt_history, provider, search, settings, terminal, themes, usage,
+	prompt_history, provider, search, settings, terminal, themes, todo, usage,
 };
 
 /// Two distinct sections of one kind, or `None` for a kind that does not
@@ -79,6 +79,12 @@ pub fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 			// The console closes, which drops the ledger with it: a merge
 			// would keep drawing runs of a console nothing has open.
 			autoswarm("s1", None),
+		],
+		SnapshotSectionKind::Todo => [
+			todo("s1", Some("Publish the board at each todo result")),
+			// The board empties, which drops the card with it: a merge would
+			// keep drawing a phase of a plan the session no longer records.
+			todo("s1", None),
 		],
 		SnapshotSectionKind::Terminals => [
 			terminal("t1", TerminalStatus::Running),

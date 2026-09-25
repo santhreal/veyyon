@@ -49,6 +49,7 @@ pub enum SurfaceId {
 	ComposerQueuedTakeBack(SessionId),
 	ComposerCancelToolButton(SessionId, String),
 	ComposerGoalChip(SessionId),
+	ComposerPlanChip(SessionId),
 	ComposerDictateButton(SessionId),
 	ComposerHistoryButton(SessionId),
 
@@ -188,6 +189,7 @@ impl SurfaceId {
 			| Self::ComposerQueuedTakeBack(_)
 			| Self::ComposerCancelToolButton(..)
 			| Self::ComposerGoalChip(_)
+			| Self::ComposerPlanChip(_)
 			| Self::ComposerDictateButton(_)
 			| Self::ComposerHistoryButton(_)
 			| Self::ApprovalApproveButton(..)
@@ -325,6 +327,7 @@ impl SurfaceId {
 			| Self::ComposerQueuedTakeBack(_)
 			| Self::ComposerCancelToolButton(..)
 			| Self::ComposerGoalChip(_)
+			| Self::ComposerPlanChip(_)
 			| Self::ComposerDictateButton(_)
 			| Self::ComposerHistoryButton(_)
 			| Self::ApprovalApproveButton(..)
