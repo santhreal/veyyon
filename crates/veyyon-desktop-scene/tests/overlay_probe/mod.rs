@@ -1,9 +1,11 @@
-//! Probe states for floating overlays: the command palette and the settings
-//! sheet.
+//! Probe states for floating overlays: the command palette, the settings
+//! sheet, the agent dashboard, the share card and the autoswarm console.
 //!
-//! Both surfaces float over the window as overlays, reading their geometry from
-//! `surface/palette.toml` and `surface/settings.toml`. The probe renders each
-//! surface in the states that exercise its authored measures.
+//! Each surface floats over the window as an overlay, reading its geometry
+//! from its own file under `surface/`. The probe renders each surface in the
+//! states that exercise its authored measures.
+
+pub mod autoswarm;
 
 use std::path::Path;
 
@@ -12,8 +14,8 @@ use veyyon_desktop_model::{
 };
 use veyyon_desktop_scene::{Headless, HeadlessSession, headless::render_view};
 use veyyon_desktop_surface::{
-	Intent, Overlay, PaletteItem, PaletteMode, PaletteState, SettingsPage, SettingsState, ShellView,
-	fixture, install_tokens, palette::PaletteMeta, share::ShareState,
+	AutoswarmState, Intent, Overlay, PaletteItem, PaletteMode, PaletteState, SettingsPage,
+	SettingsState, ShellView, fixture, install_tokens, palette::PaletteMeta, share::ShareState,
 };
 use veyyon_desktop_tokens::{Tokens, load_bundled_theme};
 use veyyon_gpui::{AppContext, point, px};
@@ -21,7 +23,7 @@ use veyyon_gpui::{AppContext, point, px};
 use crate::dead_token_probe::{Observation, frame_observation, shell};
 
 /// Renders the floating overlay states that exercise the palette, settings,
-/// agents and share surface tokens.
+/// agents, share and autoswarm surface tokens.
 pub fn observations(cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
 	let mut out = Vec::new();
 	let theme = load_bundled_theme("dark").expect("a bundled theme must load");
@@ -266,13 +268,32 @@ pub fn observations(cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
 	let mut share_shell = fixture::populated();
 	share_shell.overlay = Some(Overlay::Share(Box::new(share_state)));
 	let share_tokens = tokens.clone();
+	let share_theme = theme.clone();
 	let share_frame = render_view(cx, &shell::wide(), move |_window, app| {
-		let installed = install_tokens(app, &share_tokens, &theme, Path::new("surface"))
+		let installed = install_tokens(app, &share_tokens, &share_theme, Path::new("surface"))
 			.expect("the bundled token set must install");
 		app.new(|_cx| ShellView::new(installed, share_shell))
 	})
 	.expect("the share card must render");
 	out.push(frame_observation("share_hosting", &share_frame));
+
+	// 7. The autoswarm console on a branch that has logged runs, which is the
+	// only state that draws every measure `surface/autoswarm.toml` authors:
+	// the card's own box, the padding inside it, a setup row with a second row
+	// under it, and a ledger row with a second under that.
+	let mut console_state = AutoswarmState::new();
+	let mut console_shell = fixture::populated();
+	console_state.console = Some(autoswarm::console(&console_shell.current_id.to_string()));
+	console_shell.overlay = Some(Overlay::Autoswarm(Box::new(console_state)));
+	let console_tokens = tokens.clone();
+	let console_theme = theme;
+	let console_frame = render_view(cx, &shell::wide(), move |_window, app| {
+		let installed = install_tokens(app, &console_tokens, &console_theme, Path::new("surface"))
+			.expect("the bundled token set must install");
+		app.new(|_cx| ShellView::new(installed, console_shell))
+	})
+	.expect("the autoswarm console must render");
+	out.push(frame_observation("autoswarm_console", &console_frame));
 
 	out
 }

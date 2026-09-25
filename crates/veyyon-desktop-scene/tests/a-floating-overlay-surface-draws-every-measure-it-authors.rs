@@ -5,7 +5,8 @@
 //!
 //! THE CLASS THIS CLOSES: floating overlay measures authored in token files
 //! that fail to reach the raster. The sweep enumerates every numeric measure in
-//! `surface.palette`, `surface.settings`, `surface.agents` and `surface.share`
+//! `surface.palette`, `surface.settings`, `surface.agents`, `surface.share`
+//! and `surface.autoswarm`
 //! at run time through serde, doubles each in turn against seeded floating
 //! overlay states, and fails naming any measure whose rendered frame was
 //! unchanged.
@@ -37,4 +38,9 @@ fn every_agents_measure_moves_a_pixel() {
 #[test]
 fn every_share_measure_moves_a_pixel() {
 	assert_every_measure_is_drawn("surface.share", overlay_probe::observations);
+}
+
+#[test]
+fn every_autoswarm_measure_moves_a_pixel() {
+	assert_every_measure_is_drawn("surface.autoswarm", overlay_probe::observations);
 }
