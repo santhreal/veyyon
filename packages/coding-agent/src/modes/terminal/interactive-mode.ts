@@ -4652,6 +4652,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		return this.#extensionUiController.onWaitingDialogsChange(listener);
 	}
 
+	roomViewClosed(): void {
+		this.#extensionUiController.roomViewClosed();
+	}
+
 	/**
 	 * Dispose every conversation this terminal runs, the launch session last:
 	 * the others share its MCP manager and job manager, and disposing it first

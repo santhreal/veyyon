@@ -17,7 +17,10 @@
  * conversation off screen: does not present, is counted in `waitingDialogs`,
  * fires the waiting listener, and presents once that conversation is on
  * screen and attached; its abort signal settles it to the fallback, drops the
- * count, and the abandoned question is never raised later. A conversation the
+ * count, and the abandoned question is never raised later. While the room
+ * view is open the conversation on screen waits too, and so does one a switch
+ * puts on screen under the view; both present when the view closes over them.
+ * A conversation the
  * terminal releases (closed from the room, or at exit) settles every dialog it
  * holds, `terminal.custom` included, and a dialog it asks afterwards settles at
  * once. Status text and widgets are kept per conversation: set from off screen
@@ -122,6 +125,10 @@ interface Harness {
 	notifyFrom(session: AgentSession, notification: HostNotification): void;
 	/** The room's name for each conversation, as the room view numbers them; empty outside a room. */
 	labels: Map<AgentSession, string>;
+	/** Open the room view over the screen, as `→→` does. */
+	openRoomView(): void;
+	/** Close the room view, onto whichever conversation is on screen, the way the room does when its stage lifts. */
+	closeRoomView(): void;
 }
 
 async function harness(): Promise<Harness> {
@@ -158,7 +165,7 @@ async function harness(): Promise<Harness> {
 		setToolNotifier: (notify: HostNotifier) => {
 			notifiers.set(a, notify);
 		},
-		room: { labelOf: (session: AgentSession) => labels.get(session) },
+		room: { labelOf: (session: AgentSession) => labels.get(session), viewOpen: false },
 		setWorkingMessage: (message?: string) => {
 			log.push(`setWorkingMessage:${message}`);
 		},
@@ -234,6 +241,13 @@ async function harness(): Promise<Harness> {
 			return (await provider.getSuggestions([""], 0, 0))?.items.map(item => item.value) ?? [];
 		},
 		labels,
+		openRoomView: () => {
+			ctx.room.viewOpen = true;
+		},
+		closeRoomView: () => {
+			ctx.room.viewOpen = false;
+			controller.roomViewClosed();
+		},
 		notifyFrom: (session, notification) => {
 			const notify = notifiers.get(session);
 			if (!notify) throw new Error("That conversation was bound with no notifier.");
@@ -623,6 +637,70 @@ describe("a dialog from a conversation off screen", () => {
 		h.bring(h.b);
 		expect(await held).toBe(true);
 		expect(shown()).toBe(3);
+	});
+});
+
+/**
+ * The room view covers the whole terminal and takes the keyboard. A question
+ * the conversation on screen asked while it was open used to be presented
+ * under it: the room was on the glass and the dialog held the keys, so the
+ * next arrow or Enter meant for the room answered a command nobody saw. It
+ * waits instead, counted, so the room marks the window, and comes up when the
+ * view closes: over the same conversation, or over another put on screen
+ * under the view by a switch.
+ */
+describe("a dialog while the room view is open", () => {
+	for (const [member, decision] of Object.entries(DIALOGS)) {
+		it(`${member}: from the conversation on screen waits, counted, and presents when the view closes over it`, async () => {
+			const h = await harness();
+			const shown = decision.present(h.controller);
+			h.openRoomView();
+			const pending = decision.call(h.aUi);
+			await Promise.resolve();
+			await Promise.resolve();
+			expect({ shown: shown(), waitingA: h.controller.waitingDialogs(h.a) }).toEqual({ shown: 0, waitingA: 1 });
+			h.closeRoomView();
+			expect(await pending).toEqual(decision.answer);
+			expect({ shown: shown(), waitingA: h.controller.waitingDialogs(h.a) }).toEqual({ shown: 1, waitingA: 0 });
+		});
+
+		it(`${member}: from a conversation a switch puts on screen under the view presents once the view closes`, async () => {
+			const h = await harness();
+			const shown = decision.present(h.controller);
+			const pending = decision.call(h.bUi);
+			h.openRoomView();
+			h.bring(h.b);
+			await Promise.resolve();
+			await Promise.resolve();
+			expect({ shown: shown(), waitingB: h.controller.waitingDialogs(h.b) }).toEqual({ shown: 0, waitingB: 1 });
+			h.closeRoomView();
+			expect(await pending).toEqual(decision.answer);
+			expect({ shown: shown(), waitingB: h.controller.waitingDialogs(h.b) }).toEqual({ shown: 1, waitingB: 0 });
+		});
+	}
+
+	it("a view that closes over another conversation leaves the question with the one that asked it", async () => {
+		const h = await harness();
+		const shown = DIALOGS.confirm!.present(h.controller);
+		h.openRoomView();
+		const held = h.aUi.confirm("asked under the room", "later");
+		h.bring(h.b);
+		h.closeRoomView();
+		await Promise.resolve();
+		expect({ shown: shown(), waitingA: h.controller.waitingDialogs(h.a) }).toEqual({ shown: 0, waitingA: 1 });
+		h.bring(h.a);
+		expect(await held).toBe(true);
+		expect(shown()).toBe(1);
+	});
+
+	it("the conversation on screen asks at once again once the view has closed", async () => {
+		const h = await harness();
+		const shown = DIALOGS.confirm!.present(h.controller);
+		h.openRoomView();
+		h.closeRoomView();
+		const pending = h.aUi.confirm("after the room", "now");
+		expect(shown()).toBe(1);
+		expect(await pending).toBe(true);
 	});
 });
 

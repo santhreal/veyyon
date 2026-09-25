@@ -32,6 +32,7 @@
 
 - A slash command's subcommand typed in full that takes no argument, such as `/room new` or `/todo copy`, runs on one Enter; the completion list no longer stays open on it and takes the first Enter to add a space.
 - A dialog opened by a conversation that is off screen waits until that conversation is entered instead of appearing over the one on screen.
+- With the room view open, a question from the conversation on screen waits and the room marks its window, instead of opening under the view where the room's keys answered it unseen; it comes up when the view closes onto that conversation.
 - A conversation opened by `/new` while a turn streams gives its tools and extensions the terminal UI, so its `ask` calls and extension dialogs work.
 - Extension actions run on the conversation that registered them after a `/new` hand-off or a room switch, not on whichever one is on screen.
 - The terminal title and session accent follow a rename of the conversation on screen after a `/new` hand-off or a room switch.

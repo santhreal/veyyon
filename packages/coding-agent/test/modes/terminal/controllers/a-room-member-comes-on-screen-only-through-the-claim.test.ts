@@ -449,6 +449,11 @@ function harness(launch: Conversation): Harness {
 			waitingListeners.add(listener);
 			return () => waitingListeners.delete(listener);
 		},
+		// Where the terminal presents what the conversation on screen held while the view
+		// covered it; the step says whether the view was already gone when it was asked to.
+		roomViewClosed: () => {
+			steps.push(`view-closed:${room.viewOpen ? "open" : "gone"}`);
+		},
 		showStatus: message => {
 			statuses.push(message);
 		},
@@ -752,7 +757,7 @@ describe("the terminal's chrome", () => {
 			`Switched, but the command list for ${dirB} could not be loaded: no command list here`,
 		]);
 		expect(h.errors).toEqual([]);
-		expect(steps.slice(steps.indexOf(`chrome:${dirB}`))).toEqual([`chrome:${dirB}`, "todos"]);
+		expect(steps.slice(steps.indexOf(`chrome:${dirB}`))).toEqual([`chrome:${dirB}`, "todos", "view-closed:gone"]);
 		expect(h.statuses.at(-1)).toBe(`Switched to conversation 2${TEACH}`);
 	});
 
@@ -1365,6 +1370,11 @@ describe("with motion on, the quick switch travels through the stage", () => {
 		expect(h.room.viewOpen).toBe(true);
 		await until(() => !h.room.viewOpen, "the stage to land");
 		expect(screenSteps()).toEqual([`claim:${b!.id}`, `claimed:${b!.id}`, `attach:${b!.id}`]);
+		// What the arriving conversation held comes up once the stage has lifted, not under it.
+		expect(steps.filter(step => step.startsWith("attach:") || step.startsWith("view-closed"))).toEqual([
+			`attach:${b!.id}`,
+			"view-closed:gone",
+		]);
 		expect(h.ctx.session).toBe(b!.session);
 		expect(h.statuses.at(-1)).toBe(`Switched to conversation 2${TEACH}`);
 		expect(shownWhenComposed.at(-1)).toEqual([`Switched to conversation 2${TEACH}`]);
@@ -1408,6 +1418,9 @@ describe("with motion on, the quick switch travels through the stage", () => {
 		stage.handleInput?.(bytes);
 		await until(() => h.ctx.session === d!.session && !h.room.viewOpen, "the run of presses to land", 8_000);
 		expect(screenSteps().filter(step => step.startsWith("attach:"))).toEqual([`attach:${b!.id}`, `attach:${d!.id}`]);
+		// The conversation passed over keeps what it asked for when it is entered: the
+		// terminal is told the view closed once, at the last landing, with the stage gone.
+		expect(steps.filter(step => step.startsWith("view-closed"))).toEqual(["view-closed:gone"]);
 	});
 
 	it("a switch that fails drops the presses made while it moved", async () => {
@@ -1424,6 +1437,7 @@ describe("with motion on, the quick switch travels through the stage", () => {
 		// Long enough for a left-over press to open a second switch.
 		await sleep(100);
 		expect({ open: h.room.viewOpen, onScreen: h.ctx.session === a.session }).toEqual({ open: false, onScreen: true });
+		expect(steps.filter(step => step.startsWith("view-closed"))).toEqual(["view-closed:gone"]);
 	});
 
 	it("a step after the attach that fails lands the stage on the new conversation, with a warning", async () => {

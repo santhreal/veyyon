@@ -67,6 +67,7 @@ export type RoomControllerContext = Pick<
 	| "reloadTodos"
 	| "renderInitialMessages"
 	| "resetObserverRegistry"
+	| "roomViewClosed"
 	| "session"
 	| "sessionManager"
 	| "settings"
@@ -513,8 +514,11 @@ export class RoomController {
 	}
 
 	/**
-	 * The stage reached full size: lift it, onto the screen it drew last.
-	 * `failure` is why a quick switch came back to where it started.
+	 * The stage reached full size: lift it, onto the screen it drew last, and
+	 * the questions the conversation there held while the view covered it come
+	 * up. `failure` is why a quick switch came back to where it started. Presses
+	 * made while it moved carry the switch on instead, and the conversation it
+	 * passes over keeps its questions for when it is entered.
 	 */
 	#land(failure?: unknown): void {
 		this.#closeStage();
@@ -524,9 +528,11 @@ export class RoomController {
 		this.#pendingSteps = 0;
 		if (failure !== undefined) {
 			this.ctx.showError(`Could not switch: ${errorMessage(failure)}`);
+		} else if (pending !== 0) {
+			void this.cycle(pending);
 			return;
 		}
-		if (pending !== 0) void this.cycle(pending);
+		this.ctx.roomViewClosed();
 	}
 
 	/** Say which conversation is on screen now, and whether it is still working. */

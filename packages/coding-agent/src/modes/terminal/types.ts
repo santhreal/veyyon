@@ -159,10 +159,12 @@ export interface InteractiveModeContext {
 	 * launch session is never released.
 	 */
 	releaseHostedSession(session: AgentSession): void;
-	/** Dialogs `session` is holding until it is on screen. */
+	/** Dialogs `session` is holding until it is on screen with the room view closed. */
 	waitingDialogs(session: AgentSession): number;
 	/** Watch the held-dialog counts. Returns the unsubscribe. */
 	onWaitingDialogsChange(listener: () => void): () => void;
+	/** The room view closed: the conversation on screen presents the dialogs it held while the view covered it. */
+	roomViewClosed(): void;
 	/** Display `next` and hand the session being displayed to the background keeper. */
 	attachMainSession(next: AgentSession): KeptSession;
 	/** Clear loader, transient HUD/pending containers, streaming state, and pending tools. */

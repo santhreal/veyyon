@@ -298,10 +298,25 @@ export class ExtensionUiController {
 	 * `session` is on screen now, in place of `previous`: the status text and
 	 * widgets `previous` set leave the terminal, the ones `session` set come
 	 * back (a component widget is built again from its factory), and the
-	 * dialogs it was holding are presented, oldest first.
+	 * dialogs it was holding are presented, oldest first. While the room view
+	 * is still over the screen, as it is when a switch puts `session` on screen
+	 * under it, they stay held until the view closes.
 	 */
 	sessionAttached(session: AgentSession, previous: AgentSession): void {
 		this.#swapChrome(previous, session);
+		if (!this.ctx.room.viewOpen) this.#presentHeld(session);
+	}
+
+	/**
+	 * The room view closed over the conversation on screen: the dialogs it
+	 * asked while the view covered it, or held from before it came on screen
+	 * under the view, are presented now, oldest first.
+	 */
+	roomViewClosed(): void {
+		this.#presentHeld(this.ctx.session);
+	}
+
+	#presentHeld(session: AgentSession): void {
 		const waiting = this.#offscreenDialogs.get(session);
 		if (!waiting) return;
 		this.#offscreenDialogs.delete(session);
@@ -365,12 +380,13 @@ export class ExtensionUiController {
 	}
 
 	/**
-	 * Resolve true once `session` is on screen, or false if `signal` aborts or
-	 * the terminal releases `session` first. Immediately true for the
-	 * conversation already on screen, and immediately false for one released.
+	 * Resolve true once `session` can present: on screen, with the room view
+	 * not over it. False if `signal` aborts or the terminal releases `session`
+	 * first. Immediately true for the conversation on screen with the view
+	 * closed, and immediately false for one released.
 	 */
 	#untilOnScreen(session: AgentSession, signal: AbortSignal | undefined): Promise<boolean> {
-		if (this.ctx.session === session) return Promise.resolve(true);
+		if (this.#canPresent(session)) return Promise.resolve(true);
 		if (signal?.aborted || this.#releasedSessions.has(session)) return Promise.resolve(false);
 		const { promise, resolve } = Promise.withResolvers<boolean>();
 		let waiting = this.#offscreenDialogs.get(session);
@@ -396,6 +412,16 @@ export class ExtensionUiController {
 	}
 
 	/**
+	 * Whether a dialog from `session` can be shown now: it is the conversation on
+	 * screen and the room view is not over it. The room view takes the whole
+	 * terminal and the keyboard, so a dialog shown under it would be answered by
+	 * keys meant for the room, unseen.
+	 */
+	#canPresent(session: AgentSession): boolean {
+		return this.ctx.session === session && !this.ctx.room.viewOpen;
+	}
+
+	/**
 	 * `base` as `session` may use it. Every member is spelled out rather than
 	 * spread, so a member added to {@link ExtensionUIContext} fails to compile
 	 * here until someone decides how an off-screen conversation uses it.
@@ -404,8 +430,9 @@ export class ExtensionUiController {
 		const onScreen = (): boolean => this.ctx.session === session;
 		// The conversation on screen presents at once, in the same turn of the event
 		// loop as the call, the way a dialog did before any conversation could be
-		// off screen; only one off screen waits. A presenter that throws still
-		// answers with a rejection, never a throw out of the call.
+		// off screen; one off screen, or one the room view covers, waits. A
+		// presenter that throws still answers with a rejection, never a throw out
+		// of the call.
 		const presentNow = <T>(show: () => Promise<T>): Promise<T> => {
 			try {
 				return show();
@@ -414,7 +441,7 @@ export class ExtensionUiController {
 			}
 		};
 		const dialog = <T>(signal: AbortSignal | undefined, show: () => Promise<T>, fallback: T): Promise<T> =>
-			onScreen()
+			this.#canPresent(session)
 				? presentNow(show)
 				: this.#untilOnScreen(session, signal).then(cameOnScreen => (cameOnScreen ? show() : fallback));
 		const terminal = base.terminal;
@@ -458,7 +485,7 @@ export class ExtensionUiController {
 			terminal: terminal
 				? {
 						custom: (factory, options) => {
-							if (onScreen()) return presentNow(() => terminal.custom(factory, options));
+							if (this.#canPresent(session)) return presentNow(() => terminal.custom(factory, options));
 							// No signal and no fallback value: a takeover from a conversation that
 							// closes before it comes on screen can only fail.
 							return this.#untilOnScreen(session, undefined).then(cameOnScreen => {

@@ -135,7 +135,9 @@ The guide shows once per profile; `?` in the view and `/room help` show it after
 ## When a conversation needs you
 
 A conversation that asks you something while it is off screen does not open the question over
-the one you are reading. The question waits until you go into that conversation. Until then:
+the one you are reading. The question waits until you go into that conversation. While the room
+view is open, a question from the conversation on screen waits the same way, and comes up when
+the view closes onto it. Until then:
 
 - its window shows `needs you` on its edge and `waiting for your answer` at its foot, and its
   frame keeps the ember of a waiting prompt, quieter than the selected window's;
