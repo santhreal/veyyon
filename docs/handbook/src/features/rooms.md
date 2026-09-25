@@ -62,7 +62,7 @@ The row under the title shows the room's newest [`#room`](#the-room-channel) pos
 posted it, and the message. The row is empty while the room has said nothing.
 
 The key row under the windows drops the keys it has no room for, least used first: the digit
-jump, then `r`, `x`, Tab and `n`. The arrows, Enter, `?` and Esc stay longest; `?` lists every
+jump, then `s`, `r`, `x`, Tab and `n`. The arrows, Enter, `?` and Esc stay longest; `?` lists every
 key.
 
 ## A window
@@ -97,6 +97,7 @@ shows its ordinal and a state glyph.
 | `n` | Open a new conversation and go into it |
 | `x`, Delete | Close the selected conversation; press it twice while the conversation is working |
 | `r` | Name the selected conversation on a line under the windows. The line holds its name selected: typing replaces it, and an arrow, Home or End keeps it to edit. Enter saves; Esc or an empty name keeps the old name |
+| `s` | Post to [`#room`](#the-room-channel) as you, on a line under the windows. Enter posts. Esc, or a refused post, keeps what you typed for the next `s` until the view closes. Offered while the room has two conversations or more |
 | Tab | Switch layouts |
 | Esc, `alt+w` | Go back to the conversation the view was opened from; the key row names its number |
 | `?` | Show the guide; any key closes it |
@@ -110,7 +111,7 @@ shows its ordinal and a state glyph.
 | A conversation by number or id | `/room <n>`, `/room <id>` |
 | Open a conversation beside this one | `/room new`, or `n` in the room view |
 | Print the room | `/room list` |
-| Post to every conversation | `/room say <message>` |
+| Post to every conversation | `/room say <message>`, or `s` in the room view |
 | Explain the room | `/room help` (`/rooms` is an alias of `/room`), or `?` in the room view |
 
 Going into a window zooms it forward until it is the screen. The next and previous keys do the
@@ -189,10 +190,14 @@ conversation that fails to join the room is closed rather than left running wher
 it.
 
 `x` in the room view closes a conversation: a question it was holding is dismissed, its turn is
-stopped, its draft text is saved beside its transcript, and it leaves the room. A close that fails
-says why and leaves the conversation in the room; exit closes it. The first conversation in the
-terminal holds the MCP servers and background jobs the others share, so it closes only when you
-exit.
+stopped, its background jobs and its spawned agents' jobs are cancelled, its draft text is saved
+beside its transcript, and it leaves the room. A close that fails says why and leaves the
+conversation in the room; exit closes it. The first conversation in the terminal holds the MCP
+servers and the background-job manager the others share, so it closes only when you exit.
+
+Every conversation runs background work: `bash` commands sent to the background and `task`
+agents that run while it goes on. A job's result goes to the conversation that started it, or
+whose agent started it, whichever conversation is on screen.
 
 At exit every conversation's transcript is flushed, each unsent draft's text is saved, and the
 questions held by conversations off screen are dismissed. Draft images are not saved.
@@ -241,7 +246,10 @@ that asks a question asks it when you go into the new conversation.
 
 - A conversation posts with `irc` `send` and `to: "#room"`. Every other conversation in the room
   receives the post.
-- `/room say <message>` posts as you. Every conversation receives it, including the one on screen.
+- `/room say <message>`, or `s` in the room view, posts as you. Every conversation receives it,
+  including the one on screen.
+- A post holds at most 4,000 characters, because every conversation in the room reads it. A longer
+  one is refused; put the detail in a file and post its path.
 - A working conversation reads a post at its next step; a post that arrives as it finishes its
   turn waits for the next one. An idle conversation reads a post at its next turn: the post waits
   in its context and starts no turn.

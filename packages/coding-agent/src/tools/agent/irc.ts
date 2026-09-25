@@ -21,6 +21,7 @@ import {
 	type IrcMessage,
 	type IrcRoomReceipt,
 	ROOM_CHANNEL,
+	ROOM_POST_MAX_CHARS,
 	ROOM_WAKE_CAP,
 	roomSeatLabel,
 } from "../../task/irc-bus";
@@ -469,6 +470,11 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 				return refuse(
 					`${ROOM_CHANNEL} is the channel between a room's driving conversations, and a spawned agent does not post to it. ` +
 						`Report to your parent${parent ? ` \`${parent}\`` : ""} instead; it decides what the room hears.`,
+				);
+			}
+			if (post.reason === "too-long") {
+				return refuse(
+					`A ${ROOM_CHANNEL} post holds at most ${ROOM_POST_MAX_CHARS} characters and this one has ${message.length}: every conversation in the room pays for it. Write the detail to a file and post its path.`,
 				);
 			}
 			return refuse(

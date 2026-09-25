@@ -27,6 +27,7 @@ import {
 	FakeMember,
 	KEY,
 	pagerSelection,
+	ROOM_KEYS,
 	START_MS,
 	StageDriver,
 	sgrMouse,
@@ -184,25 +185,7 @@ describe("r in the room view", () => {
 	 * switch the layout, open the guide or leave.
 	 */
 	it("gives every room key to the line while a name is typed, and a click chooses nothing", async () => {
-		const keys: Record<string, string> = {
-			enterless: "",
-			space: " ",
-			tab: KEY.tab,
-			left: KEY.left,
-			right: KEY.right,
-			up: KEY.up,
-			down: KEY.down,
-			home: KEY.home,
-			end: KEY.end,
-			digit: "2",
-			n: "n",
-			x: "x",
-			r: "r",
-			question: "?",
-			toggle: KEY.toggle,
-			click: sgrMouse(0, 80, 20),
-			wheel: sgrMouse(65, 80, 20),
-		};
+		const keys: Record<string, string> = { enterless: "", ...ROOM_KEYS };
 		const outcomes: Record<string, unknown> = {};
 		for (const [name, data] of Object.entries(keys)) {
 			const driver = await room();
@@ -216,6 +199,7 @@ describe("r in the room view", () => {
 				creates: driver.host.creates.length,
 				closes: driver.host.closes.length,
 				renames: driver.host.renames.length,
+				says: driver.host.says.length,
 				layout: driver.stage.layout,
 			};
 		}
@@ -226,6 +210,7 @@ describe("r in the room view", () => {
 			creates: 0,
 			closes: 0,
 			renames: 0,
+			says: 0,
 			layout: "side-by-side",
 		};
 		expect(outcomes).toEqual(Object.fromEntries(Object.keys(keys).map(name => [name, untouched])));
@@ -245,9 +230,10 @@ describe("r in the room view", () => {
 describe("the room view's key row", () => {
 	/**
 	 * Narrowing the terminal one column at a time, the order in which hints
-	 * leave the row: the digit jump, then naming, closing, the layout switch
-	 * and a new conversation, then Esc, then the guide, whose card names every
-	 * key the row dropped, then Enter. The hints that stay keep their order.
+	 * leave the row: the digit jump, then saying to the room, naming, closing,
+	 * the layout switch and a new conversation, then Esc, then the guide, whose
+	 * card names every key the row dropped, then Enter. The hints that stay
+	 * keep their order.
 	 */
 	it("drops the key that matters least first, and keeps the guide and the way out longest", async () => {
 		const order = [
@@ -257,6 +243,7 @@ describe("the room view's key row", () => {
 			"n new",
 			"x close",
 			"r rename",
+			"s say",
 			"tab all windows",
 			"esc back to 1",
 			"? guide",
@@ -275,6 +262,7 @@ describe("the room view's key row", () => {
 		}
 		expect(dropped).toEqual([
 			"1–3 jump",
+			"s say",
 			"r rename",
 			"x close",
 			"tab all windows",

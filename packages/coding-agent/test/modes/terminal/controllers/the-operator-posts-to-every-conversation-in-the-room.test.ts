@@ -25,7 +25,7 @@ import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SESSION_HANDLERS } from "@veyyon/coding-agent/slash-commands/builtin-session";
 import type { ParsedSlashCommand, TuiSlashCommandRuntime } from "@veyyon/coding-agent/slash-commands/types";
-import { IrcBus, type IrcRoomDelivery, type IrcRoomLine } from "@veyyon/coding-agent/task/irc-bus";
+import { IrcBus, type IrcRoomDelivery, type IrcRoomLine, ROOM_POST_MAX_CHARS } from "@veyyon/coding-agent/task/irc-bus";
 
 interface Screen {
 	readonly statuses: string[];
@@ -61,14 +61,18 @@ function conversation(id: string, room?: string, name?: string): AgentSession {
 	return session;
 }
 
-/** A room of three with `main:a` on screen, or `main:a` alone in no room. */
-function terminal(options: { alone?: boolean } = {}): { room: RoomController; screen: Screen } {
-	const onScreen = conversation("main:a", undefined, "refactor auth");
+/**
+ * A room of three with `main:a` on screen; `main:a` alone in no room; or, `outside`, the room of
+ * three with `main:z` on screen, a conversation a `/new` opened outside it.
+ */
+function terminal(options: { alone?: boolean; outside?: boolean } = {}): { room: RoomController; screen: Screen } {
+	let onScreen = conversation("main:a", undefined, "refactor auth");
 	if (!options.alone) {
 		const id = registry.ensureRoom("main:a");
 		conversation("main:b", id, "parser whitespace");
 		conversation("main:c", id);
 	}
+	if (options.outside) onScreen = conversation("main:z");
 	const screen: Screen = { statuses: [], errors: [], warnings: [] };
 	const ctx = {
 		session: onScreen,
@@ -128,6 +132,15 @@ describe("/room say", () => {
 		expect(screen.statuses).toEqual(["Posted to #room · woke 2 · parser whitespace, conversation 3"]);
 	});
 
+	it("posts nothing longer than a post holds, and says how long it was", () => {
+		const { room, screen } = terminal();
+		room.say("y".repeat(ROOM_POST_MAX_CHARS + 5));
+		expect(handed).toEqual([]);
+		expect(screen.errors).toEqual([
+			`A #room post holds at most ${ROOM_POST_MAX_CHARS} characters and this one has ${ROOM_POST_MAX_CHARS + 5}; post a file's path instead.`,
+		]);
+	});
+
 	it("posts nothing when there is nothing to say", () => {
 		const { room, screen } = terminal();
 		room.say("   ");
@@ -137,11 +150,16 @@ describe("/room say", () => {
 		]);
 	});
 
-	it("in a terminal with one conversation, points at /room new and posts nothing", () => {
-		const { room, screen } = terminal({ alone: true });
-		room.say("anyone?");
-		expect(handed).toEqual([]);
-		expect(screen.statuses).toEqual(["No other conversation in this terminal — /room new opens one beside this"]);
+	it("from a conversation in no room, alone or beside a room it is not in, says so and posts nothing", () => {
+		for (const options of [{ alone: true }, { outside: true }]) {
+			registry = new AgentRegistry();
+			bus = new IrcBus(registry);
+			handed = [];
+			const { room, screen } = terminal(options);
+			room.say("anyone?");
+			expect(handed).toEqual([]);
+			expect(screen.statuses).toEqual(["This conversation is in no room — /room new opens one beside it"]);
+		}
 	});
 
 	it("names the conversation a line did not reach, and does not claim it did", () => {

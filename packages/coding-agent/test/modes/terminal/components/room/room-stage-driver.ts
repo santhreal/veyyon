@@ -13,6 +13,7 @@ import type { RoomGuide } from "@veyyon/coding-agent/modes/terminal/components/r
 import {
 	type RoomChannelLine,
 	type RoomLayout,
+	type RoomSaid,
 	RoomStage,
 	type RoomStageHost,
 	type RoomStageMode,
@@ -52,6 +53,31 @@ export const KEY = {
 export function sgrMouse(button: number, col: number, row: number): string {
 	return `\x1b[<${button};${col + 1};${row + 1}M`;
 }
+
+/**
+ * Every key the room view acts on, with a click and a wheel turn over the
+ * middle of a 160 by 40 room: what a line typed in place of the pager takes as
+ * text or caret movement, or ignores, and never acts on.
+ */
+export const ROOM_KEYS: Readonly<Record<string, string>> = {
+	space: " ",
+	tab: KEY.tab,
+	left: KEY.left,
+	right: KEY.right,
+	up: KEY.up,
+	down: KEY.down,
+	home: KEY.home,
+	end: KEY.end,
+	digit: "2",
+	n: "n",
+	x: "x",
+	r: "r",
+	s: "s",
+	question: "?",
+	toggle: KEY.toggle,
+	click: sgrMouse(0, 80, 20),
+	wheel: sgrMouse(65, 80, 20),
+};
 
 export function snapshotOf(
 	state: RoomWindowState,
@@ -185,6 +211,17 @@ export class FakeRoomHost implements RoomStageHost {
 
 	channel(): RoomChannelLine | undefined {
 		return this.channelLine;
+	}
+
+	/** Every post said from the view, in order. */
+	readonly says: string[] = [];
+	/** What `say` answers; posted by default, and the view's channel row shows the post as a real room would. */
+	sayOutcome: RoomSaid = { posted: true };
+
+	say(text: string): RoomSaid {
+		this.says.push(text);
+		if (this.sayOutcome.posted) this.channelLine = { label: "you", body: text };
+		return this.sayOutcome;
 	}
 }
 

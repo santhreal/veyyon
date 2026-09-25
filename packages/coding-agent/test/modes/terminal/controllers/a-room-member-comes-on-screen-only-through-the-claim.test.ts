@@ -76,7 +76,7 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionDisposeOptions } from "@veyyon/coding-agent/session/agent-session-types";
 import { BackgroundSessions } from "@veyyon/coding-agent/session/background-sessions";
 import { IRC_ROOM_MESSAGE_TYPE } from "@veyyon/coding-agent/session/messages";
-import { IrcBus } from "@veyyon/coding-agent/task/irc-bus";
+import { IrcBus, ROOM_POST_MAX_CHARS } from "@veyyon/coding-agent/task/irc-bus";
 import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { type Component, TERMINAL, TUI } from "@veyyon/tui";
@@ -1185,6 +1185,84 @@ describe("the room's name for a conversation", () => {
 			labels: ["1 · Tests", "2 · Refactor parser"],
 		});
 		expect(await h.room.rename("main:gone", "Anything")).toBe("That conversation has already closed.");
+	});
+});
+
+describe("the room's channel in the open view", () => {
+	/**
+	 * A post reaches the open room view the moment it is posted: the view asks
+	 * for a frame and draws the newest line of its own room under its title. A
+	 * post in another room of the process is not this view's news, and asks for
+	 * nothing. No session event carries a post into a window, so the frame the
+	 * view asks for is the only way it appears before the next keypress.
+	 */
+	it("draws its own room's newest post and asks for a frame for it, and ignores another room's", async () => {
+		const { h, a } = openRoom({ name: "b", dir: dirB });
+		const elsewhere = openConversation("elsewhere", dirA);
+		registry.ensureRoom(elsewhere.id);
+		await h.room.openView();
+		const stage = h.ui.getFocused();
+		if (!stage) throw new Error("the room view took no focus");
+		const channelRow = (): string => stripVTControlCharacters(stage.render(100)[1] ?? "").trimEnd();
+		let frames = 0;
+		const request = h.ui.requestRender.bind(h.ui);
+		vi.spyOn(h.ui, "requestRender").mockImplementation((...args: Parameters<TUI["requestRender"]>) => {
+			frames++;
+			request(...args);
+		});
+
+		h.bus.postToRoom({ member: elsewhere.id, byOperator: true, body: "another room's news" });
+		expect({ frames, row: channelRow() }).toEqual({ frames: 0, row: "" });
+
+		h.bus.postToRoom({ member: a.id, byOperator: true, body: "freeze main" });
+		expect(frames).toBe(1);
+		expect(channelRow()).toBe("  #room  you: freeze main");
+
+		h.bus.postToRoom({ member: a.id, byOperator: true, body: "main is open again" });
+		expect(frames).toBe(2);
+		expect(channelRow()).toBe("  #room  you: main is open again");
+	});
+
+	/**
+	 * `s` in the open view posts through the room's own bus as the operator:
+	 * every other conversation takes the line under `you` and the channel row
+	 * shows it. A post the bus refuses reaches nobody, and the view says why in
+	 * the words `/room say` uses.
+	 */
+	it("posts what s says as you to the room, and shows a refusal on the view", async () => {
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		await h.room.openView();
+		const stage = h.ui.getFocused();
+		const press = stage?.handleInput?.bind(stage);
+		if (!stage || !press) throw new Error("the room view took no focus");
+		if (h.room.guideShown) press("\x1b");
+		const screen = (): string =>
+			stage
+				.render(120)
+				.map(row => stripVTControlCharacters(row).trimEnd())
+				.join("\n");
+
+		press("s");
+		for (const char of "freeze main") press(char);
+		press("\r");
+		expect(h.bus.latestRoomLine(b!.id)).toMatchObject({ label: "you", body: "freeze main" });
+		// The row under the title shows what went out; a notice would cover the pager for nothing.
+		expect(screen()).not.toContain("Posted to #room");
+		expect(screen()).toContain("  #room  you: freeze main");
+
+		press("s");
+		press(`\x1b[200~${"x".repeat(ROOM_POST_MAX_CHARS + 1)}\x1b[201~`);
+		press("\r");
+		expect(h.bus.latestRoomLine(b!.id)?.body).toBe("freeze main");
+		expect(screen()).toContain(
+			`A #room post holds at most ${ROOM_POST_MAX_CHARS} characters and this one has ${ROOM_POST_MAX_CHARS + 1}; post a file's path instead.`,
+		);
+		// Refused is not posted: the next `s` opens with the text, to cut down.
+		press("s");
+		expect(screen()).toContain(`Say to the room  ${"x".repeat(20)}`);
 	});
 });
 

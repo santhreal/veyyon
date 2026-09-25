@@ -80,6 +80,14 @@ export interface RoomChannelLine {
 	readonly body: string;
 }
 
+/** What came of a line said to the room from the view. */
+export interface RoomSaid {
+	/** False when the post was refused; the line keeps what was typed for the next `s`. */
+	readonly posted: boolean;
+	/** Why it was refused, or which conversations it did not reach; nothing when every one took it. */
+	readonly notice?: string;
+}
+
 /** What the stage asks of the terminal that hosts it. */
 export interface RoomStageHost {
 	requestRender(): void;
@@ -114,6 +122,8 @@ export interface RoomStageHost {
 	keyInFlight(data: string): void;
 	/** The newest line of the room's `#room` channel, or nothing while the room has said nothing. */
 	channel(): RoomChannelLine | undefined;
+	/** Post `text` to the room's `#room` channel as the operator: every conversation in the room reads it. */
+	say(text: string): RoomSaid;
 }
 
 export type RoomStageMode = { readonly kind: "overview" } | { readonly kind: "travel"; readonly targetId: string };
@@ -156,6 +166,8 @@ const CLOSE_CONFIRM_MS = 3000;
 const GUIDE_BACKDROP = 0.4;
 /** The widest the line a name is typed on gets: a name, not a paragraph. */
 const NAME_FIELD_WIDTH = 40;
+/** The widest the line said to the room gets: a sentence reads whole, a longer post scrolls. */
+const SAY_FIELD_WIDTH = 72;
 const SEPARATOR = "  ·  ";
 
 /** A key the key row offers, and how long it holds on as the row narrows: the lowest goes first. */
@@ -163,6 +175,25 @@ interface KeyHint {
 	readonly key: string;
 	readonly label: string;
 	readonly keep: number;
+}
+
+/**
+ * The line typed in place of the pager: a conversation's name (`r`), or a post
+ * to the room (`s`). Keys go to it until Enter or Esc. `held` while a name line
+ * holds the name it opened with, untouched: the way a rename field holds a
+ * selected name, the first character typed or pasted replaces it, the first
+ * backspace clears it, and a key that moves the caret keeps it to edit.
+ */
+type TypedLine =
+	| { readonly kind: "name"; readonly id: string; readonly input: Input; held: boolean }
+	| { readonly kind: "say"; readonly input: Input; held: false };
+
+/** A bare one-line field holding `value`, the caret after it. */
+function typedInput(value: string): Input {
+	const input = new Input();
+	input.prompt = "";
+	input.setValue(value);
+	return input;
 }
 
 /** Where the screen's rows dissolve into a card, by how much of the terminal's width a window spans. */
@@ -279,14 +310,10 @@ export class RoomStage implements Component, OverlayFocusOwner {
 	readonly #guide: RoomGuide | undefined;
 	/** Whether the guide card is over the room; any key or click takes it away. */
 	#guideShown: boolean;
-	/**
-	 * The conversation being named and the line its name is typed on; keys go to
-	 * the line until Enter or Esc. `held` while the line holds the name it opened
-	 * with, untouched: the way a rename field holds a selected name, the first
-	 * character typed or pasted replaces it, the first backspace clears it, and
-	 * a key that moves the caret keeps it to edit.
-	 */
-	#naming: { readonly id: string; readonly input: Input; held: boolean } | undefined;
+	/** The line typed in place of the pager, while one is open. */
+	#line: TypedLine | undefined;
+	/** What a say line held when it was cancelled or refused, so the next `s` opens with it. */
+	#sayDraft = "";
 	#width = 0;
 	/**
 	 * Each slot's last paint, reused while its snapshot, its screen rows and its
@@ -385,7 +412,7 @@ export class RoomStage implements Component, OverlayFocusOwner {
 
 	dispose(): void {
 		this.#phase = "landed";
-		this.#naming = undefined;
+		this.#line = undefined;
 		clearTimeout(this.#wheelTimer);
 		clearInterval(this.#spinnerTimer);
 		clearTimeout(this.#noticeTimer);
@@ -694,31 +721,36 @@ export class RoomStage implements Component, OverlayFocusOwner {
 	#startNaming(): void {
 		const member = this.#members()[this.#selected];
 		if (!member) return;
-		const input = new Input();
-		input.prompt = "";
 		const name = member.snapshot().title ?? "";
-		input.setValue(name);
-		this.#naming = { id: member.id, input, held: name !== "" };
+		this.#line = { kind: "name", id: member.id, input: typedInput(name), held: name !== "" };
 	}
 
-	/** A key while a name is being typed: Enter keeps it, Esc drops it, anything else edits it. */
-	#nameKey(data: string): void {
-		const naming = this.#naming;
-		if (!naming) return;
+	/** Open the line said to the room, holding what the last one was left with. A room of one has nobody to hear it. */
+	#startSaying(): void {
+		if (this.#members().length < 2) return;
+		this.#line = { kind: "say", input: typedInput(this.#sayDraft), held: false };
+	}
+
+	/** A key while a line is being typed: Enter takes it, Esc drops it, anything else edits it. */
+	#lineKey(data: string): void {
+		const line = this.#line;
+		if (!line) return;
 		if (matchesKey(data, "escape")) {
-			this.#naming = undefined;
+			this.#line = undefined;
+			if (line.kind === "say") this.#keepSayDraft(line.input.getValue());
 		} else if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "\n") {
-			this.#naming = undefined;
-			void this.#rename(naming.id, naming.input.getValue().trim());
-		} else if (naming.held && (matchesKey(data, "backspace") || matchesKey(data, "delete"))) {
-			naming.held = false;
-			naming.input.setValue("");
+			this.#line = undefined;
+			if (line.kind === "name") void this.#rename(line.id, line.input.getValue().trim());
+			else this.#say(line.input.getValue());
+		} else if (line.held && (matchesKey(data, "backspace") || matchesKey(data, "delete"))) {
+			line.held = false;
+			line.input.setValue("");
 		} else {
-			if (naming.held && (extractPrintableText(data) !== undefined || data.startsWith(PASTE_START))) {
-				naming.input.setValue("");
+			if (line.held && (extractPrintableText(data) !== undefined || data.startsWith(PASTE_START))) {
+				line.input.setValue("");
 			}
-			naming.held = false;
-			naming.input.handleInput(data);
+			line.held = false;
+			line.input.handleInput(data);
 		}
 		this.#host.requestRender();
 	}
@@ -731,6 +763,22 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		if (refusal) this.#flash(refusal, "error");
 	}
 
+	/** Post what the say line held. An empty line posts nothing; a refused one is kept for the next `s`. */
+	#say(text: string): void {
+		const body = text.trim();
+		if (body === "") {
+			this.#sayDraft = "";
+			return;
+		}
+		const said = this.#host.say(body);
+		this.#keepSayDraft(said.posted ? "" : text);
+		if (said.notice) this.#flash(said.notice, said.posted ? "info" : "error");
+	}
+
+	#keepSayDraft(text: string): void {
+		this.#sayDraft = text.trim() === "" ? "" : text;
+	}
+
 	handleInput(data: string): void {
 		if (data.startsWith("\x1b[<")) {
 			const event = parseSgrMouse(data);
@@ -740,8 +788,8 @@ export class RoomStage implements Component, OverlayFocusOwner {
 				if (event.leftClick) this.#hideGuide();
 				return;
 			}
-			// While a name is being typed the pointer moves nothing: the name belongs to the window it started on.
-			if (this.#naming) return;
+			// While a line is being typed the pointer moves nothing: a name belongs to the window it started on.
+			if (this.#line) return;
 			this.#mouse(event);
 			return;
 		}
@@ -759,8 +807,8 @@ export class RoomStage implements Component, OverlayFocusOwner {
 			this.#hideGuide();
 			return;
 		}
-		if (this.#naming) {
-			this.#nameKey(data);
+		if (this.#line) {
+			this.#lineKey(data);
 			return;
 		}
 		if (this.#guide && (decodePrintableKey(data) ?? data) === "?") {
@@ -795,6 +843,8 @@ export class RoomStage implements Component, OverlayFocusOwner {
 			void this.#close();
 		} else if (matchesKey(data, "r")) {
 			this.#startNaming();
+		} else if (matchesKey(data, "s")) {
+			this.#startSaying();
 		} else if (/^[1-9]$/.test(data)) {
 			const slot = Number(data) - 1;
 			if (slot < this.#members().length) this.#enterSlot(slot);
@@ -978,22 +1028,23 @@ export class RoomStage implements Component, OverlayFocusOwner {
 			);
 		}
 
-		// Pager: every window's ordinal, the selected one lit; the line a name is
-		// typed on, while one is; or the notice, while one stands.
-		const naming = this.#naming;
+		// Pager: every window's ordinal, the selected one lit; the line a name or
+		// a post to the room is typed on, while one is; or the notice, while one stands.
+		const line = this.#line;
 		const notice = this.#notice && now < this.#notice.until ? this.#notice : undefined;
-		if (naming) {
-			const ordinal = members.findIndex(member => member.id === naming.id) + 1;
-			const label = ordinal > 0 ? `Name conversation ${ordinal}` : "Name";
-			const fieldWidth = clamp(width - visibleWidth(label) - 8, 8, NAME_FIELD_WIDTH);
+		if (line) {
+			const ordinal = line.kind === "name" ? members.findIndex(member => member.id === line.id) + 1 : 0;
+			const label = line.kind === "say" ? "Say to the room" : ordinal > 0 ? `Name conversation ${ordinal}` : "Name";
+			const widest = line.kind === "say" ? SAY_FIELD_WIDTH : NAME_FIELD_WIDTH;
+			const fieldWidth = clamp(width - visibleWidth(label) - 8, 8, widest);
 			// A held name reads as selected, with no caret: what is typed replaces it.
-			const held = naming.held ? truncateToWidth(naming.input.getValue(), fieldWidth - 1) : undefined;
+			const held = line.held ? truncateToWidth(line.input.getValue(), fieldWidth - 1) : undefined;
 			const field =
 				held !== undefined
 					? `\x1b[7m${held}\x1b[27m${" ".repeat(Math.max(0, fieldWidth - visibleWidth(held)))}`
-					: (naming.input.render(fieldWidth)[0] ?? "");
+					: (line.input.render(fieldWidth)[0] ?? "");
 			const w = visibleWidth(label) + 2 + fieldWidth;
-			// The field is underlined across its width, so an empty name still reads as a place to type.
+			// The field is underlined across its width, so an empty line still reads as a place to type.
 			put(
 				height - 3,
 				`${" ".repeat(Math.max(0, Math.floor((width - w) / 2)))}${ink.token("accent", label)}  \x1b[4m${ink.token("text", field)}\x1b[24m`,
@@ -1042,8 +1093,11 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		if (this.#guideShown) {
 			// While the guide is up, a key does one thing: take it away.
 			hints.push({ key: "any key", label: "close the guide", keep: 9 });
-		} else if (naming) {
-			hints.push({ key: "enter", label: "save", keep: 9 }, { key: "esc", label: "cancel", keep: 8 });
+		} else if (line) {
+			hints.push(
+				{ key: "enter", label: line.kind === "say" ? "post" : "save", keep: 9 },
+				{ key: "esc", label: "cancel", keep: 8 },
+			);
 		} else {
 			hints.push(
 				{ key: grid ? "←↑↓→" : "←→", label: "move", keep: 9 },
@@ -1054,6 +1108,10 @@ export class RoomStage implements Component, OverlayFocusOwner {
 				{ key: "n", label: "new", keep: 5 },
 				{ key: "x", label: "close", keep: 3 },
 				{ key: "r", label: "rename", keep: 2 },
+			);
+			// A room of one has nobody to say anything to.
+			if (members.length > 1) hints.push({ key: "s", label: "say", keep: 1.5 });
+			hints.push(
 				{ key: "tab", label: grid ? "side by side" : "all windows", keep: 4 },
 				{ key: "esc", label: origin >= 0 && members.length > 1 ? `back to ${origin + 1}` : "back", keep: 6 },
 			);

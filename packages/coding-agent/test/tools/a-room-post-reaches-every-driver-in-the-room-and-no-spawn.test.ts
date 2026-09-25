@@ -29,6 +29,7 @@ import {
 	type IrcRoomDelivery,
 	type IrcRoomLine,
 	ROOM_CHANNEL,
+	ROOM_POST_MAX_CHARS,
 	ROOM_WAKE_CAP,
 	roomMentions,
 } from "@veyyon/coding-agent/task/irc-bus";
@@ -233,6 +234,25 @@ describe("Who a post reaches", () => {
 		expect((await post("main:a", { await: true })).isError).toBe(true);
 		expect((await post("main:a", { replyTo: "123" })).isError).toBe(true);
 		expect(deliveries).toEqual([]);
+	});
+
+	/**
+	 * A post lands in every member's context, so its length is bounded: the
+	 * longest one allowed reaches everyone, and one character more reaches nobody
+	 * and says how long it was.
+	 */
+	test(`a post of ${ROOM_POST_MAX_CHARS} characters reaches the room, and one longer reaches nobody`, async () => {
+		const longest = "x".repeat(ROOM_POST_MAX_CHARS);
+		expect((await post("main:a", { message: longest })).isError).toBe(false);
+		expect(deliveries.map(delivery => delivery.to)).toEqual(["main:b", "main:c"]);
+		deliveries.length = 0;
+		const refused = await post("main:a", { message: `${longest}x` });
+		expect(refused.isError).toBe(true);
+		expect(refused.text).toContain(
+			`holds at most ${ROOM_POST_MAX_CHARS} characters and this one has ${ROOM_POST_MAX_CHARS + 1}`,
+		);
+		expect(deliveries).toEqual([]);
+		expect(bus.latestRoomLine("main:b")?.body).toBe(longest);
 	});
 });
 

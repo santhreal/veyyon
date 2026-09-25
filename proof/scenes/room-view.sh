@@ -34,6 +34,9 @@
 #      `/room say` posts to `#room`: every conversation takes the line, this
 #      transcript shows its `#room` card and the status line says it was posted.
 #  13. `→→` opens the view with the post under its title.
+#  14. `s` opens the line that says something to the room from the view; the
+#      post names conversation 3 with `@3`, which wakes it, and the row under
+#      the title shows the post.
 #
 # Off arm (--before): the same keys on the base branch, where `/room` is an
 # unknown command and `→→` moves nothing. Each guard is written for the arm it
@@ -193,3 +196,16 @@ k Right
 after && expect_screen "#room  you:" 10
 pause 0.9
 shot room-channel
+
+# --- 14. s says something to the room from the view ----------------------------
+k s
+t "@3 add the year each editor was first released"
+# needle-source: Say to the room -- room-stage.ts the line typed in place of the pager, opened by s
+after && expect_screen "Say to the room" 10
+pause 0.9
+shot room-say-line
+if after; then k Return; else clear_composer; fi
+# needle-source: #room  you: @3 add the year -- room-stage.ts #paintChrome's channel row under the title, showing the post typed above
+after && expect_screen "#room  you: @3 add the year" 10
+pause 1.2
+shot room-said-from-view

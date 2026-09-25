@@ -21,8 +21,9 @@
 - The room view's key row drops the keys it has no room for least used first, the digit jump first, and keeps the arrows, Enter, `?` and Esc longest.
 - Pressing `alt+.` or `alt+,` again while a room switch is still moving goes on as far as the presses add up once it lands, without entering the conversations it passes.
 - `/rooms` is an alias of `/room`, so `/rooms help` prints the room guide.
-- `irc` `send` with `to: "#room"` posts to every driving conversation in the room: a working one reads the post at its next step, an idle one at its next turn, and one the post names with `@2` or its id is woken; spawned agents neither post nor receive, and a conversation that joins later receives the room's last 20 posts.
+- `irc` `send` with `to: "#room"` posts to every driving conversation in the room: a working one reads the post at its next step, an idle one at its next turn, and one the post names with `@2` or its id is woken; spawned agents neither post nor receive, a post holds at most 4,000 characters, and a conversation that joins later receives the room's last 20 posts.
 - `/room say <message>` posts to `#room` as the operator, every room transcript shows a post as a `#room` card, the room view shows the newest post under its title, and `irc list` lists `#room` with the conversations it reaches by number.
+- `s` in the room view posts to `#room` as the operator from a line under the windows; Esc or a refused post keeps the text for the next `s` while the view is open.
 
 ### Changed
 
@@ -32,6 +33,7 @@
 
 ### Fixed
 
+- A conversation opened with `/room new`, or by a `/new` that keeps a running turn, runs background `bash` commands and `task` agents instead of refusing them, and each job's result reaches the conversation that started it.
 - A slash command's subcommand typed in full that takes no argument, such as `/room new` or `/todo copy`, runs on one Enter; the completion list no longer stays open on it and takes the first Enter to add a space.
 - A dialog opened by a conversation that is off screen waits until that conversation is entered instead of appearing over the one on screen.
 - With the room view open, a question from the conversation on screen waits and the room marks its window, instead of opening under the view where the room's keys answered it unseen; it comes up when the view closes onto that conversation.

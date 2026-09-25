@@ -51,7 +51,7 @@ export function roomGuide(keys: RoomGuideKeys): RoomGuide {
 	const getAround: RoomGuideRow[] = [
 		{ keys: open, text: "open the room: every conversation as a window" },
 		{ keys: "/room new · n", text: "start a conversation beside this one" },
-		{ keys: "/room say", text: "tell all of them; @2 wakes conversation 2" },
+		{ keys: "/room say · s", text: "tell all of them; @2 wakes conversation 2" },
 		{ keys: "enter · 1–9 · click", text: "go into a window" },
 		{ keys: "←→ · tab", text: "move between windows · lay them all out" },
 		{ keys: "r · x", text: "name a conversation · close it" },

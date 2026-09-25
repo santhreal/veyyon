@@ -38,7 +38,7 @@ import {
 } from "../../../registry/agent-registry";
 import type { AgentSession } from "../../../session/agent-session";
 import { BackgroundSessions } from "../../../session/background-sessions";
-import { IrcBus, ROOM_CHANNEL } from "../../../task/irc-bus";
+import { IrcBus, ROOM_CHANNEL, ROOM_POST_MAX_CHARS } from "../../../task/irc-bus";
 import { setSessionTerminalTitle } from "../../../utils/title-generator";
 import { pointerMotionEnabled } from "../components/chrome/modal-shell";
 import { type RoomGuide, roomGuide, roomGuideMarkdown } from "../components/room/room-guide";
@@ -506,6 +506,12 @@ export class RoomController {
 				this.#pendingSteps += this.#cycleStep(data);
 			},
 			channel: () => this.#channelLine(),
+			say: text => {
+				const outcome = this.#post(text);
+				return outcome.tone === "status" && outcome.posted
+					? { posted: true }
+					: { posted: outcome.posted, notice: outcome.text };
+			},
 		};
 		const layout: RoomLayout = this.ctx.settings.get("room.view");
 		// The first room view this profile opens explains itself; `?` brings the
@@ -822,19 +828,50 @@ export class RoomController {
 			);
 			return;
 		}
+		const outcome = this.#post(body);
+		if (outcome.tone === "error") this.ctx.showError(outcome.text);
+		else if (outcome.tone === "warning") this.ctx.showWarning(outcome.text);
+		else this.ctx.showStatus(outcome.text);
+	}
+
+	/**
+	 * Post `body` to the room's `#room` channel as the operator, from `/room say`
+	 * or the room view's `s`: whether it was posted, and the words for what came
+	 * of it at the tone they read in.
+	 */
+	#post(body: string): {
+		readonly posted: boolean;
+		readonly tone: "error" | "warning" | "status";
+		readonly text: string;
+	} {
 		const post = this.bus.postToRoom({ member: this.ownId, byOperator: true, body });
 		if (!post.posted) {
-			this.ctx.showStatus("No other conversation in this terminal — /room new opens one beside this");
-			return;
+			if (post.reason === "too-long") {
+				return {
+					posted: false,
+					tone: "error",
+					text: `A ${ROOM_CHANNEL} post holds at most ${ROOM_POST_MAX_CHARS} characters and this one has ${body.length}; post a file's path instead.`,
+				};
+			}
+			// The conversation on screen is in no room: alone in the terminal, or one
+			// a `/new` opened outside the room the others share.
+			return {
+				posted: false,
+				tone: "status",
+				text: "This conversation is in no room — /room new opens one beside it",
+			};
 		}
 		const failed = post.receipts.filter(receipt => receipt.outcome === "failed");
 		if (failed.length > 0) {
 			const missed = failed.map(receipt => `${receipt.label} (${receipt.error ?? "unknown error"})`).join(", ");
-			this.ctx.showWarning(`Posted to ${ROOM_CHANNEL}, but it did not reach ${missed}`);
-			return;
+			return { posted: true, tone: "warning", text: `Posted to ${ROOM_CHANNEL}, but it did not reach ${missed}` };
 		}
 		const woken = post.receipts.filter(receipt => receipt.outcome === "woken").map(receipt => receipt.label);
-		this.ctx.showStatus(`Posted to ${ROOM_CHANNEL}${woken.length > 0 ? ` · woke ${woken.join(", ")}` : ""}`);
+		return {
+			posted: true,
+			tone: "status",
+			text: `Posted to ${ROOM_CHANNEL}${woken.length > 0 ? ` · woke ${woken.join(", ")}` : ""}`,
+		};
 	}
 
 	/** The room as text, for `/room list`. */

@@ -83,7 +83,7 @@ export type IrcRoomPost =
 			/** A member the line named stayed asleep: the room hit {@link ROOM_WAKE_CAP}. */
 			readonly wakeHeld: boolean;
 	  }
-	| { readonly posted: false; readonly reason: "not-a-driver" | "no-room" };
+	| { readonly posted: false; readonly reason: "not-a-driver" | "no-room" | "too-long" };
 
 /** The delivery path taken inside the bus. */
 export type IrcDeliveryRoute = "refused" | "waiter" | "injected" | "wake" | "revival" | "buffered" | "unavailable";
@@ -254,6 +254,13 @@ const PING_PONG_CAP = 16;
  * place to say what changes another conversation's work, not a record of it.
  */
 const ROOM_LOG_CAP = 20;
+
+/**
+ * The longest post the channel carries, in characters. A post lands in every
+ * member's context, so each conversation in the room pays for it; a payload
+ * longer than this belongs in a file the post names.
+ */
+export const ROOM_POST_MAX_CHARS = 4_000;
 
 /**
  * Agent posts in a row that may wake a conversation they name, until the
@@ -461,6 +468,7 @@ export class IrcBus {
 		if (poster?.kind !== "main") return { posted: false, reason: "not-a-driver" };
 		const room = poster.room;
 		if (room === undefined) return { posted: false, reason: "no-room" };
+		if (post.body.length > ROOM_POST_MAX_CHARS) return { posted: false, reason: "too-long" };
 		const seats = this.#registry.roomSeats(post.member);
 		const channel = this.#channel(room);
 		const byOperator = post.byOperator === true;
