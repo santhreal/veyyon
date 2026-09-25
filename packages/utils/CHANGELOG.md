@@ -12,8 +12,6 @@
 ### Fixed
 
 - A horizontal trackpad swipe is no longer reported as a vertical wheel notch.
-### Fixed
-
 - `@veyyon/utils/stderr-guard` loads `node:util` on the first routed console call rather than at import, keeping it off the launch card path; no user-visible change.
 
 ## [1.5.5] - 2026-09-25
