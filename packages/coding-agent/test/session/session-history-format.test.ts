@@ -316,4 +316,39 @@ describe("formatSessionHistoryMarkdown", () => {
 		expect(output).toContain("→ advise(concern: Avoid shadowing the outer variable.) ⇒ ok · 1 line");
 		expect(output).not.toContain("Recorded.");
 	});
+
+	/**
+	 * The edit tool takes one argument, a hashline patch, whose text is the change.
+	 * Summarized as that text, a transcript line and a room window's tool row read
+	 * `[src/parser.ts#7B60] SWAP 2.=3: + const…`; the files the patch names are
+	 * what the call acts on. Text that is not a hashline patch is summarized as
+	 * before.
+	 */
+	it("summarizes an edit by the files its patch names, once each, and other input as its text", () => {
+		const call = (id: string, input: string) => [
+			{ role: "assistant", content: [{ type: "toolCall", id, name: "edit", arguments: { input } }], timestamp: 1 },
+			{
+				role: "toolResult",
+				toolCallId: id,
+				toolName: "edit",
+				content: [{ type: "text", text: "ok" }],
+				isError: false,
+				timestamp: 2,
+			},
+		];
+		const patch = [
+			"[src/parser.ts#7B60]",
+			"SWAP 2.=3:",
+			"+\tconst trimmed = s.trim();",
+			"[src/parser.test.ts#E21E]",
+			"INS.POST 10:",
+			'+test("rejects spaces", () => {});',
+			"[src/parser.ts#7B60]",
+			"DEL 5",
+		].join("\n");
+		const output = formatSessionHistoryMarkdown([...call("tc-edit", patch), ...call("tc-plain", "rename the thing")]);
+		expect(output).toContain("→ edit(src/parser.ts, src/parser.test.ts) ⇒ ok");
+		expect(output).not.toContain("SWAP");
+		expect(output).toContain("→ edit(rename the thing) ⇒ ok");
+	});
 });

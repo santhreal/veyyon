@@ -8,6 +8,7 @@
  */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage } from "@veyyon/ai";
+import { Patch } from "@veyyon/hashline";
 // Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { contentText } from "@veyyon/utils/content-text";
@@ -98,6 +99,22 @@ function primaryArgValue(value: unknown): string {
 }
 
 /**
+ * The files a hashline patch names in its section headers, in order; none when
+ * the text is not a hashline patch. `Patch.parse` merges the sections of one
+ * file, so each is named once.
+ */
+function patchPaths(input: string): string[] {
+	try {
+		return Patch.parse(input)
+			.sections.map(section => section.path)
+			.filter(path => path !== "");
+	} catch {
+		// Not a hashline patch: the caller falls back to the text itself.
+		return [];
+	}
+}
+
+/**
  * Pick the most informative scalar argument of a tool call: the path, command,
  * pattern, url or query it acts on, collapsed to one line of at most 120
  * characters. Shared by the `history://` transcript and the room's windows, so
@@ -120,6 +137,12 @@ export function toolCallPrimaryArg(name: string, args: Record<string, unknown> |
 		if (type && input && path) return oneLine(`${type}: ${input} @ ${path}`);
 		if (type && input) return oneLine(`${type}: ${input}`);
 		if (input) return oneLine(input);
+	}
+	// An edit's one argument is its patch, whose text is the change and not what
+	// it changes; the files its headers name are.
+	if (name === "edit" && typeof args.input === "string") {
+		const paths = patchPaths(args.input);
+		if (paths.length > 0) return oneLine(paths.join(", "));
 	}
 	for (const key of PRIMARY_ARG_KEYS) {
 		const value = args[key];
