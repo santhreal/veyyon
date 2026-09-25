@@ -56,6 +56,19 @@ room_waits_for_you() {
 	return 1
 }
 
+# Whether the question is on screen, waiting up to $1 seconds. Not a guard: the
+# guards approve a question they meet while they wait, and this one is to be seen
+# before it is answered.
+question_on_screen() {
+	local ceiling="$1" waited=0
+	while [ "${waited}" -lt "${ceiling}" ]; do
+		screen_has "Permission required" && return 0
+		sleep 1
+		waited=$((waited + 1))
+	done
+	return 1
+}
+
 # Walk the row from the first window to the one whose key row reads `enter
 # answer`, and go into it. Says whether it found one.
 enter_the_one_waiting() {
@@ -159,10 +172,12 @@ for round in 1 2; do
 		echo "scene: the room counted a question and no window offered to answer it" >&2
 		break
 	fi
-	# needle-source: Permission required -- the approval dialog's title, held until its conversation is on screen
-	expect_screen "Permission required" 30
-	pause 1.5
-	shot "answered-on-arrival-${round}"
+	if question_on_screen 30; then
+		pause 1.5
+		shot "question-on-arrival-${round}"
+	else
+		echo "scene: the question did not come on screen with its conversation" >&2
+	fi
 	answer_on_screen
 	sleep 2
 	open_room
