@@ -33,6 +33,7 @@
 
 ### Fixed
 
+- Text typed or pasted while the room view zooms into a window, or while a room switch moves, lands in the composer of the conversation it arrives at instead of being dropped.
 - A conversation opened with `/room new`, or by a `/new` that keeps a running turn, runs background `bash` commands and `task` agents instead of refusing them, and each job's result reaches the conversation that started it.
 - A slash command's subcommand typed in full that takes no argument, such as `/room new` or `/todo copy`, runs on one Enter; the completion list no longer stays open on it and takes the first Enter to add a space.
 - A dialog opened by a conversation that is off screen waits until that conversation is entered instead of appearing over the one on screen.

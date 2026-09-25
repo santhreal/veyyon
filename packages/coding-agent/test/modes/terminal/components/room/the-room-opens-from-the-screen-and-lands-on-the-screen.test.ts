@@ -413,6 +413,32 @@ describe("entering a member lands on the screen its host composed", () => {
 			});
 		}
 	}
+
+	/**
+	 * A key pressed while a window zooms is not the room's: the room acts on
+	 * none of them, and each goes to the host, which keeps what it types for
+	 * the composer the zoom lands on. A key pressed after the land reaches
+	 * nobody.
+	 */
+	it("hands every key pressed while it zooms to the host and acts on none", async () => {
+		const stage = driver();
+		await overviewOn(stage, 1);
+		await stage.press(KEY.enter);
+		const keys = ["f", "i", "x", KEY.enter, KEY.escape, KEY.toggle, "2", "n", KEY.tab, KEY.right];
+		for (const key of keys) await stage.press(key);
+		expect(stage.host.keysInFlight).toEqual(keys);
+		expect({
+			prepares: stage.host.prepares.map(call => call.id),
+			creates: stage.host.creates,
+			closes: stage.host.closes,
+			layout: stage.stage.layout,
+		}).toEqual({ prepares: ["m1"], creates: [], closes: [], layout: "side-by-side" });
+		stage.host.prepares[0]!.resolve(screenRows(WIDTH, HEIGHT, "m1"));
+		await stepUntilLanded(stage, framesFor(MOTION.zoom.duration));
+		expect(stage.host.lands.map(land => land.id)).toEqual(["m1"]);
+		await stage.press("z");
+		expect(stage.host.keysInFlight).toEqual(keys);
+	});
 });
 
 describe("the quick switch travels to its target without the room's chrome", () => {
@@ -429,7 +455,9 @@ describe("the quick switch travels to its target without the room's chrome", () 
 		expect(stage.frames.at(-1)).toEqual(stage.frames.at(-2)!);
 
 		// Keys wait while the stage is in flight.
-		for (const key of [KEY.enter, KEY.escape, KEY.toggle, "2", "n", "x", KEY.tab]) await stage.press(key);
+		const inFlight = [KEY.enter, KEY.escape, KEY.toggle, "2", "n", "x", KEY.tab];
+		for (const key of inFlight) await stage.press(key);
+		expect(stage.host.keysInFlight).toEqual(inFlight);
 		expect(stage.host.prepares).toHaveLength(1);
 		expect(stage.host.creates).toEqual([]);
 		expect(stage.host.closes).toEqual([]);

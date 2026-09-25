@@ -169,6 +169,9 @@ after && expect_screen "Name conversation" 10
 pause 0.9
 shot room-naming
 t "text editor facts"
+# Typed text goes through kitty's remote control and Return through X: under load Return can
+# arrive first, so Enter waits until the line shows what was typed.
+after && expect_screen "text editor facts" 5
 if after; then k Return; else clear_composer; fi
 # needle-source: 2  text editor facts -- typed in step 11; room-window.ts titleLabel writes the ordinal and the name on the window's top edge
 after && expect_screen "2  text editor facts" 10
@@ -199,9 +202,11 @@ shot room-channel
 
 # --- 14. s says something to the room from the view ----------------------------
 k s
-t "@3 add the year each editor was first released"
 # needle-source: Say to the room -- room-stage.ts the line typed in place of the pager, opened by s
 after && expect_screen "Say to the room" 10
+# The line is open before the text arrives: `@3` typed into the room itself would enter window 3.
+t "@3 add the year each editor was first released"
+after && expect_screen "@3 add the year" 5
 pause 0.9
 shot room-say-line
 if after; then k Return; else clear_composer; fi

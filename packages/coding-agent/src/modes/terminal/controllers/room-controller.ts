@@ -24,7 +24,8 @@
 
 import type { OverlayHandle } from "@veyyon/tui";
 import { normalizePathForComparison } from "@veyyon/utils";
-import { matchesKey } from "@veyyon/utils/keys";
+import { PASTE_START } from "@veyyon/utils/bracketed-paste";
+import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { truncateToWidth } from "@veyyon/utils/width";
@@ -151,6 +152,12 @@ export class RoomController {
 	 * next positive; the switch takes them up when it lands.
 	 */
 	#pendingSteps = 0;
+	/**
+	 * Text typed or pasted while the screen moved, in the order it came, for
+	 * the composer on screen once it stops: typing ahead of the motion loses
+	 * nothing, and a key that is not text never reaches the composer from here.
+	 */
+	#typedAhead: string[] = [];
 	/** A new conversation is being built: a second request waits for nothing and is refused. */
 	#creating = false;
 	/**
@@ -182,6 +189,7 @@ export class RoomController {
 		this.#roomLineUnsubscribe?.();
 		this.#roomLineUnsubscribe = undefined;
 		this.#closeStage();
+		this.#typedAhead = [];
 		for (const feed of this.#feeds.values()) feed.dispose();
 		this.#feeds.clear();
 	}
@@ -503,7 +511,11 @@ export class RoomController {
 			rename: (id, name) => this.rename(id, name),
 			isToggle: data => this.ctx.keybindings.getKeys("app.room.view").some(key => matchesKey(data, key)),
 			keyInFlight: data => {
-				this.#pendingSteps += this.#cycleStep(data);
+				const step = this.#cycleStep(data);
+				if (step !== 0) this.#pendingSteps += step;
+				else if (data.startsWith(PASTE_START) || extractPrintableText(data) !== undefined) {
+					this.#typedAhead.push(data);
+				}
 			},
 			channel: () => this.#channelLine(),
 			say: text => {
@@ -552,7 +564,8 @@ export class RoomController {
 	 * the questions the conversation there held while the view covered it come
 	 * up. `failure` is why a quick switch came back to where it started. Presses
 	 * made while it moved carry the switch on instead, and the conversation it
-	 * passes over keeps its questions for when it is entered.
+	 * passes over keeps its questions for when it is entered. Text typed while
+	 * the screen moved goes to the composer on screen once the screen stops.
 	 */
 	#land(failure?: unknown): void {
 		this.#closeStage();
@@ -563,10 +576,22 @@ export class RoomController {
 		if (failure !== undefined) {
 			this.ctx.showError(`Could not switch: ${errorMessage(failure)}`);
 		} else if (pending !== 0) {
-			void this.cycle(pending);
+			// The switch goes on; a switch that cannot start leaves the screen here.
+			void this.cycle(pending).then(() => {
+				if (!this.#stage && !this.#switching) this.#giveTypedAhead();
+			});
 			return;
 		}
+		this.#giveTypedAhead();
 		this.ctx.roomViewClosed();
+	}
+
+	/** Type what was typed while the screen moved into the composer on screen. */
+	#giveTypedAhead(): void {
+		const typed = this.#typedAhead;
+		if (typed.length === 0) return;
+		this.#typedAhead = [];
+		for (const data of typed) this.ctx.editor.handleInput(data);
 	}
 
 	/** Say which conversation is on screen now, and whether it is still working. */

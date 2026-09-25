@@ -115,9 +115,10 @@ export interface RoomStageHost {
 	/** Whether `data` is the key that opened the view, which closes it the same way. */
 	isToggle(data: string): boolean;
 	/**
-	 * A key pressed during a quick switch, which the stage does not act on. The
-	 * host keeps the next and previous keys for the switch after the land and
-	 * drops the rest.
+	 * A key pressed while the stage moves: a quick switch, or the zoom into a
+	 * window. The stage does not act on it. The host keeps the next and
+	 * previous keys for a switch after the land, and text typed or pasted for
+	 * the composer on screen once the stage stops; it drops the rest.
 	 */
 	keyInFlight(data: string): void;
 	/** The newest line of the room's `#room` channel, or nothing while the room has said nothing. */
@@ -795,8 +796,8 @@ export class RoomStage implements Component, OverlayFocusOwner {
 		}
 		// Keys wait while the stage is in flight: the gesture under way lands
 		// first, and a key meant for the conversation must not reach the stage.
-		// During a quick switch the host keeps the ones it acts on after the land.
-		if (this.#phase === "travel") {
+		// The host keeps the ones it acts on after the land.
+		if (this.#phase === "travel" || this.#phase === "entering") {
 			this.#host.keyInFlight(data);
 			return;
 		}

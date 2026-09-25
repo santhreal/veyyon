@@ -121,6 +121,10 @@ still working. Pressing the next or previous key again while the screen moves go
 the presses add up once it lands; the conversations passed over are not entered, so an answer
 waiting in one stays unread.
 
+Text typed or pasted while the screen moves goes to the composer of the conversation it lands on,
+in the order it was typed. Other keys pressed while the screen moves, Enter and Esc included, do
+nothing.
+
 With `display.transitions` off, or on a terminal without 24-bit colour, the view opens and
 switches without motion.
 

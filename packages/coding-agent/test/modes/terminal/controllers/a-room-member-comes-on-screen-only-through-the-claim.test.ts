@@ -1512,8 +1512,9 @@ describe("with motion on, the quick switch travels through the stage", () => {
 	/**
 	 * The stage holds the keyboard while the screen moves, so the next and
 	 * previous keys reach it rather than the composer. It hands them to the
-	 * room, which goes on as far as they add up once the switch lands; any
-	 * other key pressed in flight does nothing.
+	 * room, which goes on as far as they add up once the switch lands. Text
+	 * typed in flight goes to the composer of the conversation the run ends
+	 * on, never to one it passed over.
 	 */
 	it("a run of next presses while it moves carries it on, entering nothing in between", async () => {
 		const {
@@ -1532,9 +1533,58 @@ describe("with motion on, the quick switch travels through the stage", () => {
 		// The conversation passed over keeps what it asked for when it is entered: the
 		// terminal is told the view closed once, at the last landing, with the stage gone.
 		expect(steps.filter(step => step.startsWith("view-closed"))).toEqual(["view-closed:gone"]);
+		const drafts = Object.fromEntries(h.room.members().map(member => [member.id, member.draft?.line]));
+		expect({ composer: h.ctx.editor.getText(), passedOver: drafts[b!.id] }).toEqual({
+			composer: "x",
+			passedOver: undefined,
+		});
 	});
 
-	it("a switch that fails drops the presses made while it moved", async () => {
+	/**
+	 * Typing does not wait for the motion. Text typed or pasted while the
+	 * screen moves goes to the composer of the conversation it lands on, in
+	 * the order it came. A key that is not text, Enter and Esc included, never
+	 * reaches the composer from there: a typed-ahead Enter sends nothing and a
+	 * typed-ahead Esc interrupts nothing.
+	 */
+	it("gives text typed while the switch moves to the composer it lands on, and no other key", async () => {
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		await h.room.switchTo(b!.id);
+		const stage = h.ui.getFocused();
+		const press = stage?.handleInput?.bind(stage);
+		if (!press || !h.room.viewOpen) throw new Error("the quick switch did not show its stage");
+		for (const key of ["f", "i", "x", "\x1b[200~ the build\x1b[201~", "\r", "\x1b", "\x1b[D", "\x7f"]) press(key);
+		await until(() => !h.room.viewOpen, "the stage to land");
+		expect({ onScreen: h.ctx.session === b!.session, composer: h.ctx.editor.getText() }).toEqual({
+			onScreen: true,
+			composer: "fix the build",
+		});
+	});
+
+	it("gives text typed while a window of the room view zooms to that conversation's composer", async () => {
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		await h.room.openView();
+		const stage = h.ui.getFocused();
+		const press = stage?.handleInput?.bind(stage);
+		if (!press) throw new Error("the room view took no focus");
+		if (h.room.guideShown) press("\x1b");
+		press("\x1b[C");
+		press("\r");
+		for (const char of "go on") press(char);
+		await until(() => !h.room.viewOpen, "the zoom to land");
+		expect({ onScreen: h.ctx.session === b!.session, composer: h.ctx.editor.getText() }).toEqual({
+			onScreen: true,
+			composer: "go on",
+		});
+	});
+
+	it("a switch that fails drops the presses made while it moved, and keeps what was typed where it stays", async () => {
 		const {
 			h,
 			a,
@@ -1544,11 +1594,14 @@ describe("with motion on, the quick switch travels through the stage", () => {
 		b!.failNextPromptBuild();
 		await h.room.cycle(1);
 		h.ui.getFocused()?.handleInput?.(bytes);
+		h.ui.getFocused()?.handleInput?.("o");
+		h.ui.getFocused()?.handleInput?.("k");
 		await until(() => !h.room.viewOpen, "the stage to lift after the failed claim");
 		// Long enough for a left-over press to open a second switch.
 		await sleep(100);
 		expect({ open: h.room.viewOpen, onScreen: h.ctx.session === a.session }).toEqual({ open: false, onScreen: true });
 		expect(steps.filter(step => step.startsWith("view-closed"))).toEqual(["view-closed:gone"]);
+		expect(h.ctx.editor.getText()).toBe("ok");
 	});
 
 	it("a step after the attach that fails lands the stage on the new conversation, with a warning", async () => {
