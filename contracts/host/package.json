@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/host",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "What a host offers a plugin, each capability optional and reported rather than declared and no-oped",
   "homepage": "https://veyyon.dev",
   "author": "santhreal",

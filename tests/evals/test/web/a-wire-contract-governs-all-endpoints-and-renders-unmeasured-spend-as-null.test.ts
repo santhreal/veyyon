@@ -316,6 +316,8 @@ describe("Wire contract invariants across all server endpoints", () => {
 		expect(cancelBody.jobName).toBe("wire_exp-arm_a");
 		expect(typeof cancelBody.cancelled).toBe("boolean");
 		manager.store.markExit("wire_exp-arm_a", 0, false);
+		// A cancel only signals the arm; step 14 deletes it, which requires the process to be gone.
+		await manager.settled("wire_exp-arm_a");
 
 		// 12. POST /api/experiments/:id/arms -> LaunchResponse / ApiErrorResponse
 		const addArmReq: AddArmRequest = { arm: "arm_b", model: "claude-3-7-sonnet" };
@@ -330,6 +332,8 @@ describe("Wire contract invariants across all server endpoints", () => {
 			expect(typeof addArmBody.pid).toBe("number");
 			manager.cancel("wire_exp-arm_b");
 			manager.store.markExit("wire_exp-arm_b", 0, false);
+			// Step 15 deletes the experiment, which fails while any of its arms still runs.
+			await manager.settled("wire_exp-arm_b");
 		} else {
 			const err = (await addArmRes.json()) as ApiErrorResponse;
 			expect(typeof err.error).toBe("string");

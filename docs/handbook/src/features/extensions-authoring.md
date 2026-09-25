@@ -249,6 +249,8 @@ tail -f ~/.veyyon/profiles/default/logs/veyyon.$(date +%F).log
 
 Failed extension loads are logged with their path and error. Loaded extensions may also emit their own debug logs via `pi.logger`.
 
+While the interactive UI is running, output from the `console` methods, `process.stderr.write` and native stderr is appended to the same log file instead of the terminal. Console output from veyyon's own worker threads always goes to the log file. A `Worker` an extension starts from its own module is not routed: its `console.log` output reaches the terminal. Each JavaScript write is prefixed with its source (`[console.log]`, `[process.stderr]`); native stderr is appended as written. When you run veyyon with stderr redirected to a file, stderr output goes to that file instead. Write terminal output only through the UI APIs.
+
 To temporarily disable a specific extension module by name without removing the file:
 
 ```yaml

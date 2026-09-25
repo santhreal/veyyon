@@ -230,6 +230,18 @@ export class RunnerManager {
 		return { jobName, pid };
 	}
 
+	/**
+	 * Resolves once a managed run's process has exited and its exit is recorded, so `isLive` no longer
+	 * reports it; resolves at once for a run this manager does not hold. A cancel only signals the
+	 * process, so a caller that deletes after cancelling awaits this first.
+	 */
+	settled(jobName: string): Promise<void> {
+		const child = this.#children.get(jobName);
+		// The exit handler registered at spawn runs before this continuation, so the child is gone
+		// from `#children` by the time the returned promise resolves.
+		return child ? child.proc.exited.then(() => undefined) : Promise.resolve();
+	}
+
 	/** Cancel a managed run. */
 	cancel(jobName: string): { jobName: string; cancelled: boolean } {
 		assertSafeJobName(jobName);

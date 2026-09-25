@@ -56,7 +56,14 @@
 - A room window whose screen is composed again at the same height draws the new screen instead of the one it drew before.
 - Extension status text and widgets belong to the conversation that set them: the terminal shows the on-screen conversation's, including ones set while it was off screen, and a room switch takes the previous conversation's away.
 - All windows on a short terminal shows the rows around the selected window instead of laying rows out past the bottom of the room view.
+- The CLI imports the terminal output guard when a worker thread starts rather than at startup, keeping it off the static boot graph; no user-visible change.
+
+## [1.5.5] - 2026-09-25
+
+### Fixed
+
 - Running two veyyon versions at once on Windows no longer prints `could not remove the stale addon cache ... EPERM` over the interactive UI and pushes the composer down; a real removal failure shows as a `natives` warning notice.
+- A `console` print from a library, a native addon warning or a worker thread no longer writes into the interactive UI and shifts the composer on Linux or Windows; the text goes to the veyyon log file.
 
 ## [1.5.4] - 2026-09-24
 

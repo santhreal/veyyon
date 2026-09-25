@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The CLI imports the terminal output guard when a worker thread starts rather than at startup, keeping it off the static boot graph; no user-visible change.
+- `@veyyon/utils/stderr-guard` loads `node:util` on the first routed console call rather than at import, keeping it off the launch card path; no user-visible change.
+
+## [1.5.5] - 2026-09-25
+
+### Added
+
+- `isTerminalOutputRouted` reports whether console output is going to the log, and `routeWorkerThreadOutput` sends a worker thread's console output to the log for the worker's lifetime.
+
 ### Changed
 
 - `SessionManager.open` parses the session file once instead of twice, cutting a 700 MB resume from 2.83 s to 1.62 s and peak RSS from 3.4 GB to 1.95 GB.
@@ -11,7 +22,9 @@
 ### Fixed
 
 - Running two veyyon versions at once on Windows no longer prints `could not remove the stale addon cache ... EPERM` over the interactive UI and pushes the composer down; a real removal failure shows as a `natives` warning notice.
+- A `console` print from a library, a native addon warning or a worker thread no longer writes into the interactive UI and shifts the composer on Linux or Windows; the text goes to the veyyon log file.
 - The launch-time prune of old addon caches no longer writes to stderr; a directory it cannot remove is reported through `attachNativeNoticeSink`, and on Windows a cache still mapped by a running veyyon (`EPERM`/`EBUSY`) is returned in `inUse` and not reported.
+- `suppressTerminalStderr` routes native stderr on Linux and Windows (not only macOS), and while the terminal UI is live it routes `console.*` and `process.stderr.write` output to the log file, so a stray print no longer pushes the composer down.
 
 ## [1.5.4] - 2026-09-24
 

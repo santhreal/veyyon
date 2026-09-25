@@ -160,4 +160,9 @@ export class ManagerServer {
 	cancel(jobName: string): { jobName: string; cancelled: boolean } {
 		return this.#runner.cancel(jobName);
 	}
+
+	/** Resolves once a cancelled or finished run's process has exited; see {@link RunnerManager.settled}. */
+	settled(jobName: string): Promise<void> {
+		return this.#runner.settled(jobName);
+	}
 }

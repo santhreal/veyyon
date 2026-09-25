@@ -12,6 +12,19 @@
 ### Fixed
 
 - A horizontal trackpad swipe is no longer reported as a vertical wheel notch.
+### Fixed
+
+- `@veyyon/utils/stderr-guard` loads `node:util` on the first routed console call rather than at import, keeping it off the launch card path; no user-visible change.
+
+## [1.5.5] - 2026-09-25
+
+### Added
+
+- `isTerminalOutputRouted` reports whether console output is going to the log, and `routeWorkerThreadOutput` sends a worker thread's console output to the log for the worker's lifetime.
+
+### Fixed
+
+- `suppressTerminalStderr` routes native stderr on Linux and Windows (not only macOS), and while the terminal UI is live it routes `console.*` and `process.stderr.write` output to the log file, so a stray print no longer pushes the composer down.
 
 ## [1.5.4] - 2026-09-24
 
