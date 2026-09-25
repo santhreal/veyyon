@@ -262,12 +262,15 @@ export interface SkillPromptCustomDisplay {
 
 export interface IrcMessageCustomDisplay {
 	variant: "irc";
-	kind: "incoming" | "autoreply" | "relay";
+	/** `room` is a line of the room's `#room` channel; `from` is its poster as the room numbers it. */
+	kind: "incoming" | "autoreply" | "relay" | "room";
 	from?: string;
 	to?: string;
 	body?: string;
 	replyTo?: string;
 	timestamp?: number;
+	/** A `room` card holding the lines posted before the conversation joined, one `poster: body` per line. */
+	backlog?: boolean;
 }
 
 export interface AdvisorNoteDisplay {

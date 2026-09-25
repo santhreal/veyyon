@@ -7,6 +7,7 @@ export * from "./core/component-types";
 export * from "./core/container";
 export * from "./core/image-budget";
 export * from "./core/overlay";
+export * from "./core/render-scheduler";
 // The SGR coalescer and the resync law are asserted directly by the render-stress harness.
 export { coalesceAdjacentSgr, findCommittedPrefixResync } from "./core/renderer";
 export type { ScrollTransport } from "./core/scroll";

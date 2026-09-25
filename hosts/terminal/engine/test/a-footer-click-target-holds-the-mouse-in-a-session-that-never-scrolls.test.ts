@@ -20,8 +20,11 @@
  * What it does NOT catch: whether a given host component answers wantsPointer()
  * at the right times. That is the component's own contract (the chip bar's is
  * pinned in packages/coding-agent/test/a-clicked-composer-chip-runs-its-action.test.ts).
- * It also says nothing about the alternate screen, where overlays own the full
- * tracking set including any-motion hover.
+ * On the alternate screen overlays own the full tracking set including
+ * any-motion hover; this suite covers only that leaving it gives the footer its
+ * grab back. Leaving tears the whole set down, and an engine that still counted
+ * the grab as held left every footer target dead after the first fullscreen
+ * overlay (the room view, settings) closed.
  */
 import { describe, expect, it } from "bun:test";
 import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
@@ -154,6 +157,16 @@ function leftClickAt(row: number, col: number): string {
 	return `\x1b[<0;${col + 1};${row + 1}M`;
 }
 
+/**
+ * Whether the terminal reports buttons after `output`: the last write of mode
+ * 1000 decides, whichever sequence carried it.
+ */
+function holdsButtons(output: string): boolean {
+	return output.lastIndexOf(TRACKING_BUTTONS_ON) > output.lastIndexOf("\x1b[?1000l");
+}
+
+const FULLSCREEN = { width: "100%", maxHeight: "100%", margin: 0, fullscreen: true } as const;
+
 describe("a footer click target holds the mouse in a session that never scrolls", () => {
 	it("grabs button reporting for a declared target with nothing scrolled off", async () => {
 		const bar = new ChipBar();
@@ -282,5 +295,38 @@ describe("a footer click target holds the mouse in a session that never scrolls"
 		term.drainOutput();
 		tui.stop();
 		expect(term.drainOutput()).toContain(TRACKING_OFF);
+	});
+
+	it("takes the mouse back when a fullscreen overlay closes, once per overlay", async () => {
+		const bar = new ChipBar();
+		const { term, tui, scheduler, stop } = await rig([bar]);
+		try {
+			expect(holdsButtons(term.output())).toBe(true);
+			for (let round = 0; round < 2; round++) {
+				const overlay = tui.showOverlay(new Body(), FULLSCREEN);
+				await scheduler.drain(term);
+				overlay.hide();
+				await scheduler.drain(term);
+				expect({ round, holds: holdsButtons(term.output()) }).toEqual({ round, holds: true });
+			}
+			// Leaving the overlay asks for buttons, never for any-motion hover.
+			const tail = term.output().slice(term.output().lastIndexOf("\x1b[?1049l"));
+			expect(tail).not.toContain(TRACKING_MOTION_ON);
+		} finally {
+			stop();
+		}
+	});
+
+	it("leaves the mouse with the terminal after a fullscreen overlay closes when nothing asks for it", async () => {
+		const { term, tui, scheduler, stop } = await rig([new InertFooter()]);
+		try {
+			const overlay = tui.showOverlay(new Body(), FULLSCREEN);
+			await scheduler.drain(term);
+			overlay.hide();
+			await scheduler.drain(term);
+			expect(holdsButtons(term.output())).toBe(false);
+		} finally {
+			stop();
+		}
 	});
 });

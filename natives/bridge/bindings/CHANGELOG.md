@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `sliceWithWidth` replays the escapes before its start column in source order, so a close or reset that follows a skipped cell no longer lands ahead of the open it cancels and leaves the first kept cell bold, italic or coloured.
+
 ## [1.5.5] - 2026-09-25
 
 ### Fixed

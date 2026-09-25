@@ -553,6 +553,8 @@ describe("CustomEditor ComposerState consumption and reporting", () => {
 			row: 1,
 			release: false,
 			wheel: null,
+			hwheel: null,
+			shift: false,
 			motion: false,
 			leftClick: true,
 		};

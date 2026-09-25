@@ -32,6 +32,7 @@ import { stripVTControlCharacters } from "node:util";
 import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/terminal/components/status-line/presets";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { NO_ROOM_PEERS } from "@veyyon/coding-agent/modes/terminal/components/status-line/session-facts";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { BackgroundSessions } from "@veyyon/coding-agent/session/background-sessions";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
@@ -73,6 +74,7 @@ function contextWith(backgroundSessionCount: number): SegmentContext {
 		autoCompactEnabled: false,
 		agentCount: 0,
 		backgroundSessionCount,
+		roomPeers: NO_ROOM_PEERS,
 		activeMs: 0,
 		activeRepo: null,
 		worktree: null,

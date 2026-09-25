@@ -39,6 +39,7 @@ const GROUPS: Readonly<Record<string, string>> = {
 	dashboard: "the Agent Control Center, the agent HUD and the todo board",
 	dialogs: "surfaces that ask a question or take over the screen",
 	extensions: "extension-supplied component surfaces",
+	room: "the room view: the stage, its windows, their geometry and view model",
 	selectors: "pickers and lists the operator chooses from",
 	"status-line": "the footline and its segments",
 	transcript: "message blocks and the transcript's own chrome",

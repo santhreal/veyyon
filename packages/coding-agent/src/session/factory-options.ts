@@ -12,6 +12,7 @@ import type { HostNotifier } from "@veyyon/host";
 import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { ArgotSession } from "argot";
+import type { AsyncJobManager } from "../async/job-manager";
 import type { EffortSource } from "../config/effort-resolver";
 import type { ModelRegistry } from "../config/model-registry";
 import type { PromptTemplate } from "../config/prompt-templates";
@@ -194,6 +195,16 @@ export interface CreateAgentSessionOptions {
 	enableMCP?: boolean;
 	/** Existing MCP manager to reuse (skips discovery, propagates to toolSession). */
 	mcpManager?: MCPManager;
+	/**
+	 * A background-job manager another top-level session in this process owns and
+	 * outlives this one with, as the terminal's first conversation does for every
+	 * conversation it opens beside it. This session runs its `bash` and `task`
+	 * background work on it under its own agent id, and a finished job's result is
+	 * delivered to the conversation that started it, this one included. Absent, a
+	 * second top-level session has no manager and refuses background work, because
+	 * nothing guarantees the owner outlives it.
+	 */
+	asyncJobManager?: AsyncJobManager;
 
 	/** Enable LSP integration (tool, formatting, diagnostics, warmup). Default: true */
 	enableLsp?: boolean;
@@ -237,6 +248,12 @@ export interface CreateAgentSessionOptions {
 	 * top-level "Main" session, which has no parent.
 	 */
 	parentAgentId?: string;
+	/**
+	 * Room the driving agent joins at registration, for a conversation the
+	 * terminal opens beside the one it is displaying. Undefined for the first
+	 * session in a process and for every spawned agent. See `AgentRef.room`.
+	 */
+	agentRoom?: string;
 	/** Inherited eval executor session id for agents sharing parent eval state. */
 	parentEvalSessionId?: string;
 

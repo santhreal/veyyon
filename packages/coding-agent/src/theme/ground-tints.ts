@@ -149,6 +149,15 @@ export function groundRaisedHex(): string | undefined {
 	return tintFromGround(0.05);
 }
 
+/**
+ * Room window outline (24% toward the pole). Heavier than a card hairline: a
+ * window in the room recedes by fading toward the ground, and a 12% outline
+ * faded by half is gone, where this one still draws the window's edge.
+ */
+export function groundFrameHex(): string | undefined {
+	return tintFromGround(0.24);
+}
+
 /** 24-bit foreground open for a derived tint, or undefined without detection
  *  or 24-bit color. Callers fall back to their static theme token. */
 export function groundTintFgAnsi(hex: string | undefined, trueColor: boolean): string | undefined {

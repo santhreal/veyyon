@@ -92,6 +92,7 @@ export type EventControllerContext = Pick<
 	| "renderInitialMessages"
 	| "replaceOptimisticUserMessage"
 	| "retryLoader"
+	| "room"
 	| "session"
 	| "sessionManager"
 	| "setTodos"
@@ -164,6 +165,12 @@ export class EventController {
 	#backgroundTaskCallIds = new Set<string>();
 	#projection: SessionProjectionEngine;
 	#attachedSession: AgentSession | undefined;
+	/**
+	 * Whether the assistant message the attached session is writing has a
+	 * component. False from an attach until a `message_start` arrives, the
+	 * orphan-delta guard synthesizes one, or {@link resumeTurn} opens it.
+	 */
+	#assistantStreamSynced = false;
 	#readToolCallAssistantComponents = new Map<string, AssistantMessageComponent>();
 	#toolTimelineComponents = new Map<string, Component>();
 	#postToolAssistantComponents = new Map<string, AssistantMessageComponent>();
@@ -447,16 +454,42 @@ export class EventController {
 	attachTo(target: AgentSession): void {
 		this.#attachedSession = target;
 		this.#projection.seedMessages();
-		let assistantStreamSynced = false;
+		this.#assistantStreamSynced = false;
 		this.ctx.unsubscribe = target.subscribe(async (event: AgentSessionEvent) => {
 			if (event.type === "message_start" && event.message.role === "assistant") {
-				assistantStreamSynced = true;
-			} else if (event.type === "message_update" && event.message.role === "assistant" && !assistantStreamSynced) {
-				assistantStreamSynced = true;
+				this.#assistantStreamSynced = true;
+			} else if (
+				event.type === "message_update" &&
+				event.message.role === "assistant" &&
+				!this.#assistantStreamSynced
+			) {
+				this.#assistantStreamSynced = true;
 				await this.handleEvent({ type: "message_start", message: event.message });
 			}
 			await this.handleEvent(event);
 		});
+	}
+
+	/**
+	 * Arm the turn the attached session is in the middle of. A screen that
+	 * attaches mid-turn missed the turn's `agent_start` and the `message_start`
+	 * of the message being written, and a transcript rebuild holds finished
+	 * messages only, so this arms the loader, starts the footline clock and the
+	 * working line's clock at the turn's start, and opens that message at the
+	 * text it already has, without replaying its reveal. Call it after the
+	 * rebuild, which clears the transcript the message is drawn in. A session
+	 * that is not streaming is left as it is.
+	 */
+	async resumeTurn(): Promise<void> {
+		const session = this.#attachedSession;
+		if (!session?.isStreaming) return;
+		this.ctx.statusLine.markActivityStart(session.turnStartedAt);
+		await this.handleEvent({ type: "agent_start" });
+		if (session.turnStartedAt !== undefined) this.ctx.ensureLoadingAnimation(session.turnStartedAt);
+		const partial = session.displayedStreamMessage;
+		if (partial === undefined) return;
+		this.#assistantStreamSynced = true;
+		this.#openStreamingMessage(partial, true);
 	}
 
 	/**
@@ -707,15 +740,26 @@ export class EventController {
 			this.ctx.addMessageToChat(event.message);
 			this.ctx.ui.requestRender();
 		} else if (event.message.role === "assistant") {
-			this.#lastVisibleBlockCount = 0;
-			this.#projection.recordAssistantMessageToolCalls(event.message);
-			this.ctx.streamingComponent = createAssistantMessageComponent(this.ctx);
-			this.ctx.streamingMessage = event.message;
-			this.ctx.chatContainer.addChild(this.ctx.streamingComponent);
-			const timeline = splitAssistantMessageToolTimeline(this.ctx.streamingMessage);
-			this.#streamingReveal.begin(this.ctx.streamingComponent, toAssistantMessageView(timeline.beforeTools));
-			this.ctx.ui.requestRender();
+			this.#openStreamingMessage(event.message, false);
 		}
+	}
+
+	/**
+	 * Give the assistant message being written its transcript component.
+	 * `caughtUp` shows the text it already has at once, for a message the
+	 * screen joins partway through; otherwise the reveal starts from nothing.
+	 */
+	#openStreamingMessage(message: AssistantMessage, caughtUp: boolean): void {
+		this.#lastVisibleBlockCount = 0;
+		this.#projection.recordAssistantMessageToolCalls(message);
+		this.ctx.streamingComponent = createAssistantMessageComponent(this.ctx);
+		this.ctx.streamingMessage = message;
+		this.ctx.chatContainer.addChild(this.ctx.streamingComponent);
+		const timeline = splitAssistantMessageToolTimeline(message);
+		this.#streamingReveal.begin(this.ctx.streamingComponent, toAssistantMessageView(timeline.beforeTools), {
+			caughtUp,
+		});
+		this.ctx.ui.requestRender();
 	}
 
 	async #handleIrcMessage(event: Extract<AgentSessionEvent, { type: "irc_message" }>): Promise<void> {
@@ -1825,22 +1869,30 @@ export class EventController {
 	}
 
 	sendCompletionNotification(): void {
-		const notify = settings.get("completion.notify");
-		if (notify === "off") return;
-
-		// Skip when the turn was aborted (e.g. ask cancelled with Ctrl+C) or
-		// errored — those are not "Task complete" events. Mirrors the gate
-		// already used by #currentContextTokens, #handleMessageEnd, and the
-		// retry / TTSR / compaction skip paths across agent-session.ts.
-		const last = this.ctx.viewSession.getLastAssistantMessage?.();
-		if (last?.stopReason === "aborted" || last?.stopReason === "error") return;
-
-		const sessionName = this.ctx.sessionManager.getSessionName();
-		TERMINAL.sendNotification({
-			title: sessionName || "Veyyon",
-			body: "Complete",
-			type: "completion",
-			actions: "focus",
-		});
+		const session = this.ctx.viewSession;
+		notifyTurnComplete(session, () => this.ctx.room.labelOf(session) ?? this.ctx.sessionManager.getSessionName());
 	}
+}
+
+/**
+ * Send the desktop notification that `session` finished its turn, titled by
+ * `title` (in a room, the room's name for the conversation; else the session's
+ * name), which is read only once the notification is going out. Gated by
+ * `completion.notify`; the terminal withholds it while it has focus.
+ *
+ * Skipped when the turn was aborted (e.g. ask cancelled with Ctrl+C) or
+ * errored — those are not "Task complete" events. Mirrors the gate already used
+ * by #currentContextTokens, #handleMessageEnd, and the retry / TTSR /
+ * compaction skip paths across agent-session.ts.
+ */
+export function notifyTurnComplete(session: AgentSession, title: () => string | undefined): void {
+	if (settings.get("completion.notify") === "off") return;
+	const last = session.getLastAssistantMessage?.();
+	if (last?.stopReason === "aborted" || last?.stopReason === "error") return;
+	TERMINAL.sendNotification({
+		title: title() || "Veyyon",
+		body: "Complete",
+		type: "completion",
+		actions: "focus",
+	});
 }

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- `TUI.captureViewport()` returns the window last committed to the screen and `TUI.composeViewport()` returns the window the children compose now, without painting either.
+
+### Fixed
+
+- Closing the last fullscreen overlay leaves the alternate screen and repaints in one synchronized update, so the previous screen never shows for a frame between the two.
+- Leaving a fullscreen overlay gives footer click targets button reporting back, so with scroll isolation on the status line's chips answer a click after settings or the room view closes instead of staying inert until the transcript scrolls.
+
 ## [1.5.4] - 2026-09-24
 
 ### Added

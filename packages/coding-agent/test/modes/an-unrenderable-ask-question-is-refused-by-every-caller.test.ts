@@ -138,6 +138,8 @@ function createHarness(collabHost?: unknown): ControllerHarness {
 		// about what a notification carries.
 		setToolNotifier: (): void => {},
 		clearWorkingLoader: (): boolean => false,
+		// The room view is closed, so a question from the conversation on screen presents.
+		room: { viewOpen: false, labelOf: () => undefined },
 		session: {
 			isStreaming: false,
 		},

@@ -177,6 +177,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `session.newKeepsBackground` | /new Keeps The Old Session | boolean | `false` | What /new does while a response is still streaming. On: the old conversation keeps running in the background and the screen attaches to a new one; the status line counts background conversations. Off: the old turn is stopped and its provider stream closed before the new session starts. Takes effect at the next start. |
+| `room.view` | Room View | enum | `side-by-side` | How the room view arranges the conversations in this terminal when it opens (→ twice on an empty composer, or the room view key, alt+w by default). Tab switches between the two while it is open. Values: `side-by-side`, `all-windows`. |
 
 ### Approvals
 
@@ -866,6 +867,7 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `modelTags` | record | `{}` |  |
 | `retry.baseDelayMs` | number | `500` |  |
 | `retry.enabled` | boolean | `true` |  |
+| `room.guideShown` | boolean | `false` |  |
 | `searxng.basicPassword` | string | _(unset)_ |  |
 | `searxng.basicUsername` | string | _(unset)_ |  |
 | `searxng.categories` | string | _(unset)_ |  |
@@ -899,4 +901,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-353 settings in /settings, 120 configuration-file keys, 473 in all.
+354 settings in /settings, 121 configuration-file keys, 475 in all.

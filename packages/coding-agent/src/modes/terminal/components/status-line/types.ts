@@ -11,6 +11,17 @@ import type { SessionFacts } from "./session-facts";
 
 export type { StatusLinePreset, StatusLineSegmentId, StatusLineSeparatorStyle };
 
+/** The room beside the displayed conversation, as the status line counts it. */
+export interface RoomPeerSummary {
+	readonly peers: number;
+	/** Peers running a turn, not counting the ones holding a question. */
+	readonly working: number;
+	/** Peers holding a question until they are on screen. */
+	readonly waiting: number;
+	/** Idle peers whose turn ended off screen and that have not been on screen since. */
+	readonly unread: number;
+}
+
 /** Collab session indicator + (guest-only) host-state override for segments. */
 export type CollabStatus = StatusCollabStatus;
 
@@ -130,7 +141,7 @@ export interface SegmentContext {
 	agentCount: number;
 	/**
 	 * Conversations this process is still running that no screen is showing —
-	 * `/new` handoffs that have not settled.
+	 * `/new` handoffs that have not settled — outside the room on screen.
 	 *
 	 * Separate from {@link agentCount}, which counts spawns INSIDE the
 	 * conversation on screen. A handed-off conversation is a peer of the one
@@ -139,6 +150,15 @@ export interface SegmentContext {
 	 * backgrounded conversation draws nothing anywhere.
 	 */
 	backgroundSessionCount: number;
+	/**
+	 * The room beside the displayed conversation: how many driving agents share
+	 * this terminal with it, and how many of those are working or holding a
+	 * question for the operator. Disjoint from {@link backgroundSessionCount}:
+	 * a peer is a member whether or not it is spending, a handed-off `/new` that
+	 * never joined a room is not a peer, and a peer running off screen is
+	 * counted here and not there.
+	 */
+	roomPeers: RoomPeerSummary;
 	/**
 	 * Active processing time accumulated this session, in ms — the union of
 	 * every `agent_start`→`agent_end` window plus the currently-streaming

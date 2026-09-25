@@ -37,6 +37,7 @@
 - [Secrets](./features/secrets.md)
 - [Models and providers](./using/models.md)
 - [Sessions](./using/sessions.md)
+  - [Rooms](./features/rooms.md)
 - [Agents](./features/agents.md)
 - [Writing an agent](./features/agents-authoring.md)
 - [Multi-agent monitoring](./features/cockpit.md)

@@ -17,9 +17,10 @@
 
 import { type InstrumentationLevel, sessionTelemetryDetail } from "@veyyon/ai/instrumentation";
 import { errorMessage, logger, Snowflake } from "@veyyon/utils";
+import { truncateToWidth } from "@veyyon/utils/width";
 import { settingsOrNull } from "../config/settings-instance";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
-import { type AgentKind, AgentRegistry } from "../registry/agent-registry";
+import { type AgentKind, AgentRegistry, type SeatedAgentRef } from "../registry/agent-registry";
 import type { CustomMessage } from "../session/messages";
 
 export interface IrcMessage {
@@ -39,6 +40,50 @@ export interface IrcDeliveryReceipt {
 	outcome: "injected" | "woken" | "revived" | "failed";
 	error?: string;
 }
+
+/**
+ * The address of a room's channel: `irc send to:"#room"` posts to every
+ * driving conversation in the sender's room. See {@link IrcBus.postToRoom}.
+ */
+export const ROOM_CHANNEL = "#room";
+
+/** One post to a room's channel. */
+export interface IrcRoomLine {
+	id: string;
+	/** The driving agent that posted it, or undefined when the operator did (`/room say`). */
+	from?: string;
+	/** The poster as the room numbered it at the time: `2 · parser whitespace`, `conversation 2`, or `you`. */
+	label: string;
+	body: string;
+	ts: number;
+}
+
+/**
+ * How a room member takes a line: mid-turn it reads it at its next step
+ * (`working`); idle, the line waits in its context for its next turn (`idle`),
+ * unless the line named it and woke it (`woken`).
+ */
+export type IrcRoomDelivery = "working" | "idle" | "woken";
+
+/** What became of a room line at one member. */
+export interface IrcRoomReceipt {
+	to: string;
+	/** The member as the room numbered it when the line was posted. */
+	label: string;
+	outcome: IrcRoomDelivery | "failed";
+	error?: string;
+}
+
+/** A post the channel carried, or why it carried nothing. */
+export type IrcRoomPost =
+	| {
+			readonly posted: true;
+			readonly line: IrcRoomLine;
+			readonly receipts: IrcRoomReceipt[];
+			/** A member the line named stayed asleep: the room hit {@link ROOM_WAKE_CAP}. */
+			readonly wakeHeld: boolean;
+	  }
+	| { readonly posted: false; readonly reason: "not-a-driver" | "no-room" | "too-long" };
 
 /** The delivery path taken inside the bus. */
 export type IrcDeliveryRoute = "refused" | "waiter" | "injected" | "wake" | "revival" | "buffered" | "unavailable";
@@ -204,6 +249,70 @@ const LOG_CAP = 500;
 const PING_PONG_CAP = 16;
 
 /**
+ * Lines a room's channel keeps. The newest are what a conversation that joins
+ * the room later reads first, and what the room view shows; the channel is a
+ * place to say what changes another conversation's work, not a record of it.
+ */
+const ROOM_LOG_CAP = 20;
+
+/**
+ * The longest post the channel carries, in characters. A post lands in every
+ * member's context, so each conversation in the room pays for it; a payload
+ * longer than this belongs in a file the post names.
+ */
+export const ROOM_POST_MAX_CHARS = 4_000;
+
+/**
+ * Agent posts in a row that may wake a conversation they name, until the
+ * operator posts to the room again.
+ *
+ * A named conversation that is idle is woken, answers, and may name its poster
+ * back, which is the ping-pong {@link PING_PONG_CAP} bounds for a pair. On the
+ * channel no pair is visible, since every post reaches every member, so the
+ * run is counted across the room: past the cap a post still reaches everyone,
+ * and a member it names reads it at its next turn instead of now. The operator
+ * posting is the one thing that says the room is still being watched.
+ */
+export const ROOM_WAKE_CAP = PING_PONG_CAP;
+
+/** A room's channel: its newest lines, and what each member had of them. */
+interface RoomChannel {
+	/** Oldest first, each with its place in the room's sequence. */
+	readonly lines: { readonly seq: number; readonly line: IrcRoomLine }[];
+	seq: number;
+	/**
+	 * The first line each member took live, by sequence number. Every line
+	 * before it was posted before the member had a seat, and is its backlog.
+	 */
+	readonly firstLive: Map<string, number>;
+	/** Members that have had their backlog, so it is given once. */
+	readonly joined: Set<string>;
+	/** Agent posts in a row that woke a member, since the operator last posted. */
+	wakeRun: number;
+}
+
+/** The widest a conversation's name gets in a line's label. */
+const LABEL_NAME_WIDTH = 40;
+
+/** How the room names seat `seat` in a line: `2 · parser whitespace`, or `conversation 2` while it has no name. */
+export function roomSeatLabel(seat: number, ref: SeatedAgentRef): string {
+	const name = ref.session.sessionManager.getSessionName()?.trim();
+	return name ? `${seat} · ${truncateToWidth(name, LABEL_NAME_WIDTH)}` : `conversation ${seat}`;
+}
+
+/**
+ * What a room line names: every `@2` or `@<id>` in it, without the `@`. A
+ * mention starts after whitespace or punctuation, so an address like
+ * `a@b.dev` names nobody, and it ends on a word character, so `@2:` and `@2.`
+ * name 2.
+ */
+export function roomMentions(body: string): Set<string> {
+	const out = new Set<string>();
+	for (const match of body.matchAll(/(?<![\w@])@([\w:-]*\w)/g)) out.add(match[1]!);
+	return out;
+}
+
+/**
  * Who counts as alive for a blocking `wait`, so it ends when nobody can answer
  * instead of burning its whole timeout.
  *
@@ -241,6 +350,8 @@ export class IrcBus {
 	readonly #log: IrcLogEntry[] = [];
 	readonly #logListeners = new Set<(entry: IrcLogEntry) => void>();
 	readonly #instrumentationLevel: () => InstrumentationLevel;
+	readonly #rooms = new Map<string, RoomChannel>();
+	readonly #roomListeners = new Set<(room: string, line: IrcRoomLine) => void>();
 
 	constructor(
 		registry: AgentRegistry = AgentRegistry.global(),
@@ -333,6 +444,129 @@ export class IrcBus {
 	onMessage(listener: (entry: IrcLogEntry) => void): () => void {
 		this.#logListeners.add(listener);
 		return () => this.#logListeners.delete(listener);
+	}
+
+	// ------------------------------------------------------------ #room
+
+	/**
+	 * Post `body` to the channel of `member`'s room. Every driving conversation
+	 * in the room takes the line the way {@link IrcRoomDelivery} says; an agent
+	 * does not take its own line, and the operator's (`byOperator`, through
+	 * `/room say`) reaches every member, the one on screen included.
+	 *
+	 * Only a driving agent in a room posts. A spawned agent reports to its
+	 * parent, which decides what the room hears, so a spawn's post is refused
+	 * rather than carried under its driver's name.
+	 *
+	 * A member the line names (`@2`, `@<id>`) is woken when it is idle, until
+	 * {@link ROOM_WAKE_CAP} agent posts in a row have woken one. Synchronous from
+	 * the first member to the last, so two posts never interleave at a member
+	 * and every member reads the room in one order.
+	 */
+	postToRoom(post: { member: string; byOperator?: boolean; body: string }): IrcRoomPost {
+		const poster = this.#registry.get(post.member);
+		if (poster?.kind !== "main") return { posted: false, reason: "not-a-driver" };
+		const room = poster.room;
+		if (room === undefined) return { posted: false, reason: "no-room" };
+		if (post.body.length > ROOM_POST_MAX_CHARS) return { posted: false, reason: "too-long" };
+		const seats = this.#registry.roomSeats(post.member);
+		const channel = this.#channel(room);
+		const byOperator = post.byOperator === true;
+		const seat = seats.findIndex(ref => ref.id === post.member);
+		const line: IrcRoomLine = {
+			id: Snowflake.next(),
+			...(byOperator ? {} : { from: post.member }),
+			label: byOperator ? "you" : seat >= 0 ? roomSeatLabel(seat + 1, seats[seat]!) : post.member,
+			body: post.body,
+			ts: Date.now(),
+		};
+		const seq = ++channel.seq;
+		channel.lines.push({ seq, line });
+		if (channel.lines.length > ROOM_LOG_CAP) channel.lines.splice(0, channel.lines.length - ROOM_LOG_CAP);
+		const mentions = roomMentions(post.body);
+		const capped = !byOperator && channel.wakeRun >= ROOM_WAKE_CAP;
+		const receipts: IrcRoomReceipt[] = [];
+		let woke = false;
+		let wakeHeld = false;
+		const takeLive = (id: string): void => {
+			if (!channel.firstLive.has(id)) channel.firstLive.set(id, seq);
+		};
+		for (const [index, ref] of seats.entries()) {
+			if (!byOperator && ref.id === post.member) {
+				takeLive(ref.id);
+				continue;
+			}
+			const label = roomSeatLabel(index + 1, ref);
+			const named = mentions.has(String(index + 1)) || mentions.has(ref.id);
+			try {
+				const outcome = ref.session.deliverRoomLines([line], { named, wake: named && !capped });
+				takeLive(ref.id);
+				if (outcome === "woken") woke = true;
+				if (outcome === "idle" && named && capped) wakeHeld = true;
+				receipts.push({ to: ref.id, label, outcome });
+			} catch (error) {
+				receipts.push({ to: ref.id, label, outcome: "failed", error: errorMessage(error) });
+			}
+		}
+		channel.wakeRun = byOperator ? 0 : woke ? channel.wakeRun + 1 : channel.wakeRun;
+		// A member that left takes what it had of the room with it.
+		const seated = new Set(seats.map(ref => ref.id));
+		for (const id of channel.firstLive.keys()) if (!seated.has(id)) channel.firstLive.delete(id);
+		for (const id of channel.joined) if (!seated.has(id)) channel.joined.delete(id);
+		for (const listener of this.#roomListeners) {
+			try {
+				listener(room, line);
+			} catch (error) {
+				logger.warn("IrcBus: a room line listener threw; delivery was unaffected", { error: String(error) });
+			}
+		}
+		return { posted: true, line, receipts, wakeHeld };
+	}
+
+	/**
+	 * Give `member`, a conversation that has just taken its seat, the lines its
+	 * room posted before it had one, as one record in its context: what the
+	 * room said before it joined. Returns how many; a second call gives none.
+	 * A line posted after its seat was taken reached it live and is not given
+	 * twice.
+	 */
+	joinRoom(member: string): number {
+		const ref = this.#registry.get(member);
+		const room = ref?.kind === "main" ? ref.room : undefined;
+		const channel = room === undefined ? undefined : this.#rooms.get(room);
+		if (!channel || !ref?.session || channel.joined.has(member)) return 0;
+		channel.joined.add(member);
+		const before = channel.firstLive.get(member) ?? Number.POSITIVE_INFINITY;
+		const missed = channel.lines.filter(entry => entry.seq < before).map(entry => entry.line);
+		if (missed.length === 0) return 0;
+		ref.session.deliverRoomLines(missed, { named: false, wake: false, backlog: true });
+		return missed.length;
+	}
+
+	/** The newest line of `member`'s room, or nothing while the room has none. */
+	latestRoomLine(member: string): IrcRoomLine | undefined {
+		const ref = this.#registry.get(member);
+		const room = ref?.kind === "main" ? ref.room : undefined;
+		return room === undefined ? undefined : this.#rooms.get(room)?.lines.at(-1)?.line;
+	}
+
+	/**
+	 * Subscribe to room lines as they are posted, with the room each belongs to.
+	 * Returns the unsubscribe. A display feed: a listener that throws is logged
+	 * and the post stands.
+	 */
+	onRoomLine(listener: (room: string, line: IrcRoomLine) => void): () => void {
+		this.#roomListeners.add(listener);
+		return () => this.#roomListeners.delete(listener);
+	}
+
+	#channel(room: string): RoomChannel {
+		let channel = this.#rooms.get(room);
+		if (!channel) {
+			channel = { lines: [], seq: 0, firstLive: new Map(), joined: new Set(), wakeRun: 0 };
+			this.#rooms.set(room, channel);
+		}
+		return channel;
 	}
 
 	/**

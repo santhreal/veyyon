@@ -29,6 +29,9 @@ const HINT_SHIMMER_PALETTE: ShimmerPalette = {
 	high: "borderAccent",
 };
 
+/** The working line's label while no task has been named. */
+const WORKING_LABEL = "Working…";
+
 interface WorkingMessageAccent {
 	main: string;
 	dim: string;
@@ -123,7 +126,7 @@ export class WorkingLoaderController {
 	}
 
 	get #defaultMessage(): string {
-		return `Working…${interruptHint()}`;
+		return `${WORKING_LABEL}${interruptHint()}`;
 	}
 
 	/**
@@ -131,8 +134,13 @@ export class WorkingLoaderController {
 	 * status container out from under it. The caller repaints the todo board:
 	 * this edge is where the agent starts moving, and the board's motion is owed
 	 * by that.
+	 *
+	 * `startedAt` is when the turn began, for a screen that arrives while it
+	 * runs: the default working phase counts from it instead of from the
+	 * arrival, so the line agrees with the footline's run clock. A task the line
+	 * names keeps its own clock.
 	 */
-	ensure(): void {
+	ensure(startedAt?: number): void {
 		if (!this.#loader) {
 			this.clearAccentCache();
 			this.#context.statusContainer.disposeChildren();
@@ -170,6 +178,10 @@ export class WorkingLoaderController {
 			this.#context.statusContainer.disposeChildren();
 			this.#context.statusContainer.addChild(this.#loader);
 			this.#context.ui.requestRender();
+		}
+		if (startedAt !== undefined && this.#taskLabel === WORKING_LABEL) {
+			this.#taskStartedAt = Math.min(startedAt, Date.now());
+			this.refreshTaskClock();
 		}
 		this.applyPendingMessage();
 	}

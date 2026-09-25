@@ -2,8 +2,66 @@
 
 ## [Unreleased]
 
+### Added
+
+- The room view shows every conversation in the terminal as a live window, side by side or all at once, opened with `→→` on an empty composer, `alt+w` or `/room`; each window names what its conversation is doing (`thinking`, `writing`, `running <tool>`) or when it finished, Enter or a digit zooms into a window (the key row reads `enter answer` on a window holding a question), `n` opens a new conversation, `x` closes one, Tab switches layouts and Esc goes back to the conversation the view was opened from, which the key row names ([#951](https://github.com/santhreal/veyyon/issues/951)).
+- `alt+.` and `alt+,` (`app.room.next`, `app.room.previous`) switch to the next or previous conversation in the room with a pull-back, slide and push-in.
+- `/room new` opens a driving conversation beside the one on screen, `/room list` prints the room, and `/room <n>` or `/room <id>` switches to a member.
+- The `room.view` setting selects whether the room view opens side by side or with all windows.
+- Conversations in one room are `irc` peers: each lists the others under `irc list` and can message them by id, while `to: "all"` reaches only the sender's own spawns.
+- The status line's `room` segment counts the other conversations in the room, how many are waiting for an answer and how many are working, and with `tui.scrollIsolation` on a click on it opens the room view; a room member running off screen is counted there and not again by the `background` segment.
+- A room window shows the unsent draft its conversation's composer holds at its foot, with its first line and what it has attached.
+- A room window holding a question draws its frame in the ember a waiting prompt takes, quieter than the selected window's, so a glance at the room finds who is waiting.
+- A room conversation that finishes or fails its turn off screen says so once on the status line with the key that opens the room, and a finished one sends the completion notification when `completion.notify` is on.
+- A room conversation whose turn ended off screen counts as unread until it is entered: the status line's `room` chip and the room view's title count it after the working ones, the ordinal under its window carries how the turn ended, and `/room list` marks it.
+- In a room, every desktop notification, such as an `ask` waiting for an answer or a finished turn under `completion.notify`, is titled with its conversation's number and name, on screen or off.
+- The first room view a profile opens shows a guide over the dimmed windows: what a room is, its keys and what each mark on a window means; any key or click closes it without acting, `?` in the room view opens it again, and `/room help` prints it.
+- `/hotkeys` lists the room keys: the room view key with the `→→` gesture, and next and previous conversation.
+- `r` in the room view names the selected conversation on a line under the windows: the line holds its name selected, typing replaces it, an arrow, Home or End keeps it to edit, and Enter saves it.
+- The room view's key row drops the keys it has no room for least used first, the digit jump first, and keeps the arrows, Enter, `?` and Esc longest.
+- Pressing `alt+.` or `alt+,` again while a room switch is still moving goes on as far as the presses add up once it lands, without entering the conversations it passes.
+- `/rooms` is an alias of `/room`, so `/rooms help` prints the room guide.
+- `irc` `send` with `to: "#room"` posts to every driving conversation in the room: a working one reads the post at its next step, an idle one at its next turn, and one the post names with `@2` or its id is woken; spawned agents neither post nor receive, a post holds at most 4,000 characters, and a conversation that joins later receives the room's last 20 posts.
+- `/room say <message>` posts to `#room` as the operator, every room transcript shows a post as a `#room` card, the room view shows the newest post under its title, and `irc list` lists `#room` with the conversations it reaches by number.
+- `s` in the room view posts to `#room` as the operator from a line under the windows; Esc or a refused post keeps the text for the next `s` while the view is open.
+- A room window shows each `#room` post its conversation took as one row, so a turn a post started shows the post above its answer, and a conversation only the room ever spoke to shows what it did instead of reading as new.
+
+### Changed
+
+- A room window rebuilt while its conversation streams reads only the message being written, keeping each stored message's display text and tool rows from the rebuild before.
+- The open room view repaints only the top edge of a working window on a spinner tick, wraps only the rows a window shows, and repaints nothing for a stream event that leaves a window as it was, such as a thinking delta.
+- The room view's new-conversation slot is a tile of at most 30 by 7 cells centred in its place, instead of a frame the size of a window.
+
 ### Fixed
 
+- Text typed or pasted while the room view zooms into a window, or while a room switch moves, lands in the composer of the conversation it arrives at instead of being dropped.
+- A conversation opened with `/room new`, or by a `/new` that keeps a running turn, runs background `bash` commands and `task` agents instead of refusing them, and each job's result reaches the conversation that started it.
+- A slash command's subcommand typed in full that takes no argument, such as `/room new` or `/todo copy`, runs on one Enter; the completion list no longer stays open on it and takes the first Enter to add a space.
+- A dialog opened by a conversation that is off screen waits until that conversation is entered instead of appearing over the one on screen.
+- With the room view open, a question from the conversation on screen waits and the room marks its window, instead of opening under the view where the room's keys answered it unseen; it comes up when the view closes onto that conversation.
+- A room window's tool row and a `history://` transcript line name the files an edit changes instead of showing its patch text.
+- A conversation opened by `/new` while a turn streams gives its tools and extensions the terminal UI, so its `ask` calls and extension dialogs work.
+- Extension actions run on the conversation that registered them after a `/new` hand-off or a room switch, not on whichever one is on screen.
+- The terminal title and session accent follow a rename of the conversation on screen after a `/new` hand-off or a room switch.
+- A conversation that changes directory while off screen no longer re-scopes the settings, project directory and capabilities of the one on screen; the move applies when it comes back on screen.
+- Exit flushes and disposes every conversation the terminal ran, not only the one on screen, and saves each one's unsent draft.
+- Entering a conversation mid-answer, by a room switch, a `/resume` of a running session or viewing an agent, shows the answer so far at once, with its argot handles expanded, instead of when its next token arrives.
+- Disposing a second top-level session in the same process, such as the agent-creation architect, no longer disposes the process's agent lifecycle and with it the spawned agents of every other conversation.
+- A generated session title names the conversation its prompt was sent to, not the one on screen when the title arrives after a `/new` hand-off or a room switch.
+- A conversation opened off screen by `/room new` or `/new` no longer waits for its extensions' `session_start` handlers, so a handler that asks a question no longer stalls the open until it times out.
+- Closing a room conversation, or exiting, dismisses the questions and extension screens it held off screen instead of leaving them waiting, so a tool waiting on one no longer holds the close.
+- Extension autocomplete applies for the conversation on screen only, so each provider runs once rather than once per room conversation, and a closed conversation's providers leave the editor.
+- Entering a conversation mid-turn starts the status line's run clock and the working line's clock at the turn's start, and a room switch keeps each conversation's run clock and time spent instead of zeroing them.
+- A room switch keeps a draft's attached images with the conversation they were attached in.
+- `/resume` of a running session and a `/new` hand-off keep the composer's unsent draft with the conversation that typed it and bring back the arriving conversation's own draft, the way a room switch does.
+- The status line's `room` chip counts the room of the conversation on screen after a `/resume` or a `/new` hand-off, instead of the room of the one that left, and a room entered that way announces its conversations' turns again.
+- A room switch whose screen fails to finish loading after the conversation is attached shows a warning and keeps the switch instead of reporting it refused.
+- `/room new` or `n` while a conversation is still opening says so instead of opening a second one, and a conversation that fails to join the room is closed rather than left running unlisted.
+- A room close that fails leaves the conversation in the room for exit to close instead of forgetting it.
+- A room window names the model its conversation switched to between turns without waiting for the next turn.
+- A room window whose screen is composed again at the same height draws the new screen instead of the one it drew before.
+- Extension status text and widgets belong to the conversation that set them: the terminal shows the on-screen conversation's, including ones set while it was off screen, and a room switch takes the previous conversation's away.
+- All windows on a short terminal shows the rows around the selected window instead of laying rows out past the bottom of the room view.
 - The CLI imports the terminal output guard when a worker thread starts rather than at startup, keeping it off the static boot graph; no user-visible change.
 
 ### Removed

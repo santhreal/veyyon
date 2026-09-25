@@ -51,7 +51,7 @@ function makeAssistantMessage(stopReason: StopReason): AssistantMessage {
 	} as unknown as AssistantMessage;
 }
 
-function makeContext(lastMessage: AssistantMessage | undefined): InteractiveModeContext {
+function makeContext(lastMessage: AssistantMessage | undefined, roomLabel?: string): InteractiveModeContext {
 	const sessionMock = {
 		getLastAssistantMessage: () => lastMessage,
 	};
@@ -67,6 +67,8 @@ function makeContext(lastMessage: AssistantMessage | undefined): InteractiveMode
 		// missing. The calls are unconditional now, so the stub supplies them.
 		refreshComposerShortcuts: vi.fn(),
 		dismissWelcome: vi.fn(),
+		// The room's name for the conversation on screen; nothing while it is alone.
+		room: { labelOf: () => roomLabel },
 	} as unknown as InteractiveModeContext;
 }
 
@@ -112,5 +114,16 @@ describe("EventController.sendCompletionNotification — abort guard", () => {
 		const controller = new EventController(makeContext(makeAssistantMessage("stop")));
 		controller.sendCompletionNotification();
 		expect(spy).toHaveBeenCalledTimes(0);
+	});
+
+	it("titles the toast with the room's name for the conversation in a room, else with the session's name", () => {
+		const spy = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
+		settings.override("completion.notify", "on");
+		new EventController(makeContext(makeAssistantMessage("stop"), "2 · parser rewrite")).sendCompletionNotification();
+		new EventController(makeContext(makeAssistantMessage("stop"))).sendCompletionNotification();
+		const titles = spy.mock.calls.map(([notification]) =>
+			typeof notification === "string" ? notification : notification.title,
+		);
+		expect(titles).toEqual(["2 · parser rewrite", "test-session"]);
 	});
 });

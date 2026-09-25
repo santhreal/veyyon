@@ -61,7 +61,17 @@ function makeComposer(text: string): Editor {
 
 /** Route a press straight at the editor, exactly as the Container does. */
 function pressAt(editor: Editor, line: number, col: number): void {
-	const event = { button: 0, col, row: line, release: false, wheel: null, motion: false, leftClick: true };
+	const event = {
+		button: 0,
+		col,
+		row: line,
+		release: false,
+		wheel: null,
+		hwheel: null,
+		shift: false,
+		motion: false,
+		leftClick: true,
+	};
 	editor.routeMouse(event, line, col);
 }
 
@@ -191,9 +201,39 @@ describe("a click on the composer text", () => {
 		const col = GUTTER.length + 4;
 
 		for (const event of [
-			{ button: 35, col, row: 0, release: false, wheel: null, motion: true, leftClick: false },
-			{ button: 0, col, row: 0, release: true, wheel: null, motion: false, leftClick: false },
-			{ button: 65, col, row: 0, release: false, wheel: 1 as const, motion: false, leftClick: false },
+			{
+				button: 35,
+				col,
+				row: 0,
+				release: false,
+				wheel: null,
+				hwheel: null,
+				shift: false,
+				motion: true,
+				leftClick: false,
+			},
+			{
+				button: 0,
+				col,
+				row: 0,
+				release: true,
+				wheel: null,
+				hwheel: null,
+				shift: false,
+				motion: false,
+				leftClick: false,
+			},
+			{
+				button: 65,
+				col,
+				row: 0,
+				release: false,
+				wheel: 1 as const,
+				hwheel: null,
+				shift: false,
+				motion: false,
+				leftClick: false,
+			},
 		]) {
 			editor.routeMouse(event, 0, col);
 			expect(editor.getCursor()).toEqual({ line: 0, col: 11 });

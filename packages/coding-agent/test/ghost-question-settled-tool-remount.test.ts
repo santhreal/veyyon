@@ -214,6 +214,10 @@ const CONTROLLER_ENTRY_POINTS = {
 	dispose: "inert",
 	resetTranscriptAnchors: "inert",
 	inheritDisplaceableTodo: "inert",
+	// Arms `agent_start` and opens the assistant text in flight, drawn only up to
+	// its first tool call; a tool card in that message mounts on the next update,
+	// through `handleEvent` and its ledger.
+	resumeTurn: "inert",
 	sendCompletionNotification: "inert",
 } as const;
 

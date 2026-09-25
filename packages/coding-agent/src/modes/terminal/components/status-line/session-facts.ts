@@ -27,7 +27,7 @@ import { isKnownApprovalMode } from "../../../../tools/core/approval-modes";
 import { readLaunchFacts } from "../../../launch-facts";
 import { launchModelLabel } from "../../launch-formatting";
 import type { LocationContext } from "./location-context";
-import type { SegmentContext, StatusLineSegmentOptions } from "./types";
+import type { RoomPeerSummary, SegmentContext, StatusLineSegmentOptions } from "./types";
 
 /**
  * The active model, reduced to what the row prints.
@@ -40,6 +40,9 @@ import type { SegmentContext, StatusLineSegmentOptions } from "./types";
  * its say. No second formatting rule.
  */
 export type { ModelFact, SessionFacts, StatusModelFact };
+
+/** A terminal with no room. Defined here rather than beside its type so `types.ts` stays type-only. */
+export const NO_ROOM_PEERS: RoomPeerSummary = { peers: 0, working: 0, waiting: 0, unread: 0 };
 
 /** What the row knows before a session exists and before config is read. */
 export const NO_SESSION_FACTS: SessionFacts = {
@@ -176,6 +179,7 @@ export function launchSegmentContext(request: LaunchContextRequest): SegmentCont
 		autoCompactEnabled: request.autoCompactEnabled,
 		agentCount: 0,
 		backgroundSessionCount: 0,
+		roomPeers: NO_ROOM_PEERS,
 		activeMs: 0,
 		git: { branch: request.branch, status: launchFacts.gitStatus, pr: null },
 		worktree: request.location?.worktree ?? null,

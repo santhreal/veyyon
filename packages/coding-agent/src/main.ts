@@ -1904,17 +1904,21 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			authStorage.setRuntimeApiKey(session.model.provider, parsedArgs.apiKey);
 		}
 
-		// `/new` while a turn is in flight moves the UI here instead of aborting.
-		// Overridden against the launch options: a fresh SessionManager so the
-		// running turn keeps writing its own transcript, and no inherited
-		// provider state, which `AgentSession.newSession` also drops when it
-		// resets in place. `mcpManager` is passed so the new session reuses the
-		// connected servers rather than re-discovering and re-owning them; the
-		// handed-off session stays their owner for the life of the process.
-		const createNextSession: InteractiveSessionFactory = async () => {
+		// `/new` while a turn is in flight, and `/room new`, move the UI here
+		// instead of aborting or replacing. Overridden against the launch options:
+		// a fresh SessionManager so the running turn keeps writing its own
+		// transcript, and no inherited provider state, which
+		// `AgentSession.newSession` also drops when it resets in place.
+		// `mcpManager` and `asyncJobManager` are passed so the new session reuses
+		// the connected servers and the background-job manager rather than
+		// re-discovering and re-owning them, or refusing background work; the
+		// handed-off session stays their owner for the life of the process, and a
+		// job's result still goes to the conversation that started it. `room`
+		// registers the new driving agent as a peer of the one that opened it.
+		const createNextSession: InteractiveSessionFactory = async ({ room } = {}) => {
 			const activeCwd = getProjectDir();
 			const nextSessionManager = SessionManager.create(activeCwd, parsedArgs.sessionDir);
-			const { session: next } = await createSession({
+			const next = await createSession({
 				...sessionOptions,
 				cwd: activeCwd,
 				eventBus,
@@ -1922,11 +1926,18 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				preloadedExtensions: extensionsResult,
 				sessionManager: nextSessionManager,
 				mcpManager,
+				asyncJobManager: session.asyncJobManager,
+				agentRoom: room,
 				providerSessionId: undefined,
 				providerPromptCacheKey: undefined,
 				providerPromptCacheKeySource: undefined,
 			});
-			return next;
+			// The new session's own setters: its tools read their UI through its own
+			// tool context, so the host binds this session, not the launch one.
+			return {
+				session: next.session,
+				bindings: { setToolUIContext: next.setToolUIContext, setToolNotifier: next.setToolNotifier },
+			};
 		};
 
 		if (modelFallbackMessage) {

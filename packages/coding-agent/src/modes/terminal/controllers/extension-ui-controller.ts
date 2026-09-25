@@ -10,12 +10,13 @@ import {
 	Text,
 	type TUI,
 } from "@veyyon/tui";
-import { clampLow, errorMessage } from "@veyyon/utils";
+import { clampLow, errorMessage, logger } from "@veyyon/utils";
 import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 import type { CollabUiRequestDraft, CollabUiSelectItem } from "@veyyon/wire";
 import { type AutoresearchUiDelegate, registerAutoresearchUi } from "../../../autoresearch/dashboard";
 import { KeybindingsManager } from "../../../config/keybindings";
 import type {
+	AutocompleteProviderFactory,
 	CompactOptions,
 	ExtensionActions,
 	ExtensionAskDialogQuestion,
@@ -29,7 +30,6 @@ import type {
 	ExtensionUISelectItem,
 	ExtensionUiComponent,
 	ExtensionWidgetOptions,
-	SendUserMessageHandler,
 	TerminalInputHandler,
 } from "../../../extensibility/extensions";
 import { runExtensionSetModel } from "../../../extensibility/extensions/compact-handler";
@@ -37,6 +37,8 @@ import { getSessionSlashCommands } from "../../../extensibility/extensions/get-c
 import { createExtensionModelQuery } from "../../../extensibility/extensions/model-api";
 import type { TerminalWidgetContent } from "../../../extensibility/terminal-capability";
 import { toConfirmDialog, toPromptDialog, toSelectDialog } from "../../../presentation/overlay-builder";
+import type { AgentSession } from "../../../session/agent-session";
+import type { SessionHostBindings } from "../../../session/background-sessions";
 import { normalizeCustomMessagePayload, USER_INTERRUPT_LABEL } from "../../../session/messages";
 import { getAvailableThemesWithPaths, getThemeByName, setTheme, type Theme, theme } from "../../../theme/theme";
 import {
@@ -54,10 +56,9 @@ import { HookSelectorComponent, type HookSelectorSlider } from "../components/se
 import type { InteractiveModeContext, InteractiveSelectorDialogOptions } from "../types";
 
 /**
- * The slice of the interactive context this uses: 31 members of the 215
- * `InteractiveModeContext` requires. Still a slice, and naming it is what lets a
- * test construct one without the `as unknown as InteractiveModeContext` cast the
- * full interface forces (see `CollabHostContext`).
+ * The slice of the interactive context this uses. Naming it is what lets a
+ * test construct one without the `as unknown as InteractiveModeContext` cast
+ * the full interface forces (see `CollabHostContext`).
  */
 export type ExtensionUiControllerContext = Pick<
 	InteractiveModeContext,
@@ -78,8 +79,10 @@ export type ExtensionUiControllerContext = Pick<
 	| "present"
 	| "rebuildChatFromMessages"
 	| "reloadTodos"
+	| "removeAutocompleteProvider"
 	| "renderInitialMessages"
 	| "resetTranscript"
+	| "room"
 	| "session"
 	| "sessionManager"
 	| "setEditorComponent"
@@ -124,6 +127,12 @@ function toWireSelectOptions(options: ExtensionUISelectItem[]): CollabUiSelectIt
 	);
 }
 
+/** The chrome one conversation's extensions set: footer status text and widgets, by key. */
+interface ConversationChrome {
+	readonly statuses: Map<string, string>;
+	readonly widgets: Map<string, { content: TerminalWidgetContent; options: ExtensionWidgetOptions | undefined }>;
+}
+
 export class ExtensionUiController {
 	#extensionTerminalInputUnsubscribers = new Set<() => void>();
 	#hookWidgetsAbove = new Map<string, ExtensionUiComponent>();
@@ -139,13 +148,31 @@ export class ExtensionUiController {
 	#hookInputOverlay: OverlayHandle | undefined;
 	/** Live overlay for the hook editor card. */
 	#hookEditorOverlay: OverlayHandle | undefined;
+	/**
+	 * The terminal's UI context, built once by {@link initHooksAndCustomTools}.
+	 * Each conversation this terminal hosts is handed a view of it gated on being
+	 * the one on screen (see {@link bindSession}).
+	 */
+	#uiContext: ExtensionUIContext | undefined;
+	/** Conversations whose tools and extensions already hold their UI context. */
+	readonly #boundSessions = new WeakSet<AgentSession>();
+	/** Per off-screen conversation, the dialogs waiting for it; each settles with whether it came on screen. */
+	readonly #offscreenDialogs = new Map<AgentSession, Set<(onScreen: boolean) => void>>();
+	/** Conversations this terminal no longer hosts: a UI request from one gets the off-screen answer at once. */
+	readonly #releasedSessions = new WeakSet<AgentSession>();
+	/** Per conversation, the autocomplete factories its extensions stacked on the editor. */
+	readonly #autocompleteFactories = new Map<AgentSession, AutocompleteProviderFactory[]>();
+	/** Per conversation, the status text and widgets its extensions set; the terminal shows the on-screen one's. */
+	readonly #chrome = new WeakMap<AgentSession, ConversationChrome>();
+	readonly #waitingListeners = new Set<() => void>();
 	constructor(private ctx: ExtensionUiControllerContext) {}
 
 	/**
-	 * Initialize the hook system with TUI-based UI context.
+	 * Initialize the hook system with TUI-based UI context, and bind the
+	 * conversation the terminal launched with.
 	 */
 	async initHooksAndCustomTools(): Promise<void> {
-		// Create and set hook & tool UI context
+		// Create the terminal's UI context; every hosted session gets a gated view of it.
 		const uiContext: ExtensionUIContext = {
 			timeoutStartsOnPresentation: true,
 			select: (title, options, dialogOptions) => this.showCollabAwareSelector(title, options, dialogOptions),
@@ -190,17 +217,47 @@ export class ExtensionUiController {
 			getToolsExpanded: () => this.ctx.toolOutputExpanded,
 			setToolsExpanded: expanded => this.ctx.setToolsExpanded(expanded),
 		};
-		this.ctx.setToolUIContext(uiContext, true);
+		this.#uiContext = uiContext;
+		await this.bindSession(this.ctx.session, {
+			setToolUIContext: (context, hasUI) => this.ctx.setToolUIContext(context, hasUI),
+			setToolNotifier: notify => this.ctx.setToolNotifier(notify),
+		});
+	}
+
+	/**
+	 * Give a conversation this terminal hosts its UI: the tool UI context and
+	 * notifier its tools read, its extension runner's actions, and its
+	 * `session_start`. Idempotent per session, and a no-op before
+	 * {@link initHooksAndCustomTools} has built the terminal's context.
+	 *
+	 * The context is gated on the conversation being the one on screen. A dialog
+	 * a conversation opens while it is off screen waits for the operator to come
+	 * to it instead of appearing over another conversation's transcript, where an
+	 * answer would read as answering the wrong question; the wait is counted in
+	 * {@link waitingDialogs} so the room can say who is waiting. Status text and
+	 * widgets are kept per conversation and drawn while it is on screen (see
+	 * {@link sessionAttached}). The working message and the editor describe a
+	 * screen nobody is looking at and are dropped.
+	 */
+	async bindSession(session: AgentSession, bindings: SessionHostBindings): Promise<void> {
+		const base = this.#uiContext;
+		if (!base || this.#boundSessions.has(session)) return;
+		this.#boundSessions.add(session);
+		const uiContext = this.#onScreenContext(session, base);
+		bindings.setToolUIContext(uiContext, true);
 		// This host CAN reach an operator who is looking elsewhere, so it installs
 		// the delivery a tool's notification rides. TerminalNotification extends
 		// HostNotification, which is what makes this a pass-through rather than a
-		// translation, and a GUI host installs its own here instead.
-		this.ctx.setToolNotifier(notification => {
-			TERMINAL.sendNotification(notification);
+		// translation, and a GUI host installs its own here instead. In a room, a
+		// notification is titled with the room's name for its conversation, so a
+		// toast from any of them says which one it is.
+		bindings.setToolNotifier(notification => {
+			const label = this.ctx.room.labelOf(session);
+			TERMINAL.sendNotification(label === undefined ? notification : { ...notification, title: label });
 		});
 
-		this.initializeHookRunner(uiContext, true);
-		const extensionRunner = this.ctx.session.extensionRunner;
+		this.initializeHookRunner(uiContext, true, session);
+		const extensionRunner = session.extensionRunner;
 		if (!extensionRunner) {
 			return;
 		}
@@ -209,10 +266,281 @@ export class ExtensionUiController {
 			this.showExtensionError(error.extensionPath, error.error);
 		});
 
-		// Emit session_start event
-		await extensionRunner.emit({
-			type: "session_start",
+		const started = extensionRunner.emit({ type: "session_start" });
+		// A handler may open a dialog, and a dialog from a conversation off screen
+		// waits for it to come on screen. Awaiting that here holds the
+		// conversation's creation until the handler times out, and a conversation
+		// cannot come on screen before it exists. The one on screen still has its
+		// handlers finish before it is used.
+		if (this.ctx.session === session) {
+			await started;
+			return;
+		}
+		started.catch((error: unknown) => {
+			logger.warn("session_start of an off-screen conversation failed", { error: errorMessage(error) });
 		});
+	}
+
+	/** Dialogs `session` is holding until it is on screen. */
+	waitingDialogs(session: AgentSession): number {
+		return this.#offscreenDialogs.get(session)?.size ?? 0;
+	}
+
+	/** Watch the held-dialog counts. Returns the unsubscribe. */
+	onWaitingDialogsChange(listener: () => void): () => void {
+		this.#waitingListeners.add(listener);
+		return () => {
+			this.#waitingListeners.delete(listener);
+		};
+	}
+
+	/**
+	 * `session` is on screen now, in place of `previous`: the status text and
+	 * widgets `previous` set leave the terminal, the ones `session` set come
+	 * back (a component widget is built again from its factory), and the
+	 * dialogs it was holding are presented, oldest first. While the room view
+	 * is still over the screen, as it is when a switch puts `session` on screen
+	 * under it, they stay held until the view closes.
+	 */
+	sessionAttached(session: AgentSession, previous: AgentSession): void {
+		this.#swapChrome(previous, session);
+		if (!this.ctx.room.viewOpen) this.#presentHeld(session);
+	}
+
+	/**
+	 * The room view closed over the conversation on screen: the dialogs it
+	 * asked while the view covered it, or held from before it came on screen
+	 * under the view, are presented now, oldest first.
+	 */
+	roomViewClosed(): void {
+		this.#presentHeld(this.ctx.session);
+	}
+
+	#presentHeld(session: AgentSession): void {
+		const waiting = this.#offscreenDialogs.get(session);
+		if (!waiting) return;
+		this.#offscreenDialogs.delete(session);
+		for (const settle of waiting) settle(true);
+		this.#emitWaiting();
+	}
+
+	#chromeOf(session: AgentSession): ConversationChrome {
+		let chrome = this.#chrome.get(session);
+		if (!chrome) {
+			chrome = { statuses: new Map(), widgets: new Map() };
+			this.#chrome.set(session, chrome);
+		}
+		return chrome;
+	}
+
+	#swapChrome(leaving: AgentSession, arriving: AgentSession): void {
+		const left = this.#chrome.get(leaving);
+		const shown = this.#chrome.get(arriving);
+		if (left) {
+			for (const key of left.statuses.keys()) if (!shown?.statuses.has(key)) this.setHookStatus(key, undefined);
+			for (const key of left.widgets.keys()) if (!shown?.widgets.has(key)) this.setHookWidget(key, undefined);
+		}
+		if (!shown) return;
+		for (const [key, text] of shown.statuses) this.setHookStatus(key, text);
+		for (const [key, { content, options }] of shown.widgets) this.setHookWidget(key, content, options);
+	}
+
+	/**
+	 * This terminal no longer hosts `session`. The dialogs it holds settle to
+	 * their fallbacks, a takeover waiting for the screen rejects, its
+	 * autocomplete providers leave the editor, the status text and widgets it
+	 * set are forgotten, and a UI request it makes from now on gets the
+	 * off-screen answer at once. Call it before stopping the conversation's
+	 * turn: a tool waiting on one of these holds the stop.
+	 */
+	sessionReleased(session: AgentSession): void {
+		this.#releasedSessions.add(session);
+		const waiting = this.#offscreenDialogs.get(session);
+		if (waiting) {
+			this.#offscreenDialogs.delete(session);
+			for (const settle of waiting) settle(false);
+			this.#emitWaiting();
+		}
+		const factories = this.#autocompleteFactories.get(session);
+		if (factories) {
+			this.#autocompleteFactories.delete(session);
+			for (const factory of factories) this.ctx.removeAutocompleteProvider(factory);
+		}
+		this.#chrome.delete(session);
+	}
+
+	#emitWaiting(): void {
+		for (const listener of this.#waitingListeners) {
+			try {
+				listener();
+			} catch (error) {
+				logger.warn("Waiting-dialog listener failed", { error: errorMessage(error) });
+			}
+		}
+	}
+
+	/**
+	 * Resolve true once `session` can present: on screen, with the room view
+	 * not over it. False if `signal` aborts or the terminal releases `session`
+	 * first. Immediately true for the conversation on screen with the view
+	 * closed, and immediately false for one released.
+	 */
+	#untilOnScreen(session: AgentSession, signal: AbortSignal | undefined): Promise<boolean> {
+		if (this.#canPresent(session)) return Promise.resolve(true);
+		if (signal?.aborted || this.#releasedSessions.has(session)) return Promise.resolve(false);
+		const { promise, resolve } = Promise.withResolvers<boolean>();
+		let waiting = this.#offscreenDialogs.get(session);
+		if (!waiting) {
+			waiting = new Set();
+			this.#offscreenDialogs.set(session, waiting);
+		}
+		const set = waiting;
+		const onAbort = (): void => {
+			set.delete(settle);
+			if (set.size === 0) this.#offscreenDialogs.delete(session);
+			this.#emitWaiting();
+			resolve(false);
+		};
+		const settle = (onScreen: boolean): void => {
+			signal?.removeEventListener("abort", onAbort);
+			resolve(onScreen);
+		};
+		set.add(settle);
+		signal?.addEventListener("abort", onAbort, { once: true });
+		this.#emitWaiting();
+		return promise;
+	}
+
+	/**
+	 * Whether a dialog from `session` can be shown now: it is the conversation on
+	 * screen and the room view is not over it. The room view takes the whole
+	 * terminal and the keyboard, so a dialog shown under it would be answered by
+	 * keys meant for the room, unseen.
+	 */
+	#canPresent(session: AgentSession): boolean {
+		return this.ctx.session === session && !this.ctx.room.viewOpen;
+	}
+
+	/**
+	 * `base` as `session` may use it. Every member is spelled out rather than
+	 * spread, so a member added to {@link ExtensionUIContext} fails to compile
+	 * here until someone decides how an off-screen conversation uses it.
+	 */
+	#onScreenContext(session: AgentSession, base: ExtensionUIContext): ExtensionUIContext {
+		const onScreen = (): boolean => this.ctx.session === session;
+		// The conversation on screen presents at once, in the same turn of the event
+		// loop as the call, the way a dialog did before any conversation could be
+		// off screen; one off screen, or one the room view covers, waits. A
+		// presenter that throws still answers with a rejection, never a throw out
+		// of the call.
+		const presentNow = <T>(show: () => Promise<T>): Promise<T> => {
+			try {
+				return show();
+			} catch (error) {
+				return Promise.reject(error);
+			}
+		};
+		const dialog = <T>(signal: AbortSignal | undefined, show: () => Promise<T>, fallback: T): Promise<T> =>
+			this.#canPresent(session)
+				? presentNow(show)
+				: this.#untilOnScreen(session, signal).then(cameOnScreen => (cameOnScreen ? show() : fallback));
+		const terminal = base.terminal;
+		const askDialog = base.askDialog;
+		return {
+			timeoutStartsOnPresentation: base.timeoutStartsOnPresentation,
+			select: (title, options, dialogOptions) =>
+				dialog(dialogOptions?.signal, () => base.select(title, options, dialogOptions), undefined),
+			confirm: (title, message, dialogOptions) =>
+				dialog(dialogOptions?.signal, () => base.confirm(title, message, dialogOptions), false),
+			input: (title, placeholder, dialogOptions) =>
+				dialog(dialogOptions?.signal, () => base.input(title, placeholder, dialogOptions), undefined),
+			askDialog: askDialog
+				? (questions, dialogOptions) =>
+						dialog(dialogOptions?.signal, () => askDialog(questions, dialogOptions), undefined)
+				: undefined,
+			editor: (title, prefill, dialogOptions, editorOptions) =>
+				dialog(dialogOptions?.signal, () => base.editor(title, prefill, dialogOptions, editorOptions), undefined),
+			notify: (message, type) => {
+				if (onScreen()) base.notify(message, type);
+				else logger.debug("Notification from an off-screen conversation", { message, type });
+			},
+			onTerminalInput: handler => base.onTerminalInput(data => (onScreen() ? handler(data) : undefined)),
+			setStatus: (key, text) => {
+				if (this.#releasedSessions.has(session)) return;
+				const statuses = this.#chromeOf(session).statuses;
+				if (text === undefined) statuses.delete(key);
+				else statuses.set(key, text);
+				if (onScreen()) base.setStatus(key, text);
+			},
+			setWorkingMessage: message => {
+				if (onScreen()) base.setWorkingMessage(message);
+			},
+			setWidget: (key, content, options) => {
+				this.#recordWidget(session, key, content, options);
+				if (onScreen()) base.setWidget(key, content, options);
+			},
+			setTitle: title => {
+				if (onScreen()) base.setTitle(title);
+			},
+			terminal: terminal
+				? {
+						custom: (factory, options) => {
+							if (this.#canPresent(session)) return presentNow(() => terminal.custom(factory, options));
+							// No signal and no fallback value: a takeover from a conversation that
+							// closes before it comes on screen can only fail.
+							return this.#untilOnScreen(session, undefined).then(cameOnScreen => {
+								if (!cameOnScreen) throw new Error("The conversation closed before it came on screen.");
+								return terminal.custom(factory, options);
+							});
+						},
+						setWidgetComponent: (key, factory, options) => {
+							this.#recordWidget(session, key, factory, options);
+							if (onScreen()) terminal.setWidgetComponent(key, factory, options);
+						},
+						setEditorComponent: factory => {
+							if (onScreen()) terminal.setEditorComponent(factory);
+						},
+					}
+				: undefined,
+			setEditorText: text => {
+				if (onScreen()) base.setEditorText(text);
+			},
+			pasteToEditor: text => {
+				if (onScreen()) base.pasteToEditor(text);
+			},
+			getEditorText: () => (onScreen() ? base.getEditorText() : ""),
+			addAutocompleteProvider: factory => {
+				if (this.#releasedSessions.has(session)) return;
+				// The editor belongs to the conversation on screen, and every
+				// conversation's extensions register their own copy: unscoped, each
+				// provider would run once per conversation the terminal hosts.
+				const scoped: AutocompleteProviderFactory = current => (onScreen() ? factory(current) : current);
+				const factories = this.#autocompleteFactories.get(session);
+				if (factories) factories.push(scoped);
+				else this.#autocompleteFactories.set(session, [scoped]);
+				base.addAutocompleteProvider(scoped);
+			},
+			get theme() {
+				return base.theme;
+			},
+			getAllThemes: () => base.getAllThemes(),
+			getTheme: name => base.getTheme(name),
+			setTheme: themeArg => base.setTheme(themeArg),
+			getToolsExpanded: () => base.getToolsExpanded(),
+			setToolsExpanded: expanded => base.setToolsExpanded(expanded),
+		};
+	}
+
+	#recordWidget(
+		session: AgentSession,
+		key: string,
+		content: TerminalWidgetContent,
+		options: ExtensionWidgetOptions | undefined,
+	): void {
+		if (this.#releasedSessions.has(session)) return;
+		const widgets = this.#chromeOf(session).widgets;
+		if (content === undefined) widgets.delete(key);
+		else widgets.set(key, { content, options });
 	}
 
 	setHookWidget(key: string, content: TerminalWidgetContent, options?: ExtensionWidgetOptions): void {
@@ -284,83 +612,105 @@ export class ExtensionUiController {
 		}
 	}
 
-	initializeHookRunner(uiContext: ExtensionUIContext, _hasUI: boolean): void {
-		const extensionRunner = this.ctx.session.extensionRunner;
+	/**
+	 * Initialize `session`'s extension runner. Every action reads and writes
+	 * `session` itself, never whichever conversation happens to be on screen when
+	 * the extension calls it: an extension of an off-screen room member that
+	 * sends a message sends it to its own conversation. The actions that redraw
+	 * the screen redraw it only while `session` is the one on it.
+	 */
+	initializeHookRunner(
+		uiContext: ExtensionUIContext,
+		_hasUI: boolean,
+		session: AgentSession = this.ctx.session,
+	): void {
+		const extensionRunner = session.extensionRunner;
 		if (!extensionRunner) {
 			return;
 		}
+		const onScreen = (): boolean => this.ctx.session === session;
 
 		const actions: ExtensionActions = {
 			sendMessage: (message, options) => {
-				const wasStreaming = this.ctx.session.isStreaming;
+				const wasStreaming = session.isStreaming;
 				const normalized = normalizeCustomMessagePayload(message);
-				this.ctx.session
+				session
 					.sendCustomMessage(normalized, options)
-					.then(() => this.#applyCustomMessageDisplay(wasStreaming, normalized.display))
+					.then(() => {
+						if (onScreen()) this.#applyCustomMessageDisplay(wasStreaming, normalized.display);
+					})
 					.catch((err: unknown) => {
 						const errorText = `Extension sendMessage failed: ${errorMessage(err)}`;
 						this.ctx.showError(errorText);
 					});
 			},
-			sendUserMessage: this.#sendExtensionUserMessage,
+			sendUserMessage: (content, options) => {
+				session.sendUserMessage(content, options).catch((err: unknown) => {
+					this.ctx.showError(`Extension sendUserMessage failed: ${errorMessage(err)}`);
+				});
+			},
 			appendEntry: (customType, data) => {
-				this.ctx.sessionManager.appendCustomEntry(customType, data);
+				session.sessionManager.appendCustomEntry(customType, data);
 			},
 			setLabel: (targetId, label) => {
-				this.ctx.sessionManager.appendLabelChange(targetId, label);
+				session.sessionManager.appendLabelChange(targetId, label);
 			},
-			getActiveTools: () => this.ctx.session.getActiveToolNames(),
-			getAllTools: () => this.ctx.session.getAllToolNames(),
-			setActiveTools: toolNames => this.ctx.session.setActiveToolsByName(toolNames),
-			setModel: (model, options) => runExtensionSetModel(this.ctx.session, model, options),
-			getThinkingLevel: () => this.ctx.session.thinkingLevel,
-			setThinkingLevel: (level, persist) => this.ctx.session.setThinkingLevel(level, persist),
-			getCommands: () => getSessionSlashCommands(this.ctx.session),
-			getSessionName: () => this.ctx.sessionManager.getSessionName(),
-			setSessionName: name => this.#updateSessionName(name),
+			getActiveTools: () => session.getActiveToolNames(),
+			getAllTools: () => session.getAllToolNames(),
+			setActiveTools: toolNames => session.setActiveToolsByName(toolNames),
+			setModel: (model, options) => runExtensionSetModel(session, model, options),
+			getThinkingLevel: () => session.thinkingLevel,
+			setThinkingLevel: (level, persist) => session.setThinkingLevel(level, persist),
+			getCommands: () => getSessionSlashCommands(session),
+			getSessionName: () => session.sessionManager.getSessionName(),
+			setSessionName: async name => {
+				await session.sessionManager.setSessionName(name, "user");
+			},
 		};
 		const contextActions: ExtensionContextActions = {
-			getModel: () => this.ctx.session.model,
-			isIdle: () => !this.ctx.session.isStreaming,
+			getModel: () => session.model,
+			isIdle: () => !session.isStreaming,
 			abort: () => {
-				abortDetached(this.ctx.session, "extension-ui-controller.initializeHookRunner.abort", USER_INTERRUPT_LABEL);
+				abortDetached(session, "extension-ui-controller.initializeHookRunner.abort", USER_INTERRUPT_LABEL);
 			},
-			hasPendingMessages: () => this.ctx.session.queuedMessageCount > 0,
+			hasPendingMessages: () => session.queuedMessageCount > 0,
 			shutdown: () => {
 				// Defer the actual teardown to the main loop, which calls
 				// `checkShutdownRequested()` at idle boundaries so any queued
 				// steering / follow-up messages drain first (see issue #1020).
 				this.ctx.shutdownRequested = true;
 			},
-			getContextUsage: () => this.ctx.session.getContextUsage(),
-			compact: instructionsOrOptions => this.#compactSession(instructionsOrOptions),
-			getSystemPrompt: () => this.ctx.session.systemPrompt,
-			obfuscateProviderText: text => this.ctx.session.obfuscateProviderText(text),
+			getContextUsage: () => session.getContextUsage(),
+			compact: instructionsOrOptions => this.#compactSession(session, instructionsOrOptions),
+			getSystemPrompt: () => session.systemPrompt,
+			obfuscateProviderText: text => session.obfuscateProviderText(text),
 		};
 		const commandActions: ExtensionCommandContextActions = {
-			getContextUsage: () => this.ctx.session.getContextUsage(),
-			waitForIdle: () => this.ctx.session.agent.waitForIdle(),
+			getContextUsage: () => session.getContextUsage(),
+			waitForIdle: () => session.agent.waitForIdle(),
 			reload: async () => {
-				await this.ctx.session.reload();
+				await session.reload();
+				if (!onScreen()) return;
 				this.ctx.renderInitialMessages({ clearTerminalHistory: true });
 				await this.ctx.reloadTodos();
 				this.ctx.showStatus("Reloaded session");
 			},
 			newSession: async options => {
-				this.ctx.clearTransientSessionUi();
-
-				// Create new session
-				this.clearExtensionTerminalInputListeners();
-				this.clearHookWidgets();
-				const success = await this.ctx.session.newSession({ parentSession: options?.parentSession });
+				if (onScreen()) {
+					this.ctx.clearTransientSessionUi();
+					this.clearExtensionTerminalInputListeners();
+				}
+				this.#clearWidgetsOf(session);
+				const success = await session.newSession({ parentSession: options?.parentSession });
 				if (!success) {
 					return { cancelled: true };
 				}
 
 				// Call setup callback if provided
 				if (options?.setup) {
-					await options.setup(this.ctx.sessionManager);
+					await options.setup(session.sessionManager);
 				}
+				if (!onScreen()) return { cancelled: false };
 
 				// Clear UI state
 				this.ctx.clearTransientSessionUi();
@@ -376,10 +726,11 @@ export class ExtensionUiController {
 				return { cancelled: false };
 			},
 			branch: async entryId => {
-				const result = await this.ctx.session.branch(entryId);
+				const result = await session.branch(entryId);
 				if (result.cancelled) {
 					return { cancelled: true };
 				}
+				if (!onScreen()) return { cancelled: false };
 
 				// Update UI
 				this.ctx.renderInitialMessages({ clearTerminalHistory: true });
@@ -390,10 +741,11 @@ export class ExtensionUiController {
 				return { cancelled: false };
 			},
 			navigateTree: async (targetId, options) => {
-				const result = await this.ctx.session.navigateTree(targetId, { summarize: options?.summarize });
+				const result = await session.navigateTree(targetId, { summarize: options?.summarize });
 				if (result.cancelled) {
 					return { cancelled: true };
 				}
+				if (!onScreen()) return { cancelled: false };
 
 				// Update UI
 				this.ctx.renderInitialMessages({ clearTerminalHistory: true });
@@ -405,13 +757,17 @@ export class ExtensionUiController {
 
 				return { cancelled: false };
 			},
-			compact: async instructionsOrOptions => this.#handleInteractiveCompact(instructionsOrOptions),
+			compact: async instructionsOrOptions =>
+				onScreen()
+					? this.#handleInteractiveCompact(instructionsOrOptions)
+					: this.#compactSession(session, instructionsOrOptions),
 			switchSession: async sessionPath => {
-				this.clearHookWidgets();
-				const result = await this.ctx.session.switchSession(sessionPath);
+				this.#clearWidgetsOf(session);
+				const result = await session.switchSession(sessionPath);
 				if (!result) {
 					return { cancelled: true };
 				}
+				if (!onScreen()) return { cancelled: false };
 				this.ctx.renderInitialMessages({ clearTerminalHistory: true });
 				await this.ctx.reloadTodos();
 				return { cancelled: false };
@@ -439,7 +795,7 @@ export class ExtensionUiController {
 					await registeredTool.definition.onSession(event, {
 						ui: uiContext,
 						getContextUsage: () => this.ctx.session.getContextUsage(),
-						compact: instructionsOrOptions => this.#compactSession(instructionsOrOptions),
+						compact: instructionsOrOptions => this.#compactSession(this.ctx.session, instructionsOrOptions),
 						hasUI: true,
 						cwd: this.ctx.sessionManager.getCwd(),
 						sessionManager: this.ctx.session.sessionManager,
@@ -1112,6 +1468,13 @@ export class ExtensionUiController {
 		};
 	}
 
+	/** Drop the widgets `session` set, and take them off the terminal while it is on screen. */
+	#clearWidgetsOf(session: AgentSession): void {
+		if (this.ctx.session === session) this.clearHookWidgets();
+		else this.#chrome.get(session)?.widgets.clear();
+	}
+
+	/** Take every widget off the terminal; the conversation on screen no longer holds any. */
 	clearHookWidgets(): void {
 		for (const widget of this.#hookWidgetsAbove.values()) {
 			widget.dispose?.();
@@ -1121,6 +1484,7 @@ export class ExtensionUiController {
 		}
 		this.#hookWidgetsAbove.clear();
 		this.#hookWidgetsBelow.clear();
+		this.#chrome.get(this.ctx.session)?.widgets.clear();
 		this.#rebuildHookWidgets();
 	}
 
@@ -1139,22 +1503,15 @@ export class ExtensionUiController {
 		await this.ctx.executeCompaction(instructionsOrOptions, false);
 	}
 
-	async #compactSession(instructionsOrOptions: string | CompactOptions | undefined): Promise<void> {
+	async #compactSession(
+		session: AgentSession,
+		instructionsOrOptions: string | CompactOptions | undefined,
+	): Promise<void> {
 		const instructions = typeof instructionsOrOptions === "string" ? instructionsOrOptions : undefined;
 		const options =
 			instructionsOrOptions && typeof instructionsOrOptions === "object" ? instructionsOrOptions : undefined;
-		await this.ctx.session.compact(instructions, options);
+		await session.compact(instructions, options);
 	}
-
-	async #updateSessionName(name: string): Promise<void> {
-		await this.ctx.sessionManager.setSessionName(name, "user");
-	}
-
-	#sendExtensionUserMessage: SendUserMessageHandler = (content, options) => {
-		this.ctx.session.sendUserMessage(content, options).catch((err: unknown) => {
-			this.ctx.showError(`Extension sendUserMessage failed: ${errorMessage(err)}`);
-		});
-	};
 
 	#applyCustomMessageDisplay(wasStreaming: boolean, shouldDisplay: boolean | undefined): void {
 		// For non-streaming cases with display=true, update UI

@@ -199,8 +199,9 @@ export class SessionFocusController {
 		this.ctx.statusProducer.setSession(target, this.#focusedAgentId);
 		this.ctx.statusLine.setSource(this.ctx.statusProducer, this.#focusedAgentId);
 		this.ctx.renderInitialMessages({ clearTerminalHistory: true });
-		// Mid-turn attach: no agent_start will arrive; arm the loader/turn state manually.
-		if (target.isStreaming) await this.ctx.eventController.handleEvent({ type: "agent_start" });
+		// Mid-turn attach: no agent_start or message_start will arrive for the
+		// turn in flight; arm the loader and open the message being written.
+		await this.ctx.eventController.resumeTurn();
 		this.ctx.updateEditorBorderColor();
 		this.ctx.ui.requestRender();
 	}

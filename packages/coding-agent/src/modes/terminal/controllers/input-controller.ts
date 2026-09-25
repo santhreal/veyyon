@@ -46,13 +46,13 @@ import {
 	type DeferredEditorAction,
 	extractImagePathFromText,
 } from "../components/composer/custom-editor";
-import { AGENT_VIEW_LEFT_TAP_WINDOW_MS } from "../components/dashboard/agent-view-timings";
 import { AssistantMessageComponent } from "../components/transcript/assistant-message";
 import { shiftImageMarkers } from "../image-reference-markers";
 import { materializeImageReferenceLinks } from "../image-references";
 import { parseQueueShorthand, splitQueuedMessages } from "../queue-input";
 import { invokeSkillCommandFromText, isKnownSkillCommand, type SkillCommandHost } from "../skill-command";
 import type { InteractiveModeContext } from "../types";
+import { ArrowDoubleTap } from "./arrow-double-tap";
 
 /**
  * Compatibility name for the editor-history policy.
@@ -140,18 +140,9 @@ const TINY_TITLE_PROGRESS_DONE_TTL_MS = 3_000;
 // events for seconds. Only reveal the bar once a still-incomplete event arrives after
 // this grace window, so an already-downloaded model never flashes the bar.
 const TINY_TITLE_PROGRESS_REVEAL_DELAY_MS = 1_000;
-// Double-tap ← on an empty editor opens the agent dashboard (and, in a
-// focused agent view, ←← returns to the main session). The upper bound is
-// AGENT_VIEW_LEFT_TAP_WINDOW_MS, imported rather than restated: it is the same
-// gesture window the agent views were built around, and a second copy of the
-// number here is how the two ends of one gesture drift apart. The lower bound
-// rejects terminal-synthesized arrow-key bursts: "click to move cursor" /
-// pointer features in iTerm2, WezTerm, kitty, and tmux emit several arrow keys
-// in a single stdin read (sub-millisecond apart) on a stray click, which used to
-// pop the card with no key ever pressed. Three or more rapid taps are likewise
-// treated as a burst, not a gesture. A deliberate human double-tap is always
-// tens of milliseconds apart.
-const LEFT_DOUBLE_TAP_MIN_GAP_MS = 40;
+// The arrow double-tap gestures (←← the agent hub, →→ the room view) share
+// one detector class, `ArrowDoubleTap`, which owns the window and the burst
+// rejection; see its doc comment for the bounds.
 
 // How long the second Esc has to arrive for a double-press to read as one gesture.
 // Both Esc gestures share it: discarding a draft, and `doubleEscapeAction` on an
@@ -198,7 +189,6 @@ export type InputControllerContext = TuiSlashCommandHostContext &
 		| "isShuttingDown"
 		| "keybindings"
 		| "lastEscapeTime"
-		| "lastLeftTapTime"
 		| "lastSigintTime"
 		| "loadingAnimation"
 		| "locallySubmittedUserSignatures"
@@ -207,6 +197,7 @@ export type InputControllerContext = TuiSlashCommandHostContext &
 		| "pauseLoop"
 		| "queueCompactionMessage"
 		| "refreshComposerShortcuts"
+		| "room"
 		| "showHistorySearch"
 		| "showModelCycleTrack"
 		| "startPendingSubmission"
@@ -237,10 +228,10 @@ export class InputController {
 	#btwBranchListenerInstalled = false;
 	#btwCopyListenerInstalled = false;
 	#goalDetailListenerInstalled = false;
-	// Tap counter for the double-← gesture; reset whenever a quiet gap
-	// (>= AGENT_VIEW_LEFT_TAP_WINDOW_MS) starts a fresh sequence. See
-	// #detectLeftDoubleTap.
-	#leftTapCount = 0;
+	// One detector per arrow: a ← after a → is a fresh sequence, never the
+	// second tap of one.
+	#leftTap = new ArrowDoubleTap();
+	#rightTap = new ArrowDoubleTap();
 	// Sequential index for `local://attachment-N` references created by large-paste and
 	// pasted-file attachments. Seeded from 0 and bumped past existing attachment files.
 	#attachmentCounter = 0;
@@ -571,6 +562,15 @@ export class InputController {
 		for (const key of hubKeys) {
 			this.ctx.editor.setCustomKeyHandler(key, () => this.ctx.showAgentsDashboard());
 		}
+		for (const key of this.ctx.keybindings.getKeys("app.room.view")) {
+			this.ctx.editor.setCustomKeyHandler(key, () => void this.ctx.room.openView());
+		}
+		for (const key of this.ctx.keybindings.getKeys("app.room.next")) {
+			this.ctx.editor.setCustomKeyHandler(key, () => void this.ctx.room.cycle(1));
+		}
+		for (const key of this.ctx.keybindings.getKeys("app.room.previous")) {
+			this.ctx.editor.setCustomKeyHandler(key, () => void this.ctx.room.cycle(-1));
+		}
 
 		// Double-tap left arrow on an empty editor: opens the agent dashboard
 		// from the main session, or returns the focused agent view to the main
@@ -580,13 +580,23 @@ export class InputController {
 		// the same key that opened it, so the gesture needs no close-tap handoff:
 		// inside the card the arrows switch views.
 		this.ctx.editor.onLeftAtStart = () => {
+			this.#rightTap.reset();
 			if (this.ctx.focusedAgentId) {
 				this.#handleFocusedLeftTap();
 				return;
 			}
-			if (this.#detectLeftDoubleTap()) {
+			if (this.#leftTap.tap()) {
 				this.ctx.showAgentsDashboard({ requireContent: true });
 			}
+		};
+		// Double-tap right arrow on an empty editor: the sideways axis. Opens the
+		// room view, every conversation in this terminal as a window, with or
+		// without a peer (the view is also where a new one is opened). Inert in a
+		// focused agent view: a spawn is not a room member and has nothing beside it.
+		this.ctx.editor.onRightAtEnd = () => {
+			this.#leftTap.reset();
+			if (this.ctx.focusedAgentId) return;
+			if (this.#rightTap.tap()) void this.ctx.room.openView();
 		};
 
 		this.#setupEnhancedPaste();
@@ -608,37 +618,9 @@ export class InputController {
 	}
 
 	#handleFocusedLeftTap(): void {
-		if (this.#detectLeftDoubleTap()) {
+		if (this.#leftTap.tap()) {
 			void this.ctx.unfocusSession();
 		}
-	}
-
-	/**
-	 * Detect a deliberate double-← gesture, rejecting terminal-synthesized arrow
-	 * bursts. Returns true only on the *second* tap of a fresh sequence when it
-	 * lands a human-plausible interval after the first
-	 * (`[LEFT_DOUBLE_TAP_MIN_GAP_MS, AGENT_VIEW_LEFT_TAP_WINDOW_MS)`). Taps closer
-	 * than the lower bound, or any third-and-later tap before a quiet gap, are a
-	 * burst and never fire — so a stray click that makes the terminal emit a run
-	 * of ← keys can no longer pop the agent dashboard.
-	 */
-	#detectLeftDoubleTap(): boolean {
-		const now = Date.now();
-		const sinceLast = now - this.ctx.lastLeftTapTime;
-		this.ctx.lastLeftTapTime = now;
-		if (sinceLast >= AGENT_VIEW_LEFT_TAP_WINDOW_MS) {
-			// Quiet gap: this tap starts a fresh sequence.
-			this.#leftTapCount = 1;
-			return false;
-		}
-		this.#leftTapCount += 1;
-		if (this.#leftTapCount === 2 && sinceLast >= LEFT_DOUBLE_TAP_MIN_GAP_MS) {
-			// Exactly two taps, the second a human-plausible interval after the first.
-			this.#leftTapCount = 0;
-			this.ctx.lastLeftTapTime = 0;
-			return true;
-		}
-		return false;
 	}
 
 	#setupEnhancedPaste(): void {
@@ -966,29 +948,34 @@ export class InputController {
 		// chance, so titling defers past "hi" instead of latching onto it.
 		if (!this.ctx.sessionManager.getSessionName() && !autoTitleDisabled() && !isLowSignalTitleInput(text)) {
 			this.#showTinyTitleDownloadProgress(this.ctx.settings.get("providers.tinyModel"));
-			const registry = this.ctx.session.modelRegistry;
+			// The title belongs to the conversation this prompt was sent to. The
+			// screen can move to another one before the title model answers (a room
+			// switch, a `/new` hand-off), and `ctx` follows the screen, so both are
+			// read now rather than when the title arrives.
+			const session = this.ctx.session;
+			const sessionManager = this.ctx.sessionManager;
 			generateSessionTitle(
 				text,
-				registry,
+				session.modelRegistry,
 				this.ctx.settings,
-				this.ctx.session.sessionId,
-				this.ctx.session.model,
-				provider => this.ctx.session.agent.metadataForProvider(provider),
-				this.ctx.session.titleSystemPrompt,
-				providerText => this.ctx.session.obfuscateProviderText(providerText),
-				this.ctx.session.sideComplete,
+				session.sessionId,
+				session.model,
+				provider => session.agent.metadataForProvider(provider),
+				session.titleSystemPrompt,
+				providerText => session.obfuscateProviderText(providerText),
+				session.sideComplete,
 			)
 				.then(async title => {
 					// Re-check: a concurrent attempt for an earlier message may have
 					// already named the session. Don't clobber it. Terminal title and
 					// accent updates fire from the onSessionNameChanged listener.
-					if (title && !this.ctx.sessionManager.getSessionName()) {
-						await this.ctx.sessionManager.setSessionName(title, "auto");
+					if (title && !sessionManager.getSessionName()) {
+						await sessionManager.setSessionName(title, "auto");
 					}
 				})
 				.catch(err => {
 					logger.warn("title-generator: uncaught auto-title error", {
-						sessionId: this.ctx.session.sessionId,
+						sessionId: session.sessionId,
 						reason: "uncaught-auto-title-error",
 						error: errorMessage(err),
 					});

@@ -493,6 +493,37 @@ const backgroundSegment: StatusLineSegment = {
 		return { content: theme.fg("warning", content), visible: true };
 	},
 };
+/**
+ * Driving conversations beside this one in the terminal's room.
+ *
+ * `alt+w` and `→→` open the room view. This chip is the one place the screen
+ * shows that the room has other conversations and what state they are in: the
+ * ones holding a question are counted in the ember a waiting prompt takes,
+ * ahead of the ones that are working, then the idle ones whose turn ended off
+ * screen and that nobody has gone into since, as the room view's title counts
+ * them. Each peer is counted once, by the first of those it is. A question
+ * asked off screen is on the status line the moment it is asked, and an answer
+ * stays counted until someone goes to read it. Hidden at zero. Distinct from
+ * `background`: a peer that is idle costs nothing and is still a peer.
+ */
+const roomSegment: StatusLineSegment = {
+	id: "room",
+	render(ctx) {
+		const { peers, working, waiting, unread } = ctx.roomPeers;
+		if (peers === 0) {
+			return { content: "", visible: false };
+		}
+		let content = theme.fg(
+			"statusLineSubagents",
+			withIcon(theme.icon.agents, `${peers} peer${peers === 1 ? "" : "s"}`),
+		);
+		const dot = theme.fg("dim", theme.sep.dot);
+		if (waiting > 0) content += `${dot}${theme.fg("borderAccent", `${theme.status.warning} ${waiting} needs you`)}`;
+		if (working > 0) content += `${dot}${theme.fg("accent", `${working} working`)}`;
+		if (unread > 0) content += `${dot}${theme.fg("success", `${unread} unread`)}`;
+		return { content, visible: true };
+	},
+};
 
 /** A usage counter: hidden at zero, else the icon and the formatted count in `color`. */
 function usageCountSegment(
@@ -883,6 +914,7 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
 	pr: prSegment,
 	agents: agentsSegment,
 	background: backgroundSegment,
+	room: roomSegment,
 	token_in: tokenInSegment,
 	token_out: tokenOutSegment,
 	token_total: tokenTotalSegment,

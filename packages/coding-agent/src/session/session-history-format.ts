@@ -8,6 +8,7 @@
  */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage } from "@veyyon/ai";
+import { Patch } from "@veyyon/hashline";
 // Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { contentText } from "@veyyon/utils/content-text";
@@ -97,8 +98,29 @@ function primaryArgValue(value: unknown): string {
 	return "";
 }
 
-/** Pick the most informative scalar argument of a tool call. */
-function primaryArg(name: string, args: Record<string, unknown> | undefined): string {
+/**
+ * The files a hashline patch names in its section headers, in order; none when
+ * the text is not a hashline patch. `Patch.parse` merges the sections of one
+ * file, so each is named once.
+ */
+function patchPaths(input: string): string[] {
+	try {
+		return Patch.parse(input)
+			.sections.map(section => section.path)
+			.filter(path => path !== "");
+	} catch {
+		// Not a hashline patch: the caller falls back to the text itself.
+		return [];
+	}
+}
+
+/**
+ * Pick the most informative scalar argument of a tool call: the path, command,
+ * pattern, url or query it acts on, collapsed to one line of at most 120
+ * characters. Shared by the `history://` transcript and the room's windows, so
+ * one call reads the same wherever it is summarized.
+ */
+export function toolCallPrimaryArg(name: string, args: Record<string, unknown> | undefined): string {
 	if (!args || typeof args !== "object") return "";
 	// Advisor note is the most informative summary; preserve severity too.
 	if (name === "advise") {
@@ -115,6 +137,12 @@ function primaryArg(name: string, args: Record<string, unknown> | undefined): st
 		if (type && input && path) return oneLine(`${type}: ${input} @ ${path}`);
 		if (type && input) return oneLine(`${type}: ${input}`);
 		if (input) return oneLine(input);
+	}
+	// An edit's one argument is its patch, whose text is the change and not what
+	// it changes; the files its headers name are.
+	if (name === "edit" && typeof args.input === "string") {
+		const paths = patchPaths(args.input);
+		if (paths.length > 0) return oneLine(paths.join(", "));
 	}
 	for (const key of PRIMARY_ARG_KEYS) {
 		const value = args[key];
@@ -161,7 +189,7 @@ function toolCallLine(
 	includeToolIntent?: boolean,
 	expandEditDiffs?: boolean,
 ): string {
-	const head = `→ ${name}(${primaryArg(name, args)})`;
+	const head = `→ ${name}(${toolCallPrimaryArg(name, args)})`;
 	let base: string;
 	if (!result) {
 		base = `${head} ⇒ pending`;
@@ -236,6 +264,13 @@ function customOneLiner(msg: CustomMessage | HookMessage): string {
 			return `[irc] ${str("from") || "?"} → me: ${oneLine(str("message"))}`;
 		case "irc:relay":
 			return `[irc] ${str("from") || "?"} → ${str("to") || "?"}: ${oneLine(str("body"))}`;
+		case "irc:room": {
+			const lines = (Array.isArray(details.lines) ? details.lines : []).map(line => {
+				const l = (line ?? {}) as Record<string, unknown>;
+				return `${typeof l.label === "string" ? l.label : "?"}: ${typeof l.body === "string" ? l.body : ""}`;
+			});
+			return `[#room] ${oneLine(lines.join(" · "))}`;
+		}
 		case "async-result": {
 			const jobs = Array.isArray(details.jobs) && details.jobs.length > 0 ? details.jobs : [details];
 			const labels = jobs

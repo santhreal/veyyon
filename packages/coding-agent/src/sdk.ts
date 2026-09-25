@@ -1376,14 +1376,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const asyncMaxJobs = Math.min(100, Math.max(1, settings.get("async.maxJobs") ?? 100));
 		const ASYNC_INLINE_RESULT_MAX_CHARS = 12_000;
 		const ASYNC_PREVIEW_MAX_CHARS = 4_000;
-		const formatAsyncResultForFollowUp = async (result: string): Promise<string> => {
+		const formatAsyncResultForFollowUp = async (result: string, target: SessionManager): Promise<string> => {
 			if (result.length <= ASYNC_INLINE_RESULT_MAX_CHARS) {
 				return result;
 			}
 
 			const preview = `${result.slice(0, ASYNC_PREVIEW_MAX_CHARS)}\n\n[Output truncated. Showing first ${ASYNC_PREVIEW_MAX_CHARS.toLocaleString()} characters.]`;
 			try {
-				const { path: artifactPath, id: artifactId } = await sessionManager.allocateArtifactPath("async");
+				const { path: artifactPath, id: artifactId } = await target.allocateArtifactPath("async");
 				if (artifactPath && artifactId) {
 					await Bun.write(artifactPath, result);
 					return `${preview}\nFull output: artifact://${artifactId}`;
@@ -1396,30 +1396,48 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 			return preview;
 		};
-		// Only the first top-level session in a process owns an AsyncJobManager.
-		// Spawned agents inherit the parent's manager via `AsyncJobManager.instance()`
-		// (set below), and any additional top-level session spun up in-process
-		// (e.g. the agent-creation architect in `agent-dashboard.ts`) must share
-		// the live singleton — otherwise its dispose path would clobber the
-		// owning session's manager and break the `task`/`bash` async paths
-		// (issue #1923). The `instance()` guard means later sessions also skip
-		// constructing an orphaned manager that nothing would ever route to.
+		// One top-level session in a process owns the AsyncJobManager: the first
+		// one, unless the host hands a later one the owner's manager to share
+		// (`options.asyncJobManager`). Spawned agents inherit the manager through
+		// `AsyncJobManager.instance()` (set below). A later top-level session that
+		// was handed nothing, such as a second ACP client or the agent-creation
+		// architect in `agent-dashboard.ts`, gets no manager and refuses background
+		// work: nothing guarantees the owner outlives it, and constructing a second
+		// manager or replacing the installed one would break the owner's `task`
+		// and `bash` async paths (issue #1923).
+		//
+		// A finished job's result goes to the conversation that started it: the
+		// driver of its owner's conversation, which is this session for its own
+		// jobs and its spawns', and the sharing session for theirs. A job whose
+		// conversation has closed has nobody to deliver to, and its result is
+		// dropped rather than handed to the owner.
+		const sharedAsyncJobManager = isInProcessChildSession(options) ? undefined : options.asyncJobManager;
 		asyncJobManager =
-			!isInProcessChildSession(options) && !AsyncJobManager.instance()
+			!isInProcessChildSession(options) && !sharedAsyncJobManager && !AsyncJobManager.instance()
 				? new AsyncJobManager({
 						maxRunningJobs: asyncMaxJobs,
 						onJobComplete: async (jobId, result, job) => {
 							if (!session || asyncJobManager!.isDeliverySuppressed(jobId)) return;
-							const formattedResult = await formatAsyncResultForFollowUp(result);
+							const recipient = job?.ownerId ? agentRegistry.driverOf(job.ownerId)?.session : session;
+							if (!recipient) {
+								logger.debug("Async job finished after its conversation closed; its result is dropped", {
+									jobId,
+									ownerId: job?.ownerId,
+								});
+								return;
+							}
+							const formattedResult = await formatAsyncResultForFollowUp(result, recipient.sessionManager);
 							if (asyncJobManager!.isDeliverySuppressed(jobId)) return;
 
-							session.deliverAsyncJobResult(jobId, formattedResult, job);
+							recipient.deliverAsyncJobResult(jobId, formattedResult, job);
 						},
 					})
 				: undefined;
 
 		const scopedAsyncJobManager =
-			asyncJobManager ?? (isInProcessChildSession(options) ? AsyncJobManager.instance() : undefined);
+			asyncJobManager ??
+			sharedAsyncJobManager ??
+			(isInProcessChildSession(options) ? AsyncJobManager.instance() : undefined);
 
 		const agentRegistry = options.agentRegistry ?? AgentRegistry.global();
 		// A driving agent is named for the conversation it starts, so two live
@@ -1431,6 +1449,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			options.agentId ??
 			options.parentTaskPrefix ??
 			(!sessionIsSpawned && conversationId ? mainAgentIdFor(conversationId) : MAIN_AGENT_ID);
+		// Jobs are scoped by owner id, and a session's dispose cancels every job
+		// its id owns. A sharing session keyed by the bare alias could cancel the
+		// owner's work, which is what issue #1923 was.
+		if (sharedAsyncJobManager && resolvedAgentId === MAIN_AGENT_ID) {
+			throw new Error(
+				`A session sharing another session's background-job manager needs its own agent id, not "${MAIN_AGENT_ID}": give it a session id or an agentId.`,
+			);
+		}
 		const resolvedAgentDisplayName = options.agentDisplayName ?? (sessionIsSpawned ? "sub" : "main");
 		const agentKind = sessionIsSpawned ? ("sub" as const) : ("main" as const);
 		/**
@@ -1618,11 +1644,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			modelRegistry,
 			getTelemetry: () => agent?.telemetry,
 			// Spawned agents inherit the singleton (the parent's manager) so their bash/task
-			// completions still flow into the spawning conversation's yieldQueue.
-			// Secondary in-process top-level sessions (no parentTaskPrefix, no
-			// constructed manager because the singleton was already installed) leave
-			// this undefined so tools and session job snapshots refuse async work
-			// instead of silently routing into the owning session (issue #1923).
+			// completions still flow into the spawning conversation's yieldQueue. A
+			// top-level session the host handed the owner's manager shares it, and its
+			// results come back to it. Any other secondary in-process top-level session
+			// leaves this undefined, so tools and session job snapshots refuse async
+			// work instead of silently routing into the owning session (issue #1923).
 			asyncJobManager: scopedAsyncJobManager,
 		};
 
@@ -2916,6 +2942,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// exists before the transcript has ever been written and survives a
 			// `/move` that rewrites the path.
 			scope: options.parentAgentId ? undefined : (sessionManager.getSessionId?.() ?? undefined),
+			room: options.parentAgentId ? undefined : options.agentRoom,
 			status: "running",
 			model: getActiveModelString(),
 		});
@@ -3425,6 +3452,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			argot,
 			agentId: resolvedAgentId,
 			agentKind,
+			agentRegistry,
 			providerSessionId: options.providerSessionId,
 			providerPromptCacheKeySource,
 			parentEvalSessionId: options.parentEvalSessionId,
@@ -3616,11 +3644,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 							// begins — the lifecycle await below opens an async gap before
 							// AgentSession.dispose() would otherwise set its guards.
 							session.beginDispose();
-							if (agentKind === "main") {
-								// Top-level teardown owns the global agent lifecycle: park timers,
+							if (asyncJobManager) {
+								// The first top-level session in the process, the one that owns its
+								// async job manager, also owns the global agent lifecycle: park timers,
 								// adopted spawned agent sessions, revivers. Tear it down while shared
-								// resources (kernels, MCP, LSP) are still live. Spawned agent disposal
-								// must NOT touch the global lifecycle.
+								// resources (kernels, MCP, LSP) are still live. A spawned agent, and a
+								// second driving session opened in the same process (a room peer, a
+								// `/new` hand-off, the agent-creation architect), must NOT touch it:
+								// closing one would release every other conversation's agents.
 								await AgentLifecycleManager.global().dispose();
 							}
 							await originalDispose(options);

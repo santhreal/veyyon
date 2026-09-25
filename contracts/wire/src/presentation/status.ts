@@ -157,7 +157,13 @@ export interface StatusDataSource {
 	readonly capabilities?: StatusCapabilities;
 	/** Monotonic revision number incremented on session or source swap. */
 	getRevision?(): number;
-	markActivityStart?(): void;
+	/**
+	 * Open the running window at `startedAt` (ms since epoch), or now. Without
+	 * `startedAt` an open window keeps its anchor; with it the window is
+	 * anchored there, so a screen that attaches to a turn already running shows
+	 * the turn's age rather than the time since it attached.
+	 */
+	markActivityStart?(startedAt?: number): void;
 	markActivityEnd?(): void;
 	resetActiveTime?(): void;
 	getActiveMs?(): number;

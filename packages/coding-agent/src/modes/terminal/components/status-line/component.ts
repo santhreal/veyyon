@@ -31,8 +31,15 @@ import {
 	statusLineSettingsFromConfig,
 } from "./quiet-row";
 import { focusExitBadge, type SegmentContext } from "./segments";
+import { NO_ROOM_PEERS } from "./session-facts";
 import { stateSeparator } from "./state-grammar";
-import type { CollabStatus, EffectiveStatusLineSettings, StatusLineSegmentId, StatusLineSettings } from "./types";
+import type {
+	CollabStatus,
+	EffectiveStatusLineSettings,
+	RoomPeerSummary,
+	StatusLineSegmentId,
+	StatusLineSettings,
+} from "./types";
 
 export { messageFingerprint } from "../../../../presentation/status-producer";
 
@@ -82,6 +89,7 @@ export class StatusLineComponent implements Component {
 	#hookStatuses: Map<string, string> = new Map();
 	#agentCount: number = 0;
 	#backgroundSessionCount: number = 0;
+	#roomPeers: RoomPeerSummary = NO_ROOM_PEERS;
 	#planModeStatus: { enabled: boolean; paused: boolean } | null = null;
 	#loopModeStatus: { enabled: boolean } | null = null;
 	#goalModeStatus: { enabled: boolean; paused: boolean } | null = null;
@@ -258,12 +266,40 @@ export class StatusLineComponent implements Component {
 		return this.#backgroundSessionCount;
 	}
 
+	/** The room beside the displayed conversation: peers, and how many are working, waiting on the operator or unread. */
+	setRoomPeers(summary: RoomPeerSummary): void {
+		const clean = (value: number): number => (Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0);
+		const next = {
+			peers: clean(summary.peers),
+			working: clean(summary.working),
+			waiting: clean(summary.waiting),
+			unread: clean(summary.unread),
+		};
+		const current = this.#roomPeers;
+		if (
+			next.peers === current.peers &&
+			next.working === current.working &&
+			next.waiting === current.waiting &&
+			next.unread === current.unread
+		) {
+			return;
+		}
+		this.#roomPeers = next;
+		this.invalidate();
+	}
+
+	/** The room beside the displayed conversation. */
+	get roomPeers(): RoomPeerSummary {
+		return this.#roomPeers;
+	}
+
 	resetActiveTime(): void {
 		this.#source.resetActiveTime?.();
 	}
 
-	markActivityStart(): void {
-		this.#source.markActivityStart?.();
+	/** Open the running window; see {@link StatusDataSource.markActivityStart} for `startedAt`. */
+	markActivityStart(startedAt?: number): void {
+		this.#source.markActivityStart?.(startedAt);
 	}
 
 	markActivityEnd(): void {
@@ -729,6 +765,7 @@ export class StatusLineComponent implements Component {
 			autoCompactEnabled: this.#autoCompactEnabled,
 			agentCount: this.#agentCount,
 			backgroundSessionCount: this.#backgroundSessionCount,
+			roomPeers: this.#roomPeers,
 			activeMs: this.getActiveMs(),
 			git: {
 				branch: gitBranch,

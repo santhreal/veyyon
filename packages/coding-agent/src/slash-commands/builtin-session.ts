@@ -209,6 +209,39 @@ export const SESSION_HANDLERS = {
 			await runtime.ctx.handleMoveCommand(command.args || undefined);
 		},
 	},
+	room: {
+		handleTui: async (command, runtime) => {
+			const argument = command.args.trim();
+			runtime.ctx.editor.setText("");
+			if (!argument) {
+				await runtime.ctx.room.openView();
+				return;
+			}
+			if (argument === "list") {
+				runtime.ctx.showStatus(runtime.ctx.room.describe());
+				return;
+			}
+			if (argument === "new") {
+				await runtime.ctx.room.openPeer();
+				return;
+			}
+			if (argument === "help") {
+				runtime.ctx.room.showHelp();
+				return;
+			}
+			const say = /^say(?:\s+([\s\S]*))?$/.exec(argument);
+			if (say) {
+				runtime.ctx.room.say(say[1] ?? "");
+				return;
+			}
+			const id = runtime.ctx.room.resolveArgument(argument);
+			if (id === undefined) {
+				runtime.ctx.showError(`"${argument}" is not a member of this room. Run /room list to see it.`);
+				return;
+			}
+			await runtime.ctx.room.switchTo(id);
+		},
+	},
 	exit: {
 		handleTui: shutdownHandlerTui,
 	},

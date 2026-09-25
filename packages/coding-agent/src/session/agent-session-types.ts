@@ -51,6 +51,7 @@ import type { Skill } from "../extensibility/skills";
 import type { FileSlashCommand } from "../extensibility/slash-commands";
 import type { Goal, GoalModeState } from "../goals/state";
 import type { RetryRecoveryMode } from "../modes/retry-display";
+import type { AgentRegistry } from "../registry/agent-registry";
 import type { SecretObfuscator } from "../secrets/obfuscator";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import type { TodoItem } from "../tools/agent/todo";
@@ -323,6 +324,13 @@ export interface AgentSessionConfig {
 	asyncJobManager?: AsyncJobManager;
 	/** Agent identity (registry id like "Main" or "Alice") used for IRC routing. */
 	agentId?: string;
+	/**
+	 * The registry this session's agent is registered in — the same instance the
+	 * IRC tool routes through. Default `AgentRegistry.global()`. A session built
+	 * with a custom registry must read its room peers from THAT registry, or the
+	 * model's session-state block and the IRC roster disagree about the room.
+	 */
+	agentRegistry?: AgentRegistry;
 	/** Whether this session is the top-level agent or a spawned agent. Drives eager-task
 	 *  prelude gating so a top-level session created with a custom `agentId` still
 	 *  receives the always-mode reminder. Defaults to "main". */

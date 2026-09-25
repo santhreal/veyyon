@@ -46,11 +46,31 @@ const THEME: FormTheme = {
 };
 
 function click(col: number, line = 0): SgrMouseEvent {
-	return { button: 0, col, row: line, release: false, wheel: null, motion: false, leftClick: true };
+	return {
+		button: 0,
+		col,
+		row: line,
+		release: false,
+		wheel: null,
+		hwheel: null,
+		shift: false,
+		motion: false,
+		leftClick: true,
+	};
 }
 
 function wheel(direction: -1 | 1): SgrMouseEvent {
-	return { button: 64, col: 0, row: 0, release: false, wheel: direction, motion: false, leftClick: false };
+	return {
+		button: 64,
+		col: 0,
+		row: 0,
+		release: false,
+		wheel: direction,
+		hwheel: null,
+		shift: false,
+		motion: false,
+		leftClick: false,
+	};
 }
 
 /** Every field kind, one of each, over a host that records each change. */

@@ -4,8 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `SgrMouseEvent` reports `hwheel` for horizontal wheel reports (buttons 66 and 67) and `shift` for the Shift modifier.
+- `MOTION.zoom` and `MOTION.travel` are the curves of a screen pulling back into a window and of a switch between two screens.
+
 ### Fixed
 
+- A horizontal trackpad swipe is no longer reported as a vertical wheel notch.
 - `@veyyon/utils/stderr-guard` loads `node:util` on the first routed console call rather than at import, keeping it off the launch card path; no user-visible change.
 
 ## [1.5.5] - 2026-09-25

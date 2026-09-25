@@ -1,0 +1,1640 @@
+/**
+ * A room member comes on screen only through the claim.
+ *
+ * WHY THIS SUITE EXISTS. A room is several driving conversations in one
+ * terminal, one on screen. `RoomController` owns the one transaction that puts
+ * a member on screen, and the verbs around it: open a peer, cycle, close, keep
+ * drafts, count who is working and who is waiting. The defect class is that
+ * transaction or a verb getting a step out of order or skipping one:
+ *
+ * - attaching a conversation before its process scope is claimed, so a claim
+ *   that fails leaves the screen on a conversation whose project the process
+ *   is not in, or leaves the one on screen half-detached (its draft cleared,
+ *   its background accounting moved) with nothing said;
+ * - a draft typed for one conversation shown in another, or lost on the way,
+ *   its attached images included;
+ * - terminal chrome re-rooted for nothing, or a chrome failure undoing a
+ *   switch the operator already sees; any step after the attach that fails
+ *   reported as a refused switch, motion on or off;
+ * - a new peer built on screen (holding the process scope) or never hosted, so
+ *   its dialogs have nowhere to wait; a second peer built while one opens; a
+ *   peer that failed to join left running where nothing lists it;
+ * - closing the launch conversation or the one on screen, or closing a peer
+ *   without stopping its turn, keeping its draft, disposing it and dropping it
+ *   from the room; a close that fails forgetting the conversation, so exit
+ *   never disposes it;
+ * - a question asked off screen that nobody is told about, or told twice;
+ * - a turn that ends off screen with nothing said, or said for the one on
+ *   screen, for a stopped turn, over the open room view, or when a retry takes
+ *   it up; a failed turn notified as complete, or a finished one notified
+ *   under a title that does not say which conversation;
+ * - a cycle that does not wrap, or a row the registry lists before its session
+ *   attaches taken for a member and dereferenced.
+ *
+ * Driven through the controller's public API over real `AgentSession`s in a
+ * real `AgentRegistry`, a real TUI over a virtual terminal, a real composer and
+ * a real status line. A switch with motion off is the attach and one repaint;
+ * with motion on it is the stage's travel, driven by the real clock. The
+ * context members the interactive mode implements (`attachMainSession`,
+ * `hostSession`, `applyCwdChange`, the waiting-dialog counts) are stand-ins
+ * that do what that implementation does for the fields the controller reads,
+ * and record the order they ran in. A claim that fails is the session's real
+ * failure path: its prompt rebuild throws while it re-scopes.
+ *
+ * NOT CAUGHT. The interactive mode's own `attachMainSession`, and the dialog
+ * gate behind `waitingDialogs` (its own suite covers that). The stage's
+ * painting and its keys are the stage suites'. The sdk's dispose wrapper,
+ * which is what removes a closed peer from the registry in production, is
+ * reproduced here rather than run.
+ * The event controller's notification for the conversation on screen is the
+ * toast suites'.
+ */
+
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+import { stripVTControlCharacters } from "node:util";
+import { Agent } from "@veyyon/agent-core";
+import type { AssistantMessage } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings, settings } from "@veyyon/coding-agent/config/settings";
+import { CustomEditor } from "@veyyon/coding-agent/modes/terminal/components/composer/custom-editor";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
+import type { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
+import {
+	RoomController,
+	type RoomControllerContext,
+} from "@veyyon/coding-agent/modes/terminal/controllers/room-controller";
+import { StatusPresentationProducer } from "@veyyon/coding-agent/presentation/status-producer";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionDisposeOptions } from "@veyyon/coding-agent/session/agent-session-types";
+import { BackgroundSessions } from "@veyyon/coding-agent/session/background-sessions";
+import { IRC_ROOM_MESSAGE_TYPE } from "@veyyon/coding-agent/session/messages";
+import { IrcBus, ROOM_POST_MAX_CHARS } from "@veyyon/coding-agent/task/irc-bus";
+import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
+import { type Component, TERMINAL, TUI } from "@veyyon/tui";
+import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
+import { matchesKey } from "@veyyon/utils/keys";
+import { VirtualTerminal } from "../../../../../../hosts/terminal/engine/test/virtual-terminal";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "../../../helpers/settings-test-state";
+
+// `TERMINAL` declares the capability readonly; the switch reads it for motion.
+const terminalCaps: { trueColor: boolean } = TERMINAL;
+const NO_PEER = "No other conversation in this terminal — /room new opens one beside this";
+/** What the first arrival in another conversation adds: the room view's key, with the default bindings. */
+const TEACH = " · alt+w shows every conversation";
+/** A provider failure the session retries, after the 50 ms the provider asks for. */
+const OVERLOADED_RETRY_AFTER_50MS = "503 service unavailable: overloaded_error retry-after-ms=50";
+
+interface Conversation {
+	id: string;
+	session: AgentSession;
+	/** Make the next prompt build throw, as a broken project configuration would; the next claim fails. */
+	failNextPromptBuild(): void;
+	/** Hold this conversation's next claim until the returned release is called. */
+	holdNextClaim(): () => void;
+	/** Start a turn that runs until it is aborted or ended; resolves once the provider is asked. */
+	startTurn(): Promise<void>;
+	/**
+	 * Answer the provider request in flight: `stop` ends the turn with an answer, `error` with a
+	 * failure no retry takes up, `overloaded` with one a retry does. Resolves at once; the turn's
+	 * end reaches listeners after.
+	 */
+	endTurn(ending: "stop" | "error" | "overloaded"): void;
+	/** Resolves when the provider is next asked, as a retry asks it again. */
+	nextRequest(): Promise<void>;
+	/** Whether the last turn started has settled. */
+	turnSettled(): boolean;
+}
+
+interface Harness {
+	ctx: RoomControllerContext;
+	room: RoomController;
+	/** The irc bus over this suite's registry: the room's channel. */
+	bus: IrcBus;
+	ui: TUI;
+	statusLine: StatusLineComponent;
+	statuses: string[];
+	errors: string[];
+	warnings: string[];
+	/** Make the next `applyCwdChange` throw with `message`. */
+	failNextCwdChange(message: string): void;
+	/** Make the next `reloadTodos` reject with `message`, as a step after the attach failing. */
+	failNextTodosReload(message: string): void;
+	/** Make the next `hostSession` reject with `message`, as a new conversation failing to join. */
+	failNextHost(message: string): void;
+	/** Set how many dialogs `session` is holding, and tell the listeners, as the dialog gate does. */
+	hold(session: AgentSession, count: number): void;
+	/** What the controller put on the transcript rail, as the interactive mode's `present` receives it. */
+	presented: Component[];
+}
+
+let settingsState: SettingsTestState | undefined;
+let previousTrueColor: boolean;
+let tempDir: TempDir;
+let dirA: string;
+let dirB: string;
+let shared: Settings;
+let authStorage: AuthStorage;
+let modelRegistry: ModelRegistry;
+let registry: AgentRegistry;
+/** The transaction steps every stand-in and traced claim records, in the order they ran. */
+let steps: string[];
+let conversations: Conversation[];
+let turns: Promise<unknown>[];
+let harnesses: Harness[];
+
+beforeAll(async () => {
+	await initTheme();
+});
+
+beforeEach(async () => {
+	settingsState = beginSettingsTest();
+	await Settings.init({ inMemory: true });
+	previousTrueColor = terminalCaps.trueColor;
+	terminalCaps.trueColor = false;
+	tempDir = TempDir.createSync("@pi-room-controller-");
+	dirA = makeDir("project-a");
+	dirB = makeDir("project-b");
+	setProjectDir(dirA);
+	shared = Settings.isolated();
+	await shared.reloadForCwd(dirA);
+	authStorage = await AuthStorage.create(path.join(tempDir.path(), "auth.db"));
+	authStorage.setRuntimeApiKey("anthropic", "test-key");
+	modelRegistry = new ModelRegistry(authStorage, path.join(tempDir.path(), "models.yml"));
+	registry = new AgentRegistry();
+	steps = [];
+	conversations = [];
+	turns = [];
+	harnesses = [];
+});
+
+afterEach(async () => {
+	vi.restoreAllMocks();
+	for (const h of harnesses) {
+		h.room.dispose();
+		h.ui.stop();
+	}
+	for (const { session } of conversations) {
+		if (session.isStreaming) await session.abort();
+	}
+	await Promise.allSettled(turns);
+	for (const { session } of conversations) {
+		BackgroundSessions.global().release(session);
+		await session.dispose();
+	}
+	authStorage.close();
+	terminalCaps.trueColor = previousTrueColor;
+	// Puts the project dir and cwd back before the directories they point into go.
+	restoreSettingsTestState(settingsState);
+	tempDir.removeSync();
+});
+
+function makeDir(name: string): string {
+	const dir = path.join(tempDir.path(), name);
+	fs.mkdirSync(dir, { recursive: true });
+	return fs.realpathSync(dir);
+}
+
+function finishedTurn(stopReason: AssistantMessage["stopReason"]): AssistantMessage {
+	return {
+		role: "assistant",
+		content: [],
+		api: "anthropic-messages",
+		provider: "anthropic",
+		model: "claude-sonnet-4-5",
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+		stopReason,
+		timestamp: Date.now(),
+	};
+}
+
+/**
+ * A driving conversation at `dir`, registered the way the sdk registers one:
+ * the row first with no session, the session attached after, and a dispose
+ * that forgets the row. File-backed, so a draft can be kept beside it.
+ */
+function openConversation(name: string, dir: string, room?: string): Conversation {
+	const id = `main:${name}`;
+	const sessionManager = SessionManager.create(dir, path.join(tempDir.path(), "sessions", name));
+	const sessionFile = sessionManager.getSessionFile() ?? null;
+	registry.register({
+		id,
+		displayName: "main",
+		kind: "main",
+		session: null,
+		sessionFile,
+		scope: sessionManager.getSessionId(),
+		room,
+		status: "running",
+	});
+	const model = getBundledModel("anthropic", "claude-sonnet-4-5");
+	if (!model) throw new Error("Expected the bundled anthropic model to exist");
+	let failNext = false;
+	let claimGate: Promise<void> | undefined;
+	let called = Promise.withResolvers<void>();
+	let live: AssistantMessageEventStream | undefined;
+	let settled = true;
+	const agent = new Agent({
+		getApiKey: () => "test-key",
+		initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
+		streamFn: (_model, _context, options) => {
+			const stream = new AssistantMessageEventStream();
+			live = stream;
+			options?.signal?.addEventListener(
+				"abort",
+				() => stream.push({ type: "error", reason: "aborted", error: finishedTurn("aborted") }),
+				{ once: true },
+			);
+			called.resolve();
+			return stream;
+		},
+	});
+	const session = new AgentSession({
+		agent,
+		sessionManager,
+		settings: shared,
+		modelRegistry,
+		agentId: id,
+		agentRegistry: registry,
+		rebuildSystemPrompt: async () => {
+			if (failNext) {
+				failNext = false;
+				throw new Error(`prompt build failed for ${sessionManager.getCwd()}`);
+			}
+			return { systemPrompt: [`cwd=${sessionManager.getCwd()}`] };
+		},
+		refreshSecretRuntime: async () => undefined,
+	});
+	registry.attachSession(id, session, sessionFile);
+	// The host's dispose forgets the row (sdk.ts wraps every session this way).
+	const dispose = session.dispose.bind(session);
+	session.dispose = async (options?: AgentSessionDisposeOptions) => {
+		try {
+			await dispose(options);
+		} finally {
+			registry.unregister(id);
+		}
+	};
+	// Every claim is traced, so the order of claim and attach is observable.
+	const claim = session.claimForeground.bind(session);
+	vi.spyOn(session, "claimForeground").mockImplementation(async () => {
+		steps.push(`claim:${id}`);
+		const gate = claimGate;
+		claimGate = undefined;
+		if (gate) await gate;
+		await claim();
+		steps.push(`claimed:${id}`);
+	});
+	const conversation: Conversation = {
+		id,
+		session,
+		failNextPromptBuild: () => {
+			failNext = true;
+		},
+		holdNextClaim: () => {
+			const gate = Promise.withResolvers<void>();
+			claimGate = gate.promise;
+			return gate.resolve;
+		},
+		startTurn: async () => {
+			called = Promise.withResolvers<void>();
+			settled = false;
+			const turn = session.prompt("keep working").finally(() => {
+				settled = true;
+			});
+			turns.push(turn);
+			await Promise.race([called.promise, turn]);
+		},
+		endTurn: ending => {
+			const stream = live;
+			if (!stream) throw new Error(`${id} has no provider request in flight`);
+			live = undefined;
+			if (ending === "stop") {
+				stream.push({
+					type: "done",
+					reason: "stop",
+					message: { ...finishedTurn("stop"), content: [{ type: "text", text: "all done" }] },
+				});
+				return;
+			}
+			const errorMessage =
+				ending === "error" ? "400 invalid_request_error: malformed request" : OVERLOADED_RETRY_AFTER_50MS;
+			stream.push({ type: "error", reason: "error", error: { ...finishedTurn("error"), errorMessage } });
+		},
+		nextRequest: () => {
+			called = Promise.withResolvers<void>();
+			return called.promise;
+		},
+		turnSettled: () => settled,
+	};
+	conversations.push(conversation);
+	return conversation;
+}
+
+/**
+ * The launch conversation `a` on screen at dirA, and one peer per entry of
+ * `peers`, each at its directory, in a room `a` opened. With no peers, `a` is
+ * in no room.
+ */
+function openRoom(...peers: Array<{ name: string; dir: string }>): {
+	h: Harness;
+	a: Conversation;
+	peers: Conversation[];
+} {
+	const a = openConversation("a", dirA);
+	const room = peers.length > 0 ? registry.ensureRoom(a.id) : undefined;
+	const others = peers.map(peer => {
+		const conversation = openConversation(peer.name, peer.dir, room);
+		conversation.session.releaseForeground();
+		return conversation;
+	});
+	return { h: harness(a), a, peers: others };
+}
+
+function harness(launch: Conversation): Harness {
+	const ui = new TUI(new VirtualTerminal(100, 30));
+	const statusLine = new StatusLineComponent(new StatusPresentationProducer(launch.session));
+	const statuses: string[] = [];
+	const errors: string[] = [];
+	const warnings: string[] = [];
+	const presented: Component[] = [];
+	const waiting = new Map<AgentSession, number>();
+	const waitingListeners = new Set<() => void>();
+	let cwdFailure: string | undefined;
+	let todosFailure: string | undefined;
+	let hostFailure: string | undefined;
+	const ctx: RoomControllerContext = {
+		ui,
+		editor: new CustomEditor(getEditorTheme()),
+		statusLine,
+		session: launch.session,
+		sessionManager: launch.session.sessionManager,
+		settings: shared,
+		keybindings: KeybindingsManager.inMemory(),
+		launchSession: launch.session,
+		focusedAgentId: undefined,
+		unfocusSession: async () => {},
+		// The transcript's event controller: its catch-up of a turn in flight has its own suite; here it
+		// only records that the switch asked for it, after the transcript was rendered.
+		eventController: {
+			resumeTurn: async () => {
+				steps.push("resume");
+			},
+		} as unknown as EventController,
+		// What the interactive mode's attach does to the fields the controller
+		// reads, and the room's own attach hook it calls on every attach.
+		attachMainSession: next => {
+			const previous = ctx.session;
+			if (next === previous) return BackgroundSessions.global().describeAttached(previous);
+			steps.push(`attach:${next.getAgentId()}`);
+			previous.releaseForeground();
+			ctx.session = next;
+			ctx.sessionManager = next.sessionManager;
+			ctx.settings = next.settings;
+			room.sessionAttached(previous, next);
+			return BackgroundSessions.global().keep(previous);
+		},
+		createNextSession: async options => {
+			steps.push("create");
+			const created = openConversation(`peer${conversations.length}`, dirA, options?.room);
+			return { session: created.session, bindings: { setToolUIContext: () => {}, setToolNotifier: () => {} } };
+		},
+		hostSession: async hosted => {
+			steps.push(`host:${hosted.session.getAgentId()}:${hosted.session.isForeground ? "foreground" : "background"}`);
+			const failure = hostFailure;
+			hostFailure = undefined;
+			if (failure) throw new Error(failure);
+		},
+		dismissHeldUi: session => {
+			steps.push(`dismiss:${session.getAgentId()}`);
+		},
+		releaseHostedSession: session => {
+			steps.push(`release:${session.getAgentId()}`);
+		},
+		applyCwdChange: async cwd => {
+			steps.push(`chrome:${cwd}`);
+			const failure = cwdFailure;
+			cwdFailure = undefined;
+			if (failure) throw new Error(failure);
+		},
+		reloadTodos: async () => {
+			steps.push("todos");
+			const failure = todosFailure;
+			todosFailure = undefined;
+			if (failure) throw new Error(failure);
+		},
+		clearTransientSessionUi: () => {},
+		renderInitialMessages: () => {
+			steps.push("render");
+		},
+		resetObserverRegistry: () => {},
+		updateEditorBorderColor: () => {},
+		waitingDialogs: session => waiting.get(session) ?? 0,
+		onWaitingDialogsChange: listener => {
+			waitingListeners.add(listener);
+			return () => waitingListeners.delete(listener);
+		},
+		// Where the terminal presents what the conversation on screen held while the view
+		// covered it; the step says whether the view was already gone when it was asked to.
+		roomViewClosed: () => {
+			steps.push(`view-closed:${room.viewOpen ? "open" : "gone"}`);
+		},
+		showStatus: message => {
+			statuses.push(message);
+		},
+		showError: message => {
+			errors.push(message);
+		},
+		present: content => {
+			if ("render" in content) presented.push(content);
+			else presented.push(...content);
+		},
+		showWarning: message => {
+			warnings.push(message);
+		},
+	};
+	const bus = new IrcBus(registry);
+	const room = new RoomController(ctx, registry, bus);
+	room.install();
+	const h: Harness = {
+		ctx,
+		room,
+		bus,
+		ui,
+		statusLine,
+		statuses,
+		errors,
+		warnings,
+		presented,
+		failNextCwdChange: message => {
+			cwdFailure = message;
+		},
+		failNextTodosReload: message => {
+			todosFailure = message;
+		},
+		failNextHost: message => {
+			hostFailure = message;
+		},
+		hold: (session, count) => {
+			waiting.set(session, count);
+			for (const listener of waitingListeners) listener();
+		},
+	};
+	harnesses.push(h);
+	return h;
+}
+
+function kept(): AgentSession[] {
+	return BackgroundSessions.global().kept.map(entry => entry.session);
+}
+
+/** The claim and attach steps, in order. */
+function screenSteps(): string[] {
+	return steps.filter(step => /^(claim|claimed|attach|create|host):/.test(step) || step === "create");
+}
+
+/** Wait, bounded, for `read` to hold. A hang is a failure, not a stall. */
+async function until(read: () => boolean, what: string, ms = 4_000): Promise<void> {
+	const deadline = Date.now() + ms;
+	while (!read()) {
+		if (Date.now() > deadline) throw new Error(`Timed out after ${ms}ms waiting for ${what}`);
+		await sleep(5);
+	}
+}
+
+/**
+ * The bytes a terminal sends for the room's next key, legacy or through the
+ * kitty keyboard protocol: whichever the key matcher reads as the bound key.
+ */
+function nextKeyBytes(h: Harness): string {
+	const [next] = h.ctx.keybindings.getKeys("app.room.next");
+	const bytes = ["\x1b.", "\x1b[46;3u"].find(candidate => next !== undefined && matchesKey(candidate, next));
+	if (bytes === undefined) throw new Error(`no encoding of ${next} reads as the next key`);
+	return bytes;
+}
+
+/**
+ * Count the `agent_end` events `session` emits. Subscribed after the room built
+ * its feeds, so a count that moved means the room has handled that end.
+ */
+function countEnds(session: AgentSession): () => number {
+	let ends = 0;
+	session.subscribe(event => {
+		if (event.type === "agent_end") ends++;
+	});
+	return () => ends;
+}
+
+// ---------------------------------------------------------------- the claim
+
+describe("the switch claims the process scope before it attaches", () => {
+	it("attaches the target only once its claim has finished, then the process is in its project", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		const release = b!.holdNextClaim();
+		const switching = h.room.switchTo(b!.id);
+		await sleep(20);
+		expect(screenSteps()).toEqual([`claim:${b!.id}`]);
+		expect(h.ctx.session).toBe(a.session);
+
+		release();
+		await switching;
+		expect(screenSteps()).toEqual([`claim:${b!.id}`, `claimed:${b!.id}`, `attach:${b!.id}`]);
+		// The transcript is drawn for the conversation now on screen, then its turn in flight is resumed.
+		expect(steps.filter(step => ["render", "resume"].includes(step) || step.startsWith("attach:"))).toEqual([
+			`attach:${b!.id}`,
+			"render",
+			"resume",
+		]);
+		expect(h.ctx.session).toBe(b!.session);
+		expect({ b: b!.session.isForeground, a: a.session.isForeground }).toEqual({ b: true, a: false });
+		expect(getProjectDir()).toBe(dirB);
+		expect(h.statuses.at(-1)).toBe(`Switched to conversation 2${TEACH}`);
+		expect(h.errors).toEqual([]);
+	});
+
+	/**
+	 * B is finishing a turn off screen, so it is in the background set. Its
+	 * claim fails. Nothing the operator owns moved: the conversation on
+	 * screen, its draft, the background set, the process scope. The failure is
+	 * said, and the next switch is not blocked behind it.
+	 */
+	it("a claim that throws leaves the screen, the draft and the background set untouched and says why", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		await b!.startTurn();
+		BackgroundSessions.global().keep(b!.session);
+		h.ctx.editor.setText("draft for a");
+		b!.failNextPromptBuild();
+
+		await h.room.switchTo(b!.id);
+
+		expect(h.ctx.session).toBe(a.session);
+		expect(h.ctx.sessionManager).toBe(a.session.sessionManager);
+		expect(h.ctx.editor.getText()).toBe("draft for a");
+		expect(kept()).toEqual([b!.session]);
+		expect(steps.filter(step => step.startsWith("attach:"))).toEqual([]);
+		expect(h.errors).toEqual([`Could not switch: prompt build failed for ${dirB}`]);
+		expect({ a: a.session.isForeground, b: b!.session.isForeground }).toEqual({ a: true, b: false });
+		// The conversation on screen is the one the process is scoped to.
+		expect({ projectDir: getProjectDir(), settings: shared.getCwd() }).toEqual({ projectDir: dirA, settings: dirA });
+
+		await h.room.switchTo(b!.id);
+		expect(h.ctx.session).toBe(b!.session);
+		expect(kept()).not.toContain(b!.session);
+		// Named by the prompt it is on, since it has no name; the failed switch said
+		// nothing, so this is the first arrival and teaches the room key.
+		expect(h.statuses.at(-1)).toBe(`Switched to 2 · keep working — it is still working${TEACH}`);
+	});
+
+	it("refuses a stranger by name, and moves nothing", async () => {
+		const { h, a } = openRoom({ name: "b", dir: dirB });
+		openConversation("elsewhere", dirA);
+		await h.room.switchTo("main:elsewhere");
+		expect(h.errors).toEqual([
+			'"main:elsewhere" is not a peer of this conversation. Run /room list to see the room.',
+		]);
+		expect(h.ctx.session).toBe(a.session);
+		expect(screenSteps()).toEqual([]);
+	});
+});
+
+describe("drafts", () => {
+	/**
+	 * The composer is one widget shared by every conversation. What was typed
+	 * for one leaves with it and comes back with it; a whitespace-only draft is
+	 * not a draft.
+	 */
+	it("each conversation's unsent draft leaves the screen with it and comes back with it", async () => {
+		const {
+			h,
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		const editor = h.ctx.editor;
+		editor.setText("draft for a");
+		await h.room.switchTo(b!.id);
+		expect(editor.getText()).toBe("");
+		editor.setText("draft for b");
+		await h.room.switchTo(c!.id);
+		expect(editor.getText()).toBe("");
+		editor.setText("   ");
+		await h.room.switchTo(h.ctx.launchSession.getAgentId()!);
+		expect(editor.getText()).toBe("draft for a");
+		await h.room.switchTo(c!.id);
+		expect(editor.getText()).toBe("");
+		await h.room.switchTo(b!.id);
+		expect(editor.getText()).toBe("draft for b");
+	});
+
+	it("persistDrafts writes every off-screen draft beside its transcript and not the one on screen", async () => {
+		const {
+			h,
+			a,
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		h.ctx.editor.setText("draft for a");
+		await h.room.switchTo(b!.id);
+		h.ctx.editor.setText("draft for b");
+		await h.room.switchTo(c!.id);
+		h.ctx.editor.setText("draft for c, on screen");
+
+		await h.room.persistDrafts();
+
+		expect({
+			a: await a.session.sessionManager.consumeDraft(),
+			b: await b!.session.sessionManager.consumeDraft(),
+			c: await c!.session.sessionManager.consumeDraft(),
+		}).toEqual({ a: "draft for a", b: "draft for b", c: null });
+		expect(h.ctx.editor.getText()).toBe("draft for c, on screen");
+	});
+
+	/**
+	 * A draft is its text and its attachments. An image left on the shared
+	 * composer by a switch could be sent from the conversation that did not
+	 * attach it, and the one that did would come back without it.
+	 */
+	it("an attached image leaves the screen with its conversation and comes back with it", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		const editor = h.ctx.editor;
+		const image = {
+			kind: "image" as const,
+			name: "diagram.png",
+			data: "aGVsbG8=",
+			mimeType: "image/png",
+			uri: "file:///repo/diagram.png",
+		};
+		editor.setText("explain this");
+		editor.attachments = [image];
+		await h.room.switchTo(b!.id);
+		expect({ text: editor.getText(), attachments: editor.attachments }).toEqual({ text: "", attachments: [] });
+		await h.room.switchTo(a.id);
+		expect({ text: editor.getText(), attachments: editor.attachments }).toEqual({
+			text: "explain this",
+			attachments: [image],
+		});
+
+		// An image with no text is a draft too.
+		editor.setText("");
+		await h.room.switchTo(b!.id);
+		expect(editor.attachments).toEqual([]);
+		await h.room.switchTo(a.id);
+		expect({ text: editor.getText(), attachments: editor.attachments }).toEqual({ text: "", attachments: [image] });
+	});
+
+	/**
+	 * The room view shows what each conversation's composer holds: the draft
+	 * kept for one off screen, and the composer's own for the one on screen. A
+	 * member reporting nothing, or another conversation's draft, would hide the
+	 * text the room is keeping for it.
+	 */
+	it("each member reports its own draft to the room view, the one on screen included", async () => {
+		const {
+			h,
+			a,
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		const editor = h.ctx.editor;
+		editor.setText("\n  draft for a\nits second line");
+		editor.attachments = [{ kind: "image", name: "diagram.png", data: "aGVsbG8=", mimeType: "image/png" }];
+		await h.room.switchTo(b!.id);
+		editor.setText("draft for b");
+		await h.room.openView();
+		expect(h.room.viewOpen).toBe(true);
+		expect(Object.fromEntries(h.room.members().map(member => [member.id, member.draft]))).toEqual({
+			[a.id]: { line: "draft for a", images: 1, files: 0 },
+			[b!.id]: { line: "draft for b", images: 0, files: 0 },
+			[c!.id]: undefined,
+		});
+	});
+});
+
+describe("the terminal's chrome", () => {
+	it("is re-rooted only when the conversation coming on screen is in another directory", async () => {
+		const {
+			h,
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		await h.room.switchTo(c!.id);
+		expect(steps.filter(step => step.startsWith("chrome:"))).toEqual([]);
+		await h.room.switchTo(b!.id);
+		await h.room.switchTo(c!.id);
+		expect(steps.filter(step => step.startsWith("chrome:"))).toEqual([`chrome:${dirB}`, `chrome:${dirA}`]);
+	});
+
+	it("a chrome refresh that fails is a warning, not a rollback", async () => {
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		h.failNextCwdChange("no command list here");
+		await h.room.switchTo(b!.id);
+		expect(h.ctx.session).toBe(b!.session);
+		expect(getProjectDir()).toBe(dirB);
+		expect(h.warnings).toEqual([
+			`Switched, but the command list for ${dirB} could not be loaded: no command list here`,
+		]);
+		expect(h.errors).toEqual([]);
+		expect(steps.slice(steps.indexOf(`chrome:${dirB}`))).toEqual([`chrome:${dirB}`, "todos", "view-closed:gone"]);
+		expect(h.statuses.at(-1)).toBe(`Switched to conversation 2${TEACH}`);
+	});
+
+	/**
+	 * Once the target is attached the screen has changed, whatever fails after
+	 * it. A failure reported as a refused switch would leave the room believing
+	 * the old conversation is on screen.
+	 */
+	it("a step after the attach that fails is a warning, and the switch stands", async () => {
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		h.failNextTodosReload("todo store unreadable");
+		await h.room.switchTo(b!.id);
+		expect(h.ctx.session).toBe(b!.session);
+		expect(h.errors).toEqual([]);
+		expect(h.warnings).toEqual(["Switched, but the screen did not finish loading: todo store unreadable"]);
+	});
+});
+
+describe("a new peer", () => {
+	/**
+	 * Built for the room, not for the screen: it is released from the process
+	 * scope and hosted (its dialogs bound, gated) before the switch claims it.
+	 */
+	it("is built in this room, released from the foreground and hosted before it is entered", async () => {
+		const { h, a } = openRoom();
+		await h.room.openPeer();
+		const created = conversations.at(-1)!;
+		expect(created).not.toBe(a);
+		expect(screenSteps()).toEqual([
+			"create",
+			`host:${created.id}:background`,
+			`claim:${created.id}`,
+			`claimed:${created.id}`,
+			`attach:${created.id}`,
+		]);
+		const room = registry.get(a.id)?.room;
+		expect(room).toBeDefined();
+		expect(registry.get(created.id)?.room).toBe(room);
+		expect(h.ctx.session).toBe(created.session);
+		expect(h.room.members().map(member => member.id)).toEqual([a.id, created.id]);
+	});
+
+	it("is built once when asked for twice while it opens; the second request is told so", async () => {
+		const { h } = openRoom();
+		const first = h.room.openPeer();
+		await h.room.openPeer();
+		await first;
+		expect(steps.filter(step => step === "create")).toEqual(["create"]);
+		expect(h.statuses).toContain("A new conversation is already opening");
+		expect(h.errors).toEqual([]);
+	});
+
+	/**
+	 * A conversation that was built but could not join the room is one nothing
+	 * lists and nothing can enter: it is closed, not left running unseen.
+	 */
+	it("that fails to join is closed rather than left running, and the screen stays where it was", async () => {
+		const { h, a } = openRoom();
+		h.failNextHost("bind failed");
+		await h.room.openPeer();
+		const created = conversations.at(-1)!;
+		expect(created).not.toBe(a);
+		expect(h.errors).toEqual(["Could not open a peer conversation: bind failed"]);
+		expect(steps.filter(step => step.startsWith("dismiss:") || step.startsWith("release:"))).toEqual([
+			`dismiss:${created.id}`,
+			`release:${created.id}`,
+		]);
+		expect(registry.get(created.id)).toBeUndefined();
+		expect(h.ctx.session).toBe(a.session);
+	});
+
+	/**
+	 * What the room said before a conversation had a seat is in its context
+	 * before its first turn, once; the members already in the room took the
+	 * line live, once each.
+	 */
+	it("is handed what the room said before it joined, once, before its first turn", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		h.bus.postToRoom({ member: a.id, byOperator: true, body: "freeze main until the release is cut" });
+		await h.room.openPeer();
+		const created = conversations.at(-1)!;
+		const lines = (session: AgentSession) =>
+			session.agent.state.messages.filter(
+				message => message.role === "custom" && message.customType === IRC_ROOM_MESSAGE_TYPE,
+			);
+		const backlog = lines(created.session);
+		expect(backlog).toHaveLength(1);
+		expect(backlog[0]).toMatchObject({ details: { backlog: true } });
+		expect(JSON.stringify(backlog[0])).toContain("freeze main until the release is cut");
+		expect(lines(a.session)).toHaveLength(1);
+		expect(lines(b!.session)).toHaveLength(1);
+		expect(h.bus.joinRoom(created.id)).toBe(0);
+	});
+});
+
+describe("closing a conversation", () => {
+	it("refuses the conversation on screen and the launch conversation, with their reasons, and touches neither", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		const onScreen = "That is the conversation on screen. Enter another one, then close it from there.";
+		expect(await h.room.close(a.id)).toBe(onScreen);
+		await h.room.switchTo(b!.id);
+		expect(await h.room.close(b!.id)).toBe(onScreen);
+		expect(await h.room.close(a.id)).toBe(
+			"The first conversation holds the MCP servers and background jobs the others share, so it stays open until you exit.",
+		);
+		expect(registry.get(a.id)?.session).toBe(a.session);
+		expect(registry.get(b!.id)?.session).toBe(b!.session);
+		expect(steps.filter(step => step.startsWith("release:"))).toEqual([]);
+	});
+
+	it("stops a working peer, keeps its draft beside its transcript, disposes it and takes it out of the room", async () => {
+		const {
+			h,
+			a,
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		await c!.startTurn();
+		await h.room.switchTo(c!.id);
+		h.ctx.editor.setText("draft for c");
+		await h.room.switchTo(a.id);
+		expect(kept()).toContain(c!.session);
+		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 1, waiting: 0, unread: 0 });
+
+		expect(await h.room.close(c!.id)).toBeUndefined();
+
+		expect(c!.session.isStreaming).toBe(false);
+		expect(c!.turnSettled()).toBe(true);
+		expect(await c!.session.sessionManager.consumeDraft()).toBe("draft for c");
+		expect(registry.get(c!.id)).toBeUndefined();
+		expect(steps.filter(step => step.startsWith("release:"))).toEqual([`release:${c!.id}`]);
+		expect(kept()).not.toContain(c!.session);
+		expect(h.room.members().map(member => member.id)).toEqual([a.id, b!.id]);
+		expect(h.statusLine.roomPeers).toEqual({ peers: 1, working: 0, waiting: 0, unread: 0 });
+	});
+
+	/**
+	 * Its held UI is dismissed before the turn is stopped, but it stays hosted
+	 * until it is disposed: a close that fails leaves it for exit to dispose.
+	 */
+	it("that fails keeps the conversation hosted and in the room, and says why", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		await h.room.switchTo(b!.id);
+		h.ctx.editor.setText("draft for b");
+		await h.room.switchTo(a.id);
+		vi.spyOn(b!.session.sessionManager, "saveDraft").mockRejectedValue(new Error("disk full"));
+		expect(await h.room.close(b!.id)).toBe("Could not close that conversation: disk full");
+		expect(steps.filter(step => step.startsWith("dismiss:") || step.startsWith("release:"))).toEqual([
+			`dismiss:${b!.id}`,
+		]);
+		expect(registry.get(b!.id)?.session).toBe(b!.session);
+	});
+});
+
+describe("a question asked off screen", () => {
+	it("is said once on the status line, naming the conversation, and the chip counts it as waiting", async () => {
+		const {
+			h,
+			a,
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		await b!.session.sessionManager.setSessionName("Refactor parser", "user");
+		const hint = "needs you — alt+w opens the room";
+
+		h.hold(b!.session, 1);
+		expect(h.statuses).toEqual([`2 · Refactor parser ${hint}`]);
+		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 1, unread: 0 });
+
+		h.hold(b!.session, 1);
+		h.hold(a.session, 1);
+		expect(h.statuses).toEqual([`2 · Refactor parser ${hint}`]);
+
+		await c!.startTurn();
+		await until(() => h.statusLine.roomPeers.working === 1, "the working peer to be counted");
+		h.hold(c!.session, 1);
+		// Named by the prompt it is on, since it has no name.
+		expect(h.statuses).toEqual([`2 · Refactor parser ${hint}`, `3 · keep working ${hint}`]);
+		// A peer both working and waiting counts as waiting: the question is the news.
+		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 2, unread: 0 });
+
+		h.hold(b!.session, 0);
+		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 1, unread: 0 });
+	});
+});
+
+describe("a turn that ends off screen", () => {
+	const OPENS = "— alt+w opens the room";
+	const COMPLETE = { body: "Complete", type: "completion", actions: "focus" } as const;
+
+	it("is said once on the status line, naming the conversation and how it ended", async () => {
+		const notify = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
+		const {
+			h,
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		await c!.session.sessionManager.setSessionName("Refactor parser", "user");
+		const bEnds = countEnds(b!.session);
+		const cEnds = countEnds(c!.session);
+		await b!.startTurn();
+		await c!.startTurn();
+		b!.endTurn("stop");
+		await until(() => bEnds() === 1, "b's turn to end");
+		c!.endTurn("error");
+		await until(() => cEnds() === 1, "c's turn to end");
+		// Named by the prompt it is on when it has no name.
+		expect(h.statuses).toEqual([`2 · keep working finished ${OPENS}`, `3 · Refactor parser failed ${OPENS}`]);
+		// Both are idle with an answer nobody has read.
+		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 0, unread: 2 });
+		// `completion.notify` is off by default.
+		expect(notify.mock.calls).toEqual([]);
+	});
+
+	/**
+	 * The status line says it once; the chip, the view and `/room list` keep
+	 * saying it until the conversation is entered, so an answer that ended
+	 * while nobody watched is still findable after the line has moved on.
+	 */
+	it("stays unread in the chip, the view and /room list until it is entered", async () => {
+		const {
+			h,
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		const bEnds = countEnds(b!.session);
+		const cEnds = countEnds(c!.session);
+		await b!.startTurn();
+		await c!.startTurn();
+		b!.endTurn("stop");
+		c!.endTurn("error");
+		await until(() => bEnds() === 1 && cEnds() === 1, "both turns to end");
+		const unread = () =>
+			h.room
+				.members()
+				.filter(member => member.unread)
+				.map(member => member.id);
+		expect(unread()).toEqual([b!.id, c!.id]);
+		expect(h.room.describe()).toMatch(/2 · keep working \[done [^\]]*, unread\]/);
+		expect(h.room.describe()).toMatch(/3 · keep working \[failed[^\]]*, unread\]/);
+
+		await h.room.switchTo(b!.id);
+		expect(unread()).toEqual([c!.id]);
+		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 0, waiting: 0, unread: 1 });
+		expect(h.room.describe()).not.toMatch(/2 · keep working \[[^\]]*unread\]/);
+
+		// Asked again (an `irc` message from a peer can do this off screen), it counts as working.
+		await c!.startTurn();
+		await until(() => h.statusLine.roomPeers.working === 1, "c's new turn to be counted");
+		expect(h.statusLine.roomPeers).toEqual({ peers: 2, working: 1, waiting: 0, unread: 0 });
+	});
+
+	it("with completion.notify on, notifies a finished turn titled with the conversation, and not a failed one", async () => {
+		const notify = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
+		settings.override("completion.notify", "on");
+		const {
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		const bEnds = countEnds(b!.session);
+		const cEnds = countEnds(c!.session);
+		await b!.startTurn();
+		await c!.startTurn();
+		c!.endTurn("error");
+		await until(() => cEnds() === 1, "c's turn to end");
+		b!.endTurn("stop");
+		await until(() => bEnds() === 1, "b's turn to end");
+		expect(notify.mock.calls).toEqual([[{ title: "2 · keep working", ...COMPLETE }]]);
+	});
+
+	/** The conversation on screen is the event controller's to announce; a stopped turn is no news. */
+	it("says nothing for the conversation on screen or for a stopped turn", async () => {
+		const notify = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
+		settings.override("completion.notify", "on");
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		const aEnds = countEnds(a.session);
+		const bEnds = countEnds(b!.session);
+		await a.startTurn();
+		await b!.startTurn();
+		a.endTurn("stop");
+		await until(() => aEnds() === 1, "a's turn to end");
+		await b!.session.abort();
+		await until(() => bEnds() === 1, "b's turn to end");
+		expect(h.statuses).toEqual([]);
+		expect(notify.mock.calls).toEqual([]);
+		expect(h.room.members().filter(member => member.unread)).toEqual([]);
+		expect(h.statusLine.roomPeers.unread).toBe(0);
+	});
+
+	it("while the room view is open, is left to the window and still notified", async () => {
+		const notify = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
+		settings.override("completion.notify", "on");
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		const bEnds = countEnds(b!.session);
+		await b!.startTurn();
+		await h.room.openView();
+		b!.endTurn("stop");
+		await until(() => bEnds() === 1, "b's turn to end");
+		expect(h.statuses).toEqual([]);
+		expect(
+			h.room
+				.members()
+				.find(member => member.id === b!.id)
+				?.snapshot().state.kind,
+		).toBe("done");
+		expect(notify.mock.calls).toEqual([[{ title: "2 · keep working", ...COMPLETE }]]);
+	});
+
+	/**
+	 * A retried turn fails once and is taken up again; the session holds the end
+	 * its listeners see until the retry settles. Announcing the failed attempt
+	 * would say `failed` for a turn still running, then `finished`.
+	 */
+	it("is said once when a retried turn ends, not when the retry takes it up", async () => {
+		shared.set("retry.baseDelayMs", 5);
+		shared.set("retry.maxRetries", 1);
+		shared.set("retry.modelFallback", false);
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		const bEnds = countEnds(b!.session);
+		await b!.startTurn();
+		const retried = b!.nextRequest();
+		b!.endTurn("overloaded");
+		await retried;
+		expect(h.statuses).toEqual([]);
+		b!.endTurn("stop");
+		await until(() => bEnds() === 1 && b!.turnSettled(), "the retried turn to end");
+		expect(h.statuses).toEqual([`2 · keep working finished ${OPENS}`]);
+	});
+});
+
+describe("an attach from outside the room", () => {
+	/**
+	 * `/new` and `/resume` attach through `attachMainSession` without a room
+	 * switch. The chip then counts the room of the conversation that left, and
+	 * a registry event while a conversation outside the room is on screen drops
+	 * the room's feeds, so coming back without reading the room again leaves
+	 * its turns unheard.
+	 */
+	it("reads the room again from the conversation that arrives", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		const outside = openConversation("outside", dirA);
+		outside.session.releaseForeground();
+		const bEnds = countEnds(b!.session);
+		expect(h.statusLine.roomPeers.peers).toBe(1);
+
+		// What a `/new` hand-off does: a conversation outside the room arrives.
+		h.ctx.attachMainSession(outside.session);
+		expect(h.statusLine.roomPeers.peers).toBe(0);
+		// Another conversation opens meanwhile; the registry says so.
+		openConversation("later", dirA).session.releaseForeground();
+
+		// What `/resume` of the room's first conversation does.
+		BackgroundSessions.global().release(a.session);
+		h.ctx.attachMainSession(a.session);
+		expect(h.statusLine.roomPeers.peers).toBe(1);
+		await b!.startTurn();
+		b!.endTurn("stop");
+		await until(() => bEnds() === 1, "b's turn to end");
+		expect(h.statuses).toEqual(["2 · keep working finished — alt+w opens the room"]);
+	});
+});
+
+describe("the room's name for a conversation", () => {
+	it("is its number and name in the room on screen, and nothing outside it or in a room of one", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		const outside = openConversation("outside", dirA);
+		outside.session.releaseForeground();
+		await b!.session.sessionManager.setSessionName("Refactor parser", "user");
+		expect([a.session, b!.session, outside.session].map(session => h.room.labelOf(session))).toEqual([
+			"conversation 1",
+			"2 · Refactor parser",
+			undefined,
+		]);
+		registry.unregister(b!.id);
+		expect(h.room.labelOf(a.session)).toBeUndefined();
+	});
+
+	it("is the one `r` in the room view gives it, off screen or on, and a conversation gone says so", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		expect(await h.room.rename(b!.id, "Refactor parser")).toBeUndefined();
+		expect(await h.room.rename(a.id, "Tests")).toBeUndefined();
+		expect({
+			stored: [a.session, b!.session].map(session => session.sessionManager.getSessionName()),
+			labels: [a.session, b!.session].map(session => h.room.labelOf(session)),
+		}).toEqual({
+			stored: ["Tests", "Refactor parser"],
+			labels: ["1 · Tests", "2 · Refactor parser"],
+		});
+		expect(await h.room.rename("main:gone", "Anything")).toBe("That conversation has already closed.");
+	});
+});
+
+describe("the room's channel in the open view", () => {
+	/**
+	 * A post reaches the open room view the moment it is posted: the view asks
+	 * for a frame and draws the newest line of its own room under its title. A
+	 * post in another room of the process is not this view's news, and asks for
+	 * nothing. No session event carries a post into a window, so the frame the
+	 * view asks for is the only way it appears before the next keypress.
+	 */
+	it("draws its own room's newest post and asks for a frame for it, and ignores another room's", async () => {
+		const { h, a } = openRoom({ name: "b", dir: dirB });
+		const elsewhere = openConversation("elsewhere", dirA);
+		registry.ensureRoom(elsewhere.id);
+		await h.room.openView();
+		const stage = h.ui.getFocused();
+		if (!stage) throw new Error("the room view took no focus");
+		const channelRow = (): string => stripVTControlCharacters(stage.render(100)[1] ?? "").trimEnd();
+		let frames = 0;
+		const request = h.ui.requestRender.bind(h.ui);
+		vi.spyOn(h.ui, "requestRender").mockImplementation((...args: Parameters<TUI["requestRender"]>) => {
+			frames++;
+			request(...args);
+		});
+
+		h.bus.postToRoom({ member: elsewhere.id, byOperator: true, body: "another room's news" });
+		expect({ frames, row: channelRow() }).toEqual({ frames: 0, row: "" });
+
+		h.bus.postToRoom({ member: a.id, byOperator: true, body: "freeze main" });
+		expect(frames).toBe(1);
+		expect(channelRow()).toBe("  #room  you: freeze main");
+
+		h.bus.postToRoom({ member: a.id, byOperator: true, body: "main is open again" });
+		expect(frames).toBe(2);
+		expect(channelRow()).toBe("  #room  you: main is open again");
+	});
+
+	/**
+	 * `s` in the open view posts through the room's own bus as the operator:
+	 * every other conversation takes the line under `you` and the channel row
+	 * shows it. A post the bus refuses reaches nobody, and the view says why in
+	 * the words `/room say` uses.
+	 */
+	it("posts what s says as you to the room, and shows a refusal on the view", async () => {
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		await h.room.openView();
+		const stage = h.ui.getFocused();
+		const press = stage?.handleInput?.bind(stage);
+		if (!stage || !press) throw new Error("the room view took no focus");
+		if (h.room.guideShown) press("\x1b");
+		const screen = (): string =>
+			stage
+				.render(120)
+				.map(row => stripVTControlCharacters(row).trimEnd())
+				.join("\n");
+
+		press("s");
+		for (const char of "freeze main") press(char);
+		press("\r");
+		expect(h.bus.latestRoomLine(b!.id)).toMatchObject({ label: "you", body: "freeze main" });
+		// The row under the title shows what went out; a notice would cover the pager for nothing.
+		expect(screen()).not.toContain("Posted to #room");
+		expect(screen()).toContain("  #room  you: freeze main");
+
+		press("s");
+		press(`\x1b[200~${"x".repeat(ROOM_POST_MAX_CHARS + 1)}\x1b[201~`);
+		press("\r");
+		expect(h.bus.latestRoomLine(b!.id)?.body).toBe("freeze main");
+		expect(screen()).toContain(
+			`A #room post holds at most ${ROOM_POST_MAX_CHARS} characters and this one has ${ROOM_POST_MAX_CHARS + 1}; post a file's path instead.`,
+		);
+		// Refused is not posted: the next `s` opens with the text, to cut down.
+		press("s");
+		expect(screen()).toContain(`Say to the room  ${"x".repeat(20)}`);
+	});
+});
+
+describe("the room guide", () => {
+	/**
+	 * The first room view a profile opens explains the room; later ones do not,
+	 * in this process or the next. A quick switch travels through a stage too,
+	 * and is not the room view: it neither shows the guide nor spends it.
+	 */
+	it("shows the first time the room view opens in a profile, and not after", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		terminalCaps.trueColor = true;
+		await h.room.switchTo(b!.id);
+		expect({ guide: h.room.guideShown, spent: shared.get("room.guideShown") }).toEqual({
+			guide: false,
+			spent: false,
+		});
+		await until(() => !h.room.viewOpen, "the quick switch to land");
+		terminalCaps.trueColor = false;
+
+		await h.room.openView();
+		expect({ guide: h.room.guideShown, spent: shared.get("room.guideShown") }).toEqual({ guide: true, spent: true });
+
+		// The next terminal on this profile opens the room without it.
+		const next = harness(a);
+		await next.room.openView();
+		expect(next.room.guideShown).toBe(false);
+	});
+
+	it("prints as a panel on /room help, naming the room's keys as they are bound", () => {
+		const { h } = openRoom({ name: "b", dir: dirB });
+		h.room.showHelp();
+		expect(h.presented).toHaveLength(1);
+		const panel = h.presented[0]!.render(120)
+			.map(row => stripVTControlCharacters(row))
+			.join("\n");
+		expect(panel).toContain("Rooms");
+		expect(panel).toContain("Getting around");
+		expect(panel).toContain("Reading a window");
+		expect(panel).toContain("alt+w");
+		expect(panel).toContain("alt+.");
+	});
+});
+
+describe("cycling", () => {
+	it("moves to the next member in room order and wraps in both directions", async () => {
+		const {
+			h,
+			a,
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirA }, { name: "c", dir: dirA });
+		const onScreen: string[] = [];
+		for (const step of [1, 1, 1, -1, -1, -1] as const) {
+			await h.room.cycle(step);
+			onScreen.push(h.ctx.session.getAgentId()!);
+		}
+		expect(onScreen).toEqual([b!.id, c!.id, a.id, c!.id, b!.id, a.id]);
+	});
+
+	it("with fewer than two members only reports that there is nowhere to go", async () => {
+		const { h, a } = openRoom();
+		await h.room.cycle(1);
+		await h.room.cycle(-1);
+		expect(h.statuses).toEqual([NO_PEER, NO_PEER]);
+		expect(h.ctx.session).toBe(a.session);
+		expect(screenSteps()).toEqual([]);
+	});
+
+	/**
+	 * A press while a switch was in flight used to be dropped, so a quick run of
+	 * presses moved one conversation however many were pressed. The presses add
+	 * up and are taken up when the switch lands, and the conversations passed
+	 * over are never put on screen: nothing claims them, and an answer waiting
+	 * in one stays unread.
+	 */
+	it("adds up presses made while a switch is in flight and goes that far, entering nothing in between", async () => {
+		const {
+			h,
+			peers: [b, , d],
+		} = openRoom({ name: "b", dir: dirA }, { name: "c", dir: dirA }, { name: "d", dir: dirA });
+		const first = h.room.cycle(1);
+		void h.room.cycle(1);
+		void h.room.cycle(1);
+		await first;
+		await until(() => h.ctx.session === d!.session, "the run of presses to land");
+		expect(screenSteps().filter(step => step.startsWith("attach:"))).toEqual([`attach:${b!.id}`, `attach:${d!.id}`]);
+	});
+
+	it("lets a next and a previous press made in flight cancel out", async () => {
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirA }, { name: "c", dir: dirA });
+		const first = h.room.cycle(1);
+		void h.room.cycle(1);
+		void h.room.cycle(-1);
+		await first;
+		await Promise.resolve();
+		expect(h.ctx.session).toBe(b!.session);
+		expect(screenSteps().filter(step => step.startsWith("attach:"))).toEqual([`attach:${b!.id}`]);
+	});
+
+	it("wraps a run longer than the room, backwards as well as forwards", async () => {
+		const {
+			h,
+			peers: [b, c],
+		} = openRoom({ name: "b", dir: dirA }, { name: "c", dir: dirA });
+		const first = h.room.cycle(1);
+		for (let press = 0; press < 5; press++) void h.room.cycle(-1);
+		await first;
+		// From 2, five back in a room of three is 3.
+		await until(() => h.ctx.session === c!.session, "the run to wrap backwards");
+		expect(screenSteps().filter(step => step.startsWith("attach:"))).toEqual([`attach:${b!.id}`, `attach:${c!.id}`]);
+	});
+
+	/**
+	 * A switch that fails did not arrive anywhere to go on from; the presses
+	 * made while it tried go with it, and none is left over to carry the next
+	 * switch further than it was asked to go.
+	 */
+	it("drops the presses made while a switch that fails was in flight", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		b!.failNextPromptBuild();
+		const first = h.room.cycle(1);
+		void h.room.cycle(1);
+		await first;
+		expect(h.ctx.session).toBe(a.session);
+		await h.room.cycle(1);
+		// Long enough for a left-over press to start a second switch, which would attach c.
+		await sleep(100);
+		expect(h.ctx.session).toBe(b!.session);
+		expect(screenSteps().filter(step => step.startsWith("attach:"))).toEqual([`attach:${b!.id}`]);
+	});
+});
+
+describe("the first arrival in another conversation", () => {
+	/**
+	 * A room of two is where the view is first needed, and the arrival line is
+	 * what is on screen when it is. It names the key once; every later arrival
+	 * only says where the screen is, so the line does not become noise.
+	 */
+	it("says how to see every conversation, once", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirA });
+		await h.room.switchTo(b!.id);
+		await h.room.switchTo(a.id);
+		await h.room.switchTo(b!.id);
+		expect(h.statuses).toEqual([
+			`Switched to conversation 2${TEACH}`,
+			"Switched to conversation 1",
+			"Switched to conversation 2",
+		]);
+	});
+});
+
+describe("a row the registry lists before its session attaches", () => {
+	/**
+	 * The sdk registers a driver with `session: null` and attaches the session
+	 * after building it. In that window the row is in the room and nothing can
+	 * be drawn or counted for it.
+	 */
+	it("is not a member, is not counted, and nothing that reads the room throws", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		registry.register({
+			id: "main:pending",
+			displayName: "main",
+			kind: "main",
+			session: null,
+			room: registry.get(a.id)?.room,
+			status: "running",
+		});
+		expect(h.room.members().map(member => member.id)).toEqual([a.id, b!.id]);
+		expect(h.room.describe()).not.toContain("main:pending");
+		h.hold(b!.session, 1);
+		expect(h.statusLine.roomPeers).toEqual({ peers: 1, working: 0, waiting: 1, unread: 0 });
+		expect(h.room.resolveArgument("3")).toBeUndefined();
+		await h.room.cycle(1);
+		expect(h.ctx.session).toBe(b!.session);
+	});
+});
+
+describe("with motion on, the quick switch travels through the stage", () => {
+	beforeEach(() => {
+		terminalCaps.trueColor = true;
+	});
+
+	it("shows the stage, puts the target on screen under it, and lands", async () => {
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		// The landing frame the stage composes already carries the status line, so the screen
+		// does not jump a row when the stage lifts: the status is shown before that frame is composed.
+		const shownWhenComposed: string[][] = [];
+		const compose = h.ui.composeViewport.bind(h.ui);
+		vi.spyOn(h.ui, "composeViewport").mockImplementation(() => {
+			shownWhenComposed.push([...h.statuses]);
+			return compose();
+		});
+		await h.room.switchTo(b!.id);
+		expect(h.room.viewOpen).toBe(true);
+		await until(() => !h.room.viewOpen, "the stage to land");
+		expect(screenSteps()).toEqual([`claim:${b!.id}`, `claimed:${b!.id}`, `attach:${b!.id}`]);
+		// What the arriving conversation held comes up once the stage has lifted, not under it.
+		expect(steps.filter(step => step.startsWith("attach:") || step.startsWith("view-closed"))).toEqual([
+			`attach:${b!.id}`,
+			"view-closed:gone",
+		]);
+		expect(h.ctx.session).toBe(b!.session);
+		expect(h.statuses.at(-1)).toBe(`Switched to conversation 2${TEACH}`);
+		expect(shownWhenComposed.at(-1)).toEqual([`Switched to conversation 2${TEACH}`]);
+	});
+
+	/**
+	 * The same failure as the motionless switch: the stage must not stay up
+	 * over a conversation that never came, swallowing every key, with nothing
+	 * said.
+	 */
+	it("a claim that throws lifts the stage, leaves the screen where it was and says why", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		b!.failNextPromptBuild();
+		await h.room.switchTo(b!.id);
+		await until(() => !h.room.viewOpen, "the stage to lift after the failed claim");
+		expect(h.ctx.session).toBe(a.session);
+		expect(h.errors.join("\n")).toContain(`prompt build failed for ${dirB}`);
+	});
+
+	/**
+	 * The stage holds the keyboard while the screen moves, so the next and
+	 * previous keys reach it rather than the composer. It hands them to the
+	 * room, which goes on as far as they add up once the switch lands. Text
+	 * typed in flight goes to the composer of the conversation the run ends
+	 * on, never to one it passed over.
+	 */
+	it("a run of next presses while it moves carries it on, entering nothing in between", async () => {
+		const {
+			h,
+			peers: [b, , d],
+		} = openRoom({ name: "b", dir: dirA }, { name: "c", dir: dirA }, { name: "d", dir: dirA });
+		const bytes = nextKeyBytes(h);
+		await h.room.cycle(1);
+		const stage = h.ui.getFocused();
+		if (!stage || !h.room.viewOpen) throw new Error("the quick switch did not show its stage");
+		stage.handleInput?.(bytes);
+		stage.handleInput?.("x");
+		stage.handleInput?.(bytes);
+		await until(() => h.ctx.session === d!.session && !h.room.viewOpen, "the run of presses to land", 8_000);
+		expect(screenSteps().filter(step => step.startsWith("attach:"))).toEqual([`attach:${b!.id}`, `attach:${d!.id}`]);
+		// The conversation passed over keeps what it asked for when it is entered: the
+		// terminal is told the view closed once, at the last landing, with the stage gone.
+		expect(steps.filter(step => step.startsWith("view-closed"))).toEqual(["view-closed:gone"]);
+		const drafts = Object.fromEntries(h.room.members().map(member => [member.id, member.draft?.line]));
+		expect({ composer: h.ctx.editor.getText(), passedOver: drafts[b!.id] }).toEqual({
+			composer: "x",
+			passedOver: undefined,
+		});
+	});
+
+	/**
+	 * Typing does not wait for the motion. Text typed or pasted while the
+	 * screen moves goes to the composer of the conversation it lands on, in
+	 * the order it came. A key that is not text, Enter and Esc included, never
+	 * reaches the composer from there: a typed-ahead Enter sends nothing and a
+	 * typed-ahead Esc interrupts nothing.
+	 */
+	it("gives text typed while the switch moves to the composer it lands on, and no other key", async () => {
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		await h.room.switchTo(b!.id);
+		const stage = h.ui.getFocused();
+		const press = stage?.handleInput?.bind(stage);
+		if (!press || !h.room.viewOpen) throw new Error("the quick switch did not show its stage");
+		for (const key of ["f", "i", "x", "\x1b[200~ the build\x1b[201~", "\r", "\x1b", "\x1b[D", "\x7f"]) press(key);
+		await until(() => !h.room.viewOpen, "the stage to land");
+		expect({ onScreen: h.ctx.session === b!.session, composer: h.ctx.editor.getText() }).toEqual({
+			onScreen: true,
+			composer: "fix the build",
+		});
+	});
+
+	it("gives text typed while a window of the room view zooms to that conversation's composer", async () => {
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		await h.room.openView();
+		const stage = h.ui.getFocused();
+		const press = stage?.handleInput?.bind(stage);
+		if (!press) throw new Error("the room view took no focus");
+		if (h.room.guideShown) press("\x1b");
+		press("\x1b[C");
+		press("\r");
+		for (const char of "go on") press(char);
+		await until(() => !h.room.viewOpen, "the zoom to land");
+		expect({ onScreen: h.ctx.session === b!.session, composer: h.ctx.editor.getText() }).toEqual({
+			onScreen: true,
+			composer: "go on",
+		});
+	});
+
+	it("a switch that fails drops the presses made while it moved, and keeps what was typed where it stays", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB }, { name: "c", dir: dirA });
+		const bytes = nextKeyBytes(h);
+		b!.failNextPromptBuild();
+		await h.room.cycle(1);
+		h.ui.getFocused()?.handleInput?.(bytes);
+		h.ui.getFocused()?.handleInput?.("o");
+		h.ui.getFocused()?.handleInput?.("k");
+		await until(() => !h.room.viewOpen, "the stage to lift after the failed claim");
+		// Long enough for a left-over press to open a second switch.
+		await sleep(100);
+		expect({ open: h.room.viewOpen, onScreen: h.ctx.session === a.session }).toEqual({ open: false, onScreen: true });
+		expect(steps.filter(step => step.startsWith("view-closed"))).toEqual(["view-closed:gone"]);
+		expect(h.ctx.editor.getText()).toBe("ok");
+	});
+
+	it("a step after the attach that fails lands the stage on the new conversation, with a warning", async () => {
+		const {
+			h,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		h.failNextTodosReload("todo store unreadable");
+		await h.room.switchTo(b!.id);
+		await until(() => !h.room.viewOpen, "the stage to land");
+		expect(h.ctx.session).toBe(b!.session);
+		expect(h.errors).toEqual([]);
+		expect(h.warnings).toEqual(["Switched, but the screen did not finish loading: todo store unreadable"]);
+	});
+
+	/**
+	 * The stage opens with the composer's draft as the one on screen's; once
+	 * the switch has moved the drafts, the conversation that arrived owns the
+	 * composer. A stage that kept the old reading would draw the draft left in
+	 * one conversation on the window of the one that arrived.
+	 */
+	it("each window keeps its own draft through the switch", async () => {
+		const {
+			h,
+			a,
+			peers: [b],
+		} = openRoom({ name: "b", dir: dirB });
+		h.ctx.editor.setText("draft for a");
+		await h.room.switchTo(b!.id);
+		await until(() => !h.room.viewOpen, "the stage to land");
+		expect(Object.fromEntries(h.room.members().map(member => [member.id, member.draft]))).toEqual({
+			[a.id]: { line: "draft for a", images: 0, files: 0 },
+			[b!.id]: undefined,
+		});
+	});
+});

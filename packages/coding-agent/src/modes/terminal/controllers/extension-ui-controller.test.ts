@@ -76,11 +76,17 @@ describe("ExtensionUiController editor UI", () => {
 
 		expect(typeof ui.addAutocompleteProvider).toBe("function");
 
-		const factory = (current: unknown) => current as never;
+		const wrapped = { getSuggestions: async () => null, applyCompletion: vi.fn() };
+		const factory = vi.fn(() => wrapped);
 		ui.addAutocompleteProvider(factory);
 
+		// The terminal receives one factory; composed for the conversation on
+		// screen, it is the extension's.
 		expect(harness.addAutocompleteProvider).toHaveBeenCalledTimes(1);
-		expect(harness.addAutocompleteProvider).toHaveBeenCalledWith(factory);
+		const [registered] = harness.addAutocompleteProvider.mock.calls[0]!;
+		const base = { getSuggestions: async () => null, applyCompletion: vi.fn() };
+		expect(registered(base)).toBe(wrapped);
+		expect(factory).toHaveBeenCalledWith(base);
 	});
 });
 

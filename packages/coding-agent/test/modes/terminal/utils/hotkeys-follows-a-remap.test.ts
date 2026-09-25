@@ -111,7 +111,7 @@ describe("the hotkeys panel prints live editor keys", () => {
 	 * What is exempt, each with its reason. `Arrow keys` describes four bindings at
 	 * once as a family rather than naming one action. `Alt+Enter` is matched by the
 	 * editor directly rather than through a binding. `Space` is a push-to-talk
-	 * gesture, held rather than pressed. `←` is a double-tap gesture. And the prompt
+	 * gesture, held rather than pressed. `←` and `→` are double-tap gestures. And the prompt
 	 * sigils (`/`, `!`, `!!`, `$`, `$$`, `#`, `#<number>`, `#<text>`) are prompt
 	 * SYNTAX rather than keys: they are characters the composer reads at the start of
 	 * a line, so there is no binding to remap and nothing for this rule to watch.
@@ -122,6 +122,7 @@ describe("the hotkeys panel prints live editor keys", () => {
 			"Alt+Enter",
 			"Space",
 			"←",
+			"→",
 			"/",
 			"!",
 			"!!",

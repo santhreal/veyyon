@@ -177,6 +177,17 @@ export interface OverlayViewport {
 }
 
 /**
+ * One window of the screen: `height` rows, each fitted to `width` cells. The
+ * screen a fullscreen overlay opens from and the one it closes onto, as
+ * `TUI.captureViewport` and `TUI.composeViewport` return them.
+ */
+export interface ViewportSnapshot {
+	readonly rows: readonly string[];
+	readonly width: number;
+	readonly height: number;
+}
+
+/**
  * Resolve overlay layout from options.
  * Returns { width, row, col, maxHeight } for rendering. `footerTop` is the
  * screen row where the pinned footer starts in the window being painted

@@ -229,12 +229,14 @@ import {
 	formatCount,
 	formatDuration,
 	getActiveAuthDbPath,
+	getProjectDir,
 	getStringProperty,
 	isAbortError,
 	isBunTestRuntime,
 	isEnoent,
 	isRecord,
 	logger,
+	normalizePathForComparison,
 	postmortem,
 	prompt,
 	Snowflake,
@@ -424,6 +426,8 @@ import {
 	type IrcMessage,
 	type IrcPersistedDeliveryFacts,
 	type IrcPersistedDeliveryTelemetry,
+	type IrcRoomDelivery,
+	type IrcRoomLine,
 	projectIrcDeliveryTelemetry,
 } from "../task/irc-bus";
 import { usesCodexTaskPrompt } from "../task/prompt-policy";
@@ -580,6 +584,7 @@ import {
 	type HookMessage,
 	INTERRUPTED_THINKING_MESSAGE_TYPE,
 	type InterruptedThinkingDetails,
+	IRC_ROOM_MESSAGE_TYPE,
 	isEmptyErrorTurn,
 	isUserInterruptAbort,
 	normalizeCustomMessagePayload,
@@ -690,6 +695,12 @@ function createHandoffFileName(date = new Date()): string {
 }
 
 const REPLAN_TITLE_CONTEXT_TURN_LIMIT = 6;
+
+/** A `#room` line that reached this conversation mid-turn, and whether it named it with a wake. */
+interface PendingRoomLine {
+	readonly record: CustomMessage;
+	readonly wake: boolean;
+}
 
 export class AgentSession {
 	readonly agent: Agent;
@@ -867,8 +878,9 @@ export class AgentSession {
 	/**
 	 * AsyncJobManager scoped to this session for introspection/cancellation.
 	 *
-	 * This differs from `#ownedAsyncJobManager`: agents can inherit a parent
-	 * manager for their own owner id, while secondary top-level sessions are left
+	 * This differs from `#ownedAsyncJobManager`: agents inherit a parent manager
+	 * for their own owner id, and a top-level session the host handed the owner's
+	 * manager shares it the same way. Any other secondary top-level session is left
 	 * undefined to avoid reading the primary's jobs.
 	 */
 	readonly #asyncJobManager: AsyncJobManager | undefined;
@@ -881,8 +893,14 @@ export class AgentSession {
 	// asides at the next boundary; passive IRC records stay in the aside queue.
 	#pendingIrcInterrupts: CustomMessage[] = [];
 	#pendingIrcAsides: CustomMessage[] = [];
+	// Room lines (`#room`) received mid-turn, read at the next step boundary like
+	// asides. Kept apart because a line that reaches the stop boundary, or strands
+	// past it, is folded into context for the next turn and buys no model call,
+	// save a line that named this conversation (`wake`).
+	#pendingRoomLines: PendingRoomLine[] = [];
 	// Agent identity (registry id) used for IRC routing and job ownership.
 	#agentId: string | undefined;
+	#agentRegistry: AgentRegistry;
 	#agentKind: "main" | "sub" = "main";
 	#providerSessionId: string | undefined;
 	#freshProviderSessionId: string | undefined;
@@ -927,9 +945,22 @@ export class AgentSession {
 	/**
 	 * Directory {@link AgentSession.rescopeToCwd} last re-scoped to, so the two
 	 * callers of one move (this session, then the TUI's `cwd_changed` handler) do
-	 * the work once between them.
+	 * the work once between them. Cleared while a re-scope is deferred, and before a
+	 * rollback or a foreground claim, so the re-scope that follows is never skipped
+	 * as a repeat.
 	 */
 	#lastRescopedCwd: string | undefined;
+	/**
+	 * Whether this session drives process-wide project scope. A top-level session
+	 * starts foreground; a spawned session is never foreground. Several top-level
+	 * sessions share one process, and only the foreground one re-scopes it.
+	 */
+	#isForeground: boolean;
+	/**
+	 * A cwd change arrived while this top-level session was in the background, so
+	 * its re-scope waits for {@link AgentSession.claimForeground}.
+	 */
+	#rescopePending = false;
 	/**
 	 * Whole cwd/rescope/switch transaction queue. Work is appended synchronously,
 	 * so commits and rollbacks occur in monotonic initiation order.
@@ -1121,6 +1152,10 @@ export class AgentSession {
 	#argot: ArgotSession | undefined;
 	/** Per-streaming-message argot display decoder (seam 3); reset on each assistant message_start. */
 	#argotStreamDisplay: ArgotStreamDisplayDecoder | undefined;
+	/** The streaming assistant message as listeners last received it; cleared when the message ends. */
+	#displayedStreamMessage: AssistantMessage | undefined;
+	/** When the running turn's `agent_start` reached listeners, in ms since epoch; cleared at `agent_end`. */
+	#turnStartedAt: number | undefined;
 	/** Resolves the active model's inline-descriptor policy for session dumps. */
 	#resolvePruneToolDescriptions: (model: Model) => boolean = () => false;
 	#checkpointState: CheckpointState | undefined = undefined;
@@ -1254,30 +1289,47 @@ export class AgentSession {
 	 *  poll — land in pending IRC queues with no loop left to drain them; the queued-message drain's
 	 *  gate (agent.hasQueuedMessages()) does not count peer IRC interrupts. Once idle, wake a turn so
 	 *  the agent responds to the peer. Skip only when a queued steer/follow-up will itself drive a
-	 *  resume turn whose aside poll already consumes these (no double-wake). */
+	 *  resume turn whose aside poll already consumes these (no double-wake). A stranded room line
+	 *  wakes nothing unless it named this conversation: it is folded into context for the next turn,
+	 *  the way it would have been had it arrived idle. */
 	#resumeStrandedIrcAsides(): void {
 		if (this.#isDisposed || this.isStreaming) return;
-		if (this.#pendingIrcInterrupts.length === 0 && this.#pendingIrcAsides.length === 0) return;
+		if (
+			this.#pendingIrcInterrupts.length === 0 &&
+			this.#pendingIrcAsides.length === 0 &&
+			this.#pendingRoomLines.length === 0
+		) {
+			return;
+		}
 		if (this.#canAutoContinueForFollowUp() && this.agent.hasQueuedMessages()) return;
 		const records = this.#pendingIrcInterrupts.concat(this.#pendingIrcAsides);
+		const roomLines = this.#pendingRoomLines;
 		this.#pendingIrcInterrupts = [];
 		this.#pendingIrcAsides = [];
+		this.#pendingRoomLines = [];
+		for (const { record, wake } of roomLines) {
+			if (wake) records.push(record);
+			else this.#foldIntoContext(record);
+		}
 		if (this.#planModeState?.enabled) {
 			// Plan mode: fold stranded IRC asides into context without waking an
 			// autonomous turn. Convergence to ask/resolve stays user-driven.
-			for (const record of records) {
-				this.agent.appendMessage(record);
-				this.sessionManager.appendCustomMessageEntry(
-					record.customType,
-					record.content,
-					record.display,
-					record.details,
-					record.attribution ?? "agent",
-				);
-			}
+			for (const record of records) this.#foldIntoContext(record);
 			return;
 		}
-		this.#wakeForIrc(records);
+		if (records.length > 0) this.#wakeForIrc(records);
+	}
+
+	/** Record `record` into context and the transcript for the next turn, starting none. */
+	#foldIntoContext(record: CustomMessage): void {
+		this.agent.appendMessage(record);
+		this.sessionManager.appendCustomMessageEntry(
+			record.customType,
+			record.content,
+			record.display,
+			record.details,
+			record.attribution ?? "agent",
+		);
 	}
 
 	/** Fire-and-forget wake turn for incoming IRC — idle delivery and stranded-aside resume both
@@ -1656,6 +1708,7 @@ export class AgentSession {
 		this.#parentEvalSessionId = config.parentEvalSessionId;
 		this.#ownedAsyncJobManager = config.ownedAsyncJobManager;
 		this.#isSpawned = config.isSpawned === true;
+		this.#isForeground = !this.#isSpawned;
 		this.#asyncJobManager = config.asyncJobManager ?? config.ownedAsyncJobManager;
 		this.#scopedModels = config.scopedModels ?? [];
 		this.#thinking = new ThinkingRuntime({
@@ -1914,10 +1967,20 @@ export class AgentSession {
 		// injection boundary, but also expose a non-consuming interrupt peek so
 		// `job poll` / `irc wait` can return early before the boundary drains them.
 		this.agent.hasIrcInterrupts = () => this.#pendingIrcInterrupts.length > 0;
-		this.agent.setAsideMessageProvider(() => {
+		this.agent.setAsideMessageProvider(boundary => {
 			const pendingIrc = this.#pendingIrcInterrupts.concat(this.#pendingIrcAsides);
+			// A room line is read at the next step. Taken at the stop boundary it
+			// would buy the run another model call, so there only a line that named
+			// this conversation is taken; the rest stay pending and are folded into
+			// context for the next turn when the run settles.
+			const heldRoomLines: PendingRoomLine[] = [];
+			for (const pending of this.#pendingRoomLines) {
+				if (boundary === "stop" && !pending.wake) heldRoomLines.push(pending);
+				else pendingIrc.push(pending.record);
+			}
 			this.#pendingIrcInterrupts = [];
 			this.#pendingIrcAsides = [];
+			this.#pendingRoomLines = heldRoomLines;
 			const thunks: AsideMessage[] = pendingIrc.map(record => () => record);
 			thunks.push(...this.yieldQueue.drainLazy());
 			// Mid-run todo reconciliation — evaluated at injection time so a turn
@@ -2003,6 +2066,7 @@ export class AgentSession {
 		this.#refreshSecretRuntime = config.refreshSecretRuntime;
 		this.#argot = config.argot;
 		this.#agentId = config.agentId;
+		this.#agentRegistry = config.agentRegistry ?? AgentRegistry.global();
 		this.#agentKind = config.agentKind ?? "main";
 		this.#providerSessionId = config.providerSessionId;
 		this.#inheritedProviderPromptCacheKey =
@@ -3340,10 +3404,10 @@ export class AgentSession {
 	 *
 	 * Cancellation runs against this session's scoped manager. Spawned agents have
 	 * unique agent ids and inherit the parent's manager to clean up their own
-	 * jobs. A secondary in-process top-level session gets no scoped manager,
-	 * because it defaults to `MAIN_AGENT_ID`; reaching through the global
-	 * singleton would tear down the owning primary session's bash/task jobs at
-	 * dispose time (issue #1923).
+	 * jobs, and a top-level session sharing the owner's manager is refused unless
+	 * it has an id of its own (`createAgentSession`), so `cancelAll` by owner cannot
+	 * reach the owning primary session's bash/task jobs (issue #1923). A secondary
+	 * top-level session that was handed no manager has none to cancel through.
 	 *
 	 * No-op when no manager is reachable or this session has no agent id.
 	 */
@@ -4490,6 +4554,21 @@ export class AgentSession {
 			}
 		}
 
+		// What a screen attaching mid-turn opens with: when the turn began, and the
+		// message this event shows, never the model-form `agent.state.streamMessage`.
+		if (displayEvent.type === "agent_start") {
+			this.#turnStartedAt = Date.now();
+		} else if (
+			(displayEvent.type === "message_start" || displayEvent.type === "message_update") &&
+			displayEvent.message.role === "assistant"
+		) {
+			this.#displayedStreamMessage = displayEvent.message;
+		} else if (displayEvent.type === "message_end") {
+			this.#displayedStreamMessage = undefined;
+		} else if (displayEvent.type === "agent_end") {
+			this.#displayedStreamMessage = undefined;
+			this.#turnStartedAt = undefined;
+		}
 		try {
 			await this.#emitSessionEvent(displayEvent);
 		} catch (error) {
@@ -6010,8 +6089,16 @@ export class AgentSession {
 	 * prompt-cache key when the content changes, so the stale prefix is not re-served.
 	 *
 	 * WHOSE STATE MOVES depends on who is asking. The process-global half lives in
-	 * `#rescopeProcessToCwd` and runs only for the session that owns the process; a
-	 * spawned agent re-roots itself and leaves its parent and its siblings where they are.
+	 * `#rescopeProcessToCwd` and runs only for a top-level session; a spawned agent
+	 * re-roots itself and leaves its parent and its siblings where they are.
+	 *
+	 * ONLY THE FOREGROUND SESSION RE-SCOPES. Several top-level sessions can share
+	 * one process and one Settings instance, and one of them is on screen. For a
+	 * top-level session in the background this call re-scopes nothing: no settings
+	 * reload, no process state, no secrets, ssh tool or prompt refresh. It marks the
+	 * re-scope pending, and {@link AgentSession.claimForeground} runs it in full
+	 * when the session is brought back. A spawned session is never foreground and
+	 * always re-scopes its own half.
 	 *
 	 * REPEATING A DIRECTORY IS SKIPPED, and that is not an optimization: the TUI
 	 * reaches this twice for one move. `setCwd` calls it and then emits
@@ -6021,15 +6108,90 @@ export class AgentSession {
 	 * prompt-cache invalidation. The guard remembers the LAST directory rescoped,
 	 * not every directory seen, so moving away and back still rescopes: what makes
 	 * the second call redundant is that nothing changed in between, and something
-	 * did change if another directory was rescoped meanwhile.
+	 * did change if another directory was rescoped meanwhile. The guard belongs to
+	 * one session and the process scope is shared, so a deferred re-scope clears it
+	 * and a foreground claim clears it again: another session may have moved the
+	 * process since this one last re-scoped.
 	 */
 	rescopeToCwd(cwd: string): Promise<void> {
 		return this.#runScopeTransition(() => this.#rescopeToCwd(cwd));
 	}
 
-	async #rescopeToCwd(cwd: string): Promise<void> {
+	/** Whether this session currently drives the process-wide project scope. Spawned sessions: always false. */
+	get isForeground(): boolean {
+		return this.#isForeground;
+	}
+
+	/**
+	 * Make this session the one whose cwd drives process-wide project scope (shared Settings scope,
+	 * project dir, provider globals, plugin roots, capabilities, and this session's own prompt refresh).
+	 * Re-scopes when the process project dir (`getProjectDir()`) differs from this session's cwd, or when
+	 * a cwd change was deferred while the session was in the background; otherwise does nothing.
+	 * On failure the session is left NOT foreground and the error is thrown, so the caller can keep the
+	 * previous session on screen. No-op for spawned sessions. Serialized through #runScopeTransition.
+	 */
+	claimForeground(): Promise<void> {
+		if (this.#isSpawned) return Promise.resolve();
+		return this.#runScopeTransition(() => this.#claimForeground());
+	}
+
+	async #claimForeground(): Promise<void> {
+		const cwd = this.sessionManager.getCwd();
+		if (this.#rescopePending || normalizePathForComparison(getProjectDir()) !== normalizePathForComparison(cwd)) {
+			// Foreground only once the process scope is this session's, so a throw
+			// leaves the session in the background. Pending until the re-scope
+			// completes, so the next claim redoes a partial one in full even when the
+			// project dir already moved.
+			this.#isForeground = false;
+			this.#rescopePending = true;
+			this.#lastRescopedCwd = undefined;
+			await this.#rescopeToCwd(cwd, { claim: true });
+			this.#rescopePending = false;
+		}
+		this.#isForeground = true;
+	}
+
+	/**
+	 * Take the foreground from `holder`, the session that has it. A claim that
+	 * fails partway has already moved part of the process scope (the project
+	 * dir, the shared Settings scope), so `holder` claims it back before the
+	 * error is thrown: the conversation that stays on screen stays the one the
+	 * process is scoped to. A restore that fails too throws both errors.
+	 */
+	async takeForegroundFrom(holder: AgentSession): Promise<void> {
+		try {
+			await this.claimForeground();
+		} catch (error) {
+			if (holder === this) throw error;
+			try {
+				await holder.claimForeground();
+			} catch (restoreError) {
+				throw new AggregateError(
+					[error, restoreError],
+					`Failed to scope the process to ${this.sessionManager.getCwd()} and to restore ${holder.sessionManager.getCwd()}.`,
+				);
+			}
+			throw error;
+		}
+	}
+
+	/** Stop driving process-wide scope. Synchronous. No-op for spawned sessions. */
+	releaseForeground(): void {
+		this.#isForeground = false;
+	}
+
+	/**
+	 * @param options.claim Set by {@link AgentSession.claimForeground}, whose re-scope
+	 * runs before the session is foreground and so is never deferred.
+	 */
+	async #rescopeToCwd(cwd: string, options?: { claim?: boolean }): Promise<void> {
 		const normalizedCwd = path.resolve(cwd);
 		if (this.#lastRescopedCwd === normalizedCwd) return;
+		if (!this.#isSpawned && !this.#isForeground && options?.claim !== true) {
+			this.#rescopePending = true;
+			this.#lastRescopedCwd = undefined;
+			return;
+		}
 
 		// Re-scope the Settings instance owned by THIS session before loading any
 		// runtime candidate. The process singleton may be a different instance
@@ -6049,11 +6211,11 @@ export class AgentSession {
 	 * The half of a re-root that belongs to the PROCESS, not to one session.
 	 *
 	 * Every line here writes state shared by everything running in this process,
-	 * which is why only the session that owns the process runs it. Kept as its own
-	 * method so that boundary is a thing you can see rather than a comment you have
-	 * to trust: anything added here is process-global by construction, and anything
-	 * session-scoped belongs in {@link AgentSession.rescopeToCwd} beside the prompt
-	 * refresh.
+	 * which is why only the top-level session that holds or is claiming the
+	 * foreground runs it. Kept as its own method so that boundary is a thing you can
+	 * see rather than a comment you have to trust: anything added here is
+	 * process-global by construction, and anything session-scoped belongs in
+	 * {@link AgentSession.rescopeToCwd} beside the prompt refresh.
 	 *
 	 * ORDER IS LOAD-BEARING with the caller's: the base system prompt is assembled
 	 * from settings, capabilities and plugin roots, so it is rebuilt after all of
@@ -6074,8 +6236,11 @@ export class AgentSession {
 	 * Re-root the live session working directory for this session only.
 	 * Updates SessionManager cwd + header, aligns process project dir, re-scopes
 	 * settings/capabilities/plugins/prompt via {@link AgentSession.rescopeToCwd},
-	 * emits `cwd_changed`, and injects a visible/context system note. Never writes
-	 * profile `session.workdir` or other persisted settings.
+	 * emits `cwd_changed`, and injects a visible/context system note. A top-level
+	 * session in the background updates the header, the note and the event now and
+	 * defers the re-scope to {@link AgentSession.claimForeground}; nothing is
+	 * re-scoped, so nothing is rolled back. Never writes profile `session.workdir`
+	 * or other persisted settings.
 	 */
 	setCwd(newCwd: string, options?: { validate?: boolean }): Promise<string> {
 		return this.#runScopeTransition(() => this.#setCwd(newCwd, options));
@@ -6107,7 +6272,9 @@ export class AgentSession {
 
 	/**
 	 * Atomically relocate session storage/artifacts and the complete cwd-derived
-	 * runtime. A failed re-scope moves storage back before exposing the error.
+	 * runtime. A failed re-scope moves storage back before exposing the error. A
+	 * top-level session in the background moves storage now and defers the
+	 * re-scope to {@link AgentSession.claimForeground}.
 	 */
 	moveToCwd(newCwd: string, targetSessionDir?: string): Promise<string> {
 		return this.#runScopeTransition(async () => {
@@ -6723,6 +6890,24 @@ export class AgentSession {
 	/** Whether agent is currently streaming a response */
 	get isStreaming(): boolean {
 		return this.agent.state.isStreaming || this.#promptInFlightCount > 0;
+	}
+
+	/**
+	 * The assistant message streaming right now, in the display form listeners
+	 * received: argot handles decoded. A screen that attaches mid-answer opens
+	 * its live row from this, so it shows the same text the event stream shows.
+	 * `undefined` between messages.
+	 */
+	get displayedStreamMessage(): AssistantMessage | undefined {
+		return this.#displayedStreamMessage;
+	}
+
+	/**
+	 * When the running turn started, in ms since epoch; `undefined` between
+	 * turns. A screen that attaches mid-turn starts its clock here.
+	 */
+	get turnStartedAt(): number | undefined {
+		return this.#turnStartedAt;
 	}
 
 	get isAborting(): boolean {
@@ -8534,19 +8719,29 @@ export class AgentSession {
 	}
 
 	/**
-	 * The date and working directory as they stand now, or null when the model has
-	 * already been told exactly this.
+	 * The date, working directory and room peers as they stand now, or null when
+	 * the model has already been told exactly this.
 	 *
 	 * Deduped against the last block delivered, so a session that never re-roots
 	 * states them once and a session that re-roots restates them on the next turn.
 	 * Re-sending an unchanged block would grow the context every turn for no new
 	 * information, which is the cost this whole arrangement exists to avoid.
+	 *
+	 * Peers ride here rather than in the system prompt for the same reason the
+	 * cwd does: a peer opening or closing beside this conversation is a change
+	 * mid-session, and restating it as a turn message leaves the cached prompt
+	 * prefix intact.
 	 */
 	#buildSessionStateMessage(): CustomMessage | null {
+		// Numbered by seat, as the room view, `/room` and `@2` on `#room` number them.
+		const seats = this.#agentId ? this.#agentRegistry.roomSeats(this.#agentId) : [];
+		const peers = seats.flatMap((ref, index) => (ref.id === this.#agentId ? [] : [{ seat: index + 1, id: ref.id }]));
 		const content = prompt
 			.render(sessionPrompts["session/session-state"].text, {
 				date: formatLocalCalendarDate(),
 				cwd: shortenPath(normalizePromptPath(this.sessionManager.getCwd())),
+				seat: seats.findIndex(ref => ref.id === this.#agentId) + 1,
+				peers,
 			})
 			.trim();
 		if (content === this.#deliveredSessionState) return null;
@@ -16467,18 +16662,60 @@ export class AgentSession {
 		}
 		// Plan mode: record into context but do not wake an autonomous turn.
 		if (this.#planModeState?.enabled) {
-			this.agent.appendMessage(record);
-			this.sessionManager.appendCustomMessageEntry(
-				record.customType,
-				record.content,
-				record.display,
-				record.details,
-				record.attribution ?? "agent",
-			);
+			this.#foldIntoContext(record);
 			if (autoReply) void this.#runIrcAutoReply(msg);
 			return "injected";
 		}
 		// Idle: wake a real turn so the recipient responds (shared with the stranded-aside resume).
+		this.#wakeForIrc([record]);
+		return "woken";
+	}
+
+	/**
+	 * Take lines of this conversation's room channel (`#room`, see
+	 * `IrcBus.postToRoom`) into context; called by the IrcBus.
+	 *
+	 * - mid-turn → read at the next step boundary, like an aside → "working";
+	 * - idle → recorded into context for the next turn, and no turn starts
+	 *   → "idle";
+	 * - idle, and the line named this conversation with `wake` set → a turn
+	 *   starts with it → "woken". Plan mode never wakes.
+	 *
+	 * The room is several conversations each driven on its own, so a line
+	 * starts a turn only where it asked for one. `named` words the record as
+	 * addressed to this conversation whether or not it wakes it; `backlog`
+	 * words it as what the room said before this conversation joined.
+	 */
+	deliverRoomLines(
+		lines: readonly IrcRoomLine[],
+		opts: { named: boolean; wake: boolean; backlog?: boolean },
+	): IrcRoomDelivery {
+		if (this.#isDisposed) {
+			throw new Error("Recipient session is disposed.");
+		}
+		const last = lines.at(-1);
+		const record: CustomMessage = {
+			role: "custom",
+			customType: IRC_ROOM_MESSAGE_TYPE,
+			content: prompt.render(sideChannelPrompts["side-channel/irc-room"].text, {
+				lines,
+				named: opts.named,
+				backlog: opts.backlog === true,
+			}),
+			display: true,
+			details: { lines: lines.slice(), ...(opts.backlog ? { backlog: true } : {}) },
+			attribution: "agent",
+			timestamp: opts.backlog || !last ? Date.now() : last.ts,
+		};
+		void this.#emitSessionEvent({ type: "irc_message", message: record });
+		if (this.isStreaming) {
+			this.#pendingRoomLines.push({ record, wake: opts.wake });
+			return "working";
+		}
+		if (!opts.wake || this.#planModeState?.enabled) {
+			this.#foldIntoContext(record);
+			return "idle";
+		}
 		this.#wakeForIrc([record]);
 		return "woken";
 	}
@@ -16724,10 +16961,18 @@ export class AgentSession {
 	 * of the next prompt so the model still sees them.
 	 */
 	#flushPendingIrcAsides(): void {
-		if (this.#pendingIrcInterrupts.length === 0 && this.#pendingIrcAsides.length === 0) return;
+		if (
+			this.#pendingIrcInterrupts.length === 0 &&
+			this.#pendingIrcAsides.length === 0 &&
+			this.#pendingRoomLines.length === 0
+		) {
+			return;
+		}
 		const records = [...this.#pendingIrcInterrupts, ...this.#pendingIrcAsides];
+		for (const { record } of this.#pendingRoomLines) records.push(record);
 		this.#pendingIrcInterrupts = [];
 		this.#pendingIrcAsides = [];
+		this.#pendingRoomLines = [];
 		for (const record of records) {
 			// emitExternalEvent on message_end appends to agent state and dispatches
 			// to all session listeners, which in turn handle TUI rendering and

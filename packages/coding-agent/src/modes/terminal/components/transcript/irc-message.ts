@@ -1,11 +1,12 @@
 /**
  * The transcript card for live IRC traffic: `irc:incoming` DMs delivered to this session,
- * `irc:autoreply` side-channel replies sent on this session's behalf, and `irc:relay` observations
- * of agent-to-agent traffic.
+ * `irc:autoreply` side-channel replies sent on this session's behalf, `irc:relay` observations
+ * of agent-to-agent traffic, and `irc:room` lines of the room's `#room` channel.
  *
  * A terminal component rather than tool code: nothing here is a tool call, so no result reaches the
  * tool renderer and no host but this one draws it. It keeps the glyph and the indent the `irc` card
- * uses, so a delivered message and a message the model sent read the same way in the transcript.
+ * uses, so a delivered message and a message the model sent read the same way in the transcript. A
+ * room line is titled with the channel rather than `IRC`, and its glyph takes the room's colour.
  */
 import type { Component } from "@veyyon/tui";
 import { formatAge } from "@veyyon/utils";
@@ -21,8 +22,8 @@ const BODY_LINES_EXPANDED = 12;
 const BODY_LINE_WIDTH = 100;
 
 /** What the card is, drawn where an outcome icon would go: this row reports no outcome. */
-function ircGlyph(theme: Theme): string {
-	return theme.styledSymbol("tool.irc", "accent");
+function ircGlyph(theme: Theme, room: boolean): string {
+	return theme.styledSymbol("tool.irc", room ? "borderAccent" : "accent");
 }
 
 function messageAge(ts: number | undefined): string {
@@ -50,22 +51,32 @@ function bodyLines(body: string, expanded: boolean, theme: Theme): string[] {
 }
 
 export interface IrcMessageCard {
-	kind: "incoming" | "autoreply" | "relay";
+	kind: "incoming" | "autoreply" | "relay" | "room";
 	from?: string;
 	to?: string;
 	body?: string;
 	replyTo?: string;
 	timestamp?: number;
+	/** A room card holding the lines posted before this conversation joined the room. */
+	backlog?: boolean;
+}
+
+function cardTitle(card: IrcMessageCard, theme: Theme): string {
+	const from = replaceTabs(card.from?.trim() || "?");
+	switch (card.kind) {
+		case "incoming":
+			return `IRC ${theme.nav.back} ${from}`;
+		case "autoreply":
+			return `IRC ${theme.nav.selected} ${card.to?.trim() || "?"}`;
+		case "relay":
+			return `IRC ${from} ${theme.nav.selected} ${card.to?.trim() || "?"}`;
+		case "room":
+			return card.backlog ? "#room · before this conversation joined" : `#room ${theme.nav.back} ${from}`;
+	}
 }
 
 export function createIrcMessageCard(card: IrcMessageCard, getExpanded: () => boolean, uiTheme: Theme): Component {
-	const from = card.from?.trim() || "?";
-	const title =
-		card.kind === "incoming"
-			? `IRC ${uiTheme.nav.back} ${from}`
-			: card.kind === "autoreply"
-				? `IRC ${uiTheme.nav.selected} ${card.to?.trim() || "?"}`
-				: `IRC ${from} ${uiTheme.nav.selected} ${card.to?.trim() || "?"}`;
+	const title = cardTitle(card, uiTheme);
 	const body = card.body ?? "";
 	const meta: string[] = [];
 	if (card.kind === "autoreply") meta.push("auto");
@@ -75,7 +86,9 @@ export function createIrcMessageCard(card: IrcMessageCard, getExpanded: () => bo
 	return createCachedComponent(
 		getExpanded,
 		(width, expanded) => {
-			const lines = [renderStatusLine({ iconOverride: ircGlyph(uiTheme), title, meta }, uiTheme)];
+			const lines = [
+				renderStatusLine({ iconOverride: ircGlyph(uiTheme, card.kind === "room"), title, meta }, uiTheme),
+			];
 			if (body.trim()) lines.push(...bodyLines(body, expanded, uiTheme));
 			return lines.map(line => truncateToWidth(line, width, Ellipsis.Unicode));
 		},

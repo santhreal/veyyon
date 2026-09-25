@@ -95,6 +95,21 @@ export const MOTION = {
 	move: { spring: { stiffness: 260, damping: 30, mass: 1 } },
 	/** A value being nudged, e.g. a progress or context bar. */
 	settle: { spring: { stiffness: 170, damping: 26, mass: 1 } },
+	/**
+	 * A screen pulling back into a window, or a window pushing forward into the
+	 * screen: the room opening and a room member being entered. Eased out so the
+	 * first frame answers the key, but cubic rather than quint: on a cell grid a
+	 * quint curve covers four fifths of the distance in its first three frames
+	 * and reads as a cut, where cubic spreads the pull back over the frames a
+	 * 30 fps terminal paints.
+	 */
+	zoom: { duration: 420, easing: easeOutCubic },
+	/**
+	 * The quick switch between two room members: one continuous pull back,
+	 * travel and push in, symmetric because it leaves one resting screen for
+	 * another.
+	 */
+	travel: { duration: 360, easing: easeInOutCubic },
 } as const satisfies Record<string, AnimationCurve>;
 
 /** Either mode a motion can run in: a fixed curve, or a spring. */

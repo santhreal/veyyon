@@ -43,8 +43,8 @@ import {
 } from "../../../memory/hindsight";
 import { compactionActionLabel, resolveCompactionKind } from "../../../presentation/summary-builder";
 import { formatProviderName } from "../../../session/account-format";
-import type { AgentSession } from "../../../session/agent-session";
 import type { AsyncJobSnapshotItem } from "../../../session/agent-session-types";
+import type { HostedSession } from "../../../session/background-sessions";
 import { computeContextBreakdown } from "../../../session/context-usage";
 import type { OutputSummary } from "../../../session/streaming-output";
 import { limitMatchesActiveAccount } from "../../../slash-commands/helpers/active-oauth-account";
@@ -88,6 +88,7 @@ export type CommandControllerContext = Pick<
 	| "editorContainer"
 	| "flushCompactionQueue"
 	| "focusActiveEditorArea"
+	| "hostSession"
 	| "keybindings"
 	| "lspServers"
 	| "mcpManager"
@@ -871,7 +872,7 @@ export class CommandController {
 		const createNextSession = this.ctx.createNextSession;
 		if (!createNextSession || options || !this.ctx.session.isStreaming) return false;
 		if (!this.ctx.settings.get("session.newKeepsBackground")) return false;
-		let next: AgentSession;
+		let next: HostedSession;
 		try {
 			next = await createNextSession();
 		} catch (error) {
@@ -880,7 +881,8 @@ export class CommandController {
 			logger.warn("Falling back to an in-place new session", { error: errorMessage(error) });
 			return false;
 		}
-		const kept = this.ctx.attachMainSession(next);
+		await this.ctx.hostSession(next);
+		const kept = this.ctx.attachMainSession(next.session);
 		this.ctx.resetObserverRegistry();
 		setSessionTerminalTitle(this.ctx.sessionManager.getSessionName(), this.ctx.sessionManager.getCwd());
 		this.ctx.statusLine.invalidate();

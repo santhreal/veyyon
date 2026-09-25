@@ -28,7 +28,7 @@ import type { MCPManager } from "../../mcp";
 import type { PlanApprovalDetails } from "../../plan-mode/approved-plan";
 import type { StatusPresentationProducer } from "../../presentation/status-producer";
 import type { AgentSession } from "../../session/agent-session";
-import type { InteractiveSessionFactory, KeptSession } from "../../session/background-sessions";
+import type { HostedSession, InteractiveSessionFactory, KeptSession } from "../../session/background-sessions";
 import type { SubcommandDef } from "../../slash-commands/types";
 import type { Theme } from "../../theme/theme";
 import type { LspStartupServerInfo } from "../../tools";
@@ -45,6 +45,7 @@ import type { EvalExecutionComponent } from "./components/transcript/eval-execut
 import type { ToolExecutionHandle } from "./components/transcript/tool-execution";
 import type { TranscriptContainer } from "./components/transcript/transcript-container";
 import type { EventController } from "./controllers/event-controller";
+import type { RoomController } from "./controllers/room-controller";
 import type { OAuthManualInputManager } from "./oauth-manual-input";
 
 export type CompactionQueuedMessage = {
@@ -127,12 +128,43 @@ export interface InteractiveModeContext {
 	focusParentSession(): Promise<void>;
 	/** Return the view to the main session (delegates to SessionFocusController.unfocus). */
 	unfocusSession(): Promise<void>;
+	/** The sideways axis: the driving conversations beside this one and the room view between them. */
+	readonly room: RoomController;
+	/** The conversation the terminal launched with; it owns the MCP and job managers the others share. */
+	readonly launchSession: AgentSession;
 	/**
 	 * Build the session `/new` moves to while the displayed one finishes its
-	 * turn. Absent in a host that cannot create a second session, which makes
-	 * `/new` reset the current session in place as it always has.
+	 * turn, or a room opens beside the displayed one. Absent in a host that
+	 * cannot create a second session, which makes `/new` reset the current
+	 * session in place as it always has.
 	 */
 	createNextSession?: InteractiveSessionFactory;
+	/**
+	 * Take a session the factory built into this terminal: bind its tools and
+	 * extensions to the terminal UI (gated on it being on screen), and dispose it
+	 * at shutdown with the rest.
+	 */
+	hostSession(hosted: HostedSession): Promise<void>;
+	/**
+	 * Settle what an off-screen session holds on this terminal: its held dialogs
+	 * settle to their fallbacks, a takeover waiting for the screen rejects, its
+	 * autocomplete providers leave the editor, and a UI request it makes later
+	 * gets the off-screen answer at once. Call it before stopping the turn of a
+	 * session being closed, since a tool waiting on one of these holds the stop.
+	 */
+	dismissHeldUi(session: AgentSession): void;
+	/**
+	 * Stop tracking a session this terminal disposed early, so exit does not
+	 * dispose it again. Call it once the session's dispose has completed. The
+	 * launch session is never released.
+	 */
+	releaseHostedSession(session: AgentSession): void;
+	/** Dialogs `session` is holding until it is on screen with the room view closed. */
+	waitingDialogs(session: AgentSession): number;
+	/** Watch the held-dialog counts. Returns the unsubscribe. */
+	onWaitingDialogsChange(listener: () => void): () => void;
+	/** The room view closed: the conversation on screen presents the dialogs it held while the view covered it. */
+	roomViewClosed(): void;
 	/** Display `next` and hand the session being displayed to the background keeper. */
 	attachMainSession(next: AgentSession): KeptSession;
 	/** Clear loader, transient HUD/pending containers, streaming state, and pending tools. */
@@ -226,7 +258,6 @@ export interface InteractiveModeContext {
 	locallySubmittedUserSignatures: Set<string>;
 	lastSigintTime: number;
 	lastEscapeTime: number;
-	lastLeftTapTime: number;
 	shutdownRequested: boolean;
 	/** True once `shutdown()` has started. Read-only from the context;
 	 *  controllers use this to skip work that races with teardown. */
@@ -259,6 +290,8 @@ export interface InteractiveModeContext {
 	initializeHookRunner(uiContext: ExtensionUIContext, hasUI: boolean): void;
 	/** Stack extension autocomplete behavior on top of the built-in editor provider. */
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;
+	/** Take a factory {@link addAutocompleteProvider} stacked back off the editor. */
+	removeAutocompleteProvider(factory: AutocompleteProviderFactory): void;
 	setEditorComponent(
 		factory: ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor) | undefined,
 	): void;
@@ -317,7 +350,8 @@ export interface InteractiveModeContext {
 	flushPendingModelSwitch(): Promise<void>;
 	setWorkingMessage(message?: string): void;
 	applyPendingWorkingMessage(): void;
-	ensureLoadingAnimation(): void;
+	/** Mount the working line; `startedAt` anchors its clock at a turn already running. */
+	ensureLoadingAnimation(startedAt?: number): void;
 	startPendingSubmission(input: {
 		text: string;
 		images?: ImageContent[];

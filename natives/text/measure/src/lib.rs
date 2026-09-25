@@ -1638,6 +1638,10 @@ fn slice_with_width_impl(
 				}
 
 				if current_col >= start_col {
+					// The escapes seen before the start are the state the slice opens in,
+					// so they go out ahead of this one: a reset or close that follows a
+					// skipped cell must land after the open it cancels, not before it.
+					flush_pending_ansi(&mut out, line, &mut pending_ansi);
 					out.extend_from_slice(&line[i..i + seq_len]);
 				} else {
 					pending_ansi.push((i, seq_len));
@@ -2630,6 +2634,30 @@ mod tests {
 		let (out, width) = slice_with_width_impl(&data, 0, 5, false, DEFAULT_TAB_WIDTH);
 		assert_eq!(String::from_utf16_lossy(&out), "\x1b[31mhello\x1b[0m");
 		assert_eq!(width, 5);
+	}
+
+	/// A slice that starts past styled cells replays the escapes before its
+	/// start in source order. Emitting an in-range close ahead of the skipped
+	/// open it cancels leaves the first kept cell in a style the source line
+	/// never gave it: bold here, where the source had already turned bold off.
+	#[test]
+	fn a_slice_opens_in_the_style_the_source_has_at_its_start() {
+		let data = to_u16("\x1b[1mab\x1b[22mcd");
+		let (out, width) = slice_with_width_impl(&data, 2, 2, false, DEFAULT_TAB_WIDTH);
+		assert_eq!(String::from_utf16_lossy(&out), "\x1b[1m\x1b[22mcd");
+		assert_eq!(width, 2);
+
+		// The same order when the start cuts through a wide glyph that strict
+		// mode drops: the close after the dropped glyph still follows its open.
+		let data = to_u16("\x1b[3m漢\x1b[23m字");
+		let (out, width) = slice_with_width_impl(&data, 1, 3, true, DEFAULT_TAB_WIDTH);
+		assert_eq!(String::from_utf16_lossy(&out), "\x1b[3m\x1b[23m字");
+		assert_eq!(width, 2);
+
+		// A reset after the skipped cells cancels every open before it.
+		let data = to_u16("\x1b[48;5;23m\x1b[1m  \x1b[38;2;1;2;3m\x1b[0m│");
+		let (out, _) = slice_with_width_impl(&data, 2, 1, false, DEFAULT_TAB_WIDTH);
+		assert_eq!(String::from_utf16_lossy(&out), "\x1b[48;5;23m\x1b[1m\x1b[38;2;1;2;3m\x1b[0m│");
 	}
 
 	#[test]

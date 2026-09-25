@@ -109,6 +109,7 @@ import type { AgentSession } from "../../session/agent-session";
 import { type ResolvedRoleModel, SHUTDOWN_CONSOLIDATE_BUDGET_MS } from "../../session/agent-session-types";
 import {
 	BackgroundSessions,
+	type HostedSession,
 	type InteractiveSessionFactory,
 	type KeptSession,
 } from "../../session/background-sessions";
@@ -199,6 +200,7 @@ import { HomeAnchorLayout } from "./controllers/home-anchor-layout";
 import { InputController } from "./controllers/input-controller";
 import { MCPCommandController } from "./controllers/mcp-command-controller";
 import { OmfgController } from "./controllers/omfg-controller";
+import { RoomController } from "./controllers/room-controller";
 import { SelectorController } from "./controllers/selector-controller";
 import { SessionFocusController } from "./controllers/session-focus-controller";
 import { SSHCommandController } from "./controllers/ssh-command-controller";
@@ -426,7 +428,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	#pendingSubmittedInput: SubmittedUserInput | undefined;
 	lastSigintTime = 0;
 	lastEscapeTime = 0;
-	lastLeftTapTime = 0;
 	shutdownRequested = false;
 	#isShuttingDown = false;
 	#relaunchSpec: { argv: string[]; env?: Record<string, string | undefined> } | undefined;
@@ -489,6 +490,17 @@ export class InteractiveMode implements InteractiveModeContext {
 	readonly #inputController: InputController;
 	readonly #selectorController: SelectorController;
 	readonly #focusController: SessionFocusController;
+	readonly #roomController: RoomController;
+	/**
+	 * Every conversation this terminal runs: the one it launched with and each
+	 * one the session factory built for `/new` or the room. Shutdown disposes
+	 * all of them, not only the one on screen.
+	 */
+	readonly #hostedSessions = new Set<AgentSession>();
+	/** The conversation the terminal launched with: the owner of the MCP manager and job manager the others share. */
+	readonly launchSession: AgentSession;
+	/** The title and accent listener, on whichever conversation is on screen. */
+	#sessionNameUnsubscribe: (() => void) | undefined;
 	get viewSession(): AgentSession {
 		return this.#focusController.target ?? this.session;
 	}
@@ -506,6 +518,9 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 	unfocusSession(): Promise<void> {
 		return this.#focusController.unfocus();
+	}
+	get room(): RoomController {
+		return this.#roomController;
 	}
 	clearTransientSessionUi(): void {
 		this.#workingLoader.abandon();
@@ -616,6 +631,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		setToolNotifier: (notify: HostNotifier) => void = () => {},
 	) {
 		this.session = session;
+		this.launchSession = session;
+		this.#hostedSessions.add(session);
 		this.sessionManager = session.sessionManager;
 		this.settings = session.settings;
 		this.keybindings = this.#firstFrame?.keybindings ?? KeybindingsManager.inMemory();
@@ -761,6 +778,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// view is proxied onto an agent, and `focusedAgentId` reads through this
 		// controller. Everything else it needs from the host is read lazily.
 		this.#focusController = new SessionFocusController(this);
+		this.#roomController = new RoomController(this);
 		this.composerShortcuts = new ComposerShortcutsBar();
 		// A chip click runs the same action its keybinding runs; the editor owns
 		// those callbacks (input-controller assigns them with the full panel,
@@ -783,10 +801,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		// repaint that happens for another reason: a handed-off conversation
 		// produces no UI activity at all, so a chip refreshed by ambient redraws
 		// reads zero for as long as the operator sits still — which is exactly the
-		// stretch where an unwatched turn is spending.
-		this.statusLine.setBackgroundSessionCount(BackgroundSessions.global().size);
+		// stretch where an unwatched turn is spending. Room peers are left out:
+		// the room chip counts them.
+		this.statusLine.setBackgroundSessionCount(this.#roomController.unwatchedOutsideRoom());
 		this.#backgroundSessionsUnsubscribe = BackgroundSessions.global().subscribe(() => {
-			this.statusLine.setBackgroundSessionCount(BackgroundSessions.global().size);
+			this.statusLine.setBackgroundSessionCount(this.#roomController.unwatchedOutsideRoom());
 			this.ui.requestRender();
 		});
 		// The borderless composer, per the agreed design mockups: a static
@@ -826,7 +845,11 @@ export class InteractiveMode implements InteractiveModeContext {
 			}
 			if (segmentId === "context_pct" || segmentId === "context_total") {
 				this.handleContextCommand();
+				return;
 			}
+			// The room chip is the one place the other conversations are counted, so
+			// it is the handle for seeing them.
+			if (segmentId === "room") void this.#roomController.openView();
 		};
 
 		this.hideThinkingBlock = settings.get("hideThinkingBlock");
@@ -1017,8 +1040,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			// signals all funnel here). Without this a `/settings` change made just
 			// before quitting is lost inside the 100ms save debounce.
 			flushSettings: () => Settings.instance.flush(),
-			disposeSession: reason =>
-				this.session.dispose({ mnemopiConsolidateTimeoutMs: SHUTDOWN_CONSOLIDATE_BUDGET_MS, reason }),
+			disposeSession: reason => this.#disposeHostedSessions(reason),
 		});
 		// Forward the postmortem reason (SIGTERM/SIGHUP/uncaughtException/…) so the
 		// persisted `session_exit` diagnostic carries the real trigger. Postmortem
@@ -1118,6 +1140,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#layout.seedAfterMount();
 
 		this.#inputController.setupKeyHandlers();
+		this.#roomController.install();
 		this.editor.beginEarlySubmissions();
 		if (this.#eventBus) {
 			this.#observerRegistry.subscribeToEventBus(this.#eventBus);
@@ -1199,12 +1222,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// refresh) gets the terminal title + accent updates from here. Registered
 		// before initHooksAndCustomTools/#reconcileModeFromSession/#enterPlanMode —
 		// all of which can reach setSessionName during init.
-		this.#eventBusUnsubscribers.push(
-			this.sessionManager.onSessionNameChanged(() => {
-				setSessionTerminalTitle(this.sessionManager.getSessionName(), this.sessionManager.getCwd());
-				this.#handleSessionAccentInputsChanged();
-			}),
-		);
+		this.#subscribeSessionName();
 		this.#syncEditorMaxHeight();
 		this.isInitialized = true;
 		// THE HANDOVER IS A DIFF, NOT A REPAINT. A forced render rewrites every row of the viewport,
@@ -1512,6 +1530,13 @@ export class InteractiveMode implements InteractiveModeContext {
 	/** Stack extension autocomplete behavior on top of the built-in editor provider (#4919). */
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void {
 		this.#autocompleteProviderFactories.push(factory);
+		this.#applyAutocompleteProvider();
+	}
+
+	removeAutocompleteProvider(factory: AutocompleteProviderFactory): void {
+		const index = this.#autocompleteProviderFactories.indexOf(factory);
+		if (index === -1) return;
+		this.#autocompleteProviderFactories.splice(index, 1);
 		this.#applyAutocompleteProvider();
 	}
 
@@ -3509,6 +3534,8 @@ export class InteractiveMode implements InteractiveModeContext {
 			unsubscribe();
 		}
 		this.#eventBusUnsubscribers = [];
+		this.#sessionNameUnsubscribe?.();
+		this.#sessionNameUnsubscribe = undefined;
 		this.#observerRegistry.dispose();
 		this.#agentRegistryUnsubscribe?.();
 		this.#agentRegistryUnsubscribe = undefined;
@@ -3586,6 +3613,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#btwController.dispose();
 		this.#omfgController.dispose();
 		this.#focusController.dispose();
+		this.#roomController.dispose();
 
 		// Surface an explicit "Closing session…" line so the user sees a reason
 		// for the pause while `session.dispose()` flushes memory consolidate and
@@ -3602,20 +3630,24 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#freezeFrameProduction();
 
 		// A session handed off by `/new` is still finishing its turn and owns its
-		// own transcript writer, so wait for it before the UI stops. Its turn is
-		// already bounded by the agent loop; nothing new can be submitted to it.
+		// own transcript writer, so wait for it before the UI stops, and give a
+		// room member working off screen the same grace. Its turn is already
+		// bounded by the agent loop; nothing new can be submitted to it.
+		for (const hosted of this.#hostedSessions) {
+			if (hosted !== this.session && hosted.isStreaming) BackgroundSessions.global().keep(hosted);
+		}
 		await BackgroundSessions.global().drain();
 
-		// Persist the draft and dispose the session through the shared teardown
-		// so a signal that arrives mid-shutdown cannot fire a second dispose.
-		// The teardown is a promise-memoized singleton; whichever path calls it
-		// first runs the work, the other awaits the same settled promise.
+		// Persist the draft and dispose every session through the shared
+		// teardown so a signal that arrives mid-shutdown cannot fire a second
+		// dispose. The teardown is a promise-memoized singleton; whichever path
+		// calls it first runs the work, the other awaits the same settled promise.
 		// The teardown is registered lazily in `init()` — a `/exit` reached
 		// before `init()` completed falls back to a direct dispose.
 		if (this.#signalTeardown) {
 			await this.#signalTeardown();
 		} else {
-			await this.session.dispose({ mnemopiConsolidateTimeoutMs: SHUTDOWN_CONSOLIDATE_BUDGET_MS });
+			await this.#disposeHostedSessions();
 		}
 
 		// Do not force a final render during teardown: disposed session/UI state can
@@ -3837,8 +3869,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 	}
 
-	ensureLoadingAnimation(): void {
-		this.#workingLoader.ensure();
+	ensureLoadingAnimation(startedAt?: number): void {
+		this.#workingLoader.ensure(startedAt);
 		// The board's motion is owed by the agent moving, and this is the edge
 		// where it starts. Nothing else on this path touches the anchored
 		// regions, so without it a board that was still when the turn began
@@ -4535,12 +4567,17 @@ export class InteractiveMode implements InteractiveModeContext {
 	 *
 	 * Every controller reads `ctx.session` dynamically and none caches its own
 	 * reference, so reassigning the four session-derived fields re-points the
-	 * whole UI at once. The two event subscriptions and the status line are the
-	 * only holders of a session reference that must be moved by hand.
+	 * whole UI at once. The two event subscriptions, the status line and the
+	 * title listener are the only holders of a session reference that must be
+	 * moved by hand; the composer's draft leaves with the conversation that typed
+	 * it and `next`'s comes back, whichever path attached it; the dialogs `next`
+	 * held while it was off screen are presented now that it is on screen.
 	 *
 	 * `next` may already be streaming — that is what re-attaching a session
-	 * handed off earlier looks like — so the turn state a missed `agent_start`
-	 * would have armed is armed here instead.
+	 * handed off earlier looks like. The caller rebuilds the transcript and
+	 * then calls `eventController.resumeTurn()`, which arms the turn state a
+	 * missed `agent_start` would have armed and opens the message `next` is
+	 * writing; arming it here would be undone by that rebuild.
 	 */
 	attachMainSession(next: AgentSession): KeptSession {
 		const previous = this.session;
@@ -4548,6 +4585,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		// the background set: that set is what the status line counts, and a visible
 		// conversation counted there reports off-screen spend to someone watching it.
 		if (next === previous) return BackgroundSessions.global().describeAttached(previous);
+		// The session leaving the screen stops driving the process-wide project
+		// scope: a directory it moves to while off screen waits until it is back.
+		// The caller claimed the scope for `next` before this swap when it
+		// could differ; a session created for this screen already holds it.
+		previous.releaseForeground();
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
 		this.#goalMode.unsubscribeFromSession();
@@ -4560,7 +4602,82 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#goalMode.subscribeToSession();
 		this.statusProducer.setSession(next);
 		this.statusLine.setSource(this.statusProducer);
-		if (next.isStreaming) void this.#eventController.handleEvent({ type: "agent_start" });
-		return BackgroundSessions.global().keep(previous);
+		this.#subscribeSessionName();
+		this.#handleSessionAccentInputsChanged();
+		// Extension autocomplete applies for the conversation on screen only.
+		this.#applyAutocompleteProvider();
+		this.#roomController.sessionAttached(previous, next);
+		const kept = BackgroundSessions.global().keep(previous);
+		this.#extensionUiController.sessionAttached(next, previous);
+		return kept;
+	}
+
+	/**
+	 * The terminal title and the session accent follow the conversation on
+	 * screen, including a rename that happens while it is on screen, and only
+	 * that one: a conversation renamed off screen changes neither.
+	 */
+	#subscribeSessionName(): void {
+		this.#sessionNameUnsubscribe?.();
+		const sessionManager = this.sessionManager;
+		this.#sessionNameUnsubscribe = sessionManager.onSessionNameChanged(() => {
+			if (sessionManager !== this.sessionManager) return;
+			setSessionTerminalTitle(sessionManager.getSessionName(), sessionManager.getCwd());
+			this.#handleSessionAccentInputsChanged();
+		});
+	}
+
+	async hostSession(hosted: HostedSession): Promise<void> {
+		this.#hostedSessions.add(hosted.session);
+		await this.#extensionUiController.bindSession(hosted.session, hosted.bindings);
+	}
+
+	dismissHeldUi(session: AgentSession): void {
+		if (session === this.session) return;
+		this.#extensionUiController.sessionReleased(session);
+	}
+
+	releaseHostedSession(session: AgentSession): void {
+		if (session === this.launchSession) return;
+		// Idempotent after `dismissHeldUi`, and what settles the UI of a caller that skipped it.
+		this.#extensionUiController.sessionReleased(session);
+		this.#hostedSessions.delete(session);
+	}
+
+	waitingDialogs(session: AgentSession): number {
+		return this.#extensionUiController.waitingDialogs(session);
+	}
+
+	onWaitingDialogsChange(listener: () => void): () => void {
+		return this.#extensionUiController.onWaitingDialogsChange(listener);
+	}
+
+	roomViewClosed(): void {
+		this.#extensionUiController.roomViewClosed();
+	}
+
+	/**
+	 * Dispose every conversation this terminal runs, the launch session last:
+	 * the others share its MCP manager and job manager, and disposing it first
+	 * would disconnect servers they are still flushing through. Each off-screen
+	 * conversation's unsent draft is written beside its transcript first, the
+	 * way the one on screen has its draft written by the teardown.
+	 */
+	async #disposeHostedSessions(reason?: postmortem.Reason): Promise<void> {
+		const options = { mnemopiConsolidateTimeoutMs: SHUTDOWN_CONSOLIDATE_BUDGET_MS, reason };
+		await this.#roomController.persistDrafts();
+		// A tool waiting on a dialog of a conversation off screen holds its dispose.
+		for (const session of this.#hostedSessions) {
+			if (session !== this.session) this.#extensionUiController.sessionReleased(session);
+		}
+		const others = [...this.#hostedSessions].filter(session => session !== this.launchSession);
+		await Promise.all(
+			others.map(session =>
+				session.dispose(options).catch((error: unknown) => {
+					logger.warn("A hosted conversation failed to dispose", { error: errorMessage(error) });
+				}),
+			),
+		);
+		await this.launchSession.dispose(options);
 	}
 }

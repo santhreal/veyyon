@@ -10,7 +10,7 @@
 
 /** A decoded SGR mouse report. */
 export interface SgrMouseEvent {
-	/** Raw button code (bit 32 = motion, bit 64 = wheel, low bits = button). */
+	/** Raw button code (bit 4 = shift, 8 = meta, 16 = ctrl, 32 = motion, 64 = wheel, low bits = button). */
 	button: number;
 	/** 0-based column of the event. */
 	col: number;
@@ -18,9 +18,16 @@ export interface SgrMouseEvent {
 	row: number;
 	/** True for a release report (`m` suffix). */
 	release: boolean;
-	/** Wheel direction: -1 up, 1 down, null when not a wheel event. */
+	/** Vertical wheel direction: -1 up, 1 down, null when not a vertical wheel event. */
 	wheel: -1 | 1 | null;
-	/** True when the pointer moved (hover or drag) rather than clicked. */
+	/**
+	 * Horizontal wheel direction: -1 left, 1 right, null when not a horizontal wheel event.
+	 * A trackpad swipe sideways reports here (xterm buttons 6/7, codes 66/67), never in `wheel`.
+	 */
+	hwheel: -1 | 1 | null;
+	/** True when Shift was held, so a consumer may read Shift+vertical wheel as horizontal scroll. */
+	shift: boolean;
+	/** True when the pointer moved (hover or drag) rather than clicked. Never set for a wheel report. */
 	motion: boolean;
 	/** True for a left-button press (not motion, not release, not wheel). */
 	leftClick: boolean;
@@ -38,10 +45,16 @@ export function parseSgrMouse(data: string): SgrMouseEvent | null {
 	const col = Number(match[2]) - 1;
 	const row = Number(match[3]) - 1;
 	const release = match[4] === "m";
-	const wheel = button & 64 ? ((button & 1 ? 1 : -1) as 1 | -1) : null;
-	const motion = (button & 32) !== 0 && wheel === null;
-	const leftClick = !release && wheel === null && !motion && (button & 3) === 0;
-	return { button, col, row, release, wheel, motion, leftClick };
+	// Bit 64 marks a wheel report; its low two bits pick the axis and sign:
+	// 0 up, 1 down (vertical), 2 left, 3 right (horizontal).
+	const isWheel = (button & 64) !== 0;
+	const low = button & 3;
+	const wheel = isWheel && low < 2 ? ((low === 1 ? 1 : -1) as 1 | -1) : null;
+	const hwheel = isWheel && low >= 2 ? ((low === 3 ? 1 : -1) as 1 | -1) : null;
+	const shift = (button & 4) !== 0;
+	const motion = (button & 32) !== 0 && !isWheel;
+	const leftClick = !release && !isWheel && !motion && low === 0;
+	return { button, col, row, release, wheel, hwheel, shift, motion, leftClick };
 }
 
 /** Handler invoked with a decoded SGR event; returning `false` reports unhandled. */

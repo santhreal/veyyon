@@ -95,7 +95,8 @@ export class AgentTransitionError extends Error {
  *   attribution and Control Center observability, but never a peer — hidden from
  *   agent-facing rosters (`irc`, `history://`) and not messageable/revivable.
  */
-export type AgentKind = "main" | "sub" | "advisor";
+export const AGENT_KINDS = ["main", "sub", "advisor"] as const;
+export type AgentKind = (typeof AGENT_KINDS)[number];
 
 /**
  * A tool call that has stopped and is waiting for a human to answer it.
@@ -150,6 +151,17 @@ export interface AgentRef {
 	 * filter can only hide an agent both sides positively agree belongs elsewhere.
 	 */
 	scope?: string;
+	/**
+	 * The room this driving agent sits in: a process-unique id shared by every
+	 * `kind: "main"` ref one terminal opened side by side. Two refs with the same
+	 * room are peers; each keeps its own {@link scope} and its own spawns.
+	 *
+	 * Undefined for a spawned agent, an advisor, a collab mirror and every root a
+	 * host registered on its own (ACP, cmux, the SDK), so a host serving several
+	 * clients never lists one client's conversation as a peer of another. Only a
+	 * caller that stated a room, or {@link AgentRegistry.ensureRoom}, sets it.
+	 */
+	room?: string;
 	/** Short gist of what the agent is currently doing (latest intent or tool), for the work-aware roster. Display-only. */
 	activity?: string;
 	/** Model the agent runs on, as a `provider/id` string. Display-only; undefined when not known at registration. */
@@ -187,6 +199,13 @@ export interface AgentRef {
 	approvalWaitedMs?: number;
 }
 
+/** A room member with a session attached: one that holds a seat. See {@link AgentRegistry.roomSeats}. */
+export type SeatedAgentRef = AgentRef & { readonly session: AgentSession };
+
+function isSeated(ref: AgentRef): ref is SeatedAgentRef {
+	return ref.session !== null;
+}
+
 export type RegistryEvent =
 	| { type: "registered"; ref: AgentRef }
 	| { type: "status_changed"; ref: AgentRef }
@@ -203,6 +222,8 @@ export interface RegisterInput {
 	sessionFile?: string | null;
 	/** Conversation root; inherited from `parentId` when omitted. See {@link AgentRef.scope}. */
 	scope?: string;
+	/** Room membership. See {@link AgentRef.room}. Only meaningful for `kind: "main"`. */
+	room?: string;
 	status?: AgentStatus;
 	/** Model the agent runs on, as a `provider/id` string. */
 	model?: string;
@@ -250,6 +271,13 @@ export class AgentRegistry {
 	 * scope makes a whole spawn tree one scope, however deep it nests.
 	 */
 	register(input: RegisterInput): AgentRef {
+		// A room is joined, never named into being: an id nobody opened with
+		// {@link ensureRoom} is a caller's mistake or a guess, and accepting it
+		// would put this driver in a room with strangers or in a room of one that
+		// the next caller who repeats the string walks into.
+		if (input.kind === "main" && input.room !== undefined && !this.#roomHeld(input.room)) {
+			throw new Error(`Room "${input.room}" is not open in this process; open one with AgentRegistry.ensureRoom.`);
+		}
 		const now = Date.now();
 		const ref: AgentRef = {
 			id: input.id,
@@ -263,6 +291,7 @@ export class AgentRegistry {
 			lastActivity: input.lastActivity ?? now,
 			model: input.model,
 			scope: input.scope ?? this.#deriveScope(input),
+			room: input.kind === "main" ? input.room : undefined,
 		};
 		// An id is the key, so registering one twice REPLACES the earlier agent.
 		// That is legitimate when the same agent re-registers (a revive re-attaches
@@ -521,6 +550,39 @@ export class AgentRegistry {
 	}
 
 	/**
+	 * The driving agent of `id`'s conversation: `id` itself when it drives one,
+	 * else the `kind: "main"` ref of the same scope, the conversation a spawn at
+	 * any depth belongs to. A spawn with no scope belongs to whatever driver its
+	 * parent chain leads to. Undefined for an unknown id, or one whose
+	 * conversation has no driver any more: a spawn of a conversation that closed,
+	 * or one a driver left behind when it re-rooted to another transcript
+	 * ({@link rescope}), which still names that driver as its parent.
+	 *
+	 * Exact scope, not {@link sameScope}: an unattributed scope matches every
+	 * conversation, and a job's result handed to whichever driver came first is
+	 * the misdelivery this answers for.
+	 */
+	driverOf(id: string): AgentRef | undefined {
+		const ref = this.#refs.get(id);
+		if (ref === undefined) return undefined;
+		if (ref.kind === "main") return ref;
+		const scope = ref.scope;
+		if (scope !== undefined) {
+			for (const candidate of this.#refs.values()) {
+				if (candidate.kind === "main" && candidate.scope === scope) return candidate;
+			}
+			return undefined;
+		}
+		// Bounded by the registry's size, so a parent loop ends.
+		let step: AgentRef | undefined = ref;
+		for (let depth = 0; step !== undefined && depth <= this.#refs.size; depth++) {
+			if (step.kind === "main") return step;
+			step = step.parentId === undefined ? undefined : this.#refs.get(step.parentId);
+		}
+		return undefined;
+	}
+
+	/**
 	 * The conversation-boundary decision, for every caller holding two agent ids that needs to know
 	 * whether one may reach the other. `irc send`, `irc list`, `irc wait`'s liveness watch and the
 	 * job tool's roster route through this, or through the two list methods below, which are defined
@@ -536,7 +598,114 @@ export class AgentRegistry {
 		if (senderId === targetId) return false;
 		const target = this.#refs.get(targetId);
 		if (!target || target.kind === "advisor") return false;
+		if (this.isPeer(senderId, targetId)) return true;
 		return AgentRegistry.sameScope(target.scope, this.scopeOf(senderId));
+	}
+
+	/**
+	 * Whether `a` and `b` are two driving agents of one room.
+	 *
+	 * Peer reach is driver to driver only. A spawn belongs to one conversation
+	 * and its `Main` is that conversation's driver; the driver next door is a
+	 * stranger to it, and the scope rule keeps it that way. A room with no id on
+	 * either side is no room: an undefined room never matches, unlike an
+	 * undefined scope, because a host that never opened a room must not have
+	 * every root it registered turn into everyone's peer.
+	 */
+	isPeer(a: string, b: string): boolean {
+		if (a === b) return false;
+		const left = this.#refs.get(a);
+		const right = this.#refs.get(b);
+		return (
+			left !== undefined &&
+			right !== undefined &&
+			left.kind === "main" &&
+			right.kind === "main" &&
+			left.room !== undefined &&
+			left.room === right.room
+		);
+	}
+
+	/**
+	 * The other driving agents in `id`'s room, oldest first. Empty when `id` is
+	 * in no room. `aborted` refs are dropped: a peer that was killed has nothing
+	 * to switch to and nothing to message.
+	 *
+	 * One pass over the refs with `id` resolved once, rather than `isPeer` per
+	 * ref: this runs on every turn (`<session-state>`) and on every registry
+	 * event the room view redraws for, against a registry that holds every
+	 * spawn of every conversation in the process.
+	 */
+	peers(id: string): AgentRef[] {
+		return this.#room(id, false);
+	}
+
+	/**
+	 * Every driving agent in `id`'s room including `id` itself, oldest first;
+	 * `[id]` alone when it is in no room. The order the room view shows and the
+	 * order the next and previous keys cycle, so both read one definition. Built by
+	 * filtering the registry's own order rather than by prepending `id`, so two
+	 * members registered in the same millisecond keep registration order and
+	 * the list reads the same from every member's point of view.
+	 */
+	roomMembers(id: string): AgentRef[] {
+		return this.#room(id, true);
+	}
+
+	/**
+	 * `id`'s room as it is numbered: {@link roomMembers} with a session
+	 * attached, so seat 2 is the second of them. The room view, `/room` and
+	 * the `#room` channel all count from this list, so `2` names the same
+	 * conversation in each. A member that registered and has no session yet is
+	 * still being built and holds no seat.
+	 */
+	roomSeats(id: string): SeatedAgentRef[] {
+		return this.#room(id, true).filter(isSeated);
+	}
+
+	/** The peers of `id` per {@link isPeer}, with `id` itself included when `self` is set. */
+	#room(id: string, self: boolean): AgentRef[] {
+		const own = this.#refs.get(id);
+		if (own === undefined) return [];
+		const room = own.kind === "main" ? own.room : undefined;
+		const out: AgentRef[] = [];
+		for (const ref of this.#refs.values()) {
+			if (ref === own) {
+				if (self) out.push(ref);
+			} else if (room !== undefined && ref.kind === "main" && ref.room === room && ref.status !== "aborted") {
+				out.push(ref);
+			}
+		}
+		return out.sort((a, b) => a.createdAt - b.createdAt);
+	}
+
+	/**
+	 * The room `id` is in, opening one when it has none. The terminal calls this
+	 * on the driving session the moment a second conversation is opened beside
+	 * it, so the first session pays nothing until a peer exists and a host that
+	 * never opens one never joins a room. Returns undefined for an unknown id or
+	 * a ref that is not a driver: only a driving agent can hold a room.
+	 *
+	 * The id is random, not derived from the driver: a room is reached by being
+	 * handed its id by a member, and a derivable one could be named into by any
+	 * host that registers a driver in this process.
+	 */
+	ensureRoom(id: string): string | undefined {
+		const ref = this.#refs.get(id);
+		if (ref?.kind !== "main") return undefined;
+		if (ref.room === undefined) {
+			ref.room = `room:${crypto.randomUUID()}`;
+			this.#emit({ type: "status_changed", ref });
+		}
+		return ref.room;
+	}
+
+	/** Whether a live driving agent holds `room`. */
+	#roomHeld(room: string): boolean {
+		for (const ref of this.#refs.values()) {
+			if (ref.kind === "main" && ref.room === room && ref.status !== "aborted") return true;
+		}
+		return false;
 	}
 
 	/**

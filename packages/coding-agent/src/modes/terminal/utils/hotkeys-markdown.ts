@@ -62,6 +62,8 @@ export function buildHotkeysMarkdown(bindings: HotkeysMarkdownBindings): string 
 		`| \`${key(bindings, "app.clipboard.pasteImage")}\` | Paste image or text from clipboard |`,
 		"| Hold `Space` | Speech-to-text (push-to-talk): hold to record, release to transcribe |",
 		`| \`${key(bindings, "app.agents.hub")}\` / \`${key(bindings, "app.session.observe")}\` / double-tap \`←\` (empty editor) | Open the agent dashboard |`,
+		`| \`${key(bindings, "app.room.view")}\` / double-tap \`→\` (empty editor) | Open the room view: every conversation in this terminal (\`/room help\` explains it) |`,
+		`| \`${key(bindings, "app.room.next")}\` / \`${key(bindings, "app.room.previous")}\` | Next / previous conversation in the room |`,
 		"| `#<number>` | GitHub issue/PR reference (e.g. `#3164` → `pr://3164` or `issue://3164`) |",
 		"| `#` / `#<text>` | Prompt actions (copy / undo / move cursor) |",
 		"| `/` | Slash commands |",

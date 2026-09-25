@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent, type AgentTool, type AsideMessage } from "@veyyon/agent-core";
+import { Agent, type AgentTool, type AsideBoundary, type AsideMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, TextContent, ToolCall } from "@veyyon/ai";
 import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { getBundledModel } from "@veyyon/catalog/models";
@@ -43,7 +43,7 @@ describe("AgentSession mid-run todo reconciliation nudge", () => {
 	let authStorage: AuthStorage;
 	let modelRegistry: ModelRegistry;
 	let reminderEvents: Array<Extract<AgentSessionEvent, { type: "todo_reminder" }>>;
-	let asideProvider: (() => AsideMessage[] | Promise<AsideMessage[]>) | undefined;
+	let asideProvider: ((boundary: AsideBoundary) => AsideMessage[] | Promise<AsideMessage[]>) | undefined;
 
 	const THRESHOLD = 12; // mirrors MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD
 	const MAX_PER_CYCLE = 2; // mirrors MID_RUN_TODO_NUDGE_MAX_PER_CYCLE
@@ -132,7 +132,7 @@ describe("AgentSession mid-run todo reconciliation nudge", () => {
 
 	async function drainNudges(): Promise<CustomMessage[]> {
 		if (!asideProvider) throw new Error("aside provider was never captured");
-		const thunks = await asideProvider();
+		const thunks = await asideProvider("step");
 		const out: CustomMessage[] = [];
 		for (const entry of thunks) {
 			const message = typeof entry === "function" ? entry() : entry;
@@ -301,7 +301,7 @@ describe("AgentSession mid-run todo reconciliation nudge", () => {
 		for (let i = 0; i < THRESHOLD; i++) emitToolResult("edit");
 
 		if (!asideProvider) throw new Error("aside provider was never captured");
-		const result = asideProvider();
+		const result = asideProvider("step");
 		if (result instanceof Promise) throw new Error("aside provider unexpectedly returned a Promise");
 		const nudges = result
 			.map(entry => (typeof entry === "function" ? entry() : entry))

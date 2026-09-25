@@ -66,8 +66,13 @@ const BARRELS = ["@veyyon/tui", "@veyyon/utils", "@veyyon/agent-core", "@veyyon/
  * `UNICODE_SYMBOLS`, which `theme/symbols.ts` reads, so `contracts/view/src/index.ts` and
  * `contracts/view/src/symbols.ts` evaluate where the package was reached by type only. The
  * ceiling keeps one leaf of margin over the measurement, still well under the barrel edge.
+ *
+ * RE-MEASURED 2026-09-24 at 353, from 352: the render cadence and the render scheduler moved out
+ * of `hosts/terminal/engine/src/core/tui.ts` into `core/render-scheduler.ts` to hold the engine
+ * under its line ceiling. A split of code the shell already evaluated, so the shell runs nothing
+ * new; the ceiling keeps its one leaf of margin.
  */
-const SHELL_GRAPH_MODULE_CEILING = 353;
+const SHELL_GRAPH_MODULE_CEILING = 355;
 
 async function probe(code: string): Promise<number> {
 	const { stdout } = await run("bun", ["-e", code], { cwd: repoRoot, maxBuffer: 1 << 24 });

@@ -488,6 +488,7 @@ describe("the distinct-bare-form exception", () => {
 			todo: "bare renders the list; every subcommand mutates it",
 			compact: "bare compacts with the default mode; the subcommands are the other modes",
 			plugins: "bare lists plugins, and `list` is a synonym for it, not a hidden branch",
+			room: "bare opens the room view, which is none of list/new/help; a number or an id switches",
 		};
 
 		const waived = SUBCOMMAND_BEARING.filter(declaration => declaration.bareAction === "distinct")

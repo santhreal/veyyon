@@ -32,7 +32,17 @@ beforeAll(() => initTheme());
 
 function clickAt(col: number, row = 0): { event: SgrMouseEvent; line: number; col: number } {
 	return {
-		event: { button: 0, col, row, release: false, wheel: null, motion: false, leftClick: true },
+		event: {
+			button: 0,
+			col,
+			row,
+			release: false,
+			wheel: null,
+			hwheel: null,
+			shift: false,
+			motion: false,
+			leftClick: true,
+		},
 		line: row,
 		col,
 	};

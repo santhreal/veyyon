@@ -73,6 +73,11 @@ const LEGACY_RUNTIME_READERS: readonly string[] = [
 	"controllers/goal-mode-controller.ts",
 	"controllers/input-controller.ts",
 	"controllers/omfg-rule.ts",
+	"controllers/room-controller.ts",
+	// Projects each room member's live session into the view-model the room
+	// stage draws (`components/room/room-view-model.ts`); the stage itself reads
+	// no runtime, which is the split this ledger asks for.
+	"controllers/room-window-feed.ts",
 	"controllers/selector-controller.ts",
 	"controllers/session-focus-controller.ts",
 	"controllers/tan-command-controller.ts",

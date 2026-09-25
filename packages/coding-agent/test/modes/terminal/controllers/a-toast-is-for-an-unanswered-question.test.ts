@@ -83,6 +83,7 @@ function makeContext(stopReason: "stop" | "aborted"): InteractiveModeContext {
 		viewSession: sessionMock,
 		refreshComposerShortcuts: vi.fn(),
 		dismissWelcome: vi.fn(),
+		room: { labelOf: () => undefined },
 	} as unknown as InteractiveModeContext;
 }
 

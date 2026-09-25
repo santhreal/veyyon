@@ -24,6 +24,7 @@ import sideChannelBackgroundTanDispatch from "./background-tan-dispatch.md" with
 import sideChannelBtwUser from "./btw-user.md" with { type: "text" };
 import sideChannelIrcAutoreply from "./irc-autoreply.md" with { type: "text" };
 import sideChannelIrcIncoming from "./irc-incoming.md" with { type: "text" };
+import sideChannelIrcRoom from "./irc-room.md" with { type: "text" };
 import sideChannelOmfgUser from "./omfg-user.md" with { type: "text" };
 import sideChannelRecapUser from "./recap-user.md" with { type: "text" };
 import sideChannelSideChannelNoTools from "./side-channel-no-tools.md" with { type: "text" };
@@ -47,6 +48,10 @@ export const sideChannelPrompts = definePromptRows({
 	"side-channel/irc-incoming": {
 		text: sideChannelIrcIncoming,
 		purpose: "delivers an incoming IRC message from another agent",
+	},
+	"side-channel/irc-room": {
+		text: sideChannelIrcRoom,
+		purpose: "delivers lines of the room's #room channel to a driving conversation",
 	},
 	"side-channel/omfg-user": {
 		text: sideChannelOmfgUser,

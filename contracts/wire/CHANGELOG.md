@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `IrcMessageCustomDisplay` takes `kind: "room"` for a line of a room's `#room` channel, and `backlog` for the card holding the lines posted before a conversation joined.
+
+### Changed
+
+- `StatusDataSource.markActivityStart` takes an optional `startedAt` that anchors the running window there, so a screen attaching to a running turn shows the turn's age.
+
 ## [1.5.0] - 2026-09-18
 
 ### Breaking Changes

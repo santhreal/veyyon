@@ -184,9 +184,13 @@ describe("the split kept one set of commands", () => {
 	 *     so the reply varies with it. The command sends one fixed instruction, and refuses unless
 	 *     the conversation is resting on a finished reply — there is nothing to rephrase mid-turn,
 	 *     or after a turn that produced only tool calls or an error.
+	 *   - UP to 76: `/room` was added. A second driving conversation beside the displayed one had
+	 *     no way in but a `/new` hand-off, which counts the conversation it leaves as background
+	 *     spend and offers no way back. `/room new` opens a peer, `/room` lists the room, and
+	 *     `/room <n>` switches; the `→→` gesture opens the same strip from an empty composer.
 	 */
-	it("there are the 75 builtins the declarations hold", () => {
-		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(75);
+	it("there are the 76 builtins the declarations hold", () => {
+		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(76);
 	});
 
 	/**

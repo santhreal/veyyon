@@ -15,10 +15,27 @@ import { errorMessage, formatDuration, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { AgentRegistry } from "../../registry/agent-registry";
-import { IrcBus, type IrcDeliveryReceipt, type IrcMessage } from "../../task/irc-bus";
+import {
+	IrcBus,
+	type IrcDeliveryReceipt,
+	type IrcMessage,
+	type IrcRoomReceipt,
+	ROOM_CHANNEL,
+	ROOM_POST_MAX_CHARS,
+	ROOM_WAKE_CAP,
+	roomSeatLabel,
+} from "../../task/irc-bus";
 import type { ToolSession } from "..";
 
 const DEFAULT_IRC_TIMEOUT_MS = 120_000;
+
+/** When a conversation reads a `#room` post, as the poster's receipt says it. */
+const ROOM_OUTCOME_TEXT: Record<IrcRoomReceipt["outcome"], string> = {
+	working: "working; reads it at its next step",
+	idle: "idle; reads it at its next turn",
+	woken: "woken by it",
+	failed: "failed",
+};
 
 // Re-exported for back-compat: the definition lives in the light module so the
 // tool registry can gate irc without loading this implementation at boot.
@@ -48,6 +65,17 @@ interface IrcPeerInfo {
 	unread: number;
 	lastActivity: number;
 	activity?: string;
+	/** True for a driving agent in the sender's room. See `AgentRegistry.peers`. */
+	room?: true;
+}
+
+/** A conversation `#room` reaches, as `irc list` shows it. */
+export interface IrcRoomSeat {
+	id: string;
+	/** How the room numbers it: `2 · parser whitespace`, or `conversation 2`. */
+	label: string;
+	/** The conversation that listed the room. */
+	self?: true;
 }
 
 export interface IrcDetails {
@@ -55,10 +83,14 @@ export interface IrcDetails {
 	from?: string;
 	to?: string;
 	receipts?: IrcDeliveryReceipt[];
+	/** What became of a `#room` post at each conversation it reached. */
+	room?: IrcRoomReceipt[];
 	/** Message consumed by `wait` / `send await:true`; null when the wait timed out. */
 	waited?: IrcMessage | null;
 	inbox?: IrcMessage[];
 	peers?: IrcPeerInfo[];
+	/** `list` from a driving agent in a room: every conversation `#room` reaches, in seat order. */
+	seats?: IrcRoomSeat[];
 }
 
 function formatIncoming(msg: IrcMessage): string {
@@ -157,6 +189,7 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 		// pair of filters that restated the caller, advisor and scope rules a
 		// second time; two spellings of one rule is how the drift starts. Parked
 		// peers are listed because messaging one revives it, which is supported.
+		const peerIds = new Set(registry.peers(senderId).map(ref => ref.id));
 		const peers = registry.listAddressableBy(senderId).map(ref => ({
 			id: ref.id,
 			displayName: ref.displayName,
@@ -166,6 +199,10 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 			unread: bus.unreadCount(ref.id),
 			lastActivity: ref.lastActivity,
 			activity: ref.activity,
+			// A driving agent beside this one in the terminal. Not a spawn, not a
+			// parent: it has its own conversation and its own spawns, and a message
+			// to it wakes a session the operator can switch to.
+			room: peerIds.has(ref.id) || undefined,
 		}));
 		const lines: string[] = [];
 		if (peers.length === 0) {
@@ -174,6 +211,7 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 			lines.push(`${peers.length} peer(s):`);
 			for (const peer of peers) {
 				const extras = [
+					peer.room ? "room peer: a driving agent beside this conversation, not a subordinate" : undefined,
 					peer.activity || undefined,
 					peer.unread > 0 ? `unread ${peer.unread}` : undefined,
 					peer.parentId ? `parent ${peer.parentId}` : undefined,
@@ -185,10 +223,35 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 				lines.push("");
 				lines.push("Parked agents are revived automatically when you message them.");
 			}
+			if (peerIds.size > 0) {
+				lines.push("");
+				lines.push('`to: "all"` reaches your own spawns only; address a room peer by its id.');
+			}
+		}
+		// A driving agent in a room also reaches the room's channel. Listed by
+		// seat, the numbers `@2` and the room view use, and on one line: the
+		// `- ` rows above are the ids a direct send takes.
+		const own = registry.get(senderId);
+		const seats =
+			own?.kind === "main" && own.room !== undefined
+				? registry.roomSeats(senderId).map(
+						(ref, index): IrcRoomSeat => ({
+							id: ref.id,
+							label: roomSeatLabel(index + 1, ref),
+							...(ref.id === senderId ? { self: true as const } : {}),
+						}),
+					)
+				: undefined;
+		if (seats) {
+			const reach = seats.map(seat => `${seat.label} (${seat.id}${seat.self ? ", you" : ""})`).join("; ");
+			lines.push("");
+			lines.push(
+				`${ROOM_CHANNEL}: ${reach}. \`to: "${ROOM_CHANNEL}"\` posts to all of them; an idle one reads it at its next turn, or now when the post names it (\`@2\`).`,
+			);
 		}
 		return {
 			content: [{ type: "text", text: lines.join("\n") }],
-			details: { op: "list", from: senderId, peers },
+			details: { op: "list", from: senderId, peers, ...(seats ? { seats } : {}) },
 		};
 	}
 
@@ -212,6 +275,9 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 		const to = registry.resolveId(requested, registry.scopeOf(senderId))?.id ?? requested;
 		if (!message) {
 			return errorResult('`message` is required for op="send".', { op: "send", from: senderId });
+		}
+		if (requested === ROOM_CHANNEL) {
+			return this.#executeRoomPost(registry, senderId, message, params);
 		}
 		if (to === senderId) {
 			return errorResult("Cannot send an IRC message to yourself.", { op: "send", from: senderId, to });
@@ -278,7 +344,15 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 					{ op: "send", to },
 				);
 			}
-			const targetRefs = isBroadcast ? registry.listVisibleTo(senderId).filter(ref => ref.status === "running") : [];
+			// `to: "all"` is this conversation's spawns. A room peer is reachable by
+			// id and is listed, but a broadcast that woke every driving agent in the
+			// terminal would charge each of them a turn for a message meant for the
+			// sender's own tree.
+			const targetRefs = isBroadcast
+				? registry
+						.listVisibleTo(senderId)
+						.filter(ref => ref.status === "running" && !registry.isPeer(senderId, ref.id))
+				: [];
 			const targets = isBroadcast ? targetRefs.map(ref => ref.id) : [to];
 			// A broadcast that also reaches a driving agent delivers the body to it
 			// directly (its own incoming card); relaying the sibling legs to the
@@ -365,6 +439,69 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 			awaitAbort?.abort(awaitCancelled);
 			removeAwaitAbortListener?.();
 		}
+	}
+
+	/**
+	 * `to: "#room"`: one post to every driving conversation in the sender's
+	 * room. The bus decides who may post and who wakes; this words its answer.
+	 * A spawned agent is refused with the one address it has for news, its
+	 * parent, which decides what the room hears.
+	 */
+	#executeRoomPost(
+		registry: AgentRegistry,
+		senderId: string,
+		message: string,
+		params: IrcParams,
+	): AgentToolResult<IrcDetails> {
+		const refuse = (text: string): AgentToolResult<IrcDetails> =>
+			errorResult(text, { op: "send", from: senderId, to: ROOM_CHANNEL });
+		if (params.await) {
+			return refuse(`\`await\` is invalid with to:"${ROOM_CHANNEL}": a room post has no single replier.`);
+		}
+		if (params.replyTo) {
+			return refuse(
+				`\`replyTo\` answers a direct message. A ${ROOM_CHANNEL} post is read by the whole room, so say in its body what it answers.`,
+			);
+		}
+		const post = IrcBus.global().postToRoom({ member: senderId, body: message });
+		if (!post.posted) {
+			if (post.reason === "not-a-driver") {
+				const parent = registry.get(senderId)?.parentId;
+				return refuse(
+					`${ROOM_CHANNEL} is the channel between a room's driving conversations, and a spawned agent does not post to it. ` +
+						`Report to your parent${parent ? ` \`${parent}\`` : ""} instead; it decides what the room hears.`,
+				);
+			}
+			if (post.reason === "too-long") {
+				return refuse(
+					`A ${ROOM_CHANNEL} post holds at most ${ROOM_POST_MAX_CHARS} characters and this one has ${message.length}: every conversation in the room pays for it. Write the detail to a file and post its path.`,
+				);
+			}
+			return refuse(
+				`This conversation is in no room, so ${ROOM_CHANNEL} reaches nobody. A room exists once a second conversation is opened beside this one.`,
+			);
+		}
+		const lines: string[] = [];
+		if (post.receipts.length === 0) {
+			lines.push(`Posted to ${ROOM_CHANNEL}. No other conversation is in the room now; one that joins reads it.`);
+		} else {
+			lines.push(`Posted to ${ROOM_CHANNEL}:`);
+			for (const receipt of post.receipts) {
+				const error = receipt.error ? ` — ${receipt.error}` : "";
+				lines.push(`- ${receipt.label} (${receipt.to}): ${ROOM_OUTCOME_TEXT[receipt.outcome]}${error}`);
+			}
+		}
+		if (post.wakeHeld) {
+			lines.push("");
+			lines.push(
+				`A conversation the post names stayed idle and reads it at its next turn: ${ROOM_WAKE_CAP} posts in a row have woken one without the operator posting to the room.`,
+			);
+		}
+		return {
+			content: [{ type: "text", text: lines.join("\n") }],
+			details: { op: "send", from: senderId, to: ROOM_CHANNEL, room: post.receipts },
+			isError: post.receipts.length > 0 && post.receipts.every(receipt => receipt.outcome === "failed"),
+		};
 	}
 
 	async #executeWait(
