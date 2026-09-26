@@ -9,6 +9,8 @@
 - Provider message replay splits into per-block replay steps and a tool-result pairing pass, cutting its time on a 52,000-message history by 7% for Anthropic targets and 13% for OpenAI Responses targets.
 - The OpenAI Responses stream decoder routes each event through an open-item registry and per-event handlers instead of one 560-line loop, cutting decode time of a 9,600-event stream by 10%.
 - The Devin stream splits into a request step, a Connect frame reader and a per-delta decoder that keeps each open block's content index instead of searching for it; decode time of an 18,400-frame stream is unchanged.
+- Google request building resolves each model's wire traits once per request and each thinking signature once per block, cutting message conversion on a 50,600-message history by 10% to 18%.
+- The Google and Cloud Code Assist stream decoders share one block assembler and finish-reason, usage and truncation helpers, and the Cloud Code Assist stream splits into a request plan, an endpoint loop and a per-response decoder; decode time of an 8,000-chunk stream is unchanged.
 
 ### Fixed
 
