@@ -22,6 +22,7 @@
 - A streaming `write` or `bash` card highlights, numbers and wraps only the lines that arrived since its last frame instead of the whole source on every argument delta, which cuts drawing a 600-line write streamed in 754 frames from 27,125 ms to 376 ms and its last frame from 67.7 ms to 0.38 ms.
 - The per-agent run monitor (progress, abort and soft request-budget handling, usage totals and output capture) runs in `task/run-monitor.ts`, split out of `task/executor.ts`, with one handler per agent event; no user-visible change.
 - The status line's message fingerprint and usage-window reading run in per-role and per-window helpers; no user-visible change.
+- An agent's yield finalization, reminder ladder, session setup and teardown run in single-purpose helpers in `task/executor.ts`, and a child renders its own system prompt section once per run instead of on every system prompt rebuild, which saves 114.5 µs per rebuild for `deep`; no user-visible change.
 
 ### Fixed
 
