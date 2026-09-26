@@ -17,7 +17,13 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { episodeEnvironment, episodeSandbox, runCliEpisode, writeBrowserOverlay } from "../../benches/cli-episode";
+import {
+	type CliEpisodeRun,
+	episodeEnvironment,
+	episodeSandbox,
+	runCliEpisode,
+	writeBrowserOverlay,
+} from "../../benches/cli-episode";
 
 /** Imports a package the tree installs, reads and writes what its last argument names, and says what happened. */
 const PROBE = `import * as fs from "node:fs";
@@ -31,7 +37,8 @@ const writes = {};
 for (const file of plan.write) {
 	try { fs.writeFileSync(file, ""); writes[file] = "ok"; } catch (error) { writes[file] = error.code; }
 }
-console.log(JSON.stringify({ home: process.env.HOME, dep: value, reads, writes }));
+const planted = Object.keys(process.env).filter(name => name.startsWith("VEYYON_BENCH_PROBE_"));
+console.log(JSON.stringify({ home: process.env.HOME, dep: value, planted, reads, writes }));
 `;
 
 describe("a bench episode", () => {
@@ -88,21 +95,29 @@ describe("a bench episode", () => {
 			write: [path.join(cwd, "out.txt"), path.join(home, "out.txt"), "/dev/null", path.join(work, "other-0", "x")],
 		};
 
-		const run = await runCliEpisode({
-			cli,
-			model: "none",
-			prompt: JSON.stringify(plan),
-			work,
-			episode: "probe-0",
-			config,
-			timeoutMs: 30_000,
-			agentDir: undefined,
-			files: { "task.txt": "the task's own file" },
-		});
+		// Set for this one spawn and removed at once: runCliEpisode reads the runner's own environment.
+		process.env.VEYYON_BENCH_PROBE_TOKEN = "not-a-real-token";
+		let run: CliEpisodeRun;
+		try {
+			run = await runCliEpisode({
+				cli,
+				model: "none",
+				prompt: JSON.stringify(plan),
+				work,
+				episode: "probe-0",
+				config,
+				timeoutMs: 30_000,
+				agentDir: undefined,
+				files: { "task.txt": "the task's own file" },
+			});
+		} finally {
+			delete process.env.VEYYON_BENCH_PROBE_TOKEN;
+		}
 
 		expect(JSON.parse(run.stdout)).toEqual({
 			home,
 			dep: "resolved",
+			planted: [],
 			reads: {
 				[taskFile]: "the task's own file",
 				[config]: "browser:\n  enabled: true\n",
