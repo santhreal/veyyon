@@ -524,7 +524,14 @@ export class ToolExecutionProducer {
 	#params: ToolExecutionBuildParams & { isPartial: boolean; sealed: boolean };
 	#callPreview: ToolCallPreview;
 	#listeners = new Set<(block: ToolExecutionBlock) => void>();
-	#currentBlock: ToolExecutionBlock;
+	/**
+	 * The block for the current parameters, or `undefined` once they changed with nobody listening.
+	 *
+	 * A change nobody is subscribed to is built when the block is next read rather than when it
+	 * happens: a card disposed with its transcript seals its producer on the way out, and building the
+	 * sealed block there cost a rebuilt 64k-block transcript two seconds for a block nobody read.
+	 */
+	#currentBlock: ToolExecutionBlock | undefined;
 	/** The arguments as the model sent them, so a repeat of the same object is recognised before conforming. */
 	#rawArgs: unknown;
 
@@ -552,11 +559,11 @@ export class ToolExecutionProducer {
 			onChange: () => this.#recompute(),
 		});
 		this.#params.callPreview = this.#callPreview;
-		this.#currentBlock = buildToolExecutionBlock(this.#params);
 		this.#callPreview.update(args);
 	}
 
 	get block(): ToolExecutionBlock {
+		this.#currentBlock ??= buildToolExecutionBlock(this.#params);
 		return this.#currentBlock;
 	}
 
@@ -628,14 +635,14 @@ export class ToolExecutionProducer {
 	}
 
 	produceBlock(context?: Pick<ToolExecutionBuildParams, "expanded" | "frame" | "frozen">): ToolExecutionBlock {
-		if (!context) return this.#currentBlock;
+		if (!context) return this.block;
 		const expanded = context.expanded ?? false;
 		if (
 			(this.#params.expanded ?? false) === expanded &&
 			this.#params.frame === context.frame &&
 			this.#params.frozen === context.frozen
 		) {
-			return this.#currentBlock;
+			return this.block;
 		}
 		this.#params.expanded = expanded;
 		this.#params.frame = context.frame;
@@ -645,8 +652,13 @@ export class ToolExecutionProducer {
 	}
 
 	#recompute(): void {
-		this.#currentBlock = buildToolExecutionBlock(this.#params);
-		for (const listener of this.#listeners) listener(this.#currentBlock);
+		if (this.#listeners.size === 0) {
+			this.#currentBlock = undefined;
+			return;
+		}
+		const block = buildToolExecutionBlock(this.#params);
+		this.#currentBlock = block;
+		for (const listener of this.#listeners) listener(block);
 	}
 }
 

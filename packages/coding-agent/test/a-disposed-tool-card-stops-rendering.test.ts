@@ -3,8 +3,15 @@
  * not merely dispose its children. Every registered view is exercised in pending
  * and settled states. This covers detached render work, not cancellation of the
  * tool execution itself or image protocol cleanup.
+ *
+ * Disposal seals the card's producer, and a sealed block nobody reads must not be
+ * projected: a rebuilt transcript disposes every card it held, and projecting each
+ * one's sealed view on the way out doubled the cost of the rebuild. The projection
+ * suite counts view callbacks, so it catches an eager build on any disposal path;
+ * it does not catch work a view does outside its callbacks.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
+import type { AnyAgentTool } from "@veyyon/agent-core";
 import { type Component, Container, type TUI } from "@veyyon/tui";
 import { ChatTranscriptBuilder } from "../src/modes/terminal/components/transcript/chat-transcript-builder";
 import { ToolExecutionProducer } from "../src/presentation/tool-execution";
@@ -21,6 +28,26 @@ beforeAll(async () => {
 afterEach(() => {
 	vi.useRealTimers();
 });
+
+/** A tool whose view counts every projection of its call and its result. */
+function countingTool(): { tool: AnyAgentTool; projections: () => number } {
+	let projections = 0;
+	const tool = {
+		name: "widget",
+		label: "widget",
+		view: {
+			renderCall: () => {
+				projections++;
+				return { kind: "statusRow", title: "call" };
+			},
+			renderResult: (result: { content: readonly { text?: string }[] }) => {
+				projections++;
+				return { kind: "statusRow", title: result.content[0]?.text ?? "" };
+			},
+		},
+	} as unknown as AnyAgentTool;
+	return { tool, projections: () => projections };
+}
 
 function frameSink(frames: string[]): TUI {
 	return {
@@ -168,5 +195,43 @@ describe("disposing a tool card stops detached render work", () => {
 		producer.updateArgs({ input: "after disposal" });
 		vi.advanceTimersByTime(2_000);
 		expect(frames).toEqual([]);
+	});
+
+	for (const disposal of ["parent", "presentation-clear", "presentation-replace"] as const) {
+		it(`projects no view for a card removed by ${disposal} disposal`, () => {
+			const { tool, projections } = countingTool();
+			const tui = frameSink([]);
+			const card = createToolExecution("widget", {}, {}, tool, tui, process.cwd());
+			const builder = new ChatTranscriptBuilder({ ui: tui, cwd: process.cwd(), requestRender: () => {} });
+			const parent = disposal === "parent" ? new Container() : builder.container;
+			parent.addChild(card);
+			card.updateResult({ content: [{ type: "text", text: "completed" }] }, false);
+			expect(card.render(100).join("\n")).toContain("completed");
+			const drawn = projections();
+			if (disposal === "parent") parent.disposeChildren();
+			else if (disposal === "presentation-clear") builder.clearTranscript();
+			else builder.setTranscriptBlocks([]);
+			expect(projections()).toBe(drawn);
+		});
+	}
+
+	it("projects an unobserved producer's block when read, from its latest state", () => {
+		const { tool, projections } = countingTool();
+		const producer = new ToolExecutionProducer({ toolName: "widget", args: {}, tool });
+		producer.updateResult({ content: [{ type: "text", text: "first" }] });
+		expect(producer.block).toMatchObject({ display: { resultView: { title: "first" } } });
+		const read = projections();
+		producer.updateResult({ content: [{ type: "text", text: "second" }] });
+		producer.seal();
+		expect(projections()).toBe(read);
+		// The context the card last drew with, which is the path a sealing card reads the block by.
+		expect(producer.produceBlock({})).toMatchObject({
+			status: "succeeded",
+			display: { resultView: { title: "second" }, policies: { sealed: true } },
+		});
+		const built = projections();
+		expect(built).toBeGreaterThan(read);
+		expect(producer.block).toBe(producer.produceBlock());
+		expect(projections()).toBe(built);
 	});
 });
