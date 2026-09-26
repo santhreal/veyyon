@@ -356,9 +356,12 @@ inferno = { version = "0.12", default-features = false }
 syntect = { version = "5.3", default-features = false, features = [
    "default-syntaxes",
    "default-themes",
-   "regex-fancy",
+   "regex-onig",
    "yaml-load",
 ] }
+# Oniguruma's C API, for its process-wide match and search retry limits, which
+# syntect's `regex-onig` backend reads and cannot set.
+onig_sys = { version = "69.9", default-features = false }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Markup Conversion

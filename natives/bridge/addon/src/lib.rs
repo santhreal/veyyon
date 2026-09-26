@@ -253,9 +253,10 @@ fn create_windows_napi_tokio_runtime() -> Option<tokio::runtime::Runtime> {
 pub const fn veyyon_natives_version_sentinel() {}
 
 /// Native module entry point: install crash diagnostics before any tool can
-/// invoke a panicking or allocating native call. This runs during `.node`
-/// load, while the dynamic-loader lock is held, so it MUST NOT spawn threads —
-/// the Tokio runtime is installed afterwards on Windows by
+/// invoke a panicking or allocating native call, and bound Oniguruma's match
+/// and search retries before any highlight or `find` can start a match. This
+/// runs during `.node` load, while the dynamic-loader lock is held, so it MUST
+/// NOT spawn threads — the Tokio runtime is installed afterwards on Windows by
 /// [`veyyon_install_tokio_runtime`], which the JS loader calls once `dlopen`
 /// has returned.
 ///
@@ -265,8 +266,9 @@ pub const fn veyyon_natives_version_sentinel() {}
 /// deadlock if this module initializer or post-load setup performs its own
 /// thread probe, so we keep the probe and custom runtime Windows-only.
 #[module_init]
-fn install_native_crash_handler() {
+fn init_native_module() {
 	crash_handler::install();
+	highlight::bound_regex_retries();
 }
 
 /// Guards [`veyyon_install_tokio_runtime`] so the runtime is built at most once

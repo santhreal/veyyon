@@ -5,7 +5,7 @@
 //! - comment, keyword, function, variable, string, number, type, operator,
 //!   punctuation, inserted, deleted
 
-use std::{cell::RefCell, collections::HashMap, sync::LazyLock};
+use std::{cell::RefCell, collections::HashMap, os::raw::c_ulong, sync::LazyLock};
 
 use napi_derive::napi;
 use syntect::parsing::{
@@ -53,6 +53,35 @@ fn build_syntax_set() -> SyntaxSet {
 		}
 	}
 	builder.build()
+}
+
+/// Oniguruma's retry budget for one match attempt and for one search across
+/// all of its start positions. A match or search that exceeds it fails, and
+/// syntect reads the failure as no match. Oniguruma's defaults are 10,000,000
+/// per attempt and no limit per search. Markdown's table-row and emphasis
+/// patterns repeat a group inside a repeated group, and YAML's implicit-key
+/// lookahead scans to the line end from every start position, so at those
+/// defaults a two-line Markdown source takes up to 77 ms and an 8,000-character
+/// YAML line with a colon in its value 450 ms. At 1,000,000, the backtrack
+/// limit fancy-regex applied to one search, 25,237 sources from session
+/// transcripts, this repository and long-line probes parse to the scopes
+/// fancy-regex produced, in 38% of its time, and the slowest takes 58 ms
+/// against 200 ms.
+const REGEX_RETRY_LIMIT: c_ulong = 1_000_000;
+
+/// Set Oniguruma's process-wide match and search retry limits to
+/// [`REGEX_RETRY_LIMIT`].
+///
+/// The limits are C globals that every match and search reads when it starts,
+/// so they also bound the `find` builtin's `-name` and `-regex` matching. Call
+/// this once from module initialisation, before any thread can start a match.
+pub fn bound_regex_retries() {
+	// SAFETY: each setter writes one C global and has no other effect. The
+	// caller runs before any thread that could read them concurrently exists.
+	unsafe {
+		onig_sys::onig_set_retry_limit_in_match(REGEX_RETRY_LIMIT);
+		onig_sys::onig_set_retry_limit_in_search(REGEX_RETRY_LIMIT);
+	}
 }
 
 const SCOPE_RULES: &[(&[&str], usize)] = &[
