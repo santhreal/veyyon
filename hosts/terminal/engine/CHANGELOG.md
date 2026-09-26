@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- A streaming `Markdown` render that ends inside an open code fence lays out only the fence lines completed since the previous frame, so a 1,500-line code fence renders in 59 ms instead of 898 ms and a 1,500-line diff in 92 ms instead of 900 ms.
+
 ## [1.5.4] - 2026-09-24
 
 ### Added
