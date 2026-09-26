@@ -175,7 +175,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	#resultVersion = 1;
 	#lastDisplayKey: string | undefined;
 	#displayInputVersion = 0;
-	#displayBuilt = false;
+	#displayStale = true;
 	#renderedImageCount = 0;
 	#convertedImages: Map<number, { data: string; mimeType: string }> = new Map();
 	#imageConversionFailures: Set<number> = new Set();
@@ -795,13 +795,27 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#updateDisplay();
 	}
 
+	/**
+	 * Mark the drawn display stale; the next `render` rebuilds it once.
+	 *
+	 * A card changes several times before it is drawn: a rebuilt transcript constructs it with the
+	 * call, expands it, hands it the result and seals it, and a streaming call gets more argument
+	 * deltas than frames. Drawing on each change highlighted the whole call view of every rebuilt
+	 * write only to replace it with the result view a moment later: on a 4,712-block session,
+	 * rebuilding and drawing the transcript took 999 ms that way and takes 603 ms drawn at render.
+	 * Drawing at render draws the state the frame shows, and nothing the frame never shows.
+	 */
 	#updateDisplay(): void {
-		const key = `${this.#resultVersion}|${this.#expanded}|${this.#isPartial}|${this.#spinnerFrame ?? "-"}|${this.#showImages}|${getThemeEpoch()}|${this.#displayInputVersion}|${this.#backgroundTaskFrozen}|${this.#sealed}|${TERMINAL.imageProtocol ?? "-"}|${this.#imageSizeKey()}`;
-		if (key === this.#lastDisplayKey && this.#displayBuilt) return;
-		this.#lastDisplayKey = key;
+		this.#displayStale = true;
+	}
 
+	#ensureDisplay(): void {
+		if (!this.#displayStale) return;
+		this.#displayStale = false;
+		const key = `${this.#resultVersion}|${this.#expanded}|${this.#isPartial}|${this.#spinnerFrame ?? "-"}|${this.#showImages}|${getThemeEpoch()}|${this.#displayInputVersion}|${this.#backgroundTaskFrozen}|${this.#sealed}|${TERMINAL.imageProtocol ?? "-"}|${this.#imageSizeKey()}`;
+		if (key === this.#lastDisplayKey) return;
+		this.#lastDisplayKey = key;
 		this.#rebuildDisplay();
-		this.#displayBuilt = true;
 	}
 
 	#needsFirstResultViewportRepaintAtRender(): boolean {
@@ -825,6 +839,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	}
 
 	override render(width: number): readonly string[] {
+		this.#ensureDisplay();
 		const lines = super.render(width);
 		this.#firstResultViewportRepaintShapePainted = this.#needsFirstResultViewportRepaintAtRender();
 		this.#partialResultShapePainted = this.#isPartial;

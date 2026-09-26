@@ -280,8 +280,9 @@ describe("UiHelpers.renderInitialMessages — image replay", () => {
 
 		new UiHelpers(ctx).renderInitialMessages();
 
-		expect(hasImageComponent(chatContainer)).toBe(true);
+		// A tool card builds its image components at the frame that draws it.
 		expect(Bun.stripANSI(chatContainer.render(100).join("\n"))).toContain("display image 1: 1x1");
+		expect(hasImageComponent(chatContainer)).toBe(true);
 	});
 
 	it("replays reopened session image blocks through the cold-start rebuild path", async () => {
@@ -320,8 +321,8 @@ describe("UiHelpers.renderInitialMessages — image replay", () => {
 
 		new UiHelpers(ctx).renderInitialMessages({ clearTerminalHistory: true });
 
-		expect(countImageComponents(chatContainer)).toBe(2);
 		expect(Bun.stripANSI(chatContainer.render(100).join("\n"))).toContain("Read reopened.png");
+		expect(countImageComponents(chatContainer)).toBe(2);
 		expect(ctx.ui.requestRender).toHaveBeenCalledWith(true, { clearScrollback: true });
 	});
 });

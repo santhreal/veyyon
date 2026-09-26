@@ -102,14 +102,19 @@ describe("disposing a tool card stops detached render work", () => {
 					customRenderer: { renderResult: () => current },
 				},
 			);
+			// A card replaces its renderer's component at the frame that draws the change, so each
+			// change is followed by that frame.
 			card.updateResult({ content: [{ type: "text", text: "first" }] }, false);
+			card.render(80);
 			vi.advanceTimersByTime(100);
 			card.setExpanded(true);
+			card.render(80);
 			vi.advanceTimersByTime(100);
 			expect(current.render(80)).toEqual(["Tick 2"]);
 			const previous = current;
 			current = makeWidget();
 			card.updateResult({ content: [{ type: "text", text: "second" }] }, false);
+			card.render(80);
 			vi.advanceTimersByTime(100);
 			expect(previous.render(80)).toEqual(["Tick 2"]);
 			expect(current.render(80)).toEqual(["Tick 1"]);
