@@ -28,6 +28,7 @@
 
 ### Fixed
 
+- After a sign-in form in a headless `browser` tab, clicks and keys reach the page again: the browser runs with the password manager's save offer and breach check turned off, whose prompts Chrome drew over the tab a few seconds after sign-in and which blocked every later action without an error.
 - A session without the `browser` tool no longer reads about it: the `read` description names the browser only when the tool is on, and the reminder to verify an edit names only the check tools (bash, eval, debug, browser) the session has.
 - The CLI imports the terminal output guard when a worker thread starts rather than at startup, keeping it off the static boot graph; no user-visible change.
 - A tool card whose call carries an argument of the wrong type, such as `input: 404` for `search`, draws the value as text or omits it instead of failing with `Renderer failed: e.toWellFormed is not a function`.
