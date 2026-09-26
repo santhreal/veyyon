@@ -16,7 +16,7 @@ Drives real Chromium tab; full puppeteer access via JS.
 - `tab` helpers; drop to raw puppeteer `page` for anything uncovered:
   - `tab.goto(url, { waitUntil? })` — navigate. A hung load fails ~1s before the cell budget with a named error and the navigation stopped; for slow pages raise `timeout` or use `waitUntil: "domcontentloaded"`.
   - `tab.observe({ includeAll?, viewportOnly? })` — accessibility snapshot: `{ url, title, viewport, scroll, elements: [{ id, role, name, value, states, … }] }`. Ids stable until next observe/goto.
-  - `tab.ariaSnapshot(selector?, { depth?, boxes? })` — Playwright-format ARIA YAML (roles, names, `/url`, `/placeholder`) of `selector` or the document; each node has a `[ref=eN]`, `[cursor=pointer]` marks clickables. Refs renumber each call and stay valid until the next.
+  - `tab.ariaSnapshot(selector?, { depth?, boxes? })` — Playwright-format ARIA YAML (roles, names, `/url`, `/placeholder`) of `selector` or the document; each node has a `[ref=eN]`, `[cursor=pointer]` marks clickables. Refs renumber from e1 each call and stay valid until the next.
   - `tab.ref("e5")` — ref from the last ariaSnapshot → element handle (`.click()`, `.type()`, `.fill()`, `.hover()`, `.evaluate()`, …); inline as `aria-ref=e5` in `tab.click`/`type`/`fill`/`waitFor`/`scrollIntoView`.
   - `tab.id(n)` — id from last observe → element handle with the same action methods.
   - `tab.click(selector)` / `tab.type(selector, text)` / `tab.fill(selector, value)` / `tab.press(key, { selector? })` / `tab.scroll(dx, dy)`. `fill` replaces the value as one real edit frameworks see; `type` sends keystrokes.
