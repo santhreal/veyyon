@@ -2233,6 +2233,734 @@ export interface ProcessResponsesStreamOptions {
 	requestServiceTier?: ServiceTier;
 }
 
+type StreamingToolCallBlock = ToolCall & {
+	[kStreamingPartialJson]: string;
+	[kStreamingLastParseLen]?: number;
+	[kStreamingArgumentsDone]?: boolean;
+};
+
+/** A Responses output item open on the stream, and the content block it streams into. */
+interface StreamingItem {
+	item: ResponseReasoningItem | ResponseOutputMessage | ResponseFunctionToolCall | ResponseCustomToolCall;
+	block: ThinkingContent | TextContent | StreamingToolCallBlock;
+}
+
+interface ReasoningEntry extends StreamingItem {
+	item: ResponseReasoningItem;
+	block: ThinkingContent;
+}
+
+interface MessageEntry extends StreamingItem {
+	item: ResponseOutputMessage;
+	block: TextContent;
+}
+
+interface ToolCallEntry<TItem extends ResponseFunctionToolCall | ResponseCustomToolCall> extends StreamingItem {
+	item: TItem;
+	block: StreamingToolCallBlock;
+}
+
+/** The routing keys a per-item Responses event can carry. */
+interface OpenItemKeys {
+	output_index?: number;
+	item_id?: string;
+}
+
+type ResponsesEvent<TType extends ResponseStreamEvent["type"]> = Extract<ResponseStreamEvent, { type: TType }>;
+
+function isReasoningEntry(entry: StreamingItem | undefined): entry is ReasoningEntry {
+	return entry?.item.type === "reasoning" && entry.block.type === "thinking";
+}
+
+function isMessageEntry(entry: StreamingItem | undefined): entry is MessageEntry {
+	return entry?.item.type === "message" && entry.block.type === "text";
+}
+
+function isFunctionCallEntry(entry: StreamingItem | undefined): entry is ToolCallEntry<ResponseFunctionToolCall> {
+	return entry?.item.type === "function_call" && entry.block.type === "toolCall";
+}
+
+function isCustomToolCallEntry(entry: StreamingItem | undefined): entry is ToolCallEntry<ResponseCustomToolCall> {
+	return entry?.item.type === "custom_tool_call" && entry.block.type === "toolCall";
+}
+
+function isUnfinishedFunctionCall(entry: StreamingItem | undefined): boolean {
+	return isFunctionCallEntry(entry) && !entry.block[kStreamingArgumentsDone];
+}
+
+function hasOpenItemKey(event: OpenItemKeys): boolean {
+	return typeof event.output_index === "number" || event.item_id !== undefined;
+}
+
+function prefixedFunctionCallItemKey(callId: string | undefined): string | undefined {
+	return callId ? `fc_${callId}` : undefined;
+}
+
+function startsJsonObjectDelta(delta: unknown): boolean {
+	if (typeof delta !== "string") return false;
+	for (let index = 0; index < delta.length; index++) {
+		const code = delta.charCodeAt(index);
+		if (code === 0x09 || code === 0x0a || code === 0x0d || code === 0x20) continue;
+		return code === 0x7b;
+	}
+	return false;
+}
+
+function shouldAdvanceIdentifierlessFunctionDelta(
+	event: OpenItemKeys & { delta?: unknown },
+	candidate: StreamingItem,
+): boolean {
+	const delta = event.delta;
+	if (
+		hasOpenItemKey(event) ||
+		typeof delta !== "string" ||
+		!startsJsonObjectDelta(delta) ||
+		candidate.item.type !== "function_call" ||
+		candidate.block.type !== "toolCall"
+	) {
+		return false;
+	}
+	const partial = candidate.block[kStreamingPartialJson];
+	if (partial.trim().length === 0) return false;
+	// A `{`-starting identifierless delta is ambiguous: the opening of a new
+	// sibling call, or continuation bytes inside the candidate's own argument
+	// JSON (`{"command":"echo ` + `{1..3}"}`). Advance only when the candidate
+	// cannot absorb the delta: its buffer is already one complete JSON value,
+	// already unsalvageable (lossy hosts abandon buffers mid-string, leaving
+	// raw control characters strict JSON forbids), or the concatenation would
+	// break it. Otherwise the delta is a legal continuation and must stay.
+	const state = classifyJsonPrefix(partial);
+	if (state !== "prefix") return true;
+	return classifyJsonPrefix(partial + delta) === "invalid";
+}
+
+/**
+ * The output items open on one Responses stream, routed by `output_index`, item id and call-id aliases.
+ *
+ * Multiple items (parallel function_calls in particular) can be open at the same
+ * time. OpenAI's spec routes every per-item event by `output_index`/`item_id`.
+ * llama.cpp emits parallel function_call deltas interleaved, and a singleton
+ * `current` reference would
+ * fold them into the wrong block and drop arguments on every call but the last.
+ *
+ * OpenAI-compatible hosts can compound this by omitting `item.id` and
+ * `output_index` on `output_item.added` while routing later argument deltas to
+ * either the bare `call_id` or a synthesized `fc_<call_id>` item id. Register
+ * both keys so each delta reaches its own block instead of falling back to the
+ * most recently added parallel call.
+ */
+class ResponsesOpenItems {
+	readonly #byOutputIndex = new Map<number, StreamingItem>();
+	readonly #byItemId = new Map<string, StreamingItem>();
+	readonly #byPrefixedCallId = new Map<string, StreamingItem>();
+	readonly #inOrder: StreamingItem[] = [];
+	#last: StreamingItem | undefined;
+	#identifierlessFunctionDeltaTarget: StreamingItem | undefined;
+
+	register(
+		outputIndex: number | undefined,
+		itemId: string | undefined,
+		entry: StreamingItem,
+		alternateItemKey?: string,
+		prefixedAlternateItemKey?: string,
+	): void {
+		if (typeof outputIndex === "number") this.#byOutputIndex.set(outputIndex, entry);
+		if (itemId) this.#byItemId.set(itemId, entry);
+		if (alternateItemKey && alternateItemKey !== itemId) this.#byItemId.set(alternateItemKey, entry);
+		if (
+			prefixedAlternateItemKey &&
+			prefixedAlternateItemKey !== itemId &&
+			prefixedAlternateItemKey !== alternateItemKey
+		) {
+			this.#byPrefixedCallId.set(prefixedAlternateItemKey, entry);
+		}
+		this.#inOrder.push(entry);
+		this.#last = entry;
+	}
+
+	close(
+		outputIndex: number | undefined,
+		itemId: string | undefined,
+		entry: StreamingItem | undefined,
+		alternateItemKey?: string,
+		prefixedAlternateItemKey?: string,
+	): void {
+		if (typeof outputIndex === "number") this.#byOutputIndex.delete(outputIndex);
+		if (itemId) this.#byItemId.delete(itemId);
+		if (alternateItemKey && alternateItemKey !== itemId) this.#byItemId.delete(alternateItemKey);
+		if (
+			prefixedAlternateItemKey &&
+			prefixedAlternateItemKey !== itemId &&
+			prefixedAlternateItemKey !== alternateItemKey &&
+			this.#byPrefixedCallId.get(prefixedAlternateItemKey) === entry
+		) {
+			this.#byPrefixedCallId.delete(prefixedAlternateItemKey);
+		}
+		if (!entry) return;
+		const index = this.#inOrder.indexOf(entry);
+		if (index >= 0) this.#inOrder.splice(index, 1);
+		if (this.#identifierlessFunctionDeltaTarget === entry) this.#identifierlessFunctionDeltaTarget = undefined;
+		if (this.#last === entry) this.#last = undefined;
+	}
+
+	lookup(event: OpenItemKeys): StreamingItem | undefined {
+		if (typeof event.output_index === "number") {
+			const found = this.#byOutputIndex.get(event.output_index);
+			if (found) return found;
+		}
+		if (event.item_id) {
+			const found = this.#byItemId.get(event.item_id);
+			if (found) return found;
+		}
+		// Keyed events whose item already closed are stale; drop them instead of
+		// routing to a sibling. Only fully identifierless mock/proxy events use the
+		// legacy singleton fallback.
+		return hasOpenItemKey(event) ? undefined : this.#last;
+	}
+
+	lookupToolCallAlias(event: OpenItemKeys, type: "function_call" | "custom_tool_call"): StreamingItem | undefined {
+		if (typeof event.output_index === "number") {
+			const byOutputIndex = this.#byOutputIndex.get(event.output_index);
+			if (byOutputIndex) return byOutputIndex;
+			// A lossy host (llama.cpp/Ollama, issue #2015) can omit `output_index` on
+			// `output_item.added` while still stamping the spec-required field on the
+			// delta. The index was never registered, so fall through to the prefixed
+			// alias / exact item-id maps instead of dropping to the last open item.
+		}
+		if (event.item_id) {
+			// Prefixed call-id aliases share the same wire namespace as real call ids.
+			// Argument/input events can use the prefixed form, while final
+			// output_item.done events use exact call ids; keep aliases in a
+			// separate map so a real `call_id: "fc_x"` cannot overwrite the alias
+			// for `call_id: "x"`.
+			const alias = this.#byPrefixedCallId.get(event.item_id);
+			if (alias?.item.type === type) return alias;
+			const exact = this.#byItemId.get(event.item_id);
+			if (exact) return exact;
+		}
+		return this.lookup(event);
+	}
+
+	lookupFunctionCall(event: OpenItemKeys & { delta?: unknown }): StreamingItem | undefined {
+		if (hasOpenItemKey(event)) return this.lookupToolCallAlias(event, "function_call");
+		const continuesIdentifierlessDelta = typeof event.delta === "string";
+		if (continuesIdentifierlessDelta) {
+			const target = this.#continueIdentifierlessDelta(event);
+			if (target) return target;
+		}
+		let skippedStartedCandidate = false;
+		for (let index = 0; index < this.#inOrder.length; index++) {
+			const candidate = this.#inOrder[index]!;
+			if (!isUnfinishedFunctionCall(candidate)) continue;
+			if (
+				shouldAdvanceIdentifierlessFunctionDelta(event, candidate) &&
+				this.#hasLaterUnfinishedFunctionCall(index)
+			) {
+				skippedStartedCandidate = true;
+				continue;
+			}
+			if (continuesIdentifierlessDelta) this.#identifierlessFunctionDeltaTarget = candidate;
+			return candidate;
+		}
+		if (skippedStartedCandidate && startsJsonObjectDelta(event.delta)) return undefined;
+		return this.#last?.item.type === "function_call" ? this.#last : undefined;
+	}
+
+	/** The call the previous identifierless delta went to, while this delta still continues it. */
+	#continueIdentifierlessDelta(event: OpenItemKeys & { delta?: unknown }): StreamingItem | undefined {
+		const target = this.#identifierlessFunctionDeltaTarget;
+		if (!target) return undefined;
+		const targetIndex = this.#inOrder.indexOf(target);
+		if (targetIndex < 0 || !isUnfinishedFunctionCall(target)) {
+			this.#identifierlessFunctionDeltaTarget = undefined;
+			return undefined;
+		}
+		const advances =
+			shouldAdvanceIdentifierlessFunctionDelta(event, target) && this.#hasLaterUnfinishedFunctionCall(targetIndex);
+		return advances ? undefined : target;
+	}
+
+	#hasLaterUnfinishedFunctionCall(start: number): boolean {
+		for (let index = start + 1; index < this.#inOrder.length; index++) {
+			if (isUnfinishedFunctionCall(this.#inOrder[index])) return true;
+		}
+		return false;
+	}
+}
+
+/** The detail of a failed Responses turn: its error, its incomplete reason, or `status_details.reason` when given. */
+function responsesFailureMessage(
+	error: { code?: string | null; message?: string | null } | null | undefined,
+	incompleteReason: string | null | undefined,
+	statusDetailsReason?: unknown,
+): string {
+	if (error) return `${error.code || "unknown"}: ${error.message || "no message"}`;
+	if (incompleteReason) return `incomplete: ${incompleteReason}`;
+	if (typeof statusDetailsReason === "string" && statusDetailsReason.length > 0) {
+		return `status_details: ${statusDetailsReason}`;
+	}
+	return "Unknown error (no error details in response)";
+}
+
+/** The error a Responses `error` event reports. */
+function responsesErrorEventError(event: ResponsesEvent<"error">, provider: string): AIError.ProviderResponseError {
+	// Error events carry either a nested `error` object or the code/message
+	// fields inline, depending on the backend.
+	const errorEvent = event as {
+		error?: { code?: unknown; message?: unknown };
+		code?: unknown;
+		message?: unknown;
+	};
+	const err = errorEvent.error ?? errorEvent;
+	const code = err.code ?? "unknown";
+	const message = err.message ?? "no message";
+	return new AIError.ProviderResponseError(`Error Code ${code}: ${message}`, { provider, kind: "output" });
+}
+
+/** The authoritative final arguments of a function call: its `.done` arguments, the item's own, or the streamed buffer. */
+function functionCallFinalArguments(
+	item: ResponseFunctionToolCall,
+	block: StreamingToolCallBlock | undefined,
+): ToolCall["arguments"] {
+	if (block?.[kStreamingArgumentsDone]) return block.arguments;
+	if (item.arguments) return parseStreamingJson(item.arguments);
+	if (block?.[kStreamingPartialJson]) return parseStreamingJson(block[kStreamingPartialJson]);
+	return parseStreamingJson("{}");
+}
+
+/** Folds one Responses event stream into an assistant message, one event at a time. */
+class ResponsesStreamDecoder<TApi extends Api> {
+	readonly #items = new ResponsesOpenItems();
+	readonly #output: AssistantMessage;
+	readonly #stream: AssistantMessageEventStream;
+	readonly #model: Model<TApi>;
+	readonly #options: ProcessResponsesStreamOptions | undefined;
+	readonly #deltaShape: ToolCallArgumentsDeltaShape;
+	#sawFirstToken = false;
+
+	constructor(
+		output: AssistantMessage,
+		stream: AssistantMessageEventStream,
+		model: Model<TApi>,
+		options: ProcessResponsesStreamOptions | undefined,
+	) {
+		this.#output = output;
+		this.#stream = stream;
+		this.#model = model;
+		this.#options = options;
+		this.#deltaShape = resolveResponsesToolCallDeltaShape(model);
+	}
+
+	/** Fold one event into the message. True once a terminal event completed the turn. */
+	apply(event: ResponseStreamEvent): boolean {
+		switch (event.type) {
+			case "response.created":
+				this.#output.responseId = event.response.id;
+				return false;
+			case "response.output_item.added":
+				if (!this.#sawFirstToken) {
+					this.#sawFirstToken = true;
+					this.#options?.onFirstToken?.();
+				}
+				this.#startItem(event.item, event.output_index);
+				return false;
+			case "response.output_item.done":
+				this.#finishItem(event);
+				return false;
+			case "response.reasoning_summary_part.added":
+			case "response.reasoning_summary_text.delta":
+			case "response.reasoning_summary_part.done":
+			case "response.reasoning_text.delta":
+				this.#applyReasoningEvent(event);
+				return false;
+			case "response.content_part.added":
+			case "response.output_text.delta":
+			case "response.refusal.delta":
+				this.#applyMessageEvent(event);
+				return false;
+			case "response.function_call_arguments.delta":
+			case "response.function_call_arguments.done":
+				this.#applyFunctionCallEvent(event);
+				return false;
+			case "response.custom_tool_call_input.delta":
+			case "response.custom_tool_call_input.done":
+				this.#applyCustomToolCallEvent(event);
+				return false;
+			case "error":
+				throw responsesErrorEventError(event, this.#model.provider);
+			case "response.failed": {
+				populateResponsesUsageFromResponse(this.#output, event.response?.usage);
+				const error =
+					event.response?.error ??
+					(event.response as ResponsesStatusDetailsView | undefined)?.status_details?.error;
+				throw new AIError.ProviderResponseError(
+					responsesFailureMessage(error, event.response?.incomplete_details?.reason),
+					{ provider: this.#model.provider, kind: "output" },
+				);
+			}
+			default: {
+				const terminalEvent = getOpenAIResponsesTerminalEvent(event);
+				if (!terminalEvent) return false;
+				this.#complete(terminalEvent.response);
+				return true;
+			}
+		}
+	}
+
+	#indexOf(block: ThinkingContent | TextContent | StreamingToolCallBlock): number {
+		return this.#output.content.indexOf(block);
+	}
+
+	#open(
+		entry: StreamingItem,
+		outputIndex: number | undefined,
+		start: "thinking_start" | "text_start" | "toolcall_start",
+		callId?: string,
+	): void {
+		this.#output.content.push(entry.block);
+		this.#items.register(outputIndex, entry.item.id, entry, callId, prefixedFunctionCallItemKey(callId));
+		this.#stream.push({ type: start, contentIndex: this.#indexOf(entry.block), partial: this.#output });
+	}
+
+	#startItem(item: ResponseOutputItem, outputIndex: number | undefined): void {
+		switch (item.type) {
+			case "reasoning":
+				this.#open(
+					{ item, block: { type: "thinking", thinking: "", itemId: item.id } },
+					outputIndex,
+					"thinking_start",
+				);
+				return;
+			case "message":
+				this.#open(
+					{
+						item,
+						block: {
+							type: "text",
+							text: "",
+							textSignature: encodeTextSignatureV1(item.id, item.phase ?? undefined),
+						},
+					},
+					outputIndex,
+					"text_start",
+				);
+				return;
+			case "function_call":
+				this.#open(
+					{
+						item,
+						block: {
+							type: "toolCall",
+							id: encodeResponsesToolCallId(item.call_id, item.id),
+							name: item.name,
+							arguments: {},
+							[kStreamingPartialJson]: item.arguments || "",
+						},
+					},
+					outputIndex,
+					"toolcall_start",
+					item.call_id,
+				);
+				return;
+			case "custom_tool_call":
+				this.#open(
+					{
+						item,
+						block: {
+							type: "toolCall",
+							id: encodeResponsesToolCallId(item.call_id, item.id),
+							// Preserve the raw wire name (e.g. `apply_patch`). The agent-loop
+							// dispatcher matches it against both `Tool.name` and
+							// `Tool.customWireName`, so this stays wire-accurate through
+							// history replay while still routing to the right handler.
+							name: item.name,
+							arguments: { input: item.input ?? "" },
+							customWireName: item.name,
+							// Custom tools stream a raw string, but we reuse `partialJson` as the
+							// accumulation buffer so later code that inspects the field still works.
+							[kStreamingPartialJson]: item.input ?? "",
+						},
+					},
+					outputIndex,
+					"toolcall_start",
+					item.call_id,
+				);
+				return;
+		}
+	}
+
+	#applyReasoningEvent(
+		event: ResponsesEvent<
+			| "response.reasoning_summary_part.added"
+			| "response.reasoning_summary_text.delta"
+			| "response.reasoning_summary_part.done"
+			| "response.reasoning_text.delta"
+		>,
+	): void {
+		const entry = this.#items.lookup(event);
+		if (!isReasoningEntry(entry)) return;
+		switch (event.type) {
+			case "response.reasoning_summary_part.added":
+				appendReasoningSummaryPart(entry.item, event.part);
+				return;
+			case "response.reasoning_summary_text.delta":
+				appendReasoningSummaryTextDelta(
+					entry.item,
+					entry.block,
+					event.delta,
+					this.#stream,
+					this.#output,
+					this.#indexOf(entry.block),
+				);
+				return;
+			case "response.reasoning_summary_part.done":
+				appendReasoningSummaryPartDone(
+					entry.item,
+					entry.block,
+					this.#stream,
+					this.#output,
+					this.#indexOf(entry.block),
+				);
+				return;
+			case "response.reasoning_text.delta":
+				// Raw reasoning text delta from local providers that stream thinking
+				// directly rather than via the OpenAI summary tracking protocol.
+				entry.block.thinking += event.delta;
+				this.#stream.push({
+					type: "thinking_delta",
+					contentIndex: this.#indexOf(entry.block),
+					delta: event.delta,
+					partial: this.#output,
+				});
+				return;
+		}
+	}
+
+	#applyMessageEvent(
+		event: ResponsesEvent<"response.content_part.added" | "response.output_text.delta" | "response.refusal.delta">,
+	): void {
+		const entry = this.#items.lookup(event);
+		if (!isMessageEntry(entry)) return;
+		if (event.type === "response.content_part.added") {
+			appendMessageContentPart(entry.item, event.part);
+			return;
+		}
+		appendMessageTextDelta(
+			entry.item,
+			entry.block,
+			event.delta,
+			this.#stream,
+			this.#output,
+			this.#indexOf(entry.block),
+			event.type === "response.output_text.delta" ? "output_text" : "refusal",
+		);
+	}
+
+	#applyFunctionCallEvent(
+		event: ResponsesEvent<"response.function_call_arguments.delta" | "response.function_call_arguments.done">,
+	): void {
+		const entry = this.#items.lookupFunctionCall(event);
+		if (!isFunctionCallEntry(entry)) return;
+		if (event.type === "response.function_call_arguments.delta") {
+			accumulateToolCallArgumentsDelta(
+				entry.block,
+				event.delta,
+				this.#stream,
+				this.#output,
+				this.#indexOf(entry.block),
+				this.#deltaShape,
+			);
+			return;
+		}
+		finalizeToolCallArgumentsDone(entry.block, event.arguments);
+		entry.block[kStreamingArgumentsDone] = true;
+	}
+
+	#applyCustomToolCallEvent(
+		event: ResponsesEvent<"response.custom_tool_call_input.delta" | "response.custom_tool_call_input.done">,
+	): void {
+		const entry = this.#items.lookupToolCallAlias(event, "custom_tool_call");
+		if (!isCustomToolCallEntry(entry)) return;
+		if (event.type === "response.custom_tool_call_input.delta") {
+			accumulateCustomToolCallInputDelta(
+				entry.block,
+				event.delta,
+				this.#stream,
+				this.#output,
+				this.#indexOf(entry.block),
+			);
+			return;
+		}
+		finalizeCustomToolCallInputDone(entry.block, event.input);
+	}
+
+	#finishItem(event: ResponsesEvent<"response.output_item.done">): void {
+		const item = structuredCloneJSON(event.item);
+		this.#options?.onOutputItemDone?.(item);
+		switch (item.type) {
+			case "reasoning":
+				this.#finishReasoning(item, event.output_index);
+				return;
+			case "message":
+				this.#finishMessage(item, event.output_index);
+				return;
+			case "function_call":
+				this.#finishFunctionCall(item, event.output_index);
+				return;
+			case "custom_tool_call":
+				this.#finishCustomToolCall(item, event.output_index);
+				return;
+		}
+	}
+
+	#finishReasoning(item: ResponseReasoningItem, outputIndex: number | undefined): void {
+		const entry = this.#items.lookup({ output_index: outputIndex, item_id: item.id });
+		// Prefer the routed entry; the bare itemId find misroutes when ids are
+		// absent (`undefined === undefined` matches the FIRST thinking block) and
+		// misses entirely when the done-event id drifts from the added-event id.
+		const reasoningBlock =
+			entry?.block.type === "thinking"
+				? entry.block
+				: (this.#output.content.find(b => b.type === "thinking" && (b as ThinkingContent).itemId === item.id) as
+						| ThinkingContent
+						| undefined);
+		if (reasoningBlock) {
+			reasoningBlock.thinking = finalizeReasoningThinking(item, reasoningBlock.thinking);
+			reasoningBlock.thinkingSignature = JSON.stringify(item);
+			this.#stream.push({
+				type: "thinking_end",
+				contentIndex: this.#indexOf(reasoningBlock),
+				content: reasoningBlock.thinking,
+				partial: this.#output,
+			});
+		}
+		this.#items.close(outputIndex, item.id, entry);
+	}
+
+	#finishMessage(item: ResponseOutputMessage, outputIndex: number | undefined): void {
+		const entry = this.#items.lookup({ output_index: outputIndex, item_id: item.id });
+		const block = entry?.block.type === "text" ? entry.block : undefined;
+		const text = finalizeMessageText(item, block?.text ?? "");
+		const textSignature = encodeTextSignatureV1(item.id, item.phase ?? undefined);
+		let contentIndex: number;
+		if (block) {
+			block.text = text;
+			block.textSignature = textSignature;
+			contentIndex = this.#indexOf(block);
+		} else {
+			// `output_item.added` never arrived (lossy proxy) — synthesize the
+			// block so the final message still carries the authoritative text.
+			this.#output.content.push({ type: "text", text, textSignature });
+			contentIndex = this.#output.content.length - 1;
+		}
+		this.#stream.push({ type: "text_end", contentIndex, content: text, partial: this.#output });
+		this.#items.close(outputIndex, item.id, entry);
+	}
+
+	#finishFunctionCall(item: ResponseFunctionToolCall, outputIndex: number | undefined): void {
+		const entry = this.#items.lookup({ output_index: outputIndex, item_id: item.id ?? item.call_id });
+		const block = entry?.block.type === "toolCall" ? entry.block : undefined;
+		const args = functionCallFinalArguments(item, block);
+		// Persist the authoritative final args on the stored block. The
+		// throttled delta parser may have skipped the last partial parse,
+		// leaving block.arguments stale (often `{}`); the emitted toolCall
+		// and the persisted block must agree.
+		this.#endToolCall(item, outputIndex, entry, block, args, {
+			type: "toolCall",
+			id: encodeResponsesToolCallId(item.call_id, item.id),
+			name: item.name,
+			arguments: args,
+		});
+	}
+
+	#finishCustomToolCall(item: ResponseCustomToolCall, outputIndex: number | undefined): void {
+		const entry = this.#items.lookup({ output_index: outputIndex, item_id: item.id ?? item.call_id });
+		const block = entry?.block.type === "toolCall" ? entry.block : undefined;
+		const rawInput = block?.[kStreamingPartialJson] ? block[kStreamingPartialJson] : (item.input ?? "");
+		this.#endToolCall(
+			item,
+			outputIndex,
+			entry,
+			block,
+			{ input: rawInput },
+			{
+				type: "toolCall",
+				id: encodeResponsesToolCallId(item.call_id, item.id),
+				name: item.name,
+				arguments: { input: rawInput },
+				customWireName: item.name,
+			},
+		);
+	}
+
+	/**
+	 * Store a finished tool call's final arguments on its streamed block and drop the transient
+	 * accumulation buffer. A call whose `output_item.added` never arrived (lossy proxy) is
+	 * synthesized so the final message carries the call the consumer was told completed (the
+	 * agent loop executes tools from message.content).
+	 */
+	#endToolCall(
+		item: ResponseFunctionToolCall | ResponseCustomToolCall,
+		outputIndex: number | undefined,
+		entry: StreamingItem | undefined,
+		block: StreamingToolCallBlock | undefined,
+		finalArguments: ToolCall["arguments"],
+		toolCall: ToolCall,
+	): void {
+		let contentIndex: number;
+		if (block) {
+			block.arguments = finalArguments;
+			clearStreamingPartialJson(block);
+			contentIndex = this.#indexOf(block);
+		} else {
+			this.#output.content.push(toolCall);
+			contentIndex = this.#output.content.length - 1;
+		}
+		this.#items.close(outputIndex, item.id, entry, item.call_id, prefixedFunctionCallItemKey(item.call_id));
+		this.#stream.push({ type: "toolcall_end", contentIndex, toolCall, partial: this.#output });
+	}
+
+	#complete(response: OpenAIResponsesTerminalStreamEvent["response"]): void {
+		const output = this.#output;
+		const model = this.#model;
+		finalizePendingResponsesToolCalls(output);
+		if (response?.id) {
+			output.responseId = response.id;
+		}
+		populateResponsesUsageFromResponse(output, response?.usage);
+		calculateCost(model, output.usage);
+		applyOpenAIResponsesServiceTierCost(
+			model,
+			output.usage,
+			(response as { service_tier?: unknown } | undefined)?.service_tier,
+			this.#options?.requestServiceTier,
+		);
+		output.stopReason = mapOpenAIResponsesStopReason(response?.status);
+		if (response?.status === "failed" || response?.status === "cancelled") {
+			const statusDetails = (response as ResponsesStatusDetailsView).status_details;
+			throw new AIError.ProviderResponseError(
+				responsesFailureMessage(
+					response.error ?? statusDetails?.error,
+					response.incomplete_details?.reason,
+					statusDetails?.reason,
+				),
+				{ provider: model.provider, kind: "output" },
+			);
+		}
+		if (response?.status === "incomplete" && response.incomplete_details?.reason === "content_filter") {
+			// A content-filtered turn is a failure, not a token-cap truncation —
+			// mapping it to "length" would route the agent loop into "shorten your
+			// output" recovery against a filtered prompt.
+			throw new AIError.ProviderResponseError("incomplete: content_filter", {
+				provider: model.provider,
+				kind: "content-blocked",
+			});
+		}
+		promoteResponsesToolUseStopReason(output, (response as { end_turn?: boolean } | undefined)?.end_turn);
+		this.#options?.onCompleted?.();
+	}
+}
+
 export async function processResponsesStream<TApi extends Api>(
 	openaiStream: AsyncIterable<ResponseStreamEvent>,
 	output: AssistantMessage,
@@ -2240,556 +2968,16 @@ export async function processResponsesStream<TApi extends Api>(
 	model: Model<TApi>,
 	options?: ProcessResponsesStreamOptions,
 ): Promise<void> {
-	const deltaShape = resolveResponsesToolCallDeltaShape(model);
-	type StreamingToolCallBlock = ToolCall & {
-		[kStreamingPartialJson]: string;
-		[kStreamingLastParseLen]?: number;
-		[kStreamingArgumentsDone]?: boolean;
-	};
-	interface StreamingItem {
-		item: ResponseReasoningItem | ResponseOutputMessage | ResponseFunctionToolCall | ResponseCustomToolCall;
-		block: ThinkingContent | TextContent | StreamingToolCallBlock;
-	}
-
-	// Multiple items (parallel function_calls in particular) can be open at the same
-	// time. OpenAI's spec routes every per-item event by `output_index`/`item_id`.
-	// llama.cpp emits parallel function_call deltas interleaved, and a singleton
-	// `current` reference would
-	// fold them into the wrong block and drop arguments on every call but the last.
-	//
-	// OpenAI-compatible hosts can compound this by omitting `item.id` and
-	// `output_index` on `output_item.added` while routing later argument deltas to
-	// either the bare `call_id` or a synthesized `fc_<call_id>` item id. Register
-	// both keys so each delta reaches its own block instead of falling back to the
-	// most recently added parallel call.
-	const openItemsByOutputIndex = new Map<number, StreamingItem>();
-	const openItemsByItemId = new Map<string, StreamingItem>();
-	const openItemsByPrefixedCallId = new Map<string, StreamingItem>();
-	let lastOpenItem: StreamingItem | null = null;
-	const openItemsInOrder: StreamingItem[] = [];
-
-	const prefixedFunctionCallItemKey = (callId: string | undefined): string | undefined =>
-		callId ? `fc_${callId}` : undefined;
-
-	const registerOpenItem = (
-		outputIndex: number | undefined,
-		itemId: string | undefined,
-		entry: StreamingItem,
-		alternateItemKey?: string,
-		prefixedAlternateItemKey?: string,
-	): void => {
-		if (typeof outputIndex === "number") openItemsByOutputIndex.set(outputIndex, entry);
-		if (itemId) openItemsByItemId.set(itemId, entry);
-		if (alternateItemKey && alternateItemKey !== itemId) openItemsByItemId.set(alternateItemKey, entry);
-		if (
-			prefixedAlternateItemKey &&
-			prefixedAlternateItemKey !== itemId &&
-			prefixedAlternateItemKey !== alternateItemKey
-		) {
-			openItemsByPrefixedCallId.set(prefixedAlternateItemKey, entry);
-		}
-		openItemsInOrder.push(entry);
-		lastOpenItem = entry;
-	};
-	const lookupOpenItem = (event: { output_index?: number; item_id?: string }): StreamingItem | undefined => {
-		const hasKey = typeof event.output_index === "number" || event.item_id !== undefined;
-		if (typeof event.output_index === "number") {
-			const found = openItemsByOutputIndex.get(event.output_index);
-			if (found) return found;
-		}
-		if (event.item_id) {
-			const found = openItemsByItemId.get(event.item_id);
-			if (found) return found;
-		}
-		// Keyed events whose item already closed are stale; drop them instead of
-		// routing to a sibling. Only fully identifierless mock/proxy events use the
-		// legacy singleton fallback.
-		return hasKey ? undefined : (lastOpenItem ?? undefined);
-	};
-	const hasOpenItemKey = (event: { output_index?: number; item_id?: string }): boolean =>
-		typeof event.output_index === "number" || event.item_id !== undefined;
-	const startsJsonObjectDelta = (delta: unknown): boolean => {
-		if (typeof delta !== "string") return false;
-		for (let index = 0; index < delta.length; index++) {
-			const code = delta.charCodeAt(index);
-			if (code === 0x09 || code === 0x0a || code === 0x0d || code === 0x20) continue;
-			return code === 0x7b;
-		}
-		return false;
-	};
-	const shouldAdvanceIdentifierlessFunctionDelta = (
-		event: { output_index?: number; item_id?: string; delta?: unknown },
-		candidate: StreamingItem,
-	): boolean => {
-		const delta = event.delta;
-		if (
-			hasOpenItemKey(event) ||
-			typeof delta !== "string" ||
-			!startsJsonObjectDelta(delta) ||
-			candidate.item.type !== "function_call" ||
-			candidate.block.type !== "toolCall"
-		) {
-			return false;
-		}
-		const partial = candidate.block[kStreamingPartialJson];
-		if (partial.trim().length === 0) return false;
-		// A `{`-starting identifierless delta is ambiguous: the opening of a new
-		// sibling call, or continuation bytes inside the candidate's own argument
-		// JSON (`{"command":"echo ` + `{1..3}"}`). Advance only when the candidate
-		// cannot absorb the delta: its buffer is already one complete JSON value,
-		// already unsalvageable (lossy hosts abandon buffers mid-string, leaving
-		// raw control characters strict JSON forbids), or the concatenation would
-		// break it. Otherwise the delta is a legal continuation and must stay.
-		const state = classifyJsonPrefix(partial);
-		if (state !== "prefix") return true;
-		return classifyJsonPrefix(partial + delta) === "invalid";
-	};
-	const hasLaterUnfinishedFunctionCall = (start: number): boolean => {
-		for (let index = start + 1; index < openItemsInOrder.length; index++) {
-			const candidate = openItemsInOrder[index];
-			if (
-				candidate?.item.type === "function_call" &&
-				candidate.block.type === "toolCall" &&
-				!candidate.block[kStreamingArgumentsDone]
-			) {
-				return true;
-			}
-		}
-		return false;
-	};
-
-	let identifierlessFunctionDeltaTarget: StreamingItem | undefined;
-
-	const lookupOpenToolCallAlias = (
-		event: { output_index?: number; item_id?: string },
-		type: "function_call" | "custom_tool_call",
-	): StreamingItem | undefined => {
-		if (typeof event.output_index === "number") {
-			const byOutputIndex = openItemsByOutputIndex.get(event.output_index);
-			if (byOutputIndex) return byOutputIndex;
-			// A lossy host (llama.cpp/Ollama, issue #2015) can omit `output_index` on
-			// `output_item.added` while still stamping the spec-required field on the
-			// delta. The index was never registered, so fall through to the prefixed
-			// alias / exact item-id maps instead of dropping to `lastOpenItem`.
-		}
-		if (event.item_id) {
-			// Prefixed call-id aliases share the same wire namespace as real call ids.
-			// Argument/input events can use the prefixed form, while final
-			// output_item.done events below use exact call ids; keep aliases in a
-			// separate map so a real `call_id: "fc_x"` cannot overwrite the alias
-			// for `call_id: "x"`.
-			const alias = openItemsByPrefixedCallId.get(event.item_id);
-			if (alias?.item.type === type) return alias;
-			const exact = openItemsByItemId.get(event.item_id);
-			if (exact) return exact;
-		}
-		return lookupOpenItem(event);
-	};
-	const lookupOpenFunctionCallItem = (event: {
-		output_index?: number;
-		item_id?: string;
-		delta?: unknown;
-	}): StreamingItem | undefined => {
-		if (hasOpenItemKey(event)) return lookupOpenToolCallAlias(event, "function_call");
-		const canContinuePreviousIdentifierlessDelta = typeof event.delta === "string";
-		if (canContinuePreviousIdentifierlessDelta && identifierlessFunctionDeltaTarget) {
-			const targetIndex = openItemsInOrder.indexOf(identifierlessFunctionDeltaTarget);
-			const target = targetIndex >= 0 ? openItemsInOrder[targetIndex] : undefined;
-			if (
-				target?.item.type === "function_call" &&
-				target.block.type === "toolCall" &&
-				!target.block[kStreamingArgumentsDone]
-			) {
-				const shouldAdvanceFromTarget =
-					shouldAdvanceIdentifierlessFunctionDelta(event, target) && hasLaterUnfinishedFunctionCall(targetIndex);
-				if (!shouldAdvanceFromTarget) return target;
-			} else {
-				identifierlessFunctionDeltaTarget = undefined;
-			}
-		}
-		let skippedStartedCandidate = false;
-		for (let index = 0; index < openItemsInOrder.length; index++) {
-			const candidate = openItemsInOrder[index]!;
-			if (
-				candidate.item.type === "function_call" &&
-				candidate.block.type === "toolCall" &&
-				!candidate.block[kStreamingArgumentsDone]
-			) {
-				if (shouldAdvanceIdentifierlessFunctionDelta(event, candidate) && hasLaterUnfinishedFunctionCall(index)) {
-					skippedStartedCandidate = true;
-					continue;
-				}
-				if (canContinuePreviousIdentifierlessDelta) identifierlessFunctionDeltaTarget = candidate;
-				return candidate;
-			}
-		}
-		if (skippedStartedCandidate && startsJsonObjectDelta(event.delta)) return undefined;
-		return lastOpenItem?.item.type === "function_call" ? lastOpenItem : undefined;
-	};
-	const closeOpenItem = (
-		outputIndex: number | undefined,
-		itemId: string | undefined,
-		entry: StreamingItem | undefined,
-		alternateItemKey?: string,
-		prefixedAlternateItemKey?: string,
-	): void => {
-		if (typeof outputIndex === "number") openItemsByOutputIndex.delete(outputIndex);
-		if (itemId) openItemsByItemId.delete(itemId);
-		if (alternateItemKey && alternateItemKey !== itemId) openItemsByItemId.delete(alternateItemKey);
-		if (
-			prefixedAlternateItemKey &&
-			prefixedAlternateItemKey !== itemId &&
-			prefixedAlternateItemKey !== alternateItemKey &&
-			openItemsByPrefixedCallId.get(prefixedAlternateItemKey) === entry
-		) {
-			openItemsByPrefixedCallId.delete(prefixedAlternateItemKey);
-		}
-		if (entry) {
-			const index = openItemsInOrder.indexOf(entry);
-			if (index >= 0) openItemsInOrder.splice(index, 1);
-		}
-		if (entry && identifierlessFunctionDeltaTarget === entry) identifierlessFunctionDeltaTarget = undefined;
-		if (entry && lastOpenItem === entry) lastOpenItem = null;
-	};
-	const contentIndexOf = (block: ThinkingContent | TextContent | StreamingToolCallBlock): number =>
-		output.content.indexOf(block);
-
-	let sawFirstToken = false;
-
+	const decoder = new ResponsesStreamDecoder(output, stream, model, options);
 	for await (const event of openaiStream) {
-		const terminalEvent = getOpenAIResponsesTerminalEvent(event);
-		if (event.type === "response.created") {
-			output.responseId = event.response.id;
-		} else if (event.type === "response.output_item.added") {
-			if (!sawFirstToken) {
-				sawFirstToken = true;
-				options?.onFirstToken?.();
-			}
-			const item = event.item;
-			if (item.type === "reasoning") {
-				const block: ThinkingContent = { type: "thinking", thinking: "", itemId: item.id };
-				output.content.push(block);
-				registerOpenItem(event.output_index, item.id, { item, block });
-				stream.push({ type: "thinking_start", contentIndex: contentIndexOf(block), partial: output });
-			} else if (item.type === "message") {
-				const block: TextContent = {
-					type: "text",
-					text: "",
-					textSignature: encodeTextSignatureV1(item.id, item.phase ?? undefined),
-				};
-				output.content.push(block);
-				registerOpenItem(event.output_index, item.id, { item, block });
-				stream.push({ type: "text_start", contentIndex: contentIndexOf(block), partial: output });
-			} else if (item.type === "function_call") {
-				const block: StreamingToolCallBlock = {
-					type: "toolCall",
-					id: encodeResponsesToolCallId(item.call_id, item.id),
-					name: item.name,
-					arguments: {},
-					[kStreamingPartialJson]: item.arguments || "",
-				};
-				output.content.push(block);
-				registerOpenItem(
-					event.output_index,
-					item.id,
-					{ item, block },
-					item.call_id,
-					prefixedFunctionCallItemKey(item.call_id),
-				);
-				stream.push({ type: "toolcall_start", contentIndex: contentIndexOf(block), partial: output });
-			} else if (item.type === "custom_tool_call") {
-				const block: StreamingToolCallBlock = {
-					type: "toolCall",
-					id: encodeResponsesToolCallId(item.call_id, item.id),
-					// Preserve the raw wire name (e.g. `apply_patch`). The agent-loop
-					// dispatcher matches it against both `Tool.name` and
-					// `Tool.customWireName`, so this stays wire-accurate through
-					// history replay while still routing to the right handler.
-					name: item.name,
-					arguments: { input: item.input ?? "" },
-					customWireName: item.name,
-					// Custom tools stream a raw string, but we reuse `partialJson` as the
-					// accumulation buffer so later code that inspects the field still works.
-					[kStreamingPartialJson]: item.input ?? "",
-				};
-				output.content.push(block);
-				registerOpenItem(
-					event.output_index,
-					item.id,
-					{ item, block },
-					item.call_id,
-					prefixedFunctionCallItemKey(item.call_id),
-				);
-				stream.push({ type: "toolcall_start", contentIndex: contentIndexOf(block), partial: output });
-			}
-		} else if (event.type === "response.reasoning_summary_part.added") {
-			const entry = lookupOpenItem(event);
-			if (entry?.item.type === "reasoning") appendReasoningSummaryPart(entry.item, event.part);
-		} else if (event.type === "response.reasoning_summary_text.delta") {
-			const entry = lookupOpenItem(event);
-			if (entry?.item.type === "reasoning" && entry.block.type === "thinking") {
-				appendReasoningSummaryTextDelta(
-					entry.item,
-					entry.block,
-					event.delta,
-					stream,
-					output,
-					contentIndexOf(entry.block),
-				);
-			}
-		} else if (event.type === "response.reasoning_summary_part.done") {
-			const entry = lookupOpenItem(event);
-			if (entry?.item.type === "reasoning" && entry.block.type === "thinking") {
-				appendReasoningSummaryPartDone(entry.item, entry.block, stream, output, contentIndexOf(entry.block));
-			}
-		} else if (event.type === "response.reasoning_text.delta") {
-			// Raw reasoning text delta from local providers that stream thinking
-			// directly rather than via the OpenAI summary tracking protocol.
-			const entry = lookupOpenItem(event);
-			if (entry?.item.type === "reasoning" && entry.block.type === "thinking") {
-				entry.block.thinking += event.delta;
-				stream.push({
-					type: "thinking_delta",
-					contentIndex: contentIndexOf(entry.block),
-					delta: event.delta,
-					partial: output,
-				});
-			}
-		} else if (event.type === "response.content_part.added") {
-			const entry = lookupOpenItem(event);
-			if (entry?.item.type === "message") appendMessageContentPart(entry.item, event.part);
-		} else if (event.type === "response.output_text.delta") {
-			const entry = lookupOpenItem(event);
-			if (entry?.item.type === "message" && entry.block.type === "text") {
-				appendMessageTextDelta(
-					entry.item,
-					entry.block,
-					event.delta,
-					stream,
-					output,
-					contentIndexOf(entry.block),
-					"output_text",
-				);
-			}
-		} else if (event.type === "response.refusal.delta") {
-			const entry = lookupOpenItem(event);
-			if (entry?.item.type === "message" && entry.block.type === "text") {
-				appendMessageTextDelta(
-					entry.item,
-					entry.block,
-					event.delta,
-					stream,
-					output,
-					contentIndexOf(entry.block),
-					"refusal",
-				);
-			}
-		} else if (event.type === "response.function_call_arguments.delta") {
-			const entry = lookupOpenFunctionCallItem(event);
-			if (entry?.item.type === "function_call" && entry.block.type === "toolCall") {
-				accumulateToolCallArgumentsDelta(
-					entry.block,
-					event.delta,
-					stream,
-					output,
-					contentIndexOf(entry.block),
-					deltaShape,
-				);
-			}
-		} else if (event.type === "response.function_call_arguments.done") {
-			const entry = lookupOpenFunctionCallItem(event);
-			if (entry?.item.type === "function_call" && entry.block.type === "toolCall") {
-				finalizeToolCallArgumentsDone(entry.block, event.arguments);
-				entry.block[kStreamingArgumentsDone] = true;
-			}
-		} else if (event.type === "response.custom_tool_call_input.delta") {
-			const entry = lookupOpenToolCallAlias(event, "custom_tool_call");
-			if (entry?.item.type === "custom_tool_call" && entry.block.type === "toolCall") {
-				accumulateCustomToolCallInputDelta(entry.block, event.delta, stream, output, contentIndexOf(entry.block));
-			}
-		} else if (event.type === "response.custom_tool_call_input.done") {
-			const entry = lookupOpenToolCallAlias(event, "custom_tool_call");
-			if (entry?.item.type === "custom_tool_call" && entry.block.type === "toolCall") {
-				finalizeCustomToolCallInputDone(entry.block, event.input);
-			}
-		} else if (event.type === "response.output_item.done") {
-			const item = structuredCloneJSON(event.item);
-			options?.onOutputItemDone?.(item);
-			const entry =
-				item.type === "function_call" || item.type === "custom_tool_call"
-					? lookupOpenItem({ output_index: event.output_index, item_id: item.id ?? item.call_id })
-					: lookupOpenItem({ output_index: event.output_index, item_id: item.id });
-			if (item.type === "reasoning") {
-				// Prefer the routed entry; the bare itemId find misroutes when ids are
-				// absent (`undefined === undefined` matches the FIRST thinking block) and
-				// misses entirely when the done-event id drifts from the added-event id.
-				const reasoningBlock =
-					entry?.block.type === "thinking"
-						? entry.block
-						: (output.content.find(b => b.type === "thinking" && (b as ThinkingContent).itemId === item.id) as
-								| ThinkingContent
-								| undefined);
-				if (reasoningBlock) {
-					reasoningBlock.thinking = finalizeReasoningThinking(item, reasoningBlock.thinking);
-					reasoningBlock.thinkingSignature = JSON.stringify(item);
-					stream.push({
-						type: "thinking_end",
-						contentIndex: contentIndexOf(reasoningBlock),
-						content: reasoningBlock.thinking,
-						partial: output,
-					});
-				}
-				closeOpenItem(event.output_index, item.id, entry);
-			} else if (item.type === "message") {
-				const block = entry?.block.type === "text" ? entry.block : undefined;
-				const text = finalizeMessageText(item, block?.text ?? "");
-				const textSignature = encodeTextSignatureV1(item.id, item.phase ?? undefined);
-				let contentIndex: number;
-				if (block) {
-					block.text = text;
-					block.textSignature = textSignature;
-					contentIndex = contentIndexOf(block);
-				} else {
-					// `output_item.added` never arrived (lossy proxy) — synthesize the
-					// block so the final message still carries the authoritative text.
-					const synthesized: TextContent = { type: "text", text, textSignature };
-					output.content.push(synthesized);
-					contentIndex = output.content.length - 1;
-				}
-				stream.push({ type: "text_end", contentIndex, content: text, partial: output });
-				closeOpenItem(event.output_index, item.id, entry);
-			} else if (item.type === "function_call") {
-				const block = entry?.block.type === "toolCall" ? entry.block : undefined;
-				const args = block?.[kStreamingArgumentsDone]
-					? block.arguments
-					: item.arguments
-						? parseStreamingJson(item.arguments)
-						: block?.[kStreamingPartialJson]
-							? parseStreamingJson(block[kStreamingPartialJson])
-							: parseStreamingJson("{}");
-				const toolCall: ToolCall = {
-					type: "toolCall",
-					id: encodeResponsesToolCallId(item.call_id, item.id),
-					name: item.name,
-					arguments: args,
-				};
-				let contentIndex: number;
-				if (block) {
-					// Persist the authoritative final args on the stored block. The
-					// throttled delta parser may have skipped the last partial parse,
-					// leaving block.arguments stale (often `{}`); the emitted toolCall
-					// and the persisted block must agree.
-					block.arguments = args;
-					clearStreamingPartialJson(block);
-					contentIndex = contentIndexOf(block);
-				} else {
-					// `output_item.added` never arrived (lossy proxy) — synthesize the
-					// block so the final message carries the call the consumer was told
-					// completed (the agent loop executes tools from message.content).
-					output.content.push(toolCall);
-					contentIndex = output.content.length - 1;
-				}
-				closeOpenItem(event.output_index, item.id, entry, item.call_id, prefixedFunctionCallItemKey(item.call_id));
-				stream.push({ type: "toolcall_end", contentIndex, toolCall, partial: output });
-			} else if (item.type === "custom_tool_call") {
-				const block = entry?.block.type === "toolCall" ? entry.block : undefined;
-				const rawInput = block?.[kStreamingPartialJson] ? block[kStreamingPartialJson] : (item.input ?? "");
-				const toolCall: ToolCall = {
-					type: "toolCall",
-					id: encodeResponsesToolCallId(item.call_id, item.id),
-					name: item.name,
-					arguments: { input: rawInput },
-					customWireName: item.name,
-				};
-				let contentIndex: number;
-				if (block) {
-					// Persist the final input on the stored block and drop the transient
-					// accumulation buffer, mirroring the function_call branch above.
-					block.arguments = { input: rawInput };
-					clearStreamingPartialJson(block);
-					contentIndex = contentIndexOf(block);
-				} else {
-					output.content.push(toolCall);
-					contentIndex = output.content.length - 1;
-				}
-				closeOpenItem(event.output_index, item.id, entry, item.call_id, prefixedFunctionCallItemKey(item.call_id));
-				stream.push({ type: "toolcall_end", contentIndex, toolCall, partial: output });
-			}
-		} else if (terminalEvent) {
-			const response = terminalEvent.response;
-			finalizePendingResponsesToolCalls(output);
-			if (response?.id) {
-				output.responseId = response.id;
-			}
-			populateResponsesUsageFromResponse(output, response?.usage);
-			calculateCost(model, output.usage);
-			applyOpenAIResponsesServiceTierCost(
-				model,
-				output.usage,
-				(response as { service_tier?: unknown } | undefined)?.service_tier,
-				options?.requestServiceTier,
-			);
-			output.stopReason = mapOpenAIResponsesStopReason(response?.status);
-			if (response?.status === "failed" || response?.status === "cancelled") {
-				const statusDetails = (response as ResponsesStatusDetailsView | undefined)?.status_details;
-				const error = response?.error ?? statusDetails?.error;
-				const details = response?.incomplete_details;
-				const statusDetailsReason = statusDetails?.reason;
-				const message = error
-					? `${error.code || "unknown"}: ${error.message || "no message"}`
-					: details?.reason
-						? `incomplete: ${details.reason}`
-						: typeof statusDetailsReason === "string" && statusDetailsReason.length > 0
-							? `status_details: ${statusDetailsReason}`
-							: "Unknown error (no error details in response)";
-				throw new AIError.ProviderResponseError(message, { provider: model.provider, kind: "output" });
-			}
-			if (response?.status === "incomplete" && response.incomplete_details?.reason === "content_filter") {
-				// A content-filtered turn is a failure, not a token-cap truncation —
-				// mapping it to "length" would route the agent loop into "shorten your
-				// output" recovery against a filtered prompt.
-				throw new AIError.ProviderResponseError("incomplete: content_filter", {
-					provider: model.provider,
-					kind: "content-blocked",
-				});
-			}
-			promoteResponsesToolUseStopReason(output, (response as { end_turn?: boolean } | undefined)?.end_turn);
-			options?.onCompleted?.();
-			// `response.completed`/`response.incomplete`/`response.done` is the last event of a
-			// Responses stream. Stop pulling instead of waiting for the server to
-			// close the connection: misbehaving providers keep the socket open
-			// after the terminal event, which would park this loop until the idle
-			// watchdog converts an already-successful turn into a timeout error.
-			// Breaking unwinds the iterator chain (the consumer's `.return()`
-			// reaches the SDK stream), actively releasing the connection.
-			break;
-		} else if (event.type === "error") {
-			// Error events carry either a nested `error` object or the code/message
-			// fields inline, depending on the backend.
-			const errorEvent = event as {
-				error?: { code?: unknown; message?: unknown };
-				code?: unknown;
-				message?: unknown;
-			};
-			const err = errorEvent.error ?? errorEvent;
-			const code = err.code ?? "unknown";
-			const message = err.message ?? "no message";
-			throw new AIError.ProviderResponseError(`Error Code ${code}: ${message}`, {
-				provider: model.provider,
-				kind: "output",
-			});
-		} else if (event.type === "response.failed") {
-			populateResponsesUsageFromResponse(output, event.response?.usage);
-			const error =
-				event.response?.error ?? (event.response as ResponsesStatusDetailsView | undefined)?.status_details?.error;
-			const details = event.response?.incomplete_details;
-			const message = error
-				? `${error.code || "unknown"}: ${error.message || "no message"}`
-				: details?.reason
-					? `incomplete: ${details.reason}`
-					: "Unknown error (no error details in response)";
-			throw new AIError.ProviderResponseError(message, { provider: model.provider, kind: "output" });
-		}
+		// `response.completed`/`response.incomplete`/`response.done` is the last event of a
+		// Responses stream. Stop pulling instead of waiting for the server to
+		// close the connection: misbehaving providers keep the socket open
+		// after the terminal event, which would park this loop until the idle
+		// watchdog converts an already-successful turn into a timeout error.
+		// Breaking unwinds the iterator chain (the consumer's `.return()`
+		// reaches the SDK stream), actively releasing the connection.
+		if (decoder.apply(event)) break;
 	}
 }
 

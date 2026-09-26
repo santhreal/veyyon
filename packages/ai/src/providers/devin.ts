@@ -11,6 +11,7 @@ import {
 import {
 	ChatMessageRequestType,
 	GetChatMessageRequestSchema,
+	type GetChatMessageResponse,
 	GetChatMessageResponseSchema,
 } from "@veyyon/catalog/discovery/devin-gen/exa/api_server_pb/api_server_pb";
 import {
@@ -33,6 +34,7 @@ import {
 	ConversationalPlannerMode,
 	ImageDataSchema,
 	MetadataSchema,
+	type ModelUsageStats,
 	StopReason,
 } from "@veyyon/catalog/discovery/devin-gen/exa/codeium_common_pb/codeium_common_pb";
 import { calculateCost, discardAttemptUsage } from "@veyyon/catalog/models";
@@ -56,6 +58,7 @@ import type {
 	ThinkingContent,
 	Tool,
 	ToolCall,
+	Usage,
 } from "../types";
 import { clearStreamingPartialJson, setStreamingPartialJson } from "../utils/block-symbols";
 import { deterministicUuid } from "../utils/deterministic-id";
@@ -132,124 +135,14 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 
 	(async () => {
 		const startTime = performance.now();
-		let firstTokenTime: number | undefined;
-
-		const output: AssistantMessage = createInitialResponsesAssistantMessage(
-			"devin-agent" as Api,
-			model.provider,
-			model.id,
+		const decoder = new DevinStreamDecoder(
+			stream,
+			createInitialResponsesAssistantMessage("devin-agent" as Api, model.provider, model.id),
 		);
-
-		let currentTextBlock: TextContent | null = null;
-		let currentThinkingBlock: ThinkingContent | null = null;
-		// Tool-call content blocks keyed by streamed tool-call id, plus the JSON-args text
-		// accumulated per id (kept out of the content object so finalized tool calls stay clean).
-		const toolBlocks = new Map<string, ToolCall>();
-		const toolPartialJson = new Map<string, string>();
-		// Last-parsed argument-buffer length per tool-call id — bounds the
-		// mid-stream parse work to O(N) via `parseStreamingJsonThrottled`; the
-		// authoritative final parse still runs unconditionally in the toolcall_end
-		// loop below.
-		const toolLastParseLen = new Map<string, number>();
-		let activeToolCallId: string | undefined;
-		let latestStopReason = StopReason.UNSPECIFIED;
-
-		const markFirstToken = () => {
-			if (firstTokenTime === undefined) firstTokenTime = performance.now();
-		};
-
-		const endTextBlock = () => {
-			const block = currentTextBlock;
-			if (!block) return;
-			currentTextBlock = null;
-			stream.push({
-				type: "text_end",
-				contentIndex: output.content.indexOf(block),
-				content: block.text,
-				partial: output,
-			});
-		};
-
-		const endThinkingBlock = () => {
-			const block = currentThinkingBlock;
-			if (!block) return;
-			currentThinkingBlock = null;
-			stream.push({
-				type: "thinking_end",
-				contentIndex: output.content.indexOf(block),
-				content: block.thinking,
-				partial: output,
-			});
-		};
+		const output = decoder.output;
 
 		try {
-			const fetchImpl = options?.fetch ?? fetch;
-			const baseUrl = trimTrailingSlashes(model.baseUrl || DEVIN_CASCADE_ENDPOINT);
-			const apiKey = normalizeDevinSessionToken(options?.apiKey);
-			const auth = await fetchDevinAuthMetadata(apiKey, baseUrl, fetchImpl, options?.signal);
-			const chatBaseUrl = auth.baseUrl ?? baseUrl;
-			let request = buildDevinChatRequest(model, context, options, apiKey, auth.userJwt);
-			logger.debug("devin: sending chat request", { model: model.id, tools: context.tools?.length ?? 0 });
-			const resolvedApiKey = request.metadata?.apiKey ?? apiKey;
-			const resolvedUserJwt = request.metadata?.userJwt ?? auth.userJwt;
-
-			// `onPayload` is a JSON seam: the secret-redaction walker behind it
-			// (`transformProviderPayload`) rewrites every string and refuses any
-			// value JSON cannot express. A protobuf message is not that shape --
-			// `metadata.requestId` is a uint64 and therefore a bigint, and bytes
-			// fields are Uint8Array -- so handing the message straight over made
-			// EVERY Devin request fail with "the provider request contains a
-			// non-JSON value/object; confidentiality transform failed." for any
-			// operator with secrets configured. Canonical proto3 JSON carries the
-			// 64-bit fields as strings, so the hook sees, and can redact, the
-			// whole payload. Only paid when a hook is installed.
-			const payloadHook = options?.onPayload;
-			if (payloadHook) {
-				const replacementPayload = await payloadHook(toJson(GetChatMessageRequestSchema, request), model);
-				if (replacementPayload !== undefined) {
-					request = fromJson(GetChatMessageRequestSchema, replacementPayload as JsonValue);
-				}
-			}
-			const wireMetadata = create(MetadataSchema, request.metadata);
-			wireMetadata.apiKey = resolvedApiKey;
-			wireMetadata.userJwt = resolvedUserJwt;
-			request.metadata = wireMetadata;
-			const reqBytes = toBinary(GetChatMessageRequestSchema, request);
-			const gz = gzipSync(reqBytes);
-			const frame = Buffer.alloc(5 + gz.length);
-			frame[0] = CONNECT_COMPRESSED_FLAG;
-			frame.writeUInt32BE(gz.length, 1);
-			frame.set(gz, 5);
-
-			const response = await fetchImpl(chatBaseUrl + CHAT_MESSAGE_PATH, {
-				method: "POST",
-				headers: {
-					"content-type": "application/connect+proto",
-					"connect-protocol-version": "1",
-					"connect-content-encoding": "gzip",
-					"accept-encoding": "identity",
-					"user-agent": "connect-go/1.18.1 (go1.26.3)",
-					"connect-accept-encoding": "gzip",
-					...(options?.headers ?? {}),
-				},
-				body: frame,
-				signal: options?.signal,
-			});
-
-			if (!response.ok) {
-				const detail = await AIError.readProviderErrorDetail(response);
-				throw new AIError.DevinApiError(
-					`Devin API error ${response.status} ${response.statusText}: ${detail}`,
-					response.status,
-				);
-			}
-			if (!response.body) {
-				throw new AIError.ProviderResponseError("Devin API error: response body is empty", {
-					provider: model.provider,
-					kind: "empty-body",
-				});
-			}
-			const body = response.body;
+			const body = await postDevinChatRequest(model, context, options);
 
 			// Only the first attempt announces the stream. A retry is a continuation of the same turn
 			// from the consumer's point of view, and it is only ever reached when nothing but `start`
@@ -257,207 +150,30 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 			// turn and a clean one.
 			if (retryAttempt === 0) stream.push({ type: "start", partial: output });
 
-			const reader = body.getReader();
-			let pending = Buffer.alloc(0);
-
-			for (;;) {
-				const { done, value } = await reader.read();
-				if (value && value.length > 0) {
-					pending = Buffer.concat([pending, value]);
-				}
-
-				while (pending.length >= 5) {
-					const flag = pending[0];
-					const len = pending.readUInt32BE(1);
-					if (len > MAX_CONNECT_FRAME_PAYLOAD) {
-						throw new AIError.ProviderResponseError(
-							`Devin Connect frame length ${len} exceeds ${MAX_CONNECT_FRAME_PAYLOAD}-byte cap`,
-							{ provider: model.provider, kind: "envelope" },
-						);
-					}
-					if (pending.length < 5 + len) break;
-					const payload = pending.subarray(5, 5 + len);
-					pending = pending.subarray(5 + len);
-
-					if (flag & CONNECT_END_STREAM_FLAG) {
-						const trailerBytes = flag & CONNECT_COMPRESSED_FLAG ? gunzipSync(payload) : payload;
-						const trailerError = readConnectTrailerError(trailerBytes.toString("utf8").trim());
-						if (trailerError) throw devinTrailerFailure(trailerError);
-						continue;
-					}
-
-					const raw = flag & CONNECT_COMPRESSED_FLAG ? gunzipSync(payload) : payload;
-					const msg = fromBinary(GetChatMessageResponseSchema, raw);
-					if (msg.messageId && !output.responseId) output.responseId = msg.messageId;
-
-					if (msg.deltaThinking) {
-						markFirstToken();
-						const block: ThinkingContent = currentThinkingBlock ?? { type: "thinking", thinking: "" };
-						if (currentThinkingBlock !== block) {
-							output.content.push(block);
-							currentThinkingBlock = block;
-							stream.push({
-								type: "thinking_start",
-								contentIndex: output.content.length - 1,
-								partial: output,
-							});
-						}
-						block.thinking += msg.deltaThinking;
-						if (msg.deltaSignature) block.thinkingSignature = msg.deltaSignature;
-						stream.push({
-							type: "thinking_delta",
-							contentIndex: output.content.indexOf(block),
-							delta: msg.deltaThinking,
-							partial: output,
-						});
-					}
-
-					if (msg.deltaText) {
-						markFirstToken();
-						endThinkingBlock();
-						const block: TextContent = currentTextBlock ?? { type: "text", text: "" };
-						if (currentTextBlock !== block) {
-							output.content.push(block);
-							currentTextBlock = block;
-							stream.push({ type: "text_start", contentIndex: output.content.length - 1, partial: output });
-						}
-						block.text += msg.deltaText;
-						stream.push({
-							type: "text_delta",
-							contentIndex: output.content.indexOf(block),
-							delta: msg.deltaText,
-							partial: output,
-						});
-					}
-
-					if (msg.deltaToolCalls.length > 0) {
-						markFirstToken();
-						endTextBlock();
-						endThinkingBlock();
-						for (const tc of msg.deltaToolCalls) {
-							const toolCallId = tc.id || activeToolCallId;
-							if (!toolCallId) continue;
-							let block = toolBlocks.get(toolCallId);
-							if (!block) {
-								block = { type: "toolCall", id: toolCallId, name: tc.name, arguments: {} };
-								output.content.push(block);
-								toolBlocks.set(toolCallId, block);
-								toolPartialJson.set(toolCallId, "");
-								stream.push({
-									type: "toolcall_start",
-									contentIndex: output.content.length - 1,
-									partial: output,
-								});
-							}
-							if (tc.name) block.name = tc.name;
-							activeToolCallId = toolCallId;
-							if (!tc.argumentsJson) continue;
-							const previousJson = toolPartialJson.get(toolCallId) ?? "";
-							const accumulated = tc.argumentsJson.startsWith(previousJson)
-								? tc.argumentsJson
-								: previousJson + tc.argumentsJson;
-							const delta = accumulated.slice(previousJson.length);
-							toolPartialJson.set(toolCallId, accumulated);
-							// Publish the raw accumulation on the block itself. `arguments` only
-							// re-parses every STREAMING_JSON_PARSE_MIN_GROWTH bytes, so a preview
-							// reading it alone shows nothing until the call closes; the renderer
-							// path (event-controller → ToolArgsRevealController) decodes this
-							// buffer every frame instead. Cleared at `toolcall_end` below,
-							// because a marker left holding text is how `agent-loop.ts` detects
-							// a call whose arguments never finished.
-							setStreamingPartialJson(block, accumulated);
-							const throttled = parseStreamingJsonThrottled(accumulated, toolLastParseLen.get(toolCallId) ?? 0);
-							if (throttled) {
-								block.arguments = throttled.value;
-								toolLastParseLen.set(toolCallId, throttled.parsedLen);
-							}
-							stream.push({
-								type: "toolcall_delta",
-								contentIndex: output.content.indexOf(block),
-								delta,
-								partial: output,
-							});
-						}
-					}
-
-					if (msg.stopReason !== StopReason.UNSPECIFIED) {
-						latestStopReason = msg.stopReason;
-					}
-
-					if (msg.usage) {
-						output.usage.input = Number(msg.usage.inputTokens);
-						output.usage.output = Number(msg.usage.outputTokens);
-						output.usage.cacheRead = Number(msg.usage.cacheReadTokens);
-						output.usage.cacheWrite = Number(msg.usage.cacheWriteTokens);
-						output.usage.totalTokens = output.usage.input + output.usage.output;
-					}
-				}
-
-				if (done) break;
-			}
-
-			endTextBlock();
-			endThinkingBlock();
-			for (const [id, block] of toolBlocks) {
-				block.arguments = parseStreamingJson(toolPartialJson.get(id));
-				clearStreamingPartialJson(block);
-				stream.push({
-					type: "toolcall_end",
-					contentIndex: output.content.indexOf(block),
-					toolCall: block,
-					partial: output,
-				});
-			}
-
-			const doneReason: "stop" | "length" | "toolUse" =
-				toolBlocks.size > 0 ? "toolUse" : latestStopReason === StopReason.MAX_TOKENS ? "length" : "stop";
-			output.stopReason = doneReason;
+			await readConnectMessages(body, model, payload => {
+				decoder.apply(fromBinary(GetChatMessageResponseSchema, payload));
+			});
+			const doneReason = decoder.finish();
 
 			calculateCost(model, output.usage);
 			output.duration = performance.now() - startTime;
-			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
+			if (decoder.firstTokenTime) output.ttft = decoder.firstTokenTime - startTime;
 
 			stream.push({ type: "done", reason: doneReason, message: output });
 			stream.end();
 		} catch (error) {
 			const retryDelayMs = devinRetryDelayMs(error, {
 				attempt: retryAttempt,
-				emittedToken: firstTokenTime !== undefined,
+				emittedToken: decoder.firstTokenTime !== undefined,
 				aborted: options?.signal?.aborted === true,
 			});
 			if (retryDelayMs !== undefined) {
-				logger.warn("devin: transient stream failure, retrying", {
-					model: model.id,
-					attempt: retryAttempt + 1,
+				await forwardDevinRetry(stream, model, context, options, {
+					attempt: retryAttempt,
 					delayMs: retryDelayMs,
-					error: String(error),
+					error,
+					abandonedUsage: output.usage,
 				});
-				if (options?.providerRetryWait) await options.providerRetryWait(retryDelayMs, options.signal);
-				else await scheduler.wait(retryDelayMs, { signal: options?.signal });
-
-				// Re-run the whole turn and forward it into the stream the caller is already reading.
-				// Delegating rather than looping in place is what keeps the partial `output` of this
-				// attempt from reaching anyone: the retry builds its own, and the only event the caller
-				// has seen so far is the `start` this attempt emitted, which the retry does not repeat.
-				const retried = streamDevin(model, context, { ...options, devinRetryAttempt: retryAttempt + 1 });
-				// The abandoned attempt's text reaches nobody, but Devin billed whatever
-				// it reported before dying: carry that spend onto the message the retry
-				// delivers, once, whichever terminal shape arrives first.
-				let carried = false;
-				const carrySpend = (message: AssistantMessage): AssistantMessage => {
-					if (!carried) {
-						carried = true;
-						discardAttemptUsage(model, output.usage, message.usage);
-					}
-					return message;
-				};
-				for await (const event of retried) {
-					if (event.type === "done") carrySpend(event.message);
-					else if (event.type === "error") carrySpend(event.error);
-					stream.push(event);
-					if (stream.done) return;
-				}
-				if (!stream.done) stream.end(carrySpend(await retried.result()));
 				return;
 			}
 			// Finalized BEFORE the record is written, because the outcome is what decides how loud
@@ -476,7 +192,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 			});
 			AIError.applyFinalizeResult(output, result);
 			output.duration = performance.now() - startTime;
-			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
+			if (decoder.firstTokenTime) output.ttft = decoder.firstTokenTime - startTime;
 			stream.push({ type: "error", reason: result.stopReason, error: output });
 			stream.end();
 		}
@@ -484,6 +200,362 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 
 	return stream;
 };
+
+/**
+ * Authenticate, send one framed, gzipped `GetChatMessage` request, and return the streaming
+ * response body. A non-2xx answer or an empty body throws before any event reaches the caller.
+ */
+async function postDevinChatRequest(
+	model: Model<"devin-agent">,
+	context: Context,
+	options: DevinOptions | undefined,
+): Promise<ReadableStream<Uint8Array>> {
+	const fetchImpl = options?.fetch ?? fetch;
+	const baseUrl = trimTrailingSlashes(model.baseUrl || DEVIN_CASCADE_ENDPOINT);
+	const apiKey = normalizeDevinSessionToken(options?.apiKey);
+	const auth = await fetchDevinAuthMetadata(apiKey, baseUrl, fetchImpl, options?.signal);
+	const chatBaseUrl = auth.baseUrl ?? baseUrl;
+	let request = buildDevinChatRequest(model, context, options, apiKey, auth.userJwt);
+	logger.debug("devin: sending chat request", { model: model.id, tools: context.tools?.length ?? 0 });
+	const resolvedApiKey = request.metadata?.apiKey ?? apiKey;
+	const resolvedUserJwt = request.metadata?.userJwt ?? auth.userJwt;
+
+	// `onPayload` is a JSON seam: the secret-redaction walker behind it
+	// (`transformProviderPayload`) rewrites every string and refuses any
+	// value JSON cannot express. A protobuf message is not that shape --
+	// `metadata.requestId` is a uint64 and therefore a bigint, and bytes
+	// fields are Uint8Array -- so handing the message straight over made
+	// EVERY Devin request fail with "the provider request contains a
+	// non-JSON value/object; confidentiality transform failed." for any
+	// operator with secrets configured. Canonical proto3 JSON carries the
+	// 64-bit fields as strings, so the hook sees, and can redact, the
+	// whole payload. Only paid when a hook is installed.
+	const payloadHook = options?.onPayload;
+	if (payloadHook) {
+		const replacementPayload = await payloadHook(toJson(GetChatMessageRequestSchema, request), model);
+		if (replacementPayload !== undefined) {
+			request = fromJson(GetChatMessageRequestSchema, replacementPayload as JsonValue);
+		}
+	}
+	const wireMetadata = create(MetadataSchema, request.metadata);
+	wireMetadata.apiKey = resolvedApiKey;
+	wireMetadata.userJwt = resolvedUserJwt;
+	request.metadata = wireMetadata;
+	const gz = gzipSync(toBinary(GetChatMessageRequestSchema, request));
+	const frame = Buffer.alloc(5 + gz.length);
+	frame[0] = CONNECT_COMPRESSED_FLAG;
+	frame.writeUInt32BE(gz.length, 1);
+	frame.set(gz, 5);
+
+	const response = await fetchImpl(chatBaseUrl + CHAT_MESSAGE_PATH, {
+		method: "POST",
+		headers: {
+			"content-type": "application/connect+proto",
+			"connect-protocol-version": "1",
+			"connect-content-encoding": "gzip",
+			"accept-encoding": "identity",
+			"user-agent": "connect-go/1.18.1 (go1.26.3)",
+			"connect-accept-encoding": "gzip",
+			...(options?.headers ?? {}),
+		},
+		body: frame,
+		signal: options?.signal,
+	});
+
+	if (!response.ok) {
+		const detail = await AIError.readProviderErrorDetail(response);
+		throw new AIError.DevinApiError(
+			`Devin API error ${response.status} ${response.statusText}: ${detail}`,
+			response.status,
+		);
+	}
+	if (!response.body) {
+		throw new AIError.ProviderResponseError("Devin API error: response body is empty", {
+			provider: model.provider,
+			kind: "empty-body",
+		});
+	}
+	return response.body;
+}
+
+/**
+ * Split a Connect streaming body into its message payloads, gunzipping compressed frames, and hand
+ * each to `onMessage` synchronously, so a read holding many frames costs no promise per frame.
+ *
+ * The end-of-stream frame is not a message: its JSON trailers either carry an error, which is
+ * thrown, or nothing. A read is appended to the unconsumed tail only when a frame straddles two
+ * reads, so a read holding whole frames is sliced in place rather than copied.
+ */
+async function readConnectMessages(
+	body: ReadableStream<Uint8Array>,
+	model: Model<"devin-agent">,
+	onMessage: (payload: Uint8Array) => void,
+): Promise<void> {
+	const reader = body.getReader();
+	let pending: Buffer = Buffer.alloc(0);
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (value && value.length > 0) {
+			pending =
+				pending.length === 0
+					? Buffer.from(value.buffer, value.byteOffset, value.byteLength)
+					: Buffer.concat([pending, value]);
+		}
+
+		while (pending.length >= 5) {
+			const flag = pending[0];
+			const len = pending.readUInt32BE(1);
+			if (len > MAX_CONNECT_FRAME_PAYLOAD) {
+				throw new AIError.ProviderResponseError(
+					`Devin Connect frame length ${len} exceeds ${MAX_CONNECT_FRAME_PAYLOAD}-byte cap`,
+					{ provider: model.provider, kind: "envelope" },
+				);
+			}
+			if (pending.length < 5 + len) break;
+			const payload = pending.subarray(5, 5 + len);
+			pending = pending.subarray(5 + len);
+			const raw = flag & CONNECT_COMPRESSED_FLAG ? gunzipSync(payload) : payload;
+
+			if (flag & CONNECT_END_STREAM_FLAG) {
+				const trailerError = readConnectTrailerError(raw.toString("utf8").trim());
+				if (trailerError) throw devinTrailerFailure(trailerError);
+				continue;
+			}
+			onMessage(raw);
+		}
+
+		if (done) return;
+	}
+}
+
+/** A tool call being streamed: its content block, where it sits, and the argument text so far. */
+interface DevinStreamingToolCall {
+	block: ToolCall;
+	contentIndex: number;
+	json: string;
+	/**
+	 * Argument-buffer length at the last mid-stream parse, which bounds that work to O(N) via
+	 * `parseStreamingJsonThrottled`; the authoritative parse still runs at `toolcall_end`.
+	 */
+	parsedLen: number;
+}
+
+/**
+ * Fold decoded Cascade messages into the assistant message and push the matching events.
+ *
+ * Content blocks are only ever appended, so each open block keeps the index it was pushed at.
+ */
+class DevinStreamDecoder {
+	readonly output: AssistantMessage;
+	firstTokenTime: number | undefined;
+	#stream: AssistantMessageEventStream;
+	#text: { block: TextContent; contentIndex: number } | undefined;
+	#thinking: { block: ThinkingContent; contentIndex: number } | undefined;
+	// Keyed by streamed tool-call id. The accumulated argument text is kept here rather than on
+	// the content object so a finalized tool call stays clean.
+	#toolCalls = new Map<string, DevinStreamingToolCall>();
+	#activeToolCallId: string | undefined;
+	#stopReason = StopReason.UNSPECIFIED;
+
+	constructor(stream: AssistantMessageEventStream, output: AssistantMessage) {
+		this.#stream = stream;
+		this.output = output;
+	}
+
+	apply(msg: GetChatMessageResponse): void {
+		if (msg.messageId && !this.output.responseId) this.output.responseId = msg.messageId;
+		if (msg.deltaThinking) this.#applyThinking(msg.deltaThinking, msg.deltaSignature);
+		if (msg.deltaText) this.#applyText(msg.deltaText);
+		if (msg.deltaToolCalls.length > 0) this.#applyToolCalls(msg.deltaToolCalls);
+		if (msg.stopReason !== StopReason.UNSPECIFIED) this.#stopReason = msg.stopReason;
+		if (msg.usage) this.#applyUsage(msg.usage);
+	}
+
+	/** Close every open block, settle each tool call's arguments, and set the stop reason. */
+	finish(): "stop" | "length" | "toolUse" {
+		this.#endText();
+		this.#endThinking();
+		for (const call of this.#toolCalls.values()) {
+			call.block.arguments = parseStreamingJson(call.json);
+			clearStreamingPartialJson(call.block);
+			this.#stream.push({
+				type: "toolcall_end",
+				contentIndex: call.contentIndex,
+				toolCall: call.block,
+				partial: this.output,
+			});
+		}
+		const reason =
+			this.#toolCalls.size > 0 ? "toolUse" : this.#stopReason === StopReason.MAX_TOKENS ? "length" : "stop";
+		this.output.stopReason = reason;
+		return reason;
+	}
+
+	#markFirstToken(): void {
+		if (this.firstTokenTime === undefined) this.firstTokenTime = performance.now();
+	}
+
+	#applyThinking(delta: string, signature: string): void {
+		this.#markFirstToken();
+		let open = this.#thinking;
+		if (!open) {
+			open = { block: { type: "thinking", thinking: "" }, contentIndex: this.output.content.length };
+			this.output.content.push(open.block);
+			this.#thinking = open;
+			this.#stream.push({ type: "thinking_start", contentIndex: open.contentIndex, partial: this.output });
+		}
+		open.block.thinking += delta;
+		if (signature) open.block.thinkingSignature = signature;
+		this.#stream.push({ type: "thinking_delta", contentIndex: open.contentIndex, delta, partial: this.output });
+	}
+
+	#applyText(delta: string): void {
+		this.#markFirstToken();
+		this.#endThinking();
+		let open = this.#text;
+		if (!open) {
+			open = { block: { type: "text", text: "" }, contentIndex: this.output.content.length };
+			this.output.content.push(open.block);
+			this.#text = open;
+			this.#stream.push({ type: "text_start", contentIndex: open.contentIndex, partial: this.output });
+		}
+		open.block.text += delta;
+		this.#stream.push({ type: "text_delta", contentIndex: open.contentIndex, delta, partial: this.output });
+	}
+
+	#applyToolCalls(deltas: ChatToolCall[]): void {
+		this.#markFirstToken();
+		this.#endText();
+		this.#endThinking();
+		for (const tc of deltas) {
+			const toolCallId = tc.id || this.#activeToolCallId;
+			if (!toolCallId) continue;
+			let call = this.#toolCalls.get(toolCallId);
+			if (!call) {
+				const block: ToolCall = { type: "toolCall", id: toolCallId, name: tc.name, arguments: {} };
+				call = { block, contentIndex: this.output.content.length, json: "", parsedLen: 0 };
+				this.output.content.push(block);
+				this.#toolCalls.set(toolCallId, call);
+				this.#stream.push({ type: "toolcall_start", contentIndex: call.contentIndex, partial: this.output });
+			}
+			if (tc.name) call.block.name = tc.name;
+			this.#activeToolCallId = toolCallId;
+			if (tc.argumentsJson) this.#appendArguments(call, tc.argumentsJson);
+		}
+	}
+
+	/** Cascade resends the whole argument text on some deltas and only the new tail on others. */
+	#appendArguments(call: DevinStreamingToolCall, argumentsJson: string): void {
+		const previous = call.json;
+		const accumulated = argumentsJson.startsWith(previous) ? argumentsJson : previous + argumentsJson;
+		call.json = accumulated;
+		// Publish the raw accumulation on the block itself. `arguments` only
+		// re-parses every STREAMING_JSON_PARSE_MIN_GROWTH bytes, so a preview
+		// reading it alone shows nothing until the call closes; the renderer
+		// path (event-controller → ToolArgsRevealController) decodes this
+		// buffer every frame instead. Cleared at `toolcall_end` in `finish`,
+		// because a marker left holding text is how `agent-loop.ts` detects
+		// a call whose arguments never finished.
+		setStreamingPartialJson(call.block, accumulated);
+		const throttled = parseStreamingJsonThrottled(accumulated, call.parsedLen);
+		if (throttled) {
+			call.block.arguments = throttled.value;
+			call.parsedLen = throttled.parsedLen;
+		}
+		this.#stream.push({
+			type: "toolcall_delta",
+			contentIndex: call.contentIndex,
+			delta: accumulated.slice(previous.length),
+			partial: this.output,
+		});
+	}
+
+	#applyUsage(usage: ModelUsageStats): void {
+		const out = this.output.usage;
+		out.input = Number(usage.inputTokens);
+		out.output = Number(usage.outputTokens);
+		out.cacheRead = Number(usage.cacheReadTokens);
+		out.cacheWrite = Number(usage.cacheWriteTokens);
+		out.totalTokens = out.input + out.output;
+	}
+
+	#endText(): void {
+		const open = this.#text;
+		if (!open) return;
+		this.#text = undefined;
+		this.#stream.push({
+			type: "text_end",
+			contentIndex: open.contentIndex,
+			content: open.block.text,
+			partial: this.output,
+		});
+	}
+
+	#endThinking(): void {
+		const open = this.#thinking;
+		if (!open) return;
+		this.#thinking = undefined;
+		this.#stream.push({
+			type: "thinking_end",
+			contentIndex: open.contentIndex,
+			content: open.block.thinking,
+			partial: this.output,
+		});
+	}
+}
+
+interface DevinRetry {
+	attempt: number;
+	delayMs: number;
+	error: unknown;
+	/** What the abandoned attempt reported before it died, which Devin still billed. */
+	abandonedUsage: Usage;
+}
+
+/**
+ * Wait out a transient failure, then re-run the whole turn and forward it into the stream the
+ * caller is already reading.
+ *
+ * Delegating rather than looping in place is what keeps the partial output of the failed attempt
+ * from reaching anyone: the retry builds its own, and the only event the caller has seen so far is
+ * the `start` the first attempt emitted, which the retry does not repeat.
+ */
+async function forwardDevinRetry(
+	stream: AssistantMessageEventStream,
+	model: Model<"devin-agent">,
+	context: Context,
+	options: DevinOptions | undefined,
+	retry: DevinRetry,
+): Promise<void> {
+	logger.warn("devin: transient stream failure, retrying", {
+		model: model.id,
+		attempt: retry.attempt + 1,
+		delayMs: retry.delayMs,
+		error: String(retry.error),
+	});
+	if (options?.providerRetryWait) await options.providerRetryWait(retry.delayMs, options.signal);
+	else await scheduler.wait(retry.delayMs, { signal: options?.signal });
+
+	const retried = streamDevin(model, context, { ...options, devinRetryAttempt: retry.attempt + 1 });
+	// The abandoned attempt's text reaches nobody, but Devin billed whatever it reported before
+	// dying: carry that spend onto the message the retry delivers, once, whichever terminal shape
+	// arrives first.
+	let carried = false;
+	const carrySpend = (message: AssistantMessage): AssistantMessage => {
+		if (!carried) {
+			carried = true;
+			discardAttemptUsage(model, retry.abandonedUsage, message.usage);
+		}
+		return message;
+	};
+	for await (const event of retried) {
+		if (event.type === "done") carrySpend(event.message);
+		else if (event.type === "error") carrySpend(event.error);
+		stream.push(event);
+		if (stream.done) return;
+	}
+	if (!stream.done) stream.end(carrySpend(await retried.result()));
+}
 
 async function fetchDevinAuthMetadata(
 	apiKey: string,
