@@ -1,9 +1,11 @@
 Read files, directories (optionally bounded by `depth`/`limit`), archives, SQLite, images, documents, internal resources, and web URLs via `path`.
 
+{{#if hasBrowser}}
 <instruction>
 - SHOULD use `read` (not a browser tool) for web content; browser only when `read` can't deliver.
 </instruction>
 
+{{/if}}
 ## Parameters
 
 - `path` — required. Local path, internal URI (`skill://`, `agent://`, `artifact://`, `memory://`, `rule://`, `local://`, `vault://`, `mcp://`, `veyyon://`, `issue://`, `pr://`, `ssh://`), or URL. Append `:<sel>` for ranges/modes (e.g. `src/foo.ts:50-200`, `src/foo.ts:raw`, `db.sqlite:users:42`).

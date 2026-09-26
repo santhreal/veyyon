@@ -848,7 +848,7 @@ export class AgentSession {
 	 *  the session cwd changes. */
 	#titleSystemPrompt: string | undefined;
 	#toolChoiceQueue = new ToolChoiceQueue();
-	readonly #verificationEvidence = new VerificationEvidenceLedger();
+	readonly #verificationEvidence = new VerificationEvidenceLedger(() => this.getActiveToolNames());
 	#afterEditCheckReported = false;
 
 	// Bash execution state
