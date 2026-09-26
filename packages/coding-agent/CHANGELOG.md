@@ -4,6 +4,7 @@
 
 ### Changed
 
+- `veyyon session stats` folds each entry through a reducer with one method per entry kind instead of one 340-line loop, cutting the report on a 104,969-entry session from 36.4 ms to 30.0 ms with an identical report.
 - The legacy agent settings migration runs as one step per retired area over a shared key reader, cutting a legacy-heavy config's migration from 15.0 µs to 10.9 µs per load; a current-format config is unchanged.
 - A compaction pass finds the entry it just wrote by the id the append returned instead of copying the session's entries and scanning them for its summary text, which cuts that step on a 238,086-entry session from 6.53 ms to 0.002 ms.
 - Automatic compaction runs its candidate loop, per-candidate retries, progress check and follow-up scheduling in single-purpose methods, and shares the hook offer and the write step with manual compaction; no user-visible change.

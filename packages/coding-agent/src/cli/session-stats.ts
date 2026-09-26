@@ -14,12 +14,14 @@
  * directly by tests with scripted entries and exact expected values.
  */
 
-import type { AssistantMessage, ToolCallMetrics, ToolResultMessage } from "@veyyon/ai";
+import type { AssistantMessage, ContextSnapshot, ToolCallMetrics, ToolResultMessage } from "@veyyon/ai";
 // The rank from the module that defines it (1 module) rather than the barrel (346).
 import { type InstrumentationLevel, instrumentationRank } from "@veyyon/ai/instrumentation";
 import type {
 	FileEntry,
+	SessionCheckpointEntry,
 	SessionHeader,
+	SessionLifecycleEntry,
 	SessionLifecycleReason,
 	SessionMessageEntry,
 } from "@veyyon/kernel/session/session-entries";
@@ -259,10 +261,6 @@ export function percentile(sortedAsc: readonly number[], p: number): number {
 	return sortedAsc[index];
 }
 
-function isMessageEntry(entry: FileEntry): entry is SessionMessageEntry {
-	return entry.type === "message";
-}
-
 /** Per-tool mutable accumulator, resolved to the exported stats at the end. */
 interface ToolAccumulator {
 	calls: number;
@@ -419,8 +417,13 @@ function activeBranchEntryIds(entries: readonly FileEntry[]): Set<string> {
  * recorded at `off` still produces turn and usage totals, just no tool timing.
  */
 export function computeSessionStats(entries: readonly FileEntry[]): SessionStatsReport {
-	const header = entries[0]?.type === "session" ? (entries[0] as SessionHeader) : undefined;
-	const totals: SessionStatsTotals = {
+	const reducer = new SessionStatsReducer(activeBranchEntryIds(entries));
+	for (const entry of entries) reducer.add(entry);
+	return reducer.report(entries[0]?.type === "session" ? (entries[0] as SessionHeader) : undefined);
+}
+
+function emptyTotals(): SessionStatsTotals {
+	return {
 		assistantTurns: 0,
 		userMessages: 0,
 		toolCalls: 0,
@@ -438,389 +441,405 @@ export function computeSessionStats(entries: readonly FileEntry[]): SessionStats
 		resultBytes: 0,
 		wallClockMs: 0,
 	};
-	const turns: TurnStat[] = [];
-	const tools = new Map<string, ToolAccumulator>();
-	const repeats = new Map<string, RepeatedCall>();
-	const toolSpans = emptyToolSpanStats();
-	const toolBatches = new Set<string>();
-	const toolArgsHashes = new Set<string>();
-	const seenIrcRecords = new Set<string>();
-	const compactionEntryIds = new Set<string>();
-	const activeEntryIds = activeBranchEntryIds(entries);
-
-	let messages = 0;
-	let firstTs: number | undefined;
-	let lastTs: number | undefined;
-	let maxLevelRank = 0;
-	let maxLevel: InstrumentationLevel = "off";
-	let currentTurn: TurnStat | undefined;
-	let lifecycle: LifecycleStats | undefined;
-	let context: ContextAttributionStats | undefined;
-	let ircDelivery: IrcDeliveryStats | undefined;
-	let taskState: TaskStateStats | undefined;
-
-	const note = (ts: number) => {
-		if (typeof ts !== "number") return;
-		if (firstTs === undefined || ts < firstTs) firstTs = ts;
-		if (lastTs === undefined || ts > lastTs) lastTs = ts;
-	};
-	const bumpLevel = (level: InstrumentationLevel) => {
-		const rank = instrumentationRank(level);
-		if (rank > maxLevelRank) {
-			maxLevelRank = rank;
-			maxLevel = level;
-		}
-	};
-
-	for (const entry of entries) {
-		if ("sequence" in entry && typeof entry.sequence === "number") {
-			lifecycle ??= { transitions: 0, checkpoints: 0 };
-			if (lifecycle.sequence) {
-				lifecycle.sequence.entries += 1;
-				lifecycle.sequence.last = entry.sequence;
-				lifecycle.sequence.highest = Math.max(lifecycle.sequence.highest, entry.sequence);
-			} else {
-				lifecycle.sequence = {
-					entries: 1,
-					first: entry.sequence,
-					last: entry.sequence,
-					highest: entry.sequence,
-				};
-			}
-			bumpLevel("basic");
-		}
-
-		if (entry.type === "session_lifecycle") {
-			lifecycle ??= { transitions: 0, checkpoints: 0 };
-			lifecycle.transitions += 1;
-			lifecycle.latestState = {
-				state: entry.state,
-				reason: entry.reason,
-				...(entry.sequence === undefined ? {} : { sequence: entry.sequence }),
-			};
-			const lifecycleLevel =
-				"instrumentationLevel" in entry &&
-				(entry.instrumentationLevel === "basic" ||
-					entry.instrumentationLevel === "rich" ||
-					entry.instrumentationLevel === "ultra")
-					? entry.instrumentationLevel
-					: "basic";
-			bumpLevel(lifecycleLevel);
-			continue;
-		}
-
-		if (entry.type === "session_checkpoint") {
-			lifecycle ??= { transitions: 0, checkpoints: 0 };
-			lifecycle.checkpoints += 1;
-			lifecycle.latestCheckpoint = {
-				id: entry.id,
-				prefixSequence: entry.prefixSequence,
-				...(entry.sequence === undefined ? {} : { sequence: entry.sequence }),
-			};
-			bumpLevel("basic");
-			continue;
-		}
-
-		if (entry.type === "custom" && entry.customType === "irc:delivery-telemetry" && isRecord(entry.data)) {
-			const data = entry.data;
-			const level = data.level;
-			const direction = data.direction;
-			const messageId = data.messageId;
-			const outcome = data.outcome;
-			const payloadBytes = data.payloadBytes;
-			if (
-				(level === "rich" || level === "ultra") &&
-				(direction === "sent" || direction === "received") &&
-				typeof messageId === "string" &&
-				(outcome === "injected" || outcome === "woken" || outcome === "revived" || outcome === "failed") &&
-				typeof payloadBytes === "number"
-			) {
-				bumpLevel(level);
-				const recordKey = `${direction}\u0000${messageId}`;
-				if (!seenIrcRecords.has(recordKey)) {
-					seenIrcRecords.add(recordKey);
-					ircDelivery ??= {
-						sent: {
-							count: 0,
-							payloadBytes: 0,
-							outcomes: { injected: 0, woken: 0, revived: 0, failed: 0 },
-						},
-						received: {
-							count: 0,
-							payloadBytes: 0,
-							outcomes: { injected: 0, woken: 0, revived: 0, failed: 0 },
-						},
-					};
-					const directionStats = ircDelivery[direction];
-					directionStats.count += 1;
-					directionStats.payloadBytes += payloadBytes;
-					directionStats.outcomes[outcome] += 1;
-
-					if (typeof data.route === "string") {
-						directionStats.routes ??= {};
-						increment(directionStats.routes, data.route);
-					}
-					if (typeof data.revived === "boolean") {
-						directionStats.revived = addBoolean(directionStats.revived, data.revived);
-					}
-					if (typeof data.deliveryLatencyMs === "number") {
-						directionStats.deliveryLatencyMs = addNumber(
-							directionStats.deliveryLatencyMs,
-							data.deliveryLatencyMs,
-						);
-					}
-					if (typeof data.recipientClass === "string") {
-						directionStats.recipientClasses ??= {};
-						increment(directionStats.recipientClasses, data.recipientClass);
-					}
-					if (typeof data.messageKind === "string") {
-						directionStats.messageKinds ??= {};
-						increment(directionStats.messageKinds, data.messageKind);
-					}
-				}
-			}
-			continue;
-		}
-
-		if (!isMessageEntry(entry)) continue;
-		const message = entry.message;
-		messages += 1;
-
-		if (message.role === "assistant") {
-			note(message.timestamp);
-			const turn = turnFromAssistant(message, turns.length + 1);
-			turns.push(turn);
-			currentTurn = turn;
-			totals.assistantTurns += 1;
-			totals.input += turn.input;
-			totals.output += turn.output;
-			totals.cacheRead += turn.cacheRead;
-			totals.cacheWrite += turn.cacheWrite;
-			totals.totalTokens += turn.totalTokens;
-			if (turn.requestMs !== undefined) totals.requestMs += turn.requestMs;
-
-			const snapshot = message.contextSnapshot;
-			if (snapshot && typeof snapshot.promptTokens === "number" && typeof snapshot.nonMessageTokens === "number") {
-				context ??= {
-					snapshots: 0,
-					promptTokens: { observations: 0, total: 0, max: 0 },
-					nonMessageTokens: { observations: 0, total: 0, max: 0 },
-				};
-				context.snapshots += 1;
-				context.promptTokens = addNumber(context.promptTokens, snapshot.promptTokens);
-				context.nonMessageTokens = addNumber(context.nonMessageTokens, snapshot.nonMessageTokens);
-
-				if (typeof snapshot.storedMessagesTokens === "number") {
-					context.storedMessagesTokens = addNumber(context.storedMessagesTokens, snapshot.storedMessagesTokens);
-				}
-				if (typeof snapshot.tailTokens === "number") {
-					context.tailTokens = addNumber(context.tailTokens, snapshot.tailTokens);
-				}
-				if (snapshot.promptTokensSource) {
-					context.promptTokenSources ??= { provider: 0, estimate: 0 };
-					context.promptTokenSources[snapshot.promptTokensSource] += 1;
-				}
-				const estimated = [
-					["nonMessageTokens", snapshot.nonMessageTokensEstimated],
-					["storedMessagesTokens", snapshot.storedMessagesTokensEstimated],
-					["tailTokens", snapshot.tailTokensEstimated],
-				] as const;
-				for (const [category, value] of estimated) {
-					if (value === undefined) continue;
-					context.estimated ??= {};
-					context.estimated[category] = addBoolean(context.estimated[category], value);
-				}
-				if (snapshot.compactionEntryId !== undefined) {
-					if (!compactionEntryIds.has(snapshot.compactionEntryId)) {
-						compactionEntryIds.add(snapshot.compactionEntryId);
-						context.compactionEntries = compactionEntryIds.size;
-						context.compactionEntryIds ??= [];
-						context.compactionEntryIds.push(snapshot.compactionEntryId);
-						if (context.compactionEntryIds.length > COMPACTION_ENTRY_ID_SAMPLE_LIMIT) {
-							context.compactionEntryIds.shift();
-						}
-					}
-					bumpLevel("ultra");
-				} else if (
-					snapshot.storedMessagesTokens !== undefined ||
-					snapshot.tailTokens !== undefined ||
-					snapshot.promptTokensSource !== undefined ||
-					snapshot.nonMessageTokensEstimated !== undefined ||
-					snapshot.storedMessagesTokensEstimated !== undefined ||
-					snapshot.tailTokensEstimated !== undefined
-				) {
-					bumpLevel("rich");
-				}
-			}
-			continue;
-		}
-
-		if (message.role === "user" || message.role === "developer") {
-			note(message.timestamp);
-			totals.userMessages += 1;
-			continue;
-		}
-
-		if (message.role === "toolResult") {
-			if (message.metrics) {
-				accumulateToolSpan(message.metrics, toolSpans, toolBatches, toolArgsHashes);
-			}
-
-			if (message.toolName === "todo" && isRecord(message.details) && isRecord(message.details.telemetry)) {
-				const telemetry = message.details.telemetry;
-				const counts = telemetry.counts;
-				const transitions = telemetry.transitions;
-				if (
-					typeof telemetry.operation === "string" &&
-					isRecord(counts) &&
-					isRecord(transitions) &&
-					typeof counts.total === "number" &&
-					typeof counts.open === "number" &&
-					typeof counts.inProgress === "number" &&
-					typeof counts.dropped === "number" &&
-					typeof counts.completed === "number" &&
-					typeof transitions.total === "number" &&
-					typeof transitions.added === "number" &&
-					typeof transitions.removed === "number" &&
-					typeof transitions.toPending === "number" &&
-					typeof transitions.toInProgress === "number" &&
-					typeof transitions.toDropped === "number" &&
-					typeof transitions.toCompleted === "number"
-				) {
-					taskState ??= {
-						operations: 0,
-						byOperation: {},
-						transitions: {
-							total: 0,
-							added: 0,
-							removed: 0,
-							toPending: 0,
-							toInProgress: 0,
-							toDropped: 0,
-							toCompleted: 0,
-						},
-					};
-					taskState.operations += 1;
-					increment(taskState.byOperation, telemetry.operation);
-					if (activeEntryIds.has(entry.id)) {
-						taskState.latest = {
-							total: counts.total,
-							open: counts.open,
-							inProgress: counts.inProgress,
-							dropped: counts.dropped,
-							completed: counts.completed,
-						};
-					}
-					taskState.transitions.total += transitions.total;
-					taskState.transitions.added += transitions.added;
-					taskState.transitions.removed += transitions.removed;
-					taskState.transitions.toPending += transitions.toPending;
-					taskState.transitions.toInProgress += transitions.toInProgress;
-					taskState.transitions.toDropped += transitions.toDropped;
-					taskState.transitions.toCompleted += transitions.toCompleted;
-					bumpLevel("basic");
-					if (telemetry.taskTransitions !== undefined) bumpLevel("ultra");
-					else if (
-						telemetry.before !== undefined ||
-						telemetry.affectedPhases !== undefined ||
-						telemetry.affectedTasks !== undefined
-					) {
-						bumpLevel("rich");
-					}
-				}
-			}
-
-			accumulateToolResult(message, {
-				totals,
-				tools,
-				repeats,
-				currentTurn,
-				note,
-				bumpLevel,
-			});
-		}
-	}
-
-	if (firstTs !== undefined && lastTs !== undefined) totals.wallClockMs = lastTs - firstTs;
-
-	return {
-		sessionId: header?.id ?? "",
-		cwd: header?.cwd ?? "",
-		messages,
-		instrumentationLevel: maxLevel,
-		totals,
-		turns,
-		toolLatency: resolveToolLatency(tools),
-		toolCost: resolveToolCost(tools),
-		repeatedCalls: resolveRepeats(repeats),
-		...(lifecycle ? { lifecycle } : {}),
-		...(context ? { context } : {}),
-		...(toolSpans.calls > 0 ? { toolSpans } : {}),
-		...(ircDelivery ? { ircDelivery } : {}),
-		...(taskState ? { taskState } : {}),
-	};
 }
 
-interface ToolResultSink {
-	totals: SessionStatsTotals;
-	tools: Map<string, ToolAccumulator>;
-	repeats: Map<string, RepeatedCall>;
-	currentTurn: TurnStat | undefined;
-	note: (ts: number) => void;
-	bumpLevel: (level: ToolCallMetrics["level"]) => void;
+function emptyIrcDirection(): IrcDeliveryDirectionStats {
+	return { count: 0, payloadBytes: 0, outcomes: { injected: 0, woken: 0, revived: 0, failed: 0 } };
 }
 
-function accumulateToolResult(message: ToolResultMessage, sink: ToolResultSink): void {
-	const { totals, tools, repeats, currentTurn, note } = sink;
-	note(message.timestamp);
-	totals.toolCalls += 1;
-	if (currentTurn) currentTurn.toolCalls += 1;
+function isIrcOutcome(value: unknown): value is keyof IrcDeliveryDirectionStats["outcomes"] {
+	return value === "injected" || value === "woken" || value === "revived" || value === "failed";
+}
 
-	const acc = tools.get(message.toolName) ?? emptyToolAccumulator();
-	tools.set(message.toolName, acc);
-	acc.calls += 1;
-	if (message.isError) {
-		acc.errors += 1;
-		totals.toolErrors += 1;
+/** The todo tool's task-state telemetry, once every counter it must carry is a number. */
+interface TodoTelemetry {
+	operation: string;
+	counts: Record<keyof NonNullable<TaskStateStats["latest"]>, number>;
+	transitions: TaskStateStats["transitions"];
+}
+
+const TODO_COUNT_KEYS = ["total", "open", "inProgress", "dropped", "completed"] as const;
+const TODO_TRANSITION_KEYS = [
+	"total",
+	"added",
+	"removed",
+	"toPending",
+	"toInProgress",
+	"toDropped",
+	"toCompleted",
+] as const;
+
+function hasNumbers(record: Record<string, unknown>, keys: readonly string[]): boolean {
+	for (const key of keys) {
+		if (typeof record[key] !== "number") return false;
+	}
+	return true;
+}
+
+function isTodoTelemetry(telemetry: Record<string, unknown>): telemetry is Record<string, unknown> & TodoTelemetry {
+	const { counts, transitions } = telemetry;
+	return (
+		typeof telemetry.operation === "string" &&
+		isRecord(counts) &&
+		isRecord(transitions) &&
+		hasNumbers(counts, TODO_COUNT_KEYS) &&
+		hasNumbers(transitions, TODO_TRANSITION_KEYS)
+	);
+}
+
+/** The running aggregates {@link computeSessionStats} folds each entry into, in file order. */
+class SessionStatsReducer {
+	readonly #activeEntryIds: ReadonlySet<string>;
+	readonly #totals = emptyTotals();
+	readonly #turns: TurnStat[] = [];
+	readonly #tools = new Map<string, ToolAccumulator>();
+	readonly #repeats = new Map<string, RepeatedCall>();
+	readonly #toolSpans = emptyToolSpanStats();
+	readonly #toolBatches = new Set<string>();
+	readonly #toolArgsHashes = new Set<string>();
+	readonly #seenIrcRecords = new Set<string>();
+	readonly #compactionEntryIds = new Set<string>();
+	#messages = 0;
+	#firstTs: number | undefined;
+	#lastTs: number | undefined;
+	#maxLevelRank = 0;
+	#maxLevel: InstrumentationLevel = "off";
+	#currentTurn: TurnStat | undefined;
+	#lifecycle: LifecycleStats | undefined;
+	#context: ContextAttributionStats | undefined;
+	#ircDelivery: IrcDeliveryStats | undefined;
+	#taskState: TaskStateStats | undefined;
+
+	constructor(activeEntryIds: ReadonlySet<string>) {
+		this.#activeEntryIds = activeEntryIds;
 	}
 
-	const metrics = message.metrics;
-	if (!metrics) return;
-	totals.instrumentedToolCalls += 1;
-	sink.bumpLevel(metrics.level);
-
-	if (typeof metrics.durationMs === "number") {
-		acc.durations.push(metrics.durationMs);
-		totals.toolDurationMs += metrics.durationMs;
-	}
-	if (typeof metrics.queuedMs === "number") {
-		acc.queueWaitMs += metrics.queuedMs;
-		totals.queueWaitMs += metrics.queuedMs;
-	}
-	if (typeof metrics.resultTokens === "number") {
-		acc.resultTokens += metrics.resultTokens;
-		totals.resultTokens += metrics.resultTokens;
-	}
-	if (typeof metrics.resultBytes === "number") {
-		acc.resultBytes += metrics.resultBytes;
-		totals.resultBytes += metrics.resultBytes;
+	add(entry: FileEntry): void {
+		if ("sequence" in entry && typeof entry.sequence === "number") this.#addSequence(entry.sequence);
+		switch (entry.type) {
+			case "session_lifecycle":
+				this.#addLifecycleTransition(entry);
+				return;
+			case "session_checkpoint":
+				this.#addCheckpoint(entry);
+				return;
+			case "custom":
+				if (entry.customType === "irc:delivery-telemetry" && isRecord(entry.data)) {
+					this.#addIrcDelivery(entry.data);
+				}
+				return;
+			case "message":
+				this.#addMessage(entry);
+				return;
+		}
 	}
 
-	if (metrics.argsHash) {
-		const fingerprint = metrics.argsDigest ?? metrics.argsHash;
-		const namespace = metrics.argsDigest ? (metrics.argsDigestAlgorithm ?? "sha256-128") : "legacy-fnv1a-32";
-		const key = `${message.toolName}\u0000${namespace}\u0000${fingerprint}`;
-		const repeat = repeats.get(key) ?? {
-			tool: message.toolName,
-			argsHash: fingerprint,
-			count: 0,
-			totalDurationMs: 0,
-			totalResultTokens: 0,
+	report(header: SessionHeader | undefined): SessionStatsReport {
+		const totals = this.#totals;
+		if (this.#firstTs !== undefined && this.#lastTs !== undefined) totals.wallClockMs = this.#lastTs - this.#firstTs;
+		return {
+			sessionId: header?.id ?? "",
+			cwd: header?.cwd ?? "",
+			messages: this.#messages,
+			instrumentationLevel: this.#maxLevel,
+			totals,
+			turns: this.#turns,
+			toolLatency: resolveToolLatency(this.#tools),
+			toolCost: resolveToolCost(this.#tools),
+			repeatedCalls: resolveRepeats(this.#repeats),
+			...(this.#lifecycle ? { lifecycle: this.#lifecycle } : {}),
+			...(this.#context ? { context: this.#context } : {}),
+			...(this.#toolSpans.calls > 0 ? { toolSpans: this.#toolSpans } : {}),
+			...(this.#ircDelivery ? { ircDelivery: this.#ircDelivery } : {}),
+			...(this.#taskState ? { taskState: this.#taskState } : {}),
 		};
+	}
+
+	#note(ts: number): void {
+		if (typeof ts !== "number") return;
+		if (this.#firstTs === undefined || ts < this.#firstTs) this.#firstTs = ts;
+		if (this.#lastTs === undefined || ts > this.#lastTs) this.#lastTs = ts;
+	}
+
+	#bumpLevel(level: InstrumentationLevel): void {
+		const rank = instrumentationRank(level);
+		if (rank > this.#maxLevelRank) {
+			this.#maxLevelRank = rank;
+			this.#maxLevel = level;
+		}
+	}
+
+	#lifecycleStats(): LifecycleStats {
+		this.#lifecycle ??= { transitions: 0, checkpoints: 0 };
+		return this.#lifecycle;
+	}
+
+	#addSequence(sequence: number): void {
+		const lifecycle = this.#lifecycleStats();
+		if (lifecycle.sequence) {
+			lifecycle.sequence.entries += 1;
+			lifecycle.sequence.last = sequence;
+			lifecycle.sequence.highest = Math.max(lifecycle.sequence.highest, sequence);
+		} else {
+			lifecycle.sequence = { entries: 1, first: sequence, last: sequence, highest: sequence };
+		}
+		this.#bumpLevel("basic");
+	}
+
+	#addLifecycleTransition(entry: SessionLifecycleEntry): void {
+		const lifecycle = this.#lifecycleStats();
+		lifecycle.transitions += 1;
+		lifecycle.latestState = {
+			state: entry.state,
+			reason: entry.reason,
+			...(entry.sequence === undefined ? {} : { sequence: entry.sequence }),
+		};
+		// Older records carry no level, and a file is untyped input: anything but a
+		// known live level reads as `basic`.
+		const level = entry.instrumentationLevel;
+		this.#bumpLevel(level === "basic" || level === "rich" || level === "ultra" ? level : "basic");
+	}
+
+	#addCheckpoint(entry: SessionCheckpointEntry): void {
+		const lifecycle = this.#lifecycleStats();
+		lifecycle.checkpoints += 1;
+		lifecycle.latestCheckpoint = {
+			id: entry.id,
+			prefixSequence: entry.prefixSequence,
+			...(entry.sequence === undefined ? {} : { sequence: entry.sequence }),
+		};
+		this.#bumpLevel("basic");
+	}
+
+	/** Count one IRC delivery record, once per direction and message id. */
+	#addIrcDelivery(data: Record<string, unknown>): void {
+		const { level, direction, messageId, outcome, payloadBytes } = data;
+		if (
+			(level !== "rich" && level !== "ultra") ||
+			(direction !== "sent" && direction !== "received") ||
+			typeof messageId !== "string" ||
+			!isIrcOutcome(outcome) ||
+			typeof payloadBytes !== "number"
+		) {
+			return;
+		}
+		this.#bumpLevel(level);
+		const recordKey = `${direction}\u0000${messageId}`;
+		if (this.#seenIrcRecords.has(recordKey)) return;
+		this.#seenIrcRecords.add(recordKey);
+		this.#ircDelivery ??= { sent: emptyIrcDirection(), received: emptyIrcDirection() };
+		const stats = this.#ircDelivery[direction];
+		stats.count += 1;
+		stats.payloadBytes += payloadBytes;
+		stats.outcomes[outcome] += 1;
+		if (typeof data.route === "string") {
+			stats.routes ??= {};
+			increment(stats.routes, data.route);
+		}
+		if (typeof data.revived === "boolean") stats.revived = addBoolean(stats.revived, data.revived);
+		if (typeof data.deliveryLatencyMs === "number") {
+			stats.deliveryLatencyMs = addNumber(stats.deliveryLatencyMs, data.deliveryLatencyMs);
+		}
+		if (typeof data.recipientClass === "string") {
+			stats.recipientClasses ??= {};
+			increment(stats.recipientClasses, data.recipientClass);
+		}
+		if (typeof data.messageKind === "string") {
+			stats.messageKinds ??= {};
+			increment(stats.messageKinds, data.messageKind);
+		}
+	}
+
+	#addMessage(entry: SessionMessageEntry): void {
+		const message = entry.message;
+		this.#messages += 1;
+		switch (message.role) {
+			case "assistant":
+				this.#addAssistant(message);
+				return;
+			case "user":
+			case "developer":
+				this.#note(message.timestamp);
+				this.#totals.userMessages += 1;
+				return;
+			case "toolResult":
+				if (message.metrics) {
+					accumulateToolSpan(message.metrics, this.#toolSpans, this.#toolBatches, this.#toolArgsHashes);
+				}
+				if (message.toolName === "todo" && isRecord(message.details) && isRecord(message.details.telemetry)) {
+					this.#addTodoTelemetry(entry.id, message.details.telemetry);
+				}
+				this.#addToolResult(message);
+				return;
+		}
+	}
+
+	#addAssistant(message: AssistantMessage): void {
+		this.#note(message.timestamp);
+		const turn = turnFromAssistant(message, this.#turns.length + 1);
+		this.#turns.push(turn);
+		this.#currentTurn = turn;
+		const totals = this.#totals;
+		totals.assistantTurns += 1;
+		totals.input += turn.input;
+		totals.output += turn.output;
+		totals.cacheRead += turn.cacheRead;
+		totals.cacheWrite += turn.cacheWrite;
+		totals.totalTokens += turn.totalTokens;
+		if (turn.requestMs !== undefined) totals.requestMs += turn.requestMs;
+		const snapshot = message.contextSnapshot;
+		if (snapshot && typeof snapshot.promptTokens === "number" && typeof snapshot.nonMessageTokens === "number") {
+			this.#addContextSnapshot(snapshot);
+		}
+	}
+
+	#addContextSnapshot(snapshot: ContextSnapshot): void {
+		this.#context ??= {
+			snapshots: 0,
+			promptTokens: { observations: 0, total: 0, max: 0 },
+			nonMessageTokens: { observations: 0, total: 0, max: 0 },
+		};
+		const context = this.#context;
+		context.snapshots += 1;
+		context.promptTokens = addNumber(context.promptTokens, snapshot.promptTokens);
+		context.nonMessageTokens = addNumber(context.nonMessageTokens, snapshot.nonMessageTokens);
+		if (typeof snapshot.storedMessagesTokens === "number") {
+			context.storedMessagesTokens = addNumber(context.storedMessagesTokens, snapshot.storedMessagesTokens);
+		}
+		if (typeof snapshot.tailTokens === "number") {
+			context.tailTokens = addNumber(context.tailTokens, snapshot.tailTokens);
+		}
+		if (snapshot.promptTokensSource) {
+			context.promptTokenSources ??= { provider: 0, estimate: 0 };
+			context.promptTokenSources[snapshot.promptTokensSource] += 1;
+		}
+		const estimated = [
+			["nonMessageTokens", snapshot.nonMessageTokensEstimated],
+			["storedMessagesTokens", snapshot.storedMessagesTokensEstimated],
+			["tailTokens", snapshot.tailTokensEstimated],
+		] as const;
+		for (const [category, value] of estimated) {
+			if (value === undefined) continue;
+			context.estimated ??= {};
+			context.estimated[category] = addBoolean(context.estimated[category], value);
+		}
+		if (snapshot.compactionEntryId !== undefined) {
+			if (!this.#compactionEntryIds.has(snapshot.compactionEntryId)) {
+				this.#compactionEntryIds.add(snapshot.compactionEntryId);
+				context.compactionEntries = this.#compactionEntryIds.size;
+				context.compactionEntryIds ??= [];
+				context.compactionEntryIds.push(snapshot.compactionEntryId);
+				if (context.compactionEntryIds.length > COMPACTION_ENTRY_ID_SAMPLE_LIMIT) {
+					context.compactionEntryIds.shift();
+				}
+			}
+			this.#bumpLevel("ultra");
+		} else if (
+			snapshot.storedMessagesTokens !== undefined ||
+			snapshot.tailTokens !== undefined ||
+			snapshot.promptTokensSource !== undefined ||
+			snapshot.nonMessageTokensEstimated !== undefined ||
+			snapshot.storedMessagesTokensEstimated !== undefined ||
+			snapshot.tailTokensEstimated !== undefined
+		) {
+			this.#bumpLevel("rich");
+		}
+	}
+
+	#addTodoTelemetry(entryId: string, telemetry: Record<string, unknown>): void {
+		if (!isTodoTelemetry(telemetry)) return;
+		this.#taskState ??= {
+			operations: 0,
+			byOperation: {},
+			transitions: {
+				total: 0,
+				added: 0,
+				removed: 0,
+				toPending: 0,
+				toInProgress: 0,
+				toDropped: 0,
+				toCompleted: 0,
+			},
+		};
+		const taskState = this.#taskState;
+		taskState.operations += 1;
+		increment(taskState.byOperation, telemetry.operation);
+		const { counts, transitions } = telemetry;
+		if (this.#activeEntryIds.has(entryId)) {
+			taskState.latest = {
+				total: counts.total,
+				open: counts.open,
+				inProgress: counts.inProgress,
+				dropped: counts.dropped,
+				completed: counts.completed,
+			};
+		}
+		for (const key of TODO_TRANSITION_KEYS) taskState.transitions[key] += transitions[key];
+		this.#bumpLevel("basic");
+		if (telemetry.taskTransitions !== undefined) this.#bumpLevel("ultra");
+		else if (
+			telemetry.before !== undefined ||
+			telemetry.affectedPhases !== undefined ||
+			telemetry.affectedTasks !== undefined
+		) {
+			this.#bumpLevel("rich");
+		}
+	}
+
+	#addToolResult(message: ToolResultMessage): void {
+		const totals = this.#totals;
+		this.#note(message.timestamp);
+		totals.toolCalls += 1;
+		if (this.#currentTurn) this.#currentTurn.toolCalls += 1;
+
+		let acc = this.#tools.get(message.toolName);
+		if (!acc) {
+			acc = emptyToolAccumulator();
+			this.#tools.set(message.toolName, acc);
+		}
+		acc.calls += 1;
+		if (message.isError) {
+			acc.errors += 1;
+			totals.toolErrors += 1;
+		}
+
+		const metrics = message.metrics;
+		if (!metrics) return;
+		totals.instrumentedToolCalls += 1;
+		this.#bumpLevel(metrics.level);
+
+		if (typeof metrics.durationMs === "number") {
+			acc.durations.push(metrics.durationMs);
+			totals.toolDurationMs += metrics.durationMs;
+		}
+		if (typeof metrics.queuedMs === "number") {
+			acc.queueWaitMs += metrics.queuedMs;
+			totals.queueWaitMs += metrics.queuedMs;
+		}
+		if (typeof metrics.resultTokens === "number") {
+			acc.resultTokens += metrics.resultTokens;
+			totals.resultTokens += metrics.resultTokens;
+		}
+		if (typeof metrics.resultBytes === "number") {
+			acc.resultBytes += metrics.resultBytes;
+			totals.resultBytes += metrics.resultBytes;
+		}
+		if (metrics.argsHash) this.#addRepeat(message.toolName, metrics.argsHash, metrics);
+	}
+
+	/** Key a call by tool and argument fingerprint, so byte-identical calls collapse into one row. */
+	#addRepeat(toolName: string, argsHash: string, metrics: ToolCallMetrics): void {
+		const fingerprint = metrics.argsDigest ?? argsHash;
+		const namespace = metrics.argsDigest ? (metrics.argsDigestAlgorithm ?? "sha256-128") : "legacy-fnv1a-32";
+		const key = `${toolName}\u0000${namespace}\u0000${fingerprint}`;
+		let repeat = this.#repeats.get(key);
+		if (!repeat) {
+			repeat = { tool: toolName, argsHash: fingerprint, count: 0, totalDurationMs: 0, totalResultTokens: 0 };
+			this.#repeats.set(key, repeat);
+		}
 		repeat.count += 1;
 		repeat.totalDurationMs += metrics.durationMs ?? 0;
 		repeat.totalResultTokens += metrics.resultTokens ?? 0;
-		repeats.set(key, repeat);
 	}
 }
 
