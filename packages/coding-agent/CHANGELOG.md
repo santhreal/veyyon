@@ -37,6 +37,7 @@
 - The advisor's toolset is built in `session/tool-session.ts`, and the context gauge a new session records at rest and the one the status row draws come from one `measureContextGauge` in `config/compaction-strategy.ts`, instead of a copy inline in `createAgentSession`; no user-visible change.
 - A tool card builds its display when a frame draws it instead of on every change, so a resume stops highlighting each rebuilt call only to replace it with its result, which cuts rebuilding and drawing a 4,712-block transcript from 999 ms to 603 ms.
 - The `includeWorkspaceTree` prompt gate states the project discovery scan that fixes it for the session instead of a read in `sdk.ts` that no longer exists; no user-visible change.
+- The `read` tool dispatches a path through single-purpose steps (internal URLs, archive, SQLite and PDF image members, directories, images, notebooks, converted documents, binary files, summaries, multi-range and single-range text), and a range read collects, truncates, formats and annotates its window in helpers of their own; no user-visible change.
 
 ### Fixed
 
