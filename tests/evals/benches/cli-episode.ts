@@ -238,7 +238,7 @@ export async function runCliEpisode(options: CliEpisodeOptions): Promise<CliEpis
 		{
 			cwd,
 			env: {
-				...process.env,
+				...episodeEnvironment(process.env),
 				HOME: home,
 				USERPROFILE: home,
 				...(options.agentDir ? { VEYYON_CODING_AGENT_DIR: options.agentDir } : {}),
@@ -268,4 +268,35 @@ export async function runCliEpisode(options: CliEpisodeOptions): Promise<CliEpis
 	await fs.writeFile(path.join(cwd, "events.jsonl"), stdout);
 	await fs.writeFile(path.join(cwd, "stderr.txt"), stderr);
 	return { stdout, exitCode, timedOut, wallMs: Date.now() - started, usage: readUsage(stdout) };
+}
+
+/** Variables an episode inherits by exact name; each is how a process finds programs, text, time or a proxy. */
+const INHERITED_VARIABLES = new Set([
+	"PATH",
+	"TMPDIR",
+	"TMP",
+	"TEMP",
+	"LANG",
+	"LC_ALL",
+	"TZ",
+	"SYSTEMROOT",
+	"HTTP_PROXY",
+	"HTTPS_PROXY",
+	"NO_PROXY",
+	"http_proxy",
+	"https_proxy",
+	"no_proxy",
+]);
+
+/**
+ * The part of the runner's environment an episode sees: the variables above and `PUPPETEER_*`. Run code
+ * reads `process.env`, so every other variable (tokens, keys, paths into the operator's work) stays out
+ * of what the model can print, and of the transcript.
+ */
+export function episodeEnvironment(env: NodeJS.ProcessEnv): Record<string, string> {
+	const kept: Record<string, string> = {};
+	for (const [name, value] of Object.entries(env)) {
+		if (value !== undefined && (INHERITED_VARIABLES.has(name) || name.startsWith("PUPPETEER_"))) kept[name] = value;
+	}
+	return kept;
 }
