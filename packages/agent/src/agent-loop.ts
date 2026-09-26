@@ -812,8 +812,8 @@ async function runLoop(
 	let caughtError: unknown;
 	try {
 		await runInActiveSpan(invokeAgentSpan, () =>
-			runLoopBody(
-				currentContext,
+			runLoopBody({
+				context: currentContext,
 				newMessages,
 				config,
 				signal,
@@ -822,7 +822,7 @@ async function runLoop(
 				invokeAgentSpan,
 				stepCounter,
 				streamFn,
-			),
+			}),
 		);
 	} catch (err) {
 		caughtError = err;
@@ -870,521 +870,570 @@ function resolveAsides(entries: AsideMessage[] | undefined): AgentMessage[] {
 	return out;
 }
 
-async function runLoopBody(
-	currentContext: AgentContext,
-	newMessages: AgentMessage[],
-	config: AgentLoopConfig,
+type ToolCallContent = Extract<AssistantMessage["content"][number], { type: "toolCall" }>;
+
+/**
+ * The turn's tool calls that no one has run. A Cursor exec-channel synthesized `toolCall` block
+ * carries `kCursorExecResolved` because the exec channel already dispatched the tool through the
+ * caller's `execHandler` and buffered the result for out-of-band emission; running it again would
+ * duplicate the same side-effecting call (issue #4348 review by @chatgpt-codex-connector).
+ *
+ * The marker is provider bookkeeping and can be missed; the transcript cannot. A call that already
+ * carries a result RAN, whoever ran it, so it is not runnable either. That is the invariant the
+ * marker is one implementation of, and it holds for every provider that answers a call out of band.
+ */
+function unansweredToolCalls(message: AssistantMessage, messages: ReadonlyArray<AgentMessage>): ToolCallContent[] {
+	const answered = executedToolCallIds(messages);
+	return message.content.filter(
+		(c): c is ToolCallContent =>
+			c.type === "toolCall" && (c as CursorExecResolvedCarrier)[kCursorExecResolved] !== true && !answered.has(c.id),
+	);
+}
+
+/** The fixed inputs of one loop run. */
+interface LoopRun {
+	readonly context: AgentContext;
+	readonly newMessages: AgentMessage[];
+	readonly config: AgentLoopConfig;
+	readonly signal: AbortSignal | undefined;
+	readonly stream: EventStream<AgentEvent, AgentMessage[]>;
+	readonly telemetry: AgentTelemetry | undefined;
+	readonly invokeAgentSpan: Span | undefined;
+	readonly stepCounter: StepCounter;
+	readonly streamFn: StreamFn | undefined;
+}
+
+/** What the loop carries from one turn to the next. */
+interface LoopState {
+	firstTurn: boolean;
+	hasMoreToolCalls: boolean;
+	/** Steering, asides and follow-ups injected before the next assistant response. */
+	pendingMessages: AgentMessage[];
+	harmonyRetryAttempt: number;
+	harmonyTruncateResumeCount: number;
+	pausedTurnContinuations: number;
+	/**
+	 * Soft tool requirement lifecycle (reminder → escalate; see SoftToolRequirement).
+	 * `forcedToolChoice` carries a one-turn escalation into the next model call. It overrides the
+	 * static toolChoice but NEVER the host's hard getToolChoice().
+	 */
+	softRequirementId: string | undefined;
+	forcedToolChoice: ToolChoice | undefined;
+	softEscalations: number;
+	/**
+	 * Resolved once per logical turn and reused across Harmony-leak re-samples (which re-enter the
+	 * same turn) so the consuming getToolChoice is never advanced twice; the flag resets at the
+	 * message boundary.
+	 */
+	hostToolChoice: ToolChoice | undefined;
+	softRequiredTool: string | undefined;
+	directiveResolvedForTurn: boolean;
+}
+
+/** Abort at `deadline`: the signal the run observes, and the timer to clear when the run ends. */
+function armDeadline(
+	deadline: number | undefined,
 	signal: AbortSignal | undefined,
-	stream: EventStream<AgentEvent, AgentMessage[]>,
-	telemetry: AgentTelemetry | undefined,
-	invokeAgentSpan: Span | undefined,
-	stepCounter: StepCounter,
-	streamFn?: StreamFn,
-): Promise<void> {
-	let deadlineTimer: Timer | undefined;
-	if (config.deadline !== undefined) {
-		const deadlineAbortController = new AbortController();
-		const deadlineReason = new DOMException("Deadline exceeded", "TimeoutError");
-		const delay = config.deadline - Date.now();
-		if (delay <= 0) {
-			deadlineAbortController.abort(deadlineReason);
-		} else {
-			deadlineTimer = setTimeout(() => {
-				deadlineAbortController.abort(deadlineReason);
-			}, delay);
-		}
-		signal = signal ? AbortSignal.any([signal, deadlineAbortController.signal]) : deadlineAbortController.signal;
+): { signal: AbortSignal | undefined; timer: Timer | undefined } {
+	if (deadline === undefined) return { signal, timer: undefined };
+	const controller = new AbortController();
+	const reason = new DOMException("Deadline exceeded", "TimeoutError");
+	const delay = deadline - Date.now();
+	let timer: Timer | undefined;
+	if (delay <= 0) {
+		controller.abort(reason);
+	} else {
+		timer = setTimeout(() => {
+			controller.abort(reason);
+		}, delay);
 	}
+	return { signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal, timer };
+}
 
+/** Stream a message the loop injects and append it to the context and the run's new messages. */
+function injectMessage(run: LoopRun, message: AgentMessage): void {
+	run.stream.push({ type: "message_start", message });
+	run.stream.push({ type: "message_end", message });
+	run.context.messages.push(message);
+	run.newMessages.push(message);
+}
+
+/** Append a tool result to the context, the run's new messages and the turn's results. */
+function appendToolResult(run: LoopRun, toolResults: ToolResultMessage[], result: ToolResultMessage): void {
+	run.context.messages.push(result);
+	run.newMessages.push(result);
+	toolResults.push(result);
+}
+
+/** End the run's stream once its deadline has passed. True when it did. */
+function endIfDeadlinePassed(run: LoopRun): boolean {
+	if (!isDeadlineExceeded(run.config.deadline)) return false;
+	endAgentStream(run.stream, run.newMessages, run.telemetry, run.stepCounter.count);
+	return true;
+}
+
+async function runLoopBody(input: LoopRun): Promise<void> {
+	const deadline = armDeadline(input.config.deadline, input.signal);
 	try {
-		let firstTurn = true;
-		if (isDeadlineExceeded(config.deadline)) {
-			endAgentStream(stream, newMessages, telemetry, stepCounter.count);
-			return;
-		}
-		// Check for steering messages at start (user may have typed while waiting).
-		// Skip when the run is already externally aborted — dequeuing would strand
-		// the messages in a run that is about to die.
-		let pendingMessages: AgentMessage[] = signal?.aborted ? [] : (await config.getSteeringMessages?.()) || [];
-		let harmonyRetryAttempt = 0;
-		let harmonyTruncateResumeCount = 0;
-		let pausedTurnContinuations = 0;
-
-		// Soft tool requirement lifecycle (reminder → escalate; see SoftToolRequirement).
-		// `forcedToolChoice` carries a one-turn escalation into the next model call. It
-		// overrides the static toolChoice but NEVER the host's hard getToolChoice().
-		let softRequirementId: string | undefined;
-		let forcedToolChoice: ToolChoice | undefined;
-		let softEscalations = 0;
-		// Resolved once per logical turn at the fetch site below and reused across
-		// Harmony-leak re-samples (which re-enter the same turn) so the consuming
-		// getToolChoice is never advanced twice; the flag resets at the message boundary.
-		let hostToolChoice: ToolChoice | undefined;
-		let softRequiredTool: string | undefined;
-		let directiveResolvedForTurn = false;
-
-		// Outer loop: continues when queued follow-up messages arrive after agent would stop
-		while (true) {
-			let hasMoreToolCalls = true;
-
-			// Inner loop: process tool calls and steering messages
-			while (hasMoreToolCalls || pendingMessages.length > 0) {
-				if (isDeadlineExceeded(config.deadline)) {
-					endAgentStream(stream, newMessages, telemetry, stepCounter.count);
-					return;
-				}
-				// Yield at the top of each iteration to prevent busy-wait when
-				// the agent loop is executing tool calls back-to-back.
-				await yieldIfDue();
-				// Park at the turn boundary while the process-wide pause gate is
-				// engaged (host /pause). An external abort releases the park so a
-				// cancelled run still unwinds while everything else stays frozen.
-				const pauseGate = config.pauseGate ?? agentPauseGate;
-				if (pauseGate.paused) {
-					try {
-						await pauseGate.waitUntilResumed(signal);
-					} catch (err) {
-						if (isAbortError(err) || signal?.aborted) {
-							const message = emitAbortedAssistantMessage(
-								null,
-								false,
-								EMPTY_STRING_SET,
-								currentContext,
-								config,
-								stream,
-								signal,
-							);
-							newMessages.push(message);
-							await emitTurnEnd(stream, currentContext, message, [], config, signal, { willContinue: false });
-							endAgentStream(stream, newMessages, telemetry, stepCounter.count);
-							return;
-						}
-						throw err;
-					}
-				}
-				if (!firstTurn) {
-					stream.push({ type: "turn_start" });
-				} else {
-					firstTurn = false;
-				}
-
-				// Process pending messages (inject before next assistant response)
-				if (pendingMessages.length > 0) {
-					for (const message of pendingMessages) {
-						stream.push({ type: "message_start", message });
-						stream.push({ type: "message_end", message });
-						currentContext.messages.push(message);
-						newMessages.push(message);
-					}
-					pendingMessages = [];
-				}
-
-				// Refresh prompt/tool context from live state before each model call
-				if (config.syncContextBeforeModelCall) {
-					await config.syncContextBeforeModelCall(currentContext);
-				}
-
-				// Resolve the per-turn tool-choice directive ONCE per logical turn. The
-				// host hard-choice path (getToolChoice → nextToolChoice) is CONSUMING — it
-				// advances a generator on every call — so Harmony-leak retries, which
-				// re-sample the same turn via `continue` without a turn_end, must reuse the
-				// values fetched on the first attempt rather than double-advancing it.
-				// Fetched here (after pending-message flush + context sync, immediately
-				// before the call) so a throw in between cannot wedge an in-flight
-				// directive. A hard ToolChoice is applied verbatim; a SoftToolRequirement
-				// triggers the remind-then-escalate lifecycle: inject its reminder inline
-				// once per new id (toolChoice stays auto), and the gate below escalates to
-				// a forced choice only if the model declines. The host wrapper already
-				// dropped a soft requirement whose tool is inactive.
-				if (!directiveResolvedForTurn) {
-					const directive = signal?.aborted ? undefined : config.getToolChoice?.();
-					const softReq = isSoftToolRequirement(directive) ? directive : undefined;
-					hostToolChoice = directive === undefined || isSoftToolRequirement(directive) ? undefined : directive;
-					softRequiredTool = softReq?.toolName;
-					if (softReq !== undefined) {
-						if (softReq.id !== softRequirementId) {
-							softRequirementId = softReq.id;
-							softEscalations = 0;
-							for (const reminder of softReq.reminder) {
-								stream.push({ type: "message_start", message: reminder });
-								stream.push({ type: "message_end", message: reminder });
-								currentContext.messages.push(reminder);
-								newMessages.push(reminder);
-							}
-						}
-					} else {
-						softRequirementId = undefined;
-						softEscalations = 0;
-					}
-					directiveResolvedForTurn = true;
-				}
-
-				// Stream assistant response
-				let recovered: HarmonyRecoveredToolCall | undefined;
-				let message: AssistantMessage;
-				try {
-					message = await streamAssistantResponse(
-						currentContext,
-						config,
-						signal,
-						stream,
-						telemetry,
-						invokeAgentSpan,
-						stepCounter,
-						streamFn,
-						harmonyRetryAttempt,
-						hostToolChoice,
-						forcedToolChoice,
-					);
-					harmonyRetryAttempt = 0;
-					harmonyTruncateResumeCount = 0;
-				} catch (err) {
-					if (!(err instanceof HarmonyLeakInterruption)) throw err;
-					if (err.recovered) {
-						if (harmonyTruncateResumeCount >= 2) {
-							await emitHarmonyAudit(config, err, "escalated", harmonyRetryAttempt);
-							throw new Error(
-								`GPT-5 Harmony leak recurred after truncate-and-resume recovery (${signalListLabel(err.detection.signals)}).`,
-							);
-						}
-						harmonyTruncateResumeCount++;
-						recovered = err.recovered;
-						message = recovered.message;
-						await emitHarmonyAudit(config, err, "truncate_resume", harmonyRetryAttempt);
-						// A recovered message completes the turn, so the abort-retry counter
-						// resets like the normal success path (the truncate-resume counter
-						// keeps accumulating for its cross-turn cap).
-						harmonyRetryAttempt = 0;
-					} else {
-						if (harmonyRetryAttempt >= 2) {
-							await emitHarmonyAudit(config, err, "escalated", harmonyRetryAttempt);
-							throw new Error(
-								`GPT-5 Harmony leak persisted after ${harmonyRetryAttempt} retries (${signalListLabel(err.detection.signals)}).`,
-							);
-						}
-						await emitHarmonyAudit(config, err, "abort_retry", harmonyRetryAttempt);
-						harmonyRetryAttempt++;
-						continue;
-					}
-				}
-				if (recovered) {
-					message = snapshotAssistantMessage(message);
-					currentContext.messages.push(message);
-					stream.push({ type: "message_start", message: snapshotAssistantMessage(message) });
-					stream.push({ type: "message_end", message: snapshotAssistantMessage(message) });
-				}
-				newMessages.push(message);
-
-				// The escalation choice (if any) applied to the call above; clear it so
-				// only the single escalation turn carries the forced choice.
-				forcedToolChoice = undefined;
-
-				// A fresh logical turn re-resolves the directive next iteration; a Harmony
-				// retry `continue`s before this line and keeps the cached value.
-				directiveResolvedForTurn = false;
-
-				if (message.stopReason === "error" || message.stopReason === "aborted") {
-					// Create placeholder tool results for any tool calls in the aborted message
-					// This maintains the tool_use/tool_result pairing that the API requires
-					type ToolCallContent = Extract<AssistantMessage["content"][number], { type: "toolCall" }>;
-					// Cursor exec-resolved blocks already have their toolResult buffered
-					// for out-of-band emission; a placeholder aborted result here would
-					// pair a duplicate to the same toolCallId (issue #4348 codex review).
-					const toolCalls = message.content.filter(
-						(c): c is ToolCallContent =>
-							c.type === "toolCall" && (c as CursorExecResolvedCarrier)[kCursorExecResolved] !== true,
-					);
-					// Provider-built aborted messages (stream error events) carry no
-					// per-tool labels; derive them from a tool-scoped abort signal so
-					// only the matching call is blamed and siblings stay neutral.
-					const scopedAbort = toolScopedAbortReason(signal);
-					const toolCallAbortMessages =
-						message.toolCallAbortMessages ??
-						(scopedAbort ? buildToolCallAbortMessages(message, scopedAbort) : undefined);
-					// Everything the harness knows about this batch at abort time. The
-					// loop's own dispatch cannot have started: `tool.execute()` has one
-					// call site, inside `executeToolCalls`, which is reached only from
-					// the runnable-stop branch below, and this branch returns first.
-					// So every retained call is "never ran".
-					//
-					// The one exception is a Cursor exec-channel call. Those run through
-					// a caller-supplied `execHandler` inside the provider stream, in this
-					// process, and their `toolCall` block is synthesized BEFORE the
-					// handler is awaited. A reset can land while one is still running, so
-					// they are never reported as "never ran": `buildAbortedTurnLedger`
-					// resolves them against the transcript and falls back to "started, no
-					// result recorded".
-					//
-					// Emitting the ledger on the first placeholder keeps it to one
-					// bounded copy per batch. When the batch left no placeholder at all
-					// the ledger travels as a turn-level notice instead; see below.
-					const batchLedger = buildAbortedTurnLedger(
-						message.stopReason === "aborted" ? "aborted" : "stream_error",
-						message,
-						currentContext.messages,
-					);
-					const toolResults: ToolResultMessage[] = [];
-					for (const toolCall of toolCalls) {
-						const errorMessage = toolCallAbortMessages?.[toolCall.id] ?? message.errorMessage;
-						const result = createAbortedToolResult(
-							toolCall,
-							stream,
-							message.stopReason,
-							errorMessage,
-							toolResults.length === 0 ? batchLedger : undefined,
-						);
-						currentContext.messages.push(result);
-						newMessages.push(result);
-						toolResults.push(result);
-						// The placeholder result above keeps the API's tool_use/tool_result
-						// pairing intact, but no execute_tool span is started for these
-						// calls. Mirror the run-collector entry directly so the run
-						// summary's tool counters and `coverage.toolsInvoked` reflect
-						// what the user actually saw on the wire.
-						recordSkippedTool(telemetry, {
-							toolCallId: toolCall.id,
-							toolName: toolCall.name,
-							status: message.stopReason === "aborted" ? "aborted" : "error",
-						});
-					}
-					if (batchLedger && toolResults.length === 0) {
-						// Every call this turn either had its `toolCall` block deleted by
-						// `retainCompletedToolCalls` (arguments still streaming) or was
-						// already dispatched out of band by Cursor's exec channel, so no
-						// placeholder result exists to carry the ledger. Dropping it here
-						// is how the one case it was written for got lost: an incomplete
-						// call has no block, no result and no placeholder, so the ledger
-						// is the only place it is named at all, and without it the model
-						// reads a turn in which it never asked for that tool.
-						//
-						// The turn-level path is the one the tool-choice reminder uses: a
-						// synthetic user message streamed and appended to the context, so
-						// it survives into the next request the same way.
-						const notice: UserMessage = {
-							role: "user",
-							content: renderToolBatchLedger(batchLedger),
-							synthetic: true,
-							timestamp: Date.now(),
-						};
-						stream.push({ type: "message_start", message: notice });
-						stream.push({ type: "message_end", message: notice });
-						currentContext.messages.push(notice);
-						newMessages.push(notice);
-					}
-					await emitTurnEnd(stream, currentContext, message, toolResults, config, signal, { willContinue: false });
-
-					stream.push(buildAgentEndEvent(newMessages, telemetry, stepCounter.count));
-					stream.end(newMessages);
-					return;
-				}
-
-				// Run tools whenever the turn carries tool_use blocks AND was not truncated.
-				// `stop_reason` is provider metadata that never goes back on the wire, so it
-				// does not gate continuation validity: replaying a tool_use turn with the
-				// tool_results appended is accepted whether the turn ended on `tool_use` or
-				// `end_turn` (adaptive/interleaved-thinking Opus routinely emits tool calls
-				// under `end_turn`; verified against the live Anthropic API). The only
-				// continuation hazard is a thinking block carrying a stale/invalid signature,
-				// which `transformMessages` already neutralizes — it strips the signature on
-				// non-`toolUse` turns and the encoder downgrades the unsigned block to text,
-				// which the API accepts. So treat `stop` (end_turn/pause_turn) the same as
-				// `toolUse`. `length` (max_tokens) is the one reason we must NOT run: the
-				// trailing tool_use may be truncated with incomplete arguments — those calls
-				// are abandoned below. (`error`/`aborted` already returned above.)
-				type ToolCallContent = Extract<AssistantMessage["content"][number], { type: "toolCall" }>;
-				// A Cursor exec-channel synthesized `toolCall` block carries
-				// `kCursorExecResolved` because the exec channel already dispatched the
-				// tool through the caller's `execHandler` and buffered the result for
-				// out-of-band emission. Running it here again would duplicate the same
-				// side-effecting call (issue #4348 review by @chatgpt-codex-connector).
-				//
-				// The marker is provider bookkeeping and can be missed; the transcript
-				// cannot. A call that already carries a result RAN, whoever ran it, so
-				// it is not runnable here either. That is the invariant the marker is
-				// one implementation of, and it holds for every provider that answers a
-				// call out of band.
-				const answered = executedToolCallIds(currentContext.messages);
-				const toolCalls = message.content.filter(
-					(c): c is ToolCallContent =>
-						c.type === "toolCall" &&
-						(c as CursorExecResolvedCarrier)[kCursorExecResolved] !== true &&
-						!answered.has(c.id),
-				);
-				const runnableStop = message.stopReason === "toolUse" || message.stopReason === "stop";
-				hasMoreToolCalls = runnableStop && toolCalls.length > 0;
-
-				const deadlinePassed = isDeadlineExceeded(config.deadline);
-				if (hasMoreToolCalls && deadlinePassed) {
-					hasMoreToolCalls = false;
-				}
-
-				// A turn is compliant ONLY when it calls the required tool and nothing
-				// else — mirroring the forced-tool_choice turn, which can emit only that
-				// tool. A required+detour batch is treated as non-compliant so detour
-				// tools never run side effects while the requirement is still pending.
-				const calledOnlyRequiredTool =
-					softRequiredTool !== undefined &&
-					toolCalls.length > 0 &&
-					toolCalls.every(toolCall => toolCall.name === softRequiredTool);
-				const softGateActive =
-					softRequiredTool !== undefined && !hardToolChoiceBlocks(config.toolChoice, softRequiredTool);
-				const softNonCompliant = softGateActive && !calledOnlyRequiredTool;
-
-				const toolResults: ToolResultMessage[] = [];
-				if (softNonCompliant && softRequiredTool !== undefined) {
-					if (softEscalations >= MAX_SOFT_TOOL_ESCALATIONS) {
-						throw new Error(
-							`Soft tool requirement '${softRequiredTool}' was not satisfied after ${MAX_SOFT_TOOL_ESCALATIONS} forced turns; aborting to avoid an unbounded force loop.`,
-						);
-					}
-					// A soft-required tool is pending but the model called something else
-					// (or yielded). Do NOT execute the detour — pair each call with a
-					// skipped result and force the required tool next turn. This is the
-					// only turn that changes toolChoice; a model that complies with the
-					// reminder pays no message-cache invalidation. Re-engage so the loop
-					// never yields while the requirement is unmet.
-					for (const toolCall of toolCalls) {
-						const result = createAbortedToolResult(
-							toolCall,
-							stream,
-							"skipped",
-							`Not executed: call the \`${softRequiredTool}\` tool to resolve the pending action before using other tools.`,
-						);
-						currentContext.messages.push(result);
-						newMessages.push(result);
-						toolResults.push(result);
-						recordSkippedTool(telemetry, {
-							toolCallId: toolCall.id,
-							toolName: toolCall.name,
-							status: "skipped",
-						});
-					}
-					forcedToolChoice = { type: "tool", name: softRequiredTool };
-					softEscalations++;
-					hasMoreToolCalls = true;
-				} else if (hasMoreToolCalls) {
-					const executionResult = await executeToolCalls(
-						currentContext,
-						message,
-						signal,
-						stream,
-						config,
-						telemetry,
-						invokeAgentSpan,
-					);
-
-					toolResults.push(...executionResult.toolResults);
-
-					for (const result of toolResults) {
-						currentContext.messages.push(result);
-						newMessages.push(result);
-					}
-				} else if (toolCalls.length > 0) {
-					// Turn ended on a non-runnable reason (`length` truncation) or deadline was exceeded
-					// but left toolCall blocks behind. pair each with a placeholder result.
-					const skipReason = deadlinePassed ? "aborted" : message.stopReason === "length" ? "length" : "skipped";
-					const skipErrMsg = deadlinePassed ? "Deadline exceeded" : undefined;
-					for (const toolCall of toolCalls) {
-						const result = createAbortedToolResult(toolCall, stream, skipReason, skipErrMsg);
-						currentContext.messages.push(result);
-						newMessages.push(result);
-						toolResults.push(result);
-						recordSkippedTool(telemetry, {
-							toolCallId: toolCall.id,
-							toolName: toolCall.name,
-							status: deadlinePassed ? "aborted" : "skipped",
-						});
-					}
-					if (message.stopReason === "length" && toolResults.length > 0 && !deadlinePassed) {
-						hasMoreToolCalls = true;
-					}
-				}
-
-				// A tool hook may mark its completed result as terminal (e.g. agent yield).
-				// Stop before the next provider call without changing external/user abort semantics.
-				if (signal?.reason === TERMINAL_TOOL_RESULT_ABORT_REASON) {
-					hasMoreToolCalls = false;
-				}
-
-				if (toolCalls.length > 0) {
-					pausedTurnContinuations = 0;
-				} else if (
-					!hasMoreToolCalls &&
-					message.stopReason === "stop" &&
-					message.stopDetails?.type === "pause_turn" &&
-					pausedTurnContinuations < MAX_PAUSED_TURN_CONTINUATIONS
-				) {
-					// Non-terminal stop: the provider ended the response but not the turn
-					// (e.g. Codex `end_turn: false` on a commentary-only progress update).
-					// Re-sample with the assistant message replayed so the model keeps
-					// working; the next round folds steering/asides in like any other
-					// mid-work turn.
-					pausedTurnContinuations++;
-					hasMoreToolCalls = true;
-				}
-
-				await emitTurnEnd(stream, currentContext, message, toolResults, config, signal, {
-					willContinue: hasMoreToolCalls && !isDeadlineExceeded(config.deadline),
-				});
-
-				if (isDeadlineExceeded(config.deadline)) {
-					endAgentStream(stream, newMessages, telemetry, stepCounter.count);
-					return;
-				}
-				// On external abort (user interrupt), leave the steering queue intact: the
-				// session aborts then continues, delivering the queue into a fresh run.
-				// Draining it here would inject the messages right before a model call that
-				// instantly aborts — message lands in history, agent never responds. The
-				// mid-batch interrupt poll only peeks (hasSteeringMessages), so the queue
-				// still owns every message until this dequeue.
-				const steering = signal?.aborted ? [] : (await config.getSteeringMessages?.()) || [];
-				if (hasMoreToolCalls) {
-					// Mid-work: fold any non-interrupting asides into the next turn alongside steering.
-					const asides = signal?.aborted ? [] : resolveAsides(await config.getAsideMessages?.());
-					pendingMessages = asides.length > 0 ? steering.concat(asides) : steering;
-				} else {
-					// Stop boundary: only steering (live user input) forces another turn here. Leave
-					// asides for the outer drain below so a passive aside can't trigger an extra model
-					// turn ahead of a queued follow-up — the outer drain batches asides + follow-ups together.
-					pendingMessages = steering;
-				}
-			}
-
-			if (isDeadlineExceeded(config.deadline)) {
-				endAgentStream(stream, newMessages, telemetry, stepCounter.count);
-				return;
-			}
-
-			// Agent would stop here. Drain non-interrupting asides + follow-up messages.
-			await config.onBeforeYield?.();
-
-			if (isDeadlineExceeded(config.deadline)) {
-				endAgentStream(stream, newMessages, telemetry, stepCounter.count);
-				return;
-			}
-			// Skip queue drains when externally aborted (same stranding hazard as above).
-			// Re-poll steering too: a steer can land between the stop-boundary dequeue
-			// above and this yield point (e.g. queued while onBeforeYield ran). Without
-			// this poll it would strand in the queue until the next manual prompt.
-			const lateSteering = signal?.aborted ? [] : (await config.getSteeringMessages?.()) || [];
-			const asideMessages = signal?.aborted ? [] : resolveAsides(await config.getAsideMessages?.());
-			const followUpMessages = signal?.aborted ? [] : (await config.getFollowUpMessages?.()) || [];
-			if (lateSteering.length > 0 || asideMessages.length > 0 || followUpMessages.length > 0) {
-				// Set as pending so the inner loop processes them before stopping.
-				pendingMessages = lateSteering.concat(asideMessages, followUpMessages);
-				continue;
-			}
-
-			// No more messages, exit
-			break;
-		}
-
-		endAgentStream(stream, newMessages, telemetry, stepCounter.count);
+		await driveLoop({ ...input, signal: deadline.signal });
 	} finally {
-		if (deadlineTimer) {
-			clearTimeout(deadlineTimer);
-		}
+		clearTimeout(deadline.timer);
 	}
+}
+
+async function driveLoop(run: LoopRun): Promise<void> {
+	if (endIfDeadlinePassed(run)) return;
+	const state: LoopState = {
+		firstTurn: true,
+		hasMoreToolCalls: true,
+		// Check for steering messages at start (user may have typed while waiting). Skip when the
+		// run is already externally aborted — dequeuing would strand the messages in a run that is
+		// about to die.
+		pendingMessages: run.signal?.aborted ? [] : (await run.config.getSteeringMessages?.()) || [],
+		harmonyRetryAttempt: 0,
+		harmonyTruncateResumeCount: 0,
+		pausedTurnContinuations: 0,
+		softRequirementId: undefined,
+		forcedToolChoice: undefined,
+		softEscalations: 0,
+		hostToolChoice: undefined,
+		softRequiredTool: undefined,
+		directiveResolvedForTurn: false,
+	};
+
+	// Outer loop: continues when queued follow-up messages arrive after agent would stop
+	while (true) {
+		state.hasMoreToolCalls = true;
+		// Inner loop: process tool calls and steering messages
+		while (state.hasMoreToolCalls || state.pendingMessages.length > 0) {
+			if (await runTurn(run, state)) return;
+		}
+		if (endIfDeadlinePassed(run)) return;
+		// Agent would stop here. Drain non-interrupting asides + follow-up messages.
+		await run.config.onBeforeYield?.();
+		if (endIfDeadlinePassed(run)) return;
+		// Set as pending so the inner loop processes them before stopping.
+		state.pendingMessages = await drainAtYield(run);
+		// No more messages, exit
+		if (state.pendingMessages.length === 0) break;
+	}
+
+	endAgentStream(run.stream, run.newMessages, run.telemetry, run.stepCounter.count);
+}
+
+/** One turn: inject pending messages, sample the model, settle its tool calls. True when the run ended. */
+async function runTurn(run: LoopRun, state: LoopState): Promise<boolean> {
+	if (endIfDeadlinePassed(run)) return true;
+	// Yield at the top of each iteration to prevent busy-wait when
+	// the agent loop is executing tool calls back-to-back.
+	await yieldIfDue();
+	if (await parkWhilePaused(run)) return true;
+	if (!state.firstTurn) {
+		run.stream.push({ type: "turn_start" });
+	}
+	state.firstTurn = false;
+
+	// Process pending messages (inject before next assistant response)
+	if (state.pendingMessages.length > 0) {
+		for (const message of state.pendingMessages) injectMessage(run, message);
+		state.pendingMessages = [];
+	}
+
+	// Refresh prompt/tool context from live state before each model call
+	if (run.config.syncContextBeforeModelCall) {
+		await run.config.syncContextBeforeModelCall(run.context);
+	}
+
+	if (!state.directiveResolvedForTurn) resolveTurnDirective(run, state);
+
+	const message = await sampleTurn(run, state);
+	// A Harmony abort-retry re-samples the same turn and keeps the cached directive.
+	if (message === undefined) return false;
+	run.newMessages.push(message);
+
+	// The escalation choice (if any) applied to the call above; clear it so
+	// only the single escalation turn carries the forced choice.
+	state.forcedToolChoice = undefined;
+	// A fresh logical turn re-resolves the directive next iteration.
+	state.directiveResolvedForTurn = false;
+
+	const { stopReason } = message;
+	if (stopReason === "error" || stopReason === "aborted") {
+		await settleFailedTurn(run, message, stopReason);
+		return true;
+	}
+
+	const toolResults = await settleTurnToolCalls(run, state, message);
+	await emitTurnEnd(run.stream, run.context, message, toolResults, run.config, run.signal, {
+		willContinue: state.hasMoreToolCalls && !isDeadlineExceeded(run.config.deadline),
+	});
+	if (endIfDeadlinePassed(run)) return true;
+	state.pendingMessages = await nextTurnMessages(run, state.hasMoreToolCalls);
+	return false;
+}
+
+/**
+ * Park at the turn boundary while the process-wide pause gate is engaged (host /pause). An external
+ * abort releases the park so a cancelled run still unwinds while everything else stays frozen.
+ * True when the abort ended the run.
+ */
+async function parkWhilePaused(run: LoopRun): Promise<boolean> {
+	const pauseGate = run.config.pauseGate ?? agentPauseGate;
+	if (!pauseGate.paused) return false;
+	try {
+		await pauseGate.waitUntilResumed(run.signal);
+		return false;
+	} catch (err) {
+		if (!isAbortError(err) && !run.signal?.aborted) throw err;
+		const message = emitAbortedAssistantMessage(
+			null,
+			false,
+			EMPTY_STRING_SET,
+			run.context,
+			run.config,
+			run.stream,
+			run.signal,
+		);
+		run.newMessages.push(message);
+		await emitTurnEnd(run.stream, run.context, message, [], run.config, run.signal, { willContinue: false });
+		endAgentStream(run.stream, run.newMessages, run.telemetry, run.stepCounter.count);
+		return true;
+	}
+}
+
+/**
+ * Resolve the per-turn tool-choice directive ONCE per logical turn. The host hard-choice path
+ * (getToolChoice → nextToolChoice) is CONSUMING — it advances a generator on every call — so
+ * Harmony-leak retries, which re-sample the same turn without a turn_end, must reuse the values
+ * fetched on the first attempt rather than double-advancing it. Fetched after the pending-message
+ * flush and context sync, immediately before the call, so a throw in between cannot wedge an
+ * in-flight directive. A hard ToolChoice is applied verbatim; a SoftToolRequirement triggers the
+ * remind-then-escalate lifecycle: inject its reminder inline once per new id (toolChoice stays
+ * auto), and the gate in {@link settleTurnToolCalls} escalates to a forced choice only if the model
+ * declines. The host wrapper already dropped a soft requirement whose tool is inactive.
+ */
+function resolveTurnDirective(run: LoopRun, state: LoopState): void {
+	const directive = run.signal?.aborted ? undefined : run.config.getToolChoice?.();
+	const softReq = isSoftToolRequirement(directive) ? directive : undefined;
+	state.hostToolChoice = directive === undefined || isSoftToolRequirement(directive) ? undefined : directive;
+	state.softRequiredTool = softReq?.toolName;
+	if (softReq === undefined) {
+		state.softRequirementId = undefined;
+		state.softEscalations = 0;
+	} else if (softReq.id !== state.softRequirementId) {
+		state.softRequirementId = softReq.id;
+		state.softEscalations = 0;
+		for (const reminder of softReq.reminder) injectMessage(run, reminder);
+	}
+	state.directiveResolvedForTurn = true;
+}
+
+/**
+ * Stream the turn's assistant response. A GPT-5 Harmony leak either resumes from the recovered
+ * tool call, which completes the turn, or aborts for a re-sample of the same turn, reported as
+ * `undefined`. Each recovery has a cap past which the leak is an error.
+ */
+async function sampleTurn(run: LoopRun, state: LoopState): Promise<AssistantMessage | undefined> {
+	try {
+		const message = await streamAssistantResponse(
+			run.context,
+			run.config,
+			run.signal,
+			run.stream,
+			run.telemetry,
+			run.invokeAgentSpan,
+			run.stepCounter,
+			run.streamFn,
+			state.harmonyRetryAttempt,
+			state.hostToolChoice,
+			state.forcedToolChoice,
+		);
+		state.harmonyRetryAttempt = 0;
+		state.harmonyTruncateResumeCount = 0;
+		return message;
+	} catch (err) {
+		if (!(err instanceof HarmonyLeakInterruption)) throw err;
+		if (!err.recovered) {
+			if (state.harmonyRetryAttempt >= 2) {
+				await emitHarmonyAudit(run.config, err, "escalated", state.harmonyRetryAttempt);
+				throw new Error(
+					`GPT-5 Harmony leak persisted after ${state.harmonyRetryAttempt} retries (${signalListLabel(err.detection.signals)}).`,
+				);
+			}
+			await emitHarmonyAudit(run.config, err, "abort_retry", state.harmonyRetryAttempt);
+			state.harmonyRetryAttempt++;
+			return undefined;
+		}
+		if (state.harmonyTruncateResumeCount >= 2) {
+			await emitHarmonyAudit(run.config, err, "escalated", state.harmonyRetryAttempt);
+			throw new Error(
+				`GPT-5 Harmony leak recurred after truncate-and-resume recovery (${signalListLabel(err.detection.signals)}).`,
+			);
+		}
+		state.harmonyTruncateResumeCount++;
+		await emitHarmonyAudit(run.config, err, "truncate_resume", state.harmonyRetryAttempt);
+		// A recovered message completes the turn, so the abort-retry counter
+		// resets like the normal success path (the truncate-resume counter
+		// keeps accumulating for its cross-turn cap).
+		state.harmonyRetryAttempt = 0;
+		const message = snapshotAssistantMessage(err.recovered.message);
+		run.context.messages.push(message);
+		run.stream.push({ type: "message_start", message: snapshotAssistantMessage(message) });
+		run.stream.push({ type: "message_end", message: snapshotAssistantMessage(message) });
+		return message;
+	}
+}
+
+/**
+ * Close a turn that errored or aborted: pair each of its tool calls with a placeholder result,
+ * which maintains the tool_use/tool_result pairing the API requires, emit turn_end and end the run.
+ */
+async function settleFailedTurn(
+	run: LoopRun,
+	message: AssistantMessage,
+	stopReason: "error" | "aborted",
+): Promise<void> {
+	// Cursor exec-resolved blocks already have their toolResult buffered
+	// for out-of-band emission; a placeholder aborted result here would
+	// pair a duplicate to the same toolCallId (issue #4348 codex review).
+	const toolCalls = message.content.filter(
+		(c): c is ToolCallContent =>
+			c.type === "toolCall" && (c as CursorExecResolvedCarrier)[kCursorExecResolved] !== true,
+	);
+	// Provider-built aborted messages (stream error events) carry no
+	// per-tool labels; derive them from a tool-scoped abort signal so
+	// only the matching call is blamed and siblings stay neutral.
+	const scopedAbort = toolScopedAbortReason(run.signal);
+	const toolCallAbortMessages =
+		message.toolCallAbortMessages ?? (scopedAbort ? buildToolCallAbortMessages(message, scopedAbort) : undefined);
+	// Everything the harness knows about this batch at abort time. The
+	// loop's own dispatch cannot have started: `tool.execute()` has one
+	// call site, inside `executeToolCalls`, which is reached only from
+	// a runnable stop in `settleTurnToolCalls`, never from here. So every
+	// retained call is "never ran".
+	//
+	// The one exception is a Cursor exec-channel call. Those run through
+	// a caller-supplied `execHandler` inside the provider stream, in this
+	// process, and their `toolCall` block is synthesized BEFORE the
+	// handler is awaited. A reset can land while one is still running, so
+	// they are never reported as "never ran": `buildAbortedTurnLedger`
+	// resolves them against the transcript and falls back to "started, no
+	// result recorded".
+	//
+	// Emitting the ledger on the first placeholder keeps it to one
+	// bounded copy per batch. When the batch left no placeholder at all
+	// the ledger travels as a turn-level notice instead; see below.
+	const batchLedger = buildAbortedTurnLedger(
+		stopReason === "aborted" ? "aborted" : "stream_error",
+		message,
+		run.context.messages,
+	);
+	const toolResults: ToolResultMessage[] = [];
+	for (const toolCall of toolCalls) {
+		const errorMessage = toolCallAbortMessages?.[toolCall.id] ?? message.errorMessage;
+		const result = createAbortedToolResult(
+			toolCall,
+			run.stream,
+			stopReason,
+			errorMessage,
+			toolResults.length === 0 ? batchLedger : undefined,
+		);
+		appendToolResult(run, toolResults, result);
+		// The placeholder result above keeps the API's tool_use/tool_result
+		// pairing intact, but no execute_tool span is started for these
+		// calls. Mirror the run-collector entry directly so the run
+		// summary's tool counters and `coverage.toolsInvoked` reflect
+		// what the user actually saw on the wire.
+		recordSkippedTool(run.telemetry, { toolCallId: toolCall.id, toolName: toolCall.name, status: stopReason });
+	}
+	if (batchLedger && toolResults.length === 0) {
+		// Every call this turn either had its `toolCall` block deleted by
+		// `retainCompletedToolCalls` (arguments still streaming) or was
+		// already dispatched out of band by Cursor's exec channel, so no
+		// placeholder result exists to carry the ledger. Dropping it here
+		// is how the one case it was written for got lost: an incomplete
+		// call has no block, no result and no placeholder, so the ledger
+		// is the only place it is named at all, and without it the model
+		// reads a turn in which it never asked for that tool.
+		//
+		// The turn-level path is the one the tool-choice reminder uses: a
+		// synthetic user message streamed and appended to the context, so
+		// it survives into the next request the same way.
+		injectMessage(run, {
+			role: "user",
+			content: renderToolBatchLedger(batchLedger),
+			synthetic: true,
+			timestamp: Date.now(),
+		} satisfies UserMessage);
+	}
+	await emitTurnEnd(run.stream, run.context, message, toolResults, run.config, run.signal, { willContinue: false });
+	endAgentStream(run.stream, run.newMessages, run.telemetry, run.stepCounter.count);
+}
+
+/**
+ * Run, skip or defer a completed turn's tool calls, set whether the loop samples another turn, and
+ * return the turn's tool results.
+ *
+ * Tools run whenever the turn carries tool_use blocks AND was not truncated. `stop_reason` is
+ * provider metadata that never goes back on the wire, so it does not gate continuation validity:
+ * replaying a tool_use turn with the tool_results appended is accepted whether the turn ended on
+ * `tool_use` or `end_turn` (adaptive/interleaved-thinking Opus routinely emits tool calls under
+ * `end_turn`; verified against the live Anthropic API). The only continuation hazard is a thinking
+ * block carrying a stale/invalid signature, which `transformMessages` already neutralizes — it
+ * strips the signature on non-`toolUse` turns and the encoder downgrades the unsigned block to
+ * text, which the API accepts. So `stop` (end_turn/pause_turn) is treated the same as `toolUse`.
+ * `length` (max_tokens) is the one reason tools must NOT run: the trailing tool_use may be
+ * truncated with incomplete arguments, so those calls are abandoned. (`error`/`aborted` never
+ * reach here.)
+ */
+async function settleTurnToolCalls(
+	run: LoopRun,
+	state: LoopState,
+	message: AssistantMessage,
+): Promise<ToolResultMessage[]> {
+	const toolCalls = unansweredToolCalls(message, run.context.messages);
+	const runnableStop = message.stopReason === "toolUse" || message.stopReason === "stop";
+	const deadlinePassed = isDeadlineExceeded(run.config.deadline);
+	let hasMoreToolCalls = runnableStop && toolCalls.length > 0 && !deadlinePassed;
+
+	const toolResults: ToolResultMessage[] = [];
+	const requiredTool = state.softRequiredTool;
+	if (requiredTool !== undefined && violatesSoftRequirement(run.config, requiredTool, toolCalls)) {
+		escalateSoftRequirement(run, state, requiredTool, toolCalls, toolResults);
+		hasMoreToolCalls = true;
+	} else if (hasMoreToolCalls) {
+		const executionResult = await executeToolCalls(
+			run.context,
+			message,
+			run.signal,
+			run.stream,
+			run.config,
+			run.telemetry,
+			run.invokeAgentSpan,
+		);
+		for (const result of executionResult.toolResults) appendToolResult(run, toolResults, result);
+	} else if (toolCalls.length > 0) {
+		// Turn ended on a non-runnable reason (`length` truncation) or deadline was exceeded
+		// but left toolCall blocks behind. pair each with a placeholder result.
+		const skipReason = deadlinePassed ? "aborted" : message.stopReason === "length" ? "length" : "skipped";
+		const skipErrMsg = deadlinePassed ? "Deadline exceeded" : undefined;
+		for (const toolCall of toolCalls) {
+			appendToolResult(run, toolResults, createAbortedToolResult(toolCall, run.stream, skipReason, skipErrMsg));
+			recordSkippedTool(run.telemetry, {
+				toolCallId: toolCall.id,
+				toolName: toolCall.name,
+				status: deadlinePassed ? "aborted" : "skipped",
+			});
+		}
+		hasMoreToolCalls = message.stopReason === "length" && !deadlinePassed;
+	}
+
+	// A tool hook may mark its completed result as terminal (e.g. agent yield).
+	// Stop before the next provider call without changing external/user abort semantics.
+	if (run.signal?.reason === TERMINAL_TOOL_RESULT_ABORT_REASON) {
+		hasMoreToolCalls = false;
+	}
+
+	if (toolCalls.length > 0) {
+		state.pausedTurnContinuations = 0;
+	} else if (
+		!hasMoreToolCalls &&
+		message.stopReason === "stop" &&
+		message.stopDetails?.type === "pause_turn" &&
+		state.pausedTurnContinuations < MAX_PAUSED_TURN_CONTINUATIONS
+	) {
+		// Non-terminal stop: the provider ended the response but not the turn
+		// (e.g. Codex `end_turn: false` on a commentary-only progress update).
+		// Re-sample with the assistant message replayed so the model keeps
+		// working; the next round folds steering/asides in like any other
+		// mid-work turn.
+		state.pausedTurnContinuations++;
+		hasMoreToolCalls = true;
+	}
+	state.hasMoreToolCalls = hasMoreToolCalls;
+	return toolResults;
+}
+
+/**
+ * A turn is compliant ONLY when it calls the required tool and nothing else — mirroring the
+ * forced-tool_choice turn, which can emit only that tool. A required+detour batch is non-compliant
+ * so detour tools never run side effects while the requirement is still pending.
+ */
+function violatesSoftRequirement(
+	config: AgentLoopConfig,
+	requiredTool: string,
+	toolCalls: readonly ToolCallContent[],
+): boolean {
+	if (hardToolChoiceBlocks(config.toolChoice, requiredTool)) return false;
+	return toolCalls.length === 0 || !toolCalls.every(toolCall => toolCall.name === requiredTool);
+}
+
+/**
+ * A soft-required tool is pending but the model called something else (or yielded). Do NOT execute
+ * the detour — pair each call with a skipped result and force the required tool next turn. This is
+ * the only turn that changes toolChoice; a model that complies with the reminder pays no
+ * message-cache invalidation. The caller re-engages so the loop never yields while the requirement
+ * is unmet.
+ */
+function escalateSoftRequirement(
+	run: LoopRun,
+	state: LoopState,
+	requiredTool: string,
+	toolCalls: readonly ToolCallContent[],
+	toolResults: ToolResultMessage[],
+): void {
+	if (state.softEscalations >= MAX_SOFT_TOOL_ESCALATIONS) {
+		throw new Error(
+			`Soft tool requirement '${requiredTool}' was not satisfied after ${MAX_SOFT_TOOL_ESCALATIONS} forced turns; aborting to avoid an unbounded force loop.`,
+		);
+	}
+	for (const toolCall of toolCalls) {
+		const result = createAbortedToolResult(
+			toolCall,
+			run.stream,
+			"skipped",
+			`Not executed: call the \`${requiredTool}\` tool to resolve the pending action before using other tools.`,
+		);
+		appendToolResult(run, toolResults, result);
+		recordSkippedTool(run.telemetry, { toolCallId: toolCall.id, toolName: toolCall.name, status: "skipped" });
+	}
+	state.forcedToolChoice = { type: "tool", name: requiredTool };
+	state.softEscalations++;
+}
+
+/**
+ * The messages the next turn opens with.
+ *
+ * On external abort (user interrupt), leave the steering queue intact: the session aborts then
+ * continues, delivering the queue into a fresh run. Draining it here would inject the messages
+ * right before a model call that instantly aborts — message lands in history, agent never
+ * responds. The mid-batch interrupt poll only peeks (hasSteeringMessages), so the queue still owns
+ * every message until this dequeue.
+ */
+async function nextTurnMessages(run: LoopRun, hasMoreToolCalls: boolean): Promise<AgentMessage[]> {
+	const { config, signal } = run;
+	const steering = signal?.aborted ? [] : (await config.getSteeringMessages?.()) || [];
+	// Stop boundary: only steering (live user input) forces another turn here. Leave
+	// asides for the yield drain so a passive aside can't trigger an extra model
+	// turn ahead of a queued follow-up — the drain batches asides + follow-ups together.
+	if (!hasMoreToolCalls) return steering;
+	// Mid-work: fold any non-interrupting asides into the next turn alongside steering.
+	const asides = signal?.aborted ? [] : resolveAsides(await config.getAsideMessages?.());
+	return asides.length > 0 ? steering.concat(asides) : steering;
+}
+
+/**
+ * The messages queued when the agent would stop. Skip queue drains when externally aborted (same
+ * stranding hazard as {@link nextTurnMessages}). Re-poll steering too: a steer can land between the
+ * stop-boundary dequeue and this yield point (e.g. queued while onBeforeYield ran). Without this
+ * poll it would strand in the queue until the next manual prompt.
+ */
+async function drainAtYield(run: LoopRun): Promise<AgentMessage[]> {
+	const { config, signal } = run;
+	const lateSteering = signal?.aborted ? [] : (await config.getSteeringMessages?.()) || [];
+	const asideMessages = signal?.aborted ? [] : resolveAsides(await config.getAsideMessages?.());
+	const followUpMessages = signal?.aborted ? [] : (await config.getFollowUpMessages?.()) || [];
+	return lateSteering.concat(asideMessages, followUpMessages);
 }
 
 async function emitHarmonyAudit(
@@ -2215,17 +2264,10 @@ async function executeToolCalls(
 		afterToolCall,
 	} = config;
 	const instrumentationLevel = instrumentation ?? "off";
-	type ToolCallContent = Extract<AssistantMessage["content"][number], { type: "toolCall" }>;
 	// Defensive: the outer loop already filters exec-resolved and already-answered
 	// blocks before deciding to invoke `executeToolCalls`, but skip them here too
 	// so the guarantee lives with the code that would re-run the tool.
-	const alreadyAnswered = executedToolCallIds(currentContext.messages);
-	const toolCalls = assistantMessage.content.filter(
-		(c): c is ToolCallContent =>
-			c.type === "toolCall" &&
-			(c as CursorExecResolvedCarrier)[kCursorExecResolved] !== true &&
-			!alreadyAnswered.has(c.id),
-	);
+	const toolCalls = unansweredToolCalls(assistantMessage, currentContext.messages);
 	const emittedToolResults: ToolResultMessage[] = [];
 	const toolCallInfos = toolCalls.map(call => ({ id: call.id, name: call.name }));
 	const batchId = `${assistantMessage.timestamp ?? Date.now()}_${toolCalls[0]?.id ?? "batch"}`;
