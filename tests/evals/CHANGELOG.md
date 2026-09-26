@@ -8,7 +8,7 @@ All notable changes to `@veyyon/evals` will be documented in this file.
 
 - `benches/miniwob.ts` runs MiniWoB++ tasks through the CLI's browser tool with one model and reports success, turns, tool calls, wall time and tokens per episode, for a before and after tree; `--set` picks the form-entry `default` set, a `heldout` set or a `hard` set of long and fiddly tasks.
 - `benches/web-tasks.ts` runs tasks on public browser-practice pages and Wikipedia and scores each by the fact its `ANSWER:` line holds; `--set` picks `easy` (listings, links, logins, a form, late content), `hard` (frames, windows, dialogs, hover, drag and drop, HTTP auth, upload, a postback form, scrolling, several pages) or `expert` (sign-in, cart and checkout on a shop, a to-do app).
-- `benches/cli-episode.ts` runs one bench episode of the CLI with only the browser tool, with an empty home of its own, the browser tool turned on by a config overlay, and the JSON event stream kept as `events.jsonl`.
+- `benches/cli-episode.ts` runs one bench episode of the CLI with only the browser tool, with an empty home of its own, the browser tool turned on by a config overlay, and the JSON event stream and stderr kept as `events.jsonl` and `stderr.txt`; on a Linux kernel with Landlock it runs the episode under `benches/landlock-exec.py` so the files in the invoking user's home, the bench's work directory and the trees' `tests` are unreadable to it, and each bench's log states whether its episodes ran that way.
 - `benches/browser-fill.ts` times `tab.fill` in headless Chromium for 16, 256 and 4,096 characters and counts a fill correct only when the field holds the value.
 
 ## [1.5.0] - 2026-09-18

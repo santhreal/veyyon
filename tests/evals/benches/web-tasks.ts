@@ -25,7 +25,14 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
 import { type FlagGrammar, flagCount, parseFlags, requireFlag } from "../engine/flag-grammar";
-import { type EpisodeUsage, finalText, runCliEpisode, writeBrowserOverlay } from "./cli-episode";
+import {
+	type EpisodeUsage,
+	episodeSandbox,
+	finalText,
+	runCliEpisode,
+	sandboxNotice,
+	writeBrowserOverlay,
+} from "./cli-episode";
 
 export interface WebTask {
 	readonly id: string;
@@ -340,6 +347,7 @@ if (import.meta.main) {
 	const label = flags.label ?? "run";
 	const work = path.resolve(flags.work ?? path.join("runs", "web-work", label));
 	const config = await writeBrowserOverlay(work);
+	console.log(sandboxNotice());
 	const agentDir = flags["agent-dir"] ? path.resolve(flags["agent-dir"]) : undefined;
 	const queue = (tasks as WebTask[]).flatMap(task => Array.from({ length: repeats }, (_, repeat) => ({ task, repeat })));
 	const outcomes: WebOutcome[] = [];
@@ -384,6 +392,9 @@ if (import.meta.main) {
 	);
 	if (flags.json !== undefined) {
 		await fs.mkdir(path.dirname(path.resolve(flags.json)), { recursive: true });
-		await fs.writeFile(flags.json, `${JSON.stringify({ label, model, cli, repeats, outcomes }, null, 2)}\n`);
+		await fs.writeFile(
+			flags.json,
+			`${JSON.stringify({ label, model, cli, repeats, sandboxed: episodeSandbox().usable, outcomes }, null, 2)}\n`,
+		);
 	}
 }

@@ -30,7 +30,13 @@ import type { AddressInfo } from "node:net";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
 import { type FlagGrammar, flagCount, parseFlags, requireFlag } from "../engine/flag-grammar";
-import { type EpisodeUsage, runCliEpisode, writeBrowserOverlay } from "./cli-episode";
+import {
+	type EpisodeUsage,
+	episodeSandbox,
+	runCliEpisode,
+	sandboxNotice,
+	writeBrowserOverlay,
+} from "./cli-episode";
 
 /** Form entry in every shape the element actions meet, and one click-only control. */
 export const DEFAULT_TASKS = [
@@ -343,6 +349,7 @@ if (import.meta.main) {
 	const server = await startServer(miniwob);
 	const work = path.resolve(flags.work ?? path.join("runs", "miniwob-work", label));
 	const config = await writeBrowserOverlay(work);
+	console.log(sandboxNotice());
 	const options: EpisodeOptions = {
 		cli,
 		model,
@@ -378,7 +385,7 @@ if (import.meta.main) {
 		await fs.mkdir(path.dirname(path.resolve(flags.json)), { recursive: true });
 		await fs.writeFile(
 			flags.json,
-			`${JSON.stringify({ label, model, cli, tasks, seeds, summary, outcomes }, null, 2)}\n`,
+			`${JSON.stringify({ label, model, cli, tasks, seeds, sandboxed: episodeSandbox().usable, summary, outcomes }, null, 2)}\n`,
 		);
 	}
 }
