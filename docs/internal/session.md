@@ -832,8 +832,9 @@ Rationale in code: avoid persisting sessions that never produced an assistant re
 ### Durability operations
 
 - `flush()` drains the async disk chain, the open writer's queued appends, and storage-level backing writes (no `fsync`). `flushSync()` checks latched errors and performs a synchronous full rewrite only when in-memory state is divergent or the file is not current; otherwise it returns without rewriting.
-- Atomic full rewrites (`#rewriteAtomically`) delegate to `storage.writeTextAtomic`: temp-write then rename over the target (with an EPERM-safe move-aside fallback).
-- Used for `rewriteEntries` (tool-output pruning/supersede passes) and move/fork operations. `setSessionName` instead appends a `title_change` entry and overwrites the fixed-width title slot in place, falling back to a fenced atomic rewrite on failure or when the file has no slot yet. Load-time migrations and other in-memory divergence (`#rewriteRequired`) instead trigger a synchronous full rewrite (`#rewriteSynchronously`) on the next persist.
+- Atomic rewrites (`#rewriteAtomically`) delegate to `storage.writeTextAtomic`: temp-write then rename over the target (with an EPERM-safe move-aside fallback).
+- `rewriteEntries(updated)` takes the entries a caller changed in place (prune, supersede, shake, image drop, recovered retry marker, compaction tail elision, dead-end warning stamp). `#tailRewritePlan` keeps the file's bytes before the earliest of them and publishes through `storage.rewriteTailAtomic`, which copies that prefix into the temp file, writes the title slot line over its start and the serialized lines from the earliest updated entry on after it, then renames the same way. The byte offsets come from the last publish plus every hot append since (`#publishedFileState.lines`); an entry replaced, dropped or reordered since that publish ends the kept prefix. The whole body is written instead when the file is not exactly as published (size or identity changed), it holds a foreign line, the header line changed, a title change dropped the offsets, the backend has no `rewriteTailAtomic`, or an updated entry is not in the session. `rewriteEntries()` with no list writes the whole body; move and fork do the same.
+- `setSessionName` instead appends a `title_change` entry and overwrites the fixed-width title slot in place, falling back to a fenced atomic rewrite on failure or when the file has no slot yet. Load-time migrations and other in-memory divergence (`#rewriteRequired`) instead trigger a synchronous full rewrite (`#rewriteSynchronously`) on the next persist.
 
 ### Error behavior
 
@@ -864,7 +865,7 @@ On load, blob refs are resolved back: `blob:sha256:` image refs to base64 for me
 `SessionStorage` provides the filesystem-shaped operations used by `SessionManager`:
 
 - sync: `ensureDirSync`, `existsSync`, `existsStateSync`, `writeTextSync`, `statSync`, `listFilesSync`, `listFilesRecursiveSync`, and optional `readTextSync`
-- async: `exists`, `readText`, `readTextSlices`, `writeText`, `writeTextAtomic`, `rename`, `moveSessionWithArtifacts`, `unlink`, `deleteSessionWithArtifacts`, `updateSessionTitle`, `openWriter`, `drain`
+- async: `exists`, `readText`, `readTextSlices`, `writeText`, `writeTextAtomic`, optional `rewriteTailAtomic`, `rename`, `moveSessionWithArtifacts`, `unlink`, `deleteSessionWithArtifacts`, `updateSessionTitle`, `openWriter`, `drain`
 
 `moveSessionWithArtifacts` relocates the transcript and its artifact tree as one logical operation and restores the source if relocation fails. `drain` waits for queued backing writes; it returns immediately for synchronous file/memory storage and awaits indexed Redis/SQL queues.
 

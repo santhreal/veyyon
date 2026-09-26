@@ -62,6 +62,8 @@ export const DEFAULT_PRUNE_CONFIG: PruneConfig = {
 export interface PruneResult {
 	prunedCount: number;
 	tokensSaved: number;
+	/** Every entry the pass rewrote in place, for a caller that persists only what changed. */
+	prunedEntries: SessionMessageEntry[];
 }
 
 /** Exact placeholder written over a superseded tool result. */
@@ -342,7 +344,7 @@ export function pruneSupersededToolResults(entries: SessionEntry[], config: Supe
 		for (let ui = 0; ui < useless.length; ui++) candidates.push(useless[ui]!);
 		candidates.sort((a, b) => a.index - b.index);
 	}
-	if (candidates.length === 0) return { prunedCount: 0, tokensSaved: 0 };
+	if (candidates.length === 0) return { prunedCount: 0, tokensSaved: 0, prunedEntries: [] };
 
 	// Every candidate is a message in `live`, so the newest message on the branch
 	// is in `live` too.
@@ -383,22 +385,23 @@ export function pruneSupersededToolResults(entries: SessionEntry[], config: Supe
 		const batch = chooseWorthwhileSweep(eligible, suffixTokens, config);
 		toPrune = batch.length > tail.length ? batch : tail;
 	}
-	if (toPrune.length === 0) return { prunedCount: 0, tokensSaved: 0 };
+	if (toPrune.length === 0) return { prunedCount: 0, tokensSaved: 0, prunedEntries: [] };
 
 	const prunedAt = Date.now();
 	let tokensSaved = 0;
+	const prunedEntries: SessionMessageEntry[] = [];
 	for (const candidate of toPrune) {
 		candidate.message.content = [{ type: "text", text: candidate.notice }];
 		candidate.message.prunedAt = prunedAt;
 		tokensSaved += estimatePrunedSavings(candidate.tokens, candidate.notice);
+		prunedEntries.push(candidate.entry);
 	}
-	return { prunedCount: toPrune.length, tokensSaved };
+	return { prunedCount: toPrune.length, tokensSaved, prunedEntries };
 }
 
 export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = DEFAULT_PRUNE_CONFIG): PruneResult {
 	let accumulatedTokens = 0;
 	let tokensSaved = 0;
-	let prunedCount = 0;
 
 	const candidates: Array<{ entry: SessionMessageEntry; tokens: number; superseded: boolean; useless: boolean }> = [];
 	// Entries before the compaction boundary are summarized away (never sent), so
@@ -481,10 +484,11 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 	}
 
 	if (tokensSaved < config.minimumSavings || candidates.length === 0) {
-		return { prunedCount: 0, tokensSaved: 0 };
+		return { prunedCount: 0, tokensSaved: 0, prunedEntries: [] };
 	}
 
 	const prunedAt = Date.now();
+	const prunedEntries: SessionMessageEntry[] = [];
 	for (const candidate of candidates) {
 		const message = candidate.entry.message as ToolResultMessage;
 		const notice = candidate.superseded
@@ -494,10 +498,10 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 				: createPrunedNotice(candidate.tokens);
 		message.content = [{ type: "text", text: notice }];
 		message.prunedAt = prunedAt;
-		prunedCount++;
+		prunedEntries.push(candidate.entry);
 	}
 
-	return { prunedCount, tokensSaved };
+	return { prunedCount: prunedEntries.length, tokensSaved, prunedEntries };
 }
 
 /**

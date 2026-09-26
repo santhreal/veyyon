@@ -169,6 +169,23 @@ export interface SessionStorage {
 	readTextSlices(path: string, prefixBytes: number, suffixBytes: number): Promise<[string, string]>;
 	writeText(path: string, content: string): Promise<void>;
 	writeTextAtomic(path: string, body: SessionFileBody, options?: WriteTextAtomicOptions): Promise<void>;
+	/**
+	 * Replace `path` atomically with a copy of its first `keepBytes` bytes, `head` written over the
+	 * start of that copy, and `tail` after it. `commitGuard` applies as it does to
+	 * {@link writeTextAtomic}.
+	 *
+	 * OPTIONAL: a session rewrite that changed only its last entries uses this to keep the bytes
+	 * before them instead of serializing the whole transcript again. A backend without it, or one
+	 * whose paths name no object that can be copied, publishes the whole body through
+	 * {@link writeTextAtomic}. Fails when the file holds fewer than `keepBytes` bytes.
+	 */
+	rewriteTailAtomic?(
+		path: string,
+		keepBytes: number,
+		head: string,
+		tail: SessionFileBody,
+		options?: WriteTextAtomicOptions,
+	): Promise<void>;
 	rename(path: string, nextPath: string): Promise<void>;
 	/**
 	 * Relocate a session transcript and every artifact beneath its sibling
@@ -502,7 +519,7 @@ export class FileSessionStorage implements SessionStorage {
 
 	async writeTextAtomic(fpath: string, body: SessionFileBody, options?: WriteTextAtomicOptions): Promise<void> {
 		const dir = path.resolve(fpath, "..");
-		const tempPath = path.join(dir, `.${path.basename(fpath)}.${Snowflake.next()}.tmp`);
+		const tempPath = this.#stagingPath(fpath);
 		await fs.promises.mkdir(dir, { recursive: true });
 		try {
 			await writeChunks(tempPath, body);
@@ -510,6 +527,58 @@ export class FileSessionStorage implements SessionStorage {
 			this.#discardTemp(tempPath, fpath);
 			throw toError(err);
 		}
+		this.#publishStaged(tempPath, fpath, options);
+	}
+
+	/**
+	 * The copy is a reflink where the filesystem supports one (btrfs, XFS, APFS) and an in-kernel
+	 * copy elsewhere, so the kept bytes never pass through this process.
+	 */
+	async rewriteTailAtomic(
+		fpath: string,
+		keepBytes: number,
+		head: string,
+		tail: SessionFileBody,
+		options?: WriteTextAtomicOptions,
+	): Promise<void> {
+		const tempPath = this.#stagingPath(fpath);
+		try {
+			await fs.promises.copyFile(fpath, tempPath, fs.constants.COPYFILE_FICLONE);
+			const handle = await fs.promises.open(tempPath, "r+");
+			try {
+				const { size } = await handle.stat();
+				if (size < keepBytes) {
+					throw new Error(`Session file holds ${size} bytes, fewer than the ${keepBytes} a tail rewrite keeps`);
+				}
+				await handle.truncate(keepBytes);
+				if (head.length > 0) await handle.write(head, 0, "utf-8");
+				let position = keepBytes;
+				for (const chunk of sessionBodyChunks(tail)) {
+					if (chunk.length === 0) continue;
+					const { bytesWritten } = await handle.write(chunk, position, "utf-8");
+					const chunkBytes = Buffer.byteLength(chunk, "utf-8");
+					if (bytesWritten !== chunkBytes) {
+						throw new Error(`Short write to ${tempPath}: ${bytesWritten} of ${chunkBytes} bytes`);
+					}
+					position += chunkBytes;
+				}
+			} finally {
+				await handle.close();
+			}
+		} catch (err) {
+			this.#discardTemp(tempPath, fpath);
+			throw toError(err);
+		}
+		this.#publishStaged(tempPath, fpath, options);
+	}
+
+	/** A temp path beside `fpath`, so the publish is a rename within one directory. */
+	#stagingPath(fpath: string): string {
+		return path.join(path.resolve(fpath, ".."), `.${path.basename(fpath)}.${Snowflake.next()}.tmp`);
+	}
+
+	/** Make a fully written temp file the file at `fpath`, or discard it. */
+	#publishStaged(tempPath: string, fpath: string, options?: WriteTextAtomicOptions): void {
 		// Guard-check + rename MUST NOT be separated by an await. A concurrent
 		// synchronous rewrite (flushSync -> #rewriteSynchronously) can otherwise
 		// publish a fresh body between the check and the rename, and this stale

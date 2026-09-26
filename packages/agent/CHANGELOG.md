@@ -9,6 +9,7 @@
 ### Added
 
 - `collectToolCallsById` takes an optional start index and resolves the call behind each tool result at or after it without walking the entries before it.
+- `PruneResult` lists the entries a prune rewrote in place as `prunedEntries`.
 
 ### Changed
 

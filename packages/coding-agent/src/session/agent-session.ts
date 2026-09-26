@@ -10796,8 +10796,8 @@ export class AgentSession {
 	 * "the dedup alone brought us back under the bar, skip the summarization"
 	 * could never fire.
 	 */
-	async #afterHistoryRewrite(): Promise<void> {
-		await this.sessionManager.rewriteEntries();
+	async #afterHistoryRewrite(updated: readonly SessionEntry[]): Promise<void> {
+		await this.sessionManager.rewriteEntries(updated);
 		const sessionContext = this.buildDisplaySessionContext();
 		this.agent.replaceMessages(sessionContext.messages);
 		this.#resetAllAdvisorRuntimes();
@@ -10834,7 +10834,7 @@ export class AgentSession {
 			return undefined;
 		}
 
-		await this.#afterHistoryRewrite();
+		await this.#afterHistoryRewrite(result.prunedEntries);
 		this.#todo.syncFromBranch();
 		return result;
 	}
@@ -10878,7 +10878,7 @@ export class AgentSession {
 			return undefined;
 		}
 
-		await this.#afterHistoryRewrite();
+		await this.#afterHistoryRewrite(result.prunedEntries);
 		this.#todo.syncFromBranch();
 		return result;
 	}
@@ -10898,9 +10898,14 @@ export class AgentSession {
 	async dropImages(): Promise<{ removed: number }> {
 		const branchEntries = this.sessionManager.getBranch();
 		let removed = 0;
+		const updated: SessionEntry[] = [];
 		for (const entry of branchEntries) {
 			if (entry.type === "message") {
-				removed += stripImagesFromMessage(entry.message);
+				const stripped = stripImagesFromMessage(entry.message);
+				if (stripped > 0) {
+					removed += stripped;
+					updated.push(entry);
+				}
 				continue;
 			}
 			if (entry.type === "custom_message" && typeof entry.content !== "string") {
@@ -10919,13 +10924,14 @@ export class AgentSession {
 					}
 					entry.content = kept;
 					removed += dropped;
+					updated.push(entry);
 				}
 			}
 		}
 		if (removed === 0) {
 			return { removed: 0 };
 		}
-		await this.#afterHistoryRewrite();
+		await this.#afterHistoryRewrite(updated);
 		return { removed };
 	}
 
@@ -11016,7 +11022,7 @@ export class AgentSession {
 
 		applyShakeRegions(items);
 
-		await this.#afterHistoryRewrite();
+		await this.#afterHistoryRewrite(regions.map(region => region.entry));
 
 		return {
 			toolResultsDropped,
@@ -12298,6 +12304,7 @@ export class AgentSession {
 			supersededBy.responseId = supersedingMessage.responseId;
 		}
 		const recoveredErrors: RecoveredRetryError[] = [];
+		const updated: SessionEntry[] = [];
 		for (const pending of this.#pendingRecoveredRetryErrors) {
 			let entry = branchById.get(pending.entryId);
 			if (entry?.type !== "message" || entry.message.role !== "assistant") {
@@ -12322,6 +12329,7 @@ export class AgentSession {
 				supersededBy,
 			};
 			entry.message.retryRecovery = retryRecovery;
+			updated.push(entry);
 			recoveredErrors.push({
 				entryId: entry.id,
 				persistenceKey: pending.persistenceKey,
@@ -12329,8 +12337,8 @@ export class AgentSession {
 				retryRecovery,
 			});
 		}
-		if (recoveredErrors.length > 0) {
-			await this.sessionManager.rewriteEntries();
+		if (updated.length > 0) {
+			await this.sessionManager.rewriteEntries(updated);
 		}
 		return recoveredErrors;
 	}
@@ -14021,25 +14029,27 @@ export class AgentSession {
 			});
 			artifactId = undefined;
 		}
-		if (artifactId) {
-			const branch = this.sessionManager.getBranch();
-			for (const elision of elisions) {
-				// A NEW message object, never an in-place content patch:
-				// estimateTokens caches by message identity, so mutating the
-				// marker would leave every later estimate at the pre-pointer
-				// size (same replace-not-mutate rule the elision producer
-				// follows).
-				const pointed: ToolResultMessage = {
-					...elision.message,
-					content: [{ type: "text", text: renderTailElisionMarker(elision.toolName, elision.tokens, artifactId) }],
-				};
-				const entry = branch.find(e => e.id === elision.entryId);
-				if (entry?.type !== "message" || entry.message !== elision.message) continue;
-				entry.message = pointed;
-				elision.message = pointed;
-			}
+		const updated: SessionEntry[] = [];
+		for (const elision of elisions) {
+			// `prepareCompaction` already replaced this entry's message, so it is
+			// updated whether or not the pointer below lands.
+			const entry = this.sessionManager.getEntry(elision.entryId);
+			if (!entry) continue;
+			updated.push(entry);
+			if (!artifactId || entry.type !== "message" || entry.message !== elision.message) continue;
+			// A NEW message object, never an in-place content patch:
+			// estimateTokens caches by message identity, so mutating the
+			// marker would leave every later estimate at the pre-pointer
+			// size (same replace-not-mutate rule the elision producer
+			// follows).
+			const pointed: ToolResultMessage = {
+				...elision.message,
+				content: [{ type: "text", text: renderTailElisionMarker(elision.toolName, elision.tokens, artifactId) }],
+			};
+			entry.message = pointed;
+			elision.message = pointed;
 		}
-		await this.sessionManager.rewriteEntries();
+		await this.sessionManager.rewriteEntries(updated);
 	}
 
 	/**
@@ -14607,7 +14617,7 @@ export class AgentSession {
 				// carries the full warning in its ctrl+o detail, so the pause
 				// stays explained even after the notice row scrolls away.
 				savedCompactionEntry.warning = deadEndWarning;
-				await this.sessionManager.rewriteEntries();
+				await this.sessionManager.rewriteEntries([savedCompactionEntry]);
 			}
 
 			await this.#emitSessionEvent({ type: "auto_compaction_end", action, result, aborted: false, willRetry });
