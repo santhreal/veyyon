@@ -83,7 +83,7 @@ Non-persistent sessions without an adopted manager can store `saveArtifact(...)`
 
 ### 1) Session entry persistence rewrite path
 
-Before a session entry is written, incremental append (`#appendToSessionFile`) or a full-file rewrite (`#rewriteSynchronously` / `#rewriteAtomically`), `SessionManager` serializes it through `#lineFor()`, which runs `prepareEntryForPersistence()` over the persistence pipeline.
+Before a session entry is written, incremental append (`#appendToSessionFile`) or a full-file rewrite (`#rewriteSynchronously` / `#rewriteAtomically`), `SessionManager` serializes it through `#lineFor()`, which runs `prepareEntryForPersistence()` over the persistence pipeline. An atomic rewrite that names the entries it changed keeps the published lines before the earliest of them byte for byte (`#tailRewritePlan`, `SessionStorage.rewriteTailAtomic`), so only the entries from that one on pass through `#lineFor()` again.
 
 Key behaviors:
 
@@ -251,4 +251,4 @@ The two systems intersect only indirectly: both reduce session JSONL bloat, but 
 - [`src/task/output-manager.ts`](../../packages/coding-agent/src/task/output-manager.ts): session-scoped agent output ID allocation for `agent://`.
 - [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts): agent output artifact writes (`<id>.md`) and session JSONL sidecars.
 
-*Verified against `63ffc8131ffb8d35ccbbb1c5de69531a7016eff4` on 2026-09-06.*
+*Verified against `354b7f411c38e21bf78413c938743fb798245f5b` on 2026-09-26.*
