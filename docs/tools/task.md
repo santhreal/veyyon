@@ -10,6 +10,7 @@
   - `packages/coding-agent/src/task/discovery.ts`: discover project/user/plugin/bundled agents.
   - `packages/coding-agent/src/task/agents.ts`: bundled agent definitions and frontmatter parsing.
   - `packages/coding-agent/src/task/executor.ts`: create child sessions, run agents, collect output, hand finished sessions to the lifecycle manager.
+  - `packages/coding-agent/src/task/run-monitor.ts`: per-run progress, abort and soft request-budget enforcement, usage totals and output capture for one agent.
   - `packages/coding-agent/src/registry/agent-lifecycle.ts`: idle-TTL parking and revival of finished agents.
   - `packages/coding-agent/src/registry/agent-registry.ts`: process-global agent directory (`running | idle | parked | aborted`).
   - `packages/coding-agent/src/async/job-manager.ts`: background job registration, progress, and result delivery.

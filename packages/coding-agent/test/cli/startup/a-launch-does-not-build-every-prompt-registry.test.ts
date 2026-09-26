@@ -178,11 +178,15 @@ const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
  * split out of `session/agent-session.ts` (16629 lines to 16575). It imports only type-level
  * modules, so the launch runs no new code.
  *
+ * 1567 to 1568: `task/run-monitor.ts`, the progress, abort, soft-budget and output capture for one
+ * agent run, split out of `task/executor.ts` (3497 lines to 2450). It imports modules the executor
+ * already reached, so the launch runs no new code.
+ *
  * A ratchet, not a target: nothing breaks when it grows, which is exactly why it is pinned. There
  * is no margin left on purpose — the next module on this graph is a barrel someone reached for
  * and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1567;
+const LAUNCH_REACH_CEILING = 1568;
 
 /**
  * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The

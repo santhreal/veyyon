@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildBudgetNotice } from "@veyyon/coding-agent/task/executor";
+import { buildBudgetNotice } from "@veyyon/coding-agent/task/run-monitor";
 
 /**
  * buildBudgetNotice is the wrap-up message an agent receives when it crosses its soft request budget.

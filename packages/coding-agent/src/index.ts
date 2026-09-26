@@ -115,6 +115,7 @@ export * from "./session/session-dump-format";
 export * from "./session/streaming-output";
 export * from "./task";
 export * from "./task/executor";
+export * from "./task/run-monitor";
 export type * from "./task/types";
 // Theme utilities for custom tools
 export * from "./theme/theme";

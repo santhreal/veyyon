@@ -429,7 +429,7 @@ argot. Never hand-roll handle logic here.
   never a raw delta), `expandSessionContext` (transcript, export, resume), and `expandAgentReturn`
   (an agent's result to its parent).
 - A user never sees a raw `§handle`. That includes the live agent HUD preview
-  (`progress.recentOutput` in `task/executor.ts`). A raw handle in any display, tool, transcript, or
+  (`progress.recentOutput` in `task/run-monitor.ts`). A raw handle in any display, tool, transcript, or
   parent return is a defect.
 - A new place the model's text crosses out of its history is a new seam. Route it through an
   `argot-wire.ts` function, adding a thin delegate there if none fits.
