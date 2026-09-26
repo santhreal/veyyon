@@ -20,6 +20,9 @@
 ### Changed
 
 - The legacy agent settings migration runs as one step per retired area over a shared key reader, cutting a legacy-heavy config's migration from 15.0 µs to 10.9 µs per load; a current-format config is unchanged.
+- A compaction pass finds the entry it just wrote by the id the append returned instead of copying the session's entries and scanning them for its summary text, which cuts that step on a 238,086-entry session from 6.53 ms to 0.002 ms.
+- Automatic compaction runs its candidate loop, per-candidate retries, progress check and follow-up scheduling in single-purpose methods, and shares the hook offer and the write step with manual compaction; no user-visible change.
+- A tool card's display rebuild runs its call phase, result phase, custom and multi-file views, images and not-executed notice in single-purpose methods; resume render time on a 63,915-component transcript is unchanged.
 - A truncated `read`, `search` or `run_experiment` result records only its truncation counts in the session file, not a second copy of the kept text, so new results take less disk and memory and a resume parses less.
 - The `lsp` tool dispatches each workspace-scoped action (`status`, `diagnostics`, `rename_file`, `capabilities`, `request`, workspace `symbols`, workspace `reload`) to its own handler, and `definition`, `type_definition` and `implementation` share one lookup; no user-visible change.
 - A goal session records the token and time a tool call spends as a small `goal_progress` entry instead of a full copy of the goal, so the session file holds the objective once per goal change rather than once per tool call and a resume parses less.
@@ -62,6 +65,8 @@
 - Provider message replay splits into per-block replay steps and a tool-result pairing pass, cutting its time on a 52,000-message history by 7% for Anthropic targets and 13% for OpenAI Responses targets.
 - The OpenAI Responses stream decoder routes each event through an open-item registry and per-event handlers instead of one 560-line loop, cutting decode time of a 9,600-event stream by 10%.
 - The Devin stream splits into a request step, a Connect frame reader and a per-delta decoder that keeps each open block's content index instead of searching for it; decode time of an 18,400-frame stream is unchanged.
+- Google request building resolves each model's wire traits once per request and each thinking signature once per block, cutting message conversion on a 50,600-message history by 10% to 18%.
+- The Google and Cloud Code Assist stream decoders share one block assembler and finish-reason, usage and truncation helpers, and the Cloud Code Assist stream splits into a request plan, an endpoint loop and a per-response decoder; decode time of an 8,000-chunk stream is unchanged.
 - `buildOpenAICompat` classifies the host and model family once and derives each chat-completions compat field from a named predicate, and the chat and Responses builders share one override-and-rederive step; every bundled and synthetic model spec resolves to the same record, no behavior change.
 - Opening or restoring a session builds its set of known entry ids once instead of twice, which takes about 40ms off opening a 220,000-entry session.
 - The resume warning flattens each command or path onto one line through the shared `collapseWhitespace` helper; no user-visible change.
@@ -82,6 +87,7 @@
 
 ### Fixed
 
+- A compaction that writes the same summary as an earlier one, such as a second server-side compaction with its empty summary, stamps its dead-end warning on the new entry and passes the new entry to `session_compact` handlers instead of the earlier one.
 - With `edit.streamingAbort` on, a streaming `edit` patch whose last removed line has no trailing newline stops the turn when that line is absent from the file, instead of leaving it for the edit tool to reject after the stream ends.
 - Disposing a session while a Python or eval run is in flight no longer keeps the process alive for up to 3 seconds after the run finishes.
 - The CLI imports the terminal output guard when a worker thread starts rather than at startup, keeping it off the static boot graph; no user-visible change.
