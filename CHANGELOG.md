@@ -11,7 +11,9 @@
 ### Added
 
 - `collectToolCallsById` takes an optional start index and resolves the call behind each tool result at or after it without walking the entries before it.
+- `PruneResult` lists the entries a prune rewrote in place as `prunedEntries`.
 - A tool domain manifest can list `resultCodecs`, each a `ToolResultCodec` whose `slim` drops a result `details` field the result's content rebuilds when the session writes the entry and whose `restore` rebuilds it when the session loads.
+- `SessionStorage` has an optional `rewriteTailAtomic` that replaces a file atomically with its first `keepBytes` bytes, a new head written over their start, and a new tail; `FileSessionStorage` implements it, and a backend without it receives whole-file writes.
 
 ### Changed
 
@@ -26,6 +28,7 @@
 - A `search` result's session file line omits the card's copy of the matched rows, the path list `fileMatches` already holds, and the wrapper's repeat of the sub-search's truncation counts when the rest of the line rebuilds them, and the session restores them on load, which cuts the recorded search details in local sessions from 331.33 MB to 248.91 MB.
 - An `eval` result's session file line omits each cell's output and the top-level status events when the result's text and the first cell hold them, and a `job` result's line omits each job's result and error text the result's text holds, and the session restores them on load, which cuts the recorded eval details in local sessions from 497.77 MB to 253.78 MB and the job details from 100.84 MB to 37.80 MB.
 - Session spend, which `/session`, `get_session_stats` and goal accounting read at every turn start, tool completion and agent end, tallies the history behind the compaction boundary once per boundary instead of on every read, which cuts a read on a 201,156-entry session from 29.25 ms to 0.92 ms.
+- A prune, shake, image drop, recovered retry marker, compaction tail elision or dead-end warning rewrites the session file only from the earliest entry it changed, instead of the whole file, which cut the persist step after a one-entry prune on a 376 MiB session from 1.2 s to 135 ms.
 - The per-turn stale-result and threshold prunes and the shake, dedup and truncation collectors scan only the entries from the compaction boundary to the leaf instead of the whole branch, which cut the two per-turn prunes on a 238,084-entry session with 390 compactions from 420ms to 4.4ms per turn.
 - `resolveCompactionBoundaryIndex` searches for the keep marker from the end of the branch, which takes about 9ms off rebuilding the context of a 238,084-entry branch.
 - The Anthropic and OpenAI-compatible providers split their stream loops, message converters and finalization into per-step helpers; no user-visible change.
@@ -36,6 +39,7 @@
 - The `ToolResultCodec` contract permits a codec to rebuild a dropped field from the details the written line keeps as well as from the result's content; no behavior change.
 - Opening a session points every loaded string of 64 characters or more at one shared copy of its text, whether parsed from the file or read back from the blob store, and keeps no pooled string once the load returns, which cut the heap of a loaded 372.7 MiB session from 608.7 MiB to 401.7 MiB for 136 ms more load time.
 - Rebuilding a session context locates the applied compaction by searching from the end of the branch, which takes about 7ms off each rebuild of a 238,084-entry branch.
+- `SessionManager.rewriteEntries` takes the entries a caller changed in place and rewrites the session file from the earliest of them on, keeping the bytes before it without parsing or serializing them, which cut the rewrite after a one-entry prune on a 376 MiB, 109,360-entry session from 1.2 s to 135 ms.
 
 ### Removed
 
