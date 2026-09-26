@@ -480,6 +480,34 @@ describe("browser tool differential", () => {
 		expect(drawn.slice(1).join("\n")).toContain(theme.fg("toolOutput", replaceTabs("opened\tdocs")));
 	});
 
+	/**
+	 * An open that loads a small page now sends the model the page's snapshot after its own rows, and
+	 * a larger page's size in its place. That text is the model's to read: the card draws the open
+	 * exactly as it draws one that sent no page, under both disclosures and at every width.
+	 */
+	it("draws an open that sent the model its page as it draws an open that sent none", () => {
+		const args: BrowserViewArgs = { action: "open", name: "docs", url: URL };
+		const rows = `Opened tab "docs" on headless browser (hidden)\nURL: ${URL}\nTitle: Getting started`;
+		const details: BrowserToolDetails = { action: "open", name: "docs", url: URL, browser: "headless", result: rows };
+		const bare: BrowserViewResult = { content: [{ type: "text", text: rows }], details };
+		const pages = [
+			'Page:\n- heading "Getting started" [level=1] [ref=e2]\n- textbox "Search" [ref=e3]',
+			"Page snapshot not sent: 9120 chars. Read what you need with tab.observe() or tab.ariaSnapshot(selector).",
+		];
+		for (const page of pages) {
+			const sent: BrowserViewResult = { content: [{ type: "text", text: `${rows}\n${page}` }], details };
+			for (const [context] of DISCLOSURES) {
+				for (const width of WIDTHS) {
+					expect(resultView(sent, context, args, width)).toEqual(resultView(bare, context, args, width));
+				}
+			}
+			// Anti-vacuity: the open's own rows are drawn, and the page is not.
+			const flat = stripVTControlCharacters(resultView(sent, EXPANDED, args, 200).join("\n"));
+			expect(flat).toContain("Title: Getting started");
+			expect(flat).not.toContain("Page");
+		}
+	});
+
 	it("states a cut-short output inside the card, where main appended it below the frame", () => {
 		const args: BrowserViewArgs = { action: "run", code: "return big();" };
 		const truncation: TruncationMeta = {

@@ -6,7 +6,7 @@
 
 - The `browser` tool's `open` takes `context`, an isolated cookie jar that every headless tab naming it shares and no other tab sees, closed with its last tab ([#947](https://github.com/santhreal/veyyon/issues/947)).
 - The `browser` tool's `save_state` action and `tab.storageState()` write every cookie of a tab's context and the localStorage of its open origins to a Playwright-compatible state file with mode `0600`, and `open`'s `storage_state` and `tab.loadStorageState()` load one before the first request, writing localStorage once so a key the site later clears stays cleared ([#947](https://github.com/santhreal/veyyon/issues/947)).
-- The `browser` tool's `open` with a `url` returns the loaded page's aria snapshot, whose refs a run can act on, when it is at most 6,000 characters, so a small page needs no separate call to read it; a larger page's size is stated instead.
+- The `browser` tool's `open` with a `url` returns the loaded page's aria snapshot, whose refs a run can act on, when it is at most 6,000 characters, so a small page needs no separate call to read it; a larger page's size is stated instead, and the open's card draws its own rows as before.
 
 ### Changed
 

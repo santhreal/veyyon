@@ -6,7 +6,8 @@
  * The contract: an open with a `url` carries the page's `tab.ariaSnapshot()` when it is at most
  * `OPEN_SNAPSHOT_MAX_CHARS`, and the refs in it drive the next run (`aria-ref=eN`) without another
  * read; a larger page is not sent, and the open states its size and how to read a part of it; an
- * open that loads nothing (a reused tab with no `url`) carries no snapshot.
+ * open that loads nothing (a reused tab with no `url`) carries no snapshot. The page is the model's
+ * to read: the open's card draws its own rows and not the page.
  *
  * Driven through the real tool against real headless Chromium. Skipped where Chromium cannot run.
  *
@@ -21,6 +22,7 @@ import type { AddressInfo } from "node:net";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/sdk";
 import { BrowserTool, OPEN_SNAPSHOT_MAX_CHARS } from "@veyyon/coding-agent/tools/web/browser";
+import { browserToolView } from "@veyyon/coding-agent/tools/web/browser/view";
 import { chromiumCanLaunch } from "../helpers/chromium-can-launch";
 
 const CHROMIUM_AVAILABLE = await chromiumCanLaunch();
@@ -69,13 +71,18 @@ afterAll(async () => {
 
 describe.skipIf(!CHROMIUM_AVAILABLE)("an open that loads a page", () => {
 	it("carries a small page's snapshot, whose refs the next run acts on without reading the page again", async () => {
-		const opened = text(await tool.execute("open", { action: "open", name: TAB, url: `${base}/small` }));
+		const args = { action: "open" as const, name: TAB, url: `${base}/small` };
+		const result = await tool.execute("open", args);
+		const opened = text(result);
 		const page = opened.slice(opened.indexOf("Page:\n") + "Page:\n".length);
 		expect(opened).toContain("Page:\n");
 		expect(page.length).toBeLessThanOrEqual(OPEN_SNAPSHOT_MAX_CHARS);
 		expect(page).toContain("Sign in to continue");
 		const ref = page.match(/textbox[^\n]*\[ref=(e\d+)\]/)?.[1];
 		expect(ref).toBeDefined();
+		const card = JSON.stringify(browserToolView.renderResult(result, { expanded: true }, args));
+		expect(card).toContain("Title: Sign in");
+		expect(card).not.toContain("Sign in to continue");
 
 		const filled = await tool.execute("run", {
 			action: "run",

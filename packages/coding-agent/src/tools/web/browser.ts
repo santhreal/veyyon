@@ -88,6 +88,7 @@ export interface BrowserToolDetails {
 	viewport?: { width: number; height: number; deviceScaleFactor?: number };
 	observation?: Observation;
 	screenshots?: ScreenshotResult[];
+	/** The rows the card draws under the action's row; an open's text for the model also carries the page. */
 	result?: string;
 	/** The isolated context the tab is in, when it is in one. */
 	context?: string;
@@ -364,12 +365,14 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 			`URL: ${url}`,
 			title ? `Title: ${title}` : null,
 			result.stateLoaded && statePath !== undefined ? describeStateLoaded(result.stateLoaded, statePath) : null,
-			// Nearly every open that loads a page is followed by a call that reads it, and each call re-sends
-			// the whole conversation: a page small enough is sent with the open instead.
-			params.url === undefined ? null : await this.#pageSnapshot(name, timeoutMs, signal),
 		].filter((l): l is string => typeof l === "string");
 		details.result = lines.join("\n");
-		return toolResult(details).text(details.result).done();
+		if (params.url === undefined) return toolResult(details).text(details.result).done();
+		// Nearly every open that loads a page is followed by a call that reads it, and each call re-sends
+		// the whole conversation: a page small enough is sent with the open instead. The page is the
+		// model's to read, so the rows the card draws stay without it.
+		const page = await this.#pageSnapshot(name, timeoutMs, signal);
+		return toolResult(details).text(`${details.result}\n${page}`).done();
 	}
 
 	/**

@@ -316,7 +316,10 @@ export const browserToolView: Required<ToolViewRenderer<BrowserViewArgs, Browser
 		if ((details?.action ?? called.action) === "run") {
 			return runCard(called, details, context, indentJsonLines(output), isError);
 		}
-		return tabCard(called, details, context, output, isError);
+		// An open's text also carries the loaded page for the model; the card draws the rows the tool
+		// kept for it in `details.result`.
+		const shown = !isError && details?.result !== undefined ? withoutTrailingBlanks(details.result) : output;
+		return tabCard(called, details, context, shown, isError);
 	},
 };
 
