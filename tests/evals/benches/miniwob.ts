@@ -8,12 +8,10 @@
  * box, and one click-only task as a control. Each episode is a handful of tool calls, so a full run
  * costs a few hundred thousand tokens at most.
  *
- * Each episode runs the veyyon CLI in print mode, with only the browser tool, against one task page
- * served here with a script appended that seeds the task, lifts MiniWoB's 10 s episode limit, and
- * posts the raw reward (+1 success, -1 failure) back to this server the first time the page scores
- * an attempt. An episode that never submits scores nothing. The model sees only the task page. Each
- * episode runs with an empty home of its own, so a host's context files stay out of the prompt, and
- * leaves its JSON event stream in `<work>/<task>-<seed>/events.jsonl`.
+ * Each episode runs the veyyon CLI in print mode, with only the browser tool (`cli-episode.ts`), against
+ * one task page served here with a script appended that seeds the task, lifts MiniWoB's 10 s episode
+ * limit, and posts the raw reward (+1 success, -1 failure) back to this server the first time the page
+ * scores an attempt. An episode that never submits scores nothing. The model sees only the task page.
  *
  * Before and after a change, run the same flags with `--cli` pointed at each tree's
  * `packages/coding-agent/src/cli.ts`: same tasks, seeds, prompt and model, so the two reports differ
@@ -26,13 +24,13 @@
  *     --cli ../before/packages/coding-agent/src/cli.ts --label before --json runs/miniwob-before.json
  */
 
-import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as http from "node:http";
 import type { AddressInfo } from "node:net";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
 import { type FlagGrammar, flagCount, parseFlags, requireFlag } from "../engine/flag-grammar";
+import { type EpisodeUsage, runCliEpisode, writeBrowserOverlay } from "./cli-episode";
 
 /** Form entry in every shape the element actions meet, and one click-only control. */
 export const DEFAULT_TASKS = [
@@ -74,7 +72,7 @@ const USAGE = [
 	"         [--agent-dir <dir with the model's sign-in>] [--work <dir for episode cwds, default runs/miniwob-work>]",
 ].join("\n");
 
-export interface EpisodeOutcome {
+export interface EpisodeOutcome extends EpisodeUsage {
 	readonly task: string;
 	readonly seed: number;
 	/** MiniWoB's raw reward for the first submitted attempt; undefined when nothing was submitted. */
@@ -82,10 +80,6 @@ export interface EpisodeOutcome {
 	readonly reason: string | undefined;
 	readonly success: boolean;
 	readonly wallMs: number;
-	readonly toolCalls: number;
-	readonly inputTokens: number;
-	readonly outputTokens: number;
-	readonly cacheReadTokens: number;
 	readonly exitCode: number | null;
 	readonly timedOut: boolean;
 }
@@ -193,45 +187,13 @@ function episodePrompt(url: string): string {
 	].join("\n");
 }
 
-interface Usage {
-	toolCalls: number;
-	inputTokens: number;
-	outputTokens: number;
-	cacheReadTokens: number;
-}
-
-/** Sum what the print mode's JSON event lines report for every assistant message. */
-function readUsage(lines: string): Usage {
-	const usage: Usage = { toolCalls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 };
-	for (const line of lines.split("\n")) {
-		if (!line.startsWith("{")) continue;
-		let event: {
-			type?: string;
-			message?: {
-				role?: string;
-				content?: Array<{ type?: string }>;
-				usage?: { input?: number; output?: number; cacheRead?: number };
-			};
-		};
-		try {
-			event = JSON.parse(line);
-		} catch {
-			continue;
-		}
-		if (event.type !== "message_end" || event.message?.role !== "assistant") continue;
-		usage.toolCalls += event.message.content?.filter(block => block.type === "toolCall").length ?? 0;
-		usage.inputTokens += event.message.usage?.input ?? 0;
-		usage.outputTokens += event.message.usage?.output ?? 0;
-		usage.cacheReadTokens += event.message.usage?.cacheRead ?? 0;
-	}
-	return usage;
-}
-
 interface EpisodeOptions {
 	readonly cli: string;
 	readonly model: string;
 	readonly port: number;
 	readonly work: string;
+	/** The overlay from `writeBrowserOverlay`: it turns the browser tool on. */
+	readonly config: string;
 	readonly timeoutMs: number;
 	readonly agentDir: string | undefined;
 	readonly rewards: RewardServer["rewards"];
@@ -240,59 +202,7 @@ interface EpisodeOptions {
 async function runEpisode(task: string, seed: number, options: EpisodeOptions): Promise<EpisodeOutcome> {
 	const episode = `${task}-${seed}`;
 	const url = `http://127.0.0.1:${options.port}/miniwob/${task}.html?seed=${seed}&episode=${encodeURIComponent(episode)}`;
-	const cwd = path.join(options.work, episode);
-	// An empty home per episode: the host's own context files (`~/.veyyon/AGENTS.md` and the like) stay
-	// out of the measured prompt, and no episode inherits another's state.
-	const home = path.join(options.work, ".homes", episode);
-	for (const dir of [cwd, home]) {
-		await fs.rm(dir, { recursive: true, force: true });
-		await fs.mkdir(dir, { recursive: true });
-	}
-	const started = Date.now();
-	const child = spawn(
-		process.execPath,
-		[
-			options.cli,
-			"-p",
-			"--mode",
-			"json",
-			"--no-session",
-			"--model",
-			options.model,
-			"--tools",
-			"browser",
-			"--approval-mode",
-			"yolo",
-			episodePrompt(url),
-		],
-		{
-			cwd,
-			env: {
-				...process.env,
-				HOME: home,
-				USERPROFILE: home,
-				...(options.agentDir ? { VEYYON_CODING_AGENT_DIR: options.agentDir } : {}),
-			},
-			stdio: ["ignore", "pipe", "pipe"],
-		},
-	);
-	let stdout = "";
-	child.stdout.setEncoding("utf8");
-	child.stdout.on("data", chunk => {
-		stdout += chunk;
-	});
-	child.stderr.resume();
-	let timedOut = false;
-	const timer = setTimeout(() => {
-		timedOut = true;
-		child.kill("SIGTERM");
-	}, options.timeoutMs);
-	const exited = Promise.withResolvers<number | null>();
-	child.on("close", code => exited.resolve(code));
-	const exitCode = await exited.promise;
-	clearTimeout(timer);
-	// The event stream is the only record of where an episode's tokens and calls went.
-	await fs.writeFile(path.join(cwd, "events.jsonl"), stdout);
+	const run = await runCliEpisode({ ...options, episode, prompt: episodePrompt(url) });
 	const scored = options.rewards.get(episode);
 	return {
 		task,
@@ -300,10 +210,10 @@ async function runEpisode(task: string, seed: number, options: EpisodeOptions): 
 		reward: scored?.reward,
 		reason: scored?.reason,
 		success: (scored?.reward ?? 0) > 0,
-		wallMs: Date.now() - started,
-		...readUsage(stdout),
-		exitCode,
-		timedOut,
+		wallMs: run.wallMs,
+		...run.usage,
+		exitCode: run.exitCode,
+		timedOut: run.timedOut,
 	};
 }
 
@@ -389,11 +299,14 @@ if (import.meta.main) {
 	const cli = path.resolve(flags.cli ?? path.join(import.meta.dirname, "../../../packages/coding-agent/src/cli.ts"));
 	const label = flags.label ?? "run";
 	const server = await startServer(miniwob);
+	const work = path.resolve(flags.work ?? path.join("runs", "miniwob-work", label));
+	const config = await writeBrowserOverlay(work);
 	const options: EpisodeOptions = {
 		cli,
 		model,
 		port: server.port,
-		work: path.resolve(flags.work ?? path.join("runs", "miniwob-work", label)),
+		work,
+		config,
 		timeoutMs: timeoutSeconds * 1000,
 		agentDir: flags["agent-dir"] ? path.resolve(flags["agent-dir"]) : undefined,
 		rewards: server.rewards,

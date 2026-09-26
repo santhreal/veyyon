@@ -30,6 +30,7 @@ import { GOAL_BUDGET_CONTEXT_FLAGS } from "../../benches/goal-budget-context";
 import { MINIWOB_BENCH_FLAGS } from "../../benches/miniwob";
 import { DISCLOSURE_BENCH_FLAGS } from "../../benches/search/disclosure";
 import { SEARCH_BENCH_FLAGS } from "../../benches/search/main";
+import { WEB_TASKS_BENCH_FLAGS } from "../../benches/web-tasks";
 import {
 	type FlagGrammar,
 	FlagValueError,
@@ -70,6 +71,7 @@ const GRAMMARS: Readonly<Record<string, FlagGrammar>> = {
 	"retype likelihood": RETYPE_LIKELIHOOD_FLAGS,
 	"browser-fill bench": BROWSER_FILL_BENCH_FLAGS,
 	"miniwob bench": MINIWOB_BENCH_FLAGS,
+	"web tasks bench": WEB_TASKS_BENCH_FLAGS,
 };
 
 /**
@@ -97,6 +99,7 @@ const COUNT_FLAGS: Readonly<Record<string, readonly string[]>> = {
 	"retype likelihood": [],
 	"browser-fill bench": ["rounds"],
 	"miniwob bench": ["seeds", "jobs", "episode-timeout"],
+	"web tasks bench": ["repeats", "jobs", "episode-timeout"],
 };
 
 /** Every flag each grammar declares, valued and valueless together, sorted. */
@@ -150,6 +153,19 @@ const DECLARED_FLAGS: Readonly<Record<string, readonly string[]>> = {
 		"miniwob",
 		"model",
 		"seeds",
+		"tasks",
+		"work",
+	],
+	"web tasks bench": [
+		"agent-dir",
+		"cli",
+		"episode-timeout",
+		"help",
+		"jobs",
+		"json",
+		"label",
+		"model",
+		"repeats",
 		"tasks",
 		"work",
 	],

@@ -6,7 +6,9 @@ All notable changes to `@veyyon/evals` will be documented in this file.
 
 ### Added
 
-- `benches/miniwob.ts` runs a form-entry subset of MiniWoB++ through the CLI's browser tool with one model and reports success, tool calls, wall time and tokens per episode, for a before and after tree.
+- `benches/miniwob.ts` runs a form-entry subset of MiniWoB++ through the CLI's browser tool with one model and reports success, turns, tool calls, wall time and tokens per episode, for a before and after tree.
+- `benches/web-tasks.ts` runs eight tasks on public browser-practice pages and one Wikipedia article (a large listing, links, logins, a form, late-loading content) and scores each by the fact its `ANSWER:` line holds.
+- `benches/cli-episode.ts` runs one bench episode of the CLI with only the browser tool, with an empty home of its own, the browser tool turned on by a config overlay, and the JSON event stream kept as `events.jsonl`.
 - `benches/browser-fill.ts` times `tab.fill` in headless Chromium for 16, 256 and 4,096 characters and counts a fill correct only when the field holds the value.
 
 ## [1.5.0] - 2026-09-18
