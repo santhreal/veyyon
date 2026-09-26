@@ -1,10 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { parseArgs } from "@veyyon/coding-agent/cli/args";
+import { normalizeContinueSessionArgs, parseArgs } from "@veyyon/coding-agent/cli/args";
 import { applyExtensionFlags, type ExtensionFlagSink } from "@veyyon/coding-agent/cli/extension-flags";
 import { buildInitialMessage } from "@veyyon/coding-agent/cli/initial-message";
 import { ExtensionRuntime, loadExtensionFromFactory } from "@veyyon/coding-agent/extensibility/extensions/loader";
 import { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
-import { normalizeContinueSessionArgs } from "@veyyon/coding-agent/main";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 
 // Regression coverage for extension-registered flags leaking into the initial

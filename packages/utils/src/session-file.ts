@@ -56,6 +56,21 @@ export function sessionFileName(stem: string): string {
 }
 
 /**
+ * Whether a transcript's filename answers a `--resume` argument.
+ *
+ * A transcript is named `<timestamp>_<sessionId>.jsonl`, so the argument matches, case-insensitively, when it
+ * prefixes the stem or the session id after the stem's last `_`. The session listing and the startup profile
+ * lookup both match through this, so an id resolves to the same file in both.
+ */
+export function sessionFileMatchesResumeArgument(fileName: string, resumeArgument: string): boolean {
+	const needle = resumeArgument.toLowerCase();
+	const stem = sessionFileStem(fileName).toLowerCase();
+	if (stem.startsWith(needle)) return true;
+	const separator = stem.lastIndexOf("_");
+	return separator >= 0 && stem.slice(separator + 1).startsWith(needle);
+}
+
+/**
  * The suffix a moved-aside session transcript carries.
  *
  * A backup exists only in one situation: `session/session-storage.ts` fails to rename a freshly written

@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `@veyyon/utils/session-file` exports `sessionFileMatchesResumeArgument`, which reports whether a transcript filename answers a `--resume` id or prefix.
+
 ### Changed
 
 - `latexToBlock` parses each display-math fragment with one handler per construct (fractions, radicals, `\left…\right`, big operators, colors, environments, scripts, delimiters) and scans command names by character code, rendering 150,018 differential cases byte-identically about 6% faster.

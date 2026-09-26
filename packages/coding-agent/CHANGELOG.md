@@ -40,6 +40,8 @@
 - The `read` card for a structurally summarized file numbers each row with the line the model saw, a merged brace pair with its opening line, instead of counting up from line 1 past every elided body, and draws the `…` elision row and the summary budget notice without a line number.
 - The streaming-reveal throughput bench builds its target as a transcript view instead of a raw assistant message, so `bun packages/coding-agent/bench/streaming-throughput.bench.ts` runs again; no user-visible change.
 - An agent's live preview shows the shorthand the stream was still holding when a streamed message ends without a final content snapshot, instead of dropping it.
+- `veyyon --resume <id>` for a session from another project reopens that session in place and moves the launch into its recorded working directory, instead of prompting to fork it into the launch directory or failing without a terminal; an explicit `--cwd` moves the session's working directory there instead.
+- `veyyon --resume <id>` runs under the profile whose sessions directory holds the session, instead of the profile the launch started in; an explicit `--profile` takes precedence.
 
 ### Removed
 

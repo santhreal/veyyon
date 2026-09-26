@@ -15,6 +15,7 @@
 - A tool domain manifest can list `resultCodecs`, each a `ToolResultCodec` whose `slim` drops a result `details` field the result's content rebuilds when the session writes the entry and whose `restore` rebuilds it when the session loads.
 - `SessionStorage` has an optional `rewriteTailAtomic` that replaces a file atomically with its first `keepBytes` bytes, a new head written over their start, and a new tail; `FileSessionStorage` implements it, and a backend without it receives whole-file writes.
 - `CodeHighlighter` highlights a source that grows at its end once per line: `advance(text)` colours whole lines and moves the parser past them, `peek(text)` colours the unfinished last line without moving it, and their output joined is byte-identical to `highlightCode` over the whole source.
+- `@veyyon/utils/session-file` exports `sessionFileMatchesResumeArgument`, which reports whether a transcript filename answers a `--resume` id or prefix.
 
 ### Changed
 
@@ -57,6 +58,7 @@
 - Opening a session points every loaded string of 64 characters or more at one shared copy of its text, whether parsed from the file or read back from the blob store, and keeps no pooled string once the load returns, which cut the heap of a loaded 372.7 MiB session from 608.7 MiB to 401.7 MiB for 136 ms more load time.
 - Rebuilding a session context locates the applied compaction by searching from the end of the branch, which takes about 7ms off each rebuild of a 238,084-entry branch.
 - `SessionManager.rewriteEntries` takes the entries a caller changed in place and rewrites the session file from the earliest of them on, keeping the bytes before it without parsing or serializing them, which cut the rewrite after a one-entry prune on a 376 MiB, 109,360-entry session from 1.2 s to 135 ms.
+- The session listing matches a `--resume` argument against a transcript filename through `sessionFileMatchesResumeArgument` from `@veyyon/utils/session-file`, the matcher the startup profile lookup uses; no user-visible change.
 - A streaming `Markdown` render that ends inside an open code fence lays out only the fence lines completed since the previous frame, so a 1,500-line code fence renders in 59 ms instead of 898 ms and a 1,500-line diff in 92 ms instead of 900 ms.
 - `latexToBlock` parses each display-math fragment with one handler per construct (fractions, radicals, `\left…\right`, big operators, colors, environments, scripts, delimiters) and scans command names by character code, rendering 150,018 differential cases byte-identically about 6% faster.
 
@@ -73,6 +75,8 @@
 - The `read` card for a structurally summarized file numbers each row with the line the model saw, a merged brace pair with its opening line, instead of counting up from line 1 past every elided body, and draws the `…` elision row and the summary budget notice without a line number.
 - The streaming-reveal throughput bench builds its target as a transcript view instead of a raw assistant message, so `bun packages/coding-agent/bench/streaming-throughput.bench.ts` runs again; no user-visible change.
 - An agent's live preview shows the shorthand the stream was still holding when a streamed message ends without a final content snapshot, instead of dropping it.
+- `veyyon --resume <id>` for a session from another project reopens that session in place and moves the launch into its recorded working directory, instead of prompting to fork it into the launch directory or failing without a terminal; an explicit `--cwd` moves the session's working directory there instead.
+- `veyyon --resume <id>` runs under the profile whose sessions directory holds the session, instead of the profile the launch started in; an explicit `--profile` takes precedence.
 - A Cursor turn whose remote agent stops making progress now ends with "Cursor made no progress for Ns" at the 30-minute ceiling instead of hanging indefinitely, because Cursor's ten-second server heartbeat no longer counts as progress.
 - A Cursor turn held by a local tool that never returns now ends when its failure or an abort arrives instead of waiting on the tool forever.
 - Fixed every Cursor exec-channel tool call being stored twice in the assistant message, which left an unanswered copy of each call that session resume reported as pending.
