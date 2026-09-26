@@ -379,6 +379,47 @@ describe("browser tool differential", () => {
 		expect(stripVTControlCharacters(resultView(result, EXPANDED, args, 200).join("\n"))).toContain("row 24");
 	});
 
+	/**
+	 * The model is now sent a returned or displayed value as one line of compact JSON, where main sent it
+	 * indented. A person reading the card sees what main drew for the same value: each output line that
+	 * parses as an object or array is laid out again, and bracketed text that is not JSON is drawn as
+	 * printed.
+	 */
+	it("draws a value the model was sent as compact JSON the way main drew it indented", () => {
+		const value = {
+			query: 'Enter "Tora" into the text field.',
+			elements: [
+				{ id: 1, role: "textbox", name: "", states: ["focusable"] },
+				{ id: 2, role: "button", name: "Submit", states: [] },
+			],
+		};
+		const args: BrowserViewArgs = { action: "run", name: "docs", code: "return value;" };
+		const printed = ["displayed first", "[unserializable function: not JSON]", "[1,2"];
+		const sent: BrowserViewResult = {
+			content: [
+				{ type: "text", text: printed.join("\n") },
+				{ type: "text", text: JSON.stringify(value) },
+			],
+			details: { action: "run", name: "docs" },
+		};
+		const mainSent: BrowserViewResult = {
+			content: [
+				{ type: "text", text: printed.join("\n") },
+				{ type: "text", text: JSON.stringify(value, null, 2) },
+			],
+			details: { action: "run", name: "docs" },
+		};
+		for (const width of WIDTHS) {
+			expect(sameRailColour(resultView(sent, EXPANDED, args, width)).slice(1)).toEqual(
+				sameRailColour(resultOracle(mainSent, HOST_EXPANDED, args, width)).slice(1),
+			);
+		}
+		// Anti-vacuity: the compact line itself is not what the card shows.
+		const flat = stripVTControlCharacters(resultView(sent, EXPANDED, args, 200).join("\n"));
+		expect(flat).not.toContain(JSON.stringify(value));
+		expect(flat).toContain('"role": "button"');
+	});
+
 	it("frames the panel with the host's muted rail, where main coloured the rail by the state", () => {
 		const args: BrowserViewArgs = { action: "run", code: "return 1;" };
 		const rail = theme.symbol("block.rail");

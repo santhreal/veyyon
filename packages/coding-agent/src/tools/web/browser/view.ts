@@ -313,7 +313,32 @@ export const browserToolView: Required<ToolViewRenderer<BrowserViewArgs, Browser
 		// The notice the tool appended for the model is stated by the card as its own group, so the
 		// reader is not shown the same sentence twice in two voices.
 		const output = stripOutputNotice(withoutTrailingBlanks(extractResultText(result.content)), details?.meta);
-		if ((details?.action ?? called.action) === "run") return runCard(called, details, context, output, isError);
+		if ((details?.action ?? called.action) === "run") {
+			return runCard(called, details, context, indentJsonLines(output), isError);
+		}
 		return tabCard(called, details, context, output, isError);
 	},
 };
+
+/**
+ * A run's output as a person reads it: the model is sent each displayed or returned value as one line
+ * of compact JSON, and the card lays out a line that parses as an object or array over indented lines.
+ * Anything else, including a string that only looks like JSON, is left as it was printed.
+ */
+function indentJsonLines(output: string): string {
+	if (!output.includes("{") && !output.includes("[")) return output;
+	return output
+		.split("\n")
+		.map(line => {
+			const first = line[0];
+			const last = line[line.length - 1];
+			if (!((first === "{" && last === "}") || (first === "[" && last === "]"))) return line;
+			try {
+				return JSON.stringify(JSON.parse(line), null, 2);
+			} catch {
+				// Bracketed text that is not JSON, such as `[unserializable …]`: shown as printed.
+				return line;
+			}
+		})
+		.join("\n");
+}

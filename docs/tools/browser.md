@@ -82,16 +82,16 @@
 ## Outputs
 The tool returns one result per call; no streaming partial output is emitted from the browser implementation itself.
 
-- `open`: text content with `Opened` or `Reused`, browser description, the context when the tab is in one, URL, optional title, and, with `storage_state`, `Loaded <n> cookies and localStorage for <origins> from <file>`. `details` includes `action`, `name`, `browser`, `url`, `viewport`, `context`, `storageState`, and the same text in `details.result`.
+- `open`: text content with `Opened` or `Reused`, browser description, the context when the tab is in one, URL, optional title, and, with `storage_state`, `Loaded <n> cookies and localStorage for <origins> from <file>`. With `url`, it ends with `Page:` and the page's `tab.ariaSnapshot()` when that is at most 6,000 chars (`OPEN_SNAPSHOT_MAX_CHARS` in `packages/coding-agent/src/tools/web/browser.ts`), whose refs a later run uses as `aria-ref=eN`; a larger snapshot is not sent and the line states its size (`Page snapshot not sent: <n> chars. ...`); a snapshot that fails is stated as `Page snapshot unavailable: <reason>` and the open stands. `details` includes `action`, `name`, `browser`, `url`, `viewport`, `context`, `storageState`, and the same text in `details.result`.
 - `close`: text content with either `Closed ...` or `No tab named ...`. `details` includes `action`, `name`, and `details.result`.
 - `save_state`: `Saved <n> cookies and localStorage for <origins> to <file>`; the cookies themselves stay out of the result. `details` includes `action`, `name`, `browser`, `url`, `context`, and `storageState`.
 - `run`: ordered `content` array built as:
   1. every structured display output in execution order (object/image `display(value)` calls plus helper status events),
-  2. final return value, JSON-stringified unless already a string,
+  2. final return value, as compact JSON unless already a string,
   3. or `Ran code on tab "..."` if nothing else was produced.
 - `display(value)` is handled by the shared runtime's `displayValue()` (`src/eval/js/shared/runtime.ts`), then mapped to content by `WorkerCore.#pushDisplay()` (`packages/coding-agent/src/tools/web/browser/tab-worker.ts`):
   - `{ type: "image", data, mimeType }` with decodable base64 becomes image content; an unrecognized `data` shape is dropped with a debug note.
-  - any other object/array becomes pretty JSON text (`JSON.stringify(value, null, 2)`); a value that is not structured-cloneable is dropped with a debug note.
+  - any other object/array becomes one line of compact JSON (`safeJsonStringify()` in `packages/coding-agent/src/tools/web/browser/run-output.ts`); a value that is not structured-cloneable is dropped with a debug note. The card lays each such line out indented for a person (`indentJsonLines()` in `view.ts`); the model receives the compact line.
   - helper side effects (`read`/`write`/`tree`/...) emit `status` events that surface as compact JSON text.
   - primitive `display(value)` (string/number/...) and `console.*` flow to the text channel, which the worker forwards as debug logs rather than tool content; `undefined` is ignored.
 - `tab.screenshot()` also appends text plus an image content item unless `silent: true`; `details.screenshots` records persisted screenshot metadata `{ dest, mimeType, bytes, width, height }`.
@@ -164,7 +164,7 @@ The tool returns one result per call; no streaming partial output is emitted fro
 17. `tab.goto()` clears the cached element ids before navigating. Any new `tab.observe()` also clears and rebuilds the cache.
 18. `tab.click()` uses a custom retry loop for `text/...` selectors to find an actionable visible match; other selectors use `page.locator(...).click()`. Interactive actions (`click`/`fill`/`type`/`press`/`scroll`/`drag`/`scrollIntoView`/`select`/`uploadFile`) and the `waitFor*` helpers run under a per-op deadline (`min(cellBudget − slack, ceiling)`) threaded into both the puppeteer `signal` and `.setTimeout()`, so a stalled helper aborts the CDP action and rejects with a named `tab.<op> timed out after <ms>ms` that leaves cell budget: never the opaque whole-cell timeout. `goto`/`evaluate` stay uncapped.
 19. `tab.screenshot()` captures either the whole page or a selector PNG, downsizes a copy for model output, chooses a persistence path, writes the image to disk, records metadata, and optionally emits text + image display entries.
-20. `display()` calls accumulate in an array. After code finishes, the worker posts `{ displays, returnValue, screenshots }`; `BrowserTool.#run()` appends the return value as trailing text content when not `undefined`.
+20. `display()` calls accumulate in an array. After code finishes, the worker posts `{ displays, returnValue, screenshots }`; `BrowserTool.#run()` appends the return value as trailing text content when not `undefined`. In a headless browser, a run first brings its own page to the front (`page.bringToFront()`): Chromium runs no animation frames in a background page, and the locator's click, hover and drag wait on two of them.
 21. `close` releases one tab or all tabs via `releaseTab()` / `releaseAllTabs()`. Each tab aborts pending runs, asks the worker to close, waits up to `750` ms for a `closed` ack, terminates the worker, decrements browser refcount, and disposes the browser handle when refcount reaches zero.
 
 ## Modes / Variants

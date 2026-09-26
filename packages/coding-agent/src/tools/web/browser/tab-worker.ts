@@ -1000,6 +1000,15 @@ export class WorkerCore {
 		try {
 			throwIfAborted(signal);
 			const page = this.#requirePage();
+			// Chromium runs no animation frames in a background page, and a locator's click, hover and
+			// drag wait on two of them: with several tabs on one headless browser, a run in any tab but
+			// the newest stalled until its action timed out. The run activates its own tab first.
+			if (this.#mode === "headless") {
+				await bestEffort(
+					untilAborted(signal, () => page.bringToFront()),
+					"a page that is already active or closing runs as it is",
+				);
+			}
 			const browser = this.#requireBrowser();
 			const tabApi = guardTabApi(
 				this.#createTabApi(msg.name, msg.timeoutMs, signal, msg.session, output, screenshots, active),

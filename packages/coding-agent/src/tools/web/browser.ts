@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { isCancellation, prompt, stringifyJsonSafe, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
+import { errorMessage, isCancellation, prompt, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "../../sdk";
@@ -14,6 +14,7 @@ import { prependResultNotice, toolResult } from "../core/tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "../core/tool-timeouts";
 import { resolveCmuxKind } from "./browser/cmux/rpc";
 import { acquireBrowser, type BrowserHandle, type BrowserKind, type BrowserKindTag } from "./browser/registry";
+import { safeJsonStringify } from "./browser/run-output";
 import { readStorageStateFile, type StorageStateLoaded } from "./browser/storage-state";
 import type { BrowserRunError, Observation, RunResultOk, ScreenshotResult } from "./browser/tab-protocol";
 import {
@@ -37,6 +38,12 @@ export { extractReadableFromHtml, type ReadableFormat, type ReadableResult } fro
 export type { Observation, ObservationEntry } from "./browser/tab-protocol";
 
 const DEFAULT_TAB_NAME = "main";
+
+/**
+ * The largest page snapshot an `open` sends unasked, about 1,500 tokens: a form, a login or an app
+ * screen fits, and a long article or listing, which a model reads a part of, is left to a run.
+ */
+export const OPEN_SNAPSHOT_MAX_CHARS = 6_000;
 
 const appSchema = type({
 	"path?": type("string").describe("binary path to spawn"),
@@ -357,9 +364,38 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 			`URL: ${url}`,
 			title ? `Title: ${title}` : null,
 			result.stateLoaded && statePath !== undefined ? describeStateLoaded(result.stateLoaded, statePath) : null,
+			// Nearly every open that loads a page is followed by a call that reads it, and each call re-sends
+			// the whole conversation: a page small enough is sent with the open instead.
+			params.url === undefined ? null : await this.#pageSnapshot(name, timeoutMs, signal),
 		].filter((l): l is string => typeof l === "string");
 		details.result = lines.join("\n");
-		return toolResult(details).text(lines.join("\n")).done();
+		return toolResult(details).text(details.result).done();
+	}
+
+	/**
+	 * The loaded page as `tab.ariaSnapshot()` reads it, whose refs a later run uses as `aria-ref=eN`,
+	 * when it is at most {@link OPEN_SNAPSHOT_MAX_CHARS}; for a larger page, its size and how to read a
+	 * part of it. A snapshot that fails leaves the open standing and says why.
+	 */
+	async #pageSnapshot(name: string, timeoutMs: number, signal?: AbortSignal): Promise<string> {
+		let snapshot: unknown;
+		try {
+			const run = await runInTab(name, {
+				code: "return await tab.ariaSnapshot();",
+				timeoutMs,
+				signal,
+				session: this.session,
+			});
+			snapshot = run.returnValue;
+		} catch (error) {
+			if (error instanceof ToolAbortError || isCancellation(error)) throw error;
+			return `Page snapshot unavailable: ${errorMessage(error)}`;
+		}
+		if (typeof snapshot !== "string") return "Page snapshot unavailable: the page returned no snapshot.";
+		if (snapshot.length > OPEN_SNAPSHOT_MAX_CHARS) {
+			return `Page snapshot not sent: ${snapshot.length} chars. Read what you need with tab.observe() or tab.ariaSnapshot(selector).`;
+		}
+		return `Page:\n${snapshot}`;
 	}
 
 	async #close(
@@ -546,5 +582,5 @@ function sameBrowserKind(a: BrowserKind, b: BrowserKind): boolean {
 
 function stringifyReturnValue(value: unknown): string {
 	if (typeof value === "string") return value;
-	return stringifyJsonSafe(value, 2);
+	return safeJsonStringify(value);
 }

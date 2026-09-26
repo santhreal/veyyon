@@ -18,8 +18,8 @@ import { describe, expect, it } from "bun:test";
 import { cloneSafe, safeJsonStringify } from "@veyyon/coding-agent/tools/web/browser/run-output";
 
 describe("safeJsonStringify delegates to the shared renderer", () => {
-	it("renders with two-space indentation, which is what a run's display output uses", () => {
-		expect(safeJsonStringify({ id: 7 })).toBe('{\n  "id": 7\n}');
+	it("renders one line of compact JSON, which is what a run's display output sends the model", () => {
+		expect(safeJsonStringify({ id: 7, tags: ["a", "b"] })).toBe('{"id":7,"tags":["a","b"]}');
 	});
 
 	it("carries the shared renderer's handling of a cycle rather than throwing", () => {
@@ -28,7 +28,7 @@ describe("safeJsonStringify delegates to the shared renderer", () => {
 		const node: Record<string, unknown> = { tag: "div" };
 		node.self = node;
 
-		expect(safeJsonStringify(node)).toBe('{\n  "tag": "div",\n  "self": "[Circular]"\n}');
+		expect(safeJsonStringify(node)).toBe('{"tag":"div","self":"[Circular]"}');
 	});
 });
 

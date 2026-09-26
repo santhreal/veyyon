@@ -22,11 +22,7 @@ describe("browser run output — stream text reaches the tool result", () => {
 		output.pushText("after\n");
 
 		const entries = output.finish();
-		expect(entries.map(e => (e.type === "text" ? e.text : e.type))).toEqual([
-			"before",
-			JSON.stringify({ a: 1 }, null, 2),
-			"after",
-		]);
+		expect(entries.map(e => (e.type === "text" ? e.text : e.type))).toEqual(["before", '{"a":1}', "after"]);
 	});
 
 	it("flushes pending text before pre-built entries (screenshot captions) and emits images verbatim", () => {

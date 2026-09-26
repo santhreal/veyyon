@@ -52,7 +52,7 @@ const RECORDED_TOKENS: Record<string, number> = {
 	"tools/ast-edit": 375,
 	"tools/async-result": 105,
 	"tools/bash": 1564,
-	"tools/browser": 1575,
+	"tools/browser": 1521,
 	"tools/checkpoint": 166,
 	"tools/debug": 414,
 	"tools/eval": 2007,
@@ -98,7 +98,7 @@ const RECORDED_TOKENS: Record<string, number> = {
 };
 
 /** The sum the recorded table claims, so the total is in the diff of any trim. */
-const RECORDED_TOTAL = 21747;
+const RECORDED_TOTAL = 21693;
 
 const measured = new Map<string, number>([
 	...Object.entries(toolsPrompts).map(([id, entry]) => [id, estimateTokensFromText(entry.text)] as const),
