@@ -561,6 +561,7 @@ import { applyProviderImagePolicy } from "./provider-image-budget";
 import { normalizeRoots } from "./relativize-paths";
 import { AdvisorRoster, type AdvisorRosterHost } from "./runtime/advisor-roster";
 import { CheckpointRuntime } from "./runtime/checkpoint-runtime";
+import { IrcInbox } from "./runtime/irc-inbox";
 import { PostPromptTasks } from "./runtime/post-prompt-tasks";
 import { StreamingEditGuard } from "./runtime/streaming-edit-guard";
 import { ThinkingRuntime } from "./runtime/thinking-runtime";
@@ -812,11 +813,9 @@ export class AgentSession {
 	 */
 	readonly #asyncJobManager: AsyncJobManager | undefined;
 
-	// Incoming IRC messages received while a turn was streaming. Parent IRCs
-	// enter the steering queue; peer IRCs enter the interrupt queue and drain as
-	// asides at the next boundary; passive IRC records stay in the aside queue.
-	#pendingIrcInterrupts: CustomMessage[] = [];
-	#pendingIrcAsides: CustomMessage[] = [];
+	// Incoming IRC records received while a turn was streaming. Parent IRCs enter the steering
+	// queue; peer IRCs wait here as interrupts and drain as asides at the next boundary.
+	readonly #ircInbox = new IrcInbox();
 	// Agent identity (registry id) used for IRC routing and job ownership.
 	#agentId: string | undefined;
 	#agentKind: "main" | "sub" = "main";
@@ -1176,11 +1175,9 @@ export class AgentSession {
 	 *  resume turn whose aside poll already consumes these (no double-wake). */
 	#resumeStrandedIrcAsides(): void {
 		if (this.#isDisposed || this.isStreaming) return;
-		if (this.#pendingIrcInterrupts.length === 0 && this.#pendingIrcAsides.length === 0) return;
+		if (this.#ircInbox.isEmpty) return;
 		if (this.#canAutoContinueForFollowUp() && this.agent.hasQueuedMessages()) return;
-		const records = this.#pendingIrcInterrupts.concat(this.#pendingIrcAsides);
-		this.#pendingIrcInterrupts = [];
-		this.#pendingIrcAsides = [];
+		const records = this.#ircInbox.takeAll();
 		if (this.#planModeState?.enabled) {
 			// Plan mode: fold stranded IRC asides into context without waking an
 			// autonomous turn. Convergence to ask/resolve stays user-driven.
@@ -1780,11 +1777,9 @@ export class AgentSession {
 		// each step boundary as non-interrupting asides. Peer IRCs share the aside
 		// injection boundary, but also expose a non-consuming interrupt peek so
 		// `job poll` / `irc wait` can return early before the boundary drains them.
-		this.agent.hasIrcInterrupts = () => this.#pendingIrcInterrupts.length > 0;
+		this.agent.hasIrcInterrupts = () => this.#ircInbox.hasInterrupts;
 		this.agent.setAsideMessageProvider(() => {
-			const pendingIrc = this.#pendingIrcInterrupts.concat(this.#pendingIrcAsides);
-			this.#pendingIrcInterrupts = [];
-			this.#pendingIrcAsides = [];
+			const pendingIrc = this.#ircInbox.takeAll();
 			const thunks: AsideMessage[] = pendingIrc.map(record => () => record);
 			thunks.push(...this.yieldQueue.drainLazy());
 			// Mid-run todo reconciliation — evaluated at injection time so a turn
@@ -14731,53 +14726,7 @@ export class AgentSession {
 	 * also drain here.
 	 */
 	drainPendingIrcInboxMessages(agentId: string, opts?: { from?: string; limit?: number }): IrcMessage[] {
-		const messages: IrcMessage[] = [];
-		const remainingInterrupts: CustomMessage[] = [];
-		const remainingAsides: CustomMessage[] = [];
-		const queues = [
-			{ records: this.#pendingIrcInterrupts, remaining: remainingInterrupts },
-			{ records: this.#pendingIrcAsides, remaining: remainingAsides },
-		];
-		for (const queue of queues) {
-			for (const record of queue.records) {
-				if (record.customType !== "irc:incoming") {
-					queue.remaining.push(record);
-					continue;
-				}
-				const details = record.details;
-				if (!details || typeof details !== "object") {
-					queue.remaining.push(record);
-					continue;
-				}
-				const id = Reflect.get(details, "id");
-				const from = Reflect.get(details, "from");
-				const body = Reflect.get(details, "message");
-				const replyTo = Reflect.get(details, "replyTo");
-				if (typeof id !== "string" || typeof from !== "string" || typeof body !== "string") {
-					queue.remaining.push(record);
-					continue;
-				}
-				if (opts?.from !== undefined && from !== opts.from) {
-					queue.remaining.push(record);
-					continue;
-				}
-				if (opts?.limit !== undefined && messages.length >= opts.limit) {
-					queue.remaining.push(record);
-					continue;
-				}
-				messages.push({
-					id,
-					from,
-					to: agentId,
-					body,
-					ts: record.timestamp,
-					...(typeof replyTo === "string" ? { replyTo } : {}),
-				});
-			}
-		}
-		this.#pendingIrcInterrupts = remainingInterrupts;
-		this.#pendingIrcAsides = remainingAsides;
-		return messages;
+		return this.#ircInbox.takeIncoming(agentId, opts);
 	}
 
 	/**
@@ -14844,7 +14793,7 @@ export class AgentSession {
 					steering: true,
 				});
 			} else {
-				this.#pendingIrcInterrupts.push(record);
+				this.#ircInbox.queueInterrupt(record);
 			}
 			if (autoReply) void this.#runIrcAutoReply(msg);
 			return "injected";
@@ -14899,7 +14848,7 @@ export class AgentSession {
 			void this.#emitSessionEvent({ type: "irc_message", message: record });
 			// Asides drain at the next step boundary; anything left over is
 			// flushed at the start of the next prompt (#flushPendingIrcAsides).
-			this.#pendingIrcAsides.push(record);
+			this.#ircInbox.queueAside(record);
 			// `from` must be the id the sender addressed (msg.to) so their
 			// from-filtered waiter matches.
 			const receipt = await IrcBus.global().send({ from: msg.to, to: msg.from, body, replyTo: msg.id });
@@ -15108,10 +15057,7 @@ export class AgentSession {
 	 * of the next prompt so the model still sees them.
 	 */
 	#flushPendingIrcAsides(): void {
-		if (this.#pendingIrcInterrupts.length === 0 && this.#pendingIrcAsides.length === 0) return;
-		const records = [...this.#pendingIrcInterrupts, ...this.#pendingIrcAsides];
-		this.#pendingIrcInterrupts = [];
-		this.#pendingIrcAsides = [];
+		const records = this.#ircInbox.takeAll();
 		for (const record of records) {
 			// emitExternalEvent on message_end appends to agent state and dispatches
 			// to all session listeners, which in turn handle TUI rendering and

@@ -174,11 +174,15 @@ const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
  * lines to 16629). They import `node:path`, `node:timers/promises` and modules the runtime already
  * reached, so the launch runs no new code.
  *
+ * 1566 to 1567: `session/runtime/irc-inbox.ts`, the IRC records a streaming turn has not yet taken,
+ * split out of `session/agent-session.ts` (16629 lines to 16575). It imports only type-level
+ * modules, so the launch runs no new code.
+ *
  * A ratchet, not a target: nothing breaks when it grows, which is exactly why it is pinned. There
  * is no margin left on purpose — the next module on this graph is a barrel someone reached for
  * and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1566;
+const LAUNCH_REACH_CEILING = 1567;
 
 /**
  * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The
