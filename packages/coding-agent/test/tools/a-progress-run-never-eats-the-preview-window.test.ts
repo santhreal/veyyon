@@ -69,6 +69,17 @@ describe("collapseProgressRuns", () => {
 		]);
 	});
 
+	test("collapses two adjacent runs of different shapes each on its own key", () => {
+		// The line that ends one run starts the next, so it is keyed by its own text, never the run it ended.
+		const downloaded = ["Downloaded a", "Downloaded b", "Downloaded c", "Downloaded d"];
+		expect(collapseProgressRuns([...compiling(4), ...downloaded, "[1/2] x", "[2/2] y"])).toEqual([
+			{ text: "   Compiling crate-3 v0.1.3", hidden: 3 },
+			{ text: "Downloaded d", hidden: 3 },
+			{ text: "[1/2] x", hidden: 0 },
+			{ text: "[2/2] y", hidden: 0 },
+		]);
+	});
+
 	test("shares one key across a counter's digits", () => {
 		expect(
 			collapseProgressRuns(["[1/47] Building x", "[2/47] Building y", "[3/47] Building z", "[4/47] Building w"]),
