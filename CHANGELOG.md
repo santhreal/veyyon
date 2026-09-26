@@ -14,6 +14,7 @@
 - `PruneResult` lists the entries a prune rewrote in place as `prunedEntries`.
 - A tool domain manifest can list `resultCodecs`, each a `ToolResultCodec` whose `slim` drops a result `details` field the result's content rebuilds when the session writes the entry and whose `restore` rebuilds it when the session loads.
 - `SessionStorage` has an optional `rewriteTailAtomic` that replaces a file atomically with its first `keepBytes` bytes, a new head written over their start, and a new tail; `FileSessionStorage` implements it, and a backend without it receives whole-file writes.
+- `CodeHighlighter` highlights a source that grows at its end once per line: `advance(text)` colours whole lines and moves the parser past them, `peek(text)` colours the unfinished last line without moving it, and their output joined is byte-identical to `highlightCode` over the whole source.
 
 ### Changed
 
@@ -31,6 +32,7 @@
 - A prune, shake, image drop, recovered retry marker, compaction tail elision or dead-end warning rewrites the session file only from the earliest entry it changed, instead of the whole file, which cut the persist step after a one-entry prune on a 376 MiB session from 1.2 s to 135 ms.
 - The session's advisors, their delivery routing and their interrupt latches run in a session collaborator, and advisor stats and overflow compaction in their own modules; no user-visible change.
 - With `edit.streamingAbort` on, the check on a streaming `edit` patch scans each diff line once instead of rescanning the whole diff on every delta, which cuts a turn streaming a 91 KiB, 2,000-line patch in 23,293 deltas from 7,852 ms to 212 ms, and from 124 ms to 64 ms with the setting off.
+- A streaming `write` or `bash` card highlights, numbers and wraps only the lines that arrived since its last frame instead of the whole source on every argument delta, which cuts drawing a 600-line write streamed in 754 frames from 27,125 ms to 376 ms and its last frame from 67.7 ms to 0.38 ms.
 - The per-turn stale-result and threshold prunes and the shake, dedup and truncation collectors scan only the entries from the compaction boundary to the leaf instead of the whole branch, which cut the two per-turn prunes on a 238,084-entry session with 390 compactions from 420ms to 4.4ms per turn.
 - `resolveCompactionBoundaryIndex` searches for the keep marker from the end of the branch, which takes about 9ms off rebuilding the context of a 238,084-entry branch.
 - The Anthropic and OpenAI-compatible providers split their stream loops, message converters and finalization into per-step helpers; no user-visible change.
