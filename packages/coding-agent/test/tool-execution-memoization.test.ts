@@ -9,17 +9,18 @@ import { createToolExecution } from "./helpers/tool-execution";
  * Contract under test (tool-result render memoization):
  *
  * `ToolExecutionComponent` shapes a tool result into UI components by calling
- * the tool's `renderResult` — an O(result-size) pass. A dirty-key guard at the
- * top of `#updateDisplay()` must collapse the result version, expand state,
- * partial flag, spinner frame, show-images flag, and theme epoch into one key
- * and skip `#rebuildDisplay()` when nothing meaningful changed. So:
+ * the tool's `renderResult` — an O(result-size) pass. The card shapes when a
+ * frame draws it, and a dirty key collapses the result version, expand state,
+ * partial flag, spinner frame, show-images flag, and theme epoch so the pass is
+ * skipped when nothing meaningful changed. So:
  *
- *   - A flood of `invalidate()` calls (one per render frame) after a final
- *     result must re-shape EXACTLY ONCE, not once per frame — this is the
- *     regression guard against the per-frame re-shape stall.
+ *   - A flood of `invalidate()` + `render()` frames after a final result must
+ *     re-shape EXACTLY ONCE, not once per frame — this is the regression guard
+ *     against the per-frame re-shape stall.
  *   - A state change that actually alters output (`setExpanded(true)`) must
- *     force exactly one additional shaping pass, and the new output must be
- *     observable; a redundant no-op set of the same state must not re-shape.
+ *     force exactly one additional shaping pass at the next frame, and the new
+ *     output must be observable; a redundant no-op set of the same state must
+ *     not re-shape.
  *   - Bumping the result version (a NEW result) must force exactly one more
  *     shaping pass, and the rendered output must reflect the new result.
  */
@@ -61,28 +62,37 @@ describe("ToolExecutionComponent tool-result render memoization", () => {
 		// No result yet: the shaping pass has not run.
 		expect(shapeSpy).toHaveBeenCalledTimes(0);
 
-		// Phase 1 — a final (non-partial) result shapes exactly once, and a
-		// flood of per-frame invalidate()s must NOT re-shape (the regression).
+		// Phase 1 — a final (non-partial) result shapes exactly once at the frame
+		// that draws it, and a flood of per-frame invalidate()s must NOT re-shape
+		// (the regression).
 		component.updateResult(finalResult("ALPHA"), false);
-		expect(shapeSpy).toHaveBeenCalledTimes(1);
-		for (let i = 0; i < 12; i++) component.invalidate();
-		expect(shapeSpy).toHaveBeenCalledTimes(1);
 		expect(stripVTControlCharacters(component.render(80).join("\n"))).toContain("shaped:ALPHA");
+		expect(shapeSpy).toHaveBeenCalledTimes(1);
+		for (let i = 0; i < 12; i++) {
+			component.invalidate();
+			component.render(80);
+		}
+		expect(shapeSpy).toHaveBeenCalledTimes(1);
 
 		// Phase 2 — a state change that alters output forces exactly one more
 		// shaping pass; further invalidate()s and a redundant same-value set do
 		// not, and the expanded frame is observable.
 		component.setExpanded(true);
+		component.render(80);
 		expect(shapeSpy).toHaveBeenCalledTimes(2);
-		for (let i = 0; i < 12; i++) component.invalidate();
+		for (let i = 0; i < 12; i++) {
+			component.invalidate();
+			component.render(80);
+		}
 		component.setExpanded(true);
+		component.render(80);
 		expect(shapeSpy).toHaveBeenCalledTimes(2);
 
 		// Phase 3 — a NEW result (bumped version) forces exactly one more pass,
 		// and the rendered output reflects the new result, not the stale one.
 		component.updateResult(finalResult("BRAVO"), false);
-		expect(shapeSpy).toHaveBeenCalledTimes(3);
 		const frame = stripVTControlCharacters(component.render(80).join("\n"));
+		expect(shapeSpy).toHaveBeenCalledTimes(3);
 		expect(frame).toContain("shaped:BRAVO");
 		expect(frame).not.toContain("shaped:ALPHA");
 	});
@@ -117,22 +127,27 @@ describe("ToolExecutionComponent tool-result render memoization", () => {
 		const afterCtor = callSpy.mock.calls.length;
 
 		// A flood of per-frame invalidate()s must NOT re-shape (memo still holds).
-		for (let i = 0; i < 12; i++) component.invalidate();
+		for (let i = 0; i < 12; i++) {
+			component.invalidate();
+			component.render(80);
+		}
 		expect(callSpy.mock.calls.length).toBe(afterCtor);
 
 		// A NEW args object (streamed delta) MUST re-shape and reflect the change,
 		// even though no key field (result version, expanded, …) moved.
 		component.updateArgs({ cmd: "B" });
-		expect(callSpy.mock.calls.length).toBe(afterCtor + 1);
 		const frame = stripVTControlCharacters(component.render(80).join("\n"));
+		expect(callSpy.mock.calls.length).toBe(afterCtor + 1);
 		expect(frame).toContain("call:B");
 		expect(frame).not.toContain("call:A");
 
 		// A same-reference updateArgs is the documented no-op and must not re-shape.
 		const sameArgs = { cmd: "C" };
 		component.updateArgs(sameArgs);
+		component.render(80);
 		const afterReal = callSpy.mock.calls.length;
 		component.updateArgs(sameArgs);
+		component.render(80);
 		expect(callSpy.mock.calls.length).toBe(afterReal);
 	});
 
@@ -151,13 +166,18 @@ describe("ToolExecutionComponent tool-result render memoization", () => {
 
 		// A partial result shapes once; a flood of invalidate()s must not re-shape.
 		component.updateResult(finalResult("RUNNING"), true);
+		component.render(80);
 		const afterResult = shapeSpy.mock.calls.length;
-		for (let i = 0; i < 12; i++) component.invalidate();
+		for (let i = 0; i < 12; i++) {
+			component.invalidate();
+			component.render(80);
+		}
 		expect(shapeSpy.mock.calls.length).toBe(afterResult);
 
 		// seal() only flips #backgroundTaskFrozen (no result version / spinner / expand
 		// change), so the memo must still re-shape to settle the row to its frozen form.
 		component.seal();
+		component.render(80);
 		expect(shapeSpy.mock.calls.length).toBe(afterResult + 1);
 		expect(requestComponentRender).toHaveBeenCalledTimes(1);
 		expect(requestComponentRender.mock.calls[0]?.[0]).toBe(component);

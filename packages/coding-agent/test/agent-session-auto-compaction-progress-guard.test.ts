@@ -1314,6 +1314,84 @@ describe("AgentSession auto-compaction progress guard", () => {
 		expect(compactionEntry?.warning).toContain(NO_PROGRESS_FRAGMENT);
 	});
 
+	/**
+	 * WHY. The entry a compaction pass wrote was found again by matching its summary text, so a
+	 * session already holding a compaction with the same summary (every server-side compaction
+	 * records an empty one) stamped the dead-end warning on, and handed `session_compact` handlers,
+	 * that earlier entry. The automatic and the manual path share the write step, so both are
+	 * driven here. Not covered: a handler that rewrites entries between the append and the lookup.
+	 */
+	describe("a pass acts on the compaction it wrote", () => {
+		function seedEarlierCompaction(): string {
+			const kept = sessionManager.getBranch()[0]?.id;
+			if (!kept) throw new Error("Expected the seeded user message");
+			const earlier = sessionManager.appendCompaction("compacted", undefined, kept, 1000);
+			sessionManager.appendMessage({ role: "user", content: "again", timestamp: Date.now() });
+			return earlier;
+		}
+
+		function latestCompaction(): CompactionEntry | undefined {
+			return sessionManager
+				.getEntries()
+				.filter((e): e is CompactionEntry => e.type === "compaction")
+				.at(-1);
+		}
+
+		function compactedEntryIds(emitSpy: { mock: { calls: unknown[][] } }): string[] {
+			return emitSpy.mock.calls.flatMap(([event]) => {
+				const emitted = event as { type: string; compactionEntry?: CompactionEntry };
+				return emitted.type === "session_compact" && emitted.compactionEntry ? [emitted.compactionEntry.id] : [];
+			});
+		}
+
+		it("stamps an automatic pass's dead-end warning on the entry it wrote", async () => {
+			const earlier = seedEarlierCompaction();
+			const emitSpy = vi.spyOn(ExtensionRunner.prototype, "emit");
+			vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined as never);
+			vi.spyOn(session.agent, "continue").mockResolvedValue();
+			vi.spyOn(session, "getContextUsage").mockReturnValue({ tokens: 190000, contextWindow: 200000, percent: 95 });
+			vi.spyOn(session, "shake").mockResolvedValue({
+				mode: "elide",
+				toolResultsDropped: 0,
+				blocksDropped: 0,
+				tokensFreed: 0,
+			});
+			const { promise: compactionDone, resolve: onCompactionDone } = Promise.withResolvers<void>();
+			session.subscribe(event => {
+				if (event.type === "auto_compaction_end") onCompactionDone();
+			});
+
+			const assistantMsg = highUsageAssistant();
+			session.agent.emitExternalEvent({ type: "message_end", message: assistantMsg });
+			session.agent.emitExternalEvent({ type: "agent_end", messages: [assistantMsg] });
+			await compactionDone;
+			await session.waitForIdle();
+
+			const written = latestCompaction();
+			expect(written?.id).not.toBe(earlier);
+			expect(written?.warning).toContain(NO_PROGRESS_FRAGMENT);
+			const earlierEntry = sessionManager.getEntry(earlier);
+			expect(earlierEntry?.type).toBe("compaction");
+			expect(earlierEntry?.type === "compaction" ? earlierEntry.warning : undefined).toBeUndefined();
+			expect(compactedEntryIds(emitSpy)).toEqual([written?.id ?? "missing"]);
+		});
+
+		it("hands session_compact handlers the entry a manual compaction wrote", async () => {
+			const earlier = seedEarlierCompaction();
+			// A turn whose recorded usage fills most of the window, so the manual
+			// pass has history to summarize past the earlier compaction.
+			sessionManager.appendMessage(highUsageAssistant());
+			sessionManager.appendMessage({ role: "user", content: "and again", timestamp: Date.now() });
+			const emitSpy = vi.spyOn(ExtensionRunner.prototype, "emit");
+
+			await session.compact();
+
+			const written = latestCompaction();
+			expect(written?.id).not.toBe(earlier);
+			expect(compactedEntryIds(emitSpy)).toEqual([written?.id ?? "missing"]);
+		});
+	});
+
 	it("auto-continues (no warning) when the image-drop tier frees an image-only tail", async () => {
 		// Elide cannot touch image content (collectShakeRegions skips image-only
 		// tool results and user-message images), so the rescue's second tier drops

@@ -21,6 +21,22 @@ resume metadata rather than relying on the model to remember everything from raw
 
 Veyyon resumes from the launch picker or `/resume`, and branches with `/branch` / `/fork`.
 
+## Resuming by id
+
+On exit Veyyon prints `veyyon --resume <id>`. The id, a prefix of it, or a transcript path resumes
+that session from any directory and any profile:
+
+- The launch runs under the profile that wrote the session. `--profile <name>` overrides it.
+- The session reopens in place, in its recorded working directory, and the launch moves there. It is
+  not copied into the directory you launched from. `--cwd <dir>` overrides it: the session's working
+  directory moves to `<dir>` and the session records the change.
+- When the recorded directory no longer exists, Veyyon prompts to move the session into the current
+  directory. Without a terminal to prompt on, the launch fails and states the missing directory.
+
+`veyyon --resume` with no id opens the session picker, and a picked session reopens in its recorded
+working directory the same way.
+`veyyon --fork <id>` copies the session into a new file in the current directory instead.
+
 ## Long work
 
 For large tasks, make the desired outcome explicit. The harness should preserve active instructions,

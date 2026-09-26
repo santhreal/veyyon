@@ -39,7 +39,7 @@ import type {
 	ViewTreeLines,
 } from "@veyyon/view";
 import type { RenderResultOptions } from "../../../extensibility/custom-tools/types";
-import { highlightCode } from "../../../theme/highlight";
+import { type HighlightRequest, highlightCode } from "../../../theme/highlight";
 import { getMarkdownTheme } from "../../../theme/markdown-theme";
 import { shimmerEnabled, shimmerText } from "../../../theme/shimmer";
 import { type SymbolKey, UNICODE_SYMBOLS } from "../../../theme/symbols";
@@ -58,7 +58,7 @@ import type { ToolUIStatus } from "../../../tools/core/tool-ui-status";
 import type { ToolRenderer } from "../../../tools/renderers";
 import { sanitizeWithOptionalSixelPassthrough } from "../../../utils/sixel";
 import { paintHotTail, shimmerPhase } from "../components/chrome/follow";
-import { renderDiff } from "../components/transcript/diff";
+import { diffHighlightRequests, type RenderDiffOptions, renderDiff } from "../components/transcript/diff";
 import { fileHyperlink, urlHyperlink } from "./hyperlink";
 import { framedBlock, outputBlockContentWidth } from "./output-block";
 import { renderStatusLine } from "./status-line";
@@ -702,9 +702,7 @@ function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: T
 	) {
 		return codeMemo.rows;
 	}
-	// Stripped before the highlighter rather than after, so an escape inside the source is never
-	// tokenized into a row the highlighter then wraps in colour of its own.
-	const highlighted = highlightCode(shortenEmbeddedPaths(sanitizeText(source)), code.language);
+	const highlighted = highlightCode(codeHighlightSource(source), code.language);
 	let gutter: string;
 	let cell: (index: number) => string | undefined;
 	if (numbers !== undefined) {
@@ -757,6 +755,15 @@ function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: T
 }
 
 /**
+ * The text of a code section the highlighter is handed. Stripped before the highlighter rather than
+ * after, so an escape inside the source is never tokenized into a row the highlighter then wraps in
+ * colour of its own.
+ */
+function codeHighlightSource(source: string): string {
+	return shortenEmbeddedPaths(sanitizeText(source));
+}
+
+/**
  * The last change drawn, so a card repainted without changing re-uses its rows.
  *
  * The same single slot the code sections keep, for the same reason: a streaming edit recomposes on
@@ -790,8 +797,21 @@ const DIFF_MARKERS: Record<ViewDiffSide, string> = {
  * marker and its text; a gap is an empty row, which it draws as an ellipsis.
  */
 function drawDiffLines(lines: readonly ViewLine[], diff: ViewDiffLines, theme: Theme): string[] {
+	const source = diffSource(lines, diff);
+	const path = diff.path ?? "";
+	if (diffMemo.theme === theme && diffMemo.path === path && diffMemo.source === source) return diffMemo.rows;
+	const rows = renderDiff(shortenEmbeddedPaths(source), diffOptions(diff)).split("\n");
+	diffMemo.theme = theme;
+	diffMemo.path = path;
+	diffMemo.source = source;
+	diffMemo.rows = rows;
+	return rows;
+}
+
+/** A change in the canonical form the diff renderer reads: marker, number, `|`, text; a gap is an empty row. */
+function diffSource(lines: readonly ViewLine[], diff: ViewDiffLines): string {
 	const numbers = diff.lineNumbers;
-	const source = lines
+	return lines
 		.map((line, index) => {
 			const side = diff.sides[index] ?? "context";
 			if (side === "gap") return "";
@@ -801,16 +821,31 @@ function drawDiffLines(lines: readonly ViewLine[], diff: ViewDiffLines, theme: T
 			return number === null || number === undefined ? `${marker}${text}` : `${marker}${number}|${text}`;
 		})
 		.join("\n");
-	const path = diff.path ?? "";
-	if (diffMemo.theme === theme && diffMemo.path === path && diffMemo.source === source) return diffMemo.rows;
-	const rows = renderDiff(shortenEmbeddedPaths(source), diff.path === undefined ? {} : { filePath: diff.path }).split(
-		"\n",
-	);
-	diffMemo.theme = theme;
-	diffMemo.path = path;
-	diffMemo.source = source;
-	diffMemo.rows = rows;
-	return rows;
+}
+
+function diffOptions(diff: ViewDiffLines): RenderDiffOptions {
+	return diff.path === undefined ? {} : { filePath: diff.path };
+}
+
+/**
+ * Add the sources drawing `view` hands the highlighter to `into`, each in the language the draw
+ * gives it, so a caller about to draw many views can highlight them together first
+ * (`prefetchHighlights`). Chooses each section's drawing as `drawFramedBlock` does.
+ */
+export function toolViewHighlightRequests(view: ToolView, into: HighlightRequest[]): void {
+	if (view.kind !== "framedBlock") return;
+	for (const section of view.sections) {
+		if (section.list) continue;
+		if (section.code !== undefined) {
+			into.push({ code: codeHighlightSource(linesToText(section.lines)), lang: section.code.language });
+		} else if (section.diff !== undefined) {
+			diffHighlightRequests(
+				shortenEmbeddedPaths(diffSource(section.lines, section.diff)),
+				diffOptions(section.diff),
+				into,
+			);
+		}
+	}
 }
 
 /**

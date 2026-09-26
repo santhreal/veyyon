@@ -5,7 +5,6 @@
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { scheduler } from "node:timers/promises";
-import { calculateCost, emptyCost, inheritUsageCarryovers } from "@veyyon/catalog/models";
 import {
 	ANTIGRAVITY_ENDPOINTS,
 	ANTIGRAVITY_PRIMARY_ENDPOINT,
@@ -32,8 +31,6 @@ import type {
 	StreamFunction,
 	StreamOptions,
 	TextContent,
-	ThinkingContent,
-	ToolCall,
 } from "../types";
 import { normalizeSystemPrompts } from "../utils";
 import { AssistantMessageEventStream } from "../utils/event-stream";
@@ -45,26 +42,27 @@ import { fetchProviderWithRetry } from "../utils/provider-fetch";
 // the stream provider trusts the access token threaded through `options.apiKey`.
 import { normalizeSchemaForCCA } from "../utils/schema";
 import { StreamMarkupHealing, type StreamMarkupHealingEvent } from "../utils/stream-markup-healing";
-import { stopReasonForTerminallessEof } from "../utils/terminalless-eof";
 import { interleavedThinkingBeta } from "./anthropic";
 import type { Content, FunctionCallingConfigMode, ThinkingConfig, ThinkingLevel } from "./google-shared";
 import {
+	applyGoogleFinishReason,
+	applyGoogleUsage,
 	buildGoogleBaseGenerationConfig,
 	buildGoogleToolConfig,
 	convertMessages,
 	convertTools,
 	EMPTY_STREAM_BASE_DELAY_MS,
+	GoogleResponseBlocks,
 	type GoogleThinkingLevel,
+	googleDoneReason,
 	hasMeaningfulGoogleContent,
 	isThinkingPart,
 	MAX_EMPTY_STREAM_RETRIES,
 	mapStopReasonString,
-	nextToolCallId,
-	pushBlockEndEvent,
-	pushToolCallEvents,
 	resetGoogleStreamOutputForRetry,
 	retainThoughtSignature,
-	startTextOrThinkingBlock,
+	settleGoogleTerminallessEof,
+	throwIfGooglePromptBlocked,
 } from "./google-shared";
 import { createInitialResponsesAssistantMessage } from "./initial-message";
 
@@ -485,21 +483,24 @@ interface CloudCodeAssistRequest {
 	requestId?: string;
 }
 
+/** One streamed part of a Cloud Code Assist candidate. */
+interface CloudCodeAssistPart {
+	text?: string;
+	thought?: boolean;
+	thoughtSignature?: string;
+	functionCall?: {
+		name: string;
+		args: Record<string, unknown>;
+		id?: string;
+	};
+}
+
 interface CloudCodeAssistResponseChunk {
 	response?: {
 		candidates?: Array<{
 			content?: {
 				role: string;
-				parts?: Array<{
-					text?: string;
-					thought?: boolean;
-					thoughtSignature?: string;
-					functionCall?: {
-						name: string;
-						args: Record<string, unknown>;
-						id?: string;
-					};
-				}>;
+				parts?: CloudCodeAssistPart[];
 			};
 			finishReason?: string;
 		}>;
@@ -519,593 +520,473 @@ interface CloudCodeAssistResponseChunk {
 	traceId?: string;
 }
 
+/**
+ * Decodes one Cloud Code Assist response body into `output`.
+ *
+ * Visible text passes through the `<thinking>` markup healer. On flash models a text run that
+ * opens with `{` is held back until it is known to be ordinary text or a leaked planning
+ * object, which is dropped.
+ */
+class CloudCodeAssistResponseDecoder {
+	readonly #blocks: GoogleResponseBlocks;
+	readonly #healing = new StreamMarkupHealing({ pattern: "thinking" });
+	readonly #holdsLeadingJson: boolean;
+	/** Text held back while it may still be a planning leak; undefined while nothing is held. */
+	#held: string | undefined;
+	/**
+	 * Signature of the held text. A function call drops the held text but not this, and the
+	 * healer's trailing text is flushed with it at the end of the body.
+	 */
+	#heldSignature: string | undefined;
+	#sawLeak = false;
+	sawFinishReason = false;
+	/** The response id, committed as the next request's `last_execution_id` on success. */
+	responseId: string | undefined;
+	/** Whether the body carried anything to deliver: content, or a dropped planning leak. */
+	receivedContent = false;
+
+	constructor(
+		readonly model: Model<"google-gemini-cli">,
+		readonly output: AssistantMessage,
+		stream: AssistantMessageEventStream,
+		readonly toolNames: Set<string>,
+		onBlockAppended: () => void,
+	) {
+		this.#blocks = new GoogleResponseBlocks(output, stream, true, onBlockAppended);
+		this.#holdsLeadingJson = model.id.includes("flash");
+	}
+
+	apply(chunk: CloudCodeAssistResponseChunk): void {
+		if (chunk.error) {
+			const detail = chunk.error.message || chunk.error.status || "unknown error";
+			const message = `Cloud Code Assist stream error: ${detail}`;
+			throw typeof chunk.error.code === "number" && chunk.error.code >= 400
+				? new AIError.GeminiCliApiError(message, chunk.error.code)
+				: new AIError.ProviderResponseError(message, { provider: this.model.provider, kind: "runtime" });
+		}
+		const response = chunk.response;
+		if (!response) return;
+		if (response.responseId) this.responseId = response.responseId;
+		throwIfGooglePromptBlocked(response, this.model.provider);
+
+		const candidate = response.candidates?.[0];
+		const parts = candidate?.content?.parts;
+		if (parts) {
+			for (const part of parts) this.#applyPart(part);
+		}
+		if (candidate?.finishReason) {
+			this.sawFinishReason = true;
+			applyGoogleFinishReason(this.output, mapStopReasonString(candidate.finishReason), candidate.finishReason);
+		}
+		if (response.usageMetadata) applyGoogleUsage(this.model, this.output, response.usageMetadata);
+	}
+
+	/** Release whatever is still held or buffered and close the open block. */
+	finish(): void {
+		if (this.#held) {
+			const held = consumePlanningBuffer(this.#held, this.toolNames, true);
+			if (held.kind === "leak") this.#sawLeak = true;
+			if (held.kind !== "incomplete") this.#feedVisibleText(held.visibleText, this.#heldSignature);
+			this.#heldSignature = undefined;
+			this.#held = undefined;
+		}
+		this.#emitHealingEvents(this.#healing.flushEvents(), this.#heldSignature);
+		this.#blocks.endBlock();
+		this.receivedContent = hasMeaningfulGoogleContent(this.output) || this.#sawLeak;
+	}
+
+	#applyPart(part: CloudCodeAssistPart): void {
+		if (part.text !== undefined && part.text !== "") {
+			if (isThinkingPart(part)) {
+				this.#emitHealingEvents(this.#healing.flushEvents());
+				this.#blocks.appendThinking(part.text, part.thoughtSignature);
+			} else {
+				this.#applyText(part.text, part.thoughtSignature);
+			}
+		} else if (part.text === "" && part.thoughtSignature && !part.functionCall) {
+			this.#blocks.retainSignature(part.thoughtSignature);
+		}
+
+		if (part.functionCall) {
+			this.#emitHealingEvents(this.#healing.flushEvents());
+			this.#held = undefined;
+			this.#blocks.appendFunctionCall(part.functionCall, part.thoughtSignature);
+		}
+	}
+
+	#applyText(text: string, thoughtSignature: string | undefined): void {
+		if (this.#held !== undefined) {
+			this.#held += text;
+			this.#heldSignature = retainThoughtSignature(this.#heldSignature, thoughtSignature);
+		} else if (this.#holdsLeadingJson && text.trimStart().startsWith("{")) {
+			this.#held = text;
+			this.#heldSignature = thoughtSignature;
+		} else {
+			this.#feedVisibleText(text, thoughtSignature);
+			return;
+		}
+
+		const held = consumePlanningBuffer(this.#held, this.toolNames);
+		if (held.kind === "incomplete") return;
+		if (held.kind === "leak") this.#sawLeak = true;
+		const signature = this.#heldSignature;
+		this.#held = undefined;
+		this.#heldSignature = undefined;
+		this.#feedVisibleText(held.visibleText, signature);
+	}
+
+	#feedVisibleText(delta: string, thoughtSignature: string | undefined): void {
+		this.#emitHealingEvents(this.#healing.feedEvents(delta), thoughtSignature);
+	}
+
+	#emitHealingEvents(events: Iterable<StreamMarkupHealingEvent>, thoughtSignature?: string): void {
+		for (const event of events) {
+			if (event.type === "text") {
+				this.#blocks.appendText(event.text, thoughtSignature);
+			} else if (event.type === "thinking") {
+				this.#blocks.appendThinking(event.thinking);
+			}
+		}
+	}
+}
+
+/** What one Cloud Code Assist request sends, resolved once and replayed to every endpoint and retry. */
+interface CloudCodeAssistPlan {
+	readonly endpoints: readonly string[];
+	readonly headers: Record<string, string>;
+	readonly bodyJson: string;
+	readonly providerState: AntigravityProviderSessionState | undefined;
+	/** The signed-in account, named in a validation-required error. */
+	readonly email: string | undefined;
+	readonly firstEventTimeoutMs: number | undefined;
+	readonly toolNames: Set<string>;
+}
+
+/**
+ * The endpoints a request tries, in order.
+ *
+ * Antigravity in `auto` mode fails over across its production and sandbox endpoints, the
+ * last one that answered first. A pinned mode, or a custom base URL, is the only endpoint,
+ * and forgets the remembered one.
+ */
+function cloudCodeAssistEndpoints(
+	model: Model<"google-gemini-cli">,
+	options: GoogleGeminiCliOptions | undefined,
+	providerState: AntigravityProviderSessionState | undefined,
+): string[] {
+	const baseUrl = model.baseUrl?.trim();
+	if (model.provider !== "google-antigravity") return [baseUrl || CLOUD_CODE_ENDPOINT];
+
+	const mode = options?.antigravityEndpointMode ?? "auto";
+	let pinned: string | undefined;
+	if (mode === "sandbox") {
+		pinned = ANTIGRAVITY_SANDBOX_ENDPOINT;
+	} else if (mode === "production") {
+		pinned = ANTIGRAVITY_PRIMARY_ENDPOINT;
+	} else if (baseUrl) {
+		const cleanUrl = trimTrailingSlashes(baseUrl);
+		if (cleanUrl !== ANTIGRAVITY_PRIMARY_ENDPOINT && cleanUrl !== ANTIGRAVITY_SANDBOX_ENDPOINT) pinned = baseUrl;
+	}
+	if (pinned) {
+		if (providerState) providerState.lastGoodEndpoint = undefined;
+		return [pinned];
+	}
+
+	const fallbacks = ANTIGRAVITY_ENDPOINTS.slice() as string[];
+	const lastGood = providerState?.lastGoodEndpoint;
+	return lastGood && fallbacks.includes(lastGood) ? [lastGood, ...fallbacks.filter(e => e !== lastGood)] : fallbacks;
+}
+
+async function cloudCodeAssistApiError(
+	response: Response,
+	email: string | undefined,
+): Promise<AIError.GeminiCliApiError> {
+	const errorBody = await AIError.readProviderErrorBody(response);
+	const validationUrl = extractGoogleValidationUrl(errorBody.text);
+	const errorMessage = validationUrl
+		? formatGoogleValidationRequiredMessage(validationUrl, "retry your request", email)
+		: errorBody.detail;
+	return new AIError.GeminiCliApiError(
+		`Cloud Code Assist API error (${response.status}): ${errorMessage}`,
+		response.status,
+		{ headers: response.headers },
+	);
+}
+
+/** One `streamGoogleGeminiCli` call: plan the request, stream it from an endpoint, settle the message. */
+class GeminiCliStreamRun {
+	readonly #startTime = performance.now();
+	readonly #output: AssistantMessage;
+	#firstTokenTime: number | undefined;
+	#started = false;
+	#rawRequestDump: RawHttpRequestDump | undefined;
+	/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
+	#wireBodyJson: string | undefined;
+
+	constructor(
+		readonly model: Model<"google-gemini-cli">,
+		readonly context: Context,
+		readonly options: GoogleGeminiCliOptions | undefined,
+		readonly stream: AssistantMessageEventStream,
+	) {
+		this.#output = createInitialResponsesAssistantMessage("google-gemini-cli" as Api, model.provider, model.id);
+	}
+
+	async run(): Promise<void> {
+		const output = this.#output;
+		try {
+			await this.#streamFromEndpoints(await this.#plan());
+			const reason = googleDoneReason(output, this.model.provider);
+			this.#stampTiming();
+			this.stream.push({ type: "done", reason, message: output });
+		} catch (error) {
+			const result = await AIError.finalize(error, {
+				api: this.model.api,
+				signal: this.options?.signal,
+				rawRequestDump: materializeDumpBody(this.#rawRequestDump, this.#wireBodyJson),
+			});
+			AIError.applyFinalizeResult(output, result);
+			this.#stampTiming();
+			this.stream.push({ type: "error", reason: output.stopReason, error: output });
+		}
+		this.stream.end();
+	}
+
+	async #plan(): Promise<CloudCodeAssistPlan> {
+		const { model, context, options } = this;
+		const apiKeyRaw = options?.apiKey;
+		if (!apiKeyRaw) {
+			throw new AIError.ConfigurationError(
+				"No Google Cloud Code Assist credential is available, and this provider accepts only an OAuth credential, never a plain API key. Fix: run `veyyon auth-broker login google-gemini-cli` to sign in from a terminal, or `/login google-gemini-cli` in an interactive veyyon session. Setting a `GEMINI_API_KEY`-style key does not work here.",
+			);
+		}
+
+		const isAntigravity = model.provider === "google-antigravity";
+		const credentials = parseGeminiCliCredentials(apiKeyRaw);
+		// AuthStorage already refreshed credentials before threading them here (see
+		// {@link OAUTH_REFRESH_SKEW_MS}). A credential that lands expired fails rather than
+		// POSTing a stale token; the next call, driven by AuthStorage's invalidate+retry
+		// path, carries a fresh credential.
+		if (credentials.expiresAt !== undefined && Date.now() >= credentials.expiresAt) {
+			throw new AIError.OAuthError(
+				"OAuth token expired before request — please retry; AuthStorage will refresh on the next attempt.",
+				{ kind: "token-refresh", provider: model.provider },
+			);
+		}
+		const providerState = isAntigravity
+			? getAntigravityProviderSessionState(options?.providerSessionState)
+			: undefined;
+		const endpoints = cloudCodeAssistEndpoints(model, options, providerState);
+
+		let requestBody = buildRequest(model, context, credentials.projectId, options, isAntigravity);
+		const replacementPayload = await options?.onPayload?.(requestBody, model);
+		if (replacementPayload !== undefined) {
+			requestBody = replacementPayload as typeof requestBody;
+		}
+		const headers = {
+			Authorization: `Bearer ${credentials.accessToken}`,
+			"Content-Type": "application/json",
+			Accept: "text/event-stream",
+			...(isAntigravity ? { "User-Agent": getAntigravityUserAgent() } : getGeminiCliHeaders(model.id)),
+			...(needsClaudeThinkingBetaHeader(model) ? { "anthropic-beta": interleavedThinkingBeta } : {}),
+			...(options?.headers ?? {}),
+		};
+		const bodyJson = JSON.stringify(requestBody);
+		this.#rawRequestDump = {
+			provider: model.provider,
+			api: this.#output.api,
+			model: model.id,
+			method: "POST",
+			headers,
+		};
+		this.#wireBodyJson = bodyJson;
+
+		return {
+			endpoints,
+			headers,
+			bodyJson,
+			providerState,
+			email: credentials.email,
+			// Direct callers that skip `register-builtins` (which installs the iterator-level
+			// watchdog) need a pre-response timer alongside `timeout: false`; otherwise a
+			// stalled Cloud Code Assist proxy would hang forever. Floor matches the lazy
+			// wrapper's 5min default.
+			firstEventTimeoutMs: options?.streamFirstEventTimeoutMs ?? getStreamFirstEventTimeoutMs(undefined, 300_000),
+			toolNames: new Set(context.tools?.map(t => t.name) ?? []),
+		};
+	}
+
+	/**
+	 * Try each endpoint in turn. A transient failure moves on to the next endpoint unless it
+	 * is the last one or the response already started streaming.
+	 */
+	async #streamFromEndpoints(plan: CloudCodeAssistPlan): Promise<void> {
+		const { endpoints } = plan;
+		for (let i = 0; i < endpoints.length; i++) {
+			const isLastEndpoint = i === endpoints.length - 1;
+			try {
+				if (await this.#streamFromEndpoint(plan, endpoints[i], isLastEndpoint)) return;
+			} catch (error) {
+				const transient = AIError.isTransientStatus(extractHttpStatusFromError(error));
+				if (transient && !isLastEndpoint && !this.#started) continue;
+				throw error;
+			}
+		}
+	}
+
+	/** True when this endpoint produced the response, false to move on to the next one. */
+	async #streamFromEndpoint(plan: CloudCodeAssistPlan, endpoint: string, isLastEndpoint: boolean): Promise<boolean> {
+		this.#started = false;
+		resetGoogleStreamOutputForRetry(this.model, this.#output);
+		const requestUrl = `${endpoint}/v1internal:streamGenerateContent?alt=sse`;
+		const response = await this.#post(plan, requestUrl, isLastEndpoint);
+		if (!response.ok) {
+			if (AIError.isTransientStatus(response.status) && !isLastEndpoint) return false;
+			throw await cloudCodeAssistApiError(response, plan.email);
+		}
+
+		const decoder = await this.#streamWithEmptyRetries(plan, requestUrl, response);
+		googleDoneReason(this.#output, this.model.provider);
+		if (!decoder?.receivedContent) {
+			throw new AIError.ProviderResponseError("Cloud Code Assist API returned an empty response", {
+				provider: this.model.provider,
+				kind: "empty-body",
+			});
+		}
+		if (this.options?.signal?.aborted) {
+			throw new AIError.RequestAbortError("Request was aborted");
+		}
+		if (!decoder.sawFinishReason) settleGoogleTerminallessEof(this.#output, this.model.provider, "Cloud Code Assist");
+
+		const state = plan.providerState;
+		if (state) {
+			const mode = this.options?.antigravityEndpointMode;
+			if (!mode || mode === "auto") state.lastGoodEndpoint = endpoint;
+			// Committed only after a fully successful attempt; the next request sends it as
+			// `last_execution_id`. Overwritten even when undefined so a response without an
+			// id cannot leave a stale value.
+			state.lastExecutionId = decoder.responseId;
+		}
+		return true;
+	}
+
+	async #post(plan: CloudCodeAssistPlan, requestUrl: string, isLastEndpoint: boolean): Promise<Response> {
+		// Per attempt: arm a pre-response (TTFT) timer, cleared the instant headers arrive so it
+		// never aborts the actively streaming body — an absolute `AbortSignal.timeout` would
+		// (issue #2422).
+		const watchdog = armPreResponseTimeout(this.options?.signal, plan.firstEventTimeoutMs);
+		try {
+			return await fetchProviderWithRetry(() => requestUrl, {
+				method: "POST",
+				headers: plan.headers,
+				body: plan.bodyJson,
+				signal: watchdog.signal,
+				maxAttempts: isLastEndpoint ? MAX_RETRIES + 1 : 1,
+				defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,
+				maxDelayMs: this.options?.maxRetryDelayMs ?? RATE_LIMIT_BUDGET_MS,
+				fetch: this.options?.fetch,
+				timeout: false,
+			});
+		} finally {
+			watchdog.clear();
+		}
+	}
+
+	/**
+	 * Gemini occasionally finishes with a benign `STOP` and nothing in it. The request is sent
+	 * again a bounded number of times, with backoff. Undefined when every attempt was empty.
+	 */
+	async #streamWithEmptyRetries(
+		plan: CloudCodeAssistPlan,
+		requestUrl: string,
+		response: Response,
+	): Promise<CloudCodeAssistResponseDecoder | undefined> {
+		let current = response;
+		for (let emptyAttempt = 0; emptyAttempt <= MAX_EMPTY_STREAM_RETRIES; emptyAttempt++) {
+			if (this.options?.signal?.aborted) {
+				throw new AIError.RequestAbortError("Request was aborted");
+			}
+			if (emptyAttempt > 0) current = await this.#resend(plan, requestUrl, emptyAttempt);
+			const decoder = await this.#decode(current, plan.toolNames);
+			if (this.#output.stopReason !== "stop" || decoder.receivedContent) return decoder;
+			if (emptyAttempt < MAX_EMPTY_STREAM_RETRIES) resetGoogleStreamOutputForRetry(this.model, this.#output);
+		}
+		return undefined;
+	}
+
+	/**
+	 * An empty-response retry POSTs to the URL this attempt used, not `response.url`: a custom
+	 * `options.fetch` that answers with a constructed `Response` leaves that empty.
+	 */
+	async #resend(plan: CloudCodeAssistPlan, requestUrl: string, emptyAttempt: number): Promise<Response> {
+		const signal = this.options?.signal;
+		try {
+			await scheduler.wait(EMPTY_STREAM_BASE_DELAY_MS * 2 ** (emptyAttempt - 1), { signal });
+		} catch {
+			throw new AIError.RequestAbortError("Request was aborted");
+		}
+		const response = await (this.options?.fetch ?? fetch)(requestUrl, {
+			method: "POST",
+			headers: plan.headers,
+			body: plan.bodyJson,
+			signal,
+		});
+		if (!response.ok) {
+			const retryErrorText = await response.text();
+			throw new AIError.GeminiCliApiError(
+				`Cloud Code Assist API error (${response.status}): ${retryErrorText}`,
+				response.status,
+				{ headers: response.headers },
+			);
+		}
+		return response;
+	}
+
+	async #decode(response: Response, toolNames: Set<string>): Promise<CloudCodeAssistResponseDecoder> {
+		const body = response.body;
+		if (!body) {
+			throw new AIError.ProviderResponseError("No response body", {
+				provider: this.model.provider,
+				kind: "empty-body",
+			});
+		}
+		const { model, options } = this;
+		const decoder = new CloudCodeAssistResponseDecoder(
+			model,
+			this.#output,
+			this.stream,
+			toolNames,
+			this.#ensureStarted,
+		);
+		for await (const chunk of readSseJson<CloudCodeAssistResponseChunk>(body, options?.signal, event =>
+			options?.onSseEvent?.({ event: event.event, data: event.data, raw: event.raw.slice() }, model),
+		)) {
+			decoder.apply(chunk);
+		}
+		decoder.finish();
+		return decoder;
+	}
+
+	readonly #ensureStarted = (): void => {
+		if (this.#started) return;
+		if (!this.#firstTokenTime) this.#firstTokenTime = performance.now();
+		this.stream.push({ type: "start", partial: this.#output });
+		this.#started = true;
+	};
+
+	#stampTiming(): void {
+		this.#output.duration = performance.now() - this.#startTime;
+		if (this.#firstTokenTime) this.#output.ttft = this.#firstTokenTime - this.#startTime;
+	}
+}
+
 export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 	model: Model<"google-gemini-cli">,
 	context: Context,
 	options?: GoogleGeminiCliOptions,
 ): AssistantMessageEventStream => {
 	const stream = new AssistantMessageEventStream();
-
-	(async () => {
-		const startTime = performance.now();
-		let firstTokenTime: number | undefined;
-
-		const output: AssistantMessage = createInitialResponsesAssistantMessage(
-			"google-gemini-cli" as Api,
-			model.provider,
-			model.id,
-		);
-		let rawRequestDump: RawHttpRequestDump | undefined;
-		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
-		let wireBodyJson: string | undefined;
-
-		try {
-			const apiKeyRaw = options?.apiKey;
-			if (!apiKeyRaw) {
-				throw new AIError.ConfigurationError(
-					"No Google Cloud Code Assist credential is available, and this provider accepts only an OAuth credential, never a plain API key. Fix: run `veyyon auth-broker login google-gemini-cli` to sign in from a terminal, or `/login google-gemini-cli` in an interactive veyyon session. Setting a `GEMINI_API_KEY`-style key does not work here.",
-				);
-			}
-
-			const isAntigravity = model.provider === "google-antigravity";
-			const parsedCredentials = parseGeminiCliCredentials(apiKeyRaw);
-			const { accessToken, projectId } = parsedCredentials;
-			// AuthStorage already refreshed credentials before threading them
-			// here (see {@link OAUTH_REFRESH_SKEW_MS}). If the credential lands
-			// expired we bail rather than POSTing a stale token; the next call
-			// — driven by AuthStorage's invalidate+retry path — will carry a
-			// fresh credential.
-			if (
-				shouldRefreshGeminiCliCredentials(parsedCredentials.expiresAt, isAntigravity) &&
-				parsedCredentials.expiresAt !== undefined &&
-				Date.now() >= parsedCredentials.expiresAt
-			) {
-				throw new AIError.OAuthError(
-					"OAuth token expired before request — please retry; AuthStorage will refresh on the next attempt.",
-					{ kind: "token-refresh", provider: model.provider },
-				);
-			}
-			const baseUrl = model.baseUrl?.trim();
-			let endpoints: string[];
-			const providerState = isAntigravity
-				? getAntigravityProviderSessionState(options?.providerSessionState)
-				: undefined;
-
-			if (isAntigravity) {
-				const mode = options?.antigravityEndpointMode ?? "auto";
-				if (mode === "sandbox") {
-					endpoints = [ANTIGRAVITY_SANDBOX_ENDPOINT];
-					if (providerState) providerState.lastGoodEndpoint = undefined;
-				} else if (mode === "production") {
-					endpoints = [ANTIGRAVITY_PRIMARY_ENDPOINT];
-					if (providerState) providerState.lastGoodEndpoint = undefined;
-				} else {
-					// auto mode
-					if (baseUrl) {
-						const cleanUrl = trimTrailingSlashes(baseUrl);
-						if (cleanUrl !== ANTIGRAVITY_PRIMARY_ENDPOINT && cleanUrl !== ANTIGRAVITY_SANDBOX_ENDPOINT) {
-							endpoints = [baseUrl];
-							if (providerState) providerState.lastGoodEndpoint = undefined;
-						} else {
-							const defaultFallbacks = ANTIGRAVITY_ENDPOINTS.slice() as string[];
-							const lastGood = providerState?.lastGoodEndpoint;
-							if (lastGood && defaultFallbacks.includes(lastGood)) {
-								endpoints = [lastGood, ...defaultFallbacks.filter(e => e !== lastGood)];
-							} else {
-								endpoints = defaultFallbacks;
-							}
-						}
-					} else {
-						const defaultFallbacks = ANTIGRAVITY_ENDPOINTS.slice() as string[];
-						const lastGood = providerState?.lastGoodEndpoint;
-						if (lastGood && defaultFallbacks.includes(lastGood)) {
-							endpoints = [lastGood, ...defaultFallbacks.filter(e => e !== lastGood)];
-						} else {
-							endpoints = defaultFallbacks;
-						}
-					}
-				}
-			} else {
-				endpoints = baseUrl ? [baseUrl] : [CLOUD_CODE_ENDPOINT];
-			}
-
-			let requestBody = buildRequest(model, context, projectId, options, isAntigravity);
-			const replacementPayload = await options?.onPayload?.(requestBody, model);
-			if (replacementPayload !== undefined) {
-				requestBody = replacementPayload as typeof requestBody;
-			}
-			const headers = isAntigravity ? { "User-Agent": getAntigravityUserAgent() } : getGeminiCliHeaders(model.id);
-
-			const requestHeaders = {
-				Authorization: `Bearer ${accessToken}`,
-				"Content-Type": "application/json",
-				Accept: "text/event-stream",
-				...headers,
-				...(needsClaudeThinkingBetaHeader(model) ? { "anthropic-beta": interleavedThinkingBeta } : {}),
-				...(options?.headers ?? {}),
-			};
-			const requestBodyJson = JSON.stringify(requestBody);
-			rawRequestDump = {
-				provider: model.provider,
-				api: output.api,
-				model: model.id,
-				method: "POST",
-				headers: requestHeaders,
-			};
-			wireBodyJson = requestBodyJson;
-
-			// Direct callers that skip `register-builtins` (which installs the
-			// iterator-level watchdog) need a pre-response timer alongside
-			// `timeout: false`; otherwise a stalled Cloud Code Assist proxy
-			// would hang forever. Floor matches the lazy wrapper's 5min default.
-			const firstEventTimeoutMs =
-				options?.streamFirstEventTimeoutMs ?? getStreamFirstEventTimeoutMs(undefined, 300_000);
-			const callerSignal = options?.signal;
-			const toolNames = new Set(context.tools?.map(t => t.name) ?? []);
-			const isFlashLeakModel = model.id.includes("flash");
-
-			let started = false;
-			let sawFinishReason = false;
-			let lastResponseId: string | undefined;
-			const ensureStarted = () => {
-				if (!started) {
-					if (!firstTokenTime) firstTokenTime = performance.now();
-					stream.push({ type: "start", partial: output });
-					started = true;
-				}
-			};
-
-			const resetOutput = () => {
-				// One owner for the wipe, shared with the Generative AI path: the tokens
-				// an abandoned attempt already billed ride along on the next usage.
-				resetGoogleStreamOutputForRetry(model, output);
-				sawFinishReason = false;
-			};
-
-			const streamResponse = async (activeResponse: Response): Promise<boolean> => {
-				if (!activeResponse.body) {
-					throw new AIError.ProviderResponseError("No response body", {
-						provider: model.provider,
-						kind: "empty-body",
-					});
-				}
-
-				// Scoped per attempt so a failed/empty retry cannot leak its
-				// response id into the next request's last_execution_id.
-				lastResponseId = undefined;
-
-				let currentBlock: TextContent | ThinkingContent | null = null;
-				const blocks = output.content;
-				const blockIndex = () => blocks.length - 1;
-				const visibleTextHealing = new StreamMarkupHealing({ pattern: "thinking" });
-
-				let isBuffering = false;
-				let textBuffer = "";
-				let bufferedTextSignature: string | undefined;
-
-				const endCurrentBlock = (): void => {
-					if (!currentBlock) return;
-					pushBlockEndEvent(currentBlock, blockIndex(), output, stream);
-					currentBlock = null;
-				};
-
-				const startTextBlock = (): TextContent => {
-					let block = currentBlock;
-					if (block?.type !== "text") {
-						endCurrentBlock();
-						block = startTextOrThinkingBlock(false, output, stream, ensureStarted);
-						currentBlock = block;
-					}
-					return block;
-				};
-
-				const startThinkingBlock = (): ThinkingContent => {
-					let block = currentBlock;
-					if (block?.type !== "thinking") {
-						endCurrentBlock();
-						block = startTextOrThinkingBlock(true, output, stream, ensureStarted);
-						currentBlock = block;
-					}
-					return block;
-				};
-
-				const emitVisibleText = (delta: string, thoughtSignature?: string): void => {
-					if (!delta) return;
-					const block = startTextBlock();
-					block.text += delta;
-					block.textSignature = retainThoughtSignature(block.textSignature, thoughtSignature);
-					stream.push({
-						type: "text_delta",
-						contentIndex: blockIndex(),
-						delta,
-						partial: output,
-					});
-				};
-
-				const emitVisibleThinking = (delta: string): void => {
-					if (!delta) return;
-					const block = startThinkingBlock();
-					block.thinking += delta;
-					stream.push({
-						type: "thinking_delta",
-						contentIndex: blockIndex(),
-						delta,
-						partial: output,
-					});
-				};
-
-				const emitHealingEvent = (event: StreamMarkupHealingEvent, thoughtSignature?: string): void => {
-					if (event.type === "text") {
-						emitVisibleText(event.text, thoughtSignature);
-					} else if (event.type === "thinking") {
-						emitVisibleThinking(event.thinking);
-					}
-				};
-
-				const feedVisibleText = (delta: string, thoughtSignature?: string): void => {
-					for (const event of visibleTextHealing.feedEvents(delta)) {
-						emitHealingEvent(event, thoughtSignature);
-					}
-				};
-
-				const flushVisibleText = (thoughtSignature?: string): void => {
-					for (const event of visibleTextHealing.flushEvents()) {
-						emitHealingEvent(event, thoughtSignature);
-					}
-				};
-
-				const retainCurrentBlockThoughtSignature = (thoughtSignature: string): void => {
-					const block = currentBlock;
-					if (!block) return;
-					if (block.type === "thinking") {
-						block.thinkingSignature = retainThoughtSignature(block.thinkingSignature, thoughtSignature);
-					} else {
-						block.textSignature = retainThoughtSignature(block.textSignature, thoughtSignature);
-					}
-				};
-
-				for await (const chunk of readSseJson<CloudCodeAssistResponseChunk>(
-					activeResponse.body!,
-					options?.signal,
-					event => options?.onSseEvent?.({ event: event.event, data: event.data, raw: event.raw.slice() }, model),
-				)) {
-					if (chunk.error) {
-						const detail = chunk.error.message || chunk.error.status || "unknown error";
-						const message = `Cloud Code Assist stream error: ${detail}`;
-						throw typeof chunk.error.code === "number" && chunk.error.code >= 400
-							? new AIError.GeminiCliApiError(message, chunk.error.code)
-							: new AIError.ProviderResponseError(message, { provider: model.provider, kind: "runtime" });
-					}
-					const responseData = chunk.response;
-					if (!responseData) continue;
-					if (responseData.responseId) lastResponseId = responseData.responseId;
-					if (!responseData.candidates?.length && responseData.promptFeedback?.blockReason) {
-						const detail = responseData.promptFeedback.blockReasonMessage;
-						throw new AIError.ProviderResponseError(
-							`Request blocked by Google (${responseData.promptFeedback.blockReason})${detail ? `: ${detail}` : ""}`,
-							{ provider: model.provider, kind: "content-blocked" },
-						);
-					}
-
-					const candidate = responseData.candidates?.[0];
-					if (candidate?.content?.parts) {
-						for (const part of candidate.content.parts) {
-							if (part.text !== undefined && part.text !== "") {
-								const isThinking = isThinkingPart(part);
-								if (isThinking) {
-									flushVisibleText();
-									const block = startThinkingBlock();
-									block.thinking += part.text;
-									block.thinkingSignature = retainThoughtSignature(
-										block.thinkingSignature,
-										part.thoughtSignature,
-									);
-									stream.push({
-										type: "thinking_delta",
-										contentIndex: blockIndex(),
-										delta: part.text,
-										partial: output,
-									});
-								} else {
-									if (isBuffering) {
-										textBuffer += part.text;
-										bufferedTextSignature = retainThoughtSignature(
-											bufferedTextSignature,
-											part.thoughtSignature,
-										);
-									} else if (isFlashLeakModel && part.text.trimStart().startsWith("{")) {
-										isBuffering = true;
-										textBuffer = part.text;
-										bufferedTextSignature = part.thoughtSignature;
-									} else {
-										feedVisibleText(part.text, part.thoughtSignature);
-									}
-
-									if (isBuffering) {
-										const buffered = consumePlanningBuffer(textBuffer, toolNames);
-										if (buffered.kind !== "incomplete") {
-											if (buffered.kind === "leak") {
-												sawLeak = true;
-											}
-											const visibleSignature = bufferedTextSignature;
-											isBuffering = false;
-											textBuffer = "";
-											bufferedTextSignature = undefined;
-											feedVisibleText(buffered.visibleText, visibleSignature);
-										}
-									}
-								}
-							} else if (part.text === "" && part.thoughtSignature && !part.functionCall) {
-								retainCurrentBlockThoughtSignature(part.thoughtSignature);
-							}
-
-							if (part.functionCall) {
-								flushVisibleText();
-								endCurrentBlock();
-								isBuffering = false;
-								textBuffer = "";
-								const providedId = part.functionCall.id;
-								const needsNewId =
-									!providedId || output.content.some(b => b.type === "toolCall" && b.id === providedId);
-								const toolCallId = needsNewId ? nextToolCallId(part.functionCall.name || "tool") : providedId;
-
-								const toolCall: ToolCall = {
-									type: "toolCall",
-									id: toolCallId,
-									name: part.functionCall.name || "",
-									arguments: (part.functionCall.args ?? {}) as Record<string, unknown>,
-									...(part.thoughtSignature && { thoughtSignature: part.thoughtSignature }),
-								};
-
-								output.content.push(toolCall);
-								ensureStarted();
-								pushToolCallEvents(toolCall, blockIndex(), output, stream);
-							}
-						}
-					}
-
-					if (candidate?.finishReason) {
-						sawFinishReason = true;
-						const mapped = mapStopReasonString(candidate.finishReason);
-						// Only let a trailing tool call upgrade benign finishes; error finishes
-						// (SAFETY, MALFORMED_FUNCTION_CALL, ...) must surface even with tool calls present.
-						if ((mapped === "stop" || mapped === "length") && output.content.some(b => b.type === "toolCall")) {
-							output.stopReason = "toolUse";
-						} else {
-							output.stopReason = mapped;
-							if (mapped === "error") {
-								output.errorMessage = AIError.providerFinishErrorMessage(candidate.finishReason);
-							}
-						}
-					}
-
-					if (responseData.usageMetadata) {
-						// promptTokenCount includes cachedContentTokenCount, so subtract to get fresh input
-						const promptTokens = responseData.usageMetadata.promptTokenCount || 0;
-						const cacheReadTokens = responseData.usageMetadata.cachedContentTokenCount || 0;
-						const thinkingTokens = responseData.usageMetadata.thoughtsTokenCount || 0;
-						output.usage = inheritUsageCarryovers(output.usage, {
-							input: promptTokens - cacheReadTokens,
-							output: (responseData.usageMetadata.candidatesTokenCount || 0) + thinkingTokens,
-							cacheRead: cacheReadTokens,
-							cacheWrite: 0,
-							totalTokens: responseData.usageMetadata.totalTokenCount || 0,
-							...(thinkingTokens > 0 ? { reasoningTokens: thinkingTokens } : {}),
-							cost: emptyCost(),
-						});
-						calculateCost(model, output.usage);
-					}
-				}
-
-				if (isBuffering && textBuffer !== "") {
-					const buffered = consumePlanningBuffer(textBuffer, toolNames, true);
-					if (buffered.kind === "leak") {
-						sawLeak = true;
-					}
-					if (buffered.kind !== "incomplete") {
-						feedVisibleText(buffered.visibleText, bufferedTextSignature);
-					}
-					bufferedTextSignature = undefined;
-					isBuffering = false;
-					textBuffer = "";
-				}
-
-				flushVisibleText(bufferedTextSignature);
-				endCurrentBlock();
-
-				return hasMeaningfulGoogleContent(output) || sawLeak;
-			};
-
-			let receivedContent = false;
-			let sawLeak = false;
-
-			for (let i = 0; i < endpoints.length; i++) {
-				const endpoint = endpoints[i];
-				const isLastEndpoint = i === endpoints.length - 1;
-				try {
-					started = false;
-					resetOutput();
-
-					const requestUrl = `${endpoint}/v1internal:streamGenerateContent?alt=sse`;
-					// Per attempt: arm a pre-response (TTFT) timer, cleared the instant
-					// headers arrive so it never aborts the actively streaming body —
-					// an absolute `AbortSignal.timeout` would (issue #2422).
-					const watchdog = armPreResponseTimeout(callerSignal, firstEventTimeoutMs);
-					let response: Response;
-					try {
-						response = await fetchProviderWithRetry(() => requestUrl, {
-							method: "POST",
-							headers: requestHeaders,
-							body: requestBodyJson,
-							signal: watchdog.signal,
-							maxAttempts: isLastEndpoint ? MAX_RETRIES + 1 : 1,
-							defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,
-							maxDelayMs: options?.maxRetryDelayMs ?? RATE_LIMIT_BUDGET_MS,
-							fetch: options?.fetch,
-							timeout: false,
-						});
-					} finally {
-						watchdog.clear();
-					}
-
-					if (!response.ok) {
-						if (AIError.isTransientStatus(response.status)) {
-							if (!isLastEndpoint) {
-								continue;
-							}
-						}
-						const errorBody = await AIError.readProviderErrorBody(response);
-						const validationUrl = extractGoogleValidationUrl(errorBody.text);
-						const errorMessage = validationUrl
-							? formatGoogleValidationRequiredMessage(
-									validationUrl,
-									"retry your request",
-									parsedCredentials.email,
-								)
-							: errorBody.detail;
-						throw new AIError.GeminiCliApiError(
-							`Cloud Code Assist API error (${response.status}): ${errorMessage}`,
-							response.status,
-							{ headers: response.headers },
-						);
-					}
-
-					// The URL this attempt POSTed to, not `response.url`: a custom
-					// `options.fetch` that answers with a constructed `Response`
-					// leaves that empty, and the empty-stream retry below then
-					// failed with a configuration error naming a URL the provider
-					// had in hand all along.
-					let currentResponse = response;
-
-					for (let emptyAttempt = 0; emptyAttempt <= MAX_EMPTY_STREAM_RETRIES; emptyAttempt++) {
-						if (options?.signal?.aborted) {
-							throw new AIError.RequestAbortError("Request was aborted");
-						}
-
-						if (emptyAttempt > 0) {
-							const backoffMs = EMPTY_STREAM_BASE_DELAY_MS * 2 ** (emptyAttempt - 1);
-							try {
-								await scheduler.wait(backoffMs, { signal: options?.signal });
-							} catch {
-								throw new AIError.RequestAbortError("Request was aborted");
-							}
-
-							currentResponse = await (options?.fetch ?? fetch)(requestUrl, {
-								method: "POST",
-								headers: requestHeaders,
-								body: requestBodyJson,
-								signal: options?.signal,
-							});
-
-							if (!currentResponse.ok) {
-								const retryErrorText = await currentResponse.text();
-								throw new AIError.GeminiCliApiError(
-									`Cloud Code Assist API error (${currentResponse.status}): ${retryErrorText}`,
-									currentResponse.status,
-									{ headers: currentResponse.headers },
-								);
-							}
-						}
-
-						const streamed = await streamResponse(currentResponse);
-						if (output.stopReason !== "stop" || streamed) {
-							receivedContent = streamed;
-							break;
-						}
-
-						if (emptyAttempt < MAX_EMPTY_STREAM_RETRIES) {
-							resetOutput();
-						}
-					}
-
-					if (output.stopReason === "aborted" || output.stopReason === "error") {
-						throw new AIError.ProviderResponseError(output.errorMessage ?? "An unknown error occurred", {
-							provider: model.provider,
-							kind: "output",
-						});
-					}
-
-					if (!receivedContent) {
-						throw new AIError.ProviderResponseError("Cloud Code Assist API returned an empty response", {
-							provider: model.provider,
-							kind: "empty-body",
-						});
-					}
-
-					if (options?.signal?.aborted) {
-						throw new AIError.RequestAbortError("Request was aborted");
-					}
-
-					// Same judgement as every other dialect, and for the same reason:
-					// a body that ends without a `finishReason` is a clean EOF, not a
-					// dropped transport, and rejecting all of them failed turns that
-					// had arrived whole. `stopReasonForTerminallessEof` owns it. A
-					// Cloud Code Assist function call arrives whole in one part with
-					// parsed `args`, so a missing name is the only partial shape.
-					if (!sawFinishReason) {
-						const toolBatchIsComplete = output.content.every(
-							block => block.type !== "toolCall" || block.name.length > 0,
-						);
-						const stopReason = stopReasonForTerminallessEof(output.content, toolBatchIsComplete);
-						if (stopReason === undefined) {
-							throw new AIError.ProviderResponseError(
-								"Cloud Code Assist stream ended without a finish reason (connection dropped or response truncated)",
-								{ provider: model.provider, kind: "incomplete-stream" },
-							);
-						}
-						output.stopReason = stopReason;
-					}
-
-					// Succeeded! Break the endpoints loop.
-					if (
-						providerState &&
-						(options?.antigravityEndpointMode === "auto" || !options?.antigravityEndpointMode)
-					) {
-						providerState.lastGoodEndpoint = endpoint;
-					}
-					// Commit after a fully successful attempt (content + finish reason);
-					// used as the next request's last_execution_id. Overwrite even when
-					// undefined so a response without an id can't leave a stale value.
-					if (providerState) {
-						providerState.lastExecutionId = lastResponseId;
-					}
-					break;
-				} catch (error) {
-					const status = extractHttpStatusFromError(error);
-					if (AIError.isTransientStatus(status)) {
-						if (!isLastEndpoint && !started) {
-							continue;
-						}
-					}
-					throw error;
-				}
-			}
-
-			if (output.stopReason === "aborted" || output.stopReason === "error") {
-				throw new AIError.ProviderResponseError(output.errorMessage ?? "An unknown error occurred", {
-					provider: model.provider,
-					kind: "output",
-				});
-			}
-
-			output.duration = performance.now() - startTime;
-			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
-			stream.push({ type: "done", reason: output.stopReason, message: output });
-			stream.end();
-		} catch (error) {
-			const result = await AIError.finalize(error, {
-				api: model.api,
-				signal: options?.signal,
-				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
-			});
-			AIError.applyFinalizeResult(output, result);
-			output.duration = performance.now() - startTime;
-			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
-			stream.push({ type: "error", reason: output.stopReason, error: output });
-			stream.end();
-		}
-	})();
-
+	void new GeminiCliStreamRun(model, context, options, stream).run();
 	return stream;
 };
 

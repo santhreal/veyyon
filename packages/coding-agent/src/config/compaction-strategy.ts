@@ -13,6 +13,7 @@
 // `@veyyon/ai/stream.ts` while a gate two directories away asserted that it did not.
 import type { CompactionSettings as CoreCompactionSettings } from "@veyyon/agent-core/compaction/threshold";
 import { resolveThresholdTokens } from "@veyyon/agent-core/compaction/threshold";
+import type { StatusContextBreakdown } from "@veyyon/wire/presentation";
 import type { CompactionSettings as SchemaCompactionSettings } from "./settings-schema";
 
 /** Stored compaction strategy after migration / schema validation. */
@@ -86,6 +87,26 @@ export function resolveContextLimit(contextWindow: number, settings: CoreCompact
 	// A non-positive threshold means no usable fire point was configured.
 	if (!(threshold > 0)) return { tokens: contextWindow, kind: "window" };
 	return { tokens: Math.min(threshold, contextWindow), kind: "compaction" };
+}
+
+/**
+ * `usedTokens` as the status gauge draws it: against the auto-compaction fire point when
+ * `compaction` settings are given (auto-compaction on), against the window when they are not.
+ */
+export function measureContextGauge(
+	usedTokens: number | null,
+	contextWindow: number,
+	compaction: CoreCompactionSettings | undefined,
+): StatusContextBreakdown {
+	let contextLimit = contextWindow;
+	let contextLimitKind: ContextLimitKind = "window";
+	if (compaction) {
+		const limit = resolveContextLimit(contextWindow, compaction);
+		contextLimit = limit.tokens;
+		contextLimitKind = limit.kind;
+	}
+	const contextPercent = usedTokens === null ? null : contextLimit > 0 ? (usedTokens / contextLimit) * 100 : null;
+	return { usedTokens, contextWindow, contextLimit, contextLimitKind, contextPercent };
 }
 
 /** Migrate any legacy strategy value to the stored `summary` enum. */

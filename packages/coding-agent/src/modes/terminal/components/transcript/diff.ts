@@ -1,7 +1,7 @@
 import { DEFAULT_TAB_WIDTH, sanitizeText } from "@veyyon/utils";
 import { SGR_INTENSITY_RESET } from "@veyyon/utils/ansi";
 import * as Diff from "diff";
-import { highlightCode } from "../../../../theme/highlight";
+import { type HighlightRequest, highlightCode } from "../../../../theme/highlight";
 import { theme } from "../../../../theme/theme-binding";
 import { type CodeFrameMarker, formatCodeFrameLine, replaceTabs } from "../../../../tools/core/render-utils";
 import { getLanguageFromPath } from "../../../../utils/lang-from-path";
@@ -35,11 +35,13 @@ function visualizeIndent(text: string): string {
 	return `${visible}${replaceTabs(rest)}`;
 }
 
+type ParsedDiffLine = { prefix: CodeFrameMarker; lineNum: string; content: string } | null;
+
 /**
  * Parse diff line to extract prefix, line number, and content.
  * Supported formats: "+123|content" (canonical) and "+123 content" (legacy).
  */
-function parseDiffLine(line: string): { prefix: CodeFrameMarker; lineNum: string; content: string } | null {
+function parseDiffLine(line: string): ParsedDiffLine {
 	const canonical = line.match(/^([+-\s])(\s*\d+)\|(.*)$/);
 	if (canonical) {
 		return { prefix: canonical[1] as CodeFrameMarker, lineNum: canonical[2] ?? "", content: canonical[3] ?? "" };
@@ -219,25 +221,31 @@ export function renderDiff(diffText: string, options: RenderDiffOptions = {}): s
  * letting callers fall back to the existing rendering path.
  */
 function highlightContextLines(
-	parsedLines: Array<{ prefix: CodeFrameMarker; lineNum: string; content: string } | null>,
+	parsedLines: readonly ParsedDiffLine[],
 	filePath: string | undefined,
 ): Map<number, string> {
 	const map = new Map<number, string>();
 	const lang = filePath ? getLanguageFromPath(filePath) : undefined;
 	if (!lang) return map;
-
-	let runIndices: number[] = [];
-	let runContents: string[] = [];
-	const flush = () => {
-		if (runContents.length === 0) return;
-		const highlighted = highlightCode(runContents.join("\n"), lang);
-		for (let k = 0; k < runIndices.length; k++) {
-			map.set(runIndices[k], highlighted[k] ?? runContents[k]);
+	for (const run of contextRuns(parsedLines)) {
+		const highlighted = highlightCode(run.contents.join("\n"), lang);
+		for (let k = 0; k < run.indices.length; k++) {
+			map.set(run.indices[k]!, highlighted[k] ?? run.contents[k]!);
 		}
-		runIndices = [];
-		runContents = [];
-	};
+	}
+	return map;
+}
 
+/** Consecutive context lines, highlighted as one source so each tokenizes after the ones above it. */
+interface ContextRun {
+	/** The index of each line in the parsed diff. */
+	readonly indices: number[];
+	readonly contents: string[];
+}
+
+function contextRuns(parsedLines: readonly ParsedDiffLine[]): ContextRun[] {
+	const runs: ContextRun[] = [];
+	let run: ContextRun | undefined;
 	for (let j = 0; j < parsedLines.length; j++) {
 		const p = parsedLines[j];
 		// Collapse markers ("...") are emitted as context lines but are not real
@@ -245,12 +253,24 @@ function highlightContextLines(
 		// and would also stitch together unrelated context blocks across the gap.
 		const isCollapseMarker = p?.prefix === " " && (p.content === "..." || p.content === "…");
 		if (p && p.prefix === " " && !isCollapseMarker) {
-			runIndices.push(j);
-			runContents.push(p.content);
+			if (run === undefined) {
+				run = { indices: [], contents: [] };
+				runs.push(run);
+			}
+			run.indices.push(j);
+			run.contents.push(p.content);
 		} else {
-			flush();
+			run = undefined;
 		}
 	}
-	flush();
-	return map;
+	return runs;
+}
+
+/** Add the sources `renderDiff(diffText, options)` hands the highlighter to `into`. */
+export function diffHighlightRequests(diffText: string, options: RenderDiffOptions, into: HighlightRequest[]): void {
+	const lang = options.filePath ? getLanguageFromPath(options.filePath) : undefined;
+	if (!lang) return;
+	for (const run of contextRuns(sanitizeText(diffText).split("\n").map(parseDiffLine))) {
+		into.push({ code: run.contents.join("\n"), lang });
+	}
 }

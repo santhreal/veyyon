@@ -182,11 +182,28 @@ const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
  * agent run, split out of `task/executor.ts` (3497 lines to 2450). It imports modules the executor
  * already reached, so the launch runs no new code.
  *
+ * 1568 to 1569: `secrets/session-runtime.ts`, the secret loader, expansion lease, reload queue and
+ * tool-argument expansion a session runs, split out of `sdk.ts` (3899 lines to 3322). It imports
+ * modules `sdk.ts` already reached, so the launch runs no new code.
+ *
+ * 1569 to 1570: `session/startup-model.ts`, the two-pass model and thinking-level selection a
+ * session starts on, split out of `sdk.ts` (3322 lines to 2879). It imports modules `sdk.ts`
+ * already reached, so the launch runs no new code.
+ *
+ * 1570 to 1571: `session/tool-session.ts`, the tool session a session's tools run against and the
+ * advisor's derived view of it, split out of `sdk.ts` (2705 lines to 2524). It imports modules
+ * `sdk.ts` already reached, so the launch runs no new code.
+ *
+ * 1571 to 1572: `session/prompt-inputs.ts`, the project inputs a session's system prompt renders
+ * and their re-discovery after a working-directory change, split out of `sdk.ts` (2524 lines to
+ * 2281) with the MCP startup that moved into `session/factory-mcp.ts`. It imports modules
+ * `sdk.ts` already reached, so the launch runs no new code.
+ *
  * A ratchet, not a target: nothing breaks when it grows, which is exactly why it is pinned. There
  * is no margin left on purpose — the next module on this graph is a barrel someone reached for
  * and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1568;
+const LAUNCH_REACH_CEILING = 1572;
 
 /**
  * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The

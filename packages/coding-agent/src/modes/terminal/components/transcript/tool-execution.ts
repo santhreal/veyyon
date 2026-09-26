@@ -18,7 +18,13 @@ import {
 import { formatMoreLines, logger } from "@veyyon/utils";
 import type { ImageFallbackReason } from "@veyyon/utils/image-fallback";
 import { isRecord } from "@veyyon/utils/type-guards";
-import type { ToolExecutionBlock } from "@veyyon/wire/presentation";
+import type { ToolView } from "@veyyon/view";
+import type {
+	ToolExecutionBlock,
+	ToolExecutionDisplay,
+	ToolExecutionImageItem,
+	ToolExecutionMultiFileItem,
+} from "@veyyon/wire/presentation";
 import type { RenderResultOptions } from "../../../../extensibility/custom-tools/types";
 import {
 	buildToolRenderContext,
@@ -27,6 +33,7 @@ import {
 	type ToolExecutionProducer,
 } from "../../../../presentation/tool-execution";
 import { recordImageDisplay } from "../../../../session/image-visibility";
+import type { HighlightRequest } from "../../../../theme/highlight";
 import { transitionsEnabled } from "../../../../theme/shimmer";
 import type { Theme } from "../../../../theme/theme";
 import { getThemeEpoch, theme } from "../../../../theme/theme";
@@ -49,7 +56,7 @@ import {
 	truncateToWidth,
 } from "../../../../tools/core/render-utils";
 import { toolViewDefinitions } from "../../../../tools/view-registry";
-import { drawToolView } from "../../draw/draw-tool-view";
+import { drawToolView, toolViewHighlightRequests } from "../../draw/draw-tool-view";
 import {
 	CachedOutputBlock,
 	isFramedBlockComponent,
@@ -77,6 +84,29 @@ export { turnFailedToolResult } from "../../../../presentation/tool-execution";
 
 export type DisplaceableToolName = "job" | "todo";
 
+/** What a card's call phase draws: its title row, the tool's own renderer, a failure, its view, or nothing. */
+type CallDrawing =
+	| { readonly kind: "title" }
+	| { readonly kind: "custom" }
+	| { readonly kind: "failure"; readonly error: string }
+	| { readonly kind: "view"; readonly view: ToolView }
+	| { readonly kind: "nothing" };
+
+/** What a card's result phase draws. */
+type ResultDrawing =
+	| { readonly kind: "custom" }
+	| { readonly kind: "failure"; readonly error: string; readonly fallbackText: string | undefined }
+	| { readonly kind: "multiFile"; readonly items: readonly ToolExecutionMultiFileItem[] }
+	| { readonly kind: "view"; readonly view: ToolView }
+	| { readonly kind: "generic" }
+	| { readonly kind: "raw" };
+
+const DRAW_TITLE = { kind: "title" } as const;
+const DRAW_CUSTOM = { kind: "custom" } as const;
+const DRAW_NOTHING = { kind: "nothing" } as const;
+const DRAW_GENERIC = { kind: "generic" } as const;
+const DRAW_RAW = { kind: "raw" } as const;
+
 const ROW_INDENT_PATTERN = /^((?:\x1b\[[0-9;]*m)*)( *)/;
 
 function dedent(rows: readonly string[]): string[] {
@@ -98,6 +128,9 @@ interface ImagePlaceholder {
 	readonly block: { data?: string; mimeType?: string };
 	readonly reason: ImageFallbackReason;
 }
+
+/** The render options a tool's call and result renderers receive. */
+type ToolRenderState = RenderResultOptions & { renderContext?: Record<string, unknown> };
 
 function isAgentToolLike(value: unknown): value is AnyAgentTool {
 	return (
@@ -175,7 +208,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	#resultVersion = 1;
 	#lastDisplayKey: string | undefined;
 	#displayInputVersion = 0;
-	#displayBuilt = false;
+	#displayStale = true;
 	#renderedImageCount = 0;
 	#convertedImages: Map<number, { data: string; mimeType: string }> = new Map();
 	#imageConversionFailures: Set<number> = new Set();
@@ -795,13 +828,67 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#updateDisplay();
 	}
 
+	/**
+	 * Mark the drawn display stale; the next `render` rebuilds it once.
+	 *
+	 * A card changes several times before it is drawn: a rebuilt transcript constructs it with the
+	 * call, expands it, hands it the result and seals it, and a streaming call gets more argument
+	 * deltas than frames. Drawing on each change highlighted the whole call view of every rebuilt
+	 * write only to replace it with the result view a moment later: on a 4,712-block session,
+	 * rebuilding and drawing the transcript took 999 ms that way and takes 603 ms drawn at render.
+	 * Drawing at render draws the state the frame shows, and nothing the frame never shows.
+	 */
 	#updateDisplay(): void {
-		const key = `${this.#resultVersion}|${this.#expanded}|${this.#isPartial}|${this.#spinnerFrame ?? "-"}|${this.#showImages}|${getThemeEpoch()}|${this.#displayInputVersion}|${this.#backgroundTaskFrozen}|${this.#sealed}|${TERMINAL.imageProtocol ?? "-"}|${this.#imageSizeKey()}`;
-		if (key === this.#lastDisplayKey && this.#displayBuilt) return;
-		this.#lastDisplayKey = key;
+		this.#displayStale = true;
+	}
 
+	#ensureDisplay(): void {
+		if (!this.#displayStale) return;
+		this.#displayStale = false;
+		const key = this.#displayKey();
+		if (key === this.#lastDisplayKey) return;
+		this.#lastDisplayKey = key;
 		this.#rebuildDisplay();
-		this.#displayBuilt = true;
+	}
+
+	/** Every input the drawn display depends on: the display is redrawn when this changes. */
+	#displayKey(): string {
+		return `${this.#resultVersion}|${this.#expanded}|${this.#isPartial}|${this.#spinnerFrame ?? "-"}|${this.#showImages}|${getThemeEpoch()}|${this.#displayInputVersion}|${this.#backgroundTaskFrozen}|${this.#sealed}|${TERMINAL.imageProtocol ?? "-"}|${this.#imageSizeKey()}`;
+	}
+
+	/**
+	 * Add the sources the next draw of this card hands the highlighter to `into`: none when the next
+	 * render would not redraw it. A rebuilt transcript collects them from every card and highlights
+	 * them together before the frame that draws them.
+	 */
+	highlightRequests(into: HighlightRequest[]): void {
+		if (!this.#displayStale || this.#displayKey() === this.#lastDisplayKey) return;
+		const display = this.#block.display;
+		const { hasResult, drawsCall } = this.#phases(display);
+		if (drawsCall) {
+			const call = this.#callDrawing(display, hasResult);
+			if (call.kind === "view") toolViewHighlightRequests(call.view, into);
+		}
+		if (!hasResult) return;
+		const result = this.#resultDrawing(display);
+		if (result.kind === "view") {
+			toolViewHighlightRequests(result.view, into);
+		} else if (result.kind === "multiFile") {
+			for (const item of result.items) {
+				if (item.view) toolViewHighlightRequests(item.view, into);
+			}
+		}
+	}
+
+	/** Whether the display draws a result, and whether it draws the call, which a merged result replaces. */
+	#phases(display: ToolExecutionDisplay | undefined): { readonly hasResult: boolean; readonly drawsCall: boolean } {
+		const hasResult =
+			!display?.neverRan &&
+			(!this.#isPartial || this.#block.output !== undefined || this.#block.error !== undefined);
+		const mergeCallAndResult =
+			display?.policies?.mergeCallAndResult ??
+			Boolean(toolViewDefinitions[this.#block.toolName]?.mergeCallAndResult);
+		return { hasResult, drawsCall: !hasResult || !mergeCallAndResult };
 	}
 
 	#needsFirstResultViewportRepaintAtRender(): boolean {
@@ -825,6 +912,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	}
 
 	override render(width: number): readonly string[] {
+		this.#ensureDisplay();
 		const lines = super.render(width);
 		this.#firstResultViewportRepaintShapePainted = this.#needsFirstResultViewportRepaintAtRender();
 		this.#partialResultShapePainted = this.#isPartial;
@@ -848,8 +936,6 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	#rebuildDisplay(): void {
 		this.#railRowsPresent = undefined;
 		const display = this.#block.display;
-		const callFailure = display?.failures?.call;
-		const resultFailure = display?.failures?.result;
 
 		// Clean up previous multi-file boxes
 		for (const box of this.#multiFileBoxes) {
@@ -861,13 +947,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		const previousChildren = this.#contentBox.children;
 		this.#contentBox.clear();
 
-		const tool = this.#options.tool;
-		const custom = this.#options.customRenderer;
-		const customCall = custom?.renderCall ?? tool?.renderCall;
-		const customResult = custom?.renderResult ?? tool?.renderResult;
-
 		const fallbackText = this.#block.error ?? this.#block.output ?? "";
-		const renderState = {
+		const renderState: ToolRenderState = {
 			expanded: this.#expanded,
 			isPartial: this.#isPartial,
 			spinnerFrame: this.#spinnerFrame,
@@ -883,220 +964,263 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			),
 		};
 
-		const hasResult =
-			!display?.neverRan &&
-			(!this.#isPartial || this.#block.output !== undefined || this.#block.error !== undefined);
-		const mergeCallAndResult =
-			display?.policies?.mergeCallAndResult ??
-			Boolean(toolViewDefinitions[this.#block.toolName]?.mergeCallAndResult);
-		const shouldRenderCall = !hasResult || !mergeCallAndResult;
+		const { hasResult, drawsCall } = this.#phases(display);
+		const callArgs = this.#producer ? this.#producer.callPreview.arguments : this.#parseInputArgs(this.#block.input);
+
+		const callRendered = drawsCall ? this.#renderCallPhase(display, hasResult, callArgs, renderState) : false;
+		if (hasResult) {
+			this.#renderResultPhase(display, callArgs, renderState);
+		} else if (!callRendered && display?.generic) {
+			this.#addGenericContent();
+		}
+
+		this.#rebuildImages(display?.images);
+		this.#rebuildNotExecutedNotice(display);
+		if (previousChildren.length > 0) {
+			const retained = new Set(this.#contentBox.children);
+			for (const child of previousChildren) {
+				if (!retained.has(child)) child.dispose?.();
+			}
+		}
+		this.#renderedImageCount = this.#imageComponents.length;
+	}
+
+	/** The tool's title row: its display label, or its name. */
+	#addTitleRow(display: ToolExecutionDisplay | undefined): void {
+		this.#contentBox.addChild(
+			this.#onRail(new Text(theme.fg("toolTitle", theme.bold(display?.toolLabel ?? this.#block.toolName)), 0, 0)),
+		);
+	}
+
+	/** Report a call renderer failure and fall back to the title row. */
+	#addCallFailure(display: ToolExecutionDisplay | undefined, err: unknown): void {
+		this.#contentBox.addChild(
+			reportRendererFailure(`tool "${this.#block.toolName}" call`, err, "showing the tool name only"),
+		);
+		this.#addTitleRow(display);
+	}
+
+	/** Report a result renderer failure and fall back to the raw output, when there is any. */
+	#addResultFailure(err: unknown, raw: string | undefined): void {
+		const fallback = raw ? "showing raw output" : "there is no raw output to show instead";
+		this.#contentBox.addChild(reportRendererFailure(`tool "${this.#block.toolName}" result`, err, fallback));
+		this.#addRawOutput(raw);
+	}
+
+	#addRawOutput(raw: string | undefined): void {
+		if (!raw) return;
+		this.#contentBox.addChild(
+			this.#onRail(new Text(theme.fg("toolOutput", replaceTabs(shortenEmbeddedPaths(raw))), 0, 0)),
+		);
+	}
+
+	#addGenericContent(): void {
+		this.#contentBox.addChild(this.#onRail(this.#contentText));
+		this.#contentText.invalidate();
+	}
+
+	/**
+	 * What the call phase draws. Chosen apart from the drawing, so `highlightRequests` reads the
+	 * choice the draw makes.
+	 */
+	#callDrawing(display: ToolExecutionDisplay | undefined, hasResult: boolean): CallDrawing {
 		// A call render that IS a live widget (`callIsLiveWidget`, today only `ask`) is replaced by
 		// the plain label once the call is known never to have run, so an unasked question is not
 		// left looking answerable.
-		const suppressMergedWidget = display?.neverRan === true && display.policies?.callIsLiveWidget === true;
-		const callArgs = this.#producer ? this.#producer.callPreview.arguments : this.#parseInputArgs(this.#block.input);
+		if (display?.neverRan === true && display.policies?.callIsLiveWidget === true) return DRAW_TITLE;
+		if (this.#options.customRenderer?.renderCall ?? this.#options.tool?.renderCall) return DRAW_CUSTOM;
+		const failure = display?.failures?.call;
+		if (failure) return { kind: "failure", error: failure.error };
+		if (display?.callView) return { kind: "view", view: display.callView };
+		return !hasResult && !display?.generic ? DRAW_TITLE : DRAW_NOTHING;
+	}
 
-		// Call Phase
-		let callRendered = false;
-		if (shouldRenderCall) {
-			if (suppressMergedWidget) {
-				this.#contentBox.addChild(
-					this.#onRail(
-						new Text(theme.fg("toolTitle", theme.bold(display?.toolLabel ?? this.#block.toolName)), 0, 0),
-					),
-				);
-				callRendered = true;
-			} else if (customCall) {
+	/** Draw the call phase. True when it added a row for the call. */
+	#renderCallPhase(
+		display: ToolExecutionDisplay | undefined,
+		hasResult: boolean,
+		callArgs: unknown,
+		renderState: ToolRenderState,
+	): boolean {
+		const drawing = this.#callDrawing(display, hasResult);
+		switch (drawing.kind) {
+			case "title":
+				this.#addTitleRow(display);
+				return true;
+			case "custom":
+				return this.#renderCustomCall(display, callArgs, renderState);
+			case "failure":
+				this.#addCallFailure(display, new Error(drawing.error));
+				return true;
+			case "view":
 				try {
-					const comp = customCall.call(custom?.renderCall ? custom : tool, callArgs, renderState, theme) as
-						| Component
-						| undefined;
-					if (comp) {
-						this.#contentBox.addChild(this.#onRail(comp));
-						callRendered = true;
-					}
+					this.#contentBox.addChild(this.#onRail(drawToolView(drawing.view, theme, this.#spinnerFrame)));
 				} catch (err) {
-					this.#contentBox.addChild(
-						reportRendererFailure(`tool "${this.#block.toolName}" call`, err, "showing the tool name only"),
-					);
-					this.#contentBox.addChild(
-						this.#onRail(
-							new Text(theme.fg("toolTitle", theme.bold(display?.toolLabel ?? this.#block.toolName)), 0, 0),
-						),
-					);
-					callRendered = true;
+					this.#addCallFailure(display, err);
 				}
-			} else if (callFailure) {
-				this.#contentBox.addChild(
+				return true;
+			case "nothing":
+				return false;
+		}
+	}
+
+	/** Draw the call through the tool's own renderer. True when it drew a row. */
+	#renderCustomCall(
+		display: ToolExecutionDisplay | undefined,
+		callArgs: unknown,
+		renderState: ToolRenderState,
+	): boolean {
+		const custom = this.#options.customRenderer;
+		const tool = this.#options.tool;
+		const customCall = custom?.renderCall ?? tool?.renderCall;
+		if (!customCall) return false;
+		try {
+			const comp = customCall.call(custom?.renderCall ? custom : tool, callArgs, renderState, theme) as
+				| Component
+				| undefined;
+			if (!comp) return false;
+			this.#contentBox.addChild(this.#onRail(comp));
+		} catch (err) {
+			this.#addCallFailure(display, err);
+		}
+		return true;
+	}
+
+	/** What the result phase draws, chosen apart from the drawing as `#callDrawing` is. */
+	#resultDrawing(display: ToolExecutionDisplay | undefined): ResultDrawing {
+		if (this.#options.customRenderer?.renderResult ?? this.#options.tool?.renderResult) return DRAW_CUSTOM;
+		const failure = display?.failures?.result;
+		if (failure) return { kind: "failure", error: failure.error, fallbackText: failure.fallbackText };
+		if (display?.multiFileViews && display.multiFileViews.length > 1) {
+			return { kind: "multiFile", items: display.multiFileViews };
+		}
+		if (display?.resultView) return { kind: "view", view: display.resultView };
+		return display?.generic ? DRAW_GENERIC : DRAW_RAW;
+	}
+
+	#renderResultPhase(
+		display: ToolExecutionDisplay | undefined,
+		callArgs: unknown,
+		renderState: ToolRenderState,
+	): void {
+		const drawing = this.#resultDrawing(display);
+		switch (drawing.kind) {
+			case "custom":
+				this.#renderCustomResult(callArgs, renderState);
+				return;
+			case "failure":
+				this.#addResultFailure(
+					new Error(drawing.error),
+					drawing.fallbackText ?? this.#block.error ?? this.#block.output,
+				);
+				return;
+			case "multiFile":
+				this.#renderMultiFileViews(drawing.items, display?.remainingPendingFiles);
+				return;
+			case "view":
+				try {
+					this.#contentBox.addChild(this.#onRail(drawToolView(drawing.view, theme, this.#spinnerFrame)));
+				} catch (err) {
+					this.#addResultFailure(err, this.#block.error ?? this.#block.output);
+				}
+				return;
+			case "generic":
+				this.#addGenericContent();
+				return;
+			case "raw":
+				this.#addRawOutput(this.#block.error ?? this.#block.output);
+				return;
+		}
+	}
+
+	#renderCustomResult(callArgs: unknown, renderState: ToolRenderState): void {
+		const custom = this.#options.customRenderer;
+		const tool = this.#options.tool;
+		const fallbackText = this.#block.error ?? this.#block.output ?? "";
+		const rawContent = this.#producer?.result?.content;
+		const content: (TextContent | ImageContent)[] = Array.isArray(rawContent)
+			? (rawContent as (TextContent | ImageContent)[])
+			: typeof rawContent === "string"
+				? [{ type: "text", text: rawContent }]
+				: [{ type: "text", text: fallbackText }];
+		const resultPayload: AgentToolResult<unknown> = {
+			content,
+			details: this.#producer?.result?.details,
+			isError: this.#producer?.result?.isError ?? Boolean(this.#block.error),
+		};
+		try {
+			const comp = (
+				custom?.renderResult
+					? custom.renderResult(resultPayload, renderState, theme, callArgs)
+					: tool?.renderResult?.(resultPayload, renderState, theme, callArgs)
+			) as Component | undefined;
+			if (comp) this.#contentBox.addChild(this.#onRail(comp));
+		} catch (err) {
+			this.#addResultFailure(err, this.#block.error ?? this.#block.output);
+		}
+	}
+
+	#addMultiFileChild(child: Box | Spacer): void {
+		this.#multiFileBoxes.push(child);
+		this.addChild(child);
+	}
+
+	#renderMultiFileViews(
+		views: readonly ToolExecutionMultiFileItem[],
+		remainingPendingFiles: number | undefined,
+	): void {
+		for (let i = 0; i < views.length; i++) {
+			if (i > 0) this.#addMultiFileChild(new Spacer(1));
+			this.#addMultiFileChild(this.#multiFileBox(views[i]));
+		}
+		if (remainingPendingFiles && remainingPendingFiles > 0 && this.#isPartial) {
+			this.#addMultiFileChild(new Spacer(1));
+			this.#addMultiFileChild(this.#pendingFilesBox(remainingPendingFiles));
+		}
+	}
+
+	#multiFileBox(item: ToolExecutionMultiFileItem): Box {
+		const fileBox = new Box(COMPOSER_INSET_COLS, 0);
+		if (item.view) {
+			try {
+				fileBox.addChild(this.#onRail(drawToolView(item.view, theme, this.#spinnerFrame)));
+			} catch (err) {
+				fileBox.addChild(
 					reportRendererFailure(
-						`tool "${this.#block.toolName}" call`,
-						new Error(callFailure.error),
-						"showing the tool name only",
+						`tool "${this.#block.toolName}" result`,
+						err,
+						`no result is shown for ${item.path}`,
 					),
 				);
-				this.#contentBox.addChild(
-					this.#onRail(
-						new Text(theme.fg("toolTitle", theme.bold(display?.toolLabel ?? this.#block.toolName)), 0, 0),
-					),
-				);
-				callRendered = true;
-			} else if (display?.callView) {
-				try {
-					const callComp = drawToolView(display.callView, theme, this.#spinnerFrame);
-					this.#contentBox.addChild(this.#onRail(callComp));
-					callRendered = true;
-				} catch (err) {
-					this.#contentBox.addChild(
-						reportRendererFailure(`tool "${this.#block.toolName}" call`, err, "showing the tool name only"),
-					);
-					this.#contentBox.addChild(
-						this.#onRail(
-							new Text(theme.fg("toolTitle", theme.bold(display?.toolLabel ?? this.#block.toolName)), 0, 0),
-						),
-					);
-					callRendered = true;
-				}
-			} else if (!hasResult && !display?.generic) {
-				this.#contentBox.addChild(
-					this.#onRail(
-						new Text(theme.fg("toolTitle", theme.bold(display?.toolLabel ?? this.#block.toolName)), 0, 0),
-					),
-				);
-				callRendered = true;
 			}
+		} else if (item.errorNotice) {
+			fileBox.addChild(
+				reportRendererFailure(
+					`tool "${this.#block.toolName}" result`,
+					new Error(item.errorNotice),
+					`no result is shown for ${item.path}`,
+				),
+			);
 		}
+		return fileBox;
+	}
 
-		// Result Phase / Generic Display
-		if (hasResult) {
-			if (customResult) {
-				const fallbackText = this.#block.error ?? this.#block.output ?? "";
-				const rawContent = this.#producer?.result?.content;
-				const content: (TextContent | ImageContent)[] = Array.isArray(rawContent)
-					? (rawContent as (TextContent | ImageContent)[])
-					: typeof rawContent === "string"
-						? [{ type: "text", text: rawContent }]
-						: [{ type: "text", text: fallbackText }];
-				const resultPayload: AgentToolResult<unknown> = {
-					content,
-					details: this.#producer?.result?.details,
-					isError: this.#producer?.result?.isError ?? Boolean(this.#block.error),
-				};
-				try {
-					const comp = (
-						custom?.renderResult
-							? custom.renderResult(resultPayload, renderState, theme, callArgs)
-							: tool?.renderResult?.(resultPayload, renderState, theme, callArgs)
-					) as Component | undefined;
-					if (comp) this.#contentBox.addChild(this.#onRail(comp));
-				} catch (err) {
-					const raw = this.#block.error ?? this.#block.output;
-					const fallback = raw ? "showing raw output" : "there is no raw output to show instead";
-					this.#contentBox.addChild(reportRendererFailure(`tool "${this.#block.toolName}" result`, err, fallback));
-					if (raw) {
-						this.#contentBox.addChild(
-							this.#onRail(new Text(theme.fg("toolOutput", replaceTabs(shortenEmbeddedPaths(raw))), 0, 0)),
-						);
-					}
-				}
-			} else if (resultFailure) {
-				const raw = resultFailure.fallbackText ?? this.#block.error ?? this.#block.output;
-				const fallback = raw ? "showing raw output" : "there is no raw output to show instead";
-				this.#contentBox.addChild(
-					reportRendererFailure(`tool "${this.#block.toolName}" result`, new Error(resultFailure.error), fallback),
-				);
-				if (raw) {
-					this.#contentBox.addChild(
-						this.#onRail(new Text(theme.fg("toolOutput", replaceTabs(shortenEmbeddedPaths(raw))), 0, 0)),
-					);
-				}
-			} else if (display?.multiFileViews && display.multiFileViews.length > 1) {
-				for (let i = 0; i < display.multiFileViews.length; i++) {
-					const item = display.multiFileViews[i];
-					if (i > 0) {
-						const spacer = new Spacer(1);
-						this.#multiFileBoxes.push(spacer);
-						this.addChild(spacer);
-					}
-					const fileBox = new Box(COMPOSER_INSET_COLS, 0);
-					if (item.view) {
-						try {
-							const itemComp = drawToolView(item.view, theme, this.#spinnerFrame);
-							fileBox.addChild(this.#onRail(itemComp));
-						} catch (err) {
-							fileBox.addChild(
-								reportRendererFailure(
-									`tool "${this.#block.toolName}" result`,
-									err,
-									`no result is shown for ${item.path}`,
-								),
-							);
-						}
-					} else if (item.errorNotice) {
-						fileBox.addChild(
-							reportRendererFailure(
-								`tool "${this.#block.toolName}" result`,
-								new Error(item.errorNotice),
-								`no result is shown for ${item.path}`,
-							),
-						);
-					}
-					this.#multiFileBoxes.push(fileBox);
-					this.addChild(fileBox);
-				}
+	#pendingFilesBox(count: number): Box {
+		const pendingBox = new Box(COMPOSER_INSET_COLS, 0);
+		const spinner = this.#spinnerFrame !== undefined ? formatStatusIcon("running", theme, this.#spinnerFrame) : "";
+		const pendingText = renderStatusLine(
+			{
+				iconOverride: spinner,
+				title: "Edit",
+				description: theme.fg("dim", `${count} more file${count > 1 ? "s" : ""} pending…`),
+			},
+			theme,
+		);
+		pendingBox.addChild(this.#onRail(new Text(pendingText, 0, 0)));
+		return pendingBox;
+	}
 
-				if (display.remainingPendingFiles && display.remainingPendingFiles > 0 && this.#isPartial) {
-					const pendingSpacer = new Spacer(1);
-					this.#multiFileBoxes.push(pendingSpacer);
-					this.addChild(pendingSpacer);
-					const pendingBox = new Box(COMPOSER_INSET_COLS, 0);
-					const spinner =
-						this.#spinnerFrame !== undefined ? formatStatusIcon("running", theme, this.#spinnerFrame) : "";
-					const pendingText = renderStatusLine(
-						{
-							iconOverride: spinner,
-							title: "Edit",
-							description: theme.fg(
-								"dim",
-								`${display.remainingPendingFiles} more file${display.remainingPendingFiles > 1 ? "s" : ""} pending…`,
-							),
-						},
-						theme,
-					);
-					pendingBox.addChild(this.#onRail(new Text(pendingText, 0, 0)));
-					this.#multiFileBoxes.push(pendingBox);
-					this.addChild(pendingBox);
-				}
-			} else if (display?.resultView) {
-				try {
-					const resultComp = drawToolView(display.resultView, theme, this.#spinnerFrame);
-					this.#contentBox.addChild(this.#onRail(resultComp));
-				} catch (err) {
-					const raw = this.#block.error ?? this.#block.output;
-					const fallback = raw ? "showing raw output" : "there is no raw output to show instead";
-					this.#contentBox.addChild(reportRendererFailure(`tool "${this.#block.toolName}" result`, err, fallback));
-					if (raw) {
-						this.#contentBox.addChild(
-							this.#onRail(new Text(theme.fg("toolOutput", replaceTabs(shortenEmbeddedPaths(raw))), 0, 0)),
-						);
-					}
-				}
-			} else if (display?.generic) {
-				this.#contentBox.addChild(this.#onRail(this.#contentText));
-				this.#contentText.invalidate();
-			} else {
-				const raw = this.#block.error ?? this.#block.output;
-				if (raw) {
-					this.#contentBox.addChild(
-						this.#onRail(new Text(theme.fg("toolOutput", replaceTabs(shortenEmbeddedPaths(raw))), 0, 0)),
-					);
-				}
-			}
-		} else if (!callRendered && display?.generic) {
-			this.#contentBox.addChild(this.#onRail(this.#contentText));
-			this.#contentText.invalidate();
-		}
-
-		// Images
+	#rebuildImages(images: readonly ToolExecutionImageItem[] | undefined): void {
 		for (const img of this.#imageComponents) {
 			this.removeChild(img);
 		}
@@ -1105,60 +1229,54 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			this.removeChild(spacer);
 		}
 		this.#imageSpacers = [];
+		if (!images || images.length === 0) return;
 
-		const images = display?.images;
-		if (images && images.length > 0) {
-			const canDraw = Boolean(TERMINAL.imageProtocol) && this.#showImages;
-			const undrawable: ImagePlaceholder[] = [];
-
-			for (let i = 0; i < images.length; i++) {
-				const img = images[i];
-				if (!canDraw) {
-					const reason = TERMINAL.imageProtocol ? "images-off" : "no-protocol";
-					undrawable.push({ block: img, reason });
-					this.#reportImageDisplay(i, reason);
-					continue;
-				}
-				if (!img.data || !img.mimeType) continue;
-
-				const converted = this.#convertedImages.get(i);
-				const imageData = converted?.data ?? img.data;
-				const imageMimeType = converted?.mimeType ?? img.mimeType;
-
-				if (TERMINAL.imageProtocol === ImageProtocol.Kitty && imageMimeType !== "image/png") {
-					if (this.#imageConversionFailures.has(i)) {
-						undrawable.push({ block: img, reason: "unsupported-format" });
-						this.#reportImageDisplay(i, "unsupported-format");
-					}
-					continue;
-				}
-
-				const spacer = new Spacer(1);
-				this.addChild(spacer);
-				this.#imageSpacers.push(spacer);
-				this.#reportImageDisplay(i, undefined);
-				const imageComponent = new Image(
-					imageData,
-					imageMimeType,
-					{ fallbackColor: (s: string) => theme.fg("toolOutput", s) },
-					{
-						...resolveImageOptions(),
-						budget: this.#ui?.imageBudget,
-						imageKey: `te${this.#instanceId}:${i}`,
-						onDisplayed: fallback => this.#reportImageDisplay(i, fallback),
-					},
-				);
-				this.#imageComponents.push(imageComponent);
-				this.addChild(imageComponent);
-			}
-
-			if (undrawable.length > 0) {
-				const rows = this.#imagePlaceholderRows(undrawable);
-				this.#contentBox.addChild(this.#onRail(new Text(theme.fg("dim", rows), 0, 0)));
-			}
+		const hiddenReason: ImageFallbackReason | undefined =
+			TERMINAL.imageProtocol && this.#showImages ? undefined : TERMINAL.imageProtocol ? "images-off" : "no-protocol";
+		const undrawable: ImagePlaceholder[] = [];
+		for (let i = 0; i < images.length; i++) {
+			const img = images[i];
+			const reason = hiddenReason ?? this.#addImage(img, i);
+			if (reason === undefined) continue;
+			undrawable.push({ block: img, reason });
+			this.#reportImageDisplay(i, reason);
 		}
+		if (undrawable.length > 0) {
+			const rows = this.#imagePlaceholderRows(undrawable);
+			this.#contentBox.addChild(this.#onRail(new Text(theme.fg("dim", rows), 0, 0)));
+		}
+	}
 
-		// Not executed notice
+	/** Add a drawable image with its spacer. The reason it cannot be drawn, when it has image data it cannot show. */
+	#addImage(img: ToolExecutionImageItem, i: number): ImageFallbackReason | undefined {
+		if (!img.data || !img.mimeType) return undefined;
+		const converted = this.#convertedImages.get(i);
+		const imageData = converted?.data ?? img.data;
+		const imageMimeType = converted?.mimeType ?? img.mimeType;
+		if (TERMINAL.imageProtocol === ImageProtocol.Kitty && imageMimeType !== "image/png") {
+			return this.#imageConversionFailures.has(i) ? "unsupported-format" : undefined;
+		}
+		const spacer = new Spacer(1);
+		this.addChild(spacer);
+		this.#imageSpacers.push(spacer);
+		this.#reportImageDisplay(i, undefined);
+		const imageComponent = new Image(
+			imageData,
+			imageMimeType,
+			{ fallbackColor: (s: string) => theme.fg("toolOutput", s) },
+			{
+				...resolveImageOptions(),
+				budget: this.#ui?.imageBudget,
+				imageKey: `te${this.#instanceId}:${i}`,
+				onDisplayed: fallback => this.#reportImageDisplay(i, fallback),
+			},
+		);
+		this.#imageComponents.push(imageComponent);
+		this.addChild(imageComponent);
+		return undefined;
+	}
+
+	#rebuildNotExecutedNotice(display: ToolExecutionDisplay | undefined): void {
 		if (this.#notExecutedNotice) {
 			this.removeChild(this.#notExecutedNotice);
 			this.#notExecutedNotice = undefined;
@@ -1169,21 +1287,13 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				this.#block.output !== undefined || this.#block.error !== undefined ? { details: undefined } : undefined,
 				this.#sealed,
 			);
-		if (reason !== undefined) {
-			this.#notExecutedNotice = new Text(
-				theme.fg("warning", `${theme.status.warning} ${reason}`),
-				COMPOSER_INSET_COLS,
-				0,
-			);
-			this.addChild(this.#notExecutedNotice);
-		}
-		if (previousChildren.length > 0) {
-			const retained = new Set(this.#contentBox.children);
-			for (const child of previousChildren) {
-				if (!retained.has(child)) child.dispose?.();
-			}
-		}
-		this.#renderedImageCount = this.#imageComponents.length;
+		if (reason === undefined) return;
+		this.#notExecutedNotice = new Text(
+			theme.fg("warning", `${theme.status.warning} ${reason}`),
+			COMPOSER_INSET_COLS,
+			0,
+		);
+		this.addChild(this.#notExecutedNotice);
 	}
 
 	#formatGenericFallback(contentWidth: number): string {

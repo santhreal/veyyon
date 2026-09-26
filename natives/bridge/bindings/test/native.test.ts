@@ -194,7 +194,19 @@ describe("veyyon-natives", () => {
 		});
 	});
 
-	describe("highlight aliases", () => {
+	describe("highlightCode", () => {
+		const colors = {
+			comment: "<c>",
+			keyword: "<k>",
+			function: "<f>",
+			variable: "<v>",
+			string: "<s>",
+			number: "<n>",
+			type: "<t>",
+			operator: "<o>",
+			punctuation: "<p>",
+		};
+
 		it("recognizes Emacs Lisp aliases", () => {
 			expect(supportsLanguage("emacs-lisp")).toBe(true);
 			expect(supportsLanguage("elisp")).toBe(true);
@@ -209,22 +221,44 @@ describe("veyyon-natives", () => {
 			expect(supportsLanguage("julia")).toBe(true);
 			expect(supportsLanguage("jl")).toBe(true);
 
-			const colors = {
-				comment: "<c>",
-				keyword: "<k>",
-				function: "<f>",
-				variable: "<v>",
-				string: "<s>",
-				number: "<n>",
-				type: "<t>",
-				operator: "<o>",
-				punctuation: "<p>",
-			};
 			const out = highlightCode("function f(x)\n  return x + 1  # add\nend\n", "julia", colors);
 			// Real highlighting wraps tokens in the supplied color sentinels.
 			expect(out).toContain("<k>function");
 			expect(out).toContain("<n>1");
 			expect(out).toContain("<c> add");
+		});
+
+		it("stops a Markdown table-row match at the retry budget the addon sets on load", () => {
+			// The Markdown grammar tests every line for a table row with a pattern that
+			// repeats a group inside a repeated group. On a prose line holding a pipe
+			// and many inline code spans one match attempt takes millions of retries:
+			// at Oniguruma's default budget of 10,000,000 it completes, colours the
+			// pipe as a table cell separator and costs tens of milliseconds per line.
+			// The addon bounds every match at 1,000,000 retries when it loads, where
+			// the attempt fails and the line stays a paragraph. This catches a lost or
+			// raised bound; it cannot see a lower one, which also leaves a paragraph.
+			const line =
+				"2024-01-02 | `GET /api/v1/items/14` [first-reader] → 200 (`event_log:7825`); same path " +
+				"[second-reader] and [anonymous-reader] → 403 `api_rest_invalid_reader` (`event_log:7826`, `event_log:7827`)";
+			const out = highlightCode(line, "md", colors);
+			expect(out).toContain("<p>`");
+			expect(out).not.toContain("<p>|");
+		});
+
+		it("stops a YAML implicit-key search at the retry budget the addon sets on load", () => {
+			// The YAML grammar looks ahead for an implicit mapping key by scanning to the
+			// line end from every start position of a search, so a value line holding a
+			// colon costs time quadratic in its length. Under Oniguruma's default of no
+			// search budget this 16,000-character line takes about 1.6 s; the addon caps
+			// a search at 1,000,000 retries when it loads, where it takes about 5 ms and
+			// colours the line the same. The bound sits 50 times above the capped cost
+			// and 6 times below the uncapped one.
+			const source = `info:\n  value: a:b${"x".repeat(16_000)}\n`;
+			const started = performance.now();
+			const out = highlightCode(source, "yaml", colors);
+			const elapsed = performance.now() - started;
+			expect(out).toContain("xxxx");
+			expect(elapsed).toBeLessThan(250);
 		});
 	});
 

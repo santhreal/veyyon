@@ -44,6 +44,7 @@ import {
 	findClosestSequenceMatch,
 	findContextLine,
 	findMatch,
+	type SequenceMatchStrategy,
 	type SequenceSearchResult,
 	seekSequence,
 } from "../match";
@@ -189,25 +190,24 @@ function getIndentChar(lines: string[]): string {
 	return " ";
 }
 
-function collectIndentDeltas(oldLines: string[], actualLines: string[]): number[] {
-	const deltas: number[] = [];
+/** The indent delta from pattern to file lines, when every non-blank line pair agrees on one. */
+function uniformIndentDelta(oldLines: string[], actualLines: string[]): number | undefined {
+	let delta: number | undefined;
 	const lineCount = Math.min(oldLines.length, actualLines.length);
 	for (let i = 0; i < lineCount; i++) {
 		const oldLine = oldLines[i];
 		const actualLine = actualLines[i];
 		if (isBlankLine(oldLine) || isBlankLine(actualLine)) continue;
-		deltas.push(countLeadingWhitespace(actualLine) - countLeadingWhitespace(oldLine));
+		const next = countLeadingWhitespace(actualLine) - countLeadingWhitespace(oldLine);
+		if (delta === undefined) delta = next;
+		else if (next !== delta) return undefined;
 	}
-	return deltas;
+	return delta;
 }
 
-function applyIndentDelta(lines: string[], delta: number, indentChar: string): string[] {
-	return lines.map(line => {
-		if (isBlankLine(line)) return line;
-		if (delta > 0) return indentChar.repeat(delta) + line;
-		const toRemove = Math.min(-delta, countLeadingWhitespace(line));
-		return line.slice(toRemove);
-	});
+function shiftIndent(line: string, delta: number, indentChar: string): string {
+	if (delta > 0) return indentChar.repeat(delta) + line;
+	return line.slice(Math.min(-delta, countLeadingWhitespace(line)));
 }
 
 function canConvertTabsToSpaces(oldLines: string[], actualLines: string[], spacesPerTab: number): boolean {
@@ -226,6 +226,153 @@ function canConvertTabsToSpaces(oldLines: string[], actualLines: string[], space
 	return true;
 }
 
+/** Which leading whitespace a block's non-blank lines use. */
+interface IndentStyle {
+	tabOnly: boolean;
+	spaceOnly: boolean;
+	mixed: boolean;
+}
+
+function indentStyle(lines: string[]): IndentStyle {
+	let tabOnly = true;
+	let spaceOnly = true;
+	let mixed = false;
+	for (const line of lines) {
+		if (isBlankLine(line)) continue;
+		const ws = getLeadingWhitespace(line);
+		const hasSpace = ws.includes(" ");
+		const hasTab = ws.includes("\t");
+		if (hasSpace) tabOnly = false;
+		if (hasTab) spaceOnly = false;
+		if (hasSpace && hasTab) mixed = true;
+	}
+	return { tabOnly, spaceOnly, mixed };
+}
+
+/** The spaces the file uses per pattern tab, when every non-blank line pair agrees on one whole ratio. */
+function uniformSpacesPerTab(patternLines: string[], actualLines: string[]): number | undefined {
+	let ratio: number | undefined;
+	const lineCount = Math.min(patternLines.length, actualLines.length);
+	for (let i = 0; i < lineCount; i++) {
+		const patternLine = patternLines[i];
+		const actualLine = actualLines[i];
+		if (isBlankLine(patternLine) || isBlankLine(actualLine)) continue;
+		const patternIndent = countLeadingWhitespace(patternLine);
+		if (patternIndent === 0) continue;
+		const actualIndent = countLeadingWhitespace(actualLine);
+		if (actualIndent % patternIndent !== 0) return undefined;
+		const nextRatio = actualIndent / patternIndent;
+		// A zero ratio is replaced by the next line pair rather than compared against it.
+		if (!ratio) ratio = nextRatio;
+		else if (ratio !== nextRatio) return undefined;
+	}
+	return ratio || undefined;
+}
+
+/** How the file's tabs render as the pattern's spaces: `spaces = tabs * tabWidth + offset`. */
+interface TabModel {
+	tabWidth: number;
+	offset: number;
+}
+
+/**
+ * Solve the tab model from the (tabs, spaces) pairs of the matched lines. One indent level fixes
+ * the offset at 0; two or more solve both terms from the first two levels and must fit every level.
+ */
+function inferTabModel(patternLines: string[], actualLines: string[]): TabModel | undefined {
+	const spacesByTabs = new Map<number, number>();
+	const lineCount = Math.min(patternLines.length, actualLines.length);
+	for (let i = 0; i < lineCount; i++) {
+		const patternLine = patternLines[i];
+		const actualLine = actualLines[i];
+		if (isBlankLine(patternLine) || isBlankLine(actualLine)) continue;
+		const spaces = countLeadingWhitespace(patternLine);
+		const tabs = countLeadingWhitespace(actualLine);
+		if (tabs === 0) continue;
+		const existing = spacesByTabs.get(tabs);
+		if (existing !== undefined && existing !== spaces) return undefined;
+		spacesByTabs.set(tabs, spaces);
+	}
+	if (spacesByTabs.size === 0) return undefined;
+	if (spacesByTabs.size === 1) {
+		const [[tabs, spaces]] = spacesByTabs;
+		const tabWidth = spaces / tabs;
+		return spaces % tabs === 0 && tabWidth > 0 ? { tabWidth, offset: 0 } : undefined;
+	}
+	const [[t1, s1], [t2, s2]] = spacesByTabs;
+	const tabWidth = (s2 - s1) / (t2 - t1);
+	if (!(tabWidth > 0 && Number.isInteger(tabWidth))) return undefined;
+	const offset = s1 - t1 * tabWidth;
+	for (const [tabs, spaces] of spacesByTabs) {
+		if (tabs * tabWidth + offset !== spaces) return undefined;
+	}
+	return { tabWidth, offset };
+}
+
+function spacesToTabs(lines: string[], { tabWidth, offset }: TabModel): string[] {
+	return lines.map(line => {
+		if (isBlankLine(line)) return line;
+		const ws = countLeadingWhitespace(line);
+		if (ws === 0) return line;
+		const adjusted = ws - offset;
+		if (adjusted >= 0 && adjusted % tabWidth === 0) {
+			return "\t".repeat(adjusted / tabWidth) + line.slice(ws);
+		}
+		// A partial tab keeps its remainder as spaces.
+		const tabCount = Math.floor(adjusted / tabWidth);
+		if (tabCount < 0) return line;
+		return "\t".repeat(tabCount) + " ".repeat(adjusted - tabCount * tabWidth) + line.slice(ws);
+	});
+}
+
+/**
+ * Re-indent new lines by content. A line whose trimmed text occurs among the matched file lines
+ * takes a file line verbatim; any other line at the pattern's minimum indent moves by the
+ * pattern-to-file indent delta, when every line pair agrees on one.
+ */
+function alignToMatchedLines(patternLines: string[], actualLines: string[], newLines: string[]): string[] {
+	// Keyed by content, not position: a fuzzy match need not align pattern and file lines.
+	const actualByContent = new Map<string, string[]>();
+	for (const line of actualLines) {
+		const trimmed = line.trim();
+		if (trimmed.length === 0) continue;
+		const sameContent = actualByContent.get(trimmed);
+		if (sameContent) sameContent.push(line);
+		else actualByContent.set(trimmed, [line]);
+	}
+
+	let patternMin = Infinity;
+	for (const line of patternLines) {
+		if (isBlankLine(line)) continue;
+		patternMin = Math.min(patternMin, countLeadingWhitespace(line));
+	}
+	if (patternMin === Infinity) patternMin = 0;
+
+	const delta = uniformIndentDelta(patternLines, actualLines);
+	const indentChar = delta ? getIndentChar(actualLines) : " ";
+	// How many of each content's file lines earlier new lines already took.
+	const used = new Map<string, number>();
+
+	return newLines.map(newLine => {
+		const trimmed = newLine.trim();
+		if (trimmed.length === 0) return newLine;
+		const sameContent = actualByContent.get(trimmed);
+		if (sameContent) {
+			if (sameContent.length === 1) return sameContent[0];
+			if (sameContent.includes(newLine)) return newLine;
+			const usedCount = used.get(trimmed) ?? 0;
+			if (usedCount < sameContent.length) {
+				used.set(trimmed, usedCount + 1);
+				return sameContent[usedCount];
+			}
+		}
+		if (delta && countLeadingWhitespace(newLine) === patternMin) {
+			return shiftIndent(newLine, delta, indentChar);
+		}
+		return newLine;
+	});
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Replacement Computation
 // ═══════════════════════════════════════════════════════════════════════════
@@ -235,216 +382,30 @@ function adjustLinesIndentation(patternLines: string[], actualLines: string[], n
 	if (patternLines.length === 0 || actualLines.length === 0 || newLines.length === 0) {
 		return newLines;
 	}
-
-	// If pattern already matches actual exactly (including indentation), preserve agent's intended changes
+	// A pattern that matches the file exactly keeps the new lines as written.
 	if (areEqualLines(patternLines, actualLines)) {
 		return newLines;
 	}
-
-	// If the patch is purely an indentation change (same trimmed content), apply exactly as specified
+	// So does a hunk that changes only indentation.
 	if (areEqualTrimmedLines(patternLines, newLines)) {
 		return newLines;
 	}
 
-	// Detect indent character from actual content
-	const indentChar = getIndentChar(actualLines);
-
-	let patternTabOnly = true;
-	let actualSpaceOnly = true;
-	let patternSpaceOnly = true;
-	let actualTabOnly = true;
-	let patternMixed = false;
-	let actualMixed = false;
-
-	for (const line of patternLines) {
-		if (line.trim().length === 0) continue;
-		const ws = getLeadingWhitespace(line);
-		if (ws.includes(" ")) patternTabOnly = false;
-		if (ws.includes("\t")) patternSpaceOnly = false;
-		if (ws.includes(" ") && ws.includes("\t")) patternMixed = true;
-	}
-
-	for (const line of actualLines) {
-		if (line.trim().length === 0) continue;
-		const ws = getLeadingWhitespace(line);
-		if (ws.includes("\t")) actualSpaceOnly = false;
-		if (ws.includes(" ")) actualTabOnly = false;
-		if (ws.includes(" ") && ws.includes("\t")) actualMixed = true;
-	}
-
-	if (!patternMixed && !actualMixed && patternTabOnly && actualSpaceOnly) {
-		let ratio: number | undefined;
-		const lineCount = Math.min(patternLines.length, actualLines.length);
-		let consistent = true;
-		for (let i = 0; i < lineCount; i++) {
-			const patternLine = patternLines[i];
-			const actualLine = actualLines[i];
-			if (patternLine.trim().length === 0 || actualLine.trim().length === 0) continue;
-			const patternIndent = countLeadingWhitespace(patternLine);
-			const actualIndent = countLeadingWhitespace(actualLine);
-			if (patternIndent === 0) continue;
-			if (actualIndent % patternIndent !== 0) {
-				consistent = false;
-				break;
-			}
-			const nextRatio = actualIndent / patternIndent;
-			if (!ratio) {
-				ratio = nextRatio;
-			} else if (ratio !== nextRatio) {
-				consistent = false;
-				break;
+	const pattern = indentStyle(patternLines);
+	const actual = indentStyle(actualLines);
+	if (!pattern.mixed && !actual.mixed) {
+		if (pattern.tabOnly && actual.spaceOnly) {
+			const spacesPerTab = uniformSpacesPerTab(patternLines, actualLines);
+			if (spacesPerTab !== undefined && canConvertTabsToSpaces(patternLines, actualLines, spacesPerTab)) {
+				return convertLeadingTabsToSpaces(newLines.join("\n"), spacesPerTab).split("\n");
 			}
 		}
-
-		if (consistent && ratio && canConvertTabsToSpaces(patternLines, actualLines, ratio)) {
-			return convertLeadingTabsToSpaces(newLines.join("\n"), ratio).split("\n");
+		if (pattern.spaceOnly && actual.tabOnly) {
+			const model = inferTabModel(patternLines, actualLines);
+			if (model !== undefined) return spacesToTabs(newLines, model);
 		}
 	}
-
-	// Reverse: pattern uses spaces, actual uses tabs — infer spaces = tabs * width + offset
-	// Collect (tabs, spaces) pairs from matched lines to solve for the model's tab rendering.
-	// With one data point: spaces = tabs * width (offset=0).
-	// With two+: solve ax + b via pairs with distinct tab counts.
-	if (!patternMixed && !actualMixed && patternSpaceOnly && actualTabOnly) {
-		const samples = new Map<number, number>(); // tabs -> spaces
-		const lineCount = Math.min(patternLines.length, actualLines.length);
-		let consistent = true;
-		for (let i = 0; i < lineCount; i++) {
-			const patternLine = patternLines[i];
-			const actualLine = actualLines[i];
-			if (patternLine.trim().length === 0 || actualLine.trim().length === 0) continue;
-			const spaces = countLeadingWhitespace(patternLine);
-			const tabs = countLeadingWhitespace(actualLine);
-			if (tabs === 0) continue;
-			const existing = samples.get(tabs);
-			if (existing !== undefined && existing !== spaces) {
-				consistent = false;
-				break;
-			}
-			samples.set(tabs, spaces);
-		}
-
-		if (consistent && samples.size > 0) {
-			let tabWidth: number | undefined;
-			let offset = 0;
-
-			if (samples.size === 1) {
-				// One level: assume offset=0, width = spaces / tabs
-				const [[tabs, spaces]] = samples;
-				if (spaces % tabs === 0) {
-					tabWidth = spaces / tabs;
-				}
-			} else {
-				// Two+ levels: solve via any two distinct pairs
-				// spaces = tabs * width + offset  =>  width = (s2 - s1) / (t2 - t1)
-				const entries = Array.from(samples.entries());
-				const [t1, s1] = entries[0];
-				const [t2, s2] = entries[1];
-				if (t1 !== t2) {
-					const w = (s2 - s1) / (t2 - t1);
-					if (w > 0 && Number.isInteger(w)) {
-						const b = s1 - t1 * w;
-						// Validate all samples against this model
-						let valid = true;
-						for (const [t, s] of samples) {
-							if (t * w + b !== s) {
-								valid = false;
-								break;
-							}
-						}
-						if (valid) {
-							tabWidth = w;
-							offset = b;
-						}
-					}
-				}
-			}
-
-			if (tabWidth !== undefined && tabWidth > 0) {
-				const converted = newLines.map(line => {
-					if (line.trim().length === 0) return line;
-					const ws = countLeadingWhitespace(line);
-					if (ws === 0) return line;
-					// Reverse: tabs = (spaces - offset) / width
-					const adjusted = ws - offset;
-					if (adjusted >= 0 && adjusted % tabWidth! === 0) {
-						return "\t".repeat(adjusted / tabWidth!) + line.slice(ws);
-					}
-					// Partial tab — keep remainder as spaces
-					const tabCount = Math.floor(adjusted / tabWidth!);
-					const remainder = adjusted - tabCount * tabWidth!;
-					if (tabCount >= 0) {
-						return "\t".repeat(tabCount) + " ".repeat(remainder) + line.slice(ws);
-					}
-					return line;
-				});
-				return converted;
-			}
-		}
-	}
-
-	// Build a map from trimmed content to actual lines (by content, not position)
-	// This handles fuzzy matches where pattern and actual may not be positionally aligned
-	const contentToActualLines = new Map<string, string[]>();
-	for (const line of actualLines) {
-		const trimmed = line.trim();
-		if (trimmed.length === 0) continue;
-		const arr = contentToActualLines.get(trimmed);
-		if (arr) {
-			arr.push(line);
-		} else {
-			contentToActualLines.set(trimmed, [line]);
-		}
-	}
-
-	let patternMin = Infinity;
-	for (const line of patternLines) {
-		if (line.trim().length === 0) continue;
-		patternMin = Math.min(patternMin, countLeadingWhitespace(line));
-	}
-	if (patternMin === Infinity) {
-		patternMin = 0;
-	}
-
-	const deltas = collectIndentDeltas(patternLines, actualLines);
-	const delta = deltas.length > 0 && deltas.every(value => value === deltas[0]) ? deltas[0] : undefined;
-
-	// Track which actual lines we've used to handle duplicate content correctly
-	const usedActualLines = new Map<string, number>(); // trimmed content -> count used
-
-	return newLines.map(newLine => {
-		if (newLine.trim().length === 0) {
-			return newLine;
-		}
-
-		const trimmed = newLine.trim();
-		const matchingActualLines = contentToActualLines.get(trimmed);
-
-		// Check if this is a context line (same trimmed content exists in actual)
-		if (matchingActualLines && matchingActualLines.length > 0) {
-			if (matchingActualLines.length === 1) {
-				return matchingActualLines[0];
-			}
-			if (matchingActualLines.includes(newLine)) {
-				return newLine;
-			}
-			const usedCount = usedActualLines.get(trimmed) ?? 0;
-			if (usedCount < matchingActualLines.length) {
-				usedActualLines.set(trimmed, usedCount + 1);
-				// Use actual file content directly for context lines
-				return matchingActualLines[usedCount];
-			}
-		}
-
-		// This is a new/added line - apply consistent delta if safe
-		if (delta && delta !== 0) {
-			const newIndent = countLeadingWhitespace(newLine);
-			if (newIndent === patternMin) {
-				return applyIndentDelta([newLine], delta, indentChar)[0];
-			}
-		}
-		return newLine;
-	});
+	return alignToMatchedLines(patternLines, actualLines, newLines);
 }
 
 function trimCommonContext(oldLines: string[], newLines: string[]): HunkVariant | undefined {
@@ -1062,6 +1023,273 @@ function assertPartialMatchPreservesDiscardedText(
 	}
 }
 
+/** Strategies that match a hunk to text that differs from it; a match through one is reported. */
+const INEXACT_STRATEGIES: ReadonlySet<SequenceMatchStrategy> = new Set<SequenceMatchStrategy>([
+	"comment-prefix",
+	"prefix",
+	"substring",
+	"fuzzy",
+	"character",
+]);
+
+/** A search outcome that names more than one candidate position. */
+interface AmbiguousResult {
+	matchCount?: number;
+	matchIndices?: number[];
+	strategy?: string;
+}
+
+function ambiguousMatchError(lines: string[], path: string, subject: string, result: AmbiguousResult): ApplyPatchError {
+	const previews = formatSequenceMatchPreviews(lines, result.matchIndices, result.matchCount);
+	const strategyHint = result.strategy ? ` Matching strategy: ${result.strategy}.` : "";
+	const previewText = previews ? `\n\n${previews}` : "";
+	return new ApplyPatchError(
+		`Found ${result.matchCount} matches for ${subject} in ${path}.${strategyHint}` +
+			`${previewText}\n\nAdd more surrounding context or additional @@ anchors to make it unique.`,
+	);
+}
+
+function assertLineHint(hint: number | undefined, path: string): void {
+	if (hint !== undefined && hint < 1) {
+		throw new ApplyPatchError(`Line hint ${hint} is out of range for ${path} (line numbers start at 1)`);
+	}
+}
+
+/** Where a hunk's search starts once its `@@` anchor is resolved, and the line the anchor matched. */
+interface AnchoredStart {
+	lineIndex: number;
+	contextIndex: number | undefined;
+}
+
+/**
+ * Resolve a hunk's `@@` anchor. An anchor that is missing or matches more than once falls back to
+ * finding the hunk's old lines directly; when that fails too, the anchor is reported.
+ */
+function resolveChangeContext(
+	lines: string[],
+	path: string,
+	hunk: DiffHunk,
+	changeContext: string,
+	lineIndex: number,
+	allowFuzzy: boolean,
+	allowAggressiveFallbacks: boolean,
+): AnchoredStart {
+	const lineHint = hunk.oldStartLine;
+	const result = findHierarchicalContext(lines, changeContext, lineIndex, lineHint, allowFuzzy);
+	const contextIndex = result.index;
+	const ambiguous = (result.matchCount ?? 0) > 1;
+	if (contextIndex !== undefined && !ambiguous) {
+		// When the first old line is the anchor itself, the hunk starts on the anchor, not after it.
+		const firstOldLine = hunk.oldLines[0];
+		const finalContext = changeContext.split("\n").pop()?.trim();
+		const isHierarchicalContext = changeContext.includes("\n") || changeContext.trim().split(/\s+/).length > 2;
+		const startsOnAnchor =
+			firstOldLine !== undefined && (firstOldLine.trim() === finalContext || isHierarchicalContext);
+		return { lineIndex: startsOnAnchor ? contextIndex : contextIndex + 1, contextIndex };
+	}
+	const fallback = attemptSequenceFallback(lines, hunk, lineIndex, lineHint, allowFuzzy, allowAggressiveFallbacks);
+	if (fallback !== undefined) return { lineIndex: fallback, contextIndex };
+	if (ambiguous) {
+		throw ambiguousMatchError(lines, path, `context '${changeContext.split("\n").pop()}'`, result);
+	}
+	throw new ApplyPatchError(`Failed to find context '${changeContext.split("\n").join(" > ")}' in ${path}`);
+}
+
+/** Where a hunk with no old lines inserts: at its anchor, else its line hint, else the end of the file. */
+function insertionIndex(lines: string[], path: string, hunk: DiffHunk, lineIndex: number): number {
+	if (hunk.changeContext !== undefined) return lineIndex;
+	// `assertLineHint` already rejected a hint below 1.
+	const hint = hunk.oldStartLine ?? hunk.newStartLine;
+	if (hint === undefined) {
+		return lines.length > 0 && lines[lines.length - 1] === "" ? lines.length - 1 : lines.length;
+	}
+	if (hint > lines.length + 1) {
+		throw new ApplyPatchError(
+			`Line hint ${hint} is out of range for insertion in ${path} (file has ${lines.length} lines)`,
+		);
+	}
+	return hint - 1;
+}
+
+/** The lines a hunk replaces, what replaces them, and where the search found them. */
+interface LocatedHunk {
+	pattern: string[];
+	newSlice: string[];
+	searchResult: SequenceSearchResult;
+}
+
+/** What each step of locating one hunk reads. */
+interface HunkSearch {
+	lines: string[];
+	hunk: DiffHunk;
+	lineIndex: number;
+	matchHint: number | undefined;
+	allowFuzzy: boolean;
+	contextIndex: number | undefined;
+	/** The hunk's fallback variants, built on first use: most hunks match without them. */
+	variants: () => HunkVariant[];
+}
+
+function searchFrom(search: HunkSearch, pattern: string[]): SequenceSearchResult {
+	return findSequenceWithHint(
+		search.lines,
+		pattern,
+		search.lineIndex,
+		search.matchHint,
+		search.hunk.isEndOfFile,
+		search.allowFuzzy,
+	);
+}
+
+/** Search for the hunk's old lines, retrying once without a trailing blank line. */
+function searchOldLines(search: HunkSearch): LocatedHunk {
+	const { oldLines, newLines } = search.hunk;
+	const searchResult = searchFrom(search, oldLines);
+	if (searchResult.index !== undefined || oldLines.at(-1) !== "") {
+		return { pattern: oldLines, newSlice: newLines, searchResult };
+	}
+	const pattern = oldLines.slice(0, -1);
+	const newSlice = newLines.at(-1) === "" ? newLines.slice(0, -1) : newLines;
+	return { pattern, newSlice, searchResult: searchFrom(search, pattern) };
+}
+
+/** The first fallback variant that matches exactly once, when the hunk itself did not. */
+function retryWithVariants(search: HunkSearch, located: LocatedHunk): LocatedHunk {
+	if (located.searchResult.index !== undefined && (located.searchResult.matchCount ?? 0) <= 1) return located;
+	for (const variant of search.variants()) {
+		if (variant.oldLines.length === 0) continue;
+		const searchResult = searchFrom(search, variant.oldLines);
+		if (searchResult.index !== undefined && (searchResult.matchCount ?? 1) <= 1) {
+			return { pattern: variant.oldLines, newSlice: variant.newLines, searchResult };
+		}
+	}
+	return located;
+}
+
+/** A single-line variant found by trimmed text nearest the anchor, when nothing else matched. */
+function retryNearAnchor(search: HunkSearch, located: LocatedHunk): LocatedHunk {
+	const { contextIndex } = search;
+	if (located.searchResult.index !== undefined || contextIndex === undefined) return located;
+	for (const variant of search.variants()) {
+		if (variant.oldLines.length !== 1 || variant.newLines.length !== 1) continue;
+		const removedLine = variant.oldLines[0];
+		const hasSharedDuplicate = search.hunk.newLines.some(line => line.trim() === removedLine.trim());
+		const index = findContextRelativeMatch(search.lines, removedLine, contextIndex, hasSharedDuplicate);
+		if (index !== undefined) {
+			return { pattern: variant.oldLines, newSlice: variant.newLines, searchResult: { index, confidence: 0.95 } };
+		}
+	}
+	return located;
+}
+
+/** A one-line pattern that recurs in the file resolves to the occurrence nearest the anchor. */
+function preferOccurrenceNearAnchor(search: HunkSearch, located: LocatedHunk): LocatedHunk {
+	const { contextIndex } = search;
+	const { pattern, searchResult } = located;
+	if (searchResult.index === undefined || contextIndex === undefined || pattern.length !== 1) return located;
+	const trimmed = pattern[0].trim();
+	let occurrences = 0;
+	for (const line of search.lines) {
+		if (line.trim() === trimmed && ++occurrences > 1) break;
+	}
+	if (occurrences <= 1) return located;
+	const hasSharedDuplicate = search.hunk.newLines.some(line => line.trim() === trimmed);
+	const index = findContextRelativeMatch(search.lines, pattern[0], contextIndex, hasSharedDuplicate);
+	if (index === undefined) return located;
+	return { ...located, searchResult: { index, confidence: searchResult.confidence ?? 0.95 } };
+}
+
+/** Several matches resolve to the one within the ambiguity window of the line hint, if it is alone there. */
+function preferMatchNearHint(search: HunkSearch, located: LocatedHunk): LocatedHunk {
+	const { searchResult } = located;
+	if ((searchResult.matchCount ?? 0) <= 1) return located;
+	const lineHint = search.hunk.oldStartLine;
+	const hintIndex = search.matchHint ?? (lineHint ? lineHint - 1 : undefined);
+	const index = chooseHintedMatch(searchResult.matchIndices, hintIndex, AMBIGUITY_HINT_WINDOW);
+	if (index === undefined) return located;
+	return { ...located, searchResult: { ...searchResult, index, matchCount: 1 } };
+}
+
+function unlocatedHunkError(
+	search: HunkSearch,
+	path: string,
+	pattern: string[],
+	searchResult: SequenceSearchResult,
+): ApplyPatchError {
+	const { lines, hunk } = search;
+	if ((searchResult.matchCount ?? 0) > 1) return ambiguousMatchError(lines, path, "the text", searchResult);
+	const expected = `Failed to find expected lines in ${path}:\n${hunk.oldLines.join("\n")}`;
+	const closest = findClosestSequenceMatch(lines, pattern, { start: search.lineIndex, eof: hunk.isEndOfFile });
+	if (closest.index === undefined || closest.confidence <= 0) return new ApplyPatchError(expected);
+	const similarity = Math.round(closest.confidence * 100);
+	const preview = formatSequenceMatchPreview(lines, closest.index);
+	return new ApplyPatchError(
+		`${expected}\n\nClosest match (${similarity}% similar) near line ${closest.index + 1}:\n${preview}`,
+	);
+}
+
+/** Find the hunk's old lines, through each fallback in turn, or throw describing why none matched. */
+function locateHunk(search: HunkSearch, path: string): LocatedHunk & { found: number } {
+	let located = searchOldLines(search);
+	located = retryWithVariants(search, located);
+	located = retryNearAnchor(search, located);
+	located = preferOccurrenceNearAnchor(search, located);
+	located = preferMatchNearHint(search, located);
+	const found = located.searchResult.index;
+	if (found === undefined) throw unlocatedHunkError(search, path, located.pattern, located.searchResult);
+	return { ...located, found };
+}
+
+function inexactMatchWarning(path: string, searchResult: SequenceSearchResult, found: number): string | undefined {
+	const { strategy } = searchResult;
+	if (strategy === undefined) return undefined;
+	const similarity = Math.round(searchResult.confidence * 100);
+	if (strategy === "fuzzy-dominant") {
+		return `Dominant fuzzy match selected in ${path} near line ${found + 1} (${similarity}% similar).`;
+	}
+	if (!INEXACT_STRATEGIES.has(strategy)) return undefined;
+	return (
+		`Inexact match in ${path} near line ${found + 1}: matched via ${strategy} strategy ` +
+		`(${similarity}% similar). Re-read the file if the result is not what you intended.`
+	);
+}
+
+/** A hunk with no anchor, context lines, EOF marker or line hint must match once in the whole file. */
+function assertSingleOccurrence(
+	lines: string[],
+	path: string,
+	pattern: string[],
+	found: number,
+	allowFuzzy: boolean,
+): void {
+	const secondMatch = seekSequence(lines, pattern, found + 1, false, { allowFuzzy });
+	if (secondMatch.index === undefined) return;
+	const preview1 = formatSequenceMatchPreview(lines, found);
+	const preview2 = formatSequenceMatchPreview(lines, secondMatch.index);
+	throw new ApplyPatchError(
+		`Found 2 occurrences in ${path}:\n\n${preview1}\n\n${preview2}\n\nAdd more context lines to disambiguate.`,
+	);
+}
+
+function formatReplacementRange(replacement: Replacement): string {
+	if (replacement.oldLen === 0) return `${replacement.startIndex + 1} (insertion)`;
+	return `${replacement.startIndex + 1}-${replacement.startIndex + replacement.oldLen}`;
+}
+
+/** `replacements` is sorted by start; an insertion may share a start with the replacement after it. */
+function assertNoOverlap(replacements: Replacement[], path: string): void {
+	for (let i = 1; i < replacements.length; i++) {
+		const prev = replacements[i - 1];
+		const next = replacements[i];
+		if (next.startIndex < prev.startIndex + prev.oldLen) {
+			throw new ApplyPatchError(
+				`Overlapping hunks detected in ${path} at lines ${formatReplacementRange(prev)} and ` +
+					`${formatReplacementRange(next)}. Split hunks or add more context to avoid overlap.`,
+			);
+		}
+	}
+}
+
 /**
  * Compute replacements needed to transform originalLines using the diff hunks.
  */
@@ -1076,334 +1304,72 @@ function computeReplacements(
 	let lineIndex = 0;
 
 	for (const hunk of hunks) {
-		let contextIndex: number | undefined;
-		if (hunk.oldStartLine !== undefined && hunk.oldStartLine < 1) {
-			throw new ApplyPatchError(
-				`Line hint ${hunk.oldStartLine} is out of range for ${path} (line numbers start at 1)`,
-			);
-		}
-		if (hunk.newStartLine !== undefined && hunk.newStartLine < 1) {
-			throw new ApplyPatchError(
-				`Line hint ${hunk.newStartLine} is out of range for ${path} (line numbers start at 1)`,
-			);
-		}
+		assertLineHint(hunk.oldStartLine, path);
+		assertLineHint(hunk.newStartLine, path);
 		const lineHint = hunk.oldStartLine;
 		const allowAggressiveFallbacks = hunk.changeContext !== undefined || lineHint !== undefined || hunk.isEndOfFile;
-		const fallbackVariants = filterFallbackVariants(buildFallbackVariants(hunk), allowAggressiveFallbacks);
 		if (lineHint !== undefined && hunk.changeContext === undefined && !hunk.hasContextLines) {
 			lineIndex = clampLow(lineHint - 1, 0, originalLines.length - 1);
 		}
 
-		// If hunk has a changeContext, find it and adjust lineIndex
+		let contextIndex: number | undefined;
 		if (hunk.changeContext !== undefined) {
-			// Use hierarchical context matching for nested @@ anchors and space-separated contexts
-			const result = findHierarchicalContext(originalLines, hunk.changeContext, lineIndex, lineHint, allowFuzzy);
-			const idx = result.index;
-			contextIndex = idx;
-
-			if (idx === undefined || (result.matchCount !== undefined && result.matchCount > 1)) {
-				const fallback = attemptSequenceFallback(
-					originalLines,
-					hunk,
-					lineIndex,
-					lineHint,
-					allowFuzzy,
-					allowAggressiveFallbacks,
-				);
-				if (fallback !== undefined) {
-					lineIndex = fallback;
-				} else if (result.matchCount !== undefined && result.matchCount > 1) {
-					const displayContext = hunk.changeContext.includes("\n")
-						? hunk.changeContext.split("\n").pop()
-						: hunk.changeContext;
-					const previews = formatSequenceMatchPreviews(originalLines, result.matchIndices, result.matchCount);
-					const strategyHint = result.strategy ? ` Matching strategy: ${result.strategy}.` : "";
-					const previewText = previews ? `\n\n${previews}` : "";
-					throw new ApplyPatchError(
-						`Found ${result.matchCount} matches for context '${displayContext}' in ${path}.${strategyHint}` +
-							`${previewText}\n\nAdd more surrounding context or additional @@ anchors to make it unique.`,
-					);
-				} else {
-					const displayContext = hunk.changeContext.includes("\n")
-						? hunk.changeContext.split("\n").join(" > ")
-						: hunk.changeContext;
-					throw new ApplyPatchError(`Failed to find context '${displayContext}' in ${path}`);
-				}
-			} else {
-				// If oldLines[0] matches the final context, start search at idx (not idx+1)
-				// This handles the common case where @@ scope and first context line are identical
-				const firstOldLine = hunk.oldLines[0];
-				const finalContext = hunk.changeContext.includes("\n")
-					? hunk.changeContext.split("\n").pop()?.trim()
-					: hunk.changeContext.trim();
-				const isHierarchicalContext =
-					hunk.changeContext.includes("\n") || hunk.changeContext.trim().split(/\s+/).length > 2;
-				if (firstOldLine !== undefined && (firstOldLine.trim() === finalContext || isHierarchicalContext)) {
-					lineIndex = idx;
-				} else {
-					lineIndex = idx + 1;
-				}
-			}
+			({ lineIndex, contextIndex } = resolveChangeContext(
+				originalLines,
+				path,
+				hunk,
+				hunk.changeContext,
+				lineIndex,
+				allowFuzzy,
+				allowAggressiveFallbacks,
+			));
 		}
 
 		if (hunk.oldLines.length === 0) {
-			// Pure addition - prefer changeContext position, then line hint, then end of file
-			let insertionIdx: number;
-			if (hunk.changeContext !== undefined) {
-				// changeContext was processed above; lineIndex is set to the context line or after it
-				insertionIdx = lineIndex;
-			} else {
-				const lineHintForInsertion = hunk.oldStartLine ?? hunk.newStartLine;
-				if (lineHintForInsertion !== undefined) {
-					// Reject if line hint is out of range for insertion
-					// Valid insertion points are 1 to (file length + 1) for 1-indexed hints
-					if (lineHintForInsertion < 1) {
-						throw new ApplyPatchError(
-							`Line hint ${lineHintForInsertion} is out of range for insertion in ${path} ` +
-								`(line numbers start at 1)`,
-						);
-					}
-					if (lineHintForInsertion > originalLines.length + 1) {
-						throw new ApplyPatchError(
-							`Line hint ${lineHintForInsertion} is out of range for insertion in ${path} ` +
-								`(file has ${originalLines.length} lines)`,
-						);
-					}
-					insertionIdx = Math.max(0, lineHintForInsertion - 1);
-				} else {
-					insertionIdx =
-						originalLines.length > 0 && originalLines[originalLines.length - 1] === ""
-							? originalLines.length - 1
-							: originalLines.length;
-				}
-			}
-
-			replacements.push({ startIndex: insertionIdx, oldLen: 0, newLines: hunk.newLines.slice() });
+			const startIndex = insertionIndex(originalLines, path, hunk, lineIndex);
+			replacements.push({ startIndex, oldLen: 0, newLines: hunk.newLines });
 			continue;
 		}
 
-		// Try to find the old lines in the file
-		let pattern = hunk.oldLines.slice();
-		const matchHint = getHunkHintIndex(hunk, lineIndex);
-		let searchResult = findSequenceWithHint(
-			originalLines,
-			pattern,
-			lineIndex,
-			matchHint,
-			hunk.isEndOfFile,
-			allowFuzzy,
-		);
-		let newSlice = hunk.newLines.slice();
-
-		// Retry without trailing empty line if present
-		if (searchResult.index === undefined && pattern.length > 0 && pattern[pattern.length - 1] === "") {
-			pattern = pattern.slice(0, -1);
-			if (newSlice.length > 0 && newSlice[newSlice.length - 1] === "") {
-				newSlice = newSlice.slice(0, -1);
-			}
-			searchResult = findSequenceWithHint(
-				originalLines,
-				pattern,
+		let variants: HunkVariant[] | undefined;
+		const { pattern, newSlice, searchResult, found } = locateHunk(
+			{
+				lines: originalLines,
+				hunk,
 				lineIndex,
-				matchHint,
-				hunk.isEndOfFile,
+				matchHint: getHunkHintIndex(hunk, lineIndex),
 				allowFuzzy,
-			);
-		}
+				contextIndex,
+				variants: () =>
+					(variants ??= filterFallbackVariants(buildFallbackVariants(hunk), allowAggressiveFallbacks)),
+			},
+			path,
+		);
 
-		if (searchResult.index === undefined || (searchResult.matchCount ?? 0) > 1) {
-			for (const variant of fallbackVariants) {
-				if (variant.oldLines.length === 0) continue;
-				const variantResult = findSequenceWithHint(
-					originalLines,
-					variant.oldLines,
-					lineIndex,
-					matchHint,
-					hunk.isEndOfFile,
-					allowFuzzy,
-				);
-				if (variantResult.index !== undefined && (variantResult.matchCount ?? 1) <= 1) {
-					pattern = variant.oldLines;
-					newSlice = variant.newLines;
-					searchResult = variantResult;
-					break;
-				}
-			}
-		}
-
-		if (searchResult.index === undefined && contextIndex !== undefined) {
-			for (const variant of fallbackVariants) {
-				if (variant.oldLines.length !== 1 || variant.newLines.length !== 1) continue;
-				const removedLine = variant.oldLines[0];
-				const hasSharedDuplicate = hunk.newLines.some(line => line.trim() === removedLine.trim());
-				const adjacentIndex = findContextRelativeMatch(
-					originalLines,
-					removedLine,
-					contextIndex,
-					hasSharedDuplicate,
-				);
-				if (adjacentIndex !== undefined) {
-					pattern = variant.oldLines;
-					newSlice = variant.newLines;
-					searchResult = { index: adjacentIndex, confidence: 0.95 };
-					break;
-				}
-			}
-		}
-
-		if (searchResult.index !== undefined && contextIndex !== undefined && pattern.length === 1) {
-			const trimmed = pattern[0].trim();
-			let occurrenceCount = 0;
-			for (const line of originalLines) {
-				if (line.trim() === trimmed) occurrenceCount++;
-			}
-			if (occurrenceCount > 1) {
-				const hasSharedDuplicate = hunk.newLines.some(line => line.trim() === trimmed);
-				const contextMatch = findContextRelativeMatch(originalLines, pattern[0], contextIndex, hasSharedDuplicate);
-				if (contextMatch !== undefined) {
-					searchResult = { index: contextMatch, confidence: searchResult.confidence ?? 0.95 };
-				}
-			}
-		}
-
+		const warning = inexactMatchWarning(path, searchResult, found);
+		if (warning !== undefined) warnings.push(warning);
+		// Prefix and substring matching can still report several candidates.
 		if ((searchResult.matchCount ?? 0) > 1) {
-			const hintIndex = matchHint ?? (lineHint ? lineHint - 1 : undefined);
-			const hinted = chooseHintedMatch(searchResult.matchIndices, hintIndex, AMBIGUITY_HINT_WINDOW);
-			if (hinted !== undefined) {
-				searchResult = { ...searchResult, index: hinted, matchCount: 1 };
-			}
+			throw ambiguousMatchError(originalLines, path, "the text", searchResult);
 		}
-
-		if (searchResult.index === undefined) {
-			if (searchResult.matchCount !== undefined && searchResult.matchCount > 1) {
-				const previews = formatSequenceMatchPreviews(
-					originalLines,
-					searchResult.matchIndices,
-					searchResult.matchCount,
-				);
-				const strategyHint = searchResult.strategy ? ` Matching strategy: ${searchResult.strategy}.` : "";
-				const previewText = previews ? `\n\n${previews}` : "";
-				throw new ApplyPatchError(
-					`Found ${searchResult.matchCount} matches for the text in ${path}.${strategyHint}` +
-						`${previewText}\n\nAdd more surrounding context or additional @@ anchors to make it unique.`,
-				);
-			}
-			const closest = findClosestSequenceMatch(originalLines, pattern, {
-				start: lineIndex,
-				eof: hunk.isEndOfFile,
-			});
-			if (closest.index !== undefined && closest.confidence > 0) {
-				const similarity = Math.round(closest.confidence * 100);
-				const preview = formatSequenceMatchPreview(originalLines, closest.index);
-				throw new ApplyPatchError(
-					`Failed to find expected lines in ${path}:\n${hunk.oldLines.join("\n")}\n\n` +
-						`Closest match (${similarity}% similar) near line ${closest.index + 1}:\n${preview}`,
-				);
-			}
-			throw new ApplyPatchError(`Failed to find expected lines in ${path}:\n${hunk.oldLines.join("\n")}`);
-		}
-
-		const found = searchResult.index;
-
-		if (searchResult.strategy === "fuzzy-dominant") {
-			const similarity = Math.round(searchResult.confidence * 100);
-			warnings.push(`Dominant fuzzy match selected in ${path} near line ${found + 1} (${similarity}% similar).`);
-		} else if (
-			searchResult.strategy === "comment-prefix" ||
-			searchResult.strategy === "prefix" ||
-			searchResult.strategy === "substring" ||
-			searchResult.strategy === "fuzzy" ||
-			searchResult.strategy === "character"
-		) {
-			const similarity = Math.round(searchResult.confidence * 100);
-			warnings.push(
-				`Inexact match in ${path} near line ${found + 1}: matched via ${searchResult.strategy} strategy ` +
-					`(${similarity}% similar). Re-read the file if the result is not what you intended.`,
-			);
-		}
-
-		// Reject if match is ambiguous (prefix/substring matching found multiple matches)
-		if (searchResult.matchCount !== undefined && searchResult.matchCount > 1) {
-			const previews = formatSequenceMatchPreviews(
-				originalLines,
-				searchResult.matchIndices,
-				searchResult.matchCount,
-			);
-			const strategyHint = searchResult.strategy ? ` Matching strategy: ${searchResult.strategy}.` : "";
-			const previewText = previews ? `\n\n${previews}` : "";
-			throw new ApplyPatchError(
-				`Found ${searchResult.matchCount} matches for the text in ${path}.${strategyHint}` +
-					`${previewText}\n\nAdd more surrounding context or additional @@ anchors to make it unique.`,
-			);
-		}
-
-		// For simple diffs (no context marker, no context lines), check for multiple occurrences
-		// This ensures ambiguous replacements are rejected
-		// Skip this check if isEndOfFile is set (EOF marker provides disambiguation)
 		if (hunk.changeContext === undefined && !hunk.hasContextLines && !hunk.isEndOfFile && lineHint === undefined) {
-			const secondMatch = seekSequence(originalLines, pattern, found + 1, false, { allowFuzzy });
-			if (secondMatch.index !== undefined) {
-				const preview1 = formatSequenceMatchPreview(originalLines, found);
-				const preview2 = formatSequenceMatchPreview(originalLines, secondMatch.index);
-				throw new ApplyPatchError(
-					`Found 2 occurrences in ${path}:\n\n${preview1}\n\n${preview2}\n\n` +
-						`Add more context lines to disambiguate.`,
-				);
-			}
+			assertSingleOccurrence(originalLines, path, pattern, found, allowFuzzy);
 		}
 
-		// Adjust indentation if needed (handles fuzzy matches where indentation differs)
+		lineIndex = found + pattern.length;
+		// A pure-context hunk only advances the search position for the hunks after it.
+		if (areEqualLines(pattern, newSlice)) continue;
+
 		const actualMatchedLines = originalLines.slice(found, found + pattern.length);
-
-		// Skip pure-context hunks (no +/- lines — oldLines === newLines).
-		// They serve only to advance lineIndex for subsequent hunks.
-		let isNoOp = pattern.length === newSlice.length;
-		if (isNoOp) {
-			for (let i = 0; i < pattern.length; i++) {
-				if (pattern[i] !== newSlice[i]) {
-					isNoOp = false;
-					break;
-				}
-			}
-		}
-
-		if (isNoOp) {
-			lineIndex = found + pattern.length;
-			continue;
-		}
-
 		if (searchResult.strategy === "prefix" || searchResult.strategy === "substring") {
 			assertPartialMatchPreservesDiscardedText(path, pattern, actualMatchedLines, newSlice, found);
 		}
-
-		const adjustedNewLines = adjustLinesIndentation(pattern, actualMatchedLines, newSlice);
-		replacements.push({ startIndex: found, oldLen: pattern.length, newLines: adjustedNewLines });
-		lineIndex = found + pattern.length;
+		const newLines = adjustLinesIndentation(pattern, actualMatchedLines, newSlice);
+		replacements.push({ startIndex: found, oldLen: pattern.length, newLines });
 	}
 
-	// Sort by start index
 	replacements.sort((a, b) => a.startIndex - b.startIndex);
-
-	for (let i = 1; i < replacements.length; i++) {
-		const prev = replacements[i - 1];
-		const next = replacements[i];
-		const prevEnd = prev.startIndex + prev.oldLen;
-		if (next.startIndex < prevEnd) {
-			const formatRange = (replacement: Replacement): string => {
-				if (replacement.oldLen === 0) {
-					return `${replacement.startIndex + 1} (insertion)`;
-				}
-				return `${replacement.startIndex + 1}-${replacement.startIndex + replacement.oldLen}`;
-			};
-			const prevRange = formatRange(prev);
-			const nextRange = formatRange(next);
-			throw new ApplyPatchError(
-				`Overlapping hunks detected in ${path} at lines ${prevRange} and ${nextRange}. ` +
-					`Split hunks or add more context to avoid overlap.`,
-			);
-		}
-	}
-
+	assertNoOverlap(replacements, path);
 	return { replacements, warnings };
 }
 

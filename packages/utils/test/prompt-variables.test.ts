@@ -25,7 +25,13 @@
  * strict and it fails builds over variables that were correctly optional.
  */
 import { describe, expect, it } from "bun:test";
-import { analyzePromptTemplate, assertPromptContext, MissingTemplateVariableError, render } from "@veyyon/utils/prompt";
+import {
+	analyzePromptTemplate,
+	assertPromptContext,
+	MissingTemplateVariableError,
+	registerHelper,
+	render,
+} from "@veyyon/utils/prompt";
 
 /** Root names the analyzer calls required, sorted for stable comparison. */
 function required(template: string): string[] {
@@ -260,5 +266,28 @@ describe("assertPromptContext on this module's dialect", () => {
 		// global registry would see `{{arg 1}}`-style names as variables and demand
 		// them of every caller.
 		expect(required("{{arg 1}}")).toEqual([]);
+	});
+});
+
+/**
+ * The analysis is memoized per template, so these pin that the memo holds only
+ * what is a function of the template and the helper set: a verdict cached for
+ * one context, or an analysis kept across a helper registration, would render
+ * a hole or demand a variable that is not one.
+ */
+describe("the memoized analysis", () => {
+	it("checks every render against its own context, not the first one seen", () => {
+		const template = "memo={{memoProbeValue}}";
+		expect(render(template, { memoProbeValue: "a" })).toBe("memo=a");
+		expect(() => render(template, {})).toThrow(MissingTemplateVariableError);
+		expect(render(template, { memoProbeValue: "b" })).toBe("memo=b");
+	});
+
+	it("stops demanding a name once a helper of that name is registered", () => {
+		const template = "probe={{analysisCacheProbeHelper}}";
+		expect(() => render(template, {})).toThrow(MissingTemplateVariableError);
+		registerHelper("analysisCacheProbeHelper", () => "from-helper");
+		expect(required(template)).toEqual([]);
+		expect(render(template, {})).toBe("probe=from-helper");
 	});
 });

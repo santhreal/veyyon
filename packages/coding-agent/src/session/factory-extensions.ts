@@ -5,7 +5,9 @@
  */
 
 import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
-import { getAgentDir, getProjectDir, logger } from "@veyyon/utils";
+import { errorMessage, getAgentDir, getProjectDir, logger, prefetch, raceWithTimeout } from "@veyyon/utils";
+import { type DiscoveredAdvisors, discoverAdvisorConfigs } from "../advisor/config";
+import { discoverWatchdogFiles, formatActiveRepoWatchdogPrompt, formatAdvisorContextPrompt } from "../advisor/watchdog";
 import type { ModelRegistry } from "../config/model-registry";
 import { loadPromptTemplates as loadPromptTemplatesInternal, type PromptTemplate } from "../config/prompt-templates";
 import type { Settings, SkillsSettings } from "../config/settings";
@@ -26,7 +28,10 @@ import { type FileSlashCommand, loadSlashCommands as loadSlashCommandsInternal }
 import { discoverAndLoadMCPTools, type MCPToolsLoadResult } from "../mcp";
 import { loadProjectContextFiles as loadContextFilesInternal } from "../system-prompt";
 import type { ContextFileEntry, ToolSession } from "../tools";
+import { type ActiveRepoContext, resolveActiveRepoContext } from "../utils/active-repo-context";
 import { EventBus } from "../utils/event-bus";
+import { buildWorkspaceTree, type WorkspaceTree } from "../workspace-tree";
+import type { ProjectAdvisorScope } from "./agent-session-types";
 import type { CreateAgentSessionOptions } from "./factory-options";
 
 /**
@@ -232,6 +237,126 @@ export async function discoverRules(cwd?: string, agentDir?: string): Promise<Ca
  */
 export async function discoverContextFiles(cwd?: string, agentDir?: string): Promise<ContextFileEntry[]> {
 	return await loadContextFilesInternal(discoveryRoots(cwd, agentDir));
+}
+
+/** Bound on the workspace tree scan; a session builds without the tree past it. */
+export const WORKSPACE_TREE_DEADLINE_MS = 5000;
+
+/**
+ * Every input a session reads from its project directory, each discovery started and none awaited.
+ * Every promise is prefetched, so one that rejects before its consumer awaits it is not an unhandled
+ * rejection; the consumer's `await` still receives the failure.
+ */
+export interface ProjectInputDiscovery {
+	readonly cwd: string;
+	readonly contextFiles: Promise<ContextFileEntry[]>;
+	readonly workspaceTree: Promise<WorkspaceTree>;
+	/** Null when the directory is in no repository or the lookup failed; the failure is logged. */
+	readonly activeRepoContext: Promise<ActiveRepoContext | null>;
+	readonly skills: Promise<{ skills: Skill[]; warnings: SkillWarning[] }>;
+	readonly rules: Promise<Rule[]>;
+	readonly watchdogFiles: Promise<string[]>;
+	readonly advisors: Promise<DiscoveredAdvisors>;
+}
+
+/**
+ * Start discovering the project inputs of `cwd`. An input the caller supplied is used as given:
+ * `undefined` means discover it, and `[]` means resolved to nothing on purpose. Presence, not
+ * truthiness, because `[]` is truthy.
+ */
+export function discoverProjectInputs(
+	cwd: string,
+	agentDir: string,
+	settings: Settings,
+	supplied: Pick<CreateAgentSessionOptions, "contextFiles" | "workspaceTree" | "skills" | "rules">,
+): ProjectInputDiscovery {
+	const skills =
+		supplied.skills !== undefined
+			? Promise.resolve({ skills: supplied.skills, warnings: [] })
+			: logger.time("discoverSkills", discoverSkills, cwd, agentDir, {
+					...settings.getGroup("skills"),
+					disabledExtensions: settings.get("disabledExtensions") ?? [],
+				});
+	return {
+		cwd,
+		contextFiles: prefetch(
+			supplied.contextFiles !== undefined
+				? Promise.resolve(supplied.contextFiles)
+				: logger.time("discoverContextFiles", discoverContextFiles, cwd, agentDir),
+		),
+		workspaceTree: prefetch(discoverWorkspaceTree(cwd, settings, supplied.workspaceTree)),
+		activeRepoContext: logger.time("resolveActiveRepoContext", resolveActiveRepoContextOrNull, cwd),
+		skills: prefetch(skills),
+		rules: prefetch(
+			supplied.rules !== undefined
+				? Promise.resolve(supplied.rules)
+				: logger.time("discoverRules", discoverRules, cwd, agentDir).then(result => result.items),
+		),
+		watchdogFiles: prefetch(logger.time("discoverWatchdogFiles", discoverWatchdogFiles, cwd, agentDir)),
+		advisors: prefetch(logger.time("discoverAdvisorConfigs", discoverAdvisorConfigs, cwd, agentDir)),
+	};
+}
+
+function discoverWorkspaceTree(
+	cwd: string,
+	settings: Settings,
+	supplied: WorkspaceTree | undefined,
+): Promise<WorkspaceTree> {
+	if (supplied !== undefined) return Promise.resolve(supplied);
+	if (!(settings.get("includeWorkspaceTree") ?? false)) {
+		return Promise.resolve({ rootPath: cwd, rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] });
+	}
+	return logger.time("buildWorkspaceTree", buildWorkspaceTree, cwd, { timeoutMs: WORKSPACE_TREE_DEADLINE_MS });
+}
+
+async function resolveActiveRepoContextOrNull(cwd: string): Promise<ActiveRepoContext | null> {
+	try {
+		return await resolveActiveRepoContext(cwd);
+	} catch (error) {
+		// Null drops the prompt's branch and status enrichment, so the reason is a warning.
+		logger.warn("Failed to resolve active repo context", { cwd, error: errorMessage(error) });
+		return null;
+	}
+}
+
+/**
+ * The workspace tree when its scan finishes within {@link WORKSPACE_TREE_DEADLINE_MS}, else
+ * undefined. The scan keeps running, and the system prompt races the same promise when it renders.
+ * The deadline timer is cleared as soon as the scan settles.
+ */
+export async function workspaceTreeWithinDeadline(
+	discovery: ProjectInputDiscovery,
+): Promise<WorkspaceTree | undefined> {
+	const deadline = new Error("workspace tree scan deadline");
+	try {
+		return await raceWithTimeout(discovery.workspaceTree, WORKSPACE_TREE_DEADLINE_MS, () => deadline);
+	} catch (error) {
+		if (error !== deadline) throw error;
+		logger.warn("Startup scan exceeded deadline; deferring to system prompt fallback", {
+			name: "buildWorkspaceTree",
+			timeoutMs: WORKSPACE_TREE_DEADLINE_MS,
+			cwd: discovery.cwd,
+		});
+		return undefined;
+	}
+}
+
+/** The advisor scope a project's discovered inputs produce. */
+export function projectAdvisorScope(inputs: {
+	watchdogFiles: readonly string[];
+	activeRepoContext: ActiveRepoContext | null;
+	contextFiles: readonly ContextFileEntry[];
+	advisors: DiscoveredAdvisors;
+}): ProjectAdvisorScope {
+	const watchdogPrompts = inputs.activeRepoContext
+		? [...inputs.watchdogFiles, formatActiveRepoWatchdogPrompt(inputs.activeRepoContext)]
+		: inputs.watchdogFiles;
+	return {
+		advisorWatchdogPrompt: watchdogPrompts.length > 0 ? watchdogPrompts.join("\n\n") : undefined,
+		advisorContextPrompt: formatAdvisorContextPrompt(inputs.contextFiles),
+		advisorSharedInstructions: inputs.advisors.sharedInstructions,
+		advisorConfigs: inputs.advisors.advisors,
+	};
 }
 
 /**

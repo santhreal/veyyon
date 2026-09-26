@@ -24,6 +24,7 @@ import {
 	toUserMessageView,
 } from "../../../../presentation/transcript-builder";
 import type { CustomMessage } from "../../../../session/messages";
+import { type HighlightRequest, prefetchHighlights } from "../../../../theme/highlight";
 import { theme } from "../../../../theme/theme";
 import { decodeStreamedToolArgs, streamingStringKeysForTool } from "../../controllers/tool-args-reveal";
 import { isLiveBackgroundTask } from "../../utils/async-tool-state";
@@ -759,6 +760,20 @@ export class ChatTranscriptBuilder {
 				this.#pendingTools.delete(toolCallId);
 			}
 		}
+		this.#prefetchHighlights();
 		this.deps.requestRender();
+	}
+
+	/**
+	 * Highlight every source the rebuilt tool cards draw in one batch before the frame that draws them.
+	 * The frame draws every card, and each card otherwise highlights its sources one after another on
+	 * the render thread; the batch spreads them across threads.
+	 */
+	#prefetchHighlights(): void {
+		const requests: HighlightRequest[] = [];
+		for (const child of this.container.children) {
+			if (child instanceof ToolExecutionComponent) child.highlightRequests(requests);
+		}
+		prefetchHighlights(requests);
 	}
 }

@@ -249,11 +249,12 @@ export interface CollapsedOutputRow {
  */
 function progressRunKey(line: string): string | undefined {
 	const bare = line.includes("\u001b") ? stripAnsi(line) : line;
-	const token = /^\S+/.exec(bare.trim())?.[0];
+	// `\s` and `trim` strip the same characters, so the first run of non-space is the trimmed line's first token.
+	const token = /\S+/.exec(bare)?.[0];
 	if (token === undefined) return undefined;
-	if (DIAGNOSTIC_LEAD_TOKENS.has(token.replace(/:$/, "").toLowerCase())) return undefined;
 	const shaped = /^[A-Z][A-Za-z]*:?$/.test(token) || /^[a-z]+:$/.test(token) || /^[[(#]/.test(token);
-	return shaped ? token.replace(/\d+/g, "#") : undefined;
+	if (!shaped || DIAGNOSTIC_LEAD_TOKENS.has(token.replace(/:$/, "").toLowerCase())) return undefined;
+	return token.replace(/\d+/g, "#");
 }
 
 /**
@@ -272,17 +273,30 @@ export function collapseProgressRuns(
 ): CollapsedOutputRow[] {
 	const rows: CollapsedOutputRow[] = [];
 	let index = 0;
+	// The key of `lines[index]` when the scan that ended the previous run already computed it, so each
+	// line is keyed once rather than once as a run's candidate and again as the next run's anchor.
+	let carried = false;
+	let carriedKey: string | undefined;
 	while (index < lines.length) {
 		const first = lines[index]!;
-		const key = progressRunKey(first);
+		const key = carried ? carriedKey : progressRunKey(first);
+		carried = false;
 		let end = index + 1;
 		while (end < lines.length) {
 			const next = lines[end]!;
 			// A blank line never anchors a run: an empty row carries no text to keep,
 			// so counting blanks away would leave a bare `+N earlier` marker.
-			const extendsRun =
-				next === first ? first.trim().length > 0 : key !== undefined && progressRunKey(next) === key;
-			if (!extendsRun) break;
+			if (next === first) {
+				if (first.trim().length === 0) break;
+			} else {
+				if (key === undefined) break;
+				const nextKey = progressRunKey(next);
+				if (nextKey !== key) {
+					carried = true;
+					carriedKey = nextKey;
+					break;
+				}
+			}
 			end++;
 		}
 		const run = end - index;
@@ -766,6 +780,9 @@ function embeddedHomeRegex(home: string): RegExp {
 export function shortenEmbeddedPaths(text: string, homeDir?: string): string {
 	const home = homeDir ?? os.homedir();
 	if (!home) return text;
+	// Only a backslash in the home widens the pattern past the home's own text, to match either
+	// separator; without one, a line that does not contain the home has nothing to shorten.
+	if (!home.includes("\\") && !text.includes(home)) return text;
 	// `replace` with a global regex starts at index 0 whatever `lastIndex` holds, so the shared instance is safe to reuse.
 	return text.replace(embeddedHomeRegex(home), (_match, prefix, _h, suffix) => {
 		const rawSuffix = suffix ?? "";

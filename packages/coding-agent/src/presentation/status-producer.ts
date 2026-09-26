@@ -26,7 +26,7 @@ import type {
 	StatusServingAccount,
 	StatusUsageStats,
 } from "@veyyon/wire/presentation";
-import { resolveContextLimit } from "../config/compaction-strategy";
+import { measureContextGauge } from "../config/compaction-strategy";
 import { settings } from "../config/settings-instance";
 import { recordRestLaunchFacts } from "../modes/launch-facts";
 import { accountDisplayLabel, accountsForProvider, buildAccountInventory } from "../session/account-inventory";
@@ -472,19 +472,8 @@ export class StatusPresentationProducer implements StatusDataSource {
 	getContextBreakdown(session: AgentSession, autoCompactEnabled: boolean): StatusContextBreakdown {
 		const modelContextWindow = session.model?.contextWindow ?? session.state?.model?.contextWindow ?? 0;
 		const { usedTokens, contextWindow } = this.#contextUsage(session, modelContextWindow);
-
-		let contextLimit = contextWindow;
-		let contextLimitKind: "window" | "compaction" = "window";
 		const compactionSettings = autoCompactEnabled ? session.settings?.getGroup?.("compaction") : undefined;
-		if (compactionSettings) {
-			const limit = resolveContextLimit(contextWindow, compactionSettings);
-			contextLimit = limit.tokens;
-			contextLimitKind = limit.kind;
-		}
-
-		const contextPercent = usedTokens === null ? null : contextLimit > 0 ? (usedTokens / contextLimit) * 100 : null;
-
-		return { usedTokens, contextWindow, contextLimit, contextLimitKind, contextPercent };
+		return measureContextGauge(usedTokens, contextWindow, compactionSettings);
 	}
 
 	getTokensPerSecond(session: AgentSession): number | null {

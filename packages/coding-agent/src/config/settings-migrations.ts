@@ -46,6 +46,301 @@ export interface RawSettingsMigrationContext {
 }
 
 /**
+ * A raw settings tree read and rewritten through every spelling a legacy key can have on disk.
+ *
+ * Every value in a settings source is NESTED — the loader builds the tree
+ * with `setByPath` and `get` reads it back segment by segment — so a dotted
+ * key written at the top level here would be stored but never read. That is
+ * not theoretical: writing `raw["agent.delegation"]` made the agent
+ * migration a no-op, and only a test that loaded a legacy config and read the
+ * new setting back caught it. A legacy key is still READ in any spelling:
+ * nested, flat, or split between the two at any segment.
+ */
+class LegacySettingsKeys {
+	readonly raw: RawSettings;
+
+	constructor(raw: RawSettings) {
+		this.raw = raw;
+	}
+
+	read(segments: readonly string[]): unknown {
+		const nested = getByPath(this.raw, segments);
+		if (nested !== undefined) return nested;
+		const flat = this.raw[segments.join(".")];
+		if (flat !== undefined) return flat;
+		for (let i = 1; i < segments.length; i++) {
+			const value = this.#readSplitAt(segments, i);
+			if (value !== undefined) return value;
+		}
+		return undefined;
+	}
+
+	/** Read a legacy key and delete it in every spelling. */
+	take(segments: readonly string[]): unknown {
+		const value = this.read(segments);
+		if (value === undefined) return undefined;
+		deleteByPath(this.raw, segments);
+		delete this.raw[segments.join(".")];
+		for (let i = 1; i < segments.length; i++) {
+			const head = segments.slice(0, i);
+			const tail = segments.slice(i);
+			const parent = getByPath(this.raw, head);
+			if (isRecord(parent)) delete parent[tail.join(".")];
+			const flatParent = this.raw[head.join(".")];
+			if (isRecord(flatParent)) deleteByPath(flatParent, tail);
+		}
+		return value;
+	}
+
+	/**
+	 * Set `agent.<key>`. An explicit new-key value already on disk is authoritative: an operator
+	 * who has set the new setting is never overwritten by a stale legacy key.
+	 */
+	setAgent(key: readonly string[], value: unknown): void {
+		if (value === undefined) return;
+		if (this.read(["agent", ...key]) !== undefined) return;
+		setByPath(this.raw, ["agent", ...key], value);
+	}
+
+	/** A key written nested down to segment `i` and flat after it, or flat down to `i` and nested after. */
+	#readSplitAt(segments: readonly string[], i: number): unknown {
+		const head = segments.slice(0, i);
+		const tail = segments.slice(i);
+		const parent = getByPath(this.raw, head);
+		if (isRecord(parent)) {
+			const value = parent[tail.join(".")];
+			if (value !== undefined) return value;
+		}
+		const flatParent = this.raw[head.join(".")];
+		return isRecord(flatParent) ? getByPath(flatParent, tail) : undefined;
+	}
+}
+
+/**
+ * Fold flat modelRoles.<role> into raw.modelRoles so both modelRoles.task migration
+ * and surviving modelRoles (e.g. modelRoles.default) see a unified modelRoles tree.
+ */
+function foldFlatModelRoles(raw: RawSettings): void {
+	for (const key of Object.keys(raw)) {
+		if (!key.startsWith("modelRoles.")) continue;
+		const role = key.slice("modelRoles.".length);
+		if (!role) continue;
+		const existing = isRecord(raw.modelRoles) ? raw.modelRoles : {};
+		if (!(role in existing)) existing[role] = raw[key];
+		raw.modelRoles = existing;
+		delete raw[key];
+	}
+}
+
+/**
+ * The area itself was `subagent.*` before it was `agent.*`. Fold it first,
+ * leaf for leaf, so the older migrations below see one tree: a legacy
+ * `subagent.autoClose.parkedMs` becomes `agent.autoClose.parkedMs` here and
+ * `agent.prune.afterMs` a few steps later. `advisor.subagents` and
+ * `argot.subagents` moved with it; `tier.subagent` is folded with the other
+ * tier keys by the tier migration.
+ */
+function foldSubagentArea(keys: LegacySettingsKeys): void {
+	const { raw } = keys;
+	const fold = (node: unknown, path: string[]): void => {
+		if (!isRecord(node)) {
+			keys.setAgent(path, node);
+			return;
+		}
+		for (const [key, value] of Object.entries(node)) {
+			fold(value, path.concat(key.includes(".") ? key.split(".") : key));
+		}
+	};
+	if (isRecord(raw.subagent)) {
+		fold(raw.subagent, []);
+		delete raw.subagent;
+	}
+	for (const key of Object.keys(raw)) {
+		if (!key.startsWith("subagent.")) continue;
+		const leaf = key.slice("subagent.".length);
+		if (!leaf) continue;
+		fold(raw[key], leaf.split("."));
+		delete raw[key];
+	}
+	for (const area of ["advisor", "argot"] as const) {
+		const value = keys.take([area, "subagents"]);
+		if (value !== undefined && keys.read([area, "agents"]) === undefined) setByPath(raw, [area, "agents"], value);
+	}
+}
+
+function migrateDelegation(keys: LegacySettingsKeys): void {
+	const eager = keys.take(["task", "eager"]);
+	if (typeof eager === "string") {
+		// `task.eager` had three values and all three still delegate, so the old
+		// bottom value lands on `allowed`: someone with eager delegation switched
+		// off still delegated by hand, and taking the task tool away would change
+		// what their sessions can do.
+		const delegation = eager === "always" ? "required" : eager === "preferred" ? "preferred" : "allowed";
+		keys.setAgent(["delegation"], delegation);
+	}
+
+	// `agent.delegation: off` was the kill switch before `agent.enabled`
+	// existed, so one setting answered two questions: whether agents exist, and
+	// how hard to push them. Someone who wrote `off` was turning agents OFF —
+	// that is the half to preserve — so it becomes `enabled: false` and the
+	// strength falls back to its default, ready for when they turn it back on.
+	// Deleted rather than left in place because `off` is no longer a legal value:
+	// leaving it would fail validation and read as a corrupt config.
+	if (keys.read(["agent", "delegation"]) === "off") {
+		deleteByPath(keys.raw, ["agent", "delegation"]);
+		delete keys.raw["agent.delegation"];
+		if (keys.read(["agent", "enabled"]) === undefined) {
+			setByPath(keys.raw, ["agent", "enabled"], false);
+		}
+	}
+}
+
+/** `task.*` scalars that moved to `agent.*` unchanged, as `[legacy, next]` leaf names. */
+const TASK_SCALAR_KEYS = [
+	["batch", "batch"],
+	["maxConcurrency", "maxConcurrency"],
+	["enableLsp", "enableLsp"],
+	["maxRuntimeMs", "maxRuntimeMs"],
+	["agentIdleTtlMs", "idleTtlMs"],
+	["softRequestBudget", "softRequestBudget"],
+	["softRequestBudgetNotice", "softRequestBudgetNotice"],
+	["showResolvedModelBadge", "showResolvedModelBadge"],
+] as const;
+
+/** `agent.autoClose.*` leaves and the `agent.prune.*` leaves they became. */
+const AUTO_CLOSE_PRUNE_KEYS = [
+	["enabled", "enabled"],
+	["parkedMs", "afterMs"],
+	["waitingMs", "waitingAfterMs"],
+] as const;
+
+function migrateRenamedScalars(keys: LegacySettingsKeys): void {
+	for (const [legacy, next] of TASK_SCALAR_KEYS) {
+		keys.setAgent([next], keys.take(["task", legacy]));
+	}
+
+	// The close stage became the PRUNE stage, and the keys moved with it. "Close"
+	// read as the opposite of park, when the two are consecutive stages of one
+	// lifecycle: parking releases the session and keeps the row, pruning drops the
+	// row. The container is deleted with the leaves so a migrated file carries no
+	// empty `agent.autoClose` block.
+	for (const [legacy, next] of AUTO_CLOSE_PRUNE_KEYS) {
+		keys.setAgent(["prune", next], keys.take(["agent", "autoClose", legacy]));
+	}
+	if (keys.read(["agent", "autoClose"]) !== undefined) deleteByPath(keys.raw, ["agent", "autoClose"]);
+	for (const [legacy] of AUTO_CLOSE_PRUNE_KEYS) {
+		delete keys.raw[`agent.autoClose.${legacy}`];
+	}
+}
+
+/**
+ * The old depth counted the root as level 1. The replacement counts only
+ * nested agent levels, so old 1 becomes new 0. Old 0 disabled even the
+ * root task tool; preserve that behavior through the dedicated master
+ * switch. Both legacy paths are consumed, with the newer agent path
+ * winning when a file somehow contains both.
+ */
+function migrateRecursionDepth(keys: LegacySettingsKeys): void {
+	const legacyTaskDepth = keys.take(["task", "maxRecursionDepth"]);
+	const legacyAgentDepth = keys.take(["agent", "maxRecursionDepth"]);
+	const legacyDepth = legacyAgentDepth ?? legacyTaskDepth;
+	if (legacyDepth === undefined) return;
+	if (legacyDepth === 0) keys.setAgent(["enabled"], false);
+	const nestedDepth =
+		typeof legacyDepth === "number" && Number.isInteger(legacyDepth)
+			? legacyDepth < 0
+				? -1
+				: Math.max(0, legacyDepth - 1)
+			: legacyDepth;
+	keys.setAgent(["maxNestedSpawnDepth"], nestedDepth);
+}
+
+/** task.isolation.* -> agent.isolation.* */
+function migrateIsolation(keys: LegacySettingsKeys): void {
+	for (const key of ["mode", "merge", "commits"] as const) {
+		keys.setAgent(["isolation", key], keys.take(["task", "isolation", key]));
+	}
+	const isolationMode = keys.read(["agent", "isolation", "mode"]);
+	if (typeof isolationMode !== "string") return;
+	const mapped = LEGACY_ISOLATION_MODES[isolationMode];
+	if (mapped !== undefined) {
+		setByPath(keys.raw, ["agent", "isolation", "mode"], mapped);
+	}
+}
+
+/**
+ * The two agent-keyed maps become one row per agent. Two parallel maps meant
+ * two lookups that could disagree, which is how an agent could read as off on
+ * one surface while a model override for it lived on invisibly.
+ */
+function migrateAgentRows(keys: LegacySettingsKeys): void {
+	const agents: Record<string, Record<string, unknown>> = {};
+	const disabled = keys.take(["task", "disabledAgents"]);
+	if (Array.isArray(disabled)) {
+		for (const name of disabled) {
+			if (typeof name !== "string" || !name.trim()) continue;
+			agents[name.trim()] = { ...(agents[name.trim()] ?? {}), enabled: false };
+		}
+	}
+	reportDroppedAgentModelOverrides(keys.take(["task", "agentModelOverrides"]));
+	// `disabledAgents` is the only legacy map with a home in the new section, so a
+	// row written here carries exactly one fact: whether the agent runs.
+	if (Object.keys(agents).length > 0) keys.setAgent(["agents"], agents);
+}
+
+/**
+ * Per-agent models are NOT carried over. They were a third owner of the
+ * agent model question, above the blanket setting and invisible from it,
+ * and they are gone; writing them into the new section would only recreate
+ * the drift in a new spelling. Folding them into `agent.model` instead is
+ * not available either — several agents could name several models and there
+ * is no honest way to pick one. So the values are dropped and named, once,
+ * with the setting that replaced them.
+ */
+function reportDroppedAgentModelOverrides(overrides: unknown): void {
+	if (!isRecord(overrides)) return;
+	const dropped = Object.entries(overrides)
+		.filter(([, model]) => typeof model === "string" && model.trim().length > 0)
+		.map(([name, model]) => `${name}=${String(model).trim()}`);
+	if (dropped.length === 0) return;
+	logger.warn(
+		`Settings: task.agentModelOverrides (${dropped.join(", ")}) is no longer read — a per-agent model ` +
+			`is set on that agent's own page. Open Agents → Roster, pick the agent, and set its Model, or ` +
+			`give the agent file its own \`model:\` frontmatter.`,
+		{ setting: "task.agentModelOverrides", dropped },
+	);
+}
+
+/**
+ * modelRoles.task was the "model for agents" knob before this section
+ * existed. It folds into the blanket agent model AND the role entry goes:
+ * leaving it would restore two owners for one value, with role expansion
+ * answering first, which is exactly why an agent model setting used to have
+ * no effect.
+ */
+function migrateTaskRoleModel(keys: LegacySettingsKeys): void {
+	const legacyRoleModel = keys.take(["modelRoles", "task"]);
+	if (typeof legacyRoleModel === "string" && legacyRoleModel.trim()) {
+		keys.setAgent(["model"], legacyRoleModel.trim());
+	}
+	const { raw } = keys;
+	if (isRecord(raw.modelRoles) && Object.keys(raw.modelRoles).length === 0) delete raw.modelRoles;
+}
+
+/**
+ * Leave no empty husk behind: a surviving `task: {}` block is a second place
+ * to look for settings that no longer live there.
+ */
+function dropEmptyTaskSection(raw: RawSettings): void {
+	if (isRecord(raw.task) && Object.keys(raw.task).length === 0) delete raw.task;
+	const isolation = getByPath(raw, ["task", "isolation"]);
+	if (isRecord(isolation) && Object.keys(isolation).length === 0) {
+		deleteByPath(raw, ["task", "isolation"]);
+		if (isRecord(raw.task) && Object.keys(raw.task).length === 0) delete raw.task;
+	}
+}
+
+/**
  * Fold every retired agent key onto the `agent.*` area, in place.
  *
  * Runs on every read of a settings source, so it must be a FIXED POINT:
@@ -62,250 +357,16 @@ export interface RawSettingsMigrationContext {
  * rather than folded into a row nothing reads.
  */
 function migrateAgentSettings(raw: RawSettings): void {
-	// Every value in a settings source is NESTED — the loader builds the tree
-	// with `setByPath` and `get` reads it back segment by segment — so a dotted
-	// key written at the top level here would be stored but never read. That is
-	// not theoretical: writing `raw["agent.delegation"]` made this whole
-	// migration a no-op, and only a test that loaded a legacy config and read the
-	// new setting back caught it.
-	const read = (segments: string[]): unknown => {
-		const nested = getByPath(raw, segments);
-		if (nested !== undefined) return nested;
-		const flat = raw[segments.join(".")];
-		if (flat !== undefined) return flat;
-		for (let i = 1; i < segments.length; i++) {
-			const parent = getByPath(raw, segments.slice(0, i));
-			if (isRecord(parent)) {
-				const val = (parent as Record<string, unknown>)[segments.slice(i).join(".")];
-				if (val !== undefined) return val;
-			}
-			const flatParent = raw[segments.slice(0, i).join(".")];
-			if (isRecord(flatParent)) {
-				const val = getByPath(flatParent as Record<string, unknown>, segments.slice(i));
-				if (val !== undefined) return val;
-			}
-		}
-		return undefined;
-	};
-	const take = (segments: string[]): unknown => {
-		const value = read(segments);
-		if (value !== undefined) {
-			deleteByPath(raw, segments);
-			delete raw[segments.join(".")];
-			for (let i = 1; i < segments.length; i++) {
-				const parent = getByPath(raw, segments.slice(0, i));
-				if (isRecord(parent)) {
-					delete (parent as Record<string, unknown>)[segments.slice(i).join(".")];
-				}
-				const flatParent = raw[segments.slice(0, i).join(".")];
-				if (isRecord(flatParent)) {
-					deleteByPath(flatParent as Record<string, unknown>, segments.slice(i));
-				}
-			}
-		}
-		return value;
-	};
-	const setNew = (key: string[], value: unknown): void => {
-		if (value === undefined) return;
-		// An explicit new-key value already on disk is authoritative: an operator
-		// who has set the new setting is never overwritten by a stale legacy key.
-		if (read(["agent", ...key]) !== undefined) return;
-		setByPath(raw, ["agent", ...key], value);
-	};
-
-	// Fold flat modelRoles.<role> into raw.modelRoles so both modelRoles.task migration
-	// and surviving modelRoles (e.g. modelRoles.default) see a unified modelRoles tree.
-	for (const key of Object.keys(raw)) {
-		if (key.startsWith("modelRoles.")) {
-			const role = key.slice("modelRoles.".length);
-			if (role) {
-				const existing = isRecord(raw.modelRoles) ? (raw.modelRoles as Record<string, unknown>) : {};
-				if (!(role in existing)) existing[role] = raw[key];
-				raw.modelRoles = existing;
-				delete raw[key];
-			}
-		}
-	}
-
-	// The area itself was `subagent.*` before it was `agent.*`. Fold it first,
-	// leaf for leaf, so the older migrations below see one tree: a legacy
-	// `subagent.autoClose.parkedMs` becomes `agent.autoClose.parkedMs` here and
-	// `agent.prune.afterMs` a few lines down. `advisor.subagents` and
-	// `argot.subagents` moved with it; `tier.subagent` is folded with the other
-	// tier keys further down.
-	const fold = (node: unknown, path: string[]): void => {
-		if (isRecord(node)) {
-			for (const [key, value] of Object.entries(node)) {
-				fold(value, path.concat(key.includes(".") ? key.split(".") : key));
-			}
-		} else {
-			setNew(path, node);
-		}
-	};
-	if (isRecord(raw.subagent)) {
-		fold(raw.subagent, []);
-		delete raw.subagent;
-	}
-	for (const key of Object.keys(raw)) {
-		if (key.startsWith("subagent.")) {
-			const leaf = key.slice("subagent.".length);
-			if (leaf) {
-				fold(raw[key], leaf.split("."));
-				delete raw[key];
-			}
-		}
-	}
-	for (const area of ["advisor", "argot"] as const) {
-		const value = take([area, "subagents"]);
-		if (value !== undefined && read([area, "agents"]) === undefined) setByPath(raw, [area, "agents"], value);
-	}
-
-	const eager = take(["task", "eager"]);
-	if (typeof eager === "string") {
-		// `task.eager` had three values and all three still delegate, so the old
-		// bottom value lands on `allowed`: someone with eager delegation switched
-		// off still delegated by hand, and taking the task tool away would change
-		// what their sessions can do.
-		const delegation = eager === "always" ? "required" : eager === "preferred" ? "preferred" : "allowed";
-		setNew(["delegation"], delegation);
-	}
-
-	// `agent.delegation: off` was the kill switch before `agent.enabled`
-	// existed, so one setting answered two questions: whether agents exist, and
-	// how hard to push them. Someone who wrote `off` was turning agents OFF —
-	// that is the half to preserve — so it becomes `enabled: false` and the
-	// strength falls back to its default, ready for when they turn it back on.
-	// Deleted rather than left in place because `off` is no longer a legal value:
-	// leaving it would fail validation and read as a corrupt config.
-	if (read(["agent", "delegation"]) === "off") {
-		deleteByPath(raw, ["agent", "delegation"]);
-		delete raw["agent.delegation"];
-		if (read(["agent", "enabled"]) === undefined) {
-			setByPath(raw, ["agent", "enabled"], false);
-		}
-	}
-
-	for (const [legacy, next] of [
-		["batch", "batch"],
-		["maxConcurrency", "maxConcurrency"],
-		["enableLsp", "enableLsp"],
-		["maxRuntimeMs", "maxRuntimeMs"],
-		["agentIdleTtlMs", "idleTtlMs"],
-		["softRequestBudget", "softRequestBudget"],
-		["softRequestBudgetNotice", "softRequestBudgetNotice"],
-		["showResolvedModelBadge", "showResolvedModelBadge"],
-	] as const) {
-		setNew([next], take(["task", legacy]));
-	}
-
-	// The close stage became the PRUNE stage, and the keys moved with it. "Close"
-	// read as the opposite of park, when the two are consecutive stages of one
-	// lifecycle: parking releases the session and keeps the row, pruning drops the
-	// row. The container is deleted with the leaves so a migrated file carries no
-	// empty `agent.autoClose` block.
-	for (const [legacy, next] of [
-		["enabled", "enabled"],
-		["parkedMs", "afterMs"],
-		["waitingMs", "waitingAfterMs"],
-	] as const) {
-		setNew(["prune", next], take(["agent", "autoClose", legacy]));
-	}
-	if (read(["agent", "autoClose"]) !== undefined) deleteByPath(raw, ["agent", "autoClose"]);
-	delete raw["agent.autoClose.enabled"];
-	delete raw["agent.autoClose.parkedMs"];
-	delete raw["agent.autoClose.waitingMs"];
-
-	// The old depth counted the root as level 1. The replacement counts only
-	// nested agent levels, so old 1 becomes new 0. Old 0 disabled even the
-	// root task tool; preserve that behavior through the dedicated master
-	// switch. Both legacy paths are consumed, with the newer agent path
-	// winning when a file somehow contains both.
-	const legacyTaskDepth = take(["task", "maxRecursionDepth"]);
-	const legacyAgentDepth = take(["agent", "maxRecursionDepth"]);
-	const legacyDepth = legacyAgentDepth ?? legacyTaskDepth;
-	if (legacyDepth !== undefined) {
-		if (legacyDepth === 0) setNew(["enabled"], false);
-		const nestedDepth =
-			typeof legacyDepth === "number" && Number.isInteger(legacyDepth)
-				? legacyDepth < 0
-					? -1
-					: Math.max(0, legacyDepth - 1)
-				: legacyDepth;
-		setNew(["maxNestedSpawnDepth"], nestedDepth);
-	}
-
-	// task.isolation.* -> agent.isolation.*
-	for (const key of ["mode", "merge", "commits"] as const) {
-		setNew(["isolation", key], take(["task", "isolation", key]));
-	}
-	const isolationMode = read(["agent", "isolation", "mode"]);
-	if (typeof isolationMode === "string") {
-		const isolationLegacyMode: Record<string, string> = {
-			worktree: "rcopy",
-			"fuse-overlay": "overlayfs",
-			"fuse-projfs": "projfs",
-		};
-		const mapped = isolationLegacyMode[isolationMode];
-		if (mapped !== undefined) {
-			setByPath(raw, ["agent", "isolation", "mode"], mapped);
-		}
-	}
-
-	// The two agent-keyed maps become one row per agent. Two parallel maps meant
-	// two lookups that could disagree, which is how an agent could read as off on
-	// one surface while a model override for it lived on invisibly.
-	const agents: Record<string, Record<string, unknown>> = {};
-	const disabled = take(["task", "disabledAgents"]);
-	if (Array.isArray(disabled)) {
-		for (const name of disabled) {
-			if (typeof name !== "string" || !name.trim()) continue;
-			agents[name.trim()] = { ...(agents[name.trim()] ?? {}), enabled: false };
-		}
-	}
-	// Per-agent models are NOT carried over. They were a third owner of the
-	// agent model question, above the blanket setting and invisible from it,
-	// and they are gone; writing them into the new section would only recreate
-	// the drift in a new spelling. Folding them into `agent.model` instead is
-	// not available either — several agents could name several models and there
-	// is no honest way to pick one. So the values are dropped and named, once,
-	// with the setting that replaced them.
-	const overrides = take(["task", "agentModelOverrides"]);
-	if (isRecord(overrides)) {
-		const dropped = Object.entries(overrides)
-			.filter(([, model]) => typeof model === "string" && model.trim().length > 0)
-			.map(([name, model]) => `${name}=${String(model).trim()}`);
-		if (dropped.length > 0) {
-			logger.warn(
-				`Settings: task.agentModelOverrides (${dropped.join(", ")}) is no longer read — a per-agent model ` +
-					`is set on that agent's own page. Open Agents → Roster, pick the agent, and set its Model, or ` +
-					`give the agent file its own \`model:\` frontmatter.`,
-				{ setting: "task.agentModelOverrides", dropped },
-			);
-		}
-	}
-	// `disabledAgents` is the only legacy map with a home in the new section, so a
-	// row written here carries exactly one fact: whether the agent runs.
-	if (Object.keys(agents).length > 0) setNew(["agents"], agents);
-
-	// modelRoles.task was the "model for agents" knob before this section
-	// existed. It folds into the blanket agent model AND the role entry goes:
-	// leaving it would restore two owners for one value, with role expansion
-	// answering first, which is exactly why an agent model setting used to have
-	// no effect.
-	const legacyRoleModel = take(["modelRoles", "task"]);
-	if (typeof legacyRoleModel === "string" && legacyRoleModel.trim()) {
-		setNew(["model"], legacyRoleModel.trim());
-	}
-	if (isRecord(raw.modelRoles) && Object.keys(raw.modelRoles).length === 0) delete raw.modelRoles;
-
-	// Leave no empty husk behind: a surviving `task: {}` block is a second place
-	// to look for settings that no longer live there.
-	if (isRecord(raw.task) && Object.keys(raw.task).length === 0) delete raw.task;
-	const isolation = getByPath(raw, ["task", "isolation"]);
-	if (isRecord(isolation) && Object.keys(isolation).length === 0) {
-		deleteByPath(raw, ["task", "isolation"]);
-		if (isRecord(raw.task) && Object.keys(raw.task).length === 0) delete raw.task;
-	}
+	const keys = new LegacySettingsKeys(raw);
+	foldFlatModelRoles(raw);
+	foldSubagentArea(keys);
+	migrateDelegation(keys);
+	migrateRenamedScalars(keys);
+	migrateRecursionDepth(keys);
+	migrateIsolation(keys);
+	migrateAgentRows(keys);
+	migrateTaskRoleModel(keys);
+	dropEmptyTaskSection(raw);
 }
 
 /** One field-level migration, applied in place to a raw settings tree. */
@@ -480,22 +541,24 @@ function migrateTaskFlags(raw: RawSettings): void {
 	}
 }
 
-function migrateEditSettings(raw: RawSettings): void {
-	// edit.mode: removed "atom" and "vim" variants map back to "hashline"
-	const editObj = raw.edit as Record<string, unknown> | undefined;
-	if (editObj) {
-		if (editObj.mode === "atom" || editObj.mode === "vim") {
-			editObj.mode = "hashline";
-		}
-		const modelVariants = editObj.modelVariants as Record<string, unknown> | undefined;
-		if (isRecord(modelVariants)) {
-			for (const [pattern, variant] of Object.entries(modelVariants)) {
-				if (variant === "atom" || variant === "vim") {
-					modelVariants[pattern] = "hashline";
-				}
-			}
-		}
+/** An `edit.mode` variant that was removed and now maps back to "hashline". */
+function isRetiredEditMode(mode: unknown): boolean {
+	return mode === "atom" || mode === "vim";
+}
+
+/** edit.mode and edit.modelVariants: removed "atom" and "vim" variants map back to "hashline". */
+function retireEditModeVariants(editObj: Record<string, unknown>): void {
+	if (isRetiredEditMode(editObj.mode)) editObj.mode = "hashline";
+	const modelVariants = editObj.modelVariants;
+	if (!isRecord(modelVariants)) return;
+	for (const [pattern, variant] of Object.entries(modelVariants)) {
+		if (isRetiredEditMode(variant)) modelVariants[pattern] = "hashline";
 	}
+}
+
+function migrateEditSettings(raw: RawSettings): void {
+	const editObj = raw.edit as Record<string, unknown> | undefined;
+	if (editObj) retireEditModeVariants(editObj);
 
 	// edit.critiqueCodeMutations: boolean -> the edit.afterEdit enum, which
 	// selects one after-edit pass instead of stacking the review on top of a

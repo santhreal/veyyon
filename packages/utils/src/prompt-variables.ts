@@ -371,19 +371,17 @@ function closestKey(name: string, available: readonly string[]): string | undefi
 }
 
 /**
- * Every required variable of `template` that `context` fails to supply.
+ * Every required variable of an analyzed template that `context` fails to supply.
  *
  * `null` counts as missing alongside `undefined`: both render as the empty
  * string, so both leave the same hole, and a check that accepted `null` would
  * pass on exactly the case where an upstream lookup returned nothing.
  */
-export function findMissingTemplateVariables(
-	template: string,
+function unfilledTemplateVariables(
+	variables: TemplateVariables,
 	context: Record<string, unknown>,
-	options: AnalyzeOptions = {},
 ): readonly TemplateVariable[] {
-	const { required } = analyzeTemplate(template, options);
-	return required.filter(variable => {
+	return variables.required.filter(variable => {
 		const value = context[variable.name];
 		if (value !== undefined && value !== null) return false;
 		// Absent, so it is a hole only if control flow can actually reach a place
@@ -392,19 +390,37 @@ export function findMissingTemplateVariables(
 	});
 }
 
+/** Every required variable of `template` that `context` fails to supply. See {@link unfilledTemplateVariables}. */
+export function findMissingTemplateVariables(
+	template: string,
+	context: Record<string, unknown>,
+	options: AnalyzeOptions = {},
+): readonly TemplateVariable[] {
+	return unfilledTemplateVariables(analyzeTemplate(template, options), context);
+}
+
 /**
- * Throw unless `context` can fill every hole `template` would otherwise leave.
+ * Throw unless `context` can fill every hole an analyzed template would otherwise leave.
  *
  * `label` names the template in the message; pass the file path when there is
  * one, since a stack trace through the render machinery does not say which of
  * 143 templates failed.
  */
+export function assertTemplateVariablesFilled(
+	variables: TemplateVariables,
+	context: Record<string, unknown>,
+	label?: string,
+): void {
+	const missing = unfilledTemplateVariables(variables, context);
+	if (missing.length > 0) throw new MissingTemplateVariableError(missing, Object.keys(context).sort(), label);
+}
+
+/** Throw unless `context` can fill every hole `template` would otherwise leave. See {@link assertTemplateVariablesFilled}. */
 export function assertTemplateContext(
 	template: string,
 	context: Record<string, unknown>,
 	label?: string,
 	options: AnalyzeOptions = {},
 ): void {
-	const missing = findMissingTemplateVariables(template, context, options);
-	if (missing.length > 0) throw new MissingTemplateVariableError(missing, Object.keys(context).sort(), label);
+	assertTemplateVariablesFilled(analyzeTemplate(template, options), context, label);
 }

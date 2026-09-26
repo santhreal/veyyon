@@ -33,8 +33,9 @@
  *
  * FROZEN GATES ARE STATED, NOT IMPLIED. A gate that cannot follow a
  * mid-session flip declares itself frozen and says why. `includeWorkspaceTree`
- * remains frozen by placement because `sdk.ts` reads it above the rebuild
- * closure. `inlineToolDescriptors` is live: prompt placement and provider
+ * remains frozen by placement because project discovery scans the tree, and a
+ * rebuild re-discovers only when the cwd moves.
+ * `inlineToolDescriptors` is live: prompt placement and provider
  * schema pruning resolve from the active model together on every request.
  * `gate-registry.test.ts` pins the frozen list so it cannot grow in silence.
  *
@@ -53,9 +54,9 @@ export type GateLiveness =
 	/** Fixed at session start on purpose. `because` states the design reason. */
 	| { readonly kind: "frozen-by-design"; readonly because: string }
 	/**
-	 * Fixed at session start with no reason anyone chose, because `sdk.ts` reads it into a
-	 * closure constant above `rebuildSystemPrompt`. `because` names the read that would have
-	 * to move for the gate to become live.
+	 * Fixed at session start with no reason anyone chose, because the setting is read on a path a
+	 * rebuild does not run. `because` names the read that would have to move for the gate to
+	 * become live.
 	 */
 	| { readonly kind: "frozen-by-placement"; readonly because: string };
 
@@ -178,7 +179,7 @@ export const PROMPT_GATES = [
 		liveness: {
 			kind: "frozen-by-placement",
 			because:
-				"sdk.ts reads it into a closure constant above `rebuildSystemPrompt`, so every rebuild re-reads the session-start value",
+				"`discoverWorkspaceTree` in session/factory-extensions.ts reads it when the project is discovered, and `ProjectPromptInputs.refresh` re-discovers only when the cwd moves, so a rebuild keeps the tree scanned under the previous value",
 		},
 	},
 	{

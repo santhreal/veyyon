@@ -1,6 +1,6 @@
 import type { HelperDelegate, HelperOptions, Template, TemplateDelegate } from "handlebars";
 import Handlebars from "handlebars";
-import { analyzeTemplate, assertTemplateContext, type TemplateVariables } from "./prompt-variables";
+import { analyzeTemplate, assertTemplateVariablesFilled, type TemplateVariables } from "./prompt-variables";
 
 export {
 	analyzeTemplate,
@@ -492,8 +492,19 @@ handlebars.registerHelper("not", (value: unknown): boolean => !value);
 
 handlebars.registerHelper("jsonStringify", (value: unknown): string => JSON.stringify(value));
 
+/**
+ * Analyses keyed on the raw template. A template's AST walk costs more than
+ * rendering it, and every render asserts its context, so without this each
+ * render parses the template a second time to learn what it already learned.
+ * {@link registerHelper} clears it, since the helper set is an input.
+ */
+const templateAnalysisCache = new Map<string, TemplateVariables>();
+
 export function registerHelper(name: string, fn: HelperDelegate): void {
 	handlebars.registerHelper(name, fn);
+	// A new helper turns a zero-argument mustache of its name from a context
+	// variable into a helper call, so every cached analysis may now be wrong.
+	templateAnalysisCache.clear();
 }
 
 export function registerPartial(name: string, fn: Template): void {
@@ -550,12 +561,16 @@ function analyzerOptions(): { helperNames: string[] } {
 
 /** Analyze a template of this module's dialect. See {@link analyzerOptions}. */
 export function analyzePromptTemplate(template: string): TemplateVariables {
-	return analyzeTemplate(disambiguateClosingBraces(template), analyzerOptions());
+	const cached = templateAnalysisCache.get(template);
+	if (cached) return cached;
+	const analysis = analyzeTemplate(disambiguateClosingBraces(template), analyzerOptions());
+	templateAnalysisCache.set(template, analysis);
+	return analysis;
 }
 
 /** Assert a context fills a template of this module's dialect. */
 export function assertPromptContext(template: string, context: TemplateContext, label?: string): void {
-	assertTemplateContext(disambiguateClosingBraces(template), context, label, analyzerOptions());
+	assertTemplateVariablesFilled(analyzePromptTemplate(template), context, label);
 }
 
 export interface RenderOptions {

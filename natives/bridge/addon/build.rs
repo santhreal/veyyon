@@ -5,9 +5,43 @@ use std::{
 	path::{Path, PathBuf},
 };
 
+use syntect::parsing::{SyntaxDefinition, SyntaxSet};
+
+/// Syntaxes bundled in addition to syntect's defaults, by file name under
+/// `src/syntaxes`, in the order they join the set. Syntect ships none of them.
+const EXTRA_SYNTAXES: &[&str] =
+	&["Julia.sublime-syntax", "Nix.sublime-syntax", "Mermaid.sublime-syntax"];
+
 fn main() {
 	napi_build::setup();
 	generate_minimizer_builtin_filters();
+	dump_syntax_set();
+}
+
+/// Link syntect's newline-aware default syntaxes and [`EXTRA_SYNTAXES`] into
+/// one set and write it to `OUT_DIR/syntaxes.packdump` uncompressed, which
+/// `src/highlight.rs` embeds.
+///
+/// Linking a set of 78 syntaxes takes about 80 ms and deserializing the dump
+/// about 0.3 ms, so the first highlight in a process pays only the second. A
+/// vendored syntax that does not parse fails the build.
+fn dump_syntax_set() {
+	let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR should be set");
+	let syntaxes_dir = Path::new(&manifest_dir).join("src").join("syntaxes");
+	let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR should be set"));
+	let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
+	for name in EXTRA_SYNTAXES {
+		let path = syntaxes_dir.join(name);
+		println!("cargo:rerun-if-changed={}", path.display());
+		let source = fs::read_to_string(&path)
+			.unwrap_or_else(|e| panic!("failed to read syntax {}: {e}", path.display()));
+		let definition = SyntaxDefinition::load_from_str(&source, true, None)
+			.unwrap_or_else(|e| panic!("failed to parse syntax {}: {e}", path.display()));
+		builder.add(definition);
+	}
+	let output_path = out_dir.join("syntaxes.packdump");
+	syntect::dumps::dump_to_uncompressed_file(&builder.build(), &output_path)
+		.unwrap_or_else(|e| panic!("failed to write {}: {e}", output_path.display()));
 }
 
 fn generate_minimizer_builtin_filters() {

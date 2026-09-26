@@ -31,6 +31,7 @@ import {
 	dapSessionManager,
 	getAdapterConfigs,
 	getAvailableAdapters,
+	hasAvailableAdapter,
 	type LaunchProgramKind,
 	resolveLaunchOverrides,
 	selectAttachAdapter,
@@ -585,7 +586,7 @@ export class DebugTool implements AgentTool<typeof debugSchema, DebugToolDetails
 	 */
 	static createIf(session: ToolSession): DebugTool | null {
 		if (!session.settings.get("debug.enabled")) return null;
-		if (getAvailableAdapters(session.cwd).length === 0) return null;
+		if (!hasAvailableAdapter(session.cwd)) return null;
 		return new DebugTool(session);
 	}
 

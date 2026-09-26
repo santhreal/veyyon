@@ -18,7 +18,6 @@ import type {
 	AssistantMessage,
 	Context,
 	FetchImpl,
-	ImageContent,
 	Message,
 	Model,
 	ServiceTier,
@@ -28,6 +27,8 @@ import type {
 	ThinkingContent,
 	Tool,
 	ToolCall,
+	ToolResultMessage,
+	UserMessage,
 } from "../types";
 import { shouldSendServiceTier } from "../types";
 import { normalizeSystemPrompts } from "../utils";
@@ -40,12 +41,15 @@ import type {
 	Content,
 	FinishReason,
 	FunctionCallingConfigMode,
+	FunctionCallPart,
+	FunctionResponsePart,
 	GenerateContentConfig,
 	GenerateContentParameters,
 	GenerateContentResponse,
 	Part,
 	ThinkingConfig,
 	ThinkingLevel,
+	UsageMetadata,
 } from "./google-types";
 import { createInitialResponsesAssistantMessage } from "./initial-message";
 import { transformMessages } from "./transform-messages";
@@ -279,239 +283,251 @@ export function sendsSignature(policy: SignaturePolicy, messageIndex: number, si
 	return true;
 }
 
-function supportsFunctionPartId<T extends GoogleApiType>(model: Model<T>): boolean {
-	if (model.api === "google-vertex") return false;
-	return model.id.startsWith("claude-") || (model.api === "google-generative-ai" && isGemini3Model(model.id));
-}
-
 function getGeminiMajorVersion(modelId: string): number | undefined {
 	const match = modelId.toLowerCase().match(/^gemini(?:-live)?-(\d+)/);
 	if (!match) return undefined;
 	return Number.parseInt(match[1], 10);
 }
 
-function supportsMultimodalFunctionResponse(modelId: string): boolean {
-	const geminiMajorVersion = getGeminiMajorVersion(modelId);
-	if (geminiMajorVersion !== undefined) {
-		return geminiMajorVersion >= 3;
-	}
-	return true;
-}
-
 function isGemini3Model(modelId: string): boolean {
 	return modelId.includes("gemini-3");
+}
+
+/** The per-model wire facts every converted message reads, resolved once per request. */
+interface GoogleWireTraits {
+	readonly supportsImages: boolean;
+	/**
+	 * Function call and response parts carry the call id. Vertex AI GenerateContent
+	 * rejects an `id` in either part, whatever API the model is reached through.
+	 */
+	readonly sendsPartId: boolean;
+	/** What a tool call with no usable signature sends: Google's skip sentinel on Gemini 3. */
+	readonly unsignedCallSignature: string | undefined;
+	/**
+	 * Tool-result images nest inside `functionResponse.parts`. Gemini 3+ and the
+	 * non-Gemini models behind Cloud Code Assist / Antigravity accept that shape;
+	 * Gemini < 3 needs the images in a separate user turn.
+	 */
+	readonly multimodalFunctionResponse: boolean;
+}
+
+function googleWireTraits<T extends GoogleApiType>(model: Model<T>): GoogleWireTraits {
+	const gemini3 = isGemini3Model(model.id);
+	const geminiMajorVersion = getGeminiMajorVersion(model.id);
+	return {
+		supportsImages: model.input.includes("image"),
+		sendsPartId:
+			model.api !== "google-vertex" &&
+			model.provider !== "google-vertex" &&
+			(model.id.startsWith("claude-") || (model.api === "google-generative-ai" && gemini3)),
+		unsignedCallSignature: gemini3 ? SKIP_THOUGHT_SIGNATURE : undefined,
+		multimodalFunctionResponse: geminiMajorVersion === undefined || geminiMajorVersion >= 3,
+	};
+}
+
+const NON_TOOL_CALL_ID_CHARS = /[^a-zA-Z0-9_-]/g;
+
+function normalizeGoogleToolCallId(id: string): string {
+	return id.replace(NON_TOOL_CALL_ID_CHARS, "_").slice(0, 64);
+}
+
+/** The parts of a user or developer turn, empty when nothing in it is sendable. */
+function userParts(content: UserMessage["content"], supportsImages: boolean): Part[] {
+	if (typeof content === "string") {
+		return content.trim() === "" ? [] : [{ text: content.toWellFormed() }];
+	}
+	const parts: Part[] = [];
+	let omittedImages = false;
+	for (const item of content) {
+		if (item.type === "text") {
+			const text = item.text.toWellFormed();
+			if (text.trim().length > 0) parts.push({ text });
+		} else if (supportsImages) {
+			parts.push({ inlineData: { mimeType: item.mimeType, data: item.data } });
+		} else {
+			omittedImages = true;
+		}
+	}
+	if (omittedImages) parts.push({ text: NON_VISION_IMAGE_PLACEHOLDER });
+	return parts;
+}
+
+/**
+ * Builds the Gemini `Content[]` for one request, one transformed message at a time.
+ *
+ * Gemini < 3 image tool results go in a separate user turn, but parallel tool results must
+ * stay a single contiguous functionResponse turn ("number of function response parts is not
+ * equal to number of function call parts"). Image turns are buffered and written only after
+ * the merged functionResponse turn is complete.
+ */
+class GoogleContentWriter {
+	readonly #contents: Content[] = [];
+	readonly #emittedToolCallNames = new Map<string, string>();
+	#pendingToolImageParts: Part[] = [];
+
+	constructor(
+		readonly model: Model<GoogleApiType>,
+		readonly traits: GoogleWireTraits,
+		readonly signatures: SignaturePolicy,
+		readonly retainThinkingFrom: number,
+	) {}
+
+	write(message: Message, messageIndex: number): void {
+		if (message.role !== "toolResult") this.#flushToolImages();
+		switch (message.role) {
+			case "user":
+			case "developer":
+				this.#pushTurn("user", userParts(message.content, this.traits.supportsImages));
+				break;
+			case "assistant":
+				this.#pushTurn("model", this.#assistantParts(message, messageIndex));
+				break;
+			case "toolResult":
+				this.#writeToolResult(message);
+				break;
+		}
+	}
+
+	finish(): Content[] {
+		this.#flushToolImages();
+		return this.#contents;
+	}
+
+	#pushTurn(role: "user" | "model", parts: Part[]): void {
+		if (parts.length > 0) this.#contents.push({ role, parts });
+	}
+
+	#flushToolImages(): void {
+		if (this.#pendingToolImageParts.length === 0) return;
+		this.#contents.push({ role: "user", parts: this.#pendingToolImageParts });
+		this.#pendingToolImageParts = [];
+	}
+
+	#assistantParts(message: AssistantMessage, messageIndex: number): Part[] {
+		// Signatures are replayed only to the provider and model that minted them.
+		const sameModel = message.provider === this.model.provider && message.model === this.model.id;
+		const parts: Part[] = [];
+		for (const block of message.content) {
+			let part: Part | undefined;
+			switch (block.type) {
+				case "text":
+					part = textPart(block, sameModel);
+					break;
+				case "thinking":
+					part = this.#thinkingPart(block, messageIndex, sameModel);
+					break;
+				case "toolCall":
+					part = this.#functionCallPart(block, messageIndex, sameModel);
+					break;
+			}
+			if (part) parts.push(part);
+		}
+		return parts;
+	}
+
+	#thinkingPart(block: ThinkingContent, messageIndex: number, sameModel: boolean): Part | undefined {
+		if (!block.thinking || block.thinking.trim() === "") return undefined;
+		const thoughtSignature = resolveThoughtSignature(sameModel, block.thinkingSignature);
+		if (thoughtSignature) return { thought: true, text: block.thinking.toWellFormed(), thoughtSignature };
+		// An UNSIGNED thinking block older than the window is dropped outright. Gemini puts
+		// the signature on the function call, never on the thought summary, so an unsigned
+		// summary carries no reasoning context the provider can replay: it is transcript
+		// text and nothing more, and it was measured at 10.8% of the conversation body. A
+		// SIGNED block is never dropped here, whatever the window says, because dropping it
+		// would discard replayable reasoning.
+		if (messageIndex < this.retainThinkingFrom) return undefined;
+		return { text: renderDemotedThinking(this.model.id, block.thinking) };
+	}
+
+	#functionCallPart(block: ToolCall, messageIndex: number, sameModel: boolean): Part {
+		this.#emittedToolCallNames.set(block.id, block.name);
+		// Elided by either signature rule means the call falls through the same path as one
+		// that never had a signature: it sends Google's sentinel.
+		const thoughtSignature =
+			block.thoughtSignature && !sendsSignature(this.signatures, messageIndex, block.thoughtSignature)
+				? undefined
+				: resolveThoughtSignature(sameModel, block.thoughtSignature);
+		const functionCall: FunctionCallPart = { name: block.name, args: block.arguments ?? {} };
+		if (this.traits.sendsPartId) functionCall.id = block.id;
+		const part: Part = { functionCall };
+		const effectiveSignature = thoughtSignature || this.traits.unsignedCallSignature;
+		if (effectiveSignature) part.thoughtSignature = effectiveSignature;
+		return part;
+	}
+
+	#writeToolResult(message: ToolResultMessage): void {
+		const { supportsImages, multimodalFunctionResponse, sendsPartId } = this.traits;
+		let text: string | undefined;
+		const imageParts: Part[] = [];
+		let omittedImages = false;
+		for (const block of message.content) {
+			if (block.type === "text") {
+				text = text === undefined ? block.text : `${text}\n${block.text}`;
+			} else if (supportsImages) {
+				imageParts.push({ inlineData: { mimeType: block.mimeType, data: block.data } });
+			} else {
+				omittedImages = true;
+			}
+		}
+		const textResult = text?.toWellFormed() ?? "";
+		const hasText = textResult.length > 0;
+		const hasImages = imageParts.length > 0;
+
+		// "output" carries a success and "error" a failure, as the SDK documents.
+		let responseValue: string;
+		if (omittedImages) {
+			responseValue = hasText ? `${textResult}\n${NON_VISION_IMAGE_PLACEHOLDER}` : NON_VISION_IMAGE_PLACEHOLDER;
+		} else {
+			responseValue = hasText ? textResult : hasImages ? "(see attached image)" : "";
+		}
+
+		const functionResponse: FunctionResponsePart = {
+			name: this.#emittedToolCallNames.get(message.toolCallId) ?? message.toolName,
+			response: message.isError ? { error: responseValue } : { output: responseValue },
+		};
+		if (hasImages && multimodalFunctionResponse) functionResponse.parts = imageParts;
+		if (sendsPartId) functionResponse.id = message.toolCallId;
+		const part: Part = { functionResponse };
+
+		// Cloud Code Assist requires every function response in a single user turn, so a
+		// response directly after another one joins that turn.
+		const lastContent = this.#contents[this.#contents.length - 1];
+		if (lastContent?.role === "user" && lastContent.parts?.some(p => p.functionResponse)) {
+			lastContent.parts.push(part);
+		} else {
+			this.#contents.push({ role: "user", parts: [part] });
+		}
+
+		if (hasImages && !multimodalFunctionResponse) {
+			this.#pendingToolImageParts.push({ text: "Tool result image:" }, ...imageParts);
+		}
+	}
+}
+
+function textPart(block: TextContent, sameModel: boolean): Part | undefined {
+	// Empty text blocks are skipped: some models (e.g. Claude via Antigravity) reject them.
+	if (!block.text || block.text.trim() === "") return undefined;
+	const thoughtSignature = resolveThoughtSignature(sameModel, block.textSignature);
+	const part: Part = { text: block.text.toWellFormed() };
+	if (thoughtSignature) part.thoughtSignature = thoughtSignature;
+	return part;
 }
 
 /**
  * Convert internal messages to Gemini Content[] format.
  */
 export function convertMessages<T extends GoogleApiType>(model: Model<T>, context: Context): Content[] {
-	const contents: Content[] = [];
-	const emittedToolCallNames = new Map<string, string>();
-
-	const normalizeToolCallId = (id: string): string => {
-		return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
-	};
-
-	const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
-	const sigPolicy = signaturePolicy(transformedMessages, context);
-	const retainThinkingFrom = firstRetainedAssistantIndex(transformedMessages, context.thinkingRetention);
-	let messageIndex = -1;
-
-	// Gemini < 3 image tool results go in a separate user turn, but parallel tool results must
-	// stay a single contiguous functionResponse turn ("number of function response parts is not
-	// equal to number of function call parts"). Buffer image turns and flush them only after the
-	// merged functionResponse turn is complete.
-	let pendingToolImageParts: Part[] = [];
-	const flushPendingToolImages = () => {
-		if (pendingToolImageParts.length === 0) return;
-		contents.push({ role: "user", parts: pendingToolImageParts });
-		pendingToolImageParts = [];
-	};
-
-	for (const msg of transformedMessages) {
-		messageIndex++;
-		if (msg.role !== "toolResult") flushPendingToolImages();
-		if (msg.role === "user" || msg.role === "developer") {
-			if (typeof msg.content === "string") {
-				// Skip empty user messages
-				if (!msg.content || msg.content.trim() === "") continue;
-				contents.push({
-					role: "user",
-					parts: [{ text: msg.content.toWellFormed() }],
-				});
-			} else {
-				const supportsImages = model.input.includes("image");
-				const parts: Part[] = [];
-				let omittedImages = false;
-				for (const item of msg.content) {
-					if (item.type === "text") {
-						const text = item.text.toWellFormed();
-						if (text.trim().length === 0) continue;
-						parts.push({ text });
-					} else if (supportsImages) {
-						parts.push({
-							inlineData: {
-								mimeType: item.mimeType,
-								data: item.data,
-							},
-						});
-					} else {
-						omittedImages = true;
-					}
-				}
-				if (omittedImages) {
-					parts.push({ text: NON_VISION_IMAGE_PLACEHOLDER });
-				}
-				if (parts.length === 0) continue;
-				contents.push({
-					role: "user",
-					parts,
-				});
-			}
-		} else if (msg.role === "assistant") {
-			const parts: Part[] = [];
-			// Check if message is from same provider and model - only then keep thinking blocks
-			const isSameProviderAndModel = msg.provider === model.provider && msg.model === model.id;
-
-			for (const block of msg.content) {
-				if (block.type === "text") {
-					// Skip empty text blocks - they can cause issues with some models (e.g. Claude via Antigravity)
-					if (!block.text || block.text.trim() === "") continue;
-					const thoughtSignature = resolveThoughtSignature(isSameProviderAndModel, block.textSignature);
-					parts.push({
-						text: block.text.toWellFormed(),
-						...(thoughtSignature && { thoughtSignature }),
-					});
-				} else if (block.type === "thinking") {
-					// Skip empty thinking blocks
-					if (!block.thinking || block.thinking.trim() === "") continue;
-					// An UNSIGNED thinking block older than the window is dropped outright.
-					// Gemini puts the signature on the function call, never on the thought
-					// summary, so an unsigned summary carries no reasoning context the
-					// provider can replay: it is transcript text and nothing more, and it
-					// was measured at 10.8% of the conversation body. A SIGNED block is
-					// never dropped here, whatever the window says, because dropping it
-					// would discard replayable reasoning.
-					if (
-						messageIndex < retainThinkingFrom &&
-						!resolveThoughtSignature(isSameProviderAndModel, block.thinkingSignature)
-					) {
-						continue;
-					}
-					const thoughtSignature = resolveThoughtSignature(isSameProviderAndModel, block.thinkingSignature);
-					if (thoughtSignature) {
-						parts.push({
-							thought: true,
-							text: block.thinking.toWellFormed(),
-							thoughtSignature,
-						});
-					} else {
-						parts.push({
-							text: renderDemotedThinking(model.id, block.thinking),
-						});
-					}
-				} else if (block.type === "toolCall") {
-					emittedToolCallNames.set(block.id, block.name);
-					// Elided by either signature rule means the call falls through the same
-					// path as one that never had a signature: it sends Google's sentinel.
-					const thoughtSignature =
-						block.thoughtSignature && !sendsSignature(sigPolicy, messageIndex, block.thoughtSignature)
-							? undefined
-							: resolveThoughtSignature(isSameProviderAndModel, block.thoughtSignature);
-					const effectiveSignature =
-						thoughtSignature || (isGemini3Model(model.id) ? SKIP_THOUGHT_SIGNATURE : undefined);
-
-					const part: Part = {
-						functionCall: {
-							name: block.name,
-							args: block.arguments ?? {},
-							...(supportsFunctionPartId(model) ? { id: block.id } : {}),
-						},
-					};
-					if (model.provider === "google-vertex" && part?.functionCall?.id) {
-						delete part.functionCall.id; // Vertex AI GenerateContent rejects 'id' in functionCall parts.
-					}
-					if (effectiveSignature) {
-						part.thoughtSignature = effectiveSignature;
-					}
-					parts.push(part);
-				}
-			}
-
-			if (parts.length === 0) continue;
-			contents.push({
-				role: "model",
-				parts,
-			});
-		} else if (msg.role === "toolResult") {
-			// Extract text and image content
-			const supportsImages = model.input.includes("image");
-			const textContent = msg.content.filter((c): c is TextContent => c.type === "text");
-			const textResult = textContent.map(c => c.text).join("\n");
-			const imageContent = supportsImages ? msg.content.filter((c): c is ImageContent => c.type === "image") : [];
-			const omittedImages = !supportsImages && msg.content.some((c): c is ImageContent => c.type === "image");
-
-			const hasText = textResult.length > 0;
-			const hasImages = imageContent.length > 0;
-
-			// Gemini 3+ models support multimodal function responses with images nested inside
-			// functionResponse.parts. Claude and other non-Gemini models behind Cloud Code Assist /
-			// Antigravity also accept this shape. Gemini < 3 still needs a separate user image turn.
-			const modelSupportsMultimodalFunctionResponse = supportsMultimodalFunctionResponse(model.id);
-
-			// Use "output" key for success, "error" key for errors as per SDK documentation
-			const responseValue = omittedImages
-				? [hasText ? textResult.toWellFormed() : "", NON_VISION_IMAGE_PLACEHOLDER].filter(Boolean).join("\n")
-				: hasText
-					? textResult.toWellFormed()
-					: hasImages
-						? "(see attached image)"
-						: "";
-
-			const imageParts: Part[] = imageContent.map(imageBlock => ({
-				inlineData: {
-					mimeType: imageBlock.mimeType,
-					data: imageBlock.data,
-				},
-			}));
-
-			const includeId = supportsFunctionPartId(model);
-			const emittedName = emittedToolCallNames.get(msg.toolCallId);
-			const functionResponsePart: Part = {
-				functionResponse: {
-					name: emittedName ?? msg.toolName,
-					response: msg.isError ? { error: responseValue } : { output: responseValue },
-					...(hasImages && modelSupportsMultimodalFunctionResponse && { parts: imageParts }),
-					...(includeId ? { id: msg.toolCallId } : {}),
-				},
-			};
-
-			if (model.provider === "google-vertex" && functionResponsePart.functionResponse?.id) {
-				delete functionResponsePart.functionResponse.id; // Vertex AI GenerateContent rejects 'id' in functionResponse parts.
-			}
-
-			// Cloud Code Assist API requires all function responses to be in a single user turn.
-			// Check if the last content is already a user turn with function responses and merge.
-			const lastContent = contents[contents.length - 1];
-			if (lastContent?.role === "user" && lastContent.parts?.some(p => p.functionResponse)) {
-				lastContent.parts.push(functionResponsePart);
-			} else {
-				contents.push({
-					role: "user",
-					parts: [functionResponsePart],
-				});
-			}
-
-			// For Gemini < 3, buffer images for a separate user message after the functionResponse turn
-			if (hasImages && !modelSupportsMultimodalFunctionResponse) {
-				pendingToolImageParts.push({ text: "Tool result image:" }, ...imageParts);
-			}
-		}
+	const messages = transformMessages(context.messages, model, normalizeGoogleToolCallId);
+	const writer = new GoogleContentWriter(
+		model,
+		googleWireTraits(model),
+		signaturePolicy(messages, context),
+		firstRetainedAssistantIndex(messages, context.thinkingRetention),
+	);
+	for (let messageIndex = 0; messageIndex < messages.length; messageIndex++) {
+		writer.write(messages[messageIndex], messageIndex);
 	}
-	flushPendingToolImages();
-
-	return contents;
+	return writer.finish();
 }
 
 /**
@@ -655,106 +671,219 @@ export function resetGoogleStreamOutputForRetry(model: Model<Api>, output: Assis
  */
 let toolCallCounter = 0;
 
-export function nextToolCallId(name: string): string {
+function nextToolCallId(name: string): string {
 	return `${name}_${Date.now()}_${++toolCallCounter}`;
 }
 
 /**
- * Push the appropriate `text_end` / `thinking_end` event for the given block.
- * Shared between the SDK-backed stream consumer and the gemini-cli SSE consumer so
- * the end-of-block event shape stays in lockstep.
+ * The content blocks one Google response streams into `output`, and the events each one
+ * pushes. The SDK-shaped decoder ({@link consumeGoogleStream}) and the Cloud Code Assist
+ * SSE decoder both drive it, so block transitions, signature retention, tool-call ids and
+ * event order are defined once.
  */
-export function pushBlockEndEvent(
-	block: TextContent | ThinkingContent,
-	contentIndex: number,
-	output: AssistantMessage,
-	stream: AssistantMessageEventStream,
-): void {
-	if (block.type === "text") {
-		stream.push({ type: "text_end", contentIndex, content: block.text, partial: output });
-	} else {
-		stream.push({ type: "thinking_end", contentIndex, content: block.thinking, partial: output });
+export class GoogleResponseBlocks {
+	#current: TextContent | ThinkingContent | null = null;
+
+	constructor(
+		readonly output: AssistantMessage,
+		readonly stream: AssistantMessageEventStream,
+		/** Streamed text keeps its `textSignature`; thinking always keeps its own. */
+		readonly retainTextSignature: boolean,
+		/** Runs after a block or tool call is appended and before its first event. */
+		readonly onBlockAppended?: () => void,
+	) {}
+
+	appendText(delta: string, thoughtSignature?: string): void {
+		if (!delta) return;
+		let block = this.#current;
+		if (block?.type !== "text") {
+			block = { type: "text", text: "" };
+			this.#open(block);
+		}
+		block.text += delta;
+		if (this.retainTextSignature) block.textSignature = retainThoughtSignature(block.textSignature, thoughtSignature);
+		this.stream.push({ type: "text_delta", contentIndex: this.#lastIndex(), delta, partial: this.output });
+	}
+
+	appendThinking(delta: string, thoughtSignature?: string): void {
+		if (!delta) return;
+		let block = this.#current;
+		if (block?.type !== "thinking") {
+			block = { type: "thinking", thinking: "", thinkingSignature: undefined };
+			this.#open(block);
+		}
+		block.thinking += delta;
+		block.thinkingSignature = retainThoughtSignature(block.thinkingSignature, thoughtSignature);
+		this.stream.push({ type: "thinking_delta", contentIndex: this.#lastIndex(), delta, partial: this.output });
+	}
+
+	/** A signature-only part belongs to the open block; with none open it is dropped. */
+	retainSignature(thoughtSignature: string): void {
+		const block = this.#current;
+		if (!block) return;
+		if (block.type === "thinking") {
+			block.thinkingSignature = retainThoughtSignature(block.thinkingSignature, thoughtSignature);
+		} else if (this.retainTextSignature) {
+			block.textSignature = retainThoughtSignature(block.textSignature, thoughtSignature);
+		}
+	}
+
+	/** Google delivers a function call whole in one part, so it opens and closes at once. */
+	appendFunctionCall(call: FunctionCallPart, thoughtSignature: string | undefined): void {
+		this.endBlock();
+		const content = this.output.content;
+		// A missing id, or one this response already used, is replaced with a fresh one.
+		const providedId = call.id;
+		const reused = providedId !== undefined && content.some(b => b.type === "toolCall" && b.id === providedId);
+		const toolCall: ToolCall = {
+			type: "toolCall",
+			id: !providedId || reused ? nextToolCallId(call.name || "tool") : providedId,
+			name: call.name || "",
+			arguments: call.args ?? {},
+		};
+		if (thoughtSignature) toolCall.thoughtSignature = thoughtSignature;
+		content.push(toolCall);
+		this.onBlockAppended?.();
+		const contentIndex = content.length - 1;
+		this.stream.push({ type: "toolcall_start", contentIndex, partial: this.output });
+		this.stream.push({
+			type: "toolcall_delta",
+			contentIndex,
+			delta: JSON.stringify(toolCall.arguments),
+			partial: this.output,
+		});
+		this.stream.push({ type: "toolcall_end", contentIndex, toolCall, partial: this.output });
+	}
+
+	endBlock(): void {
+		const block = this.#current;
+		if (!block) return;
+		this.#current = null;
+		const contentIndex = this.#lastIndex();
+		if (block.type === "text") {
+			this.stream.push({ type: "text_end", contentIndex, content: block.text, partial: this.output });
+		} else {
+			this.stream.push({ type: "thinking_end", contentIndex, content: block.thinking, partial: this.output });
+		}
+	}
+
+	#open(block: TextContent | ThinkingContent): void {
+		this.endBlock();
+		this.#current = block;
+		this.output.content.push(block);
+		this.onBlockAppended?.();
+		const contentIndex = this.#lastIndex();
+		if (block.type === "text") {
+			this.stream.push({ type: "text_start", contentIndex, partial: this.output });
+		} else {
+			this.stream.push({ type: "thinking_start", contentIndex, partial: this.output });
+		}
+	}
+
+	#lastIndex(): number {
+		return this.output.content.length - 1;
 	}
 }
 
-/**
- * Push the three lifecycle events (`toolcall_start` / `toolcall_delta` / `toolcall_end`) for a
- * fully-assembled `ToolCall`. Caller is responsible for appending the toolCall to `output.content`
- * before invoking — this helper does not mutate `output.content`.
- */
-export function pushToolCallEvents(
-	toolCall: ToolCall,
-	contentIndex: number,
-	output: AssistantMessage,
-	stream: AssistantMessageEventStream,
+/** A prompt Google refused outright arrives as a chunk with no candidates and a block reason. */
+export function throwIfGooglePromptBlocked(
+	response: {
+		candidates?: readonly unknown[];
+		promptFeedback?: { blockReason?: string; blockReasonMessage?: string };
+	},
+	provider: string,
 ): void {
-	stream.push({ type: "toolcall_start", contentIndex, partial: output });
-	stream.push({
-		type: "toolcall_delta",
-		contentIndex,
-		delta: JSON.stringify(toolCall.arguments),
-		partial: output,
+	const blockReason = response.promptFeedback?.blockReason;
+	if (!blockReason || response.candidates?.length) return;
+	const detail = response.promptFeedback?.blockReasonMessage;
+	throw new AIError.ProviderResponseError(`Request blocked by Google (${blockReason})${detail ? `: ${detail}` : ""}`, {
+		provider,
+		kind: "content-blocked",
 	});
-	stream.push({ type: "toolcall_end", contentIndex, toolCall, partial: output });
 }
 
 /**
- * Append a new text- or thinking-block to `output.content` and push the matching
- * `text_start` / `thinking_start` event. `onBeforeStartEvent` lets the SSE consumer
- * inject its `ensureStarted()` first-token side effect into the canonical event order.
+ * Record a candidate's `finishReason`. Only a benign finish is upgraded by a trailing tool
+ * call; an error finish (SAFETY, MALFORMED_FUNCTION_CALL, ...) surfaces even when earlier
+ * chunks carried valid tool calls.
  */
-export function startTextOrThinkingBlock(
-	isThinking: true,
-	output: AssistantMessage,
-	stream: AssistantMessageEventStream,
-	onBeforeStartEvent?: () => void,
-): ThinkingContent;
-export function startTextOrThinkingBlock(
-	isThinking: false,
-	output: AssistantMessage,
-	stream: AssistantMessageEventStream,
-	onBeforeStartEvent?: () => void,
-): TextContent;
-export function startTextOrThinkingBlock(
-	isThinking: boolean,
-	output: AssistantMessage,
-	stream: AssistantMessageEventStream,
-	onBeforeStartEvent?: () => void,
-): TextContent | ThinkingContent;
-export function startTextOrThinkingBlock(
-	isThinking: boolean,
-	output: AssistantMessage,
-	stream: AssistantMessageEventStream,
-	onBeforeStartEvent?: () => void,
-): TextContent | ThinkingContent {
-	const block: TextContent | ThinkingContent = isThinking
-		? { type: "thinking", thinking: "", thinkingSignature: undefined }
-		: { type: "text", text: "" };
-	output.content.push(block);
-	onBeforeStartEvent?.();
-	const contentIndex = output.content.length - 1;
-	if (isThinking) {
-		stream.push({ type: "thinking_start", contentIndex, partial: output });
-	} else {
-		stream.push({ type: "text_start", contentIndex, partial: output });
+export function applyGoogleFinishReason(output: AssistantMessage, mapped: StopReason, finishReason: string): void {
+	if ((mapped === "stop" || mapped === "length") && output.content.some(b => b.type === "toolCall")) {
+		output.stopReason = "toolUse";
+		return;
 	}
-	return block;
+	output.stopReason = mapped;
+	if (mapped === "error") output.errorMessage = AIError.providerFinishErrorMessage(finishReason);
+}
+
+/**
+ * Record a chunk's cumulative token accounting.
+ *
+ * `promptTokenCount` includes `cachedContentTokenCount` when cached content is used, so the
+ * cached share is subtracted: `input` is uncached prompt tokens and `cacheRead` the cached
+ * ones, and `input + cacheRead` is the whole prompt with nothing counted twice.
+ * Ref: https://ai.google.dev/api/generate-content#v1beta.GenerateContentResponse.UsageMetadata
+ */
+export function applyGoogleUsage(model: Model<Api>, output: AssistantMessage, usage: UsageMetadata): void {
+	const cacheRead = usage.cachedContentTokenCount || 0;
+	const thinkingTokens = usage.thoughtsTokenCount || 0;
+	output.usage = inheritUsageCarryovers(output.usage, {
+		input: (usage.promptTokenCount || 0) - cacheRead,
+		output: (usage.candidatesTokenCount || 0) + thinkingTokens,
+		cacheRead,
+		cacheWrite: 0,
+		totalTokens: usage.totalTokenCount || 0,
+		...(thinkingTokens > 0 ? { reasoningTokens: thinkingTokens } : {}),
+		cost: emptyCost(),
+	});
+	calculateCost(model, output.usage);
+}
+
+/**
+ * Settle a response body that ended without a `finishReason`.
+ *
+ * That is a transport-clean EOF, not a dropped connection, and several Gemini-compatible
+ * servers never send the marker at all; `stopReasonForTerminallessEof` holds the judgement
+ * for every dialect. Google delivers a function call whole in one part, with `args` already
+ * parsed and an id minted, so a name is the only field a partial call can be missing.
+ */
+export function settleGoogleTerminallessEof(output: AssistantMessage, provider: string, surface: string): void {
+	const toolBatchIsComplete = output.content.every(block => block.type !== "toolCall" || block.name.length > 0);
+	const stopReason = stopReasonForTerminallessEof(output.content, toolBatchIsComplete);
+	if (stopReason === undefined) {
+		throw new AIError.ProviderResponseError(
+			`${surface} stream ended without a finish reason (connection dropped or response truncated)`,
+			{ provider, kind: "incomplete-stream" },
+		);
+	}
+	output.stopReason = stopReason;
+}
+
+/**
+ * The reason a finished response is delivered with. An aborted or failed response is thrown
+ * instead, so it reaches the caller's error path.
+ */
+export function googleDoneReason(
+	output: AssistantMessage,
+	provider: string,
+): Extract<StopReason, "stop" | "length" | "toolUse"> {
+	const reason = output.stopReason;
+	if (reason !== "aborted" && reason !== "error") return reason;
+	throw new AIError.ProviderResponseError(output.errorMessage ?? "An unknown error occurred", {
+		provider,
+		kind: "output",
+	});
 }
 
 /**
  * Drives the chunked `generateContentStream` iterator into an `AssistantMessage` and
  * the corresponding `AssistantMessageEventStream`. Shared between `streamGoogle` and
- * `streamGoogleVertex` — every observable event order and stop-reason rule is preserved.
+ * `streamGoogleVertex`.
  *
  * The caller still owns: `output` construction, timing fields (`duration`/`ttft`),
- * `rawRequestDump`, the `client.models.generateContentStream(params)` call itself,
- * pushing `start`/`done`/`error` events, and the surrounding try/catch that translates
- * thrown errors into `output.stopReason`/`errorMessage`.
- *
- * This helper handles: the chunk loop, currentBlock flush transitions, usage metadata
- * decoding (`calculateCost` included), tool-call id collision avoidance, finish-reason
- * mapping, and the abort/stop-reason post-checks that re-throw to bubble into the
- * caller's catch.
+ * `rawRequestDump`, opening the response body, pushing `start`/`done`/`error` events,
+ * and the surrounding try/catch that translates thrown errors into
+ * `output.stopReason`/`errorMessage`.
  */
 export async function consumeGoogleStream<T extends GoogleApiType>(args: {
 	googleStream: AsyncIterable<GenerateContentResponse>;
@@ -766,17 +895,10 @@ export async function consumeGoogleStream<T extends GoogleApiType>(args: {
 	retainTextSignature?: boolean;
 	onFirstToken?: () => void;
 }): Promise<void> {
-	const { googleStream, output, stream, model, options, retainTextSignature, onFirstToken } = args;
-	const blocks = output.content;
-	const blockIndex = () => blocks.length - 1;
-	let currentBlock: TextContent | ThinkingContent | null = null;
+	const { googleStream, output, stream, model, options, onFirstToken } = args;
+	const blocks = new GoogleResponseBlocks(output, stream, args.retainTextSignature === true);
 	let firstTokenSeen = false;
 	let sawFinishReason = false;
-
-	const flushCurrent = () => {
-		if (!currentBlock) return;
-		pushBlockEndEvent(currentBlock, blockIndex(), output, stream);
-	};
 
 	for await (const chunk of googleStream) {
 		if (chunk.error) {
@@ -786,163 +908,37 @@ export async function consumeGoogleStream<T extends GoogleApiType>(args: {
 				? new AIError.GoogleApiError(message, chunk.error.code)
 				: new AIError.ProviderResponseError(message, { provider: model.provider, kind: "output" });
 		}
-		if (!chunk.candidates?.length && chunk.promptFeedback?.blockReason) {
-			const detail = chunk.promptFeedback.blockReasonMessage;
-			throw new AIError.ProviderResponseError(
-				`Request blocked by Google (${chunk.promptFeedback.blockReason})${detail ? `: ${detail}` : ""}`,
-				{ provider: model.provider, kind: "content-blocked" },
-			);
-		}
+		throwIfGooglePromptBlocked(chunk, model.provider);
 		const candidate = chunk.candidates?.[0];
-		if (candidate?.content?.parts) {
-			for (const part of candidate.content.parts) {
+		const parts = candidate?.content?.parts;
+		if (parts) {
+			for (const part of parts) {
 				if (part.text !== undefined && part.text !== "") {
 					if (!firstTokenSeen) {
 						firstTokenSeen = true;
 						onFirstToken?.();
 					}
-					const isThinking = isThinkingPart(part);
-					if (
-						!currentBlock ||
-						(isThinking && currentBlock.type !== "thinking") ||
-						(!isThinking && currentBlock.type !== "text")
-					) {
-						flushCurrent();
-						currentBlock = startTextOrThinkingBlock(isThinking, output, stream);
-					}
-					if (currentBlock.type === "thinking") {
-						currentBlock.thinking += part.text;
-						currentBlock.thinkingSignature = retainThoughtSignature(
-							currentBlock.thinkingSignature,
-							part.thoughtSignature,
-						);
-						stream.push({
-							type: "thinking_delta",
-							contentIndex: blockIndex(),
-							delta: part.text,
-							partial: output,
-						});
-					} else {
-						currentBlock.text += part.text;
-						if (retainTextSignature) {
-							currentBlock.textSignature = retainThoughtSignature(
-								currentBlock.textSignature,
-								part.thoughtSignature,
-							);
-						}
-						stream.push({
-							type: "text_delta",
-							contentIndex: blockIndex(),
-							delta: part.text,
-							partial: output,
-						});
-					}
-				} else if (part.text === "" && part.thoughtSignature && currentBlock && !part.functionCall) {
-					if (currentBlock.type === "thinking") {
-						currentBlock.thinkingSignature = retainThoughtSignature(
-							currentBlock.thinkingSignature,
-							part.thoughtSignature,
-						);
-					} else if (retainTextSignature) {
-						currentBlock.textSignature = retainThoughtSignature(
-							currentBlock.textSignature,
-							part.thoughtSignature,
-						);
-					}
+					if (isThinkingPart(part)) blocks.appendThinking(part.text, part.thoughtSignature);
+					else blocks.appendText(part.text, part.thoughtSignature);
+				} else if (part.text === "" && part.thoughtSignature && !part.functionCall) {
+					blocks.retainSignature(part.thoughtSignature);
 				}
-
-				if (part.functionCall) {
-					if (currentBlock) {
-						flushCurrent();
-						currentBlock = null;
-					}
-
-					// Generate unique ID if not provided or if it's a duplicate
-					const providedId = part.functionCall.id;
-					const needsNewId = !providedId || output.content.some(b => b.type === "toolCall" && b.id === providedId);
-					const toolCallId = needsNewId ? nextToolCallId(part.functionCall.name || "tool") : providedId;
-
-					const toolCall: ToolCall = {
-						type: "toolCall",
-						id: toolCallId,
-						name: part.functionCall.name || "",
-						arguments: (part.functionCall.args ?? {}) as Record<string, unknown>,
-						...(part.thoughtSignature && { thoughtSignature: part.thoughtSignature }),
-					};
-
-					output.content.push(toolCall);
-					pushToolCallEvents(toolCall, blockIndex(), output, stream);
-				}
+				if (part.functionCall) blocks.appendFunctionCall(part.functionCall, part.thoughtSignature);
 			}
 		}
-
 		if (candidate?.finishReason) {
 			sawFinishReason = true;
-			const mapped = mapStopReason(candidate.finishReason);
-			// Only let a trailing tool call upgrade benign finishes; SAFETY/MALFORMED_FUNCTION_CALL
-			// and friends must surface as errors even when earlier chunks carried valid tool calls.
-			if ((mapped === "stop" || mapped === "length") && output.content.some(b => b.type === "toolCall")) {
-				output.stopReason = "toolUse";
-			} else {
-				output.stopReason = mapped;
-				if (mapped === "error") {
-					output.errorMessage = AIError.providerFinishErrorMessage(candidate.finishReason);
-				}
-			}
+			applyGoogleFinishReason(output, mapStopReason(candidate.finishReason), candidate.finishReason);
 		}
-
-		if (chunk.usageMetadata) {
-			// promptTokenCount includes cachedContentTokenCount when cached content is used.
-			// Subtract to get non-cached input, matching the OpenAI convention where
-			// input = uncached prompt tokens and cacheRead = cached tokens so that
-			// input + cacheRead = total prompt tokens (no double-counting).
-			// Ref: https://ai.google.dev/api/generate-content#v1beta.GenerateContentResponse.UsageMetadata
-			const cachedTokens = chunk.usageMetadata.cachedContentTokenCount || 0;
-			const thinkingTokens = chunk.usageMetadata.thoughtsTokenCount || 0;
-			output.usage = inheritUsageCarryovers(output.usage, {
-				input: (chunk.usageMetadata.promptTokenCount || 0) - cachedTokens,
-				output: (chunk.usageMetadata.candidatesTokenCount || 0) + thinkingTokens,
-				cacheRead: cachedTokens,
-				cacheWrite: 0,
-				totalTokens: chunk.usageMetadata.totalTokenCount || 0,
-				...(thinkingTokens > 0 ? { reasoningTokens: thinkingTokens } : {}),
-				cost: emptyCost(),
-			});
-			calculateCost(model, output.usage);
-		}
+		if (chunk.usageMetadata) applyGoogleUsage(model, output, chunk.usageMetadata);
 	}
 
-	flushCurrent();
-
+	blocks.endBlock();
 	if (options?.signal?.aborted) {
 		throw new AIError.RequestAbortError();
 	}
-
-	// Reaching the end of the body without a `finishReason` is a transport-clean
-	// EOF, not a dropped connection, and several Gemini-compatible servers never
-	// send the marker at all. `stopReasonForTerminallessEof` owns that judgement
-	// for every dialect; see its header for why rejecting unconditionally — which
-	// this did — fails turns that were complete. Google delivers a function call
-	// whole in one part, with `args` already parsed and an id minted above, so a
-	// name is the only field a partial call can be missing.
-	if (!sawFinishReason) {
-		const toolBatchIsComplete = output.content.every(block => block.type !== "toolCall" || block.name.length > 0);
-		const stopReason = stopReasonForTerminallessEof(output.content, toolBatchIsComplete);
-		if (stopReason === undefined) {
-			throw new AIError.ProviderResponseError(
-				"Google API stream ended without a finish reason (connection dropped or response truncated)",
-				{ provider: model.provider, kind: "incomplete-stream" },
-			);
-		}
-		output.stopReason = stopReason;
-	}
-
-	if (output.stopReason === "aborted" || output.stopReason === "error") {
-		throw new AIError.ProviderResponseError(output.errorMessage ?? "An unknown error occurred", {
-			provider: model.provider,
-			kind: "output",
-		});
-	}
+	if (!sawFinishReason) settleGoogleTerminallessEof(output, model.provider, "Google API");
+	googleDoneReason(output, model.provider);
 }
 
 /**

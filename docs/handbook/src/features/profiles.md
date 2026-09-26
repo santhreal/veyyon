@@ -59,6 +59,7 @@ Project-level dirs (`<cwd>/.veyyon`, `.claude`, etc.) are **not** profile-scoped
 - **Env:** `VEYYON_PROFILE=<name>`.
 - **TUI:** `/profile <name>` ends the current conversation and relaunches Veyyon on that profile (a fresh session: profiles are chosen at process start, so there is no hot-swap). Bare `/profile` (or `/profiles`) opens the profile picker described below.
 - **Shell alias:** `veyyon --profile work --alias mywork` installs a managed block in your shell rc (see `cli/profile-alias.ts`).
+- **Resume:** `veyyon --resume <id>` (also `-r`, `--session`, `--continue <id>`, or a transcript path) activates the profile whose `sessions/` holds that session. An explicit `--profile` takes precedence. `--fork`, `--no-session` and `--session-dir` keep the profile the launch resolved otherwise.
 
 ## TUI profile commands
 

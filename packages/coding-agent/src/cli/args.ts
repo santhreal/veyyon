@@ -9,6 +9,8 @@ import { CliUsageError } from "@veyyon/utils/cli-usage-error";
 import { APP_NAME, CONFIG_DIR_NAME } from "@veyyon/utils/dirs";
 import { pluralize } from "@veyyon/utils/format";
 import { nearestNames } from "@veyyon/utils/levenshtein";
+import { isUuid } from "@veyyon/utils/regex";
+import { isSessionFileName } from "@veyyon/utils/session-file";
 import chalk from "chalk";
 import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseCliThinkingLevel } from "../thinking";
 import {
@@ -326,6 +328,36 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 	}
 
 	return result;
+}
+
+/**
+ * Read `--continue <session-id>` as `--resume <session-id>`.
+ *
+ * The id is the sole message when nothing else is unrecognized, or otherwise the token right after the
+ * first `--continue`/`-c` in `rawArgs`. Anything that is not a UUID stays a message for `--continue`.
+ */
+export function normalizeContinueSessionArgs(parsed: Args, rawArgs?: readonly string[]): void {
+	if (!parsed.continue || parsed.resume || parsed.fork) return;
+
+	let message: string | undefined;
+	if (parsed.unrecognizedFlags.length === 0 && parsed.messages.length === 1) {
+		message = parsed.messages[0]?.trim();
+	} else if (rawArgs) {
+		const continueIndex = rawArgs.findIndex(arg => arg === "--continue" || arg === "-c");
+		message = rawArgs[continueIndex + 1]?.trim();
+	}
+	if (!message || !isUuid(message)) return;
+
+	const messageIndex = parsed.messages.indexOf(message);
+	if (messageIndex === -1) return;
+	parsed.resume = message;
+	parsed.continue = false;
+	parsed.messages.splice(messageIndex, 1);
+}
+
+/** Whether a `--fork` or `--resume` argument names a session file rather than an id to look up. */
+export function namesSessionFile(sessionArg: string): boolean {
+	return sessionArg.includes("/") || sessionArg.includes("\\") || isSessionFileName(sessionArg);
 }
 
 /**

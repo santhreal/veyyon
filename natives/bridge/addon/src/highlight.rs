@@ -5,14 +5,21 @@
 //! - comment, keyword, function, variable, string, number, type, operator,
 //!   punctuation, inserted, deleted
 
-use std::{cell::RefCell, collections::HashMap, sync::LazyLock};
+use std::{cell::RefCell, collections::HashMap, os::raw::c_ulong, sync::LazyLock};
 
 use napi_derive::napi;
-use syntect::parsing::{
-	ParseState, Scope, ScopeStack, ScopeStackOp, SyntaxDefinition, SyntaxReference, SyntaxSet,
-};
+use rayon::prelude::*;
+use syntect::parsing::{ParseState, Scope, ScopeStack, ScopeStackOp, SyntaxReference, SyntaxSet};
+use veyyon_uutils_ctx::rayon_global_pool_available;
 
-static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(build_syntax_set);
+/// The syntax set `build.rs` linked from syntect's defaults and the vendored
+/// syntaxes in `src/syntaxes`, as an uncompressed dump.
+static SYNTAX_DUMP: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/syntaxes.packdump"));
+
+static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(|| {
+	syntect::dumps::from_uncompressed_data(SYNTAX_DUMP)
+		.expect("build.rs dumps the syntax set with the syntect version that loads it")
+});
 static COMPILED_RULES: LazyLock<Vec<(Scope, usize)>> = LazyLock::new(|| {
 	SCOPE_RULES
 		.iter()
@@ -29,30 +36,37 @@ thread_local! {
 	static SCOPE_COLOR_CACHE: RefCell<HashMap<Scope, usize>> = RefCell::new(HashMap::with_capacity(256));
 }
 
-/// Syntaxes bundled in addition to syntect's defaults: syntect ships none of
-/// these, so we vendor their `.sublime-syntax` sources and fold them into the
-/// set.
-const EXTRA_SYNTAXES: &[&str] = &[
-	include_str!("syntaxes/Julia.sublime-syntax"),
-	include_str!("syntaxes/Nix.sublime-syntax"),
-	include_str!("syntaxes/Mermaid.sublime-syntax"),
-];
-
 fn get_syntax_set() -> &'static SyntaxSet {
 	&SYNTAX_SET
 }
 
-/// Load syntect's newline-aware defaults and add the vendored extra syntaxes.
-/// A vendored syntax that fails to parse is skipped rather than breaking all
-/// highlighting; the bundled-language tests guard against silent absence.
-fn build_syntax_set() -> SyntaxSet {
-	let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
-	for src in EXTRA_SYNTAXES {
-		if let Ok(def) = SyntaxDefinition::load_from_str(src, true, None) {
-			builder.add(def);
-		}
+/// Oniguruma's retry budget for one match attempt and for one search across
+/// all of its start positions. A match or search that exceeds it fails, and
+/// syntect reads the failure as no match. Oniguruma's defaults are 10,000,000
+/// per attempt and no limit per search. Markdown's table-row and emphasis
+/// patterns repeat a group inside a repeated group, and YAML's implicit-key
+/// lookahead scans to the line end from every start position, so at those
+/// defaults a two-line Markdown source takes up to 77 ms and an 8,000-character
+/// YAML line with a colon in its value 450 ms. At 1,000,000, the backtrack
+/// limit fancy-regex applied to one search, 25,237 sources from session
+/// transcripts, this repository and long-line probes parse to the scopes
+/// fancy-regex produced, in 38% of its time, and the slowest takes 58 ms
+/// against 200 ms.
+const REGEX_RETRY_LIMIT: c_ulong = 1_000_000;
+
+/// Set Oniguruma's process-wide match and search retry limits to
+/// [`REGEX_RETRY_LIMIT`].
+///
+/// The limits are C globals that every match and search reads when it starts,
+/// so they also bound the `find` builtin's `-name` and `-regex` matching. Call
+/// this once from module initialisation, before any thread can start a match.
+pub fn bound_regex_retries() {
+	// SAFETY: each setter writes one C global and has no other effect. The
+	// caller runs before any thread that could read them concurrently exists.
+	unsafe {
+		onig_sys::onig_set_retry_limit_in_match(REGEX_RETRY_LIMIT);
+		onig_sys::onig_set_retry_limit_in_search(REGEX_RETRY_LIMIT);
 	}
-	builder.build()
 }
 
 const SCOPE_RULES: &[(&[&str], usize)] = &[
@@ -340,13 +354,43 @@ fn highlight_into(
 /// fails.
 #[napi]
 pub fn highlight_code(code: String, lang: Option<String>, colors: HighlightColors) -> String {
-	let palette = palette_of(colors);
+	highlight_source(&code, lang.as_deref(), &palette_of(colors))
+}
+
+/// Highlight one whole source from a fresh parser.
+fn highlight_source(code: &str, lang: Option<&str>, palette: &Palette) -> String {
 	let ss = get_syntax_set();
-	let mut parse_state = ParseState::new(syntax_for(ss, lang.as_deref()));
+	let mut parse_state = ParseState::new(syntax_for(ss, lang));
 	let mut scope_stack = ScopeStack::new();
 	let mut result = String::with_capacity(code.len() * 2);
-	highlight_into(&code, ss, &mut parse_state, &mut scope_stack, &palette, &mut result);
+	highlight_into(code, ss, &mut parse_state, &mut scope_stack, palette, &mut result);
 	result
+}
+
+/// One source for [`highlight_code_batch`], in the language `highlight_code`
+/// would be given for it.
+#[napi(object)]
+pub struct HighlightSource {
+	pub code: String,
+	pub lang: Option<String>,
+}
+
+/// Highlight many sources at once, each exactly as `highlight_code` would.
+///
+/// Every source is parsed from its own fresh state, so the sources are
+/// independent and are highlighted in parallel on Rayon's global pool when it
+/// is available, and one after another when it is not. The result holds one
+/// string per source, in the order given.
+#[napi]
+pub fn highlight_code_batch(sources: Vec<HighlightSource>, colors: HighlightColors) -> Vec<String> {
+	let palette = palette_of(colors);
+	let highlight =
+		|source: &HighlightSource| highlight_source(&source.code, source.lang.as_deref(), &palette);
+	if rayon_global_pool_available() {
+		sources.par_iter().map(highlight).collect()
+	} else {
+		sources.iter().map(highlight).collect()
+	}
 }
 
 /// A highlighter that keeps its place in one source.
@@ -503,6 +547,39 @@ mod tests {
 			"bash",
 			"cat <<EOF\nnot a $command\nEOF\necho \"multi\nline\" | wc -l\n",
 		);
+	}
+
+	#[test]
+	fn a_batch_colours_each_source_as_highlight_code_does_in_order() {
+		// Sources in several languages, one with no language and one empty, so a batch
+		// that shared a parser across sources, dropped the language of one, or
+		// reordered results differs from the one-shot answer for at least one of
+		// them.
+		let sources = [
+			("/* open\n close */ const x = `a\n${b}`;", Some("ts")),
+			("def f():\n    \"\"\"doc\n    more\"\"\"\n    return 1", Some("python")),
+			("plain words, no language", None),
+			("", Some("rust")),
+			("fn main() { let s = r#\"raw\nline\"#; }", Some("rust")),
+			("cat <<EOF\n$not\nEOF", Some("bash")),
+		];
+		let batch = highlight_code_batch(
+			sources
+				.iter()
+				.map(|(code, lang)| HighlightSource {
+					code: (*code).to_string(),
+					lang: lang.map(str::to_string),
+				})
+				.collect(),
+			test_colors(),
+		);
+		let one_shot: Vec<String> = sources
+			.iter()
+			.map(|(code, lang)| {
+				highlight_code((*code).to_string(), lang.map(str::to_string), test_colors())
+			})
+			.collect();
+		assert_eq!(batch, one_shot);
 	}
 
 	#[test]

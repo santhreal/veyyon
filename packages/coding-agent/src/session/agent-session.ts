@@ -253,6 +253,7 @@ import {
 import { type AsyncJob, AsyncJobManager } from "../async";
 import { shouldEnableAppendOnlyContext } from "../config/append-only-context-mode";
 import {
+	type CompactionEngineAction,
 	isCompactionStrategyOff,
 	isThresholdCompactionDisabled,
 	resolveCompactionEngineAction,
@@ -640,6 +641,30 @@ function createHandoffContext(document: string): string {
 function createHandoffFileName(date = new Date()): string {
 	const fileTimestamp = date.toISOString().replace(/[:.]/g, "-");
 	return `handoff-${fileTimestamp}.md`;
+}
+
+/** What triggered an automatic compaction pass. */
+type AutoCompactionReason = "overflow" | "threshold" | "idle" | "incomplete";
+
+/** The fields a compaction entry records, taken from a hook's or a summarizer's result. */
+function compactionRecord(
+	source: Pick<CompactionResult, "summary" | "shortSummary" | "firstKeptEntryId" | "tokensBefore" | "details">,
+	preserveData: Record<string, unknown> | undefined,
+): CompactionResult {
+	return {
+		summary: source.summary,
+		shortSummary: source.shortSummary,
+		firstKeptEntryId: source.firstKeptEntryId,
+		tokensBefore: source.tokensBefore,
+		details: source.details,
+		preserveData,
+	};
+}
+
+/** A pass that scheduled a turn reports it; one that did not blocks automatic continuation at a dead end. */
+function compactionCheckOutcome(continuationScheduled: boolean, deadEnd: boolean): CompactionCheckResult {
+	if (continuationScheduled) return COMPACTION_CHECK_CONTINUATION;
+	return deadEnd ? COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION : COMPACTION_CHECK_NONE;
 }
 
 const REPLAN_TITLE_CONTEXT_TURN_LIMIT = 6;
@@ -9635,44 +9660,23 @@ export class AgentSession {
 				throw new Error("Nothing to compact (session too small)");
 			}
 
-			let hookCompaction: CompactionResult | undefined;
-			let fromExtension = false;
-			let preserveData: Record<string, unknown> | undefined;
-
-			if (this.#extensionRunner?.hasHandlers("session_before_compact")) {
-				const result = (await this.#extensionRunner.emit({
-					type: "session_before_compact",
-					preparation,
-					branchEntries: pathEntries,
-					customInstructions,
-					signal: compactionAbortController.signal,
-				})) as SessionBeforeCompactResult | undefined;
-
-				if (result?.cancel) {
-					throw new CompactionCancelledError();
-				}
-
-				if (result?.compaction) {
-					hookCompaction = result.compaction;
-					fromExtension = true;
-				}
+			const beforeCompact = await this.#emitBeforeCompact(
+				preparation,
+				pathEntries,
+				customInstructions,
+				compactionAbortController.signal,
+			);
+			if (beforeCompact?.cancel) {
+				throw new CompactionCancelledError();
 			}
+			const hookCompaction = beforeCompact?.compaction || undefined;
 			const compactionPrep = await this.#prepareCompactionFromHooks(preparation, hookCompaction);
 
-			let summary: string;
-			let shortSummary: string | undefined;
-			let firstKeptEntryId: string;
-			let tokensBefore: number;
-			let details: unknown;
+			let compactionResult: CompactionResult;
 			let codexCompaction: CodexCompactionContext | undefined;
 
 			if (compactionPrep.kind === "fromHook") {
-				summary = compactionPrep.summary;
-				shortSummary = compactionPrep.shortSummary;
-				firstKeptEntryId = compactionPrep.firstKeptEntryId;
-				tokensBefore = compactionPrep.tokensBefore;
-				details = compactionPrep.details;
-				preserveData = compactionPrep.preserveData;
+				compactionResult = compactionRecord(compactionPrep, compactionPrep.preserveData);
 			} else {
 				codexCompaction = createCodexCompactionContext({
 					trigger: "manual",
@@ -9687,9 +9691,9 @@ export class AgentSession {
 				// Real compaction bugs (network, server, parsing, etc.) keep
 				// their original shape — they must not be silently relabeled
 				// as cancellations even if the signal happens to be aborted
-				// for an unrelated reason. Assignments live inside the try
-				// block because every catch path throws — the post-try reads
-				// of the result-derived locals are reachable only on success.
+				// for an unrelated reason. The assignment lives inside the try
+				// block because every catch path throws — the post-try read
+				// of the result is reachable only on success.
 				try {
 					const remoteResult = await this.#tryServerSideCompaction(
 						preparation,
@@ -9718,12 +9722,10 @@ export class AgentSession {
 							},
 							compactionCandidates,
 						));
-					summary = result.summary;
-					shortSummary = result.shortSummary;
-					firstKeptEntryId = result.firstKeptEntryId;
-					tokensBefore = result.tokensBefore;
-					details = result.details;
-					preserveData = mergeLlmCompactionPreserveData(compactionPrep.preserveData, result.preserveData);
+					compactionResult = compactionRecord(
+						result,
+						mergeLlmCompactionPreserveData(compactionPrep.preserveData, result.preserveData),
+					);
 				} catch (err) {
 					if (err instanceof CompactionCancelledError) {
 						throw err;
@@ -9739,61 +9741,7 @@ export class AgentSession {
 				throw new CompactionCancelledError();
 			}
 
-			assertValidCompactionResult(preparation, {
-				summary,
-				shortSummary,
-				firstKeptEntryId,
-				tokensBefore,
-				details,
-				preserveData,
-			});
-			this.sessionManager.appendCompaction(
-				summary,
-				shortSummary,
-				firstKeptEntryId,
-				tokensBefore,
-				details,
-				fromExtension,
-				preserveData,
-			);
-			await this.#persistCompactionTailElisions(preparation);
-			const newEntries = this.sessionManager.getEntries();
-			const sessionContext = this.buildDisplaySessionContext();
-			this.agent.replaceMessages(sessionContext.messages);
-			this.#rebasePendingContextSnapshotAfterHistoryRewrite();
-			// Compaction discarded the conversation history that carried the approved
-			// plan reference. Clear the sent-flag so #buildPlanReferenceMessage re-reads
-			// the plan from disk and re-injects it on the next turn (issue #1246).
-			this.#planReferenceSent = false;
-			this.#resetAllAdvisorRuntimes();
-			this.#todo.syncFromBranch();
-			if (codexCompaction) {
-				this.#resetCodexProviderAfterCompaction(codexCompaction);
-			} else {
-				this.#closeCodexProviderSessionsForHistoryRewrite();
-			}
-
-			// Get the saved compaction entry for the hook
-			const savedCompactionEntry = newEntries.find(e => e.type === "compaction" && e.summary === summary) as
-				| CompactionEntry
-				| undefined;
-
-			if (this.#extensionRunner && savedCompactionEntry) {
-				await this.#extensionRunner.emit({
-					type: "session_compact",
-					compactionEntry: savedCompactionEntry,
-					fromExtension,
-				});
-			}
-
-			const compactionResult: CompactionResult = {
-				summary,
-				shortSummary,
-				firstKeptEntryId,
-				tokensBefore,
-				details,
-				preserveData,
-			};
+			await this.#applyCompaction(preparation, compactionResult, hookCompaction !== undefined, codexCompaction);
 			options?.onComplete?.(compactionResult);
 			return compactionResult;
 		} catch (error) {
@@ -12524,7 +12472,7 @@ export class AgentSession {
 	 * @returns whether auto-compaction scheduled a follow-up turn.
 	 */
 	async #runAutoCompaction(
-		reason: "overflow" | "threshold" | "idle" | "incomplete",
+		reason: AutoCompactionReason,
 		willRetry: boolean,
 		options: {
 			autoContinue?: boolean;
@@ -12588,28 +12536,9 @@ export class AgentSession {
 			// queue, not the core steering queue.
 			await this.#emitSessionEvent({ type: "auto_compaction_start", reason, action });
 
-			if (!this.model) {
-				await this.#emitSessionEvent({
-					type: "auto_compaction_end",
-					action,
-					result: undefined,
-					aborted: false,
-					willRetry: false,
-					skipped: true,
-				});
-				return COMPACTION_CHECK_NONE;
-			}
-
-			const availableModels = this.#modelRegistry.getAvailable();
-			if (availableModels.length === 0) {
-				await this.#emitSessionEvent({
-					type: "auto_compaction_end",
-					action,
-					result: undefined,
-					aborted: false,
-					willRetry: false,
-					skipped: true,
-				});
+			const availableModels = this.model ? this.#modelRegistry.getAvailable() : [];
+			if (!this.model || availableModels.length === 0) {
+				await this.#emitEmptyAutoCompactionEnd(action, "skipped");
 				return COMPACTION_CHECK_NONE;
 			}
 
@@ -12620,91 +12549,24 @@ export class AgentSession {
 				contextWindow: declaredContextWindow(this.model),
 			});
 			if (!preparation) {
-				await this.#emitSessionEvent({
-					type: "auto_compaction_end",
-					action,
-					result: undefined,
-					aborted: false,
-					willRetry: false,
-					skipped: true,
-				});
-				// Nothing to summarize is a dead end only while the context is still
-				// over the bar. Once an earlier pass in this turn created headroom —
-				// a rescue tier, a prune, a dedup — the next threshold check finds
-				// nothing left to cut, and warning there tells the operator to start
-				// a fresh session moments after maintenance succeeded.
-				const noProgressDeadEnd = reason !== "idle" && !this.#compactionMeets("recovery-band");
-				let continuationScheduled = false;
-				if (!suppressContinuation && this.agent.hasQueuedMessages()) {
-					this.#scheduleAgentContinue({
-						delayMs: 100,
-						generation,
-						shouldContinue: () => this.agent.hasQueuedMessages(),
-					});
-					continuationScheduled = true;
-				}
-				if (noProgressDeadEnd) {
-					this.emitNotice("warning", compactionDeadEndWarning(), "compaction");
-				}
-				if (continuationScheduled) return COMPACTION_CHECK_CONTINUATION;
-				return noProgressDeadEnd ? COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION : COMPACTION_CHECK_NONE;
+				await this.#emitEmptyAutoCompactionEnd(action, "skipped");
+				return this.#afterNothingToSummarize(reason, generation, suppressContinuation);
 			}
 
-			let hookCompaction: CompactionResult | undefined;
-			let fromExtension = false;
-			let preserveData: Record<string, unknown> | undefined;
-			let codexCompaction: CodexCompactionContext | undefined;
-
-			if (this.#extensionRunner?.hasHandlers("session_before_compact")) {
-				const hookResult = (await this.#extensionRunner.emit({
-					type: "session_before_compact",
-					preparation,
-					branchEntries: pathEntries,
-					customInstructions: undefined,
-					signal: autoCompactionSignal,
-				})) as SessionBeforeCompactResult | undefined;
-
-				if (hookResult?.cancel) {
-					this.#rollbackCompactionTailElisions(preparation);
-					await this.#emitSessionEvent({
-						type: "auto_compaction_end",
-						action,
-						result: undefined,
-						aborted: true,
-						willRetry: false,
-					});
-					return COMPACTION_CHECK_NONE;
-				}
-
-				if (hookResult?.compaction) {
-					hookCompaction = hookResult.compaction;
-					fromExtension = true;
-				}
+			const beforeCompact = await this.#emitBeforeCompact(preparation, pathEntries, undefined, autoCompactionSignal);
+			if (beforeCompact?.cancel) {
+				this.#rollbackCompactionTailElisions(preparation);
+				await this.#emitEmptyAutoCompactionEnd(action, "aborted");
+				return COMPACTION_CHECK_NONE;
 			}
+			const hookCompaction = beforeCompact?.compaction || undefined;
 			const compactionPrep = await this.#prepareCompactionFromHooks(preparation, hookCompaction);
 
-			let summary: string;
-			let shortSummary: string | undefined;
-			let firstKeptEntryId: string;
-			let tokensBefore: number;
-			let details: unknown;
-
+			let result: CompactionResult;
+			let codexCompaction: CodexCompactionContext | undefined;
 			if (compactionPrep.kind === "fromHook") {
-				summary = compactionPrep.summary;
-				shortSummary = compactionPrep.shortSummary;
-				firstKeptEntryId = compactionPrep.firstKeptEntryId;
-				tokensBefore = compactionPrep.tokensBefore;
-				details = compactionPrep.details;
-				preserveData = compactionPrep.preserveData;
+				result = compactionRecord(compactionPrep, compactionPrep.preserveData);
 			} else {
-				const candidates = compactionModelCandidates(this.settings, this.model, availableModels);
-				// Per-candidate effort configured on `compaction.model` (its `:level`
-				// suffix). A candidate without an explicit level uses the session effort.
-				const configuredEffortByModel = configuredCompactionEfforts(this.settings, availableModels);
-				const retrySettings = this.settings.getGroup("retry");
-				const telemetry = resolveTelemetry(this.agent.telemetry, this.sessionId);
-				let compactResult: CompactionResult | undefined;
-				let lastError: unknown;
 				codexCompaction = createCodexCompactionContext({
 					trigger: "auto",
 					reason: "context_limit",
@@ -12712,351 +12574,36 @@ export class AgentSession {
 						options.phase ??
 						(reason === "threshold" ? "pre_turn" : reason === "idle" ? "standalone_turn" : "mid_turn"),
 				});
-
-				// Server-side compaction first: when the session model supports it
-				// and the setting is on, the provider compacts and the candidate
-				// loop below is skipped entirely for this pass.
-				compactResult = await this.#tryServerSideCompaction(preparation, undefined, autoCompactionSignal, {
-					promptOverride: this.#obfuscateTextForProvider(compactionPrep.hookPrompt),
-					extraContext: compactionPrep.hookContext,
-					remoteInstructions: this.#baseSystemPrompt.join("\n\n"),
-					initiatorOverride: "agent",
+				const compacted = await this.#summarizeForAutoCompaction(
+					preparation,
+					compactionPrep,
 					codexCompaction,
-				});
-
-				// The payload was sized against the MAIN model's threshold, so a
-				// candidate whose window cannot hold it overflows mid-compact. The
-				// manual path has always skipped those candidates loudly (see
-				// #compactWithFallbackModel); this one did not, and it is the path that
-				// fires unattended on every threshold crossing and every overflow
-				// recovery. Sending a request the window provably cannot hold buys a
-				// guaranteed failure, and then the next candidate pays for the same span
-				// again. `compaction.modelContextWindow` (unset = the candidate's own
-				// metadata) overrides for proxies serving a window they do not advertise.
-				const configuredCompactionWindow = this.settings.get("compaction.modelContextWindow");
-				// Why each candidate before the one that ran was passed over, so the
-				// unattended path can name the swap the way the manual path does.
-				const skipReasons = new Map<string, string>();
-
-				for (let candidateIndex = 0; !compactResult && candidateIndex < candidates.length; candidateIndex++) {
-					const candidate = candidates[candidateIndex];
-					const hasMoreCandidates = candidateIndex < candidates.length - 1;
-					const apiKey = await this.#modelRegistry.getApiKey(candidate, this.sessionId);
-					if (!apiKey) {
-						skipReasons.set(modelKey(candidate), "it is not authenticated");
-						continue;
-					}
-					const cachePrefix = await this.#cacheAlignedCompactionPrefix(candidate, autoCompactionSignal);
-					const candidateOptions: SummaryOptions = {
-						promptOverride: this.#obfuscateTextForProvider(compactionPrep.hookPrompt),
-						extraContext: compactionPrep.hookContext,
-						remoteInstructions: this.#baseSystemPrompt.join("\n\n"),
-						metadata: this.agent.metadataForProvider(candidate.provider),
-						initiatorOverride: "agent",
-						convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
-						telemetry,
-						// Effort configured on this compaction candidate wins;
-						// otherwise honor the user's /model thinking selection.
-						// The most-fired compaction site. Clamped per-model
-						// inside compact() via resolveCompactionEffort.
-						thinkingLevel: configuredEffortByModel.get(modelKey(candidate)) ?? this.thinkingLevel,
-						sessionSystemPrompt: cachePrefix?.sessionSystemPrompt,
-						sessionMessages: cachePrefix?.sessionMessages,
-						tools: cachePrefix?.tools ?? this.agent.state.tools,
-						sessionId: this.sessionId,
-						// Same routing rule as the manual-compaction call site above:
-						// mirror the pinned key the live turns cached under.
-						promptCacheKey: this.agent.promptCacheKey ?? this.sessionId,
-						providerSessionState: this.#providerSessionState,
-						obfuscateProviderText: text => this.obfuscateProviderText(text),
-						codexCompaction,
-						completeImpl: this.#sideCompleteImpl,
-						serviceTier: this.#effectiveServiceTier(candidate),
-						summaryStaging: this.#stagedSummaryModels.has(modelKey(candidate)) ? "staged" : undefined,
-						stagedSummaryCheckpoints: this.#stagedSummaryCheckpoints,
-					};
-					const candidateWindow =
-						typeof configuredCompactionWindow === "number" && configuredCompactionWindow > 0
-							? configuredCompactionWindow
-							: (candidate.contextWindow ?? 0);
-					const summarizePayloadTokens = estimateCompactionRequestTokens(
-						preparation,
-						candidate,
-						undefined,
-						candidateOptions,
-					);
-					if (candidateWindow > 0 && summarizePayloadTokens > candidateWindow) {
-						logger.warn("compaction candidate skipped: summarization payload exceeds its context window", {
-							candidate: `${candidate.provider}/${candidate.id}`,
-							candidateWindow,
-							summarizePayloadTokens,
-						});
-						// Keep a real reason for the failure event when every candidate is
-						// skipped this way. A thrown provider error from a later candidate
-						// still overwrites it (the catch assigns unconditionally).
-						skipReasons.set(
-							modelKey(candidate),
-							`its context window holds ${candidateWindow} tokens and the summary needed ${summarizePayloadTokens}`,
-						);
-						lastError ??= new Error(
-							`Compaction failed: ${candidate.provider}/${candidate.id} holds ${candidateWindow} tokens and the summary needed ${summarizePayloadTokens}.`,
-						);
-						// What the rescue has to free for ANY candidate to summarize at
-						// all. The smallest gap across skipped candidates is the widest
-						// window on offer, so cutting to it reopens the cheapest
-						// candidate rather than the largest one.
-						this.#compactionPayloadGapTokens = Math.min(
-							this.#compactionPayloadGapTokens ?? Number.POSITIVE_INFINITY,
-							summarizePayloadTokens - candidateWindow,
-						);
-						continue;
-					}
-
-					let attempt = 0;
-					while (true) {
-						try {
-							compactResult = await compact(
-								this.#obfuscatePreparationForProvider(preparation),
-								candidate,
-								this.#modelRegistry.resolver(candidate, this.sessionId),
-								undefined,
-								autoCompactionSignal,
-								candidateOptions,
-							);
-							break;
-						} catch (error) {
-							if (autoCompactionSignal.aborted) {
-								throw error;
-							}
-
-							const message = errorMessage(error);
-							skipReasons.set(modelKey(candidate), `it failed: ${message}`);
-							const id = AIError.classify(error, candidate.api);
-							if (AIError.is(id, AIError.Flag.AuthFailed)) {
-								lastError = this.#buildCompactionAuthError();
-								break;
-							}
-							if (AIError.is(id, AIError.Flag.Timeout)) {
-								logger.warn(
-									hasMoreCandidates
-										? "Auto-compaction summarization timed out, trying next model"
-										: "Auto-compaction summarization timed out, not retrying same model",
-									{
-										error: message,
-										model: `${candidate.provider}/${candidate.id}`,
-									},
-								);
-								lastError = this.#compactionCandidateError(candidate, error);
-								break;
-							}
-
-							const retryAfterMs = this.#parseRetryAfterMsFromError(message);
-							const shouldRetry =
-								retrySettings.enabled &&
-								attempt < retrySettings.maxRetries &&
-								(retryAfterMs !== undefined ||
-									AIError.is(id, AIError.Flag.Transient) ||
-									AIError.is(id, AIError.Flag.UsageLimit));
-							if (!shouldRetry) {
-								lastError = this.#compactionCandidateError(candidate, error);
-								break;
-							}
-
-							const baseDelayMs = retrySettings.baseDelayMs * 2 ** attempt;
-							const delayMs = retryAfterMs !== undefined ? Math.max(baseDelayMs, retryAfterMs) : baseDelayMs;
-
-							// If retry delay is too long (>30s), try next candidate instead of waiting
-							const maxAcceptableDelayMs = 30_000;
-							if (delayMs > maxAcceptableDelayMs && hasMoreCandidates) {
-								logger.warn("Auto-compaction retry delay too long, trying next model", {
-									delayMs,
-									retryAfterMs,
-									error: message,
-									model: `${candidate.provider}/${candidate.id}`,
-								});
-								lastError = this.#compactionCandidateError(candidate, error);
-								break; // Exit retry loop, continue to next candidate
-							}
-
-							attempt++;
-							logger.warn("Auto-compaction failed, retrying", {
-								attempt,
-								maxRetries: retrySettings.maxRetries,
-								delayMs,
-								retryAfterMs,
-								error: message,
-								model: `${candidate.provider}/${candidate.id}`,
-							});
-							await scheduler.wait(delayMs, { signal: autoCompactionSignal });
-						}
-					}
-
-					if (compactResult) {
-						this.#recordSummaryStaging(candidate, compactResult);
-						this.#announceCompactionFallback(candidates, candidate, skipReasons);
-						break;
-					}
-				}
-
-				if (!compactResult) {
-					if (lastError) {
-						throw lastError;
-					}
-					throw new Error("Compaction failed: no available model");
-				}
-
-				summary = compactResult.summary;
-				shortSummary = compactResult.shortSummary;
-				firstKeptEntryId = compactResult.firstKeptEntryId;
-				tokensBefore = compactResult.tokensBefore;
-				details = compactResult.details;
-				preserveData = mergeLlmCompactionPreserveData(compactionPrep.preserveData, compactResult.preserveData);
+					availableModels,
+					autoCompactionSignal,
+				);
+				result = compactionRecord(
+					compacted,
+					mergeLlmCompactionPreserveData(compactionPrep.preserveData, compacted.preserveData),
+				);
 			}
 
 			if (autoCompactionSignal.aborted) {
 				this.#rollbackCompactionTailElisions(preparation);
-				await this.#emitSessionEvent({
-					type: "auto_compaction_end",
-					action,
-					result: undefined,
-					aborted: true,
-					willRetry: false,
-				});
+				await this.#emitEmptyAutoCompactionEnd(action, "aborted");
 				return COMPACTION_CHECK_NONE;
 			}
 
-			assertValidCompactionResult(preparation, {
-				summary,
-				shortSummary,
-				firstKeptEntryId,
-				tokensBefore,
-				details,
-				preserveData,
-			});
-			this.sessionManager.appendCompaction(
-				summary,
-				shortSummary,
-				firstKeptEntryId,
-				tokensBefore,
-				details,
-				fromExtension,
-				preserveData,
+			const savedCompactionEntry = await this.#applyCompaction(
+				preparation,
+				result,
+				hookCompaction !== undefined,
+				codexCompaction,
 			);
-			await this.#persistCompactionTailElisions(preparation);
-			const newEntries = this.sessionManager.getEntries();
-			const sessionContext = this.buildDisplaySessionContext();
-			this.agent.replaceMessages(sessionContext.messages);
-			this.#rebasePendingContextSnapshotAfterHistoryRewrite();
-			// Compaction discarded the conversation history that carried the approved
-			// plan reference. Clear the sent-flag so #buildPlanReferenceMessage re-reads
-			// the plan from disk and re-injects it on the next turn (issue #1246).
-			this.#planReferenceSent = false;
-			this.#resetAllAdvisorRuntimes();
-			this.#todo.syncFromBranch();
-			if (codexCompaction) {
-				this.#resetCodexProviderAfterCompaction(codexCompaction);
-			} else {
-				this.#closeCodexProviderSessionsForHistoryRewrite();
-			}
-
-			// Get the saved compaction entry for the hook
-			const savedCompactionEntry = newEntries.find(e => e.type === "compaction" && e.summary === summary) as
-				| CompactionEntry
-				| undefined;
-
-			if (this.#extensionRunner && savedCompactionEntry) {
-				await this.#extensionRunner.emit({
-					type: "session_compact",
-					compactionEntry: savedCompactionEntry,
-					fromExtension,
-				});
-			}
-
-			const result: CompactionResult = {
-				summary,
-				shortSummary,
-				firstKeptEntryId,
-				tokensBefore,
-				details,
-				preserveData,
-			};
-			// Post-maintenance progress guard — evaluated BEFORE emitting
-			// auto_compaction_end so the TUI rebuild triggered by that event
-			// already reflects any rescue rewrite (elide / image-drop) and the
-			// dead-end warning stamped on the compaction entry. The summary
-			// strategy can project over budget and fall back to a context-full summary; the
-			// summarizer keeps `keepRecentTokens` of recent history verbatim and
-			// findCutPoint can only cut at turn boundaries (never tool results),
-			// so a single oversized recent turn (e.g. a huge tool result) leaves
-			// the rewritten context still above threshold. Scheduling the
-			// continuation regardless means the next agent_end re-enters
-			// #checkCompaction over the same oversized tail and re-fires forever.
-			// The retry and the threshold auto-continue use different progress
-			// tests (a recoverable overflow only has to fit; the auto-continue
-			// thrash needs the stricter recovery band), so each branch evaluates
-			// its own below.
-			let continuationScheduled = false;
-			// A non-idle pass that wanted to continue (retry or auto-continue) but freed
-			// too little for that path to proceed is a dead-end: warn once so the user
-			// understands why maintenance paused instead of silently looping.
-			let noProgressDeadEnd = false;
-			let retryFits = false;
-			let hasHeadroom = false;
-
-			if (willRetry) {
-				const messages = this.agent.state.messages;
-				const lastMsg = messages[messages.length - 1];
-				if (lastMsg?.role === "assistant") {
-					const lastAssistant = lastMsg as AssistantMessage;
-					// Drop the prior turn before retry when it carries no actionable deliverable:
-					// - "error": failure was kept in history but must not re-enter the next turn's prompt.
-					// - reason === "incomplete" && stopReason === "length": truncated output (typically
-					//   reasoning-only) — re-running it produces the same dead-end.
-					const shouldDrop =
-						lastAssistant.stopReason === "error" ||
-						(reason === "incomplete" && lastAssistant.stopReason === "length");
-					if (shouldDrop) {
-						this.agent.replaceMessages(messages.slice(0, -1));
-						this.#rebasePendingContextSnapshotAfterHistoryRewrite();
-					}
-				}
-
-				// Retry only needs the rebuilt prompt to fit the window again — measured
-				// AFTER the drop above so the just-failed turn (which the retry prompt
-				// won't include) is excluded. Reusing the auto-continue recovery band
-				// here turned recoverable overflows into manual dead-ends (#3412 review),
-				// so use the looser fit budget.
-				retryFits = this.#compactionMeets("fit");
-				if (!retryFits) {
-					retryFits = await this.#rescueCompactionDeadEnd(autoCompactionSignal, {
-						skipElide: false,
-						bar: "fit",
-					});
-				}
-				if (!retryFits) {
-					noProgressDeadEnd = true;
-				}
-			} else if (reason !== "idle") {
-				// Mirror the shake recovery-band check: only auto-continue when compaction
-				// landed residual context under `COMPACTION_RECOVERY_BAND × threshold`.
-				// Re-firing on a history that still sits just over the line is the
-				// compaction thrash, so require genuine headroom, not a bare fit. Even
-				// when auto-continue is disabled, a no-headroom threshold pass must still
-				// block later automatic continuations (todo reminders/session_stop hooks)
-				// from re-entering the same oversized context.
-				hasHeadroom = this.#compactionMeets("recovery-band");
-				if (!hasHeadroom) {
-					hasHeadroom = await this.#rescueCompactionDeadEnd(autoCompactionSignal, {
-						skipElide: false,
-						bar: "recovery-band",
-					});
-				}
-				if (!hasHeadroom) {
-					noProgressDeadEnd = true;
-				}
-			}
-
-			const deadEndWarning = noProgressDeadEnd ? compactionDeadEndWarning() : undefined;
+			// Evaluated BEFORE emitting auto_compaction_end so the TUI rebuild
+			// triggered by that event already reflects any rescue rewrite (elide /
+			// image-drop) and the dead-end warning stamped on the compaction entry.
+			const progress = await this.#autoCompactionProgress(reason, willRetry, autoCompactionSignal);
+			const deadEndWarning = progress.deadEnd ? compactionDeadEndWarning() : undefined;
 			if (deadEndWarning && savedCompactionEntry) {
 				// Stamp the divider: the compaction bar badges the dead-end and
 				// carries the full warning in its ctrl+o detail, so the pause
@@ -13067,40 +12614,19 @@ export class AgentSession {
 
 			await this.#emitSessionEvent({ type: "auto_compaction_end", action, result, aborted: false, willRetry });
 
-			if (retryFits) {
-				this.#scheduleAgentContinue({ delayMs: 100, generation });
-				continuationScheduled = true;
-			} else if (hasHeadroom && shouldAutoContinue) {
-				this.#scheduleAutoContinuePrompt(generation);
-				continuationScheduled = true;
-			}
-			if (!continuationScheduled && !suppressContinuation && this.agent.hasQueuedMessages()) {
-				// Auto-compaction can complete while follow-up/steering/custom messages are waiting.
-				// Kick the loop so queued messages are actually delivered. This remains separate
-				// from the no-progress warning: pausing maintenance must not strand user input.
-				this.#scheduleAgentContinue({
-					delayMs: 100,
-					generation,
-					shouldContinue: () => this.agent.hasQueuedMessages(),
-				});
-				continuationScheduled = true;
-			}
-
+			const continuationScheduled = this.#scheduleAfterCompaction(generation, {
+				retry: progress.retryFits,
+				autoContinue: progress.hasHeadroom && shouldAutoContinue,
+				deliverQueued: !suppressContinuation,
+			});
 			if (deadEndWarning) {
 				this.emitNotice("warning", deadEndWarning, "compaction");
 			}
-			if (continuationScheduled) return COMPACTION_CHECK_CONTINUATION;
-			return noProgressDeadEnd ? COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION : COMPACTION_CHECK_NONE;
+			return compactionCheckOutcome(continuationScheduled, progress.deadEnd);
 		} catch (error) {
 			this.#rollbackCompactionTailElisions(preparation);
 			if (autoCompactionSignal.aborted) {
-				await this.#emitSessionEvent({
-					type: "auto_compaction_end",
-					action,
-					result: undefined,
-					aborted: true,
-					willRetry: false,
-				});
+				await this.#emitEmptyAutoCompactionEnd(action, "aborted");
 				return COMPACTION_CHECK_NONE;
 			}
 			// Shadowing the `errorMessage` helper with a local also discarded what it
@@ -13131,6 +12657,422 @@ export class AgentSession {
 		}
 	}
 
+	/** End an automatic pass that wrote nothing: skipped before it began, or aborted. */
+	#emitEmptyAutoCompactionEnd(action: CompactionEngineAction, outcome: "skipped" | "aborted"): Promise<void> {
+		return this.#emitSessionEvent(
+			outcome === "skipped"
+				? {
+						type: "auto_compaction_end",
+						action,
+						result: undefined,
+						aborted: false,
+						willRetry: false,
+						skipped: true,
+					}
+				: { type: "auto_compaction_end", action, result: undefined, aborted: true, willRetry: false },
+		);
+	}
+
+	/** Offer a compaction to `session_before_compact` handlers, which may cancel it or supply its summary. */
+	async #emitBeforeCompact(
+		preparation: CompactionPreparation,
+		branchEntries: SessionEntry[],
+		customInstructions: string | undefined,
+		signal: AbortSignal,
+	): Promise<SessionBeforeCompactResult | undefined> {
+		if (!this.#extensionRunner?.hasHandlers("session_before_compact")) return undefined;
+		return (await this.#extensionRunner.emit({
+			type: "session_before_compact",
+			preparation,
+			branchEntries,
+			customInstructions,
+			signal,
+		})) as SessionBeforeCompactResult | undefined;
+	}
+
+	/**
+	 * Record a compaction and rebuild everything that read the history it replaced.
+	 *
+	 * Returns the written entry, which `session_compact` handlers receive and a dead-end warning is
+	 * stamped on. It is looked up by the id the append returned: a server-side compaction records an
+	 * empty summary, so matching on summary text found the session's first such entry instead.
+	 */
+	async #applyCompaction(
+		preparation: CompactionPreparation,
+		result: CompactionResult,
+		fromExtension: boolean,
+		codexCompaction: CodexCompactionContext | undefined,
+	): Promise<CompactionEntry | undefined> {
+		assertValidCompactionResult(preparation, result);
+		const entryId = this.sessionManager.appendCompaction(
+			result.summary,
+			result.shortSummary,
+			result.firstKeptEntryId,
+			result.tokensBefore,
+			result.details,
+			fromExtension,
+			result.preserveData,
+		);
+		await this.#persistCompactionTailElisions(preparation);
+		this.agent.replaceMessages(this.buildDisplaySessionContext().messages);
+		this.#rebasePendingContextSnapshotAfterHistoryRewrite();
+		// Compaction discarded the conversation history that carried the approved
+		// plan reference. Clear the sent-flag so #buildPlanReferenceMessage re-reads
+		// the plan from disk and re-injects it on the next turn (issue #1246).
+		this.#planReferenceSent = false;
+		this.#resetAllAdvisorRuntimes();
+		this.#todo.syncFromBranch();
+		if (codexCompaction) {
+			this.#resetCodexProviderAfterCompaction(codexCompaction);
+		} else {
+			this.#closeCodexProviderSessionsForHistoryRewrite();
+		}
+
+		const entry = this.sessionManager.getEntry(entryId);
+		const savedCompactionEntry = entry?.type === "compaction" ? entry : undefined;
+		if (this.#extensionRunner && savedCompactionEntry) {
+			await this.#extensionRunner.emit({
+				type: "session_compact",
+				compactionEntry: savedCompactionEntry,
+				fromExtension,
+			});
+		}
+		return savedCompactionEntry;
+	}
+
+	/**
+	 * Settle an automatic pass that found nothing to summarize.
+	 *
+	 * That is a dead end only while the context is still over the bar. Once an
+	 * earlier pass in this turn created headroom — a rescue tier, a prune, a
+	 * dedup — the next threshold check finds nothing left to cut, and warning
+	 * there tells the operator to start a fresh session moments after
+	 * maintenance succeeded.
+	 */
+	#afterNothingToSummarize(
+		reason: AutoCompactionReason,
+		generation: number,
+		suppressContinuation: boolean,
+	): CompactionCheckResult {
+		const deadEnd = reason !== "idle" && !this.#compactionMeets("recovery-band");
+		const continuationScheduled = this.#scheduleAfterCompaction(generation, {
+			retry: false,
+			autoContinue: false,
+			deliverQueued: !suppressContinuation,
+		});
+		if (deadEnd) {
+			this.emitNotice("warning", compactionDeadEndWarning(), "compaction");
+		}
+		return compactionCheckOutcome(continuationScheduled, deadEnd);
+	}
+
+	/**
+	 * Summarize for an automatic pass: server-side compaction when the session
+	 * model supports it and the setting is on, otherwise each compaction
+	 * candidate in turn.
+	 *
+	 * The payload was sized against the MAIN model's threshold, so a candidate
+	 * whose window cannot hold it overflows mid-compact. The manual path has
+	 * always skipped those candidates loudly (see #compactWithFallbackModel);
+	 * this one did not, and it is the path that fires unattended on every
+	 * threshold crossing and every overflow recovery. Sending a request the
+	 * window provably cannot hold buys a guaranteed failure, and then the next
+	 * candidate pays for the same span again. `compaction.modelContextWindow`
+	 * (unset = the candidate's own metadata) overrides for proxies serving a
+	 * window they do not advertise.
+	 */
+	async #summarizeForAutoCompaction(
+		preparation: CompactionPreparation,
+		hooks: { hookPrompt: string | undefined; hookContext: string[] | undefined },
+		codexCompaction: CodexCompactionContext,
+		availableModels: Model[],
+		signal: AbortSignal,
+	): Promise<CompactionResult> {
+		const candidates = compactionModelCandidates(this.settings, this.model, availableModels);
+		// Per-candidate effort configured on `compaction.model` (its `:level`
+		// suffix). A candidate without an explicit level uses the session effort.
+		const configuredEffortByModel = configuredCompactionEfforts(this.settings, availableModels);
+		const telemetry = resolveTelemetry(this.agent.telemetry, this.sessionId);
+
+		const remote = await this.#tryServerSideCompaction(preparation, undefined, signal, {
+			promptOverride: this.#obfuscateTextForProvider(hooks.hookPrompt),
+			extraContext: hooks.hookContext,
+			remoteInstructions: this.#baseSystemPrompt.join("\n\n"),
+			initiatorOverride: "agent",
+			codexCompaction,
+		});
+		if (remote) return remote;
+
+		const configuredCompactionWindow = this.settings.get("compaction.modelContextWindow");
+		// Why each candidate before the one that ran was passed over, so the
+		// unattended path can name the swap the way the manual path does.
+		const skipReasons = new Map<string, string>();
+		let lastError: unknown;
+		for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex++) {
+			const candidate = candidates[candidateIndex];
+			const apiKey = await this.#modelRegistry.getApiKey(candidate, this.sessionId);
+			if (!apiKey) {
+				skipReasons.set(modelKey(candidate), "it is not authenticated");
+				continue;
+			}
+			const cachePrefix = await this.#cacheAlignedCompactionPrefix(candidate, signal);
+			const candidateOptions: SummaryOptions = {
+				promptOverride: this.#obfuscateTextForProvider(hooks.hookPrompt),
+				extraContext: hooks.hookContext,
+				remoteInstructions: this.#baseSystemPrompt.join("\n\n"),
+				metadata: this.agent.metadataForProvider(candidate.provider),
+				initiatorOverride: "agent",
+				convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
+				telemetry,
+				// Effort configured on this compaction candidate wins;
+				// otherwise honor the user's /model thinking selection.
+				// The most-fired compaction site. Clamped per-model
+				// inside compact() via resolveCompactionEffort.
+				thinkingLevel: configuredEffortByModel.get(modelKey(candidate)) ?? this.thinkingLevel,
+				sessionSystemPrompt: cachePrefix?.sessionSystemPrompt,
+				sessionMessages: cachePrefix?.sessionMessages,
+				tools: cachePrefix?.tools ?? this.agent.state.tools,
+				sessionId: this.sessionId,
+				// Same routing rule as the manual-compaction call site:
+				// mirror the pinned key the live turns cached under.
+				promptCacheKey: this.agent.promptCacheKey ?? this.sessionId,
+				providerSessionState: this.#providerSessionState,
+				obfuscateProviderText: text => this.obfuscateProviderText(text),
+				codexCompaction,
+				completeImpl: this.#sideCompleteImpl,
+				serviceTier: this.#effectiveServiceTier(candidate),
+				summaryStaging: this.#stagedSummaryModels.has(modelKey(candidate)) ? "staged" : undefined,
+				stagedSummaryCheckpoints: this.#stagedSummaryCheckpoints,
+			};
+			const candidateWindow =
+				typeof configuredCompactionWindow === "number" && configuredCompactionWindow > 0
+					? configuredCompactionWindow
+					: (candidate.contextWindow ?? 0);
+			const summarizePayloadTokens = estimateCompactionRequestTokens(
+				preparation,
+				candidate,
+				undefined,
+				candidateOptions,
+			);
+			if (candidateWindow > 0 && summarizePayloadTokens > candidateWindow) {
+				logger.warn("compaction candidate skipped: summarization payload exceeds its context window", {
+					candidate: `${candidate.provider}/${candidate.id}`,
+					candidateWindow,
+					summarizePayloadTokens,
+				});
+				skipReasons.set(
+					modelKey(candidate),
+					`its context window holds ${candidateWindow} tokens and the summary needed ${summarizePayloadTokens}`,
+				);
+				// Keep a real reason for the failure when every candidate is
+				// skipped this way. A provider error from a later candidate
+				// still overwrites it.
+				lastError ??= new Error(
+					`Compaction failed: ${candidate.provider}/${candidate.id} holds ${candidateWindow} tokens and the summary needed ${summarizePayloadTokens}.`,
+				);
+				// What the rescue has to free for ANY candidate to summarize at
+				// all. The smallest gap across skipped candidates is the widest
+				// window on offer, so cutting to it reopens the cheapest
+				// candidate rather than the largest one.
+				this.#compactionPayloadGapTokens = Math.min(
+					this.#compactionPayloadGapTokens ?? Number.POSITIVE_INFINITY,
+					summarizePayloadTokens - candidateWindow,
+				);
+				continue;
+			}
+
+			const attempt = await this.#compactCandidateWithRetries(
+				preparation,
+				candidate,
+				candidateOptions,
+				signal,
+				candidateIndex < candidates.length - 1,
+			);
+			if ("result" in attempt) {
+				this.#recordSummaryStaging(candidate, attempt.result);
+				this.#announceCompactionFallback(candidates, candidate, skipReasons);
+				return attempt.result;
+			}
+			skipReasons.set(modelKey(candidate), attempt.skipReason);
+			lastError = attempt.error;
+		}
+
+		if (lastError) {
+			throw lastError;
+		}
+		throw new Error("Compaction failed: no available model");
+	}
+
+	/**
+	 * Run one compaction candidate, retrying a transient or rate-limited failure
+	 * with backoff.
+	 *
+	 * A failure is returned rather than thrown so the caller moves on to the
+	 * next candidate; only an abort is thrown. A retry wait over 30s moves on
+	 * too while another candidate is left.
+	 */
+	async #compactCandidateWithRetries(
+		preparation: CompactionPreparation,
+		candidate: Model,
+		candidateOptions: SummaryOptions,
+		signal: AbortSignal,
+		hasMoreCandidates: boolean,
+	): Promise<{ result: CompactionResult } | { error: Error; skipReason: string }> {
+		const retrySettings = this.settings.getGroup("retry");
+		const maxAcceptableDelayMs = 30_000;
+		let attempt = 0;
+		while (true) {
+			try {
+				return {
+					result: await compact(
+						this.#obfuscatePreparationForProvider(preparation),
+						candidate,
+						this.#modelRegistry.resolver(candidate, this.sessionId),
+						undefined,
+						signal,
+						candidateOptions,
+					),
+				};
+			} catch (error) {
+				if (signal.aborted) {
+					throw error;
+				}
+
+				const message = errorMessage(error);
+				const skipReason = `it failed: ${message}`;
+				const id = AIError.classify(error, candidate.api);
+				if (AIError.is(id, AIError.Flag.AuthFailed)) {
+					return { error: this.#buildCompactionAuthError(), skipReason };
+				}
+				if (AIError.is(id, AIError.Flag.Timeout)) {
+					logger.warn(
+						hasMoreCandidates
+							? "Auto-compaction summarization timed out, trying next model"
+							: "Auto-compaction summarization timed out, not retrying same model",
+						{
+							error: message,
+							model: `${candidate.provider}/${candidate.id}`,
+						},
+					);
+					return { error: this.#compactionCandidateError(candidate, error), skipReason };
+				}
+
+				const retryAfterMs = this.#parseRetryAfterMsFromError(message);
+				const shouldRetry =
+					retrySettings.enabled &&
+					attempt < retrySettings.maxRetries &&
+					(retryAfterMs !== undefined ||
+						AIError.is(id, AIError.Flag.Transient) ||
+						AIError.is(id, AIError.Flag.UsageLimit));
+				if (!shouldRetry) {
+					return { error: this.#compactionCandidateError(candidate, error), skipReason };
+				}
+
+				const baseDelayMs = retrySettings.baseDelayMs * 2 ** attempt;
+				const delayMs = retryAfterMs !== undefined ? Math.max(baseDelayMs, retryAfterMs) : baseDelayMs;
+				if (delayMs > maxAcceptableDelayMs && hasMoreCandidates) {
+					logger.warn("Auto-compaction retry delay too long, trying next model", {
+						delayMs,
+						retryAfterMs,
+						error: message,
+						model: `${candidate.provider}/${candidate.id}`,
+					});
+					return { error: this.#compactionCandidateError(candidate, error), skipReason };
+				}
+
+				attempt++;
+				logger.warn("Auto-compaction failed, retrying", {
+					attempt,
+					maxRetries: retrySettings.maxRetries,
+					delayMs,
+					retryAfterMs,
+					error: message,
+					model: `${candidate.provider}/${candidate.id}`,
+				});
+				await scheduler.wait(delayMs, { signal });
+			}
+		}
+	}
+
+	/**
+	 * Whether an automatic pass freed enough for what follows it, running the
+	 * provider-free rescue tiers when it did not.
+	 *
+	 * The summary strategy keeps `keepRecentTokens` of recent history verbatim
+	 * and findCutPoint can only cut at turn boundaries (never tool results), so
+	 * a single oversized recent turn (e.g. a huge tool result) leaves the
+	 * rewritten context still above threshold. Scheduling the continuation
+	 * regardless means the next agent_end re-enters #checkCompaction over the
+	 * same oversized tail and re-fires forever.
+	 *
+	 * The retry only needs the rebuilt prompt to fit the window again, measured
+	 * AFTER the failed turn is dropped, since the retry prompt will not include
+	 * it; reusing the recovery band there turned recoverable overflows into
+	 * manual dead-ends (#3412 review). The threshold pass needs the recovery
+	 * band, `COMPACTION_RECOVERY_BAND × threshold`: re-firing on a history that
+	 * still sits just over the line is the compaction thrash. Even when
+	 * auto-continue is disabled, a no-headroom threshold pass must still block
+	 * later automatic continuations (todo reminders, session_stop hooks) from
+	 * re-entering the same oversized context. A non-idle pass that frees too
+	 * little for its path is a dead end, warned once so the pause is explained
+	 * instead of looping silently. An idle pass wants neither.
+	 */
+	async #autoCompactionProgress(
+		reason: AutoCompactionReason,
+		willRetry: boolean,
+		signal: AbortSignal,
+	): Promise<{ retryFits: boolean; hasHeadroom: boolean; deadEnd: boolean }> {
+		if (!willRetry && reason === "idle") return { retryFits: false, hasHeadroom: false, deadEnd: false };
+		if (willRetry) this.#dropUnretryableLastTurn(reason);
+		const bar: CompactionBar = willRetry ? "fit" : "recovery-band";
+		const met =
+			this.#compactionMeets(bar) || (await this.#rescueCompactionDeadEnd(signal, { skipElide: false, bar }));
+		return { retryFits: willRetry && met, hasHeadroom: !willRetry && met, deadEnd: !met };
+	}
+
+	/**
+	 * Drop the failed turn before retrying it when it carries no actionable
+	 * deliverable: an `error` turn was kept in history but must not re-enter the
+	 * next prompt, and an `incomplete` pass's `length` turn is truncated output
+	 * (typically reasoning-only) that re-running reproduces.
+	 */
+	#dropUnretryableLastTurn(reason: AutoCompactionReason): void {
+		const messages = this.agent.state.messages;
+		const last = messages[messages.length - 1];
+		if (last?.role !== "assistant") return;
+		const { stopReason } = last as AssistantMessage;
+		if (stopReason !== "error" && !(reason === "incomplete" && stopReason === "length")) return;
+		this.agent.replaceMessages(messages.slice(0, -1));
+		this.#rebasePendingContextSnapshotAfterHistoryRewrite();
+	}
+
+	/**
+	 * Schedule the turn that follows a compaction pass and report whether one was
+	 * scheduled: the retry of the turn that overflowed, else the threshold
+	 * auto-continue prompt, else delivery of messages queued meanwhile, since
+	 * pausing maintenance must not strand what the operator already typed.
+	 */
+	#scheduleAfterCompaction(
+		generation: number,
+		next: { retry: boolean; autoContinue: boolean; deliverQueued: boolean },
+	): boolean {
+		if (next.retry) {
+			this.#scheduleAgentContinue({ delayMs: 100, generation });
+			return true;
+		}
+		if (next.autoContinue) {
+			this.#scheduleAutoContinuePrompt(generation);
+			return true;
+		}
+		if (!next.deliverQueued || !this.agent.hasQueuedMessages()) return false;
+		this.#scheduleAgentContinue({
+			delayMs: 100,
+			generation,
+			shouldContinue: () => this.agent.hasQueuedMessages(),
+		});
+		return true;
+	}
+
 	/**
 	 * What happens after every candidate model refused to summarize.
 	 *
@@ -13157,7 +13099,7 @@ export class AgentSession {
 	 * failure there costs the operator nothing.
 	 */
 	async #afterFailedCompaction(
-		reason: "overflow" | "threshold" | "idle" | "incomplete",
+		reason: AutoCompactionReason,
 		willRetry: boolean,
 		signal: AbortSignal,
 		generation: number,
@@ -13180,39 +13122,22 @@ export class AgentSession {
 			(minTokensToFree === undefined && this.#compactionMeets(bar)) ||
 			(await this.#rescueCompactionDeadEnd(signal, { skipElide: false, bar, minTokensToFree }));
 		if (rescued) {
-			let continuationScheduled = false;
-			if (willRetry) {
-				this.#scheduleAgentContinue({ delayMs: 100, generation });
-				continuationScheduled = true;
-			} else if (options.shouldAutoContinue) {
-				this.#scheduleAutoContinuePrompt(generation);
-				continuationScheduled = true;
-			}
-			if (!continuationScheduled && !options.suppressContinuation && this.agent.hasQueuedMessages()) {
-				this.#scheduleAgentContinue({
-					delayMs: 100,
-					generation,
-					shouldContinue: () => this.agent.hasQueuedMessages(),
-				});
-				continuationScheduled = true;
-			}
 			return {
-				continuationScheduled,
+				continuationScheduled: this.#scheduleAfterCompaction(generation, {
+					retry: willRetry,
+					autoContinue: options.shouldAutoContinue,
+					deliverQueued: !options.suppressContinuation,
+				}),
 				historyRewritten: true,
 			};
 		}
-		let continuationScheduled = false;
-		if (!options.suppressContinuation && this.agent.hasQueuedMessages()) {
-			// Pausing maintenance must not strand what the operator already typed.
-			this.#scheduleAgentContinue({
-				delayMs: 100,
-				generation,
-				shouldContinue: () => this.agent.hasQueuedMessages(),
-			});
-			continuationScheduled = true;
-		}
+		const continuationScheduled = this.#scheduleAfterCompaction(generation, {
+			retry: false,
+			autoContinue: false,
+			deliverQueued: !options.suppressContinuation,
+		});
 		this.emitNotice("warning", compactionDeadEndWarning(), "compaction");
-		return continuationScheduled ? COMPACTION_CHECK_CONTINUATION : COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION;
+		return compactionCheckOutcome(continuationScheduled, true);
 	}
 
 	/**
