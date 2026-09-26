@@ -493,7 +493,6 @@ import {
 	type PendingContextSnapshot,
 	type PendingRecoveredRetryError,
 	type PlanYolo,
-	type PostPromptSkipReason,
 	type Prewalk,
 	type ProjectAdvisorScope,
 	type PromptOptions,
@@ -562,6 +561,7 @@ import { applyProviderImagePolicy } from "./provider-image-budget";
 import { normalizeRoots } from "./relativize-paths";
 import { AdvisorRoster, type AdvisorRosterHost } from "./runtime/advisor-roster";
 import { CheckpointRuntime } from "./runtime/checkpoint-runtime";
+import { PostPromptTasks } from "./runtime/post-prompt-tasks";
 import { StreamingEditGuard } from "./runtime/streaming-edit-guard";
 import { ThinkingRuntime } from "./runtime/thinking-runtime";
 import { TodoRuntime } from "./runtime/todo-runtime";
@@ -978,10 +978,8 @@ export class AgentSession {
 	#planInternalAbortPending = false;
 	#pendingAbortErrorId?: number;
 
-	#postPromptTasks = new Set<Promise<unknown>>();
-	#postPromptTasksPromise: Promise<void> | undefined = undefined;
-	#postPromptTasksResolve: (() => void) | undefined = undefined;
-	#postPromptTasksAbortController = new AbortController();
+	/** Work a turn left behind after `prompt()` returned; see {@link PostPromptTasks}. */
+	readonly #postPrompt = new PostPromptTasks({ promptGeneration: () => this.#promptGeneration });
 
 	/** Active Gemini reasoning-header runaway detector for the current block.
 	 *  (Re)created on each `thinking_start` when the guard applies (see
@@ -1770,7 +1768,7 @@ export class AgentSession {
 				await this.agent.prompt(messages.length === 1 ? first : messages);
 			},
 			scheduleIdleFlush: run => {
-				this.#schedulePostPromptTask(
+				this.#postPrompt.schedule(
 					async () => {
 						await run();
 					},
@@ -1852,7 +1850,7 @@ export class AgentSession {
 				promptGeneration: () => this.#promptGeneration,
 				emitSessionEventDetached: (event, context) => this.#emitSessionEventDetached(event, context),
 				scheduleAgentContinue: options => this.#scheduleAgentContinue(options),
-				schedulePostPromptTask: (task, options) => this.#schedulePostPromptTask(task, options),
+				schedulePostPromptTask: (task, options) => this.#postPrompt.schedule(task, options),
 			},
 			config.ttsrManager,
 		);
@@ -2774,7 +2772,7 @@ export class AgentSession {
 			return this.#processAgentEvent(event);
 		}
 		const { promise, resolve } = Promise.withResolvers<void>();
-		this.#trackPostPromptTask(promise);
+		this.#postPrompt.track(promise);
 		try {
 			await this.#processAgentEvent(event);
 		} finally {
@@ -3943,7 +3941,7 @@ export class AgentSession {
 							: "post-yield-trailing-stop-active-goal-checkCompaction",
 					);
 					const compactionTask = this.#checkCompaction(successfulYieldMessage);
-					this.#trackPostPromptTask(compactionTask);
+					this.#postPrompt.track(compactionTask);
 					await compactionTask;
 				} else if (successfulYieldMessage) {
 					maintenanceRoute("successful-yield-no-active-goal");
@@ -3980,7 +3978,7 @@ export class AgentSession {
 			if (activeGoal) {
 				maintenanceRoute("active-goal-pre-empt-checkCompaction");
 				const compactionTask = this.#checkCompaction(msg);
-				this.#trackPostPromptTask(compactionTask);
+				this.#postPrompt.track(compactionTask);
 				compactionResult = await compactionTask;
 				checkedCompaction = true;
 				if (compactionResult.continuationScheduled || compactionResult.automaticContinuationBlocked) {
@@ -4063,7 +4061,7 @@ export class AgentSession {
 			if (!checkedCompaction) {
 				maintenanceRoute("bottom-checkCompaction");
 				const compactionTask = this.#checkCompaction(msg);
-				this.#trackPostPromptTask(compactionTask);
+				this.#postPrompt.track(compactionTask);
 				compactionResult = await compactionTask;
 			}
 			// Stop-time todo reconciliation only fires at a text-only final stop. A run
@@ -4185,69 +4183,13 @@ export class AgentSession {
 		this.#resolveRetry();
 	}
 
-	#ensurePostPromptTasksPromise(): void {
-		if (this.#postPromptTasksPromise) return;
-		const { promise, resolve } = Promise.withResolvers<void>();
-		this.#postPromptTasksPromise = promise;
-		this.#postPromptTasksResolve = resolve;
-	}
-
-	#resolvePostPromptTasks(): void {
-		if (!this.#postPromptTasksResolve) return;
-		this.#postPromptTasksResolve();
-		this.#postPromptTasksResolve = undefined;
-		this.#postPromptTasksPromise = undefined;
-	}
-
-	#trackPostPromptTask(task: Promise<unknown>): void {
-		this.#postPromptTasks.add(task);
-		this.#ensurePostPromptTasksPromise();
-		// The task's own failure is reported wherever it was created; this only tracks completion so
-		// `#postPromptTasks` drains, and a rejection here must not become an unhandled one.
-		void task
-			.catch(() => {})
-			.finally(() => {
-				this.#postPromptTasks.delete(task);
-				if (this.#postPromptTasks.size === 0) {
-					this.#resolvePostPromptTasks();
-				}
-			});
-	}
-
-	#schedulePostPromptTask(
-		task: (signal: AbortSignal) => Promise<void>,
-		options?: { delayMs?: number; generation?: number; onSkip?: (reason: PostPromptSkipReason) => void },
-	): void {
-		const delayMs = options?.delayMs ?? 0;
-		const signal = this.#postPromptTasksAbortController.signal;
-		const scheduled = (async () => {
-			if (delayMs > 0) {
-				try {
-					await scheduler.wait(delayMs, { signal });
-				} catch {
-					return;
-				}
-			}
-			if (signal.aborted) {
-				options?.onSkip?.("aborted");
-				return;
-			}
-			if (options?.generation !== undefined && this.#promptGeneration !== options.generation) {
-				options.onSkip?.("stale-generation");
-				return;
-			}
-			await task(signal);
-		})();
-		this.#trackPostPromptTask(scheduled);
-	}
-
 	#skipAgentContinue(reason: AgentContinueSkipReason, options: ScheduledAgentContinueOptions | undefined): void {
 		logger.debug("agent.continue skipped after scheduling", { reason });
 		options?.onSkip?.(reason);
 	}
 
 	#scheduleAgentContinue(options?: ScheduledAgentContinueOptions): void {
-		this.#schedulePostPromptTask(
+		this.#postPrompt.schedule(
 			async signal => {
 				// Defense in depth: do not start a fresh streaming turn while any
 				// context maintenance or explicit handoff is already active.
@@ -4306,7 +4248,7 @@ export class AgentSession {
 				},
 			);
 		};
-		this.#schedulePostPromptTask(
+		this.#postPrompt.schedule(
 			async signal => {
 				await Promise.resolve();
 				if (signal.aborted) return;
@@ -4316,21 +4258,11 @@ export class AgentSession {
 		);
 	}
 
-	async #cancelPostPromptTasks(): Promise<void> {
-		this.#postPromptTasksAbortController.abort();
-		this.#postPromptTasksAbortController = new AbortController();
+	/** Skip scheduled post-prompt work, release the TTSR resume gate, and wait for started work. */
+	#cancelPostPromptTasks(): Promise<void> {
+		const drain = this.#postPrompt.cancel();
 		this.#ttsr.resolveResume();
-
-		const pendingTasks = Array.from(this.#postPromptTasks);
-		if (pendingTasks.length === 0) {
-			this.#resolvePostPromptTasks();
-			return;
-		}
-
-		await Promise.allSettled(pendingTasks);
-		if (this.#postPromptTasks.size === 0) {
-			this.#resolvePostPromptTasks();
-		}
+		return drain;
 	}
 	/**
 	 * Wait for retry, TTSR resume, and any background continuation to settle.
@@ -4354,8 +4286,9 @@ export class AgentSession {
 				await ttsrResume;
 				continue;
 			}
-			if (this.#postPromptTasksPromise) {
-				await this.#postPromptTasksPromise;
+			const postPromptDrained = this.#postPrompt.drained;
+			if (postPromptDrained) {
+				await postPromptDrained;
 				continue;
 			}
 			// Tracked post-prompt tasks cover deferred continuations scheduled from
@@ -4514,7 +4447,7 @@ export class AgentSession {
 		);
 		this.agent.abort(GEMINI_HEADER_INTERRUPT_REASON);
 		const generation = this.#promptGeneration;
-		this.#schedulePostPromptTask(async signal => {
+		this.#postPrompt.schedule(async signal => {
 			if (signal.aborted || this.#isDisposed || this.#promptGeneration !== generation) return;
 			// Let the aborted stream finish unwinding so continue() doesn't race it.
 			await this.agent.waitForIdle();
@@ -6529,7 +6462,7 @@ export class AgentSession {
 	 * to avoid racing against the delivery turn.
 	 */
 	get hasPostPromptWork(): boolean {
-		return this.#postPromptTasks.size > 0;
+		return this.#postPrompt.pending;
 	}
 
 	/** All messages including custom types like BashExecutionMessage */
@@ -8178,7 +8111,7 @@ export class AgentSession {
 			return;
 		}
 		this.#scheduledHiddenNextTurnGeneration = generation;
-		this.#schedulePostPromptTask(
+		this.#postPrompt.schedule(
 			async () => {
 				if (this.#scheduledHiddenNextTurnGeneration === generation) {
 					this.#scheduledHiddenNextTurnGeneration = undefined;
