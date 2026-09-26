@@ -33,6 +33,7 @@
 - A session discovers its context files, workspace tree, repository context, skills, rules, watchdog files and advisor configs through one `discoverProjectInputs` path at startup and after a working-directory change, starts rules discovery with the other project scans instead of after the session context loads, and clears the 5-second workspace tree deadline timer when the scan finishes instead of leaving it armed.
 - A session's tool session (the file mutation counters, the active-tool set, the host notifier and the advisor's view) is built in `session/tool-session.ts` instead of inline in `createAgentSession`; no user-visible change.
 - A session's MCP startup (discovery, the deferred connect and the reactive tool, prompt and notification wiring) runs in `session/factory-mcp.ts`, and the project its system prompt renders, the re-discovery after a working-directory change and the appended-prompt assembly run in `ProjectPromptInputs` and helpers in `session/prompt-inputs.ts`, instead of inline in `createAgentSession`; no user-visible change.
+- The `debug` tool's load check stops probing `PATH` at the first debug adapter whose command resolves instead of resolving all 14 configured adapters, which it ran for the session's tools and again for the advisor's, cutting a bare session's construction from 7.30 ms to 5.02 ms on a host with `gdb` installed.
 
 ### Fixed
 

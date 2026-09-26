@@ -6,6 +6,7 @@ import * as piUtils from "@veyyon/utils";
 import {
 	getAdapterConfigs,
 	getAvailableAdapters,
+	hasAvailableAdapter,
 	type LaunchAdapterSelection,
 	resolveAdapter,
 	resolveLaunchOverrides,
@@ -470,6 +471,42 @@ describe("getAvailableAdapters", () => {
 		expect(present?.resolvedCommand).toBeTruthy();
 		// The filter guarantees no resolved-null entries leak through.
 		expect(adapters.every(adapter => Boolean(adapter.resolvedCommand))).toBe(true);
+	});
+});
+
+/**
+ * hasAvailableAdapter answers whether the debug tool loads at all, and stops probing `PATH` at the
+ * first adapter that resolves. The contract is agreement with `getAvailableAdapters(cwd).length > 0`
+ * wherever the resolving adapter sits in the order, including nowhere. Every configured adapter is
+ * overridden to an absolute command, so the host's installed debuggers cannot decide the answer; the
+ * adapter names are read from the defaults, so an adapter added there is covered without an edit here.
+ */
+describe("hasAvailableAdapter", () => {
+	const defaultNames = Object.keys(getAdapterConfigs());
+
+	async function projectWithPresent(present: string | undefined): Promise<string> {
+		const cwd = await makeTempDir("veyyon-dap-has-available-");
+		const presentBin = path.join(cwd, "tools", "present-adapter");
+		await writeExecutable(presentBin);
+		const absent = path.join(cwd, "tools", "does-not-exist");
+		const adapters = Object.fromEntries(
+			defaultNames.map(name => [name, { command: name === present ? presentBin : absent, commandFallbacks: [] }]),
+		);
+		await fs.writeFile(path.join(cwd, "dap.json"), JSON.stringify({ adapters }));
+		return cwd;
+	}
+
+	it("is false when no configured adapter resolves", async () => {
+		const cwd = await projectWithPresent(undefined);
+		expect(getAvailableAdapters(cwd)).toEqual([]);
+		expect(hasAvailableAdapter(cwd)).toBe(false);
+	});
+
+	it.each(["first", "last"] as const)("is true when only the %s adapter in order resolves", async position => {
+		const present = position === "first" ? defaultNames[0] : defaultNames.at(-1);
+		const cwd = await projectWithPresent(present);
+		expect(getAvailableAdapters(cwd).map(adapter => adapter.name)).toEqual([present!]);
+		expect(hasAvailableAdapter(cwd)).toBe(true);
 	});
 });
 

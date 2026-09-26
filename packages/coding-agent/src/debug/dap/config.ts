@@ -216,6 +216,18 @@ export function getAvailableAdapters(cwd: string): DapResolvedAdapter[] {
 		.filter((adapter): adapter is DapResolvedAdapter => adapter !== null);
 }
 
+/**
+ * Whether any configured adapter's command resolves: `getAvailableAdapters(cwd).length > 0`,
+ * stopping at the first adapter that resolves instead of probing `PATH` for every one.
+ */
+export function hasAvailableAdapter(cwd: string): boolean {
+	const configs = getAdapterConfigs(cwd);
+	for (const name in configs) {
+		if (resolveAdapterFromConfig(name, configs, cwd)) return true;
+	}
+	return false;
+}
+
 /** Launch adapter selection, including a configured adapter whose command is unavailable. */
 export type LaunchAdapterSelection =
 	| { kind: "adapter"; adapter: DapResolvedAdapter }
