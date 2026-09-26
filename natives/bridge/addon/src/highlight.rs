@@ -8,11 +8,16 @@
 use std::{cell::RefCell, collections::HashMap, os::raw::c_ulong, sync::LazyLock};
 
 use napi_derive::napi;
-use syntect::parsing::{
-	ParseState, Scope, ScopeStack, ScopeStackOp, SyntaxDefinition, SyntaxReference, SyntaxSet,
-};
+use syntect::parsing::{ParseState, Scope, ScopeStack, ScopeStackOp, SyntaxReference, SyntaxSet};
 
-static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(build_syntax_set);
+/// The syntax set `build.rs` linked from syntect's defaults and the vendored
+/// syntaxes in `src/syntaxes`, as an uncompressed dump.
+static SYNTAX_DUMP: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/syntaxes.packdump"));
+
+static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(|| {
+	syntect::dumps::from_uncompressed_data(SYNTAX_DUMP)
+		.expect("build.rs dumps the syntax set with the syntect version that loads it")
+});
 static COMPILED_RULES: LazyLock<Vec<(Scope, usize)>> = LazyLock::new(|| {
 	SCOPE_RULES
 		.iter()
@@ -29,30 +34,8 @@ thread_local! {
 	static SCOPE_COLOR_CACHE: RefCell<HashMap<Scope, usize>> = RefCell::new(HashMap::with_capacity(256));
 }
 
-/// Syntaxes bundled in addition to syntect's defaults: syntect ships none of
-/// these, so we vendor their `.sublime-syntax` sources and fold them into the
-/// set.
-const EXTRA_SYNTAXES: &[&str] = &[
-	include_str!("syntaxes/Julia.sublime-syntax"),
-	include_str!("syntaxes/Nix.sublime-syntax"),
-	include_str!("syntaxes/Mermaid.sublime-syntax"),
-];
-
 fn get_syntax_set() -> &'static SyntaxSet {
 	&SYNTAX_SET
-}
-
-/// Load syntect's newline-aware defaults and add the vendored extra syntaxes.
-/// A vendored syntax that fails to parse is skipped rather than breaking all
-/// highlighting; the bundled-language tests guard against silent absence.
-fn build_syntax_set() -> SyntaxSet {
-	let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
-	for src in EXTRA_SYNTAXES {
-		if let Ok(def) = SyntaxDefinition::load_from_str(src, true, None) {
-			builder.add(def);
-		}
-	}
-	builder.build()
 }
 
 /// Oniguruma's retry budget for one match attempt and for one search across

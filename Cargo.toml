@@ -353,12 +353,10 @@ image = { version = "0.25", default-features = false, features = [
 ] }
 png = "0.18"
 inferno = { version = "0.12", default-features = false }
-syntect = { version = "5.3", default-features = false, features = [
-   "default-syntaxes",
-   "default-themes",
-   "regex-onig",
-   "yaml-load",
-] }
+# The addon loads a syntax set its build script linked and dumped, so at run time it
+# needs only the parser and a regex backend. The build script adds the default
+# syntaxes and the YAML loader in its own `[build-dependencies]` entry.
+syntect = { version = "5.3", default-features = false, features = ["parsing", "regex-onig"] }
 # Oniguruma's C API, for its process-wide match and search retry limits, which
 # syntect's `regex-onig` backend reads and cannot set.
 onig_sys = { version = "69.9", default-features = false }

@@ -72,6 +72,7 @@ winreg.workspace = true
 napi-build.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+syntect = { workspace = true, features = ["default-syntaxes", "yaml-load"] }
 
 [dev-dependencies]
 veyyon-test-scratch.workspace = true
