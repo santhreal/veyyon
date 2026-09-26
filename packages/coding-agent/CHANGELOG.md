@@ -5,6 +5,9 @@
 ### Changed
 
 - The legacy agent settings migration runs as one step per retired area over a shared key reader, cutting a legacy-heavy config's migration from 15.0 µs to 10.9 µs per load; a current-format config is unchanged.
+- A compaction pass finds the entry it just wrote by the id the append returned instead of copying the session's entries and scanning them for its summary text, which cuts that step on a 238,086-entry session from 6.53 ms to 0.002 ms.
+- Automatic compaction runs its candidate loop, per-candidate retries, progress check and follow-up scheduling in single-purpose methods, and shares the hook offer and the write step with manual compaction; no user-visible change.
+- A tool card's display rebuild runs its call phase, result phase, custom and multi-file views, images and not-executed notice in single-purpose methods; resume render time on a 63,915-component transcript is unchanged.
 - A truncated `read`, `search` or `run_experiment` result records only its truncation counts in the session file, not a second copy of the kept text, so new results take less disk and memory and a resume parses less.
 - The `lsp` tool dispatches each workspace-scoped action (`status`, `diagnostics`, `rename_file`, `capabilities`, `request`, workspace `symbols`, workspace `reload`) to its own handler, and `definition`, `type_definition` and `implementation` share one lookup; no user-visible change.
 - A goal session records the token and time a tool call spends as a small `goal_progress` entry instead of a full copy of the goal, so the session file holds the objective once per goal change rather than once per tool call and a resume parses less.
@@ -42,6 +45,7 @@
 
 ### Fixed
 
+- A compaction that writes the same summary as an earlier one, such as a second server-side compaction with its empty summary, stamps its dead-end warning on the new entry and passes the new entry to `session_compact` handlers instead of the earlier one.
 - With `edit.streamingAbort` on, a streaming `edit` patch whose last removed line has no trailing newline stops the turn when that line is absent from the file, instead of leaving it for the edit tool to reject after the stream ends.
 - Disposing a session while a Python or eval run is in flight no longer keeps the process alive for up to 3 seconds after the run finishes.
 - The CLI imports the terminal output guard when a worker thread starts rather than at startup, keeping it off the static boot graph; no user-visible change.
