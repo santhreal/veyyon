@@ -8,7 +8,9 @@
 use std::{cell::RefCell, collections::HashMap, os::raw::c_ulong, sync::LazyLock};
 
 use napi_derive::napi;
+use rayon::prelude::*;
 use syntect::parsing::{ParseState, Scope, ScopeStack, ScopeStackOp, SyntaxReference, SyntaxSet};
+use veyyon_uutils_ctx::rayon_global_pool_available;
 
 /// The syntax set `build.rs` linked from syntect's defaults and the vendored
 /// syntaxes in `src/syntaxes`, as an uncompressed dump.
@@ -352,13 +354,43 @@ fn highlight_into(
 /// fails.
 #[napi]
 pub fn highlight_code(code: String, lang: Option<String>, colors: HighlightColors) -> String {
-	let palette = palette_of(colors);
+	highlight_source(&code, lang.as_deref(), &palette_of(colors))
+}
+
+/// Highlight one whole source from a fresh parser.
+fn highlight_source(code: &str, lang: Option<&str>, palette: &Palette) -> String {
 	let ss = get_syntax_set();
-	let mut parse_state = ParseState::new(syntax_for(ss, lang.as_deref()));
+	let mut parse_state = ParseState::new(syntax_for(ss, lang));
 	let mut scope_stack = ScopeStack::new();
 	let mut result = String::with_capacity(code.len() * 2);
-	highlight_into(&code, ss, &mut parse_state, &mut scope_stack, &palette, &mut result);
+	highlight_into(code, ss, &mut parse_state, &mut scope_stack, palette, &mut result);
 	result
+}
+
+/// One source for [`highlight_code_batch`], in the language `highlight_code`
+/// would be given for it.
+#[napi(object)]
+pub struct HighlightSource {
+	pub code: String,
+	pub lang: Option<String>,
+}
+
+/// Highlight many sources at once, each exactly as `highlight_code` would.
+///
+/// Every source is parsed from its own fresh state, so the sources are
+/// independent and are highlighted in parallel on Rayon's global pool when it
+/// is available, and one after another when it is not. The result holds one
+/// string per source, in the order given.
+#[napi]
+pub fn highlight_code_batch(sources: Vec<HighlightSource>, colors: HighlightColors) -> Vec<String> {
+	let palette = palette_of(colors);
+	let highlight =
+		|source: &HighlightSource| highlight_source(&source.code, source.lang.as_deref(), &palette);
+	if rayon_global_pool_available() {
+		sources.par_iter().map(highlight).collect()
+	} else {
+		sources.iter().map(highlight).collect()
+	}
 }
 
 /// A highlighter that keeps its place in one source.
@@ -515,6 +547,39 @@ mod tests {
 			"bash",
 			"cat <<EOF\nnot a $command\nEOF\necho \"multi\nline\" | wc -l\n",
 		);
+	}
+
+	#[test]
+	fn a_batch_colours_each_source_as_highlight_code_does_in_order() {
+		// Sources in several languages, one with no language and one empty, so a batch
+		// that shared a parser across sources, dropped the language of one, or
+		// reordered results differs from the one-shot answer for at least one of
+		// them.
+		let sources = [
+			("/* open\n close */ const x = `a\n${b}`;", Some("ts")),
+			("def f():\n    \"\"\"doc\n    more\"\"\"\n    return 1", Some("python")),
+			("plain words, no language", None),
+			("", Some("rust")),
+			("fn main() { let s = r#\"raw\nline\"#; }", Some("rust")),
+			("cat <<EOF\n$not\nEOF", Some("bash")),
+		];
+		let batch = highlight_code_batch(
+			sources
+				.iter()
+				.map(|(code, lang)| HighlightSource {
+					code: (*code).to_string(),
+					lang: lang.map(str::to_string),
+				})
+				.collect(),
+			test_colors(),
+		);
+		let one_shot: Vec<String> = sources
+			.iter()
+			.map(|(code, lang)| {
+				highlight_code((*code).to_string(), lang.map(str::to_string), test_colors())
+			})
+			.collect();
+		assert_eq!(batch, one_shot);
 	}
 
 	#[test]

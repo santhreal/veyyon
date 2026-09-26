@@ -928,6 +928,16 @@ export declare function hasMatch(content: string | Uint8Array, pattern: string |
 export declare function highlightCode(code: string, lang: string | undefined | null, colors: HighlightColors): string
 
 /**
+ * Highlight many sources at once, each exactly as `highlight_code` would.
+ *
+ * Every source is parsed from its own fresh state, so the sources are
+ * independent and are highlighted in parallel on Rayon's global pool when it
+ * is available, and one after another when it is not. The result holds one
+ * string per source, in the order given.
+ */
+export declare function highlightCodeBatch(sources: Array<HighlightSource>, colors: HighlightColors): Array<string>
+
+/**
  * Theme colors for syntax highlighting.
  * Each color is an ANSI escape sequence (e.g., "\x1b[38;2;255;0;0m").
  */
@@ -954,6 +964,15 @@ export interface HighlightColors {
   inserted?: string
   /** ANSI color for diff deleted lines. */
   deleted?: string
+}
+
+/**
+ * One source for [`highlight_code_batch`], in the language `highlight_code`
+ * would be given for it.
+ */
+export interface HighlightSource {
+  code: string
+  lang?: string
 }
 
 /**

@@ -52,6 +52,7 @@ export const glob = lazyNativeFn("glob");
 export const grep = lazyNativeFn("grep");
 export const hasMatch = lazyNativeFn("hasMatch");
 export const highlightCode = lazyNativeFn("highlightCode");
+export const highlightCodeBatch = lazyNativeFn("highlightCodeBatch");
 export const htmlToMarkdown = lazyNativeFn("htmlToMarkdown");
 export const invalidateFsScanCache = lazyNativeFn("invalidateFsScanCache");
 export const isoBackend = lazyNativeFn("isoBackend");
