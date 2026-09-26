@@ -8,7 +8,6 @@ import {
 	type AgentTool,
 	AppendOnlyContextManager,
 	filterProviderReplayMessages,
-	type ThinkingLevel,
 } from "@veyyon/agent-core";
 import type { Context, CredentialDisabledEvent, Message, Model, SimpleStreamOptions } from "@veyyon/ai";
 import {
@@ -21,7 +20,6 @@ import { abortDetached } from "@veyyon/kernel/session/detached-abort";
 import { createInterruptedTurnAbortMessage } from "@veyyon/kernel/session/exit-diagnostics";
 import { OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
 import { disposeOwnedResources } from "@veyyon/kernel/session/owned-resources";
-import { getRestorableSessionModels } from "@veyyon/kernel/session/session-context";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { optionalNumber } from "@veyyon/kernel/settings/optional-number";
 import { attachNativeNoticeSink } from "@veyyon/natives/loader-state";
@@ -56,27 +54,11 @@ import { buildArgotGate, expandToolArguments } from "./argot-wire";
 import { AsyncJobManager } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { shouldEnableAppendOnlyContext } from "./config/append-only-context-mode";
-import { isAuthenticated, kNoAuth } from "./config/auth-state";
 import { resolveContextLimit } from "./config/compaction-strategy";
 import { resolveDialect } from "./config/dialect-format";
-import { type EffortSource, resolveEffort, withLegacyDefaultEffort } from "./config/effort-resolver";
 import { shouldInlineToolDescriptors } from "./config/inline-tool-descriptors-mode";
 import { ModelRegistry } from "./config/model-registry";
-import { modelResolutionFailureMessage } from "./config/model-resolution-failure";
-import {
-	formatModelSelectorValue,
-	formatModelString,
-	formatModelStringWithRouting,
-	getModelMatchPreferences,
-	parseModelPattern,
-	parseModelString,
-	pickDefaultAvailableModel,
-	resolveAllowedModels,
-	resolveConfiguredModelPatterns,
-	resolveModelRoleValue,
-} from "./config/model-resolver";
-
-import { DEFAULT_MODEL_SLOT } from "./config/model-roles";
+import { formatModelString } from "./config/model-resolver";
 import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";
@@ -133,6 +115,7 @@ import { sessionCpuExecHooks } from "./session/cpu-limit";
 import { convertToLlm, LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "./session/messages";
 import { computeNonMessageBreakdown } from "./session/non-message-tokens";
 import { createSettingsAwareStreamFn } from "./session/settings-stream-fn";
+import { StartupModelSelection } from "./session/startup-model";
 import { wrapSteeringForModel } from "./session/steering-envelope";
 import { closeAllConnections } from "./ssh/connection-manager";
 import { unmountAll } from "./ssh/sshfs-mount";
@@ -147,17 +130,7 @@ import { ARGOT_HANDLES_BANNER } from "./system-prompt-builder/section-registry";
 import { delegationStrength } from "./task/agent-settings";
 import { AgentOutputManager } from "./task/output-manager";
 import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
-import {
-	AUTO_THINKING,
-	type ConfiguredThinkingLevel,
-	concreteThinkingLevel,
-	parseConfiguredThinkingLevel,
-	parseThinkingLevel,
-	resolveProvisionalAutoLevel,
-	resolveThinkingLevelForModel,
-	shouldDisableReasoning,
-	toReasoningEffort,
-} from "./thinking";
+import { AUTO_THINKING, shouldDisableReasoning, toReasoningEffort } from "./thinking";
 import {
 	BUILTIN_TOOLS,
 	computeEssentialBuiltinNames,
@@ -537,15 +510,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				: providerPromptCacheKey !== undefined
 					? "fork"
 					: undefined;
-		// Startup model *selection* only needs to know whether auth is configured for
-		// a candidate's provider — never the resolved key bytes. Use the synchronous,
-		// side-effect-free probe (`hasConfiguredAuth`): it refreshes no OAuth tokens,
-		// executes no `!command` keys, and issues no auth-broker requests. Resolving the
-		// real key here (`getApiKey`) blocks resume on those network paths — a slow or
-		// unreachable OAuth/broker endpoint stalls startup for the full ~10s refresh
-		// timeout per candidate (observed as a hang in `restoreSessionModel`). The real
-		// key is resolved lazily per request via ModelRegistry.resolver.
-		const hasModelAuth = (candidate: Model): boolean => modelRegistry.hasConfiguredAuth(candidate);
 
 		// Key and vault conditions are raised from deep inside the secrets subsystem
 		// and cannot be returned. See secrets/notices.ts for why this is a sink.
@@ -679,132 +643,20 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const hasThinkingEntry = existingBranch.some(entry => entry.type === "thinking_level_change");
 		const hasServiceTierEntry = existingBranch.some(entry => entry.type === "service_tier_change");
 
-		const deferredModelPatterns = Array.isArray(options.modelPattern)
-			? options.modelPattern.map(pattern => pattern.trim()).filter(Boolean)
-			: options.modelPattern?.trim()
-				? [options.modelPattern.trim()]
-				: [];
-		const hasExplicitModel = options.model !== undefined || deferredModelPatterns.length > 0;
-		const modelMatchPreferences = getModelMatchPreferences(settings);
-		const allowedModels = await logger.time("resolveAllowedModels", () =>
-			resolveAllowedModels(modelRegistry, settings, modelMatchPreferences),
-		);
-		let defaultRoleSpec = logger.time("resolveDefaultModelRole", () =>
-			resolveModelRoleValue(settings.getModelRole(DEFAULT_MODEL_SLOT), allowedModels, {
-				settings,
-				matchPreferences: modelMatchPreferences,
-			}),
-		);
-		let model = options.model;
-		let modelFallbackMessage: string | undefined;
-		// Identify session model strings to restore in fallback order. We do an
-		// initial pass here so model-dependent setup (thinking-level resolution,
-		// host preconnect) can use the restored model; extension-registered
-		// providers aren't visible yet, so we retry the preferred candidates once
-		// extensions register below.
-		const sessionModelStrings =
-			!hasExplicitModel && hasExistingSession
-				? getRestorableSessionModels(existingSession.models, sessionManager.getLastModelChangeRole())
-				: [];
-		let restoredSessionModelIndex = -1;
-		let restoredSessionThinkingLevel: ConfiguredThinkingLevel | undefined;
-		if (!hasExplicitModel && !model && sessionModelStrings.length > 0) {
-			logger.time("restoreSessionModel", () => {
-				let failedSessionModel: string | undefined;
-				for (let i = 0; i < sessionModelStrings.length; i++) {
-					const sessionModelStr = sessionModelStrings[i];
-					const parsedModel = parseModelString(sessionModelStr, {
-						allowMaxSuffix: true,
-						allowAutoAlias: true,
-						isLiteralModelId: (provider, id) => modelRegistry.find(provider, id) !== undefined,
-					});
-					if (!parsedModel) {
-						failedSessionModel ??= sessionModelStr;
-						continue;
-					}
-
-					const restoredModel = modelRegistry.find(parsedModel.provider, parsedModel.id);
-					if (restoredModel && hasModelAuth(restoredModel)) {
-						model = restoredModel;
-						restoredSessionModelIndex = i;
-						restoredSessionThinkingLevel = parsedModel.thinkingLevel;
-						break;
-					}
-					failedSessionModel ??= sessionModelStr;
-				}
-				if (failedSessionModel) {
-					modelFallbackMessage = `Could not restore model ${failedSessionModel}`;
-				}
-			});
-		}
-
-		// If still no model, try settings default.
-		// Skip settings fallback when an explicit model was requested.
-		if (!hasExplicitModel && !model && defaultRoleSpec.model) {
-			const settingsDefaultModel = defaultRoleSpec.model;
-			logger.time("resolveSettingsDefaultModel", () => {
-				// defaultRoleSpec.model already comes from modelRegistry.getAvailable(),
-				// so re-validating auth here just repeats the expensive lookup path.
-				model = settingsDefaultModel;
-			});
-		}
-
+		// The first model pass: the session's last model, else the settings default. Extension
+		// providers register below, and `completeAfterExtensions` runs the second pass.
+		const modelSelection = await StartupModelSelection.begin({
+			options,
+			settings,
+			modelRegistry,
+			sessionManager,
+			existingSession,
+			hasExistingSession,
+			hasThinkingEntry,
+		});
+		let model = modelSelection.model;
+		const hasExplicitModel = modelSelection.hasExplicitModel;
 		const taskDepth = options.taskDepth ?? 0;
-
-		// Resolve one effort axis and remember its source so model switches can
-		// preserve session overrides while re-evaluating per-model defaults.
-		let thinkingSource: EffortSource = "model-default";
-		const pickInitialThinkingLevel = (selectedModel: Model | undefined): ConfiguredThinkingLevel | undefined => {
-			if (options.thinkingLevel !== undefined) {
-				thinkingSource = options.thinkingSource ?? "session";
-				return options.thinkingLevel;
-			}
-			if (hasExistingSession && hasThinkingEntry) {
-				thinkingSource = "session";
-				return (
-					parseConfiguredThinkingLevel(existingSession.configuredThinkingLevel) ??
-					parseThinkingLevel(existingSession.thinkingLevel)
-				);
-			}
-			if (!hasThinkingEntry && restoredSessionThinkingLevel !== undefined) {
-				thinkingSource = "session";
-				return restoredSessionThinkingLevel;
-			}
-			if (!hasExplicitModel && !hasThinkingEntry && defaultRoleSpec.explicitThinkingLevel) {
-				thinkingSource = "selector";
-				return defaultRoleSpec.thinkingLevel;
-			}
-			const saved = resolveEffort({
-				modelSelector: selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : undefined,
-				defaultEffort: withLegacyDefaultEffort(
-					settings.isConfigured("defaultEffort") ? settings.get("defaultEffort") : undefined,
-					settings.get("defaultThinkingLevel"),
-				),
-			});
-			thinkingSource = saved.source;
-			return saved.level ?? selectedModel?.thinking?.defaultLevel;
-		};
-		let thinkingLevel = pickInitialThinkingLevel(model);
-		let autoThinking = thinkingLevel === AUTO_THINKING;
-		// Concrete level the agent/session start with. With `auto` this is the
-		// provisional level shown until the first per-turn classification resolves;
-		// `auto` itself stays a session-only concept handled by AgentSession.
-		let effectiveThinkingLevel: ThinkingLevel | undefined = concreteThinkingLevel(thinkingLevel);
-		if (model) {
-			const resolvedModel = model;
-			effectiveThinkingLevel = logger.time("resolveThinkingLevelForModel", () =>
-				autoThinking
-					? resolveProvisionalAutoLevel(resolvedModel)
-					: resolveThinkingLevelForModel(resolvedModel, effectiveThinkingLevel),
-			);
-			// Fire-and-forget TLS+H2 handshake to the model's host so it overlaps
-			// with the rest of session setup (extension/skill load, tool registry,
-			// system prompt build). Without this, the first `fetch(...)` pays the
-			// full handshake serially — 100–300 ms transcontinental for
-			// api.anthropic.com from a residential IP. Every mode benefits
-			// (interactive, print, rpc, acp).
-			preconnectModelHost(model.baseUrl);
-		}
 
 		const discovered = await discoveredSkillsPromise;
 		const skills: Skill[] = discovered.skills;
@@ -1484,290 +1336,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			});
 		});
 
-		// Retry session-model candidates now that extension providers are
-		// registered. The initial restore runs before extensions load, so a role
-		// model supplied by an extension would have either fallen back to the
-		// saved default (`restoredSessionModelIndex > 0`) or failed entirely
-		// (`restoredSessionModelIndex === -1`, with the settings default or
-		// downstream fallback filling `model`). Reclaim it here so resume
-		// honors the last active role in either case.
-		const sessionRetryLimit = restoredSessionModelIndex >= 0 ? restoredSessionModelIndex : sessionModelStrings.length;
-		if (!hasExplicitModel && sessionRetryLimit > 0) {
-			for (let i = 0; i < sessionRetryLimit; i++) {
-				const sessionModelStr = sessionModelStrings[i];
-				const parsedModel = parseModelString(sessionModelStr, {
-					allowMaxSuffix: true,
-					allowAutoAlias: true,
-					isLiteralModelId: (provider, id) => modelRegistry.find(provider, id) !== undefined,
-				});
-				if (!parsedModel) continue;
-				const restoredModel = modelRegistry.find(parsedModel.provider, parsedModel.id);
-				if (restoredModel && hasModelAuth(restoredModel)) {
-					model = restoredModel;
-					modelFallbackMessage = undefined;
-					restoredSessionModelIndex = i;
-					restoredSessionThinkingLevel = parsedModel.thinkingLevel;
-					// Recompute thinking-level from scratch against the reclaimed
-					// model: any value derived from the earlier fallback model's
-					// `thinking.defaultLevel` must not become sticky.
-					thinkingLevel = pickInitialThinkingLevel(restoredModel);
-					autoThinking = thinkingLevel === AUTO_THINKING;
-					effectiveThinkingLevel = concreteThinkingLevel(thinkingLevel);
-					effectiveThinkingLevel = logger.time("resolveThinkingLevelForModel", () =>
-						autoThinking
-							? resolveProvisionalAutoLevel(restoredModel)
-							: resolveThinkingLevelForModel(restoredModel, effectiveThinkingLevel),
-					);
-					preconnectModelHost(restoredModel.baseUrl);
-					break;
-				}
-			}
-		}
-		// Resolve deferred --model/agent patterns now that extension models are
-		// registered. Expand role aliases (`@smol`) and comma chains to concrete
-		// selectors first so deferred resolution accepts everything the immediate
-		// path (resolveModelOverride → resolveModelRoleValue) accepts.
-		if (!model && deferredModelPatterns.length > 0) {
-			const expandedModelPatterns = resolveConfiguredModelPatterns(deferredModelPatterns, settings);
-			let availableModels = modelRegistry.getAll();
-			const matchPreferences = getModelMatchPreferences(settings);
-			// The background refresh (refreshInBackground at startup) may not have
-			// completed yet. When an explicit --model points at a dynamically-
-			// discovered model that isn't in the static catalog (e.g. a provider's
-			// /v1/models list or models.dev overlay), the patterns won't resolve
-			// against the static-only registry. Do a synchronous cache-aware
-			// discovery pass and retry before reporting failure. This mirrors the
-			// non-explicit fallback below (resolveModelDiscoveryFallback).
-			if (
-				!expandedModelPatterns.some(pattern => parseModelPattern(pattern, availableModels, matchPreferences).model)
-			) {
-				await logger.time("resolveExplicitModelDiscovery", () => modelRegistry.refresh("online-if-uncached"));
-				availableModels = modelRegistry.getAll();
-			}
-			for (let patternIndex = 0; patternIndex < expandedModelPatterns.length; patternIndex += 1) {
-				const pattern = expandedModelPatterns[patternIndex];
-				const primary = parseModelPattern(pattern, availableModels, matchPreferences);
-				if (!primary.model) continue;
-				let selectedModel = primary.model;
-				let selectedThinkingLevel = primary.thinkingLevel;
-				let selectedExplicitThinkingLevel = primary.explicitThinkingLevel;
-				let authFallbackUsed = false;
-				if (options.modelPatternAuthFallback) {
-					const primaryKey = await modelRegistry.getApiKey(primary.model);
-					if (primaryKey !== kNoAuth && !isAuthenticated(primaryKey)) {
-						const fallback = parseModelPattern(
-							options.modelPatternAuthFallback,
-							availableModels,
-							matchPreferences,
-						);
-						if (fallback.model) {
-							const fallbackKey = await modelRegistry.getApiKey(fallback.model);
-							if (isAuthenticated(fallbackKey)) {
-								selectedModel = fallback.model;
-								selectedThinkingLevel = fallback.thinkingLevel;
-								selectedExplicitThinkingLevel = fallback.explicitThinkingLevel;
-								authFallbackUsed = true;
-							}
-						}
-					}
-				}
-				if (!authFallbackUsed && options.modelPatternFallbackRole) {
-					const primarySelector = formatModelSelectorValue(
-						formatModelStringWithRouting(primary.model),
-						primary.thinkingLevel,
-					);
-					const seenSelectors = new Set<string>([primarySelector]);
-					const fallbackSelectors: string[] = [];
-					for (const fallbackPattern of expandedModelPatterns.slice(patternIndex + 1)) {
-						const fallback = parseModelPattern(fallbackPattern, availableModels, matchPreferences);
-						if (!fallback.model) continue;
-						const fallbackSelector = formatModelSelectorValue(
-							formatModelStringWithRouting(fallback.model),
-							fallback.thinkingLevel,
-						);
-						if (seenSelectors.has(fallbackSelector)) continue;
-						seenSelectors.add(fallbackSelector);
-						fallbackSelectors.push(fallbackSelector);
-					}
-					if (fallbackSelectors.length > 0) {
-						const modelRoles: Record<string, string> = {};
-						const existingRoles = settings.getModelRoles();
-						for (const role in existingRoles) {
-							const selector = existingRoles[role];
-							if (selector) {
-								modelRoles[role] = selector;
-							}
-						}
-						modelRoles[options.modelPatternFallbackRole] = primarySelector;
-						settings.override("modelRoles", modelRoles);
-						const fallbackChains: Record<string, string[]> = {
-							[options.modelPatternFallbackRole]: fallbackSelectors,
-						};
-						const existingFallbackChains = settings.get("retry.fallbackChains");
-						for (const role in existingFallbackChains) {
-							if (role !== options.modelPatternFallbackRole) {
-								fallbackChains[role] = existingFallbackChains[role];
-							}
-						}
-						settings.override("retry.fallbackChains", fallbackChains);
-					}
-				}
-				model = selectedModel;
-				modelFallbackMessage = undefined;
-				if (selectedExplicitThinkingLevel) {
-					restoredSessionThinkingLevel = selectedThinkingLevel;
-				}
-				thinkingLevel = pickInitialThinkingLevel(selectedModel);
-				autoThinking = thinkingLevel === AUTO_THINKING;
-				effectiveThinkingLevel = concreteThinkingLevel(thinkingLevel);
-				effectiveThinkingLevel = logger.time("resolveThinkingLevelForModel", () =>
-					autoThinking
-						? resolveProvisionalAutoLevel(selectedModel)
-						: resolveThinkingLevelForModel(selectedModel, effectiveThinkingLevel),
-				);
-				preconnectModelHost(selectedModel.baseUrl);
-				break;
-			}
-			if (!model) {
-				// Never assume the id is at fault. An empty registry, or one whose
-				// credentials can no longer serve a token, is an AUTH failure, and
-				// reporting it as an unknown model id is what sent a real
-				// investigation into model allowlists for a day (BACKLOG
-				// AUTH-FAILURE-BLAMES-MODEL-ID). The classification is
-				// `modelResolutionFailureMessage`, under test.
-				modelFallbackMessage = modelResolutionFailureMessage(deferredModelPatterns, modelRegistry);
-			}
-		}
-
-		// Fall back to first available model with a valid API key, honoring the
-		// path-scoped `enabledModels` allow-list when configured. Skip when the
-		// user explicitly requested a model via --model that wasn't found.
-		if (!model && deferredModelPatterns.length === 0) {
-			// Retry the default-role lookup against the post-extension allowed
-			// set. Extension factories register providers AFTER the early
-			// `defaultRoleSpec` resolution, so a role pointing at an extension
-			// model (e.g. an openai-compat plugin's `posthog/claude-opus-4-8`)
-			// returned `undefined` there. Without this retry the next step's
-			// `pickDefaultAvailableModel` happily replaces the user's configured
-			// default with a bundled provider's default whenever a stray
-			// `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` is in the environment.
-			// (issue #3569)
-			// setting `model` (+ thinking level) when it resolves. Extension
-			// factories register providers AFTER the early `defaultRoleSpec`
-			// resolution, and configured discovery providers may still be
-			// mid-discovery, so a role pointing at such a model (an openai-compat
-			// plugin's `posthog/claude-opus-4-8`, a models.yml `openai-models-list`
-			// endpoint) returned `undefined` there. Without this retry the
-			// `pickDefaultAvailableModel` fallback below happily replaces the
-			// user's configured default with a bundled provider's default whenever
-			// a stray `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` is in the environment.
-			// (issues #3569, #6162)
-			const tryResolveDefaultRole = async (): Promise<boolean> => {
-				if (hasExplicitModel) return false;
-				// Re-resolve the allowed set: extension factories and discovery
-				// refreshes above may have registered models not visible earlier.
-				const fallbackCandidates = await resolveAllowedModels(modelRegistry, settings, modelMatchPreferences);
-				const reResolvedRoleSpec = resolveModelRoleValue(
-					settings.getModelRole(DEFAULT_MODEL_SLOT),
-					fallbackCandidates,
-					{
-						settings,
-						matchPreferences: modelMatchPreferences,
-					},
-				);
-				if (!reResolvedRoleSpec.model) return false;
-				defaultRoleSpec = reResolvedRoleSpec;
-				const resolvedDefaultModel = reResolvedRoleSpec.model;
-				model = resolvedDefaultModel;
-				modelFallbackMessage = undefined;
-				// Recompute the thinking level against the now-real model.
-				// `pickInitialThinkingLevel` closes over `defaultRoleSpec`,
-				// so the role's explicit selector (e.g. `:max`) now applies.
-				thinkingLevel = pickInitialThinkingLevel(resolvedDefaultModel);
-				autoThinking = thinkingLevel === AUTO_THINKING;
-				effectiveThinkingLevel = concreteThinkingLevel(thinkingLevel);
-				effectiveThinkingLevel = logger.time("resolveThinkingLevelForModel", () =>
-					autoThinking
-						? resolveProvisionalAutoLevel(resolvedDefaultModel)
-						: resolveThinkingLevelForModel(resolvedDefaultModel, effectiveThinkingLevel),
-				);
-				preconnectModelHost(resolvedDefaultModel.baseUrl);
-				return true;
-			};
-
-			await tryResolveDefaultRole();
-
-			if (!model) {
-				const fallbackCandidates = await resolveAllowedModels(modelRegistry, settings, modelMatchPreferences);
-				let pick = pickDefaultAvailableModel(fallbackCandidates.filter(hasModelAuth));
-
-				// Cold-cache discovery race (issues #6114, #6162): a discovery
-				// provider (models.yml `openai-models-list`, LM Studio/Ollama/
-				// llama.cpp, or an openai-compat proxy) ships no static models, so
-				// the static+cached catalog resolved nothing above. Background
-				// discovery in main.ts fires only AFTER createAgentSession returns,
-				// so on a cache-cold boot the configured default stays unresolved
-				// and `pick` silently degrades to an unrelated authed provider's
-				// default (#6162) or "No models available" (#6114) — even though
-				// `veyyon models` (which awaits discovery) lists the model. Await one
-				// cache-aware discovery pass and retry when a default role is
-				// configured (must win over `pick`) or nothing resolved at all.
-				// The common path — role already resolved, or a `pick` with no
-				// configured default — never pays for it.
-				const defaultRoleConfigured = Boolean(settings.getModelRole(DEFAULT_MODEL_SLOT));
-				if (
-					!hasExplicitModel &&
-					(defaultRoleConfigured || !pick) &&
-					modelRegistry.getDiscoverableProviders().length > 0
-				) {
-					await logger.time("resolveModelDiscoveryFallback", () => modelRegistry.refresh("online-if-uncached"));
-					if (!(await tryResolveDefaultRole()) && !model) {
-						const refreshedCandidates = await resolveAllowedModels(
-							modelRegistry,
-							settings,
-							modelMatchPreferences,
-						);
-						pick = pickDefaultAvailableModel(refreshedCandidates.filter(hasModelAuth));
-					}
-				}
-
-				if (!model && pick) {
-					model = pick;
-				}
-			}
-			if (model) {
-				if (modelFallbackMessage) {
-					modelFallbackMessage += `. Using ${model.provider}/${model.id}`;
-				}
-			} else {
-				const patterns = settings.get("enabledModels");
-				// The `enabledModels` case already names its real cause. The general
-				// case must not: "set an API key" is right only when there is no
-				// credential, and it hid a broken registry behind advice about keys.
-				modelFallbackMessage =
-					patterns && patterns.length > 0
-						? `No model available matching enabledModels (${patterns.join(", ")}) with usable credentials. Configure auth for an allowed provider or adjust enabledModels.`
-						: modelResolutionFailureMessage([], modelRegistry);
-			}
-		}
-
-		if (model) {
-			const selectedModel = model;
-			const refreshedModel = await logger.time("refreshInitialModelMetadata", () =>
-				modelRegistry.refreshSelectedModelMetadata(selectedModel),
-			);
-			if (refreshedModel !== selectedModel) {
-				model = refreshedModel;
-				thinkingLevel = pickInitialThinkingLevel(refreshedModel);
-				autoThinking = thinkingLevel === AUTO_THINKING;
-				effectiveThinkingLevel = concreteThinkingLevel(thinkingLevel);
-				effectiveThinkingLevel = logger.time("resolveThinkingLevelForModel", () =>
-					autoThinking
-						? resolveProvisionalAutoLevel(refreshedModel)
-						: resolveThinkingLevelForModel(refreshedModel, effectiveThinkingLevel),
-				);
-			}
-		}
+		// Every provider is registered now: reclaim the session's model, resolve deferred
+		// `--model` patterns, fall back to the first authenticated model, and refresh the
+		// chosen model's metadata.
+		await modelSelection.completeAfterExtensions();
+		model = modelSelection.model;
 
 		// A first-turn user tail has no assistant metadata to copy. Once startup
 		// has selected its final model, use that model to terminate the
@@ -2556,8 +2129,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			initialState: {
 				systemPrompt,
 				model,
-				thinkingLevel: toReasoningEffort(effectiveThinkingLevel),
-				disableReasoning: shouldDisableReasoning(effectiveThinkingLevel),
+				thinkingLevel: toReasoningEffort(modelSelection.effectiveThinkingLevel),
+				disableReasoning: shouldDisableReasoning(modelSelection.effectiveThinkingLevel),
 				tools: initialTools,
 			},
 			cwd,
@@ -2714,10 +2287,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			if (model) {
 				sessionManager.appendModelChange(`${model.provider}/${model.id}`);
 			}
-			if (!autoThinking) {
+			if (!modelSelection.autoThinking) {
 				// Do not write the `auto` selector before the first turn resolves; auto
 				// classification persists its concrete effort once a real user turn runs.
-				sessionManager.appendThinkingLevelChange(effectiveThinkingLevel);
+				sessionManager.appendThinkingLevelChange(modelSelection.effectiveThinkingLevel);
 			}
 			if (Object.keys(initialServiceTierByFamily).length > 0) {
 				sessionManager.appendServiceTierChange(initialServiceTierByFamily);
@@ -2774,8 +2347,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			advisorConfigs: discoveredAdvisors.advisors,
 			agent,
 			pruneToolDescriptions: inlineToolDescriptorsForModel,
-			thinkingLevel: autoThinking ? AUTO_THINKING : effectiveThinkingLevel,
-			thinkingSource,
+			thinkingLevel: modelSelection.autoThinking ? AUTO_THINKING : modelSelection.effectiveThinkingLevel,
+			thinkingSource: modelSelection.thinkingSource,
 			prewalk: options.prewalk,
 			planYolo: options.planYolo,
 			serviceTierByFamily: initialServiceTierByFamily,
@@ -3261,7 +2834,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			setToolUIContext,
 			setToolNotifier,
 			mcpManager,
-			modelFallbackMessage,
+			modelFallbackMessage: modelSelection.fallbackMessage,
 			lspServers,
 			eventBus,
 		};
@@ -3301,22 +2874,5 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			});
 		}
 		throw error;
-	}
-}
-
-/**
- * Best-effort preconnect to the model's API host. Bun's `fetch.preconnect`
- * primes DNS + TCP + TLS + H2 so the first real request reuses the warm
- * connection. Errors are swallowed: preconnect is an optimization, never a
- * hard dependency.
- */
-function preconnectModelHost(baseUrl: string | undefined): void {
-	if (!baseUrl) return;
-	const preconnect = (globalThis.fetch as typeof fetch & { preconnect?: (url: string) => void }).preconnect;
-	if (typeof preconnect !== "function") return;
-	try {
-		preconnect(baseUrl);
-	} catch {
-		// Best effort.
 	}
 }

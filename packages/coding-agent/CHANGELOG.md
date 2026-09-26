@@ -28,6 +28,7 @@
 - Raw settings migrations run as an ordered list of one function per retired setting family instead of one 600-line function; no user-visible change.
 - CLI startup resolves the launch model, prewalk and plan-yolo targets, settings overrides, the `--fork`/`--resume` session, the resume picker, extension flags, the initial prompt, the setup wizard, update notices and the mode handoff in single-purpose functions instead of functions of 272, 720, 229 and 102 lines; no user-visible change.
 - A session's secret runtime (the loader, the expansion lease, the reload queue, the unreadable-vault refusal and the tool-argument expansion) runs in `SessionSecretRuntime` in `secrets/session-runtime.ts` instead of in closures inside `createAgentSession`; no user-visible change.
+- Startup model and thinking-level selection (session restore, the settings default, deferred `--model` patterns, the fallback role chain, the first authenticated model and the metadata refresh) runs in `StartupModelSelection` in `session/startup-model.ts` instead of inline in `createAgentSession`; no user-visible change.
 
 ### Fixed
 
