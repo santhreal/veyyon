@@ -16,8 +16,9 @@
  * - **Local selection**: the built-in and custom tools the model activated through discovery. A
  *   name leaves it once the tool is no longer active, so the search can find the tool again.
  */
-import type { AgentTool } from "@veyyon/agent-core";
+
 import * as path from "node:path";
+import type { AgentTool } from "@veyyon/agent-core";
 import { countToolsForAutoDiscovery, type EffectiveToolDiscoveryMode } from "../../discovery/mode";
 import {
 	buildDiscoverableToolSearchIndex,
