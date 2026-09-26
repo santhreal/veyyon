@@ -15,10 +15,14 @@
 - A tool domain manifest can list `resultCodecs`, each a `ToolResultCodec` whose `slim` drops a result `details` field the result's content rebuilds when the session writes the entry and whose `restore` rebuilds it when the session loads.
 - `SessionStorage` has an optional `rewriteTailAtomic` that replaces a file atomically with its first `keepBytes` bytes, a new head written over their start, and a new tail; `FileSessionStorage` implements it, and a backend without it receives whole-file writes.
 - `CodeHighlighter` highlights a source that grows at its end once per line: `advance(text)` colours whole lines and moves the parser past them, `peek(text)` colours the unfinished last line without moving it, and their output joined is byte-identical to `highlightCode` over the whole source.
+- `highlightCodeBatch(sources, colors)` highlights many independent sources in parallel on the Rayon pool and returns one string per source, in order, each byte-identical to `highlightCode` for that source.
 - `@veyyon/utils/session-file` exports `sessionFileMatchesResumeArgument`, which reports whether a transcript filename answers a `--resume` id or prefix.
 
 ### Changed
 
+- A rebuilt transcript highlights the code and diff context of every tool card in one parallel native batch before its first frame instead of one card at a time during it, cutting a resumed session's first frame from 497 ms to 357 ms, and from 14.2 s to 7.5 s with compacted history expanded, with byte-identical rows.
+- A tool card whose presentation changes with nothing subscribed builds its block when it is next read instead of at the change, so disposing a transcript no longer builds a sealed block for every card, cutting a transcript reset from 31.4 ms to 1.6 ms, and from 2,070 ms to 26.7 ms on a 64k-card transcript.
+- A collapsed tool card's progress-run folding keys each output line once instead of twice at every run boundary and skips the diagnostic lookup for a line whose first token has no progress shape, and home-path shortening returns a line that does not contain the home directory before running its pattern, cutting the two over 1.52M lines of 44,117 tool results from 207.8 ms to 141.9 ms and from 118.6 ms to 85.9 ms with identical rows.
 - `veyyon session stats` folds each entry through a reducer with one method per entry kind instead of one 340-line loop, cutting the report on a 104,969-entry session from 36.4 ms to 30.0 ms with an identical report.
 - The legacy agent settings migration runs as one step per retired area over a shared key reader, cutting a legacy-heavy config's migration from 15.0 µs to 10.9 µs per load; a current-format config is unchanged.
 - A compaction pass finds the entry it just wrote by the id the append returned instead of copying the session's entries and scanning them for its summary text, which cuts that step on a 238,086-entry session from 6.53 ms to 0.002 ms.
@@ -82,6 +86,8 @@
 - A streaming `Markdown` render that ends inside an open code fence lays out only the fence lines completed since the previous frame, so a 1,500-line code fence renders in 59 ms instead of 898 ms and a 1,500-line diff in 92 ms instead of 900 ms.
 - `latexToBlock` parses each display-math fragment with one handler per construct (fractions, radicals, `\left…\right`, big operators, colors, environments, scripts, delimiters) and scans command names by character code, rendering 150,018 differential cases byte-identically about 6% faster.
 - `prompt.render` reuses a template's variable analysis across renders instead of re-parsing the template on every call, rendering the spawned-agent system prompt in about 7 µs instead of about 100 µs.
+- `wrapTextWithAnsi` returns a line of printable ASCII and SGR that already fits without calling the native wrapper, cutting the wrap time of a 659k-row transcript's 1.83M calls from 1.69 s to 0.93 s with byte-identical rows.
+- `replaceTabs` returns a line with no tab without running the replacement, cutting 1.83M transcript lines from 55.2 ms to 40.6 ms.
 
 ### Removed
 
