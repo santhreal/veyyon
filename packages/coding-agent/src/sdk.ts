@@ -38,12 +38,6 @@ import {
 import { type ArgotGate, shouldEncode } from "argot/policy";
 import { renderPreamble } from "argot/preamble";
 import {
-	discoverAdvisorConfigs,
-	discoverWatchdogFiles,
-	formatActiveRepoWatchdogPrompt,
-	formatAdvisorContextPrompt,
-} from "./advisor";
-import {
 	armArgotAfterStartup,
 	collectArgotLoadedRoots,
 	createArgotSession,
@@ -95,7 +89,7 @@ import {
 	loadExtensions,
 	wrapRegisteredTools,
 } from "./extensibility/extensions";
-import { type Skill, type SkillWarning, setActiveSkills } from "./extensibility/skills";
+import { type Skill, setActiveSkills } from "./extensibility/skills";
 import { LocalProtocolHandler } from "./internal-urls";
 import { describeLegacyPromptFile, findLegacyPromptFiles } from "./legacy-system-prompt-files";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "./lsp/startup-events";
@@ -157,10 +151,9 @@ import {
 	setPreferredSearchProvider,
 } from "./tools/web/search";
 import { ttsTool } from "./tools/web/tts";
-import { resolveActiveRepoContext } from "./utils/active-repo-context";
 import { EventBus } from "./utils/event-bus";
 import { buildNamedToolChoice } from "./utils/tool-choice";
-import { buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
+import type { WorkspaceTree } from "./workspace-tree";
 
 // Types
 
@@ -227,13 +220,13 @@ export { discoverAuthStorage };
 
 import type { AsyncResultEntry, SecretRuntimeLease } from "./session/agent-session-types";
 import {
-	discoverContextFiles,
+	discoverProjectInputs,
 	discoverPromptTemplates,
-	discoverRules,
 	discoverSessionExtensionPaths,
-	discoverSkills,
 	discoverSlashCommands,
+	projectAdvisorScope,
 	reportExtensionLoadFailures,
+	workspaceTreeWithinDeadline,
 } from "./session/factory-extensions";
 import {
 	applyMCPEnvironment,
@@ -376,60 +369,16 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		if (!options.modelRegistry) {
 			modelRegistry.refreshInBackground();
 		}
-		// Kick off workspace tree discovery early. The native workspace scan returns
-		// both the rendered-tree input and the AGENTS.md directory-context index, so
-		// startup does not perform a second recursive filesystem search. Spawned agents
-		// inherit the parent's resolved values via options.
-		const STARTUP_SCAN_DEADLINE_MS = 5000;
-		const startupIncludeWorkspaceTree = settings.get("includeWorkspaceTree") ?? false;
-		const workspaceTreePromise: Promise<WorkspaceTree> = prefetch(
-			options.workspaceTree !== undefined
-				? Promise.resolve(options.workspaceTree)
-				: startupIncludeWorkspaceTree
-					? logger.time("buildWorkspaceTree", () =>
-							buildWorkspaceTree(cwd, { timeoutMs: STARTUP_SCAN_DEADLINE_MS }),
-						)
-					: Promise.resolve({ rootPath: cwd, rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] }),
-		);
-
-		// Independent discoveries that depend only on cwd/agentDir — kicked off in parallel and awaited
-		// at their respective consumer sites. Their work can overlap with model resolution, secret loading,
-		// session-context build, tool creation, MCP discovery, and extension discovery.
-		// Presence, not truthiness. An empty array is truthy, so testing the value
-		// itself made a caller that filtered its list down to nothing read as "already
-		// resolved", which turned discovery OFF and shipped a prompt with none of the
-		// operator's AGENTS.md layers. `undefined` means "not resolved, walk the
-		// scopes"; `[]` means "resolved to nothing on purpose". A caller that cannot
-		// resolve its own list passes undefined, never []: see task/context-inheritance.ts.
-		const contextFilesResolvedByCaller = options.contextFiles !== undefined;
-		if (contextFilesResolvedByCaller && options.contextFiles?.length === 0) {
+		// Start every project-input discovery now and await each at its consumer, so the scans
+		// overlap model resolution, secret loading, session-context build, tool creation, MCP
+		// discovery and extension discovery. Spawned agents inherit the parent's resolved values
+		// via options. A caller that filtered its context files down to nothing turns discovery off.
+		if (options.contextFiles?.length === 0) {
 			logger.warn("Context file discovery disabled: caller supplied an empty resolved list", { cwd, agentDir });
 		}
-		const contextFilesPromise = prefetch(
-			contextFilesResolvedByCaller
-				? Promise.resolve(options.contextFiles ?? [])
-				: logger.time("discoverContextFiles", discoverContextFiles, cwd, agentDir),
-		);
-		const activeRepoContextPromise = logger.time("resolveActiveRepoContext", async () => {
-			try {
-				return await resolveActiveRepoContext(cwd);
-			} catch (err) {
-				// Null degrades the prompt's repo context (branch/status enrichment),
-				// so the operator must be able to see WHY it vanished: warn, not debug.
-				logger.warn("Failed to resolve active repo context", { err: String(err) });
-				return null;
-			}
-		});
-		const watchdogFilesPromise = prefetch(
-			logger.time("discoverWatchdogFiles", () => discoverWatchdogFiles(cwd, agentDir)),
-		);
-		const advisorConfigsPromise = prefetch(
-			logger.time("discoverAdvisorConfigs", () => discoverAdvisorConfigs(cwd, agentDir)),
-		);
-		// Presence, not truthiness, for the same reason as `contextFiles` above: `[]` is
-		// truthy, so a caller that resolved its list down to nothing read as "already
-		// resolved" AND supplied nothing, silently switching discovery off. `undefined`
-		// means "not resolved, discover"; `[]` means "resolved to nothing on purpose".
+		const projectInputs = discoverProjectInputs(cwd, agentDir, settings, options);
+		// Presence, not truthiness, for the same reason as `discoverProjectInputs`: `undefined`
+		// means discover, `[]` means resolved to nothing on purpose.
 		const promptTemplatesPromise = prefetch(
 			options.promptTemplates !== undefined
 				? Promise.resolve(options.promptTemplates)
@@ -440,22 +389,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				? Promise.resolve(options.slashCommands)
 				: logger.time("discoverSlashCommands", discoverSlashCommands, cwd, agentDir),
 		);
-		const skillsSettings = settings.getGroup("skills");
-		const disabledExtensionIds = settings.get("disabledExtensions") ?? [];
-		// Resolved either way, so the consumer below never needs a fallback. It used to be
-		// `undefined` when the caller supplied skills, and the consumer spelled that as
-		// `?? Promise.resolve({ skills: [], warnings: [] })`: unreachable, but it wrote "no
-		// skills and no warning" down as an acceptable outcome, which is the exact shape a
-		// real discovery failure would then hide behind.
-		const discoveredSkillsPromise: Promise<{ skills: Skill[]; warnings: SkillWarning[] }> =
-			options.skills === undefined
-				? prefetch(
-						logger.time("discoverSkills", discoverSkills, cwd, agentDir, {
-							...skillsSettings,
-							disabledExtensions: disabledExtensionIds,
-						}),
-					)
-				: Promise.resolve({ skills: options.skills, warnings: [] });
 
 		// Initialize provider preferences from settings
 		const excludedWebSearchProviders = settings.get("providers.webSearchExclude");
@@ -595,35 +528,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			existingBranch = logger.time("getRecoveredSessionBranch", () => sessionManager.getBranch());
 		}
 		let existingSession = logger.time("loadSessionContext", () => sessionManager.buildSessionContext());
-		// Rules discovery shares no inputs with model resolution and prompt assembly between
-		// here and its consumer below, so start it now and let the scan overlap that work
-		// instead of trailing the skills await serially. Capture rejection immediately:
-		// model resolution below can span event-loop turns before this result is consumed.
-		const ttsrRulesResultPromise = logger
-			.time("discoverTtsrRules", async () => {
-				const ttsrSettings = settings.getGroup("ttsr");
-				// `getCwd` is a live getter, not `cwd`: a rule with a `pathScope` compares the match
-				// against the CURRENT working directory, and `set_cwd` moves it mid-session.
-				const ttsrManager = new TtsrManager(ttsrSettings, { getCwd: () => sessionManager.getCwd() });
-				const rulesResult =
-					options.rules !== undefined
-						? { items: options.rules, warnings: undefined }
-						: await discoverRules(cwd, agentDir);
-				const { rulebookRules, alwaysApplyRules } = bucketRules(rulesResult.items, ttsrManager, {
-					builtinRules: ttsrSettings.builtinRules,
-					disabledRules: ttsrSettings.disabledRules,
-					experimentalRules: ttsrSettings.experimentalRules,
-				});
-				if (existingSession.injectedTtsrRules.length > 0) {
-					ttsrManager.restoreInjected(existingSession.injectedTtsrRules);
-				}
-				return { ttsrManager, rulebookRules, alwaysApplyRules, allRules: rulesResult.items };
-			})
-			.then(
-				value => ({ ok: true as const, value }),
-				error => ({ ok: false as const, error }),
-			);
-
 		// Decode-only re-arm on resume. Persisted history keeps cheap handles (the
 		// token win), so a resumed branch can hold `§handle` tokens from argot_load
 		// calls in earlier sessions; the display/export seams can only expand them
@@ -658,7 +562,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const hasExplicitModel = modelSelection.hasExplicitModel;
 		const taskDepth = options.taskDepth ?? 0;
 
-		const discovered = await discoveredSkillsPromise;
+		const discovered = await projectInputs.skills;
 		const skills: Skill[] = discovered.skills;
 		// Straight into the operator channel. These used to be collected into
 		// `AgentSession.skillWarnings`, a getter no production code read, so a skill that failed to
@@ -667,47 +571,31 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			operatorNotices.warn("skills", `${warning.skillPath}: ${warning.message}`);
 		}
 
-		// Discover rules and bucket them in one pass to avoid repeated scans over large rule sets.
-		// Started above so the scan overlaps model resolution and prompt assembly.
-		const ttsrRulesResult = await ttsrRulesResultPromise;
-		if (!ttsrRulesResult.ok) throw ttsrRulesResult.error;
-		const { ttsrManager, rulebookRules, alwaysApplyRules, allRules } = ttsrRulesResult.value;
+		// `getCwd` is a live getter, not `cwd`: a rule with a `pathScope` compares the match
+		// against the CURRENT working directory, and `set_cwd` moves it mid-session.
+		const ttsrSettings = settings.getGroup("ttsr");
+		const ttsrManager = new TtsrManager(ttsrSettings, { getCwd: () => sessionManager.getCwd() });
+		const allRules = await projectInputs.rules;
+		const { rulebookRules, alwaysApplyRules } = bucketRules(allRules, ttsrManager, ttsrSettings);
+		if (existingSession.injectedTtsrRules.length > 0) {
+			ttsrManager.restoreInjected(existingSession.injectedTtsrRules);
+		}
 
-		// Resolve contextFiles up-front (it's needed before tool creation). The
-		// workspace tree scan is slow on large repos and we MUST NOT block startup on
-		// it. On timeout we forward `undefined` to ToolSession; buildSystemPromptInternal
-		// will re-race the same promise through its own withDeadline path. Background
-		// work continues so caches still warm.
-		const raceWithDeadline = async <T>(name: string, work: Promise<T>): Promise<T | undefined> => {
-			let timedOut = false;
-			const result = await Promise.race([
-				work,
-				Bun.sleep(STARTUP_SCAN_DEADLINE_MS).then(() => {
-					timedOut = true;
-					return undefined;
-				}),
-			]);
-			if (timedOut) {
-				logger.warn("Startup scan exceeded deadline; deferring to system prompt fallback", {
-					name,
-					timeoutMs: STARTUP_SCAN_DEADLINE_MS,
-					cwd,
-				});
-			}
-			return result;
-		};
+		// Context files are needed before tool creation. The workspace tree scan is slow on large
+		// repos and startup must not block on it: past its deadline ToolSession gets `undefined`,
+		// and the system prompt races the same promise again while the scan warms its caches.
 		const [contextFiles, resolvedWorkspaceTree, activeRepoContext, watchdogFiles, discoveredAdvisors] =
 			await Promise.all([
-				contextFilesPromise,
-				raceWithDeadline("buildWorkspaceTree", workspaceTreePromise),
-				activeRepoContextPromise,
-				watchdogFilesPromise,
-				advisorConfigsPromise,
+				projectInputs.contextFiles,
+				workspaceTreeWithinDeadline(projectInputs),
+				projectInputs.activeRepoContext,
+				projectInputs.watchdogFiles,
+				projectInputs.advisors,
 			]);
 
 		let promptInputCwd = cwd;
 		let promptContextFiles = contextFiles;
-		let promptWorkspaceTree: WorkspaceTree | Promise<WorkspaceTree> = workspaceTreePromise;
+		let promptWorkspaceTree: WorkspaceTree | Promise<WorkspaceTree> = projectInputs.workspaceTree;
 		let promptActiveRepoContext = activeRepoContext;
 		let promptSkills = skills;
 		let promptRulebookRules = rulebookRules;
@@ -1588,63 +1476,23 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					const liveCwd = path.resolve(sessionManager.getCwd());
 					if (liveCwd === promptInputCwd) return;
 
-					const currentSkillsSettings = settings.getGroup("skills");
-					const currentDisabledExtensionIds = settings.get("disabledExtensions") ?? [];
-					const nextWorkspaceTreePromise: Promise<WorkspaceTree> =
-						options.workspaceTree !== undefined
-							? Promise.resolve(options.workspaceTree)
-							: (settings.get("includeWorkspaceTree") ?? false)
-								? buildWorkspaceTree(liveCwd, { timeoutMs: STARTUP_SCAN_DEADLINE_MS })
-								: Promise.resolve({
-										rootPath: liveCwd,
-										rendered: "",
-										truncated: false,
-										totalLines: 0,
-										agentsMdFiles: [],
-									});
-					const nextActiveRepoContextPromise = (async () => {
-						try {
-							return await resolveActiveRepoContext(liveCwd);
-						} catch (error) {
-							logger.warn("Failed to resolve active repo context after cwd change", {
-								cwd: liveCwd,
-								error: errorMessage(error),
-							});
-							return null;
-						}
-					})();
-					const nextSkillsPromise =
-						options.skills !== undefined
-							? Promise.resolve({ skills: options.skills, warnings: [] as SkillWarning[] })
-							: discoverSkills(liveCwd, agentDir, {
-									...currentSkillsSettings,
-									disabledExtensions: currentDisabledExtensionIds,
-								});
-					const nextRulesPromise =
-						options.rules !== undefined
-							? Promise.resolve({ items: options.rules })
-							: discoverRules(liveCwd, agentDir);
-					const nextWatchdogFilesPromise = discoverWatchdogFiles(liveCwd, agentDir);
-					const nextAdvisorConfigsPromise = discoverAdvisorConfigs(liveCwd, agentDir);
-
+					const next = discoverProjectInputs(liveCwd, agentDir, settings, options);
 					const [
 						nextContextFiles,
 						nextWorkspaceTree,
 						nextActiveRepoContext,
 						nextSkillsResult,
-						nextRulesResult,
+						nextRules,
 						nextWatchdogFiles,
-						nextAdvisorConfigs,
+						nextAdvisors,
 					] = await Promise.all([
-						options.contextFiles !== undefined
-							? Promise.resolve(options.contextFiles)
-							: discoverContextFiles(liveCwd, agentDir),
-						nextWorkspaceTreePromise,
-						nextActiveRepoContextPromise,
-						nextSkillsPromise,
-						nextRulesPromise,
-						nextWatchdogFilesPromise,
-						nextAdvisorConfigsPromise,
+						next.contextFiles,
+						next.workspaceTree,
+						next.activeRepoContext,
+						next.skills,
+						next.rules,
+						next.watchdogFiles,
+						next.advisors,
 					]);
 
 					// A newer cwd transition won the race. Discard these bytes rather
@@ -1655,25 +1503,12 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					ttsrManager.clearRules();
 					let nextBuckets: RuleBuckets;
 					try {
-						const ttsrSettings = settings.getGroup("ttsr");
-						nextBuckets = bucketRules(nextRulesResult.items, ttsrManager, {
-							builtinRules: ttsrSettings.builtinRules,
-							disabledRules: ttsrSettings.disabledRules,
-							experimentalRules: ttsrSettings.experimentalRules,
-						});
+						nextBuckets = bucketRules(nextRules, ttsrManager, settings.getGroup("ttsr"));
 					} catch (error) {
 						ttsrManager.clearRules();
 						for (const rule of previousTtsrRules) ttsrManager.addRule(rule);
 						throw error;
 					}
-
-					const nextAdvisorWatchdogPrompts = nextWatchdogFiles.slice();
-					if (nextActiveRepoContext) {
-						nextAdvisorWatchdogPrompts.push(formatActiveRepoWatchdogPrompt(nextActiveRepoContext));
-					}
-					const nextAdvisorWatchdogPrompt =
-						nextAdvisorWatchdogPrompts.length > 0 ? nextAdvisorWatchdogPrompts.join("\n\n") : undefined;
-					const nextAdvisorContextPrompt = formatAdvisorContextPrompt(nextContextFiles);
 
 					promptInputCwd = liveCwd;
 					promptContextFiles = nextContextFiles;
@@ -1686,17 +1521,19 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					toolSession.contextFiles = nextContextFiles;
 					toolSession.workspaceTree = nextWorkspaceTree;
 					toolSession.skills = nextSkillsResult.skills;
-					toolSession.rules = nextRulesResult.items;
-					if (hasSession) session.replaceSkills(nextSkillsResult.skills);
+					toolSession.rules = nextRules;
 					if (hasSession) {
-						session.replaceProjectAdvisorScope({
-							advisorWatchdogPrompt: nextAdvisorWatchdogPrompt,
-							advisorContextPrompt: nextAdvisorContextPrompt,
-							advisorSharedInstructions: nextAdvisorConfigs.sharedInstructions,
-							advisorConfigs: nextAdvisorConfigs.advisors,
-						});
+						session.replaceSkills(nextSkillsResult.skills);
+						session.replaceProjectAdvisorScope(
+							projectAdvisorScope({
+								watchdogFiles: nextWatchdogFiles,
+								activeRepoContext: nextActiveRepoContext,
+								contextFiles: nextContextFiles,
+								advisors: nextAdvisors,
+							}),
+						);
 					}
-					for (const warning of nextSkillsResult.warnings ?? []) {
+					for (const warning of nextSkillsResult.warnings) {
 						operatorNotices.warn("skills", `${warning.skillPath}: ${warning.message}`);
 					}
 					ttsrManager.reportUnknownToolScopes(toolRegistry.keys());
@@ -2328,23 +2165,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			.filter((tool): tool is Tool => tool != null)
 			.map(wrapToolWithMetaNotice);
 
-		const advisorWatchdogPrompts = watchdogFiles.slice();
-		if (activeRepoContext) {
-			advisorWatchdogPrompts.push(formatActiveRepoWatchdogPrompt(activeRepoContext));
-		}
-		const advisorWatchdogPrompt = advisorWatchdogPrompts.length > 0 ? advisorWatchdogPrompts.join("\n\n") : undefined;
-		// Hand the advisor the same project context files (AGENTS.md, etc.) the
-		// primary agent gets in its system prompt, so the read-only reviewer judges
-		// against the instruction files instead of advising blind.
-		const advisorContextPrompt = formatAdvisorContextPrompt(contextFiles);
 		// Owned only when this session created the manager; spawned agents receive a
 		// parent's manager via `options.mcpManager` and MUST NOT disconnect it.
 		const ownedMcpManager = options.mcpManager ? undefined : mcpManager;
 		session = new AgentSession({
-			advisorWatchdogPrompt,
-			advisorContextPrompt,
-			advisorSharedInstructions: discoveredAdvisors.sharedInstructions,
-			advisorConfigs: discoveredAdvisors.advisors,
+			// The advisor gets the same project context files (AGENTS.md, etc.) the primary agent
+			// gets in its system prompt, so the read-only reviewer judges against them.
+			...projectAdvisorScope({ watchdogFiles, activeRepoContext, contextFiles, advisors: discoveredAdvisors }),
 			agent,
 			pruneToolDescriptions: inlineToolDescriptorsForModel,
 			thinkingLevel: modelSelection.autoThinking ? AUTO_THINKING : modelSelection.effectiveThinkingLevel,

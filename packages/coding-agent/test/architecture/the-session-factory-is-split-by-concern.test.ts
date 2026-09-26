@@ -36,12 +36,12 @@ const SESSION_DIR = repoPath("packages/coding-agent/src/session");
 const SDK = repoPath("packages/coding-agent/src/sdk.ts");
 
 /**
- * MEASURED at 2879 lines after startup model selection moved out, of which
- * `createAgentSession` is 2563. This falls when that function is rewritten.
+ * MEASURED at 2705 lines after project-input discovery moved to `factory-extensions.ts`, of
+ * which `createAgentSession` is 2397. This falls when that function is rewritten.
  */
-const SDK_CEILING = 2965;
+const SDK_CEILING = 2786;
 
-/** MEASURED: the largest factory module is `factory-options.ts` at 369 lines. */
+/** MEASURED: the largest factory module is `factory-extensions.ts` at 396 lines. */
 const FACTORY_CEILING = 400;
 
 /**

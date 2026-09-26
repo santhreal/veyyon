@@ -30,6 +30,7 @@
 - A session's secret runtime (the loader, the expansion lease, the reload queue, the unreadable-vault refusal and the tool-argument expansion) runs in `SessionSecretRuntime` in `secrets/session-runtime.ts` instead of in closures inside `createAgentSession`; no user-visible change.
 - Startup model and thinking-level selection (session restore, the settings default, deferred `--model` patterns, the fallback role chain, the first authenticated model and the metadata refresh) runs in `StartupModelSelection` in `session/startup-model.ts` instead of inline in `createAgentSession`; no user-visible change.
 - The `edit` tool's patch mode computes a hunk's replacements (the direct match, trimmed-context variants, fuzzy fallback and overlap checks) and re-indents a hunk's new lines (tab-to-space, space-to-tab and matched-line alignment) in single-purpose functions instead of functions of 341 and 215 lines; no user-visible change.
+- A session discovers its context files, workspace tree, repository context, skills, rules, watchdog files and advisor configs through one `discoverProjectInputs` path at startup and after a working-directory change, starts rules discovery with the other project scans instead of after the session context loads, and clears the 5-second workspace tree deadline timer when the scan finishes instead of leaving it armed.
 
 ### Fixed
 
