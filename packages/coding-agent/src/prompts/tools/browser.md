@@ -17,14 +17,14 @@ Drives real Chromium tab; full puppeteer access via JS.
   - `tab.goto(url, { waitUntil? })` — navigate. A hung load fails ~1s before the cell budget with a named error and the navigation stopped; for slow pages raise `timeout` or use `waitUntil: "domcontentloaded"`.
   - `tab.observe({ includeAll?, viewportOnly? })` — accessibility snapshot: `{ url, title, viewport, scroll, elements: [{ id, role, name, value, states, … }] }`. Ids stable until next observe/goto.
   - `tab.ariaSnapshot(selector?, { depth?, boxes? })` — Playwright-format ARIA YAML (roles, names, `/url`, `/placeholder`) of `selector` or the document; each node has a `[ref=eN]`, `[cursor=pointer]` marks clickables. Refs renumber from e1 each call and stay valid until the next.
-  - `tab.ref("e5")` — ref from the last ariaSnapshot → element handle (`.click()`, `.type()`, `.fill()`, `.hover()`, `.evaluate()`, …); inline as `aria-ref=e5` in `tab.click`/`type`/`fill`/`waitFor`/`scrollIntoView`.
+  - `tab.ref("e5")` — ref from the last ariaSnapshot → element handle (`.click()`, `.type()`, `.fill()`, `.hover()`, `.evaluate()`, …), chainable: `await tab.ref("e5").click()`; inline as `aria-ref=e5` in `tab.click`/`type`/`fill`/`waitFor`/`scrollIntoView`.
   - `tab.id(n)` — id from last observe → element handle with the same action methods.
-  - `tab.click(selector)` / `tab.type(selector, text)` / `tab.fill(selector, value)` / `tab.press(key, { selector? })` / `tab.scroll(dx, dy)`. `fill` replaces the value as one real edit frameworks see; `type` sends keystrokes.
+  - `tab.click(selector)` / `tab.type(selector, text)` / `tab.fill(selector, value)` / `tab.press(key, { selector? })` / `tab.scroll(dx, dy)`. `fill` replaces the value as one real edit frameworks see; `type` sends keystrokes. `click` and a handle's `click`/`hover` never press a cover: a menu, dialog or banner over the element fails the call, naming it.
   - `tab.waitFor(selector, { timeout? })` / `tab.waitForSelector(selector, { timeout?, visible?, hidden? })` — wait until attached (optionally visible/hidden); returns an action-method handle.
   - `tab.drag(from, to)` — endpoints: selector (center-to-center) or `{ x, y }` viewport point (canvases, sliders).
   - `tab.scrollIntoView(selector)` — center in viewport; before clicking off-screen elements.
   - `tab.select(selector, …values)` — set `<select>` option(s); returns selection. `tab.fill` NEVER works for selects.
-  - `tab.uploadFile(selector, …filePaths)` — attach files to `<input type="file">`; paths relative to cwd.
+  - `tab.uploadFile(selector, …filePaths)` — attach files to `<input type="file">` or to the chooser a control opens; paths relative to cwd.
   - `tab.waitForUrl(pattern, { timeout? })` — substring or `RegExp` (matches SPA pushState nav); returns matched URL.
   - `tab.waitForResponse(pattern, { timeout? })` — substring, `RegExp`, or `(response) => boolean`; returns puppeteer `HTTPResponse` (`.text()`/`.json()`/`.status()`/`.headers()`).
   - `tab.waitForNavigation({ waitUntil?, timeout? })` — resolves on the next navigation. Start it BEFORE the click/submit that triggers it; after `tab.goto` (which already waits) use `tab.waitForUrl`/`tab.waitForSelector` instead.
@@ -39,6 +39,7 @@ Drives real Chromium tab; full puppeteer access via JS.
 - MUST `open` before `run` — `run` never creates a tab.
 - Default to `tab.observe()` for page state — structured data, actionable ids. Screenshot ONLY when appearance matters.
 - Every call re-sends the whole conversation: in one `run`, act and return what the next step needs (a value, or `tab.ariaSnapshot(selector)` of the part that changed). Navigation invalidates element ids and refs.
+- Act through `tab` actions: they wait for their element and fail naming why (no match, covered, disabled); probing hit targets or page scripts first wastes turns.
 - `code` runs with full Node access. Treat as your code, not sandboxed.
 </critical>
 

@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { errorMessage, isTimeoutError, postmortem, Snowflake, untilAborted } from "@veyyon/utils";
 // The owner, not the barrel: this module reaches the two discard contracts and nothing else.
@@ -12,6 +13,7 @@ import type {
 	Dialog,
 	ElementHandle,
 	ElementScreenshotOptions,
+	FileChooser,
 	HTTPResponse,
 	ImageFormat,
 	KeyInput,
@@ -31,6 +33,7 @@ import {
 	parseAriaRefSelector,
 	resolveAriaRefHandle,
 } from "./aria-snapshot";
+import { type ChainedHandle, chainHandle } from "./chained-handle";
 import { releaseHandle, releaseHandles } from "./handle-release";
 import {
 	applyStealthPatches,
@@ -172,6 +175,13 @@ const ZERO_MATCH_FAIL_FAST_MS = 2_000;
 const ZERO_MATCH_POLL_MS = 250;
 /** How long a failed run waits for the page to say whether it has a name the run could not find. */
 const PAGE_GLOBAL_PROBE_MS = 1_000;
+/**
+ * How long a click or hover waits for whatever covers its element (a menu closing, a fade, a toast)
+ * to go before it fails naming it. A cover that outlasts this is one the page expects dismissed.
+ */
+const COVERED_WAIT_MS = 2_500;
+/** Poll cadence while a click or hover waits for its element to be uncovered. */
+const COVERED_POLL_MS = 100;
 
 export interface OpTimeouts {
 	/** Largest per-op deadline allowed — strictly below the cell budget. */
@@ -258,8 +268,8 @@ export interface TabApi {
 		waitUntil?: "load" | "domcontentloaded" | "networkidle0" | "networkidle2";
 		timeout?: number;
 	}): Promise<HTTPResponse | null>;
-	id(n: number): Promise<ActionableHandle>;
-	ref(id: string): Promise<ActionableHandle>;
+	id(n: number): ChainedHandle<ActionableHandle>;
+	ref(id: string): ChainedHandle<ActionableHandle>;
 	/** The tab's context: every cookie it holds and the localStorage of every origin open in it; `path` also writes it there. */
 	storageState(opts?: { path?: string }): Promise<StorageState>;
 	/** Load a state, or the state file at a path, into the tab's context. */
@@ -310,17 +320,25 @@ function asElementHandle(handle: unknown): ElementHandle | null {
 	return handle ? (handle as ElementHandle) : null;
 }
 
-/** ElementHandle enriched with the `fill()` the tool docs promise on handles from `tab.id()`/`tab.ref()`/`tab.waitFor()`. */
+/**
+ * ElementHandle enriched with the `fill()` the tool docs promise on handles from `tab.id()`/`tab.ref()`/`tab.waitFor()`,
+ * and with a `click()` and `hover()` that never press what covers the element.
+ */
 export type ActionableHandle = ElementHandle & { fill(value: string): Promise<void> };
 
 /**
- * Attach `fill()` to a puppeteer ElementHandle before handing it to user code.
- * Puppeteer handles expose `type()` but no `fill()`; the semantics are the
- * selector-based `tab.fill()`'s.
+ * Attach `fill()` to a puppeteer ElementHandle before handing it to user code, and route its `click()`
+ * and `hover()` through {@link pressUncovered}. Puppeteer handles expose `type()` but no `fill()`; the
+ * semantics are the selector-based `tab.fill()`'s.
  */
 export function toActionableHandle(handle: ElementHandle): ActionableHandle {
 	const enriched = handle as ActionableHandle;
+	const click = handle.click.bind(handle);
+	const hover = handle.hover.bind(handle);
 	enriched.fill = value => fillViaHandle(enriched, value);
+	enriched.click = options =>
+		pressUncovered(handle, "handle.click()", () => click(options), ACTION_OP_TIMEOUT_MS, { enabled: true });
+	enriched.hover = () => pressUncovered(handle, "handle.hover()", hover, ACTION_OP_TIMEOUT_MS, { enabled: false });
 	return enriched;
 }
 
@@ -644,6 +662,171 @@ async function isClickActionable(handle: ElementHandle): Promise<ActionabilityRe
 			return { ok: true as const, x, y };
 		return { ok: false as const, reason: "obscured" };
 	})) as ActionabilityResult;
+}
+
+/** What a click or hover would reach on an element, decided in the page. */
+type PressProbe =
+	| { readonly kind: "clear" }
+	| { readonly kind: "covered"; readonly by: string }
+	| { readonly kind: "disabled" }
+	| { readonly kind: "detached" };
+
+/**
+ * Decide in the element's frame whether a press on it would reach it.
+ *
+ * The point is the one puppeteer's `clickablePoint` presses: the centre of the first client rect that,
+ * clipped to the frame's viewport, is at least 1×1 px. What `elementFromPoint` finds there, followed
+ * into open shadow roots, reaches the element when it is the element or inside it, inside one of the
+ * element's labels (a styled checkbox drawn over its input), or holds the element (a closed shadow
+ * host hides what is beneath it, and a click there still lands on the host's content). Anything else
+ * takes the press. With `requireEnabled`, a disabled form control is reported as such first.
+ * Serialized into the page, so it reaches nothing outside itself.
+ */
+function probePress(element: unknown, requireEnabled: boolean): PressProbe {
+	interface Rect {
+		readonly x: number;
+		readonly y: number;
+		readonly width: number;
+		readonly height: number;
+	}
+	interface PressNode {
+		readonly isConnected: boolean;
+		readonly parentNode: PressNode | null;
+		readonly host?: PressNode;
+		readonly shadowRoot?: { elementFromPoint(x: number, y: number): PressNode | null } | null;
+		readonly tagName?: string;
+		readonly id?: string;
+		readonly classList?: ArrayLike<string>;
+		readonly textContent: string | null;
+		readonly labels?: ArrayLike<PressNode> | null;
+		matches?(selector: string): boolean;
+		getClientRects(): ArrayLike<Rect>;
+		readonly ownerDocument: {
+			readonly documentElement: { readonly clientWidth: number; readonly clientHeight: number };
+			elementFromPoint(x: number, y: number): PressNode | null;
+		};
+	}
+	const el = element as PressNode;
+	if (!el.isConnected) return { kind: "detached" };
+	if (requireEnabled && el.matches?.(":disabled")) return { kind: "disabled" };
+	const doc = el.ownerDocument;
+	const width = doc.documentElement.clientWidth;
+	const height = doc.documentElement.clientHeight;
+	let point: { x: number; y: number } | undefined;
+	for (const rect of Array.from(el.getClientRects())) {
+		const w = Math.max(rect.x >= 0 ? Math.min(width - rect.x, rect.width) : Math.min(width, rect.width + rect.x), 0);
+		const h = Math.max(
+			rect.y >= 0 ? Math.min(height - rect.y, rect.height) : Math.min(height, rect.height + rect.y),
+			0,
+		);
+		if (w >= 1 && h >= 1) {
+			point = { x: Math.max(rect.x, 0) + w / 2, y: Math.max(rect.y, 0) + h / 2 };
+			break;
+		}
+	}
+	// No rect to press: puppeteer's own click reports that.
+	if (!point) return { kind: "clear" };
+	let hit = doc.elementFromPoint(point.x, point.y);
+	while (hit?.shadowRoot) {
+		const inner = hit.shadowRoot.elementFromPoint(point.x, point.y);
+		if (!inner || inner === hit) break;
+		hit = inner;
+	}
+	if (!hit) return { kind: "clear" };
+	const within = (inner: PressNode, outer: PressNode): boolean => {
+		for (let node: PressNode | null | undefined = inner; node; node = node.parentNode ?? node.host) {
+			if (node === outer) return true;
+		}
+		return false;
+	};
+	const target = hit;
+	if (within(target, el) || within(el, target)) return { kind: "clear" };
+	if (Array.from(el.labels ?? []).some(label => within(target, label))) return { kind: "clear" };
+	const tag = (target.tagName ?? "node").toLowerCase();
+	const id = target.id ? `#${target.id}` : "";
+	const classes = Array.from(target.classList ?? [])
+		.slice(0, 2)
+		.map(name => `.${name}`)
+		.join("");
+	const text = (target.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
+	return { kind: "covered", by: `<${tag}${id}${classes}>${text ? ` "${text}"` : ""}` };
+}
+
+/** The element a press was waiting on left the page before it was pressed; nothing was pressed. */
+class DetachedPressTarget extends ToolError {}
+
+/**
+ * How long before its op's deadline a press gives up with its own reason, so the reason (covered,
+ * disabled) reaches the caller rather than the op's generic timeout.
+ */
+const PRESS_REPORT_MARGIN_MS = 500;
+
+/** How long `tab.uploadFile` waits, after pressing a control, for the file chooser it opens. */
+const CHOOSER_WAIT_MS = 2_000;
+
+/** Centre an element in its scrollers and the viewport, which `DOM.scrollIntoViewIfNeeded` skips for one already visible. */
+function centreInView(element: unknown): void {
+	(element as { scrollIntoView(options: object): void }).scrollIntoView({
+		block: "center",
+		inline: "center",
+		behavior: "instant",
+	});
+}
+
+/**
+ * Run `press` once the point it presses on `handle` is the element's own.
+ *
+ * A press whose point something else holds (an open menu, a dialog, a banner, a toast) lands on that
+ * instead, and nothing says so. The element is scrolled into view, then centred once if covered, which
+ * clears a sticky header; a cover still there after {@link COVERED_WAIT_MS}, or `timeoutMs` when
+ * shorter, fails the action naming it. With `enabled`, a disabled form control is waited for until
+ * `timeoutMs`. In every failure nothing is pressed.
+ */
+async function pressUncovered(
+	handle: ElementHandle,
+	label: string,
+	press: () => Promise<void>,
+	timeoutMs: number,
+	options: { readonly signal?: AbortSignal; readonly enabled: boolean },
+): Promise<void> {
+	const { signal } = options;
+	const started = Date.now();
+	let centred = false;
+	let placed = false;
+	for (;;) {
+		const probe = (await untilAborted(signal, () => handle.evaluate(probePress, options.enabled))) as PressProbe;
+		const elapsed = Date.now() - started;
+		if (probe.kind === "detached") {
+			throw new DetachedPressTarget(
+				`${label}: the element left the page before it was pressed, so nothing was pressed.`,
+			);
+		}
+		if (!placed) {
+			placed = true;
+			if (!(await untilAborted(signal, () => handle.isIntersectingViewport({ threshold: 1 })))) {
+				await untilAborted(signal, () => handle.scrollIntoView());
+				continue;
+			}
+		}
+		if (probe.kind === "clear") {
+			await untilAborted(signal, press);
+			return;
+		}
+		if (probe.kind === "covered" && !centred) {
+			centred = true;
+			await untilAborted(signal, () => handle.evaluate(centreInView));
+			continue;
+		}
+		if (probe.kind === "covered" && elapsed >= Math.min(timeoutMs, COVERED_WAIT_MS)) {
+			throw new ToolError(
+				`${label}: ${probe.by} covers the point it would press, so nothing was pressed. Dismiss it (tab.press("Escape"), or a click outside it) or act on it instead.`,
+			);
+		}
+		if (probe.kind === "disabled" && elapsed >= timeoutMs) {
+			throw new ToolError(`${label}: the element stayed disabled for ${timeoutMs} ms, so nothing was pressed.`);
+		}
+		await delay(COVERED_POLL_MS, undefined, { signal });
+	}
 }
 
 async function clickQueryHandlerText(
@@ -1389,23 +1572,7 @@ export class WorkerCore {
 				op(
 					`tab.click(${JSON.stringify(selector)})`,
 					actionOpMs,
-					async sig => {
-						if (parseAriaRefSelector(selector) !== null) {
-							const handle = await this.#resolveAriaRef(selector);
-							try {
-								await untilAborted(sig, () => handle.click());
-							} finally {
-								await releaseHandle(handle);
-							}
-							return;
-						}
-						const resolved = normalizeSelector(selector);
-						if (resolved.startsWith("text/")) await clickQueryHandlerText(page, resolved, actionOpMs, sig);
-						else
-							await untilAborted(sig, () =>
-								page.locator(resolved).setTimeout(actionOpMs).click({ signal: sig }),
-							);
-					},
+					sig => this.#click(selector, `tab.click(${JSON.stringify(selector)})`, actionOpMs, sig),
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
 				),
 			type: (selector, text) =>
@@ -1543,8 +1710,8 @@ export class WorkerCore {
 				const w = waitMs(opts?.timeout);
 				return op("tab.waitForResponse()", w, sig => this.#waitForResponse(pattern, w, sig));
 			},
-			id: async id => toActionableHandle(await this.#resolveCachedHandle(id)),
-			ref: async id => toActionableHandle(await this.#resolveAriaRef(id)),
+			id: id => chainHandle(this.#resolveCachedHandle(id).then(toActionableHandle)),
+			ref: id => chainHandle(this.#resolveAriaRef(id).then(toActionableHandle)),
 			storageState: opts =>
 				op("tab.storageState()", actionOpMs, sig => this.#storageState(opts?.path, sig, session)),
 			loadStorageState: stateOrPath =>
@@ -1693,6 +1860,42 @@ export class WorkerCore {
 		return info;
 	}
 
+	/**
+	 * Press the element `selector` names once nothing covers it ({@link pressUncovered}). A CSS or handler
+	 * selector is resolved again when its element leaves the page before the press, as a re-rendering
+	 * framework replaces it; an `aria-ref` names one snapshot's element and is not.
+	 */
+	async #click(selector: string, label: string, timeoutMs: number, signal: AbortSignal): Promise<void> {
+		const pressMs = Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS);
+		if (parseAriaRefSelector(selector) !== null) {
+			const handle = await this.#resolveAriaRef(selector);
+			try {
+				await pressUncovered(handle, label, () => handle.click(), pressMs, { signal, enabled: true });
+			} finally {
+				await releaseHandle(handle);
+			}
+			return;
+		}
+		const resolved = normalizeSelector(selector);
+		if (resolved.startsWith("text/")) {
+			await clickQueryHandlerText(this.#requirePage(), resolved, timeoutMs, signal);
+			return;
+		}
+		const started = Date.now();
+		for (;;) {
+			const remaining = Math.max(1, pressMs - (Date.now() - started));
+			const handle = await this.#resolveActionHandle(selector, remaining, signal, { visible: true });
+			try {
+				await pressUncovered(handle, label, () => handle.click(), remaining, { signal, enabled: true });
+				return;
+			} catch (err) {
+				if (!(err instanceof DetachedPressTarget) || Date.now() - started >= pressMs) throw err;
+			} finally {
+				await releaseHandle(handle);
+			}
+		}
+	}
+
 	async #drag(from: DragTarget, to: DragTarget, signal: AbortSignal): Promise<void> {
 		const page = this.#requirePage();
 		const resolveDragPoint = async (
@@ -1781,6 +1984,10 @@ export class WorkerCore {
 		}
 	}
 
+	/**
+	 * Attach files to an `<input type="file">`, or press the control that opens a file chooser (a button,
+	 * a label, a drop zone that clicks a hidden input) and hand the chooser the files.
+	 */
 	async #uploadFile(
 		selector: string,
 		filePaths: string[],
@@ -1790,20 +1997,46 @@ export class WorkerCore {
 	): Promise<void> {
 		if (!filePaths.length) throw new ToolError("tab.uploadFile() requires at least one file path");
 		const page = this.#requirePage();
-		const handle = (await untilAborted(signal, () =>
-			page.locator(normalizeSelector(selector)).setTimeout(timeoutMs).waitHandle({ signal }),
-		)) as ElementHandle;
+		const label = `tab.uploadFile(${JSON.stringify(selector)})`;
+		const started = Date.now();
+		const handle = await this.#resolveActionHandle(selector, timeoutMs, signal);
 		try {
 			const absolute = filePaths.map(filePath => resolveToCwd(filePath, session.cwd));
-			const upload = handle as unknown as { uploadFile: (...paths: string[]) => Promise<void> };
-			const tagName = (await untilAborted(signal, () =>
-				handle.evaluate(el => (el as unknown as { tagName: string }).tagName),
+			const kind = (await untilAborted(signal, () =>
+				handle.evaluate(el => {
+					const element = el as unknown as { tagName: string; type?: string };
+					const tag = element.tagName.toLowerCase();
+					return tag === "input" ? `input:${(element.type ?? "text").toLowerCase()}` : tag;
+				}),
 			)) as string;
-			if (tagName !== "INPUT")
+			if (kind === "input:file") {
+				const upload = handle as unknown as { uploadFile: (...paths: string[]) => Promise<void> };
+				await untilAborted(signal, () => upload.uploadFile(...absolute));
+				return;
+			}
+			if (kind.startsWith("input:")) {
 				throw new ToolError(
-					`tab.uploadFile() requires an <input type="file"> element (got <${tagName.toLowerCase()}>)`,
+					`${label}: an <input type="${kind.slice("input:".length)}"> takes no files. Pass the <input type="file">, or the control that opens its chooser.`,
 				);
-			await untilAborted(signal, () => upload.uploadFile(...absolute));
+			}
+			const remaining = Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS - (Date.now() - started));
+			const chooser = markHandled(page.waitForFileChooser({ timeout: remaining, signal }));
+			await pressUncovered(handle, label, () => handle.click(), remaining, { signal, enabled: true });
+			let opened: FileChooser | null;
+			try {
+				opened = await untilAborted(signal, () =>
+					Promise.race([chooser, delay(CHOOSER_WAIT_MS, null, { signal })]),
+				);
+			} catch (err) {
+				if (!isTimeoutError(err)) throw err;
+				opened = null;
+			}
+			if (!opened) {
+				throw new ToolError(
+					`${label}: pressing the <${kind}> opened no file chooser. Pass the <input type="file">, or the control that opens its chooser.`,
+				);
+			}
+			await untilAborted(signal, () => opened.accept(absolute));
 		} finally {
 			await releaseHandle(handle);
 		}

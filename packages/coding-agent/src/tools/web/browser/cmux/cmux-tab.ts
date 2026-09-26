@@ -11,6 +11,7 @@ import { formatScreenshot } from "../../../core/render-utils";
 import { ToolAbortError, ToolError, throwIfAborted } from "../../../core/tool-errors";
 import type { ToolSession } from "../../../index";
 import { type AriaSnapshotOptions, buildAriaSnapshotScript, withoutBareWrappers } from "../aria-snapshot";
+import { type ChainedHandle, chainHandle } from "../chained-handle";
 import { DEFAULT_VIEWPORT } from "../launch";
 import { extractReadableFromHtml, type ReadableFormat } from "../readable";
 import {
@@ -482,7 +483,11 @@ export class CmuxTab {
 		return typeof snapshot === "string" ? withoutBareWrappers(snapshot) : snapshot;
 	}
 
-	async ref(id: string): Promise<CmuxElementHandle> {
+	ref(id: string): ChainedHandle<CmuxElementHandle> {
+		return chainHandle(this.#resolveRef(id));
+	}
+
+	async #resolveRef(id: string): Promise<CmuxElementHandle> {
 		const refId = /^e\d+$/.test(id.trim()) ? id.trim() : id.trim().replace(/^(?:aria-ref=|aria-ref\/|ariaref\/)/, "");
 		const selector = `aria-ref=${refId}`;
 		const timeoutMs = this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS;
@@ -807,7 +812,11 @@ export class CmuxTab {
 		throw new ToolError(`tab.waitForResponse() timed out after ${timeoutMs}ms.${lostNote}`);
 	}
 
-	async id(id: number): Promise<CmuxElementHandle> {
+	id(id: number): ChainedHandle<CmuxElementHandle> {
+		return chainHandle(this.#resolveId(id));
+	}
+
+	async #resolveId(id: number): Promise<CmuxElementHandle> {
 		const ref = this.#elementRefs.get(id)?.ref ?? `@e${id}`;
 		await this.#waitForSelector(ref, this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS);
 		return new CmuxElementHandle(this, ref);
