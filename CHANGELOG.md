@@ -10,6 +10,7 @@
 
 ### Added
 
+- `collectToolCallsById` takes an optional start index and resolves the call behind each tool result at or after it without walking the entries before it.
 - A tool domain manifest can list `resultCodecs`, each a `ToolResultCodec` whose `slim` drops a result `details` field the result's content rebuilds when the session writes the entry and whose `restore` rebuilds it when the session loads.
 
 ### Changed
@@ -24,6 +25,8 @@
 - An `edit` result's session file line omits the post-edit file text when its pre-edit text and numbered diff rebuild it byte for byte, and the session restores it on load, which cuts the post-edit copies recorded across local sessions from 671.18 MB to 3.79 MB.
 - A `search` result's session file line omits the card's copy of the matched rows, the path list `fileMatches` already holds, and the wrapper's repeat of the sub-search's truncation counts when the rest of the line rebuilds them, and the session restores them on load, which cuts the recorded search details in local sessions from 331.33 MB to 248.91 MB.
 - An `eval` result's session file line omits each cell's output and the top-level status events when the result's text and the first cell hold them, and a `job` result's line omits each job's result and error text the result's text holds, and the session restores them on load, which cuts the recorded eval details in local sessions from 497.77 MB to 253.78 MB and the job details from 100.84 MB to 37.80 MB.
+- The per-turn stale-result and threshold prunes and the shake, dedup and truncation collectors scan only the entries from the compaction boundary to the leaf instead of the whole branch, which cut the two per-turn prunes on a 238,084-entry session with 390 compactions from 420ms to 4.4ms per turn.
+- `resolveCompactionBoundaryIndex` searches for the keep marker from the end of the branch, which takes about 9ms off rebuilding the context of a 238,084-entry branch.
 - The Anthropic and OpenAI-compatible providers split their stream loops, message converters and finalization into per-step helpers; no user-visible change.
 - The OpenAI-compatible stream reads a tool call's prior object arguments through the shared `isRecord` guard instead of an inline check; no user-visible change.
 - Opening or restoring a session builds its set of known entry ids once instead of twice, which takes about 40ms off opening a 220,000-entry session.
@@ -31,6 +34,7 @@
 - A `tool_execution_start` session entry writes no `startedAt`, since the entry's own timestamp holds the start time, and writes its argument summary only when no preceding assistant message records the call, which cut the start markers in local sessions from 581.83 MB to 403.91 MB; a marker that wrote `startedAt` still reads back that time.
 - The `ToolResultCodec` contract permits a codec to rebuild a dropped field from the details the written line keeps as well as from the result's content; no behavior change.
 - Opening a session points every loaded string of 64 characters or more at one shared copy of its text, whether parsed from the file or read back from the blob store, and keeps no pooled string once the load returns, which cut the heap of a loaded 372.7 MiB session from 608.7 MiB to 401.7 MiB for 136 ms more load time.
+- Rebuilding a session context locates the applied compaction by searching from the end of the branch, which takes about 7ms off each rebuild of a 238,084-entry branch.
 
 ### Removed
 
