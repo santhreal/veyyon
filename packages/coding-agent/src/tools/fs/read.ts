@@ -59,7 +59,7 @@ import {
 // Each from its owner rather than the `../tui` barrel, which re-exports every component in the
 // directory. 54 test files import this module.
 import { buildLineEntriesWithBlockContext, type LineEntry, lineEntriesToPlainText } from "../../utils/block-context";
-import { resolveFileDisplayMode } from "../../utils/file-display-mode";
+import { type FileDisplayMode, resolveFileDisplayMode } from "../../utils/file-display-mode";
 import {
 	ImageInputTooLargeError,
 	loadImageInput,
@@ -1253,27 +1253,32 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] => readFilesystemTargets(args, cwd);
 	readonly label = "Read";
 	readonly loadMode = "essential";
-	readonly description: string;
 	readonly parameters = readSchema;
 	readonly strict = true;
 
 	readonly #autoResizeImages: boolean;
 	readonly #defaultLimit: number;
 	readonly #inspectImageEnabled: boolean;
+	readonly #displayMode: FileDisplayMode;
 
 	constructor(private readonly session: ToolSession) {
-		const displayMode = resolveFileDisplayMode(session);
+		this.#displayMode = resolveFileDisplayMode(session);
 		this.#autoResizeImages = session.settings.get("images.autoResize");
 		this.#defaultLimit = Math.max(
 			1,
 			Math.min(session.settings.get("read.defaultLimit") ?? DEFAULT_MAX_LINES, DEFAULT_MAX_LINES),
 		);
 		this.#inspectImageEnabled = session.settings.get("inspect_image.enabled");
-		this.description = prompt.render(toolsPrompts["tools/read"].text, {
+	}
+
+	/** Rendered on each read so the text follows the session's active tools, as bash's does. */
+	get description(): string {
+		return prompt.render(toolsPrompts["tools/read"].text, {
 			DEFAULT_LIMIT: String(this.#defaultLimit),
-			IS_HL_MODE: displayMode.hashLines,
-			IS_LINE_NUMBER_MODE: !displayMode.hashLines && displayMode.lineNumbers,
+			IS_HL_MODE: this.#displayMode.hashLines,
+			IS_LINE_NUMBER_MODE: !this.#displayMode.hashLines && this.#displayMode.lineNumbers,
 			INSPECT_IMAGE_ENABLED: this.#inspectImageEnabled,
+			hasBrowser: this.session.isToolActive?.("browser") ?? this.session.settings.get("browser.enabled"),
 		});
 	}
 

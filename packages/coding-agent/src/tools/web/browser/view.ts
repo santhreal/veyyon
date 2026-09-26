@@ -5,11 +5,11 @@
  * and names no colour, glyph, width or component. A terminal draws it through
  * `src/modes/terminal/draw/draw-tool-view.ts`, and a second host writes its own mapping from the same value.
  *
- * The tool has three actions and two card shapes, and the split is the tool's own. `open` and
- * `close` report one operation on one tab, so they are a row: what was done, which tab, which
- * browser, which url, and whatever the tool printed under it. `run` reports a script, so it is a
- * panel: the javascript that was evaluated, the output it produced, and a note when the output was
- * cut short of what the model asked for.
+ * The tool has four actions and two card shapes, and the split is the tool's own. `open`, `close`
+ * and `save_state` report one operation on one tab, so they are a row: what was done, which tab,
+ * which browser, which context, which url or state file, and whatever the tool printed under it.
+ * `run` reports a script, so it is a panel: the javascript that was evaluated, the output it
+ * produced, and a note when the output was cut short of what the model asked for.
  *
  * The code is stated as source in the language it is in, and never as coloured runs: a tool that
  * toned its own keywords would be writing a colour scheme. A row of the script's output is the other
@@ -59,7 +59,11 @@ const EXPANDED_MAX_LINES = 200;
 
 /** The call arguments a card reads, which are the tool's own input narrowed to what it shows. */
 export interface BrowserViewArgs {
-	action?: "open" | "close" | "run";
+	action?: "open" | "close" | "run" | "save_state";
+	/** The isolated context `open` puts the tab in. */
+	context?: string;
+	/** The state file `open` loads or `save_state` writes, as the model wrote it. */
+	storage_state?: string;
 	name?: string;
 	url?: string;
 	code?: string;
@@ -250,14 +254,22 @@ function tabCard(
 	const meta: ViewLine[] = [];
 	const browser = describeBrowser(args, details);
 	if (browser !== undefined) meta.push([{ text: browser }]);
+	const isolated = details?.context ?? (action === "open" ? args.context : undefined);
+	if (isolated !== undefined && isolated !== "" && isolated !== "default") {
+		meta.push([{ text: `context ${JSON.stringify(isolated)}` }]);
+	}
 	const url = urlOf(args, details);
 	if (url) meta.push([{ text: shortenPath(url), link: url }]);
+	const stateFile = details?.storageState ?? args.storage_state;
+	if (stateFile !== undefined && action !== "close") meta.push([{ text: shortenPath(replaceTabs(stateFile)) }]);
 
 	let title: string;
 	if (action === "close") {
 		const all = args.all === true || (args.name === undefined && details?.name === undefined);
 		title = all ? "Close all tabs" : `Close ${tabLabel(args, details)}`;
 		if (args.kill) title += " (kill)";
+	} else if (action === "save_state") {
+		title = `Save the state of ${tabLabel(args, details)}`;
 	} else {
 		title = `Open ${tabLabel(args, details)}`;
 	}
@@ -301,7 +313,35 @@ export const browserToolView: Required<ToolViewRenderer<BrowserViewArgs, Browser
 		// The notice the tool appended for the model is stated by the card as its own group, so the
 		// reader is not shown the same sentence twice in two voices.
 		const output = stripOutputNotice(withoutTrailingBlanks(extractResultText(result.content)), details?.meta);
-		if ((details?.action ?? called.action) === "run") return runCard(called, details, context, output, isError);
-		return tabCard(called, details, context, output, isError);
+		if ((details?.action ?? called.action) === "run") {
+			return runCard(called, details, context, indentJsonLines(output), isError);
+		}
+		// An open's text also carries the loaded page for the model; the card draws the rows the tool
+		// kept for it in `details.result`.
+		const shown = !isError && details?.result !== undefined ? withoutTrailingBlanks(details.result) : output;
+		return tabCard(called, details, context, shown, isError);
 	},
 };
+
+/**
+ * A run's output as a person reads it: the model is sent each displayed or returned value as one line
+ * of compact JSON, and the card lays out a line that parses as an object or array over indented lines.
+ * Anything else, including a string that only looks like JSON, is left as it was printed.
+ */
+function indentJsonLines(output: string): string {
+	if (!output.includes("{") && !output.includes("[")) return output;
+	return output
+		.split("\n")
+		.map(line => {
+			const first = line[0];
+			const last = line[line.length - 1];
+			if (!((first === "{" && last === "}") || (first === "[" && last === "]"))) return line;
+			try {
+				return JSON.stringify(JSON.parse(line), null, 2);
+			} catch {
+				// Bracketed text that is not JSON, such as `[unserializable …]`: shown as printed.
+				return line;
+			}
+		})
+		.join("\n");
+}

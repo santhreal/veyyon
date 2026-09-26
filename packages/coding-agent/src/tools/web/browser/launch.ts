@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type * as BrowsersNs from "@puppeteer/browsers";
 import { $which, errorMessage, getPuppeteerDir, logger } from "@veyyon/utils";
+import { bestEffort } from "@veyyon/utils/discarded-fault";
 import type { Browser, CDPSession, Page, default as Puppeteer, Target } from "puppeteer-core";
 import { ToolError } from "../../core/tool-errors";
 import stealthTamperingScript from "../puppeteer/00_stealth_tampering.txt" with { type: "text" };
@@ -284,7 +285,40 @@ export interface LaunchHeadlessOptions {
 	viewport?: { width: number; height: number; deviceScaleFactor?: number };
 }
 
-export async function launchHeadlessBrowser(opts: LaunchHeadlessOptions): Promise<Browser> {
+/**
+ * The preferences a launched browser's profile starts with. Chrome's password manager offers to save
+ * a password after a sign-in, and checks it against breach lists, through bubbles and dialogs drawn
+ * over the tab. Nothing in the page can see or dismiss them, and while one is up no click or key
+ * reaches the page: after any sign-in form, every later action silently did nothing.
+ */
+const PROFILE_PREFERENCES = {
+	credentials_enable_service: false,
+	profile: { password_manager_leak_detection: false },
+};
+
+/** A fresh profile directory holding {@link PROFILE_PREFERENCES}; whoever disposes the browser removes it. */
+async function createProfile(): Promise<string> {
+	const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "veyyon-chrome-profile-"));
+	await fs.promises.mkdir(path.join(dir, "Default"));
+	await fs.promises.writeFile(path.join(dir, "Default", "Preferences"), JSON.stringify(PROFILE_PREFERENCES));
+	return dir;
+}
+
+/** Remove a profile directory {@link launchHeadlessBrowser} created, once its browser is gone. */
+export async function removeProfile(dir: string): Promise<void> {
+	await bestEffort(
+		fs.promises.rm(dir, { recursive: true, force: true, maxRetries: 3 }),
+		"a profile a process still holds open goes with the next temp sweep",
+	);
+}
+
+/** A headless browser and the profile directory it runs on. */
+export interface LaunchedBrowser {
+	readonly browser: Browser;
+	readonly profileDir: string;
+}
+
+export async function launchHeadlessBrowser(opts: LaunchHeadlessOptions): Promise<LaunchedBrowser> {
 	const vp = opts.viewport ?? DEFAULT_VIEWPORT;
 	const initialViewport = {
 		width: vp.width,
@@ -313,14 +347,22 @@ export async function launchHeadlessBrowser(opts: LaunchHeadlessOptions): Promis
 		launchArgs.push("--ignore-certificate-errors");
 	}
 	const executablePath = await ensureChromiumExecutable();
-	return await puppeteer.launch({
-		headless: opts.headless,
-		defaultViewport: opts.headless ? initialViewport : null,
-		executablePath,
-		args: launchArgs,
-		ignoreDefaultArgs: stealthIgnoreDefaultArgs(executablePath),
-		protocolTimeout: BROWSER_PROTOCOL_TIMEOUT_MS,
-	});
+	const userDataDir = await createProfile();
+	try {
+		const browser = await puppeteer.launch({
+			headless: opts.headless,
+			defaultViewport: opts.headless ? initialViewport : null,
+			executablePath,
+			args: launchArgs,
+			ignoreDefaultArgs: stealthIgnoreDefaultArgs(executablePath),
+			protocolTimeout: BROWSER_PROTOCOL_TIMEOUT_MS,
+			userDataDir,
+		});
+		return { browser, profileDir: userDataDir };
+	} catch (error) {
+		await removeProfile(userDataDir);
+		throw error;
+	}
 }
 
 export async function applyViewport(

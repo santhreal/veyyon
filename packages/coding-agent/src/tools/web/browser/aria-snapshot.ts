@@ -41,7 +41,8 @@ const evaluateResolveRef = buildEvaluator("ref", "resolveAriaRef(ref)");
  * Capture a Playwright-format ARIA snapshot of `root` (or the whole document when
  * null). Always runs in `ai` mode so every node carries a `[ref=eN]` id; resolve
  * those to elements with {@link resolveAriaRefHandle}. Ids are renumbered from e1
- * on each call and remain valid until the next snapshot.
+ * on each call and remain valid until the next snapshot. Bare `generic` wrappers
+ * are left out ({@link withoutBareWrappers}).
  */
 export async function captureAriaSnapshot(
 	page: Page,
@@ -49,7 +50,33 @@ export async function captureAriaSnapshot(
 	options: AriaSnapshotOptions = {},
 ): Promise<string> {
 	const request = { depth: options.depth, boxes: options.boxes };
-	return (await page.evaluate(evaluateAriaSnapshot as never, root as never, request as never)) as string;
+	const yaml = (await page.evaluate(evaluateAriaSnapshot as never, root as never, request as never)) as string;
+	return withoutBareWrappers(yaml);
+}
+
+/** A `generic` node with no name, no text, no state and no pointer: a layout `<div>` and nothing else. */
+const BARE_WRAPPER = /^\s*- generic \[ref=e\d+\]:$/;
+
+/**
+ * The snapshot without its bare `generic` wrappers, each one's children lifted a level into its
+ * place. Layout `<div>`s are 7–30% of a real page's snapshot and hold nothing a model reads or acts
+ * on; a generic that has a name, text, `[active]`, `[cursor=pointer]` or a box stays. Every other
+ * line, and every ref on it, is unchanged.
+ */
+export function withoutBareWrappers(yaml: string): string {
+	const kept: string[] = [];
+	// Indents of the dropped wrappers whose children are still being read.
+	const lifted: number[] = [];
+	for (const line of yaml.split("\n")) {
+		const indent = line.length - line.trimStart().length;
+		while (lifted.length > 0 && indent <= lifted[lifted.length - 1]!) lifted.pop();
+		if (BARE_WRAPPER.test(line)) {
+			lifted.push(indent);
+			continue;
+		}
+		kept.push(lifted.length === 0 ? line : line.slice(2 * lifted.length));
+	}
+	return kept.join("\n");
 }
 
 /**

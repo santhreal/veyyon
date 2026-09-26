@@ -782,7 +782,7 @@ export class AgentSession {
 	 *  the session cwd changes. */
 	#titleSystemPrompt: string | undefined;
 	#toolChoiceQueue = new ToolChoiceQueue();
-	readonly #verificationEvidence = new VerificationEvidenceLedger();
+	readonly #verificationEvidence = new VerificationEvidenceLedger(() => this.getActiveToolNames());
 	#afterEditCheckReported = false;
 
 	/** Running user shell commands and eval runs, and the results recorded while a turn streamed. */

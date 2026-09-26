@@ -48,6 +48,15 @@ import {
 	waitForBrowserRun,
 } from "./run-cancellation";
 import { cloneSafe, RunOutput } from "./run-output";
+import {
+	applyStorageState,
+	captureStorageState,
+	parseStorageState,
+	readStorageStateFile,
+	type StorageState,
+	type StorageStateLoaded,
+	writeStorageStateFile,
+} from "./storage-state";
 import { guardTabApi } from "./tab-api-guard";
 import type {
 	Observation,
@@ -161,6 +170,8 @@ const OP_DEADLINE_SLACK_MS = CELL_BUDGET_SLACK_MS;
 const ZERO_MATCH_FAIL_FAST_MS = 2_000;
 /** Poll cadence for the zero-match watchdog. */
 const ZERO_MATCH_POLL_MS = 250;
+/** How long a failed run waits for the page to say whether it has a name the run could not find. */
+const PAGE_GLOBAL_PROBE_MS = 1_000;
 
 export interface OpTimeouts {
 	/** Largest per-op deadline allowed — strictly below the cell budget. */
@@ -249,6 +260,10 @@ export interface TabApi {
 	}): Promise<HTTPResponse | null>;
 	id(n: number): Promise<ActionableHandle>;
 	ref(id: string): Promise<ActionableHandle>;
+	/** The tab's context: every cookie it holds and the localStorage of every origin open in it; `path` also writes it there. */
+	storageState(opts?: { path?: string }): Promise<StorageState>;
+	/** Load a state, or the state file at a path, into the tab's context. */
+	loadStorageState(stateOrPath: string | StorageState): Promise<StorageStateLoaded>;
 }
 
 export function normalizeSelector(selector: string): string {
@@ -300,8 +315,8 @@ export type ActionableHandle = ElementHandle & { fill(value: string): Promise<vo
 
 /**
  * Attach `fill()` to a puppeteer ElementHandle before handing it to user code.
- * Puppeteer handles expose `type()` but no `fill()`; the semantics mirror the
- * selector-based `tab.fill()`: focus, clear any existing value, then type.
+ * Puppeteer handles expose `type()` but no `fill()`; the semantics are the
+ * selector-based `tab.fill()`'s.
  */
 export function toActionableHandle(handle: ElementHandle): ActionableHandle {
 	const enriched = handle as ActionableHandle;
@@ -309,16 +324,123 @@ export function toActionableHandle(handle: ElementHandle): ActionableHandle {
 	return enriched;
 }
 
-/** Focus, clear any existing value, then retype — shared by `tab.fill(aria-ref)` and enriched handles. */
+/** What `fill` does with an element, decided in the page. */
+type FillPlan =
+	| { readonly kind: "insert" }
+	| { readonly kind: "set" }
+	| { readonly kind: "refuse"; readonly reason: string };
+
+/** An element as `activeElement` returns it: what took focus in a document or shadow root. */
+interface FocusHolder {
+	readonly isContentEditable?: boolean;
+	contains(node: unknown): boolean;
+}
+
+/** The parts of an element `fill` touches, typed here because this package compiles without the DOM lib. */
+interface FillTarget extends FocusHolder {
+	readonly tagName: string;
+	readonly type?: string;
+	readonly disabled?: boolean;
+	readonly readOnly?: boolean;
+	value?: string;
+	focus(): void;
+	select?(): void;
+	dispatchEvent(event: unknown): boolean;
+	/** The document or shadow root the element is in. */
+	getRootNode(): { readonly activeElement: FocusHolder | null };
+	readonly ownerDocument: {
+		createRange(): { selectNodeContents(node: unknown): void };
+		readonly defaultView: {
+			getSelection(): { removeAllRanges(): void; addRange(range: unknown): void } | null;
+			readonly Event: new (type: string, init?: { bubbles?: boolean; composed?: boolean }) => unknown;
+		} | null;
+	};
+}
+
+/**
+ * Decide in the page how to fill `element` with `value`, and do the part that happens there. A text
+ * field has its contents selected so one insertion replaces them; an input whose value is a date,
+ * time, colour or number range is assigned it with the `input` and `change` a user's edit fires, and
+ * keeps its value when it cannot hold the new one; anything else is refused with what to use instead.
+ * Serialized into the page, so it reaches nothing outside itself.
+ *
+ * It runs in puppeteer's isolated world, as every element handle's evaluation does, where a property
+ * a framework defines on the element in the page's own world (React's value tracker) is not visible:
+ * the assignment reaches the native setter, and the framework counts the events as a change.
+ */
+function planFill(element: unknown, value: string): FillPlan {
+	const el = element as FillTarget;
+	const tag = el.tagName.toLowerCase();
+	const refuse = (reason: string): FillPlan => ({ kind: "refuse", reason });
+	// The insertion goes to whatever holds focus: an element that did not take it (hidden, inert, not
+	// rendered) would have its value typed into another field.
+	const unfocusable = (): FillPlan => refuse(`the <${tag}> cannot take focus: it is hidden, inert or not rendered`);
+	const selectAll = (): FillPlan => {
+		el.focus();
+		if (el.getRootNode().activeElement !== el) return unfocusable();
+		el.select?.();
+		return { kind: "insert" };
+	};
+	if (tag === "input") {
+		const type = (el.type ?? "text").toLowerCase();
+		if (type === "checkbox" || type === "radio") return refuse(`an <input type="${type}"> is set by clicking it`);
+		if (type === "file") return refuse(`an <input type="file"> takes files through tab.uploadFile`);
+		if (["button", "hidden", "image", "reset", "submit"].includes(type)) {
+			return refuse(`an <input type="${type}"> holds no text`);
+		}
+		if (el.disabled) return refuse("the <input> is disabled");
+		if (el.readOnly) return refuse("the <input> is read-only");
+		if (["color", "date", "datetime-local", "month", "range", "time", "week"].includes(type)) {
+			const view = el.ownerDocument.defaultView;
+			el.focus();
+			const previous = el.value;
+			el.value = value;
+			if (el.value !== value) {
+				el.value = previous;
+				return refuse(`${JSON.stringify(value)} is not a value an <input type="${type}"> holds`);
+			}
+			if (view) {
+				el.dispatchEvent(new view.Event("input", { bubbles: true, composed: true }));
+				el.dispatchEvent(new view.Event("change", { bubbles: true }));
+			}
+			return { kind: "set" };
+		}
+		return selectAll();
+	}
+	if (tag === "textarea") {
+		if (el.disabled) return refuse("the <textarea> is disabled");
+		if (el.readOnly) return refuse("the <textarea> is read-only");
+		return selectAll();
+	}
+	if (tag === "select") return refuse("a <select> is set with tab.select(selector, ...values)");
+	if (el.isContentEditable) {
+		el.focus();
+		const range = el.ownerDocument.createRange();
+		range.selectNodeContents(el);
+		const selection = el.ownerDocument.defaultView?.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+		// An element inside an editor is edited through the editor's host, which the selection focuses.
+		const active = el.getRootNode().activeElement;
+		if (active?.isContentEditable !== true || !active.contains(el)) return unfocusable();
+		return { kind: "insert" };
+	}
+	return refuse(`a <${tag}> is not an <input>, a <textarea> or contenteditable`);
+}
+
+/**
+ * Replace an element's value, shared by `tab.fill` and enriched handles. The replacement is one
+ * trusted text insertion into the selected contents, the one a paste makes: React, Vue and every
+ * other framework that listens for `input` sees a real edit, and a value of any length costs one
+ * round trip rather than one keystroke per character. `change` fires when focus leaves, as it does
+ * for a person.
+ */
 async function fillViaHandle(handle: ElementHandle, value: string, signal?: AbortSignal): Promise<void> {
-	await untilAborted(signal, () =>
-		handle.evaluate(el => {
-			const node = el as unknown as { value?: string; focus?: () => void };
-			node.focus?.();
-			if ("value" in node) node.value = "";
-		}),
-	);
-	await untilAborted(signal, () => handle.type(value, { delay: 0 }));
+	const plan = await untilAborted(signal, () => handle.evaluate(planFill, value));
+	if (plan.kind === "refuse") throw new ToolError(`fill: ${plan.reason}`);
+	if (plan.kind === "set") return;
+	// An empty insertion deletes the selection, so clearing a field is the same one edit.
+	await untilAborted(signal, () => handle.frame.page().keyboard.sendCharacter(value));
 }
 
 /**
@@ -715,11 +837,17 @@ export class WorkerCore {
 				protocolTimeout: BROWSER_PROTOCOL_TIMEOUT_MS,
 			});
 			if (payload.mode === "headless") {
-				this.#page = await this.#browser.newPage();
+				const context =
+					payload.browserContextId === undefined
+						? this.#browser.defaultBrowserContext()
+						: this.#browser.browserContexts().find(candidate => candidate.id === payload.browserContextId);
+				if (!context) throw new ToolError("The tab's browser context closed before its page opened");
+				this.#page = await context.newPage();
 				this.#observeDialogs();
 				await applyStealthPatches(this.#browser, this.#page, { browserSession: null, override: null });
 				await applyViewport(this.#page, payload.viewport);
 				if (payload.dialogs) this.#applyDialogPolicy(payload.dialogs);
+
 				if (payload.url) {
 					await this.#page.goto(payload.url, {
 						// Default to "load" because dev servers with HMR/WS never reach networkidle.
@@ -874,6 +1002,15 @@ export class WorkerCore {
 		try {
 			throwIfAborted(signal);
 			const page = this.#requirePage();
+			// Chromium runs no animation frames in a background page, and a locator's click, hover and
+			// drag wait on two of them: with several tabs on one headless browser, a run in any tab but
+			// the newest stalled until its action timed out. The run activates its own tab first.
+			if (this.#mode === "headless") {
+				await bestEffort(
+					untilAborted(signal, () => page.bringToFront()),
+					"a page that is already active or closing runs as it is",
+				);
+			}
 			const browser = this.#requireBrowser();
 			const tabApi = guardTabApi(
 				this.#createTabApi(msg.name, msg.timeoutMs, signal, msg.session, output, screenshots, active),
@@ -961,7 +1098,7 @@ export class WorkerCore {
 				type: "result",
 				id: msg.id,
 				ok: false,
-				error: errorPayload(error),
+				error: errorPayload(await this.#explainPageGlobal(error)),
 				partial: { displays: output.finish(), screenshots },
 			});
 		} finally {
@@ -969,6 +1106,35 @@ export class WorkerCore {
 			if (this.#active?.id === msg.id) this.#active = null;
 			runAc.abort(postmortem.markExpectedCleanupError(new ToolAbortError("Browser run ended")));
 		}
+	}
+
+	/**
+	 * Run code executes in the tab worker, and a model that reaches for `document`, `window` or a
+	 * page's own global (`jQuery`, an app object) gets a bare "X is not defined". When the page has
+	 * that name, the error says where it lives and how to reach it, so the next attempt is right.
+	 */
+	async #explainPageGlobal(error: unknown): Promise<unknown> {
+		if (!(error instanceof Error) || error.name !== "ReferenceError" || !this.#page) return error;
+		const name = /^(?:Can't find variable: )?([A-Za-z_$][\w$]*)(?: is not defined)?$/.exec(error.message)?.[1];
+		if (!name) return error;
+		const probe = Promise.withResolvers<boolean | undefined>();
+		const timer = setTimeout(() => probe.resolve(undefined), PAGE_GLOBAL_PROBE_MS);
+		// The main world, as `tab.evaluate` uses: a page's own globals are not visible from the isolated one.
+		void optionalResult(
+			this.#page
+				.mainFrame()
+				.mainRealm()
+				.evaluate(global => global in globalThis, name),
+			"a page that cannot answer leaves the error as it was",
+		).then(probe.resolve);
+		const inPage = await probe.promise;
+		clearTimeout(timer);
+		if (inPage !== true) return error;
+		const explained = new ToolError(
+			`${error.message}: \`${name}\` exists in the page, but run code executes in the tab worker. Use it inside \`await tab.evaluate(() => …)\`.`,
+		);
+		explained.stack = error.stack;
+		return explained;
 	}
 
 	#ensureRuntime(session: SessionSnapshot): JsRuntime {
@@ -1261,18 +1427,14 @@ export class WorkerCore {
 					`tab.fill(${JSON.stringify(selector)})`,
 					actionOpMs,
 					async sig => {
-						if (parseAriaRefSelector(selector) !== null) {
-							const handle = await this.#resolveAriaRef(selector);
-							try {
-								await fillViaHandle(handle, value, sig);
-							} finally {
-								await releaseHandle(handle);
-							}
-							return;
+						// Visible before it is filled, as a click waits: a field that is still animating in is waited
+						// for rather than refused for not taking focus.
+						const handle = await this.#resolveActionHandle(selector, actionOpMs, sig, { visible: true });
+						try {
+							await fillViaHandle(handle, value, sig);
+						} finally {
+							await releaseHandle(handle);
 						}
-						await untilAborted(sig, () =>
-							page.locator(normalizeSelector(selector)).setTimeout(actionOpMs).fill(value, { signal: sig }),
-						);
 					},
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
 				),
@@ -1383,6 +1545,10 @@ export class WorkerCore {
 			},
 			id: async id => toActionableHandle(await this.#resolveCachedHandle(id)),
 			ref: async id => toActionableHandle(await this.#resolveAriaRef(id)),
+			storageState: opts =>
+				op("tab.storageState()", actionOpMs, sig => this.#storageState(opts?.path, sig, session)),
+			loadStorageState: stateOrPath =>
+				op("tab.loadStorageState()", actionOpMs, sig => this.#loadStorageState(stateOrPath, sig, session)),
 		};
 	}
 
@@ -1709,12 +1875,19 @@ export class WorkerCore {
 	/**
 	 * Resolve a selector to an ElementHandle for handle-based actions. An
 	 * `aria-ref=eN` selector resolves against the latest ariaSnapshot's refs
-	 * (main world); anything else goes through the normal locator wait.
+	 * (main world); anything else goes through the normal locator wait, which
+	 * also waits for the element to be visible when `visible` is set.
 	 */
-	async #resolveActionHandle(selector: string, timeoutMs: number, sig: AbortSignal): Promise<ElementHandle> {
+	async #resolveActionHandle(
+		selector: string,
+		timeoutMs: number,
+		sig: AbortSignal,
+		opts?: { visible?: boolean },
+	): Promise<ElementHandle> {
 		if (parseAriaRefSelector(selector) !== null) return this.#resolveAriaRef(selector);
+		const locator = this.#requirePage().locator(normalizeSelector(selector)).setTimeout(timeoutMs);
 		return (await untilAborted(sig, () =>
-			this.#requirePage().locator(normalizeSelector(selector)).setTimeout(timeoutMs).waitHandle({ signal: sig }),
+			(opts?.visible ? locator.setVisibility("visible") : locator).waitHandle({ signal: sig }),
 		)) as ElementHandle;
 	}
 	#clearElementCache(): void {
@@ -1750,13 +1923,38 @@ export class WorkerCore {
 		const page = this.#page;
 		if (this.#dialogHandler && page && !page.isClosed()) page.off("dialog", this.#dialogHandler);
 		// The worker is shutting down and reports `closed` below regardless: a page that will not close is either
-		// already closing or belongs to a browser that is going away with it, and the disconnect follows.
+		// already closing or belongs to a browser that is going away with it, and the disconnect follows. A named
+		// context is the supervisor's, which closes it when its last tab goes.
 		if (this.#mode === "headless" && page && !page.isClosed()) {
 			await bestEffort(page.close(), "a page that will not close is already closing or going with its browser");
 		}
 		if (this.#browser?.connected) this.#browser.disconnect();
 		this.#transport.send({ type: "closed" });
 		this.#transport.close();
+	}
+
+	async #storageState(file: string | undefined, signal: AbortSignal, session: SessionSnapshot): Promise<StorageState> {
+		const context = this.#requirePage().browserContext();
+		return await untilAborted(signal, async () => {
+			const state = await captureStorageState(context);
+			if (file !== undefined) await writeStorageStateFile(resolveToCwd(file, session.cwd), state);
+			return state;
+		});
+	}
+
+	async #loadStorageState(
+		stateOrPath: string | StorageState,
+		signal: AbortSignal,
+		session: SessionSnapshot,
+	): Promise<StorageStateLoaded> {
+		const context = this.#requirePage().browserContext();
+		return await untilAborted(signal, async () => {
+			const state =
+				typeof stateOrPath === "string"
+					? await readStorageStateFile(resolveToCwd(stateOrPath, session.cwd))
+					: parseStorageState(stateOrPath, "tab.loadStorageState()'s argument");
+			return await applyStorageState(context, state);
+		});
 	}
 
 	#requirePage(): Page {

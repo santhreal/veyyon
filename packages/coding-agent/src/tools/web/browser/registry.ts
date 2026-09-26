@@ -7,7 +7,13 @@ import { ToolAbortError, ToolError } from "../../core/tool-errors";
 import { findFreeCdpPort, findReusableCdp, gracefulKillTreeOnce, killExistingByPath, waitForCdp } from "./attach";
 import type { CmuxKind } from "./cmux/rpc";
 import { CmuxSocketClient } from "./cmux/socket-client";
-import { BROWSER_PROTOCOL_TIMEOUT_MS, launchHeadlessBrowser, loadPuppeteer, type UserAgentOverride } from "./launch";
+import {
+	BROWSER_PROTOCOL_TIMEOUT_MS,
+	launchHeadlessBrowser,
+	loadPuppeteer,
+	removeProfile,
+	type UserAgentOverride,
+} from "./launch";
 
 export type PuppeteerBrowserKind =
 	| { kind: "headless"; headless: boolean }
@@ -37,6 +43,8 @@ export interface PuppeteerBrowserHandle extends BrowserHandleCommon {
 	cdpUrl?: string;
 	pid?: number;
 	subprocess?: Subprocess;
+	/** The profile directory a headless launch created, removed when the handle is disposed. */
+	profileDir?: string;
 	stealth: { browserSession: CDPSession | null; override: UserAgentOverride | null };
 }
 
@@ -128,7 +136,7 @@ async function openBrowserHandle(kind: BrowserKind, opts: AcquireBrowserOptions)
 		};
 	}
 	if (kind.kind === "headless") {
-		const browser = await launchHeadlessBrowser({ headless: kind.headless, viewport: opts.viewport });
+		const { browser, profileDir } = await launchHeadlessBrowser({ headless: kind.headless, viewport: opts.viewport });
 		// Chromium is a real multi-process CPU load and puppeteer spawns it for us,
 		// so the pid comes back off the handle rather than from a spawn hook.
 		const chromiumPid = browser.process()?.pid;
@@ -137,6 +145,7 @@ async function openBrowserHandle(kind: BrowserKind, opts: AcquireBrowserOptions)
 			key: browserKey(kind),
 			kind,
 			browser,
+			profileDir,
 			refCount: 0,
 			stealth: { browserSession: null, override: null },
 		};
@@ -262,6 +271,8 @@ async function disposeBrowserHandle(handle: BrowserHandle, opts: { kill: boolean
 				if (proc?.pid !== undefined) await gracefulKillTreeOnce(proc.pid).catch(() => undefined);
 			}
 		}
+		// After the process is gone, whether it closed, was killed or had already crashed.
+		if (handle.profileDir !== undefined) await removeProfile(handle.profileDir);
 		return;
 	}
 	if (handle.kind.kind === "connected") {

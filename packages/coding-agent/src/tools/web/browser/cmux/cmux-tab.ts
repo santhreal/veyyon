@@ -10,7 +10,7 @@ import { resolveToCwd } from "../../../core/path-utils";
 import { formatScreenshot } from "../../../core/render-utils";
 import { ToolAbortError, ToolError, throwIfAborted } from "../../../core/tool-errors";
 import type { ToolSession } from "../../../index";
-import { type AriaSnapshotOptions, buildAriaSnapshotScript } from "../aria-snapshot";
+import { type AriaSnapshotOptions, buildAriaSnapshotScript, withoutBareWrappers } from "../aria-snapshot";
 import { DEFAULT_VIEWPORT } from "../launch";
 import { extractReadableFromHtml, type ReadableFormat } from "../readable";
 import {
@@ -50,6 +50,10 @@ import type { CmuxSocketClient } from "./socket-client";
 // .default = 30s) today, but is kept as its own constant because a per-operation
 // deadline is a different concept from the whole-tool timeout.
 const DEFAULT_OP_TIMEOUT_MS = 30_000;
+
+/** Why a cmux tab has no storage state: its surface shares the cmux app's session. */
+const CMUX_HAS_NO_STORAGE_STATE =
+	"Storage state needs the headless browser: a cmux tab runs in the cmux app's own session. Open the tab without app.cmux.";
 
 interface ScreenshotOptions {
 	selector?: string;
@@ -474,7 +478,8 @@ export class CmuxTab {
 			{ script: buildAriaSnapshotScript(selector, opts) },
 			timeoutMs,
 		)) as CmuxEvalResult;
-		return result.value as string;
+		const snapshot = result.value as string;
+		return typeof snapshot === "string" ? withoutBareWrappers(snapshot) : snapshot;
 	}
 
 	async ref(id: string): Promise<CmuxElementHandle> {
@@ -526,6 +531,15 @@ export class CmuxTab {
 
 	async scroll(dx: number, dy: number): Promise<void> {
 		await this.#request("browser.scroll", { dx, dy });
+	}
+
+	/** A cmux surface runs in the cmux app's own session, whose cookies the tab cannot read or write. */
+	async storageState(_opts?: { path?: string }): Promise<never> {
+		throw new ToolError(CMUX_HAS_NO_STORAGE_STATE);
+	}
+
+	async loadStorageState(_stateOrPath: unknown): Promise<never> {
+		throw new ToolError(CMUX_HAS_NO_STORAGE_STATE);
 	}
 
 	async waitFor(selector: string, opts?: { timeout?: number }): Promise<CmuxElementHandle> {

@@ -24,10 +24,13 @@
 
 import { describe, expect, it, test } from "bun:test";
 import { parseServerArgs, SERVER_FLAGS } from "../../api/main";
+import { BROWSER_FILL_BENCH_FLAGS } from "../../benches/browser-fill";
 import { EDIT_PROMPT_BENCH_FLAGS } from "../../benches/edit-prompt";
 import { GOAL_BUDGET_CONTEXT_FLAGS } from "../../benches/goal-budget-context";
+import { MINIWOB_BENCH_FLAGS } from "../../benches/miniwob";
 import { DISCLOSURE_BENCH_FLAGS } from "../../benches/search/disclosure";
 import { SEARCH_BENCH_FLAGS } from "../../benches/search/main";
+import { WEB_TASKS_BENCH_FLAGS } from "../../benches/web-tasks";
 import {
 	type FlagGrammar,
 	FlagValueError,
@@ -66,6 +69,9 @@ const GRAMMARS: Readonly<Record<string, FlagGrammar>> = {
 	"prefix composition": PREFIX_COMPOSITION_FLAGS,
 	"channel split": CHANNEL_SPLIT_FLAGS,
 	"retype likelihood": RETYPE_LIKELIHOOD_FLAGS,
+	"browser-fill bench": BROWSER_FILL_BENCH_FLAGS,
+	"miniwob bench": MINIWOB_BENCH_FLAGS,
+	"web tasks bench": WEB_TASKS_BENCH_FLAGS,
 };
 
 /**
@@ -91,6 +97,9 @@ const COUNT_FLAGS: Readonly<Record<string, readonly string[]>> = {
 	"prefix composition": [],
 	"channel split": [],
 	"retype likelihood": [],
+	"browser-fill bench": ["rounds"],
+	"miniwob bench": ["seeds", "jobs", "episode-timeout"],
+	"web tasks bench": ["repeats", "jobs", "episode-timeout"],
 };
 
 /** Every flag each grammar declares, valued and valueless together, sorted. */
@@ -132,6 +141,36 @@ const DECLARED_FLAGS: Readonly<Record<string, readonly string[]>> = {
 	"prefix composition": ["help"],
 	"channel split": ["help", "json", "sessions"],
 	"retype likelihood": ["help", "json", "repo", "sessions"],
+	"browser-fill bench": ["help", "json", "label", "rounds"],
+	"miniwob bench": [
+		"agent-dir",
+		"cli",
+		"episode-timeout",
+		"help",
+		"jobs",
+		"json",
+		"label",
+		"miniwob",
+		"model",
+		"seeds",
+		"set",
+		"tasks",
+		"work",
+	],
+	"web tasks bench": [
+		"agent-dir",
+		"cli",
+		"episode-timeout",
+		"help",
+		"jobs",
+		"json",
+		"label",
+		"model",
+		"repeats",
+		"set",
+		"tasks",
+		"work",
+	],
 };
 
 const REFUSED_COUNTS: readonly string[] = ["abc", "0", "-1", "2.5", "1e400"];

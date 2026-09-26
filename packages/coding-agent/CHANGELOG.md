@@ -2,8 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- The `browser` tool's `open` takes `context`, an isolated cookie jar that every headless tab naming it shares and no other tab sees, closed with its last tab ([#947](https://github.com/santhreal/veyyon/issues/947)).
+- The `browser` tool's `save_state` action and `tab.storageState()` write every cookie of a tab's context and the localStorage of its open origins to a Playwright-compatible state file with mode `0600`, and `open`'s `storage_state` and `tab.loadStorageState()` load one before the first request, writing localStorage once so a key the site later clears stays cleared ([#947](https://github.com/santhreal/veyyon/issues/947)).
+- The `browser` tool's `open` with a `url` returns the loaded page's aria snapshot, whose refs a run can act on, when it is at most 6,000 characters, so a small page needs no separate call to read it; a larger page's size is stated instead, and the open's card draws its own rows as before.
+
 ### Changed
 
+- The `browser` tool sends a run's displayed and returned objects to the model as one line of compact JSON instead of two-space indented JSON, which is 36–41% fewer characters for a `tab.observe()` of a real page; the card still lays them out indented.
+- A `browser` run no longer sends a return value that it already displayed, which was 20% of all run-result text in bench sessions.
+- The `browser` tool's `tab.ariaSnapshot()` and an `open`'s page snapshot leave out bare `generic` wrappers (layout `<div>`s with no name, text, state or pointer), 7–30% of a real page's snapshot.
+- A `browser` run that reaches for `document`, `window` or another name the page defines fails with an error that says the name exists in the page and to use it inside `tab.evaluate`, instead of a bare "is not defined".
+- The `browser` tool description (1,590 estimated tokens, from 1,575) states that run code executes outside the page and that raw `page.evaluate` cannot see page globals, and asks the model to act on an open's snapshot without reading the page again and to act and read back in one run.
 - A truncated `read`, `search` or `run_experiment` result records only its truncation counts in the session file, not a second copy of the kept text, so new results take less disk and memory and a resume parses less.
 - The `lsp` tool dispatches each workspace-scoped action (`status`, `diagnostics`, `rename_file`, `capabilities`, `request`, workspace `symbols`, workspace `reload`) to its own handler, and `definition`, `type_definition` and `implementation` share one lookup; no user-visible change.
 - A goal session records the token and time a tool call spends as a small `goal_progress` entry instead of a full copy of the goal, so the session file holds the objective once per goal change rather than once per tool call and a resume parses less.
@@ -33,11 +44,15 @@
 
 ### Fixed
 
+- After a sign-in form in a headless `browser` tab, clicks and keys reach the page again: the browser runs with the password manager's save offer and breach check turned off, whose prompts Chrome drew over the tab a few seconds after sign-in and which blocked every later action without an error.
+- A session without the `browser` tool no longer reads about it: the `read` description names the browser only when the tool is on, and the reminder to verify an edit names only the check tools (bash, eval, debug, browser) the session has.
 - With `edit.streamingAbort` on, a streaming `edit` patch whose last removed line has no trailing newline stops the turn when that line is absent from the file, instead of leaving it for the edit tool to reject after the stream ends.
 - Disposing a session while a Python or eval run is in flight no longer keeps the process alive for up to 3 seconds after the run finishes.
 - The CLI imports the terminal output guard when a worker thread starts rather than at startup, keeping it off the static boot graph; no user-visible change.
 - A tool card whose call carries an argument of the wrong type, such as `input: 404` for `search`, draws the value as text or omits it instead of failing with `Renderer failed: e.toWellFormed is not a function`.
 - The `read` card for a structurally summarized file numbers each row with the line the model saw, a merged brace pair with its opening line, instead of counting up from line 1 past every elided body, and draws the `…` elision row and the summary budget notice without a line number.
+- The `browser` tool's `tab.fill` replaces a value in one trusted text insertion, so a React or Vue field's state follows it, the empty value included, and a fill takes about 1.5 ms where the locator fill waited 33 ms for a stable bounding box; it fills contenteditable elements, sets date, time, colour and range inputs with `input` and `change`, refuses checkboxes, radios, file inputs, `<select>` and read-only fields with the call that handles them, and refuses an element that cannot take focus instead of typing into the field that has it.
+- A `browser` click, hover or drag in a headless tab other than the most recently opened one completes instead of stalling for eight seconds and failing as hidden or covered: each run brings its tab to the front.
 - The streaming-reveal throughput bench builds its target as a transcript view instead of a raw assistant message, so `bun packages/coding-agent/bench/streaming-throughput.bench.ts` runs again; no user-visible change.
 - An agent's live preview shows the shorthand the stream was still holding when a streamed message ends without a final content snapshot, instead of dropping it.
 

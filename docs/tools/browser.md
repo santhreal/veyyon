@@ -13,6 +13,7 @@
   - `packages/coding-agent/src/tools/web/browser/launch.ts`: Puppeteer loading, Chromium resolution/download, headless launch, stealth injection.
   - `packages/coding-agent/src/tools/web/browser/attach.ts`: CDP attach/reuse, target picking, spawned-app process handling.
   - `packages/coding-agent/src/tools/web/browser/tab-protocol.ts`: worker init/run/result message schema.
+  - `packages/coding-agent/src/tools/web/browser/storage-state.ts`: storage state files: validation, capture from a context, load into a context.
   - `packages/coding-agent/src/tools/web/browser/readable.ts`: `tab.extract()` readability extraction.
   - `packages/coding-agent/src/tools/web/browser/aria-snapshot.ts`: `captureAriaSnapshot()` (puppeteer/CDP path) and `buildAriaSnapshotScript()` (cmux path); imports the committed `aria-snapshot.bundle.txt`.
   - `packages/coding-agent/src/tools/web/browser/aria-snapshot.bundle.txt`: generated, committed artifact: Playwright's injected ARIA-snapshot sources (Apache-2.0, (c) Microsoft; ARIA tree + W3C accessible-name computation) bundled to a CJS module. Upstream sources are not vendored into the repo.
@@ -43,7 +44,7 @@
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `action` | `"open" \| "close" \| "run"` | Yes | Dispatches to the open/close/run path. |
+| `action` | `"open" \| "close" \| "run" \| "save_state"` | Yes | Dispatches to the open/close/run/save_state path. |
 | `name` | `string` | No | Tab id. Defaults to `"main"`. Tabs live in a process-global map, so the same name is reused across later calls and in-process agents until closed. |
 | `timeout` | `number` | No | Tool wall-clock timeout in seconds. Defaults to `30`; clamped to the browser tool range before execution. |
 
@@ -56,6 +57,8 @@
 | `wait_until` | `"load" \| "domcontentloaded" \| "networkidle0" \| "networkidle2"` | No | Navigation wait condition. Defaults to `"load"` where omitted, including `open` navigation and later `tab.goto(...)`. |
 | `dialogs` | `"accept" \| "dismiss"` | No | Installs a page `dialog` handler that auto-accepts or auto-dismisses dialogs. Omitted means no handler. |
 | `app` | `{ path?: string; cdp_url?: string; args?: string[]; target?: string }` | No | Selects browser kind. With no `app`, the cmux backend is used when a cmux socket is available (`CMUX_SOCKET_PATH`, gated by the `browser.cmux` setting / `VEYYON_BROWSER_CMUX` override); otherwise the session `browser.headless` setting applies. `app.path` is resolved against the session cwd and used as the executable path for spawn/attach reuse. `app.cdp_url` connects to an existing CDP endpoint. `args` are appended only when spawning `app.path`. `target` is only used for attached/spawned-app page selection. |
+| `context` | `string` | No | Headless only. Isolated context for the tab: every tab naming the same context shares its cookies and storage, and no tab of another context or of the default one sees them. The context closes with its last tab. Omitted or `"default"` is the browser's default context; a tab opened again with no `context` stays in the one it is in. |
+| `storage_state` | `string` | No | Headless only. State file, resolved against the session cwd, loaded into the tab's context before the tab navigates: its unexpired cookies, and each origin's localStorage, written once. The file is read and validated before a browser starts. |
 
 ### `action: "close"`
 
@@ -63,6 +66,12 @@
 | --- | --- | --- | --- |
 | `all` | `boolean` | No | Close every known tab. Omitted closes only `name`. |
 | `kill` | `boolean` | No | When a tab release drops a spawned-app browser handle to refcount 0, also terminate its process tree. Has no effect on headless shutdown and only disconnects connected CDP browsers. |
+
+### `action: "save_state"`
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `storage_state` | `string` | Yes | File to write, resolved against the session cwd. It receives every cookie of the tab's context, on every host, and the localStorage of every http(s) origin a page of the context has open, in the Playwright `storageState` shape, with mode `0600`. |
 
 ### `action: "run"`
 
@@ -73,15 +82,16 @@
 ## Outputs
 The tool returns one result per call; no streaming partial output is emitted from the browser implementation itself.
 
-- `open`: text content with `Opened` or `Reused`, browser description, URL, and optional title. `details` includes `action`, `name`, `browser`, `url`, `viewport`, and the same text in `details.result`.
+- `open`: text content with `Opened` or `Reused`, browser description, the context when the tab is in one, URL, optional title, and, with `storage_state`, `Loaded <n> cookies and localStorage for <origins> from <file>`. With `url`, it ends with `Page:` and the page's `tab.ariaSnapshot()` when that is at most 6,000 chars (`OPEN_SNAPSHOT_MAX_CHARS` in `packages/coding-agent/src/tools/web/browser.ts`), whose refs a later run uses as `aria-ref=eN`; a larger snapshot is not sent and the line states its size (`Page snapshot not sent: <n> chars. ...`); a snapshot that fails is stated as `Page snapshot unavailable: <reason>` and the open stands. `details` includes `action`, `name`, `browser`, `url`, `viewport`, `context`, `storageState`, and the same text in `details.result`.
 - `close`: text content with either `Closed ...` or `No tab named ...`. `details` includes `action`, `name`, and `details.result`.
+- `save_state`: `Saved <n> cookies and localStorage for <origins> to <file>`; the cookies themselves stay out of the result. `details` includes `action`, `name`, `browser`, `url`, `context`, and `storageState`.
 - `run`: ordered `content` array built as:
   1. every structured display output in execution order (object/image `display(value)` calls plus helper status events),
-  2. final return value, JSON-stringified unless already a string,
+  2. final return value, as compact JSON unless already a string, left out when a display entry already holds the same text,
   3. or `Ran code on tab "..."` if nothing else was produced.
 - `display(value)` is handled by the shared runtime's `displayValue()` (`src/eval/js/shared/runtime.ts`), then mapped to content by `WorkerCore.#pushDisplay()` (`packages/coding-agent/src/tools/web/browser/tab-worker.ts`):
   - `{ type: "image", data, mimeType }` with decodable base64 becomes image content; an unrecognized `data` shape is dropped with a debug note.
-  - any other object/array becomes pretty JSON text (`JSON.stringify(value, null, 2)`); a value that is not structured-cloneable is dropped with a debug note.
+  - any other object/array becomes one line of compact JSON (`safeJsonStringify()` in `packages/coding-agent/src/tools/web/browser/run-output.ts`); a value that is not structured-cloneable is dropped with a debug note. The card lays each such line out indented for a person (`indentJsonLines()` in `view.ts`); the model receives the compact line.
   - helper side effects (`read`/`write`/`tree`/...) emit `status` events that surface as compact JSON text.
   - primitive `display(value)` (string/number/...) and `console.*` flow to the text channel, which the worker forwards as debug logs rather than tool content; `undefined` is ignored.
 - `tab.screenshot()` also appends text plus an image content item unless `silent: true`; `details.screenshots` records persisted screenshot metadata `{ dest, mimeType, bytes, width, height }`.
@@ -94,7 +104,7 @@ The tool returns one result per call; no streaming partial output is emitted fro
    - `app.path` → `{ kind: "spawned" }` after resolving against session cwd.
    - otherwise, `resolveCmuxKind()` → `{ kind: "cmux", socketPath, password?, surface? }` when `CMUX_SOCKET_PATH` is set and cmux is enabled (`browser.cmux` setting, overridable by `VEYYON_BROWSER_CMUX`).
    - otherwise → `{ kind: "headless", headless: session.settings.get("browser.headless") }`.
-3. `open` rejects reusing the same tab name across different browser kinds (`sameBrowserKind()`); callers must close first.
+3. `open` rejects `context` and `storage_state` on any browser kind but headless, reads and checks the state file with `readStorageStateFile()`, and rejects reusing the same tab name across different browser kinds (`sameBrowserKind()`); callers must close first. All of it happens before a browser starts.
 4. `open` acquires a browser handle through `acquireBrowser()` (`packages/coding-agent/src/tools/web/browser/registry.ts`):
    - existing connected handle is reused by browser-kind key;
    - stale disconnected handles are disposed and recreated;
@@ -103,14 +113,16 @@ The tool returns one result per call; no streaming partial output is emitted fro
    - `spawned` first tries `findReusableCdp()`, else kills same-path processes, allocates a free loopback port, spawns the executable with `--remote-debugging-port=<port>`, waits for CDP, then connects.
    - `cmux` connects a `CmuxSocketClient` to the cmux unix socket; existing cmux handles are reused unconditionally (no connection-liveness recheck).
 5. `open` acquires a tab through `acquireTab()` (`packages/coding-agent/src/tools/web/browser/tab-supervisor.ts`):
-   - same-name + same-browser + alive tab is reused unless `dialogs` changed;
-   - same-name but different browser handle, dead state, or changed dialog policy forces release and recreation;
-   - reusing with a new `url` navigates by issuing `await tab.goto(...)` through the worker, defaulting to `waitUntil: "load"` when `wait_until` is omitted.
+   - same-name + same-browser + alive tab is reused unless `dialogs` changed; a `context` other than the tab's is refused;
+   - same-name but different browser handle, dead state, or changed dialog policy forces release and recreation, in the same context;
+   - reusing with a new `url` navigates by issuing `await tab.goto(...)` through the worker, defaulting to `waitUntil: "load"` when `wait_until` is omitted;
+   - a named context is created in the main thread (`holdNamedContext()`), shared by every tab that names it, and closed when its last tab is released or killed (`releaseNamedContext()`);
+   - a state file is loaded into the tab's context with `applyStorageState()` before the worker opens the page.
 6. New tabs build a `WorkerInitPayload` in `buildInitPayload()`:
-   - headless mode sends `url`, `waitUntil`, `viewport`, `dialogs`, and timeout; the worker defaults missing `waitUntil` to `"load"`.
+   - headless mode sends `url`, `waitUntil`, `viewport`, `dialogs`, timeout, and the named context's `browserContextId`; the worker defaults missing `waitUntil` to `"load"`.
    - attach mode resolves a page with `pickElectronTarget()`, gets its target id, and sends `targetId` plus `dialogs`.
 7. `acquireTab()` spawns a dedicated Bun `Worker` from `tab-worker-entry.ts`; if that fails it falls back to inline execution in the main thread (`spawnInlineWorker()`), preserving behavior but losing protection against synchronous infinite loops.
-8. `WorkerCore.#init()` (`packages/coding-agent/src/tools/web/browser/tab-worker.ts`) connects back to the browser websocket endpoint. Headless mode opens a new page, applies stealth patches, applies viewport, installs dialog handling if requested, and optionally navigates. Attach mode resolves the requested target page and optionally installs dialog handling.
+8. `WorkerCore.#init()` (`packages/coding-agent/src/tools/web/browser/tab-worker.ts`) connects back to the browser websocket endpoint. Headless mode opens a new page in the context `browserContextId` names (the default context without one), applies stealth patches, applies viewport, installs dialog handling if requested, and optionally navigates. Attach mode resolves the requested target page and optionally installs dialog handling.
 9. On success the worker sends `ready` with `{ url, title, viewport, targetId }`; the supervisor stores a `TabSession`, increments browser-handle refcount with `holdBrowser()`, and keeps the tab in a process-global `Map<string, TabSession>`.
 10. `run` requires non-empty `code`, looks up the tab with `getTab()`, then delegates to `runInTab()`.
 11. `runInTabWithSnapshot()` rejects dead tabs and concurrent runs (`Tab ... is busy`), captures session cwd plus optional `browser.screenshotDir`, registers an abort hook, sends a `run` message to the worker, and races the result against `timeoutMs + 750` ms. Timeouts on dedicated-worker tabs recycle the worker (the old worker is terminated and a fresh worker adopts the same page, so the tab and page target survive); force-kill plus orphaned page close happens only for inline-mode tabs, failed recycles, or when the worker stays unresponsive past the 750 ms grace.
@@ -129,7 +141,7 @@ The tool returns one result per call; no streaming partial output is emitted fro
    - `tab.extract(format = "markdown")`
    - `tab.click(selector)`
    - `tab.type(selector, text)`
-   - `tab.fill(selector, value)`
+   - `tab.fill(selector, value)`: waits for a selector's element to be visible, then focuses and selects the contents of an `<input>`, `<textarea>` or contenteditable element and replaces them with one `Input.insertText`, which deletes the selection for an empty value, so frameworks see a trusted `input`; date, time, colour and range inputs are assigned the value from puppeteer's isolated world, which a framework's value tracker on the element does not reach, followed by `input` and `change`, and keep their value when they cannot hold the new one; other elements are refused.
    - `tab.press(key, { selector? })`
    - `tab.scroll(deltaX, deltaY)`
    - `tab.drag(from, to)`
@@ -147,12 +159,13 @@ The tool returns one result per call; no streaming partial output is emitted fro
 14. Selector handling in `normalizeSelector()` accepts plain CSS and Puppeteer query handlers, and rewrites legacy Playwright-style prefixes `p-text/`, `p-xpath/`, `p-pierce/`, `p-aria/`; other `p-*` prefixes throw a `ToolError`. Playwright-only engines/pseudos (`:has-text()`, `:text()`, `:visible`, `:nth-match()`, `:near()`/`:above()`/…) on a CSS selector throw a `ToolError` pointing at the `text/`/`aria/` equivalents instead of stalling the action timeout.
 15. `tab.observe()` clears the element cache, takes a Puppeteer accessibility snapshot, filters to interactive nodes unless `includeAll`, optionally filters to viewport-visible nodes, assigns numeric ids, caches `ElementHandle`s, and returns URL/title/viewport/scroll metadata plus `elements`.
 15a. `tab.ariaSnapshot()` resolves the optional `selector` (via `normalizeSelector()` → `page.$`, defaulting to the whole document) and runs the generated Playwright ARIA-snapshot bundle (`src/tools/web/browser/aria/aria-snapshot.bundle.txt`) via `captureAriaSnapshot()`. The bundle is wrapped in a `new Function` built worker-side (so page CSP never applies) and serialized to a CDP `page.evaluate` in the page's **main world**, returning Playwright-format YAML. It always runs in `ai` mode: every node gets a `[ref=eN]` id, clickables get `[cursor=pointer]`, and matched DOM nodes are tagged with an `_ariaRef` expando. Existing `_ariaRef` expandos are cleared before each snapshot so ids renumber deterministically from e1 (the fresh module's counter resets each call); refs stay valid until the next snapshot. The cmux backend uses `buildAriaSnapshotScript()` over `browser.eval` instead (no `ElementHandle`; CSS selectors only for the root).
+15b. Both backends pass the YAML through `withoutBareWrappers()` (`aria-snapshot.ts`): a `- generic [ref=eN]:` line with no name, text, state, pointer or box is left out and its children are lifted one level into its place. Layout `<div>`s were 7–30% of a real page's snapshot. Every other line and ref is unchanged.
 16. `tab.id(n)` resolves the cached `ElementHandle`, verifies `el.isConnected`, and throws a stale-id error after cache invalidation if the DOM changed or the cache was cleared.
 16a. `tab.ref(id)` resolves a `[ref=eN]` id from the latest `ariaSnapshot()` to a live `ElementHandle` via `resolveAriaRefHandle()` (`page.evaluateHandle` in the main world, walking the document + shadow roots for the matching `_ariaRef`), throwing if no element matches; it accepts a bare `eN` or a prefixed form. For inline selector use, `parseAriaRefSelector()` recognizes only the explicit `aria-ref=eN` / `aria-ref/eN` / `ariaref/eN` forms inside `tab.click/type/fill/waitFor/scrollIntoView`, a bare `eN` is intentionally rejected there so it does not collide with cmux's native observe ids. The cmux backend resolves the same explicit forms through its `aria-ref` `SelectorSpec` kind in `findElement`.
 17. `tab.goto()` clears the cached element ids before navigating. Any new `tab.observe()` also clears and rebuilds the cache.
 18. `tab.click()` uses a custom retry loop for `text/...` selectors to find an actionable visible match; other selectors use `page.locator(...).click()`. Interactive actions (`click`/`fill`/`type`/`press`/`scroll`/`drag`/`scrollIntoView`/`select`/`uploadFile`) and the `waitFor*` helpers run under a per-op deadline (`min(cellBudget − slack, ceiling)`) threaded into both the puppeteer `signal` and `.setTimeout()`, so a stalled helper aborts the CDP action and rejects with a named `tab.<op> timed out after <ms>ms` that leaves cell budget: never the opaque whole-cell timeout. `goto`/`evaluate` stay uncapped.
 19. `tab.screenshot()` captures either the whole page or a selector PNG, downsizes a copy for model output, chooses a persistence path, writes the image to disk, records metadata, and optionally emits text + image display entries.
-20. `display()` calls accumulate in an array. After code finishes, the worker posts `{ displays, returnValue, screenshots }`; `BrowserTool.#run()` appends the return value as trailing text content when not `undefined`.
+20. `display()` calls accumulate in an array. After code finishes, the worker posts `{ displays, returnValue, screenshots }`; `BrowserTool.#run()` appends the return value as trailing text content when not `undefined`. In a headless browser, a run first brings its own page to the front (`page.bringToFront()`): Chromium runs no animation frames in a background page, and the locator's click, hover and drag wait on two of them.
 21. `close` releases one tab or all tabs via `releaseTab()` / `releaseAllTabs()`. Each tab aborts pending runs, asks the worker to close, waits up to `750` ms for a `closed` ack, terminates the worker, decrements browser refcount, and disposes the browser handle when refcount reaches zero.
 
 ## Modes / Variants
@@ -160,6 +173,7 @@ The tool returns one result per call; no streaming partial output is emitted fro
   - `open`: acquire/reuse browser + tab.
   - `close`: release one tab or all tabs.
   - `run`: execute JS inside the tab worker.
+  - `save_state`: write the tab context's cookies and localStorage to a state file, through a `tab.storageState()` run.
 - **Browser kind**
   - **Headless**: launches local Chromium with Puppeteer, applies stealth patches, and creates a fresh page per tab.
   - **Spawned app (`app.path`)**: reuses an existing CDP-enabled process for that executable when possible; otherwise kills same-path processes, spawns the executable with remote debugging enabled, then attaches. No stealth patches are injected.
@@ -185,12 +199,15 @@ The tool returns one result per call; no streaming partial output is emitted fro
   - `loadPuppeteer()` writes `{}` to `<puppeteer-safe-dir>/package.json` before importing `puppeteer-core`.
   - First headless launch may download Chromium into the Puppeteer cache directory returned by `getPuppeteerDir()`.
   - `tab.screenshot()` creates parent directories and writes image files.
+  - `save_state` and `tab.storageState({ path })` create parent directories and write the state file with mode `0600`; it holds live session cookies.
+  - `open` with `storage_state` and `tab.loadStorageState(path)` read a state file.
   - `tab.uploadFile()` resolves supplied paths against the session cwd.
 - Network
   - CDP attach paths poll `http://127.0.0.1:<port>/json/version` or the supplied `cdp_url` `/json/version`.
   - Headless/browser-attach sessions create CDP websocket connections.
   - Headless first-use Chromium download uses `@puppeteer/browsers`.
   - User `page` / `tab` operations perform normal browser network traffic.
+  - Loading localStorage opens a throwaway page per load whose requests are answered in the browser; it sends nothing to the network.
 - Subprocesses / native bindings
   - Headless mode launches Chromium through Puppeteer.
   - `app.path` mode may spawn the target executable via `Bun.spawn()`.
@@ -223,7 +240,14 @@ The tool returns one result per call; no streaming partial output is emitted fro
 ## Errors
 - `BrowserTool.execute()` converts DOM-style `AbortError` into `ToolAbortError`; other errors propagate.
 - `run` hard-fails on missing code: `Missing required parameter 'code' for action 'run'.`
+- A run that fails with `X is not defined` for a name the page has (`document`, `window`, a page's own global) reports ``X is not defined: `X` exists in the page, but run code executes in the tab worker. Use it inside `await tab.evaluate(() => …)`.`` The page is asked for at most 1 s (`PAGE_GLOBAL_PROBE_MS`); a name the page lacks keeps its plain error.
 - `open` fails when reusing a name across browser kinds: `Tab "..." is bound to a different browser (...). Close it first.`
+- `open` with `context` or `storage_state` on a spawned, connected or cmux browser: `context and storage_state need the headless browser; ... runs in the app's own session.`
+- `open` with a `context` other than a live tab's: `Tab "..." is open in context "..."; close it first, or open context "..." under another tab name.`
+- A state file that cannot be used fails the open or load naming it: `Cannot read storage state <file>: ...`, `Storage state <file> is not JSON: ...`, `<file> is not a storage state: ...`, or `<file> names "..." as an origin; ...`.
+- `save_state` without a file: `save_state needs storage_state, the file to write ...`. `context` outside `open`, and `storage_state` outside `open` and `save_state`, are refused.
+- `tab.fill` refuses what it cannot fill with the call that can: checkboxes and radios (click), file inputs (`tab.uploadFile`), `<select>` (`tab.select`), read-only or disabled fields, a value a date/time/colour/range input cannot hold, and non-editable elements. An element that does not take focus (hidden, inert, not rendered) is refused before any text is inserted, so the value never reaches the element that holds focus.
+- `tab.storageState()` and `tab.loadStorageState()` on a cmux tab: `Storage state needs the headless browser: ...`.
 - `runInTabWithSnapshot()` fails when the tab is absent/dead (`Tab "..." is not alive. Reopen it.`) or already running (`Tab "..." is busy`).
 - Worker init failures and run failures are serialized through `RunErrorPayload`; `ToolError` and abort state are reconstructed on the host side by `errorFromPayload()`.
 - Attached-target mismatches surface as:
@@ -240,6 +264,7 @@ The tool returns one result per call; no streaming partial output is emitted fro
 - `loadPuppeteer()` temporarily redirects `cwd` to a safe Puppeteer directory before importing `puppeteer-core`, because Puppeteer probes the current working directory during module load. The tab worker imports the same helper rather than carrying its own loader.
 - Headless launch prefers a detected system Chrome/Chromium, then `PUPPETEER_EXECUTABLE_PATH`, and only then downloads Chromium.
 - Headless launch always passes `--no-sandbox`, `--disable-setuid-sandbox`, `--disable-blink-features=AutomationControlled`, and a `--window-size=...` matching the initial viewport. It also ignores Puppeteer default args `--disable-extensions`, `--disable-default-apps`, and `--disable-component-extensions-with-background-pages`.
+- Headless launch runs on a fresh profile directory (`veyyon-chrome-profile-*` under the OS temp directory) whose `Default/Preferences` turn off the password manager's save offer (`credentials_enable_service`) and its breach check (`profile.password_manager_leak_detection`). Chrome draws both over the tab after a sign-in form, and while one is open no click or key reaches the page. The registry removes the directory when it disposes the browser, whether it closed, was killed or had crashed.
 - Proxy-related env vars only affect headless launch: `PUPPETEER_PROXY`, `PUPPETEER_PROXY_BYPASS_LOOPBACK`, and `PUPPETEER_PROXY_IGNORE_CERT_ERRORS`.
 - Stealth patches are applied only in headless mode. Spawned or externally connected browsers are intentionally left untouched.
 - `applyStealthPatches()` also strips Puppeteer's `//# sourceURL=__puppeteer_evaluation_script__` suffix from CDP `Runtime.evaluate` / `Runtime.callFunctionOn` payloads.

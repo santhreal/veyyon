@@ -51,6 +51,8 @@ export type WorkerInitPayload =
 			url?: string;
 			waitUntil?: "load" | "domcontentloaded" | "networkidle0" | "networkidle2";
 			timeoutMs: number;
+			/** The isolated context to open the page in, by CDP id; the browser's default context when absent. */
+			browserContextId?: string;
 	  }
 	| {
 			mode: "attach";
@@ -64,7 +66,6 @@ export type WorkerInitPayload =
 			 */
 			recover?: boolean;
 	  };
-
 export type ToolReply = { ok: true; value: unknown } | { ok: false; error: TabRunErrorPayload };
 
 export type TabWorkerInbound =

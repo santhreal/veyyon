@@ -4,11 +4,13 @@
  * The comparison is taken through `test/differential/harness.ts`, whose header states the frozen
  * oracle, the shared defect class and the styling policy every cell here runs under.
  *
- * The tool has three actions and two card shapes, so both are swept: the `open` and `close` row over
+ * The tool has four actions and two card shapes, so both are swept: the `open` and `close` row over
  * every action, every browser kind the registry can report and every outcome, and the `run` panel
  * over the script, its output, both ceilings and four terminal widths. The browser kinds and the
- * actions are recorded as total records of their own unions, so a fifth kind or a fourth action fails
- * the type check here rather than going uncompared.
+ * actions are recorded as total records of their own unions, so a new kind or action fails the type
+ * check here rather than going uncompared. `save_state`, and the context and state file an `open`
+ * names, came after main's renderer froze: they are listed by name and drawn against their own
+ * expectations instead.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -60,7 +62,10 @@ const BROWSER_KINDS: Record<NonNullable<BrowserToolDetails["browser"]>, true> = 
 };
 
 /** Every action the tool takes, as a total record of the schema's own union. */
-const ACTIONS: Record<BrowserParams["action"], true> = { open: true, close: true, run: true };
+const ACTIONS: Record<BrowserParams["action"], true> = { open: true, close: true, run: true, save_state: true };
+
+/** Actions main's renderer never drew, so there is nothing of main's to compare them to. */
+const NEWER_THAN_MAIN: ReadonlySet<BrowserParams["action"]> = new Set(["save_state"]);
 
 const KINDS = Object.keys(BROWSER_KINDS) as Array<NonNullable<BrowserToolDetails["browser"]>>;
 const EVERY_ACTION = Object.keys(ACTIONS) as Array<BrowserParams["action"]>;
@@ -120,7 +125,7 @@ describe("browser tool differential", () => {
 
 	it("draws the tab row byte for byte, over every action, every browser kind and every outcome", () => {
 		for (const action of EVERY_ACTION) {
-			if (action === "run") continue;
+			if (action === "run" || NEWER_THAN_MAIN.has(action)) continue;
 			for (const kind of KINDS) {
 				const args: BrowserViewArgs = { action, name: "docs", url: "https://example.com/asked-for" };
 				const settled: BrowserViewResult = {
@@ -164,6 +169,53 @@ describe("browser tool differential", () => {
 		expect(flat).toContain("headless");
 		expect(flat).toContain("example.com/docs/getting-started");
 		expect(drawn.join("\n")).toContain(theme.styledSymbol("tool.browser", "accent"));
+	});
+
+	/**
+	 * What main never drew. A `save_state` row names the operation and the file it wrote, never
+	 * reading as an open; an `open` into a context names the context, the default context names
+	 * none; a state file appears on the rows that read or write one and not on a close.
+	 */
+	it("draws a save_state row, and the context and state file of an open, in their own words", () => {
+		const rowOf = (args: BrowserViewArgs, details: BrowserToolDetails): string =>
+			stripVTControlCharacters(resultView({ content: [], details }, COLLAPSED, args, 200).join("\n"));
+		const saved = rowOf(
+			{ action: "save_state", name: "admin", storage_state: ".auth/admin.json" },
+			{
+				action: "save_state",
+				name: "admin",
+				browser: "headless",
+				context: "admin",
+				storageState: "/repo/.auth/admin.json",
+			},
+		);
+		expect(saved).toContain('Save the state of tab "admin"');
+		expect(saved).not.toContain("Open");
+		expect(saved).toContain('context "admin"');
+		expect(saved).toContain("/repo/.auth/admin.json");
+		// The call card, before any result, names the file as the model wrote it.
+		const called = stripVTControlCharacters(
+			callView({ action: "save_state", name: "admin", storage_state: ".auth/admin.json" }, COLLAPSED, 200).join(
+				"\n",
+			),
+		);
+		expect(called).toContain('Save the state of tab "admin"');
+		expect(called).toContain(".auth/admin.json");
+
+		const opened = rowOf(
+			{ action: "open", name: "admin", context: "admin", url: URL },
+			{ action: "open", name: "admin", url: URL, browser: "headless", context: "admin" },
+		);
+		expect(opened).toContain('context "admin"');
+		const defaulted = stripVTControlCharacters(
+			callView({ action: "open", name: "docs", context: "default", url: URL }, COLLAPSED, 200).join("\n"),
+		);
+		expect(defaulted).not.toContain("context");
+		const closed = rowOf(
+			{ action: "close", name: "admin" },
+			{ action: "close", name: "admin", storageState: "/repo/x.json" },
+		);
+		expect(closed).not.toContain("x.json");
 	});
 
 	it("draws every way a close names its tabs byte for byte: all, one, and killed", () => {
@@ -327,6 +379,47 @@ describe("browser tool differential", () => {
 		expect(stripVTControlCharacters(resultView(result, EXPANDED, args, 200).join("\n"))).toContain("row 24");
 	});
 
+	/**
+	 * The model is now sent a returned or displayed value as one line of compact JSON, where main sent it
+	 * indented. A person reading the card sees what main drew for the same value: each output line that
+	 * parses as an object or array is laid out again, and bracketed text that is not JSON is drawn as
+	 * printed.
+	 */
+	it("draws a value the model was sent as compact JSON the way main drew it indented", () => {
+		const value = {
+			query: 'Enter "Tora" into the text field.',
+			elements: [
+				{ id: 1, role: "textbox", name: "", states: ["focusable"] },
+				{ id: 2, role: "button", name: "Submit", states: [] },
+			],
+		};
+		const args: BrowserViewArgs = { action: "run", name: "docs", code: "return value;" };
+		const printed = ["displayed first", "[unserializable function: not JSON]", "[1,2"];
+		const sent: BrowserViewResult = {
+			content: [
+				{ type: "text", text: printed.join("\n") },
+				{ type: "text", text: JSON.stringify(value) },
+			],
+			details: { action: "run", name: "docs" },
+		};
+		const mainSent: BrowserViewResult = {
+			content: [
+				{ type: "text", text: printed.join("\n") },
+				{ type: "text", text: JSON.stringify(value, null, 2) },
+			],
+			details: { action: "run", name: "docs" },
+		};
+		for (const width of WIDTHS) {
+			expect(sameRailColour(resultView(sent, EXPANDED, args, width)).slice(1)).toEqual(
+				sameRailColour(resultOracle(mainSent, HOST_EXPANDED, args, width)).slice(1),
+			);
+		}
+		// Anti-vacuity: the compact line itself is not what the card shows.
+		const flat = stripVTControlCharacters(resultView(sent, EXPANDED, args, 200).join("\n"));
+		expect(flat).not.toContain(JSON.stringify(value));
+		expect(flat).toContain('"role": "button"');
+	});
+
 	it("frames the panel with the host's muted rail, where main coloured the rail by the state", () => {
 		const args: BrowserViewArgs = { action: "run", code: "return 1;" };
 		const rail = theme.symbol("block.rail");
@@ -385,6 +478,34 @@ describe("browser tool differential", () => {
 				.join("\n"),
 		);
 		expect(drawn.slice(1).join("\n")).toContain(theme.fg("toolOutput", replaceTabs("opened\tdocs")));
+	});
+
+	/**
+	 * An open that loads a small page now sends the model the page's snapshot after its own rows, and
+	 * a larger page's size in its place. That text is the model's to read: the card draws the open
+	 * exactly as it draws one that sent no page, under both disclosures and at every width.
+	 */
+	it("draws an open that sent the model its page as it draws an open that sent none", () => {
+		const args: BrowserViewArgs = { action: "open", name: "docs", url: URL };
+		const rows = `Opened tab "docs" on headless browser (hidden)\nURL: ${URL}\nTitle: Getting started`;
+		const details: BrowserToolDetails = { action: "open", name: "docs", url: URL, browser: "headless", result: rows };
+		const bare: BrowserViewResult = { content: [{ type: "text", text: rows }], details };
+		const pages = [
+			'Page:\n- heading "Getting started" [level=1] [ref=e2]\n- textbox "Search" [ref=e3]',
+			"Page snapshot not sent: 9120 chars. Read what you need with tab.observe() or tab.ariaSnapshot(selector).",
+		];
+		for (const page of pages) {
+			const sent: BrowserViewResult = { content: [{ type: "text", text: `${rows}\n${page}` }], details };
+			for (const [context] of DISCLOSURES) {
+				for (const width of WIDTHS) {
+					expect(resultView(sent, context, args, width)).toEqual(resultView(bare, context, args, width));
+				}
+			}
+			// Anti-vacuity: the open's own rows are drawn, and the page is not.
+			const flat = stripVTControlCharacters(resultView(sent, EXPANDED, args, 200).join("\n"));
+			expect(flat).toContain("Title: Getting started");
+			expect(flat).not.toContain("Page");
+		}
 	});
 
 	it("states a cut-short output inside the card, where main appended it below the frame", () => {
