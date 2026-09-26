@@ -14,7 +14,6 @@ import {
 	getOpenAICodexTransportDetails,
 	prewarmOpenAICodexResponses,
 } from "@veyyon/ai/providers/openai-codex-responses";
-import type { HostNotifier } from "@veyyon/host";
 import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { abortDetached } from "@veyyon/kernel/session/detached-abort";
 import { createInterruptedTurnAbortMessage } from "@veyyon/kernel/session/exit-diagnostics";
@@ -33,7 +32,6 @@ import {
 	postmortem,
 	prefetch,
 	Snowflake,
-	setProjectDir,
 } from "@veyyon/utils";
 import { type ArgotGate, shouldEncode } from "argot/policy";
 import { renderPreamble } from "argot/preamble";
@@ -52,7 +50,6 @@ import { resolveContextLimit } from "./config/compaction-strategy";
 import { resolveDialect } from "./config/dialect-format";
 import { shouldInlineToolDescriptors } from "./config/inline-tool-descriptors-mode";
 import { ModelRegistry } from "./config/model-registry";
-import { formatModelString } from "./config/model-resolver";
 import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";
@@ -69,7 +66,6 @@ import {
 	selectDiscoverableToolNamesByServer,
 	summarizeDiscoverableTools,
 } from "./discovery/tool-index";
-import { defaultEvalSessionId } from "./eval/session-id";
 import { getExaMcpTools } from "./exa/tools";
 import { TtsrManager } from "./export/ttsr";
 import {
@@ -97,7 +93,6 @@ import { discoverAndLoadMCPTools, MCPManager, MCPToolCache } from "./mcp";
 import { MCP_CONNECTION_STATUS_EVENT_CHANNEL, type McpConnectionStatusEvent } from "./mcp/startup-events";
 import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memory/backend";
 import { recordRestLaunchFacts } from "./modes/launch-facts";
-import { DEFAULT_PLAN_FILE_URL } from "./plan-mode/plan-file-url";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID, mainAgentIdFor } from "./registry/agent-registry";
 import { resolveHarnessProfileForModel, resolvePromptSectionOrderForModel } from "./registry/model-profile";
@@ -152,7 +147,6 @@ import {
 } from "./tools/web/search";
 import { ttsTool } from "./tools/web/tts";
 import { EventBus } from "./utils/event-bus";
-import { buildNamedToolChoice } from "./utils/tool-choice";
 import type { WorkspaceTree } from "./workspace-tree";
 
 // Types
@@ -255,6 +249,7 @@ import {
 	isCustomTool,
 	isLegacyBuiltinToolDefinition,
 } from "./session/factory-tools";
+import { createSessionToolSession } from "./session/tool-session";
 
 let sshCleanupRegistered = false;
 
@@ -672,188 +667,43 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			if (AgentLifecycleManager.global().isParking(resolvedAgentId)) return;
 			agentRegistry.unregister(resolvedAgentId);
 		};
-		const getActiveModelString = (): string | undefined => {
-			const activeModel = agent?.state.model;
-			if (activeModel) return formatModelString(activeModel);
-			if (model) return formatModelString(model);
-			return undefined;
-		};
-		// Per-path mutation counter shared across edit/write tools. Late-diagnostics
-		// entries capture it at fetch time and are dropped at injection if a newer
-		// mutation (any tool) bumped it in the meantime.
-		const fileMutationVersions = new Map<string, number>();
-		const activeToolNames = new Set<string>();
-		const setActiveToolNames = (names: Iterable<string>): void => {
-			activeToolNames.clear();
-			for (const name of names) {
-				activeToolNames.add(name);
-			}
-		};
-		/**
-		 * Move the session working directory before an `AgentSession` exists.
-		 *
-		 * Only reachable in the window where a tool runs during construction. Once
-		 * `session` is assigned, both tool sessions delegate to `AgentSession.setCwd`,
-		 * which owns the re-scope and does considerably more than this.
-		 *
-		 * ONE copy, because there were two: the agent's tool session and the
-		 * advisor's held byte-identical bodies, and the `setProjectDir` below is
-		 * exactly the kind of line that gets fixed in one of a pair and not the other.
-		 * It is guarded for the same reason `AgentSession.rescopeToCwd` guards its
-		 * process-global half: a spawned agent shares this process with its parent and its
-		 * siblings, and may not move their working directory.
-		 */
-		const setCwdBeforeSessionExists: NonNullable<ToolSession["setCwd"]> = async (resolvedPath, options) => {
-			const previous = sessionManager.getCwd();
-			const cwd = await sessionManager.setCwd(resolvedPath, options);
-			if (cwd !== previous) {
-				if (!sessionIsSpawned) setProjectDir(cwd);
-				const note = `Session working directory changed: ${previous} → ${cwd}`;
-				sessionManager.appendCustomMessageEntry("cwd_changed", note, true, { previous, cwd }, "agent");
-			}
-			return cwd;
-		};
-		// Installed by whichever host is running, through the setToolNotifier this
-		// factory returns. Nothing here knows what a host is, so a terminal, a GUI
-		// and a headless run all reach the same slot.
-		let hostNotifier: HostNotifier | undefined;
-
-		const toolSession: ToolSession = {
-			get cwd() {
-				return sessionManager.getCwd();
-			},
-			setCwd: async (resolvedPath, options) =>
-				session ? session.setCwd(resolvedPath, options) : setCwdBeforeSessionExists(resolvedPath, options),
-			obfuscateProviderText: text => secretRuntime.obfuscateText(text),
-			// A generated spawned agent label is a side request of THIS session, so it
-			// rides the session's side transport and inherits its watchdogs and
-			// concurrency bracket. Read live: the session is constructed after this
-			// literal, and no tool can run before it exists.
-			get sideComplete() {
-				return session?.sideComplete;
-			},
-			// Reported, never no-oped: a host installs this through
-			// setToolNotifier, and until one does the getter returns undefined so a
-			// tool can see that nothing here reaches the operator. Read live for the
-			// same reason as sideComplete — the host arrives after this literal.
-			get notify() {
-				return hostNotifier;
-			},
-			isToolActive: name => activeToolNames.has(name),
+		const {
+			toolSession,
+			advisorToolSession,
 			setActiveToolNames,
-			hasUI: options.hasUI ?? false,
-			enableLsp,
-			get hasEditTool() {
-				const requestedToolNames = options.toolNames ? normalizeToolNames(options.toolNames) : undefined;
-				return !requestedToolNames || requestedToolNames.includes(TOOL.edit);
+			setNotifier: setToolNotifier,
+			activeModelString: getActiveModelString,
+		} = createSessionToolSession({
+			options,
+			sessionManager,
+			session: () => session,
+			agent: () => agent,
+			startupModel: () => model,
+			hasExplicitModel,
+			obfuscateProviderText: text => secretRuntime.obfuscateText(text),
+			isSpawned: sessionIsSpawned,
+			agentId: resolvedAgentId,
+			evalKernelOwnerId,
+			fields: {
+				enableLsp,
+				contextFiles,
+				workspaceTree: resolvedWorkspaceTree,
+				skills,
+				rules: allRules,
+				eventBus,
+				agentRegistry,
+				settings,
+				authStorage,
+				modelRegistry,
+				// Spawned agents inherit the singleton (the parent's manager) so their bash/task
+				// completions still flow into the spawning conversation's yieldQueue.
+				// Secondary in-process top-level sessions (no parentTaskPrefix, no
+				// constructed manager because the singleton was already installed) leave
+				// this undefined so tools and session job snapshots refuse async work
+				// instead of silently routing into the owning session (issue #1923).
+				asyncJobManager: scopedAsyncJobManager,
 			},
-			skipPythonPreflight: options.skipPythonPreflight,
-			contextFiles,
-			workspaceTree: resolvedWorkspaceTree,
-			skills,
-			rules: allRules,
-			eventBus,
-			outputSchema: options.outputSchema,
-			requireYieldTool: options.requireYieldTool,
-			taskDepth: options.taskDepth ?? 0,
-			maxNestedSpawnDepth: options.maxNestedSpawnDepth,
-			getSessionFile: () => sessionManager.getSessionFile() ?? null,
-			getEvalKernelOwnerId: () => evalKernelOwnerId,
-			getEvalSessionId: () =>
-				session?.getEvalSessionId() ?? options.parentEvalSessionId ?? defaultEvalSessionId(toolSession),
-			assertEvalExecutionAllowed: () => session?.assertEvalExecutionAllowed(),
-			trackEvalExecution: (execution, abortController) =>
-				session ? session.trackEvalExecution(execution, abortController) : execution,
-			getSessionId: () => sessionManager.getSessionId?.() ?? null,
-			getTurnIndex: () => session?.getTurnIndex() ?? 0,
-			getHindsightSessionState: () => session?.getHindsightSessionState(),
-			getMnemopiSessionState: () => session?.getMnemopiSessionState(),
-			getAgentId: () => resolvedAgentId,
-			getToolByName: name => session?.getToolByName(name),
-			agentRegistry,
-			getSessionSpawns: () => options.spawns ?? "*",
-			getModelString: () => (hasExplicitModel && model ? formatModelString(model) : undefined),
-			getActiveModelString,
-			getActiveThinkingLevel: () => session?.configuredThinkingLevel() ?? options.thinkingLevel,
-			getActiveModel: () => agent?.state.model ?? model,
-			getServiceTierByFamily: () => session?.serviceTierByFamily,
-			getImageAttachments: () => session?.getImageAttachments() ?? [],
-			getPlanModeState: () => session?.getPlanModeState(),
-			getPlanReferencePath: () => session?.getPlanReferencePath() ?? DEFAULT_PLAN_FILE_URL,
-			getGoalModeState: () => session?.getGoalModeState(),
-			getGoalRuntime: () => session?.goalRuntime,
-			getUsageStatistics: () => sessionManager.getUsageStatistics(),
-			getTurnBudget: () => sessionManager.getTurnBudget(),
-			recordEvalAgentUsage: output => sessionManager.recordEvalAgentOutput(output),
-			getClientBridge: () => session?.clientBridge,
-			queueDeferredDiagnostics: entry => session?.yieldQueue.enqueue(LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE, entry),
-			bumpFileMutationVersion: path => {
-				const next = (fileMutationVersions.get(path) ?? 0) + 1;
-				fileMutationVersions.set(path, next);
-				return next;
-			},
-			getFileMutationVersion: path => fileMutationVersions.get(path) ?? 0,
-			getTodoPhases: () => session.getTodoPhases(),
-			setTodoPhases: phases => session.setTodoPhases(phases),
-			isMCPDiscoveryEnabled: () => session.isMCPDiscoveryEnabled(),
-			getSelectedMCPToolNames: () => session.getSelectedMCPToolNames(),
-			activateDiscoveredMCPTools: toolNames => session.activateDiscoveredMCPTools(toolNames),
-			// Generic tool discovery (unified — covers built-in + MCP + extension)
-			isToolDiscoveryEnabled: () => session.isToolDiscoveryEnabled(),
-			getDiscoverableTools: filter => session.getDiscoverableTools(filter),
-			getDiscoverableToolSearchIndex: () => session.getDiscoverableToolSearchIndex(),
-			getSelectedDiscoveredToolNames: () => session.getSelectedDiscoveredToolNames(),
-			activateDiscoveredTools: toolNames => session.activateDiscoveredTools(toolNames),
-			getCheckpointState: () => session.getCheckpointState(),
-			setCheckpointState: state => session.setCheckpointState(state ?? undefined),
-			getLastCompletedRewind: () => session.getLastCompletedRewind(),
-			getToolChoiceQueue: () => session.toolChoiceQueue,
-			buildToolChoice: name => {
-				const m = session.model;
-				return m ? buildNamedToolChoice(name, m) : undefined;
-			},
-			steer: msg =>
-				session.agent.steer({
-					role: "custom",
-					customType: msg.customType,
-					content: msg.content,
-					display: false,
-					details: msg.details,
-					attribution: "agent",
-					timestamp: Date.now(),
-				}),
-			peekQueueInvoker: () => session.peekQueueInvoker(),
-			peekPendingInvoker: () => session.peekPendingInvoker(),
-			clearPendingInvokers: () => session.clearPendingInvokers(),
-			peekStandingResolveHandler: () => session.peekStandingResolveHandler(),
-			setStandingResolveHandler: handler => session.setStandingResolveHandler(handler),
-			allocateOutputArtifact: async toolType => {
-				try {
-					return await sessionManager.allocateArtifactPath(toolType);
-				} catch (error) {
-					// Without an artifact, oversized output is truncated with no
-					// full-output copy — never degrade to that silently.
-					logger.error("Artifact allocation failed; large output will be truncated without a saved copy", {
-						toolType,
-						error: errorMessage(error),
-					});
-					return {};
-				}
-			},
-			getArtifactManager: () => sessionManager.getArtifactManager(),
-			recordAgentSpawn: record => sessionManager.appendAgentSpawn(record),
-			settings,
-			authStorage,
-			modelRegistry,
-			getTelemetry: () => agent?.telemetry,
-			// Spawned agents inherit the singleton (the parent's manager) so their bash/task
-			// completions still flow into the spawning conversation's yieldQueue.
-			// Secondary in-process top-level sessions (no parentTaskPrefix, no
-			// constructed manager because the singleton was already installed) leave
-			// this undefined so tools and session job snapshots refuse async work
-			// instead of silently routing into the owning session (issue #1923).
-			asyncJobManager: scopedAsyncJobManager,
-		};
+		});
 
 		// Wire process-wide internal URL singletons owned by their real classes.
 		// Top-level sessions install the active snapshots; spawned agents inherit them.
@@ -1908,18 +1758,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			toolContextStore.setUIContext(uiContext, hasUI);
 		};
 
-		/**
-		 * Install the running host's out-of-band notification delivery.
-		 *
-		 * The mirror of setToolUIContext: the host pushes a capability in rather
-		 * than the tool layer reaching out for one, which is what keeps a tool from
-		 * naming a terminal. A host that cannot reach an operator installs nothing,
-		 * and `ToolSession.notify` stays undefined.
-		 */
-		const setToolNotifier = (notify: HostNotifier) => {
-			hostNotifier = notify;
-		};
-
 		const initialTools = initialToolNames
 			.map(name => toolRegistry.get(name))
 			.filter((tool): tool is AgentTool => tool !== undefined);
@@ -2135,27 +1973,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		}
 
 		// Full toolset for the advisor, built unconditionally so it can be toggled at
-		// runtime. Bound to a DISTINCT ToolSession (its own `-advisor` session id +
-		// agent id) so the advisor's tool state — snapshot, seen-lines, conflict, and
-		// summary caches, all keyed on session identity — stays isolated from the
-		// primary, while edit/bash/write stay fully functional: the advisor is a full
-		// agent and its config's `tools` selects which of these it actually gets
+		// runtime; the advisor's config `tools` selects which of these it gets
 		// (defaulting to read/search).
-		const advisorToolSession: ToolSession = {
-			...toolSession,
-			get cwd() {
-				return sessionManager.getCwd();
-			},
-			setCwd: async (resolvedPath, options) =>
-				session ? session.setCwd(resolvedPath, options) : setCwdBeforeSessionExists(resolvedPath, options),
-			hasEditTool: true,
-			requireYieldTool: false,
-			getSessionId: () => {
-				const id = sessionManager.getSessionId?.();
-				return id ? `${id}-advisor` : null;
-			},
-			getAgentId: () => "advisor",
-		};
 		const advisorToolBuilds: Array<Tool | null | Promise<Tool | null>> = [];
 		for (const name in BUILTIN_TOOLS) {
 			advisorToolBuilds.push(BUILTIN_TOOLS[name as keyof typeof BUILTIN_TOOLS](advisorToolSession));

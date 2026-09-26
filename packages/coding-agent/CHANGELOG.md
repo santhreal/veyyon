@@ -31,6 +31,7 @@
 - Startup model and thinking-level selection (session restore, the settings default, deferred `--model` patterns, the fallback role chain, the first authenticated model and the metadata refresh) runs in `StartupModelSelection` in `session/startup-model.ts` instead of inline in `createAgentSession`; no user-visible change.
 - The `edit` tool's patch mode computes a hunk's replacements (the direct match, trimmed-context variants, fuzzy fallback and overlap checks) and re-indents a hunk's new lines (tab-to-space, space-to-tab and matched-line alignment) in single-purpose functions instead of functions of 341 and 215 lines; no user-visible change.
 - A session discovers its context files, workspace tree, repository context, skills, rules, watchdog files and advisor configs through one `discoverProjectInputs` path at startup and after a working-directory change, starts rules discovery with the other project scans instead of after the session context loads, and clears the 5-second workspace tree deadline timer when the scan finishes instead of leaving it armed.
+- A session's tool session (the file mutation counters, the active-tool set, the host notifier and the advisor's view) is built in `session/tool-session.ts` instead of inline in `createAgentSession`; no user-visible change.
 
 ### Fixed
 
@@ -43,6 +44,7 @@
 - An agent's live preview shows the shorthand the stream was still holding when a streamed message ends without a final content snapshot, instead of dropping it.
 - `veyyon --resume <id>` for a session from another project reopens that session in place and moves the launch into its recorded working directory, instead of prompting to fork it into the launch directory or failing without a terminal; an explicit `--cwd` moves the session's working directory there instead.
 - `veyyon --resume <id>` runs under the profile whose sessions directory holds the session, instead of the profile the launch started in; an explicit `--profile` takes precedence.
+- The advisor's tools read the primary tool session live, so an advisor `ask` delivers the host notification, an advisor `task` label rides the session's side transport, and an advisor spawn after a working-directory change inherits the new context files, workspace tree, skills and rules instead of the launch ones.
 
 ### Removed
 

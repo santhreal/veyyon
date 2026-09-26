@@ -15,7 +15,9 @@
  * `createAgentSession` itself is split only where a concern owns its state. The
  * secret runtime (the lease, the obfuscator pair, the vault revision, the reload
  * queue) moved to `SessionSecretRuntime` in `src/secrets/session-runtime.ts`,
- * which holds that state as fields instead of as captured locals. The rest is
+ * which holds that state as fields instead of as captured locals. The tool
+ * session (the mutation counters, the active-tool set, the host notifier and the
+ * advisor's derived view) moved to `src/session/tool-session.ts`. The rest is
  * one `try`/`catch` whose inner closures capture the MCP manager and the teardown
  * flags the `catch` block reads; turning those captures into parameters is a
  * rewrite of the startup ordering and the failure path, not a move, so the plan's
@@ -36,10 +38,10 @@ const SESSION_DIR = repoPath("packages/coding-agent/src/session");
 const SDK = repoPath("packages/coding-agent/src/sdk.ts");
 
 /**
- * MEASURED at 2705 lines after project-input discovery moved to `factory-extensions.ts`, of
- * which `createAgentSession` is 2397. This falls when that function is rewritten.
+ * MEASURED at 2524 lines after the tool session moved to `session/tool-session.ts`, of which
+ * `createAgentSession` is 2221. This falls when that function is rewritten.
  */
-const SDK_CEILING = 2786;
+const SDK_CEILING = 2524;
 
 /** MEASURED: the largest factory module is `factory-extensions.ts` at 396 lines. */
 const FACTORY_CEILING = 400;

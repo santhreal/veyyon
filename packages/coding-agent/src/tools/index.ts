@@ -146,8 +146,46 @@ export interface DeferredDiagnosticsEntry {
 	isStale(): boolean;
 }
 
+/**
+ * Per-session tool state a tool attaches to its {@link ToolSession} on first use. A session
+ * derived from another (the advisor's, through `deriveToolSession`) starts with none of it, so
+ * the two never share a snapshot store, a conflict log, a diagnostics ledger or a no-op guard.
+ */
+export interface ToolSessionLocalState {
+	/** Per-session snapshot store of file contents as last shown to the model
+	 *  by `read`/`search`. Used by hashline anchor-stale recovery to
+	 *  reconstruct the version the model authored anchors against when the
+	 *  file changed out-of-band. Lazily initialized by `getFileSnapshotStore`. */
+	fileSnapshotStore?: InMemorySnapshotStore;
+
+	/** Per-session log of unresolved git merge conflict regions surfaced by
+	 *  `read`. Each entry gets a stable id N referenced by `write conflict://N`
+	 *  to splice the recorded region with replacement content. Lazily initialized
+	 *  by `getConflictHistory`. */
+	conflictHistory?: ConflictHistory;
+
+	/** Per-session ledger of post-edit LSP diagnostics already surfaced to the
+	 *  model for each file. Lazily initialized by `getDiagnosticsLedger`. */
+	diagnosticsLedger?: DiagnosticsLedger;
+
+	/** Per-session ledger of consecutive byte-identical no-op edits, keyed by
+	 *  canonical file path. The hashline executor escalates a soft no-op hint
+	 *  to a thrown error once the same payload no-ops `NOOP_HARD_LIMIT` times,
+	 *  breaking agent loops that ignore the textual hint (issue #2081).
+	 *  Lazily initialized by `getNoopLoopGuard`. */
+	noopLoopGuard?: NoopLoopGuard;
+}
+
+/** The keys of {@link ToolSessionLocalState}. `satisfies` fails the type check when the two differ. */
+export const TOOL_SESSION_LOCAL_STATE_KEYS = Object.keys({
+	fileSnapshotStore: true,
+	conflictHistory: true,
+	diagnosticsLedger: true,
+	noopLoopGuard: true,
+} satisfies Record<keyof ToolSessionLocalState, true>) as ReadonlyArray<keyof ToolSessionLocalState>;
+
 /** Session context for tool factories */
-export interface ToolSession {
+export interface ToolSession extends ToolSessionLocalState {
 	/** Current working directory */
 	cwd: string;
 	/**
@@ -437,30 +475,6 @@ export interface ToolSession {
 	setCheckpointState?: (state: CheckpointState | null) => void;
 	/** Get the most recent completed rewind, if this session just rewound a checkpoint. */
 	getLastCompletedRewind?: () => CompletedRewindState | undefined;
-
-	/** Per-session snapshot store of file contents as last shown to the model
-	 *  by `read`/`search`. Used by hashline anchor-stale recovery to
-	 *  reconstruct the version the model authored anchors against when the
-	 *  file changed out-of-band. Lazily initialized by `getFileSnapshotStore`. */
-	fileSnapshotStore?: InMemorySnapshotStore;
-
-	/** Per-session log of unresolved git merge conflict regions surfaced by
-	 *  `read`. Each entry gets a stable id N referenced by `write conflict://N`
-	 *  to splice the recorded region with replacement content. Lazily initialized
-	 *  by `getConflictHistory`. */
-	conflictHistory?: ConflictHistory;
-
-	/** Per-session ledger of post-edit LSP diagnostics already surfaced to the
-	 *  model for each file. Lazily initialized by `getDiagnosticsLedger`. */
-	diagnosticsLedger?: DiagnosticsLedger;
-
-	/** Per-session ledger of consecutive byte-identical no-op edits, keyed by
-	 *  canonical file path. The hashline executor escalates a soft no-op hint
-	 *  to a thrown error once the same payload no-ops `NOOP_HARD_LIMIT` times,
-	 *  breaking agent loops that ignore the textual hint (issue #2081).
-	 *  Lazily initialized by `getNoopLoopGuard`. */
-	noopLoopGuard?: NoopLoopGuard;
-
 	/** Queue a hidden message to be injected at the next agent turn. */
 	queueDeferredMessage?(message: CustomMessage): void;
 	/** Queue late LSP diagnostics (arrived after an edit/write returned) to be shown
