@@ -5,8 +5,8 @@
  * resolves from any profile's sessions root, so the session opened under
  * whichever profile the launch started in: its settings, credentials and `.env`
  * came from a profile the session never belonged to. `runCli` resolves the id
- * against every profile before any profile-scoped module loads and activates the
- * profile that holds it.
+ * against every profile through `src/cli/resume-profile.ts` before any
+ * profile-scoped module loads and activates the profile that holds it.
  *
  * THE CLASS THIS CLOSES is a resume spelling that skips the lookup. The sweep
  * takes the launch parser's own resume flags from `OPTIONAL_FLAGS`, spaced and
