@@ -560,12 +560,8 @@ import {
 import { ProviderContextCanonicalizer } from "./provider-context-canonicalizer";
 import { applyProviderImagePolicy } from "./provider-image-budget";
 import { normalizeRoots } from "./relativize-paths";
-import {
-	checkpointStartedAtFromEntry,
-	completedRewindFromEntry,
-	isSuccessfulCheckpointEntry,
-} from "./rewind-checkpoint";
 import { AdvisorRoster, type AdvisorRosterHost } from "./runtime/advisor-roster";
+import { CheckpointRuntime } from "./runtime/checkpoint-runtime";
 import { StreamingEditGuard } from "./runtime/streaming-edit-guard";
 import { ThinkingRuntime } from "./runtime/thinking-runtime";
 import { TodoRuntime } from "./runtime/todo-runtime";
@@ -1048,10 +1044,8 @@ export class AgentSession {
 	#argotStreamDisplay: ArgotStreamDisplayDecoder | undefined;
 	/** Resolves the active model's inline-descriptor policy for session dumps. */
 	#resolvePruneToolDescriptions: (model: Model) => boolean = () => false;
-	#checkpointState: CheckpointState | undefined = undefined;
-	#pendingRewindReport: string | undefined = undefined;
-	#lastCompletedRewind: CompletedRewindState | undefined = undefined;
-	#rewoundToolResultIds = new Set<string>();
+	/** The open checkpoint, its pending rewind report and the last completed rewind. */
+	readonly #checkpoint = new CheckpointRuntime();
 	#lastSuccessfulYieldToolCallId: string | undefined = undefined;
 	/**
 	 * Sticky across an in-flight prompt run: a successful `yield` makes the run
@@ -1751,9 +1745,8 @@ export class AgentSession {
 		this.agent.setRawSseEventInterceptor(this.#onSseEvent);
 		this.agent.setOnTurnEnd(async (messages, signal, context) => {
 			if (signal?.aborted) return;
-			const rewindReport = this.#extractRewindReport(messages);
+			const rewindReport = this.#checkpoint.takeReport(messages);
 			if (rewindReport) {
-				this.#pendingRewindReport = undefined;
 				await this.#applyRewind(rewindReport, messages);
 			}
 			if (context?.message.role === "assistant") {
@@ -1935,7 +1928,7 @@ export class AgentSession {
 		this.#advisorRoster = this.#createAdvisorRoster(config);
 		this.#advisorRoster.enableFromSettings();
 
-		this.#rehydrateCheckpointRewindState();
+		this.#checkpoint.rehydrate(this.sessionManager.getBranch());
 
 		// Always subscribe to agent events for internal handling
 		// (session persistence, hooks, auto-compaction, retry logic)
@@ -3023,7 +3016,7 @@ export class AgentSession {
 		const skipPersistedRewindResult =
 			message.role === "toolResult" &&
 			message.toolName === TOOL.rewind &&
-			this.#rewoundToolResultIds.delete(message.toolCallId);
+			this.#checkpoint.consumeRewoundResult(message.toolCallId);
 		if (!skipPersistedRewindResult) {
 			this.#appendSessionMessage(persistenceMessage);
 		}
@@ -3849,22 +3842,14 @@ export class AgentSession {
 					}
 				}
 				if (toolName === TOOL.checkpoint && !isError) {
-					const checkpointEntryId = this.sessionManager.getEntries().at(-1)?.id ?? null;
-					this.#checkpointState = {
+					this.#checkpoint.begin({
 						checkpointMessageCount: this.agent.state.messages.length,
-						checkpointEntryId,
+						checkpointEntryId: this.sessionManager.getEntries().at(-1)?.id ?? null,
 						startedAt: details?.startedAt ?? new Date().toISOString(),
-					};
-					this.#pendingRewindReport = undefined;
-					this.#lastCompletedRewind = undefined;
+					});
 				}
-				if (toolName === TOOL.rewind && !isError && this.#checkpointState) {
-					const detailReport = typeof details?.report === "string" ? details.report.trim() : "";
-					const textReport = content?.find(part => part.type === "text")?.text?.trim() ?? "";
-					const report = detailReport || textReport;
-					if (report.length > 0) {
-						this.#pendingRewindReport = report;
-					}
+				if (toolName === TOOL.rewind && !isError) {
+					this.#checkpoint.recordRewindResult(details, content);
 				}
 			}
 		}
@@ -6910,73 +6895,16 @@ export class AgentSession {
 		this.agent.setTools(activeTools);
 	}
 
-	#clearCheckpointRuntimeState(): void {
-		this.#checkpointState = undefined;
-		this.#pendingRewindReport = undefined;
-		this.#lastCompletedRewind = undefined;
-		this.#rewoundToolResultIds.clear();
-	}
-
-	/**
-	 * Rebuild checkpoint/rewind runtime state from the current branch. Handles two
-	 * cases surfaced by session resume, `switchSession()` reloading the same file,
-	 * and tree navigation:
-	 *   - The branch's most recent checkpoint has already been rewound → restore
-	 *     `#lastCompletedRewind` so a repeat `rewind` call receives the
-	 *     "checkpoint already completed" recovery guidance.
-	 *   - The branch's most recent checkpoint has NOT been rewound (e.g. the run
-	 *     was aborted between `checkpoint` and `rewind`) → restore
-	 *     `#checkpointState` so the next `rewind` call can complete the
-	 *     checkpoint instead of failing with "No active checkpoint".
-	 */
-	#rehydrateCheckpointRewindState(): void {
-		this.#clearCheckpointRuntimeState();
-		let completed: CompletedRewindState | undefined;
-		let pending: { entryId: string; startedAt: string; messageCount: number } | undefined;
-		let messageCount = 0;
-		for (const entry of this.sessionManager.getBranch()) {
-			if (entry.type === "message") messageCount++;
-			if (isSuccessfulCheckpointEntry(entry)) {
-				completed = undefined;
-				pending = {
-					entryId: entry.id,
-					startedAt: checkpointStartedAtFromEntry(entry) ?? entry.timestamp,
-					messageCount,
-				};
-				continue;
-			}
-			const completedFromEntry = completedRewindFromEntry(entry);
-			if (completedFromEntry) {
-				completed = completedFromEntry;
-				pending = undefined;
-			}
-		}
-		if (pending) {
-			this.#checkpointState = {
-				checkpointEntryId: pending.entryId,
-				startedAt: pending.startedAt,
-				checkpointMessageCount: pending.messageCount,
-			};
-			return;
-		}
-		this.#lastCompletedRewind = completed;
-	}
-
 	getCheckpointState(): CheckpointState | undefined {
-		return this.#checkpointState;
+		return this.#checkpoint.state;
 	}
 
 	getLastCompletedRewind(): CompletedRewindState | undefined {
-		return this.#lastCompletedRewind;
+		return this.#checkpoint.lastCompleted;
 	}
 
 	setCheckpointState(state: CheckpointState | undefined): void {
-		this.#checkpointState = state;
-		if (state) {
-			this.#lastCompletedRewind = undefined;
-		} else {
-			this.#pendingRewindReport = undefined;
-		}
+		this.#checkpoint.set(state);
 	}
 
 	/**
@@ -8862,7 +8790,7 @@ export class AgentSession {
 		// conversation the operator has left. Release them and re-root this ref.
 		await this.#rescopeAgentRegistry();
 
-		this.#clearCheckpointRuntimeState();
+		this.#checkpoint.clear();
 		this.setTodoPhases([]);
 		this.#freshProviderSessionId = undefined;
 		this.#clearInheritedProviderPromptCacheKey("new-session");
@@ -10202,7 +10130,7 @@ export class AgentSession {
 			// leaving them registered would list them under the new conversation.
 			await this.#rescopeAgentRegistry();
 
-			this.#clearCheckpointRuntimeState();
+			this.#checkpoint.clear();
 			// agent.reset() clears the core steering/follow-up queues. Preserve any queued
 			// steers/follow-ups (RPC/SDK steer()/followUp() issued during the handoff, or a
 			// pre-loader TUI steer) so they survive into the post-handoff session instead of
@@ -11405,7 +11333,7 @@ export class AgentSession {
 	}
 
 	#enforceRewindBeforeYield(): boolean {
-		if (!this.#checkpointState || this.#pendingRewindReport) {
+		if (!this.#checkpoint.awaitingRewind) {
 			return false;
 		}
 		const reminder = [
@@ -11506,26 +11434,8 @@ export class AgentSession {
 		return true;
 	}
 
-	#extractRewindReport(messages: AgentMessage[]): string | undefined {
-		if (!this.#checkpointState) return undefined;
-		if (this.#pendingRewindReport) return this.#pendingRewindReport;
-		for (let i = messages.length - 1; i >= 0; i--) {
-			const message = messages[i];
-			if (message?.role !== "toolResult" || message.toolName !== TOOL.rewind || message.isError) continue;
-			const details = message.details;
-			const detailReport =
-				details && typeof details === "object" && "report" in details && typeof details.report === "string"
-					? details.report.trim()
-					: "";
-			const textReport = message.content.find(part => part.type === "text")?.text.trim() ?? "";
-			const report = detailReport || textReport;
-			return report.length > 0 ? report : undefined;
-		}
-		return undefined;
-	}
-
 	async #applyRewind(report: string, activeMessages?: AgentMessage[]): Promise<void> {
-		const checkpointState = this.#checkpointState;
+		const checkpointState = this.#checkpoint.state;
 		if (!checkpointState) {
 			return;
 		}
@@ -11549,15 +11459,7 @@ export class AgentSession {
 			details,
 			"agent",
 		);
-		this.#lastCompletedRewind = { report, startedAt: checkpointState.startedAt, rewoundAt };
-
-		if (activeMessages) {
-			for (const message of activeMessages) {
-				if (message.role === "toolResult" && message.toolName === TOOL.rewind) {
-					this.#rewoundToolResultIds.add(message.toolCallId);
-				}
-			}
-		}
+		this.#checkpoint.markRewound({ report, startedAt: checkpointState.startedAt, rewoundAt }, activeMessages);
 		const sessionContext = this.buildDisplaySessionContext();
 		if (activeMessages) {
 			activeMessages.splice(0, activeMessages.length, ...sessionContext.messages);
@@ -11567,8 +11469,7 @@ export class AgentSession {
 		this.#advisorRoster.resetSessionState();
 		this.#todo.syncFromBranch();
 		this.#closeCodexProviderSessionsForHistoryRewrite();
-		this.#checkpointState = undefined;
-		this.#pendingRewindReport = undefined;
+		this.#checkpoint.finish();
 	}
 	#isPlanDecisionTool(name: string): boolean {
 		return PLAN_DECISION_TOOLS.has(name);
@@ -15476,14 +15377,10 @@ export class AgentSession {
 			? this.#discovery.sessionDefaults(previousSessionFile)
 			: undefined;
 
-		// Snapshot the full checkpoint runtime state: the success path calls
-		// #rehydrateCheckpointRewindState(), which clears and rebuilds all four
-		// fields from the target branch. On rollback every one must be restored,
-		// or a failed switch leaks the target session's checkpoint state.
-		const previousCheckpointState = this.#checkpointState;
-		const previousPendingRewindReport = this.#pendingRewindReport;
-		const previousLastCompletedRewind = this.#lastCompletedRewind;
-		const previousRewoundToolResultIds = new Set(this.#rewoundToolResultIds);
+		// Snapshot the full checkpoint runtime state: the success path rehydrates it
+		// from the target branch. On rollback it must be restored, or a failed switch
+		// leaks the target session's checkpoint state.
+		const previousCheckpoint = this.#checkpoint.snapshot();
 		const previousWirePathRoots = this.#wirePathRoots;
 
 		let scopeTransitionAttempted = false;
@@ -15535,7 +15432,7 @@ export class AgentSession {
 				this.#didSessionMessagesChange(previousSessionContext.messages, sessionContext.messages);
 			const fallbackSelectedMCPToolNames = this.#discovery.sessionDefaults(sessionPath);
 			await this.#restoreMCPSelectionsForSessionContext(sessionContext, { fallbackSelectedMCPToolNames });
-			this.#rehydrateCheckpointRewindState();
+			this.#checkpoint.rehydrate(this.sessionManager.getBranch());
 
 			// Emit session_switch event to hooks
 			if (this.#extensionRunner) {
@@ -15700,10 +15597,7 @@ export class AgentSession {
 			this.#scheduledHiddenNextTurnGeneration = previousScheduledHiddenNextTurnGeneration;
 			this.#inheritedProviderPromptCacheKey = previousInheritedProviderPromptCacheKey;
 			this.agent.promptCacheKey = previousAgentPromptCacheKey;
-			this.#checkpointState = previousCheckpointState;
-			this.#pendingRewindReport = previousPendingRewindReport;
-			this.#lastCompletedRewind = previousLastCompletedRewind;
-			this.#rewoundToolResultIds = previousRewoundToolResultIds;
+			this.#checkpoint.restore(previousCheckpoint);
 			if (previousModel) {
 				this.agent.setModel(previousModel);
 			}
@@ -15779,7 +15673,7 @@ export class AgentSession {
 		} else {
 			this.sessionManager.createBranchedSession(selectedEntry.parentId);
 		}
-		this.#rehydrateCheckpointRewindState();
+		this.#checkpoint.rehydrate(this.sessionManager.getBranch());
 		this.#todo.syncFromBranch();
 		this.#freshProviderSessionId = undefined;
 		// A branch retains a genuine prefix of the source transcript, so the source
@@ -15873,7 +15767,7 @@ export class AgentSession {
 
 		this.sessionManager.createBranchedSession(leafId);
 
-		this.#rehydrateCheckpointRewindState();
+		this.#checkpoint.rehydrate(this.sessionManager.getBranch());
 		this.sessionManager.appendMessage({
 			role: "user",
 			content: [{ type: "text", text: question }],
@@ -16093,7 +15987,7 @@ export class AgentSession {
 		const displayContext = this.#deobfuscateSessionContextForDisplay(stateContext);
 		await this.#restoreMCPSelectionsForSessionContext(displayContext);
 		this.agent.replaceMessages(displayContext.messages);
-		this.#rehydrateCheckpointRewindState();
+		this.#checkpoint.rehydrate(this.sessionManager.getBranch());
 		this.#advisorRoster.resetSessionState();
 		this.#todo.syncFromBranch();
 		this.#closeCodexProviderSessionsForHistoryRewrite();
