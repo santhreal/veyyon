@@ -19,6 +19,7 @@
 
 ### Changed
 
+- `veyyon session stats` folds each entry through a reducer with one method per entry kind instead of one 340-line loop, cutting the report on a 104,969-entry session from 36.4 ms to 30.0 ms with an identical report.
 - The legacy agent settings migration runs as one step per retired area over a shared key reader, cutting a legacy-heavy config's migration from 15.0 µs to 10.9 µs per load; a current-format config is unchanged.
 - A compaction pass finds the entry it just wrote by the id the append returned instead of copying the session's entries and scanning them for its summary text, which cuts that step on a 238,086-entry session from 6.53 ms to 0.002 ms.
 - Automatic compaction runs its candidate loop, per-candidate retries, progress check and follow-up scheduling in single-purpose methods, and shares the hook offer and the write step with manual compaction; no user-visible change.
@@ -77,6 +78,7 @@
 - `SessionManager.rewriteEntries` takes the entries a caller changed in place and rewrites the session file from the earliest of them on, keeping the bytes before it without parsing or serializing them, which cut the rewrite after a one-entry prune on a 376 MiB, 109,360-entry session from 1.2 s to 135 ms.
 - The session listing matches a `--resume` argument against a transcript filename through `sessionFileMatchesResumeArgument` from `@veyyon/utils/session-file`, the matcher the startup profile lookup uses; no user-visible change.
 - `highlightCode` and `CodeHighlighter` match grammar patterns with Oniguruma instead of fancy-regex, which cuts the highlighting time of a resumed session's transcript by 59% with the same colours, and every Oniguruma match and search in the addon, including the `find` builtin's `-name` and `-regex`, stops after 1,000,000 retries instead of Oniguruma's defaults of 10,000,000 per match and no limit per search.
+- The first `highlightCode`, `CodeHighlighter`, `supportsLanguage` or `getSupportedLanguages` call in a process deserializes a syntax set the addon's build script linked instead of linking 78 syntaxes at run time, which cuts that call from 81 ms to under 1 ms.
 - A streaming `Markdown` render that ends inside an open code fence lays out only the fence lines completed since the previous frame, so a 1,500-line code fence renders in 59 ms instead of 898 ms and a 1,500-line diff in 92 ms instead of 900 ms.
 - `latexToBlock` parses each display-math fragment with one handler per construct (fractions, radicals, `\left…\right`, big operators, colors, environments, scripts, delimiters) and scans command names by character code, rendering 150,018 differential cases byte-identically about 6% faster.
 - `prompt.render` reuses a template's variable analysis across renders instead of re-parsing the template on every call, rendering the spawned-agent system prompt in about 7 µs instead of about 100 µs.
