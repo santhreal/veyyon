@@ -567,6 +567,7 @@ import { ThinkingRuntime } from "./runtime/thinking-runtime";
 import { TodoRuntime } from "./runtime/todo-runtime";
 import { sameToolNames, ToolDiscovery } from "./runtime/tool-discovery";
 import { TtsrRuntime } from "./runtime/ttsr-runtime";
+import { UserExecutions } from "./runtime/user-executions";
 import { formatSessionDumpText } from "./session-dump-format";
 import { SessionSpendLedger } from "./session-spend";
 import { incompleteTodoItems } from "./todo-reminder";
@@ -783,12 +784,16 @@ export class AgentSession {
 	readonly #verificationEvidence = new VerificationEvidenceLedger();
 	#afterEditCheckReported = false;
 
-	// Bash execution state
-	#bashAbortControllers = new Set<AbortController>();
-	#pendingBashMessages: BashExecutionMessage[] = [];
+	/** Running user shell commands and eval runs, and the results recorded while a turn streamed. */
+	readonly #executions = new UserExecutions({
+		isStreaming: () => this.isStreaming,
+		append: message => {
+			this.agent.appendMessage(message);
+			this.sessionManager.appendMessage(message);
+		},
+	});
 
 	// Python execution state
-	#evalAbortControllers = new Set<AbortController>();
 	#evalKernelOwnerId: string;
 	#parentEvalSessionId: string | undefined;
 	/**
@@ -806,9 +811,6 @@ export class AgentSession {
 	 * undefined to avoid reading the primary's jobs.
 	 */
 	readonly #asyncJobManager: AsyncJobManager | undefined;
-	#pendingPythonMessages: PythonExecutionMessage[] = [];
-	#activeEvalExecutions = new Set<Promise<unknown>>();
-	#evalExecutionDisposing = false;
 
 	// Incoming IRC messages received while a turn was streaming. Parent IRCs
 	// enter the steering queue; peer IRCs enter the interrupt queue and drain as
@@ -5227,7 +5229,7 @@ export class AgentSession {
 		this.agent.setAsideMessageProvider(undefined);
 		this.agent.hasIrcInterrupts = undefined;
 		this.#advisorRoster.stop();
-		this.#evalExecutionDisposing = true;
+		this.#executions.stopEval();
 	}
 
 	/**
@@ -5289,7 +5291,7 @@ export class AgentSession {
 				AsyncJobManager.setInstance(undefined);
 			}
 		}
-		const evalExecutionsSettled = await this.#prepareEvalExecutionsForDispose();
+		const evalExecutionsSettled = await this.#executions.settleEvalForDispose();
 		if (!evalExecutionsSettled) {
 			logger.warn("Detaching retained eval-kernel ownership during dispose while eval execution is still active");
 		}
@@ -7571,9 +7573,8 @@ export class AgentSession {
 		startupMarker("prompt:start");
 		const generation = this.#promptGeneration;
 		try {
-			// Flush any pending bash messages before the new prompt
-			this.#flushPendingBashMessages();
-			this.#flushPendingPythonMessages();
+			// Flush any pending bash and Python results before the new prompt
+			this.#executions.flush();
 			this.#flushPendingIrcAsides();
 
 			// A new user prompt does not reset stop-time reminder suppression. Replaying
@@ -14621,25 +14622,19 @@ export class AgentSession {
 			}
 		}
 
-		const abortController = new AbortController();
-		this.#bashAbortControllers.add(abortController);
-
-		try {
+		return await this.#executions.runBash(async signal => {
 			const result = await executeBashCommand(command, {
 				onChunk,
-				signal: abortController.signal,
+				signal,
 				sessionKey: this.sessionId,
 				cwd,
 				timeout: clampTimeout(TOOL.bash, undefined, this.settings.get("tools.maxTimeout")) * 1000,
 				onMinimizedSave: originalText => this.#saveBashOriginalArtifact(originalText),
 				useUserShell: options?.useUserShell,
 			});
-
 			this.recordBashResult(command, result, options);
 			return result;
-		} finally {
-			this.#bashAbortControllers.delete(abortController);
-		}
+		});
 	}
 
 	/**
@@ -14661,54 +14656,24 @@ export class AgentSession {
 			excludeFromContext: options?.excludeFromContext,
 		};
 
-		// If agent is streaming, defer adding to avoid breaking tool_use/tool_result ordering
-		if (this.isStreaming) {
-			// Queue for later - will be flushed on agent_end
-			this.#pendingBashMessages.push(bashMessage);
-		} else {
-			// Add to agent state immediately
-			this.agent.appendMessage(bashMessage);
-
-			// Save to session
-			this.sessionManager.appendMessage(bashMessage);
-		}
+		this.#executions.record(bashMessage);
 	}
 
 	/**
 	 * Cancel running bash command.
 	 */
 	abortBash(): void {
-		for (const abortController of this.#bashAbortControllers) {
-			abortController.abort();
-		}
+		this.#executions.abortBash();
 	}
 
 	/** Whether a bash command is currently running */
 	get isBashRunning(): boolean {
-		return this.#bashAbortControllers.size > 0;
+		return this.#executions.bashRunning;
 	}
 
 	/** Whether there are pending bash messages waiting to be flushed */
 	get hasPendingBashMessages(): boolean {
-		return this.#pendingBashMessages.length > 0;
-	}
-
-	/**
-	 * Flush pending bash messages to agent state and session.
-	 * Called after agent turn completes to maintain proper message ordering.
-	 */
-	#flushPendingBashMessages(): void {
-		if (this.#pendingBashMessages.length === 0) return;
-
-		for (const bashMessage of this.#pendingBashMessages) {
-			// Add to agent state
-			this.agent.appendMessage(bashMessage);
-
-			// Save to session
-			this.sessionManager.appendMessage(bashMessage);
-		}
-
-		this.#pendingBashMessages = [];
+		return this.#executions.hasDeferredBash;
 	}
 
 	// =========================================================================
@@ -14772,28 +14737,14 @@ export class AgentSession {
 	}
 
 	assertEvalExecutionAllowed(): void {
-		if (this.#evalExecutionDisposing) {
-			throw new Error("Python execution is unavailable while session disposal is in progress");
-		}
+		this.#executions.assertEvalAllowed();
 	}
 
 	/**
 	 * Track Python work started outside AgentSession.executePython so dispose can await and abort it too.
 	 */
 	trackEvalExecution<T>(execution: Promise<T>, abortController: AbortController): Promise<T> {
-		this.#evalAbortControllers.add(abortController);
-		this.#activeEvalExecutions.add(execution);
-		void execution.then(
-			() => {
-				this.#evalAbortControllers.delete(abortController);
-				this.#activeEvalExecutions.delete(execution);
-			},
-			() => {
-				this.#evalAbortControllers.delete(abortController);
-				this.#activeEvalExecutions.delete(execution);
-			},
-		);
-		return execution;
+		return this.#executions.trackEval(execution, abortController);
 	}
 
 	/**
@@ -14813,78 +14764,24 @@ export class AgentSession {
 			excludeFromContext: options?.excludeFromContext,
 		};
 
-		// If agent is streaming, defer adding to avoid breaking tool_use/tool_result ordering
-		if (this.isStreaming) {
-			this.#pendingPythonMessages.push(pythonMessage);
-		} else {
-			this.agent.appendMessage(pythonMessage);
-			this.sessionManager.appendMessage(pythonMessage);
-		}
+		this.#executions.record(pythonMessage);
 	}
 
 	/**
 	 * Cancel running Python execution.
 	 */
 	abortEval(): void {
-		for (const abortController of this.#evalAbortControllers) {
-			abortController.abort();
-		}
-	}
-
-	async #waitForEvalExecutionsToSettle(timeoutMs: number): Promise<boolean> {
-		const deadline = Date.now() + timeoutMs;
-		while (this.#activeEvalExecutions.size > 0) {
-			const remainingMs = deadline - Date.now();
-			if (remainingMs <= 0) {
-				return false;
-			}
-			const settled = await Promise.race([
-				Promise.allSettled(Array.from(this.#activeEvalExecutions)).then(() => true),
-				Bun.sleep(remainingMs).then(() => false),
-			]);
-			if (!settled && this.#activeEvalExecutions.size > 0) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	async #prepareEvalExecutionsForDispose(): Promise<boolean> {
-		if (!(await this.#waitForEvalExecutionsToSettle(3_000))) {
-			logger.warn("Aborting active Python execution during dispose before retained kernel cleanup");
-			this.abortEval();
-			if (!(await this.#waitForEvalExecutionsToSettle(1_000))) {
-				logger.warn(
-					"Python execution is still active after dispose aborted all active runs; retained kernel ownership will still be detached",
-				);
-				return false;
-			}
-		}
-		return true;
+		this.#executions.abortEval();
 	}
 
 	/** Whether a Python execution is currently running */
 	get isEvalRunning(): boolean {
-		return this.#evalAbortControllers.size > 0;
+		return this.#executions.evalRunning;
 	}
 
 	/** Whether there are pending Python messages waiting to be flushed */
 	get hasPendingPythonMessages(): boolean {
-		return this.#pendingPythonMessages.length > 0;
-	}
-
-	/**
-	 * Flush pending Python messages to agent state and session.
-	 */
-	#flushPendingPythonMessages(): void {
-		if (this.#pendingPythonMessages.length === 0) return;
-
-		for (const pythonMessage of this.#pendingPythonMessages) {
-			this.agent.appendMessage(pythonMessage);
-			this.sessionManager.appendMessage(pythonMessage);
-		}
-
-		this.#pendingPythonMessages = [];
+		return this.#executions.hasDeferredPython;
 	}
 
 	// =========================================================================
