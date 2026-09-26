@@ -49,6 +49,10 @@ every field of one subsystem and reaches the session through a host interface it
 |[`thinking-runtime.ts`](../../packages/coding-agent/src/session/runtime/thinking-runtime.ts)|How hard the model thinks and who decided: the session override, the selector pin, the saved default, and `auto` with its per-turn classification|12|
 |[`advisor-roster.ts`](../../packages/coding-agent/src/session/runtime/advisor-roster.ts)|The live advisors and the configuration, provider identities and transcript recorders behind them, with the immune-turn window and the auto-resume latch that route each note to an aside, a preserved card or a steer|28|
 |[`streaming-edit-guard.ts`](../../packages/coding-agent/src/session/runtime/streaming-edit-guard.ts)|The streaming-edit check: the abort latch, one incremental scan per streaming patch-mode `edit` call and the file contents its removed lines are matched against, which stop the turn once a call targets an auto-generated file or removes a line the file lacks|7|
+|[`tool-discovery.ts`](../../packages/coding-agent/src/session/runtime/tool-discovery.ts)|Which registered tools the model can discover and which it selected: the MCP and local selections, the built-in names, the default MCP selections and the search index built over them|3|
+|[`checkpoint-runtime.ts`](../../packages/coding-agent/src/session/runtime/checkpoint-runtime.ts)|The open checkpoint, the report a `rewind` call carries back to it, the rewind that last closed one and the tool results that rewind removed; the session reports each result and reads the state back, so it declares no host|0|
+|[`user-executions.ts`](../../packages/coding-agent/src/session/runtime/user-executions.ts)|The shell commands and Python cells the user runs and the eval runs a tool starts: their abort controllers, the results recorded while a turn streamed, and the dispose wait that aborts runs still in flight|2|
+|[`post-prompt-tasks.ts`](../../packages/coding-agent/src/session/runtime/post-prompt-tasks.ts)|The work a turn schedules after `prompt()` returns: the tasks in flight, the promise that resolves when they drain and the abort signal a cancel raises to skip work not yet started|1|
 
 Three rules hold for a new one:
 
@@ -902,4 +906,4 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
 
-*Verified against `fdd29df13c` on 2026-09-26.*
+*Verified against `43875b960a` on 2026-09-26.*
