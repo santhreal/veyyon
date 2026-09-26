@@ -53,6 +53,7 @@ every field of one subsystem and reaches the session through a host interface it
 |[`checkpoint-runtime.ts`](../../packages/coding-agent/src/session/runtime/checkpoint-runtime.ts)|The open checkpoint, the report a `rewind` call carries back to it, the rewind that last closed one and the tool results that rewind removed; the session reports each result and reads the state back, so it declares no host|0|
 |[`user-executions.ts`](../../packages/coding-agent/src/session/runtime/user-executions.ts)|The shell commands and Python cells the user runs and the eval runs a tool starts: their abort controllers, the results recorded while a turn streamed, and the dispose wait that aborts runs still in flight|2|
 |[`post-prompt-tasks.ts`](../../packages/coding-agent/src/session/runtime/post-prompt-tasks.ts)|The work a turn schedules after `prompt()` returns: the tasks in flight, the promise that resolves when they drain and the abort signal a cancel raises to skip work not yet started|1|
+|[`irc-inbox.ts`](../../packages/coding-agent/src/session/runtime/irc-inbox.ts)|The peer IRC messages that arrived while a turn streamed and the auto-replies sent on the session's behalf, until a step boundary, an `irc` inbox call or the next prompt takes them; no host|0|
 
 Three rules hold for a new one:
 
@@ -906,4 +907,4 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
 
-*Verified against `43875b960a` on 2026-09-26.*
+*Verified against `1bb5e29d36` on 2026-09-26.*
