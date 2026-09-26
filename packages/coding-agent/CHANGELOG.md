@@ -34,6 +34,7 @@
 - A session's tool session (the file mutation counters, the active-tool set, the host notifier and the advisor's view) is built in `session/tool-session.ts` instead of inline in `createAgentSession`; no user-visible change.
 - A session's MCP startup (discovery, the deferred connect and the reactive tool, prompt and notification wiring) runs in `session/factory-mcp.ts`, and the project its system prompt renders, the re-discovery after a working-directory change and the appended-prompt assembly run in `ProjectPromptInputs` and helpers in `session/prompt-inputs.ts`, instead of inline in `createAgentSession`; no user-visible change.
 - The `debug` tool's load check stops probing `PATH` at the first debug adapter whose command resolves instead of resolving all 14 configured adapters, which it ran for the session's tools and again for the advisor's, cutting a bare session's construction from 7.30 ms to 5.02 ms on a host with `gdb` installed.
+- The advisor's toolset is built in `session/tool-session.ts`, and the context gauge a new session records at rest and the one the status row draws come from one `measureContextGauge` in `config/compaction-strategy.ts`, instead of a copy inline in `createAgentSession`; no user-visible change.
 
 ### Fixed
 

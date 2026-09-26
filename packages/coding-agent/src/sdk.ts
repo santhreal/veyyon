@@ -44,7 +44,7 @@ import { buildArgotGate, expandToolArguments } from "./argot-wire";
 import { AsyncJobManager } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { shouldEnableAppendOnlyContext } from "./config/append-only-context-mode";
-import { resolveContextLimit } from "./config/compaction-strategy";
+import { measureContextGauge } from "./config/compaction-strategy";
 import { resolveDialect } from "./config/dialect-format";
 import { shouldInlineToolDescriptors } from "./config/inline-tool-descriptors-mode";
 import { ModelRegistry } from "./config/model-registry";
@@ -247,7 +247,7 @@ import {
 	ProjectPromptInputs,
 	promptDiscoverableTools,
 } from "./session/prompt-inputs";
-import { createSessionToolSession } from "./session/tool-session";
+import { buildAdvisorTools, createSessionToolSession } from "./session/tool-session";
 
 let sshCleanupRegistered = false;
 
@@ -1774,17 +1774,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 		}
 
-		// Full toolset for the advisor, built unconditionally so it can be toggled at
-		// runtime; the advisor's config `tools` selects which of these it gets
-		// (defaulting to read/search).
-		const advisorToolBuilds: Array<Tool | null | Promise<Tool | null>> = [];
-		for (const name in BUILTIN_TOOLS) {
-			advisorToolBuilds.push(BUILTIN_TOOLS[name as keyof typeof BUILTIN_TOOLS](advisorToolSession));
-		}
-		const builtAdvisorTools = await Promise.all(advisorToolBuilds);
-		const advisorTools: Tool[] = builtAdvisorTools
-			.filter((tool): tool is Tool => tool != null)
-			.map(wrapToolWithMetaNotice);
+		const advisorTools = await buildAdvisorTools(advisorToolSession);
 
 		// Owned only when this session created the manager; spawned agents receive a
 		// parent's manager via `options.mcpManager` and MUST NOT disconnect it.
@@ -1871,16 +1861,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// recording from a previous session — the hero's model name and provider
 		// and the context gauge arrive with the session rather than with the
 		// mounted row, and the next launch states them from the first frame.
-		// The row re-records the same decision on its own renders; a record that
-		// changes nothing does not write.
+		// The row re-records the same decision on its own renders against the
+		// same gauge; a record that changes nothing does not write.
 		const atRestUsage = session.getContextUsage();
-		const atRestWindow = atRestUsage?.contextWindow ?? session.model?.contextWindow ?? 0;
-		// The row measures against the compaction fire point when auto-compaction
-		// is on, and against the raw window when it is off; the same predicate the
-		// row is handed at mount.
-		const atRestLimit = session.autoCompactionEnabled
-			? resolveContextLimit(atRestWindow, settings.getGroup("compaction")).tokens
-			: atRestWindow;
+		const atRest = measureContextGauge(
+			atRestUsage?.tokens ?? null,
+			atRestUsage?.contextWindow ?? session.model?.contextWindow ?? 0,
+			session.autoCompactionEnabled ? settings.getGroup("compaction") : undefined,
+		);
 		void recordRestLaunchFacts(
 			{
 				model: session.state.model,
@@ -1889,8 +1877,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				messageCount: session.messages?.length ?? 0,
 				systemContextTokens: computeNonMessageBreakdown(session).systemContextTokens,
 			},
-			atRestUsage?.tokens == null ? null : atRestLimit > 0 ? (atRestUsage.tokens / atRestLimit) * 100 : null,
-			atRestLimit,
+			atRest.contextPercent,
+			atRest.contextLimit,
 		);
 
 		if (

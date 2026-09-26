@@ -42,11 +42,11 @@ const SESSION_DIR = repoPath("packages/coding-agent/src/session");
 const SDK = repoPath("packages/coding-agent/src/sdk.ts");
 
 /**
- * MEASURED at 2281 lines after the prompt's project inputs moved to `session/prompt-inputs.ts`
- * and MCP startup to `session/factory-mcp.ts`, of which `createAgentSession` is 1980. This
- * falls when that function is rewritten.
+ * MEASURED at 2269 lines after the advisor's toolset moved to `session/tool-session.ts` and the
+ * at-rest gauge to `measureContextGauge`, of which `createAgentSession` is 1968. This falls when
+ * that function is rewritten.
  */
-const SDK_CEILING = 2281;
+const SDK_CEILING = 2269;
 
 /** MEASURED: the largest factory module is `factory-extensions.ts` at 396 lines. */
 const FACTORY_CEILING = 400;

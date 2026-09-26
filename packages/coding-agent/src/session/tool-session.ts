@@ -14,8 +14,9 @@ import { errorMessage, logger, setProjectDir } from "@veyyon/utils";
 import { formatModelString } from "../config/model-resolver";
 import { defaultEvalSessionId } from "../eval/session-id";
 import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
-import { TOOL_SESSION_LOCAL_STATE_KEYS, type ToolSession } from "../tools";
+import { BUILTIN_TOOLS, TOOL_SESSION_LOCAL_STATE_KEYS, type Tool, type ToolSession } from "../tools";
 import { normalizeToolNames, TOOL } from "../tools/core/builtin-names";
+import { wrapToolWithMetaNotice } from "../tools/core/output-meta";
 import { buildNamedToolChoice } from "../utils/tool-choice";
 import type { AgentSession } from "./agent-session";
 import type { CreateAgentSessionOptions } from "./factory-options";
@@ -89,6 +90,20 @@ export function deriveToolSession(base: ToolSession, overrides: Partial<ToolSess
 		Object.defineProperty(derived, key, { value: undefined, writable: true, enumerable: true, configurable: true });
 	}
 	return derived;
+}
+
+/**
+ * Every built-in tool bound to the advisor's tool session. Built whether or not an advisor runs,
+ * since one can be switched on mid-session; the advisor's config `tools` selects which of these it
+ * receives (read and search by default).
+ */
+export async function buildAdvisorTools(advisorToolSession: ToolSession): Promise<Tool[]> {
+	const builds: Array<Tool | null | Promise<Tool | null>> = [];
+	for (const name in BUILTIN_TOOLS) {
+		builds.push(BUILTIN_TOOLS[name as keyof typeof BUILTIN_TOOLS](advisorToolSession));
+	}
+	const built = await Promise.all(builds);
+	return built.filter((tool): tool is Tool => tool != null).map(wrapToolWithMetaNotice);
 }
 
 export function createSessionToolSession(inputs: SessionToolSessionInputs): SessionToolSession {
