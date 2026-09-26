@@ -17,6 +17,7 @@
 - Session spend, which `/session`, `get_session_stats` and goal accounting read at every turn start, tool completion and agent end, tallies the history behind the compaction boundary once per boundary instead of on every read, which cuts a read on a 201,156-entry session from 29.25 ms to 0.92 ms.
 - A prune, shake, image drop, recovered retry marker, compaction tail elision or dead-end warning rewrites the session file only from the earliest entry it changed, instead of the whole file, which cut the persist step after a one-entry prune on a 376 MiB session from 1.2 s to 135 ms.
 - The session's advisors, their delivery routing and their interrupt latches run in a session collaborator, and advisor stats and overflow compaction in their own modules; no user-visible change.
+- Tool discovery state (the MCP and local selections, built-in names, default MCP selections and the search index) runs in a session collaborator; no user-visible change.
 - With `edit.streamingAbort` on, the check on a streaming `edit` patch scans each diff line once instead of rescanning the whole diff on every delta, which cuts a turn streaming a 91 KiB, 2,000-line patch in 23,293 deltas from 7,852 ms to 212 ms, and from 124 ms to 64 ms with the setting off.
 - A streaming `write` or `bash` card highlights, numbers and wraps only the lines that arrived since its last frame instead of the whole source on every argument delta, which cuts drawing a 600-line write streamed in 754 frames from 27,125 ms to 376 ms and its last frame from 67.7 ms to 0.38 ms.
 

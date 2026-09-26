@@ -286,16 +286,8 @@ import { onAppendOnlyModeChanged, onModelRolesChanged } from "../config/settings
 import { RawSseDebugBuffer } from "../debug/raw-sse-buffer";
 import { loadCapability, reset as resetCapabilities } from "../discovery/capability";
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
-import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "../discovery/mode";
-import {
-	buildDiscoverableToolSearchIndex,
-	collectDiscoverableTools,
-	type DiscoverableTool,
-	type DiscoverableToolSearchIndex,
-	filterBySource,
-	isMCPToolName,
-	selectDiscoverableToolNamesByServer,
-} from "../discovery/tool-index";
+import { resolveEffectiveToolDiscoveryMode } from "../discovery/mode";
+import { type DiscoverableTool, type DiscoverableToolSearchIndex, isMCPToolName } from "../discovery/tool-index";
 // The owning module, not the `../edit` barrel, which `export *`s the streaming applier, the hashline
 // engine and the EditTool and pulls in 44 modules nothing else here reaches.
 import { getFileSnapshotStore } from "../edit/file-snapshot-store";
@@ -577,6 +569,7 @@ import { AdvisorRoster, type AdvisorRosterHost } from "./runtime/advisor-roster"
 import { StreamingEditGuard } from "./runtime/streaming-edit-guard";
 import { ThinkingRuntime } from "./runtime/thinking-runtime";
 import { TodoRuntime } from "./runtime/todo-runtime";
+import { sameToolNames, ToolDiscovery } from "./runtime/tool-discovery";
 import { TtsrRuntime } from "./runtime/ttsr-runtime";
 import { formatSessionDumpText } from "./session-dump-format";
 import { SessionSpendLedger } from "./session-spend";
@@ -963,17 +956,9 @@ export class AgentSession {
 	 * to decide whether the cached prompt is stale.
 	 */
 	#promptModelKey: string | undefined;
-	#mcpDiscoveryEnabled = false;
-	#discoverableMCPTools = new Map<string, DiscoverableTool>();
-	#selectedMCPToolNames = new Set<string>();
-	// Generic tool discovery (covers built-in + MCP + extension when tools.discoveryMode === "all")
-	#discoverableToolSearchIndex: DiscoverableToolSearchIndex | null = null;
-	#selectedDiscoveredToolNames = new Set<string>();
-	#builtInToolNames = new Set<string>();
+	/** Which registered tools the model can discover and which it selected. Owns all discovery state. */
+	readonly #discovery: ToolDiscovery;
 	#rpcHostToolNames = new Set<string>();
-	#defaultSelectedMCPServerNames = new Set<string>();
-	#defaultSelectedMCPToolNames = new Set<string>();
-	#sessionDefaultSelectedMCPToolNames = new Map<string, string[]>();
 
 	/** Time-Traveling Stream Rules: match rules against a streaming turn and
 	 *  deliver matched bodies back to the model. Owns all TTSR state. */
@@ -1658,7 +1643,6 @@ export class AgentSession {
 		this.#validateApprovalPolicySettings();
 		this.#toolRegistry = config.toolRegistry ?? new Map();
 		this.#createVibeTools = config.createVibeTools;
-		this.#builtInToolNames = new Set(config.builtInToolNames ?? []);
 		this.#requestedToolNames = config.requestedToolNames;
 		this.#transformContext = config.transformContext ?? (messages => messages);
 		// Canonicalize provider tool-call IDs to short session-local handles before
@@ -1832,27 +1816,26 @@ export class AgentSession {
 		this.#disconnectOwnedMcpManager = config.disconnectOwnedMcpManager;
 		this.#baseSystemPrompt = this.agent.state.systemPrompt;
 		this.#promptModelKey = this.#currentPromptModelKey();
-		this.#mcpDiscoveryEnabled = config.mcpDiscoveryEnabled ?? false;
-		this.#setDiscoverableMCPTools(this.#collectDiscoverableMCPToolsFromRegistry());
-		this.#selectedMCPToolNames = new Set(config.initialSelectedMCPToolNames ?? []);
-		this.#defaultSelectedMCPServerNames = new Set(config.defaultSelectedMCPServerNames ?? []);
-		this.#defaultSelectedMCPToolNames = new Set(config.defaultSelectedMCPToolNames ?? []);
-		this.#pruneSelectedMCPToolNames();
+		this.#discovery = new ToolDiscovery(
+			{
+				registry: this.#toolRegistry,
+				activeToolNames: () => this.getActiveToolNames(),
+				discoveryModeFor: toolCount => resolveEffectiveToolDiscoveryMode(this.settings, toolCount),
+			},
+			config,
+		);
 		const persistedSelectedMCPToolNames = this.buildDisplaySessionContext().selectedMCPToolNames;
 		const currentSelectedMCPToolNames = this.getSelectedMCPToolNames();
 		const persistInitialMCPToolSelection =
 			config.persistInitialMCPToolSelection ?? this.sessionManager.getBranch().length === 0;
 		if (
-			this.#mcpDiscoveryEnabled &&
+			this.#discovery.mcpEnabled &&
 			persistInitialMCPToolSelection &&
-			!this.#selectedMCPToolNamesMatch(persistedSelectedMCPToolNames, currentSelectedMCPToolNames)
+			!sameToolNames(persistedSelectedMCPToolNames, currentSelectedMCPToolNames)
 		) {
 			this.sessionManager.appendMCPToolSelection(currentSelectedMCPToolNames);
 		}
-		this.#rememberSessionDefaultSelectedMCPToolNames(
-			this.sessionManager.getSessionFile(),
-			this.#getConfiguredDefaultSelectedMCPToolNames(),
-		);
+		this.#discovery.rememberSessionDefaults(this.sessionManager.getSessionFile());
 		this.#streamingEdit = new StreamingEditGuard({
 			abortTurn: () => this.agent.abort(),
 			streamingAbortEnabled: () => this.settings.get("edit.streamingAbort"),
@@ -5603,74 +5586,6 @@ export class AgentSession {
 		return this.#retryAttempt;
 	}
 
-	#collectDiscoverableMCPToolsFromRegistry(): Map<string, DiscoverableTool> {
-		const mcpTools = filterBySource(collectDiscoverableTools(this.#toolRegistry.values()), "mcp");
-		return new Map(mcpTools.map(tool => [tool.name, tool] as const));
-	}
-
-	#setDiscoverableMCPTools(discoverableMCPTools: Map<string, DiscoverableTool>): void {
-		this.#discoverableMCPTools = discoverableMCPTools;
-		this.#invalidateDiscoveryCaches();
-	}
-
-	/** Single point for invalidating cached discovery indices. Call after any change that can
-	 *  affect which tools should be discoverable: registry mutations (refreshMCPTools,
-	 *  refreshRpcHostTools) or active-tool mutations (#applyActiveToolsByName). */
-	#invalidateDiscoveryCaches(): void {
-		this.#discoverableToolSearchIndex = null;
-	}
-
-	#filterSelectableMCPToolNames(toolNames: Iterable<string>): string[] {
-		return Array.from(toolNames).filter(name => this.#discoverableMCPTools.has(name) && this.#toolRegistry.has(name));
-	}
-
-	#getConfiguredDefaultSelectedMCPToolNames(): string[] {
-		return this.#filterSelectableMCPToolNames([
-			...this.#defaultSelectedMCPToolNames,
-			...selectDiscoverableToolNamesByServer(
-				this.#discoverableMCPTools.values(),
-				this.#defaultSelectedMCPServerNames,
-			),
-		]);
-	}
-
-	#pruneSelectedMCPToolNames(): void {
-		this.#selectedMCPToolNames = new Set(this.#filterSelectableMCPToolNames(this.#selectedMCPToolNames));
-	}
-
-	#selectedMCPToolNamesMatch(left: string[], right: string[]): boolean {
-		return left.length === right.length && left.every((name, index) => name === right[index]);
-	}
-
-	#rememberSessionDefaultSelectedMCPToolNames(
-		sessionFile: string | null | undefined,
-		toolNames: Iterable<string>,
-	): void {
-		if (!sessionFile) return;
-		this.#sessionDefaultSelectedMCPToolNames.set(
-			path.resolve(sessionFile),
-			this.#filterSelectableMCPToolNames(toolNames),
-		);
-	}
-
-	#getSessionDefaultSelectedMCPToolNames(sessionFile: string | null | undefined): string[] {
-		if (!sessionFile) return [];
-		return this.#sessionDefaultSelectedMCPToolNames.get(path.resolve(sessionFile)) ?? [];
-	}
-
-	#persistSelectedMCPToolNamesIfChanged(previousSelectedMCPToolNames: string[]): void {
-		if (!this.#mcpDiscoveryEnabled) return;
-		const nextSelectedMCPToolNames = this.getSelectedMCPToolNames();
-		if (this.#selectedMCPToolNamesMatch(previousSelectedMCPToolNames, nextSelectedMCPToolNames)) {
-			return;
-		}
-		this.sessionManager.appendMCPToolSelection(nextSelectedMCPToolNames);
-	}
-
-	#getActiveNonMCPToolNames(): string[] {
-		return this.getActiveToolNames().filter(name => !isMCPToolName(name) && this.#toolRegistry.has(name));
-	}
-
 	/**
 	 * Get the names of currently active tools.
 	 * Returns the names of tools currently set on the agent.
@@ -5693,7 +5608,7 @@ export class AgentSession {
 
 	/** True when the current registry entry for `name` came from a built-in factory. */
 	hasBuiltInTool(name: string): boolean {
-		return this.#builtInToolNames.has(name);
+		return this.#discovery.isBuiltIn(name);
 	}
 
 	/**
@@ -5728,7 +5643,7 @@ export class AgentSession {
 		for (const tool of tools) {
 			if (this.#toolRegistry.has(tool.name)) continue;
 			this.#toolRegistry.set(tool.name, this.#wrapRuntimeTool(tool));
-			this.#builtInToolNames.add(tool.name);
+			this.#discovery.addBuiltIn(tool.name);
 			this.#installedVibeToolNames.add(tool.name);
 		}
 
@@ -5739,8 +5654,8 @@ export class AgentSession {
 	async deactivateVibeTools(nextToolNames: string[]): Promise<void> {
 		for (const name of this.#installedVibeToolNames) {
 			this.#toolRegistry.delete(name);
-			this.#builtInToolNames.delete(name);
-			this.#selectedDiscoveredToolNames.delete(name);
+			this.#discovery.removeBuiltIn(name);
+			this.#discovery.deselect(name);
 		}
 		this.#installedVibeToolNames.clear();
 		await this.#applyActiveToolsByName(nextToolNames);
@@ -5797,7 +5712,7 @@ export class AgentSession {
 	}
 
 	isMCPDiscoveryEnabled(): boolean {
-		return this.#mcpDiscoveryEnabled;
+		return this.#discovery.mcpEnabled;
 	}
 
 	/**
@@ -5808,101 +5723,36 @@ export class AgentSession {
 	 * discovery is never downgraded mid-session.
 	 */
 	enableMCPDiscovery(): void {
-		this.#mcpDiscoveryEnabled = true;
+		this.#discovery.enableMCP();
 	}
 
 	getSelectedMCPToolNames(): string[] {
-		if (!this.#mcpDiscoveryEnabled) {
-			return this.getActiveToolNames().filter(name => isMCPToolName(name) && this.#toolRegistry.has(name));
-		}
-		return this.#filterSelectableMCPToolNames(this.#selectedMCPToolNames);
+		return this.#discovery.selectedMCP();
 	}
 
 	async activateDiscoveredMCPTools(toolNames: string[]): Promise<string[]> {
-		const nextSelectedMCPToolNames = new Set(this.#selectedMCPToolNames);
-		const activated: string[] = [];
-		for (const name of toolNames) {
-			if (!isMCPToolName(name) || !this.#discoverableMCPTools.has(name) || !this.#toolRegistry.has(name)) {
-				continue;
-			}
-			nextSelectedMCPToolNames.add(name);
-			activated.push(name);
-		}
-		if (activated.length === 0) {
-			return [];
-		}
-		const nextActive = this.#getActiveNonMCPToolNames().concat(
-			this.#filterSelectableMCPToolNames(nextSelectedMCPToolNames),
-		);
-		await this.setActiveToolsByName(nextActive);
-		return Array.from(new Set(activated));
+		const activation = this.#discovery.planMCPActivation(toolNames);
+		if (!activation) return [];
+		await this.setActiveToolsByName(activation.nextActive);
+		return activation.activated;
 	}
 
 	// ── Generic tool discovery (covers built-in + MCP + extension) ────────────
 
-	/** Resolve effective discovery mode from the current registry size. */
-	#resolveEffectiveDiscoveryMode(): "off" | "mcp-only" | "all" {
-		const mode = resolveEffectiveToolDiscoveryMode(
-			this.settings,
-			countToolsForAutoDiscovery(this.#toolRegistry.keys()),
-		);
-		if (mode !== "off") return mode;
-		return this.#mcpDiscoveryEnabled ? "mcp-only" : "off";
-	}
-
 	isToolDiscoveryEnabled(): boolean {
-		return this.#resolveEffectiveDiscoveryMode() !== "off";
+		return this.#discovery.effectiveMode() !== "off";
 	}
 
 	getDiscoverableTools(filter?: { source?: DiscoverableTool["source"] }): DiscoverableTool[] {
-		// For "all" mode we combine local registry entries with MCP tools.
-		// For "mcp-only" mode we only return MCP tools.
-		const mode = this.#resolveEffectiveDiscoveryMode();
-		const activeNames = new Set(this.getActiveToolNames());
-		const mcpTools = Array.from(this.#discoverableMCPTools.values()).filter(t => !activeNames.has(t.name));
-		const localTools: DiscoverableTool[] = mode === "all" ? this.#collectDiscoverableLocalTools() : [];
-		const allTools = localTools.concat(mcpTools);
-		return filter?.source ? allTools.filter(t => t.source === filter.source) : allTools;
-	}
-
-	/** Collect local tools the model can discover via search_tool_bm25. Restricted to definitions
-	 *  whose `loadMode === "discoverable"`. Hidden/internal tools remain out of the index. Registry
-	 *  source ownership distinguishes built-ins from first-party custom tools such as generate_image. */
-	#collectDiscoverableLocalTools(): DiscoverableTool[] {
-		const activeNames = new Set(this.getActiveToolNames());
-		const result: DiscoverableTool[] = [];
-		for (const tool of this.#toolRegistry.values()) {
-			if (tool.loadMode !== "discoverable") continue;
-			if (activeNames.has(tool.name)) continue;
-			const source = this.#builtInToolNames.has(tool.name) ? "builtin" : "custom";
-			const collected = collectDiscoverableTools([tool], { source });
-			result.push(...collected);
-		}
-		return result;
+		return this.#discovery.discoverableTools(filter);
 	}
 
 	getDiscoverableToolSearchIndex(): DiscoverableToolSearchIndex {
-		if (!this.#discoverableToolSearchIndex) {
-			this.#discoverableToolSearchIndex = buildDiscoverableToolSearchIndex(this.getDiscoverableTools());
-		}
-		return this.#discoverableToolSearchIndex;
-	}
-
-	/** Invalidate the generic search index cache (call after tool set changes).
-	 *  Delegates to {@link #invalidateDiscoveryCaches} so all discovery-related caches stay in sync. */
-	#invalidateDiscoverableToolSearchIndex(): void {
-		this.#invalidateDiscoveryCaches();
+		return this.#discovery.searchIndex();
 	}
 
 	getSelectedDiscoveredToolNames(): string[] {
-		// Union of MCP-selected and generic non-MCP selected. Non-MCP selections are only
-		// selected while they are still active; otherwise BM25 must be able to rediscover them.
-		const activeNames = new Set(this.getActiveToolNames());
-		const mcpSelected = this.getSelectedMCPToolNames();
-		const nonMcpSelected = Array.from(this.#selectedDiscoveredToolNames).filter(
-			name => activeNames.has(name) && this.#toolRegistry.has(name) && !isMCPToolName(name),
-		);
-		return Array.from(new Set(mcpSelected.concat(nonMcpSelected)));
+		return this.#discovery.selectedDiscovered();
 	}
 
 	async activateDiscoveredTools(toolNames: string[]): Promise<string[]> {
@@ -5910,27 +5760,18 @@ export class AgentSession {
 		const nonMcpNames = toolNames.filter(name => !isMCPToolName(name));
 		const activated: string[] = [];
 
-		// Activate MCP tools via existing path
 		if (mcpNames.length > 0) {
 			const activatedMcp = await this.activateDiscoveredMCPTools(mcpNames);
 			activated.push(...activatedMcp);
 		}
 
-		// Activate non-MCP tools (built-ins that are in the registry but not currently active)
+		// Built-ins and custom tools that are in the registry but not currently active.
 		if (nonMcpNames.length > 0) {
-			const currentActiveNames = new Set(this.getActiveToolNames());
-			const newlyAdded: string[] = [];
-			for (const name of nonMcpNames) {
-				if (this.#toolRegistry.has(name) && !currentActiveNames.has(name)) {
-					newlyAdded.push(name);
-					this.#selectedDiscoveredToolNames.add(name);
-					activated.push(name);
-				}
-			}
+			const newlyAdded = this.#discovery.selectLocal(nonMcpNames);
+			activated.push(...newlyAdded);
 			if (newlyAdded.length > 0) {
-				const nextActive = this.getActiveToolNames().concat(newlyAdded);
-				await this.setActiveToolsByName(nextActive);
-				this.#invalidateDiscoverableToolSearchIndex();
+				await this.setActiveToolsByName(this.getActiveToolNames().concat(newlyAdded));
+				this.#discovery.invalidate();
 			}
 		}
 
@@ -6184,25 +6025,12 @@ export class AgentSession {
 				if (tool) tools.push(tool);
 			}
 		}
-		if (this.#mcpDiscoveryEnabled) {
-			this.#selectedMCPToolNames = new Set(
-				validToolNames.filter(
-					name => isMCPToolName(name) && this.#discoverableMCPTools.has(name) && this.#toolRegistry.has(name),
-				),
-			);
-		}
+		this.#discovery.followActiveMCP(validToolNames);
 		this.#setActiveToolNames?.(validToolNames);
-		const activeNameSet = new Set(validToolNames);
-		for (const name of Array.from(this.#selectedDiscoveredToolNames)) {
-			if (!activeNameSet.has(name) || isMCPToolName(name) || !this.#toolRegistry.has(name)) {
-				this.#selectedDiscoveredToolNames.delete(name);
-			}
-		}
 		this.agent.setTools(tools);
-
 		// Active tool set changed → discoverable tool list (which excludes already-active tools)
-		// is now stale. Invalidate before any prompt-template hook reads the discovery list.
-		this.#invalidateDiscoveryCaches();
+		// is now stale. Settle before any prompt-template hook reads the discovery list.
+		this.#discovery.settleActive(validToolNames);
 
 		// Rebuild base system prompt with new tool set, but only when the tool set
 		// actually changed. MCP servers can reconnect at arbitrary times and call
@@ -6223,7 +6051,8 @@ export class AgentSession {
 			}
 		}
 		if (options?.persistMCPSelection !== false) {
-			this.#persistSelectedMCPToolNamesIfChanged(previousSelectedMCPToolNames);
+			const nextSelectedMCPToolNames = this.#discovery.selectedMCPChangedFrom(previousSelectedMCPToolNames);
+			if (nextSelectedMCPToolNames) this.sessionManager.appendMCPToolSelection(nextSelectedMCPToolNames);
 		}
 	}
 
@@ -6256,7 +6085,7 @@ export class AgentSession {
 			this.#toolRegistry.set(refreshedTool.name, refreshedTool);
 		} else {
 			this.#toolRegistry.delete(TOOL.ssh);
-			this.#selectedDiscoveredToolNames.delete(TOOL.ssh);
+			this.#discovery.deselect(TOOL.ssh);
 		}
 
 		const nextActive = previousActiveToolNames.filter(name => name !== TOOL.ssh && this.#toolRegistry.has(name));
@@ -6280,17 +6109,16 @@ export class AgentSession {
 		sessionContext: SessionContext,
 		options?: { fallbackSelectedMCPToolNames?: Iterable<string> },
 	): Promise<void> {
-		if (!this.#mcpDiscoveryEnabled) return;
-		const nextActiveNonMCPToolNames = this.#getActiveNonMCPToolNames();
+		if (!this.#discovery.mcpEnabled) return;
+		const nextActiveNonMCPToolNames = this.#discovery.activeNonMCP();
 		const fallbackSelectedMCPToolNames =
-			options?.fallbackSelectedMCPToolNames ?? this.#getConfiguredDefaultSelectedMCPToolNames();
-		const restoredMCPToolNames = sessionContext.hasPersistedMCPToolSelection
-			? this.#filterSelectableMCPToolNames(sessionContext.selectedMCPToolNames)
-			: this.#filterSelectableMCPToolNames(fallbackSelectedMCPToolNames);
-		this.#rememberSessionDefaultSelectedMCPToolNames(
-			this.sessionFile,
-			this.#getConfiguredDefaultSelectedMCPToolNames(),
+			options?.fallbackSelectedMCPToolNames ?? this.#discovery.configuredDefaultMCP();
+		const restoredMCPToolNames = this.#discovery.selectableMCP(
+			sessionContext.hasPersistedMCPToolSelection
+				? sessionContext.selectedMCPToolNames
+				: fallbackSelectedMCPToolNames,
 		);
+		this.#discovery.rememberSessionDefaults(this.sessionFile);
 		await this.#applyActiveToolsByName([...nextActiveNonMCPToolNames, ...restoredMCPToolNames], {
 			persistMCPSelection: false,
 		});
@@ -6562,7 +6390,7 @@ export class AgentSession {
 			`${tool.name}=${tool.label ?? ""}|${tool.description ?? ""}|${tool.customWireName ?? ""}`;
 		const descriptionSegment = tools.map(describeTool).join("\u0002");
 		let registrySegment = "";
-		if (this.#mcpDiscoveryEnabled) {
+		if (this.#discovery.mcpEnabled) {
 			// Registry iteration order is not load-bearing for the prompt content, so we
 			// sort to keep the signature insensitive to incidental insertion order.
 			const entries: string[] = [];
@@ -6628,18 +6456,12 @@ export class AgentSession {
 			this.#toolRegistry.set(finalTool.name, finalTool);
 		}
 
-		this.#setDiscoverableMCPTools(this.#collectDiscoverableMCPToolsFromRegistry());
-		this.#pruneSelectedMCPToolNames();
+		this.#discovery.reindexMCPTools();
+		this.#discovery.pruneSelectedMCP();
 		if (!this.buildDisplaySessionContext().hasPersistedMCPToolSelection) {
-			this.#selectedMCPToolNames = new Set([
-				...this.#selectedMCPToolNames,
-				...this.#getConfiguredDefaultSelectedMCPToolNames(),
-			]);
+			this.#discovery.addConfiguredDefaultMCP();
 		}
-		this.#rememberSessionDefaultSelectedMCPToolNames(
-			this.sessionFile,
-			this.#getConfiguredDefaultSelectedMCPToolNames(),
-		);
+		this.#discovery.rememberSessionDefaults(this.sessionFile);
 
 		if (options?.activateAll) {
 			// Force-activate every newly registered MCP tool. This path is used
@@ -6648,12 +6470,12 @@ export class AgentSession {
 			// already-active tools (circular deadlock: tools can only become
 			// active if they're already active).
 			const newMcpNames = mcpTools.map(t => t.name);
-			const nextActive = [...new Set([...this.#getActiveNonMCPToolNames(), ...newMcpNames])];
+			const nextActive = [...new Set([...this.#discovery.activeNonMCP(), ...newMcpNames])];
 			await this.#applyActiveToolsByName(nextActive, { previousSelectedMCPToolNames });
 			return;
 		}
 
-		const nextActive = [...this.#getActiveNonMCPToolNames(), ...this.getSelectedMCPToolNames()];
+		const nextActive = [...this.#discovery.activeNonMCP(), ...this.getSelectedMCPToolNames()];
 		await this.#applyActiveToolsByName(nextActive, { previousSelectedMCPToolNames });
 	}
 
@@ -6692,7 +6514,7 @@ export class AgentSession {
 		// Registry contents changed — invalidate discovery caches so the next BM25 lookup sees
 		// the new RPC-host tool set. (#applyActiveToolsByName below also invalidates, but doing
 		// it here too keeps the contract local to "registry mutated".)
-		this.#invalidateDiscoveryCaches();
+		this.#discovery.invalidate();
 
 		const activeNonRpcToolNames = previousActiveToolNames.filter(name => !previousRpcHostToolNames.has(name));
 		const preservedRpcToolNames = previousActiveToolNames.filter(
@@ -8999,11 +8821,8 @@ export class AgentSession {
 	 */
 	async newSession(options?: NewSessionOptions): Promise<boolean> {
 		const previousSessionFile = this.sessionFile;
-		const nextDiscoverySessionToolNames = this.#mcpDiscoveryEnabled
-			? [
-					...this.#getActiveNonMCPToolNames(),
-					...this.#filterSelectableMCPToolNames(this.#defaultSelectedMCPToolNames),
-				]
+		const nextDiscoverySessionToolNames = this.#discovery.mcpEnabled
+			? [...this.#discovery.activeNonMCP(), ...this.#discovery.defaultMCPTools()]
 			: undefined;
 
 		// Emit session_before_switch event with reason "new" (can be cancelled)
@@ -9062,10 +8881,7 @@ export class AgentSession {
 				this.sessionManager.appendMCPToolSelection(this.getSelectedMCPToolNames());
 			}
 		}
-		this.#rememberSessionDefaultSelectedMCPToolNames(
-			this.sessionFile,
-			this.#getConfiguredDefaultSelectedMCPToolNames(),
-		);
+		this.#discovery.rememberSessionDefaults(this.sessionFile);
 
 		this.#todo.resetForNewContext();
 		this.#planReferenceSent = false;
@@ -15644,7 +15460,7 @@ export class AgentSession {
 		const previousModel = this.model;
 		const previousThinking = this.#thinking.snapshot();
 		const previousServiceTierByFamily = this.#serviceTierByFamily;
-		const previousSelectedMCPToolNames = new Set(this.#selectedMCPToolNames);
+		const previousSelectedMCPToolNames = this.#discovery.snapshotSelectedMCP();
 		const previousTools = [...this.agent.state.tools];
 		const previousBaseSystemPrompt = this.#baseSystemPrompt;
 		const previousSystemPrompt = this.agent.state.systemPrompt;
@@ -15657,7 +15473,7 @@ export class AgentSession {
 		// session's `prompt_cache_key` for every later turn of the source session.
 		const previousAgentPromptCacheKey = this.agent.promptCacheKey;
 		const previousFallbackSelectedMCPToolNames = previousSessionFile
-			? this.#getSessionDefaultSelectedMCPToolNames(previousSessionFile)
+			? this.#discovery.sessionDefaults(previousSessionFile)
 			: undefined;
 
 		// Snapshot the full checkpoint runtime state: the success path calls
@@ -15717,7 +15533,7 @@ export class AgentSession {
 			const didReloadConversationChange =
 				previousSessionContext !== undefined &&
 				this.#didSessionMessagesChange(previousSessionContext.messages, sessionContext.messages);
-			const fallbackSelectedMCPToolNames = this.#getSessionDefaultSelectedMCPToolNames(sessionPath);
+			const fallbackSelectedMCPToolNames = this.#discovery.sessionDefaults(sessionPath);
 			await this.#restoreMCPSelectionsForSessionContext(sessionContext, { fallbackSelectedMCPToolNames });
 			this.#rehydrateCheckpointRewindState();
 
@@ -15871,7 +15687,7 @@ export class AgentSession {
 					targetSessionFile: sessionPath,
 					error: String(mcpError),
 				});
-				this.#selectedMCPToolNames = new Set(previousSelectedMCPToolNames);
+				this.#discovery.restoreSelectedMCP(previousSelectedMCPToolNames);
 				this.agent.setTools(previousTools);
 				this.#baseSystemPrompt = previousBaseSystemPrompt;
 				this.agent.setSystemPrompt(previousSystemPrompt);
