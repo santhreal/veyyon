@@ -12,6 +12,7 @@
  * the direction of the edge is highlight -> binding and there is no cycle back into the engine.
  */
 import {
+	CodeHighlighter,
 	type HighlightColors as NativeHighlightColors,
 	highlightCode as nativeHighlightCode,
 	supportsLanguage as nativeSupportsLanguage,
@@ -83,12 +84,21 @@ function reportHighlightFailureOnce(lang: string | undefined, error: unknown): v
 	logger.warn("Code could not be highlighted; rendering it plain", { lang: key, error: errorMessage(error) });
 }
 
+/** Drop every highlighted result when the theme they were coloured in is no longer the one asked for. */
+function bindCachesTo(highlightTheme: Theme): void {
+	if (highlightCacheTheme === highlightTheme) return;
+	highlightCache.clear();
+	streams.length = 0;
+	highlightCacheTheme = highlightTheme;
+}
+
+function highlightCacheKey(code: string, validLang: string | undefined): string {
+	return `${validLang ?? ""}\x00${code}`;
+}
+
 export function highlightCached(code: string, validLang: string | undefined, highlightTheme: Theme): string | null {
-	if (highlightCacheTheme !== highlightTheme) {
-		highlightCache.clear();
-		highlightCacheTheme = highlightTheme;
-	}
-	const key = `${validLang ?? ""}\x00${code}`;
+	bindCachesTo(highlightTheme);
+	const key = highlightCacheKey(code, validLang);
 	const hit = highlightCache.get(key);
 	if (hit !== undefined) {
 		return hit;
@@ -108,20 +118,155 @@ export function highlightCached(code: string, validLang: string | undefined, hig
 }
 
 /**
+ * A source highlighted as it grows.
+ *
+ * A streaming card redraws on every argument delta, and the source it draws is the one it drew last
+ * with more appended. Highlighting the whole source on each redraw is quadratic in the file: a
+ * 600-line write spent 67ms of every frame in the highlighter by its last line. A stream keeps the
+ * native parser where its last whole line left it, so a redraw highlights the lines that arrived
+ * and the unfinished last line, and the rows are byte-identical to highlighting the whole source.
+ */
+interface HighlightStream {
+	readonly lang: string | undefined;
+	readonly highlighter: CodeHighlighter;
+	/** The whole lines highlighted so far, each ending in a newline. */
+	settled: string;
+	/** One highlighted row per line of `settled`. */
+	readonly rows: string[];
+	/**
+	 * The highlighted text after the last newline of `settled`: the colour reset of a token that ran
+	 * through the line end, which opens the next row.
+	 */
+	carry: string;
+	/** The unfinished last line the stream last highlighted, or `undefined` once more lines settle. */
+	partial: string | undefined;
+	/** The highlighted row of `partial`. */
+	partialRow: string;
+}
+
+/**
+ * The streams kept, most recently used first. Several cards can stream at once, and a card that
+ * pauses while another draws keeps its place, but every entry holds a source and its rows.
+ */
+const STREAMS_MAX = 8;
+const streams: HighlightStream[] = [];
+
+function countNewlines(text: string): number {
+	let count = 0;
+	for (let at = text.indexOf("\n"); at !== -1; at = text.indexOf("\n", at + 1)) count++;
+	return count;
+}
+
+/**
+ * The stream whose settled lines are the longest prefix of `code`.
+ *
+ * A stream with no settled line is a prefix of every source, so it would take over the next unrelated
+ * block and highlight it whole in place of that block's cached rows. It is never continued.
+ */
+function findStream(code: string, validLang: string | undefined): HighlightStream | undefined {
+	let best: HighlightStream | undefined;
+	for (const stream of streams) {
+		if (stream.lang !== validLang || stream.settled.length === 0) continue;
+		if (best !== undefined && stream.settled.length <= best.settled.length) continue;
+		if (code.startsWith(stream.settled)) best = stream;
+	}
+	return best;
+}
+
+/**
+ * The rows of `code`, highlighted from where `stream` stopped, or `undefined` when the highlighter
+ * returned a different number of lines than it was given, which leaves the stream unusable.
+ */
+function extendStream(stream: HighlightStream, code: string): string[] | undefined {
+	const settledEnd = code.lastIndexOf("\n") + 1;
+	if (settledEnd > stream.settled.length) {
+		const arrived = code.slice(stream.settled.length, settledEnd);
+		const rows = `${stream.carry}${stream.highlighter.advance(arrived)}`.split("\n");
+		if (rows.length !== countNewlines(arrived) + 1) return undefined;
+		stream.carry = rows.pop() ?? "";
+		for (const row of rows) stream.rows.push(row);
+		stream.settled = code.slice(0, settledEnd);
+		stream.partial = undefined;
+	}
+	const partial = code.slice(settledEnd);
+	if (stream.partial !== partial) {
+		const row = `${stream.carry}${stream.highlighter.peek(partial)}`;
+		if (row.includes("\n")) return undefined;
+		stream.partial = partial;
+		stream.partialRow = row;
+	}
+	return [...stream.rows, stream.partialRow];
+}
+
+/**
+ * Highlighted rows of `code`: extended from a stream it continues, else the exact cache, else a new
+ * stream. `undefined` when the highlighter failed, which is reported once per language.
+ */
+function highlightRows(code: string, validLang: string | undefined, highlightTheme: Theme): string[] | undefined {
+	bindCachesTo(highlightTheme);
+	const continued = findStream(code, validLang);
+	if (continued !== undefined) {
+		streams.splice(streams.indexOf(continued), 1);
+		const rows = extendStreamReporting(continued, code);
+		if (rows !== undefined) {
+			streams.unshift(continued);
+			return rows;
+		}
+	}
+	const key = highlightCacheKey(code, validLang);
+	const hit = highlightCache.get(key);
+	if (hit !== undefined) {
+		const rows = hit.split("\n");
+		return rows.length === countNewlines(code) + 1 ? rows : undefined;
+	}
+	let highlighter: CodeHighlighter;
+	try {
+		highlighter = new CodeHighlighter(validLang, getHighlightColors(highlightTheme));
+	} catch (error) {
+		reportHighlightFailureOnce(validLang, error);
+		return undefined;
+	}
+	const stream: HighlightStream = {
+		lang: validLang,
+		highlighter,
+		settled: "",
+		rows: [],
+		carry: "",
+		partial: undefined,
+		partialRow: "",
+	};
+	const rows = extendStreamReporting(stream, code);
+	if (rows === undefined) return undefined;
+	// A stream with no whole line is never continued (see `findStream`), so keeping it would only
+	// push out one that is.
+	if (stream.settled.length > 0) {
+		streams.unshift(stream);
+		if (streams.length > STREAMS_MAX) streams.length = STREAMS_MAX;
+	}
+	highlightCache.set(key, rows.join("\n"));
+	return rows;
+}
+
+function extendStreamReporting(stream: HighlightStream, code: string): string[] | undefined {
+	try {
+		return extendStream(stream, code);
+	} catch (error) {
+		reportHighlightFailureOnce(stream.lang, error);
+		return undefined;
+	}
+}
+
+/**
  * Highlight code with syntax coloring based on file extension or language.
  * Returns array of highlighted lines.
  */
 export function highlightCode(code: string, lang?: string, highlightTheme: Theme = theme): string[] {
 	const validLang = lang && nativeSupportsLanguage(lang) ? lang : undefined;
-	const highlighted = highlightCached(code, validLang, highlightTheme);
-	// Always return a fresh array: callers (e.g. renderCodeCell) push extra lines
-	// onto the result, which would corrupt the cached string otherwise.
-	const lines = (highlighted ?? code).split("\n");
 	// A highlighter only styles tokens inline — it must never change the source
 	// line count. If it did (invalid UTF-16 like a lone surrogate is mangled
 	// crossing the native UTF-8 boundary and can drop lines), the styled output
 	// is untrustworthy: fall back to the raw code so the block renders complete
-	// rather than silently missing lines.
-	const rawLines = code.split("\n");
-	return lines.length === rawLines.length ? lines : rawLines;
+	// rather than silently missing lines. The rows are always a fresh array:
+	// callers (e.g. renderCodeCell) push extra lines onto the result.
+	return highlightRows(code, validLang, highlightTheme) ?? code.split("\n");
 }

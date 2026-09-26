@@ -104,12 +104,14 @@ describe("write streaming preview honors Ctrl+O expansion", () => {
 		draw(1).render(120);
 		expect(gutters).toBe(2);
 
-		// A frame whose content grew is a different file and is highlighted again, so the memo is a
-		// memo rather than a card frozen at its first paint.
+		// A frame whose content grew draws the row that arrived, so the memo is a memo rather than a
+		// card frozen at its first paint. It draws only that row: the two lines already drawn keep
+		// their rows, since closing the second line changed none of its colours, and redrawing them on
+		// every delta is what made a long streaming write quadratic.
 		args.content = `${args.content}\nconst c = 3;`;
 		const grown = draw(2);
 		grown.render(120);
-		expect(gutters).toBe(5);
+		expect(gutters).toBe(3);
 		expect(stripAnsi(grown.render(120).join("\n"))).toContain("const c = 3;");
 		// And the row that arrived is numbered where it sits in the file, not where it sits in the
 		// window, so the memo cannot be satisfied by a stale gutter.
