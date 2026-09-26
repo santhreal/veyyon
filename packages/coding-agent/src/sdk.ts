@@ -1,4 +1,3 @@
-import * as path from "node:path";
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import {
 	Agent,
@@ -14,7 +13,6 @@ import {
 	getOpenAICodexTransportDetails,
 	prewarmOpenAICodexResponses,
 } from "@veyyon/ai/providers/openai-codex-responses";
-import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { abortDetached } from "@veyyon/kernel/session/detached-abort";
 import { createInterruptedTurnAbortMessage } from "@veyyon/kernel/session/exit-diagnostics";
 import { OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
@@ -55,16 +53,13 @@ import { Settings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";
 import { initializeWithSettings } from "./discovery";
 import { setActiveRules } from "./discovery/capability/rule";
-import { bucketRules, type RuleBuckets } from "./discovery/capability/rule-buckets";
+import { bucketRules } from "./discovery/capability/rule-buckets";
 import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "./discovery/mode";
 import {
 	collectDiscoverableTools,
-	type DiscoverableTool,
 	filterBySource,
-	formatDiscoverableToolServerSummary,
 	isMCPToolName,
 	selectDiscoverableToolNamesByServer,
-	summarizeDiscoverableTools,
 } from "./discovery/tool-index";
 import { getExaMcpTools } from "./exa/tools";
 import { TtsrManager } from "./export/ttsr";
@@ -89,8 +84,7 @@ import { type Skill, setActiveSkills } from "./extensibility/skills";
 import { LocalProtocolHandler } from "./internal-urls";
 import { describeLegacyPromptFile, findLegacyPromptFiles } from "./legacy-system-prompt-files";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "./lsp/startup-events";
-import { discoverAndLoadMCPTools, MCPManager, MCPToolCache } from "./mcp";
-import { MCP_CONNECTION_STATUS_EVENT_CHANNEL, type McpConnectionStatusEvent } from "./mcp/startup-events";
+import { MCPManager } from "./mcp";
 import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memory/backend";
 import { recordRestLaunchFacts } from "./modes/launch-facts";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
@@ -147,7 +141,6 @@ import {
 } from "./tools/web/search";
 import { ttsTool } from "./tools/web/tts";
 import { EventBus } from "./utils/event-bus";
-import type { WorkspaceTree } from "./workspace-tree";
 
 // Types
 
@@ -223,13 +216,12 @@ import {
 	workspaceTreeWithinDeadline,
 } from "./session/factory-extensions";
 import {
-	applyMCPEnvironment,
-	buildMCPPromptCommands,
+	clipMCPServerInstructions,
 	collectPendingMCPToolNames,
 	createPendingMCPTool,
-	type DeferredMCPActivation,
-	logMCPLoadErrors,
-	MAX_MCP_INSTRUCTIONS_LENGTH,
+	type StartDeferredMCPDiscovery,
+	startSessionMCP,
+	wireReactiveMCPManager,
 } from "./session/factory-mcp";
 import {
 	buildAsyncResultBatchMessage,
@@ -249,6 +241,12 @@ import {
 	isCustomTool,
 	isLegacyBuiltinToolDefinition,
 } from "./session/factory-tools";
+import {
+	applySystemPromptOverride,
+	composeAppendPrompt,
+	ProjectPromptInputs,
+	promptDiscoverableTools,
+} from "./session/prompt-inputs";
 import { createSessionToolSession } from "./session/tool-session";
 
 let sshCleanupRegistered = false;
@@ -588,14 +586,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				projectInputs.advisors,
 			]);
 
-		let promptInputCwd = cwd;
-		let promptContextFiles = contextFiles;
-		let promptWorkspaceTree: WorkspaceTree | Promise<WorkspaceTree> = projectInputs.workspaceTree;
-		let promptActiveRepoContext = activeRepoContext;
-		let promptSkills = skills;
-		let promptRulebookRules = rulebookRules;
-		let promptAlwaysApplyRules = alwaysApplyRules;
-
 		const enableLsp = options.enableLsp ?? true;
 		const asyncMaxJobs = Math.min(100, Math.max(1, settings.get("async.maxJobs") ?? 100));
 		const ASYNC_INLINE_RESULT_MAX_CHARS = 12_000;
@@ -740,115 +730,25 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 		// Discover MCP tools from .mcp.json files
 		mcpManager = options.mcpManager;
-		toolSession.mcpManager = mcpManager;
 		const enableMCP = options.enableMCP ?? true;
 		const deferMCPDiscoveryForUI = enableMCP && !mcpManager && options.hasUI === true;
 		const customTools: CustomTool[] = [];
-		let startDeferredMCPDiscovery:
-			| ((liveSession: AgentSession, activation: DeferredMCPActivation) => void)
-			| undefined;
-		const startupQuiet = settings.get("startup.quiet");
-		const onMCPStatus = (event: McpConnectionStatusEvent) => {
-			if (!options.hasUI || startupQuiet) return;
-			if (event.type === "connecting" && event.serverNames.length === 0) return;
-			eventBus.emit(MCP_CONNECTION_STATUS_EVENT_CHANNEL, event);
-		};
-		const mcpDiscoverOptions = {
-			onStatus: onMCPStatus,
-			// Always filter Exa - we have native integration
-			filterExa: true,
-			// Filter browser MCP servers when builtin browser tool is active
-			filterBrowser: settings.get("browser.enabled") ?? false,
-			// The session's own profile, not the booted one: an SDK host rooted in
-			// another agent dir gets that profile's mcp.json, matching its rules,
-			// commands, skills and instructions.
-			agentDir,
-		};
+		let startDeferredMCPDiscovery: StartDeferredMCPDiscovery | undefined;
 		if (enableMCP && !mcpManager) {
-			if (deferMCPDiscoveryForUI) {
-				const cacheStorage = AgentStorage.forAgentDir(settings.getAgentDir());
-				mcpManager = new MCPManager(cwd, cacheStorage ? new MCPToolCache(cacheStorage) : null);
-				mcpManager.setAuthStorage(authStorage);
-				toolSession.mcpManager = mcpManager;
-
-				if (settings.get("mcp.notifications")) {
-					mcpManager.setNotificationsEnabled(true);
-				}
-
-				const deferredMCPManager = mcpManager;
-				startDeferredMCPDiscovery = (liveSession, activation) => {
-					void (async () => {
-						try {
-							const mcpResult = await logger.time("discoverAndLoadMCPTools", () =>
-								deferredMCPManager.discoverAndConnect(mcpDiscoverOptions),
-							);
-							// The session can be torn down while servers are still connecting.
-							// Don't resurrect tools on a disposed session, and don't leak the
-							// transports/subprocesses the connect just spawned.
-							if (liveSession.isDisposed) {
-								await deferredMCPManager.disconnectAll();
-								return;
-							}
-							applyMCPEnvironment(mcpResult);
-							logMCPLoadErrors(mcpResult.errors);
-							// `tools.discoveryMode: "auto"` was resolved before deferred MCP
-							// tools existed. Reconcile again before refresh so a large toolset
-							// cannot bypass discovery by arriving after first paint.
-							let discoveryEnabled = activation.mcpDiscoveryEnabled;
-							let activateAll = activation.activateAllMCPTools;
-							if (
-								!discoveryEnabled &&
-								(await enableDeferredMCPDiscoveryForTools(liveSession, mcpResult.tools))
-							) {
-								discoveryEnabled = true;
-								activateAll = false;
-							}
-							await liveSession.refreshMCPTools(mcpResult.tools, { activateAll });
-							if (activation.explicitlyRequestedMCPToolNames.length > 0) {
-								if (discoveryEnabled && !activation.mcpDiscoveryEnabled) {
-									// Discovery flipped on mid-flight: route the explicit request
-									// through discovery-aware activation so selection persists.
-									await liveSession.activateDiscoveredMCPTools(activation.explicitlyRequestedMCPToolNames);
-								} else if (!discoveryEnabled && !activateAll) {
-									await liveSession.setActiveToolsByName([
-										...liveSession.getActiveToolNames(),
-										...activation.explicitlyRequestedMCPToolNames,
-									]);
-								}
-							}
-						} catch (error) {
-							logger.error("MCP tool load failed", {
-								path: ".mcp.json",
-								error: errorMessage(error),
-							});
-						}
-					})();
-				};
-			} else {
-				const mcpResult = await logger.time("discoverAndLoadMCPTools", discoverAndLoadMCPTools, cwd, {
-					...mcpDiscoverOptions,
-					cacheStorage: AgentStorage.forAgentDir(settings.getAgentDir()),
-					authStorage,
-				});
-				mcpManager = mcpResult.manager;
-				toolSession.mcpManager = mcpManager;
-
-				if (settings.get("mcp.notifications")) {
-					mcpManager.setNotificationsEnabled(true);
-				}
-				applyMCPEnvironment(mcpResult);
-
-				// Log MCP errors
-				for (const { path, error } of mcpResult.errors) {
-					logger.error("MCP tool load failed", { path, error });
-				}
-
-				if (mcpResult.tools.length > 0) {
-					// MCP tools are LoadedCustomTool, extract the tool property
-					customTools.push(...mcpResult.tools.map(loaded => loaded.tool));
-				}
-			}
+			const mcp = await startSessionMCP({
+				cwd,
+				agentDir,
+				settings,
+				authStorage,
+				eventBus,
+				hasUI: options.hasUI === true,
+				deferred: deferMCPDiscoveryForUI,
+			});
+			mcpManager = mcp.manager;
+			customTools.push(...mcp.tools);
+			startDeferredMCPDiscovery = mcp.startDeferred;
 		}
+		toolSession.mcpManager = mcpManager;
 		// Only top-level sessions own the global MCPManager. Spawned agents already
 		// receive the parent's manager via `options.mcpManager`, and reassigning
 		// the singleton to the same value is a no-op — keep the gate explicit
@@ -1315,119 +1215,58 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// do not carry is worse than one that omits it -- which is why the agent option
 		// below takes the same resolver rather than a value.
 		const intentTracingEnabled = () => resolveIntentField(settings) !== undefined;
-		let projectInputRefresh: Promise<void> = Promise.resolve();
-		const refreshProjectPromptInputs = async (): Promise<void> => {
-			const requestedCwd = path.resolve(sessionManager.getCwd());
-			if (requestedCwd === promptInputCwd) return;
-
-			const refresh = projectInputRefresh
-				.catch(() => undefined)
-				.then(async () => {
-					const liveCwd = path.resolve(sessionManager.getCwd());
-					if (liveCwd === promptInputCwd) return;
-
-					const next = discoverProjectInputs(liveCwd, agentDir, settings, options);
-					const [
-						nextContextFiles,
-						nextWorkspaceTree,
-						nextActiveRepoContext,
-						nextSkillsResult,
-						nextRules,
-						nextWatchdogFiles,
-						nextAdvisors,
-					] = await Promise.all([
-						next.contextFiles,
-						next.workspaceTree,
-						next.activeRepoContext,
-						next.skills,
-						next.rules,
-						next.watchdogFiles,
-						next.advisors,
+		const promptInputs = new ProjectPromptInputs({
+			initial: {
+				cwd,
+				contextFiles,
+				workspaceTree: projectInputs.workspaceTree,
+				activeRepoContext,
+				skills,
+				rulebookRules,
+				alwaysApplyRules,
+			},
+			getCwd: () => sessionManager.getCwd(),
+			discover: liveCwd => discoverProjectInputs(liveCwd, agentDir, settings, options),
+			ttsrManager,
+			ttsrOptions: () => settings.getGroup("ttsr"),
+			onChange: next => {
+				toolSession.contextFiles = next.contextFiles;
+				toolSession.workspaceTree = next.workspaceTree;
+				toolSession.skills = next.skills;
+				toolSession.rules = next.rules;
+				if (hasSession) {
+					session.replaceSkills(next.skills);
+					session.replaceProjectAdvisorScope(projectAdvisorScope(next));
+				}
+				for (const warning of next.skillWarnings) {
+					operatorNotices.warn("skills", `${warning.skillPath}: ${warning.message}`);
+				}
+				ttsrManager.reportUnknownToolScopes(toolRegistry.keys());
+				if (!isInProcessChildSession(options)) {
+					setActiveSkills(next.skills);
+					setActiveRules([
+						...next.buckets.rulebookRules,
+						...next.buckets.alwaysApplyRules,
+						...ttsrManager.getRules(),
 					]);
-
-					// A newer cwd transition won the race. Discard these bytes rather
-					// than installing one project's inputs under another project's path.
-					if (path.resolve(sessionManager.getCwd()) !== liveCwd) return;
-
-					const previousTtsrRules = ttsrManager.getRules();
-					ttsrManager.clearRules();
-					let nextBuckets: RuleBuckets;
-					try {
-						nextBuckets = bucketRules(nextRules, ttsrManager, settings.getGroup("ttsr"));
-					} catch (error) {
-						ttsrManager.clearRules();
-						for (const rule of previousTtsrRules) ttsrManager.addRule(rule);
-						throw error;
-					}
-
-					promptInputCwd = liveCwd;
-					promptContextFiles = nextContextFiles;
-					promptWorkspaceTree = nextWorkspaceTree;
-					promptActiveRepoContext = nextActiveRepoContext;
-					promptSkills = nextSkillsResult.skills;
-					promptRulebookRules = nextBuckets.rulebookRules;
-					promptAlwaysApplyRules = nextBuckets.alwaysApplyRules;
-
-					toolSession.contextFiles = nextContextFiles;
-					toolSession.workspaceTree = nextWorkspaceTree;
-					toolSession.skills = nextSkillsResult.skills;
-					toolSession.rules = nextRules;
-					if (hasSession) {
-						session.replaceSkills(nextSkillsResult.skills);
-						session.replaceProjectAdvisorScope(
-							projectAdvisorScope({
-								watchdogFiles: nextWatchdogFiles,
-								activeRepoContext: nextActiveRepoContext,
-								contextFiles: nextContextFiles,
-								advisors: nextAdvisors,
-							}),
-						);
-					}
-					for (const warning of nextSkillsResult.warnings) {
-						operatorNotices.warn("skills", `${warning.skillPath}: ${warning.message}`);
-					}
-					ttsrManager.reportUnknownToolScopes(toolRegistry.keys());
-					if (!isInProcessChildSession(options)) {
-						setActiveSkills(nextSkillsResult.skills);
-						setActiveRules([
-							...nextBuckets.rulebookRules,
-							...nextBuckets.alwaysApplyRules,
-							...ttsrManager.getRules(),
-						]);
-					}
-				});
-			projectInputRefresh = refresh;
-			await refresh;
-
-			if (path.resolve(sessionManager.getCwd()) !== promptInputCwd) {
-				await refreshProjectPromptInputs();
-			}
-		};
+				}
+			},
+		});
 		const rebuildSystemPrompt = async (
 			toolNames: string[],
 			tools: Map<string, AgentTool>,
 		): Promise<BuildSystemPromptResult> => {
-			await refreshProjectPromptInputs();
+			await promptInputs.refresh();
 			toolContextStore.setToolNames(toolNames);
-			const discoverableMCPTools: DiscoverableTool[] = mcpDiscoveryEnabled
-				? filterBySource(collectDiscoverableTools(tools.values()), "mcp")
-				: [];
-			const activeToolNames = new Set(toolNames);
-			const discoverableLocalTools: DiscoverableTool[] =
-				effectiveDiscoveryMode === "all"
-					? Array.from(tools.values()).flatMap(tool => {
-							if (tool.loadMode !== "discoverable" || activeToolNames.has(tool.name)) return [];
-							return collectDiscoverableTools([tool], {
-								source: builtInRegistryToolNames.has(tool.name) ? "builtin" : "custom",
-							});
-						})
-					: [];
-			const discoverableToolsForDesc: DiscoverableTool[] = discoverableLocalTools.concat(discoverableMCPTools);
-			const discoverableToolSummary = summarizeDiscoverableTools(discoverableToolsForDesc);
-			const hasDiscoverableTools =
-				mcpDiscoveryEnabled && toolNames.includes(TOOL.search_tool_bm25) && discoverableToolsForDesc.length > 0;
+			const discoverable = promptDiscoverableTools({
+				tools,
+				activeToolNames: toolNames,
+				mcpDiscoveryEnabled,
+				discoveryMode: effectiveDiscoveryMode,
+				builtInToolNames: builtInRegistryToolNames,
+			});
 			const promptTools = buildSystemPromptToolMetadata(tools, {
-				search_tool_bm25: { description: renderSearchToolBm25Description(discoverableToolsForDesc) },
+				search_tool_bm25: { description: renderSearchToolBm25Description(discoverable.tools) },
 			});
 			// Ask the live task tool which agents this session may spawn, rather than
 			// re-running discovery here: it already filtered its discovered set
@@ -1443,49 +1282,25 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				taskDepth: options.taskDepth ?? 0,
 			});
 			const memoryBackend = await resolveMemoryBackend(settings);
-			const memoryInstructions = await memoryBackend.buildDeveloperInstructions(agentDir, settings, session);
-
-			// Build combined append prompt: memory instructions + auto-learn guidance
-			// + MCP server instructions. For UI sessions MCP discovery is deferred, so
-			// `getServerInstructions()` is empty until the background connect completes;
-			// the rebuild that `refreshMCPTools` triggers post-discovery then picks up
-			// the now-connected servers' instructions, so they join the prompt for the
-			// rest of the session.
-			const serverInstructions = mcpManager?.getServerInstructions();
-			// Drive guidance off the auto-learn BUILTINS that createTools actually built
-			// (provenance, not just an active name): `builtInToolNames` excludes a
-			// custom/extension tool that merely shares the name, and reflects the
-			// session-start build — so a spawned agent that filtered them out, a mid-session
-			// enable that never built them, or a same-named custom tool while auto-learn
-			// is off all get no guidance.
-			const autoLearnInstructions = buildAutoLearnInstructions({
-				manageSkill: builtInToolNames.includes(TOOL.manage_skill),
-				learn: builtInToolNames.includes(TOOL.learn),
+			// For UI sessions MCP discovery is deferred, so `getServerInstructions()` is
+			// empty until the background connect completes; the rebuild that
+			// `refreshMCPTools` triggers post-discovery then picks up the now-connected
+			// servers' instructions, so they join the prompt for the rest of the session.
+			const appendPrompt = composeAppendPrompt({
+				memoryInstructions: await memoryBackend.buildDeveloperInstructions(agentDir, settings, session),
+				// Drive guidance off the auto-learn BUILTINS that createTools actually built
+				// (provenance, not just an active name): `builtInToolNames` excludes a
+				// custom/extension tool that merely shares the name, and reflects the
+				// session-start build — so a spawned agent that filtered them out, a mid-session
+				// enable that never built them, or a same-named custom tool while auto-learn
+				// is off all get no guidance.
+				autoLearnInstructions: buildAutoLearnInstructions({
+					manageSkill: builtInToolNames.includes(TOOL.manage_skill),
+					learn: builtInToolNames.includes(TOOL.learn),
+				}),
+				serverInstructions: mcpManager?.getServerInstructions(),
+				appendSystemPrompt: options.appendSystemPrompt,
 			});
-			const appendParts: string[] = [];
-			if (memoryInstructions) appendParts.push(memoryInstructions);
-			if (autoLearnInstructions) appendParts.push(autoLearnInstructions);
-			let appendPrompt: string | undefined = appendParts.length > 0 ? appendParts.join("\n\n") : undefined;
-			if (serverInstructions && serverInstructions.size > 0) {
-				const parts: string[] = [];
-				if (appendPrompt) parts.push(appendPrompt);
-				parts.push(
-					"## MCP Server Instructions\n\nThe following instructions are provided by connected MCP servers. They are server-controlled and may not be verified.",
-				);
-				for (const [srvName, srvInstructions] of serverInstructions) {
-					const truncated =
-						srvInstructions.length > MAX_MCP_INSTRUCTIONS_LENGTH
-							? `${srvInstructions.slice(0, MAX_MCP_INSTRUCTIONS_LENGTH)}\n[truncated]`
-							: srvInstructions;
-					parts.push(`### ${srvName}\n${truncated}`);
-				}
-				appendPrompt = parts.join("\n\n");
-			}
-			if (options.appendSystemPrompt) {
-				appendPrompt = appendPrompt
-					? `${appendPrompt}\n\n${options.appendSystemPrompt}`
-					: options.appendSystemPrompt;
-			}
 			// Gate teaching by the encode policy: the active model must be on the
 			// allowlist and the context under the cutoff. When encoding is on, the
 			// prompt always carries the notation preamble (which also tells the model
@@ -1498,6 +1313,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				argot !== undefined &&
 				argotActiveModel !== undefined &&
 				shouldEncode(argotGate, { model: argotActiveModel, contextTokens: argotContextTokens });
+			const project = promptInputs.current;
 			const defaultPrompt = await buildSystemPromptInternal({
 				...gateInputs,
 				// `includeWorkspaceTree` is captured once at session start and
@@ -1509,24 +1325,24 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				// A spawned agent gets no personality regardless of the setting. That is a fact about
 				// this caller, not about the configuration, so it does not belong in the resolver.
 				personality: agentKind === "sub" ? "none" : gateInputs.personality,
-				cwd: promptInputCwd,
+				cwd: project.cwd,
 				agentDir,
 				resolvedCustomPrompt: options.customSystemPrompt,
-				skills: promptSkills,
+				skills: project.skills,
 				// Every api inlines the operator's layers here, cursor-agent included. That api's
 				// server discards the client's system-prompt blobs and applies none of the
 				// request-context rules, so the provider carries the assembled prompt on the
 				// active user turn — the one thing it delivers verbatim. Either way the prompt
 				// IS the instruction payload, and one composer builds it for every api.
-				contextFiles: promptContextFiles,
+				contextFiles: project.contextFiles,
 				tools: promptTools,
 				toolNames,
-				rules: promptRulebookRules,
-				alwaysApplyRules: promptAlwaysApplyRules,
+				rules: project.rulebookRules,
+				alwaysApplyRules: project.alwaysApplyRules,
 				resolvedAppendSystemPrompt: appendPrompt,
 				skillsSettings: settings.getGroup("skills"),
-				mcpDiscoveryMode: hasDiscoverableTools,
-				mcpDiscoveryServerSummaries: discoverableToolSummary.servers.map(formatDiscoverableToolServerSummary),
+				mcpDiscoveryMode: discoverable.searchable,
+				mcpDiscoveryServerSummaries: discoverable.serverSummaries,
 				secretsEnabled: secretRuntime.obfuscator?.hasSecrets() === true,
 				// Read LATE, inside the build, never snapshotted when the runtime was
 				// constructed. `namedSecretNames()` expires stale entries while answering, so
@@ -1537,27 +1353,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				secretInventory: renderSecretInventory(secretRuntime.obfuscator?.namedSecretNames()),
 				argotPreamble: argotCanEncode ? renderPreamble({ tools: true }) : undefined,
 				argotHandles: argotCanEncode && argot.loaded ? argot.promptFragment() : undefined,
-				workspaceTree: promptWorkspaceTree,
+				workspaceTree: project.workspaceTree,
 				memoryRootEnabled: memoryBackend.id === "local",
 				model: getActiveModelString(),
-				activeRepoContext: promptActiveRepoContext,
+				activeRepoContext: project.activeRepoContext,
 				sectionOrder: resolvePromptSectionOrderForModel(settings, agent?.state.model ?? model),
 			});
-
-			if (options.systemPrompt === undefined) {
-				return defaultPrompt;
-			}
-			const customPrompt =
-				typeof options.systemPrompt === "function"
-					? options.systemPrompt(defaultPrompt.systemPrompt)
-					: options.systemPrompt;
-			return {
-				systemPrompt: typeof customPrompt === "string" ? [customPrompt] : customPrompt,
-				// The caller replaced the assembled prompt, so no statement produced these blocks.
-				statementContext: null,
-				statementOverrides: null,
-				replacedStatementSections: [],
-			};
+			return applySystemPromptOverride(defaultPrompt, options.systemPrompt);
 		};
 
 		const toolNamesFromRegistry = Array.from(toolRegistry.keys());
@@ -2038,18 +1840,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			requestedToolNames: requestedToolNameSet,
 			setActiveToolNames,
 			getMcpServerInstructions: mcpManager
-				? () => {
-						const raw = mcpManager!.getServerInstructions();
-						if (!raw || raw.size === 0) return raw;
-						const out = new Map<string, string>();
-						for (const [name, text] of raw) {
-							out.set(
-								name,
-								text.length > MAX_MCP_INSTRUCTIONS_LENGTH ? text.slice(0, MAX_MCP_INSTRUCTIONS_LENGTH) : text,
-							);
-						}
-						return out;
-					}
+				? () => clipMCPServerInstructions(mcpManager!.getServerInstructions())
 				: undefined,
 			disconnectOwnedMcpManager: ownedMcpManager ? () => ownedMcpManager.disconnectAll() : undefined,
 			mcpDiscoveryEnabled,
@@ -2333,6 +2124,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// CPU parsing big `initialize` responses concurrently with the LLM stream consumer, jittering
 		// perceived latency.
 		let lspServers: CreateAgentSessionResult["lspServers"];
+		const startupQuiet = settings.get("startup.quiet");
 		// Dynamic import: the lsp barrel pulls the full client/config machinery,
 		// which must stay off the boot path when LSP is disabled or has no UI.
 		const lazyLsp = enableLsp && options.hasUI ? await import("./lsp") : undefined;
@@ -2415,64 +2207,29 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// Wire MCP manager callbacks to session for reactive tool updates.
 		// Skip when reusing a parent's manager — the parent owns the callbacks.
 		if (mcpManager && !options.mcpManager) {
-			const reactiveMcpManager = mcpManager;
-			// MCP stdio servers are session-spawned processes: they join the
-			// session's CPU budget group when one is configured, and a saturated
-			// or uncreated group refuses a new server the same way it refuses bash.
-			const mcpCpu = sessionCpuExecHooks(() => session.sessionManager.getSessionId() ?? null);
-			reactiveMcpManager.setSpawnAdoption(mcpCpu.adoptPid);
-			reactiveMcpManager.setSpawnGate(mcpCpu.gate);
-			reactiveMcpManager.setOnToolsChanged(tools => {
-				void (async () => {
-					try {
-						let activateAll = deferMCPDiscoveryForUI && !mcpDiscoveryEnabled;
-						if (activateAll && (await enableDeferredMCPDiscoveryForTools(session, tools))) {
-							activateAll = false;
-						}
-						await session.refreshMCPTools(tools, activateAll ? { activateAll: true } : undefined);
-					} catch (error) {
-						logger.warn("MCP tool refresh failed", {
-							error: errorMessage(error),
-						});
+			wireReactiveMCPManager({
+				manager: mcpManager,
+				session,
+				settings,
+				refreshTools: async tools => {
+					let activateAll = deferMCPDiscoveryForUI && !mcpDiscoveryEnabled;
+					if (activateAll && (await enableDeferredMCPDiscoveryForTools(session, tools))) {
+						activateAll = false;
 					}
-				})();
-			});
-			// Wire prompt refresh → rebuild MCP prompt slash commands
-			reactiveMcpManager.setOnPromptsChanged(serverName => {
-				const promptCommands = buildMCPPromptCommands(reactiveMcpManager);
-				session.setMCPPromptCommands(promptCommands);
-				logger.debug("MCP prompt commands refreshed", { path: `mcp:${serverName}` });
-			});
-			const notificationDebounceTimers = new Map<string, Timer>();
-			const clearDebounceTimers = () => {
-				for (const timer of notificationDebounceTimers.values()) clearTimeout(timer);
-				notificationDebounceTimers.clear();
-			};
-			postmortem.register("mcp-notification-cleanup", clearDebounceTimers);
-			mcpManager.setOnResourcesChanged((serverName, uri) => {
-				logger.debug("MCP resources changed", { path: `mcp:${serverName}`, uri });
-				if (!settings.get("mcp.notifications")) return;
-				const debounceMs = settings.get("mcp.notificationDebounceMs");
-				const key = `${serverName}:${uri}`;
-				const existing = notificationDebounceTimers.get(key);
-				if (existing) clearTimeout(existing);
-				notificationDebounceTimers.set(
-					key,
-					setTimeout(() => {
-						notificationDebounceTimers.delete(key);
-						// Re-check: user may have disabled notifications during the debounce window
-						if (!settings.get("mcp.notifications")) return;
-						session.yieldQueue.enqueue<McpNotificationEntry>("mcp-notification", { serverName, uri });
-					}, debounceMs),
-				);
+					await session.refreshMCPTools(tools, activateAll ? { activateAll: true } : undefined);
+				},
 			});
 		}
 
-		startDeferredMCPDiscovery?.(session, {
-			mcpDiscoveryEnabled,
-			explicitlyRequestedMCPToolNames,
-			activateAllMCPTools: !mcpDiscoveryEnabled,
-		});
+		startDeferredMCPDiscovery?.(
+			session,
+			{
+				mcpDiscoveryEnabled,
+				explicitlyRequestedMCPToolNames,
+				activateAllMCPTools: !mcpDiscoveryEnabled,
+			},
+			enableDeferredMCPDiscoveryForTools,
+		);
 
 		return {
 			session,
