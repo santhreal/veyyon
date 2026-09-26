@@ -4,6 +4,7 @@
 
 ### Changed
 
+- A rebuilt transcript highlights the code and diff context of every tool card in one parallel native batch before its first frame instead of one card at a time during it, cutting a resumed session's first frame from 497 ms to 357 ms, and from 14.2 s to 7.5 s with compacted history expanded, with byte-identical rows.
 - A tool card whose presentation changes with nothing subscribed builds its block when it is next read instead of at the change, so disposing a transcript no longer builds a sealed block for every card, cutting a transcript reset from 31.4 ms to 1.6 ms, and from 2,070 ms to 26.7 ms on a 64k-card transcript.
 - `veyyon session stats` folds each entry through a reducer with one method per entry kind instead of one 340-line loop, cutting the report on a 104,969-entry session from 36.4 ms to 30.0 ms with an identical report.
 - The legacy agent settings migration runs as one step per retired area over a shared key reader, cutting a legacy-heavy config's migration from 15.0 µs to 10.9 µs per load; a current-format config is unchanged.

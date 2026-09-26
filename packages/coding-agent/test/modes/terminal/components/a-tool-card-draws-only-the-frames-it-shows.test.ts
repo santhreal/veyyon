@@ -111,6 +111,7 @@ const NOT_MUTATIONS = [
 	"dispose",
 	"getNativeScrollbackLiveRegionStart",
 	"getTranscriptBlockVersion",
+	"highlightRequests",
 	"isDisplaceableBlock",
 	"isTranscriptBlockFinalized",
 	"render",

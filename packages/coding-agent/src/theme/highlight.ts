@@ -13,8 +13,10 @@
  */
 import {
 	CodeHighlighter,
+	type HighlightSource,
 	type HighlightColors as NativeHighlightColors,
 	highlightCode as nativeHighlightCode,
+	highlightCodeBatch as nativeHighlightCodeBatch,
 	supportsLanguage as nativeSupportsLanguage,
 } from "@veyyon/natives";
 // From the modules that own them, not the `@veyyon/utils` barrel: 16 modules against 74, for two
@@ -88,8 +90,72 @@ function reportHighlightFailureOnce(lang: string | undefined, error: unknown): v
 function bindCachesTo(highlightTheme: Theme): void {
 	if (highlightCacheTheme === highlightTheme) return;
 	highlightCache.clear();
+	prefetched.clear();
 	streams.length = 0;
 	highlightCacheTheme = highlightTheme;
+}
+
+/**
+ * Sources highlighted before the draw that reads them, by cache key.
+ *
+ * A rebuilt transcript draws every card in one frame, and each card highlights its sources one after
+ * another on the render thread: a resumed session with 24,169 of them spent half of its 14.2 s first
+ * frame there. The rebuild has every card's sources before the frame, so it highlights them together,
+ * in parallel, and each draw finds its rows here. An entry leaves on its first read for the exact
+ * cache, and a prefetch replaces the entries of the last one, so a source no card drew is held until
+ * the next prefetch and no longer.
+ */
+const prefetched = new Map<string, string>();
+
+/** A source a draw will highlight, and the language it will name for it. */
+export interface HighlightRequest {
+	readonly code: string;
+	readonly lang: string | undefined;
+}
+
+/** The language the highlighter is given for `lang`: `undefined` when it has no grammar for it. */
+function supportedLanguage(lang: string | undefined): string | undefined {
+	return lang && nativeSupportsLanguage(lang) ? lang : undefined;
+}
+
+/**
+ * Highlight every source of `requests` that no cache holds yet, in one native call that spreads
+ * them across threads, so the `highlightCode` calls that draw them find their rows ready. The rows
+ * are byte-identical to the ones `highlightCode` computes itself.
+ */
+export function prefetchHighlights(requests: readonly HighlightRequest[], highlightTheme: Theme = theme): void {
+	bindCachesTo(highlightTheme);
+	prefetched.clear();
+	const keys: string[] = [];
+	const sources: HighlightSource[] = [];
+	const seen = new Set<string>();
+	for (const request of requests) {
+		const lang = supportedLanguage(request.lang);
+		const key = highlightCacheKey(request.code, lang);
+		if (seen.has(key) || highlightCache.has(key)) continue;
+		seen.add(key);
+		keys.push(key);
+		sources.push({ code: request.code, lang });
+	}
+	if (sources.length === 0) return;
+	let highlighted: string[];
+	try {
+		highlighted = nativeHighlightCodeBatch(sources, getHighlightColors(highlightTheme));
+	} catch (error) {
+		// The draws highlight these one at a time instead, and report a language that fails there.
+		logger.warn("Code could not be highlighted ahead of drawing", { error: errorMessage(error) });
+		return;
+	}
+	for (let index = 0; index < keys.length; index++) prefetched.set(keys[index]!, highlighted[index]!);
+}
+
+/** The prefetched rows under `key`, moved to the exact cache so a redraw finds them there. */
+function takePrefetched(key: string): string | undefined {
+	const rows = prefetched.get(key);
+	if (rows === undefined) return undefined;
+	prefetched.delete(key);
+	highlightCache.set(key, rows);
+	return rows;
 }
 
 function highlightCacheKey(code: string, validLang: string | undefined): string {
@@ -99,7 +165,7 @@ function highlightCacheKey(code: string, validLang: string | undefined): string 
 export function highlightCached(code: string, validLang: string | undefined, highlightTheme: Theme): string | null {
 	bindCachesTo(highlightTheme);
 	const key = highlightCacheKey(code, validLang);
-	const hit = highlightCache.get(key);
+	const hit = highlightCache.get(key) ?? takePrefetched(key);
 	if (hit !== undefined) {
 		return hit;
 	}
@@ -214,7 +280,7 @@ function highlightRows(code: string, validLang: string | undefined, highlightThe
 		}
 	}
 	const key = highlightCacheKey(code, validLang);
-	const hit = highlightCache.get(key);
+	const hit = highlightCache.get(key) ?? takePrefetched(key);
 	if (hit !== undefined) {
 		const rows = hit.split("\n");
 		return rows.length === countNewlines(code) + 1 ? rows : undefined;
@@ -261,7 +327,7 @@ function extendStreamReporting(stream: HighlightStream, code: string): string[] 
  * Returns array of highlighted lines.
  */
 export function highlightCode(code: string, lang?: string, highlightTheme: Theme = theme): string[] {
-	const validLang = lang && nativeSupportsLanguage(lang) ? lang : undefined;
+	const validLang = supportedLanguage(lang);
 	// A highlighter only styles tokens inline — it must never change the source
 	// line count. If it did (invalid UTF-16 like a lone surrogate is mangled
 	// crossing the native UTF-8 boundary and can drop lines), the styled output

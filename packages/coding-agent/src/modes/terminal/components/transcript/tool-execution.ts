@@ -18,6 +18,7 @@ import {
 import { formatMoreLines, logger } from "@veyyon/utils";
 import type { ImageFallbackReason } from "@veyyon/utils/image-fallback";
 import { isRecord } from "@veyyon/utils/type-guards";
+import type { ToolView } from "@veyyon/view";
 import type {
 	ToolExecutionBlock,
 	ToolExecutionDisplay,
@@ -32,6 +33,7 @@ import {
 	type ToolExecutionProducer,
 } from "../../../../presentation/tool-execution";
 import { recordImageDisplay } from "../../../../session/image-visibility";
+import type { HighlightRequest } from "../../../../theme/highlight";
 import { transitionsEnabled } from "../../../../theme/shimmer";
 import type { Theme } from "../../../../theme/theme";
 import { getThemeEpoch, theme } from "../../../../theme/theme";
@@ -54,7 +56,7 @@ import {
 	truncateToWidth,
 } from "../../../../tools/core/render-utils";
 import { toolViewDefinitions } from "../../../../tools/view-registry";
-import { drawToolView } from "../../draw/draw-tool-view";
+import { drawToolView, toolViewHighlightRequests } from "../../draw/draw-tool-view";
 import {
 	CachedOutputBlock,
 	isFramedBlockComponent,
@@ -81,6 +83,29 @@ import { reportRendererFailure } from "./renderer-failure";
 export { turnFailedToolResult } from "../../../../presentation/tool-execution";
 
 export type DisplaceableToolName = "job" | "todo";
+
+/** What a card's call phase draws: its title row, the tool's own renderer, a failure, its view, or nothing. */
+type CallDrawing =
+	| { readonly kind: "title" }
+	| { readonly kind: "custom" }
+	| { readonly kind: "failure"; readonly error: string }
+	| { readonly kind: "view"; readonly view: ToolView }
+	| { readonly kind: "nothing" };
+
+/** What a card's result phase draws. */
+type ResultDrawing =
+	| { readonly kind: "custom" }
+	| { readonly kind: "failure"; readonly error: string; readonly fallbackText: string | undefined }
+	| { readonly kind: "multiFile"; readonly items: readonly ToolExecutionMultiFileItem[] }
+	| { readonly kind: "view"; readonly view: ToolView }
+	| { readonly kind: "generic" }
+	| { readonly kind: "raw" };
+
+const DRAW_TITLE = { kind: "title" } as const;
+const DRAW_CUSTOM = { kind: "custom" } as const;
+const DRAW_NOTHING = { kind: "nothing" } as const;
+const DRAW_GENERIC = { kind: "generic" } as const;
+const DRAW_RAW = { kind: "raw" } as const;
 
 const ROW_INDENT_PATTERN = /^((?:\x1b\[[0-9;]*m)*)( *)/;
 
@@ -820,10 +845,50 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	#ensureDisplay(): void {
 		if (!this.#displayStale) return;
 		this.#displayStale = false;
-		const key = `${this.#resultVersion}|${this.#expanded}|${this.#isPartial}|${this.#spinnerFrame ?? "-"}|${this.#showImages}|${getThemeEpoch()}|${this.#displayInputVersion}|${this.#backgroundTaskFrozen}|${this.#sealed}|${TERMINAL.imageProtocol ?? "-"}|${this.#imageSizeKey()}`;
+		const key = this.#displayKey();
 		if (key === this.#lastDisplayKey) return;
 		this.#lastDisplayKey = key;
 		this.#rebuildDisplay();
+	}
+
+	/** Every input the drawn display depends on: the display is redrawn when this changes. */
+	#displayKey(): string {
+		return `${this.#resultVersion}|${this.#expanded}|${this.#isPartial}|${this.#spinnerFrame ?? "-"}|${this.#showImages}|${getThemeEpoch()}|${this.#displayInputVersion}|${this.#backgroundTaskFrozen}|${this.#sealed}|${TERMINAL.imageProtocol ?? "-"}|${this.#imageSizeKey()}`;
+	}
+
+	/**
+	 * Add the sources the next draw of this card hands the highlighter to `into`: none when the next
+	 * render would not redraw it. A rebuilt transcript collects them from every card and highlights
+	 * them together before the frame that draws them.
+	 */
+	highlightRequests(into: HighlightRequest[]): void {
+		if (!this.#displayStale || this.#displayKey() === this.#lastDisplayKey) return;
+		const display = this.#block.display;
+		const { hasResult, drawsCall } = this.#phases(display);
+		if (drawsCall) {
+			const call = this.#callDrawing(display, hasResult);
+			if (call.kind === "view") toolViewHighlightRequests(call.view, into);
+		}
+		if (!hasResult) return;
+		const result = this.#resultDrawing(display);
+		if (result.kind === "view") {
+			toolViewHighlightRequests(result.view, into);
+		} else if (result.kind === "multiFile") {
+			for (const item of result.items) {
+				if (item.view) toolViewHighlightRequests(item.view, into);
+			}
+		}
+	}
+
+	/** Whether the display draws a result, and whether it draws the call, which a merged result replaces. */
+	#phases(display: ToolExecutionDisplay | undefined): { readonly hasResult: boolean; readonly drawsCall: boolean } {
+		const hasResult =
+			!display?.neverRan &&
+			(!this.#isPartial || this.#block.output !== undefined || this.#block.error !== undefined);
+		const mergeCallAndResult =
+			display?.policies?.mergeCallAndResult ??
+			Boolean(toolViewDefinitions[this.#block.toolName]?.mergeCallAndResult);
+		return { hasResult, drawsCall: !hasResult || !mergeCallAndResult };
 	}
 
 	#needsFirstResultViewportRepaintAtRender(): boolean {
@@ -899,16 +964,10 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			),
 		};
 
-		const hasResult =
-			!display?.neverRan &&
-			(!this.#isPartial || this.#block.output !== undefined || this.#block.error !== undefined);
-		const mergeCallAndResult =
-			display?.policies?.mergeCallAndResult ??
-			Boolean(toolViewDefinitions[this.#block.toolName]?.mergeCallAndResult);
+		const { hasResult, drawsCall } = this.#phases(display);
 		const callArgs = this.#producer ? this.#producer.callPreview.arguments : this.#parseInputArgs(this.#block.input);
 
-		const callRendered =
-			!hasResult || !mergeCallAndResult ? this.#renderCallPhase(display, hasResult, callArgs, renderState) : false;
+		const callRendered = drawsCall ? this.#renderCallPhase(display, hasResult, callArgs, renderState) : false;
 		if (hasResult) {
 			this.#renderResultPhase(display, callArgs, renderState);
 		} else if (!callRendered && display?.generic) {
@@ -960,6 +1019,22 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#contentText.invalidate();
 	}
 
+	/**
+	 * What the call phase draws. Chosen apart from the drawing, so `highlightRequests` reads the
+	 * choice the draw makes.
+	 */
+	#callDrawing(display: ToolExecutionDisplay | undefined, hasResult: boolean): CallDrawing {
+		// A call render that IS a live widget (`callIsLiveWidget`, today only `ask`) is replaced by
+		// the plain label once the call is known never to have run, so an unasked question is not
+		// left looking answerable.
+		if (display?.neverRan === true && display.policies?.callIsLiveWidget === true) return DRAW_TITLE;
+		if (this.#options.customRenderer?.renderCall ?? this.#options.tool?.renderCall) return DRAW_CUSTOM;
+		const failure = display?.failures?.call;
+		if (failure) return { kind: "failure", error: failure.error };
+		if (display?.callView) return { kind: "view", view: display.callView };
+		return !hasResult && !display?.generic ? DRAW_TITLE : DRAW_NOTHING;
+	}
+
 	/** Draw the call phase. True when it added a row for the call. */
 	#renderCallPhase(
 		display: ToolExecutionDisplay | undefined,
@@ -967,46 +1042,60 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		callArgs: unknown,
 		renderState: ToolRenderState,
 	): boolean {
-		// A call render that IS a live widget (`callIsLiveWidget`, today only `ask`) is replaced by
-		// the plain label once the call is known never to have run, so an unasked question is not
-		// left looking answerable.
-		if (display?.neverRan === true && display.policies?.callIsLiveWidget === true) {
-			this.#addTitleRow(display);
-			return true;
+		const drawing = this.#callDrawing(display, hasResult);
+		switch (drawing.kind) {
+			case "title":
+				this.#addTitleRow(display);
+				return true;
+			case "custom":
+				return this.#renderCustomCall(display, callArgs, renderState);
+			case "failure":
+				this.#addCallFailure(display, new Error(drawing.error));
+				return true;
+			case "view":
+				try {
+					this.#contentBox.addChild(this.#onRail(drawToolView(drawing.view, theme, this.#spinnerFrame)));
+				} catch (err) {
+					this.#addCallFailure(display, err);
+				}
+				return true;
+			case "nothing":
+				return false;
 		}
+	}
+
+	/** Draw the call through the tool's own renderer. True when it drew a row. */
+	#renderCustomCall(
+		display: ToolExecutionDisplay | undefined,
+		callArgs: unknown,
+		renderState: ToolRenderState,
+	): boolean {
 		const custom = this.#options.customRenderer;
 		const tool = this.#options.tool;
 		const customCall = custom?.renderCall ?? tool?.renderCall;
-		if (customCall) {
-			try {
-				const comp = customCall.call(custom?.renderCall ? custom : tool, callArgs, renderState, theme) as
-					| Component
-					| undefined;
-				if (!comp) return false;
-				this.#contentBox.addChild(this.#onRail(comp));
-			} catch (err) {
-				this.#addCallFailure(display, err);
-			}
-			return true;
+		if (!customCall) return false;
+		try {
+			const comp = customCall.call(custom?.renderCall ? custom : tool, callArgs, renderState, theme) as
+				| Component
+				| undefined;
+			if (!comp) return false;
+			this.#contentBox.addChild(this.#onRail(comp));
+		} catch (err) {
+			this.#addCallFailure(display, err);
 		}
-		const callFailure = display?.failures?.call;
-		if (callFailure) {
-			this.#addCallFailure(display, new Error(callFailure.error));
-			return true;
+		return true;
+	}
+
+	/** What the result phase draws, chosen apart from the drawing as `#callDrawing` is. */
+	#resultDrawing(display: ToolExecutionDisplay | undefined): ResultDrawing {
+		if (this.#options.customRenderer?.renderResult ?? this.#options.tool?.renderResult) return DRAW_CUSTOM;
+		const failure = display?.failures?.result;
+		if (failure) return { kind: "failure", error: failure.error, fallbackText: failure.fallbackText };
+		if (display?.multiFileViews && display.multiFileViews.length > 1) {
+			return { kind: "multiFile", items: display.multiFileViews };
 		}
-		if (display?.callView) {
-			try {
-				this.#contentBox.addChild(this.#onRail(drawToolView(display.callView, theme, this.#spinnerFrame)));
-			} catch (err) {
-				this.#addCallFailure(display, err);
-			}
-			return true;
-		}
-		if (!hasResult && !display?.generic) {
-			this.#addTitleRow(display);
-			return true;
-		}
-		return false;
+		if (display?.resultView) return { kind: "view", view: display.resultView };
+		return display?.generic ? DRAW_GENERIC : DRAW_RAW;
 	}
 
 	#renderResultPhase(
@@ -1014,35 +1103,34 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		callArgs: unknown,
 		renderState: ToolRenderState,
 	): void {
-		if (this.#options.customRenderer?.renderResult ?? this.#options.tool?.renderResult) {
-			this.#renderCustomResult(callArgs, renderState);
-			return;
+		const drawing = this.#resultDrawing(display);
+		switch (drawing.kind) {
+			case "custom":
+				this.#renderCustomResult(callArgs, renderState);
+				return;
+			case "failure":
+				this.#addResultFailure(
+					new Error(drawing.error),
+					drawing.fallbackText ?? this.#block.error ?? this.#block.output,
+				);
+				return;
+			case "multiFile":
+				this.#renderMultiFileViews(drawing.items, display?.remainingPendingFiles);
+				return;
+			case "view":
+				try {
+					this.#contentBox.addChild(this.#onRail(drawToolView(drawing.view, theme, this.#spinnerFrame)));
+				} catch (err) {
+					this.#addResultFailure(err, this.#block.error ?? this.#block.output);
+				}
+				return;
+			case "generic":
+				this.#addGenericContent();
+				return;
+			case "raw":
+				this.#addRawOutput(this.#block.error ?? this.#block.output);
+				return;
 		}
-		const resultFailure = display?.failures?.result;
-		if (resultFailure) {
-			this.#addResultFailure(
-				new Error(resultFailure.error),
-				resultFailure.fallbackText ?? this.#block.error ?? this.#block.output,
-			);
-			return;
-		}
-		if (display?.multiFileViews && display.multiFileViews.length > 1) {
-			this.#renderMultiFileViews(display.multiFileViews, display.remainingPendingFiles);
-			return;
-		}
-		if (display?.resultView) {
-			try {
-				this.#contentBox.addChild(this.#onRail(drawToolView(display.resultView, theme, this.#spinnerFrame)));
-			} catch (err) {
-				this.#addResultFailure(err, this.#block.error ?? this.#block.output);
-			}
-			return;
-		}
-		if (display?.generic) {
-			this.#addGenericContent();
-			return;
-		}
-		this.#addRawOutput(this.#block.error ?? this.#block.output);
 	}
 
 	#renderCustomResult(callArgs: unknown, renderState: ToolRenderState): void {
