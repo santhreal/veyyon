@@ -3424,704 +3424,667 @@ export class AgentSession {
 		return out;
 	}
 
+	/**
+	 * Every agent event, one route per type. The state a later event reads (the settle's last
+	 * assistant message, the mid-run todo counter, the streaming-edit reset) is applied before the
+	 * first await: agent-core dispatches these handlers fire-and-forget, so `agent_end` can run
+	 * before its `message_end` handler resumes.
+	 */
 	#processAgentEvent = async (event: AgentEvent): Promise<void> => {
-		if (event.type === "tool_execution_start") {
-			this.#verificationEvidence.recordToolStart(event);
-		} else if (event.type === "tool_execution_end") {
-			this.#verificationEvidence.recordToolEnd(event);
-		}
-		// Reset the streaming-edit guard synchronously as well: its checks run in the stream
-		// interceptor, ahead of this handler, so a reset parked behind an await could clear a
-		// verdict the new turn has already reached.
-		if (event.type === "turn_start") this.#streamingEdit.resetForTurn();
-		// Step the mid-run todo counter synchronously, BEFORE any await in this
-		// handler. The agent loop's next-turn `getAsideMessages` poll can run
-		// before queued microtasks drain, so `TodoRuntime.takeMidRunNudge` MUST see the
-		// freshest counter — otherwise a turn that just invoked `todo` could
-		// trip a spurious nudge against stale state, and a turn that just hit
-		// the threshold could fail to nudge until a later turn (issue #3651).
-		// Pure in-memory math — no ordering requirement vs persistence or
-		// session-event fan-out. Keyed on toolResult (not the assistant toolCall
-		// turn) so planned-but-aborted or permission-denied calls never count,
-		// and only successful mutating tools tick — read-only exploration is
-		// not progress an agent could mark done.
-		if (event.type === "message_end" && event.message.role === "toolResult") {
-			this.#todo.onToolResultLanded(event.message.toolName, event.message.isError);
-		}
-		// Same rule, same reason: record the assistant message that ended the turn
-		// synchronously, BEFORE any await in this handler. `agent_end` is dispatched
-		// immediately after its `message_end`, so an assignment parked behind the
-		// persistence await lets the settle read the PREVIOUS assistant message — a
-		// tool-use turn followed by a text-only stop then settles as if it still
-		// carried tool calls, and every stop-time pass (todo reconciliation,
-		// session_stop hooks) is skipped for a turn that really did stop.
-		if (event.type === "message_end" && event.message.role === "assistant") {
-			this.#lastAssistantMessage = event.message;
-		}
-		// Plan-mode internal transition: stamp `SILENT_ABORT_MARKER` on the
-		// persisted message BEFORE the obfuscator's display-side copy below.
-		// Invariant (must hold across refactors): this branch precedes the
-		// `let displayEvent = event; ... displayEvent = { ...event, message: { ...message, content: deobfuscated } }`
-		// block. After stamping, both `displayEvent.message` (via the spread)
-		// and `event.message` (in-place mutation, used by SessionManager
-		// persistence) carry the marker, guaranteeing streaming render and
-		// history replay branch identically. The one-shot flag is consumed
-		// here, scoped strictly to this aborted message_end; callers still clear it
-		// in `finally` so a leaked flag cannot silence a later unrelated abort.
-		if (
-			event.type === "message_end" &&
-			event.message.role === "assistant" &&
-			event.message.stopReason === "aborted"
-		) {
-			const message = event.message as AssistantMessage;
-			if (this.#planInternalAbortPending) {
-				message.errorMessage = SILENT_ABORT_MARKER;
-				message.errorId = AIError.create(AIError.Flag.SilentAbort);
-				this.#planInternalAbortPending = false;
-			} else if (this.#pendingAbortErrorId) {
-				message.errorId = this.#pendingAbortErrorId;
-				this.#pendingAbortErrorId = undefined;
-			}
-		}
-
-		const interruptedThinkingMessage =
-			event.type === "message_end" && event.message.role === "assistant"
-				? this.#demoteInterruptedThinkingOnUserInterrupt(event.message as AssistantMessage)
-				: undefined;
-		// `message_end` handling is fire-and-forget from agent-core. Make the
-		// hidden continuity turn visible to the next prompt before any awaited
-		// extension delivery or persistence can stall this handler.
-		if (interruptedThinkingMessage) {
-			this.agent.appendMessage(interruptedThinkingMessage);
-		}
-
-		const messageEndPersistence =
-			event.type === "message_end" ? this.#createMessageEndPersistenceSlot(event.message) : undefined;
-
-		// Deobfuscate assistant message content for display emission — the LLM echoes back
-		// obfuscated placeholders, but listeners (TUI, extensions, exporters) must see real
-		// values. The original event.message stays obfuscated so the persistence path below
-		// writes `#HASH#` tokens to the session file; convertToLlm re-obfuscates outbound
-		// traffic on the next turn. Walks text, thinking, and toolCall arguments/intent.
-		// Argot expansion composes on top of secret deobfuscation on the same
-		// display copy: the model echoes cheap handles in history, listeners must
-		// see full text. The original event.message keeps the handles so the
-		// persistence path and next-turn context stay cheap (the token win).
-		let displayEvent: AgentEvent = event;
-		if (event.type === "message_start" && event.message.role === "assistant") {
-			// Start a fresh per-message argot stream decoder (seam 3): the live
-			// preview re-renders the accumulated partial, and a handle can split
-			// across deltas, so text/thinking blocks render only decoder-proved text.
-			this.#argotStreamDisplay = new ArgotStreamDisplayDecoder(this.#argot);
-		}
-		if (
-			event.type === "message_update" &&
-			event.message.role === "assistant" &&
-			this.#argotStreamDisplay !== undefined
-		) {
-			const streamEvent = event.assistantMessageEvent;
-			// Decode the whole stream event, not only the accumulated content: a
-			// machine consumer that reconstructs text from the delta stream alone
-			// (print `--mode json`) must never see a raw §handle, and neither must one
-			// reading the event's own `partial`, `content` or `toolCall` payload. The
-			// decoded increments sum to the same decoded content decodeContent
-			// exposes, so every view agrees and reconciles with the wholesale-expanded
-			// message_end message.
-			const assistantMessageEvent = this.#argotStreamDisplay.decodeStreamEvent(streamEvent);
-			const streamedContent = this.#argotStreamDisplay.decodeContent(event.message.content);
-			const contentChanged = streamedContent !== event.message.content;
-			const deltaChanged = assistantMessageEvent !== streamEvent;
-			if (contentChanged || deltaChanged) {
-				displayEvent = {
-					...event,
-					message: contentChanged ? { ...event.message, content: streamedContent } : event.message,
-					assistantMessageEvent,
-				};
-			}
-		}
-		if (event.type === "message_end") {
-			// The finished message expands wholesale below; drop the stream state.
-			this.#argotStreamDisplay?.flush();
-			this.#argotStreamDisplay = undefined;
-		}
-		if (event.type === "message_end" && event.message.role === "assistant") {
-			this.#applyProviderReportedContextWindow(event.message as AssistantMessage);
-		}
-		if (
-			(event.type === "message_end" || event.type === "message_start" || event.type === "turn_end") &&
-			event.message?.role === "assistant"
-		) {
-			// All three carry a whole assistant message, and a front end is free to
-			// render from any of them. `message_start` matters for a provider that
-			// delivers content up front, and `turn_end` is the one a consumer reaches
-			// for when it wants the settled turn — it used to hand back the raw form
-			// after `message_end` had just shown the expanded one, so the same text
-			// changed under the reader between two adjacent events.
-			const message = event.message;
-			const content = this.displayAssistantContent(message.content);
-			if (content !== message.content) {
-				displayEvent = { ...(displayEvent as typeof event), message: { ...message, content } };
-			}
-		}
-		if (event.type === "agent_end") {
-			// The closing event repeats the turn's messages, so it repeats every
-			// handle in them unless it is expanded like the events it summarises.
-			const messages = event.messages.map(message =>
-				message.role === "assistant"
-					? (() => {
-							const content = this.displayAssistantContent(message.content);
-							return content === message.content ? message : { ...message, content };
-						})()
-					: message,
-			);
-			if (messages.some((message, index) => message !== event.messages[index])) {
-				displayEvent = { ...(displayEvent as typeof event), messages };
-			}
-		}
-		// The intent rides on the execution events rather than in the message
-		// content, so the content-level expansion above never reaches it. Without
-		// this the working line announces a call in raw handle form while the
-		// transcript right beneath it shows the same call expanded.
-		if (event.type === "tool_execution_start") {
-			const intent = this.displayToolIntent(event.intent);
-			if (intent !== event.intent) {
-				displayEvent = { ...(displayEvent as typeof event), intent };
-			}
-		}
-
-		if (event.type === "turn_start") {
-			this.#goalRuntime.onTurnStart(`turn-${++this.#goalTurnCounter}`, this.#goalUsage());
-		}
-
-		if (event.type === "tool_execution_start") {
-			this.#recordToolExecutionStart(event);
-		}
-
-		// Apply state-bearing tool results before the first awaited subscriber.
-		// Agent events are delivered independently, so a later agent_end may otherwise
-		// evaluate stale todo state while a slow message_end extension is still running.
-		if (event.type === "message_end" && event.message.role === "toolResult") {
-			const { toolName, toolCallId, details, isError } = event.message as {
-				toolCallId?: string;
-				toolName?: string;
-				details?: { op?: string; path?: string; phases?: TodoPhase[] };
-				isError?: boolean;
-			};
-			this.#todo.noteToolProgress();
-			if (toolName === TOOL.edit && details?.path) {
-				this.#streamingEdit.invalidate(details.path);
-			}
-			if (toolName === TOOL.todo && !isError && Array.isArray(details?.phases)) {
-				this.setTodoPhases(details.phases);
-				if (this.#todo.isInitResult(details, toolCallId)) {
-					this.#scheduleReplanTitleRefresh();
+		switch (event.type) {
+			case "message_start":
+				if (event.message.role === "assistant") {
+					// Start a fresh per-message argot stream decoder (seam 3): the live
+					// preview re-renders the accumulated partial, and a handle can split
+					// across deltas, so text/thinking blocks render only decoder-proved text.
+					this.#argotStreamDisplay = new ArgotStreamDisplayDecoder(this.#argot);
 				}
+				await this.#emitSessionEvent(this.#expandAssistantEvent(event));
+				return;
+			case "message_update":
+				await this.#emitSessionEvent(this.#decodeStreamUpdate(event));
+				// A TTSR rule matching a stream delta may abort the turn to inject its body;
+				// the retry it scheduled carries the rest.
+				await this.#ttsr.observeStreamDelta(event.message, event.assistantMessageEvent);
+				return;
+			case "message_end":
+				await this.#processMessageEnd(event);
+				return;
+			case "turn_start":
+				// The streaming-edit guard's checks run in the stream interceptor, ahead of this
+				// handler, so a reset parked behind an await could clear a verdict the new turn has
+				// already reached.
+				this.#streamingEdit.resetForTurn();
+				this.#goalRuntime.onTurnStart(`turn-${++this.#goalTurnCounter}`, this.#goalUsage());
+				await this.#emitSessionEvent(event);
+				this.#ttsr.onTurnStart();
+				return;
+			case "turn_end":
+				await this.#emitSessionEvent(this.#expandAssistantEvent(event));
+				this.#ttsr.onTurnEnd();
+				this.#settleInFlightToolChoice(event.message);
+				return;
+			case "tool_execution_start": {
+				this.#verificationEvidence.recordToolStart(event);
+				// The intent rides on the execution events rather than in the message
+				// content, so the content-level expansion never reaches it. Without
+				// this the working line announces a call in raw handle form while the
+				// transcript right beneath it shows the same call expanded.
+				const intent = this.displayToolIntent(event.intent);
+				this.#recordToolExecutionStart(event);
+				await this.#emitSessionEvent(intent === event.intent ? event : { ...event, intent });
+				return;
 			}
+			case "tool_execution_end":
+				this.#verificationEvidence.recordToolEnd(event);
+				await this.#emitSessionEvent(event);
+				await this.#onToolExecutionEnd(event);
+				return;
+			case "agent_end": {
+				await this.#emitSessionEvent(this.#expandAgentEndEvent(event));
+				const settledMessages = this.agent.state.messages;
+				await this.#goalRuntime.onAgentEnd({ currentUsage: this.#goalUsage() });
+				await this.#runAgentEndMaintenance(settledMessages);
+				await this.#emitAgentEndNotification(settledMessages);
+				return;
+			}
+			default:
+				await this.#emitSessionEvent(event);
 		}
+	};
 
+	/**
+	 * The display copy of an event carrying a whole assistant message: secrets deobfuscated and
+	 * argot handles expanded. The LLM echoes back obfuscated placeholders and cheap handles, but
+	 * listeners (TUI, extensions, exporters) must see real values. The original message keeps both,
+	 * so the persistence path writes `#HASH#` tokens and handles to the session file and the next
+	 * turn's context stays cheap. `message_start`, `message_end` and `turn_end` all carry a whole
+	 * assistant message and a front end may render from any of them, so all three expand alike and
+	 * the same text never changes under the reader between two adjacent events.
+	 */
+	#expandAssistantEvent<E extends { message: AgentMessage }>(event: E): E {
+		const message: AgentMessage = event.message;
+		if (message.role !== "assistant") return event;
+		const content = this.displayAssistantContent(message.content);
+		return content === message.content ? event : { ...event, message: { ...message, content } };
+	}
+
+	/**
+	 * The display copy of a streamed assistant delta. The whole stream event is decoded, not only the
+	 * accumulated content: a machine consumer that reconstructs text from the delta stream alone
+	 * (print `--mode json`) must never see a raw §handle, and neither must one reading the event's
+	 * own `partial`, `content` or `toolCall` payload. The decoded increments sum to the same decoded
+	 * content `decodeContent` exposes, so every view agrees and reconciles with the wholesale-expanded
+	 * `message_end` message.
+	 */
+	#decodeStreamUpdate(
+		event: Extract<AgentEvent, { type: "message_update" }>,
+	): Extract<AgentEvent, { type: "message_update" }> {
+		const decoder = this.#argotStreamDisplay;
+		if (decoder === undefined || event.message.role !== "assistant") return event;
+		const streamEvent = event.assistantMessageEvent;
+		const assistantMessageEvent = decoder.decodeStreamEvent(streamEvent);
+		const streamedContent = decoder.decodeContent(event.message.content);
+		const contentChanged = streamedContent !== event.message.content;
+		if (!contentChanged && assistantMessageEvent === streamEvent) return event;
+		return {
+			...event,
+			message: contentChanged ? { ...event.message, content: streamedContent } : event.message,
+			assistantMessageEvent,
+		};
+	}
+
+	/**
+	 * The closing event repeats the turn's messages, so it repeats every handle in them unless it is
+	 * expanded like the events it summarises. The array is copied only when a message changes.
+	 */
+	#expandAgentEndEvent(event: Extract<AgentEvent, { type: "agent_end" }>): Extract<AgentEvent, { type: "agent_end" }> {
+		let messages: AgentMessage[] | undefined;
+		for (let index = 0; index < event.messages.length; index++) {
+			const message = event.messages[index]!;
+			if (message.role !== "assistant") continue;
+			const content = this.displayAssistantContent(message.content);
+			if (content === message.content) continue;
+			messages ??= event.messages.slice();
+			messages[index] = { ...message, content };
+		}
+		return messages ? { ...event, messages } : event;
+	}
+
+	/**
+	 * A finished message: the state later events read is applied, the display copy is emitted, and
+	 * the message is persisted before its settle-time effects run.
+	 */
+	async #processMessageEnd(event: Extract<AgentEvent, { type: "message_end" }>): Promise<void> {
+		const { message } = event;
+		let interruptedThinkingMessage: CustomMessage<InterruptedThinkingDetails> | undefined;
+		if (message.role === "toolResult") {
+			// Step the mid-run todo counter before any await: the agent loop's next-turn
+			// `getAsideMessages` poll can run before queued microtasks drain, so
+			// `TodoRuntime.takeMidRunNudge` MUST see the freshest counter (issue #3651). Keyed on
+			// toolResult (not the assistant toolCall turn) so planned-but-aborted or
+			// permission-denied calls never count, and only successful mutating tools tick.
+			this.#todo.onToolResultLanded(message.toolName, message.isError);
+		} else if (message.role === "assistant") {
+			// Recorded before any await: `agent_end` is dispatched immediately after its
+			// `message_end`, so an assignment parked behind the persistence await lets the settle
+			// read the PREVIOUS assistant message, and a tool-use turn followed by a text-only stop
+			// settles as if it still carried tool calls.
+			this.#lastAssistantMessage = message;
+			if (message.stopReason === "aborted") this.#stampAbortedAssistant(message);
+			interruptedThinkingMessage = this.#demoteInterruptedThinkingOnUserInterrupt(message);
+			// Make the hidden continuity turn visible to the next prompt before any awaited
+			// extension delivery or persistence can stall this handler.
+			if (interruptedThinkingMessage) this.agent.appendMessage(interruptedThinkingMessage);
+		}
+		const persistence = this.#createMessageEndPersistenceSlot(message);
+		// The finished message expands wholesale; drop the stream state.
+		this.#argotStreamDisplay?.flush();
+		this.#argotStreamDisplay = undefined;
+		let displayEvent = event;
+		if (message.role === "assistant") {
+			this.#applyProviderReportedContextWindow(message);
+			displayEvent = this.#expandAssistantEvent(event);
+		} else if (message.role === "toolResult") {
+			this.#applyToolResultState(message);
+		}
 		try {
 			await this.#emitSessionEvent(displayEvent);
 		} catch (error) {
-			messageEndPersistence?.release();
+			persistence?.release();
 			throw error;
 		}
-
-		if (event.type === "turn_start") {
-			this.#ttsr.onTurnStart();
+		await this.#persistMessageEnd(message, persistence, interruptedThinkingMessage);
+		if (message.role === "assistant") {
+			await this.#onAssistantMessageEnd(message);
+		} else if (message.role === "toolResult") {
+			await this.#onToolResultMessageEnd(message);
 		}
+	}
 
-		if (event.type === "turn_end") {
-			this.#ttsr.onTurnEnd();
+	/**
+	 * Plan-mode internal transition: stamp `SILENT_ABORT_MARKER` on the persisted message before the
+	 * display copy is made, so the copy (a spread) and the persisted message (mutated in place) both
+	 * carry the marker and streaming render and history replay branch identically. The one-shot flag
+	 * is consumed here, scoped to this aborted `message_end`; callers still clear it in `finally` so a
+	 * leaked flag cannot silence a later unrelated abort.
+	 */
+	#stampAbortedAssistant(message: AssistantMessage): void {
+		if (this.#planInternalAbortPending) {
+			message.errorMessage = SILENT_ABORT_MARKER;
+			message.errorId = AIError.create(AIError.Flag.SilentAbort);
+			this.#planInternalAbortPending = false;
+		} else if (this.#pendingAbortErrorId) {
+			message.errorId = this.#pendingAbortErrorId;
+			this.#pendingAbortErrorId = undefined;
 		}
-		// Finalize the tool-choice queue's in-flight yield after tools have executed.
-		// This must happen at turn_end (not message_end) because onInvoked handlers
-		// run during tool execution, which happens between message_end and turn_end.
-		if (event.type === "turn_end" && this.#toolChoiceQueue.hasInFlight) {
-			const msg = event.message as AssistantMessage;
-			if (msg.stopReason === "aborted" || msg.stopReason === "error") {
-				this.#toolChoiceQueue.reject(msg.stopReason === "error" ? "error" : "aborted");
+	}
+
+	/**
+	 * Apply state-bearing tool results before the first awaited subscriber. Agent events are
+	 * delivered independently, so a later `agent_end` may otherwise evaluate stale todo state while a
+	 * slow `message_end` extension is still running.
+	 */
+	#applyToolResultState(message: AgentMessage): void {
+		const { toolName, toolCallId, details, isError } = message as {
+			toolCallId?: string;
+			toolName?: string;
+			details?: { op?: string; path?: string; phases?: TodoPhase[] };
+			isError?: boolean;
+		};
+		this.#todo.noteToolProgress();
+		if (toolName === TOOL.edit && details?.path) {
+			this.#streamingEdit.invalidate(details.path);
+		}
+		if (toolName === TOOL.todo && !isError && Array.isArray(details?.phases)) {
+			this.setTodoPhases(details.phases);
+			if (this.#todo.isInitResult(details, toolCallId)) {
+				this.#scheduleReplanTitleRefresh();
+			}
+		}
+	}
+
+	/**
+	 * Write a finished message to the session file, behind any earlier message still being written.
+	 * Other message types (bashExecution, compactionSummary, branchSummary) are persisted elsewhere.
+	 */
+	async #persistMessageEnd(
+		message: AgentMessage,
+		slot: MessageEndPersistenceSlot | undefined,
+		interruptedThinkingMessage: CustomMessage<InterruptedThinkingDetails> | undefined,
+	): Promise<void> {
+		const persist = () => {
+			if (message.role === "hookMessage" || message.role === "custom") {
+				this.sessionManager.appendCustomMessageEntry(
+					message.customType,
+					message.content,
+					message.display,
+					message.details,
+					message.attribution ?? "agent",
+				);
+				if (message.role === "custom" && message.customType === "ttsr-injection") {
+					this.#ttsr.onInjectionPersisted(message.details);
+				}
 			} else {
-				this.#toolChoiceQueue.resolve();
+				this.#persistSessionMessageIfMissing(message);
 			}
+		};
+		if (slot) {
+			await slot.persist(persist);
+		} else {
+			persist();
 		}
-		if (event.type === "tool_execution_end") {
-			if (event.toolName === TOOL.goal) {
-				await this.#goalRuntime.onGoalToolCompleted();
-			} else {
-				await this.#goalRuntime.onToolCompleted(event.toolName);
-			}
-			this.#planModeReminderAwaitingProgress = false;
-			if (this.#isPlanDecisionTool(event.toolName)) {
-				this.#planModeReminderCount = 0;
-				this.#planModeReminderAwaitingProgress = false;
-			}
+		if (interruptedThinkingMessage) {
+			this.sessionManager.appendCustomMessageEntry(
+				interruptedThinkingMessage.customType,
+				interruptedThinkingMessage.content,
+				interruptedThinkingMessage.display,
+				interruptedThinkingMessage.details,
+				interruptedThinkingMessage.attribution,
+			);
 		}
-		if (event.type === "tool_execution_end" && this.#isTerminalYieldToolResult(event)) {
-			const alreadyTerminated = this.#synchronouslyTerminatedYieldToolCallIds.delete(event.toolCallId);
-			if (!alreadyTerminated) {
-				this.#markTerminalYieldToolCall(event.toolCallId);
-				this.agent.abort(TERMINAL_TOOL_RESULT_ABORT_REASON);
-			}
-		}
+	}
 
-		// A TTSR rule matching a stream delta may abort the turn to inject its body,
-		// in which case this event is done: the retry it scheduled carries the rest.
+	/** Settle-time effects of a persisted assistant message. */
+	async #onAssistantMessageEnd(message: AssistantMessage): Promise<void> {
+		// Fold this turn's timing into per-model perf aggregates (drives the /models TPS/TTFT
+		// display). Errored turns measure nothing; aborted turns with reported usage are still valid
+		// throughput samples.
+		if (message.stopReason !== "error" && message.duration !== undefined) {
+			AgentStorage.forAgentDir(this.settings.getAgentDir())?.recordModelPerf(
+				`${message.provider}/${message.model}`,
+				{
+					outputTokens: message.usage.output,
+					durationMs: message.duration,
+					ttftMs: message.ttft,
+				},
+			);
+		}
+		if (message.disabledFeatures?.includes("priority") && this.#serviceTierByFamily.anthropic === "priority") {
+			this.setServiceTierFamily("anthropic", undefined);
+			this.emitNotice(
+				"warning",
+				`${PRIORITY_TIER_COMMAND_LABEL} rejected for this model; retried without it. It is now off.`,
+				"priority",
+			);
+		}
+		this.#ttsr.onAssistantSettled(message);
+		if (this.#handoffAbortController) {
+			this.#skipPostTurnMaintenanceAssistantTimestamp = message.timestamp;
+		}
+		await this.#closeRecoveredRetry(message);
+		if (message.provider === "opencode-go") {
+			this.#modelRegistry.authStorage.recordUsageCost(message.provider, message.usage.cost.total, {
+				sessionId: this.#activeProviderSessionId(),
+				recordedAt: message.timestamp,
+				baseUrl: this.#modelRegistry.getProviderBaseUrl?.(message.provider),
+			});
+		}
+	}
+
+	/** End the wait a retry or an unreplayable-batch continuation announced, once a turn lands. */
+	async #closeRecoveredRetry(message: AssistantMessage): Promise<void> {
+		// Captured before the reset below: a landed turn is what closes the wait this ladder
+		// announced, and by then the counter is back to zero.
+		const batchContinues = this.#unreplayableBatchContinues;
+		const landed = message.stopReason !== "error" && !this.#isEmptyAssistantStop(message);
+		if (landed) {
+			// A turn that reached the provider and came back with something is the evidence the
+			// transport recovered; the next transport death gets the full budget. An EMPTY turn is
+			// not that evidence: clearing the counter on one would leave the end event below nothing
+			// to fire on once the empty-stop ladder produced a real turn.
+			this.#unreplayableBatchContinues = 0;
+		}
+		// An unreplayable-batch continuation announces its wait through the same event as the retry
+		// ladder but counts on its own allowance, so it needs its own arm here or its start has no
+		// end: the countdown, an agent HUD's retryState and the turn's retry trace would stay open.
+		if (!landed || message.stopReason === "aborted" || !(this.#retryAttempt > 0 || batchContinues > 0)) return;
+		if (this.#activeRetryFallback && this.model) {
+			await this.#emitSessionEvent({
+				type: "retry_fallback_succeeded",
+				model: formatRetryFallbackSelector(this.model, this.thinkingLevel),
+				role: this.#activeRetryFallback.role,
+			});
+		}
+		const recoveredErrors = await this.#markPendingRecoveredRetryErrors(message);
+		await this.#emitSessionEvent({
+			type: "auto_retry_end",
+			success: true,
+			attempt: this.#retryAttempt > 0 ? this.#retryAttempt : batchContinues,
+			mode: this.#retryAttempt > 0 ? "retry" : "continue",
+			recoveredErrors,
+		});
+		this.#clearPendingRecoveredRetryErrors();
+		this.#retryAttempt = 0;
+	}
+
+	/** Settle-time effects of a persisted tool result: todo write outcome and checkpoint/rewind state. */
+	async #onToolResultMessageEnd(message: AgentMessage): Promise<void> {
+		const { toolName, details, isError, content } = message as {
+			toolName?: string;
+			details?: {
+				op?: string;
+				path?: string;
+				phases?: TodoPhase[];
+				report?: string;
+				startedAt?: string;
+				__synthetic?: true;
+				__skipped?: true;
+			};
+			isError?: boolean;
+			content?: Array<TextContent | ImageContent>;
+		};
+		// A call the batch never dispatched, and a call an interrupt cut short, both arrive here
+		// carrying isError. Neither is a verdict on the payload: the board is stale because the write
+		// never landed, not because it was refused, and two interrupts in a row would read as one
+		// failure repeating and retire todo for the rest of the turn. Leave the failure memory
+		// untouched rather than clearing it: a skip is not a landed write either.
+		const todoCallDidNotFail = details?.__synthetic === true || details?.__skipped === true;
+		if (toolName === TOOL.todo && !todoCallDidNotFail) {
+			const errorText = isError ? (content?.find(part => part.type === "text")?.text ?? "") : undefined;
+			const reminderText = this.#todo.recordWriteOutcome(errorText);
+			if (reminderText !== undefined) {
+				await this.sendCustomMessage(
+					{
+						customType: "todo-error-reminder",
+						content: reminderText,
+						display: false,
+						details: { toolName, errorText },
+					},
+					{ deliverAs: "nextTurn" },
+				);
+			}
+		}
+		if (toolName === TOOL.checkpoint && !isError) {
+			this.#checkpoint.begin({
+				checkpointMessageCount: this.agent.state.messages.length,
+				checkpointEntryId: this.sessionManager.getEntries().at(-1)?.id ?? null,
+				startedAt: details?.startedAt ?? new Date().toISOString(),
+			});
+		}
+		if (toolName === TOOL.rewind && !isError) {
+			this.#checkpoint.recordRewindResult(details, content);
+		}
+	}
+
+	/**
+	 * Finalize the tool-choice queue's in-flight yield after tools have executed. This runs at
+	 * `turn_end`, not `message_end`, because onInvoked handlers run during tool execution, which
+	 * happens between the two.
+	 */
+	#settleInFlightToolChoice(message: AgentMessage): void {
+		if (!this.#toolChoiceQueue.hasInFlight) return;
+		const { stopReason } = message as AssistantMessage;
+		if (stopReason === "aborted" || stopReason === "error") {
+			this.#toolChoiceQueue.reject(stopReason);
+		} else {
+			this.#toolChoiceQueue.resolve();
+		}
+	}
+
+	async #onToolExecutionEnd(event: Extract<AgentEvent, { type: "tool_execution_end" }>): Promise<void> {
+		if (event.toolName === TOOL.goal) {
+			await this.#goalRuntime.onGoalToolCompleted();
+		} else {
+			await this.#goalRuntime.onToolCompleted(event.toolName);
+		}
+		this.#planModeReminderAwaitingProgress = false;
+		if (this.#isPlanDecisionTool(event.toolName)) {
+			this.#planModeReminderCount = 0;
+		}
 		if (
-			event.type === "message_update" &&
-			(await this.#ttsr.observeStreamDelta(event.message, event.assistantMessageEvent))
+			this.#isTerminalYieldToolResult(event) &&
+			!this.#synchronouslyTerminatedYieldToolCallIds.delete(event.toolCallId)
 		) {
+			this.#markTerminalYieldToolCall(event.toolCallId);
+			this.agent.abort(TERMINAL_TOOL_RESULT_ABORT_REASON);
+		}
+	}
+
+	#logMaintenanceRoute(
+		msg: AssistantMessage,
+		successfulYield: boolean,
+		route: string,
+		extra?: Record<string, unknown>,
+	): void {
+		logger.debug("agent_end maintenance routing", {
+			route,
+			stopReason: msg.stopReason,
+			provider: msg.provider,
+			model: msg.model,
+			contentBlocks: msg.content.length,
+			hasToolCalls: msg.content.some(content => content.type === "toolCall"),
+			hasText: msg.content.some(content => content.type === "text"),
+			goalModeEnabled: this.#goalModeState?.enabled === true,
+			goalStatus: this.#goalModeState?.goal.status,
+			successfulYield,
+			...extra,
+		});
+	}
+
+	/** Run the compaction check as a tracked post-prompt task, so the recovery wait sees it. */
+	#trackedCompactionCheck(msg: AssistantMessage): Promise<CompactionCheckResult> {
+		const task = this.#checkCompaction(msg);
+		this.#postPrompt.track(task);
+		return task;
+	}
+
+	/** Drop GitHub Copilot credentials on an auth failure so the next request does not reuse a stale token. */
+	async #invalidateCopilotOnAuthFailure(msg: AssistantMessage): Promise<void> {
+		if (
+			msg.stopReason === "error" &&
+			msg.provider === "github-copilot" &&
+			AIError.is(AIError.classifyMessage(msg), AIError.Flag.AuthFailed)
+		) {
+			await this.#modelRegistry.authStorage.remove("github-copilot");
+		}
+	}
+
+	/**
+	 * Post-run maintenance: retry, compaction and the stop-time continuation passes. The caller emits
+	 * the `agent_end` notification after it on every route.
+	 */
+	async #runAgentEndMaintenance(settledMessages: AgentMessage[]): Promise<void> {
+		const msg =
+			this.#lastAssistantMessage ??
+			settledMessages.findLast((message): message is AssistantMessage => message.role === "assistant");
+		this.#lastAssistantMessage = undefined;
+		if (!msg) {
+			this.#lastSuccessfulYieldToolCallId = undefined;
+			logger.debug("agent_end maintenance routing", {
+				reason: "no-assistant-message",
+				goalModeEnabled: this.#goalModeState?.enabled === true,
+				goalStatus: this.#goalModeState?.goal.status,
+			});
+			return;
+		}
+		// The identity of the settling message is read above, before its persistence slot drains; the
+		// passes below append to the branch, so wait for the entry to exist or a continuation reminder
+		// lands ahead of the reply it answers. Resolved already whenever the slot drained first.
+		await this.#waitForSessionMessagePersistence(msg);
+
+		const successfulYieldMessage = this.#findSuccessfulYieldAssistantMessage(settledMessages);
+		const yieldOnThisMessage = this.#assistantEndedWithSuccessfulYield(msg);
+		const route = (name: string, extra?: Record<string, unknown>) =>
+			this.#logMaintenanceRoute(msg, successfulYieldMessage !== undefined, name, extra);
+		route("entered");
+
+		await this.#invalidateCopilotOnAuthFailure(msg);
+
+		if (this.#skipPostTurnMaintenanceAssistantTimestamp === msg.timestamp) {
+			this.#skipPostTurnMaintenanceAssistantTimestamp = undefined;
+			this.#lastSuccessfulYieldToolCallId = undefined;
+			route("skip-post-turn-maintenance");
 			return;
 		}
 
-		// Handle session persistence
-		if (event.type === "message_end") {
-			// Recorded BEFORE the persistence await below. The agent emits `message_end`
-			// and `agent_end` from one synchronous `#emit`, so awaiting first let the
-			// settle read a stale message: a turn that called a tool and then stopped
-			// with text was still reported as ending in a tool call, and every
-			// stop-time pass keyed on that — the todo reminder among them — was
-			// skipped for the rest of the session.
-			if (event.message.role === "assistant") this.#lastAssistantMessage = event.message;
-			const persistMessageEnd = () => {
-				// Check if this is a hook/custom message
-				if (event.message.role === "hookMessage" || event.message.role === "custom") {
-					// Persist as CustomMessageEntry
-					this.sessionManager.appendCustomMessageEntry(
-						event.message.customType,
-						event.message.content,
-						event.message.display,
-						event.message.details,
-						event.message.attribution ?? "agent",
-					);
-					if (event.message.role === "custom" && event.message.customType === "ttsr-injection") {
-						this.#ttsr.onInjectionPersisted(event.message.details);
-					}
-				} else {
-					this.#persistSessionMessageIfMissing(event.message);
-				}
-			};
-			if (messageEndPersistence) {
-				await messageEndPersistence.persist(persistMessageEnd);
-			} else {
-				persistMessageEnd();
-			}
-			if (interruptedThinkingMessage) {
-				this.sessionManager.appendCustomMessageEntry(
-					interruptedThinkingMessage.customType,
-					interruptedThinkingMessage.content,
-					interruptedThinkingMessage.display,
-					interruptedThinkingMessage.details,
-					interruptedThinkingMessage.attribution,
-				);
-			}
-			// Other message types (bashExecution, compactionSummary, branchSummary) are persisted elsewhere
-
-			// Per-model throughput aggregates. The message itself was recorded for the
-			// settle pass above, before the first awaited subscriber.
-			if (event.message.role === "assistant") {
-				const assistantMsg = event.message as AssistantMessage;
-				// Fold this turn's timing into per-model perf aggregates (drives the
-				// /models TPS/TTFT display). Errored turns measure nothing; aborted
-				// turns with reported usage are still valid throughput samples.
-				if (assistantMsg.stopReason !== "error" && assistantMsg.duration !== undefined) {
-					AgentStorage.forAgentDir(this.settings.getAgentDir())?.recordModelPerf(
-						`${assistantMsg.provider}/${assistantMsg.model}`,
-						{
-							outputTokens: assistantMsg.usage.output,
-							durationMs: assistantMsg.duration,
-							ttftMs: assistantMsg.ttft,
-						},
-					);
-				}
-				if (
-					assistantMsg.disabledFeatures?.includes("priority") &&
-					this.#serviceTierByFamily.anthropic === "priority"
-				) {
-					this.setServiceTierFamily("anthropic", undefined);
-					this.emitNotice(
-						"warning",
-						`${PRIORITY_TIER_COMMAND_LABEL} rejected for this model; retried without it. It is now off.`,
-						"priority",
-					);
-				}
-				this.#ttsr.onAssistantSettled(assistantMsg);
-				if (this.#handoffAbortController) {
-					this.#skipPostTurnMaintenanceAssistantTimestamp = assistantMsg.timestamp;
-				}
-				// Captured before the reset below: a landed turn is what closes the wait
-				// this ladder announced, and by then the counter is back to zero.
-				const batchContinues = this.#unreplayableBatchContinues;
-				if (assistantMsg.stopReason !== "error" && !this.#isEmptyAssistantStop(assistantMsg)) {
-					// A turn that reached the provider and came back with something is the
-					// evidence the transport recovered; the next transport death gets the
-					// full budget. An EMPTY turn is not that evidence, and clearing the
-					// counter on one left the end event below with nothing to fire on: the
-					// empty-stop ladder would produce a real turn a moment later and the
-					// announced wait would already be unclosable.
-					this.#unreplayableBatchContinues = 0;
-				}
-				if (
-					assistantMsg.stopReason !== "error" &&
-					assistantMsg.stopReason !== "aborted" &&
-					!this.#isEmptyAssistantStop(assistantMsg) &&
-					// An unreplayable-batch continuation announces its wait through the
-					// same event as the retry ladder but counts on its own allowance, so
-					// without this arm its start had no end: the countdown, an agent
-					// HUD's retryState and the turn's retry trace would stay open on a
-					// turn that already came back.
-					(this.#retryAttempt > 0 || batchContinues > 0)
-				) {
-					if (this.#activeRetryFallback && this.model) {
-						await this.#emitSessionEvent({
-							type: "retry_fallback_succeeded",
-							model: formatRetryFallbackSelector(this.model, this.thinkingLevel),
-							role: this.#activeRetryFallback.role,
-						});
-					}
-					const recoveredErrors = await this.#markPendingRecoveredRetryErrors(assistantMsg);
-					await this.#emitSessionEvent({
-						type: "auto_retry_end",
-						success: true,
-						attempt: this.#retryAttempt > 0 ? this.#retryAttempt : batchContinues,
-						mode: this.#retryAttempt > 0 ? "retry" : "continue",
-						recoveredErrors,
-					});
-					this.#clearPendingRecoveredRetryErrors();
-					this.#retryAttempt = 0;
-				}
-				if (assistantMsg.provider === "opencode-go") {
-					this.#modelRegistry.authStorage.recordUsageCost(assistantMsg.provider, assistantMsg.usage.cost.total, {
-						sessionId: this.#activeProviderSessionId(),
-						recordedAt: assistantMsg.timestamp,
-						baseUrl: this.#modelRegistry.getProviderBaseUrl?.(assistantMsg.provider),
-					});
-				}
-			}
-			if (event.message.role === "toolResult") {
-				const { toolName, details, isError, content } = event.message as {
-					toolName?: string;
-					details?: {
-						op?: string;
-						path?: string;
-						phases?: TodoPhase[];
-						report?: string;
-						startedAt?: string;
-						__synthetic?: true;
-						__skipped?: true;
-					};
-					isError?: boolean;
-					content?: Array<TextContent | ImageContent>;
-				};
-				// A call the batch never dispatched, and a call an interrupt cut short,
-				// both arrive here carrying isError. Neither is a verdict on the payload:
-				// the board is stale because the write never landed, not because it was
-				// refused, so the advice below is for a problem that does not exist. The
-				// headline is also fixed per source, so two interrupts in a row read as
-				// one failure repeating and retire todo for the rest of the turn over an
-				// event that never happened. Leave the failure memory untouched rather
-				// than clearing it: a skip is not a landed write either.
-				const todoCallDidNotFail = details?.__synthetic === true || details?.__skipped === true;
-				if (toolName === TOOL.todo && !todoCallDidNotFail) {
-					const errorText = isError ? (content?.find(part => part.type === "text")?.text ?? "") : undefined;
-					const reminderText = this.#todo.recordWriteOutcome(errorText);
-					if (reminderText !== undefined) {
-						await this.sendCustomMessage(
-							{
-								customType: "todo-error-reminder",
-								content: reminderText,
-								display: false,
-								details: { toolName, errorText },
-							},
-							{ deliverAs: "nextTurn" },
-						);
-					}
-				}
-				if (toolName === TOOL.checkpoint && !isError) {
-					this.#checkpoint.begin({
-						checkpointMessageCount: this.agent.state.messages.length,
-						checkpointEntryId: this.sessionManager.getEntries().at(-1)?.id ?? null,
-						startedAt: details?.startedAt ?? new Date().toISOString(),
-					});
-				}
-				if (toolName === TOOL.rewind && !isError) {
-					this.#checkpoint.recordRewindResult(details, content);
-				}
-			}
-		}
-
-		// Check auto-retry and auto-compaction after agent completes
-		if (event.type === "agent_end") {
-			const settledMessages = this.agent.state.messages;
-			const emitAgentEndNotification = async () => {
-				await this.#emitAgentEndNotification(settledMessages);
-			};
-			await this.#goalRuntime.onAgentEnd({ currentUsage: this.#goalUsage() });
-			let fallbackAssistant: AssistantMessage | undefined;
-			for (let i = settledMessages.length - 1; i >= 0; i--) {
-				const message = settledMessages[i]!;
-				if (message.role === "assistant") {
-					fallbackAssistant = message;
-					break;
-				}
-			}
-			const msg = this.#lastAssistantMessage ?? fallbackAssistant;
-			this.#lastAssistantMessage = undefined;
-			if (!msg) {
-				this.#lastSuccessfulYieldToolCallId = undefined;
-				logger.debug("agent_end maintenance routing", {
-					reason: "no-assistant-message",
-					goalModeEnabled: this.#goalModeState?.enabled === true,
-					goalStatus: this.#goalModeState?.goal.status,
-				});
-				await emitAgentEndNotification();
-				return;
-			}
-			// The identity of the settling message is read above, before its
-			// persistence slot drains; the passes below append to the branch, so wait
-			// for the entry to exist or a continuation reminder lands ahead of the
-			// reply it answers. Resolved already whenever the slot drained first.
-			await this.#waitForSessionMessagePersistence(msg);
-
-			const successfulYieldMessage = this.#findSuccessfulYieldAssistantMessage(settledMessages);
-			const yieldOnThisMessage = this.#assistantEndedWithSuccessfulYield(msg);
-
-			const maintenanceRoute = (route: string, extra?: Record<string, unknown>) => {
-				logger.debug("agent_end maintenance routing", {
-					route,
-					stopReason: msg.stopReason,
-					provider: msg.provider,
-					model: msg.model,
-					contentBlocks: msg.content.length,
-					hasToolCalls: msg.content.some(content => content.type === "toolCall"),
-					hasText: msg.content.some(content => content.type === "text"),
-					goalModeEnabled: this.#goalModeState?.enabled === true,
-					goalStatus: this.#goalModeState?.goal.status,
-					successfulYield: successfulYieldMessage !== undefined,
-					...extra,
-				});
-			};
-			maintenanceRoute("entered");
-
-			// Invalidate GitHub Copilot credentials on auth failure so stale tokens
-			// aren't reused on the next request
-			if (
-				msg.stopReason === "error" &&
-				msg.provider === "github-copilot" &&
-				AIError.is(AIError.classifyMessage(msg), AIError.Flag.AuthFailed)
-			) {
-				await this.#modelRegistry.authStorage.remove("github-copilot");
-			}
-
-			if (this.#skipPostTurnMaintenanceAssistantTimestamp === msg.timestamp) {
-				this.#skipPostTurnMaintenanceAssistantTimestamp = undefined;
-				this.#lastSuccessfulYieldToolCallId = undefined;
-				maintenanceRoute("skip-post-turn-maintenance");
-				await emitAgentEndNotification();
-				return;
-			}
-
-			const activeGoal = this.#goalModeState?.enabled === true && this.#goalModeState.goal.status === "active";
-			// A successful `yield` in this run is terminal for execution purposes.
-			// Suppress empty-stop retry, unexpected-stop retry, queued-message drain,
-			// and compaction-driven continuations for the rest of this prompt cycle:
-			// the executor consumed the yield as the terminal result, so a trailing
-			// empty/aborted assistant stop must NOT revive the agent loop. The
-			// `#yieldTerminationPending` sticky flag clears on the next `prompt()`.
-			if (successfulYieldMessage || this.#yieldTerminationPending) {
-				this.#lastSuccessfulYieldToolCallId = undefined;
-				if (successfulYieldMessage && activeGoal) {
-					maintenanceRoute(
-						yieldOnThisMessage
-							? "successful-yield-active-goal-checkCompaction"
-							: "post-yield-trailing-stop-active-goal-checkCompaction",
-					);
-					const compactionTask = this.#checkCompaction(successfulYieldMessage);
-					this.#postPrompt.track(compactionTask);
-					await compactionTask;
-				} else if (successfulYieldMessage) {
-					maintenanceRoute("successful-yield-no-active-goal");
-				} else {
-					maintenanceRoute("post-yield-trailing-stop-suppressed");
-				}
-				await emitAgentEndNotification();
-				return;
-			}
+		const activeGoal = this.#goalModeState?.enabled === true && this.#goalModeState.goal.status === "active";
+		// A successful `yield` in this run is terminal for execution purposes. Suppress empty-stop
+		// retry, unexpected-stop retry, queued-message drain, and compaction-driven continuations for
+		// the rest of this prompt cycle: the executor consumed the yield as the terminal result, so a
+		// trailing empty/aborted assistant stop must NOT revive the agent loop. The
+		// `#yieldTerminationPending` sticky flag clears on the next `prompt()`.
+		if (successfulYieldMessage || this.#yieldTerminationPending) {
 			this.#lastSuccessfulYieldToolCallId = undefined;
-
-			// One reading of "this reply is waiting on the user", shared by every
-			// route below. Computed once here rather than inside each guard because
-			// the bug was precisely that they disagreed: only the todo reminder
-			// looked, so whether a question survived depended on which guard was
-			// armed. Read before the first guard runs, so the two retry guards that
-			// settle earliest see the same answer as the four that settle last.
-			const settleState: SettleContinuationState = { awaitingUserAnswer: isAwaitingUserAnswer(msg) };
-			// Empty-stop cleanup MUST run before any compaction continuation: an
-			// empty toolUse stop must be stripped from active context + session
-			// history before we schedule another turn, otherwise the next
-			// Anthropic turn carries a tool_use block with no matching
-			// tool_result and corrupts message history. The handler also
-			// schedules its own retry, so a real empty stop never needs the
-			// active-goal threshold pre-empt below.
-			if (await this.#handleEmptyAssistantStop(msg)) {
-				maintenanceRoute("empty-stop-handled");
-				await emitAgentEndNotification();
-				return;
+			if (!successfulYieldMessage) {
+				route("post-yield-trailing-stop-suppressed");
+			} else if (!activeGoal) {
+				route("successful-yield-no-active-goal");
+			} else {
+				route(
+					yieldOnThisMessage
+						? "successful-yield-active-goal-checkCompaction"
+						: "post-yield-trailing-stop-active-goal-checkCompaction",
+				);
+				await this.#trackedCompactionCheck(successfulYieldMessage);
 			}
-
-			let compactionResult = COMPACTION_CHECK_NONE;
-			let checkedCompaction = false;
-			if (activeGoal) {
-				maintenanceRoute("active-goal-pre-empt-checkCompaction");
-				const compactionTask = this.#checkCompaction(msg);
-				this.#postPrompt.track(compactionTask);
-				compactionResult = await compactionTask;
-				checkedCompaction = true;
-				if (compactionResult.continuationScheduled || compactionResult.automaticContinuationBlocked) {
-					maintenanceRoute("active-goal-pre-empt-compaction-handled", {
-						continuationScheduled: compactionResult.continuationScheduled,
-						automaticContinuationBlocked: compactionResult.automaticContinuationBlocked === true,
-					});
-					this.#resolveRetry();
-					await emitAgentEndNotification();
-					return;
-				}
-			}
-
-			if (await this.#handleUnexpectedAssistantStop(msg, settleState)) {
-				maintenanceRoute("unexpected-stop-handled");
-				await emitAgentEndNotification();
-				return;
-			}
-
-			if (this.#isRetryableReasonlessAbort(msg)) {
-				const didRetry = await this.#handleRetryableError(msg, { allowModelFallback: false });
-				if (didRetry) {
-					await emitAgentEndNotification();
-					return;
-				}
-			}
-
-			// A deliberate abort should settle the current turn, not trigger queued continuations.
-			if (msg.stopReason === "aborted") {
-				this.#resolveRetry();
-				this.#resetSessionStopContinuationState();
-				await emitAgentEndNotification();
-				return;
-			}
-			// Fireworks Fast variants degrade to their base model on a failed turn —
-			// including hard router errors the generic retry classifier rejects — so
-			// run this gate before the standard retryability check.
-			if (this.#isFireworksFastFallbackEligible(msg)) {
-				const didRetry = await this.#handleRetryableError(msg, { fireworksFastFallback: true });
-				if (didRetry) {
-					await emitAgentEndNotification();
-					return;
-				}
-			}
-			if (this.#isRetryableError(msg)) {
-				const didRetry = await this.#handleRetryableError(msg);
-				if (didRetry) {
-					await emitAgentEndNotification();
-					return;
-				}
-			} else if (this.#isHardErrorFallbackEligible(msg)) {
-				// A non-retryable hard error on a model covered by a configured
-				// fallback chain: retrying the SAME model is pointless, but a
-				// DIFFERENT model is a fresh chance — consult the chain before
-				// surfacing the failure. #handleRetryableError bails out (no
-				// backoff-retry of the failing model) when no switch happens.
-				const didRetry = await this.#handleRetryableError(msg, { hardErrorFallback: true });
-				if (didRetry) {
-					await emitAgentEndNotification();
-					return;
-				}
-			}
-			// Retry was refused because the batch cannot be resent, not because the
-			// failure was final. The turn now in context IS sendable, so continue it
-			// rather than leaving the session parked mid-batch.
-			if (await this.#continueAfterUnreplayableBatch(msg)) {
-				await emitAgentEndNotification();
-				return;
-			}
-			// Classifier refusals are persisted-skipped above; also prune the trailing
-			// stub from active context so the next turn's prompt does not replay it.
-			// Fall through to the standard error tail so `session_stop` hooks (block,
-			// continue, telemetry) still fire — matching the pre-fix flow for
-			// `stopReason === "error"`.
-			if (this.#isClassifierRefusal(msg)) {
-				this.#removeAssistantMessageFromActiveContext(msg);
-			}
-			this.#resolveRetry();
-
-			if (!checkedCompaction) {
-				maintenanceRoute("bottom-checkCompaction");
-				const compactionTask = this.#checkCompaction(msg);
-				this.#postPrompt.track(compactionTask);
-				compactionResult = await compactionTask;
-			}
-			// Stop-time todo reconciliation only fires at a text-only final stop. A run
-			// that ends still mid-tool-use (deadline hit, context full, etc.) skips the
-			// reminder so we don't pile a follow-up onto an already in-flight turn.
-			// Mid-run sync is handled separately via TodoRuntime.takeMidRunNudge so a long
-			// tool-use loop still gets prodded to keep the live HUD honest (issue #3651).
-			const hasToolCalls = msg.content.some(content => content.type === "toolCall");
-			if (hasToolCalls) {
-				await emitAgentEndNotification();
-				return;
-			}
-			// When compaction queued recovery or hit a deliberate dead-end, skip the
-			// rewind/todo/session_stop passes: any reminder or hook continuation we append
-			// here would race the retry, auto-continue prompt, queued-message drain, or
-			// the explicit pause that is preventing a compaction loop.
-			if (compactionResult.continuationScheduled || compactionResult.automaticContinuationBlocked) {
-				await emitAgentEndNotification();
-				return;
-			}
-			if (msg.stopReason !== "error") {
-				if (mayContinueAtSettle("rewind-checkpoint", settleState) && this.#enforceRewindBeforeYield()) {
-					await emitAgentEndNotification();
-					return;
-				}
-				const planModeContinuationScheduled =
-					mayContinueAtSettle("plan-mode-decision", settleState) &&
-					(await this.#enforcePlanModeDecisionAtSettle());
-				if (planModeContinuationScheduled) {
-					await emitAgentEndNotification();
-					return;
-				}
-				// Called unconditionally: its first statement consumes the served
-				// tool-choice label, and skipping that leaks a `user-force` label
-				// onto the next turn. The hold is a parameter instead.
-				const todoContinuationScheduled = await this.#todo.checkCompletionAtSettle(settleState);
-				if (todoContinuationScheduled) {
-					await emitAgentEndNotification();
-					return;
-				}
-			}
-			// A pending async wake means this settle is a scheduling pause, not
-			// the terminal stop: the async-result delivery continues the loop and
-			// the real stop settles later. Defer the session_stop hook pass until
-			// the session is fully idle (the todo reminder above defers the same
-			// way inside TodoRuntime.checkCompletionAtSettle).
-			if (this.#hasPendingAsyncWake()) {
-				await emitAgentEndNotification();
-				return;
-			}
-			// Gated BEFORE the enforcer runs: it drains the ledger's one reminder
-			// as it reads it, so deferring from inside would spend the reminder it
-			// meant to keep.
-			if (mayContinueAtSettle("verification-evidence", settleState) && this.#enforceVerificationBeforeFinalize()) {
-				await emitAgentEndNotification();
-				return;
-			}
-			if (mayContinueAtSettle("code-review", settleState) && this.#enforceCodeReviewBeforeFinalize()) {
-				await emitAgentEndNotification();
-				return;
-			}
-			await this.#emitSessionStopEvent(settledMessages, msg);
-			await emitAgentEndNotification();
+			return;
 		}
-	};
+		this.#lastSuccessfulYieldToolCallId = undefined;
+		await this.#settleStop(msg, settledMessages, activeGoal, route);
+	}
+
+	/** Route a stop that no `yield` ended: empty-stop and failure recovery, compaction, then `session_stop`. */
+	async #settleStop(
+		msg: AssistantMessage,
+		settledMessages: AgentMessage[],
+		activeGoal: boolean,
+		route: (name: string, extra?: Record<string, unknown>) => void,
+	): Promise<void> {
+		// One reading of "this reply is waiting on the user", shared by every route below and read
+		// before the first guard runs, so the retry guards that settle earliest see the same answer as
+		// the passes that settle last.
+		const settleState: SettleContinuationState = { awaitingUserAnswer: isAwaitingUserAnswer(msg) };
+		// Empty-stop cleanup MUST run before any compaction continuation: an empty toolUse stop must
+		// be stripped from active context + session history before another turn is scheduled,
+		// otherwise the next Anthropic turn carries a tool_use block with no matching tool_result and
+		// corrupts message history. The handler also schedules its own retry, so a real empty stop
+		// never needs the active-goal threshold pre-empt below.
+		if (await this.#handleEmptyAssistantStop(msg)) {
+			route("empty-stop-handled");
+			return;
+		}
+
+		let compactionResult: CompactionCheckResult | undefined;
+		if (activeGoal) {
+			route("active-goal-pre-empt-checkCompaction");
+			compactionResult = await this.#trackedCompactionCheck(msg);
+			if (compactionResult.continuationScheduled || compactionResult.automaticContinuationBlocked) {
+				route("active-goal-pre-empt-compaction-handled", {
+					continuationScheduled: compactionResult.continuationScheduled,
+					automaticContinuationBlocked: compactionResult.automaticContinuationBlocked === true,
+				});
+				this.#resolveRetry();
+				return;
+			}
+		}
+
+		if (await this.#handleUnexpectedAssistantStop(msg, settleState)) {
+			route("unexpected-stop-handled");
+			return;
+		}
+		if (await this.#recoverFailedTurn(msg)) return;
+		// Classifier refusals are persisted-skipped above; also prune the trailing stub from active
+		// context so the next turn's prompt does not replay it. Fall through to the standard error
+		// tail so `session_stop` hooks (block, continue, telemetry) still fire.
+		if (this.#isClassifierRefusal(msg)) {
+			this.#removeAssistantMessageFromActiveContext(msg);
+		}
+		this.#resolveRetry();
+
+		if (!compactionResult) {
+			route("bottom-checkCompaction");
+			compactionResult = await this.#trackedCompactionCheck(msg);
+		}
+		if (await this.#continueAtSettle(msg, settleState, compactionResult)) return;
+		await this.#emitSessionStopEvent(settledMessages, msg);
+	}
+
+	/**
+	 * Retry, fall back, or settle a failed or aborted turn. True when the turn is handled and the
+	 * stop-time passes must not run.
+	 */
+	async #recoverFailedTurn(msg: AssistantMessage): Promise<boolean> {
+		if (
+			this.#isRetryableReasonlessAbort(msg) &&
+			(await this.#handleRetryableError(msg, { allowModelFallback: false }))
+		) {
+			return true;
+		}
+		// A deliberate abort should settle the current turn, not trigger queued continuations.
+		if (msg.stopReason === "aborted") {
+			this.#resolveRetry();
+			this.#resetSessionStopContinuationState();
+			return true;
+		}
+		// Fireworks Fast variants degrade to their base model on a failed turn — including hard
+		// router errors the generic retry classifier rejects — so this runs before the standard
+		// retryability check.
+		if (
+			this.#isFireworksFastFallbackEligible(msg) &&
+			(await this.#handleRetryableError(msg, { fireworksFastFallback: true }))
+		) {
+			return true;
+		}
+		if (this.#isRetryableError(msg)) {
+			if (await this.#handleRetryableError(msg)) return true;
+		} else if (
+			// A non-retryable hard error on a model covered by a configured fallback chain: retrying
+			// the SAME model is pointless, but a DIFFERENT model is a fresh chance. #handleRetryableError
+			// bails out (no backoff-retry of the failing model) when no switch happens.
+			this.#isHardErrorFallbackEligible(msg) &&
+			(await this.#handleRetryableError(msg, { hardErrorFallback: true }))
+		) {
+			return true;
+		}
+		// Retry was refused because the batch cannot be resent, not because the failure was final.
+		// The turn now in context IS sendable, so continue it rather than leaving the session parked
+		// mid-batch.
+		return this.#continueAfterUnreplayableBatch(msg);
+	}
+
+	/**
+	 * The stop-time passes that may continue a settled turn instead of ending it. True when one
+	 * scheduled a continuation, or the turn is not a final stop, so `session_stop` must not fire.
+	 */
+	async #continueAtSettle(
+		msg: AssistantMessage,
+		settleState: SettleContinuationState,
+		compactionResult: CompactionCheckResult,
+	): Promise<boolean> {
+		// Stop-time todo reconciliation only fires at a text-only final stop. A run that ends still
+		// mid-tool-use (deadline hit, context full, etc.) skips the reminder so a follow-up does not
+		// pile onto an already in-flight turn. Mid-run sync is TodoRuntime.takeMidRunNudge (#3651).
+		if (msg.content.some(content => content.type === "toolCall")) return true;
+		// When compaction queued recovery or hit a deliberate dead-end, skip the rewind/todo/
+		// session_stop passes: a reminder or hook continuation appended here would race the retry,
+		// auto-continue prompt, queued-message drain, or the pause preventing a compaction loop.
+		if (compactionResult.continuationScheduled || compactionResult.automaticContinuationBlocked) return true;
+		const stopped = msg.stopReason !== "error";
+		if (stopped && mayContinueAtSettle("rewind-checkpoint", settleState) && this.#enforceRewindBeforeYield()) {
+			return true;
+		}
+		if (
+			stopped &&
+			mayContinueAtSettle("plan-mode-decision", settleState) &&
+			(await this.#enforcePlanModeDecisionAtSettle())
+		) {
+			return true;
+		}
+		// Called unconditionally at a stop: its first statement consumes the served tool-choice label,
+		// and skipping that leaks a `user-force` label onto the next turn. The hold is a parameter.
+		if (stopped && (await this.#todo.checkCompletionAtSettle(settleState))) return true;
+		// A pending async wake means this settle is a scheduling pause, not the terminal stop: the
+		// async-result delivery continues the loop and the real stop settles later, so the
+		// session_stop hook pass waits until the session is fully idle.
+		if (this.#hasPendingAsyncWake()) return true;
+		// Gated BEFORE the enforcer runs: it drains the ledger's one reminder as it reads it, so
+		// deferring from inside would spend the reminder it meant to keep.
+		if (mayContinueAtSettle("verification-evidence", settleState) && this.#enforceVerificationBeforeFinalize()) {
+			return true;
+		}
+		return mayContinueAtSettle("code-review", settleState) && this.#enforceCodeReviewBeforeFinalize();
+	}
 
 	/**
 	 * Create the retry gate promise if one does not already exist.
@@ -10712,10 +10675,9 @@ export class AgentSession {
 	}
 
 	#assistantMessageHasSuccessfulYieldToolCall(assistantMessage: AssistantMessage, toolCallId: string): boolean {
-		const lastToolCall = assistantMessage.content
-			.slice()
-			.reverse()
-			.find((content): content is ToolCall => content.type === "toolCall");
+		const lastToolCall = assistantMessage.content.findLast(
+			(content): content is ToolCall => content.type === "toolCall",
+		);
 		return lastToolCall?.name === TOOL.yield && lastToolCall.id === toolCallId;
 	}
 
@@ -10936,27 +10898,16 @@ export class AgentSession {
 	}
 
 	#isEmptyAssistantStop(assistantMessage: AssistantMessage): boolean {
-		switch (assistantMessage.stopReason) {
-			case "stop":
-				// Reasoning/thinking-only turns are not actionable: they do not
-				// answer the user and do not give the agent loop a tool call to run.
-				for (const content of assistantMessage.content) {
-					if (content.type === "toolCall") return false;
-					if (content.type === "text" && hasNonWhitespace(content.text)) return false;
-				}
-				return true;
-			case "toolUse":
-				// An orphaned toolUse stop (no tool_use block) corrupts Anthropic history:
-				// a later tool_result has nothing to anchor to. Thinking alone cannot anchor
-				// a tool_result, so it does not rescue a toolUse stop here.
-				for (const content of assistantMessage.content) {
-					if (content.type === "toolCall") return false;
-					if (content.type === "text" && hasNonWhitespace(content.text)) return false;
-				}
-				return true;
-			default:
-				return false;
+		const { stopReason } = assistantMessage;
+		if (stopReason !== "stop" && stopReason !== "toolUse") return false;
+		// A "stop" that only reasons does not answer the user and gives the agent loop no tool call
+		// to run. An orphaned toolUse stop (no tool_use block) corrupts Anthropic history: a later
+		// tool_result has nothing to anchor to, and thinking alone cannot anchor one.
+		for (const content of assistantMessage.content) {
+			if (content.type === "toolCall") return false;
+			if (content.type === "text" && hasNonWhitespace(content.text)) return false;
 		}
+		return true;
 	}
 
 	#emptyStopRetryReminder(): string {

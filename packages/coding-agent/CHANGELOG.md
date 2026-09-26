@@ -23,6 +23,7 @@
 - The per-agent run monitor (progress, abort and soft request-budget handling, usage totals and output capture) runs in `task/run-monitor.ts`, split out of `task/executor.ts`, with one handler per agent event; no user-visible change.
 - The status line's message fingerprint and usage-window reading run in per-role and per-window helpers; no user-visible change.
 - An agent's yield finalization, reminder ladder, session setup and teardown run in single-purpose helpers in `task/executor.ts`, and a child renders its own system prompt section once per run instead of on every system prompt rebuild, which saves 114.5 µs per rebuild for `deep`; no user-visible change.
+- The session's agent event handler routes each event type to its own method, records a finished assistant message as the settle's last message once before its first await instead of again after persistence, and splits post-run maintenance into yield settle, failure recovery and stop-time continuation passes; no user-visible change.
 
 ### Fixed
 
