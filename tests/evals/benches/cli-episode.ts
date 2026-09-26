@@ -92,6 +92,8 @@ export interface CliEpisodeOptions {
 	readonly timeoutMs: number;
 	/** A directory holding the model's sign-in; the host's own when absent. */
 	readonly agentDir: string | undefined;
+	/** Files written into the episode's working directory before it starts, by name. */
+	readonly files?: Readonly<Record<string, string>>;
 }
 
 export interface CliEpisodeRun {
@@ -108,6 +110,9 @@ export async function runCliEpisode(options: CliEpisodeOptions): Promise<CliEpis
 	for (const dir of [cwd, home]) {
 		await fs.rm(dir, { recursive: true, force: true });
 		await fs.mkdir(dir, { recursive: true });
+	}
+	for (const [name, content] of Object.entries(options.files ?? {})) {
+		await fs.writeFile(path.join(cwd, name), content);
 	}
 	const started = Date.now();
 	const child = spawn(

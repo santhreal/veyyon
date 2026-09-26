@@ -48,6 +48,41 @@ export const DEFAULT_TASKS = [
 	"click-button",
 ] as const;
 
+/** Tasks outside the default set that shaped none of the tool's changes: links, tabs, a tree, checkboxes, a list, an inbox. */
+export const HELDOUT_TASKS = [
+	"click-link",
+	"click-tab-2",
+	"navigate-tree",
+	"click-checkboxes",
+	"choose-list",
+	"email-inbox",
+] as const;
+
+/**
+ * Long or fiddly tasks: a flight search form with a date picker, a custom calendar, collapsible
+ * sections, forwarding a mail described in prose, acting on some posts of a feed, tabs that hide
+ * their link, sorting a list by dragging, a slider, a rich-text editor and a terminal.
+ */
+export const HARD_TASKS = [
+	"book-flight",
+	"choose-date",
+	"click-collapsible-2",
+	"email-inbox-forward-nl",
+	"social-media-some",
+	"click-tab-2-hard",
+	"drag-items",
+	"use-slider",
+	"text-editor",
+	"terminal",
+] as const;
+
+/** The task sets `--set` names. */
+export const MINIWOB_SETS: Readonly<Record<string, readonly string[]>> = {
+	default: DEFAULT_TASKS,
+	heldout: HELDOUT_TASKS,
+	hard: HARD_TASKS,
+};
+
 export const MINIWOB_BENCH_FLAGS = {
 	valued: {
 		miniwob: true,
@@ -56,6 +91,7 @@ export const MINIWOB_BENCH_FLAGS = {
 		label: true,
 		json: true,
 		tasks: true,
+		set: true,
 		seeds: true,
 		jobs: true,
 		"episode-timeout": true,
@@ -68,7 +104,7 @@ export const MINIWOB_BENCH_FLAGS = {
 const USAGE = [
 	"usage: bun benches/miniwob.ts --miniwob <miniwob-plusplus/miniwob/html> --model <provider/id>",
 	"         [--cli <tree>/packages/coding-agent/src/cli.ts] [--label <name>] [--json <out.json>]",
-	"         [--tasks a,b,...] [--seeds <n, default 3>] [--jobs <n, default 2>] [--episode-timeout <s, default 240>]",
+	"         [--set default|heldout|hard] [--tasks a,b,...] [--seeds <n, default 3>] [--jobs <n, default 2>] [--episode-timeout <s, default 240>]",
 	"         [--agent-dir <dir with the model's sign-in>] [--work <dir for episode cwds, default runs/miniwob-work>]",
 ].join("\n");
 
@@ -287,7 +323,13 @@ if (import.meta.main) {
 		console.error(USAGE);
 		process.exit(2);
 	}
-	const tasks = flags.tasks ? flags.tasks.split(",").filter(Boolean) : [...DEFAULT_TASKS];
+	const setName = flags.set ?? "default";
+	const set = MINIWOB_SETS[setName];
+	if (!set) {
+		console.error(`no MiniWoB set ${setName}; the sets are ${Object.keys(MINIWOB_SETS).join(", ")}`);
+		process.exit(2);
+	}
+	const tasks = flags.tasks ? flags.tasks.split(",").filter(Boolean) : [...set];
 	for (const task of tasks) {
 		try {
 			await fs.access(path.join(miniwob, "miniwob", `${task}.html`));
