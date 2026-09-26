@@ -11,7 +11,10 @@
 ### Changed
 
 - The `browser` tool sends a run's displayed and returned objects to the model as one line of compact JSON instead of two-space indented JSON, which is 36–41% fewer characters for a `tab.observe()` of a real page; the card still lays them out indented.
-- The `browser` tool description is shorter (1,529 estimated tokens from 1,575) and asks the model to act on an open's snapshot without reading the page again, and to act and read back in one run.
+- A `browser` run no longer sends a return value that it already displayed, which was 20% of all run-result text in bench sessions.
+- The `browser` tool's `tab.ariaSnapshot()` and an `open`'s page snapshot leave out bare `generic` wrappers (layout `<div>`s with no name, text, state or pointer), 7–30% of a real page's snapshot.
+- A `browser` run that reaches for `document`, `window` or another name the page defines fails with an error that says the name exists in the page and to use it inside `tab.evaluate`, instead of a bare "is not defined".
+- The `browser` tool description (1,588 estimated tokens, from 1,575) states that run code executes outside the page and that raw `page.evaluate` cannot see page globals, and asks the model to act on an open's snapshot without reading the page again and to act and read back in one run.
 - A truncated `read`, `search` or `run_experiment` result records only its truncation counts in the session file, not a second copy of the kept text, so new results take less disk and memory and a resume parses less.
 - The `lsp` tool dispatches each workspace-scoped action (`status`, `diagnostics`, `rename_file`, `capabilities`, `request`, workspace `symbols`, workspace `reload`) to its own handler, and `definition`, `type_definition` and `implementation` share one lookup; no user-visible change.
 - A goal session records the token and time a tool call spends as a small `goal_progress` entry instead of a full copy of the goal, so the session file holds the objective once per goal change rather than once per tool call and a resume parses less.
@@ -25,6 +28,7 @@
 
 ### Fixed
 
+- A session without the `browser` tool no longer reads about it: the `read` description names the browser only when the tool is on, and the reminder to verify an edit names only the check tools (bash, eval, debug, browser) the session has.
 - The CLI imports the terminal output guard when a worker thread starts rather than at startup, keeping it off the static boot graph; no user-visible change.
 - A tool card whose call carries an argument of the wrong type, such as `input: 404` for `search`, draws the value as text or omits it instead of failing with `Renderer failed: e.toWellFormed is not a function`.
 - The `read` card for a structurally summarized file numbers each row with the line the model saw, a merged brace pair with its opening line, instead of counting up from line 1 past every elided body, and draws the `…` elision row and the summary budget notice without a line number.

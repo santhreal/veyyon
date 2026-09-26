@@ -5,7 +5,7 @@ Drives real Chromium tab; full puppeteer access via JS.
 - Four actions:
   - `open` — acquire/reuse named tab (`name` defaults `"main"`). Optional `url` (navigate once ready; the result carries the page's `tab.ariaSnapshot()` when it is 6,000 chars or less: act on its refs, no second read), `viewport`, `dialogs: "accept" | "dismiss"` (auto-handle `alert`/`confirm`/`beforeunload`; else page hangs till you wire `page.on('dialog', …)`). Headless only: `context` (tabs naming it share cookies/storage, isolated from others — e.g. one per user role), `storage_state` (state file loaded before navigating).
   - `close` — release tab by `name`, or all with `all: true`. `kill: true` also kills spawned-app process trees.
-  - `run` — execute JS in existing tab. `code` = async function body; `page`, `browser`, `tab`, `display`, `assert`, `wait` in scope. `wait(ms)` sleeps; `wait(fn, { timeout?, interval? })` polls `fn` until truthy and returns its value (100ms interval; deadline min(30s, cell budget − 1s)) — use it instead of polling inside `tab.evaluate`.
+  - `run` — execute JS against an existing tab. `code` = async function body, run in a worker, not the page: `page`, `browser`, `tab`, `display`, `assert`, `wait` in scope; `document`, `window` and page globals only inside `tab.evaluate(() => …)`. `wait(ms)` sleeps; `wait(fn, { timeout?, interval? })` polls `fn` until truthy and returns its value (100ms interval; deadline min(30s, cell budget − 1s)) — use it instead of polling inside `tab.evaluate`.
   - `save_state` — write the tab context's cookies + localStorage to `storage_state` (required). It holds live credentials: keep it out of git.
 - Tabs survive `run` calls and in-process spawned agents — open once, reuse.
 - Browser kinds (`app` on `open`):
@@ -28,7 +28,7 @@ Drives real Chromium tab; full puppeteer access via JS.
   - `tab.waitForUrl(pattern, { timeout? })` — substring or `RegExp` (matches SPA pushState nav); returns matched URL.
   - `tab.waitForResponse(pattern, { timeout? })` — substring, `RegExp`, or `(response) => boolean`; returns puppeteer `HTTPResponse` (`.text()`/`.json()`/`.status()`/`.headers()`).
   - `tab.waitForNavigation({ waitUntil?, timeout? })` — resolves on the next navigation. Start it BEFORE the click/submit that triggers it; after `tab.goto` (which already waits) use `tab.waitForUrl`/`tab.waitForSelector` instead.
-  - `tab.evaluate(fn, …args)` — run ad-hoc code in the page's MAIN world. DOM and page-defined globals (`window.myFlag`) are visible; mutations affect the page.
+  - `tab.evaluate(fn, …args)` — run ad-hoc code in the page's MAIN world. DOM and page-defined globals (`window.myFlag`, `jQuery`) are visible; mutations affect the page. Raw `page.evaluate` runs in an isolated world where page globals are undefined.
   - `tab.screenshot({ selector?, fullPage?, save?, silent? })` — capture + attach for viewing (`silent: true` skips). Pass `save` only when a later step needs the file.
   - `tab.extract(format = "markdown")` — readable page content (`"markdown"` | `"text"`); throws when nothing readable.
   - `tab.storageState({ path? })` / `tab.loadStorageState(stateOrPath)` — save/load the context's cookies + localStorage (object or file).
@@ -43,5 +43,5 @@ Drives real Chromium tab; full puppeteer access via JS.
 </critical>
 
 <output>
-Per call: `display(value)` output, then `code`'s return value; objects and arrays as compact JSON. `run` always produces at least a status line.
+Per call: `display(value)` output, then `code`'s return value unless it was displayed already; objects and arrays as compact JSON. `run` always produces at least a status line.
 </output>

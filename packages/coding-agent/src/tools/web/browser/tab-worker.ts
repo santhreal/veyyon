@@ -170,6 +170,8 @@ const OP_DEADLINE_SLACK_MS = CELL_BUDGET_SLACK_MS;
 const ZERO_MATCH_FAIL_FAST_MS = 2_000;
 /** Poll cadence for the zero-match watchdog. */
 const ZERO_MATCH_POLL_MS = 250;
+/** How long a failed run waits for the page to say whether it has a name the run could not find. */
+const PAGE_GLOBAL_PROBE_MS = 1_000;
 
 export interface OpTimeouts {
 	/** Largest per-op deadline allowed — strictly below the cell budget. */
@@ -1096,7 +1098,7 @@ export class WorkerCore {
 				type: "result",
 				id: msg.id,
 				ok: false,
-				error: errorPayload(error),
+				error: errorPayload(await this.#explainPageGlobal(error)),
 				partial: { displays: output.finish(), screenshots },
 			});
 		} finally {
@@ -1104,6 +1106,35 @@ export class WorkerCore {
 			if (this.#active?.id === msg.id) this.#active = null;
 			runAc.abort(postmortem.markExpectedCleanupError(new ToolAbortError("Browser run ended")));
 		}
+	}
+
+	/**
+	 * Run code executes in the tab worker, and a model that reaches for `document`, `window` or a
+	 * page's own global (`jQuery`, an app object) gets a bare "X is not defined". When the page has
+	 * that name, the error says where it lives and how to reach it, so the next attempt is right.
+	 */
+	async #explainPageGlobal(error: unknown): Promise<unknown> {
+		if (!(error instanceof Error) || error.name !== "ReferenceError" || !this.#page) return error;
+		const name = /^(?:Can't find variable: )?([A-Za-z_$][\w$]*)(?: is not defined)?$/.exec(error.message)?.[1];
+		if (!name) return error;
+		const probe = Promise.withResolvers<boolean | undefined>();
+		const timer = setTimeout(() => probe.resolve(undefined), PAGE_GLOBAL_PROBE_MS);
+		// The main world, as `tab.evaluate` uses: a page's own globals are not visible from the isolated one.
+		void optionalResult(
+			this.#page
+				.mainFrame()
+				.mainRealm()
+				.evaluate(global => global in globalThis, name),
+			"a page that cannot answer leaves the error as it was",
+		).then(probe.resolve);
+		const inPage = await probe.promise;
+		clearTimeout(timer);
+		if (inPage !== true) return error;
+		const explained = new ToolError(
+			`${error.message}: \`${name}\` exists in the page, but run code executes in the tab worker. Use it inside \`await tab.evaluate(() => …)\`.`,
+		);
+		explained.stack = error.stack;
+		return explained;
 	}
 
 	#ensureRuntime(session: SessionSnapshot): JsRuntime {

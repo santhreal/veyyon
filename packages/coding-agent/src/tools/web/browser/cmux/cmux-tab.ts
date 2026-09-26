@@ -10,7 +10,7 @@ import { resolveToCwd } from "../../../core/path-utils";
 import { formatScreenshot } from "../../../core/render-utils";
 import { ToolAbortError, ToolError, throwIfAborted } from "../../../core/tool-errors";
 import type { ToolSession } from "../../../index";
-import { type AriaSnapshotOptions, buildAriaSnapshotScript } from "../aria-snapshot";
+import { type AriaSnapshotOptions, buildAriaSnapshotScript, withoutBareWrappers } from "../aria-snapshot";
 import { DEFAULT_VIEWPORT } from "../launch";
 import { extractReadableFromHtml, type ReadableFormat } from "../readable";
 import {
@@ -478,7 +478,8 @@ export class CmuxTab {
 			{ script: buildAriaSnapshotScript(selector, opts) },
 			timeoutMs,
 		)) as CmuxEvalResult;
-		return result.value as string;
+		const snapshot = result.value as string;
+		return typeof snapshot === "string" ? withoutBareWrappers(snapshot) : snapshot;
 	}
 
 	async ref(id: string): Promise<CmuxElementHandle> {

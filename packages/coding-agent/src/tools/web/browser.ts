@@ -497,7 +497,11 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 
 		const content = displays.slice();
 		if (returnValue !== undefined) {
-			content.push({ type: "text", text: stringifyReturnValue(returnValue) });
+			// `display(x); return x;` is a common shape, and every copy is re-sent on each later turn:
+			// a return value the run already displayed is not sent twice.
+			const returned = stringifyReturnValue(returnValue);
+			const shown = displays.some(entry => entry.type === "text" && entry.text.trimEnd() === returned.trimEnd());
+			if (!shown) content.push({ type: "text", text: returned });
 		}
 		if (!content.length) {
 			content.push({ type: "text", text: `Ran code on tab ${JSON.stringify(name)}` });
