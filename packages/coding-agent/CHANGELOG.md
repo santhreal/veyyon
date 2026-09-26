@@ -24,6 +24,8 @@
 - The status line's message fingerprint and usage-window reading run in per-role and per-window helpers; no user-visible change.
 - An agent's yield finalization, reminder ladder, session setup and teardown run in single-purpose helpers in `task/executor.ts`, and a child renders its own system prompt section once per run instead of on every system prompt rebuild, which saves 114.5 µs per rebuild for `deep`; no user-visible change.
 - The session's agent event handler routes each event type to its own method, records a finished assistant message as the settle's last message once before its first await instead of again after persistence, and splits post-run maintenance into yield settle, failure recovery and stop-time continuation passes; no user-visible change.
+- Text search resolves its scope, runs the native and virtual searches, pages the matches, and renders and fits its output in single-purpose functions; no user-visible change.
+- Raw settings migrations run as an ordered list of one function per retired setting family instead of one 600-line function; no user-visible change.
 
 ### Fixed
 

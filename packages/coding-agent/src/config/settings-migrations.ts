@@ -308,23 +308,18 @@ function migrateAgentSettings(raw: RawSettings): void {
 	}
 }
 
-/**
- * Apply every field-level migration to one raw settings tree.
- *
- * Runs on EVERY load of EVERY source (global, project, `--config` overlays,
- * runtime overrides), so every migration here must be a fixed point on its own
- * output. A migration that CANNOT be — one that cannot distinguish an old
- * encoding from a value the user typed — does not belong here: it goes in
- * {@link migrateOwnedConfigOnce}, which runs once against the config this
- * instance owns.
- */
-export function migrateRawSettings(raw: RawSettings, context: RawSettingsMigrationContext): RawSettings {
-	// queueMode -> steeringMode
+/** One field-level migration, applied in place to a raw settings tree. */
+type RawSettingsMigration = (raw: RawSettings, context: RawSettingsMigrationContext) => void;
+
+/** queueMode -> steeringMode */
+function migrateQueueMode(raw: RawSettings): void {
 	if ("queueMode" in raw && !("steeringMode" in raw)) {
 		raw.steeringMode = raw.queueMode;
 		delete raw.queueMode;
 	}
+}
 
+function dropChangelogKeys(raw: RawSettings, context: RawSettingsMigrationContext): void {
 	// lastChangelogVersion moved out of config.yml into the
 	// <agentDir>/last-changelog-version marker file so version bumps no
 	// longer dirty user-tracked configs. Capture for marker seeding (see
@@ -341,93 +336,104 @@ export function migrateRawSettings(raw: RawSettings, context: RawSettingsMigrati
 	// behavior left to control. Drop it rather than leave a toggle that does
 	// nothing; `startup.updateNotice` governs the line that replaced it.
 	delete raw.collapseChangelog;
+}
 
-	// ask.timeout: ms -> seconds, guessed from the magnitude of the value.
-	//
-	// Every other migration here is a fixed point: re-running it on its own
-	// output changes nothing, which is what lets this function run on every
-	// read. This one is not. It cannot be, because 2000 in the file is either
-	// 2000 milliseconds from the old format or 2000 seconds from the new one
-	// and nothing on disk says which. So a user who legitimately wants a
-	// 33-minute timeout gets 2 seconds instead, and an ask they expected to
-	// wait for them auto-selects almost immediately.
-	//
-	// The conversion stays, because silently keeping an old ms value would
-	// make the same setting wrong in the other direction for far more users.
-	// What changes is that it is no longer silent: a rewrite the user did not
-	// ask for is reported with both values so they can see what happened and
-	// set it in seconds if the guess was wrong.
-	if (raw.ask && typeof (raw.ask as Record<string, unknown>).timeout === "number") {
-		const oldValue = (raw.ask as Record<string, unknown>).timeout as number;
-		if (oldValue > MAX_ASK_TIMEOUT_SECONDS) {
-			const converted = Math.round(oldValue / 1000);
-			(raw.ask as Record<string, unknown>).timeout = converted;
-			context.reportAskTimeoutRewrite(oldValue, converted);
-		}
+/**
+ * ask.timeout: ms -> seconds, guessed from the magnitude of the value.
+ *
+ * Every other migration here is a fixed point: re-running it on its own
+ * output changes nothing, which is what lets {@link migrateRawSettings} run on
+ * every read. This one is not. It cannot be, because 2000 in the file is either
+ * 2000 milliseconds from the old format or 2000 seconds from the new one
+ * and nothing on disk says which. So a user who legitimately wants a
+ * 33-minute timeout gets 2 seconds instead, and an ask they expected to
+ * wait for them auto-selects almost immediately.
+ *
+ * The conversion stays, because silently keeping an old ms value would
+ * make the same setting wrong in the other direction for far more users.
+ * What changes is that it is no longer silent: a rewrite the user did not
+ * ask for is reported with both values so they can see what happened and
+ * set it in seconds if the guess was wrong.
+ */
+function migrateAskTimeout(raw: RawSettings, context: RawSettingsMigrationContext): void {
+	const ask = raw.ask as Record<string, unknown> | undefined;
+	if (!ask || typeof ask.timeout !== "number") return;
+	const oldValue = ask.timeout;
+	if (oldValue > MAX_ASK_TIMEOUT_SECONDS) {
+		const converted = Math.round(oldValue / 1000);
+		ask.timeout = converted;
+		context.reportAskTimeoutRewrite(oldValue, converted);
 	}
+}
 
-	// compaction.thresholdTokens / compaction.thresholdPercent -> compaction.threshold
-	//
-	// Two keys wrote one axis with an invisible precedence. Fold them into the one
-	// key HERE, on load, so the ambiguity leaves the file: an absolute amount
-	// becomes a bare token count, a percent becomes `85%`, and the retired keys are
-	// dropped. Precedence matches the old resolver (tokens, then percent), so the
-	// trigger point does not move. A `threshold` already present always wins and
-	// the retired keys are dropped without being read, which is what makes this a
-	// fixed point — re-running it on its own output changes nothing.
-	//
-	// `withLegacyCompactionThreshold` still folds them at read time, for config
-	// sources this never rewrites (project files, `--config` overlays, and
-	// non-persisting instances).
+/**
+ * compaction.thresholdTokens / compaction.thresholdPercent -> compaction.threshold
+ *
+ * Two keys wrote one axis with an invisible precedence. Fold them into the one
+ * key HERE, on load, so the ambiguity leaves the file: an absolute amount
+ * becomes a bare token count, a percent becomes `85%`, and the retired keys are
+ * dropped. Precedence matches the old resolver (tokens, then percent), so the
+ * trigger point does not move. A `threshold` already present always wins and
+ * the retired keys are dropped without being read, which is what makes this a
+ * fixed point — re-running it on its own output changes nothing.
+ *
+ * `withLegacyCompactionThreshold` still folds them at read time, for config
+ * sources this never rewrites (project files, `--config` overlays, and
+ * non-persisting instances).
+ */
+function migrateCompactionThreshold(raw: RawSettings): void {
 	const compaction = raw.compaction as Record<string, unknown> | undefined;
 	const legacyTokens = compaction?.thresholdTokens ?? raw["compaction.thresholdTokens"];
 	const legacyPercent = compaction?.thresholdPercent ?? raw["compaction.thresholdPercent"];
-	if (legacyTokens !== undefined || legacyPercent !== undefined) {
-		const currentThreshold = compaction?.threshold ?? raw["compaction.threshold"];
-		if (currentThreshold === undefined) {
-			if (typeof legacyTokens === "number" && Number.isFinite(legacyTokens) && legacyTokens > 0) {
-				setByPath(raw, ["compaction", "threshold"], String(legacyTokens));
-			} else if (typeof legacyPercent === "number" && Number.isFinite(legacyPercent) && legacyPercent > 0) {
-				setByPath(raw, ["compaction", "threshold"], `${legacyPercent}%`);
-			}
-		}
-		if (compaction) {
-			delete compaction.thresholdTokens;
-			delete compaction.thresholdPercent;
-		}
-		delete raw["compaction.thresholdTokens"];
-		delete raw["compaction.thresholdPercent"];
-	}
-
-	// Optional numeric settings once stored `-1` to mean "unset", which made -1
-	// unreachable as a real value: `presencePenalty: -1` is a penalty the
-	// provider accepts, and it could not be configured. Unset is an ABSENT key
-	// now, so the old sentinel is dropped — in every prior version it meant
-	// exactly this, so nothing a user chose is lost.
-	//
-	// ONCE, and only in the config this instance owns. This is the one
-	// migration here that cannot tell its input apart from a legitimate current
-	// value, so re-running it would delete a `-1` the user typed on purpose (it
-	// deleted one within a minute of the change landing, in dogfooding). The
-	// stamp records that it ran; a project file or a `--config` overlay is
-	// hand-written against the current docs, so a `-1` there is a value.
-
-	// Migrate old flat "theme" string to nested theme.dark/theme.light
-	if (typeof raw.theme === "string") {
-		const oldTheme = raw.theme;
-		if (oldTheme === "light" || oldTheme === "dark") {
-			// Built-in defaults — just remove, let new defaults apply
-			delete raw.theme;
-		} else {
-			// Custom theme — detect luminance to place in correct slot
-			const slot = isLightTheme(oldTheme) ? "light" : "dark";
-			raw.theme = { [slot]: oldTheme };
+	if (legacyTokens === undefined && legacyPercent === undefined) return;
+	const currentThreshold = compaction?.threshold ?? raw["compaction.threshold"];
+	if (currentThreshold === undefined) {
+		if (typeof legacyTokens === "number" && Number.isFinite(legacyTokens) && legacyTokens > 0) {
+			setByPath(raw, ["compaction", "threshold"], String(legacyTokens));
+		} else if (typeof legacyPercent === "number" && Number.isFinite(legacyPercent) && legacyPercent > 0) {
+			setByPath(raw, ["compaction", "threshold"], `${legacyPercent}%`);
 		}
 	}
+	if (compaction) {
+		delete compaction.thresholdTokens;
+		delete compaction.thresholdPercent;
+	}
+	delete raw["compaction.thresholdTokens"];
+	delete raw["compaction.thresholdPercent"];
+}
 
-	// task.isolation.enabled (boolean) -> task.isolation.mode (enum)
-	const taskObj = raw.task as Record<string, unknown> | undefined;
-	const isolationObj = taskObj?.isolation as Record<string, unknown> | undefined;
+/** Migrate old flat "theme" string to nested theme.dark/theme.light */
+function migrateFlatTheme(raw: RawSettings): void {
+	if (typeof raw.theme !== "string") return;
+	const oldTheme = raw.theme;
+	if (oldTheme === "light" || oldTheme === "dark") {
+		// Built-in defaults — just remove, let new defaults apply
+		delete raw.theme;
+	} else {
+		// Custom theme — detect luminance to place in correct slot
+		const slot = isLightTheme(oldTheme) ? "light" : "dark";
+		raw.theme = { [slot]: oldTheme };
+	}
+}
+
+/**
+ * task.isolation.mode: legacy values from before the veyyon-iso PAL refactor.
+ * `worktree` was git worktree → now lives under `rcopy`. `fuse-overlay`
+ * and `fuse-projfs` are now the platform-named `overlayfs` / `projfs`
+ * kinds; the PAL falls back internally when the chosen one isn't
+ * available, so we don't need the old TS-side platform guards.
+ */
+const LEGACY_ISOLATION_MODES: Readonly<Record<string, string>> = {
+	worktree: "rcopy",
+	"fuse-overlay": "overlayfs",
+	"fuse-projfs": "projfs",
+};
+
+/** task.isolation.enabled (boolean) -> task.isolation.mode (enum), and legacy mode names to current ones. */
+function migrateTaskIsolation(raw: RawSettings): void {
+	const isolationObj = (raw.task as Record<string, unknown> | undefined)?.isolation as
+		| Record<string, unknown>
+		| undefined;
 	if (isolationObj && "enabled" in isolationObj) {
 		if (typeof isolationObj.enabled === "boolean" && isolationObj.mode === undefined) {
 			isolationObj.mode = isolationObj.enabled ? "auto" : "none";
@@ -440,7 +446,18 @@ export function migrateRawSettings(raw: RawSettings, context: RawSettingsMigrati
 		}
 		delete raw["task.isolation.enabled"];
 	}
+	if (isolationObj && typeof isolationObj.mode === "string") {
+		const mapped = LEGACY_ISOLATION_MODES[isolationObj.mode];
+		if (mapped !== undefined) isolationObj.mode = mapped;
+	}
+	if (typeof raw["task.isolation.mode"] === "string") {
+		const mapped = LEGACY_ISOLATION_MODES[raw["task.isolation.mode"]];
+		if (mapped !== undefined) raw["task.isolation.mode"] = mapped;
+	}
+}
 
+function migrateTaskFlags(raw: RawSettings): void {
+	const taskObj = raw.task as Record<string, unknown> | undefined;
 	// task.simple: removed — the task tool no longer accepts a per-call
 	// schema (workflows drive structured output via eval agent()) and the
 	// batch/context shape is gated by task.batch instead.
@@ -461,40 +478,9 @@ export function migrateRawSettings(raw: RawSettings, context: RawSettingsMigrati
 	if (todoObj && typeof todoObj.eager === "boolean") {
 		todoObj.eager = todoObj.eager ? "always" : "default";
 	}
+}
 
-	// task.isolation.mode: legacy values from before the veyyon-iso PAL refactor.
-	// `worktree` was git worktree → now lives under `rcopy`. `fuse-overlay`
-	// and `fuse-projfs` are now the platform-named `overlayfs` / `projfs`
-	// kinds; the PAL falls back internally when the chosen one isn't
-	// available, so we don't need the old TS-side platform guards.
-	const isolationLegacyMode: Record<string, string> = {
-		worktree: "rcopy",
-		"fuse-overlay": "overlayfs",
-		"fuse-projfs": "projfs",
-	};
-	if (isolationObj && typeof isolationObj.mode === "string") {
-		const mapped = isolationLegacyMode[isolationObj.mode as string];
-		if (mapped !== undefined) {
-			isolationObj.mode = mapped;
-		}
-	}
-	if (typeof raw["task.isolation.mode"] === "string") {
-		const mapped = isolationLegacyMode[raw["task.isolation.mode"]];
-		if (mapped !== undefined) {
-			raw["task.isolation.mode"] = mapped;
-		}
-	}
-
-	// task.* / modelRoles.task -> the agent.* settings area.
-	//
-	// Everything about spawned agents used to be spread across `task.*`
-	// operational keys, `agent.model` under Models, `modelRoles.task` in the
-	// role table, and two UI-less maps (`task.agentModelOverrides`,
-	// `task.disabledAgents`). This rewrites the old keys onto the one section so
-	// the file has a single owner per value — no dual-read, which is how the
-	// precedence tangle grew in the first place.
-	migrateAgentSettings(raw);
-
+function migrateEditSettings(raw: RawSettings): void {
 	// edit.mode: removed "atom" and "vim" variants map back to "hashline"
 	const editObj = raw.edit as Record<string, unknown> | undefined;
 	if (editObj) {
@@ -526,27 +512,28 @@ export function migrateRawSettings(raw: RawSettings, context: RawSettingsMigrati
 	}
 	if (editObj) delete editObj.critiqueCodeMutations;
 	delete raw["edit.critiqueCodeMutations"];
-	// compaction.strategy: collapse every legacy strategy to summary; off also disables compaction.
+}
+
+/** compaction.strategy: collapse every legacy strategy to summary; off also disables compaction. */
+function migrateCompactionStrategy(raw: RawSettings): void {
 	const compactionObj = raw.compaction as Record<string, unknown> | undefined;
-	const migrateStrategy = (current: unknown): CompactionStrategySetting | undefined => {
-		if (typeof current !== "string") return undefined;
-		return migrateCompactionStrategyValue(current);
-	};
-	if (compactionObj) {
-		if (compactionObj.strategy === "off") {
-			compactionObj.strategy = "summary";
-			if (compactionObj.enabled === undefined) {
-				compactionObj.enabled = false;
-			}
-		} else {
-			const migrated = migrateStrategy(compactionObj.strategy);
-			if (migrated) compactionObj.strategy = migrated;
+	if (!compactionObj) return;
+	if (compactionObj.strategy === "off") {
+		compactionObj.strategy = "summary";
+		if (compactionObj.enabled === undefined) {
+			compactionObj.enabled = false;
 		}
-		if (compactionObj.compactionModel !== undefined && compactionObj.model === undefined) {
-			compactionObj.model = compactionObj.compactionModel;
-			delete compactionObj.compactionModel;
-		}
+	} else if (typeof compactionObj.strategy === "string") {
+		const migrated: CompactionStrategySetting | undefined = migrateCompactionStrategyValue(compactionObj.strategy);
+		if (migrated) compactionObj.strategy = migrated;
 	}
+	if (compactionObj.compactionModel !== undefined && compactionObj.model === undefined) {
+		compactionObj.model = compactionObj.compactionModel;
+		delete compactionObj.compactionModel;
+	}
+}
+
+function migrateCompactionModel(raw: RawSettings): void {
 	// `compaction.compactionModel` is a RETIRED key, so it survives the dotted-key
 	// expansion above (only registered paths are expanded) and both spellings of it
 	// still have to be folded. The destination is always nested: a flat
@@ -571,65 +558,86 @@ export function migrateRawSettings(raw: RawSettings, context: RawSettingsMigrati
 			}
 		}
 	}
+}
 
-	// cycleOrder: drop legacy default pseudo-role from ctrl+p order.
+/** cycleOrder: drop legacy default pseudo-role from ctrl+p order. */
+function migrateCycleOrder(raw: RawSettings): void {
 	const cycleOrder = raw.cycleOrder;
 	if (Array.isArray(cycleOrder)) {
 		raw.cycleOrder = cycleOrder.filter(role => role !== "default");
 	}
+}
 
-	// The snapcompact image-archive engine was removed; drop any persisted
-	// snapcompact.* settings so schema validation does not trip on stale keys.
+/**
+ * The snapcompact image-archive engine was removed; drop any persisted
+ * snapcompact.* settings so schema validation does not trip on stale keys.
+ */
+function dropSnapcompact(raw: RawSettings): void {
 	delete raw.snapcompact;
 	for (const key of Object.keys(raw)) {
 		if (key.startsWith("snapcompact.")) delete raw[key];
 	}
+}
 
-	// inlineToolDescriptors: boolean -> enum (auto | on | off). The old
-	// `true`/`false` mapped directly onto inline-on/inline-off, so preserve
-	// the user's explicit choice; new installs get the `auto` default that
-	// turns it on only for Gemini models.
+/**
+ * inlineToolDescriptors: boolean -> enum (auto | on | off). The old
+ * `true`/`false` mapped directly onto inline-on/inline-off, so preserve
+ * the user's explicit choice; new installs get the `auto` default that
+ * turns it on only for Gemini models.
+ */
+function migrateInlineToolDescriptors(raw: RawSettings): void {
 	if (typeof raw.inlineToolDescriptors === "boolean") {
 		raw.inlineToolDescriptors = raw.inlineToolDescriptors ? "on" : "off";
 	}
+}
 
-	// statusLine: rename "plan_mode" segment to "mode"
+/** statusLine: rename "plan_mode" segment to "mode" */
+function migrateStatusLine(raw: RawSettings): void {
 	const statusLineObj = raw.statusLine as Record<string, unknown> | undefined;
-	if (statusLineObj) {
-		for (const key of ["leftSegments", "rightSegments"] as const) {
-			const segments = statusLineObj[key];
-			if (Array.isArray(segments)) {
-				statusLineObj[key] = segments.map(seg => (seg === "plan_mode" ? "mode" : seg));
-			}
-		}
-		const segmentOptions = statusLineObj.segmentOptions as Record<string, unknown> | undefined;
-		if (segmentOptions && "plan_mode" in segmentOptions && !("mode" in segmentOptions)) {
-			segmentOptions.mode = segmentOptions.plan_mode;
-			delete segmentOptions.plan_mode;
+	if (!statusLineObj) return;
+	for (const key of ["leftSegments", "rightSegments"] as const) {
+		const segments = statusLineObj[key];
+		if (Array.isArray(segments)) {
+			statusLineObj[key] = segments.map(seg => (seg === "plan_mode" ? "mode" : seg));
 		}
 	}
+	const segmentOptions = statusLineObj.segmentOptions as Record<string, unknown> | undefined;
+	if (segmentOptions && "plan_mode" in segmentOptions && !("mode" in segmentOptions)) {
+		segmentOptions.mode = segmentOptions.plan_mode;
+		delete segmentOptions.plan_mode;
+	}
+}
 
-	// providers.parallelFetch (boolean) replaced by the providers.fetch reader
-	// priority enum. The new default ("auto") supersedes both old values —
-	// Parallel is now a deep fallback in the auto chain rather than the first
-	// choice — so drop the legacy key (flat and nested) and let the enum
-	// default apply.
+/**
+ * providers.parallelFetch (boolean) replaced by the providers.fetch reader
+ * priority enum. The new default ("auto") supersedes both old values —
+ * Parallel is now a deep fallback in the auto chain rather than the first
+ * choice — so drop the legacy key (flat and nested) and let the enum
+ * default apply.
+ */
+function dropParallelFetch(raw: RawSettings): void {
 	const providersObj = raw.providers as Record<string, unknown> | undefined;
 	if (providersObj && "parallelFetch" in providersObj) {
 		delete providersObj.parallelFetch;
 		if (Object.keys(providersObj).length === 0) delete raw.providers;
 	}
 	delete raw["providers.parallelFetch"];
+}
 
-	// codexResets.autoRedeem: boolean -> tri-state enum.
-	// Existing explicit false keeps the old "do not run" behavior; missing
-	// config now falls through to the new "unset" default, which asks before
-	// the first eligible spend.
+/**
+ * codexResets.autoRedeem: boolean -> tri-state enum.
+ * Existing explicit false keeps the old "do not run" behavior; missing
+ * config now falls through to the new "unset" default, which asks before
+ * the first eligible spend.
+ */
+function migrateCodexResets(raw: RawSettings): void {
 	const codexResetsObj = raw.codexResets as Record<string, unknown> | undefined;
 	if (codexResetsObj && typeof codexResetsObj.autoRedeem === "boolean") {
 		codexResetsObj.autoRedeem = codexResetsObj.autoRedeem ? "yes" : "no";
 	}
+}
 
+function migrateMemorySettings(raw: RawSettings): void {
 	// Map legacy `memories.enabled` boolean to the explicit `memory.backend`
 	// enum if the latter hasn't been set yet. Idempotent: subsequent
 	// migrations are no-ops once memory.backend is materialised.
@@ -640,9 +648,8 @@ export function migrateRawSettings(raw: RawSettings, context: RawSettingsMigrati
 		(typeof memoriesObj?.enabled === "boolean" ? memoriesObj.enabled : undefined) ??
 		(typeof raw["memories.enabled"] === "boolean" ? raw["memories.enabled"] : undefined);
 	if (!memoryBackendSet && typeof memoriesEnabled === "boolean") {
-		const next = memoriesEnabled ? "local" : "off";
-		const memoryRoot = (memoryBackendObj ?? {}) as Record<string, unknown>;
-		memoryRoot.backend = next;
+		const memoryRoot = memoryBackendObj ?? {};
+		memoryRoot.backend = memoriesEnabled ? "local" : "off";
 		raw.memory = memoryRoot;
 	}
 	if (memoriesObj) delete memoriesObj.enabled;
@@ -659,130 +666,141 @@ export function migrateRawSettings(raw: RawSettings, context: RawSettingsMigrati
 		raw.mnemopi = raw.mnemosyne;
 		delete raw.mnemosyne;
 	}
+}
 
-	// hindsight: dynamicBankId/agentName -> scoping enum + bankId
-	// - dynamicBankId=true  → scoping="per-project" (closest semantic match;
-	//   the legacy `agent::project::channel::user` tuple was per-project in
-	//   practice — the channel/user env vars were rarely set).
-	// - hindsight.agentName was only used as the agent slot in the legacy
-	//   dynamic tuple; if the user customised it we surface it as the new
-	//   bankId base when no explicit bankId is set.
-	// Both legacy keys are retired, so the dotted-key expansion leaves their flat
-	// spelling (`hindsight.dynamicBankId: true`, as `config set` writes it) alone;
-	// each is read from whichever spelling holds it and both spellings are dropped.
+/**
+ * hindsight: dynamicBankId/agentName -> scoping enum + bankId
+ * - dynamicBankId=true  → scoping="per-project" (closest semantic match;
+ *   the legacy `agent::project::channel::user` tuple was per-project in
+ *   practice — the channel/user env vars were rarely set).
+ * - hindsight.agentName was only used as the agent slot in the legacy
+ *   dynamic tuple; if the user customised it we surface it as the new
+ *   bankId base when no explicit bankId is set.
+ * Both legacy keys are retired, so the dotted-key expansion leaves their flat
+ * spelling (`hindsight.dynamicBankId: true`, as `config set` writes it) alone;
+ * each is read from whichever spelling holds it and both spellings are dropped.
+ */
+function migrateHindsight(raw: RawSettings): void {
 	const hindsightObj = raw.hindsight as Record<string, unknown> | undefined;
 	const flatDynamicBankId = raw["hindsight.dynamicBankId"];
 	const flatAgentName = raw["hindsight.agentName"];
-	if (hindsightObj || flatDynamicBankId !== undefined || flatAgentName !== undefined) {
-		const target = hindsightObj ?? {};
-		const dynamicBankId = target.dynamicBankId ?? flatDynamicBankId;
-		if (dynamicBankId === true && !("scoping" in target)) {
-			target.scoping = "per-project";
-		}
-		delete target.dynamicBankId;
-		delete raw["hindsight.dynamicBankId"];
-		const agentName = target.agentName ?? flatAgentName;
-		if (
-			!("bankId" in target) &&
-			typeof agentName === "string" &&
-			agentName.trim().length > 0 &&
-			agentName !== "veyyon" &&
-			agentName !== "omp"
-		) {
-			target.bankId = agentName;
-		}
-		delete target.agentName;
-		delete raw["hindsight.agentName"];
-		if (Object.keys(target).length > 0) raw.hindsight = target;
+	if (!hindsightObj && flatDynamicBankId === undefined && flatAgentName === undefined) return;
+	const target = hindsightObj ?? {};
+	const dynamicBankId = target.dynamicBankId ?? flatDynamicBankId;
+	if (dynamicBankId === true && !("scoping" in target)) {
+		target.scoping = "per-project";
 	}
-
-	// power.preventIdleSleep / power.preventSystemSleep / power.declareUserActive
-	// / power.preventDisplaySleep (four booleans) → power.sleepPrevention enum.
-	// The enum is cumulative: each level adds the flags of all lower levels.
-	// Migration picks the highest level whose condition is met, scanning from
-	// most to least aggressive so a single enum value captures the old state.
-	// The flat spelling of the destination needs no check: the expansion above has
-	// already folded `power.sleepPrevention` into the nested tree. The legacy
-	// booleans below are RETIRED keys, which the expansion leaves alone, so both
-	// spellings of those are still read.
-	if (!("sleepPrevention" in ((raw.power as Record<string, unknown>) ?? {}))) {
-		const powerObj = raw.power as Record<string, unknown> | undefined;
-		const getFlag = (key: string): boolean | undefined => {
-			const nested = powerObj?.[key];
-			const flat = raw[`power.${key}`];
-			const value = nested ?? flat;
-			return typeof value === "boolean" ? value : undefined;
-		};
-		const idle = getFlag("preventIdleSleep");
-		const system = getFlag("preventSystemSleep");
-		const user = getFlag("declareUserActive");
-		const display = getFlag("preventDisplaySleep");
-		const anySet = idle !== undefined || system !== undefined || user !== undefined || display !== undefined;
-		if (anySet) {
-			const mode = system || user ? "system" : display ? "display" : idle !== false ? "idle" : "off";
-			const powerRoot = (powerObj ?? {}) as Record<string, unknown>;
-			powerRoot.sleepPrevention = mode;
-			raw.power = powerRoot;
-		}
-		// Clean up old keys (nested + flat)
-		if (powerObj) {
-			delete powerObj.preventIdleSleep;
-			delete powerObj.preventSystemSleep;
-			delete powerObj.declareUserActive;
-			delete powerObj.preventDisplaySleep;
-		}
-		delete raw["power.preventIdleSleep"];
-		delete raw["power.preventSystemSleep"];
-		delete raw["power.declareUserActive"];
-		delete raw["power.preventDisplaySleep"];
+	delete target.dynamicBankId;
+	delete raw["hindsight.dynamicBankId"];
+	const agentName = target.agentName ?? flatAgentName;
+	if (
+		!("bankId" in target) &&
+		typeof agentName === "string" &&
+		agentName.trim().length > 0 &&
+		agentName !== "veyyon" &&
+		agentName !== "omp"
+	) {
+		target.bankId = agentName;
 	}
+	delete target.agentName;
+	delete raw["hindsight.agentName"];
+	if (Object.keys(target).length > 0) raw.hindsight = target;
+}
 
-	// Tool-name arrays use canonical wire IDs and remain deduplicated.
-	const migrateToolNameList = (names: unknown): unknown => {
-		if (!Array.isArray(names)) return names;
-		const out: unknown[] = [];
-		const seen = new Set<string>();
-		for (const name of names) {
-			const normalized = typeof name === "string" ? normalizeToolName(name) : name;
-			if (typeof normalized === "string") {
-				if (seen.has(normalized)) continue;
-				seen.add(normalized);
-			}
-			out.push(normalized);
-		}
-		return out;
+const LEGACY_POWER_FLAGS = [
+	"preventIdleSleep",
+	"preventSystemSleep",
+	"declareUserActive",
+	"preventDisplaySleep",
+] as const;
+
+/**
+ * power.preventIdleSleep / power.preventSystemSleep / power.declareUserActive
+ * / power.preventDisplaySleep (four booleans) → power.sleepPrevention enum.
+ * The enum is cumulative: each level adds the flags of all lower levels.
+ * Migration picks the highest level whose condition is met, scanning from
+ * most to least aggressive so a single enum value captures the old state.
+ * The flat spelling of the destination needs no check: the expansion above has
+ * already folded `power.sleepPrevention` into the nested tree. The legacy
+ * booleans below are RETIRED keys, which the expansion leaves alone, so both
+ * spellings of those are still read.
+ */
+function migratePowerSettings(raw: RawSettings): void {
+	const powerObj = raw.power as Record<string, unknown> | undefined;
+	if (powerObj && "sleepPrevention" in powerObj) return;
+	const getFlag = (key: (typeof LEGACY_POWER_FLAGS)[number]): boolean | undefined => {
+		const value = powerObj?.[key] ?? raw[`power.${key}`];
+		return typeof value === "boolean" ? value : undefined;
 	};
-	const ensureToolsObject = (): Record<string, unknown> => {
-		const current = raw.tools;
-		if (isRecord(current)) {
-			return current as Record<string, unknown>;
+	const idle = getFlag("preventIdleSleep");
+	const system = getFlag("preventSystemSleep");
+	const user = getFlag("declareUserActive");
+	const display = getFlag("preventDisplaySleep");
+	const anySet = idle !== undefined || system !== undefined || user !== undefined || display !== undefined;
+	if (anySet) {
+		const mode = system || user ? "system" : display ? "display" : idle !== false ? "idle" : "off";
+		const powerRoot = powerObj ?? {};
+		powerRoot.sleepPrevention = mode;
+		raw.power = powerRoot;
+	}
+	// Clean up old keys (nested + flat)
+	for (const key of LEGACY_POWER_FLAGS) {
+		if (powerObj) delete powerObj[key];
+		delete raw[`power.${key}`];
+	}
+}
+
+/** Tool-name arrays use canonical wire IDs and remain deduplicated. */
+function migrateToolNameList(names: unknown): unknown {
+	if (!Array.isArray(names)) return names;
+	const out: unknown[] = [];
+	const seen = new Set<string>();
+	for (const name of names) {
+		const normalized = typeof name === "string" ? normalizeToolName(name) : name;
+		if (typeof normalized === "string") {
+			if (seen.has(normalized)) continue;
+			seen.add(normalized);
 		}
-		const created: Record<string, unknown> = {};
-		raw.tools = created;
-		return created;
-	};
+		out.push(normalized);
+	}
+	return out;
+}
+
+function migrateToolSettings(raw: RawSettings): void {
 	const toolsObj = raw.tools as Record<string, unknown> | undefined;
 	if (toolsObj && "essentialOverride" in toolsObj) {
 		toolsObj.essentialOverride = migrateToolNameList(toolsObj.essentialOverride);
 	}
 	if ("tools.essentialOverride" in raw) {
-		const nestedToolsObj = ensureToolsObject();
+		let nestedToolsObj: Record<string, unknown>;
+		if (isRecord(raw.tools)) {
+			nestedToolsObj = raw.tools;
+		} else {
+			nestedToolsObj = {};
+			raw.tools = nestedToolsObj;
+		}
 		if (!("essentialOverride" in nestedToolsObj)) {
 			nestedToolsObj.essentialOverride = migrateToolNameList(raw["tools.essentialOverride"]);
 		}
 		delete raw["tools.essentialOverride"];
 	}
+}
 
-	// Retired per-engine enable flags no longer control the canonical search
-	// tool, which is part of the default inventory. Preserve only the text
-	// context settings; canonical values win when both generations exist.
-	const legacySetting = (section: string, key: string): unknown => {
-		const nested = raw[section];
-		if (isRecord(nested) && key in nested) return nested[key];
-		return raw[`${section}.${key}`];
-	};
-	const legacyContextBefore = legacySetting("grep", "contextBefore");
-	const legacyContextAfter = legacySetting("grep", "contextAfter");
+/** A retired setting from whichever spelling holds it, nested first. */
+function legacySetting(raw: RawSettings, section: string, key: string): unknown {
+	const nested = raw[section];
+	if (isRecord(nested) && key in nested) return nested[key];
+	return raw[`${section}.${key}`];
+}
+
+/**
+ * Retired per-engine enable flags no longer control the canonical search
+ * tool, which is part of the default inventory. Preserve only the text
+ * context settings; canonical values win when both generations exist.
+ */
+function migrateSearchSettings(raw: RawSettings): void {
+	const legacyContextBefore = legacySetting(raw, "grep", "contextBefore");
+	const legacyContextAfter = legacySetting(raw, "grep", "contextAfter");
 	const searchObj = isRecord(raw.search) ? raw.search : {};
 	delete searchObj.enabled;
 	if (
@@ -816,11 +834,43 @@ export function migrateRawSettings(raw: RawSettings, context: RawSettingsMigrati
 	// edit.mode === "hashline"; the separate read toggle only ever produced
 	// the incoherent "hashline edits without addressable anchors" state.
 	delete raw.readHashLines;
+}
 
-	// serviceTier (single enum with scoped openai-only/claude-only sentinels)
-	// → per-family tier.openai/tier.anthropic/tier.google; serviceTierSubagent
-	// → tier.agent; serviceTierAdvisor → tier.advisor. `fastModeScope` is
-	// dropped — per-family scoping is now expressed by the three tier settings.
+/** The per-family tiers a legacy `serviceTier` value selected. */
+function serviceTierFamilies(serviceTier: string): ReadonlyArray<readonly [family: string, tier: string]> {
+	switch (serviceTier) {
+		case "priority":
+			return [
+				["openai", "priority"],
+				["anthropic", "priority"],
+				["google", "priority"],
+			];
+		case "openai-only":
+			return [["openai", "priority"]];
+		case "claude-only":
+			return [["anthropic", "priority"]];
+		case "auto":
+		case "default":
+		case "flex":
+		case "scale":
+			return [["openai", serviceTier]];
+		default:
+			return [];
+	}
+}
+
+/** A scoped `-only` sentinel inherited by an agent or advisor tier means priority. */
+function mapInheritTier(value: unknown): unknown {
+	return value === "openai-only" || value === "claude-only" ? "priority" : value;
+}
+
+/**
+ * serviceTier (single enum with scoped openai-only/claude-only sentinels)
+ * → per-family tier.openai/tier.anthropic/tier.google; serviceTierSubagent
+ * → tier.agent; serviceTierAdvisor → tier.advisor. `fastModeScope` is
+ * dropped — per-family scoping is now expressed by the three tier settings.
+ */
+function migrateServiceTier(raw: RawSettings): void {
 	const tierObj = isRecord(raw.tier) ? raw.tier : {};
 	let tierTouched = false;
 	const setTier = (family: string, value: unknown): void => {
@@ -830,29 +880,9 @@ export function migrateRawSettings(raw: RawSettings, context: RawSettingsMigrati
 		}
 	};
 	if (typeof raw.serviceTier === "string") {
-		switch (raw.serviceTier) {
-			case "priority":
-				setTier("openai", "priority");
-				setTier("anthropic", "priority");
-				setTier("google", "priority");
-				break;
-			case "openai-only":
-				setTier("openai", "priority");
-				break;
-			case "claude-only":
-				setTier("anthropic", "priority");
-				break;
-			case "auto":
-			case "default":
-			case "flex":
-			case "scale":
-				setTier("openai", raw.serviceTier);
-				break;
-		}
+		for (const [family, tier] of serviceTierFamilies(raw.serviceTier)) setTier(family, tier);
 		delete raw.serviceTier;
 	}
-	const mapInheritTier = (value: unknown): unknown =>
-		value === "openai-only" || value === "claude-only" ? "priority" : value;
 	if ("serviceTierSubagent" in raw) {
 		setTier("agent", mapInheritTier(raw.serviceTierSubagent));
 		delete raw.serviceTierSubagent;
@@ -860,7 +890,7 @@ export function migrateRawSettings(raw: RawSettings, context: RawSettingsMigrati
 	// The `subagent` vocabulary became `agent`: the whole `subagent.*` area
 	// moved to `agent.*` leaf for leaf, and the three keys other areas kept
 	// under the old word moved with it. New wins, legacy is deleted, so this is
-	// a fixed point like the rest of this method.
+	// a fixed point like the rest of this module.
 	if ("subagent" in tierObj || "tier.subagent" in raw) {
 		const legacyTierSubagent = tierObj.subagent ?? raw["tier.subagent"];
 		setTier("agent", mapInheritTier(legacyTierSubagent));
@@ -874,28 +904,34 @@ export function migrateRawSettings(raw: RawSettings, context: RawSettingsMigrati
 	}
 	if (tierTouched) raw.tier = tierObj;
 	delete raw.fastModeScope;
+}
 
-	// argot.models / argot.disableAboveTokens -> argot.encode.*
-	//
-	// The two keys that gate ENCODING are grouped under the sub-feature they
-	// belong to, the way `read.summarize.*` and `bash.autoBackground.*` are.
-	// They are the only two of Argot's six settings that decide whether the
-	// model is taught to WRITE shorthand; `enabled`, `autoload`, `tokenBudget`
-	// and `agents` decide whether the feature runs, when a dictionary is
-	// built, how large it is, and what a child agent starts with. Reading a
-	// flat `argot.models` gave no hint that it governs one side of the feature
-	// while decoding is unconditional, which is the distinction an operator has
-	// to hold to predict what turning it off does.
-	//
-	// The nested spelling always wins and the flat one is dropped without being
-	// read, which is what makes this a fixed point: re-running it on its own
-	// output changes nothing, and it has to be, because it runs on every load of
-	// every source. `argot` keeps its other keys, so no empty husk is possible.
-	// Both spellings have to be folded. `#expandDottedSettingKeys` above only expands
-	// REGISTERED paths, and these two are retired, so a literal `argot.models:` key
-	// written flat in a config file survives it untouched and would otherwise sit in
-	// the tree forever with nothing reading it.
-	for (const key of ["models", "disableAboveTokens"] as const) {
+const ARGOT_ENCODE_KEYS = ["models", "disableAboveTokens"] as const;
+
+/**
+ * argot.models / argot.disableAboveTokens -> argot.encode.*
+ *
+ * The two keys that gate ENCODING are grouped under the sub-feature they
+ * belong to, the way `read.summarize.*` and `bash.autoBackground.*` are.
+ * They are the only two of Argot's six settings that decide whether the
+ * model is taught to WRITE shorthand; `enabled`, `autoload`, `tokenBudget`
+ * and `agents` decide whether the feature runs, when a dictionary is
+ * built, how large it is, and what a child agent starts with. Reading a
+ * flat `argot.models` gave no hint that it governs one side of the feature
+ * while decoding is unconditional, which is the distinction an operator has
+ * to hold to predict what turning it off does.
+ *
+ * The nested spelling always wins and the flat one is dropped without being
+ * read, which is what makes this a fixed point: re-running it on its own
+ * output changes nothing, and it has to be, because it runs on every load of
+ * every source. `argot` keeps its other keys, so no empty husk is possible.
+ * Both spellings have to be folded. `#expandDottedSettingKeys` only expands
+ * REGISTERED paths, and these two are retired, so a literal `argot.models:` key
+ * written flat in a config file survives it untouched and would otherwise sit in
+ * the tree forever with nothing reading it.
+ */
+function migrateArgotEncode(raw: RawSettings): void {
+	for (const key of ARGOT_ENCODE_KEYS) {
 		const flat = `argot.${key}`;
 		if (!(flat in raw)) continue;
 		if (getByPath(raw, ["argot", "encode", key]) === undefined) {
@@ -905,18 +941,80 @@ export function migrateRawSettings(raw: RawSettings, context: RawSettingsMigrati
 	}
 
 	const argotObj = raw.argot as Record<string, unknown> | undefined;
-	if (argotObj) {
-		for (const key of ["models", "disableAboveTokens"] as const) {
-			if (!(key in argotObj)) continue;
-			// Resolved per key, not once: moving the first key CREATES the block, and a
-			// stale `undefined` captured before that would make the second key replace
-			// the block instead of joining it, silently dropping the first value.
-			const encode = isRecord(argotObj.encode) ? argotObj.encode : {};
-			if (!(key in encode)) encode[key] = argotObj[key];
-			argotObj.encode = encode;
-			delete argotObj[key];
-		}
+	if (!argotObj) return;
+	for (const key of ARGOT_ENCODE_KEYS) {
+		if (!(key in argotObj)) continue;
+		// Resolved per key, not once: moving the first key CREATES the block, and a
+		// stale `undefined` captured before that would make the second key replace
+		// the block instead of joining it, silently dropping the first value.
+		const encode = isRecord(argotObj.encode) ? argotObj.encode : {};
+		if (!(key in encode)) encode[key] = argotObj[key];
+		argotObj.encode = encode;
+		delete argotObj[key];
 	}
+}
 
+/**
+ * Every field-level migration, in the order it runs.
+ *
+ * Optional numeric settings once stored `-1` to mean "unset", which made -1
+ * unreachable as a real value: `presencePenalty: -1` is a penalty the
+ * provider accepts, and it could not be configured. Unset is an ABSENT key
+ * now, so the old sentinel is dropped — in every prior version it meant
+ * exactly this, so nothing a user chose is lost. That migration is not in
+ * this list: it cannot tell its input apart from a legitimate current value,
+ * so re-running it would delete a `-1` the user typed on purpose. It runs
+ * ONCE, in {@link migrateOwnedConfigOnce}, and only in the config this
+ * instance owns; a project file or a `--config` overlay is hand-written
+ * against the current docs, so a `-1` there is a value.
+ */
+const RAW_SETTINGS_MIGRATIONS: readonly RawSettingsMigration[] = [
+	migrateQueueMode,
+	dropChangelogKeys,
+	migrateAskTimeout,
+	migrateCompactionThreshold,
+	migrateFlatTheme,
+	migrateTaskIsolation,
+	migrateTaskFlags,
+	// task.* / modelRoles.task -> the agent.* settings area.
+	//
+	// Everything about spawned agents used to be spread across `task.*`
+	// operational keys, `agent.model` under Models, `modelRoles.task` in the
+	// role table, and two UI-less maps (`task.agentModelOverrides`,
+	// `task.disabledAgents`). This rewrites the old keys onto the one section so
+	// the file has a single owner per value — no dual-read, which is how the
+	// precedence tangle grew in the first place. It reads `task.eager` after
+	// `migrateTaskFlags` has converted the boolean spelling.
+	migrateAgentSettings,
+	migrateEditSettings,
+	migrateCompactionStrategy,
+	migrateCompactionModel,
+	migrateCycleOrder,
+	dropSnapcompact,
+	migrateInlineToolDescriptors,
+	migrateStatusLine,
+	dropParallelFetch,
+	migrateCodexResets,
+	migrateMemorySettings,
+	migrateHindsight,
+	migratePowerSettings,
+	migrateToolSettings,
+	migrateSearchSettings,
+	migrateServiceTier,
+	migrateArgotEncode,
+];
+
+/**
+ * Apply every field-level migration to one raw settings tree.
+ *
+ * Runs on EVERY load of EVERY source (global, project, `--config` overlays,
+ * runtime overrides), so every migration here must be a fixed point on its own
+ * output. A migration that CANNOT be — one that cannot distinguish an old
+ * encoding from a value the user typed — does not belong here: it goes in
+ * {@link migrateOwnedConfigOnce}, which runs once against the config this
+ * instance owns.
+ */
+export function migrateRawSettings(raw: RawSettings, context: RawSettingsMigrationContext): RawSettings {
+	for (const migrate of RAW_SETTINGS_MIGRATIONS) migrate(raw, context);
 	return raw;
 }
