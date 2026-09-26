@@ -47,17 +47,21 @@ every field of one subsystem and reaches the session through a host interface it
 |[`ttsr-runtime.ts`](../../packages/coding-agent/src/session/runtime/ttsr-runtime.ts)|Time-Traveling Stream Rules: the pending interrupt queue, the per-tool buckets, the abort latch, the retry token and the resume gate|8|
 |[`todo-runtime.ts`](../../packages/coding-agent/src/session/runtime/todo-runtime.ts)|The todo board, the eager prelude, the mid-run nudge and the stop-time reminder ladder, with the failure latch that silences all three|13|
 |[`thinking-runtime.ts`](../../packages/coding-agent/src/session/runtime/thinking-runtime.ts)|How hard the model thinks and who decided: the session override, the selector pin, the saved default, and `auto` with its per-turn classification|12|
+|[`advisor-roster.ts`](../../packages/coding-agent/src/session/runtime/advisor-roster.ts)|The live advisors and the configuration, provider identities and transcript recorders behind them, with the immune-turn window and the auto-resume latch that route each note to an aside, a preserved card or a steer|28|
 
 Three rules hold for a new one:
 
 - **The host interface names the slice, not the class.** `readonly agent: Agent` couples the
   collaborator to a 200-member class and makes it unconstructible in a test. `TtsrAgent` declares
-  the seven members and three state fields TTSR reaches, and `Agent` satisfies it structurally.
+  the seven members and three state fields TTSR reaches, and `Agent` satisfies it structurally;
+  `AdvisorPrimaryAgent` does the same for the six members and three state fields the advisors reach.
   Settings arrive as predicates (`argotEnabled()`) or one snapshot (`todoSettings()`), never as a
   `Settings` handle. One exception, and only this shape: a collaborator that passes the handle
   through wholesale to another owner may hold it, because narrowing it there would only re-declare
   that owner's surface. `ThinkingRuntime` holds one because `classifyDifficulty` takes a `Settings`
-  and reads rows the collaborator never names.
+  and reads rows the collaborator never names. `AdvisorRoster` holds one for the same reason:
+  `resolveModelOverride`, `resolveAdvisorRoleSelection` and `compactionModelCandidates` each take the
+  handle.
 - **The collaborator owns its state.** Sibling modules sharing the session's `#private` fields is
   the same object with more files. A field that stays behind is a field the extraction missed.
 - **Extraction order follows host width, not size.** A subsystem needing 60 session members is the
@@ -897,4 +901,4 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
 
-*Verified against `2d72e51522` on 2026-09-26.*
+*Verified against `a731248466` on 2026-09-26.*

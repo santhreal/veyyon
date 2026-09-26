@@ -156,11 +156,17 @@ const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
  * boundary instead of on every read. It imports type-level modules and `tools/core/builtin-names`,
  * already here.
  *
+ * 1558 to 1561: `session/runtime/advisor-roster.ts`, `session/advisor-context.ts` and
+ * `session/advisor-stats.ts`, the advisor lifecycle and delivery routing, the advisor's overflow
+ * compaction, and its spend and status figures, split out of `session/agent-session.ts` (18412
+ * lines to 17399). Leaves over modules already here, so the launch runs no new code — the same
+ * split-raises-the-count case as above.
+ *
  * A ratchet, not a target: nothing breaks when it grows, which is exactly why it is pinned. There
  * is no margin left on purpose — the next module on this graph is a barrel someone reached for
  * and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1558;
+const LAUNCH_REACH_CEILING = 1561;
 
 /**
  * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The

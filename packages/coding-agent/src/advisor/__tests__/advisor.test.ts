@@ -1734,8 +1734,8 @@ describe("advisor", () => {
 		 * directly above is the control, proving this same harness DOES retry an
 		 * ordinary failure.
 		 *
-		 * WHAT IT DOES NOT CATCH. That `AgentSession.abort()` reaches every entry in
-		 * `#advisors` — this drives one runtime directly, not the session seam.
+		 * WHAT IT DOES NOT CATCH. That `AgentSession.abort()` reaches every advisor the
+		 * roster holds — this drives one runtime directly, not the session seam.
 		 */
 		it("cancels the review in flight without retrying it, unlike a transient failure", async () => {
 			const promptInputs: string[] = [];
@@ -2686,7 +2686,7 @@ describe("advisor", () => {
 		});
 
 		it("preserves an interrupting note while suppressed AND aborting, even though the turn still reports streaming", () => {
-			// Mid-abort teardown: steering would land after #extractQueuedAdvisorCards
+			// Mid-abort teardown: steering would land after the abort's advisor-card extraction
 			// and could auto-resume on the stranded steer. Keep parking it.
 			expect(
 				resolveAdvisorDeliveryChannel({

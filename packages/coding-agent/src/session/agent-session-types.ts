@@ -27,13 +27,7 @@ import type { SessionTitleSource } from "@veyyon/kernel/session/session-entries"
 import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { postmortem } from "@veyyon/utils";
 import type { ArgotSession } from "argot";
-import type {
-	AdviseTool,
-	AdvisorConfig,
-	AdvisorEmissionGuard,
-	AdvisorRuntime,
-	AdvisorTranscriptRecorder,
-} from "../advisor";
+import type { AdvisorConfig } from "../advisor";
 import type { AsyncJob, AsyncJobDeliveryState, AsyncJobManager } from "../async";
 import type { CompactionEngineAction } from "../config/compaction-strategy";
 import type { EffortSource } from "../config/effort-resolver";
@@ -535,42 +529,6 @@ export interface PerAdvisorStat {
 	tokens: AdvisorStats["tokens"];
 	cost: number;
 	messages: AdvisorStats["messages"];
-}
-
-/**
- * One live advisor instance: its own agent/runtime/tools/recorder plus a
- * per-advisor emission guard and identity. The session holds an array of these;
- * primary-scoped state (turn counters, interrupt latches, the shared yield
- * channel) stays on the session.
- */
-export interface ActiveAdvisor {
-	/** Display name from config ("default" for the legacy no-YAML advisor). */
-	name: string;
-	/** Slug for the transcript filename/session id; "" → `__advisor.jsonl`. */
-	slug: string;
-	agent: Agent;
-	runtime: AdvisorRuntime;
-	adviseTool: AdviseTool;
-	emissionGuard: AdvisorEmissionGuard;
-	recorder: AdvisorTranscriptRecorder;
-	/** Latest recorder close, awaited by dispose() so the final turn lands on disk. */
-	recorderClosed: Promise<void>;
-	/** Unsubscribe for the advisor agent's event stream feeding the recorder. */
-	agentUnsubscribe?: () => void;
-	model: Model;
-	thinkingLevel: ThinkingLevel;
-	/** Stable key for the resolved runtime inputs that require a rebuild to change. */
-	signature: string;
-}
-
-/** Resolved advisor config ready to instantiate as an {@link ActiveAdvisor}. */
-export interface AdvisorRuntimeDescriptor {
-	config: AdvisorConfig;
-	name: string;
-	slug: string;
-	model: Model;
-	thinkingLevel: ThinkingLevel;
-	signature: string;
 }
 
 export interface ProjectAdvisorScope {

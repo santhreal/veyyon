@@ -16,6 +16,7 @@
 - An `eval` result's session file line omits each cell's output and the top-level status events when the result's text and the first cell hold them, and a `job` result's line omits each job's result and error text the result's text holds, and the session restores them on load, which cuts the recorded eval details in local sessions from 497.77 MB to 253.78 MB and the job details from 100.84 MB to 37.80 MB.
 - Session spend, which `/session`, `get_session_stats` and goal accounting read at every turn start, tool completion and agent end, tallies the history behind the compaction boundary once per boundary instead of on every read, which cuts a read on a 201,156-entry session from 29.25 ms to 0.92 ms.
 - A prune, shake, image drop, recovered retry marker, compaction tail elision or dead-end warning rewrites the session file only from the earliest entry it changed, instead of the whole file, which cut the persist step after a one-entry prune on a 376 MiB session from 1.2 s to 135 ms.
+- The session's advisors, their delivery routing and their interrupt latches run in a session collaborator, and advisor stats and overflow compaction in their own modules; no user-visible change.
 
 ### Fixed
 

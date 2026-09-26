@@ -1,6 +1,6 @@
 /**
  * Settings-aware stream wrapper shared by the main agent (sdk.ts) and the
- * advisor agent (AgentSession.#buildAdvisorRuntime).
+ * advisor agents (`AdvisorRoster`).
  *
  * verbosity, stream watchdog budgets, per-provider in-flight caps, and the loop
  * guard out of `Settings`
