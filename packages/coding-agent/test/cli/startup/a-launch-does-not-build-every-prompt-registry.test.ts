@@ -151,11 +151,16 @@ const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
  * loads. They import `node:util`, type-level modules, `utils/type-guards`, `tools/core/output-notice`
  * and, for search, `hashline/format` and `tools/core/render-utils`, all already here.
  *
+ * 1557 to 1558: `session/session-spend.ts`, the spend ledger `session/agent-session.ts` reads for
+ * session stats and goal accounting, which tallies the messages a compaction summarized once per
+ * boundary instead of on every read. It imports type-level modules and `tools/core/builtin-names`,
+ * already here.
+ *
  * A ratchet, not a target: nothing breaks when it grows, which is exactly why it is pinned. There
  * is no margin left on purpose — the next module on this graph is a barrel someone reached for
  * and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1557;
+const LAUNCH_REACH_CEILING = 1558;
 
 /**
  * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The
