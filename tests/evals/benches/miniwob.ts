@@ -11,7 +11,9 @@
  * Each episode runs the veyyon CLI in print mode, with only the browser tool, against one task page
  * served here with a script appended that seeds the task, lifts MiniWoB's 10 s episode limit, and
  * posts the raw reward (+1 success, -1 failure) back to this server the first time the page scores
- * an attempt. An episode that never submits scores nothing. The model sees only the task page.
+ * an attempt. An episode that never submits scores nothing. The model sees only the task page. Each
+ * episode runs with an empty home of its own, so a host's context files stay out of the prompt, and
+ * leaves its JSON event stream in `<work>/<task>-<seed>/events.jsonl`.
  *
  * Before and after a change, run the same flags with `--cli` pointed at each tree's
  * `packages/coding-agent/src/cli.ts`: same tasks, seeds, prompt and model, so the two reports differ
@@ -239,8 +241,13 @@ async function runEpisode(task: string, seed: number, options: EpisodeOptions): 
 	const episode = `${task}-${seed}`;
 	const url = `http://127.0.0.1:${options.port}/miniwob/${task}.html?seed=${seed}&episode=${encodeURIComponent(episode)}`;
 	const cwd = path.join(options.work, episode);
-	await fs.rm(cwd, { recursive: true, force: true });
-	await fs.mkdir(cwd, { recursive: true });
+	// An empty home per episode: the host's own context files (`~/.veyyon/AGENTS.md` and the like) stay
+	// out of the measured prompt, and no episode inherits another's state.
+	const home = path.join(options.work, ".homes", episode);
+	for (const dir of [cwd, home]) {
+		await fs.rm(dir, { recursive: true, force: true });
+		await fs.mkdir(dir, { recursive: true });
+	}
 	const started = Date.now();
 	const child = spawn(
 		process.execPath,
@@ -260,7 +267,12 @@ async function runEpisode(task: string, seed: number, options: EpisodeOptions): 
 		],
 		{
 			cwd,
-			env: { ...process.env, ...(options.agentDir ? { VEYYON_CODING_AGENT_DIR: options.agentDir } : {}) },
+			env: {
+				...process.env,
+				HOME: home,
+				USERPROFILE: home,
+				...(options.agentDir ? { VEYYON_CODING_AGENT_DIR: options.agentDir } : {}),
+			},
 			stdio: ["ignore", "pipe", "pipe"],
 		},
 	);
@@ -279,6 +291,8 @@ async function runEpisode(task: string, seed: number, options: EpisodeOptions): 
 	child.on("close", code => exited.resolve(code));
 	const exitCode = await exited.promise;
 	clearTimeout(timer);
+	// The event stream is the only record of where an episode's tokens and calls went.
+	await fs.writeFile(path.join(cwd, "events.jsonl"), stdout);
 	const scored = options.rewards.get(episode);
 	return {
 		task,
