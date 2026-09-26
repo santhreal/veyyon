@@ -11,7 +11,7 @@
 ### Changed
 
 - The `browser` tool sends a run's displayed and returned objects to the model as one line of compact JSON instead of two-space indented JSON, which is 36–41% fewer characters for a `tab.observe()` of a real page; the card still lays them out indented.
-- The `browser` tool description is shorter (1,521 estimated tokens from 1,575) and asks the model to act and read back in one run.
+- The `browser` tool description is shorter (1,529 estimated tokens from 1,575) and asks the model to act on an open's snapshot without reading the page again, and to act and read back in one run.
 - A truncated `read`, `search` or `run_experiment` result records only its truncation counts in the session file, not a second copy of the kept text, so new results take less disk and memory and a resume parses less.
 - The `lsp` tool dispatches each workspace-scoped action (`status`, `diagnostics`, `rename_file`, `capabilities`, `request`, workspace `symbols`, workspace `reload`) to its own handler, and `definition`, `type_definition` and `implementation` share one lookup; no user-visible change.
 - A goal session records the token and time a tool call spends as a small `goal_progress` entry instead of a full copy of the goal, so the session file holds the objective once per goal change rather than once per tool call and a resume parses less.
