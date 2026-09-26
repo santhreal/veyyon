@@ -479,8 +479,10 @@ export function buildSessionContextFromPath(
 			pushMessage(compactionSummaryMsg);
 		}
 
-		// Find compaction index in path
-		const compactionIdx = path.findIndex(e => e.type === "compaction" && e.id === compaction.id);
+		// Find compaction index in path. `compaction` is one of `path`'s own entries
+		// and sits near the tail, so an identity search from the end finds it
+		// without walking the summarized history in front of it.
+		const compactionIdx = path.lastIndexOf(compaction);
 
 		// Emit the kept pre-compaction entries, starting at the compaction's keep marker.
 		//

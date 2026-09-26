@@ -324,27 +324,27 @@ function scanContentBlocks(
  * savings is below `minSavings`, returns `[]` (no-op).
  */
 export function collectShakeRegions(entries: SessionEntry[], config: ShakeConfig): ShakeRegion[] {
-	const n = entries.length;
+	// Entries before the compaction boundary are summarized away and never sent —
+	// shaking them only churns persisted history (no prompt/cache effect), and the
+	// protect window counts only what is sent, so no walk below reaches them.
+	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
+	const live = boundaryIndex === 0 ? entries : entries.slice(boundaryIndex);
+	const n = live.length;
 	if (n === 0) return [];
 
-	// Tokens of all entries strictly more recent than index i.
+	// Tokens of all live entries strictly more recent than index i.
 	const accumulatedAfter = new Array<number>(n);
 	let acc = 0;
 	for (let i = n - 1; i >= 0; i--) {
 		accumulatedAfter[i] = acc;
-		acc += entryTokens(entries[i]);
+		acc += entryTokens(live[i]);
 	}
 
-	const toolCallsById = collectToolCallsById(entries);
-
-	// Entries before the compaction boundary are summarized away and never sent —
-	// shaking them only churns persisted history (no prompt/cache effect).
-	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
+	const toolCallsById = collectToolCallsById(entries, boundaryIndex);
 
 	const regions: ShakeRegion[] = [];
 	for (let i = 0; i < n; i++) {
-		const entry = entries[i];
-		if (i < boundaryIndex) continue;
+		const entry = live[i];
 		const toolResult = getToolResultMessage(entry);
 		// Useless-flagged results carry no information once consumed; they are
 		// eligible even inside the protect-recent window.
@@ -415,9 +415,8 @@ export function collectRedundantToolResultRegions(entries: SessionEntry[], confi
 	const n = entries.length;
 	if (n === 0) return [];
 
-	const toolCallsById = collectToolCallsById(entries);
-
 	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
+	const toolCallsById = collectToolCallsById(entries, boundaryIndex);
 
 	interface Candidate {
 		index: number;
@@ -597,8 +596,8 @@ function collectTruncationCandidates(
 export function collectOversizedTextRegions(entries: SessionEntry[], config: TruncationConfig): ShakeRegion[] {
 	if (config.excessTokens <= 0 || entries.length === 0) return [];
 
-	const toolCallsById = collectToolCallsById(entries);
 	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
+	const toolCallsById = collectToolCallsById(entries, boundaryIndex);
 
 	const candidates: TruncationCandidate[] = [];
 	for (let i = boundaryIndex; i < entries.length; i++) {

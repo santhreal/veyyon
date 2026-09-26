@@ -192,6 +192,12 @@ read the file, and a divergent prefix cold-misses the provider prompt cache):
    the turn has usable usage data. Its savings feed `postMaintenanceContextTokens`, which is the
    trigger figure reported to the compaction it may schedule.
 
+Both passes, and the shake, dedup and truncation collectors, scan only the live tail: the entries
+from the effective compaction's `firstKeptEntryId` to the leaf. Entries before it are summarized
+away, so the passes neither rewrite nor read them, and a turn costs the same after hundreds of
+compactions as after none. The one read that crosses the boundary resolves the tool call behind a
+live result whose call precedes it, so that call's protection still applies.
+
 Default prune policy:
 
 - Protect newest `40_000` tool-output tokens.
