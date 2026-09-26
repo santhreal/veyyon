@@ -472,10 +472,11 @@ export interface ContextUsageBreakdown {
 	pendingMessagesTokens: number;
 }
 
-/** Session statistics for /session command */
-export interface SessionStats {
-	sessionFile: string | undefined;
-	sessionId: string;
+/**
+ * What a session has spent: message counts, tokens, cost and premium requests over the messages
+ * the compaction in effect summarized away plus the live context.
+ */
+export interface SessionSpend {
 	userMessages: number;
 	assistantMessages: number;
 	toolCalls: number;
@@ -491,6 +492,12 @@ export interface SessionStats {
 	};
 	premiumRequests: number;
 	cost: number;
+}
+
+/** Session statistics for /session command */
+export interface SessionStats extends SessionSpend {
+	sessionFile: string | undefined;
+	sessionId: string;
 	contextUsage?: ContextUsage;
 }
 

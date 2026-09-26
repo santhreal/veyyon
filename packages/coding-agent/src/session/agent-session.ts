@@ -124,7 +124,6 @@ import type {
 	ToolCall,
 	ToolChoice,
 	ToolResultMessage,
-	Usage,
 	UsageReport,
 } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
@@ -373,7 +372,7 @@ import type { Skill } from "../extensibility/skills";
 import { expandSlashCommand, type FileSlashCommand } from "../extensibility/slash-commands";
 import { recordGoal } from "../goals/goal-record";
 import { GoalRuntime } from "../goals/runtime";
-import type { GoalAbortReason, GoalModeState } from "../goals/state";
+import type { GoalAbortReason, GoalModeState, GoalTokenUsage } from "../goals/state";
 // The owning module, not the `../internal-urls` barrel: the barrel re-exports every protocol
 // handler and reaches several hundred modules, and all three of these are declared in
 // `local-protocol`, which reaches seven.
@@ -555,6 +554,7 @@ import {
 	type SecretRuntimeLease,
 	type SessionHandoffOptions,
 	type SessionNameTrigger,
+	type SessionSpend,
 	type SessionStats,
 	type SetSessionNameWithTrigger,
 	SHUTDOWN_DISPOSE_TIMEOUT_MS,
@@ -620,6 +620,7 @@ import { TodoRuntime } from "./runtime/todo-runtime";
 import { TtsrRuntime } from "./runtime/ttsr-runtime";
 import { formatSessionDumpText } from "./session-dump-format";
 import { formatSessionHistoryMarkdown } from "./session-history-format";
+import { SessionSpendLedger } from "./session-spend";
 import { incompleteTodoItems } from "./todo-reminder";
 import { parseTurnBudgetDirective } from "./turn-budget";
 import { planTurnPersistence, sameMessageContent, sessionMessagePersistenceKey } from "./turn-persistence";
@@ -809,6 +810,8 @@ export class AgentSession {
 	 *  used as the open barrier for the next build so two writers never share a file. */
 	#advisorRecorderClosed: Promise<void> = Promise.resolve();
 	#goalTurnCounter = 0;
+	/** Spend over the summarized prefix, tallied once per compaction boundary. */
+	readonly #spendLedger = new SessionSpendLedger();
 	#planReferenceSent = false;
 	#planReferencePath: string = DEFAULT_PLAN_FILE_URL;
 	#clientBridge: ClientBridge | undefined;
@@ -2030,15 +2033,7 @@ export class AgentSession {
 				this.#goalModeState = state;
 			},
 			budgetsEnabled: () => this.settings.get("goal.modelBudgetsEnabled"),
-			getCurrentUsage: () => {
-				const usage = this.getSessionStats().tokens;
-				return {
-					input: usage.input,
-					output: usage.output,
-					cacheRead: usage.cacheRead,
-					cacheWrite: usage.cacheWrite,
-				};
-			},
+			getCurrentUsage: () => this.#goalUsage(),
 			emit: event => {
 				if (event.type === "goal_updated") {
 					return this.#emitSessionEvent({ type: "goal_updated", goal: event.goal, state: event.state });
@@ -4453,13 +4448,7 @@ export class AgentSession {
 		}
 
 		if (event.type === "turn_start") {
-			const usage = this.getSessionStats().tokens;
-			this.#goalRuntime.onTurnStart(`turn-${++this.#goalTurnCounter}`, {
-				input: usage.input,
-				output: usage.output,
-				cacheRead: usage.cacheRead,
-				cacheWrite: usage.cacheWrite,
-			});
+			this.#goalRuntime.onTurnStart(`turn-${++this.#goalTurnCounter}`, this.#goalUsage());
 		}
 
 		if (event.type === "tool_execution_start") {
@@ -4749,15 +4738,7 @@ export class AgentSession {
 			const emitAgentEndNotification = async () => {
 				await this.#emitAgentEndNotification(settledMessages);
 			};
-			const usage = this.getSessionStats().tokens;
-			await this.#goalRuntime.onAgentEnd({
-				currentUsage: {
-					input: usage.input,
-					output: usage.output,
-					cacheRead: usage.cacheRead,
-					cacheWrite: usage.cacheWrite,
-				},
-			});
+			await this.#goalRuntime.onAgentEnd({ currentUsage: this.#goalUsage() });
 			let fallbackAssistant: AssistantMessage | undefined;
 			for (let i = settledMessages.length - 1; i >= 0; i--) {
 				const message = settledMessages[i]!;
@@ -17502,80 +17483,34 @@ export class AgentSession {
 	 * owner each.
 	 */
 	getSessionStats(): SessionStats {
-		const state = this.state;
-		const summarizedAway = this.#messagesSummarizedAway();
-		const messages = summarizedAway.length > 0 ? [...summarizedAway, ...state.messages] : state.messages;
-		const userMessages = messages.filter(m => m.role === "user").length;
-		const assistantMessages = messages.filter(m => m.role === "assistant").length;
-		const toolResults = messages.filter(m => m.role === "toolResult").length;
-
-		let toolCalls = 0;
-		let totalInput = 0;
-		let totalOutput = 0;
-		let totalCacheRead = 0;
-		let totalReasoning = 0;
-		let totalCacheWrite = 0;
-		let totalTokens = 0;
-		let totalCost = 0;
-		let totalPremiumRequests = 0;
-
-		const getTaskToolUsage = (details: unknown): Usage | undefined => {
-			if (!details || typeof details !== "object") return undefined;
-			const record = details as Record<string, unknown>;
-			const usage = record.usage;
-			if (!usage || typeof usage !== "object") return undefined;
-			return usage as Usage;
-		};
-
-		for (const message of messages) {
-			if (message.role === "assistant") {
-				const assistantMsg = message as AssistantMessage;
-				toolCalls += assistantMsg.content.filter(c => c.type === "toolCall").length;
-				totalInput += assistantMsg.usage.input;
-				totalOutput += assistantMsg.usage.output;
-				totalReasoning += assistantMsg.usage.reasoningTokens ?? 0;
-				totalCacheRead += assistantMsg.usage.cacheRead;
-				totalCacheWrite += assistantMsg.usage.cacheWrite;
-				totalTokens += assistantMsg.usage.totalTokens;
-				totalPremiumRequests += assistantMsg.usage.premiumRequests ?? 0;
-				totalCost += assistantMsg.usage.cost.total;
-			}
-
-			if (message.role === "toolResult" && message.toolName === TOOL.task) {
-				const usage = getTaskToolUsage(message.details);
-				if (usage) {
-					totalInput += usage.input;
-					totalOutput += usage.output;
-					totalReasoning += usage.reasoningTokens ?? 0;
-					totalCacheRead += usage.cacheRead;
-					totalCacheWrite += usage.cacheWrite;
-					totalTokens += usage.totalTokens;
-					totalPremiumRequests += usage.premiumRequests ?? 0;
-					totalCost += usage.cost.total;
-				}
-			}
-		}
-
 		return {
 			sessionFile: this.sessionFile,
 			sessionId: this.sessionId,
-			userMessages,
-			assistantMessages,
-			toolCalls,
-			toolResults,
-			totalMessages: messages.length,
-			tokens: {
-				input: totalInput,
-				output: totalOutput,
-				reasoning: totalReasoning,
-				cacheRead: totalCacheRead,
-				cacheWrite: totalCacheWrite,
-				total: totalTokens,
-			},
-			cost: totalCost,
-			premiumRequests: totalPremiumRequests,
+			...this.#sessionSpend(),
 			contextUsage: this.getContextUsage(),
 		};
+	}
+
+	/**
+	 * Spend over the messages the compaction in effect summarized away, oldest first, followed by
+	 * the live context.
+	 *
+	 * The summarized messages are gone from the live context by design and they are still what this
+	 * session paid for. Everything from the boundary forward is already in the context, so nothing
+	 * is counted twice, and an earlier compaction's own summary is an ENTRY rather than a message,
+	 * so a session that compacted several times counts each range once. The stored branch is also
+	 * what a resume reads, so the total survives a restart.
+	 */
+	#sessionSpend(): SessionSpend {
+		const branch = this.sessionManager.getBranch();
+		const boundary = resolveCompactionBoundaryIndex(branch, this.#promptCompaction(branch)?.firstKeptEntryId);
+		return this.#spendLedger.total(branch, boundary, this.state.messages);
+	}
+
+	/** The token totals goal accounting charges against a budget. */
+	#goalUsage(): GoalTokenUsage {
+		const { input, output, cacheRead, cacheWrite } = this.#sessionSpend().tokens;
+		return { input, output, cacheRead, cacheWrite };
 	}
 
 	/**
@@ -17587,28 +17522,6 @@ export class AgentSession {
 	 */
 	#promptCompaction(branch: readonly SessionEntry[]): CompactionEntry | null {
 		return getEffectiveCompactionEntry(branch, this.model?.provider);
-	}
-
-	/**
-	 * Messages the compaction in effect summarized away, oldest first.
-	 *
-	 * They are gone from the live context by design and they are still what this
-	 * session paid for, so spend accounting adds them back. Everything from the
-	 * boundary forward is already in the context, so nothing is counted twice, and
-	 * an earlier compaction's own summary is an ENTRY rather than a message, so a
-	 * session that compacted several times counts each range once. The stored
-	 * branch is also what a resume reads, so the total survives a restart.
-	 */
-	#messagesSummarizedAway(): AgentMessage[] {
-		const branch = this.sessionManager.getBranch();
-		const boundary = resolveCompactionBoundaryIndex(branch, this.#promptCompaction(branch)?.firstKeptEntryId);
-		if (boundary <= 0) return [];
-		const summarized: AgentMessage[] = [];
-		for (let index = 0; index < boundary; index++) {
-			const entry = branch[index];
-			if (entry.type === "message") summarized.push(entry.message);
-		}
-		return summarized;
 	}
 
 	/**
