@@ -6,8 +6,11 @@
  * (books.toscrape.com, quotes.toscrape.com, the-internet.herokuapp.com, httpbin.org) and Wikipedia.
  * The `easy` set reads a large listing, follows links, logs in, fills and submits a form and waits for
  * content that loads late; the `hard` set needs frames, a second window, dialogs, hover, drag and drop,
- * HTTP authentication, an upload, a postback form, scrolling and more than one page. Each asks for one
- * fact the page shows and is scored by the model's `ANSWER:` line.
+ * HTTP authentication, an upload, a postback form, scrolling and more than one page; the `expert` set
+ * runs long flows on application pages; the `workflow` set chains what one sitting does: a password
+ * sign-in followed by forms, keys and clicks on the signed-in page, two pages worked in two tabs, and
+ * an app edited by double-click and hover. Each asks for facts the page shows and is scored by the
+ * model's `ANSWER:` line.
  *
  * Each episode runs the veyyon CLI in print mode with only the browser tool (`cli-episode.ts`). Before
  * and after a change, run the same flags with `--cli` pointed at each tree's
@@ -243,12 +246,64 @@ export const EXPERT_WEB_TASKS: readonly WebTask[] = [
 	},
 ];
 
+/**
+ * Several steps in one sitting, each common on its own: a password sign-in followed by a cart, a
+ * checkout form, clicks and key presses on the signed-in page; two category pages kept open in two
+ * tabs and worked in turn; a to-do app edited in place and cleared through a button that shows on
+ * hover. Each answer was established against the live page.
+ */
+export const WORKFLOW_WEB_TASKS: readonly WebTask[] = [
+	{
+		id: "shop-order",
+		url: "https://www.saucedemo.com/",
+		instruction:
+			"Sign in as standard_user with password secret_sauce. Add the Sauce Labs Backpack, the Sauce Labs Bike Light and the Sauce Labs Onesie to the cart, then remove the Bike Light on the cart page. Check out as Ada Lovelace with postal code 94107, finish the order, and report the total the overview page showed and the heading shown after finishing.",
+		expected: /41\.02[\s\S]*thank you for your order|thank you for your order[\s\S]*41\.02/i,
+	},
+	{
+		id: "shop-top-two",
+		url: "https://www.saucedemo.com/",
+		instruction:
+			"Sign in as standard_user with password secret_sauce, sort the products by price from high to low, add the first two products to the cart, check out as Grace Hopper with postal code 10001, and report the item total on the overview page.",
+		expected: "79.98",
+	},
+	{
+		id: "login-then-controls",
+		url: "https://the-internet.herokuapp.com/login",
+		instruction:
+			"Sign in as tomsmith with password SuperSecretPassword!. Then, in the same tab, open https://the-internet.herokuapp.com/dynamic_controls, remove the checkbox, enable the text field, type veyyon into it, and report the message shown under the field and the field's value.",
+		expected: /it's enabled![\s\S]*veyyon|veyyon[\s\S]*it's enabled!/i,
+	},
+	{
+		id: "login-then-keys",
+		url: "https://the-internet.herokuapp.com/login",
+		instruction:
+			"Sign in as tomsmith with password SuperSecretPassword!. Then, in the same tab, open https://the-internet.herokuapp.com/key_presses, press the Tab key and then the Q key, and report the result text the page shows.",
+		expected: "You entered: Q",
+	},
+	{
+		id: "two-tab-books",
+		url: "https://books.toscrape.com/catalogue/category/books/travel_2/index.html",
+		instruction:
+			'Keep the "task" tab on this Travel category and open the Poetry category (https://books.toscrape.com/catalogue/category/books/poetry_23/index.html) in a second tab named "poetry". In the "task" tab, click through to the cheapest travel book and report its UPC; then in the "poetry" tab, click through to the most expensive poetry book and report how many copies are available.',
+		expected: /366a236aa1ea6f07[\s\S]*\b17\b|\b17\b[\s\S]*366a236aa1ea6f07/,
+	},
+	{
+		id: "todo-edit",
+		url: "https://demo.playwright.dev/todomvc/",
+		instruction:
+			'Add three todos: "buy milk", "write report" and "call mom". Rename "write report" to "write summary" by editing it in place, mark "buy milk" as completed, delete "call mom" with its delete button, and report the titles of the todos left and the item counter text.',
+		expected: /write summary[\s\S]*1 item left|1 item left[\s\S]*write summary/i,
+	},
+];
+
 /** The task sets `--set` names. */
 export const WEB_TASK_SETS: Readonly<Record<string, readonly WebTask[]>> = {
 	easy: WEB_TASKS,
 	hard: HARD_WEB_TASKS,
 	expert: EXPERT_WEB_TASKS,
-	all: [...WEB_TASKS, ...HARD_WEB_TASKS, ...EXPERT_WEB_TASKS],
+	workflow: WORKFLOW_WEB_TASKS,
+	all: [...WEB_TASKS, ...HARD_WEB_TASKS, ...EXPERT_WEB_TASKS, ...WORKFLOW_WEB_TASKS],
 };
 
 export const WEB_TASKS_BENCH_FLAGS = {
@@ -270,7 +325,7 @@ export const WEB_TASKS_BENCH_FLAGS = {
 
 const USAGE = [
 	"usage: bun benches/web-tasks.ts --model <provider/id> [--cli <tree>/packages/coding-agent/src/cli.ts]",
-	"         [--label <name>] [--json <out.json>] [--set easy|hard|expert|all, default easy] [--tasks a,b,...]",
+	"         [--label <name>] [--json <out.json>] [--set easy|hard|expert|workflow|all, default easy] [--tasks a,b,...]",
 	"         [--repeats <n, default 2>] [--jobs <n, default 2>] [--episode-timeout <s, default 240>]",
 	"         [--agent-dir <dir with the model's sign-in>] [--work <dir, default runs/web-work>]",
 ].join("\n");
