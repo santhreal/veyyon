@@ -162,11 +162,16 @@ const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
  * lines to 17399). Leaves over modules already here, so the launch runs no new code — the same
  * split-raises-the-count case as above.
  *
+ * 1561 to 1562: `session/runtime/streaming-edit-guard.ts`, the check that stops a turn while an
+ * `edit` call streams toward an auto-generated file or a patch that cannot apply, split out of
+ * `session/agent-session.ts` (17399 lines to 17089). It imports the owning edit, path and
+ * local-protocol modules the runtime already reached, so the launch runs no new code.
+ *
  * A ratchet, not a target: nothing breaks when it grows, which is exactly why it is pinned. There
  * is no margin left on purpose — the next module on this graph is a barrel someone reached for
  * and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1561;
+const LAUNCH_REACH_CEILING = 1562;
 
 /**
  * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The

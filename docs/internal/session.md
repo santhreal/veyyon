@@ -48,6 +48,7 @@ every field of one subsystem and reaches the session through a host interface it
 |[`todo-runtime.ts`](../../packages/coding-agent/src/session/runtime/todo-runtime.ts)|The todo board, the eager prelude, the mid-run nudge and the stop-time reminder ladder, with the failure latch that silences all three|13|
 |[`thinking-runtime.ts`](../../packages/coding-agent/src/session/runtime/thinking-runtime.ts)|How hard the model thinks and who decided: the session override, the selector pin, the saved default, and `auto` with its per-turn classification|12|
 |[`advisor-roster.ts`](../../packages/coding-agent/src/session/runtime/advisor-roster.ts)|The live advisors and the configuration, provider identities and transcript recorders behind them, with the immune-turn window and the auto-resume latch that route each note to an aside, a preserved card or a steer|28|
+|[`streaming-edit-guard.ts`](../../packages/coding-agent/src/session/runtime/streaming-edit-guard.ts)|The streaming-edit check: the abort latch, one incremental scan per streaming patch-mode `edit` call and the file contents its removed lines are matched against, which stop the turn once a call targets an auto-generated file or removes a line the file lacks|7|
 
 Three rules hold for a new one:
 
@@ -901,4 +902,4 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
 
-*Verified against `a731248466` on 2026-09-26.*
+*Verified against `fdd29df13c` on 2026-09-26.*

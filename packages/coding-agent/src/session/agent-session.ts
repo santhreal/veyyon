@@ -296,13 +296,9 @@ import {
 	isMCPToolName,
 	selectDiscoverableToolNamesByServer,
 } from "../discovery/tool-index";
-// The owning modules, not the `../edit` barrel. The barrel `export *`s the streaming applier, the
-// hashline engine and the EditTool, and pulls in 44 modules nothing else here reaches; these six
-// symbols are declared in four leaves that reach a handful between them.
-import { normalizeDiff, ParseError } from "../edit/diff";
+// The owning module, not the `../edit` barrel, which `export *`s the streaming applier, the hashline
+// engine and the EditTool and pulls in 44 modules nothing else here reaches.
 import { getFileSnapshotStore } from "../edit/file-snapshot-store";
-import { previewPatch } from "../edit/modes/patch";
-import { normalizeToLF, stripBom } from "../edit/normalize";
 import type { PythonResult } from "../eval/py/executor";
 // The leaf, not `../eval/py`: that module declares the Python backend descriptor and reaches
 // hundreds of modules, and all this needs is the id prefix.
@@ -424,11 +420,9 @@ import type { ApprovalMode, SessionToolApprovals } from "../tools/core/approval-
 import { normalizeToolNames, TOOL } from "../tools/core/builtin-names";
 import { reportLostOutputArtifact } from "../tools/core/output-artifact";
 import { outputMeta, wrapToolWithMetaNotice } from "../tools/core/output-meta";
-import { normalizeLocalScheme, resolveToCwd } from "../tools/core/path-utils";
 import { shortenPath } from "../tools/core/render-utils";
 import { ToolAbortError, ToolError } from "../tools/core/tool-errors";
 import { clampTimeout } from "../tools/core/tool-timeouts";
-import { assertEditableFile } from "../tools/fs/auto-generated-guard";
 import type { CheckpointState, CompletedRewindState } from "../tools/fs/checkpoint";
 import type { BashExecutionMessage, PythonExecutionMessage } from "../tools/shell/execution-messages";
 import { loadPythonExecutor } from "../tools/shell/manifest";
@@ -580,6 +574,7 @@ import {
 	isSuccessfulCheckpointEntry,
 } from "./rewind-checkpoint";
 import { AdvisorRoster, type AdvisorRosterHost } from "./runtime/advisor-roster";
+import { StreamingEditGuard } from "./runtime/streaming-edit-guard";
 import { ThinkingRuntime } from "./runtime/thinking-runtime";
 import { TodoRuntime } from "./runtime/todo-runtime";
 import { TtsrRuntime } from "./runtime/ttsr-runtime";
@@ -989,6 +984,9 @@ export class AgentSession {
 	/** How hard the model thinks and who decided: the session override, the
 	 *  selector pin, the saved default, and `auto`. Owns all thinking state. */
 	#thinking: ThinkingRuntime;
+	/** Stops a turn while an `edit` call streams into an auto-generated file or a
+	 *  patch that cannot apply. Owns all streaming-edit check state. */
+	readonly #streamingEdit: StreamingEditGuard;
 	/** One-shot flag for expected internal plan-mode aborts. Approval actions may
 	 *  abort the post-`resolve` continuation before compaction, execution, or
 	 *  manual refinement. Consumed inside `#handleAgentEvent` for the matching
@@ -1001,13 +999,6 @@ export class AgentSession {
 	#postPromptTasksPromise: Promise<void> | undefined = undefined;
 	#postPromptTasksResolve: (() => void) | undefined = undefined;
 	#postPromptTasksAbortController = new AbortController();
-
-	#streamingEditAbortTriggered = false;
-	#streamingEditCheckedLineCounts = new Map<string, number>();
-
-	#streamingEditPrecheckedToolCallIds = new Set<string>();
-
-	#streamingEditFileCache = new Map<string, string>();
 
 	/** Active Gemini reasoning-header runaway detector for the current block.
 	 *  (Re)created on each `thinking_start` when the guard applies (see
@@ -1862,6 +1853,18 @@ export class AgentSession {
 			this.sessionManager.getSessionFile(),
 			this.#getConfiguredDefaultSelectedMCPToolNames(),
 		);
+		this.#streamingEdit = new StreamingEditGuard({
+			abortTurn: () => this.agent.abort(),
+			streamingAbortEnabled: () => this.settings.get("edit.streamingAbort"),
+			fuzzyMatch: () => ({
+				allowFuzzy: this.settings.get("edit.fuzzyMatch"),
+				fuzzyThreshold: this.settings.get("edit.fuzzyThreshold"),
+			}),
+			cwd: () => this.sessionManager.getCwd(),
+			localProtocol: () => this.#localProtocolOptions(),
+			expandSecretsForDiskComparison: text => this.#tryExpandSecretsForDiskComparison(text),
+			redactForLog: text => this.#redactForLog(text),
+		});
 		this.#ttsr = new TtsrRuntime(
 			{
 				agent: this.agent,
@@ -1906,14 +1909,10 @@ export class AgentSession {
 		this.#providerSessionId = config.providerSessionId;
 		this.#inheritedProviderPromptCacheKey =
 			config.providerPromptCacheKeySource === "fork" ? this.agent.promptCacheKey : undefined;
+		// Runs synchronously on the stream, ahead of the queued `message_update`, so a guard abort
+		// lands on the delta that earned it.
 		this.agent.setAssistantMessageEventInterceptor((message, assistantMessageEvent) => {
-			const event: AgentEvent = {
-				type: "message_update",
-				message,
-				assistantMessageEvent,
-			};
-			this.#preCacheStreamingEditFile(event);
-			this.#maybeAbortStreamingEdit(event);
+			this.#streamingEdit.observe(message, assistantMessageEvent);
 			this.#maybeInterruptGeminiHeaderRunaway(message, assistantMessageEvent);
 		});
 		// The tool-result hook is the single site for synchronous post-tool actions that must affect the current loop.
@@ -3223,7 +3222,7 @@ export class AgentSession {
 	 * be expanded. Never throws.
 	 *
 	 * The one expansion in this file that is neither a spend nor a display, and the one that still
-	 * needs the REAL value: {@link #maybeAbortStreamingEdit} matches the model's removed lines
+	 * needs the REAL value: the streaming-edit guard matches the model's removed lines
 	 * against the file's actual content, which holds the credential in cleartext. Routing it
 	 * through the display codec would leave `#HASH#` in the comparison text, no removed line would
 	 * ever match, and every edit touching a secret would look like a failed patch preview.
@@ -3460,6 +3459,10 @@ export class AgentSession {
 		} else if (event.type === "tool_execution_end") {
 			this.#verificationEvidence.recordToolEnd(event);
 		}
+		// Reset the streaming-edit guard synchronously as well: its checks run in the stream
+		// interceptor, ahead of this handler, so a reset parked behind an await could clear a
+		// verdict the new turn has already reached.
+		if (event.type === "turn_start") this.#streamingEdit.resetForTurn();
 		// Step the mid-run todo counter synchronously, BEFORE any await in this
 		// handler. The agent loop's next-turn `getAsideMessages` poll can run
 		// before queued microtasks drain, so `TodoRuntime.takeMidRunNudge` MUST see the
@@ -3635,7 +3638,7 @@ export class AgentSession {
 			};
 			this.#todo.noteToolProgress();
 			if (toolName === TOOL.edit && details?.path) {
-				this.#invalidateFileCacheForPath(details.path);
+				this.#streamingEdit.invalidate(details.path);
 			}
 			if (toolName === TOOL.todo && !isError && Array.isArray(details?.phases)) {
 				this.setTodoPhases(details.phases);
@@ -3653,7 +3656,6 @@ export class AgentSession {
 		}
 
 		if (event.type === "turn_start") {
-			this.#resetStreamingEditState();
 			this.#ttsr.onTurnStart();
 		}
 
@@ -3698,22 +3700,6 @@ export class AgentSession {
 			(await this.#ttsr.observeStreamDelta(event.message, event.assistantMessageEvent))
 		) {
 			return;
-		}
-
-		if (
-			event.type === "message_update" &&
-			(event.assistantMessageEvent.type === "toolcall_start" ||
-				event.assistantMessageEvent.type === "toolcall_delta" ||
-				event.assistantMessageEvent.type === "toolcall_end")
-		) {
-			void this.#preCacheStreamingEditFile(event);
-		}
-
-		if (
-			event.type === "message_update" &&
-			(event.assistantMessageEvent.type === "toolcall_end" || event.assistantMessageEvent.type === "toolcall_delta")
-		) {
-			this.#maybeAbortStreamingEdit(event);
 		}
 
 		// Handle session persistence
@@ -4440,13 +4426,6 @@ export class AgentSession {
 		return undefined;
 	}
 
-	#resetStreamingEditState(): void {
-		this.#streamingEditAbortTriggered = false;
-		this.#streamingEditCheckedLineCounts.clear();
-		this.#streamingEditPrecheckedToolCallIds.clear();
-		this.#streamingEditFileCache.clear();
-	}
-
 	#activeToolCallLoopGuard(): ToolCallLoopGuard | undefined {
 		if (this.settings.get("model.toolCallLoopGuard.enabled") !== true) {
 			this.#toolCallLoopGuard = undefined;
@@ -4596,162 +4575,6 @@ export class AgentSession {
 		});
 	}
 
-	#getStreamingEditToolCall(event: AgentEvent):
-		| {
-				toolCall: ToolCall;
-				path: string;
-				resolvedPath: string;
-				diff?: string;
-				op?: string;
-				rename?: string;
-		  }
-		| undefined {
-		if (event.type !== "message_update") return undefined;
-		if (event.message.role !== "assistant") return undefined;
-
-		const contentIndex = event.assistantMessageEvent.contentIndex ?? 0;
-		const messageContent = event.message.content;
-		if (!Array.isArray(messageContent) || contentIndex < 0 || contentIndex >= messageContent.length) {
-			return undefined;
-		}
-
-		const toolCall = messageContent[contentIndex] as ToolCall;
-		if (toolCall.name !== TOOL.edit) return undefined;
-
-		const args = toolCall.arguments;
-		if (!isRecord(args)) return undefined;
-		if ("old_text" in args || "new_text" in args) return undefined;
-
-		const path = typeof args.path === "string" ? args.path : undefined;
-		if (!path) return undefined;
-
-		// `local://` URLs (e.g. local://PLAN.md for plan-mode) resolve to a real
-		// on-disk artifacts path; pre-caching works as long as we ask the
-		// local-protocol handler. Other internal-scheme URLs (agent://, skill://,
-		// rule://, mcp://, artifact://) have no stable filesystem representation;
-		// skip pre-cache entirely for those — the edit tool itself will reject
-		// them through its normal dispatch path.
-		const resolvedPath = this.#resolveSessionFsPath(path);
-		if (resolvedPath === undefined) return undefined;
-
-		return {
-			toolCall,
-			path,
-			resolvedPath,
-			diff: typeof args.diff === "string" ? args.diff : undefined,
-			op: typeof args.op === "string" ? args.op : undefined,
-			rename: typeof args.rename === "string" ? args.rename : undefined,
-		};
-	}
-
-	#lastStreamingEditToolCallId: string | undefined;
-	#abortStreamingEditForAutoGeneratedPath(toolCall: ToolCall, path: string, resolvedPath: string): void {
-		if (this.#lastStreamingEditToolCallId === toolCall.id) return;
-		this.#lastStreamingEditToolCallId = toolCall.id;
-		void assertEditableFile(resolvedPath, path).catch(err => {
-			// peekFile and other I/O can reject with ENOENT, etc. Only ToolError means
-			// auto-generated detection; other failures are left for the edit tool.
-			if (!(err instanceof ToolError)) return;
-			if (this.#lastStreamingEditToolCallId !== toolCall.id) return;
-
-			if (!this.#streamingEditAbortTriggered) {
-				this.#streamingEditAbortTriggered = true;
-				logger.warn("Streaming edit aborted due to auto-generated file guard", {
-					toolCallId: toolCall.id,
-					path,
-				});
-				this.agent.abort();
-			}
-		});
-	}
-
-	#preCacheStreamingEditFile(event: AgentEvent): void {
-		if (this.#streamingEditAbortTriggered) return;
-		if (event.type !== "message_update") return;
-
-		const assistantEvent = event.assistantMessageEvent;
-		if (
-			assistantEvent.type !== "toolcall_start" &&
-			assistantEvent.type !== "toolcall_delta" &&
-			assistantEvent.type !== "toolcall_end"
-		) {
-			return;
-		}
-
-		const streamingEdit = this.#getStreamingEditToolCall(event);
-		if (!streamingEdit) return;
-
-		// The auto-generated guard runs unconditionally: editing a generated file
-		// is never the user's intent, and the cost of a false-positive abort is one
-		// wasted turn vs. silently corrupting a regenerated source.
-		const shouldCheckAutoGenerated =
-			!streamingEdit.toolCall.id || !this.#streamingEditPrecheckedToolCallIds.has(streamingEdit.toolCall.id);
-		if (shouldCheckAutoGenerated) {
-			if (streamingEdit.toolCall.id) {
-				this.#streamingEditPrecheckedToolCallIds.add(streamingEdit.toolCall.id);
-			}
-			this.#abortStreamingEditForAutoGeneratedPath(
-				streamingEdit.toolCall,
-				streamingEdit.path,
-				streamingEdit.resolvedPath,
-			);
-		}
-
-		// File-cache priming feeds #maybeAbortStreamingEdit's removed-lines check,
-		// which is the optional patch-preview verification gated by
-		// edit.streamingAbort. Skip the read when the setting is off.
-		if (this.settings.get("edit.streamingAbort")) {
-			this.#ensureFileCache(streamingEdit.resolvedPath);
-		}
-	}
-
-	#ensureFileCache(resolvedPath: string): void {
-		if (this.#streamingEditFileCache.has(resolvedPath)) return;
-
-		try {
-			const rawText = fs.readFileSync(resolvedPath, "utf-8");
-			const { text } = stripBom(rawText);
-			this.#streamingEditFileCache.set(resolvedPath, normalizeToLF(text));
-		} catch {
-			// Don't cache on read errors (including ENOENT) - let the edit tool handle them
-		}
-	}
-
-	/** Invalidate cache for a file after an edit completes to prevent stale data */
-	#invalidateFileCacheForPath(filePath: string): void {
-		const resolvedPath = this.#resolveSessionFsPath(filePath);
-		if (resolvedPath === undefined) return;
-		this.#streamingEditFileCache.delete(resolvedPath);
-	}
-
-	/**
-	 * Resolve a path supplied to a tool to a real filesystem path.
-	 *
-	 * - `local://` URLs route through the local-protocol handler so they map
-	 *   onto the session's on-disk artifacts directory; pre-caching, ENOENT
-	 *   handling, and post-edit invalidation all work normally.
-	 * - Other internal-scheme URLs (agent://, skill://, rule://, mcp://,
-	 *   artifact://) have no stable filesystem path; this returns `undefined`
-	 *   so callers skip filesystem-only operations.
-	 * - Cwd-relative and absolute paths resolve via `resolveToCwd`.
-	 */
-	#resolveSessionFsPath(filePath: string): string | undefined {
-		const normalized = normalizeLocalScheme(filePath);
-		if (normalized.startsWith("local:")) {
-			return resolveLocalUrlToPath(normalized, this.#localProtocolOptions());
-		}
-		if (
-			normalized.startsWith("agent://") ||
-			normalized.startsWith("skill://") ||
-			normalized.startsWith("rule://") ||
-			normalized.startsWith("mcp://") ||
-			normalized.startsWith("artifact://")
-		) {
-			return undefined;
-		}
-		return resolveToCwd(normalized, this.sessionManager.getCwd());
-	}
-
 	/**
 	 * How many assistant turns this session has produced.
 	 *
@@ -4785,139 +4608,6 @@ export class AgentSession {
 			localProtocol: this.#localProtocolOptions(),
 			cwd: this.sessionManager.getCwd(),
 		});
-	}
-
-	#maybeAbortStreamingEdit(event: AgentEvent): void {
-		if (!this.settings.get("edit.streamingAbort")) return;
-		if (this.#streamingEditAbortTriggered) return;
-		if (event.type !== "message_update") return;
-
-		const assistantEvent = event.assistantMessageEvent;
-		if (assistantEvent.type !== "toolcall_end" && assistantEvent.type !== "toolcall_delta") return;
-
-		const streamingEdit = this.#getStreamingEditToolCall(event);
-		if (!streamingEdit?.toolCall.id) return;
-
-		const { toolCall, path, resolvedPath, diff, op, rename } = streamingEdit;
-		if (!diff) return;
-		if (op && op !== "update") return;
-
-		if (!diff.includes("\n")) return;
-		const lastNewlineIndex = diff.lastIndexOf("\n");
-		if (lastNewlineIndex < 0) return;
-		const diffForCheck = diff.endsWith("\n") ? diff : diff.slice(0, lastNewlineIndex + 1);
-		if (diffForCheck.trim().length === 0) return;
-
-		let normalizedDiff = normalizeDiff(diffForCheck.replace(/\r/g, ""));
-		if (!normalizedDiff) return;
-		// INTERNAL CONTROL PATH, neither a spend nor display: the expanded diff is
-		// only compared against the file on disk to decide an early abort.
-		// Deobfuscate so removed lines match real file content, and when a live
-		// placeholder cannot be expanded from a fresh runtime, skip the check
-		// outright instead of degrading: an unexpanded `#HASH#` would not match the
-		// file and would abort a legitimate edit, which is worse than never
-		// aborting. Never throws, because this runs inside the agent event dispatch.
-		if (this.#obfuscator?.containsLivePlaceholder(normalizedDiff)) {
-			const expanded = this.#tryExpandSecretsForDiskComparison(normalizedDiff);
-			if (expanded === undefined) return;
-			normalizedDiff = expanded;
-		}
-		if (!normalizedDiff) return;
-		const lines = normalizedDiff.split("\n");
-		const hasChangeLine = lines.some(line => line.startsWith("+") || line.startsWith("-"));
-		if (!hasChangeLine) return;
-
-		const lineCount = lines.length;
-		const lastChecked = this.#streamingEditCheckedLineCounts.get(toolCall.id);
-		if (lastChecked !== undefined && lineCount <= lastChecked) return;
-		this.#streamingEditCheckedLineCounts.set(toolCall.id, lineCount);
-
-		const removedLines = lines
-			.filter(line => line.startsWith("-") && !line.startsWith("--- "))
-			.map(line => line.slice(1));
-		if (removedLines.length > 0) {
-			let cachedContent = this.#streamingEditFileCache.get(resolvedPath);
-			if (cachedContent === undefined) {
-				this.#ensureFileCache(resolvedPath);
-				cachedContent = this.#streamingEditFileCache.get(resolvedPath);
-			}
-			if (cachedContent !== undefined) {
-				const missing = removedLines.find(line => !cachedContent.includes(normalizeToLF(line)));
-				if (missing) {
-					this.#streamingEditAbortTriggered = true;
-					logger.warn("Streaming edit aborted due to patch preview failure", {
-						toolCallId: toolCall.id,
-						path,
-						error: `Failed to find expected lines in ${path}:\n${this.#redactForLog(missing)}`,
-					});
-					this.agent.abort();
-				}
-				return;
-			}
-			if (assistantEvent.type === "toolcall_delta") return;
-			void this.#checkRemovedLinesAsync(toolCall.id, path, resolvedPath, removedLines);
-			return;
-		}
-
-		if (assistantEvent.type === "toolcall_delta") return;
-		void this.#checkPreviewPatchAsync(toolCall.id, path, rename, normalizedDiff);
-	}
-
-	async #checkRemovedLinesAsync(
-		toolCallId: string,
-		path: string,
-		resolvedPath: string,
-		removedLines: string[],
-	): Promise<void> {
-		if (this.#streamingEditAbortTriggered) return;
-		try {
-			const { text } = stripBom(await Bun.file(resolvedPath).text());
-			const normalizedContent = normalizeToLF(text);
-			const missing = removedLines.find(line => !normalizedContent.includes(normalizeToLF(line)));
-			if (missing) {
-				this.#streamingEditAbortTriggered = true;
-				logger.warn("Streaming edit aborted due to patch preview failure", {
-					toolCallId,
-					path,
-					error: `Failed to find expected lines in ${path}:\n${this.#redactForLog(missing)}`,
-				});
-				this.agent.abort();
-			}
-		} catch (err) {
-			// Ignore ENOENT (file not found) - let the edit tool handle missing files
-			// Also ignore other errors during async fallback
-			if (!isEnoent(err)) {
-				// Log unexpected errors but don't abort
-			}
-		}
-	}
-
-	async #checkPreviewPatchAsync(
-		toolCallId: string,
-		path: string,
-		rename: string | undefined,
-		normalizedDiff: string,
-	): Promise<void> {
-		if (this.#streamingEditAbortTriggered) return;
-		try {
-			await previewPatch(
-				{ path, op: "update", rename, diff: normalizedDiff },
-				{
-					cwd: this.sessionManager.getCwd(),
-					allowFuzzy: this.settings.get("edit.fuzzyMatch"),
-					fuzzyThreshold: this.settings.get("edit.fuzzyThreshold"),
-				},
-			);
-		} catch (error) {
-			if (error instanceof ParseError) return;
-			this.#streamingEditAbortTriggered = true;
-			logger.warn("Streaming edit aborted due to patch preview failure", {
-				toolCallId,
-				path,
-				error: errorMessage(error),
-			});
-			this.agent.abort();
-		}
 	}
 
 	#resetSessionStopContinuationState(): void {
@@ -13988,7 +13678,7 @@ export class AgentSession {
 	 * abort — issue #5375). Only fires while the session is neither aborting nor
 	 * tearing down. A user/lifecycle abort (`#abortInProgress`), a dispose-driven
 	 * abort (`#isDisposed`), or a session-induced streaming-edit guard abort
-	 * (`#streamingEditAbortTriggered` — auto-generated-file guard or failed-patch
+	 * (`StreamingEditGuard.abortTriggered` — auto-generated-file guard or failed-patch
 	 * preview) is deliberate and MUST settle the turn instead: routing it through
 	 * retry would orphan `#retryPromise` on a continuation the guard skips
 	 * (hanging the in-flight `prompt()`) or silently undo the guard's intended
@@ -14001,7 +13691,7 @@ export class AgentSession {
 			message.content.length !== 0 ||
 			this.#abortInProgress ||
 			this.#isDisposed ||
-			this.#streamingEditAbortTriggered
+			this.#streamingEdit.abortTriggered
 		) {
 			return false;
 		}
@@ -14098,7 +13788,7 @@ export class AgentSession {
 	 */
 	async #continueAfterUnreplayableBatch(message: AssistantMessage): Promise<boolean> {
 		if (message.stopReason !== "error") return false;
-		if (this.#abortInProgress || this.#isDisposed || this.#streamingEditAbortTriggered) return false;
+		if (this.#abortInProgress || this.#isDisposed || this.#streamingEdit.abortTriggered) return false;
 		const retrySettings = this.settings.getGroup("retry");
 		if (!retrySettings.enabled) return false;
 		const id = this.#classifyRetryMessage(message);

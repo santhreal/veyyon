@@ -36,16 +36,17 @@ const RUNTIME = `${SESSION_DIR}/agent-session.ts`;
 const FACADE = `${SESSION_DIR}/facade.ts`;
 
 /**
- * MEASURED at 17399 lines. Model target selection left earlier — the role resolver, the
+ * MEASURED at 17089 lines. Model target selection left earlier — the role resolver, the
  * configured-target reader, the compaction candidate walk and its effort map — and provider request
  * shaping (payload redaction, the Anthropic metadata block, the tool-order permutation check) left
  * after it, because not one of those members read or wrote a field of the runtime: every input was
  * a parameter, so they sat in the class only because of where they were typed. TTSR, the todo board,
- * the thinking level and the advisor roster left as collaborators under `runtime/`. The number falls
- * again when the next one leaves. It ratchets: slack is what it takes to not fail on the next honest
- * edit, and a ceiling left far above a shrinking file stops being a bound.
+ * the thinking level, the advisor roster and the streaming-edit guard left as collaborators under
+ * `runtime/`. The number falls again when the next one leaves. It ratchets: slack is what it takes
+ * to not fail on the next honest edit, and a ceiling left far above a shrinking file stops being a
+ * bound.
  */
-const RUNTIME_CEILING = 17_450;
+const RUNTIME_CEILING = 17_150;
 
 /** The one subdirectory `src/session/` holds: the collaborators. */
 const RUNTIME_DIR = "runtime";
@@ -55,9 +56,15 @@ const RUNTIME_DIR = "runtime";
  * one fails here before it fails anywhere useful, which is the point: a
  * collaborator is a decision about where state lives, not a file drop.
  */
-const COLLABORATORS = ["advisor-roster.ts", "thinking-runtime.ts", "todo-runtime.ts", "ttsr-runtime.ts"] as const;
+const COLLABORATORS = [
+	"advisor-roster.ts",
+	"streaming-edit-guard.ts",
+	"thinking-runtime.ts",
+	"todo-runtime.ts",
+	"ttsr-runtime.ts",
+] as const;
 
-/** MEASURED: the largest collaborator is `advisor-roster.ts` at 918 lines. */
+/** MEASURED: the largest collaborator is `advisor-roster.ts` at 934 lines. */
 const COLLABORATOR_CEILING = 1_000;
 
 /** MEASURED: the largest sibling is `agent-session-types.ts` at 782 lines. */

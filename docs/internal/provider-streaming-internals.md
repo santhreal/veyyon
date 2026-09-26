@@ -196,7 +196,7 @@ Current design favors responsiveness and simple ordering over bounded-buffer flo
 `AgentSession` then consumes those events for session-level behaviors:
 
 - TTSR watches `message_update.assistantMessageEvent` for `text_delta`, `thinking_delta`, and `toolcall_delta`
-- streaming edit guard inspects `toolcall_delta`/`toolcall_end` on `edit` calls and can abort early
+- the streaming-edit guard (`session/runtime/streaming-edit-guard.ts`) reads `toolcall_start`/`toolcall_delta`/`toolcall_end` on `edit` calls through the agent's assistant-message event interceptor, which runs synchronously ahead of the queued `message_update`, and can abort early
 - persistence writes finalized messages at `message_end`
 - auto-retry examines assistant `stopReason === "error"` plus `errorMessage` heuristics
 
@@ -231,4 +231,4 @@ Provider-specific (not fully abstracted):
 - [`../../agent/src/agent-loop.ts`](../../packages/agent/src/agent-loop.ts): provider stream consumption and `message_update` bridging.
 - [`../src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts): session-level handling of streaming updates, abort, retry, and persistence.
 
-*Verified against `504c88b39f` on 2026-09-11.*
+*Verified against `fdd29df13c` on 2026-09-26.*

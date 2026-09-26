@@ -30,6 +30,7 @@
 - Session spend, which `/session`, `get_session_stats` and goal accounting read at every turn start, tool completion and agent end, tallies the history behind the compaction boundary once per boundary instead of on every read, which cuts a read on a 201,156-entry session from 29.25 ms to 0.92 ms.
 - A prune, shake, image drop, recovered retry marker, compaction tail elision or dead-end warning rewrites the session file only from the earliest entry it changed, instead of the whole file, which cut the persist step after a one-entry prune on a 376 MiB session from 1.2 s to 135 ms.
 - The session's advisors, their delivery routing and their interrupt latches run in a session collaborator, and advisor stats and overflow compaction in their own modules; no user-visible change.
+- With `edit.streamingAbort` on, the check on a streaming `edit` patch scans each diff line once instead of rescanning the whole diff on every delta, which cuts a turn streaming a 91 KiB, 2,000-line patch in 23,293 deltas from 7,852 ms to 212 ms, and from 124 ms to 64 ms with the setting off.
 - The per-turn stale-result and threshold prunes and the shake, dedup and truncation collectors scan only the entries from the compaction boundary to the leaf instead of the whole branch, which cut the two per-turn prunes on a 238,084-entry session with 390 compactions from 420ms to 4.4ms per turn.
 - `resolveCompactionBoundaryIndex` searches for the keep marker from the end of the branch, which takes about 9ms off rebuilding the context of a 238,084-entry branch.
 - The Anthropic and OpenAI-compatible providers split their stream loops, message converters and finalization into per-step helpers; no user-visible change.
@@ -48,6 +49,7 @@
 
 ### Fixed
 
+- With `edit.streamingAbort` on, a streaming `edit` patch whose last removed line has no trailing newline stops the turn when that line is absent from the file, instead of leaving it for the edit tool to reject after the stream ends.
 - The CLI imports the terminal output guard when a worker thread starts rather than at startup, keeping it off the static boot graph; no user-visible change.
 - A tool card whose call carries an argument of the wrong type, such as `input: 404` for `search`, draws the value as text or omits it instead of failing with `Renderer failed: e.toWellFormed is not a function`.
 - The `read` card for a structurally summarized file numbers each row with the line the model saw, a merged brace pair with its opening line, instead of counting up from line 1 past every elided body, and draws the `…` elision row and the summary budget notice without a line number.
