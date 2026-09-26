@@ -10,7 +10,11 @@
 
 ### Added
 
+- `collectToolCallsById` takes an optional start index and resolves the call behind each tool result at or after it without walking the entries before it.
+- `PruneResult` lists the entries a prune rewrote in place as `prunedEntries`.
 - A tool domain manifest can list `resultCodecs`, each a `ToolResultCodec` whose `slim` drops a result `details` field the result's content rebuilds when the session writes the entry and whose `restore` rebuilds it when the session loads.
+- `SessionStorage` has an optional `rewriteTailAtomic` that replaces a file atomically with its first `keepBytes` bytes, a new head written over their start, and a new tail; `FileSessionStorage` implements it, and a backend without it receives whole-file writes.
+- `CodeHighlighter` highlights a source that grows at its end once per line: `advance(text)` colours whole lines and moves the parser past them, `peek(text)` colours the unfinished last line without moving it, and their output joined is byte-identical to `highlightCode` over the whole source.
 
 ### Changed
 
@@ -24,13 +28,35 @@
 - An `edit` result's session file line omits the post-edit file text when its pre-edit text and numbered diff rebuild it byte for byte, and the session restores it on load, which cuts the post-edit copies recorded across local sessions from 671.18 MB to 3.79 MB.
 - A `search` result's session file line omits the card's copy of the matched rows, the path list `fileMatches` already holds, and the wrapper's repeat of the sub-search's truncation counts when the rest of the line rebuilds them, and the session restores them on load, which cuts the recorded search details in local sessions from 331.33 MB to 248.91 MB.
 - An `eval` result's session file line omits each cell's output and the top-level status events when the result's text and the first cell hold them, and a `job` result's line omits each job's result and error text the result's text holds, and the session restores them on load, which cuts the recorded eval details in local sessions from 497.77 MB to 253.78 MB and the job details from 100.84 MB to 37.80 MB.
+- Session spend, which `/session`, `get_session_stats` and goal accounting read at every turn start, tool completion and agent end, tallies the history behind the compaction boundary once per boundary instead of on every read, which cuts a read on a 201,156-entry session from 29.25 ms to 0.92 ms.
+- A prune, shake, image drop, recovered retry marker, compaction tail elision or dead-end warning rewrites the session file only from the earliest entry it changed, instead of the whole file, which cut the persist step after a one-entry prune on a 376 MiB session from 1.2 s to 135 ms.
+- The session's advisors, their delivery routing and their interrupt latches run in a session collaborator, and advisor stats and overflow compaction in their own modules; no user-visible change.
+- Tool discovery state (the MCP and local selections, built-in names, default MCP selections and the search index), checkpoint state (the open checkpoint, its pending rewind report and the last completed rewind), user shell and Python runs, the work a turn schedules after `prompt()` returns and the IRC records a streaming turn has not yet taken run in session collaborators; no user-visible change.
+- With `edit.streamingAbort` on, the check on a streaming `edit` patch scans each diff line once instead of rescanning the whole diff on every delta, which cuts a turn streaming a 91 KiB, 2,000-line patch in 23,293 deltas from 7,852 ms to 212 ms, and from 124 ms to 64 ms with the setting off.
+- A streaming `write` or `bash` card highlights, numbers and wraps only the lines that arrived since its last frame instead of the whole source on every argument delta, which cuts drawing a 600-line write streamed in 754 frames from 27,125 ms to 376 ms and its last frame from 67.7 ms to 0.38 ms.
+- The per-agent run monitor (progress, abort and soft request-budget handling, usage totals and output capture) runs in `task/run-monitor.ts`, split out of `task/executor.ts`, with one handler per agent event; no user-visible change.
+- The status line's message fingerprint and usage-window reading run in per-role and per-window helpers; no user-visible change.
+- An agent's yield finalization, reminder ladder, session setup and teardown run in single-purpose helpers in `task/executor.ts`, and a child renders its own system prompt section once per run instead of on every system prompt rebuild, which saves 114.5 µs per rebuild for `deep`; no user-visible change.
+- The session's agent event handler routes each event type to its own method, records a finished assistant message as the settle's last message once before its first await instead of again after persistence, and splits post-run maintenance into yield settle, failure recovery and stop-time continuation passes; no user-visible change.
+- Text search resolves its scope, runs the native and virtual searches, pages the matches, and renders and fits its output in single-purpose functions; no user-visible change.
+- Raw settings migrations run as an ordered list of one function per retired setting family instead of one 600-line function; no user-visible change.
+- CLI startup resolves the launch model, prewalk and plan-yolo targets, settings overrides, the `--fork`/`--resume` session, the resume picker, extension flags, the initial prompt, the setup wizard, update notices and the mode handoff in single-purpose functions instead of functions of 272, 720, 229 and 102 lines; no user-visible change.
+- A session's secret runtime (the loader, the expansion lease, the reload queue, the unreadable-vault refusal and the tool-argument expansion) runs in `SessionSecretRuntime` in `secrets/session-runtime.ts` instead of in closures inside `createAgentSession`; no user-visible change.
+- The per-turn stale-result and threshold prunes and the shake, dedup and truncation collectors scan only the entries from the compaction boundary to the leaf instead of the whole branch, which cut the two per-turn prunes on a 238,084-entry session with 390 compactions from 420ms to 4.4ms per turn.
+- `resolveCompactionBoundaryIndex` searches for the keep marker from the end of the branch, which takes about 9ms off rebuilding the context of a 238,084-entry branch.
+- Split the agent loop's turn driver into per-step functions (pause park, directive resolution, sampling with Harmony-leak recovery, failed-turn settling, tool-call settling, queue drains); no user-visible change.
 - The Anthropic and OpenAI-compatible providers split their stream loops, message converters and finalization into per-step helpers; no user-visible change.
 - The OpenAI-compatible stream reads a tool call's prior object arguments through the shared `isRecord` guard instead of an inline check; no user-visible change.
+- `buildOpenAICompat` classifies the host and model family once and derives each chat-completions compat field from a named predicate, and the chat and Responses builders share one override-and-rederive step; every bundled and synthetic model spec resolves to the same record, no behavior change.
 - Opening or restoring a session builds its set of known entry ids once instead of twice, which takes about 40ms off opening a 220,000-entry session.
 - The resume warning flattens each command or path onto one line through the shared `collapseWhitespace` helper; no user-visible change.
 - A `tool_execution_start` session entry writes no `startedAt`, since the entry's own timestamp holds the start time, and writes its argument summary only when no preceding assistant message records the call, which cut the start markers in local sessions from 581.83 MB to 403.91 MB; a marker that wrote `startedAt` still reads back that time.
 - The `ToolResultCodec` contract permits a codec to rebuild a dropped field from the details the written line keeps as well as from the result's content; no behavior change.
 - Opening a session points every loaded string of 64 characters or more at one shared copy of its text, whether parsed from the file or read back from the blob store, and keeps no pooled string once the load returns, which cut the heap of a loaded 372.7 MiB session from 608.7 MiB to 401.7 MiB for 136 ms more load time.
+- Rebuilding a session context locates the applied compaction by searching from the end of the branch, which takes about 7ms off each rebuild of a 238,084-entry branch.
+- `SessionManager.rewriteEntries` takes the entries a caller changed in place and rewrites the session file from the earliest of them on, keeping the bytes before it without parsing or serializing them, which cut the rewrite after a one-entry prune on a 376 MiB, 109,360-entry session from 1.2 s to 135 ms.
+- A streaming `Markdown` render that ends inside an open code fence lays out only the fence lines completed since the previous frame, so a 1,500-line code fence renders in 59 ms instead of 898 ms and a 1,500-line diff in 92 ms instead of 900 ms.
+- `latexToBlock` parses each display-math fragment with one handler per construct (fractions, radicals, `\left…\right`, big operators, colors, environments, scripts, delimiters) and scans command names by character code, rendering 150,018 differential cases byte-identically about 6% faster.
 
 ### Removed
 
@@ -38,10 +64,13 @@
 
 ### Fixed
 
+- With `edit.streamingAbort` on, a streaming `edit` patch whose last removed line has no trailing newline stops the turn when that line is absent from the file, instead of leaving it for the edit tool to reject after the stream ends.
+- Disposing a session while a Python or eval run is in flight no longer keeps the process alive for up to 3 seconds after the run finishes.
 - The CLI imports the terminal output guard when a worker thread starts rather than at startup, keeping it off the static boot graph; no user-visible change.
 - A tool card whose call carries an argument of the wrong type, such as `input: 404` for `search`, draws the value as text or omits it instead of failing with `Renderer failed: e.toWellFormed is not a function`.
 - The `read` card for a structurally summarized file numbers each row with the line the model saw, a merged brace pair with its opening line, instead of counting up from line 1 past every elided body, and draws the `…` elision row and the summary budget notice without a line number.
 - The streaming-reveal throughput bench builds its target as a transcript view instead of a raw assistant message, so `bun packages/coding-agent/bench/streaming-throughput.bench.ts` runs again; no user-visible change.
+- An agent's live preview shows the shorthand the stream was still holding when a streamed message ends without a final content snapshot, instead of dropping it.
 - A Cursor turn whose remote agent stops making progress now ends with "Cursor made no progress for Ns" at the 30-minute ceiling instead of hanging indefinitely, because Cursor's ten-second server heartbeat no longer counts as progress.
 - A Cursor turn held by a local tool that never returns now ends when its failure or an abort arrives instead of waiting on the tool forever.
 - Fixed every Cursor exec-channel tool call being stored twice in the assistant message, which left an unanswered copy of each call that session resume reported as pending.

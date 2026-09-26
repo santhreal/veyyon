@@ -12,14 +12,16 @@
  * The module set is read off the directory at run time, so adding one turns this
  * red until it is recorded here.
  *
- * `createAgentSession` itself did NOT move and is not further split. It is one
- * 3477-line `try`/`catch` whose inner closures capture about thirty mutable
- * locals — the secret runtime lease, the obfuscator pair, the vault revision, the
- * MCP manager, the teardown flags the `catch` block reads. Turning those captures
- * into parameters is a rewrite of the startup ordering and the failure path, not
- * a move, so the plan's `factory-providers.ts`, `factory-memory.ts` and
- * `factory-advisor.ts` have no free declarations to hold and are absent rather
- * than empty. The ceiling below records where the file is.
+ * `createAgentSession` itself is split only where a concern owns its state. The
+ * secret runtime (the lease, the obfuscator pair, the vault revision, the reload
+ * queue) moved to `SessionSecretRuntime` in `src/secrets/session-runtime.ts`,
+ * which holds that state as fields instead of as captured locals. The rest is
+ * one `try`/`catch` whose inner closures capture the MCP manager and the teardown
+ * flags the `catch` block reads; turning those captures into parameters is a
+ * rewrite of the startup ordering and the failure path, not a move, so the plan's
+ * `factory-providers.ts`, `factory-memory.ts` and `factory-advisor.ts` have no
+ * free declarations to hold and are absent rather than empty. The ceiling below
+ * records where the file is.
  *
  * What it does not catch: a factory module that keeps its name and grows a
  * concern that belongs to another, and the coupling inside `createAgentSession`,
@@ -34,10 +36,10 @@ const SESSION_DIR = repoPath("packages/coding-agent/src/session");
 const SDK = repoPath("packages/coding-agent/src/sdk.ts");
 
 /**
- * MEASURED at 3832 lines after the free declarations moved out, of which
- * `createAgentSession` is 3477. This falls when that function is rewritten.
+ * MEASURED at 3322 lines after the secret runtime moved out, of which
+ * `createAgentSession` is 2963. This falls when that function is rewritten.
  */
-const SDK_CEILING = 3950;
+const SDK_CEILING = 3420;
 
 /** MEASURED: the largest factory module is `factory-options.ts` at 369 lines. */
 const FACTORY_CEILING = 400;

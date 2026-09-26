@@ -350,9 +350,9 @@ it("aborts when auto-generated check rejects with ToolError", async () => {
 
 it("resolves local:// internal-scheme paths through the protocol handler instead of panicking", async () => {
 	// Plan-mode persists the plan file under the synthetic local:// URL scheme.
-	// Earlier the streaming pre-cache (#preCacheStreamingEditFile →
-	// #getStreamingEditToolCall) called resolveToCwd() unconditionally on the
-	// path, which throws for internal-scheme URLs via assertNotInternalUrl().
+	// Earlier the streaming-edit pre-cache called resolveToCwd() unconditionally
+	// on the path, which throws for internal-scheme URLs via
+	// assertNotInternalUrl().
 	// The throw escaped the synchronous interceptor as an Unhandled Rejection
 	// and killed the session.
 	//

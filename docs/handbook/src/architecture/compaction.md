@@ -181,8 +181,9 @@ By default the live TUI collapses pre-compaction history: `display.collapseCompa
 ### Per-turn and pre-compaction pruning
 
 Two passes run from `AgentSession.#checkCompaction()`, after every completed turn, and both persist
-through `rewriteEntries()` so the session file matches the live context (`/fork`, `/tan` and resume
-read the file, and a divergent prefix cold-misses the provider prompt cache):
+through `rewriteEntries(prunedEntries)` so the session file matches the live context (`/fork`, `/tan`
+and resume read the file, and a divergent prefix cold-misses the provider prompt cache). The file is
+rewritten from the earliest pruned entry on; the lines before it are copied as they are:
 
 1. **Stale-result pass** (`#pruneStaleToolResults` → `pruneSupersededToolResults`) runs first, before
    any threshold gating, so it fires even with `compaction.enabled` off. It is skipped entirely when
@@ -191,6 +192,12 @@ read the file, and a divergent prefix cold-misses the provider prompt cache):
    after the `compaction.enabled` / strategy check and after error turns are skipped, and only once
    the turn has usable usage data. Its savings feed `postMaintenanceContextTokens`, which is the
    trigger figure reported to the compaction it may schedule.
+
+Both passes, and the shake, dedup and truncation collectors, scan only the live tail: the entries
+from the effective compaction's `firstKeptEntryId` to the leaf. Entries before it are summarized
+away, so the passes neither rewrite nor read them, and a turn costs the same after hundreds of
+compactions as after none. The one read that crosses the boundary resolves the tool call behind a
+live result whose call precedes it, so that call's protection still applies.
 
 Default prune policy:
 

@@ -138,7 +138,11 @@ describe("a deep batch of superseded reads", () => {
 		entries.push(...readPair("src/only.ts", "fresh", 2));
 		entries.push(filler(40_000, 3));
 
-		expect(pruneSupersededToolResults(entries, CONFIG)).toEqual({ prunedCount: 0, tokensSaved: 0 });
+		expect(pruneSupersededToolResults(entries, CONFIG)).toEqual({
+			prunedCount: 0,
+			tokensSaved: 0,
+			prunedEntries: [],
+		});
 		expect(prunedTexts(entries)).toEqual([]);
 	});
 
@@ -180,6 +184,7 @@ describe("a deep batch of superseded reads", () => {
 		expect(pruneSupersededToolResults(entries, { ...CONFIG, keepBoundaryId })).toEqual({
 			prunedCount: 0,
 			tokensSaved: 0,
+			prunedEntries: [],
 		});
 	});
 

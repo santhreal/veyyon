@@ -47,17 +47,27 @@ every field of one subsystem and reaches the session through a host interface it
 |[`ttsr-runtime.ts`](../../packages/coding-agent/src/session/runtime/ttsr-runtime.ts)|Time-Traveling Stream Rules: the pending interrupt queue, the per-tool buckets, the abort latch, the retry token and the resume gate|8|
 |[`todo-runtime.ts`](../../packages/coding-agent/src/session/runtime/todo-runtime.ts)|The todo board, the eager prelude, the mid-run nudge and the stop-time reminder ladder, with the failure latch that silences all three|13|
 |[`thinking-runtime.ts`](../../packages/coding-agent/src/session/runtime/thinking-runtime.ts)|How hard the model thinks and who decided: the session override, the selector pin, the saved default, and `auto` with its per-turn classification|12|
+|[`advisor-roster.ts`](../../packages/coding-agent/src/session/runtime/advisor-roster.ts)|The live advisors and the configuration, provider identities and transcript recorders behind them, with the immune-turn window and the auto-resume latch that route each note to an aside, a preserved card or a steer|28|
+|[`streaming-edit-guard.ts`](../../packages/coding-agent/src/session/runtime/streaming-edit-guard.ts)|The streaming-edit check: the abort latch, one incremental scan per streaming patch-mode `edit` call and the file contents its removed lines are matched against, which stop the turn once a call targets an auto-generated file or removes a line the file lacks|7|
+|[`tool-discovery.ts`](../../packages/coding-agent/src/session/runtime/tool-discovery.ts)|Which registered tools the model can discover and which it selected: the MCP and local selections, the built-in names, the default MCP selections and the search index built over them|3|
+|[`checkpoint-runtime.ts`](../../packages/coding-agent/src/session/runtime/checkpoint-runtime.ts)|The open checkpoint, the report a `rewind` call carries back to it, the rewind that last closed one and the tool results that rewind removed; the session reports each result and reads the state back, so it declares no host|0|
+|[`user-executions.ts`](../../packages/coding-agent/src/session/runtime/user-executions.ts)|The shell commands and Python cells the user runs and the eval runs a tool starts: their abort controllers, the results recorded while a turn streamed, and the dispose wait that aborts runs still in flight|2|
+|[`post-prompt-tasks.ts`](../../packages/coding-agent/src/session/runtime/post-prompt-tasks.ts)|The work a turn schedules after `prompt()` returns: the tasks in flight, the promise that resolves when they drain and the abort signal a cancel raises to skip work not yet started|1|
+|[`irc-inbox.ts`](../../packages/coding-agent/src/session/runtime/irc-inbox.ts)|The peer IRC messages that arrived while a turn streamed and the auto-replies sent on the session's behalf, until a step boundary, an `irc` inbox call or the next prompt takes them; no host|0|
 
 Three rules hold for a new one:
 
 - **The host interface names the slice, not the class.** `readonly agent: Agent` couples the
   collaborator to a 200-member class and makes it unconstructible in a test. `TtsrAgent` declares
-  the seven members and three state fields TTSR reaches, and `Agent` satisfies it structurally.
+  the seven members and three state fields TTSR reaches, and `Agent` satisfies it structurally;
+  `AdvisorPrimaryAgent` does the same for the six members and three state fields the advisors reach.
   Settings arrive as predicates (`argotEnabled()`) or one snapshot (`todoSettings()`), never as a
   `Settings` handle. One exception, and only this shape: a collaborator that passes the handle
   through wholesale to another owner may hold it, because narrowing it there would only re-declare
   that owner's surface. `ThinkingRuntime` holds one because `classifyDifficulty` takes a `Settings`
-  and reads rows the collaborator never names.
+  and reads rows the collaborator never names. `AdvisorRoster` holds one for the same reason:
+  `resolveModelOverride`, `resolveAdvisorRoleSelection` and `compactionModelCandidates` each take the
+  handle.
 - **The collaborator owns its state.** Sibling modules sharing the session's `#private` fields is
   the same object with more files. A field that stays behind is a field the extraction missed.
 - **Extraction order follows host width, not size.** A subsystem needing 60 session members is the
@@ -832,8 +842,9 @@ Rationale in code: avoid persisting sessions that never produced an assistant re
 ### Durability operations
 
 - `flush()` drains the async disk chain, the open writer's queued appends, and storage-level backing writes (no `fsync`). `flushSync()` checks latched errors and performs a synchronous full rewrite only when in-memory state is divergent or the file is not current; otherwise it returns without rewriting.
-- Atomic full rewrites (`#rewriteAtomically`) delegate to `storage.writeTextAtomic`: temp-write then rename over the target (with an EPERM-safe move-aside fallback).
-- Used for `rewriteEntries` (tool-output pruning/supersede passes) and move/fork operations. `setSessionName` instead appends a `title_change` entry and overwrites the fixed-width title slot in place, falling back to a fenced atomic rewrite on failure or when the file has no slot yet. Load-time migrations and other in-memory divergence (`#rewriteRequired`) instead trigger a synchronous full rewrite (`#rewriteSynchronously`) on the next persist.
+- Atomic rewrites (`#rewriteAtomically`) delegate to `storage.writeTextAtomic`: temp-write then rename over the target (with an EPERM-safe move-aside fallback).
+- `rewriteEntries(updated)` takes the entries a caller changed in place (prune, supersede, shake, image drop, recovered retry marker, compaction tail elision, dead-end warning stamp). `#tailRewritePlan` keeps the file's bytes before the earliest of them and publishes through `storage.rewriteTailAtomic`, which copies that prefix into the temp file, writes the title slot line over its start and the serialized lines from the earliest updated entry on after it, then renames the same way. The byte offsets come from the last publish plus every hot append since (`#publishedFileState.lines`); an entry replaced, dropped or reordered since that publish ends the kept prefix. The whole body is written instead when the file is not exactly as published (size or identity changed), it holds a foreign line, the header line changed, a title change dropped the offsets, the backend has no `rewriteTailAtomic`, or an updated entry is not in the session. `rewriteEntries()` with no list writes the whole body; move and fork do the same.
+- `setSessionName` instead appends a `title_change` entry and overwrites the fixed-width title slot in place, falling back to a fenced atomic rewrite on failure or when the file has no slot yet. Load-time migrations and other in-memory divergence (`#rewriteRequired`) instead trigger a synchronous full rewrite (`#rewriteSynchronously`) on the next persist.
 
 ### Error behavior
 
@@ -864,7 +875,7 @@ On load, blob refs are resolved back: `blob:sha256:` image refs to base64 for me
 `SessionStorage` provides the filesystem-shaped operations used by `SessionManager`:
 
 - sync: `ensureDirSync`, `existsSync`, `existsStateSync`, `writeTextSync`, `statSync`, `listFilesSync`, `listFilesRecursiveSync`, and optional `readTextSync`
-- async: `exists`, `readText`, `readTextSlices`, `writeText`, `writeTextAtomic`, `rename`, `moveSessionWithArtifacts`, `unlink`, `deleteSessionWithArtifacts`, `updateSessionTitle`, `openWriter`, `drain`
+- async: `exists`, `readText`, `readTextSlices`, `writeText`, `writeTextAtomic`, optional `rewriteTailAtomic`, `rename`, `moveSessionWithArtifacts`, `unlink`, `deleteSessionWithArtifacts`, `updateSessionTitle`, `openWriter`, `drain`
 
 `moveSessionWithArtifacts` relocates the transcript and its artifact tree as one logical operation and restores the source if relocation fails. `drain` waits for queued backing writes; it returns immediately for synchronous file/memory storage and awaits indexed Redis/SQL queues.
 
@@ -896,4 +907,4 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
 
-*Verified against `2d72e51522` on 2026-09-26.*
+*Verified against `1bb5e29d36` on 2026-09-26.*

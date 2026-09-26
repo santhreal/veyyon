@@ -10,8 +10,9 @@
 
 import type { AgentMessage } from "@veyyon/agent-core";
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
-import type { UsageLimit, UsageReport } from "@veyyon/ai";
+import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
 import type { OAuthAccountIdentity } from "@veyyon/ai/auth-storage";
+import { asRecord } from "@veyyon/utils/type-guards";
 import type {
 	SessionFacts,
 	StatusCapabilities,
@@ -56,6 +57,97 @@ export function structuralTextSize(value: unknown): number {
 	return 1;
 }
 
+/** Length of `value` when it is a string, 0 otherwise. */
+function stringLength(value: unknown): number {
+	return typeof value === "string" ? value.length : 0;
+}
+
+/** `role:ts:rest`, or `role:rest` when the message carries no timestamp. */
+function stampedFingerprint(role: string, ts: number, rest: string): string {
+	return ts ? `${role}:${ts}:${rest}` : `${role}:${rest}`;
+}
+
+/** The block fields a user or tool-result fingerprint reads. */
+interface FingerprintBlock {
+	readonly type?: unknown;
+	readonly text?: unknown;
+}
+
+type FingerprintContent = string | readonly FingerprintBlock[] | undefined;
+
+/** Signature fields a provider may attach to an assistant message or a thinking block. */
+interface SignatureCarrier {
+	readonly thinkingSignature?: unknown;
+	readonly textSignature?: unknown;
+	readonly thoughtSignature?: unknown;
+}
+
+function signatureLength(carrier: SignatureCarrier): number {
+	return (
+		stringLength(carrier.thinkingSignature) +
+		stringLength(carrier.textSignature) +
+		stringLength(carrier.thoughtSignature)
+	);
+}
+
+function userFingerprint(content: FingerprintContent, ts: number): string {
+	if (typeof content === "string") return stampedFingerprint("user", ts, `${content.length}`);
+	if (!Array.isArray(content)) return stampedFingerprint("user", ts, "0:0:0");
+	let textLen = 0;
+	for (const block of content) {
+		if (block && typeof block === "object" && block.type === "text") textLen += stringLength(block.text);
+	}
+	return stampedFingerprint("user", ts, `${textLen}:${content.length}`);
+}
+
+function contentFingerprint(role: string, content: FingerprintContent, ts: number): string {
+	if (typeof content === "string") return stampedFingerprint(role, ts, `${content.length}:0:0`);
+	if (!Array.isArray(content)) return stampedFingerprint(role, ts, "0:0:0");
+	let textLen = 0;
+	let images = 0;
+	for (const block of content) {
+		if (!block || typeof block !== "object") continue;
+		if (block.type === "text") textLen += stringLength(block.text);
+		else if (block.type === "image") images++;
+	}
+	return stampedFingerprint(role, ts, `${textLen}:${content.length}:${images}`);
+}
+
+function assistantFingerprint(msg: AssistantMessage, ts: number): string {
+	const usage = msg.usage;
+	const usageExt = usage && typeof usage === "object" && "promptTokensDetails" in usage ? 1 : 0;
+	const usageTotal = typeof usage?.totalTokens === "number" ? usage.totalTokens : 0;
+	const stopReason = typeof msg.stopReason === "string" ? msg.stopReason : "";
+	const msgExt = msg as unknown as SignatureCarrier & { redactedThinking?: { data?: unknown } };
+	let signatureLen = signatureLength(msgExt);
+	let redactedLen = stringLength(msgExt.redactedThinking?.data);
+	let textLen = 0;
+	const content = msg.content;
+	const blocks = Array.isArray(content) ? content.length : 0;
+	for (let i = 0; i < blocks; i++) {
+		const block = content[i];
+		if (!block || typeof block !== "object") continue;
+		switch (block.type) {
+			case "text":
+				textLen += stringLength(block.text);
+				break;
+			case "thinking":
+				textLen += stringLength(block.thinking);
+				signatureLen +=
+					signatureLength(block) + stringLength((block as unknown as { signature?: unknown }).signature);
+				break;
+			case "redactedThinking":
+				redactedLen += stringLength(block.data);
+				break;
+			case "toolCall":
+				textLen += stringLength(block.name);
+				if (block.arguments !== undefined) textLen += structuralTextSize(block.arguments);
+				break;
+		}
+	}
+	return `assistant:${ts}:${textLen}:${blocks}:0:${signatureLen}:${redactedLen}:${usageTotal}:${usageExt}:${stopReason}`;
+}
+
 /**
  * Cheap structural fingerprint of a message's tokenizable content. O(blocks) —
  * only reads string `.length` and primitives, never copies or serializes.
@@ -65,95 +157,22 @@ export function messageFingerprint(msg: AgentMessage): string {
 	const role = msg.role;
 	if (!role) return "";
 	const ts = typeof msg.timestamp === "number" ? msg.timestamp : 0;
-	let textLen = 0;
-	let blocks = 0;
-	let images = 0;
-	if (msg.role === "bashExecution") {
-		const cmdLen = typeof msg.command === "string" ? msg.command.length : 0;
-		const outLen = typeof msg.output === "string" ? msg.output.length : 0;
-		return `bash:${cmdLen}:${outLen}`;
-	} else if (msg.role === "user") {
-		const content = msg.content;
-		if (typeof content === "string") {
-			textLen += content.length;
-			return ts ? `${role}:${ts}:${textLen}` : `${role}:${textLen}`;
-		} else if (Array.isArray(content)) {
-			blocks = content.length;
-			for (const block of content) {
-				if (block && typeof block === "object" && block.type === "text" && typeof block.text === "string") {
-					textLen += block.text.length;
-				}
-			}
-			return ts ? `${role}:${ts}:${textLen}:${blocks}` : `${role}:${textLen}:${blocks}`;
-		}
-	} else if (msg.role === "assistant") {
-		const assistantMsg = msg;
-		const usage = assistantMsg.usage;
-		const usageExt = usage && typeof usage === "object" && "promptTokensDetails" in usage ? 1 : 0;
-		const usageTotal = typeof assistantMsg.usage?.totalTokens === "number" ? assistantMsg.usage.totalTokens : 0;
-		const stopReason = typeof assistantMsg.stopReason === "string" ? assistantMsg.stopReason : "";
-
-		let signatureLen = 0;
-		let redactedLen = 0;
-		const msgExt = assistantMsg as unknown as {
-			thinkingSignature?: string;
-			textSignature?: string;
-			thoughtSignature?: string;
-			redactedThinking?: { data?: string };
-		};
-		if (typeof msgExt.thinkingSignature === "string") signatureLen += msgExt.thinkingSignature.length;
-		if (typeof msgExt.textSignature === "string") signatureLen += msgExt.textSignature.length;
-		if (typeof msgExt.thoughtSignature === "string") signatureLen += msgExt.thoughtSignature.length;
-		const redactedData = msgExt.redactedThinking?.data;
-		if (typeof redactedData === "string") redactedLen += redactedData.length;
-
-		const content = assistantMsg.content;
-		if (Array.isArray(content)) {
-			blocks = content.length;
-			for (const block of content) {
-				if (!block || typeof block !== "object") continue;
-				if (block.type === "text" && typeof block.text === "string") {
-					textLen += block.text.length;
-				} else if (block.type === "thinking") {
-					if (typeof block.thinking === "string") textLen += block.thinking.length;
-					if (typeof block.thinkingSignature === "string") signatureLen += block.thinkingSignature.length;
-					const bExt = block as unknown as {
-						signature?: string;
-						textSignature?: string;
-						thoughtSignature?: string;
-					};
-					if (typeof bExt.signature === "string") signatureLen += bExt.signature.length;
-					if (typeof bExt.textSignature === "string") signatureLen += bExt.textSignature.length;
-					if (typeof bExt.thoughtSignature === "string") signatureLen += bExt.thoughtSignature.length;
-				} else if (block.type === "redactedThinking" && typeof block.data === "string") {
-					redactedLen += block.data.length;
-				} else if (block.type === "toolCall") {
-					if (typeof block.name === "string") textLen += block.name.length;
-					if (block.arguments !== undefined) {
-						textLen += structuralTextSize(block.arguments);
-					}
-				}
-			}
-		}
-		return `${role}:${ts}:${textLen}:${blocks}:${images}:${signatureLen}:${redactedLen}:${usageTotal}:${usageExt}:${stopReason}`;
-	} else if (msg.role === "toolResult" || msg.role === "hookMessage") {
-		const content = msg.content;
-		if (typeof content === "string") {
-			textLen += content.length;
-		} else if (Array.isArray(content)) {
-			blocks = content.length;
-			for (const block of content) {
-				if (!block || typeof block !== "object") continue;
-				if (block.type === "text" && typeof block.text === "string") textLen += block.text.length;
-				else if (block.type === "image") images++;
-			}
-		}
-	} else if (msg.role === "branchSummary" || msg.role === "compactionSummary") {
-		const summary = msg.summary;
-		if (typeof summary === "string") textLen += summary.length;
-		return `${role}:${textLen}`;
+	switch (msg.role) {
+		case "bashExecution":
+			return `bash:${stringLength(msg.command)}:${stringLength(msg.output)}`;
+		case "user":
+			return userFingerprint(msg.content, ts);
+		case "assistant":
+			return assistantFingerprint(msg, ts);
+		case "toolResult":
+		case "hookMessage":
+			return contentFingerprint(role, msg.content, ts);
+		case "branchSummary":
+		case "compactionSummary":
+			return `${role}:${stringLength(msg.summary)}`;
+		default:
+			return stampedFingerprint(role, ts, "0:0:0");
 	}
-	return ts ? `${role}:${ts}:${textLen}:${blocks}:${images}` : `${role}:${textLen}:${blocks}:${images}`;
 }
 
 interface ContextUsageMemo {
@@ -176,71 +195,82 @@ interface ActiveMeter {
 	sessionFile: string | undefined;
 }
 
+/** One 5h or 7d usage window read out of a provider usage report. */
+interface UsageWindowReading {
+	readonly windowId: "5h" | "7d";
+	readonly fraction: number;
+	readonly resetsAt: number | undefined;
+	readonly tier: string | undefined;
+}
+
+function readUsageWindow(
+	report: UsageReport,
+	limit: unknown,
+	activeIdentity: OAuthAccountIdentity | undefined,
+): UsageWindowReading | null {
+	const limitObj = asRecord(limit);
+	if (!limitObj) return null;
+	if (activeIdentity && !limitMatchesActiveAccount(report, limit as UsageLimit, activeIdentity)) return null;
+	const fraction = asRecord(limitObj.amount)?.usedFraction;
+	if (typeof fraction !== "number") return null;
+	const scope = asRecord(limitObj.scope);
+	const windowId = scope?.windowId;
+	if (windowId !== "5h" && windowId !== "7d") return null;
+	const tier = typeof scope?.tier === "string" && scope.tier !== "" ? scope.tier : undefined;
+	const resetsAt = asRecord(limitObj.window)?.resetsAt;
+	return { windowId, fraction, resetsAt: typeof resetsAt === "number" ? resetsAt : undefined, tier };
+}
+
+/** The first reading of a window wins, except that a tierless (whole-account) reading replaces a tier-scoped one. */
+function replacesReading(current: UsageWindowReading | undefined, next: UsageWindowReading): boolean {
+	return !current || (current.tier !== undefined && next.tier === undefined);
+}
+
+function resetIn(resetsAt: number | undefined, now: number, unitMs: number): number | undefined {
+	return resetsAt === undefined ? undefined : Math.max(0, Math.round((resetsAt - now) / unitMs));
+}
+
+type UsageWindowPicks = { [K in UsageWindowReading["windowId"]]?: UsageWindowReading };
+
+/** The limits of `report`, or null when it is malformed or belongs to another provider. */
+function reportLimits(report: unknown, activeProvider: string | undefined): readonly unknown[] | null {
+	const reportObj = asRecord(report);
+	if (!reportObj) return null;
+	if (activeProvider && reportObj.provider !== activeProvider) return null;
+	return Array.isArray(reportObj.limits) ? reportObj.limits : null;
+}
+
+function toProviderUsage(picks: UsageWindowPicks): StatusProviderUsage | null {
+	const fiveHour = picks["5h"];
+	const sevenDay = picks["7d"];
+	if (!fiveHour && !sevenDay) return null;
+	const now = Date.now();
+	return {
+		tier: fiveHour?.tier ?? sevenDay?.tier,
+		fiveHour: fiveHour && { percent: fiveHour.fraction * 100, resetMinutes: resetIn(fiveHour.resetsAt, now, 60_000) },
+		sevenDay: sevenDay && {
+			percent: sevenDay.fraction * 100,
+			resetHours: resetIn(sevenDay.resetsAt, now, 3_600_000),
+		},
+	};
+}
+
 export function normalizeUsageReports(
 	reports: unknown,
 	activeProvider?: string,
 	activeIdentity?: OAuthAccountIdentity,
 ): StatusProviderUsage | null {
 	if (!Array.isArray(reports)) return null;
-	let fiveHour: { percent: number; resetMinutes?: number } | undefined;
-	let sevenDay: { percent: number; resetHours?: number } | undefined;
-	let fiveHourTier: string | undefined;
-	let sevenDayTier: string | undefined;
-	const now = Date.now();
+	const picks: UsageWindowPicks = {};
 	for (const report of reports) {
-		if (!report || typeof report !== "object") continue;
-		const reportObj = report as Record<string, unknown>;
-		const provider = reportObj.provider;
-		if (activeProvider && provider !== activeProvider) continue;
-		const limits = reportObj.limits;
-		if (!Array.isArray(limits)) continue;
+		const limits = reportLimits(report, activeProvider);
+		if (!limits) continue;
 		for (const limit of limits) {
-			if (!limit || typeof limit !== "object") continue;
-			const limitObj = limit as Record<string, unknown>;
-			if (activeIdentity && !limitMatchesActiveAccount(report as UsageReport, limit as UsageLimit, activeIdentity)) {
-				continue;
-			}
-			const scope =
-				limitObj.scope && typeof limitObj.scope === "object"
-					? (limitObj.scope as Record<string, unknown>)
-					: undefined;
-			const window =
-				limitObj.window && typeof limitObj.window === "object"
-					? (limitObj.window as Record<string, unknown>)
-					: undefined;
-			const amount =
-				limitObj.amount && typeof limitObj.amount === "object"
-					? (limitObj.amount as Record<string, unknown>)
-					: undefined;
-
-			const fraction = typeof amount?.usedFraction === "number" ? amount.usedFraction : undefined;
-			if (fraction === undefined) continue;
-
-			const windowId = typeof scope?.windowId === "string" ? scope.windowId : undefined;
-			const tier = typeof scope?.tier === "string" ? scope.tier : undefined;
-			const resetsAt = typeof window?.resetsAt === "number" ? window.resetsAt : undefined;
-
-			if (windowId === "5h" && (!fiveHour || (fiveHourTier !== undefined && !tier))) {
-				fiveHour = {
-					percent: fraction * 100,
-					resetMinutes:
-						typeof resetsAt === "number" ? Math.max(0, Math.round((resetsAt - now) / 60_000)) : undefined,
-				};
-				fiveHourTier = tier || undefined;
-			}
-			if (windowId === "7d" && (!sevenDay || (sevenDayTier !== undefined && !tier))) {
-				sevenDay = {
-					percent: fraction * 100,
-					resetHours:
-						typeof resetsAt === "number" ? Math.max(0, Math.round((resetsAt - now) / 3_600_000)) : undefined,
-				};
-				sevenDayTier = tier || undefined;
-			}
+			const reading = readUsageWindow(report as UsageReport, limit, activeIdentity);
+			if (reading && replacesReading(picks[reading.windowId], reading)) picks[reading.windowId] = reading;
 		}
 	}
-	if (!fiveHour && !sevenDay) return null;
-	const effectiveTier = fiveHourTier ?? sevenDayTier;
-	return { tier: effectiveTier, fiveHour, sevenDay };
+	return toProviderUsage(picks);
 }
 
 export class StatusPresentationProducer implements StatusDataSource {
@@ -399,19 +429,15 @@ export class StatusPresentationProducer implements StatusDataSource {
 		};
 	}
 
-	getContextBreakdown(session: AgentSession, autoCompactEnabled: boolean): StatusContextBreakdown {
+	/** The memoized context usage, recomputed only when an input the estimate reads has changed. */
+	#contextUsage(session: AgentSession, modelContextWindow: number): ContextUsageMemo {
 		const messages = session.messages ?? [];
-		const modelContextWindow = session.model?.contextWindow ?? session.state?.model?.contextWindow ?? 0;
 		const length = messages.length;
 		const lastFingerprint = length > 0 ? messageFingerprint(messages[length - 1]!) : undefined;
 		const contextUsageRevision = session.contextUsageRevision ?? 0;
 		const systemPrompt = session.systemPrompt;
 		const tools = session.agent?.state?.tools;
 		const skills = session.skills;
-
-		let usedTokens: number | null = null;
-		let contextWindow = modelContextWindow;
-
 		const cache = this.#contextUsageCache;
 		if (
 			cache &&
@@ -424,35 +450,36 @@ export class StatusPresentationProducer implements StatusDataSource {
 			cache.toolsRef === tools &&
 			cache.skillsRef === skills
 		) {
-			usedTokens = cache.usedTokens;
-			contextWindow = cache.contextWindow;
-		} else {
-			const usage = typeof session.getContextUsage === "function" ? session.getContextUsage() : undefined;
-			usedTokens = usage?.tokens ?? null;
-			contextWindow = usage?.contextWindow ?? modelContextWindow;
-			this.#contextUsageCache = {
-				messagesRef: messages,
-				length,
-				lastFingerprint,
-				modelContextWindow,
-				contextUsageRevision,
-				usedTokens,
-				contextWindow,
-				systemPromptRef: systemPrompt,
-				toolsRef: tools,
-				skillsRef: skills,
-			};
+			return cache;
 		}
+		const usage = typeof session.getContextUsage === "function" ? session.getContextUsage() : undefined;
+		const memo: ContextUsageMemo = {
+			messagesRef: messages,
+			length,
+			lastFingerprint,
+			modelContextWindow,
+			contextUsageRevision,
+			usedTokens: usage?.tokens ?? null,
+			contextWindow: usage?.contextWindow ?? modelContextWindow,
+			systemPromptRef: systemPrompt,
+			toolsRef: tools,
+			skillsRef: skills,
+		};
+		this.#contextUsageCache = memo;
+		return memo;
+	}
+
+	getContextBreakdown(session: AgentSession, autoCompactEnabled: boolean): StatusContextBreakdown {
+		const modelContextWindow = session.model?.contextWindow ?? session.state?.model?.contextWindow ?? 0;
+		const { usedTokens, contextWindow } = this.#contextUsage(session, modelContextWindow);
 
 		let contextLimit = contextWindow;
 		let contextLimitKind: "window" | "compaction" = "window";
-		if (autoCompactEnabled && session.settings) {
-			const compactionSettings = session.settings.getGroup?.("compaction");
-			if (compactionSettings) {
-				const limit = resolveContextLimit(contextWindow, compactionSettings);
-				contextLimit = limit.tokens;
-				contextLimitKind = limit.kind;
-			}
+		const compactionSettings = autoCompactEnabled ? session.settings?.getGroup?.("compaction") : undefined;
+		if (compactionSettings) {
+			const limit = resolveContextLimit(contextWindow, compactionSettings);
+			contextLimit = limit.tokens;
+			contextLimitKind = limit.kind;
 		}
 
 		const contextPercent = usedTokens === null ? null : contextLimit > 0 ? (usedTokens / contextLimit) * 100 : null;

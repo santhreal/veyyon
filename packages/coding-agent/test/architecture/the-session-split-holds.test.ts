@@ -5,9 +5,9 @@
  * readers — mixed in with the class that uses them. Those declarations touch no
  * instance state, so every importer of one of them pulled in the whole runtime.
  * They now live in sibling modules beside it, and the compaction policy has since
- * moved on again into `@veyyon/kernel`. Two families of instance state have left
- * too — TTSR and the todo board — as collaborators under `runtime/`, each
- * owning its own fields behind a host interface it declares.
+ * moved on again into `@veyyon/kernel`. Four families of instance state have left
+ * too — TTSR, the todo board, the thinking level and the advisors — as collaborators
+ * under `runtime/`, each owning its own fields behind a host interface it declares.
  *
  * The defect class this closes is a split that unwinds. Three shapes of it:
  * a sibling or collaborator that imports back from `agent-session.ts`, which makes
@@ -36,16 +36,18 @@ const RUNTIME = `${SESSION_DIR}/agent-session.ts`;
 const FACADE = `${SESSION_DIR}/facade.ts`;
 
 /**
- * MEASURED at 18482 lines. Model target selection left earlier — the role resolver, the
+ * MEASURED at 16575 lines. Model target selection left earlier — the role resolver, the
  * configured-target reader, the compaction candidate walk and its effort map — and provider request
  * shaping (payload redaction, the Anthropic metadata block, the tool-order permutation check) left
  * after it, because not one of those members read or wrote a field of the runtime: every input was
- * a parameter, so they sat in the class only because of where they were typed. TTSR, the todo board
- * and the thinking level left as collaborators under `runtime/`. The number falls again when the
- * next one leaves. It ratchets: slack is what it takes to not fail on the next honest edit, and a
- * ceiling left far above a shrinking file stops being a bound.
+ * a parameter, so they sat in the class only because of where they were typed. TTSR, the todo board,
+ * the thinking level, the advisor roster, the streaming-edit guard, tool discovery, the checkpoint
+ * state, user shell and eval runs, the post-prompt task tracker and the IRC inbox left as
+ * collaborators under `runtime/`. The number falls again when the next one leaves. It ratchets:
+ * slack is what it takes to not fail on the next honest edit, and a ceiling left far above a
+ * shrinking file stops being a bound.
  */
-const RUNTIME_CEILING = 18_500;
+const RUNTIME_CEILING = 16_625;
 
 /** The one subdirectory `src/session/` holds: the collaborators. */
 const RUNTIME_DIR = "runtime";
@@ -55,9 +57,20 @@ const RUNTIME_DIR = "runtime";
  * one fails here before it fails anywhere useful, which is the point: a
  * collaborator is a decision about where state lives, not a file drop.
  */
-const COLLABORATORS = ["thinking-runtime.ts", "todo-runtime.ts", "ttsr-runtime.ts"] as const;
+const COLLABORATORS = [
+	"advisor-roster.ts",
+	"checkpoint-runtime.ts",
+	"irc-inbox.ts",
+	"post-prompt-tasks.ts",
+	"streaming-edit-guard.ts",
+	"thinking-runtime.ts",
+	"todo-runtime.ts",
+	"tool-discovery.ts",
+	"ttsr-runtime.ts",
+	"user-executions.ts",
+] as const;
 
-/** MEASURED: the larger collaborator is `ttsr-runtime.ts` at 866 lines. */
+/** MEASURED: the largest collaborator is `advisor-roster.ts` at 934 lines. */
 const COLLABORATOR_CEILING = 1_000;
 
 /** MEASURED: the largest sibling is `agent-session-types.ts` at 782 lines. */

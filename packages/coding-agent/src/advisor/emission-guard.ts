@@ -125,7 +125,7 @@ export class AdvisorEmissionGuard {
 
 	/**
 	 * Drop all dedupe and per-update state. Called from
-	 * `AgentSession#resetAdvisorSessionState()` whenever the advisor runtime is
+	 * `AdvisorRoster.resetSessionState()` whenever the advisor runtime is
 	 * reset — same boundary as `yieldQueue.clear("advisor")`, so a re-primed
 	 * advisor can re-raise old issues (the primary transcript was rewritten).
 	 */

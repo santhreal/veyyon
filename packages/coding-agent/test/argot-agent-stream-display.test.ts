@@ -190,6 +190,29 @@ describe("Argot agent streaming display seam through the real runSubprocess exec
 		expect(last).not.toContain(DBCONN);
 	});
 
+	it("releases the handle the decoder still holds when a content-less message_end closes the stream", async () => {
+		// `§db` at the very end could still grow into `§dbconn`, so the decoder holds it.
+		// A message_end with no final content snapshot is the only signal the stream
+		// ended; the held tail must be flushed into the preview, expanded, not dropped.
+		const { snapshots, onProgress } = collectPreviews();
+		const session = mockChildSession({
+			codec: childCodec(),
+			onPrompt: ({ promptIndex, emit }) => {
+				if (promptIndex === 1) {
+					emit(textDelta("last file is §db"));
+					emit({ type: "message_end", message: { role: "assistant" } } as unknown as AgentSessionEvent);
+				}
+			},
+		});
+		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
+
+		await runChild("stream-held-tail", onProgress, snapshots);
+
+		const last = snapshots[snapshots.length - 1].join("\n");
+		expect(last).toContain("last file is src/db.ts");
+		expect(last).not.toContain("§db");
+	});
+
 	it("decodes a handle in a finished full-content snapshot too (the message_end refresh)", async () => {
 		// The other display path: a message_end carrying complete content. It must be
 		// expanded whole, so the preview shows the full path, never the raw handle.

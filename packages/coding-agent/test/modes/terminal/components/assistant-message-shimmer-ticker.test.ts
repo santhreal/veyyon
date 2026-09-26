@@ -54,8 +54,23 @@ function msg(
 const trueColorHandle = TERMINAL as unknown as { trueColor: boolean };
 const originalTrueColor = trueColorHandle.trueColor;
 
-/** One animation frame plus slack, so a ~33ms (30fps) ticker fires at least once. */
+/** Quiet window for the "never ticks" assertions: several ~33ms (30fps) frames. */
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+/**
+ * Resolve once `count()` reaches `target`, failing after `deadlineMs`. The positive assertions wait
+ * on the ticks themselves rather than a fixed window, so a loaded runner that delays a frame slows
+ * the test instead of failing it, while a ticker that never fires still fails within the bound.
+ */
+async function waitForTicks(count: () => number, target: number, deadlineMs = 2_000): Promise<void> {
+	const deadline = performance.now() + deadlineMs;
+	while (count() < target) {
+		if (performance.now() > deadline) {
+			throw new Error(`ticker fired ${count()} of ${target} expected repaints within ${deadlineMs}ms`);
+		}
+		await sleep(10);
+	}
+}
 
 beforeAll(async () => {
 	await initTheme(false);
@@ -99,11 +114,10 @@ describe("AssistantMessageComponent streaming shimmer ticker", () => {
 		component.render(W);
 
 		const scopedBefore = scopedCalls;
-		await sleep(120); // ~3-4 frames at 30fps
-		const ticked = scopedCalls - scopedBefore;
+		await waitForTicks(() => scopedCalls - scopedBefore, 2);
 
 		// The ticker fired repeatedly, and every one of those repaints was scoped.
-		expect(ticked).toBeGreaterThanOrEqual(2);
+		expect(scopedCalls - scopedBefore).toBeGreaterThanOrEqual(2);
 		expect(fullTreeCalls).toBe(0);
 
 		component.dispose();
@@ -116,8 +130,7 @@ describe("AssistantMessageComponent streaming shimmer ticker", () => {
 		});
 
 		component.updateContent(msg([{ type: "text", text: "streaming answer" }]), { transient: true });
-		await sleep(80);
-		expect(scopedCalls).toBeGreaterThanOrEqual(1);
+		await waitForTicks(() => scopedCalls, 1);
 
 		component.markTranscriptBlockFinalized();
 		const frozenAt = scopedCalls;
@@ -172,8 +185,7 @@ describe("AssistantMessageComponent streaming shimmer ticker", () => {
 		});
 
 		component.updateContent(msg([{ type: "text", text: "streaming" }]), { transient: true });
-		await sleep(60);
-		expect(scopedCalls).toBeGreaterThanOrEqual(1);
+		await waitForTicks(() => scopedCalls, 1);
 
 		component.dispose();
 		const afterDispose = scopedCalls;

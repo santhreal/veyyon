@@ -101,6 +101,12 @@ export const KEEP_NOTHING_ENTRY_ID = "compaction:keep-nothing";
  * answers -1 for it, which every caller clamped to 0 — the exact opposite of
  * what it means. It resolves to just past the compaction entry, because a
  * compaction that kept nothing left everything before itself summarized away.
+ *
+ * The search runs from the end. The boundary sits a live context's width from
+ * the tail, however much summarized history precedes it, so the lookup costs
+ * the live tail and not the session. A branch never repeats an entry id (the
+ * walk that builds one stops at the first repeat), so the first match from the
+ * end is the only match.
  */
 export function resolveCompactionBoundaryIndex(
 	entries: readonly SessionEntry[],
@@ -113,6 +119,8 @@ export function resolveCompactionBoundaryIndex(
 		}
 		return 0;
 	}
-	const index = entries.findIndex(entry => entry.id === keepBoundaryId);
-	return index < 0 ? 0 : index;
+	for (let i = entries.length - 1; i >= 0; i--) {
+		if (entries[i].id === keepBoundaryId) return i;
+	}
+	return 0;
 }

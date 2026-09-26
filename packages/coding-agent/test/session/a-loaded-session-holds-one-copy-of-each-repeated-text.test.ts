@@ -169,6 +169,13 @@ const snapshotRoots: Record<string, FileEntry[]> = {};
 let snapshots = 0;
 
 /**
+ * A heap snapshot walks the whole process heap, not the load under test: about 150 ms in a process
+ * running this file alone, and 6 to 19 s when this file shares one process with the rest of the
+ * package's suite. Each row takes two.
+ */
+const SNAPSHOT_ROW_TIMEOUT_MS = 60_000;
+
+/**
  * How many distinct string cells of `TEXT_CHARS` or more `entries` reaches. Slots sharing one
  * string reach one cell and each copy is another, so this counts copies rather than bytes, and no
  * collection timing moves it. The walk follows property and index edges only, so it never leaves the
@@ -247,24 +254,28 @@ async function load(slot: Slot, texts: readonly string[]): Promise<Loaded> {
 
 describe("a loaded session", () => {
 	for (const [name, { payload, slot }] of Object.entries(SLOTS)) {
-		it(`holds one copy of a text repeated in ${name}`, async () => {
-			const one = payload(0);
-			const repeated = await load(
-				slot,
-				Array.from({ length: COPIES }, () => one),
-			);
-			const distinct = await load(
-				slot,
-				Array.from({ length: COPIES }, (_, index) => payload(index + 1)),
-			);
+		it(
+			`holds one copy of a text repeated in ${name}`,
+			async () => {
+				const one = payload(0);
+				const repeated = await load(
+					slot,
+					Array.from({ length: COPIES }, () => one),
+				);
+				const distinct = await load(
+					slot,
+					Array.from({ length: COPIES }, (_, index) => payload(index + 1)),
+				);
 
-			const allMatch = Array.from({ length: COPIES }, () => true);
-			expect(repeated.matches).toEqual(allMatch);
-			expect(distinct.matches).toEqual(allMatch);
-			// The count sees the copy in every entry of a load...
-			expect(distinct.cells).toBe(COPIES);
-			// ...and a repeated text is held once.
-			expect(repeated.cells).toBe(1);
-		});
+				const allMatch = Array.from({ length: COPIES }, () => true);
+				expect(repeated.matches).toEqual(allMatch);
+				expect(distinct.matches).toEqual(allMatch);
+				// The count sees the copy in every entry of a load...
+				expect(distinct.cells).toBe(COPIES);
+				// ...and a repeated text is held once.
+				expect(repeated.cells).toBe(1);
+			},
+			SNAPSHOT_ROW_TIMEOUT_MS,
+		);
 	}
 });

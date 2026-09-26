@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "bun:test";
 import * as fs from "node:fs";
+import type { TimerOptions } from "node:timers";
+import * as timersPromises from "node:timers/promises";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { SessionKernel } from "@veyyon/coding-agent/eval/kernel-base";
@@ -97,17 +99,18 @@ const emptyWorkspaceTree = (cwd: string): WorkspaceTree => ({
 	agentsMdFiles: [],
 });
 
+/** Resolve every positive dispose wait at once, so a test skips the settle windows it measures. */
 const mockPositiveSleepsImmediate = () => {
-	const realSleep = Bun.sleep.bind(Bun);
-	return vi.spyOn(Bun, "sleep").mockImplementation((duration?: number | Date) => {
-		if (typeof duration === "number" && duration > 0) {
-			return Promise.resolve();
-		}
-		return realSleep(duration ?? 0);
-	});
+	const realSetTimeout = timersPromises.setTimeout;
+	return vi
+		.spyOn(timersPromises, "setTimeout")
+		.mockImplementation(((delay?: number, value?: unknown, options?: TimerOptions) =>
+			typeof delay === "number" && delay > 0
+				? Promise.resolve(value)
+				: realSetTimeout(delay, value, options)) as typeof timersPromises.setTimeout);
 };
 
-const expectSleepNear = (sleepSpy: Mock<typeof Bun.sleep>, targetMs: number) => {
+const expectSleepNear = (sleepSpy: Mock<typeof timersPromises.setTimeout>, targetMs: number) => {
 	const minMs = targetMs - 100;
 	expect(
 		sleepSpy.mock.calls.some(
@@ -501,7 +504,7 @@ describe("AgentSession python cleanup", () => {
 		kernel.abortBlockedExecution = false;
 
 		vi.spyOn(pythonKernel, "checkPythonKernelAvailability").mockResolvedValue({ ok: true });
-		const sleepSpy = vi.spyOn(Bun, "sleep").mockResolvedValue(undefined);
+		const sleepSpy = mockPositiveSleepsImmediate();
 
 		const startSpy = vi
 			.spyOn(pythonKernel.PythonKernel, "start")

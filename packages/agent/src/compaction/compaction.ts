@@ -1955,7 +1955,7 @@ function elideTailToolResults(
 	}
 	if (tailTokens <= budgetTokens) return [];
 
-	const toolCallsById = collectToolCallsById(entries);
+	const toolCallsById = collectToolCallsById(entries, startIndex);
 	interface Candidate {
 		entry: SessionMessageEntry;
 		message: ToolResultMessage;

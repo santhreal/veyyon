@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `CodeHighlighter` highlights a source that grows at its end once per line: `advance(text)` colours whole lines and moves the parser past them, `peek(text)` colours the unfinished last line without moving it, and their output joined is byte-identical to `highlightCode` over the whole source.
+
 ## [1.5.5] - 2026-09-25
 
 ### Fixed

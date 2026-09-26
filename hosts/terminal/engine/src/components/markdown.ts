@@ -352,6 +352,9 @@ class StrictStrikethroughTokenizer extends Tokenizer {
 	}
 }
 
+/** Code languages whose streamed complete lines are highlighted as a diff while the fence is open. */
+const STREAMED_DIFF_LANGS: ReadonlySet<string> = new Set(["diff", "patch", "udiff"]);
+
 const markdownParser = new Marked();
 markdownParser.setOptions({
 	tokenizer: new StrictStrikethroughTokenizer(),
@@ -959,6 +962,23 @@ interface RenderSignature {
 	headingProbe: string;
 }
 
+/** Whether two renders were laid out under the same width, padding, theme and terminal capabilities. */
+function sameRenderSignature(a: RenderSignature, b: RenderSignature): boolean {
+	return (
+		a.width === b.width &&
+		a.paddingX === b.paddingX &&
+		a.paddingY === b.paddingY &&
+		a.codeBlockIndent === b.codeBlockIndent &&
+		a.themeId === b.themeId &&
+		a.defaultTextStyleId === b.defaultTextStyleId &&
+		a.imageProtocol === b.imageProtocol &&
+		a.hyperlinks === b.hyperlinks &&
+		a.textSizing === b.textSizing &&
+		a.bgColorProbe === b.bgColorProbe &&
+		a.headingProbe === b.headingProbe
+	);
+}
+
 interface StreamPrefixLineCache extends RenderSignature {
 	text: string;
 	tokenCount: number;
@@ -968,6 +988,28 @@ interface StreamingDiffLineCache extends RenderSignature {
 	lang: string | undefined;
 	text: string;
 	lines: readonly string[];
+}
+
+/** Carried across rows while laying out: whether the previous row was an OSC 66 sized heading. */
+interface RowLayoutState {
+	afterOsc66: boolean;
+}
+
+/**
+ * Laid-out rows of the complete body lines of the open code fence a streaming render ends on.
+ * Every body line but the last is followed by a newline, so it cannot change while the text only
+ * grows, and its rows depend on nothing but the line, the style and the signature.
+ */
+interface OpenFenceRowCache extends RenderSignature {
+	/** How the body lines were styled: `plain`, or `diff:<lang>` for a diff highlighted line by line. */
+	style: string;
+	/** The body text the rows were laid out from, through the newline ending its last line. */
+	stableText: string;
+	/** Appended to in place as lines complete; copied into each render, never handed out. */
+	rows: string[];
+	/** Layout state entering the first body row, and after the last cached one. */
+	enteredAfterOsc66: boolean;
+	afterOsc66: boolean;
 }
 
 export class Markdown implements Component {
@@ -1027,6 +1069,7 @@ export class Markdown implements Component {
 	// semantic colors reach native scrollback before rows leave the viewport.
 	#renderingFrozenPrefix = false;
 	#streamingDiffLineCache?: StreamingDiffLineCache;
+	#openFenceRowCache?: OpenFenceRowCache;
 	#activeRenderSignature?: RenderSignature;
 
 	#ignoreTight = false;
@@ -1088,6 +1131,8 @@ export class Markdown implements Component {
 		const next = value === true;
 		if (this.#transientRenderCache === next) return;
 		this.#transientRenderCache = next;
+		// The rows are only read while streaming; a sealed block would hold them for nothing.
+		if (!next) this.#openFenceRowCache = undefined;
 		this.invalidate();
 	}
 
@@ -1422,17 +1467,7 @@ export class Markdown implements Component {
 		if (
 			(cache.text !== frozenText &&
 				(!normalizedText.startsWith(cache.text) || !frozenText.startsWith(cache.text))) ||
-			cache.width !== signature.width ||
-			cache.paddingX !== signature.paddingX ||
-			cache.paddingY !== signature.paddingY ||
-			cache.codeBlockIndent !== signature.codeBlockIndent ||
-			cache.themeId !== signature.themeId ||
-			cache.defaultTextStyleId !== signature.defaultTextStyleId ||
-			cache.imageProtocol !== signature.imageProtocol ||
-			cache.hyperlinks !== signature.hyperlinks ||
-			cache.textSizing !== signature.textSizing ||
-			cache.bgColorProbe !== signature.bgColorProbe ||
-			cache.headingProbe !== signature.headingProbe
+			!sameRenderSignature(cache, signature)
 		) {
 			return undefined;
 		}
@@ -1446,56 +1481,148 @@ export class Markdown implements Component {
 		contentWidth: number,
 		signature: RenderSignature,
 	): string[] {
+		const fence = this.#streamingFence(tokens, start, end);
 		const renderedLines: string[] = [];
-		for (let i = start; i < end; i++) {
+		for (let i = start; i < (fence ? end - 1 : end); i++) {
 			const token = tokens[i];
 			const nextToken = tokens[i + 1];
 			renderedLines.push(...this.#renderToken(token, contentWidth, nextToken?.type));
 		}
 
-		const wrappedLines: string[] = [];
-		for (const line of renderedLines) {
-			// Skip wrapping for image protocol lines and OSC 66 sized headings
-			// (would corrupt escape sequences / split the indivisible sized span).
-			if (TERMINAL.isImageLine(line) || isOsc66Line(line)) {
-				wrappedLines.push(line);
-			} else {
-				wrappedLines.push(...wrapTextWithAnsi(line, contentWidth));
-			}
-		}
-
-		const leftMargin = padding(signature.paddingX);
-		const rightMargin = padding(signature.paddingX);
-		const bgFn = this.#defaultTextStyle?.bgColor;
 		const contentLines: string[] = [];
-		let previousLineWasOsc66 = false;
-
-		for (const line of wrappedLines) {
-			// The first empty row after a scale>1 OSC 66 heading is structural:
-			// it reserves the lower cells occupied by the multicell glyphs. Do
-			// not pad or background-fill it, because real spaces on that row can
-			// interact with Kitty's multicell overwrite rules during the first
-			// paint. Leave it as a cursor-only newline.
-			if (previousLineWasOsc66 && line === "") {
-				contentLines.push("");
-				previousLineWasOsc66 = false;
-				continue;
-			}
-
-			// Image lines and OSC 66 sized headings must be output raw - no margins or background
-			if (TERMINAL.isImageLine(line) || isOsc66Line(line)) {
-				contentLines.push(line);
-				previousLineWasOsc66 = isOsc66Line(line);
-				continue;
-			}
-
-			previousLineWasOsc66 = false;
-			const lineWithMargins = leftMargin + line + rightMargin;
-
-			contentLines.push(applyLineBackground(lineWithMargins, signature.width, bgFn));
-		}
-
+		const state: RowLayoutState = { afterOsc66: false };
+		this.#layoutRows(renderedLines, contentWidth, signature, state, contentLines);
+		if (fence) this.#layoutStreamingFence(fence, contentWidth, signature, state, contentLines);
 		return contentLines;
+	}
+
+	/**
+	 * Wrap each line to `contentWidth` and append its rows to `out`, each padded to the full width
+	 * with margins and background. `state` carries from one call to the next, so rows laid out in
+	 * several calls match rows laid out in one.
+	 */
+	#layoutRows(
+		lines: readonly string[],
+		contentWidth: number,
+		signature: RenderSignature,
+		state: RowLayoutState,
+		out: string[],
+	): void {
+		const margin = padding(signature.paddingX);
+		const bgFn = this.#defaultTextStyle?.bgColor;
+		for (const line of lines) {
+			// Image protocol lines and OSC 66 sized headings are not wrapped: wrapping would corrupt
+			// the escape sequence or split the indivisible sized span.
+			const rows = TERMINAL.isImageLine(line) || isOsc66Line(line) ? [line] : wrapTextWithAnsi(line, contentWidth);
+			for (const row of rows) {
+				// The first empty row after a scale>1 OSC 66 heading is structural: it reserves the
+				// lower cells occupied by the multicell glyphs. It is not padded or background-filled,
+				// because real spaces on that row can interact with Kitty's multicell overwrite rules
+				// during the first paint, and stays a cursor-only newline.
+				if (state.afterOsc66 && row === "") {
+					out.push("");
+					state.afterOsc66 = false;
+					continue;
+				}
+				// Image lines and OSC 66 sized headings are output raw: no margins or background.
+				const osc66 = isOsc66Line(row);
+				if (osc66 || TERMINAL.isImageLine(row)) {
+					out.push(row);
+					state.afterOsc66 = osc66;
+					continue;
+				}
+				state.afterOsc66 = false;
+				out.push(applyLineBackground(margin + row + margin, signature.width, bgFn));
+			}
+		}
+	}
+
+	/**
+	 * The code token a streaming render ends on, when its body renders one styled line per source
+	 * line: plain `codeBlock` text, or a diff highlighted line by line. Only such a fence can reuse the
+	 * rows of its complete lines from one frame to the next. A Mermaid diagram the theme draws is not
+	 * one.
+	 */
+	#streamingFence(tokens: Token[], start: number, end: number): Tokens.Code | undefined {
+		if (!this.transientRenderCache || this.#renderingFrozenPrefix || end <= start || end !== tokens.length) {
+			return undefined;
+		}
+		const token = tokens[end - 1];
+		if (token.type !== "code") return undefined;
+		if (token.lang === "mermaid" && this.#theme.resolveMermaidAscii) return undefined;
+		return token as Tokens.Code;
+	}
+
+	/**
+	 * Lay out the code fence a streaming render ends on: the rows `#renderToken` would produce for
+	 * it, without re-wrapping the lines that were complete on an earlier frame. A frame of a long
+	 * fence otherwise wraps and pads every line of it again, which made each frame cost the length
+	 * of the fence and a streamed fence cost its length squared.
+	 */
+	#layoutStreamingFence(
+		token: Tokens.Code,
+		contentWidth: number,
+		signature: RenderSignature,
+		state: RowLayoutState,
+		out: string[],
+	): void {
+		const lang = token.lang;
+		const codeIndent = padding(this.#codeBlockIndent);
+		// A diff's complete lines are highlighted one at a time, as #renderCodeBodyLines does while
+		// streaming; every other language streams as plain text.
+		const highlightCode = this.#theme.highlightCode;
+		const highlightDiff =
+			highlightCode && STREAMED_DIFF_LANGS.has(lang?.toLowerCase() ?? "") ? highlightCode : undefined;
+		const style = highlightDiff ? `diff:${lang}` : "plain";
+		const styleLine = (line: string): string[] =>
+			highlightDiff ? highlightDiff(line, lang) : [this.#theme.codeBlock(line)];
+		const indentLines = (lines: readonly string[]): string[] => lines.map(line => `${codeIndent}${line}`);
+
+		this.#layoutRows([this.#codeFenceRow(lang, "open")], contentWidth, signature, state, out);
+
+		const text = token.text;
+		const stableEnd = text.lastIndexOf("\n") + 1;
+		let cache = this.#openFenceRowCache;
+		if (
+			cache === undefined ||
+			cache.style !== style ||
+			cache.enteredAfterOsc66 !== state.afterOsc66 ||
+			!text.startsWith(cache.stableText) ||
+			!sameRenderSignature(cache, signature)
+		) {
+			cache = {
+				...signature,
+				style,
+				stableText: "",
+				rows: [],
+				enteredAfterOsc66: state.afterOsc66,
+				afterOsc66: state.afterOsc66,
+			};
+			this.#openFenceRowCache = cache;
+		}
+		if (stableEnd > cache.stableText.length) {
+			const added = text.slice(cache.stableText.length, stableEnd - 1).split("\n");
+			const bodyState: RowLayoutState = { afterOsc66: cache.afterOsc66 };
+			this.#layoutRows(indentLines(added.flatMap(styleLine)), contentWidth, signature, bodyState, cache.rows);
+			cache.afterOsc66 = bodyState.afterOsc66;
+			cache.stableText = text.slice(0, stableEnd);
+		}
+		for (const row of cache.rows) out.push(row);
+		state.afterOsc66 = cache.afterOsc66;
+
+		// The line still streaming is plain until its newline arrives, unless the fence has closed.
+		const lastLine = text.slice(stableEnd);
+		const lastRows =
+			highlightDiff && this.#codeTokenHasClosingFence(token)
+				? highlightDiff(lastLine, lang)
+				: [this.#theme.codeBlock(lastLine)];
+		this.#layoutRows(
+			[...indentLines(lastRows), this.#codeFenceRow(lang, "close")],
+			contentWidth,
+			signature,
+			state,
+			out,
+		);
 	}
 
 	/** One fence row: the theme's designed chrome when it defines
@@ -1514,7 +1641,7 @@ export class Markdown implements Component {
 			this.transientRenderCache &&
 			!this.#renderingFrozenPrefix &&
 			this.#theme.highlightCode &&
-			(normalizedLang === "diff" || normalizedLang === "patch" || normalizedLang === "udiff");
+			STREAMED_DIFF_LANGS.has(normalizedLang ?? "");
 
 		if (this.#theme.highlightCode && (!this.transientRenderCache || this.#renderingFrozenPrefix)) {
 			const highlightedLines = this.#theme.highlightCode(tokenText, lang);
@@ -1589,17 +1716,7 @@ export class Markdown implements Component {
 			completedText.startsWith(cache.text) &&
 			(cache.text.length === completedText.length || completedText.charCodeAt(cache.text.length) === 0x0a) &&
 			cache.lang === lang &&
-			cache.width === signature.width &&
-			cache.paddingX === signature.paddingX &&
-			cache.paddingY === signature.paddingY &&
-			cache.codeBlockIndent === signature.codeBlockIndent &&
-			cache.themeId === signature.themeId &&
-			cache.defaultTextStyleId === signature.defaultTextStyleId &&
-			cache.imageProtocol === signature.imageProtocol &&
-			cache.hyperlinks === signature.hyperlinks &&
-			cache.textSizing === signature.textSizing &&
-			cache.bgColorProbe === signature.bgColorProbe &&
-			cache.headingProbe === signature.headingProbe
+			sameRenderSignature(cache, signature)
 		) {
 			if (completedText.length === cache.text.length) return cache.lines;
 			const lines = cache.lines.slice();

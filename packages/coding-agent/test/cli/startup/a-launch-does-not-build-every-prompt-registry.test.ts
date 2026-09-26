@@ -151,11 +151,42 @@ const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
  * loads. They import `node:util`, type-level modules, `utils/type-guards`, `tools/core/output-notice`
  * and, for search, `hashline/format` and `tools/core/render-utils`, all already here.
  *
+ * 1557 to 1558: `session/session-spend.ts`, the spend ledger `session/agent-session.ts` reads for
+ * session stats and goal accounting, which tallies the messages a compaction summarized once per
+ * boundary instead of on every read. It imports type-level modules and `tools/core/builtin-names`,
+ * already here.
+ *
+ * 1558 to 1561: `session/runtime/advisor-roster.ts`, `session/advisor-context.ts` and
+ * `session/advisor-stats.ts`, the advisor lifecycle and delivery routing, the advisor's overflow
+ * compaction, and its spend and status figures, split out of `session/agent-session.ts` (18412
+ * lines to 17399). Leaves over modules already here, so the launch runs no new code — the same
+ * split-raises-the-count case as above.
+ *
+ * 1561 to 1562: `session/runtime/streaming-edit-guard.ts`, the check that stops a turn while an
+ * `edit` call streams toward an auto-generated file or a patch that cannot apply, split out of
+ * `session/agent-session.ts` (17399 lines to 17089). It imports the owning edit, path and
+ * local-protocol modules the runtime already reached, so the launch runs no new code.
+ *
+ * 1562 to 1566: `session/runtime/tool-discovery.ts`, `session/runtime/checkpoint-runtime.ts`,
+ * `session/runtime/user-executions.ts` and `session/runtime/post-prompt-tasks.ts`, the discovery
+ * selections and search index, the checkpoint and rewind state, the user shell and eval runs, and
+ * the work a turn schedules after `prompt()` returns, split out of `session/agent-session.ts` (17089
+ * lines to 16629). They import `node:path`, `node:timers/promises` and modules the runtime already
+ * reached, so the launch runs no new code.
+ *
+ * 1566 to 1567: `session/runtime/irc-inbox.ts`, the IRC records a streaming turn has not yet taken,
+ * split out of `session/agent-session.ts` (16629 lines to 16575). It imports only type-level
+ * modules, so the launch runs no new code.
+ *
+ * 1567 to 1568: `task/run-monitor.ts`, the progress, abort, soft-budget and output capture for one
+ * agent run, split out of `task/executor.ts` (3497 lines to 2450). It imports modules the executor
+ * already reached, so the launch runs no new code.
+ *
  * A ratchet, not a target: nothing breaks when it grows, which is exactly why it is pinned. There
  * is no margin left on purpose — the next module on this graph is a barrel someone reached for
  * and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1557;
+const LAUNCH_REACH_CEILING = 1568;
 
 /**
  * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The
