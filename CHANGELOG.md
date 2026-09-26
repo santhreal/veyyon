@@ -45,6 +45,7 @@
 - Split the agent loop's turn driver into per-step functions (pause park, directive resolution, sampling with Harmony-leak recovery, failed-turn settling, tool-call settling, queue drains); no user-visible change.
 - The Anthropic and OpenAI-compatible providers split their stream loops, message converters and finalization into per-step helpers; no user-visible change.
 - The OpenAI-compatible stream reads a tool call's prior object arguments through the shared `isRecord` guard instead of an inline check; no user-visible change.
+- `buildOpenAICompat` classifies the host and model family once and derives each chat-completions compat field from a named predicate, and the chat and Responses builders share one override-and-rederive step; every bundled and synthetic model spec resolves to the same record, no behavior change.
 - Opening or restoring a session builds its set of known entry ids once instead of twice, which takes about 40ms off opening a 220,000-entry session.
 - The resume warning flattens each command or path onto one line through the shared `collapseWhitespace` helper; no user-visible change.
 - A `tool_execution_start` session entry writes no `startedAt`, since the entry's own timestamp holds the start time, and writes its argument summary only when no preceding assistant message records the call, which cut the start markers in local sessions from 581.83 MB to 403.91 MB; a marker that wrote `startedAt` still reads back that time.

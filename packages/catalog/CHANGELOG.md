@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `buildOpenAICompat` classifies the host and model family once and derives each chat-completions compat field from a named predicate, and the chat and Responses builders share one override-and-rederive step; every bundled and synthetic model spec resolves to the same record, no behavior change.
+
 ## [1.5.4] - 2026-09-24
 
 ### Fixed
