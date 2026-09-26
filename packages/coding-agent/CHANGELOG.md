@@ -36,6 +36,7 @@
 - The `debug` tool's load check stops probing `PATH` at the first debug adapter whose command resolves instead of resolving all 14 configured adapters, which it ran for the session's tools and again for the advisor's, cutting a bare session's construction from 7.30 ms to 5.02 ms on a host with `gdb` installed.
 - The advisor's toolset is built in `session/tool-session.ts`, and the context gauge a new session records at rest and the one the status row draws come from one `measureContextGauge` in `config/compaction-strategy.ts`, instead of a copy inline in `createAgentSession`; no user-visible change.
 - A tool card builds its display when a frame draws it instead of on every change, so a resume stops highlighting each rebuilt call only to replace it with its result, which cuts rebuilding and drawing a 4,712-block transcript from 999 ms to 603 ms.
+- The `includeWorkspaceTree` prompt gate states the project discovery scan that fixes it for the session instead of a read in `sdk.ts` that no longer exists; no user-visible change.
 
 ### Fixed
 

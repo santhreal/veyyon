@@ -1316,11 +1316,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			const project = promptInputs.current;
 			const defaultPrompt = await buildSystemPromptInternal({
 				...gateInputs,
-				// `includeWorkspaceTree` is captured once at session start and
-				// `gate-registry.ts` records that placement. Descriptor placement
-				// stays live in `gateInputs`: the same active-model policy also
-				// drives provider-schema pruning below, so a model switch cannot
-				// retain the previous model family's more expensive representation.
+				// The tree is scanned when the project is discovered, so this flag hides a
+				// scanned tree but cannot scan one; `gate-registry.ts` records that placement.
+				// Descriptor placement stays live in `gateInputs`: the same active-model policy
+				// also drives provider-schema pruning below, so a model switch cannot retain
+				// the previous model family's more expensive representation.
 				includeWorkspaceTree: settings.get("includeWorkspaceTree") ?? false,
 				// A spawned agent gets no personality regardless of the setting. That is a fact about
 				// this caller, not about the configuration, so it does not belong in the resolver.

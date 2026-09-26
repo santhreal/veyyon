@@ -35,14 +35,20 @@
  *   - THE SECOND LIST CANNOT COME BACK. The controller must not carry a per-gate
  *     `refreshBaseSystemPrompt` call any more; if one reappears the registry stops being the
  *     one owner and the two can disagree again.
- *   - THE FROZEN LIST IS PINNED, and each frozen-by-placement row's stated reason is checked
- *     against `sdk.ts` itself: the read really does sit above `rebuildSystemPrompt`. A reason
- *     nobody verifies is a comment, and this one is the difference between "fixed on purpose"
- *     and "fixed by accident".
+ *   - THE FROZEN LIST IS PINNED, and each frozen row's stated reason is driven through the path
+ *     it names: `includeWorkspaceTree` is scanned when the project is discovered, and a rebuild
+ *     at an unchanged cwd does not re-discover. A reason nobody verifies is a comment, and this
+ *     one is the difference between "fixed on purpose" and "fixed by accident".
  */
 import { describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
 import * as path from "node:path";
+import { TempDir } from "@veyyon/utils";
+import { Settings } from "../../src/config/settings";
 import { SETTINGS_SCHEMA } from "../../src/config/settings-schema";
+import { TtsrManager } from "../../src/export/ttsr";
+import { discoverProjectInputs } from "../../src/session/factory-extensions";
+import { ProjectPromptInputs } from "../../src/session/prompt-inputs";
 import { buildSystemPrompt } from "../../src/system-prompt";
 import {
 	FROZEN_PROMPT_GATE_SETTINGS,
@@ -325,24 +331,47 @@ describe("the gates a mid-session flip cannot reach", () => {
 		expect(frozenGateNotice("tools.intentTracing")).toBeUndefined();
 	});
 
-	it("checks the placement claim against sdk.ts rather than trusting the comment", async () => {
-		// A frozen-by-placement row asserts a fact about the source: the setting is read into a
-		// closure constant ABOVE `rebuildSystemPrompt`, so every later rebuild re-reads the
-		// session-start value. If someone moves the read inside the closure the gate becomes
-		// live and this fails, which is the reminder to reclassify it rather than leaving a
-		// stale "frozen" label on a gate that now works.
-		const source = await Bun.file(SDK).text();
-		const closureStart = source.indexOf("const rebuildSystemPrompt =");
-		expect(closureStart, "`rebuildSystemPrompt` was renamed; this check needs updating").toBeGreaterThan(0);
+	it("keeps includeWorkspaceTree frozen: a flip reaches the tree only when the project is re-discovered", async () => {
+		// The frozen claim is a fact about the session's discovery path, so it is driven through that
+		// path: `discoverProjectInputs` reads the setting when it scans, and `ProjectPromptInputs`
+		// re-discovers only when the cwd moves. If a rebuild ever re-scans on a flip, the second
+		// assertion fails, and the row has to be reclassified as live rather than left saying frozen.
+		expect(promptGateFor("includeWorkspaceTree")?.liveness.kind).toBe("frozen-by-placement");
+		using first = TempDir.createSync("@prompt-gate-tree-a-");
+		using second = TempDir.createSync("@prompt-gate-tree-b-");
+		fs.writeFileSync(path.join(first.path(), "first-marker.txt"), "x");
+		fs.writeFileSync(path.join(second.path(), "second-marker.txt"), "x");
+		const settings = Settings.isolated();
+		const supplied = { contextFiles: [], skills: [], rules: [] };
+		const discover = (cwd: string) => discoverProjectInputs(cwd, first.path(), settings, supplied);
+		let cwd = first.path();
+		const start = discover(cwd);
+		const inputs = new ProjectPromptInputs({
+			initial: {
+				cwd,
+				contextFiles: [],
+				workspaceTree: await start.workspaceTree,
+				activeRepoContext: null,
+				skills: [],
+				rulebookRules: [],
+				alwaysApplyRules: [],
+			},
+			getCwd: () => cwd,
+			discover,
+			ttsrManager: new TtsrManager(undefined, { getCwd: () => cwd }),
+			ttsrOptions: () => ({}),
+			onChange: () => {},
+		});
+		const rendered = async () => (await inputs.current.workspaceTree).rendered;
+		expect(await rendered()).toBe("");
 
-		for (const gate of PROMPT_GATES) {
-			if (gate.liveness.kind !== "frozen-by-placement") continue;
-			const readAt = source.indexOf(`settings.get("${gate.setting}")`);
-			expect(readAt, `${gate.setting} is not read by that path in sdk.ts`).toBeGreaterThan(0);
-			expect(readAt, `${gate.setting} is read inside the rebuild closure, so it is not frozen`).toBeLessThan(
-				closureStart,
-			);
-		}
+		settings.set("includeWorkspaceTree", true);
+		await inputs.refresh();
+		expect(await rendered()).toBe("");
+
+		cwd = second.path();
+		await inputs.refresh();
+		expect(await rendered()).toContain("second-marker.txt");
 	});
 
 	/**
