@@ -51,8 +51,8 @@ describe("a bench episode", () => {
 			PUPPETEER_EXECUTABLE_PATH: "/usr/bin/chromium",
 			GH_TOKEN: "not-a-real-token",
 			ANTHROPIC_API_KEY: "not-a-real-key",
-			HOME: "/home/runner",
-			PWD: "/home/runner/work",
+			HOME: "/srv/operator",
+			PWD: "/srv/operator/work",
 			PATHEXT: ".EXE",
 		};
 		expect(episodeEnvironment(runner)).toEqual({
