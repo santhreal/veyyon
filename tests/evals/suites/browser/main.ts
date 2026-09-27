@@ -11,7 +11,14 @@
 import { BROWSER_TOOL_SETTINGS, browserHostEnvironment, chromiumPreflight } from "../../engine/kit/browser-host";
 import type { KitTask } from "../../engine/kit/catalog";
 import { defineSuite } from "../../engine/kit/suite";
+import { ANALYTICS_TASKS } from "./apps/analytics/tasks";
+import { BANK_TASKS } from "./apps/bank/tasks";
+import { HELPDESK_TASKS } from "./apps/helpdesk/tasks";
+import { KANBAN_TASKS } from "./apps/kanban/tasks";
+import { MAIL_TASKS } from "./apps/mail/tasks";
+import { SHEET_TASKS } from "./apps/sheet/tasks";
 import { SHOP_TASKS } from "./apps/shop/tasks";
+import { TRAVEL_TASKS } from "./apps/travel/tasks";
 
 /** What a task can exercise; the run report breaks pass rates down by these. */
 export const BROWSER_CAPABILITIES: Readonly<Record<string, string>> = {
@@ -39,7 +46,16 @@ export const BROWSER_CAPABILITIES: Readonly<Record<string, string>> = {
 };
 
 /** Every task of the suite, application by application. */
-export const BROWSER_TASKS: readonly KitTask[] = [...SHOP_TASKS];
+export const BROWSER_TASKS: readonly KitTask[] = [
+	...SHOP_TASKS,
+	...MAIL_TASKS,
+	...BANK_TASKS,
+	...KANBAN_TASKS,
+	...SHEET_TASKS,
+	...TRAVEL_TASKS,
+	...HELPDESK_TASKS,
+	...ANALYTICS_TASKS,
+];
 
 export default defineSuite({
 	id: "browser",

@@ -9,7 +9,8 @@ import type { KitTask } from "../../../engine/kit/catalog";
 import type { Grade } from "../../../engine/kit/checks";
 import { trialSeed } from "../../../engine/kit/suite";
 
-const REPEATS = [0, 1, 2];
+/** A plan numbers repeats from 1, so these are the seeds a `--repeats 3` run meets, and one more. */
+const REPEATS = [0, 1, 2, 3];
 
 /** Start one trial, solve it or not, stop it, and grade what it recorded. */
 async function run(task: KitTask, repeat: number, solve: boolean): Promise<Grade> {
