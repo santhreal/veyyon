@@ -97,7 +97,9 @@ export default defineSuite({
 `sourceDir` is hashed into the run's provenance, so two runs of different task code never compare
 as one suite version. `capabilities` is the vocabulary a task names; the preflight refuses a task
 that names another, reuses an id, or has no checks. `hostEnvironment` supplies what every trial's
-tools need from this host (the Chromium executable, and read access to its directory).
+tools need from this host (the Chromium executable, and read access to its directory). `budgets`
+sets the turn, token and second ladders the report counts passes within; set them to span what the
+suite's trials spend. A suite without them gets 5–40 turns, 50k–500k tokens and 30–300 s.
 
 ## Testing a task list
 

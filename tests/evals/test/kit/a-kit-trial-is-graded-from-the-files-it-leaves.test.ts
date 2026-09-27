@@ -16,12 +16,13 @@ import { TempDir } from "@veyyon/utils";
 import { kitTask } from "../../engine/kit/catalog";
 import { answerHasNumber, answerHasText, numbersIn } from "../../engine/kit/checks";
 import { FormClient } from "../../engine/kit/form-client";
-import { summarizeKitRun } from "../../engine/kit/report";
+import { DEFAULT_BUDGETS, renderKitReport, summarizeKitRun } from "../../engine/kit/report";
 import { defineSuite, KIT_FILES, trialSeed } from "../../engine/kit/suite";
 import { hostSite, text } from "../../engine/kit/web-host";
 import { openRunJournal } from "../../engine/run/journal";
 import { LOCAL_TRIAL_FILES } from "../../engine/run/layout";
 import type { TrialResultRecord } from "../../engine/run/record";
+import browserSuite from "../../suites/browser/main";
 import { kitReport } from "../../tools/kit-report";
 
 interface PressState {
@@ -246,5 +247,67 @@ describe("a kit run report", () => {
 		expect(path.basename(report)).toBe("report-regraded.md");
 		expect(summary.arms).toMatchObject([{ arm: "veyyon", graded: 1, passes: 1 }]);
 		expect(summary.model).toBe("p/m");
+	});
+
+	it("counts passes within the budgets the suite declares, in the run's report and in a regrade", async () => {
+		const budgets = browserSuite.spec.budgets;
+		if (!budgets) throw new Error("the browser suite declares no budgets");
+		// One pass at 60 turns, 1.5M tokens and 400 s: past every default ladder, inside the suite's.
+		const spent = { turns: 60, tokens: 1_500_000, seconds: 400 };
+		const within = (ladder: readonly number[], value: number) => ladder.map(budget => (value <= budget ? 1 : 0));
+		for (const [measure, value] of Object.entries(spent) as [keyof typeof spent, number][]) {
+			expect(within(DEFAULT_BUDGETS[measure], value)).not.toContain(1);
+			expect(within(budgets[measure], value)).toContain(1);
+		}
+		await using dir = await TempDir.create("@evals-kit-budgets-");
+		const runDir = dir.join("run-1");
+		const journal = await openRunJournal(dir.path(), "run-1", "plan");
+		await journal.append({
+			cell: { variant: "veyyon", suite: "browser", task: "shop-warranty-answer", repeat: 0 },
+			score: {
+				reward: 1,
+				partial: 1,
+				error: null,
+				usage: {
+					inputTokens: spent.tokens,
+					outputTokens: 0,
+					durationSec: spent.seconds,
+					extra: { turns: spent.turns },
+				},
+				extra: {},
+			},
+			artifacts: { extra: { model: "p/m" } },
+		});
+		await journal.close();
+		const expected = {
+			passesWithinTurns: within(budgets.turns, spent.turns),
+			passesWithinTokens: within(budgets.tokens, spent.tokens),
+			passesWithinSeconds: within(budgets.seconds, spent.seconds),
+		};
+
+		await browserSuite.writeRunReport?.({
+			runDir,
+			model: "p/m",
+			tasks: ["shop-warranty-answer"],
+			repeats: 1,
+			variants: ["veyyon"],
+		});
+		const written = JSON.parse(await fs.readFile(path.join(runDir, "summary.json"), "utf8"));
+		expect(written.budgets).toEqual(budgets);
+		expect(written.arms[0]).toMatchObject(expected);
+
+		await kitReport(runDir, true);
+		const regraded = JSON.parse(await fs.readFile(path.join(runDir, "summary-regraded.json"), "utf8"));
+		expect(regraded.budgets).toEqual(budgets);
+		expect(regraded.arms[0]).toMatchObject(expected);
+	});
+
+	it("labels a token budget of a million or more in millions", () => {
+		const summary = summarizeKitRun([], { model: "p/m", tasks: [], repeats: 1, variants: [] }, "kit-probe", {
+			turns: [10],
+			tokens: [500_000, 1_000_000, 2_500_000],
+			seconds: [60],
+		});
+		expect(renderKitReport(summary, {})).toContain("| arm | ≤ 500k | ≤ 1M | ≤ 2.5M |");
 	});
 });

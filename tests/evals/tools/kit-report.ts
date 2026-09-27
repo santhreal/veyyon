@@ -75,6 +75,7 @@ export async function kitReport(runDir: string, regrade: boolean): Promise<strin
 			variants: await planVariants(runDir),
 		},
 		suite.id,
+		suite.spec.budgets,
 	);
 	const suffix = regrade ? "-regraded" : "";
 	const report = path.join(runDir, `report${suffix}.md`);

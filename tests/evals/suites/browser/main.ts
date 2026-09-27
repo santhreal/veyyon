@@ -68,6 +68,12 @@ export default defineSuite({
 	tools: ["browser"],
 	settings: BROWSER_TOOL_SETTINGS,
 	defaultTimeBudgetSec: 600,
+	// A hard task takes tens of turns and over a million tokens; the ladders reach past that.
+	budgets: {
+		turns: [10, 20, 40, 80],
+		tokens: [250_000, 500_000, 1_000_000, 2_000_000],
+		seconds: [60, 120, 300, 600],
+	},
 	preflight: chromiumPreflight,
 	hostEnvironment: browserHostEnvironment,
 });

@@ -42,8 +42,9 @@ A kit suite writes `report.md` and `summary.json` into the run directory.
 - **Arms**: passes, pass rate with its Wilson 95% interval, mean partial credit, errors (trials
   that never reached a grade), timeouts, and the tokens, turns and seconds spent.
 - **Capability** and **Difficulty**: passes per capability and per difficulty, per arm.
-- **Passes within turns, tokens, seconds**: how many trials passed within each budget. An arm that
-  passes the same tasks in fewer turns moves left on these curves while its pass rate holds.
+- **Passes within turns, tokens, seconds**: how many trials passed within each budget of the
+  suite's ladders, which `summary.json` records. An arm that passes the same tasks in fewer turns
+  moves left on these curves while its pass rate holds.
 - **Paired against the first arm**: over the task-and-repeat pairs both arms graded, the pairs only
   the candidate passed, the pairs only the baseline passed, the exact two-sided sign test p-value on
   those, and the change in tokens, turns and seconds summed over the pairs. A pair with an error on

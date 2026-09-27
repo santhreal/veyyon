@@ -32,7 +32,7 @@ import type {
 import { listFiles } from "../io/list-files";
 import { LOCAL_TRIAL_FILES } from "../run/layout";
 import { catalogProblems, type KitTask } from "./catalog";
-import { writeKitReport } from "./report";
+import { type BudgetLadders, writeKitReport } from "./report";
 import { seedOf } from "./seeded";
 
 export interface KitSuiteSpec {
@@ -50,6 +50,11 @@ export interface KitSuiteSpec {
 	/** Settings every trial runs with, under the variant's own overlay. */
 	readonly settings?: Readonly<Record<string, unknown>>;
 	readonly defaultTimeBudgetSec: number;
+	/**
+	 * The turn, token and second budgets the run report counts passes within. Declare them to span
+	 * what the suite's trials spend; a suite without them gets the kit's short-task ladders.
+	 */
+	readonly budgets?: BudgetLadders;
 	/** Checks of the host beyond the catalog's own, such as a browser the tools need. */
 	readonly preflight?: (context: SuiteContext) => Promise<PreflightVerdict>;
 	/**

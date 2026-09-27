@@ -11,7 +11,7 @@ All notable changes to `@veyyon/evals` will be documented in this file.
 - The `local-cli` backend runs each trial as one print-mode CLI run on this host, in a scratch directory outside every project tree, with an empty home, a credential store holding only the model provider's sign-in, an allowlisted environment, and on Linux a Landlock sandbox that hides the graders, the runs directory and other trials; `--unsandboxed` runs it on a host without Landlock.
 - `--build name=path,...` runs one variant per build of the agent, a source tree or an executable, so two builds compare trial by trial in one plan.
 - `engine/kit` defines a benchmark as a catalog of seeded tasks, each starting its own services and graded by named checks over recorded state; every task carries a scripted solution that the suite's sweep runs.
-- A kit suite's run writes `report.md` and `summary.json` with pass rates and Wilson intervals, capability and difficulty breakdowns, passes within turn, token and time budgets, and a sign test of every arm against the plan's first.
+- A kit suite's run writes `report.md` and `summary.json` with pass rates and Wilson intervals, capability and difficulty breakdowns, passes within the turn, token and time budgets the suite declares, and a sign test of every arm against the plan's first.
 - `evals tool kit-report --run <dir> [--regrade]` renders a kit suite's report for a finished run and grades it again from the trial files.
 - `tests/evals/docs/` is the evals manual, replacing `EVALS.md`.
 - `benches/browser-fill.ts` times `tab.fill` in headless Chromium for 16, 256 and 4,096 characters and counts a fill correct only when the field holds the value.

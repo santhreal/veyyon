@@ -17,9 +17,19 @@ import { readRunJournal } from "../run/journal";
 import type { TrialResultRecord } from "../run/record";
 import { DIFFICULTIES, type Difficulty } from "./catalog";
 
-export const TURN_BUDGETS = [5, 10, 20, 40] as const;
-export const TOKEN_BUDGETS = [50_000, 100_000, 250_000, 500_000] as const;
-export const SECOND_BUDGETS = [30, 60, 120, 300] as const;
+/** The budgets the report counts passes within, per measure, in ascending order. */
+export interface BudgetLadders {
+	readonly turns: readonly number[];
+	readonly tokens: readonly number[];
+	readonly seconds: readonly number[];
+}
+
+/** The ladders of a suite that declares none: short tasks of a few turns each. */
+export const DEFAULT_BUDGETS: BudgetLadders = {
+	turns: [5, 10, 20, 40],
+	tokens: [50_000, 100_000, 250_000, 500_000],
+	seconds: [30, 60, 120, 300],
+};
 
 interface KitTrialRow extends ArmTrial {
 	readonly task: string;
@@ -56,6 +66,7 @@ export interface KitRunSummary {
 	readonly model: string;
 	readonly tasks: number;
 	readonly repeats: number;
+	readonly budgets: BudgetLadders;
 	readonly arms: readonly ArmSummary[];
 	readonly paired: readonly PairedArms[];
 }
@@ -90,7 +101,7 @@ function rowOf(record: TrialResultRecord): KitTrialRow {
 	};
 }
 
-function summarizeArm(rows: readonly KitTrialRow[], arm: string): ArmSummary {
+function summarizeArm(rows: readonly KitTrialRow[], arm: string, budgets: BudgetLadders): ArmSummary {
 	const mine = rows.filter(row => row.arm === arm);
 	const graded = mine.filter(row => row.passed !== null);
 	const passes = graded.filter(row => row.passed).length;
@@ -128,9 +139,9 @@ function summarizeArm(rows: readonly KitTrialRow[], arm: string): ArmSummary {
 		wallSec: total(row => row.wallSec),
 		byCapability: tally(row => row.capabilities),
 		byDifficulty: tally(row => (row.difficulty ? [row.difficulty] : [])),
-		passesWithinTurns: passesWithin(rows, arm, row => row.turns, TURN_BUDGETS),
-		passesWithinTokens: passesWithin(rows, arm, row => row.tokens, TOKEN_BUDGETS),
-		passesWithinSeconds: passesWithin(rows, arm, row => row.wallSec, SECOND_BUDGETS),
+		passesWithinTurns: passesWithin(rows, arm, row => row.turns, budgets.turns),
+		passesWithinTokens: passesWithin(rows, arm, row => row.tokens, budgets.tokens),
+		passesWithinSeconds: passesWithin(rows, arm, row => row.wallSec, budgets.seconds),
 	};
 }
 
@@ -138,6 +149,7 @@ export function summarizeKitRun(
 	records: readonly TrialResultRecord[],
 	context: Pick<SuiteReportContext, "model" | "tasks" | "repeats" | "variants">,
 	suite: string,
+	budgets: BudgetLadders = DEFAULT_BUDGETS,
 ): KitRunSummary {
 	const rows = records.map(rowOf);
 	// The plan's order, so the baseline is the arm named first, however the trials finished; an
@@ -150,7 +162,8 @@ export function summarizeKitRun(
 		model: context.model,
 		tasks: context.tasks.length,
 		repeats: context.repeats,
-		arms: arms.map(arm => summarizeArm(rows, arm)),
+		budgets,
+		arms: arms.map(arm => summarizeArm(rows, arm, budgets)),
 		paired: baseline === undefined ? [] : candidates.map(candidate => pairArms(rows, baseline, candidate)),
 	};
 }
@@ -159,6 +172,7 @@ const percent = (value: number | null) => (value === null ? "—" : `${(value * 
 const count = (value: number) => value.toLocaleString("en-US");
 const ratio = (passes: number, graded: number) => (graded === 0 ? "—" : `${passes}/${graded}`);
 const change = (from: number, to: number) => (from === 0 ? "—" : `${(((to - from) / from) * 100).toFixed(1)}%`);
+const tokenBudget = (n: number) => (n >= 1_000_000 ? `≤ ${n / 1_000_000}M` : `≤ ${n / 1000}k`);
 
 export function renderKitReport(summary: KitRunSummary, capabilities: Readonly<Record<string, string>>): string {
 	const lines: string[] = [
@@ -193,9 +207,9 @@ export function renderKitReport(summary: KitRunSummary, capabilities: Readonly<R
 		lines.push(`|---|${budgets.map(() => "---").join("|")}|`);
 		for (const arm of summary.arms) lines.push(`| ${arm.arm} | ${pick(arm).join(" | ")} |`);
 	};
-	curve("turns", TURN_BUDGETS, arm => arm.passesWithinTurns, n => `≤ ${n}`);
-	curve("tokens", TOKEN_BUDGETS, arm => arm.passesWithinTokens, n => `≤ ${n / 1000}k`);
-	curve("seconds", SECOND_BUDGETS, arm => arm.passesWithinSeconds, n => `≤ ${n} s`);
+	curve("turns", summary.budgets.turns, arm => arm.passesWithinTurns, n => `≤ ${n}`);
+	curve("tokens", summary.budgets.tokens, arm => arm.passesWithinTokens, tokenBudget);
+	curve("seconds", summary.budgets.seconds, arm => arm.passesWithinSeconds, n => `≤ ${n} s`);
 	if (summary.paired.length > 0) {
 		lines.push(
 			"",
@@ -218,10 +232,14 @@ export function renderKitReport(summary: KitRunSummary, capabilities: Readonly<R
 
 export async function writeKitReport(
 	context: SuiteReportContext,
-	spec: { readonly id: string; readonly capabilities: Readonly<Record<string, string>> },
+	spec: {
+		readonly id: string;
+		readonly capabilities: Readonly<Record<string, string>>;
+		readonly budgets?: BudgetLadders;
+	},
 ): Promise<void> {
 	const records = await readRunJournal(path.dirname(context.runDir), path.basename(context.runDir));
-	const summary = summarizeKitRun(records, context, spec.id);
+	const summary = summarizeKitRun(records, context, spec.id, spec.budgets);
 	await fs.writeFile(path.join(context.runDir, "summary.json"), `${JSON.stringify(summary, null, "\t")}\n`);
 	await fs.writeFile(path.join(context.runDir, "report.md"), renderKitReport(summary, spec.capabilities));
 }
