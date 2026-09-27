@@ -54,8 +54,8 @@ const IFRAME_LINE = /^(\s*)- iframe\b.*\[ref=((?:f\d+)?e\d+)\]/;
  * Capture a Playwright-format ARIA snapshot of `root` (or the whole document when
  * null). Always runs in `ai` mode so every node carries a `[ref=eN]` id; resolve
  * those to elements with {@link resolveAriaRefHandle}. Ids are renumbered from e1
- * on each call and remain valid until the next snapshot. Bare `generic` wrappers
- * are left out ({@link withoutBareWrappers}).
+ * on each call and remain valid until the next snapshot. Bare `generic` wrappers,
+ * and detail other lines already state, are left out ({@link compactSnapshot}).
  *
  * An iframe's content, same-origin or not, is snapshotted in its own frame and
  * nested under the iframe's line, its refs prefixed with the frame (`f1e3`), up to
@@ -81,7 +81,7 @@ async function snapshotFrame(
 	depthLeft: number,
 ): Promise<string> {
 	const request = { depth: options.depth, boxes: options.boxes, refPrefix };
-	const yaml = withoutBareWrappers(
+	const yaml = compactSnapshot(
 		(await frame.evaluate(evaluateAriaSnapshot as never, root as never, request as never)) as string,
 	);
 	if (depthLeft === 0 || !yaml.includes("- iframe")) return yaml;
@@ -140,6 +140,130 @@ export function withoutBareWrappers(yaml: string): string {
 		kept.push(lifted.length === 0 ? line : line.slice(2 * lifted.length));
 	}
 	return kept.join("\n");
+}
+
+/** Roles clickable by definition, on which `[cursor=pointer]` states nothing. */
+const CLICKABLE_ROLES = new Set([
+	"button",
+	"checkbox",
+	"link",
+	"menuitem",
+	"menuitemcheckbox",
+	"menuitemradio",
+	"option",
+	"radio",
+	"switch",
+	"tab",
+	"treeitem",
+]);
+
+/** Roles a model names to act on (`button "Save"`), whose names stay even when their content repeats them. */
+const CONTROL_ROLES = new Set([
+	...CLICKABLE_ROLES,
+	"combobox",
+	"listbox",
+	"searchbox",
+	"slider",
+	"spinbutton",
+	"textbox",
+]);
+
+/** A node's line: indent, role, quoted name, the `[…]` attributes, the `:` that opens children, inline text. */
+const NODE_LINE = /^(\s*)- ([a-z]+)(?: "((?:[^"\\]|\\.)*)")?((?: \[[^\]]*\])*)(:?)(?: (.*))?$/;
+
+interface SnapshotNode {
+	readonly line: number;
+	readonly indent: string;
+	readonly role: string;
+	/** The name as the snapshot quotes it, without the quotes; undefined for a node without one. */
+	readonly quotedName: string | undefined;
+	readonly attributes: string;
+	readonly colon: string;
+	/** The inline text after the `:`, as the snapshot quotes it. */
+	readonly inline: string | undefined;
+	readonly children: SnapshotNode[];
+	/** What the node's text adds to its parent's name computed from content; set children first. */
+	content: string;
+}
+
+/** A snapshot string as the page wrote it: a quoted one decoded, a bare one as it stands. */
+function unquote(text: string): string {
+	if (text.length < 2 || !text.startsWith('"') || !text.endsWith('"')) return text;
+	try {
+		const decoded: unknown = JSON.parse(text);
+		return typeof decoded === "string" ? decoded : text;
+	} catch {
+		return text;
+	}
+}
+
+/** Whitespace is where a name computed from content and its parts' texts differ. */
+function withoutWhitespace(text: string): string {
+	return text.replace(/\s+/g, "");
+}
+
+/**
+ * The snapshot without what its other lines already state, every ref kept:
+ *
+ * - the name of a node that is not a control, when it is its children's names and texts joined, as the
+ *   page computes a row's, a list item's or a column header's name from its content;
+ * - `[cursor=pointer]` on a role that is clickable by definition, such as a link or a button.
+ *
+ * A table's rows repeat every cell they hold this way, and every snapshot is sent again on each later
+ * turn. A control keeps its name, which a selector copied from its line (`button "Save"`) names.
+ */
+export function withoutRepeatedDetail(yaml: string): string {
+	const lines = yaml.split("\n");
+	const nodes: SnapshotNode[] = [];
+	// The nodes that can still take children, outermost first; property lines (`- /url: …`) take none.
+	const open: SnapshotNode[] = [];
+	for (let index = 0; index < lines.length; index++) {
+		const line = lines[index] ?? "";
+		const indent = line.length - line.trimStart().length;
+		while (open.length > 0 && open[open.length - 1]!.indent.length >= indent) open.pop();
+		const match = NODE_LINE.exec(line);
+		if (!match) continue;
+		const node: SnapshotNode = {
+			line: index,
+			indent: match[1] ?? "",
+			role: match[2] ?? "",
+			quotedName: match[3],
+			attributes: match[4] ?? "",
+			colon: match[5] ?? "",
+			inline: match[6],
+			children: [],
+			content: "",
+		};
+		open[open.length - 1]?.children.push(node);
+		open.push(node);
+		nodes.push(node);
+	}
+	// A child's line comes after its parent's, so in reverse every child's content is known first.
+	for (let index = nodes.length - 1; index >= 0; index--) {
+		const node = nodes[index]!;
+		if (node.quotedName !== undefined) node.content = unquote(`"${node.quotedName}"`);
+		else if (node.inline !== undefined) node.content = unquote(node.inline);
+		else node.content = node.children.map(child => child.content).join(" ");
+	}
+	for (const node of nodes) {
+		const pointer = CLICKABLE_ROLES.has(node.role) && node.attributes.includes(" [cursor=pointer]");
+		const name = node.quotedName === undefined ? "" : withoutWhitespace(node.content);
+		const repeated =
+			name !== "" &&
+			!CONTROL_ROLES.has(node.role) &&
+			withoutWhitespace(node.children.map(child => child.content).join("")) === name;
+		if (!pointer && !repeated) continue;
+		const quoted = repeated || node.quotedName === undefined ? "" : ` "${node.quotedName}"`;
+		const attributes = pointer ? node.attributes.replace(" [cursor=pointer]", "") : node.attributes;
+		const inline = node.inline === undefined ? "" : ` ${node.inline}`;
+		lines[node.line] = `${node.indent}- ${node.role}${quoted}${attributes}${node.colon}${inline}`;
+	}
+	return lines.join("\n");
+}
+
+/** A snapshot as the tool sends it: without bare wrappers, and without detail its other lines state. */
+export function compactSnapshot(yaml: string): string {
+	return withoutRepeatedDetail(withoutBareWrappers(yaml));
 }
 
 /** A ref in a frame's part of a snapshot: the frame's prefix, then the element's id. */

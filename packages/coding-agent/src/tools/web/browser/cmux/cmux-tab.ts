@@ -10,7 +10,7 @@ import { resolveToCwd } from "../../../core/path-utils";
 import { formatScreenshot } from "../../../core/render-utils";
 import { ToolAbortError, ToolError, throwIfAborted } from "../../../core/tool-errors";
 import type { ToolSession } from "../../../index";
-import { type AriaSnapshotOptions, buildAriaSnapshotScript, withoutBareWrappers } from "../aria-snapshot";
+import { type AriaSnapshotOptions, buildAriaSnapshotScript, compactSnapshot } from "../aria-snapshot";
 import { type ChainedHandle, chainHandle } from "../chained-handle";
 import { DEFAULT_VIEWPORT } from "../launch";
 import { extractReadableFromHtml, type ReadableFormat } from "../readable";
@@ -483,7 +483,7 @@ export class CmuxTab {
 			timeoutMs,
 		)) as CmuxEvalResult;
 		const snapshot = result.value as string;
-		return typeof snapshot === "string" ? withoutBareWrappers(snapshot) : snapshot;
+		return typeof snapshot === "string" ? compactSnapshot(snapshot) : snapshot;
 	}
 
 	ref(id: string): ChainedHandle<CmuxElementHandle> {

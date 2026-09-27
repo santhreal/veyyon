@@ -6,8 +6,9 @@
  * The contract: an open with a `url` carries the page's `tab.ariaSnapshot()` when it is at most
  * `OPEN_SNAPSHOT_MAX_CHARS`, and the refs in it drive the next run (`aria-ref=eN`) without another
  * read; a larger page is not sent, and the open states its size and how to read a part of it; an
- * open that loads nothing (a reused tab with no `url`) carries no snapshot. The page is the model's
- * to read: the open's card draws its own rows and not the page.
+ * open that loads nothing (a reused tab with no `url`) carries no snapshot. The snapshot is compacted:
+ * a table row's name, which repeats its cells, and a link's `[cursor=pointer]` are left out. The page
+ * is the model's to read: the open's card draws its own rows and not the page.
  *
  * Driven through the real tool against real headless Chromium. Skipped where Chromium cannot run.
  *
@@ -28,7 +29,8 @@ import { chromiumCanLaunch } from "../helpers/chromium-can-launch";
 const CHROMIUM_AVAILABLE = await chromiumCanLaunch();
 
 const SMALL = `<!doctype html><title>Sign in</title><h1>Sign in to continue</h1>
-<label>User <input id="user"></label><button id="go">Submit</button>`;
+<label>User <input id="user"></label><button id="go">Submit</button><a href="/help">Help</a>
+<table><tr><td>Plan</td><td>Pro</td></tr></table>`;
 const LARGE = `<!doctype html><title>Listing</title><h1>Listing</h1>${Array.from(
 	{ length: 400 },
 	(_unused, index) => `<p>Entry ${index + 1} with a line of text long enough to be read.</p>`,
@@ -80,6 +82,8 @@ describe.skipIf(!CHROMIUM_AVAILABLE)("an open that loads a page", () => {
 		expect(page).toContain("Sign in to continue");
 		const ref = page.match(/textbox[^\n]*\[ref=(e\d+)\]/)?.[1];
 		expect(ref).toBeDefined();
+		expect(page).toMatch(/- link "Help" \[ref=e\d+\]:\n/);
+		expect(page).toMatch(/- row \[ref=e\d+\]:\n\s+- cell "Plan" \[ref=e\d+\]\n\s+- cell "Pro" \[ref=e\d+\]/);
 		const card = JSON.stringify(browserToolView.renderResult(result, { expanded: true }, args));
 		expect(card).toContain("Title: Sign in");
 		expect(card).not.toContain("Sign in to continue");
