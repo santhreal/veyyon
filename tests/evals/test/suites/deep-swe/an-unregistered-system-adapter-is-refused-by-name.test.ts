@@ -45,6 +45,7 @@ describe("system adapter registry", () => {
 				compaction: false,
 				armAttachments: false,
 				promptOverrides: false,
+				builds: false,
 			},
 			backends: {
 				pier: {

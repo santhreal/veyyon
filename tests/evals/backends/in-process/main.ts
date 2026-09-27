@@ -31,7 +31,7 @@ import {
 	type InProcessSessionState,
 	type SharedInfra,
 } from "./client";
-import { loadAndValidateConfigOverlay, loadAndValidatePromptOverlay } from "./overlays";
+import { loadAndValidateConfigOverlay, loadAndValidatePromptOverlay } from "../../engine/plan/overlays";
 
 export interface InProcessSessionStats {
 	tokens: {

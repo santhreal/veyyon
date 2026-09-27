@@ -40,6 +40,7 @@ describe("the axis table", () => {
 			"promptVariants",
 			"models",
 			"attachments",
+			"builds",
 		]);
 		for (const axis of VARIANT_MATRIX_AXES) {
 			expect(axis.plural).not.toBe("");

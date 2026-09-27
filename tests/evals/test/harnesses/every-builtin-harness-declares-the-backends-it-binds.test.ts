@@ -31,7 +31,7 @@ import { veyyonAdapter } from "../../harnesses/veyyon";
  * a harness that gains or loses a backend has to record the change here.
  */
 const EXPECTED_BINDINGS: Readonly<Record<string, readonly BackendId[]>> = {
-	veyyon: ["pier", "harbor", "in-process"],
+	veyyon: ["pier", "harbor", "in-process", "local-cli"],
 	omp: ["pier", "harbor"],
 	factory: ["pier"],
 	hermes: ["pier"],

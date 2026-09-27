@@ -25,8 +25,6 @@ import * as path from "node:path";
 import { HarborBackend } from "../../backends/harbor/main";
 import { PierExecutionBackend } from "../../backends/pier/main";
 import * as pierRunner from "../../backends/pier/runner";
-import { UnknownCellVariantError } from "../../engine/plan/cell-variant";
-import { containerProgramPath, programDirFor } from "../../engine/harness/container-program";
 import type {
 	BackendId,
 	EvalSuite,
@@ -37,7 +35,9 @@ import type {
 	TrialScore,
 	Variant,
 } from "../../engine/contracts";
+import { containerProgramPath, programDirFor } from "../../engine/harness/container-program";
 import { backends, harnesses } from "../../engine/members/loaded";
+import { UnknownCellVariantError } from "../../engine/plan/cell-variant";
 
 /** Backends this suite drives end to end without a container runtime. */
 const DRIVEN_BACKENDS: ReadonlySet<BackendId> = new Set<BackendId>(["pier", "harbor"]);
@@ -275,8 +275,9 @@ describe("a trial runs the arm the plan named", () => {
 				}
 			}
 		}
-		// in-process carries no harness-specific binding fields today, so the sweeps above
-		// have nothing to assert for it; the fail-closed sweep still drives that backend.
-		expect(undriven.sort()).toEqual(["veyyon:in-process"]);
+		// in-process and local-cli carry no harness-specific binding fields, so the sweeps above
+		// have nothing to assert for them; the fail-closed sweep still drives both backends, and
+		// the model sweep drives the local command a local-cli trial runs.
+		expect(undriven.sort()).toEqual(["veyyon:in-process", "veyyon:local-cli"]);
 	});
 });

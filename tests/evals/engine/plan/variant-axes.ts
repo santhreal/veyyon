@@ -26,6 +26,7 @@ export const VARIANT_AXIS_LABEL: Readonly<Record<VariantAxis, string>> = {
 	config: "--config",
 	promptVariant: "--prompts",
 	attachments: "the attachments axis",
+	build: "--build",
 };
 
 /** Axes a variant carries beyond the harness and the model, each needing an applier. */
@@ -39,6 +40,7 @@ export const VARIANT_AXIS_CAPABILITY: Readonly<Record<VariantAxis, keyof Harness
 	config: null,
 	promptVariant: "promptOverrides",
 	attachments: "armAttachments",
+	build: "builds",
 };
 
 /** Reads one axis off a variant, `null` meaning the variant does not vary that axis. */
@@ -50,6 +52,8 @@ export function variantAxisValue(variant: Variant, axis: VariantAxis): string | 
 			return variant.promptVariantPath;
 		case "attachments":
 			return variant.attachments.length > 0 ? variant.attachments.join(",") : null;
+		case "build":
+			return variant.build ?? null;
 	}
 }
 

@@ -13,14 +13,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { holmBonferroni, signTestPValue, sweepCanReachSignificance } from "../../../engine/compare/stats";
 import { renderReport } from "../../../suites/deep-swe/aggregate/report-render";
-import {
-	holmBonferroni,
-	pairwiseArmDeltas,
-	pairwiseMetricDeltas,
-	signTestPValue,
-	sweepCanReachSignificance,
-} from "../../../suites/deep-swe/aggregate/stats";
+import { pairwiseArmDeltas, pairwiseMetricDeltas } from "../../../suites/deep-swe/aggregate/stats";
 import type { ArmResult } from "../../../suites/deep-swe/aggregate/types";
 import { res } from "./aggregate-test-helpers";
 

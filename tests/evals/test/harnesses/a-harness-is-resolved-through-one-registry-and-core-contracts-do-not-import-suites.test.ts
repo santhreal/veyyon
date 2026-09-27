@@ -29,15 +29,15 @@
 
 import { describe, expect, it } from "bun:test";
 import { MINIMUM_PIER_VERSION, pierSupportsSeparateVerifierCollect } from "../../backends/pier/version";
+import { AUTH_DB_SOURCES } from "../../engine/auth/preflight";
+import { decideAuthSeed } from "../../engine/auth/seed";
+import type { ArmResult, ComparisonArmResult } from "../../engine/compare/arm-result";
+import type { HarnessAdapter } from "../../engine/contracts";
 import {
 	ARM_ATTACHMENT_KINDS,
 	ARM_ATTACHMENT_MANIFEST_FILE,
 	ARM_ATTACHMENT_MANIFEST_VERSION,
 } from "../../engine/harness/arm-attachments";
-import type { ArmResult, ComparisonArmResult } from "../../engine/compare/arm-result";
-import { AUTH_DB_SOURCES } from "../../engine/auth/preflight";
-import { decideAuthSeed } from "../../engine/auth/seed";
-import type { HarnessAdapter } from "../../engine/contracts";
 import { listFiles } from "../../engine/io/list-files";
 import { harnesses, validateHarnessSelection } from "../../engine/members/loaded";
 import { MemberNotFoundError, Registry } from "../../engine/members/registry";
@@ -116,6 +116,7 @@ describe("a harness is resolved through one registry and core contracts do not i
 				compaction: false,
 				armAttachments: false,
 				promptOverrides: false,
+				builds: false,
 			},
 			backends: {
 				"in-process": {},

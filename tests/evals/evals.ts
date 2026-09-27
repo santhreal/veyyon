@@ -18,21 +18,21 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, logger } from "@veyyon/utils";
 import type { EvalSuite, HarnessAdapter, SuiteContext } from "./engine/contracts";
-import { executeRun } from "./engine/run/execute";
 import { preflightHarnesses } from "./engine/harness/preflight";
-import { backends, harnesses, harnessFlags, suites } from "./engine/members/loaded";
 import { findMembers, MEMBER_KINDS } from "./engine/members/discovery";
+import { backends, harnesses, harnessFlags, suites } from "./engine/members/loaded";
 import { runsDir as defaultRunsDir, requirePathSegment } from "./engine/package-paths";
-import { checkRunDirectories } from "./engine/run/directories";
-import { journalExists, journalPathFor, readRunJournal, requireJournalPlan } from "./engine/run/journal";
+import { planIdentity } from "./engine/plan/plan-identity";
 import type { RunPlan } from "./engine/plan/run-plan";
 import { buildRunPlan, describeRunPlan } from "./engine/plan/run-plan";
-import { planIdentity } from "./engine/plan/plan-identity";
+import { checkVariantSupport, type UnappliedVariantAxisError, variantSupportQuery } from "./engine/plan/variant-axes";
+import type { ConfigSpec, PromptVariantSpec, VariantMatrixSelection } from "./engine/plan/variant-matrix";
+import { checkRunDirectories } from "./engine/run/directories";
+import { executeRun } from "./engine/run/execute";
+import { journalExists, journalPathFor, readRunJournal, requireJournalPlan } from "./engine/run/journal";
 import type { CellSummary, EvalRunRecord } from "./engine/run/record";
 import { judgeRunOutcome, summarizeRunCells } from "./engine/run/record";
 import { DEFAULT_TRIAL_ATTEMPTS, MAX_TRIAL_ATTEMPTS } from "./engine/trial/retry";
-import { checkVariantSupport, type UnappliedVariantAxisError, variantSupportQuery } from "./engine/plan/variant-axes";
-import type { ConfigSpec, PromptVariantSpec, VariantMatrixSelection } from "./engine/plan/variant-matrix";
 
 /**
  * Flags that take a value. A flag outside this table, and outside the harness-declared
@@ -47,6 +47,7 @@ export const VALUE_FLAGS: Record<string, true> = {
 	"--harness": true,
 	"--config": true,
 	"--prompts": true,
+	"--build": true,
 	"--model": true,
 	"--tasks": true,
 	"--limit": true,
@@ -67,6 +68,7 @@ export const BOOLEAN_FLAGS: Record<string, true> = {
 	"--list": true,
 	"--resume": true,
 	"--help": true,
+	"--unsandboxed": true,
 	"--no-gateway": true,
 };
 
@@ -75,6 +77,8 @@ export interface EvalsCliArgs {
 	readonly harnesses: readonly string[];
 	readonly configs: readonly string[];
 	readonly promptVariants: readonly string[];
+	/** Builds of the agent, `name=path` or a bare path, one variant each. */
+	readonly builds: readonly string[];
 	readonly models: readonly string[];
 	readonly tasks: readonly string[];
 	/**
@@ -106,6 +110,8 @@ export interface EvalsCliArgs {
 	 * credentials directly. Used for local models (Ollama, lm-studio) that need no auth.
 	 */
 	readonly noGateway: boolean;
+	/** When true, a local-cli trial runs without Landlock, so its tools can read the graders. */
+	readonly unsandboxed: boolean;
 	/**
 	 * Values passed under a harness-declared flag, keyed by the dashed option key the
 	 * adapter declared (`--vey-binary` arrives as `vey-binary`), which is the key its
@@ -142,6 +148,7 @@ export function parseEvalsArgs(
 	const harnesses: string[] = [];
 	const configs: string[] = [];
 	const promptVariants: string[] = [];
+	const builds: string[] = [];
 	const models: string[] = [];
 	const tasks: string[] = [];
 	const suites: string[] = [];
@@ -161,6 +168,7 @@ export function parseEvalsArgs(
 	let resume = false;
 	let help = false;
 	let noGateway = false;
+	let unsandboxed = false;
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index] as string;
 		if (!arg.startsWith("--")) {
@@ -180,6 +188,7 @@ export function parseEvalsArgs(
 			if (name === "--resume") resume = true;
 			if (name === "--help") help = true;
 			if (name === "--no-gateway") noGateway = true;
+			if (name === "--unsandboxed") unsandboxed = true;
 			continue;
 		}
 
@@ -224,6 +233,9 @@ export function parseEvalsArgs(
 				break;
 			case "--prompts":
 				promptVariants.push(...items);
+				break;
+			case "--build":
+				builds.push(...items);
 				break;
 			case "--model":
 				models.push(...items);
@@ -313,6 +325,7 @@ export function parseEvalsArgs(
 		harnesses,
 		configs,
 		promptVariants,
+		builds,
 		models,
 		tasks,
 		limit,
@@ -331,6 +344,7 @@ export function parseEvalsArgs(
 		resume,
 		help,
 		noGateway,
+		unsandboxed,
 		harnessOptions,
 	};
 }
@@ -363,6 +377,8 @@ Axes:
   --harness <a,b>           harness axis (default: veyyon)
   --config <path,path>      config overlay files, one variant each
   --prompts <path,path>     prompt-variant overlay files, one variant each
+  --build <name=path,...>   agent builds (a source tree or an executable), one variant each;
+                            a local-cli suite runs every build on the same trials
   --model <id,id>           model axis, one variant each
 
 Selection and execution:
@@ -392,6 +408,8 @@ Selection and execution:
                             at 3600s; a budget a task states for itself is honored to 86400s
   --dry-run                 print the plan and every preflight verdict, run nothing
   --no-gateway              skip the auth gateway; forward provider keys directly (local models)
+  --unsandboxed             run local-cli trials without Landlock (non-Linux hosts); the
+                            agent's tools can then read every file the runner can, graders included
   --resume                  resume a prior run from its trials.jsonl journal
   --help                    this text
 ${harnessSection}`;
@@ -728,6 +746,7 @@ export function suiteContext(args: EvalsCliArgs, suite: EvalSuite): SuiteContext
 			// same name: `--model` is the axis, and an adapter reads its own keys.
 			...args.harnessOptions,
 			...(args.noGateway ? { gateway: false } : {}),
+			...(args.unsandboxed ? { unsandboxed: true } : {}),
 			dryRun: args.dryRun,
 			ensureBinary: !args.dryRun,
 			model: args.models[0],
@@ -774,10 +793,12 @@ async function runOneSuite(args: EvalsCliArgs, suite: EvalSuite, running: readon
 		args.configs.length > 0 ? args.configs.map(file => ({ path: file })) : undefined;
 	const promptVariants: readonly PromptVariantSpec[] | undefined =
 		args.promptVariants.length > 0 ? args.promptVariants.map(file => ({ path: file })) : undefined;
+	const builds: readonly string[] | undefined = args.builds.length > 0 ? args.builds : undefined;
 	const selection: VariantMatrixSelection = {
 		harnesses: args.harnesses.length > 0 ? args.harnesses : ["veyyon"],
 		configs,
 		promptVariants,
+		builds,
 		models: args.models,
 	};
 	const runId = args.runId === null ? undefined : running.length > 1 ? `${args.runId}-${suite.id}` : args.runId;

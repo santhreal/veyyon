@@ -25,6 +25,7 @@ export const AXIS_PLURAL: Readonly<Record<string, string>> = {
 	promptVariants: "prompt variants",
 	models: "models",
 	attachments: "attachment sets",
+	builds: "builds",
 	corpus: "corpora",
 	corpora: "corpora",
 	suite: "suites",
@@ -68,12 +69,19 @@ export interface PromptVariantSpec {
 	readonly overrides?: unknown;
 }
 
+/** One build of a harness a variant runs: a label for its name and the tree or executable it is. */
+export interface BuildSpec {
+	readonly name: string;
+	readonly path: string;
+}
+
 export interface VariantCellInput {
 	readonly harness: string;
 	readonly config: ConfigSpec | null;
 	readonly promptVariant: PromptVariantSpec | null;
 	readonly model: string;
 	readonly attachments: readonly string[];
+	readonly build: BuildSpec | null;
 }
 
 export type MutableVariantCellInput = {
@@ -82,6 +90,7 @@ export type MutableVariantCellInput = {
 	promptVariant: PromptVariantSpec | null;
 	model: string;
 	attachments: readonly string[];
+	build: BuildSpec | null;
 	[key: string]: unknown;
 };
 
@@ -100,6 +109,8 @@ export interface VariantMatrixSelection {
 	readonly promptVariants?: readonly (string | PromptVariantSpec | null)[];
 	readonly models: readonly string[];
 	readonly attachments?: readonly string[] | readonly (readonly string[])[];
+	/** Builds to compare, each `name=path` or a bare path named for its last segment. */
+	readonly builds?: readonly (string | BuildSpec)[];
 	readonly nameFormatter?: (cell: VariantCellInput) => string;
 }
 
@@ -244,6 +255,17 @@ export function attachmentLabel(values: readonly string[]): string {
 	return values.length === 0 ? "none" : values.map(value => cleanBaseName(value)).join("+");
 }
 
+/**
+ * A build from either spelling: `name=path`, or a bare path named for its last segment. A build is
+ * a tree or an executable the harness runs, so the path is resolved where the run starts.
+ */
+export function normalizeBuild(item: string | BuildSpec): BuildSpec {
+	if (typeof item !== "string") return { name: item.name, path: path.resolve(item.path) };
+	const equals = item.indexOf("=");
+	if (equals > 0) return { name: item.slice(0, equals), path: path.resolve(item.slice(equals + 1)) };
+	return { name: path.basename(path.resolve(item)), path: path.resolve(item) };
+}
+
 export const VARIANT_MATRIX_AXES: readonly AxisDescriptor<unknown, unknown>[] = [
 	{
 		id: "harnesses",
@@ -293,6 +315,16 @@ export const VARIANT_MATRIX_AXES: readonly AxisDescriptor<unknown, unknown>[] = 
 			cell.attachments = value as readonly string[];
 		},
 	},
+	{
+		id: "builds",
+		plural: AXIS_PLURAL.builds ?? "builds",
+		select: (selection: VariantMatrixSelection) => selection.builds,
+		defaultValues: [null],
+		normalize: (build: unknown) => (build === null ? null : normalizeBuild(build as string | BuildSpec)),
+		project: (cell: MutableVariantCellInput, value: unknown) => {
+			cell.build = value as BuildSpec | null;
+		},
+	},
 ];
 
 /**
@@ -330,6 +362,12 @@ function defaultVariantName(cell: VariantCellInput, selection: VariantMatrixSele
 	const sets = attachmentSets(selection.attachments);
 	if (sets && sets.length > 1) {
 		base = `${base}~${attachmentLabel(cell.attachments)}`;
+	}
+
+	// Two builds of one harness are two arms whatever else they share, and the label is what a
+	// comparison of them reads.
+	if (selection.builds && selection.builds.length > 1 && cell.build) {
+		base = `${base}#${cell.build.name}`;
 	}
 
 	return base;
@@ -370,6 +408,7 @@ export function expandVariantMatrix(
 			promptVariant: null,
 			model: "",
 			attachments: [],
+			build: null,
 		};
 
 		for (let axisIndex = 0; axisIndex < axes.length; axisIndex++) {
@@ -396,6 +435,7 @@ export function expandVariantMatrix(
 			promptVariantPath: cellInput.promptVariant?.path ?? null,
 			model: cellInput.model,
 			attachments: cellInput.attachments,
+			...(cellInput.build ? { build: cellInput.build.path } : {}),
 		});
 	}
 

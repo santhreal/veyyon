@@ -17,6 +17,18 @@ export const DEFAULT_VARIANT_SEGMENT = "default";
 /** Segment a cell with an empty task id is filed under. */
 export const DEFAULT_TASK_SEGMENT = "task";
 
+/**
+ * The files a local trial leaves in its trial directory: the backend writes them after the agent
+ * stops, and a suite's grader reads them.
+ */
+export const LOCAL_TRIAL_FILES = {
+	/** The CLI's JSON event stream: every turn, tool call and token. */
+	events: "events.jsonl",
+	stderr: "stderr.txt",
+	/** The text of the agent's last message. */
+	answer: "answer.txt",
+} as const;
+
 /** The four parts every trial name is built from, each already a safe path segment. */
 export interface TrialSegments {
 	readonly run: string;

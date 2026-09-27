@@ -22,6 +22,7 @@ export class HermesAdapter implements HarnessAdapter {
 		compaction: true,
 		armAttachments: false,
 		promptOverrides: false,
+		builds: false,
 	};
 
 	readonly backends = {

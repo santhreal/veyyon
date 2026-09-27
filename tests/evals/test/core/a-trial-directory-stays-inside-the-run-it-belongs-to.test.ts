@@ -27,6 +27,8 @@ import * as harborBackendModule from "../../backends/harbor/main";
 import { HarborBackend } from "../../backends/harbor/main";
 import * as inProcessBackendModule from "../../backends/in-process/main";
 import { InProcessBackend } from "../../backends/in-process/main";
+import * as localCliBackendModule from "../../backends/local-cli/main";
+import { LocalCliBackend } from "../../backends/local-cli/main";
 import * as pierBackendModule from "../../backends/pier/main";
 import { PierExecutionBackend } from "../../backends/pier/main";
 import type {
@@ -285,6 +287,7 @@ const NAMING_COVERAGE: Readonly<Record<string, string>> = {
 	"in-process": "runTrial and cleanup drive trialDirFor end to end",
 	harbor: "cleanup removes the job directory trialJobName names",
 	pier: "cleanup names the containers trialJobName names",
+	"local-cli": "cleanup removes the directory trialDirFor names, the one runTrial writes",
 };
 
 describe("no backend spells a trial path of its own", () => {
@@ -298,6 +301,7 @@ describe("no backend spells a trial path of its own", () => {
 			"in-process": inProcessBackendModule,
 			harbor: harborBackendModule,
 			pier: pierBackendModule,
+			"local-cli": localCliBackendModule,
 			telemetry: telemetryModule,
 		};
 
@@ -377,6 +381,36 @@ describe("no backend spells a trial path of its own", () => {
 
 			expect(await fs.exists(mine)).toBe(false);
 			expect(await fs.readFile(path.join(other, "keep.json"), "utf8")).toBe("{}");
+		} finally {
+			await temp.remove();
+		}
+	});
+
+	it("removes only a local-cli trial's own directory", async () => {
+		const temp = await TempDir.create("@evals-test-local-cli-naming-");
+		try {
+			const runsDir = temp.join("runs");
+			const runId = "local-run";
+			const cell: TrialCell = { suite: "s", variant: "..", task: "..", repeat: 0 };
+			const mine = trialDirFor(runsDir, runId, cell);
+			const escaped = path.join(runsDir, "sibling", "repeat-0");
+			await fs.mkdir(mine, { recursive: true });
+			await fs.mkdir(escaped, { recursive: true });
+			await fs.writeFile(path.join(escaped, "precious.txt"), "another run's artifact", "utf8");
+
+			const context: RunContext = {
+				runId,
+				suite: probeSuite(),
+				workDir: temp.absolute(),
+				runsDir,
+				harnesses,
+				options: { cleanup: true },
+			};
+			await new LocalCliBackend().cleanup(cell, context);
+
+			expect(mine.startsWith(`${runDirFor(runsDir, runId)}${path.sep}`)).toBe(true);
+			expect(await fs.exists(mine)).toBe(false);
+			expect(await fs.readFile(path.join(escaped, "precious.txt"), "utf8")).toBe("another run's artifact");
 		} finally {
 			await temp.remove();
 		}

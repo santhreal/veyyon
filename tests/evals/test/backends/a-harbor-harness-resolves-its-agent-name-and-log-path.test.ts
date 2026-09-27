@@ -131,6 +131,7 @@ describe("a harbor harness resolves its agent name and log path from the registr
 			compaction: false,
 			armAttachments: false,
 			promptOverrides: false,
+			builds: false,
 		};
 
 		const invalidHarness: HarnessAdapter = {

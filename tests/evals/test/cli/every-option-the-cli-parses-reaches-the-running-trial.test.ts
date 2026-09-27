@@ -68,7 +68,7 @@ function probeHarness(): HarnessAdapter {
 		description: "Probe harness bound to the probe backend.",
 		flags: ["vey-binary"],
 		defaultModel: null,
-		capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false },
+		capabilities: { replay: false, compaction: false, armAttachments: false, promptOverrides: false, builds: false },
 		backends: { [BACKEND]: { agentImportPath: "probe_agent:ProbeAgent" } },
 		async preflight() {
 			return { ok: true };

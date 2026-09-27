@@ -37,7 +37,6 @@ import type {
 	Variant,
 	VariantAxis,
 } from "../../engine/contracts";
-import { executeRun } from "../../engine/run/execute";
 import { backends, harnesses } from "../../engine/members/loaded";
 import { buildRunPlan } from "../../engine/plan/run-plan";
 import {
@@ -50,6 +49,7 @@ import {
 	variantSupportQuery,
 	variedAxes,
 } from "../../engine/plan/variant-axes";
+import { executeRun } from "../../engine/run/execute";
 import { main } from "../../evals";
 
 const MODEL = "anthropic/claude-sonnet-4-6";
@@ -71,6 +71,7 @@ function variantVarying(axis: VariantAxis | null, harness = "veyyon"): Variant {
 		promptVariantPath: axis === "promptVariant" ? "/overlays/a.json" : null,
 		model: MODEL,
 		attachments: axis === "attachments" ? ["prompt/extra.prompt.md"] : [],
+		build: axis === "build" ? "/builds/head" : null,
 	};
 }
 
@@ -79,6 +80,7 @@ const ALL_TRUE: HarnessCapabilities = {
 	compaction: true,
 	armAttachments: true,
 	promptOverrides: true,
+	builds: true,
 };
 
 const ALL_FALSE: HarnessCapabilities = {
@@ -86,6 +88,7 @@ const ALL_FALSE: HarnessCapabilities = {
 	compaction: false,
 	armAttachments: false,
 	promptOverrides: false,
+	builds: false,
 };
 
 const AXES: VariantAxis[] = [...VARIANT_AXES];
@@ -203,16 +206,17 @@ describe("a harness that cannot apply an axis the backend reads", () => {
  */
 const BACKEND_AXES: Record<string, VariantAxis[]> = {
 	"in-process": ["config", "promptVariant"],
+	"local-cli": ["config", "promptVariant", "build"],
 	pier: ["config", "attachments"],
 	harbor: [],
 };
 
 /** What each shipped harness declares, pinned the same way. */
 const HARNESS_CAPABILITIES: Record<string, Record<string, boolean>> = {
-	veyyon: { armAttachments: true, promptOverrides: true },
-	omp: { armAttachments: false, promptOverrides: false },
-	factory: { armAttachments: false, promptOverrides: false },
-	hermes: { armAttachments: false, promptOverrides: false },
+	veyyon: { armAttachments: true, promptOverrides: true, builds: true },
+	omp: { armAttachments: false, promptOverrides: false, builds: false },
+	factory: { armAttachments: false, promptOverrides: false, builds: false },
+	hermes: { armAttachments: false, promptOverrides: false, builds: false },
 };
 
 describe("every shipped declaration", () => {
@@ -326,6 +330,7 @@ describe("executeRun", () => {
 					configs: axis === "config" ? ["/overlays/a.yml"] : undefined,
 					promptVariants: axis === "promptVariant" ? ["/overlays/a.json"] : undefined,
 					attachments: axis === "attachments" ? ["prompt/extra.prompt.md"] : undefined,
+					builds: axis === "build" ? ["candidate=/builds/candidate"] : undefined,
 				},
 				context: { workDir: temp.path() },
 			});

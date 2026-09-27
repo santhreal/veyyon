@@ -1,0 +1,223 @@
+/**
+ * The report a kit suite writes into a finished run: `report.md` for a reader and `summary.json`
+ * for a script.
+ *
+ * Per arm it states pass rate with its 95% interval, partial credit, and what the passes cost in
+ * tokens, turns and time; the pass rate by capability and by difficulty; how many trials passed
+ * within each turn, token and time budget; and, for every arm against the first, the trials only
+ * one of them passed, with a sign test and the spend over the trials both graded.
+ */
+
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import type { SuiteReportContext, TrialUsage } from "../contracts";
+import { type ArmTrial, type PairedArms, pairArms, passesWithin } from "../compare/paired";
+import { wilsonInterval } from "../compare/stats";
+import { readRunJournal } from "../run/journal";
+import type { TrialResultRecord } from "../run/record";
+import { DIFFICULTIES, type Difficulty } from "./catalog";
+
+export const TURN_BUDGETS = [5, 10, 20, 40] as const;
+export const TOKEN_BUDGETS = [50_000, 100_000, 250_000, 500_000] as const;
+export const SECOND_BUDGETS = [30, 60, 120, 300] as const;
+
+interface KitTrialRow extends ArmTrial {
+	readonly task: string;
+	readonly partial: number | null;
+	readonly error: string | null;
+	readonly capabilities: readonly string[];
+	readonly difficulty: Difficulty | null;
+	readonly timedOut: boolean;
+}
+
+export interface ArmSummary {
+	readonly arm: string;
+	readonly trials: number;
+	readonly graded: number;
+	readonly errors: number;
+	readonly passes: number;
+	readonly passRate: number | null;
+	readonly passRateLow: number | null;
+	readonly passRateHigh: number | null;
+	readonly meanPartial: number | null;
+	readonly timedOut: number;
+	readonly tokens: number;
+	readonly turns: number;
+	readonly wallSec: number;
+	readonly byCapability: Readonly<Record<string, { readonly passes: number; readonly graded: number }>>;
+	readonly byDifficulty: Readonly<Record<string, { readonly passes: number; readonly graded: number }>>;
+	readonly passesWithinTurns: readonly number[];
+	readonly passesWithinTokens: readonly number[];
+	readonly passesWithinSeconds: readonly number[];
+}
+
+export interface KitRunSummary {
+	readonly suite: string;
+	readonly model: string;
+	readonly tasks: number;
+	readonly repeats: number;
+	readonly arms: readonly ArmSummary[];
+	readonly paired: readonly PairedArms[];
+}
+
+/** Every token the provider processed: input, cache reads and writes, and output. */
+export function tokensOf(usage: TrialUsage | null | undefined): number | null {
+	if (!usage || usage.inputTokens == null || usage.outputTokens == null) return null;
+	return usage.inputTokens + usage.outputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
+}
+
+function rowOf(record: TrialResultRecord): KitTrialRow {
+	const usage = record.score.usage ?? record.artifacts?.usage ?? null;
+	const extra = record.score.extra;
+	const turns = usage?.extra?.turns;
+	const capabilities = extra.capabilities;
+	const difficulty = extra.difficulty;
+	return {
+		arm: record.cell.variant,
+		key: `${record.cell.task}#${record.cell.repeat}`,
+		task: record.cell.task,
+		passed: record.score.reward === null ? null : record.score.reward >= 1,
+		partial: record.score.partial,
+		error: record.score.error,
+		tokens: tokensOf(usage),
+		turns: typeof turns === "number" ? turns : null,
+		wallSec: usage?.durationSec ?? null,
+		capabilities: Array.isArray(capabilities)
+			? capabilities.filter((item: unknown): item is string => typeof item === "string")
+			: [],
+		difficulty: DIFFICULTIES.find(item => item === difficulty) ?? null,
+		timedOut: extra.timedOut === true,
+	};
+}
+
+function summarizeArm(rows: readonly KitTrialRow[], arm: string): ArmSummary {
+	const mine = rows.filter(row => row.arm === arm);
+	const graded = mine.filter(row => row.passed !== null);
+	const passes = graded.filter(row => row.passed).length;
+	const interval = wilsonInterval(passes, graded.length);
+	const tally = (key: (row: KitTrialRow) => readonly string[]) => {
+		const out: Record<string, { passes: number; graded: number }> = {};
+		for (const row of graded) {
+			for (const name of key(row)) {
+				let entry = out[name];
+				if (!entry) {
+					entry = { passes: 0, graded: 0 };
+					out[name] = entry;
+				}
+				entry.graded++;
+				if (row.passed) entry.passes++;
+			}
+		}
+		return out;
+	};
+	const partials = graded.map(row => row.partial).filter((value): value is number => value !== null);
+	const total = (pick: (row: KitTrialRow) => number | null) => mine.reduce((sum, row) => sum + (pick(row) ?? 0), 0);
+	return {
+		arm,
+		trials: mine.length,
+		graded: graded.length,
+		errors: mine.length - graded.length,
+		passes,
+		passRate: graded.length > 0 ? passes / graded.length : null,
+		passRateLow: interval.low,
+		passRateHigh: interval.high,
+		meanPartial: partials.length > 0 ? partials.reduce((a, b) => a + b, 0) / partials.length : null,
+		timedOut: mine.filter(row => row.timedOut).length,
+		tokens: total(row => row.tokens),
+		turns: total(row => row.turns),
+		wallSec: total(row => row.wallSec),
+		byCapability: tally(row => row.capabilities),
+		byDifficulty: tally(row => (row.difficulty ? [row.difficulty] : [])),
+		passesWithinTurns: passesWithin(rows, arm, row => row.turns, TURN_BUDGETS),
+		passesWithinTokens: passesWithin(rows, arm, row => row.tokens, TOKEN_BUDGETS),
+		passesWithinSeconds: passesWithin(rows, arm, row => row.wallSec, SECOND_BUDGETS),
+	};
+}
+
+export function summarizeKitRun(
+	records: readonly TrialResultRecord[],
+	context: Pick<SuiteReportContext, "model" | "tasks" | "repeats">,
+	suite: string,
+): KitRunSummary {
+	const rows = records.map(rowOf);
+	const arms = [...new Set(rows.map(row => row.arm))];
+	const [baseline, ...candidates] = arms;
+	return {
+		suite,
+		model: context.model,
+		tasks: context.tasks.length,
+		repeats: context.repeats,
+		arms: arms.map(arm => summarizeArm(rows, arm)),
+		paired: baseline === undefined ? [] : candidates.map(candidate => pairArms(rows, baseline, candidate)),
+	};
+}
+
+const percent = (value: number | null) => (value === null ? "—" : `${(value * 100).toFixed(1)}%`);
+const count = (value: number) => value.toLocaleString("en-US");
+const ratio = (passes: number, graded: number) => (graded === 0 ? "—" : `${passes}/${graded}`);
+const change = (from: number, to: number) => (from === 0 ? "—" : `${(((to - from) / from) * 100).toFixed(1)}%`);
+
+export function renderKitReport(summary: KitRunSummary, capabilities: Readonly<Record<string, string>>): string {
+	const lines: string[] = [
+		`# ${summary.suite}`,
+		"",
+		`Model ${summary.model}; ${summary.tasks} tasks × ${summary.repeats} repeats.`,
+		"",
+		"| arm | passed | pass rate (95% CI) | partial | errors | timed out | tokens | turns | wall (s) |",
+		"|---|---|---|---|---|---|---|---|---|",
+	];
+	for (const arm of summary.arms) {
+		lines.push(
+			`| ${arm.arm} | ${ratio(arm.passes, arm.graded)} | ${percent(arm.passRate)} (${percent(arm.passRateLow)}–${percent(arm.passRateHigh)}) | ${percent(arm.meanPartial)} | ${arm.errors} | ${arm.timedOut} | ${count(arm.tokens)} | ${count(arm.turns)} | ${arm.wallSec.toFixed(0)} |`,
+		);
+	}
+	const breakdown = (title: string, names: readonly string[], pick: (arm: ArmSummary) => ArmSummary["byCapability"]) => {
+		lines.push("", `## ${title}`, "", `| ${title.toLowerCase()} | ${summary.arms.map(arm => arm.arm).join(" | ")} |`);
+		lines.push(`|---|${summary.arms.map(() => "---").join("|")}|`);
+		for (const name of names) {
+			const cells = summary.arms.map(arm => {
+				const tally = pick(arm)[name];
+				return tally ? ratio(tally.passes, tally.graded) : "—";
+			});
+			lines.push(`| ${name} | ${cells.join(" | ")} |`);
+		}
+	};
+	breakdown("Capability", Object.keys(capabilities), arm => arm.byCapability);
+	breakdown("Difficulty", DIFFICULTIES, arm => arm.byDifficulty);
+	const curve = (title: string, budgets: readonly number[], pick: (arm: ArmSummary) => readonly number[], unit: (n: number) => string) => {
+		lines.push("", `## Passes within ${title}`, "", `| arm | ${budgets.map(unit).join(" | ")} |`);
+		lines.push(`|---|${budgets.map(() => "---").join("|")}|`);
+		for (const arm of summary.arms) lines.push(`| ${arm.arm} | ${pick(arm).join(" | ")} |`);
+	};
+	curve("turns", TURN_BUDGETS, arm => arm.passesWithinTurns, n => `≤ ${n}`);
+	curve("tokens", TOKEN_BUDGETS, arm => arm.passesWithinTokens, n => `≤ ${n / 1000}k`);
+	curve("seconds", SECOND_BUDGETS, arm => arm.passesWithinSeconds, n => `≤ ${n} s`);
+	if (summary.paired.length > 0) {
+		lines.push(
+			"",
+			"## Paired against the first arm",
+			"",
+			"Trials of the two arms on one task and repeat met the same seeded data. Only the pairs both arms graded count.",
+			"",
+			"| candidate | pairs | only candidate passed | only baseline passed | sign test p | tokens | turns | wall |",
+			"|---|---|---|---|---|---|---|---|",
+		);
+		for (const pair of summary.paired) {
+			const delta = (sums: PairedArms["tokens"]) => (sums ? change(sums.baseline, sums.candidate) : "—");
+			lines.push(
+				`| ${pair.candidate} vs ${pair.baseline} | ${pair.pairs} | ${pair.wins} | ${pair.losses} | ${pair.signTestP.toFixed(3)} | ${delta(pair.tokens)} | ${delta(pair.turns)} | ${delta(pair.wallSec)} |`,
+			);
+		}
+	}
+	return `${lines.join("\n")}\n`;
+}
+
+export async function writeKitReport(
+	context: SuiteReportContext,
+	spec: { readonly id: string; readonly capabilities: Readonly<Record<string, string>> },
+): Promise<void> {
+	const records = await readRunJournal(path.dirname(context.runDir), path.basename(context.runDir));
+	const summary = summarizeKitRun(records, context, spec.id);
+	await fs.writeFile(path.join(context.runDir, "summary.json"), `${JSON.stringify(summary, null, "\t")}\n`);
+	await fs.writeFile(path.join(context.runDir, "report.md"), renderKitReport(summary, spec.capabilities));
+}

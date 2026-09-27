@@ -207,6 +207,7 @@ export class OmpAdapter implements HarnessAdapter {
 		compaction: false,
 		armAttachments: false,
 		promptOverrides: false,
+		builds: false,
 	};
 
 	readonly backends = {
