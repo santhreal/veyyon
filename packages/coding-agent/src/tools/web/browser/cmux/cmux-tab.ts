@@ -455,6 +455,11 @@ export class CmuxTab {
 		}
 	}
 
+	/** Load the current URL again, as `goto` loads one. */
+	async reload(opts?: { waitUntil?: WaitUntil; timeoutMs?: number }): Promise<void> {
+		await this.goto(this.#lastUrl, opts);
+	}
+
 	async observe(opts?: ObserveOptions): Promise<Observation> {
 		void opts?.viewportOnly;
 		const timeoutMs = Math.min(this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS, DEFAULT_OP_TIMEOUT_MS);

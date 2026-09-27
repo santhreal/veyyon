@@ -136,6 +136,7 @@ The tool returns one result per call; no streaming partial output is emitted fro
    - `tab.url(): string`
    - `tab.title(): Promise<string>`
    - `tab.goto(url, { waitUntil? })`
+   - `tab.reload({ waitUntil? })`: loads `tab.url()` again through the same path as `goto` (a GET, so a page a form's POST produced is not posted again)
    - `tab.observe({ includeAll?, viewportOnly? })`
    - `tab.ariaSnapshot(selector?, { depth?, boxes? })`
    - `tab.ref(id)`

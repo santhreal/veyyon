@@ -108,7 +108,7 @@ function checkArguments(method: string, args: readonly unknown[]): void {
 			throw new ToolError(
 				typeof value === "string"
 					? `tab.${method}: selector is empty`
-					: `tab.${method}: selector must be a string, got ${typeof value}`,
+					: `tab.${method}: selector must be a string, got ${typeof value}. An element from tab.observe() is tab.id(n), and a snapshot ref is tab.ref("eN") or "aria-ref=eN".`,
 			);
 		}
 	}

@@ -288,6 +288,8 @@ export interface TabApi {
 		url: string,
 		opts?: { waitUntil?: "load" | "domcontentloaded" | "networkidle0" | "networkidle2" },
 	): Promise<void>;
+	/** Load the current URL again, with `goto`'s waiting and deadline. */
+	reload(opts?: { waitUntil?: "load" | "domcontentloaded" | "networkidle0" | "networkidle2" }): Promise<void>;
 	observe(opts?: { includeAll?: boolean; viewportOnly?: boolean }): Promise<Observation>;
 	ariaSnapshot(selector?: string, opts?: AriaSnapshotOptions): Promise<string>;
 	screenshot(opts?: ScreenshotOptions): Promise<ScreenshotResult>;
@@ -1926,34 +1928,36 @@ export class WorkerCore {
 			fn: (sig: AbortSignal, target: string | undefined) => Promise<T>,
 			selectorOpts?: { selector?: string; zeroMatchAfterMs?: number },
 		): Promise<T> => markHandled(this.#runOp(active, label, signal, perOpMs, fn, selectorOpts));
+		type WaitUntil = "load" | "domcontentloaded" | "networkidle0" | "networkidle2";
+		const load = (label: string, url: string, waitUntil: WaitUntil | undefined): Promise<void> =>
+			op(label, INF, async sig => {
+				this.#clearElementCache();
+				try {
+					// Default to "load" because dev servers with HMR/WS never reach networkidle.
+					// budgetBound (not the full cell) so a hung navigation fails named and
+					// catchable inside the run instead of dying with the whole cell.
+					await untilAborted(sig, () => page.goto(url, { waitUntil: waitUntil ?? "load", timeout: budgetBound }));
+				} catch (err) {
+					if (isTimeoutError(err)) {
+						// Abandon the hung navigation NOW — a still-pending load stalls every
+						// later op on this page and cascades into more opaque timeouts.
+						await this.#stopLoading();
+						throw new ToolError(
+							`${label} timed out after ${budgetBound}ms; pending navigation stopped — retry with a longer tool timeout or waitUntil:"domcontentloaded"`,
+						);
+					}
+					throw err;
+				}
+			});
 		return {
 			name,
 			page,
 			signal,
 			url: () => page.url(),
 			title: () => op("tab.title()", INF, sig => untilAborted(sig, () => page.title())),
-			goto: (url, opts) =>
-				op(`tab.goto(${JSON.stringify(url)})`, INF, async sig => {
-					this.#clearElementCache();
-					try {
-						// Default to "load" because dev servers with HMR/WS never reach networkidle.
-						// budgetBound (not the full cell) so a hung navigation fails named and
-						// catchable inside the run instead of dying with the whole cell.
-						await untilAborted(sig, () =>
-							page.goto(url, { waitUntil: opts?.waitUntil ?? "load", timeout: budgetBound }),
-						);
-					} catch (err) {
-						if (isTimeoutError(err)) {
-							// Abandon the hung navigation NOW — a still-pending load stalls every
-							// later op on this page and cascades into more opaque timeouts.
-							await this.#stopLoading();
-							throw new ToolError(
-								`tab.goto(${JSON.stringify(url)}) timed out after ${budgetBound}ms; pending navigation stopped — retry with a longer tool timeout or waitUntil:"domcontentloaded"`,
-							);
-						}
-						throw err;
-					}
-				}),
+			goto: (url, opts) => load(`tab.goto(${JSON.stringify(url)})`, url, opts?.waitUntil),
+			// Loading the URL again rather than `page.reload()`, which would post a submitted form a second time.
+			reload: opts => load("tab.reload()", page.url(), opts?.waitUntil),
 			observe: opts => op("tab.observe()", quickOpMs, sig => this.#collectObservation({ ...opts, signal: sig })),
 			ariaSnapshot: (selector, opts) =>
 				op(
