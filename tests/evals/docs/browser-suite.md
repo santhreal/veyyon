@@ -110,7 +110,10 @@ A task names what it exercises; the report breaks pass rates down by these.
 - Settings: the browser tool on, headless, puppeteer (`BROWSER_TOOL_SETTINGS`).
 - Chromium: resolved once by the runner and handed to each trial as `PUPPETEER_EXECUTABLE_PATH`,
   with its directory readable in the sandbox.
-- Budget: the task's own, from 300 s for an easy task to 900 s for an expert one.
+- Budget: the task's own, from 420 s for the easy task to 900 s for an expert one.
+- Report: passes counted within 10 to 80 turns, 250k to 4M tokens and 60 to 900 s (`budgets` in
+  `suites/browser/main.ts`). The last seconds budget is at least the longest task budget, which the
+  suite's tests check, so a task with a longer budget raises the ladder with it.
 
 ## Adding a task
 
