@@ -37,6 +37,7 @@ import {
 } from "./aria-snapshot";
 import { type ChainedHandle, chainHandle } from "./chained-handle";
 import { releaseHandle, releaseHandles } from "./handle-release";
+import { hasTextSelector } from "./has-text";
 import {
 	applyStealthPatches,
 	applyViewport,
@@ -149,6 +150,13 @@ const SNAPSHOT_LINE_SELECTOR = /^([a-z]+) "((?:[^"\\]|\\.)*)"$/;
  * selector such as `input[name="q"]` keeps its meaning.
  */
 const ROLE_NAME_SELECTOR = /^(role=)?([a-z]+)\[name=(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')\]$/;
+
+/**
+ * Playwright's `css:has-text("text")`, the pseudo-class ending the selector: the elements the CSS
+ * matches whose text holds the text, case and spacing aside. It resolves through the query handler
+ * `has-text.ts` registers with puppeteer.
+ */
+const HAS_TEXT_SELECTOR = /^(.*?):has-text\((?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^"')]*))\)$/;
 
 /**
  * ARIA roles no HTML element is named after, plus `link`, whose `<link>` element takes no `name`
@@ -342,13 +350,23 @@ export function normalizeSelector(selector: string): string {
 	const named = ROLE_NAME_SELECTOR.exec(trimmed);
 	if (named?.[2] && (named[1] || ROLES_WITHOUT_AN_ELEMENT.has(named[2])))
 		return ariaRoleSelector(named[2], named[3] ?? named[4] ?? "");
+	const hasText = HAS_TEXT_SELECTOR.exec(trimmed);
+	const hasTextCss = hasText?.[1]?.trim() ?? "";
+	if (
+		hasText &&
+		!SELECTOR_HANDLER_PREFIXES.some(prefix => trimmed.startsWith(prefix)) &&
+		!PLAYWRIGHT_ONLY_SELECTOR_RE.test(hasTextCss)
+	) {
+		const text = (hasText[2] ?? hasText[3] ?? hasText[4] ?? "").replace(/\\(.)/g, "$1");
+		return hasTextSelector({ css: hasTextCss || "*", text });
+	}
 	if (
 		!SELECTOR_HANDLER_PREFIXES.some(prefix => selector.startsWith(prefix)) &&
 		PLAYWRIGHT_ONLY_SELECTOR_RE.test(selector)
 	) {
 		throw new ToolError(
 			`Playwright-only selector ${JSON.stringify(selector)} is not supported by the browser tool. ` +
-				`Use a puppeteer text selector ("text/Allow all"), an aria selector ("aria/Name"), CSS, or "xpath/...".`,
+				`Use css:has-text("…") at the end of a selector, a puppeteer text selector ("text/Allow all"), an aria selector ("aria/Name"), CSS, or "xpath/...".`,
 		);
 	}
 	if (selector.startsWith("p-") && !LEGACY_SELECTOR_PREFIXES.some(prefix => selector.startsWith(prefix))) {

@@ -105,7 +105,8 @@ describe("browser wait(predicate) deadline resolution", () => {
 
 describe("browser selector guard", () => {
 	it("rejects Playwright-only selector engines with an actionable message", () => {
-		expect(() => normalizeSelector('button:has-text("Allow all")')).toThrow(/Playwright-only/);
+		// `:has-text()` resolves when it ends the selector; nested in another pseudo-class it cannot.
+		expect(() => normalizeSelector('region:has(h2:has-text("Ready"))')).toThrow(/Playwright-only/);
 		expect(() => normalizeSelector("div:visible")).toThrow(/not supported/);
 		expect(() => normalizeSelector(':text("Login")')).toThrow(/Playwright-only/);
 	});

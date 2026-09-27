@@ -20,6 +20,7 @@ import stealthPluginsScript from "../puppeteer/10_stealth_plugins.txt" with { ty
 import stealthHardwareScript from "../puppeteer/11_stealth_hardware.txt" with { type: "text" };
 import stealthCodecsScript from "../puppeteer/12_stealth_codecs.txt" with { type: "text" };
 import stealthWorkerScript from "../puppeteer/13_stealth_worker.txt" with { type: "text" };
+import { HAS_TEXT_HANDLER, hasTextQueryHandler } from "./has-text";
 
 export const DEFAULT_VIEWPORT = { width: 1365, height: 768, deviceScaleFactor: 1.25 };
 
@@ -105,7 +106,12 @@ export async function loadPuppeteer(): Promise<typeof Puppeteer> {
 	const realCwd = process.cwd;
 	Object.defineProperty(process, "cwd", { value: () => safeDir, configurable: true });
 	try {
-		puppeteerModule = (await import("puppeteer-core")).default;
+		const puppeteerCore = await import("puppeteer-core");
+		// Selectors with Playwright's `:has-text()` resolve through this handler (`normalizeSelector`).
+		if (!puppeteerCore.Puppeteer.customQueryHandlerNames().includes(HAS_TEXT_HANDLER)) {
+			puppeteerCore.Puppeteer.registerCustomQueryHandler(HAS_TEXT_HANDLER, hasTextQueryHandler);
+		}
+		puppeteerModule = puppeteerCore.default;
 		return puppeteerModule;
 	} finally {
 		Object.defineProperty(process, "cwd", { value: realCwd, configurable: true });
