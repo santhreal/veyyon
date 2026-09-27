@@ -211,7 +211,7 @@ const triageQueue = kitTask<HelpdeskState<Triage>>({
 			instruction: [
 				signIn(site.origin, world),
 				"You are on triage duty today. Triage every ticket that is open and has no assignee, following the triage policy in the knowledge base.",
-				"Set only what the policy says to set. When you are done, reply with the number of tickets you triaged.",
+				"Set only what the policy says to set. When you are done, reply with the number of tickets you triaged, and state no other count.",
 			].join("\n"),
 			solve: async () => {
 				const client = await signedInClient(site.origin, world);

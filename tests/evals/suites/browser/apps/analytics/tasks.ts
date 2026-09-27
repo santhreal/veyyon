@@ -290,7 +290,7 @@ const peakWeek = kitTask<AnalyticsState<PeakWeek>>({
 				intro(site.origin, world),
 				`For the ${planLabel} plan, find the ISO week (Monday to Sunday) with the most signups among the weeks that lie entirely inside ${quarter.label} (${longDate(quarter.from)} to ${longDate(quarter.to)}). Count signups from every country and every channel.`,
 				"Do not save reports or create alert rules.",
-				"Reply with the week written as YYYY-Www (for example 2019-W07) and that week's number of signups.",
+				"Reply with the week written as YYYY-Www (for example 2019-W07) and that week's number of signups, and name no other week or count.",
 			].join("\n"),
 			solve: async () => {
 				const client = new FormClient(site.origin);
@@ -529,7 +529,7 @@ const compareChannels = kitTask<AnalyticsState<CompareChannels>>({
 				intro(site.origin, world),
 				`Compare revenue by acquisition channel between ${first} and ${second}, across all countries and plans.`,
 				`Among the channels that earned at least $${plan.minimum.toLocaleString("en-US")} in ${first}, which one had the largest percentage revenue growth from ${first} to ${second}?`,
-				"Reply with the channel's name and its growth in percent, rounded to one decimal place.",
+				"Reply with the channel's name and its growth in percent, rounded to one decimal place, and name no other channel or growth.",
 			].join("\n"),
 			solve: async () => {
 				const client = new FormClient(site.origin);
@@ -667,7 +667,7 @@ const anomalyAlert = kitTask<AnalyticsState<AnomalyAlert>>({
 				"Find the day on which active users fell the most, in percent, compared with the day before.",
 				`Then create one alert rule named "${plan.name}" on active users in ${country} only (no other filter), with the condition "drops by more than X% vs the prior day", notifying by email to ${plan.recipient}.`,
 				`Choose a whole-number X from ${plan.lowest} to ${plan.highest} such that the rule would have fired on that day and on no other day of those 30 days.`,
-				"Reply with the date of that day as YYYY-MM-DD.",
+				"Reply with the date of that day as YYYY-MM-DD, and name no other day.",
 			].join("\n"),
 			solve: async () => {
 				const client = new FormClient(site.origin);
@@ -834,7 +834,7 @@ const exportSegment = kitTask<AnalyticsState<ExportSegment>>({
 			instruction: [
 				intro(site.origin, world),
 				`Export the Revenue chart as a CSV file, grouped by week and filtered to ${segment} with no other filter, over the date range of the "${plan.preset}" preset shifted one week ${direction} (its start and its end both moved ${plan.step < 0 ? "back" : "forward"} 7 days).`,
-				"Reply with the total revenue across all rows of the exported file, in whole dollars.",
+				"Reply with the total revenue across all rows of the exported file, in whole dollars, and state no other total.",
 			].join("\n"),
 			solve: async () => {
 				const client = new FormClient(site.origin);

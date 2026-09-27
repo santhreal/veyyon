@@ -397,7 +397,7 @@ const cheapestNonstop = kitTask<TravelState<CheapestNonstop>>({
 				`Book a round trip from ${cityOf(plan.from)} to ${cityOf(plan.to)} for one adult: you, as recorded in your Skyway profile. Fly out on any day from ${longDate(first)} to ${longDate(last)}, and fly back on ${longDate(plan.ret)}.`,
 				"Both flights must be nonstop and in economy, and your fare on each must include a carry-on bag. Of all the trips that meet these conditions, book the one with the lowest total price, and buy nothing else.",
 				payWith(plan.card),
-				"Reply with the booking reference.",
+				"Reply with the booking reference, and name no other booking reference.",
 			].join("\n"),
 			solve: async () => {
 				const client = await signedInClient(site.origin, world);
@@ -752,7 +752,7 @@ const changeReturn = kitTask<TravelState<ChangeReturn>>({
 				`Your booking ${plan.expected.ref} is a round trip from ${cityOf(plan.from)} to ${cityOf(plan.to)}. Move its return flight to ${longDate(plan.newDate)}.`,
 				"Of the flights you can change to on that day, take the one that costs you the least in total, counting both the change fee and any fare difference. Keep the outbound flight as it is.",
 				payWith(plan.card),
-				"Reply with the amount you paid for the change.",
+				"Reply with the amount you paid for the change, and state no other amount.",
 			].join("\n"),
 			solve: async () => {
 				const client = await signedInClient(site.origin, world);
@@ -897,7 +897,7 @@ const earliestArrival = kitTask<TravelState<EarliestArrival>>({
 			instruction: [
 				`Skyway is a flight booking site at ${site.origin}. You do not need to sign in.`,
 				`Of the ways to fly from ${cityOf(plan.from)} to ${destination} departing on ${longDate(plan.date)}, find the one that gets you to ${destination} earliest, counting only options with at most one stop where any connection leaves at least 45 minutes between flights.`,
-				`Do not book anything. Reply with the number of the flight that lands in ${destination} and its arrival time on the 24-hour clock.`,
+				`Do not book anything. Reply with the number of the flight that lands in ${destination} and its arrival time on the 24-hour clock, and name no other flight.`,
 			].join("\n"),
 			solve: async () => `Flight ${plan.expected.flightNo} lands at ${plan.expected.arrival}.`,
 			finish: async () => ({ ...(await site.finish()), expected: plan.expected }),
@@ -987,7 +987,7 @@ const familyBooking = kitTask<TravelState<FamilyBooking>>({
 				...plan.expected.travellers.map(traveller => `- ${travellerLine(traveller)}`),
 				"Each of them needs a checked bag. Choose the fare that includes a checked bag and costs the least in total for all three travellers, and buy nothing else.",
 				payWith(plan.card),
-				"Reply with the booking reference.",
+				"Reply with the booking reference, and name no other booking reference.",
 			].join("\n"),
 			solve: async () => {
 				const client = await signedInClient(site.origin, world);

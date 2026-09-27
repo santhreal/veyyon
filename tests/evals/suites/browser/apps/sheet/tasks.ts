@@ -680,7 +680,7 @@ const sortAndAnswer = kitTask<SheetTaskState<SortAnswer>>({
 			instruction: [
 				intro(site.origin),
 				`In the workbook "${plan.bookName}", sort the Products sheet by its "${plan.column}" column from largest to smallest, keeping each row's cells together, and make sure no filter hides any rows when you are done.`,
-				"Then reply with the name of the product in the third data row (the third row below the header).",
+				"Then reply with the name of the product in the third data row (the third row below the header), and name no other product.",
 			].join("\n"),
 			solve: async () => {
 				const client = new FormClient(site.origin);
@@ -832,7 +832,7 @@ const crossSheetSummary = kitTask<SheetTaskState<CrossSheet>>({
 				intro(site.origin),
 				`The workbook "${plan.bookName}" has a Data sheet listing every sale and a Summary sheet with one row per region.`,
 				`On the Summary sheet, fill in the "Total sales" and "Average sale" columns for every region with formulas that compute them from the Data sheet: the sum and the average of that region's Amount values. Do not change the Data sheet.`,
-				"Then reply with the name of the region that has the highest average sale.",
+				"Then reply with the name of the region that has the highest average sale, and name no other region.",
 			].join("\n"),
 			solve: async () => {
 				const client = new FormClient(site.origin);
