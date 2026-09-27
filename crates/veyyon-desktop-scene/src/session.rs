@@ -177,6 +177,14 @@ impl<'a, V: Render + 'static> HeadlessSession<'a, V> {
 		self.cx.run_until_parked();
 	}
 
+	/// Reports `reduce_motion` as the reduced-motion preference of the
+	/// operating system, as a change of its accessibility setting does, and
+	/// processes the redraw it requests.
+	pub fn simulate_reduce_motion_change(&mut self, reduce_motion: bool) {
+		self.cx.simulate_reduce_motion_change(reduce_motion);
+		self.cx.run_until_parked();
+	}
+
 	/// Mutates the root view and window state within a closure.
 	pub fn update<R>(
 		&mut self,

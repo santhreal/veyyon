@@ -15,11 +15,14 @@
 //! chosen prefix rather than driven by a transport, and the caret is drawn at
 //! zero opacity so the frame carries prose and nothing else.
 
-use std::{path::Path, time::Instant};
+#[path = "support/clock.rs"]
+mod clock;
 
+use std::path::Path;
+
+use clock::expand_at_rest;
 use veyyon_desktop_kit::{TokenSet, document_spans, load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_model::text::markdown::{OpenShape, settled_prefix_len};
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_scene::headless::{
 	Captured, RenderOptions, headless_context, render_view_captured,
 };
@@ -30,7 +33,7 @@ use veyyon_desktop_surface::{
 	transcript::{TranscriptViewportState, agent_turn},
 };
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
-use veyyon_gpui::{App, AppContext, Context, IntoElement, Render, Window};
+use veyyon_gpui::{App, AppContext, Context, IntoElement, Render, Window, motion::MotionTokens};
 
 /// One agent turn of one block, drawn the way the transcript draws it. The
 /// block is a reply or an expanded thought, which are the two surfaces a
@@ -63,7 +66,6 @@ impl Render for TurnView {
 			&self.geometry,
 			&self.tokens,
 			&self.motion,
-			self.thought,
 			&LaidOut::default(),
 			None,
 			None,
@@ -132,16 +134,15 @@ fn thought_frame(text: &str, streaming: bool) -> Captured {
 	let state = TranscriptViewportState::new();
 	let held = text.to_owned();
 	let mut cx = headless_context().expect("headless renderer");
+	// Expanded and brought to rest, so the reveal stands at its own height in
+	// the first frame rather than growing into it.
+	expand_at_rest(&mut cx, &state, 0, 0, &tokens.motion);
 	render_view_captured(
 		&mut cx,
 		&RenderOptions { width: 720, height: 400, scale_factor: 1.0, ..RenderOptions::default() },
 		move |_, app: &mut App| {
 			let installed =
 				install_tokens(app, &tokens, &theme, Path::new("surface")).expect("installed tokens");
-			// Expanded with motion reduced, so the reveal stands at its own
-			// height in the first frame rather than growing into it.
-			state.set_block_expanded(0, 0, true, &installed.motion, true, Instant::now());
-			let _ = state.is_animating(Instant::now(), &installed.motion, true);
 			app.new(|_| TurnView {
 				thought: true,
 				text: held,

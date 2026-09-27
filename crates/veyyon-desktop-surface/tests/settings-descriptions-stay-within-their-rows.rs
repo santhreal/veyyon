@@ -19,7 +19,6 @@ use veyyon_desktop_surface::{
 	ConnectionPhase, Overlay, SettingsPage, ShellState, ShellView, controls::Availability,
 	install_tokens, navigation::SurfaceRoute,
 };
-use veyyon_desktop_tokens::MotionModel;
 use veyyon_gpui::{App, AppContext};
 
 fn changed_rows(before: &RgbaFrame, after: &RgbaFrame) -> (u32, u32) {
@@ -49,11 +48,8 @@ fn descriptions_do_not_overlap_adjacent_settings() {
 	];
 	for description in descriptions {
 		let mut tokens = load_bundled_tokens().expect("bundled tokens load");
-		let MotionModel::SpringFade(float) = &mut tokens.motion.float.model else {
-			panic!("the float role must use its spring-fade model");
-		};
-		float.rise_px = 0.0;
-		float.fade_duration_ms = 0;
+		tokens.motion.float.rise_px = 0.0;
+		tokens.motion.float.fade_duration_ms = 0;
 		let theme = load_bundled_theme("dark").expect("bundled theme loads");
 		let mut settings = seed_state_for_page(SettingsPage::General);
 		settings.route = Some(SurfaceRoute::Page(SettingsPage::General));

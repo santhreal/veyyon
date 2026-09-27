@@ -1,7 +1,10 @@
 # Motion
 
-Motion definitions are in `crates/veyyon-desktop-motion`. Defaults are configured
-in `crates/veyyon-desktop-tokens/tokens/motion.toml`.
+Motion roles, easing curves, springs, keyed animators, and reduced-motion
+resolution are `gpui::motion`, defined in the `motion` crate of Santh GPUI.
+`crates/veyyon-desktop-motion` holds the drivers that apply them to desktop
+surfaces. Defaults are configured in
+`crates/veyyon-desktop-tokens/tokens/motion.toml`.
 
 ## Palette transitions
 
@@ -41,13 +44,28 @@ by itself animate a surface; the surface must evaluate and apply it.
 `resolve_motion` selects the reduced variant. For palette floats, reduced motion
 sets vertical displacement to zero and applies the 60 ms opacity transition.
 
+## Reduced motion
+
+The window reduces motion when `display.transitions` is `off` or when the
+operating system requests reduced motion:
+
+| Platform | Setting |
+| --- | --- |
+| Linux | `org.freedesktop.appearance` `reduced-motion`, else `org.gnome.desktop.interface` `enable-animations`, read through the XDG desktop portal |
+| Windows | Show animations in Windows (`SPI_GETCLIENTAREAANIMATION`) |
+| macOS | Reduce motion (`accessibilityDisplayShouldReduceMotion`) |
+
+A change of either applies at the next frame. On Linux the window opens with
+full motion until the portal answers.
+
 ## Evaluation and interruption
 
-`AnimatorRegistry` indexes animations by surface, role, and slot. Position and
-opacity use separate slots. Redirecting a target samples the active animation at
-the interruption time and uses that value as the new starting value. Spring
-models use the sampled velocity; duration models evaluate their easing curve from
-the new starting value.
+Each driver runs its values on `Animator`s; a float moves position and opacity on
+separate animators. The queue rail keys a section's reveal and a row's move on
+one `AnimatorRegistry`. Redirecting a target samples the active animation at the
+interruption time and uses that value as the new starting value. Spring models
+use the sampled velocity; duration models evaluate their easing curve from the
+new starting value.
 
 The spring implementation evaluates a closed-form damped oscillator using
 elapsed time. Rest requires both a position difference below 0.001 and an absolute

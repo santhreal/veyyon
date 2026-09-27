@@ -11,7 +11,4 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
-serde.workspace = true
-thiserror.workspace = true
-toml.workspace = true
-veyyon-desktop-tokens.workspace = true
+veyyon-gpui.workspace = true

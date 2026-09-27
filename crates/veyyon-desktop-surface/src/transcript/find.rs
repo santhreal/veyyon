@@ -4,11 +4,11 @@
 //! assistant prose, reasoning, tool invocations, and mono panes, with
 //! next/previous match cycling and viewport scroll targeting.
 
-use std::time::Instant;
-
 use veyyon_desktop_kit::input::Editor;
-use veyyon_desktop_motion::MotionTokens;
-use veyyon_gpui::Entity;
+use veyyon_gpui::{
+	Entity,
+	motion::{FrameInstant, MotionPolicy, MotionTokens},
+};
 
 use super::state::TranscriptViewportState;
 use crate::model::{Artifact, Block, Turn};
@@ -226,19 +226,19 @@ impl TranscriptFindState {
 		&self,
 		viewport: &TranscriptViewportState,
 		tokens: &MotionTokens,
-		reduced: bool,
-		now: Instant,
+		policy: MotionPolicy,
+		now: FrameInstant,
 	) {
 		let Some(m) = self.active_match() else {
 			return;
 		};
-		viewport.scroll_to_turn_animated(m.turn_ix, tokens, reduced, now);
+		viewport.scroll_to_turn_animated(m.turn_ix, tokens, policy, now);
 		match m.target {
 			MatchTarget::OperatorTurn => {},
 			MatchTarget::AssistantBlock(block_ix)
 			| MatchTarget::AssistantPane(block_ix)
 			| MatchTarget::OperatorArtifact(block_ix) => {
-				viewport.set_block_expanded(m.turn_ix, block_ix, true, tokens, reduced, now);
+				viewport.set_block_expanded(m.turn_ix, block_ix, true, tokens, policy, now);
 			},
 		}
 	}
@@ -250,11 +250,11 @@ impl TranscriptFindState {
 		turns: &[Turn],
 		viewport: &TranscriptViewportState,
 		tokens: &MotionTokens,
-		reduced: bool,
-		now: Instant,
+		policy: MotionPolicy,
+		now: FrameInstant,
 	) {
 		self.set_query(query, turns);
-		self.reveal_active_match(viewport, tokens, reduced, now);
+		self.reveal_active_match(viewport, tokens, policy, now);
 	}
 
 	/// Synchronizes active matches against incoming turn updates or session
@@ -280,8 +280,8 @@ impl TranscriptFindState {
 		&mut self,
 		viewport: &TranscriptViewportState,
 		tokens: &MotionTokens,
-		reduced: bool,
-		now: Instant,
+		policy: MotionPolicy,
+		now: FrameInstant,
 	) {
 		if self.matches.is_empty() {
 			return;
@@ -290,7 +290,7 @@ impl TranscriptFindState {
 			.active_match_ix
 			.map_or(0, |cur| (cur + 1) % self.matches.len());
 		self.active_match_ix = Some(next);
-		self.reveal_active_match(viewport, tokens, reduced, now);
+		self.reveal_active_match(viewport, tokens, policy, now);
 	}
 
 	/// Jumps to the previous matching hit, scrolling the viewport and expanding
@@ -299,8 +299,8 @@ impl TranscriptFindState {
 		&mut self,
 		viewport: &TranscriptViewportState,
 		tokens: &MotionTokens,
-		reduced: bool,
-		now: Instant,
+		policy: MotionPolicy,
+		now: FrameInstant,
 	) {
 		if self.matches.is_empty() {
 			return;
@@ -317,7 +317,7 @@ impl TranscriptFindState {
 			},
 		);
 		self.active_match_ix = Some(prev);
-		self.reveal_active_match(viewport, tokens, reduced, now);
+		self.reveal_active_match(viewport, tokens, policy, now);
 	}
 
 	/// Clears the search state and active matches.

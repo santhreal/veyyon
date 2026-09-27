@@ -2,9 +2,10 @@
 //! measured list offsets, bounded completion, manual interruption, and reduced
 //! motion. Native keyboard delivery and display cadence require the X11 scene.
 
-use std::time::{Duration, Instant};
+#[path = "support/clock.rs"]
+mod clock;
 
-use veyyon_desktop_motion::MotionTokens;
+use clock::Clock;
 use veyyon_desktop_scene::{
 	headless::{RenderOptions, headless_context},
 	session::HeadlessSession,
@@ -12,6 +13,7 @@ use veyyon_desktop_scene::{
 use veyyon_desktop_surface::{model::Turn, transcript::TranscriptViewportState};
 use veyyon_gpui::{
 	AppContext, Context, IntoElement, ListOffset, ParentElement, Render, Styled, Window, div, list,
+	motion::{MotionPolicy, MotionTokens},
 	px,
 };
 
@@ -51,30 +53,31 @@ fn scrolling_moves_the_measured_list_and_manual_input_cancels_it() {
 	session.frame().expect("initial layout");
 	assert_eq!(offset(&state), 0.0);
 	let tokens = MotionTokens::reference();
-	let now = Instant::now();
-	state.scroll_by_animated(px(120.0), &tokens, false, now);
+	let full = MotionPolicy::DEFAULT;
+	let mut clock = Clock::start();
+	state.scroll_by_animated(px(120.0), &tokens, full, clock.at(0));
 	assert_eq!(offset(&state), 0.0, "ordinary scrolling must not jump immediately");
-	assert!(state.is_animating(now + Duration::from_millis(120), &tokens, false));
+	assert!(state.advance_to(clock.at(120)));
 	assert!(offset(&state) > 0.0 && offset(&state) < 120.0);
-	assert!(!state.is_animating(now + Duration::from_secs(1), &tokens, false));
+	assert!(!state.advance_to(clock.at(1_000)));
 	assert_eq!(offset(&state), 120.0);
 
-	let next = now + Duration::from_secs(2);
-	state.scroll_by_animated(px(-120.0), &tokens, false, next);
-	state.sample_scroll(next + Duration::from_millis(80));
+	state.scroll_by_animated(px(-120.0), &tokens, full, clock.at(2_000));
+	state.sample_scroll(clock.at(2_080));
 	state.scroll_by(px(10.0));
 	let manual = offset(&state);
-	assert!(!state.is_animating(next + Duration::from_secs(1), &tokens, false));
+	assert!(!state.advance_to(clock.at(3_000)));
 	assert_eq!(offset(&state), manual, "manual scrolling must not be overwritten");
 
+	let reduced_at = clock.at(4_000);
 	state.scroll_to_animated(
 		ListOffset { item_ix: 0, offset_in_item: px(0.0) },
 		&tokens,
-		true,
-		next + Duration::from_secs(2),
+		MotionPolicy::REDUCED,
+		reduced_at,
 	);
 	assert_eq!(offset(&state), 0.0, "reduced scrolling applies without a future frame");
-	assert!(!state.is_animating(next + Duration::from_secs(2), &tokens, true));
+	assert!(!state.advance_to(reduced_at));
 }
 
 #[test]
@@ -99,34 +102,37 @@ fn home_from_tail_scrolls_to_head_and_pagedown_advances_measured_viewport() {
 	assert!(state.is_following_tail());
 
 	let tokens = MotionTokens::reference();
-	let mut now = Instant::now();
+	let full = MotionPolicy::DEFAULT;
+	let mut clock = Clock::start();
+	let mut ms = 0;
 	state.scroll_to_animated(
 		ListOffset { item_ix: 0, offset_in_item: px(0.0) },
 		&tokens,
-		false,
-		now,
+		full,
+		clock.at(ms),
 	);
 	assert!(!state.is_following_tail());
 
 	// Step animation frames to completion
 	for _step in 1..=20 {
-		now += Duration::from_millis(50);
-		let _ = state.is_animating(now, &tokens, false);
+		ms += 50;
+		let _ = state.advance_to(clock.at(ms));
 		session.frame().expect("animation step frame");
 	}
 
-	assert!(!state.is_animating(now + Duration::from_secs(1), &tokens, false));
+	ms += 1_000;
+	assert!(!state.advance_to(clock.at(ms)));
 	assert_eq!(offset(&state), 0.0, "scrolling to top must reach offset 0.0");
 
 	// Now PageDown by 120px (viewport height)
-	now += Duration::from_secs(1);
-	state.scroll_by_animated(px(120.0), &tokens, false, now);
+	state.scroll_by_animated(px(120.0), &tokens, full, clock.at(ms));
 	for _step in 1..=20 {
-		now += Duration::from_millis(50);
-		let _ = state.is_animating(now, &tokens, false);
+		ms += 50;
+		let _ = state.advance_to(clock.at(ms));
 		session.frame().expect("pagedown step frame");
 	}
 
-	assert!(!state.is_animating(now + Duration::from_secs(1), &tokens, false));
+	ms += 1_000;
+	assert!(!state.advance_to(clock.at(ms)));
 	assert_eq!(offset(&state), 120.0, "pagedown from top must advance by 120px");
 }

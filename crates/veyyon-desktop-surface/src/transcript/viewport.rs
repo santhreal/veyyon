@@ -11,11 +11,12 @@ use std::rc::Rc;
 use veyyon_desktop_kit::{
 	ButtonVariant, ColorRole, IconName, TextSelection, TokenSet, controls::Button,
 };
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{
 	Bounds, Context, Div, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
-	ParentElement, Pixels, Styled, Window, div, list, px,
+	ParentElement, Pixels, Styled, Window, div, list,
+	motion::{MotionFrame, MotionTokens},
+	px,
 };
 
 use super::{
@@ -25,7 +26,7 @@ use super::{
 };
 use crate::{
 	ShellView,
-	damage::{LaidOut, Region, request_motion_frame},
+	damage::{LaidOut, Region, motion_bounds},
 	model::Turn,
 };
 
@@ -41,15 +42,15 @@ use crate::{
 ///   overlays.
 /// - Preservation of the 768px reading column and user/assistant visual
 ///   hierarchy.
-/// - While an animation runs, the next frame is asked for inside
-///   `motion_damage`, the box that motion reaches.
+/// - The scroll jump, the caret and every block reveal are tracked on `frame`
+///   within `motion_damage`, the box that motion reaches.
 pub fn transcript_viewport(
 	state: &TranscriptViewportState,
 	geometry: &TranscriptSurfaceTokens,
 	user_ground: ColorRole,
 	tokens: &TokenSet,
 	motion_tokens: &MotionTokens,
-	reduced_motion: bool,
+	frame: &mut MotionFrame,
 	laid_out: &LaidOut,
 	motion_damage: Option<Bounds<Pixels>>,
 	measure_px: f32,
@@ -59,20 +60,15 @@ pub fn transcript_viewport(
 	cx: &Context<ShellView>,
 ) -> Div {
 	let measure_px = geometry.column_width_px.min(measure_px);
-	let now = cx.background_executor().now();
-
-	let (caret_opacity, _) = state.sample_caret(now, motion_tokens, reduced_motion);
-
-	if state.is_animating(now, motion_tokens, reduced_motion) {
-		request_motion_frame(window, motion_damage);
-	}
+	let (caret_opacity, _) = state.sample_caret(motion_tokens, frame.policy(), frame.now());
+	frame.track_within(&mut state.clone(), motion_bounds(window, motion_damage));
 
 	let view = cx.weak_entity();
 	let list_state = state.list_state();
 	let state_for_items = state.clone();
 	let geometry_copy = geometry.clone();
 	let tokens_copy = tokens.clone();
-	let motion_tokens_copy = motion_tokens.clone();
+	let motion_tokens_copy = *motion_tokens;
 	let turns_snapshot: Rc<[Turn]> = state.turns_snapshot();
 	let turns_len = turns_snapshot.len();
 	let item_layout = laid_out.clone();
@@ -91,7 +87,6 @@ pub fn transcript_viewport(
 				user_ground,
 				&tokens_copy,
 				&motion_tokens_copy,
-				reduced_motion,
 				measure_px,
 				&item_layout,
 				Some(&view),
@@ -177,7 +172,7 @@ pub fn transcript_viewport(
 	if state.is_end_off_screen() && turns_len > 0 {
 		let state_scroll = state.clone();
 		let view_scroll = cx.weak_entity();
-		let motion_scroll = motion_tokens.clone();
+		let motion_scroll = *motion_tokens;
 		let pill_bottom = bottom_inset_px + 12.0;
 
 		let pill = div()
@@ -196,8 +191,8 @@ pub fn transcript_viewport(
 					.on_click(move |_event, _window, cx| {
 						state_scroll.scroll_to_end_animated(
 							&motion_scroll,
-							reduced_motion,
-							cx.background_executor().now(),
+							cx.motion_policy(),
+							cx.frame_instant(),
 						);
 						let _ = view_scroll.update(cx, |_view, cx| cx.notify());
 					}),

@@ -26,14 +26,13 @@ impl ShellView {
 			match event {
 				EditorEvent::Changed => {
 					let query = editor.read(cx).text().to_owned();
-					let reduced = view.rail_motion.is_reduced_motion();
 					view.find_state.set_query_and_reveal(
 						&query,
 						&view.state.transcript,
 						&view.transcript_viewport,
 						&view.installed.motion,
-						reduced,
-						cx.background_executor().now(),
+						cx.motion_policy(),
+						cx.frame_instant(),
 					);
 				},
 				EditorEvent::Submit => {
@@ -94,23 +93,21 @@ impl ShellView {
 
 	/// Advances to the next matching hit in the transcript.
 	pub fn transcript_find_next(&mut self, cx: &mut Context<Self>) {
-		let reduced = self.rail_motion.is_reduced_motion();
 		self.find_state.next_match(
 			&self.transcript_viewport,
 			&self.installed.motion,
-			reduced,
-			cx.background_executor().now(),
+			cx.motion_policy(),
+			cx.frame_instant(),
 		);
 	}
 
 	/// Jumps to the previous matching hit in the transcript.
 	pub fn transcript_find_prev(&mut self, cx: &mut Context<Self>) {
-		let reduced = self.rail_motion.is_reduced_motion();
 		self.find_state.prev_match(
 			&self.transcript_viewport,
 			&self.installed.motion,
-			reduced,
-			cx.background_executor().now(),
+			cx.motion_policy(),
+			cx.frame_instant(),
 		);
 	}
 

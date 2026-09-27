@@ -365,6 +365,7 @@
 
 ### Fixed
 
+- The desktop window reduces motion when the operating system's reduced-motion accessibility setting is on, where a `display.transitions` value of `on` overrode that setting on every frame.
 - Stopping a share sends the closing frame before the socket closes, where the frame was queued behind the close and dropped, leaving each guest reconnecting to a room that no longer exists.
 - Joining a share replies once the guest's own session is stored, where a second join arriving during the first restored the session twice and could reply against a session that was not open yet.
 - Every window a desktop host serves runs its own background work, where only the first session in the process held an async job manager and every window after it refused `/tan`, an async bash job and a task delivery outright; each window now owns a manager, and a completion is delivered into the conversation that asked for it.
@@ -525,7 +526,7 @@
 - A desktop pointer reaches only what it is over: a press or wheel over an open dialog, palette, menu or the anchored model catalogue no longer also selects or scrolls the queue behind it, and a press inside a dialog is no longer followed in the same pass by a background element taking the focus back. A General settings row's control draws the width of its column, so a string, record, model-chain or free-form array field shows its value and takes a click at the point the pointer landed instead of collapsing to an empty pill on the trailing edge.
 - The GPU front end's theme is the window's own preference rather than an engine request, so a detached window can be themed, and the profile theme list is read-only because a profile theme carries no palette the window could draw.
 - The desktop host states that profile theme listing is unavailable rather than describing a theme selection it never owned.
-- The desktop renderer repaints only the region a state change declares, keeps unaffected content in a retained texture, clips rounded and path-bounded subtrees, and reuses shaped text across frames; Santh GPUI is a revision-pinned Git dependency from the private canonical `santhreal/gpui` repository.
+- The desktop renderer repaints only the region a state change declares, keeps unaffected content in a retained texture, clips rounded and path-bounded subtrees, and reuses shaped text across frames; Santh GPUI is a revision-pinned Git dependency from the public canonical `santhreal/santh-gpui` repository.
 - The native desktop composer integrates model selection and an up-arrow primary action, with secondary turn actions in slash commands and a separate stop control during active turns.
 - Native desktop palettes retain their closing transition and reverse from their current position when reopened.
 - Desktop controls reuse installed theme tokens rather than parsing bundled fallback tokens during each render.

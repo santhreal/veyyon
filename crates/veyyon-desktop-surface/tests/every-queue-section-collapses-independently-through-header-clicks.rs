@@ -26,7 +26,7 @@
 #[path = "support/queue-scroll/mod.rs"]
 mod queue_scroll;
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use queue_scroll::{open_session, row};
 use veyyon_desktop_kit::load_bundled_tokens;
@@ -75,24 +75,20 @@ fn make_compact_all_sections_state() -> ShellState {
 
 fn settle(session: &mut HeadlessSession<'_, ShellView>) {
 	session.frame().expect("layout before advancing motion");
-	session
-		.update(|view, _, cx| {
-			// Rail motion takes std::time::Instant; advancing the GPUI timer
-			// executor does not advance this clock.
-			let start = Instant::now();
-			for tick in 1..=240 {
-				if !view
-					.rail_motion_mut()
-					.has_active_animations(start + Duration::from_millis(tick * 16))
-				{
-					cx.notify();
-					return;
-				}
-			}
-			panic!("queue animations must settle within 240 frames");
-		})
-		.expect("advance rail animation clock");
-	session.frame().expect("settled queue frame");
+	for _ in 0..240 {
+		session.advance(Duration::from_millis(16));
+		let moving = session
+			.update(|view, _, cx| view.rail_motion_mut().advance_to(cx.frame_instant()))
+			.expect("advance rail motion");
+		if !moving {
+			session
+				.update(|_, _, cx| cx.notify())
+				.expect("redraw the settled rail");
+			session.frame().expect("settled queue frame");
+			return;
+		}
+	}
+	panic!("queue animations must settle within 240 frames");
 }
 
 fn find_section_headers(session: &mut HeadlessSession<'_, ShellView>) -> Vec<Bounds<Pixels>> {

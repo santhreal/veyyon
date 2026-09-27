@@ -15,6 +15,10 @@
 //!    live window and requires the next frame to carry it.
 //! 3. A value the schema does not declare being read as a third meaning: only
 //!    `off` reduces, and the set of values that do is pinned by exact equality.
+//! 4. The setting overriding the operating system's reduced-motion preference:
+//!    a frame that sets the app's flag from the setting alone moves a window
+//!    whose system asks for reduced motion. The fourth test walks one live
+//!    window through every combination of the two.
 //!
 //! WHAT IT DOES NOT CATCH:
 //! What each driver does once it is told to reduce, which
@@ -114,9 +118,9 @@ fn a_settings_snapshot_that_arrives_after_the_window_opened_reaches_the_driver()
 	driven(ShellState { reduced_motion: false, ..fixture::populated() }, |session| {
 		assert!(
 			!session
-				.update(|view, _window, _cx| view.rail_motion().is_reduced_motion())
+				.update(|_view, _window, cx| cx.motion_policy().reduced())
 				.expect("the view is live"),
-			"a window opened with motion on told its driver to reduce",
+			"a window opened with motion on told its drivers to reduce",
 		);
 
 		session
@@ -131,12 +135,51 @@ fn a_settings_snapshot_that_arrives_after_the_window_opened_reaches_the_driver()
 
 		assert!(
 			session
-				.update(|view, _window, _cx| view.rail_motion().is_reduced_motion())
+				.update(|_view, _window, cx| cx.motion_policy().reduced())
 				.expect("the view is live"),
 			"the setting reached the state a frame draws and stopped there: every motion driver \
-			 resolves against the rail's policy, so a snapshot that does not reach it moves a window \
-			 whose operator asked it not to",
+			 resolves against the app's motion policy, so a snapshot that does not reach it moves a \
+			 window whose operator asked it not to",
 		);
+	});
+}
+
+/// The combinations of (setting reduces, system reduces) one window walks
+/// through, in order. Each value turns on and off under both values of the
+/// other, so a flag that follows only the latest change of either is caught
+/// as well as one that follows the setting alone.
+const SETTING_AND_SYSTEM: [(bool, bool); 7] = [
+	(false, false),
+	(false, true),
+	(true, true),
+	(true, false),
+	(false, false),
+	(true, false),
+	(true, true),
+];
+
+#[test]
+fn the_system_preference_reduces_motion_whatever_the_setting_leaves_on() {
+	driven(ShellState { reduced_motion: false, ..fixture::populated() }, |session| {
+		for (setting, system) in SETTING_AND_SYSTEM {
+			session
+				.update(|view, _window, cx| {
+					view.state_mut().reduced_motion = setting;
+					cx.notify();
+				})
+				.expect("the view is live");
+			session.simulate_reduce_motion_change(system);
+			session.frame().expect("the frame after the change renders");
+
+			assert_eq!(
+				session
+					.update(|_view, _window, cx| cx.motion_policy().reduced())
+					.expect("the view is live"),
+				setting || system,
+				"the setting reduces: {setting}, the system reduces: {system}; either one stops the \
+				 window and neither alone may start it",
+			);
+		}
 	});
 }
 

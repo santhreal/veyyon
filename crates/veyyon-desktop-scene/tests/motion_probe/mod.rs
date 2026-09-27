@@ -6,50 +6,74 @@
 //! series is the observation: doubling any parameter of a role changes the
 //! trajectory it reports.
 
-use std::{
-	fmt::Write,
-	time::{Duration, Instant},
-};
+use std::{fmt::Write, time::Duration};
 
 use veyyon_desktop_motion::{
-	CaretMotion, FloatMotion, MotionTokens, PanelMotion, RevealMotion, ScrollMotion, ShiftMotion,
-	SurfaceId, TintMotion,
+	CaretMotion, FloatMotion, PanelMotion, RevealMotion, ScrollMotion, ShiftMotion, TintMotion,
 };
 use veyyon_desktop_scene::Headless;
 use veyyon_desktop_tokens::Tokens;
+use veyyon_gpui::motion::{FrameInstant, MotionPolicy, MotionTokens};
 
 use crate::dead_token_probe::Observation;
 
-fn sample_tint(tokens: &MotionTokens, t0: Instant) -> String {
-	let mut tint = TintMotion::new(SurfaceId::Queue, 0, 0.0);
-	tint.set_target(1.0, tokens, false, t0);
+/// The render context's clock, read at offsets from the instant a series
+/// starts.
+struct Series<'a> {
+	cx:      &'a mut Headless,
+	elapsed: Duration,
+}
+
+impl<'a> Series<'a> {
+	/// A series starting at the clock's current instant.
+	const fn start(cx: &'a mut Headless) -> Self {
+		Self { cx, elapsed: Duration::ZERO }
+	}
+
+	/// The instant `ms` milliseconds after the series started. Time only moves
+	/// forward.
+	fn at(&mut self, ms: u64) -> FrameInstant {
+		let target = Duration::from_millis(ms);
+		let step = target
+			.checked_sub(self.elapsed)
+			.unwrap_or_else(|| panic!("the series does not move back to {ms} ms"));
+		self.cx.advance_clock(step);
+		self.elapsed = target;
+		self.cx.update(|app| app.frame_instant())
+	}
+}
+
+fn sample_tint(cx: &mut Headless, tokens: &MotionTokens) -> String {
+	let mut series = Series::start(cx);
+	let mut tint = TintMotion::new(0.0);
+	tint.set_target(1.0, tokens, MotionPolicy::DEFAULT, series.at(0));
 	let mut out = String::new();
 	for ms in [0, 20, 40, 60, 80, 100, 120, 150, 200] {
-		let t = t0 + Duration::from_millis(ms);
-		let (val, settled) = tint.sample(t);
+		let (val, settled) = tint.sample(series.at(ms));
 		let _ = writeln!(out, "{ms}ms: val={val:.5} settled={settled}");
 	}
 	out
 }
 
-fn sample_reveal(tokens: &MotionTokens, t0: Instant) -> String {
-	let mut reveal = RevealMotion::new(SurfaceId::Queue, 1, false);
-	reveal.set_expanded(true, tokens, false, t0);
+fn sample_reveal(cx: &mut Headless, tokens: &MotionTokens) -> String {
+	let mut series = Series::start(cx);
+	let mut reveal = RevealMotion::new(false);
+	reveal.set_expanded(true, tokens, MotionPolicy::DEFAULT, series.at(0));
 	let mut out = String::new();
 	for ms in [0, 15, 30, 45, 60, 80, 100, 120, 150, 200, 300, 500] {
-		let t = t0 + Duration::from_millis(ms);
-		let (pos, settled) = reveal.sample(t);
+		let (pos, settled) = reveal.sample(series.at(ms));
 		let _ = writeln!(out, "{ms}ms: pos={pos:.5} settled={settled}");
 	}
 	out
 }
 
-fn sample_float(tokens: &MotionTokens, t0: Instant) -> String {
-	let mut float = FloatMotion::new(SurfaceId::Palette, 0);
+fn sample_float(cx: &mut Headless, tokens: &MotionTokens) -> String {
+	let mut series = Series::start(cx);
+	let mut float = FloatMotion::new();
+	float.set_open(true, tokens, MotionPolicy::DEFAULT, series.at(0));
 	let mut out = String::new();
 	for ms in [0, 15, 30, 45, 60, 75, 90, 120, 150, 200, 300] {
-		let t = t0 + Duration::from_millis(ms);
-		let frame = float.sample(true, t, tokens, false);
+		let frame = float.sample(series.at(ms));
 		let _ = writeln!(
 			out,
 			"{ms}ms: opacity={:.5} offset_y={:.5} settled={}",
@@ -59,65 +83,66 @@ fn sample_float(tokens: &MotionTokens, t0: Instant) -> String {
 	out
 }
 
-fn sample_panel(tokens: &MotionTokens, t0: Instant) -> String {
-	let mut panel = PanelMotion::new(SurfaceId::RightPanel, 0, 320.0);
-	panel.set_direct(350.0, t0 + Duration::from_millis(20));
-	panel.set_direct(400.0, t0 + Duration::from_millis(50));
-	panel.release_to_snap(380.0, tokens, false, t0 + Duration::from_millis(50));
+fn sample_panel(cx: &mut Headless, tokens: &MotionTokens) -> String {
+	let mut series = Series::start(cx);
+	let mut panel = PanelMotion::new(320.0);
+	panel.set_direct(350.0, series.at(20));
+	let release = series.at(50);
+	panel.set_direct(400.0, release);
+	panel.release_to_snap(380.0, tokens, MotionPolicy::DEFAULT, release);
 	let mut out = String::new();
 	for ms in [60, 70, 80, 100, 120, 150, 200, 300, 500, 1000] {
-		let t = t0 + Duration::from_millis(ms);
-		let (w, settled) = panel.sample(t);
+		let (w, settled) = panel.sample(series.at(ms));
 		let _ = writeln!(out, "{ms}ms: width={w:.5} settled={settled}");
 	}
 	out
 }
 
-fn sample_shift(tokens: &MotionTokens, t0: Instant) -> String {
-	let mut shift = ShiftMotion::new(SurfaceId::Queue, 42);
-	shift.record_shift(100.0, 150.0, tokens, false, t0);
+fn sample_shift(cx: &mut Headless, tokens: &MotionTokens) -> String {
+	let mut series = Series::start(cx);
+	let mut shift = ShiftMotion::new();
+	shift.record_shift(100.0, 150.0, tokens, MotionPolicy::DEFAULT, series.at(0));
 	let mut out = String::new();
 	for ms in [0, 25, 50, 75, 100, 125, 150, 175, 200, 250, 300] {
-		let t = t0 + Duration::from_millis(ms);
-		let (offset, settled) = shift.sample(t);
+		let (offset, settled) = shift.sample(series.at(ms));
 		let _ = writeln!(out, "{ms}ms: offset={offset:.5} settled={settled}");
 	}
 	out
 }
 
-fn sample_scroll(tokens: &MotionTokens, t0: Instant) -> String {
-	let mut scroll = ScrollMotion::new(SurfaceId::Transcript, 0, 0.0);
-	scroll.scroll_to(500.0, tokens, false, t0);
+fn sample_scroll(cx: &mut Headless, tokens: &MotionTokens) -> String {
+	let mut series = Series::start(cx);
+	let mut scroll = ScrollMotion::new(0.0);
+	scroll.scroll_to(500.0, tokens, MotionPolicy::DEFAULT, series.at(0));
 	let mut out = String::new();
 	for ms in [0, 30, 60, 90, 120, 150, 180, 210, 240, 300] {
-		let t = t0 + Duration::from_millis(ms);
-		let (offset, settled) = scroll.sample(t);
+		let (offset, settled) = scroll.sample(series.at(ms));
 		let _ = writeln!(out, "{ms}ms: offset={offset:.5} settled={settled}");
 	}
 	out
 }
 
-fn sample_caret(tokens: &MotionTokens, t0: Instant) -> String {
-	let mut caret = CaretMotion::new(SurfaceId::Composer, 0);
+fn sample_caret(cx: &mut Headless, tokens: &MotionTokens) -> String {
+	let mut series = Series::start(cx);
+	let mut caret = CaretMotion::new();
+	caret.set_streaming(true, tokens, MotionPolicy::DEFAULT, series.at(0));
 	let mut out = String::new();
 	for ms in [0, 150, 300, 450, 550, 700, 900, 1050, 1200, 1350] {
-		let t = t0 + Duration::from_millis(ms);
-		let (opacity, settled) = caret.sample(true, t, tokens, false);
+		let (opacity, settled) = caret.sample(series.at(ms));
 		let _ = writeln!(out, "{ms}ms: opacity={opacity:.5} settled={settled}");
 	}
 	out
 }
 
-pub fn observations(_cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
-	let motion = MotionTokens::from(tokens.motion.clone());
-	let t0 = Instant::now();
+pub fn observations(cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
+	let motion = &tokens.motion;
 	vec![
-		Observation::Report { name: "motion.tint", text: sample_tint(&motion, t0) },
-		Observation::Report { name: "motion.reveal", text: sample_reveal(&motion, t0) },
-		Observation::Report { name: "motion.float", text: sample_float(&motion, t0) },
-		Observation::Report { name: "motion.panel", text: sample_panel(&motion, t0) },
-		Observation::Report { name: "motion.shift", text: sample_shift(&motion, t0) },
-		Observation::Report { name: "motion.scroll", text: sample_scroll(&motion, t0) },
-		Observation::Report { name: "motion.caret", text: sample_caret(&motion, t0) },
+		Observation::Report { name: "motion.tint", text: sample_tint(cx, motion) },
+		Observation::Report { name: "motion.reveal", text: sample_reveal(cx, motion) },
+		Observation::Report { name: "motion.float", text: sample_float(cx, motion) },
+		Observation::Report { name: "motion.panel", text: sample_panel(cx, motion) },
+		Observation::Report { name: "motion.shift", text: sample_shift(cx, motion) },
+		Observation::Report { name: "motion.scroll", text: sample_scroll(cx, motion) },
+		Observation::Report { name: "motion.caret", text: sample_caret(cx, motion) },
 	]
 }

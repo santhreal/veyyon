@@ -3,6 +3,7 @@
 #![allow(dead_code, reason = "each test binary uses a subset of these fixtures")]
 
 pub mod agents_dashboard;
+pub mod clock;
 pub mod empty_prose;
 pub mod escape_walk;
 pub mod general_settings_list;

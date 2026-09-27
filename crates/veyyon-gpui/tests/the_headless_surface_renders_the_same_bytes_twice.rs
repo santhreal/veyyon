@@ -1,17 +1,18 @@
 //! WHY THIS SUITE EXISTS
 //!
-//! Patch P10 gives the fork a headless offscreen surface, and section 9 of the
-//! desktop plan rests its whole iteration engine on one property of it: the
+//! Patch P10 gives Santh GPUI a headless offscreen surface, and section 9 of
+//! the desktop plan rests its whole iteration engine on one property of it: the
 //! same scene renders the same bytes twice. Every clutter metric, every
 //! perceptual diff and every contact-sheet cell compares frames, so a renderer
 //! that varies by a pixel between runs turns each comparison into noise and
 //! reports it as a change.
 //!
-//! The fork has its own tests for the patch. They prove it inside the fork's
-//! tree. This proves the property through the pin, which is what this
-//! repository depends on: a rebase that drops the patch, a revision bump that
-//! lands a different one, or an adapter-selection change that picks another GPU
-//! all break here rather than in a sweep whose output merely looks surprising.
+//! Santh GPUI has its own tests for the patch. They prove it inside that
+//! repository. This proves the property through the pin, which is what this
+//! repository depends on: a framework commit that drops the patch, a revision
+//! bump that lands a different one, or an adapter-selection change that picks
+//! another GPU all break here rather than in a sweep whose output merely looks
+//! surprising.
 //!
 //! It also pins the wiring, which was the actual defect the first time. P10
 //! landed `WgpuHeadlessRenderer` while `current_headless_renderer` still

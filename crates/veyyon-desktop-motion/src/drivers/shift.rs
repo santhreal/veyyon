@@ -1,104 +1,83 @@
 //! Motion driver for FLIP layout shift transitions (`MotionRole::Shift`).
 //!
-//! Provides First-Last-Invert-Play translation tracking keyed by element slot
-//! in the motion registry, ensuring layout-affecting repositioning animates
-//! as visual transform offsets without causing reflow of sibling elements.
+//! A row that moved is drawn at its old position and translated to its new
+//! one: the offset starts at the distance moved and animates to zero, so the
+//! layout changes at once and no sibling reflows.
 
-use std::time::Instant;
-
-use crate::{
-	curves::EasingCurve,
-	registry::{AnimatorKey, AnimatorRegistry, SurfaceId},
-	role::{FlipModel, MotionModel, MotionRole, ResolvedMotion, resolve_motion},
-	tokens::MotionTokens,
+use veyyon_gpui::motion::{
+	Advance, Animator, FrameInstant, MotionFrame, MotionPolicy, MotionRole, MotionTokens,
+	ResolvedMotion, resolve_motion,
 };
 
-/// Motion driver for FLIP layout shift transitions (`MotionRole::Shift`).
-#[derive(Debug)]
+/// Moves closer than this, in pixels, are not moves.
+const MOVE_TOLERANCE_PX: f32 = 0.001;
+
+/// The translation of one row from where it was drawn to where it is laid out.
+#[derive(Debug, Clone, Copy)]
 pub struct ShiftMotion {
-	surface_id:     SurfaceId,
-	slot:           u64,
-	registry:       AnimatorRegistry,
-	current_offset: f32,
+	offset: Animator<FrameInstant>,
+}
+
+impl Default for ShiftMotion {
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl ShiftMotion {
-	/// Creates a new shift motion driver.
+	/// A row at rest where it is laid out.
 	#[must_use]
-	pub fn new(surface_id: SurfaceId, slot: u64) -> Self {
-		Self { surface_id, slot, registry: AnimatorRegistry::new(), current_offset: 0.0 }
+	pub const fn new() -> Self {
+		Self { offset: Animator::at_rest(0.0) }
 	}
 
-	/// Records a layout position change from `previous_pos` to `current_pos`.
-	///
-	/// Computes the inverted visual delta and animates to zero offset.
+	/// Records that the row moved from `previous_pos` to `current_pos`. The
+	/// offset jumps by the distance moved, added to the offset still showing
+	/// at `now`, and animates back to zero. Reduced motion places the row.
 	pub fn record_shift(
 		&mut self,
 		previous_pos: f32,
 		current_pos: f32,
 		tokens: &MotionTokens,
-		reduced: bool,
-		now: Instant,
+		policy: MotionPolicy,
+		now: FrameInstant,
 	) {
 		let delta = previous_pos - current_pos;
-		if delta.abs() <= 0.001 {
+		if delta.abs() <= MOVE_TOLERANCE_PX {
 			return;
 		}
-
-		let key = AnimatorKey::new(self.surface_id, MotionRole::Shift, self.slot);
-		match resolve_motion(MotionRole::Shift, tokens, reduced) {
-			ResolvedMotion::Instant => {
-				let model =
-					MotionModel::Flip(FlipModel { duration_ms: 0, curve: EasingCurve::EaseOut });
-				let active = self.registry.get_or_create(key, 0.0, model, now);
-				active.start_value = 0.0;
-				active.current_value = 0.0;
-				active.target_value = 0.0;
-				active.is_at_rest = true;
-				self.current_offset = 0.0;
+		match resolve_motion(MotionRole::Shift, tokens, policy.reduced()) {
+			motion @ ResolvedMotion::Duration { .. } => {
+				let showing = self.offset.sample(now).value;
+				self
+					.offset
+					.start(delta + showing, 0.0, 0.0, motion.model(), policy, now);
 			},
-			ResolvedMotion::Duration { duration_ms, curve } => {
-				let model = MotionModel::Flip(FlipModel { duration_ms, curve });
-				let current_offset = if let Some(active) = self.registry.sample(&key, now) {
-					delta + active
-				} else {
-					delta
-				};
-				let active = self.registry.get_or_create(key, 0.0, model, now);
-				active.start_value = current_offset;
-				active.current_value = current_offset;
-				active.target_value = 0.0;
-				active.start_time = now;
-				active.model = model;
-				active.is_at_rest = false;
-				self.current_offset = current_offset;
-			},
-			_ => {},
+			_ => self.offset.snap(0.0),
 		}
 	}
 
-	/// Samples the current visual translation offset and settled state at `now`.
-	pub fn sample(&mut self, now: Instant) -> (f32, bool) {
-		let key = AnimatorKey::new(self.surface_id, MotionRole::Shift, self.slot);
-		if let Some((offset, _, at_rest)) = self.registry.sample_full(&key, now) {
-			self.current_offset = offset;
-			(offset, at_rest)
-		} else {
-			(0.0, true)
-		}
+	/// Samples the offset at `now` and returns it with whether it is at rest.
+	pub fn sample(&mut self, now: FrameInstant) -> (f32, bool) {
+		let sample = self.offset.update(now);
+		(sample.value, sample.at_rest)
 	}
 
-	/// Returns current offset without sampling.
+	/// The offset at the last sample or shift.
 	#[must_use]
 	pub const fn current_offset(&self) -> f32 {
-		self.current_offset
+		self.offset.value()
 	}
 
-	/// Returns true if the shift transition has settled at rest (0.0 offset).
+	/// Whether the last sample found the row at rest.
 	#[must_use]
-	pub fn is_settled(&self) -> bool {
-		self
-			.registry
-			.is_at_rest(&AnimatorKey::new(self.surface_id, MotionRole::Shift, self.slot))
+	pub const fn is_settled(&self) -> bool {
+		self.offset.is_at_rest()
+	}
+}
+
+impl Advance for ShiftMotion {
+	fn advance(&mut self, frame: &MotionFrame) -> bool {
+		!self.sample(frame.now()).1
 	}
 }

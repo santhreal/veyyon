@@ -16,10 +16,13 @@
 //! invocation whose transcript has not arrived, so both are held and resolved
 //! against each frame until the thing they name is drawn.
 
-use std::{collections::BTreeSet, path::PathBuf, time::Instant};
+use std::{collections::BTreeSet, path::PathBuf};
 
 use veyyon_desktop_model::{DiffMode, QueueMode};
-use veyyon_gpui::Context;
+use veyyon_gpui::{
+	Context,
+	motion::{FrameInstant, MotionPolicy},
+};
 
 use super::ShellView;
 use crate::{
@@ -278,7 +281,7 @@ impl ShellView {
 	/// the host as well as to the viewport, because the host owns the view a
 	/// disclosed card draws: opening one silently would draw the body over the
 	/// collapsed view the host generated.
-	pub(super) fn apply_remembered(&mut self, now: Instant) {
+	pub(super) fn apply_remembered(&mut self, policy: MotionPolicy, now: FrameInstant) {
 		if let Some(slug) = self.pending_drawer_tab.clone()
 			&& let Some(index) = self
 				.state
@@ -308,7 +311,6 @@ impl ShellView {
 		if self.pending_expanded.is_empty() {
 			return;
 		}
-		let reduced = self.rail_motion.is_reduced_motion();
 		let mut disclosed = Vec::new();
 		for (turn_ix, turn) in self.state.transcript.iter().enumerate() {
 			let Turn::Agent { blocks, .. } = turn else {
@@ -333,7 +335,7 @@ impl ShellView {
 				block_ix,
 				true,
 				&self.installed.motion,
-				reduced,
+				policy,
 				now,
 			);
 			if has_views {

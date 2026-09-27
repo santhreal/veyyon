@@ -11,10 +11,10 @@ use veyyon_desktop_kit::{
 	ColorRole, Icon, IconName, IconSize, SelectableProse, SpacingStep, TextRamp, TokenSet,
 	controls::button::{Button, ButtonSize},
 };
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{
-	CursorStyle, Div, ElementId, InteractiveElement, ParentElement, Styled, WeakEntity, div, px,
+	CursorStyle, Div, ElementId, InteractiveElement, ParentElement, Styled, WeakEntity, div,
+	motion::MotionTokens, px,
 };
 
 use super::{prose::streaming_document, reveal::render_reveal_container};
@@ -31,7 +31,6 @@ pub fn render_reason_block(
 	geometry: &TranscriptSurfaceTokens,
 	tokens: &TokenSet,
 	motion_tokens: &MotionTokens,
-	reduced_motion: bool,
 	viewport_state: &TranscriptViewportState,
 	view: Option<&WeakEntity<ShellView>>,
 	selection: Option<SelectableProse>,
@@ -44,8 +43,8 @@ pub fn render_reason_block(
 
 	let state_toggle = viewport_state.clone();
 	let state_collapse = viewport_state.clone();
-	let motion_tokens_toggle = motion_tokens.clone();
-	let motion_tokens_collapse = motion_tokens.clone();
+	let motion_tokens_toggle = *motion_tokens;
+	let motion_tokens_collapse = *motion_tokens;
 	let view_toggle = view.cloned();
 	let view_collapse = view.cloned();
 
@@ -62,8 +61,8 @@ pub fn render_reason_block(
 				turn_ix,
 				block_ix,
 				&motion_tokens_toggle,
-				reduced_motion,
-				cx.background_executor().now(),
+				cx.motion_policy(),
+				cx.frame_instant(),
 			);
 			if let Some(v) = &view_toggle {
 				let _ = v.update(cx, |_view, cx| cx.notify());
@@ -126,8 +125,8 @@ pub fn render_reason_block(
 						block_ix,
 						false,
 						&motion_tokens_collapse,
-						reduced_motion,
-						cx.background_executor().now(),
+						cx.motion_policy(),
+						cx.frame_instant(),
 					);
 					if let Some(v) = &view_collapse {
 						let _ = v.update(cx, |_view, cx| cx.notify());

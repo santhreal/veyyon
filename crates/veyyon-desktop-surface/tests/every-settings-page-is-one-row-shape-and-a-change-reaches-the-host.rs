@@ -33,7 +33,6 @@ use veyyon_desktop_surface::{
 	ConnectionPhase, Intent, Overlay, SettingsPage, SettingsState, ShellState, ShellView,
 	controls::Availability, install_tokens,
 };
-use veyyon_desktop_tokens::MotionModel;
 use veyyon_gpui::{App, AppContext};
 
 const WIDTH: u32 = 1440;
@@ -117,11 +116,8 @@ fn a_gated_control_dims_its_own_row_and_no_other() {
 	let key = "drawer.copy_on_select";
 	let mut tokens = load_bundled_tokens().expect("the bundled tokens load");
 	// Compare control ink independently of the float entrance animation.
-	let MotionModel::SpringFade(float) = &mut tokens.motion.float.model else {
-		panic!("the float role must use its spring-fade model");
-	};
-	float.rise_px = 0.0;
-	float.fade_duration_ms = 0;
+	tokens.motion.float.rise_px = 0.0;
+	tokens.motion.float.fade_duration_ms = 0;
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
 	let row_px = tokens.surface.settings.row_height_px as u32;
 
@@ -188,11 +184,8 @@ fn a_gated_control_dims_its_own_row_and_no_other() {
 fn every_page_draws_its_seeded_rows_when_opened_by_dispatch() {
 	let mut cx = headless_context().expect("a headless renderer is required to render the shell");
 	let mut tokens = load_bundled_tokens().expect("the bundled tokens load");
-	let MotionModel::SpringFade(float) = &mut tokens.motion.float.model else {
-		panic!("the float role must use its spring-fade model");
-	};
-	float.rise_px = 0.0;
-	float.fade_duration_ms = 0;
+	tokens.motion.float.rise_px = 0.0;
+	tokens.motion.float.fade_duration_ms = 0;
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
 
 	let mut session = HeadlessSession::open(&mut cx, &options(), move |_window, app: &mut App| {

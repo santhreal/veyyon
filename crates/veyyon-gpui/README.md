@@ -2,23 +2,23 @@
 
 Integrates Santh GPUI with the Veyyon desktop crates.
 
-## Upstream and Fork Topology
+## Framework Source
 
-The canonical framework repository is public:
-[`santhreal/gpui`](https://github.com/santhreal/gpui), derived from `zed-industries/zed`.
-The workspace manifest pins one Git revision for `gpui`, `gpui_platform`, and `gpui_wgpu`.
-Cargo resolves their dependencies from that repository; no framework source is copied here.
-Cargo fetches the pinned framework revision over HTTPS without Git authentication.
-Reusable renderer changes are maintained in Santh GPUI. Veyyon surfaces and tokens remain in
-the desktop crates.
+The framework repository is public:
+[`santhreal/santh-gpui`](https://github.com/santhreal/santh-gpui), derived from Zed's GPUI with
+its upstream history. The workspace manifest pins one Git revision for `gpui`, `gpui_platform`,
+`gpui_wgpu`, and `motion`. Cargo resolves their dependencies from that repository over HTTPS
+without Git authentication; no framework source is copied here. Reusable renderer and animation
+changes land on `main` of that repository. Veyyon surfaces and tokens remain in the desktop crates.
 
-## Rebase Policy
+## Revision Policy
 
-1. The `veyyon` branch contains upstream release tags plus the local patches, in series order, followed by any patch that carries a capability the series does not name.
-2. The branch contains no merge commits and no squashed patch sequences.
-3. Rebases occur on demand when upstream capabilities or fixes are required.
-4. Each rebase reapplies the landed patches, in the order the status table below lists them, on top of the target upstream revision.
-5. The commit advancing the dependency revision lists any patch adjustments required during the rebase.
+1. This workspace carries no patch to a framework package. A framework change lands on `main` of
+   `santhreal/santh-gpui` first.
+2. The commit advancing the revision moves every pinned package to the same revision and lists the
+   framework commits it takes in.
+3. `scripts/gpui-consumers-share-one-pinned-framework.test.ts` fails when a package resolves from
+   another revision, another repository, or a copied source tree.
 
 ## Patch Series Specification
 
@@ -35,7 +35,7 @@ the desktop crates.
 
 ## Golden Assertions
 
-Every patch has a corresponding golden test or invariant assertion in the repository tree to verify behavior across rebases:
+Every patch has a corresponding golden test or invariant assertion in the repository tree to verify behavior across revision bumps:
 
 - **P1**: Rasterization comparison of scaled and rotated subtrees against reference byte outputs at 1× and 2× DPR (`tests/a_scaled_and_rotated_subtree_rasterises_to_the_reference_at_1x_and_2x.rs`).
 - **P2**: Interruption at 40% completion reverses from 40% with non-zero velocity; remounting mid-flight preserves progress (`tests/an_interrupted_animation_reverses_from_its_current_value_and_velocity.rs`).
@@ -69,10 +69,9 @@ The framework revision is pinned in the workspace `Cargo.toml`. The patch series
 |(outside the series) per-corner radii on one quad primitive|`449fe47412`|
 |(outside the series) rustfmt pass over P5, P8 and P9|`717335f6b2`|
 
-Three commit subjects on the branch state a patch number the series does not assign them:
+Three commit subjects in the history state a patch number the series does not assign them:
 `4682106fc8` says P4 and is P6, and `c2518a463b` and `449fe47412` say P5 and P6 and are neither.
-Read the table above, not the subject lines. A rebase reapplies the capabilities in this order and
-does not reproduce those numbers. P5 and P8 share `window.rs`, `scene.rs`, `shaders.wgsl` and
+Read the table above, not the subject lines. P5 and P8 share `window.rs`, `scene.rs`, `shaders.wgsl` and
 `wgpu_renderer.rs` and landed as one commit.
 
 P5 renders every frame into a retained texture. A scene that declares damage is drawn under a

@@ -9,9 +9,10 @@ use veyyon_desktop_kit::{
 	controls::button::{Button, ButtonSize},
 	state::InteractiveState,
 };
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
-use veyyon_gpui::{Div, ElementId, ParentElement, Styled, WeakEntity, div, img, px};
+use veyyon_gpui::{
+	Div, ElementId, ParentElement, Styled, WeakEntity, div, img, motion::MotionTokens, px,
+};
 
 use super::{
 	artifact_facts, artifact_image_status,
@@ -55,13 +56,12 @@ pub fn render_artifact_details(
 	geometry: &TranscriptSurfaceTokens,
 	tokens: &TokenSet,
 	motion_tokens: &MotionTokens,
-	reduced_motion: bool,
 	viewport_state: &TranscriptViewportState,
 	view: Option<&WeakEntity<ShellView>>,
 	_has_error: bool,
 ) -> Div {
 	let state_collapse = viewport_state.clone();
-	let motion_tokens_collapse = motion_tokens.clone();
+	let motion_tokens_collapse = *motion_tokens;
 	let view_collapse = view.cloned();
 
 	let mut details = div()
@@ -136,8 +136,8 @@ pub fn render_artifact_details(
 					block_ix,
 					false,
 					&motion_tokens_collapse,
-					reduced_motion,
-					cx.background_executor().now(),
+					cx.motion_policy(),
+					cx.frame_instant(),
 				);
 				if let Some(v) = &view_collapse {
 					let _ = v.update(cx, |_view, cx| cx.notify());

@@ -11,10 +11,10 @@
 //!   between turns.
 
 use veyyon_desktop_kit::{ColorRole, SelectableProse, TextSelection, TokenSet, selectable_line};
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{
-	Div, InteractiveElement, IntoElement, ParentElement, Styled, WeakEntity, div, px,
+	Div, InteractiveElement, IntoElement, ParentElement, Styled, WeakEntity, div,
+	motion::MotionTokens, px,
 };
 
 use super::{
@@ -44,7 +44,6 @@ pub fn render_turn(
 	user_ground: ColorRole,
 	tokens: &TokenSet,
 	motion_tokens: &MotionTokens,
-	reduced_motion: bool,
 	measure_px: f32,
 	laid_out: &LaidOut,
 	view: Option<&WeakEntity<ShellView>>,
@@ -90,7 +89,6 @@ pub fn render_turn(
 					geometry,
 					tokens,
 					motion_tokens,
-					reduced_motion,
 					state,
 					view,
 				));
@@ -110,7 +108,6 @@ pub fn render_turn(
 			geometry,
 			tokens,
 			motion_tokens,
-			reduced_motion,
 			laid_out,
 			view,
 			selection,
@@ -168,7 +165,6 @@ pub fn agent_turn(
 	geometry: &TranscriptSurfaceTokens,
 	tokens: &TokenSet,
 	motion_tokens: &MotionTokens,
-	reduced_motion: bool,
 	laid_out: &LaidOut,
 	view: Option<&WeakEntity<ShellView>>,
 	selection: Option<TextSelection>,
@@ -209,7 +205,6 @@ pub fn agent_turn(
 				geometry,
 				tokens,
 				motion_tokens,
-				reduced_motion,
 				state,
 				view,
 			),
@@ -225,7 +220,6 @@ pub fn agent_turn(
 				geometry,
 				tokens,
 				motion_tokens,
-				reduced_motion,
 				state,
 				view,
 				selectable,
@@ -239,7 +233,6 @@ pub fn agent_turn(
 				geometry,
 				tokens,
 				motion_tokens,
-				reduced_motion,
 				state,
 				view,
 				selectable,
@@ -255,7 +248,6 @@ pub fn agent_turn(
 					geometry,
 					tokens,
 					motion_tokens,
-					reduced_motion,
 					state,
 					view,
 					selectable,

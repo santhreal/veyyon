@@ -1,10 +1,9 @@
 //! The anchored detail popover the window holds between frames (§5.6, §8.25).
 //!
 //! The popover is one surface opened from three: a workspace tree row, the
-//! composer's model chip and a diff hunk header. Which one opened it decides
-//! the float track it animates on, so two sources never share an animation
-//! slot, and the facts it states are derived from the state the same frame
-//! draws from.
+//! composer's model chip and a diff hunk header. Each popover opened restarts
+//! its float motion, and the facts it states are derived from the state the
+//! same frame draws from.
 //!
 //! While it is open it holds the window's focus. That is the containment this
 //! framework offers: the keystrokes the surface under it would answer do not
@@ -13,22 +12,15 @@
 //! a chord bound above the popover on the focus path, `Escape` among them,
 //! still resolves at the shell, which is where every float is dismissed.
 
-use veyyon_desktop_motion::SurfaceId;
-use veyyon_gpui::{AnyElement, Context, FocusHandle, IntoElement, Size, Window, px};
+use veyyon_gpui::{
+	AnyElement, Context, FocusHandle, IntoElement, Size, Window, motion::MotionFrame, px,
+};
 
 use super::ShellView;
 use crate::{
-	detail::{Detail, DetailSource, detail_facts},
+	detail::{Detail, detail_facts},
 	palette::motion::FloatMotion,
 };
-
-/// The surface whose float track a detail popover animates on.
-const fn detail_owner(source: DetailSource) -> SurfaceId {
-	match source {
-		DetailSource::TreeRow | DetailSource::DiffHunk => SurfaceId::RightPanel,
-		DetailSource::Model | DetailSource::Plan => SurfaceId::Composer,
-	}
-}
 
 impl ShellView {
 	/// The detail popover that is open, if one is.
@@ -40,7 +32,7 @@ impl ShellView {
 	/// Opens a detail popover, taking the window's focus and recording where
 	/// to give it back.
 	pub fn open_detail(&mut self, detail: Detail, window: &mut Window, cx: &mut Context<Self>) {
-		self.detail_motion = FloatMotion::new(detail_owner(detail.kind.source()), 0);
+		self.detail_motion = FloatMotion::new();
 		// The focus is recorded before it is taken, and only when the popover
 		// was not already holding it: reopening from inside the popover would
 		// otherwise record the popover as the place to return to and leave the
@@ -88,7 +80,7 @@ impl ShellView {
 /// finished fading.
 pub(super) fn detail_float(
 	view: &mut ShellView,
-	window: &Window,
+	frame: &mut MotionFrame,
 	cx: &Context<ShellView>,
 ) -> Option<AnyElement> {
 	let open = view.detail.is_some();
@@ -96,19 +88,14 @@ pub(super) fn detail_float(
 		view.detail_retained.clone_from(&view.detail);
 	}
 	view.detail_retained.as_ref()?;
-	let frame = view.detail_motion.sample(
-		open,
-		cx.background_executor().now(),
-		&view.installed.motion,
-		view.rail_motion.is_reduced_motion(),
-	);
+	view
+		.detail_motion
+		.set_open(open, &view.installed.motion, frame.policy(), frame.now());
+	frame.track(&mut view.detail_motion);
+	let frame = view.detail_motion.current();
 	if !open && frame.settled {
 		view.detail_retained = None;
 		return None;
-	}
-	if !frame.settled {
-		let entity = cx.entity();
-		window.on_next_frame(move |_window, app| entity.update(app, |_view, cx| cx.notify()));
 	}
 	let detail = view.detail_retained.clone()?;
 	// A payload the state no longer holds states nothing, so the popover goes

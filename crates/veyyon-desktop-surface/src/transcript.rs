@@ -31,9 +31,8 @@ pub use session_store::*;
 pub use state::*;
 pub use turn::*;
 use veyyon_desktop_kit::{ColorRole, TokenSet};
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
-use veyyon_gpui::{IntoElement, ParentElement, Styled, div, px};
+use veyyon_gpui::{IntoElement, ParentElement, Styled, div, motion::MotionTokens, px};
 pub use viewport::*;
 
 use crate::{
@@ -73,7 +72,6 @@ pub fn transcript_column(
 			user_ground,
 			tokens,
 			motion_tokens,
-			false,
 			measure_px,
 			laid_out,
 			None,

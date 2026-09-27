@@ -193,9 +193,7 @@ pub fn section_header(
 			.cursor_pointer()
 			.on_click(move |_event, _window, app| {
 				let _ = weak.update(app, |view, cx| {
-					view
-						.rail_motion_mut()
-						.toggle_collapsed(section, cx.background_executor().now());
+					view.toggle_section(section, cx);
 					cx.notify();
 				});
 			});

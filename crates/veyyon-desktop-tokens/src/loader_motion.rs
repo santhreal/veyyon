@@ -1,19 +1,19 @@
 use std::path::Path;
 
+use motion::{
+	DirectThenSpringModel, DurationModel, Easing, FlipModel, MotionRole, MotionTokens, SpringConfig,
+	SpringFadeModel, TwoStepModel,
+};
+
 use crate::{
 	error::TokenError,
 	loader::{find_key_line_col, parse_toml, read_file},
-	motion::{
-		DirectThenSpringModel, DurationModel, EasingCurve, FlipModel, MotionModel, MotionRole,
-		MotionRoleConfig, MotionTokens, ReducedMotion, SpringFadeModel, SpringModel, TwoStepModel,
-	},
 	section::Section,
 };
 
-const MODELS: [&str; 6] =
-	["duration", "spring", "spring_fade", "direct_then_spring", "flip", "two_step"];
-const CURVES: [&str; 3] = ["ease_out", "ease_in_out", "linear"];
-const REDUCED: [&str; 5] = ["instant", "fade_instant", "opacity_only", "direct", "steady_on"];
+/// The key a role table may not declare: `motion::resolve_motion` is the
+/// single definition of each role's reduced variant.
+const REDUCED_MOTION_KEY: &str = "reduced_motion";
 
 fn off_scale(section: &Section<'_>, key: &str, value: &str, allowed: String) -> TokenError {
 	let (line, column) = find_key_line_col(section.text(), section.name(), key);
@@ -25,17 +25,6 @@ fn off_scale(section: &Section<'_>, key: &str, value: &str, allowed: String) -> 
 		scale_name: format!("{}.{key}", section.name()),
 		allowed,
 	}
-}
-
-/// A string key whose value must be one of a fixed vocabulary.
-fn word<T>(
-	section: &Section<'_>,
-	key: &str,
-	parse: fn(&str) -> Option<T>,
-	allowed: &[&'static str],
-) -> Result<T, TokenError> {
-	let raw = section.string(key)?;
-	parse(raw).ok_or_else(|| off_scale(section, key, raw, allowed.join(", ")))
 }
 
 fn millis(section: &Section<'_>, key: &str) -> Result<u32, TokenError> {
@@ -50,60 +39,73 @@ fn millis(section: &Section<'_>, key: &str) -> Result<u32, TokenError> {
 	})
 }
 
-fn spring(section: &Section<'_>) -> Result<SpringModel, TokenError> {
-	Ok(SpringModel {
-		stiffness: section.number("stiffness")?,
-		damping:   section.number("damping")?,
-		mass:      section.number("mass")?,
+fn curve(section: &Section<'_>) -> Result<Easing, TokenError> {
+	let raw = section.string("curve")?;
+	Easing::from_name(raw).map_err(|_| off_scale(section, "curve", raw, Easing::NAMES.join(", ")))
+}
+
+fn spring(section: &Section<'_>) -> Result<SpringConfig, TokenError> {
+	let stiffness = section.number("stiffness")?;
+	let damping = section.number("damping")?;
+	let mass = section.number("mass")?;
+	SpringConfig::try_new(stiffness, damping, mass).map_err(|error| {
+		off_scale(
+			section,
+			"stiffness",
+			&format!("stiffness {stiffness}, damping {damping}, mass {mass}"),
+			error.to_string(),
+		)
 	})
 }
 
-/// One `[role.<name>]` table. The key set is fixed by the model the role
-/// declares, so a parameter another model would read is rejected here.
-fn parse_role_config(
-	role_tbl: &Section<'_>,
-	role: MotionRole,
-) -> Result<MotionRoleConfig, TokenError> {
-	let section = role_tbl.sub(role.as_str())?;
-	let raw_model = section.string("model")?;
-	let model_kind: &'static str = MODELS
-		.iter()
-		.copied()
-		.find(|m| *m == raw_model)
-		.ok_or_else(|| off_scale(&section, "model", raw_model, MODELS.join(", ")))?;
-	let common: [&'static str; 2] = ["model", "reduced_motion"];
-	let params: &[&'static str] = match model_kind {
-		"duration" | "flip" => &["duration_ms", "curve"],
-		"spring" | "direct_then_spring" => &["stiffness", "damping", "mass"],
-		"spring_fade" => &["stiffness", "damping", "mass", "rise_px", "fade_duration_ms"],
-		_ => &["period_ms"],
-	};
-	let expected: Vec<&'static str> = common.iter().chain(params.iter()).copied().collect();
-	section.only(&expected)?;
+/// The model name each role runs. `motion::MotionTokens` fixes one model per
+/// role, so the file states it and the loader checks it.
+const fn model_name(role: MotionRole) -> &'static str {
+	match role {
+		MotionRole::Tint | MotionRole::Scroll => "duration",
+		MotionRole::Reveal => "spring",
+		MotionRole::Float => "spring_fade",
+		MotionRole::Panel => "direct_then_spring",
+		MotionRole::Shift => "flip",
+		MotionRole::Caret => "two_step",
+	}
+}
 
-	let reduced_motion = word(&section, "reduced_motion", ReducedMotion::from_str_name, &REDUCED)?;
-	let model = match model_kind {
-		"duration" => MotionModel::Duration(DurationModel {
-			duration_ms: millis(&section, "duration_ms")?,
-			curve:       word(&section, "curve", EasingCurve::from_str_name, &CURVES)?,
-		}),
-		"spring" => MotionModel::Spring(spring(&section)?),
-		"spring_fade" => MotionModel::SpringFade(SpringFadeModel {
-			spring:           spring(&section)?,
-			rise_px:          section.number("rise_px")?,
-			fade_duration_ms: millis(&section, "fade_duration_ms")?,
-		}),
-		"direct_then_spring" => {
-			MotionModel::DirectThenSpring(DirectThenSpringModel { snap_spring: spring(&section)? })
+/// The parameter keys of a role's model, after `model`.
+const fn parameters(role: MotionRole) -> &'static [&'static str] {
+	match role {
+		MotionRole::Tint | MotionRole::Scroll | MotionRole::Shift => {
+			&["model", "duration_ms", "curve"]
 		},
-		"flip" => MotionModel::Flip(FlipModel {
-			duration_ms: millis(&section, "duration_ms")?,
-			curve:       word(&section, "curve", EasingCurve::from_str_name, &CURVES)?,
-		}),
-		_ => MotionModel::TwoStep(TwoStepModel { period_ms: millis(&section, "period_ms")? }),
-	};
+		MotionRole::Reveal | MotionRole::Panel => &["model", "stiffness", "damping", "mass"],
+		MotionRole::Float => {
+			&["model", "stiffness", "damping", "mass", "rise_px", "fade_duration_ms"]
+		},
+		MotionRole::Caret => &["model", "period_ms"],
+	}
+}
 
-	Ok(MotionRoleConfig { model, reduced_motion })
+/// One `[role.<name>]` table, checked against the model the role runs. A
+/// `reduced_motion` key is rejected, and so is any parameter another model
+/// would read.
+fn role_section<'a>(role_tbl: &Section<'a>, role: MotionRole) -> Result<Section<'a>, TokenError> {
+	let section = role_tbl.sub(role.name())?;
+	if section.table().contains_key(REDUCED_MOTION_KEY) {
+		let (line, column) = find_key_line_col(section.text(), section.name(), REDUCED_MOTION_KEY);
+		return Err(TokenError::ReducedMotionFixed {
+			path: section.path().to_path_buf(),
+			line,
+			column,
+			section: section.name().to_string(),
+		});
+	}
+	let expected = model_name(role);
+	let declared = section.string("model")?;
+	if declared != expected {
+		return Err(off_scale(&section, "model", declared, expected.to_string()));
+	}
+	section.only(parameters(role))?;
+	Ok(section)
 }
 
 /// Parses and validates motion.toml.
@@ -115,16 +117,36 @@ pub fn load_motion(path: &Path) -> Result<MotionTokens, TokenError> {
 	root.meta("motion")?;
 
 	let role_tbl = root.sub("role")?;
-	let roles: Vec<&'static str> = MotionRole::all().iter().map(|r| r.as_str()).collect();
-	role_tbl.only(&roles)?;
+	role_tbl.only(&MotionRole::NAMES)?;
+
+	let tint = role_section(&role_tbl, MotionRole::Tint)?;
+	let reveal = role_section(&role_tbl, MotionRole::Reveal)?;
+	let float = role_section(&role_tbl, MotionRole::Float)?;
+	let panel = role_section(&role_tbl, MotionRole::Panel)?;
+	let shift = role_section(&role_tbl, MotionRole::Shift)?;
+	let scroll = role_section(&role_tbl, MotionRole::Scroll)?;
+	let caret = role_section(&role_tbl, MotionRole::Caret)?;
 
 	Ok(MotionTokens {
-		tint:   parse_role_config(&role_tbl, MotionRole::Tint)?,
-		reveal: parse_role_config(&role_tbl, MotionRole::Reveal)?,
-		float:  parse_role_config(&role_tbl, MotionRole::Float)?,
-		panel:  parse_role_config(&role_tbl, MotionRole::Panel)?,
-		shift:  parse_role_config(&role_tbl, MotionRole::Shift)?,
-		scroll: parse_role_config(&role_tbl, MotionRole::Scroll)?,
-		caret:  parse_role_config(&role_tbl, MotionRole::Caret)?,
+		tint:   DurationModel {
+			duration_ms: millis(&tint, "duration_ms")?,
+			curve:       curve(&tint)?,
+		},
+		reveal: spring(&reveal)?,
+		float:  SpringFadeModel {
+			spring:           spring(&float)?,
+			rise_px:          float.number("rise_px")?,
+			fade_duration_ms: millis(&float, "fade_duration_ms")?,
+		},
+		panel:  DirectThenSpringModel { snap_spring: spring(&panel)? },
+		shift:  FlipModel {
+			duration_ms: millis(&shift, "duration_ms")?,
+			curve:       curve(&shift)?,
+		},
+		scroll: DurationModel {
+			duration_ms: millis(&scroll, "duration_ms")?,
+			curve:       curve(&scroll)?,
+		},
+		caret:  TwoStepModel { period_ms: millis(&caret, "period_ms")? },
 	})
 }

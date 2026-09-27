@@ -1,8 +1,9 @@
 //! The desktop front end's view of GPUI.
 //!
-//! Santh GPUI is resolved from the canonical `santhreal/gpui` repository.
-//! The workspace manifest pins one revision for GPUI and its companion crates.
-//! Integration tests exercise the renderer capabilities used by the desktop.
+//! Santh GPUI is resolved from the canonical `santhreal/santh-gpui` repository.
+//! The workspace manifest pins one revision for GPUI, its companion crates, and
+//! `motion`. Integration tests exercise the renderer capabilities used by the
+//! desktop.
 
 pub use gpui::*;
 

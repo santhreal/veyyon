@@ -1,8 +1,5 @@
-//! Specialized, token-driven motion drivers for standard desktop UI
-//! interactions.
-//!
-//! Provides stable identity, velocity-preserving interruptions, and centralized
-//! reduced-motion resolution for all 7 motion roles (§7.1, §7.2, §8.23).
+//! One driver per kind of animated surface element, each over
+//! `gpui::motion::Animator`.
 
 pub mod caret;
 pub mod float;

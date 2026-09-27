@@ -20,9 +20,10 @@
 //! NOT CAUGHT: Live host protocol transport latency and network connection
 //! drops.
 
-use std::time::{Duration, Instant};
+#[path = "support/clock.rs"]
+mod clock;
 
-use veyyon_desktop_motion::MotionTokens;
+use clock::Clock;
 use veyyon_desktop_scene::{
 	headless::{RenderOptions, headless_context},
 	session::HeadlessSession,
@@ -32,7 +33,9 @@ use veyyon_desktop_surface::{
 	transcript::{TranscriptFindState, TranscriptViewportState},
 };
 use veyyon_gpui::{
-	AppContext, Context, IntoElement, ListOffset, Render, Styled, Window, div, list, px,
+	AppContext, Context, IntoElement, ListOffset, Render, Styled, Window, div, list,
+	motion::{MotionPolicy, MotionTokens},
+	px,
 };
 
 struct MeasuredViewport(TranscriptViewportState);
@@ -131,14 +134,14 @@ fn the_transcript_viewport_follows_tail_at_the_end_and_resumes_after_returning()
 fn the_transcript_viewport_resets_and_restores_state_per_session_without_cross_pollution() {
 	let state = TranscriptViewportState::new();
 	let motion_tokens = MotionTokens::reference();
-	let now = Instant::now();
+	let now = Clock::start().at(0);
 
 	state.switch_session(101, 8);
 	assert_eq!(state.session_id(), Some(101));
 	assert_eq!(state.turn_count(), 8);
 
 	state.scroll_to(ListOffset { item_ix: 2, offset_in_item: px(10.0) });
-	assert!(state.toggle_block_expanded(1, 0, &motion_tokens, false, now));
+	assert!(state.toggle_block_expanded(1, 0, &motion_tokens, MotionPolicy::DEFAULT, now));
 	assert!(state.is_block_expanded(1, 0));
 
 	let s101_offset = state.logical_scroll_top();
@@ -149,7 +152,7 @@ fn the_transcript_viewport_resets_and_restores_state_per_session_without_cross_p
 	assert!(state.is_following_tail());
 	assert!(!state.is_block_expanded(1, 0));
 
-	state.toggle_block_expanded(0, 0, &motion_tokens, false, now);
+	state.toggle_block_expanded(0, 0, &motion_tokens, MotionPolicy::DEFAULT, now);
 	assert!(state.is_block_expanded(0, 0));
 	state.scroll_to(ListOffset { item_ix: 0, offset_in_item: px(0.0) });
 	let s202_offset = state.logical_scroll_top();
@@ -171,7 +174,8 @@ fn the_transcript_viewport_resets_and_restores_state_per_session_without_cross_p
 fn the_transcript_block_expansion_transitions_and_remeasures_turn_height() {
 	let state = TranscriptViewportState::new();
 	let motion_tokens = MotionTokens::reference();
-	let t0 = Instant::now();
+	let mut clock = Clock::start();
+	let t0 = clock.at(0);
 
 	let turn = Turn::Agent {
 		blocks: vec![
@@ -195,7 +199,8 @@ fn the_transcript_block_expansion_transitions_and_remeasures_turn_height() {
 	assert_eq!(state.turn_count(), 1);
 	assert!(!state.is_block_expanded(0, 0));
 
-	let is_now_expanded = state.toggle_block_expanded(0, 0, &motion_tokens, false, t0);
+	let is_now_expanded =
+		state.toggle_block_expanded(0, 0, &motion_tokens, MotionPolicy::DEFAULT, t0);
 	assert!(is_now_expanded);
 	assert!(state.is_block_expanded(0, 0));
 
@@ -203,19 +208,19 @@ fn the_transcript_block_expansion_transitions_and_remeasures_turn_height() {
 	assert_eq!(p0, 0.0);
 	assert!(!s0);
 
-	let t_half = t0 + Duration::from_millis(100);
+	let t_half = clock.at(100);
 	let (p_half, s_half) = state.sample_reveal(0, 0, t_half);
 	assert!(p_half > 0.0 && p_half < 1.0);
 	assert!(!s_half);
 
-	let t_done = t0 + Duration::from_secs(3);
+	let t_done = clock.at(3_000);
 	let (p_done, s_done) = state.sample_reveal(0, 0, t_done);
 	assert_eq!(p_done, 1.0);
 	assert!(s_done);
 
-	state.toggle_block_expanded(0, 2, &motion_tokens, false, t0);
+	state.toggle_block_expanded(0, 2, &motion_tokens, MotionPolicy::DEFAULT, t_done);
 	assert!(state.is_block_expanded(0, 2));
-	state.toggle_block_expanded(0, 2, &motion_tokens, false, t0);
+	state.toggle_block_expanded(0, 2, &motion_tokens, MotionPolicy::DEFAULT, t_done);
 	assert!(!state.is_block_expanded(0, 2));
 }
 
@@ -257,23 +262,24 @@ fn repeated_focus_preserves_manual_scroll_in_a_measured_viewport() {
 fn the_transcript_motion_drivers_integrate_cleanly() {
 	let state = TranscriptViewportState::new();
 	let tokens = MotionTokens::reference();
-	let t0 = Instant::now();
+	let mut clock = Clock::start();
+	let t0 = clock.at(0);
 
 	state.sync_turns(&[Turn::Operator("Hi".to_owned())], false);
-	let (opacity_idle, settled_idle) = state.sample_caret(t0, &tokens, false);
+	let (opacity_idle, settled_idle) = state.sample_caret(&tokens, MotionPolicy::DEFAULT, t0);
 	assert_eq!(opacity_idle, 1.0);
 	assert!(settled_idle);
 
-	let (opacity_reduced, settled_reduced) = state.sample_caret(t0, &tokens, true);
+	let (opacity_reduced, settled_reduced) = state.sample_caret(&tokens, MotionPolicy::REDUCED, t0);
 	assert_eq!(opacity_reduced, 1.0);
 	assert!(settled_reduced);
 
 	state.sync_turns(&[Turn::Operator("Hi".to_owned())], true);
-	let (opacity_stream_0, _) = state.sample_caret(t0, &tokens, false);
+	let (opacity_stream_0, _) = state.sample_caret(&tokens, MotionPolicy::DEFAULT, t0);
 	assert_eq!(opacity_stream_0, 1.0);
 
-	let t_phase2 = t0 + Duration::from_millis(460);
-	let (opacity_stream_1, _) = state.sample_caret(t_phase2, &tokens, false);
+	let t_phase2 = clock.at(460);
+	let (opacity_stream_1, _) = state.sample_caret(&tokens, MotionPolicy::DEFAULT, t_phase2);
 	assert_eq!(opacity_stream_1, 0.0);
 }
 
@@ -292,7 +298,7 @@ fn the_transcript_find_matches_and_expands_blocks() {
 	let tokens = MotionTokens::reference();
 	let state = TranscriptViewportState::new();
 	let mut find = TranscriptFindState::new();
-	let t0 = Instant::now();
+	let t0 = Clock::start().at(0);
 
 	let turns = vec![Turn::Operator("Find the needle in the haystack".to_owned()), Turn::Agent {
 		blocks: vec![
@@ -317,7 +323,7 @@ fn the_transcript_find_matches_and_expands_blocks() {
 	assert!(!state.is_block_expanded(1, 1));
 	assert!(!state.is_block_expanded(1, 2));
 
-	find.set_query_and_reveal("needle", &turns, &state, &tokens, false, t0);
+	find.set_query_and_reveal("needle", &turns, &state, &tokens, MotionPolicy::DEFAULT, t0);
 	assert_eq!(find.match_count(), 4);
 
 	// Match 0: Operator turn immediately revealed
@@ -326,26 +332,26 @@ fn the_transcript_find_matches_and_expands_blocks() {
 	assert_eq!(m0.turn_ix, 0);
 
 	// Match 1: Reason block (turn 1, block 0)
-	find.next_match(&state, &tokens, false, t0);
+	find.next_match(&state, &tokens, MotionPolicy::DEFAULT, t0);
 	assert_eq!(find.current_match_number(), 2);
 	assert!(state.is_block_expanded(1, 0));
 
 	// Match 2: Invoke block (turn 1, block 1)
-	find.next_match(&state, &tokens, false, t0);
+	find.next_match(&state, &tokens, MotionPolicy::DEFAULT, t0);
 	assert_eq!(find.current_match_number(), 3);
 	assert!(state.is_block_expanded(1, 1));
 
 	// Match 3: Pane disclosure uses the same animated block state.
-	find.next_match(&state, &tokens, false, t0);
+	find.next_match(&state, &tokens, MotionPolicy::DEFAULT, t0);
 	assert_eq!(find.current_match_number(), 4);
 	assert!(state.is_block_expanded(1, 2));
 
 	// Cycle back to 0
-	find.next_match(&state, &tokens, false, t0);
+	find.next_match(&state, &tokens, MotionPolicy::DEFAULT, t0);
 	assert_eq!(find.current_match_number(), 1);
 
 	// Prev match back to 3
-	find.prev_match(&state, &tokens, false, t0);
+	find.prev_match(&state, &tokens, MotionPolicy::DEFAULT, t0);
 	assert_eq!(find.current_match_number(), 4);
 
 	// Sync turns when stream appends new turn

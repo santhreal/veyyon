@@ -1,82 +1,59 @@
 //! Motion driver for tint transitions: hover, selection, focus, badge color,
 //! scrim (`MotionRole::Tint`).
 
-use std::time::Instant;
-
-use crate::{
-	curves::EasingCurve,
-	registry::{AnimatorKey, AnimatorRegistry, SurfaceId},
-	role::{DurationModel, MotionModel, MotionRole, ResolvedMotion, resolve_motion},
-	tokens::MotionTokens,
+use veyyon_gpui::motion::{
+	Advance, Animator, FrameInstant, MotionFrame, MotionPolicy, MotionRole, MotionTokens,
+	resolve_motion,
 };
 
-/// Motion driver for tint transitions: hover, selection, focus, badge color,
-/// scrim (`MotionRole::Tint`).
-#[derive(Debug)]
+/// A tint amount moving between states under `MotionRole::Tint`.
+#[derive(Debug, Clone, Copy)]
 pub struct TintMotion {
-	surface_id:    SurfaceId,
-	slot:          u64,
-	registry:      AnimatorRegistry,
-	current_value: f32,
+	value: Animator<FrameInstant>,
 }
 
 impl TintMotion {
-	/// Creates a new tint motion driver.
+	/// A tint at rest on `initial`.
 	#[must_use]
-	pub fn new(surface_id: SurfaceId, slot: u64, initial_value: f32) -> Self {
-		let mut registry = AnimatorRegistry::new();
-		let key = AnimatorKey::new(surface_id, MotionRole::Tint, slot);
-		let model = MotionModel::Duration(MotionTokens::reference().tint);
-		registry.get_or_create_with_initial(key, initial_value, initial_value, model, Instant::now());
-		Self { surface_id, slot, registry, current_value: initial_value }
+	pub const fn new(initial: f32) -> Self {
+		Self { value: Animator::at_rest(initial) }
 	}
 
-	/// Sets new tint target value (e.g. 0.0 to 1.0).
-	pub fn set_target(&mut self, target: f32, tokens: &MotionTokens, reduced: bool, now: Instant) {
-		let key = AnimatorKey::new(self.surface_id, MotionRole::Tint, self.slot);
-		if let ResolvedMotion::Duration { duration_ms, curve } =
-			resolve_motion(MotionRole::Tint, tokens, reduced)
-		{
-			let model = MotionModel::Duration(DurationModel { duration_ms, curve });
-			self.registry.update_target(key, target, model, now);
-		} else {
-			let model = MotionModel::Duration(DurationModel {
-				duration_ms: 0,
-				curve:       EasingCurve::Linear,
-			});
-			let anim = self
-				.registry
-				.get_or_create_with_initial(key, target, target, model, now);
-			anim.start_value = target;
-			anim.current_value = target;
-			anim.target_value = target;
-			anim.is_at_rest = true;
-			self.current_value = target;
-		}
+	/// Moves the tint toward `target` from its value at `now`. Reduced motion
+	/// places it on `target`.
+	pub fn set_target(
+		&mut self,
+		target: f32,
+		tokens: &MotionTokens,
+		policy: MotionPolicy,
+		now: FrameInstant,
+	) {
+		let motion = resolve_motion(MotionRole::Tint, tokens, policy.reduced());
+		self.value.apply(target, motion, policy, now);
 	}
 
-	/// Samples current tint value and settled state.
-	pub fn sample(&mut self, now: Instant) -> (f32, bool) {
-		let key = AnimatorKey::new(self.surface_id, MotionRole::Tint, self.slot);
-		if let Some((pos, _, at_rest)) = self.registry.sample_full(&key, now) {
-			self.current_value = pos;
-			(pos, at_rest)
-		} else {
-			(self.current_value, true)
-		}
+	/// Samples the tint at `now` and returns its value and whether it is at
+	/// rest.
+	pub fn sample(&mut self, now: FrameInstant) -> (f32, bool) {
+		let sample = self.value.update(now);
+		(sample.value, sample.at_rest)
 	}
 
-	/// Returns the current tint value.
+	/// The value at the last sample.
 	#[must_use]
 	pub const fn current_value(&self) -> f32 {
-		self.current_value
+		self.value.value()
 	}
 
-	/// Returns true if the tint transition has settled at rest.
+	/// Whether the last sample found the tint at rest.
 	#[must_use]
-	pub fn is_settled(&self) -> bool {
-		self
-			.registry
-			.is_at_rest(&AnimatorKey::new(self.surface_id, MotionRole::Tint, self.slot))
+	pub const fn is_settled(&self) -> bool {
+		self.value.is_at_rest()
+	}
+}
+
+impl Advance for TintMotion {
+	fn advance(&mut self, frame: &MotionFrame) -> bool {
+		!self.sample(frame.now()).1
 	}
 }

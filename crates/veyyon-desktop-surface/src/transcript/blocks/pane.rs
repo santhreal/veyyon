@@ -4,10 +4,10 @@ use veyyon_desktop_kit::{
 	CodeBlock, ColorRole, Icon, IconName, IconSize, MonoSizeStep, SelectableProse, SpacingStep,
 	TextRamp, TokenSet, Truncate,
 };
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{
-	CursorStyle, Div, InteractiveElement, ParentElement, SharedString, Styled, WeakEntity, div, px,
+	CursorStyle, Div, InteractiveElement, ParentElement, SharedString, Styled, WeakEntity, div,
+	motion::MotionTokens, px,
 };
 
 use super::reveal::render_reveal_container;
@@ -24,14 +24,13 @@ pub fn render_pane_block(
 	geometry: &TranscriptSurfaceTokens,
 	tokens: &TokenSet,
 	motion_tokens: &MotionTokens,
-	reduced_motion: bool,
 	viewport_state: &TranscriptViewportState,
 	view: Option<&WeakEntity<ShellView>>,
 	selection: Option<SelectableProse>,
 ) -> Div {
 	let state_toggle = viewport_state.clone();
 	let view_toggle = view.cloned();
-	let motion = motion_tokens.clone();
+	let motion = *motion_tokens;
 	let header = div()
 		.h(px(if subordinate {
 			geometry.chrome_event_line_height_px
@@ -48,8 +47,8 @@ pub fn render_pane_block(
 				turn_ix,
 				block_ix,
 				&motion,
-				reduced_motion,
-				cx.background_executor().now(),
+				cx.motion_policy(),
+				cx.frame_instant(),
 			);
 			if let Some(view) = &view_toggle {
 				let _ = view.update(cx, |_view, cx| cx.notify());

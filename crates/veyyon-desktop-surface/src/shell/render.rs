@@ -13,7 +13,10 @@ mod queue;
 
 use veyyon_desktop_kit::{ColorRole, SpacingStep, TextRamp};
 use veyyon_desktop_tokens::QueueMode;
-use veyyon_gpui::{Context, InteractiveElement, IntoElement, ParentElement, Styled, Window, div};
+use veyyon_gpui::{
+	Context, InteractiveElement, IntoElement, ParentElement, Styled, Window, div,
+	motion::MotionFrame,
+};
 
 use super::{
 	keys::bind_global_keys,
@@ -31,24 +34,40 @@ use crate::{
 };
 
 /// Renders the root shell view.
+///
+/// The frame runs every motion value the window draws on the view's one
+/// `MotionDriver`: it begins before any value is sampled and ends after the
+/// last one is tracked, so the next frame is requested while a value moves
+/// and none once all of them rest.
 pub fn render_shell(
 	view: &mut ShellView,
 	window: &mut Window,
 	cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
-	// Reduced motion is the operator's setting, and it arrives with a
-	// snapshot rather than at construction, so it is carried onto the driver
-	// that owns it before anything in this frame samples one (§7.2).
-	let reduced_motion = view.state().reduced_motion;
-	view.rail_motion.set_reduced_motion(reduced_motion);
+	// Reduced motion is the operator's setting or the system preference; the
+	// setting alone would override the system on every frame (§7.2).
+	let reduced = view.state().reduced_motion || cx.system_reduce_motion();
+	cx.set_reduce_motion(reduced);
+	let mut frame = view.motion.begin(cx);
+	let root = shell_root(view, &mut frame, window, cx);
+	view.motion.end(frame, window);
+	root
+}
+
+/// The root element, sampling and tracking motion on `frame`.
+fn shell_root(
+	view: &mut ShellView,
+	frame: &mut MotionFrame,
+	window: &mut Window,
+	cx: &mut Context<ShellView>,
+) -> impl IntoElement + use<> {
 	view.ensure_composer(cx);
-	view.sample_split_motion(window, cx);
+	view.sample_split_motion(frame);
 	let transcript_height = view
 		.laid_out()
 		.bounds(Region::Transcript)
 		.map_or(0.0, |bounds| f32::from(bounds.size.height));
-	let now = cx.background_executor().now();
-	view.sync_transcript_viewport(transcript_height, now);
+	view.sync_transcript_viewport(transcript_height, frame);
 	let chrome_px = chrome::chrome_height(view);
 	let viewport_w = f32::from(window.viewport_size().width);
 	let viewport_h = f32::from(window.viewport_size().height);
@@ -241,7 +260,7 @@ pub fn render_shell(
 	// inside its scrim, because the scrim spans the whole row and the sheet
 	// is the rail.
 	let mut column_regions: Vec<Option<Region>> = Vec::with_capacity(2);
-	let queue = queue::queue_column(view, &widths, &surface, &tokens, window, cx);
+	let queue = queue::queue_column(view, &widths, &surface, &tokens, frame, window, cx);
 	column_regions.push(None);
 
 	let has_text = view.has_composer_text();
@@ -299,7 +318,7 @@ pub fn render_shell(
 		&transcript_focus,
 		&cards_focus,
 		cards_expanded,
-		view.rail_motion.is_reduced_motion(),
+		frame,
 		find_bar,
 		view.text_selection(),
 		panel_overlay,
@@ -332,7 +351,7 @@ pub fn render_shell(
 	let mut columns = view
 		.laid_out()
 		.track_children(columns, move |index| column_regions.get(index).copied().flatten());
-	if let Some(overlay) = super::float::overlay_layer(view, widths.columns_px, window, cx) {
+	if let Some(overlay) = super::float::overlay_layer(view, widths.columns_px, frame, window, cx) {
 		columns = columns.child(overlay);
 	}
 	view.sync_context_picker(window, cx);
@@ -357,15 +376,15 @@ pub fn render_shell(
 	// Over every menu: a detail opened from a row the menu also lists is
 	// anchored to that row, and a menu drawn over it would cover the facts the
 	// popover was opened to read.
-	if let Some(popover) = super::detail::detail_float(view, window, cx) {
+	if let Some(popover) = super::detail::detail_float(view, frame, cx) {
 		columns = columns.child(popover);
 	}
-	if let Some(layer) = view.review_layer(window, cx) {
+	if let Some(layer) = view.review_layer(frame, window, cx) {
 		columns = columns.child(layer);
 	}
 	// Over every float: an announcement is raised by something the operator is
 	// not looking at, so a menu or a popover they opened does not cover it.
-	if let Some(stack) = super::toasts::toast_stack(view, chrome_px, window, cx) {
+	if let Some(stack) = super::toasts::toast_stack(view, chrome_px, frame, window, cx) {
 		columns = columns.child(stack);
 	}
 

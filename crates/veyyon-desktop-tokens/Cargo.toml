@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 flume.workspace = true
+motion.workspace = true
 notify.workspace = true
 parking_lot.workspace = true
 serde.workspace = true

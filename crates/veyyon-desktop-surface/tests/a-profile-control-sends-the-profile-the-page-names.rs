@@ -45,7 +45,6 @@ use veyyon_desktop_surface::{
 	ConnectionPhase, Intent, Keymap, Overlay, SettingsPage, SettingsState, ShellState, ShellView,
 	install_tokens, navigation::SurfaceRoute,
 };
-use veyyon_desktop_tokens::MotionModel;
 use veyyon_gpui::{App, AppContext, Point, px};
 
 const WIDTH: u32 = 1180;
@@ -73,11 +72,8 @@ fn driven<R>(
 ) -> R {
 	let mut cx = headless_context().expect("headless context available");
 	let mut tokens = load_bundled_tokens().expect("tokens load");
-	let MotionModel::SpringFade(float) = &mut tokens.motion.float.model else {
-		panic!("the float role must use its spring-fade model");
-	};
-	float.rise_px = 0.0;
-	float.fade_duration_ms = 0;
+	tokens.motion.float.rise_px = 0.0;
+	tokens.motion.float.fade_duration_ms = 0;
 	let theme = load_bundled_theme("dark").expect("theme loads");
 	let options =
 		RenderOptions { width: WIDTH, height: HEIGHT, scale_factor: 1.0, ..RenderOptions::default() };

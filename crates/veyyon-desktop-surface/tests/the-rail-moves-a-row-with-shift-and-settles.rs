@@ -14,12 +14,12 @@
 //!    overlay intent.
 //! 6. Height budgeting failing to subtract the footer height upfront.
 
-use std::{
-	collections::HashMap,
-	path::Path,
-	time::{Duration, Instant},
-};
+#[path = "support/clock.rs"]
+mod clock;
 
+use std::{collections::HashMap, path::Path};
+
+use clock::Clock;
 use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_scene::{
 	HeadlessSession,
@@ -30,7 +30,11 @@ use veyyon_desktop_surface::{
 	navigation::SurfaceRoute,
 	queue::{RailMotion, rail_fill},
 };
-use veyyon_gpui::{App, AppContext, Point};
+use veyyon_gpui::{
+	App, AppContext, Point,
+	motion::{MotionPolicy, MotionTokens},
+};
+
 fn options() -> RenderOptions {
 	RenderOptions { width: 1440, height: 900, scale_factor: 1.0, ..RenderOptions::default() }
 }
@@ -38,40 +42,36 @@ fn options() -> RenderOptions {
 #[test]
 fn a_row_that_changes_position_yields_a_nonzero_shift_offset_on_first_frame_and_settles_monotonically()
  {
+	let tokens = MotionTokens::reference();
+	let mut clock = Clock::start();
 	let mut motion = RailMotion::new();
-	let t0 = Instant::now();
 
 	let mut pos_initial = HashMap::new();
 	pos_initial.insert(1, 0.0);
 	pos_initial.insert(2, 78.0);
-	motion.record_positions(&pos_initial, t0);
+	motion.record_positions(&pos_initial, &tokens, MotionPolicy::DEFAULT, clock.at(0));
 
 	// Initial render: no prior movement, offset is zero.
-	assert_eq!(motion.shift_offset(1, t0), 0.0);
+	assert_eq!(motion.shift_offset(1), 0.0);
 
-	// At t1, row 1 moves to y = 78.0 (position changed by 78px).
-	let t1 = t0 + Duration::from_secs(1);
+	// At 1 s, row 1 moves to y = 78.0 (position changed by 78px).
 	let mut pos_moved = HashMap::new();
 	pos_moved.insert(1, 78.0);
 	pos_moved.insert(2, 156.0);
-	motion.record_positions(&pos_moved, t1);
+	motion.record_positions(&pos_moved, &tokens, MotionPolicy::DEFAULT, clock.at(1_000));
 
 	// (a) First frame yields non-zero shift offset.
-	let first_frame_offset = motion.shift_offset(1, t1);
+	let first_frame_offset = motion.shift_offset(1);
 	assert_eq!(
 		first_frame_offset, -78.0,
 		"first frame after position change must yield delta offset"
 	);
 
 	// Monotonicity assertion over the 200ms FLIP transition.
-	let sample_steps = [20, 50, 80, 120, 160, 200];
 	let mut prev_magnitude = first_frame_offset.abs();
-
-	for &step_ms in &sample_steps {
-		let sample_time = t1 + Duration::from_millis(step_ms);
-		let offset = motion.shift_offset(1, sample_time);
-		let magnitude = offset.abs();
-
+	for step_ms in [20, 50, 80, 120, 160] {
+		assert!(motion.advance_to(clock.at(1_000 + step_ms)), "the shift moves at {step_ms}ms");
+		let magnitude = motion.shift_offset(1).abs();
 		assert!(
 			magnitude <= prev_magnitude + 0.001,
 			"FLIP shift magnitude must decrease monotonically, at {step_ms}ms got {magnitude} > \
@@ -81,53 +81,46 @@ fn a_row_that_changes_position_yields_a_nonzero_shift_offset_on_first_frame_and_
 	}
 
 	// (a) Settles to exactly 0.0 once FLIP duration (200ms) has elapsed.
-	let t_complete = t1 + Duration::from_millis(200);
+	assert!(!motion.advance_to(clock.at(1_200)), "animation must terminate within 200ms bound");
 	assert_eq!(
-		motion.shift_offset(1, t_complete),
+		motion.shift_offset(1),
 		0.0,
 		"shift offset must reach exactly 0.0 at duration boundary"
 	);
 
-	let t_after = t1 + Duration::from_millis(300);
-	assert_eq!(
-		motion.shift_offset(1, t_after),
-		0.0,
-		"shift offset must remain 0.0 past duration boundary"
-	);
-	assert!(
-		!motion.has_active_animations(t_complete),
-		"animation must terminate within 200ms bound"
-	);
+	assert!(!motion.advance_to(clock.at(1_300)));
+	assert_eq!(motion.shift_offset(1), 0.0, "shift offset must remain 0.0 past duration boundary");
 }
 
 #[test]
 fn an_interruption_at_forty_percent_continues_from_the_current_value_and_settles_within_bound() {
+	let tokens = MotionTokens::reference();
+	let mut clock = Clock::start();
 	let mut motion = RailMotion::new();
-	let t0 = Instant::now();
 
 	let mut pos_initial = HashMap::new();
 	pos_initial.insert(10, 0.0);
-	motion.record_positions(&pos_initial, t0);
+	motion.record_positions(&pos_initial, &tokens, MotionPolicy::DEFAULT, clock.at(0));
 
-	// Start moving to y = 100.0 at t1 (total duration 200ms).
-	let t1 = t0 + Duration::from_secs(1);
+	// Start moving to y = 100.0 at 1 s (total duration 200ms).
 	let mut pos_move1 = HashMap::new();
 	pos_move1.insert(10, 100.0);
-	motion.record_positions(&pos_move1, t1);
+	motion.record_positions(&pos_move1, &tokens, MotionPolicy::DEFAULT, clock.at(1_000));
 
 	// Interrupt at t = 40% of 200ms = 80ms.
-	let t_interrupt = t1 + Duration::from_millis(80);
-	let pre_interrupt_offset = motion.shift_offset(10, t_interrupt);
+	let t_interrupt = clock.at(1_080);
+	assert!(motion.advance_to(t_interrupt), "the shift moves at 40%");
+	let pre_interrupt_offset = motion.shift_offset(10);
 	let pre_interrupt_visual_y = 100.0 + pre_interrupt_offset;
 
 	// New position at interruption instant: row moves to y = 200.0.
 	let mut pos_move2 = HashMap::new();
 	pos_move2.insert(10, 200.0);
-	motion.record_positions(&pos_move2, t_interrupt);
+	motion.record_positions(&pos_move2, &tokens, MotionPolicy::DEFAULT, t_interrupt);
 
 	// (b) Assert visual position immediately after interruption equals
 	// pre-interruption value.
-	let post_interrupt_offset = motion.shift_offset(10, t_interrupt);
+	let post_interrupt_offset = motion.shift_offset(10);
 	let post_interrupt_visual_y = 200.0 + post_interrupt_offset;
 
 	assert!(
@@ -138,41 +131,37 @@ fn an_interruption_at_forty_percent_continues_from_the_current_value_and_settles
 
 	// (b) Assert the animation still settles within the 200ms bound from
 	// interruption.
-	let t_final_complete = t_interrupt + Duration::from_millis(200);
+	assert!(!motion.advance_to(clock.at(1_280)), "interrupted animation must terminate by bound");
 	assert_eq!(
-		motion.shift_offset(10, t_final_complete),
+		motion.shift_offset(10),
 		0.0,
 		"interrupted animation must settle to zero offset within duration bound"
-	);
-	assert!(
-		!motion.has_active_animations(t_final_complete),
-		"interrupted animation must terminate by bound"
 	);
 }
 
 #[test]
 fn reduced_motion_yields_zero_offset_on_the_first_frame() {
+	let tokens = MotionTokens::reference();
+	let mut clock = Clock::start();
 	let mut motion = RailMotion::new();
-	motion.set_reduced_motion(true);
 
-	let t0 = Instant::now();
 	let mut pos_initial = HashMap::new();
 	pos_initial.insert(42, 0.0);
-	motion.record_positions(&pos_initial, t0);
+	motion.record_positions(&pos_initial, &tokens, MotionPolicy::REDUCED, clock.at(0));
 
-	let t1 = t0 + Duration::from_secs(1);
+	let t1 = clock.at(1_000);
 	let mut pos_moved = HashMap::new();
 	pos_moved.insert(42, 100.0);
-	motion.record_positions(&pos_moved, t1);
+	motion.record_positions(&pos_moved, &tokens, MotionPolicy::REDUCED, t1);
 
 	// (c) Reduced motion resolves to 0ms instant transition, zero offset on first
 	// frame.
 	assert_eq!(
-		motion.shift_offset(42, t1),
+		motion.shift_offset(42),
 		0.0,
 		"reduced motion must yield zero offset on first frame without animating"
 	);
-	assert!(!motion.has_active_animations(t1), "reduced motion must leave no active animations");
+	assert!(!motion.advance_to(t1), "reduced motion must leave no active animations");
 }
 
 #[test]

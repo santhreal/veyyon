@@ -7,13 +7,13 @@
 //! blocks. They do not prove the live host transport or native-display frame
 //! cadence.
 
-use std::{
-	path::Path,
-	time::{Duration, Instant},
-};
+#[path = "support/clock.rs"]
+mod clock;
 
+use std::path::Path;
+
+use clock::{Clock, expand_at_rest};
 use veyyon_desktop_kit::{TokenSet, load_bundled_theme, load_bundled_tokens};
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_scene::{
 	headless::{Captured, RenderOptions, headless_context, render_view_captured},
 	session::HeadlessSession,
@@ -27,7 +27,10 @@ use veyyon_desktop_surface::{
 	},
 };
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
-use veyyon_gpui::{App, AppContext, Context, IntoElement, Render, Styled, Window, list};
+use veyyon_gpui::{
+	App, AppContext, Context, IntoElement, Render, Styled, Window, list,
+	motion::{MotionPolicy, MotionTokens},
+};
 
 struct BlockView {
 	state:    TranscriptViewportState,
@@ -39,14 +42,14 @@ struct BlockView {
 }
 
 impl Render for BlockView {
-	fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let expanded = self.state.is_block_expanded(0, 0);
 		if self.reason {
 			let state = self.state.clone();
 			let geometry = self.geometry.clone();
 			let tokens = self.tokens.clone();
-			let motion = self.motion.clone();
-			let _ = state.is_animating(Instant::now(), &motion, false);
+			let motion = self.motion;
+			let _ = state.advance_to(cx.frame_instant());
 			list(self.state.list_state(), move |turn, _, _| {
 				render_reason_block(
 					turn,
@@ -57,7 +60,6 @@ impl Render for BlockView {
 					&geometry,
 					&tokens,
 					&motion,
-					false,
 					&state,
 					None,
 					None,
@@ -80,7 +82,6 @@ impl Render for BlockView {
 				&self.geometry,
 				&self.tokens,
 				&self.motion,
-				false,
 				&self.state,
 				None,
 				None,
@@ -157,22 +158,23 @@ fn reveal_preserves_measurement_and_continuity_until_bounded_settlement() {
 		false,
 	);
 	let tokens = MotionTokens::reference();
-	let now = Instant::now();
+	let mut clock = Clock::start();
+	let now = clock.at(0);
 	assert!(state.record_reveal_height(0, 0, 180.0));
 	assert!(!state.record_reveal_height(0, 0, 180.0));
-	state.set_block_expanded(0, 0, true, &tokens, false, now);
+	state.set_block_expanded(0, 0, true, &tokens, MotionPolicy::DEFAULT, now);
 	assert_eq!(state.reveal_frame(0, 0, now), (0.0, 180.0));
-	let halfway = now + Duration::from_millis(100);
+	let halfway = clock.at(100);
 	let (before, height) = state.reveal_frame(0, 0, halfway);
 	assert!(before > 0.0 && before < 1.0);
 	assert_eq!(height, 180.0);
-	state.set_block_expanded(0, 0, false, &tokens, false, halfway);
+	state.set_block_expanded(0, 0, false, &tokens, MotionPolicy::DEFAULT, halfway);
 	assert!((state.reveal_frame(0, 0, halfway).0 - before).abs() < 0.001);
-	let done = halfway + Duration::from_secs(3);
+	let done = clock.at(3_100);
 	assert_eq!(state.reveal_frame(0, 0, done), (0.0, 180.0));
-	assert!(!state.is_animating(done, &tokens, false));
-	state.set_block_expanded(0, 0, true, &tokens, true, done);
-	assert_eq!(state.reveal_frame(0, 0, done + Duration::from_millis(60)), (1.0, 180.0));
+	assert!(!state.advance_to(done));
+	state.set_block_expanded(0, 0, true, &tokens, MotionPolicy::REDUCED, done);
+	assert_eq!(state.reveal_frame(0, 0, clock.at(3_160)), (1.0, 180.0));
 	state.switch_session(2, 0);
 	assert_eq!(state.reveal_frame(0, 0, done), (0.0, 0.0));
 }
@@ -186,13 +188,10 @@ fn expanded_content_reports_its_natural_height_from_real_prepaint() {
 		&[Turn::Agent { blocks: vec![Block::Reason("Details".into())], model: None }],
 		false,
 	);
-	let motion = MotionTokens::reference();
-	let now = Instant::now();
-	state.set_block_expanded(0, 0, true, &motion, true, now);
-	state.sample_reveal(0, 0, now + Duration::from_millis(60));
-	assert_eq!(state.reveal_frame(0, 0, now + Duration::from_millis(60)).1, 0.0);
 	let observed = state.clone();
 	let mut cx = headless_context().expect("headless renderer");
+	expand_at_rest(&mut cx, &state, 0, 0, &MotionTokens::reference());
+	assert_eq!(state.current_reveal_frame(0, 0).1, 0.0);
 	let mut session = HeadlessSession::open(
 		&mut cx,
 		&RenderOptions { width: 768, height: 400, scale_factor: 1.0, ..RenderOptions::default() },
@@ -216,7 +215,7 @@ fn expanded_content_reports_its_natural_height_from_real_prepaint() {
 		.expect("invalidate measured row");
 	session.frame().expect("remeasured frame");
 	assert!(
-		observed.reveal_frame(0, 0, Instant::now()).1 > 0.0,
+		observed.current_reveal_frame(0, 0).1 > 0.0,
 		"the clipped child must retain its natural height"
 	);
 }
@@ -239,7 +238,6 @@ impl Render for PureReasonView {
 			&self.geometry,
 			&self.tokens,
 			&self.motion,
-			false,
 			&self.state,
 			None,
 			None,
@@ -257,12 +255,10 @@ fn element_construction_mutates_no_springs_and_produces_identical_frames() {
 		false,
 	);
 	let motion = MotionTokens::reference();
-	let t0 = Instant::now();
+	let mut clock = Clock::start();
 	assert!(state.record_reveal_height(0, 0, 180.0));
-	state.set_block_expanded(0, 0, true, &motion, false, t0);
-
-	let t1 = t0 + Duration::from_millis(80);
-	assert!(state.is_animating(t1, &motion, false));
+	state.set_block_expanded(0, 0, true, &motion, MotionPolicy::DEFAULT, clock.at(0));
+	assert!(state.advance_to(clock.at(80)));
 
 	let first_eval = state.current_reveal_frame(0, 0);
 	assert!(first_eval.0 > 0.0 && first_eval.0 < 1.0);
@@ -301,7 +297,6 @@ fn element_construction_mutates_no_springs_and_produces_identical_frames() {
 				&view.geometry,
 				&view.tokens,
 				&view.motion,
-				false,
 				&view.state,
 				None,
 				None,
@@ -319,7 +314,6 @@ fn element_construction_mutates_no_springs_and_produces_identical_frames() {
 				&view.geometry,
 				&view.tokens,
 				&view.motion,
-				false,
 				&view.state,
 				None,
 				None,

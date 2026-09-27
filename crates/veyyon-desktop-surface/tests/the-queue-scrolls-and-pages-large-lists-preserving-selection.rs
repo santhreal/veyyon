@@ -15,25 +15,25 @@
 //! 6. Sizing degradation across the widths that shed the rail is
 //!    `the-rail-footer-gear-is-reachable-at-every-width-that-draws-a-rail`'s.
 
+#[path = "support/clock.rs"]
+mod clock;
 #[path = "support/large_queue.rs"]
 mod large_queue;
 #[path = "support/queue-scroll/mod.rs"]
 mod queue_scroll;
 
-use std::{
-	collections::HashMap,
-	time::{Duration, Instant},
-};
+use std::collections::HashMap;
 
+use clock::Clock;
 use large_queue::make_large_queue_state;
 use queue_scroll::{open_session, row};
 use veyyon_desktop_kit::load_bundled_tokens;
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_scene::headless::headless_context;
 use veyyon_desktop_surface::{
 	Intent, Overlay, PaletteMode, Section, fixture,
 	queue::{RailMotion, paged_rail_fill},
 };
+use veyyon_gpui::motion::{MotionPolicy, MotionTokens};
 
 #[test]
 fn large_queue_lists_render_every_session_in_scrollable_container_beyond_viewport() {
@@ -107,9 +107,7 @@ fn selection_identity_remains_stable_across_scroll_collapse_and_paging() {
 	session
 		.update(|view, _window, cx| {
 			for section in Section::all() {
-				view
-					.rail_motion_mut()
-					.toggle_collapsed(section, Instant::now());
+				view.toggle_section(section, cx);
 			}
 			cx.notify();
 		})
@@ -127,9 +125,7 @@ fn selection_identity_remains_stable_across_scroll_collapse_and_paging() {
 		.expect("state verified");
 	session
 		.update(|view, _window, cx| {
-			view
-				.rail_motion_mut()
-				.toggle_collapsed(Section::Deferred, Instant::now());
+			view.toggle_section(Section::Deferred, cx);
 			cx.notify();
 		})
 		.expect("toggle expanded");
@@ -168,58 +164,54 @@ fn filter_queue_filters_sessions_and_clearing_restores_full_queue() {
 
 #[test]
 fn queue_motion_preserves_continuity_under_insert_remove_reorder_and_rapid_toggle() {
-	let tokens: MotionTokens = load_bundled_tokens().expect("bundled tokens").motion.into();
-	let mut rail = RailMotion::with_tokens(tokens);
-	let t0 = Instant::now();
+	let tokens: MotionTokens = load_bundled_tokens().expect("bundled tokens").motion;
+	let policy = MotionPolicy::DEFAULT;
+	let mut clock = Clock::start();
+	let mut rail = RailMotion::new();
 
 	let mut pos1 = HashMap::new();
 	pos1.insert(1, 40.0_f32);
 	pos1.insert(2, 118.0_f32);
 	pos1.insert(3, 196.0_f32);
-	rail.record_positions(&pos1, t0);
-	assert_eq!(rail.shift_offset(1, t0), 0.0);
-	assert_eq!(rail.shift_offset(2, t0), 0.0);
+	rail.record_positions(&pos1, &tokens, policy, clock.at(0));
+	assert_eq!(rail.shift_offset(1), 0.0);
+	assert_eq!(rail.shift_offset(2), 0.0);
 
-	let t1 = t0 + Duration::from_millis(50);
 	let mut pos2 = HashMap::new();
 	pos2.insert(2, 40.0_f32);
 	pos2.insert(1, 118.0_f32);
 	pos2.insert(3, 196.0_f32);
-	rail.record_positions(&pos2, t1);
-	assert_eq!(rail.shift_offset(1, t1), -78.0);
-	assert_eq!(rail.shift_offset(2, t1), 78.0);
+	rail.record_positions(&pos2, &tokens, policy, clock.at(50));
+	assert_eq!(rail.shift_offset(1), -78.0);
+	assert_eq!(rail.shift_offset(2), 78.0);
 
-	let t2 = t1 + Duration::from_millis(100);
 	let mut pos3 = HashMap::new();
 	pos3.insert(3, 40.0_f32);
 	pos3.insert(2, 118.0_f32);
 	pos3.insert(1, 196.0_f32);
-	rail.record_positions(&pos3, t2);
-	assert_eq!(rail.shift_offset(3, t2), 156.0);
+	rail.record_positions(&pos3, &tokens, policy, clock.at(150));
+	assert_eq!(rail.shift_offset(3), 156.0);
 
-	let t_settle = t2 + Duration::from_millis(300);
-	assert_eq!(rail.shift_offset(1, t_settle), 0.0);
-	assert_eq!(rail.shift_offset(2, t_settle), 0.0);
-	assert_eq!(rail.shift_offset(3, t_settle), 0.0);
-	assert!(!rail.has_active_animations(t_settle));
+	assert!(!rail.advance_to(clock.at(450)), "every shift rests within its bound");
+	assert_eq!(rail.shift_offset(1), 0.0);
+	assert_eq!(rail.shift_offset(2), 0.0);
+	assert_eq!(rail.shift_offset(3), 0.0);
 }
 
 #[test]
 fn rest_does_not_perpetually_redraw_at_rest() {
+	let tokens = MotionTokens::reference();
+	let mut clock = Clock::start();
 	let mut rail = RailMotion::new();
-	let t0 = Instant::now();
+	let t0 = clock.at(0);
 
 	let mut pos = HashMap::new();
 	pos.insert(10, 50.0);
 	pos.insert(20, 128.0);
-	rail.record_positions(&pos, t0);
+	rail.record_positions(&pos, &tokens, MotionPolicy::DEFAULT, t0);
 
-	assert!(!rail.has_active_animations(t0));
-	assert!(!rail.is_animating(t0));
-
-	let t1 = t0 + Duration::from_secs(5);
-	assert!(!rail.has_active_animations(t1));
-	assert!(!rail.is_animating(t1));
+	assert!(!rail.advance_to(t0));
+	assert!(!rail.advance_to(clock.at(5_000)));
 }
 
 #[test]
@@ -320,25 +312,27 @@ fn selection_in_collapsed_or_unpaged_section_ensures_visibility() {
 				.collect::<Vec<_>>(),
 		),
 	];
-	let now = Instant::now();
+	let tokens = MotionTokens::reference();
+	let policy = MotionPolicy::DEFAULT;
+	let now = Clock::start().at(0);
 
 	for section in Section::all() {
-		motion.toggle_collapsed(section, now);
+		motion.toggle_collapsed(section, &tokens, policy, now);
 		assert!(motion.is_collapsed(section));
 	}
 
-	motion.ensure_visible(3, &sections, 25, now);
+	motion.ensure_visible(3, &sections, 25, &tokens, policy, now);
 	assert!(!motion.is_collapsed(Section::Live), "selecting row in Live expands it");
 	assert!(motion.is_collapsed(Section::Unsent), "Unsent stays collapsed");
 
-	motion.ensure_visible(10, &sections, 25, now);
+	motion.ensure_visible(10, &sections, 25, &tokens, policy, now);
 	assert!(
 		!motion.is_collapsed(Section::Deferred),
 		"selecting row in collapsed section must expand it"
 	);
 
 	assert_eq!(motion.parked_page(), 1);
-	motion.ensure_visible(60, &sections, 25, now);
+	motion.ensure_visible(60, &sections, 25, &tokens, policy, now);
 	assert!(motion.parked_page() >= 2, "selecting archival row must increase parked page");
 }
 

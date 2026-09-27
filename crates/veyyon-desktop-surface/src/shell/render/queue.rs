@@ -10,7 +10,7 @@ use veyyon_desktop_kit::{Axis, Resizable, Sheet, TokenSet};
 use veyyon_desktop_tokens::{QueueSurfaceTokens, SurfaceTokens};
 use veyyon_gpui::{
 	AnyElement, Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
-	ParentElement, Styled, Window, div, px,
+	ParentElement, Styled, Window, div, motion::MotionFrame, px,
 };
 
 use crate::{
@@ -35,6 +35,7 @@ pub fn queue_column(
 	widths: &ShellWidths,
 	surface: &SurfaceTokens,
 	tokens: &TokenSet,
+	frame: &mut MotionFrame,
 	window: &mut Window,
 	cx: &Context<ShellView>,
 ) -> QueueColumn {
@@ -71,6 +72,8 @@ pub fn queue_column(
 		&surface.queue,
 		tokens,
 		&mut view.rail_motion,
+		&view.installed.motion,
+		frame,
 		&queue_focus,
 		&rail_layout,
 		window,

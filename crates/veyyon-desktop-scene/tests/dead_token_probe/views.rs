@@ -9,7 +9,6 @@ use veyyon_desktop_kit::{
 use veyyon_desktop_model::tool_view::{
 	NoticeView, ViewCodeLines, ViewDiffLines, ViewSpan, ViewStatus,
 };
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_scene::{
 	Appearance, Headless, HeadlessSession, PrimitiveKind, RenderOptions, headless::render_view,
 	render_primitive,
@@ -68,7 +67,6 @@ impl Render for ProbeSurface {
 /// A tool call whose result is summarised beside its name, which is the one
 /// place the summary width is drawn.
 fn invoked_call(tokens: &Tokens, resolved: &TokenSet) -> Div {
-	let motion = MotionTokens::from(tokens.motion.clone());
 	render_invoke_block(
 		0,
 		0,
@@ -80,8 +78,7 @@ fn invoked_call(tokens: &Tokens, resolved: &TokenSet) -> Div {
 		false,
 		&tokens.surface.transcript,
 		resolved,
-		&motion,
-		true,
+		&tokens.motion,
 		&TranscriptViewportState::default(),
 		None,
 		None,

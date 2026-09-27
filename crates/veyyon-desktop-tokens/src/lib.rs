@@ -30,7 +30,6 @@ pub mod loader_surface_share;
 pub mod loader_surface_shell;
 pub mod loader_surface_transcript;
 pub mod loader_theme;
-pub mod motion;
 pub mod scale;
 pub mod schema;
 pub mod section;
@@ -47,10 +46,6 @@ pub use loader::{load_bundled_tokens, load_from_dir};
 pub use loader_theme::{
 	APPEARANCES, DEFAULT_APPEARANCE, THEME_VERSION, load_bundled_theme, load_bundled_themes,
 	load_theme,
-};
-pub use motion::{
-	DirectThenSpringModel, DurationModel, EasingCurve, FlipModel, MotionModel, MotionRole,
-	MotionRoleConfig, MotionTokens, ReducedMotion, SpringFadeModel, SpringModel, TwoStepModel,
 };
 pub use scale::{InlineType, ScaleTokens, TypeSize};
 pub use schema::{
@@ -71,6 +66,7 @@ pub struct Tokens {
 	pub elevation: ElevationTokens,
 	pub controls:  ControlTokens,
 	pub ceilings:  CeilingTokens,
-	pub motion:    MotionTokens,
+	/// Motion parameters of the seven roles, in the framework's own type.
+	pub motion:    motion::MotionTokens,
 	pub surface:   SurfaceTokens,
 }

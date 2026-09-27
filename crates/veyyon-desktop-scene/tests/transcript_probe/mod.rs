@@ -14,6 +14,7 @@ use veyyon_desktop_surface::{
 	model::{Artifact, Block, ShellState, ToolInvocationViews, Turn},
 };
 use veyyon_desktop_tokens::Tokens;
+use veyyon_gpui::motion::{MotionPolicy, REDUCED_FADE_MS};
 
 use crate::dead_token_probe::{
 	Observation,
@@ -209,17 +210,19 @@ pub fn observations(cx: &mut Headless, tokens: &Tokens) -> Vec<Observation> {
 		name:    "transcript_reason_expanded",
 		options: shell::wide(),
 		state:   seeded_reason(),
-		// The reveal fades over 60ms even reduced, so it is started far enough
-		// in the past that the first frame samples it settled and the summary
-		// draws at its own strength rather than at the fade's.
-		prepare: |view, installed, now| {
+		// The reveal fades over the reduced fade even under reduced motion, so
+		// the hook runs the clock to its end and the first frame samples it
+		// settled: the summary draws at its own strength rather than at the
+		// fade's.
+		prepare: |cx, view, installed| {
 			// The first frame switches the viewport onto the session, which
 			// clears the expansion it restores for that id, so the switch
 			// happens here first and the frame's own is a no-op.
 			let viewport = view.transcript_viewport();
 			viewport.switch_session(view.state().current_id, view.state().transcript.len());
-			let settled = now.checked_sub(Duration::from_secs(1)).unwrap_or(now);
-			viewport.set_block_expanded(0, 0, true, &installed.motion, true, settled);
+			let start = cx.update(|app| app.frame_instant());
+			viewport.set_block_expanded(0, 0, true, &installed.motion, MotionPolicy::REDUCED, start);
+			cx.advance_clock(Duration::from_millis(u64::from(REDUCED_FADE_MS)));
 		},
 	}]));
 	observations

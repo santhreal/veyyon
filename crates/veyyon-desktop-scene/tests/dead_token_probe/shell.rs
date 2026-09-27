@@ -6,7 +6,7 @@
 //! of `ShellState`, so a suite states what it needs and renders it here rather
 //! than driving the window through keystrokes to get there.
 
-use std::{path::Path, time::Instant};
+use std::path::Path;
 
 use veyyon_desktop_scene::{Appearance, Headless, RenderOptions, headless::render_view};
 use veyyon_desktop_surface::{InstalledTokens, ShellView, install_tokens, model::ShellState};
@@ -85,10 +85,10 @@ pub struct Prepared {
 	pub options: RenderOptions,
 	/// The state the window draws.
 	pub state:   ShellState,
-	/// Runs against the constructed view before the first frame is laid out,
-	/// against the executor's own clock, which is the one the frame samples an
-	/// animation on.
-	pub prepare: fn(&ShellView, &InstalledTokens, Instant),
+	/// Runs against the constructed view before the window opens, on the
+	/// render context whose clock the first frame samples, so a hook that
+	/// starts a motion moves that clock to where the motion rests.
+	pub prepare: fn(&mut Headless, &ShellView, &InstalledTokens),
 }
 
 /// Renders each prepared state against `tokens`, running its hook first.
@@ -101,19 +101,13 @@ pub fn render_prepared(
 	prepared
 		.into_iter()
 		.map(|Prepared { name, options, state, prepare }| {
-			let tokens = tokens.clone();
-			let theme = theme.clone();
-			let frame = render_view(cx, &options, move |_window, app| {
-				let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
-					.expect("the bundled token set must install");
-				let now = app.background_executor().now();
-				app.new(|_cx| {
-					let view = ShellView::new(installed.clone(), state);
-					prepare(&view, &installed, now);
-					view
-				})
-			})
-			.expect("the shell must render");
+			let installed = cx
+				.update(|app| install_tokens(app, tokens, &theme, Path::new("surface")))
+				.expect("the bundled token set must install");
+			let view = ShellView::new(installed.clone(), state);
+			prepare(cx, &view, &installed);
+			let frame = render_view(cx, &options, move |_window, app| app.new(|_cx| view))
+				.expect("the shell must render");
 			frame_observation(name, &frame)
 		})
 		.collect()

@@ -24,7 +24,6 @@ use std::{path::Path, sync::Arc};
 use strum::IntoEnumIterator;
 use veyyon_desktop_kit::{ColorRole, TokenSet, load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_model::tool_view::{StatusRowView, ToolView};
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_scene::headless::{
 	Headless, RenderOptions, headless_context, render_view_captured,
 };
@@ -36,7 +35,8 @@ use veyyon_desktop_surface::{
 };
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{
-	App, AppContext, Context, IntoElement, ParentElement, Render, Styled, Window, div, px,
+	App, AppContext, Context, IntoElement, ParentElement, Render, Styled, Window, div,
+	motion::MotionTokens, px,
 };
 
 /// The column the transcript is measured at, so wrapping is identical across

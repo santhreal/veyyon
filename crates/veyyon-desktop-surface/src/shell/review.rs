@@ -46,7 +46,7 @@ impl Default for ReviewState {
 			return_focus: None,
 			focus:        None,
 			origin:       Point::default(),
-			motion:       FloatMotion::new(veyyon_desktop_motion::SurfaceId::RightPanel, 1),
+			motion:       FloatMotion::new(),
 			error:        None,
 			reconciled:   None,
 		}

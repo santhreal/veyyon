@@ -6,9 +6,7 @@
 //! `TranscriptViewportState` so keyboard actions execute real viewport scroll
 //! jumps, turn focusing, and block expansions.
 
-use std::time::Instant;
-
-use veyyon_gpui::{ListOffset, px};
+use veyyon_gpui::{ListOffset, motion::MotionFrame, px};
 
 use crate::{
 	ShellView, composer::TurnPhase, intent::Intent, keymap::actions::ScrollBy, model::Block,
@@ -18,7 +16,8 @@ impl ShellView {
 	/// Synchronizes the retained transcript viewport with the current session
 	/// state, consuming any pending keyboard scroll, one-shot turn step, or
 	/// block expansion requests.
-	pub(super) fn sync_transcript_viewport(&mut self, viewport_height_px: f32, now: Instant) {
+	pub(super) fn sync_transcript_viewport(&mut self, viewport_height_px: f32, frame: &MotionFrame) {
+		let (policy, now) = (frame.policy(), frame.now());
 		// 1. Sync session switch if current_id changed
 		self
 			.transcript_viewport
@@ -36,7 +35,6 @@ impl ShellView {
 			.transcript_viewport
 			.set_focused_turn(self.state.keymap.focused_turn);
 
-		let reduced = self.rail_motion.is_reduced_motion();
 		let motion = &self.installed.motion;
 
 		// 3. Consume pending keyboard scroll request (§5.3 PageUp, PageDown, Home, End)
@@ -64,24 +62,24 @@ impl ShellView {
 					self.transcript_viewport.scroll_to_animated(
 						ListOffset { item_ix: 0, offset_in_item: px(0.0) },
 						motion,
-						reduced,
+						policy,
 						now,
 					);
 				},
 				ScrollBy::Bottom => {
 					self
 						.transcript_viewport
-						.scroll_to_end_animated(motion, reduced, now);
+						.scroll_to_end_animated(motion, policy, now);
 				},
 				ScrollBy::PageUp => {
 					self
 						.transcript_viewport
-						.scroll_by_animated(-page_delta, motion, reduced, now);
+						.scroll_by_animated(-page_delta, motion, policy, now);
 				},
 				ScrollBy::PageDown => {
 					self
 						.transcript_viewport
-						.scroll_by_animated(page_delta, motion, reduced, now);
+						.scroll_by_animated(page_delta, motion, policy, now);
 				},
 			}
 		}
@@ -99,11 +97,11 @@ impl ShellView {
 					// over a transcript that is already at its end.
 					self
 						.transcript_viewport
-						.scroll_to_end_animated(motion, reduced, now);
+						.scroll_to_end_animated(motion, policy, now);
 				} else {
 					self
 						.transcript_viewport
-						.scroll_to_turn_animated(turn_ix, motion, reduced, now);
+						.scroll_to_turn_animated(turn_ix, motion, policy, now);
 				}
 			}
 		}
@@ -140,7 +138,7 @@ impl ShellView {
 					focused_ix,
 					block_ix,
 					&self.installed.motion,
-					self.rail_motion.is_reduced_motion(),
+					policy,
 					now,
 				);
 				// The host owns a tool card's disclosure: it regenerates the view with
@@ -169,6 +167,6 @@ impl ShellView {
 
 		// 7. Apply the remembered shape that named a card or a drawer tenant the host
 		//    had not reported when it was read (§8.10).
-		self.apply_remembered(now);
+		self.apply_remembered(policy, now);
 	}
 }

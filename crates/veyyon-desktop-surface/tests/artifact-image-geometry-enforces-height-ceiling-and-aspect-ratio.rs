@@ -7,15 +7,14 @@
 //! and deterministically advance reveal animation state during headless
 //! testing.
 
-use std::{
-	path::Path,
-	sync::Arc,
-	time::{Duration, Instant},
-};
+#[path = "support/clock.rs"]
+mod clock;
 
+use std::{path::Path, sync::Arc};
+
+use clock::expand_at_rest;
 use image::{ImageBuffer, Rgba};
 use veyyon_desktop_kit::{TokenSet, load_bundled_theme, load_bundled_tokens};
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_scene::{
 	frame::RgbaFrame,
 	headless::{Captured, RenderOptions, headless_context, render_view_captured},
@@ -28,6 +27,7 @@ use veyyon_desktop_surface::{
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{
 	App, AppContext, Context, IntoElement, ParentElement, Render, Styled, Window, div,
+	motion::MotionTokens,
 };
 
 fn make_png_with_color(w: u32, h: u32, color: [u8; 4]) -> Vec<u8> {
@@ -59,7 +59,6 @@ impl Render for GeometryTestView {
 			&self.geometry,
 			&self.tokens,
 			&self.motion,
-			true,
 			&self.state,
 			None,
 		))
@@ -76,6 +75,8 @@ fn render_expanded_artifact(
 	let theme = load_bundled_theme("dark").expect("bundled theme");
 	let state = TranscriptViewportState::new();
 	let mut cx = headless_context().expect("headless context");
+	state.record_reveal_height(0, 0, 800.0);
+	expand_at_rest(&mut cx, &state, 0, 0, &tokens.motion);
 
 	render_view_captured(
 		&mut cx,
@@ -88,12 +89,6 @@ fn render_expanded_artifact(
 		move |_, app: &mut App| {
 			let ins = install_tokens(app, &tokens, &theme, Path::new("surface")).expect("installed");
 			let geometry = geometry_override.unwrap_or(tokens.surface.transcript);
-			state.record_reveal_height(0, 0, 800.0);
-			state.set_block_expanded(0, 0, true, &ins.motion, true, Instant::now());
-			assert_eq!(
-				state.sample_reveal(0, 0, Instant::now() + Duration::from_secs(1)),
-				(1.0, true)
-			);
 			app.new(|_| GeometryTestView {
 				state,
 				geometry,

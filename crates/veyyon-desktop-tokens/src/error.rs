@@ -80,6 +80,12 @@ pub enum TokenError {
 	},
 
 	#[error(
+		"[{path}:{line}:{column}] key \"reduced_motion\" in section [{section}] is not read: \
+		 reduced motion is fixed per role; delete the key"
+	)]
+	ReducedMotionFixed { path: PathBuf, line: usize, column: usize, section: String },
+
+	#[error(
 		"[{path}:{line}:{column}] unresolved token reference {reference:?} for key {key:?}; not \
 		 found in {source_file}"
 	)]

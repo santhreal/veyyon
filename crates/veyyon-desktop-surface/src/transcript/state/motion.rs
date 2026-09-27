@@ -1,9 +1,10 @@
 //! Measured viewport scrolling and retained reveal geometry.
 
-use std::time::Instant;
-
-use veyyon_desktop_motion::MotionTokens;
-use veyyon_gpui::{App, FocusHandle, FollowMode, ListOffset, Pixels, px};
+use veyyon_gpui::{
+	App, FocusHandle, FollowMode, ListOffset, Pixels,
+	motion::{Advance, FrameInstant, MotionFrame, MotionPolicy, MotionTokens},
+	px,
+};
 
 use super::{TranscriptViewportState, TranscriptViewportStateInner};
 
@@ -21,15 +22,15 @@ fn start_scroll(
 	inner: &mut TranscriptViewportStateInner,
 	target: f32,
 	tokens: &MotionTokens,
-	reduced: bool,
-	now: Instant,
+	policy: MotionPolicy,
+	now: FrameInstant,
 ) {
 	let current = -f32::from(inner.list_state.scroll_px_offset_for_scrollbar().y);
 	inner.list_state.set_follow_mode(FollowMode::Normal);
-	inner.scroll_motion.set_direct(current, now);
+	inner.scroll_motion.set_direct(current);
 	inner
 		.scroll_motion
-		.scroll_to(target.max(0.0), tokens, reduced, now);
+		.scroll_to(target.max(0.0), tokens, policy, now);
 	inner.scroll_expected_px = Some(current);
 	let (position, settled) = inner.scroll_motion.sample(now);
 	if settled {
@@ -98,13 +99,13 @@ impl TranscriptViewportState {
 		&self,
 		distance: Pixels,
 		tokens: &MotionTokens,
-		reduced: bool,
-		now: Instant,
+		policy: MotionPolicy,
+		now: FrameInstant,
 	) {
 		let mut inner = self.0.borrow_mut();
 		let current = -f32::from(inner.list_state.scroll_px_offset_for_scrollbar().y);
 		inner.scroll_follow_end = false;
-		start_scroll(&mut inner, current + f32::from(distance), tokens, reduced, now);
+		start_scroll(&mut inner, current + f32::from(distance), tokens, policy, now);
 	}
 
 	/// Animates a logical jump using the list's measured row heights.
@@ -112,20 +113,20 @@ impl TranscriptViewportState {
 		&self,
 		offset: ListOffset,
 		tokens: &MotionTokens,
-		reduced: bool,
-		now: Instant,
+		policy: MotionPolicy,
+		now: FrameInstant,
 	) {
 		let mut inner = self.0.borrow_mut();
 		if offset.item_ix == 0 && offset.offset_in_item == px(0.0) {
 			inner.scroll_follow_end = false;
-			start_scroll(&mut inner, 0.0, tokens, reduced, now);
+			start_scroll(&mut inner, 0.0, tokens, policy, now);
 		} else {
 			let original = inner.list_state.logical_scroll_top();
 			inner.list_state.scroll_to(offset);
 			let target = -f32::from(inner.list_state.scroll_px_offset_for_scrollbar().y);
 			inner.list_state.scroll_to(original);
 			inner.scroll_follow_end = false;
-			start_scroll(&mut inner, target, tokens, reduced, now);
+			start_scroll(&mut inner, target, tokens, policy, now);
 		}
 	}
 
@@ -134,8 +135,8 @@ impl TranscriptViewportState {
 		&self,
 		turn: usize,
 		tokens: &MotionTokens,
-		reduced: bool,
-		now: Instant,
+		policy: MotionPolicy,
+		now: FrameInstant,
 	) {
 		let mut inner = self.0.borrow_mut();
 		let original = inner.list_state.logical_scroll_top();
@@ -143,27 +144,41 @@ impl TranscriptViewportState {
 		let target = -f32::from(inner.list_state.scroll_px_offset_for_scrollbar().y);
 		inner.list_state.scroll_to(original);
 		inner.scroll_follow_end = false;
-		start_scroll(&mut inner, target, tokens, reduced, now);
+		start_scroll(&mut inner, target, tokens, policy, now);
 	}
 
 	/// Animates to the tail and resumes following after the transition settles.
-	pub fn scroll_to_end_animated(&self, tokens: &MotionTokens, reduced: bool, now: Instant) {
+	pub fn scroll_to_end_animated(
+		&self,
+		tokens: &MotionTokens,
+		policy: MotionPolicy,
+		now: FrameInstant,
+	) {
 		let mut inner = self.0.borrow_mut();
 		let target = f32::from(inner.list_state.max_offset_for_scrollbar().y);
 		inner.scroll_follow_end = true;
-		start_scroll(&mut inner, target, tokens, reduced, now);
+		start_scroll(&mut inner, target, tokens, policy, now);
 	}
 
-	/// Samples the caret without allocating per-frame state.
-	pub fn sample_caret(&self, now: Instant, tokens: &MotionTokens, reduced: bool) -> (f32, bool) {
+	/// Starts or ends the caret blink for the streaming state and returns the
+	/// caret's opacity at `now` with whether it is at rest.
+	pub fn sample_caret(
+		&self,
+		tokens: &MotionTokens,
+		policy: MotionPolicy,
+		now: FrameInstant,
+	) -> (f32, bool) {
 		let mut inner = self.0.borrow_mut();
 		let streaming = inner.is_streaming;
-		inner.caret_motion.sample(streaming, now, tokens, reduced)
+		inner
+			.caret_motion
+			.set_streaming(streaming, tokens, policy, now);
+		inner.caret_motion.sample(now)
 	}
 
 	/// Applies sampled scroll motion; manual scroll cancels the programmatic
 	/// jump.
-	pub fn sample_scroll(&self, now: Instant) -> (f32, bool) {
+	pub fn sample_scroll(&self, now: FrameInstant) -> (f32, bool) {
 		let mut inner = self.0.borrow_mut();
 		if let Some(expected) = inner.scroll_expected_px {
 			let (position, settled) = inner.scroll_motion.sample(now);
@@ -186,7 +201,7 @@ impl TranscriptViewportState {
 	}
 
 	/// Returns reveal progress for an individual content block.
-	pub fn sample_reveal(&self, turn: usize, block: usize, now: Instant) -> (f32, bool) {
+	pub fn sample_reveal(&self, turn: usize, block: usize, now: FrameInstant) -> (f32, bool) {
 		let mut inner = self.0.borrow_mut();
 		let key = (turn, block);
 		if let Some(motion) = inner.reveal_motions.get_mut(&key) {
@@ -223,7 +238,7 @@ impl TranscriptViewportState {
 	}
 
 	/// Returns the clip fraction and measured natural height of reveal content.
-	pub fn reveal_frame(&self, turn: usize, block: usize, now: Instant) -> (f32, f32) {
+	pub fn reveal_frame(&self, turn: usize, block: usize, now: FrameInstant) -> (f32, f32) {
 		let progress = self.sample_reveal(turn, block, now).0.clamp(0.0, 1.0);
 		let height = self
 			.0
@@ -267,13 +282,13 @@ impl TranscriptViewportState {
 		true
 	}
 
-	/// Advances every active driver and remeasures animated list rows.
+	/// Brings the scroll, the caret and every reveal to `now`, remeasures the
+	/// list rows a reveal moved, and returns whether a driver still moves.
 	#[must_use]
-	pub fn is_animating(&self, now: Instant, tokens: &MotionTokens, reduced: bool) -> bool {
+	pub fn advance_to(&self, now: FrameInstant) -> bool {
 		let mut active = !self.sample_scroll(now).1;
 		let mut inner = self.0.borrow_mut();
-		let streaming = inner.is_streaming;
-		active |= !inner.caret_motion.sample(streaming, now, tokens, reduced).1;
+		active |= !inner.caret_motion.sample(now).1;
 		let list = inner.list_state.clone();
 		for turn in inner.pending_remeasure.drain() {
 			list.remeasure_items(turn..turn + 1);
@@ -290,5 +305,11 @@ impl TranscriptViewportState {
 		}
 		inner.reveal_progress.extend(sampled_progress);
 		active
+	}
+}
+
+impl Advance for TranscriptViewportState {
+	fn advance(&mut self, frame: &MotionFrame) -> bool {
+		self.advance_to(frame.now())
 	}
 }

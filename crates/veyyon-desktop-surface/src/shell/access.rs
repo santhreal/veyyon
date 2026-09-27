@@ -7,7 +7,7 @@
 //! what a frame reads before it resolves anything.
 
 use veyyon_desktop_kit::{SpanGesture, TextSelection, input::Editor};
-use veyyon_gpui::{ClipboardItem, Context, Entity, FocusHandle};
+use veyyon_gpui::{App, ClipboardItem, Context, Entity, FocusHandle};
 
 use super::ShellView;
 use crate::{
@@ -16,7 +16,7 @@ use crate::{
 	intent::Intent,
 	keymap::Keymap,
 	layout::LabelState,
-	model::ShellState,
+	model::{Section, ShellState},
 	queue::{RailMotion, RowMenu},
 	right_panel::PaneScrolls,
 	settings::GeneralSettingsListState,
@@ -115,6 +115,17 @@ impl ShellView {
 	/// Returns a mutable reference to the rail motion driver.
 	pub const fn rail_motion_mut(&mut self) -> &mut RailMotion {
 		&mut self.rail_motion
+	}
+
+	/// Collapses or expands a rail section and starts its reveal at the app's
+	/// frame instant under the app's motion policy.
+	pub fn toggle_section(&mut self, section: Section, cx: &App) {
+		self.rail_motion.toggle_collapsed(
+			section,
+			&self.installed.motion,
+			cx.motion_policy(),
+			cx.frame_instant(),
+		);
 	}
 
 	/// Returns a reference to the root focus handle if initialized.

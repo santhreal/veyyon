@@ -1,28 +1,19 @@
-//! Motion role table, physics spring integrator, and animator registry for the
-//! veyyon desktop surface.
+//! Motion drivers for the veyyon desktop surfaces.
 //!
-//! Provides deterministic, frame-rate independent spring physics (§8.23),
-//! standard cubic bezier curves, centralized reduced motion resolution (§7.2),
-//! and remount-resilient animation tracking (§7.3).
+//! Each driver composes `gpui::motion` animators into the motion one kind of
+//! surface element runs: a float's rise and fade, a panel's drag and release,
+//! a section's reveal, a row's shift, a programmatic scroll, a tint and the
+//! streaming caret. The role table, easing curves, springs, reduced-motion
+//! resolution and frame driving are `gpui::motion`'s; a driver selects a
+//! role's motion with `resolve_motion` and runs it on an `Animator`.
+//!
+//! Every driver implements `Advance`, so a view tracks it with a
+//! `MotionFrame` and the frame requests the next animation frame while the
+//! driver moves.
 
-pub mod curves;
 pub mod drivers;
-pub mod error;
-pub mod registry;
-pub mod role;
-pub mod spring;
-pub mod tokens;
 
-pub use curves::{CubicBezier, EasingCurve};
 pub use drivers::{
 	CaretMotion, FloatFrame, FloatMotion, PanelMotion, RevealMotion, ScrollMotion, ShiftMotion,
 	TintMotion,
 };
-pub use error::MotionError;
-pub use registry::{ActiveAnimation, AnimatorKey, AnimatorRegistry, SurfaceId};
-pub use role::{
-	ALL_ROLES, DirectThenSpringModel, DurationModel, FlipModel, MotionModel, MotionRole,
-	ResolvedMotion, SpringFadeModel, TwoStepModel, resolve_motion,
-};
-pub use spring::{SpringModel, SpringState};
-pub use tokens::MotionTokens;

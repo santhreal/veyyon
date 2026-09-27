@@ -12,7 +12,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use veyyon_desktop_kit::{TextSelection, input::Editor};
-use veyyon_gpui::{Context, Entity, FocusHandle, IntoElement, Render, Subscription, Window};
+use veyyon_gpui::{
+	Context, Entity, FocusHandle, IntoElement, Render, Subscription, Window, motion::MotionDriver,
+};
 
 mod access;
 mod attach;
@@ -97,6 +99,9 @@ pub struct ShellView {
 	/// What the composer draws that is the window's: the drop target and
 	/// the refusal line.
 	attach:                 AttachState,
+	/// The frame driving of every motion value the window draws: one driver
+	/// for the view, begun and ended once per render.
+	motion:                 MotionDriver,
 	rail_motion:            RailMotion,
 	transcript_viewport:    TranscriptViewportState,
 	find_state:             TranscriptFindState,
@@ -122,19 +127,19 @@ pub struct ShellView {
 	/// them back to whatever had them when it closes.
 	detail_focus:           Option<FocusHandle>,
 	detail_return:          Option<FocusHandle>,
-	/// The float track the detail popover rises and fades on, named for the
-	/// surface that owns it (§7.1).
+	/// The float track the detail popover rises and fades on, restarted for
+	/// each popover opened.
 	detail_motion:          crate::palette::motion::FloatMotion,
 	/// What the popover was opened on while it is fading out, so the closing
 	/// frames still have facts to draw.
 	detail_retained:        Option<Detail>,
-	/// One float track per slot in the announcement stack, named for the
-	/// surface that owns it and slotted by the position a card holds (§7.1).
+	/// One float track per slot in the announcement stack, slotted by the
+	/// position a card holds (§7.1).
 	///
 	/// Window-local because a transition is: a card is drawn from the queue
 	/// the host's model holds, and how far into its entrance it is belongs to
 	/// the window drawing it.
-	notice_motion:          Vec<veyyon_desktop_motion::FloatMotion>,
+	notice_motion:          Vec<crate::palette::motion::FloatMotion>,
 	/// The width the operator dragged the docked right panel to. Window-local
 	/// like the row menu: a snapshot never moves the handle (§5.6).
 	panel_width:            Option<f32>,
@@ -202,11 +207,7 @@ impl ShellView {
 	pub fn new(installed: InstalledTokens, state: ShellState) -> Self {
 		let mut palette_input = palette::PaletteInput::default();
 		if state.overlay.is_some() {
-			palette_input.motion = crate::palette::motion::FloatMotion::with_initial(
-				veyyon_desktop_motion::SurfaceId::Palette,
-				0,
-				true,
-			);
+			palette_input.motion = crate::palette::motion::FloatMotion::at_rest(true);
 			palette_input.retained.clone_from(&state.overlay);
 		}
 		Self {
@@ -225,6 +226,7 @@ impl ShellView {
 			palette_input,
 			submitted: None,
 			attach: AttachState::default(),
+			motion: MotionDriver::default(),
 			rail_motion: RailMotion::new(),
 			transcript_viewport: TranscriptViewportState::new(),
 			find_state: TranscriptFindState::default(),
@@ -236,10 +238,7 @@ impl ShellView {
 			detail: None,
 			detail_focus: None,
 			detail_return: None,
-			detail_motion: crate::palette::motion::FloatMotion::new(
-				veyyon_desktop_motion::SurfaceId::RightPanel,
-				0,
-			),
+			detail_motion: crate::palette::motion::FloatMotion::new(),
 			detail_retained: None,
 			notice_motion: Vec::new(),
 			panel_width: None,

@@ -12,19 +12,15 @@
 //! difference between this and the attention strip, whose one line pushes the
 //! columns down because it is part of the window's chrome.
 //!
-//! Each card animates on its own track, named for the surface that owns the
-//! stack and slotted by the position the card holds. Two cards never share a
-//! slot while both are drawn, so one arriving does not restart the transition
-//! of the one under it.
-
-use std::time::Instant;
+//! Each card animates on its own float motion, one per position in the stack,
+//! so a card arriving does not restart the transition of the one under it.
 
 use veyyon_desktop_kit::{SpacingStep, TOAST_WIDTH_PX, TintRole, Toast};
 use veyyon_desktop_model::{Notification, NotificationPriority, NotificationSource};
-use veyyon_desktop_motion::{FloatFrame, FloatMotion, SurfaceId};
+use veyyon_desktop_motion::{FloatFrame, FloatMotion};
 use veyyon_gpui::{
 	Anchor, AnyElement, Context, IntoElement, ParentElement, Point, Styled, Window, anchored,
-	deferred, div, px,
+	deferred, div, motion::MotionFrame, px,
 };
 
 use super::ShellView;
@@ -47,28 +43,26 @@ const fn notice_tint(source: NotificationSource) -> TintRole {
 }
 
 impl ShellView {
-	/// Samples one entrance frame per drawn card, creating the track for a
-	/// slot the stack has not reached before.
+	/// Samples one entrance frame per drawn card on `frame`, creating the
+	/// float motion for a position the stack has not reached before.
 	///
-	/// A slot's driver is kept for the life of the window. The stack is
-	/// bounded, so the number of drivers is bounded by the same constant, and
-	/// a card leaving its slot hands that track to whichever card takes it.
-	fn sample_notice_motion(&mut self, count: usize, now: Instant) -> Vec<FloatFrame> {
-		let reduced = self.rail_motion.is_reduced_motion();
-		let mut frames = Vec::with_capacity(count);
-		for slot in 0..count {
-			while self.notice_motion.len() <= slot {
-				// A float driver keys two animators, the rise and the fade, at
-				// `slot_base` and `slot_base + 1`, so a slot's base steps by two
-				// and no two cards name one track.
-				let next = u64::try_from(self.notice_motion.len() * 2).unwrap_or(u64::MAX);
-				self
-					.notice_motion
-					.push(FloatMotion::new(SurfaceId::Notices, next));
-			}
-			frames.push(self.notice_motion[slot].sample(true, now, &self.installed.motion, reduced));
+	/// A position's motion is kept for the life of the window. The stack is
+	/// bounded, so the number of motions is bounded by the same constant, and
+	/// a card leaving its position hands that motion to whichever card takes
+	/// it.
+	fn sample_notice_motion(&mut self, count: usize, frame: &mut MotionFrame) -> Vec<FloatFrame> {
+		if self.notice_motion.len() < count {
+			self.notice_motion.resize_with(count, FloatMotion::new);
 		}
-		frames
+		let (policy, now) = (frame.policy(), frame.now());
+		self.notice_motion[..count]
+			.iter_mut()
+			.map(|motion| {
+				motion.set_open(true, &self.installed.motion, policy, now);
+				frame.track(motion);
+				motion.current()
+			})
+			.collect()
 	}
 }
 
@@ -79,6 +73,7 @@ impl ShellView {
 pub(super) fn toast_stack(
 	view: &mut ShellView,
 	top_px: f32,
+	frame: &mut MotionFrame,
 	window: &Window,
 	cx: &Context<ShellView>,
 ) -> Option<AnyElement> {
@@ -86,14 +81,7 @@ pub(super) fn toast_stack(
 	if count == 0 {
 		return None;
 	}
-	let frames = view.sample_notice_motion(count, cx.background_executor().now());
-	// A card mid-entrance asks for the next frame, the way every other float
-	// in this window does: the transition is driven by the clock, not by the
-	// events that raised the announcement.
-	if frames.iter().any(|frame| !frame.settled) {
-		let entity = cx.entity();
-		window.on_next_frame(move |_window, app| entity.update(app, |_view, cx| cx.notify()));
-	}
+	let frames = view.sample_notice_motion(count, frame);
 
 	let tokens = &view.installed.set;
 	let gap = tokens.spacing(SpacingStep::S2);

@@ -4,7 +4,7 @@
 use veyyon_desktop_kit::SpacingStep;
 use veyyon_gpui::{
 	Anchor, AnyElement, Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
-	ParentElement, Styled, Window, anchored, deferred, div, px,
+	ParentElement, Styled, Window, anchored, deferred, div, motion::MotionFrame, px,
 };
 
 use super::overlay::overlay_scrim;
@@ -13,6 +13,7 @@ use crate::{Overlay, ShellView, palette::palette_surface, settings::settings_sur
 pub(super) fn overlay_layer(
 	view: &mut ShellView,
 	available_height_px: f32,
+	frame: &mut MotionFrame,
 	window: &mut Window,
 	cx: &mut Context<ShellView>,
 ) -> Option<AnyElement> {
@@ -79,19 +80,15 @@ pub(super) fn overlay_layer(
 	if !view.settings_query_is_drawn() && fields.query.read(cx).focus_handle().is_focused(window) {
 		window.focus(&dest_focus, cx);
 	}
-	let frame = view.palette_input.motion.sample(
-		open,
-		cx.background_executor().now(),
-		&view.installed.motion,
-		view.rail_motion.is_reduced_motion(),
-	);
+	view
+		.palette_input
+		.motion
+		.set_open(open, &view.installed.motion, frame.policy(), frame.now());
+	frame.track(&mut view.palette_input.motion);
+	let frame = view.palette_input.motion.current();
 	if !open && frame.settled {
 		view.palette_input.retained = None;
 		return None;
-	}
-	if !frame.settled {
-		let entity = cx.entity();
-		window.on_next_frame(move |_window, app| entity.update(app, |_view, cx| cx.notify()));
 	}
 	let retained = view.palette_input.retained.as_ref()?;
 	let tokens = &view.installed.set;

@@ -15,10 +15,10 @@ pub use facts::*;
 use veyyon_desktop_kit::{
 	ColorRole, Icon, IconName, IconSize, MonoSizeStep, SpacingStep, TextRamp, TokenSet, Truncate,
 };
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{
-	CursorStyle, Div, InteractiveElement, ParentElement, Styled, WeakEntity, div, px,
+	CursorStyle, Div, InteractiveElement, ParentElement, Styled, WeakEntity, div,
+	motion::MotionTokens, px,
 };
 
 use super::reveal::render_reveal_container;
@@ -45,7 +45,6 @@ pub fn render_artifact_block(
 	geometry: &TranscriptSurfaceTokens,
 	tokens: &TokenSet,
 	motion_tokens: &MotionTokens,
-	reduced_motion: bool,
 	viewport_state: &TranscriptViewportState,
 	view: Option<&WeakEntity<ShellView>>,
 ) -> Div {
@@ -56,7 +55,7 @@ pub fn render_artifact_block(
 	};
 
 	let state_toggle = viewport_state.clone();
-	let motion_tokens_toggle = motion_tokens.clone();
+	let motion_tokens_toggle = *motion_tokens;
 	let view_toggle = view.cloned();
 
 	let ArtifactRow { icon: leading_icon, title, summary, fault: has_error } =
@@ -75,8 +74,8 @@ pub fn render_artifact_block(
 				turn_ix,
 				block_ix,
 				&motion_tokens_toggle,
-				reduced_motion,
-				cx.background_executor().now(),
+				cx.motion_policy(),
+				cx.frame_instant(),
 			);
 			if let Some(v) = &view_toggle {
 				let _ = v.update(cx, |_view, cx| cx.notify());
@@ -136,7 +135,6 @@ pub fn render_artifact_block(
 			geometry,
 			tokens,
 			motion_tokens,
-			reduced_motion,
 			viewport_state,
 			view,
 			has_error,

@@ -3,11 +3,10 @@
 use veyyon_desktop_kit::{
 	Button, ButtonSize, ButtonVariant, ColorRole, SpacingStep, TextRamp, TextWeight, TokenSet,
 };
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{
 	Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
-	div, px,
+	div, motion::MotionTokens, px,
 };
 
 use crate::{Intent, ShellView, Turn, damage::LaidOut, transcript::transcript_column};

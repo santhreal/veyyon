@@ -7,10 +7,7 @@
 
 mod support;
 
-use std::{
-	collections::HashMap,
-	time::{Duration, Instant},
-};
+use std::{collections::HashMap, time::Duration};
 
 use support::{NOW_MS, memory::driven};
 use veyyon_desktop::{SessionIndex, actions_for, project};
@@ -116,22 +113,20 @@ fn project_window(
 
 fn settle(window: &mut HeadlessSession<'_, ShellView>) {
 	window.frame().expect("layout before advancing motion");
-	window
-		.update(|view, _, cx| {
-			let start = Instant::now();
-			for tick in 1..=240 {
-				if !view
-					.rail_motion_mut()
-					.has_active_animations(start + Duration::from_millis(tick * 16))
-				{
-					cx.notify();
-					return;
-				}
-			}
-			panic!("queue animations must settle within 240 frames");
-		})
-		.expect("advance rail animation clock");
-	window.frame().expect("settled queue frame");
+	for _ in 0..240 {
+		window.advance(Duration::from_millis(16));
+		let moving = window
+			.update(|view, _, cx| view.rail_motion_mut().advance_to(cx.frame_instant()))
+			.expect("advance rail motion");
+		if !moving {
+			window
+				.update(|_, _, cx| cx.notify())
+				.expect("redraw the settled rail");
+			window.frame().expect("settled queue frame");
+			return;
+		}
+	}
+	panic!("queue animations must settle within 240 frames");
 }
 
 #[test]
@@ -153,9 +148,7 @@ fn an_acknowledged_selection_expands_only_its_current_partition() {
 				.update(|view, _, cx| {
 					view.drain_intents();
 					for section in Section::all() {
-						view
-							.rail_motion_mut()
-							.toggle_collapsed(section, Instant::now());
+						view.toggle_section(section, cx);
 					}
 					cx.notify();
 				})

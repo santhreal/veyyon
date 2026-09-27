@@ -11,7 +11,7 @@ use veyyon_desktop_kit::{Axis, ColorRole, Resizable, SpacingStep, TextSelection,
 use veyyon_desktop_tokens::DrawerPlacement;
 use veyyon_gpui::{
 	Context, Div, Entity, FocusHandle, InteractiveElement, MouseButton, ParentElement, Pixels,
-	Point, Styled, Window, div, point, px,
+	Point, Styled, Window, div, motion::MotionFrame, point, px,
 };
 
 use super::{keys::bind_composer_keys, session_error::session_error_strip};
@@ -46,7 +46,7 @@ pub fn session_surface(
 	transcript_focus: &FocusHandle,
 	cards_focus: &FocusHandle,
 	cards_expanded: bool,
-	reduced_motion: bool,
+	frame: &mut MotionFrame,
 	find_bar: Option<Div>,
 	selection: Option<TextSelection>,
 	panel_overlay: Option<Div>,
@@ -84,7 +84,7 @@ pub fn session_surface(
 				installed.user_turn_ground,
 				tokens,
 				&installed.motion,
-				reduced_motion,
+				frame,
 				laid_out,
 				motion_damage(state, laid_out),
 				widths.session_px,

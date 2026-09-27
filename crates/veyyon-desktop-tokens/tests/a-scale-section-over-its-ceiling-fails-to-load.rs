@@ -19,10 +19,11 @@
 
 use std::{fmt::Write as _, fs, path::Path};
 
+use motion::MotionRole;
 use toml::{Value, map::Map};
 use veyyon_desktop_tokens::{
-	ColorRole, IconSizeStep, MonoSizeStep, MotionRole, RadiusStep, SpacingStep, StrokeStep,
-	TokenError, TypeSizeStep, TypeWeightStep, loader_scale::load_scale,
+	ColorRole, IconSizeStep, MonoSizeStep, RadiusStep, SpacingStep, StrokeStep, TokenError,
+	TypeSizeStep, TypeWeightStep, loader_scale::load_scale,
 };
 use veyyon_test_scratch::scratch_dir;
 
@@ -190,7 +191,7 @@ fn every_declared_scale_sits_under_its_ceiling() {
 		("colour roles (§6.4)", ColorRole::all().len(), 40),
 		("stroke widths (§6.8)", StrokeStep::all().len(), 3),
 		("icon boxes (§6.8)", IconSizeStep::all().len(), 4),
-		("motion roles (§7.1)", MotionRole::all().len(), 7),
+		("motion roles (§7.1)", MotionRole::ALL.len(), 7),
 	];
 
 	let over: Vec<(&str, usize, usize)> = declared

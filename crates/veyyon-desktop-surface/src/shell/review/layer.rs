@@ -10,7 +10,7 @@ use veyyon_desktop_model::{
 };
 use veyyon_gpui::{
 	AnyElement, ClickEvent, Context, ElementId, InteractiveElement, IntoElement, ParentElement,
-	Size, StatefulInteractiveElement, Styled, Window, div, px,
+	Size, StatefulInteractiveElement, Styled, Window, div, motion::MotionFrame, px,
 };
 
 use crate::{ShellView, right_panel::review::placement};
@@ -20,6 +20,7 @@ impl ShellView {
 	/// announcements.
 	pub fn review_layer(
 		&mut self,
+		frame: &mut MotionFrame,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Option<AnyElement> {
@@ -29,18 +30,16 @@ impl ShellView {
 		{
 			window.focus(&focus, cx);
 		}
-		let frame = self.review.motion.sample(
+		self.review.motion.set_open(
 			self.review.open,
-			cx.background_executor().now(),
 			&self.installed.motion,
-			self.rail_motion.is_reduced_motion(),
+			frame.policy(),
+			frame.now(),
 		);
+		frame.track(&mut self.review.motion);
+		let frame = self.review.motion.current();
 		if !self.review.open && frame.settled {
 			return None;
-		}
-		if !frame.settled {
-			let entity = cx.entity();
-			window.on_next_frame(move |_, app| entity.update(app, |_, cx| cx.notify()));
 		}
 		let tokens = &self.installed.set;
 		let palette = &self.installed.surface.palette;

@@ -51,10 +51,7 @@ fn every_field_a_window_holds_is_written_and_read_back() {
 				view.dispatch(Intent::SetQueueMode(QueueMode::Queue), cx);
 				view.dispatch(Intent::SelectAppearance("light".to_string()), cx);
 				view.set_composed("half a sentence, unsent", cx);
-				view.rail_motion_mut().toggle_collapsed(
-					veyyon_desktop_surface::Section::Parked,
-					cx.background_executor().now(),
-				);
+				view.toggle_section(veyyon_desktop_surface::Section::Parked, cx);
 				// A branch parent the operator folded is part of the shape the
 				// rail was left in, the same as a folded section. It is held in
 				// the navigation the rows are projected from, which is where

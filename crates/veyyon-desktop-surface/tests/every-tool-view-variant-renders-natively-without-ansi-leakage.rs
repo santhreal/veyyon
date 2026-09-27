@@ -23,7 +23,6 @@ use veyyon_desktop_model::tool_view::{
 	ToolPresentation, ToolView, ViewCodeLines, ViewDiffLines, ViewDiffSide, ViewHiddenCount,
 	ViewNoun, ViewSection, ViewSpan, ViewStatus, ViewTailWindow, ViewTone, ViewTreeLines,
 };
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_scene::headless::{RenderOptions, headless_context, render_view_captured};
 use veyyon_desktop_surface::{
 	install_tokens,
@@ -34,6 +33,7 @@ use veyyon_desktop_surface::{
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{
 	App, AppContext, Context, IntoElement, ParentElement, Render, Styled, Window, div,
+	motion::MotionTokens,
 };
 
 /// Constructs sample instances of every canonical `ToolView` variant seeded
@@ -210,7 +210,6 @@ fn every_tool_view_variant_renders_through_production_invoke_block_path() {
 			&geometry,
 			&tokens,
 			&motion_tokens,
-			false,
 			&viewport_state,
 			None,
 			None,
@@ -234,7 +233,6 @@ fn every_tool_view_variant_renders_through_production_invoke_block_path() {
 			&geometry,
 			&tokens,
 			&motion_tokens,
-			false,
 			&viewport_state,
 			None,
 			None,
@@ -275,7 +273,6 @@ impl Render for TestToolBlockView {
 			&self.geometry,
 			&self.tokens,
 			&self.motion,
-			false,
 			&self.state,
 			None,
 			None,

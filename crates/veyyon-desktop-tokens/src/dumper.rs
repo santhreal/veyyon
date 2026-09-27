@@ -292,56 +292,70 @@ max_interactive_per_1000px2 = {}
 	write_file(path, &out)
 }
 
-fn dump_motion(_tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
-	let out = r#"[meta]
+fn dump_motion(tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
+	let m = &tokens.motion;
+	let out = format!(
+		r#"[meta]
 version = 1
 name = "motion"
 
 [role.tint]
 model = "duration"
-duration_ms = 120
-curve = "ease_out"
-reduced_motion = "instant"
+duration_ms = {tint_ms}
+curve = "{tint_curve}"
 
 [role.reveal]
 model = "spring"
-stiffness = 220.0
-damping = 26.0
-mass = 1.0
-reduced_motion = "fade_instant"
+stiffness = {reveal_k:?}
+damping = {reveal_c:?}
+mass = {reveal_m:?}
 
 [role.float]
 model = "spring_fade"
-stiffness = 300.0
-damping = 24.0
-mass = 1.0
-rise_px = 4.0
-fade_duration_ms = 90
-reduced_motion = "opacity_only"
+stiffness = {float_k:?}
+damping = {float_c:?}
+mass = {float_m:?}
+rise_px = {float_rise:?}
+fade_duration_ms = {float_fade}
 
 [role.panel]
 model = "direct_then_spring"
-stiffness = 180.0
-damping = 22.0
-mass = 1.0
-reduced_motion = "direct"
+stiffness = {panel_k:?}
+damping = {panel_c:?}
+mass = {panel_m:?}
 
 [role.shift]
 model = "flip"
-duration_ms = 200
-curve = "ease_out"
-reduced_motion = "instant"
+duration_ms = {shift_ms}
+curve = "{shift_curve}"
 
 [role.scroll]
 model = "duration"
-duration_ms = 240
-curve = "ease_in_out"
-reduced_motion = "instant"
+duration_ms = {scroll_ms}
+curve = "{scroll_curve}"
 
 [role.caret]
 model = "two_step"
-period_ms = 900
-reduced_motion = "steady_on"
-"#;
-	write_file(path, out)
+period_ms = {caret_period}
+"#,
+		tint_ms = m.tint.duration_ms,
+		tint_curve = m.tint.curve.name(),
+		reveal_k = m.reveal.stiffness,
+		reveal_c = m.reveal.damping,
+		reveal_m = m.reveal.mass,
+		float_k = m.float.spring.stiffness,
+		float_c = m.float.spring.damping,
+		float_m = m.float.spring.mass,
+		float_rise = m.float.rise_px,
+		float_fade = m.float.fade_duration_ms,
+		panel_k = m.panel.snap_spring.stiffness,
+		panel_c = m.panel.snap_spring.damping,
+		panel_m = m.panel.snap_spring.mass,
+		shift_ms = m.shift.duration_ms,
+		shift_curve = m.shift.curve.name(),
+		scroll_ms = m.scroll.duration_ms,
+		scroll_curve = m.scroll.curve.name(),
+		caret_period = m.caret.period_ms,
+	);
+	write_file(path, &out)
 }

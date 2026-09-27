@@ -14,7 +14,9 @@ use veyyon_desktop_kit::{Button, ButtonSize, ButtonVariant, ColorRole, TokenSet}
 use veyyon_desktop_tokens::QueueSurfaceTokens;
 use veyyon_gpui::{
 	ClickEvent, Context, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled,
-	Window, div, px,
+	Window, div,
+	motion::{MotionFrame, MotionTokens},
+	px,
 };
 pub mod card;
 pub mod fill;
@@ -37,7 +39,7 @@ use veyyon_desktop_model::{SessionId, SurfaceId};
 use crate::{
 	Intent, ShellView,
 	controls::{ControlStates, availability_style, hairline_for_weak},
-	damage::{LaidOut, Region, request_motion_frame},
+	damage::{LaidOut, Region, motion_bounds},
 	empty::{EmptyCopy, EmptySurface, empty_state},
 	model::{Row, Section},
 };
@@ -59,6 +61,9 @@ pub enum QueueListItem {
 /// arrows have moved to (§5.14). They are the same row until an arrow moves,
 /// and the rail draws and scrolls to the cursor while the open row keeps the
 /// active ground, so moving the selection never claims a session was opened.
+///
+/// The rail's reveals and row moves are tracked on `frame`, scoped to the box
+/// the last frame laid the rail out in.
 pub fn queue_rail(
 	sections: &[(Section, Vec<Row>)],
 	filter_query: Option<&str>,
@@ -70,14 +75,23 @@ pub fn queue_rail(
 	geometry: &QueueSurfaceTokens,
 	tokens: &TokenSet,
 	motion: &mut RailMotion,
+	motion_tokens: &MotionTokens,
+	frame: &mut MotionFrame,
 	focus: &FocusHandle,
 	laid_out: &LaidOut,
 	window: &mut Window,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
-	let now = cx.background_executor().now();
+	let (policy, now) = (frame.policy(), frame.now());
 	motion.record_selected_id(cursor);
-	motion.ensure_visible(cursor, sections, geometry.parked_initial_page_size, now);
+	motion.ensure_visible(
+		cursor,
+		sections,
+		geometry.parked_initial_page_size,
+		motion_tokens,
+		policy,
+		now,
+	);
 	let parked_limit = motion.parked_limit(geometry.parked_initial_page_size);
 	let filtered_storage;
 	let active_sections: &[(Section, Vec<Row>)] = if let Some(q) = filter_query {
@@ -168,7 +182,7 @@ pub fn queue_rail(
 		}
 	}
 
-	motion.record_positions(&positions, now);
+	motion.record_positions(&positions, motion_tokens, policy, now);
 	motion.sync_item_count(items.len());
 
 	if motion.should_scroll_to_selected() {
@@ -179,16 +193,14 @@ pub fn queue_rail(
 		}
 	}
 
-	if motion.has_active_animations(now) {
-		request_motion_frame(window, laid_out.bounds(Region::Queue));
-	}
+	frame.track_within(motion, motion_bounds(window, laid_out.bounds(Region::Queue)));
 
 	let nav_header = queue_nav_header(filter_query, controls, geometry, tokens, cx);
 
 	let mut shift_map = HashMap::new();
 	for item in &items {
 		if let QueueListItem::Row { row, .. } = item {
-			shift_map.insert(row.id, motion.shift_offset(row.id, now));
+			shift_map.insert(row.id, motion.shift_offset(row.id));
 		}
 	}
 	let shift_offsets: std::rc::Rc<HashMap<u64, f32>> = std::rc::Rc::new(shift_map);

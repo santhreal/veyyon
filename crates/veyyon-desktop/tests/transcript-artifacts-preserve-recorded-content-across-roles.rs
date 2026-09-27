@@ -20,6 +20,7 @@ use veyyon_desktop_surface::{
 	transcript::{TranscriptFindState, TranscriptViewportState},
 };
 use veyyon_desktop_tokens::load_bundled_tokens;
+use veyyon_gpui::{TestAppContext, motion::MotionPolicy};
 
 fn projected(role: MessageRole, content: Vec<ContentBlock>) -> ShellState {
 	let mut store = Store::new();
@@ -42,7 +43,8 @@ const fn belongs_to_the_operator(role: MessageRole) -> bool {
 
 #[test]
 fn file_metadata_and_images_survive_every_role_and_optional_field_combination() {
-	let motion = load_bundled_tokens().expect("bundled tokens").motion.into();
+	let motion = load_bundled_tokens().expect("bundled tokens").motion;
+	let now = TestAppContext::single().read(|cx| cx.frame_instant());
 	for role in MessageRole::ALL {
 		for bits in 0..32 {
 			let has_content = bits & 1 != 0;
@@ -86,8 +88,8 @@ fn file_metadata_and_images_survive_every_role_and_optional_field_combination() 
 				&state.transcript,
 				&viewport,
 				&motion,
-				true,
-				std::time::Instant::now(),
+				MotionPolicy::REDUCED,
+				now,
 			);
 			assert_eq!(find.match_count(), 1);
 			assert!(viewport.is_block_expanded(0, 0), "{role:?}: matched artifact must open");

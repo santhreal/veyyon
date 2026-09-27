@@ -4,7 +4,7 @@
 //! Every fixture here is taller than a row on purpose: a card that fits in its
 //! row proves nothing about a row that has to hold one back.
 
-use std::{path::Path, sync::Arc, time::Instant};
+use std::{path::Path, sync::Arc};
 
 use veyyon_desktop_kit::{TokenSet, load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_model::tool_view::{
@@ -12,7 +12,6 @@ use veyyon_desktop_model::tool_view::{
 	ToolPresentation, ToolView, ViewHiddenCount, ViewNoun, ViewSection, ViewSpan, ViewStatus,
 	ViewTone,
 };
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_scene::headless::{RenderOptions, headless_context, render_view_captured};
 use veyyon_desktop_surface::{
 	install_tokens,
@@ -21,8 +20,11 @@ use veyyon_desktop_surface::{
 };
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{
-	App, AppContext, Context, IntoElement, ParentElement, Render, Styled, Window, div, px,
+	App, AppContext, Context, IntoElement, ParentElement, Render, Styled, Window, div,
+	motion::MotionTokens, px,
 };
+
+use super::clock::expand_at_rest;
 
 /// The transcript's collapsed chrome height: the row a collapsed card occupies.
 #[must_use]
@@ -144,7 +146,6 @@ impl Render for CardUnderTest {
 			&self.geometry,
 			&self.tokens,
 			&self.motion,
-			true,
 			&self.state,
 			None,
 			None,
@@ -183,13 +184,12 @@ pub fn draw(view: &ToolView, expanded: bool) -> Drawn {
 	let motion = MotionTokens::reference();
 	let row_height = bundled.surface.transcript.chrome_collapsed_height_px;
 
-	if expanded {
-		// The disclosure the operator performs, at rest: reduced motion settles
-		// the reveal in one step rather than leaving it mid-animation.
-		state.set_block_expanded(0, 0, true, &motion, true, Instant::now());
-	}
-
 	let mut cx = headless_context().expect("headless context");
+	if expanded {
+		// The disclosure the operator performs, brought to rest before the card
+		// is drawn, so the frame holds no reveal mid-animation.
+		expand_at_rest(&mut cx, &state, 0, 0, &motion);
+	}
 	let mut drawn =
 		Drawn { bottom: 0.0, top: 0.0, hit_heights: Vec::new(), row_runs: 0 };
 

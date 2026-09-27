@@ -6,15 +6,14 @@
 //! files, distinguish MIME types in caching, enforce pre-rasterization SVG
 //! bounds, and enforce bounded byte limits across all retained cache memory.
 
-use std::{
-	path::Path,
-	sync::Arc,
-	time::{Duration, Instant},
-};
+#[path = "support/clock.rs"]
+mod clock;
 
+use std::{path::Path, sync::Arc};
+
+use clock::{Clock, expand_at_rest};
 use image::{ImageBuffer, Rgba};
 use veyyon_desktop_kit::{TokenSet, load_bundled_theme, load_bundled_tokens};
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_scene::{
 	headless::{Captured, Headless, RenderOptions, headless_context, render_view_captured},
 	session::HeadlessSession,
@@ -32,7 +31,9 @@ use veyyon_desktop_surface::{
 use veyyon_desktop_tokens::{Theme, Tokens, TranscriptSurfaceTokens};
 use veyyon_gpui::{
 	App, AppContext, Context, Entity, ImageFormat, IntoElement, ParentElement, Point, Render,
-	Styled, Window, div, px,
+	Styled, Window, div,
+	motion::{MotionPolicy, MotionTokens},
+	px,
 };
 
 fn make_test_png(w: u32, h: u32, c: [u8; 4]) -> Vec<u8> {
@@ -67,7 +68,6 @@ impl Render for TestArtifactView {
 			&self.geometry,
 			&self.tokens,
 			&self.motion,
-			false,
 			&self.state,
 			weak.as_ref(),
 		))
@@ -79,6 +79,10 @@ fn render_artifact_headless(artifact: Artifact, expanded: bool) -> Captured {
 	let theme = load_bundled_theme("dark").expect("bundled theme");
 	let state = TranscriptViewportState::new();
 	let mut cx = headless_context().expect("headless context");
+	if expanded {
+		state.record_reveal_height(0, 0, 200.0);
+		expand_at_rest(&mut cx, &state, 0, 0, &tokens.motion);
+	}
 
 	render_view_captured(
 		&mut cx,
@@ -90,14 +94,6 @@ fn render_artifact_headless(artifact: Artifact, expanded: bool) -> Captured {
 		},
 		move |_, app: &mut App| {
 			let ins = install_tokens(app, &tokens, &theme, Path::new("surface")).expect("installed");
-			if expanded {
-				state.record_reveal_height(0, 0, 200.0);
-				state.set_block_expanded(0, 0, true, &ins.motion, true, Instant::now());
-				assert_eq!(
-					state.sample_reveal(0, 0, Instant::now() + Duration::from_secs(1)),
-					(1.0, true)
-				);
-			}
 			app.new(|_| TestArtifactView {
 				shell_view: None,
 				state,
@@ -119,19 +115,15 @@ fn open_test_session<'a>(
 	artifact: Artifact,
 ) -> HeadlessSession<'a, TestArtifactView> {
 	let (tokens, theme) = (tokens.clone(), theme.clone());
+	let state = TranscriptViewportState::new();
+	state.record_reveal_height(0, 0, 200.0);
+	expand_at_rest(cx, &state, 0, 0, &tokens.motion);
 	HeadlessSession::open(
 		cx,
 		&RenderOptions { width: 768, height: 300, scale_factor: 1.0, ..RenderOptions::default() },
 		move |_, app: &mut App| {
 			let ins = install_tokens(app, &tokens, &theme, Path::new("surface")).expect("installed");
 			let shell = app.new(|_| ShellView::new(ins.clone(), ShellState::default()));
-			let state = TranscriptViewportState::new();
-			state.record_reveal_height(0, 0, 200.0);
-			state.set_block_expanded(0, 0, true, &ins.motion, true, Instant::now());
-			assert_eq!(
-				state.sample_reveal(0, 0, Instant::now() + Duration::from_secs(1)),
-				(1.0, true)
-			);
 			app.new(|_| TestArtifactView {
 				shell_view: Some(shell),
 				state,
@@ -367,23 +359,19 @@ fn image_cache_distinguishes_mime_and_source_identity() {
 fn expansion_and_collapse_toggle_motion_state() {
 	let viewport_state = TranscriptViewportState::new();
 	let motion = MotionTokens::reference();
-	let now = Instant::now();
+	let mut clock = Clock::start();
+	let now = clock.at(0);
 	assert!(!viewport_state.is_block_expanded(0, 0));
-	viewport_state.set_block_expanded(0, 0, true, &motion, false, now);
+	viewport_state.set_block_expanded(0, 0, true, &motion, MotionPolicy::DEFAULT, now);
 	assert!(viewport_state.is_block_expanded(0, 0));
-	let half = now + Duration::from_millis(100);
+	let half = clock.at(100);
 	let (progress, _) = viewport_state.reveal_frame(0, 0, half);
 	assert!(progress > 0.0 && progress < 1.0);
-	viewport_state.set_block_expanded(0, 0, false, &motion, false, half);
+	viewport_state.set_block_expanded(0, 0, false, &motion, MotionPolicy::DEFAULT, half);
 	assert!(!viewport_state.is_block_expanded(0, 0));
 	assert!((viewport_state.reveal_frame(0, 0, half).0 - progress).abs() < 0.001);
-	let done = half + Duration::from_secs(3);
+	let done = clock.at(3_100);
 	assert_eq!(viewport_state.reveal_frame(0, 0, done).0, 0.0);
-	viewport_state.set_block_expanded(0, 0, true, &motion, true, done);
-	assert_eq!(
-		viewport_state
-			.reveal_frame(0, 0, done + Duration::from_millis(60))
-			.0,
-		1.0
-	);
+	viewport_state.set_block_expanded(0, 0, true, &motion, MotionPolicy::REDUCED, done);
+	assert_eq!(viewport_state.reveal_frame(0, 0, clock.at(3_160)).0, 1.0);
 }

@@ -16,7 +16,6 @@ use veyyon_desktop_model::tool_view::{
 	ToolPresentation, ToolView, ViewCodeLines, ViewDiffLines, ViewDiffSide, ViewHiddenCount,
 	ViewNoun, ViewSection, ViewSpan, ViewStatus, ViewTailWindow, ViewTone, ViewTreeLines,
 };
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_scene::{
 	frame::RgbaFrame,
 	headless::{Captured, RenderOptions, headless_context, render_view_captured},
@@ -27,7 +26,10 @@ use veyyon_desktop_surface::{
 	transcript::{TranscriptViewportState, blocks::render_invoke_block},
 };
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
-use veyyon_gpui::{App, AppContext, Context, IntoElement, ParentElement, Render, Styled, div, px};
+use veyyon_gpui::{
+	App, AppContext, Context, IntoElement, ParentElement, Render, Styled, div, motion::MotionTokens,
+	px,
+};
 
 /// The width the block is given. The window is wider, so anything that escapes
 /// the block lands in a margin no tool view is entitled to draw in, and the
@@ -298,7 +300,6 @@ impl Render for BlockAtWidth {
 				&self.geometry,
 				&self.tokens,
 				&self.motion,
-				false,
 				&self.state,
 				None,
 				None,

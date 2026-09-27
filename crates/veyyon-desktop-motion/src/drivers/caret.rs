@@ -1,55 +1,79 @@
-//! Motion driver for the two-step streaming caret (`MotionRole::Caret`).
+//! Motion driver for the streaming caret (`MotionRole::Caret`).
 //!
-//! 900ms period (450ms on, 450ms off) when streaming is active.
-//! Under reduced motion or when streaming is idle, remains `SteadyOn` at
-//! opacity 1.0 and settled at rest with zero perpetual redraws.
+//! While a reply streams, the caret blinks: fully on for half the role's
+//! period and off for the other half. Idle, or under reduced motion, it is
+//! steady on at opacity 1.0 and at rest, so it requests no frames.
 
-use std::time::Instant;
-
-use crate::{
-	registry::{AnimatorKey, AnimatorRegistry, SurfaceId},
-	role::{MotionModel, MotionRole},
-	tokens::MotionTokens,
+use veyyon_gpui::motion::{
+	Advance, Animator, FrameInstant, MotionFrame, MotionModel, MotionPolicy, MotionRole,
+	MotionTokens, ResolvedMotion, resolve_motion,
 };
 
-/// Motion driver for the two-step streaming caret (`MotionRole::Caret`).
-#[derive(Debug)]
+/// Opacity of the caret while it is on.
+const ON: f32 = 1.0;
+/// Opacity of the caret while it is off.
+const OFF: f32 = 0.0;
+
+/// The caret's opacity: blinking while streaming, steady on otherwise.
+#[derive(Debug, Clone, Copy)]
 pub struct CaretMotion {
-	surface_id: SurfaceId,
-	slot:       u64,
-	registry:   AnimatorRegistry,
+	opacity: Animator<FrameInstant>,
+}
+
+impl Default for CaretMotion {
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl CaretMotion {
-	/// Creates a new caret motion driver.
+	/// A steady caret.
 	#[must_use]
-	pub fn new(surface_id: SurfaceId, slot: u64) -> Self {
-		Self { surface_id, slot, registry: AnimatorRegistry::new() }
+	pub const fn new() -> Self {
+		Self { opacity: Animator::at_rest(ON) }
 	}
 
-	/// Samples caret opacity (1.0 or 0.0) and settled state.
-	pub fn sample(
+	/// Starts the blink at `now` when streaming begins and ends it when
+	/// streaming ends or reduced motion is on. A blink already running keeps
+	/// its phase.
+	pub fn set_streaming(
 		&mut self,
 		streaming: bool,
-		now: Instant,
 		tokens: &MotionTokens,
-		reduced: bool,
-	) -> (f32, bool) {
-		let key = AnimatorKey::new(self.surface_id, MotionRole::Caret, self.slot);
-		if !streaming || reduced {
-			return (1.0, true);
+		policy: MotionPolicy,
+		now: FrameInstant,
+	) {
+		let steady = matches!(
+			resolve_motion(MotionRole::Caret, tokens, policy.reduced()),
+			ResolvedMotion::SteadyOn
+		);
+		if !streaming || steady {
+			self.opacity.snap(ON);
+		} else if self.opacity.is_at_rest() {
+			// The blink alternates between the value it starts from and its
+			// target, so it starts from off: a blink from on to on would
+			// never rest and never show.
+			self
+				.opacity
+				.start(OFF, 0.0, ON, MotionModel::TwoStep(tokens.caret), policy, now);
 		}
-		let model = MotionModel::TwoStep(tokens.caret);
-		let anim = self.registry.get_or_create(key, 1.0, model, now);
-		let (opacity, ..) = anim.sample_at(now);
-		(opacity, false)
 	}
 
-	/// Returns true if the caret is settled (idle or steady on).
+	/// Samples the opacity at `now` and returns it with whether it is at rest.
+	pub fn sample(&mut self, now: FrameInstant) -> (f32, bool) {
+		let sample = self.opacity.update(now);
+		(sample.value, sample.at_rest)
+	}
+
+	/// Whether the caret is steady.
 	#[must_use]
-	pub fn is_settled(&self) -> bool {
-		self
-			.registry
-			.is_at_rest(&AnimatorKey::new(self.surface_id, MotionRole::Caret, self.slot))
+	pub const fn is_settled(&self) -> bool {
+		self.opacity.is_at_rest()
+	}
+}
+
+impl Advance for CaretMotion {
+	fn advance(&mut self, frame: &MotionFrame) -> bool {
+		!self.sample(frame.now()).1
 	}
 }

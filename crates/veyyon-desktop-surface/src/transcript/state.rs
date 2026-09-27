@@ -6,11 +6,14 @@ use std::{
 	cell::RefCell,
 	collections::{HashMap, HashSet},
 	rc::Rc,
-	time::Instant,
 };
 
-use veyyon_desktop_motion::{CaretMotion, MotionTokens, RevealMotion, ScrollMotion, SurfaceId};
-use veyyon_gpui::{FocusHandle, FollowMode, ListAlignment, ListOffset, ListState, px};
+use veyyon_desktop_motion::{CaretMotion, RevealMotion, ScrollMotion};
+use veyyon_gpui::{
+	FocusHandle, FollowMode, ListAlignment, ListOffset, ListState,
+	motion::{FrameInstant, MotionPolicy, MotionTokens},
+	px,
+};
 
 pub use super::session_store::BlockKey;
 use super::{fingerprint::compute_turn_fingerprint, session_store::SessionTranscriptStore};
@@ -64,8 +67,8 @@ impl TranscriptViewportState {
 			turns: Rc::from([]),
 			store: SessionTranscriptStore::new(),
 			expanded_blocks: HashSet::new(),
-			scroll_motion: ScrollMotion::new(SurfaceId::Transcript, 0, 0.0),
-			caret_motion: CaretMotion::new(SurfaceId::Transcript, 0),
+			scroll_motion: ScrollMotion::new(0.0),
+			caret_motion: CaretMotion::new(),
 			reveal_motions: HashMap::new(),
 			reveal_heights: HashMap::new(),
 			reveal_progress: HashMap::new(),
@@ -109,7 +112,7 @@ impl TranscriptViewportState {
 		inner.pending_remeasure.clear();
 		inner.scroll_expected_px = None;
 		inner.scroll_follow_end = false;
-		inner.scroll_motion = ScrollMotion::new(SurfaceId::Transcript, 0, 0.0);
+		inner.scroll_motion = ScrollMotion::new(0.0);
 
 		let (saved_offset, blocks) = inner.store.restore_session(new_session_id);
 		inner.expanded_blocks = blocks;
@@ -189,8 +192,8 @@ impl TranscriptViewportState {
 		turn_ix: usize,
 		block_ix: usize,
 		tokens: &MotionTokens,
-		reduced: bool,
-		now: Instant,
+		policy: MotionPolicy,
+		now: FrameInstant,
 	) -> bool {
 		let key = (turn_ix, block_ix);
 		let mut inner = self.0.borrow_mut();
@@ -204,12 +207,11 @@ impl TranscriptViewportState {
 			inner.expanded_blocks.remove(&key);
 		}
 
-		let slot = ((turn_ix as u64) << 32) | (block_ix as u64);
 		let reveal = inner
 			.reveal_motions
 			.entry(key)
-			.or_insert_with(|| RevealMotion::new(SurfaceId::Transcript, slot, is_currently_expanded));
-		reveal.set_expanded(next_expanded, tokens, reduced, now);
+			.or_insert_with(|| RevealMotion::new(is_currently_expanded));
+		reveal.set_expanded(next_expanded, tokens, policy, now);
 		let (progress, _) = reveal.sample(now);
 		inner.reveal_progress.insert(key, progress);
 
@@ -224,8 +226,8 @@ impl TranscriptViewportState {
 		block_ix: usize,
 		expanded: bool,
 		tokens: &MotionTokens,
-		reduced: bool,
-		now: Instant,
+		policy: MotionPolicy,
+		now: FrameInstant,
 	) {
 		let key = (turn_ix, block_ix);
 		let mut inner = self.0.borrow_mut();
@@ -241,12 +243,11 @@ impl TranscriptViewportState {
 			inner.expanded_blocks.remove(&key);
 		}
 
-		let slot = ((turn_ix as u64) << 32) | (block_ix as u64);
 		let reveal = inner
 			.reveal_motions
 			.entry(key)
-			.or_insert_with(|| RevealMotion::new(SurfaceId::Transcript, slot, is_currently_expanded));
-		reveal.set_expanded(expanded, tokens, reduced, now);
+			.or_insert_with(|| RevealMotion::new(is_currently_expanded));
+		reveal.set_expanded(expanded, tokens, policy, now);
 		let (progress, _) = reveal.sample(now);
 		inner.reveal_progress.insert(key, progress);
 

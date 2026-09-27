@@ -9,11 +9,10 @@ use veyyon_desktop_kit::{
 	SpacingStep, TextRamp, TextWeight, TokenSet, Truncate,
 	controls::button::{Button, ButtonSize},
 };
-use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{
 	App, CursorStyle, Div, ElementId, InteractiveElement, ParentElement, SharedString, Styled,
-	WeakEntity, div, px,
+	WeakEntity, div, motion::MotionTokens, px,
 };
 
 use super::reveal::render_reveal_container;
@@ -38,12 +37,11 @@ fn view_callbacks(
 	block_ix: usize,
 	viewport_state: &TranscriptViewportState,
 	motion_tokens: &MotionTokens,
-	reduced_motion: bool,
 	view: Option<&WeakEntity<ShellView>>,
 ) -> ToolViewCallbacks {
 	let disclose_view = view.cloned();
 	let disclose_state = viewport_state.clone();
-	let disclose_motion = motion_tokens.clone();
+	let disclose_motion = *motion_tokens;
 	let disclose_id = call_id.to_owned();
 	let target_view = view.cloned();
 	ToolViewCallbacks::new()
@@ -53,8 +51,8 @@ fn view_callbacks(
 				block_ix,
 				true,
 				&disclose_motion,
-				reduced_motion,
-				cx.background_executor().now(),
+				cx.motion_policy(),
+				cx.frame_instant(),
 			);
 			dispatch_to_shell(
 				disclose_view.as_ref(),
@@ -81,7 +79,6 @@ pub fn render_invoke_block(
 	geometry: &TranscriptSurfaceTokens,
 	tokens: &TokenSet,
 	motion_tokens: &MotionTokens,
-	reduced_motion: bool,
 	viewport_state: &TranscriptViewportState,
 	view: Option<&WeakEntity<ShellView>>,
 	selection: Option<SelectableProse>,
@@ -94,25 +91,16 @@ pub fn render_invoke_block(
 
 	let state_toggle = viewport_state.clone();
 	let state_collapse = viewport_state.clone();
-	let motion_tokens_toggle = motion_tokens.clone();
-	let motion_tokens_collapse = motion_tokens.clone();
+	let motion_tokens_toggle = *motion_tokens;
+	let motion_tokens_collapse = *motion_tokens;
 	let view_toggle = view.cloned();
 	let view_collapse = view.cloned();
 	// The result's view supersedes the call's: a settled card states what
 	// happened, and the host regenerates the call half with `hasResult` set, so
 	// the two halves never state the same output twice.
 	let presentation = views.result.as_ref().or(views.call.as_ref());
-	let callbacks = presentation.map(|_| {
-		view_callbacks(
-			call_id,
-			turn_ix,
-			block_ix,
-			viewport_state,
-			motion_tokens,
-			reduced_motion,
-			view,
-		)
-	});
+	let callbacks = presentation
+		.map(|_| view_callbacks(call_id, turn_ix, block_ix, viewport_state, motion_tokens, view));
 	let toggles_host_view = presentation.is_some();
 	let toggle_view = view.cloned();
 	let toggle_id = call_id.to_owned();
@@ -139,8 +127,8 @@ pub fn render_invoke_block(
 				turn_ix,
 				block_ix,
 				&motion_tokens_toggle,
-				reduced_motion,
-				cx.background_executor().now(),
+				cx.motion_policy(),
+				cx.frame_instant(),
 			);
 			if toggles_host_view {
 				dispatch_to_shell(
@@ -270,8 +258,8 @@ pub fn render_invoke_block(
 					block_ix,
 					false,
 					&motion_tokens_collapse,
-					reduced_motion,
-					cx.background_executor().now(),
+					cx.motion_policy(),
+					cx.frame_instant(),
 				);
 				if toggles_host_view {
 					dispatch_to_shell(

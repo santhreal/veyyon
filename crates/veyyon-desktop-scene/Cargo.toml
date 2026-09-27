@@ -29,6 +29,8 @@ veyyon-desktop-tokens = { workspace = true }
 veyyon-gpui = { workspace = true }
 
 [dev-dependencies]
-# The transcript block the dead-token probe draws is handed resolved motion.
+# The motion probe samples each role through its driver.
 veyyon-desktop-motion = { workspace = true }
+# The dead-token sweep bumps each motion parameter through serde.
+motion = { workspace = true, features = ["serde"] }
 veyyon-desktop-surface = { workspace = true }

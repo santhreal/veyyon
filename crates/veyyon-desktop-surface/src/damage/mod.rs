@@ -231,27 +231,22 @@ pub fn motion_damage(state: &ShellState, laid_out: &LaidOut) -> Option<Bounds<Pi
 	Some(union.union(&laid_out.bounds(Region::Composer)?))
 }
 
-/// Asks for the frame an animation needs, repainting `bounds` alone.
-///
-/// A surface mid-animation asks for the next frame while painting this one.
-/// Asking without bounds repaints the window, and a caret that blinks for
-/// the length of a streamed reply asks on every frame of the turn, so the
-/// box the motion reaches is declared on this paint and the frame is scoped
-/// to it.
+/// The box a moving value tracked on a `MotionFrame` repaints, `bounds` when
+/// the frame being drawn is scoped.
 ///
 /// A frame draws into the buffer the window presented two frames ago, so it
 /// repaints what this frame changes and what the one before it changed; the
-/// window carries one frame of declared damage forward for exactly that. A
-/// frame that repaints everything therefore has to be followed by one that
-/// repaints everything, and a motion asking from inside such a frame states
-/// that as the viewport rectangle rather than as an unscoped notify. An
-/// unscoped notify leaves the next frame with nothing to carry, so the
-/// motion inside it asks unscoped again and every frame after it repaints
-/// the window; the rectangle carries once and the frame after it is scoped
-/// again.
-pub fn request_motion_frame(window: &mut Window, bounds: Option<Bounds<Pixels>>) {
-	let scoped = bounds.filter(|_| window.pending_damage().is_some());
-	let bounds = scoped.unwrap_or_else(|| Bounds::new(Point::default(), window.viewport_size()));
-	window.declare_damage(bounds);
-	window.request_animation_frame_at_paint();
+/// window carries one frame of declared damage forward for that. A frame that
+/// repaints everything therefore has to be followed by one that repaints
+/// everything, and motion inside such a frame declares the viewport rectangle
+/// rather than its own box. An unscoped frame request leaves the next frame
+/// with nothing to carry, so the motion inside it requests unscoped again and
+/// every frame after it repaints the window; the rectangle carries once and
+/// the frame after it is scoped again. With no box yet, the viewport is the
+/// answer as well.
+#[must_use]
+pub fn motion_bounds(window: &Window, bounds: Option<Bounds<Pixels>>) -> Bounds<Pixels> {
+	bounds
+		.filter(|_| window.pending_damage().is_some())
+		.unwrap_or_else(|| Bounds::new(Point::default(), window.viewport_size()))
 }

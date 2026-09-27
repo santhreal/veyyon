@@ -17,8 +17,7 @@ use veyyon_desktop_surface::{
 	install_appearances,
 };
 use veyyon_desktop_tokens::{
-	APPEARANCES, DEFAULT_APPEARANCE, MotionModel, Theme, Tokens, load_bundled_theme,
-	load_bundled_tokens,
+	APPEARANCES, DEFAULT_APPEARANCE, Theme, Tokens, load_bundled_theme, load_bundled_tokens,
 };
 use veyyon_gpui::{App, AppContext, Bounds, Pixels, Point, TextRunLayout, px};
 
@@ -30,11 +29,8 @@ pub const HEIGHT: u32 = 900;
 /// appearance differs rather than where the animation had reached.
 pub fn still_tokens() -> Tokens {
 	let mut tokens = load_bundled_tokens().expect("the bundled tokens load");
-	let MotionModel::SpringFade(float) = &mut tokens.motion.float.model else {
-		panic!("the float role must use its spring-fade model");
-	};
-	float.rise_px = 0.0;
-	float.fade_duration_ms = 0;
+	tokens.motion.float.rise_px = 0.0;
+	tokens.motion.float.fade_duration_ms = 0;
 	tokens
 }
 
