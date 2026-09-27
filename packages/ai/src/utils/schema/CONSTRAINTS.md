@@ -24,7 +24,7 @@ When strict mode is requested (`strict=true` at call site), the schema MUST sati
      - `if`, `then`, `else`, `not`
      - `unevaluatedProperties`, `unevaluatedItems`, `patternProperties`
      - `propertyNames`, `contains`, `minContains`, `maxContains`
-     - `dependentRequired`, `dependentSchemas`
+     - `dependentRequired`, `dependentSchemas`, and their draft-07 form `dependencies`
      - `contentEncoding`, `contentMediaType`, `contentSchema`
      - `deprecated`, `readOnly`, `writeOnly`
      - `minProperties`, `maxProperties`
@@ -61,7 +61,7 @@ When strict mode is requested (`strict=true` at call site), the schema MUST sati
 
 Schemas sent on the Google JSON Schema path MUST follow:
 
-1. **Unsupported JSON Schema keywords are stripped (except property names under `properties`)**
+1. **Unsupported JSON Schema keywords are stripped (except names under a schema map)**
    - Unsupported keys (`UNSUPPORTED_SCHEMA_FIELDS`):
      - `$schema`, `$ref`, `$defs`, `$dynamicRef`, `$dynamicAnchor`
      - `examples`, `prefixItems`, `unevaluatedProperties`, `unevaluatedItems`
@@ -69,7 +69,7 @@ Schemas sent on the Google JSON Schema path MUST follow:
      - `minItems`, `maxItems`, `minLength`, `maxLength`
      - `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`
      - `pattern`, `format`
-   - Important: keys inside a `properties` object are treated as property names and MUST NOT be stripped by keyword match.
+   - Keys of a schema map (`SCHEMA_MAP_KEYWORDS`: `properties`, `patternProperties`, `dependencies`, `dependentSchemas`, `$defs`, `definitions`) are property, pattern or definition names and MUST NOT be stripped or rewritten by keyword match. Every walker, including the CCA nullable pass, the residual check and the compatibility audit, descends into the map's values and leaves its keys alone.
    - Human-meaningful stripped keys (`pattern`, `format`, min/max constraints, `default`, `examples`, etc.) are appended to the sibling `description` as an Anthropic-style spill block: `{pattern: "^foo$", minimum: 0}`. Structural/meta keys such as `$ref`, `$defs`, and `additionalProperties` are not spilled.
 
 2. **`type` arrays are normalized to scalar type + nullable marker**
@@ -113,7 +113,8 @@ For Cloud Code Assist Claude tool declarations, schema MUST satisfy stricter con
    - `type` union including `null`, or
    - `anyOf`/`oneOf` with one `{ "type": "null" }` branch
      MUST be converted to non-required property semantics where possible.
-2. If a property is detected nullable after normalization, it MUST be removed from `required`.
+2. Nested nullability layers (`nullable: true` beside a combiner with a null branch, or a null-branch combiner inside another) are removed until none is left.
+3. If a property is detected nullable after normalization, it MUST be removed from `required`.
 
 ### 3.5 Residual incompatibility gate (hard stop)
 

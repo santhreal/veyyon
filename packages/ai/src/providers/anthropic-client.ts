@@ -54,6 +54,11 @@ export interface AnthropicRequestOptions {
 	maxRetryDelayMs?: number;
 	/** Per-request headers merged after client defaults. */
 	headers?: Record<string, string>;
+	/**
+	 * `params` already serialized by the caller, sent verbatim instead of serializing `params`
+	 * again. The caller keeps the string for its error dump, so the dump holds the sent bytes.
+	 */
+	serializedBody?: string;
 }
 
 /**
@@ -225,7 +230,7 @@ export class AnthropicMessagesClient implements AnthropicMessagesClientLike {
 		const maxRetryDelayMs = options?.maxRetryDelayMs ?? DEFAULT_MAX_DELAY_MS;
 		const url = `${opts.baseURL ?? ANTHROPIC_API_ENDPOINT}${path}`;
 		const headers = this.#buildHeaders(options?.headers);
-		const body = JSON.stringify(params);
+		const body = options?.serializedBody ?? JSON.stringify(params);
 
 		for (let attempt = 0; ; attempt++) {
 			if (callerSignal?.aborted) throw createAbortError();

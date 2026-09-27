@@ -3,6 +3,7 @@ import {
 	CCA_UNSUPPORTED_SCHEMA_FIELDS,
 	COMBINATOR_KEYS,
 	NON_STRUCTURAL_SCHEMA_KEYS,
+	SCHEMA_MAP_KEYWORDS,
 	UNSUPPORTED_SCHEMA_FIELDS,
 } from "./fields";
 import { isValidJsonSchema } from "./meta-validator";
@@ -109,7 +110,7 @@ function walkSchema(
 		// Schema-map keywords: value is `{ name: schema, … }`. Recurse into each
 		// entry's schema rather than the map object itself.
 		const entry = value[key];
-		if (key === "properties" || key === "$defs" || key === "definitions" || key === "dependentSchemas") {
+		if (SCHEMA_MAP_KEYWORDS.has(key)) {
 			if (isRecord(entry)) {
 				for (const name in entry) {
 					const child = entry[name];

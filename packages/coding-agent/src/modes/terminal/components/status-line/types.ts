@@ -1,15 +1,11 @@
 import type { StatusCollabStatus, StatusUsageStats } from "@veyyon/wire/presentation";
-import type {
-	StatusLinePreset,
-	StatusLineSegmentId,
-	StatusLineSeparatorStyle,
-} from "../../../../config/settings-schema";
+import type { StatusLinePreset, StatusLineSegmentId } from "../../../../config/settings-schema";
 import type { ActiveRepoContext } from "../../../../utils/active-repo-context";
 import type { GitStatusSummary } from "../../../../utils/git";
 import type { LocationWorktree } from "./location";
 import type { SessionFacts } from "./session-facts";
 
-export type { StatusLinePreset, StatusLineSegmentId, StatusLineSeparatorStyle };
+export type { StatusLinePreset, StatusLineSegmentId };
 
 /** Collab session indicator + (guest-only) host-state override for segments. */
 export type CollabStatus = StatusCollabStatus;
@@ -41,21 +37,9 @@ export interface StatusLineSettings {
 	preset?: StatusLinePreset;
 	leftSegments?: StatusLineSegmentId[];
 	rightSegments?: StatusLineSegmentId[];
-	/**
-	 * DEAD as of the top-border removal: nothing renders a separator any more.
-	 * The composer footline joins segments with its own fixed `  ·  `. The field
-	 * survives only because `modes/terminal/controllers/selector-controller.ts` still
-	 * passes it (that file is off limits); delete both together.
-	 */
-	separator?: StatusLineSeparatorStyle;
 	segmentOptions?: StatusLineSegmentOptions;
 	showHookStatus?: boolean;
 	sessionAccent?: boolean;
-	/**
-	 * DEAD as of the top-border removal: there is no filled bar to make
-	 * transparent. Same blocker as `separator` above.
-	 */
-	transparent?: boolean;
 	/** Replace the model-segment icon with the thinking-level glyph and drop the
 	 *  " · <level>" suffix, so the thinking level reads as a single compact icon. */
 	compactThinkingLevel?: boolean;

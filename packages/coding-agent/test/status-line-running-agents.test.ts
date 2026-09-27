@@ -52,7 +52,6 @@ describe("persistent running-agent footline count", () => {
 			preset: "custom",
 			leftSegments: [],
 			rightSegments: [],
-			transparent: true,
 		});
 	});
 
@@ -113,7 +112,6 @@ describe("persistent running-agent footline count", () => {
 			preset: "custom",
 			leftSegments: ["path", "model", "mode"],
 			rightSegments: ["context_pct"],
-			transparent: true,
 		});
 		const text = expected(0);
 

@@ -29,6 +29,7 @@ import {
 	type BuildSessionContextOptions,
 	buildSessionContext,
 	buildSessionContextFromPath,
+	resolveContextLeaf,
 	type SessionContext,
 	walkBranchPath,
 } from "./session-context";
@@ -55,7 +56,13 @@ import {
 	type UsageStatistics,
 } from "./session-entries";
 import { findMostRecentSession, listAllSessions, listSessions, type SessionInfo } from "./session-listing";
-import { loadEntriesFromFile, readTitleSlotFromFile, resolveBlobRefsInEntries } from "./session-loader";
+import {
+	loadEntriesFromFile,
+	loadSessionFile,
+	readTitleSlotFromFile,
+	resolveBlobRefsInEntries,
+	type SessionFileLayout,
+} from "./session-loader";
 import { generateId, migrateToCurrentVersion } from "./session-migrations";
 import {
 	computeDefaultSessionDir,
@@ -1739,10 +1746,10 @@ export class SessionManager {
 	/** Switch to a different session file (resume / branch). */
 	async setSessionFile(sessionFile: string): Promise<void> {
 		const resolvedSessionFile = path.resolve(sessionFile);
-		const fileEntries = await loadEntriesFromFile(resolvedSessionFile, this.#storage, {
+		const loaded = await loadSessionFile(resolvedSessionFile, this.#storage, {
 			operatorNotices: this.#operatorNotices,
 		});
-		await this.#switchToLoadedFile(resolvedSessionFile, fileEntries);
+		await this.#switchToLoadedFile(resolvedSessionFile, loaded.entries, loaded.layout);
 	}
 
 	/**
@@ -1750,7 +1757,11 @@ export class SessionManager {
 	 * read the header's cwd before the manager exists, and hands the same entries here rather than
 	 * parsing a second time.
 	 */
-	async #switchToLoadedFile(resolvedSessionFile: string, fileEntries: FileEntry[]): Promise<void> {
+	async #switchToLoadedFile(
+		resolvedSessionFile: string,
+		fileEntries: FileEntry[],
+		layout: SessionFileLayout | undefined,
+	): Promise<void> {
 		const titleSlot = await readTitleSlotFromFile(resolvedSessionFile, this.#storage);
 		let migrated = false;
 		let header: SessionHeader | undefined;
@@ -1765,7 +1776,7 @@ export class SessionManager {
 					operatorNotices: this.#operatorNotices,
 				},
 			);
-			// loadEntriesFromFile guarantees entries[0] is a valid session header.
+			// loadSessionFile guarantees entries[0] is a valid session header.
 			header = fileEntries[0] as SessionHeader;
 			const headerCwd = header.cwd ? path.resolve(header.cwd) : undefined;
 			if (headerCwd && headerCwd !== path.resolve(this.#cwd) && (await directoryExists(headerCwd))) {
@@ -1812,7 +1823,24 @@ export class SessionManager {
 		this.#artifactManagerSessionFile = null;
 
 		if (this.sanitizeLoadedOpenAIResponsesReplayMetadata()) this.#rewriteRequired = true;
+		if (layout && this.#hasTitleSlot && !this.#rewriteRequired) this.#adoptLoadedLayout(layout);
 		this.#startLifecycle("resumed");
+	}
+
+	/**
+	 * Take a loaded file's layout as what this manager published there. The file is a title slot,
+	 * the header and one line per entry, in `#entries` order, and nothing was changed on load that a
+	 * publish would write differently, so the next rewrite can keep the lines before its first
+	 * changed entry and skip reading the file back for another writer's lines, as it would after
+	 * its own publish. A header that serializes differently from its line is caught by the rewrite
+	 * plan, which then writes the whole file.
+	 */
+	#adoptLoadedLayout(layout: SessionFileLayout): void {
+		this.#publishedFileState = {
+			size: layout.size,
+			identity: layout.identity,
+			lines: { header: layout.header, entries: this.#entries.slice(), entryOffsets: layout.entryOffsets },
+		};
 	}
 
 	/** Start a new session. Drains and closes any existing writer first. */
@@ -2761,6 +2789,23 @@ export class SessionManager {
 		return buildSessionContextFromPath(this.#index.leafPath(), options);
 	}
 
+	/**
+	 * The tool names the newest `mcp_tool_selection` entry records on the branch
+	 * {@link buildSessionContext} reads, or `undefined` when that branch records
+	 * none. Scans for the one entry instead of rebuilding the branch's messages.
+	 */
+	getMCPToolSelection(): readonly string[] | undefined {
+		const byId = this.#index.entriesById();
+		const path = this.#index.leafEntry()
+			? this.#index.leafPath()
+			: walkBranchPath(byId, resolveContextLeaf(this.#entries, this.#index.leafId(), byId));
+		for (let i = path.length - 1; i >= 0; i--) {
+			const entry = path[i]!;
+			if (entry.type === "mcp_tool_selection") return entry.selectedToolNames;
+		}
+		return undefined;
+	}
+
 	/** Strip stale OpenAI Responses assistant replay metadata from loaded entries. */
 	sanitizeLoadedOpenAIResponsesReplayMetadata(): boolean {
 		let changed = false;
@@ -3110,8 +3155,8 @@ export class SessionManager {
 			instrumentation?: InstrumentationLevel;
 		},
 	): Promise<SessionManager> {
-		const loaded = await loadEntriesFromFile(filePath, storage, { operatorNotices: options?.operatorNotices });
-		const header = loaded.find(entry => entry.type === "session") as SessionHeader | undefined;
+		const loaded = await loadSessionFile(filePath, storage, { operatorNotices: options?.operatorNotices });
+		const header = loaded.entries.find(entry => entry.type === "session") as SessionHeader | undefined;
 		// Resume into the session's recorded cwd only when that directory still
 		// exists. A deleted project dir would make the constructor's #cwd — and the
 		// `setProjectDir` chdir interactive mode runs next — point at (and fail on)
@@ -3135,7 +3180,7 @@ export class SessionManager {
 			options?.instrumentation,
 		);
 		manager.#suppressBreadcrumb = options?.suppressBreadcrumb === true;
-		await manager.#switchToLoadedFile(path.resolve(filePath), loaded);
+		await manager.#switchToLoadedFile(path.resolve(filePath), loaded.entries, loaded.layout);
 		return manager;
 	}
 

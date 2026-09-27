@@ -27,10 +27,12 @@
  * exact-bytes expansion on a session that skipped the startup load.
  */
 
-import { describe, expect, it } from "bun:test";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import { afterEach, describe, expect, it, spyOn, vi } from "bun:test";
+import * as argotCache from "@veyyon/coding-agent/argot-cache";
 import { createArgotSession, shouldAutoloadArgotAtStartup } from "@veyyon/coding-agent/argot-cache";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { armLaunchArgot } from "@veyyon/coding-agent/session/startup-records";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { ArgotSession } from "argot";
 
 const CONNECTION = "packages/coding-agent/src/database/connection.ts";
@@ -156,24 +158,43 @@ describe("argot.autoload changes when a dictionary is built, and nothing else", 
 	});
 });
 
-describe("the SDK honours the setting on its only startup path", () => {
+describe("the session's startup arm honours the setting", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
 	/**
-	 * A settings knob is only real if every path reads it. The SDK arms exactly once
-	 * at session construction, and this pins that the arm is guarded by the shared
-	 * owner rather than by a second inline copy of the conditions -- the way the
-	 * condition was written before this setting existed, and the way it would drift
-	 * back the first time somebody adds another startup path.
+	 * A settings knob is only real if the path that builds the dictionary reads it. `armLaunchArgot`
+	 * is the arm `createAgentSession` runs, so each refusal here must keep the repository walk from
+	 * starting at all, and the default arm must start it with the configured token budget.
 	 */
-	it("guards armArgotAfterStartup with shouldAutoloadArgotAtStartup and reads the setting", () => {
-		const sdk = fs.readFileSync(path.join(import.meta.dir, "../src/sdk.ts"), "utf8");
-		const arms = [...sdk.matchAll(/armArgotAfterStartup\(/g)];
-		expect(arms.length).toBe(1);
+	function armedWith(settings: Settings, argot: ArgotSession | undefined, enabled: boolean) {
+		const arm = spyOn(argotCache, "armArgotAfterStartup").mockImplementation(async () => {});
+		armLaunchArgot({
+			argot,
+			enabled,
+			settings,
+			cwd: "/repo",
+			sessionManager: SessionManager.inMemory(),
+			refreshPrompt: async () => [],
+		});
+		return arm.mock.calls.map(([opts]) => ({ argot: opts.argot, cwd: opts.cwd, tokenBudget: opts.tokenBudget }));
+	}
 
-		const guardIndex = sdk.indexOf("shouldAutoloadArgotAtStartup({");
-		expect(guardIndex).toBeGreaterThan(-1);
-		expect(guardIndex).toBeLessThan(arms[0]!.index!);
+	it("walks the launch project once, with the configured budget, when autoload is on", () => {
+		const argot = new ArgotSession();
+		const settings = Settings.isolated({ "argot.autoload": true, "argot.tokenBudget": 2000 });
+		expect(armedWith(settings, argot, true)).toEqual([{ argot, cwd: "/repo", tokenBudget: 2000 }]);
+	});
 
-		const guard = sdk.slice(guardIndex, arms[0]!.index!);
-		expect(guard).toContain(`settings.get("argot.autoload")`);
+	it("walks nothing when autoload is off", () => {
+		expect(armedWith(Settings.isolated({ "argot.autoload": false }), new ArgotSession(), true)).toEqual([]);
+	});
+
+	it("walks nothing when the feature is off, the codec is absent, or a resume already armed it", () => {
+		const settings = Settings.isolated({ "argot.autoload": true });
+		expect(armedWith(settings, new ArgotSession(), false)).toEqual([]);
+		expect(armedWith(settings, undefined, true)).toEqual([]);
+		expect(armedWith(settings, loadedSession(), true)).toEqual([]);
 	});
 });

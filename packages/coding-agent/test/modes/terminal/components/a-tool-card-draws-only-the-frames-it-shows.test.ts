@@ -168,6 +168,17 @@ function settledWriteTurn(): SessionMessageEntry[] {
 	];
 }
 
+/** The number of tool views drawn from here on, each drawn as before. */
+function countDraws(): { count: number } {
+	const drawn = { count: 0 };
+	const original = drawToolViewModule.drawToolView;
+	spyOn(drawToolViewModule, "drawToolView").mockImplementation((...args) => {
+		drawn.count++;
+		return original(...args);
+	});
+	return drawn;
+}
+
 describe("a tool card draws only the frames it shows", () => {
 	beforeAll(async () => {
 		resetSettingsForTest();
@@ -188,10 +199,10 @@ describe("a tool card draws only the frames it shows", () => {
 		it(`${name} draws nothing until the next render, which shows it`, () => {
 			const card = writeCard();
 			plain(card);
-			const draws = spyOn(drawToolViewModule, "drawToolView");
+			const draws = countDraws();
 			mutation.apply(card);
 			mutation.apply(card);
-			expect(draws).not.toHaveBeenCalled();
+			expect(draws.count).toBe(0);
 			const frame = plain(card);
 			if (mutation.shows) expect(mutation.shows(frame)).toBe(true);
 		});
@@ -201,20 +212,20 @@ describe("a tool card draws only the frames it shows", () => {
 		const card = writeCard();
 		card.updateResult({ content: [{ type: "text", text: "written" }] }, false, CALL_ID);
 		const first = plain(card);
-		const draws = spyOn(drawToolViewModule, "drawToolView");
+		const draws = countDraws();
 		expect(plain(card)).toBe(first);
-		expect(draws).not.toHaveBeenCalled();
+		expect(draws.count).toBe(0);
 	});
 
 	it("draws a card built and settled before its first frame once, in its settled state", () => {
-		const draws = spyOn(drawToolViewModule, "drawToolView");
+		const draws = countDraws();
 		const card = writeCard();
 		card.setExpanded(false);
 		card.updateResult({ content: [{ type: "text", text: "written" }] }, false, CALL_ID);
 		card.seal();
-		expect(draws).not.toHaveBeenCalled();
+		expect(draws.count).toBe(0);
 		const frame = plain(card);
-		expect(draws).toHaveBeenCalledTimes(1);
+		expect(draws.count).toBe(1);
 		expect(frame).toMatch(/draft line 1$/m);
 		expect(frame).not.toContain(`draft line ${FILE_LINES}`);
 	});

@@ -26,253 +26,263 @@ import { codePointLength } from "./string-length";
 // Unicode superscript forms. Letters are incomplete in Unicode (q, and several
 // capitals have no superscript), so the converter falls back to `^(…)` when any
 // character in a script group is unmappable.
-const SUPERSCRIPT: Record<string, string> = {
-	"0": "⁰",
-	"1": "¹",
-	"2": "²",
-	"3": "³",
-	"4": "⁴",
-	"5": "⁵",
-	"6": "⁶",
-	"7": "⁷",
-	"8": "⁸",
-	"9": "⁹",
-	"+": "⁺",
-	"-": "⁻",
-	"−": "⁻",
-	"=": "⁼",
-	"(": "⁽",
-	")": "⁾",
-	".": "·",
-	" ": " ",
-	a: "ᵃ",
-	b: "ᵇ",
-	c: "ᶜ",
-	d: "ᵈ",
-	e: "ᵉ",
-	f: "ᶠ",
-	g: "ᵍ",
-	h: "ʰ",
-	i: "ⁱ",
-	j: "ʲ",
-	k: "ᵏ",
-	l: "ˡ",
-	m: "ᵐ",
-	n: "ⁿ",
-	o: "ᵒ",
-	p: "ᵖ",
-	r: "ʳ",
-	s: "ˢ",
-	t: "ᵗ",
-	u: "ᵘ",
-	v: "ᵛ",
-	w: "ʷ",
-	x: "ˣ",
-	y: "ʸ",
-	z: "ᶻ",
-	A: "ᴬ",
-	B: "ᴮ",
-	D: "ᴰ",
-	E: "ᴱ",
-	G: "ᴳ",
-	H: "ᴴ",
-	I: "ᴵ",
-	J: "ᴶ",
-	K: "ᴷ",
-	L: "ᴸ",
-	M: "ᴹ",
-	N: "ᴺ",
-	O: "ᴼ",
-	P: "ᴾ",
-	R: "ᴿ",
-	T: "ᵀ",
-	U: "ᵁ",
-	V: "ⱽ",
-	W: "ᵂ",
-	α: "ᵅ",
-	β: "ᵝ",
-	γ: "ᵞ",
-	δ: "ᵟ",
-	ε: "ᵋ",
-	θ: "ᶿ",
-	ι: "ᶥ",
-	φ: "ᵠ",
-	χ: "ᵡ",
-};
+const SUPERSCRIPT: ReadonlyMap<string, string> = new Map(
+	Object.entries({
+		"0": "⁰",
+		"1": "¹",
+		"2": "²",
+		"3": "³",
+		"4": "⁴",
+		"5": "⁵",
+		"6": "⁶",
+		"7": "⁷",
+		"8": "⁸",
+		"9": "⁹",
+		"+": "⁺",
+		"-": "⁻",
+		"−": "⁻",
+		"=": "⁼",
+		"(": "⁽",
+		")": "⁾",
+		".": "·",
+		" ": " ",
+		a: "ᵃ",
+		b: "ᵇ",
+		c: "ᶜ",
+		d: "ᵈ",
+		e: "ᵉ",
+		f: "ᶠ",
+		g: "ᵍ",
+		h: "ʰ",
+		i: "ⁱ",
+		j: "ʲ",
+		k: "ᵏ",
+		l: "ˡ",
+		m: "ᵐ",
+		n: "ⁿ",
+		o: "ᵒ",
+		p: "ᵖ",
+		r: "ʳ",
+		s: "ˢ",
+		t: "ᵗ",
+		u: "ᵘ",
+		v: "ᵛ",
+		w: "ʷ",
+		x: "ˣ",
+		y: "ʸ",
+		z: "ᶻ",
+		A: "ᴬ",
+		B: "ᴮ",
+		D: "ᴰ",
+		E: "ᴱ",
+		G: "ᴳ",
+		H: "ᴴ",
+		I: "ᴵ",
+		J: "ᴶ",
+		K: "ᴷ",
+		L: "ᴸ",
+		M: "ᴹ",
+		N: "ᴺ",
+		O: "ᴼ",
+		P: "ᴾ",
+		R: "ᴿ",
+		T: "ᵀ",
+		U: "ᵁ",
+		V: "ⱽ",
+		W: "ᵂ",
+		α: "ᵅ",
+		β: "ᵝ",
+		γ: "ᵞ",
+		δ: "ᵟ",
+		ε: "ᵋ",
+		θ: "ᶿ",
+		ι: "ᶥ",
+		φ: "ᵠ",
+		χ: "ᵡ",
+	}),
+);
 
 // Unicode subscript forms (even sparser than superscripts).
-const SUBSCRIPT: Record<string, string> = {
-	"0": "₀",
-	"1": "₁",
-	"2": "₂",
-	"3": "₃",
-	"4": "₄",
-	"5": "₅",
-	"6": "₆",
-	"7": "₇",
-	"8": "₈",
-	"9": "₉",
-	"+": "₊",
-	"-": "₋",
-	"−": "₋",
-	"=": "₌",
-	"(": "₍",
-	")": "₎",
-	" ": " ",
-	a: "ₐ",
-	e: "ₑ",
-	h: "ₕ",
-	i: "ᵢ",
-	j: "ⱼ",
-	k: "ₖ",
-	l: "ₗ",
-	m: "ₘ",
-	n: "ₙ",
-	o: "ₒ",
-	p: "ₚ",
-	r: "ᵣ",
-	s: "ₛ",
-	t: "ₜ",
-	u: "ᵤ",
-	v: "ᵥ",
-	x: "ₓ",
-	β: "ᵦ",
-	γ: "ᵧ",
-	ρ: "ᵨ",
-	φ: "ᵩ",
-	χ: "ᵪ",
-};
+const SUBSCRIPT: ReadonlyMap<string, string> = new Map(
+	Object.entries({
+		"0": "₀",
+		"1": "₁",
+		"2": "₂",
+		"3": "₃",
+		"4": "₄",
+		"5": "₅",
+		"6": "₆",
+		"7": "₇",
+		"8": "₈",
+		"9": "₉",
+		"+": "₊",
+		"-": "₋",
+		"−": "₋",
+		"=": "₌",
+		"(": "₍",
+		")": "₎",
+		" ": " ",
+		a: "ₐ",
+		e: "ₑ",
+		h: "ₕ",
+		i: "ᵢ",
+		j: "ⱼ",
+		k: "ₖ",
+		l: "ₗ",
+		m: "ₘ",
+		n: "ₙ",
+		o: "ₒ",
+		p: "ₚ",
+		r: "ᵣ",
+		s: "ₛ",
+		t: "ₜ",
+		u: "ᵤ",
+		v: "ᵥ",
+		x: "ₓ",
+		β: "ᵦ",
+		γ: "ᵧ",
+		ρ: "ᵨ",
+		φ: "ᵩ",
+		χ: "ᵪ",
+	}),
+);
 
 // Prime runs: f' f'' f''' f''''.
 const PRIMES = ["", "′", "″", "‴", "⁗"] as const;
 
 // Common vulgar fractions, keyed by `${num}/${den}` of the rendered parts.
-const VULGAR: Record<string, string> = {
-	"1/2": "½",
-	"1/3": "⅓",
-	"2/3": "⅔",
-	"1/4": "¼",
-	"3/4": "¾",
-	"1/5": "⅕",
-	"2/5": "⅖",
-	"3/5": "⅗",
-	"4/5": "⅘",
-	"1/6": "⅙",
-	"5/6": "⅚",
-	"1/7": "⅐",
-	"1/8": "⅛",
-	"3/8": "⅜",
-	"5/8": "⅝",
-	"7/8": "⅞",
-	"1/9": "⅑",
-	"1/10": "⅒",
-	"0/3": "↉",
-};
+const VULGAR: ReadonlyMap<string, string> = new Map(
+	Object.entries({
+		"1/2": "½",
+		"1/3": "⅓",
+		"2/3": "⅔",
+		"1/4": "¼",
+		"3/4": "¾",
+		"1/5": "⅕",
+		"2/5": "⅖",
+		"3/5": "⅗",
+		"4/5": "⅘",
+		"1/6": "⅙",
+		"5/6": "⅚",
+		"1/7": "⅐",
+		"1/8": "⅛",
+		"3/8": "⅜",
+		"5/8": "⅝",
+		"7/8": "⅞",
+		"1/9": "⅑",
+		"1/10": "⅒",
+		"0/3": "↉",
+	}),
+);
 
 // `\not<rel>` negations that have a dedicated Unicode glyph (cleaner than the
 // combining-solidus fallback).
-const NOT_MAP: Record<string, string> = {
-	"=": "≠",
-	"<": "≮",
-	">": "≯",
-	"∈": "∉",
-	"∋": "∌",
-	"⊂": "⊄",
-	"⊃": "⊅",
-	"⊆": "⊈",
-	"⊇": "⊉",
-	"≡": "≢",
-	"∃": "∄",
-	"≤": "≰",
-	"≥": "≱",
-	"≈": "≉",
-	"≅": "≇",
-	"∼": "≁",
-	"≃": "≄",
-	"∣": "∤",
-	"∥": "∦",
-	"≺": "⊀",
-	"≻": "⊁",
-	"⊑": "⋢",
-	"⊒": "⋣",
-};
+const NOT_MAP: ReadonlyMap<string, string> = new Map(
+	Object.entries({
+		"=": "≠",
+		"<": "≮",
+		">": "≯",
+		"∈": "∉",
+		"∋": "∌",
+		"⊂": "⊄",
+		"⊃": "⊅",
+		"⊆": "⊈",
+		"⊇": "⊉",
+		"≡": "≢",
+		"∃": "∄",
+		"≤": "≰",
+		"≥": "≱",
+		"≈": "≉",
+		"≅": "≇",
+		"∼": "≁",
+		"≃": "≄",
+		"∣": "∤",
+		"∥": "∦",
+		"≺": "⊀",
+		"≻": "⊁",
+		"⊑": "⋢",
+		"⊒": "⋣",
+	}),
+);
 
 // Combining diacritics for accent commands (applied after each base glyph).
-const ACCENTS: Record<string, string> = {
-	hat: "\u0302",
-	widehat: "\u0302",
-	check: "\u030C",
-	widecheck: "\u030C",
-	tilde: "\u0303",
-	widetilde: "\u0303",
-	acute: "\u0301",
-	grave: "\u0300",
-	dot: "\u0307",
-	ddot: "\u0308",
-	dddot: "\u20DB",
-	ddddot: "\u20DC",
-	breve: "\u0306",
-	bar: "\u0304",
-	vec: "\u20D7",
-	overrightarrow: "\u20D7",
-	overleftarrow: "\u20D6",
-	mathring: "\u030A",
-	overline: "\u0305",
-	underline: "\u0332",
-	underbar: "\u0332",
-};
+const ACCENTS: ReadonlyMap<string, string> = new Map(
+	Object.entries({
+		hat: "\u0302",
+		widehat: "\u0302",
+		check: "\u030C",
+		widecheck: "\u030C",
+		tilde: "\u0303",
+		widetilde: "\u0303",
+		acute: "\u0301",
+		grave: "\u0300",
+		dot: "\u0307",
+		ddot: "\u0308",
+		dddot: "\u20DB",
+		ddddot: "\u20DC",
+		breve: "\u0306",
+		bar: "\u0304",
+		vec: "\u20D7",
+		overrightarrow: "\u20D7",
+		overleftarrow: "\u20D6",
+		mathring: "\u030A",
+		overline: "\u0305",
+		underline: "\u0332",
+		underbar: "\u0332",
+	}),
+);
 
 // Math functions rendered as their literal upright name (sin, cos, lim, …).
-const FUNCTIONS: Record<string, true> = {
-	sin: true,
-	cos: true,
-	tan: true,
-	cot: true,
-	sec: true,
-	csc: true,
-	sinh: true,
-	cosh: true,
-	tanh: true,
-	coth: true,
-	arcsin: true,
-	arccos: true,
-	arctan: true,
-	arccot: true,
-	arcsec: true,
-	arccsc: true,
-	sech: true,
-	csch: true,
-	ln: true,
-	log: true,
-	lg: true,
-	exp: true,
-	lim: true,
-	limsup: true,
-	liminf: true,
-	max: true,
-	min: true,
-	sup: true,
-	inf: true,
-	det: true,
-	dim: true,
-	ker: true,
-	hom: true,
-	arg: true,
-	deg: true,
-	gcd: true,
-	lcm: true,
-	Pr: true,
-	argmax: true,
-	argmin: true,
-	sgn: true,
-	tr: true,
-	rank: true,
-	diag: true,
-	var: true,
-	cov: true,
-	median: true,
-	mod: true,
-};
+const FUNCTIONS: readonly string[] = [
+	"sin",
+	"cos",
+	"tan",
+	"cot",
+	"sec",
+	"csc",
+	"sinh",
+	"cosh",
+	"tanh",
+	"coth",
+	"arcsin",
+	"arccos",
+	"arctan",
+	"arccot",
+	"arcsec",
+	"arccsc",
+	"sech",
+	"csch",
+	"ln",
+	"log",
+	"lg",
+	"exp",
+	"lim",
+	"limsup",
+	"liminf",
+	"max",
+	"min",
+	"sup",
+	"inf",
+	"det",
+	"dim",
+	"ker",
+	"hom",
+	"arg",
+	"deg",
+	"gcd",
+	"lcm",
+	"Pr",
+	"argmax",
+	"argmin",
+	"sgn",
+	"tr",
+	"rank",
+	"diag",
+	"var",
+	"cov",
+	"median",
+	"mod",
+];
 
 // Math-mode font commands → Mathematical Alphanumeric Symbols style.
 type FontStyle =
@@ -290,59 +300,61 @@ type FontStyle =
 	| "sansbolditalic"
 	| "mono";
 
-const FONTS: Record<string, FontStyle> = {
-	mathbf: "bold",
-	boldsymbol: "bolditalic",
-	bm: "bolditalic",
-	pmb: "bold",
-	mathbb: "doublestruck",
-	Bbb: "doublestruck",
-	mathds: "doublestruck",
-	mathbbm: "doublestruck",
-	mathcal: "script",
-	mathscr: "boldscript",
-	mathfrak: "fraktur",
-	mathbfscr: "boldscript",
-	mathbfcal: "boldscript",
-	mathbffrak: "boldfraktur",
-	mathfrakbold: "boldfraktur",
-	mathsf: "sans",
-	mathsfit: "sansitalic",
-	mathsfbf: "sansbold",
-	mathbfsf: "sansbold",
-	mathsfbfit: "sansbolditalic",
-	mathbfsfit: "sansbolditalic",
-	mathtt: "mono",
-	mathit: "italic",
-	mathbfit: "bolditalic",
-	textbf: "bold",
-	textit: "italic",
-	texttt: "mono",
-	textsf: "sans",
-};
+const FONTS: ReadonlyMap<string, FontStyle> = new Map(
+	Object.entries<FontStyle>({
+		mathbf: "bold",
+		boldsymbol: "bolditalic",
+		bm: "bolditalic",
+		pmb: "bold",
+		mathbb: "doublestruck",
+		Bbb: "doublestruck",
+		mathds: "doublestruck",
+		mathbbm: "doublestruck",
+		mathcal: "script",
+		mathscr: "boldscript",
+		mathfrak: "fraktur",
+		mathbfscr: "boldscript",
+		mathbfcal: "boldscript",
+		mathbffrak: "boldfraktur",
+		mathfrakbold: "boldfraktur",
+		mathsf: "sans",
+		mathsfit: "sansitalic",
+		mathsfbf: "sansbold",
+		mathbfsf: "sansbold",
+		mathsfbfit: "sansbolditalic",
+		mathbfsfit: "sansbolditalic",
+		mathtt: "mono",
+		mathit: "italic",
+		mathbfit: "bolditalic",
+		textbf: "bold",
+		textit: "italic",
+		texttt: "mono",
+		textsf: "sans",
+	}),
+);
 /**
  * Math font command names (`\mathbf`, `\mathbb`, …) whose single brace argument
  * restyles glyphs. Exported for the display block engine (`latex-block`), which
  * re-wraps inline runs inside these commands when their argument contains 2-D
  * layout (fractions, matrices) so styling survives box boundaries.
  */
-export const MATH_FONT_COMMANDS: ReadonlySet<string> = new Set(Object.keys(FONTS));
+export const MATH_FONT_COMMANDS: ReadonlySet<string> = new Set(FONTS.keys());
 
 // Text-mode commands whose argument is passed through literally (no math).
-const TEXT_COMMANDS: Record<string, true> = {
-	text: true,
-	textrm: true,
-	textnormal: true,
-	textup: true,
-	textmd: true,
-	textsc: true,
-	textsl: true,
-	emph: true,
-	mathrm: true,
-	mathnormal: true,
-	mbox: true,
-	hbox: true,
-};
+const TEXT_COMMANDS: readonly string[] = [
+	"text",
+	"textrm",
+	"textnormal",
+	"textup",
+	"textmd",
+	"textsc",
+	"textsl",
+	"emph",
+	"mathrm",
+	"mathnormal",
+	"mbox",
+	"hbox",
+];
 
 // Base code points for each style's A, a, and (where it exists) 0 in the
 // Mathematical Alphanumeric Symbols block (U+1D400–U+1D7FF).
@@ -369,486 +381,492 @@ const PLANES: Record<FontStyle, Plane> = {
 
 // Reserved code points in the math alphabets that Unicode places in the
 // Letterlike Symbols block instead (the famous "holes").
-const ALPHA_HOLES: Record<string, string> = {
-	"italic:h": "ℎ",
-	"script:B": "ℬ",
-	"script:E": "ℰ",
-	"script:F": "ℱ",
-	"script:H": "ℋ",
-	"script:I": "ℐ",
-	"script:L": "ℒ",
-	"script:M": "ℳ",
-	"script:R": "ℛ",
-	"script:e": "ℯ",
-	"script:g": "ℊ",
-	"script:o": "ℴ",
-	"fraktur:C": "ℭ",
-	"fraktur:H": "ℌ",
-	"fraktur:I": "ℑ",
-	"fraktur:R": "ℜ",
-	"fraktur:Z": "ℨ",
-	"doublestruck:C": "ℂ",
-	"doublestruck:H": "ℍ",
-	"doublestruck:N": "ℕ",
-	"doublestruck:P": "ℙ",
-	"doublestruck:Q": "ℚ",
-	"doublestruck:R": "ℝ",
-	"doublestruck:Z": "ℤ",
-};
+const ALPHA_HOLES: ReadonlyMap<string, string> = new Map(
+	Object.entries({
+		"italic:h": "ℎ",
+		"script:B": "ℬ",
+		"script:E": "ℰ",
+		"script:F": "ℱ",
+		"script:H": "ℋ",
+		"script:I": "ℐ",
+		"script:L": "ℒ",
+		"script:M": "ℳ",
+		"script:R": "ℛ",
+		"script:e": "ℯ",
+		"script:g": "ℊ",
+		"script:o": "ℴ",
+		"fraktur:C": "ℭ",
+		"fraktur:H": "ℌ",
+		"fraktur:I": "ℑ",
+		"fraktur:R": "ℜ",
+		"fraktur:Z": "ℨ",
+		"doublestruck:C": "ℂ",
+		"doublestruck:H": "ℍ",
+		"doublestruck:N": "ℕ",
+		"doublestruck:P": "ℙ",
+		"doublestruck:Q": "ℚ",
+		"doublestruck:R": "ℝ",
+		"doublestruck:Z": "ℤ",
+	}),
+);
 
 // Matrix/cases environment delimiters: [open, close].
-const ENV_DELIMS: Record<string, readonly [string, string]> = {
-	matrix: ["", ""],
-	smallmatrix: ["", ""],
-	array: ["", ""],
-	tabular: ["", ""],
-	pmatrix: ["(", ")"],
-	bmatrix: ["[", "]"],
-	Bmatrix: ["{", "}"],
-	vmatrix: ["|", "|"],
-	Vmatrix: ["‖", "‖"],
-	cases: ["{", ""],
-	"cases*": ["{", ""],
-	dcases: ["{", ""],
-	"dcases*": ["{", ""],
-	rcases: ["", "}"],
-	drcases: ["", "}"],
-	aligned: ["", ""],
-	"aligned*": ["", ""],
-	alignedat: ["", ""],
-	"alignedat*": ["", ""],
-	align: ["", ""],
-	"align*": ["", ""],
-	alignat: ["", ""],
-	"alignat*": ["", ""],
-	split: ["", ""],
-	gathered: ["", ""],
-	equation: ["", ""],
-	"equation*": ["", ""],
-};
+const ENV_DELIMS: ReadonlyMap<string, readonly [string, string]> = new Map(
+	Object.entries<readonly [string, string]>({
+		matrix: ["", ""],
+		smallmatrix: ["", ""],
+		array: ["", ""],
+		tabular: ["", ""],
+		pmatrix: ["(", ")"],
+		bmatrix: ["[", "]"],
+		Bmatrix: ["{", "}"],
+		vmatrix: ["|", "|"],
+		Vmatrix: ["‖", "‖"],
+		cases: ["{", ""],
+		"cases*": ["{", ""],
+		dcases: ["{", ""],
+		"dcases*": ["{", ""],
+		rcases: ["", "}"],
+		drcases: ["", "}"],
+		aligned: ["", ""],
+		"aligned*": ["", ""],
+		alignedat: ["", ""],
+		"alignedat*": ["", ""],
+		align: ["", ""],
+		"align*": ["", ""],
+		alignat: ["", ""],
+		"alignat*": ["", ""],
+		split: ["", ""],
+		gathered: ["", ""],
+		equation: ["", ""],
+		"equation*": ["", ""],
+	}),
+);
 
 // Greek, operators, relations, arrows, delimiters, and assorted symbols.
-const SYMBOLS: Record<string, string> = {
-	// Greek lowercase
-	alpha: "α",
-	beta: "β",
-	gamma: "γ",
-	delta: "δ",
-	epsilon: "ϵ",
-	varepsilon: "ε",
-	zeta: "ζ",
-	eta: "η",
-	theta: "θ",
-	vartheta: "ϑ",
-	iota: "ι",
-	kappa: "κ",
-	varkappa: "ϰ",
-	lambda: "λ",
-	mu: "μ",
-	nu: "ν",
-	xi: "ξ",
-	omicron: "ο",
-	pi: "π",
-	varpi: "ϖ",
-	rho: "ρ",
-	varrho: "ϱ",
-	sigma: "σ",
-	varsigma: "ς",
-	tau: "τ",
-	upsilon: "υ",
-	phi: "ϕ",
-	varphi: "φ",
-	chi: "χ",
-	psi: "ψ",
-	omega: "ω",
-	digamma: "ϝ",
-	// Greek uppercase
-	Gamma: "Γ",
-	Delta: "Δ",
-	Theta: "Θ",
-	Lambda: "Λ",
-	Xi: "Ξ",
-	Pi: "Π",
-	Sigma: "Σ",
-	Upsilon: "Υ",
-	Phi: "Φ",
-	Psi: "Ψ",
-	Omega: "Ω",
-	// Big operators
-	sum: "∑",
-	prod: "∏",
-	coprod: "∐",
-	int: "∫",
-	iint: "∬",
-	iiint: "∭",
-	iiiint: "⨌",
-	oint: "∮",
-	oiint: "∯",
-	oiiint: "∰",
-	bigcap: "⋂",
-	bigcup: "⋃",
-	bigsqcup: "⨆",
-	bigvee: "⋁",
-	bigwedge: "⋀",
-	bigodot: "⨀",
-	bigoplus: "⨁",
-	bigotimes: "⨂",
-	biguplus: "⨄",
-	Cap: "⋒",
-	Cup: "⋓",
-	bigstar: "★",
-	// Binary operators
-	pm: "±",
-	mp: "∓",
-	times: "×",
-	div: "÷",
-	ast: "∗",
-	star: "⋆",
-	circ: "∘",
-	bullet: "∙",
-	cdot: "⋅",
-	cdotp: "·",
-	centerdot: "·",
-	cap: "∩",
-	cup: "∪",
-	uplus: "⊎",
-	sqcap: "⊓",
-	sqcup: "⊔",
-	vee: "∨",
-	wedge: "∧",
-	land: "∧",
-	lor: "∨",
-	setminus: "∖",
-	smallsetminus: "∖",
-	wr: "≀",
-	amalg: "⨿",
-	diamond: "⋄",
-	Diamond: "◇",
-	bigtriangleup: "△",
-	bigtriangledown: "▽",
-	triangleleft: "◁",
-	triangleright: "▷",
-	lhd: "⊲",
-	rhd: "⊳",
-	unlhd: "⊴",
-	unrhd: "⊵",
-	oplus: "⊕",
-	ominus: "⊖",
-	otimes: "⊗",
-	oslash: "⊘",
-	odot: "⊙",
-	dagger: "†",
-	ddagger: "‡",
-	boxplus: "⊞",
-	boxtimes: "⊠",
-	boxdot: "⊡",
-	boxminus: "⊟",
-	ltimes: "⋉",
-	rtimes: "⋊",
-	leftthreetimes: "⋋",
-	rightthreetimes: "⋌",
-	curlyvee: "⋎",
-	curlywedge: "⋏",
-	barwedge: "⊼",
-	veebar: "⊻",
-	doublebarwedge: "⩞",
-	circledast: "⊛",
-	circledcirc: "⊚",
-	circleddash: "⊝",
-	divideontimes: "⋇",
-	dotplus: "∔",
-	// Relations
-	leq: "≤",
-	le: "≤",
-	geq: "≥",
-	ge: "≥",
-	ll: "≪",
-	gg: "≫",
-	neq: "≠",
-	ne: "≠",
-	equiv: "≡",
-	doteq: "≐",
-	sim: "∼",
-	simeq: "≃",
-	approx: "≈",
-	approxeq: "≊",
-	cong: "≅",
-	propto: "∝",
-	asymp: "≍",
-	prec: "≺",
-	succ: "≻",
-	preceq: "⪯",
-	succeq: "⪰",
-	subset: "⊂",
-	supset: "⊃",
-	subseteq: "⊆",
-	supseteq: "⊇",
-	subsetneq: "⊊",
-	supsetneq: "⊋",
-	sqsubset: "⊏",
-	sqsupset: "⊐",
-	sqsubseteq: "⊑",
-	sqsupseteq: "⊒",
-	in: "∈",
-	ni: "∋",
-	owns: "∋",
-	notin: "∉",
-	mid: "∣",
-	nmid: "∤",
-	parallel: "∥",
-	nparallel: "∦",
-	perp: "⊥",
-	vdash: "⊢",
-	dashv: "⊣",
-	models: "⊨",
-	vDash: "⊨",
-	Vdash: "⊩",
-	bowtie: "⋈",
-	smile: "⌣",
-	frown: "⌢",
-	between: "≬",
-	lessgtr: "≶",
-	gtrless: "≷",
-	leqslant: "⩽",
-	geqslant: "⩾",
-	lesssim: "≲",
-	gtrsim: "≳",
-	lessapprox: "⪅",
-	gtrapprox: "⪆",
-	leqq: "≦",
-	geqq: "≧",
-	lneq: "⪇",
-	gneq: "⪈",
-	lneqq: "≨",
-	gneqq: "≩",
-	nleq: "≰",
-	ngeq: "≱",
-	nless: "≮",
-	ngtr: "≯",
-	nsubseteq: "⊈",
-	nsupseteq: "⊉",
-	nsim: "≁",
-	ncong: "≇",
-	triangleq: "≜",
-	coloneqq: "≔",
-	eqqcolon: "≕",
-	risingdotseq: "≓",
-	fallingdotseq: "≒",
-	circeq: "≗",
-	eqcirc: "≖",
-	precsim: "≾",
-	succsim: "≿",
-	precapprox: "⪷",
-	succapprox: "⪸",
-	curlyeqprec: "⋞",
-	curlyeqsucc: "⋟",
-	Subset: "⋐",
-	Supset: "⋑",
-	subseteqq: "⫅",
-	supseteqq: "⫆",
-	subsetneqq: "⫋",
-	supsetneqq: "⫌",
-	Vvdash: "⊪",
-	shortmid: "∣",
-	shortparallel: "∥",
-	pitchfork: "⋔",
-	// Arrows
-	leftarrow: "←",
-	gets: "←",
-	rightarrow: "→",
-	to: "→",
-	leftrightarrow: "↔",
-	Leftarrow: "⇐",
-	Rightarrow: "⇒",
-	Leftrightarrow: "⇔",
-	uparrow: "↑",
-	downarrow: "↓",
-	updownarrow: "↕",
-	Uparrow: "⇑",
-	Downarrow: "⇓",
-	Updownarrow: "⇕",
-	mapsto: "↦",
-	longmapsto: "⟼",
-	hookleftarrow: "↩",
-	hookrightarrow: "↪",
-	leftharpoonup: "↼",
-	rightharpoonup: "⇀",
-	leftharpoondown: "↽",
-	rightharpoondown: "⇁",
-	rightleftharpoons: "⇌",
-	longleftarrow: "⟵",
-	longrightarrow: "⟶",
-	longleftrightarrow: "⟷",
-	Longleftarrow: "⟸",
-	Longrightarrow: "⟹",
-	Longleftrightarrow: "⟺",
-	implies: "⟹",
-	impliedby: "⟸",
-	iff: "⟺",
-	nearrow: "↗",
-	searrow: "↘",
-	swarrow: "↙",
-	nwarrow: "↖",
-	nleftarrow: "↚",
-	nrightarrow: "↛",
-	leadsto: "⇝",
-	rightsquigarrow: "⇝",
-	leftrightsquigarrow: "↭",
-	twoheadrightarrow: "↠",
-	twoheadleftarrow: "↞",
-	leftrightharpoons: "⇋",
-	rightleftarrows: "⇄",
-	leftrightarrows: "⇆",
-	leftleftarrows: "⇇",
-	rightrightarrows: "⇉",
-	upuparrows: "⇈",
-	downdownarrows: "⇊",
-	circlearrowleft: "↺",
-	circlearrowright: "↻",
-	curvearrowleft: "↶",
-	curvearrowright: "↷",
-	dashleftarrow: "⇠",
-	dashrightarrow: "⇢",
-	Lleftarrow: "⇚",
-	Rrightarrow: "⇛",
-	leftarrowtail: "↢",
-	rightarrowtail: "↣",
-	looparrowleft: "↫",
-	looparrowright: "↬",
-	multimap: "⊸",
-	// Miscellaneous
-	infty: "∞",
-	partial: "∂",
-	nabla: "∇",
-	forall: "∀",
-	exists: "∃",
-	nexists: "∄",
-	emptyset: "∅",
-	varnothing: "∅",
-	neg: "¬",
-	lnot: "¬",
-	top: "⊤",
-	bot: "⊥",
-	angle: "∠",
-	measuredangle: "∡",
-	sphericalangle: "∢",
-	aleph: "ℵ",
-	beth: "ℶ",
-	gimel: "ℷ",
-	daleth: "ℸ",
-	hbar: "ℏ",
-	hslash: "ℏ",
-	ell: "ℓ",
-	imath: "ı",
-	jmath: "ȷ",
-	wp: "℘",
-	Re: "ℜ",
-	Im: "ℑ",
-	mho: "℧",
-	complement: "∁",
-	surd: "√",
-	flat: "♭",
-	natural: "♮",
-	sharp: "♯",
-	clubsuit: "♣",
-	diamondsuit: "♦",
-	heartsuit: "♥",
-	spadesuit: "♠",
-	clubs: "♣",
-	diamonds: "♦",
-	hearts: "♥",
-	spades: "♠",
-	therefore: "∴",
-	because: "∵",
-	checkmark: "✓",
-	maltese: "✠",
-	dag: "†",
-	ddag: "‡",
-	S: "§",
-	P: "¶",
-	copyright: "©",
-	circledR: "®",
-	pounds: "£",
-	yen: "¥",
-	euro: "€",
-	degree: "°",
-	prime: "′",
-	backprime: "‵",
-	colon: ":",
-	semicolon: ";",
-	neper: "₪",
-	square: "□",
-	Box: "□",
-	blacksquare: "■",
-	lozenge: "◊",
-	blacklozenge: "⧫",
-	triangle: "△",
-	blacktriangle: "▴",
-	blacktriangledown: "▾",
-	blacktriangleleft: "◂",
-	blacktriangleright: "▸",
-	diagup: "╱",
-	diagdown: "╲",
-	backepsilon: "϶",
-	Game: "⅁",
-	eth: "ð",
-	// Dots & ellipses
-	ldots: "…",
-	dots: "…",
-	cdots: "⋯",
-	vdots: "⋮",
-	ddots: "⋱",
-	hdots: "…",
-	mathellipsis: "…",
-	dotsc: "…",
-	dotsb: "⋯",
-	dotsm: "⋯",
-	dotsi: "⋯",
-	// Delimiters
-	langle: "⟨",
-	rangle: "⟩",
-	lceil: "⌈",
-	rceil: "⌉",
-	lfloor: "⌊",
-	rfloor: "⌋",
-	lbrace: "{",
-	rbrace: "}",
-	lbrack: "[",
-	rbrack: "]",
-	vert: "|",
-	Vert: "‖",
-	lvert: "|",
-	rvert: "|",
-	lVert: "‖",
-	rVert: "‖",
-	backslash: "\\",
-	slash: "/",
-	ulcorner: "⌜",
-	urcorner: "⌝",
-	llcorner: "⌞",
-	lrcorner: "⌟",
-	lmoustache: "⎰",
-	rmoustache: "⎱",
-	lgroup: "⟮",
-	rgroup: "⟯",
-	bracevert: "⎪",
-	// Blackboard / letterlike shortcuts commonly written bare
-	Reals: "ℝ",
-	Complex: "ℂ",
-	Natural: "ℕ",
-	Integer: "ℤ",
-	Rational: "ℚ",
-};
+const SYMBOLS: ReadonlyMap<string, string> = new Map(
+	Object.entries({
+		// Greek lowercase
+		alpha: "α",
+		beta: "β",
+		gamma: "γ",
+		delta: "δ",
+		epsilon: "ϵ",
+		varepsilon: "ε",
+		zeta: "ζ",
+		eta: "η",
+		theta: "θ",
+		vartheta: "ϑ",
+		iota: "ι",
+		kappa: "κ",
+		varkappa: "ϰ",
+		lambda: "λ",
+		mu: "μ",
+		nu: "ν",
+		xi: "ξ",
+		omicron: "ο",
+		pi: "π",
+		varpi: "ϖ",
+		rho: "ρ",
+		varrho: "ϱ",
+		sigma: "σ",
+		varsigma: "ς",
+		tau: "τ",
+		upsilon: "υ",
+		phi: "ϕ",
+		varphi: "φ",
+		chi: "χ",
+		psi: "ψ",
+		omega: "ω",
+		digamma: "ϝ",
+		// Greek uppercase
+		Gamma: "Γ",
+		Delta: "Δ",
+		Theta: "Θ",
+		Lambda: "Λ",
+		Xi: "Ξ",
+		Pi: "Π",
+		Sigma: "Σ",
+		Upsilon: "Υ",
+		Phi: "Φ",
+		Psi: "Ψ",
+		Omega: "Ω",
+		// Big operators
+		sum: "∑",
+		prod: "∏",
+		coprod: "∐",
+		int: "∫",
+		iint: "∬",
+		iiint: "∭",
+		iiiint: "⨌",
+		oint: "∮",
+		oiint: "∯",
+		oiiint: "∰",
+		bigcap: "⋂",
+		bigcup: "⋃",
+		bigsqcup: "⨆",
+		bigvee: "⋁",
+		bigwedge: "⋀",
+		bigodot: "⨀",
+		bigoplus: "⨁",
+		bigotimes: "⨂",
+		biguplus: "⨄",
+		Cap: "⋒",
+		Cup: "⋓",
+		bigstar: "★",
+		// Binary operators
+		pm: "±",
+		mp: "∓",
+		times: "×",
+		div: "÷",
+		ast: "∗",
+		star: "⋆",
+		circ: "∘",
+		bullet: "∙",
+		cdot: "⋅",
+		cdotp: "·",
+		centerdot: "·",
+		cap: "∩",
+		cup: "∪",
+		uplus: "⊎",
+		sqcap: "⊓",
+		sqcup: "⊔",
+		vee: "∨",
+		wedge: "∧",
+		land: "∧",
+		lor: "∨",
+		setminus: "∖",
+		smallsetminus: "∖",
+		wr: "≀",
+		amalg: "⨿",
+		diamond: "⋄",
+		Diamond: "◇",
+		bigtriangleup: "△",
+		bigtriangledown: "▽",
+		triangleleft: "◁",
+		triangleright: "▷",
+		lhd: "⊲",
+		rhd: "⊳",
+		unlhd: "⊴",
+		unrhd: "⊵",
+		oplus: "⊕",
+		ominus: "⊖",
+		otimes: "⊗",
+		oslash: "⊘",
+		odot: "⊙",
+		dagger: "†",
+		ddagger: "‡",
+		boxplus: "⊞",
+		boxtimes: "⊠",
+		boxdot: "⊡",
+		boxminus: "⊟",
+		ltimes: "⋉",
+		rtimes: "⋊",
+		leftthreetimes: "⋋",
+		rightthreetimes: "⋌",
+		curlyvee: "⋎",
+		curlywedge: "⋏",
+		barwedge: "⊼",
+		veebar: "⊻",
+		doublebarwedge: "⩞",
+		circledast: "⊛",
+		circledcirc: "⊚",
+		circleddash: "⊝",
+		divideontimes: "⋇",
+		dotplus: "∔",
+		// Relations
+		leq: "≤",
+		le: "≤",
+		geq: "≥",
+		ge: "≥",
+		ll: "≪",
+		gg: "≫",
+		neq: "≠",
+		ne: "≠",
+		equiv: "≡",
+		doteq: "≐",
+		sim: "∼",
+		simeq: "≃",
+		approx: "≈",
+		approxeq: "≊",
+		cong: "≅",
+		propto: "∝",
+		asymp: "≍",
+		prec: "≺",
+		succ: "≻",
+		preceq: "⪯",
+		succeq: "⪰",
+		subset: "⊂",
+		supset: "⊃",
+		subseteq: "⊆",
+		supseteq: "⊇",
+		subsetneq: "⊊",
+		supsetneq: "⊋",
+		sqsubset: "⊏",
+		sqsupset: "⊐",
+		sqsubseteq: "⊑",
+		sqsupseteq: "⊒",
+		in: "∈",
+		ni: "∋",
+		owns: "∋",
+		notin: "∉",
+		mid: "∣",
+		nmid: "∤",
+		parallel: "∥",
+		nparallel: "∦",
+		perp: "⊥",
+		vdash: "⊢",
+		dashv: "⊣",
+		models: "⊨",
+		vDash: "⊨",
+		Vdash: "⊩",
+		bowtie: "⋈",
+		smile: "⌣",
+		frown: "⌢",
+		between: "≬",
+		lessgtr: "≶",
+		gtrless: "≷",
+		leqslant: "⩽",
+		geqslant: "⩾",
+		lesssim: "≲",
+		gtrsim: "≳",
+		lessapprox: "⪅",
+		gtrapprox: "⪆",
+		leqq: "≦",
+		geqq: "≧",
+		lneq: "⪇",
+		gneq: "⪈",
+		lneqq: "≨",
+		gneqq: "≩",
+		nleq: "≰",
+		ngeq: "≱",
+		nless: "≮",
+		ngtr: "≯",
+		nsubseteq: "⊈",
+		nsupseteq: "⊉",
+		nsim: "≁",
+		ncong: "≇",
+		triangleq: "≜",
+		coloneqq: "≔",
+		eqqcolon: "≕",
+		risingdotseq: "≓",
+		fallingdotseq: "≒",
+		circeq: "≗",
+		eqcirc: "≖",
+		precsim: "≾",
+		succsim: "≿",
+		precapprox: "⪷",
+		succapprox: "⪸",
+		curlyeqprec: "⋞",
+		curlyeqsucc: "⋟",
+		Subset: "⋐",
+		Supset: "⋑",
+		subseteqq: "⫅",
+		supseteqq: "⫆",
+		subsetneqq: "⫋",
+		supsetneqq: "⫌",
+		Vvdash: "⊪",
+		shortmid: "∣",
+		shortparallel: "∥",
+		pitchfork: "⋔",
+		// Arrows
+		leftarrow: "←",
+		gets: "←",
+		rightarrow: "→",
+		to: "→",
+		leftrightarrow: "↔",
+		Leftarrow: "⇐",
+		Rightarrow: "⇒",
+		Leftrightarrow: "⇔",
+		uparrow: "↑",
+		downarrow: "↓",
+		updownarrow: "↕",
+		Uparrow: "⇑",
+		Downarrow: "⇓",
+		Updownarrow: "⇕",
+		mapsto: "↦",
+		longmapsto: "⟼",
+		hookleftarrow: "↩",
+		hookrightarrow: "↪",
+		leftharpoonup: "↼",
+		rightharpoonup: "⇀",
+		leftharpoondown: "↽",
+		rightharpoondown: "⇁",
+		rightleftharpoons: "⇌",
+		longleftarrow: "⟵",
+		longrightarrow: "⟶",
+		longleftrightarrow: "⟷",
+		Longleftarrow: "⟸",
+		Longrightarrow: "⟹",
+		Longleftrightarrow: "⟺",
+		implies: "⟹",
+		impliedby: "⟸",
+		iff: "⟺",
+		nearrow: "↗",
+		searrow: "↘",
+		swarrow: "↙",
+		nwarrow: "↖",
+		nleftarrow: "↚",
+		nrightarrow: "↛",
+		leadsto: "⇝",
+		rightsquigarrow: "⇝",
+		leftrightsquigarrow: "↭",
+		twoheadrightarrow: "↠",
+		twoheadleftarrow: "↞",
+		leftrightharpoons: "⇋",
+		rightleftarrows: "⇄",
+		leftrightarrows: "⇆",
+		leftleftarrows: "⇇",
+		rightrightarrows: "⇉",
+		upuparrows: "⇈",
+		downdownarrows: "⇊",
+		circlearrowleft: "↺",
+		circlearrowright: "↻",
+		curvearrowleft: "↶",
+		curvearrowright: "↷",
+		dashleftarrow: "⇠",
+		dashrightarrow: "⇢",
+		Lleftarrow: "⇚",
+		Rrightarrow: "⇛",
+		leftarrowtail: "↢",
+		rightarrowtail: "↣",
+		looparrowleft: "↫",
+		looparrowright: "↬",
+		multimap: "⊸",
+		// Miscellaneous
+		infty: "∞",
+		partial: "∂",
+		nabla: "∇",
+		forall: "∀",
+		exists: "∃",
+		nexists: "∄",
+		emptyset: "∅",
+		varnothing: "∅",
+		neg: "¬",
+		lnot: "¬",
+		top: "⊤",
+		bot: "⊥",
+		angle: "∠",
+		measuredangle: "∡",
+		sphericalangle: "∢",
+		aleph: "ℵ",
+		beth: "ℶ",
+		gimel: "ℷ",
+		daleth: "ℸ",
+		hbar: "ℏ",
+		hslash: "ℏ",
+		ell: "ℓ",
+		imath: "ı",
+		jmath: "ȷ",
+		wp: "℘",
+		Re: "ℜ",
+		Im: "ℑ",
+		mho: "℧",
+		complement: "∁",
+		surd: "√",
+		flat: "♭",
+		natural: "♮",
+		sharp: "♯",
+		clubsuit: "♣",
+		diamondsuit: "♦",
+		heartsuit: "♥",
+		spadesuit: "♠",
+		clubs: "♣",
+		diamonds: "♦",
+		hearts: "♥",
+		spades: "♠",
+		therefore: "∴",
+		because: "∵",
+		checkmark: "✓",
+		maltese: "✠",
+		dag: "†",
+		ddag: "‡",
+		S: "§",
+		P: "¶",
+		copyright: "©",
+		circledR: "®",
+		pounds: "£",
+		yen: "¥",
+		euro: "€",
+		degree: "°",
+		prime: "′",
+		backprime: "‵",
+		colon: ":",
+		semicolon: ";",
+		neper: "₪",
+		square: "□",
+		Box: "□",
+		blacksquare: "■",
+		lozenge: "◊",
+		blacklozenge: "⧫",
+		triangle: "△",
+		blacktriangle: "▴",
+		blacktriangledown: "▾",
+		blacktriangleleft: "◂",
+		blacktriangleright: "▸",
+		diagup: "╱",
+		diagdown: "╲",
+		backepsilon: "϶",
+		Game: "⅁",
+		eth: "ð",
+		// Dots & ellipses
+		ldots: "…",
+		dots: "…",
+		cdots: "⋯",
+		vdots: "⋮",
+		ddots: "⋱",
+		hdots: "…",
+		mathellipsis: "…",
+		dotsc: "…",
+		dotsb: "⋯",
+		dotsm: "⋯",
+		dotsi: "⋯",
+		// Delimiters
+		langle: "⟨",
+		rangle: "⟩",
+		lceil: "⌈",
+		rceil: "⌉",
+		lfloor: "⌊",
+		rfloor: "⌋",
+		lbrace: "{",
+		rbrace: "}",
+		lbrack: "[",
+		rbrack: "]",
+		vert: "|",
+		Vert: "‖",
+		lvert: "|",
+		rvert: "|",
+		lVert: "‖",
+		rVert: "‖",
+		backslash: "\\",
+		slash: "/",
+		ulcorner: "⌜",
+		urcorner: "⌝",
+		llcorner: "⌞",
+		lrcorner: "⌟",
+		lmoustache: "⎰",
+		rmoustache: "⎱",
+		lgroup: "⟮",
+		rgroup: "⟯",
+		bracevert: "⎪",
+		// Blackboard / letterlike shortcuts commonly written bare
+		Reals: "ℝ",
+		Complex: "ℂ",
+		Natural: "ℕ",
+		Integer: "ℤ",
+		Rational: "ℚ",
+	}),
+);
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 /** Map every code point of `text` through `table`; null if any is unmappable. */
-function mapAll(text: string, table: Record<string, string>): string | null {
+function mapAll(text: string, table: ReadonlyMap<string, string>): string | null {
 	let out = "";
 	for (const ch of text) {
-		const mapped = table[ch];
+		const mapped = table.get(ch);
 		if (mapped === undefined) return null;
 		out += mapped;
 	}
@@ -857,7 +875,7 @@ function mapAll(text: string, table: Record<string, string>): string | null {
 
 /** Style a single ASCII letter/digit via the math alphanumeric block. */
 function styleAlnum(ch: string, style: FontStyle): string {
-	const hole = ALPHA_HOLES[`${style}:${ch}`];
+	const hole = ALPHA_HOLES.get(`${style}:${ch}`);
 	if (hole) return hole;
 	const plane = PLANES[style];
 	const code = ch.charCodeAt(0);
@@ -898,30 +916,32 @@ interface Rgb {
 	b: number;
 }
 
-const LATEX_NAMED_COLORS: Record<string, string> = {
-	black: "#000000",
-	blue: "#0000ff",
-	brown: "#a52a2a",
-	cyan: "#00ffff",
-	darkgray: "#404040",
-	darkgrey: "#404040",
-	gray: "#808080",
-	green: "#00ff00",
-	grey: "#808080",
-	lightgray: "#c0c0c0",
-	lightgrey: "#c0c0c0",
-	lime: "#00ff00",
-	magenta: "#ff00ff",
-	olive: "#808000",
-	orange: "#ffa500",
-	pink: "#ffc0cb",
-	purple: "#800080",
-	red: "#ff0000",
-	teal: "#008080",
-	violet: "#ee82ee",
-	white: "#ffffff",
-	yellow: "#ffff00",
-};
+const LATEX_NAMED_COLORS: ReadonlyMap<string, string> = new Map(
+	Object.entries({
+		black: "#000000",
+		blue: "#0000ff",
+		brown: "#a52a2a",
+		cyan: "#00ffff",
+		darkgray: "#404040",
+		darkgrey: "#404040",
+		gray: "#808080",
+		green: "#00ff00",
+		grey: "#808080",
+		lightgray: "#c0c0c0",
+		lightgrey: "#c0c0c0",
+		lime: "#00ff00",
+		magenta: "#ff00ff",
+		olive: "#808000",
+		orange: "#ffa500",
+		pink: "#ffc0cb",
+		purple: "#800080",
+		red: "#ff0000",
+		teal: "#008080",
+		violet: "#ee82ee",
+		white: "#ffffff",
+		yellow: "#ffff00",
+	}),
+);
 
 function colorFormat(): AnsiColorFormat {
 	return getAnsiColorFormat();
@@ -1055,7 +1075,7 @@ function normalizeCssColor(spec: string, allowMix: boolean): string | null {
 		const mixed = resolveMixedColor(trimmed);
 		if (mixed !== null) return mixed;
 	}
-	const named = LATEX_NAMED_COLORS[trimmed] ?? LATEX_NAMED_COLORS[trimmed.toLowerCase()];
+	const named = LATEX_NAMED_COLORS.get(trimmed) ?? LATEX_NAMED_COLORS.get(trimmed.toLowerCase());
 	if (named !== undefined) return named;
 	if (Bun.color(trimmed, "css") !== null) return trimmed;
 	const lower = trimmed.toLowerCase();
@@ -1180,27 +1200,86 @@ interface Argument {
 	group: boolean;
 }
 
-const BIG_DELIM = /^(?:[bB]igg?|[bB]igg?[lrm])$/;
+/** `\big`, `\Bigl`, `\biggr`, …: sized delimiters, rendered at text size. */
+const BIG_DELIMITERS: readonly string[] = ["big", "Big", "bigg", "Bigg"].flatMap(size => [
+	size,
+	`${size}l`,
+	`${size}r`,
+	`${size}m`,
+]);
 
-const EXTENSIBLE_ARROWS: Record<string, string> = {
-	xleftarrow: "←",
-	xrightarrow: "→",
-	xleftrightarrow: "↔",
-	xLeftarrow: "⇐",
-	xRightarrow: "⇒",
-	xLeftrightarrow: "⇔",
-	xhookleftarrow: "↩",
-	xhookrightarrow: "↪",
-	xtwoheadleftarrow: "↞",
-	xtwoheadrightarrow: "↠",
-	xmapsto: "↦",
-	xrightharpoonup: "⇀",
-	xrightharpoondown: "⇁",
-	xleftharpoonup: "↼",
-	xleftharpoondown: "↽",
-	xrightleftharpoons: "⇌",
-	xleftrightharpoons: "⇋",
-};
+/** `\` + one non-letter that renders as something other than the character itself. */
+const CONTROL_SYMBOLS: ReadonlyMap<string, string> = new Map(
+	Object.entries({
+		"\\": "\n", // row break
+		",": " ", // spacing
+		":": " ",
+		";": " ",
+		">": " ",
+		"!": "", // negative thin space
+		"/": "", // italic correction
+		"|": "‖",
+		// Bare math delimiters that slipped through.
+		"(": "",
+		")": "",
+		"[": "",
+		"]": "",
+	}),
+);
+
+/** Layout-only commands: a fixed run of spaces, or nothing. */
+const SPACING_COMMANDS: ReadonlyMap<string, string> = new Map(
+	Object.entries({
+		displaystyle: "",
+		textstyle: "",
+		scriptstyle: "",
+		scriptscriptstyle: "",
+		limits: "",
+		nolimits: "",
+		nonumber: "",
+		notag: "",
+		quad: "  ",
+		qquad: "    ",
+		thinspace: " ",
+		enspace: " ",
+		medspace: " ",
+		thickspace: " ",
+		space: " ",
+		negthinspace: "",
+		negmedspace: "",
+		negthickspace: "",
+	}),
+);
+
+/** True for an ASCII letter code unit; `NaN` (past the end) is not one. */
+export function isAsciiLetter(code: number): boolean {
+	return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+}
+
+const EXTENSIBLE_ARROWS: ReadonlyMap<string, string> = new Map(
+	Object.entries({
+		xleftarrow: "←",
+		xrightarrow: "→",
+		xleftrightarrow: "↔",
+		xLeftarrow: "⇐",
+		xRightarrow: "⇒",
+		xLeftrightarrow: "⇔",
+		xhookleftarrow: "↩",
+		xhookrightarrow: "↪",
+		xtwoheadleftarrow: "↞",
+		xtwoheadrightarrow: "↠",
+		xmapsto: "↦",
+		xrightharpoonup: "⇀",
+		xrightharpoondown: "⇁",
+		xleftharpoonup: "↼",
+		xleftharpoondown: "↽",
+		xrightleftharpoons: "⇌",
+		xleftrightharpoons: "⇋",
+	}),
+);
+
+/** Renders one `\name` command, reading its arguments from `parser`. */
+type CommandRenderer = (parser: LatexParser, style: FontStyle | null, name: string) => string;
 
 class LatexParser {
 	#s: string;
@@ -1219,6 +1298,100 @@ class LatexParser {
 	 * math nests only a handful deep; this bound is far below the JS stack limit.
 	 */
 	static readonly #MAX_DEPTH = 500;
+
+	/**
+	 * Every command with a rendering of its own, by name. The first renderer
+	 * claimed for a name wins, so a font or text command outranks a structural
+	 * command of the same name, which outranks a named function. A name absent
+	 * here renders as a symbol, then as spacing, then as its bare name.
+	 */
+	static readonly #COMMANDS: ReadonlyMap<string, CommandRenderer> = LatexParser.#commandTable();
+
+	static #commandTable(): Map<string, CommandRenderer> {
+		const table = new Map<string, CommandRenderer>();
+		const claim = (names: Iterable<string>, render: CommandRenderer): void => {
+			for (const name of names) if (!table.has(name)) table.set(name, render);
+		};
+		// Fonts: reparse the argument under the requested style.
+		for (const [name, font] of FONTS) claim([name], p => p.#argument(font).text);
+		claim(TEXT_COMMANDS, p => unescapeText(p.#rawArgument()));
+		claim(["operatorname"], p => unescapeText(p.#rawArgument()) + p.#spaceBeforeArg());
+		// Accents → combining marks over each glyph.
+		for (const [name, mark] of ACCENTS) claim([name], (p, style) => applyCombining(p.#argument(style).text, mark));
+		claim(["frac", "dfrac", "tfrac", "cfrac"], (p, style) => {
+			const num = p.#argument(style);
+			const den = p.#argument(style);
+			return p.#fraction(num, den);
+		});
+		claim(["genfrac"], (p, style) => {
+			const left = p.#argument(style).text;
+			const right = p.#argument(style).text;
+			p.#rawArgument(); // rule thickness
+			p.#rawArgument(); // math style
+			const num = p.#argument(style);
+			const den = p.#argument(style);
+			return left + p.#fraction(num, den) + right;
+		});
+		claim(["binom", "dbinom", "tbinom"], (p, style) => {
+			const n = p.#argument(style);
+			const k = p.#argument(style);
+			return `C(${n.text}, ${k.text})`;
+		});
+		claim(["sqrt"], (p, style) => p.#sqrt(style));
+		claim(["not"], (p, style) => {
+			const arg = p.#argument(style).text;
+			return NOT_MAP.get(arg) ?? applyCombining(arg, "\u0338");
+		});
+		claim(["overset", "stackrel"], (p, style) => p.#scripted(style, toSuperscript));
+		claim(["underset"], (p, style) => p.#scripted(style, toSubscript));
+		claim(["prescript"], (p, style) => p.#prescript(style));
+		for (const [name, arrow] of EXTENSIBLE_ARROWS) claim([name], (p, style) => p.#extensibleArrow(style, arrow));
+		claim(["boxed", "fbox"], (p, style) => `[${p.#argument(style).text}]`);
+		const braces: readonly (readonly [string, string])[] = [
+			["overbrace", "⏞"],
+			["underbrace", "⏟"],
+			["overbracket", "⎴"],
+			["underbracket", "⎵"],
+			["overparen", "⏜"],
+			["underparen", "⏝"],
+		];
+		for (const [name, brace] of braces) claim([name], (p, style) => `${brace}(${p.#argument(style).text})`);
+		claim(["cancel"], (p, style) => applyCombining(p.#argument(style).text, "\u0338"));
+		claim(["bcancel"], (p, style) => applyCombining(p.#argument(style).text, "\u20E5"));
+		claim(["xcancel"], (p, style) => applyCombining(applyCombining(p.#argument(style).text, "\u0338"), "\u20E5"));
+		claim(["sout"], (p, style) => applyCombining(p.#argument(style).text, "\u0336"));
+		claim(["substack"], (p, style) => p.#argument(style).text.replace(NEWLINES, ","));
+		const delimiter: CommandRenderer = (p, style) => p.#delimiter(style);
+		claim(["left", "right", "middle"], delimiter);
+		claim(BIG_DELIMITERS, delimiter);
+		claim(["begin"], (p, style) => p.#environment(style));
+		const dropRawArgument: CommandRenderer = p => {
+			p.#rawArgument();
+			return "";
+		};
+		claim(["end", "label"], dropRawArgument);
+		claim(["bmod"], () => " mod ");
+		claim(["pmod"], (p, style) => `(mod ${p.#argument(style).text})`);
+		claim(["pod", "tag"], (p, style) => `(${p.#argument(style).text})`);
+		claim(["ref", "eqref"], p => `(${unescapeText(p.#rawArgument())})`);
+		claim(["url"], p => unescapeText(p.#rawArgument()));
+		claim(["href"], (p, style) => {
+			p.#rawArgument();
+			return p.#argument(style).text;
+		});
+		claim(["textcolor"], (p, style) => p.#scopedForeground(p.#readAnsiColor(), style));
+		claim(["colorbox"], (p, style) => p.#scopedBackground(p.#readAnsiColor(), style));
+		claim(["fcolorbox"], (p, style) => p.#fcolorbox(style));
+		claim(["color"], p => p.#setForeground());
+		claim(["normalcolor"], p => p.#resetForeground());
+		claim(["phantom", "hphantom"], (p, style) => " ".repeat(codePointLength(p.#argument(style).text)));
+		claim(["vphantom"], (p, style) => {
+			p.#argument(style);
+			return "";
+		});
+		claim(FUNCTIONS, (p, _style, name) => name + p.#spaceBeforeArg());
+		return table;
+	}
 
 	constructor(src: string, startDepth = 0) {
 		this.#s = src;
@@ -1307,191 +1480,28 @@ class LatexParser {
 
 	#command(style: FontStyle | null): string {
 		this.#i++; // past backslash
-		if (this.#i >= this.#s.length) return "";
-		const c = this.#s[this.#i];
-		if (!/[A-Za-z]/.test(c)) {
-			this.#i++;
-			switch (c) {
-				case "\\":
-					return "\n"; // row break
-				case "{":
-				case "}":
-				case "$":
-				case "%":
-				case "&":
-				case "#":
-				case "_":
-				case " ":
-				case ".":
-					return c;
-				case ",":
-				case ":":
-				case ";":
-				case ">":
-					return " "; // spacing
-				case "!":
-					return ""; // negative thin space
-				case "/":
-					return ""; // italic correction
-				case "|":
-					return "‖";
-				case "(":
-				case ")":
-				case "[":
-				case "]":
-					return ""; // bare math delimiters that slipped through
-				default:
-					return c;
-			}
-		}
-		let name = "";
-		while (this.#i < this.#s.length && /[A-Za-z]/.test(this.#s[this.#i])) {
-			name += this.#s[this.#i];
-			this.#i++;
-		}
+		const name = this.#letterRun();
+		if (name === "") return this.#controlSymbol();
 		if (this.#s[this.#i] === "*") this.#i++; // starred variants (operatorname*, …)
-		return this.#applyCommand(name, style);
+		const render = LatexParser.#COMMANDS.get(name);
+		if (render !== undefined) return render(this, style, name);
+		// Unknown command: surface the bare name rather than dropping it silently.
+		return SYMBOLS.get(name) ?? SPACING_COMMANDS.get(name) ?? name;
 	}
 
-	#applyCommand(name: string, style: FontStyle | null): string {
-		// Fonts: reparse the argument under the requested style.
-		const font = FONTS[name];
-		if (font) return this.#argument(font).text;
+	/** `\` + one non-letter: a row break, spacing, or the escaped character itself. */
+	#controlSymbol(): string {
+		const c = this.#s[this.#i];
+		if (c === undefined) return "";
+		this.#i++;
+		return CONTROL_SYMBOLS.get(c) ?? c;
+	}
 
-		if (TEXT_COMMANDS[name]) return unescapeText(this.#rawArgument());
-
-		if (name === "operatorname") {
-			const fn = unescapeText(this.#rawArgument());
-			return fn + this.#spaceBeforeArg();
-		}
-
-		// Accents → combining marks over each glyph.
-		const accent = ACCENTS[name];
-		if (accent) return applyCombining(this.#argument(style).text, accent);
-
-		if (name === "frac" || name === "dfrac" || name === "tfrac" || name === "cfrac") {
-			const num = this.#argument(style);
-			const den = this.#argument(style);
-			return this.#fraction(num, den);
-		}
-
-		if (name === "genfrac") {
-			const left = this.#argument(style).text;
-			const right = this.#argument(style).text;
-			this.#rawArgument(); // rule thickness
-			this.#rawArgument(); // math style
-			const num = this.#argument(style);
-			const den = this.#argument(style);
-			return left + this.#fraction(num, den) + right;
-		}
-
-		if (name === "binom" || name === "dbinom" || name === "tbinom") {
-			const n = this.#argument(style);
-			const k = this.#argument(style);
-			return `C(${n.text}, ${k.text})`;
-		}
-
-		if (name === "sqrt") return this.#sqrt(style);
-
-		if (name === "not") {
-			const arg = this.#argument(style);
-			return NOT_MAP[arg.text] ?? applyCombining(arg.text, "\u0338");
-		}
-
-		if (name === "overset" || name === "stackrel") return this.#scripted(style, toSuperscript);
-		if (name === "underset") return this.#scripted(style, toSubscript);
-		if (name === "prescript") return this.#prescript(style);
-
-		const arrow = EXTENSIBLE_ARROWS[name];
-		if (arrow !== undefined) return this.#extensibleArrow(style, arrow);
-
-		if (name === "boxed" || name === "fbox") return `[${this.#argument(style).text}]`;
-		if (name === "overbrace") return `⏞(${this.#argument(style).text})`;
-		if (name === "underbrace") return `⏟(${this.#argument(style).text})`;
-		if (name === "overbracket") return `⎴(${this.#argument(style).text})`;
-		if (name === "underbracket") return `⎵(${this.#argument(style).text})`;
-		if (name === "overparen") return `⏜(${this.#argument(style).text})`;
-		if (name === "underparen") return `⏝(${this.#argument(style).text})`;
-		if (name === "cancel") return applyCombining(this.#argument(style).text, "\u0338");
-		if (name === "bcancel") return applyCombining(this.#argument(style).text, "\u20E5");
-		if (name === "xcancel") return applyCombining(applyCombining(this.#argument(style).text, "\u0338"), "\u20E5");
-		if (name === "sout") return applyCombining(this.#argument(style).text, "\u0336");
-		if (name === "substack") return this.#argument(style).text.replace(NEWLINES, ",");
-
-		if (name === "left" || name === "right" || name === "middle") return this.#delimiter(style);
-
-		if (BIG_DELIM.test(name)) return this.#delimiter(style); // \big \Bigl \Biggr …
-
-		if (name === "begin") return this.#environment(style);
-		if (name === "end") {
-			this.#rawArgument();
-			return "";
-		}
-
-		if (name === "bmod") return " mod ";
-		if (name === "pmod") return `(mod ${this.#argument(style).text})`;
-		if (name === "pod") return `(${this.#argument(style).text})`;
-		if (name === "tag") return `(${this.#argument(style).text})`;
-		if (name === "label") {
-			this.#rawArgument();
-			return "";
-		}
-		if (name === "ref" || name === "eqref") return `(${unescapeText(this.#rawArgument())})`;
-		if (name === "url") return unescapeText(this.#rawArgument());
-		if (name === "href") {
-			this.#rawArgument();
-			return this.#argument(style).text;
-		}
-		if (name === "textcolor") return this.#scopedForeground(this.#readAnsiColor(), style);
-		if (name === "colorbox") return this.#scopedBackground(this.#readAnsiColor(), style);
-		if (name === "fcolorbox") return this.#fcolorbox(style);
-		if (name === "color") return this.#setForeground();
-		if (name === "normalcolor") {
-			const previous = this.#foreground;
-			this.#foreground = null;
-			return previous === null ? "" : SGR_FG_RESET;
-		}
-		if (name === "phantom" || name === "hphantom") {
-			return " ".repeat(codePointLength(this.#argument(style).text));
-		}
-		if (name === "vphantom") {
-			this.#argument(style);
-			return "";
-		}
-
-		if (FUNCTIONS[name]) return name + this.#spaceBeforeArg();
-
-		const symbol = SYMBOLS[name];
-		if (symbol !== undefined) return symbol;
-
-		// Layout-only commands that carry no visible glyph.
-		switch (name) {
-			case "displaystyle":
-			case "textstyle":
-			case "scriptstyle":
-			case "scriptscriptstyle":
-			case "limits":
-			case "nolimits":
-			case "nonumber":
-			case "notag":
-			case "quad":
-				return name === "quad" ? "  " : "";
-			case "qquad":
-				return "    ";
-			case "thinspace":
-			case "enspace":
-			case "medspace":
-			case "thickspace":
-			case "space":
-				return " ";
-			case "negthinspace":
-			case "negmedspace":
-			case "negthickspace":
-				return "";
-		}
-
-		// Unknown command: surface the bare name rather than dropping it silently.
-		return name;
+	/** Consume the run of ASCII letters at the cursor: a command name, or "". */
+	#letterRun(): string {
+		const start = this.#i;
+		while (isAsciiLetter(this.#s.charCodeAt(this.#i))) this.#i++;
+		return this.#s.slice(start, this.#i);
 	}
 
 	#group(style: FontStyle | null): string {
@@ -1517,6 +1527,12 @@ class LatexParser {
 		if (color === null) return "";
 		this.#foreground = color.foreground;
 		return color.foreground;
+	}
+
+	#resetForeground(): string {
+		const previous = this.#foreground;
+		this.#foreground = null;
+		return previous === null ? "" : SGR_FG_RESET;
 	}
 
 	#scopedForeground(color: AnsiColor | null, style: FontStyle | null): string {
@@ -1595,18 +1611,12 @@ class LatexParser {
 			const c = this.#s[this.#i];
 			if (c === undefined) return "";
 			if (c === "\\") {
-				let t = "\\";
 				this.#i++;
-				if (/[A-Za-z]/.test(this.#s[this.#i] ?? "")) {
-					while (/[A-Za-z]/.test(this.#s[this.#i] ?? "")) {
-						t += this.#s[this.#i];
-						this.#i++;
-					}
-				} else {
-					t += this.#s[this.#i] ?? "";
-					this.#i++;
-				}
-				return t;
+				const name = this.#letterRun();
+				if (name !== "") return `\\${name}`;
+				const escaped = this.#s[this.#i] ?? "";
+				this.#i++;
+				return `\\${escaped}`;
 			}
 			this.#i++;
 			return c;
@@ -1644,7 +1654,7 @@ class LatexParser {
 	}
 
 	#fraction(num: Argument, den: Argument): string {
-		const vulgar = VULGAR[`${num.text}/${den.text}`];
+		const vulgar = VULGAR.get(`${num.text}/${den.text}`);
 		if (vulgar) return vulgar;
 		return `${this.#wrapFrac(num)}/${this.#wrapFrac(den)}`;
 	}
@@ -1682,29 +1692,13 @@ class LatexParser {
 			return styleChar(c, style);
 		}
 		this.#i++;
-		if (this.#i >= this.#s.length) return "";
+		const name = this.#letterRun();
+		if (name !== "") return SYMBOLS.get(name) ?? name;
 		const d = this.#s[this.#i];
-		if (!/[A-Za-z]/.test(d)) {
-			this.#i++;
-			switch (d) {
-				case ".":
-					return "";
-				case "{":
-					return "{";
-				case "}":
-					return "}";
-				case "|":
-					return "‖";
-				default:
-					return d;
-			}
-		}
-		let name = "";
-		while (this.#i < this.#s.length && /[A-Za-z]/.test(this.#s[this.#i])) {
-			name += this.#s[this.#i];
-			this.#i++;
-		}
-		return SYMBOLS[name] ?? name;
+		if (d === undefined) return "";
+		this.#i++;
+		if (d === ".") return "";
+		return d === "|" ? "‖" : d;
 	}
 
 	#optionalArgument(style: FontStyle | null): Argument | null {
@@ -1791,7 +1785,7 @@ class LatexParser {
 		) {
 			body = body.replace(/[ \t]*\n+[ \t]*/g, "; ").replace(/ {3,}/g, "  ");
 		}
-		const delims = ENV_DELIMS[env];
+		const delims = ENV_DELIMS.get(env);
 		return delims ? delims[0] + body + delims[1] : body;
 	}
 

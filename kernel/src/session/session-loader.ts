@@ -25,7 +25,7 @@ import {
 import { checkSessionEntryShape } from "./session-entry-shape";
 import { migrateToCurrentVersion } from "./session-migrations";
 import { isImageBlock, isImageDataPayload } from "./session-persistence";
-import { FileSessionStorage, type SessionStorage } from "./session-storage";
+import { FileSessionStorage, type SessionStorage, type SessionStorageStat } from "./session-storage";
 import {
 	parseTitleSlotFromContent,
 	parseTitleSlotLine,
@@ -57,20 +57,33 @@ export class CorruptSessionFileError extends Error {
 	}
 }
 
+/**
+ * Where a file's records sit, for a file laid out the way a publish writes it: a fixed-width title
+ * slot, then one line per record. Every line parsed, no record was dropped or re-linked, and `end`
+ * is the byte just past the last record's newline, so the file holds nothing else when `end` is
+ * its size.
+ */
+export interface SessionRecordLayout {
+	/** The header line as read, newline included. */
+	header: string;
+	/** Byte offset of each record line after the header, parallel to `entries.slice(1)`. */
+	entryOffsets: number[];
+	/** Byte offset just past the last record's newline. */
+	end: number;
+}
+
 function splitTitleSlot(content: string): {
 	body: string;
 	slot: SessionTitleUpdate | undefined;
-	startLine: number;
-	startByteOffset: number;
+	slotLineBytes: number | undefined;
 } {
 	const slot = titleUpdateFromSlot(parseTitleSlotFromContent(content));
-	if (!slot) return { body: content, slot: undefined, startLine: 1, startByteOffset: 1 };
+	if (!slot) return { body: content, slot: undefined, slotLineBytes: undefined };
 	const newlineIndex = content.indexOf("\n");
 	return {
 		body: content.slice(newlineIndex + 1),
 		slot,
-		startLine: 2,
-		startByteOffset: Buffer.byteLength(content.slice(0, newlineIndex + 1), "utf-8") + 1,
+		slotLineBytes: Buffer.byteLength(content.slice(0, newlineIndex), "utf-8"),
 	};
 }
 
@@ -171,27 +184,33 @@ class SessionRecordLoop {
 	readonly #streaming: boolean;
 	readonly #logSource: string | undefined;
 	readonly #notices: SessionLoadOptions;
-	#line: number;
-	#byteOffset: number;
+	#line = 1;
+	#byteOffset = 1;
+	/** Bytes of the title slot line, newline included, when the file starts with one. */
+	#titleSlotBytes = 0;
+	/** 0-based byte offset of each record line after the header, parallel to `entries.slice(1)`. */
+	readonly #offsets: number[] = [];
+	#headerLine: string | undefined;
+	/** 0-based byte offset just past the last record's newline. */
+	#end = 0;
+	#stitched = 0;
 
-	constructor(options: {
-		streaming: boolean;
-		logSource: string | undefined;
-		notices: SessionLoadOptions;
-		startLine?: number;
-		startByteOffset?: number;
-	}) {
+	constructor(options: { streaming: boolean; logSource: string | undefined; notices: SessionLoadOptions }) {
 		this.#streaming = options.streaming;
 		this.#logSource = options.logSource;
 		this.#notices = options.notices;
-		this.#line = options.startLine ?? 1;
-		this.#byteOffset = options.startByteOffset ?? 1;
 	}
 
-	/** Advance past a line the caller consumed itself, such as the physical title slot. */
+	/** Advance past a line the caller consumed itself. */
 	skip(byteLength: number): void {
 		this.#line += 1;
 		this.#byteOffset += byteLength + 1;
+	}
+
+	/** Advance past the physical title slot, which is not a record. */
+	skipTitleSlot(byteLength: number): void {
+		if (this.#byteOffset === 1) this.#titleSlotBytes = byteLength + 1;
+		this.skip(byteLength);
 	}
 
 	/** Feed one physical line and its byte length. A blank line only moves the cursor. */
@@ -217,7 +236,10 @@ class SessionRecordLoop {
 
 		const shape = checkSessionEntryShape(value);
 		if (shape.ok) {
+			if (this.entries.length === 0) this.#headerLine = text;
+			else this.#offsets.push(this.#byteOffset - 1);
 			this.entries.push(value as FileEntry);
+			this.#end = this.#byteOffset + byteLength;
 		} else {
 			this.#issues.push({ line: this.#line, byteOffset: this.#byteOffset, problem: shape.problem });
 			logger.warn("Dropped a session record that decoded to the wrong shape (data lost)", {
@@ -241,42 +263,50 @@ class SessionRecordLoop {
 			emitDroppedRecordNotice(this.#notices, this.#issues);
 		}
 		const stitched = stitchOrphanedEntries(this.entries);
+		this.#stitched = stitched;
 		if (stitched > 0) {
 			logger.warn("Re-linked session records whose parent was lost", { source: this.#logSource, stitched });
 			emitStitchedRecordNotice(this.#notices, stitched);
 		}
 		return this.entries;
 	}
+
+	/**
+	 * Where the records sit, when the file read so far is laid out the way a publish writes it (see
+	 * {@link SessionRecordLayout}). Read after {@link finish}.
+	 */
+	layout(): SessionRecordLayout | undefined {
+		if (this.#titleSlotBytes !== SESSION_TITLE_SLOT_BYTES || this.#headerLine === undefined) return undefined;
+		if (this.#issues.length > 0 || this.#stitched > 0) return undefined;
+		// The header line is a slice of the file text read to find it, and a slice shares that text's
+		// buffer: holding it for the session's life would hold every byte of the file with it. The copy
+		// holds the header's bytes alone.
+		const header = Buffer.from(`${this.#headerLine}\n`, "utf-8").toString("utf-8");
+		return { header, entryOffsets: this.#offsets, end: this.#end };
+	}
+}
+
+/** What one read of a session file produced, from either load path. */
+export interface ParsedSessionContent {
+	entries: FileEntry[];
+	titleSlot: SessionTitleUpdate | undefined;
+	layout: SessionRecordLayout | undefined;
 }
 
 /** Parse session JSONL while stripping and folding the optional fixed title slot. */
-export function parseSessionContent(
-	content: string,
-	context: SessionLoadOptions = {},
-): {
-	entries: FileEntry[];
-	titleSlot: SessionTitleUpdate | undefined;
-} {
-	const { body, slot, startLine, startByteOffset } = splitTitleSlot(content);
-	const loop = new SessionRecordLoop({
-		streaming: false,
-		logSource: context.source,
-		notices: context,
-		startLine,
-		startByteOffset,
-	});
+export function parseSessionContent(content: string, context: SessionLoadOptions = {}): ParsedSessionContent {
+	const { body, slot, slotLineBytes } = splitTitleSlot(content);
+	const loop = new SessionRecordLoop({ streaming: false, logSource: context.source, notices: context });
+	if (slotLineBytes !== undefined) loop.skipTitleSlot(slotLineBytes);
 	for (const rawLine of body.split("\n")) loop.push(rawLine, Buffer.byteLength(rawLine, "utf-8"));
-	return { entries: foldTitleSlot(loop.finish(), slot), titleSlot: slot };
+	return { entries: foldTitleSlot(loop.finish(), slot), titleSlot: slot, layout: loop.layout() };
 }
 
 /** Exported for testing — the ≥8MiB streaming path (works on any file size). */
 export async function loadEntriesFromFileStream(
 	filePath: string,
 	options: SessionLoadOptions = {},
-): Promise<{
-	entries: FileEntry[];
-	titleSlot: SessionTitleUpdate | undefined;
-}> {
+): Promise<ParsedSessionContent> {
 	let titleSlot: SessionTitleUpdate | undefined;
 	const loop = new SessionRecordLoop({
 		streaming: true,
@@ -296,18 +326,18 @@ export async function loadEntriesFromFileStream(
 				const slot = parseTitleSlotLine(text.trim());
 				if (slot) {
 					titleSlot = titleUpdateFromSlot(slot);
-					loop.skip(lineBytes.byteLength);
+					loop.skipTitleSlot(lineBytes.byteLength);
 					continue;
 				}
 			}
 			loop.push(text, lineBytes.byteLength);
 		}
 	} catch (err) {
-		if (isEnoent(err)) return { entries: [], titleSlot: undefined };
+		if (isEnoent(err)) return { entries: [], titleSlot: undefined, layout: undefined };
 		throw err;
 	}
 
-	return { entries: foldTitleSlot(loop.finish(), titleSlot), titleSlot };
+	return { entries: foldTitleSlot(loop.finish(), titleSlot), titleSlot, layout: loop.layout() };
 }
 
 /** Read only the fixed-size head window to detect a physical title slot. */
@@ -331,28 +361,57 @@ export function parseSessionEntries(content: string): FileEntry[] {
 	return parseSessionContent(content).entries;
 }
 
+/**
+ * Where each record of a loaded file sits, for a file laid out the way a publish writes it (see
+ * {@link SessionRecordLayout}) that was the same object, the same size, before and after the read.
+ * A writer that keeps the bytes before its first changed record can start from this instead of
+ * reading the file back.
+ */
+export interface SessionFileLayout {
+	size: number;
+	/** The storage's identity for the object read (see {@link SessionStorageStat.identity}). */
+	identity: string;
+	/** The header line as read, newline included. */
+	header: string;
+	/** Byte offset of each record line after the header, parallel to `entries.slice(1)`. */
+	entryOffsets: number[];
+}
+
+export interface LoadedSessionFile {
+	entries: FileEntry[];
+	layout: SessionFileLayout | undefined;
+}
+
 /** Exported for testing */
 export async function loadEntriesFromFile(
 	filePath: string,
 	storage: SessionStorage = new FileSessionStorage(),
 	options: SessionLoadOptions = {},
 ): Promise<FileEntry[]> {
-	let loaded: { entries: FileEntry[]; titleSlot: SessionTitleUpdate | undefined };
-	let size: number;
+	return (await loadSessionFile(filePath, storage, options)).entries;
+}
+
+/** Load a session file's entries, and where they sit in it when that can be established. */
+export async function loadSessionFile(
+	filePath: string,
+	storage: SessionStorage = new FileSessionStorage(),
+	options: SessionLoadOptions = {},
+): Promise<LoadedSessionFile> {
+	let loaded: ParsedSessionContent;
+	let before: SessionStorageStat;
 	try {
-		const stat = storage.statSync(filePath);
-		size = stat.size;
+		before = storage.statSync(filePath);
 		loaded =
-			storage instanceof FileSessionStorage && stat.size >= STREAM_LOAD_THRESHOLD_BYTES
+			storage instanceof FileSessionStorage && before.size >= STREAM_LOAD_THRESHOLD_BYTES
 				? await loadEntriesFromFileStream(filePath, { ...options, source: options.source ?? filePath })
 				: parseSessionContent(await storage.readText(filePath), { ...options, source: options.source ?? filePath });
 	} catch (err) {
-		if (isEnoent(err)) return [];
+		if (isEnoent(err)) return { entries: [], layout: undefined };
 		throw err;
 	}
 	const { entries } = loaded;
 
-	if (size === 0) return [];
+	if (before.size === 0) return { entries: [], layout: undefined };
 	if (entries.length === 0) {
 		throw new CorruptSessionFileError(filePath, "the non-empty file has no readable session header");
 	}
@@ -361,7 +420,29 @@ export async function loadEntriesFromFile(
 		throw new CorruptSessionFileError(filePath, "the first readable record is not a session header");
 	}
 
-	return entries;
+	return { entries, layout: verifiedLayout(storage, filePath, before, loaded.layout) };
+}
+
+/**
+ * `layout` as a description of the file at `filePath`, when the read covered all of it and nothing
+ * replaced or grew the file while it was read. Appends only grow a file and a publish replaces the
+ * object, so an unchanged identity and size on both sides of the read rule out both.
+ */
+function verifiedLayout(
+	storage: SessionStorage,
+	filePath: string,
+	before: SessionStorageStat,
+	layout: SessionRecordLayout | undefined,
+): SessionFileLayout | undefined {
+	if (!layout || before.identity === undefined || layout.end !== before.size) return undefined;
+	let after: SessionStorageStat;
+	try {
+		after = storage.statSync(filePath);
+	} catch {
+		return undefined;
+	}
+	if (after.identity !== before.identity || after.size !== before.size) return undefined;
+	return { size: before.size, identity: before.identity, header: layout.header, entryOffsets: layout.entryOffsets };
 }
 
 /**

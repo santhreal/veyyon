@@ -320,18 +320,6 @@ describe("read tool URL handling", () => {
 			ok: true,
 			buffer: new Uint8Array([60, 104, 116, 109, 108]),
 		});
-		vi.spyOn(imageResize, "resizeImage").mockResolvedValue({
-			buffer: new Uint8Array([60, 104, 116, 109, 108]),
-			mimeType: "image/png",
-			originalWidth: 0,
-			originalHeight: 0,
-			width: 0,
-			height: 0,
-			wasResized: false,
-			get data() {
-				return "PGh0bWw=";
-			},
-		});
 
 		const result = await tool.execute("fetch-broken-image", { path: "https://example.com/broken.png" });
 		const imageBlock = result.content.find(content => content.type === "image");

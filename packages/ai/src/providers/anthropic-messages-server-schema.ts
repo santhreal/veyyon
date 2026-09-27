@@ -4,7 +4,6 @@
  * and options.
  */
 
-import { type } from "arktype";
 import type {
 	ContentBlockParam,
 	ImageBlockParam,
@@ -14,6 +13,7 @@ import type {
 	Tool,
 	ToolChoice,
 } from "./anthropic-wire";
+import { type } from "./gateway-schema-type";
 
 // `cache_control` is accepted and translated to pi-ai's per-request
 // `cacheRetention` (any `ttl: "1h"` marker upgrades the request to "long";

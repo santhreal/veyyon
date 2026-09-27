@@ -56,6 +56,7 @@ export {
 	// Cache management
 	reset,
 	setDisabledProviders,
+	setForeignConfigImport,
 } from "./capability";
 export type { ContextFile } from "./capability/context-file";
 export type { ExtensionManifest, ManifestExtension } from "./capability/extension";

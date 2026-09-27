@@ -4,7 +4,18 @@
 
 ### Changed
 
+- `ProcessTerminal` routes a stdin sequence through single-purpose steps (private CSI and in-band resize reassembly, then one reply matcher per probe) with its reply patterns compiled once at module load instead of one 258-line handler, so an escape keystroke's dispatch costs 111 ns instead of 128 ns with identical delivered input and written bytes.
+- The editor measures and wraps each draft line once per layout width, caching the layout (pruned to the draft's lines) for rendering and vertical cursor motion, and renders a frame through single-purpose row, chrome and cursor-placement helpers instead of one 242-line method, so rendering a 12-paragraph draft costs 1.5 µs instead of 18.4 µs and a keystroke with its render 8.4 µs instead of 12.7 µs.
+- The editor dispatches a key through single-purpose handlers for autocomplete, kill and line keys, Enter and new-line keys, and cursor keys instead of one 270-line method; with the memoized key tests in `@veyyon/utils`, a typed character costs 1.35 µs instead of 3.01 µs and a mixed editing key 5.84 µs instead of 7.55 µs.
 - A streaming `Markdown` render that ends inside an open code fence lays out only the fence lines completed since the previous frame, so a 1,500-line code fence renders in 59 ms instead of 898 ms and a 1,500-line diff in 92 ms instead of 900 ms.
+- The frame render and incremental update run as single-purpose phases (alt-screen residency, frame composition, committed-prefix reconciliation, window planning and assembly) whose records are in `core/frame-plan.ts`, with one escape-sequence builder per paint shape in `core/paint-sequences.ts`, and the incremental update finds its changed rows with a forward scan to the first change and a backward scan to the last instead of comparing every row, which cuts a 2,000-block cold paint from 13.73 ms to 12.27 ms with byte-identical terminal output.
+- `Markdown` renders a block token through one method per block kind (heading, paragraph, code block, blockquote, display math) that appends into the frame's row array, instead of one 164-line switch that returned a new row array per token; output is byte-identical and render time is unchanged.
+- `Markdown` bounds the start search of its rule, display math and math environment block extensions to the paragraph that can end there instead of the rest of the message, so lexing is linear in the message length and a 1,200-section message renders in 22.4 ms instead of 229.7 ms.
+- `Markdown` skips marked's setext-heading rule when no `=` or `-` underline comes before the next blank line, with identical tokens, so a 13,362-entry transcript renders in 240 ms instead of 320 ms, re-renders at a new width in 204 ms instead of 280 ms, and streaming an 8.6k-character paragraph over 360 frames costs 22 ms instead of 58 ms.
+
+### Fixed
+
+- `Container.clear()` releases the row arrays its discarded children last rendered instead of holding them until the next render.
 
 ## [1.5.4] - 2026-09-24
 

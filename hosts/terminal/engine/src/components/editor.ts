@@ -318,6 +318,19 @@ export function maxSegmentVisualCol(text: string, isLastSegment: boolean): numbe
 	return isLastSegment ? total : Math.max(0, total - lastWidth);
 }
 
+/** Whether `data` is a key that inserts a new line rather than submitting: Shift/Ctrl/Option+Enter in every encoding terminals send. */
+function isNewLineKey(data: string, kb: KeybindingsManager): boolean {
+	return (
+		(data.charCodeAt(0) === 10 && data.length > 1) || // Ctrl+Enter with modifiers
+		matchesKey(data, "ctrl+enter") || // Ctrl+Enter (Kitty/modifyOtherKeys, including lock bits/keypad Enter)
+		data === "\x1b\r" || // Option+Enter in some terminals (legacy)
+		data === "\x1b[13;2~" || // Shift+Enter in some terminals (legacy format)
+		kb.matches(data, "tui.input.newLine") || // Shift+Enter (Kitty protocol, handles lock bits)
+		(data.length > 1 && data.includes("\x1b") && data.includes("\r")) ||
+		isLoneLineFeed(data) // Shift+Enter from iTerm2 mapping
+	);
+}
+
 const DEFAULT_PAGE_SCROLL_LINES = 10;
 
 const MAX_UNDO_STACK = 100;
@@ -330,8 +343,82 @@ interface EditorState {
 
 interface LayoutLine {
 	text: string;
+	/** Visible width of `text`. */
+	width: number;
 	hasCursor: boolean;
 	cursorPos?: number;
+}
+
+/** A wrapped chunk with its visible width, measured once when its line is laid out. */
+interface SizedChunk extends TextChunk {
+	width: number;
+}
+
+/** A logical line's visible width and its chunks at one layout width: the line itself as one chunk when it fits. */
+interface LineLayout {
+	width: number;
+	chunks: SizedChunk[];
+}
+
+/** Stale layouts the per-line cache holds beyond the draft's own lines before it is pruned to them. */
+const LINE_LAYOUT_STALE_SLACK = 64;
+
+function layoutLogicalLine(line: string, width: number): LineLayout {
+	const lineWidth = visibleWidth(line);
+	if (lineWidth <= width) {
+		return { width: lineWidth, chunks: [{ text: line, startIndex: 0, endIndex: line.length, width: lineWidth }] };
+	}
+	return {
+		width: lineWidth,
+		chunks: wordWrapLine(line, width).map(chunk => ({ ...chunk, width: visibleWidth(chunk.text) })),
+	};
+}
+
+interface PromptGutter {
+	firstLine: string;
+	continuation: string;
+	width: number;
+}
+
+/** What every row of one `render` frame reads, resolved once per frame. */
+interface RowPaint {
+	borderVisible: boolean;
+	paddingX: number;
+	promptGutter: PromptGutter | undefined;
+	contentWidth: number;
+	/** The hardware cursor marker when focused without a showing list, else empty. */
+	marker: string;
+	inlineHint: string | null;
+	hintStyle: (text: string) => string;
+	/** Framed chrome with no cursor overflow; empty in gutter mode. */
+	leftBorder: string;
+	rightBorder: string;
+	bottomLeft: string;
+	bottomRight: string;
+	lastRow: number;
+}
+
+/** A cursor row's text and width after the cursor (and any ghost hint) is placed in it. */
+interface PlacedCursor {
+	text: string;
+	width: number;
+	/** The user text around the cursor is already decorated. */
+	decorated: boolean;
+	/** Cells the end-of-line cursor glyph extends past the content width, taken out of the right chrome. */
+	overflow: number;
+}
+
+const DEFAULT_HINT_STYLE = (text: string): string => `\x1b[2m${text}\x1b[0m`;
+
+/**
+ * The dim ghost hint after an end-of-line cursor, one blank cell after `usedWidth` cells, truncated
+ * to the rest of the row. Empty when no hint cell fits.
+ */
+function ghostHint(hint: string, paint: RowPaint, usedWidth: number): { text: string; width: number } {
+	const availWidth = Math.max(0, paint.contentWidth - usedWidth - 1);
+	const truncated = truncateToWidth(hint, availWidth);
+	if (truncated.length === 0) return { text: "", width: 0 };
+	return { text: ` ${paint.hintStyle(truncated)}`, width: 1 + Math.min(visibleWidth(hint), availWidth) };
 }
 
 export interface EditorTheme {
@@ -381,11 +468,12 @@ export class Editor implements Component, Focusable, MouseRoutable {
 
 	// Store last layout width for cursor navigation
 	#lastLayoutWidth: number = 80;
-	// Word-wrap result cache shared by #layoutText, #buildVisualLineMap, and key
-	// handlers within a frame. Line text is a sound key (strings are immutable);
-	// cleared on width change and size-bounded so stale lines don't accumulate.
-	#wrapCache = new Map<string, TextChunk[]>();
-	#wrapCacheWidth = -1;
+	// Per-line layout (width and word-wrap chunks) shared by #layoutText and
+	// #buildVisualLineMap. Line text is a sound key (strings are immutable);
+	// cleared on width change and pruned to the draft's lines once edits leave
+	// LINE_LAYOUT_STALE_SLACK stale entries, so it holds O(lines) layouts.
+	#lineLayouts = new Map<string, LineLayout>();
+	#lineLayoutWidth = -1;
 	#paddingXOverride: number | undefined;
 	#maxHeight?: number;
 	#scrollOffset: number = 0;
@@ -694,10 +782,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		return Math.min(visibleWidth(this.#promptGutter), availableWidth);
 	}
 
-	#getPromptGutter(
-		width: number,
-		paddingX: number,
-	): { firstLine: string; continuation: string; width: number } | undefined {
+	#getPromptGutter(width: number, paddingX: number): PromptGutter | undefined {
 		if (this.#borderVisible || !this.#promptGutter) return undefined;
 		const gutterWidth = this.#getPromptGutterWidth(width, paddingX);
 		if (gutterWidth === 0) return undefined;
@@ -847,30 +932,18 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		const paddingX = this.#getEditorPaddingX();
 		const borderVisible = this.#borderVisible;
 		const promptGutter = this.#getPromptGutter(width, paddingX);
-		const contentAreaWidth = this.#getContentWidth(width, paddingX);
+		const contentWidth = this.#getContentWidth(width, paddingX);
 		const layoutWidth = this.#getLayoutWidth(width, paddingX);
 		this.#lastLayoutWidth = layoutWidth;
 
-		// Sharp box-drawing corners: the composer is the most prominent frame and
-		// the brand is sharp-edged everywhere (no rounded chrome).
-		const box = this.#theme.symbols.boxSharp;
-		const borderWidth = this.#getHorizontalChromeWidth(paddingX);
-		const topLeft = this.borderColor(`${box.topLeft}${box.horizontal.repeat(paddingX)}`);
-		const topRight = this.borderColor(`${box.horizontal.repeat(paddingX)}${box.topRight}`);
-		const bottomLeft = this.borderColor(`${box.bottomLeft}${box.horizontal}${padding(Math.max(0, paddingX - 1))}`);
-		const horizontal = this.borderColor(box.horizontal);
-
-		// Layout the text
 		const layoutLines = this.#layoutText(layoutWidth);
 		const visibleContentHeight = this.#getVisibleContentHeight(layoutLines.length);
 		this.#updateScrollOffset(layoutWidth, layoutLines, visibleContentHeight);
 		const visibleLayoutLines = layoutLines.slice(this.#scrollOffset, this.#scrollOffset + visibleContentHeight);
 
 		const result: string[] = [];
-
 		if (borderVisible) {
-			const topFillWidth = Math.max(0, width - borderWidth * 2);
-			result.push(topLeft + horizontal.repeat(topFillWidth) + topRight);
+			result.push(this.#topRule(width, paddingX));
 		}
 
 		// The click-to-caret map for this paint. In gutter mode the text starts
@@ -881,181 +954,9 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		this.#textColStart = borderVisible ? 1 + paddingX : (promptGutter?.width ?? 0);
 		this.#textScrollOffset = this.#scrollOffset;
 
-		// Render each layout line
-		// Emit hardware cursor marker only when focused and not showing autocomplete
-		const emitCursorMarker = this.focused && !this.#autocompleteState;
-		const lineContentWidth = contentAreaWidth;
-
-		// Compute inline hint text (dim ghost text after cursor)
-		const inlineHint = this.#getInlineHint();
-		const hintStyle = this.#theme.hintStyle ?? ((t: string) => `\x1b[2m${t}\x1b[0m`);
-
+		const paint = this.#rowPaint(paddingX, promptGutter, contentWidth, visibleLayoutLines.length - 1);
 		for (let visibleIndex = 0; visibleIndex < visibleLayoutLines.length; visibleIndex++) {
-			const layoutLine = visibleLayoutLines[visibleIndex]!;
-			let displayText = layoutLine.text;
-			let displayWidth = visibleWidth(layoutLine.text);
-			let cursorPaddingOverflow = 0;
-			let decorated = false;
-			const showPromptGutter = promptGutter !== undefined && visibleIndex === 0;
-			const gutterText =
-				promptGutter === undefined ? "" : showPromptGutter ? promptGutter.firstLine : promptGutter.continuation;
-
-			// Add cursor if this line has it
-			const hasCursor = layoutLine.hasCursor && layoutLine.cursorPos !== undefined;
-			const marker = emitCursorMarker ? CURSOR_MARKER : "";
-
-			if (!borderVisible && displayWidth > lineContentWidth) {
-				displayText = sliceByColumn(displayText, 0, lineContentWidth, true);
-				displayWidth = visibleWidth(displayText);
-			}
-
-			if (!borderVisible && lineContentWidth === 0) {
-				if (hasCursor && !this.#useTerminalCursor) {
-					const zeroWidthCursorBudget = visibleWidth(gutterText);
-					const zeroWidthCursorReplacement = this.cursorOverride
-						? { text: this.cursorOverride, width: this.cursorOverrideWidth ?? 1 }
-						: this.#getStyledInputCursor();
-					if (showPromptGutter && zeroWidthCursorBudget > 0) {
-						// Keep the leading prompt glyph visible when the gutter consumes the whole row.
-						let promptGlyph = "";
-						for (const seg of segmenter.segment(gutterText)) {
-							promptGlyph = seg.segment;
-							break;
-						}
-						const promptGlyphWidth = visibleWidth(promptGlyph);
-						const remainingCursorWidth = Math.max(0, zeroWidthCursorBudget - promptGlyphWidth);
-						if (remainingCursorWidth === 0) {
-							result.push(`\x1b[7m${promptGlyph}\x1b[0m${marker}`);
-						} else {
-							const widthLimitedCursor = this.#renderEndOfLineCursorAtWidthLimit(
-								"",
-								marker,
-								remainingCursorWidth,
-								zeroWidthCursorReplacement,
-							);
-							result.push(`${promptGlyph}${widthLimitedCursor.text}`);
-						}
-					} else {
-						const widthLimitedCursor = this.#renderEndOfLineCursorAtWidthLimit(
-							gutterText,
-							marker,
-							zeroWidthCursorBudget,
-							zeroWidthCursorReplacement,
-						);
-						result.push(widthLimitedCursor.text);
-					}
-				} else if (hasCursor && this.#useTerminalCursor) {
-					result.push(this.#renderTerminalCursorMarker(gutterText, marker, visibleWidth(gutterText)));
-				} else {
-					result.push(gutterText + (hasCursor ? marker : ""));
-				}
-				continue;
-			}
-
-			if (hasCursor && this.#useTerminalCursor) {
-				if (marker) {
-					const before = displayText.slice(0, layoutLine.cursorPos);
-					const after = displayText.slice(layoutLine.cursorPos);
-					if (after.length === 0 && inlineHint) {
-						// One blank cell between the cursor cell and the ghost hint: the
-						// terminal cursor sits on the gap, never on the hint's first
-						// character (it read as the cursor overlapping the placeholder).
-						const availWidth = Math.max(0, lineContentWidth - displayWidth - 1);
-						const truncatedHint = truncateToWidth(inlineHint, availWidth);
-						const hintText = truncatedHint.length > 0 ? ` ${hintStyle(truncatedHint)}` : "";
-						displayText = before + marker + hintText;
-						displayWidth += truncatedHint.length > 0 ? 1 + Math.min(visibleWidth(inlineHint), availWidth) : 0;
-					} else if (after.length === 0 && !borderVisible && displayWidth >= lineContentWidth) {
-						displayText = this.#renderTerminalCursorMarker(before, marker, lineContentWidth);
-					} else {
-						displayText = before + marker + after;
-					}
-				}
-			} else if (hasCursor && !this.#useTerminalCursor) {
-				const before = displayText.slice(0, layoutLine.cursorPos);
-				const after = displayText.slice(layoutLine.cursorPos);
-
-				if (after.length > 0) {
-					// Cursor is on a character (grapheme) - replace it with highlighted version
-					// Get the first grapheme from 'after'
-					const firstGraphemeChar = firstGrapheme(after);
-					const restAfter = after.slice(firstGraphemeChar.length);
-					const cursor = `\x1b[7m${firstGraphemeChar}\x1b[0m`;
-					// Decorate the plain text on each side of the cursor glyph. The reverse-video
-					// reset (\x1b[0m) ends in "m" (a word char), so a boundary match on restAfter
-					// would fail in the whole-line fallback below — decorate the segments here.
-					displayText = this.#decorate(before) + marker + cursor + this.#decorate(restAfter);
-					decorated = true;
-					// displayWidth stays the same - we're replacing, not adding
-				} else {
-					const { text: cursor, width: cursorWidth } = this.cursorOverride
-						? { text: this.cursorOverride, width: this.cursorOverrideWidth ?? 1 }
-						: this.#getStyledInputCursor();
-					if (!borderVisible && displayWidth + cursorWidth > lineContentWidth) {
-						const widthLimitedCursor = this.#renderEndOfLineCursorAtWidthLimit(
-							before,
-							marker,
-							lineContentWidth,
-							this.cursorOverride ? { text: cursor, width: cursorWidth } : undefined,
-						);
-						displayText = widthLimitedCursor.text;
-						displayWidth = widthLimitedCursor.width;
-					} else if (inlineHint) {
-						const availWidth = Math.max(0, lineContentWidth - displayWidth - cursorWidth - 1);
-						const truncatedHint = truncateToWidth(inlineHint, availWidth);
-						const hintText = truncatedHint.length > 0 ? ` ${hintStyle(truncatedHint)}` : "";
-						displayText = before + marker + cursor + hintText;
-						displayWidth +=
-							cursorWidth + (truncatedHint.length > 0 ? 1 + Math.min(visibleWidth(inlineHint), availWidth) : 0);
-					} else {
-						displayText = before + marker + cursor;
-						displayWidth += cursorWidth;
-					}
-					if (!this.cursorOverride && displayWidth > lineContentWidth && paddingX > 0) {
-						cursorPaddingOverflow = displayWidth - lineContentWidth;
-					}
-				}
-			}
-
-			// No cursor on this line, or a branch that left the user text intact: decorate
-			// the whole line. `#decorate` splits around CURSOR_MARKER so a keyword glued to
-			// the cursor still satisfies its right-boundary lookahead.
-			if (!decorated) {
-				displayText = this.#decorate(displayText);
-			}
-			if (!hasCursor) {
-				displayWidth = visibleWidth(displayText);
-				if (displayWidth > lineContentWidth) {
-					displayText = truncateToWidth(displayText, lineContentWidth);
-					displayWidth = visibleWidth(displayText);
-				}
-			}
-
-			const linePad = padding(Math.max(0, lineContentWidth - displayWidth));
-
-			if (!borderVisible) {
-				result.push(gutterText + displayText + linePad);
-				continue;
-			}
-
-			// All lines have consistent borders based on padding. When the end-of-line cursor
-			// glyph (or a wide trailing grapheme) extends past `lineContentWidth`, shrink the
-			// right chrome by the exact overflow count: drop padding spaces first, then the
-			// trailing `─`, but never the corner/vertical bar itself.
-			const isLastLine = visibleIndex === visibleLayoutLines.length - 1;
-			const rightChromeCells = Math.max(1, paddingX + 1 - cursorPaddingOverflow);
-			if (isLastLine) {
-				const rightPad = Math.max(0, rightChromeCells - 2);
-				const includeHorizontal = rightChromeCells >= 2;
-				const bottomRightAdjusted = this.borderColor(
-					`${padding(rightPad)}${includeHorizontal ? box.horizontal : ""}${box.bottomRight}`,
-				);
-				result.push(`${bottomLeft}${displayText}${linePad}${bottomRightAdjusted}`);
-			} else {
-				const leftBorder = this.borderColor(`${box.vertical}${padding(paddingX)}`);
-				const rightBorder = this.borderColor(`${padding(Math.max(0, rightChromeCells - 1))}${box.vertical}`);
-				result.push(leftBorder + displayText + linePad + rightBorder);
-			}
+			result.push(this.#renderRow(visibleLayoutLines[visibleIndex]!, visibleIndex, paint));
 		}
 
 		// The quiet card: paint the tonal ground under every input row (gutter
@@ -1084,6 +985,207 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		}
 
 		return result;
+	}
+
+	/** The framed composer's top rule. Sharp box-drawing corners: the brand is sharp-edged everywhere (no rounded chrome). */
+	#topRule(width: number, paddingX: number): string {
+		const box = this.#theme.symbols.boxSharp;
+		const topLeft = this.borderColor(`${box.topLeft}${box.horizontal.repeat(paddingX)}`);
+		const topRight = this.borderColor(`${box.horizontal.repeat(paddingX)}${box.topRight}`);
+		const topFillWidth = Math.max(0, width - this.#getHorizontalChromeWidth(paddingX) * 2);
+		return topLeft + this.borderColor(box.horizontal).repeat(topFillWidth) + topRight;
+	}
+
+	#rowPaint(
+		paddingX: number,
+		promptGutter: PromptGutter | undefined,
+		contentWidth: number,
+		lastRow: number,
+	): RowPaint {
+		const borderVisible = this.#borderVisible;
+		const box = this.#theme.symbols.boxSharp;
+		return {
+			borderVisible,
+			paddingX,
+			promptGutter,
+			contentWidth,
+			// Emit hardware cursor marker only when focused and not showing autocomplete
+			marker: this.focused && !this.#autocompleteState ? CURSOR_MARKER : "",
+			// Inline hint text (dim ghost text after cursor)
+			inlineHint: this.#getInlineHint(),
+			hintStyle: this.#theme.hintStyle ?? DEFAULT_HINT_STYLE,
+			leftBorder: borderVisible ? this.borderColor(`${box.vertical}${padding(paddingX)}`) : "",
+			rightBorder: borderVisible ? this.#rightChrome(paddingX, 0) : "",
+			bottomLeft: borderVisible
+				? this.borderColor(`${box.bottomLeft}${box.horizontal}${padding(Math.max(0, paddingX - 1))}`)
+				: "",
+			bottomRight: borderVisible ? this.#bottomRightChrome(paddingX, 0) : "",
+			lastRow,
+		};
+	}
+
+	/**
+	 * Right chrome of a framed row. When the end-of-line cursor glyph (or a wide trailing grapheme)
+	 * extends past the content width, it shrinks by the exact overflow: padding spaces first, never
+	 * the vertical bar itself.
+	 */
+	#rightChrome(paddingX: number, overflow: number): string {
+		const rightChromeCells = Math.max(1, paddingX + 1 - overflow);
+		return this.borderColor(`${padding(Math.max(0, rightChromeCells - 1))}${this.#theme.symbols.boxSharp.vertical}`);
+	}
+
+	/** Bottom-right chrome of a framed row: drops padding spaces, then the trailing `─`, never the corner. */
+	#bottomRightChrome(paddingX: number, overflow: number): string {
+		const box = this.#theme.symbols.boxSharp;
+		const rightChromeCells = Math.max(1, paddingX + 1 - overflow);
+		const rightPad = Math.max(0, rightChromeCells - 2);
+		return this.borderColor(`${padding(rightPad)}${rightChromeCells >= 2 ? box.horizontal : ""}${box.bottomRight}`);
+	}
+
+	#renderRow(row: LayoutLine, index: number, paint: RowPaint): string {
+		const { borderVisible, promptGutter, contentWidth } = paint;
+		const showPromptGutter = promptGutter !== undefined && index === 0;
+		const gutterText =
+			promptGutter === undefined ? "" : showPromptGutter ? promptGutter.firstLine : promptGutter.continuation;
+		const hasCursor = row.hasCursor && row.cursorPos !== undefined;
+		if (!borderVisible && contentWidth === 0) {
+			return hasCursor ? this.#renderZeroWidthCursorRow(gutterText, showPromptGutter, paint.marker) : gutterText;
+		}
+
+		let text = row.text;
+		let width = row.width;
+		if (!borderVisible && width > contentWidth) {
+			text = sliceByColumn(text, 0, contentWidth, true);
+			width = visibleWidth(text);
+		}
+
+		let decorated = false;
+		let overflow = 0;
+		if (hasCursor) {
+			const placed = this.#useTerminalCursor
+				? this.#placeTerminalCursor(text, width, row.cursorPos!, paint)
+				: this.#placeSoftwareCursor(text, width, row.cursorPos!, paint);
+			text = placed.text;
+			width = placed.width;
+			decorated = placed.decorated;
+			overflow = placed.overflow;
+		}
+
+		// No cursor on this line, or a branch that left the user text intact: decorate
+		// the whole line. `#decorate` splits around CURSOR_MARKER so a keyword glued to
+		// the cursor still satisfies its right-boundary lookahead.
+		if (!decorated) {
+			const plain = text;
+			text = this.#decorate(text);
+			// A decorator may change what is drawn (the queue header replaces `->`), so a
+			// decorated cursor-free row is measured again; an undecorated one kept its width.
+			if (!hasCursor && text !== plain) width = visibleWidth(text);
+		}
+		if (!hasCursor && width > contentWidth) {
+			text = truncateToWidth(text, contentWidth);
+			width = visibleWidth(text);
+		}
+
+		const linePad = padding(Math.max(0, contentWidth - width));
+		if (!borderVisible) {
+			return gutterText + text + linePad;
+		}
+		if (index === paint.lastRow) {
+			const bottomRight = overflow === 0 ? paint.bottomRight : this.#bottomRightChrome(paint.paddingX, overflow);
+			return `${paint.bottomLeft}${text}${linePad}${bottomRight}`;
+		}
+		const rightBorder = overflow === 0 ? paint.rightBorder : this.#rightChrome(paint.paddingX, overflow);
+		return paint.leftBorder + text + linePad + rightBorder;
+	}
+
+	/** The cursor row of a gutter-mode composer whose gutter consumes every column. */
+	#renderZeroWidthCursorRow(gutterText: string, showPromptGutter: boolean, marker: string): string {
+		const budget = visibleWidth(gutterText);
+		if (this.#useTerminalCursor) {
+			return this.#renderTerminalCursorMarker(gutterText, marker, budget);
+		}
+		const replacement = this.cursorOverride
+			? { text: this.cursorOverride, width: this.cursorOverrideWidth ?? 1 }
+			: this.#getStyledInputCursor();
+		if (!showPromptGutter || budget === 0) {
+			return this.#renderEndOfLineCursorAtWidthLimit(gutterText, marker, budget, replacement).text;
+		}
+		// Keep the leading prompt glyph visible when the gutter consumes the whole row.
+		const promptGlyph = firstGrapheme(gutterText);
+		const remainingCursorWidth = Math.max(0, budget - visibleWidth(promptGlyph));
+		if (remainingCursorWidth === 0) {
+			return `\x1b[7m${promptGlyph}\x1b[0m${marker}`;
+		}
+		return `${promptGlyph}${this.#renderEndOfLineCursorAtWidthLimit("", marker, remainingCursorWidth, replacement).text}`;
+	}
+
+	/** Place the hardware cursor marker, with the ghost hint one blank cell after an end-of-line cursor. */
+	#placeTerminalCursor(text: string, width: number, cursorPos: number, paint: RowPaint): PlacedCursor {
+		const { marker, inlineHint } = paint;
+		if (!marker) return { text, width, decorated: false, overflow: 0 };
+		const before = text.slice(0, cursorPos);
+		const after = text.slice(cursorPos);
+		if (after.length === 0 && inlineHint) {
+			// One blank cell between the cursor cell and the ghost hint: the
+			// terminal cursor sits on the gap, never on the hint's first
+			// character (it read as the cursor overlapping the placeholder).
+			const hint = ghostHint(inlineHint, paint, width);
+			return { text: before + marker + hint.text, width: width + hint.width, decorated: false, overflow: 0 };
+		}
+		if (after.length === 0 && !paint.borderVisible && width >= paint.contentWidth) {
+			return {
+				text: this.#renderTerminalCursorMarker(before, marker, paint.contentWidth),
+				width,
+				decorated: false,
+				overflow: 0,
+			};
+		}
+		return { text: before + marker + after, width, decorated: false, overflow: 0 };
+	}
+
+	/** Draw the software cursor: reverse video over the grapheme under it, or a cursor glyph at end of line. */
+	#placeSoftwareCursor(text: string, width: number, cursorPos: number, paint: RowPaint): PlacedCursor {
+		const { marker, contentWidth } = paint;
+		const before = text.slice(0, cursorPos);
+		const after = text.slice(cursorPos);
+		if (after.length > 0) {
+			// Cursor is on a character (grapheme) - replace it with highlighted version
+			const firstGraphemeChar = firstGrapheme(after);
+			const cursor = `\x1b[7m${firstGraphemeChar}\x1b[0m`;
+			// Decorate the plain text on each side of the cursor glyph. The reverse-video
+			// reset (\x1b[0m) ends in "m" (a word char), so a boundary match on the rest
+			// would fail in the whole-line decoration — decorate the segments here.
+			// Width stays the same: the glyph is replaced, not added.
+			const decoratedText =
+				this.#decorate(before) + marker + cursor + this.#decorate(after.slice(firstGraphemeChar.length));
+			return { text: decoratedText, width, decorated: true, overflow: 0 };
+		}
+
+		const { text: cursor, width: cursorWidth } = this.cursorOverride
+			? { text: this.cursorOverride, width: this.cursorOverrideWidth ?? 1 }
+			: this.#getStyledInputCursor();
+		let placedText: string;
+		let placedWidth: number;
+		if (!paint.borderVisible && width + cursorWidth > contentWidth) {
+			const widthLimitedCursor = this.#renderEndOfLineCursorAtWidthLimit(
+				before,
+				marker,
+				contentWidth,
+				this.cursorOverride ? { text: cursor, width: cursorWidth } : undefined,
+			);
+			placedText = widthLimitedCursor.text;
+			placedWidth = widthLimitedCursor.width;
+		} else if (paint.inlineHint) {
+			const hint = ghostHint(paint.inlineHint, paint, width + cursorWidth);
+			placedText = before + marker + cursor + hint.text;
+			placedWidth = width + cursorWidth + hint.width;
+		} else {
+			placedText = before + marker + cursor;
+			placedWidth = width + cursorWidth;
+		}
+		const overflow =
+			!this.cursorOverride && placedWidth > contentWidth && paint.paddingX > 0 ? placedWidth - contentWidth : 0;
+		return { text: placedText, width: placedWidth, decorated: false, overflow };
 	}
 
 	handleInput(data: string): void {
@@ -1116,8 +1218,6 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	#handleKeyInput(data: string): void {
 		const kb = getKeybindings();
 
-		// Handle special key combinations first
-
 		// Ctrl+C is reserved by parent components for app-level handling.
 		// Do not consume arbitrary user-bound "copy" keys here, since the editor
 		// has no copy implementation and would make those keys disappear.
@@ -1125,68 +1225,19 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			return;
 		}
 
-		// Undo
 		if (kb.matches(data, "tui.editor.undo")) {
 			this.#applyUndo();
 			return;
 		}
 
-		// Handle autocomplete special keys first (but don't block other input)
-		if (this.#autocompleteState && this.#autocompleteList) {
-			// Escape - cancel autocomplete
-			if (kb.matches(data, "tui.select.cancel")) {
-				this.#cancelAutocomplete(true);
-				return;
-			}
-			// Let the autocomplete list handle navigation and selection
-			else if (
-				kb.matches(data, "tui.select.up") ||
-				kb.matches(data, "tui.select.down") ||
-				kb.matches(data, "tui.select.pageUp") ||
-				kb.matches(data, "tui.select.pageDown") ||
-				kb.matches(data, "tui.input.submit") ||
-				isLoneLineFeed(data) ||
-				kb.matches(data, "tui.input.tab")
-			) {
-				// Only pass navigation keys to the list, not Enter/Tab (we handle those directly)
-				if (
-					kb.matches(data, "tui.select.up") ||
-					kb.matches(data, "tui.select.down") ||
-					kb.matches(data, "tui.select.pageUp") ||
-					kb.matches(data, "tui.select.pageDown")
-				) {
-					this.#autocompleteList.handleInput(data);
-					this.onAutocompleteUpdate?.();
-					return;
-				}
-
-				// If Tab was pressed, always apply the selection
-				if (kb.matches(data, "tui.input.tab")) {
-					this.#acceptAutocompleteSelection(this.#autocompleteList.getSelectedItem());
-					return;
-				}
-
-				// If Enter was pressed on autocomplete:
-				if (kb.matches(data, "tui.input.submit") || isLoneLineFeed(data)) {
-					const isSlash =
-						findLeadingSlashCommandStart(this.#autocompletePrefix) !== null && !this.#selectedCompletionIsPath();
-					const selected = this.#autocompleteList.getSelectedItem();
-					const currentLine = this.#state.lines[this.#state.cursorLine] ?? "";
-					const currentTextBeforeCursor = currentLine.slice(0, this.#state.cursorCol);
-					if (!this.#autocompletePrefixMatchesCursorText(currentTextBeforeCursor, selected)) {
-						this.#cancelAutocomplete();
-					} else {
-						if (selected) {
-							this.#applyAutocompleteSelection(selected, !isSlash);
-						} else {
-							this.#cancelAutocomplete();
-						}
-						if (!isSlash) return;
-					}
-				}
-			}
-			// For other keys (like regular typing), DON'T return here
-			// Let them fall through to normal character handling
+		// Autocomplete takes its navigation, Tab and Enter keys first; every other
+		// key (like regular typing) falls through to normal handling.
+		if (
+			this.#autocompleteState &&
+			this.#autocompleteList &&
+			this.#handleAutocompleteKey(data, kb, this.#autocompleteList)
+		) {
+			return;
 		}
 
 		// Tab key - context-aware completion (but not when already autocompleting)
@@ -1195,7 +1246,69 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			return;
 		}
 
-		// Continue with rest of input handling
+		if (this.#handleKillOrLineKey(data) || this.#handleEnterKey(data, kb) || this.#handleCursorKey(data, kb)) {
+			return;
+		}
+
+		// Printable keystrokes, including Kitty CSI-u text-producing sequences.
+		const printableText = extractPrintableText(data);
+		if (printableText) {
+			this.#insertCharacter(printableText);
+		}
+	}
+
+	/** Handle a key while the autocomplete list is showing; false lets the key fall through to normal handling. */
+	#handleAutocompleteKey(data: string, kb: KeybindingsManager, list: SelectList): boolean {
+		if (kb.matches(data, "tui.select.cancel")) {
+			this.#cancelAutocomplete(true);
+			return true;
+		}
+		// Only navigation keys go to the list; Tab and Enter are applied here.
+		if (
+			kb.matches(data, "tui.select.up") ||
+			kb.matches(data, "tui.select.down") ||
+			kb.matches(data, "tui.select.pageUp") ||
+			kb.matches(data, "tui.select.pageDown")
+		) {
+			list.handleInput(data);
+			this.onAutocompleteUpdate?.();
+			return true;
+		}
+		// Tab always applies the selection.
+		if (kb.matches(data, "tui.input.tab")) {
+			this.#acceptAutocompleteSelection(list.getSelectedItem());
+			return true;
+		}
+		if (kb.matches(data, "tui.input.submit") || isLoneLineFeed(data)) {
+			return this.#applyAutocompleteOnEnter(list);
+		}
+		return false;
+	}
+
+	/**
+	 * Enter on a showing list applies its selection. A slash command then falls through to submit it, and
+	 * a selection whose prefix no longer matches the text before the cursor is cancelled and falls through.
+	 */
+	#applyAutocompleteOnEnter(list: SelectList): boolean {
+		const isSlash =
+			findLeadingSlashCommandStart(this.#autocompletePrefix) !== null && !this.#selectedCompletionIsPath();
+		const selected = list.getSelectedItem();
+		const currentLine = this.#state.lines[this.#state.cursorLine] ?? "";
+		const currentTextBeforeCursor = currentLine.slice(0, this.#state.cursorCol);
+		if (!this.#autocompletePrefixMatchesCursorText(currentTextBeforeCursor, selected)) {
+			this.#cancelAutocomplete();
+			return false;
+		}
+		if (selected) {
+			this.#applyAutocompleteSelection(selected, !isSlash);
+		} else {
+			this.#cancelAutocomplete();
+		}
+		return !isSlash;
+	}
+
+	/** Emacs-style kill, yank and line-edge keys, and Alt+Enter; false when `data` is none of them. */
+	#handleKillOrLineKey(data: string): boolean {
 		// Ctrl+K - Delete to end of line
 		if (matchesKey(data, "ctrl+k")) {
 			this.#deleteLineSpan("to-end");
@@ -1245,67 +1358,68 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			} else {
 				this.#addNewLine();
 			}
+		} else {
+			return false;
 		}
-		// New line
-		else if (
-			(data.charCodeAt(0) === 10 && data.length > 1) || // Ctrl+Enter with modifiers
-			matchesKey(data, "ctrl+enter") || // Ctrl+Enter (Kitty/modifyOtherKeys, including lock bits/keypad Enter)
-			data === "\x1b\r" || // Option+Enter in some terminals (legacy)
-			data === "\x1b[13;2~" || // Shift+Enter in some terminals (legacy format)
-			kb.matches(data, "tui.input.newLine") || // Shift+Enter (Kitty protocol, handles lock bits)
-			(data.length > 1 && data.includes("\x1b") && data.includes("\r")) ||
-			isLoneLineFeed(data) // Shift+Enter from iTerm2 mapping
-		) {
+		return true;
+	}
+
+	/** A new-line key inserts a line (or submits after a trailing backslash); plain Enter submits. */
+	#handleEnterKey(data: string, kb: KeybindingsManager): boolean {
+		if (isNewLineKey(data, kb)) {
 			if (this.#shouldSubmitOnBackslashEnter(data, kb)) {
 				this.#handleBackspace();
 				this.#submitValue();
-				return;
+				return true;
 			}
 			this.#addNewLine();
+			return true;
 		}
 		// Plain Enter - submit (handles both legacy \r and Kitty protocol with lock bits)
-		else if (kb.matches(data, "tui.input.submit") || isLoneLineFeed(data)) {
-			// If submit is disabled, do nothing
-			if (this.disableSubmit) {
-				return;
-			}
+		if (!kb.matches(data, "tui.input.submit") && !isLoneLineFeed(data)) return false;
+		if (this.disableSubmit) return true;
+		// Synchronous slash command completion for the race condition where
+		// async autocomplete hasn't resolved yet (user types /q quickly + Enter).
+		// Match the existing selected-item behavior when autocomplete IS showing.
+		if (!this.#autocompleteState) this.#completeSlashCommandSync();
+		this.#submitValue();
+		return true;
+	}
 
-			// Synchronous slash command completion for the race condition where
-			// async autocomplete hasn't resolved yet (user types /q quickly + Enter).
-			// Match the existing selected-item behavior when autocomplete IS showing.
-			if (!this.#autocompleteState) {
-				const currentLine = this.#state.lines[this.#state.cursorLine] ?? "";
-				const textBeforeCursor = currentLine.slice(0, this.#state.cursorCol);
-				if (
-					findLeadingSlashCommandStart(textBeforeCursor) !== null &&
-					this.#isInSubmittedSlashCommandContext() &&
-					this.#autocompleteProvider?.trySyncSlashCompletion
-				) {
-					const syncResult = this.#autocompleteProvider.trySyncSlashCompletion(textBeforeCursor);
-					if (syncResult && syncResult.items.length > 0) {
-						// Invalidate any pending async autocomplete so its stale results are discarded
-						this.#autocompleteRequestId += 1;
-						// Apply the best match and submit the completed command
-						const selected = syncResult.items[0]!;
-						const result = this.#autocompleteProvider.applyCompletion(
-							this.#state.lines,
-							this.#state.cursorLine,
-							this.#state.cursorCol,
-							selected,
-							syncResult.prefix,
-						);
-						this.#state.lines = result.lines;
-						this.#state.cursorLine = result.cursorLine;
-						this.#setCursorCol(result.cursorCol);
-						result.onApplied?.();
-					}
-				}
-			}
-
-			this.#submitValue();
+	/** Apply the provider's best synchronous completion of a slash command being submitted before its async list arrived. */
+	#completeSlashCommandSync(): void {
+		const currentLine = this.#state.lines[this.#state.cursorLine] ?? "";
+		const textBeforeCursor = currentLine.slice(0, this.#state.cursorCol);
+		if (
+			findLeadingSlashCommandStart(textBeforeCursor) === null ||
+			!this.#isInSubmittedSlashCommandContext() ||
+			!this.#autocompleteProvider?.trySyncSlashCompletion
+		) {
+			return;
 		}
+		const syncResult = this.#autocompleteProvider.trySyncSlashCompletion(textBeforeCursor);
+		if (!syncResult || syncResult.items.length === 0) return;
+		// Invalidate any pending async autocomplete so its stale results are discarded
+		this.#autocompleteRequestId += 1;
+		// Apply the best match and submit the completed command
+		const selected = syncResult.items[0]!;
+		const result = this.#autocompleteProvider.applyCompletion(
+			this.#state.lines,
+			this.#state.cursorLine,
+			this.#state.cursorCol,
+			selected,
+			syncResult.prefix,
+		);
+		this.#state.lines = result.lines;
+		this.#state.cursorLine = result.cursorLine;
+		this.#setCursorCol(result.cursorCol);
+		result.onApplied?.();
+	}
+
+	/** Deletion, cursor, paging, Shift+Space and character-jump keys; false when `data` is none of them. */
+	#handleCursorKey(data: string, kb: KeybindingsManager): boolean {
 		// Backspace (including Shift+Backspace)
-		else if (kb.matches(data, "tui.editor.deleteCharBackward") || matchesKey(data, "shift+backspace")) {
+		if (kb.matches(data, "tui.editor.deleteCharBackward") || matchesKey(data, "shift+backspace")) {
 			this.#handleBackspace();
 		}
 		// Line navigation shortcuts (Home/End keys)
@@ -1337,32 +1451,12 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		}
 		// Arrow keys
 		else if (kb.matches(data, "tui.editor.cursorUp")) {
-			// Up - history navigation or cursor movement
-			if (this.#isEditorEmpty()) {
-				this.#navigateHistory(-1); // Start browsing history
-			} else if (this.#historyIndex > -1 && this.#isOnFirstVisualLine()) {
-				this.#navigateHistory(-1); // Navigate to older history entry
-			} else if (this.#isOnFirstVisualLine()) {
-				// Already at top - jump to start of line
-				this.#moveToLineStart();
-			} else {
-				this.#moveCursor(-1, 0); // Cursor movement (within text or history entry)
-			}
+			this.#handleUpKey();
 		} else if (kb.matches(data, "tui.editor.cursorDown")) {
-			// Down - history navigation or cursor movement
-			if (this.#historyIndex > -1 && this.#isOnLastVisualLine()) {
-				this.#navigateHistory(1); // Navigate to newer history entry or clear
-			} else if (this.#isOnLastVisualLine()) {
-				// Already at bottom - jump to end of line
-				this.#moveToLineEnd();
-			} else {
-				this.#moveCursor(1, 0); // Cursor movement (within text or history entry)
-			}
+			this.#handleDownKey();
 		} else if (kb.matches(data, "tui.editor.cursorRight")) {
-			// Right
 			this.#moveCursor(0, 1);
 		} else if (kb.matches(data, "tui.editor.cursorLeft")) {
-			// Left
 			this.#moveCursor(0, -1);
 		}
 		// Shift+Space - insert regular space (Kitty protocol sends escape sequence)
@@ -1374,116 +1468,109 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			this.#jumpMode = "forward";
 		} else if (kb.matches(data, "tui.editor.jumpBackward")) {
 			this.#jumpMode = "backward";
+		} else {
+			return false;
 		}
-		// Printable keystrokes, including Kitty CSI-u text-producing sequences.
-		else {
-			const printableText = extractPrintableText(data);
-			if (printableText) {
-				this.#insertCharacter(printableText);
-			}
+		return true;
+	}
+
+	/** Up: browse history from an empty draft or the first visual line, else move the cursor up. */
+	#handleUpKey(): void {
+		if (this.#isEditorEmpty()) {
+			this.#navigateHistory(-1); // Start browsing history
+		} else if (this.#historyIndex > -1 && this.#isOnFirstVisualLine()) {
+			this.#navigateHistory(-1); // Navigate to older history entry
+		} else if (this.#isOnFirstVisualLine()) {
+			// Already at top - jump to start of line
+			this.#moveToLineStart();
+		} else {
+			this.#moveCursor(-1, 0); // Cursor movement (within text or history entry)
 		}
 	}
 
-	#wrapLine(line: string, width: number): TextChunk[] {
-		if (width !== this.#wrapCacheWidth) {
-			this.#wrapCache.clear();
-			this.#wrapCacheWidth = width;
+	/** Down: step toward newer history from the last visual line while browsing, else move the cursor down. */
+	#handleDownKey(): void {
+		if (this.#historyIndex > -1 && this.#isOnLastVisualLine()) {
+			this.#navigateHistory(1); // Navigate to newer history entry or clear
+		} else if (this.#isOnLastVisualLine()) {
+			// Already at bottom - jump to end of line
+			this.#moveToLineEnd();
+		} else {
+			this.#moveCursor(1, 0); // Cursor movement (within text or history entry)
 		}
-		let chunks = this.#wrapCache.get(line);
-		if (chunks === undefined) {
-			if (this.#wrapCache.size >= 256) {
-				this.#wrapCache.clear();
+	}
+
+	/** The line's width and wrapped chunks at `width`, measured once per line and width. */
+	#lineLayout(line: string, width: number): LineLayout {
+		if (width !== this.#lineLayoutWidth) {
+			this.#lineLayouts.clear();
+			this.#lineLayoutWidth = width;
+		}
+		let layout = this.#lineLayouts.get(line);
+		if (layout === undefined) {
+			if (this.#lineLayouts.size >= this.#state.lines.length + LINE_LAYOUT_STALE_SLACK) {
+				this.#pruneLineLayouts();
 			}
-			chunks = wordWrapLine(line, width);
-			this.#wrapCache.set(line, chunks);
+			layout = layoutLogicalLine(line, width);
+			this.#lineLayouts.set(line, layout);
 		}
-		return chunks;
+		return layout;
+	}
+
+	/** Keep only the layouts of the draft's current lines. */
+	#pruneLineLayouts(): void {
+		const live = new Map<string, LineLayout>();
+		for (const line of this.#state.lines) {
+			const layout = this.#lineLayouts.get(line);
+			if (layout !== undefined) live.set(line, layout);
+		}
+		this.#lineLayouts = live;
 	}
 
 	#layoutText(contentWidth: number): LayoutLine[] {
-		const layoutLines: LayoutLine[] = [];
-
-		if (this.#state.lines.length === 0 || (this.#state.lines.length === 1 && this.#state.lines[0] === "")) {
+		const lines = this.#state.lines;
+		if (lines.length === 0 || (lines.length === 1 && lines[0] === "")) {
 			// Empty editor
-			layoutLines.push({
-				text: "",
-				hasCursor: true,
-				cursorPos: 0,
-			});
-			return layoutLines;
+			return [{ text: "", width: 0, hasCursor: true, cursorPos: 0 }];
 		}
 
-		// Process each logical line
-		for (let i = 0; i < this.#state.lines.length; i++) {
-			const line = this.#state.lines[i] || "";
-			const isCurrentLine = i === this.#state.cursorLine;
-			const lineVisibleWidth = visibleWidth(line);
-
-			if (lineVisibleWidth <= contentWidth) {
+		const layoutLines: LayoutLine[] = [];
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i] || "";
+			const layout = this.#lineLayout(line, contentWidth);
+			if (i !== this.#state.cursorLine) {
+				for (const chunk of layout.chunks) {
+					layoutLines.push({ text: chunk.text, width: chunk.width, hasCursor: false });
+				}
+			} else if (layout.width <= contentWidth) {
 				// Line fits in one layout line
-				if (isCurrentLine) {
-					layoutLines.push({
-						text: line,
-						hasCursor: true,
-						cursorPos: this.#state.cursorCol,
-					});
-				} else {
-					layoutLines.push({
-						text: line,
-						hasCursor: false,
-					});
-				}
+				layoutLines.push({ text: line, width: layout.width, hasCursor: true, cursorPos: this.#state.cursorCol });
 			} else {
-				// Line needs wrapping - use word-aware wrapping
-				const chunks = this.#wrapLine(line, contentWidth);
-
-				for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-					const chunk = chunks[chunkIndex];
-					if (!chunk) continue;
-
-					const cursorPos = this.#state.cursorCol;
-					const isLastChunk = chunkIndex === chunks.length - 1;
-
-					// Determine if cursor is in this chunk
-					// For word-wrapped chunks, we need to handle the case where
-					// cursor might be in trimmed whitespace at end of chunk
-					let hasCursorInChunk = false;
-					let adjustedCursorPos = 0;
-
-					if (isCurrentLine) {
-						// The first chunk owns any leading whitespace the wrapper skipped,
-						// so a cursor inside it still maps to a layout line.
-						const chunkStart = chunkIndex === 0 ? 0 : chunk.startIndex;
-						if (isLastChunk) {
-							// Last chunk: cursor belongs here if >= startIndex
-							hasCursorInChunk = cursorPos >= chunkStart;
-						} else {
-							// Non-last chunk: cursor belongs here if in range [startIndex, endIndex)
-							hasCursorInChunk = cursorPos >= chunkStart && cursorPos < chunk.endIndex;
-						}
-						if (hasCursorInChunk) {
-							// Clamp into the displayed text (cursor may sit in trimmed/skipped whitespace)
-							adjustedCursorPos = clampLow(cursorPos - chunk.startIndex, 0, chunk.text.length);
-						}
-					}
-
-					if (hasCursorInChunk) {
-						layoutLines.push({
-							text: chunk.text,
-							hasCursor: true,
-							cursorPos: adjustedCursorPos,
-						});
-					} else {
-						layoutLines.push({
-							text: chunk.text,
-							hasCursor: false,
-						});
-					}
-				}
+				this.#pushCursorChunks(layout.chunks, layoutLines);
 			}
 		}
-
 		return layoutLines;
+	}
+
+	/** Push the wrapped cursor line's chunks, marking the one the cursor falls in. */
+	#pushCursorChunks(chunks: readonly SizedChunk[], layoutLines: LayoutLine[]): void {
+		const cursorPos = this.#state.cursorCol;
+		for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+			const chunk = chunks[chunkIndex]!;
+			// The first chunk owns any leading whitespace the wrapper skipped, so a
+			// cursor inside it still maps to a layout line. The last chunk takes every
+			// cursor from its start on; any other ends before its endIndex (the cursor
+			// may sit in the trimmed whitespace at a chunk's end).
+			const chunkStart = chunkIndex === 0 ? 0 : chunk.startIndex;
+			const isLastChunk = chunkIndex === chunks.length - 1;
+			if (cursorPos >= chunkStart && (isLastChunk || cursorPos < chunk.endIndex)) {
+				// Clamp into the displayed text (cursor may sit in trimmed/skipped whitespace)
+				const cursorInChunk = clampLow(cursorPos - chunk.startIndex, 0, chunk.text.length);
+				layoutLines.push({ text: chunk.text, width: chunk.width, hasCursor: true, cursorPos: cursorInChunk });
+			} else {
+				layoutLines.push({ text: chunk.text, width: chunk.width, hasCursor: false });
+			}
+		}
 	}
 
 	getText(): string {
@@ -2558,22 +2645,8 @@ export class Editor implements Component, Focusable, MouseRoutable {
 
 		for (let i = 0; i < this.#state.lines.length; i++) {
 			const line = this.#state.lines[i] || "";
-			const lineVisWidth = visibleWidth(line);
-			if (line.length === 0) {
-				// Empty line still takes one visual line
-				visualLines.push({ logicalLine: i, startCol: 0, length: 0 });
-			} else if (lineVisWidth <= width) {
-				visualLines.push({ logicalLine: i, startCol: 0, length: line.length });
-			} else {
-				// Line needs wrapping - use word-aware wrapping
-				const chunks = this.#wrapLine(line, width);
-				for (const chunk of chunks) {
-					visualLines.push({
-						logicalLine: i,
-						startCol: chunk.startIndex,
-						length: chunk.endIndex - chunk.startIndex,
-					});
-				}
+			for (const chunk of this.#lineLayout(line, width).chunks) {
+				visualLines.push({ logicalLine: i, startCol: chunk.startIndex, length: chunk.endIndex - chunk.startIndex });
 			}
 		}
 

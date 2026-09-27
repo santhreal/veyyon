@@ -199,11 +199,24 @@ const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
  * 2281) with the MCP startup that moved into `session/factory-mcp.ts`. It imports modules
  * `sdk.ts` already reached, so the launch runs no new code.
  *
+ * 1572 to 1577: `session/startup-extensions.ts`, `session/startup-background.ts`,
+ * `session/startup-records.ts`, `session/async-jobs.ts` and `secrets/request-leases.ts`, the
+ * extension and custom-command load, the Codex prewarm and language-server warmup, the argot arm
+ * and start records, the owned background-job manager and the secret lease each request in flight
+ * was admitted under, split out of `sdk.ts` (2269 lines to 1768) with the custom tools and the
+ * tool registry that moved into `session/factory-tools.ts`. They import modules `sdk.ts` already
+ * reached, so the launch runs no new code.
+ *
+ * 1577 to 1578: `hosts/terminal/engine/src/core/paint-sequences.ts`, the escape sequence each
+ * paint shape writes, split out of `core/tui.ts`. It imports `@veyyon/utils/deccara`,
+ * `@veyyon/utils/math` and engine modules the root already reached, so the launch runs no new
+ * code. `core/frame-plan.ts`, split out with it, is imported by type only and is not on the graph.
+ *
  * A ratchet, not a target: nothing breaks when it grows, which is exactly why it is pinned. There
  * is no margin left on purpose — the next module on this graph is a barrel someone reached for
  * and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1572;
+const LAUNCH_REACH_CEILING = 1578;
 
 /**
  * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The

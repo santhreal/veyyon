@@ -17,7 +17,6 @@
  */
 import * as fs from "node:fs";
 import { performance } from "node:perf_hooks";
-import { planDeccaraFills } from "@veyyon/utils/deccara";
 import { getDebugLogPath } from "@veyyon/utils/dirs";
 import { $flag } from "@veyyon/utils/env";
 import { isKeyRelease, matchesKey } from "@veyyon/utils/keys";
@@ -58,6 +57,7 @@ import {
 } from "./component-types";
 import { Container } from "./container";
 import { HardwareCursorTracker, type HardwareCursorUpdate, relativeMoveY } from "./cursor";
+import type { AssembledWindow, FrameTransition, PrefixReconciliation, RenderIntent, WindowPlan } from "./frame-plan";
 import { DEFAULT_MAX_INLINE_IMAGES, ImageBudget } from "./image-budget";
 import { footerWantsPointer, pinnedFooterScreenBounds, routeFooterMouse } from "./mouse-routing";
 import {
@@ -67,6 +67,18 @@ import {
 	type OverlayOptions,
 	OverlayStack,
 } from "./overlay";
+import {
+	altScreenSequence,
+	chunkStillPainted,
+	firstChangedRow,
+	fullPaintReplay,
+	homeRewriteSequence,
+	lastChangedRow,
+	sameAltPaint,
+	scrollAppendSequence,
+	seamRewriteSequence,
+	windowDiffSequence,
+} from "./paint-sequences";
 import {
 	auditCommittedPrefix,
 	extractCursorMarkers,
@@ -80,8 +92,6 @@ import {
 	pathToDescendant,
 	prepareLine,
 	prepareLinesArray,
-	terminalLine,
-	truncateLargeConptyFrame,
 } from "./renderer";
 import {
 	ALT_SCROLL_OFF,
@@ -147,22 +157,6 @@ const DEFAULT_RENDER_SCHEDULER: RenderScheduler = {
 		};
 	},
 };
-
-/**
-
- * Render intent. `#doRender` classifies each frame, and the matching `#emit*`
- * method owns the bytes written and the state update.
- *
- * - `fullPaint`: gesture-driven replay — initial paint, session replacement,
- *   resize, resetDisplay. Rewrites the frame from home; destructive replaces
- *   clear native scrollback via ED3 without first blanking the viewport. The
- *   only ED3 callsite in the engine.
- * - `update`: ordinary frame. Commits the newly settled chunk at the
- *   scrollback seam (if any) and repaints the window with relative moves.
- */
-type RenderIntent =
-	| { kind: "fullPaint"; clearScrollback: boolean }
-	| { kind: "update"; chunkTo: number; windowTop: number };
 
 /**
  * A composed frame as the terminal is showing it: the rows, the geometry they were composed at,
@@ -1529,27 +1523,19 @@ export class TUI extends Container {
 		// full-screen program a wheel that types arrow keys.
 		this.#syncAltScroll();
 		this.#watchdog.stop();
-		if (this.#renderTimer) {
-			this.#renderTimer.cancel();
-			this.#renderTimer = undefined;
-		}
+		this.#renderTimer?.cancel();
+		this.#renderTimer = undefined;
 		// The request itself, not just its timer: a stopped engine owes no frame,
 		// and leaving the flag set made `renderPending` report a frame that could
 		// never arrive (`#scheduleRender` refuses while stopped). `start()` issues
 		// its own full-paint request, so nothing depends on carrying this across.
 		this.#renderRequested = false;
-		if (this.#ghosttyInitialImageDelayTimer) {
-			this.#ghosttyInitialImageDelayTimer.cancel();
-			this.#ghosttyInitialImageDelayTimer = undefined;
-		}
-		if (this.#multiplexerResizeTimer) {
-			this.#multiplexerResizeTimer.cancel();
-			this.#multiplexerResizeTimer = undefined;
-		}
-		if (this.#resizeViewportSettleTimer) {
-			this.#resizeViewportSettleTimer.cancel();
-			this.#resizeViewportSettleTimer = undefined;
-		}
+		this.#ghosttyInitialImageDelayTimer?.cancel();
+		this.#ghosttyInitialImageDelayTimer = undefined;
+		this.#multiplexerResizeTimer?.cancel();
+		this.#multiplexerResizeTimer = undefined;
+		this.#resizeViewportSettleTimer?.cancel();
+		this.#resizeViewportSettleTimer = undefined;
 		this.#resizeViewportActive = false;
 		this.#clearPostFullPaintSettle();
 		this.#deferredForcedClearScrollback = false;
@@ -2397,6 +2383,168 @@ export class TUI extends Container {
 		const componentScopedOnly = this.#pendingRenderComponentsOnly;
 		this.#pendingRenderComponentsOnly = false;
 
+		if (this.#syncAltScreenResidency(width, height)) return;
+
+		// Resize viewport fast path. While a non-multiplexer drag is in flight,
+		// paint only the viewport and skip composing the off-screen history.
+		// Strictly state-isolated: it never consumes #resizeEventPending nor
+		// advances any commit/window/diff field, so the authoritative full paint
+		// the settle timer queues reconciles as if these throwaway frames never
+		// ran. Two render sources reach here mid-drag and BOTH must stay on this
+		// path:
+		//   - the resize callback's own cheap paint after each SIGWINCH;
+		//   - an ordinary (non-forced) render from a live block that keeps
+		//     animating through the drag — a spinner tick, a streamed token, a
+		//     cursor blink — firing requestRender(false)/requestComponentRender.
+		//     #resizeEventPending is still set (the fast path never consumed it),
+		//     so without this branch the ordinary render falls through to the
+		//     geometry-rebuild full paint below, which LEAVES the borrowed
+		//     alternate screen to repaint the whole transcript on the normal
+		//     screen — then the next SIGWINCH re-enters the alt screen and paints
+		//     only the tail, so the block flashes in for one frame and vanishes.
+		// A FORCED render mid-drag (tool finalization, resetDisplay, image
+		// reconciliation) also stays on the fast path: preempting would leave
+		// the borrowed alternate screen and run the geometry-rebuild full paint
+		// on the normal screen — ED3 plus an O(history) replay that visibly
+		// scrolls the whole transcript through the viewport, once per forced
+		// render and once more at settle. The forced intent is not lost: the
+		// fast path consumes neither #forceViewportRepaintOnNextRender nor
+		// #clearScrollbackOnNextRender, and the settle's authoritative
+		// requestRender(true) honors both — same fold-into-the-settle contract
+		// as the multiplexer resize debounce. A visible overlay composites over
+		// the transcript and needs the whole window, so it falls through
+		// (overlay resizes are not on the drag-cost hot path).
+		if (this.#resizeViewportActive && this.#hasEverRendered && this.#overlays.topmostVisible() === undefined) {
+			this.#componentRenderTargets.clear();
+			this.#renderResizeViewport(width, height);
+			return;
+		}
+
+		const rawFrame = this.#composeFrame(width, height, componentScopedOnly);
+		// This runs BEFORE the Ghostty deferral because the drop already happened
+		// inside the render above — an abandoned frame does not give those rows
+		// back, and leaving the indices behind is what makes the next
+		// classification read the shift as a prefix violation.
+		this.#slideCommitsOverDroppedRows();
+		// Ghostty initial-image deferral must run before any render state is
+		// consumed (#resizeEventPending, hardware-cursor state, commit
+		// re-anchoring): the early return abandons this frame and the deferred
+		// render recomposes from scratch, so consuming state here would
+		// misclassify a pending resize as an ordinary diff and corrupt the paint.
+		if (this.#maybeDeferGhosttyInitialImagePaint()) return;
+
+		// Exactness boundary (used by the audit-zone math below). Rows below it
+		// are declared FINAL by the component seam: when they commit, they enter
+		// the audited zone (byte-exact, repairable on violation). Rows above it
+		// that scroll off the window commit as frozen visual snapshots (see
+		// #committedPrefixAuditRows). The whole frame is final when the root
+		// reports no seam (shell semantics).
+		const frameLength = rawFrame.length;
+		// Wheel tracking follows scrollability, and "scrollable" means anything
+		// sits above the window — the frame overflows the viewport, or rows have
+		// already scrolled off onto the tape. A frame test alone released the
+		// mouse on every quiet frame of a virtualized transcript, which is what
+		// let the terminal scroll the composer off screen. Synced after the emit
+		// below.
+		this.#frameScrollable = frameLength > height || this.#scrollTape.length > 0;
+		const finalBoundary = clampLow(this.#nativeScrollbackLiveRegionStart ?? frameLength, 0, frameLength);
+
+		// 2. Transition state captured before any emitter runs.
+		const transition = this.#captureTransition(width, height);
+		const prefix = this.#reconcileCommittedPrefix(rawFrame, finalBoundary, transition.geometryChanged);
+
+		// 3. Window and commit math (lengths only; content prepared below).
+		const hasVisibleOverlay = this.#overlays.topmostVisible() !== undefined;
+
+		// 4. Classify. A resize is an explicit user gesture: normally the engine
+		// erases and replays so history rewraps at the new geometry (the reader
+		// snapped to the bottom just dragged the window). Multiplexer panes — and
+		// terminals that re-report size on alt-screen toggles — instead repaint in
+		// place, because an ED3 rewrap is unsafe (pane scrollback / alt-screen
+		// feedback loop), so committed history keeps its old wrap.
+		const firstPaint = !this.#hasEverRendered;
+		const replaceRequested = this.#clearScrollbackOnNextRender;
+		const geometryRebuild = transition.geometryChanged && !resizeRepaintsInPlace();
+		const divergenceRebuild = this.#divergenceRebuild(
+			frameLength,
+			firstPaint,
+			replaceRequested,
+			transition.geometryChanged,
+			prefix,
+		);
+		const fullPaint = firstPaint || replaceRequested || geometryRebuild || divergenceRebuild;
+		if (divergenceRebuild && this.#rehydrateDivergence()) return;
+		const plan = this.#planWindow(rawFrame, height, transition, hasVisibleOverlay, fullPaint);
+
+		// 5. Pick the visible cursor marker (bottom-most at or below the window
+		// top), prepare lines, and build the visible window slice.
+		const view = this.#assembleWindow(rawFrame, width, height, plan, hasVisibleOverlay);
+
+		const intent: RenderIntent = fullPaint
+			? {
+					kind: "fullPaint",
+					clearScrollback: divergenceRebuild || ((replaceRequested || geometryRebuild) && !isMultiplexerSession()),
+				}
+			: { kind: "update", chunkTo: plan.chunkTo, windowTop: plan.windowTop };
+		this.#logRedraw(intent, frameLength, height);
+
+		const imageTransmitBuffer = this.#takeImageTransmits();
+		const purgeSequence = this.#takeImagePurgeSequence();
+
+		// 6a. Resident alt-buffer paint. The transcript lives on the alternate
+		// screen for the "alt-arrows" transport, where there is no native scrollback
+		// to append to and nothing the terminal owns, so the whole
+		// commit/audit/scroll-append planner below does not apply: every frame is a
+		// full viewport rewrite of the window already assembled above.
+		if (this.#altActive) {
+			this.#commitAltFrame(view, plan, frameLength, width, height, prefix.preCommitRows);
+			return;
+		}
+		// `start()` ends in `requestRender(true)`, so the frame that follows an adoption arrives
+		// with the forced-repaint flag set and would rewrite every row of the window -- the exact
+		// cost adoption exists to avoid, and invisible in a screen comparison because a full
+		// rewrite of the right rows looks identical. The force flag is what keeps that first frame
+		// from being downgraded to a viewport-only or throttled paint, which the adopted frame
+		// still wants; only its rewrite-everything effect is dropped, and only once.
+		const adoptedFirstFrame = this.#adoptedScreenUnconsumed;
+		this.#adoptedScreenUnconsumed = false;
+		if (adoptedFirstFrame) this.#forceViewportRepaintOnNextRender = false;
+		// 6. Emit.
+		if (intent.kind === "fullPaint") {
+			this.#emitFullPaint(
+				rawFrame,
+				view,
+				plan,
+				width,
+				height,
+				intent.clearScrollback,
+				firstPaint,
+				finalBoundary,
+				imageTransmitBuffer,
+				purgeSequence,
+			);
+			return;
+		}
+		this.#commitUpdate(
+			rawFrame,
+			view,
+			plan,
+			transition,
+			prefix,
+			width,
+			height,
+			finalBoundary,
+			imageTransmitBuffer,
+			purgeSequence,
+		);
+	}
+
+	/**
+	 * Enter, re-mode, or leave the alternate screen for this frame. Returns true
+	 * when a fullscreen overlay borrows the buffer: the modal is painted and the
+	 * frame ends there.
+	 */
+	#syncAltScreenResidency(width: number, height: number): boolean {
 		// Alt-screen residency has two independent reasons, and they behave
 		// differently once up:
 		//
@@ -2461,48 +2609,20 @@ export class TUI extends Container {
 		if (this.#altActive && overlayWantsAlt) {
 			this.#componentRenderTargets.clear();
 			this.#renderAltFrame(width, height);
-			return;
+			return true;
 		}
+		return false;
+	}
 
-		// Resize viewport fast path. While a non-multiplexer drag is in flight,
-		// paint only the viewport and skip composing the off-screen history.
-		// Strictly state-isolated: it never consumes #resizeEventPending nor
-		// advances any commit/window/diff field, so the authoritative full paint
-		// the settle timer queues reconciles as if these throwaway frames never
-		// ran. Two render sources reach here mid-drag and BOTH must stay on this
-		// path:
-		//   - the resize callback's own cheap paint after each SIGWINCH;
-		//   - an ordinary (non-forced) render from a live block that keeps
-		//     animating through the drag — a spinner tick, a streamed token, a
-		//     cursor blink — firing requestRender(false)/requestComponentRender.
-		//     #resizeEventPending is still set (the fast path never consumed it),
-		//     so without this branch the ordinary render falls through to the
-		//     geometry-rebuild full paint below, which LEAVES the borrowed
-		//     alternate screen to repaint the whole transcript on the normal
-		//     screen — then the next SIGWINCH re-enters the alt screen and paints
-		//     only the tail, so the block flashes in for one frame and vanishes.
-		// A FORCED render mid-drag (tool finalization, resetDisplay, image
-		// reconciliation) also stays on the fast path: preempting would leave
-		// the borrowed alternate screen and run the geometry-rebuild full paint
-		// on the normal screen — ED3 plus an O(history) replay that visibly
-		// scrolls the whole transcript through the viewport, once per forced
-		// render and once more at settle. The forced intent is not lost: the
-		// fast path consumes neither #forceViewportRepaintOnNextRender nor
-		// #clearScrollbackOnNextRender, and the settle's authoritative
-		// requestRender(true) honors both — same fold-into-the-settle contract
-		// as the multiplexer resize debounce. A visible overlay composites over
-		// the transcript and needs the whole window, so it falls through
-		// (overlay resizes are not on the drag-cost hot path).
-		if (this.#resizeViewportActive && this.#hasEverRendered && this.#overlays.topmostVisible() === undefined) {
-			this.#componentRenderTargets.clear();
-			this.#renderResizeViewport(width, height);
-			return;
-		}
-
+	/**
+	 * Compose this frame's rows, first rehydrating virtualized roots when the
+	 * frame will replay native history.
+	 */
+	#composeFrame(width: number, height: number, componentScopedOnly: boolean): readonly string[] {
 		// A destructive replay erases native history and must receive the complete
 		// component frame. Give virtualized roots one compose to rehydrate rows
 		// they dropped after commit. Height-only and net-unchanged resize events
-		// count too: both enter the geometry rebuild path below.
+		// count too: both enter the geometry rebuild path in #doRender.
 		const replayFullHistory =
 			this.#hasEverRendered &&
 			!resizeRepaintsInPlace() &&
@@ -2522,88 +2642,64 @@ export class TUI extends Container {
 		// previous segment of every other root child.
 		const partialRoots = componentScopedOnly ? this.#resolvePartialComposeRoots(width, height) : null;
 		this.#componentRenderTargets.clear();
-		let rawFrame: readonly string[];
 		if (partialRoots !== null) {
 			this.#partialComposeRoots = partialRoots;
 			try {
-				rawFrame = this.render(width);
+				return this.render(width);
 			} finally {
 				this.#partialComposeRoots = null;
 				this.#partialComposeChildren.clear();
 			}
-		} else {
-			this.#imageBudget.beginPass();
-			rawFrame = this.render(width);
-			this.#imageBudget.endPass();
 		}
-		// Slide the commit coordinates onto the frame a virtualized child just
-		// compacted. The rows it dropped are rows the engine reported committed
-		// and the terminal already holds, so history is unchanged: only the
-		// indices move. This runs BEFORE the Ghostty deferral because the drop
-		// already happened inside the render above — an abandoned frame does not
-		// give those rows back, and leaving the indices behind is what makes the
-		// next classification read the shift as a prefix violation.
-		if (this.#frameDroppedRows > 0) {
-			// The rows left at the drop site's own offset. A virtualized root is
-			// not necessarily the first child: `home-anchor-layout` mounts a
-			// `topFill` above the transcript whenever a conversation exists, so
-			// the dropped rows begin at that child's start row and splicing from
-			// index 0 would delete the filler's committed rows instead and leave
-			// the prefix misaligned by exactly the header height — which the next
-			// audit reads as a divergence and repairs with a whole-screen rebuild.
-			const at = Math.min(this.#frameDroppedAt ?? 0, this.#committedRows);
-			const dropped = Math.min(this.#frameDroppedRows, Math.max(0, this.#committedRows - at));
-			this.#frameDroppedRows = 0;
-			this.#frameDroppedAt = undefined;
-			if (dropped > 0) {
-				this.#committedRows -= dropped;
-				this.#committedPrefixAuditRows =
-					this.#committedPrefixAuditRows > at
-						? Math.max(at, this.#committedPrefixAuditRows - dropped)
-						: this.#committedPrefixAuditRows;
-				this.#committedPrefix.splice(at, dropped);
-				this.#windowTopRow = Math.max(0, this.#windowTopRow - dropped);
-				this.#previousFrameLength = Math.max(0, this.#previousFrameLength - dropped);
-				// The tracked cursor is a frame-space absolute row too, and every
-				// incremental paint is cursor-relative (`#emitUpdate` derives
-				// `currentScreenRow` from it and moves the cursor up by that many
-				// rows). Left unslid it is `dropped` rows too large for the rest
-				// of the session, so the paint lands above where it belongs: the
-				// new rows overwrite live output and the previous paint's tail
-				// stays visible underneath.
-				this.#cursor.row = this.#cursor.row > at ? Math.max(at, this.#cursor.row - dropped) : this.#cursor.row;
-			}
-		}
-		// Ghostty initial-image deferral must run before any render state is
-		// consumed (#resizeEventPending, hardware-cursor state, commit
-		// re-anchoring): the early return abandons this frame and the deferred
-		// render recomposes from scratch, so consuming state here would
-		// misclassify a pending resize as an ordinary diff and corrupt the paint.
-		if (this.#maybeDeferGhosttyInitialImagePaint()) return;
-		// Cursor markers were stripped at compose time (they are internal
-		// sentinels and must never reach the terminal, the committed prefix, or
-		// the audit); the visible marker is chosen after the window top is
-		// known. Ascending by frame row.
-		const cursorMarkers = this.#frameCursorMarkers;
-		const liveRegionStart = this.#nativeScrollbackLiveRegionStart;
+		this.#imageBudget.beginPass();
+		const rawFrame = this.render(width);
+		this.#imageBudget.endPass();
+		return rawFrame;
+	}
 
-		// Exactness boundary (used by the audit-zone math below). Rows below it
-		// are declared FINAL by the component seam: when they commit, they enter
-		// the audited zone (byte-exact, repairable on violation). Rows above it
-		// that scroll off the window commit as frozen visual snapshots (see
-		// #committedPrefixAuditRows). The whole frame is final when the root
-		// reports no seam (shell semantics).
-		const frameLength = rawFrame.length;
-		// Wheel tracking follows scrollability, and "scrollable" means anything
-		// sits above the window — the frame overflows the viewport, or rows have
-		// already scrolled off onto the tape. A frame test alone released the
-		// mouse on every quiet frame of a virtualized transcript, which is what
-		// let the terminal scroll the composer off screen. Synced after the emit
-		// below.
-		this.#frameScrollable = frameLength > height || this.#scrollTape.length > 0;
-		const finalBoundary = clampLow(liveRegionStart ?? frameLength, 0, frameLength);
+	/**
+	 * Slide the commit coordinates onto the frame a virtualized child just
+	 * compacted. The rows it dropped are rows the engine reported committed
+	 * and the terminal already holds, so history is unchanged: only the
+	 * indices move.
+	 */
+	#slideCommitsOverDroppedRows(): void {
+		if (this.#frameDroppedRows <= 0) return;
+		// The rows left at the drop site's own offset. A virtualized root is
+		// not necessarily the first child: `home-anchor-layout` mounts a
+		// `topFill` above the transcript whenever a conversation exists, so
+		// the dropped rows begin at that child's start row and splicing from
+		// index 0 would delete the filler's committed rows instead and leave
+		// the prefix misaligned by exactly the header height — which the next
+		// audit reads as a divergence and repairs with a whole-screen rebuild.
+		const at = Math.min(this.#frameDroppedAt ?? 0, this.#committedRows);
+		const dropped = Math.min(this.#frameDroppedRows, Math.max(0, this.#committedRows - at));
+		this.#frameDroppedRows = 0;
+		this.#frameDroppedAt = undefined;
+		if (dropped <= 0) return;
+		this.#committedRows -= dropped;
+		this.#committedPrefixAuditRows =
+			this.#committedPrefixAuditRows > at
+				? Math.max(at, this.#committedPrefixAuditRows - dropped)
+				: this.#committedPrefixAuditRows;
+		this.#committedPrefix.splice(at, dropped);
+		this.#windowTopRow = Math.max(0, this.#windowTopRow - dropped);
+		this.#previousFrameLength = Math.max(0, this.#previousFrameLength - dropped);
+		// The tracked cursor is a frame-space absolute row too, and every
+		// incremental paint is cursor-relative (`#emitUpdate` derives
+		// `currentScreenRow` from it and moves the cursor up by that many
+		// rows). Left unslid it is `dropped` rows too large for the rest
+		// of the session, so the paint lands above where it belongs: the
+		// new rows overwrite live output and the previous paint's tail
+		// stays visible underneath.
+		this.#cursor.row = this.#cursor.row > at ? Math.max(at, this.#cursor.row - dropped) : this.#cursor.row;
+	}
 
-		// 2. Transition state captured before any emitter runs.
+	/**
+	 * Capture the window and cursor state the emitters diff against, and
+	 * consume the pending resize event into the frame's geometry change.
+	 */
+	#captureTransition(width: number, height: number): FrameTransition {
 		const prevWindowTop = this.#windowTopRow;
 		const prevHardwareCursorRow = this.#cursor.row;
 		const resizeEventOccurred = this.#resizeEventPending;
@@ -2616,8 +2712,18 @@ export class TUI extends Container {
 		const heightChanged =
 			(this.#previousHeight > 0 && this.#previousHeight !== height) ||
 			(resizeEventOccurred && this.#previousHeight > 0);
-		const geometryChanged = widthChanged || heightChanged;
+		return { prevWindowTop, prevHardwareCursorRow, geometryChanged: widthChanged || heightChanged };
+	}
 
+	/**
+	 * Audit the committed prefix against this frame and re-base the commit
+	 * index when the frame collapsed into recorded rows.
+	 */
+	#reconcileCommittedPrefix(
+		rawFrame: readonly string[],
+		finalBoundary: number,
+		geometryChanged: boolean,
+	): PrefixReconciliation {
 		// Committed-prefix audit. Rows below the audit mark are hard-verified
 		// exact bytes; rows between the mark and the current exactness boundary
 		// are frozen snapshots whose source JUST became final and must be
@@ -2625,10 +2731,10 @@ export class TUI extends Container {
 		// shifted tail); rows past the boundary are still-live frozen snapshots,
 		// exempt so a collapsing preview can never spray re-anchors mid-run. A
 		// divergence re-anchors — feeding the divergenceRebuild erase-and-replay
-		// below (mux fallback: recommit below the stale copy; duplication, never
-		// loss) — instead of silently skipping rows (committed nowhere, painted
-		// nowhere). Skipped on geometry frames (a rewrap legitimately reflows
-		// every row), and skipped when the composed frame's stable prefix
+		// in #doRender (mux fallback: recommit below the stale copy; duplication,
+		// never loss) — instead of silently skipping rows (committed nowhere,
+		// painted nowhere). Skipped on geometry frames (a rewrap legitimately
+		// reflows every row), and skipped when the composed frame's stable prefix
 		// covers every verified row and no rows newly became final.
 		let committedRowsResynced = false;
 		const newlyFinalEnd = Math.min(this.#committedRows, finalBoundary);
@@ -2662,6 +2768,7 @@ export class TUI extends Container {
 		// record and the frame part ways — so the surviving exact prefix stays
 		// recognized and is never re-shown or re-committed. Only genuinely new
 		// content repaints below it.
+		const frameLength = rawFrame.length;
 		if (!geometryChanged && !this.#clearScrollbackOnNextRender && frameLength < this.#committedRows) {
 			const limit = Math.min(this.#committedRows, frameLength);
 			const firstDiff = firstRowDivergence(rawFrame, this.#committedPrefix, limit);
@@ -2689,40 +2796,22 @@ export class TUI extends Container {
 		}
 		// Committed-prefix state this frame's commit math extends from
 		// (post-audit): drives the audit-mark advance after the emit.
-		const preCommitRows = this.#committedRows;
-		const preAuditRows = this.#committedPrefixAuditRows;
-		let committedPrefixResliced = false;
+		return {
+			auditRan,
+			committedRowsResynced,
+			frameSqueezed,
+			preCommitRows: this.#committedRows,
+			preAuditRows: this.#committedPrefixAuditRows,
+		};
+	}
 
-		// 3. Window and commit math (lengths only; content prepared below).
-		let hasVisibleOverlay = false;
-		for (const entry of this.#overlays.entries) {
-			if (this.#overlays.isVisible(entry)) {
-				hasVisibleOverlay = true;
-				break;
-			}
-		}
-
-		// 4. Classify. A resize is an explicit user gesture: normally the engine
-		// erases and replays so history rewraps at the new geometry (the reader
-		// snapped to the bottom just dragged the window). Multiplexer panes — and
-		// terminals that re-report size on alt-screen toggles — instead repaint in
-		// place, because an ED3 rewrap is unsafe (pane scrollback / alt-screen
-		// feedback loop), so committed history keeps its old wrap.
-		const firstPaint = !this.#hasEverRendered;
-		const replaceRequested = this.#clearScrollbackOnNextRender;
-		const geometryRebuild = geometryChanged && !resizeRepaintsInPlace();
-		// Committed history no longer matches the frame: a finalized block
-		// replaced its scrolled-off live render, or the frame collapsed into
-		// recorded rows. Native scrollback is a render cache, not a court
-		// record — erase and replay so history holds the content exactly once,
-		// instead of recommitting the final form below the stale fragment
-		// (a visibly duplicated block). Multiplexer panes cannot ED3 safely
-		// and keep the repair-below fallback in the branches under this one.
-		// A declared live/final transition authorizes repair for its own segment,
-		// including a fully finalized segment whose live boundary is now absent.
-		// Ordinary updates from plain components preserve committed history.
-		// Explicit expansion uses resetDisplay(), which requests full replay.
-		let declaredFinalization = false;
+	/**
+	 * Whether a declared live/final transition authorizes repair of the row the
+	 * commit index resynced to: the segment owning that row, in this frame or
+	 * the previous one, implements the native scrollback contract. That
+	 * includes a fully finalized segment whose live boundary is now absent.
+	 */
+	#declaredFinalization(committedRowsResynced: boolean, frameLength: number): boolean {
 		if (committedRowsResynced || frameLength <= this.#committedRows) {
 			const resyncRow = this.#committedRows;
 			const ownsResyncRow = (segment: FrameSegment): boolean =>
@@ -2732,41 +2821,85 @@ export class TUI extends Container {
 			const authorizesRepair = (segment: FrameSegment | undefined): boolean =>
 				segment !== undefined &&
 				(hasNativeScrollbackLiveRegion(segment.component) || canPrepareNativeScrollbackReplay(segment.component));
-			declaredFinalization = authorizesRepair(currentSegment) || authorizesRepair(previousSegment);
+			return authorizesRepair(currentSegment) || authorizesRepair(previousSegment);
 		}
-		const divergenceRebuild =
+		return false;
+	}
+
+	/**
+	 * Committed history no longer matches the frame: a finalized block
+	 * replaced its scrolled-off live render, or the frame collapsed into
+	 * recorded rows. Native scrollback is a render cache, not a court
+	 * record — erase and replay so history holds the content exactly once,
+	 * instead of recommitting the final form below the stale fragment
+	 * (a visibly duplicated block). Multiplexer panes cannot ED3 safely
+	 * and keep the repair-below fallback in the {@link #planWindow} branches.
+	 * A declared live/final transition authorizes repair for its own segment,
+	 * including a fully finalized segment whose live boundary is now absent.
+	 * Ordinary updates from plain components preserve committed history.
+	 * Explicit expansion uses resetDisplay(), which requests full replay.
+	 */
+	#divergenceRebuild(
+		frameLength: number,
+		firstPaint: boolean,
+		replaceRequested: boolean,
+		geometryChanged: boolean,
+		prefix: PrefixReconciliation,
+	): boolean {
+		const declaredFinalization = this.#declaredFinalization(prefix.committedRowsResynced, frameLength);
+		return (
 			this.#scrollbackRebuildEnabled &&
 			!firstPaint &&
 			!replaceRequested &&
 			!geometryChanged &&
 			!isMultiplexerSession() &&
-			!frameSqueezed &&
-			(committedRowsResynced || frameLength <= this.#committedRows) &&
-			declaredFinalization;
-		const fullPaint = firstPaint || replaceRequested || geometryRebuild || divergenceRebuild;
-		// A destructive rebuild erases native scrollback and replays THIS frame.
-		// When a virtualized root has dropped its committed rows, this frame is
-		// only the tail, so the replay would put a few rows on a screen the ED3
-		// just emptied and the transcript would be gone. The rebuild is decided
-		// here, after compose, which is too late to ask for the rows — so ask
-		// now and compose again: `#clearScrollbackOnNextRender` makes the next
-		// pass a replace, which rehydrates every child (see `replayFullHistory`)
-		// and still erases-and-replays, this time with the whole transcript in
-		// hand. One shot only; the flag stops a rebuild inside the rebuild.
-		if (
-			divergenceRebuild &&
-			!this.#rehydratingDivergence &&
-			this.children.some(child => canPrepareNativeScrollbackReplay(child))
-		) {
-			this.#rehydratingDivergence = true;
-			this.#clearScrollbackOnNextRender = true;
-			try {
-				this.#doRender();
-			} finally {
-				this.#rehydratingDivergence = false;
-			}
-			return;
+			!prefix.frameSqueezed &&
+			(prefix.committedRowsResynced || frameLength <= this.#committedRows) &&
+			declaredFinalization
+		);
+	}
+
+	/**
+	 * A destructive rebuild erases native scrollback and replays THIS frame.
+	 * When a virtualized root has dropped its committed rows, this frame is
+	 * only the tail, so the replay would put a few rows on a screen the ED3
+	 * just emptied and the transcript would be gone. The rebuild is decided
+	 * after compose, which is too late to ask for the rows — so ask now and
+	 * compose again: `#clearScrollbackOnNextRender` makes the next pass a
+	 * replace, which rehydrates every child (see `replayFullHistory`) and
+	 * still erases-and-replays, this time with the whole transcript in hand.
+	 * One shot only; the flag stops a rebuild inside the rebuild.
+	 *
+	 * Returns whether the frame was rendered again, which replaces this one.
+	 */
+	#rehydrateDivergence(): boolean {
+		if (this.#rehydratingDivergence || !this.children.some(child => canPrepareNativeScrollbackReplay(child))) {
+			return false;
 		}
+		this.#rehydratingDivergence = true;
+		this.#clearScrollbackOnNextRender = true;
+		try {
+			this.#doRender();
+		} finally {
+			this.#rehydratingDivergence = false;
+		}
+		return true;
+	}
+
+	/**
+	 * Place the window and the commit boundary for this frame (lengths only;
+	 * {@link #assembleWindow} prepares the content).
+	 */
+	#planWindow(
+		rawFrame: readonly string[],
+		height: number,
+		transition: FrameTransition,
+		hasVisibleOverlay: boolean,
+		fullPaint: boolean,
+	): WindowPlan {
+		const { prevWindowTop, geometryChanged } = transition;
+		const frameLength = rawFrame.length;
+		let committedPrefixResliced = false;
 		// Ceiling on what may enter native scrollback: chrome mounted after the
 		// transcript (a HUD, the composer, the status line) rewrites itself every
 		// frame, and a chrome row that reached the committed prefix diverges on
@@ -2782,7 +2915,8 @@ export class TUI extends Container {
 		} else if (
 			frameLength <= this.#committedRows ||
 			(frameLength - this.#committedRows < height &&
-				(prevWindowTop < this.#committedRows || cursorMarkers.some(marker => marker.row >= this.#committedRows)))
+				(prevWindowTop < this.#committedRows ||
+					this.#frameCursorMarkers.some(marker => marker.row >= this.#committedRows)))
 		) {
 			// Tail re-anchor (a direct terminal may instead take the
 			// divergenceRebuild full paint above when the prefix resynced):
@@ -2879,10 +3013,28 @@ export class TUI extends Container {
 				chunkTo = this.#committedRows;
 			}
 		}
+		return { windowTop, chunkTo, committedPrefixResliced, virtualScrollSlice };
+	}
 
-		// 5. Pick the visible cursor marker (bottom-most at or below the window
-		// top), prepare lines, and build the visible window slice.
-		let cursorPos = findVisibleCursorMarker(cursorMarkers, windowTop);
+	/**
+	 * Prepare the frame and build the visible window at the planned window
+	 * top: the live slice or the frozen scroll-isolation view, with overlays
+	 * composited and the caret placed.
+	 */
+	#assembleWindow(
+		rawFrame: readonly string[],
+		width: number,
+		height: number,
+		plan: WindowPlan,
+		hasVisibleOverlay: boolean,
+	): AssembledWindow {
+		const { windowTop, virtualScrollSlice } = plan;
+		const frameLength = rawFrame.length;
+		// Cursor markers were stripped at compose time (they are internal
+		// sentinels and must never reach the terminal, the committed prefix, or
+		// the audit); the visible marker is chosen now that the window top is
+		// known. Ascending by frame row.
+		let cursorPos = findVisibleCursorMarker(this.#frameCursorMarkers, windowTop);
 		const frame = this.#prepared.prepare(rawFrame, width);
 		let window: string[] = new Array(height);
 		// Screen position of the caret for a resident alt-buffer paint, computed
@@ -2941,110 +3093,167 @@ export class TUI extends Container {
 			this.#overlays.clearFrames();
 		}
 		const cursorTrackingLineCount = hasVisibleOverlay ? Math.max(frame.length, windowTop + height) : frame.length;
+		return {
+			frame,
+			window,
+			cursorPos,
+			altCaret,
+			cursorTrackingLineCount,
+			repaintInPlace: hasVisibleOverlay || virtualScrollSlice,
+		};
+	}
 
-		const intent: RenderIntent = fullPaint
-			? {
-					kind: "fullPaint",
-					clearScrollback: divergenceRebuild || ((replaceRequested || geometryRebuild) && !isMultiplexerSession()),
-				}
-			: { kind: "update", chunkTo, windowTop };
-		this.#logRedraw(intent, frameLength, height);
-
-		// Load newly-displayed image data once, before this frame's placements
-		// reference it. For full paints, the emitter may need to place the
-		// transmit after a destructive clear (ED2/ED3) but before row replay, so
-		// build the buffer here and let the emitter decide where it lands.
+	/**
+	 * Load newly-displayed image data once, before this frame's placements
+	 * reference it. For full paints, the emitter may need to place the
+	 * transmit after a destructive clear (ED2/ED3) but before row replay, so
+	 * build the buffer here and let the emitter decide where it lands.
+	 */
+	#takeImageTransmits(): string {
 		let imageTransmitBuffer = "";
 		for (const seq of this.#imageBudget.takeTransmits()) imageTransmitBuffer += seq;
-		// Purge graphics for images the budget demoted to text. Kitty keeps
-		// images in a store that text clears don't touch; demoted rows still
-		// visible re-render as text and the window diff repaints them.
-		// Committed placements are immutable — their pixels are deleted but
-		// their rows are not rewritten.
+		return imageTransmitBuffer;
+	}
+
+	/**
+	 * Purge graphics for images the budget demoted to text. Kitty keeps
+	 * images in a store that text clears don't touch; demoted rows still
+	 * visible re-render as text and the window diff repaints them.
+	 * Committed placements are immutable — their pixels are deleted but
+	 * their rows are not rewritten.
+	 */
+	#takeImagePurgeSequence(): string {
 		let purgeSequence = "";
 		if (TERMINAL.imageProtocol === ImageProtocol.Kitty) {
 			for (const id of this.#imageBudget.takePurgeIds()) purgeSequence += encodeKittyDeleteImage(id);
 		} else {
 			this.#imageBudget.takePurgeIds();
 		}
+		return purgeSequence;
+	}
 
-		// 6a. Resident alt-buffer paint. The transcript lives on the alternate
-		// screen for the "alt-arrows" transport, where there is no native scrollback
-		// to append to and nothing the terminal owns, so the whole
-		// commit/audit/scroll-append planner below does not apply: every frame is a
-		// full viewport rewrite of the window already assembled above.
-		//
-		// The commit ledger is still advanced, because on this surface it means
-		// something different and still necessary: rows at or above the window top
-		// are moved onto the scroll tape and reported to the root as committed, which
-		// is what lets a virtualized transcript DROP them and keeps the composed
-		// frame near the viewport height however long the session runs. Here the tape
-		// is not a mirror of terminal scrollback, it is the only copy — which is why
-		// the audit is skipped entirely: nothing outside this process can hold us to
-		// bytes we already painted, so there is no immutability to verify.
-		if (this.#altActive) {
-			this.#appendScrollTape(frame, Math.min(preCommitRows, chunkTo), chunkTo);
-			this.#committedRows = chunkTo;
-			this.#committedPrefix.length = 0;
-			this.#committedPrefixAuditRows = 0;
-			this.#windowTopRow = windowTop;
-			this.#emitAltFrame(window, width, height, altCaret ?? undefined);
-			this.#previousWindow = window;
-			this.#previousFrameLength = frameLength;
-			// The rows the tape does not hold yet. Kept so exit can replay the whole
-			// transcript (tape + tail) onto the normal screen, since on this surface
-			// the terminal has never seen any of it.
-			this.#altTailRows = frame.slice(chunkTo);
-			this.#altTranscriptReplayPending = true;
-			this.#clearScrollbackOnNextRender = false;
-			this.#hasEverRendered = true;
-			this.#publishCommittedRows();
-			return;
-		}
-		// `start()` ends in `requestRender(true)`, so the frame that follows an adoption arrives
-		// with the forced-repaint flag set and would rewrite every row of the window -- the exact
-		// cost adoption exists to avoid, and invisible in a screen comparison because a full
-		// rewrite of the right rows looks identical. The force flag is what keeps that first frame
-		// from being downgraded to a viewport-only or throttled paint, which the adopted frame
-		// still wants; only its rewrite-everything effect is dropped, and only once.
-		const adoptedFirstFrame = this.#adoptedScreenUnconsumed;
-		this.#adoptedScreenUnconsumed = false;
-		if (adoptedFirstFrame) this.#forceViewportRepaintOnNextRender = false;
-		// 6. Emit.
-		if (intent.kind === "fullPaint") {
-			this.#emitFullPaint(frame, window, width, height, cursorPos, purgeSequence, imageTransmitBuffer, {
-				clearScrollback: intent.clearScrollback,
-				chunkTo,
-				windowTop,
-				cursorTrackingLineCount,
-			});
-			this.#committedPrefix = rawFrame.slice(0, chunkTo);
-			// A full paint that erased scrollback rewrote history, so the tape is
-			// rewritten with it; one that did not (a multiplexer pane, which
-			// cannot ED3 safely) appended below what is already there, and so
-			// does the tape.
-			if (intent.clearScrollback) this.#scrollTape.clear();
-			this.#appendScrollTape(frame, 0, chunkTo);
-			this.#committedPrefixAuditRows = Math.min(chunkTo, finalBoundary);
-			this.#clearScrollbackOnNextRender = false;
-			this.#hasEverRendered = true;
-			this.#syncWheelTracking();
-			this.#publishCommittedRows();
-			if (!firstPaint && frameLength > height) this.#armPostFullPaintSettle();
-			return;
-		}
+	/**
+	 * Paint a resident alt-buffer frame and advance the commit ledger.
+	 *
+	 * The commit ledger is still advanced, because on this surface it means
+	 * something different and still necessary: rows at or above the window top
+	 * are moved onto the scroll tape and reported to the root as committed, which
+	 * is what lets a virtualized transcript DROP them and keeps the composed
+	 * frame near the viewport height however long the session runs. Here the tape
+	 * is not a mirror of terminal scrollback, it is the only copy — which is why
+	 * the audit is skipped entirely: nothing outside this process can hold us to
+	 * bytes we already painted, so there is no immutability to verify.
+	 */
+	#commitAltFrame(
+		view: AssembledWindow,
+		plan: WindowPlan,
+		frameLength: number,
+		width: number,
+		height: number,
+		preCommitRows: number,
+	): void {
+		const { frame, window } = view;
+		const { windowTop, chunkTo } = plan;
+		this.#appendScrollTape(frame, Math.min(preCommitRows, chunkTo), chunkTo);
+		this.#committedRows = chunkTo;
+		this.#committedPrefix.length = 0;
+		this.#committedPrefixAuditRows = 0;
+		this.#windowTopRow = windowTop;
+		this.#emitAltFrame(window, width, height, view.altCaret ?? undefined);
+		this.#previousWindow = window;
+		this.#previousFrameLength = frameLength;
+		// The rows the tape does not hold yet. Kept so exit can replay the whole
+		// transcript (tape + tail) onto the normal screen, since on this surface
+		// the terminal has never seen any of it.
+		this.#altTailRows = frame.slice(chunkTo);
+		this.#altTranscriptReplayPending = true;
+		this.#clearScrollbackOnNextRender = false;
+		this.#hasEverRendered = true;
+		this.#publishCommittedRows();
+	}
+
+	/**
+	 * Replay the frame from home, committed prefix `[0, chunkTo)` then the window, and rebuild the
+	 * commit ledger and scroll tape from it. ED3 (`CSI 3 J`) is emitted here and only here, and only
+	 * for gesture-driven paints (session replace, resize, resetDisplay, or an explicit
+	 * `clearScrollback` initial paint).
+	 */
+	#emitFullPaint(
+		rawFrame: readonly string[],
+		view: AssembledWindow,
+		plan: WindowPlan,
+		width: number,
+		height: number,
+		clearScrollback: boolean,
+		firstPaint: boolean,
+		finalBoundary: number,
+		imageTransmitBuffer: string,
+		purgeSequence: string,
+	): void {
+		const { frame, window, cursorPos } = view;
+		const { chunkTo, windowTop } = plan;
+		this.#fullRedrawCount += 1;
+		const replay = fullPaintReplay({
+			lead: this.#paintBeginSequence + this.#leaveResizeAltSequence() + purgeSequence,
+			frame,
+			window,
+			width,
+			height,
+			cursorPos,
+			chunkTo,
+			windowTop,
+			clearScrollback,
+			imageTransmits: imageTransmitBuffer,
+			deccara: this.#deccaraFillsEnabled(),
+			budget: this.#imageBudget,
+		});
+		const cursorControl = this.#cursor.controlSequence(replay.cursorPos, replay.lineCount, replay.contentBottomRow);
+		this.terminal.write(replay.sequence + cursorControl.seq + this.#paintEndSequence);
+		const committedCursorState = replay.cursorPos
+			? this.#cursor.targetState(cursorPos, view.cursorTrackingLineCount)
+			: null;
+		const committedCursor = committedCursorState
+			? { toRow: committedCursorState.row, state: committedCursorState, visible: committedCursorState.visible }
+			: { toRow: replay.frameContentBottomRow, state: null, visible: cursorControl.visible };
+		this.#committedRows = chunkTo;
+		this.#windowTopRow = windowTop;
+		this.#commit(frame, window, width, height, committedCursor);
+
+		this.#committedPrefix = rawFrame.slice(0, chunkTo);
+		// A full paint that erased scrollback rewrote history, so the tape is
+		// rewritten with it; one that did not (a multiplexer pane, which
+		// cannot ED3 safely) appended below what is already there, and so
+		// does the tape.
+		if (clearScrollback) this.#scrollTape.clear();
+		this.#appendScrollTape(frame, 0, chunkTo);
+		this.#committedPrefixAuditRows = Math.min(chunkTo, finalBoundary);
+		this.#clearScrollbackOnNextRender = false;
+		this.#hasEverRendered = true;
+		this.#syncWheelTracking();
+		this.#publishCommittedRows();
+		if (!firstPaint && rawFrame.length > height) this.#armPostFullPaintSettle();
+	}
+
+	/** Emit an incremental update and extend the commit ledger by the rows it committed. */
+	#commitUpdate(
+		rawFrame: readonly string[],
+		view: AssembledWindow,
+		plan: WindowPlan,
+		transition: FrameTransition,
+		prefix: PrefixReconciliation,
+		width: number,
+		height: number,
+		finalBoundary: number,
+		imageTransmitBuffer: string,
+		purgeSequence: string,
+	): void {
+		const { frame } = view;
+		const { chunkTo } = plan;
+		const { preCommitRows, preAuditRows } = prefix;
 		if (imageTransmitBuffer.length > 0) {
 			this.terminal.write(imageTransmitBuffer);
 		}
-		this.#emitUpdate(frame, window, width, height, cursorPos, purgeSequence, {
-			chunkTo,
-			windowTop,
-			prevWindowTop,
-			prevHardwareCursorRow,
-			forceWindowRewrite: this.#forceViewportRepaintOnNextRender || (geometryChanged && resizeRepaintsInPlace()),
-			repaintVirtualScrollInPlace: hasVisibleOverlay || virtualScrollSlice,
-			cursorTrackingLineCount,
-		});
+		this.#emitUpdate(view, plan, transition, width, height, purgeSequence);
 		this.#syncWheelTracking();
 		// Rows [preCommitRows, chunkTo) scrolled off on this frame: they go on
 		// the tape as the prepared bytes that were painted. Rows the tail
@@ -3057,7 +3266,7 @@ export class TUI extends Container {
 		// advance to the exactness boundary only when this frame verified the
 		// newly-final span (auditRan hard-scans it) or no such span existed —
 		// rows committed this frame below the boundary are fresh exact bytes.
-		if (committedPrefixResliced || auditRan || preAuditRows >= Math.min(preCommitRows, finalBoundary)) {
+		if (plan.committedPrefixResliced || prefix.auditRan || preAuditRows >= Math.min(preCommitRows, finalBoundary)) {
 			this.#committedPrefixAuditRows = Math.min(this.#committedRows, finalBoundary);
 		} else {
 			this.#committedPrefixAuditRows = Math.min(preAuditRows, this.#committedRows);
@@ -3160,155 +3369,6 @@ export class TUI extends Container {
 	}
 
 	/**
-	 * Replay the frame from home, optionally clearing native scrollback first:
-	 * committed prefix `[0, chunkTo)` followed by the visible window. ED3
-	 * (`CSI 3 J`) is emitted here and only here, and only for gesture-driven
-	 * paints (session replace, resize, resetDisplay, or an explicit
-	 * `clearScrollback` initial paint).
-	 */
-	#emitFullPaint(
-		frame: readonly string[],
-		window: string[],
-		width: number,
-		height: number,
-		cursorPos: { row: number; col: number } | null,
-		purgeSequence: string,
-		imageTransmitBuffer: string,
-		options: {
-			clearScrollback: boolean;
-			chunkTo: number;
-			windowTop: number;
-			cursorTrackingLineCount: number;
-		},
-	): void {
-		this.#fullRedrawCount += 1;
-		const { chunkTo, windowTop, cursorTrackingLineCount } = options;
-		// Map the frame-space cursor into paint space: committed-prefix rows
-		// keep their index, visible-window rows land after the prefix, and a
-		// cursor in neither region (hidden behind the overlay gap) hides.
-		let paintCursorPos: { row: number; col: number } | null = null;
-		if (cursorPos !== null) {
-			if (cursorPos.row < chunkTo) {
-				paintCursorPos = cursorPos;
-			} else if (cursorPos.row >= windowTop && cursorPos.row < windowTop + height) {
-				paintCursorPos = { row: chunkTo + cursorPos.row - windowTop, col: cursorPos.col };
-			}
-		}
-		// ConPTY hosts bound the replay: merge prefix + window into one array
-		// so #truncateLargeConptyFrame can measure the payload and retain only
-		// the tail. Gated on the host check — everywhere else the merge would
-		// copy a pointer per committed row (a 50k-row session = 50k-entry
-		// array per resize step / theme change / session replace) just to be
-		// returned unchanged. `paintLines` stays null unless truncation
-		// actually rewrote the replay.
-		let paintLines: string[] | null = null;
-		let paintLineCount = chunkTo + height;
-		if (isConPTYHosted()) {
-			const merged = new Array<string>(chunkTo + height);
-			for (let i = 0; i < chunkTo; i++) merged[i] = frame[i] ?? "";
-			for (let screenRow = 0; screenRow < height; screenRow++) {
-				merged[chunkTo + screenRow] = window[screenRow] ?? "";
-			}
-			const paint = truncateLargeConptyFrame(merged, width, height, paintCursorPos);
-			if (paint.lines !== merged) {
-				paintLines = paint.lines;
-				paintLineCount = paint.lines.length;
-				paintCursorPos = paint.cursorPos;
-			}
-		}
-		let buffer = this.#paintBeginSequence + this.#leaveResizeAltSequence() + purgeSequence;
-		if (options.clearScrollback) {
-			// Clear native history without blanking the live viewport first. The
-			// replay below rewrites every visible row from home, including blanks,
-			// so terminals without DEC 2026 never expose an ED2-cleared frame.
-			buffer += "\x1b[H\x1b[3J";
-		} else {
-			// Best-effort: push the pre-paint screen into scrollback on
-			// terminals that implement kitty's ED 22
-			// (copy-screen-to-scrollback-then-erase). Always follow with ED 2 so
-			// the viewport is cleared regardless; on real kitty, ED 2 over the
-			// now-blank screen is a no-op and does not push a second copy.
-			if (TERMINAL.supportsScreenToScrollback) buffer += "\x1b[22J";
-			buffer += "\x1b[2J\x1b[H";
-		}
-		if (imageTransmitBuffer.length > 0) buffer += imageTransmitBuffer;
-		// DECCARA fills optimize only the rows that stay visible; history-bound
-		// rows are written as full styled strings (their background must
-		// survive in scrollback, which DECCARA cannot reach).
-		const visibleStart = Math.max(0, paintLineCount - height);
-		let fillSequence = "";
-		let visibleTexts: string[] | null = null;
-		if (this.#deccaraFillsEnabled() && visibleStart < paintLineCount) {
-			// Untruncated, the visible slice is exactly the caller's window
-			// (visibleStart === chunkTo) — reuse it rather than copying;
-			// planDeccaraFills fills its own `texts` and never mutates input.
-			let visible = window;
-			if (paintLines !== null) {
-				visible = new Array<string>(paintLineCount - visibleStart);
-				for (let k = 0; k < visible.length; k++) visible[k] = paintLines[visibleStart + k] ?? "";
-			}
-			const plan = planDeccaraFills(visible, width);
-			visibleTexts = plan.texts;
-			fillSequence = plan.sequence;
-		}
-		const formatLine = (line: string, screenRow?: number) =>
-			options.clearScrollback
-				? lineRewriteSequence(line, width, screenRow, this.#imageBudget)
-				: terminalLine(line, screenRow, this.#imageBudget);
-		if (paintLines === null) {
-			// Common path: emit straight from the source arrays (the
-			// pre-merge two-loop form); byte-identical to replaying the
-			// merged array. Destructive history clears deliberately avoid ED2, so
-			// each row must self-clear stale cells left by the previous viewport.
-			for (let i = 0; i < chunkTo; i++) {
-				if (i > 0) buffer += "\r\n";
-				buffer += formatLine(frame[i] ?? "");
-			}
-			for (let screenRow = 0; screenRow < height; screenRow++) {
-				if (chunkTo + screenRow > 0) buffer += "\r\n";
-				const line = visibleTexts ? (visibleTexts[screenRow] ?? "") : (window[screenRow] ?? "");
-				buffer += formatLine(line, screenRow);
-			}
-		} else {
-			for (let i = 0; i < paintLines.length; i++) {
-				if (i > 0) buffer += "\r\n";
-				const line = visibleTexts && i >= visibleStart ? visibleTexts[i - visibleStart] : (paintLines[i] ?? "");
-				buffer += formatLine(line, i >= visibleStart ? i - visibleStart : undefined);
-			}
-		}
-		buffer += fillSequence;
-		// Park the hardware cursor at real content bottom, not the padded
-		// window bottom — a later height shrink would otherwise scroll live
-		// rows into scrollback and duplicate them per resize step.
-		const contentRows = clampLow(frame.length - windowTop, 1, height);
-		const parkUp = height - contentRows;
-		if (parkUp > 0) buffer += `\x1b[${parkUp}A`;
-		const contentBottomRow = windowTop + contentRows - 1;
-		const paintContentBottomRow = Math.max(0, paintLineCount - 1 - parkUp);
-		const cursorControl = this.#cursor.controlSequence(paintCursorPos, paintLineCount, paintContentBottomRow);
-		buffer += cursorControl.seq;
-		buffer += this.#paintEndSequence;
-		this.terminal.write(buffer);
-
-		const committedCursorState = paintCursorPos ? this.#cursor.targetState(cursorPos, cursorTrackingLineCount) : null;
-		const committedCursor = committedCursorState
-			? {
-					toRow: committedCursorState.row,
-					state: committedCursorState,
-					visible: committedCursorState.visible,
-				}
-			: {
-					toRow: contentBottomRow,
-					state: null,
-					visible: cursorControl.visible,
-				};
-
-		this.#committedRows = chunkTo;
-		this.#windowTopRow = windowTop;
-		this.#commit(frame, window, width, height, committedCursor);
-	}
-
-	/**
 	 * Enter (or extend) the non-multiplexer resize fast path. Marks the drag
 	 * active so subsequent `#doRender` calls paint viewport-only, then (re)arms
 	 * the quiet-window timer whose callback ends the drag with one authoritative
@@ -3340,10 +3400,14 @@ export class TUI extends Container {
 	}
 
 	/**
-	 * Compose and paint only the viewport for one resize fast-path frame.
-	 * State-isolated: advances no commit/window/diff field and calls neither
-	 * `#commit` nor `#emitFullPaint`, so the settle full paint reconciles against
-	 * the pre-drag screen state.
+	 * Compose and paint only the viewport for one resize fast-path frame, as an
+	 * alternate-screen per-row overwrite: the normal buffer may reflow full-width
+	 * rows on a width change before the app can repaint, and on the alternate
+	 * screen those transient resizes truncate instead of pushing wrapped
+	 * fragments into native scrollback. State-isolated: advances no
+	 * commit/window/diff field and calls neither `#commit` nor `#emitFullPaint`,
+	 * so the settle full paint reconciles against the pre-drag screen state and
+	 * rebuilds normal-screen history once.
 	 */
 	#renderResizeViewport(width: number, height: number): void {
 		if (width <= 0 || height <= 0) return;
@@ -3358,7 +3422,20 @@ export class TUI extends Container {
 		// authoritative accounting, and its beginPass() wipes these frames.
 		this.#imageBudget.beginPass(true);
 		const { window, contentRows } = this.#composeResizeViewport(width, height);
-		this.#emitResizeViewport(window, height, contentRows, width);
+		let buffer = homeRewriteSequence(
+			this.#paintBeginSequence + this.#enterResizeAltSequence(),
+			window,
+			width,
+			height,
+			this.#imageBudget,
+		);
+		// Park the hardware cursor at the real content bottom, not the padded
+		// viewport bottom: a later height shrink would otherwise scroll the live
+		// rows below the cursor into native scrollback and duplicate them until
+		// the settle rebuild erases it.
+		const parkUp = height - Math.max(1, contentRows);
+		if (parkUp > 0) buffer += `\x1b[${parkUp}A`;
+		this.terminal.write(buffer + this.#paintEndSequence);
 		this.#resizeViewportPaintCount += 1;
 	}
 
@@ -3434,39 +3511,9 @@ export class TUI extends Container {
 		return `${enhancementExit}${ALT_SCREEN_EXIT}`;
 	}
 
-	/**
-	 * Emit a throwaway viewport repaint for the resize fast path as an alternate-
-	 * screen per-row overwrite. The normal buffer may reflow full-width rows on a
-	 * width change before the app can repaint; keeping the drag on the alternate
-	 * screen makes those transient resizes truncate instead of pushing wrapped
-	 * fragments into native scrollback. Normal-screen history is rebuilt once at
-	 * settle via `#emitFullPaint`.
-	 */
-	#emitResizeViewport(window: readonly string[], height: number, contentRows: number, width: number): void {
-		let buffer = `${this.#paintBeginSequence + this.#enterResizeAltSequence()}\x1b[H`;
-		for (let r = 0; r < height; r++) {
-			if (r > 0) buffer += "\r\n";
-			buffer += lineRewriteSequence(window[r] ?? "", width, r, this.#imageBudget);
-		}
-		// Park the hardware cursor at the real content bottom, not the padded
-		// viewport bottom: a later height shrink would otherwise scroll the live
-		// rows below the cursor into native scrollback and duplicate them until
-		// the settle rebuild erases it.
-		const parkUp = height - Math.max(1, contentRows);
-		if (parkUp > 0) buffer += `\x1b[${parkUp}A`;
-		buffer += this.#paintEndSequence;
-		this.terminal.write(buffer);
-	}
-
 	/** Topmost visible overlay requests the alternate-screen buffer. */
 	#wantsAltScreen(): boolean {
-		const entries = this.#overlays.entries;
-		for (let i = entries.length - 1; i >= 0; i--) {
-			const entry = entries[i]!;
-			if (!this.#overlays.isVisible(entry)) continue;
-			return entry.options?.fullscreen === true;
-		}
-		return false;
+		return this.#overlays.topmostVisible()?.options?.fullscreen === true;
 	}
 
 	/**
@@ -3528,41 +3575,14 @@ export class TUI extends Container {
 		// Skip an identical repaint (the modal is mostly static between
 		// keystrokes) — unless a forced repaint (resetDisplay,
 		// requestRender(true)) is pending: the redraw gesture must repair a
-		// corrupted modal even when our cached frame is byte-identical. A caret
-		// move alone also has to repaint: the rows can be identical while the
-		// composer's cursor moved along one of them, and skipping would leave the
-		// caret behind the text the operator is editing.
+		// corrupted modal even when our cached frame is byte-identical.
 		const force = this.#forceViewportRepaintOnNextRender;
 		this.#forceViewportRepaintOnNextRender = false;
-		const caretMoved =
-			cursor === undefined
-				? this.#altPreviousCursor !== undefined
-				: this.#altPreviousCursor === undefined ||
-					this.#altPreviousCursor.row !== cursor.row ||
-					this.#altPreviousCursor.col !== cursor.col;
-		if (!force && !caretMoved && this.#altPreviousLines.length === height) {
-			let same = true;
-			for (let r = 0; r < height; r++) {
-				if (fitted[r] !== this.#altPreviousLines[r]) {
-					same = false;
-					break;
-				}
-			}
-			if (same) return;
-		}
-		let buffer = `${this.#paintBeginSequence}\x1b[H`;
-		for (let r = 0; r < height; r++) {
-			if (r > 0) buffer += "\r\n";
-			buffer += lineRewriteSequence(fitted[r], width, r, this.#imageBudget);
-		}
-		if (cursor !== undefined) {
-			// Rows/cols are 0-based internally and 1-based on the wire.
-			const row = clampLow(cursor.row + 1, 1, Math.max(1, height));
-			const col = clampLow(cursor.col + 1, 1, Math.max(1, width));
-			buffer += `\x1b[${row};${col}H`;
-		}
-		buffer += this.#paintEndSequence;
-		this.terminal.write(buffer);
+		if (!force && sameAltPaint(this.#altPreviousLines, this.#altPreviousCursor, fitted, cursor)) return;
+		this.terminal.write(
+			altScreenSequence(this.#paintBeginSequence, fitted, width, height, cursor, this.#imageBudget) +
+				this.#paintEndSequence,
+		);
 		if (cursor !== undefined) {
 			this.terminal.showCursor();
 			// Absolute placement, so the row tracker is re-based rather than nudged:
@@ -3591,31 +3611,19 @@ export class TUI extends Container {
 	 * bottom on several terminal families.
 	 */
 	#emitUpdate(
-		frame: readonly string[],
-		window: string[],
+		view: AssembledWindow,
+		plan: WindowPlan,
+		transition: FrameTransition,
 		width: number,
 		height: number,
-		cursorPos: { row: number; col: number } | null,
 		purgeSequence: string,
-		options: {
-			chunkTo: number;
-			windowTop: number;
-			prevWindowTop: number;
-			prevHardwareCursorRow: number;
-			forceWindowRewrite: boolean;
-			repaintVirtualScrollInPlace: boolean;
-			cursorTrackingLineCount: number;
-		},
 	): void {
-		const {
-			chunkTo,
-			windowTop,
-			prevWindowTop,
-			prevHardwareCursorRow,
-			forceWindowRewrite,
-			repaintVirtualScrollInPlace,
-			cursorTrackingLineCount,
-		} = options;
+		const { frame, window, cursorPos, cursorTrackingLineCount } = view;
+		const { chunkTo, windowTop } = plan;
+		const { prevWindowTop, prevHardwareCursorRow } = transition;
+		const forceWindowRewrite =
+			this.#forceViewportRepaintOnNextRender || (transition.geometryChanged && resizeRepaintsInPlace());
+		const repaintVirtualScrollInPlace = view.repaintInPlace;
 		const chunkFrom = this.#committedRows;
 		const chunkLength = chunkTo - chunkFrom;
 		const scroll = windowTop - prevWindowTop;
@@ -3626,6 +3634,7 @@ export class TUI extends Container {
 		// our tracking to match so relative moves land correctly.
 		const clampedCursor = Math.min(prevHardwareCursorRow, prevWindowTop + height - 1);
 		const currentScreenRow = clampLow(clampedCursor - prevWindowTop, 0, height - 1);
+		const lead = this.#paintBeginSequence + purgeSequence;
 		const finalizeEmit = (buffer: string, cursorFrom: number, committedRows?: number) => {
 			const cursorControl = this.#cursor.controlSequence(cursorPos, cursorTrackingLineCount, cursorFrom);
 			this.terminal.write(buffer + cursorControl.seq + this.#paintEndSequence);
@@ -3641,41 +3650,25 @@ export class TUI extends Container {
 			chunkLength > 0 &&
 			chunkLength === scroll &&
 			scroll < height &&
-			chunkFrom === prevWindowTop
+			chunkFrom === prevWindowTop &&
+			chunkStillPainted(previousWindow, frame, chunkFrom, chunkLength, height)
 		) {
-			let prefixIntact = previousWindow.length === height;
-			for (let i = 0; prefixIntact && i < chunkLength; i++) {
-				if (previousWindow[i] !== frame[chunkFrom + i]) prefixIntact = false;
-			}
-			if (prefixIntact) {
-				let buffer = this.#paintBeginSequence + purgeSequence;
-				const moveToBottom = height - 1 - currentScreenRow;
-				if (moveToBottom > 0) buffer += `\x1b[${moveToBottom}B`;
-				for (let r = height - scroll; r < height; r++) {
-					buffer += `\r\n${lineRewriteSequence(window[r] ?? "", width, r, this.#imageBudget)}`;
-				}
-				// Rewrite any remaining changed rows after the shift.
-				let firstChanged = -1;
-				let lastChanged = -1;
-				for (let r = 0; r < height - scroll; r++) {
-					if ((window[r] ?? "") === (previousWindow[r + scroll] ?? "")) continue;
-					if (firstChanged === -1) firstChanged = r;
-					lastChanged = r;
-				}
-				let cursorFromRow = windowTop + height - 1;
-				if (firstChanged !== -1) {
-					const up = height - 1 - firstChanged;
-					if (up > 0) buffer += `\x1b[${up}A`;
-					buffer += "\r";
-					for (let r = firstChanged; r <= lastChanged; r++) {
-						if (r > firstChanged) buffer += "\r\n";
-						buffer += lineRewriteSequence(window[r] ?? "", width, r, this.#imageBudget);
-					}
-					cursorFromRow = windowTop + lastChanged;
-				}
-				finalizeEmit(buffer, cursorFromRow, chunkTo);
-				return;
-			}
+			// Rows of the shifted window that changed after the shift.
+			const firstChanged = firstChangedRow(window, previousWindow, scroll, height - scroll);
+			const lastChanged = firstChanged === -1 ? -1 : lastChangedRow(window, previousWindow, scroll, height - scroll);
+			const buffer = scrollAppendSequence(
+				lead,
+				window,
+				width,
+				height,
+				scroll,
+				currentScreenRow,
+				firstChanged,
+				lastChanged,
+				this.#imageBudget,
+			);
+			finalizeEmit(buffer, windowTop + (firstChanged === -1 ? height - 1 : lastChanged), chunkTo);
+			return;
 		}
 
 		// In-window diff: nothing commits. Rewrite in place when the window slid
@@ -3688,16 +3681,16 @@ export class TUI extends Container {
 		// top-clamped full rewrite.
 		const inPlaceRewrite = repaintVirtualScrollInPlace || scroll !== 0;
 		if (chunkLength === 0) {
-			if (forceWindowRewrite || inPlaceRewrite) this.#fullRedrawCount += 1;
-			let firstChanged = forceWindowRewrite || inPlaceRewrite ? 0 : -1;
-			let lastChanged = forceWindowRewrite || inPlaceRewrite ? height - 1 : -1;
-			if (!forceWindowRewrite && !inPlaceRewrite) {
-				const comparable = previousWindow.length === height;
-				for (let r = 0; r < height; r++) {
-					if (comparable && (window[r] ?? "") === (previousWindow[r] ?? "")) continue;
-					if (firstChanged === -1) firstChanged = r;
-					lastChanged = r;
-				}
+			const rewriteAll = forceWindowRewrite || inPlaceRewrite;
+			// A full rewrite takes every row, and so does a diff against a
+			// previous window of another height.
+			let firstChanged = rewriteAll || height > 0 ? 0 : -1;
+			let lastChanged = height - 1;
+			if (rewriteAll) {
+				this.#fullRedrawCount += 1;
+			} else if (previousWindow.length === height) {
+				firstChanged = firstChangedRow(window, previousWindow, 0, height);
+				lastChanged = firstChanged === -1 ? -1 : lastChangedRow(window, previousWindow, 0, height);
 			}
 			if (firstChanged === -1) {
 				if (purgeSequence.length > 0) this.terminal.write(purgeSequence);
@@ -3706,38 +3699,18 @@ export class TUI extends Container {
 				this.#previousHeight = height;
 				return;
 			}
-			let buffer = this.#paintBeginSequence + purgeSequence;
-			if (inPlaceRewrite) {
-				// The cursor tracker can be stale after overlay-only frames, and
-				// meaningless after an uncommitted slide. A large CUU clamps at the
-				// viewport top without using absolute cursor home, so the following
-				// full-window rewrite cannot overflow the bottom.
-				if (height > 1) buffer += `\x1b[${height - 1}A`;
-			} else {
-				buffer += relativeMoveY(firstChanged - currentScreenRow);
-			}
-			buffer += "\r";
-			// DECCARA-optimize the contiguous rewritten range (visible rows
-			// only; rectangles are absolute screen rows).
-			let fillTexts: string[] | null = null;
-			let fillSequence = "";
-			if (this.#deccaraFillsEnabled()) {
-				const slice: string[] = new Array(lastChanged - firstChanged + 1);
-				for (let r = firstChanged; r <= lastChanged; r++) slice[r - firstChanged] = window[r] ?? "";
-				const plan = planDeccaraFills(slice, width, firstChanged);
-				fillTexts = plan.texts;
-				fillSequence = plan.sequence;
-			}
-			for (let r = firstChanged; r <= lastChanged; r++) {
-				if (r > firstChanged) buffer += "\r\n";
-				buffer += lineRewriteSequence(
-					fillTexts ? fillTexts[r - firstChanged] : (window[r] ?? ""),
-					width,
-					r,
-					this.#imageBudget,
-				);
-			}
-			buffer += fillSequence;
+			let buffer = windowDiffSequence(
+				lead,
+				window,
+				width,
+				height,
+				firstChanged,
+				lastChanged,
+				inPlaceRewrite,
+				currentScreenRow,
+				this.#deccaraFillsEnabled(),
+				this.#imageBudget,
+			);
 			// Never park below real content (a height shrink would scroll live
 			// rows into history and duplicate them per resize step).
 			let cursorFromRow = windowTop + lastChanged;
@@ -3751,24 +3724,18 @@ export class TUI extends Container {
 		}
 
 		// Seam rewrite: write the chunk into history, then the whole window.
-		// Cursor moves to the window top with a relative move; the chunk rows
-		// pass through the screen and scroll off as the window rows are written
-		// below them, so the rows entering scrollback are exactly the chunk.
 		this.#fullRedrawCount += 1;
-		let buffer = this.#paintBeginSequence + purgeSequence;
-		if (currentScreenRow > 0) buffer += `\x1b[${currentScreenRow}A`;
-		buffer += "\r";
-		let wroteLine = false;
-		for (let i = chunkFrom; i < chunkTo; i++) {
-			if (wroteLine) buffer += "\r\n";
-			buffer += lineRewriteSequence(frame[i] ?? "", width);
-			wroteLine = true;
-		}
-		for (let screenRow = 0; screenRow < height; screenRow++) {
-			if (wroteLine) buffer += "\r\n";
-			buffer += lineRewriteSequence(window[screenRow] ?? "", width, screenRow, this.#imageBudget);
-			wroteLine = true;
-		}
+		let buffer = seamRewriteSequence(
+			lead,
+			frame,
+			window,
+			width,
+			height,
+			chunkFrom,
+			chunkTo,
+			currentScreenRow,
+			this.#imageBudget,
+		);
 		const parkUp = height - 1 - (contentBottomRow - windowTop);
 		if (parkUp > 0) buffer += `\x1b[${parkUp}A`;
 		finalizeEmit(buffer, contentBottomRow, chunkTo);

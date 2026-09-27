@@ -116,23 +116,6 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
-	/**
-	 * NO UI ROW: nothing renders a separator any more.
-	 *
-	 * The separator styles belonged to the filled powerline bar the editor's top
-	 * border used to carry. That bar had zero production callers and was deleted;
-	 * the composer footline that replaced it joins segments with its own fixed
-	 * `  ·  `. A row that offers seven separator styles and changes nothing on
-	 * screen is worse than no row, so the control is gone. The KEY stays only
-	 * because `modes/terminal/controllers/selector-controller.ts` still reads it; when
-	 * that file loses its two `statusLine.separator` reads, delete this entry.
-	 */
-	"statusLine.separator": {
-		type: "enum",
-		values: ["powerline", "powerline-thin", "slash", "pipe", "block", "none", "ascii"] as const,
-		default: "pipe",
-	},
-
 	"statusLine.sessionAccent": {
 		type: "boolean",
 		default: true,
@@ -143,19 +126,6 @@ export const APPEARANCE_SETTINGS = {
 			description: "Use the session name color for the editor border",
 			advanced: true,
 		},
-	},
-
-	/**
-	 * NO UI ROW: there is no painted bar left to make transparent.
-	 *
-	 * Same story as `statusLine.separator` above — the theme's `statusLineBg`
-	 * fill and the powerline end caps this toggled lived only on the deleted top
-	 * border. The key stays for `selector-controller.ts`; delete it with that
-	 * file's two reads.
-	 */
-	"statusLine.transparent": {
-		type: "boolean",
-		default: true,
 	},
 
 	"statusLine.compactThinkingLevel": {

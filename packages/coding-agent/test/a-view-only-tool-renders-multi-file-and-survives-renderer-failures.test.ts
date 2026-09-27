@@ -13,6 +13,9 @@
  *    When a tool view or custom renderer throws during call or result rendering, the component must
  *    catch the error, render a failure diagnostic via `reportRendererFailure`, and provide an honest
  *    fallback (the tool title for calls, raw output or per-file notice for results).
+ *
+ * Both contracts are drawn by `presentation/tool-card-views.ts`, which the component reaches through
+ * `buildToolExecutionDisplay`.
  */
 
 import { beforeAll, describe, expect, it } from "bun:test";

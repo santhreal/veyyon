@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../extensibility/extensions";
+import type { BuiltinExtensionAPI, ExtensionContext } from "../extensibility/extensions";
 import type { AutoresearchRuntime } from "./types";
 
 /** `a0`, `a1`, … as the loop and the storage rows spell an arm. */
@@ -92,7 +92,7 @@ export function closeModels(spec: string, models: readonly { id: string; name: s
  */
 export async function enterArm(
 	ctx: ExtensionContext,
-	pi: ExtensionAPI,
+	pi: BuiltinExtensionAPI,
 	runtime: AutoresearchRuntime,
 	arm: string,
 	spec: string | undefined,
@@ -153,7 +153,7 @@ export async function enterArm(
  * A refused restore is reported rather than recorded as done: `setModel` answers
  * false when the model has no key, which a session can lose mid-run.
  */
-export async function leaveArm(pi: ExtensionAPI, runtime: AutoresearchRuntime): Promise<ArmExit> {
+export async function leaveArm(pi: BuiltinExtensionAPI, runtime: AutoresearchRuntime): Promise<ArmExit> {
 	const active = runtime.activeArm;
 	if (!active?.restore) {
 		runtime.activeArm = null;

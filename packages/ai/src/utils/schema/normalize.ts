@@ -19,6 +19,7 @@ import {
 	COMBINATOR_KEYS,
 	LIFTABLE_TO_DESCRIPTION_FIELDS,
 	NON_STRUCTURAL_SCHEMA_KEYS,
+	SCHEMA_MAP_KEYWORDS,
 	UNSUPPORTED_SCHEMA_FIELDS,
 } from "./fields";
 import { isValidJsonSchema } from "./meta-validator";
@@ -53,10 +54,6 @@ export interface NormalizeSchemaOptions {
 	dropNonScalarEnum: boolean;
 	rejectResidualIncompatibilities?: ReadonlyArray<ResidualSchemaIncompatibility>;
 	validateAndFallback?: { fallback: unknown };
-}
-
-interface NormalizeSchemaWalkOptions extends NormalizeSchemaOptions {
-	insideProperties: boolean;
 }
 
 interface ResidualIncompatibilityChecks {
@@ -207,7 +204,7 @@ function pushStrippedDescriptionEntry(
 	spill: Array<[string, unknown]> | undefined,
 	key: string,
 	value: unknown,
-	options: NormalizeSchemaWalkOptions,
+	options: NormalizeSchemaOptions,
 ): Array<[string, unknown]> | undefined {
 	const lift = options.liftStrippedToDescription;
 	if (!lift) return spill;
@@ -221,14 +218,14 @@ function pushStrippedDescriptionEntry(
 function applyDescriptionSpill(
 	result: JsonObject,
 	spill: Array<[string, unknown]> | undefined,
-	options: NormalizeSchemaWalkOptions,
+	options: NormalizeSchemaOptions,
 ): void {
 	const lift = options.liftStrippedToDescription;
 	if (!lift || spill === undefined) return;
 	spillToDescription(result, spill, lift.format ?? "spill");
 }
 
-function normalizeSchemaNode(value: unknown, options: NormalizeSchemaWalkOptions): unknown {
+function normalizeSchemaNode(value: unknown, options: NormalizeSchemaOptions): unknown {
 	if (Array.isArray(value)) {
 		if (!enter(value)) return [];
 		try {
@@ -250,105 +247,125 @@ function normalizeSchemaNode(value: unknown, options: NormalizeSchemaWalkOptions
 	}
 }
 
-function normalizeSchemaObjectNode(value: JsonObject, options: NormalizeSchemaWalkOptions): unknown {
-	let obj = options.normalizeFieldNames && !options.insideProperties ? applySnakeCaseRenames(value) : value;
-	if (options.collapseNullFields && !options.insideProperties) {
-		obj = preHandleNullFields(obj);
+/**
+ * The value of a {@link SCHEMA_MAP_KEYWORDS} keyword. Its keys are property or
+ * definition names, never keywords, so only the schemas under them are
+ * normalized: a property named `const` or `nullable` stays a property.
+ */
+function normalizeSchemaMap(map: JsonObject, options: NormalizeSchemaOptions): JsonObject {
+	if (!enter(map)) return {};
+	try {
+		const result: JsonObject = {};
+		for (const name in map) {
+			if (Object.hasOwn(map, name)) result[name] = normalizeSchemaNode(map[name], options);
+		}
+		return result;
+	} finally {
+		exit(map);
 	}
+}
+
+function normalizeSchemaObjectNode(value: JsonObject, options: NormalizeSchemaOptions): unknown {
+	const obj = applyParentLevelRewrites(value, options);
+	const combiner = constUnionCombiner(obj);
 	const result: JsonObject = {};
+	if (combiner !== undefined) writeConstUnionEnum(obj[combiner] as JsonObject[], result, options);
 	let spill: Array<[string, unknown]> | undefined;
-	for (const combiner of JSON_SCHEMA_COMBINERS) {
-		if (!Array.isArray(obj[combiner])) continue;
-		const variants = obj[combiner] as JsonObject[];
-		const allHaveConst = variants.every(v => isRecord(v) && "const" in v);
-		if (!allHaveConst || variants.length === 0) continue;
-
-		const dedupedEnum: unknown[] = [];
-		for (const variant of variants) {
-			pushEnumValue(dedupedEnum, variant.const);
-		}
-		result.enum = dedupedEnum;
-
-		const explicitTypes = variants
-			.map(variant => variant.type)
-			.filter((variantType): variantType is string => typeof variantType === "string");
-		const allHaveSameExplicitType =
-			explicitTypes.length === variants.length &&
-			explicitTypes.every(variantType => variantType === explicitTypes[0]);
-		if (allHaveSameExplicitType && explicitTypes[0]) {
-			result.type = explicitTypes[0];
-		} else {
-			const inferredTypes = dedupedEnum
-				.map(enumValue => inferJsonSchemaTypeFromValue(enumValue))
-				.filter((inferredType): inferredType is string => inferredType !== undefined);
-			const inferredTypeSet = new Set(inferredTypes);
-			if (inferredTypeSet.size === 1) {
-				result.type = inferredTypes[0];
-			} else {
-				const nonNullInferredTypes = inferredTypes.filter(inferredType => inferredType !== "null");
-				const nonNullTypeSet = new Set(nonNullInferredTypes);
-				if (inferredTypes.includes("null") && nonNullTypeSet.size === 1) {
-					result.type = nonNullInferredTypes[0];
-					if (!options.stripNullableKeyword) {
-						result.nullable = true;
-					}
-				}
-			}
-		}
-
-		for (const key in obj) {
-			if (!Object.hasOwn(obj, key) || key === combiner || outHasOwn(result, key)) continue;
-			const entry = obj[key];
-			if (!options.insideProperties && options.unsupportedFields(key)) {
-				spill = pushStrippedDescriptionEntry(spill, key, entry, options);
-				continue;
-			}
-			if (options.stripNullableKeyword && key === "nullable") continue;
-			result[key] = normalizeSchemaNode(entry, {
-				...options,
-				insideProperties: !options.insideProperties && key === "properties",
-			});
-		}
-		applyDescriptionSpill(result, spill, options);
-		return applyNodePostProcessing(result, options);
-	}
-
 	let constValue: unknown;
 	for (const key in obj) {
-		if (!Object.hasOwn(obj, key)) continue;
+		// A const union's `enum`, `type` and `nullable` come from its branches, not the node's own keys.
+		if (!Object.hasOwn(obj, key) || (combiner !== undefined && (key === combiner || outHasOwn(result, key)))) {
+			continue;
+		}
 		const entry = obj[key];
-		if (!options.insideProperties && options.unsupportedFields(key)) {
+		if (options.unsupportedFields(key)) {
 			spill = pushStrippedDescriptionEntry(spill, key, entry, options);
 			continue;
 		}
 		if (options.stripNullableKeyword && key === "nullable") continue;
-		if (key === "const") {
+		if (combiner === undefined && key === "const") {
 			constValue = entry;
 			continue;
 		}
-		result[key] = normalizeSchemaNode(entry, {
-			...options,
-			insideProperties: !options.insideProperties && key === "properties",
-		});
+		result[key] =
+			SCHEMA_MAP_KEYWORDS.has(key) && isRecord(entry)
+				? normalizeSchemaMap(entry, options)
+				: normalizeSchemaNode(entry, options);
 	}
+	if (combiner === undefined) {
+		settleNodeType(result, constValue, options);
+		settleObjectShape(result, options);
+	}
+	applyDescriptionSpill(result, spill, options);
+	return applyNodePostProcessing(result, options);
+}
 
+/**
+ * The rewrites python-genai applies to a schema node before recursing into
+ * it: snake_case keywords renamed, then null fields collapsed.
+ */
+function applyParentLevelRewrites(value: JsonObject, options: NormalizeSchemaOptions): JsonObject {
+	const renamed = options.normalizeFieldNames ? applySnakeCaseRenames(value) : value;
+	return options.collapseNullFields ? preHandleNullFields(renamed) : renamed;
+}
+
+/** The first of `anyOf`/`oneOf` whose branches are all bare `const` schemas, if any. */
+function constUnionCombiner(obj: JsonObject): (typeof JSON_SCHEMA_COMBINERS)[number] | undefined {
+	for (const combiner of JSON_SCHEMA_COMBINERS) {
+		const variants = obj[combiner];
+		if (Array.isArray(variants) && variants.length > 0 && variants.every(v => isRecord(v) && "const" in v)) {
+			return combiner;
+		}
+	}
+	return undefined;
+}
+
+/**
+ * A union of `const` branches collapsed into one `enum`. Its `type` is the
+ * branches' shared explicit type, else the one type every value has, else,
+ * for values of one type plus `null`, that type made nullable.
+ */
+function writeConstUnionEnum(variants: JsonObject[], result: JsonObject, options: NormalizeSchemaOptions): void {
+	const values: unknown[] = [];
+	for (const variant of variants) pushEnumValue(values, variant.const);
+	result.enum = values;
+
+	const explicitType = variants[0]?.type;
+	if (typeof explicitType === "string" && explicitType !== "" && variants.every(v => v.type === explicitType)) {
+		result.type = explicitType;
+		return;
+	}
+	const types = new Set<string>();
+	for (const value of values) {
+		const type = inferJsonSchemaTypeFromValue(value);
+		if (type !== undefined) types.add(type);
+	}
+	if (types.size === 1) {
+		result.type = types.values().next().value;
+		return;
+	}
+	if (types.size !== 2 || !types.delete("null")) return;
+	result.type = types.values().next().value;
+	if (!options.stripNullableKeyword) result.nullable = true;
+}
+
+/**
+ * `type` settled after the keys are walked: a `type` array reduced to its
+ * first non-null member, `const` folded into `enum`, a bare `enum` given the
+ * one type its values share, and `type: "null"` turned into `nullable`.
+ */
+function settleNodeType(result: JsonObject, constValue: unknown, options: NormalizeSchemaOptions): void {
 	if (options.normalizeTypeArrayToNullable && Array.isArray(result.type)) {
 		const types = (result.type as unknown[]).filter((t): t is string => typeof t === "string");
-		const nonNull = types.filter(t => t !== "null");
-		if (types.includes("null") && !options.stripNullableKeyword) {
-			result.nullable = true;
-		}
-		result.type = nonNull[0] ?? types[0];
+		if (types.includes("null") && !options.stripNullableKeyword) result.nullable = true;
+		result.type = types.find(t => t !== "null") ?? types[0];
 	}
 	if (constValue !== undefined) {
 		const existingEnum = Array.isArray(result.enum) ? result.enum : [];
 		pushEnumValue(existingEnum, constValue);
 		result.enum = existingEnum;
-		if (!result.type) {
-			result.type = inferJsonSchemaTypeFromValue(constValue);
-		}
+		if (!result.type) result.type = inferJsonSchemaTypeFromValue(constValue);
 	}
-
 	if (
 		options.inferTypeForBareEnum &&
 		!result.type &&
@@ -362,18 +379,16 @@ function normalizeSchemaObjectNode(value: JsonObject, options: NormalizeSchemaWa
 			result.type = enumTypes[0];
 		}
 	}
-
 	if (options.collapseNullFields && result.type === "null") {
 		delete result.type;
 		if (!options.stripNullableKeyword) result.nullable = true;
 	}
+}
 
-	if (
-		options.autoPropertyOrdering &&
-		result.type === "object" &&
-		!outHasOwn(result, "propertyOrdering") &&
-		isRecord(result.properties)
-	) {
+/** `propertyOrdering` and an empty `properties` added to an object node for the providers that want them. */
+function settleObjectShape(result: JsonObject, options: NormalizeSchemaOptions): void {
+	if (result.type !== "object") return;
+	if (options.autoPropertyOrdering && !outHasOwn(result, "propertyOrdering") && isRecord(result.properties)) {
 		const props = result.properties;
 		const keys: string[] = [];
 		for (const k in props) {
@@ -381,16 +396,10 @@ function normalizeSchemaObjectNode(value: JsonObject, options: NormalizeSchemaWa
 		}
 		if (keys.length > 1) result.propertyOrdering = keys;
 	}
-
-	if (options.ensureObjectProperties && result.type === "object" && !outHasOwn(result, "properties")) {
-		result.properties = {};
-	}
-
-	applyDescriptionSpill(result, spill, options);
-	return applyNodePostProcessing(result, options);
+	if (options.ensureObjectProperties && !outHasOwn(result, "properties")) result.properties = {};
 }
 
-function applyNodePostProcessing(schema: JsonObject, options: NormalizeSchemaWalkOptions): JsonObject {
+function applyNodePostProcessing(schema: JsonObject, options: NormalizeSchemaOptions): JsonObject {
 	let current = schema;
 	for (const combiner of JSON_SCHEMA_COMBINERS) {
 		if (options.mergeObjectCombiners) current = mergeObjectCombinerVariants(current, combiner);
@@ -663,6 +672,7 @@ function collapseSameTypeCombinerVariants(schema: JsonObject, combiner: "anyOf" 
  * Recursively strip any remaining anyOf/oneOf that same-type or mixed-type
  * collapse can handle. This is needed because object-combiner merging can
  * create new anyOf in merged subtrees after child normalization already ran.
+ * A {@link SCHEMA_MAP_KEYWORDS} map is walked by entry, never collapsed itself.
  */
 export function stripResidualCombiners(value: unknown, epoch: number = epochNext()): unknown {
 	if (Array.isArray(value)) {
@@ -673,7 +683,18 @@ export function stripResidualCombiners(value: unknown, epoch: number = epochNext
 	if (!once(value, epoch)) return {};
 	const result: JsonObject = {};
 	for (const key in value) {
-		if (Object.hasOwn(value, key)) result[key] = stripResidualCombiners(value[key], epoch);
+		if (!Object.hasOwn(value, key)) continue;
+		const entry = value[key];
+		if (!SCHEMA_MAP_KEYWORDS.has(key) || !isRecord(entry)) {
+			result[key] = stripResidualCombiners(entry, epoch);
+			continue;
+		}
+		const map: JsonObject = {};
+		result[key] = map;
+		if (!once(entry, epoch)) continue;
+		for (const name in entry) {
+			if (Object.hasOwn(entry, name)) map[name] = stripResidualCombiners(entry[name], epoch);
+		}
 	}
 	let current: JsonObject = result;
 	let changed = true;
@@ -700,23 +721,25 @@ interface NullableExtractionResult {
 	nullable: boolean;
 }
 
-function extractNullableUnionSchema(schema: unknown): NullableExtractionResult {
-	if (!isRecord(schema)) {
-		return { schema, nullable: false };
-	}
-
+/**
+ * `schema` with one way of admitting `null` removed: `nullable: true`, the
+ * `null` of a two-type `type` array, or a bare `{type: "null"}` branch beside
+ * a single other combiner branch, whose keys merge into the node. `undefined`
+ * when `schema` admits `null` in none of those ways, or when the other branch
+ * conflicts with a key beside the combiner.
+ */
+function withoutNullLayer(schema: JsonObject): JsonObject | undefined {
 	if (schema.nullable === true) {
 		const nextSchema = { ...schema };
 		delete nextSchema.nullable;
-		return { schema: nextSchema, nullable: true };
+		return nextSchema;
 	}
 
 	if (Array.isArray(schema.type)) {
 		const typeVariants = schema.type.filter((entry): entry is string => typeof entry === "string");
 		const nonNullTypes = typeVariants.filter(entry => entry !== "null");
 		if (typeVariants.includes("null") && nonNullTypes.length === 1) {
-			const nextSchema = { ...schema, type: nonNullTypes[0] };
-			return { schema: nextSchema, nullable: true };
+			return { ...schema, type: nonNullTypes[0] };
 		}
 	}
 
@@ -752,28 +775,49 @@ function extractNullableUnionSchema(schema: unknown): NullableExtractionResult {
 			const value = nonNullVariant[key];
 			const existingValue = nextSchema[key];
 			if (existingValue !== undefined && !areJsonValuesEqual(existingValue, value)) {
-				return { schema, nullable: false };
+				return undefined;
 			}
 			if (existingValue === undefined) {
 				nextSchema[key] = value;
 			}
 		}
-		return { schema: nextSchema, nullable: true };
+		return nextSchema;
 	}
 
-	return { schema, nullable: false };
+	return undefined;
 }
 
-interface NullableNormalizationResult {
-	schema: unknown;
-	nullable: boolean;
+/**
+ * `schema` with every way it admits `null` removed, and whether it had one. A
+ * branch merged out of a combiner can admit `null` itself
+ * (`anyOf: [{anyOf: [T, {type: "null"}]}, {type: "null"}]`), so layers come
+ * off until none is left. Each layer deletes a key or merges a strictly
+ * shallower branch into the node, so the loop ends within the schema's depth.
+ */
+function extractNullableUnionSchema(schema: unknown): NullableExtractionResult {
+	if (!isRecord(schema)) {
+		return { schema, nullable: false };
+	}
+	let current = schema;
+	let nullable = false;
+	for (let next = withoutNullLayer(current); next !== undefined; next = withoutNullLayer(current)) {
+		current = next;
+		nullable = true;
+	}
+	return { schema: current, nullable };
 }
 
+/**
+ * CCA's nullable pass: a property whose schema admits `null` loses the `null`
+ * branch and leaves `required`, so an absent argument stands for `null`. Each
+ * {@link SCHEMA_MAP_KEYWORDS} map is walked by entry, so a property named
+ * `nullable` or `properties` is a name, and every subtree is walked once.
+ */
 function normalizeNullablePropertiesForCloudCodeAssist(
 	value: unknown,
 	isPropertySchema = false,
 	epoch: number = epochNext(),
-): NullableNormalizationResult {
+): NullableExtractionResult {
 	if (Array.isArray(value)) {
 		if (!once(value, epoch)) {
 			return { schema: [], nullable: false };
@@ -791,31 +835,33 @@ function normalizeNullablePropertiesForCloudCodeAssist(
 	}
 
 	const normalized: JsonObject = {};
+	let nullableProperties: Set<string> | undefined;
 	for (const key in value) {
-		if (Object.hasOwn(value, key))
-			normalized[key] = normalizeNullablePropertiesForCloudCodeAssist(value[key], false, epoch).schema;
+		if (!Object.hasOwn(value, key)) continue;
+		const entry = value[key];
+		if (!SCHEMA_MAP_KEYWORDS.has(key) || !isRecord(entry)) {
+			normalized[key] = normalizeNullablePropertiesForCloudCodeAssist(entry, false, epoch).schema;
+			continue;
+		}
+		const map: JsonObject = {};
+		normalized[key] = map;
+		const arePropertySchemas = key === "properties";
+		if (arePropertySchemas) nullableProperties = new Set();
+		if (!once(entry, epoch)) continue;
+		for (const name in entry) {
+			if (!Object.hasOwn(entry, name)) continue;
+			const walked = normalizeNullablePropertiesForCloudCodeAssist(entry[name], arePropertySchemas, epoch);
+			map[name] = walked.schema;
+			if (walked.nullable) nullableProperties?.add(name);
+		}
 	}
 
-	if (isRecord(normalized.properties)) {
-		const properties = normalized.properties;
-		const required = new Set(
-			Array.isArray(normalized.required)
-				? normalized.required.filter((entry): entry is string => typeof entry === "string")
-				: [],
-		);
-		const nextProperties: JsonObject = {};
-		for (const name in properties) {
-			if (!Object.hasOwn(properties, name)) continue;
-			const normalizedProperty = normalizeNullablePropertiesForCloudCodeAssist(properties[name], true, epoch);
-			nextProperties[name] = normalizedProperty.schema;
-			if (normalizedProperty.nullable) {
-				required.delete(name);
-			}
+	if (nullableProperties !== undefined && Array.isArray(normalized.required)) {
+		const required = new Set<string>();
+		for (const name of normalized.required) {
+			if (typeof name === "string" && !nullableProperties.has(name)) required.add(name);
 		}
-		normalized.properties = nextProperties;
-		if (Array.isArray(normalized.required)) {
-			normalized.required = Array.from(required);
-		}
+		normalized.required = Array.from(required);
 	}
 
 	if (!isPropertySchema) {
@@ -880,7 +926,14 @@ function hasResidualSchemaIncompatibilities(
 	}
 	for (const k in value) {
 		if (!Object.hasOwn(value, k)) continue;
-		if (hasResidualSchemaIncompatibilities(value[k], checks, epoch)) {
+		const child = value[k];
+		if (SCHEMA_MAP_KEYWORDS.has(k) && isRecord(child)) {
+			if (!once(child, epoch)) continue;
+			for (const name in child) {
+				if (Object.hasOwn(child, name) && hasResidualSchemaIncompatibilities(child[name], checks, epoch))
+					return true;
+			}
+		} else if (hasResidualSchemaIncompatibilities(child, checks, epoch)) {
 			return true;
 		}
 	}
@@ -891,10 +944,7 @@ export function normalizeSchema(value: unknown, options: NormalizeSchemaOptions)
 	const detoxified = decontaminateZodInstance(value);
 	const upgraded = upgradeJsonSchemaTo202012(detoxified);
 	const dereferenced = dereferenceJsonSchema(upgraded);
-	let normalized = normalizeSchemaNode(dereferenced, {
-		...options,
-		insideProperties: false,
-	});
+	let normalized = normalizeSchemaNode(dereferenced, options);
 	if (options.stripResidualCombinersFixpoint) {
 		normalized = stripResidualCombiners(normalized);
 	}
@@ -1031,14 +1081,6 @@ export function normalizeSchemaForMoonshot(value: unknown): unknown {
 // ---------------------------------------------------------------------------
 
 const OLLAMA_SCHEMA_ARRAY_KEYS = new Set(["anyOf", "oneOf", "allOf", "prefixItems"]);
-const OLLAMA_SCHEMA_MAP_KEYS = new Set([
-	"properties",
-	"patternProperties",
-	"dependencies",
-	"dependentSchemas",
-	"$defs",
-	"definitions",
-]);
 const OLLAMA_SCHEMA_VALUE_KEYS = new Set([
 	"items",
 	"additionalItems",
@@ -1120,7 +1162,7 @@ export function sanitizeSchemaForOllama(schema: JsonObject): JsonObject {
 			}
 
 			let next = child;
-			if (OLLAMA_SCHEMA_MAP_KEYS.has(key) && isRecord(child)) {
+			if (SCHEMA_MAP_KEYWORDS.has(key) && isRecord(child)) {
 				let mapChanged = false;
 				const mapOutput: JsonObject = {};
 				for (const childKey in child) {
@@ -1162,18 +1204,6 @@ export function sanitizeSchemaForOllama(schema: JsonObject): JsonObject {
 // ---------------------------------------------------------------------------
 
 const OPENAI_RESPONSES_SCHEMA_ARRAY_KEYS = new Set(["anyOf", "oneOf", "allOf", "prefixItems"]);
-const OPENAI_RESPONSES_SCHEMA_MAP_KEYS = new Set([
-	"properties",
-	"patternProperties",
-	// `dependencies` is the Draft-04..07 schema-valued form; older MCP servers
-	// still emit `{ dependencies: { foo: { type: "object" } } }`. String-array
-	// branches per key pass through `normalizeOpenAIResponsesSchemaNode`
-	// untouched because non-objects return as-is.
-	"dependencies",
-	"dependentSchemas",
-	"$defs",
-	"definitions",
-]);
 const OPENAI_RESPONSES_SCHEMA_VALUE_KEYS = new Set([
 	"items",
 	"additionalItems",
@@ -1277,7 +1307,7 @@ function normalizeOpenAIResponsesSchemaNode(value: unknown, cache: WeakMap<JsonO
 		let next: unknown = child;
 		if (key === "patternProperties" && isRecord(child)) {
 			next = normalizeOpenAIResponsesSchemaMap(child, cache, true);
-		} else if (OPENAI_RESPONSES_SCHEMA_MAP_KEYS.has(key) && isRecord(child)) {
+		} else if (SCHEMA_MAP_KEYWORDS.has(key) && isRecord(child)) {
 			next = normalizeOpenAIResponsesSchemaMap(child, cache, false);
 		} else if (OPENAI_RESPONSES_SCHEMA_ARRAY_KEYS.has(key) && Array.isArray(child)) {
 			next = normalizeOpenAIResponsesSchemaArray(child, cache);
@@ -1565,6 +1595,13 @@ function hasUnrepresentableStrictObjectMap(schema: Record<string, unknown>, epoc
 }
 
 /**
+ * Keywords the strict walk never copies: `type` is re-derived after the walk,
+ * `const` folds into `enum`, `nullable: true` becomes an `anyOf` wrapper, and
+ * `additionalProperties` is re-added as `false` by `enforceStrictSchema`.
+ */
+const STRICT_REDERIVED_KEYS: ReadonlySet<string> = new Set(["type", "const", "nullable", "additionalProperties"]);
+
+/**
  * First pass of strict-mode preparation.
  *
  * Rewrites everything strict mode forbids into something it accepts:
@@ -1579,24 +1616,57 @@ function hasUnrepresentableStrictObjectMap(schema: Record<string, unknown>, epoc
  *    documented default after the keyword is stripped.
  *  - `nullable: true` wraps the whole node in `anyOf:[T,{type:"null"}]`.
  *
- * Recurses into properties, items, prefixItems, combinators, and $defs. The
- * `cache` WeakMap dedupes shared subgraphs; the `epoch` is the cycle guard.
+ * Recurses into properties, items, prefixItems, combinators, and $defs.
  */
-export function sanitizeSchemaForStrictMode(
-	schema: Record<string, unknown>,
-	epoch: number = epochNext(),
-	cache: WeakMap<Record<string, unknown>, Record<string, unknown>> = new WeakMap(),
-	root: Record<string, unknown> = schema,
-): Record<string, unknown> {
-	const cached = cache.get(schema);
-	if (cached) return cached;
-	if (!once(schema, epoch)) return {};
+export function sanitizeSchemaForStrictMode(schema: Record<string, unknown>): Record<string, unknown> {
+	return new StrictSchemaSanitizer(schema).node(schema);
+}
 
-	// Pre-pass: unravel `$ref` with sibling keys by inlining the resolved def.
-	// OpenAI strict mode forbids `{$ref, description, ...}`; the SDK resolves
-	// and merges, with sibling keys taking precedence over the ref'd def.
-	// Cite: openai-python/src/openai/lib/_pydantic.py:96-110 (`_ensure_strict_json_schema`)
-	if (typeof schema.$ref === "string") {
+/**
+ * One strict-mode sanitization of one root schema. `#cache` maps each input
+ * node to its output, so a shared subgraph is sanitized once; `#epoch` is the
+ * cycle guard; `#root` resolves `$ref`.
+ */
+class StrictSchemaSanitizer {
+	readonly #epoch = epochNext();
+	readonly #cache = new WeakMap<Record<string, unknown>, Record<string, unknown>>();
+	readonly #root: Record<string, unknown>;
+
+	constructor(root: Record<string, unknown>) {
+		this.#root = root;
+	}
+
+	node(schema: Record<string, unknown>): Record<string, unknown> {
+		const cached = this.#cache.get(schema);
+		if (cached) return cached;
+		if (!once(schema, this.#epoch)) return {};
+
+		const inlined = this.#inlineRefWithSiblings(schema) ?? inlineSoleAllOf(schema);
+		if (inlined !== undefined) {
+			const result = this.node(inlined);
+			this.#cache.set(schema, result);
+			return result;
+		}
+		const typeValue = schema.type;
+		if (Array.isArray(typeValue)) {
+			const result = this.#typeUnion(schema, typeValue);
+			this.#cache.set(schema, result);
+			return result;
+		}
+		return this.#scalarTypeNode(schema);
+	}
+
+	/**
+	 * `{$ref, …siblings}` merged into one node: the resolved definition with the
+	 * siblings over its keys. OpenAI strict mode rejects a `$ref` beside other
+	 * keys; the SDK resolves and merges it the same way.
+	 * Cite: openai-python/src/openai/lib/_pydantic.py:96-110 (`_ensure_strict_json_schema`)
+	 *
+	 * `undefined` for a bare `$ref` and for one that does not resolve.
+	 */
+	#inlineRefWithSiblings(schema: Record<string, unknown>): Record<string, unknown> | undefined {
+		const ref = schema.$ref;
+		if (typeof ref !== "string") return undefined;
 		let hasSibling = false;
 		for (const k in schema) {
 			if (k !== "$ref" && Object.hasOwn(schema, k)) {
@@ -1604,221 +1674,194 @@ export function sanitizeSchemaForStrictMode(
 				break;
 			}
 		}
-		if (hasSibling) {
-			const resolved = resolveStrictRef(root, schema.$ref);
-			if (resolved !== undefined) {
-				// Sibling keys on the schema override keys from the resolved def.
-				const merged: Record<string, unknown> = { ...resolved };
-				for (const k in schema) {
-					if (k === "$ref" || !Object.hasOwn(schema, k)) continue;
-					merged[k] = schema[k];
-				}
-				const result = sanitizeSchemaForStrictMode(merged, epoch, cache, root);
-				cache.set(schema, result);
-				return result;
-			}
+		if (!hasSibling) return undefined;
+		const resolved = resolveStrictRef(this.#root, ref);
+		if (resolved === undefined) return undefined;
+		const merged: Record<string, unknown> = { ...resolved };
+		for (const k in schema) {
+			if (k !== "$ref" && Object.hasOwn(schema, k)) merged[k] = schema[k];
 		}
+		return merged;
 	}
 
-	// Pre-pass: collapse single-element `allOf` by inlining its sole entry.
-	// SDK semantics: `json_schema.update(ensured(all_of[0]))` — the inlined
-	// entry's keys WIN over original sibling keys, then `allOf` is dropped.
-	// Cite: openai-python/src/openai/lib/_pydantic.py:79-83
-	{
-		const allOf = schema.allOf;
-		if (Array.isArray(allOf) && allOf.length === 1 && isRecord(allOf[0])) {
-			const merged: Record<string, unknown> = { ...schema };
-			delete merged.allOf;
-			const sole = allOf[0] as Record<string, unknown>;
-			for (const k in sole) {
-				if (Object.hasOwn(sole, k)) merged[k] = sole[k];
-			}
-			const result = sanitizeSchemaForStrictMode(merged, epoch, cache, root);
-			cache.set(schema, result);
-			return result;
-		}
-	}
+	/**
+	 * `type: [a, b]` split into `anyOf: [{type: a, …}, {type: b, …}]` (see
+	 * {@link strictTypeVariant}). `description` covers the whole union, so it
+	 * stays on the wrapper rather than repeating in every branch — the same
+	 * shape as the optional-property wrap in `enforceStrictSchema`.
+	 */
+	#typeUnion(schema: Record<string, unknown>, typeValue: unknown[]): Record<string, unknown> {
+		const withoutType = { ...schema };
+		delete withoutType.type;
+		const sanitizedWithoutType = this.node(withoutType);
 
-	const typeValue = schema.type;
-	if (Array.isArray(typeValue)) {
-		const typeVariants = typeValue.filter((entry): entry is string => typeof entry === "string");
-		const schemaWithoutType = { ...schema };
-		delete schemaWithoutType.type;
-
-		const sanitizedWithoutType = sanitizeSchemaForStrictMode(schemaWithoutType, epoch, cache, root);
-		if (typeVariants.length === 0) {
-			cache.set(schema, sanitizedWithoutType);
-			return sanitizedWithoutType;
-		}
-		// Build one variant schema per type. Each variant keeps only the keywords
-		// relevant to that type — object-only keywords stay on the object variant,
-		// array-only keywords on the array variant, etc.
-		//
-		// `description` is metadata that applies to the whole union, not to any
-		// single type variant, so hoist it to the wrapper so both branches share
-		// it without duplication. Matches the optional-property wrap in
-		// `enforceStrictSchema` and the typical OpenAI strict-mode "description
-		// on the union" shape.
 		const { description, ...variantBase } = sanitizedWithoutType;
 		const variants: Record<string, unknown>[] = [];
-		for (const variantType of typeVariants) {
-			const variantSchema: Record<string, unknown> = { ...variantBase, type: variantType };
-			if (variantType !== "object") {
-				delete variantSchema.properties;
-				delete variantSchema.required;
-				delete variantSchema.additionalProperties;
-			}
-			if (variantType !== "array") {
-				delete variantSchema.items;
-			}
-			if (!narrowEnumToType(variantSchema, variantType)) continue;
-			variants.push(sanitizeSchemaForStrictMode(variantSchema, epoch, cache, root));
+		for (const variantType of typeValue) {
+			if (typeof variantType !== "string") continue;
+			const variant = strictTypeVariant(variantBase, variantType);
+			if (variant !== undefined) variants.push(this.node(variant));
 		}
-
-		if (variants.length === 0) {
-			cache.set(schema, sanitizedWithoutType);
-			return sanitizedWithoutType;
-		}
+		if (variants.length === 0) return sanitizedWithoutType;
 
 		if (variants.length === 1) {
 			const sole = variants[0] as Record<string, unknown>;
-			if (description !== undefined && !Object.hasOwn(sole, "description")) {
-				sole.description = description;
-			}
-			cache.set(schema, sole);
+			if (description !== undefined && !Object.hasOwn(sole, "description")) sole.description = description;
 			return sole;
 		}
-
-		const result: JsonObject = { anyOf: variants };
-		if (description !== undefined) result.description = description;
-		cache.set(schema, result);
-		return result;
-	}
-	// Scalar `type`: walk the keys, rewriting or stripping per strict-mode rules.
-
-	const sanitized: Record<string, unknown> = {};
-	cache.set(schema, sanitized);
-	for (const key in schema) {
-		const value = schema[key];
-		if (key in NON_STRUCTURAL_SCHEMA_KEYS || key === "type" || key === "const" || key === "nullable") {
-			continue;
-		}
-		// `properties` map — recurse into each property schema.
-
-		if (key === "properties" && isRecord(value)) {
-			const properties: Record<string, unknown> = {};
-			for (const propertyName in value) {
-				const propertySchema = value[propertyName];
-				properties[propertyName] = isRecord(propertySchema)
-					? sanitizeSchemaForStrictMode(propertySchema, epoch, cache, root)
-					: propertySchema;
-			}
-			sanitized.properties = properties;
-			continue;
-		}
-		// `items` can be schema, tuple-array, or scalar boolean — recurse where applicable.
-
-		if (key === "items") {
-			if (isRecord(value)) {
-				sanitized.items = sanitizeSchemaForStrictMode(value, epoch, cache, root);
-			} else if (Array.isArray(value)) {
-				sanitized.items = value.map(entry =>
-					isRecord(entry) ? sanitizeSchemaForStrictMode(entry, epoch, cache, root) : entry,
-				);
-			} else {
-				sanitized.items = value;
-			}
-			continue;
-		}
-		// `prefixItems` is always an array of schemas (draft 2020-12).
-
-		if (key === "prefixItems" && Array.isArray(value)) {
-			sanitized.prefixItems = value.map(entry =>
-				isRecord(entry) ? sanitizeSchemaForStrictMode(entry, epoch, cache, root) : entry,
-			);
-			continue;
-		}
-		// `anyOf`/`oneOf`/`allOf` arrays — recurse into each branch.
-
-		if (COMBINATOR_KEYS.includes(key as (typeof COMBINATOR_KEYS)[number]) && Array.isArray(value)) {
-			sanitized[key] = value.map(entry =>
-				isRecord(entry) ? sanitizeSchemaForStrictMode(entry, epoch, cache, root) : entry,
-			);
-			continue;
-		}
-		// Definition maps — recurse into each named schema.
-
-		if ((key === "$defs" || key === "definitions") && isRecord(value)) {
-			const defs: Record<string, unknown> = {};
-			for (const definitionName in value) {
-				const definitionSchema = value[definitionName];
-				defs[definitionName] = isRecord(definitionSchema)
-					? sanitizeSchemaForStrictMode(definitionSchema, epoch, cache, root)
-					: definitionSchema;
-			}
-			sanitized[key] = defs;
-			continue;
-		}
-		// `additionalProperties` is owned by `enforceStrictSchema`, which sets it to false.
-
-		if (key === "additionalProperties") {
-			continue;
-		}
-
-		if (key === "description" && typeof value === "string" && schema.default !== undefined) {
-			// Preserve `default:` info for strict-mode providers that strip the keyword.
-			// Inline as `(default: X)` text in the description, matching the convention for
-			// runtime-placeholder defaults (e.g. `cwd`) that cannot live in the keyword form.
-			const defaultVal = schema.default;
-			const formatted = typeof defaultVal === "string" ? defaultVal : JSON.stringify(defaultVal);
-			sanitized.description = value.includes("(default:") ? value : `${value} (default: ${formatted})`;
-			continue;
-		}
-
-		sanitized[key] = value;
-	}
-	// Post-pass: re-derive `type` and turn dropped keywords into a representable shape.
-
-	if (Object.hasOwn(schema, "const")) {
-		const constVal = schema.const;
-		const existingEnum = Array.isArray(sanitized.enum) ? sanitized.enum : [];
-		if (!existingEnum.some(v => areJsonValuesEqual(v, constVal))) {
-			existingEnum.push(constVal);
-		}
-		sanitized.enum = existingEnum;
+		const union: JsonObject = { anyOf: variants };
+		if (description !== undefined) union.description = description;
+		return union;
 	}
 
-	// Preserve the original scalar type after the strip-and-rebuild loop.
+	/**
+	 * A node with a scalar or absent `type`: each keyword copied, sanitized or
+	 * dropped, then `const` and `type` re-derived. `nullable: true` wraps the
+	 * result in `anyOf: [T, {type: "null"}]`, and `description` moves to the
+	 * wrapper so both branches share it. The output is cached before the
+	 * children are walked, so a second reference to this node, shared or
+	 * cyclic, resolves to the same output, nullable wrapper included.
+	 */
+	#scalarTypeNode(schema: Record<string, unknown>): Record<string, unknown> {
+		const sanitized: Record<string, unknown> = {};
+		const nullableWrapper: JsonObject | undefined =
+			schema.nullable === true ? { anyOf: [sanitized, { type: "null" }] } : undefined;
+		this.#cache.set(schema, nullableWrapper ?? sanitized);
+		for (const key in schema) {
+			if (key in NON_STRUCTURAL_SCHEMA_KEYS || STRICT_REDERIVED_KEYS.has(key)) continue;
+			sanitized[key] = this.#keyword(schema, key, schema[key]);
+		}
+		foldConstIntoEnum(schema, sanitized);
+		deriveStrictType(schema.type, sanitized);
+		if (nullableWrapper === undefined) return sanitized;
+
+		const description = sanitized.description;
+		delete sanitized.description;
+		if (description !== undefined) nullableWrapper.description = description;
+		return nullableWrapper;
+	}
+
+	/** The strict form of keyword `key` of `schema`: subschemas sanitized, `description` stating the stripped `default`. */
+	#keyword(schema: Record<string, unknown>, key: string, value: unknown): unknown {
+		switch (key) {
+			case "properties":
+			case "$defs":
+			case "definitions":
+				return isRecord(value) ? this.#schemaMap(value) : value;
+			case "items":
+				// A schema, a tuple of schemas (draft 4-2019), or a boolean.
+				if (isRecord(value)) return this.node(value);
+				return Array.isArray(value) ? this.#schemaList(value) : value;
+			case "prefixItems":
+			case "anyOf":
+			case "oneOf":
+			case "allOf":
+				return Array.isArray(value) ? this.#schemaList(value) : value;
+			case "description":
+				return typeof value === "string" && schema.default !== undefined
+					? describeDefault(value, schema.default)
+					: value;
+			default:
+				return value;
+		}
+	}
+
+	#schemaMap(map: Record<string, unknown>): Record<string, unknown> {
+		const out: Record<string, unknown> = {};
+		for (const name in map) {
+			const entry = map[name];
+			out[name] = isRecord(entry) ? this.node(entry) : entry;
+		}
+		return out;
+	}
+
+	#schemaList(list: unknown[]): unknown[] {
+		return list.map(entry => (isRecord(entry) ? this.node(entry) : entry));
+	}
+}
+
+/**
+ * `allOf: [only]` inlined into its node: the entry's keys over the node's own,
+ * then `allOf` dropped, as the SDK does with `json_schema.update(ensured(all_of[0]))`.
+ * Cite: openai-python/src/openai/lib/_pydantic.py:79-83
+ *
+ * `undefined` for any other `allOf`.
+ */
+function inlineSoleAllOf(schema: Record<string, unknown>): Record<string, unknown> | undefined {
+	const allOf = schema.allOf;
+	if (!Array.isArray(allOf) || allOf.length !== 1) return undefined;
+	const sole: unknown = allOf[0];
+	if (!isRecord(sole)) return undefined;
+	const merged: Record<string, unknown> = { ...schema };
+	delete merged.allOf;
+	for (const k in sole) {
+		if (Object.hasOwn(sole, k)) merged[k] = sole[k];
+	}
+	return merged;
+}
+
+/**
+ * The `variantType` member of a `type: [...]` union built from its sanitized
+ * keywords: object-only keywords stay on the object variant, `items` on the
+ * array variant, and `enum` keeps the values `variantType` accepts.
+ * `undefined` when no `enum` value fits `variantType`.
+ */
+function strictTypeVariant(
+	variantBase: Record<string, unknown>,
+	variantType: string,
+): Record<string, unknown> | undefined {
+	const variant: Record<string, unknown> = { ...variantBase, type: variantType };
+	if (variantType !== "object") {
+		delete variant.properties;
+		delete variant.required;
+		delete variant.additionalProperties;
+	}
+	if (variantType !== "array") delete variant.items;
+	return narrowEnumToType(variant, variantType) ? variant : undefined;
+}
+
+/**
+ * `description` with the stripped `default` appended as `(default: X)`, the
+ * form runtime-placeholder defaults such as `cwd` already use in place of the
+ * keyword. A description that already states a default is kept as written.
+ */
+function describeDefault(description: string, defaultValue: unknown): string {
+	if (description.includes("(default:")) return description;
+	const formatted = typeof defaultValue === "string" ? defaultValue : JSON.stringify(defaultValue);
+	return `${description} (default: ${formatted})`;
+}
+
+/**
+ * `const` folded into `enum`, which strict mode accepts in its place. The
+ * sanitized `enum` is the caller's array, so a value it lacks goes into a copy.
+ */
+function foldConstIntoEnum(schema: Record<string, unknown>, sanitized: Record<string, unknown>): void {
+	if (!Object.hasOwn(schema, "const")) return;
+	const constValue = schema.const;
+	const values = Array.isArray(sanitized.enum) ? sanitized.enum : [];
+	sanitized.enum = values.some(value => areJsonValuesEqual(value, constValue)) ? values : [...values, constValue];
+}
+
+/**
+ * `type` restored after the walk: the node's own scalar `type`, else `object`
+ * for a node with `properties`, `array` for one with `items`/`prefixItems`,
+ * else the primitive type every `enum` value shares.
+ */
+function deriveStrictType(typeValue: unknown, sanitized: Record<string, unknown>): void {
 	if (typeof typeValue === "string") {
 		sanitized.type = typeValue;
+		return;
 	}
-
-	if (sanitized.type === undefined && isRecord(sanitized.properties)) {
+	if (isRecord(sanitized.properties)) {
 		sanitized.type = "object";
+		return;
 	}
-
-	if (sanitized.type === undefined && (sanitized.items !== undefined || sanitized.prefixItems !== undefined)) {
+	if (sanitized.items !== undefined || sanitized.prefixItems !== undefined) {
 		sanitized.type = "array";
+		return;
 	}
-
-	// Last-resort inference: a bare `enum`/`const` with homogeneous primitives gets a `type`.
-	if (sanitized.type === undefined) {
-		const inferred = inferStrictPrimitiveTypeFromEnumOrConst(sanitized);
-		if (inferred !== undefined) sanitized.type = inferred;
-	}
-
-	// `nullable: true` was stripped above — re-introduce it as an `anyOf` wrapper.
-	// `description` hoists to the wrapper so both branches share it without
-	// duplication — matches the optional-property wrap in `enforceStrictSchema`
-	// and the typical OpenAI strict-mode "description on the union" shape.
-	if (schema.nullable === true) {
-		const { nullable: _, description, ...withoutNullable } = sanitized;
-		const wrapper: JsonObject = { anyOf: [withoutNullable, { type: "null" }] };
-		if (description !== undefined) wrapper.description = description;
-		return wrapper;
-	}
-
-	return sanitized;
+	const inferred = inferStrictPrimitiveTypeFromEnumOrConst(sanitized);
+	if (inferred !== undefined) sanitized.type = inferred;
 }
 
 /**

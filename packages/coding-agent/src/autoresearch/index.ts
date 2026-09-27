@@ -4,14 +4,14 @@ import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
-import type { ExtensionContext, ExtensionFactory } from "../extensibility/extensions";
+import type { BuiltinExtensionFactory, ExtensionContext } from "../extensibility/extensions";
 import { autoresearchPrompts } from "../prompts/autoresearch/rows";
 import * as git from "../utils/git";
 import { closeModels, leaveArm } from "./arm-model";
 import { type ConsoleAction, type ConsoleHost, LoopConsoleModel, type LoopSetup } from "./console";
 import { createDashboardController } from "./dashboard";
 import { ensureAutoresearchBranch, parseWorkDirDirtyPaths } from "./git";
-import { formatNum, gitStatusPorcelain, gitWorkDirPrefix } from "./helpers";
+import { formatNum, readWorkDirStatus } from "./helpers";
 import { deletePreset, type LoopPreset, loadPresets, savePreset } from "./presets";
 import { AUTORESEARCH_SCREEN_KEY } from "./shortcuts";
 import {
@@ -36,7 +36,7 @@ import { createStartArmTool } from "./tools/start-arm";
 import { createUpdateNotesTool } from "./tools/update-notes";
 import type { AutoresearchRuntime, ExperimentResult, PendingRunSummary } from "./types";
 
-export const createAutoresearchExtension: ExtensionFactory = api => {
+export const createAutoresearchExtension: BuiltinExtensionFactory = api => {
 	const runtimeStore = createRuntimeStore();
 	const dashboard = createDashboardController();
 
@@ -1095,7 +1095,7 @@ function removeLegacyArtifacts(workDir: string): void {
  */
 async function dirtyPathCount(cwd: string): Promise<number | null> {
 	try {
-		const [statusText, workDirPrefix] = await Promise.all([gitStatusPorcelain(cwd), gitWorkDirPrefix(cwd)]);
+		const { statusText, workDirPrefix } = await readWorkDirStatus(cwd);
 		return parseWorkDirDirtyPaths(statusText, workDirPrefix).length;
 	} catch (err) {
 		logger.warn("Failed to count dirty paths before autoresearch clear", { error: errorMessage(err) });

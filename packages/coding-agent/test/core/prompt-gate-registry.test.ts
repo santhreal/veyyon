@@ -352,6 +352,7 @@ describe("the gates a mid-session flip cannot reach", () => {
 				contextFiles: [],
 				workspaceTree: await start.workspaceTree,
 				activeRepoContext: null,
+				nonProjectCwd: null,
 				skills: [],
 				rulebookRules: [],
 				alwaysApplyRules: [],

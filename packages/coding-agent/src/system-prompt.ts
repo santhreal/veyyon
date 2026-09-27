@@ -45,6 +45,7 @@ import {
 	applySectionOverrides,
 	loadSectionOverrideFiles,
 	PROMPT_SECTIONS_DIR,
+	type SectionOverrideFile,
 } from "./system-prompt-builder/section-overrides";
 import {
 	type ComputedRuntimeSectionId,
@@ -117,14 +118,43 @@ function normalizePromptBlock(content: string): string {
 	return prompt.format(content, { renderPhase: "post-render" }).trim();
 }
 
-function splitComparablePromptBlocks(content: string | null | undefined): string[] {
+/** Entries {@link comparableBlockCache} keeps before it drops the least recently used. */
+const COMPARABLE_BLOCK_CACHE_CAPACITY = 32;
+
+/**
+ * Comparable blocks of recently compared prompt sources, keyed by the source text.
+ *
+ * A session compares the same context files, rules and appended text on every prompt build:
+ * discovery dedupes the context files, every rebuild dedupes them again, and every always-apply
+ * rule is checked against every source. Splitting a source runs the prompt formatter over each of
+ * its lines, about 94 µs for a 48 KB `AGENTS.md`, so the cache is what keeps a rebuild from
+ * re-formatting text that has not changed. Keyed by the text itself, so an edited file is a new
+ * key and no entry can answer for text it was not split from. Bounded because a session that moves
+ * between projects leaves sources behind that it will not compare again.
+ */
+const comparableBlockCache = new Map<string, readonly string[]>();
+
+function splitComparablePromptBlocks(content: string | null | undefined): readonly string[] {
 	const normalized = firstNonEmpty(content);
 	if (!normalized) return [];
 
-	return normalizePromptBlock(normalized)
+	const cached = comparableBlockCache.get(normalized);
+	if (cached) {
+		// Re-inserted so the Map's insertion order stays least-recently-used first.
+		comparableBlockCache.delete(normalized);
+		comparableBlockCache.set(normalized, cached);
+		return cached;
+	}
+	const blocks = normalizePromptBlock(normalized)
 		.split(/\n{2,}/)
 		.map(block => block.trim())
 		.filter(block => block.length > 0);
+	comparableBlockCache.set(normalized, blocks);
+	if (comparableBlockCache.size > COMPARABLE_BLOCK_CACHE_CAPACITY) {
+		const oldest = comparableBlockCache.keys().next().value;
+		if (oldest !== undefined) comparableBlockCache.delete(oldest);
+	}
+	return blocks;
 }
 
 /**
@@ -586,6 +616,12 @@ export interface BuildSystemPromptOptions extends Partial<GateInputs> {
 	/** Pre-resolved nested active repo context. Undefined resolves from cwd. */
 	activeRepoContext?: ActiveRepoContext | null;
 	/**
+	 * Why the working directory is not a project root, or null when it is one, as checked when the
+	 * caller discovered the project. Undefined checks `cwd`, which stats its markers and scans a
+	 * bounded way below it. May be a Promise so a check started at discovery is raced, not re-run.
+	 */
+	nonProjectCwd?: NonProjectReason | null | Promise<NonProjectReason | null>;
+	/**
 	 * Reorder the default template's banner sections (see {@link promptSectionNames}).
 	 * Resolved from the model's harness profile `promptSectionOrder`. Ignored (loudly)
 	 * for custom prompt templates, which have no banner sections.
@@ -694,23 +730,319 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		};
 	}
 
-	// Every gate fallback below comes from ONE table, `OMITTED_GATE_DEFAULTS`, rather than being
-	// written inline here. Inline values made each default a second owner independent of the
-	// setting's own default, and the table states what an omitted option means in one place.
+	const cwd = options.cwd ?? getProjectDir();
+	// Every agentConfiguration row derives from ONE dir, this one, which is also the dir the
+	// profile context file was inlined from. Two of the five rows used to come from
+	// `getActiveProfileOrDefault` / `getProfileRootDir` instead, i.e. the process-booted profile:
+	// a session rooted in another agent dir was handed a "Profile AGENTS.md" path pointing at a
+	// DIFFERENT file than the one whose bytes were in its own prompt, so a model told to update
+	// the instruction files edited the wrong profile.
+	const agentDir = path.resolve(options.agentDir ?? getAgentDir());
+	const prepared = await preparePromptInputs(options, cwd, agentDir);
+	const data = promptTemplateData(options, prepared, promptToolSet(options), cwd, agentDir);
+	const hasCustomPrompt = prepared.customPrompt !== undefined;
+	const overrides = await resolvePromptOverrides(data, cwd, hasCustomPrompt);
+	return {
+		systemPrompt: assemblePromptBlocks(options, data, overrides, hasCustomPrompt),
+		// A custom prompt is not assembled from statements, so pricing them against this context
+		// would attribute cost to text the operator replaced.
+		statementContext: hasCustomPrompt ? null : data,
+		statementOverrides: hasCustomPrompt ? null : overrides.statementOverrides,
+		replacedStatementSections: hasCustomPrompt ? [] : overrides.replacedStatementSections,
+	};
+}
+
+/** A workspace tree with nothing in it: what a build renders when no tree was scanned. */
+function emptyWorkspaceTree(rootPath: string): WorkspaceTree {
+	return { rootPath, rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] };
+}
+
+/**
+ * The one deadline a build's slow lookups share, and the record of which of them fell back.
+ *
+ * A lookup that misses the deadline renders its fallback and keeps running in the background so
+ * its caches still warm, logging only when it settles. A lookup that fails renders its fallback
+ * too. Nothing here throws: a prompt is never worth blocking on.
+ */
+class PromptPrepDeadline {
+	readonly #timedOut: string[] = [];
+	readonly #failed: Array<{ name: string; error: unknown }> = [];
+	readonly #deadline: Promise<"__timeout__">;
+	readonly #timer: NodeJS.Timeout;
+
+	constructor() {
+		const { promise, resolve } = Promise.withResolvers<"__timeout__">();
+		this.#deadline = promise;
+		this.#timer = setTimeout(() => resolve("__timeout__"), SYSTEM_PROMPT_PREP_TIMEOUT_MS);
+		// Unref so a fast prep does not hold a one-shot CLI alive waiting for this timer.
+		this.#timer.unref();
+	}
+
+	/** `work`'s value, or `fallback` when it misses the deadline or fails. */
+	async race<T>(name: string, work: Promise<T>, fallback: T): Promise<T> {
+		const tagged = work
+			.then(value => ({ kind: "ok" as const, value }))
+			.catch(error => ({ kind: "err" as const, error }));
+		const result = await Promise.race([tagged, this.#deadline]);
+		if (result === "__timeout__") {
+			this.#timedOut.push(name);
+			void tagged.then(settled => {
+				if (settled.kind === "err") {
+					logger.warn("Background system prompt preparation step failed", { name, error: String(settled.error) });
+				} else {
+					logger.debug("Background system prompt preparation step completed after timeout", { name });
+				}
+			});
+			return fallback;
+		}
+		if (result.kind === "err") {
+			this.#failed.push({ name, error: result.error });
+			return fallback;
+		}
+		return result.value;
+	}
+
+	/** Stop the clock and report every lookup that fell back. */
+	settle(cwd: string): void {
+		clearTimeout(this.#timer);
+		if (this.#timedOut.length > 0) {
+			logger.warn("System prompt preparation steps timed out; using minimal fallback for those steps", {
+				cwd,
+				timeoutMs: SYSTEM_PROMPT_PREP_TIMEOUT_MS,
+				steps: this.#timedOut,
+			});
+			process.stderr.write(
+				`Warning: system prompt preparation steps timed out after ${SYSTEM_PROMPT_PREP_TIMEOUT_MS}ms (${this.#timedOut.join(", ")}); using minimal fallback for those steps.\n`,
+			);
+		}
+		for (const { name, error } of this.#failed) {
+			logger.warn("System prompt preparation step failed; using minimal fallback", {
+				cwd,
+				step: name,
+				error: String(error),
+			});
+		}
+	}
+}
+
+/** Every slow input a build renders: the caller's where it resolved one, looked up otherwise. */
+interface PreparedPromptInputs {
+	readonly customPrompt: string | undefined;
+	readonly appendPrompt: string | undefined;
+	readonly contextFiles: NonNullable<BuildSystemPromptOptions["contextFiles"]>;
+	readonly skills: Skill[];
+	readonly workspaceTree: WorkspaceTree;
+	readonly activeRepoContext: ActiveRepoContext | null;
+	/**
+	 * Why the working directory is not a project, when it is not one. Null means "no reason to
+	 * complain", which is also the answer when the check could not run: a prompt that timed out
+	 * preparing must not assert the session is misrooted.
+	 */
+	readonly nonProjectCwd: NonProjectReason | null;
+	readonly cpuModel: string | undefined;
+	readonly gpu: string | undefined;
+	readonly personality: ResolvedPersonality;
+}
+
+/** Look up every slow input the build renders, concurrently and under one {@link PromptPrepDeadline}. */
+async function preparePromptInputs(
+	options: BuildSystemPromptOptions,
+	cwd: string,
+	agentDir: string,
+): Promise<PreparedPromptInputs> {
+	// Every gate fallback here comes from ONE table, `OMITTED_GATE_DEFAULTS`, rather than being
+	// written inline. Inline values made each default a second owner independent of the setting's
+	// own default, and the table states what an omitted option means in one place.
 	const {
 		customPrompt,
-		resolvedCustomPrompt: providedResolvedCustomPrompt,
-		tools,
+		resolvedCustomPrompt,
 		appendSystemPrompt,
-		inlineToolDescriptors: providedInlineToolDescriptors,
-		resolvedAppendSystemPrompt: providedResolvedAppendPrompt,
-		nativeTools = OMITTED_GATE_DEFAULTS.nativeTools,
+		resolvedAppendSystemPrompt,
 		skillsSettings,
-		toolNames: providedToolNames,
-		cwd,
-		agentDir: providedAgentDir,
 		contextFiles: providedContextFiles,
 		skills: providedSkills,
+		workspaceTree: providedWorkspaceTree,
+		activeRepoContext: providedActiveRepoContext,
+		nonProjectCwd: providedNonProjectCwd,
+		personality = OMITTED_GATE_DEFAULTS.personality,
+		includeWorkspaceTree = OMITTED_GATE_DEFAULTS.includeWorkspaceTree,
+	} = options;
+	const deadline = new PromptPrepDeadline();
+
+	// Presence, not truthiness. Every array is truthy, so the old `providedContextFiles ? ... : ...`
+	// spelling read as "a caller supplied files" while actually meaning "a caller supplied the key",
+	// and a list some spawn site had filtered down to `[]` took the resolved branch and switched
+	// discovery off with nothing said. The distinction is the same one the option's doc states, and
+	// the empty case is announced rather than assumed, because it is far more often a filter that
+	// ate the list than a caller that truly wants a prompt with no operator context.
+	if (providedContextFiles?.length === 0) {
+		logger.warn("Context file discovery disabled: caller supplied an empty resolved list", { cwd, agentDir });
+	}
+	const contextFilesLookup =
+		providedContextFiles !== undefined
+			? Promise.resolve(providedContextFiles)
+			: // Seed the global ~/.veyyon/AGENTS.md AND the LOADING profile's AGENTS.md
+				// with their guidance headers on first run (idempotent once they exist),
+				// then load the context layers. Both live outside the git checkout, so
+				// they survive source updates, unlike a file edited inside ~/.veyyon/src.
+				// The profile seeded is `agentDir`, the one this prompt is for:
+				// seeding the booted profile instead left the profile actually in use
+				// without the persistent file the whole back-fill exists to give it.
+				// `agentDir` is forwarded so the profile scope follows the agent this
+				// prompt is being built for, not whichever profile the process booted with.
+				ensureManagedAgentsFilesOnStartup(agentDir).then(() =>
+					logger.time("loadProjectContextFiles", loadProjectContextFiles, { cwd, agentDir }),
+				);
+	const workspaceTreeLookup =
+		providedWorkspaceTree !== undefined
+			? Promise.resolve(providedWorkspaceTree)
+			: includeWorkspaceTree
+				? logger.time("buildWorkspaceTree", () =>
+						buildWorkspaceTree(cwd, { timeoutMs: SYSTEM_PROMPT_PREP_TIMEOUT_MS }),
+					)
+				: Promise.resolve(emptyWorkspaceTree(cwd));
+	const skillsLookup: Promise<Skill[]> =
+		providedSkills !== undefined
+			? Promise.resolve(providedSkills)
+			: skillsSettings?.enabled !== false
+				? // `agentDir` is forwarded for the same reason the context files above forward it:
+					// all three profile-rooted skill providers (native, veyyon-managed, veyyon-plugins)
+					// read it off the `LoadContext`, and without it they fall back to the
+					// process-active profile and the prompt carries a stranger's skills.
+					loadSkills({ ...skillsSettings, cwd, agentDir }).then(result => result.skills)
+				: Promise.resolve([]);
+	const activeRepoContextLookup =
+		providedActiveRepoContext !== undefined
+			? Promise.resolve(providedActiveRepoContext)
+			: logger.time("resolveActiveRepoContext", () => resolveActiveRepoContext(cwd));
+	// Whether the session is rooted somewhere that is not a project at all. Prepared under the same
+	// deadline as everything else when the caller did not check it, because the check may stat the
+	// working directory and scan a bounded way below it.
+	const nonProjectCwdLookup =
+		providedNonProjectCwd !== undefined
+			? Promise.resolve(providedNonProjectCwd)
+			: logger.time("isNonProjectRoot", () => isNonProjectRoot(cwd));
+	const personalityLookup: Promise<ResolvedPersonality> =
+		personality === "none"
+			? Promise.resolve({ name: "none", text: "" })
+			: logger.time("resolvePersonality", () => resolvePersonality(personality, { cwd }));
+
+	const [
+		resolvedCustom,
+		resolvedAppend,
+		contextFiles,
+		skills,
+		workspaceTree,
+		activeRepoContext,
+		nonProjectCwd,
+		cpuModel,
+		gpu,
+		resolvedPersonality,
+	] = await Promise.all([
+		deadline.race(
+			"customPrompt",
+			resolvedCustomPrompt !== undefined
+				? Promise.resolve(resolvedCustomPrompt)
+				: resolvePromptInput(customPrompt, "system prompt"),
+			undefined,
+		),
+		deadline.race(
+			"appendSystemPrompt",
+			resolvedAppendSystemPrompt !== undefined
+				? Promise.resolve(resolvedAppendSystemPrompt)
+				: resolvePromptInput(appendSystemPrompt, "append system prompt"),
+			undefined,
+		),
+		// Deduped after the race, so the caller's list and the fallback are deduped by the same pass.
+		deadline
+			.race("loadProjectContextFiles", contextFilesLookup, providedContextFiles ?? [])
+			.then(dedupeContainedContextFiles),
+		deadline.race("loadSkills", skillsLookup, providedSkills ?? []),
+		deadline.race("buildWorkspaceTree", workspaceTreeLookup, emptyWorkspaceTree(cwd)),
+		deadline.race("resolveActiveRepoContext", activeRepoContextLookup, null),
+		deadline.race("isNonProjectRoot", nonProjectCwdLookup, null),
+		deadline.race("getCpuModel", logger.time("getCpuModel", getCpuModel), undefined),
+		deadline.race(
+			"getCachedGpu",
+			logger.time("getCachedGpu", () => getCachedGpu(SYSTEM_PROMPT_PREP_TIMEOUT_MS)),
+			undefined,
+		),
+		deadline.race("resolvePersonality", personalityLookup, {
+			name: DEFAULT_PERSONALITY_NAME,
+			text: BUILTIN_PERSONALITIES[DEFAULT_PERSONALITY_NAME],
+		}),
+	]);
+	if (resolvedPersonality.warning) {
+		logger.warn(resolvedPersonality.warning, { cwd, requested: personality });
+		process.stderr.write(`Warning: ${resolvedPersonality.warning}\n`);
+	}
+	deadline.settle(cwd);
+	return {
+		customPrompt: resolvedCustom,
+		appendPrompt: resolvedAppend,
+		contextFiles,
+		skills,
+		workspaceTree,
+		activeRepoContext,
+		nonProjectCwd,
+		cpuModel,
+		gpu,
+		personality: resolvedPersonality,
+	};
+}
+
+/** The tools a prompt names: which ones, the name each is called by, and the inventory rendered for them. */
+interface PromptToolSet {
+	readonly names: string[];
+	/** Registry name to the wire name the model calls it by. */
+	readonly refs: Record<string, string>;
+	/** Empty in provider-native list mode, where the provider schemas already carry every descriptor. */
+	readonly inventory: string;
+	readonly listMode: boolean;
+	readonly inlineDescriptors: boolean;
+}
+
+function promptToolSet(options: BuildSystemPromptOptions): PromptToolSet {
+	const { tools, toolNames, model, nativeTools = OMITTED_GATE_DEFAULTS.nativeTools } = options;
+	const inlineDescriptors = options.inlineToolDescriptors ?? OMITTED_GATE_DEFAULTS.inlineToolDescriptors;
+	// Priority: explicit list > tools map > conservative SDK fallback.
+	const names = toolNames ?? (tools ? Array.from(tools.keys()) : DEFAULT_SYSTEM_PROMPT_TOOL_NAMES.slice());
+	const wireNames = new Map<string, string>(names.map(name => [name, tools?.get(name)?.wireName ?? name]));
+	// Provider-native mode emits no prompt inventory because the provider schemas
+	// already carry it. Other modes render full `# Tool:` descriptor sections.
+	const listMode = !inlineDescriptors && nativeTools;
+	const inventory = listMode
+		? ""
+		: renderToolInventory(
+				names.map(name => {
+					const meta = tools?.get(name);
+					return {
+						name: wireNames.get(name) ?? name,
+						description: meta?.description ?? "",
+						parameters: meta?.parameters ?? ({ type: "object" } as TSchema),
+						examples: meta?.examples,
+					};
+				}),
+				model ?? "",
+			);
+	return { names, refs: Object.fromEntries(wireNames), inventory, listMode, inlineDescriptors };
+}
+
+/**
+ * The data a build renders its template from. `prompt-inspect` prices statements against this
+ * same object, so every value a statement condition reads is resolved here, once.
+ */
+function promptTemplateData(
+	options: BuildSystemPromptOptions,
+	prepared: PreparedPromptInputs,
+	toolSet: PromptToolSet,
+	cwd: string,
+	agentDir: string,
+): StatementContext {
+	// `argotPreamble`, `argotHandles` and `secretInventory` are deliberately NOT read here. They are
+	// option-backed runtime sections, so the assembler reads them off `options` through the section
+	// registry (`section.input.key`); naming them here as well would leave two bindings for one value.
+	const {
 		rules,
 		alwaysApplyRules,
 		intentField,
@@ -723,282 +1055,36 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		taskIrcEnabled = OMITTED_GATE_DEFAULTS.taskIrcEnabled,
 		agentNames = OMITTED_GATE_DEFAULTS.agentNames,
 		secretsEnabled = false,
-		// `argotPreamble`, `argotHandles` and `secretInventory` are deliberately NOT
-		// destructured here. They are option-backed runtime sections, so the assembler
-		// reads them off `options` through the section registry (`section.input.key`).
-		// Naming them here as well left two bindings for one value, one of them dead,
-		// and a reader could not tell which one the prompt actually used.
-		workspaceTree: providedWorkspaceTree,
 		memoryRootEnabled = false,
 		model,
 		includeModelInPrompt = OMITTED_GATE_DEFAULTS.includeModelInPrompt,
-		personality = OMITTED_GATE_DEFAULTS.personality,
 		includeWorkspaceTree = OMITTED_GATE_DEFAULTS.includeWorkspaceTree,
 		renderMermaid = OMITTED_GATE_DEFAULTS.renderMermaid,
-		activeRepoContext: providedActiveRepoContext,
-		sectionOrder,
 	} = options;
-	const inlineToolDescriptors = providedInlineToolDescriptors ?? OMITTED_GATE_DEFAULTS.inlineToolDescriptors;
-	const resolvedCwd = cwd ?? getProjectDir();
-	const resolvedAgentDir = path.resolve(providedAgentDir ?? getAgentDir());
-	// Every agentConfiguration row derives from ONE dir, `resolvedAgentDir`, which is also
-	// the dir the profile context file was inlined from. Two of the five rows used to come
-	// from `getActiveProfileOrDefault` / `getProfileRootDir` instead, i.e. the
-	// process-booted profile: a session rooted in another agent dir was handed a "Profile
-	// AGENTS.md" path pointing at a DIFFERENT file than the one whose bytes were in its
-	// own prompt, so a model told to update the instruction files edited the wrong
-	// profile. The agent dir is always `<config root>/profiles/<name>/agent`, so the
-	// profile name is its parent's basename.
-	const activeProfileName = path.basename(path.dirname(resolvedAgentDir));
-
-	const prepDefaults = {
-		resolvedCustomPrompt: undefined as string | undefined,
-		resolvedAppendPrompt: undefined as string | undefined,
-		contextFiles: dedupeContainedContextFiles(providedContextFiles ?? []),
-		skills: providedSkills ?? ([] as Skill[]),
-		workspaceTree: {
-			rootPath: resolvedCwd,
-			rendered: "",
-			truncated: false,
-			totalLines: 0,
-			agentsMdFiles: [],
-		} satisfies WorkspaceTree,
-		activeRepoContext: null as ActiveRepoContext | null,
-		// Null means "no reason to complain", which is the right answer when the check could not run:
-		// a prompt that timed out preparing must not assert the session is misrooted.
-		nonProjectCwd: null as NonProjectReason | null,
-		cpuModel: undefined as string | undefined,
-		gpu: undefined as string | undefined,
-		resolvedPersonality: {
-			name: DEFAULT_PERSONALITY_NAME,
-			text: BUILTIN_PERSONALITIES[DEFAULT_PERSONALITY_NAME],
-		} as ResolvedPersonality,
-	};
-
-	const { promise: deadline, resolve: fireDeadline } = Promise.withResolvers<"__timeout__">();
-	const deadlineTimer = setTimeout(() => fireDeadline("__timeout__"), SYSTEM_PROMPT_PREP_TIMEOUT_MS);
-	// Unref so a fast prep does not hold a one-shot CLI alive waiting for this timer.
-	deadlineTimer.unref();
-	const timedOut: string[] = [];
-	const failed: Array<{ name: string; error: unknown }> = [];
-
-	async function withDeadline<T>(name: string, work: Promise<T>, fallback: T): Promise<T> {
-		const tagged = work
-			.then(value => ({ kind: "ok" as const, value }))
-			.catch(error => ({ kind: "err" as const, error }));
-		const result = await Promise.race([tagged, deadline]);
-		if (result === "__timeout__") {
-			timedOut.push(name);
-			// Let the work continue in the background so its caches still warm; just log on completion.
-			void tagged.then(r => {
-				if (r.kind === "err") {
-					logger.warn("Background system prompt preparation step failed", { name, error: String(r.error) });
-				} else {
-					logger.debug("Background system prompt preparation step completed after timeout", { name });
-				}
-			});
-			return fallback;
-		}
-		if (result.kind === "err") {
-			failed.push({ name, error: result.error });
-			return fallback;
-		}
-		return result.value;
-	}
-
-	// Presence, not truthiness. Every array is truthy, so the old `providedContextFiles ? ... : ...`
-	// spelling read as "a caller supplied files" while actually meaning "a caller supplied the key",
-	// and a list some spawn site had filtered down to `[]` took the resolved branch and switched
-	// discovery off with nothing said. The distinction is the same one the option's doc states, and
-	// the empty case is announced rather than assumed, because it is far more often a filter that
-	// ate the list than a caller that truly wants a prompt with no operator context.
-	const contextFilesResolvedByCaller = providedContextFiles !== undefined;
-	if (contextFilesResolvedByCaller && providedContextFiles.length === 0) {
-		logger.warn("Context file discovery disabled: caller supplied an empty resolved list", {
-			cwd: resolvedCwd,
-			agentDir: resolvedAgentDir,
-		});
-	}
-	const contextFilesPromise = contextFilesResolvedByCaller
-		? Promise.resolve(providedContextFiles)
-		: // Seed the global ~/.veyyon/AGENTS.md AND the LOADING profile's AGENTS.md
-			// with their guidance headers on first run (idempotent once they exist),
-			// then load the context layers. Both live outside the git checkout, so
-			// they survive source updates, unlike a file edited inside ~/.veyyon/src.
-			// The profile seeded is `resolvedAgentDir`, the one this prompt is for:
-			// seeding the booted profile instead left the profile actually in use
-			// without the persistent file the whole back-fill exists to give it.
-			ensureManagedAgentsFilesOnStartup(resolvedAgentDir).then(() =>
-				// `resolvedAgentDir` is forwarded so the profile scope follows the agent
-				// this prompt is being built for, not whichever profile the process booted with.
-				logger.time("loadProjectContextFiles", loadProjectContextFiles, {
-					cwd: resolvedCwd,
-					agentDir: resolvedAgentDir,
-				}),
-			);
-	const workspaceTreePromise =
-		providedWorkspaceTree !== undefined
-			? Promise.resolve(providedWorkspaceTree)
-			: includeWorkspaceTree
-				? logger.time("buildWorkspaceTree", () =>
-						buildWorkspaceTree(resolvedCwd, { timeoutMs: SYSTEM_PROMPT_PREP_TIMEOUT_MS }),
-					)
-				: Promise.resolve({
-						rootPath: resolvedCwd,
-						rendered: "",
-						truncated: false,
-						totalLines: 0,
-						agentsMdFiles: [],
-					});
-	const skillsPromise: Promise<Skill[]> =
-		providedSkills !== undefined
-			? Promise.resolve(providedSkills)
-			: skillsSettings?.enabled !== false
-				? // `resolvedAgentDir` is forwarded for the same reason the context files above
-					// forward it: all three profile-rooted skill providers (native, veyyon-managed,
-					// veyyon-plugins) read it off the `LoadContext`, and without it they fall back to
-					// the process-active profile and the prompt carries a stranger's skills.
-					loadSkills({ ...skillsSettings, cwd: resolvedCwd, agentDir: resolvedAgentDir }).then(
-						result => result.skills,
-					)
-				: Promise.resolve([]);
-	const activeRepoContextPromise =
-		providedActiveRepoContext !== undefined
-			? Promise.resolve(providedActiveRepoContext)
-			: logger.time("resolveActiveRepoContext", () => resolveActiveRepoContext(resolvedCwd));
-	// Whether the session is rooted somewhere that is not a project at all. Prepared here, under the
-	// same deadline as everything else, because it may stat the working directory and scan a bounded
-	// way below it; a prompt is never worth blocking on.
-	const nonProjectCwdPromise = logger.time("isNonProjectRoot", () => isNonProjectRoot(resolvedCwd));
-	const cpuModelPromise = logger.time("getCpuModel", getCpuModel);
-	const gpuPromise = logger.time("getCachedGpu", () => getCachedGpu(SYSTEM_PROMPT_PREP_TIMEOUT_MS));
-	const personalityPromise: Promise<ResolvedPersonality> =
-		personality === "none"
-			? Promise.resolve({ name: "none", text: "" })
-			: logger.time("resolvePersonality", () => resolvePersonality(personality, { cwd: resolvedCwd }));
-
-	const [
-		resolvedCustomPrompt,
-		resolvedAppendPrompt,
-		contextFiles,
-		skills,
-		workspaceTree,
-		activeRepoContext,
-		nonProjectCwd,
-		cpuModel,
-		gpu,
-		resolvedPersonality,
-	] = await Promise.all([
-		withDeadline(
-			"customPrompt",
-			providedResolvedCustomPrompt !== undefined
-				? Promise.resolve(providedResolvedCustomPrompt)
-				: resolvePromptInput(customPrompt, "system prompt"),
-			prepDefaults.resolvedCustomPrompt,
-		),
-		withDeadline(
-			"appendSystemPrompt",
-			providedResolvedAppendPrompt !== undefined
-				? Promise.resolve(providedResolvedAppendPrompt)
-				: resolvePromptInput(appendSystemPrompt, "append system prompt"),
-			prepDefaults.resolvedAppendPrompt,
-		),
-		withDeadline("loadProjectContextFiles", contextFilesPromise, prepDefaults.contextFiles).then(
-			dedupeContainedContextFiles,
-		),
-		withDeadline("loadSkills", skillsPromise, prepDefaults.skills),
-		withDeadline("buildWorkspaceTree", workspaceTreePromise, prepDefaults.workspaceTree),
-		withDeadline("resolveActiveRepoContext", activeRepoContextPromise, prepDefaults.activeRepoContext),
-		withDeadline("isNonProjectRoot", nonProjectCwdPromise, prepDefaults.nonProjectCwd),
-		withDeadline("getCpuModel", cpuModelPromise, prepDefaults.cpuModel),
-		withDeadline("getCachedGpu", gpuPromise, prepDefaults.gpu),
-		withDeadline("resolvePersonality", personalityPromise, prepDefaults.resolvedPersonality),
-	]);
-	clearTimeout(deadlineTimer);
-
-	if (resolvedPersonality.warning) {
-		logger.warn(resolvedPersonality.warning, { cwd: resolvedCwd, requested: personality });
-		process.stderr.write(`Warning: ${resolvedPersonality.warning}\n`);
-	}
-	const agentsMdFiles = Array.from(new Set(workspaceTree.agentsMdFiles)).sort().slice(0, AGENTS_MD_LIMIT);
-
-	if (timedOut.length > 0) {
-		logger.warn("System prompt preparation steps timed out; using minimal fallback for those steps", {
-			cwd: resolvedCwd,
-			timeoutMs: SYSTEM_PROMPT_PREP_TIMEOUT_MS,
-			steps: timedOut,
-		});
-		process.stderr.write(
-			`Warning: system prompt preparation steps timed out after ${SYSTEM_PROMPT_PREP_TIMEOUT_MS}ms (${timedOut.join(", ")}); using minimal fallback for those steps.\n`,
-		);
-	}
-	if (failed.length > 0) {
-		for (const { name, error } of failed) {
-			logger.warn("System prompt preparation step failed; using minimal fallback", {
-				cwd: resolvedCwd,
-				step: name,
-				error: String(error),
-			});
-		}
-	}
-
-	const promptCwd = shortenPath(normalizePromptPath(resolvedCwd));
-
-	// Build tool metadata for system prompt rendering.
-	// Priority: explicit list > tools map > conservative SDK fallback.
-	let toolNames = providedToolNames;
-	if (!toolNames) {
-		toolNames = tools ? Array.from(tools.keys()) : DEFAULT_SYSTEM_PROMPT_TOOL_NAMES.slice();
-	}
-
-	// Build tool descriptions for system prompt rendering.
-	const toolPromptNames = new Map<string, string>(toolNames.map(name => [name, tools?.get(name)?.wireName ?? name]));
-	const toolRefs = Object.fromEntries(toolPromptNames.entries());
-	// Provider-native mode emits no prompt inventory because the provider schemas
-	// already carry it. Other modes render full `# Tool:` descriptor sections.
-	const toolListMode = !inlineToolDescriptors && nativeTools;
-	const toolInventory = toolListMode
-		? ""
-		: renderToolInventory(
-				toolNames.map(name => {
-					const meta = tools?.get(name);
-					return {
-						name: toolPromptNames.get(name) ?? name,
-						description: meta?.description ?? "",
-						parameters: meta?.parameters ?? ({ type: "object" } as TSchema),
-						examples: meta?.examples,
-					};
-				}),
-				model ?? "",
-			);
-
+	const { customPrompt, appendPrompt, contextFiles, workspaceTree, activeRepoContext, nonProjectCwd } = prepared;
 	// Filter skills for the rendered system prompt:
 	// - require the `read` tool so the model can actually fetch skill content;
 	// - drop skills with frontmatter `hide: true` (still loadable via skill:// and /skill:<name>).
-	const hasRead = toolNames.includes("read");
-	const filteredSkills = hasRead ? skills.filter(skill => skill.hide !== true) : [];
-
-	const contextPromptSources = contextFiles.map(file => file.content);
-	const promptSources = [resolvedCustomPrompt, resolvedAppendPrompt, ...contextPromptSources];
-	const injectedAlwaysApplyRules = dedupeAlwaysApplyRules(alwaysApplyRules, promptSources);
-
-	const environment = getEnvironmentInfo(cpuModel, gpu);
-	const data = {
-		customPrompt: resolvedCustomPrompt,
-		appendPrompt: resolvedAppendPrompt ?? "",
-		tools: toolNames,
-		hasTools: toolNames.length > 0,
-		toolInventory,
-		inlineToolDescriptors,
-		toolListMode,
-		toolRefs,
-		environment,
+	const skills = toolSet.names.includes("read") ? prepared.skills.filter(skill => skill.hide !== true) : [];
+	const promptSources = [customPrompt, appendPrompt, ...contextFiles.map(file => file.content)];
+	return {
+		customPrompt,
+		appendPrompt: appendPrompt ?? "",
+		tools: toolSet.names,
+		hasTools: toolSet.names.length > 0,
+		toolInventory: toolSet.inventory,
+		inlineToolDescriptors: toolSet.inlineDescriptors,
+		toolListMode: toolSet.listMode,
+		toolRefs: toolSet.refs,
+		environment: getEnvironmentInfo(prepared.cpuModel, prepared.gpu),
+		// The agent dir is always `<config root>/profiles/<name>/agent`, so the profile name is its
+		// parent's basename.
 		agentConfiguration: [
-			{ label: "Active profile", value: activeProfileName },
-			{ label: "Agent directory", value: resolvedAgentDir },
-			{ label: "Skills directory", value: path.join(resolvedAgentDir, "skills") },
+			{ label: "Active profile", value: path.basename(path.dirname(agentDir)) },
+			{ label: "Agent directory", value: agentDir },
+			{ label: "Skills directory", value: path.join(agentDir, "skills") },
 			{ label: "Global AGENTS.md", value: getGlobalAgentsPath() },
-			{ label: "Profile AGENTS.md", value: path.join(resolvedAgentDir, "AGENTS.md") },
+			{ label: "Profile AGENTS.md", value: path.join(agentDir, "AGENTS.md") },
 		],
 		// Merged into the project section: same input (cwd), same lifetime, same
 		// invalidation as the rest of the project framing.
@@ -1016,15 +1102,17 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		userInstructionAuthority: sessionPrompts["session/user-instruction-authority"].text.trim(),
 		contextFileAuthority: sessionPrompts["session/context-file-authority"].text.trim(),
 		contextFiles,
-		agentsMdSearch: { files: agentsMdFiles },
+		agentsMdSearch: {
+			files: Array.from(new Set(workspaceTree.agentsMdFiles)).sort().slice(0, AGENTS_MD_LIMIT),
+		},
 		workspaceTree,
-		skills: filteredSkills,
+		skills,
 		rules: rules ?? [],
-		alwaysApplyRules: injectedAlwaysApplyRules,
-		cwd: promptCwd,
+		alwaysApplyRules: dedupeAlwaysApplyRules(alwaysApplyRules, promptSources),
+		cwd: shortenPath(normalizePromptPath(cwd)),
 		model: includeModelInPrompt ? (model ?? "") : "",
 		useCodexTaskPrompt: usesCodexTaskPrompt(model),
-		personality: resolvedPersonality.text,
+		personality: prepared.personality.text,
 		intentTracing: !!intentField,
 		intentField: intentField ?? "",
 		mcpDiscoveryMode,
@@ -1052,15 +1140,34 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		includeWorkspaceTree,
 		renderMermaid,
 	};
+}
+
+/** The eval and file overrides a build applies, already checked against each other and the prompt. */
+interface PromptOverrides {
+	readonly statementOverrides: StatementOverrides;
+	/** Section bodies from `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS`; empty when it is unset. */
+	readonly evalSections: Partial<DefaultTemplateSections>;
+	/** Whether {@link evalSections} is the only section source, suppressing {@link sectionFiles}. */
+	readonly usingEvalSections: boolean;
+	readonly sectionFiles: readonly SectionOverrideFile[];
+	/** Static sections whose shipped statements are replaced wholesale. */
+	readonly replacedStatementSections: readonly string[];
+}
+
+/** Read every override source and reject each combination that would silently discard one of them. */
+async function resolvePromptOverrides(
+	data: StatementContext,
+	cwd: string,
+	hasCustomPrompt: boolean,
+): Promise<PromptOverrides> {
 	// A `VEYYON_EVAL_PROMPTS` id this build does not have is refused here, against the
 	// generated id space of every registry. Assembly is before the first model call, so a
 	// typo costs one hard error instead of an arm's worth of trials that quietly ran the
 	// shipped prompt under a treatment's name.
 	assertEvalPromptOverrideIdsExist();
-	const evalSectionOverrides = resolveEvalSectionOverrides();
-	const evalStatementOverrides = resolveEvalStatementOverrides();
-	const overriddenStatementIds = Object.keys(evalStatementOverrides);
-	const hasCustomPrompt = resolvedCustomPrompt !== undefined;
+	const evalSections = resolveEvalSectionOverrides();
+	const statementOverrides = resolveEvalStatementOverrides();
+	const overriddenStatementIds = Object.keys(statementOverrides);
 	if (hasCustomPrompt && overriddenStatementIds.length > 0) {
 		throw new Error(
 			"VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS cannot be combined with a custom system prompt " +
@@ -1080,20 +1187,20 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// than merging with it. A benchmark arm must measure the prompt it declared;
 	// letting a `PROMPT_SECTIONS/` directory on the machine running the arm mix
 	// into it would silently contaminate the result.
-	const usingEvalOverrides = Object.keys(evalSectionOverrides).length > 0;
-	const sectionOverrideFiles = await loadSectionOverrideFiles({ cwd: resolvedCwd });
-	if (usingEvalOverrides && sectionOverrideFiles.length > 0) {
+	const usingEvalSections = Object.keys(evalSections).length > 0;
+	const sectionFiles = await loadSectionOverrideFiles({ cwd });
+	if (usingEvalSections && sectionFiles.length > 0) {
 		logger.warn(
 			`${PROMPT_SECTIONS_DIR}/ overrides are present but IGNORED because ` +
 				"VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS is set; the benchmark payload is the only section source.",
 		);
 	}
 
-	const replacedStatementSections = usingEvalOverrides
-		? TEMPLATE_SECTIONS.filter(section => Object.hasOwn(evalSectionOverrides, kebabToCamel(section.id))).map(
+	const replacedStatementSections = usingEvalSections
+		? TEMPLATE_SECTIONS.filter(section => Object.hasOwn(evalSections, kebabToCamel(section.id))).map(
 				section => section.id,
 			)
-		: Array.from(new Set(sectionOverrideFiles.filter(file => file.mode === "replace").map(file => file.id)));
+		: Array.from(new Set(sectionFiles.filter(file => file.mode === "replace").map(file => file.id)));
 	const overriddenStatementSections = new Set(overriddenStatementIds.map(id => id.slice(0, id.indexOf("/"))));
 	const overlappingSections = replacedStatementSections.filter(section => overriddenStatementSections.has(section));
 	if (overlappingSections.length > 0) {
@@ -1103,36 +1210,43 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		);
 	}
 
-	const hasSectionOverrides = usingEvalOverrides || sectionOverrideFiles.length > 0;
-	if (hasCustomPrompt && hasSectionOverrides) {
+	if (hasCustomPrompt && (usingEvalSections || sectionFiles.length > 0)) {
 		// A custom prompt has no registry sections. Refuse the conflict before
 		// assembling the static statement map that the custom prompt would discard.
-		const source = usingEvalOverrides
+		const source = usingEvalSections
 			? "VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS"
-			: `${PROMPT_SECTIONS_DIR}/ overrides (${sectionOverrideFiles.map(file => file.path).join(", ")})`;
+			: `${PROMPT_SECTIONS_DIR}/ overrides (${sectionFiles.map(file => file.path).join(", ")})`;
 		throw new Error(
 			`${source} cannot be combined with a custom system prompt ` +
 				"(--system-prompt): a custom prompt has no banner sections to override. Use one or the other.",
 		);
 	}
+	return { statementOverrides, evalSections, usingEvalSections, sectionFiles, replacedStatementSections };
+}
 
-	let baseTemplate: string;
-	if (hasCustomPrompt) {
-		baseTemplate = sessionPrompts["session/custom-system-prompt"].text;
-	} else {
-		// Build statement sections only for the default prompt. Append-mode
-		// overrides extend exactly what this session would otherwise send.
-		const statementSections = assembleStatementSections(data, evalStatementOverrides);
-		const sectionOverrides = usingEvalOverrides
-			? evalSectionOverrides
-			: applySectionOverrides(sectionOverrideFiles, statementSections);
-		baseTemplate = assembleDefaultTemplate({ ...statementSections, ...sectionOverrides });
-	}
-	const rendered = prompt.render(baseTemplate, data);
-	const reorderSections = Boolean(sectionOrder && sectionOrder.length > 0);
-	if (reorderSections && hasCustomPrompt) {
-		logger.warn("harness promptSectionOrder is ignored for custom system prompt templates (no banner sections)");
-	}
+/** The Handlebars template a build renders: the caller's custom prompt shell, or the assembled default. */
+function promptTemplate(data: StatementContext, overrides: PromptOverrides, hasCustomPrompt: boolean): string {
+	if (hasCustomPrompt) return sessionPrompts["session/custom-system-prompt"].text;
+	// Build statement sections only for the default prompt. Append-mode
+	// overrides extend exactly what this session would otherwise send.
+	const statementSections = assembleStatementSections(data, overrides.statementOverrides);
+	const sectionOverrides = overrides.usingEvalSections
+		? overrides.evalSections
+		: applySectionOverrides(overrides.sectionFiles, statementSections);
+	return assembleDefaultTemplate({ ...statementSections, ...sectionOverrides });
+}
+
+/**
+ * The provider-facing prompt blocks: the rendered template, then one block per runtime section,
+ * ordered as the model's harness profile asks.
+ */
+function assemblePromptBlocks(
+	options: BuildSystemPromptOptions,
+	data: StatementContext,
+	overrides: PromptOverrides,
+	hasCustomPrompt: boolean,
+): string[] {
+	const rendered = prompt.render(promptTemplate(data, overrides, hasCustomPrompt), data);
 	// Custom prompt templates already render context files and append text; the
 	// project footer still carries environment, cwd, workspace, and dir-context.
 	const projectPrompt = prompt
@@ -1158,9 +1272,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// so the model learns handles from these sections, not by reading a file. The
 	// caller decides per turn whether to teach (model allowlist + context cutoff);
 	// decoding is unconditional and runs at the seams.
-	// Only COMPUTED sections are listed here — the ones this function produces
-	// itself. Option-backed sections are read through the registry below, so their
-	// text cannot be wired to the wrong option or silently left unwired.
 	const computedText: Record<ComputedRuntimeSectionId, string | undefined> = {
 		project: projectPrompt,
 	};
@@ -1181,25 +1292,21 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// volatile section (the handle table changes whenever a dictionary loads) must
 	// not sit inside it. Every entry is a banner section, so `splitPromptSections`
 	// addresses runtime and template sections identically.
-	const systemPrompt: string[] = rendered || !hasCustomPrompt ? [rendered] : [];
+	const blocks: string[] = rendered || !hasCustomPrompt ? [rendered] : [];
 	for (const section of RUNTIME_SECTIONS) {
 		const text = withSectionBanner(section, runtimeText(section));
-		if (text) systemPrompt.push(text);
+		if (text) blocks.push(text);
 	}
 
 	// One ordering pass over the WHOLE prompt. Template and runtime sections are
 	// permuted from the same list, so a harness profile can move the shorthand
 	// section the same way it moves tool-policy — the capability the appended tier
 	// never had.
-	return {
-		systemPrompt:
-			reorderSections && !hasCustomPrompt
-				? applyPromptSectionOrderToParts(systemPrompt, sectionOrder)
-				: systemPrompt,
-		// A custom prompt is not assembled from statements, so pricing them against this context
-		// would attribute cost to text the operator replaced.
-		statementContext: hasCustomPrompt ? null : data,
-		statementOverrides: hasCustomPrompt ? null : evalStatementOverrides,
-		replacedStatementSections: hasCustomPrompt ? [] : replacedStatementSections,
-	};
+	const { sectionOrder } = options;
+	if (!sectionOrder || sectionOrder.length === 0) return blocks;
+	if (hasCustomPrompt) {
+		logger.warn("harness promptSectionOrder is ignored for custom system prompt templates (no banner sections)");
+		return blocks;
+	}
+	return applyPromptSectionOrderToParts(blocks, sectionOrder);
 }

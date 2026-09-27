@@ -57,8 +57,8 @@ interface Harness {
 /**
  * A controller with just enough context to take a setting change.
  *
- * Only the three surfaces a gate flip can reach are stubbed. Anything else the switch touches
- * for a given setting is out of scope here and covered by `selector-settings-side-effects`.
+ * Only the three surfaces a gate flip can reach are stubbed. Anything else a setting's effect
+ * touches is out of scope here and covered by `selector-settings-side-effects`.
  */
 function harness(): Harness {
 	const refreshBaseSystemPrompt = vi.fn(() => Promise.resolve([]));
@@ -98,7 +98,7 @@ describe("flipping a live prompt gate", () => {
 	});
 
 	it("still performs the setting's other side effects", () => {
-		// The gate check runs before the switch and must not swallow it. `tui.renderMermaid`
+		// The gate check runs before the effect and must not swallow it. `tui.renderMermaid`
 		// switches the renderer and retires blocks already committed to scrollback.
 		const rebuildChatFromMessages = vi.fn();
 		const resetDisplay = vi.fn();
@@ -149,18 +149,6 @@ describe("flipping a setting the prompt does not gate on", () => {
 		const { controller, refreshBaseSystemPrompt, showWarning } = harness();
 
 		controller.handleSettingChange("tui.tight", true);
-
-		expect(refreshBaseSystemPrompt).not.toHaveBeenCalled();
-		expect(showWarning).not.toHaveBeenCalled();
-	});
-
-	it("leaves the discovery-provider path alone, which returns before the gate check", () => {
-		// `discovery.*` toggles are handled by an early return above the gate check. They change
-		// the tool set rather than a prompt gate, and reaching them would mean the gate check
-		// moved above that return.
-		const { controller, refreshBaseSystemPrompt, showWarning } = harness();
-
-		controller.handleSettingChange("discovery.some-provider", true);
 
 		expect(refreshBaseSystemPrompt).not.toHaveBeenCalled();
 		expect(showWarning).not.toHaveBeenCalled();

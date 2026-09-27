@@ -305,8 +305,8 @@ function extractCodexFrameResponseId(frame: Record<string, unknown>): string | u
 	return typeof id === "string" && id.length > 0 ? id : undefined;
 }
 
-function extractCodexFrameSequenceNumber(frame: Record<string, unknown>): number | undefined {
-	const raw = (frame as { sequence_number?: unknown }).sequence_number;
+/** A wire index or sequence number as an integer, or `undefined` when the field is absent or not a finite number. */
+function wireInteger(raw: unknown): number | undefined {
 	return typeof raw === "number" && Number.isFinite(raw) ? Math.trunc(raw) : undefined;
 }
 
@@ -805,6 +805,12 @@ interface CodexOpenItem {
 
 class CodexStreamRuntime {
 	eventStream: AsyncGenerator<Record<string, unknown>>;
+	/**
+	 * The body this attempt sent. A websocket attempt holds a private deep copy,
+	 * taken when the frame is built and never mutated, that becomes the chain
+	 * baseline on completion. An SSE attempt never chains and holds the wire body
+	 * itself; it is read only for `stream_options` and `service_tier`.
+	 */
 	requestBodyForState: RequestBody;
 	transport: CodexTransport;
 	websocketState?: CodexWebSocketSessionState;
@@ -883,10 +889,7 @@ class CodexStreamRuntime {
 	openItemForEvent(rawEvent: Record<string, unknown>): CodexOpenItem | null {
 		const itemId = typeof rawEvent.item_id === "string" ? rawEvent.item_id : "";
 		if (itemId) return this.openItems.get(itemId) ?? null;
-		const outputIndex =
-			typeof rawEvent.output_index === "number" && Number.isFinite(rawEvent.output_index)
-				? Math.trunc(rawEvent.output_index)
-				: undefined;
+		const outputIndex = wireInteger(rawEvent.output_index);
 		if (outputIndex !== undefined) return this.openItemsByOutputIndex.get(outputIndex) ?? null;
 		return this.currentEntry;
 	}
@@ -928,14 +931,8 @@ class CodexStreamRuntime {
 			typeof rawEvent.item_id === "string" && rawEvent.item_id.length > 0
 				? rawEvent.item_id
 				: (this.currentItem?.id ?? "");
-		const outputIndex =
-			typeof rawEvent.output_index === "number" && Number.isFinite(rawEvent.output_index)
-				? Math.trunc(rawEvent.output_index)
-				: undefined;
-		const sequenceNumber =
-			typeof rawEvent.sequence_number === "number" && Number.isFinite(rawEvent.sequence_number)
-				? Math.trunc(rawEvent.sequence_number)
-				: undefined;
+		const outputIndex = wireInteger(rawEvent.output_index);
+		const sequenceNumber = wireInteger(rawEvent.sequence_number);
 		let state = this.whitespaceToolCallArgumentsDelta;
 		if (!state || state.itemId !== itemId || state.outputIndex !== outputIndex) {
 			state = {
@@ -1599,7 +1596,6 @@ async function openCodexWebSocketTransport(
 	if (replacementWebsocketRequest !== undefined) {
 		websocketRequest = replacementWebsocketRequest as typeof websocketRequest;
 	}
-	recordCodexTurnRequestDiagnostics(websocketState, websocketRequest, "websocket", canAppendBeforeRequest);
 	const websocketHeaders = createCodexHeaders(
 		requestContext.requestHeaders,
 		requestContext.accountId,
@@ -1620,7 +1616,15 @@ async function openCodexWebSocketTransport(
 	} else {
 		requestBodyForState.stream_options = websocketRequest.stream_options;
 	}
-	requestContext.wireBodyJson = JSON.stringify(websocketRequest);
+	const websocketRequestJson = JSON.stringify(websocketRequest);
+	requestContext.wireBodyJson = websocketRequestJson;
+	recordCodexTurnRequestDiagnostics(
+		websocketState,
+		websocketRequest,
+		websocketRequestJson,
+		"websocket",
+		canAppendBeforeRequest,
+	);
 	CODEX_DEBUG &&
 		logger.debug("[codex] codex websocket request", {
 			url: toWebSocketUrl(requestContext.url),
@@ -1639,6 +1643,7 @@ async function openCodexWebSocketTransport(
 	);
 	const eventStream = websocketConnection.streamRequest(
 		websocketRequest,
+		websocketRequestJson,
 		{
 			idleTimeoutMs: requestSetup.websocketIdleTimeoutMs,
 			firstEventTimeoutMs: requestSetup.websocketFirstEventTimeoutMs,
@@ -1692,7 +1697,8 @@ async function openCodexSseTransport(
 }> {
 	const canAppendBeforeRequest = state?.canAppend === true;
 	let wireBody = body;
-	const prepareBody = async (): Promise<RequestBody> => {
+	let wireJson: string | undefined;
+	const prepareBody = async (): Promise<string> => {
 		// Serialize once. The hook, when present, gets an isolated parse of
 		// exactly those bytes; when no extension handles the event the wire
 		// object is the untouched original and the recorded bytes are reused.
@@ -1710,8 +1716,9 @@ async function openCodexSseTransport(
 		}
 		wireBody = wireParams;
 		// Keep the 400 dump honest: record the body actually sent on this attempt.
-		requestContext.wireBodyJson = wireParams === body ? bodyJson : JSON.stringify(wireParams);
-		return wireParams;
+		wireJson = wireParams === body ? bodyJson : JSON.stringify(wireParams);
+		requestContext.wireBodyJson = wireJson;
+		return wireJson;
 	};
 	// Preserve payload capture for callers that intentionally use an
 	// already-aborted signal without issuing a physical request.
@@ -1736,10 +1743,14 @@ async function openCodexSseTransport(
 		prepareBody,
 	);
 	await notifyProviderResponse(options, handle.response, model, handle.requestId);
-	recordCodexTurnRequestDiagnostics(state, wireBody, "sse", canAppendBeforeRequest);
+	// A response means `prepareBody` serialized the attempt that received it.
+	recordCodexTurnRequestDiagnostics(state, wireBody, wireJson!, "sse", canAppendBeforeRequest);
 	return {
 		eventStream: requestSetup.wrapCodexSseStream(handle.events),
-		requestBodyForState: structuredCloneJSON(wireBody),
+		// SSE never records a chain baseline (see `#handleResponseCompleted`), so
+		// the wire body is held as sent. A deep copy here cost a full clone of the
+		// transcript before the first event was read.
+		requestBodyForState: wireBody,
 		transport: "sse",
 	};
 }
@@ -1858,6 +1869,11 @@ class CodexStreamProcessor {
 	requestContext: CodexRequestContext;
 	startTime: number;
 	firstTokenTime?: number;
+	/**
+	 * When the current attempt produced its first token. Starts over on every recovered attempt,
+	 * so a replayed turn reports its own first token and never the failed attempt's.
+	 */
+	#attemptFirstTokenTime: number | undefined;
 
 	constructor(init: {
 		runtime: CodexStreamRuntime;
@@ -1894,13 +1910,13 @@ class CodexStreamProcessor {
 		stream.push({ type: "start", partial: output });
 
 		while (true) {
+			this.#attemptFirstTokenTime = this.firstTokenTime;
 			try {
-				let firstTokenTime = this.firstTokenTime;
 				for await (const rawEvent of this.runtime.eventStream) {
-					firstTokenTime = this.#handleStreamEvent(rawEvent, firstTokenTime);
+					this.#handleStreamEvent(rawEvent);
 					if (this.runtime.sawTerminalEvent) break;
 				}
-				return { firstTokenTime };
+				return { firstTokenTime: this.#attemptFirstTokenTime };
 			} catch (error) {
 				const recovered = await this.#recoverStreamError(error);
 				if (!recovered) {
@@ -1911,215 +1927,199 @@ class CodexStreamProcessor {
 		}
 	}
 
-	#handleStreamEvent(rawEvent: Record<string, unknown>, firstTokenTime: number | undefined): number | undefined {
-		const { output, stream } = this;
-		const eventType = typeof rawEvent.type === "string" ? rawEvent.type : "";
-		if (!eventType) return firstTokenTime;
-
-		if (eventType === "response.output_item.added") {
-			this.runtime.whitespaceToolCallArgumentsDelta = undefined;
-			if (!firstTokenTime) firstTokenTime = performance.now();
-			const item = rawEvent.item as CodexEventItem;
-			this.runtime.currentItem = item;
-			this.runtime.currentBlock = createOutputBlockForItem(item);
-			let contentIndex = -1;
-			if (this.runtime.currentBlock) {
-				output.content.push(this.runtime.currentBlock);
-				contentIndex = output.content.length - 1;
-			}
-			// Track every open item by every stable key the wire gives us. `item.id`
-			// is best; `output_index` preserves idless function/custom tool calls and
-			// keeps their final args authoritative when only `output_item.done`
-			// carries the full payload.
-			const itemId = typeof (item as { id?: string }).id === "string" ? (item as { id: string }).id : undefined;
-			const outputIndex =
-				typeof rawEvent.output_index === "number" && Number.isFinite(rawEvent.output_index)
-					? Math.trunc(rawEvent.output_index)
-					: undefined;
-			const entry: CodexOpenItem = { item, block: this.runtime.currentBlock, contentIndex, itemId, outputIndex };
-			this.runtime.currentEntry = entry;
-			if (itemId) this.runtime.openItems.set(itemId, entry);
-			if (outputIndex !== undefined) this.runtime.openItemsByOutputIndex.set(outputIndex, entry);
-			if (!this.runtime.currentBlock) return firstTokenTime;
-			stream.push({
-				type: getOutputBlockStartEventType(this.runtime.currentBlock),
-				contentIndex,
-				partial: output,
-			});
-			return firstTokenTime;
-		}
-
-		if (eventType === "response.reasoning_summary_part.added") {
-			if (this.#sequentialCutoffSummaries) return firstTokenTime;
-			if (this.runtime.currentItem?.type === "reasoning") {
-				appendReasoningSummaryPart(
-					this.runtime.currentItem,
-					(rawEvent as { part: ResponseReasoningItem["summary"][number] }).part,
-				);
-			}
-			return firstTokenTime;
-		}
-		if (eventType === "response.reasoning_summary_text.delta") {
-			const entry = this.runtime.openItemForEvent(rawEvent);
-			const delta = typeof rawEvent.delta === "string" ? rawEvent.delta : "";
-			if (this.#sequentialCutoffSummaries) {
-				// Some Codex transports still emit incremental summary deltas even
-				// after opting into sequential-cutoff delivery. Buffer them until
-				// output_item.done so atomic `.done` events can supersede them
-				// without duplicate UI output.
-				this.runtime.queueSummaryDelta(entry, delta);
-				return firstTokenTime;
-			}
-			if (entry?.item.type === "reasoning" && entry.block?.type === "thinking") {
-				appendReasoningSummaryTextDelta(entry.item, entry.block, delta, stream, output, entry.contentIndex);
-			}
-			return firstTokenTime;
-		}
-
-		if (eventType === "response.reasoning_summary_text.done") {
-			// Outside the cutoff contract the text already streamed via `.delta`.
-			if (!this.#sequentialCutoffSummaries) return firstTokenTime;
-			const entry = this.runtime.openItemForEvent(rawEvent);
-			if (entry?.item.type === "reasoning" && entry.block?.type === "thinking") {
-				this.runtime.takeSummaryDeltas(entry);
-				if (!firstTokenTime) firstTokenTime = performance.now();
-				const summaryIndex =
-					typeof rawEvent.summary_index === "number" && Number.isFinite(rawEvent.summary_index)
-						? Math.trunc(rawEvent.summary_index)
-						: 0;
-				applyReasoningSummaryDone(
-					this.runtime.cutoffSummaries,
-					entry.block,
-					typeof rawEvent.text === "string" ? rawEvent.text : "",
-					summaryIndex,
-					stream,
-					output,
-					entry.contentIndex,
-				);
-			}
-			return firstTokenTime;
-		}
-
-		if (eventType === "response.reasoning_text.delta") {
-			const entry = this.runtime.openItemForEvent(rawEvent);
-			const delta = typeof rawEvent.delta === "string" ? rawEvent.delta : "";
-			if (entry?.item.type === "reasoning" && entry.block?.type === "thinking") {
-				entry.block.thinking += delta;
-				stream.push({
-					type: "thinking_delta",
-					contentIndex: entry.contentIndex,
-					delta,
-					partial: output,
-				});
-			}
-			return firstTokenTime;
-		}
-
-		if (eventType === "response.reasoning_summary_part.done") {
-			const entry = this.runtime.openItemForEvent(rawEvent);
-			if (this.#sequentialCutoffSummaries) {
-				if (entry && this.runtime.pendingSummaryDeltas.has(entry)) this.runtime.queueSummaryDelta(entry, "\n\n");
-				return firstTokenTime;
-			}
-			if (entry?.item.type === "reasoning" && entry.block?.type === "thinking") {
-				appendReasoningSummaryPartDone(entry.item, entry.block, stream, output, entry.contentIndex);
-			}
-			return firstTokenTime;
-		}
-
-		if (eventType === "response.content_part.added") {
-			if (this.runtime.currentItem?.type === "message") {
-				appendMessageContentPart(
-					this.runtime.currentItem,
-					(rawEvent as { part?: ResponseOutputMessage["content"][number] }).part,
-				);
-			}
-			return firstTokenTime;
-		}
-
-		if (eventType === "response.output_text.delta" || eventType === "response.refusal.delta") {
-			if (this.runtime.currentItem?.type === "message" && this.runtime.currentBlock?.type === "text") {
-				appendMessageTextDelta(
-					this.runtime.currentItem,
-					this.runtime.currentBlock,
-					(rawEvent as { delta?: string }).delta || "",
-					stream,
-					output,
-					output.content.length - 1,
-					eventType === "response.refusal.delta" ? "refusal" : "output_text",
-				);
-			}
-			return firstTokenTime;
-		}
-
-		if (eventType === "response.function_call_arguments.delta") {
-			const interruption = this.runtime.handleToolCallArgumentsDelta(
-				rawEvent,
-				stream,
-				output,
-				resolveResponsesToolCallDeltaShape(this.model),
-			);
-			if (interruption) {
-				this.runtime.websocketState?.connection?.close("degenerate-tool-call");
-				throw new CodexWhitespaceToolCallLoopError(interruption.message);
-			}
-			return firstTokenTime;
-		}
-
-		if (eventType === "response.function_call_arguments.done") {
-			this.runtime.whitespaceToolCallArgumentsDelta = undefined;
-			this.runtime.handleToolCallArgumentsDone(rawEvent);
-			return firstTokenTime;
-		}
-
-		if (eventType === "response.custom_tool_call_input.delta") {
-			const interruption = this.runtime.handleCustomToolCallInputDelta(rawEvent, stream, output);
-			if (interruption) {
-				this.runtime.websocketState?.connection?.close("degenerate-tool-call");
-				throw new CodexWhitespaceToolCallLoopError(interruption.message);
-			}
-			return firstTokenTime;
-		}
-
-		if (eventType === "response.custom_tool_call_input.done") {
-			this.runtime.whitespaceToolCallArgumentsDelta = undefined;
-			this.runtime.handleCustomToolCallInputDone(rawEvent);
-			return firstTokenTime;
-		}
-
-		if (eventType === "response.output_item.done") {
-			this.runtime.whitespaceToolCallArgumentsDelta = undefined;
-			this.#handleOutputItemDone(rawEvent);
-			return firstTokenTime;
-		}
-
-		if (eventType === "response.created") {
-			this.runtime.handleResponseCreated(rawEvent);
-			return firstTokenTime;
-		}
-
-		if (eventType === "response.completed" || eventType === "response.done" || eventType === "response.incomplete") {
-			this.#handleResponseCompleted(rawEvent);
-			return firstTokenTime;
-		}
-
-		if (eventType === "response.metadata") {
-			const moderation = asRecord(rawEvent.metadata)?.[CODEX_MODERATION_METADATA_KEY];
-			if (moderation !== undefined) {
-				try {
-					this.options?.onModerationMetadata?.(moderation);
-				} catch {
-					// Diagnostic observer: failures must not disturb the stream.
+	#handleStreamEvent(rawEvent: Record<string, unknown>): void {
+		const { runtime } = this;
+		switch (rawEvent.type) {
+			case "response.output_item.added":
+				this.#startItem(rawEvent);
+				return;
+			case "response.reasoning_summary_part.added":
+				this.#addSummaryPart(rawEvent);
+				return;
+			case "response.reasoning_summary_text.delta":
+				this.#applySummaryTextDelta(rawEvent);
+				return;
+			case "response.reasoning_summary_text.done":
+				this.#applySummaryTextDone(rawEvent);
+				return;
+			case "response.reasoning_text.delta":
+				this.#applyReasoningTextDelta(rawEvent);
+				return;
+			case "response.reasoning_summary_part.done":
+				this.#finishSummaryPart(rawEvent);
+				return;
+			case "response.content_part.added":
+				if (runtime.currentItem?.type === "message") {
+					appendMessageContentPart(
+						runtime.currentItem,
+						(rawEvent as { part?: ResponseOutputMessage["content"][number] }).part,
+					);
 				}
-			}
-			return firstTokenTime;
+				return;
+			case "response.output_text.delta":
+				this.#applyMessageTextDelta(rawEvent, "output_text");
+				return;
+			case "response.refusal.delta":
+				this.#applyMessageTextDelta(rawEvent, "refusal");
+				return;
+			case "response.function_call_arguments.delta":
+				this.#interruptDegenerateToolCall(
+					runtime.handleToolCallArgumentsDelta(
+						rawEvent,
+						this.stream,
+						this.output,
+						resolveResponsesToolCallDeltaShape(this.model),
+					),
+				);
+				return;
+			case "response.custom_tool_call_input.delta":
+				this.#interruptDegenerateToolCall(
+					runtime.handleCustomToolCallInputDelta(rawEvent, this.stream, this.output),
+				);
+				return;
+			case "response.function_call_arguments.done":
+				runtime.whitespaceToolCallArgumentsDelta = undefined;
+				runtime.handleToolCallArgumentsDone(rawEvent);
+				return;
+			case "response.custom_tool_call_input.done":
+				runtime.whitespaceToolCallArgumentsDelta = undefined;
+				runtime.handleCustomToolCallInputDone(rawEvent);
+				return;
+			case "response.output_item.done":
+				runtime.whitespaceToolCallArgumentsDelta = undefined;
+				this.#handleOutputItemDone(rawEvent);
+				return;
+			case "response.created":
+				runtime.handleResponseCreated(rawEvent);
+				return;
+			case "response.completed":
+			case "response.done":
+			case "response.incomplete":
+				this.#handleResponseCompleted(rawEvent);
+				return;
+			case "response.metadata":
+				this.#reportModerationMetadata(rawEvent);
+				return;
+			case "error":
+			case "response.failed":
+				throw createCodexProviderStreamError(rawEvent);
 		}
+	}
 
-		if (eventType === "error" || eventType === "response.failed") {
-			throw createCodexProviderStreamError(rawEvent);
+	/** Opens a block for a new output item and indexes the item by every stable key the wire gives. */
+	#startItem(rawEvent: Record<string, unknown>): void {
+		const { runtime, output } = this;
+		runtime.whitespaceToolCallArgumentsDelta = undefined;
+		this.#attemptFirstTokenTime ??= performance.now();
+		const item = rawEvent.item as CodexEventItem;
+		const block = createOutputBlockForItem(item);
+		runtime.currentItem = item;
+		runtime.currentBlock = block;
+		let contentIndex = -1;
+		if (block) {
+			output.content.push(block);
+			contentIndex = output.content.length - 1;
 		}
+		// `item.id` is the best key; `output_index` preserves idless function/custom tool calls and
+		// keeps their final args authoritative when only `output_item.done` carries the full payload.
+		const itemId = typeof (item as { id?: string }).id === "string" ? (item as { id: string }).id : undefined;
+		const outputIndex = wireInteger(rawEvent.output_index);
+		const entry: CodexOpenItem = { item, block, contentIndex, itemId, outputIndex };
+		runtime.currentEntry = entry;
+		if (itemId) runtime.openItems.set(itemId, entry);
+		if (outputIndex !== undefined) runtime.openItemsByOutputIndex.set(outputIndex, entry);
+		if (block) this.stream.push({ type: getOutputBlockStartEventType(block), contentIndex, partial: output });
+	}
 
-		return firstTokenTime;
+	#addSummaryPart(rawEvent: Record<string, unknown>): void {
+		if (this.#sequentialCutoffSummaries) return;
+		const item = this.runtime.currentItem;
+		if (item?.type === "reasoning") {
+			appendReasoningSummaryPart(item, (rawEvent as { part: ResponseReasoningItem["summary"][number] }).part);
+		}
+	}
+
+	#applySummaryTextDelta(rawEvent: Record<string, unknown>): void {
+		const entry = this.runtime.openItemForEvent(rawEvent);
+		const delta = typeof rawEvent.delta === "string" ? rawEvent.delta : "";
+		if (this.#sequentialCutoffSummaries) {
+			// Some Codex transports still emit incremental summary deltas after opting into
+			// sequential-cutoff delivery. Buffer them until output_item.done so atomic `.done` events
+			// can supersede them without duplicate UI output.
+			this.runtime.queueSummaryDelta(entry, delta);
+			return;
+		}
+		if (entry?.item.type === "reasoning" && entry.block?.type === "thinking") {
+			appendReasoningSummaryTextDelta(entry.item, entry.block, delta, this.stream, this.output, entry.contentIndex);
+		}
+	}
+
+	#applySummaryTextDone(rawEvent: Record<string, unknown>): void {
+		// Outside the cutoff contract the text already streamed via `.delta`.
+		if (!this.#sequentialCutoffSummaries) return;
+		const entry = this.runtime.openItemForEvent(rawEvent);
+		if (entry?.item.type !== "reasoning" || entry.block?.type !== "thinking") return;
+		this.runtime.takeSummaryDeltas(entry);
+		this.#attemptFirstTokenTime ??= performance.now();
+		applyReasoningSummaryDone(
+			this.runtime.cutoffSummaries,
+			entry.block,
+			typeof rawEvent.text === "string" ? rawEvent.text : "",
+			wireInteger(rawEvent.summary_index) ?? 0,
+			this.stream,
+			this.output,
+			entry.contentIndex,
+		);
+	}
+
+	#applyReasoningTextDelta(rawEvent: Record<string, unknown>): void {
+		const entry = this.runtime.openItemForEvent(rawEvent);
+		if (entry?.item.type !== "reasoning" || entry.block?.type !== "thinking") return;
+		const delta = typeof rawEvent.delta === "string" ? rawEvent.delta : "";
+		entry.block.thinking += delta;
+		this.stream.push({ type: "thinking_delta", contentIndex: entry.contentIndex, delta, partial: this.output });
+	}
+
+	#finishSummaryPart(rawEvent: Record<string, unknown>): void {
+		const entry = this.runtime.openItemForEvent(rawEvent);
+		if (this.#sequentialCutoffSummaries) {
+			if (entry && this.runtime.pendingSummaryDeltas.has(entry)) this.runtime.queueSummaryDelta(entry, "\n\n");
+			return;
+		}
+		if (entry?.item.type === "reasoning" && entry.block?.type === "thinking") {
+			appendReasoningSummaryPartDone(entry.item, entry.block, this.stream, this.output, entry.contentIndex);
+		}
+	}
+
+	#applyMessageTextDelta(rawEvent: Record<string, unknown>, part: "output_text" | "refusal"): void {
+		const { currentItem, currentBlock } = this.runtime;
+		if (currentItem?.type !== "message" || currentBlock?.type !== "text") return;
+		appendMessageTextDelta(
+			currentItem,
+			currentBlock,
+			(rawEvent as { delta?: string }).delta || "",
+			this.stream,
+			this.output,
+			this.output.content.length - 1,
+			part,
+		);
+	}
+
+	/** Ends the turn on a tool call whose arguments stream nothing but whitespace. */
+	#interruptDegenerateToolCall(interruption: CodexWhitespaceToolCallArgumentsDeltaInterruption | undefined): void {
+		if (!interruption) return;
+		this.runtime.websocketState?.connection?.close("degenerate-tool-call");
+		throw new CodexWhitespaceToolCallLoopError(interruption.message);
+	}
+
+	#reportModerationMetadata(rawEvent: Record<string, unknown>): void {
+		const moderation = asRecord(rawEvent.metadata)?.[CODEX_MODERATION_METADATA_KEY];
+		if (moderation === undefined) return;
+		try {
+			this.options?.onModerationMetadata?.(moderation);
+		} catch {
+			// Diagnostic observer: failures must not disturb the stream.
+		}
 	}
 
 	#flushSummaryDeltas(entry: CodexOpenItem | null): void {
@@ -2251,7 +2251,10 @@ class CodexStreamProcessor {
 				// baseline, which no longer matches the transcript.
 				resetCodexWebSocketAppendState(state);
 			} else {
-				state.lastRequest = structuredCloneJSON(runtime.requestBodyForState);
+				// `requestBodyForState` is the private copy the websocket transport
+				// took for this attempt and nothing mutates it; a retry replaces it
+				// with a fresh one. Adopting it saves a second full clone per turn.
+				state.lastRequest = runtime.requestBodyForState;
 				if (responseId) {
 					state.lastResponseId = responseId;
 					state.lastResponseItems = stripInputItemIds(structuredCloneJSON(runtime.nativeOutputItems));
@@ -3054,11 +3057,14 @@ function stripInputItemIds(items: Array<Record<string, unknown>>): InputItem[] {
 	});
 }
 
-const codexDiagnosticsTextEncoder = new TextEncoder();
-
-function jsonByteLength(value: unknown): number {
-	const json = JSON.stringify(value);
-	return codexDiagnosticsTextEncoder.encode(json === undefined ? "undefined" : json).byteLength;
+/**
+ * UTF-8 byte length of `request.input` as JSON, read off `requestJson`, the request as serialized,
+ * instead of serializing the input a second time. Serialization composes: the request with
+ * `input: []` serializes to the same text with the input's JSON replaced by `[]`.
+ */
+function inputJsonByteLength(request: Record<string, unknown>, requestJson: string): number {
+	if (!Array.isArray(request.input)) return 2;
+	return Buffer.byteLength(requestJson) - Buffer.byteLength(JSON.stringify({ ...request, input: [] })) + 2;
 }
 
 function hashJson(value: unknown): string {
@@ -3154,6 +3160,7 @@ function createCodexOptionsHash(request: Record<string, unknown>): string {
 
 function buildCodexTurnRequestDiagnostics(
 	request: Record<string, unknown>,
+	requestJson: string,
 	transport: CodexTransport,
 	canAppendBeforeRequest: boolean,
 ): OpenAICodexTurnRequestDiagnostics {
@@ -3169,7 +3176,7 @@ function buildCodexTurnRequestDiagnostics(
 		inputItemCount: inputItems.length,
 		inputItemTypes,
 		...(inputItemTypes[0] ? { firstInputItemType: inputItemTypes[0] } : {}),
-		inputJsonBytes: jsonByteLength(inputItems),
+		inputJsonBytes: inputJsonByteLength(request, requestJson),
 		...(promptCacheKey !== undefined ? { promptCacheKey } : {}),
 		...(toolsHash !== undefined ? { toolsHash } : {}),
 		optionsHash: createCodexOptionsHash(request),
@@ -3180,6 +3187,8 @@ function buildCodexTurnRequestDiagnostics(
 function recordCodexTurnRequestDiagnostics(
 	state: CodexWebSocketSessionState | undefined,
 	request: Record<string, unknown>,
+	/** `request` serialized: the bytes sent. */
+	requestJson: string,
 	transport: CodexTransport,
 	canAppendBeforeRequest: boolean,
 ): void {
@@ -3198,7 +3207,7 @@ function recordCodexTurnRequestDiagnostics(
 		state.stats.lastPreviousResponseId = undefined;
 	}
 	state.stats.lastTurn = {
-		request: buildCodexTurnRequestDiagnostics(request, transport, canAppendBeforeRequest),
+		request: buildCodexTurnRequestDiagnostics(request, requestJson, transport, canAppendBeforeRequest),
 	};
 	CODEX_DEBUG && logger.debug("[codex] codex turn request diagnostics", { diagnostics: state.stats.lastTurn.request });
 }
@@ -3511,6 +3520,8 @@ class CodexWebSocketConnection {
 
 	async *streamRequest(
 		request: Record<string, unknown>,
+		/** `request` serialized: the frame sent. */
+		requestPayload: string,
 		timeouts: CodexWebSocketRequestTimeouts,
 		signal?: AbortSignal,
 		onSseEvent?: (event: RawSseEvent) => void,
@@ -3557,7 +3568,6 @@ class CodexWebSocketConnection {
 				? await debugSession.openResponseLog("WebSocket 101 Switching Protocols", this.#handshakeHeaders)
 				: undefined;
 
-			const requestPayload = JSON.stringify(request);
 			notifyCodexWebSocketOutbound(onSseEvent, request, requestPayload);
 			// Re-check liveness: the debug-session await above can outlive the socket.
 			const socket = this.#socket;
@@ -3625,7 +3635,7 @@ class CodexWebSocketConnection {
 				// metadata preamble, created-less streams) pass through, matching
 				// upstream rather than gating on `response.created`.
 				const frameResponseId = extractCodexFrameResponseId(next);
-				const frameSequence = extractCodexFrameSequenceNumber(next);
+				const frameSequence = wireInteger(next.sequence_number);
 				if (frameResponseId !== undefined) {
 					if (activeResponseId === undefined) {
 						if (priorResponseId !== undefined && frameResponseId === priorResponseId) {
@@ -3945,7 +3955,8 @@ async function openCodexSseEventStream(
 	maxRetryDelayMs: number | undefined,
 	onSseEvent?: OpenAICodexResponsesOptions["onSseEvent"],
 	fetchOverride?: FetchImpl,
-	prepareBody: () => RequestBody | Promise<RequestBody> = () => structuredCloneJSON(body),
+	/** The serialized body for one attempt, called before each attempt. */
+	serializeBody: () => string | Promise<string> = () => JSON.stringify(body),
 ): Promise<OpenAIStreamHandle<Record<string, unknown>>> {
 	const headers = createCodexHeaders(
 		requestHeaders,
@@ -3990,13 +4001,12 @@ async function openCodexSseEventStream(
 		response = await fetchProviderWithRetry(url, {
 			method: "POST",
 			headers,
-			body: JSON.stringify(body),
 			signal,
 			prepareInit: async () => {
-				const wireBody = await prepareBody();
+				const bodyJson = await serializeBody();
 				const watchdog = armPreResponseTimeout(signal, firstEventTimeoutMs);
 				clearPreResponseTimeout = watchdog.clear;
-				return { body: JSON.stringify(wireBody), signal: watchdog.signal };
+				return { body: bodyJson, signal: watchdog.signal };
 			},
 			maxAttempts: CODEX_MAX_RETRIES + 1,
 			defaultDelayMs: attempt => CODEX_RETRY_DELAY_MS * (attempt + 1),

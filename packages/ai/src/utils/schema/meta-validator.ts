@@ -47,6 +47,9 @@ function checkTypeKeyword(value: Json): boolean {
 	return true;
 }
 
+/** Checks one keyword's value; `epoch` stamps the sub-schemas it descends into. */
+type KeywordCheck = (value: Json, epoch: number) => boolean;
+
 function checkSchemaArray(value: Json, epoch: number): boolean {
 	return Array.isArray(value) && value.every(entry => checkNode(entry, epoch));
 }
@@ -59,101 +62,110 @@ function checkSchemaMap(value: Json, epoch: number): boolean {
 	return true;
 }
 
+function checkRequired(value: Json): boolean {
+	if (!Array.isArray(value)) return false;
+	const seen = new Set<string>();
+	for (const entry of value) {
+		if (typeof entry !== "string" || seen.has(entry)) return false;
+		seen.add(entry);
+	}
+	return true;
+}
+
+function checkDependentRequired(value: Json): boolean {
+	if (!isRecord(value)) return false;
+	for (const k in value) {
+		const entry = value[k];
+		if (!Array.isArray(entry) || !entry.every(item => typeof item === "string")) return false;
+	}
+	return true;
+}
+
+function checkPattern(value: Json): boolean {
+	if (typeof value !== "string") return false;
+	try {
+		new RegExp(value);
+	} catch {
+		// A `pattern` that is not a usable regex makes the schema invalid, which is the question this
+		// function answers. False is the verdict, not a swallowed error, and the caller reports the schema
+		// as invalid.
+		return false;
+	}
+	return true;
+}
+
+const isNumber: KeywordCheck = value => typeof value === "number";
+const isBoolean: KeywordCheck = value => typeof value === "boolean";
+const isString: KeywordCheck = value => typeof value === "string";
+// Obsolete tuple/dependency keywords are not valid in the 2020-12 schema shape we emit and forward.
+const obsolete: KeywordCheck = () => false;
+
+/**
+ * The check for each known keyword. A node is checked by looking up each of its own keys here, so the cost
+ * follows the keys a node has rather than the number of keywords known; a key absent from the table is an
+ * unknown keyword and is accepted. A `Map`, so a key such as `constructor` never resolves to an inherited
+ * `Object.prototype` member.
+ */
+const KEYWORD_CHECKS: ReadonlyMap<string, KeywordCheck> = new Map<string, KeywordCheck>([
+	["type", checkTypeKeyword],
+	["anyOf", checkSchemaArray],
+	["oneOf", checkSchemaArray],
+	["allOf", checkSchemaArray],
+	["prefixItems", checkSchemaArray],
+	// Boolean schemas are schemas, so these accept `true` and `false` through `checkNode`. An array is not
+	// a schema, so the obsolete tuple form of `items` is rejected here too.
+	["not", checkNode],
+	["if", checkNode],
+	["then", checkNode],
+	["else", checkNode],
+	["propertyNames", checkNode],
+	["contains", checkNode],
+	["additionalProperties", checkNode],
+	["unevaluatedProperties", checkNode],
+	["unevaluatedItems", checkNode],
+	["items", checkNode],
+	["properties", checkSchemaMap],
+	["patternProperties", checkSchemaMap],
+	["$defs", checkSchemaMap],
+	["definitions", checkSchemaMap],
+	["dependentSchemas", checkSchemaMap],
+	["required", checkRequired],
+	["dependentRequired", checkDependentRequired],
+	["additionalItems", obsolete],
+	["dependencies", obsolete],
+	["enum", value => Array.isArray(value) && value.length > 0 && hasUniqueJsonValues(value)],
+	["minimum", isNumber],
+	["maximum", isNumber],
+	["multipleOf", value => typeof value === "number" && value > 0],
+	["exclusiveMinimum", value => typeof value === "number" || typeof value === "boolean"],
+	["exclusiveMaximum", value => typeof value === "number" || typeof value === "boolean"],
+	["minLength", isNonNegativeInteger],
+	["maxLength", isNonNegativeInteger],
+	["minItems", isNonNegativeInteger],
+	["maxItems", isNonNegativeInteger],
+	["minProperties", isNonNegativeInteger],
+	["maxProperties", isNonNegativeInteger],
+	["minContains", isNonNegativeInteger],
+	["maxContains", isNonNegativeInteger],
+	["uniqueItems", isBoolean],
+	["pattern", checkPattern],
+	["format", isString],
+	["nullable", isBoolean],
+	["readOnly", isBoolean],
+	["writeOnly", isBoolean],
+	["deprecated", isBoolean],
+]);
+
 /** Validate a single sub-schema node. */
 function checkNode(node: Json, epoch: number): boolean {
 	// Boolean schemas (`true` / `false`) are valid JSON Schema.
 	if (node === true || node === false) return true;
 	if (!isRecord(node)) return false;
 	if (!once(node, epoch)) return true;
-
-	if ("type" in node && !checkTypeKeyword(node.type)) return false;
-
-	for (const key of ["anyOf", "oneOf", "allOf"] as const) {
-		if (key in node && !checkSchemaArray(node[key], epoch)) return false;
+	for (const key in node) {
+		const check = KEYWORD_CHECKS.get(key);
+		if (check !== undefined && !check(node[key], epoch)) return false;
 	}
-	if ("not" in node && !checkNode(node.not, epoch)) return false;
-	for (const key of ["if", "then", "else"] as const) {
-		if (key in node && !checkNode(node[key], epoch)) return false;
-	}
-
-	for (const key of ["properties", "patternProperties", "$defs", "definitions"] as const) {
-		if (key in node && !checkSchemaMap(node[key], epoch)) return false;
-	}
-
-	if ("propertyNames" in node && !checkNode(node.propertyNames, epoch)) return false;
-	if ("contains" in node && !checkNode(node.contains, epoch)) return false;
-
-	if ("required" in node) {
-		const value = node.required;
-		if (!Array.isArray(value)) return false;
-		const seenRequired = new Set<string>();
-		for (const entry of value) {
-			if (typeof entry !== "string" || seenRequired.has(entry)) return false;
-			seenRequired.add(entry);
-		}
-	}
-
-	if ("items" in node) {
-		const items = node.items;
-		if (Array.isArray(items)) return false;
-		if (!checkNode(items, epoch)) return false;
-	}
-	if ("prefixItems" in node && !checkSchemaArray(node.prefixItems, epoch)) return false;
-	// Obsolete tuple/dependency keywords are not valid in the 2020-12 schema
-	// shape we emit and forward.
-	if ("additionalItems" in node || "dependencies" in node) return false;
-
-	for (const key of ["additionalProperties", "unevaluatedProperties", "unevaluatedItems"] as const) {
-		if (!(key in node)) continue;
-		const value = node[key];
-		if (typeof value !== "boolean" && !checkNode(value, epoch)) return false;
-	}
-
-	if ("dependentSchemas" in node && !checkSchemaMap(node.dependentSchemas, epoch)) return false;
-	if ("dependentRequired" in node) {
-		const value = node.dependentRequired;
-		if (!isRecord(value)) return false;
-		for (const k in value) {
-			const entry = value[k];
-			if (!Array.isArray(entry) || !entry.every(item => typeof item === "string")) return false;
-		}
-	}
-
-	if ("enum" in node) {
-		if (!Array.isArray(node.enum) || node.enum.length === 0 || !hasUniqueJsonValues(node.enum)) return false;
-	}
-
-	for (const key of ["minimum", "maximum", "multipleOf"] as const) {
-		if (key in node && typeof node[key] !== "number") return false;
-	}
-	if (node.multipleOf !== undefined && typeof node.multipleOf === "number" && node.multipleOf <= 0) return false;
-	for (const key of ["exclusiveMinimum", "exclusiveMaximum"] as const) {
-		if (key in node && typeof node[key] !== "number" && typeof node[key] !== "boolean") return false;
-	}
-	for (const key of ["minLength", "maxLength", "minItems", "maxItems", "minProperties", "maxProperties"] as const) {
-		if (key in node && !isNonNegativeInteger(node[key])) return false;
-	}
-	for (const key of ["minContains", "maxContains"] as const) {
-		if (key in node && !isNonNegativeInteger(node[key])) return false;
-	}
-	if ("uniqueItems" in node && typeof node.uniqueItems !== "boolean") return false;
-	if ("pattern" in node) {
-		if (typeof node.pattern !== "string") return false;
-		try {
-			new RegExp(node.pattern);
-		} catch {
-			// A `pattern` that is not a usable regex makes the schema invalid, which is the question this
-			// function answers. False is the verdict, not a swallowed error, and the caller reports the schema
-			// as invalid.
-			return false;
-		}
-	}
-	if ("format" in node && typeof node.format !== "string") return false;
-	if ("nullable" in node && typeof node.nullable !== "boolean") return false;
-	if ("readOnly" in node && typeof node.readOnly !== "boolean") return false;
-	if ("writeOnly" in node && typeof node.writeOnly !== "boolean") return false;
-	if ("deprecated" in node && typeof node.deprecated !== "boolean") return false;
-
 	return true;
 }
 

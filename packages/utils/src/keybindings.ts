@@ -240,6 +240,24 @@ function normalizeKeys(keys: KeyId | KeyId[] | undefined): KeyId[] {
 	return result;
 }
 
+/** Entry ceiling of {@link canonicalOfParsed}; a runaway guard, since parsed keys are the keys someone presses. */
+const CANONICAL_MEMO_MAX_ENTRIES = 4096;
+/**
+ * `canonicalKeyId` of each parsed input key. A keystroke is tested against every binding a component
+ * handles, each test canonicalizes the same parsed key, and `canonicalKeyId` is a pure function of it.
+ */
+const canonicalOfParsed = new Map<string, string>();
+
+function canonicalOfParsedKey(parsed: string): string {
+	let canonical = canonicalOfParsed.get(parsed);
+	if (canonical === undefined) {
+		canonical = canonicalKeyId(parsed);
+		if (canonicalOfParsed.size >= CANONICAL_MEMO_MAX_ENTRIES) canonicalOfParsed.clear();
+		canonicalOfParsed.set(parsed, canonical);
+	}
+	return canonical;
+}
+
 export class KeybindingsManager {
 	#definitions: KeybindingDefinitions;
 	#userBindings: KeybindingsConfig;
@@ -289,8 +307,7 @@ export class KeybindingsManager {
 	matches(data: string, keybinding: Keybinding): boolean {
 		const parsed = parseKey(data);
 		if (parsed === undefined) return false;
-		const matchKeys = this.#matchKeysById.get(keybinding);
-		return matchKeys?.has(canonicalKeyId(parsed)) ?? false;
+		return this.#matchKeysById.get(keybinding)?.has(canonicalOfParsedKey(parsed)) ?? false;
 	}
 
 	getKeys(keybinding: Keybinding): KeyId[] {

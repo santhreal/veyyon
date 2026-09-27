@@ -20,6 +20,7 @@ import {
 	decodeHtmlEntities,
 	finalizeOutput,
 	isScraperDegrade,
+	type LoadPageResult,
 	loadPage,
 	looksLikeHtml,
 	MAX_BYTES,
@@ -28,7 +29,7 @@ import {
 	type ScraperDegrade,
 	type SpecialHandler,
 } from "@veyyon/web/scrapers/types";
-import { fetchBinary } from "@veyyon/web/scrapers/utils";
+import { type BinaryFetchResult, fetchBinary } from "@veyyon/web/scrapers/utils";
 import { LRUCache } from "lru-cache/raw";
 import type { Settings } from "../../config/settings";
 import { readEditableNotebookText } from "../../edit/notebook";
@@ -41,7 +42,7 @@ import { truncateHead } from "../../session/streaming-output";
 // hyperlink module, and `read.ts` imports this file.
 import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 import { webpExclusionForModel } from "../../utils/image-loading";
-import { formatDimensionNote, resizeImage } from "../../utils/image-resize";
+import { formatDimensionNote, type ResizedImage, resizeImage } from "../../utils/image-resize";
 import { ensureTool } from "../../utils/tools-manager";
 import { type ArchiveFormat, listArchiveRoot, sniffArchiveFormat } from "../../utils/zip";
 import { applyListLimit } from "../core/list-limit";
@@ -374,101 +375,163 @@ function isInlineImageMimeTypeSupported(mimeType: string): boolean {
 	return SUPPORTED_INLINE_IMAGE_MIME_TYPES.has(mimeType);
 }
 
-/**
- * Try fetching URL with .md appended (llms.txt convention)
- */
-async function tryMdSuffix(url: string, timeout: number, signal?: AbortSignal): Promise<string | null> {
-	const candidates: string[] = [];
+/** A markdown, plain-text or feed rendition of a page, fetched from an address other than the page itself. */
+interface Rendition {
+	readonly note: string;
+	readonly contentType: string;
+	readonly method: string;
+	readonly content: string;
+}
 
+type RenditionProbe = (signal: AbortSignal) => Promise<Rendition | null>;
+
+/**
+ * Start every probe at once and resolve to the answer of the first probe, in the order given, that
+ * answers. Each probe is a network round trip that usually misses, so the wait is the slowest probe
+ * up to the winner rather than the sum of every probe. Probes still running once the winner is known
+ * are aborted, and a probe's rejection surfaces only when every probe ahead of it answered null.
+ */
+async function firstRendition(
+	probes: readonly RenditionProbe[],
+	signal: AbortSignal | undefined,
+): Promise<Rendition | null> {
+	if (probes.length === 0) return null;
+	const losers = new AbortController();
+	const probeSignal = signal ? AbortSignal.any([signal, losers.signal]) : losers.signal;
+	const answers = probes.map(probe => probe(probeSignal));
+	for (const answer of answers) answer.catch(() => {});
 	try {
-		const parsed = new URL(url);
-		const pathname = parsed.pathname;
-
-		if (pathname.endsWith("/")) {
-			// /foo/bar/ -> /foo/bar/index.html.md
-			candidates.push(`${parsed.origin}${pathname}index.html.md`);
-		} else if (pathname.includes(".")) {
-			// /foo/bar.html -> /foo/bar.html.md
-			candidates.push(`${parsed.origin}${pathname}.md`);
-		} else {
-			// /foo/bar -> /foo/bar.md
-			candidates.push(`${parsed.origin}${pathname}.md`);
+		for (const answer of answers) {
+			const rendition = await answer;
+			if (rendition) return rendition;
 		}
+		return null;
+	} finally {
+		losers.abort();
+	}
+}
+
+/** A body long enough to be content and not an HTML page standing in for the text asked for. */
+function isSubstantialText(result: LoadPageResult): boolean {
+	return result.ok && result.content.trim().length > 100 && !looksLikeHtml(result.content);
+}
+
+/** Probe `url` for a substantial non-HTML text body, answered as a rendition described by `found`. */
+function textProbe(url: string, timeout: number, found: Omit<Rendition, "content">): RenditionProbe {
+	return async signal => {
+		const result = await loadPage(url, { timeout, signal });
+		return isSubstantialText(result) ? { ...found, content: result.content } : null;
+	};
+}
+
+/**
+ * The `.md` sibling of a page under the llms.txt convention: `/a/` → `/a/index.html.md`,
+ * `/a/b.html` → `/a/b.html.md`, `/a/b` → `/a/b.md`.
+ */
+function markdownSiblingProbe(url: string, timeout: number): RenditionProbe | null {
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
 	} catch {
-		// Same as above: an unparseable URL has no markdown sibling to guess at, and the fetch that
-		// follows reports the URL itself.
+		// An unparseable URL has no markdown sibling to guess at, and the fetch that follows reports
+		// the URL itself.
 		return null;
 	}
-
-	if (signal?.aborted) {
-		return null;
-	}
-
-	for (const candidate of candidates) {
-		if (signal?.aborted) {
-			return null;
-		}
-		const result = await loadPage(candidate, { timeout, signal });
-		if (result.ok && result.content.trim().length > 100 && !looksLikeHtml(result.content)) {
-			return result.content;
-		}
-	}
-
-	return null;
-}
-
-/**
- * Try to fetch LLM-friendly endpoints
- */
-async function tryLlmEndpoints(
-	url: string,
-	timeout: number,
-	signal?: AbortSignal,
-): Promise<{ content: string; endpoint: string } | null> {
-	const endpoints = buildLlmEndpointCandidates(url);
-
-	if (signal?.aborted || endpoints.length === 0) {
-		return null;
-	}
-
-	for (const endpoint of endpoints) {
-		if (signal?.aborted) {
-			return null;
-		}
-		const result = await loadPage(endpoint, { timeout: Math.min(timeout, 5), signal });
-		if (result.ok && result.content.trim().length > 100 && !looksLikeHtml(result.content)) {
-			return { content: result.content, endpoint };
-		}
-	}
-	return null;
-}
-
-/**
- * Try content negotiation for markdown/plain
- */
-async function tryContentNegotiation(
-	url: string,
-	timeout: number,
-	signal?: AbortSignal,
-): Promise<{ content: string; type: string } | null> {
-	if (signal?.aborted) {
-		return null;
-	}
-
-	const result = await loadPage(url, {
-		timeout,
-		headers: { Accept: "text/markdown, text/plain;q=0.9, text/html;q=0.8" },
-		signal,
+	const suffix = parsed.pathname.endsWith("/") ? "index.html.md" : ".md";
+	return textProbe(`${parsed.origin}${parsed.pathname}${suffix}`, timeout, {
+		note: "Found .md suffix version",
+		contentType: "text/markdown",
+		method: "md-suffix",
 	});
+}
 
-	if (!result.ok) return null;
+/** Ask the page's own address for markdown or plain text through the `Accept` header. */
+function negotiationProbe(url: string, timeout: number): RenditionProbe {
+	return async signal => {
+		const result = await loadPage(url, {
+			timeout,
+			headers: { Accept: "text/markdown, text/plain;q=0.9, text/html;q=0.8" },
+			signal,
+		});
+		if (!result.ok) return null;
+		const mime = normalizeMime(result.contentType);
+		if ((!mime.includes("markdown") && mime !== "text/plain") || looksLikeHtml(result.content)) return null;
+		return {
+			note: `Content negotiation returned ${result.contentType}`,
+			contentType: mime,
+			method: "content-negotiation",
+			content: result.content,
+		};
+	};
+}
 
-	const mime = normalizeMime(result.contentType);
-	if ((mime.includes("markdown") || mime === "text/plain") && !looksLikeHtml(result.content)) {
-		return { content: result.content, type: result.contentType };
+/** A feed the page links as its alternate, rendered as markdown. */
+function feedProbe(url: string, timeout: number): RenditionProbe {
+	return async signal => {
+		const result = await loadPage(url, { timeout, signal });
+		if (!result.ok || result.content.trim().length <= 200) return null;
+		return {
+			note: `Used feed alternate: ${url}`,
+			contentType: "application/feed",
+			method: "alternate-feed",
+			content: await parseFeedToMarkdown(result.content),
+		};
+	};
+}
+
+/** The llms.txt and llms.md files scoped to the requested URL, nearest scope first. */
+function llmsTxtProbes(url: string, timeout: number): RenditionProbe[] {
+	const probeTimeout = Math.min(timeout, 5);
+	return buildLlmEndpointCandidates(url).map(endpoint =>
+		textProbe(endpoint, probeTimeout, {
+			note: `Used llms.txt fallback: ${endpoint}`,
+			contentType: "text/plain",
+			method: "llms.txt",
+		}),
+	);
+}
+
+function isMarkdownAlternate(href: string): boolean {
+	return href.endsWith(".md") || href.includes("markdown");
+}
+
+/** An alternate link resolved against the page, or null for an href that does not resolve. */
+function resolveAlternate(href: string, pageUrl: string): string | null {
+	if (href.startsWith("http")) return href;
+	try {
+		return new URL(href, pageUrl).href;
+	} catch {
+		return null;
 	}
+}
 
-	return null;
+/**
+ * Every digestible rendition an HTML page may offer, in the order one is preferred: its markdown
+ * alternate link, its `.md` sibling, markdown through content negotiation, then its first two feed
+ * alternates.
+ */
+function htmlRenditionProbes(html: string, pageUrl: string, requestedUrl: string, timeout: number): RenditionProbe[] {
+	const alternates = parseAlternateLinks(html, pageUrl);
+	const probes: RenditionProbe[] = [];
+	const markdownAlternate = alternates.find(isMarkdownAlternate);
+	const markdownUrl = markdownAlternate === undefined ? null : resolveAlternate(markdownAlternate, pageUrl);
+	if (markdownUrl) {
+		probes.push(
+			textProbe(markdownUrl, timeout, {
+				note: `Used markdown alternate: ${markdownUrl}`,
+				contentType: "text/markdown",
+				method: "alternate-markdown",
+			}),
+		);
+	}
+	const sibling = markdownSiblingProbe(pageUrl, timeout);
+	if (sibling) probes.push(sibling);
+	probes.push(negotiationProbe(requestedUrl, timeout));
+	for (const href of alternates.filter(alt => !isMarkdownAlternate(alt)).slice(0, 2)) {
+		const feedUrl = resolveAlternate(href, pageUrl);
+		if (feedUrl) probes.push(feedProbe(feedUrl, timeout));
+	}
+	return probes;
 }
 
 /**
@@ -935,10 +998,6 @@ function getArchiveFormatHint(mime: string, extensionHint: string): ArchiveForma
 	return undefined;
 }
 
-function formatErrorMessage(error: unknown): string {
-	return errorMessage(error);
-}
-
 function binaryContentType(mime: string): string {
 	return mime || "application/octet-stream";
 }
@@ -948,27 +1007,75 @@ function buildBinaryNotice(finalUrl: string, mime: string, byteLength?: number):
 	return `[Binary content: ${binaryContentType(mime)}, ${size}] ${finalUrl}`;
 }
 
-/** Bounds `content` with {@link finalizeOutput} and assembles the render result around it. */
-function buildRenderResult(
-	url: string,
-	finalUrl: string,
-	contentType: string,
-	method: string,
-	content: string,
-	fetchedAt: string,
-	notes: string[],
-): FetchRenderResult {
-	const output = finalizeOutput(content);
-	return {
-		url,
-		finalUrl,
-		contentType,
-		method,
-		content: output.content,
-		fetchedAt,
-		truncated: output.truncated,
-		notes,
-	};
+function binaryFetchFailure(error: string | undefined): string {
+	return error ? `Binary fetch failed: ${error}` : "Binary fetch failed";
+}
+
+const TEXT_FALLBACK_NOTE = "Falling back to textual rendering from initial response";
+
+/** Everything {@link renderUrl} is asked for past the address itself. */
+interface UrlRenderRequest {
+	readonly raw: boolean;
+	readonly timeout: number;
+	readonly signal: AbortSignal | undefined;
+	readonly settings: Settings;
+	readonly storage: AgentStorage | null;
+	readonly fetchOverride?: FetchImpl;
+	readonly excludeWebP?: true;
+	readonly resolveTextTransform?: ProviderTextTransformResolver;
+}
+
+/** A page whose first response arrived, on its way to a render result. Every step appends to `notes`. */
+class FetchedPage {
+	readonly finalUrl: string;
+	readonly rawContent: string;
+	readonly mime: string;
+	readonly extHint: string;
+	readonly bodySkipped: boolean;
+	#binary: Promise<BinaryFetchResult> | undefined;
+
+	constructor(
+		readonly url: string,
+		response: LoadPageResult,
+		readonly fetchedAt: string,
+		readonly notes: string[],
+		readonly request: UrlRenderRequest,
+	) {
+		this.finalUrl = response.finalUrl;
+		this.rawContent = response.content;
+		this.mime = normalizeMime(response.contentType);
+		this.extHint = getExtensionHint(response.finalUrl);
+		this.bodySkipped = response.bodySkipped === true;
+	}
+
+	/**
+	 * The response's bytes, downloaded once however many renderers ask: an image or a document that
+	 * fails to render falls through to the binary payload renderers, which read the same bytes.
+	 */
+	binary(): Promise<BinaryFetchResult> {
+		this.#binary ??= fetchBinary(this.finalUrl, this.request.timeout, this.request.signal);
+		return this.#binary;
+	}
+
+	/** Bounds `content` with {@link finalizeOutput} and assembles the render result around it. */
+	finish(contentType: string, method: string, content: string): FetchRenderResult {
+		const output = finalizeOutput(content);
+		return {
+			url: this.url,
+			finalUrl: this.finalUrl,
+			contentType,
+			method,
+			content: output.content,
+			fetchedAt: this.fetchedAt,
+			truncated: output.truncated,
+			notes: this.notes,
+		};
+	}
+
+	finishRendition(rendition: Rendition): FetchRenderResult {
+		this.notes.push(rendition.note);
+		return this.finish(rendition.contentType, rendition.method, rendition.content);
+	}
 }
 
 async function withTempBinaryFile<T>(
@@ -1007,73 +1114,75 @@ async function renderSqlitePayload(bytes: Uint8Array): Promise<string> {
 	});
 }
 
-async function tryRenderBinaryPayload(
-	url: string,
+/** A structured binary payload the response's bytes can be listed as. */
+interface BinaryPayloadRenderer {
+	readonly method: string;
+	/** Names the format in the note a failed render leaves. */
+	readonly format: string;
+	render(): Promise<string>;
+}
+
+function binaryPayloadRenderer(
 	finalUrl: string,
 	mime: string,
 	extHint: string,
-	rawContent: string,
-	bodySkipped: boolean,
-	timeout: number,
-	signal: AbortSignal | undefined,
-	fetchedAt: string,
-	notes: readonly string[],
-): Promise<FetchRenderResult | null> {
-	const hasNotebookHint = isNotebookHint(mime, extHint);
-	const hasSqliteHint = isSqliteHint(mime, extHint);
-	const hasArchiveHint = isArchiveHint(mime, extHint);
-	const rawLooksBinary = bodySkipped || sampleLooksBinary(rawContent);
-	if (!hasNotebookHint && !hasSqliteHint && !hasArchiveHint && !rawLooksBinary) {
+	bytes: Uint8Array,
+): BinaryPayloadRenderer | null {
+	if (isNotebookHint(mime, extHint)) {
+		return { method: "notebook", format: "Notebook", render: () => renderNotebookPayload(bytes, finalUrl) };
+	}
+	if (isSqliteHint(mime, extHint) || looksLikeSqlite(bytes)) {
+		return { method: "sqlite", format: "SQLite", render: () => renderSqlitePayload(bytes) };
+	}
+	// A convertible document is sniffed for an archive only when its name or type says it is one: a
+	// DOCX is a zip, and listing its parts is not what reading it asked for.
+	const archiveFormat =
+		getArchiveFormatHint(mime, extHint) ?? (isConvertible(mime, extHint) ? undefined : sniffArchiveFormat(bytes));
+	if (archiveFormat) {
+		return {
+			method: "archive",
+			format: "Archive",
+			render: () => listArchiveRoot(bytes, archiveFormat, { limit: URL_ARCHIVE_LIST_LIMIT }),
+		};
+	}
+	return null;
+}
+
+/**
+ * A notebook, SQLite database, archive or opaque binary, rendered from the response's bytes; null
+ * for a response that names none of them and reads as text.
+ */
+async function tryRenderBinaryPayload(page: FetchedPage): Promise<FetchRenderResult | null> {
+	const { finalUrl, mime, extHint, notes } = page;
+	const rawLooksBinary = page.bodySkipped || sampleLooksBinary(page.rawContent);
+	if (
+		!rawLooksBinary &&
+		!isNotebookHint(mime, extHint) &&
+		!isSqliteHint(mime, extHint) &&
+		!isArchiveHint(mime, extHint)
+	) {
 		return null;
 	}
 
-	const resultNotes = notes.slice();
 	const contentType = binaryContentType(mime);
-	const finish = (method: string, content: string): FetchRenderResult =>
-		buildRenderResult(url, finalUrl, contentType, method, content, fetchedAt, resultNotes);
-	const binary = await fetchBinary(finalUrl, timeout, signal);
+	const binary = await page.binary();
 	if (!binary.ok) {
-		resultNotes.push(binary.error ? `Binary fetch failed: ${binary.error}` : "Binary fetch failed");
-		return finish("binary", buildBinaryNotice(finalUrl, mime));
+		notes.push(binaryFetchFailure(binary.error));
+		return page.finish(contentType, "binary", buildBinaryNotice(finalUrl, mime));
 	}
 
+	const notice = buildBinaryNotice(finalUrl, mime, binary.buffer.byteLength);
 	const binaryExtHint = getExtensionHint(finalUrl, binary.contentDisposition) || extHint;
-	if (isNotebookHint(mime, binaryExtHint)) {
+	const payload = binaryPayloadRenderer(finalUrl, mime, binaryExtHint, binary.buffer);
+	if (payload) {
 		try {
-			return finish("notebook", await renderNotebookPayload(binary.buffer, finalUrl));
+			return page.finish(contentType, payload.method, await payload.render());
 		} catch (error) {
-			resultNotes.push(`Notebook rendering failed: ${formatErrorMessage(error)}`);
-			return finish("binary", buildBinaryNotice(finalUrl, mime, binary.buffer.byteLength));
+			notes.push(`${payload.format} rendering failed: ${errorMessage(error)}`);
+			return page.finish(contentType, "binary", notice);
 		}
 	}
-
-	if (isSqliteHint(mime, binaryExtHint) || looksLikeSqlite(binary.buffer)) {
-		try {
-			return finish("sqlite", await renderSqlitePayload(binary.buffer));
-		} catch (error) {
-			resultNotes.push(`SQLite rendering failed: ${formatErrorMessage(error)}`);
-			return finish("binary", buildBinaryNotice(finalUrl, mime, binary.buffer.byteLength));
-		}
-	}
-
-	const hintedArchiveFormat = getArchiveFormatHint(mime, binaryExtHint);
-	const shouldArchiveSniff = hintedArchiveFormat !== undefined || !isConvertible(mime, binaryExtHint);
-	const archiveFormat = hintedArchiveFormat ?? (shouldArchiveSniff ? sniffArchiveFormat(binary.buffer) : undefined);
-	if (archiveFormat) {
-		try {
-			const listing = await listArchiveRoot(binary.buffer, archiveFormat, { limit: URL_ARCHIVE_LIST_LIMIT });
-			return finish("archive", listing);
-		} catch (error) {
-			resultNotes.push(`Archive rendering failed: ${formatErrorMessage(error)}`);
-			return finish("binary", buildBinaryNotice(finalUrl, mime, binary.buffer.byteLength));
-		}
-	}
-
-	if (rawLooksBinary) {
-		return finish("binary", buildBinaryNotice(finalUrl, mime, binary.buffer.byteLength));
-	}
-
-	return null;
+	return rawLooksBinary ? page.finish(contentType, "binary", notice) : null;
 }
 
 // =============================================================================
@@ -1165,28 +1274,19 @@ export async function handleSpecialUrls(
 // =============================================================================
 
 /**
- * Main render function implementing the full pipeline
+ * Render a URL: a site scraper when one claims it, else the page's first response shaped by what
+ * its bytes are (image, convertible document, binary payload, text) and, for HTML, a digestible
+ * rendition or the reader-backend chain.
  */
-async function renderUrl(
-	url: string,
-	timeout: number,
-	raw: boolean,
-	settings: Settings,
-	signal: AbortSignal | undefined,
-	storage: AgentStorage | null,
-	fetchOverride?: FetchImpl,
-	excludeWebP?: true,
-	resolveTextTransform?: ProviderTextTransformResolver,
-): Promise<FetchRenderResult> {
-	const notes: string[] = [];
+async function renderUrl(requestedUrl: string, request: UrlRenderRequest): Promise<FetchRenderResult> {
+	const { raw, timeout, signal, storage } = request;
 	const fetchedAt = new Date().toISOString();
 	throwIfAborted(signal, "fetch");
 
-	// Handle internal protocol URLs (e.g., pi-internal://) - return empty
-	if (url.startsWith("pi-internal://")) {
+	if (requestedUrl.startsWith("pi-internal://")) {
 		return {
-			url,
-			finalUrl: url,
+			url: requestedUrl,
+			finalUrl: requestedUrl,
 			contentType: "text/plain",
 			method: "internal",
 			content: "",
@@ -1196,19 +1296,18 @@ async function renderUrl(
 		};
 	}
 
-	// Step 0: Normalize URL (ensure scheme for special handlers)
-	url = normalizeUrl(url);
-
-	// Step 1: Try special handlers for known sites (unless raw mode)
+	const url = normalizeUrl(requestedUrl);
+	const notes: string[] = [];
 	if (!raw) {
 		const specialResult = await handleSpecialUrls(url, timeout, signal, storage, notes);
 		if (specialResult) return specialResult;
 	}
 
-	// Step 2: Fetch page
 	const response = await loadPage(url, { timeout, signal, skipBodyForContentType: shouldSkipBodyDownload });
 	throwIfAborted(signal, "fetch");
 	if (!response.ok) {
+		notes.push(response.status ? `Failed to fetch URL (HTTP ${response.status})` : "Failed to fetch URL");
+		if (response.error) notes.push(`Cause: ${response.error}`);
 		return {
 			url,
 			finalUrl: response.finalUrl || url,
@@ -1217,264 +1316,185 @@ async function renderUrl(
 			content: "",
 			fetchedAt,
 			truncated: false,
-			notes: [
-				...notes,
-				response.status ? `Failed to fetch URL (HTTP ${response.status})` : "Failed to fetch URL",
-				...(response.error ? [`Cause: ${response.error}`] : []),
-			],
+			notes,
 		};
 	}
-
-	const { finalUrl, content: rawContent } = response;
-	const finish = (contentType: string, method: string, content: string): FetchRenderResult =>
-		buildRenderResult(url, finalUrl, contentType, method, content, fetchedAt, notes);
 	if (response.truncated) {
 		notes.push(`Response body exceeded ${formatBytes(MAX_BYTES)} and was cut mid-stream; content is incomplete`);
 	}
-	const mime = normalizeMime(response.contentType);
-	const extHint = getExtensionHint(finalUrl);
 
-	const imageMimeType = resolveImageMimeType(mime, extHint);
-	let skipConvertibleBinaryRetry = false;
+	const page = new FetchedPage(url, response, fetchedAt, notes, request);
+	return (await renderBinaryResponse(page)) ?? (await renderTextResponse(page));
+}
+
+/**
+ * A response whose bytes are an image, a convertible document or a binary payload; null for a text
+ * response. An image or document that does not render falls through to the binary payload renderers.
+ */
+async function renderBinaryResponse(page: FetchedPage): Promise<FetchRenderResult | null> {
+	const imageMimeType = resolveImageMimeType(page.mime, page.extHint);
 	if (imageMimeType) {
-		if (!isInlineImageMimeTypeSupported(imageMimeType)) {
-			notes.push(
-				`Image MIME type ${imageMimeType} is unsupported for inline model serialization; returning text metadata only`,
-			);
-			notes.push("Falling back to textual rendering from initial response");
-			skipConvertibleBinaryRetry = true;
-		} else {
-			const binary = await fetchBinary(finalUrl, timeout, signal);
-			if (binary.ok) {
-				notes.push("Fetched image binary");
-
-				if (binary.buffer.byteLength > MAX_INLINE_IMAGE_SOURCE_BYTES) {
-					notes.push(
-						`Image exceeds inline source limit (${binary.buffer.byteLength} bytes > ${MAX_INLINE_IMAGE_SOURCE_BYTES} bytes)`,
-					);
-					return finish(
-						imageMimeType,
-						"image-too-large",
-						`Fetched image content (${imageMimeType}), but it is too large to inline render.`,
-					);
-				}
-
-				const resized = await resizeImage(
-					{ type: "image", data: Buffer.from(binary.buffer).toBase64(), mimeType: imageMimeType },
-					{ maxBytes: MAX_INLINE_IMAGE_OUTPUT_BYTES, excludeWebP },
-				);
-				const isDecodedImage =
-					resized.originalWidth > 0 && resized.originalHeight > 0 && resized.width > 0 && resized.height > 0;
-				if (!isDecodedImage) {
-					notes.push(`Fetched payload could not be decoded as ${imageMimeType}; returning text metadata only`);
-					return finish(
-						imageMimeType,
-						"image-invalid",
-						rawContent ?? `Fetched payload was labeled ${imageMimeType}, but bytes were not a valid image.`,
-					);
-				}
-				if (resized.buffer.length > MAX_INLINE_IMAGE_OUTPUT_BYTES) {
-					notes.push(
-						`Image exceeds inline output limit after resize (${resized.buffer.length} bytes > ${MAX_INLINE_IMAGE_OUTPUT_BYTES} bytes)`,
-					);
-					return finish(
-						imageMimeType,
-						"image-too-large",
-						`Fetched image content (${imageMimeType}), but it is too large to inline render.`,
-					);
-				}
-
-				const dimensionNote = formatDimensionNote(resized);
-				let imageSummary = `Fetched image content (${resized.mimeType}).`;
-				if (dimensionNote) {
-					imageSummary += `\n${dimensionNote}`;
-				}
-				const output = finalizeOutput(imageSummary);
-				return {
-					url,
-					finalUrl,
-					contentType: resized.mimeType,
-					method: "image",
-					content: output.content,
-					fetchedAt,
-					truncated: output.truncated,
-					notes,
-					image: {
-						data: resized.data,
-						mimeType: resized.mimeType,
-					},
-				};
-			}
-			notes.push(binary.error ? `Binary fetch failed: ${binary.error}` : "Binary fetch failed");
-			notes.push("Falling back to textual rendering from initial response");
-			skipConvertibleBinaryRetry = true;
-		}
+		const image = await renderImage(page, imageMimeType);
+		if (image) return image;
+	} else if (isConvertible(page.mime, page.extHint)) {
+		const document = await convertResponseDocument(page);
+		if (document) return document;
 	}
+	return tryRenderBinaryPayload(page);
+}
 
-	// Step 3: Handle convertible binary files (PDF, DOCX, etc.)
-	if (!skipConvertibleBinaryRetry && isConvertible(mime, extHint)) {
-		const binary = await fetchBinary(finalUrl, timeout, signal);
-		if (binary.ok) {
-			const ext = getExtensionHint(finalUrl, binary.contentDisposition) || extHint;
-			const converted = await convertDocument(binary.buffer, ext, timeout, signal);
-			if (converted.ok) {
-				if (converted.content.trim().length > 50) {
-					notes.push("Converted with markit");
-					return finish(mime, "markit", converted.content);
-				}
-				notes.push("markit conversion produced no usable output");
-			} else if (converted.error) {
-				notes.push(`markit conversion failed: ${converted.error}`);
-			} else {
-				notes.push("markit conversion failed");
-			}
-		} else if (binary.error) {
-			notes.push(`Binary fetch failed: ${binary.error}`);
-		} else {
-			notes.push("Binary fetch failed");
-		}
-	}
-
-	const binaryPayloadResult = await tryRenderBinaryPayload(
-		url,
-		finalUrl,
-		mime,
-		extHint,
-		rawContent,
-		response.bodySkipped === true,
-		timeout,
-		signal,
-		fetchedAt,
-		notes,
-	);
-	if (binaryPayloadResult) return binaryPayloadResult;
-
-	// Step 4: Handle non-HTML text content
-	const isHtml = mime.includes("html") || mime.includes("xhtml");
-	const isJson = mime.includes("json");
-	const isXml = mime.includes("xml") && !isHtml;
-	const isText = mime.includes("text/plain") || mime.includes("text/markdown");
-	const isFeed = mime.includes("rss") || mime.includes("atom") || mime.includes("feed");
-
-	// Raw mode skips every text-shaping branch below (JSON pretty-print, feed-to-markdown,
-	// HTML extraction) and returns the response body verbatim. Binary-oriented branches
-	// above already ran because raw isn't useful for binary payloads.
-	if (raw) {
-		return finish(mime, "raw", rawContent);
-	}
-	if (isJson) {
-		return finish(mime, "json", formatJson(rawContent));
-	}
-
-	if (isFeed || (isXml && (rawContent.includes("<rss") || rawContent.includes("<feed")))) {
-		const parsed = await parseFeedToMarkdown(rawContent);
-		return finish(mime, "feed", parsed);
-	}
-
-	if (isText && !looksLikeHtml(rawContent)) {
-		return finish(mime, "text", rawContent);
-	}
-
-	// Step 5: For HTML, try digestible formats first (unless raw mode)
-	if (isHtml && !raw) {
-		// 5A: Check for page-specific markdown alternate
-		const alternates = parseAlternateLinks(rawContent, finalUrl);
-		const markdownAlt = alternates.find(alt => alt.endsWith(".md") || alt.includes("markdown"));
-		if (markdownAlt) {
-			const resolved = markdownAlt.startsWith("http") ? markdownAlt : new URL(markdownAlt, finalUrl).href;
-			const altResult = await loadPage(resolved, { timeout, signal });
-			if (altResult.ok && altResult.content.trim().length > 100 && !looksLikeHtml(altResult.content)) {
-				notes.push(`Used markdown alternate: ${resolved}`);
-				return finish("text/markdown", "alternate-markdown", altResult.content);
-			}
-		}
-
-		// 5B: Try URL.md suffix (llms.txt convention)
-		const mdSuffix = await tryMdSuffix(finalUrl, timeout, signal);
-		if (mdSuffix) {
-			notes.push("Found .md suffix version");
-			return finish("text/markdown", "md-suffix", mdSuffix);
-		}
-
-		// 5C: Content negotiation
-		const negotiated = await tryContentNegotiation(url, timeout, signal);
-		if (negotiated) {
-			notes.push(`Content negotiation returned ${negotiated.type}`);
-			return finish(normalizeMime(negotiated.type), "content-negotiation", negotiated.content);
-		}
-
-		// 5D: Check for feed alternates
-		const feedAlternates = alternates.filter(alt => !alt.endsWith(".md") && !alt.includes("markdown"));
-		for (const altUrl of feedAlternates.slice(0, 2)) {
-			const resolved = altUrl.startsWith("http") ? altUrl : new URL(altUrl, finalUrl).href;
-			const altResult = await loadPage(resolved, { timeout, signal });
-			if (altResult.ok && altResult.content.trim().length > 200) {
-				notes.push(`Used feed alternate: ${resolved}`);
-				const parsed = await parseFeedToMarkdown(altResult.content);
-				return finish("application/feed", "alternate-feed", parsed);
-			}
-		}
-
-		throwIfAborted(signal, "fetch");
-
-		// 5E: Render HTML via the reader-backend chain (native/trafilatura/lynx/parallel/jina)
-		const htmlResult = await renderHtmlToText(
-			finalUrl,
-			rawContent,
-			timeout,
-			settings,
-			signal,
-			storage,
-			fetchOverride,
-			resolveTextTransform,
+/** An image inlined for the model under the inline output limit; null when the text rendering stands instead. */
+async function renderImage(page: FetchedPage, mimeType: string): Promise<FetchRenderResult | null> {
+	const { notes } = page;
+	if (!isInlineImageMimeTypeSupported(mimeType)) {
+		notes.push(
+			`Image MIME type ${mimeType} is unsupported for inline model serialization; returning text metadata only`,
+			TEXT_FALLBACK_NOTE,
 		);
-		if (!htmlResult.ok) {
-			notes.push("html rendering failed (no reader backend produced usable output)");
-
-			const llmResult = await tryLlmEndpoints(finalUrl, timeout, signal);
-			if (llmResult) {
-				notes.push(`Used llms.txt fallback: ${llmResult.endpoint}`);
-				return finish("text/plain", "llms.txt", llmResult.content);
-			}
-
-			return finish(mime, "raw-html", rawContent);
-		}
-
-		// Step 6: If rendered output is low quality, try more targeted fallbacks
-		if (isLowQualityOutput(htmlResult.content)) {
-			const docLinks = extractDocumentLinks(rawContent, finalUrl);
-			if (docLinks.length > 0) {
-				const docUrl = docLinks[0];
-				const binary = await fetchBinary(docUrl, timeout, signal);
-				if (binary.ok) {
-					const ext = getExtensionHint(docUrl, binary.contentDisposition);
-					const converted = await convertDocument(binary.buffer, ext, timeout, signal);
-					if (converted.ok && converted.content.trim().length > htmlResult.content.length) {
-						notes.push(`Extracted and converted document: ${docUrl}`);
-						return finish("application/document", "extracted-document", converted.content);
-					}
-					if (!converted.ok && converted.error) {
-						notes.push(`markit conversion failed: ${converted.error}`);
-					}
-				} else if (binary.error) {
-					notes.push(`Binary fetch failed: ${binary.error}`);
-				}
-			}
-
-			const llmResult = await tryLlmEndpoints(finalUrl, timeout, signal);
-			if (llmResult) {
-				notes.push(`Used llms.txt fallback: ${llmResult.endpoint}`);
-				return finish("text/plain", "llms.txt", llmResult.content);
-			}
-
-			notes.push("Page appears to require JavaScript or is mostly navigation");
-		}
-
-		return finish(mime, htmlResult.method, htmlResult.content);
+		return null;
+	}
+	const binary = await page.binary();
+	if (!binary.ok) {
+		notes.push(binaryFetchFailure(binary.error), TEXT_FALLBACK_NOTE);
+		return null;
 	}
 
-	// Fallback: return raw content
-	return finish(mime, "raw", rawContent);
+	notes.push("Fetched image binary");
+	const tooLarge = `Fetched image content (${mimeType}), but it is too large to inline render.`;
+	if (binary.buffer.byteLength > MAX_INLINE_IMAGE_SOURCE_BYTES) {
+		notes.push(
+			`Image exceeds inline source limit (${binary.buffer.byteLength} bytes > ${MAX_INLINE_IMAGE_SOURCE_BYTES} bytes)`,
+		);
+		return page.finish(mimeType, "image-too-large", tooLarge);
+	}
+	let resized: ResizedImage;
+	try {
+		resized = await resizeImage(
+			{ type: "image", data: Buffer.from(binary.buffer).toBase64(), mimeType },
+			{ maxBytes: MAX_INLINE_IMAGE_OUTPUT_BYTES, excludeWebP: page.request.excludeWebP },
+		);
+	} catch {
+		// resizeImage rejects every payload it cannot decode, whatever the label promised. A text body
+		// the first response carried, such as a gateway's error page, says why; bytes say nothing.
+		notes.push(`Fetched payload could not be decoded as ${mimeType}; returning text metadata only`);
+		const { rawContent } = page;
+		const content =
+			rawContent && !sampleLooksBinary(rawContent)
+				? rawContent
+				: `Fetched payload was labeled ${mimeType}, but bytes were not a valid image.`;
+		return page.finish(mimeType, "image-invalid", content);
+	}
+	if (resized.buffer.length > MAX_INLINE_IMAGE_OUTPUT_BYTES) {
+		notes.push(
+			`Image exceeds inline output limit after resize (${resized.buffer.length} bytes > ${MAX_INLINE_IMAGE_OUTPUT_BYTES} bytes)`,
+		);
+		return page.finish(mimeType, "image-too-large", tooLarge);
+	}
+
+	const dimensionNote = formatDimensionNote(resized);
+	const summary = `Fetched image content (${resized.mimeType}).${dimensionNote ? `\n${dimensionNote}` : ""}`;
+	return {
+		...page.finish(resized.mimeType, "image", summary),
+		image: { data: resized.data, mimeType: resized.mimeType },
+	};
+}
+
+/** A PDF, DOCX or other convertible document converted with markit; null when conversion yields nothing usable. */
+async function convertResponseDocument(page: FetchedPage): Promise<FetchRenderResult | null> {
+	const { notes } = page;
+	const binary = await page.binary();
+	if (!binary.ok) {
+		notes.push(binaryFetchFailure(binary.error));
+		return null;
+	}
+	const extension = getExtensionHint(page.finalUrl, binary.contentDisposition) || page.extHint;
+	const converted = await convertDocument(binary.buffer, extension, page.request.timeout, page.request.signal);
+	if (!converted.ok) {
+		notes.push(converted.error ? `markit conversion failed: ${converted.error}` : "markit conversion failed");
+		return null;
+	}
+	if (converted.content.trim().length <= 50) {
+		notes.push("markit conversion produced no usable output");
+		return null;
+	}
+	notes.push("Converted with markit");
+	return page.finish(page.mime, "markit", converted.content);
+}
+
+/** A text response shaped by its content type. Raw mode returns the body as it arrived. */
+async function renderTextResponse(page: FetchedPage): Promise<FetchRenderResult> {
+	const { mime, rawContent } = page;
+	if (page.request.raw) return page.finish(mime, "raw", rawContent);
+	if (mime.includes("json")) return page.finish(mime, "json", formatJson(rawContent));
+
+	const isHtml = mime.includes("html");
+	const isFeed = mime.includes("rss") || mime.includes("atom") || mime.includes("feed");
+	const isXmlFeed = !isHtml && mime.includes("xml") && (rawContent.includes("<rss") || rawContent.includes("<feed"));
+	if (isFeed || isXmlFeed) return page.finish(mime, "feed", await parseFeedToMarkdown(rawContent));
+
+	const isText = mime.includes("text/plain") || mime.includes("text/markdown");
+	if (isText && !looksLikeHtml(rawContent)) return page.finish(mime, "text", rawContent);
+	if (isHtml) return renderHtmlResponse(page);
+	return page.finish(mime, "raw", rawContent);
+}
+
+/**
+ * An HTML page: a digestible rendition when the site offers one, else the reader-backend chain, with
+ * a linked document or an llms.txt file standing in for output that failed or reads as navigation.
+ */
+async function renderHtmlResponse(page: FetchedPage): Promise<FetchRenderResult> {
+	const { notes, request, finalUrl, rawContent } = page;
+	const { timeout, signal } = request;
+	const rendition = await firstRendition(htmlRenditionProbes(rawContent, finalUrl, page.url, timeout), signal);
+	if (rendition) return page.finishRendition(rendition);
+	throwIfAborted(signal, "fetch");
+
+	const html = await renderHtmlToText(
+		finalUrl,
+		rawContent,
+		timeout,
+		request.settings,
+		signal,
+		request.storage,
+		request.fetchOverride,
+		request.resolveTextTransform,
+	);
+	if (!html.ok) {
+		notes.push("html rendering failed (no reader backend produced usable output)");
+		const llmsTxt = await firstRendition(llmsTxtProbes(finalUrl, timeout), signal);
+		return llmsTxt ? page.finishRendition(llmsTxt) : page.finish(page.mime, "raw-html", rawContent);
+	}
+	if (isLowQualityOutput(html.content)) {
+		const standIn =
+			(await linkedDocument(page, html.content)) ?? (await firstRendition(llmsTxtProbes(finalUrl, timeout), signal));
+		if (standIn) return page.finishRendition(standIn);
+		notes.push("Page appears to require JavaScript or is mostly navigation");
+	}
+	return page.finish(page.mime, html.method, html.content);
+}
+
+/** The first document a navigation-heavy page links to, converted, when it reads longer than the page. */
+async function linkedDocument(page: FetchedPage, rendered: string): Promise<Rendition | null> {
+	const [documentUrl] = extractDocumentLinks(page.rawContent, page.finalUrl);
+	if (documentUrl === undefined) return null;
+	const { timeout, signal } = page.request;
+	const binary = await fetchBinary(documentUrl, timeout, signal);
+	if (!binary.ok) {
+		if (binary.error) page.notes.push(binaryFetchFailure(binary.error));
+		return null;
+	}
+	const extension = getExtensionHint(documentUrl, binary.contentDisposition);
+	const converted = await convertDocument(binary.buffer, extension, timeout, signal);
+	if (converted.ok && converted.content.trim().length > rendered.length) {
+		return {
+			note: `Extracted and converted document: ${documentUrl}`,
+			contentType: "application/document",
+			method: "extracted-document",
+			content: converted.content,
+		};
+	}
+	if (!converted.ok && converted.error) page.notes.push(`markit conversion failed: ${converted.error}`);
+	return null;
 }
 
 // =============================================================================
@@ -1632,18 +1652,16 @@ async function buildReadUrlCacheEntry(
 
 	throwIfAborted(signal, "fetch");
 
-	const storage = AgentStorage.forAgentDir(session.settings.getAgentDir());
-	const result = await renderUrl(
-		url,
-		effectiveTimeout,
+	const result = await renderUrl(url, {
 		raw,
-		session.settings,
+		timeout: effectiveTimeout,
 		signal,
-		storage,
-		session.fetch,
-		webpExclusionForModel(session.getActiveModel?.()),
-		() => session.obfuscateProviderText,
-	);
+		settings: session.settings,
+		storage: AgentStorage.forAgentDir(session.settings.getAgentDir()),
+		fetchOverride: session.fetch,
+		excludeWebP: webpExclusionForModel(session.getActiveModel?.()),
+		resolveTextTransform: () => session.obfuscateProviderText,
+	});
 	const output = buildUrlReadOutput(result, result.content);
 	const artifact = options?.ensureArtifact ? await persistReadUrlArtifact(session, output) : undefined;
 

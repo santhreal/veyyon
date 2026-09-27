@@ -11,14 +11,18 @@
 
 ### Changed
 
+- `matchesKey` and `parseKey` look up their memoized answers by protocol mode and input instead of a concatenated key string, and `KeybindingsManager.matches` reuses each parsed key's canonical id, cutting a memoized key test from 70.4 ns to 17.3 ns with identical answers.
 - `latexToBlock` parses each display-math fragment with one handler per construct (fractions, radicals, `\left…\right`, big operators, colors, environments, scripts, delimiters) and scans command names by character code, rendering 150,018 differential cases byte-identically about 6% faster.
 - `prompt.render` reuses a template's variable analysis across renders instead of re-parsing the template on every call, rendering the spawned-agent system prompt in about 7 µs instead of about 100 µs.
 - `wrapTextWithAnsi` returns a line of printable ASCII and SGR that already fits without calling the native wrapper, cutting the wrap time of a 659k-row transcript's 1.83M calls from 1.69 s to 0.93 s with byte-identical rows.
 - `replaceTabs` returns a line with no tab without running the replacement, cutting 1.83M transcript lines from 55.2 ms to 40.6 ms.
+- `latexToUnicode` dispatches a command through one name-keyed table and scans command names by character code, rendering a 12-formula corpus in 11.4 µs instead of 24.2 µs with 305,251 differential cases byte-identical.
+- `visibleWidth` counts a row of printable ASCII, tabs and SGR sequences in its own scan instead of the escape-stripping measure, cutting a styled prose row from 299 ns to 62 ns and a colored 13,362-entry transcript render from 288 ms to 270 ms with identical widths.
 
 ### Fixed
 
 - `@veyyon/utils/stderr-guard` loads `node:util` on the first routed console call rather than at import, keeping it off the launch card path; no user-visible change.
+- `latexToUnicode` and `latexToBlock` render a command, environment, color or delimiter named after an `Object.prototype` member (`\toString`, `\constructor`, `\begin{__proto__}`) as an unknown name instead of throwing, printing a function body, or laying it out as a fraction, big operator or matrix.
 
 ## [1.5.5] - 2026-09-25
 

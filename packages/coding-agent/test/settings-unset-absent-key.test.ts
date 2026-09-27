@@ -143,6 +143,10 @@ describe("the live-apply path", () => {
 		}
 		expect(isSamplingKnob("compaction.modelContextWindow")).toBe(false);
 		expect(isSamplingKnob("theme.dark")).toBe(false);
+		// An `in` probe answered true for every name on Object.prototype.
+		for (const inherited of ["toString", "constructor", "hasOwnProperty", "__proto__"]) {
+			expect(isSamplingKnob(inherited)).toBe(false);
+		}
 	});
 });
 

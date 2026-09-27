@@ -27,6 +27,7 @@ import {
 	ProjectPromptInputs,
 	type ProjectPromptSnapshot,
 } from "@veyyon/coding-agent/session/prompt-inputs";
+import type { NonProjectReason } from "@veyyon/coding-agent/tools/fs/reroot-hint";
 
 const A = path.resolve("/repo/a");
 const B = path.resolve("/repo/b");
@@ -65,6 +66,8 @@ interface Harness {
 	/** Holds `cwd`'s discovery open until `release` runs; `started` resolves once discovery begins. */
 	hold(cwd: string): { started: Promise<void>; release(): void };
 	rulesFor: Map<string, Rule[]>;
+	/** What each directory's project check answers; null when absent. */
+	reasonFor: Map<string, NonProjectReason>;
 	failNext: Set<string>;
 }
 
@@ -74,13 +77,14 @@ function snapshot(cwd: string): ProjectPromptSnapshot {
 		contextFiles: [{ path: path.join(cwd, "AGENTS.md"), content: cwd }],
 		workspaceTree: { rootPath: cwd, rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] },
 		activeRepoContext: null,
+		nonProjectCwd: null,
 		skills: [],
 		rulebookRules: [],
 		alwaysApplyRules: [],
 	};
 }
 
-function harness(): Harness {
+function harness(initialReason: NonProjectReason | null = null): Harness {
 	let cwd = A;
 	const holds = new Map<string, { gate: Promise<void>; begin(): void }>();
 	const ttsr = new TtsrManager(undefined, { getCwd: () => cwd });
@@ -88,6 +92,7 @@ function harness(): Harness {
 	const changes: DiscoveredProjectInputs[] = [];
 	const renderedAtChange: string[] = [];
 	const rulesFor = new Map<string, Rule[]>();
+	const reasonFor = new Map<string, NonProjectReason>();
 	const failNext = new Set<string>();
 	const discover = (target: string): ProjectInputDiscovery => {
 		discovered.push(target);
@@ -109,6 +114,7 @@ function harness(): Harness {
 			contextFiles: after(base.contextFiles),
 			workspaceTree: after({ rootPath: target, rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] }),
 			activeRepoContext: after(null),
+			nonProjectCwd: after(reasonFor.get(target) ?? null),
 			skills: after({ skills: [], warnings: [] }),
 			rules: after(rulesFor.get(target) ?? []),
 			watchdogFiles: after([]),
@@ -120,7 +126,7 @@ function harness(): Harness {
 		return discovery;
 	};
 	const inputs: ProjectPromptInputs = new ProjectPromptInputs({
-		initial: snapshot(A),
+		initial: { ...snapshot(A), nonProjectCwd: initialReason },
 		getCwd: () => cwd,
 		discover,
 		ttsrManager: ttsr,
@@ -137,6 +143,7 @@ function harness(): Harness {
 		changes,
 		renderedAtChange,
 		rulesFor,
+		reasonFor,
 		failNext,
 		moveTo(next) {
 			cwd = next;
@@ -177,6 +184,20 @@ describe("a moved session renders one project at a time", () => {
 		expect(h.ttsr.getRules().map(r => r.name)).toEqual(["ttsr-b"]);
 		expect(h.changes.map(change => change.cwd)).toEqual([B]);
 		expect(h.changes[0]?.rules.map(r => r.name)).toEqual(["book-b", "ttsr-b"]);
+	});
+
+	it("hands the prompt the moved directory's own project check with its path", async () => {
+		const h = harness("no-project-marker");
+		h.reasonFor.set(C, "holds-other-projects");
+		expect(h.inputs.promptOptions()).toMatchObject({ cwd: A, nonProjectCwd: "no-project-marker" });
+
+		h.moveTo(B);
+		await h.inputs.refresh();
+		expect(h.inputs.promptOptions()).toMatchObject({ cwd: B, nonProjectCwd: null });
+
+		h.moveTo(C);
+		await h.inputs.refresh();
+		expect(h.inputs.promptOptions()).toMatchObject({ cwd: C, nonProjectCwd: "holds-other-projects" });
 	});
 
 	it("discards a discovery whose cwd moved again, and settles on the newest cwd", async () => {

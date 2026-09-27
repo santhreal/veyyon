@@ -3,8 +3,6 @@ import * as AIError from "../error";
 
 const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 120_000;
 const DEFAULT_STREAM_FIRST_EVENT_TIMEOUT_MS = 100_000;
-/** Re-mint persistent race promises every N iterations (see hoisted-racer comment). */
-const RACER_REMINT_INTERVAL = 1024;
 
 function normalizeIdleTimeoutMs(value: string | undefined, fallback: number): number | undefined {
 	if (value === undefined) return fallback;
@@ -202,6 +200,274 @@ export interface IdleTimeoutIteratorOptions {
 	abortSignal?: AbortSignal;
 }
 
+type IdleWake = "next" | "timeout" | "abort";
+
+/**
+ * The state one {@link iterateWithIdleTimeout} run holds across pulls: the active deadline, the one
+ * timer that enforces it, the in-flight `next()`, and the waiter that a settled `next()`, the timer
+ * or the caller's abort resolves.
+ *
+ * Each stalled pull waits on its own promise, which a settled `next()`, the timer or the abort resolves.
+ * A `Promise.race` over long-lived timeout and abort promises attaches a reaction to every racer on
+ * every item, and a racer that never settles retains one per streamed item for the stream's life.
+ */
+class IdleWatchdog<T> {
+	readonly #iterator: AsyncIterator<T>;
+	readonly #options: IdleTimeoutIteratorOptions;
+	/** The first-item budget when positive; the first-item deadline is set exactly when this is. */
+	readonly #firstItemBudgetMs: number | undefined;
+	/** The steady-state idle budget when positive. */
+	readonly #idleBudgetMs: number | undefined;
+	readonly #maxLocalWorkHoldMs: number;
+	#firstItemDeadlineMs: number | undefined;
+	#awaitingFirstItem = true;
+	#lastProgressAt = Date.now();
+	#localWorkHoldStartedAt: number | undefined;
+	#localWorkHoldExpired = false;
+	#timer: NodeJS.Timeout | undefined;
+	#timerFireAtMs = Infinity;
+	/** A `next()` was issued and not yet taken; a second one while it is out would drop an item. */
+	#nextInFlight = false;
+	#nextSettled = false;
+	#nextFailed = false;
+	#nextResult: IteratorResult<T> | undefined;
+	#nextError: unknown;
+	#wakeWaiter: (() => void) | undefined;
+	#wokeBy: IdleWake = "next";
+	#iteratorClosed = false;
+
+	constructor(iterator: AsyncIterator<T>, options: IdleTimeoutIteratorOptions) {
+		this.#iterator = iterator;
+		this.#options = options;
+		const firstItemTimeoutMs = options.firstItemTimeoutMs ?? options.idleTimeoutMs;
+		if (firstItemTimeoutMs !== undefined && firstItemTimeoutMs > 0) {
+			this.#firstItemBudgetMs = firstItemTimeoutMs;
+			this.#firstItemDeadlineMs = this.#lastProgressAt + firstItemTimeoutMs;
+		}
+		const idleTimeoutMs = options.idleTimeoutMs;
+		if (idleTimeoutMs !== undefined && idleTimeoutMs > 0) this.#idleBudgetMs = idleTimeoutMs;
+		this.#maxLocalWorkHoldMs = options.maxLocalWorkHoldMs ?? DEFAULT_MAX_LOCAL_WORK_HOLD_MS;
+		options.abortSignal?.addEventListener("abort", this.#onAbort, { once: true });
+	}
+
+	throwIfAborted(): void {
+		const signal = this.#options.abortSignal;
+		if (!signal?.aborted) return;
+		this.close();
+		throw abortReason(signal);
+	}
+
+	/**
+	 * The deadline the next wait runs against. A deadline that already passed slides a full budget
+	 * for pending local work, or throws the timeout.
+	 */
+	enforceDeadline(): number | undefined {
+		const deadlineMs = this.#deadlineMs();
+		if (deadlineMs === undefined || deadlineMs > Date.now()) return deadlineMs;
+		this.#extendOrThrowTimeout();
+		return this.#deadlineMs();
+	}
+
+	/**
+	 * Issues `next()` unless one is still out, and returns the promise to await before
+	 * {@link take}, or `undefined` when the outstanding `next()` already settled.
+	 */
+	pull(deadlineMs: number | undefined): Promise<void> | undefined {
+		if (!this.#nextInFlight) {
+			const next = this.#iterator.next();
+			this.#nextInFlight = true;
+			void next.then(this.#onNext, this.#onNextError);
+		}
+		if (this.#nextSettled) {
+			this.#wokeBy = "next";
+			return undefined;
+		}
+		if (deadlineMs !== undefined) this.#armTimer(deadlineMs);
+		const { promise, resolve } = Promise.withResolvers<void>();
+		this.#wakeWaiter = resolve;
+		return promise;
+	}
+
+	/**
+	 * What the last {@link pull} settled on: the source's result, or `undefined` when its deadline
+	 * passed and slid for pending local work, so the same `next()` is awaited again. Throws the abort,
+	 * the timeout, or the source's error.
+	 */
+	take(): IteratorResult<T> | undefined {
+		if (this.#wokeBy === "abort") {
+			this.close();
+			throw abortReason(this.#options.abortSignal!);
+		}
+		if (this.#wokeBy === "timeout") {
+			this.#extendOrThrowTimeout();
+			return undefined;
+		}
+		this.#nextInFlight = false;
+		this.#nextSettled = false;
+		if (this.#nextFailed) {
+			this.#nextFailed = false;
+			throw this.#nextError;
+		}
+		const result = this.#nextResult!;
+		this.#nextResult = undefined;
+		return result;
+	}
+
+	/**
+	 * Records a yielded item. Non-progress items (provider keepalives, the synthetic `start` event that
+	 * precedes the model's first token) leave the first-item watchdog armed and the idle deadline
+	 * where it was; switching to the shorter idle budget on one would abort a slow first token.
+	 */
+	observe(item: T): void {
+		if (!this.#isProgressItem(item)) return;
+		this.#awaitingFirstItem = false;
+		this.#lastProgressAt = Date.now();
+		// Real progress ends the stretch the local-work bound is measured over.
+		this.#localWorkHoldStartedAt = undefined;
+	}
+
+	/** The source reported `done`, so there is nothing left to close. */
+	sourceDone(): void {
+		this.#iteratorClosed = true;
+	}
+
+	/** Closes the source so its SSE body or SDK stream, and the socket under it, is released. */
+	close(): void {
+		if (this.#iteratorClosed) return;
+		this.#iteratorClosed = true;
+		returnQuietly(this.#iterator);
+	}
+
+	dispose(): void {
+		clearTimeout(this.#timer);
+		this.#timer = undefined;
+		this.#wakeWaiter = undefined;
+		this.#options.abortSignal?.removeEventListener("abort", this.#onAbort);
+	}
+
+	#deadlineMs(): number | undefined {
+		if (this.#awaitingFirstItem) return this.#firstItemDeadlineMs;
+		return this.#idleBudgetMs === undefined ? undefined : this.#lastProgressAt + this.#idleBudgetMs;
+	}
+
+	#wake(reason: IdleWake): void {
+		const wakeWaiter = this.#wakeWaiter;
+		if (wakeWaiter === undefined) return;
+		this.#wakeWaiter = undefined;
+		this.#wokeBy = reason;
+		wakeWaiter();
+	}
+
+	readonly #onNext = (result: IteratorResult<T>): void => {
+		this.#nextResult = result;
+		this.#nextSettled = true;
+		this.#wake("next");
+	};
+
+	readonly #onNextError = (error: unknown): void => {
+		this.#nextError = error;
+		this.#nextFailed = true;
+		this.#nextSettled = true;
+		this.#wake("next");
+	};
+
+	readonly #onAbort = (): void => {
+		this.#wake("abort");
+	};
+
+	/**
+	 * One timer per idle period: an armed timer that fires at or before the new deadline stays, and
+	 * on firing re-arms for whatever remains of a deadline that progress moved since.
+	 */
+	#armTimer(deadlineMs: number): void {
+		if (this.#timer !== undefined) {
+			if (this.#timerFireAtMs <= deadlineMs) return;
+			clearTimeout(this.#timer);
+		}
+		this.#timerFireAtMs = deadlineMs;
+		this.#timer = setTimeout(this.#onTimerFire, Math.max(0, deadlineMs - Date.now()));
+	}
+
+	readonly #onTimerFire = (): void => {
+		this.#timer = undefined;
+		this.#timerFireAtMs = Infinity;
+		const deadlineMs = this.#deadlineMs();
+		if (deadlineMs === undefined) return;
+		const remainingMs = deadlineMs - Date.now();
+		if (remainingMs > 0) {
+			this.#timerFireAtMs = deadlineMs;
+			this.#timer = setTimeout(this.#onTimerFire, remainingMs);
+			return;
+		}
+		// With no pull waiting, the consumer holds the last item; the next pull finds the deadline passed.
+		this.#wake("timeout");
+	};
+
+	/**
+	 * The active deadline passed. Pending local work means the silence is ours, not the provider's:
+	 * the deadline slides a full budget and the watchdog resumes from it once the work completes, so a
+	 * provider that stalls afterwards is still caught. Anything else throws the timeout.
+	 */
+	#extendOrThrowTimeout(): void {
+		if (this.#hasPendingLocalWork() && this.#extendForLocalWork()) return;
+		const options = this.#options;
+		const firstItem = this.#awaitingFirstItem;
+		invokeTimeoutHook(firstItem ? options.onFirstItemTimeout : options.onIdle);
+		this.close();
+		const base = firstItem ? (options.firstItemErrorMessage ?? options.errorMessage) : options.errorMessage;
+		throw new AIError.StreamTimeoutError(
+			this.#localWorkHoldExpired ? `${base} (a local tool held the stream open without completing)` : base,
+		);
+	}
+
+	#hasPendingLocalWork(): boolean {
+		const options = this.#options;
+		if (!options.hasPendingLocalWork) return false;
+		try {
+			const pending = options.hasPendingLocalWork();
+			// The bound is on one CONTINUOUS stretch of local work, so the clock
+			// starts when work appears and clears the moment it drains.
+			if (!pending) this.#localWorkHoldStartedAt = undefined;
+			return pending;
+		} catch {
+			// False matches the documented default for a caller that supplies no predicate at all, so a
+			// throwing predicate cannot hold the idle timer off forever. The timer is the safety net; a
+			// predicate that fails must not disable it.
+			return false;
+		}
+	}
+
+	#extendForLocalWork(): boolean {
+		const now = Date.now();
+		this.#localWorkHoldStartedAt ??= now;
+		if (this.#maxLocalWorkHoldMs > 0 && now - this.#localWorkHoldStartedAt >= this.#maxLocalWorkHoldMs) {
+			// Refusing to slide any further is what turns an unbounded silence
+			// into a reported failure the turn can recover from.
+			this.#localWorkHoldExpired = true;
+			return false;
+		}
+		if (!this.#awaitingFirstItem) {
+			this.#lastProgressAt = now;
+		} else if (this.#firstItemBudgetMs !== undefined) {
+			this.#firstItemDeadlineMs = now + this.#firstItemBudgetMs;
+		}
+		return true;
+	}
+
+	#isProgressItem(item: T): boolean {
+		const options = this.#options;
+		if (!options.isProgressItem) return true;
+		try {
+			return options.isProgressItem(item);
+		} catch {
+			// True on purpose: treating an unclassifiable item as PROGRESS keeps the idle timer from firing on
+			// a stream that is in fact moving. The conservative direction here is to not kill a live stream,
+			// and the opposite default would abort a working request because a predicate threw.
+			return true;
+		}
+	}
+}
+
 /**
  * Yields items from an async iterable while enforcing a maximum idle gap between items.
  *
@@ -212,259 +478,18 @@ export async function* iterateWithIdleTimeout<T>(
 	iterable: AsyncIterable<T>,
 	options: IdleTimeoutIteratorOptions,
 ): AsyncGenerator<T> {
-	const firstItemTimeoutMs = options.firstItemTimeoutMs ?? options.idleTimeoutMs;
-	let firstItemDeadlineMs =
-		firstItemTimeoutMs !== undefined && firstItemTimeoutMs > 0 ? Date.now() + firstItemTimeoutMs : undefined;
-	const abortSignal = options.abortSignal;
 	const iterator = iterable[Symbol.asyncIterator]();
-	let iteratorClosed = false;
-
-	const closeIterator = (): void => {
-		if (iteratorClosed) return;
-		iteratorClosed = true;
-		try {
-			const returnPromise = iterator.return?.();
-			if (returnPromise) {
-				// Closing is best-effort because the reason iteration ended has
-				// precedence over a source that objects to being closed.
-				void Promise.resolve(returnPromise).catch(() => {});
-			}
-		} catch {
-			// A synchronous return() failure has the same precedence as a rejected
-			// return promise: it cannot replace the outcome already being produced.
-		}
-	};
-
-	if (abortSignal?.aborted) {
-		closeIterator();
-		throw abortReason(abortSignal);
+	if (options.abortSignal?.aborted) {
+		returnQuietly(iterator);
+		throw abortReason(options.abortSignal);
 	}
-
-	const withRacy = <T>(promise: Promise<T>) =>
-		promise.then(
-			result => ({ kind: "next" as const, result }),
-			error => ({ kind: "error" as const, error }),
-		);
-
-	let awaitingFirstItem = true;
-	const markFirstItemReceived = () => {
-		awaitingFirstItem = false;
-	};
-	const isProgressItem = (item: T): boolean => {
-		if (!options.isProgressItem) return true;
-		try {
-			return options.isProgressItem(item);
-		} catch {
-			// True on purpose: treating an unclassifiable item as PROGRESS keeps the idle timer from firing on
-			// a stream that is in fact moving. The conservative direction here is to not kill a live stream,
-			// and the opposite default would abort a working request because a predicate threw.
-			return true;
-		}
-	};
-	let lastProgressAt = Date.now();
-
-	const invokeTimeoutHook = (callback: (() => void) | undefined): void => {
-		try {
-			callback?.();
-		} catch {
-			// Hooks abort or observe the transport; their failure cannot replace
-			// the stable StreamTimeoutError produced by this watchdog.
-		}
-	};
-
-	let localWorkHoldStartedAt: number | undefined;
-	let localWorkHoldExpired = false;
-	const maxLocalWorkHoldMs = options.maxLocalWorkHoldMs ?? DEFAULT_MAX_LOCAL_WORK_HOLD_MS;
-	const hasPendingLocalWork = (): boolean => {
-		if (!options.hasPendingLocalWork) return false;
-		try {
-			const pending = options.hasPendingLocalWork();
-			// The bound is on one CONTINUOUS stretch of local work, so the clock
-			// starts when work appears and clears the moment it drains.
-			if (!pending) localWorkHoldStartedAt = undefined;
-			return pending;
-		} catch {
-			// False matches the documented default for a caller that supplies no predicate at all, so a
-			// throwing predicate cannot hold the idle timer off forever. The timer is the safety net; a
-			// predicate that fails must not disable it.
-			return false;
-		}
-	};
-	// Local work means the current gap is attributable to the consumer side,
-	// not the provider: slide the active deadline a full budget past now
-	// instead of aborting. Once the work completes the watchdog resumes from
-	// the last extension, so a provider that stalls afterwards is still caught.
-	const extendDeadlineForLocalWork = (): boolean => {
-		const now = Date.now();
-		localWorkHoldStartedAt ??= now;
-		if (maxLocalWorkHoldMs > 0 && now - localWorkHoldStartedAt >= maxLocalWorkHoldMs) {
-			// Refusing to slide any further is what turns an unbounded silence
-			// into a reported failure the turn can recover from.
-			localWorkHoldExpired = true;
-			return false;
-		}
-		if (awaitingFirstItem) {
-			if (firstItemDeadlineMs !== undefined && firstItemTimeoutMs !== undefined) {
-				firstItemDeadlineMs = now + firstItemTimeoutMs;
-			}
-		} else {
-			lastProgressAt = now;
-		}
-		return true;
-	};
-	const timeoutMessage = (base: string): string =>
-		localWorkHoldExpired ? `${base} (a local tool held the stream open without completing)` : base;
-
-	const noTimeoutEnforced =
-		(firstItemTimeoutMs === undefined || firstItemTimeoutMs <= 0) &&
-		(options.idleTimeoutMs === undefined || options.idleTimeoutMs <= 0);
-
-	// Persistent racers, hoisted out of the per-item loop. The abort promise can
-	// only ever resolve once (abort latches), and a timeout resolution always
-	// precedes a throw — so neither needs per-item re-creation. This keeps the
-	// token hot path free of timer create/destroy and listener churn.
-	//
-	// Each Promise.race() call still attaches a reaction record to every pending
-	// racer, and those records live until the racer settles — so a never-firing
-	// abort/timeout promise would accumulate one record per streamed item for
-	// the stream's whole life. The loop re-mints both promises every
-	// RACER_REMINT_INTERVAL iterations to keep that retention bounded; the
-	// listener and timer callbacks resolve through late-bound variables so a
-	// re-mint never strands them.
-	let abortPromise: Promise<{ kind: "abort" }> | undefined;
-	let abortListener: (() => void) | undefined;
-	let resolveAbort: ((value: { kind: "abort" }) => void) | undefined;
-	if (abortSignal) {
-		const { promise, resolve } = Promise.withResolvers<{ kind: "abort" }>();
-		resolveAbort = resolve;
-		abortListener = () => resolveAbort?.({ kind: "abort" });
-		abortSignal.addEventListener("abort", abortListener, { once: true });
-		abortPromise = promise;
-	}
-
-	let timeoutPromise: Promise<{ kind: "timeout" }> | undefined;
-	let resolveTimeout: ((value: { kind: "timeout" }) => void) | undefined;
-	let timeoutFired = false;
-	let timer: NodeJS.Timeout | undefined;
-	let timerFireAtMs = Infinity;
-
-	const currentDeadlineMs = (): number | undefined => {
-		if (awaitingFirstItem) return firstItemDeadlineMs;
-		if (options.idleTimeoutMs !== undefined && options.idleTimeoutMs > 0) {
-			return lastProgressAt + options.idleTimeoutMs;
-		}
-		return undefined;
-	};
-	const onTimerFire = (): void => {
-		timer = undefined;
-		timerFireAtMs = Infinity;
-		const deadlineMs = currentDeadlineMs();
-		if (deadlineMs === undefined) return;
-		const remainingMs = deadlineMs - Date.now();
-		if (remainingMs > 0) {
-			// Progress moved the deadline since this timer was armed — re-arm for
-			// the remainder. One stale wake per idle period, not one per item.
-			timerFireAtMs = deadlineMs;
-			timer = setTimeout(onTimerFire, remainingMs);
-			return;
-		}
-		timeoutFired = true;
-		resolveTimeout?.({ kind: "timeout" });
-	};
-	const armTimer = (deadlineMs: number): void => {
-		if (timeoutPromise === undefined || timeoutFired) {
-			// A fired-but-unconsumed resolution (the item won the same race) is
-			// stale — racing it again would fake a timeout, so mint a fresh one.
-			const { promise, resolve } = Promise.withResolvers<{ kind: "timeout" }>();
-			timeoutPromise = promise;
-			resolveTimeout = resolve;
-			timeoutFired = false;
-		}
-		if (timer !== undefined) {
-			// An armed timer firing at or before the new deadline re-arms itself.
-			if (timerFireAtMs <= deadlineMs) return;
-			clearTimeout(timer);
-		}
-		timerFireAtMs = deadlineMs;
-		timer = setTimeout(onTimerFire, Math.max(0, deadlineMs - Date.now()));
-	};
-
-	// The in-flight iterator.next() promise, persisted across loop iterations:
-	// a deadline extension for pending local work loops without consuming it,
-	// and issuing a second next() while one is outstanding would drop an item.
-	let pendingNext:
-		| Promise<{ kind: "next"; result: IteratorResult<T> } | { kind: "error"; error: unknown }>
-		| undefined;
+	const watchdog = new IdleWatchdog(iterator, options);
 	try {
-		let raceCount = 0;
 		while (true) {
-			if (abortSignal?.aborted) {
-				closeIterator();
-				throw abortReason(abortSignal);
-			}
-			if (++raceCount % RACER_REMINT_INTERVAL === 0) {
-				if (abortPromise !== undefined && !abortSignal!.aborted) {
-					const { promise, resolve } = Promise.withResolvers<{ kind: "abort" }>();
-					resolveAbort = resolve;
-					abortPromise = promise;
-				}
-				if (timeoutPromise !== undefined && !timeoutFired) {
-					const { promise, resolve } = Promise.withResolvers<{ kind: "timeout" }>();
-					resolveTimeout = resolve;
-					timeoutPromise = promise;
-				}
-			}
-			let activeTimeoutMs: number | undefined;
-			if (awaitingFirstItem) {
-				if (firstItemDeadlineMs !== undefined) {
-					activeTimeoutMs = firstItemDeadlineMs - Date.now();
-					if (activeTimeoutMs <= 0) {
-						if (!hasPendingLocalWork() || !extendDeadlineForLocalWork()) {
-							invokeTimeoutHook(options.onFirstItemTimeout);
-							closeIterator();
-							throw new AIError.StreamTimeoutError(
-								timeoutMessage(options.firstItemErrorMessage ?? options.errorMessage),
-							);
-						}
-						activeTimeoutMs = firstItemDeadlineMs! - Date.now();
-					}
-				}
-			} else if (options.idleTimeoutMs !== undefined && options.idleTimeoutMs > 0) {
-				activeTimeoutMs = options.idleTimeoutMs - (Date.now() - lastProgressAt);
-				if (activeTimeoutMs <= 0) {
-					if (!hasPendingLocalWork() || !extendDeadlineForLocalWork()) {
-						invokeTimeoutHook(options.onIdle);
-						closeIterator();
-						throw new AIError.StreamTimeoutError(timeoutMessage(options.errorMessage));
-					}
-					activeTimeoutMs = options.idleTimeoutMs;
-				}
-			}
-
-			if (abortSignal?.aborted) {
-				closeIterator();
-				throw abortReason(abortSignal);
-			}
-			pendingNext ??= withRacy(iterator.next());
-
-			const racers: Array<
-				Promise<
-					| { kind: "next"; result: IteratorResult<T> }
-					| { kind: "error"; error: unknown }
-					| { kind: "timeout" }
-					| { kind: "abort" }
-				>
-			> = [pendingNext];
-
-			const enforceTimeout = !noTimeoutEnforced && activeTimeoutMs !== undefined && activeTimeoutMs > 0;
-			if (enforceTimeout) {
-				armTimer(Date.now() + activeTimeoutMs!);
-				racers.push(timeoutPromise!);
-			}
-			if (abortPromise) {
-				racers.push(abortPromise);
-			}
-
+			watchdog.throwIfAborted();
+			const deadlineMs = watchdog.enforceDeadline();
+			watchdog.throwIfAborted();
+			const wait = watchdog.pull(deadlineMs);
 			// Tracks whether this iteration handed an item to the consumer and resumed
 			// normally. Any other exit — internal throw, `done` return, or the consumer
 			// abandoning us via `.return()`/`.throw()` at the `yield` below — must close
@@ -472,69 +497,27 @@ export async function* iterateWithIdleTimeout<T>(
 			// socket) is released instead of being left suspended.
 			let continuing = false;
 			try {
-				const outcome = await Promise.race(racers);
-				if (outcome.kind === "next" || outcome.kind === "error") {
-					pendingNext = undefined;
+				if (wait !== undefined) await wait;
+				const result = watchdog.take();
+				if (result === undefined) {
+					// A local tool is still running; the provider cannot make
+					// progress until we hand its result back. Keep waiting.
+					continuing = true;
+					continue;
 				}
-				if (outcome.kind === "abort") {
-					closeIterator();
-					throw abortReason(abortSignal!);
-				}
-				if (outcome.kind === "timeout") {
-					if (hasPendingLocalWork() && extendDeadlineForLocalWork()) {
-						// A local tool is still running; the provider cannot make
-						// progress until we hand its result back. Keep waiting.
-						continuing = true;
-						continue;
-					}
-					if (!awaitingFirstItem) {
-						invokeTimeoutHook(options.onIdle);
-					} else {
-						invokeTimeoutHook(options.onFirstItemTimeout);
-					}
-					closeIterator();
-					throw new AIError.StreamTimeoutError(
-						timeoutMessage(
-							!awaitingFirstItem
-								? options.errorMessage
-								: (options.firstItemErrorMessage ?? options.errorMessage),
-						),
-					);
-				}
-				if (outcome.kind === "error") {
-					throw outcome.error;
-				}
-				if (outcome.result.done) {
-					iteratorClosed = true;
-					markFirstItemReceived();
+				if (result.done) {
+					watchdog.sourceDone();
 					return;
 				}
-				const item = outcome.result.value;
-				// Non-progress items (e.g. provider keepalives, synthetic `start` events that
-				// arrive before the model has produced any tokens) MUST NOT flip us out of
-				// `awaitingFirstItem`. Otherwise the next iteration switches from the (longer)
-				// first-item watchdog to the (shorter) idle watchdog while we're still waiting
-				// on the model's first real output.
-				if (isProgressItem(item)) {
-					markFirstItemReceived();
-					lastProgressAt = Date.now();
-					// Real progress ends the stretch the bound is measured over.
-					localWorkHoldStartedAt = undefined;
-				}
-				yield item;
+				watchdog.observe(result.value);
+				yield result.value;
 				continuing = true;
 			} finally {
-				if (!continuing) closeIterator();
+				if (!continuing) watchdog.close();
 			}
 		}
 	} finally {
-		clearTimeout(timer);
-		// Settle the persistent racers so the final Promise.race releases them.
-		resolveTimeout?.({ kind: "timeout" });
-		if (abortListener && abortSignal) {
-			abortSignal.removeEventListener("abort", abortListener);
-		}
-		resolveAbort?.({ kind: "abort" });
+		watchdog.dispose();
 	}
 }
 
@@ -630,15 +613,30 @@ export async function* iterateWithTerminalGrace<T>(
 			}
 		}
 	} finally {
-		if (!iteratorDone) {
-			try {
-				const returnPromise = iterator.return?.();
-				if (returnPromise) void Promise.resolve(returnPromise).catch(() => {});
-			} catch {
-				// Best-effort close must not replace a source error or clean grace
-				// completion that is already on its way to the consumer.
-			}
-		}
+		if (!iteratorDone) returnQuietly(iterator);
+	}
+}
+
+/**
+ * Closes an iterator whose iteration already ended for another reason. The reason has precedence over
+ * a source that objects to being closed, so neither a synchronous throw from `return()` nor a rejected
+ * return promise can replace the error or the clean completion already on its way to the consumer.
+ */
+function returnQuietly(iterator: AsyncIterator<unknown>): void {
+	try {
+		const returnPromise = iterator.return?.();
+		if (returnPromise) void Promise.resolve(returnPromise).catch(() => {});
+	} catch {
+		// See the doc comment: a close failure never outranks the outcome being produced.
+	}
+}
+
+/** Hooks abort or observe the transport; their failure cannot replace the stable StreamTimeoutError. */
+function invokeTimeoutHook(callback: (() => void) | undefined): void {
+	try {
+		callback?.();
+	} catch {
+		// See the doc comment.
 	}
 }
 

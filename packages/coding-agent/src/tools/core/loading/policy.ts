@@ -474,6 +474,41 @@ export function selectBaseToolNames(inputs: BaseToolSelectionInputs): string[] {
 	return names;
 }
 
+export interface SessionToolNamesInputs {
+	/** `options.toolNames` as the caller passed it, or undefined. */
+	toolNames: readonly string[] | undefined;
+	/** `options.requireYieldTool`. */
+	requireYieldTool: boolean;
+	/** The built-ins `createTools` built, by provenance: a same-named custom tool is not one. */
+	builtInToolNames: readonly string[];
+	/** Every name in the COMPLETED registry, in registry order. */
+	registryToolNames: readonly string[];
+	/** Membership test against the COMPLETED registry. */
+	hasRegistryTool: (name: string) => boolean;
+}
+
+/**
+ * The names a session asks to start with, restricted to the completed registry.
+ *
+ * Without an explicit list that is every registry name. An explicit list is normalized and gains
+ * `yield` when the session requires it, because the spawned agent's prompts demand a `yield` call to
+ * terminate, and the auto-learn built-ins `createTools` built, because their guidance and nudges
+ * point at tools the model must be able to call. Both are activations, not requests: the raw list,
+ * not this one, decides what is exempt from discovery-all hiding.
+ */
+export function resolveRequestedToolNames(inputs: SessionToolNamesInputs): string[] {
+	if (inputs.toolNames === undefined) return inputs.registryToolNames.slice();
+	const requested = normalizeToolNames(inputs.toolNames);
+	const forced: string[] = inputs.requireYieldTool ? [TOOL.yield] : [];
+	for (const name of [TOOL.manage_skill, TOOL.learn]) {
+		if (inputs.builtInToolNames.includes(name)) forced.push(name);
+	}
+	for (const name of forced) {
+		if (!requested.includes(name)) requested.push(name);
+	}
+	return requested.filter(inputs.hasRegistryTool);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Initial active set (A) — the SDK's session-bootstrap pipeline
 // ─────────────────────────────────────────────────────────────────────────────

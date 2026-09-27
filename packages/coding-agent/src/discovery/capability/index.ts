@@ -364,6 +364,14 @@ export function isForeignConfigImportEnabled(): boolean {
 	return importForeignConfig;
 }
 
+/**
+ * Follow a mid-session flip of `discovery.importForeignConfig`. The setting is already stored; this
+ * moves the flag {@link isProviderEnabled} reads, so the next capability load honors the new value.
+ */
+export function setForeignConfigImport(enabled: boolean): void {
+	importForeignConfig = enabled;
+}
+
 /** The provider IDs gated behind `discovery.importForeignConfig`. */
 export function getForeignProviderIds(): string[] {
 	return Array.from(FOREIGN_PROVIDER_IDS);

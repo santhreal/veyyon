@@ -338,6 +338,22 @@ export async function isNonProjectRoot(directory: string): Promise<NonProjectRea
 	return null;
 }
 
+/**
+ * {@link isNonProjectRoot}, or null after a warning when the check throws. Null reads as "a fine
+ * place to be": a check that could not run must not call the session misrooted.
+ */
+export async function nonProjectReasonOrNull(directory: string): Promise<NonProjectReason | null> {
+	try {
+		return await isNonProjectRoot(directory);
+	} catch (error) {
+		logger.warn("Failed to check whether the working directory is a project root", {
+			directory,
+			error: errorMessage(error),
+		});
+		return null;
+	}
+}
+
 /** Why a working directory is not a project root. */
 export type NonProjectReason = "launch-directory" | "no-project-marker" | "holds-other-projects";
 

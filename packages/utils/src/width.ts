@@ -487,8 +487,7 @@ export function visibleWidth(str: string): number {
 	if (!str) return 0;
 
 	// Long non-escape text is faster through Bun's native scanner than through
-	// a JS printable-ASCII prepass. Escape-bearing strings stay on the scanner
-	// below so CSI/OSC-heavy render output can still bail out at the first ESC.
+	// a JS printable-ASCII prepass.
 	if (str.length >= LONG_WIDTH_FAST_PATH_MIN && !str.includes(ESC)) {
 		let width = correctedBunWidth(str);
 		const tabCount = countTabs(str);
@@ -496,20 +495,37 @@ export function visibleWidth(str: string): number {
 		return width;
 	}
 
+	// Printable ASCII, tabs and SGR sequences (`ESC [`, digits, `:` or `;`, then
+	// `m`) are counted here: a styled row of rendered prose is only these, and
+	// each SGR sequence draws nothing. The scan stops at anything else, which the
+	// native measure below reads from the start of the string.
 	let tabCount = 0;
+	let sgrLength = 0;
 	let i = 0;
 	for (; i < str.length; i++) {
 		const code = str.charCodeAt(i);
-		if (code < 0x20 || code > 0x7e) {
-			if (code === 0x09) {
-				tabCount++;
+		if (code >= 0x20 && code <= 0x7e) continue;
+		if (code === 0x09) {
+			tabCount++;
+			continue;
+		}
+		if (code === 0x1b && str.charCodeAt(i + 1) === 0x5b) {
+			let end = i + 2;
+			while (end < str.length) {
+				const param = str.charCodeAt(end);
+				if (param < 0x30 || param > 0x3b) break;
+				end++;
+			}
+			if (str.charCodeAt(end) === 0x6d) {
+				sgrLength += end + 1 - i;
+				i = end;
 				continue;
 			}
-			break;
 		}
+		break;
 	}
 	if (i === str.length) {
-		return tabCount === 0 ? str.length : str.length + tabCount * (DEFAULT_TAB_WIDTH - 1);
+		return str.length - sgrLength + tabCount * (DEFAULT_TAB_WIDTH - 1);
 	}
 
 	for (let tabIndex = str.indexOf(TAB, i + 1); tabIndex !== -1; tabIndex = str.indexOf(TAB, tabIndex + 1)) {

@@ -24,7 +24,12 @@
  */
 import { describe, expect, it } from "bun:test";
 import { parseArgs, reportUnrecognizedFlags } from "@veyyon/coding-agent/cli/args";
-import { PROFILE_BOOTSTRAP_BOUNDARY_ARG } from "@veyyon/coding-agent/cli/flag-tables";
+import {
+	OPTIONAL_VALUE_FLAGS,
+	PROFILE_BOOTSTRAP_BOUNDARY_ARG,
+	STRING_VALUE_FLAGS,
+	VALUELESS_FLAGS,
+} from "@veyyon/coding-agent/cli/flag-tables";
 import { CliUsageError } from "@veyyon/utils/cli-usage-error";
 
 /** Collect what the reporter writes instead of letting it reach the real stderr. */
@@ -34,6 +39,25 @@ function report(flags: string[]): string {
 		text += chunk;
 	});
 	return text;
+}
+
+/** The flags a report offers in its "Did you mean" line. */
+function suggestedFlags(text: string): string[] {
+	const line = text.split("\n").find(row => row.startsWith("Did you mean")) ?? "";
+	return [...line.matchAll(/`([^`]+)`/g)].map(match => match[1] ?? "");
+}
+
+/** `flag` parses as a flag the parser knows: set, or refused over its value, never collected as unknown. */
+function expectRecognized(flag: string): void {
+	try {
+		expect(parseArgs([flag, "placeholder"]).unrecognizedFlags).not.toContain(flag);
+	} catch (error) {
+		// A usage error is RECOGNITION, not a miss: the flag was found, and got far enough to
+		// judge its value (`--mode` refuses "placeholder" by listing its accepted values).
+		// Only an unrecognized flag would have been silently collected instead.
+		expect(error).toBeInstanceOf(CliUsageError);
+		expect((error as CliUsageError).message).toContain(flag);
+	}
 }
 
 describe("a value-taking flag given no value", () => {
@@ -112,21 +136,27 @@ describe("an unrecognized flag", () => {
 	 */
 	it("only ever suggests flags the parser recognizes", () => {
 		const text = report(["--modle"]);
-		const suggested = [...text.matchAll(/`(--[a-z-]+)`/g)].map(match => match[1] ?? "");
+		const suggested = suggestedFlags(text);
 
 		expect(suggested.length).toBeGreaterThan(0);
-		for (const flag of suggested) {
-			try {
-				expect(parseArgs([flag, "placeholder"]).unrecognizedFlags).not.toContain(flag);
-			} catch (error) {
-				// A usage error is RECOGNITION, not a miss: the flag was found, and got far enough to
-				// judge its value (`--mode` refuses "placeholder" by listing its accepted values).
-				// Only an unrecognized flag would have been silently collected instead.
-				expect(error).toBeInstanceOf(CliUsageError);
-				expect((error as CliUsageError).message).toContain(flag);
-			}
-		}
+		for (const flag of suggested) expectRecognized(flag);
 	});
+
+	/**
+	 * The same guarantee for a typo of every flag the tables hold, short spellings included. Matching
+	 * strips the dashes, and printing them back as a fixed `--` offered `-rr` the flag `--r`, which the
+	 * parser rejects: the suggestion has to come back in the spelling that was matched. A typo one edit
+	 * from a known flag always gets an answer, though a flag containing the typo may outrank it.
+	 */
+	for (const known of [...STRING_VALUE_FLAGS, ...OPTIONAL_VALUE_FLAGS, ...VALUELESS_FLAGS]) {
+		const typo = `${known}${known.at(-1)}`;
+		it(`answers ${typo} only with flags the parser accepts`, () => {
+			const suggested = suggestedFlags(report([typo]));
+
+			expect(suggested.length).toBeGreaterThan(0);
+			for (const flag of suggested) expectRecognized(flag);
+		});
+	}
 
 	/** Nothing close enough is silence, not a wild guess: a wrong suggestion is worse than none. */
 	it("offers nothing when the typo resembles no flag", () => {

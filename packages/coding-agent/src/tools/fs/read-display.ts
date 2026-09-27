@@ -45,45 +45,92 @@ export interface ResolvedReadDisplay {
 	lineNumbers?: Array<number | null>;
 }
 
-/** A row's number prefix: `12:`, a merged brace pair's `12-18:`, or line-number mode's `12|`. */
-const ROW_PREFIX = /^([1-9]\d*)(?:-[1-9]\d*)?[:|]/;
-
 /** The row that stands for an elided span, drawn as is and numbered by nothing. */
 const ELISION_ROW = "…";
 
+const NEWLINE = 0x0a;
+const DIGIT_ZERO = 0x30;
+const DIGIT_ONE = 0x31;
+const DIGIT_NINE = 0x39;
+const HYPHEN = 0x2d;
+const COLON = 0x3a;
+const PIPE = 0x7c;
+const OPEN_BRACKET = 0x5b;
+const CLOSE_BRACKET = 0x5d;
+/** Digits a line number accumulates in exactly; a longer run is parsed as `Number` parses it. */
+const EXACT_DIGITS = 15;
+
 /**
- * The card rows of numbered result text: the rows after an optional `[…]` header line up to the first
- * empty line, which separates the rows from whatever notice follows. Undefined when a row carries no
- * number prefix, since then the text is not numbered rows.
+ * Each `rows` display {@link rebuild} returned, with the result text it was rebuilt from and the tag it
+ * was read from. A result written again while it holds that text writes the tag back without building
+ * the card text.
  */
-function rebuildRows(body: string): { text: string; numbers: Array<number | null> } | undefined {
+const rebuiltRows = new WeakMap<object, { body: string; tag: ReadDisplayContent }>();
+
+/**
+ * Where the run of digits starting at `at` ends, when it is a number with no leading zero; -1 when
+ * `at` does not start one. The run stops at the line's newline or the end of the text, since
+ * neither is a digit (`charCodeAt` past the end is `NaN`, which no range test admits).
+ */
+function numberEnd(body: string, at: number): number {
+	const first = body.charCodeAt(at);
+	if (!(first >= DIGIT_ONE && first <= DIGIT_NINE)) return -1;
+	let cursor = at + 1;
+	let code = body.charCodeAt(cursor);
+	while (code >= DIGIT_ZERO && code <= DIGIT_NINE) code = body.charCodeAt(++cursor);
+	return cursor;
+}
+
+/**
+ * The line numbers of the card rows of numbered result text: the rows after an optional `[…]` header
+ * line up to the first empty line, which separates the rows from whatever notice follows. Undefined
+ * when a row carries no number prefix, since then the text is not numbered rows. Pushes each row as
+ * the card draws it, without its prefix, onto `texts` when given.
+ *
+ * A row's prefix is `12:`, a merged brace pair's `12-18:`, or line-number mode's `12|`. The rows are
+ * scanned in place, so numbering a restored result allocates only the array it returns.
+ */
+function readRows(body: string, texts?: string[]): Array<number | null> | undefined {
 	let start = 0;
 	const firstEnd = body.indexOf("\n");
-	const firstLine = firstEnd === -1 ? body : body.slice(0, firstEnd);
-	if (firstLine.startsWith("[") && firstLine.endsWith("]")) {
+	const firstLineEnd = firstEnd === -1 ? body.length : firstEnd;
+	if (body.charCodeAt(0) === OPEN_BRACKET && firstLineEnd > 0 && body.charCodeAt(firstLineEnd - 1) === CLOSE_BRACKET) {
 		if (firstEnd === -1) return undefined;
 		start = firstEnd + 1;
 	}
-	let text = "";
 	const numbers: Array<number | null> = [];
-	while (start <= body.length) {
+	while (start < body.length && body.charCodeAt(start) !== NEWLINE) {
 		let end = body.indexOf("\n", start);
 		if (end === -1) end = body.length;
-		const line = body.slice(start, end);
-		if (line === "") break;
-		if (numbers.length > 0) text += "\n";
-		if (line === ELISION_ROW) {
-			text += line;
+		if (end - start === ELISION_ROW.length && body.startsWith(ELISION_ROW, start)) {
+			texts?.push(ELISION_ROW);
 			numbers.push(null);
 		} else {
-			const prefix = ROW_PREFIX.exec(line);
-			if (!prefix) return undefined;
-			text += line.slice(prefix[0].length);
-			numbers.push(Number(prefix[1]));
+			const digitsEnd = numberEnd(body, start);
+			if (digitsEnd === -1) return undefined;
+			let prefixEnd = digitsEnd;
+			if (body.charCodeAt(prefixEnd) === HYPHEN) {
+				prefixEnd = numberEnd(body, prefixEnd + 1);
+				if (prefixEnd === -1) return undefined;
+			}
+			// At `end` the character is the newline or past the text, so a prefix that runs to the end of
+			// its line has no separator.
+			const separator = body.charCodeAt(prefixEnd);
+			if (separator !== COLON && separator !== PIPE) return undefined;
+			texts?.push(body.slice(prefixEnd + 1, end));
+			numbers.push(lineNumber(body, start, digitsEnd));
 		}
 		start = end + 1;
 	}
-	return numbers.length > 0 ? { text, numbers } : undefined;
+	return numbers.length > 0 ? numbers : undefined;
+}
+
+/** The number the digits `body[start, end)` spell, as `Number` reads them. */
+function lineNumber(body: string, start: number, end: number): number {
+	if (end - start > EXACT_DIGITS) return Number(body.slice(start, end));
+	let value = 0;
+	for (let cursor = start; cursor < end; cursor++) value = value * 10 + (body.charCodeAt(cursor) - DIGIT_ZERO);
+	return value;
 }
 
 /** `numbers` as a display stores them: absent when they count up from `startLine` without a break. */
@@ -105,8 +152,13 @@ function sameNumbers(a: readonly (number | null)[] | undefined, b: readonly (num
 function encode(display: ResolvedReadDisplay, body: string): ReadDisplayContent | undefined {
 	const { text, startLine, lineNumbers } = display;
 	if (text.length < MIN_CODED_TEXT) return undefined;
-	const rows = rebuildRows(body);
-	if (rows !== undefined && rows.text === text && sameNumbers(storedNumbers(rows.numbers, startLine), lineNumbers)) {
+	const texts: string[] = [];
+	const numbers = readRows(body, texts);
+	if (
+		numbers !== undefined &&
+		sameNumbers(storedNumbers(numbers, startLine), lineNumbers) &&
+		texts.join("\n") === text
+	) {
 		return { startLine, from: "rows" };
 	}
 	if (body.startsWith(text)) {
@@ -115,16 +167,34 @@ function encode(display: ResolvedReadDisplay, body: string): ReadDisplayContent 
 	return undefined;
 }
 
-/** The display `from` names, rebuilt from the result's text; undefined when that text cannot rebuild it. */
+/**
+ * The display `from` names, rebuilt from the result's text; undefined when that text cannot rebuild it.
+ * A `rows` display is checked and numbered here and its text is built on first read, so a transcript
+ * that draws no read preview holds no second copy of the files it read.
+ */
 function rebuild(display: ReadDisplayContent, content: CodedResultContent): ResolvedReadDisplay | undefined {
 	const body = firstResultText(content);
 	if (body === undefined) return undefined;
 	const { startLine } = display;
 	if (display.from === "rows") {
-		const rows = rebuildRows(body);
-		if (rows === undefined) return undefined;
-		const lineNumbers = storedNumbers(rows.numbers, startLine);
-		return { text: rows.text, startLine, ...(lineNumbers === undefined ? {} : { lineNumbers }) };
+		const numbers = readRows(body);
+		if (numbers === undefined) return undefined;
+		const lineNumbers = storedNumbers(numbers, startLine);
+		let text: string | undefined;
+		const rebuilt: ResolvedReadDisplay = {
+			get text() {
+				if (text === undefined) {
+					const texts: string[] = [];
+					readRows(body, texts);
+					text = texts.join("\n");
+				}
+				return text;
+			},
+			startLine,
+			...(lineNumbers === undefined ? {} : { lineNumbers }),
+		};
+		rebuiltRows.set(rebuilt, { body, tag: display });
+		return rebuilt;
 	}
 	if (display.from === "prefix" && typeof display.length === "number" && display.length <= body.length) {
 		const text = body.slice(0, display.length);
@@ -138,16 +208,19 @@ function isWholeDisplay(value: unknown): value is ResolvedReadDisplay {
 }
 
 function isSlimDisplay(value: unknown): value is ReadDisplayContent {
-	return isRecord(value) && value.text === undefined && typeof value.from === "string";
+	return isRecord(value) && typeof value.from === "string" && value.text === undefined;
 }
 
 /** How a read result is written to a session file and read back. */
 export const readResultCodec: ToolResultCodec = {
 	toolName: "read" satisfies BuiltinToolName,
 	slim(details, content) {
-		if (!isRecord(details) || !isWholeDisplay(details.displayContent)) return details;
+		if (!isRecord(details) || !isRecord(details.displayContent)) return details;
 		const body = firstResultText(content);
 		if (body === undefined) return details;
+		const loaded = rebuiltRows.get(details.displayContent);
+		if (loaded !== undefined && loaded.body === body) return { ...details, displayContent: loaded.tag };
+		if (!isWholeDisplay(details.displayContent)) return details;
 		const displayContent = encode(details.displayContent, body);
 		return displayContent === undefined ? details : { ...details, displayContent };
 	},
@@ -168,6 +241,6 @@ export function resolveReadDisplay(
 	content: CodedResultContent,
 ): ResolvedReadDisplay | undefined {
 	if (display === undefined) return undefined;
-	if (display.text !== undefined) return display as ResolvedReadDisplay;
+	if ("text" in display) return display as ResolvedReadDisplay;
 	return rebuild(display, content);
 }

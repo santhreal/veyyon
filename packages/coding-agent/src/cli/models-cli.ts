@@ -326,16 +326,10 @@ export async function runModelsListing(options: RunModelsListingOptions): Promis
 		process.stderr.write(`${extPath}: ${error}\n`);
 	}
 
-	// Mirror sdk.ts: drain pending provider registrations into the registry.
-	const activeSources = extensionsResult.extensions.map(extension => extension.path);
-	modelRegistry.syncExtensionSources(activeSources);
-	for (const sourceId of new Set(activeSources)) {
-		modelRegistry.clearSourceRegistrations(sourceId);
-	}
-	for (const { name, config, sourceId } of extensionsResult.runtime.pendingProviderRegistrations) {
-		modelRegistry.registerProvider(name, config, sourceId);
-	}
-	extensionsResult.runtime.pendingProviderRegistrations = [];
+	modelRegistry.adoptExtensionProviders(
+		extensionsResult.extensions.map(extension => extension.path),
+		extensionsResult.runtime.pendingProviderRegistrations,
+	);
 	// Discover runtime (extension) provider catalogs now that they are registered.
 	await modelRegistry.refreshRuntimeProviders(
 		action === "refresh" ? "online" : "online-if-uncached",

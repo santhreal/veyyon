@@ -161,13 +161,13 @@ describe("concurrent settings writes from separate processes", () => {
 			// applies only ITS modified paths, so a key nobody touched must come out
 			// the other side untouched rather than reverted to a default.
 			const seed = await Settings.loadIsolated({ agentDir, cwd: agentDir });
-			seed.set("statusLine.transparent", true);
+			seed.set("statusLine.sessionAccent", false);
 			await seed.flush();
 
 			await runWriters(3);
 
 			const parsed = YAML.parse(fs.readFileSync(configPath(), "utf8")) as Record<string, Record<string, unknown>>;
-			expect(parsed.statusLine?.transparent).toBe(true);
+			expect(parsed.statusLine?.sessionAccent).toBe(false);
 		});
 
 		test("an unknown key a user hand-wrote is never dropped by a concurrent write", async () => {

@@ -15,6 +15,7 @@ import type {
 	ProviderSessionState,
 	RawSseEvent,
 	ServiceTier,
+	StopReason,
 	StreamFunction,
 	StreamOptions,
 	Tool,
@@ -26,7 +27,7 @@ import {
 	resolveCacheRetention,
 	sanitizeOpenAIResponsesAssistantHistoryItemsForReplay,
 } from "../utils";
-import { createAbortSourceTracker } from "../utils/abort";
+import { type AbortSourceTracker, createAbortSourceTracker } from "../utils/abort";
 import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
@@ -365,422 +366,532 @@ function maybeAddOpenRouterAnthropicCacheControl(
 	params.cache_control = cacheRetention === "long" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
 }
 
+/** A reasoning-effort downgrade this call retried with, remembered for the session once a stream opens. */
+interface PendingReasoningEffortFallback {
+	key: string;
+	fallback: OpenAIReasoningEffortFallback;
+}
+
 /**
- * Generate function for OpenAI Responses API
+ * Reasoning-effort downgrades for one call: the fallback each wire model fell back to, which
+ * retries already ran, and the wire params of the last prepared attempt a rejection resolves against.
  */
+class ResponsesReasoningEffortFallbacks {
+	readonly #forRequest = new Map<string, OpenAIReasoningEffortFallback>();
+	readonly #attempted = new Set<string>();
+	#pending: PendingReasoningEffortFallback | undefined;
+	#sentKey: string | undefined;
+	#sentParams: OpenAIResponsesSamplingParams | undefined;
+
+	constructor(
+		readonly model: Model<"openai-responses">,
+		readonly baseUrl: string,
+		readonly sessionState: OpenAIResponsesProviderSessionState | undefined,
+	) {}
+
+	/** Apply the fallback this call or the session holds for the params' wire model; true when one applied. */
+	apply(requestParams: OpenAIResponsesSamplingParams): boolean {
+		const key = this.#keyOf(requestParams);
+		const fallback = this.#forRequest.has(key)
+			? this.#forRequest.get(key)
+			: getOpenAIReasoningEffortFallback(this.sessionState, key);
+		if (fallback === undefined) return false;
+		applyOpenAIReasoningEffortFallback(requestParams, fallback);
+		return true;
+	}
+
+	/** Record the wire params an attempt sends, so a rejection of it resolves against them. */
+	sent(wireParams: OpenAIResponsesSamplingParams): void {
+		this.#sentKey = this.#keyOf(wireParams);
+		this.#sentParams = wireParams;
+	}
+
+	/**
+	 * The fallback a rejection of the last sent attempt asks for, recorded for this call's retry;
+	 * undefined when the rejection is not about reasoning effort. Rethrows `error` when that
+	 * fallback already ran, so no retry repeats.
+	 */
+	retryFallback(error: unknown, explicitDisable: boolean): OpenAIReasoningEffortFallback | undefined {
+		const key = this.#sentKey;
+		if (!key || !this.#sentParams) return undefined;
+		const captured = error instanceof OpenAIHttpError ? error.captured : undefined;
+		const fallback = resolveOpenAIReasoningEffortFallback(error, captured, this.#sentParams, { explicitDisable });
+		if (fallback === undefined) return undefined;
+		const retryMarker = `${key}:${String(fallback)}`;
+		if (this.#attempted.has(retryMarker)) throw error;
+		this.#attempted.add(retryMarker);
+		this.#forRequest.set(key, fallback);
+		this.#pending = { key, fallback };
+		return fallback;
+	}
+
+	/** Remember the fallback that let the stream open, so the session's next call starts from it. */
+	commit(): void {
+		const pending = this.#pending;
+		if (!pending) return;
+		rememberOpenAIReasoningEffortFallback(this.sessionState, pending.key, pending.fallback);
+		this.#pending = undefined;
+	}
+
+	#keyOf(requestParams: OpenAIResponsesSamplingParams): string {
+		const wireModelId = typeof requestParams.model === "string" ? requestParams.model : this.model.id;
+		return createOpenAIReasoningEffortFallbackKey("responses", this.baseUrl, wireModelId);
+	}
+}
+
+/** What one attempt sends. */
+interface OpenAIResponsesAttempt {
+	/** Full-transcript params; the chain baseline records these when the attempt succeeds. */
+	params: OpenAIResponsesSamplingParams;
+	/** The params on the wire: `params`, or a delta onto the last response when the chain is live. */
+	chained: OpenAIResponsesChainedParams;
+	strictToolsApplied: boolean;
+}
+
+/** Request facts fixed before the first attempt. */
+interface OpenAIResponsesRequestPlan {
+	headers: Record<string, string>;
+	premiumRequests: number | undefined;
+	sessionState: OpenAIResponsesProviderSessionState | undefined;
+	strictToolsScope: OpenAIStrictToolsScope;
+	requestUrl: string;
+	idleTimeoutMs: number | undefined;
+	firstEventTimeoutMs: number | undefined;
+	/** First-event watchdog armed around each POST; undefined when disabled. */
+	requestTimeoutMs: number | undefined;
+	effortFallbacks: ResponsesReasoningEffortFallbacks;
+	firstAttempt: OpenAIResponsesAttempt;
+}
+
+/** A cleanly ended response: the reason it is delivered with and the native output items it produced. */
+interface OpenAIResponsesConsumed {
+	reason: Extract<StopReason, "stop" | "length" | "toolUse">;
+	nativeOutputItems: Array<Record<string, unknown>>;
+}
+
+/**
+ * One `streamOpenAIResponsesOnce` call: plan the request, open it through the retry ladder,
+ * consume the stream, and record what the next turn chains onto.
+ */
+class OpenAIResponsesStreamRun {
+	readonly #startTime = performance.now();
+	readonly #output: AssistantMessage;
+	readonly #abortTracker: AbortSourceTracker;
+	readonly #firstEventTimeoutAbortError = new AIError.StreamTimeoutError(OPENAI_RESPONSES_FIRST_EVENT_TIMEOUT_MESSAGE);
+	readonly #rawSseObserver: ((event: RawSseEvent) => void) | undefined;
+	#firstTokenTime: number | undefined;
+	#rawRequestDump: RawHttpRequestDump | undefined;
+	/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
+	#wireBodyJson: string | undefined;
+	#chainState: OpenAIResponsesChainState | undefined;
+	#sentPreviousResponseId: string | undefined;
+	/** Set once a rejection dropped strict tools; every later rebuild of this call keeps them off. */
+	#strictToolsDisabled = false;
+
+	constructor(
+		readonly model: Model<"openai-responses">,
+		readonly context: Context,
+		readonly options: OpenAIResponsesOptions | undefined,
+		readonly stream: AssistantMessageEventStream,
+	) {
+		this.#output = createInitialResponsesAssistantMessage(model.api, model.provider, model.id);
+		this.#abortTracker = createAbortSourceTracker(options?.signal);
+		const onSseEvent = options?.onSseEvent;
+		const modelSseObserver = onSseEvent ? (event: RawSseEvent) => onSseEvent(event, model) : undefined;
+		this.#rawSseObserver = modelSseObserver
+			? (event: RawSseEvent) => {
+					resolveOpenAiSseEventName(event);
+					notifyRawSseEvent(modelSseObserver, event);
+				}
+			: undefined;
+	}
+
+	async run(): Promise<void> {
+		const output = this.#output;
+		try {
+			const plan = this.#plan();
+			const { handle, attempt } = await this.#open(plan);
+			const { reason, nativeOutputItems } = await this.#consume(plan, handle);
+			this.#recordChainBaseline(plan.sessionState, attempt.params, nativeOutputItems);
+			this.#stampTiming();
+			this.stream.push({ type: "done", reason, message: output });
+		} catch (error) {
+			await this.#fail(error);
+		}
+		this.stream.end();
+	}
+
+	#plan(): OpenAIResponsesRequestPlan {
+		const { model, context, options } = this;
+		// Keep request routing on `sessionId` while allowing callers to pin a
+		// stable prompt-cache key independently. Side-channel calls use this to
+		// avoid perturbing provider conversation state without cold-starting the cache.
+		const routingSessionId = getOpenAIResponsesRoutingSessionId(options);
+		const promptCacheSessionId = getOpenAIPromptCacheKey(options);
+		const apiKey = options?.apiKey || getEnvApiKey(model.provider) || "";
+		const { headers, copilotPremiumRequests, baseUrl } = resolveOpenAIRequestSetup(model, {
+			apiKey,
+			extraHeaders: options?.headers,
+			initiatorOverride: options?.initiatorOverride,
+			messages: context.messages,
+			conversationId: conversationIdForOpenCode(options),
+			openAISessionId: routingSessionId,
+			promptCacheSessionId,
+		});
+		const sessionState = getOpenAIResponsesProviderSessionState(model, options?.providerSessionState);
+		const strictToolsScope = getOpenAIStrictToolsScope(model, baseUrl);
+		const built = buildParams(model, context, options, sessionState, strictToolsScope);
+		const resolvedBaseUrl = trimTrailingSlashes(baseUrl ?? "https://api.openai.com/v1");
+		const effortFallbacks = new ResponsesReasoningEffortFallbacks(model, resolvedBaseUrl, sessionState);
+		if (isOpenAIResponsesStatefulEnabled(options, baseUrl) && routingSessionId && sessionState) {
+			this.#chainState = getOpenAIResponsesChainState(sessionState, model, baseUrl, routingSessionId);
+		}
+		effortFallbacks.apply(built.params);
+		const firstAttempt = this.#chainAttempt(built.params, built.strictToolsApplied);
+		const idleTimeoutMs =
+			options?.streamIdleTimeoutMs ?? getOpenAIStreamIdleTimeoutMs(model.compat.streamIdleTimeoutMs);
+		const firstEventTimeoutMs =
+			options?.streamFirstEventTimeoutMs ?? getOpenAIStreamFirstEventTimeoutMs(idleTimeoutMs);
+		const requestUrl = `${resolvedBaseUrl}/responses`;
+		this.#rawRequestDump = {
+			provider: model.provider,
+			api: this.#output.api,
+			model: model.id,
+			method: "POST",
+			url: requestUrl,
+		};
+		return {
+			headers,
+			premiumRequests: copilotPremiumRequests,
+			sessionState,
+			strictToolsScope,
+			requestUrl,
+			idleTimeoutMs,
+			firstEventTimeoutMs,
+			requestTimeoutMs:
+				firstEventTimeoutMs !== undefined && firstEventTimeoutMs > 0 ? firstEventTimeoutMs : undefined,
+			effortFallbacks,
+			firstAttempt,
+		};
+	}
+
+	/** An attempt from freshly built params, stored and chained onto the last response while the chain is live. */
+	#chainAttempt(params: OpenAIResponsesSamplingParams, strictToolsApplied: boolean): OpenAIResponsesAttempt {
+		const chain = this.#chainState;
+		let chained: OpenAIResponsesChainedParams = { params };
+		if (chain && !chain.disabled) {
+			// Platform `previous_response_id` chaining only resolves stored responses.
+			params.store = true;
+			chained = buildOpenAIResponsesChainedParams(params, chain);
+		}
+		this.#sentPreviousResponseId = chained.previousResponseId;
+		return { params, chained, strictToolsApplied };
+	}
+
+	/**
+	 * POST the request, retrying on the rung a rejection allows: a reasoning-effort fallback, then
+	 * dropping strict tools, then a full-transcript replay when the chain baseline was rejected.
+	 * Each rung runs at most once per cause, so the loop ends.
+	 */
+	async #open(
+		plan: OpenAIResponsesRequestPlan,
+	): Promise<{ handle: OpenAIStreamHandle<ResponseStreamEvent>; attempt: OpenAIResponsesAttempt }> {
+		let attempt = plan.firstAttempt;
+		// Copilot retry policy rejects a latched abort before invoking its
+		// callback, so preserve the payload-inspection contract outside it.
+		if (this.#abortTracker.requestSignal.aborted) {
+			await this.#prepareRequest(plan, attempt.chained.params);
+			throw new AIError.RequestAbortError();
+		}
+		while (true) {
+			try {
+				const handle = await this.#post(plan, attempt.chained.params);
+				plan.effortFallbacks.commit();
+				return { handle, attempt };
+			} catch (error) {
+				attempt = this.#retryAttempt(plan, attempt, error);
+			}
+		}
+	}
+
+	/** The attempt that answers `error`; rethrows it when no rung of the ladder does. */
+	#retryAttempt(
+		plan: OpenAIResponsesRequestPlan,
+		attempt: OpenAIResponsesAttempt,
+		error: unknown,
+	): OpenAIResponsesAttempt {
+		const { model, context, options } = this;
+		const aborted = this.#abortTracker.requestSignal.aborted;
+		const effortFallback = aborted
+			? undefined
+			: plan.effortFallbacks.retryFallback(
+					error,
+					options?.disableReasoning === true && options.reasoning === undefined,
+				);
+		if (effortFallback !== undefined) {
+			applyOpenAIReasoningEffortFallback(attempt.chained.params, effortFallback);
+			applyOpenAIReasoningEffortFallback(attempt.params, effortFallback);
+			return attempt;
+		}
+		const captured = error instanceof OpenAIHttpError ? error.captured : undefined;
+		const compiledGrammarTooLarge =
+			isOpenRouterAnthropicModel(model) && isCompiledGrammarTooLargeStrictError(error, captured);
+		if (
+			!this.#strictToolsDisabled &&
+			!aborted &&
+			(compiledGrammarTooLarge ||
+				shouldRetryWithoutStrictTools(error, captured, attempt.strictToolsApplied, context.tools))
+		) {
+			this.#strictToolsDisabled = true;
+			disableStrictToolsForScope(plan.sessionState, plan.strictToolsScope);
+			const built = buildParams(model, context, options, plan.sessionState, plan.strictToolsScope, true);
+			return this.#chainAttempt(built.params, built.strictToolsApplied);
+		}
+		return this.#replayAttempt(plan, error);
+	}
+
+	/**
+	 * The server rejected the chain baseline: reset it, count the failure (or disable chaining
+	 * outright on Zero Data Retention), and replay the full transcript. The replay carries no
+	 * `previous_response_id`, so this rung cannot repeat. Rethrows `error` for any other rejection.
+	 */
+	#replayAttempt(plan: OpenAIResponsesRequestPlan, error: unknown): OpenAIResponsesAttempt {
+		const chain = this.#chainState;
+		if (!chain || !this.#sentPreviousResponseId || this.#abortTracker.requestSignal.aborted) {
+			throw error;
+		}
+		const zdrRejection =
+			error instanceof Error &&
+			/previous[ _]?response/i.test(error.message) &&
+			/zero[ _-]?data[ _-]?retention/i.test(error.message);
+		if (zdrRejection) {
+			markOpenAIResponsesChainZeroDataRetention(chain, error);
+		} else if (isOpenAIResponsesStalePreviousResponseError(error)) {
+			registerOpenAIResponsesChainStaleFailure(chain, error);
+		} else {
+			throw error;
+		}
+		this.#sentPreviousResponseId = undefined;
+		const { params, strictToolsApplied } = buildParams(
+			this.model,
+			this.context,
+			this.options,
+			plan.sessionState,
+			plan.strictToolsScope,
+			this.#strictToolsDisabled,
+		);
+		// Only ZDR forces `store: false` (the org never persists responses). A
+		// non-ZDR stale baseline is transient, so keep storing: the full-context
+		// retry must be chainable next turn, and the consecutive stale-failure
+		// breaker only trips when each retry stores and the next turn re-chains.
+		params.store = !zdrRejection;
+		return { params, chained: { params }, strictToolsApplied };
+	}
+
+	/** One POST through the Copilot model retry, with the first-event watchdog armed until headers arrive. */
+	#post(
+		plan: OpenAIResponsesRequestPlan,
+		requestParams: OpenAIResponsesSamplingParams,
+	): Promise<OpenAIStreamHandle<ResponseStreamEvent>> {
+		const { model, options } = this;
+		const abortTracker = this.#abortTracker;
+		const { requestTimeoutMs } = plan;
+		return callWithCopilotModelRetry(
+			async () => {
+				const requestTimeout =
+					requestTimeoutMs === undefined
+						? undefined
+						: setTimeout(() => abortTracker.abortLocally(this.#firstEventTimeoutAbortError), requestTimeoutMs);
+				try {
+					const headers = { ...plan.headers };
+					if (requestTimeoutMs !== undefined) {
+						headers["X-Stainless-Timeout"] = Math.floor(requestTimeoutMs / 1000).toString();
+					}
+					// Transient 408/429/5xx get Retry-After-aware transport retries; the
+					// first-event watchdog aborts `requestSignal`, so retries cannot extend
+					// the caller's deadline.
+					return await postOpenAIStream<ResponseStreamEvent>({
+						url: plan.requestUrl,
+						headers,
+						body: undefined,
+						signal: abortTracker.requestSignal,
+						fetch: options?.fetch,
+						prepareInit: () => this.#prepareRequest(plan, requestParams),
+						maxRetryDelayMs: options?.maxRetryDelayMs,
+						onSseEvent: this.#rawSseObserver,
+					});
+				} finally {
+					clearTimeout(requestTimeout);
+				}
+			},
+			{ provider: model.provider, signal: abortTracker.requestSignal },
+		);
+	}
+
+	/**
+	 * Serialize the attempt once. The `onPayload` hook gets an isolated parse of exactly those
+	 * bytes, and when no extension replaces the payload those bytes are sent as they are; a
+	 * reasoning-effort fallback applied afterwards forces a second serialization.
+	 */
+	async #prepareRequest(
+		plan: OpenAIResponsesRequestPlan,
+		requestParams: OpenAIResponsesSamplingParams,
+	): Promise<RequestInit> {
+		const bodyJson = JSON.stringify(requestParams);
+		let wireParams = requestParams;
+		const onPayload = this.options?.onPayload;
+		if (onPayload) {
+			const hookView = JSON.parse(bodyJson) as OpenAIResponsesSamplingParams;
+			const replacementPayload = await onPayload(hookView, this.model);
+			wireParams =
+				replacementPayload !== undefined && replacementPayload !== hookView
+					? (replacementPayload as OpenAIResponsesSamplingParams)
+					: hookView;
+		}
+		const fallbackApplied = plan.effortFallbacks.apply(wireParams);
+		const wireBodyJson = fallbackApplied || wireParams !== requestParams ? JSON.stringify(wireParams) : bodyJson;
+		plan.effortFallbacks.sent(wireParams);
+		this.#wireBodyJson = wireBodyJson;
+		return { body: wireBodyJson };
+	}
+
+	/** Stream the response into the message; the native output items it produced, once it ended cleanly. */
+	async #consume(
+		plan: OpenAIResponsesRequestPlan,
+		handle: OpenAIStreamHandle<ResponseStreamEvent>,
+	): Promise<OpenAIResponsesConsumed> {
+		const { model, options, stream } = this;
+		const output = this.#output;
+		const abortTracker = this.#abortTracker;
+		await notifyProviderResponse(options, handle.response, model, handle.requestId);
+		if (plan.premiumRequests !== undefined) output.usage.premiumRequests = plan.premiumRequests;
+		stream.push({ type: "start", partial: output });
+
+		const nativeOutputItems: Array<Record<string, unknown>> = [];
+		let sawTerminalResponseEvent = false;
+		const events = iterateWithIdleTimeout(handle.events, {
+			idleTimeoutMs: plan.idleTimeoutMs,
+			firstItemTimeoutMs: plan.firstEventTimeoutMs,
+			firstItemErrorMessage: OPENAI_RESPONSES_FIRST_EVENT_TIMEOUT_MESSAGE,
+			errorMessage: "OpenAI responses stream stalled while waiting for the next event",
+			onFirstItemTimeout: () => abortTracker.abortLocally(this.#firstEventTimeoutAbortError),
+			onIdle: () => abortTracker.requestAbortController.abort(),
+			abortSignal: options?.signal,
+			isProgressItem: isOpenAIResponsesProgressEvent,
+		});
+		await processResponsesStream(events, output, stream, model, {
+			onFirstToken: () => {
+				if (!this.#firstTokenTime) this.#firstTokenTime = performance.now();
+			},
+			onOutputItemDone: item => {
+				// `processResponsesStream` hands over a private clone already; no
+				// second deep copy needed (reasoning items carry multi-KB blobs).
+				nativeOutputItems.push(item as unknown as Record<string, unknown>);
+			},
+			onCompleted: () => {
+				sawTerminalResponseEvent = true;
+			},
+			requestServiceTier: options?.serviceTier,
+		});
+
+		const localAbortReason = abortTracker.getLocalAbortReason();
+		if (localAbortReason) throw localAbortReason;
+		if (abortTracker.wasCallerAbort()) throw new AIError.RequestAbortError();
+		// Detect premature stream closure: the HTTP stream ended without the
+		// provider sending a recognized terminal response event. Custom/proxy
+		// providers may drop the connection mid-stream; without this guard the
+		// incomplete output is silently surfaced as a successful "stop".
+		if (!sawTerminalResponseEvent) {
+			throw new AIError.ProviderResponseError(
+				"OpenAI responses stream closed before a terminal response event was received",
+				{ provider: model.provider, kind: "incomplete-stream" },
+			);
+		}
+		if (output.stopReason === "aborted" || output.stopReason === "error") {
+			throw new AIError.ProviderResponseError(output.errorMessage ?? "An unknown error occurred", {
+				provider: model.provider,
+				kind: "runtime",
+			});
+		}
+		output.providerPayload = createOpenAIResponsesHistoryPayload(model.provider, nativeOutputItems);
+		return { reason: output.stopReason, nativeOutputItems };
+	}
+
+	/**
+	 * Record what the next turn chains onto: this turn's full-transcript params and, when the
+	 * response has an id and replayable output, that output as the append baseline.
+	 */
+	#recordChainBaseline(
+		sessionState: OpenAIResponsesProviderSessionState | undefined,
+		params: OpenAIResponsesSamplingParams,
+		nativeOutputItems: Array<Record<string, unknown>>,
+	): void {
+		const replayableResponseItems = sanitizeOpenAIResponsesAssistantHistoryItemsForReplay(
+			structuredCloneJSON(nativeOutputItems),
+		);
+		const chain = this.#chainState;
+		if (!replayableResponseItems) {
+			// Hidden-empty / fully sanitized successes cannot be used as an append
+			// baseline, but `lastParams` still records the successful wire controls
+			// without re-enabling `previous_response_id` chaining.
+			if (chain) {
+				chain.canAppend = false;
+				chain.lastParams = structuredCloneJSON(params);
+				chain.lastResponseId = undefined;
+				chain.lastResponseItems = undefined;
+			}
+			return;
+		}
+		if (sessionState) sessionState.nativeHistoryReplayWarmed = true;
+		if (!chain) return;
+		chain.lastParams = structuredCloneJSON(params);
+		const responseId = this.#output.responseId;
+		if (!responseId) {
+			// Without a response id the append baseline cannot be trusted.
+			chain.canAppend = false;
+			return;
+		}
+		chain.lastResponseId = responseId;
+		chain.lastResponseItems = replayableResponseItems;
+		chain.canAppend = true;
+		// Only a successful CHAINED completion clears the stale counter — a
+		// full-context success must not mask categorical rejection.
+		if (this.#sentPreviousResponseId) chain.staleFailures = 0;
+	}
+
+	async #fail(error: unknown): Promise<void> {
+		const { model } = this;
+		const output = this.#output;
+		if (this.#chainState) resetOpenAIResponsesChainState(this.#chainState);
+		const result = await AIError.finalize(error, {
+			api: model.api,
+			provider: model.provider,
+			abortTracker: this.#abortTracker,
+			rawRequestDump: materializeDumpBody(this.#rawRequestDump, this.#wireBodyJson),
+			capturedErrorResponse: error instanceof OpenAIHttpError ? error.captured : undefined,
+		});
+		AIError.applyFinalizeResult(output, result);
+		// Some providers via OpenRouter include extra details here.
+		const rawMetadata = (error as { error?: { metadata?: { raw?: string } } })?.error?.metadata?.raw;
+		if (rawMetadata) output.errorMessage += `\n${rawMetadata}`;
+		this.#stampTiming();
+		this.stream.push({ type: "error", reason: output.stopReason, error: output });
+	}
+
+	#stampTiming(): void {
+		this.#output.duration = performance.now() - this.#startTime;
+		if (this.#firstTokenTime) this.#output.ttft = this.#firstTokenTime - this.#startTime;
+	}
+}
+
+/** Generate function for OpenAI Responses API: one attempt, retried on empty completions by the public entry. */
 const streamOpenAIResponsesOnce = (
 	model: Model<"openai-responses">,
 	context: Context,
 	options?: OpenAIResponsesOptions,
 ): AssistantMessageEventStream => {
 	const stream = new AssistantMessageEventStream();
-
-	// Start async processing
-	(async () => {
-		const startTime = performance.now();
-		let firstTokenTime: number | undefined;
-
-		const output: AssistantMessage = createInitialResponsesAssistantMessage(model.api, model.provider, model.id);
-		let rawRequestDump: RawHttpRequestDump | undefined;
-		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
-		let wireBodyJson: string | undefined;
-
-		let chainState: OpenAIResponsesChainState | undefined;
-		let sentPreviousResponseId: string | undefined;
-		const abortTracker = createAbortSourceTracker(options?.signal);
-		const firstEventTimeoutAbortError = new AIError.StreamTimeoutError(OPENAI_RESPONSES_FIRST_EVENT_TIMEOUT_MESSAGE);
-		const { requestAbortController, requestSignal } = abortTracker;
-		const onSseEvent = options?.onSseEvent;
-		const modelSseObserver = onSseEvent ? (event: RawSseEvent) => onSseEvent(event, model) : undefined;
-		const rawSseObserver = modelSseObserver
-			? (event: RawSseEvent) => {
-					resolveOpenAiSseEventName(event);
-					notifyRawSseEvent(modelSseObserver, event);
-				}
-			: undefined;
-
-		try {
-			// Keep request routing on `sessionId` while allowing callers to pin a
-			// stable prompt-cache key independently. Side-channel calls use this to
-			// avoid perturbing provider conversation state without cold-starting the cache.
-			const routingSessionId = getOpenAIResponsesRoutingSessionId(options);
-			const promptCacheSessionId = getOpenAIPromptCacheKey(options);
-			const apiKey = options?.apiKey || getEnvApiKey(model.provider) || "";
-			const { headers, copilotPremiumRequests, baseUrl } = resolveOpenAIRequestSetup(model, {
-				apiKey,
-				extraHeaders: options?.headers,
-				initiatorOverride: options?.initiatorOverride,
-				messages: context.messages,
-				conversationId: conversationIdForOpenCode(options),
-				openAISessionId: routingSessionId,
-				promptCacheSessionId,
-			});
-			const premiumRequestsTotal = copilotPremiumRequests;
-			const providerSessionState = getOpenAIResponsesProviderSessionState(model, options?.providerSessionState);
-			const strictToolsScope = getOpenAIStrictToolsScope(model, baseUrl);
-			const builtParams = buildParams(model, context, options, providerSessionState, strictToolsScope);
-			const params = builtParams.params;
-			let activeParams = params;
-			const resolvedBaseUrl = trimTrailingSlashes(baseUrl ?? "https://api.openai.com/v1");
-			const requestReasoningEffortFallbacks = new Map<string, OpenAIReasoningEffortFallback>();
-			const attemptedReasoningEffortFallbacks = new Set<string>();
-			let pendingReasoningEffortFallback: { key: string; fallback: OpenAIReasoningEffortFallback } | undefined;
-			let activeReasoningEffortFallbackKey: string | undefined;
-			let activeRequestParams: OpenAIResponsesSamplingParams | undefined;
-			const applyReasoningEffortFallbackForRequest = (requestParams: OpenAIResponsesSamplingParams): string => {
-				const fallbackKey = createOpenAIReasoningEffortFallbackKey(
-					"responses",
-					resolvedBaseUrl,
-					typeof requestParams.model === "string" ? requestParams.model : model.id,
-				);
-				const requestReasoningEffortFallback = requestReasoningEffortFallbacks.has(fallbackKey)
-					? requestReasoningEffortFallbacks.get(fallbackKey)
-					: getOpenAIReasoningEffortFallback(providerSessionState, fallbackKey);
-				if (requestReasoningEffortFallback !== undefined) {
-					applyOpenAIReasoningEffortFallback(requestParams, requestReasoningEffortFallback);
-				}
-				return fallbackKey;
-			};
-			if (isOpenAIResponsesStatefulEnabled(options, baseUrl) && routingSessionId && providerSessionState) {
-				chainState = getOpenAIResponsesChainState(providerSessionState, model, baseUrl, routingSessionId);
-				if (!chainState.disabled) {
-					// Platform `previous_response_id` chaining only resolves stored responses.
-					params.store = true;
-				}
-			}
-			applyReasoningEffortFallbackForRequest(params);
-			let chained: OpenAIResponsesChainedParams =
-				chainState && !chainState.disabled ? buildOpenAIResponsesChainedParams(params, chainState) : { params };
-			sentPreviousResponseId = chained.previousResponseId;
-			const idleTimeoutMs =
-				options?.streamIdleTimeoutMs ?? getOpenAIStreamIdleTimeoutMs(model.compat.streamIdleTimeoutMs);
-			const firstEventTimeoutMs =
-				options?.streamFirstEventTimeoutMs ?? getOpenAIStreamFirstEventTimeoutMs(idleTimeoutMs);
-			const requestTimeoutMs =
-				firstEventTimeoutMs !== undefined && firstEventTimeoutMs > 0 ? firstEventTimeoutMs : undefined;
-			const requestUrl = `${resolvedBaseUrl}/responses`;
-			const applyPayloadReplacement = async (
-				requestParams: OpenAIResponsesSamplingParams,
-			): Promise<{ wireParams: OpenAIResponsesSamplingParams; bodyJson: string }> => {
-				// Serialize once; the hook gets an isolated parse of exactly those
-				// bytes, and when no extension handles the event the caller reuses
-				// `bodyJson` instead of re-serializing. The reasoning-effort
-				// fallback may still mutate the parsed object afterwards, which is
-				// what `reused` guards.
-				const bodyJson = JSON.stringify(requestParams);
-				let attemptParams = requestParams;
-				if (options?.onPayload) {
-					const hookView = JSON.parse(bodyJson) as OpenAIResponsesSamplingParams;
-					const replacementPayload = await options.onPayload(hookView, model);
-					attemptParams =
-						replacementPayload !== undefined && replacementPayload !== hookView
-							? (replacementPayload as OpenAIResponsesSamplingParams)
-							: hookView;
-				}
-				const fallbackKey = applyReasoningEffortFallbackForRequest(attemptParams);
-				const fallbackApplied =
-					requestReasoningEffortFallbacks.has(fallbackKey) ||
-					getOpenAIReasoningEffortFallback(providerSessionState, fallbackKey) !== undefined;
-				return {
-					wireParams: attemptParams,
-					bodyJson: fallbackApplied || attemptParams !== requestParams ? JSON.stringify(attemptParams) : bodyJson,
-				};
-			};
-			rawRequestDump = {
-				provider: model.provider,
-				api: output.api,
-				model: model.id,
-				method: "POST",
-				url: requestUrl,
-			};
-			const openResponsesStream = async (requestParams: OpenAIResponsesSamplingParams, captureOnly = false) => {
-				const prepareRequest = async (): Promise<RequestInit> => {
-					const { wireParams, bodyJson } = await applyPayloadReplacement(requestParams);
-					activeReasoningEffortFallbackKey = createOpenAIReasoningEffortFallbackKey(
-						"responses",
-						resolvedBaseUrl,
-						typeof wireParams.model === "string" ? wireParams.model : model.id,
-					);
-					activeRequestParams = wireParams;
-					wireBodyJson = bodyJson;
-					return { body: bodyJson };
-				};
-				if (captureOnly) {
-					await prepareRequest();
-					throw new AIError.RequestAbortError();
-				}
-				return callWithCopilotModelRetry(
-					async () => {
-						let requestTimeout: NodeJS.Timeout | undefined;
-						if (requestTimeoutMs !== undefined) {
-							requestTimeout = setTimeout(
-								() => abortTracker.abortLocally(firstEventTimeoutAbortError),
-								requestTimeoutMs,
-							);
-						}
-						try {
-							const headersWithTimeout = { ...headers };
-							if (requestTimeoutMs !== undefined) {
-								headersWithTimeout["X-Stainless-Timeout"] = Math.floor(requestTimeoutMs / 1000).toString();
-							}
-							const handle = await postOpenAIStream<ResponseStreamEvent>({
-								url: requestUrl,
-								headers: headersWithTimeout,
-								body: undefined,
-								signal: requestSignal,
-								fetch: options?.fetch,
-								prepareInit: prepareRequest,
-								maxRetryDelayMs: options?.maxRetryDelayMs,
-								// Transient 408/429/5xx get Retry-After-aware transport
-								// retries; the first-event watchdog aborts `requestSignal`,
-								// so retries cannot extend the caller's deadline.
-								onSseEvent: rawSseObserver,
-							});
-							// Disarm the first-event watchdog as soon as headers arrive — a slow
-							// onResponse callback must not abort an already-connected stream.
-							if (requestTimeout !== undefined) {
-								clearTimeout(requestTimeout);
-								requestTimeout = undefined;
-							}
-							return handle;
-						} finally {
-							clearTimeout(requestTimeout);
-						}
-					},
-					{ provider: model.provider, signal: requestSignal },
-				);
-			};
-			// Copilot retry policy rejects a latched abort before invoking its
-			// callback, so preserve the payload-inspection contract outside it.
-			if (requestSignal.aborted) await openResponsesStream(chained.params, true);
-			let openaiHandle: OpenAIStreamHandle<ResponseStreamEvent>;
-			let strictRetryAvailable = true;
-			let activeStrictToolsApplied = builtParams.strictToolsApplied;
-			let forceDisableStrictTools = false;
-			while (true) {
-				try {
-					openaiHandle = await openResponsesStream(chained.params);
-					if (pendingReasoningEffortFallback) {
-						rememberOpenAIReasoningEffortFallback(
-							providerSessionState,
-							pendingReasoningEffortFallback.key,
-							pendingReasoningEffortFallback.fallback,
-						);
-						pendingReasoningEffortFallback = undefined;
-					}
-					break;
-				} catch (error) {
-					const capturedErrorResponse = error instanceof OpenAIHttpError ? error.captured : undefined;
-					const reasoningEffortFallback =
-						activeReasoningEffortFallbackKey && activeRequestParams && !requestSignal.aborted
-							? resolveOpenAIReasoningEffortFallback(error, capturedErrorResponse, activeRequestParams, {
-									explicitDisable: options?.disableReasoning === true && options.reasoning === undefined,
-								})
-							: undefined;
-					if (reasoningEffortFallback !== undefined && activeReasoningEffortFallbackKey) {
-						const retryMarker = `${activeReasoningEffortFallbackKey}:${String(reasoningEffortFallback)}`;
-						if (attemptedReasoningEffortFallbacks.has(retryMarker)) throw error;
-						attemptedReasoningEffortFallbacks.add(retryMarker);
-						requestReasoningEffortFallbacks.set(activeReasoningEffortFallbackKey, reasoningEffortFallback);
-						applyOpenAIReasoningEffortFallback(chained.params, reasoningEffortFallback);
-						applyOpenAIReasoningEffortFallback(activeParams, reasoningEffortFallback);
-						pendingReasoningEffortFallback = {
-							key: activeReasoningEffortFallbackKey,
-							fallback: reasoningEffortFallback,
-						};
-						continue;
-					}
-					const compiledGrammarTooLarge =
-						isOpenRouterAnthropicModel(model) &&
-						isCompiledGrammarTooLargeStrictError(error, capturedErrorResponse);
-					const canRetryWithoutStrictTools =
-						strictRetryAvailable &&
-						!requestSignal.aborted &&
-						(compiledGrammarTooLarge ||
-							shouldRetryWithoutStrictTools(
-								error,
-								capturedErrorResponse,
-								activeStrictToolsApplied,
-								context.tools,
-							));
-					if (canRetryWithoutStrictTools) {
-						strictRetryAvailable = false;
-						forceDisableStrictTools = true;
-						disableStrictToolsForScope(providerSessionState, strictToolsScope);
-						const fallbackBuilt = buildParams(
-							model,
-							context,
-							options,
-							providerSessionState,
-							strictToolsScope,
-							true,
-						);
-						const fallbackParams = fallbackBuilt.params;
-						if (chainState && !chainState.disabled) fallbackParams.store = true;
-						const fallbackChained: OpenAIResponsesChainedParams =
-							chainState && !chainState.disabled
-								? buildOpenAIResponsesChainedParams(fallbackParams, chainState)
-								: { params: fallbackParams };
-						sentPreviousResponseId = fallbackChained.previousResponseId;
-						chained = fallbackChained;
-						activeParams = fallbackParams;
-						activeStrictToolsApplied = fallbackBuilt.strictToolsApplied;
-						continue;
-					}
-					if (!chainState || !sentPreviousResponseId || requestSignal.aborted) {
-						throw error;
-					}
-					const zdrRejection =
-						error instanceof Error &&
-						/previous[ _]?response/i.test(error.message) &&
-						/zero[ _-]?data[ _-]?retention/i.test(error.message);
-					if (!zdrRejection && !isOpenAIResponsesStalePreviousResponseError(error)) {
-						throw error;
-					}
-					// Server rejected the chain baseline: reset, count the failure (or
-					// disable categorically on ZDR), and retry once with the full
-					// transcript. Structurally cannot loop — the retry carries no
-					// previous_response_id.
-					if (zdrRejection) {
-						markOpenAIResponsesChainZeroDataRetention(chainState, error);
-						// ZDR orgs cannot store responses; the retry uses `store: false`.
-					} else {
-						registerOpenAIResponsesChainStaleFailure(chainState, error);
-					}
-					sentPreviousResponseId = undefined;
-					const currentBuilt = buildParams(
-						model,
-						context,
-						options,
-						providerSessionState,
-						strictToolsScope,
-						forceDisableStrictTools,
-					);
-					const currentParams = currentBuilt.params;
-					// Only ZDR forces `store: false` (the org never persists responses). A
-					// non-ZDR stale baseline is transient, so keep storing: the full-context
-					// retry must be chainable next turn, and the consecutive stale-failure
-					// breaker only trips when each retry stores and the next turn re-chains.
-					currentParams.store = !zdrRejection;
-					chained = { params: currentParams };
-					activeParams = currentParams;
-					activeStrictToolsApplied = currentBuilt.strictToolsApplied;
-				}
-			}
-			await notifyProviderResponse(options, openaiHandle.response, model, openaiHandle.requestId);
-			const openaiStream = openaiHandle.events;
-			if (premiumRequestsTotal !== undefined) output.usage.premiumRequests = premiumRequestsTotal;
-			stream.push({ type: "start", partial: output });
-
-			const nativeOutputItems: Array<Record<string, unknown>> = [];
-			let sawTerminalResponseEvent = false;
-			const timedOpenaiStream = iterateWithIdleTimeout(openaiStream, {
-				idleTimeoutMs,
-				firstItemTimeoutMs: firstEventTimeoutMs,
-				firstItemErrorMessage: OPENAI_RESPONSES_FIRST_EVENT_TIMEOUT_MESSAGE,
-				errorMessage: "OpenAI responses stream stalled while waiting for the next event",
-				onFirstItemTimeout: () => abortTracker.abortLocally(firstEventTimeoutAbortError),
-				onIdle: () => requestAbortController.abort(),
-				abortSignal: options?.signal,
-				isProgressItem: isOpenAIResponsesProgressEvent,
-			});
-			await processResponsesStream(timedOpenaiStream, output, stream, model, {
-				onFirstToken: () => {
-					if (!firstTokenTime) firstTokenTime = performance.now();
-				},
-				onOutputItemDone: item => {
-					// `processResponsesStream` hands over a private clone already; no
-					// second deep copy needed (reasoning items carry multi-KB blobs).
-					nativeOutputItems.push(item as unknown as Record<string, unknown>);
-				},
-				onCompleted: () => {
-					sawTerminalResponseEvent = true;
-				},
-				requestServiceTier: options?.serviceTier,
-			});
-
-			const localAbortReason = abortTracker.getLocalAbortReason();
-			if (localAbortReason) {
-				throw localAbortReason;
-			}
-			if (abortTracker.wasCallerAbort()) {
-				throw new AIError.RequestAbortError();
-			}
-
-			// Detect premature stream closure: the HTTP stream ended without the
-			// provider sending a recognized terminal response event.
-			// Custom/proxy providers may drop the connection mid-stream; without
-			// this guard the incomplete output is silently surfaced as a successful
-			// "stop".
-			if (!sawTerminalResponseEvent) {
-				throw new AIError.ProviderResponseError(
-					"OpenAI responses stream closed before a terminal response event was received",
-					{ provider: model.provider, kind: "incomplete-stream" },
-				);
-			}
-
-			if (output.stopReason === "aborted" || output.stopReason === "error") {
-				throw new AIError.ProviderResponseError(output.errorMessage ?? "An unknown error occurred", {
-					provider: model.provider,
-					kind: "runtime",
-				});
-			}
-
-			output.providerPayload = createOpenAIResponsesHistoryPayload(model.provider, nativeOutputItems);
-			const replayableResponseItems = sanitizeOpenAIResponsesAssistantHistoryItemsForReplay(
-				structuredCloneJSON(nativeOutputItems),
-			);
-			if (replayableResponseItems) {
-				if (providerSessionState) providerSessionState.nativeHistoryReplayWarmed = true;
-				if (chainState) {
-					chainState.lastParams = structuredCloneJSON(activeParams);
-					if (output.responseId) {
-						chainState.lastResponseId = output.responseId;
-						chainState.lastResponseItems = replayableResponseItems;
-						chainState.canAppend = true;
-						// Only a successful CHAINED completion clears the stale counter — a
-						// full-context success must not mask categorical rejection.
-						if (sentPreviousResponseId) chainState.staleFailures = 0;
-					} else {
-						// Without a response id the append baseline cannot be trusted.
-						chainState.canAppend = false;
-					}
-				}
-			} else if (chainState) {
-				// Hidden-empty / fully sanitized successes cannot be used as an append
-				// baseline, but `lastParams` still records the successful wire controls
-				// without re-enabling `previous_response_id` chaining.
-				chainState.canAppend = false;
-				chainState.lastParams = structuredCloneJSON(activeParams);
-				chainState.lastResponseId = undefined;
-				chainState.lastResponseItems = undefined;
-			}
-
-			output.duration = performance.now() - startTime;
-			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
-			stream.push({ type: "done", reason: output.stopReason, message: output });
-			stream.end();
-		} catch (error) {
-			if (chainState) resetOpenAIResponsesChainState(chainState);
-			const capturedErrorResponse = error instanceof OpenAIHttpError ? error.captured : undefined;
-			const result = await AIError.finalize(error, {
-				api: model.api,
-				provider: model.provider,
-				abortTracker,
-				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
-				capturedErrorResponse,
-			});
-			AIError.applyFinalizeResult(output, result);
-			// Some providers via OpenRouter include extra details here.
-			const rawMetadata = (error as { error?: { metadata?: { raw?: string } } })?.error?.metadata?.raw;
-			if (rawMetadata) output.errorMessage += `\n${rawMetadata}`;
-			output.duration = performance.now() - startTime;
-			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
-			stream.push({ type: "error", reason: output.stopReason, error: output });
-			stream.end();
-		}
-	})();
-
+	void new OpenAIResponsesStreamRun(model, context, options, stream).run();
 	return stream;
 };
 

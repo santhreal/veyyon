@@ -236,37 +236,41 @@ function sanitizeAsiValue(value: unknown): ASIValue | undefined {
 	return undefined;
 }
 
-/**
- * The porcelain status autoresearch reads dirty paths out of.
- *
- * FAILURES PROPAGATE, and that is the whole point of this function existing separately. It used to answer
- * any git failure with `""`, which parses to "no paths are dirty" -- and every caller acts on that: the
- * revert reported "nothing to revert" while the experiment's changes sat in the tree, the scope-deviation
- * check passed vacuously because it had no modified paths to compare against `off_limits`, and the run
- * recorded an empty modified-path list as the experiment's result. Three false statements from one
- * swallow. Callers each have an error channel and now use it.
- *
- * A cwd that is NOT inside a repository is the one case answered here rather than raised: `""` is then
- * the true answer, since there are no tracked changes to report, and autoresearch is allowed to run
- * outside a repository. That case is decided by resolving the repository, a walk up the directory chain
- * with no subprocess, so it is never confused with a `git status` that failed for another reason.
- */
-export async function gitStatusPorcelain(cwd: string): Promise<string> {
-	if (!(await git.repo.resolve(cwd))) return "";
-	return git.status(cwd, { porcelainV1: true, untrackedFiles: "all", z: true });
+/** A worktree's porcelain status and the prefix that makes its paths relative to the work directory. */
+export interface WorkDirStatus {
+	/** `git status --porcelain=v1 -z --untracked-files=all`, NUL separated. */
+	readonly statusText: string;
+	/** The path from the repository root to `cwd`, with a trailing slash; `""` at the root. */
+	readonly workDirPrefix: string;
 }
 
+const NO_REPOSITORY_STATUS: WorkDirStatus = { statusText: "", workDirPrefix: "" };
+
 /**
- * The prefix from the repository root to `cwd`, used to make status paths relative to the work directory.
+ * The status autoresearch reads dirty paths out of, with the prefix it resolves them against. The two
+ * git commands run concurrently; every caller needs both.
  *
- * Failures propagate for the same reason as {@link gitStatusPorcelain}: an empty prefix is a real value
- * (cwd IS the repository root), so a failed lookup that returned `""` silently claimed the work directory
- * was the root and every path was then resolved against the wrong directory. As above, a cwd outside a
- * repository is answered with `""` rather than raised, because there is no prefix for it to have.
+ * FAILURES PROPAGATE. This used to answer any git failure with `""`, which parses to "no paths are
+ * dirty" -- and every caller acts on that: the revert reported "nothing to revert" while the
+ * experiment's changes sat in the tree, the scope-deviation check passed vacuously because it had no
+ * modified paths to compare against `off_limits`, and the run recorded an empty modified-path list as the
+ * experiment's result. Callers each have an error channel and use it. The prefix fails the same way: an
+ * empty prefix is a real value (cwd IS the repository root), so a failed lookup that returned `""`
+ * resolved every path against the wrong directory.
+ *
+ * A cwd that is NOT inside a repository is the one case answered rather than raised: an empty status and
+ * prefix are then the true answer, since there are no tracked changes to report, and autoresearch is
+ * allowed to run outside a repository. That case is decided by resolving the repository, a walk up the
+ * directory chain with no subprocess, so it is never confused with a `git status` that failed for
+ * another reason.
  */
-export async function gitWorkDirPrefix(cwd: string): Promise<string> {
-	if (!(await git.repo.resolve(cwd))) return "";
-	return git.show.prefix(cwd);
+export async function readWorkDirStatus(cwd: string): Promise<WorkDirStatus> {
+	if (!(await git.repo.resolve(cwd))) return NO_REPOSITORY_STATUS;
+	const [statusText, workDirPrefix] = await Promise.all([
+		git.status(cwd, { porcelainV1: true, untrackedFiles: "all", z: true }),
+		git.show.prefix(cwd),
+	]);
+	return { statusText, workDirPrefix };
 }
 
 export type ActiveBranchSessionResult =

@@ -21,7 +21,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { buildSystemPrompt, type SystemPromptToolMetadata } from "@veyyon/coding-agent/system-prompt";
-import { SET_CWD_TOOL_NAME } from "@veyyon/coding-agent/tools/fs/reroot-hint";
+import { type NonProjectReason, SET_CWD_TOOL_NAME } from "@veyyon/coding-agent/tools/fs/reroot-hint";
 import { useTempHome } from "./helpers/temp-home";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 
@@ -166,10 +166,14 @@ describe("the working-directory block and the tool it names", () => {
 	 * temp directory with a manifest in it is a project, and the same directory without one is not.
 	 */
 	describe("a working directory that is not a project", () => {
-		async function promptIn(directory: string): Promise<string> {
+		async function promptIn(
+			directory: string,
+			nonProjectCwd?: NonProjectReason | null | Promise<NonProjectReason | null>,
+		): Promise<string> {
 			const toolNames = ["read", SET_CWD_TOOL_NAME];
 			const { systemPrompt } = await buildSystemPrompt({
 				cwd: directory,
+				nonProjectCwd,
 				contextFiles: [],
 				skills: [],
 				rules: [],
@@ -253,6 +257,37 @@ describe("the working-directory block and the tool it names", () => {
 			const text = await promptIn(container);
 
 			expect(text).toContain("holding other projects rather than being one itself");
+		});
+
+		/**
+		 * A session checks its directory once, when it discovers the project, and hands every build
+		 * that answer, so a rebuild does not re-scan the tree. The build must render the answer it was
+		 * handed: re-checking would cost the scan again, and a build that ignored a provided "fine"
+		 * would call a session misrooted that its own discovery cleared.
+		 */
+		it("renders the answer its caller checked rather than checking again", async () => {
+			const bare = path.join(tempDir, "volume");
+			fs.mkdirSync(bare, { recursive: true });
+			const project = path.join(tempDir, "project");
+			fs.mkdirSync(project, { recursive: true });
+			fs.writeFileSync(path.join(project, "package.json"), "{}");
+
+			expect(await promptIn(bare, null)).not.toContain("is not a project root");
+			expect(await promptIn(project, "holds-other-projects")).toContain(
+				"holding other projects rather than being one itself",
+			);
+		});
+
+		/** A check still running when the session starts is raced by the build, as the tree scan is. */
+		it("renders a pending check's answer once it settles", async () => {
+			const project = path.join(tempDir, "project");
+			fs.mkdirSync(project, { recursive: true });
+			fs.writeFileSync(path.join(project, "package.json"), "{}");
+
+			const text = await promptIn(project, Promise.resolve("no-project-marker"));
+
+			expect(text).toContain("is not a project root, because");
+			expect(text).toContain("no build manifest");
 		});
 	});
 

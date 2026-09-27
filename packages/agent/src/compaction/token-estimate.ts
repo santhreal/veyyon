@@ -77,31 +77,30 @@ const tokenEstimateCache = new WeakMap<
  */
 export function estimateTokens(message: AgentMessage, options?: { excludeEncryptedReasoning?: boolean }): number {
 	const slotKey = options?.excludeEncryptedReasoning ? "noReasoning" : "default";
-	// One walk answers "is the cached number still about this content?" without
-	// tokenizing anything: the sink folds fragment lengths instead of keeping the
-	// strings.
-	let shape = 0;
-	const shapeExtra = walkCountedFragments(message, options, text => {
-		shape = (shape * 31 + text.length) | 0;
-	});
-	shape = (shape * 31 + shapeExtra) | 0;
-
 	const cached = tokenEstimateCache.get(message);
 	const hit = cached?.[slotKey];
-	if (hit !== undefined && hit.shape === shape) return hit.value;
-	const value = estimateTokensUncached(message, options);
-	if (cached) cached[slotKey] = { value, shape };
-	else tokenEstimateCache.set(message, { [slotKey]: { value, shape } });
-	return value;
-}
-
-function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryptedReasoning?: boolean }): number {
+	// A cached number is checked with one walk that tokenizes nothing: the sink folds fragment
+	// lengths instead of keeping the strings.
+	if (hit !== undefined) {
+		let shape = 0;
+		const extra = walkCountedFragments(message, options, text => {
+			shape = (shape * 31 + text.length) | 0;
+		});
+		if (hit.shape === ((shape * 31 + extra) | 0)) return hit.value;
+	}
+	// A message measured for the first time, or whose shape moved, is walked once: the same walk
+	// collects the fragments to tokenize and folds the digest the next check compares against.
 	const fragments: string[] = [];
 	const extra = walkCountedFragments(message, options, text => {
 		fragments.push(text);
 	});
-	if (fragments.length === 0) return extra;
-	return extra + countTokens(fragments);
+	let shape = 0;
+	for (const text of fragments) shape = (shape * 31 + text.length) | 0;
+	shape = (shape * 31 + extra) | 0;
+	const value = fragments.length === 0 ? extra : extra + countTokens(fragments);
+	if (cached) cached[slotKey] = { value, shape };
+	else tokenEstimateCache.set(message, { [slotKey]: { value, shape } });
+	return value;
 }
 
 /**

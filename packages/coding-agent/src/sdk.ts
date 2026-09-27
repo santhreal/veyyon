@@ -9,10 +9,6 @@ import {
 	filterProviderReplayMessages,
 } from "@veyyon/agent-core";
 import type { Context, CredentialDisabledEvent, Message, Model, SimpleStreamOptions } from "@veyyon/ai";
-import {
-	getOpenAICodexTransportDetails,
-	prewarmOpenAICodexResponses,
-} from "@veyyon/ai/providers/openai-codex-responses";
 import { abortDetached } from "@veyyon/kernel/session/detached-abort";
 import { createInterruptedTurnAbortMessage } from "@veyyon/kernel/session/exit-diagnostics";
 import { OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
@@ -33,13 +29,7 @@ import {
 } from "@veyyon/utils";
 import { type ArgotGate, shouldEncode } from "argot/policy";
 import { renderPreamble } from "argot/preamble";
-import {
-	armArgotAfterStartup,
-	collectArgotLoadedRoots,
-	createArgotSession,
-	rearmArgotForDecode,
-	shouldAutoloadArgotAtStartup,
-} from "./argot-cache";
+import { collectArgotLoadedRoots, createArgotSession, rearmArgotForDecode } from "./argot-cache";
 import { buildArgotGate, expandToolArguments } from "./argot-wire";
 import { AsyncJobManager } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
@@ -61,29 +51,18 @@ import {
 	isMCPToolName,
 	selectDiscoverableToolNamesByServer,
 } from "./discovery/tool-index";
-import { getExaMcpTools } from "./exa/tools";
 import { TtsrManager } from "./export/ttsr";
-import {
-	type CustomCommandsLoadResult,
-	loadCustomCommands as loadCustomCommandsInternal,
-} from "./extensibility/custom-commands";
-import { discoverCustomToolPaths, loadCustomTools, type ToolPathWithSource } from "./extensibility/custom-tools";
 import type { CustomTool } from "./extensibility/custom-tools/types";
 import {
-	type ExtensionFactory,
+	type BuiltinExtensionFactory,
 	ExtensionRunner,
 	ExtensionToolWrapper,
-	type ExtensionTrustOptions,
 	type ExtensionUIContext,
-	type LoadExtensionsResult,
-	loadExtensionFromFactory,
-	loadExtensions,
 	wrapRegisteredTools,
 } from "./extensibility/extensions";
 import { type Skill, setActiveSkills } from "./extensibility/skills";
 import { LocalProtocolHandler } from "./internal-urls";
 import { describeLegacyPromptFile, findLegacyPromptFiles } from "./legacy-system-prompt-files";
-import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "./lsp/startup-events";
 import { MCPManager } from "./mcp";
 import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memory/backend";
 import { recordRestLaunchFacts } from "./modes/launch-facts";
@@ -91,6 +70,7 @@ import { AgentLifecycleManager } from "./registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID, mainAgentIdFor } from "./registry/agent-registry";
 import { resolveHarnessProfileForModel, resolvePromptSectionOrderForModel } from "./registry/model-profile";
 import { attachSecretsNoticeSink } from "./secrets/notices";
+import { SecretRequestLeases } from "./secrets/request-leases";
 import { SessionSecretRuntime } from "./secrets/session-runtime";
 import { AgentSession } from "./session/agent-session";
 import { discoverAuthStorage } from "./session/auth-broker-config";
@@ -109,7 +89,6 @@ import {
 } from "./system-prompt";
 import { resolveGateInputs, resolveIntentField } from "./system-prompt-builder/gate-inputs";
 import { renderSecretInventory } from "./system-prompt-builder/secret-inventory";
-import { ARGOT_HANDLES_BANNER } from "./system-prompt-builder/section-registry";
 import { delegationStrength } from "./task/agent-settings";
 import { AgentOutputManager } from "./task/output-manager";
 import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
@@ -124,22 +103,23 @@ import {
 	type ToolSession,
 } from "./tools";
 import { createVibeModeTools } from "./tools/agent/manifest";
-import { queueResolveHandler } from "./tools/agent/resolve";
 import { normalizeToolNames, TOOL } from "./tools/core/builtin-names";
 import { ToolContextStore } from "./tools/core/context";
-import { resolveDiscoveryAllForceActive, resolveInitialActiveToolNames } from "./tools/core/loading";
+import {
+	resolveDiscoveryAllForceActive,
+	resolveInitialActiveToolNames,
+	resolveRequestedToolNames,
+} from "./tools/core/loading";
 import { wrapToolWithMetaNotice } from "./tools/core/output-meta";
 import { createRepairToolCallArgumentsHook } from "./tools/core/repair/agent-hook";
 import { renderSearchToolBm25Description, SearchToolBm25Tool } from "./tools/search/search-tool-bm25";
-import { getImageGenTools, isImageProviderPreference, setPreferredImageProvider } from "./tools/web/image-gen";
+import { isImageProviderPreference, setPreferredImageProvider } from "./tools/web/image-gen";
 import {
-	getSearchTools,
 	isSearchProviderId,
 	isSearchProviderPreference,
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
 } from "./tools/web/search";
-import { ttsTool } from "./tools/web/tts";
 import { EventBus } from "./utils/event-bus";
 
 // Types
@@ -206,19 +186,17 @@ export { discoverAuthStorage };
 // Internal Helpers
 
 import type { AsyncResultEntry, SecretRuntimeLease } from "./session/agent-session-types";
+import { createOwnedAsyncJobManager } from "./session/async-jobs";
 import {
 	discoverProjectInputs,
 	discoverPromptTemplates,
-	discoverSessionExtensionPaths,
 	discoverSlashCommands,
 	projectAdvisorScope,
-	reportExtensionLoadFailures,
 	workspaceTreeWithinDeadline,
 } from "./session/factory-extensions";
 import {
 	clipMCPServerInstructions,
 	collectPendingMCPToolNames,
-	createPendingMCPTool,
 	type StartDeferredMCPDiscovery,
 	startSessionMCP,
 	wireReactiveMCPManager,
@@ -236,10 +214,12 @@ import {
 	isSubagentSession,
 } from "./session/factory-options";
 import {
+	assembleToolRegistry,
 	createCustomToolsExtension,
 	customToolToDefinition,
 	isCustomTool,
 	isLegacyBuiltinToolDefinition,
+	loadSessionCustomTools,
 } from "./session/factory-tools";
 import {
 	applySystemPromptOverride,
@@ -247,6 +227,13 @@ import {
 	ProjectPromptInputs,
 	promptDiscoverableTools,
 } from "./session/prompt-inputs";
+import { prewarmCodexTransport, startLspServers } from "./session/startup-background";
+import {
+	adoptStartupExtensionProviders,
+	loadStartupCustomCommands,
+	loadStartupExtensions,
+} from "./session/startup-extensions";
+import { armLaunchArgot, recordNewSessionStart } from "./session/startup-records";
 import { buildAdvisorTools, createSessionToolSession } from "./session/tool-session";
 
 let sshCleanupRegistered = false;
@@ -587,50 +574,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			]);
 
 		const enableLsp = options.enableLsp ?? true;
-		const asyncMaxJobs = Math.min(100, Math.max(1, settings.get("async.maxJobs") ?? 100));
-		const ASYNC_INLINE_RESULT_MAX_CHARS = 12_000;
-		const ASYNC_PREVIEW_MAX_CHARS = 4_000;
-		const formatAsyncResultForFollowUp = async (result: string): Promise<string> => {
-			if (result.length <= ASYNC_INLINE_RESULT_MAX_CHARS) {
-				return result;
-			}
-
-			const preview = `${result.slice(0, ASYNC_PREVIEW_MAX_CHARS)}\n\n[Output truncated. Showing first ${ASYNC_PREVIEW_MAX_CHARS.toLocaleString()} characters.]`;
-			try {
-				const { path: artifactPath, id: artifactId } = await sessionManager.allocateArtifactPath("async");
-				if (artifactPath && artifactId) {
-					await Bun.write(artifactPath, result);
-					return `${preview}\nFull output: artifact://${artifactId}`;
-				}
-			} catch (error) {
-				logger.warn("Failed to persist async follow-up artifact", {
-					error: errorMessage(error),
-				});
-			}
-
-			return preview;
-		};
-		// Only the first top-level session in a process owns an AsyncJobManager.
-		// Spawned agents inherit the parent's manager via `AsyncJobManager.instance()`
-		// (set below), and any additional top-level session spun up in-process
-		// (e.g. the agent-creation architect in `agent-dashboard.ts`) must share
-		// the live singleton — otherwise its dispose path would clobber the
-		// owning session's manager and break the `task`/`bash` async paths
-		// (issue #1923). The `instance()` guard means later sessions also skip
-		// constructing an orphaned manager that nothing would ever route to.
-		asyncJobManager =
-			!isInProcessChildSession(options) && !AsyncJobManager.instance()
-				? new AsyncJobManager({
-						maxRunningJobs: asyncMaxJobs,
-						onJobComplete: async (jobId, result, job) => {
-							if (!session || asyncJobManager!.isDeliverySuppressed(jobId)) return;
-							const formattedResult = await formatAsyncResultForFollowUp(result);
-							if (asyncJobManager!.isDeliverySuppressed(jobId)) return;
-
-							session.deliverAsyncJobResult(jobId, formattedResult, job);
-						},
-					})
-				: undefined;
+		asyncJobManager = createOwnedAsyncJobManager({ options, settings, sessionManager, target: () => session });
 
 		const scopedAsyncJobManager =
 			asyncJobManager ?? (isInProcessChildSession(options) ? AsyncJobManager.instance() : undefined);
@@ -755,62 +699,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// to mirror the AsyncJobManager ownership rule.
 		if (mcpManager && !isInProcessChildSession(options)) MCPManager.setInstance(mcpManager);
 
-		// Add image tools when generation is enabled and either no explicit tool
-		// whitelist was given or it names `generate_image`. Unlike built-in tools
-		// (filtered in `createTools`), custom tools are force-activated via
-		// `alwaysInclude` below, so an explicit `--no-tools`/whitelist must be
-		// honored here or image-gen would leak past every filter (issue #5305).
-		const imageGenRequested = !options.toolNames || options.toolNames.includes("generate_image");
-		if (settings.get("generate_image.enabled") && imageGenRequested) {
-			const imageGenTools = await logger.time("getImageGenTools", () => getImageGenTools(modelRegistry, model));
-			if (imageGenTools.length > 0) {
-				customTools.push(...(imageGenTools as unknown as CustomTool[]));
-			}
-		}
-
-		// Like image-gen above, tts is a custom tool force-activated via
-		// `alwaysInclude`, so an explicit `--no-tools` / tool whitelist must be
-		// honored here or it would leak past every filter (issue #5305).
-		const speechRequested = !options.toolNames || options.toolNames.includes(ttsTool.name);
-		if (settings.get("speechgen.enabled") && speechRequested) {
-			customTools.push(ttsTool as unknown as CustomTool);
-		}
-
-		// Add web search tools
-		if (options.toolNames?.includes(TOOL.web_search)) {
-			customTools.push(...getSearchTools());
-		}
-
-		// Exa's hosted MCP servers. Both settings default to off, so this costs a
-		// round trip only for sessions that asked for the tools. `exa.enabled` is
-		// the master switch the search provider already honors, so it gates these
-		// too: turning Exa off must turn all of Exa off.
-		if (settings.get("exa.enabled")) {
-			const exaTools = await logger.time("getExaMcpTools", () =>
-				getExaMcpTools({
-					researcher: settings.get("exa.enableResearcher"),
-					websets: settings.get("exa.enableWebsets"),
-				}),
-			);
-			// Honor an explicit tool whitelist: these are force-activated too, so
-			// `--no-tools` / a whitelist that names none of them must drop them all
-			// (same leak class as image-gen/tts, issue #5305).
-			const whitelist = options.toolNames;
-			const requestedExaTools = whitelist
-				? exaTools.filter(tool => whitelist.includes((tool as { name: string }).name))
-				: exaTools;
-			if (requestedExaTools.length > 0) {
-				customTools.push(...(requestedExaTools as unknown as CustomTool[]));
-			}
-		}
-
-		// Discover custom tools from `.veyyon/tools/`, `.claude/tools/`, plugins, etc.
-		// Spawned agents reuse the parent's scan via `preloadedCustomToolPaths` to skip
-		// the FS walk, but ALWAYS re-call `loadCustomTools` here so factories bind
-		// to THIS session's `CustomToolAPI` (cwd, exec, pushPendingAction, UI).
-		// Forwarding the parent's `LoadedCustomTool[]` directly would route tool
-		// execution back through the parent — wrong for isolated tasks and for
-		// pending-action queueing.
 		const builtInToolNames = builtinTools.map(t => t.name);
 		// Session CPU budget: every process a custom tool, custom command, or
 		// extension spawns through `exec` joins this session's budget group. The
@@ -818,161 +706,39 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// created in the AgentSession constructor, tools loaded before it) is
 		// irrelevant.
 		const cpuExec = sessionCpuExecHooks(() => toolSession.getSessionId?.() ?? null);
-		const adoptSpawnedPid = cpuExec.adoptPid;
-		const gateSpawn = cpuExec.gate;
-		const customToolPaths: ToolPathWithSource[] =
-			options.preloadedCustomToolPaths ??
-			(await logger.time("discoverCustomToolPaths", () => discoverCustomToolPaths([], cwd, agentDir)));
-		const customToolsLoadResult = await logger.time("loadCustomTools", () =>
-			loadCustomTools(
-				customToolPaths,
-				cwd,
-				builtInToolNames,
-				action => queueResolveHandler(toolSession, action),
-				adoptSpawnedPid,
-				gateSpawn,
-			),
-		);
-		// The same channel `reportExtensionLoadFailures` uses: a tool with a syntax error, a
-		// bad default export, or a name another tool already took was dropped with a line in
-		// the file log and nothing on the surface, so the tool was absent with no explanation.
-		for (const { path, error } of customToolsLoadResult.errors) {
-			logger.error("Custom tool load failed", { path, error });
-			operatorNotices.error("tools", `${path}: ${error}`);
-		}
-		if (customToolsLoadResult.tools.length > 0) {
-			customTools.push(...customToolsLoadResult.tools.map(loaded => loaded.tool));
-		}
+		const sessionCustomTools = await loadSessionCustomTools({
+			options,
+			settings,
+			modelRegistry,
+			model,
+			cwd,
+			agentDir,
+			builtInToolNames,
+			toolSession,
+			cpuExec,
+			operatorNotices,
+		});
+		customTools.push(...sessionCustomTools.tools);
 		// Forward the path list (NOT the loaded tools) to spawned agents so they
 		// re-bind under their own `CustomToolAPI` while skipping the FS scan.
-		toolSession.customToolPaths = customToolPaths;
+		toolSession.customToolPaths = sessionCustomTools.paths;
 
-		const inlineExtensions: ExtensionFactory[] = options.extensions ? options.extensions.slice() : [];
-		inlineExtensions.push((await import("./autoresearch")).createAutoresearchExtension);
+		const builtins: BuiltinExtensionFactory[] = [(await import("./autoresearch")).createAutoresearchExtension];
 		if (customTools.length > 0) {
-			inlineExtensions.push(createCustomToolsExtension(customTools, text => secretRuntime.obfuscateText(text)));
+			builtins.push(createCustomToolsExtension(customTools, text => secretRuntime.obfuscateText(text)));
 		}
 
-		// Load extensions. Three paths:
-		//   1. `preloadedExtensions` (CLI): caller already loaded — reuse the
-		//      Extension instances. Shallow-clone `extensions` so the inline
-		//      push below cannot mutate the caller's array. `runtime` is shared
-		//      so flag values set pre-creation flow into the live session.
-		//   2. `preloadedExtensionPaths` (spawned agent): caller resolved paths;
-		//      skip the FS scan but always re-call `loadExtensions` here so
-		//      each `Extension` binds to THIS session's `ExtensionAPI`
-		//      (cwd, eventBus, runtime).
-		//   3. No preload: run the full session discovery.
-		// `disableExtensionDiscovery` is honored implicitly: a caller that set
-		// the flag and pre-resolved the result already reflects that choice.
-		let extensionPaths: string[];
-		let extensionsResult: LoadExtensionsResult;
-		// The trust gate reads the SESSION's profile, and the paths the operator named are the
-		// operator's own even when they live inside the project. Both `loadExtensions` calls
-		// below used to pass neither: a `--extension ./dev/tool.ts` was withheld as repository
-		// code, and the decision was looked up in whichever profile the process booted with
-		// rather than the one this session runs under.
-		const namedExtensionPaths = [
-			...(options.additionalExtensionPaths ?? []),
-			...(options.preloadedNamedExtensionPaths ?? []),
-			...(settings.get("extensions") ?? []),
-		];
-		const extensionTrustOptions: ExtensionTrustOptions = {
-			agentDir,
-			configuredPaths: namedExtensionPaths,
-		};
-		if (options.preloadedExtensions) {
-			extensionsResult = {
-				...options.preloadedExtensions,
-				extensions: options.preloadedExtensions.extensions.slice(),
-			};
-			// Capture paths for downstream forwarding; filter inline-factory
-			// entries (`<inline-N>`) — those are per-session, not source paths.
-			extensionPaths = extensionsResult.extensions
-				.map(ext => ext.resolvedPath)
-				.filter(p => !p.startsWith("<inline"));
-			// The caller loaded these (the CLI resolves extension flags before a
-			// session exists), so the failures came with them. This session is
-			// the one that has a surface, so it is the one that reports them.
-			reportExtensionLoadFailures(extensionsResult, operatorNotices);
-		} else if (options.preloadedExtensionPaths) {
-			extensionPaths = options.preloadedExtensionPaths;
-			extensionsResult = await logger.time(
-				"loadExtensions",
-				loadExtensions,
-				extensionPaths,
-				cwd,
-				eventBus,
-				adoptSpawnedPid,
-				extensionTrustOptions,
-				gateSpawn,
-			);
-			reportExtensionLoadFailures(extensionsResult, operatorNotices);
-		} else {
-			extensionPaths = await logger.time("discoverSessionExtensionPaths", () =>
-				discoverSessionExtensionPaths(options, cwd, settings, agentDir),
-			);
-			extensionsResult = await logger.time(
-				"loadExtensions",
-				loadExtensions,
-				extensionPaths,
-				cwd,
-				eventBus,
-				adoptSpawnedPid,
-				extensionTrustOptions,
-				gateSpawn,
-			);
-			reportExtensionLoadFailures(extensionsResult, operatorNotices);
-		}
+		const extensions = await loadStartupExtensions(
+			{ options, cwd, agentDir, settings, eventBus, cpuExec, operatorNotices },
+			builtins,
+		);
+		const extensionsResult = extensions.result;
 		// Forward the source-path list (NOT the loaded instances) so spawned agents
 		// rebuild their own session-scoped extensions.
-		toolSession.extensionPaths = extensionPaths;
-		toolSession.namedExtensionPaths = namedExtensionPaths;
+		toolSession.extensionPaths = extensions.paths;
+		toolSession.namedExtensionPaths = extensions.namedPaths;
 
-		// Load inline extensions from factories
-		if (inlineExtensions.length > 0) {
-			for (let i = 0; i < inlineExtensions.length; i++) {
-				const factory = inlineExtensions[i];
-				const loaded = await loadExtensionFromFactory(
-					factory,
-					cwd,
-					eventBus,
-					extensionsResult.runtime,
-					`<inline-${i}>`,
-					adoptSpawnedPid,
-					gateSpawn,
-				);
-				extensionsResult.extensions.push(loaded);
-			}
-		}
-
-		// Process provider registrations queued during extension loading.
-		// This must happen before the runner is created so that models registered by
-		// extensions are available for model selection on session resume / fallback.
-		const activeExtensionSources = extensionsResult.extensions.map(extension => extension.path);
-		modelRegistry.syncExtensionSources(activeExtensionSources);
-		for (const sourceId of new Set(activeExtensionSources)) {
-			modelRegistry.clearSourceRegistrations(sourceId);
-		}
-		if (extensionsResult.runtime.pendingProviderRegistrations.length > 0) {
-			for (const { name, config, sourceId } of extensionsResult.runtime.pendingProviderRegistrations) {
-				modelRegistry.registerProvider(name, config, sourceId);
-			}
-			extensionsResult.runtime.pendingProviderRegistrations = [];
-		}
-		// Hydrate cached runtime (extension) provider catalogs before model
-		// resolution. Dynamic-only providers have no synchronous registration side
-		// effect, so a cold --model/provider resume must see the same fresh SQLite
-		// cache that `veyyon models find` uses before the online refresh continues in
-		// the background.
-		await modelRegistry.refreshRuntimeProviders("offline");
-		// Continue runtime discovery in the background (cache-aware) so startup is
-		// only blocked on local cache reads, not provider network fetches.
-		void modelRegistry.refreshRuntimeProviders().catch(error => {
-			logger.warn("runtime provider discovery failed", {
-				error: errorMessage(error),
-			});
-		});
+		await adoptStartupExtensionProviders(modelRegistry, extensionsResult);
 
 		// Every provider is registered now: reclaim the session's model, resolve deferred
 		// `--model` patterns, fall back to the first authenticated model, and refresh the
@@ -996,21 +762,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 		}
 
-		// Discover custom commands (TypeScript slash commands)
-		const customCommandsResult: CustomCommandsLoadResult = options.disableExtensionDiscovery
-			? { commands: [], errors: [] }
-			: await logger.time("discoverCustomCommands", loadCustomCommandsInternal, {
-					cwd,
-					agentDir,
-					adoptSpawnedPid,
-					gateSpawn,
-				});
-		if (!options.disableExtensionDiscovery) {
-			for (const { path, error } of customCommandsResult.errors) {
-				logger.error("Failed to load custom command", { path, error });
-				operatorNotices.error("commands", `${path}: ${error}`);
-			}
-		}
+		const customCommandsResult = await loadStartupCustomCommands({
+			options,
+			cwd,
+			agentDir,
+			cpuExec,
+			operatorNotices,
+		});
 
 		// The runner is created unconditionally — even with zero extensions loaded — because the
 		// `ExtensionToolWrapper` installed below is the only place the per-tool approval gate runs.
@@ -1084,57 +842,17 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			wrapToolWithMetaNotice,
 		);
 
-		// All built-in tools are active (conditional tools like git/ask return null from factory if disabled)
-		const builtInRegistryToolNames = new Set<string>();
-		const toolRegistry = new Map<string, Tool>();
-		for (const tool of builtinTools) {
-			toolRegistry.set(tool.name, tool);
-			builtInRegistryToolNames.add(tool.name);
-		}
-		if (!toolRegistry.has(TOOL.goal) && settings.get("goal.enabled")) {
-			const goalTool = await logger.time("createTools:goal:session", HIDDEN_TOOLS.goal, toolSession);
-			if (goalTool) {
-				toolRegistry.set(goalTool.name, wrapToolWithMetaNotice(goalTool));
-				builtInRegistryToolNames.add(goalTool.name);
-			}
-		}
-		for (const tool of wrappedExtensionTools) {
-			toolRegistry.set(tool.name, tool);
-			builtInRegistryToolNames.delete(tool.name);
-		}
-		if (deferMCPDiscoveryForUI && mcpManager) {
-			for (const name of collectPendingMCPToolNames(options.toolNames, existingSession.selectedMCPToolNames)) {
-				if (!toolRegistry.has(name)) {
-					toolRegistry.set(name, createPendingMCPTool(name));
-				}
-			}
-		}
-
-		// Wrap every tool with `ExtensionToolWrapper` so the per-tool approval gate runs on every
-		// call site, regardless of whether any user extensions are loaded. See the runner-construction
-		// comment above for the safety invariant this enforces.
-		for (const tool of toolRegistry.values()) {
-			toolRegistry.set(tool.name, new ExtensionToolWrapper(tool, extensionRunner));
-		}
-
-		// `resolve` is hidden but must stay in the registry whenever any code path can invoke it:
-		// either a deferrable tool stages a preview action, or plan mode installs a standing handler
-		// that consumes `resolve { action: "apply" }` to submit the plan for approval (issue #1428).
-		// Dropping it on read-only sessions (e.g. plan-mode toolset `read`, `search`,
-		// `web_search`) leaves plan mode unable to exit through the intended path.
-		const hasDeferrableTools = Array.from(toolRegistry.values()).some(tool => tool.deferrable === true);
-		const planModeAvailable = settings.get("plan.enabled");
-		const needsResolveTool = hasDeferrableTools || planModeAvailable;
-		if (!needsResolveTool) {
-			toolRegistry.delete(TOOL.resolve);
-			builtInRegistryToolNames.delete(TOOL.resolve);
-		} else if (!toolRegistry.has(TOOL.resolve)) {
-			const resolveTool = await logger.time("createTools:resolve:session", HIDDEN_TOOLS.resolve, toolSession);
-			if (resolveTool) {
-				toolRegistry.set(resolveTool.name, wrapToolWithMetaNotice(resolveTool));
-				builtInRegistryToolNames.add(resolveTool.name);
-			}
-		}
+		const { tools: toolRegistry, builtInNames: builtInRegistryToolNames } = await assembleToolRegistry({
+			builtinTools,
+			extensionTools: wrappedExtensionTools,
+			pendingMCPToolNames:
+				deferMCPDiscoveryForUI && mcpManager
+					? collectPendingMCPToolNames(options.toolNames, existingSession.selectedMCPToolNames)
+					: [],
+			extensionRunner,
+			settings,
+			toolSession,
+		});
 
 		// `let`: the deferred MCP discovery closure upgrades these when the real
 		// MCP tool count pushes `auto` past its threshold; `rebuildSystemPrompt`
@@ -1221,6 +939,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				contextFiles,
 				workspaceTree: projectInputs.workspaceTree,
 				activeRepoContext,
+				nonProjectCwd: projectInputs.nonProjectCwd,
 				skills,
 				rulebookRules,
 				alwaysApplyRules,
@@ -1313,9 +1032,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				argot !== undefined &&
 				argotActiveModel !== undefined &&
 				shouldEncode(argotGate, { model: argotActiveModel, contextTokens: argotContextTokens });
-			const project = promptInputs.current;
 			const defaultPrompt = await buildSystemPromptInternal({
 				...gateInputs,
+				...promptInputs.promptOptions(),
 				// The tree is scanned when the project is discovered, so this flag hides a
 				// scanned tree but cannot scan one; `gate-registry.ts` records that placement.
 				// Descriptor placement stays live in `gateInputs`: the same active-model policy
@@ -1325,20 +1044,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				// A spawned agent gets no personality regardless of the setting. That is a fact about
 				// this caller, not about the configuration, so it does not belong in the resolver.
 				personality: agentKind === "sub" ? "none" : gateInputs.personality,
-				cwd: project.cwd,
 				agentDir,
 				resolvedCustomPrompt: options.customSystemPrompt,
-				skills: project.skills,
-				// Every api inlines the operator's layers here, cursor-agent included. That api's
-				// server discards the client's system-prompt blobs and applies none of the
-				// request-context rules, so the provider carries the assembled prompt on the
-				// active user turn — the one thing it delivers verbatim. Either way the prompt
-				// IS the instruction payload, and one composer builds it for every api.
-				contextFiles: project.contextFiles,
 				tools: promptTools,
 				toolNames,
-				rules: project.rulebookRules,
-				alwaysApplyRules: project.alwaysApplyRules,
 				resolvedAppendSystemPrompt: appendPrompt,
 				skillsSettings: settings.getGroup("skills"),
 				mcpDiscoveryMode: discoverable.searchable,
@@ -1353,45 +1062,20 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				secretInventory: renderSecretInventory(secretRuntime.obfuscator?.namedSecretNames()),
 				argotPreamble: argotCanEncode ? renderPreamble({ tools: true }) : undefined,
 				argotHandles: argotCanEncode && argot.loaded ? argot.promptFragment() : undefined,
-				workspaceTree: project.workspaceTree,
 				memoryRootEnabled: memoryBackend.id === "local",
 				model: getActiveModelString(),
-				activeRepoContext: project.activeRepoContext,
 				sectionOrder: resolvePromptSectionOrderForModel(settings, agent?.state.model ?? model),
 			});
 			return applySystemPromptOverride(defaultPrompt, options.systemPrompt);
 		};
 
-		const toolNamesFromRegistry = Array.from(toolRegistry.keys());
-		const explicitlyRequestedToolNames = options.toolNames ? normalizeToolNames(options.toolNames) : undefined;
-		// When `requireYieldTool` is set, the spawned agent's prompts and idle-reminders demand a
-		// `yield` call to terminate. The tool registry already includes `yield` (see
-		// `createTools`), but an explicit `toolNames` list would otherwise drop it from the
-		// active set — leaving the model unable to satisfy the contract. Mirror the same
-		// invariant `parseAgentFields` enforces on frontmatter `tools`.
-		if (
-			options.requireYieldTool === true &&
-			explicitlyRequestedToolNames &&
-			!explicitlyRequestedToolNames.includes(TOOL.yield)
-		) {
-			explicitlyRequestedToolNames.push(TOOL.yield);
-		}
-		// Auto-learn builtins are force-included into the registry by `createTools`
-		// for enabled top-level sessions (tools/index.ts), but — like `yield` above —
-		// an explicit `toolNames` list would otherwise drop them from the ACTIVE set,
-		// leaving the nudge/guidance pointing at tools the model cannot call. Activate
-		// exactly the builtins createTools built (`builtInToolNames` — provenance, so a
-		// same-named custom/extension tool is never force-activated when auto-learn is
-		// off) to keep guidance, controller, and the active set consistent.
-		if (explicitlyRequestedToolNames) {
-			for (const name of [TOOL.manage_skill, TOOL.learn]) {
-				if (builtInToolNames.includes(name) && !explicitlyRequestedToolNames.includes(name)) {
-					explicitlyRequestedToolNames.push(name);
-				}
-			}
-		}
-		const requestedToolNames = explicitlyRequestedToolNames ?? toolNamesFromRegistry;
-		const normalizedRequested = requestedToolNames.filter(name => toolRegistry.has(name));
+		const normalizedRequested = resolveRequestedToolNames({
+			toolNames: options.toolNames,
+			requireYieldTool: options.requireYieldTool === true,
+			builtInToolNames,
+			registryToolNames: Array.from(toolRegistry.keys()),
+			hasRegistryTool: name => toolRegistry.has(name),
+		});
 		const requestedToolNameSet = new Set(normalizedRequested);
 		// The registry is complete here, MCP and extension tools included, which is the first point where
 		// "this rule is scoped to a tool that does not exist" is answerable. Checked against the whole
@@ -1420,9 +1104,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// ensuring `goal`, dropping `defaultInactive`, merging the MCP selection, appending
 		// `alwaysInclude`, hiding discoverables under `all`, and applying the harness allowlist —
 		// live in `resolveInitialActiveToolNames` (`tools/loading/policy.ts`).
-		// `explicitToolNames` is the RAW `options.toolNames`, NOT
-		// `explicitlyRequestedToolNames`: the yield / auto-learn names forced into the latter are
-		// activations, not user requests, and must not exempt a tool from discovery-all hiding.
+		// `explicitToolNames` is the RAW `options.toolNames`, NOT the list `resolveRequestedToolNames`
+		// widened: the yield / auto-learn names it forces in are activations, not user requests, and
+		// must not exempt a tool from discovery-all hiding.
 		const {
 			initialToolNames,
 			initialSelectedMCPToolNames,
@@ -1488,65 +1172,31 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 		const slashCommands = await slashCommandsPromise;
 
-		const secretRuntimeByObject = new WeakMap<object, SecretRuntimeLease>();
-		const bindSecretRuntime = (value: unknown, runtime: SecretRuntimeLease): void => {
-			if (typeof value !== "object" || value === null) return;
-			secretRuntimeByObject.set(value, runtime);
-			if (Array.isArray(value)) {
-				for (const item of value) {
-					if (typeof item === "object" && item !== null) secretRuntimeByObject.set(item, runtime);
-				}
-			}
-		};
-		const resolveSecretRuntimeForContext = (context: Context): SecretRuntimeLease | undefined => {
-			const direct = secretRuntimeByObject.get(context) ?? secretRuntimeByObject.get(context.messages);
-			if (direct) return direct;
-			for (const message of context.messages) {
-				const runtime = secretRuntimeByObject.get(message);
-				if (runtime) return runtime;
-			}
-			return undefined;
-		};
-		let activeMainRequestRuntime = secretRuntime.lease;
+		const requestLeases = new SecretRequestLeases(secretRuntime);
 
 		// Acquire before the first async extension hook. The returned arrays and
 		// context retain this exact authority through provider serialization.
 		const transformContext = async (messages: AgentMessage[], _signal?: AbortSignal) => {
-			const runtime = await secretRuntime.acquire();
-			activeMainRequestRuntime = runtime;
-			bindSecretRuntime(messages, runtime);
+			const lease = await requestLeases.admit(messages);
 			const withContext = await extensionRunner.emitContext(messages);
 			const transformed = wrapSteeringForModel(withContext);
-			bindSecretRuntime(withContext, runtime);
-			bindSecretRuntime(transformed, runtime);
+			requestLeases.bind(withContext, lease);
+			requestLeases.bind(transformed, lease);
 			return transformed;
 		};
 
-		const convertToLlmFinal = (messages: AgentMessage[]): Message[] => {
-			const runtime = secretRuntimeByObject.get(messages) ?? activeMainRequestRuntime;
-			// No image policy here. Conversion sees one model per session, while the
-			// main turn, a side request, compaction and an advisor each dispatch
-			// their own; the policy resolves in AgentSession's provider-context hook,
-			// which knows the model the request is actually going to.
-			const converted = filterProviderReplayMessages(convertToLlm(messages));
-			const redacted = runtime.obfuscateMessages(converted);
-			bindSecretRuntime(converted, runtime);
-			bindSecretRuntime(redacted, runtime);
-			return redacted;
-		};
+		// No image policy here. Conversion sees one model per session, while the
+		// main turn, a side request, compaction and an advisor each dispatch
+		// their own; the policy resolves in AgentSession's provider-context hook,
+		// which knows the model the request is actually going to.
+		const convertToLlmFinal = (messages: AgentMessage[]): Message[] =>
+			requestLeases.redactMessages(messages, filterProviderReplayMessages(convertToLlm(messages)));
 
 		const transformProviderContext = async (
 			context: Context,
 			_transformModel: Model,
-			requestRuntime?: SecretRuntimeLease,
-		): Promise<Context> => {
-			const runtime = requestRuntime ?? resolveSecretRuntimeForContext(context) ?? activeMainRequestRuntime;
-			const transformed = runtime.obfuscateContext(context);
-			bindSecretRuntime(context, runtime);
-			bindSecretRuntime(transformed, runtime);
-			bindSecretRuntime(transformed.messages, runtime);
-			return transformed;
-		};
+			requestLease?: SecretRuntimeLease,
+		): Promise<Context> => requestLeases.redactContext(context, requestLease);
 
 		// Raw extension hook. The leased stream wrapper performs the final
 		// redaction after this await with the request's immutable runtime.
@@ -1655,7 +1305,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 						});
 					}
 				}
-				const runtime = resolveSecretRuntimeForContext(context) ?? activeMainRequestRuntime;
+				const runtime = requestLeases.requestLease(context);
 				const optionsForRequest = streamOptions ?? {};
 				const requestOnPayload = optionsForRequest.onPayload;
 				const leasedOnPayload =
@@ -1687,7 +1337,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				}
 				// `execution` is `display` itself unless a secret expanded.
 				let execution = secretRuntime.deobfuscateForExecution(
-					activeMainRequestRuntime,
+					requestLeases.mainRequest,
 					display,
 					toolName,
 					agent.sessionId,
@@ -1842,7 +1492,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			obfuscator: secretRuntime.obfuscator,
 			secretRuntime: secretRuntime.lease,
 			leaseSecretRuntime: () => secretRuntime.acquire(),
-			resolveSecretRuntimeLeaseForContext: resolveSecretRuntimeForContext,
+			resolveSecretRuntimeLeaseForContext: context => requestLeases.forContext(context),
 			refreshSecretRuntime: runtimeCwd => secretRuntime.refresh(runtimeCwd),
 			argot,
 			agentId: resolvedAgentId,
@@ -1881,117 +1531,22 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			atRest.contextLimit,
 		);
 
-		if (
-			shouldAutoloadArgotAtStartup({
-				enabled: argotEnabled,
-				autoload: settings.get("argot.autoload"),
-				argot,
-			}) &&
-			argot !== undefined
-		) {
-			// The adoption path auto-loads the launch project so the feature works
-			// out of the box; argot_load remains the way to teach additional
-			// projects, and `argot.autoload` off leaves every load to it. The load
-			// runs in the background: the first dictionary
-			// generation in a project walks the repo, and awaiting it inline
-			// would block session construction on large trees. The completed load
-			// refreshes the base system prompt to teach the handles — the same
-			// contract as argot_load.
-			void armArgotAfterStartup({
-				argot,
-				cwd,
-				tokenBudget: settings.get("argot.tokenBudget"),
-				// Refresh the prompt to teach the handles, then RECORD what the refresh
-				// actually produced. Without this record nothing downstream can tell a
-				// session that taught 551 handles from one that taught none: the only
-				// prompt in the transcript is `session_init`, written before this
-				// background arm completes, so it always shows an unarmed prompt. An
-				// eval reading it therefore charged "the model ignored the handles" to
-				// the model, when the same evidence is equally consistent with the
-				// table never reaching the model at all. This entry is the difference.
-				onArmed: async () => {
-					const prompt = await session.refreshBaseSystemPrompt("argot-arm");
-					const joined = prompt.join("\n\n");
-					const taughtHandles = argot.loaded ? argot.vocabulary().handles.size : 0;
-					const inPrompt = joined.includes(ARGOT_HANDLES_BANNER);
-					sessionManager.appendCustomMessageEntry(
-						"argot_taught",
-						inPrompt
-							? `argot: system prompt refreshed, teaching ${taughtHandles} handle${taughtHandles === 1 ? "" : "s"}`
-							: "argot: system prompt refreshed but the handle table is ABSENT; the model was taught no handles",
-						false,
-						{ handles: taughtHandles, inPrompt, promptChars: joined.length },
-						"agent",
-					);
-					if (!inPrompt) {
-						// Fail loud rather than degrade quietly: an armed session whose
-						// prompt carries no table is inert, and silence here is what made
-						// that state indistinguishable from the feature being off.
-						logger.error(
-							"argot: refreshed system prompt carries no handle table; session is effectively UNARMED",
-							{
-								cwd,
-								handles: taughtHandles,
-							},
-						);
-					}
-				},
-				// Record the actually-loaded vocabulary (including an empty one) as
-				// durable session telemetry. An eval reading the transcript otherwise
-				// cannot tell an empty-dictionary corpus (nothing to encode) from a
-				// loaded dictionary the model ignored: session_init snapshots the
-				// startup prompt before this async arm, so the handle table never
-				// appears in any recorded prompt. The entries ride along because a
-				// count cannot bound the effect — computing how much the model COULD
-				// have saved needs the actual expansions. Same custom_message channel
-				// as cwd_changed; a few KB at most, written once per session.
-				onResolved: vocab => {
-					sessionManager.appendCustomMessageEntry(
-						"argot_armed",
-						`argot: launch project armed with ${vocab.handles} handle${vocab.handles === 1 ? "" : "s"}`,
-						false,
-						vocab,
-						"agent",
-					);
-				},
-				// The failure twin of `onResolved`, on the same durable channel. Without
-				// it a failed arm left NO record at all, so a reader could not tell an
-				// inert session from one with the feature off — and an eval would score
-				// the trial as a shorthand arm that the model ignored.
-				onFailed: info => {
-					sessionManager.appendCustomMessageEntry(
-						"argot_arm_failed",
-						`argot: launch project FAILED to arm (${info.error}); no handles taught this session`,
-						false,
-						info,
-						"agent",
-					);
-				},
-			});
-		}
-
-		// Record the top-level session's exact system prompt + active tools at start,
-		// reusing the SAME `session_init` entry a spawned agent writes (ONE PLACE — see
-		// task/executor.ts). This makes the main agent's run replayable/backtestable at
-		// full fidelity: the exact prompt bytes AS SENT are in the record, not merely
-		// reconstructable from config (GRAN-4). Written once on a NEW session only —
-		// resumed sessions already carry their init entry, so we do not duplicate it.
-		if (agentKind === "main" && !hasExistingSession) {
-			sessionManager.appendSessionInit({
-				systemPrompt: session.agent.state.systemPrompt.join("\n\n"),
-				task: "",
-				tools: session.getActiveToolNames(),
-			});
-		}
-
-		// Record the complete effective config that governs this run (every Tier-A
-		// setting AS RESOLVED), for EVERY new session — main and spawned agent alike — so a
-		// backtest can reproduce the exact configuration, not guess it from current
-		// defaults (GRAN-3). Written once per new session; resumed sessions keep the
-		// snapshot they were created with. The few settings that change interactively
-		// (model, thinking, tier, mode, MCP selection) are tracked by their own entries.
+		armLaunchArgot({
+			argot,
+			enabled: argotEnabled,
+			settings,
+			cwd,
+			sessionManager,
+			refreshPrompt: () => session.refreshBaseSystemPrompt("argot-arm"),
+		});
 		if (!hasExistingSession) {
-			sessionManager.appendSettingsSnapshot(settings.getEffectiveSnapshot());
+			recordNewSessionStart({
+				sessionManager,
+				settings,
+				isMainAgent: agentKind === "main",
+				systemPrompt: session.agent.state.systemPrompt,
+				activeToolNames: session.getActiveToolNames(),
+			});
 		}
 
 		if (asyncJobManager) {
@@ -2071,88 +1626,20 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			};
 		}
 
-		if (model?.api === "openai-codex-responses") {
-			// `.api` equality doesn't narrow the generic; the guard makes this cast sound.
-			const codexModel = model as Model<"openai-codex-responses">;
-			const codexTransport = getOpenAICodexTransportDetails(codexModel, {
-				sessionId: providerSessionId,
-				baseUrl: codexModel.baseUrl,
-				preferWebsockets: preferOpenAICodexWebsockets,
-				providerSessionState: session.providerSessionState,
-			});
-			if (codexTransport.websocketPreferred) {
-				void (async () => {
-					try {
-						const codexPrewarmApiKey = await modelRegistry.getApiKey(codexModel, providerSessionId);
-						if (!codexPrewarmApiKey) return;
-						await logger.time("prewarmOpenAICodexResponses", prewarmOpenAICodexResponses, codexModel, {
-							apiKey: codexPrewarmApiKey,
-							sessionId: providerSessionId,
-							preferWebsockets: preferOpenAICodexWebsockets,
-							providerSessionState: session.providerSessionState,
-						});
-					} catch (error) {
-						const errorText = errorMessage(error);
-						logger.debug("Codex websocket prewarm failed", {
-							error: errorText,
-							provider: codexModel.provider,
-							model: codexModel.id,
-						});
-					}
-				})();
-			}
-		}
+		prewarmCodexTransport({
+			model,
+			modelRegistry,
+			sessionId: providerSessionId,
+			preferWebsockets: preferOpenAICodexWebsockets,
+			providerSessionState: session.providerSessionState,
+		});
 
-		// Start LSP warmup in the background so startup does not block on language server initialization.
-		// With `lsp.lazy` (the default) the warmup is skipped: recognized servers are still discovered and
-		// surfaced in the UI as "available", but cold-start on first use — the lsp tool or an edit/write
-		// touching a matching file type — through `getOrCreateClient`.
-		// Print/script invocations (`hasUI=false`) skip it regardless: they don't render the warmup status
-		// indicator AND typically finish before LSP servers would have stabilized — warming them just spends
-		// CPU parsing big `initialize` responses concurrently with the LLM stream consumer, jittering
-		// perceived latency.
-		let lspServers: CreateAgentSessionResult["lspServers"];
-		const startupQuiet = settings.get("startup.quiet");
-		// Dynamic import: the lsp barrel pulls the full client/config machinery,
-		// which must stay off the boot path when LSP is disabled or has no UI.
-		const lazyLsp = enableLsp && options.hasUI ? await import("./lsp") : undefined;
-		if (lazyLsp && settings.get("lsp.lazy")) {
-			lspServers = lazyLsp.discoverStartupLspServers(cwd, "available");
-		} else if (lazyLsp) {
-			lspServers = lazyLsp.discoverStartupLspServers(cwd);
-			if (lspServers.length > 0) {
-				void (async () => {
-					try {
-						const result = await logger.time("warmupLspServers", lazyLsp.warmupLspServers, cwd);
-						const serversByName = new Map(result.servers.map(server => [server.name, server] as const));
-						for (const server of lspServers ?? []) {
-							const next = serversByName.get(server.name);
-							if (!next) continue;
-							server.status = next.status;
-							server.fileTypes = next.fileTypes;
-							server.error = next.error;
-						}
-						const event: LspStartupEvent = {
-							type: "completed",
-							servers: result.servers,
-						};
-						if (!startupQuiet) eventBus.emit(LSP_STARTUP_EVENT_CHANNEL, event);
-					} catch (error) {
-						const errorText = errorMessage(error);
-						logger.warn("LSP server warmup failed", { cwd, error: errorText });
-						for (const server of lspServers ?? []) {
-							server.status = "error";
-							server.error = errorText;
-						}
-						const event: LspStartupEvent = {
-							type: "failed",
-							error: errorText,
-						};
-						if (!startupQuiet) eventBus.emit(LSP_STARTUP_EVENT_CHANNEL, event);
-					}
-				})();
-			}
-		}
+		// Print/script invocations (`hasUI=false`) list no language servers: they draw no warmup
+		// status and usually finish before a server stabilizes, so warming one only spends CPU on
+		// `initialize` responses beside the stream consumer. The lsp barrel is imported lazily
+		// because it pulls the client and config machinery, which stays off the boot path.
+		const lspServers: CreateAgentSessionResult["lspServers"] =
+			enableLsp && options.hasUI ? startLspServers(await import("./lsp"), { cwd, settings, eventBus }) : undefined;
 
 		const startMemoryBackend = async () => {
 			const memoryBackend = await resolveMemoryBackend(settings);

@@ -606,11 +606,9 @@ export function statusLineSettingsFromConfig(): StatusLineSettings {
 		preset: settings.get("statusLine.preset"),
 		leftSegments: settings.get("statusLine.leftSegments"),
 		rightSegments: settings.get("statusLine.rightSegments"),
-		separator: settings.get("statusLine.separator"),
 		showHookStatus: settings.get("statusLine.showHookStatus"),
 		segmentOptions: settings.get("statusLine.segmentOptions"),
 		sessionAccent: settings.get("statusLine.sessionAccent"),
-		transparent: settings.get("statusLine.transparent"),
 		compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
 	};
 }

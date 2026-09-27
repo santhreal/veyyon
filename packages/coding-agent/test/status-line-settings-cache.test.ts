@@ -59,7 +59,6 @@ describe("StatusLineComponent effective settings cache", () => {
 				preset: "custom",
 				leftSegments: ["pi", "model"],
 				rightSegments: ["session_name", "context_pct"],
-				separator: "pipe",
 				sessionAccent: false,
 				segmentOptions: { model: { showThinkingLevel: false } },
 			},
@@ -80,7 +79,6 @@ describe("StatusLineComponent effective settings cache", () => {
 			preset: "custom",
 			leftSegments: ["pi"],
 			rightSegments: [],
-			separator: "none",
 			showHookStatus: false,
 		});
 		const firstEffective = component.getEffectiveSettingsForTest();
@@ -91,7 +89,6 @@ describe("StatusLineComponent effective settings cache", () => {
 			preset: "custom",
 			leftSegments: ["session_name"],
 			rightSegments: [],
-			separator: "slash",
 			showHookStatus: true,
 			sessionAccent: false,
 			segmentOptions: { path: { maxLength: 12 } },

@@ -1837,16 +1837,13 @@ export class AgentSession {
 			},
 			config,
 		);
-		const persistedSelectedMCPToolNames = this.buildDisplaySessionContext().selectedMCPToolNames;
-		const currentSelectedMCPToolNames = this.getSelectedMCPToolNames();
 		const persistInitialMCPToolSelection =
 			config.persistInitialMCPToolSelection ?? this.sessionManager.getBranch().length === 0;
-		if (
-			this.#discovery.mcpEnabled &&
-			persistInitialMCPToolSelection &&
-			!sameToolNames(persistedSelectedMCPToolNames, currentSelectedMCPToolNames)
-		) {
-			this.sessionManager.appendMCPToolSelection(currentSelectedMCPToolNames);
+		if (this.#discovery.mcpEnabled && persistInitialMCPToolSelection) {
+			const currentSelectedMCPToolNames = this.getSelectedMCPToolNames();
+			if (!sameToolNames(this.sessionManager.getMCPToolSelection() ?? [], currentSelectedMCPToolNames)) {
+				this.sessionManager.appendMCPToolSelection(currentSelectedMCPToolNames);
+			}
 		}
 		this.#discovery.rememberSessionDefaults(this.sessionManager.getSessionFile());
 		this.#streamingEdit = new StreamingEditGuard({
@@ -3122,8 +3119,8 @@ export class AgentSession {
 	 * WHY THAT MATTERS: every caller is a display or render path, not a tool call.
 	 * An exception raised while turning a stored `#HASH#` back into plaintext does
 	 * not fail one operation, it unwinds whatever was rendering (the event
-	 * fan-out, a TUI repaint, the agent-state rebuild after a compaction, even the
-	 * constructor's first `buildDisplaySessionContext()`) and the session is gone.
+	 * fan-out, a TUI repaint, the agent-state rebuild after a compaction or a
+	 * resume) and the session is gone.
 	 * A placeholder left on screen literally is cosmetic, so degrading is always
 	 * the right trade here.
 	 *
@@ -6361,7 +6358,7 @@ export class AgentSession {
 
 		this.#discovery.reindexMCPTools();
 		this.#discovery.pruneSelectedMCP();
-		if (!this.buildDisplaySessionContext().hasPersistedMCPToolSelection) {
+		if (this.sessionManager.getMCPToolSelection() === undefined) {
 			this.#discovery.addConfiguredDefaultMCP();
 		}
 		this.#discovery.rememberSessionDefaults(this.sessionFile);
@@ -6472,10 +6469,9 @@ export class AgentSession {
 	}
 
 	buildDisplaySessionContext(): SessionContext {
-		// RENDER PATH, and also the agent-state rebuild after a compaction or a
-		// history rewrite and the constructor's first MCP-selection read, so a throw
-		// here does not fail one render, it fails session construction. Degrades per
-		// string; never throws.
+		// RENDER PATH, and also the agent-state rebuild after a compaction, a
+		// history rewrite or a session switch, so a throw here does not fail one
+		// render, it fails the session. Degrades per string; never throws.
 		return this.#expandArgot(this.#deobfuscateSessionContextForDisplay(this.sessionManager.buildSessionContext()));
 	}
 

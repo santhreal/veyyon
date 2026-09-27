@@ -66,8 +66,12 @@ const BARRELS = ["@veyyon/tui", "@veyyon/utils", "@veyyon/agent-core", "@veyyon/
  * `UNICODE_SYMBOLS`, which `theme/symbols.ts` reads, so `contracts/view/src/index.ts` and
  * `contracts/view/src/symbols.ts` evaluate where the package was reached by type only. The
  * ceiling keeps one leaf of margin over the measurement, still well under the barrel edge.
+ *
+ * RE-MEASURED 2026-09-26 at 353, from 352: `hosts/terminal/engine/src/core/paint-sequences.ts`,
+ * the escape sequence each paint shape writes, split out of `core/tui.ts`, which the shell already
+ * evaluates, so the graph runs no new code. The ceiling keeps the one leaf of margin.
  */
-const SHELL_GRAPH_MODULE_CEILING = 353;
+const SHELL_GRAPH_MODULE_CEILING = 355;
 
 async function probe(code: string): Promise<number> {
 	const { stdout } = await run("bun", ["-e", code], { cwd: repoRoot, maxBuffer: 1 << 24 });

@@ -219,9 +219,9 @@ describe("the memoized matchesKey", () => {
 	});
 
 	/**
-	 * The cache key packs `data` and `keyId` into one string, so it has to be unambiguous. With a space
-	 * separator, `("a b", "c")` and `("a", "b c")` collide, and one keybinding starts answering for
-	 * another. Key ids never contain NUL, which is why the separator is NUL.
+	 * An answer belongs to one `(data, keyId)` pair however the two strings split. A memo keyed by a
+	 * packed string with a space separator collides `("a b", "c")` with `("a", "b c")`, and one
+	 * keybinding starts answering for another.
 	 */
 	it("does not collide when data and key id could be split differently", () => {
 		setKittyProtocolActive(false);

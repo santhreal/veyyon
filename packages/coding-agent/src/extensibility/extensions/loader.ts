@@ -34,6 +34,8 @@ import { getAllPluginExtensionPaths, getAllPluginHookPaths } from "../plugins/lo
 import { resolvePath, withExitGuard } from "../utils";
 import type {
 	AssistantThinkingRenderer,
+	BuiltinExtensionAPI,
+	BuiltinExtensionFactory,
 	ExtensionAPI,
 	ExtensionContext,
 	ExtensionFactory,
@@ -131,18 +133,17 @@ export class ExtensionRuntime implements IExtensionRuntime {
 }
 
 /**
- * ExtensionAPI implementation for an extension.
+ * The extension API every extension is bound to, minus the `pi` namespace.
  * Registration methods write to the extension object.
  * Action methods delegate to the shared runtime.
  */
-class ConcreteExtensionAPI implements ExtensionAPI {
+class BoundExtensionAPI implements BuiltinExtensionAPI {
 	readonly logger = logger;
 	readonly typebox = TypeBox;
 	readonly arktype = Type;
 	readonly zod = zodModule;
 
 	constructor(
-		public readonly pi: CodingAgentApi,
 		private readonly extension: LoadedExtension,
 		private readonly runtime: IExtensionRuntime,
 		private readonly cwd: string,
@@ -280,6 +281,21 @@ class ConcreteExtensionAPI implements ExtensionAPI {
 	}
 }
 
+/** The API an author's extension is bound to: {@link BoundExtensionAPI} plus the package namespace as `pi`. */
+class ConcreteExtensionAPI extends BoundExtensionAPI implements ExtensionAPI {
+	constructor(
+		public readonly pi: CodingAgentApi,
+		extension: LoadedExtension,
+		runtime: IExtensionRuntime,
+		cwd: string,
+		events: EventBus,
+		adoptSpawnedPid?: (pid: number) => void,
+		gateSpawn?: (what: string) => Promise<void>,
+	) {
+		super(extension, runtime, cwd, events, adoptSpawnedPid, gateSpawn);
+	}
+}
+
 /**
  * Create an Extension object with empty collections.
  */
@@ -360,6 +376,24 @@ export async function loadExtensionFromFactory(
 		gateSpawn,
 	);
 	await factory(api);
+	return extension;
+}
+
+/**
+ * Bind one of the product's own inline factories. Same registration surface as
+ * {@link loadExtensionFromFactory}, without `pi`, so the package barrel stays unloaded.
+ */
+export async function loadBuiltinExtension(
+	factory: BuiltinExtensionFactory,
+	cwd: string,
+	eventBus: EventBus,
+	runtime: IExtensionRuntime,
+	name: string,
+	adoptSpawnedPid?: (pid: number) => void,
+	gateSpawn?: (what: string) => Promise<void>,
+): Promise<LoadedExtension> {
+	const extension = createExtension(name, name);
+	await factory(new BoundExtensionAPI(extension, runtime, cwd, eventBus, adoptSpawnedPid, gateSpawn));
 	return extension;
 }
 

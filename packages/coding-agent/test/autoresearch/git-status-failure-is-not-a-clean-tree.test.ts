@@ -26,7 +26,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { gitStatusPorcelain, gitWorkDirPrefix } from "@veyyon/coding-agent/autoresearch/helpers";
+import { readWorkDirStatus } from "@veyyon/coding-agent/autoresearch/helpers";
 import { $ } from "bun";
 
 let dir: string;
@@ -52,7 +52,7 @@ describe("a working tree that can be read", () => {
 	it("answers an empty status for a clean repository", async () => {
 		await initRepo();
 
-		expect(await gitStatusPorcelain(dir)).toBe("");
+		expect((await readWorkDirStatus(dir)).statusText).toBe("");
 	});
 
 	/**
@@ -65,7 +65,7 @@ describe("a working tree that can be read", () => {
 		fs.writeFileSync(path.join(dir, "tracked.txt"), "changed\n");
 		fs.writeFileSync(path.join(dir, "new.txt"), "added\n");
 
-		const status = await gitStatusPorcelain(dir);
+		const status = (await readWorkDirStatus(dir)).statusText;
 
 		expect(status).toContain("tracked.txt");
 		expect(status).toContain("new.txt");
@@ -77,7 +77,7 @@ describe("a working tree that can be read", () => {
 	it("answers an empty prefix at the repository root", async () => {
 		await initRepo();
 
-		expect(await gitWorkDirPrefix(dir)).toBe("");
+		expect((await readWorkDirStatus(dir)).workDirPrefix).toBe("");
 	});
 
 	/**
@@ -89,7 +89,7 @@ describe("a working tree that can be read", () => {
 		await initRepo();
 		fs.mkdirSync(path.join(dir, "nested"));
 
-		expect(await gitWorkDirPrefix(path.join(dir, "nested"))).toBe("nested/");
+		expect((await readWorkDirStatus(path.join(dir, "nested"))).workDirPrefix).toBe("nested/");
 	});
 });
 
@@ -101,8 +101,7 @@ describe("a directory that is not a repository", () => {
 	 * `git status` that failed for some other reason.
 	 */
 	it("answers an empty status and prefix rather than raising", async () => {
-		expect(await gitStatusPorcelain(dir)).toBe("");
-		expect(await gitWorkDirPrefix(dir)).toBe("");
+		expect(await readWorkDirStatus(dir)).toEqual({ statusText: "", workDirPrefix: "" });
 	});
 
 	/**
@@ -112,8 +111,7 @@ describe("a directory that is not a repository", () => {
 	it("answers empty for a directory that has been removed", async () => {
 		const gone = path.join(dir, "removed");
 
-		expect(await gitStatusPorcelain(gone)).toBe("");
-		expect(await gitWorkDirPrefix(gone)).toBe("");
+		expect(await readWorkDirStatus(gone)).toEqual({ statusText: "", workDirPrefix: "" });
 	});
 });
 
@@ -144,9 +142,9 @@ describe("a repository whose git invocation fails", () => {
 		try {
 			if (readableAsRoot) {
 				// Running as root: git can still read the repository, so there is no failure to report.
-				expect(await gitStatusPorcelain(dir)).toBe("");
+				expect((await readWorkDirStatus(dir)).statusText).toBe("");
 			} else {
-				expect(gitStatusPorcelain(dir)).rejects.toThrow();
+				await expect(readWorkDirStatus(dir)).rejects.toThrow();
 			}
 		} finally {
 			fs.chmodSync(gitDir, 0o755);
@@ -168,6 +166,6 @@ describe("a repository whose git invocation fails", () => {
 		fs.writeFileSync(path.join(dir, ".git"), `gitdir: ${path.join(dir, "no-such-git-dir")}\n`);
 		fs.writeFileSync(path.join(dir, "tracked.txt"), "x\n");
 
-		expect(await gitStatusPorcelain(dir)).toBe("");
+		expect((await readWorkDirStatus(dir)).statusText).toBe("");
 	});
 });

@@ -263,7 +263,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		if (!toolCallId || isPartial) return;
 		const entry = this.#entries.get(toolCallId);
 		if (!entry) return;
-		updateReadEntryResult(entry, result);
+		updateReadEntryResult(entry, result, { withContent: this.#showContentPreview });
 		this.#updateDisplay();
 	}
 

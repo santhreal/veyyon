@@ -12,7 +12,7 @@ import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
  * WHY: `resolveFromTiers` ended in `BUILTIN_PERSONALITIES[name]`, a plain object literal indexed by an
  * operator-supplied string, so it answered every name `Object.prototype` carries. `personality:
  * "toString"` resolved to a function rather than `undefined`, `boundPersonalityText` called `.replace`
- * on it and threw, and `buildSystemPrompt`'s `withDeadline` wrapper turned that rejection into the
+ * on it and threw, and `buildSystemPrompt`'s preparation deadline turned that rejection into the
  * built-in default: no warning printed, and a Tier-B `default.md` override ignored. The unknown-name
  * fallback exists precisely to make that outcome loud, and eleven names walked around it.
  *

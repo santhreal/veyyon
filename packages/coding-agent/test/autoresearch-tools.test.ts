@@ -623,7 +623,7 @@ describe("run_experiment", () => {
 	});
 
 	/**
-	 * WHY: `gitStatusPorcelain` failure must abort before run insertion to prevent attributing
+	 * WHY: a `readWorkDirStatus` failure must abort before run insertion to prevent attributing
 	 * uncommitted worktree changes to the experiment.
 	 * GAPS NOT CAUGHT: Remote git server protocol errors.
 	 */

@@ -36,8 +36,7 @@ const terminal = TERMINAL as unknown as MutableTerminalInfo;
 // look, which is the whole reason that area exists.
 // `statusLine.transparent` was one of them and is not any more: nothing paints a
 // status-line background since the editor's top border was deleted, so the key
-// kept its default but lost its row. A setting with no UI is on no tab, advanced
-// or otherwise, which is why it leaves this list rather than moving between them.
+// was deleted with it.
 const DEMOTED_APPEARANCE_PATHS = [
 	"statusLine.sessionAccent",
 	"statusLine.compactThinkingLevel",
@@ -92,8 +91,7 @@ const KEPT_APPEARANCE_PATHS = [
 	"colorBlindMode",
 	"statusLine.preset",
 	// `statusLine.separator` used to sit here. The seven separator styles belonged
-	// to the deleted powerline bar, so the row changed nothing on screen and was
-	// removed; the key survives only for the readers named in appearance.ts.
+	// to the deleted powerline bar, so the row and the key were deleted with it.
 	"terminal.showImages",
 	"tui.hyperlinks",
 	"tui.paintGround",
@@ -148,11 +146,6 @@ describe("appearance advanced fold — schema", () => {
 	});
 
 	it("preserves defaults for demoted and moved keys — demotion never changes a default value", () => {
-		// statusLine.transparent defaults to true since the 2026-07-24 slab-class
-		// fix (the inline TUI paints no backgrounds by default) — an intentional
-		// product change, not a demotion side effect. The lock for that default
-		// lives in status-line-transparent.test.ts; this row just tracks it.
-		expect(settings.get("statusLine.transparent")).toBe(true);
 		expect(settings.get("images.blockImages")).toBe(false);
 		expect(settings.get("display.collapseCompacted")).toBe(true);
 	});
@@ -376,10 +369,10 @@ describe("appearance advanced fold — persistence", () => {
 		const overlayPath = path.join(testDir, "overlay.yml");
 		try {
 			resetSettingsForTest();
-			fs.writeFileSync(overlayPath, "statusLine:\n  transparent: true\n");
+			fs.writeFileSync(overlayPath, "statusLine:\n  sessionAccent: false\n");
 
 			const scoped = await Settings.init({ cwd: testDir, inMemory: true, configFiles: [overlayPath] });
-			expect(scoped.get("statusLine.transparent")).toBe(true);
+			expect(scoped.get("statusLine.sessionAccent")).toBe(false);
 		} finally {
 			resetSettingsForTest();
 			if (fs.existsSync(testDir)) removeSyncWithRetries(testDir);

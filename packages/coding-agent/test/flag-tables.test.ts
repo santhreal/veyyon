@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { CliUsageError } from "@veyyon/utils/cli-usage-error";
 import { type Args, parseArgs } from "../src/cli/args";
 import {
+	BOOLEAN_FLAGS,
 	flagConsumesValue,
 	isUnknownLongValueCandidate,
 	MODE_VALUES,
@@ -61,6 +62,46 @@ describe("OPTIONAL_VALUE_FLAGS table is honored by args.ts parseArgs", () => {
 				result.profile,
 				`parseArgs should release --profile back to its own handler when it follows ${flag}`,
 			).toBe("work");
+		});
+	}
+});
+
+/**
+ * `parseArgs` dispatches value-less flags through `BOOLEAN_FLAGS`, the same table the profile
+ * bootstrap reads as `VALUELESS_FLAGS`. Each entry must set its own field, consume nothing, and drop
+ * an `=value` rather than leak it into the prompt. A field name that is not the flag's own name
+ * (an alias) is pinned by exact equality, so a mis-mapped entry or a new alias fails here.
+ */
+describe("BOOLEAN_FLAGS table is honored by args.ts parseArgs", () => {
+	const camel = (flag: string) => flag.replace(/^--/, "").replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+
+	it("maps every flag to the field of its own name, except the pinned aliases", () => {
+		const aliases = Object.fromEntries([...BOOLEAN_FLAGS].filter(([flag, field]) => camel(flag) !== field));
+		expect(aliases).toEqual({
+			"-h": "help",
+			"-v": "version",
+			"-c": "continue",
+			"-p": "print",
+			"--yolo": "autoApprove",
+		});
+	});
+
+	for (const [flag, field] of BOOLEAN_FLAGS) {
+		it(`${flag} sets ${field} alone and leaves its successor to the parser`, () => {
+			const result = parseArgs([flag, "--profile", "work", "hello"]);
+			const set = Object.entries(result).filter(([, value]) => value === true);
+			expect(set).toEqual([[field, true]]);
+			expect(result.profile).toBe("work");
+			expect(result.messages).toEqual(["hello"]);
+			expect(result.unrecognizedFlags).toEqual([]);
+		});
+	}
+
+	for (const flag of [...BOOLEAN_FLAGS.keys()].filter(flag => flag.startsWith("--"))) {
+		it(`${flag}=value drops the value instead of reading it as a message`, () => {
+			const result = parseArgs([`${flag}=stray`, "hello"]);
+			expect(result.messages).toEqual(["hello"]);
+			expect(result.unrecognizedFlags).toEqual([]);
 		});
 	}
 });

@@ -52,8 +52,15 @@ import { TempDir } from "@veyyon/utils";
 class RecordingStorage extends FileSessionStorage {
 	kept: number[] = [];
 	whole = 0;
+	/** Every path read back whole. */
+	reads: string[] = [];
 	failNextReplace = false;
 	beforeTail: (() => Promise<void>) | undefined;
+
+	override async readText(p: string): Promise<string> {
+		this.reads.push(p);
+		return super.readText(p);
+	}
 
 	override async writeTextAtomic(p: string, body: SessionFileBody, options?: WriteTextAtomicOptions): Promise<void> {
 		this.whole += 1;
@@ -95,19 +102,19 @@ interface Fixture {
 	ids: string[];
 }
 
-function appendUsers(manager: SessionManager, ids: string[], count: number): void {
+function appendUsers(manager: SessionManager, ids: string[], count: number, text = WIDE_TEXT): void {
 	for (let i = 0; i < count; i++) {
 		const n = ids.length;
-		ids.push(manager.appendMessage({ role: "user", content: `${n} ${WIDE_TEXT}`, timestamp: 1_700_000_000_000 + n }));
+		ids.push(manager.appendMessage({ role: "user", content: `${n} ${text}`, timestamp: 1_700_000_000_000 + n }));
 	}
 }
 
-async function openSession(dir: string, count: number): Promise<Fixture> {
+async function openSession(dir: string, count: number, text = WIDE_TEXT): Promise<Fixture> {
 	const file = path.join(dir, "session.jsonl");
 	const storage = new RecordingStorage();
 	const manager = await SessionManager.open(file, dir, storage);
 	const ids: string[] = [];
-	appendUsers(manager, ids, count);
+	appendUsers(manager, ids, count, text);
 	await manager.flush();
 	// The publish every later partial rewrite measures itself against.
 	await manager.rewriteEntries();
@@ -136,11 +143,11 @@ async function wholeRewrite(fixture: Fixture): Promise<Buffer> {
 	return fs.readFile(fixture.file);
 }
 
-function foreignLine(id: string, text: string): string {
+function foreignLine(id: string, text: string, parentId: string | null = null): string {
 	return `${JSON.stringify({
 		type: "message",
 		id,
-		parentId: null,
+		parentId,
 		timestamp: new Date(1_700_000_000_000).toISOString(),
 		message: { role: "user", content: text },
 	})}\n`;
@@ -265,6 +272,123 @@ describe("a rewrite of updated entries writes what a whole rewrite writes", () =
 		const raw = await fs.readFile(file);
 		expect(raw.toString("utf8")).toContain("published through the fallback");
 		expect(raw.equals(await wholeRewrite(fixture))).toBe(true);
+
+		await manager.close();
+	});
+});
+
+/**
+ * Resume `count` entries from a file this version wrote, after `alter` rewrites its bytes. The
+ * reads the load itself made are cleared, so `storage.reads` holds only what a later rewrite reads.
+ */
+async function resumeSession(
+	dir: string,
+	count: number,
+	options: { text?: string; alter?: (raw: string, ids: string[]) => string } = {},
+): Promise<Fixture> {
+	const seeded = await openSession(dir, count, options.text);
+	await seeded.manager.close();
+	if (options.alter)
+		await fs.writeFile(seeded.file, options.alter(await fs.readFile(seeded.file, "utf8"), seeded.ids));
+	const storage = new RecordingStorage();
+	const manager = await SessionManager.open(seeded.file, dir, storage);
+	storage.reads.length = 0;
+	return { file: seeded.file, storage, manager, ids: seeded.ids };
+}
+
+/** `raw` with `line` inserted before the line holding entry `id`. */
+function insertBefore(raw: string, id: string, line: string): string {
+	const at = raw.lastIndexOf("\n", raw.indexOf(`"id":"${id}"`)) + 1;
+	return `${raw.slice(0, at)}${line}${raw.slice(at)}`;
+}
+
+/**
+ * WHY: the first rewrite after a resume wrote the whole file and read it back first, because the
+ * manager had not published the file itself and so did not know where its lines were. On a long
+ * session the per-turn stale-read prune rewrites on the first turn, so every resume paid a full read
+ * and a full serialization of the history. The loader now reports where each record sits when the
+ * file is laid out the way a publish writes it, and the manager adopts that as its published state.
+ *
+ * The class: a resumed file whose lines are not exactly one clean record per entry, in entry order,
+ * is adopted anyway, and a partial rewrite keeps lines a whole rewrite would drop or re-link. Each
+ * variant the loader cannot vouch for is a row below, asserting the whole path ran and wrote what a
+ * second whole rewrite writes.
+ *
+ * MEASURED (each mutant applied alone unless stated):
+ * - adoption removed from `#switchToLoadedFile`: both resume rows red.
+ * - the loader's layout kept despite a skipped line: the skipped-line row red.
+ * - the loader's layout kept despite a re-linked orphan: the orphan row red.
+ * - offsets counted in characters instead of UTF-8 bytes, streamed load: the streamed row red.
+ * - the same, whole-read load: the read-whole row red.
+ * - the layout kept when the read ended short of the file's size: green alone, because the loader
+ *   also reports the torn line; with the skipped-line guard removed too, the torn-tail row is red.
+ * - the older-version guard removed: green. The migrated header no longer matches its line, and the
+ *   rewrite plan already writes the whole file for a changed header.
+ *
+ * WHAT THIS DOES NOT CATCH: another writer replacing the file between the loader's two stats and the
+ * read, which needs a filesystem hook to interleave.
+ */
+describe("a resumed session's first rewrite keeps the lines before its earliest update", () => {
+	it.each([
+		{ name: "read whole", count: 200, text: WIDE_TEXT },
+		{ name: "streamed", count: 1200, text: WIDE_TEXT.repeat(12) },
+	])("keeps the loaded lines of a file read $name", async ({ count, text }) => {
+		using tempDir = TempDir.createSync("@veyyon-tail-resume-");
+		const fixture = await resumeSession(tempDir.path(), count, { text });
+		const { file, storage, manager, ids } = fixture;
+		const before = await fs.readFile(file, "utf8");
+		if (text !== WIDE_TEXT) expect(Buffer.byteLength(before, "utf8")).toBeGreaterThan(8 * 1024 * 1024);
+
+		await manager.rewriteEntries([update(manager, ids[count - 50]!, "updated after the resume")]);
+
+		expect(storage.kept).toEqual([lineOffset(before, ids[count - 50]!)]);
+		expect(storage.whole).toBe(0);
+		expect(storage.reads).toEqual([]);
+		expect((await fs.readFile(file)).equals(await wholeRewrite(fixture))).toBe(true);
+
+		await manager.close();
+	});
+
+	it.each([
+		{ name: "has no title slot", alter: (raw: string) => raw.slice(raw.indexOf("\n") + 1) },
+		{
+			name: "holds a line the loader skips",
+			alter: (raw: string, ids: string[]) => insertBefore(raw, ids[5]!, "not a record\n"),
+		},
+		{ name: "ends in a torn line", alter: (raw: string) => `${raw}{"type":"message","id":"torn"` },
+		{
+			name: "holds an entry whose parent is missing",
+			alter: (raw: string, ids: string[]) => insertBefore(raw, ids[5]!, foreignLine("orphan", "re-linked", "gone")),
+		},
+		{ name: "was written by an older version", alter: (raw: string) => raw.replace('"version":3', '"version":2') },
+	])("writes the whole file on the first rewrite when the file $name", async ({ alter }) => {
+		using tempDir = TempDir.createSync("@veyyon-tail-resume-unclean-");
+		const fixture = await resumeSession(tempDir.path(), 40, { alter });
+		const { file, storage, manager, ids } = fixture;
+
+		await manager.rewriteEntries([update(manager, ids[30]!, "updated after an unclean resume")]);
+
+		expect(storage.kept).toEqual([]);
+		const raw = await fs.readFile(file);
+		expect(raw.toString("utf8")).toContain("updated after an unclean resume");
+		expect(raw.equals(await wholeRewrite(fixture))).toBe(true);
+
+		await manager.close();
+	});
+
+	it("reads back another writer's line appended after the resume", async () => {
+		using tempDir = TempDir.createSync("@veyyon-tail-resume-foreign-");
+		const fixture = await resumeSession(tempDir.path(), 40);
+		const { file, storage, manager, ids } = fixture;
+		await fs.appendFile(file, foreignLine("outsider", "appended after the resume"));
+
+		await manager.rewriteEntries([update(manager, ids[30]!, "updated beside the outsider")]);
+
+		expect(storage.kept).toEqual([]);
+		const raw = await fs.readFile(file, "utf8");
+		expect(raw).toContain("appended after the resume");
+		expect(raw).toContain("updated beside the outsider");
+		expect(Buffer.from(raw).equals(await wholeRewrite(fixture))).toBe(true);
 
 		await manager.close();
 	});

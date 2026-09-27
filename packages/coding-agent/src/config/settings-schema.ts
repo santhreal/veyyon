@@ -265,9 +265,6 @@ declare module "@veyyon/kernel/settings/schema" {
 /** Status line preset - derived from schema */
 export type StatusLinePreset = SettingValue<"statusLine.preset">;
 
-/** Status line separator style - derived from schema */
-export type StatusLineSeparatorStyle = SettingValue<"statusLine.separator">;
-
 /** Tree selector filter mode - derived from schema */
 export type TreeFilterMode = SettingValue<"treeFilterMode">;
 

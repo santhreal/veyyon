@@ -7,7 +7,8 @@
  * `parseArgs` dispatches string-valued flags by looking up their setter in
  * {@link STRING_SETTERS}. Optional-value flags use {@link OPTIONAL_FLAGS} so
  * per-flag quirks (currently empty-string rejection for `--resume`) live here
- * instead of being hard-coded in the dispatch loop.
+ * instead of being hard-coded in the dispatch loop, and value-less flags use
+ * {@link BOOLEAN_FLAGS}, whose key set is {@link VALUELESS_FLAGS}.
  *
  * The bootstrap doesn't dispatch — it only needs to know which flags consume
  * a value — so it consults {@link STRING_VALUE_FLAGS} and
@@ -306,49 +307,55 @@ export const OPTIONAL_VALUE_FLAGS: ReadonlySet<string> = new Set(Object.keys(OPT
  */
 export const PROFILE_BOOTSTRAP_BOUNDARY_ARG = "--veyyon-profile-boundary";
 
+/** An {@link Args} field a value-less flag sets to `true`. */
+export type BooleanArgField = {
+	[K in keyof Args]-?: Args[K] extends boolean | undefined ? K : never;
+}[keyof Args];
+
 /**
- * Long-form launch flags that take NO value (booleans). The bootstrap pre-parser
- * needs this to tell a known value-less flag (whose successor is a fresh
- * argument — `veyyon --print --profile work` still selects a profile) apart from an
- * UNKNOWN long option that might be an extension string flag consuming the next
- * token as its value (so the bootstrap must not steal that token as a global
- * `--profile`/`--alias`). MUST mirror the value-less flag arms of `parseArgs`
- * in `./args.ts`: adding a new boolean launch flag there means adding it here,
- * or `--<newflag> --profile X` stops selecting a profile. Short aliases
- * (`-h`/`-v`/`-c`/`-p`) are intentionally omitted — the protection rule only
- * fires for `--`-prefixed tokens.
+ * Value-less launch flags, long and short forms, each mapped to the {@link Args} field it sets.
+ * `parseArgs` dispatches through this table and {@link VALUELESS_FLAGS} is its key set, so a new
+ * boolean flag added here is parsed and known to the bootstrap pre-parser at once.
  */
-export const VALUELESS_FLAGS: ReadonlySet<string> = new Set([
-	"--help",
-	"--version",
-	"--allow-home",
-	"--continue",
-	"--no-session",
-	// The short forms of `--continue` and `--print`. `parseArgs` accepted these
-	// from an inline `arg === "-c"` check while the table did not list them, so
-	// "the parser knows about this flag" had two answers. Listing them here makes
-	// the table the whole answer, and the OUT-5 lock test is what keeps it that
-	// way.
-	"-c",
-	"-p",
-	"--no-tools",
-	"--no-lsp",
-	"--no-pty",
-	"--hide-thinking",
-	"--advisor",
-	"--prewalk",
-	"--no-prewalk",
-	"--plan-yolo",
-	"--print",
-	"--print-thoughts",
-	"--no-extensions",
-	"--no-skills",
-	"--no-rules",
-	"--no-title",
-	"--auto-approve",
-	"--yolo",
-	"--dangerously-skip-permissions",
+export const BOOLEAN_FLAGS: ReadonlyMap<string, BooleanArgField> = new Map<string, BooleanArgField>([
+	["--help", "help"],
+	["-h", "help"],
+	["--version", "version"],
+	["-v", "version"],
+	["--allow-home", "allowHome"],
+	["--continue", "continue"],
+	["-c", "continue"],
+	["--no-session", "noSession"],
+	["--no-tools", "noTools"],
+	["--no-lsp", "noLsp"],
+	["--no-pty", "noPty"],
+	["--hide-thinking", "hideThinking"],
+	["--advisor", "advisor"],
+	["--prewalk", "prewalk"],
+	["--no-prewalk", "noPrewalk"],
+	["--plan-yolo", "planYolo"],
+	["--print", "print"],
+	["-p", "print"],
+	["--print-thoughts", "printThoughts"],
+	["--no-extensions", "noExtensions"],
+	["--no-skills", "noSkills"],
+	["--no-rules", "noRules"],
+	["--no-title", "noTitle"],
+	["--auto-approve", "autoApprove"],
+	["--yolo", "autoApprove"],
+	// Stronger than --yolo: starts with the full permission bypass on (removes per-tool prompt
+	// overrides too). Explicit deny and plan mode still block. Runtime-toggleable with /yolo.
+	["--dangerously-skip-permissions", "dangerouslySkipPermissions"],
 ]);
+
+/**
+ * Every flag that takes NO value. The bootstrap pre-parser reads this to tell a known value-less
+ * flag (whose successor is a fresh argument — `veyyon --print --profile work` still selects a
+ * profile) apart from an UNKNOWN long option that might be an extension string flag consuming the
+ * next token as its value (so the bootstrap must not steal that token as a global
+ * `--profile`/`--alias`).
+ */
+export const VALUELESS_FLAGS: ReadonlySet<string> = new Set(BOOLEAN_FLAGS.keys());
 
 /**
  * Whether a bare long option (`--xxx`, no `=`) is unclassified — not a known

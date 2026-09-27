@@ -607,28 +607,46 @@ function canonicalizeAmbiguousLineFeed(data: string): string | undefined {
  *
  * Longer input skips the memo entirely: pasted text and bracketed-paste bodies arrive once, never
  * repeat, and caching them would evict the keystrokes that do.
+ *
+ * Each memo is indexed by protocol mode first and by the input string itself, never by a composite key
+ * string: a keystroke is tested against dozens of bindings, and concatenating `mode + data + keyId`
+ * per test allocated and hashed a fresh string every time, which cost more than the lookup it keyed.
  */
 const MEMO_MAX_INPUT_LENGTH = 24;
 /**
- * Entry ceiling per memo. The live working set is tiny (the keys someone actually presses), so this is
- * a runaway guard rather than a tuning knob, and it is enforced by clearing the whole map instead of
- * evicting one entry: there is no LRU bookkeeping to get wrong, and re-warming costs one native call
- * per key that comes back.
+ * Entry ceiling across both modes of a memo. The live working set is tiny (the keys someone actually
+ * presses), so this is a runaway guard rather than a tuning knob, and it is enforced by clearing the
+ * whole memo instead of evicting one entry: there is no LRU bookkeeping to get wrong, and re-warming
+ * costs one native call per key that comes back.
  */
 const MEMO_MAX_ENTRIES = 4096;
-const parseCache = new Map<string, string | undefined>();
-const matchCache = new Map<string, boolean>();
+/** `parseKey` answers, `[legacy, kitty]`, keyed by input. */
+const parseCache = [new Map<string, string | undefined>(), new Map<string, string | undefined>()] as const;
+/** `matchesKey` answers, `[legacy, kitty]`, keyed by input and then by key id. */
+const matchCache = [new Map<string, Map<string, boolean>>(), new Map<string, Map<string, boolean>>()] as const;
+let matchEntries = 0;
 
 /**
  * Drop every memoized answer.
  *
  * Exported for tests that need to observe the native parser directly (see `test/key-memo.test.ts`).
- * Production code never needs it: the protocol mode is part of every cache key, so
- * `setKittyProtocolActive` does not invalidate anything.
+ * Production code never needs it: the protocol mode selects the memo, so `setKittyProtocolActive` does
+ * not invalidate anything.
  */
 export function clearKeyAnswerMemo(): void {
-	parseCache.clear();
-	matchCache.clear();
+	clearParseMemo();
+	clearMatchMemo();
+}
+
+function clearParseMemo(): void {
+	parseCache[0].clear();
+	parseCache[1].clear();
+}
+
+function clearMatchMemo(): void {
+	matchCache[0].clear();
+	matchCache[1].clear();
+	matchEntries = 0;
 }
 
 /**
@@ -654,16 +672,20 @@ export function matchesKey(data: string, keyId: KeyId): boolean {
 			matchesKeyNative(canonicalizeAmbiguousLineFeed(data) ?? data, keyId, kittyProtocolActive)
 		);
 	}
-	// NUL separator written as an escape, not a raw byte: key ids never contain NUL, while a space would
-	// let `data: "a b"` with `keyId: "c"` and `data: "a"` with `keyId: "b c"` build one cache key.
-	const cacheKey = `${kittyProtocolActive ? "1" : "0"}${data}\u0000${keyId}`;
-	const cached = matchCache.get(cacheKey);
+	const byInput = matchCache[kittyProtocolActive ? 1 : 0];
+	const cached = byInput.get(data)?.get(keyId);
 	if (cached !== undefined) return cached;
 	const answer =
 		matchesKeypadKey(data, keyId) ??
 		matchesKeyNative(canonicalizeAmbiguousLineFeed(data) ?? data, keyId, kittyProtocolActive);
-	if (matchCache.size >= MEMO_MAX_ENTRIES) matchCache.clear();
-	matchCache.set(cacheKey, answer);
+	if (matchEntries >= MEMO_MAX_ENTRIES) clearMatchMemo();
+	let answers = byInput.get(data);
+	if (answers === undefined) {
+		answers = new Map();
+		byInput.set(data, answers);
+	}
+	answers.set(keyId, answer);
+	matchEntries++;
 	return answer;
 }
 
@@ -683,15 +705,15 @@ export function parseKey(data: string): string | undefined {
 			undefined
 		);
 	}
-	const cacheKey = `${kittyProtocolActive ? "1" : "0"}${data}`;
+	const answers = parseCache[kittyProtocolActive ? 1 : 0];
 	// `has` before `get`, because `undefined` -- "this input is not a key" -- is a real answer worth
 	// caching, and a `get`-only check would re-cross FFI for every unrecognized input.
-	if (parseCache.has(cacheKey)) return parseCache.get(cacheKey);
+	if (answers.has(data)) return answers.get(data);
 	const answer =
 		decodeKittyKeypadText(data) ??
 		parseKeyNative(canonicalizeAmbiguousLineFeed(data) ?? data, kittyProtocolActive) ??
 		undefined;
-	if (parseCache.size >= MEMO_MAX_ENTRIES) parseCache.clear();
-	parseCache.set(cacheKey, answer);
+	if (parseCache[0].size + parseCache[1].size >= MEMO_MAX_ENTRIES) clearParseMemo();
+	answers.set(data, answer);
 	return answer;
 }

@@ -25,13 +25,9 @@ Terminal capability detection maps the same hierarchy for truecolor, ANSI-256, A
 
 Veyyon paints no backgrounds by default. The transcript (user messages, tool
 output, extension messages), the composer, and the status line all inherit your
-terminal's own background, so the UI looks native on any terminal color. Two
-opt-ins bring painted surfaces back:
-
-- Turn off `statusLine.transparent` (`/settings` → Appearance → Status Line) to
-  paint the theme's `statusLineBg` bar, including powerline end caps.
-- A custom theme can declare a `composerBg` color to paint the composer card;
-  when omitted, the composer stays unpainted.
+terminal's own background, so the UI looks native on any terminal color. A
+custom theme can declare a `composerBg` color to paint the composer card; when
+omitted, the composer stays unpainted.
 
 ## Painted ground
 

@@ -1,9 +1,12 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as http2 from "node:http2";
 import { create, fromBinary, fromJson, type JsonValue, toBinary, toJson } from "@bufbuild/protobuf";
 import { streamBedrock } from "@veyyon/ai/providers/amazon-bedrock";
+import { streamAnthropic } from "@veyyon/ai/providers/anthropic";
 import { sha256Hex } from "@veyyon/ai/providers/aws-sigv4";
 import { streamCursor } from "@veyyon/ai/providers/cursor";
+import { streamOllama } from "@veyyon/ai/providers/ollama";
+import { streamOpenAICodexResponses } from "@veyyon/ai/providers/openai-codex-responses";
 import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
 import type { Context, FetchImpl, Model } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
@@ -15,6 +18,7 @@ import {
 	InteractionUpdateSchema,
 	TurnEndedUpdateSchema,
 } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
+import * as piUtils from "@veyyon/utils";
 import { withEnv } from "./helpers";
 
 const ORIGINAL_SECRET = "raw-payload-secret";
@@ -497,5 +501,231 @@ describe("onPayload is the final physical transport seam", () => {
 		} finally {
 			await cursorServer.close();
 		}
+	});
+});
+
+const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+
+const GRAMMAR_TOO_LARGE = JSON.stringify({
+	type: "error",
+	error: {
+		type: "invalid_request_error",
+		message:
+			"The compiled grammar is too large, which would cause performance issues. Simplify your tool schemas or reduce the number of strict tools.",
+	},
+});
+
+function wireText(body: RequestInit["body"] | undefined): string {
+	return new TextDecoder().decode(bodyBytes(body));
+}
+
+function restoreEnv(name: string, value: string | undefined): void {
+	if (value === undefined) delete process.env[name];
+	else process.env[name] = value;
+}
+
+/** A 500 the transport retries at once, then a 400 that ends the turn. */
+function retryThenReject(attempt: number): Response {
+	return new Response(attempt === 1 ? "retry" : "bad request", {
+		status: attempt === 1 ? 500 : 400,
+		headers: { "retry-after": "0" },
+	});
+}
+
+/**
+ * WHY: Anthropic, Ollama and Codex SSE serialize a request body once and reuse those bytes for the
+ * wire, the 400 dump and every physical retry. The class this closes is a reused serialization that
+ * went stale: bytes taken before the hook ran, an earlier attempt's bytes resent after a rebuild ran
+ * the hook again, or the pre-hook object's bytes when the hook mutated its argument and returned
+ * nothing. Each case pins the bytes of every physical attempt, with the hook returning a replacement
+ * on one attempt and mutating in place on another.
+ *
+ * Not caught here: a transport that re-serializes correctly but redundantly (a cost, not a wrong
+ * byte), and the Codex websocket frame, which `openai-codex-stream.test.ts` pins in "applies onPayload
+ * to the final chained websocket frame".
+ */
+describe("a serialize-once transport sends the bytes its hook left, on every attempt", () => {
+	const originalAgentDir = piUtils.getAgentDir();
+	const originalAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
+	const originalProfileEnv = process.env.VEYYON_PROFILE;
+
+	beforeEach(() => {
+		vi.spyOn(piUtils, "getInstallId").mockReturnValue("00000000-0000-4000-8000-000000000001");
+	});
+
+	afterEach(() => {
+		piUtils.setAgentDir(originalAgentDir);
+		restoreEnv("VEYYON_CODING_AGENT_DIR", originalAgentDirEnv);
+		restoreEnv("VEYYON_PROFILE", originalProfileEnv);
+		piUtils.__resetDirsFromEnvForTests();
+		vi.restoreAllMocks();
+	});
+
+	it("Anthropic sends a fallback's rebuilt bytes and resends them on a transient retry", async () => {
+		const bodies: string[] = [];
+		let hookCalls = 0;
+		const result = await streamAnthropic(
+			buildModel({
+				id: "claude-sonnet-4-5",
+				name: "Claude Sonnet 4.5",
+				api: "anthropic-messages",
+				provider: "anthropic",
+				baseUrl: "https://payload-seam.invalid",
+				reasoning: false,
+				input: ["text"],
+				cost: ZERO_COST,
+				contextWindow: 200_000,
+				maxTokens: 1_024,
+			}),
+			contextWithSecret(),
+			{
+				apiKey: "resolved-anthropic-credential",
+				fetch: asFetch(async (_input, init) => {
+					bodies.push(wireText(init?.body));
+					if (bodies.length === 1) {
+						return new Response(GRAMMAR_TOO_LARGE, {
+							status: 400,
+							headers: { "content-type": "application/json" },
+						});
+					}
+					return retryThenReject(bodies.length - 1);
+				}),
+				providerRetryWait: async () => {},
+				onPayload: async payload => {
+					hookCalls++;
+					const raw = payload as Record<string, unknown>;
+					expect(JSON.stringify(raw)).toContain(ORIGINAL_SECRET);
+					await Promise.resolve();
+					if (hookCalls === 1) {
+						// Drops `stream` and adds a strict tool, so the grammar rejection rebuilds the request.
+						const { stream: _stream, ...rest } = raw;
+						return {
+							...rest,
+							messages: [{ role: "user", content: "safe-anthropic-1" }],
+							tools: [
+								{
+									name: "edit",
+									description: "Edit",
+									strict: true,
+									input_schema: { type: "object", properties: {} },
+								},
+							],
+						};
+					}
+					raw.messages = [{ role: "user", content: `safe-anthropic-${hookCalls}` }];
+					return undefined;
+				},
+			},
+		).result();
+
+		expect(result.stopReason).toBe("error");
+		expect(result.errorStatus).toBe(400);
+		expect(hookCalls).toBe(2);
+		expect(bodies).toHaveLength(3);
+		const first = JSON.parse(bodies[0]!) as Record<string, unknown>;
+		expect(first.stream).toBe(true);
+		expect(first.messages).toEqual([{ role: "user", content: "safe-anthropic-1" }]);
+		expect((JSON.parse(bodies[1]!) as Record<string, unknown>).messages).toEqual([
+			{ role: "user", content: "safe-anthropic-2" },
+		]);
+		expect(bodies[2]).toBe(bodies[1]);
+		expect(bodies.join("\n")).not.toContain(ORIGINAL_SECRET);
+	});
+
+	it("Ollama sends and resends the bytes of the object its hook mutated", async () => {
+		const bodies: string[] = [];
+		let hookCalls = 0;
+		const result = await streamOllama(
+			buildModel({
+				id: "payload-seam-ollama",
+				name: "Payload seam Ollama",
+				api: "ollama-chat",
+				provider: "ollama",
+				baseUrl: "https://payload-seam.invalid/v1",
+				reasoning: false,
+				input: ["text"],
+				cost: ZERO_COST,
+				contextWindow: 4_096,
+				maxTokens: 1_024,
+			}),
+			contextWithSecret(),
+			{
+				apiKey: "resolved-ollama-credential",
+				fetch: asFetch(async (_input, init) => {
+					bodies.push(wireText(init?.body));
+					return retryThenReject(bodies.length);
+				}),
+				onPayload: async payload => {
+					hookCalls++;
+					const raw = payload as Record<string, unknown>;
+					expect(JSON.stringify(raw)).toContain(ORIGINAL_SECRET);
+					await Promise.resolve();
+					raw.messages = [{ role: "user", content: "safe-ollama" }];
+					return undefined;
+				},
+			},
+		).result();
+
+		expect(result.stopReason).toBe("error");
+		expect(result.errorStatus).toBe(400);
+		expect(hookCalls).toBe(1);
+		expect(bodies).toHaveLength(2);
+		expect((JSON.parse(bodies[0]!) as Record<string, unknown>).messages).toEqual([
+			{ role: "user", content: "safe-ollama" },
+		]);
+		expect(bodies[1]).toBe(bodies[0]);
+	});
+
+	it("Codex SSE sends each attempt's hook result, replaced or mutated in place", async () => {
+		using tempDir = piUtils.TempDir.createSync("@pi-payload-final-seam-codex-");
+		piUtils.setAgentDir(tempDir.path());
+		const claims = Buffer.from(
+			JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "acc_test" } }),
+			"utf8",
+		).toBase64();
+		const bodies: string[] = [];
+		let hookCalls = 0;
+		const safeInput = (text: string) => [{ role: "user", content: [{ type: "input_text", text }] }];
+		const result = await streamOpenAICodexResponses(
+			{
+				...buildModel({
+					id: "gpt-5.3-codex-spark",
+					name: "GPT-5.3 Codex Spark",
+					api: "openai-codex-responses",
+					provider: "openai-codex",
+					baseUrl: "https://payload-seam.invalid/backend-api",
+					reasoning: true,
+					input: ["text"],
+					cost: ZERO_COST,
+					contextWindow: 128_000,
+					maxTokens: 1_024,
+				}),
+				preferWebsockets: false,
+			},
+			contextWithSecret(),
+			{
+				apiKey: `aaa.${claims}.bbb`,
+				fetch: asFetch(async (_input, init) => {
+					bodies.push(wireText(init?.body));
+					return retryThenReject(bodies.length);
+				}),
+				onPayload: async payload => {
+					hookCalls++;
+					const raw = payload as Record<string, unknown>;
+					expect(JSON.stringify(raw)).toContain(ORIGINAL_SECRET);
+					await Promise.resolve();
+					if (hookCalls === 1) return { ...raw, input: safeInput("safe-codex-1") };
+					raw.input = safeInput(`safe-codex-${hookCalls}`);
+					return undefined;
+				},
+			},
+		).result();
+
+		expect(result.stopReason).toBe("error");
+		expect(hookCalls).toBe(2);
+		expect(bodies).toHaveLength(2);
+		expect((JSON.parse(bodies[0]!) as Record<string, unknown>).input).toEqual(safeInput("safe-codex-1"));
+		expect((JSON.parse(bodies[1]!) as Record<string, unknown>).input).toEqual(safeInput("safe-codex-2"));
+		expect(bodies.join("\n")).not.toContain(ORIGINAL_SECRET);
 	});
 });

@@ -4,6 +4,8 @@
 
 ### Changed
 
+- The JSON Schema meta-validator checks a node by looking each of its keys up in a keyword table instead of probing every known keyword, cutting validation of a 40-tool parameter schema set from 46.6 µs to 33.7 µs with identical verdicts, except that a `NaN` `multipleOf` is now rejected.
+- Stream option mapping resolves each API's options in its own mapper over one shared base instead of one 420-line switch, cutting the mapping of 743,431 model and option combinations from 100.8 ms to 92.1 ms with identical options.
 - The Anthropic and OpenAI-compatible providers split their stream loops, message converters and finalization into per-step helpers; no user-visible change.
 - The OpenAI-compatible stream reads a tool call's prior object arguments through the shared `isRecord` guard instead of an inline check; no user-visible change.
 - Provider message replay splits into per-block replay steps and a tool-result pairing pass, cutting its time on a 52,000-message history by 7% for Anthropic targets and 13% for OpenAI Responses targets.
@@ -11,9 +13,25 @@
 - The Devin stream splits into a request step, a Connect frame reader and a per-delta decoder that keeps each open block's content index instead of searching for it; decode time of an 18,400-frame stream is unchanged.
 - Google request building resolves each model's wire traits once per request and each thinking signature once per block, cutting message conversion on a 50,600-message history by 10% to 18%.
 - The Google and Cloud Code Assist stream decoders share one block assembler and finish-reason, usage and truncation helpers, and the Cloud Code Assist stream splits into a request plan, an endpoint loop and a per-response decoder; decode time of an 8,000-chunk stream is unchanged.
+- The Anthropic, Ollama and OpenAI Codex providers serialize a request body once per attempt and send, dump and resend those bytes, and Codex turn diagnostics read the input's byte length off the serialized request, cutting request build on a 27 MiB context from 58.4 to 28.8 ms for Anthropic, 37.6 to 19.4 ms for Ollama, 111.9 to 32.3 ms for Codex over SSE and 186.9 to 65.8 ms for Codex over WebSocket.
+- Anthropic request sanitization copies only the containers on the path to a lone surrogate and allocates nothing for a well-formed request, cutting it on a large context from 4.27 ms to 0.97 ms.
+- The OpenAI Codex stream routes each event through one switch to a per-event handler instead of a 210-line branch chain; decode time of a 10,600-event stream is unchanged.
+- The stream idle watchdog waits on one promise per stalled read that the source, the deadline timer or the abort resolves, instead of racing long-lived timeout and abort promises every item, cutting its per-event overhead on a 200,000-event stream from about 320 ns to 230 ns (wrapped iteration 74 ms to 56 ms) with identical outcomes across 2,159 scripted stream schedules.
+- An OpenAI Codex turn no longer deep-copies its whole request body after the response arrives: SSE turns hold the body as sent and WebSocket turns adopt the copy taken when the frame was built as the chain baseline, cutting the time from response to finished turn on a 27 MiB context from 48.7 to 0.8 ms over SSE and 58.2 to 0.4 ms over WebSocket.
+- The auth gateway's request schemas build in a scope that compiles their validators whatever the process's ArkType configuration, so the jitless CLI validates a 751-message chat-completions request in 42 µs instead of 2.1 ms.
+- The OpenAI Responses stream splits into a request plan, a retry ladder for reasoning-effort, strict-tool and stale-chain rejections, a stream consumer and a chain-baseline recorder instead of one 400-line closure; request bodies and results are identical and a 60-turn chained session takes the same time.
+- Strict-mode schema sanitization splits into `$ref` and single-`allOf` inlining, a type-union splitter and a per-keyword rewrite instead of one 240-line function, cutting sanitization of 40 deep tool schemas from 8.49 ms to 7.64 ms with identical output across 100,000 generated schemas.
+- The Google, Cloud Code Assist, MCP and Moonshot schema normalizers split a node's walk into parent-level rewrites, a const-union collapse and type and object-shape settling steps instead of one 140-line function; output is identical across 200,000 generated schemas and normalization time is unchanged.
+- The Google, Cloud Code Assist, MCP and Moonshot normalizers walk a `properties` or definitions map by entry instead of copying their options for every key, and Cloud Code Assist's nullable pass walks each property subtree once instead of twice per nesting level, cutting normalization of the 25 built-in tool schemas by 13% to 23% and of a 16-level nested schema for Cloud Code Assist from 62.7 ms to 0.1 ms.
 
 ### Fixed
 
+- Strict-mode schema preparation no longer adds a `const` value to the caller's own `enum` array, so preparing a tool schema leaves it unchanged and a frozen `enum` beside a `const` no longer drops the tool out of strict mode.
+- A tool parameter named after a JSON Schema keyword keeps its name and schema for Google, Cloud Code Assist, MCP and Moonshot; a property named `const` was folded into an `enum` over its siblings, a property named `nullable` was dropped while `required` still listed it, and Cloud Code Assist sent such a tool the empty fallback schema.
+- A Cloud Code Assist tool parameter that admits `null` twice, such as `nullable: true` beside a `oneOf` with a `{type: "null"}` branch, loses both null layers instead of sending the whole tool the empty fallback schema.
+- Strict-mode schema preparation drops a draft-07 `dependencies` map as it drops `dependentSchemas` and `dependentRequired`, instead of passing its schemas through unsanitized, and the schema compatibility audit reads the names under `patternProperties` and `dependencies` as names instead of keywords.
+- `sanitizeSchemaForStrictMode` keeps a `nullable: true` node nullable at every reference, so a schema that reuses one nullable object in two places no longer drops the `null` branch from the second, and a nullable node that references itself resolves to its nullable form.
+- A tool-argument rejection bounds each issue line to 256 characters before appending the field's accepted values, so an oversized rejected value no longer cuts the legal values out of the failure.
 - A Cursor turn whose remote agent stops making progress now ends with "Cursor made no progress for Ns" at the 30-minute ceiling instead of hanging indefinitely, because Cursor's ten-second server heartbeat no longer counts as progress.
 - A Cursor turn held by a local tool that never returns now ends when its failure or an abort arrives instead of waiting on the tool forever.
 - Fixed every Cursor exec-channel tool call being stored twice in the assistant message, which left an unanswered copy of each call that session resume reported as pending.

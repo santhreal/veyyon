@@ -119,9 +119,9 @@ const SAMPLING_KNOB_SETTERS: { [K in SamplingKnob]-?: (agent: SamplingKnobs, val
 	},
 };
 
-/** True when `id` names one of the sampling knobs. */
+/** True when `id` names one of the sampling knobs. An own-key probe: `toString` is not a knob. */
 export function isSamplingKnob(id: string): id is SamplingKnob {
-	return id in SAMPLING_KNOB_SETTERS;
+	return Object.hasOwn(SAMPLING_KNOB_SETTERS, id);
 }
 
 /**

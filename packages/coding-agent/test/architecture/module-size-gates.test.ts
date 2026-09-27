@@ -9,9 +9,11 @@
  * a recorded reason, not a target. Two of them are far above the 800-line figure
  * the plan asked for, and that is stated rather than hidden:
  *
- * `core/tui.ts` is 3734 lines. MEASURED 2026-08-31, up from 3612 at the split:
- * the growth arrived with upstream edits to the pre-split monolith and carries
- * no new subsystem. The nine sibling modules were carved out of a 5415-line
+ * `core/tui.ts` is 3757 lines. MEASURED 2026-09-26, after the escape sequences
+ * each paint emits moved to `core/paint-sequences.ts` and the records one frame
+ * phase hands the next moved to `core/frame-plan.ts`; it was 3790 before them,
+ * up from 3612 at the split with upstream edits to the pre-split monolith. The
+ * sibling modules were carved out of a 5415-line
  * file, and what remains is the `TUI` class itself: one object holding about
  * sixty private fields that the compose, paint, scroll-isolation, cursor,
  * overlay and input paths all mutate within a single frame. Splitting it
@@ -53,6 +55,8 @@ const CORE_CEILINGS: Record<string, number> = {
 	"core/scroll.ts": 200,
 	"core/container.ts": 180,
 	"core/mouse-routing.ts": 150,
+	"core/paint-sequences.ts": 430,
+	"core/frame-plan.ts": 90,
 };
 
 /** Ceiling for every module in the presentation layer, which is new and has no legacy. */

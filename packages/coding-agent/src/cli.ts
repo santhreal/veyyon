@@ -128,6 +128,18 @@ async function runSmokeTest(): Promise<void> {
 		);
 	}
 
+	// `runCli` configures ArkType jitless before any command loads a schema. A static import that
+	// reaches `arktype` from this file's graph evaluates it first, and a bundled binary then compiles
+	// every validator again at launch; `ark.config` holds the configuration at `arktype`'s evaluation.
+	const { ark } = await import("arktype");
+	if (ark.config.jitless !== true) {
+		throw new Error(
+			"arktype smoke failed: ArkType is not jitless — runCli did not configure it before arktype " +
+				"evaluated, or a static import from cli.ts's module graph reaches arktype",
+		);
+	}
+	process.stderr.write("[smoke] arktype jitless\n");
+
 	process.stderr.write("[smoke] importing stats\n");
 	const { smokeTestSyncWorker, startServer } = await import("@veyyon/stats");
 	process.stderr.write("[smoke] stats imported\n");
@@ -464,6 +476,17 @@ export async function runCli(argv: string[]): Promise<void> {
 	if (resolvedArgv[0]?.startsWith("__veyyon_worker_")) {
 		await runWorkerEntrypoint(resolvedArgv[0]);
 		return;
+	}
+
+	// ArkType compiles a validator for each schema it builds, its own builtin keywords included,
+	// unless it is configured jitless before `arktype` first evaluates. In the compiled binary that
+	// codegen costs about 22 ms and 11 MiB of heap per launch, and interpreted traversal validates a
+	// tool call's arguments in 3.4 µs against 3.1 µs. `arktype` is off this file's static graph, so
+	// this runs before any module builds a schema, and `runSmokeTest` fails when it does not. The auth
+	// gateway's request schemas compile regardless (`@veyyon/ai` `providers/gateway-schema-type.ts`).
+	if (isProcessEntry) {
+		const { configure } = await import("arktype/config");
+		configure({ jitless: true });
 	}
 
 	// Declare this module as the worker-host entry now that the active profile

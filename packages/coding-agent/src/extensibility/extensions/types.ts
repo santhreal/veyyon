@@ -1378,6 +1378,15 @@ export interface ProviderModelConfig {
 /** Extension factory function type. Supports both sync and async initialization. */
 export type ExtensionFactory = (pi: ExtensionAPI) => void | Promise<void>;
 
+/**
+ * The extension API without the `pi` package namespace. The product's own inline extensions are bound
+ * to this, so binding them does not load the package barrel that `pi` is.
+ */
+export type BuiltinExtensionAPI = Omit<ExtensionAPI, "pi">;
+
+/** Factory for one of the product's own inline extensions; see {@link BuiltinExtensionAPI}. */
+export type BuiltinExtensionFactory = (api: BuiltinExtensionAPI) => void | Promise<void>;
+
 // ============================================================================
 // Loaded Extension Types
 // ============================================================================

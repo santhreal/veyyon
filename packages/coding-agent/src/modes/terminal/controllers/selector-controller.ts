@@ -1,7 +1,6 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { CredentialHealthResult, UsageReport } from "@veyyon/ai";
 import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "@veyyon/ai/auth-storage";
-import type { InstrumentationLevel } from "@veyyon/ai/instrumentation";
 import { getLoginCredential } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 // The derived provider set from the registry that derives it (164 modules) rather than the
@@ -10,11 +9,9 @@ import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
 import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
-import { applySamplingKnob, optionalNumber, toNumberOrUndefined } from "@veyyon/kernel/settings/optional-number";
 import { type Component, Loader, type OverlayHandle, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, getActiveAuthDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
 import * as logger from "@veyyon/utils/logger";
-import { setTuiTight } from "@veyyon/utils/tight-mode";
 import {
 	type AdvisorConfigScope,
 	discoverAdvisorConfigs,
@@ -33,7 +30,6 @@ import { DEFAULT_MODEL_SLOT, getRoleInfo, isDefaultModelSlot } from "../../../co
 import { resolveAvailablePersonalities } from "../../../config/personality-resolver";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../config/settings-instance";
-import { disableProvider, enableProvider } from "../../../discovery";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../../discovery/helpers";
 import { formatProviderName } from "../../../session/account-format";
 import {
@@ -51,27 +47,9 @@ import {
 } from "../../../slash-commands/helpers/reset-usage";
 import type { SubcommandDef } from "../../../slash-commands/types";
 import { frozenGateNotice } from "../../../system-prompt-builder/gate-registry";
-import { setMarkdownMermaidRendering } from "../../../theme/markdown-theme";
-import {
-	FALLBACK_THEME_NAME,
-	getAvailableThemes,
-	getSymbolTheme,
-	previewTheme,
-	setColorBlindMode,
-	setSymbolPreset,
-	setTheme,
-	type ThemeLoadResult,
-	theme,
-} from "../../../theme/theme";
-import { type ConfiguredThinkingLevel, hasConfigurableThinkingEffort } from "../../../thinking";
+import { getAvailableThemes, getSymbolTheme, previewTheme, theme } from "../../../theme/theme";
+import { hasConfigurableThinkingEffort } from "../../../thinking";
 import { shortenPath } from "../../../tools/core/render-utils";
-import { isImageProviderPreference, setPreferredImageProvider } from "../../../tools/web/image-gen";
-import {
-	isSearchProviderId,
-	isSearchProviderPreference,
-	setExcludedSearchProviders,
-	setPreferredSearchProvider,
-} from "../../../tools/web/search";
 import { copyToClipboard } from "../../../utils/clipboard";
 import { openPath } from "../../../utils/open";
 import { setSessionTerminalTitle } from "../../../utils/title-generator";
@@ -91,12 +69,12 @@ import { SubcommandPickerComponent } from "../components/selectors/subcommand-pi
 import { ThinkingSelectorComponent } from "../components/selectors/thinking-selector";
 import { TreeSelectorComponent } from "../components/selectors/tree-selector";
 import { UserMessageSelectorComponent } from "../components/selectors/user-message-selector";
-import { AssistantMessageComponent } from "../components/transcript/assistant-message";
-import { ToolExecutionComponent } from "../components/transcript/tool-execution";
+import { statusLineSettingsFromConfig } from "../components/status-line/quiet-row";
 import { TranscriptBlock } from "../components/transcript/transcript-container";
 import type { SessionObserverRegistry } from "../session-observer-registry";
 import type { InteractiveModeContext } from "../types";
 import { buildCopyTargets } from "../utils/copy-targets";
+import { settingEffect } from "./setting-effects";
 
 /**
  * The slice of the interactive context this uses: 33 members of the 215
@@ -328,18 +306,7 @@ export class SelectorController {
 						}
 					},
 					onStatusLinePreview: previewSettings => {
-						// Update status line with preview settings
-						this.ctx.statusLine.updateSettings({
-							preset: settings.get("statusLine.preset"),
-							leftSegments: settings.get("statusLine.leftSegments"),
-							rightSegments: settings.get("statusLine.rightSegments"),
-							separator: settings.get("statusLine.separator"),
-							showHookStatus: settings.get("statusLine.showHookStatus"),
-							sessionAccent: settings.get("statusLine.sessionAccent"),
-							transparent: settings.get("statusLine.transparent"),
-							compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
-							...previewSettings,
-						});
+						this.ctx.statusLine.updateSettings({ ...statusLineSettingsFromConfig(), ...previewSettings });
 						this.ctx.ui.requestRender();
 					},
 					getStatusLinePreview: (previewWidth?: number) => {
@@ -359,17 +326,7 @@ export class SelectorController {
 					},
 					onCancel: () => {
 						done();
-						// Restore status line to saved settings
-						this.ctx.statusLine.updateSettings({
-							preset: settings.get("statusLine.preset"),
-							leftSegments: settings.get("statusLine.leftSegments"),
-							rightSegments: settings.get("statusLine.rightSegments"),
-							separator: settings.get("statusLine.separator"),
-							showHookStatus: settings.get("statusLine.showHookStatus"),
-							sessionAccent: settings.get("statusLine.sessionAccent"),
-							transparent: settings.get("statusLine.transparent"),
-							compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
-						});
+						this.ctx.statusLine.updateSettings(statusLineSettingsFromConfig());
 						this.ctx.ui.requestRender();
 					},
 				},
@@ -659,289 +616,25 @@ export class SelectorController {
 	}
 
 	/**
-	 * Handle setting changes from the settings selector.
-	 * Most settings are saved directly via SettingsManager in the definitions.
-	 * This handles side effects and session-specific settings.
+	 * Apply the live side effect of a settings-UI flip. The selector has already stored the value;
+	 * `setting-effects.ts` holds what each setting needs beyond that.
 	 */
 	handleSettingChange(id: string, value: unknown): void | Promise<void> {
-		// Discovery provider toggles
-		if (id.startsWith("discovery.")) {
-			const providerId = id.replace("discovery.", "");
-			if (value) {
-				enableProvider(providerId);
-			} else {
-				disableProvider(providerId);
-			}
-			return;
-		}
-
-		// Auth storage and the model registry capture the profile-sharing backing
-		// store at startup. Persisting a different posture without replacing both
-		// atomically would leave the UI claiming one policy while dispatch still
-		// reads the old store. Begin teardown synchronously (shutdown marks the
-		// context as shutting down before its first await), making restart the
-		// explicit dispatch barrier.
-		if (id === "profileSharing") {
-			this.ctx.showWarning(
-				"Credential sharing changed. Restart required; this session is shutting down before further model dispatch.",
-			);
-			return this.ctx.shutdown().catch(err => {
-				this.ctx.showError(`Failed to shut down after changing credential sharing: ${errorMessage(err)}`);
-			});
-		}
-
-		// A prompt gate this session captured at startup cannot follow the flip. Saying so is
-		// the point: the settings UI shows the new value either way, so without this the
-		// operator has no way to tell an applied change from one that did nothing.
+		// A prompt gate this session captured at startup cannot follow the flip. The settings UI
+		// shows the new value either way, so without this notice an applied change and one that
+		// did nothing look the same.
 		//
-		// THE REBUILD ITSELF IS NOT TRIGGERED HERE. It follows the WRITE, in
-		// `AgentSession`'s effective-setting listener, which asks the same registry
-		// (`system-prompt-builder/gate-registry.ts`). This handler carried the trigger
-		// while the session's own table listed five of the ten live gates, so the two
-		// disagreed in both directions: a flip through this UI rebuilt twice, and a write
-		// from anywhere else — a slash command, an SDK or ACP host, a plugin — rebuilt for
-		// five of the settings and silently did not for `personality`, `tools.format`,
-		// `inlineToolDescriptors`, `includeModelInPrompt`, `tui.renderMermaid` and
-		// `tools.intentTracing`. One owner reached by every writer is the fix; the switch
-		// below still runs, for the UI side effects a flip also needs.
+		// THE REBUILD ITSELF IS NOT TRIGGERED HERE. It follows the WRITE, in `AgentSession`'s
+		// effective-setting listener, which asks the same registry
+		// (`system-prompt-builder/gate-registry.ts`), so a write from a slash command, an SDK or
+		// ACP host or a plugin rebuilds the prompt as this UI does.
 		const frozen = frozenGateNotice(id);
 		if (frozen !== undefined) this.ctx.showWarning(frozen);
-
-		// Secret settings own live process state, not only persisted configuration.
-		// Return the coordinator-backed transition rather than dropping its
-		// promise. Rapid toggles then retain initiation order and callers that can
-		// await the setting side effect observe the committed runtime.
-		if (id.startsWith("secrets.")) {
-			return this.ctx.session.refreshSecrets().catch(err => {
-				this.ctx.showError(`Failed to apply "${id}" to the secret runtime: ${errorMessage(err)}`);
-			});
-		}
-
-		switch (id) {
-			// Session-managed settings (not in SettingsManager)
-			case "autoCompact":
-				this.ctx.session.setAutoCompactionEnabled(value as boolean);
-				this.ctx.statusLine.setAutoCompactEnabled(value as boolean);
-				break;
-			case "steeringMode":
-				this.ctx.session.setSteeringMode(value as "all" | "one-at-a-time");
-				break;
-			case "followUpMode":
-				this.ctx.session.setFollowUpMode(value as "all" | "one-at-a-time");
-				break;
-			case "interruptMode":
-				this.ctx.session.setInterruptMode(value as "immediate" | "wait");
-				break;
-			case "session.instrumentation":
-				this.ctx.session.setInstrumentationLevel(value as InstrumentationLevel);
-				break;
-			case "thinkingLevel":
-			case "defaultThinkingLevel":
-				this.ctx.session.setThinkingLevel(value as ConfiguredThinkingLevel);
-				this.ctx.statusLine.invalidate();
-				this.ctx.updateEditorBorderColor();
-				break;
-			// `personality` needs no arm of its own: it is a registered prompt gate, and the
-			// rebuild above covers it. Kept out of the switch rather than left as an empty case
-			// so there is nothing to read that looks like it still does the work.
-
-			case "autocompleteMaxVisible":
-				this.ctx.editor.setAutocompleteMaxVisible(typeof value === "number" ? value : Number(value));
-				break;
-
-			// Settings with UI side effects
-			case "showImages":
-				for (const child of this.ctx.chatContainer.children) {
-					if (child instanceof ToolExecutionComponent) {
-						child.setShowImages(value as boolean);
-					}
-				}
-				break;
-			case "hideThinkingBlock":
-				this.ctx.hideThinkingBlock = value as boolean;
-				for (const child of this.ctx.chatContainer.children) {
-					if (child instanceof AssistantMessageComponent) {
-						child.setHideThinkingBlock(this.ctx.effectiveHideThinkingBlock);
-					}
-				}
-				// Full clear + replay so blocks frozen in committed scrollback on
-				// ED3-risk terminals retire their stale snapshots too (see
-				// InputController.toggleThinkingBlockVisibility).
-				this.ctx.ui.resetDisplay();
-				break;
-			case "proseOnlyThinking":
-				this.ctx.proseOnlyThinking = value as boolean;
-				for (const child of this.ctx.chatContainer.children) {
-					if (child instanceof AssistantMessageComponent) {
-						child.setProseOnlyThinking(value as boolean);
-					}
-				}
-				this.ctx.ui.resetDisplay();
-				break;
-			case "omitThinking":
-				this.ctx.session.agent.hideThinkingSummary = value as boolean;
-				break;
-			case "display.cacheMissMarker":
-				// Rebuild re-runs the usage-based detection under the new setting so
-				// markers appear/disappear; full reset retires any already committed
-				// to native scrollback (mirrors hideThinking).
-				this.ctx.rebuildChatFromMessages();
-				this.ctx.ui.resetDisplay();
-				break;
-			case "display.collapseCompacted":
-				// Rebuild swaps between the collapsed tail and the full inline
-				// history; full reset retires blocks already committed to native
-				// scrollback (mirrors cacheMissMarker).
-				this.ctx.rebuildChatFromMessages();
-				this.ctx.ui.resetDisplay();
-				break;
-			case "tui.tight":
-				setTuiTight(value as boolean);
-				this.ctx.ui.invalidate();
-				this.ctx.ui.requestRender();
-				break;
-
-			case "tui.scrollbackRebuild":
-				this.ctx.ui.setScrollbackRebuild(value as boolean);
-				break;
-
-			case "tui.scrollIsolation":
-				this.ctx.ui.setScrollIsolation(value as boolean);
-				break;
-
-			case "tui.renderMermaid":
-				// The prompt rebuild is the registry's, above. What is left here is the part that
-				// is genuinely about the TUI: the renderer switch and retiring committed blocks.
-				setMarkdownMermaidRendering(value as boolean);
-				this.ctx.rebuildChatFromMessages();
-				this.ctx.ui.resetDisplay();
-				break;
-
-			case "theme": {
-				setTheme(value as string, true).then(result => {
-					this.ctx.statusLine.invalidate();
-					this.ctx.ui.requestRender();
-					this.ctx.ui.invalidate();
-					this.#surfaceThemeResult(result, `load theme "${value}"`);
-				});
-				break;
-			}
-			case "symbolPreset": {
-				setSymbolPreset(value as "unicode" | "nerd" | "ascii").then(result => {
-					this.ctx.statusLine.invalidate();
-					this.ctx.ui.requestRender();
-					this.ctx.ui.invalidate();
-					this.#surfaceThemeResult(result, "apply symbol preset");
-				});
-				break;
-			}
-			case "colorBlindMode": {
-				setColorBlindMode(value === "true" || value === true).then(result => {
-					this.ctx.ui.invalidate();
-					this.#surfaceThemeResult(result, "apply color-blind mode");
-				});
-				break;
-			}
-			// Every sampling knob applies the same way: read "is this unset" through
-			// the ONE owner and hand the rest to the agent. Each of these used to be
-			// its own case testing `value >= 0`, which discarded every NEGATIVE value
-			// along with the sentinel — and `presencePenalty` and `repetitionPenalty`
-			// accept negatives, so configuring one did nothing. The same test was
-			// also written out in sdk.ts, where the bug had to be fixed twice.
-			case "temperature":
-			case "topP":
-			case "topK":
-			case "minP":
-			case "presencePenalty":
-			case "repetitionPenalty": {
-				applySamplingKnob(this.ctx.session.agent, id, optionalNumber(toNumberOrUndefined(value)));
-				break;
-			}
-			case "git.enabled":
-			// The composer reads `statusLine.enabled` on each render, so applying it is a
-			// render request; it is here so the row appears or disappears under the open
-			// settings screen rather than on the next unrelated frame.
-			case "statusLine.enabled":
-			case "statusLinePreset":
-			case "statusLine.preset":
-			case "statusLineSeparator":
-			case "statusLine.separator":
-			case "statusLineShowHooks":
-			case "statusLine.showHookStatus":
-			case "statusLine.sessionAccent":
-			case "statusLine.transparent":
-			case "statusLine.compactThinkingLevel":
-			case "statusLineSegments":
-			case "statusLineModelThinking":
-			case "statusLinePathAbbreviate":
-			case "statusLinePathMaxLength":
-			case "statusLinePathStripWorkPrefix":
-			case "statusLineGitShowBranch":
-			case "statusLineGitShowStaged":
-			case "statusLineGitShowUnstaged":
-			case "statusLineGitShowUntracked":
-			case "statusLineTimeFormat":
-			case "statusLineTimeShowSeconds": {
-				const statusLineSettings = {
-					preset: settings.get("statusLine.preset"),
-					leftSegments: settings.get("statusLine.leftSegments"),
-					rightSegments: settings.get("statusLine.rightSegments"),
-					separator: settings.get("statusLine.separator"),
-					showHookStatus: settings.get("statusLine.showHookStatus"),
-					sessionAccent: settings.get("statusLine.sessionAccent"),
-					transparent: settings.get("statusLine.transparent"),
-					segmentOptions: settings.get("statusLine.segmentOptions"),
-					compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
-				};
-				this.ctx.statusLine.updateSettings(statusLineSettings);
-				this.ctx.ui.requestRender();
-				break;
-			}
-
-			// Provider settings - update runtime preferences
-			case "providers.webSearch":
-				if (typeof value === "string" && isSearchProviderPreference(value)) {
-					setPreferredSearchProvider(value);
-				}
-				break;
-			case "providers.webSearchExclude":
-				if (Array.isArray(value)) {
-					setExcludedSearchProviders(value.filter(isSearchProviderId));
-				}
-				break;
-			case "providers.image":
-				if (isImageProviderPreference(value)) {
-					setPreferredImageProvider(value);
-				}
-				break;
-
-			// MCP update injection - live subscribe/unsubscribe
-			case "mcp.notifications":
-				this.ctx.mcpManager?.setNotificationsEnabled(value as boolean);
-				break;
-
-			// All other settings are handled by the definitions (get/set on SettingsManager)
-			// No additional side effects needed
-		}
+		return settingEffect(id)?.(this.ctx, value);
 	}
 
 	showModelSelector(options?: { temporaryOnly?: boolean }): void {
 		this.#showModelPicker(options?.temporaryOnly === true);
-	}
-
-	/**
-	 * Report a theme reload that did not do what was asked. `fellBack` means the
-	 * user is now looking at a theme they did not pick, so it always gets said
-	 * out loud; anything else failed without changing what is on screen.
-	 */
-	#surfaceThemeResult(result: ThemeLoadResult, attempted: string): void {
-		if (result.success) return;
-		const detail = result.error ? `: ${result.error}` : "";
-		this.ctx.showError(
-			result.fellBack
-				? `Failed to ${attempted}${detail}\nFell back to the ${FALLBACK_THEME_NAME} theme.`
-				: `Failed to ${attempted}${detail}`,
-		);
 	}
 
 	/**

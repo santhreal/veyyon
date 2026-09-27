@@ -28,6 +28,7 @@ import { type FileSlashCommand, loadSlashCommands as loadSlashCommandsInternal }
 import { discoverAndLoadMCPTools, type MCPToolsLoadResult } from "../mcp";
 import { loadProjectContextFiles as loadContextFilesInternal } from "../system-prompt";
 import type { ContextFileEntry, ToolSession } from "../tools";
+import { type NonProjectReason, nonProjectReasonOrNull } from "../tools/fs/reroot-hint";
 import { type ActiveRepoContext, resolveActiveRepoContext } from "../utils/active-repo-context";
 import { EventBus } from "../utils/event-bus";
 import { buildWorkspaceTree, type WorkspaceTree } from "../workspace-tree";
@@ -157,15 +158,10 @@ export async function loadCliExtensionProviders(
 	// one is the right and only answer here. Stated because the same omission at
 	// the session call site was the defect.
 	const extensionsResult = await loadSessionExtensions(options, cwd, settings, eventBus);
-	const activeSources = extensionsResult.extensions.map(extension => extension.path);
-	modelRegistry.syncExtensionSources(activeSources);
-	for (const sourceId of new Set(activeSources)) {
-		modelRegistry.clearSourceRegistrations(sourceId);
-	}
-	for (const { name, config, sourceId } of extensionsResult.runtime.pendingProviderRegistrations) {
-		modelRegistry.registerProvider(name, config, sourceId);
-	}
-	extensionsResult.runtime.pendingProviderRegistrations = [];
+	modelRegistry.adoptExtensionProviders(
+		extensionsResult.extensions.map(extension => extension.path),
+		extensionsResult.runtime.pendingProviderRegistrations,
+	);
 	await modelRegistry.refreshRuntimeProviders();
 }
 
@@ -253,6 +249,8 @@ export interface ProjectInputDiscovery {
 	readonly workspaceTree: Promise<WorkspaceTree>;
 	/** Null when the directory is in no repository or the lookup failed; the failure is logged. */
 	readonly activeRepoContext: Promise<ActiveRepoContext | null>;
+	/** Why the directory is not a project root; null when it is one or the check failed (logged). */
+	readonly nonProjectCwd: Promise<NonProjectReason | null>;
 	readonly skills: Promise<{ skills: Skill[]; warnings: SkillWarning[] }>;
 	readonly rules: Promise<Rule[]>;
 	readonly watchdogFiles: Promise<string[]>;
@@ -286,6 +284,7 @@ export function discoverProjectInputs(
 		),
 		workspaceTree: prefetch(discoverWorkspaceTree(cwd, settings, supplied.workspaceTree)),
 		activeRepoContext: logger.time("resolveActiveRepoContext", resolveActiveRepoContextOrNull, cwd),
+		nonProjectCwd: logger.time("isNonProjectRoot", nonProjectReasonOrNull, cwd),
 		skills: prefetch(skills),
 		rules: prefetch(
 			supplied.rules !== undefined

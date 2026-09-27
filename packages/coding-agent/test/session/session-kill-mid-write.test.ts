@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { SESSION_LIST_INDEX_FILE } from "@veyyon/kernel/session/session-list-index";
 import { listSessions } from "@veyyon/kernel/session/session-listing";
+import { loadEntriesFromFile } from "@veyyon/kernel/session/session-loader";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { removeWithRetries } from "@veyyon/utils";
 import { guardDestructivePath } from "../../../utils/test/helpers/destructive-guard";
@@ -131,13 +132,24 @@ describe("a session survives its process being killed mid-write", () => {
 		// The failure mode that matters more than the missing tail: if a torn final
 		// line made the file unreadable, a crash would cost the entire conversation
 		// rather than the sentence being written.
+		//
+		// The listing reads a bounded prefix, so its message count is a lower bound: a
+		// parent slowed by a busy machine lets the child commit past 4 KB before the
+		// kill lands. The listing must still find the file, and the full load must
+		// recover every committed message in order.
 		const { file, committed } = await killAfterCommits(4);
 
 		const sessions = await listSessions(sessionDir, storage);
-		const listed = sessions.find(session => session.path === file);
+		expect(sessions.map(session => session.path)).toContain(file);
 
-		expect(listed).toBeDefined();
-		expect(listed?.messageCount).toBeGreaterThanOrEqual(committed);
+		const recovered = (await loadEntriesFromFile(file, storage)).flatMap(entry =>
+			entry.type === "message" && entry.message.role === "user" && typeof entry.message.content === "string"
+				? [entry.message.content]
+				: [],
+		);
+		expect(recovered.slice(0, committed + 1)).toEqual(
+			Array.from({ length: committed + 1 }, (_, index) => `message ${index}`),
+		);
 	});
 
 	test("the session lists normally afterwards, with no repair step required", async () => {

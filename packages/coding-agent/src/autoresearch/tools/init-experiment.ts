@@ -7,16 +7,33 @@ import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import * as git from "../../utils/git";
 import { parseWorkDirDirtyPaths, tryReadHeadSha } from "../git";
-import { dedupeStrings, gitStatusPorcelain, gitWorkDirPrefix, normalizePathSpec } from "../helpers";
+import { dedupeStrings, normalizePathSpec, readWorkDirStatus } from "../helpers";
 import { buildExperimentState } from "../state";
-import { openAutoresearchStorage, type SessionRow } from "../storage";
+import {
+	type AutoresearchStorage,
+	type OpenSessionParams,
+	openAutoresearchStorage,
+	type SessionRow,
+	type UpdateSessionParams,
+} from "../storage";
 import { MAX_ATTEMPTS, MAX_BREADTH } from "../swarm";
-import type { AutoresearchToolFactoryOptions, ExperimentState } from "../types";
+import type {
+	AutoresearchRuntime,
+	AutoresearchToolFactoryOptions,
+	ExperimentState,
+	MetricDirection,
+	SwarmSetup,
+} from "../types";
 import { activeToolsChanged, activeToolsFor } from ".";
 
 export const HARNESS_FILENAME = "autoresearch.sh";
 export const DEFAULT_HARNESS_COMMAND = `bash ${HARNESS_FILENAME}`;
 const HARNESS_COMMIT_TITLE = "autoresearch: harness setup";
+const MISSING_HARNESS_MESSAGE = `Error: ./${HARNESS_FILENAME} does not exist. Phase 1 of autoresearch is harness setup — write \`./${HARNESS_FILENAME}\` so it exits 0 and prints \`METRIC <name>=<value>\`, validate it via \`bash ${HARNESS_FILENAME}\`, then call init_experiment again.`;
+const CONSOLE_OVERRIDE_NOTICE =
+	"The breadth, attempts and certification arguments were ignored: the console the user configured this run in decides them.";
+const OFF_BRANCH_NOTICE =
+	"Note: not on a dedicated `autoresearch/*` branch — `log_experiment discard` will only revert run-modified files, not reset to baseline.";
 
 /** Undefined leaves the setting alone; a nonsense number is clamped, never rejected. */
 function clampCount(value: number | undefined, max: number): number | null {
@@ -41,6 +58,8 @@ const initExperimentSchema = type({
 	"certify?": type("boolean").describe("have arms cross-review each other before a winner is kept"),
 });
 
+type InitExperimentParams = typeof initExperimentSchema.infer;
+
 interface InitExperimentDetails {
 	state: ExperimentState;
 	createdSession: boolean;
@@ -63,165 +82,26 @@ export function createInitExperimentTool(
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const storage = await openAutoresearchStorage(ctx.cwd);
 			const runtime = options.getRuntime(ctx);
-
-			const direction = params.direction ?? "lower";
-			// `metric_unit: "comparisons"` beside `primary_metric: "comparisons"` is
-			// the name twice, and printed as `1,596,000comparisons` on every surface.
-			const unitArg = params.metric_unit?.trim() ?? "";
-			const metricUnit = unitArg.toLowerCase() === params.primary_metric.trim().toLowerCase() ? "" : unitArg;
-			const scopePaths = dedupeStrings((params.scope_paths ?? []).map(normalizePathSpec));
-			const offLimits = dedupeStrings((params.off_limits ?? []).map(normalizePathSpec));
-			const constraints = dedupeStrings(params.constraints ?? []);
-			const secondaryMetrics = dedupeStrings(params.secondary_metrics ?? []);
-			const goal = params.goal?.trim() || null;
-			const argIterations =
-				params.max_iterations !== undefined && Number.isFinite(params.max_iterations) && params.max_iterations > 0
-					? Math.floor(params.max_iterations)
-					: null;
 			const branch = (await git.branch.current(ctx.cwd)) ?? null;
 			const onAutoresearchBranch = branch?.startsWith("autoresearch/") ?? false;
-
 			const existing = storage.getActiveSessionForBranch(branch);
-			const isNewSegmentInit = existing !== null && params.new_segment === true;
-			const requiresHarness = !existing || isNewSegmentInit;
-			// An unset value keeps whatever the session already has, so a plain
-			// reconfigure never silently collapses a swarm back to serial.
-			// The console parks the operator's answers before a session
-			// exists, and they outrank the tool's arguments on the init that
-			// consumes them: the model never saw the console, so an argument it
-			// passes here is a guess, and a guess of 1 turned a configured swarm
-			// into a serial loop with nothing on screen saying so. A later init,
-			// with nothing parked, may still reconfigure from what the harness
-			// turned out to be.
-			const parked = runtime.pendingSwarm;
-			const maxIterations = parked?.maxIterations ?? argIterations;
-			const breadth = parked?.breadth ?? clampCount(params.breadth, MAX_BREADTH) ?? existing?.breadth ?? 1;
-			const attempts = parked?.attempts ?? clampCount(params.attempts, MAX_ATTEMPTS) ?? existing?.attempts ?? 1;
-			const certify = parked?.certify ?? params.certify ?? existing?.certify ?? true;
-			const overriddenByConsole =
-				parked !== null &&
-				((params.breadth !== undefined && clampCount(params.breadth, MAX_BREADTH) !== parked.breadth) ||
-					(params.attempts !== undefined && clampCount(params.attempts, MAX_ATTEMPTS) !== parked.attempts) ||
-					(params.certify !== undefined && params.certify !== parked.certify));
-			// Per-arm models are the user's choice in the console, never the
-			// model's: this tool takes no argument for them, and a breadth that
-			// lands back at 1 drops them, since there are no arms to spread.
-			const armModels = breadth > 1 ? (parked?.armModels ?? existing?.armModels ?? []).slice(0, breadth) : [];
+			const newSegment = existing !== null && params.new_segment === true;
+			const requiresHarness = !existing || newSegment;
+			const settings = resolveInitSettings(params, runtime.pendingSwarm, existing);
 			runtime.pendingSwarm = null;
 
-			if (requiresHarness) {
-				const harnessExists = await Bun.file(path.join(ctx.cwd, HARNESS_FILENAME)).exists();
-				if (!harnessExists) {
-					return {
-						content: [
-							{
-								type: "text",
-								text: `Error: ./${HARNESS_FILENAME} does not exist. Phase 1 of autoresearch is harness setup — write \`./${HARNESS_FILENAME}\` so it exits 0 and prints \`METRIC <name>=<value>\`, validate it via \`bash ${HARNESS_FILENAME}\`, then call init_experiment again.`,
-							},
-						],
-					};
-				}
+			if (requiresHarness && !(await Bun.file(path.join(ctx.cwd, HARNESS_FILENAME)).exists())) {
+				return { content: [{ type: "text", text: MISSING_HARNESS_MESSAGE }] };
 			}
-
-			let harnessCommitted = false;
-			let commitWarning: string | null = null;
-			if (requiresHarness && onAutoresearchBranch) {
-				const dirty = await detectPendingChanges(ctx.cwd);
-				if (dirty) {
-					try {
-						await git.stage.files(ctx.cwd, []);
-						const message = buildHarnessCommitMessage(goal, params.name);
-						await git.commit(ctx.cwd, message);
-						harnessCommitted = true;
-					} catch (err) {
-						commitWarning = `Failed to auto-commit harness changes: ${errorMessage(err)}. Recording baseline at current HEAD; discard may not preserve uncommitted harness files.`;
-					}
-				}
-			}
-
+			const harness =
+				requiresHarness && onAutoresearchBranch
+					? await commitPendingHarness(ctx.cwd, settings.goal, params.name)
+					: NO_HARNESS_COMMIT;
 			const baselineCommit = await tryReadHeadSha(ctx.cwd);
-
-			let session: SessionRow;
-			let createdSession = false;
-			let bumpedSegment = false;
-			let abandonedRuns = 0;
-
-			if (!existing) {
-				session = storage.openSession({
-					name: params.name,
-					goal,
-					primaryMetric: params.primary_metric,
-					metricUnit,
-					direction,
-					preferredCommand: DEFAULT_HARNESS_COMMAND,
-					branch,
-					baselineCommit,
-					maxIterations,
-					scopePaths,
-					offLimits,
-					constraints,
-					secondaryMetrics,
-					breadth,
-					attempts,
-					certify,
-					armModels,
-				});
-				createdSession = true;
-			} else if (isNewSegmentInit) {
-				abandonedRuns = storage.abandonIncompleteRuns(existing.id);
-				storage.bumpSessionSegment(existing.id, baselineCommit);
-				session = storage.updateSession(existing.id, {
-					goal,
-					preferredCommand: DEFAULT_HARNESS_COMMAND,
-					maxIterations,
-					scopePaths,
-					offLimits,
-					constraints,
-					secondaryMetrics,
-					primaryMetric: params.primary_metric,
-					metricUnit,
-					direction,
-					branch,
-					baselineCommit,
-					breadth,
-					attempts,
-					certify,
-					armModels,
-				});
-				bumpedSegment = true;
-			} else {
-				session = storage.updateSession(existing.id, {
-					goal: goal ?? existing.goal,
-					maxIterations: maxIterations ?? existing.maxIterations,
-					scopePaths: params.scope_paths !== undefined ? scopePaths : existing.scopePaths,
-					offLimits: params.off_limits !== undefined ? offLimits : existing.offLimits,
-					constraints: params.constraints !== undefined ? constraints : existing.constraints,
-					secondaryMetrics: params.secondary_metrics !== undefined ? secondaryMetrics : existing.secondaryMetrics,
-					primaryMetric: params.primary_metric,
-					metricUnit,
-					direction,
-					branch: branch ?? existing.branch,
-					baselineCommit: baselineCommit ?? existing.baselineCommit,
-					breadth,
-					attempts,
-					certify,
-					armModels,
-				});
-			}
-
-			const loggedRuns = storage.listLoggedRuns(session.id);
-			const state = buildExperimentState(session, loggedRuns);
-			runtime.state = state;
-			runtime.goal = session.goal;
-			runtime.autoresearchMode = true;
-			runtime.autoResumeArmed = true;
-			runtime.lastAutoResumePendingRunNumber = null;
-			runtime.lastRunDuration = null;
-			runtime.lastRunAsi = null;
-			runtime.lastRunArtifactDir = null;
-			runtime.lastRunNumber = null;
-			runtime.lastRunSummary = null;
-
+			const columns = sessionColumns(params.primary_metric, settings, branch, baselineCommit);
+			const outcome = writeSession(storage, existing, newSegment, params, columns);
+			const state = buildExperimentState(outcome.session, storage.listLoggedRuns(outcome.session.id));
+			armRuntime(runtime, state, outcome.session.goal);
 			options.dashboard.update(ctx, runtime);
 			options.dashboard.requestRender();
 
@@ -234,87 +114,16 @@ export function createInitExperimentTool(
 				await options.pi.setActiveTools(nextActiveTools);
 			}
 
-			const lines: string[] = [];
-			if (createdSession) {
-				lines.push(
-					`Initialized autoresearch session "${session.name}" (ID ${session.id}) for segment ${session.currentSegment}.`,
-				);
-			} else if (bumpedSegment) {
-				lines.push(
-					`Started new segment ${session.currentSegment} for session "${session.name}" (ID ${session.id}).`,
-				);
-				if (abandonedRuns > 0) {
-					lines.push(`Abandoned ${abandonedRuns} incomplete run(s) from prior segment.`);
-				}
-			} else {
-				lines.push(
-					`Reconfigured autoresearch session "${session.name}" (ID ${session.id}) on segment ${session.currentSegment}.`,
-				);
-			}
-
-			if (harnessCommitted) {
-				lines.push(`Auto-committed harness setup (${HARNESS_COMMIT_TITLE}).`);
-			} else if (commitWarning) {
-				lines.push(`Warning: ${commitWarning}`);
-			}
-
-			if (session.goal) {
-				lines.push(`Goal: ${session.goal}`);
-			}
-			lines.push(`Primary metric: ${session.primaryMetric} (direction: ${session.direction})`);
-			if (session.metricUnit) {
-				lines.push(`Metric unit: ${session.metricUnit}`);
-			}
-			if (session.secondaryMetrics.length > 0) {
-				lines.push(`Secondary metrics: ${session.secondaryMetrics.join(", ")}`);
-			}
-			lines.push(
-				session.breadth > 1
-					? `Breadth: ${formatCount("arm", session.breadth)} per iteration, ${formatCount("attempt", session.attempts)} each, certification ${session.certify ? "on" : "off"}.`
-					: "Breadth: 1 (serial, no arms).",
-			);
-			if (overriddenByConsole) {
-				lines.push(
-					"The breadth, attempts and certification arguments were ignored: the console the user configured this run in decides them.",
-				);
-			}
-			if (session.scopePaths.length > 0) {
-				lines.push(`Files in scope: ${session.scopePaths.join(", ")}`);
-			}
-			if (session.offLimits.length > 0) {
-				lines.push(`Off limits: ${session.offLimits.join(", ")}`);
-			}
-			if (session.maxIterations !== null) {
-				lines.push(`Max iterations per segment: ${session.maxIterations}`);
-			}
-			if (session.branch) {
-				lines.push(`Active branch: ${session.branch}`);
-			}
-			if (session.baselineCommit) {
-				lines.push(`Baseline commit: ${session.baselineCommit.slice(0, 12)}`);
-			}
-			if (createdSession) {
-				lines.push(
-					"Phase 2: iteration loop is active. Run the baseline experiment with `run_experiment` and log it.",
-				);
-			} else if (bumpedSegment) {
-				lines.push("Run a fresh baseline for the new segment.");
-			}
-			if (requiresHarness && !onAutoresearchBranch) {
-				lines.push(
-					"Note: not on a dedicated `autoresearch/*` branch — `log_experiment discard` will only revert run-modified files, not reset to baseline.",
-				);
-			}
-
+			const offBranch = requiresHarness && !onAutoresearchBranch;
 			return {
-				content: [{ type: "text", text: lines.join("\n") }],
+				content: [{ type: "text", text: initReport(outcome, harness, settings.overriddenByConsole, offBranch) }],
 				details: {
 					state,
-					createdSession,
-					bumpedSegment,
-					abandonedRuns,
-					harnessCommitted,
-					baselineCommit: session.baselineCommit,
+					createdSession: outcome.kind === "created",
+					bumpedSegment: outcome.kind === "newSegment",
+					abandonedRuns: outcome.abandonedRuns,
+					harnessCommitted: harness.committed,
+					baselineCommit: outcome.session.baselineCommit,
 				},
 			};
 		},
@@ -326,6 +135,272 @@ export function createInitExperimentTool(
 			}),
 		},
 	};
+}
+
+/** The swarm an init sets up, and whether the console's parked answers overrode the call's arguments. */
+interface SwarmChoice {
+	breadth: number;
+	attempts: number;
+	certify: boolean;
+	armModels: string[];
+	maxIterations: number | null;
+	overriddenByConsole: boolean;
+}
+
+/** Every setting an init call resolves before it touches the worktree or the store. */
+interface InitSettings extends SwarmChoice {
+	goal: string | null;
+	metricUnit: string;
+	direction: MetricDirection;
+	scopePaths: string[];
+	offLimits: string[];
+	constraints: string[];
+	secondaryMetrics: string[];
+}
+
+function resolveInitSettings(
+	params: InitExperimentParams,
+	parked: SwarmSetup | null,
+	existing: SessionRow | null,
+): InitSettings {
+	// `metric_unit: "comparisons"` beside `primary_metric: "comparisons"` is
+	// the name twice, and printed as `1,596,000comparisons` on every surface.
+	const unit = params.metric_unit?.trim() ?? "";
+	return {
+		...resolveSwarm(params, parked, existing),
+		goal: params.goal?.trim() || null,
+		metricUnit: unit.toLowerCase() === params.primary_metric.trim().toLowerCase() ? "" : unit,
+		direction: params.direction ?? "lower",
+		scopePaths: dedupeStrings((params.scope_paths ?? []).map(normalizePathSpec)),
+		offLimits: dedupeStrings((params.off_limits ?? []).map(normalizePathSpec)),
+		constraints: dedupeStrings(params.constraints ?? []),
+		secondaryMetrics: dedupeStrings(params.secondary_metrics ?? []),
+	};
+}
+
+/**
+ * An unset value keeps whatever the session already has, so a plain reconfigure
+ * never silently collapses a swarm back to serial.
+ *
+ * The console parks the operator's answers before a session exists, and they
+ * outrank the tool's arguments on the init that consumes them: the model never
+ * saw the console, so an argument it passes here is a guess, and a guess of 1
+ * turned a configured swarm into a serial loop with nothing on screen saying so.
+ * A later init, with nothing parked, may still reconfigure from what the harness
+ * turned out to be.
+ */
+function resolveSwarm(
+	params: InitExperimentParams,
+	parked: SwarmSetup | null,
+	existing: SessionRow | null,
+): SwarmChoice {
+	const argBreadth = clampCount(params.breadth, MAX_BREADTH);
+	const argAttempts = clampCount(params.attempts, MAX_ATTEMPTS);
+	const argIterations =
+		params.max_iterations !== undefined && Number.isFinite(params.max_iterations) && params.max_iterations > 0
+			? Math.floor(params.max_iterations)
+			: null;
+	const breadth = parked?.breadth ?? argBreadth ?? existing?.breadth ?? 1;
+	const overriddenByConsole =
+		parked !== null &&
+		((params.breadth !== undefined && argBreadth !== parked.breadth) ||
+			(params.attempts !== undefined && argAttempts !== parked.attempts) ||
+			(params.certify !== undefined && params.certify !== parked.certify));
+	return {
+		breadth,
+		attempts: parked?.attempts ?? argAttempts ?? existing?.attempts ?? 1,
+		certify: parked?.certify ?? params.certify ?? existing?.certify ?? true,
+		// Per-arm models are the user's choice in the console, never the model's:
+		// this tool takes no argument for them, and a breadth that lands back at 1
+		// drops them, since there are no arms to spread.
+		armModels: breadth > 1 ? (parked?.armModels ?? existing?.armModels ?? []).slice(0, breadth) : [],
+		maxIterations: parked?.maxIterations ?? argIterations,
+		overriddenByConsole,
+	};
+}
+
+/** Every session column an init writes, as a fresh session or a new segment takes it. */
+type SessionColumns = Omit<OpenSessionParams, "name">;
+
+function sessionColumns(
+	primaryMetric: string,
+	settings: InitSettings,
+	branch: string | null,
+	baselineCommit: string | null,
+): SessionColumns {
+	return {
+		goal: settings.goal,
+		primaryMetric,
+		metricUnit: settings.metricUnit,
+		direction: settings.direction,
+		preferredCommand: DEFAULT_HARNESS_COMMAND,
+		branch,
+		baselineCommit,
+		maxIterations: settings.maxIterations,
+		scopePaths: settings.scopePaths,
+		offLimits: settings.offLimits,
+		constraints: settings.constraints,
+		secondaryMetrics: settings.secondaryMetrics,
+		breadth: settings.breadth,
+		attempts: settings.attempts,
+		certify: settings.certify,
+		armModels: settings.armModels,
+	};
+}
+
+/**
+ * A reconfigure of the current segment: a value the call left unset keeps the
+ * stored one, and the preferred command is not rewritten.
+ */
+function reconfiguredColumns(
+	existing: SessionRow,
+	params: InitExperimentParams,
+	columns: SessionColumns,
+): UpdateSessionParams {
+	return {
+		goal: columns.goal ?? existing.goal,
+		maxIterations: columns.maxIterations ?? existing.maxIterations,
+		scopePaths: params.scope_paths !== undefined ? columns.scopePaths : existing.scopePaths,
+		offLimits: params.off_limits !== undefined ? columns.offLimits : existing.offLimits,
+		constraints: params.constraints !== undefined ? columns.constraints : existing.constraints,
+		secondaryMetrics: params.secondary_metrics !== undefined ? columns.secondaryMetrics : existing.secondaryMetrics,
+		primaryMetric: columns.primaryMetric,
+		metricUnit: columns.metricUnit,
+		direction: columns.direction,
+		branch: columns.branch ?? existing.branch,
+		baselineCommit: columns.baselineCommit ?? existing.baselineCommit,
+		breadth: columns.breadth,
+		attempts: columns.attempts,
+		certify: columns.certify,
+		armModels: columns.armModels,
+	};
+}
+
+interface InitOutcome {
+	kind: "created" | "newSegment" | "reconfigured";
+	session: SessionRow;
+	/** Incomplete runs a new segment abandoned from the one before it. */
+	abandonedRuns: number;
+}
+
+function writeSession(
+	storage: AutoresearchStorage,
+	existing: SessionRow | null,
+	newSegment: boolean,
+	params: InitExperimentParams,
+	columns: SessionColumns,
+): InitOutcome {
+	if (!existing) {
+		return { kind: "created", session: storage.openSession({ name: params.name, ...columns }), abandonedRuns: 0 };
+	}
+	if (newSegment) {
+		const abandonedRuns = storage.abandonIncompleteRuns(existing.id);
+		storage.bumpSessionSegment(existing.id, columns.baselineCommit);
+		return { kind: "newSegment", session: storage.updateSession(existing.id, columns), abandonedRuns };
+	}
+	const session = storage.updateSession(existing.id, reconfiguredColumns(existing, params, columns));
+	return { kind: "reconfigured", session, abandonedRuns: 0 };
+}
+
+/** Point the runtime at the session just written and clear what the last run left behind. */
+function armRuntime(runtime: AutoresearchRuntime, state: ExperimentState, goal: string | null): void {
+	runtime.state = state;
+	runtime.goal = goal;
+	runtime.autoresearchMode = true;
+	runtime.autoResumeArmed = true;
+	runtime.lastAutoResumePendingRunNumber = null;
+	runtime.lastRunDuration = null;
+	runtime.lastRunAsi = null;
+	runtime.lastRunArtifactDir = null;
+	runtime.lastRunNumber = null;
+	runtime.lastRunSummary = null;
+}
+
+/** What init_experiment answers: what happened, the session as stored, and the next step. */
+function initReport(
+	outcome: InitOutcome,
+	harness: HarnessCommit,
+	overriddenByConsole: boolean,
+	offBranch: boolean,
+): string {
+	const lines = outcomeLines(outcome);
+	if (harness.committed) {
+		lines.push(`Auto-committed harness setup (${HARNESS_COMMIT_TITLE}).`);
+	} else if (harness.warning) {
+		lines.push(`Warning: ${harness.warning}`);
+	}
+	lines.push(...sessionLines(outcome.session, overriddenByConsole));
+	if (outcome.kind === "created") {
+		lines.push("Phase 2: iteration loop is active. Run the baseline experiment with `run_experiment` and log it.");
+	} else if (outcome.kind === "newSegment") {
+		lines.push("Run a fresh baseline for the new segment.");
+	}
+	if (offBranch) lines.push(OFF_BRANCH_NOTICE);
+	return lines.join("\n");
+}
+
+function outcomeLines({ kind, session, abandonedRuns }: InitOutcome): string[] {
+	switch (kind) {
+		case "created":
+			return [
+				`Initialized autoresearch session "${session.name}" (ID ${session.id}) for segment ${session.currentSegment}.`,
+			];
+		case "newSegment":
+			return abandonedRuns > 0
+				? [
+						`Started new segment ${session.currentSegment} for session "${session.name}" (ID ${session.id}).`,
+						`Abandoned ${abandonedRuns} incomplete run(s) from prior segment.`,
+					]
+				: [`Started new segment ${session.currentSegment} for session "${session.name}" (ID ${session.id}).`];
+		case "reconfigured":
+			return [
+				`Reconfigured autoresearch session "${session.name}" (ID ${session.id}) on segment ${session.currentSegment}.`,
+			];
+	}
+}
+
+/** The session's configuration as stored, one line per field that is set. */
+function sessionLines(session: SessionRow, overriddenByConsole: boolean): string[] {
+	const lines: string[] = [];
+	if (session.goal) lines.push(`Goal: ${session.goal}`);
+	lines.push(`Primary metric: ${session.primaryMetric} (direction: ${session.direction})`);
+	if (session.metricUnit) lines.push(`Metric unit: ${session.metricUnit}`);
+	if (session.secondaryMetrics.length > 0) lines.push(`Secondary metrics: ${session.secondaryMetrics.join(", ")}`);
+	lines.push(
+		session.breadth > 1
+			? `Breadth: ${formatCount("arm", session.breadth)} per iteration, ${formatCount("attempt", session.attempts)} each, certification ${session.certify ? "on" : "off"}.`
+			: "Breadth: 1 (serial, no arms).",
+	);
+	if (overriddenByConsole) lines.push(CONSOLE_OVERRIDE_NOTICE);
+	if (session.scopePaths.length > 0) lines.push(`Files in scope: ${session.scopePaths.join(", ")}`);
+	if (session.offLimits.length > 0) lines.push(`Off limits: ${session.offLimits.join(", ")}`);
+	if (session.maxIterations !== null) lines.push(`Max iterations per segment: ${session.maxIterations}`);
+	if (session.branch) lines.push(`Active branch: ${session.branch}`);
+	if (session.baselineCommit) lines.push(`Baseline commit: ${session.baselineCommit.slice(0, 12)}`);
+	return lines;
+}
+
+interface HarnessCommit {
+	committed: boolean;
+	/** Why pending harness changes could not be committed; null when nothing failed. */
+	warning: string | null;
+}
+
+const NO_HARNESS_COMMIT: HarnessCommit = { committed: false, warning: null };
+
+/** Commit the harness changes pending in the worktree, so the baseline is recorded at a HEAD that holds them. */
+async function commitPendingHarness(cwd: string, goal: string | null, name: string): Promise<HarnessCommit> {
+	if (!(await detectPendingChanges(cwd))) return NO_HARNESS_COMMIT;
+	try {
+		await git.stage.files(cwd, []);
+		await git.commit(cwd, buildHarnessCommitMessage(goal, name));
+		return { committed: true, warning: null };
+	} catch (err) {
+		return {
+			committed: false,
+			warning: `Failed to auto-commit harness changes: ${errorMessage(err)}. Recording baseline at current HEAD; discard may not preserve uncommitted harness files.`,
+		};
+	}
 }
 
 /**
@@ -358,8 +433,7 @@ function initExperimentCallView(name: string): TextBlockView {
  */
 async function detectPendingChanges(cwd: string): Promise<boolean> {
 	try {
-		const statusText = await gitStatusPorcelain(cwd);
-		const workDirPrefix = await gitWorkDirPrefix(cwd);
+		const { statusText, workDirPrefix } = await readWorkDirStatus(cwd);
 		return parseWorkDirDirtyPaths(statusText, workDirPrefix).length > 0;
 	} catch (err) {
 		logger.warn("Git status failed while checking for harness changes; assuming there are some", {

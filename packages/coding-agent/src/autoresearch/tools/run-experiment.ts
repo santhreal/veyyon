@@ -23,10 +23,9 @@ import {
 	EXPERIMENT_MAX_LINES,
 	formatElapsed,
 	formatNum,
-	gitStatusPorcelain,
-	gitWorkDirPrefix,
 	parseAsiLines,
 	parseMetricLines,
+	readWorkDirStatus,
 	resolveActiveBranchSession,
 } from "../helpers";
 import { buildExperimentState } from "../state";
@@ -89,9 +88,8 @@ export function createRunExperimentTool(
 			// pre-existing dirty file would then be attributed to the experiment and reverted with it.
 			let preRunDirtyPaths: string[];
 			try {
-				const preRunStatus = await gitStatusPorcelain(ctx.cwd);
-				const workDirPrefix = await gitWorkDirPrefix(ctx.cwd);
-				preRunDirtyPaths = parseWorkDirDirtyPaths(preRunStatus, workDirPrefix);
+				const { statusText, workDirPrefix } = await readWorkDirStatus(ctx.cwd);
+				preRunDirtyPaths = parseWorkDirDirtyPaths(statusText, workDirPrefix);
 			} catch (err) {
 				return {
 					content: [

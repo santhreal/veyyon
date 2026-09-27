@@ -8,7 +8,7 @@
  * is a worse outcome than dropping them on the floor.
  */
 
-import { type } from "arktype";
+import { type } from "./gateway-schema-type";
 import type {
 	EasyInputMessage,
 	ResponseCreateParams,

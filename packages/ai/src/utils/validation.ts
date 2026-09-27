@@ -1917,6 +1917,15 @@ const MAX_ERROR_ARG_DEPTH = 8;
  */
 const MAX_ERROR_ISSUES_LENGTH = 400;
 /**
+ * Ceiling on one issue line before its accepted-values hint is appended. The
+ * validator quotes the rejected value at the end of the line, and a closed set
+ * the validator describes instead of listing (ArkType jitless reports a
+ * described literal union by its description) is named only by the hint that
+ * follows that quote. Unbounded, a 50k rejected value pushed the hint past
+ * {@link MAX_ERROR_ISSUES_LENGTH}, so the failure named no legal value.
+ */
+const MAX_ERROR_ISSUE_LINE_LENGTH = 256;
+/**
  * Hard ceiling on the entire validation failure. The per-part caps above are
  * expected to keep the message well under it; this exists because per-part caps
  * do not compose into a whole-message bound on their own, and the whole message
@@ -2021,7 +2030,8 @@ function schemaNodeAtIssuePath(json: unknown, path: string): unknown {
  * succeed.
  */
 function annotateIssuesWithAcceptedValues(json: unknown, messages: readonly string[]): string[] {
-	const annotated = messages.map(message => {
+	const annotated = messages.map(line => {
+		const message = boundErrorText(line, MAX_ERROR_ISSUE_LINE_LENGTH);
 		const match = /^\s*-\s([^:]+):\s/.exec(message);
 		if (!match) return { message, namesTheSet: false };
 		const values = schemaLiteralValues(schemaNodeAtIssuePath(json, match[1]));

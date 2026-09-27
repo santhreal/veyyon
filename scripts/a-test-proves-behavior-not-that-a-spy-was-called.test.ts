@@ -280,7 +280,7 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"packages/coding-agent/test/modes/terminal/controllers/selector-controller-login.test.ts": 7,
 	"packages/coding-agent/test/modes/terminal/controllers/selector-controller-logout.test.ts": 1,
 	"packages/coding-agent/test/modes/terminal/controllers/selector-controller-overlay-focus.test.ts": 7,
-	"packages/coding-agent/test/modes/terminal/controllers/selector-prompt-gate-rebuild.test.ts": 10,
+	"packages/coding-agent/test/modes/terminal/controllers/selector-prompt-gate-rebuild.test.ts": 8,
 	"packages/coding-agent/test/modes/terminal/controllers/session-selector-delete.test.ts": 5,
 	"packages/coding-agent/test/modes/terminal/controllers/tan-command-controller.test.ts": 22,
 	"packages/coding-agent/test/modes/terminal/controllers/the-second-account-is-named-when-it-lands.test.ts": 6,

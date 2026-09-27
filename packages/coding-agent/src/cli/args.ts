@@ -20,6 +20,7 @@ import {
 	normalizeToolNames,
 } from "../tools/core/builtin-names";
 import {
+	BOOLEAN_FLAGS,
 	OPTIONAL_FLAGS,
 	OPTIONAL_VALUE_FLAGS,
 	type ParseDeps,
@@ -146,7 +147,10 @@ function consumeBuiltInStringValue(flag: string, args: string[], valueIndex: num
 	return { value, index: valueIndex };
 }
 
-export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { type: "boolean" | "string" }>): Args {
+/** Extension-registered flags, keyed by name without the leading `--`. */
+type ExtensionFlags = Map<string, { type: "boolean" | "string" }>;
+
+export function parseArgs(inputArgs: string[], extensionFlags?: ExtensionFlags): Args {
 	// Work on a copy: the `--option=value` handling below splices the value
 	// into the array, and callers reuse the same argv (the post-extension
 	// reparse in `runRootCommand` parses it a second time). Mutating the input
@@ -159,175 +163,156 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 		unrecognizedFlags: [],
 	};
 
-	// `--` ends option parsing (POSIX end-of-options). Everything after it is
-	// literal positional text, so flag-shaped messages are not parsed or rejected.
-	let sawSeparator = false;
 	for (let i = 0; i < args.length; i++) {
-		let arg = args[i];
-		if (sawSeparator) {
-			result.messages.push(arg);
+		const token = args[i];
+		if (token === PROFILE_BOOTSTRAP_BOUNDARY_ARG) continue;
+		const eqIdx = token.startsWith("--") ? token.indexOf("=") : -1;
+		const arg = eqIdx === -1 ? token : token.slice(0, eqIdx);
+		// `--` ends option parsing (POSIX end-of-options). Everything after it is
+		// literal positional text, so flag-shaped messages are not parsed or rejected.
+		// `--=x` ends it too, and `x` is dropped with it.
+		if (arg === "--") {
+			for (let rest = i + 1; rest < args.length; rest++) result.messages.push(args[rest]);
+			break;
+		}
+		if (eqIdx === -1) {
+			i = parseToken(result, arg, args, i, false, extensionFlags);
 			continue;
 		}
-		if (arg === PROFILE_BOOTSTRAP_BOUNDARY_ARG) {
-			continue;
-		}
-		const flagIndex = i;
-
 		// Support --flag=value syntax (e.g. --tools=ask,read). The value is
-		// spliced in as the next token so value-consuming flags pick it up via
-		// `args[++i]`; a non-consuming flag (e.g. a boolean) leaves it behind and
-		// the post-loop guard drops it so it is not mistaken for a message.
-		let equalsValueIndex = -1;
-		if (arg.startsWith("--") && arg.includes("=")) {
-			const eqIdx = arg.indexOf("=");
-			const value = arg.slice(eqIdx + 1);
-			arg = arg.slice(0, eqIdx);
-			args.splice(i + 1, 0, value);
-			equalsValueIndex = i + 1;
-		}
-
-		// Extension-registered flags take precedence over built-ins: a flag an
-		// extension owns (e.g. plan-mode's boolean `--plan`) is parsed with the
-		// extension's semantics rather than falling into a built-in branch. For a
-		// value-taking built-in (`--plan`, `--model`, …) that branch would consume
-		// the following token — eating the user's message and setting the wrong
-		// built-in field — so registered flags shadow same-named built-ins here.
-		const extFlag = arg.startsWith("--") ? extensionFlags?.get(arg.slice(2)) : undefined;
-		if (extFlag) {
-			const flagName = arg.slice(2);
-			if (extFlag.type === "boolean") {
-				result.unknownFlags.set(flagName, true);
-			} else if (extFlag.type === "string" && i + 1 < args.length) {
-				// Consume the value in `--flag=value` form or when the next token is not
-				// flag-looking. A standalone `--` remains the end-of-options marker; use
-				// `--flag=--` when an extension needs a literal "--" string value.
-				if (equalsValueIndex !== -1 || !args[i + 1].startsWith("-")) {
-					result.unknownFlags.set(flagName, args[++i]);
-				}
-			}
-		} else if (STRING_VALUE_FLAGS.has(arg)) {
-			// A VALUE-TAKING FLAG WITH NO VALUE IS REFUSED, never dropped. This branch used to be
-			// guarded by `i + 1 < args.length`, so a flag in the last position fell through every
-			// branch and vanished: `veyyon -p "..." --approval-mode` exited 0, answered normally, and
-			// ran on the DEFAULT approval mode. Nothing was printed, and there is no typo to notice,
-			// so the operator's evidence that a safety-relevant flag took effect was that they typed
-			// it. The `=` form splices its value in above, so an empty `--model=` still arrives with a
-			// value here and is a different question; this is only the case where none was given.
-			const next = args[i + 1];
-			if (next === undefined) {
-				throw new CliUsageError(`${arg} needs a value. Write \`${arg} <value>\` or \`${arg}=<value>\`.`);
-			}
-			// The boundary sentinel is NOT folded into that refusal, deliberately. It means the user
-			// wrote `--plan --profile work "message"` without the plan-mode extension loaded, where
-			// `--plan` is the built-in string flag; the bootstrap stripped `--profile work` and left
-			// the marker. Skipping the flag there is pinned behaviour whose whole point is that the
-			// trailing message survives, so refusing would drop the message to report the flag.
-			if (next === PROFILE_BOOTSTRAP_BOUNDARY_ARG) continue;
-			// Built-in string flags consume the next token even when it is flag-looking
-			// (`--system-prompt --profile foo` ⇒ the prompt is the literal "--profile").
-			// The one token they must never absorb is the profile bootstrap's internal
-			// boundary sentinel: an extension-shadowable built-in like `--plan` (parsed
-			// here only when its boolean extension is NOT loaded) would otherwise swallow
-			// the marker as its value and drop the user's trailing message.
-			const consumed = consumeBuiltInStringValue(arg, args, i + 1);
-			i = consumed.index;
-			STRING_SETTERS[arg](result, consumed.value, PARSE_DEPS);
-		} else if (OPTIONAL_VALUE_FLAGS.has(arg)) {
-			const config = OPTIONAL_FLAGS[arg];
-			const next = args[i + 1];
-			const consume =
-				next !== undefined && !next.startsWith("-") && !(config.rejectEmpty === true && next.length === 0);
-			config.set(result, consume ? args[++i] : undefined);
-		} else if (arg === "--help" || arg === "-h") {
-			result.help = true;
-		} else if (arg === "--version" || arg === "-v") {
-			result.version = true;
-		} else if (arg === "--allow-home") {
-			result.allowHome = true;
-		} else if (arg === "--profile") {
-			// Normally stripped by `extractProfileFlags` before parseArgs sees it;
-			// kept here as a fallback for direct parseArgs callers.
-			// The `--profile=work` spelling never reaches here as one token: the `=` splice above
-			// rewrites it to `--profile` plus a spliced value, which is why there is no second
-			// `startsWith("--profile=")` branch. There used to be one, and it was unreachable.
-			if (i + 1 >= args.length) throw new CliUsageError("--profile needs a value. Write `--profile <name>`.");
-			result.profile = args[++i];
-		} else if (arg === "--alias") {
-			if (i + 1 >= args.length) throw new CliUsageError("--alias needs a value. Write `--alias <command>`.");
-			result.alias = args[++i];
-		} else if (arg === "--continue" || arg === "-c") {
-			result.continue = true;
-		} else if (arg === "--no-session") {
-			result.noSession = true;
-		} else if (arg === "--no-tools") {
-			result.noTools = true;
-		} else if (arg === "--no-lsp") {
-			result.noLsp = true;
-		} else if (arg === "--no-pty") {
-			result.noPty = true;
-		} else if (arg === "--hide-thinking") {
-			result.hideThinking = true;
-		} else if (arg === "--advisor") {
-			result.advisor = true;
-		} else if (arg === "--prewalk") {
-			result.prewalk = true;
-		} else if (arg === "--no-prewalk") {
-			result.noPrewalk = true;
-		} else if (arg === "--plan-yolo") {
-			result.planYolo = true;
-		} else if (arg === "--print" || arg === "-p") {
-			result.print = true;
-		} else if (arg === "--print-thoughts") {
-			result.printThoughts = true;
-		} else if (arg === "--no-extensions") {
-			result.noExtensions = true;
-		} else if (arg === "--no-skills") {
-			result.noSkills = true;
-		} else if (arg === "--no-rules") {
-			result.noRules = true;
-		} else if (arg === "--no-title") {
-			result.noTitle = true;
-		} else if (arg === "--auto-approve" || arg === "--yolo") {
-			result.autoApprove = true;
-		} else if (arg === "--dangerously-skip-permissions") {
-			// Stronger than --yolo: start with the full permission bypass on
-			// (removes per-tool prompt overrides too). Explicit deny and plan mode
-			// still block. Runtime-toggleable with /yolo.
-			result.dangerouslySkipPermissions = true;
-		} else if (arg.startsWith("@")) {
-			let filePath = arg.slice(1);
-			if (filePath.startsWith('"') && filePath.endsWith('"') && filePath.length > 1) {
-				filePath = filePath.slice(1, -1);
-			} else if (filePath.startsWith("'") && filePath.endsWith("'") && filePath.length > 1) {
-				filePath = filePath.slice(1, -1);
-			}
-			result.fileArgs.push(filePath);
-		} else if (!arg.startsWith("-") || arg === "-") {
-			// Plain positional or lone `-` (stdin marker) — pass through as a
-			// message rather than flagging it.
-			result.messages.push(arg);
-		} else if (arg === "--") {
-			// POSIX positional separator: drop the token and switch the loop
-			// into "everything from here is a positional" mode. The guard at
-			// the top of the loop body handles the remaining tokens.
-			sawSeparator = true;
-		} else {
-			// Flag-shaped (`-x`, `--name`) but unrecognized at this parse. Record
-			// it so the post-extension reparse can decide whether to surface it
-			// as a hard error. `--flag=value` already split `value` into the next
-			// slot; the standard "drop unconsumed equals value" guard below
-			// removes it so it does not leak into messages (issue #2459).
-			result.unrecognizedFlags.push(arg);
-		}
-		// Drop an unconsumed `--flag=value` value (e.g. a boolean flag): when no
-		// branch advanced past the spliced token, remove it so it does not fall
-		// through to a later iteration and become a positional message.
-		if (equalsValueIndex !== -1 && i === flagIndex) {
-			args.splice(equalsValueIndex, 1);
-		}
+		// spliced in as the next token so value-consuming flags pick it up as
+		// `args[i + 1]`. A flag that consumes nothing (e.g. a boolean) leaves it
+		// behind, and it is dropped here so it is not mistaken for a message.
+		args.splice(i + 1, 0, token.slice(eqIdx + 1));
+		const last = parseToken(result, arg, args, i, true, extensionFlags);
+		if (last === i) args.splice(i + 1, 1);
+		i = last;
 	}
 
 	return result;
+}
+
+/**
+ * Apply the flag or positional `arg` at `args[i]` to `result` and return the index of the last token
+ * it consumed. `inlineValue` is set when `arg` came from `--flag=value`, whose value sits at `args[i + 1]`.
+ */
+function parseToken(
+	result: Args,
+	arg: string,
+	args: string[],
+	i: number,
+	inlineValue: boolean,
+	extensionFlags: ExtensionFlags | undefined,
+): number {
+	// Extension-registered flags take precedence over built-ins: a flag an
+	// extension owns (e.g. plan-mode's boolean `--plan`) is parsed with the
+	// extension's semantics rather than falling into a built-in branch. For a
+	// value-taking built-in (`--plan`, `--model`, …) that branch would consume
+	// the following token — eating the user's message and setting the wrong
+	// built-in field — so registered flags shadow same-named built-ins here.
+	const extFlag = arg.startsWith("--") ? extensionFlags?.get(arg.slice(2)) : undefined;
+	if (extFlag) return parseExtensionFlag(result, arg.slice(2), extFlag.type, args, i, inlineValue);
+	if (STRING_VALUE_FLAGS.has(arg)) return parseStringFlag(result, arg, args, i);
+	if (OPTIONAL_VALUE_FLAGS.has(arg)) return parseOptionalFlag(result, arg, args, i);
+	const field = BOOLEAN_FLAGS.get(arg);
+	if (field !== undefined) {
+		result[field] = true;
+		return i;
+	}
+	if (arg === "--profile") return parseBootstrapFlag(result, "profile", "name", args, i);
+	if (arg === "--alias") return parseBootstrapFlag(result, "alias", "command", args, i);
+	if (arg.startsWith("@")) {
+		result.fileArgs.push(unquoteFileArg(arg.slice(1)));
+	} else if (!arg.startsWith("-") || arg === "-") {
+		// Plain positional or lone `-` (stdin marker) — pass through as a
+		// message rather than flagging it.
+		result.messages.push(arg);
+	} else {
+		// Flag-shaped (`-x`, `--name`) but unrecognized at this parse. Record
+		// it so the post-extension reparse can decide whether to surface it
+		// as a hard error. `--flag=value` already split `value` into the next
+		// slot, and `parseArgs` drops it so it does not leak into messages
+		// (issue #2459).
+		result.unrecognizedFlags.push(arg);
+	}
+	return i;
+}
+
+function parseExtensionFlag(
+	result: Args,
+	name: string,
+	type: "boolean" | "string",
+	args: string[],
+	i: number,
+	inlineValue: boolean,
+): number {
+	if (type === "boolean") {
+		result.unknownFlags.set(name, true);
+		return i;
+	}
+	// Consume the value in `--flag=value` form or when the next token is not
+	// flag-looking. A standalone `--` remains the end-of-options marker; use
+	// `--flag=--` when an extension needs a literal "--" string value.
+	const next = args[i + 1];
+	if (next === undefined || (!inlineValue && next.startsWith("-"))) return i;
+	result.unknownFlags.set(name, next);
+	return i + 1;
+}
+
+function parseStringFlag(result: Args, flag: string, args: string[], i: number): number {
+	// A VALUE-TAKING FLAG WITH NO VALUE IS REFUSED, never dropped. A flag in the last position used
+	// to fall through every branch and vanish: `veyyon -p "..." --approval-mode` exited 0, answered
+	// normally, and ran on the DEFAULT approval mode, with nothing printed to show the safety-relevant
+	// flag had not taken effect. The `=` form splices its value in first, so an empty `--model=` still
+	// arrives with a value here and is a different question; this is only the case where none was given.
+	const next = args[i + 1];
+	if (next === undefined) {
+		throw new CliUsageError(`${flag} needs a value. Write \`${flag} <value>\` or \`${flag}=<value>\`.`);
+	}
+	// The boundary sentinel is NOT folded into that refusal. It means the user wrote
+	// `--plan --profile work "message"` without the plan-mode extension loaded, where `--plan` is the
+	// built-in string flag; the bootstrap stripped `--profile work` and left the marker. Skipping the
+	// flag there keeps the trailing message, which refusing would drop to report the flag.
+	if (next === PROFILE_BOOTSTRAP_BOUNDARY_ARG) return i;
+	// Built-in string flags consume the next token even when it is flag-looking
+	// (`--system-prompt --profile foo` ⇒ the prompt is the literal "--profile").
+	// The one token they must never absorb is the boundary sentinel above.
+	const consumed = consumeBuiltInStringValue(flag, args, i + 1);
+	STRING_SETTERS[flag](result, consumed.value, PARSE_DEPS);
+	return consumed.index;
+}
+
+function parseOptionalFlag(result: Args, flag: string, args: string[], i: number): number {
+	const config = OPTIONAL_FLAGS[flag];
+	const next = args[i + 1];
+	const consume = next !== undefined && !next.startsWith("-") && !(config.rejectEmpty === true && next.length === 0);
+	config.set(result, consume ? next : undefined);
+	return consume ? i + 1 : i;
+}
+
+/**
+ * `--profile <name>` or `--alias <command>`. `extractProfileFlags` normally strips both before
+ * parseArgs sees them; this is the fallback for direct parseArgs callers. The `--profile=work`
+ * spelling arrives here split, with `work` in the next slot.
+ */
+function parseBootstrapFlag(
+	result: Args,
+	field: "profile" | "alias",
+	placeholder: string,
+	args: string[],
+	i: number,
+): number {
+	const value = args[i + 1];
+	if (value === undefined) throw new CliUsageError(`--${field} needs a value. Write \`--${field} <${placeholder}>\`.`);
+	result[field] = value;
+	return i + 1;
+}
+
+/** An `@file` path with one pair of matching surrounding quotes removed. */
+function unquoteFileArg(path: string): string {
+	const quote = path[0];
+	if (path.length > 1 && (quote === '"' || quote === "'") && path.endsWith(quote)) return path.slice(1, -1);
+	return path;
 }
 
 /**
@@ -361,14 +346,22 @@ export function namesSessionFile(sessionArg: string): boolean {
 }
 
 /**
- * Every flag name the launch parser knows, for typo suggestion.
+ * Every flag the launch parser knows, keyed by its name without dashes, for typo suggestion.
  *
  * The three tables are the parser's own source of truth, so a suggestion can never name a flag that
- * does not exist. A flag handled inline in the parse loop and absent from all three simply is not
- * offered, which degrades to the previous behaviour rather than to a confident wrong answer.
+ * does not exist. `--profile` and `--alias`, handled inline in the parse loop, are not offered.
+ * Matching runs on the bare name; the suggestion prints the spelling the parser accepts, so a short
+ * flag is offered as `-c`, never as `--c`.
  */
-function knownFlagNames(): string[] {
-	return [...new Set([...STRING_VALUE_FLAGS, ...OPTIONAL_VALUE_FLAGS, ...VALUELESS_FLAGS])];
+function knownFlagsByBareName(): Map<string, string> {
+	const known = new Map<string, string>();
+	for (const table of [STRING_VALUE_FLAGS, OPTIONAL_VALUE_FLAGS, VALUELESS_FLAGS]) {
+		for (const flag of table) {
+			const bare = flag.replace(/^-+/, "");
+			if (!known.has(bare)) known.set(bare, flag);
+		}
+	}
+	return known;
 }
 
 /**
@@ -391,17 +384,13 @@ export function reportUnrecognizedFlags(
 	if (args.unrecognizedFlags.length === 0) return false;
 	const flags = args.unrecognizedFlags;
 	write(`${chalk.red(`Error: unknown ${pluralize("flag", flags.length)}: ${flags.join(", ")}`)}\n`);
-	const known = knownFlagNames();
+	const known = knownFlagsByBareName();
 	for (const flag of flags) {
 		// Compared without the dashes: every candidate starts with them, so leaving them on adds a
 		// constant two characters to every distance and pushes a real typo outside the budget.
-		const suggestions = nearestNames(
-			flag.replace(/^-+/, ""),
-			known.map(name => name.replace(/^-+/, "")),
-			3,
-		);
+		const suggestions = nearestNames(flag.replace(/^-+/, ""), known.keys(), 3);
 		if (suggestions.length > 0) {
-			write(`Did you mean ${suggestions.map(name => `\`--${name}\``).join(" or ")}?\n`);
+			write(`Did you mean ${suggestions.map(name => `\`${known.get(name)}\``).join(" or ")}?\n`);
 		}
 	}
 	write(`Run \`${APP_NAME} --help\` for available flags.\n`);

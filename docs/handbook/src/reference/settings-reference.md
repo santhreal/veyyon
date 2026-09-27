@@ -886,8 +886,6 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `statusLine.leftSegments` | array | `[]` |  |
 | `statusLine.rightSegments` | array | `[]` |  |
 | `statusLine.segmentOptions` | record | `{}` |  |
-| `statusLine.separator` | enum | `pipe` | Values: `powerline`, `powerline-thin`, `slash`, `pipe`, `block`, `none`, `ascii`. |
-| `statusLine.transparent` | boolean | `true` |  |
 | `stt.language` | string | `en` |  |
 | `thinkingBudgets.high` | number | `16384` |  |
 | `thinkingBudgets.low` | number | `2048` |  |
@@ -900,4 +898,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-354 settings in /settings, 120 configuration-file keys, 474 in all.
+354 settings in /settings, 118 configuration-file keys, 472 in all.

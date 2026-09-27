@@ -14,9 +14,12 @@
  *
  * So the layering is asserted as a derived graph rather than as a rule about
  * `TUI`: the root imports its parts, the parts import a pinned shared vocabulary
- * and nothing else, and nobody imports the root. Every edge below is read out of
- * the source at run time, so a module added to `core/` or an import added to one
- * turns this red until somebody records the decision here.
+ * and nothing else, and nobody imports the root. One module sits between the
+ * root and the parts: the paint emitter, which composes the row primitives and
+ * cursor moves of two pinned parts into each paint's bytes, and which only the
+ * root imports. Every edge below is read out of the source at run time, so a
+ * module added to `core/` or an import added to one turns this red until
+ * somebody records the decision here.
  *
  * WHAT THIS DOES NOT CATCH. Coupling that is not an import: a leaf reading a
  * field the root writes on a shared object, or a value passed through
@@ -45,6 +48,18 @@ const ROOT = "tui.ts";
  */
 const SHARED = ["component-types.ts", "container.ts"] as const;
 
+/**
+ * The root's paint emitter. `tui.ts` selects each frame's paint shape and holds
+ * every piece of state a paint changes; `paint-sequences.ts` turns the rows and
+ * positions the root passes in into that shape's escape sequence, out of the row
+ * primitives in `renderer.ts` and the relative cursor move in `cursor.ts`. It is
+ * root-side rather than a part: it imports exactly `EMITTER_PARTS`, never the
+ * root, and nothing but the root imports it, so it cannot become the shared
+ * module between the leaves that the header describes.
+ */
+const EMITTER = "paint-sequences.ts";
+const EMITTER_PARTS = ["cursor.ts", "renderer.ts"] as const;
+
 /** `./name` → `name.ts`, for the sibling edges of one file. */
 function siblingEdges(file: string): string[] {
 	const edges: string[] = [];
@@ -67,6 +82,7 @@ describe("the core split stays layered", () => {
 		expect(files).toContain(ROOT);
 		expect(files.length).toBeGreaterThanOrEqual(10);
 		for (const shared of SHARED) expect(files).toContain(shared);
+		expect(files).toContain(EMITTER);
 	});
 
 	/**
@@ -88,13 +104,25 @@ describe("the core split stays layered", () => {
 	test("a part depends only on the shared vocabulary", () => {
 		const beyond = new Set<string>();
 		for (const file of files) {
-			if (file === ROOT) continue;
+			if (file === ROOT || file === EMITTER) continue;
 			for (const target of edges.get(file) ?? []) {
 				if (!SHARED.includes(target as (typeof SHARED)[number])) beyond.add(`${file} -> ${target}`);
 			}
 		}
 
 		expect([...beyond].sort()).toEqual([]);
+	});
+
+	/**
+	 * The emitter's edges are pinned by exact equality, and its importers are the
+	 * root alone: an emitter a part imports is a third shared module, and an
+	 * emitter that reaches a new part has started composing the engine itself.
+	 */
+	test("the paint emitter composes its pinned parts and only the root imports it", () => {
+		const importers = files.filter(file => (edges.get(file) ?? []).includes(EMITTER));
+
+		expect(edges.get(EMITTER)).toEqual([...EMITTER_PARTS]);
+		expect(importers).toEqual([ROOT]);
 	});
 
 	/**

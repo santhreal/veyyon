@@ -6,7 +6,9 @@ maps the *flow* (input → component tree → render); this doc explains the
 **render contract, why it is shaped this way, and the invariants you must not
 violate**. Scope is the core engine only:
 
-- [`hosts/terminal/engine/src/core/tui.ts`](../../hosts/terminal/engine/src/core/tui.ts): frame pipeline, commit ledger, window math, emitters, cursor placement.
+- [`hosts/terminal/engine/src/core/tui.ts`](../../hosts/terminal/engine/src/core/tui.ts): frame pipeline, commit ledger, window math, paint emission, cursor placement.
+- [`hosts/terminal/engine/src/core/paint-sequences.ts`](../../hosts/terminal/engine/src/core/paint-sequences.ts): the escape sequence each paint writes (scroll append, window diff, seam and home rewrites, full-paint replay, alternate-screen frame), built from the rows it is given and holding no engine state.
+- [`hosts/terminal/engine/src/core/frame-plan.ts`](../../hosts/terminal/engine/src/core/frame-plan.ts): the records one frame phase returns to the next (render intent, transition, prefix reconciliation, window plan, assembled window).
 - [`hosts/terminal/engine/src/core/renderer.ts`](../../hosts/terminal/engine/src/core/renderer.ts): per-row frame preparation — SGR coalescing, line fitting, committed-prefix resync, cursor-marker extraction.
 - [`hosts/terminal/engine/src/core/component-types.ts`](../../hosts/terminal/engine/src/core/component-types.ts): `Component`, the native-scrollback seam interfaces and their accessors.
 - [`hosts/terminal/engine/src/core/overlay.ts`](../../hosts/terminal/engine/src/core/overlay.ts), [`core/scroll.ts`](../../hosts/terminal/engine/src/core/scroll.ts), [`core/cursor.ts`](../../hosts/terminal/engine/src/core/cursor.ts), [`core/image-budget.ts`](../../hosts/terminal/engine/src/core/image-budget.ts), [`core/container.ts`](../../hosts/terminal/engine/src/core/container.ts), [`core/terminal-session.ts`](../../hosts/terminal/engine/src/core/terminal-session.ts), [`core/mouse-routing.ts`](../../hosts/terminal/engine/src/core/mouse-routing.ts): the sibling modules the pipeline calls. `hosts/terminal/engine/src/tui.ts` is a barrel over them and holds no logic.
@@ -418,7 +420,7 @@ terminal and one seed is not verified.
 
 ### What proves a split of the engine changed no bytes
 
-`tui.ts` was 5415 lines and is now ten modules under `hosts/terminal/engine/src/core/`.
+`tui.ts` was 5415 lines and is now twelve modules under `hosts/terminal/engine/src/core/`.
 The evidence that the move emitted the same bytes is the corpus already here:
 `render-regressions.test.ts` and `render-stress-oracles.test.ts` assert exact
 emitted ANSI against a `VirtualTerminal`, and they passed against the split
@@ -691,4 +693,4 @@ thumb) and the attributes the terminal presents, through
 `VirtualTerminal#getViewportRowFaintColumns`. A byte assertion alone would still
 pass if a later reset in the same row cancelled the dim.
 
-*Verified against `46980a2485` on 2026-09-11.*
+*Verified against `92dde64853` on 2026-09-26.*

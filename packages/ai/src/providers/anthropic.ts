@@ -2729,6 +2729,10 @@ async function prepareAnthropicStreamParams(
 		nextParams = replacementPayload as typeof nextParams;
 	}
 	nextParams = toWellFormedDeep(nextParams) as typeof nextParams;
+	// The body is serialized once, here, from the object the client sends: a replacement payload
+	// that dropped `stream` gets it back before serialization rather than after, so these bytes
+	// are the wire bytes and the client sends them without serializing again.
+	if (nextParams.stream !== true) nextParams = { ...nextParams, stream: true };
 	const rawRequestDump: RawHttpRequestDump = {
 		provider: model.provider,
 		api: outputApi,
@@ -2764,6 +2768,7 @@ function initAnthropicStreamCacheTracking(
 function createAnthropicStreamRequest(
 	client: AnthropicMessagesClientLike,
 	params: MessageCreateParamsStreaming,
+	serializedBody: string,
 	isOAuthToken: boolean,
 	requestSignal: AbortSignal,
 	requestTimeoutMs: number | undefined,
@@ -2773,10 +2778,12 @@ function createAnthropicStreamRequest(
 		...createSdkStreamRequestOptions(requestSignal, requestTimeoutMs),
 		maxRetries: 0,
 		...(umansGatewayWebSearchHeader ? { headers: umansGatewayWebSearchHeader } : {}),
+		// An injected SDK client serializes `params` itself; only this package's client takes the bytes.
+		...(client instanceof AnthropicMessagesClient ? { serializedBody } : {}),
 	};
 	return isOAuthToken && client.beta
-		? client.beta.messages.create({ ...params, stream: true }, requestOptions)
-		: client.messages.create({ ...params, stream: true }, requestOptions);
+		? client.beta.messages.create(params, requestOptions)
+		: client.messages.create(params, requestOptions);
 }
 
 async function fetchAnthropicStreamResponse(
@@ -2880,7 +2887,7 @@ const streamAnthropicOnce = (
 				retryCtx,
 			);
 			const preparedContext = await prepareAnthropicManyImageContext(context, model.input.includes("image"));
-			const prepareParams = async (): Promise<MessageCreateParamsStreaming> => {
+			const prepareParams = async (): Promise<{ params: MessageCreateParamsStreaming; body: string }> => {
 				const prepared = await prepareAnthropicStreamParams(
 					model,
 					preparedContext,
@@ -2893,9 +2900,9 @@ const streamAnthropicOnce = (
 				);
 				rawRequestDump = prepared.rawRequestDump;
 				anthropicWireBodyJson = prepared.anthropicWireBodyJson;
-				return prepared.params;
+				return { params: prepared.params, body: prepared.anthropicWireBodyJson };
 			};
-			let params = await prepareParams();
+			let { params, body } = await prepareParams();
 
 			const cacheEnforcement: CacheEnforcement = resolveCacheEnforcement(options?.cacheEnforcement);
 			const cacheTracker: CacheTrackerState | undefined = providerSessionState?.cacheTracker;
@@ -2943,6 +2950,7 @@ const streamAnthropicOnce = (
 				const anthropicRequest = createAnthropicStreamRequest(
 					client,
 					params,
+					body,
 					isOAuthToken,
 					requestSignal,
 					requestTimeoutMs,
@@ -3036,7 +3044,7 @@ const streamAnthropicOnce = (
 					);
 					if (retryResult.shouldRetry) {
 						if (retryResult.resetAttempt) {
-							params = await prepareParams();
+							({ params, body } = await prepareParams());
 							retryCtx.providerRetryAttempt = 0;
 						}
 						discardAnthropicAttempt(model, output, copilotDynamicHeaders?.premiumRequests);
@@ -4029,32 +4037,34 @@ function buildToolResultBlock(
 export type AnthropicMessageParam = MessageParam;
 
 /**
- * Recursively replace lone surrogates in string leaves. Identity-preserving:
- * returns the input object/array when nothing changed.
+ * Recursively replace lone surrogates in string leaves. Identity-preserving and copy-on-write:
+ * returns the input object/array when nothing changed, and copies only the containers on the path
+ * to a changed leaf, so a well-formed request allocates nothing.
  */
 function toWellFormedDeep(value: unknown): unknown {
-	if (typeof value === "string") {
-		const wellFormed = value.toWellFormed();
-		return wellFormed === value ? value : wellFormed;
-	}
+	if (typeof value === "string") return value.isWellFormed() ? value : value.toWellFormed();
 	if (Array.isArray(value)) {
-		let changed = false;
-		const next = value.map(entry => {
+		let next: unknown[] | undefined;
+		for (let i = 0; i < value.length; i++) {
+			const entry = value[i];
 			const sanitized = toWellFormedDeep(entry);
-			if (sanitized !== entry) changed = true;
-			return sanitized;
-		});
-		return changed ? next : value;
+			if (sanitized === entry) continue;
+			next ??= value.slice();
+			next[i] = sanitized;
+		}
+		return next ?? value;
 	}
 	if (isRecord(value)) {
-		let changed = false;
-		const next: Record<string, unknown> = {};
-		for (const [key, entry] of Object.entries(value)) {
+		let next: Record<string, unknown> | undefined;
+		for (const key in value) {
+			if (!Object.hasOwn(value, key)) continue;
+			const entry = value[key];
 			const sanitized = toWellFormedDeep(entry);
-			if (sanitized !== entry) changed = true;
+			if (sanitized === entry) continue;
+			next ??= { ...value };
 			next[key] = sanitized;
 		}
-		return changed ? next : value;
+		return next ?? value;
 	}
 	return value;
 }

@@ -559,6 +559,49 @@ type Da1SentinelOwner =
 	| { kind: "privateMode"; mode: number }
 	| { kind: "osc99Probe"; id: string };
 
+/** Kitty keyboard protocol reply: `\x1b[?<flags>u`. */
+const KITTY_RESPONSE = /^\x1b\[\?(\d+)u$/;
+
+/** Mode 2031 DSR reply: `\x1b[?997;{1=dark,2=light}n`. */
+const APPEARANCE_DSR = /^\x1b\[\?997;([12])n$/;
+
+/** OSC 11 reply: `\x1b]11;rgb:RR/GG/BB` or `rgba:RR/GG/BB`, terminated by BEL or ST. */
+const OSC11_RESPONSE = /^\x1b\]11;rgba?:([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})(?:\x07|\x1b\\)$/;
+
+/** OSC 99 capability reply: `\x1b]99;<metadata>;<payload>`, terminated by BEL or ST. */
+const OSC99_RESPONSE = /^\x1b\]99;([^;]*);([\s\S]*?)(?:\x07|\x1b\\)$/u;
+
+/** DA1 (Primary Device Attributes) reply: `\x1b[?...c`. */
+const DA1_RESPONSE = /^\x1b\[\?[\d;]*c$/;
+
+/**
+ * Private CSI partial: `\x1b[?<digits/semicolons>...`, a probe reply the StdinBuffer flushed before
+ * its terminator arrived (split across stdin reads). Reassembles DA1, kitty and Mode 2031 replies.
+ */
+const PRIVATE_CSI_PARTIAL = /^\x1b\[\?[\d;]*[\x20-\x2f]*$/;
+
+/** DECRPM private-mode report (DECRQM reply): `\x1b[?<mode>;<status>$y`. */
+const DECRPM_RESPONSE = /^\x1b\[\?(\d+);(\d+)\$y$/;
+
+/**
+ * In-band resize report (DEC mode 2048): `\x1b[48;rows;cols;yPixels;xPixels t`. Any field may carry
+ * `:`-separated subparameters, which clients MUST ignore per spec (#4748): capture the leading digits
+ * of each field and skip the subparameter tail instead of dropping the whole report.
+ */
+const IN_BAND_RESIZE = /^\x1b\[48;(\d+)(?::[\d:]*)?;(\d+)(?::[\d:]*)?;(\d+)(?::[\d:]*)?;(\d+)(?::[\d:]*)?t$/;
+
+/** A prefix of an in-band resize report split across stdin reads. */
+const IN_BAND_RESIZE_PARTIAL = /^\x1b\[4[\d;:]*$/;
+
+/** Longest split reply a reassembly buffer accumulates before it is dropped as runaway. */
+const REPLY_REASSEMBLY_MAX = 256;
+
+/** A CSI final byte (0x40-0x7e): the reply being reassembled is complete. */
+function endsWithCsiFinalByte(buffered: string): boolean {
+	const code = buffered.charCodeAt(buffered.length - 1);
+	return code >= 0x40 && code <= 0x7e;
+}
+
 let nextOsc99ProbeId = 1;
 
 function parseOsc99KeyValues(section: string): Map<string, string> {
@@ -935,291 +978,7 @@ export class ProcessTerminal implements Terminal {
 		// proved too tight for split escapes (#1238 covered only probe replies).
 		this.#stdinBuffer = new StdinBuffer({ timeout: 50 });
 
-		// Kitty protocol response pattern: \x1b[?<flags>u
-		const kittyResponsePattern = /^\x1b\[\?(\d+)u$/;
-
-		// Mode 2031 DSR response: \x1b[?997;{1=dark,2=light}n
-		const appearanceDsrPattern = /^\x1b\[\?997;([12])n$/;
-
-		// OSC 11 response: \x1b]11;rgb:RR/GG/BB or rgba:RR/GG/BB, terminated by BEL or ST.
-		const osc11ResponsePattern =
-			/^\x1b\]11;rgba?:([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})(?:\x07|\x1b\\)$/;
-
-		// DA1 (Primary Device Attributes) response: \x1b[?...c
-		const da1ResponsePattern = /^\x1b\[\?[\d;]*c$/;
-
-		// Private CSI partial: \x1b[?<digits/semicolons>... — incomplete probe response
-		// that the StdinBuffer flushed before the terminator arrived (split across
-		// stdin reads). Used to reassemble DA1, kitty, and Mode 2031 replies.
-		const privateCsiPartialPattern = /^\x1b\[\?[\d;]*[\x20-\x2f]*$/;
-
-		// DECRPM private-mode report (DECRQM reply): \x1b[?<mode>;<status>$y
-		const decrpmResponsePattern = /^\x1b\[\?(\d+);(\d+)\$y$/;
-
-		// In-band resize report (DEC mode 2048): \x1b[48;rows;cols;yPixels;xPixels t
-		// Any field may carry `:`-separated subparameters, which clients MUST
-		// ignore per spec (#4748): capture the leading digits of each field and
-		// skip the subparameter tail instead of dropping the whole report.
-		const inBandResizePattern = /^\x1b\[48;(\d+)(?::[\d:]*)?;(\d+)(?::[\d:]*)?;(\d+)(?::[\d:]*)?;(\d+)(?::[\d:]*)?t$/;
-
-		this.#stdinBuffer.on("data", (sequence: string) => {
-			// Fast path for plain-text bytes: every escape-probe regex below
-			// anchors on `^\x1b…`, so a byte that is not ESC can never match. A
-			// non-bracketed paste of N printable chars arrives as N per-scalar
-			// `data` events; running the full probe suite per event turns a
-			// 100 KB paste into ~600K regex executions and blocks the event
-			// loop. Skip straight to the input handler when no reassembly
-			// buffer is holding state that a non-ESC continuation could feed
-			// (issue #4073 case C).
-			if (
-				(sequence.length === 0 || sequence.charCodeAt(0) !== 0x1b) &&
-				this.#privateCsiResponseBuffer.length === 0 &&
-				this.#inBandResizeBuffer.length === 0 &&
-				this.#osc11ResponseBuffer.length === 0 &&
-				this.#osc99ResponseBuffer.length === 0
-			) {
-				if (this.#inputHandler) {
-					this.#inputHandler(sequence);
-				}
-				return;
-			}
-
-			// Reassemble split private CSI responses (DA1, kitty keyboard, Mode 2031).
-			// When the terminal writes the response slowly enough that the StdinBuffer's
-			// flush timeout elapses mid-sequence, the prefix `\x1b[?<digits>` arrives as
-			// one event and the tail `;...<terminator>` arrives as individual character
-			// events that would otherwise leak into the prompt as keystrokes. See #1238.
-			if (
-				this.#privateCsiResponseBuffer ||
-				(privateCsiPartialPattern.test(sequence) && this.#da1SentinelOwners.length > 0)
-			) {
-				if (this.#privateCsiResponseBuffer && sequence.startsWith("\x1b")) {
-					// New escape arrived mid-reassembly — abandon partial and re-process the new sequence.
-					this.#privateCsiResponseBuffer = "";
-				} else {
-					this.#privateCsiResponseBuffer += sequence;
-					// Cap accumulator to defend against runaway partials if the terminator never arrives.
-					if (this.#privateCsiResponseBuffer.length > 256) {
-						this.#privateCsiResponseBuffer = "";
-						return;
-					}
-					const lastChar = this.#privateCsiResponseBuffer.at(-1)!;
-					const lastCode = lastChar.charCodeAt(0);
-					if (lastCode >= 0x40 && lastCode <= 0x7e) {
-						// Terminator byte arrived. Fall through to the pattern checks with the
-						// reassembled sequence so the existing DA1/kitty/Mode 2031 handlers run.
-						sequence = this.#privateCsiResponseBuffer;
-						this.#privateCsiResponseBuffer = "";
-					} else if (!privateCsiPartialPattern.test(this.#privateCsiResponseBuffer)) {
-						// Diverged from a valid private CSI prefix (unexpected byte). Drop the
-						// probe noise we ate; do not forward to the input handler.
-						this.#privateCsiResponseBuffer = "";
-						return;
-					} else {
-						// Still accumulating.
-						return;
-					}
-				}
-			}
-
-			// In-band resize report (DEC 2048) split across stdin reads. The report
-			// is `\x1b[48;rows;cols;yPx;xPx t`; when the StdinBuffer flush timeout
-			// elapses mid-sequence — common during a rapid resize that keeps the
-			// event loop busy — the `\x1b[48;…` prefix arrives as one event and the
-			// tail (`…;xPx t`) arrives as bare character events that would otherwise
-			// leak into the prompt as literal keystrokes. Reassemble until the
-			// terminator, then fall through to the resize handler below. A
-			// reassembled sequence that turns out not to be a resize report (e.g. a
-			// split kitty `\x1b[48;…u` for a digit key) is forwarded to the input
-			// handler rather than dropped.
-			const inBandResizePartialPattern = /^\x1b\[4[\d;:]*$/;
-			const isInBandResizePartial = this.#inBandResizeActive && inBandResizePartialPattern.test(sequence);
-			if (this.#inBandResizeBuffer && sequence.startsWith("\x1b")) {
-				// A new escape interrupted the partial; the stale partial is
-				// unrecoverable. If the new escape is itself an in-band prefix,
-				// restart reassembly with it; otherwise let it flow through below.
-				this.#inBandResizeBuffer = isInBandResizePartial ? sequence : "";
-				if (isInBandResizePartial) return;
-			} else if (this.#inBandResizeBuffer || isInBandResizePartial) {
-				this.#inBandResizeBuffer += sequence;
-				if (this.#inBandResizeBuffer.length > 256) {
-					this.#inBandResizeBuffer = "";
-					return;
-				}
-				const lastCode = this.#inBandResizeBuffer.charCodeAt(this.#inBandResizeBuffer.length - 1);
-				if (lastCode >= 0x40 && lastCode <= 0x7e) {
-					// Terminator arrived: let the resize handler below claim it, or
-					// fall through to the input handler if it is not a resize report.
-					sequence = this.#inBandResizeBuffer;
-					this.#inBandResizeBuffer = "";
-				} else if (!inBandResizePartialPattern.test(this.#inBandResizeBuffer)) {
-					// Diverged from a valid in-band prefix — drop the garbled report.
-					this.#inBandResizeBuffer = "";
-					return;
-				} else {
-					// Still accumulating the report.
-					return;
-				}
-			}
-
-			// In-band resize report (DEC mode 2048). Unsolicited and not tied to a
-			// sentinel: update reported geometry + cell size, then drive the resize
-			// handler so the renderer reflows.
-			const resizeMatch = sequence.match(inBandResizePattern);
-			if (resizeMatch) {
-				this.#handleInBandResizeReport(resizeMatch[1]!, resizeMatch[2]!, resizeMatch[3]!, resizeMatch[4]!);
-				return;
-			}
-
-			// DECRPM private-mode report. Resolves the matching probe by mode; the
-			// owner stays in the FIFO and is drained by its DA1 sentinel (a no-op
-			// once resolved). Per DECRPM, status 0 = unrecognized, 1/2 =
-			// set/reset, 3 = permanently set, and 4 = permanently reset.
-			const decrpmMatch = sequence.match(decrpmResponsePattern);
-			if (decrpmMatch) {
-				this.#handlePrivateModeReport(parseInt(decrpmMatch[1]!, 10), decrpmMatch[2]!);
-				return;
-			}
-
-			// DA1 response: swallow our sentinel reply regardless of whether an
-			// earlier capability-specific response already succeeded. Other terminal
-			// probes should never see these replies.
-			if (da1ResponsePattern.test(sequence) && this.#da1SentinelOwners.length > 0) {
-				const owner = this.#da1SentinelOwners.shift()!;
-				switch (owner.kind) {
-					case "osc11": {
-						if (this.#osc11Pending) {
-							// DA1 arrived before the OSC 11 reply: terminal does not support OSC 11.
-							this.#osc11Pending = false;
-							this.#osc11ResponseBuffer = "";
-						}
-						// Start a queued OSC 11 query once the prior cycle is fully drained.
-						if (
-							this.#osc11QueryQueued &&
-							!this.#osc11Pending &&
-							!this.#da1SentinelOwners.some(o => o.kind === "osc11") &&
-							!this.#dead
-						) {
-							this.#osc11QueryQueued = false;
-							this.#startOsc11Query();
-						}
-						break;
-					}
-					case "privateMode": {
-						// DA1 beat the DECRPM reply for this mode → treat as unsupported.
-						this.#resolvePrivateMode(owner.mode, false);
-						break;
-					}
-					case "keyboard": {
-						// Keyboard probe sentinel: kitty reply never arrived → fall back to modifyOtherKeys
-						// only where the resolved terminal is known enough to tolerate it.
-						if (this.#modifyOtherKeysTimeout) {
-							clearTimeout(this.#modifyOtherKeysTimeout);
-							this.#modifyOtherKeysTimeout = undefined;
-						}
-						this.#enableModifyOtherKeysFallback();
-						break;
-					}
-					case "osc99Probe": {
-						this.#resolveOsc99Support(owner.id, false);
-						break;
-					}
-				}
-				return;
-			}
-
-			const match = sequence.match(kittyResponsePattern);
-			if (match) {
-				if (this.#modifyOtherKeysTimeout) {
-					clearTimeout(this.#modifyOtherKeysTimeout);
-					this.#modifyOtherKeysTimeout = undefined;
-				}
-				// A DA1 sentinel that beat the kitty reply may have already
-				// engaged the modifyOtherKeys fallback (terminals such as
-				// Superset/xterm-on-Electron answer DA1 before `\x1b[?u`).
-				// Kitty is strictly preferred — undo the fallback so the two
-				// modes do not stack. See #2042.
-				if (this.#modifyOtherKeysActive) {
-					this.#safeWrite("\x1b[>4;0m");
-					this.#modifyOtherKeysActive = false;
-				}
-				// Any reply to `\x1b[?u` means the terminal speaks the kitty keyboard
-				// protocol. The reported flag value is the *current* stack-top — fresh
-				// terminals report 0 — so support is implied by the reply itself, not by
-				// the flag value. Pick the level we want; `\x1b[>Nu` pushes one frame
-				// that shutdown's single `\x1b[<u` pop balances.
-				const reportedFlags = parseInt(match[1]!, 10);
-				this.#kittyProtocolActive = true;
-				setKittyProtocolActive(true);
-				if (reportedFlags >= 3) {
-					// Already enriched (Ghostty/foot may keep flags from a parent app).
-					// Push level-2 to lock in event reporting.
-					this.#kittyEnableSeq = "\x1b[>7u";
-					this.#safeWrite(this.#kittyEnableSeq);
-				} else {
-					// Level 1 (disambiguate escape codes) — enough for Shift+Enter
-					// without the modifyOtherKeys fallback that caused regression #3259.
-					this.#kittyEnableSeq = "\x1b[>1u";
-					this.#safeWrite(this.#kittyEnableSeq);
-				}
-				return;
-			}
-
-			// OSC 11 replies can be split if the stdin buffer flushes a partial sequence.
-			// Accumulate fragments until the BEL/ST terminator arrives, then parse once.
-			// If a new escape sequence arrives (not the ST terminator), abort buffering
-			// and forward it as normal input so user keystrokes are never swallowed.
-			if (this.#osc11Pending && (this.#osc11ResponseBuffer || sequence.startsWith("\x1b]11;"))) {
-				if (this.#osc11ResponseBuffer && sequence.startsWith("\x1b") && sequence !== "\x1b\\") {
-					// New escape sequence arrived mid-buffer — not an OSC 11 continuation.
-					this.#osc11ResponseBuffer = "";
-					// Fall through to normal input handling below.
-				} else {
-					this.#osc11ResponseBuffer += sequence;
-					const osc11Match = this.#osc11ResponseBuffer.match(osc11ResponsePattern);
-					if (!osc11Match) return;
-					const [, rHex, gHex, bHex] = osc11Match;
-					this.#osc11Pending = false;
-					this.#osc11ResponseBuffer = "";
-					this.#handleOsc11Response(rHex!, gHex!, bHex!);
-					return;
-				}
-			}
-
-			if (this.#osc99PendingId && (this.#osc99ResponseBuffer || sequence.startsWith("\x1b]99;"))) {
-				if (this.#osc99ResponseBuffer && sequence.startsWith("\x1b") && sequence !== "\x1b\\") {
-					this.#osc99ResponseBuffer = "";
-				} else {
-					this.#osc99ResponseBuffer += sequence;
-					const osc99Match = this.#osc99ResponseBuffer.match(/^\x1b\]99;([^;]*);([\s\S]*?)(?:\x07|\x1b\\)$/u);
-					if (!osc99Match) return;
-					const [, meta, payload] = osc99Match;
-					this.#osc99ResponseBuffer = "";
-					this.#handleOsc99CapabilityResponse(meta!, payload!);
-					return;
-				}
-			}
-
-			// Focus in / focus out (DECSET 1004). Consumed rather than forwarded:
-			// `CSI I` and `CSI O` are not keystrokes, and a terminal left in mode
-			// 1004 by a previous application was delivering them into the editor.
-			if (consumeWindowFocusEvent(sequence)) return;
-
-			// Mode 2031 change notification: re-query OSC 11 with 100ms debounce
-			// (Neovim convention — coalesces rapid notifications during transitions)
-			const appearanceMatch = sequence.match(appearanceDsrPattern);
-			if (appearanceMatch) {
-				if (this.#mode2031DebounceTimer) clearTimeout(this.#mode2031DebounceTimer);
-				this.#mode2031DebounceTimer = setTimeout(() => {
-					this.#mode2031DebounceTimer = undefined;
-					this.#queryBackgroundColor();
-				}, 100);
-				return;
-			}
-			if (this.#inputHandler) {
-				this.#inputHandler(sequence);
-			}
-		});
+		this.#stdinBuffer.on("data", (sequence: string) => this.#onStdinSequence(sequence));
 
 		// Re-wrap paste content with bracketed paste markers for existing editor handling
 		this.#stdinBuffer.on("paste", (content: string) => {
@@ -1232,6 +991,242 @@ export class ProcessTerminal implements Terminal {
 		this.#stdinDataHandler = (data: string) => {
 			this.#stdinBuffer!.process(data);
 		};
+	}
+
+	/** Route one parsed stdin sequence: a terminal reply or report is consumed, anything else reaches the input handler. */
+	#onStdinSequence(sequence: string): void {
+		// Fast path for plain-text bytes: every escape-probe regex anchors on
+		// `^\x1b…`, so a byte that is not ESC can never match. A non-bracketed
+		// paste of N printable chars arrives as N per-scalar `data` events;
+		// running the full probe suite per event turns a 100 KB paste into ~600K
+		// regex executions and blocks the event loop. Skip straight to the input
+		// handler when no reassembly buffer is holding state that a non-ESC
+		// continuation could feed (issue #4073 case C).
+		if (
+			(sequence.length === 0 || sequence.charCodeAt(0) !== 0x1b) &&
+			this.#privateCsiResponseBuffer.length === 0 &&
+			this.#inBandResizeBuffer.length === 0 &&
+			this.#osc11ResponseBuffer.length === 0 &&
+			this.#osc99ResponseBuffer.length === 0
+		) {
+			this.#inputHandler?.(sequence);
+			return;
+		}
+		const csi = this.#reassemblePrivateCsi(sequence);
+		if (csi === undefined) return;
+		const input = this.#reassembleInBandResize(csi);
+		if (input === undefined || this.#consumeTerminalReply(input)) return;
+		this.#inputHandler?.(input);
+	}
+
+	/**
+	 * Reassemble a private CSI reply (DA1, kitty keyboard, Mode 2031) split across stdin reads. When
+	 * the terminal writes the reply slowly enough that the StdinBuffer's flush timeout elapses
+	 * mid-sequence, the prefix `\x1b[?<digits>` arrives as one event and the tail `;...<terminator>`
+	 * as single-character events that would otherwise leak into the prompt as keystrokes (#1238).
+	 * Returns the sequence to dispatch, or `undefined` when it was absorbed.
+	 */
+	#reassemblePrivateCsi(sequence: string): string | undefined {
+		if (
+			!this.#privateCsiResponseBuffer &&
+			!(this.#da1SentinelOwners.length > 0 && PRIVATE_CSI_PARTIAL.test(sequence))
+		) {
+			return sequence;
+		}
+		if (this.#privateCsiResponseBuffer && sequence.startsWith("\x1b")) {
+			// New escape arrived mid-reassembly: abandon the partial and process the new sequence.
+			this.#privateCsiResponseBuffer = "";
+			return sequence;
+		}
+		const buffered = this.#privateCsiResponseBuffer + sequence;
+		this.#privateCsiResponseBuffer = "";
+		// A runaway partial whose terminator never arrives is dropped.
+		if (buffered.length > REPLY_REASSEMBLY_MAX) return undefined;
+		// The terminator arrived: the reassembled reply goes to the reply handlers.
+		if (endsWithCsiFinalByte(buffered)) return buffered;
+		// Still a valid private CSI prefix: keep accumulating. A partial that diverged
+		// from one is probe noise and is dropped, never forwarded as input.
+		if (PRIVATE_CSI_PARTIAL.test(buffered)) this.#privateCsiResponseBuffer = buffered;
+		return undefined;
+	}
+
+	/**
+	 * Reassemble an in-band resize report (DEC 2048) split across stdin reads. When the StdinBuffer
+	 * flush timeout elapses mid-sequence, common during a rapid resize that keeps the event loop busy,
+	 * the `\x1b[48;…` prefix arrives as one event and the tail (`…;xPx t`) as bare character events that
+	 * would otherwise leak into the prompt. A reassembled sequence that is not a resize report (a split
+	 * kitty `\x1b[48;…u` for a digit key) is returned for the input handler rather than dropped.
+	 * Returns the sequence to dispatch, or `undefined` when it was absorbed.
+	 */
+	#reassembleInBandResize(sequence: string): string | undefined {
+		const isPartial = this.#inBandResizeActive && IN_BAND_RESIZE_PARTIAL.test(sequence);
+		if (this.#inBandResizeBuffer && sequence.startsWith("\x1b")) {
+			// A new escape interrupted the partial, which is unrecoverable. A new
+			// in-band prefix restarts reassembly; any other escape is dispatched.
+			this.#inBandResizeBuffer = isPartial ? sequence : "";
+			return isPartial ? undefined : sequence;
+		}
+		if (!this.#inBandResizeBuffer && !isPartial) return sequence;
+		const buffered = this.#inBandResizeBuffer + sequence;
+		this.#inBandResizeBuffer = "";
+		if (buffered.length > REPLY_REASSEMBLY_MAX) return undefined;
+		if (endsWithCsiFinalByte(buffered)) return buffered;
+		// Still a valid in-band prefix: keep accumulating; a garbled report is dropped.
+		if (IN_BAND_RESIZE_PARTIAL.test(buffered)) this.#inBandResizeBuffer = buffered;
+		return undefined;
+	}
+
+	/** Consume `sequence` when it is a reply to a probe or an unsolicited terminal report; true when consumed. */
+	#consumeTerminalReply(sequence: string): boolean {
+		// In-band resize report (DEC mode 2048). Unsolicited and not tied to a
+		// sentinel: update reported geometry + cell size, then drive the resize
+		// handler so the renderer reflows.
+		const resize = IN_BAND_RESIZE.exec(sequence);
+		if (resize) {
+			this.#handleInBandResizeReport(resize[1]!, resize[2]!, resize[3]!, resize[4]!);
+			return true;
+		}
+		// DECRPM private-mode report. Resolves the matching probe by mode; the
+		// owner stays in the FIFO and is drained by its DA1 sentinel (a no-op
+		// once resolved). Per DECRPM, status 0 = unrecognized, 1/2 =
+		// set/reset, 3 = permanently set, and 4 = permanently reset.
+		const decrpm = DECRPM_RESPONSE.exec(sequence);
+		if (decrpm) {
+			this.#handlePrivateModeReport(parseInt(decrpm[1]!, 10), decrpm[2]!);
+			return true;
+		}
+		// DA1 reply: swallow our sentinel reply regardless of whether an earlier
+		// capability-specific reply already succeeded. Other terminal probes
+		// never see these replies.
+		if (this.#da1SentinelOwners.length > 0 && DA1_RESPONSE.test(sequence)) {
+			this.#settleDa1Sentinel(this.#da1SentinelOwners.shift()!);
+			return true;
+		}
+		const kitty = KITTY_RESPONSE.exec(sequence);
+		if (kitty) {
+			this.#adoptKittyProtocol(parseInt(kitty[1]!, 10));
+			return true;
+		}
+		if (this.#consumeOsc11Reply(sequence) || this.#consumeOsc99Reply(sequence)) return true;
+		// Focus in / focus out (DECSET 1004). Consumed rather than forwarded:
+		// `CSI I` and `CSI O` are not keystrokes, and a terminal left in mode
+		// 1004 by a previous application was delivering them into the editor.
+		if (consumeWindowFocusEvent(sequence)) return true;
+		// Mode 2031 change notification: re-query OSC 11 with 100ms debounce
+		// (Neovim convention — coalesces rapid notifications during transitions)
+		if (APPEARANCE_DSR.test(sequence)) {
+			clearTimeout(this.#mode2031DebounceTimer);
+			this.#mode2031DebounceTimer = setTimeout(() => {
+				this.#mode2031DebounceTimer = undefined;
+				this.#queryBackgroundColor();
+			}, 100);
+			return true;
+		}
+		return false;
+	}
+
+	/** Settle the probe whose DA1 sentinel just answered: its capability reply, if any, came first. */
+	#settleDa1Sentinel(owner: Da1SentinelOwner): void {
+		switch (owner.kind) {
+			case "osc11": {
+				if (this.#osc11Pending) {
+					// DA1 arrived before the OSC 11 reply: terminal does not support OSC 11.
+					this.#osc11Pending = false;
+					this.#osc11ResponseBuffer = "";
+				}
+				// Start a queued OSC 11 query once the prior cycle is fully drained.
+				if (
+					this.#osc11QueryQueued &&
+					!this.#osc11Pending &&
+					!this.#da1SentinelOwners.some(o => o.kind === "osc11") &&
+					!this.#dead
+				) {
+					this.#osc11QueryQueued = false;
+					this.#startOsc11Query();
+				}
+				break;
+			}
+			case "privateMode": {
+				// DA1 beat the DECRPM reply for this mode → treat as unsupported.
+				this.#resolvePrivateMode(owner.mode, false);
+				break;
+			}
+			case "keyboard": {
+				// Keyboard probe sentinel: kitty reply never arrived → fall back to modifyOtherKeys
+				// only where the resolved terminal is known enough to tolerate it.
+				clearTimeout(this.#modifyOtherKeysTimeout);
+				this.#modifyOtherKeysTimeout = undefined;
+				this.#enableModifyOtherKeysFallback();
+				break;
+			}
+			case "osc99Probe": {
+				this.#resolveOsc99Support(owner.id, false);
+				break;
+			}
+		}
+	}
+
+	/** Enable the kitty keyboard protocol after the terminal answered `\x1b[?u` with its current flags. */
+	#adoptKittyProtocol(reportedFlags: number): void {
+		clearTimeout(this.#modifyOtherKeysTimeout);
+		this.#modifyOtherKeysTimeout = undefined;
+		// A DA1 sentinel that beat the kitty reply may have already
+		// engaged the modifyOtherKeys fallback (terminals such as
+		// Superset/xterm-on-Electron answer DA1 before `\x1b[?u`).
+		// Kitty is strictly preferred — undo the fallback so the two
+		// modes do not stack. See #2042.
+		if (this.#modifyOtherKeysActive) {
+			this.#safeWrite("\x1b[>4;0m");
+			this.#modifyOtherKeysActive = false;
+		}
+		// Any reply to `\x1b[?u` means the terminal speaks the kitty keyboard
+		// protocol. The reported flag value is the *current* stack-top — fresh
+		// terminals report 0 — so support is implied by the reply itself, not by
+		// the flag value. Pick the level we want; `\x1b[>Nu` pushes one frame
+		// that shutdown's single `\x1b[<u` pop balances. Flags already enriched
+		// (Ghostty/foot may keep flags from a parent app) push level 2 to lock in
+		// event reporting; otherwise level 1 (disambiguate escape codes) is enough
+		// for Shift+Enter without the modifyOtherKeys fallback that caused
+		// regression #3259.
+		this.#kittyProtocolActive = true;
+		setKittyProtocolActive(true);
+		this.#kittyEnableSeq = reportedFlags >= 3 ? "\x1b[>7u" : "\x1b[>1u";
+		this.#safeWrite(this.#kittyEnableSeq);
+	}
+
+	/**
+	 * Accumulate an OSC 11 reply, which can be split when the stdin buffer flushes a partial
+	 * sequence, and parse it once the BEL/ST terminator arrives. A new escape sequence (not the ST
+	 * terminator) aborts buffering and is not consumed, so user keystrokes are never swallowed.
+	 */
+	#consumeOsc11Reply(sequence: string): boolean {
+		if (!this.#osc11Pending || (!this.#osc11ResponseBuffer && !sequence.startsWith("\x1b]11;"))) return false;
+		if (this.#osc11ResponseBuffer && sequence.startsWith("\x1b") && sequence !== "\x1b\\") {
+			this.#osc11ResponseBuffer = "";
+			return false;
+		}
+		this.#osc11ResponseBuffer += sequence;
+		const reply = OSC11_RESPONSE.exec(this.#osc11ResponseBuffer);
+		if (!reply) return true;
+		this.#osc11Pending = false;
+		this.#osc11ResponseBuffer = "";
+		this.#handleOsc11Response(reply[1]!, reply[2]!, reply[3]!);
+		return true;
+	}
+
+	/** Accumulate an OSC 99 capability reply as {@link #consumeOsc11Reply} accumulates an OSC 11 one. */
+	#consumeOsc99Reply(sequence: string): boolean {
+		if (!this.#osc99PendingId || (!this.#osc99ResponseBuffer && !sequence.startsWith("\x1b]99;"))) return false;
+		if (this.#osc99ResponseBuffer && sequence.startsWith("\x1b") && sequence !== "\x1b\\") {
+			this.#osc99ResponseBuffer = "";
+			return false;
+		}
+		this.#osc99ResponseBuffer += sequence;
+		const reply = OSC99_RESPONSE.exec(this.#osc99ResponseBuffer);
+		if (!reply) return true;
+		this.#osc99ResponseBuffer = "";
+		this.#handleOsc99CapabilityResponse(reply[1]!, reply[2]!);
+		return true;
 	}
 
 	/**

@@ -1,14 +1,36 @@
 /**
- * Custom tools: the context one executes against, the definition a declaration
- * converts to, and the extension that registers them with a session.
+ * Tools a session registers beyond the built-ins: the custom tools it force-activates, the
+ * context one executes against, the definition a declaration converts to, the extension that
+ * registers them, and the registry the session starts with.
  */
 
 import type { AgentTool } from "@veyyon/agent-core";
+import type { Model } from "@veyyon/ai";
 import { LEGACY_TOOL_DEFINITION_MARKER } from "@veyyon/kernel/registry/legacy-tool-marker";
+import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import { logger } from "@veyyon/utils";
+import type { ModelRegistry } from "../config/model-registry";
+import type { Settings } from "../config/settings";
+import { getExaMcpTools } from "../exa/tools";
+import { discoverCustomToolPaths, loadCustomTools, type ToolPathWithSource } from "../extensibility/custom-tools";
 import type { CustomTool, CustomToolContext, CustomToolSessionEvent } from "../extensibility/custom-tools/types";
-import type { ExtensionContext, ExtensionFactory, ToolDefinition } from "../extensibility/extensions";
-import { imageGenTool } from "../tools/web/image-gen";
+import {
+	type BuiltinExtensionFactory,
+	type ExtensionContext,
+	type ExtensionRunner,
+	ExtensionToolWrapper,
+	type ToolDefinition,
+} from "../extensibility/extensions";
+import { HIDDEN_TOOLS, type Tool, type ToolSession } from "../tools";
+import { queueResolveHandler } from "../tools/agent/resolve";
+import { TOOL } from "../tools/core/builtin-names";
+import { wrapToolWithMetaNotice } from "../tools/core/output-meta";
+import { getImageGenTools, imageGenTool } from "../tools/web/image-gen";
+import { getSearchTools } from "../tools/web/search";
+import { ttsTool } from "../tools/web/tts";
+import type { SessionCpuExecHooks } from "./cpu-limit";
+import { createPendingMCPTool } from "./factory-mcp";
+import type { CreateAgentSessionOptions } from "./factory-options";
 
 export const TOOL_DEFINITION_MARKER = Symbol("__isToolDefinition");
 
@@ -86,7 +108,7 @@ export function customToolToDefinition(
 export function createCustomToolsExtension(
 	tools: CustomTool[],
 	obfuscateProviderText: (text: string) => string,
-): ExtensionFactory {
+): BuiltinExtensionFactory {
 	return api => {
 		for (const tool of tools) {
 			api.registerTool(customToolToDefinition(tool, obfuscateProviderText));
@@ -176,4 +198,149 @@ export function createCustomToolsExtension(
 			),
 		);
 	};
+}
+
+/** What {@link loadSessionCustomTools} reads. */
+export interface SessionCustomToolsInput {
+	options: Pick<CreateAgentSessionOptions, "toolNames" | "preloadedCustomToolPaths">;
+	settings: Settings;
+	modelRegistry: ModelRegistry;
+	model: Model | undefined;
+	cwd: string;
+	agentDir: string;
+	/** Names of the built-in tools, which a discovered tool may not take. */
+	builtInToolNames: string[];
+	toolSession: ToolSession;
+	cpuExec: SessionCpuExecHooks;
+	operatorNotices: OperatorNotices;
+}
+
+/** The custom tools a session registers, and the discovered source paths a spawned agent reuses. */
+export interface SessionCustomTools {
+	tools: CustomTool[];
+	paths: ToolPathWithSource[];
+}
+
+/**
+ * The custom tools a session force-activates through `alwaysInclude`: image generation, speech,
+ * web search and Exa's hosted MCP tools when their settings enable them, then every tool discovered
+ * under `.veyyon/tools/`, `.claude/tools/` and plugins.
+ *
+ * An explicit tool whitelist drops each optional tool it does not name, or `--no-tools` would let
+ * them past every filter (issue #5305); web search joins only when a whitelist names it.
+ * `exa.enabled` is the master switch the search provider honors, so it covers Exa's tools too.
+ *
+ * Discovered tools are always bound to THIS session's `CustomToolAPI` (cwd, exec, pending actions,
+ * UI). A spawned agent reuses its parent's path scan through `preloadedCustomToolPaths`, never its
+ * loaded tools, which would route execution back through the parent. A tool that fails to load,
+ * from a syntax error, a bad default export or a taken name, is reported on the operator channel.
+ */
+export async function loadSessionCustomTools(input: SessionCustomToolsInput): Promise<SessionCustomTools> {
+	const { options, settings, cwd, agentDir } = input;
+	const whitelist = options.toolNames;
+	const requested = (name: string): boolean => !whitelist || whitelist.includes(name);
+	const tools: CustomTool[] = [];
+	if (settings.get("generate_image.enabled") && requested("generate_image")) {
+		const imageGenTools = await logger.time("getImageGenTools", () =>
+			getImageGenTools(input.modelRegistry, input.model),
+		);
+		tools.push(...(imageGenTools as unknown as CustomTool[]));
+	}
+	if (settings.get("speechgen.enabled") && requested(ttsTool.name)) {
+		tools.push(ttsTool as unknown as CustomTool);
+	}
+	if (whitelist?.includes(TOOL.web_search)) {
+		tools.push(...getSearchTools());
+	}
+	if (settings.get("exa.enabled")) {
+		const exaTools = await logger.time("getExaMcpTools", () =>
+			getExaMcpTools({
+				researcher: settings.get("exa.enableResearcher"),
+				websets: settings.get("exa.enableWebsets"),
+			}),
+		);
+		tools.push(...(exaTools.filter(tool => requested(tool.name)) as unknown as CustomTool[]));
+	}
+
+	const paths =
+		options.preloadedCustomToolPaths ??
+		(await logger.time("discoverCustomToolPaths", () => discoverCustomToolPaths([], cwd, agentDir)));
+	const loaded = await logger.time("loadCustomTools", () =>
+		loadCustomTools(
+			paths,
+			cwd,
+			input.builtInToolNames,
+			action => queueResolveHandler(input.toolSession, action),
+			input.cpuExec.adoptPid,
+			input.cpuExec.gate,
+		),
+	);
+	for (const { path, error } of loaded.errors) {
+		logger.error("Custom tool load failed", { path, error });
+		input.operatorNotices.error("tools", `${path}: ${error}`);
+	}
+	for (const { tool } of loaded.tools) tools.push(tool);
+	return { tools, paths };
+}
+
+/** What {@link assembleToolRegistry} builds the registry from. */
+export interface ToolRegistryInput {
+	builtinTools: Tool[];
+	/** Extension, SDK-custom, image-gen, TTS and startup MCP tools, already wrapped for output spill. */
+	extensionTools: Tool[];
+	/** MCP tools a deferred discovery reserves a placeholder for until it connects. */
+	pendingMCPToolNames: Iterable<string>;
+	extensionRunner: ExtensionRunner;
+	settings: Settings;
+	toolSession: ToolSession;
+}
+
+/** A session's tool registry, and the names in it that are built-ins by provenance. */
+export interface SessionToolRegistry {
+	tools: Map<string, Tool>;
+	builtInNames: Set<string>;
+}
+
+/**
+ * The tool registry a session starts with.
+ *
+ * Built-ins first, `goal` when enabled and not already built, then the extension tools, each of
+ * which replaces a built-in of the same name, then a placeholder for each MCP tool a deferred
+ * discovery has not connected yet. Every one of them is wrapped in `ExtensionToolWrapper`, the only
+ * place the per-tool approval check runs, whether or not any extension is loaded. `resolve` is
+ * hidden but stays whenever a code path can invoke it: a deferrable tool stages a preview action,
+ * or plan mode consumes `resolve { action: "apply" }` to submit its plan (issue #1428).
+ */
+export async function assembleToolRegistry(input: ToolRegistryInput): Promise<SessionToolRegistry> {
+	const tools = new Map<string, Tool>();
+	const builtInNames = new Set<string>();
+	const addBuiltIn = (tool: Tool): void => {
+		tools.set(tool.name, tool);
+		builtInNames.add(tool.name);
+	};
+	for (const tool of input.builtinTools) addBuiltIn(tool);
+	if (!tools.has(TOOL.goal) && input.settings.get("goal.enabled")) {
+		const goalTool = await logger.time("createTools:goal:session", HIDDEN_TOOLS.goal, input.toolSession);
+		if (goalTool) addBuiltIn(wrapToolWithMetaNotice(goalTool));
+	}
+	for (const tool of input.extensionTools) {
+		tools.set(tool.name, tool);
+		builtInNames.delete(tool.name);
+	}
+	for (const name of input.pendingMCPToolNames) {
+		if (!tools.has(name)) tools.set(name, createPendingMCPTool(name));
+	}
+	for (const tool of tools.values()) {
+		tools.set(tool.name, new ExtensionToolWrapper(tool, input.extensionRunner));
+	}
+
+	const hasDeferrableTools = Array.from(tools.values()).some(tool => tool.deferrable === true);
+	if (!hasDeferrableTools && !input.settings.get("plan.enabled")) {
+		tools.delete(TOOL.resolve);
+		builtInNames.delete(TOOL.resolve);
+	} else if (!tools.has(TOOL.resolve)) {
+		const resolveTool = await logger.time("createTools:resolve:session", HIDDEN_TOOLS.resolve, input.toolSession);
+		if (resolveTool) addBuiltIn(wrapToolWithMetaNotice(resolveTool));
+	}
+	return { tools, builtInNames };
 }

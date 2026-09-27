@@ -21,7 +21,7 @@
 // (https://github.com/thatmagicalcat/txm, MIT/Apache-2.0), reimplemented from
 // scratch here on this module's ANSI-aware Box model.
 
-import { latexColorScope, latexToUnicode, MATH_FONT_COMMANDS } from "./latex-unicode";
+import { isAsciiLetter, latexColorScope, latexToUnicode, MATH_FONT_COMMANDS } from "./latex-unicode";
 import { clamp } from "./math";
 import { visibleWidth } from "./width";
 
@@ -39,93 +39,95 @@ interface Box {
 type CellAlign = "l" | "c" | "r";
 
 const BAR = "─";
-const FRAC_COMMANDS: Record<string, true> = { frac: true, dfrac: true, tfrac: true, cfrac: true };
-const BINOM_COMMANDS: Record<string, true> = { binom: true, dbinom: true, tbinom: true };
+const FRAC_COMMANDS: ReadonlySet<string> = new Set(["frac", "dfrac", "tfrac", "cfrac"]);
+const BINOM_COMMANDS: ReadonlySet<string> = new Set(["binom", "dbinom", "tbinom"]);
 
 // Display "wrapper" environments whose body is an expression (possibly with `\\`
 // row breaks and `&` alignment). Their rows are parsed so fractions inside stack
 // and `&` columns align.
-const DISPLAY_ROW_ENVIRONMENTS: Record<string, true> = {
-	equation: true,
-	eqnarray: true,
-	align: true,
-	aligned: true,
-	alignat: true,
-	alignedat: true,
-	flalign: true,
-	split: true,
-	gather: true,
-	gathered: true,
-	gatheredat: true,
-	multline: true,
-	displaymath: true,
-	math: true,
-};
+const DISPLAY_ROW_ENVIRONMENTS: ReadonlySet<string> = new Set([
+	"equation",
+	"eqnarray",
+	"align",
+	"aligned",
+	"alignat",
+	"alignedat",
+	"flalign",
+	"split",
+	"gather",
+	"gathered",
+	"gatheredat",
+	"multline",
+	"displaymath",
+	"math",
+]);
 
 // Environments laid out as 2-D grids of parsed cells: [open, close] delimiter.
-const GRID_ENVIRONMENTS: Record<string, readonly [string, string]> = {
-	matrix: ["", ""],
-	smallmatrix: ["", ""],
-	array: ["", ""],
-	pmatrix: ["(", ")"],
-	bmatrix: ["[", "]"],
-	Bmatrix: ["{", "}"],
-	vmatrix: ["|", "|"],
-	Vmatrix: ["‖", "‖"],
-	cases: ["{", ""],
-	dcases: ["{", ""],
-	rcases: ["", "}"],
-	drcases: ["", "}"],
-};
+const GRID_ENVIRONMENTS: ReadonlyMap<string, readonly [string, string]> = new Map(
+	Object.entries<readonly [string, string]>({
+		matrix: ["", ""],
+		smallmatrix: ["", ""],
+		array: ["", ""],
+		pmatrix: ["(", ")"],
+		bmatrix: ["[", "]"],
+		Bmatrix: ["{", "}"],
+		vmatrix: ["|", "|"],
+		Vmatrix: ["‖", "‖"],
+		cases: ["{", ""],
+		dcases: ["{", ""],
+		rcases: ["", "}"],
+		drcases: ["", "}"],
+	}),
+);
 
 // Operators whose display-style scripts stack above/below the symbol.
-const LIMIT_OPERATORS: Record<string, true> = {
-	sum: true,
-	prod: true,
-	coprod: true,
-	bigcup: true,
-	bigcap: true,
-	bigsqcup: true,
-	bigvee: true,
-	bigwedge: true,
-	bigoplus: true,
-	bigotimes: true,
-	bigodot: true,
-	biguplus: true,
-	lim: true,
-	limsup: true,
-	liminf: true,
-	projlim: true,
-	injlim: true,
-	varlimsup: true,
-	varliminf: true,
-	varprojlim: true,
-	varinjlim: true,
-	max: true,
-	min: true,
-	sup: true,
-	inf: true,
-	det: true,
-	gcd: true,
-	Pr: true,
-	argmax: true,
-	argmin: true,
-};
+const LIMIT_OPERATORS: ReadonlySet<string> = new Set([
+	"sum",
+	"prod",
+	"coprod",
+	"bigcup",
+	"bigcap",
+	"bigsqcup",
+	"bigvee",
+	"bigwedge",
+	"bigoplus",
+	"bigotimes",
+	"bigodot",
+	"biguplus",
+	"lim",
+	"limsup",
+	"liminf",
+	"projlim",
+	"injlim",
+	"varlimsup",
+	"varliminf",
+	"varprojlim",
+	"varinjlim",
+	"max",
+	"min",
+	"sup",
+	"inf",
+	"det",
+	"gcd",
+	"Pr",
+	"argmax",
+	"argmin",
+]);
 
 // Integral-family operators: scripts stay beside the symbol (LaTeX display
 // convention) unless an explicit `\limits` follows.
-const INTEGRAL_OPERATORS: Record<string, true> = {
-	int: true,
-	iint: true,
-	iiint: true,
-	iiiint: true,
-	oint: true,
-	oiint: true,
-	oiiint: true,
-	idotsint: true,
-	intop: true,
-	smallint: true,
-};
+const INTEGRAL_OPERATORS: ReadonlySet<string> = new Set([
+	"int",
+	"iint",
+	"iiint",
+	"iiiint",
+	"oint",
+	"oiint",
+	"oiiint",
+	"idotsint",
+	"intop",
+	"smallint",
+]);
 
 // Vertical delimiter piece characters: `only` for single-line content, then
 // top/mid/bot columns for stretched forms; `axis` replaces `mid` at the
@@ -138,52 +140,56 @@ interface DelimPieces {
 	axis?: string;
 }
 
-const DELIM_PIECES: Record<string, DelimPieces> = {
-	"(": { only: "(", top: "⎛", mid: "⎜", bot: "⎝" },
-	")": { only: ")", top: "⎞", mid: "⎟", bot: "⎠" },
-	"[": { only: "[", top: "⎡", mid: "⎢", bot: "⎣" },
-	"]": { only: "]", top: "⎤", mid: "⎥", bot: "⎦" },
-	"{": { only: "{", top: "⎧", mid: "⎪", bot: "⎩", axis: "⎨" },
-	"}": { only: "}", top: "⎫", mid: "⎪", bot: "⎭", axis: "⎬" },
-	"|": { only: "|", top: "│", mid: "│", bot: "│" },
-	"‖": { only: "‖", top: "║", mid: "║", bot: "║" },
-	"⌈": { only: "⌈", top: "⎡", mid: "⎢", bot: "⎢" },
-	"⌉": { only: "⌉", top: "⎤", mid: "⎥", bot: "⎥" },
-	"⌊": { only: "⌊", top: "⎢", mid: "⎢", bot: "⎣" },
-	"⌋": { only: "⌋", top: "⎥", mid: "⎥", bot: "⎦" },
-};
+const DELIM_PIECES: ReadonlyMap<string, DelimPieces> = new Map(
+	Object.entries<DelimPieces>({
+		"(": { only: "(", top: "⎛", mid: "⎜", bot: "⎝" },
+		")": { only: ")", top: "⎞", mid: "⎟", bot: "⎠" },
+		"[": { only: "[", top: "⎡", mid: "⎢", bot: "⎣" },
+		"]": { only: "]", top: "⎤", mid: "⎥", bot: "⎦" },
+		"{": { only: "{", top: "⎧", mid: "⎪", bot: "⎩", axis: "⎨" },
+		"}": { only: "}", top: "⎫", mid: "⎪", bot: "⎭", axis: "⎬" },
+		"|": { only: "|", top: "│", mid: "│", bot: "│" },
+		"‖": { only: "‖", top: "║", mid: "║", bot: "║" },
+		"⌈": { only: "⌈", top: "⎡", mid: "⎢", bot: "⎢" },
+		"⌉": { only: "⌉", top: "⎤", mid: "⎥", bot: "⎥" },
+		"⌊": { only: "⌊", top: "⎢", mid: "⎢", bot: "⎣" },
+		"⌋": { only: "⌋", top: "⎥", mid: "⎥", bot: "⎦" },
+	}),
+);
 
 // `\left`/`\right`/`\middle` delimiter token → piece-table key. Unknown tokens
 // fall back to `latexToUnicode` and render at the baseline row only.
-const DELIM_KEYS: Record<string, string> = {
-	"(": "(",
-	")": ")",
-	"[": "[",
-	"]": "]",
-	"\\{": "{",
-	"\\}": "}",
-	"\\lbrace": "{",
-	"\\rbrace": "}",
-	"|": "|",
-	"\\vert": "|",
-	"\\lvert": "|",
-	"\\rvert": "|",
-	"\\|": "‖",
-	"\\Vert": "‖",
-	"\\lVert": "‖",
-	"\\rVert": "‖",
-	"\\langle": "⟨",
-	"\\rangle": "⟩",
-	"<": "⟨",
-	">": "⟩",
-	"\\lceil": "⌈",
-	"\\rceil": "⌉",
-	"\\lfloor": "⌊",
-	"\\rfloor": "⌋",
-	"\\lbrack": "[",
-	"\\rbrack": "]",
-	".": "",
-};
+const DELIM_KEYS: ReadonlyMap<string, string> = new Map(
+	Object.entries({
+		"(": "(",
+		")": ")",
+		"[": "[",
+		"]": "]",
+		"\\{": "{",
+		"\\}": "}",
+		"\\lbrace": "{",
+		"\\rbrace": "}",
+		"|": "|",
+		"\\vert": "|",
+		"\\lvert": "|",
+		"\\rvert": "|",
+		"\\|": "‖",
+		"\\Vert": "‖",
+		"\\lVert": "‖",
+		"\\rVert": "‖",
+		"\\langle": "⟨",
+		"\\rangle": "⟩",
+		"<": "⟨",
+		">": "⟩",
+		"\\lceil": "⌈",
+		"\\rceil": "⌉",
+		"\\lfloor": "⌊",
+		"\\rfloor": "⌋",
+		"\\lbrack": "[",
+		"\\rbrack": "]",
+		".": "",
+	}),
+);
 
 /**
  * Inline-run conversion context. `wrap` re-applies the scoped commands (math
@@ -288,7 +294,7 @@ function fracBox(num: Box, den: Box): Box {
  */
 function delimColumn(key: string, height: number, baseline: number): Box | null {
 	if (!key) return null;
-	const pieces = DELIM_PIECES[key];
+	const pieces = DELIM_PIECES.get(key);
 	if (height <= 1) {
 		const only = pieces?.only ?? key;
 		return only ? { lines: [only], baseline: 0, width: visibleWidth(only) } : null;
@@ -515,7 +521,7 @@ function readDelimToken(src: string, i: number): Span | null {
 
 /** Piece-table key for a delimiter token; unknown commands resolve via Unicode. */
 function delimKey(token: string): string {
-	const mapped = DELIM_KEYS[token];
+	const mapped = DELIM_KEYS.get(token);
 	if (mapped !== undefined) return mapped;
 	return token.startsWith("\\") ? latexToUnicode(token).trim() : token;
 }
@@ -763,7 +769,7 @@ function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end
 	if (env === null) return null;
 	const starred = env.env.endsWith("*");
 	const base = starred ? env.env.slice(0, -1) : env.env;
-	const gridDelims = GRID_ENVIRONMENTS[base];
+	const gridDelims = GRID_ENVIRONMENTS.get(base);
 	if (gridDelims) {
 		let p = env.bodyStart;
 		while (src[p] === " " || src[p] === "\n" || src[p] === "\t") p++;
@@ -790,7 +796,7 @@ function parseEnvironment(src: string, start: number, ctx: Ctx): { box: Box; end
 		const grid = gridBox(cells, align, () => 2, 1);
 		return { box: delimBox(grid, gridDelims[0], gridDelims[1]), end: env.end };
 	}
-	if (!DISPLAY_ROW_ENVIRONMENTS[base]) {
+	if (!DISPLAY_ROW_ENVIRONMENTS.has(base)) {
 		return { box: textBox(latexToUnicode(ctx.wrap(src.slice(start, env.end)))), end: env.end };
 	}
 	let bodyStart = env.bodyStart;
@@ -873,11 +879,6 @@ function parseExpr(src: string, ctx: Ctx = ROOT_CTX): Box {
 	} finally {
 		blockDepth--;
 	}
-}
-
-/** True for an ASCII letter code unit; `NaN` (past the end) is not one. */
-function isAsciiLetter(code: number): boolean {
-	return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 }
 
 /**
@@ -984,11 +985,11 @@ class ExprParser {
 			this.#i = j + 1;
 			return;
 		}
-		if (FRAC_COMMANDS[name]) return this.#twoArgs(j, fracBox);
-		if (BINOM_COMMANDS[name]) return this.#twoArgs(j, binomBox);
+		if (FRAC_COMMANDS.has(name)) return this.#twoArgs(j, fracBox);
+		if (BINOM_COMMANDS.has(name)) return this.#twoArgs(j, binomBox);
 		if (name === "sqrt") return this.#sqrt(j);
 		if (name === "left" && this.#leftRight()) return;
-		if (LIMIT_OPERATORS[name] || INTEGRAL_OPERATORS[name]) return this.#bigOperator(name, j);
+		if (LIMIT_OPERATORS.has(name) || INTEGRAL_OPERATORS.has(name)) return this.#bigOperator(name, j);
 		if (name === "color" || name === "normalcolor") return this.#setColor(name, j);
 		if (name === "begin" && this.#environment()) return;
 		if ((MATH_FONT_COMMANDS.has(name) || name === "textcolor") && this.#scopedWrapper(name, j)) return;
@@ -1052,7 +1053,7 @@ class ExprParser {
 		const src = this.#src;
 		let k = j;
 		while (src[k] === " ") k++;
-		let stack = LIMIT_OPERATORS[name] === true;
+		let stack = LIMIT_OPERATORS.has(name);
 		let resume = j; // resume point when the operator stays inline
 		if (src.startsWith("\\limits", k) && !isAsciiLetter(src.charCodeAt(k + 7))) {
 			stack = true;

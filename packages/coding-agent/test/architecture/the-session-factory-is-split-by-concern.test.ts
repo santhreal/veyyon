@@ -15,13 +15,21 @@
  * `createAgentSession` itself is split only where a concern owns its state. The
  * secret runtime (the lease, the obfuscator pair, the vault revision, the reload
  * queue) moved to `SessionSecretRuntime` in `src/secrets/session-runtime.ts`,
- * which holds that state as fields instead of as captured locals. The tool
+ * which holds that state as fields instead of as captured locals, and the lease
+ * each request in flight was admitted under moved to `SecretRequestLeases` in
+ * `src/secrets/request-leases.ts`. The tool
  * session (the mutation counters, the active-tool set, the host notifier and the
  * advisor's derived view) moved to `src/session/tool-session.ts`. The project
  * the system prompt renders (its snapshot, the serialized re-discovery on a cwd
  * move and the TTSR rollback) moved to `ProjectPromptInputs` in
  * `src/session/prompt-inputs.ts`; MCP startup and its reactive wiring moved into
- * `factory-mcp.ts`. The rest is
+ * `factory-mcp.ts`. The startup phases that read their inputs and return a value
+ * moved beside it: the custom tools and the tool registry into `factory-tools.ts`,
+ * the extensions, their provider adoption and the custom commands into
+ * `startup-extensions.ts`, the Codex
+ * prewarm and language-server warmup into `startup-background.ts`, the argot arm
+ * and the start records into `startup-records.ts`, and the owned background-job
+ * manager into `async-jobs.ts`. The rest is
  * one `try`/`catch` whose inner closures capture the MCP manager and the teardown
  * flags the `catch` block reads; turning those captures into parameters is a
  * rewrite of the startup ordering and the failure path, not a move, so the plan's
@@ -42,13 +50,14 @@ const SESSION_DIR = repoPath("packages/coding-agent/src/session");
 const SDK = repoPath("packages/coding-agent/src/sdk.ts");
 
 /**
- * MEASURED at 2269 lines after the advisor's toolset moved to `session/tool-session.ts` and the
- * at-rest gauge to `measureContextGauge`, of which `createAgentSession` is 1968. This falls when
- * that function is rewritten.
+ * MEASURED at 1757 lines after the custom tools, extensions and their provider adoption, tool
+ * registry, background startup, start records, background-job manager and request secret leases
+ * moved out, and the project half of every prompt build moved to `ProjectPromptInputs.promptOptions`.
+ * This falls when `createAgentSession` is rewritten.
  */
-const SDK_CEILING = 2269;
+const SDK_CEILING = 1757;
 
-/** MEASURED: the largest factory module is `factory-extensions.ts` at 396 lines. */
+/** MEASURED: the largest factory module is `factory-extensions.ts` at 395 lines. */
 const FACTORY_CEILING = 400;
 
 /**

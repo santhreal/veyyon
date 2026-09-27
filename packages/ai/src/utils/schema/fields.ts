@@ -100,6 +100,8 @@ export const NON_STRUCTURAL_SCHEMA_KEYS: Record<string, true> = {
 	maxContains: true,
 	dependentRequired: true,
 	dependentSchemas: true,
+	// Draft-04..07 form of the two keywords above.
+	dependencies: true,
 	contentEncoding: true,
 	contentMediaType: true,
 	contentSchema: true,
@@ -190,6 +192,24 @@ export const CLOUD_CODE_ASSIST_SHARED_SCHEMA_KEYS: Record<string, true> = {
  * Defined once to avoid duplication in strict-mode.ts and normalize.ts.
  */
 export const COMBINATOR_KEYS = ["anyOf", "allOf", "oneOf"] as const;
+
+/**
+ * Keywords whose value maps a property or definition name to a schema. A
+ * walker descends into the values and leaves the names alone: a property
+ * named `const` or `nullable` is a property, not that keyword.
+ */
+export const SCHEMA_MAP_KEYWORDS: ReadonlySet<string> = new Set([
+	"properties",
+	"patternProperties",
+	// `dependencies` is the Draft-04..07 schema-valued form; older MCP servers
+	// still emit `{ dependencies: { foo: { type: "object" } } }`. A per-name
+	// string array, the property-dependency form, is not a schema and passes
+	// through a walker unchanged.
+	"dependencies",
+	"dependentSchemas",
+	"$defs",
+	"definitions",
+]);
 
 /**
  * Cloud Code Assist Claude unsupported schema fields.

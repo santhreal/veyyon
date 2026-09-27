@@ -48,6 +48,10 @@ export interface SessionInfo {
 	parentSessionPath?: string;
 	created: Date;
 	modified: Date;
+	/**
+	 * Messages found in the scanned prefix (4 KB, or the escalated window). A lower
+	 * bound on a longer session, and zero only when the file holds no message.
+	 */
 	messageCount: number;
 	/** File size in bytes on disk; used for compact list rendering. */
 	size: number;

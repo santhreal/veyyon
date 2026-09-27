@@ -182,6 +182,7 @@ import type { HookInputComponent } from "./components/dialogs/hook-input";
 import { PlanReviewOverlay } from "./components/dialogs/plan-review-overlay";
 import type { HookSelectorComponent, HookSelectorSlider } from "./components/selectors/hook-selector";
 import { StatusLineComponent } from "./components/status-line";
+import { statusLineSettingsFromConfig } from "./components/status-line/quiet-row";
 import type { AssistantMessageComponent } from "./components/transcript/assistant-message";
 import type { BashExecutionComponent } from "./components/transcript/bash-execution";
 import { ChatBlock, type ChatBlockHost } from "./components/transcript/chat-block";
@@ -1828,17 +1829,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	#syncStatusLineSettings(): void {
-		this.statusLine.updateSettings({
-			preset: settings.get("statusLine.preset"),
-			leftSegments: settings.get("statusLine.leftSegments"),
-			rightSegments: settings.get("statusLine.rightSegments"),
-			separator: settings.get("statusLine.separator"),
-			showHookStatus: settings.get("statusLine.showHookStatus"),
-			sessionAccent: settings.get("statusLine.sessionAccent"),
-			transparent: settings.get("statusLine.transparent"),
-			segmentOptions: settings.get("statusLine.segmentOptions"),
-			compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
-		});
+		this.statusLine.updateSettings(statusLineSettingsFromConfig());
 	}
 
 	#handleSessionAccentInputsChanged(): void {

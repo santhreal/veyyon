@@ -13,13 +13,13 @@ import {
 	ensureNumericMetricMap,
 	formatNum,
 	formatPercentChange,
-	gitStatusPorcelain,
-	gitWorkDirPrefix,
 	isBetter,
 	mergeAsi,
 	pathMatchesSpec,
+	readWorkDirStatus,
 	resolveActiveBranchSession,
 	sanitizeAsi,
+	type WorkDirStatus,
 } from "../helpers";
 import {
 	buildExperimentState,
@@ -106,8 +106,7 @@ export function createLogExperimentTool(
 				// can't tell user dirt apart from agent edits, so we keep the (lossy)
 				// preRunDirtyPaths filter.
 				if (onAutoresearchBranch) {
-					const statusText = await gitStatusPorcelain(ctx.cwd);
-					const workDirPrefix = await gitWorkDirPrefix(ctx.cwd);
+					const { statusText, workDirPrefix } = await readWorkDirStatus(ctx.cwd);
 					allModified = parseWorkDirDirtyPaths(statusText, workDirPrefix);
 				} else {
 					const { modifiedTracked, modifiedUntracked } = await detectModifiedPaths(
@@ -429,15 +428,13 @@ async function revertFailedExperiment(
 	// A status this cannot read used to parse as "no dirty paths", so the revert reported "nothing to
 	// revert" and returned success while the experiment's changes stayed in the tree -- the one outcome a
 	// discard must never produce. The caller surfaces this error to the agent instead.
-	let statusText: string;
-	let workDirPrefix: string;
+	let status: WorkDirStatus;
 	try {
-		statusText = await gitStatusPorcelain(cwd);
-		workDirPrefix = await gitWorkDirPrefix(cwd);
+		status = await readWorkDirStatus(cwd);
 	} catch (err) {
 		return { error: `git status failed, so nothing was reverted: ${errorMessage(err)}` };
 	}
-	const { tracked, untracked } = computeRunModifiedPaths(preRunDirtyPaths, statusText, workDirPrefix);
+	const { tracked, untracked } = computeRunModifiedPaths(preRunDirtyPaths, status.statusText, status.workDirPrefix);
 	const total = tracked.length + untracked.length;
 	if (total === 0) return { note: "nothing to revert" };
 	if (tracked.length > 0) {
@@ -467,8 +464,7 @@ async function detectModifiedPaths(
 	cwd: string,
 	preRunDirtyPaths: string[],
 ): Promise<{ modifiedTracked: string[]; modifiedUntracked: string[] }> {
-	const statusText = await gitStatusPorcelain(cwd);
-	const workDirPrefix = await gitWorkDirPrefix(cwd);
+	const { statusText, workDirPrefix } = await readWorkDirStatus(cwd);
 	const { tracked, untracked } = computeRunModifiedPaths(preRunDirtyPaths, statusText, workDirPrefix);
 	return { modifiedTracked: tracked, modifiedUntracked: untracked };
 }

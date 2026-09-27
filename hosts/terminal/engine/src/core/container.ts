@@ -54,6 +54,7 @@ export class Container implements Component, MouseRoutable {
 	clear(): void {
 		this.children = [];
 		this.#memoLines = undefined;
+		this.#memoChildLines = [];
 	}
 
 	/** Dispose every child, then detach it from this container. */

@@ -19,9 +19,10 @@ import {
 } from "../discovery/tool-index";
 import type { TtsrManager } from "../export/ttsr";
 import type { Skill, SkillWarning } from "../extensibility/skills";
-import type { BuildSystemPromptResult } from "../system-prompt";
+import type { BuildSystemPromptOptions, BuildSystemPromptResult } from "../system-prompt";
 import type { ContextFileEntry } from "../tools";
 import { TOOL } from "../tools/core/builtin-names";
+import type { NonProjectReason } from "../tools/fs/reroot-hint";
 import type { ActiveRepoContext } from "../utils/active-repo-context";
 import type { WorkspaceTree } from "../workspace-tree";
 import type { ProjectInputDiscovery } from "./factory-extensions";
@@ -35,10 +36,25 @@ export interface ProjectPromptSnapshot {
 	/** A pending scan at startup: the prompt races it again on every build until it settles. */
 	readonly workspaceTree: WorkspaceTree | Promise<WorkspaceTree>;
 	readonly activeRepoContext: ActiveRepoContext | null;
+	/** A pending check at startup, raced by every build until it settles, like {@link workspaceTree}. */
+	readonly nonProjectCwd: NonProjectReason | null | Promise<NonProjectReason | null>;
 	readonly skills: Skill[];
 	readonly rulebookRules: Rule[];
 	readonly alwaysApplyRules: Rule[];
 }
+
+/** The `buildSystemPrompt` options a {@link ProjectPromptSnapshot} supplies. */
+export type ProjectPromptOptions = Pick<
+	BuildSystemPromptOptions,
+	| "cwd"
+	| "skills"
+	| "contextFiles"
+	| "rules"
+	| "alwaysApplyRules"
+	| "workspaceTree"
+	| "activeRepoContext"
+	| "nonProjectCwd"
+>;
 
 /** Every input discovered for the directory a session moved to, TTSR rules already registered. */
 export interface DiscoveredProjectInputs {
@@ -88,6 +104,26 @@ export class ProjectPromptInputs {
 		return this.#snapshot;
 	}
 
+	/** The project half of a `buildSystemPrompt` call, read off {@link current}. */
+	promptOptions(): ProjectPromptOptions {
+		const project = this.#snapshot;
+		return {
+			cwd: project.cwd,
+			skills: project.skills,
+			// Every api inlines the operator's layers here, cursor-agent included. That api's
+			// server discards the client's system-prompt blobs and applies none of the
+			// request-context rules, so the provider carries the assembled prompt on the
+			// active user turn — the one thing it delivers verbatim. Either way the prompt
+			// IS the instruction payload, and one composer builds it for every api.
+			contextFiles: project.contextFiles,
+			rules: project.rulebookRules,
+			alwaysApplyRules: project.alwaysApplyRules,
+			workspaceTree: project.workspaceTree,
+			activeRepoContext: project.activeRepoContext,
+			nonProjectCwd: project.nonProjectCwd,
+		};
+	}
+
 	/** Re-discover the project when the live cwd differs from the rendered one; resolves once they agree. */
 	async refresh(): Promise<void> {
 		if (this.#liveCwd() === this.#snapshot.cwd) return;
@@ -106,16 +142,25 @@ export class ProjectPromptInputs {
 		if (cwd === this.#snapshot.cwd) return;
 
 		const discovery = this.#options.discover(cwd);
-		const [contextFiles, workspaceTree, activeRepoContext, skillsResult, rules, watchdogFiles, advisors] =
-			await Promise.all([
-				discovery.contextFiles,
-				discovery.workspaceTree,
-				discovery.activeRepoContext,
-				discovery.skills,
-				discovery.rules,
-				discovery.watchdogFiles,
-				discovery.advisors,
-			]);
+		const [
+			contextFiles,
+			workspaceTree,
+			activeRepoContext,
+			nonProjectCwd,
+			skillsResult,
+			rules,
+			watchdogFiles,
+			advisors,
+		] = await Promise.all([
+			discovery.contextFiles,
+			discovery.workspaceTree,
+			discovery.activeRepoContext,
+			discovery.nonProjectCwd,
+			discovery.skills,
+			discovery.rules,
+			discovery.watchdogFiles,
+			discovery.advisors,
+		]);
 		if (this.#liveCwd() !== cwd) return;
 
 		const buckets = this.#registerRules(rules);
@@ -136,6 +181,7 @@ export class ProjectPromptInputs {
 			contextFiles,
 			workspaceTree,
 			activeRepoContext,
+			nonProjectCwd,
 			skills: next.skills,
 			rulebookRules: buckets.rulebookRules,
 			alwaysApplyRules: buckets.alwaysApplyRules,

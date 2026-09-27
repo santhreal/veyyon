@@ -46,8 +46,8 @@ import { stripAnsi } from "@veyyon/utils/strip-ansi";
  * failure message names the offending flag instead of saying a number moved.
  */
 
-/** Flags the CLI framework implements itself; no command declares them. */
-const FRAMEWORK_FLAGS = new Set(["--help", "--version"]);
+/** Flags the CLI framework implements itself, long and short; no command declares them. */
+const FRAMEWORK_FLAGS = new Set(["--help", "-h", "--version", "-v"]);
 
 /**
  * Flags consumed by the profile bootstrap BEFORE the launch parser runs.

@@ -2609,6 +2609,25 @@ export class ModelRegistry {
 	}
 
 	/**
+	 * Make the loaded extensions the only extension providers: drop every source not in
+	 * `activeSourceIds`, clear what each active source registered on an earlier load, then
+	 * register the queue in order. `pending` is emptied in place, so a queue drained here is
+	 * never registered twice.
+	 */
+	adoptExtensionProviders(
+		activeSourceIds: string[],
+		pending: Array<{ name: string; config: ProviderConfigInput; sourceId: string }>,
+	): void {
+		this.syncExtensionSources(activeSourceIds);
+		for (const sourceId of new Set(activeSourceIds)) {
+			this.clearSourceRegistrations(sourceId);
+		}
+		for (const { name, config, sourceId } of pending.splice(0)) {
+			this.registerProvider(name, config, sourceId);
+		}
+	}
+
+	/**
 	 * Register a provider dynamically (from extensions).
 	 *
 	 * If provider has models: replaces all existing models for this provider.

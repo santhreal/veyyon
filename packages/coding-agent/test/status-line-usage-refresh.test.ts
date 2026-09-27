@@ -135,7 +135,6 @@ describe("StatusLineComponent usage refresh", () => {
 			preset: "custom",
 			leftSegments: ["usage"],
 			rightSegments: [],
-			separator: "powerline-thin",
 		});
 
 		component.refreshUsageInBackground();

@@ -1311,10 +1311,13 @@ export async function gateSessionCpuSpawn(sessionId: string | null | undefined, 
  * when the group is saturated or could not be created. Call `gate` before
  * the process exists — adopting afterwards cannot un-run an uncapped child.
  */
-export function sessionCpuExecHooks(getSessionId: () => string | null): {
+export interface SessionCpuExecHooks {
 	adoptPid: (pid: number) => void;
 	gate: (what: string) => Promise<void>;
-} {
+}
+
+/** The {@link SessionCpuExecHooks} of the session `getSessionId` names at call time. */
+export function sessionCpuExecHooks(getSessionId: () => string | null): SessionCpuExecHooks {
 	return {
 		adoptPid: sessionCpuAdoption(getSessionId),
 		gate: what => gateSessionCpuSpawn(getSessionId(), what),
