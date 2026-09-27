@@ -226,6 +226,11 @@ const ZERO_MATCH_FAIL_FAST_MS = 2_000;
 const ZERO_MATCH_POLL_MS = 250;
 /** How long a failed run waits for the page to say whether it has a name the run could not find. */
 const PAGE_GLOBAL_PROBE_MS = 1_000;
+/** The ops that wait for a navigation themselves, by label: one after them is not waiting on theirs. */
+const NAVIGATING_OP = /^tab\.(?:goto|reload|waitForNavigation|waitForUrl)\(/;
+/** The ops that read or wait and change no page, by label: they never start a navigation. */
+const READ_ONLY_OP =
+	/^(?:wait\(|tab\.(?:title|observe|ariaSnapshot|screenshot|extract|waitFor|waitForSelector|waitForResponse|storageState)\()/;
 /**
  * How long a click or hover waits for whatever covers its element (a menu closing, a fade, a toast)
  * to go before it fails naming it. A cover that outlasts this is one the page expects dismissed.
@@ -1180,6 +1185,12 @@ interface ActiveRun {
 	filename: string;
 	/** Rejections the run's code floated, calls it did not await, claimed while the run is in progress. */
 	floatingRejections: unknown[];
+	/**
+	 * The last op in this run that could change the page (reads and `wait` are skipped): whether it waits
+	 * for a navigation itself (`goto`, `reload`, `waitForNavigation`, `waitForUrl`), and how many main-frame
+	 * navigations had happened when it began.
+	 */
+	lastOp: { readonly navigating: boolean; readonly navigationsAtStart: number } | null;
 }
 
 /**
@@ -1266,6 +1277,8 @@ export class WorkerCore {
 	#dialogPolicy?: DialogPolicy;
 	#dialogHandler?: (dialog: Dialog) => void;
 	#openDialog?: OpenDialogInfo;
+	/** Main-frame navigations the page has made, which `tab.waitForNavigation()` compares against. */
+	#mainNavigations = 0;
 	/** The file names of runs that have ended, most recent last, at most {@link RECENT_RUN_FILES_MAX}. */
 	#recentRunFiles = new Set<string>();
 	/** The frames the latest `tab.ariaSnapshot()` followed, by the prefix of their refs (`f1`). */
@@ -1455,7 +1468,7 @@ export class WorkerCore {
 	 * Record JS dialogs for timeout attribution without handling them (semantics of an
 	 * unset `dialogs` policy are unchanged — the page stays blocked until user code or
 	 * the policy handler acts). Cleared when the policy handler settles the dialog or a
-	 * main-frame navigation proves the modal is gone.
+	 * main-frame navigation proves the modal is gone. Main-frame navigations are counted.
 	 */
 	#observeDialogs(): void {
 		const page = this.#requirePage();
@@ -1463,7 +1476,9 @@ export class WorkerCore {
 			this.#openDialog = { type: dialog.type(), message: dialog.message() };
 		});
 		page.on("framenavigated", frame => {
-			if (frame === page.mainFrame()) this.#openDialog = undefined;
+			if (frame !== page.mainFrame()) return;
+			this.#openDialog = undefined;
+			this.#mainNavigations++;
 		});
 	}
 
@@ -1541,6 +1556,7 @@ export class WorkerCore {
 			actionOpMs: resolveOpTimeouts(msg.timeoutMs).actionOpMs,
 			filename: `browser-run-${msg.id}.js`,
 			floatingRejections: [],
+			lastOp: null,
 		};
 		this.#active = active;
 		try {
@@ -1764,6 +1780,10 @@ export class WorkerCore {
 	): Promise<T> {
 		const opId = active.opCounter++;
 		active.inflight.set(opId, { label, startedAt: Date.now() });
+		// A read or a sleep between an action and the wait on its navigation leaves the action as the one waited on.
+		if (!READ_ONLY_OP.test(label)) {
+			active.lastOp = { navigating: NAVIGATING_OP.test(label), navigationsAtStart: this.#mainNavigations };
+		}
 		const capped = Number.isFinite(perOpTimeoutMs) && perOpTimeoutMs > 0;
 		const opTimeout = capped ? scopedTimeoutSignal(perOpTimeoutMs) : undefined;
 		const opSignal = opTimeout ? AbortSignal.any([cellSignal, opTimeout.signal]) : cellSignal;
@@ -2103,11 +2123,19 @@ export class WorkerCore {
 			},
 			waitForNavigation: opts => {
 				const w = waitMs(opts?.timeout);
-				return op("tab.waitForNavigation()", w, sig =>
-					untilAborted(sig, () =>
+				// Read before the op below replaces it: the action this wait is meant to follow.
+				const previous = active.lastOp;
+				return op("tab.waitForNavigation()", w, async sig => {
+					// `await tab.click(…); await tab.waitForNavigation()` starts waiting after the click's navigation
+					// began, and puppeteer's wait would then time out on a navigation that already happened.
+					if (previous && !previous.navigating && this.#mainNavigations > previous.navigationsAtStart) {
+						await this.#waitForLoadState(opts?.waitUntil ?? "load", w, sig);
+						return null;
+					}
+					return await untilAborted(sig, () =>
 						page.waitForNavigation({ waitUntil: opts?.waitUntil ?? "load", timeout: w, signal: sig }),
-					),
-				);
+					);
+				});
 			},
 			evaluate: (fn, ...args) =>
 				op("tab.evaluate()", INF, sig =>
@@ -2494,6 +2522,34 @@ export class WorkerCore {
 		} finally {
 			await releaseHandle(handle);
 		}
+	}
+
+	/**
+	 * Wait until the page that a navigation already committed reaches `waitUntil`, the state
+	 * `page.waitForNavigation` would have waited for had it started before the navigation.
+	 */
+	async #waitForLoadState(
+		waitUntil: "load" | "domcontentloaded" | "networkidle0" | "networkidle2",
+		timeout: number,
+		signal: AbortSignal,
+	): Promise<void> {
+		const page = this.#requirePage();
+		if (waitUntil === "networkidle0" || waitUntil === "networkidle2") {
+			await untilAborted(signal, () =>
+				page.waitForNetworkIdle({ concurrency: waitUntil === "networkidle0" ? 0 : 2, timeout, signal }),
+			);
+			return;
+		}
+		await untilAborted(signal, () =>
+			page.waitForFunction(
+				(complete: boolean) => {
+					const state = (globalThis as unknown as { document: { readyState: string } }).document.readyState;
+					return complete ? state === "complete" : state !== "loading";
+				},
+				{ timeout, signal, polling: 50 },
+				waitUntil === "load",
+			),
+		);
 	}
 
 	async #waitForUrl(pattern: string | RegExp, timeout: number, signal: AbortSignal): Promise<string> {

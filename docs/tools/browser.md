@@ -156,7 +156,7 @@ The tool returns one result per call; no streaming partial output is emitted fro
    - `tab.waitForUrl(pattern, { timeout? })`
    - `tab.waitForResponse(pattern, { timeout? })`
    - `tab.waitForSelector(selector, { timeout?, visible?, hidden? })`
-   - `tab.waitForNavigation({ waitUntil?, timeout? })`
+   - `tab.waitForNavigation({ waitUntil?, timeout? })`: when the last tab op that could change the page (reads such as `ariaSnapshot` and `wait` are skipped) is not itself a navigation wait and the main frame has navigated since it began, waits only for that page's load state (`#waitForLoadState()`); otherwise `page.waitForNavigation`
    - `tab.id(n)`
    - `tab.storageState({ path? })`
    - `tab.loadStorageState(stateOrPath)`
