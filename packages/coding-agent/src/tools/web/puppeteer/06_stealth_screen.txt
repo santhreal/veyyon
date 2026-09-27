@@ -25,9 +25,6 @@
   const positiveNumber = (value, fallback) =>
     isFiniteNumber(value) && value > 0 ? value : fallback;
 
-  const integerNumber = (value, fallback) =>
-    isFiniteNumber(value) ? Math_floor(value) : fallback;
-
   const positiveInteger = (value, fallback) =>
     isFiniteNumber(value) && value > 0 ? Math_floor(value) : fallback;
 
@@ -81,113 +78,111 @@
     }
   };
 
-  const patchStableNumber = (object, prop, value) => {
-    const current = readValue(object, prop, undefined);
-    if (current === value) return;
-    patchGetter(object, prop, () => value);
-  };
+  const frame = stealthProfile.windowChrome.frame;
+  const chromeTop = stealthProfile.windowChrome.top;
+  const innerWidthNow = () => positiveInteger(readValue(window, "innerWidth", 0), 0);
+  const innerHeightNow = () => positiveInteger(readValue(window, "innerHeight", 0), 0);
+  // Headless Chrome under viewport emulation reports a window exactly the size of its viewport: no tab
+  // strip, no toolbar, no frame. `outerWidth` and `outerHeight` are the top-level window's in every
+  // frame, so each frame adds the same chrome to the same native value. A headful window has its own.
+  const headlessWindow = stealthProfile.headless === true;
 
-  const initialInnerWidth = positiveInteger(readValue(window, "innerWidth", 0), 0);
-  const initialInnerHeight = positiveInteger(readValue(window, "innerHeight", 0), 0);
-  const initialOuterWidth = positiveInteger(
-    readValue(window, "outerWidth", Math_max(initialInnerWidth, 1)),
-    Math_max(initialInnerWidth, 1),
-  );
-  const initialOuterHeight = positiveInteger(
-    readValue(window, "outerHeight", Math_max(initialInnerHeight, 1)),
-    Math_max(initialInnerHeight, 1),
-  );
-  // Real Chrome reserves vertical space for the tab strip + URL bar, so
-  // outerHeight is always taller than innerHeight (~88px on a stock window).
-  // Headless reports outerHeight === innerHeight, which is a well-known tell, so
-  // synthesize a realistic chrome height when the window has no visible chrome.
-  const browserChromeHeight = 88;
-  const targetOuterHeight =
-    initialOuterHeight > initialInnerHeight
-      ? initialOuterHeight
-      : initialInnerHeight + browserChromeHeight;
-  const requiredWidth = Math_max(initialInnerWidth, initialOuterWidth, 1);
-  const requiredHeight = Math_max(initialInnerHeight, initialOuterHeight, targetOuterHeight, 1);
-
-  const screenWidth = Math_max(
-    positiveInteger(readValue(screenObject, "width", requiredWidth), requiredWidth),
-    requiredWidth,
-  );
-  const screenHeight = Math_max(
-    positiveInteger(readValue(screenObject, "height", requiredHeight), requiredHeight),
-    requiredHeight,
-  );
-
-  let screenAvailWidth = positiveInteger(
-    readValue(screenObject, "availWidth", screenWidth),
-    screenWidth,
-  );
-  if (screenAvailWidth < requiredWidth || screenAvailWidth > screenWidth) {
-    screenAvailWidth = screenWidth;
-  }
-
-  let screenAvailHeight = positiveInteger(
-    readValue(screenObject, "availHeight", screenHeight),
-    screenHeight,
-  );
-  if (screenAvailHeight < requiredHeight || screenAvailHeight > screenHeight) {
-    screenAvailHeight = screenHeight;
-  }
-
-  const screenAvailLeft = integerNumber(readValue(screenObject, "availLeft", 0), 0);
-  const screenAvailTop = integerNumber(readValue(screenObject, "availTop", 0), 0);
-  const screenColorDepth = positiveInteger(readValue(screenObject, "colorDepth", 24), 24);
-  const screenPixelDepth = positiveInteger(
-    readValue(screenObject, "pixelDepth", screenColorDepth),
-    screenColorDepth,
-  );
-
-  for (const entry of [
-    ["width", screenWidth],
-    ["height", screenHeight],
-    ["availWidth", screenAvailWidth],
-    ["availHeight", screenAvailHeight],
-    ["availLeft", screenAvailLeft],
-    ["availTop", screenAvailTop],
-    ["colorDepth", screenColorDepth],
-    ["pixelDepth", screenPixelDepth],
-  ]) {
-    patchStableNumber(screenObject, entry[0], entry[1]);
-  }
-
-  const outerWidthNeedsPatch =
-    !isFiniteNumber(readValue(window, "outerWidth", undefined)) ||
-    readValue(window, "outerWidth", 0) <= 0 ||
-    Math_floor(readValue(window, "outerWidth", 0)) < initialInnerWidth;
-  if (outerWidthNeedsPatch) {
-    patchGetter(window, "outerWidth", (nativeValue) =>
-      Math_max(
-        positiveInteger(nativeValue, initialOuterWidth),
-        positiveInteger(readValue(window, "innerWidth", requiredWidth), requiredWidth),
-      ),
-    );
-  }
-
-  const outerHeightNeedsPatch =
-    !isFiniteNumber(readValue(window, "outerHeight", undefined)) ||
-    readValue(window, "outerHeight", 0) <= 0 ||
-    Math_floor(readValue(window, "outerHeight", 0)) <= initialInnerHeight;
-  if (outerHeightNeedsPatch) {
+  if (headlessWindow) {
+    patchGetter(window, "outerWidth", (nativeValue) => positiveInteger(nativeValue, innerWidthNow()) + 2 * frame);
     patchGetter(window, "outerHeight", (nativeValue) =>
-      Math_max(
-        positiveInteger(nativeValue, initialOuterHeight),
-        positiveInteger(readValue(window, "innerHeight", requiredHeight), requiredHeight) +
-          browserChromeHeight,
-      ),
+      positiveInteger(nativeValue, innerHeightNow()) + chromeTop + frame,
     );
   }
 
-  const initialDevicePixelRatio = positiveNumber(
-    readValue(window, "devicePixelRatio", 1),
-    1,
-  );
-  if (readValue(window, "devicePixelRatio", undefined) !== initialDevicePixelRatio) {
-    patchGetter(window, "devicePixelRatio", () => initialDevicePixelRatio);
+  // The launch sizes headless Chrome's screen to hold its window. A window made larger later gets the
+  // smallest common screen of the host's OS that holds it, so the screen never ends inside the window.
+  const scale = positiveNumber(readValue(window, "devicePixelRatio", 1), 1);
+  const needWidth =
+    positiveInteger(readValue(window, "outerWidth", 0), 0) +
+    Math_max(0, finiteNumber(readValue(window, "screenX", 0), 0));
+  const needHeight =
+    positiveInteger(readValue(window, "outerHeight", 0), 0) +
+    Math_max(0, finiteNumber(readValue(window, "screenY", 0), 0));
+  if (
+    positiveInteger(readValue(screenObject, "width", 0), 0) < needWidth ||
+    positiveInteger(readValue(screenObject, "height", 0), 0) < needHeight
+  ) {
+    let screenWidth = needWidth;
+    let screenHeight = needHeight;
+    for (let index = 0; index < stealthProfile.screens.length; index += 1) {
+      const physical = stealthProfile.screens[index];
+      if (physical[0] / scale >= needWidth && physical[1] / scale >= needHeight) {
+        screenWidth = Math_floor(physical[0] / scale + 0.5);
+        screenHeight = Math_floor(physical[1] / scale + 0.5);
+        break;
+      }
+    }
+    for (const entry of [
+      ["width", screenWidth],
+      ["height", screenHeight],
+      ["availWidth", screenWidth],
+      ["availHeight", screenHeight],
+      ["availLeft", 0],
+      ["availTop", 0],
+    ]) {
+      patchGetter(screenObject, entry[0], () => entry[1]);
+    }
+  }
+
+  // Viewport emulation reports a portrait orientation whatever the screen's shape; a desktop screen
+  // wider than tall is landscape-primary at angle 0.
+  const orientation = readValue(screenObject, "orientation", null);
+  if (orientation) {
+    const type = readValue(orientation, "type", "");
+    if (
+      typeof type === "string" &&
+      type.startsWith("portrait") &&
+      readValue(screenObject, "width", 0) > readValue(screenObject, "height", 0)
+    ) {
+      patchGetter(orientation, "type", () => "landscape-primary");
+      patchGetter(orientation, "angle", () => 0);
+    }
+  }
+
+  // A trusted mouse event's screen position is its viewport position plus where the viewport sits on
+  // the screen: the window's screen position, the frame on the left, the chrome above. Input the
+  // DevTools protocol dispatches carries the headless window's own geometry instead, so where the two
+  // disagree the event reports the position the window above implies. Events a script constructs keep
+  // the position they were given. A child frame's viewport starts inside the page, which only the top
+  // frame knows, so child frames keep the native position.
+  const mouseProto = window.MouseEvent && window.MouseEvent.prototype;
+  let topFrame = false;
+  try {
+    topFrame = window.top === window;
+  } catch {}
+  if (headlessWindow && topFrame && mouseProto) {
+    const clientX = findDescriptorOwner(mouseProto, "clientX");
+    const clientY = findDescriptorOwner(mouseProto, "clientY");
+    const clientXGet = clientX && clientX[1].get;
+    const clientYGet = clientY && clientY[1].get;
+    if (typeof clientXGet === "function" && typeof clientYGet === "function") {
+      const screenPosition = (nativeValue, event, clientGet, offset) => {
+        if (!event || event.isTrusted !== true) return nativeValue;
+        const expected = Reflect_apply(clientGet, event, []) + offset;
+        return nativeValue === expected ? nativeValue : expected;
+      };
+      patchGetter(mouseProto, "screenX", (nativeValue, event) =>
+        screenPosition(
+          nativeValue,
+          event,
+          clientXGet,
+          finiteNumber(readValue(window, "screenX", 0), 0) + frame,
+        ),
+      );
+      patchGetter(mouseProto, "screenY", (nativeValue, event) =>
+        screenPosition(
+          nativeValue,
+          event,
+          clientYGet,
+          finiteNumber(readValue(window, "screenY", 0), 0) + chromeTop,
+        ),
+      );
+    }
   }
 
   const visualViewportObject = readValue(window, "visualViewport", null);
@@ -202,58 +197,15 @@
     const getViewportScale = () =>
       positiveNumber(readValue(visualViewportObject, "scale", initialScale), initialScale);
 
-    const getViewportWidthFallback = () =>
-      positiveNumber(readValue(window, "innerWidth", requiredWidth), requiredWidth) /
-      getViewportScale();
-
-    const getViewportHeightFallback = () =>
-      positiveNumber(readValue(window, "innerHeight", requiredHeight), requiredHeight) /
-      getViewportScale();
-
     if (positiveNumber(readValue(visualViewportObject, "width", 0), 0) <= 0) {
       patchGetter(visualViewportObject, "width", (nativeValue) =>
-        positiveNumber(nativeValue, getViewportWidthFallback()),
+        positiveNumber(nativeValue, innerWidthNow() / getViewportScale()),
       );
     }
 
     if (positiveNumber(readValue(visualViewportObject, "height", 0), 0) <= 0) {
       patchGetter(visualViewportObject, "height", (nativeValue) =>
-        positiveNumber(nativeValue, getViewportHeightFallback()),
-      );
-    }
-
-    const getViewportOffsetLeft = () =>
-      finiteNumber(readValue(visualViewportObject, "offsetLeft", 0), 0);
-    const getViewportOffsetTop = () =>
-      finiteNumber(readValue(visualViewportObject, "offsetTop", 0), 0);
-
-    if (!isFiniteNumber(readValue(visualViewportObject, "offsetLeft", undefined))) {
-      patchGetter(visualViewportObject, "offsetLeft", (nativeValue) =>
-        finiteNumber(nativeValue, 0),
-      );
-    }
-
-    if (!isFiniteNumber(readValue(visualViewportObject, "offsetTop", undefined))) {
-      patchGetter(visualViewportObject, "offsetTop", (nativeValue) =>
-        finiteNumber(nativeValue, 0),
-      );
-    }
-
-    if (!isFiniteNumber(readValue(visualViewportObject, "pageLeft", undefined))) {
-      patchGetter(visualViewportObject, "pageLeft", (nativeValue) =>
-        finiteNumber(
-          nativeValue,
-          finiteNumber(readValue(window, "scrollX", 0), 0) + getViewportOffsetLeft(),
-        ),
-      );
-    }
-
-    if (!isFiniteNumber(readValue(visualViewportObject, "pageTop", undefined))) {
-      patchGetter(visualViewportObject, "pageTop", (nativeValue) =>
-        finiteNumber(
-          nativeValue,
-          finiteNumber(readValue(window, "scrollY", 0), 0) + getViewportOffsetTop(),
-        ),
+        positiveNumber(nativeValue, innerHeightNow() / getViewportScale()),
       );
     }
   }

@@ -24,9 +24,11 @@
 
 import { describe, expect, it, test } from "bun:test";
 import { parseServerArgs, SERVER_FLAGS } from "../../api/main";
+import { BOT_DETECTION_BENCH_FLAGS } from "../../benches/bot-detection";
 import { BROWSER_FILL_BENCH_FLAGS } from "../../benches/browser-fill";
 import { EDIT_PROMPT_BENCH_FLAGS } from "../../benches/edit-prompt";
 import { GOAL_BUDGET_CONTEXT_FLAGS } from "../../benches/goal-budget-context";
+import { NATURAL_INPUT_BENCH_FLAGS } from "../../benches/natural-input";
 import { DISCLOSURE_BENCH_FLAGS } from "../../benches/search/disclosure";
 import { SEARCH_BENCH_FLAGS } from "../../benches/search/main";
 import {
@@ -69,6 +71,8 @@ const GRAMMARS: Readonly<Record<string, FlagGrammar>> = {
 	"channel split": CHANNEL_SPLIT_FLAGS,
 	"retype likelihood": RETYPE_LIKELIHOOD_FLAGS,
 	"browser-fill bench": BROWSER_FILL_BENCH_FLAGS,
+	"natural-input bench": NATURAL_INPUT_BENCH_FLAGS,
+	"bot-detection bench": BOT_DETECTION_BENCH_FLAGS,
 	"kit report": KIT_REPORT_FLAGS,
 };
 
@@ -96,6 +100,8 @@ const COUNT_FLAGS: Readonly<Record<string, readonly string[]>> = {
 	"channel split": [],
 	"retype likelihood": [],
 	"browser-fill bench": ["rounds"],
+	"natural-input bench": ["rounds"],
+	"bot-detection bench": [],
 	"kit report": [],
 };
 
@@ -139,6 +145,8 @@ const DECLARED_FLAGS: Readonly<Record<string, readonly string[]>> = {
 	"channel split": ["help", "json", "sessions"],
 	"retype likelihood": ["help", "json", "repo", "sessions"],
 	"browser-fill bench": ["help", "json", "label", "rounds"],
+	"natural-input bench": ["help", "json", "label", "rounds"],
+	"bot-detection bench": ["help", "json", "label", "only"],
 	"kit report": ["help", "regrade", "run"],
 };
 

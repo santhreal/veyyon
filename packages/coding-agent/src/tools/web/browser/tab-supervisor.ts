@@ -23,7 +23,7 @@ import {
 	type PuppeteerBrowserHandle,
 	releaseBrowser,
 } from "./registry";
-import { applyStorageState, type StorageState, type StorageStateLoaded } from "./storage-state";
+import { applyStorageState, captureStorageState, type StorageState, type StorageStateLoaded } from "./storage-state";
 import type {
 	BrowserRunError,
 	ReadyInfo,
@@ -188,6 +188,13 @@ export function getTab(name: string): TabSession | undefined {
 	return tabs.get(name);
 }
 
+/** The names of the tabs open on `browser`. */
+export function tabNamesOn(browser: BrowserHandle): string[] {
+	return Array.from(tabs.values())
+		.filter(tab => tab.browser === browser)
+		.map(tab => tab.name);
+}
+
 /** The name `open` gives the browser's own context. */
 const DEFAULT_CONTEXT = "default";
 
@@ -257,6 +264,17 @@ async function heldNamedContext(browser: PuppeteerBrowserHandle, name: string): 
 async function contextOfTab(tab: WorkerTabSession): Promise<BrowserContext> {
 	if (tab.contextName === undefined) return tab.browser.browser.defaultBrowserContext();
 	return await heldNamedContext(tab.browser, tab.contextName);
+}
+
+/**
+ * The cookies and localStorage of the context tab `name` is in, read from the main thread's connection,
+ * so a tab moved to another browser takes its session along.
+ */
+export async function captureTabState(name: string): Promise<StorageState> {
+	const tab = tabs.get(name);
+	if (!tab || tab.state !== "alive") throw new ToolError(`Tab ${JSON.stringify(name)} is not alive.`);
+	if (tab.backend !== "worker") throw new ToolError(headlessOnly(tab.browser));
+	return await captureStorageState(await contextOfTab(tab));
 }
 
 export function acquireTab(name: string, browser: BrowserHandle, opts: AcquireTabOptions): Promise<AcquireTabResult> {
@@ -361,7 +379,8 @@ async function acquireTabImpl(
 							timeoutMs: opts.timeoutMs,
 							signal: opts.signal,
 						},
-						{ cwd: process.cwd() },
+						// The reuse steps press and type nothing.
+						{ cwd: process.cwd(), naturalInput: false },
 					);
 				}
 				// Re-fetch after the awaited reuse steps: the tab can be released
@@ -606,6 +625,7 @@ export async function runInTab(name: string, opts: RunInTabOptions): Promise<Run
 			cwd: opts.session.cwd,
 			browserScreenshotDir: expandBrowserScreenshotDir(opts.session),
 			excludeWebP: webpExclusionForModel(opts.session.getActiveModel?.()),
+			naturalInput: opts.session.settings.get("browser.naturalInput"),
 		},
 	);
 }
@@ -884,6 +904,7 @@ async function buildInitPayload(
 			waitUntil: opts.waitUntil,
 			timeoutMs: opts.timeoutMs,
 			...(browserContextId === undefined ? {} : { browserContextId }),
+			...(browser.identity === undefined ? {} : { identity: browser.identity }),
 		};
 	}
 	const page = await pickElectronTarget(browser.browser, opts.target);

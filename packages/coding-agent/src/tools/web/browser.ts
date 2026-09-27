@@ -1,6 +1,7 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { errorMessage, isCancellation, prompt, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
+import { errorMessage, isCancellation, logger, prompt, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "../../sdk";
@@ -12,19 +13,37 @@ import { resolveToCwd } from "../core/path-utils";
 import { ToolAbortError, ToolError, throwIfAborted, toolAbort } from "../core/tool-errors";
 import { prependResultNotice, toolResult } from "../core/tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "../core/tool-timeouts";
+import {
+	type Challenge,
+	classifyChallenge,
+	type PageSignals,
+	PROBE_READ_MS,
+	PROBE_RUN_CODE,
+	parsePageSignals,
+} from "./browser/challenge";
 import { resolveCmuxKind } from "./browser/cmux/rpc";
-import { acquireBrowser, type BrowserHandle, type BrowserKind, type BrowserKindTag } from "./browser/registry";
+import { validateProfileName } from "./browser/profiles";
+import {
+	acquireBrowser,
+	assertBrowserCanStart,
+	type BrowserHandle,
+	type BrowserKind,
+	type BrowserKindTag,
+} from "./browser/registry";
 import { safeJsonStringify } from "./browser/run-output";
-import { readStorageStateFile, type StorageStateLoaded } from "./browser/storage-state";
+import { readStorageStateFile, type StorageState, type StorageStateLoaded } from "./browser/storage-state";
 import type { BrowserRunError, Observation, RunResultOk, ScreenshotResult } from "./browser/tab-protocol";
 import {
 	acquireTab,
+	captureTabState,
 	dropHeadlessTabs,
 	getTab,
 	isolatedContextName,
 	releaseAllTabs,
 	releaseTab,
 	runInTab,
+	type TabSession,
+	tabNamesOn,
 } from "./browser/tab-supervisor";
 
 export {
@@ -45,6 +64,21 @@ const DEFAULT_TAB_NAME = "main";
  */
 export const OPEN_SNAPSHOT_MAX_CHARS = 6_000;
 
+/** The longest an interstitial check is waited out; a call with a shorter timeout waits that long instead. */
+export const CHALLENGE_WAIT_MAX_MS = 20_000;
+
+/** How often a page under an interstitial check is read again. */
+const CHALLENGE_POLL_MS = 500;
+
+/** A probe run's deadline. Its read of the page gives up at {@link PROBE_READ_MS}, so this is a backstop. */
+const PROBE_RUN_TIMEOUT_MS = PROBE_READ_MS + 2_000;
+
+/** The page each tab's last reported challenge was on, so a page's challenge is reported once. */
+const reportedChallenges = new WeakMap<TabSession, string>();
+
+const CMUX_REFUSAL =
+	"profile and visible need the headless browser; the cmux browser pane is already visible and keeps cmux's own session. Turn the browser.cmux setting off, or set VEYYON_BROWSER_CMUX=0, to open tabs in the headless browser.";
+
 const appSchema = type({
 	"path?": type("string").describe("binary path to spawn"),
 	"cdp_url?": type("string").describe("existing cdp endpoint"),
@@ -59,6 +93,10 @@ const browserSchema = type({
 	"context?": type("string").describe("isolated context: tabs naming the same one share cookies and storage"),
 	"storage_state?": type("string").describe(
 		"state file of cookies and localStorage: open loads it, save_state writes it",
+	),
+	"profile?": type("string").describe("persistent profile: its cookies, storage and cache outlive the session"),
+	"visible?": type("boolean").describe(
+		"true moves the tab to a browser window, false back to headless; its session goes along",
 	),
 	"app?": appSchema,
 	"viewport?": {
@@ -92,12 +130,24 @@ export interface BrowserToolDetails {
 	result?: string;
 	/** The isolated context the tab is in, when it is in one. */
 	context?: string;
+	/** The persistent profile the tab's browser runs on, when it runs on one. */
+	profile?: string;
 	/** The state file `open` loaded or `save_state` wrote, resolved against the session's directory. */
 	storageState?: string;
+	/** The bot challenge the page showed, when the call reported one. */
+	challenge?: Challenge;
 	meta?: OutputMeta;
 }
 
-function resolveBrowserKind(params: BrowserParams, session: ToolSession): BrowserKind {
+/**
+ * The browser `params` open a tab on. A tab opened again keeps its window and profile unless the open
+ * names others; a new one takes its window from the `browser.headless` setting.
+ */
+function resolveBrowserKind(
+	params: BrowserParams,
+	session: ToolSession,
+	current: BrowserKind | undefined,
+): BrowserKind {
 	const app = params.app;
 	if (app?.cdp_url) {
 		return { kind: "connected", cdpUrl: trimTrailingSlashes(app.cdp_url) };
@@ -112,8 +162,13 @@ function resolveBrowserKind(params: BrowserParams, session: ToolSession): Browse
 	if (cmuxKind) {
 		return cmuxKind;
 	}
-	const headless = session.settings.get("browser.headless") as boolean;
-	return { kind: "headless", headless };
+	const kept = current?.kind === "headless" ? current : undefined;
+	const headless =
+		params.visible === undefined
+			? (kept?.headless ?? (session.settings.get("browser.headless") as boolean))
+			: !params.visible;
+	const profile = params.profile === undefined ? kept?.profile : validateProfileName(params.profile);
+	return { kind: "headless", headless, ...(profile === undefined ? {} : { profile }) };
 }
 
 /**
@@ -137,6 +192,12 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		}
 		if (typeof params.storage_state === "string" && params.storage_state.length > 0) {
 			lines.push(`Storage State: ${truncateForPrompt(params.storage_state)}`);
+		}
+		if (typeof params.profile === "string" && params.profile.length > 0) {
+			lines.push(`Profile: ${truncateForPrompt(params.profile)}`);
+		}
+		if (typeof params.visible === "boolean") {
+			lines.push(`Visible: ${params.visible ? "yes" : "no"}`);
 		}
 		if (typeof params.url === "string" && params.url.length > 0) {
 			lines.push(`URL: ${truncateForPrompt(params.url)}`);
@@ -258,6 +319,11 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 					`storage_state applies to open, which loads it, and save_state, which writes it; ${params.action} takes none.`,
 				);
 			}
+			if ((params.profile !== undefined || params.visible !== undefined) && params.action !== "open") {
+				throw new ToolError(
+					`profile and visible apply to open, which picks the browser a tab runs in; ${params.action} takes neither.`,
+				);
+			}
 
 			let result: AgentToolResult<BrowserToolDetails>;
 			switch (params.action) {
@@ -295,8 +361,16 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		timeoutMs: number,
 		signal?: AbortSignal,
 	): Promise<AgentToolResult<BrowserToolDetails>> {
-		const kind = resolveBrowserKind(params, this.session);
+		const existing = getTab(name);
+		const kind = resolveBrowserKind(params, this.session, existing?.browser.kind);
 		details.browser = kind.kind;
+		if ((params.profile !== undefined || params.visible !== undefined) && kind.kind !== "headless") {
+			throw new ToolError(
+				kind.kind === "cmux"
+					? CMUX_REFUSAL
+					: `profile and visible need the headless browser; ${describeKind(kind)} runs in the app's own session and window.`,
+			);
+		}
 		const contextName = isolatedContextName(params.context);
 		if ((contextName !== undefined || params.storage_state !== undefined) && kind.kind !== "headless") {
 			throw new ToolError(
@@ -306,15 +380,26 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		// Read before any browser starts, so a missing or malformed file fails the open with its path and nothing to undo.
 		const statePath =
 			params.storage_state === undefined ? undefined : resolveToCwd(params.storage_state, this.session.cwd);
-		const storageState = statePath === undefined ? undefined : await readStorageStateFile(statePath);
+		const fileState = statePath === undefined ? undefined : await readStorageStateFile(statePath);
 
-		// If a tab with this name already exists on a different browser kind, fail fast — caller must close first.
-		const existing = getTab(name);
+		// A tab on another browser is refused, unless `visible` moves it between a window and headless:
+		// its page and session then go along.
+		let moved: MovedTab | undefined;
 		if (existing && !sameBrowserKind(existing.browser.kind, kind)) {
-			throw new ToolError(
-				`Tab ${JSON.stringify(name)} is bound to a different browser (${describeKind(existing.browser.kind)}). Close it first.`,
-			);
+			if (!movesWindow(existing, kind, params.visible)) {
+				throw new ToolError(
+					`Tab ${JSON.stringify(name)} is bound to a different browser (${describeKind(existing.browser.kind)}). Close it first.`,
+				);
+			}
+			if (fileState !== undefined) {
+				throw new ToolError(
+					"storage_state cannot load while visible moves a tab: the move carries the tab's own session. Load the file with a second open.",
+				);
+			}
+			assertBrowserCanStart(kind);
+			moved = await this.#leaveBrowser(name, existing, timeoutMs, signal);
 		}
+		const url = params.url ?? moved?.url;
 
 		const browser = await untilAborted(signal, () =>
 			acquireBrowser(kind, {
@@ -333,7 +418,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 
 		const result = await untilAborted(signal, () =>
 			acquireTab(name, browser, {
-				url: params.url,
+				url,
 				waitUntil: params.wait_until,
 				viewport: params.viewport
 					? {
@@ -344,35 +429,146 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 					: undefined,
 				target: params.app?.target,
 				timeoutMs,
-				dialogs: params.dialogs,
+				dialogs: params.dialogs ?? moved?.dialogs,
 				signal,
 				ownerSessionId: this.session.getSessionId?.() ?? undefined,
-				context: params.context,
-				storageState,
+				context: params.context ?? moved?.context,
+				storageState: moved?.state ?? fileState,
 			}),
 		);
-		const tab = result.tab;
-		const url = tab.info.url;
+		// An interstitial check is waited out before the page is described, so the rows below show where it led.
+		const challenge = url === undefined ? undefined : await this.#challengeNotice(name, timeoutMs, signal);
+		const tab = getTab(name) ?? result.tab;
 		const title = tab.info.title ?? "";
-		details.url = url;
+		details.url = tab.info.url;
 		details.viewport = tab.info.viewport;
 		const inContext = tab.backend === "worker" ? tab.contextName : undefined;
 		if (inContext !== undefined) details.context = inContext;
+		if (kind.kind === "headless" && kind.profile !== undefined) details.profile = kind.profile;
 		if (statePath !== undefined) details.storageState = statePath;
-		const verb = result.created ? "Opened" : "Reused";
+		if (challenge) details.challenge = challenge.challenge;
+		const verb = moved ? "Moved" : result.created ? "Opened" : "Reused";
 		const lines = [
-			`${verb} tab ${JSON.stringify(name)} on ${describeBrowser(browser)}${inContext === undefined ? "" : ` in context ${JSON.stringify(inContext)}`}`,
-			`URL: ${url}`,
+			`${verb} tab ${JSON.stringify(name)} ${moved ? `from ${describeKind(moved.from)} to` : "on"} ${describeBrowser(browser)}${inContext === undefined ? "" : ` in context ${JSON.stringify(inContext)}`}`,
+			`URL: ${tab.info.url}`,
 			title ? `Title: ${title}` : null,
+			moved
+				? `Carried ${describeStateCounts(
+						moved.state.cookies.length,
+						moved.state.origins.map(o => o.origin),
+					)}`
+				: null,
 			result.stateLoaded && statePath !== undefined ? describeStateLoaded(result.stateLoaded, statePath) : null,
+			challenge?.text ?? null,
 		].filter((l): l is string => typeof l === "string");
 		details.result = lines.join("\n");
-		if (params.url === undefined) return toolResult(details).text(details.result).done();
+		if (url === undefined) return toolResult(details).text(details.result).done();
 		// Nearly every open that loads a page is followed by a call that reads it, and each call re-sends
 		// the whole conversation: a page small enough is sent with the open instead. The page is the
 		// model's to read, so the rows the card draws stay without it.
 		const page = await this.#pageSnapshot(name, timeoutMs, signal);
 		return toolResult(details).text(`${details.result}\n${page}`).done();
+	}
+
+	/**
+	 * Take tab `name` off its browser for a move between a window and headless: its URL, dialog policy,
+	 * context, cookies and localStorage, then the tab itself. A profile runs in one browser at a time,
+	 * so a profile tab moves only when no other tab holds its browser.
+	 */
+	async #leaveBrowser(name: string, existing: TabSession, timeoutMs: number, signal?: AbortSignal): Promise<MovedTab> {
+		const from = existing.browser.kind;
+		if (from.kind === "headless" && from.profile !== undefined) {
+			const others = tabNamesOn(existing.browser).filter(other => other !== name);
+			if (others.length > 0) {
+				throw new ToolError(
+					`Browser profile ${JSON.stringify(from.profile)} runs in one browser at a time, and tab${others.length === 1 ? "" : "s"} ${others.map(other => JSON.stringify(other)).join(", ")} ${others.length === 1 ? "is" : "are"} open on it. Close ${others.length === 1 ? "it" : "them"} first, then move this tab.`,
+				);
+			}
+		}
+		const run = await runInTab(name, { code: "return page.url();", timeoutMs, signal, session: this.session });
+		const url =
+			typeof run.returnValue === "string" && /^(?:https?|file):/i.test(run.returnValue)
+				? run.returnValue
+				: undefined;
+		const state = await captureTabState(name);
+		const moved: MovedTab = {
+			from,
+			state,
+			...(url === undefined ? {} : { url }),
+			...(existing.backend === "worker" && existing.contextName !== undefined
+				? { context: existing.contextName }
+				: {}),
+			...(existing.dialogPolicy === undefined ? {} : { dialogs: existing.dialogPolicy }),
+		};
+		await releaseTab(name, { kill: false });
+		return moved;
+	}
+
+	/** The tab's page as the challenge probe reads it, or undefined when it gives nothing to read. */
+	async #readPage(name: string, signal?: AbortSignal): Promise<PageSignals | undefined> {
+		try {
+			const run = await runInTab(name, {
+				code: PROBE_RUN_CODE,
+				timeoutMs: PROBE_RUN_TIMEOUT_MS,
+				signal,
+				session: this.session,
+			});
+			return parsePageSignals(run.returnValue);
+		} catch (error) {
+			if (error instanceof ToolAbortError || isCancellation(error)) throw error;
+			logger.debug("browser challenge probe failed", { tab: name, error: errorMessage(error) });
+			return undefined;
+		}
+	}
+
+	/**
+	 * The notice for a bot challenge on tab `name`'s page, once per page. An interstitial check is
+	 * waited out first, for at most {@link CHALLENGE_WAIT_MAX_MS} and the call's timeout: the notice then
+	 * states where it led, or that it did not clear. A challenge that needs a person, or blocks the
+	 * browser, is stated with the hand-off to a person.
+	 */
+	async #challengeNotice(
+		name: string,
+		timeoutMs: number,
+		signal?: AbortSignal,
+	): Promise<{ challenge: Challenge; text: string } | undefined> {
+		const tab = getTab(name);
+		const first = tab ? await this.#readPage(name, signal) : undefined;
+		const found = first ? classifyChallenge(first) : undefined;
+		if (!tab || !first || !found) return undefined;
+		if (reportedChallenges.get(tab) === pageKey(first, found)) return undefined;
+		if (found.kind !== "interstitial") {
+			reportedChallenges.set(tab, pageKey(first, found));
+			return { challenge: found, text: describeChallenge(found, tab) };
+		}
+		const bound = Math.min(CHALLENGE_WAIT_MAX_MS, timeoutMs);
+		const started = performance.now();
+		let last = first;
+		let lastFound = found;
+		while (getTab(name) === tab && tab.state === "alive") {
+			const left = bound - (performance.now() - started);
+			if (left <= 0) break;
+			await sleep(Math.min(CHALLENGE_POLL_MS, left), undefined, { signal });
+			const read = await this.#readPage(name, signal);
+			// Between two documents the page answers nothing; the next read sees the one that loaded.
+			if (!read) continue;
+			const now = classifyChallenge(read);
+			if (now?.kind === "interstitial") {
+				last = read;
+				lastFound = now;
+				continue;
+			}
+			const seconds = ((performance.now() - started) / 1000).toFixed(1);
+			const cleared = `Challenge: ${found.label} cleared after ${seconds} s; the tab is now at ${read.url} ${JSON.stringify(read.title)}.`;
+			if (!now) return { challenge: found, text: cleared };
+			reportedChallenges.set(tab, pageKey(read, now));
+			return { challenge: now, text: `${cleared}\n${describeChallenge(now, tab)}` };
+		}
+		reportedChallenges.set(tab, pageKey(last, lastFound));
+		return {
+			challenge: lastFound,
+			text: `Challenge: ${lastFound.label} did not clear within ${Math.round(bound / 1000)} s; the tab is at ${last.url} ${JSON.stringify(last.title)} (evidence: ${lastFound.evidence.join("; ")}). ${handOff(tab, "interactive")}`,
+		};
 	}
 
 	/**
@@ -501,6 +697,10 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 				saveArtifact: full => saveBrowserOutputArtifact(this.session, full),
 			});
 			if (capped !== error.message) error.message = capped;
+			// A run that failed on a challenge page (a click that found no element, a wait that timed out)
+			// is told what stood in its way.
+			const challenge = await this.#challengeNotice(name, timeoutMs, signal);
+			if (challenge) error.message = `${error.message}\n\n${challenge.text}`;
 			throw error;
 		}
 		const { displays, returnValue, screenshots } = run;
@@ -530,14 +730,20 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 			...inlineOutputPricing(this.session),
 			saveArtifact: full => saveBrowserOutputArtifact(this.session, full),
 		});
-		details.result = cappedText;
+		// After the cap, so a long output never pushes it out of what the model reads.
+		const challenge = await this.#challengeNotice(name, timeoutMs, signal);
+		if (challenge) details.challenge = challenge.challenge;
+		const notice = challenge ? [{ type: "text" as const, text: challenge.text }] : [];
+		details.result = challenge ? `${cappedText}\n${challenge.text}` : cappedText;
 		if (cappedText !== textOnly) {
 			const nonText = content.filter(c => c.type !== "text");
 			return toolResult(details)
-				.content([...nonText, { type: "text", text: cappedText }])
+				.content([...nonText, { type: "text", text: cappedText }, ...notice])
 				.done();
 		}
-		return toolResult(details).content(content).done();
+		return toolResult(details)
+			.content([...content, ...notice])
+			.done();
 	}
 }
 
@@ -566,7 +772,7 @@ function describeBrowser(handle: BrowserHandle): string {
 	}
 	switch (handle.kind.kind) {
 		case "headless":
-			return `headless browser (${handle.kind.headless ? "hidden" : "visible"})`;
+			return `headless browser (${handle.kind.headless ? "hidden" : "visible"}${handle.kind.profile === undefined ? "" : `, profile ${JSON.stringify(handle.kind.profile)}`})`;
 		case "spawned":
 			return `spawned ${handle.kind.path} (pid ${handle.pid ?? "?"})`;
 		case "connected":
@@ -577,7 +783,7 @@ function describeBrowser(handle: BrowserHandle): string {
 function describeKind(kind: BrowserKind): string {
 	switch (kind.kind) {
 		case "headless":
-			return `headless ${kind.headless ? "hidden" : "visible"}`;
+			return `headless ${kind.headless ? "hidden" : "visible"}${kind.profile === undefined ? "" : ` profile ${JSON.stringify(kind.profile)}`}`;
 		case "spawned":
 			return `spawned:${kind.path}`;
 		case "connected":
@@ -589,11 +795,65 @@ function describeKind(kind: BrowserKind): string {
 
 function sameBrowserKind(a: BrowserKind, b: BrowserKind): boolean {
 	if (a.kind !== b.kind) return false;
-	if (a.kind === "headless" && b.kind === "headless") return a.headless === b.headless;
+	if (a.kind === "headless" && b.kind === "headless") return a.headless === b.headless && a.profile === b.profile;
 	if (a.kind === "spawned" && b.kind === "spawned") return a.path === b.path;
 	if (a.kind === "connected" && b.kind === "connected") return a.cdpUrl === b.cdpUrl;
 	if (a.kind === "cmux" && b.kind === "cmux") return a.socketPath === b.socketPath;
 	return false;
+}
+
+/** What a tab takes along when `visible` moves it to another browser. */
+interface MovedTab {
+	readonly from: BrowserKind;
+	readonly state: StorageState;
+	/** The page it was on, when that page can be loaded again. */
+	readonly url?: string;
+	readonly context?: string;
+	readonly dialogs?: "accept" | "dismiss";
+}
+
+/** Whether `visible` asks tab `existing` to move between a window and headless, on the same profile. */
+function movesWindow(existing: TabSession, to: BrowserKind, visible: boolean | undefined): boolean {
+	const from = existing.browser.kind;
+	return (
+		visible !== undefined &&
+		existing.backend === "worker" &&
+		from.kind === "headless" &&
+		to.kind === "headless" &&
+		from.profile === to.profile &&
+		from.headless !== to.headless
+	);
+}
+
+/** A page's challenge, as once-per-page reporting remembers it: the document and the rule it matched. */
+function pageKey(signals: PageSignals, challenge: Challenge): string {
+	return `${signals.documentId} ${challenge.rule}`;
+}
+
+/** What a person can do about a challenge on `tab`, which this tool does not solve. */
+function handOff(tab: TabSession, kind: "interactive" | "block"): string {
+	const browser = tab.browser.kind;
+	const hidden = browser.kind === "headless" && browser.headless;
+	const headless = browser.kind === "headless";
+	if (kind === "block") {
+		return hidden
+			? "A person may get past it in a browser window (open this tab with visible: true, then ask); otherwise use another source."
+			: "A person may get past it in this tab's window (ask); otherwise use another source.";
+	}
+	if (hidden) {
+		return "This tool does not solve CAPTCHAs: open this tab with visible: true, which moves its page, cookies and localStorage to a browser window, ask a person with the ask tool to solve it there, then open it with visible: false to continue headless.";
+	}
+	return headless
+		? "This tool does not solve CAPTCHAs: ask a person with the ask tool to solve it in this tab's window, then open it with visible: false to continue headless."
+		: "This tool does not solve CAPTCHAs: ask a person with the ask tool to solve it in this browser's window, then continue.";
+}
+
+/** The notice for a challenge that needs a person or blocks the browser. */
+function describeChallenge(challenge: Challenge, tab: TabSession): string {
+	const evidence = `evidence: ${challenge.evidence.join("; ")}`;
+	return challenge.kind === "block"
+		? `Challenge: ${challenge.label}; the site blocks this browser (${evidence}). ${handOff(tab, "block")}`
+		: `Challenge: ${challenge.label} on the page, which needs a person (${evidence}). ${handOff(tab, "interactive")}`;
 }
 
 function stringifyReturnValue(value: unknown): string {

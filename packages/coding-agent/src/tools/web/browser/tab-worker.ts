@@ -18,6 +18,7 @@ import type {
 	Frame,
 	HTTPResponse,
 	ImageFormat,
+	KeyboardTypeOptions,
 	KeyInput,
 	Page,
 	SerializedAXNode,
@@ -45,6 +46,7 @@ import {
 	DEFAULT_VIEWPORT,
 	loadPuppeteer,
 } from "./launch";
+import { type Extent, fillTypesKeyByKey, NaturalInput, type PressGesture } from "./natural-input";
 import { extractReadableFromHtml, type ReadableFormat } from "./readable";
 import {
 	CELL_BUDGET_SLACK_MS,
@@ -450,55 +452,87 @@ function asElementHandle(handle: unknown): ElementHandle | null {
 
 /**
  * ElementHandle enriched with the `fill()` the tool docs promise on handles from `tab.id()`/`tab.ref()`/`tab.waitFor()`,
- * and with a `click()` and `hover()` that never press what covers the element.
+ * with a `click()` and `hover()` that never press what covers the element, and a `type()` at a person's pace.
  */
 export type ActionableHandle = ElementHandle & { fill(value: string): Promise<void> };
 
-/**
- * Runs a handle's action as an op of the run in progress on its tab, given that run's action deadline, so
- * the action ends with its run and fails naming itself before the run's own deadline.
- */
-type HandleActionRunner = (
-	label: string,
-	action: (signal: AbortSignal, timeoutMs: number) => Promise<void>,
-) => Promise<void>;
-
-/** A handle's own `click` and `hover`, kept at its first enrichment so a later one wraps puppeteer's, not a wrapper. */
-interface OwnPresses {
-	click(options?: Readonly<ClickOptions>): Promise<void>;
-	hover(): Promise<void>;
+/** What a handle's actions reach of the run in progress on its tab. */
+interface HandleActions {
+	/**
+	 * Run a handle's action as an op of the run in progress on its tab, given that run's action deadline, so
+	 * the action ends with its run and fails naming itself before the run's own deadline.
+	 */
+	run(label: string, action: (signal: AbortSignal, timeoutMs: number) => Promise<void>): Promise<void>;
+	/** The natural input of the run in progress, or null when that run has it off or no run is in progress. */
+	input(): NaturalInput | null;
 }
 
-const ownPresses = new WeakMap<ElementHandle, OwnPresses>();
+/** A handle's own `click`, `hover` and `type`, kept at its first enrichment so a later one wraps puppeteer's, not a wrapper. */
+interface OwnActions {
+	click(options?: Readonly<ClickOptions>): Promise<void>;
+	hover(): Promise<void>;
+	type(text: string, options?: Readonly<KeyboardTypeOptions>): Promise<void>;
+}
+
+const ownActions = new WeakMap<ElementHandle, OwnActions>();
 
 /**
- * Attach `fill()` to a puppeteer ElementHandle before handing it to user code, and route its `click()`
- * and `hover()` through {@link pressUncovered}, each as an action `runAction` runs. Puppeteer handles
- * expose `type()` but no `fill()`; the semantics are the selector-based `tab.fill()`'s.
+ * Attach `fill()` to a puppeteer ElementHandle before handing it to user code, route its `click()` and
+ * `hover()` through {@link pressUncovered}, and pace its `type()` when natural input is on, each as an
+ * action `actions` runs. Puppeteer handles expose `type()` but no `fill()`; the semantics are the
+ * selector-based `tab.fill()`'s.
  */
-function toActionableHandle(handle: ElementHandle, runAction: HandleActionRunner): ActionableHandle {
-	const own = ownPresses.get(handle) ?? { click: handle.click.bind(handle), hover: handle.hover.bind(handle) };
-	ownPresses.set(handle, own);
+function toActionableHandle(handle: ElementHandle, actions: HandleActions): ActionableHandle {
+	const own = ownActions.get(handle) ?? {
+		click: handle.click.bind(handle),
+		hover: handle.hover.bind(handle),
+		type: handle.type.bind(handle),
+	};
+	ownActions.set(handle, own);
 	const enriched = handle as ActionableHandle;
-	enriched.fill = value => runAction("handle.fill()", signal => fillViaHandle(handle, value, signal));
+	enriched.fill = value =>
+		actions.run("handle.fill()", (signal, timeoutMs) => {
+			const input = actions.input();
+			return fillViaHandle(handle, value, signal, input && { input, withinMs: timeoutMs / 2 });
+		});
 	// The press gives up before its op's deadline, so the reason it waited (a cover, a disabled control) is reported.
 	enriched.click = options =>
-		runAction("handle.click()", (signal, timeoutMs) =>
+		actions.run("handle.click()", (signal, timeoutMs) =>
 			pressUncovered(
 				handle,
 				"handle.click()",
 				() => own.click(options),
 				Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS),
-				{ signal, enabled: true },
+				{
+					signal,
+					gesture: {
+						kind: "click",
+						button: options?.button,
+						count: options?.count,
+						holdMs: options?.delay,
+					},
+					// A fixed offset or a highlighted press is puppeteer's own; a natural press aims for itself.
+					input: options?.offset === undefined && !options?.debugHighlight ? actions.input() : null,
+				},
 			),
 		);
 	enriched.hover = () =>
-		runAction("handle.hover()", (signal, timeoutMs) =>
+		actions.run("handle.hover()", (signal, timeoutMs) =>
 			pressUncovered(handle, "handle.hover()", () => own.hover(), Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS), {
 				signal,
-				enabled: false,
+				gesture: { kind: "hover" },
+				input: actions.input(),
 			}),
 		);
+	enriched.type = (text, options) => {
+		const input = actions.input();
+		// A caller that sets its own pace types at that pace, as puppeteer does.
+		if (input === null || options?.delay !== undefined) return own.type(text, options);
+		return actions.run("handle.type()", async (signal, timeoutMs) => {
+			await untilAborted(signal, () => handle.focus());
+			await input.type(text, timeoutMs / 2, signal);
+		});
+	};
 	return enriched;
 }
 
@@ -537,9 +571,10 @@ interface FillTarget extends FocusHolder {
 
 /**
  * Decide in the page how to fill `element` with `value`, and do the part that happens there. A text
- * field has its contents selected so one insertion replaces them; an input whose value is a date,
- * time, colour or number range is assigned it with the `input` and `change` a user's edit fires, and
- * keeps its value when it cannot hold the new one; anything else is refused with what to use instead.
+ * field has its contents selected so the insertion, or the first typed key, replaces them; an input
+ * whose value is a date, time, colour or number range is assigned it with the `input` and `change` a
+ * user's edit fires, and keeps its value when it cannot hold the new one; anything else is refused
+ * with what to use instead.
  * Serialized into the page, so it reaches nothing outside itself.
  *
  * It runs in puppeteer's isolated world, as every element handle's evaluation does, where a property
@@ -616,17 +651,33 @@ function planFill(element: unknown, value: string): FillPlan {
 	return refuse(`a <${tag}> is not an <input>, a <textarea> or contenteditable`);
 }
 
+/** Natural input for a fill, and the time its typing may take. */
+interface FillTyping {
+	readonly input: NaturalInput;
+	readonly withinMs: number;
+}
+
 /**
- * Replace an element's value, shared by `tab.fill` and enriched handles. The replacement is one
- * trusted text insertion into the selected contents, the one a paste makes: React, Vue and every
- * other framework that listens for `input` sees a real edit, and a value of any length costs one
- * round trip rather than one keystroke per character. `change` fires when focus leaves, as it does
- * for a person.
+ * Replace an element's value, shared by `tab.fill` and enriched handles. The new value goes into the
+ * selected contents as trusted edits: key by key when `typing` is given and {@link fillTypesKeyByKey}
+ * holds for the value, as a person types a short one; otherwise in one text insertion, the one a paste
+ * makes, which costs one round trip at any length. React, Vue and every other framework that listens
+ * for `input` sees a real edit either way. `change` fires when focus leaves, as it does for a person.
  */
-async function fillViaHandle(handle: ElementHandle, value: string, signal?: AbortSignal): Promise<void> {
+async function fillViaHandle(
+	handle: ElementHandle,
+	value: string,
+	signal: AbortSignal | undefined,
+	typing: FillTyping | null,
+): Promise<void> {
 	const plan = await untilAborted(signal, () => handle.evaluate(planFill, value));
 	if (plan.kind === "refuse") throw new ToolError(`fill: ${plan.reason}`);
 	if (plan.kind === "set") return;
+	// The first key replaces the selection, as it does when a person types over selected text.
+	if (typing && fillTypesKeyByKey(value, typing.withinMs)) {
+		await typing.input.type(value, typing.withinMs, signal);
+		return;
+	}
 	// An empty insertion deletes the selection, so clearing a field is the same one edit.
 	await untilAborted(signal, () => handle.frame.page().keyboard.sendCharacter(value));
 }
@@ -840,9 +891,22 @@ interface FramePoint {
 	readonly y: number;
 }
 
-/** What a click or hover would reach on an element, decided in the page; a clear press states its point. */
+/**
+ * Where a natural press aims on its element: `spread` from the centre of the element's clipped box, as
+ * shares of its half extent, or `at` one point of the frame's viewport, the one the pointer went to,
+ * checked as strictly as when it was chosen.
+ */
+type PressAim =
+	| { readonly kind: "spread"; readonly fx: number; readonly fy: number }
+	| { readonly kind: "at"; readonly x: number; readonly y: number; readonly strict: boolean };
+
+/**
+ * What a click or hover would reach on an element, decided in the page. A clear press states its point,
+ * the centre of the element's clipped box, and that box's size; with an aim whose point is the
+ * element's own, it states that point as `aimed`.
+ */
 type PressProbe =
-	| { readonly kind: "clear"; readonly point?: FramePoint }
+	| { readonly kind: "clear"; readonly point?: FramePoint; readonly aimed?: FramePoint; readonly size?: Extent }
 	| { readonly kind: "covered"; readonly by: string }
 	| { readonly kind: "disabled" }
 	| { readonly kind: "detached" };
@@ -856,9 +920,14 @@ type PressProbe =
  * element's labels (a styled checkbox drawn over its input), or holds the element (a closed shadow
  * host hides what is beneath it, and a click there still lands on the host's content). Anything else
  * takes the press. With `requireEnabled`, a disabled form control is reported as such first.
+ *
+ * An `aim` names a second point, inside the same box, that a natural press goes to instead. It is
+ * `aimed` only when what it hits is the element, inside it or inside one of its labels; an ancestor
+ * holding the element there is its padding or a rounded corner, not the element. The verdict is the
+ * centre's either way, so an aim never presses what the centre's check refuses.
  * Serialized into the page, so it reaches nothing outside itself.
  */
-function probePress(element: unknown, requireEnabled: boolean): PressProbe {
+function probePress(element: unknown, requireEnabled: boolean, aim: PressAim | null): PressProbe {
 	interface Rect {
 		readonly x: number;
 		readonly y: number;
@@ -888,7 +957,7 @@ function probePress(element: unknown, requireEnabled: boolean): PressProbe {
 	const doc = el.ownerDocument;
 	const width = doc.documentElement.clientWidth;
 	const height = doc.documentElement.clientHeight;
-	let point: { x: number; y: number } | undefined;
+	let box: { x: number; y: number; width: number; height: number } | undefined;
 	for (const rect of Array.from(el.getClientRects())) {
 		const w = Math.max(rect.x >= 0 ? Math.min(width - rect.x, rect.width) : Math.min(width, rect.width + rect.x), 0);
 		const h = Math.max(
@@ -896,28 +965,44 @@ function probePress(element: unknown, requireEnabled: boolean): PressProbe {
 			0,
 		);
 		if (w >= 1 && h >= 1) {
-			point = { x: Math.max(rect.x, 0) + w / 2, y: Math.max(rect.y, 0) + h / 2 };
+			box = { x: Math.max(rect.x, 0), y: Math.max(rect.y, 0), width: w, height: h };
 			break;
 		}
 	}
 	// No rect to press: puppeteer's own click reports that.
-	if (!point) return { kind: "clear" };
-	let hit = doc.elementFromPoint(point.x, point.y);
-	while (hit?.shadowRoot) {
-		const inner = hit.shadowRoot.elementFromPoint(point.x, point.y);
-		if (!inner || inner === hit) break;
-		hit = inner;
-	}
-	if (!hit) return { kind: "clear", point };
+	if (!box) return { kind: "clear" };
+	const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+	const size = { width: box.width, height: box.height };
+	const hitAt = (x: number, y: number): PressNode | null => {
+		let hit = doc.elementFromPoint(x, y);
+		while (hit?.shadowRoot) {
+			const inner = hit.shadowRoot.elementFromPoint(x, y);
+			if (!inner || inner === hit) break;
+			hit = inner;
+		}
+		return hit;
+	};
 	const within = (inner: PressNode, outer: PressNode): boolean => {
 		for (let node: PressNode | null | undefined = inner; node; node = node.parentNode ?? node.host) {
 			if (node === outer) return true;
 		}
 		return false;
 	};
-	const target = hit;
-	if (within(target, el) || within(el, target)) return { kind: "clear", point };
-	if (Array.from(el.labels ?? []).some(label => within(target, label))) return { kind: "clear", point };
+	const reaches = (target: PressNode, strict: boolean): boolean =>
+		within(target, el) ||
+		(!strict && within(el, target)) ||
+		Array.from(el.labels ?? []).some(label => within(target, label));
+	let aimed: FramePoint | undefined;
+	if (aim) {
+		const at =
+			aim.kind === "at"
+				? { x: aim.x, y: aim.y }
+				: { x: point.x + (aim.fx * box.width) / 2, y: point.y + (aim.fy * box.height) / 2 };
+		const hitAtAim = hitAt(at.x, at.y);
+		if (hitAtAim && reaches(hitAtAim, aim.kind === "spread" || aim.strict)) aimed = at;
+	}
+	const target = hitAt(point.x, point.y);
+	if (!target || reaches(target, false)) return { kind: "clear", point, aimed, size };
 	const tag = (target.tagName ?? "node").toLowerCase();
 	const id = target.id ? `#${target.id}` : "";
 	const classes = Array.from(target.classList ?? [])
@@ -992,29 +1077,33 @@ function probeFrameHit(element: unknown, x: number, y: number): FrameHit {
 	return { kind: "covered", by: `<${tag}${id}${classes}>${text ? ` "${text}"` : ""} over its frame` };
 }
 
+/** What a press at a point meets on its way up to the top document. */
+type FrameReach = { readonly cover: string } | { readonly cover: null; readonly at?: FramePoint };
+
 /**
- * What covers a press at `point` in `frame` from a frame above it, or null when every frame up to the
- * top document lets the press through to the one below.
+ * What a press at `point` in `frame` meets from the frames above it: the cover one of them takes it
+ * with, or none, and then the point in the top document's viewport. A point that leaves some frame's
+ * viewport on the way up is left to the press, and has no `at`.
  */
-async function coverInParentFrames(frame: Frame, point: FramePoint | undefined): Promise<string | null> {
+async function reachThroughFrames(frame: Frame, point: FramePoint | undefined): Promise<FrameReach> {
 	let child = frame;
 	let at = point;
 	while (at && child.parentFrame()) {
 		const owner = await child.frameElement();
-		if (!owner) return null;
+		if (!owner) return { cover: null };
 		let hit: FrameHit;
 		try {
 			hit = (await owner.evaluate(probeFrameHit, at.x, at.y)) as FrameHit;
 		} finally {
 			await releaseHandle(owner);
 		}
-		if (hit.kind === "covered") return hit.by;
+		if (hit.kind === "covered") return { cover: hit.by };
 		at = hit.point;
 		const parent = child.parentFrame();
-		if (!parent) return null;
+		if (!parent) return { cover: null };
 		child = parent;
 	}
-	return null;
+	return { cover: null, at };
 }
 
 /** The element a press was waiting on left the page before it was pressed; nothing was pressed. */
@@ -1029,6 +1118,9 @@ const PRESS_REPORT_MARGIN_MS = 500;
 /** How long `tab.uploadFile` waits, after pressing a control, for the file chooser it opens. */
 const CHOOSER_WAIT_MS = 2_000;
 
+/** The target a natural drag's travel time takes a bare `{ x, y }` point to be. */
+const DRAG_POINT_TARGET: Extent = { width: 20, height: 20 };
+
 /** Centre an element in its scrollers and the viewport, which `DOM.scrollIntoViewIfNeeded` skips for one already visible. */
 function centreInView(element: unknown): void {
 	(element as { scrollIntoView(options: object): void }).scrollIntoView({
@@ -1038,6 +1130,12 @@ function centreInView(element: unknown): void {
 	});
 }
 
+/** What a press does at its point: a click, with the options of a handle's `click`, or a hover, which only arrives. */
+type Gesture = ({ readonly kind: "click" } & PressGesture) | { readonly kind: "hover" };
+
+/** How far apart two points of the top document may be and still be the point the pointer rests on. */
+const SAME_POINT_PX = 0.5;
+
 /**
  * Run `press` once the point it presses on `handle` is the element's own.
  *
@@ -1045,23 +1143,34 @@ function centreInView(element: unknown): void {
  * instead, and nothing says so. For an element inside a frame, the point is checked in the element's
  * frame and then in every frame above it, so a banner over the frame counts too. The element is
  * scrolled into view, then centred once if covered, which clears a sticky header; a cover still there
- * after {@link COVERED_WAIT_MS}, or `timeoutMs` when shorter, fails the action naming it. With
- * `enabled`, a disabled form control is waited for until `timeoutMs`. In every failure nothing is
- * pressed.
+ * after {@link COVERED_WAIT_MS}, or `timeoutMs` when shorter, fails the action naming it. A click waits
+ * for a disabled form control until `timeoutMs`. In every failure nothing is pressed.
+ *
+ * With `input`, the press is a person's instead of `press`: the scrolls turn the wheel (an instant
+ * scroll finishes what the wheel cannot), and once the centre's check passes the pointer travels to a
+ * point of the element's own inside its box (the centre when the aimed point is not), rests there, and
+ * that point is checked again before the button goes down on it. A point the element has left by then
+ * is aimed at afresh, and one it keeps leaving past `timeoutMs` fails the action.
  */
 async function pressUncovered(
 	handle: ElementHandle,
 	label: string,
 	press: () => Promise<void>,
 	timeoutMs: number,
-	options: { readonly signal?: AbortSignal; readonly enabled: boolean },
+	options: { readonly signal?: AbortSignal; readonly gesture: Gesture; readonly input: NaturalInput | null },
 ): Promise<void> {
-	const { signal } = options;
+	const { signal, gesture, input } = options;
+	const spread: PressAim | null = input ? { kind: "spread", ...input.aim() } : null;
 	const started = Date.now();
 	let centred = false;
 	let placed = false;
+	/** The point the pointer went to for this press: the aim that finds it again, and where it is in the top document. */
+	let arrived: { readonly aim: PressAim; readonly at: FramePoint } | null = null;
 	for (;;) {
-		const probe = (await untilAborted(signal, () => handle.evaluate(probePress, options.enabled))) as PressProbe;
+		const aim = arrived?.aim ?? spread;
+		const probe = (await untilAborted(signal, () =>
+			handle.evaluate(probePress, gesture.kind === "click", aim),
+		)) as PressProbe;
 		const elapsed = Date.now() - started;
 		if (probe.kind === "detached") {
 			throw new DetachedPressTarget(
@@ -1071,24 +1180,57 @@ async function pressUncovered(
 		if (!placed) {
 			placed = true;
 			if (!(await untilAborted(signal, () => handle.isIntersectingViewport({ threshold: 1 })))) {
-				await untilAborted(signal, () => handle.scrollIntoView());
+				if (!(input && (await input.scrollIntoView(handle, signal)))) {
+					await untilAborted(signal, () => handle.scrollIntoView());
+				}
 				continue;
 			}
 		}
-		// A point clear in the element's own frame can still be covered by the page above that frame.
-		const cover =
-			probe.kind === "covered"
-				? probe.by
-				: probe.kind === "clear"
-					? await untilAborted(signal, () => coverInParentFrames(handle.frame, probe.point))
-					: null;
-		if (probe.kind === "clear" && cover === null) {
-			await untilAborted(signal, press);
-			return;
+		let cover = probe.kind === "covered" ? probe.by : null;
+		if (probe.kind === "clear") {
+			// A point clear in the element's own frame can still be covered by the page above that frame.
+			const centre = await untilAborted(signal, () => reachThroughFrames(handle.frame, probe.point));
+			cover = centre.cover;
+			if (centre.cover === null) {
+				if (!input || !aim || !probe.point || !centre.at) {
+					await untilAborted(signal, press);
+					return;
+				}
+				const aimed = probe.aimed;
+				const aimedReach = aimed
+					? await untilAborted(signal, () => reachThroughFrames(handle.frame, aimed))
+					: undefined;
+				const aimedAt = aimedReach?.cover === null ? aimedReach.at : undefined;
+				if (arrived) {
+					const rest = arrived.at;
+					if (aimedAt && Math.hypot(aimedAt.x - rest.x, aimedAt.y - rest.y) <= SAME_POINT_PX) {
+						if (gesture.kind === "click") await untilAborted(signal, () => input.click(gesture, signal));
+						return;
+					}
+					if (elapsed >= timeoutMs) {
+						throw new ToolError(
+							`${label}: the element kept moving from under the pointer for ${timeoutMs} ms, so nothing was pressed.`,
+						);
+					}
+					arrived = null;
+					continue;
+				}
+				const next: { readonly aim: PressAim; readonly at: FramePoint } =
+					aimed && aimedAt
+						? { aim: { kind: "at", x: aimed.x, y: aimed.y, strict: true }, at: aimedAt }
+						: { aim: { kind: "at", x: probe.point.x, y: probe.point.y, strict: false }, at: centre.at };
+				await input.moveTo(next.at, probe.size ?? { width: 1, height: 1 }, signal);
+				if (gesture.kind === "click") await input.dwell(signal);
+				arrived = next;
+				continue;
+			}
 		}
 		if (cover !== null && !centred) {
 			centred = true;
-			await untilAborted(signal, () => handle.evaluate(centreInView));
+			arrived = null;
+			if (!(input && (await input.scrollIntoView(handle, signal)))) {
+				await untilAborted(signal, () => handle.evaluate(centreInView));
+			}
 			continue;
 		}
 		if (cover !== null && elapsed >= Math.min(timeoutMs, COVERED_WAIT_MS)) {
@@ -1107,7 +1249,8 @@ async function clickQueryHandlerText(
 	page: Page,
 	selector: string,
 	timeoutMs: number,
-	signal?: AbortSignal,
+	signal: AbortSignal | undefined,
+	input: NaturalInput | null,
 ): Promise<void> {
 	const clickTimeout = scopedTimeoutSignal(timeoutMs, signal);
 	const clickSignal = clickTimeout.signal;
@@ -1133,7 +1276,16 @@ async function clickQueryHandlerText(
 				continue;
 			}
 			try {
-				await untilAborted(clickSignal, () => target.click());
+				// The target passed the actionability check above; a natural press also checks the point it goes to.
+				await (input
+					? pressUncovered(
+							target,
+							`tab.click(${JSON.stringify(selector)})`,
+							() => target.click(),
+							Math.max(1, timeoutMs - (Date.now() - start)),
+							{ signal: clickSignal, gesture: { kind: "click" }, input },
+						)
+					: untilAborted(clickSignal, () => target.click()));
 				return;
 			} catch (err) {
 				lastReason = errorMessage(err);
@@ -1209,6 +1361,8 @@ interface ActiveRun {
 	 * navigations had happened when it began.
 	 */
 	lastOp: { readonly navigating: boolean; readonly navigationsAtStart: number } | null;
+	/** The page's natural input when the run's session has `browser.naturalInput` on, else null for instant input. */
+	input: NaturalInput | null;
 }
 
 /**
@@ -1302,21 +1456,26 @@ export class WorkerCore {
 	/** The frames the latest `tab.ariaSnapshot()` followed, by the prefix of their refs (`f1`). */
 	#snapshotFrames: ReadonlyMap<string, Frame> = new Map();
 	#uninstallRejectionGuard: () => void;
+	/** The page's natural input, which follows the page's pointer from the moment the page opens. */
+	#naturalInput?: NaturalInput;
 	/**
-	 * Run a handle's action as an op of the run in progress on this tab. A handle outlives the run that
-	 * made it, so the action belongs to the run it is called in and ends with that run; one called when
-	 * no run is in progress, by code a finished or cancelled run left behind, does nothing.
+	 * What a handle's actions reach of the run in progress on this tab. A handle outlives the run that
+	 * made it, so an action belongs to the run it is called in and ends with that run; one called when no
+	 * run is in progress, by code a finished or cancelled run left behind, does nothing.
 	 */
-	#runHandleAction: HandleActionRunner = (label, action) => {
-		const active = this.#active;
-		if (!active) {
+	#handleActions: HandleActions = {
+		run: (label, action) => {
+			const active = this.#active;
+			if (!active) {
+				return markHandled(
+					Promise.reject(new ToolError(`${label}: no run is in progress on this tab, so nothing was done.`)),
+				);
+			}
 			return markHandled(
-				Promise.reject(new ToolError(`${label}: no run is in progress on this tab, so nothing was done.`)),
+				this.#runOp(active, label, active.signal, active.actionOpMs, signal => action(signal, active.actionOpMs)),
 			);
-		}
-		return markHandled(
-			this.#runOp(active, label, active.signal, active.actionOpMs, signal => action(signal, active.actionOpMs)),
-		);
+		},
+		input: () => this.#active?.input ?? null,
 	};
 
 	constructor(transport: TabWorkerTransport, options: WorkerCoreOptions) {
@@ -1416,7 +1575,7 @@ export class WorkerCore {
 				if (!context) throw new ToolError("The tab's browser context closed before its page opened");
 				this.#page = await context.newPage();
 				this.#observeDialogs();
-				await applyStealthPatches(this.#browser, this.#page, { browserSession: null, override: null });
+				await applyStealthPatches(this.#page, payload.identity);
 				await applyViewport(this.#page, payload.viewport);
 				if (payload.dialogs) this.#applyDialogPolicy(payload.dialogs);
 
@@ -1439,6 +1598,7 @@ export class WorkerCore {
 				this.#observeDialogs();
 				if (payload.dialogs) this.#applyDialogPolicy(payload.dialogs);
 			}
+			this.#naturalInput = new NaturalInput(this.#page);
 			this.#targetId = await targetIdForPage(this.#page);
 			this.#transport.send({ type: "ready", info: await this.#currentReadyInfo() });
 		} catch (error) {
@@ -1575,6 +1735,7 @@ export class WorkerCore {
 			filename: `browser-run-${msg.id}.js`,
 			floatingRejections: [],
 			lastOp: null,
+			input: msg.session.naturalInput ? (this.#naturalInput ?? null) : null,
 		};
 		this.#active = active;
 		try {
@@ -1959,6 +2120,8 @@ export class WorkerCore {
 		const { budgetBound, quickOpMs, actionOpMs } = resolveOpTimeouts(timeoutMs);
 		const waitMs = (explicit?: number): number => resolveWaitTimeout(timeoutMs, explicit);
 		const INF = Number.POSITIVE_INFINITY;
+		// Typing takes at most half of what an action that began at `started` has left of its deadline.
+		const typingWithin = (started: number): number => Math.max(0, actionOpMs - (Date.now() - started)) / 2;
 		const op = <T>(
 			label: string,
 			perOpMs: number,
@@ -2047,7 +2210,7 @@ export class WorkerCore {
 					`tab.click(${JSON.stringify(selector)})`,
 					actionOpMs,
 					(sig, target = selector) =>
-						this.#click(target, `tab.click(${JSON.stringify(selector)})`, actionOpMs, sig),
+						this.#click(target, `tab.click(${JSON.stringify(selector)})`, actionOpMs, sig, active.input),
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
 				),
 			type: (selector, text) =>
@@ -2055,9 +2218,16 @@ export class WorkerCore {
 					`tab.type(${JSON.stringify(selector)})`,
 					actionOpMs,
 					async (sig, target = selector) => {
+						const started = Date.now();
 						const handle = await this.#resolveActionHandle(target, actionOpMs, sig);
 						try {
-							await untilAborted(sig, () => handle.type(text, { delay: 0 }));
+							const input = active.input;
+							if (input === null) {
+								await untilAborted(sig, () => handle.type(text, { delay: 0 }));
+							} else {
+								await untilAborted(sig, () => handle.focus());
+								await input.type(text, typingWithin(started), sig);
+							}
 						} finally {
 							await releaseHandle(handle);
 						}
@@ -2069,11 +2239,13 @@ export class WorkerCore {
 					`tab.fill(${JSON.stringify(selector)})`,
 					actionOpMs,
 					async (sig, target = selector) => {
+						const started = Date.now();
 						// Visible before it is filled, as a click waits: a field that is still animating in is waited
 						// for rather than refused for not taking focus.
 						const handle = await this.#resolveActionHandle(target, actionOpMs, sig, { visible: true });
 						try {
-							await fillViaHandle(handle, value, sig);
+							const input = active.input;
+							await fillViaHandle(handle, value, sig, input && { input, withinMs: typingWithin(started) });
 						} finally {
 							await releaseHandle(handle);
 						}
@@ -2102,14 +2274,14 @@ export class WorkerCore {
 			},
 			scroll: (deltaX, deltaY) =>
 				op("tab.scroll()", actionOpMs, sig => untilAborted(sig, () => page.mouse.wheel({ deltaX, deltaY }))),
-			drag: (from, to) => op("tab.drag()", actionOpMs, sig => this.#drag(from, to, sig)),
+			drag: (from, to) => op("tab.drag()", actionOpMs, sig => this.#drag(from, to, sig, active.input)),
 			waitFor: (selector, opts) => {
 				const w = waitMs(opts?.timeout);
 				return op(
 					`tab.waitFor(${JSON.stringify(selector)})`,
 					w,
 					async (sig, target = selector) =>
-						toActionableHandle(await this.#resolveActionHandle(target, w, sig), this.#runHandleAction),
+						toActionableHandle(await this.#resolveActionHandle(target, w, sig), this.#handleActions),
 					{ selector, zeroMatchAfterMs: opts?.timeout === undefined ? ZERO_MATCH_FAIL_FAST_MS : undefined },
 				);
 			},
@@ -2120,7 +2292,7 @@ export class WorkerCore {
 					w,
 					async (sig, target = selector) => {
 						if (parseAriaRefSelector(target) !== null)
-							return toActionableHandle(await this.#resolveAriaRef(target), this.#runHandleAction);
+							return toActionableHandle(await this.#resolveAriaRef(target), this.#handleActions);
 						const handle = (await untilAborted(sig, () =>
 							page.waitForSelector(normalizeSelector(target), {
 								timeout: w,
@@ -2129,7 +2301,7 @@ export class WorkerCore {
 								signal: sig,
 							}),
 						)) as ElementHandle | null;
-						return handle ? toActionableHandle(handle, this.#runHandleAction) : null;
+						return handle ? toActionableHandle(handle, this.#handleActions) : null;
 					},
 					{
 						// A list waited on for its absence is not narrowed to the one alternative present now.
@@ -2173,14 +2345,10 @@ export class WorkerCore {
 					async (sig, target = selector) => {
 						const handle = await this.#resolveActionHandle(target, actionOpMs, sig);
 						try {
-							await untilAborted(sig, () =>
-								handle.evaluate(el => {
-									const target = el as unknown as {
-										scrollIntoView: (opts: { behavior: string; block: string; inline: string }) => void;
-									};
-									target.scrollIntoView({ behavior: "instant", block: "center", inline: "center" });
-								}),
-							);
+							// The wheel brings the element near the centre; an instant scroll centres one it cannot.
+							const input = active.input;
+							if (input && (await input.scrollIntoView(handle, sig))) return;
+							await untilAborted(sig, () => handle.evaluate(centreInView));
 						} finally {
 							await releaseHandle(handle);
 						}
@@ -2198,7 +2366,7 @@ export class WorkerCore {
 				op(
 					`tab.uploadFile(${JSON.stringify(selector)})`,
 					actionOpMs,
-					(sig, target = selector) => this.#uploadFile(target, filePaths, actionOpMs, sig, session),
+					(sig, target = selector) => this.#uploadFile(target, filePaths, actionOpMs, sig, session, active.input),
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
 				),
 			waitForUrl: (pattern, opts) => {
@@ -2210,11 +2378,9 @@ export class WorkerCore {
 				return op("tab.waitForResponse()", w, sig => this.#waitForResponse(pattern, w, sig));
 			},
 			id: id =>
-				chainHandle(
-					this.#resolveCachedHandle(id).then(handle => toActionableHandle(handle, this.#runHandleAction)),
-				),
+				chainHandle(this.#resolveCachedHandle(id).then(handle => toActionableHandle(handle, this.#handleActions))),
 			ref: id =>
-				chainHandle(this.#resolveAriaRef(id).then(handle => toActionableHandle(handle, this.#runHandleAction))),
+				chainHandle(this.#resolveAriaRef(id).then(handle => toActionableHandle(handle, this.#handleActions))),
 			storageState: opts =>
 				op("tab.storageState()", actionOpMs, sig => this.#storageState(opts?.path, sig, session)),
 			loadStorageState: stateOrPath =>
@@ -2368,12 +2534,22 @@ export class WorkerCore {
 	 * selector is resolved again when its element leaves the page before the press, as a re-rendering
 	 * framework replaces it; an `aria-ref` names one snapshot's element and is not.
 	 */
-	async #click(selector: string, label: string, timeoutMs: number, signal: AbortSignal): Promise<void> {
+	async #click(
+		selector: string,
+		label: string,
+		timeoutMs: number,
+		signal: AbortSignal,
+		input: NaturalInput | null,
+	): Promise<void> {
 		const pressMs = Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS);
 		if (parseAriaRefSelector(selector) !== null) {
 			const handle = await this.#resolveAriaRef(selector);
 			try {
-				await pressUncovered(handle, label, () => handle.click(), pressMs, { signal, enabled: true });
+				await pressUncovered(handle, label, () => handle.click(), pressMs, {
+					signal,
+					gesture: { kind: "click" },
+					input,
+				});
 			} finally {
 				await releaseHandle(handle);
 			}
@@ -2381,7 +2557,7 @@ export class WorkerCore {
 		}
 		const resolved = normalizeSelector(selector);
 		if (resolved.startsWith("text/")) {
-			await clickQueryHandlerText(this.#requirePage(), resolved, timeoutMs, signal);
+			await clickQueryHandlerText(this.#requirePage(), resolved, timeoutMs, signal, input);
 			return;
 		}
 		const started = Date.now();
@@ -2389,7 +2565,11 @@ export class WorkerCore {
 			const remaining = Math.max(1, pressMs - (Date.now() - started));
 			const handle = await this.#resolveActionHandle(selector, remaining, signal, { visible: true });
 			try {
-				await pressUncovered(handle, label, () => handle.click(), remaining, { signal, enabled: true });
+				await pressUncovered(handle, label, () => handle.click(), remaining, {
+					signal,
+					gesture: { kind: "click" },
+					input,
+				});
 				return;
 			} catch (err) {
 				if (!(err instanceof DetachedPressTarget) || Date.now() - started >= pressMs) throw err;
@@ -2399,12 +2579,12 @@ export class WorkerCore {
 		}
 	}
 
-	async #drag(from: DragTarget, to: DragTarget, signal: AbortSignal): Promise<void> {
+	async #drag(from: DragTarget, to: DragTarget, signal: AbortSignal, input: NaturalInput | null): Promise<void> {
 		const page = this.#requirePage();
 		const resolveDragPoint = async (
 			target: DragTarget,
 			role: "from" | "to",
-		): Promise<{ x: number; y: number; handle?: ElementHandle }> => {
+		): Promise<{ x: number; y: number; size?: Extent; handle?: ElementHandle }> => {
 			if (typeof target === "string") {
 				const handle = (await untilAborted(signal, () =>
 					page.$(normalizeSelector(target)),
@@ -2420,7 +2600,7 @@ export class WorkerCore {
 					await releaseHandle(handle);
 					throw new ToolError(`Drag ${role} element has no bounding box (likely not visible): ${target}`);
 				}
-				return { x: box.x + box.width / 2, y: box.y + box.height / 2, handle };
+				return { x: box.x + box.width / 2, y: box.y + box.height / 2, size: box, handle };
 			}
 			if (
 				target !== null &&
@@ -2435,9 +2615,18 @@ export class WorkerCore {
 			);
 		};
 		const start = await resolveDragPoint(from, "from");
-		let end: { x: number; y: number; handle?: ElementHandle } | undefined;
+		let end: { x: number; y: number; size?: Extent; handle?: ElementHandle } | undefined;
 		try {
 			end = await resolveDragPoint(to, "to");
+			if (input) {
+				await input.drag(
+					start,
+					end,
+					{ from: start.size ?? DRAG_POINT_TARGET, to: end.size ?? DRAG_POINT_TARGET },
+					signal,
+				);
+				return;
+			}
 			await untilAborted(signal, () => page.mouse.move(start.x, start.y));
 			await untilAborted(signal, () => page.mouse.down());
 			await untilAborted(signal, () => page.mouse.move(end!.x, end!.y, { steps: 12 }));
@@ -2494,6 +2683,7 @@ export class WorkerCore {
 		timeoutMs: number,
 		signal: AbortSignal,
 		session: SessionSnapshot,
+		input: NaturalInput | null,
 	): Promise<void> {
 		if (!filePaths.length) throw new ToolError("tab.uploadFile() requires at least one file path");
 		const page = this.#requirePage();
@@ -2521,7 +2711,11 @@ export class WorkerCore {
 			}
 			const remaining = Math.max(1, timeoutMs - PRESS_REPORT_MARGIN_MS - (Date.now() - started));
 			const chooser = markHandled(page.waitForFileChooser({ timeout: remaining, signal }));
-			await pressUncovered(handle, label, () => handle.click(), remaining, { signal, enabled: true });
+			await pressUncovered(handle, label, () => handle.click(), remaining, {
+				signal,
+				gesture: { kind: "click" },
+				input,
+			});
 			let opened: FileChooser | null;
 			try {
 				opened = await untilAborted(signal, () =>

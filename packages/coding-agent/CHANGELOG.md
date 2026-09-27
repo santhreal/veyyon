@@ -15,6 +15,11 @@
 - A `browser` action's selector may end in Playwright's `:has-text("…")`, such as `button:has-text("Sign in")`, which acts on the first element its CSS matches that holds the text, case and spacing aside, or on the innermost element holding it when no CSS precedes it; `:has-text()` nested in another pseudo-class stays refused.
 - The `browser` tool's `tab.reload()` loads the tab's current URL again with `goto`'s waiting and deadline, fetching a page that a form's POST produced with a GET instead of submitting the form a second time; a selector passed as an object names `tab.id(n)` and `tab.ref("eN")`.
 - A `browser` run whose `fetch` fails on a relative URL such as `/api/items` says that run code executes outside the page and gives the `tab.evaluate` form that makes the page's own request with its cookies.
+- Added `browser.naturalInput` (default on): browser clicks, hovers and drags move the pointer along a curved, eased path and rest before pressing, typing pauses between keys, short fills are typed key by key, and off-screen elements are scrolled to with the mouse wheel; off restores the instant input.
+- The `browser` tool reports a bot challenge it finds after `open` and `run`, naming its vendor, whether it clears on its own, needs a person or blocks the browser, and the evidence, once per page.
+- The `browser` tool waits up to 20 seconds, or the call's timeout when shorter, for an interstitial bot check such as Cloudflare's to clear, and states where the page led or that it did not clear.
+- The `browser` tool's `open` takes `visible: true | false`, which moves a tab between headless Chromium and a browser window with its page, cookies and localStorage, so a person can solve a challenge and the run continues.
+- The `browser` tool's `open` takes `profile: "<name>"`, a persistent Chromium profile under the agent directory whose cookies, storage, cache and history survive sessions; a profile another process holds is refused, naming its lock.
 
 ### Changed
 
@@ -26,7 +31,12 @@
 - The `browser` tool's `tab.ariaSnapshot()` and an `open`'s page snapshot leave out bare `generic` wrappers (layout `<div>`s with no name, text, state or pointer), 7–30% of a real page's snapshot.
 - The `browser` tool's snapshots leave out a name that a row, list item, column header or other non-control node computes from the children listed under it, and `[cursor=pointer]` on links, buttons and other roles clickable by definition, 10.9% of the snapshot characters in calibration runs; controls keep their names and every ref stays.
 - A `browser` run that reaches for `document`, `window` or another name the page defines fails with an error that says the name exists in the page and to use it inside `tab.evaluate`, instead of a bare "is not defined".
-- The `browser` tool description (1,702 estimated tokens, from 1,575) states that run code executes outside the page, that raw `page.evaluate` cannot see page globals, that a click never presses a cover and that refs chain, that a state file loads only into a headless tab, and that iframe content nests in a snapshot with `f1e3` refs, and asks the model to act on an open's snapshot without reading the page again, to act and read back in one run, and to act through `tab` actions instead of probing hit targets or page scripts first.
+- The headless browser presents the host's own OS, architecture and browser brands, the same in the page, every worker kind, HTTP headers and client hints, instead of claiming Windows on Linux hosts; `deviceandbrowserinfo.com/are_you_a_bot` now reports it human where it reported a bot.
+- The headless browser's WebGL renderer, screen size, window chrome and mouse-event screen coordinates match the host OS and agree between the page and its workers, and WebGL never reports SwiftShader.
+- `navigator.hardwareConcurrency` is capped at 8 in the page and every worker alike, and `navigator.languages` and `Accept-Language` are the browser's own.
+- A `browser` click presses a point inside its element other than the exact centre, checked again once the pointer arrives, and `tab.fill` types a one-line value of up to 24 characters key by key while `browser.naturalInput` is on, inserting longer values in one edit.
+- A `browser` tab opened again without `visible` or `profile` keeps the window and profile it is on.
+- The `browser` tool description (1,815 estimated tokens, from 1,575) states that run code executes outside the page, that raw `page.evaluate` cannot see page globals, that a click never presses a cover and that refs chain, that a state file loads only into a headless tab, that iframe content nests in a snapshot with `f1e3` refs, which selector forms act, what `profile` and `visible` do, and that a `Challenge:` line needing a person is handed off rather than solved, and asks the model to act on an open's snapshot without reading the page again, to act and read back in one run, and to act through `tab` actions instead of probing hit targets or page scripts first.
 - `veyyon session stats` folds each entry through a reducer with one method per entry kind instead of one 340-line loop, cutting the report on a 104,969-entry session from 36.4 ms to 30.0 ms with an identical report.
 - The legacy agent settings migration runs as one step per retired area over a shared key reader, cutting a legacy-heavy config's migration from 15.0 µs to 10.9 µs per load; a current-format config is unchanged.
 - A compaction pass finds the entry it just wrote by the id the append returned instead of copying the session's entries and scanning them for its summary text, which cuts that step on a 238,086-entry session from 6.53 ms to 0.002 ms.
@@ -85,6 +95,9 @@
 - A `browser` run stuck in synchronous work past its deadline, such as an `execSync` or a busy loop, gets its worker replaced and keeps its page, its fields and its session for the next run, instead of killing the tab.
 - A failed `browser` run's text, what it displayed and its error, is held to the same inline budget as a result's, keeping its head and its tail, instead of sending an `execSync`'s stderr or a dumped page whole on that turn and every turn after it.
 - A `browser` `tab.waitForNavigation()` written after the click that navigates, with only reads or `wait` between them, returns once that page has loaded instead of timing out on a navigation that committed before it started listening.
+- Opening a second headless browser tab no longer resets `navigator.platform` in the first to the host's native value.
+- Workers the headless browser starts no longer run from `blob:` URLs, which exposed their location and broke relative `importScripts`.
+- Opening a visible browser on a Linux host with no display fails with a message naming `DISPLAY` and `WAYLAND_DISPLAY` instead of Chromium's launch error.
 - The streaming-reveal throughput bench builds its target as a transcript view instead of a raw assistant message, so `bun packages/coding-agent/bench/streaming-throughput.bench.ts` runs again; no user-visible change.
 - An agent's live preview shows the shorthand the stream was still holding when a streamed message ends without a final content snapshot, instead of dropping it.
 - `veyyon --resume <id>` for a session from another project reopens that session in place and moves the launch into its recorded working directory, instead of prompting to fork it into the launch directory or failing without a terminal; an explicit `--cwd` moves the session's working directory there instead.
@@ -93,6 +106,7 @@
 
 ### Removed
 
+- The headless browser no longer returns a made-up font list from `queryLocalFonts`.
 - The unused built-in `designer` model role is gone from Settings → Model → Roles; a `modelRoles.designer` value you already set still resolves through `@designer` as a custom role.
 
 ## [1.5.5] - 2026-09-25

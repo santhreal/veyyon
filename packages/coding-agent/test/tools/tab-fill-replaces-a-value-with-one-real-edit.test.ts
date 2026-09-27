@@ -4,8 +4,11 @@
  * nothing left its state holding the old text, and a long value cost three protocol messages per
  * character. A replacement setter with synthetic events fixed the first and broke contenteditable.
  *
- * The contract: fill replaces the whole value of an input, textarea or contenteditable element in one
- * trusted text insertion, which a framework's tracker counts as a change, the empty value included;
+ * The contract: fill replaces the whole value of an input, textarea or contenteditable element with
+ * trusted edits a framework's tracker counts as changes, the empty value included: one text insertion
+ * with `browser.naturalInput` off, and with it on one key per character of a short one-line value and
+ * one insertion for any other (the pace of the keys is
+ * `a-natural-input-session-moves-rests-and-types-as-a-person-does.test.ts`'s);
  * an input holding a date, time, colour or range takes its value past the framework's tracker with
  * the `input` and `change` a person's edit fires; a value it holds in another form (a colour in
  * capitals, a date-time with zero seconds, a range as a decimal) is set in the form the input keeps,
@@ -14,7 +17,7 @@
  * does; an element that cannot take focus is refused before anything is typed, so the value never
  * lands in the field that holds focus instead. A line inside an editor is replaced through the
  * editor that holds it. Every way to reach fill (a selector, an aria ref, a handle from `tab.id` or
- * `tab.waitFor`) replaces the value the same way.
+ * `tab.waitFor`) replaces the value the same way. Every case runs with the setting off and on.
  *
  * Driven through the real tool against real headless Chromium. Skipped where Chromium cannot run.
  *
@@ -82,6 +85,7 @@ track("when", dateChanges);
 let server: http.Server;
 let url = "";
 let tool: BrowserTool;
+let settings: Settings;
 const TAB = `fill-${process.pid}`;
 
 async function run(code: string): Promise<string> {
@@ -116,12 +120,13 @@ beforeAll(async () => {
 	await listening.promise;
 	url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
 	if (!CHROMIUM_AVAILABLE) return;
+	settings = Settings.isolated({ "browser.headless": true });
 	const session: ToolSession = {
 		cwd: process.cwd(),
 		hasUI: false,
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
-		settings: Settings.isolated({ "browser.headless": true }),
+		settings,
 	};
 	tool = new BrowserTool(session);
 	await tool.execute("open", { action: "open", name: TAB, url });
@@ -135,158 +140,169 @@ afterAll(async () => {
 });
 
 describe.skipIf(!CHROMIUM_AVAILABLE)("tab.fill", () => {
-	it("replaces a text field's value in one trusted edit, and clears it with one", async () => {
-		await fresh();
-		const filled = await run(
-			'await tab.fill("#text", "fresh value"); return { value: await tab.evaluate(() => document.getElementById("text").value), events: await tab.evaluate(() => events) };',
-		);
-		expect(JSON.parse(filled)).toEqual({ value: "fresh value", events: ["text:input:true"] });
-		const cleared = await run(
-			'await tab.fill("#text", ""); return { value: await tab.evaluate(() => document.getElementById("text").value), events: await tab.evaluate(() => events) };',
-		);
-		expect(JSON.parse(cleared)).toEqual({ value: "", events: ["text:input:true", "text:input:true"] });
-	}, 60_000);
+	for (const natural of [false, true])
+		describe(`with natural input ${natural ? "on" : "off"}`, () => {
+			/** What a tracker records while a short `value` goes in: each prefix when typed key by key, the value when inserted. */
+			const edits = (value: string): string[] =>
+				natural ? Array.from(value, (_, end) => value.slice(0, end + 1)) : [value];
 
-	it("is a change to a framework's tracker, the empty value included", async () => {
-		await fresh();
-		const changes = await run(
-			'await tab.fill("#tracked", "fresh"); await tab.fill("#tracked", ""); return await tab.evaluate(() => changes);',
-		);
-		expect(JSON.parse(changes)).toEqual(["fresh", ""]);
-	}, 60_000);
+			beforeAll(() => {
+				settings.set("browser.naturalInput", natural);
+			});
 
-	it("replaces a textarea's lines and a contenteditable element's whole contents, and clears the element", async () => {
-		await fresh();
-		const filled = await run(
-			'await tab.fill("#area", "one\\ntwo"); await tab.fill("#edit", "plain"); return { area: await tab.evaluate(() => document.getElementById("area").value), edit: await tab.evaluate(() => document.getElementById("edit").textContent), bold: await tab.evaluate(() => document.querySelectorAll("#edit b").length) };',
-		);
-		expect(JSON.parse(filled)).toEqual({ area: "one\ntwo", edit: "plain", bold: 0 });
-		const cleared = await run(
-			'await tab.fill("#edit", ""); return { edit: await tab.evaluate(() => document.getElementById("edit").textContent) };',
-		);
-		expect(JSON.parse(cleared)).toEqual({ edit: "" });
-	}, 60_000);
+			it("replaces a text field's value with trusted edits, and clears it with one", async () => {
+				await fresh();
+				const filled = await run(
+					'await tab.fill("#text", "fresh value"); return { value: await tab.evaluate(() => document.getElementById("text").value), events: await tab.evaluate(() => events) };',
+				);
+				const typed = edits("fresh value").map(() => "text:input:true");
+				expect(JSON.parse(filled)).toEqual({ value: "fresh value", events: typed });
+				const cleared = await run(
+					'await tab.fill("#text", ""); return { value: await tab.evaluate(() => document.getElementById("text").value), events: await tab.evaluate(() => events) };',
+				);
+				expect(JSON.parse(cleared)).toEqual({ value: "", events: [...typed, "text:input:true"] });
+			}, 60_000);
 
-	it("sets a date field with the input and change a person's edit fires, and refuses a value it cannot hold, leaving the field as it was", async () => {
-		await fresh();
-		const filled = await run(
-			'await tab.fill("#date", "2026-09-26"); return { value: await tab.evaluate(() => document.getElementById("date").value), events: await tab.evaluate(() => events) };',
-		);
-		expect(JSON.parse(filled)).toEqual({ value: "2026-09-26", events: ["date:input:false", "date:change"] });
-		// Set past a tracker on the element, as a person's pick is: a framework counts it as a change,
-		// whether the field is reached by a selector or by an aria ref.
-		const tracked = await run(`
+			it("is a change to a framework's tracker, the empty value included", async () => {
+				await fresh();
+				const changes = await run(
+					'await tab.fill("#tracked", "fresh"); await tab.fill("#tracked", ""); return await tab.evaluate(() => changes);',
+				);
+				expect(JSON.parse(changes)).toEqual([...edits("fresh"), ""]);
+			}, 60_000);
+
+			it("replaces a textarea's lines and a contenteditable element's whole contents, and clears the element", async () => {
+				await fresh();
+				const filled = await run(
+					'await tab.fill("#area", "one\\ntwo"); await tab.fill("#edit", "plain"); return { area: await tab.evaluate(() => document.getElementById("area").value), edit: await tab.evaluate(() => document.getElementById("edit").textContent), bold: await tab.evaluate(() => document.querySelectorAll("#edit b").length) };',
+				);
+				expect(JSON.parse(filled)).toEqual({ area: "one\ntwo", edit: "plain", bold: 0 });
+				const cleared = await run(
+					'await tab.fill("#edit", ""); return { edit: await tab.evaluate(() => document.getElementById("edit").textContent) };',
+				);
+				expect(JSON.parse(cleared)).toEqual({ edit: "" });
+			}, 60_000);
+
+			it("sets a date field with the input and change a person's edit fires, and refuses a value it cannot hold, leaving the field as it was", async () => {
+				await fresh();
+				const filled = await run(
+					'await tab.fill("#date", "2026-09-26"); return { value: await tab.evaluate(() => document.getElementById("date").value), events: await tab.evaluate(() => events) };',
+				);
+				expect(JSON.parse(filled)).toEqual({ value: "2026-09-26", events: ["date:input:false", "date:change"] });
+				// Set past a tracker on the element, as a person's pick is: a framework counts it as a change,
+				// whether the field is reached by a selector or by an aria ref.
+				const tracked = await run(`
 			await tab.fill("#when", "2026-09-27");
 			const ref = (await tab.ariaSnapshot("#when")).match(/\\[ref=(e\\d+)\\]/)[1];
 			await tab.fill("aria-ref=" + ref, "2026-09-28");
 			return await tab.evaluate(() => dateChanges);
 		`);
-		expect(JSON.parse(tracked)).toEqual(["2026-09-27", "2026-09-28"]);
-		expect(await failureOf('await tab.fill("#date", "tomorrow");')).toContain(
-			'fill: "tomorrow" is not a value an <input type="date"> holds',
-		);
-		const kept = await run(
-			'return { value: await tab.evaluate(() => document.getElementById("date").value), events: await tab.evaluate(() => events) };',
-		);
-		expect(JSON.parse(kept)).toEqual({ value: "2026-09-26", events: ["date:input:false", "date:change"] });
-	}, 60_000);
+				expect(JSON.parse(tracked)).toEqual(["2026-09-27", "2026-09-28"]);
+				expect(await failureOf('await tab.fill("#date", "tomorrow");')).toContain(
+					'fill: "tomorrow" is not a value an <input type="date"> holds',
+				);
+				const kept = await run(
+					'return { value: await tab.evaluate(() => document.getElementById("date").value), events: await tab.evaluate(() => events) };',
+				);
+				expect(JSON.parse(kept)).toEqual({ value: "2026-09-26", events: ["date:input:false", "date:change"] });
+			}, 60_000);
 
-	it("sets a value a colour, date-time or range input holds in another form, and refuses one it cannot hold", async () => {
-		await fresh();
-		const read =
-			"return { colour: await tab.evaluate(() => document.getElementById('colour').value), stamp: await tab.evaluate(() => document.getElementById('stamp').value), level: await tab.evaluate(() => document.getElementById('level').value) };";
-		const filled = await run(
-			`await tab.fill("#colour", "#FF8800"); await tab.fill("#stamp", "2026-09-26T10:30:00"); await tab.fill("#level", "40.0"); ${read}`,
-		);
-		expect(JSON.parse(filled)).toEqual({ colour: "#ff8800", stamp: "2026-09-26T10:30", level: "40" });
-		await fresh();
-		const refusals = {
-			colour: await failureOf('await tab.fill("#colour", "red");'),
-			stamp: await failureOf('await tab.fill("#stamp", "2026-09-26T25:00");'),
-			level: await failureOf('await tab.fill("#level", "150");'),
-		};
-		const reason = (failure: string): string => (failure.match(/fill: [^\n]*/) ?? [failure])[0];
-		expect({
-			colour: reason(refusals.colour),
-			stamp: reason(refusals.stamp),
-			level: reason(refusals.level),
-		}).toEqual({
-			colour: 'fill: "red" is not a value an <input type="color"> holds',
-			stamp: 'fill: "2026-09-26T25:00" is not a value an <input type="datetime-local"> holds',
-			level: 'fill: "150" is not a value an <input type="range"> holds',
-		});
-		expect(JSON.parse(await run(read))).toEqual({ colour: "#123456", stamp: "2026-01-01T08:00", level: "10" });
-	}, 60_000);
+			it("sets a value a colour, date-time or range input holds in another form, and refuses one it cannot hold", async () => {
+				await fresh();
+				const read =
+					"return { colour: await tab.evaluate(() => document.getElementById('colour').value), stamp: await tab.evaluate(() => document.getElementById('stamp').value), level: await tab.evaluate(() => document.getElementById('level').value) };";
+				const filled = await run(
+					`await tab.fill("#colour", "#FF8800"); await tab.fill("#stamp", "2026-09-26T10:30:00"); await tab.fill("#level", "40.0"); ${read}`,
+				);
+				expect(JSON.parse(filled)).toEqual({ colour: "#ff8800", stamp: "2026-09-26T10:30", level: "40" });
+				await fresh();
+				const refusals = {
+					colour: await failureOf('await tab.fill("#colour", "red");'),
+					stamp: await failureOf('await tab.fill("#stamp", "2026-09-26T25:00");'),
+					level: await failureOf('await tab.fill("#level", "150");'),
+				};
+				const reason = (failure: string): string => (failure.match(/fill: [^\n]*/) ?? [failure])[0];
+				expect({
+					colour: reason(refusals.colour),
+					stamp: reason(refusals.stamp),
+					level: reason(refusals.level),
+				}).toEqual({
+					colour: 'fill: "red" is not a value an <input type="color"> holds',
+					stamp: 'fill: "2026-09-26T25:00" is not a value an <input type="datetime-local"> holds',
+					level: 'fill: "150" is not a value an <input type="range"> holds',
+				});
+				expect(JSON.parse(await run(read))).toEqual({ colour: "#123456", stamp: "2026-01-01T08:00", level: "10" });
+			}, 60_000);
 
-	it("refuses an element it cannot fill with the call that can", async () => {
-		await fresh();
-		const refusals: Record<string, string> = {};
-		for (const [id, selector] of Object.entries({
-			check: "#check",
-			pick: "#pick",
-			locked: "#locked",
-			para: "#para",
-		})) {
-			const failure = await failureOf(`await tab.fill(${JSON.stringify(selector)}, "x");`);
-			refusals[id] = (failure.match(/fill: [^\n]*/) ?? [failure])[0];
-		}
-		expect(refusals).toEqual({
-			check: 'fill: an <input type="checkbox"> is set by clicking it',
-			pick: "fill: a <select> is set with tab.select(selector, ...values)",
-			locked: "fill: the <input> is read-only",
-			para: "fill: a <p> is not an <input>, a <textarea> or contenteditable",
-		});
-	}, 60_000);
+			it("refuses an element it cannot fill with the call that can", async () => {
+				await fresh();
+				const refusals: Record<string, string> = {};
+				for (const [id, selector] of Object.entries({
+					check: "#check",
+					pick: "#pick",
+					locked: "#locked",
+					para: "#para",
+				})) {
+					const failure = await failureOf(`await tab.fill(${JSON.stringify(selector)}, "x");`);
+					refusals[id] = (failure.match(/fill: [^\n]*/) ?? [failure])[0];
+				}
+				expect(refusals).toEqual({
+					check: 'fill: an <input type="checkbox"> is set by clicking it',
+					pick: "fill: a <select> is set with tab.select(selector, ...values)",
+					locked: "fill: the <input> is read-only",
+					para: "fill: a <p> is not an <input>, a <textarea> or contenteditable",
+				});
+			}, 60_000);
 
-	it("refuses an element that cannot take focus, and the field holding focus keeps its value", async () => {
-		await fresh();
-		const refusals = {
-			// Visible but inert: the selector's wait for visibility passes, and focus does not move.
-			inert: await failureOf(
-				'await tab.evaluate(() => document.getElementById("text").focus()); await tab.fill("#frozen", "stray");',
-			),
-			// Hidden, reached through a handle, which is filled as it is rather than waited for.
-			hidden: await failureOf('await (await tab.waitFor("#gone")).fill("stray");'),
-			// With nothing focused the page's body is active, and it holds every element: it is not an editor.
-			editor: await failureOf(
-				'await tab.evaluate(() => document.activeElement.blur()); await (await tab.waitFor("#gone-edit")).fill("stray");',
-			),
-		};
-		const reason = (failure: string): string => (failure.match(/fill: [^\n]*/) ?? [failure])[0];
-		expect({
-			inert: reason(refusals.inert),
-			hidden: reason(refusals.hidden),
-			editor: reason(refusals.editor),
-		}).toEqual({
-			inert: "fill: the <input> cannot take focus: it is hidden, inert or not rendered",
-			hidden: "fill: the <input> cannot take focus: it is hidden, inert or not rendered",
-			editor: "fill: the <div> cannot take focus: it is hidden, inert or not rendered",
-		});
-		const values = await run(
-			'return { text: await tab.evaluate(() => document.getElementById("text").value), frozen: await tab.evaluate(() => document.getElementById("frozen").value), gone: await tab.evaluate(() => document.getElementById("gone").value), goneEdit: await tab.evaluate(() => document.getElementById("gone-edit").textContent) };',
-		);
-		expect(JSON.parse(values)).toEqual({ text: "old", frozen: "kept", gone: "kept", goneEdit: "kept" });
-	}, 60_000);
+			it("refuses an element that cannot take focus, and the field holding focus keeps its value", async () => {
+				await fresh();
+				const refusals = {
+					// Visible but inert: the selector's wait for visibility passes, and focus does not move.
+					inert: await failureOf(
+						'await tab.evaluate(() => document.getElementById("text").focus()); await tab.fill("#frozen", "stray");',
+					),
+					// Hidden, reached through a handle, which is filled as it is rather than waited for.
+					hidden: await failureOf('await (await tab.waitFor("#gone")).fill("stray");'),
+					// With nothing focused the page's body is active, and it holds every element: it is not an editor.
+					editor: await failureOf(
+						'await tab.evaluate(() => document.activeElement.blur()); await (await tab.waitFor("#gone-edit")).fill("stray");',
+					),
+				};
+				const reason = (failure: string): string => (failure.match(/fill: [^\n]*/) ?? [failure])[0];
+				expect({
+					inert: reason(refusals.inert),
+					hidden: reason(refusals.hidden),
+					editor: reason(refusals.editor),
+				}).toEqual({
+					inert: "fill: the <input> cannot take focus: it is hidden, inert or not rendered",
+					hidden: "fill: the <input> cannot take focus: it is hidden, inert or not rendered",
+					editor: "fill: the <div> cannot take focus: it is hidden, inert or not rendered",
+				});
+				const values = await run(
+					'return { text: await tab.evaluate(() => document.getElementById("text").value), frozen: await tab.evaluate(() => document.getElementById("frozen").value), gone: await tab.evaluate(() => document.getElementById("gone").value), goneEdit: await tab.evaluate(() => document.getElementById("gone-edit").textContent) };',
+				);
+				expect(JSON.parse(values)).toEqual({ text: "old", frozen: "kept", gone: "kept", goneEdit: "kept" });
+			}, 60_000);
 
-	it("waits for a field that is not visible yet, as a click does", async () => {
-		await fresh();
-		const filled = await run(
-			'await tab.evaluate(() => setTimeout(() => { document.getElementById("late").hidden = false; }, 500)); await tab.fill("#late", "arrived"); return { late: await tab.evaluate(() => document.getElementById("late").value) };',
-		);
-		expect(JSON.parse(filled)).toEqual({ late: "arrived" });
-	}, 60_000);
+			it("waits for a field that is not visible yet, as a click does", async () => {
+				await fresh();
+				const filled = await run(
+					'await tab.evaluate(() => setTimeout(() => { document.getElementById("late").hidden = false; }, 500)); await tab.fill("#late", "arrived"); return { late: await tab.evaluate(() => document.getElementById("late").value) };',
+				);
+				expect(JSON.parse(filled)).toEqual({ late: "arrived" });
+			}, 60_000);
 
-	it("replaces one line of an editor through the editor that holds it", async () => {
-		await fresh();
-		const filled = await run(
-			'await tab.fill("#line", "plain"); return await tab.evaluate(() => Array.from(document.querySelectorAll("#editor p"), p => p.textContent));',
-		);
-		expect(JSON.parse(filled)).toEqual(["plain", "second"]);
-	}, 60_000);
+			it("replaces one line of an editor through the editor that holds it", async () => {
+				await fresh();
+				const filled = await run(
+					'await tab.fill("#line", "plain"); return await tab.evaluate(() => Array.from(document.querySelectorAll("#editor p"), p => p.textContent));',
+				);
+				expect(JSON.parse(filled)).toEqual(["plain", "second"]);
+			}, 60_000);
 
-	it("replaces the value the same way through an aria ref, tab.id and tab.waitFor", async () => {
-		await fresh();
-		const values = await run(`
+			it("replaces the value the same way through an aria ref, tab.id and tab.waitFor", async () => {
+				await fresh();
+				const values = await run(`
 			const snapshot = await tab.ariaSnapshot("#text");
 			const ref = snapshot.match(/\\[ref=(e\\d+)\\]/)[1];
 			await tab.fill("aria-ref=" + ref, "by ref");
@@ -297,6 +313,7 @@ describe.skipIf(!CHROMIUM_AVAILABLE)("tab.fill", () => {
 			await (await tab.waitFor("#tracked")).fill("by handle");
 			return { byRef, area: await tab.evaluate(() => document.getElementById("area").value), tracked: await tab.evaluate(() => changes) };
 		`);
-		expect(JSON.parse(values)).toEqual({ byRef: "by ref", area: "by id", tracked: ["by handle"] });
-	}, 60_000);
+				expect(JSON.parse(values)).toEqual({ byRef: "by ref", area: "by id", tracked: edits("by handle") });
+			}, 60_000);
+		});
 });

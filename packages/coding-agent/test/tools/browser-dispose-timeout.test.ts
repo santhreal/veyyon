@@ -33,7 +33,6 @@ function makeHangingHeadlessHandle(pid: number | undefined): {
 				return new Promise<void>(() => {}); // never resolves
 			},
 		},
-		stealth: { browserSession: null, override: null },
 	} as unknown as BrowserHandle;
 	return { handle, closeCalls: () => closeCalls };
 }

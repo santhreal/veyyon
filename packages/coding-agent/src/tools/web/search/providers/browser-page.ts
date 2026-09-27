@@ -121,7 +121,7 @@ async function browseHtmlPage(
 		const activePage = await untilAborted(signal, () => handle.browser.newPage());
 		page = activePage;
 		await applyViewport(activePage);
-		await applyStealthPatches(handle.browser, activePage, handle.stealth);
+		await applyStealthPatches(activePage, handle.identity);
 		if (homeUrl) {
 			await untilAborted(signal, () =>
 				activePage.goto(homeUrl(), { waitUntil: "domcontentloaded", timeout: SEARCH_HARD_TIMEOUT_MS }),

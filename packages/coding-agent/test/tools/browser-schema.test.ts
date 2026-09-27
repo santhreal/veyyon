@@ -129,6 +129,8 @@ describe("browser tool schema", () => {
 				url: null,
 				context: null,
 				storage_state: null,
+				profile: null,
+				visible: null,
 				app: null,
 				viewport: null,
 				wait_until: null,

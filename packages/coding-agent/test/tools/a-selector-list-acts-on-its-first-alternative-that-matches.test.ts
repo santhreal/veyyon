@@ -105,7 +105,9 @@ const snapshot = await tab.ariaSnapshot();
 await tab.fill('input[type=email], textbox "Email"', "jo@example.test");
 await tab.click("#missing, aria-ref=" + refOf(snapshot, '- button "Save"'));
 await tab.click('button "Save all", button "Save"');`);
-		expect(log).toEqual(["save:jo@example.test", "save-all"]);
+		// The field notes its keys, which a fill with `browser.naturalInput` on types one at a time; the value
+		// the save reads is what shows which alternative the fill reached.
+		expect(log.filter(entry => !entry.startsWith("key:"))).toEqual(["save:jo@example.test", "save-all"]);
 	}, 60_000);
 
 	it("keeps a plain CSS list's meaning and a leading handler's commas", async () => {

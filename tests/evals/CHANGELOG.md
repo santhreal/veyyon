@@ -15,6 +15,7 @@ All notable changes to `@veyyon/evals` will be documented in this file.
 - `evals tool kit-report --run <dir> [--regrade]` renders a kit suite's report for a finished run and grades it again from the trial files, finding them under the run directory when the run was moved.
 - `tests/evals/docs/` is the evals manual, replacing `EVALS.md`.
 - `benches/browser-fill.ts` times `tab.fill` in headless Chromium for 16, 256 and 4,096 characters and counts a fill correct only when the field holds the value.
+- `benches/natural-input.ts` times `tab.click`, `tab.type` and `tab.fill` with `browser.naturalInput` off and on, and `benches/bot-detection.ts` opens public bot-detector pages through the browser tool and prints each verdict and the signals it flags.
 
 ### Changed
 

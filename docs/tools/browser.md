@@ -23,20 +23,22 @@
   - `packages/coding-agent/src/tools/web/browser/cmux/cmux-tab.ts`: `CmuxTab` surface helper API and `runCmuxCode()` execution path.
   - `packages/coding-agent/src/eval/js/shared/runtime.ts`: shared `JsRuntime` that executes `run` code (same engine as the `eval` JS tool); both the worker and cmux backends delegate to it.
   - `packages/coding-agent/src/tools/web/browser/view.ts`: `browserToolView`, the host-agnostic view for `open`/`close` status rows and `run` JS cells. A host draws it; the module imports no terminal code.
+  - `packages/coding-agent/src/tools/web/browser/host-identity.ts`: the host-true identity (reduced user agent, `navigator.platform`, client hints, brands) per supported host, and the stealth profile (WebGL GPU per ANGLE backend, window chrome, screen sizes, capped core count).
+  - `packages/coding-agent/src/tools/web/browser/browser-product.ts`: reads the browser binary's product name and version before launch (`--version`, or the Windows version resource).
+  - `packages/coding-agent/src/tools/web/browser/natural-input.ts`: pointer paths, dwell and hold timing, keystroke plans and wheel scrolling for `browser.naturalInput`.
+  - `packages/coding-agent/src/tools/web/browser/challenge.ts`: the bot-challenge vendor table (`CHALLENGE_RULES`), `classifyChallenge()`, and the page probe run (`PROBE_RUN_CODE`).
+  - `packages/coding-agent/src/tools/web/browser/profiles.ts`: temporary and named profile directories, profile name validation, and Chromium profile lock detection.
   - `packages/coding-agent/src/tools/web/puppeteer/00_stealth_tampering.txt`: mask patched functions/descriptors as native.
   - `packages/coding-agent/src/tools/web/puppeteer/01_stealth_activity.txt`: synthesize visibility/focus/scroll activity.
   - `packages/coding-agent/src/tools/web/puppeteer/02_stealth_hairline.txt`: fix Modernizr hairline detection.
-  - `packages/coding-agent/src/tools/web/puppeteer/03_stealth_botd.txt`: spoof `navigator.webdriver`, `window.chrome`, and Chrome fingerprint surfaces.
+  - `packages/coding-agent/src/tools/web/puppeteer/03_stealth_botd.txt`: `navigator.webdriver`, `window.chrome`, and Chrome fingerprint surfaces.
   - `packages/coding-agent/src/tools/web/puppeteer/04_stealth_iframe.txt`: patch iframe `contentWindow`/`srcdoc` behavior.
-  - `packages/coding-agent/src/tools/web/puppeteer/05_stealth_webgl.txt`: spoof WebGL vendor/renderer/precision.
-  - `packages/coding-agent/src/tools/web/puppeteer/06_stealth_screen.txt`: normalize screen/viewport/device-pixel-ratio values.
-  - `packages/coding-agent/src/tools/web/puppeteer/07_stealth_fonts.txt`: spoof local fonts and perturb canvas text rendering.
+  - `packages/coding-agent/src/tools/web/puppeteer/05_stealth_webgl.txt`: WebGL vendor/renderer/precision; runs in the page and, as the worker prelude, in every worker.
+  - `packages/coding-agent/src/tools/web/puppeteer/06_stealth_screen.txt`: window chrome, screen fit and orientation, and trusted mouse-event screen coordinates.
+  - `packages/coding-agent/src/tools/web/puppeteer/07_stealth_fonts.txt`: perturb canvas text rendering.
   - `packages/coding-agent/src/tools/web/puppeteer/08_stealth_audio.txt`: spoof audio latency/sample-rate and perturb offline rendering.
-  - `packages/coding-agent/src/tools/web/puppeteer/09_stealth_locale.txt`: force locale/languages/timezone/date strings.
   - `packages/coding-agent/src/tools/web/puppeteer/10_stealth_plugins.txt`: synthesize `navigator.plugins`/`navigator.mimeTypes`.
-  - `packages/coding-agent/src/tools/web/puppeteer/11_stealth_hardware.txt`: spoof `navigator.hardwareConcurrency`.
   - `packages/coding-agent/src/tools/web/puppeteer/12_stealth_codecs.txt`: spoof media codec support.
-  - `packages/coding-agent/src/tools/web/puppeteer/13_stealth_worker.txt`: carry UA/platform spoofing into `Worker`/`SharedWorker`.
 
 ## Inputs
 
@@ -59,6 +61,8 @@
 | `app` | `{ path?: string; cdp_url?: string; args?: string[]; target?: string }` | No | Selects browser kind. With no `app`, the cmux backend is used when a cmux socket is available (`CMUX_SOCKET_PATH`, gated by the `browser.cmux` setting / `VEYYON_BROWSER_CMUX` override); otherwise the session `browser.headless` setting applies. `app.path` is resolved against the session cwd and used as the executable path for spawn/attach reuse. `app.cdp_url` connects to an existing CDP endpoint. `args` are appended only when spawning `app.path`. `target` is only used for attached/spawned-app page selection. |
 | `context` | `string` | No | Headless only. Isolated context for the tab: every tab naming the same context shares its cookies and storage, and no tab of another context or of the default one sees them. The context closes with its last tab. Omitted or `"default"` is the browser's default context; a tab opened again with no `context` stays in the one it is in. |
 | `storage_state` | `string` | No | Headless only. State file, resolved against the session cwd, loaded into the tab's context before the tab navigates: its unexpired cookies, and each origin's localStorage, written once. The file is read and validated before a browser starts. |
+| `profile` | `string` | No | Headless only. Named persistent profile. Every tab naming it runs in one Chromium on `<agent dir>/browser-profiles/<name>` (`getBrowserProfilesDir()`; `$XDG_DATA_HOME/veyyon/browser-profiles` under XDG). Cookies with an expiry, localStorage, IndexedDB, service workers, cache and history survive the browser and the session; session cookies end with the browser. Names are 1 to 64 lowercase letters, digits, `.`, `_` or `-`, start with a letter or digit, do not end with `.`, and are not Windows device names. The password-manager preferences of a temporary profile are restored on every launch. A profile held by another process is refused, naming the profile and the lock (`SingletonLock` on Linux and macOS, `lockfile` on Windows); a lock whose process on this host is gone is taken over. `context` on a profile tab opens an isolated context whose cookies and storage are not saved to the profile. `storage_state` loads into the profile's default context and is saved with it. A tab opened again without `profile` keeps its profile. |
+| `visible` | `boolean` | No | Headless only. `true` moves the tab to a visible (headed) Chromium, `false` back to headless. On a tab on the other side, the context's cookies and localStorage are captured, the tab is released, and the page it was on reopens in the other browser in the same context with the same dialog policy, with the state loaded before the first request. A profile tab relaunches the profile on the same directory, and is refused while another tab holds that browser. On Linux a visible browser needs `DISPLAY` or `WAYLAND_DISPLAY`; without either the move is refused before the tab leaves its browser. A tab opened again without `visible` keeps its window. `visible` cannot be combined with `storage_state` in a move. `profile` and `visible` are refused on `app` browsers, on the cmux browser and on actions other than `open`. |
 
 ### `action: "close"`
 
@@ -83,6 +87,7 @@
 The tool returns one result per call; no streaming partial output is emitted from the browser implementation itself.
 
 - `open`: text content with `Opened` or `Reused`, browser description, the context when the tab is in one, URL, optional title, and, with `storage_state`, `Loaded <n> cookies and localStorage for <origins> from <file>`. With `url`, it ends with `Page:` and the page's `tab.ariaSnapshot()` when that is at most 6,000 chars (`OPEN_SNAPSHOT_MAX_CHARS` in `packages/coding-agent/src/tools/web/browser.ts`), whose refs a later run uses as `aria-ref=eN`; a larger snapshot is not sent and the line states its size (`Page snapshot not sent: <n> chars. ...`); a snapshot that fails is stated as `Page snapshot unavailable: <reason>` and the open stands. `details` includes `action`, `name`, `browser`, `url`, `viewport`, `context`, `storageState`, and the same text in `details.result`.
+- A move by `visible` prints `Moved tab "<name>" from <kind> to <browser>` and `Carried <n> cookies and localStorage for <origins>`. A challenge adds a `Challenge:` line (see Challenges). `details` includes `profile` and `challenge`.
 - `close`: text content with either `Closed ...` or `No tab named ...`. `details` includes `action`, `name`, and `details.result`.
 - `save_state`: `Saved <n> cookies and localStorage for <origins> to <file>`; the cookies themselves stay out of the result. `details` includes `action`, `name`, `browser`, `url`, `context`, and `storageState`.
 - `run`: ordered `content` array built as:
@@ -97,13 +102,41 @@ The tool returns one result per call; no streaming partial output is emitted fro
 - `tab.screenshot()` also appends text plus an image content item unless `silent: true`; `details.screenshots` records persisted screenshot metadata `{ dest, mimeType, bytes, width, height }`.
 - `run` `details` includes `action`, `name`, current `browser`/`url` when the tab exists, optional `screenshots`, and `details.result` containing only the concatenated text outputs. Combined run text is capped at the inline byte limit via `enforceInlineByteCap()`; over-cap text is saved as a session artifact (`saveBrowserOutputArtifact()`) and the capped text replaces it in content and `details.result`. A failed run's text, the lines it displayed followed by its error, is capped the same way before it becomes the error message.
 
+## Browser identity
+
+A headless launch reports the host's own OS family, architecture and browser brands. Every layer a site can read reports the same values: the page, dedicated, shared and service workers, the `User-Agent` header of every request, and the client hints. The launch reads the browser binary's product name and version (`<binary> --version`, or the version resource on Windows), passes `--user-agent` with the reduced user agent Chrome sends on the host, and sizes the headless screen with `--screen-info`. Every target that attaches receives the client-hints metadata and a core count capped at 8 before it runs, and every worker runs the WebGL patch before its own script. WebGL reports a GPU of the host's OS on the native ANGLE backend, and a real GPU is reported as it is. Window chrome, screen size and orientation, and the screen coordinates of trusted mouse events follow the host OS. A host outside `SUPPORTED_HOSTS` in `host-identity.ts` keeps the browser's own identity and logs a warning. A headful browser keeps its own identity.
+
+The bench `tests/evals/benches/bot-detection.ts [--label <name>] [--json <out.json>] [--only dabi,dabi-interactions,sannysoft,browserscan,creepjs]` opens public detector pages through the browser tool and prints each verdict and the signals it flags. It needs network access.
+
+## Natural input
+
+With `browser.naturalInput` on (the default), the tab worker drives input through `browser/natural-input.ts`. The setting is read for each run and carried in `SessionSnapshot.naturalInput`; changing it takes effect on the next run without reopening the tab. The cmux backend ignores it.
+
+- Press (`tab.click`, a handle's `click` and `hover`, `tab.uploadFile`): `pressUncovered()` passes `probePress()` an aim, a point spread from the centre of the element's clipped box within 60% of its half extent. The aim counts only when `elementFromPoint` there is the element, inside it, or inside one of its labels. The pointer travels from its last position on the page to that point, or to the centre when the aim fails, along a cubic curve bent 8–22% of the distance off the straight line, with minimum-jerk pacing and a Fitts's-law duration of 70–180 ms. It rests 40–85 ms. The point is probed and checked through every parent frame again, and the button goes down on it and is held 40–85 ms. A point the element has left is aimed at afresh; one it keeps leaving past the action deadline fails with `the element kept moving from under the pointer`. Whether a press is covered is still decided by the centre. A handle `click` with `offset` or `debugHighlight` uses puppeteer's own press.
+- Scroll: an element outside the viewport, or one being centred because it is covered, is scrolled with 100 px wheel notches, at most 8 events per flick and 2 flicks. `tab.scrollIntoView` does the same. An element in a frame, or one the wheel does not bring into view, gets the instant scroll.
+- Keys: `tab.type` and a handle's `type` without its own `delay` send a keydown and keyup per character, held 30–75 ms with 25–90 ms between keys, Shift held under shifted characters. All pauses shrink together when the worst case would exceed half the action's remaining deadline. `tab.fill` types a one-line value of up to 24 characters the same way when its worst case fits that budget, and inserts every other value, including an empty one, with one `Input.insertText`.
+- `tab.drag`: the pointer travels to the start, presses, holds 60–120 ms, moves to the end on an eased curve over 200–450 ms, rests, and releases.
+- With the setting off, every path is the instant input: one pointer move and an immediate press, keys with no delay, and one insertion per fill.
+
+The bench `tests/evals/benches/natural-input.ts` times `tab.click`, `tab.type` and `tab.fill` with the setting off and on.
+
+## Challenges
+
+After an `open` that loads a page, and after every `run` including a failed one, the tool reads the page once. `PROBE_RUN_CODE` evaluates one expression for the URL, title, the first 2,000 characters of text, which of the vendor table's selectors match, script sources, and each iframe's source with whether it is drawn on the page; it also reads `page.frames()`, which includes cross-origin frames and frames in closed shadow roots. `classifyChallenge()` returns the first matching row of `CHALLENGE_RULES` with its vendor, kind and evidence; evidence URLs have no query or fragment.
+
+- `interstitial` (Cloudflare interstitial, DataDome device check, AWS WAF challenge, Akamai browser check, Kasada, unrecognized browser checks): read again every 500 ms for at most `CHALLENGE_WAIT_MAX_MS` (20 s) or the call's timeout, whichever is shorter. The result states `Challenge: <label> cleared after <n> s; the tab is now at <url> "<title>".`, or that it did not clear, with the evidence and the hand-off.
+- `interactive` (Cloudflare Turnstile, reCAPTCHA v2 checkbox and image challenge, hCaptcha, Arkose, DataDome CAPTCHA, HUMAN press-and-hold, AWS WAF CAPTCHA, Google unusual-traffic CAPTCHA, unrecognized verification pages): `Challenge: <label> on the page, which needs a person (evidence: ...).` followed by the hand-off.
+- `block` (Cloudflare, Google, DataDome, Akamai and Imperva block pages): `Challenge: <label>; the site blocks this browser (evidence: ...).`
+
+A page's challenge is reported once: a later run on the same document adds no line and does not wait again. The tool does not solve CAPTCHAs. The hand-off for a hidden tab is `open` with `visible: true`, a person solves it through `ask`, then `open` with `visible: false`; for a tab already in a window it names that window.
+
 ## Flow
 1. `BrowserTool.execute()` (`packages/coding-agent/src/tools/web/browser`) abort-checks, clamps `timeout` via `clampTimeout("browser", ...)`, defaults `name` to `"main"`, and dispatches on `action`.
 2. `open` resolves browser kind with `resolveBrowserKind()`:
    - `app.cdp_url` → `{ kind: "connected" }` after trimming trailing slashes.
    - `app.path` → `{ kind: "spawned" }` after resolving against session cwd.
    - otherwise, `resolveCmuxKind()` → `{ kind: "cmux", socketPath, password?, surface? }` when `CMUX_SOCKET_PATH` is set and cmux is enabled (`browser.cmux` setting, overridable by `VEYYON_BROWSER_CMUX`).
-   - otherwise → `{ kind: "headless", headless: session.settings.get("browser.headless") }`.
+   - otherwise → `{ kind: "headless", headless, profile? }`: `headless` from `open`'s `visible` when given, else the tab's current window, else `session.settings.get("browser.headless")`; `profile` from `open`. The registry keys it `headless:<0|1>[:profile:<name>]`, and a headless launch computes the host identity (Browser identity) and a temporary or persistent profile directory.
 3. `open` rejects `context` and `storage_state` on any browser kind but headless, reads and checks the state file with `readStorageStateFile()`, and rejects reusing the same tab name across different browser kinds (`sameBrowserKind()`); callers must close first. All of it happens before a browser starts.
 4. `open` acquires a browser handle through `acquireBrowser()` (`packages/coding-agent/src/tools/web/browser/registry.ts`):
    - existing connected handle is reused by browser-kind key;
@@ -238,6 +271,7 @@ The tool returns one result per call; no streaming partial output is emitted fro
 ## Limits & Caps
 - Tool timeout clamp: default `30` s, min `1` s, max `300` s (`TOOL_TIMEOUTS.browser` in `packages/coding-agent/src/tools/core/tool-timeouts.ts`).
 - Supervisor grace period around init/run/close: `750` ms (`GRACE_MS` in `packages/coding-agent/src/tools/web/browser/tab-supervisor.ts`).
+- Challenge probe: the page read is abandoned after 3 s (`PROBE_READ_MS`); a page with an open dialog or a busy main thread gets no challenge line. Interstitial wait: at most 20 s (`CHALLENGE_WAIT_MAX_MS`) or the call's timeout, polled every 500 ms.
 - Puppeteer protocol timeout for launch/connect operations: `60_000` ms (`BROWSER_PROTOCOL_TIMEOUT_MS` in `packages/coding-agent/src/tools/web/browser/launch.ts`).
 - Connected-browser CDP readiness wait: `5_000` ms before `puppeteer.connect()` (`packages/coding-agent/src/tools/web/browser/registry.ts`).
 - Spawned-app CDP readiness wait after spawn: `30_000` ms (`packages/coding-agent/src/tools/web/browser/registry.ts`).
@@ -256,6 +290,12 @@ The tool returns one result per call; no streaming partial output is emitted fro
 - `open` fails when reusing a name across browser kinds: `Tab "..." is bound to a different browser (...). Close it first.`
 - `open` with `context` or `storage_state` on a spawned, connected or cmux browser: `context and storage_state need the headless browser; ... runs in the app's own session.`
 - `open` with a `context` other than a live tab's: `Tab "..." is open in context "..."; close it first, or open context "..." under another tab name.`
+- `open` with an invalid `profile`: `Invalid browser profile name "<name>": ...`.
+- A profile another process holds: `Browser profile "<name>" is in use by <holder> (lock <path>). Close the browser running on it, or open another profile.`
+- A profile already open at the other visibility: `Browser profile "<name>" is already open in the <hidden|visible> browser; close its tabs first.`
+- `visible` on a profile tab while another tab holds the profile: `Browser profile "<name>" runs in one browser at a time, and tab "<other>" is open on it. Close it first, then move this tab.`
+- `visible: true` on a Linux host without a display: `A visible browser needs a display, and this Linux host has none: DISPLAY and WAYLAND_DISPLAY are unset. ...`
+- `profile` or `visible` on another action or browser kind: `profile and visible apply to open, ...` and `profile and visible need the headless browser; ...`.
 - A state file that cannot be used fails the open or load naming it: `Cannot read storage state <file>: ...`, `Storage state <file> is not JSON: ...`, `<file> is not a storage state: ...`, or `<file> names "..." as an origin; ...`.
 - `save_state` without a file: `save_state needs storage_state, the file to write ...`. `context` outside `open`, and `storage_state` outside `open` and `save_state`, are refused.
 - `tab.fill` refuses what it cannot fill with the call that can: checkboxes and radios (click), file inputs (`tab.uploadFile`), `<select>` (`tab.select`), read-only or disabled fields, a value a date/time/colour/range input cannot hold, and non-editable elements. An element that does not take focus (hidden, inert, not rendered) is refused before any text is inserted, so the value never reaches the element that holds focus.

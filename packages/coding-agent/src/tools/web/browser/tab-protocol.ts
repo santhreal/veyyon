@@ -1,4 +1,5 @@
 import type { ImageContent, TextContent } from "@veyyon/ai";
+import type { HostIdentity } from "./host-identity";
 
 export type Transferable = Bun.Transferable;
 
@@ -40,6 +41,11 @@ export interface SessionSnapshot {
 	browserScreenshotDir?: string;
 	/** Force non-WebP screenshot encoding (e.g. for Ollama). Unset honors `VEYYON_NO_WEBP`. */
 	excludeWebP?: boolean;
+	/**
+	 * `browser.naturalInput` for this run: pointer travel, key-by-key typing and wheel scrolling paced as
+	 * a person's when true; instant input otherwise.
+	 */
+	naturalInput: boolean;
 }
 
 export type WorkerInitPayload =
@@ -53,6 +59,8 @@ export type WorkerInitPayload =
 			timeoutMs: number;
 			/** The isolated context to open the page in, by CDP id; the browser's default context when absent. */
 			browserContextId?: string;
+			/** The host-true identity the browser launched with; the page takes it before its first navigation. */
+			identity?: HostIdentity;
 	  }
 	| {
 			mode: "attach";
