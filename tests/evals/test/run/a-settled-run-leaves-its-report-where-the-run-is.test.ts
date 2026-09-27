@@ -42,12 +42,12 @@ import type {
 	TrialCell,
 	TrialScore,
 } from "../../engine/contracts";
-import { executeRun } from "../../engine/run/execute";
 import { harnesses, suites } from "../../engine/members/loaded";
-import { readRunJournal } from "../../engine/run/journal";
-import { runDirFor } from "../../engine/run/layout";
 import type { RunPlan } from "../../engine/plan/run-plan";
 import { buildRunPlan } from "../../engine/plan/run-plan";
+import { executeRun } from "../../engine/run/execute";
+import { readRunJournal } from "../../engine/run/journal";
+import { runDirFor } from "../../engine/run/layout";
 import { deepSweSuite } from "../../suites/deep-swe/main";
 
 const selection = { harnesses: ["veyyon"], models: ["vendor/model-a"] } as const;
@@ -159,6 +159,7 @@ describe("what a settled run leaves behind", () => {
 		expect(seen[0]?.model).toBe("vendor/model-a");
 		expect(seen[0]?.tasks).toEqual(["task-one", "task-two"]);
 		expect(seen[0]?.repeats).toBe(1);
+		expect(seen[0]?.variants).toEqual(plan.variants.map(variant => variant.name));
 		expect(await fs.readFile(path.join(runDir, "report.md"), "utf8")).toBe("# vendor/model-a\n");
 	});
 
@@ -294,6 +295,7 @@ describe("the deep-swe renderer", () => {
 			model: "lm-studio/local-27b",
 			tasks: ["task-one"],
 			repeats: 1,
+			variants: ["baseline"],
 		});
 
 		const results = JSON.parse(await fs.readFile(path.join(runDir, "results.json"), "utf8")) as {
@@ -325,7 +327,13 @@ describe("the deep-swe renderer", () => {
 		// A renderer that does not exist would leave the seeded file untouched and pass this
 		// case for the wrong reason, so the hook is asserted before it is called.
 		expect(typeof deepSweSuite.writeRunReport).toBe("function");
-		deepSweSuite.writeRunReport?.({ runDir, model: "vendor/other-model", tasks: ["task-one"], repeats: 1 });
+		deepSweSuite.writeRunReport?.({
+			runDir,
+			model: "vendor/other-model",
+			tasks: ["task-one"],
+			repeats: 1,
+			variants: ["baseline"],
+		});
 
 		const results = JSON.parse(await fs.readFile(path.join(runDir, "results.json"), "utf8")) as {
 			model: string;
@@ -346,7 +354,13 @@ describe("the deep-swe renderer", () => {
 		const runDir = path.join(temp.path(), "overnight-veyyon-normal");
 		await stageTrial(runDir, "overnight-veyyon-normal__baseline__ytt-jsonpath-query-api__r1", "ytt", 0);
 
-		deepSweSuite.writeRunReport?.({ runDir, model: "vendor/m", tasks: ["ytt-jsonpath-query-api"], repeats: 1 });
+		deepSweSuite.writeRunReport?.({
+			runDir,
+			model: "vendor/m",
+			tasks: ["ytt-jsonpath-query-api"],
+			repeats: 1,
+			variants: ["baseline"],
+		});
 
 		const results = JSON.parse(await fs.readFile(path.join(runDir, "results.json"), "utf8")) as {
 			arms: string[];
@@ -364,7 +378,13 @@ describe("the deep-swe renderer", () => {
 		const runDir = path.join(temp.path(), "2026-01-01T00-00-00-000");
 		await stageTrial(runDir, "unified__ts-pattern-match-each__r1", "tsp", 1);
 
-		deepSweSuite.writeRunReport?.({ runDir, model: "vendor/m", tasks: ["ts-pattern-match-each"], repeats: 1 });
+		deepSweSuite.writeRunReport?.({
+			runDir,
+			model: "vendor/m",
+			tasks: ["ts-pattern-match-each"],
+			repeats: 1,
+			variants: ["baseline"],
+		});
 
 		const results = JSON.parse(await fs.readFile(path.join(runDir, "results.json"), "utf8")) as {
 			results: { arm: string; task: string; reward: number | null }[];

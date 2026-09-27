@@ -188,8 +188,8 @@ export interface TrialEnvironment {
 
 /**
  * What a suite renders a finished run from. The run directory holds the journal, the run
- * record and every artifact a backend filed; the model, tasks and repeats are the plan's,
- * so a report names them without re-deriving them from the rows.
+ * record and every artifact a backend filed; the model, tasks, repeats and variants are the
+ * plan's, so a report names them without re-deriving them from the rows.
  */
 export interface SuiteReportContext {
 	readonly runDir: string;
@@ -197,6 +197,8 @@ export interface SuiteReportContext {
 	readonly model: string;
 	readonly tasks: readonly string[];
 	readonly repeats: number;
+	/** The variants' names in plan order; the first is the baseline a paired report compares against. */
+	readonly variants: readonly string[];
 }
 
 /**

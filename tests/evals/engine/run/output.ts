@@ -58,6 +58,7 @@ export async function writeRunOutput(options: WriteRunOutputOptions): Promise<st
 		model: reportModel(options.models),
 		tasks: options.tasks,
 		repeats: options.repeats,
+		variants: options.record.variants.map(variant => variant.name),
 	};
 	try {
 		await render.call(options.suite, context);

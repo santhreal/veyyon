@@ -175,19 +175,21 @@ describe("a kit run report", () => {
 		},
 	});
 
-	it("pairs arms only on trials both graded, and counts passes within each budget", () => {
+	it("pairs every arm against the plan's first, only on trials both graded, and counts passes within each budget", () => {
+		// The candidate's trials settled first, as a faster arm's do; the plan still names main first.
 		const summary = summarizeKitRun(
 			[
-				record("main", "a", 1, 90_000, 12),
 				record("head", "a", 1, 40_000, 4),
-				record("main", "b", 0, 200_000, 30),
+				record("main", "a", 1, 90_000, 12),
 				record("head", "b", 1, 60_000, 8),
-				record("main", "c", 1, 50_000, 6),
+				record("main", "b", 0, 200_000, 30),
 				record("head", "c", null, 0, 0),
+				record("main", "c", 1, 50_000, 6),
 			],
-			{ model: "p/m", tasks: ["a", "b", "c"], repeats: 1 },
+			{ model: "p/m", tasks: ["a", "b", "c"], repeats: 1, variants: ["main", "head"] },
 			"kit-probe",
 		);
+		expect(summary.arms.map(arm => arm.arm)).toEqual(["main", "head"]);
 		const [pair] = summary.paired;
 		expect(pair).toMatchObject({ baseline: "main", candidate: "head", pairs: 2, wins: 1, losses: 0, bothPassed: 1 });
 		expect(pair?.tokens).toEqual({ baseline: 290_000, candidate: 100_000 });

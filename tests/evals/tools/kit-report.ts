@@ -17,6 +17,7 @@ import { isKitSuite } from "../engine/kit/suite";
 import { suites } from "../engine/members/loaded";
 import { type FlagGrammar, parseFlags, requireFlag } from "../engine/plan/flag-grammar";
 import { readRunJournal } from "../engine/run/journal";
+import { RUN_RECORD_FILE } from "../engine/run/output";
 import type { TrialResultRecord } from "../engine/run/record";
 
 export const KIT_REPORT_FLAGS = {
@@ -34,6 +35,22 @@ function modelsOf(records: readonly TrialResultRecord[]): string {
 		if (typeof model === "string") models.add(model);
 	}
 	return [...models].sort().join(", ") || "unknown";
+}
+
+/** The variants' names in plan order, from the run record; empty when the run never wrote one. */
+async function planVariants(runDir: string): Promise<string[]> {
+	let record: unknown;
+	try {
+		record = JSON.parse(await fs.readFile(path.join(runDir, RUN_RECORD_FILE), "utf8"));
+	} catch {
+		return [];
+	}
+	const variants: unknown = (record as { variants?: unknown } | null)?.variants;
+	if (!Array.isArray(variants)) return [];
+	return variants.flatMap((variant: unknown) => {
+		const name = (variant as { name?: unknown } | null)?.name;
+		return typeof name === "string" ? [name] : [];
+	});
 }
 
 export async function kitReport(runDir: string, regrade: boolean): Promise<string> {
@@ -55,6 +72,7 @@ export async function kitReport(runDir: string, regrade: boolean): Promise<strin
 			model: modelsOf(graded),
 			tasks: [...new Set(graded.map(record => record.cell.task))],
 			repeats: new Set(graded.map(record => record.cell.repeat)).size,
+			variants: await planVariants(runDir),
 		},
 		suite.id,
 	);

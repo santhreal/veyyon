@@ -136,11 +136,14 @@ function summarizeArm(rows: readonly KitTrialRow[], arm: string): ArmSummary {
 
 export function summarizeKitRun(
 	records: readonly TrialResultRecord[],
-	context: Pick<SuiteReportContext, "model" | "tasks" | "repeats">,
+	context: Pick<SuiteReportContext, "model" | "tasks" | "repeats" | "variants">,
 	suite: string,
 ): KitRunSummary {
 	const rows = records.map(rowOf);
-	const arms = [...new Set(rows.map(row => row.arm))];
+	// The plan's order, so the baseline is the arm named first, however the trials finished; an
+	// arm the plan did not name (a journal read on its own) follows in the order it appears.
+	const seen = new Set(rows.map(row => row.arm));
+	const arms = [...context.variants.filter(arm => seen.has(arm)), ...[...seen].filter(arm => !context.variants.includes(arm))];
 	const [baseline, ...candidates] = arms;
 	return {
 		suite,
