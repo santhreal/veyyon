@@ -11,6 +11,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
 import { kitTask } from "../../engine/kit/catalog";
 import { answerHasNumber } from "../../engine/kit/checks";
@@ -18,8 +19,10 @@ import { FormClient } from "../../engine/kit/form-client";
 import { summarizeKitRun } from "../../engine/kit/report";
 import { defineSuite, KIT_FILES, trialSeed } from "../../engine/kit/suite";
 import { hostSite, text } from "../../engine/kit/web-host";
+import { openRunJournal } from "../../engine/run/journal";
 import { LOCAL_TRIAL_FILES } from "../../engine/run/layout";
 import type { TrialResultRecord } from "../../engine/run/record";
+import { kitReport } from "../../tools/kit-report";
 
 interface PressState {
 	readonly presses: number;
@@ -192,5 +195,39 @@ describe("a kit run report", () => {
 		expect([head?.graded, head?.errors, head?.passes]).toEqual([2, 1, 2]);
 		expect(head?.passesWithinTurns).toEqual([1, 2, 2, 2]);
 		expect(head?.byCapability).toEqual({ forms: { passes: 2, graded: 2 } });
+	});
+
+	it("grades a finished run again from its trial files, with the suite as it is now", async () => {
+		await using dir = await TempDir.create("@evals-kit-regrade-");
+		const runDir = dir.join("run-1");
+		const trialDir = dir.join("run-1", "veyyon", "shop-warranty-answer", "repeat-0");
+		await fs.mkdir(trialDir, { recursive: true });
+		// A state whose answer names the SKU and years the checks expect: a pass under today's checks.
+		const state = {
+			orders: [],
+			returns: [],
+			cart: [],
+			appliedCoupon: null,
+			newsletterSignups: 0,
+			failedSignins: 0,
+			stock: {},
+			expected: { names: ["A", "B", "C"], sku: "SK-AAAAA", years: 5 },
+		};
+		await fs.writeFile(path.join(trialDir, KIT_FILES.state), JSON.stringify(state));
+		await fs.writeFile(path.join(trialDir, LOCAL_TRIAL_FILES.answer), "SK-AAAAA carries a 5-year warranty.");
+		const journal = await openRunJournal(dir.path(), "run-1", "plan");
+		// The score recorded when the run ended says the trial failed, as a check with a bug would.
+		await journal.append({
+			cell: { variant: "veyyon", suite: "browser", task: "shop-warranty-answer", repeat: 0 },
+			score: { reward: 0, partial: 0, error: null, usage: null, extra: {} },
+			artifacts: { trialDir, extra: { model: "p/m" } },
+		});
+		await journal.close();
+
+		const report = await kitReport(runDir, true);
+		const summary = JSON.parse(await fs.readFile(path.join(runDir, "summary-regraded.json"), "utf8"));
+		expect(path.basename(report)).toBe("report-regraded.md");
+		expect(summary.arms).toMatchObject([{ arm: "veyyon", graded: 1, passes: 1 }]);
+		expect(summary.model).toBe("p/m");
 	});
 });

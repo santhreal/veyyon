@@ -48,6 +48,7 @@ import { EDIT_ADAPTER_FLAGS } from "../../suites/typescript-edit/cli";
 import { GENERATE_FLAGS } from "../../suites/typescript-edit/generate";
 import { BENCH_REPORT_FLAGS } from "../../tools/bench-report";
 import { GEN_DICTS_FLAGS } from "../../tools/generate-dicts";
+import { KIT_REPORT_FLAGS } from "../../tools/kit-report";
 import { TRACE_REPORT_FLAGS } from "../../tools/trace-report";
 
 /** Every grammar an evals entry point reads its invocation through. */
@@ -68,6 +69,7 @@ const GRAMMARS: Readonly<Record<string, FlagGrammar>> = {
 	"channel split": CHANNEL_SPLIT_FLAGS,
 	"retype likelihood": RETYPE_LIKELIHOOD_FLAGS,
 	"browser-fill bench": BROWSER_FILL_BENCH_FLAGS,
+	"kit report": KIT_REPORT_FLAGS,
 };
 
 /**
@@ -94,6 +96,7 @@ const COUNT_FLAGS: Readonly<Record<string, readonly string[]>> = {
 	"channel split": [],
 	"retype likelihood": [],
 	"browser-fill bench": ["rounds"],
+	"kit report": [],
 };
 
 /** Every flag each grammar declares, valued and valueless together, sorted. */
@@ -136,6 +139,7 @@ const DECLARED_FLAGS: Readonly<Record<string, readonly string[]>> = {
 	"channel split": ["help", "json", "sessions"],
 	"retype likelihood": ["help", "json", "repo", "sessions"],
 	"browser-fill bench": ["help", "json", "label", "rounds"],
+	"kit report": ["help", "regrade", "run"],
 };
 
 const REFUSED_COUNTS: readonly string[] = ["abc", "0", "-1", "2.5", "1e400"];

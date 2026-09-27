@@ -19,9 +19,10 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { LocalCliBackend } from "../../../backends/local-cli/main";
+import { LocalCliBackend, type LocalTrialLayout, localTrialLayout } from "../../../backends/local-cli/main";
 import { landlockSandbox } from "../../../backends/local-cli/sandbox";
 import type { HarnessAdapter, HarnessLookup, RunContext, Variant } from "../../../engine/contracts";
 import { kitTask } from "../../../engine/kit/catalog";
@@ -46,6 +47,7 @@ const providers = db.query("SELECT provider FROM auth_credentials ORDER BY provi
 const cached = db.query("SELECT COUNT(*) AS count FROM cache").get().count;
 const report = {
 	home: process.env.HOME,
+	tmp: process.env.TMPDIR,
 	dep: value,
 	planted: Object.keys(process.env).filter(name => name.startsWith("VEYYON_BENCH_PROBE_")),
 	fromHarness: process.env.PROBE_FROM_HARNESS ?? null,
@@ -132,6 +134,7 @@ function lookup(harness: HarnessAdapter): HarnessLookup {
 interface ProbeRun {
 	readonly report: {
 		readonly home: string;
+		readonly tmp: string;
 		readonly dep: string;
 		readonly planted: readonly string[];
 		readonly fromHarness: string | null;
@@ -140,7 +143,7 @@ interface ProbeRun {
 		readonly reads: Readonly<Record<string, string>>;
 		readonly writes: Readonly<Record<string, string>>;
 	};
-	readonly trialDir: string;
+	readonly layout: LocalTrialLayout;
 	readonly paths: Readonly<Record<string, string>>;
 }
 
@@ -151,27 +154,38 @@ async function runProbe(root: string, options: { readonly unsandboxed: boolean }
 	await writeCredentials(authDb);
 	const runsDir = path.join(root, "runs");
 	const cell = { variant: "arm", suite: "sandbox-probe", task: "probe-task", repeat: 0 };
-	const sibling = path.join(trialDirFor(runsDir, "run", { ...cell, task: "other-task" }), LOCAL_TRIAL_FILES.events);
+	// The scratch root is the system temp directory's, shared with any other run on the host.
+	const runId = `probe-${path.basename(root)}`;
+	const sibling = path.join(trialDirFor(runsDir, runId, { ...cell, task: "other-task" }), LOCAL_TRIAL_FILES.events);
 	await fs.mkdir(path.dirname(sibling), { recursive: true });
 	await fs.writeFile(sibling, "an earlier trial's transcript");
-	const paths: Record<string, string> = { answers, sibling, grader: import.meta.filename };
+	// A concurrent trial's scratch, which sits beside this trial's own.
+	const other = localTrialLayout(runsDir, runId, { ...cell, task: "other-task" });
+	const otherScratch = path.join(other.workspace, "secret.txt");
+	await fs.mkdir(path.dirname(otherScratch), { recursive: true });
+	await fs.writeFile(otherScratch, "another trial's workspace");
+	await using _otherScratch = { [Symbol.asyncDispose]: () => fs.rm(other.scratch, { recursive: true, force: true }) };
+	const layout = localTrialLayout(runsDir, runId, cell);
+	const paths: Record<string, string> = { answers, sibling, otherScratch, grader: import.meta.filename };
 
 	const task = kitTask<Record<string, never>>({
 		id: "probe-task",
 		title: "probe",
 		capabilities: ["probe"],
 		difficulty: "easy",
-		async start({ workspace, trialDir }) {
-			await fs.mkdir(workspace, { recursive: true });
+		async start({ workspace }) {
+			const scratch = path.dirname(workspace);
 			paths.taskFile = path.join(workspace, "task.txt");
-			paths.settings = path.join(trialDir, ".agent", "task-settings.yml");
+			paths.settings = path.join(scratch, "agent", "task-settings.yml");
 			paths.workspaceOut = path.join(workspace, "out.txt");
-			paths.homeOut = path.join(trialDir, ".home", "out.txt");
+			paths.homeOut = path.join(scratch, "home", "out.txt");
+			paths.tmpOut = path.join(scratch, "tmp", "out.txt");
 			paths.siblingOut = path.join(path.dirname(sibling), "x");
+			paths.systemTmpOut = path.join(os.tmpdir(), `veyyon-probe-escape-${process.pid}.txt`);
 			await fs.writeFile(paths.taskFile, "the task's own file");
 			const plan: Probe = {
-				read: [paths.taskFile, paths.settings, answers, sibling, import.meta.filename],
-				write: [paths.workspaceOut, paths.homeOut, "/dev/null", paths.siblingOut],
+				read: [paths.taskFile, paths.settings, answers, sibling, otherScratch, import.meta.filename],
+				write: [paths.workspaceOut, paths.homeOut, paths.tmpOut, "/dev/null", paths.siblingOut, paths.systemTmpOut],
 			};
 			return { instruction: JSON.stringify(plan), solve: async () => "", finish: async () => ({}) };
 		},
@@ -199,7 +213,7 @@ async function runProbe(root: string, options: { readonly unsandboxed: boolean }
 		build: tree,
 	};
 	const context: RunContext = {
-		runId: "run",
+		runId,
 		suite,
 		workDir: root,
 		runsDir,
@@ -212,30 +226,49 @@ async function runProbe(root: string, options: { readonly unsandboxed: boolean }
 
 	// Set for this one trial and removed at once: the backend reads the runner's own environment.
 	process.env.VEYYON_BENCH_PROBE_TOKEN = "not-a-real-token";
-	let trialDir: string;
 	try {
 		const artifacts = await backend.runTrial(cell, context);
-		trialDir = artifacts.trialDir as string;
+		expect(artifacts.trialDir).toBe(layout.trialDir);
 		expect(artifacts.usage?.extra).toEqual({ turns: 1, toolCalls: 0 });
 	} finally {
 		delete process.env.VEYYON_BENCH_PROBE_TOKEN;
 	}
-	const answer = await fs.readFile(path.join(trialDir, LOCAL_TRIAL_FILES.answer), "utf8");
-	return { report: JSON.parse(answer), trialDir, paths };
+	const answer = await fs.readFile(path.join(layout.trialDir, LOCAL_TRIAL_FILES.answer), "utf8");
+	return { report: JSON.parse(answer), layout, paths };
 }
 
 describe("a local trial", () => {
+	it("gives Chrome a temp directory short enough for its socket, however long the trial's names", () => {
+		const long = "x".repeat(120);
+		const layout = localTrialLayout(path.join("/", long, "runs"), long, {
+			variant: long,
+			suite: long,
+			task: long,
+			repeat: 9,
+		});
+		// Chrome aborts its launch when the socket it makes under TMPDIR exceeds 107 bytes.
+		const socket = path.join(layout.tmp, "com.google.Chrome.XXXXXX", "SingletonSocket");
+		expect(Buffer.byteLength(socket)).toBeLessThanOrEqual(107);
+		expect(layout.scratch).not.toBe(
+			localTrialLayout("/runs", "other", { variant: "a", suite: "s", task: "t", repeat: 0 }).scratch,
+		);
+	});
+
 	it("inherits only its own variables and holds only its model provider's sign-in", async () => {
 		await using dir = await TempDir.create("@evals-local-cli-env-");
-		const { report, trialDir } = await runProbe(dir.path(), { unsandboxed: !landlockSandbox().usable });
-		expect(report.home).toBe(path.join(trialDir, ".home"));
+		const { report, layout } = await runProbe(dir.path(), { unsandboxed: !landlockSandbox().usable });
+		expect(report.home).toBe(layout.home);
+		expect(report.tmp).toBe(layout.tmp);
 		expect(report.planted).toEqual([]);
 		expect(report.fromHarness).toBe("set");
 		expect(report.providers).toEqual(["probe"]);
 		expect(report.cached).toBe(0);
 		expect(report.dep).toBe("resolved");
-		const agentDir = await fs.stat(path.join(trialDir, ".agent")).catch(() => null);
-		expect(agentDir).toBeNull();
+		// The scratch, and the credential in it, is gone; the workspace is kept in the record.
+		expect(await fs.stat(layout.scratch).catch(() => null)).toBeNull();
+		expect(await fs.readFile(path.join(layout.trialDir, "workspace", "task.txt"), "utf8")).toBe(
+			"the task's own file",
+		);
 	});
 
 	it.skipIf(!landlockSandbox().usable)("opens its own files and none of the graders", async () => {
@@ -246,13 +279,16 @@ describe("a local trial", () => {
 			[paths.settings as string]: "probe:\n  enabled: true\n",
 			[paths.answers as string]: "EACCES",
 			[paths.sibling as string]: "EACCES",
+			[paths.otherScratch as string]: "EACCES",
 			[paths.grader as string]: "EACCES",
 		});
 		expect(report.writes).toEqual({
 			[paths.workspaceOut as string]: "ok",
 			[paths.homeOut as string]: "ok",
+			[paths.tmpOut as string]: "ok",
 			"/dev/null": "ok",
 			[paths.siblingOut as string]: "EACCES",
+			[paths.systemTmpOut as string]: "EACCES",
 		});
 	});
 });

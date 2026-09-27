@@ -74,7 +74,16 @@ export function trialSeed(cell: Pick<TrialCell, "task" | "repeat">): number {
 	return (seedOf(cell.task) ^ Math.imul(cell.repeat + 1, 0x9e3779b1)) >>> 0;
 }
 
-export function defineSuite(spec: KitSuiteSpec): EvalSuite {
+/** A suite `defineSuite` built, carrying the catalog it was built from. */
+export interface KitSuite extends EvalSuite {
+	readonly spec: KitSuiteSpec;
+}
+
+export function isKitSuite(suite: EvalSuite): suite is KitSuite {
+	return "spec" in suite && typeof (suite as { spec?: unknown }).spec === "object";
+}
+
+export function defineSuite(spec: KitSuiteSpec): KitSuite {
 	const byId = new Map(spec.tasks.map(task => [task.id, task]));
 	const requireTask = (id: string): KitTask => {
 		const task = byId.get(id);
@@ -84,6 +93,7 @@ export function defineSuite(spec: KitSuiteSpec): EvalSuite {
 	const backend: BackendId = "local-cli";
 	let host: Promise<HostEnvironment> | undefined;
 	return {
+		spec,
 		id: spec.id,
 		version: spec.version,
 		displayName: spec.displayName,

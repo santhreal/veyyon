@@ -174,7 +174,8 @@ export function renderKitReport(summary: KitRunSummary, capabilities: Readonly<R
 	const breakdown = (title: string, names: readonly string[], pick: (arm: ArmSummary) => ArmSummary["byCapability"]) => {
 		lines.push("", `## ${title}`, "", `| ${title.toLowerCase()} | ${summary.arms.map(arm => arm.arm).join(" | ")} |`);
 		lines.push(`|---|${summary.arms.map(() => "---").join("|")}|`);
-		for (const name of names) {
+		// Rows no trial exercised are omitted; the vocabulary orders the rest.
+		for (const name of names.filter(entry => summary.arms.some(arm => pick(arm)[entry] !== undefined))) {
 			const cells = summary.arms.map(arm => {
 				const tally = pick(arm)[name];
 				return tally ? ratio(tally.passes, tally.graded) : "—";

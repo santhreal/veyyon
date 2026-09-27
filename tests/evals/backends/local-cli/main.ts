@@ -2,19 +2,20 @@
  * The local-cli backend: each trial is one print-mode run of a harness's CLI on this host, in a
  * sandbox of its own.
  *
- * A trial gets a fresh directory under the runs directory holding
+ * A trial's record goes under the runs directory:
  *
- *   workspace/     the agent's working directory, with the task's input files
- *   .home/         the agent's HOME, empty, so no host context file reaches the prompt
- *   .agent/        the model provider's credential, and the task's settings; deleted afterwards
  *   events.jsonl   the JSON event stream: every turn, tool call and token
  *   stderr.txt     what the CLI printed to stderr
  *   answer.txt     the text of the agent's last message
+ *   workspace/     the agent's working directory as the trial left it
  *
- * plus whatever the suite's `finish` writes for its grader. The agent inherits only the variables
- * {@link trialEnvironment} keeps, and on Linux runs under Landlock ({@link sandboxRules}): it
- * cannot open the runner's home, the runs directory, this package, or the tests of the build it
- * runs, so it can read neither a grader nor an earlier trial's transcript.
+ * plus whatever the suite's `finish` writes for its grader. The agent itself runs in a scratch
+ * directory under the system temp directory ({@link localTrialLayout}), with an empty HOME, its own
+ * TMPDIR, and a credential store holding the model provider's sign-in alone. It inherits only the
+ * variables {@link trialEnvironment} keeps, and on Linux runs under Landlock ({@link sandboxRules}):
+ * it cannot open the runner's home, the runs directory, this package, the tests of the build it
+ * runs, or another trial's scratch, so it can read neither a grader nor an earlier trial's
+ * transcript.
  *
  * The variant's build (`--build`) selects which tree or binary runs, so two builds of the agent
  * run interleaved in one plan on the same tasks, and their difference is measured under the same
@@ -22,6 +23,7 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -31,6 +33,8 @@ import type {
 	BackendId,
 	ExecutionBackend,
 	HarnessAdapter,
+	LocalCommand,
+	LocalCommandContext,
 	PreflightVerdict,
 	RunContext,
 	TaskDescriptor,
@@ -42,7 +46,7 @@ import type {
 	VariantAxis,
 } from "../../engine/contracts";
 import { listFiles } from "../../engine/io/list-files";
-import { evalsPackageDir, runsDir as defaultRunsDir } from "../../engine/package-paths";
+import { evalsPackageDir, runsDir as defaultRunsDir, repoRootDir } from "../../engine/package-paths";
 import { resolveCellVariant } from "../../engine/plan/cell-variant";
 import { loadAndValidateConfigOverlay, loadAndValidatePromptOverlay } from "../../engine/plan/overlays";
 import { LOCAL_TRIAL_FILES as TRIAL_FILES, trialDirFor } from "../../engine/run/layout";
@@ -54,21 +58,56 @@ import { trialEnvironment } from "./environment";
 import { type EventUsage, finalText, readUsage } from "./events";
 import { landlockSandbox, sandboxedLaunch, sandboxRules } from "./sandbox";
 
-/** Where one trial's pieces go. */
+/**
+ * Where one trial's pieces go. The record (events, answer, the suite's state) is filed under the
+ * runs directory; the agent runs in a scratch directory outside every project tree, so neither the
+ * CLI nor its tools find the repository's context files, settings or git root by walking up from
+ * the working directory. The scratch is deleted when the trial ends, after its workspace is copied
+ * into the record.
+ */
 export interface LocalTrialLayout {
 	readonly trialDir: string;
+	readonly scratch: string;
 	readonly workspace: string;
 	readonly home: string;
 	readonly agentDir: string;
+	readonly tmp: string;
 }
 
-export function localTrialLayout(trialDir: string): LocalTrialLayout {
+/**
+ * The directory every trial's scratch is made under; hidden from every trial but its own part.
+ *
+ * Short on purpose: Chrome makes a Unix socket under TMPDIR, and a socket path longer than 107
+ * bytes aborts its launch. `/tmp/vey/<12 hex>/tmp/com.google.Chrome.XXXXXX/SingletonSocket` fits;
+ * a scratch named after the run, variant and task did not.
+ */
+export function trialScratchRoot(): string {
+	return path.join(process.platform === "win32" ? os.tmpdir() : "/tmp", "vey");
+}
+
+export function localTrialLayout(runsDir: string, runId: string, cell: TrialCell): LocalTrialLayout {
+	const trialDir = trialDirFor(runsDir, runId, cell);
+	// Derived from the record's path, so one trial's scratch is the same on every call.
+	const scratch = path.join(trialScratchRoot(), createHash("sha256").update(trialDir).digest("hex").slice(0, 12));
 	return {
 		trialDir,
-		workspace: path.join(trialDir, "workspace"),
-		home: path.join(trialDir, ".home"),
-		agentDir: path.join(trialDir, ".agent"),
+		scratch,
+		workspace: path.join(scratch, "workspace"),
+		home: path.join(scratch, "home"),
+		agentDir: path.join(scratch, "agent"),
+		tmp: path.join(scratch, "tmp"),
 	};
+}
+
+interface PreparedTrial {
+	readonly descriptor: TaskDescriptor;
+	readonly variant: Variant;
+	readonly model: string;
+	readonly provider: string;
+	readonly source: string;
+	readonly layout: LocalTrialLayout;
+	readonly localCommand: (context: LocalCommandContext) => LocalCommand;
+	readonly timeoutSec: number;
 }
 
 /** How many trailing characters of stderr an error names. */
@@ -126,67 +165,34 @@ export class LocalCliBackend implements ExecutionBackend {
 		const source = credentialSource(context.options);
 		if (!source) throw new Error("no credential store to copy the model's sign-in from");
 
-		const layout = localTrialLayout(trialDirFor(context.runsDir || defaultRunsDir(), context.runId, cell));
+		const layout = localTrialLayout(context.runsDir || defaultRunsDir(), context.runId, cell);
 		// An attempt after a thrown one starts from what a fresh trial would.
 		await fs.rm(layout.trialDir, { recursive: true, force: true });
-		await fs.mkdir(layout.workspace, { recursive: true });
-		await fs.mkdir(layout.home, { recursive: true });
-		await copyTaskInput(descriptor, layout.workspace);
-
-		const environment = await context.suite.prepareTrial?.(cell, {
-			trialDir: layout.trialDir,
-			workspace: layout.workspace,
-			signal: context.signal,
-			options: context.options,
-		});
-		const timeoutSec = trialTimeoutFromOptions(descriptor.timeBudgetSec, context.options);
-		let run: AgentRun | undefined;
-		let failure: unknown = null;
-		try {
-			stageCredentials(source, model.provider, layout.agentDir);
-			const instruction = environment?.instruction ?? (await taskInstruction(descriptor));
-			const configFiles = await trialConfigFiles(variant, environment, layout, context.workDir);
-			const command = localCommand({
-				model: model.id,
-				instruction,
-				tools: environment?.tools ?? optionTools(context.options),
-				configFiles,
-				build: variant.build ?? null,
-				agentDir: layout.agentDir,
-				options: context.options ?? {},
-			});
-			const prompts = variant.promptVariantPath
-				? (await loadAndValidatePromptOverlay(variant.promptVariantPath, context.workDir)).overrides
-				: null;
-			const rules = await sandboxRules({
-				hidden: hiddenDirectories(context, variant.build ?? null),
-				read: [...command.readable, ...configFiles, ...(environment?.readable ?? [])],
-				write: [layout.workspace, layout.home, layout.agentDir],
-			});
-			run = await runAgent({
-				launch: sandboxedLaunch(landlockSandbox(), rules, command.command, command.args),
-				cwd: layout.workspace,
-				env: {
-					...trialEnvironment(process.env),
-					HOME: layout.home,
-					USERPROFILE: layout.home,
-					...environment?.env,
-					...command.env,
-					...(prompts ? { VEYYON_EVAL_PROMPTS: JSON.stringify(prompts) } : {}),
-				},
-				timeoutMs: timeoutSec * 1000,
-				signal: context.signal,
-			});
-		} catch (cause) {
-			failure = cause;
+		await fs.rm(layout.scratch, { recursive: true, force: true });
+		for (const dir of [layout.trialDir, layout.workspace, layout.home, layout.tmp]) {
+			await fs.mkdir(dir, { recursive: true });
 		}
-		await fs.rm(layout.agentDir, { recursive: true, force: true });
-		const finishProblem = environment
-			? await teardownWithin(() => environment.finish(), teardownGraceFromOptions(context.options))
-			: null;
-		if (failure !== null) throw failure;
-		if (!run) throw new Error("the agent never started");
-		if (finishProblem) throw new Error(`the suite could not finish the trial: ${finishProblem}`);
+		const timeoutSec = trialTimeoutFromOptions(descriptor.timeBudgetSec, context.options);
+		let run: AgentRun;
+		try {
+			await copyTaskInput(descriptor, layout.workspace);
+			run = await this.#runPrepared(cell, context, {
+				descriptor,
+				variant,
+				model: model.id,
+				provider: model.provider,
+				source,
+				layout,
+				localCommand,
+				timeoutSec,
+			});
+		} finally {
+			// The workspace is the agent's output; the rest of the scratch (home, credential, temp) is not kept.
+			await fs
+				.cp(layout.workspace, path.join(layout.trialDir, "workspace"), { recursive: true, verbatimSymlinks: true })
+				.catch(() => {});
+			await fs.rm(layout.scratch, { recursive: true, force: true });
+		}
 
 		const answer = finalText(run.stdout);
 		await fs.writeFile(path.join(layout.trialDir, TRIAL_FILES.events), run.stdout);
@@ -235,6 +241,67 @@ export class LocalCliBackend implements ExecutionBackend {
 				sandboxed: landlockSandbox().usable,
 			},
 		};
+	}
+
+	/** Start the suite's services, run the agent under the sandbox, then let the suite finish. */
+	async #runPrepared(cell: TrialCell, context: RunContext, trial: PreparedTrial): Promise<AgentRun> {
+		const { layout, variant } = trial;
+		const environment = await context.suite.prepareTrial?.(cell, {
+			trialDir: layout.trialDir,
+			workspace: layout.workspace,
+			signal: context.signal,
+			options: context.options,
+		});
+		let run: AgentRun | undefined;
+		let failure: unknown = null;
+		try {
+			stageCredentials(trial.source, trial.provider, layout.agentDir);
+			const instruction = environment?.instruction ?? (await taskInstruction(trial.descriptor));
+			const configFiles = await trialConfigFiles(variant, environment, layout, context.workDir);
+			const command = trial.localCommand({
+				model: trial.model,
+				instruction,
+				tools: environment?.tools ?? optionTools(context.options),
+				configFiles,
+				build: variant.build ?? null,
+				agentDir: layout.agentDir,
+				options: context.options ?? {},
+			});
+			const prompts = variant.promptVariantPath
+				? (await loadAndValidatePromptOverlay(variant.promptVariantPath, context.workDir)).overrides
+				: null;
+			const rules = await sandboxRules({
+				hidden: hiddenDirectories(context, variant.build ?? null),
+				read: [...command.readable, ...configFiles, ...(environment?.readable ?? [])],
+				write: [layout.scratch],
+			});
+			run = await runAgent({
+				launch: sandboxedLaunch(landlockSandbox(), rules, command.command, command.args),
+				cwd: layout.workspace,
+				env: {
+					...trialEnvironment(process.env),
+					HOME: layout.home,
+					USERPROFILE: layout.home,
+					TMPDIR: layout.tmp,
+					TMP: layout.tmp,
+					TEMP: layout.tmp,
+					...environment?.env,
+					...command.env,
+					...(prompts ? { VEYYON_EVAL_PROMPTS: JSON.stringify(prompts) } : {}),
+				},
+				timeoutMs: trial.timeoutSec * 1000,
+				signal: context.signal,
+			});
+		} catch (cause) {
+			failure = cause;
+		}
+		const finishProblem = environment
+			? await teardownWithin(() => environment.finish(), teardownGraceFromOptions(context.options))
+			: null;
+		if (failure !== null) throw failure;
+		if (!run) throw new Error("the agent never started");
+		if (finishProblem) throw new Error(`the suite could not finish the trial: ${finishProblem}`);
+		return run;
 	}
 
 	async cleanup(cell: TrialCell, context: RunContext): Promise<void> {
@@ -327,13 +394,17 @@ function optionTools(options: Readonly<Record<string, unknown>> | undefined): re
 }
 
 /**
- * What a trial cannot read: the runner's home, the runs directory, this package (graders, fixture
- * sources) and the tests of the build it runs.
+ * What a trial cannot read: the runner's home, the runs directory, every trial's scratch (its own
+ * is granted back), this package (graders, fixture sources) and the tests of the build it runs.
  */
 function hiddenDirectories(context: RunContext, build: string | null): string[] {
-	const hidden = [os.homedir(), path.resolve(context.runsDir || defaultRunsDir()), evalsPackageDir()];
-	if (build) hidden.push(path.join(path.resolve(build), "tests"));
-	return hidden;
+	return [
+		os.homedir(),
+		path.resolve(context.runsDir || defaultRunsDir()),
+		trialScratchRoot(),
+		evalsPackageDir(),
+		path.join(path.resolve(build ?? repoRootDir()), "tests"),
+	];
 }
 
 interface AgentLaunch {

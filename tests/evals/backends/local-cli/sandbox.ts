@@ -56,18 +56,18 @@ export interface SandboxLayout {
 	readonly hidden: readonly string[];
 	/** Paths the trial reads and runs: the build, the runtime, the overlays. */
 	readonly read: readonly string[];
-	/** Paths the trial changes: its workspace, its home, its credential directory. */
+	/** Paths the trial changes: its scratch directory, which holds its workspace, home and temp. */
 	readonly write: readonly string[];
 }
 
 /**
  * Landlock rules for one trial. Every directory can be listed and every file read, except in the
- * hidden directories; `/tmp`, `/dev` and `/proc` are writable, which Chrome needs.
+ * hidden directories. `/dev` and `/proc` are writable, which Chrome needs (`/dev/shm` among them);
+ * the system temp directory is not, since each trial has a TMPDIR of its own.
  */
 export async function sandboxRules(layout: SandboxLayout): Promise<SandboxRule[]> {
 	const grants: SandboxRule[] = [
 		{ path: "/", access: "read" },
-		{ path: "/tmp", access: "write" },
 		{ path: "/dev", access: "write" },
 		{ path: "/proc", access: "write" },
 		...layout.read.map(entry => ({ path: entry, access: "read" as const })),
