@@ -4,8 +4,11 @@
  * Cards move by dragging (pointer events on most boards, the HTML drag-and-drop events on a board
  * whose `drag` is `html5`) and through a "Move to…" dialog; a title is edited in place after a
  * double-click; a card opens in a modal with a label popover, an assignee select, a due-date field
- * with a calendar popover, a checklist and comments. Every change is posted to the server, which
- * is the only record a grader reads. The script reads `TRELLIS`, which the page defines before it.
+ * with a calendar popover, a checklist, comments and other members' activity. Every change is
+ * posted to the server, which is the only record a grader reads; the dialog's changes state the
+ * card version it shows. A change the server refuses as stale (409) leaves a banner: in the dialog
+ * until the card is reloaded, and on the board across the reload that follows. The script reads
+ * `TRELLIS`, which the page defines before it.
  */
 
 export const BOARD_STYLE = String.raw`
@@ -70,6 +73,8 @@ kbd{font:11px ui-monospace,monospace;background:#f1f5f9;border:1px solid #cbd5e1
 .dow{font-size:11px;color:#6b7280}
 .composer textarea{width:100%;min-height:54px;resize:vertical}
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#991b1b;color:#fff;padding:8px 14px;border-radius:6px;z-index:90}
+.stale{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fef3c7;border:1px solid #f59e0b;color:#78350f;padding:8px 12px;border-radius:6px;margin-bottom:10px}
+.activity{border-top:1px solid #e5e7eb;padding:4px 0}
 .help-table td:first-child{white-space:nowrap}
 `;
 
@@ -99,7 +104,11 @@ function post(url, body) {
 	return fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) })
 		.then(function (response) {
 			return response.json().then(function (data) {
-				if (!response.ok) throw new Error(data.error || "The change was not saved.");
+				if (!response.ok) {
+					var error = new Error(data.error || "The change was not saved.");
+					error.status = response.status;
+					throw error;
+				}
 				return data;
 			});
 		});
@@ -111,6 +120,26 @@ function toast(message) {
 	toast.timer = setTimeout(function () { toastEl.hidden = true; }, 4000);
 }
 function reload() { location.reload(); }
+// A change the server refuses as stale (409) was based on an older copy of its card. The board
+// reloads to show the latest, and a banner that survives the reload says the change was not saved.
+var STALE_KEY = "trellis-stale";
+function staleBoard(id, refusal) {
+	var card = cardEl(id);
+	var key = card ? $(".key", card).textContent : "a card";
+	sessionStorage.setItem(STALE_KEY, "Your change to " + key + " was not saved: the card changed since you opened it. The board now shows the latest; make the change again.");
+	toast(refusal);
+	setTimeout(reload, 1500);
+}
+var staleNotice = sessionStorage.getItem(STALE_KEY);
+if (staleNotice) {
+	sessionStorage.removeItem(STALE_KEY);
+	var staleBanner = h("div", { class: "stale", id: "stale-banner", role: "alert" }, [
+		h("span", { text: staleNotice }),
+		h("button", { type: "button", class: "secondary", text: "Dismiss", onclick: function () { staleBanner.remove(); } }),
+	]);
+	var boardBar = $(".boardbar");
+	boardBar.parentNode.insertBefore(staleBanner, boardBar);
+}
 function cardId(card) { return card.getAttribute("data-card"); }
 function cardEl(id) { return board.querySelector('.kcard[data-card="' + id + '"]'); }
 function listOf(column) { return board.querySelector('.cards[data-list="' + column + '"]'); }
@@ -201,6 +230,7 @@ function nextCardAfter(node, skip) {
 }
 function sendMove(id, column, before) {
 	return post("/api/cards/" + id + "/move", { column: column, before: before }).then(reload, function (error) {
+		if (error.status === 409) { staleBoard(id, error.message); return; }
 		toast(error.message);
 		setTimeout(reload, 1500);
 	});
@@ -465,6 +495,7 @@ function startTitleEdit(card) {
 		if (!save || !value || value === original) return;
 		title.textContent = value;
 		post("/api/cards/" + cardId(card), { title: value }).catch(function (error) {
+			if (error.status === 409) { staleBoard(cardId(card), error.message); return; }
 			title.textContent = original;
 			toast(error.message);
 		});
@@ -519,7 +550,10 @@ function openComposer(column) {
 
 // ---- Archiving ------------------------------------------------------------------------------
 function archive(id) {
-	post("/api/cards/" + id + "/archive").then(reload, function (error) { toast(error.message); });
+	post("/api/cards/" + id + "/archive").then(reload, function (error) {
+		if (error.status === 409) staleBoard(id, error.message);
+		else toast(error.message);
+	});
 }
 
 // ---- The card modal -------------------------------------------------------------------------
@@ -527,14 +561,22 @@ var modal = null;
 var modalDirty = false;
 var labelsOpen = false;
 var modalCard = null;
+/** The refusal of a change the open card's copy was too old for; the dialog shows it until the card is read again. */
+var modalStale = null;
 var calendar = null;
-function openCard(id) {
-	closeMenu();
+function fetchCard(id, then) {
 	fetch("/api/cards/" + id).then(function (response) { return response.json(); }).then(function (data) {
 		if (data.error) { toast(data.error); return; }
+		then(data.card);
+	});
+}
+function openCard(id) {
+	closeMenu();
+	fetchCard(id, function (card) {
 		modalDirty = false;
 		labelsOpen = false;
-		renderModal(data.card);
+		modalStale = null;
+		renderModal(card);
 	});
 }
 function closeModal(keep) {
@@ -543,14 +585,22 @@ function closeModal(keep) {
 	modal = null;
 	calendar = null;
 	labelsOpen = false;
-	if (modalDirty && !keep) reload();
+	var stale = modalStale;
+	modalStale = null;
+	if ((modalDirty || stale) && !keep) reload();
 }
+/** Post a change stating the version of the card the dialog shows. */
 function change(card, path, body, onError) {
-	return post("/api/cards/" + card.id + path, body).then(function (data) {
+	return post("/api/cards/" + card.id + path, Object.assign({ version: card.version }, body)).then(function (data) {
 		modalDirty = true;
 		renderModal(data.card);
 		return data.card;
 	}, function (error) {
+		if (error.status === 409) {
+			modalStale = error.message;
+			if (modal) renderModal(card);
+			return;
+		}
 		if (onError) onError(error.message);
 		else toast(error.message);
 	});
@@ -708,9 +758,24 @@ function renderModal(card) {
 	var comment = h("textarea", { id: "cd-comment", "aria-label": "Write a comment", placeholder: "Write a comment…" });
 	var dialog = h("div", { class: "dialog card-dialog", role: "dialog", "aria-modal": "true", "aria-labelledby": "cd-title" }, [
 		h("button", { type: "button", class: "close", "aria-label": "Close", text: "×", onclick: function () { closeModal(); } }),
+		modalStale ? h("div", { class: "stale", id: "cd-stale", role: "alert" }, [
+			h("span", { text: "Not saved. " + modalStale }),
+			h("button", { type: "button", id: "cd-reload", text: "Reload card", onclick: function () {
+				fetchCard(card.id, function (latest) {
+					modalStale = null;
+					renderModal(latest);
+				});
+			} }),
+		]) : null,
 		h("div", { class: "muted", text: card.key + " · in list " + columnName(card.column) }),
 		h("h2", { id: "cd-title", text: card.title }),
 		card.completed ? h("p", { class: "notice", text: "Completed on " + card.completedLong }) : null,
+		card.activity.length ? h("section", { "aria-label": "Activity" }, [
+			h("h3", { text: "Activity" }),
+			h("div", {}, card.activity.map(function (entry) {
+				return h("div", { class: "activity" }, [h("strong", { text: entry.author }), h("span", { text: " " + entry.body }), h("span", { class: "muted", text: " · " + entry.date })]);
+			})),
+		]) : null,
 		labelsSection,
 		h("section", { "aria-label": "Assignee" }, [h("h3", { text: "Assignee" }), assignee]),
 		dueSection,

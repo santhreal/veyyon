@@ -5,7 +5,7 @@
  */
 
 import { type KitTask, kitTask } from "../../../../engine/kit/catalog";
-import { answerHasNumber, answerNamesOnly, normalizeText } from "../../../../engine/kit/checks";
+import { answerHasNumber, answerNamesOnly, answerStatesOnly, normalizeText } from "../../../../engine/kit/checks";
 import { FormClient } from "../../../../engine/kit/form-client";
 import { Seeded } from "../../../../engine/kit/seeded";
 import {
@@ -22,7 +22,7 @@ import {
 	worldOf,
 } from "./data";
 import { type CellValue, columnIndex, formulaReferences, parseCellName } from "./formula";
-import { type GridSnapshot, type SheetState, startSheetSite } from "./site";
+import { type GridSnapshot, type SaveFaultRecord, type SheetState, startSheetSite } from "./site";
 
 /** Every workbook's raw inputs, by workbook id, then sheet name, then address. */
 type Inputs = Readonly<Record<string, Readonly<Record<string, Readonly<Record<string, string>>>>>>;
@@ -1154,10 +1154,256 @@ const reconcileLedger = kitTask<SheetTaskState<Reconcile>>({
 	],
 });
 
+// ---------------------------------------------------------------------------------------------
+// sheet-entries-after-failed-save
+
+interface OrderLine {
+	readonly row: number;
+	readonly sku: string;
+	readonly item: string;
+	readonly quantity: number;
+	readonly priceCents: number;
+}
+
+interface FailedSave {
+	readonly bookName: string;
+	readonly lines: readonly OrderLine[];
+	/** The Order sheet's row holding the Order total formula, in column F. */
+	readonly totalRow: number;
+	readonly totalCents: number;
+	/** The row whose Unit price save drops the connection, and the edits the outage loses. */
+	readonly faultRow: number;
+	readonly faultEdits: number;
+}
+
+interface FailedSaveExpected extends FailedSave {
+	/** The Order totals without the prices the dropped saves lost, and with them counted twice. */
+	readonly decoyCents: readonly number[];
+}
+
+const ORDER_SHEET = "Order";
+const PRICE_SHEET = "Price list";
+const PACKS = ["Single", "Pair", "Pack of 4", "Pack of 6", "Case of 12"];
+
+function planFailedSave(rng: Seeded): { world: GridWorld; book: Workbook; plan: FailedSave } {
+	const skus = new Set<string>();
+	const newSku = (noun: string): string => {
+		const prefix = (NOUN_CATEGORY[noun] as string).slice(0, 3).toUpperCase();
+		for (;;) {
+			const sku = `${prefix}-${rng.int(1000, 9999)}`;
+			if (skus.has(sku)) continue;
+			skus.add(sku);
+			return sku;
+		}
+	};
+	const products = productNames(rng, rng.int(30, 38)).map(entry => ({
+		name: entry.name,
+		sku: newSku(entry.noun),
+		pack: rng.pick(PACKS),
+		cents: rng.int(250, 24000),
+		noun: entry.noun,
+	}));
+	const count = rng.int(9, 14);
+	const ordered = products.slice(0, count);
+	// Two ordered products also sell in another pack under their own SKU, so a lookup by name finds two prices.
+	const variants = rng.sample(ordered, 2).map(entry => ({
+		...entry,
+		sku: newSku(entry.noun),
+		pack: rng.pick(PACKS.filter(pack => pack !== entry.pack)),
+		cents: entry.cents + rng.int(1, 40) * 25,
+	}));
+	const lines = ordered.map((entry, i) => ({
+		row: i + 2,
+		sku: entry.sku,
+		item: entry.name,
+		quantity: rng.int(1, 36),
+		priceCents: entry.cents,
+	}));
+	const lastLine = count + 1;
+	const totalRow = count + 3;
+	const order = sheetFrom(ORDER_SHEET, [
+		["Line", "SKU", "Item", "Quantity", "Unit price", "Amount"],
+		...lines.map((line, i) => [i + 1, line.sku, line.item, line.quantity, "", `=ROUND(D${line.row}*E${line.row},2)`]),
+		[],
+		["", "", "", "", "Order total", `=SUM(F2:F${lastLine})`],
+	]);
+	const priceList = sheetFrom(PRICE_SHEET, [
+		["SKU", "Item", "Pack", "Unit price"],
+		...rng
+			.shuffle([...products, ...variants])
+			.map(entry => [entry.sku, entry.name, entry.pack, plainAmount(entry.cents)]),
+	]);
+	const bookName = `Purchase order PO-${rng.int(4100, 4999)}`;
+	const book = newWorkbook(rng, bookName, [order, priceList]);
+	// The outage starts after two saved prices and leaves at least one price after its batch.
+	const faultEdits = rng.int(3, 4);
+	const faultRow = rng.int(2, count - faultEdits - 1) + 2;
+	return {
+		world: worldOf(rng, [book]),
+		book,
+		plan: {
+			bookName,
+			lines,
+			totalRow,
+			totalCents: lines.reduce((sum, line) => sum + line.quantity * line.priceCents, 0),
+			faultRow,
+			faultEdits,
+		},
+	};
+}
+
+/** The Order totals a lost batch gives: the lines whose price a dropped save lost, left out and counted twice. */
+function lostBatchTotals(plan: FailedSave, book: string, record: SaveFaultRecord | undefined): number[] {
+	const lostCells = new Set(
+		(record?.lost ?? []).filter(edit => edit.book === book && edit.sheet === ORDER_SHEET).map(edit => edit.cell),
+	);
+	const lostLines = plan.lines.filter(line => lostCells.has(`E${line.row}`));
+	// A trial whose connection never dropped is graded against the batch the plan aimed at.
+	const batch =
+		lostLines.length > 0
+			? lostLines
+			: plan.lines.filter(line => line.row >= plan.faultRow && line.row < plan.faultRow + plan.faultEdits);
+	const lostCents = batch.reduce((sum, line) => sum + line.quantity * line.priceCents, 0);
+	return [plan.totalCents - lostCents, plan.totalCents + lostCents].filter(cents => cents > 0);
+}
+
+interface PageCell {
+	readonly raw: string;
+	readonly display: string;
+}
+
+/** A sheet's cells as its page holds them after a reload, read from the page's own data. */
+async function reloadedCells(client: FormClient, book: string, sheet: string): Promise<Record<string, PageCell>> {
+	const response = await client.get(`/wb/${book}?sheet=${encodeURIComponent(sheet)}`);
+	const data = /<script type="application\/json" id="sheet-data">([\s\S]*?)<\/script>/.exec(response.body)?.[1];
+	if (response.status !== 200 || data === undefined) {
+		throw new Error(`the ${sheet} sheet answered ${response.status} without its data`);
+	}
+	const config: { readonly cells: Record<string, PageCell> } = JSON.parse(data);
+	return config.cells;
+}
+
+/** Whether every formula the workbooks started with still holds the same input. */
+function formulasKept(state: SheetTaskState<unknown>): boolean {
+	return Object.entries(state.expected.before).every(([id, sheets]) => {
+		const book = state.workbooks.find(entry => entry.id === id);
+		return Object.entries(sheets).every(([name, cells]) => {
+			const now = book?.sheets.find(entry => entry.name === name)?.cells ?? {};
+			return Object.entries(cells).every(([cell, raw]) => !raw.startsWith("=") || now[cell] === raw);
+		});
+	});
+}
+
+export const sheetEntriesAfterFailedSaveTask = kitTask<SheetTaskState<FailedSaveExpected>>({
+	id: "sheet-entries-after-failed-save",
+	title: "Price every line of an order when a batch of saves is lost, then report its total",
+	capabilities: ["recovery", "inline-edit", "reading", "multi-page"],
+	difficulty: "expert",
+	timeBudgetSec: 900,
+	async start({ seed }) {
+		const rng = new Seeded(seed);
+		const { world, book, plan } = planFailedSave(rng);
+		const before = inputsOf(world);
+		const site = await startSheetSite(world, {
+			saveFault: { book: book.id, sheet: ORDER_SHEET, cell: `E${plan.faultRow}`, edits: plan.faultEdits },
+		});
+		return {
+			instruction: [
+				intro(site.origin),
+				`The workbook "${plan.bookName}" has an ${ORDER_SHEET} sheet, one row per order line, and a ${PRICE_SHEET} sheet that gives the unit price of every SKU.`,
+				`On the ${ORDER_SHEET} sheet, enter the Unit price of every order line: the Unit price the ${PRICE_SHEET} gives for that line's SKU. Every price must be saved in the workbook. Change nothing else in any workbook.`,
+				"Then reply with the Order total the sheet shows once every price is saved. State that one total and no other figure.",
+			].join("\n"),
+			solve: async () => {
+				const client = new FormClient(site.origin);
+				const enter = async (line: OrderLine): Promise<void> => {
+					const response = await client.postJson(`/api/wb/${book.id}/cells`, {
+						sheet: ORDER_SHEET,
+						edits: [{ cell: `E${line.row}`, raw: plainAmount(line.priceCents) }],
+					});
+					// A save the dropped connection took answers 503; the read-back below finds its price missing.
+					if (response.status !== 200 && response.status !== 503) {
+						throw new Error(`saving E${line.row} answered ${response.status}: ${response.body}`);
+					}
+				};
+				// Enter every price as the page saves them, one cell at a time, then reload the sheet and
+				// enter again every price it does not hold.
+				for (const line of plan.lines) await enter(line);
+				for (let round = 1; ; round++) {
+					const cells = await reloadedCells(client, book.id, ORDER_SHEET);
+					const missing = plan.lines.filter(line => cells[`E${line.row}`]?.raw !== plainAmount(line.priceCents));
+					if (missing.length === 0) return `The order total is ${cells[`F${plan.totalRow}`]?.display}.`;
+					if (round > 3) {
+						throw new Error(`unsaved after ${round} reloads: ${missing.map(line => `E${line.row}`).join(", ")}`);
+					}
+					for (const line of missing) await enter(line);
+				}
+			},
+			finish: async () => {
+				const snapshot = await site.finish();
+				return {
+					...snapshot,
+					expected: {
+						...plan,
+						book: book.id,
+						before,
+						decoyCents: lostBatchTotals(plan, book.id, snapshot.saveFault),
+					},
+				};
+			},
+		};
+	},
+	checks: [
+		{
+			id: "prices-saved",
+			description: "every order line's Unit price holds the Price list's price for its SKU on the server",
+			pass: state => {
+				const sheet = sheetOf(state, ORDER_SHEET);
+				return state.expected.lines.every(line =>
+					numberNear(sheet?.values[`E${line.row}`], line.priceCents / 100, 1e-9),
+				);
+			},
+		},
+		{
+			id: "formulas-intact",
+			description:
+				"every formula the workbooks started with, the Amounts and the Order total among them, is unchanged",
+			pass: state => formulasKept(state),
+		},
+		{
+			id: "nothing-else-changed",
+			description:
+				"no cell but the order lines' Unit prices changed in any workbook: no row added, moved or overwritten",
+			pass: state =>
+				onlyChanged(
+					state,
+					state.expected.lines.map(line => cellKey(state.expected.book, ORDER_SHEET, `E${line.row}`)),
+				),
+		},
+		{
+			id: "save-failure-met",
+			description: "the connection dropped during the trial and lost a batch of saves",
+			pass: state => state.saveFault?.fired === true,
+		},
+		{
+			id: "answer-order-total",
+			description:
+				"the reply states the Order total, and not the total without the lost prices or with them counted twice",
+			pass: (state, answer) =>
+				answerStatesOnly(
+					answer,
+					state.expected.totalCents / 100,
+					state.expected.decoyCents.map(cents => cents / 100),
+				),
+		},
+	],
+});
+
 export const SHEET_TASKS: readonly KitTask[] = [
 	fillLineTotals,
 	fixFlaggedCells,
 	sortAndAnswer,
 	crossSheetSummary,
 	reconcileLedger,
+	sheetEntriesAfterFailedSaveTask,
 ];

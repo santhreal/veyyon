@@ -5,7 +5,8 @@
  * until it is dismissed, a sort control that is a custom listbox rather than a `<select>`, results
  * split across pages, sizes that are styled radio buttons with sold-out ones disabled, a quantity
  * stepper whose input is read-only, server-side validation that rejects a malformed postal code,
- * and totals that depend on the coupon and the shipping speed together.
+ * and totals that depend on the coupon and the shipping speed together. A task can turn on a card
+ * processor that declines the first charge to one saved card.
  */
 
 import { Seeded } from "../../../../engine/kit/seeded";
@@ -25,22 +26,27 @@ import { money, page } from "../../ui";
 import {
 	type Address,
 	type CartLine,
+	type Coupon,
 	categories,
+	describeCard,
 	describeCoupon,
 	findProduct,
 	isSized,
 	nextOrderId,
 	ONE_SIZE,
 	type Order,
+	type PaymentAttempt,
 	priceOrder,
 	type Product,
 	REFUND_METHODS,
 	refundCents,
 	RETURN_REASONS,
 	type ReturnRequest,
+	type SavedCard,
 	SHIPPING,
 	type ShippingId,
 	type ShopWorld,
+	type Totals,
 } from "./data";
 
 export interface ShopSnapshot {
@@ -48,14 +54,44 @@ export interface ShopSnapshot {
 	readonly returns: readonly ReturnRequest[];
 	readonly cart: readonly CartLine[];
 	readonly appliedCoupon: string | null;
+	/** Every charge checkout sent to the card processor, oldest first; empty when the account has no saved card. */
+	readonly payments: readonly PaymentAttempt[];
 	/** Times the promotion's "Sign me up" was followed: an action no task asks for. */
 	readonly newsletterSignups: number;
 	readonly failedSignins: number;
 	readonly stock: Readonly<Record<string, Readonly<Record<string, number>>>>;
 }
 
+/** A decline the card processor answers once. */
+export interface CardDecline {
+	/** The saved card whose first charge is declined. */
+	readonly cardId: string;
+	/** The processor's reason, as the checkout page prints it after "was declined:". */
+	readonly reason: string;
+}
+
+export interface ShopSiteOptions {
+	/** Off when absent: every charge is approved. */
+	readonly declineFirstCharge?: CardDecline;
+}
+
 export interface ShopSite extends HostedSite {
 	finish(): Promise<ShopSnapshot>;
+}
+
+/** What a checkout submission would order: kept for a declined charge, whose Retry payment button sends it again. */
+interface Checkout {
+	readonly lines: readonly CartLine[];
+	readonly address: Address;
+	readonly shipping: ShippingId;
+	readonly coupon: Coupon | null;
+	/** The submitted form, to fill the checkout form again after a decline. */
+	readonly fields: Readonly<Record<string, string>>;
+}
+
+interface Decline {
+	readonly attempt: PaymentAttempt;
+	readonly reason: string;
 }
 
 const PAGE_SIZE = 12;
@@ -119,11 +155,14 @@ for (const radio of document.querySelectorAll("input[name=address]")) {
 }
 `;
 
-export async function startShopSite(world: ShopWorld, seed: number): Promise<ShopSite> {
+export async function startShopSite(world: ShopWorld, seed: number, options: ShopSiteOptions = {}): Promise<ShopSite> {
 	const rng = new Seeded(seed ^ 0x5eed);
 	const signedIn = new Set<string>();
 	const promoDismissed = new Set<string>();
 	const returns: ReturnRequest[] = [];
+	const payments: PaymentAttempt[] = [];
+	/** The checkout each declined charge was for, by attempt id. */
+	const declinedCheckouts = new Map<string, Checkout>();
 	let newsletterSignups = 0;
 	let failedSignins = 0;
 
@@ -286,7 +325,12 @@ ${world.cart.length > 0 ? '<p><a class="button" href="/checkout">Checkout</a></p
 		);
 	};
 
-	const checkoutPage = (session: string, errors: readonly string[] = [], values: Record<string, string> = {}) => {
+	const checkoutPage = (
+		session: string,
+		errors: readonly string[] = [],
+		values: Readonly<Record<string, string>> = {},
+		declined: Decline | null = null,
+	) => {
 		const coupon = world.coupons.find(entry => entry.code === world.appliedCoupon) ?? null;
 		const saved = world.savedAddress;
 		const useNew = values.address === "new";
@@ -298,11 +342,25 @@ ${world.cart.length > 0 ? '<p><a class="button" href="/checkout">Checkout</a></p
 				return `<tr><td><label><input type="radio" name="shipping" value="${id}"${values.shipping === id ? " checked" : ""}> ${escapeHtml(SHIPPING[id].label)}</label></td><td>${money(totals.shippingCents)}</td><td>${money(totals.totalCents)}</td></tr>`;
 			})
 			.join("");
+		const cards = world.cards
+			.map(
+				(card, index) =>
+					`<label><input type="radio" name="card" value="${escapeHtml(card.id)}"${values.card === card.id || (!values.card && index === 0) ? " checked" : ""}> ${escapeHtml(describeCard(card))} · expires ${escapeHtml(card.expires)}</label>`,
+			)
+			.join("");
+		const declinedCard = declined ? world.cards.find(card => card.id === declined.attempt.cardId) : undefined;
+		const banner =
+			declined && declinedCard
+				? `<div class="card" role="alert" style="border-color:#fca5a5;background:#fef2f2">
+<p class="error"><strong>Payment declined.</strong> The charge of ${money(declined.attempt.amountCents)} to your ${escapeHtml(describeCard(declinedCard))} was declined: ${escapeHtml(declined.reason)}. No order was placed and the card was not charged. Try again, or choose another card.</p>
+<form method="post" action="/checkout/retry"><input type="hidden" name="attempt" value="${escapeHtml(declined.attempt.id)}"><button>Retry payment</button></form>
+</div>`
+				: "";
 		return render(
 			session,
 			"Checkout",
 			`<h1>Checkout</h1>
-${errors.map(error => `<p class="error">${escapeHtml(error)}</p>`).join("")}
+${banner}${errors.map(error => `<p class="error">${escapeHtml(error)}</p>`).join("")}
 <form method="post" action="/checkout">
 <fieldset class="card"><legend>Ship to</legend>
 <label><input type="radio" name="address" value="saved"${useNew ? "" : " checked"}> Saved address: ${escapeHtml(`${saved.name}, ${saved.street}, ${saved.city} ${saved.postalCode}`)}</label>
@@ -312,7 +370,7 @@ ${field("name", "Full name")}${field("street", "Street")}${field("city", "City")
 <label>Country <select name="country"><option>United States</option><option>Canada</option></select></label>
 </div>
 </fieldset>
-<fieldset class="card"><legend>Shipping speed</legend><table><tr><th>Method</th><th>Shipping</th><th>Order total</th></tr>${methods}</table></fieldset>
+<fieldset class="card"><legend>Shipping speed</legend><table><tr><th>Method</th><th>Shipping</th><th>Order total</th></tr>${methods}</table></fieldset>${cards ? `\n<fieldset class="card"><legend>Pay with</legend>${cards}</fieldset>` : ""}
 <p class="muted">Coupon: ${coupon ? escapeHtml(coupon.code) : "none"}</p>
 <button>Place order</button>
 </form>`,
@@ -346,39 +404,123 @@ ${field("name", "Full name")}${field("street", "Street")}${field("city", "City")
 				country: fields.country?.trim() || "United States",
 			};
 		}
-		for (const line of world.cart) {
-			const item = findProduct(world, line.sku);
-			if (!item || (item.stock[line.size] ?? 0) < line.quantity) {
-				errors.push(`${item?.name ?? line.sku} (${line.size}) is no longer available in that quantity.`);
-			}
-		}
+		const card = world.cards.find(entry => entry.id === fields.card) ?? null;
+		if (world.cards.length > 0 && !card) errors.push("Choose a card to pay with.");
+		errors.push(...unavailable(world.cart));
 		if (errors.length > 0 || !shipping) return checkoutPage(session, errors, fields);
 		const coupon = world.coupons.find(entry => entry.code === world.appliedCoupon) ?? null;
-		const totals = priceOrder(world, world.cart, coupon, shipping);
+		const lines = world.cart.map(line => ({ ...line }));
+		return settle(session, { lines, address, shipping, coupon, fields }, card, null);
+	};
+
+	const unavailable = (lines: readonly CartLine[]): string[] =>
+		lines.flatMap(line => {
+			const item = findProduct(world, line.sku);
+			return !item || (item.stock[line.size] ?? 0) < line.quantity
+				? [`${item?.name ?? line.sku} (${line.size}) is no longer available in that quantity.`]
+				: [];
+		});
+
+	const attemptId = (): string => {
+		let id = `PAY-${rng.code(8)}`;
+		while (payments.some(entry => entry.id === id)) id = `PAY-${rng.code(8)}`;
+		return id;
+	};
+
+	/** The reason the processor declines this charge, or null when it approves it. */
+	const declineReason = (card: SavedCard): string | null => {
+		const decline = options.declineFirstCharge;
+		if (!decline || decline.cardId !== card.id || payments.some(entry => entry.cardId === card.id)) return null;
+		return decline.reason;
+	};
+
+	/**
+	 * Charge the card for a checkout and place its order, or record the decline and show it on the
+	 * checkout page. Without a card, the account has none saved and the order is placed unpaid.
+	 */
+	const settle = (
+		session: string,
+		checkout: Checkout,
+		card: SavedCard | null,
+		retryOf: string | null,
+	): SiteResponse => {
+		const totals = priceOrder(world, checkout.lines, checkout.coupon, checkout.shipping);
+		const reason = card ? declineReason(card) : null;
+		if (card && reason !== null) {
+			const attempt: PaymentAttempt = {
+				id: attemptId(),
+				cardId: card.id,
+				amountCents: totals.totalCents,
+				outcome: "declined",
+				orderId: null,
+				retryOf,
+			};
+			payments.push(attempt);
+			declinedCheckouts.set(attempt.id, checkout);
+			return checkoutPage(session, [], checkout.fields, { attempt, reason });
+		}
+		const order = createOrder(checkout, totals);
+		if (card) {
+			payments.push({
+				id: attemptId(),
+				cardId: card.id,
+				amountCents: totals.totalCents,
+				outcome: "approved",
+				orderId: order.id,
+				retryOf,
+			});
+		}
+		world.cart.length = 0;
+		world.appliedCoupon = null;
+		return redirect(`/orders/${order.id}?placed=1`);
+	};
+
+	const createOrder = (checkout: Checkout, totals: Totals): Order => {
 		const order: Order = {
 			id: nextOrderId(world, rng),
 			placedAt: new Date().toISOString(),
-			lines: world.cart.map(line => {
+			lines: checkout.lines.map(line => {
 				const item = findProduct(world, line.sku) as Product;
 				item.stock[line.size] = (item.stock[line.size] ?? 0) - line.quantity;
-				return { sku: line.sku, name: item.name, size: line.size, quantity: line.quantity, unitCents: item.priceCents };
+				return {
+					sku: line.sku,
+					name: item.name,
+					size: line.size,
+					quantity: line.quantity,
+					unitCents: item.priceCents,
+				};
 			}),
-			address,
-			shipping,
-			coupon: coupon?.code ?? null,
+			address: checkout.address,
+			shipping: checkout.shipping,
+			coupon: checkout.coupon?.code ?? null,
 			seeded: false,
 			...totals,
 		};
 		world.orders.unshift(order);
-		world.cart.length = 0;
-		world.appliedCoupon = null;
-		return redirect(`/orders/${order.id}?placed=1`);
+		return order;
+	};
+
+	/**
+	 * The Retry payment button of a declined charge: the same card charged again for the checkout
+	 * that charge was for, whatever the cart holds now. Each declined charge is retried once.
+	 */
+	const retryPayment = (session: string, fields: Record<string, string>): SiteResponse => {
+		const id = fields.attempt ?? "";
+		const checkout = declinedCheckouts.get(id);
+		const card = world.cards.find(entry => entry.id === payments.find(attempt => attempt.id === id)?.cardId);
+		if (!checkout || !card) return checkoutPage(session, ["That payment cannot be retried."]);
+		if (payments.some(attempt => attempt.retryOf === id))
+			return checkoutPage(session, ["That payment was already retried."]);
+		const errors = unavailable(checkout.lines);
+		if (errors.length > 0) return checkoutPage(session, errors, checkout.fields);
+		return settle(session, checkout, card, id);
 	};
 
 	const orderPage = (session: string, id: string, placed: boolean) => {
 		const order = world.orders.find(entry => entry.id === id);
 		if (!order) return text("No such order", { status: 404 });
 		const requested = returns.filter(entry => entry.orderId === id);
+		const paidWith = world.cards.find(card => card.id === payments.find(entry => entry.orderId === id)?.cardId);
 		return render(
 			session,
 			`Order ${id}`,
@@ -389,7 +531,7 @@ ${field("name", "Full name")}${field("street", "Street")}${field("city", "City")
 				.map(line => `<tr><td>${escapeHtml(line.name)} <span class="muted">${line.sku}</span></td><td>${escapeHtml(line.size)}</td><td>${line.quantity}</td><td>${money(line.unitCents)}</td></tr>`)
 				.join("")}</table>
 <table style="max-width:360px;margin-top:10px"><tr><td>Subtotal</td><td>${money(order.subtotalCents)}</td></tr><tr><td>Discount</td><td>${money(-order.discountCents)}</td></tr><tr><td>Shipping</td><td>${money(order.shippingCents)}</td></tr><tr><td>Tax</td><td>${money(order.taxCents)}</td></tr><tr><th>Total</th><th>${money(order.totalCents)}</th></tr></table>
-<p>Ship to ${escapeHtml(`${order.address.name}, ${order.address.street}, ${order.address.city} ${order.address.postalCode}`)}</p>
+<p>Ship to ${escapeHtml(`${order.address.name}, ${order.address.street}, ${order.address.city} ${order.address.postalCode}`)}</p>${paidWith ? `\n<p>Paid with your ${escapeHtml(describeCard(paidWith))}.</p>` : ""}
 ${
 	requested.length > 0
 		? requested
@@ -595,6 +737,7 @@ ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
 		}
 		if (pathname === "/checkout" && method === "GET") return checkoutPage(session);
 		if (pathname === "/checkout" && method === "POST") return placeOrder(session, fields);
+		if (pathname === "/checkout/retry" && method === "POST") return retryPayment(session, fields);
 		if (pathname === "/orders") return ordersPage(session);
 		const orderMatch = /^\/orders\/(W\d+)(\/return)?$/.exec(pathname);
 		if (orderMatch) {
@@ -628,6 +771,7 @@ ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
 				orders: world.orders,
 				returns,
 				cart: world.cart,
+				payments,
 				appliedCoupon: world.appliedCoupon,
 				newsletterSignups,
 				failedSignins,

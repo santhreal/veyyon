@@ -7,6 +7,10 @@
  * is filled down with Ctrl+D or the drag handle; sorting and filtering live in a column header menu;
  * comments show only while the pointer rests on a cell; a filter hides rows until it is cleared. The
  * server stores each cell's raw input and evaluates every formula, and every edit posts to it.
+ *
+ * A site started with a {@link SaveFault} drops its connection once: a batch of saves answers 503
+ * and reaches no workbook. The page keeps those edits on screen, marks their cells, and says in its
+ * save status that they were not saved; a reload shows the workbook without them.
  */
 
 import {
@@ -71,6 +75,42 @@ export interface GridSnapshot {
 	readonly workbooks: readonly WorkbookState[];
 	/** Edit, fill, sort and filter requests the server applied. */
 	readonly changes: number;
+	/** What the dropped connection did; present when the site was started with a {@link SaveFault}. */
+	readonly saveFault?: SaveFaultRecord;
+}
+
+/** A dropped connection, on for a task whose plan turns it on and off for every other. */
+export interface SaveFault {
+	/** The workbook id and sheet name of the save that drops the connection. */
+	readonly book: string;
+	readonly sheet: string;
+	/** The connection drops with the first cell save that carries this cell (`E7`). */
+	readonly cell: string;
+	/**
+	 * The connection comes back once the failed saves have carried this many cell edits or failed
+	 * this many times, or with the first save that carries a cell a failed save lost.
+	 */
+	readonly edits: number;
+}
+
+/** A cell edit a failed save carried, which no workbook received. */
+export interface LostEdit {
+	readonly book: string;
+	readonly sheet: string;
+	readonly cell: string;
+	readonly raw: string;
+}
+
+export interface SaveFaultRecord {
+	/** Whether the connection dropped. */
+	readonly fired: boolean;
+	/** Edit, fill, sort and filter requests the dropped connection failed. */
+	readonly failedSaves: number;
+	readonly lost: readonly LostEdit[];
+}
+
+export interface SheetSiteOptions {
+	readonly saveFault?: SaveFault;
 }
 
 export interface GridSite extends HostedSite {
@@ -87,6 +127,7 @@ main{max-width:1180px}
 .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
 .toolbar h1{font-size:18px;margin:0;flex:1}
 #save-status{color:#6b7280;font-size:12px;min-width:120px;text-align:right}
+#save-status.save-error{color:#b91c1c;font-weight:600;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:3px 8px;max-width:440px;text-align:left}
 .fn-help{position:relative;font-size:13px}
 .fn-help div{position:absolute;right:0;top:24px;z-index:25;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;width:320px}
 .formula-row{display:flex;gap:6px;align-items:center;background:#fff;border:1px solid #d1d5db;border-bottom:0;padding:3px 6px}
@@ -110,6 +151,7 @@ main{max-width:1180px}
 .cell.num{text-align:right}
 .cell.err{color:#b91c1c}
 .cell.in-range{background:#e8f0fe}
+.cell.unsaved{background:#fee2e2;box-shadow:inset 0 0 0 2px #dc2626}
 .cell.active{outline:2px solid #1a73e8;outline-offset:-2px}
 .cell.editing{background:#fff;outline:2px solid #1a73e8;outline-offset:-2px;overflow:visible;text-overflow:clip;cursor:text;z-index:5;user-select:text;text-align:left}
 .cell.fill-preview{outline:1px dashed #1a73e8;outline-offset:-2px}
@@ -141,6 +183,8 @@ const filterPop = document.getElementById("filter-pop");
 const commentPop = document.getElementById("comment-pop");
 const api = "/api/wb/" + cfg.book;
 let cells = cfg.cells;
+// Edits that never reached the server, by cell: shown in place and marked until a save of the cell succeeds.
+const unsaved = new Map();
 const letter = i => { let s = ""; for (let n = i + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s; return s; };
 const name = (c, r) => letter(c) + r;
 const parse = a => { const m = /^([A-Z]+)([0-9]+)$/.exec(a); let c = 0; for (const ch of m[1]) c = c * 26 + ch.charCodeAt(0) - 64; return { c: c - 1, r: Number(m[2]) }; };
@@ -195,6 +239,10 @@ function renderCell(node) {
 	node.textContent = data ? data.display : "";
 	node.classList.toggle("num", !!data && data.kind === "num");
 	node.classList.toggle("err", !!data && data.kind === "err");
+	const lost = unsaved.has(node.dataset.cell);
+	node.classList.toggle("unsaved", lost);
+	if (lost) { node.title = "Not saved"; node.setAttribute("aria-invalid", "true"); }
+	else { node.removeAttribute("title"); node.removeAttribute("aria-invalid"); }
 }
 
 function renderAll() {
@@ -205,23 +253,45 @@ function renderAll() {
 let queue = Promise.resolve(true);
 let pending = 0;
 let failure = "";
-function send(path, body) {
+function showStatus(saving) {
+	const lost = unsaved.size;
+	saveStatus.classList.toggle("save-error", lost > 0);
+	saveStatus.textContent = lost > 0
+		? "Not saved: the connection to the server was lost and " + lost + (lost === 1 ? " change was" : " changes were") + " not saved. Unsaved cells are marked in red."
+		: saving ? "Saving…" : failure ? "Not saved: " + failure : pending > 0 ? "Saving…" : "All changes saved";
+}
+// A save whose request got no answer, or a 503, never reached the workbook: its edits stay on screen,
+// marked, until a save of their cells succeeds. A save the server refused is explained by its message.
+function send(path, body, edits) {
 	pending++;
-	saveStatus.textContent = "Saving…";
+	showStatus(true);
 	const job = queue.then(async () => {
+		let response = null;
 		try {
-			const response = await fetch(api + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(Object.assign({ sheet: cfg.sheet }, body)) });
+			response = await fetch(api + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(Object.assign({ sheet: cfg.sheet }, body)) });
 			const data = await response.json();
 			if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
 			failure = "";
-			if (data.cells) { cells = data.cells; renderAll(); }
+			if (edits) for (const edit of edits) unsaved.delete(edit.cell);
+			if (data.cells) {
+				cells = data.cells;
+				for (const [cell, raw] of unsaved) cells[cell] = { raw, display: raw, kind: "text" };
+				renderAll();
+			}
 			return true;
 		} catch (error) {
 			failure = error instanceof Error ? error.message : String(error);
+			if (edits && (response === null || response.status === 503)) {
+				for (const edit of edits) {
+					unsaved.set(edit.cell, edit.raw);
+					const node = grid.querySelector('[data-cell="' + edit.cell + '"]');
+					if (node) renderCell(node);
+				}
+			}
 			return false;
 		} finally {
 			pending--;
-			saveStatus.textContent = failure ? "Not saved: " + failure : pending > 0 ? "Saving…" : "All changes saved";
+			showStatus(false);
 		}
 	});
 	queue = job;
@@ -234,7 +304,7 @@ function save(edits) {
 		const node = grid.querySelector('[data-cell="' + edit.cell + '"]');
 		if (node) renderCell(node);
 	}
-	return send("/cells", { edits });
+	return send("/cells", { edits }, edits);
 }
 
 function startEdit(initial, mode) {
@@ -264,7 +334,8 @@ function stopEdit(commit, refocus) {
 	const typed = edit.node.textContent;
 	edit.node.removeAttribute("contenteditable");
 	edit.node.classList.remove("editing");
-	if (commit && typed !== rawAt(edit.c, edit.r)) save([{ cell: name(edit.c, edit.r), raw: typed }]);
+	const cell = name(edit.c, edit.r);
+	if (commit && (typed !== rawAt(edit.c, edit.r) || unsaved.has(cell))) save([{ cell, raw: typed }]);
 	else renderCell(edit.node);
 	if (refocus) grid.focus({ preventScroll: true });
 }
@@ -417,7 +488,9 @@ document.addEventListener("mouseup", () => {
 function commitBar() {
 	const target = barCell;
 	barCell = null;
-	if (target && bar.value !== rawAt(target.c, target.r)) save([{ cell: name(target.c, target.r), raw: bar.value }]);
+	if (!target) return;
+	const cell = name(target.c, target.r);
+	if (bar.value !== rawAt(target.c, target.r) || unsaved.has(cell)) save([{ cell, raw: bar.value }]);
 }
 bar.addEventListener("focus", () => { if (editing) stopEdit(true, false); barCell = { c: active.c, r: active.r }; });
 bar.addEventListener("keydown", e => {
@@ -556,8 +629,42 @@ function sheetUrl(book: Workbook, sheet: Sheet): string {
 	return `/wb/${book.id}?sheet=${encodeURIComponent(sheet.name)}`;
 }
 
-export async function startSheetSite(world: GridWorld): Promise<GridSite> {
+/** What a request that the dropped connection takes answers. */
+const CONNECTION_LOST = "the connection to the server was lost, so nothing in this request was saved";
+
+export async function startSheetSite(world: GridWorld, options: SheetSiteOptions = {}): Promise<GridSite> {
 	let changes = 0;
+	const fault = options.saveFault;
+	let connection: "up" | "down" | "restored" = "up";
+	let failedSaves = 0;
+	const lost: LostEdit[] = [];
+
+	/**
+	 * Whether the dropped connection takes this write, which then reaches no workbook. It drops with
+	 * the first save of the fault's cell and comes back as {@link SaveFault.edits} states: the save
+	 * after the lost batch, and the first retry of a lost edit, go through.
+	 */
+	const connectionDropped = (book: Workbook, sheet: Sheet, edits: readonly { cell: string; raw: string }[]) => {
+		if (!fault || connection === "restored") return false;
+		if (connection === "up") {
+			if (book.id !== fault.book || sheet.name !== fault.sheet || !edits.some(edit => edit.cell === fault.cell)) {
+				return false;
+			}
+			connection = "down";
+		} else if (
+			lost.length >= fault.edits ||
+			failedSaves >= fault.edits ||
+			edits.some(edit =>
+				lost.some(entry => entry.book === book.id && entry.sheet === sheet.name && entry.cell === edit.cell),
+			)
+		) {
+			connection = "restored";
+			return false;
+		}
+		failedSaves++;
+		for (const edit of edits) lost.push({ book: book.id, sheet: sheet.name, cell: edit.cell, raw: edit.raw });
+		return true;
+	};
 
 	const render = (title: string, body: string, script = ""): SiteResponse =>
 		html(
@@ -680,6 +787,9 @@ ${gridRows.join("\n")}
 			changes++;
 			return json({ cells: cellPayload(book, sheet) });
 		};
+		if ((action === "fill" || action === "sort" || action === "filter") && connectionDropped(book, sheet, [])) {
+			return fail(503, CONNECTION_LOST);
+		}
 		if (action === "cells") {
 			const edits: unknown[] = Array.isArray(fields.edits) ? fields.edits : [];
 			if (edits.length === 0) return fail(400, "send the edits");
@@ -691,6 +801,7 @@ ${gridRows.join("\n")}
 				if (raw.length > MAX_INPUT) return fail(400, `a cell holds at most ${MAX_INPUT} characters`);
 				parsed.push({ cell: cellName(address.col, address.row), raw });
 			}
+			if (connectionDropped(book, sheet, parsed)) return fail(503, CONNECTION_LOST);
 			for (const edit of parsed) setCell(sheet, edit.cell, edit.raw);
 			return done();
 		}
@@ -780,6 +891,7 @@ ${gridRows.join("\n")}
 					})),
 				})),
 				changes,
+				...(fault ? { saveFault: { fired: connection !== "up", failedSaves, lost } } : {}),
 			};
 		},
 	};

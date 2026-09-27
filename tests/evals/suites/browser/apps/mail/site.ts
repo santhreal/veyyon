@@ -5,7 +5,8 @@
  * rows in view and fetches the rest as it scrolls, a selection kept by the page rather than by the
  * checkboxes on screen, search operators, conversations whose older messages are collapsed, a
  * recipient field whose contact suggestions cover the Send button while open, an Attach button that
- * opens a hidden file input, and a filter form built from rows added in place.
+ * opens a hidden file input, and a filter form built from rows added in place. A task can turn on
+ * one fault through {@link MailSiteOptions}: the session expiring under the first Send.
  */
 
 import { createHash } from "node:crypto";
@@ -63,10 +64,22 @@ export interface MessageState {
 	readonly starred: boolean;
 }
 
+/** A send rejected because the session expired under it: what the form held. None of it was sent or kept. */
+export interface RejectedSend {
+	readonly mode: ComposeMode;
+	readonly sourceId: string | null;
+	/** Lowercase addresses. */
+	readonly to: readonly string[];
+	readonly cc: readonly string[];
+	readonly subject: string;
+	readonly body: string;
+}
+
 export interface MailSnapshot {
 	/** Every message seeded into the mailbox, as it was when the trial started and as it is now. */
 	readonly messages: Readonly<Record<string, { readonly before: MessageState; readonly now: MessageState }>>;
 	readonly sent: readonly SentMail[];
+	readonly rejectedSends: readonly RejectedSend[];
 	readonly filters: readonly Filter[];
 	readonly labels: readonly string[];
 	readonly failedSignins: number;
@@ -76,10 +89,22 @@ export interface MailSite extends HostedSite {
 	finish(): Promise<MailSnapshot>;
 }
 
+/** Faults a task turns on; each is off unless the task sets it. */
+export interface MailSiteOptions {
+	/**
+	 * The session expires under the first Send: the site rejects it, sends and keeps nothing of it,
+	 * and redirects to the sign-in page, which shows that the message was not sent. Signing in again
+	 * opens a new compose form for the same message.
+	 */
+	readonly expireSessionOnFirstSend?: boolean;
+}
+
 const SESSION_COOKIE = "parcel_sid";
 /** Rows the list page embeds and each list fetch returns. */
 const PAGE_SIZE = 50;
 const MAX_CONDITIONS = 5;
+const SESSION_EXPIRED_ON_SEND =
+	"Your session expired before your message was sent. The message was not sent and was not saved. Sign in again to continue.";
 
 const STYLE = `
 main{max-width:1320px}
@@ -273,11 +298,13 @@ const EMPTY_FILTER_FORM: FilterFormValues = {
 
 const FILTER_CHECKBOXES = ["archive", "star", "markRead", "trash", "applyExisting"] as const;
 
-export async function startMailSite(world: MailWorld, seed: number): Promise<MailSite> {
+export async function startMailSite(world: MailWorld, seed: number, options: MailSiteOptions = {}): Promise<MailSite> {
 	const rng = new Seeded(seed ^ 0x3a11);
 	const signedIn = new Set<string>();
 	const uploads = new Map<string, SentAttachment>();
 	const sent: SentMail[] = [];
+	const rejectedSends: RejectedSend[] = [];
+	let expiryPending = options.expireSessionOnFirstSend === true;
 	let failedSignins = 0;
 	const before = new Map(world.messages.map(message => [message.id, stateOf(message)]));
 	const me: Person = { name: world.account.name, email: world.account.email };
@@ -545,6 +572,24 @@ ${recipientField("cc", "Cc", state.cc, { hidden: state.cc.length === 0 })}
 		return redirect("/mail/inbox?notice=sent");
 	};
 
+	/** The fault {@link MailSiteOptions.expireSessionOnFirstSend} turns on, once. */
+	const expireUnderSend = (fields: Record<string, string>, session: string): SiteResponse => {
+		expiryPending = false;
+		signedIn.delete(session);
+		const mode = composeMode(fields.mode);
+		const source = fields.source ? findMessage(world, fields.source) : undefined;
+		rejectedSends.push({
+			mode,
+			sourceId: source?.id ?? null,
+			to: addresses(fields.to),
+			cc: addresses(fields.cc),
+			subject: (fields.subject ?? "").trim(),
+			body: (fields.body ?? "").replaceAll("\r\n", "\n"),
+		});
+		const again = source && mode !== "new" ? `/compose?mode=${mode}&id=${source.id}` : "/compose";
+		return redirect(`/signin?expired=send&next=${encodeURIComponent(again)}`);
+	};
+
 	const upload = (request: SiteRequest): SiteResponse => {
 		const payload = jsonFields(request);
 		const rawName = payload.name;
@@ -735,7 +780,10 @@ ${notice ? `<p class="notice">${escapeHtml(notice)}</p>` : ""}${error ? `<p clas
 		const { method, url } = request;
 		const pathname = url.pathname;
 		const fields = method === "POST" && !request.headers["content-type"]?.includes("json") ? formFields(request) : {};
-		if (pathname === "/signin" && method === "GET") return signinPage(url.searchParams.get("next") ?? "/mail/inbox");
+		if (pathname === "/signin" && method === "GET") {
+			const expired = url.searchParams.get("expired") === "send" ? SESSION_EXPIRED_ON_SEND : "";
+			return signinPage(url.searchParams.get("next") ?? "/mail/inbox", expired);
+		}
 		if (pathname === "/signin" && method === "POST") {
 			if (fields.email?.trim().toLowerCase() === world.account.email && fields.password === world.account.password) {
 				signedIn.add(session);
@@ -822,7 +870,9 @@ ${notice ? `<p class="notice">${escapeHtml(notice)}</p>` : ""}${error ? `<p clas
 			const prefill = composePrefill(world, source, mode);
 			return composePage({ mode, source, ...prefill, attachments: [] });
 		}
-		if (pathname === "/compose/send" && method === "POST") return send(fields);
+		if (pathname === "/compose/send" && method === "POST") {
+			return expiryPending ? expireUnderSend(fields, session) : send(fields);
+		}
 
 		if (pathname === "/settings") return redirect("/settings/filters");
 		if (pathname === "/settings/filters" && method === "GET") {
@@ -875,7 +925,7 @@ ${notice ? `<p class="notice">${escapeHtml(notice)}</p>` : ""}${error ? `<p clas
 				const initial = before.get(message.id);
 				if (initial) messages[message.id] = { before: initial, now: stateOf(message) };
 			}
-			return { messages, sent, filters: world.filters, labels: world.labels, failedSignins };
+			return { messages, sent, rejectedSends, filters: world.filters, labels: world.labels, failedSignins };
 		},
 	};
 }

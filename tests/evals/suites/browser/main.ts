@@ -45,6 +45,7 @@ export const BROWSER_CAPABILITIES: Readonly<Record<string, string>> = {
 	timing: "content that appears after a delay or changes over time",
 	"date-picker": "custom date and time widgets",
 	workflow: "one job carried across applications, each step using what another found",
+	recovery: "noticing that an action did not take and recovering: a failed save, an expired session, a rejected edit",
 };
 
 /** Every task of the suite, application by application. */

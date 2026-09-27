@@ -323,7 +323,7 @@ const LABEL_WEIGHTS: readonly LabelId[] = [
 	"performance",
 ];
 
-const CHECKLIST_POOL = [
+export const CHECKLIST_POOL = [
 	"Write the tests",
 	"Update the docs",
 	"Get a design review",

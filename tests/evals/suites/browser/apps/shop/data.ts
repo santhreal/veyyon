@@ -98,6 +98,27 @@ export interface ReturnRequest {
 	readonly refundCents: number;
 }
 
+/** A card saved to the account. Checkout charges one when the account has any, and asks for none otherwise. */
+export interface SavedCard {
+	readonly id: string;
+	readonly brand: string;
+	readonly last4: string;
+	/** `MM/YY`. */
+	readonly expires: string;
+}
+
+/** One charge checkout sent to the card processor. */
+export interface PaymentAttempt {
+	readonly id: string;
+	readonly cardId: string;
+	readonly amountCents: number;
+	readonly outcome: "approved" | "declined";
+	/** The order an approved charge paid for; null for a declined one. */
+	readonly orderId: string | null;
+	/** The declined attempt whose Retry payment button sent this one; null for a checkout submission. */
+	readonly retryOf: string | null;
+}
+
 export interface Message {
 	readonly id: string;
 	readonly from: string;
@@ -114,6 +135,7 @@ export interface ShopWorld {
 	readonly orders: Order[];
 	readonly messages: Message[];
 	readonly cart: CartLine[];
+	readonly cards: SavedCard[];
 	appliedCoupon: string | null;
 }
 
@@ -195,6 +217,7 @@ export function generateShop(rng: Seeded): ShopWorld {
 		orders: [],
 		messages: [],
 		cart: [],
+		cards: [],
 		appliedCoupon: null,
 	};
 }
@@ -251,6 +274,10 @@ export function describeCoupon(coupon: Coupon): string {
 	if (coupon.kind === "percent") return `${coupon.value}% off${scope}${minimum}`;
 	if (coupon.kind === "fixed") return `$${(coupon.value / 100).toFixed(2)} off${scope}${minimum}`;
 	return `Free shipping at any speed${minimum}`;
+}
+
+export function describeCard(card: SavedCard): string {
+	return `${card.brand} ending in ${card.last4}`;
 }
 
 /**

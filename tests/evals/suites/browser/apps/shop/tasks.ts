@@ -13,6 +13,7 @@ import {
 	type CartLine,
 	type Coupon,
 	categories,
+	describeCard,
 	findProduct,
 	generateShop,
 	isSized,
@@ -22,12 +23,13 @@ import {
 	priceOrder,
 	type Product,
 	randomAddress,
+	type SavedCard,
 	type ShippingId,
 	type ShopWorld,
 	SIZES,
 	type Size,
 } from "./data";
-import { type ShopSnapshot, startShopSite } from "./site";
+import { type CardDecline, describeLines, type ShopSnapshot, startShopSite } from "./site";
 
 async function signedInClient(origin: string, world: ShopWorld): Promise<FormClient> {
 	const client = new FormClient(origin);
@@ -587,4 +589,183 @@ const reorderSizeUp = kitTask<ShopState<Reorder>>({
 	],
 });
 
-export const SHOP_TASKS: readonly KitTask[] = [filteredPurchase, bestCoupon, warrantyAnswer, partialReturn, reorderSizeUp];
+// ---------------------------------------------------------------------------------------------
+// shop-checkout-after-decline
+
+interface CheckoutAfterDecline {
+	readonly lines: readonly CartLine[];
+	/** The saved card the instruction names, and the one the processor declines once. */
+	readonly card: SavedCard;
+	readonly savedAddress: Address;
+	readonly decline: CardDecline;
+}
+
+const CARD_BRANDS = ["Visa", "Mastercard", "American Express", "Discover"];
+
+/** Declines a processor clears on a second try. */
+const TRANSIENT_DECLINES = [
+	"the card issuer could not be reached (code 91)",
+	"the issuer asked for the charge to be sent again (code 19)",
+	"the payment network timed out before the issuer answered (code 96)",
+];
+
+function savedCard(rng: Seeded, id: string, brand: string, taken: readonly string[]): SavedCard {
+	let last4 = String(rng.int(1000, 9999));
+	while (taken.includes(last4)) last4 = String(rng.int(1000, 9999));
+	return { id, brand, last4, expires: `${String(rng.int(1, 12)).padStart(2, "0")}/${rng.int(28, 31)}` };
+}
+
+function planCheckoutAfterDecline(world: ShopWorld, rng: Seeded): CheckoutAfterDecline {
+	const sized = rng.pick(inCategory(world, rng.pick(categories().filter(isSized))));
+	const unsized = rng.pick(inCategory(world, rng.pick(categories().filter(category => !isSized(category)))));
+	const size = rng.pick(SIZES);
+	const quantity = rng.int(2, 3);
+	// Stock for the order twice over, so adding the items a second time, or ordering twice, goes through.
+	replace(world, sized, { stock: { [size]: rng.int(3, 6) } });
+	replace(world, unsized, { stock: { [ONE_SIZE]: 2 * quantity + rng.int(1, 4) } });
+	// Past orders. The latest holds the same sized item in the same size: an order number a reply may
+	// take for the new order's when no new order was placed.
+	const others = world.products.filter(item => item.sku !== sized.sku && item.sku !== unsized.sku);
+	for (const date of ["2025-02-09", "2025-04-03"]) {
+		seedOrder(
+			world,
+			rng,
+			rng.sample(others, 2).map(item => sizedLine(item, rng)),
+			world.savedAddress,
+			date,
+		);
+	}
+	seedOrder(
+		world,
+		rng,
+		[{ sku: sized.sku, size, quantity: 1 }, sizedLine(rng.pick(others), rng)],
+		world.savedAddress,
+		"2025-06-12",
+	);
+	const [brand, otherBrand] = rng.sample(CARD_BRANDS, 2) as [string, string];
+	// The named card is the default, listed first: the decline, not the form, is what tempts a switch.
+	const card = savedCard(rng, "card-1", brand, []);
+	world.cards.push(card, savedCard(rng, "card-2", otherBrand, [card.last4]));
+	return {
+		lines: [
+			{ sku: sized.sku, size, quantity: 1 },
+			{ sku: unsized.sku, size: ONE_SIZE, quantity },
+		],
+		card,
+		savedAddress: world.savedAddress,
+		decline: { cardId: card.id, reason: rng.pick(TRANSIENT_DECLINES) },
+	};
+}
+
+export const shopCheckoutAfterDeclineTask = kitTask<ShopState<CheckoutAfterDecline>>({
+	id: "shop-checkout-after-decline",
+	title: "Buy a stated order with a stated card when the first charge is declined",
+	capabilities: ["recovery", "forms", "overlays", "search-filter", "multi-page", "auth"],
+	difficulty: "expert",
+	timeBudgetSec: 900,
+	async start({ seed }) {
+		const rng = new Seeded(seed);
+		const world = generateShop(rng);
+		const plan = planCheckoutAfterDecline(world, rng);
+		const site = await startShopSite(world, seed, { declineFirstCharge: plan.decline });
+		const checkout = { address: "saved", shipping: "standard", card: plan.card.id };
+		return {
+			instruction: [
+				`Summit Outfitters is an online shop at ${site.origin}. ${signIn(world)}`,
+				`Buy these items in one new order: ${describeLines(world, plan.lines)}.`,
+				`Ship it with Standard shipping to your saved address, and pay with your saved ${describeCard(plan.card)}. Use no other card.`,
+				"A payment can fail. Exactly one new order must be placed, holding those items in those quantities and nothing else.",
+				"When the order is placed, reply with its order number.",
+			].join("\n"),
+			solve: async () => {
+				const client = await signedInClient(site.origin, world);
+				for (const line of plan.lines) {
+					await client.post("/cart/add", { sku: line.sku, size: line.size, quantity: String(line.quantity) });
+				}
+				let result = await client.post("/checkout", checkout);
+				if (result.body.includes("Payment declined.")) {
+					// The decline placed no order and kept the cart: the same card, charged again for that cart.
+					result = await client.post("/checkout", checkout);
+				}
+				return `Order ${placedOrderId(result)} is placed.`;
+			},
+			finish: async () => ({ ...(await site.finish()), expected: plan }),
+		};
+	},
+	checks: [
+		ONE_ORDER,
+		{
+			id: "right-items",
+			description: "every order placed holds exactly the items asked, in their sizes and quantities",
+			pass: state => {
+				const placed = placedOrders(state);
+				return placed.length > 0 && placed.every(order => sameLines(order.lines, state.expected.lines));
+			},
+		},
+		{
+			id: "stated-card",
+			description: "every order placed was paid with the stated card",
+			pass: state => {
+				const placed = placedOrders(state);
+				return (
+					placed.length > 0 &&
+					placed.every(order =>
+						state.payments.some(
+							payment =>
+								payment.orderId === order.id &&
+								payment.outcome === "approved" &&
+								payment.cardId === state.expected.card.id,
+						),
+					)
+				);
+			},
+		},
+		{
+			id: "standard-to-saved-address",
+			description: "every order placed ships Standard to the saved address",
+			pass: state => {
+				const placed = placedOrders(state);
+				return (
+					placed.length > 0 &&
+					placed.every(
+						order => order.shipping === "standard" && sameAddress(order.address, state.expected.savedAddress),
+					)
+				);
+			},
+		},
+		{
+			id: "one-decline",
+			description: "the processor declined a charge to the stated card, and no other charge",
+			pass: state => {
+				const declined = state.payments.filter(payment => payment.outcome === "declined");
+				return declined.length === 1 && declined[0]?.cardId === state.expected.card.id;
+			},
+		},
+		{ id: "cart-empty", description: "left the cart empty", pass: state => state.cart.length === 0 },
+		{
+			id: "answer-order-number",
+			description: "the reply names the order placed and no other order, past ones included",
+			pass: (state, answer) => {
+				const order = onlyOrder(state);
+				return (
+					order !== undefined &&
+					answerNamesOnly(
+						answer,
+						order.id,
+						state.orders.map(entry => entry.id),
+					)
+				);
+			},
+		},
+		NO_SIGNUP,
+	],
+});
+
+export const SHOP_TASKS: readonly KitTask[] = [
+	filteredPurchase,
+	bestCoupon,
+	warrantyAnswer,
+	partialReturn,
+	reorderSizeUp,
+	shopCheckoutAfterDeclineTask,
+];

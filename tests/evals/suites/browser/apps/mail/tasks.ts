@@ -9,7 +9,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { type KitTask, kitTask } from "../../../../engine/kit/catalog";
 import { answerStatesOnly, type Check, normalizeText } from "../../../../engine/kit/checks";
-import { FormClient } from "../../../../engine/kit/form-client";
+import { FormClient, type FormResponse } from "../../../../engine/kit/form-client";
 import { Seeded } from "../../../../engine/kit/seeded";
 import {
 	addContact,
@@ -61,16 +61,22 @@ function signIn(origin: string, world: MailWorld): string {
 	return `Parcel Mail is a webmail service at ${origin}. Sign in with email ${world.account.email} and password ${world.account.password}.`;
 }
 
-/** Send through the compose form's endpoint, starting from what the form is prefilled with. */
-async function sendFromForm(
+interface FormChange {
+	readonly to?: readonly string[];
+	readonly note: string;
+	readonly attachments?: readonly string[];
+}
+
+/** Post the compose form's endpoint, starting from what the form is prefilled with. */
+function postFromForm(
 	client: FormClient,
 	world: MailWorld,
 	source: Message,
 	mode: ComposeMode,
-	change: { readonly to?: readonly string[]; readonly note: string; readonly attachments?: readonly string[] },
-): Promise<void> {
+	change: FormChange,
+): Promise<FormResponse> {
 	const prefill = composePrefill(world, source, mode);
-	const response = await client.post("/compose/send", {
+	return client.post("/compose/send", {
 		mode,
 		source: source.id,
 		to: (change.to ?? prefill.to.map(person => person.email)).join(","),
@@ -79,6 +85,17 @@ async function sendFromForm(
 		body: `${change.note}${prefill.body}`,
 		attachments: (change.attachments ?? []).join(","),
 	});
+}
+
+/** Send through the compose form's endpoint, and fail unless the site confirms the message was sent. */
+async function sendFromForm(
+	client: FormClient,
+	world: MailWorld,
+	source: Message,
+	mode: ComposeMode,
+	change: FormChange,
+): Promise<void> {
+	const response = await postFromForm(client, world, source, mode, change);
 	if (!response.url.includes("notice=sent")) throw new Error(`the message was not sent; it answered ${response.url}`);
 }
 
@@ -1204,10 +1221,226 @@ const rescheduleMeeting = kitTask<MailState<Meeting>>({
 	],
 });
 
+// ---------------------------------------------------------------------------------------------
+// mail-send-after-session-expiry
+
+interface QuotedItem {
+	readonly item: string;
+	/** The two options every quote for the item prices. */
+	readonly options: readonly [string, string];
+}
+
+const QUOTED_ITEMS: readonly QuotedItem[] = [
+	{ item: "standing desks", options: ["delivery only", "delivery and assembly"] },
+	{ item: "meeting-room displays", options: ["wall-mounted", "rolling-stand"] },
+	{ item: "ergonomic chairs", options: ["mesh-back", "upholstered"] },
+	{ item: "team laptops", options: ["standard-warranty", "extended-warranty"] },
+	{ item: "office printers", options: ["purchase", "three-year lease"] },
+];
+
+interface Supplier {
+	readonly company: string;
+	readonly domain: string;
+}
+
+const SUPPLIERS: readonly Supplier[] = [
+	{ company: "Northbeam Office", domain: "northbeam-office.test" },
+	{ company: "Pinecrest Supply", domain: "pinecrest-supply.test" },
+	{ company: "Harborview Workplace", domain: "harborview-workplace.test" },
+	{ company: "Summit Furnishings", domain: "summit-furnishings.test" },
+];
+
+interface ExpiryReply {
+	/** The purchase-order conversation. */
+	readonly subject: string;
+	readonly threadId: string;
+	/** The conversation's latest message, and the address of its sender, the reply's one recipient. */
+	readonly latestId: string;
+	readonly latestSender: string;
+	readonly supplier: string;
+	readonly option: string;
+	readonly totalCents: number;
+	/** Every other total the two quotes show: the other option's, and both of the other supplier's. */
+	readonly otherTotalsCents: readonly number[];
+}
+
+function planSessionExpiry(world: MailWorld, rng: Seeded): ExpiryReply & { readonly quoteId: string } {
+	const request = rng.pick(QUOTED_ITEMS);
+	const [chosen, rival] = rng.sample(SUPPLIERS, 2) as [Supplier, Supplier];
+	const user = me(world);
+	const userFirst = firstName(user);
+	const [lead, buyer] = rng.sample(coworkers(world), 2) as [Person, Person];
+	const quantity = rng.int(6, 24);
+	// Four totals at least $10 apart, each quote's cheaper option first.
+	const totals: number[] = [];
+	while (totals.length < 4) {
+		const cents = rng.int(2400, 18000) * 100 + rng.pick([0, 25, 40, 50, 75, 90]);
+		if (totals.every(total => Math.abs(total - cents) >= 1000)) totals.push(cents);
+	}
+	const [chosenTotals, rivalTotals] = [totals.slice(0, 2), totals.slice(2)].map(pair =>
+		pair.sort((a, b) => a - b),
+	) as [[number, number], [number, number]];
+	const quote = (supplier: Supplier, prices: readonly [number, number]): Message => {
+		const rep = addContact(world, newPerson(world, rng, supplier.domain));
+		const reference = `Q-${rng.int(10000, 99999)}`;
+		const lines = request.options.map(
+			(option, index) => `${capitalized(option)}: ${dollars(prices[index] as number)} in total`,
+		);
+		return addMessage(world, rng, {
+			from: rep,
+			to: [user],
+			subject: `Quote ${reference}: ${quantity} ${request.item}`,
+			body: `Hello ${userFirst},\n\nThank you for your request. Here is our quote ${reference} for ${quantity} ${request.item}, in two options:\n\n${lines.join("\n")}\n\nPrices include delivery and tax. The quote is valid for 30 days.\n\n${rep.name}\n${supplier.company}`,
+			date: timeOn(rng, addDays("2025-06-02", rng.int(0, 9)), 8, 17),
+			folder: rng.next() < 0.5 ? "archive" : "inbox",
+			labels: rng.next() < 0.5 ? ["Work"] : [],
+		});
+	};
+	const chosenQuote = quote(chosen, chosenTotals);
+	quote(rival, rivalTotals);
+	const optionIndex = rng.int(0, 1);
+	const option = request.options[optionIndex] as string;
+	const subject = `Purchase order for the ${request.item}`;
+	const threadId = newThreadId(world, rng);
+	const compared = rng.shuffle([chosen, rival]).map(supplier => supplier.company);
+	addMessage(world, rng, {
+		from: lead,
+		to: [user, buyer],
+		subject,
+		threadId,
+		body: `Hi ${userFirst} and ${firstName(buyer)},\n\nWe compared the quotes from ${compared.join(" and ")} for the ${quantity} ${request.item}, and we're going with ${chosen.company}, the ${option} option. ${userFirst}, the quotes came to you: can you send the total for that option so we can raise the purchase order?\n\n${firstName(lead)}`,
+		date: timeOn(rng, addDays(TODAY, -rng.int(2, 4)), 8, 16),
+		folder: "inbox",
+	});
+	const latest = addMessage(world, rng, {
+		from: buyer,
+		to: [user],
+		cc: [lead],
+		subject: `Re: ${subject}`,
+		threadId,
+		body: `Hi ${userFirst},\n\nI'm raising the purchase order this afternoon. Reply to me with the total and I'll put it through.\n\n${firstName(buyer)}`,
+		date: timeOn(rng, addDays(TODAY, -1), 8, 16),
+		folder: "inbox",
+		read: false,
+	});
+	return {
+		subject,
+		threadId,
+		latestId: latest.id,
+		latestSender: buyer.email,
+		supplier: chosen.company,
+		option,
+		totalCents: chosenTotals[optionIndex] as number,
+		otherTotalsCents: [...chosenTotals.filter((_, index) => index !== optionIndex), ...rivalTotals],
+		quoteId: chosenQuote.id,
+	};
+}
+
+/**
+ * The recovery tier's mail task: the session expires under the first Send, which comes after reading
+ * both conversations the reply needs. The sign-in page shows that the message was not sent, and
+ * signing in again opens a new, empty reply. The checks on the message grade every message sent, so
+ * a duplicate fails `one-message-sent` alone, and each wrong recovery fails the check written for it.
+ */
+export const mailSendAfterSessionExpiryTask = kitTask<MailState<ExpiryReply>>({
+	id: "mail-send-after-session-expiry",
+	title: "Reply with a quoted total, sending again after the session expires on Send",
+	capabilities: ["recovery", "reading", "search-filter", "forms", "auth"],
+	difficulty: "expert",
+	timeBudgetSec: 900,
+	async start({ seed }) {
+		const rng = new Seeded(seed);
+		const world = generateMail(rng);
+		const { quoteId, ...plan } = planSessionExpiry(world, rng);
+		const site = await startMailSite(world, seed, { expireSessionOnFirstSend: true });
+		return {
+			instruction: [
+				signIn(site.origin, world),
+				`The conversation "${plan.subject}" names the supplier and the option your team chose, and asks you for that option's quoted total. The supplier's quote is in another email in the mailbox.`,
+				"Reply to the latest message of that conversation, to its sender only, stating that total and no other amount.",
+				"Send exactly one message, and finish with a final answer that states the total.",
+			].join("\n"),
+			solve: async () => {
+				const client = await signedInClient(site.origin, world);
+				for (const id of [plan.latestId, quoteId]) {
+					const opened = await client.get(`/message/${id}`);
+					if (opened.status !== 200) throw new Error(`message ${id} did not open; it answered ${opened.status}`);
+				}
+				const latest = messageById(world, plan.latestId);
+				const change = {
+					note: `Hi,\n\nThe total of ${plan.supplier}'s quote for the ${plan.option} option is ${dollars(plan.totalCents)}.`,
+				};
+				const rejected = await postFromForm(client, world, latest, "reply", change);
+				if (!rejected.url.includes("/signin?expired=send") || !rejected.body.includes("The message was not sent")) {
+					throw new Error(`the session did not expire under the first Send; it answered ${rejected.url}`);
+				}
+				// Signing in again opens a new reply form: the reply is written again and sent once.
+				const { email, password } = world.account;
+				const next = new URL(rejected.url).searchParams.get("next") ?? "/mail/inbox";
+				const reopened = await client.post("/signin", { email, password, next });
+				if (!reopened.url.includes("/compose?")) throw new Error(`signing in again answered ${reopened.url}`);
+				await sendFromForm(client, world, latest, "reply", change);
+				const conversation = await client.get(`/message/${plan.latestId}`);
+				const shown = conversation.body.split('<span class="chip folder">Sent</span>').length - 1;
+				if (shown !== 1) throw new Error(`the conversation shows ${shown} sent replies, not one`);
+				return `Replied with the total: ${dollars(plan.totalCents)}.`;
+			},
+			finish: async () => ({ ...(await site.finish()), expected: plan }),
+		};
+	},
+	checks: [
+		{
+			id: "session-expired",
+			description: "the session expired under the first Send, and the site rejected that send",
+			pass: state => state.rejectedSends.length === 1,
+		},
+		ONE_SENT,
+		{
+			id: "in-conversation",
+			description: "every message sent is a reply within the purchase-order conversation",
+			pass: state =>
+				state.sent.length > 0 &&
+				state.sent.every(
+					mail => mail.threadId === state.expected.threadId && (mail.mode === "reply" || mail.mode === "replyall"),
+				),
+		},
+		{
+			id: "to-latest-sender",
+			description: "every message sent goes to the sender of the conversation's latest message and nobody else",
+			pass: state =>
+				state.sent.length > 0 && state.sent.every(mail => sameSet(recipients(mail), [state.expected.latestSender])),
+		},
+		{
+			id: "states-chosen-total",
+			description:
+				"every message sent states the chosen option's total in its own text, and no other total the quotes show",
+			pass: state => {
+				const { totalCents, otherTotalsCents } = state.expected;
+				const others = otherTotalsCents.map(cents => cents / 100);
+				return (
+					state.sent.length > 0 &&
+					state.sent.every(mail => answerStatesOnly(ownText(mail.body), totalCents / 100, others))
+				);
+			},
+		},
+		{
+			id: "answer-states-total",
+			description: "the final answer states the chosen option's total, and no other total the quotes show",
+			pass: (state, answer) =>
+				answerStatesOnly(
+					answer,
+					state.expected.totalCents / 100,
+					state.expected.otherTotalsCents.map(cents => cents / 100),
+				),
+		},
+	],
+});
+
 export const MAIL_TASKS: readonly KitTask[] = [
 	replyWithInvoiceTotal,
 	forwardWithAttachment,
 	bulkArchiveNewsletters,
 	createFilterAndApply,
 	rescheduleMeeting,
+	mailSendAfterSessionExpiryTask,
 ];

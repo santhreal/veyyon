@@ -5,7 +5,7 @@
  * server recorded.
  */
 
-import { type Check, normalizeText } from "../../../../engine/kit/checks";
+import { answerNamesOnly, type Check, normalizeText } from "../../../../engine/kit/checks";
 import { type KitTask, kitTask } from "../../../../engine/kit/catalog";
 import { FormClient } from "../../../../engine/kit/form-client";
 import { Seeded } from "../../../../engine/kit/seeded";
@@ -17,11 +17,16 @@ import {
 	type Card,
 	type CardDetails,
 	type CardState,
+	CHECKLIST_POOL,
+	type ChecklistItem,
 	type ColumnId,
 	columnCards,
+	columnName,
 	detailsOf,
+	findCard,
 	generateKanban,
 	isOpen,
+	LABELS,
 	type LabelId,
 	labelName,
 	longDate,
@@ -37,7 +42,7 @@ import {
 	WEBSITE,
 	weekdayDate,
 } from "./data";
-import { type KanbanSnapshot, startKanbanSite } from "./site";
+import { type CardJson, type KanbanConflict, type KanbanSnapshot, startKanbanSite } from "./site";
 
 /** The board a correct run leaves behind. */
 interface Baseline {
@@ -753,10 +758,265 @@ const rebalanceLoad = kitTask<Graded<Rebalance>>({
 	],
 });
 
+// ---------------------------------------------------------------------------------------------
+// kanban-edit-after-conflict
+
+/** The column a card moves on to, from each column this task takes it from. */
+const NEXT_COLUMN = { backlog: "ready", ready: "in-progress", "in-progress": "in-review" } as const;
+
+interface EditAfterConflict {
+	readonly boardId: string;
+	readonly cardId: string;
+	/** The card's title before the teammate's edit: the one the instruction names. */
+	readonly title: string;
+	/** The card's labels before the teammate's edit. */
+	readonly labels: readonly LabelId[];
+	readonly from: ColumnId;
+	readonly to: ColumnId;
+	/** The card at the top of `to` before the trial, which the card lands above. */
+	readonly above: string | null;
+	readonly assigneeId: string;
+	readonly assignee: string;
+	readonly due: string;
+	readonly itemId: string;
+	readonly item: string;
+	/** The edit the teammate saves the moment the trial's first change to the card arrives. */
+	readonly teammate: KanbanConflict;
+	/** The card's labels after the teammate's edit. */
+	readonly teammateLabels: readonly LabelId[];
+	/** The title of the card on the same board that begins with the card's title. */
+	readonly lookAlike: string;
+}
+
+/**
+ * One card to change in four ways. The site's teammate renames it and adds a label the moment the
+ * first change to it arrives, and the site refuses that change as stale. A follow-up card on the
+ * same board begins with its title and holds the same open item; a card on another board has its title.
+ */
+function planEditAfterConflict(world: KanbanWorld, rng: Seeded): EditAfterConflict & { baseline: Baseline } {
+	const boardId = rng.pick([PLATFORM, MOBILE, WEBSITE]);
+	const from = rng.pick(["backlog", "ready", "in-progress"] as const);
+	const to = NEXT_COLUMN[from];
+	const card = rng.pick(columnCards(world, boardId, from));
+	const [holder, teammate, assignee] = rng.sample(world.members, 3) as [Member, Member, Member];
+	card.assignee = holder.id;
+	card.due = rng.next() < 0.3 ? null : addDays(world.today, rng.int(-5, 20));
+	const due = addDays(world.today, rng.int(21, 75));
+	const texts = rng.sample(CHECKLIST_POOL, rng.int(3, 4));
+	const ticked = rng.int(0, texts.length - 1);
+	card.checklist = texts.map((text, index) => ({
+		id: `i${world.nextId++}`,
+		text,
+		done: index !== ticked && rng.next() < 0.5,
+	}));
+	const item = card.checklist[ticked] as ChecklistItem;
+	// A follow-up on the same board holding the same open item, and the same title on another board.
+	const lookAlike = rng.pick(
+		OPEN_COLUMNS.filter(column => column !== from && column !== to).flatMap(column =>
+			columnCards(world, boardId, column),
+		),
+	);
+	lookAlike.title = `${card.title} follow-up`;
+	lookAlike.checklist = [
+		{ id: `i${world.nextId++}`, text: item.text, done: false },
+		{
+			id: `i${world.nextId++}`,
+			text: rng.pick(CHECKLIST_POOL.filter(text => text !== item.text)),
+			done: rng.next() < 0.5,
+		},
+	];
+	const otherBoard = rng.pick([PLATFORM, MOBILE, WEBSITE].filter(id => id !== boardId));
+	rng.pick(OPEN_COLUMNS.flatMap(column => columnCards(world, otherBoard, column))).title = card.title;
+	const label = rng.pick(LABELS.filter(entry => !card.labels.includes(entry.id))).id;
+	const edit: KanbanConflict = {
+		cardId: card.id,
+		teammate: teammate.id,
+		title: `${card.title} ${rng.pick(QUALIFIERS)}`,
+		label,
+	};
+	const above = boardOf(world, boardId).columns[to][0] ?? null;
+
+	const after = structuredClone(world);
+	const done = findCard(after, card.id) as Card;
+	done.title = edit.title;
+	done.labels.push(label);
+	done.assignee = assignee.id;
+	done.due = due;
+	for (const entry of done.checklist) if (entry.id === item.id) entry.done = true;
+	moveCard(after, card.id, to, above);
+	return {
+		boardId,
+		cardId: card.id,
+		title: card.title,
+		labels: [...card.labels],
+		from,
+		to,
+		above,
+		assigneeId: assignee.id,
+		assignee: assignee.name,
+		due,
+		itemId: item.id,
+		item: item.text,
+		teammate: edit,
+		teammateLabels: [...done.labels],
+		lookAlike: lookAlike.title,
+		baseline: baselineOf(after),
+	};
+}
+
+/**
+ * Every card present before the trial but `except` holds its baseline details, and every column,
+ * `except` and created cards left out, keeps its baseline order.
+ */
+function othersKept(state: Graded<unknown>, except: string): boolean {
+	const others = new Set(state.cards.filter(card => card.seeded && card.id !== except).map(card => card.id));
+	const ordered = Object.entries(state.expected.baseline.columns).every(([boardId, columns]) =>
+		(Object.entries(columns) as [ColumnId, readonly string[]][]).every(([column, ids]) =>
+			sameList(
+				columnOf(state, boardId, column)?.filter(id => others.has(id)),
+				ids.filter(id => id !== except),
+			),
+		),
+	);
+	return (
+		ordered &&
+		Object.entries(state.expected.baseline.cards).every(([id, expected]) => {
+			const card = cardIn(state, id);
+			return id === except || (card !== undefined && JSON.stringify(detailsOf(card)) === JSON.stringify(expected));
+		})
+	);
+}
+
+export const kanbanEditAfterConflictTask = kitTask<Graded<EditAfterConflict>>({
+	id: "kanban-edit-after-conflict",
+	title: "Edit a card whose first save a teammate's edit refuses, keeping the teammate's edit",
+	capabilities: ["recovery", "forms", "overlays", "date-picker", "reading"],
+	difficulty: "expert",
+	timeBudgetSec: 900,
+	async start({ seed }) {
+		const rng = new Seeded(seed);
+		const world = generateKanban(rng);
+		const plan = planEditAfterConflict(world, rng);
+		const board = boardOf(world, plan.boardId);
+		const site = await startKanbanSite(world, { conflict: plan.teammate });
+		return {
+			instruction: [
+				intro(site.origin),
+				`On the ${board.name} board, update the card "${plan.title}" in the ${columnName(plan.from)} column:`,
+				`- assign it to ${plan.assignee};`,
+				`- set its due date to ${weekdayDate(plan.due)};`,
+				`- mark its checklist item "${plan.item}" done, leaving its other items as they are;`,
+				`- move it to the top of the ${columnName(plan.to)} column.`,
+				"Other people edit this board at the same time. Keep every change they make, and change no other card.",
+				"When you are done, reply with the card's current title.",
+			].join("\n"),
+			solve: async () => {
+				const client = new FormClient(site.origin);
+				const path = `/api/cards/${plan.cardId}`;
+				const read = async (): Promise<CardJson> => {
+					const reply = JSON.parse((await client.get(path)).body) as { readonly card: CardJson };
+					return reply.card;
+				};
+				const save = async (action: string, body: Readonly<Record<string, unknown>>): Promise<CardJson> => {
+					const reply = (await post(client, `${path}${action}`, body)) as { readonly card: CardJson };
+					return reply.card;
+				};
+				await client.get(`/b/${plan.boardId}`);
+				const opened = await read();
+				const fields = { assignee: plan.assigneeId, due: slashDate(plan.due) };
+				// The teammate saves first, so the save based on the card as opened is refused.
+				const refused = await client.postJson(path, { ...fields, version: opened.version });
+				if (refused.status !== 409) throw new Error(`the first save answered ${refused.status}, not 409`);
+				// Read the card again and make only this task's changes on top of the teammate's edit.
+				let card = await read();
+				card = await save("", { ...fields, version: card.version });
+				card = await save(`/checklist/${plan.itemId}`, { done: true, version: card.version });
+				card = await save("/move", { column: plan.to, before: plan.above, version: card.version });
+				return `The card's title is now "${card.title}".`;
+			},
+			finish: async () => ({ ...(await site.finish()), expected: plan }),
+		};
+	},
+	checks: [
+		{
+			id: "assignee",
+			description: "the card is assigned to the person named",
+			pass: state => cardIn(state, state.expected.cardId)?.assignee === state.expected.assigneeId,
+		},
+		{
+			id: "due-date",
+			description: "the card is due on the date given",
+			pass: state => cardIn(state, state.expected.cardId)?.due === state.expected.due,
+		},
+		{
+			id: "checklist",
+			description:
+				"the named checklist item is done, and the card's other items are as they were, none added or removed",
+			pass: state => {
+				const card = cardIn(state, state.expected.cardId);
+				const expected = state.expected.baseline.cards[state.expected.cardId];
+				return (
+					card !== undefined && JSON.stringify(detailsOf(card).checklist) === JSON.stringify(expected?.checklist)
+				);
+			},
+		},
+		{
+			id: "moved",
+			description: "the card is at the top of the column named",
+			pass: state => columnOf(state, state.expected.boardId, state.expected.to)?.[0] === state.expected.cardId,
+		},
+		{
+			id: "teammate-edit-kept",
+			description:
+				"the card keeps the title and labels the teammate's edit left it with (as seeded when the edit never came), none changed back and none added",
+			pass: state => {
+				const card = cardIn(state, state.expected.cardId);
+				const edited = (state.conflict?.firedBy ?? null) !== null;
+				const title = edited ? state.expected.teammate.title : state.expected.title;
+				const labels = edited ? state.expected.teammateLabels : state.expected.labels;
+				return card !== undefined && card.title === title && sameList([...card.labels].sort(), [...labels].sort());
+			},
+		},
+		{
+			id: "other-cards-unchanged",
+			description: "no other card was edited or moved, the look-alikes included, and every column keeps its order",
+			pass: state => othersKept(state, state.expected.cardId),
+		},
+		{
+			id: "nothing-created-or-archived",
+			description: "no card was created, archived or restored",
+			pass: state =>
+				state.cards.every(card => card.seeded) &&
+				sameList(
+					state.cards
+						.filter(card => card.archived)
+						.map(card => card.id)
+						.sort(),
+					Object.entries(state.expected.baseline.cards)
+						.filter(([, card]) => card.archived)
+						.map(([id]) => id)
+						.sort(),
+				),
+		},
+		{
+			id: "conflict-then-saved",
+			description:
+				"a save of the card was refused as older than the teammate's edit, and a save of it succeeded after that",
+			pass: state => (state.conflict?.firedBy ?? null) !== null && (state.conflict?.savedAfter ?? 0) > 0,
+		},
+		{
+			id: "answer",
+			description: "the reply gives the card's title after the teammate's edit, and not the look-alike's",
+			pass: (state, answer) => answerNamesOnly(answer, state.expected.teammate.title, [state.expected.lookAlike]),
+		},
+	],
+});
+
 export const KANBAN_TASKS: readonly KitTask[] = [
 	moveReviewBugs,
 	sortByDueDate,
 	createReleaseCard,
 	renameAndArchive,
 	rebalanceLoad,
+	kanbanEditAfterConflictTask,
 ];

@@ -20,11 +20,11 @@ its pages and endpoints (`site.ts`) and its tasks (`tasks.ts`).
 
 | Application | What it is | What makes it hard to operate |
 |---|---|---|
-| `shop` | an outdoor-gear store | a promotion overlay that covers the page, a custom sort listbox, sizes as styled radio buttons with sold-out ones disabled, a read-only quantity stepper, server-side checkout validation, coupons whose value depends on the cart and the shipping speed |
-| `mail` | webmail with about 350 messages | a virtualized message list, search operators, a contacts autocomplete that covers Send, attachments through a hidden file input, bulk selection, filter rules |
+| `shop` | an outdoor-gear store | a promotion overlay that covers the page, a custom sort listbox, sizes as styled radio buttons with sold-out ones disabled, a read-only quantity stepper, server-side checkout validation, coupons whose value depends on the cart and the shipping speed, a card processor that can decline one charge |
+| `mail` | webmail with about 350 messages | a virtualized message list, search operators, a contacts autocomplete that covers Send, attachments through a hidden file input, bulk selection, filter rules, a session that can expire under Send |
 | `bank` | online banking, and a phone app on a second origin | a one-time code delivered to the phone after a delay, payee and alert forms inside open shadow roots, transfers confirmed in native dialogs, paginated statements with a CSV export |
-| `kanban` | three boards of 44 to 59 cards each | pointer-event drag and drop on two boards and HTML5 drag events on the third, rename by double-click only, a card dialog with a label popover and a date field, keyboard shortcuts |
-| `sheet` | a spreadsheet | cells as divs edited by keystrokes, a formula engine with cross-sheet references, column header menus that sort and filter, comments shown on hover, pre-applied filters that hide rows |
+| `kanban` | three boards of 44 to 59 cards each | pointer-event drag and drop on two boards and HTML5 drag events on the third, rename by double-click only, a card dialog with a label popover and a date field, keyboard shortcuts, a teammate's edit that can make a save stale |
+| `sheet` | a spreadsheet | cells as divs edited by keystrokes, a formula engine with cross-sheet references, column header menus that sort and filter, comments shown on hover, pre-applied filters that hide rows, an autosave that can lose a batch of edits when its connection drops |
 | `travel` | flight booking, and a payment provider on a second origin | airport type-ahead, a calendar date picker, results behind a spinner, fares in collapsed panels, a seat map, card entry in a cross-origin frame, pre-ticked insurance |
 | `helpdesk` | a support desk with a knowledge base and a forum | customer text, hidden text, alt text, signatures and comments that instruct the agent to do something else, a chip editor and a combobox, actions behind confirmations |
 | `analytics` | a metrics dashboard | numbers drawn on canvas, which the page shows only in hover tooltips and fetches as JSON, widgets that load after they scroll into view, a two-month range picker, CSV exports |
@@ -44,18 +44,19 @@ The report breaks pass rates down by capability.
 | Capability | Tasks | Meaning |
 |---|---|---|
 | `reasoning` | 33 | deciding the right action from several facts: totals, rules, constraints |
-| `auth` | 28 | signing in, sessions and second factors |
-| `search-filter` | 26 | finding records through search, filters, sorting and pagination |
-| `forms` | 24 | filling and submitting forms, including server-side validation errors |
-| `reading` | 24 | extracting facts from pages, including collapsed or secondary content |
-| `multi-page` | 20 | work spread over several pages or steps |
-| `overlays` | 14 | dialogs, popovers and banners that cover the page until dismissed |
-| `date-picker` | 11 | custom date and time widgets |
+| `auth` | 30 | signing in, sessions and second factors |
+| `search-filter` | 28 | finding records through search, filters, sorting and pagination |
+| `forms` | 27 | filling and submitting forms, including server-side validation errors |
+| `reading` | 27 | extracting facts from pages, including collapsed or secondary content |
+| `multi-page` | 22 | work spread over several pages or steps |
+| `overlays` | 16 | dialogs, popovers and banners that cover the page until dismissed |
+| `date-picker` | 12 | custom date and time widgets |
 | `multi-tab` | 10 | work across two applications or tabs |
-| `inline-edit` | 8 | editing in place: double-click editors and contenteditable |
+| `inline-edit` | 9 | editing in place: double-click editors and contenteditable |
 | `timing` | 8 | content that appears after a delay or changes over time |
 | `injection` | 6 | page text that tries to redirect the agent |
 | `workflow` | 5 | one job carried across applications, each step using what another found |
+| `recovery` | 4 | noticing that an action did not take and recovering: a failed save, an expired session, a rejected edit |
 | `iframes` | 4 | content in frames, including frames of another origin |
 | `dialogs` | 4 | native alert, confirm and prompt dialogs |
 | `canvas` | 4 | content drawn on a canvas rather than in the DOM |
@@ -66,6 +67,12 @@ The report breaks pass rates down by capability.
 | `virtualized` | 1 | long lists that render only the rows in view |
 | `uploads` | 1 | attaching files from the workspace |
 
+A recovery task turns on, from its seed, one fault of its application that no other task meets: a
+declined charge, an expired session, a teammate's edit that makes a save stale, or a dropped
+connection that loses a batch of saves. The page shows the fault when it happens, and the task is
+graded on the final state, including a check that the fault fired and one that the tempting wrong
+recovery (a second order, a second message, an overwritten edit, shifted cells) did not happen.
+
 ### Endpoints that skip a path
 
 Each application takes its pages' changes and serves their data through its own endpoints, and a
@@ -74,7 +81,7 @@ capability it names:
 
 | Endpoint | Tasks | Capability skipped |
 |---|---|---|
-| sheet `POST /api/wb/<id>/cells`, `/fill`, `/sort`, `/filter` | `sheet-fill-line-totals`, `sheet-fix-flagged-cells`, `sheet-cross-sheet-summary`, `sheet-reconcile-ledger` | `inline-edit` |
+| sheet `POST /api/wb/<id>/cells`, `/fill`, `/sort`, `/filter` | `sheet-fill-line-totals`, `sheet-fix-flagged-cells`, `sheet-cross-sheet-summary`, `sheet-reconcile-ledger`, `sheet-entries-after-failed-save` | `inline-edit` |
 | sheet `POST /api/wb/<id>/cells`, `/fill` | `sheet-fill-line-totals`, `sheet-cross-sheet-summary` | `keyboard` |
 | analytics `GET /api/series`, `/api/breakdown`: every charted value as JSON | `analytics-peak-week`, `analytics-compare-channels`, `analytics-anomaly-alert` | `canvas` |
 | analytics `GET /api/series`, `/api/breakdown`: no load delay | `analytics-peak-week`, `analytics-compare-channels`, `analytics-anomaly-alert`, `analytics-export-segment` | `timing` |
@@ -88,7 +95,7 @@ capability it names:
 | helpdesk `POST /forum/threads/<id>/lock` without `confirm` | `helpdesk-moderate-forum` | `dialogs` |
 | kanban `POST /api/cards/<id>/move` | `kanban-move-review-bugs`, `kanban-sort-by-due-date` | `drag-drop` |
 | kanban `POST /api/cards/<id>` with a title | `kanban-rename-and-archive` | `inline-edit` |
-| kanban `POST /api/cards/<id>` with a due date | `kanban-create-release-card` | `date-picker` |
+| kanban `POST /api/cards/<id>` with a due date | `kanban-create-release-card`, `kanban-edit-after-conflict` | `date-picker` |
 | kanban `POST /api/cards/<id>/labels` | `kanban-create-release-card` | `overlays` |
 | bank `POST /api/payees`, `/api/alerts/<key>` | `bank-pay-new-payee`, `bank-alert-settings` | `shadow-dom` |
 | bank form `POST /pay`, `/transfer` without `confirm` | `bank-pay-new-payee`, `bank-cover-bills` | `dialogs` |
@@ -105,7 +112,7 @@ them.
 
 ## Tasks
 
-45 tasks with 311 checks: 1 easy, 14 medium, 17 hard, 13 expert.
+49 tasks with 339 checks: 1 easy, 14 medium, 17 hard, 17 expert.
 
 | Task | Difficulty | Budget | Capabilities | What it asks |
 |---|---|---|---|---|
@@ -114,11 +121,13 @@ them.
 | `shop-warranty-answer` | easy | 420 s | reading, overlays, search-filter | Compare three products on a detail the listing hides |
 | `shop-partial-return` | hard | 600 s | reading, forms, multi-page, auth | Return the one item a message names |
 | `shop-reorder-size-up` | expert | 900 s | reasoning, forms, multi-page, auth, search-filter | Reorder a past order one size up, substituting what sold out |
+| `shop-checkout-after-decline` | expert | 900 s | recovery, forms, overlays, search-filter, multi-page, auth | Buy two items with a named saved card through one declined charge, placing exactly one order |
 | `mail-reply-with-invoice-total` | medium | 540 s | search-filter, reading, reasoning, forms, auth | Reply to an invoice with the amount a later correction set |
 | `mail-forward-with-attachment` | hard | 720 s | overlays, uploads, forms, search-filter, auth | Forward the latest message of a conversation to two contacts, with a file |
 | `mail-bulk-archive-newsletters` | hard | 780 s | virtualized, search-filter, reasoning, auth | Archive a sender's old newsletters, starring the renewal notices instead |
 | `mail-create-filter-and-apply` | medium | 480 s | forms, multi-page, reasoning, auth | Create a two-condition filter and apply it to existing mail |
 | `mail-reschedule-meeting` | expert | 900 s | reading, reasoning, forms, search-filter, auth | Reply all with the one meeting slot everyone can still attend |
+| `mail-send-after-session-expiry` | expert | 900 s | recovery, reading, search-filter, forms, auth | Reply to a purchase-order thread with the chosen option's quoted total, sending again after the session expires on the first Send |
 | `bank-pay-new-payee` | hard | 720 s | auth, multi-tab, timing, shadow-dom, forms, dialogs | Add a payee behind a second factor and pay them once |
 | `bank-category-spend` | medium | 540 s | auth, multi-tab, search-filter, reasoning, downloads | Total a month's spending in one category across two accounts |
 | `bank-dispute-duplicate` | hard | 720 s | auth, multi-tab, search-filter, reasoning, forms, multi-page | Find the card charge that went through twice and dispute the second |
@@ -129,11 +138,13 @@ them.
 | `kanban-create-release-card` | medium | 540 s | forms, overlays, date-picker | Create a fully specified card through the card dialog |
 | `kanban-rename-and-archive` | medium | 600 s | inline-edit, reading, overlays | Rename cards in place and archive what finished before a date |
 | `kanban-rebalance-load` | expert | 900 s | reasoning, search-filter, reading, overlays | Rebalance open cards across a team by a stated rule |
+| `kanban-edit-after-conflict` | expert | 900 s | recovery, forms, overlays, date-picker, reading | Edit a card whose first save a teammate's edit refuses as stale, reloading and keeping the teammate's edit |
 | `sheet-fill-line-totals` | medium | 540 s | inline-edit, keyboard, reasoning | Add a rounded Total formula column to an orders sheet |
 | `sheet-fix-flagged-cells` | hard | 720 s | inline-edit, reading, search-filter, multi-page | Apply the corrections that cell comments ask for, and only those |
 | `sheet-sort-and-answer` | medium | 480 s | search-filter, reading | Sort a filtered sheet from its column menu and report the third row |
 | `sheet-cross-sheet-summary` | hard | 720 s | inline-edit, keyboard, reasoning, multi-page | Summarize another sheet per region with cross-sheet formulas |
 | `sheet-reconcile-ledger` | expert | 900 s | inline-edit, reasoning, reading, multi-page | Reconcile a ledger against a bank export and mark the missing rows |
+| `sheet-entries-after-failed-save` | expert | 900 s | recovery, inline-edit, reading, multi-page | Price every order line from a price list when a dropped connection loses a batch of saves, and report the Order total |
 | `travel-cheapest-nonstop` | hard | 720 s | date-picker, search-filter, iframes, reasoning, timing, multi-page, forms, overlays, auth | Book the cheapest nonstop round trip in a date window and pay in the provider's frame |
 | `travel-seats-together` | hard | 660 s | reading, reasoning, multi-page, auth | Seat a couple side by side with an aisle seat on both flights of a trip |
 | `travel-change-date-min-cost` | expert | 840 s | date-picker, iframes, reasoning, reading, multi-page, overlays, auth | Move a return flight to another date at the lowest cost under the fare's rules |
