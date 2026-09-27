@@ -63,7 +63,7 @@ Package scripts in `package.json`:
 
 ## Member Kinds
 
-The member kinds declared in `engine/member-discovery.ts` are:
+The member kinds declared in `engine/members/discovery.ts` are:
 
 | Kind | Directory | Noun | Shape |
 |---|---|---|---|
@@ -150,7 +150,7 @@ Top-level files:
 - `configs/`: Per-trial container job configuration files named `<variant>__<task>__r<repeat>.yaml`.
 - `jobs/`: Per-trial execution directories named `<variant>__<task>__r<repeat>/` containing `config.json`, `result.json`, `job.log`, `lock.json`, and `<task>__<id>/` subdirectories with `trial.log`, `agent/` outputs, `verifier/` scores (`reward.json`, `ctrf.json`, `test-stdout.txt`), `artifacts/` (`model.patch`), and `egress-proxy/` logs.
 
-Run record data model (`engine/run-record.ts`):
+Run record data model (`engine/run/record.ts`):
 - `EvalRunRecord`: Represents a completed or settled suite run. Contains `id`, `suite` (`name`, `version`, `provenanceSha`), `variants`, `tasks`, `repeats`, `results`, `createdAt`, optional `completedAt`, `provenance`, and `metadata`.
 - `TrialResultRecord`: Represents one settled trial execution. Contains `cell` (`task`, `variant`, `repeat`), `score` (`reward`, optional `partial`, optional `error`, `extra`), optional `artifacts` (`trialDir`, `logPaths`, `filePaths`, `rawOutput`, `usage`, `extra`), `startedAt`, `finishedAt`, and `durationMs`.
 - `TrialUsage`: Token and monetary usage metrics. Contains `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens`, `totalCostUsd`, and `durationMs`. Unmeasured fields are `null`, never `0`.

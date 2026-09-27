@@ -3,11 +3,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { $which, errorMessage, logger } from "@veyyon/utils";
-import type { ContainerProgramContext, ProgramFile, StagedProgram }  from "../engine/container-program"
-import { CONTAINER_PROGRAM_VERSION, containerProgramPath, programDirFor, stageHarnessProgram }  from "../engine/container-program"
+import type { ContainerProgramContext, ProgramFile, StagedProgram }  from "../engine/harness/container-program"
+import { CONTAINER_PROGRAM_VERSION, containerProgramPath, programDirFor, stageHarnessProgram }  from "../engine/harness/container-program"
 import type { SystemJobConfigContext, SystemPreflightContext, SystemPreflightResult, SystemStageContext }  from "../engine/contracts"
-import { containerLocalEndpointEnv, isLocalInferenceModel, localEndpointAllowedDomains, localEndpointRefusal } from "../engine/local-inference-endpoint";
-import { parseModelId } from "../engine/trial-model";
+import { containerLocalEndpointEnv, isLocalInferenceModel, localEndpointAllowedDomains, localEndpointRefusal } from "../engine/harness/local-inference-endpoint";
+import { parseModelId } from "../engine/trial/model";
 import type {
 	HarnessAdapter,
 	HarnessCapabilities,
@@ -16,8 +16,8 @@ import type {
 	PreflightVerdict,
 } from "../engine/contracts";
 import { veyBinaryPath } from "../engine/package-paths";
-import { decideAuthSeed, probeCredentialStore } from "../engine/auth-seed";
-import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../engine/auth-preflight";
+import { decideAuthSeed, probeCredentialStore } from "../engine/auth/seed";
+import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../engine/auth/preflight";
 
 /** Where the staged omp files land inside a task container. */
 const CONTAINER_DIR = "/opt/omp-assets";

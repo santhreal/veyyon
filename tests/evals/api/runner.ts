@@ -12,7 +12,7 @@ import { DEFAULT_BENCHMARK_KIND, requireBenchmark } from "../store/benchmarks";
 import { experimentOf, knownExperimentIds } from "../store/experiments";
 import { assertSafeJobName, type LaunchRecord, type RunRow, type RunStore } from "../store/sqlite";
 import { evalsPackageDir, requirePathSegment } from "../engine/package-paths";
-import type { LaunchRequest } from "../engine/store-shapes";
+import type { LaunchRequest } from "../engine/wire/store-shapes";
 
 interface ManagedChild {
 	proc: Subprocess;

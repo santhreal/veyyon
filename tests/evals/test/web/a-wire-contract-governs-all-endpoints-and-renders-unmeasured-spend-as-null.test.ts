@@ -25,7 +25,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { ManagerServer } from "../../api/main";
-import type { RouteDescriptor } from "../../engine/store-shapes";
+import type { RouteDescriptor } from "../../engine/wire/store-shapes";
 import {
 	type AddArmRequest,
 	type ApiErrorResponse,
@@ -52,7 +52,7 @@ import {
 	type TraceRow,
 	type TranscriptEntry,
 	type UpdateExperimentMetaResponse,
-} from "../../engine/store-shapes";
+} from "../../engine/wire/store-shapes";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {

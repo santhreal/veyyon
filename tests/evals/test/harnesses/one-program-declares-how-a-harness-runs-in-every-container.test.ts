@@ -29,9 +29,9 @@ import {
 	containerProgramPath,
 	programDirFor,
 	validateContainerProgram,
-} from "../../engine/container-program";
+} from "../../engine/harness/container-program";
 import type { HarnessAdapter, Variant } from "../../engine/contracts";
-import { harnesses } from "../../engine/loaded-members";
+import { harnesses } from "../../engine/members/loaded";
 import { agentsDir } from "../../engine/package-paths";
 
 /** Harnesses whose container run is one declaration. A new one turns the sweep red. */

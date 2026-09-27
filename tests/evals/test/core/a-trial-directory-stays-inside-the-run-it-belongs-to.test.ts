@@ -38,7 +38,7 @@ import type {
 	TrialScore,
 	Variant,
 } from "../../engine/contracts";
-import { backends, harnesses } from "../../engine/loaded-members";
+import { backends, harnesses } from "../../engine/members/loaded";
 import { pathSegmentFrom, UnsafePathSegmentError } from "../../engine/package-paths";
 import {
 	DEFAULT_RUN_SEGMENT,
@@ -49,7 +49,7 @@ import {
 	trialDirFor,
 	trialJobName,
 	trialSegments,
-} from "../../engine/run-layout";
+} from "../../engine/run/layout";
 import * as telemetryModule from "../../suites/typescript-edit/runner/telemetry";
 
 /** Names a segment is derived from, generated at run time so a dot run of any length is covered. */

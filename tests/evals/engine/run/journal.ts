@@ -14,11 +14,11 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isRecord, tryParseJson } from "@veyyon/utils";
-import type { TrialArtifacts, TrialCell } from "./contracts"
-import type { TrialResultRecord } from "./run-record";
-import { boundRawOutput } from "./trial-deadline";
-import { requirePathSegment } from "./package-paths";
-import { PlanChangedError } from "./run-plan-identity";
+import type { TrialArtifacts, TrialCell } from "../contracts"
+import type { TrialResultRecord } from "./record";
+import { boundRawOutput } from "../trial/deadline";
+import { requirePathSegment } from "../package-paths";
+import { PlanChangedError } from "../plan/plan-identity";
 
 /** Marks a file as this journal rather than any other JSONL a run directory holds. */
 export const RUN_JOURNAL_KIND = "veyyon-evals-trials";

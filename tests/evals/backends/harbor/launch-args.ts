@@ -10,7 +10,7 @@ import * as path from "node:path";
 import { $which } from "@veyyon/utils";
 import type { HarnessLookup } from "../../engine/contracts";
 import { codingAgentDir } from "../../engine/package-paths";
-import type { LaunchRequest, RunRole } from "../../engine/store-shapes";
+import type { LaunchRequest, RunRole } from "../../engine/wire/store-shapes";
 
 export type { LaunchRequest, RunRole };
 

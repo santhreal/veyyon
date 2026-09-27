@@ -17,7 +17,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { emissionsOf, emptyCounts } from "../../../engine/transcript-corpus";
+import { emissionsOf, emptyCounts } from "../../../engine/corpus/transcript-corpus";
 import {
 	applyCounts,
 	emptySplit,

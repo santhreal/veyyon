@@ -23,7 +23,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { EvalSuite, ExecutionBackend, HarnessAdapter, RunContext, TrialCell } from "../../engine/contracts";
-import { backends, harnesses, suites } from "../../engine/loaded-members";
+import { backends, harnesses, suites } from "../../engine/members/loaded";
 import { main, parseEvalsArgs, suiteContext } from "../../evals";
 
 const SUITE = "option-parity-suite";

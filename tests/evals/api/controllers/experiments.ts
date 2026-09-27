@@ -11,7 +11,7 @@ import {
 	EXPERIMENT_META_UPDATE_SPEC,
 	type LaunchRequest,
 	parseRequestBody,
-} from "../../engine/store-shapes";
+} from "../../engine/wire/store-shapes";
 import type { ServerContext } from "../context";
 
 /**

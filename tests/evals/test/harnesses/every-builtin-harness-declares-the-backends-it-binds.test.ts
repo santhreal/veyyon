@@ -18,9 +18,9 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { requireBackendBinding } from "../../engine/cell-variant";
+import { requireBackendBinding } from "../../engine/plan/cell-variant";
 import type { BackendId } from "../../engine/contracts";
-import { harnesses } from "../../engine/loaded-members";
+import { harnesses } from "../../engine/members/loaded";
 import { factoryAdapter } from "../../harnesses/factory";
 import { hermesAdapter } from "../../harnesses/hermes";
 import { ompAdapter } from "../../harnesses/omp";

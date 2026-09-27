@@ -18,21 +18,21 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, logger } from "@veyyon/utils";
 import type { EvalSuite, HarnessAdapter, SuiteContext } from "./engine/contracts";
-import { executeRun } from "./engine/execute-run";
-import { preflightHarnesses } from "./engine/harness-preflight";
-import { backends, harnesses, harnessFlags, suites } from "./engine/loaded-members";
-import { findMembers, MEMBER_KINDS } from "./engine/member-discovery";
+import { executeRun } from "./engine/run/execute";
+import { preflightHarnesses } from "./engine/harness/preflight";
+import { backends, harnesses, harnessFlags, suites } from "./engine/members/loaded";
+import { findMembers, MEMBER_KINDS } from "./engine/members/discovery";
 import { runsDir as defaultRunsDir, requirePathSegment } from "./engine/package-paths";
-import { checkRunDirectories } from "./engine/run-directories";
-import { journalExists, journalPathFor, readRunJournal, requireJournalPlan } from "./engine/run-journal";
-import type { RunPlan } from "./engine/run-plan";
-import { buildRunPlan, describeRunPlan } from "./engine/run-plan";
-import { planIdentity } from "./engine/run-plan-identity";
-import type { CellSummary, EvalRunRecord } from "./engine/run-record";
-import { judgeRunOutcome, summarizeRunCells } from "./engine/run-record";
-import { DEFAULT_TRIAL_ATTEMPTS, MAX_TRIAL_ATTEMPTS } from "./engine/trial-retry";
-import { checkVariantSupport, type UnappliedVariantAxisError, variantSupportQuery } from "./engine/variant-axes";
-import type { ConfigSpec, PromptVariantSpec, VariantMatrixSelection } from "./engine/variant-matrix";
+import { checkRunDirectories } from "./engine/run/directories";
+import { journalExists, journalPathFor, readRunJournal, requireJournalPlan } from "./engine/run/journal";
+import type { RunPlan } from "./engine/plan/run-plan";
+import { buildRunPlan, describeRunPlan } from "./engine/plan/run-plan";
+import { planIdentity } from "./engine/plan/plan-identity";
+import type { CellSummary, EvalRunRecord } from "./engine/run/record";
+import { judgeRunOutcome, summarizeRunCells } from "./engine/run/record";
+import { DEFAULT_TRIAL_ATTEMPTS, MAX_TRIAL_ATTEMPTS } from "./engine/trial/retry";
+import { checkVariantSupport, type UnappliedVariantAxisError, variantSupportQuery } from "./engine/plan/variant-axes";
+import type { ConfigSpec, PromptVariantSpec, VariantMatrixSelection } from "./engine/plan/variant-matrix";
 
 /**
  * Flags that take a value. A flag outside this table, and outside the harness-declared

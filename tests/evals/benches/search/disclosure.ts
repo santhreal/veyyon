@@ -4,7 +4,7 @@ import type { AgentToolResult } from "@veyyon/agent-core";
 import type { SearchToolDetails } from "@veyyon/coding-agent/tools/search/search";
 import { SearchTool } from "@veyyon/coding-agent/tools/search/search";
 import { errorMessage } from "@veyyon/utils";
-import { type FlagGrammar, parseFlags } from "../../engine/flag-grammar";
+import { type FlagGrammar, parseFlags } from "../../engine/plan/flag-grammar";
 import { internalScratchDir } from "../../engine/package-paths";
 import { materializeCorpus } from "./corpus";
 import { registerBuiltinSearchBench, requireSearchCorpus } from "./registry";

@@ -26,7 +26,7 @@ import type { Config } from "../../backends/harbor/config";
 import type { SourceMount } from "../../backends/harbor/deps";
 import { agentSetupFailure, HarborBackend } from "../../backends/harbor/main";
 import type { EvalSuite, RunContext, TaskDescriptor, TrialCell, TrialScore, Variant } from "../../engine/contracts";
-import { harnesses } from "../../engine/loaded-members";
+import { harnesses } from "../../engine/members/loaded";
 
 const TASK = "carry-the-mounts";
 const MODEL = "vendor/model-x";

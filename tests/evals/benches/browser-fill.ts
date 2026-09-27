@@ -24,7 +24,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/sdk";
 import { BrowserTool } from "@veyyon/coding-agent/tools/web/browser";
 import { errorMessage } from "@veyyon/utils";
-import { type FlagGrammar, flagCount, parseFlags } from "../engine/flag-grammar";
+import { type FlagGrammar, flagCount, parseFlags } from "../engine/plan/flag-grammar";
 
 /** Value lengths timed: a word, a paragraph, a page. */
 const LENGTHS = [16, 256, 4096] as const;

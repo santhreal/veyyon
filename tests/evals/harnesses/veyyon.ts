@@ -2,10 +2,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
 import type { SystemJobConfigContext, SystemPreflightContext, SystemPreflightResult, SystemStageContext }  from "../engine/contracts"
-import { isLocalInferenceModel, localEndpointRefusal } from "../engine/local-inference-endpoint"
-import { sanitizeVariantName } from "../engine/run-layout";
-import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../engine/auth-preflight";
-import { decideAuthSeed, probeCredentialStore } from "../engine/auth-seed";
+import { isLocalInferenceModel, localEndpointRefusal } from "../engine/harness/local-inference-endpoint"
+import { sanitizeVariantName } from "../engine/run/layout";
+import { AUTH_DB_SOURCES, requireStagedAuthCanServeToken } from "../engine/auth/preflight";
+import { decideAuthSeed, probeCredentialStore } from "../engine/auth/seed";
 import type {
 	HarnessAdapter,
 	HarnessCapabilities,

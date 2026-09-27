@@ -12,7 +12,7 @@ import type {
 	TrialScore,
 	Variant,
 } from "../../../engine/contracts";
-import { backends, harnesses } from "../../../engine/loaded-members";
+import { backends, harnesses } from "../../../engine/members/loaded";
 
 function createProbeSuite(): EvalSuite {
 	return {

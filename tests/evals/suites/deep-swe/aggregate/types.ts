@@ -2,9 +2,9 @@
  * Core result types for DeepSWE evaluations.
  */
 
-import type { ArmResult } from "../../../engine/arm-result";
+import type { ArmResult } from "../../../engine/compare/arm-result";
 
-export type { ArmResult } from "../../../engine/arm-result";
+export type { ArmResult } from "../../../engine/compare/arm-result";
 
 /**
  * Runtime list of every field name declared on ArmResult.

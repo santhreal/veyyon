@@ -12,7 +12,7 @@
  * fallback for a child that is not its own group leader.
  */
 
-import { DEFAULT_GRACE_PERIOD_MS } from "./trial-deadline";
+import { DEFAULT_GRACE_PERIOD_MS } from "./deadline";
 
 /** The part of a spawned process this module uses. Both Bun and node children satisfy it. */
 export interface TerminableProcess {

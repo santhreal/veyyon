@@ -12,8 +12,8 @@ import {
 	meanWithTimeoutsAsZero,
 	rateOf,
 	sumOfMeasured,
-} from "./trial-outcomes";
-import type { RunProvenance, TrialArtifacts, TrialCell, TrialScore, Variant } from "./contracts";
+} from "../trial/outcomes";
+import type { RunProvenance, TrialArtifacts, TrialCell, TrialScore, Variant } from "../contracts";
 
 export interface SuiteTag {
 	readonly name: string;

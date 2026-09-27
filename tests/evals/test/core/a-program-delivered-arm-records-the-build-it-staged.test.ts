@@ -35,9 +35,9 @@ import {
 	programDirFor,
 	stageContainerProgram,
 	validateContainerProgram,
-} from "../../engine/container-program";
+} from "../../engine/harness/container-program";
 import type { EvalSuite, HarnessAdapter, RunContext, TrialCell, Variant } from "../../engine/contracts";
-import { harnesses } from "../../engine/loaded-members";
+import { harnesses } from "../../engine/members/loaded";
 
 const RUN_ID = "records-the-build";
 const MODEL = "vendor/model-x";

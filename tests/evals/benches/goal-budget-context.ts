@@ -2,7 +2,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { GoalTool } from "@veyyon/coding-agent/goals/goal-tool";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { errorMessage } from "@veyyon/utils";
-import { type FlagGrammar, parseFlags } from "../engine/flag-grammar";
+import { type FlagGrammar, parseFlags } from "../engine/plan/flag-grammar";
 
 export interface GoalBudgetContextMeasurement {
 	enabled: boolean;

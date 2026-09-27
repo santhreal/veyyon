@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { BenchmarkDefinition, BenchmarkKind, LaunchRequest, LaunchResponse, RunRole } from "../../engine/store-shapes";
+import type { BenchmarkDefinition, BenchmarkKind, LaunchRequest, LaunchResponse, RunRole } from "../../engine/wire/store-shapes";
 import { mutate } from "../api";
 import { usePolled } from "../hooks/use-polled";
 import { INPUT_CLASS } from "./ui";

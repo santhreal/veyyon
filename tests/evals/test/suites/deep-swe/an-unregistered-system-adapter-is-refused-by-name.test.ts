@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { HarnessAdapter } from "../../../engine/contracts";
-import { harnesses, validateHarnessSelection } from "../../../engine/loaded-members";
+import { harnesses, validateHarnessSelection } from "../../../engine/members/loaded";
 
 describe("system adapter registry", () => {
 	it("lists all default registered adapters", () => {

@@ -9,12 +9,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { $which, errorMessage, isRecord, readPipeText } from "@veyyon/utils";
-import { resolveCellVariant } from "../../engine/cell-variant";
-import { containerProgramPath, programDirFor, stageHarnessProgram } from "../../engine/container-program";
-import { awaitTrialProcessOutput, terminateProcessTree } from "../../engine/trial-process";
-import { boundRawOutput, DEFAULT_GRACE_PERIOD_MS, trialTimeoutFromOptions } from "../../engine/trial-deadline";
-import { resolveTrialModel } from "../../engine/trial-model";
-import { runDirFor, trialJobName } from "../../engine/run-layout";
+import { resolveCellVariant } from "../../engine/plan/cell-variant";
+import { containerProgramPath, programDirFor, stageHarnessProgram } from "../../engine/harness/container-program";
+import { awaitTrialProcessOutput, terminateProcessTree } from "../../engine/trial/process";
+import { boundRawOutput, DEFAULT_GRACE_PERIOD_MS, trialTimeoutFromOptions } from "../../engine/trial/deadline";
+import { resolveTrialModel } from "../../engine/trial/model";
+import { runDirFor, trialJobName } from "../../engine/run/layout";
 import type {
 	BackendId,
 	ExecutionBackend,

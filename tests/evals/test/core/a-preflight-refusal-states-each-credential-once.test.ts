@@ -26,7 +26,7 @@ import {
 	describeAuthPreflightFailure,
 	requireStagedAuthCanServeToken,
 	summarizeCredentialReason,
-} from "../../engine/auth-preflight";
+} from "../../engine/auth/preflight";
 
 const STAGED = "/bench/assets/auth-agent.db";
 

@@ -15,8 +15,8 @@
  */
 import { describe, expect, test } from "bun:test";
 import type { TrialScore } from "../../engine/contracts";
-import type { EvalRunRecord, TrialResultRecord } from "../../engine/run-record";
-import { judgeRunOutcome, type RunFailure } from "../../engine/run-record";
+import type { EvalRunRecord, TrialResultRecord } from "../../engine/run/record";
+import { judgeRunOutcome, type RunFailure } from "../../engine/run/record";
 
 function score(overrides: Partial<TrialScore> = {}): TrialScore {
 	return { reward: 1, partial: null, error: null, usage: null, extra: {}, ...overrides };

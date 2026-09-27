@@ -25,7 +25,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { harnesses } from "../../engine/loaded-members";
+import { harnesses } from "../../engine/members/loaded";
 import {
 	CONTAINER_ENDPOINT_PORT,
 	CONTAINER_HOST_ADDRESS,
@@ -34,7 +34,7 @@ import {
 	localEndpointAllowedDomains,
 	localEndpointRefusal,
 	localInferenceProviders,
-} from "../../engine/local-inference-endpoint";
+} from "../../engine/harness/local-inference-endpoint";
 
 const providers = localInferenceProviders();
 /** One row per provider, so each sweep names the provider it failed on. */

@@ -7,7 +7,7 @@
 import * as crypto from "node:crypto";
 import * as path from "node:path";
 import type { Server } from "bun";
-import { type FlagGrammar, flagNumber, parseFlags } from "../engine/flag-grammar";
+import { type FlagGrammar, flagNumber, parseFlags } from "../engine/plan/flag-grammar";
 import { experimentOf, knownExperimentIdsWith } from "../store/experiments";
 import { RunStore } from "../store/sqlite";
 import { harborJobsDir } from "../engine/package-paths";
@@ -19,7 +19,7 @@ import {
 	type LaunchRequest,
 	type RouteDescriptor,
 	SERVER_ROUTES,
-} from "../engine/store-shapes";
+} from "../engine/wire/store-shapes";
 import type { ServerContext } from "./context";
 import { resolveArmLaunch } from "./controllers/experiments";
 import { RequestRouter } from "./router";

@@ -27,7 +27,7 @@ import {
 	ARM_ATTACHMENT_KINDS,
 	ARM_ATTACHMENT_MANIFEST_VERSION,
 	type ArmAttachmentManifest,
-} from "../../engine/arm-attachments";
+} from "../../engine/harness/arm-attachments";
 import type {
 	EvalSuite,
 	PreflightVerdict,
@@ -38,7 +38,7 @@ import type {
 	TrialScore,
 	Variant,
 } from "../../engine/contracts";
-import { harnesses } from "../../engine/loaded-members";
+import { harnesses } from "../../engine/members/loaded";
 import { evalsPackageDir } from "../../engine/package-paths";
 
 const SCRATCH_BASE = path.join(evalsPackageDir(), ".internal", "test-pier-assets");

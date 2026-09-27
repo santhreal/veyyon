@@ -32,8 +32,8 @@ import { setTimeout } from "node:timers/promises";
 import { type Api, AuthStorage, completeSimple, type Model, SqliteAuthCredentialStore } from "@veyyon/ai";
 import { type GeneratedProvider, getBundledModel } from "@veyyon/catalog/models";
 import { collapseWhitespace, errorMessage, getAgentDbPath } from "@veyyon/utils";
-import { fetchWithin } from "../engine/bounded-fetch";
-import { type FlagGrammar, flagCount, parseArgv } from "../engine/flag-grammar";
+import { fetchWithin } from "../engine/io/bounded-fetch";
+import { type FlagGrammar, flagCount, parseArgv } from "../engine/plan/flag-grammar";
 
 /** A trace body runs to megabytes, so it gets longer than a dashboard poll. */
 const TRACE_FETCH_TIMEOUT_MS = 60_000;

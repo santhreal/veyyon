@@ -33,15 +33,15 @@ import {
 	ARM_ATTACHMENT_KINDS,
 	ARM_ATTACHMENT_MANIFEST_FILE,
 	ARM_ATTACHMENT_MANIFEST_VERSION,
-} from "../../engine/arm-attachments";
-import type { ArmResult, ComparisonArmResult } from "../../engine/arm-result";
-import { AUTH_DB_SOURCES } from "../../engine/auth-preflight";
-import { decideAuthSeed } from "../../engine/auth-seed";
+} from "../../engine/harness/arm-attachments";
+import type { ArmResult, ComparisonArmResult } from "../../engine/compare/arm-result";
+import { AUTH_DB_SOURCES } from "../../engine/auth/preflight";
+import { decideAuthSeed } from "../../engine/auth/seed";
 import type { HarnessAdapter } from "../../engine/contracts";
-import { listFiles } from "../../engine/list-files";
-import { harnesses, validateHarnessSelection } from "../../engine/loaded-members";
-import { MemberNotFoundError, Registry } from "../../engine/member-registry";
-import { knownPromptIds, promptOverrideIdError } from "../../engine/prompt-overrides";
+import { listFiles } from "../../engine/io/list-files";
+import { harnesses, validateHarnessSelection } from "../../engine/members/loaded";
+import { MemberNotFoundError, Registry } from "../../engine/members/registry";
+import { knownPromptIds, promptOverrideIdError } from "../../engine/plan/prompt-overrides";
 
 describe("a harness is resolved through one registry and core contracts do not import suites", () => {
 	it("refuses an unknown harness name with an error that names the registered ids", () => {

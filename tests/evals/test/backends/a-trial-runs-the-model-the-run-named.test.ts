@@ -38,8 +38,8 @@ import type {
 	TrialScore,
 	Variant,
 } from "../../engine/contracts";
-import { backends, harnesses } from "../../engine/loaded-members";
-import { MalformedModelIdError, ModelNotNamedError, parseModelId, resolveTrialModel } from "../../engine/trial-model";
+import { backends, harnesses } from "../../engine/members/loaded";
+import { MalformedModelIdError, ModelNotNamedError, parseModelId, resolveTrialModel } from "../../engine/trial/model";
 
 const TASK = "name-the-model";
 const SUITE = "model-axis-suite";

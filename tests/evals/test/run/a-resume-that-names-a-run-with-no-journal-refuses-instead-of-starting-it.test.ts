@@ -24,8 +24,8 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
 import type { SuiteContext } from "../../engine/contracts";
-import { executeRun } from "../../engine/execute-run";
-import { backends, harnesses, suites } from "../../engine/loaded-members";
+import { executeRun } from "../../engine/run/execute";
+import { backends, harnesses, suites } from "../../engine/members/loaded";
 import {
 	journalExists,
 	journalPathFor,
@@ -33,8 +33,8 @@ import {
 	ResumeWithoutJournalError,
 	RUN_JOURNAL_KIND,
 	RUN_JOURNAL_VERSION,
-} from "../../engine/run-journal";
-import { buildRunPlan } from "../../engine/run-plan";
+} from "../../engine/run/journal";
+import { buildRunPlan } from "../../engine/plan/run-plan";
 import { describeResume } from "../../evals";
 
 /** Any journal these cases open belongs to one plan; the digest itself is not the subject. */

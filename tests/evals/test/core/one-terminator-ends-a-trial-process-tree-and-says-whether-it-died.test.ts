@@ -26,13 +26,13 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import type { TerminableProcess, TerminationOutcome } from "../../engine/trial-process";
+import type { TerminableProcess, TerminationOutcome } from "../../engine/trial/process";
 import {
 	drainTrialOutput,
 	KILL_GRACE_PERIOD_MS,
 	OUTPUT_DRAIN_GRACE_MS,
 	terminateProcessTree,
-} from "../../engine/trial-process";
+} from "../../engine/trial/process";
 
 interface FakeProcess extends TerminableProcess {
 	readonly signals: string[];

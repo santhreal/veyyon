@@ -37,14 +37,14 @@ import type {
 	TrialCell,
 	Variant,
 } from "../../engine/contracts";
-import { harnesses } from "../../engine/loaded-members";
+import { harnesses } from "../../engine/members/loaded";
 import {
 	MAX_TEARDOWN_GRACE_MS,
 	MIN_TEARDOWN_GRACE_MS,
 	TEARDOWN_GRACE_MS,
 	teardownGraceFromOptions,
 	teardownWithin,
-} from "../../engine/trial-deadline";
+} from "../../engine/trial/deadline";
 
 function probeSuite(): EvalSuite {
 	return {

@@ -37,12 +37,12 @@ import type {
 	TrialCell,
 	TrialScore,
 } from "../../engine/contracts";
-import { executeRun } from "../../engine/execute-run";
-import { harnesses } from "../../engine/loaded-members";
-import { readRunJournal } from "../../engine/run-journal";
-import type { RunPlan } from "../../engine/run-plan";
-import { buildRunPlan } from "../../engine/run-plan";
-import { summarizeRunCells } from "../../engine/run-record";
+import { executeRun } from "../../engine/run/execute";
+import { harnesses } from "../../engine/members/loaded";
+import { readRunJournal } from "../../engine/run/journal";
+import type { RunPlan } from "../../engine/plan/run-plan";
+import { buildRunPlan } from "../../engine/plan/run-plan";
+import { summarizeRunCells } from "../../engine/run/record";
 import {
 	DEFAULT_TRIAL_ATTEMPTS,
 	isRetryableTrialFailure,
@@ -51,7 +51,7 @@ import {
 	TRIAL_RETRY_BASE_DELAY_MS,
 	TRIAL_RETRY_MAX_DELAY_MS,
 	trialRetryDelayMs,
-} from "../../engine/trial-retry";
+} from "../../engine/trial/retry";
 
 const selection = { harnesses: ["veyyon"], models: ["vendor/model-a"] } as const;
 

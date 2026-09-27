@@ -3,7 +3,7 @@
  * and deletion of benchmark runs.
  */
 import { experimentOf, knownExperimentIdsWith } from "../../store/experiments";
-import { parseLaunchRequest, parseRequestBody, RESUME_RUN_SPEC } from "../../engine/store-shapes";
+import { parseLaunchRequest, parseRequestBody, RESUME_RUN_SPEC } from "../../engine/wire/store-shapes";
 import type { ServerContext } from "../context";
 
 export function getRunsController(ctx: ServerContext, url: URL): Response {

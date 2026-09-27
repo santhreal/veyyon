@@ -18,7 +18,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { harnessFlags, suites } from "../../engine/loaded-members";
+import { harnessFlags, suites } from "../../engine/members/loaded";
 import { BOOLEAN_FLAGS, CliUsageError, evalsUsage, parseEvalsArgs, suiteContext, VALUE_FLAGS } from "../../evals";
 
 const fixedValueFlags = Object.keys(VALUE_FLAGS);

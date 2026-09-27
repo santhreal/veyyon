@@ -31,7 +31,7 @@ import type {
 	TrialScore,
 	Variant,
 } from "../../engine/contracts";
-import { backends, harnesses } from "../../engine/loaded-members";
+import { backends, harnesses } from "../../engine/members/loaded";
 
 /**
  * Backends whose trials are not driven here, and why. Pinned by exact equality: a backend added to

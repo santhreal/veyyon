@@ -20,7 +20,7 @@
 
 import { describe, expect, it } from "bun:test";
 import type { HarnessAdapter } from "../../engine/contracts";
-import { harnesses, harnessFlags } from "../../engine/loaded-members";
+import { harnesses, harnessFlags } from "../../engine/members/loaded";
 import { BOOLEAN_FLAGS, parseEvalsArgs, VALUE_FLAGS } from "../../evals";
 
 /** Record every key an adapter reads out of the argument map. */

@@ -24,7 +24,7 @@ import {
 } from "@veyyon/catalog/identity";
 import { CATALOG_PROVIDERS } from "@veyyon/catalog/provider-models/descriptors";
 import { collapseWhitespace } from "@veyyon/utils";
-import { authDbPath as defaultAuthDbPath } from "./package-paths";
+import { authDbPath as defaultAuthDbPath } from "../package-paths";
 
 export const AUTH_DB_SOURCES = [
 	path.join(os.homedir(), ".veyyon", "shared-auth", "agent.db"),

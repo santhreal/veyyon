@@ -27,7 +27,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
-import { type FlagGrammar, flagCount, parseFlags, requireFlag } from "../engine/flag-grammar";
+import { type FlagGrammar, flagCount, parseFlags, requireFlag } from "../engine/plan/flag-grammar";
 import {
 	type EpisodeUsage,
 	episodeSandbox,

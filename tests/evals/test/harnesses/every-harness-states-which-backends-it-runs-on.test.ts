@@ -28,9 +28,9 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import type { EvalSuite, HarnessAdapter, SuiteContext, TaskDescriptor } from "../../engine/contracts";
-import { harnesses, suites } from "../../engine/loaded-members";
-import { Registry } from "../../engine/member-registry";
-import { buildRunPlan, UnboundHarnessBackendError } from "../../engine/run-plan";
+import { harnesses, suites } from "../../engine/members/loaded";
+import { Registry } from "../../engine/members/registry";
+import { buildRunPlan, UnboundHarnessBackendError } from "../../engine/plan/run-plan";
 
 /**
  * A suite discovers its tasks out of a dataset directory, and the harbor-backed suite defaults

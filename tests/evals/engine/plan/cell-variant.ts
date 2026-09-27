@@ -13,7 +13,7 @@
  * them, resolution is by exact name, and an unknown name fails closed.
  */
 
-import type { BackendId, HarnessAdapter, HarnessBackendBinding, RunContext, TrialCell, Variant } from "./contracts";
+import type { BackendId, HarnessAdapter, HarnessBackendBinding, RunContext, TrialCell, Variant } from "../contracts";
 
 export class UnknownCellVariantError extends Error {
 	readonly cellVariant: string;

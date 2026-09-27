@@ -15,9 +15,9 @@ import type {
 	TaskDescriptor,
 	TrialCell,
 	Variant,
-} from "./contracts";
+} from "../contracts";
 import { expandVariantMatrix, type VariantMatrixSelection } from "./variant-matrix";
-import { requirePathSegment } from "./package-paths";
+import { requirePathSegment } from "../package-paths";
 
 export class EmptyTaskSelectionError extends Error {
 	readonly suiteName: string;

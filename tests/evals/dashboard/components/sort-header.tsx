@@ -1,4 +1,4 @@
-import type { ArmSummary } from "../../engine/store-shapes";
+import type { ArmSummary } from "../../engine/wire/store-shapes";
 
 export type SortKey = "arm" | "note" | "status" | "progress" | "eta" | "pass" | "cost" | "time";
 

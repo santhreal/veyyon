@@ -26,7 +26,7 @@ import { execFile } from "node:child_process";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { TempDir } from "@veyyon/utils";
-import { FlagValueError, UnknownFlagError } from "../../../engine/flag-grammar";
+import { FlagValueError, UnknownFlagError } from "../../../engine/plan/flag-grammar";
 import {
 	DEFAULT_MAX_TASKS,
 	DEFAULT_TASK_CONCURRENCY,

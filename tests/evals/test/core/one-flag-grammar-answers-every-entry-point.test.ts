@@ -40,7 +40,7 @@ import {
 	parseFlags,
 	requireFlag,
 	UnknownFlagError,
-} from "../../engine/flag-grammar";
+} from "../../engine/plan/flag-grammar";
 import { CHANNEL_SPLIT_FLAGS } from "../../measurements/channel-split";
 import { CONTEXT_ENCODE_FLAGS } from "../../measurements/context-encode-ceiling";
 import { ONLINE_CODEC_FLAGS } from "../../measurements/online-codec-ceiling";

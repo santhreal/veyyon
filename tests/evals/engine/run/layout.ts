@@ -7,8 +7,8 @@
  * pointed the cleanup at a directory that does not exist, or at one that belongs to another trial.
  */
 import * as path from "node:path";
-import { pathSegmentFrom } from "./package-paths";
-import type { TrialCell } from "./contracts";
+import { pathSegmentFrom } from "../package-paths";
+import type { TrialCell } from "../contracts";
 
 /** Segment a run with no id is filed under. */
 export const DEFAULT_RUN_SEGMENT = "run";

@@ -1,5 +1,5 @@
 import { errorMessage } from "@veyyon/utils";
-import type { BackendId, HarnessAdapter, HarnessLookup, PreflightVerdict, Variant } from "./contracts";
+import type { BackendId, HarnessAdapter, HarnessLookup, PreflightVerdict, Variant } from "../contracts";
 
 export interface HarnessPreflightReport {
 	readonly harness: string;

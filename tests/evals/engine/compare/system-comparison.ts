@@ -3,7 +3,7 @@
  */
 import { errorMessage } from "@veyyon/utils";
 import type { ComparisonArmResult, ComparisonExecution } from "./arm-result"
-import type { HarnessLookup } from "./contracts";
+import type { HarnessLookup } from "../contracts";
 import {
 	ComparisonRejected,
 	type CompetitorGates,
@@ -15,9 +15,9 @@ import {
 	type SystemRatios,
 	type SystemTotals,
 	type SystemTrialResult,
-} from "./system-comparison-shapes";
+} from "./shapes";
 
-export { ComparisonRejected } from "./system-comparison-shapes";
+export { ComparisonRejected } from "./shapes";
 
 export type ComparisonSystem = string;
 

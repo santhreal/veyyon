@@ -17,7 +17,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { Variant } from "./contracts";
+import type { Variant } from "../contracts";
 import type { RunPlan } from "./run-plan";
 
 /** A journal whose plan is not the plan this invocation would run. */

@@ -37,9 +37,9 @@ import type {
 	Variant,
 	VariantAxis,
 } from "../../engine/contracts";
-import { executeRun } from "../../engine/execute-run";
-import { backends, harnesses } from "../../engine/loaded-members";
-import { buildRunPlan } from "../../engine/run-plan";
+import { executeRun } from "../../engine/run/execute";
+import { backends, harnesses } from "../../engine/members/loaded";
+import { buildRunPlan } from "../../engine/plan/run-plan";
 import {
 	checkVariantSupport,
 	UnappliedVariantAxisError,
@@ -49,7 +49,7 @@ import {
 	variantAxisValue,
 	variantSupportQuery,
 	variedAxes,
-} from "../../engine/variant-axes";
+} from "../../engine/plan/variant-axes";
 import { main } from "../../evals";
 
 const MODEL = "anthropic/claude-sonnet-4-6";

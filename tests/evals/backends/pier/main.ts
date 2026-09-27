@@ -1,16 +1,16 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { requireBackendBinding, resolveCellVariant } from "../../engine/cell-variant";
+import { requireBackendBinding, resolveCellVariant } from "../../engine/plan/cell-variant";
 import {
 	containerProgramPath,
 	programBinarySha,
 	programDirFor,
 	stageHarnessProgram,
-} from "../../engine/container-program";
-import { containerLocalEndpointEnv } from "../../engine/local-inference-endpoint";
-import { trialTimeoutFromOptions } from "../../engine/trial-deadline";
-import { resolveTrialModel } from "../../engine/trial-model";
-import { runDirFor, trialJobName } from "../../engine/run-layout";
+} from "../../engine/harness/container-program";
+import { containerLocalEndpointEnv } from "../../engine/harness/local-inference-endpoint";
+import { trialTimeoutFromOptions } from "../../engine/trial/deadline";
+import { resolveTrialModel } from "../../engine/trial/model";
+import { runDirFor, trialJobName } from "../../engine/run/layout";
 import type {
 	BackendId,
 	ExecutionBackend,

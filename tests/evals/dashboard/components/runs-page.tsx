@@ -8,7 +8,7 @@ import {
 	type TraceDetailResponse,
 	type TraceRow,
 	type TranscriptEntry,
-} from "../../engine/store-shapes";
+} from "../../engine/wire/store-shapes";
 import { mutate } from "../api";
 import { usePolled } from "../hooks/use-polled";
 import { useRunsSse } from "../hooks/use-runs-sse";

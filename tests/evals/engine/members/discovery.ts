@@ -21,7 +21,7 @@
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { Registry } from "./member-registry";
+import { Registry } from "./registry";
 
 /** The one place a member kind is declared. A new kind is a row here and a directory. */
 export interface MemberKind {
@@ -60,7 +60,7 @@ export type DescriptorKindName = {
 const DIRECTORY_ENTRY = "main.ts";
 
 /** The package root, which is the parent of this `engine/` directory. */
-export const PACKAGE_ROOT = path.resolve(import.meta.dirname, "..");
+export const PACKAGE_ROOT = path.resolve(import.meta.dirname, "..", "..");
 
 /** A discovered member file, before it is imported. */
 export interface MemberSource {

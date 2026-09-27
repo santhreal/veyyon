@@ -24,7 +24,7 @@
  */
 
 import { errorMessage } from "@veyyon/utils";
-import { parseModelId } from "./trial-model";
+import { parseModelId } from "../trial/model";
 
 /** The host address a container reaches through the docker bridge. */
 export const CONTAINER_HOST_ADDRESS = "172.17.0.1";

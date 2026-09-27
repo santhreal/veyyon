@@ -1,6 +1,6 @@
 import { errorMessage } from "@veyyon/utils/type-guards";
-import { fetchWithin } from "../engine/bounded-fetch";
-import type { ApiErrorResponse, ApiTokenResponse, ExperimentMetaUpdate, HttpMethod } from "../engine/store-shapes";
+import { fetchWithin } from "../engine/io/bounded-fetch";
+import type { ApiErrorResponse, ApiTokenResponse, ExperimentMetaUpdate, HttpMethod } from "../engine/wire/store-shapes";
 import { resolveRoute } from "./routes";
 
 let cachedAuthToken = "";

@@ -28,7 +28,7 @@ import {
 	exhaustedPoolFor,
 	modelVendor,
 	requireModelVendor,
-} from "../../../engine/auth-preflight";
+} from "../../../engine/auth/preflight";
 import { requireStagedAuthCanServeToken } from "../../../suites/deep-swe/runner/preflight";
 
 describe("an unresolvable model vendor refuses the preflight", () => {

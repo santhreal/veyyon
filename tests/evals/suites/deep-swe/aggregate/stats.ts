@@ -9,7 +9,7 @@ import {
 	meanWithTimeoutsAsZero,
 	rateOf,
 	sumOfMeasured,
-} from "../../../engine/trial-outcomes";
+} from "../../../engine/trial/outcomes";
 
 export { mean };
 

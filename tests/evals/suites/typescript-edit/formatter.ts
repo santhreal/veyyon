@@ -3,7 +3,7 @@
  */
 import * as path from "node:path";
 import * as prettier from "prettier";
-import { listFiles } from "../../engine/list-files";
+import { listFiles } from "../../engine/io/list-files";
 
 const PRETTIER_OPTIONS: prettier.Options = {
 	printWidth: 100,

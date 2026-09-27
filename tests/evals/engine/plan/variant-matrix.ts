@@ -9,7 +9,7 @@
 
 import { createHash } from "node:crypto";
 import * as path from "node:path";
-import type { Variant } from "./contracts";
+import type { Variant } from "../contracts";
 
 export class VariantMatrixError extends Error {
 	constructor(message: string) {

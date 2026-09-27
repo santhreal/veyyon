@@ -15,7 +15,7 @@
  * applies is refused here instead, before a trial starts.
  */
 
-import type { ExecutionBackend, HarnessCapabilities, Variant, VariantAxis } from "./contracts";
+import type { ExecutionBackend, HarnessCapabilities, Variant, VariantAxis } from "../contracts";
 
 /**
  * How an operator names each axis, so a refusal points at the input that caused it. Every

@@ -1,4 +1,4 @@
-import { type ArmSummary, formatEta, formatMinutes, formatUsd } from "../../engine/store-shapes";
+import { type ArmSummary, formatEta, formatMinutes, formatUsd } from "../../engine/wire/store-shapes";
 import { Delta } from "./delta";
 import { Chip, Progress, RoleTag } from "./ui";
 

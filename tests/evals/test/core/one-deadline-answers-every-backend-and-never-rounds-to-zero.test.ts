@@ -30,7 +30,7 @@ import * as harborCleanup from "../../backends/harbor/cleanup";
 import * as harborBackend from "../../backends/harbor/main";
 import * as inProcessBackend from "../../backends/in-process/main";
 import * as pierRunner from "../../backends/pier/runner";
-import { backends, suites } from "../../engine/loaded-members";
+import { backends, suites } from "../../engine/members/loaded";
 import {
 	boundRawOutput,
 	DEFAULT_GRACE_PERIOD_MS,
@@ -41,7 +41,7 @@ import {
 	RAW_OUTPUT_MAX_BYTES,
 	resolveTrialTimeoutSec,
 	trialTimeoutFromOptions,
-} from "../../engine/trial-deadline";
+} from "../../engine/trial/deadline";
 import { CliUsageError, parseEvalsArgs, suiteContext } from "../../evals";
 
 const BACKEND_IDS: readonly string[] = ["in-process", "pier", "harbor"];

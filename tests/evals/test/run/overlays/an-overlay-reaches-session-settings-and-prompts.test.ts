@@ -10,9 +10,9 @@ import type {
 	TrialCell,
 	TrialScore,
 } from "../../../engine/contracts";
-import { BackendPreflightError, executeRun } from "../../../engine/execute-run";
-import { harnesses } from "../../../engine/loaded-members";
-import { buildRunPlan } from "../../../engine/run-plan";
+import { BackendPreflightError, executeRun } from "../../../engine/run/execute";
+import { harnesses } from "../../../engine/members/loaded";
+import { buildRunPlan } from "../../../engine/plan/run-plan";
 
 function createProbeSuite(): EvalSuite {
 	return {

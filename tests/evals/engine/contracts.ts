@@ -11,7 +11,7 @@
  * Plus the ExecutionBackend (containerized or in-process execution engine).
  */
 
-import type { ContainerProgramContext, StagedProgram } from "./container-program";
+import type { ContainerProgramContext, StagedProgram } from "./harness/container-program";
 
 /**
  * Identifier for an execution backend (e.g. "pier", "harbor", "in-process").

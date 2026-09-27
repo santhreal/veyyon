@@ -28,7 +28,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { AuthStorage, type CredentialHealthResult } from "@veyyon/ai";
 import type { HarnessAdapter } from "../../../engine/contracts";
-import { harnesses } from "../../../engine/loaded-members";
+import { harnesses } from "../../../engine/members/loaded";
 import { internalScratchDir } from "../../../engine/package-paths";
 import { stageAllArms } from "../../../suites/deep-swe/runner/arm-staging";
 import {

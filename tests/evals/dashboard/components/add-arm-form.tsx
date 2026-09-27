@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { AddArmRequest, LaunchResponse, RunRole } from "../../engine/store-shapes";
+import type { AddArmRequest, LaunchResponse, RunRole } from "../../engine/wire/store-shapes";
 import { mutate } from "../api";
 import { INPUT_CLASS } from "./ui";
 

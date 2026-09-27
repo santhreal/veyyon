@@ -10,7 +10,7 @@ import {
 	parseFlags,
 	requireFlag,
 	UnknownFlagError,
-} from "../../engine/flag-grammar";
+} from "../../engine/plan/flag-grammar";
 import { extractFixtures } from "./extract";
 import { loadTasksFromDir } from "./tasks";
 import { generateJsonReport } from "./report";

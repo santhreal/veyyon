@@ -30,10 +30,10 @@ import * as path from "node:path";
 import { parseSectionOverridesJson } from "@veyyon/coding-agent/system-prompt-builder/default-template";
 import { parseStatementOverridesJson } from "@veyyon/coding-agent/system-prompt-builder/statement-registry";
 import YAML from "yaml";
-import { ARM_ATTACHMENT_KINDS, type ArmAttachmentKind, attachmentKindOf } from "../../../engine/arm-attachments";
-import { harnesses } from "../../../engine/loaded-members";
+import { ARM_ATTACHMENT_KINDS, type ArmAttachmentKind, attachmentKindOf } from "../../../engine/harness/arm-attachments";
+import { harnesses } from "../../../engine/members/loaded";
 import { armsDir, evalsPackageDir, repoRootDir, taskListsDir } from "../../../engine/package-paths";
-import { promptOverrideIdError } from "../../../engine/prompt-overrides";
+import { promptOverrideIdError } from "../../../engine/plan/prompt-overrides";
 import { armNamesIn } from "../../../suites/deep-swe/arm-fingerprint";
 
 const SUITE_DIR = path.join(evalsPackageDir(), "suites", "deep-swe");

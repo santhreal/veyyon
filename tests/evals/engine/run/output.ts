@@ -16,9 +16,9 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, logger } from "@veyyon/utils";
-import type { EvalRunRecord } from "./run-record";
-import { runDirFor } from "./run-layout";
-import type { EvalSuite, SuiteReportContext } from "./contracts";
+import type { EvalRunRecord } from "./record";
+import { runDirFor } from "./layout";
+import type { EvalSuite, SuiteReportContext } from "../contracts";
 
 /** Filename the run record is written under, inside the run's directory. */
 export const RUN_RECORD_FILE = "run.json";

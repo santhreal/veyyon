@@ -6,7 +6,7 @@
  */
 import { errorMessage } from "@veyyon/utils";
 import { requirePathSegment } from "../engine/package-paths";
-import { type HttpMethod, PATH_SEGMENT_PARAMS, type RouteDescriptor, SERVER_ROUTES } from "../engine/store-shapes";
+import { type HttpMethod, PATH_SEGMENT_PARAMS, type RouteDescriptor, SERVER_ROUTES } from "../engine/wire/store-shapes";
 import type { ServerContext } from "./context";
 import { getBenchmarksController } from "./controllers/benchmarks";
 import { getEventsController } from "./controllers/events";

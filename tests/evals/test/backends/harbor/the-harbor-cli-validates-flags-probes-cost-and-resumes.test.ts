@@ -6,15 +6,15 @@ import { cleanupHarborTrialContainers } from "../../../backends/harbor/cleanup";
 import { parseArgs, resolveResumeConfig } from "../../../backends/harbor/cli";
 import { buildHarborEnv, buildResumeArgs, collectForwardEnv } from "../../../backends/harbor/config";
 import { readTrials } from "../../../backends/harbor/results";
-import { harnesses } from "../../../engine/loaded-members";
+import { harnesses } from "../../../engine/members/loaded";
 import {
 	boundRawOutput,
 	DEFAULT_GRACE_PERIOD_MS,
 	DEFAULT_TRIAL_TIMEOUT_SEC,
 	HARD_CEILING_TRIAL_TIMEOUT_SEC,
 	RAW_OUTPUT_MAX_BYTES,
-} from "../../../engine/trial-deadline";
-import { terminateProcessTree } from "../../../engine/trial-process";
+} from "../../../engine/trial/deadline";
+import { terminateProcessTree } from "../../../engine/trial/process";
 
 describe("generic agent-arg / env passthrough", () => {
 	it("forwards repeated --agent-arg as a JSON array the in-container agent can parse", () => {

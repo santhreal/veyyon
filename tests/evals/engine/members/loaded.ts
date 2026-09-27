@@ -16,9 +16,9 @@
  * broken member is a broken package, not a run that dies twenty minutes in.
  */
 
-import type { ExecutionBackend, EvalSuite, HarnessAdapter } from "./contracts";
-import { loadMembers } from "./member-discovery";
-import type { Registry } from "./member-registry";
+import type { ExecutionBackend, EvalSuite, HarnessAdapter } from "../contracts";
+import { loadMembers } from "./discovery";
+import type { Registry } from "./registry";
 
 export const suites: Registry<EvalSuite> = await loadMembers<EvalSuite>("suite");
 export const harnesses: Registry<HarnessAdapter> = await loadMembers<HarnessAdapter>("harness");

@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { tryParseJson } from "@veyyon/utils";
-import { BUILD_COMMAND_TIMEOUT_MS, syncCommandOptions } from "../../engine/bounded-command";
+import { BUILD_COMMAND_TIMEOUT_MS, syncCommandOptions } from "../../engine/io/bounded-command";
 import { codingAgentDir, repoRootDir } from "../../engine/package-paths";
 import type { Config } from "./config";
 

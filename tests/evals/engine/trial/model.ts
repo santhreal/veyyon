@@ -19,7 +19,7 @@
  * the provider through the catalog. A bare `gpt-5` reaches a provider section named
  * after nothing.
  */
-import type { RunContext, Variant } from "./contracts";
+import type { RunContext, Variant } from "../contracts";
 
 /** No axis named a model, and the harness declares no default of its own. */
 export class ModelNotNamedError extends Error {

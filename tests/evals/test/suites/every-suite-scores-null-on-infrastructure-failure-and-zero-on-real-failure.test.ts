@@ -22,7 +22,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { TrialArtifacts, TrialCell } from "../../engine/contracts";
-import { suites } from "../../engine/loaded-members";
+import { suites } from "../../engine/members/loaded";
 import { internalScratchDir } from "../../engine/package-paths";
 
 function createScratchDir(prefix: string): string {

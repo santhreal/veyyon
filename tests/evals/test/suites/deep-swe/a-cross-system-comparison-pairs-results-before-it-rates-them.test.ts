@@ -7,8 +7,8 @@ import {
 	ComparisonRejected,
 	type ComparisonSystem,
 	renderSystemComparison,
-} from "../../../engine/system-comparison";
-import type { SystemTrialResult } from "../../../engine/system-comparison-shapes";
+} from "../../../engine/compare/system-comparison";
+import type { SystemTrialResult } from "../../../engine/compare/shapes";
 import { COMPARISON_TASK_LIST, COMPARISON_TASK_LIST_SHA256 } from "../../../suites/deep-swe/runner/executor";
 
 const TASKS = ["task-a", "task-b"] as const;

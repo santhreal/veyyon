@@ -10,7 +10,7 @@
  * concurrently, so a legitimate run cannot reach it; a run that does has stopped making progress.
  */
 
-import { resolveTrialTimeoutSec } from "../../engine/trial-deadline";
+import { resolveTrialTimeoutSec } from "../../engine/trial/deadline";
 
 /** Slack for the pulls, builds and verifier passes that sit outside a trial's own budget. */
 export const RUN_WATCHDOG_GRACE_SEC = 600;

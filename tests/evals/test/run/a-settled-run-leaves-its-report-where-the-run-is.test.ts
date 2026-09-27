@@ -42,12 +42,12 @@ import type {
 	TrialCell,
 	TrialScore,
 } from "../../engine/contracts";
-import { executeRun } from "../../engine/execute-run";
-import { harnesses, suites } from "../../engine/loaded-members";
-import { readRunJournal } from "../../engine/run-journal";
-import { runDirFor } from "../../engine/run-layout";
-import type { RunPlan } from "../../engine/run-plan";
-import { buildRunPlan } from "../../engine/run-plan";
+import { executeRun } from "../../engine/run/execute";
+import { harnesses, suites } from "../../engine/members/loaded";
+import { readRunJournal } from "../../engine/run/journal";
+import { runDirFor } from "../../engine/run/layout";
+import type { RunPlan } from "../../engine/plan/run-plan";
+import { buildRunPlan } from "../../engine/plan/run-plan";
 import { deepSweSuite } from "../../suites/deep-swe/main";
 
 const selection = { harnesses: ["veyyon"], models: ["vendor/model-a"] } as const;

@@ -21,7 +21,7 @@ import { describe, expect, it } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ArmEditorRow } from "../../dashboard/components/arm-editor-row";
 import { ArmRow } from "../../dashboard/components/arm-row";
-import type { ArmSummary, RunRow } from "../../engine/store-shapes";
+import type { ArmSummary, RunRow } from "../../engine/wire/store-shapes";
 
 function armSummary(overrides: Partial<ArmSummary> = {}): ArmSummary {
 	const run: RunRow = {

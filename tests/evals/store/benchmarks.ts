@@ -10,10 +10,10 @@ import {
 	readJobResult,
 	type Trial,
 } from "../backends/harbor/results";
-import { sumOfMeasured } from "../engine/trial-outcomes";
+import { sumOfMeasured } from "../engine/trial/outcomes";
 import type { BackendId } from "../engine/contracts";
 import { pathSegmentFrom } from "../engine/package-paths";
-import type { BenchmarkDefinition, BenchmarkKind, LaunchRequest, MetricDefinition, TrialStatus } from "../engine/store-shapes";
+import type { BenchmarkDefinition, BenchmarkKind, LaunchRequest, MetricDefinition, TrialStatus } from "../engine/wire/store-shapes";
 
 /** Paths and request one launch of a benchmark writes into. */
 export interface BenchmarkLaunchContext {

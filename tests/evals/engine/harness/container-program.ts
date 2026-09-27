@@ -19,8 +19,8 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { sanitizeVariantName } from "./run-layout";
-import type { HarnessAdapter } from "./contracts";
+import { sanitizeVariantName } from "../run/layout";
+import type { HarnessAdapter } from "../contracts";
 
 /** Spec version the Python executor accepts. A bump refuses a stale staged program. */
 export const CONTAINER_PROGRAM_VERSION = 1;

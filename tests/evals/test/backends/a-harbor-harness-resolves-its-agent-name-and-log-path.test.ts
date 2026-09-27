@@ -21,7 +21,7 @@ import { buildHarborArgs } from "../../backends/harbor/launch-args";
 import { HarborBindingNotFoundError, harborAgentLogPath, requireHarborBinding } from "../../backends/harbor/main";
 import { agentLabel } from "../../backends/harbor/ui";
 import type { HarnessAdapter, HarnessCapabilities, PreflightVerdict } from "../../engine/contracts";
-import { harnesses } from "../../engine/loaded-members";
+import { harnesses } from "../../engine/members/loaded";
 
 /** A runner config with every field the frame and the env builder read. */
 function mockRunnerConfig(): Config {

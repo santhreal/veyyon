@@ -25,8 +25,8 @@ import * as path from "node:path";
 import { HarborBackend } from "../../backends/harbor/main";
 import { PierExecutionBackend } from "../../backends/pier/main";
 import * as pierRunner from "../../backends/pier/runner";
-import { UnknownCellVariantError } from "../../engine/cell-variant";
-import { containerProgramPath, programDirFor } from "../../engine/container-program";
+import { UnknownCellVariantError } from "../../engine/plan/cell-variant";
+import { containerProgramPath, programDirFor } from "../../engine/harness/container-program";
 import type {
 	BackendId,
 	EvalSuite,
@@ -37,7 +37,7 @@ import type {
 	TrialScore,
 	Variant,
 } from "../../engine/contracts";
-import { backends, harnesses } from "../../engine/loaded-members";
+import { backends, harnesses } from "../../engine/members/loaded";
 
 /** Backends this suite drives end to end without a container runtime. */
 const DRIVEN_BACKENDS: ReadonlySet<BackendId> = new Set<BackendId>(["pier", "harbor"]);

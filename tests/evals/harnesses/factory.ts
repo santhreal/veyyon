@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { $which } from "@veyyon/utils";
 import type { SystemJobConfigContext, SystemPreflightContext, SystemPreflightResult, SystemStageContext }  from "../engine/contracts"
-import { sanitizeVariantName } from "../engine/run-layout";
+import { sanitizeVariantName } from "../engine/run/layout";
 import type {
 	HarnessAdapter,
 	HarnessCapabilities,
