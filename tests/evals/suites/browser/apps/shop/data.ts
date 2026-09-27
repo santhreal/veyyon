@@ -88,10 +88,14 @@ export interface Order extends Totals {
 }
 
 export interface ReturnRequest {
+	/** `RMA-` and six characters, shown on the order page once the return is requested. */
+	readonly reference: string;
 	readonly orderId: string;
 	readonly lines: readonly { readonly sku: string; readonly size: string; readonly quantity: number }[];
 	readonly reason: string;
 	readonly refund: string;
+	/** What the return refunds, by {@link refundCents}. */
+	readonly refundCents: number;
 }
 
 export interface Message {
@@ -247,6 +251,22 @@ export function describeCoupon(coupon: Coupon): string {
 	if (coupon.kind === "percent") return `${coupon.value}% off${scope}${minimum}`;
 	if (coupon.kind === "fixed") return `$${(coupon.value / 100).toFixed(2)} off${scope}${minimum}`;
 	return `Free shipping at any speed${minimum}`;
+}
+
+/**
+ * What returning these lines of an order refunds: their price less their share of the order's
+ * discount, plus the tax on the rest. Shipping is not refunded.
+ */
+export function refundCents(
+	order: Pick<Order, "lines" | "subtotalCents" | "discountCents">,
+	indexes: readonly number[],
+): number {
+	const items = indexes.reduce((sum, index) => {
+		const line = order.lines[index];
+		return line ? sum + line.unitCents * line.quantity : sum;
+	}, 0);
+	const discount = order.subtotalCents > 0 ? Math.round((order.discountCents * items) / order.subtotalCents) : 0;
+	return items - discount + Math.round((items - discount) * TAX_RATE);
 }
 
 /** An order id the account has not used: `W` and six digits. */

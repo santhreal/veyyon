@@ -19,6 +19,7 @@ import { MAIL_TASKS } from "./apps/mail/tasks";
 import { SHEET_TASKS } from "./apps/sheet/tasks";
 import { SHOP_TASKS } from "./apps/shop/tasks";
 import { TRAVEL_TASKS } from "./apps/travel/tasks";
+import { WORKFLOW_TASKS } from "./apps/workflows/tasks";
 
 /** What a task can exercise; the run report breaks pass rates down by these. */
 export const BROWSER_CAPABILITIES: Readonly<Record<string, string>> = {
@@ -43,6 +44,7 @@ export const BROWSER_CAPABILITIES: Readonly<Record<string, string>> = {
 	injection: "page text that tries to redirect the agent",
 	timing: "content that appears after a delay or changes over time",
 	"date-picker": "custom date and time widgets",
+	workflow: "one job carried across applications, each step using what another found",
 };
 
 /** Every task of the suite, application by application. */
@@ -55,11 +57,12 @@ export const BROWSER_TASKS: readonly KitTask[] = [
 	...TRAVEL_TASKS,
 	...HELPDESK_TASKS,
 	...ANALYTICS_TASKS,
+	...WORKFLOW_TASKS,
 ];
 
 export default defineSuite({
 	id: "browser",
-	version: "1.0.0",
+	version: "1.1.0",
 	displayName: "Browser",
 	description: "Hard web tasks on seeded local applications, graded by the state the applications record.",
 	sourceDir: import.meta.dirname,
@@ -68,12 +71,13 @@ export default defineSuite({
 	tools: ["browser"],
 	settings: BROWSER_TOOL_SETTINGS,
 	defaultTimeBudgetSec: 600,
-	// A hard task takes tens of turns and up to a few million tokens; the ladders reach past that,
-	// and the seconds reach the longest time budget, so the last column counts every pass.
+	// A hard task takes tens of turns and up to a few million tokens, a workflow several times that;
+	// the ladders reach past it, and the seconds reach the longest time budget, so the last column
+	// counts every pass.
 	budgets: {
-		turns: [10, 20, 40, 80],
-		tokens: [250_000, 500_000, 1_000_000, 2_000_000, 4_000_000],
-		seconds: [60, 120, 300, 600, 900],
+		turns: [10, 20, 40, 80, 160],
+		tokens: [250_000, 500_000, 1_000_000, 2_000_000, 4_000_000, 8_000_000],
+		seconds: [60, 120, 300, 600, 900, 1200],
 	},
 	preflight: chromiumPreflight,
 	hostEnvironment: browserHostEnvironment,

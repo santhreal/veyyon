@@ -29,6 +29,11 @@ its pages and endpoints (`site.ts`) and its tasks (`tasks.ts`).
 | `helpdesk` | a support desk with a knowledge base and a forum | customer text, hidden text, alt text, signatures and comments that instruct the agent to do something else, a chip editor and a combobox, actions behind confirmations |
 | `analytics` | a metrics dashboard | numbers drawn on canvas, which the page shows only in hover tooltips and fetches as JSON, widgets that load after they scroll into view, a two-month range picker, CSV exports |
 
+`suites/browser/apps/workflows/` holds the workflow tier. A workflow task starts two or three of the
+applications above, each from its own seeded stream of the trial's seed, and grades what every one
+of them recorded. A step needs a fact only another application shows: an invoice's corrected
+account, a meeting's moved date, a charge still pending, a figure drawn on a chart.
+
 ## Capabilities
 
 A capability names the path a task is built around: the widgets and page behavior an agent meets
@@ -38,24 +43,25 @@ The report breaks pass rates down by capability.
 
 | Capability | Tasks | Meaning |
 |---|---|---|
-| `reasoning` | 28 | deciding the right action from several facts: totals, rules, constraints |
-| `auth` | 23 | signing in, sessions and second factors |
-| `search-filter` | 22 | finding records through search, filters, sorting and pagination |
-| `reading` | 20 | extracting facts from pages, including collapsed or secondary content |
-| `forms` | 19 | filling and submitting forms, including server-side validation errors |
-| `multi-page` | 17 | work spread over several pages or steps |
-| `overlays` | 13 | dialogs, popovers and banners that cover the page until dismissed |
-| `date-picker` | 9 | custom date and time widgets |
-| `timing` | 7 | content that appears after a delay or changes over time |
-| `inline-edit` | 6 | editing in place: double-click editors and contenteditable |
-| `multi-tab` | 5 | work across two applications or tabs |
-| `injection` | 5 | page text that tries to redirect the agent |
-| `canvas` | 3 | content drawn on a canvas rather than in the DOM |
-| `dialogs` | 3 | native alert, confirm and prompt dialogs |
-| `iframes` | 3 | content in frames, including frames of another origin |
+| `reasoning` | 33 | deciding the right action from several facts: totals, rules, constraints |
+| `auth` | 28 | signing in, sessions and second factors |
+| `search-filter` | 26 | finding records through search, filters, sorting and pagination |
+| `forms` | 24 | filling and submitting forms, including server-side validation errors |
+| `reading` | 24 | extracting facts from pages, including collapsed or secondary content |
+| `multi-page` | 20 | work spread over several pages or steps |
+| `overlays` | 14 | dialogs, popovers and banners that cover the page until dismissed |
+| `date-picker` | 11 | custom date and time widgets |
+| `multi-tab` | 10 | work across two applications or tabs |
+| `inline-edit` | 8 | editing in place: double-click editors and contenteditable |
+| `timing` | 8 | content that appears after a delay or changes over time |
+| `injection` | 6 | page text that tries to redirect the agent |
+| `workflow` | 5 | one job carried across applications, each step using what another found |
+| `iframes` | 4 | content in frames, including frames of another origin |
+| `dialogs` | 4 | native alert, confirm and prompt dialogs |
+| `canvas` | 4 | content drawn on a canvas rather than in the DOM |
+| `shadow-dom` | 3 | controls inside shadow roots |
 | `keyboard` | 3 | keyboard shortcuts and keyboard-driven widgets |
 | `drag-drop` | 2 | moving items by dragging |
-| `shadow-dom` | 2 | controls inside shadow roots |
 | `downloads` | 2 | files the application generates |
 | `virtualized` | 1 | long lists that render only the rows in view |
 | `uploads` | 1 | attaching files from the workspace |
@@ -94,9 +100,12 @@ capability it names:
 | shop `GET /search?sort=price-asc` | `shop-filtered-purchase`, `shop-reorder-size-up` | `search-filter` |
 | shop `POST /cart/add` with a quantity | the shop tasks that set a quantity | `forms` |
 
+A workflow task reaches the endpoints of every application it spans, and skips the same paths through
+them.
+
 ## Tasks
 
-40 tasks with 250 checks: 1 easy, 14 medium, 17 hard, 8 expert.
+45 tasks with 311 checks: 1 easy, 14 medium, 17 hard, 13 expert.
 
 | Task | Difficulty | Budget | Capabilities | What it asks |
 |---|---|---|---|---|
@@ -140,6 +149,11 @@ capability it names:
 | `analytics-compare-channels` | hard | 720 s | canvas, date-picker, timing, reading, reasoning | Find the acquisition channel with the fastest revenue growth between two months |
 | `analytics-anomaly-alert` | hard | 780 s | canvas, date-picker, search-filter, timing, reasoning, forms, overlays, multi-page | Find a country's sharpest daily drop in active users and alert on exactly that day |
 | `analytics-export-segment` | expert | 900 s | downloads, date-picker, search-filter, timing, reasoning | Export weekly revenue for a two-filter segment over a shifted preset range and total it |
+| `workflow-pay-invoice-from-mail` | expert | 1200 s | workflow, auth, multi-tab, search-filter, reading, reasoning, forms, shadow-dom, dialogs | Pay a vendor's corrected invoice into the account its latest email names, then reply there with the bank's confirmation number |
+| `workflow-trip-for-meeting` | expert | 1200 s | workflow, multi-tab, reasoning, reading, search-filter, date-picker, iframes, forms, overlays, multi-page, auth | Book the cheapest day trip to a meeting a later email moved, pay with the given card, and add a card for the trip to the project's board |
+| `workflow-reconcile-and-dispute` | expert | 1200 s | workflow, auth, multi-tab, search-filter, reasoning, forms, inline-edit, multi-page | Mark a workbook's expected card purchases Matched or Pending against the bank, dispute the double charge, add the unlisted purchase and total what posted |
+| `workflow-metrics-report` | expert | 1200 s | workflow, multi-tab, canvas, date-picker, timing, search-filter, inline-edit, reading, reasoning, forms, auth | Fill a report's weekly signups by plan from a canvas dashboard for a named country and channel, and email the grand total to the team's current lead |
+| `workflow-return-from-support-thread` | expert | 1080 s | workflow, injection, reasoning, reading, forms, multi-page, multi-tab, auth | Return the damaged item a support ticket describes under the knowledge base's policy, and answer the ticket with the shop's return reference and refund |
 
 ## What a trial runs with
 
@@ -147,14 +161,15 @@ capability it names:
 - Settings: the browser tool on, headless, puppeteer (`BROWSER_TOOL_SETTINGS`).
 - Chromium: resolved once by the runner and handed to each trial as `PUPPETEER_EXECUTABLE_PATH`,
   with its directory readable in the sandbox.
-- Budget: the task's own, from 420 s for the easy task to 900 s for an expert one.
-- Report: passes counted within 10 to 80 turns, 250k to 4M tokens and 60 to 900 s (`budgets` in
+- Budget: the task's own, from 420 s for the easy task to 1200 s for a workflow.
+- Report: passes counted within 10 to 160 turns, 250k to 8M tokens and 60 to 1200 s (`budgets` in
   `suites/browser/main.ts`). The last seconds budget is at least the longest task budget, which the
   suite's tests check, so a task with a longer budget raises the ladder with it.
 
 ## Adding a task
 
-Write it beside its application in `suites/browser/apps/<app>/tasks.ts` with `kitTask`, following
+Write it beside its application in `suites/browser/apps/<app>/tasks.ts`, or for a task that spans
+applications in `suites/browser/apps/workflows/`, with `kitTask`, following
 [the kit](kit.md): seeded data bent so the answer is unique and the tempting wrong answers exist,
 checks over recorded state, a check that no tempting side effect happened, an answer check that
 fails a reply naming a decoy beside the answer (`answerNamesOnly`, `answerStatesOnly` in

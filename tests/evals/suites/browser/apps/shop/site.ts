@@ -35,6 +35,7 @@ import {
 	priceOrder,
 	type Product,
 	REFUND_METHODS,
+	refundCents,
 	RETURN_REASONS,
 	type ReturnRequest,
 	SHIPPING,
@@ -389,7 +390,23 @@ ${field("name", "Full name")}${field("street", "Street")}${field("city", "City")
 				.join("")}</table>
 <table style="max-width:360px;margin-top:10px"><tr><td>Subtotal</td><td>${money(order.subtotalCents)}</td></tr><tr><td>Discount</td><td>${money(-order.discountCents)}</td></tr><tr><td>Shipping</td><td>${money(order.shippingCents)}</td></tr><tr><td>Tax</td><td>${money(order.taxCents)}</td></tr><tr><th>Total</th><th>${money(order.totalCents)}</th></tr></table>
 <p>Ship to ${escapeHtml(`${order.address.name}, ${order.address.street}, ${order.address.city} ${order.address.postalCode}`)}</p>
-${requested.length > 0 ? `<p class="notice">A return was requested for ${requested.length === 1 ? "this order" : `${requested.length} parts of this order`}.</p>` : `<p><a href="/orders/${id}/return">Return items</a></p>`}`,
+${
+	requested.length > 0
+		? requested
+				.map(
+					entry =>
+						`<p class="notice">Return ${escapeHtml(entry.reference)} requested: ${escapeHtml(
+							entry.lines
+								.map(line => {
+									const name = order.lines.find(item => item.sku === line.sku && item.size === line.size)?.name ?? line.sku;
+									return line.size === ONE_SIZE ? name : `${name} (${line.size})`;
+								})
+								.join(", "),
+						)} · refund ${money(entry.refundCents)} to ${escapeHtml(entry.refund)}.</p>`,
+				)
+				.join("")
+		: `<p><a href="/orders/${id}/return">Return items</a></p>`
+}`,
 		);
 	};
 
@@ -418,15 +435,22 @@ ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
 	const requestReturn = (session: string, id: string, fields: Record<string, string>): SiteResponse => {
 		const order = world.orders.find(entry => entry.id === id);
 		if (!order) return text("No such order", { status: 404 });
-		const indexes = (fields.line ?? "")
-			.split(",")
-			.filter(Boolean)
-			.map(Number)
-			.filter(index => Number.isInteger(index) && order.lines[index]);
+		const indexes = [
+			...new Set(
+				(fields.line ?? "")
+					.split(",")
+					.filter(Boolean)
+					.map(Number)
+					.filter(index => Number.isInteger(index) && order.lines[index]),
+			),
+		];
 		if (indexes.length === 0) return returnPage(session, id, "Choose at least one item to return.");
 		if (!RETURN_REASONS.some(reason => reason === fields.reason)) return returnPage(session, id, "Choose a reason.");
 		if (!REFUND_METHODS.some(method => method === fields.refund)) return returnPage(session, id, "Choose where the refund goes.");
+		let reference = `RMA-${rng.code(6)}`;
+		while (returns.some(entry => entry.reference === reference)) reference = `RMA-${rng.code(6)}`;
 		returns.push({
+			reference,
 			orderId: id,
 			lines: indexes.map(index => {
 				const line = order.lines[index] as Order["lines"][number];
@@ -434,6 +458,7 @@ ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
 			}),
 			reason: fields.reason as string,
 			refund: fields.refund as string,
+			refundCents: refundCents(order, indexes),
 		});
 		return redirect(`/orders/${id}`);
 	};
